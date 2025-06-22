@@ -17,18 +17,18 @@ function getYoutubeVideoId(url) {
 
 // src/renderer/js/ui.js 内の updateNowPlayingView 関数を置き換え
 
-// src/renderer/js/ui.js の updateNowPlayingView 関数を置き換え
 export function updateNowPlayingView(song) {
     const previewContainer = document.getElementById('now-playing-artwork-container');
     const localPlayer = document.getElementById('main-player');
     const ytPlayerWrapper = document.getElementById('youtube-player-container');
 
+    // 全てのプレーヤーを一旦、元の非表示の場所に戻す
     document.body.appendChild(localPlayer);
     document.body.appendChild(ytPlayerWrapper);
     localPlayer.style.display = 'none';
     previewContainer.innerHTML = '';
 
-    // ★★★ アスペクト比をコントロールするクラスを一度リセット ★★★
+    // アスペクト比をコントロールするクラスを一度リセット
     previewContainer.classList.remove('video-mode');
 
     if (!song) {
@@ -36,15 +36,25 @@ export function updateNowPlayingView(song) {
         const img = document.createElement('img');
         img.src = './assets/default_artwork.png';
         previewContainer.appendChild(img);
-    } else if (song.type === 'youtube' || (song.type === 'local' && song.sourceURL)) {
-        // ★★★ ストリーミング または ダウンロードしたビデオの場合 (16:9) ★★★
-        previewContainer.classList.add('video-mode'); // 16:9にするクラスを追加
-        if (song.type === 'youtube') {
-            previewContainer.appendChild(ytPlayerWrapper);
-        } else {
+    } else if (song.type === 'youtube') {
+        // ストリーミング再生の場合 (16:9)
+        previewContainer.classList.add('video-mode');
+        previewContainer.appendChild(ytPlayerWrapper);
+    } else if (song.type === 'local' && song.sourceURL) {
+        // --- ★★★ ここからが新しいロジック ★★★ ---
+        // ダウンロード済みのYouTube曲の場合
+        if (song.path && song.path.toLowerCase().endsWith('.mp4')) {
+            // 【動画ファイルの場合】(16:9)
+            previewContainer.classList.add('video-mode');
             localPlayer.style.display = 'block';
             previewContainer.appendChild(localPlayer);
+        } else {
+            // 【音声ファイルの場合（省データモード）】(1:1)
+            const img = document.createElement('img');
+            img.src = song.artwork || './assets/default_artwork.png';
+            previewContainer.appendChild(img);
         }
+        // --- ★★★ ここまで ★★★ ---
     } else {
         // 通常のローカル音声ファイルの場合 (1:1)
         const img = document.createElement('img');
