@@ -83,9 +83,53 @@ function getPlaylistSongs(playlistName) {
     }
 }
 
+// ★★★ 以下の関数をファイル末尾に追加 ★★★
+function removeSongFromPlaylist(playlistName, songPathToRemove) {
+    if (!playlistName || !songPathToRemove) return { success: false };
+
+    const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
+    if (!fs.existsSync(playlistPath)) {
+        return { success: false, message: 'Playlist not found.' };
+    }
+
+    try {
+        const content = fs.readFileSync(playlistPath, 'utf-8');
+        const lines = content.split('\n');
+        const newLines = [];
+        let songIndex = -1;
+
+        // 削除対象の曲のパスが何行目にあるかを探す
+        lines.forEach((line, index) => {
+            if (line.trim() === songPathToRemove.trim()) {
+                songIndex = index;
+            }
+        });
+
+        if (songIndex > -1) {
+            // 曲のパスとその直前の情報行(#EXTINF)を除外して新しい配列を作成
+            for (let i = 0; i < lines.length; i++) {
+                // songIndex(パスの行) と songIndex-1(情報行) 以外を newLines に追加
+                if (i !== songIndex && i !== songIndex - 1) {
+                    newLines.push(lines[i]);
+                }
+            }
+            // 新しい内容でファイルを上書き
+            fs.writeFileSync(playlistPath, newLines.join('\n'));
+            return { success: true };
+        } else {
+            // 曲が見つからなかった場合
+            return { success: false, message: 'Song not found in playlist.' };
+        }
+    } catch (error) {
+        console.error(`Failed to remove song from ${playlistName}:`, error);
+        return { success: false, message: error.message };
+    }
+}
+
 module.exports = {
     getAllPlaylists,
     createPlaylist,
     getPlaylistSongs,
-    addSongToPlaylist
+    addSongToPlaylist,
+    removeSongFromPlaylist // ★★★ エクスポートに追加 ★★★
 };

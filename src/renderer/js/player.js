@@ -150,12 +150,14 @@ async function seek() {
 
 async function setVolume() {
     const volume = parseFloat(elements.volumeSlider.value);
+        const newVolume = parseFloat(elements.volumeSlider.value);
     if (currentSongType === 'youtube') {
         const player = await getYouTubePlayer();
         if (player && typeof player.setVolume === 'function') player.setVolume(volume * 100);
     } else {
         localPlayer.volume = volume;
     }
+        ipc.send('save-settings', { volume: newVolume }); 
 }
 
 // --- イベントハンドラとヘルパー関数 ---

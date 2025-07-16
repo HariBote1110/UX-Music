@@ -5,23 +5,27 @@ class DataStore {
     constructor(fileName) {
         const userDataPath = require('electron').app.getPath('userData');
         this.path = path.join(userDataPath, fileName);
-        // ★★★ 追加: ファイル名をインスタンスに保存 ★★★
         this.fileName = fileName;
     }
 
     load() {
         try {
             if (fs.existsSync(this.path)) {
-                return JSON.parse(fs.readFileSync(this.path));
+                // ★★★ ここからが修正箇所です ★★★
+                const fileContent = fs.readFileSync(this.path, 'utf-8');
+                // ファイルが空、または空白文字しかない場合は、デフォルト値を返す
+                if (fileContent.trim() === '') {
+                    return this.fileName === 'library.json' ? [] : {};
+                }
+                return JSON.parse(fileContent);
+                // ★★★ ここまでが修正箇所です ★★★
             }
         } catch (error) {
             console.error(`Failed to load data from ${this.path}:`, error);
         }
-        // ★★★ 修正: library.jsonの場合は空配列、それ以外は空オブジェクトを返す ★★★
         return this.fileName === 'library.json' ? [] : {};
     }
 
-    // (save関数は変更なし)
     save(data) {
         try {
             fs.writeFileSync(this.path, JSON.stringify(data, null, 2));
@@ -30,5 +34,5 @@ class DataStore {
         }
     }
 }
-// 他のファイルで使えるようにエクスポート
+
 module.exports = DataStore;

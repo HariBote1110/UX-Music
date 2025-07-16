@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' http://127.0.0.1:3000; frame-src https://www.youtube.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://*.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' http://127.0.0.1:3000; frame-src https://*.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
     <title>UX Music</title>
     <link rel="stylesheet" href="./style.css">
 </head>
@@ -26,6 +26,7 @@
             <div class="sidebar-actions">
                 <button id="add-network-folder-btn">+ ネットワークフォルダを追加</button>
                 <button id="add-youtube-btn">+ YouTubeリンクを追加</button>
+                <button id="add-youtube-playlist-btn">+ YouTubeプレイリストを追加</button>
                 <button id="set-library-btn">ライブラリ場所設定</button>
                 <button id="open-settings-btn">設定</button>
             </div>
@@ -68,12 +69,8 @@
 
             <div id="playlist-detail-view" class="view-container hidden">
                 <div class="playlist-detail-header">
-                    <div class="playlist-art-collage">
-                        <img class="collage-img">
-                        <img class="collage-img">
-                        <img class="collage-img">
-                        <img class="collage-img">
-                    </div>
+                <div class="playlist-art-collage">
+                </div>
                     <div class="playlist-info">
                         <h1 id="p-detail-title">プレイリスト名</h1>
                         <p id="p-detail-meta">メタ情報</p>
@@ -88,6 +85,7 @@
                 </div>
             </div>
         </main>
+        <div id="resizer" class="resizer-vertical"></div>
         <div class="sidebar right-sidebar">
             <div id="now-playing-container">
                     <div id="now-playing-artwork-container">
@@ -96,6 +94,7 @@
                 <div id="now-playing-details">
                     <h2 id="now-playing-title">曲を選択してください</h2>
                     <p id="now-playing-artist"></p>
+                    <div id="hub-link-container"></div>
                 </div>
             </div>
         </div>

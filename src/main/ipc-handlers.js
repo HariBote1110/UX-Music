@@ -1,4 +1,4 @@
-const { ipcMain, dialog, Menu } = require('electron'); // ★★★ Menuをインポート ★★★
+const { ipcMain, dialog, Menu, shell, BrowserWindow } = require('electron');
 const DataStore = require('./data-store');
 const { scanPaths, parseFiles, sanitize } = require('./file-scanner');
 const ytdl = require('@distube/ytdl-core');
@@ -6,13 +6,19 @@ const streamManager = require('./stream-manager');
 const path = require('path');
 const fs = require('fs');
 const playlistManager = require('./playlist-manager');
-
+const ytpl = require('ytpl');
 const playCountsStore = new DataStore('playcounts.json');
 const settingsStore = new DataStore('settings.json');
 const libraryStore = new DataStore('library.json');
 
+function findHubUrl(description) {
+    if (typeof description !== 'string') return null;
+    const hubUrlRegex = /(https?:\/\/(?:www\.)?(?:linkco\.re|fanlink\.to|fanlink\.tv|lnk\.to)\/[\w\-\/.\?=&#]+)/;
+    const match = description.match(hubUrlRegex);
+    return match ? match[0] : null;
+}
+
 function initializeIpcHandlers(mainWindow) {
-    // ★★★ 新規: 曲をライブラリに追加して保存する共通関数 ★★★
     function addSongsToLibraryAndSave(newSongs) {
         const library = libraryStore.load();
         const existingPaths = new Set(library.map(s => s.path));
@@ -23,6 +29,23 @@ function initializeIpcHandlers(mainWindow) {
         }
         return uniqueNewSongs;
     }
+    
+    const upgradeAndCleanup = (sourceURL) => {
+        const library = libraryStore.load();
+        const existingSong = library.find(s => s.sourceURL === sourceURL);
+        if (existingSong && existingSong.path.toLowerCase().endsWith('.m4a')) {
+            if (fs.existsSync(existingSong.path)) {
+                fs.unlinkSync(existingSong.path);
+            }
+            const updatedLibrary = library.filter(s => s.path !== existingSong.path);
+            libraryStore.save(updatedLibrary);
+            const allPlaylists = playlistManager.getAllPlaylists();
+            allPlaylists.forEach(playlistName => {
+                playlistManager.removeSongFromPlaylist(playlistName, existingSong.path);
+            });
+        }
+    };
+
     ipcMain.handle('scan-paths', async (event, paths) => {
         const libraryPath = settingsStore.load().libraryPath;
         if (!libraryPath) {
@@ -54,115 +77,209 @@ function initializeIpcHandlers(mainWindow) {
             song.path = destPath;
             newSongObjects.push(song);
         }
-                // ★★★ 修正: スキャンした曲をlibrary.jsonに保存し、追加された曲のみ返す ★★★
         const addedSongs = addSongsToLibraryAndSave(newSongObjects);
         return addedSongs;
-        return newSongObjects;
     });
 
-ipcMain.on('add-youtube-link', async (event, url) => {
-    // 最初に設定を読み込み、モードを決定（デフォルトは'download'）
-    const settings = settingsStore.load();
-    const mode = settings.youtubePlaybackMode || 'download';
+    ipcMain.on('show-playlist-song-context-menu', (event, { playlistName, song }) => {
+        const menu = Menu.buildFromTemplate([
+            {
+                label: 'このプレイリストから削除',
+                click: async () => {
+                    const result = playlistManager.removeSongFromPlaylist(playlistName, song.path);
+                    if (result.success) {
+                        mainWindow.webContents.send('force-reload-playlist', playlistName);
+                    }
+                }
+            },
+        ]);
+        menu.popup({ window: mainWindow });
+    });
 
-    try {
-        if (!ytdl.validateURL(url)) return;
-        const info = await ytdl.getInfo(url);
-        const details = info.videoDetails;
-
-        let newSong;
-
-        if (mode === 'download') {
-            // --- ダウンロードモード ---
-            mainWindow.webContents.send('show-loading', 'YouTube動画をダウンロード中...');
-            
-            // ★ ダウンロード品質の設定を読み込む ★
-            const qualitySetting = settings.youtubeDownloadQuality || 'full';
-
-            let format;
-            let fileExtension;
-            // ★ 品質に応じてフォーマットと拡張子を決定 ★
-            if (qualitySetting === 'audio_only') {
-                format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
-                fileExtension = '.m4a';
-            } else {
-                format = ytdl.chooseFormat(info.formats, { quality: 'highest', filter: f => f.hasVideo && f.hasAudio });
-                fileExtension = '.mp4';
+    ipcMain.on('import-youtube-playlist', async (event, playlistUrl) => {
+        try {
+            if (!ytpl.validateID(playlistUrl)) {
+                mainWindow.webContents.send('show-error', '無効なYouTubeプレイリストのURLです。');
+                return;
             }
-            
-            const libraryPath = settingsStore.load().libraryPath;
-            const artistDir = sanitize(details.author.name || 'YouTube');
-            const destDir = path.join(libraryPath, artistDir);
-            if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-            
-            const safeFileName = sanitize(details.title) + fileExtension;
-            const destPath = path.join(destDir, safeFileName);
+            const playlist = await ytpl(playlistUrl, { limit: Infinity });
+            const total = playlist.items.length;
+            const playlistTitle = sanitize(playlist.title);
+            playlistManager.createPlaylist(playlistTitle);
 
-            const videoStream = ytdl(url, { format: format });
-            await new Promise((resolve, reject) => {
-                const fileStream = fs.createWriteStream(destPath);
-                videoStream.pipe(fileStream);
-                fileStream.on('finish', resolve);
-                fileStream.on('error', reject);
-            });
+            for (let i = 0; i < total; i++) {
+                const item = playlist.items[i];
+                mainWindow.webContents.send('playlist-import-progress', {
+                    current: i + 1,
+                    total: total,
+                    title: item.title
+                });
+                const videoInfo = await ytdl.getInfo(item.url);
+                const hubUrl = findHubUrl(videoInfo.videoDetails.description);
+                const settings = settingsStore.load();
+                const mode = settings.youtubePlaybackMode || 'download';
+                if (mode === 'download' && (settings.youtubeDownloadQuality || 'full') === 'full') {
+                     upgradeAndCleanup(item.url);
+                }
+                let newSong;
+                if (mode === 'download') {
+                    const qualitySetting = settings.youtubeDownloadQuality || 'full';
+                    let format;
+                    let fileExtension;
+                    if (qualitySetting === 'audio_only') {
+                        format = ytdl.chooseFormat(videoInfo.formats, { quality: 'highestaudio', filter: 'audioonly' });
+                        fileExtension = '.m4a';
+                    } else {
+                        format = ytdl.chooseFormat(videoInfo.formats, { quality: 'highest', filter: f => f.hasVideo && f.hasAudio });
+                        fileExtension = '.mp4';
+                    }
+                    const libraryPath = settings.libraryPath;
+                    const artistDir = sanitize(item.author.name || 'YouTube');
+                    const destDir = path.join(libraryPath, artistDir);
+                    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+                    const safeFileName = sanitize(item.title) + fileExtension;
+                    const destPath = path.join(destDir, safeFileName);
+                    const videoStream = ytdl(item.url, { format: format });
+                    await new Promise((resolve, reject) => {
+                        videoStream.pipe(fs.createWriteStream(destPath)).on('finish', resolve).on('error', reject);
+                    });
+                    const stats = fs.statSync(destPath);
+                    newSong = {
+                        path: destPath,
+                        title: item.title,
+                        artist: item.author.name,
+                        album: item.author.name,
+                        artwork: item.bestThumbnail.url,
+                        duration: item.durationSec,
+                        fileSize: stats.size,
+                        type: 'local',
+                        sourceURL: item.url,
+                        hubUrl: hubUrl
+                    };
+                } else {
+                    newSong = {
+                        path: item.url,
+                        title: item.title,
+                        artist: item.author.name,
+                        album: 'YouTube',
+                        artwork: item.bestThumbnail.url,
+                        duration: item.durationSec,
+                        type: 'youtube',
+                        hubUrl: hubUrl
+                    };
+                }
+                const addedSongs = addSongsToLibraryAndSave([newSong]);
+                if (addedSongs.length > 0) {
+                    const songToAdd = addedSongs[0];
+                    mainWindow.webContents.send('youtube-link-processed', songToAdd);
+                    playlistManager.addSongToPlaylist(playlistTitle, songToAdd);
+                }
+            }
+        } catch (error) {
+            console.error('Playlist import error:', error);
+            mainWindow.webContents.send('show-error', 'プレイリストのインポートに失敗しました。');
+        } finally {
+            mainWindow.webContents.send('playlist-import-finished');
+        }
+    });
 
-            newSong = {
-                path: destPath, // ローカルファイルのパス
-                title: details.title,
-                artist: details.author.name,
-                album: details.author.name,
-                artwork: details.thumbnails[0].url,
-                duration: Number(details.lengthSeconds),
-                type: 'local', // タイプは'local'
-                sourceURL: url  // 元のYouTubeのURLをsourceURLとして追加
-            };
+    ipcMain.on('add-youtube-link', async (event, url) => {
+        const settings = settingsStore.load();
+        const mode = settings.youtubePlaybackMode || 'download';
+        try {
+            if (!ytdl.validateURL(url)) return;
+            const info = await ytdl.getInfo(url);
+            const details = info.videoDetails;
+            const hubUrl = findHubUrl(details.description);
+            if (mode === 'download' && (settings.youtubeDownloadQuality || 'full') === 'full') {
+                upgradeAndCleanup(url);
+            }
+            let newSong;
+            if (mode === 'download') {
+                mainWindow.webContents.send('show-loading', 'YouTube動画をダウンロード中...');
+                const qualitySetting = settings.youtubeDownloadQuality || 'full';
+                let format;
+                let fileExtension;
+                if (qualitySetting === 'audio_only') {
+                    format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
+                    fileExtension = '.m4a';
+                } else {
+                    format = ytdl.chooseFormat(info.formats, { quality: 'highest', filter: f => f.hasVideo && f.hasAudio });
+                    fileExtension = '.mp4';
+                }
+                const libraryPath = settingsStore.load().libraryPath;
+                const artistDir = sanitize(details.author.name || 'YouTube');
+                const destDir = path.join(libraryPath, artistDir);
+                if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+                const safeFileName = sanitize(details.title) + fileExtension;
+                const destPath = path.join(destDir, safeFileName);
+                const videoStream = ytdl(url, { format: format });
+                await new Promise((resolve, reject) => {
+                    const fileStream = fs.createWriteStream(destPath);
+                    videoStream.pipe(fileStream);
+                    fileStream.on('finish', resolve);
+                    fileStream.on('error', reject);
+                });
+                const stats = fs.statSync(destPath);
+                newSong = {
+                    path: destPath,
+                    title: details.title,
+                    artist: details.author.name,
+                    album: details.author.name,
+                    artwork: details.thumbnails[0].url,
+                    duration: Number(details.lengthSeconds),
+                    fileSize: stats.size,
+                    type: 'local',
+                    sourceURL: url,
+                    hubUrl: hubUrl
+                };
+                mainWindow.webContents.send('hide-loading');
+            } else {
+                newSong = {
+                    path: url,
+                    title: details.title,
+                    artist: details.author.name,
+                    album: 'YouTube',
+                    artwork: details.thumbnails[0].url,
+                    duration: Number(details.lengthSeconds),
+                    type: 'youtube',
+                    hubUrl: hubUrl
+                };
+            }
+            const addedSongs = addSongsToLibraryAndSave([newSong]);
+            if (addedSongs.length > 0) {
+                mainWindow.webContents.send('youtube-link-processed', addedSongs[0]);
+            }
+        } catch (error) {
+            console.error('YouTube処理エラー:', error);
             mainWindow.webContents.send('hide-loading');
-
-        } else {
-            // --- ストリーミングモード ---
-            newSong = {
-                path: url, // YouTubeのURL
-                title: details.title,
-                artist: details.author.name,
-                album: 'YouTube',
-                artwork: details.thumbnails[0].url,
-                duration: Number(details.lengthSeconds),
-                type: 'youtube' // タイプは'youtube'
-            };
+            mainWindow.webContents.send('show-error', 'YouTube楽曲の処理に失敗しました。');
         }
+    });
 
-        const addedSongs = addSongsToLibraryAndSave([newSong]);
-        if (addedSongs.length > 0) {
-            mainWindow.webContents.send('youtube-link-processed', addedSongs[0]);
+    ipcMain.on('open-external-link', (event, url) => {
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+            shell.openExternal(url);
         }
+    });
 
-    } catch (error) {
-        console.error('YouTube処理エラー:', error);
-        mainWindow.webContents.send('hide-loading');
-        mainWindow.webContents.send('show-error', 'YouTube楽曲の処理に失敗しました。');
-    }
-});
     ipcMain.on('request-initial-play-counts', (event) => {
         event.sender.send('play-counts-updated', playCountsStore.load());
     });
-
     ipcMain.on('song-finished', (event, songPath) => {
         const counts = playCountsStore.load();
         counts[songPath] = (counts[songPath] || 0) + 1;
         playCountsStore.save(counts);
         event.sender.send('play-counts-updated', counts);
     });
-
     ipcMain.on('request-initial-settings', (event) => {
         event.sender.send('settings-loaded', settingsStore.load());
     });
-
     ipcMain.on('save-audio-output-id', (event, deviceId) => {
         const settings = settingsStore.load();
         settings.audioOutputId = deviceId;
         settingsStore.save(settings);
     });
-
     ipcMain.on('set-library-path', async (event) => {
         const result = await dialog.showOpenDialog(mainWindow, {
             properties: ['openDirectory']
@@ -174,21 +291,82 @@ ipcMain.on('add-youtube-link', async (event, url) => {
             settingsStore.save(settings);
         }
     });
-
     ipcMain.handle('get-all-playlists', () => {
         return playlistManager.getAllPlaylists();
     });
-
     ipcMain.handle('create-playlist', (event, name) => {
         const result = playlistManager.createPlaylist(name);
         if (result.success) {
-            const allPlaylists = playlistManager.getAllPlaylists();
-            mainWindow.webContents.send('playlists-updated', allPlaylists);
+            const playlistNames = playlistManager.getAllPlaylists();
+            const mainLibrary = libraryStore.load();
+            const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
+            const playlistsWithArtwork = playlistNames.map(name => {
+                const songPaths = playlistManager.getPlaylistSongs(name);
+                const artworks = songPaths
+                    .map(path => libraryMap.get(path))
+                    .filter(song => song && song.artwork)
+                    .slice(0, 4)
+                    .map(song => song.artwork);
+                return { name, artworks };
+            });
+            mainWindow.webContents.send('playlists-updated', playlistsWithArtwork);
         }
         return result;
     });
 
-    // --- 曲の右クリックメニューを表示 ---
+    ipcMain.on('show-song-context-menu-in-library', (event, song) => {
+        const playlists = playlistManager.getAllPlaylists();
+        const addToPlaylistSubmenu = playlists.map(name => ({
+            label: name,
+            click: () => playlistManager.addSongToPlaylist(name, song)
+        }));
+
+        const template = [
+            {
+                label: 'プレイリストに追加',
+                submenu: addToPlaylistSubmenu.length > 0 ? addToPlaylistSubmenu : [{ label: '（追加可能なプレイリスト無し）', enabled: false }]
+            },
+            { type: 'separator' },
+            {
+                label: 'ライブラリから削除...',
+                click: async () => {
+                    const dialogResult = await dialog.showMessageBox(mainWindow, {
+                        type: 'warning',
+                        buttons: ['キャンセル', '削除'],
+                        defaultId: 0,
+                        title: '曲の削除の確認',
+                        message: `「${song.title}」をライブラリから完全に削除しますか？`,
+                        detail: 'この操作は元に戻せません。ファイルもディスクから削除されます。'
+                    });
+
+                    if (dialogResult.response !== 1) {
+                        return;
+                    }
+
+                    try {
+                        if (fs.existsSync(song.path)) {
+                            fs.unlinkSync(song.path);
+                        }
+                        const library = libraryStore.load();
+                        const updatedLibrary = library.filter(s => s.path !== song.path);
+                        libraryStore.save(updatedLibrary);
+                        const allPlaylists = playlistManager.getAllPlaylists();
+                        allPlaylists.forEach(playlistName => {
+                            playlistManager.removeSongFromPlaylist(playlistName, song.path);
+                        });
+                        mainWindow.webContents.send('force-reload-library');
+                    } catch (error) {
+                        console.error('楽曲の削除中にエラーが発生しました:', error);
+                        dialog.showErrorBox('削除エラー', '曲の削除中にエラーが発生しました。');
+                    }
+                }
+            }
+        ];
+
+        const menu = Menu.buildFromTemplate(template);
+        menu.popup({ window: mainWindow });
+    });
+
     ipcMain.on('show-song-context-menu', (event, song) => {
         const playlists = playlistManager.getAllPlaylists();
         const addToPlaylistSubmenu = playlists.map(name => {
@@ -199,42 +377,48 @@ ipcMain.on('add-youtube-link', async (event, url) => {
                 }
             };
         });
-
         const template = [
             {
                 label: 'プレイリストに追加',
                 submenu: addToPlaylistSubmenu.length > 0 ? addToPlaylistSubmenu : [{ label: '（追加可能なプレイリスト無し）', enabled: false }]
             },
         ];
-
         const menu = Menu.buildFromTemplate(template);
         menu.popup({ window: mainWindow });
     });
-        // ★★★ 以下を追加 ★★★
+
     ipcMain.on('save-settings', (event, settings) => {
         const currentSettings = settingsStore.load();
         const newSettings = { ...currentSettings, ...settings };
         settingsStore.save(newSettings);
     });
-
     ipcMain.handle('get-playlist-songs', async (event, playlistName) => {
-        // 1. プレイリストファイルから曲のパスリストを取得
         const songPaths = playlistManager.getPlaylistSongs(playlistName);
         if (!songPaths || songPaths.length === 0) {
             return [];
         }
-        
-        // 2. パスリストから完全な曲情報を解析して返す
-        const songs = await parseFiles(songPaths);
+        const mainLibrary = libraryStore.load();
+        const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
+        const songs = songPaths
+            .map(path => libraryMap.get(path))
+            .filter(song => song);
         return songs;
     });
-        // ★★★ 以下を追加 ★★★
-    ipcMain.on('save-settings', (event, settings) => {
-        const currentSettings = settingsStore.load();
-        const newSettings = { ...currentSettings, ...settings };
-        settingsStore.save(newSettings);
+    ipcMain.handle('get-playlists-with-artwork', () => {
+        const playlistNames = playlistManager.getAllPlaylists();
+        const mainLibrary = libraryStore.load();
+        const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
+        const playlistsWithArtwork = playlistNames.map(name => {
+            const songPaths = playlistManager.getPlaylistSongs(name);
+            const artworks = songPaths
+                .map(path => libraryMap.get(path))
+                .filter(song => song && song.artwork)
+                .slice(0, 4)
+                .map(song => song.artwork);
+            return { name, artworks };
+        });
+        return playlistsWithArtwork;
     });
-
     ipcMain.handle('get-settings', () => {
         return settingsStore.load();
     });

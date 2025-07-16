@@ -9,10 +9,33 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 .nav-link:hover { color: #fff; background-color: #282828; }
 .nav-link.active { color: #fff; background-color: #282828; }
 .sidebar-actions { margin-top: auto; }
-#add-network-folder-btn, #add-youtube-btn, #set-library-btn { width: 100%; padding: 10px; background-color: #282828; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; text-align: left; margin-top: 8px; }
-#add-network-folder-btn:hover, #add-youtube-btn:hover, #set-library-btn:hover { background-color: #3a3a3a; }
+#add-network-folder-btn, #add-youtube-btn, #add-youtube-playlist-btn, #set-library-btn, #open-settings-btn { width: 100%; padding: 10px; background-color: #282828; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; text-align: left; margin-top: 8px; }
+#add-network-folder-btn:hover, #add-youtube-btn:hover, #add-youtube-playlist-btn:hover, #set-library-btn:hover, #open-settings-btn:hover { background-color: #3a3a3a; }
 .main-content { flex-grow: 1; padding: 20px; overflow-y: auto; }
-.right-sidebar { width: 300px; flex-shrink: 0; border-left: 1px solid #282828; padding: 24px; }
+/* 既存の .right-sidebar のルールを以下のように修正 */
+.right-sidebar {
+    /* width: 300px; */  /* この行をコメントアウトまたは削除 */
+    width: 300px;     /* デフォルトの幅として指定 */
+    min-width: 240px; /* 最小幅を指定 */
+    max-width: 600px; /* 最大幅を指定 */
+    flex-shrink: 0;
+    border-left: 1px solid #282828;
+    padding: 24px;
+}
+
+/* style.css の末尾などに以下のスタイルを新規追加 */
+.resizer-vertical {
+    width: 5px;
+    cursor: col-resize;
+    background-color: #000;
+    flex-shrink: 0;
+    border-left: 1px solid #282828;
+    border-right: 1px solid #282828;
+    transition: background-color 0.2s;
+}
+.resizer-vertical:hover {
+    background-color: #1DB954; /* ハンドルにホバーすると色が変わる */
+}
 #now-playing-container { display: flex; flex-direction: column; align-items: center; }
 /* 新しいコンテナのスタイル */
 #now-playing-artwork-container {
@@ -226,4 +249,116 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 #youtube-player-container {
     width: 100%;
     height: 100%;
+}
+/* プレイリスト一覧のコラージュコンテナ */
+.playlist-artwork-container {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #282828;
+    overflow: hidden;
+}
+
+/* 1枚絵、またはデフォルトアイコンのスタイル */
+.playlist-artwork-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* 画像をトリミングしてコンテナを埋める */
+    min-width: 0;      /* ★★★ この行を追加 ★★★ (Gridレイアウト崩れを防ぐため) */
+}
+/* プレイリスト詳細ヘッダーのアートワークコンテナの基本スタイル */
+.playlist-art-collage {
+    width: 200px;
+    height: 200px;
+    flex-shrink: 0;
+    box-shadow: 0 4px 60px rgba(0,0,0,0.5);
+    background-color: #333;
+    /* ここでは display: grid を指定しない */
+}
+
+/* 4枚以上のグリッド表示の場合にのみ、このスタイルを適用 */
+.playlist-art-collage.grid-collage {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+
+/* 1枚絵の場合（コンテナの直下にimgがある場合）のスタイル */
+.playlist-art-collage > img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* 画像の比率を保ったままコンテナ全体を埋める */
+}
+
+/* グリッド表示時の各セルのラッパー */
+.collage-img-wrapper {
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+}
+
+/* グリッド表示時の各セル内の画像 */
+.collage-img-wrapper img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+/* style.css の末尾に追加 */
+.hub-link-button {
+    width: 100%;
+    height: 100%;
+    background-color: #282828;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    padding: 20px;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.hub-link-button:hover {
+    background-color: #3a3a3a;
+}
+
+.hub-link-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+
+.hub-link-text {
+    font-size: 16px;
+    font-weight: bold;
+    color: #fff;
+    line-height: 1.4;
+}
+/* style.css の末尾に追加 */
+#hub-link-container {
+    margin-top: 20px; /* 上の要素（アーティスト名）との間隔 */
+    width: 100%;
+}
+
+.hub-link-button-small {
+    width: 100%;
+    padding: 12px;
+    background-color: #333;
+    color: #fff;
+    border: 1px solid #555;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.hub-link-button-small:hover {
+    background-color: #444;
+    border-color: #777;
 }

@@ -15,10 +15,16 @@ function handleCreatePlaylist() {
         placeholder: 'プレイリスト名',
         onOk: async (name) => {
             const result = await ipc.invoke('create-playlist', name);
-            if (result.success) {
-                // 成功したら、メインプロセスにプレイリスト一覧の再取得を要求
-                ipc.send('request-all-playlists');
-            } else {
+            // ★★★ 修正箇所 ★★★
+            // if (result.success) {
+            //     // このIPC通信は不要なため削除します。
+            //     // メインプロセス側で作成成功時に'playlists-updated'が送信されるためです。
+            //     ipc.send('request-all-playlists');
+            // } else {
+            //     alert(`エラー: ${result.message}`);
+            // }
+            // エラー時のみ通知するように修正
+            if (!result.success) {
                 alert(`エラー: ${result.message}`);
             }
         }
