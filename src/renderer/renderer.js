@@ -3,7 +3,7 @@ import { initIPC } from './js/ipc.js';
 import { initNavigation } from './js/navigation.js';
 import { initModal, showModal } from './js/modal.js';
 import { initPlaylists } from './js/playlist.js';
-import { initPlayer, play as playSongInPlayer, stop as stopSongInPlayer } from './js/player.js';
+import { initPlayer, play as playSongInPlayer, stop as stopSongInPlayer, togglePlayPause } from './js/player.js';
 const { ipcRenderer } = require('electron');
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -14,6 +14,10 @@ window.addEventListener('DOMContentLoaded', () => {
         playCounts: {},
         currentSongIndex: -1,
         currentlyVisibleSongs: [],
+        playbackMode: 'normal', // 'normal', 'loop-all', 'loop-one'
+        isShuffled: false,
+        shuffledQueue: [],
+        originalQueue: [],
     };
 
     const elements = {
@@ -24,6 +28,10 @@ window.addEventListener('DOMContentLoaded', () => {
         nowPlayingTitle: document.getElementById('now-playing-title'),
         nowPlayingArtist: document.getElementById('now-playing-artist'),
         playPauseBtn: document.getElementById('play-pause-btn'),
+        prevBtn: document.getElementById('prev-btn'),
+        nextBtn: document.getElementById('next-btn'),
+        shuffleBtn: document.getElementById('shuffle-btn'),
+        loopBtn: document.getElementById('loop-btn'),
         progressBar: document.getElementById('progress-bar'),
         currentTimeEl: document.getElementById('current-time'),
         totalDurationEl: document.getElementById('total-duration'),
@@ -53,6 +61,42 @@ window.addEventListener('DOMContentLoaded', () => {
         showPlaylist: showPlaylist,
         playSong: playSong,
     };
+
+    async function updateAudioDevices(targetDeviceId = null) {
+        const mainPlayer = document.getElementById('main-player');
+        const currentSelectedId = elements.audioOutputSelect.value; 
+
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioDevices = devices.filter(device => device.kind === 'audiooutput');
+            
+            elements.audioOutputSelect.innerHTML = '';
+            audioDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.textContent = device.label || `スピーカー ${elements.audioOutputSelect.options.length + 1}`;
+                elements.audioOutputSelect.appendChild(option);
+            });
+
+            let deviceIdToSet = null;
+            if (targetDeviceId && audioDevices.some(d => d.deviceId === targetDeviceId)) {
+                deviceIdToSet = targetDeviceId;
+            } else if (audioDevices.some(d => d.deviceId === currentSelectedId)) {
+                deviceIdToSet = currentSelectedId;
+            } else if (audioDevices.length > 0) {
+                deviceIdToSet = audioDevices[0].deviceId;
+            }
+
+            if (deviceIdToSet) {
+                elements.audioOutputSelect.value = deviceIdToSet;
+                if (mainPlayer.sinkId !== deviceIdToSet) {
+                     await mainPlayer.setSinkId(deviceIdToSet);
+                }
+            }
+        } catch (error) {
+            console.error('Could not enumerate audio devices:', error);
+        }
+    }
 
     function addSongsToLibrary(newSongs) {
         if (!newSongs || newSongs.length === 0) return;
@@ -113,39 +157,117 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         const activeViewId = activeLink.dataset.view;
         if (activeViewId === 'track-view') {
-            state.currentlyVisibleSongs = state.library;
+            state.currentlyVisibleSongs = state.isShuffled ? state.shuffledQueue : state.library;
             renderTrackView();
         } else if (activeViewId === 'album-view') {
             renderAlbumView();
         } else if (activeViewId === 'playlist-view') {
             renderPlaylistView();
+        } else if (document.getElementById('playlist-detail-view').classList.contains('active')) {
+             const playlistName = document.getElementById('p-detail-title').textContent;
+             showPlaylist(playlistName);
         }
     }
     
     async function showPlaylist(playlistName) {
         const songs = await ipcRenderer.invoke('get-playlist-songs', playlistName);
-        state.currentlyVisibleSongs = songs;
-        state.currentSongIndex = -1;
+        state.originalQueue = [...songs];
+        state.currentlyVisibleSongs = state.isShuffled ? state.shuffledQueue : state.originalQueue;
+        state.currentSongIndex = state.currentlyVisibleSongs.findIndex(s => s.path === (state.currentlyVisibleSongs[state.currentSongIndex] || {}).path);
+        
         elements.navLinks.forEach(l => l.classList.remove('active'));
         elements.views.forEach(view => {
             view.classList.toggle('hidden', view.id !== 'playlist-detail-view');
         });
-        renderPlaylistDetailView(playlistName, songs);
-        updateNowPlayingView(null);
+        renderPlaylistDetailView(playlistName, state.currentlyVisibleSongs);
     }
     
     async function playSong(index, customSongList = null) {
-        const songList = customSongList || state.currentlyVisibleSongs;
-        if (index < 0 || index >= songList.length) {
+        let songList = customSongList || state.currentlyVisibleSongs;
+
+        if (customSongList) {
+             state.originalQueue = [...customSongList];
+             if (state.isShuffled) {
+                toggleShuffle(true, customSongList);
+                songList = state.shuffledQueue;
+                index = 0;
+             } else {
+                state.currentlyVisibleSongs = [...customSongList];
+             }
+        }
+
+        if (!songList || index < 0 || index >= songList.length) {
             stopSongInPlayer();
+            updateNowPlayingView(null);
             return;
         }
+
         const songToPlay = songList[index];
+        ipcRenderer.send('song-finished', songToPlay.path);
         state.currentlyVisibleSongs = songList;
         state.currentSongIndex = index;
+
         updateNowPlayingView(songToPlay);
         renderCurrentView();
         await playSongInPlayer(songToPlay);
+    }
+    
+    function playNextSong() {
+        if (state.currentlyVisibleSongs.length === 0) return;
+
+        if (state.playbackMode === 'loop-one') {
+            playSong(state.currentSongIndex);
+            return;
+        }
+
+        let nextIndex = state.currentSongIndex + 1;
+
+        if (nextIndex >= state.currentlyVisibleSongs.length) {
+            if (state.playbackMode === 'loop-all') {
+                nextIndex = 0;
+            } else {
+                stopSongInPlayer();
+                updateNowPlayingView(null);
+                state.currentSongIndex = -1;
+                renderCurrentView();
+                return;
+            }
+        }
+        playSong(nextIndex);
+    }
+
+    function playPrevSong() {
+        if (state.currentlyVisibleSongs.length === 0) return;
+        let prevIndex = state.currentSongIndex - 1;
+        if (prevIndex < 0) {
+            prevIndex = state.currentlyVisibleSongs.length - 1;
+        }
+        playSong(prevIndex);
+    }
+
+    function toggleShuffle(forceState, songList = null) {
+        const listToShuffle = songList || state.originalQueue;
+        const newState = typeof forceState === 'boolean' ? forceState : !state.isShuffled;
+        state.isShuffled = newState;
+        elements.shuffleBtn.classList.toggle('active', newState);
+
+        const currentSong = state.currentlyVisibleSongs[state.currentSongIndex];
+
+        if (newState) {
+            state.originalQueue = [...listToShuffle];
+            const newShuffledQueue = state.originalQueue.filter(s => s !== currentSong);
+            for (let i = newShuffledQueue.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newShuffledQueue[i], newShuffledQueue[j]] = [newShuffledQueue[j], newShuffledQueue[i]];
+            }
+            state.shuffledQueue = currentSong ? [currentSong, ...newShuffledQueue] : newShuffledQueue;
+            state.currentlyVisibleSongs = state.shuffledQueue;
+            state.currentSongIndex = currentSong ? 0 : -1;
+        } else {
+            state.currentlyVisibleSongs = [...state.originalQueue];
+            state.currentSongIndex = currentSong ? state.originalQueue.findIndex(s => s.path === currentSong.path) : -1;
+        }
+        renderCurrentView();
     }
 
     function initResizer() {
@@ -175,7 +297,11 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     initUI(elements, state, ipcRenderer);
-    initPlayer(document.getElementById('main-player'), elements, state, ipcRenderer);
+    initPlayer(document.getElementById('main-player'), elements, state, ipcRenderer, {
+        onSongEnded: playNextSong,
+        onNextSong: playNextSong,
+        onPrevSong: playPrevSong
+    });
     initNavigation(elements, renderCurrentView);
     initModal(elements);
     initPlaylists(elements, ipcRenderer);
@@ -187,26 +313,10 @@ window.addEventListener('DOMContentLoaded', () => {
             renderCurrentView();
         },
         onSettingsLoaded: async (settings) => {
-            try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const audioDevices = devices.filter(device => device.kind === 'audiooutput');
-                elements.audioOutputSelect.innerHTML = '';
-                audioDevices.forEach(device => {
-                    const option = document.createElement('option');
-                    option.value = device.deviceId;
-                    option.textContent = device.label || `スピーカー ${elements.audioOutputSelect.options.length + 1}`;
-                    elements.audioOutputSelect.appendChild(option);
-                });
-                if (settings.audioOutputId && audioDevices.some(d => d.deviceId === settings.audioOutputId)) {
-                    elements.audioOutputSelect.value = settings.audioOutputId;
-                    await document.getElementById('main-player').setSinkId(settings.audioOutputId);
-                }
-                if (typeof settings.volume === 'number') {
-                    document.getElementById('main-player').volume = settings.volume;
-                    elements.volumeSlider.value = settings.volume;
-                }
-            } catch (error) {
-                console.error('Could not enumerate devices:', error);
+            await updateAudioDevices(settings.audioOutputId);
+            if (typeof settings.volume === 'number') {
+                document.getElementById('main-player').volume = settings.volume;
+                elements.volumeSlider.value = settings.volume;
             }
         },
         onPlayCountsUpdated: (counts) => {
@@ -216,38 +326,59 @@ window.addEventListener('DOMContentLoaded', () => {
         onYoutubeLinkProcessed: (song) => addSongsToLibrary([song]),
         onPlaylistsUpdated: (playlists) => {
             state.playlists = playlists;
-            if (document.querySelector('.nav-link.active')?.dataset.view === 'playlist-view') {
-                renderPlaylistView();
-            }
+            renderPlaylistView();
         },
-        'force-reload-playlist': (event, playlistName) => {
+        onForceReloadPlaylist: (playlistName) => {
             const detailView = document.getElementById('playlist-detail-view');
             if (!detailView.classList.contains('hidden')) {
                 showPlaylist(playlistName);
             }
         },
-        'force-reload-library': () => {
+        onForceReloadLibrary: () => {
              ipcRenderer.send('request-initial-library');
         },
-        'show-loading': (text) => {
+        onShowLoading: (text) => {
             elements.loadingOverlay.querySelector('.loading-text').textContent = text || '処理中...';
             elements.loadingOverlay.classList.remove('hidden');
         },
-        'hide-loading': () => {
+        onHideLoading: () => {
             elements.loadingOverlay.classList.add('hidden');
         },
-        'show-error': (message) => {
+        onShowError: (message) => {
             alert(message);
         },
-        'playlist-import-progress': (progress) => {
+        onPlaylistImportProgress: (progress) => {
             const text = `${progress.total}曲中 ${progress.current}曲目: ${progress.title}`;
             elements.loadingOverlay.querySelector('.loading-text').textContent = text;
             if (elements.loadingOverlay.classList.contains('hidden')) {
                 elements.loadingOverlay.classList.remove('hidden');
             }
         },
-        'playlist-import-finished': () => {
+        onPlaylistImportFinished: () => {
             elements.loadingOverlay.classList.add('hidden');
+        }
+    });
+    
+    if (navigator.mediaDevices && typeof navigator.mediaDevices.ondevicechange !== 'undefined') {
+        navigator.mediaDevices.addEventListener('devicechange', () => updateAudioDevices());
+    }
+
+    elements.nextBtn.addEventListener('click', playNextSong);
+    elements.prevBtn.addEventListener('click', playPrevSong);
+    
+    elements.shuffleBtn.addEventListener('click', () => toggleShuffle());
+    elements.loopBtn.addEventListener('click', () => {
+        if (state.playbackMode === 'normal') {
+            state.playbackMode = 'loop-all';
+            elements.loopBtn.classList.add('active');
+            elements.loopBtn.classList.remove('loop-one');
+        } else if (state.playbackMode === 'loop-all') {
+            state.playbackMode = 'loop-one';
+            elements.loopBtn.classList.add('loop-one');
+        } else {
+            state.playbackMode = 'normal';
+            elements.loopBtn.classList.remove('active');
+            elements.loopBtn.classList.remove('loop-one');
         }
     });
 
@@ -269,7 +400,7 @@ window.addEventListener('DOMContentLoaded', () => {
     elements.addYoutubeBtn.addEventListener('click', () => {
         showModal({
             title: 'YouTubeのリンク',
-            placeholder: 'https://www.youtube.com/watch?v=...`）を貼り付けてOKを押します。...',
+            placeholder: 'https://www.youtube.com/watch?v=...',
             onOk: (url) => {
                 ipcRenderer.send('add-youtube-link', url);
             }
@@ -278,7 +409,7 @@ window.addEventListener('DOMContentLoaded', () => {
     elements.addYoutubePlaylistBtn.addEventListener('click', () => {
         showModal({
             title: 'YouTubeプレイリストのリンク',
-            placeholder: 'https://www.youtube.com/playlist?list=PL...',
+            placeholder: 'https://www.youtube.com/playlist?list=...',
             onOk: (url) => {
                 ipcRenderer.send('import-youtube-playlist', url);
             }
@@ -330,8 +461,14 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     initResizer();
-
-    ipcRenderer.send('request-initial-library');
-    ipcRenderer.send('request-initial-play-counts');
-    ipcRenderer.send('request-initial-settings');
+    
+    window.addEventListener('keydown', (e) => {
+        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+            return;
+        }
+        if (e.code === 'Space') {
+            e.preventDefault();
+            togglePlayPause();
+        }
+    });
 });

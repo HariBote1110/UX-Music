@@ -12,18 +12,14 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 #add-network-folder-btn, #add-youtube-btn, #add-youtube-playlist-btn, #set-library-btn, #open-settings-btn { width: 100%; padding: 10px; background-color: #282828; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; text-align: left; margin-top: 8px; }
 #add-network-folder-btn:hover, #add-youtube-btn:hover, #add-youtube-playlist-btn:hover, #set-library-btn:hover, #open-settings-btn:hover { background-color: #3a3a3a; }
 .main-content { flex-grow: 1; padding: 20px; overflow-y: auto; }
-/* 既存の .right-sidebar のルールを以下のように修正 */
 .right-sidebar {
-    /* width: 300px; */  /* この行をコメントアウトまたは削除 */
-    width: 300px;     /* デフォルトの幅として指定 */
-    min-width: 240px; /* 最小幅を指定 */
-    max-width: 600px; /* 最大幅を指定 */
+    width: 300px;
+    min-width: 240px;
+    max-width: 600px;
     flex-shrink: 0;
     border-left: 1px solid #282828;
     padding: 24px;
 }
-
-/* style.css の末尾などに以下のスタイルを新規追加 */
 .resizer-vertical {
     width: 5px;
     cursor: col-resize;
@@ -34,26 +30,22 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     transition: background-color 0.2s;
 }
 .resizer-vertical:hover {
-    background-color: #1DB954; /* ハンドルにホバーすると色が変わる */
+    background-color: #1DB954;
 }
 #now-playing-container { display: flex; flex-direction: column; align-items: center; }
-/* 新しいコンテナのスタイル */
 #now-playing-artwork-container {
     width: 100%;
-    aspect-ratio: 1 / 1; /* ★★★ デフォルトを 1:1 に変更 ★★★ */
+    aspect-ratio: 1 / 1;
     border-radius: 8px;
     background-color: #333;
     box-shadow: 0 4px 60px rgba(0, 0, 0, 0.5);
     margin-bottom: 24px;
     overflow: hidden;
-    transition: aspect-ratio 0.3s ease; /* アスペクト比の変更を滑らかに */
+    transition: aspect-ratio 0.3s ease;
 }
-
-/* ★★★ ビデオ再生時に適用する16:9用のスタイルを追加 ★★★ */
 #now-playing-artwork-container.video-mode {
     aspect-ratio: 16 / 9;
 }
-/* 修正後 (video をセレクタに追加) */
 #now-playing-artwork-container img,
 #now-playing-artwork-container iframe,
 #now-playing-artwork-container video {
@@ -68,7 +60,6 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 #drop-zone { border: 2px dashed transparent; transition: border-color 0.3s; }
 #drop-zone.drag-over { border-color: #1DB954; }
 .placeholder { display: flex; justify-content: center; align-items: center; height: 200px; color: #888; font-size: 1.2em; }
-/* 修正後 */
 #music-list-header, #p-detail-list-header {
     display: flex;
     padding: 0 16px;
@@ -94,9 +85,29 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 .artwork-small { width: 40px; height: 40px; margin-right: 16px; border-radius: 4px; background-color: #333; object-fit: cover; }
 .song-item.playing { background-color: #3a3a3a; color: #1DB954; }
 .playback-bar { display: flex; flex-direction: row; justify-content: space-between; align-items: center; padding: 8px 20px; box-sizing: border-box; border-top: 1px solid #282828; background-color: #181818; height: 90px; width: 100%; flex-shrink: 0; }
-.playback-controls { display: flex; align-items: center; margin-bottom: 0; }
-.playback-controls button { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; margin: 0 10px; }
-#play-pause-btn { font-size: 28px; width: 40px; height: 40px; border: 1px solid #fff; border-radius: 50%; display: flex; justify-content: center; align-items: center; }
+.playback-controls { display: flex; align-items: center; justify-content: center; flex-grow: 0; flex-basis: 300px; }
+.playback-controls button { background: none; border: none; color: #b3b3b3; font-size: 20px; cursor: pointer; margin: 0 10px; transition: color 0.2s; }
+.playback-controls button:hover { color: #fff; }
+#play-pause-btn { font-size: 28px; width: 40px; height: 40px; border: 1px solid #b3b3b3; border-radius: 50%; display: flex; justify-content: center; align-items: center; }
+#play-pause-btn:hover { border-color: #fff; }
+/* ★★★ 再生モードボタンのスタイルを追加 ★★★ */
+.playback-mode-btn { font-size: 18px; position: relative; }
+.playback-mode-btn.active { color: #1DB954; }
+.playback-mode-btn#loop-btn.loop-one::after {
+    content: '1';
+    position: absolute;
+    top: 14px;
+    left: 16px;
+    font-size: 10px;
+    font-weight: bold;
+    color: #1DB954;
+    background-color: #181818;
+    border-radius: 50%;
+    width: 12px;
+    height: 12px;
+    line-height: 12px;
+    text-align: center;
+}
 .progress-container { flex-grow: 1; margin: 0 20px; display: flex; align-items: center; gap: 15px; font-size: 0.8em; color: #aaa; }
 #progress-bar { flex-grow: 1; -webkit-appearance: none; width: 100%; height: 4px; background: #4d4d4d; outline: none; border-radius: 2px; cursor: pointer; }
 #progress-bar::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #fff; border-radius: 50%; }
@@ -141,9 +152,6 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid #fff; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 .loading-text { font-size: 1.2em; font-weight: bold; }
-
-/* style.css の末尾に追記 */
-
 .playlist-detail-header {
     display: flex;
     align-items: flex-end;
@@ -153,16 +161,8 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 .playlist-art-collage {
     width: 200px;
     height: 200px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
     flex-shrink: 0;
     box-shadow: 0 4px 60px rgba(0,0,0,0.5);
-}
-.collage-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
     background-color: #333;
 }
 .playlist-info h1 {
@@ -185,26 +185,22 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     cursor: pointer;
 }
 #p-detail-list-header, #p-detail-list {
-    padding: 0; /* ヘッダーとリストの余白を調整 */
+    padding: 0;
 }
-
-/* 既存のmusic-list-headerとsong-itemのスタイルを詳細リストにも適用 */
 #p-detail-list-header .header-item:nth-child(1),
 #music-list-header .header-item:nth-child(1) { flex: 0 0 50px; }
 #p-detail-list-header .header-item:nth-child(2),
-#music-list-header .header-item:nth-child(2) { flex: 4; } /* タイトル */
+#music-list-header .header-item:nth-child(2) { flex: 4; }
 #p-detail-list-header .header-item:nth-child(3),
-#music-list-header .header-item:nth-child(3) { flex: 2; } /* アーティスト */
+#music-list-header .header-item:nth-child(3) { flex: 2; }
 #p-detail-list-header .header-item:nth-child(4),
-#music-list-header .header-item:nth-child(4) { flex: 2; } /* アルバム */
+#music-list-header .header-item:nth-child(4) { flex: 2; }
 #p-detail-list-header .header-item:nth-child(5),
-#music-list-header .header-item:nth-child(5) { flex: 1; text-align: right; } /* 曲の長さ / 再生時間 */
+#music-list-header .header-item:nth-child(5) { flex: 1; text-align: right; }
 #p-detail-list-header .header-item:nth-child(6),
-#music-list-header .header-item:nth-child(6) { flex: 1; text-align: right; } /* ファイルサイズ / 再生数 */
-#p-detail-list-header .header-item:nth-child(7) { flex: 1; text-align: right; } /* リリース年 */
-#p-detail-list-header .header-item:nth-child(8) { flex: 1; text-align: right; } /* 再生数 */
-
-
+#music-list-header .header-item:nth-child(6) { flex: 1; text-align: right; }
+#p-detail-list-header .header-item:nth-child(7) { flex: 1; text-align: right; }
+#p-detail-list-header .header-item:nth-child(8) { flex: 1; text-align: right; }
 #p-detail-list .song-item .song-title, 
 #music-list .song-item .song-title { flex: 4; }
 #p-detail-list .song-item .song-artist,
@@ -217,11 +213,8 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 #p-detail-list .song-item .song-year { flex: 1; text-align: right; }
 #p-detail-list .song-item .song-play-count,
 #music-list .song-item .song-play-count { flex: 1; text-align: right; padding-right: 10px; }
-
-/* style.css の末尾に追記 */
 #open-settings-btn { width: 100%; padding: 10px; background-color: #282828; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; text-align: left; margin-top: 8px; }
 #open-settings-btn:hover { background-color: #3a3a3a; }
-
 #settings-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
 #settings-modal-overlay.hidden { display: none; }
 #settings-modal { background-color: #282828; padding: 25px; border-radius: 8px; width: 100%; max-width: 500px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
@@ -231,83 +224,47 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 #settings-modal .radio-group label:hover { background-color: #3a3a3a; }
 #settings-modal .radio-group input { margin-right: 10px; }
 #settings-modal .radio-group small { color: #b3b3b3; display: block; margin-left: 25px; }
-
-/* src/renderer/style.css の末尾に追記 */
-#open-settings-btn { width: 100%; padding: 10px; background-color: #282828; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; text-align: left; margin-top: 8px; }
-#open-settings-btn:hover { background-color: #3a3a3a; }
-
-#settings-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-#settings-modal-overlay.hidden { display: none; }
-#settings-modal { background-color: #282828; padding: 25px; border-radius: 8px; width: 100%; max-width: 500px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
-#settings-modal h2 { margin-top: 0; }
-#settings-modal .setting-item { margin-top: 20px; }
-#settings-modal .radio-group label { display: block; padding: 10px; border-radius: 4px; cursor: pointer; margin-top: 5px; }
-#settings-modal .radio-group label:hover { background-color: #3a3a3a; }
-#settings-modal .radio-group input { margin-right: 10px; }
-#settings-modal .radio-group small { color: #b3b3b3; display: block; margin-left: 25px; }
-
 #youtube-player-container {
     width: 100%;
     height: 100%;
 }
-/* プレイリスト一覧のコラージュコンテナ */
 .playlist-artwork-container {
     width: 100%;
     aspect-ratio: 1 / 1;
     border-radius: 4px;
     margin-bottom: 12px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
     background-color: #282828;
     overflow: hidden;
 }
-
-/* 1枚絵、またはデフォルトアイコンのスタイル */
 .playlist-artwork-container img {
     width: 100%;
     height: 100%;
-    object-fit: cover; /* 画像をトリミングしてコンテナを埋める */
-    min-width: 0;      /* ★★★ この行を追加 ★★★ (Gridレイアウト崩れを防ぐため) */
+    object-fit: cover;
+    min-width: 0;
 }
-/* プレイリスト詳細ヘッダーのアートワークコンテナの基本スタイル */
-.playlist-art-collage {
-    width: 200px;
-    height: 200px;
-    flex-shrink: 0;
-    box-shadow: 0 4px 60px rgba(0,0,0,0.5);
-    background-color: #333;
-    /* ここでは display: grid を指定しない */
-}
-
-/* 4枚以上のグリッド表示の場合にのみ、このスタイルを適用 */
 .playlist-art-collage.grid-collage {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
 }
-
-/* 1枚絵の場合（コンテナの直下にimgがある場合）のスタイル */
 .playlist-art-collage > img {
     width: 100%;
     height: 100%;
-    object-fit: cover; /* 画像の比率を保ったままコンテナ全体を埋める */
+    object-fit: cover;
 }
-
-/* グリッド表示時の各セルのラッパー */
 .collage-img-wrapper {
     overflow: hidden;
     width: 100%;
     height: 100%;
 }
-
-/* グリッド表示時の各セル内の画像 */
 .collage-img-wrapper img {
     width: 100%;
     height: 100%;
     object-fit: cover;
 }
-/* style.css の末尾に追加 */
 .hub-link-button {
     width: 100%;
     height: 100%;
@@ -323,28 +280,23 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     box-sizing: border-box;
     text-align: center;
 }
-
 .hub-link-button:hover {
     background-color: #3a3a3a;
 }
-
 .hub-link-icon {
     font-size: 48px;
     margin-bottom: 16px;
 }
-
 .hub-link-text {
     font-size: 16px;
     font-weight: bold;
     color: #fff;
     line-height: 1.4;
 }
-/* style.css の末尾に追加 */
 #hub-link-container {
-    margin-top: 20px; /* 上の要素（アーティスト名）との間隔 */
+    margin-top: 20px;
     width: 100%;
 }
-
 .hub-link-button-small {
     width: 100%;
     padding: 12px;
@@ -357,7 +309,6 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     cursor: pointer;
     transition: background-color 0.2s, border-color 0.2s;
 }
-
 .hub-link-button-small:hover {
     background-color: #444;
     border-color: #777;

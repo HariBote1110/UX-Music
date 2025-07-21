@@ -8,17 +8,29 @@ let timeUpdateInterval;
 
 let elements = {};
 let ipc;
+let onSongEndedCallback = () => {};
+let onNextSongCallback = () => {};
+let onPrevSongCallback = () => {};
 
 // --- 初期化 ---
-export function initPlayer(playerElement, uiElements, appState, ipcRenderer) {
+export function initPlayer(playerElement, uiElements, appState, ipcRenderer, callbacks) {
     localPlayer = playerElement;
     elements = uiElements;
     ipc = ipcRenderer;
+    onSongEndedCallback = callbacks.onSongEnded;
+    onNextSongCallback = callbacks.onNextSong;
+    onPrevSongCallback = callbacks.onPrevSong;
 
-    localPlayer.addEventListener('ended', onSongEnded);
+    localPlayer.addEventListener('ended', onSongEndedCallback);
     localPlayer.addEventListener('timeupdate', () => updateUiTime(localPlayer.currentTime, localPlayer.duration));
-    localPlayer.addEventListener('play', () => { elements.playPauseBtn.textContent = '⏸'; });
-    localPlayer.addEventListener('pause', () => { elements.playPauseBtn.textContent = '▶'; });
+    localPlayer.addEventListener('play', () => {
+        elements.playPauseBtn.textContent = '⏸';
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+    });
+    localPlayer.addEventListener('pause', () => {
+        elements.playPauseBtn.textContent = '▶';
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    });
 
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
     elements.progressBar.addEventListener('input', seek);
@@ -29,6 +41,14 @@ export function initPlayer(playerElement, uiElements, appState, ipcRenderer) {
             ipc.send('save-audio-output-id', event.target.value);
         } catch (error) { console.error('Failed to set audio output device:', error); }
     });
+
+    // Media Session API のハンドラを設定
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', togglePlayPause);
+        navigator.mediaSession.setActionHandler('pause', togglePlayPause);
+        navigator.mediaSession.setActionHandler('nexttrack', onNextSongCallback);
+        navigator.mediaSession.setActionHandler('previoustrack', onPrevSongCallback);
+    }
 }
 
 // --- YouTubeプレーヤーを確実に取得するための関数 ---
@@ -46,7 +66,7 @@ function getYouTubePlayer(videoId) {
                 },
                 events: {
                     'onReady': (event) => {
-                        ytPlayer = event.target; // インスタンスをグローバル変数に保持
+                        ytPlayer = event.target;
                         resolve(ytPlayer);
                     },
                     'onStateChange': onPlayerStateChange
@@ -74,8 +94,24 @@ function getYouTubePlayer(videoId) {
 
 // --- 公開メソッド ---
 export async function play(song) {
-    await stop(); // 進行中の再生をクリア
-    if (!song) return;
+    await stop();
+    if (!song) {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = null;
+            navigator.mediaSession.playbackState = 'none';
+        }
+        return;
+    }
+
+    if ('mediaSession' in navigator) {
+        const artworkSrc = song.artwork || '';
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: song.title || '不明なタイトル',
+            artist: song.artist || '不明なアーティスト',
+            album: song.album || '',
+            artwork: artworkSrc ? [{ src: artworkSrc }] : []
+        });
+    }
 
     const settings = await ipc.invoke('get-settings');
     const mode = settings.youtubePlaybackMode || 'download';
@@ -124,7 +160,8 @@ async function playYoutube(song) {
 }
 
 // --- 共通コントロール ---
-async function togglePlayPause() {
+// ★★★ togglePlayPause関数をエクスポート ★★★
+export async function togglePlayPause() {
     if (currentSongType === 'youtube') {
         const player = await getYouTubePlayer();
         if (player && typeof player.getPlayerState === 'function') {
@@ -150,14 +187,14 @@ async function seek() {
 
 async function setVolume() {
     const volume = parseFloat(elements.volumeSlider.value);
-        const newVolume = parseFloat(elements.volumeSlider.value);
+    const newVolume = parseFloat(elements.volumeSlider.value);
     if (currentSongType === 'youtube') {
         const player = await getYouTubePlayer();
         if (player && typeof player.setVolume === 'function') player.setVolume(volume * 100);
     } else {
         localPlayer.volume = volume;
     }
-        ipc.send('save-settings', { volume: newVolume }); 
+    ipc.send('save-settings', { volume: newVolume }); 
 }
 
 // --- イベントハンドラとヘルパー関数 ---
@@ -168,6 +205,7 @@ function onPlayerStateChange(event) {
     const state = event.data;
     if (state === YT.PlayerState.PLAYING) {
         elements.playPauseBtn.textContent = '⏸';
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
         timeUpdateInterval = setInterval(async () => {
             const player = await getYouTubePlayer();
             if (player && typeof player.getCurrentTime === 'function') {
@@ -176,11 +214,11 @@ function onPlayerStateChange(event) {
         }, 500);
     } else {
         elements.playPauseBtn.textContent = '▶';
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
         clearInterval(timeUpdateInterval);
     }
-    if (state === YT.PlayerState.ENDED) onSongEnded();
+    if (state === YT.PlayerState.ENDED) onSongEndedCallback();
 }
-function onSongEnded() { console.log("Song ended"); }
 function updateUiTime(current, duration) {
     if (isNaN(duration) || duration <= 0) return;
     elements.currentTimeEl.textContent = formatTime(current);

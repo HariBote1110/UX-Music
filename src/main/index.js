@@ -1,6 +1,6 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const path = require('path');
-const { initializeIpcHandlers } = require('./ipc-handlers');
+const { registerIpcHandlers } = require('./ipc-handlers'); // ★★★ initializeIpcHandlersから変更
 const fs = require('fs');
 const DataStore = require('./data-store');
 
@@ -36,30 +36,23 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
-  // UIの読み込み完了後にライブラリとプレイリストをスキャンして送信
-  mainWindow.webContents.on('did-finish-load', async () => {
-    // ライブラリとプレイリスト情報を送信する処理は renderer.jsからの要求に応じて行うため、ここでは不要
-  });
+  // initializeIpcHandlers(mainWindow); // ★★★ この行を削除 ★★★
 
   return mainWindow;
 }
 
 app.whenReady().then(() => {
   initializeLibrary();
-  const mainWindow = createWindow();
-
-  // IPCハンドラは、ウィンドウ作成後に一度だけ初期化する
-  initializeIpcHandlers(mainWindow);
   
-  // レンダラーからのライブラリ要求に応答するハンドラ
-  ipcMain.on('request-initial-library', (event) => {
-      const libraryStore = new DataStore('library.json');
-      const songs = libraryStore.load();
-      event.sender.send('load-library', songs);
-  });
+  // ★★★ グローバルハンドラを一度だけ登録 ★★★
+  registerIpcHandlers(); 
+
+  createWindow();
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
   });
 });
 

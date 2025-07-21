@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const playlistManager = require('./playlist-manager');
 const ytpl = require('ytpl');
+
 const playCountsStore = new DataStore('playcounts.json');
 const settingsStore = new DataStore('settings.json');
 const libraryStore = new DataStore('library.json');
@@ -18,7 +19,25 @@ function findHubUrl(description) {
     return match ? match[0] : null;
 }
 
-function initializeIpcHandlers(mainWindow) {
+// ★★★ バグ修正: 関数名を変更し、引数を取らないようにする ★★★
+function registerIpcHandlers() {
+
+    // ウィンドウに安全に送信するためのヘルパー
+    const sendToAllWindows = (channel, ...args) => {
+        BrowserWindow.getAllWindows().forEach(win => {
+            if (win && !win.isDestroyed()) {
+                win.webContents.send(channel, ...args);
+            }
+        });
+    };
+
+    ipcMain.on('request-initial-library', (event) => {
+        const songs = libraryStore.load();
+        if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('load-library', songs);
+        }
+    });
+
     function addSongsToLibraryAndSave(newSongs) {
         const library = libraryStore.load();
         const existingPaths = new Set(library.map(s => s.path));
@@ -82,24 +101,27 @@ function initializeIpcHandlers(mainWindow) {
     });
 
     ipcMain.on('show-playlist-song-context-menu', (event, { playlistName, song }) => {
+        const window = BrowserWindow.fromWebContents(event.sender);
+        if (!window) return;
         const menu = Menu.buildFromTemplate([
             {
                 label: 'このプレイリストから削除',
                 click: async () => {
                     const result = playlistManager.removeSongFromPlaylist(playlistName, song.path);
-                    if (result.success) {
-                        mainWindow.webContents.send('force-reload-playlist', playlistName);
+                    if (result.success && !window.isDestroyed()) {
+                        event.sender.send('force-reload-playlist', playlistName);
                     }
                 }
             },
         ]);
-        menu.popup({ window: mainWindow });
+        menu.popup({ window });
     });
 
     ipcMain.on('import-youtube-playlist', async (event, playlistUrl) => {
+        const window = BrowserWindow.fromWebContents(event.sender);
         try {
             if (!ytpl.validateID(playlistUrl)) {
-                mainWindow.webContents.send('show-error', '無効なYouTubeプレイリストのURLです。');
+                if (window && !window.isDestroyed()) event.sender.send('show-error', '無効なYouTubeプレイリストのURLです。');
                 return;
             }
             const playlist = await ytpl(playlistUrl, { limit: Infinity });
@@ -109,11 +131,13 @@ function initializeIpcHandlers(mainWindow) {
 
             for (let i = 0; i < total; i++) {
                 const item = playlist.items[i];
-                mainWindow.webContents.send('playlist-import-progress', {
-                    current: i + 1,
-                    total: total,
-                    title: item.title
-                });
+                if (window && !window.isDestroyed()) {
+                    event.sender.send('playlist-import-progress', {
+                        current: i + 1,
+                        total: total,
+                        title: item.title
+                    });
+                }
                 const videoInfo = await ytdl.getInfo(item.url);
                 const hubUrl = findHubUrl(videoInfo.videoDetails.description);
                 const settings = settingsStore.load();
@@ -171,19 +195,20 @@ function initializeIpcHandlers(mainWindow) {
                 const addedSongs = addSongsToLibraryAndSave([newSong]);
                 if (addedSongs.length > 0) {
                     const songToAdd = addedSongs[0];
-                    mainWindow.webContents.send('youtube-link-processed', songToAdd);
+                    if (window && !window.isDestroyed()) event.sender.send('youtube-link-processed', songToAdd);
                     playlistManager.addSongToPlaylist(playlistTitle, songToAdd);
                 }
             }
         } catch (error) {
             console.error('Playlist import error:', error);
-            mainWindow.webContents.send('show-error', 'プレイリストのインポートに失敗しました。');
+            if (window && !window.isDestroyed()) event.sender.send('show-error', 'プレイリストのインポートに失敗しました。');
         } finally {
-            mainWindow.webContents.send('playlist-import-finished');
+            if (window && !window.isDestroyed()) event.sender.send('playlist-import-finished');
         }
     });
 
     ipcMain.on('add-youtube-link', async (event, url) => {
+        const window = BrowserWindow.fromWebContents(event.sender);
         const settings = settingsStore.load();
         const mode = settings.youtubePlaybackMode || 'download';
         try {
@@ -196,7 +221,7 @@ function initializeIpcHandlers(mainWindow) {
             }
             let newSong;
             if (mode === 'download') {
-                mainWindow.webContents.send('show-loading', 'YouTube動画をダウンロード中...');
+                if (window && !window.isDestroyed()) event.sender.send('show-loading', 'YouTube動画をダウンロード中...');
                 const qualitySetting = settings.youtubeDownloadQuality || 'full';
                 let format;
                 let fileExtension;
@@ -233,7 +258,7 @@ function initializeIpcHandlers(mainWindow) {
                     sourceURL: url,
                     hubUrl: hubUrl
                 };
-                mainWindow.webContents.send('hide-loading');
+                if (window && !window.isDestroyed()) event.sender.send('hide-loading');
             } else {
                 newSong = {
                     path: url,
@@ -247,13 +272,15 @@ function initializeIpcHandlers(mainWindow) {
                 };
             }
             const addedSongs = addSongsToLibraryAndSave([newSong]);
-            if (addedSongs.length > 0) {
-                mainWindow.webContents.send('youtube-link-processed', addedSongs[0]);
+            if (addedSongs.length > 0 && window && !window.isDestroyed()) {
+                event.sender.send('youtube-link-processed', addedSongs[0]);
             }
         } catch (error) {
             console.error('YouTube処理エラー:', error);
-            mainWindow.webContents.send('hide-loading');
-            mainWindow.webContents.send('show-error', 'YouTube楽曲の処理に失敗しました。');
+            if (window && !window.isDestroyed()) {
+                event.sender.send('hide-loading');
+                event.sender.send('show-error', 'YouTube楽曲の処理に失敗しました。');
+            }
         }
     });
 
@@ -264,16 +291,16 @@ function initializeIpcHandlers(mainWindow) {
     });
 
     ipcMain.on('request-initial-play-counts', (event) => {
-        event.sender.send('play-counts-updated', playCountsStore.load());
+        if (event.sender && !event.sender.isDestroyed()) event.sender.send('play-counts-updated', playCountsStore.load());
     });
     ipcMain.on('song-finished', (event, songPath) => {
         const counts = playCountsStore.load();
         counts[songPath] = (counts[songPath] || 0) + 1;
         playCountsStore.save(counts);
-        event.sender.send('play-counts-updated', counts);
+        if (event.sender && !event.sender.isDestroyed()) event.sender.send('play-counts-updated', counts);
     });
     ipcMain.on('request-initial-settings', (event) => {
-        event.sender.send('settings-loaded', settingsStore.load());
+        if (event.sender && !event.sender.isDestroyed()) event.sender.send('settings-loaded', settingsStore.load());
     });
     ipcMain.on('save-audio-output-id', (event, deviceId) => {
         const settings = settingsStore.load();
@@ -281,7 +308,8 @@ function initializeIpcHandlers(mainWindow) {
         settingsStore.save(settings);
     });
     ipcMain.on('set-library-path', async (event) => {
-        const result = await dialog.showOpenDialog(mainWindow, {
+        const window = BrowserWindow.fromWebContents(event.sender);
+        const result = await dialog.showOpenDialog(window, {
             properties: ['openDirectory']
         });
         if (!result.canceled && result.filePaths.length > 0) {
@@ -309,12 +337,14 @@ function initializeIpcHandlers(mainWindow) {
                     .map(song => song.artwork);
                 return { name, artworks };
             });
-            mainWindow.webContents.send('playlists-updated', playlistsWithArtwork);
+            sendToAllWindows('playlists-updated', playlistsWithArtwork);
         }
         return result;
     });
 
     ipcMain.on('show-song-context-menu-in-library', (event, song) => {
+        const window = BrowserWindow.fromWebContents(event.sender);
+        if (!window) return;
         const playlists = playlistManager.getAllPlaylists();
         const addToPlaylistSubmenu = playlists.map(name => ({
             label: name,
@@ -330,7 +360,7 @@ function initializeIpcHandlers(mainWindow) {
             {
                 label: 'ライブラリから削除...',
                 click: async () => {
-                    const dialogResult = await dialog.showMessageBox(mainWindow, {
+                    const dialogResult = await dialog.showMessageBox(window, {
                         type: 'warning',
                         buttons: ['キャンセル', '削除'],
                         defaultId: 0,
@@ -354,7 +384,7 @@ function initializeIpcHandlers(mainWindow) {
                         allPlaylists.forEach(playlistName => {
                             playlistManager.removeSongFromPlaylist(playlistName, song.path);
                         });
-                        mainWindow.webContents.send('force-reload-library');
+                        sendToAllWindows('force-reload-library');
                     } catch (error) {
                         console.error('楽曲の削除中にエラーが発生しました:', error);
                         dialog.showErrorBox('削除エラー', '曲の削除中にエラーが発生しました。');
@@ -364,10 +394,12 @@ function initializeIpcHandlers(mainWindow) {
         ];
 
         const menu = Menu.buildFromTemplate(template);
-        menu.popup({ window: mainWindow });
+        menu.popup({ window });
     });
 
     ipcMain.on('show-song-context-menu', (event, song) => {
+        const window = BrowserWindow.fromWebContents(event.sender);
+        if (!window) return;
         const playlists = playlistManager.getAllPlaylists();
         const addToPlaylistSubmenu = playlists.map(name => {
             return {
@@ -384,7 +416,7 @@ function initializeIpcHandlers(mainWindow) {
             },
         ];
         const menu = Menu.buildFromTemplate(template);
-        menu.popup({ window: mainWindow });
+        menu.popup({ window });
     });
 
     ipcMain.on('save-settings', (event, settings) => {
@@ -404,7 +436,7 @@ function initializeIpcHandlers(mainWindow) {
             .filter(song => song);
         return songs;
     });
-    ipcMain.handle('get-playlists-with-artwork', () => {
+    ipcMain.on('request-playlists-with-artwork', (event) => {
         const playlistNames = playlistManager.getAllPlaylists();
         const mainLibrary = libraryStore.load();
         const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
@@ -417,11 +449,14 @@ function initializeIpcHandlers(mainWindow) {
                 .map(song => song.artwork);
             return { name, artworks };
         });
-        return playlistsWithArtwork;
+        if (event.sender && !event.sender.isDestroyed()) {
+             event.sender.send('playlists-updated', playlistsWithArtwork);
+        }
     });
     ipcMain.handle('get-settings', () => {
         return settingsStore.load();
     });
 }
 
-module.exports = { initializeIpcHandlers };
+// ★★★ バグ修正: 関数をエクスポート ★★★
+module.exports = { registerIpcHandlers };
