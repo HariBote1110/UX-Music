@@ -1,0 +1,64 @@
+export const PLAYBACK_MODES = {
+    NORMAL: 'normal',
+    LOOP_ALL: 'loop-all',
+    LOOP_ONE: 'loop-one',
+};
+
+export const state = {
+    library: [],
+    albums: new Map(),
+    artists: new Map(),
+    playlists: [],
+    playCounts: {},
+    currentSongIndex: -1,
+    playbackQueue: [], // 現在再生中のキュー
+    originalQueueSource: [], // シャッフル前のキュー
+    playbackMode: PLAYBACK_MODES.NORMAL,
+    isShuffled: false,
+};
+
+// UI要素を一元管理
+export const elements = {
+    musicList: document.getElementById('music-list'),
+    albumGrid: document.getElementById('album-grid'),
+    artistGrid: document.getElementById('artist-grid'),
+    playlistGrid: document.getElementById('playlist-grid'),
+    nowPlayingArtworkContainer: document.getElementById('now-playing-artwork-container'),
+    nowPlayingTitle: document.getElementById('now-playing-title'),
+    nowPlayingArtist: document.getElementById('now-playing-artist'),
+    playPauseBtn: document.getElementById('play-pause-btn'),
+    prevBtn: document.getElementById('prev-btn'),
+    nextBtn: document.getElementById('next-btn'),
+    shuffleBtn: document.getElementById('shuffle-btn'),
+    loopBtn: document.getElementById('loop-btn'),
+    progressBar: document.getElementById('progress-bar'),
+    currentTimeEl: document.getElementById('current-time'),
+    totalDurationEl: document.getElementById('total-duration'),
+    volumeSlider: document.getElementById('volume-slider'),
+    volumeIcon: document.getElementById('volume-icon'),
+    audioOutputSelect: document.getElementById('audio-output-select'),
+    navLinks: document.querySelectorAll('.nav-link'),
+    views: document.querySelectorAll('.view-container'),
+    modalOverlay: document.getElementById('modal-overlay'),
+    modalTitle: document.querySelector('#modal h3'),
+    modalInput: document.getElementById('modal-input'),
+    modalOkBtn: document.getElementById('modal-ok-btn'),
+    modalCancelBtn: document.getElementById('modal-cancel-btn'),
+    dropZone: document.getElementById('drop-zone'),
+    addNetworkFolderBtn: document.getElementById('add-network-folder-btn'),
+    addYoutubeBtn: document.getElementById('add-youtube-btn'),
+    setLibraryBtn: document.getElementById('set-library-btn'),
+    loadingOverlay: document.getElementById('loading-overlay'),
+    createPlaylistBtn: document.getElementById('create-playlist-btn-main'),
+    openSettingsBtn: document.getElementById('open-settings-btn'),
+    settingsModalOverlay: document.getElementById('settings-modal-overlay'),
+    settingsOkBtn: document.getElementById('settings-ok-btn'),
+    youtubeModeRadios: document.querySelectorAll('input[name="youtube-mode"]'),
+    youtubeQualityRadios: document.querySelectorAll('input[name="youtube-quality"]'),
+    addYoutubePlaylistBtn: document.getElementById('add-youtube-playlist-btn'),
+    albumDetailView: document.getElementById('album-detail-view'),
+    artistDetailView: document.getElementById('artist-detail-view'),
+    // ★★★ ここからが修正箇所です ★★★
+    artistDetailAlbumGrid: document.getElementById('artist-detail-album-grid'),
+    // ★★★ ここまでが修正箇所です ★★★
+};

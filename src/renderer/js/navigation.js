@@ -1,8 +1,8 @@
-let elements = {};
+import { elements } from './state.js';
+
 let onNavigateCallback = () => {};
 
-export function initNavigation(uiElements, onNavigate) {
-    elements = uiElements;
+export function initNavigation(onNavigate) {
     onNavigateCallback = onNavigate;
 
     elements.navLinks.forEach(link => {
@@ -22,6 +22,5 @@ function handleNavigation(clickedLink) {
         view.classList.toggle('hidden', view.id !== viewId);
     });
 
-    // ★★★ 修正点: viewIdをコールバックに渡すようにする ★★★
     onNavigateCallback(viewId);
 }

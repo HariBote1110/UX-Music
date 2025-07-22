@@ -11,19 +11,21 @@ class DataStore {
     load() {
         try {
             if (fs.existsSync(this.path)) {
-                // ★★★ ここからが修正箇所です ★★★
                 const fileContent = fs.readFileSync(this.path, 'utf-8');
-                // ファイルが空、または空白文字しかない場合は、デフォルト値を返す
                 if (fileContent.trim() === '') {
-                    return this.fileName === 'library.json' ? [] : {};
+                    // ★★★ 修正箇所 ★★★
+                    // 'library.json' と 'playcounts.json' はデフォルトが異なる可能性があるため、
+                    // 空の場合は常に {} を返し、呼び出し元で処理を分けるようにする
+                    return {};
                 }
                 return JSON.parse(fileContent);
-                // ★★★ ここまでが修正箇所です ★★★
             }
         } catch (error) {
             console.error(`Failed to load data from ${this.path}:`, error);
         }
-        return this.fileName === 'library.json' ? [] : {};
+        // ★★★ 修正箇所 ★★★
+        // ファイルが存在しない場合のデフォルト値も {} に統一する
+        return {};
     }
 
     save(data) {

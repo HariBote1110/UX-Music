@@ -39,6 +39,21 @@ export function initIPC(ipcRenderer, callbacks) {
         callbacks.onPlaylistImportFinished?.();
     });
 
+    // ★★★ ここからが修正箇所です ★★★
+    ipcRenderer.on('loudness-analysis-result', (event, result) => {
+        const fileName = result.filePath.split(/[/\\]/).pop();
+        if (result.success) {
+            console.log(`%c[ラウドネス解析完了]%c ${fileName} -> %c${result.loudness.toFixed(2)} LUFS`, 
+                'color: green; font-weight: bold;', 
+                'color: inherit;',
+                'color: blue; font-weight: bold;'
+            );
+        } else {
+            console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
+        }
+    });
+    // ★★★ ここまでが修正箇所です ★★★
+
     // --- 初期データの要求 ---
     console.log('[Debug] Requesting initial data from main process...');
     ipcRenderer.send('request-initial-library');

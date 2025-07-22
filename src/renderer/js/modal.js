@@ -1,11 +1,9 @@
-// --- モジュール変数 ---
-let elements = {};
+import { elements } from './state.js';
+
 let onOkCallback = null;
 
-// --- 初期化 ---
-export function initModal(uiElements) {
-    elements = uiElements;
-
+// ★★★ バグ修正: 引数を削除し、state.jsから直接elementsを読み込む ★★★
+export function initModal() {
     // --- イベントリスナー ---
     elements.modalCancelBtn.addEventListener('click', hideModal);
     elements.modalOkBtn.addEventListener('click', handleOkClick);
@@ -18,6 +16,7 @@ export function initModal(uiElements) {
 
 // --- 公開関数 ---
 export function showModal({ title, placeholder, onOk }) {
+    // ★★★ modalTitleの参照を修正 ★★★
     elements.modalTitle.textContent = title;
     elements.modalInput.placeholder = placeholder;
     onOkCallback = onOk;
@@ -30,7 +29,7 @@ export function showModal({ title, placeholder, onOk }) {
 // --- 内部関数 ---
 function hideModal() {
     elements.modalOverlay.classList.add('hidden');
-    onOkCallback = null; // OK時のアクションをリセット
+    onOkCallback = null;
 }
 
 function handleOkClick() {

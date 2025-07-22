@@ -60,28 +60,60 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 #drop-zone { border: 2px dashed transparent; transition: border-color 0.3s; }
 #drop-zone.drag-over { border-color: #1DB954; }
 .placeholder { display: flex; justify-content: center; align-items: center; height: 200px; color: #888; font-size: 1.2em; }
-#music-list-header, #p-detail-list-header {
+#music-list-header, #p-detail-list-header, #a-detail-list-header {
     display: flex;
     padding: 0 16px;
     color: #888;
     border-bottom: 1px solid #282828;
     font-size: 0.9em;
 }
-#music-list-header .header-item:nth-child(1) { flex: 0 0 50px; }
-#music-list-header .header-item:nth-child(2) { flex: 5; }
-#music-list-header .header-item:nth-child(3) { flex: 3; }
-#music-list-header .header-item:nth-child(4) { flex: 3; }
-#music-list-header .header-item:nth-child(5) { flex: 1; text-align: right; }
-#music-list-header .header-item:nth-child(6) { flex: 1; text-align: right; }
+
+/* ★★★ 修正箇所: #a-detail-list-header をセレクタに追加 ★★★ */
+#music-list-header .header-item:nth-child(1),
+#p-detail-list-header .header-item:nth-child(1),
+#a-detail-list-header .header-item:nth-child(1) { flex: 0 0 50px; }
+#music-list-header .header-item:nth-child(2),
+#p-detail-list-header .header-item:nth-child(2),
+#a-detail-list-header .header-item:nth-child(2) { flex: 5; }
+#music-list-header .header-item:nth-child(3),
+#p-detail-list-header .header-item:nth-child(3),
+#a-detail-list-header .header-item:nth-child(3) { flex: 3; }
+#music-list-header .header-item:nth-child(4),
+#p-detail-list-header .header-item:nth-child(4),
+#a-detail-list-header .header-item:nth-child(4) { flex: 3; }
+#music-list-header .header-item:nth-child(5),
+#p-detail-list-header .header-item:nth-child(5),
+#a-detail-list-header .header-item:nth-child(5) { flex: 1; text-align: right; }
+#music-list-header .header-item:nth-child(6),
+#p-detail-list-header .header-item:nth-child(6),
+#a-detail-list-header .header-item:nth-child(6) { flex: 1; text-align: right; }
+
+
 #music-list { overflow-y: auto; height: calc(100% - 100px); }
 .song-item { display: flex; align-items: center; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
 .song-item:hover { background-color: #282828; }
-.song-index { flex: 0 0 50px; color: #888; }
-.song-title { flex: 5; display: flex; align-items: center; }
-.song-artist { flex: 3; }
-.song-album { flex: 3; }
-.song-duration { flex: 1; text-align: right; }
-.song-play-count { flex: 1; text-align: right; padding-right: 10px; }
+
+/* ★★★ 修正箇所: #a-detail-list をセレクタに追加 ★★★ */
+#music-list .song-index,
+#p-detail-list .song-index,
+#a-detail-list .song-index { flex: 0 0 50px; color: #888; }
+#music-list .song-title,
+#p-detail-list .song-title,
+#a-detail-list .song-title { flex: 5; display: flex; align-items: center; }
+#music-list .song-artist,
+#p-detail-list .song-artist,
+#a-detail-list .song-artist { flex: 3; }
+#music-list .song-album,
+#p-detail-list .song-album,
+#a-detail-list .song-album { flex: 3; }
+#music-list .song-duration,
+#p-detail-list .song-duration,
+#a-detail-list .song-duration { flex: 1; text-align: right; }
+#music-list .song-play-count,
+#p-detail-list .song-play-count,
+#a-detail-list .song-play-count { flex: 1; text-align: right; padding-right: 10px; }
+
+
 .artwork-small { width: 40px; height: 40px; margin-right: 16px; border-radius: 4px; background-color: #333; object-fit: cover; }
 .song-item.playing { background-color: #3a3a3a; color: #1DB954; }
 .playback-bar { display: flex; flex-direction: row; justify-content: space-between; align-items: center; padding: 8px 20px; box-sizing: border-box; border-top: 1px solid #282828; background-color: #181818; height: 90px; width: 100%; flex-shrink: 0; }
@@ -90,23 +122,39 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 .playback-controls button:hover { color: #fff; }
 #play-pause-btn { font-size: 28px; width: 40px; height: 40px; border: 1px solid #b3b3b3; border-radius: 50%; display: flex; justify-content: center; align-items: center; }
 #play-pause-btn:hover { border-color: #fff; }
-/* ★★★ 再生モードボタンのスタイルを追加 ★★★ */
-.playback-mode-btn { font-size: 18px; position: relative; }
-.playback-mode-btn.active { color: #1DB954; }
+.playback-mode-btn { 
+    font-size: 18px; 
+    position: relative; 
+}
+.playback-mode-btn.active { 
+    color: #1DB954; 
+}
+.playback-mode-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;
+    height: 5px;
+    background-color: #1DB954;
+    border-radius: 50%;
+    box-shadow: 0 0 2px rgba(0,0,0,0.5);
+}
 .playback-mode-btn#loop-btn.loop-one::after {
     content: '1';
-    position: absolute;
-    top: 14px;
-    left: 16px;
+    bottom: 0px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
     font-size: 10px;
     font-weight: bold;
-    color: #1DB954;
-    background-color: #181818;
-    border-radius: 50%;
-    width: 12px;
-    height: 12px;
-    line-height: 12px;
     text-align: center;
+    color: #121212;
+    background-color: #1DB954;
+    border-radius: 50%;
 }
 .progress-container { flex-grow: 1; margin: 0 20px; display: flex; align-items: center; gap: 15px; font-size: 0.8em; color: #aaa; }
 #progress-bar { flex-grow: 1; -webkit-appearance: none; width: 100%; height: 4px; background: #4d4d4d; outline: none; border-radius: 2px; cursor: pointer; }
@@ -152,25 +200,28 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid #fff; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 .loading-text { font-size: 1.2em; font-weight: bold; }
-.playlist-detail-header {
+
+/* ★★★ ここから詳細ビューの共通スタイル ★★★ */
+.detail-header {
     display: flex;
     align-items: flex-end;
     gap: 24px;
     margin-bottom: 30px;
 }
-.playlist-art-collage {
+.detail-art-img {
     width: 200px;
     height: 200px;
     flex-shrink: 0;
     box-shadow: 0 4px 60px rgba(0,0,0,0.5);
     background-color: #333;
+    object-fit: cover; /* imgタグ用 */
 }
-.playlist-info h1 {
+.detail-info h1 {
     font-size: 32px;
     font-weight: 900;
     margin: 0 0 16px 0;
 }
-.playlist-info p {
+.detail-info p {
     color: #b3b3b3;
     margin: 0 0 16px 0;
 }
@@ -184,9 +235,16 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     font-weight: bold;
     cursor: pointer;
 }
+/* ★★★ ここまで詳細ビューの共通スタイル ★★★ */
+
 #p-detail-list-header, #p-detail-list {
     padding: 0;
 }
+/*
+   以下の部分は、より具体的で統一された新しいセレクタにまとめたため、
+   重複を避けるためにコメントアウトまたは削除します。
+*/
+/*
 #p-detail-list-header .header-item:nth-child(1),
 #music-list-header .header-item:nth-child(1) { flex: 0 0 50px; }
 #p-detail-list-header .header-item:nth-child(2),
@@ -213,6 +271,7 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 #p-detail-list .song-item .song-year { flex: 1; text-align: right; }
 #p-detail-list .song-item .song-play-count,
 #music-list .song-item .song-play-count { flex: 1; text-align: right; padding-right: 10px; }
+*/
 #open-settings-btn { width: 100%; padding: 10px; background-color: #282828; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; text-align: left; margin-top: 8px; }
 #open-settings-btn:hover { background-color: #3a3a3a; }
 #settings-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
@@ -313,3 +372,92 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     background-color: #444;
     border-color: #777;
 }
+/* uxmusic/src/renderer/style.css の末尾に追記 */
+/* uxmusic/src/renderer/style.css の末尾に追記 */
+
+/* style.cssの末尾に追加されているアーティスト関連のスタイルを以下に置き換える */
+
+#artist-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 24px;
+}
+.artist-grid-item {
+    background-color: #181818;
+    border-radius: 8px;
+    padding: 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    text-align: center;
+}
+.artist-grid-item:hover {
+    background-color: #282828;
+}
+.artist-artwork {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 50%; /* アーティストは円形にする */
+    object-fit: cover;
+    background-color: #333;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+}
+.artist-name {
+    color: #fff;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ★★★ ここからが修正箇所です ★★★ */
+.artist-detail-art-round {
+    border-radius: 50%;
+}
+
+/* 以前追加したアーティスト詳細リストのスタイルは不要になったため削除 */
+/*
+#artist-detail-list-header,
+#artist-detail-list { ... }
+*/
+
+/* アルバムグリッド用の共通スタイルを流用するため、新たなCSSはほぼ不要 */
+#artist-detail-view h2 {
+    margin-top: 40px;
+}
+.album-grid { /* #artist-detail-album-grid に適用される汎用クラス */
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 24px;
+}
+/* ★★★ ここまでが修正箇所です ★★★ */
+
+/* style.css の末尾に追記 */
+
+/* ★★★ ここからが修正箇所です ★★★ */
+#notification-toast {
+    position: fixed;
+    bottom: 110px; /* フッターバーの上 */
+    right: 20px;
+    background-color: #282828;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    z-index: 3000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s, transform 0.3s;
+    transform: translateY(20px);
+}
+#notification-toast.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+#notification-toast.hidden {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(20px);
+}
+/* ★★★ ここまでが修正箇所です ★★★ */

@@ -1,29 +1,17 @@
-let elements = {};
-let ipc = {};
+import { elements } from './state.js';
+import { showModal } from './modal.js';
+const { ipcRenderer } = require('electron');
 
-// 初期化
-export function initPlaylists(uiElements, ipcRenderer) {
-    elements = uiElements;
-    ipc = ipcRenderer;
+export function initPlaylists() {
     elements.createPlaylistBtn.addEventListener('click', handleCreatePlaylist);
 }
 
-// 新規プレイリスト作成ボタンの処理
 function handleCreatePlaylist() {
-    elements.showModal({
+    showModal({
         title: '新規プレイリスト',
         placeholder: 'プレイリスト名',
         onOk: async (name) => {
-            const result = await ipc.invoke('create-playlist', name);
-            // ★★★ 修正箇所 ★★★
-            // if (result.success) {
-            //     // このIPC通信は不要なため削除します。
-            //     // メインプロセス側で作成成功時に'playlists-updated'が送信されるためです。
-            //     ipc.send('request-all-playlists');
-            // } else {
-            //     alert(`エラー: ${result.message}`);
-            // }
-            // エラー時のみ通知するように修正
+            const result = await ipcRenderer.invoke('create-playlist', name);
             if (!result.success) {
                 alert(`エラー: ${result.message}`);
             }

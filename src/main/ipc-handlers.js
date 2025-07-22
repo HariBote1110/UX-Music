@@ -1,6 +1,6 @@
 const { ipcMain, dialog, Menu, shell, BrowserWindow } = require('electron');
 const DataStore = require('./data-store');
-const { scanPaths, parseFiles, sanitize } = require('./file-scanner');
+const { scanPaths, parseFiles, sanitize, analyzeLoudness } = require('./file-scanner'); // analyzeLoudness をインポート
 const ytdl = require('@distube/ytdl-core');
 const streamManager = require('./stream-manager');
 const path = require('path');
@@ -8,6 +8,7 @@ const fs = require('fs');
 const playlistManager = require('./playlist-manager');
 const ytpl = require('ytpl');
 
+const loudnessStore = new DataStore('loudness.json');
 const playCountsStore = new DataStore('playcounts.json');
 const settingsStore = new DataStore('settings.json');
 const libraryStore = new DataStore('library.json');
@@ -19,10 +20,8 @@ function findHubUrl(description) {
     return match ? match[0] : null;
 }
 
-// ★★★ バグ修正: 関数名を変更し、引数を取らないようにする ★★★
 function registerIpcHandlers() {
 
-    // ウィンドウに安全に送信するためのヘルパー
     const sendToAllWindows = (channel, ...args) => {
         BrowserWindow.getAllWindows().forEach(win => {
             if (win && !win.isDestroyed()) {
@@ -88,6 +87,8 @@ function registerIpcHandlers() {
             if (!fs.existsSync(destPath)) {
                 try {
                     fs.copyFileSync(song.path, destPath);
+                    // ★★★ 修正箇所: ファイル追加時のラウドネス解析を削除 ★★★
+                    // await analyzeLoudness(destPath); 
                 } catch (error) {
                     console.error(`Failed to copy ${originalFileName}:`, error);
                     continue;
@@ -99,6 +100,29 @@ function registerIpcHandlers() {
         const addedSongs = addSongsToLibraryAndSave(newSongObjects);
         return addedSongs;
     });
+
+// 'request-loudness-analysis' のハンドラを修正
+ipcMain.on('request-loudness-analysis', async (event, songPath) => {
+    // ★★★ ここからが修正箇所です ★★★
+    // 既に解析済みの場合は再度解析しない
+    const loudnessData = loudnessStore.load();
+    if (loudnessData[songPath]) {
+        // console.log(`[ラウドネス] ${path.basename(songPath)} は解析済みです。`);
+        return;
+    }
+
+    const result = await analyzeLoudness(songPath);
+    
+    // 解析結果をレンダラープロセスに送信
+    sendToAllWindows('loudness-analysis-result', result);
+
+    // 解析が成功した場合、結果を loudness.json に保存
+    if (result.success) {
+        loudnessData[songPath] = result.loudness;
+        loudnessStore.save(loudnessData);
+    }
+    // ★★★ ここまでが修正箇所です ★★★
+});
 
     ipcMain.on('show-playlist-song-context-menu', (event, { playlistName, song }) => {
         const window = BrowserWindow.fromWebContents(event.sender);
@@ -456,7 +480,10 @@ function registerIpcHandlers() {
     ipcMain.handle('get-settings', () => {
         return settingsStore.load();
     });
+    ipcMain.handle('get-loudness-value', (event, songPath) => {
+    const loudnessData = loudnessStore.load();
+    return loudnessData[songPath] || null; // 保存されていれば値を、なければnullを返す
+});
 }
 
-// ★★★ バグ修正: 関数をエクスポート ★★★
 module.exports = { registerIpcHandlers };

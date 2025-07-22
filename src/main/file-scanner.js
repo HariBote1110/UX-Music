@@ -1,5 +1,11 @@
 const path = require('path');
 const fs = require('fs');
+const ffmpeg = require('fluent-ffmpeg');
+const ffprobePath = require('ffprobe-static').path;
+const ffmpegPath = require('ffmpeg-static');
+
+ffmpeg.setFfprobePath(ffprobePath);
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 function sanitize(name) {
     if (typeof name !== 'string') return '_';
@@ -8,7 +14,57 @@ function sanitize(name) {
     return sanitizedName || '_';
 }
 
-const supportedExtensions = ['.mp3', '.flac', '.wav', '.ogg', '.m4a'];
+const supportedExtensions = ['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.mp4'];
+
+/**
+ * 指定されたオーディオファイルのラウドネス値を解析します。
+ * @param {string} filePath 解析するファイルのパス
+ * @returns {Promise<object>} 解析結果を含むオブジェクトのPromise
+ */
+function analyzeLoudness(filePath) {
+    return new Promise((resolve) => {
+        ffmpeg(filePath)
+            .withAudioFilter('loudnorm=I=-23:LRA=7:print_format=json')
+            .toFormat('null')
+            .on('error', (err) => {
+                resolve({
+                    success: false,
+                    filePath: filePath,
+                    error: err.message
+                });
+            })
+            .on('end', (stdout, stderr) => {
+                // ★★★ ここからが修正箇所です ★★★
+                // FFmpegの出力全体から '{' で始まり '}' で終わるブロックを探す
+                const jsonStartIndex = stderr.lastIndexOf('{');
+                const jsonEndIndex = stderr.lastIndexOf('}');
+
+                if (jsonStartIndex > -1 && jsonEndIndex > -1) {
+                    const jsonString = stderr.substring(jsonStartIndex, jsonEndIndex + 1);
+                    try {
+                        const stats = JSON.parse(jsonString);
+                        const integratedLoudness = parseFloat(stats.input_i);
+                        resolve({
+                            success: true,
+                            filePath: filePath,
+                            loudness: integratedLoudness
+                        });
+                    } catch (e) {
+                        resolve({ success: false, filePath: filePath, error: `ラウドネス解析結果(JSON)のパースに失敗しました。` });
+                    }
+                } else {
+                     resolve({
+                         success: false,
+                         filePath: filePath,
+                         error: `ラウドネス解析結果(JSON)が見つかりませんでした。\nFFmpeg Raw Output:\n${stderr}`
+                     });
+                }
+                // ★★★ ここまでが修正箇所です ★★★
+            })
+            .save('-');
+    });
+}
+
 
 async function scanDirectory(dirPath) {
     let files = [];
@@ -76,4 +132,4 @@ async function scanPaths(paths) {
     return allFiles;
 }
 
-module.exports = { scanPaths, parseFiles, sanitize };
+module.exports = { scanPaths, parseFiles, sanitize, analyzeLoudness };

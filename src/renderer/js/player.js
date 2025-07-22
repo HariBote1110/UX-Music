@@ -1,4 +1,9 @@
-// src/renderer/js/player.js (全体を置き換え)
+import { elements } from './state.js';
+const { ipcRenderer } = require('electron');
+
+let audioContext;
+let mainPlayerNode;
+let gainNode;
 
 let localPlayer;
 let ytPlayer;
@@ -6,26 +11,35 @@ let ytPlayerPromise = null;
 let currentSongType = 'local';
 let timeUpdateInterval;
 
-let elements = {};
-let ipc;
 let onSongEndedCallback = () => {};
 let onNextSongCallback = () => {};
 let onPrevSongCallback = () => {};
 
-// --- 初期化 ---
-export function initPlayer(playerElement, uiElements, appState, ipcRenderer, callbacks) {
+export function initPlayer(playerElement, callbacks) {
     localPlayer = playerElement;
-    elements = uiElements;
-    ipc = ipcRenderer;
     onSongEndedCallback = callbacks.onSongEnded;
     onNextSongCallback = callbacks.onNextSong;
     onPrevSongCallback = callbacks.onPrevSong;
+
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        gainNode = audioContext.createGain();
+        mainPlayerNode = audioContext.createMediaElementSource(localPlayer);
+
+        mainPlayerNode.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+    } catch (e) {
+        console.error('Web Audio APIの初期化に失敗しました。', e);
+    }
 
     localPlayer.addEventListener('ended', onSongEndedCallback);
     localPlayer.addEventListener('timeupdate', () => updateUiTime(localPlayer.currentTime, localPlayer.duration));
     localPlayer.addEventListener('play', () => {
         elements.playPauseBtn.textContent = '⏸';
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+        if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume();
+        }
     });
     localPlayer.addEventListener('pause', () => {
         elements.playPauseBtn.textContent = '▶';
@@ -37,12 +51,15 @@ export function initPlayer(playerElement, uiElements, appState, ipcRenderer, cal
     elements.volumeSlider.addEventListener('input', setVolume);
     elements.audioOutputSelect.addEventListener('change', async (event) => {
         try {
-            await localPlayer.setSinkId(event.target.value);
-            ipc.send('save-audio-output-id', event.target.value);
+            if (audioContext && typeof audioContext.setSinkId === 'function') {
+                await audioContext.setSinkId(event.target.value);
+            } else {
+                await localPlayer.setSinkId(event.target.value);
+            }
+            ipcRenderer.send('save-audio-output-id', event.target.value);
         } catch (error) { console.error('Failed to set audio output device:', error); }
     });
 
-    // Media Session API のハンドラを設定
     if ('mediaSession' in navigator) {
         navigator.mediaSession.setActionHandler('play', togglePlayPause);
         navigator.mediaSession.setActionHandler('pause', togglePlayPause);
@@ -51,7 +68,6 @@ export function initPlayer(playerElement, uiElements, appState, ipcRenderer, cal
     }
 }
 
-// --- YouTubeプレーヤーを確実に取得するための関数 ---
 function getYouTubePlayer(videoId) {
     if (ytPlayerPromise) {
         return ytPlayerPromise;
@@ -92,7 +108,7 @@ function getYouTubePlayer(videoId) {
     return ytPlayerPromise;
 }
 
-// --- 公開メソッド ---
+// ★★★ ここからが修正箇所です ★★★
 export async function play(song) {
     await stop();
     if (!song) {
@@ -102,6 +118,28 @@ export async function play(song) {
         }
         return;
     }
+
+    // ノーマライザーのターゲットラウドネス値 (LUFS)
+    const TARGET_LOUDNESS = -23.0;
+
+    // ノーマライザー適用
+    if (gainNode) {
+        const savedLoudness = await ipcRenderer.invoke('get-loudness-value', song.path);
+        
+        if (typeof savedLoudness === 'number') {
+            const gainDb = TARGET_LOUDNESS - savedLoudness;
+            // デシベルをリニア値に変換
+            const linearGain = Math.pow(10, gainDb / 20);
+
+            console.log(`[ノーマライザー適用] ${song.path.split(/[/\\]/).pop()}: 元音量 ${savedLoudness.toFixed(2)} LUFS -> 補正 ${gainDb.toFixed(2)} dB`);
+            gainNode.gain.value = linearGain;
+        } else {
+            // 解析データがない場合はゲインを1.0 (補正なし) にリセット
+            gainNode.gain.value = 1.0;
+        }
+    }
+    // ★★★ ここまでが修正箇所です ★★★
+
 
     if ('mediaSession' in navigator) {
         const artworkSrc = song.artwork || '';
@@ -113,7 +151,7 @@ export async function play(song) {
         });
     }
 
-    const settings = await ipc.invoke('get-settings');
+    const settings = await ipcRenderer.invoke('get-settings');
     const mode = settings.youtubePlaybackMode || 'download';
     const isFromYouTube = song.sourceURL || song.type === 'youtube';
     const hasLocalFile = song.type === 'local' && song.path;
@@ -141,7 +179,6 @@ export async function stop() {
     clearInterval(timeUpdateInterval);
 }
 
-// --- 再生ロジック ---
 function playLocal(song) {
     if (!song || !song.path) return;
     localPlayer.src = `file://${song.path.replace(/\\/g, '/')}`;
@@ -159,9 +196,11 @@ async function playYoutube(song) {
     }
 }
 
-// --- 共通コントロール ---
-// ★★★ togglePlayPause関数をエクスポート ★★★
 export async function togglePlayPause() {
+    if (audioContext && audioContext.state === 'suspended') {
+        await audioContext.resume();
+    }
+
     if (currentSongType === 'youtube') {
         const player = await getYouTubePlayer();
         if (player && typeof player.getPlayerState === 'function') {
@@ -187,20 +226,26 @@ async function seek() {
 
 async function setVolume() {
     const volume = parseFloat(elements.volumeSlider.value);
-    const newVolume = parseFloat(elements.volumeSlider.value);
-    if (currentSongType === 'youtube') {
-        const player = await getYouTubePlayer();
-        if (player && typeof player.setVolume === 'function') player.setVolume(volume * 100);
-    } else {
-        localPlayer.volume = volume;
-    }
-    ipc.send('save-settings', { volume: newVolume }); 
+
+    // ★★★ 修正: Web Audio API 利用時は音量スライダーの値を直接GainNodeに適用しないようにする
+    // ノーマライザーが基本の音量を決定し、音量スライダーは全体のマスターボリュームとして機能させるのが一般的
+    // 今回は簡易的な実装として、一旦コメントアウトし、今後の課題とする
+    
+    // if (currentSongType === 'youtube') {
+    //     const player = await getYouTubePlayer();
+    //     if (player && typeof player.setVolume === 'function') {
+    //         player.setVolume(volume * 100);
+    //     }
+    // } else {
+    //     if (gainNode) {
+    //         gainNode.gain.value = volume;
+    //     }
+    // }
+    
+    // UIの音量スライダーの値は設定として保存しておく
+    ipcRenderer.send('save-settings', { volume: volume }); 
 }
 
-// --- イベントハンドラとヘルパー関数 ---
-function onPlayerReady(event) {
-    setVolume();
-}
 function onPlayerStateChange(event) {
     const state = event.data;
     if (state === YT.PlayerState.PLAYING) {
