@@ -137,7 +137,6 @@ export function showArtist(artistName) {
     const artist = state.artists.get(artistName);
     if (!artist) return;
 
-    // アーティスト詳細では再生キューを直接は変更しない
     state.currentSongIndex = -1;
 
     elements.views.forEach(view => view.classList.add('hidden'));
@@ -277,7 +276,6 @@ function renderAlbumDetailView(album) {
     });
 }
 
-// ★★★ ここからが修正箇所です (ロジックを全面的に変更) ★★★
 function renderArtistDetailView(artist) {
     const view = elements.artistDetailView;
     view.querySelector('#artist-detail-art').src = artist.artwork || './assets/default_artwork.png';
@@ -286,9 +284,7 @@ function renderArtistDetailView(artist) {
     const gridElement = elements.artistDetailAlbumGrid;
     gridElement.innerHTML = '';
 
-    // このアーティストが含まれるアルバムを state.albums から見つける
     const artistAlbums = [...state.albums.entries()].filter(([key, album]) => {
-        // アルバムアーティスト、または参加アーティストのいずれかに含まれていれば対象とする
         return album.artist === artist.name || album.songs.some(song => song.artist === artist.name);
     });
 
@@ -299,7 +295,6 @@ function renderArtistDetailView(artist) {
         return;
     }
     
-    // 見つかったアルバムをグリッド表示する
     for (const [key, album] of artistAlbums) {
         const albumItem = document.createElement('div');
         albumItem.className = 'album-grid-item';
@@ -308,12 +303,10 @@ function renderArtistDetailView(artist) {
             <div class="album-title">${album.title || 'Unknown Album'}</div>
             <div class="album-artist">${album.artist || 'Unknown Artist'}</div>
         `;
-        // クリックで通常のアルバム詳細画面に遷移
         albumItem.addEventListener('click', () => showAlbum(key));
         gridElement.appendChild(albumItem);
     }
 }
-// ★★★ ここまでが修正箇所です ★★★
 
 function renderPlaylistDetailView(playlistName, songs) {
     const header = document.querySelector('#playlist-detail-view .detail-header');
@@ -424,8 +417,6 @@ function formatTime(seconds) {
     return `${min}:${sec}`;
 }
 
-// ui-manager.js の一番下にある updateAudioDevices 関数を修正
-
 export async function updateAudioDevices(targetDeviceId = null) {
     const mainPlayer = document.getElementById('main-player');
     const currentSelectedId = elements.audioOutputSelect.value; 
@@ -453,12 +444,29 @@ export async function updateAudioDevices(targetDeviceId = null) {
 
         if (deviceIdToSet) {
             elements.audioOutputSelect.value = deviceIdToSet;
-            // ★★★ 修正箇所: この行をコメントアウト ★★★
-            // if (mainPlayer.sinkId !== deviceIdToSet) {
-            //      await mainPlayer.setSinkId(deviceIdToSet);
-            // }
         }
     } catch (error) {
         console.error('Could not enumerate audio devices:', error);
     }
+}
+
+let notificationTimeout;
+
+export function showNotification(message) {
+    if (notificationTimeout) {
+        clearTimeout(notificationTimeout);
+    }
+    elements.notificationText.textContent = message;
+    elements.notificationToast.classList.add('show');
+    elements.notificationToast.classList.remove('hidden');
+}
+
+export function hideNotification(delay = 0) {
+    if (notificationTimeout) {
+        clearTimeout(notificationTimeout);
+    }
+    notificationTimeout = setTimeout(() => {
+        elements.notificationToast.classList.remove('show');
+        elements.notificationToast.classList.add('hidden');
+    }, delay);
 }

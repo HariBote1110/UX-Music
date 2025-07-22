@@ -1,19 +1,17 @@
 import { state, elements, PLAYBACK_MODES } from './state.js';
 import { play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
-import { updateNowPlayingView, renderCurrentView } from './ui-manager.js';
+import { updateNowPlayingView, renderCurrentView, showNotification, hideNotification } from './ui-manager.js';
 const { ipcRenderer } = require('electron');
 
-export async function playSong(index, sourceList = null) {
-    // 1. 新しいリストから再生が開始された場合、再生キューを完全にリセットして再構築する
+export async function playSong(index, sourceList = null, forcePlay = false) {
+    // 1. 再生キューの更新 (初回クリック時など)
     if (sourceList) {
         state.originalQueueSource = [...sourceList];
         
         if (state.isShuffled) {
-            // シャッフルが有効な場合：選択した曲を先頭にして、残りをシャッフルしたキューを新しく作成
             const songToStartWith = sourceList[index];
             let newShuffledQueue = sourceList.filter(s => s.path !== songToStartWith.path);
             
-            // Fisher-Yates shuffle
             for (let i = newShuffledQueue.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [newShuffledQueue[i], newShuffledQueue[j]] = [newShuffledQueue[j], newShuffledQueue[i]];
@@ -21,31 +19,37 @@ export async function playSong(index, sourceList = null) {
             
             newShuffledQueue.unshift(songToStartWith);
             state.playbackQueue = newShuffledQueue;
-            index = 0; // 選択した曲が新しいキューの先頭になる
+            index = 0;
         } else {
-            // シャッフルが無効な場合：そのまま再生キューとして設定
             state.playbackQueue = [...sourceList];
         }
     }
 
-    // 2. 再生処理
+    // 2. 再生対象の曲を取得
     const songList = state.playbackQueue;
     if (!songList || index < 0 || index >= songList.length) {
         stopSongInPlayer();
         updateNowPlayingView(null);
         return;
     }
-
     const songToPlay = songList[index];
 
-    // ★★★ ここからが修正箇所です ★★★
-    // 再生カウントを記録し、ラウドネス解析をリクエストする
-    ipcRenderer.send('song-finished', songToPlay.path);
-    if (songToPlay.type === 'local') { // ローカルファイルのみ解析対象
-        ipcRenderer.send('request-loudness-analysis', songToPlay.path);
+    // 3. ラウドネス値の確認と再生分岐
+    if (songToPlay.type === 'local' && !forcePlay) {
+        const savedLoudness = await ipcRenderer.invoke('get-loudness-value', songToPlay.path);
+        if (typeof savedLoudness !== 'number') {
+            state.songWaitingForAnalysis = { index, sourceList: state.playbackQueue };
+            showNotification(`「${songToPlay.title}」の再生準備中です...`);
+            ipcRenderer.send('request-loudness-analysis', songToPlay.path);
+            return;
+        }
     }
-    // ★★★ ここまでが修正箇所です ★★★
-
+    
+    // 4. 再生処理の実行
+    state.songWaitingForAnalysis = null;
+    hideNotification();
+    
+    ipcRenderer.send('song-finished', songToPlay.path);
     state.currentSongIndex = index;
     
     updateNowPlayingView(songToPlay);
@@ -57,7 +61,7 @@ export function playNextSong() {
     if (state.playbackQueue.length === 0) return;
 
     if (state.playbackMode === PLAYBACK_MODES.LOOP_ONE) {
-        playSong(state.currentSongIndex);
+        playSong(state.currentSongIndex, null, true); // 1曲リピートもforcePlay
         return;
     }
 
@@ -93,16 +97,13 @@ export function toggleShuffle() {
     const currentSong = state.playbackQueue[state.currentSongIndex];
 
     if (state.isShuffled) {
-        // シャッフルをONにする
         const newShuffledQueue = [...state.originalQueueSource];
         
-        // 現在再生中の曲を先頭に持ってくる
         const currentIndexInOriginal = newShuffledQueue.findIndex(s => s.path === currentSong?.path);
         if (currentIndexInOriginal > -1) {
             newShuffledQueue.splice(currentIndexInOriginal, 1);
         }
 
-        // 残りをシャッフル
         for (let i = newShuffledQueue.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [newShuffledQueue[i], newShuffledQueue[j]] = [newShuffledQueue[j], newShuffledQueue[i]];
@@ -116,7 +117,6 @@ export function toggleShuffle() {
         state.currentSongIndex = currentSong ? 0 : -1;
 
     } else {
-        // シャッフルをOFFにする
         state.playbackQueue = [...state.originalQueueSource];
         state.currentSongIndex = currentSong ? state.playbackQueue.findIndex(s => s.path === currentSong.path) : -1;
     }

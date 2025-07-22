@@ -68,7 +68,6 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     font-size: 0.9em;
 }
 
-/* ★★★ 修正箇所: #a-detail-list-header をセレクタに追加 ★★★ */
 #music-list-header .header-item:nth-child(1),
 #p-detail-list-header .header-item:nth-child(1),
 #a-detail-list-header .header-item:nth-child(1) { flex: 0 0 50px; }
@@ -88,31 +87,34 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 #p-detail-list-header .header-item:nth-child(6),
 #a-detail-list-header .header-item:nth-child(6) { flex: 1; text-align: right; }
 
-
 #music-list { overflow-y: auto; height: calc(100% - 100px); }
 .song-item { display: flex; align-items: center; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
 .song-item:hover { background-color: #282828; }
 
-/* ★★★ 修正箇所: #a-detail-list をセレクタに追加 ★★★ */
 #music-list .song-index,
 #p-detail-list .song-index,
-#a-detail-list .song-index { flex: 0 0 50px; color: #888; }
+#a-detail-list .song-index,
+#artist-detail-list .song-index { flex: 0 0 50px; color: #888; }
 #music-list .song-title,
 #p-detail-list .song-title,
-#a-detail-list .song-title { flex: 5; display: flex; align-items: center; }
+#a-detail-list .song-title,
+#artist-detail-list .song-title { flex: 5; display: flex; align-items: center; }
 #music-list .song-artist,
 #p-detail-list .song-artist,
-#a-detail-list .song-artist { flex: 3; }
+#a-detail-list .song-artist,
+#artist-detail-list .song-artist { flex: 3; }
 #music-list .song-album,
 #p-detail-list .song-album,
-#a-detail-list .song-album { flex: 3; }
+#a-detail-list .song-album,
+#artist-detail-list .song-album { flex: 3; }
 #music-list .song-duration,
 #p-detail-list .song-duration,
-#a-detail-list .song-duration { flex: 1; text-align: right; }
+#a-detail-list .song-duration,
+#artist-detail-list .song-duration { flex: 1; text-align: right; }
 #music-list .song-play-count,
 #p-detail-list .song-play-count,
-#a-detail-list .song-play-count { flex: 1; text-align: right; padding-right: 10px; }
-
+#a-detail-list .song-play-count,
+#artist-detail-list .song-play-count { flex: 1; text-align: right; padding-right: 10px; }
 
 .artwork-small { width: 40px; height: 40px; margin-right: 16px; border-radius: 4px; background-color: #333; object-fit: cover; }
 .song-item.playing { background-color: #3a3a3a; color: #1DB954; }
@@ -201,7 +203,6 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 .loading-text { font-size: 1.2em; font-weight: bold; }
 
-/* ★★★ ここから詳細ビューの共通スタイル ★★★ */
 .detail-header {
     display: flex;
     align-items: flex-end;
@@ -214,7 +215,7 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     flex-shrink: 0;
     box-shadow: 0 4px 60px rgba(0,0,0,0.5);
     background-color: #333;
-    object-fit: cover; /* imgタグ用 */
+    object-fit: cover;
 }
 .detail-info h1 {
     font-size: 32px;
@@ -235,43 +236,11 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     font-weight: bold;
     cursor: pointer;
 }
-/* ★★★ ここまで詳細ビューの共通スタイル ★★★ */
 
 #p-detail-list-header, #p-detail-list {
     padding: 0;
 }
-/*
-   以下の部分は、より具体的で統一された新しいセレクタにまとめたため、
-   重複を避けるためにコメントアウトまたは削除します。
-*/
-/*
-#p-detail-list-header .header-item:nth-child(1),
-#music-list-header .header-item:nth-child(1) { flex: 0 0 50px; }
-#p-detail-list-header .header-item:nth-child(2),
-#music-list-header .header-item:nth-child(2) { flex: 4; }
-#p-detail-list-header .header-item:nth-child(3),
-#music-list-header .header-item:nth-child(3) { flex: 2; }
-#p-detail-list-header .header-item:nth-child(4),
-#music-list-header .header-item:nth-child(4) { flex: 2; }
-#p-detail-list-header .header-item:nth-child(5),
-#music-list-header .header-item:nth-child(5) { flex: 1; text-align: right; }
-#p-detail-list-header .header-item:nth-child(6),
-#music-list-header .header-item:nth-child(6) { flex: 1; text-align: right; }
-#p-detail-list-header .header-item:nth-child(7) { flex: 1; text-align: right; }
-#p-detail-list-header .header-item:nth-child(8) { flex: 1; text-align: right; }
-#p-detail-list .song-item .song-title, 
-#music-list .song-item .song-title { flex: 4; }
-#p-detail-list .song-item .song-artist,
-#music-list .song-item .song-artist { flex: 2; }
-#p-detail-list .song-item .song-album,
-#music-list .song-item .song-album { flex: 2; }
-#p-detail-list .song-item .song-duration,
-#music-list .song-item .song-duration { flex: 1; text-align: right; }
-#p-detail-list .song-item .song-file-size { flex: 1; text-align: right; }
-#p-detail-list .song-item .song-year { flex: 1; text-align: right; }
-#p-detail-list .song-item .song-play-count,
-#music-list .song-item .song-play-count { flex: 1; text-align: right; padding-right: 10px; }
-*/
+
 #open-settings-btn { width: 100%; padding: 10px; background-color: #282828; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; text-align: left; margin-top: 8px; }
 #open-settings-btn:hover { background-color: #3a3a3a; }
 #settings-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
@@ -372,10 +341,6 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     background-color: #444;
     border-color: #777;
 }
-/* uxmusic/src/renderer/style.css の末尾に追記 */
-/* uxmusic/src/renderer/style.css の末尾に追記 */
-
-/* style.cssの末尾に追加されているアーティスト関連のスタイルを以下に置き換える */
 
 #artist-grid {
     display: grid;
@@ -396,7 +361,7 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 .artist-artwork {
     width: 100%;
     aspect-ratio: 1 / 1;
-    border-radius: 50%; /* アーティストは円形にする */
+    border-radius: 50%;
     object-fit: cover;
     background-color: #333;
     margin-bottom: 12px;
@@ -409,35 +374,21 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     overflow: hidden;
     text-overflow: ellipsis;
 }
-
-/* ★★★ ここからが修正箇所です ★★★ */
 .artist-detail-art-round {
     border-radius: 50%;
 }
-
-/* 以前追加したアーティスト詳細リストのスタイルは不要になったため削除 */
-/*
-#artist-detail-list-header,
-#artist-detail-list { ... }
-*/
-
-/* アルバムグリッド用の共通スタイルを流用するため、新たなCSSはほぼ不要 */
 #artist-detail-view h2 {
     margin-top: 40px;
 }
-.album-grid { /* #artist-detail-album-grid に適用される汎用クラス */
+.album-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     gap: 24px;
 }
-/* ★★★ ここまでが修正箇所です ★★★ */
 
-/* style.css の末尾に追記 */
-
-/* ★★★ ここからが修正箇所です ★★★ */
 #notification-toast {
     position: fixed;
-    bottom: 110px; /* フッターバーの上 */
+    bottom: 110px;
     right: 20px;
     background-color: #282828;
     color: #fff;
@@ -460,4 +411,3 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     visibility: hidden;
     transform: translateY(20px);
 }
-/* ★★★ ここまでが修正箇所です ★★★ */

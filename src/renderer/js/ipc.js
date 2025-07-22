@@ -1,3 +1,5 @@
+import { playSong } from './playback-manager.js';
+
 export function initIPC(ipcRenderer, callbacks) {
     // --- IPCリスナー群 ---
     ipcRenderer.on('load-library', (event, initialSongs) => {
@@ -39,7 +41,6 @@ export function initIPC(ipcRenderer, callbacks) {
         callbacks.onPlaylistImportFinished?.();
     });
 
-    // ★★★ ここからが修正箇所です ★★★
     ipcRenderer.on('loudness-analysis-result', (event, result) => {
         const fileName = result.filePath.split(/[/\\]/).pop();
         if (result.success) {
@@ -48,11 +49,16 @@ export function initIPC(ipcRenderer, callbacks) {
                 'color: inherit;',
                 'color: blue; font-weight: bold;'
             );
+            
+            const waitingSong = window.state.songWaitingForAnalysis;
+            if (waitingSong && waitingSong.sourceList[waitingSong.index].path === result.filePath) {
+                playSong(waitingSong.index, null, true);
+            }
+
         } else {
             console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
     // --- 初期データの要求 ---
     console.log('[Debug] Requesting initial data from main process...');

@@ -15,6 +15,7 @@ export const state = {
     originalQueueSource: [], // シャッフル前のキュー
     playbackMode: PLAYBACK_MODES.NORMAL,
     isShuffled: false,
+    songWaitingForAnalysis: null, // 解析待ちの曲の情報を保持
 };
 
 // UI要素を一元管理
@@ -58,7 +59,7 @@ export const elements = {
     addYoutubePlaylistBtn: document.getElementById('add-youtube-playlist-btn'),
     albumDetailView: document.getElementById('album-detail-view'),
     artistDetailView: document.getElementById('artist-detail-view'),
-    // ★★★ ここからが修正箇所です ★★★
     artistDetailAlbumGrid: document.getElementById('artist-detail-album-grid'),
-    // ★★★ ここまでが修正箇所です ★★★
+    notificationToast: document.getElementById('notification-toast'),
+    notificationText: document.getElementById('notification-text'),
 };

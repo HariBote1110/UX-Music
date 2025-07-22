@@ -67,12 +67,23 @@
                     <div class="detail-info">
                         <h1 id="artist-detail-name">アーティスト名</h1>
                         <p id="artist-detail-meta">メタ情報</p>
+                        <div class="detail-actions">
+                            <button class="play-all-btn">▶ すべて再生</button>
+                        </div>
                     </div>
                 </div>
-                <h2>アルバム</h2>
-                <div id="artist-detail-album-grid" class="album-grid">
-                    </div>
+                <div id="artist-detail-list-header" class="music-list-header">
+                    <div class="header-item">#</div>
+                    <div class="header-item">タイトル</div>
+                    <div class="header-item">アーティスト</div>
+                    <div class="header-item">アルバム</div>
+                    <div class="header-item">再生時間</div>
+                    <div class="header-item">再生数</div>
+                </div>
+                <div id="artist-detail-list" class="music-list">
+                </div>
             </div>
+
             <div id="album-detail-view" class="view-container hidden">
                 <div class="detail-header">
                     <img id="a-detail-art" class="detail-art-img">
@@ -216,6 +227,9 @@
     </div>
 </div>
 
+    <div id="notification-toast" class="hidden">
+        <p id="notification-text"></p>
+    </div>
 
     <div id="youtube-player-container" style="position: absolute; top: -9999px; left: -9999px;"></div>
     

@@ -3,8 +3,10 @@ import { initIPC } from './js/ipc.js';
 import { initNavigation } from './js/navigation.js';
 import { initModal, showModal } from './js/modal.js';
 import { initPlaylists } from './js/playlist.js';
-import { initPlayer, togglePlayPause } from './js/player.js';
+// ★★★ 修正箇所: applyMasterVolume をインポート ★★★
+import { initPlayer, togglePlayPause, applyMasterVolume } from './js/player.js';
 import { state, elements } from './js/state.js';
+window.state = state;
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from './js/playback-manager.js';
 
 const { ipcRenderer } = require('electron');
@@ -54,13 +56,16 @@ window.addEventListener('DOMContentLoaded', () => {
             addSongsToLibrary([]);
             renderCurrentView();
         },
+        // ★★★ ここからが修正箇所です ★★★
         onSettingsLoaded: (settings) => {
             updateAudioDevices(settings.audioOutputId);
             if (typeof settings.volume === 'number') {
-                document.getElementById('main-player').volume = settings.volume;
                 elements.volumeSlider.value = settings.volume;
+                // アプリ起動時に保存された音量を適用する
+                applyMasterVolume();
             }
         },
+        // ★★★ ここまでが修正箇所です ★★★
         onPlayCountsUpdated: (counts) => {
             state.playCounts = counts;
             renderCurrentView();

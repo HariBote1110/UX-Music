@@ -4,6 +4,7 @@ const { ipcRenderer } = require('electron');
 let audioContext;
 let mainPlayerNode;
 let gainNode;
+let baseGain = 1.0; // ノーマライザーによって決定される基準音量を保持する変数
 
 let localPlayer;
 let ytPlayer;
@@ -14,6 +15,18 @@ let timeUpdateInterval;
 let onSongEndedCallback = () => {};
 let onNextSongCallback = () => {};
 let onPrevSongCallback = () => {};
+
+// ★★★ ここからが修正箇所です ★★★
+/**
+ * 現在の基準音量(baseGain)とマスター音量(スライダー)を組み合わせて最終的な音量を適用する
+ */
+export function applyMasterVolume() {
+    if (!gainNode) return;
+    const masterVolume = parseFloat(elements.volumeSlider.value); // 0.0 to 1.0
+    const volumeMultiplier = masterVolume * 2; // スライダーの値を0%〜200%の倍率に変換
+    gainNode.gain.value = baseGain * volumeMultiplier;
+}
+// ★★★ ここまでが修正箇所です ★★★
 
 export function initPlayer(playerElement, callbacks) {
     localPlayer = playerElement;
@@ -48,7 +61,7 @@ export function initPlayer(playerElement, callbacks) {
 
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
     elements.progressBar.addEventListener('input', seek);
-    elements.volumeSlider.addEventListener('input', setVolume);
+    elements.volumeSlider.addEventListener('input', setVolume); // setVolumeを再度有効化
     elements.audioOutputSelect.addEventListener('change', async (event) => {
         try {
             if (audioContext && typeof audioContext.setSinkId === 'function') {
@@ -108,7 +121,6 @@ function getYouTubePlayer(videoId) {
     return ytPlayerPromise;
 }
 
-// ★★★ ここからが修正箇所です ★★★
 export async function play(song) {
     await stop();
     if (!song) {
@@ -119,27 +131,20 @@ export async function play(song) {
         return;
     }
 
-    // ノーマライザーのターゲットラウドネス値 (LUFS)
     const TARGET_LOUDNESS = -23.0;
 
-    // ノーマライザー適用
     if (gainNode) {
         const savedLoudness = await ipcRenderer.invoke('get-loudness-value', song.path);
         
         if (typeof savedLoudness === 'number') {
             const gainDb = TARGET_LOUDNESS - savedLoudness;
-            // デシベルをリニア値に変換
-            const linearGain = Math.pow(10, gainDb / 20);
-
+            baseGain = Math.pow(10, gainDb / 20); // デシベルをリニア値に変換してbaseGainに設定
             console.log(`[ノーマライザー適用] ${song.path.split(/[/\\]/).pop()}: 元音量 ${savedLoudness.toFixed(2)} LUFS -> 補正 ${gainDb.toFixed(2)} dB`);
-            gainNode.gain.value = linearGain;
         } else {
-            // 解析データがない場合はゲインを1.0 (補正なし) にリセット
-            gainNode.gain.value = 1.0;
+            baseGain = 1.0; // 解析データがない場合は基準音量を1.0 (補正なし) にリセット
         }
+        applyMasterVolume(); // 新しい基準音量と現在のスライダー位置で音量を再適用
     }
-    // ★★★ ここまでが修正箇所です ★★★
-
 
     if ('mediaSession' in navigator) {
         const artworkSrc = song.artwork || '';
@@ -224,27 +229,19 @@ async function seek() {
     }
 }
 
+// ★★★ ここからが修正箇所です (setVolumeを復活・修正) ★★★
+/**
+ * 音量スライダーが動かされたときに呼ばれる
+ */
 async function setVolume() {
+    // 現在のスライダー位置に基づいてマスター音量を適用
+    applyMasterVolume(); 
+    
+    // スライダーの位置を記憶するために設定を保存
     const volume = parseFloat(elements.volumeSlider.value);
-
-    // ★★★ 修正: Web Audio API 利用時は音量スライダーの値を直接GainNodeに適用しないようにする
-    // ノーマライザーが基本の音量を決定し、音量スライダーは全体のマスターボリュームとして機能させるのが一般的
-    // 今回は簡易的な実装として、一旦コメントアウトし、今後の課題とする
-    
-    // if (currentSongType === 'youtube') {
-    //     const player = await getYouTubePlayer();
-    //     if (player && typeof player.setVolume === 'function') {
-    //         player.setVolume(volume * 100);
-    //     }
-    // } else {
-    //     if (gainNode) {
-    //         gainNode.gain.value = volume;
-    //     }
-    // }
-    
-    // UIの音量スライダーの値は設定として保存しておく
     ipcRenderer.send('save-settings', { volume: volume }); 
 }
+// ★★★ ここまでが修正箇所です ★★★
 
 function onPlayerStateChange(event) {
     const state = event.data;
