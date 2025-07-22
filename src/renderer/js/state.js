@@ -11,11 +11,12 @@ export const state = {
     playlists: [],
     playCounts: {},
     currentSongIndex: -1,
-    playbackQueue: [], // 現在再生中のキュー
-    originalQueueSource: [], // シャッフル前のキュー
+    playbackQueue: [],
+    originalQueueSource: [],
     playbackMode: PLAYBACK_MODES.NORMAL,
     isShuffled: false,
-    songWaitingForAnalysis: null, // 解析待ちの曲の情報を保持
+    songWaitingForAnalysis: null,
+    currentLyrics: null, // ★★★ この行を追加 ★★★
 };
 
 // UI要素を一元管理
@@ -62,4 +63,5 @@ export const elements = {
     artistDetailAlbumGrid: document.getElementById('artist-detail-album-grid'),
     notificationToast: document.getElementById('notification-toast'),
     notificationText: document.getElementById('notification-text'),
+    lyricsView: document.getElementById('lyrics-view'), // ★★★ この行を追加 ★★★
 };

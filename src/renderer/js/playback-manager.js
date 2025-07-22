@@ -2,7 +2,8 @@ import { state, elements, PLAYBACK_MODES } from './state.js';
 import { play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
 import { renderCurrentView } from './ui-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
-import { updateNowPlayingView } from './ui/now-playing.js'; // ★★★ インポート元を変更
+import { updateNowPlayingView } from './ui/now-playing.js';
+import { loadLyricsForSong } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
 
 export async function playSong(index, sourceList = null, forcePlay = false) {
@@ -51,6 +52,8 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     state.songWaitingForAnalysis = null;
     hideNotification();
     
+    loadLyricsForSong(songToPlay);
+    
     ipcRenderer.send('song-finished', songToPlay.path);
     state.currentSongIndex = index;
     
@@ -63,7 +66,7 @@ export function playNextSong() {
     if (state.playbackQueue.length === 0) return;
 
     if (state.playbackMode === PLAYBACK_MODES.LOOP_ONE) {
-        playSong(state.currentSongIndex, null, true); // 1曲リピートもforcePlay
+        playSong(state.currentSongIndex, null, true);
         return;
     }
 
@@ -75,6 +78,7 @@ export function playNextSong() {
         } else {
             stopSongInPlayer();
             updateNowPlayingView(null);
+            loadLyricsForSong(null);
             state.currentSongIndex = -1;
             renderCurrentView();
             return;

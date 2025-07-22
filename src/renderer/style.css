@@ -19,6 +19,9 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     flex-shrink: 0;
     border-left: 1px solid #282828;
     padding: 24px;
+    /* ★★★ 修正箇所: right-sidebarもflexコンテナにする ★★★ */
+    display: flex;
+    flex-direction: column;
 }
 .resizer-vertical {
     width: 5px;
@@ -32,7 +35,14 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 .resizer-vertical:hover {
     background-color: #1DB954;
 }
-#now-playing-container { display: flex; flex-direction: column; align-items: center; }
+#now-playing-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    /* ★★★ 修正箇所: heightがあふれないようにmin-heightを追加 ★★★ */
+    min-height: 0;
+}
 #now-playing-artwork-container {
     width: 100%;
     aspect-ratio: 1 / 1;
@@ -42,6 +52,7 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     margin-bottom: 24px;
     overflow: hidden;
     transition: aspect-ratio 0.3s ease;
+    flex-shrink: 0;
 }
 #now-playing-artwork-container.video-mode {
     aspect-ratio: 16 / 9;
@@ -54,7 +65,7 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     border: none;
     object-fit: cover;
 }
-#now-playing-details { width: 100%; text-align: left; }
+#now-playing-details { width: 100%; text-align: left; flex-shrink: 0; }
 #now-playing-title { font-size: 24px; font-weight: 700; color: #fff; margin: 0 0 8px 0; }
 #now-playing-artist { font-size: 16px; font-weight: 400; color: #b3b3b3; margin: 0; }
 #drop-zone { border: 2px dashed transparent; transition: border-color 0.3s; }
@@ -210,7 +221,6 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     box-shadow: 0 4px 60px rgba(0,0,0,0.5);
     background-color: #333;
     object-fit: cover;
-    /* ★★★ 修正箇所: display: flex を追加し、中央揃えにする ★★★ */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -254,8 +264,6 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     width: 100%;
     height: 100%;
 }
-
-/* ★★★ ここからが修正箇所です ★★★ */
 .playlist-artwork-container {
     width: 100%;
     aspect-ratio: 1 / 1;
@@ -269,8 +277,6 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
 }
-/* ★★★ ここまでが修正箇所です ★★★ */
-
 .playlist-artwork-container img {
     width: 100%;
     height: 100%;
@@ -427,4 +433,40 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 .context-menu-item:hover {
     background-color: #3a3a3a;
     color: #fff;
+}
+#lyrics-container {
+    width: 100%;
+    flex-grow: 1;
+    margin-top: 24px;
+    display: flex;
+    min-height: 0; /* ★★★ 修正箇所 ★★★ */
+}
+#lyrics-view {
+    width: 100%;
+    overflow-y: auto;
+    text-align: center;
+    font-size: 16px;
+    line-height: 2.2;
+    color: #b3b3b3;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: #555 #282828;
+}
+#lyrics-view p {
+    margin: 0;
+    padding: 2px 10px;
+    border-radius: 4px;
+    transition: color 0.3s, background-color 0.3s;
+}
+#lyrics-view p.active {
+    color: #fff;
+    font-weight: bold;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+.no-lyrics {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #888;
 }

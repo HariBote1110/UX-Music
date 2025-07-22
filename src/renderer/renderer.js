@@ -1,6 +1,5 @@
 import { initUI, renderCurrentView, addSongsToLibrary, updateAudioDevices } from './js/ui-manager.js';
 import { showPlaylist } from './js/ui/navigation.js';
-import { showNotification, hideNotification } from './js/ui/notification.js';
 import { initIPC } from './js/ipc.js';
 import { initNavigation } from './js/navigation.js';
 import { initModal, showModal } from './js/modal.js';
@@ -9,8 +8,10 @@ import { initPlayer, togglePlayPause, applyMasterVolume } from './js/player.js';
 import { state, elements } from './js/state.js';
 window.state = state;
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from './js/playback-manager.js';
+import { showNotification, hideNotification } from './js/ui/notification.js';
 
 const { ipcRenderer } = require('electron');
+const path = require('path'); // ★★★ この行を追加 ★★★
 
 window.addEventListener('DOMContentLoaded', () => {
     
@@ -51,7 +52,6 @@ window.addEventListener('DOMContentLoaded', () => {
     initModal();
     initPlaylists();
     
-    // ★★★ ここからが修正箇所です (IPCコールバックを通知トースト用に変更) ★★★
     initIPC(ipcRenderer, {
         onLibraryLoaded: (songs) => {
             state.library = songs || [];
@@ -102,7 +102,6 @@ window.addEventListener('DOMContentLoaded', () => {
             hideNotification(3000);
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
     
     // --- グローバルイベントリスナーの設定 ---
     if (navigator.mediaDevices && typeof navigator.mediaDevices.ondevicechange !== 'undefined') {
@@ -114,7 +113,6 @@ window.addEventListener('DOMContentLoaded', () => {
     elements.shuffleBtn.addEventListener('click', toggleShuffle);
     elements.loopBtn.addEventListener('click', toggleLoopMode);
 
-    // ★★★ ここからが修正箇所です (イベントリスナーを通知トースト用に変更) ★★★
     elements.addNetworkFolderBtn.addEventListener('click', () => {
         showModal({
             title: 'ネットワークフォルダのパス',
@@ -153,17 +151,33 @@ window.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         e.stopPropagation();
         elements.dropZone.classList.remove('drag-over');
-        const paths = Array.from(e.dataTransfer.files).map(f => f.path);
-        showNotification('ライブラリをスキャン中...');
-        try {
-            const songs = await ipcRenderer.invoke('scan-paths', paths);
-            addSongsToLibrary(songs);
-            showNotification(`${songs.length}曲が追加されました。`);
-        } finally {
-            hideNotification(3000);
+        
+        const files = Array.from(e.dataTransfer.files);
+        const musicExtensions = ['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.mp4'];
+        const lyricsExtensions = ['.lrc', '.txt'];
+
+        const musicFiles = files.filter(f => musicExtensions.includes(path.extname(f.name).toLowerCase()));
+        const lyricsFiles = files.filter(f => lyricsExtensions.includes(path.extname(f.name).toLowerCase()));
+
+        // 音楽ファイルの処理
+        if (musicFiles.length > 0) {
+            const musicPaths = musicFiles.map(f => f.path);
+            showNotification('ライブラリをスキャン中...');
+            try {
+                const songs = await ipcRenderer.invoke('scan-paths', musicPaths);
+                addSongsToLibrary(songs);
+                showNotification(`${songs.length}曲が追加されました。`);
+            } finally {
+                hideNotification(3000);
+            }
+        }
+
+        // 歌詞ファイルの処理
+        if (lyricsFiles.length > 0) {
+            const lyricsPaths = lyricsFiles.map(f => f.path);
+            ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
     elements.openSettingsBtn.addEventListener('click', async () => {
         const settings = await ipcRenderer.invoke('get-settings');

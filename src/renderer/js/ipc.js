@@ -1,4 +1,5 @@
 import { playSong } from './playback-manager.js';
+import { showNotification, hideNotification } from './ui/notification.js';
 
 export function initIPC(ipcRenderer, callbacks) {
     // --- IPCリスナー群 ---
@@ -58,6 +59,11 @@ export function initIPC(ipcRenderer, callbacks) {
         } else {
             console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
         }
+    });
+
+    ipcRenderer.on('lyrics-added-notification', (event, count) => {
+        showNotification(`${count}個の歌詞ファイルが追加されました。`);
+        hideNotification(3000);
     });
 
     // --- 初期データの要求 ---

@@ -1,10 +1,11 @@
 import { elements } from './state.js';
+import { updateSyncedLyrics } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
 
 let audioContext;
 let mainPlayerNode;
 let gainNode;
-let baseGain = 1.0; // ノーマライザーによって決定される基準音量を保持する変数
+let baseGain = 1.0;
 
 let localPlayer;
 let ytPlayer;
@@ -16,17 +17,12 @@ let onSongEndedCallback = () => {};
 let onNextSongCallback = () => {};
 let onPrevSongCallback = () => {};
 
-// ★★★ ここからが修正箇所です ★★★
-/**
- * 現在の基準音量(baseGain)とマスター音量(スライダー)を組み合わせて最終的な音量を適用する
- */
 export function applyMasterVolume() {
     if (!gainNode) return;
-    const masterVolume = parseFloat(elements.volumeSlider.value); // 0.0 to 1.0
-    const volumeMultiplier = masterVolume * 2; // スライダーの値を0%〜200%の倍率に変換
+    const masterVolume = parseFloat(elements.volumeSlider.value);
+    const volumeMultiplier = masterVolume * 2;
     gainNode.gain.value = baseGain * volumeMultiplier;
 }
-// ★★★ ここまでが修正箇所です ★★★
 
 export function initPlayer(playerElement, callbacks) {
     localPlayer = playerElement;
@@ -46,7 +42,11 @@ export function initPlayer(playerElement, callbacks) {
     }
 
     localPlayer.addEventListener('ended', onSongEndedCallback);
-    localPlayer.addEventListener('timeupdate', () => updateUiTime(localPlayer.currentTime, localPlayer.duration));
+    localPlayer.addEventListener('timeupdate', () => {
+        const currentTime = localPlayer.currentTime;
+        updateUiTime(currentTime, localPlayer.duration);
+        updateSyncedLyrics(currentTime);
+    });
     localPlayer.addEventListener('play', () => {
         elements.playPauseBtn.textContent = '⏸';
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
@@ -61,7 +61,7 @@ export function initPlayer(playerElement, callbacks) {
 
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
     elements.progressBar.addEventListener('input', seek);
-    elements.volumeSlider.addEventListener('input', setVolume); // setVolumeを再度有効化
+    elements.volumeSlider.addEventListener('input', setVolume);
     elements.audioOutputSelect.addEventListener('change', async (event) => {
         try {
             if (audioContext && typeof audioContext.setSinkId === 'function') {
@@ -138,12 +138,12 @@ export async function play(song) {
         
         if (typeof savedLoudness === 'number') {
             const gainDb = TARGET_LOUDNESS - savedLoudness;
-            baseGain = Math.pow(10, gainDb / 20); // デシベルをリニア値に変換してbaseGainに設定
+            baseGain = Math.pow(10, gainDb / 20);
             console.log(`[ノーマライザー適用] ${song.path.split(/[/\\]/).pop()}: 元音量 ${savedLoudness.toFixed(2)} LUFS -> 補正 ${gainDb.toFixed(2)} dB`);
         } else {
-            baseGain = 1.0; // 解析データがない場合は基準音量を1.0 (補正なし) にリセット
+            baseGain = 1.0;
         }
-        applyMasterVolume(); // 新しい基準音量と現在のスライダー位置で音量を再適用
+        applyMasterVolume();
     }
 
     if ('mediaSession' in navigator) {
@@ -229,19 +229,12 @@ async function seek() {
     }
 }
 
-// ★★★ ここからが修正箇所です (setVolumeを復活・修正) ★★★
-/**
- * 音量スライダーが動かされたときに呼ばれる
- */
 async function setVolume() {
-    // 現在のスライダー位置に基づいてマスター音量を適用
     applyMasterVolume(); 
     
-    // スライダーの位置を記憶するために設定を保存
     const volume = parseFloat(elements.volumeSlider.value);
     ipcRenderer.send('save-settings', { volume: volume }); 
 }
-// ★★★ ここまでが修正箇所です ★★★
 
 function onPlayerStateChange(event) {
     const state = event.data;
@@ -251,7 +244,9 @@ function onPlayerStateChange(event) {
         timeUpdateInterval = setInterval(async () => {
             const player = await getYouTubePlayer();
             if (player && typeof player.getCurrentTime === 'function') {
-                updateUiTime(player.getCurrentTime(), player.getDuration());
+                const currentTime = player.getCurrentTime();
+                updateUiTime(currentTime, player.getDuration());
+                updateSyncedLyrics(currentTime);
             }
         }, 500);
     } else {

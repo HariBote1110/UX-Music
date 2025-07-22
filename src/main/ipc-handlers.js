@@ -1,4 +1,4 @@
-const { ipcMain, dialog, Menu, shell, BrowserWindow } = require('electron');
+const { app, ipcMain, dialog, Menu, shell, BrowserWindow } = require('electron');
 const DataStore = require('./data-store');
 const { scanPaths, parseFiles, sanitize, analyzeLoudness } = require('./file-scanner');
 const ytdl = require('@distube/ytdl-core');
@@ -128,6 +128,67 @@ function registerIpcHandlers() {
         return loudnessData[songPath] || null;
     });
 
+    const lyricsDir = path.join(app.getPath('userData'), 'Lyrics');
+    if (!fs.existsSync(lyricsDir)) {
+        fs.mkdirSync(lyricsDir, { recursive: true });
+    }
+
+    ipcMain.on('handle-lyrics-drop', (event, filePaths) => {
+        let count = 0;
+        filePaths.forEach(filePath => {
+            const fileName = path.basename(filePath);
+            const destPath = path.join(lyricsDir, fileName);
+            try {
+                fs.copyFileSync(filePath, destPath);
+                count++;
+            } catch (error) {
+                console.error(`歌詞ファイルのコピーに失敗: ${fileName}`, error);
+            }
+        });
+        if (count > 0) {
+            sendToAllWindows('lyrics-added-notification', count);
+        }
+    });
+
+    // ★★★ ここからが修正箇所です ★★★
+    ipcMain.handle('get-lyrics', (event, song) => {
+        const lyricsDir = path.join(app.getPath('userData'), 'Lyrics');
+
+        // 検索ヘルパー関数
+        const findLyricsFile = (baseName) => {
+            const sanitizedName = baseName.replace(/_/g, ' '); // アンダースコアをスペースに変換
+            console.log(`[歌詞検索] "${sanitizedName}" で検索中...`);
+            
+            const lrcPath = path.join(lyricsDir, `${sanitizedName}.lrc`);
+            if (fs.existsSync(lrcPath)) {
+                console.log(`[歌詞検索] "${sanitizedName}.lrc" が見つかりました。`);
+                return { type: 'lrc', content: fs.readFileSync(lrcPath, 'utf-8') };
+            }
+
+            const txtPath = path.join(lyricsDir, `${sanitizedName}.txt`);
+            if (fs.existsSync(txtPath)) {
+                console.log(`[歌詞検索] "${sanitizedName}.txt" が見つかりました。`);
+                return { type: 'txt', content: fs.readFileSync(txtPath, 'utf-8') };
+            }
+            return null;
+        };
+
+        // 試行1: 曲のファイル名から検索
+        const fileNameBase = path.basename(song.path, path.extname(song.path));
+        let result = findLyricsFile(fileNameBase);
+        if (result) return result;
+
+        // 試行2: 曲のタグのタイトルから検索
+        if (song.title && song.title !== fileNameBase) {
+            result = findLyricsFile(song.title);
+            if (result) return result;
+        }
+
+        console.log(`[歌詞検索] どの名前でも歌詞ファイルが見つかりませんでした。`);
+        return null;
+    });
+    // ★★★ ここまでが修正箇所です ★★★
+
     ipcMain.on('show-playlist-song-context-menu', (event, { playlistName, song }) => {
         const window = BrowserWindow.fromWebContents(event.sender);
         if (!window) return;
@@ -145,7 +206,6 @@ function registerIpcHandlers() {
         menu.popup({ window });
     });
 
-    // ★★★ ここからが修正箇所です (import-youtube-playlist ハンドラ全体を修正) ★★★
     ipcMain.on('import-youtube-playlist', async (event, playlistUrl) => {
         const window = BrowserWindow.fromWebContents(event.sender);
         try {
@@ -157,7 +217,6 @@ function registerIpcHandlers() {
             const total = playlist.items.length;
             const playlistTitle = sanitize(playlist.title);
             
-            // プレイリストを作成し、UIを即時更新
             const createResult = playlistManager.createPlaylist(playlistTitle);
             if (createResult.success) {
                 const playlistsWithArtwork = getPlaylistsWithArtwork();
@@ -230,15 +289,12 @@ function registerIpcHandlers() {
                     };
                 }
                 
-                // ライブラリへの追加処理
                 const addedSongs = addSongsToLibraryAndSave([newSong]);
                 
-                // ライブラリに新規追加された曲はUIに通知
                 if (addedSongs.length > 0) {
                     if (window && !window.isDestroyed()) event.sender.send('youtube-link-processed', addedSongs[0]);
                 }
                 
-                // ★バグ修正: 新規・既存問わず、必ずプレイリストに追加する
                 playlistManager.addSongToPlaylist(playlistTitle, newSong);
             }
         } catch (error) {
@@ -246,12 +302,10 @@ function registerIpcHandlers() {
             if (window && !window.isDestroyed()) event.sender.send('show-error', 'プレイリストのインポートに失敗しました。');
         } finally {
             if (window && !window.isDestroyed()) event.sender.send('playlist-import-finished');
-            // ★バグ修正: インポート完了後にもう一度プレイリスト一覧を更新してアートワークを反映
             const playlistsWithArtwork = getPlaylistsWithArtwork();
             sendToAllWindows('playlists-updated', playlistsWithArtwork);
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
     ipcMain.on('add-youtube-link', async (event, url) => {
         const window = BrowserWindow.fromWebContents(event.sender);

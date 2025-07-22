@@ -2,6 +2,9 @@ import { state, elements } from '../state.js';
 import { playSong } from '../playback-manager.js';
 import { formatTime } from './utils.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
+// ★★★ ここからが修正箇所です ★★★
+import { showAlbum } from './navigation.js';
+// ★★★ ここまでが修正箇所です ★★★
 const { ipcRenderer } = require('electron');
 
 export function renderAlbumDetailView(album) {
