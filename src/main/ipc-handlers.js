@@ -1,6 +1,6 @@
 const { ipcMain, dialog, Menu, shell, BrowserWindow } = require('electron');
 const DataStore = require('./data-store');
-const { scanPaths, parseFiles, sanitize, analyzeLoudness } = require('./file-scanner'); // analyzeLoudness をインポート
+const { scanPaths, parseFiles, sanitize, analyzeLoudness } = require('./file-scanner');
 const ytdl = require('@distube/ytdl-core');
 const streamManager = require('./stream-manager');
 const path = require('path');
@@ -8,10 +8,10 @@ const fs = require('fs');
 const playlistManager = require('./playlist-manager');
 const ytpl = require('ytpl');
 
-const loudnessStore = new DataStore('loudness.json');
 const playCountsStore = new DataStore('playcounts.json');
 const settingsStore = new DataStore('settings.json');
 const libraryStore = new DataStore('library.json');
+const loudnessStore = new DataStore('loudness.json');
 
 function findHubUrl(description) {
     if (typeof description !== 'string') return null;
@@ -31,14 +31,14 @@ function registerIpcHandlers() {
     };
 
     ipcMain.on('request-initial-library', (event) => {
-        const songs = libraryStore.load();
+        const songs = libraryStore.load() || [];
         if (event.sender && !event.sender.isDestroyed()) {
             event.sender.send('load-library', songs);
         }
     });
 
     function addSongsToLibraryAndSave(newSongs) {
-        const library = libraryStore.load();
+        const library = libraryStore.load() || [];
         const existingPaths = new Set(library.map(s => s.path));
         const uniqueNewSongs = newSongs.filter(s => !existingPaths.has(s.path));
         if (uniqueNewSongs.length > 0) {
@@ -49,7 +49,7 @@ function registerIpcHandlers() {
     }
     
     const upgradeAndCleanup = (sourceURL) => {
-        const library = libraryStore.load();
+        const library = libraryStore.load() || [];
         const existingSong = library.find(s => s.sourceURL === sourceURL);
         if (existingSong && existingSong.path.toLowerCase().endsWith('.m4a')) {
             if (fs.existsSync(existingSong.path)) {
@@ -73,6 +73,8 @@ function registerIpcHandlers() {
         const sourceFiles = await scanPaths(paths);
         const songsWithMetadata = await parseFiles(sourceFiles);
         const newSongObjects = [];
+        const loudnessData = loudnessStore.load();
+
         for (const song of songsWithMetadata) {
             const primaryArtist = song.albumartist || song.artist || 'Unknown Artist';
             const artistDir = sanitize(primaryArtist);
@@ -84,11 +86,15 @@ function registerIpcHandlers() {
             const originalFileName = path.basename(song.path);
             const safeFileName = sanitize(originalFileName);
             const destPath = path.join(destDir, safeFileName);
+
             if (!fs.existsSync(destPath)) {
                 try {
                     fs.copyFileSync(song.path, destPath);
-                    // ★★★ 修正箇所: ファイル追加時のラウドネス解析を削除 ★★★
-                    // await analyzeLoudness(destPath); 
+                    const result = await analyzeLoudness(destPath);
+                    sendToAllWindows('loudness-analysis-result', result);
+                    if (result.success) {
+                        loudnessData[destPath] = result.loudness;
+                    }
                 } catch (error) {
                     console.error(`Failed to copy ${originalFileName}:`, error);
                     continue;
@@ -97,32 +103,30 @@ function registerIpcHandlers() {
             song.path = destPath;
             newSongObjects.push(song);
         }
+        
+        loudnessStore.save(loudnessData);
         const addedSongs = addSongsToLibraryAndSave(newSongObjects);
         return addedSongs;
     });
 
-// 'request-loudness-analysis' のハンドラを修正
-ipcMain.on('request-loudness-analysis', async (event, songPath) => {
-    // ★★★ ここからが修正箇所です ★★★
-    // 既に解析済みの場合は再度解析しない
-    const loudnessData = loudnessStore.load();
-    if (loudnessData[songPath]) {
-        // console.log(`[ラウドネス] ${path.basename(songPath)} は解析済みです。`);
-        return;
-    }
+    ipcMain.on('request-loudness-analysis', async (event, songPath) => {
+        const loudnessData = loudnessStore.load();
+        if (loudnessData[songPath]) {
+            return;
+        }
+        const result = await analyzeLoudness(songPath);
+        sendToAllWindows('loudness-analysis-result', result);
+        if (result.success) {
+            const currentLoudnessData = loudnessStore.load();
+            currentLoudnessData[songPath] = result.loudness;
+            loudnessStore.save(currentLoudnessData);
+        }
+    });
 
-    const result = await analyzeLoudness(songPath);
-    
-    // 解析結果をレンダラープロセスに送信
-    sendToAllWindows('loudness-analysis-result', result);
-
-    // 解析が成功した場合、結果を loudness.json に保存
-    if (result.success) {
-        loudnessData[songPath] = result.loudness;
-        loudnessStore.save(loudnessData);
-    }
-    // ★★★ ここまでが修正箇所です ★★★
-});
+    ipcMain.handle('get-loudness-value', (event, songPath) => {
+        const loudnessData = loudnessStore.load();
+        return loudnessData[songPath] || null;
+    });
 
     ipcMain.on('show-playlist-song-context-menu', (event, { playlistName, song }) => {
         const window = BrowserWindow.fromWebContents(event.sender);
@@ -141,6 +145,7 @@ ipcMain.on('request-loudness-analysis', async (event, songPath) => {
         menu.popup({ window });
     });
 
+    // ★★★ ここからが修正箇所です (import-youtube-playlist ハンドラ全体を修正) ★★★
     ipcMain.on('import-youtube-playlist', async (event, playlistUrl) => {
         const window = BrowserWindow.fromWebContents(event.sender);
         try {
@@ -151,7 +156,13 @@ ipcMain.on('request-loudness-analysis', async (event, songPath) => {
             const playlist = await ytpl(playlistUrl, { limit: Infinity });
             const total = playlist.items.length;
             const playlistTitle = sanitize(playlist.title);
-            playlistManager.createPlaylist(playlistTitle);
+            
+            // プレイリストを作成し、UIを即時更新
+            const createResult = playlistManager.createPlaylist(playlistTitle);
+            if (createResult.success) {
+                const playlistsWithArtwork = getPlaylistsWithArtwork();
+                sendToAllWindows('playlists-updated', playlistsWithArtwork);
+            }
 
             for (let i = 0; i < total; i++) {
                 const item = playlist.items[i];
@@ -166,9 +177,11 @@ ipcMain.on('request-loudness-analysis', async (event, songPath) => {
                 const hubUrl = findHubUrl(videoInfo.videoDetails.description);
                 const settings = settingsStore.load();
                 const mode = settings.youtubePlaybackMode || 'download';
+                
                 if (mode === 'download' && (settings.youtubeDownloadQuality || 'full') === 'full') {
                      upgradeAndCleanup(item.url);
                 }
+                
                 let newSong;
                 if (mode === 'download') {
                     const qualitySetting = settings.youtubeDownloadQuality || 'full';
@@ -216,20 +229,29 @@ ipcMain.on('request-loudness-analysis', async (event, songPath) => {
                         hubUrl: hubUrl
                     };
                 }
+                
+                // ライブラリへの追加処理
                 const addedSongs = addSongsToLibraryAndSave([newSong]);
+                
+                // ライブラリに新規追加された曲はUIに通知
                 if (addedSongs.length > 0) {
-                    const songToAdd = addedSongs[0];
-                    if (window && !window.isDestroyed()) event.sender.send('youtube-link-processed', songToAdd);
-                    playlistManager.addSongToPlaylist(playlistTitle, songToAdd);
+                    if (window && !window.isDestroyed()) event.sender.send('youtube-link-processed', addedSongs[0]);
                 }
+                
+                // ★バグ修正: 新規・既存問わず、必ずプレイリストに追加する
+                playlistManager.addSongToPlaylist(playlistTitle, newSong);
             }
         } catch (error) {
             console.error('Playlist import error:', error);
             if (window && !window.isDestroyed()) event.sender.send('show-error', 'プレイリストのインポートに失敗しました。');
         } finally {
             if (window && !window.isDestroyed()) event.sender.send('playlist-import-finished');
+            // ★バグ修正: インポート完了後にもう一度プレイリスト一覧を更新してアートワークを反映
+            const playlistsWithArtwork = getPlaylistsWithArtwork();
+            sendToAllWindows('playlists-updated', playlistsWithArtwork);
         }
     });
+    // ★★★ ここまでが修正箇所です ★★★
 
     ipcMain.on('add-youtube-link', async (event, url) => {
         const window = BrowserWindow.fromWebContents(event.sender);
@@ -346,24 +368,42 @@ ipcMain.on('request-loudness-analysis', async (event, songPath) => {
     ipcMain.handle('get-all-playlists', () => {
         return playlistManager.getAllPlaylists();
     });
+    
+    function getPlaylistsWithArtwork() {
+        const playlistNames = playlistManager.getAllPlaylists();
+        const mainLibrary = libraryStore.load() || [];
+        const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
+        return playlistNames.map(name => {
+            const songPaths = playlistManager.getPlaylistSongs(name);
+            const artworks = songPaths
+                .map(path => libraryMap.get(path))
+                .filter(song => song && song.artwork)
+                .slice(0, 4)
+                .map(song => song.artwork);
+            return { name, artworks };
+        });
+    }
+
     ipcMain.handle('create-playlist', (event, name) => {
         const result = playlistManager.createPlaylist(name);
         if (result.success) {
-            const playlistNames = playlistManager.getAllPlaylists();
-            const mainLibrary = libraryStore.load();
-            const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
-            const playlistsWithArtwork = playlistNames.map(name => {
-                const songPaths = playlistManager.getPlaylistSongs(name);
-                const artworks = songPaths
-                    .map(path => libraryMap.get(path))
-                    .filter(song => song && song.artwork)
-                    .slice(0, 4)
-                    .map(song => song.artwork);
-                return { name, artworks };
-            });
+            const playlistsWithArtwork = getPlaylistsWithArtwork();
             sendToAllWindows('playlists-updated', playlistsWithArtwork);
         }
         return result;
+    });
+
+    ipcMain.handle('delete-playlist', (event, name) => {
+        const result = playlistManager.deletePlaylist(name);
+        if (result.success) {
+            const playlistsWithArtwork = getPlaylistsWithArtwork();
+            sendToAllWindows('playlists-updated', playlistsWithArtwork);
+        }
+        return result;
+    });
+
+    ipcMain.handle('update-playlist-song-order', (event, { playlistName, newOrder }) => {
+        return playlistManager.updateSongOrderInPlaylist(playlistName, newOrder);
     });
 
     ipcMain.on('show-song-context-menu-in-library', (event, song) => {
@@ -401,7 +441,7 @@ ipcMain.on('request-loudness-analysis', async (event, songPath) => {
                         if (fs.existsSync(song.path)) {
                             fs.unlinkSync(song.path);
                         }
-                        const library = libraryStore.load();
+                        const library = libraryStore.load() || [];
                         const updatedLibrary = library.filter(s => s.path !== song.path);
                         libraryStore.save(updatedLibrary);
                         const allPlaylists = playlistManager.getAllPlaylists();
@@ -421,28 +461,6 @@ ipcMain.on('request-loudness-analysis', async (event, songPath) => {
         menu.popup({ window });
     });
 
-    ipcMain.on('show-song-context-menu', (event, song) => {
-        const window = BrowserWindow.fromWebContents(event.sender);
-        if (!window) return;
-        const playlists = playlistManager.getAllPlaylists();
-        const addToPlaylistSubmenu = playlists.map(name => {
-            return {
-                label: name,
-                click: () => {
-                    playlistManager.addSongToPlaylist(name, song);
-                }
-            };
-        });
-        const template = [
-            {
-                label: 'プレイリストに追加',
-                submenu: addToPlaylistSubmenu.length > 0 ? addToPlaylistSubmenu : [{ label: '（追加可能なプレイリスト無し）', enabled: false }]
-            },
-        ];
-        const menu = Menu.buildFromTemplate(template);
-        menu.popup({ window });
-    });
-
     ipcMain.on('save-settings', (event, settings) => {
         const currentSettings = settingsStore.load();
         const newSettings = { ...currentSettings, ...settings };
@@ -453,7 +471,7 @@ ipcMain.on('request-loudness-analysis', async (event, songPath) => {
         if (!songPaths || songPaths.length === 0) {
             return [];
         }
-        const mainLibrary = libraryStore.load();
+        const mainLibrary = libraryStore.load() || [];
         const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
         const songs = songPaths
             .map(path => libraryMap.get(path))
@@ -461,18 +479,7 @@ ipcMain.on('request-loudness-analysis', async (event, songPath) => {
         return songs;
     });
     ipcMain.on('request-playlists-with-artwork', (event) => {
-        const playlistNames = playlistManager.getAllPlaylists();
-        const mainLibrary = libraryStore.load();
-        const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
-        const playlistsWithArtwork = playlistNames.map(name => {
-            const songPaths = playlistManager.getPlaylistSongs(name);
-            const artworks = songPaths
-                .map(path => libraryMap.get(path))
-                .filter(song => song && song.artwork)
-                .slice(0, 4)
-                .map(song => song.artwork);
-            return { name, artworks };
-        });
+        const playlistsWithArtwork = getPlaylistsWithArtwork();
         if (event.sender && !event.sender.isDestroyed()) {
              event.sender.send('playlists-updated', playlistsWithArtwork);
         }
@@ -480,10 +487,6 @@ ipcMain.on('request-loudness-analysis', async (event, songPath) => {
     ipcMain.handle('get-settings', () => {
         return settingsStore.load();
     });
-    ipcMain.handle('get-loudness-value', (event, songPath) => {
-    const loudnessData = loudnessStore.load();
-    return loudnessData[songPath] || null; // 保存されていれば値を、なければnullを返す
-});
 }
 
 module.exports = { registerIpcHandlers };

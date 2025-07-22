@@ -1,9 +1,10 @@
-import { initUI, renderCurrentView, showPlaylist, addSongsToLibrary, updateAudioDevices } from './js/ui-manager.js';
+import { initUI, renderCurrentView, addSongsToLibrary, updateAudioDevices } from './js/ui-manager.js';
+import { showPlaylist } from './js/ui/navigation.js';
+import { showNotification, hideNotification } from './js/ui/notification.js';
 import { initIPC } from './js/ipc.js';
 import { initNavigation } from './js/navigation.js';
 import { initModal, showModal } from './js/modal.js';
 import { initPlaylists } from './js/playlist.js';
-// ★★★ 修正箇所: applyMasterVolume をインポート ★★★
 import { initPlayer, togglePlayPause, applyMasterVolume } from './js/player.js';
 import { state, elements } from './js/state.js';
 window.state = state;
@@ -50,27 +51,29 @@ window.addEventListener('DOMContentLoaded', () => {
     initModal();
     initPlaylists();
     
+    // ★★★ ここからが修正箇所です (IPCコールバックを通知トースト用に変更) ★★★
     initIPC(ipcRenderer, {
         onLibraryLoaded: (songs) => {
             state.library = songs || [];
             addSongsToLibrary([]);
             renderCurrentView();
         },
-        // ★★★ ここからが修正箇所です ★★★
         onSettingsLoaded: (settings) => {
             updateAudioDevices(settings.audioOutputId);
             if (typeof settings.volume === 'number') {
                 elements.volumeSlider.value = settings.volume;
-                // アプリ起動時に保存された音量を適用する
                 applyMasterVolume();
             }
         },
-        // ★★★ ここまでが修正箇所です ★★★
         onPlayCountsUpdated: (counts) => {
             state.playCounts = counts;
             renderCurrentView();
         },
-        onYoutubeLinkProcessed: (song) => addSongsToLibrary([song]),
+        onYoutubeLinkProcessed: (song) => {
+            showNotification(`「${song.title}」が追加されました。`);
+            hideNotification(3000);
+            addSongsToLibrary([song]);
+        },
         onPlaylistsUpdated: (playlists) => {
             state.playlists = playlists;
             renderCurrentView();
@@ -82,26 +85,24 @@ window.addEventListener('DOMContentLoaded', () => {
              ipcRenderer.send('request-initial-library');
         },
         onShowLoading: (text) => {
-            elements.loadingOverlay.querySelector('.loading-text').textContent = text || '処理中...';
-            elements.loadingOverlay.classList.remove('hidden');
+            showNotification(text || '処理中...');
         },
         onHideLoading: () => {
-            elements.loadingOverlay.classList.add('hidden');
+            // hideNotification は完了メッセージ表示後などに個別で呼ぶので、ここでは何もしない
         },
         onShowError: (message) => {
             alert(message);
         },
         onPlaylistImportProgress: (progress) => {
             const text = `${progress.total}曲中 ${progress.current}曲目: ${progress.title}`;
-            elements.loadingOverlay.querySelector('.loading-text').textContent = text;
-            if (elements.loadingOverlay.classList.contains('hidden')) {
-                elements.loadingOverlay.classList.remove('hidden');
-            }
+            showNotification(text);
         },
         onPlaylistImportFinished: () => {
-            elements.loadingOverlay.classList.add('hidden');
+            showNotification('プレイリストのインポートが完了しました。');
+            hideNotification(3000);
         }
     });
+    // ★★★ ここまでが修正箇所です ★★★
     
     // --- グローバルイベントリスナーの設定 ---
     if (navigator.mediaDevices && typeof navigator.mediaDevices.ondevicechange !== 'undefined') {
@@ -113,21 +114,24 @@ window.addEventListener('DOMContentLoaded', () => {
     elements.shuffleBtn.addEventListener('click', toggleShuffle);
     elements.loopBtn.addEventListener('click', toggleLoopMode);
 
+    // ★★★ ここからが修正箇所です (イベントリスナーを通知トースト用に変更) ★★★
     elements.addNetworkFolderBtn.addEventListener('click', () => {
         showModal({
             title: 'ネットワークフォルダのパス',
             placeholder: '\\\\ServerName\\ShareName',
             onOk: async (path) => {
-                elements.loadingOverlay.classList.remove('hidden');
+                showNotification('ライブラリをスキャン中...');
                 try {
                     const songs = await ipcRenderer.invoke('scan-paths', [path]);
                     addSongsToLibrary(songs);
+                    showNotification(`${songs.length}曲が追加されました。`);
                 } finally {
-                    elements.loadingOverlay.classList.add('hidden');
+                    hideNotification(3000);
                 }
             }
         });
     });
+
     elements.addYoutubeBtn.addEventListener('click', () => {
         showModal({
             title: 'YouTubeのリンク',
@@ -150,14 +154,16 @@ window.addEventListener('DOMContentLoaded', () => {
         e.stopPropagation();
         elements.dropZone.classList.remove('drag-over');
         const paths = Array.from(e.dataTransfer.files).map(f => f.path);
-        elements.loadingOverlay.classList.remove('hidden');
+        showNotification('ライブラリをスキャン中...');
         try {
             const songs = await ipcRenderer.invoke('scan-paths', paths);
             addSongsToLibrary(songs);
+            showNotification(`${songs.length}曲が追加されました。`);
         } finally {
-            elements.loadingOverlay.classList.add('hidden');
+            hideNotification(3000);
         }
     });
+    // ★★★ ここまでが修正箇所です ★★★
 
     elements.openSettingsBtn.addEventListener('click', async () => {
         const settings = await ipcRenderer.invoke('get-settings');

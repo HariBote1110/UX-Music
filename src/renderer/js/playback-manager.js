@@ -1,6 +1,8 @@
 import { state, elements, PLAYBACK_MODES } from './state.js';
 import { play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
-import { updateNowPlayingView, renderCurrentView, showNotification, hideNotification } from './ui-manager.js';
+import { renderCurrentView } from './ui-manager.js';
+import { showNotification, hideNotification } from './ui/notification.js';
+import { updateNowPlayingView } from './ui/now-playing.js'; // ★★★ インポート元を変更
 const { ipcRenderer } = require('electron');
 
 export async function playSong(index, sourceList = null, forcePlay = false) {

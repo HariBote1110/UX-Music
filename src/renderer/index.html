@@ -17,12 +17,6 @@
                 <a href="#" class="nav-link" data-view="playlist-view">プレイリスト</a>
                 <a href="#" class="nav-link" data-view="artist-view">アーティスト</a>
             </div>
-            <p>プレイリスト</p>
-            <div class="playlist-header">
-                <button id="create-playlist-btn" title="新規プレイリスト作成">+</button>
-            </div>
-            <ul id="playlist-list">
-            </ul>
             <div class="sidebar-actions">
                 <button id="add-network-folder-btn">+ ネットワークフォルダを追加</button>
                 <button id="add-youtube-btn">+ YouTubeリンクを追加</button>
@@ -67,21 +61,11 @@
                     <div class="detail-info">
                         <h1 id="artist-detail-name">アーティスト名</h1>
                         <p id="artist-detail-meta">メタ情報</p>
-                        <div class="detail-actions">
-                            <button class="play-all-btn">▶ すべて再生</button>
-                        </div>
                     </div>
                 </div>
-                <div id="artist-detail-list-header" class="music-list-header">
-                    <div class="header-item">#</div>
-                    <div class="header-item">タイトル</div>
-                    <div class="header-item">アーティスト</div>
-                    <div class="header-item">アルバム</div>
-                    <div class="header-item">再生時間</div>
-                    <div class="header-item">再生数</div>
-                </div>
-                <div id="artist-detail-list" class="music-list">
-                </div>
+                <h2>アルバム</h2>
+                <div id="artist-detail-album-grid" class="album-grid">
+                    </div>
             </div>
 
             <div id="album-detail-view" class="view-container hidden">
@@ -170,7 +154,7 @@
         </div>
         <div class="volume-container">
             <span id="volume-icon">🔊</span>
-            <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
+            <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5">
         </div>
         <div class="device-container">
             <select id="audio-output-select"></select>

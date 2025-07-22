@@ -93,28 +93,22 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 
 #music-list .song-index,
 #p-detail-list .song-index,
-#a-detail-list .song-index,
-#artist-detail-list .song-index { flex: 0 0 50px; color: #888; }
+#a-detail-list .song-index { flex: 0 0 50px; color: #888; }
 #music-list .song-title,
 #p-detail-list .song-title,
-#a-detail-list .song-title,
-#artist-detail-list .song-title { flex: 5; display: flex; align-items: center; }
+#a-detail-list .song-title { flex: 5; display: flex; align-items: center; }
 #music-list .song-artist,
 #p-detail-list .song-artist,
-#a-detail-list .song-artist,
-#artist-detail-list .song-artist { flex: 3; }
+#a-detail-list .song-artist { flex: 3; }
 #music-list .song-album,
 #p-detail-list .song-album,
-#a-detail-list .song-album,
-#artist-detail-list .song-album { flex: 3; }
+#a-detail-list .song-album { flex: 3; }
 #music-list .song-duration,
 #p-detail-list .song-duration,
-#a-detail-list .song-duration,
-#artist-detail-list .song-duration { flex: 1; text-align: right; }
+#a-detail-list .song-duration { flex: 1; text-align: right; }
 #music-list .song-play-count,
 #p-detail-list .song-play-count,
-#a-detail-list .song-play-count,
-#artist-detail-list .song-play-count { flex: 1; text-align: right; padding-right: 10px; }
+#a-detail-list .song-play-count { flex: 1; text-align: right; padding-right: 10px; }
 
 .artwork-small { width: 40px; height: 40px; margin-right: 16px; border-radius: 4px; background-color: #333; object-fit: cover; }
 .song-item.playing { background-color: #3a3a3a; color: #1DB954; }
@@ -172,19 +166,19 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 .view-header h1 { margin: 0; }
 .header-button { background-color: #333; color: #fff; border: none; border-radius: 20px; padding: 8px 16px; font-size: 14px; font-weight: bold; cursor: pointer; }
 .header-button:hover { background-color: #444; }
-#album-grid, #playlist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 24px; }
+
+#album-grid, #playlist-grid, #artist-grid, .album-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 24px;
+}
+
 .album-grid-item, .playlist-grid-item { background-color: #181818; border-radius: 8px; padding: 16px; cursor: pointer; transition: background-color 0.2s; }
 .album-grid-item:hover, .playlist-grid-item:hover { background-color: #282828; }
 .album-artwork { width: 100%; aspect-ratio: 1 / 1; border-radius: 4px; object-fit: cover; background-color: #333; margin-bottom: 12px; }
 .album-title, .playlist-title { color: #fff; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .album-artist { color: #b3b3b3; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.playlist-icon { width: 100%; aspect-ratio: 1 / 1; border-radius: 4px; background: linear-gradient(135deg, #450af5, #c4efd9); margin-bottom: 12px; display: flex; justify-content: center; align-items: center; font-size: 50px; }
-.playlist-header { display: flex; justify-content: flex-end; margin-bottom: 8px; }
-#create-playlist-btn { background: none; border: 1px solid #888; color: #888; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-size: 16px; line-height: 20px; text-align: center; }
-#create-playlist-btn:hover { color: #fff; border-color: #fff; }
-#playlist-list { list-style: none; padding: 0; margin: 0; max-height: 150px; overflow-y: auto; }
-#playlist-list li { padding: 8px 12px; color: #b3b3b3; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#playlist-list li:hover { color: #fff; background-color: #282828; }
+
 #modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
 #modal-overlay.hidden { display: none; }
 #modal { background-color: #282828; padding: 25px; border-radius: 8px; width: 100%; max-width: 500px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
@@ -216,6 +210,10 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     box-shadow: 0 4px 60px rgba(0,0,0,0.5);
     background-color: #333;
     object-fit: cover;
+    /* ★★★ 修正箇所: display: flex を追加し、中央揃えにする ★★★ */
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 .detail-info h1 {
     font-size: 32px;
@@ -256,17 +254,23 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     width: 100%;
     height: 100%;
 }
+
+/* ★★★ ここからが修正箇所です ★★★ */
 .playlist-artwork-container {
     width: 100%;
     aspect-ratio: 1 / 1;
     border-radius: 4px;
     margin-bottom: 12px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
     background-color: #282828;
     overflow: hidden;
 }
+.playlist-artwork-container.grid-collage {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+/* ★★★ ここまでが修正箇所です ★★★ */
+
 .playlist-artwork-container img {
     width: 100%;
     height: 100%;
@@ -342,11 +346,6 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     border-color: #777;
 }
 
-#artist-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 24px;
-}
 .artist-grid-item {
     background-color: #181818;
     border-radius: 8px;
@@ -380,11 +379,6 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
 #artist-detail-view h2 {
     margin-top: 40px;
 }
-.album-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 24px;
-}
 
 #notification-toast {
     position: fixed;
@@ -410,4 +404,27 @@ body, html { margin: 0; padding: 0; height: 100vh; width: 100vw; background-colo
     opacity: 0;
     visibility: hidden;
     transform: translateY(20px);
+}
+.song-item.dragging {
+    opacity: 0.5;
+    background: #535353;
+}
+.context-menu {
+    position: fixed;
+    z-index: 10000;
+    background-color: #282828;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    padding: 5px 0;
+    min-width: 150px;
+}
+.context-menu-item {
+    padding: 10px 15px;
+    color: #b3b3b3;
+    cursor: pointer;
+    font-size: 14px;
+}
+.context-menu-item:hover {
+    background-color: #3a3a3a;
+    color: #fff;
 }

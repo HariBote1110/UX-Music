@@ -1,8 +1,10 @@
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
+const DataStore = require('./data-store');
 
 const playlistsDir = path.join(app.getPath('userData'), 'Playlists');
+const playlistOrderStore = new DataStore('playlist-order.json');
 
 if (!fs.existsSync(playlistsDir)) {
     fs.mkdirSync(playlistsDir, { recursive: true });
@@ -10,9 +12,16 @@ if (!fs.existsSync(playlistsDir)) {
 
 function getAllPlaylists() {
     const files = fs.readdirSync(playlistsDir);
-    return files
+    const playlistNames = files
         .filter(file => file.endsWith('.m3u8'))
         .map(file => path.basename(file, '.m3u8'));
+
+    const savedOrder = playlistOrderStore.load().order || [];
+    
+    const orderedPlaylists = savedOrder.filter(name => playlistNames.includes(name));
+    const newPlaylists = playlistNames.filter(name => !savedOrder.includes(name));
+    
+    return [...orderedPlaylists, ...newPlaylists.sort()];
 }
 
 function createPlaylist(name) {
@@ -30,7 +39,24 @@ function createPlaylist(name) {
     }
 }
 
-// ★★★ この関数に処理を実装 ★★★
+function deletePlaylist(name) {
+    if (!name) return { success: false, message: 'Playlist name is empty.' };
+    const playlistPath = path.join(playlistsDir, `${name}.m3u8`);
+    if (!fs.existsSync(playlistPath)) {
+        return { success: false, message: 'Playlist not found.' };
+    }
+    try {
+        fs.unlinkSync(playlistPath);
+        const savedOrder = playlistOrderStore.load().order || [];
+        const newOrder = savedOrder.filter(pName => pName !== name);
+        playlistOrderStore.save({ order: newOrder });
+        return { success: true };
+    } catch (error) {
+        console.error(`Failed to delete playlist ${name}:`, error);
+        return { success: false, message: error.message };
+    }
+}
+
 function addSongToPlaylist(playlistName, song) {
     if (!playlistName || !song || !song.path) return { success: false };
 
@@ -40,19 +66,16 @@ function addSongToPlaylist(playlistName, song) {
     }
 
     try {
-        // m3u8形式のメタ情報行を作成
         const duration = Math.round(song.duration || -1);
         const title = `${song.artist} - ${song.title}`;
         const extinf = `#EXTINF:${duration},${title}\n`;
         const songPathEntry = `${song.path}\n`;
 
-        // 既存のファイル内容を読み込み、既に追加済みかチェック
         const content = fs.readFileSync(playlistPath, 'utf-8');
         if (content.includes(song.path)) {
             return { success: true, message: 'Song already in playlist.' };
         }
 
-        // ファイルの末尾に追記
         fs.appendFileSync(playlistPath, extinf + songPathEntry);
         return { success: true };
     } catch (error) {
@@ -61,7 +84,6 @@ function addSongToPlaylist(playlistName, song) {
     }
 }
 
-// ★★★ この関数に処理を実装 ★★★
 function getPlaylistSongs(playlistName) {
     const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
     if (!fs.existsSync(playlistPath)) {
@@ -72,10 +94,7 @@ function getPlaylistSongs(playlistName) {
     try {
         const content = fs.readFileSync(playlistPath, 'utf-8');
         const lines = content.split('\n');
-
-        // #で始まる行と空行を除外し、ファイルのフルパスだけを抽出する
         const songPaths = lines.filter(line => line.trim() !== '' && !line.startsWith('#'));
-        
         return songPaths;
     } catch (error) {
         console.error(`Failed to read playlist ${playlistName}:`, error);
@@ -83,7 +102,6 @@ function getPlaylistSongs(playlistName) {
     }
 }
 
-// ★★★ 以下の関数をファイル末尾に追加 ★★★
 function removeSongFromPlaylist(playlistName, songPathToRemove) {
     if (!playlistName || !songPathToRemove) return { success: false };
 
@@ -98,7 +116,6 @@ function removeSongFromPlaylist(playlistName, songPathToRemove) {
         const newLines = [];
         let songIndex = -1;
 
-        // 削除対象の曲のパスが何行目にあるかを探す
         lines.forEach((line, index) => {
             if (line.trim() === songPathToRemove.trim()) {
                 songIndex = index;
@@ -106,18 +123,14 @@ function removeSongFromPlaylist(playlistName, songPathToRemove) {
         });
 
         if (songIndex > -1) {
-            // 曲のパスとその直前の情報行(#EXTINF)を除外して新しい配列を作成
             for (let i = 0; i < lines.length; i++) {
-                // songIndex(パスの行) と songIndex-1(情報行) 以外を newLines に追加
                 if (i !== songIndex && i !== songIndex - 1) {
                     newLines.push(lines[i]);
                 }
             }
-            // 新しい内容でファイルを上書き
             fs.writeFileSync(playlistPath, newLines.join('\n'));
             return { success: true };
         } else {
-            // 曲が見つからなかった場合
             return { success: false, message: 'Song not found in playlist.' };
         }
     } catch (error) {
@@ -126,10 +139,55 @@ function removeSongFromPlaylist(playlistName, songPathToRemove) {
     }
 }
 
+// ★★★ ここからが修正箇所です ★★★
+function updateSongOrderInPlaylist(playlistName, newSongPaths) {
+    if (!playlistName || !Array.isArray(newSongPaths)) return { success: false };
+
+    const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
+    if (!fs.existsSync(playlistPath)) {
+        return { success: false, message: 'Playlist not found.' };
+    }
+
+    try {
+        const content = fs.readFileSync(playlistPath, 'utf-8');
+        const lines = content.split('\n');
+        
+        // 曲のパスと#EXTINFメタ情報のペアをマップに保存
+        const songInfoMap = new Map();
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].startsWith('#EXTINF')) {
+                const pathLine = lines[i + 1];
+                if (pathLine && pathLine.trim() !== '') {
+                    songInfoMap.set(pathLine.trim(), lines[i]);
+                }
+            }
+        }
+
+        // 新しい順序に基づいてファイル内容を再構築
+        let newContent = '#EXTM3U\n';
+        newSongPaths.forEach(songPath => {
+            const extinf = songInfoMap.get(songPath.trim());
+            if (extinf) {
+                newContent += `${extinf}\n${songPath}\n`;
+            }
+        });
+
+        fs.writeFileSync(playlistPath, newContent);
+        return { success: true };
+
+    } catch (error) {
+        console.error(`Failed to update song order in ${playlistName}:`, error);
+        return { success: false, message: error.message };
+    }
+}
+// ★★★ ここまでが修正箇所です ★★★
+
 module.exports = {
     getAllPlaylists,
     createPlaylist,
     getPlaylistSongs,
     addSongToPlaylist,
-    removeSongFromPlaylist // ★★★ エクスポートに追加 ★★★
+    removeSongFromPlaylist,
+    deletePlaylist,
+    updateSongOrderInPlaylist, // ★★★ エクスポートに追加 ★★★
 };
