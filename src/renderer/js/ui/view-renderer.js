@@ -1,9 +1,7 @@
-import { state, elements } from '../state.js';
-import { showAlbum, showArtist, showPlaylist } from './navigation.js';
+import { state, elements } from '../state.js'; // ★★★ 修正箇所 ★★★
+import { showAlbum, showArtist, showPlaylist } from '../navigation.js'; // ★★★ 修正箇所 ★★★
 import { createPlaylistArtwork } from './playlist-artwork.js';
-// ★★★ ここからが修正箇所です ★★★
 import { showContextMenu, formatTime } from './utils.js';
-// ★★★ ここまでが修正箇所です ★★★
 import { playSong } from '../playback-manager.js';
 const { ipcRenderer } = require('electron');
 
@@ -29,7 +27,7 @@ export function renderTrackView() {
             <div class="song-artist">${song.artist}</div>
             <div class="song-album">${song.album}</div>
             <div class="song-duration">${formatTime(song.duration || 0)}</div>
-            <div class="song-play-count">${state.playCounts[song.path] || 0}</div>
+            <div class="song-play-count">${(state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
         `;
         songItem.addEventListener('contextmenu', (e) => {
             e.preventDefault();

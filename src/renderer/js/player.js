@@ -114,6 +114,7 @@ function getYouTubePlayer(videoId) {
                 createPlayer();
             };
             const tag = document.createElement('script');
+            // ★★★ 修正箇所: 正しいAPIのURLに変更 ★★★
             tag.src = "https://www.youtube.com/iframe_api";
             document.head.appendChild(tag);
         }

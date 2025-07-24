@@ -16,7 +16,9 @@ export const state = {
     playbackMode: PLAYBACK_MODES.NORMAL,
     isShuffled: false,
     songWaitingForAnalysis: null,
-    currentLyrics: null, // ★★★ この行を追加 ★★★
+    currentLyrics: null,
+    currentlyViewedSongs: [], // ★★★ 追加: UIが表示している曲リスト
+    currentDetailView: { type: null, identifier: null }, // ★★★ 追加: 表示中の詳細画面情報
 };
 
 // UI要素を一元管理
@@ -63,5 +65,5 @@ export const elements = {
     artistDetailAlbumGrid: document.getElementById('artist-detail-album-grid'),
     notificationToast: document.getElementById('notification-toast'),
     notificationText: document.getElementById('notification-text'),
-    lyricsView: document.getElementById('lyrics-view'), // ★★★ この行を追加 ★★★
+    lyricsView: document.getElementById('lyrics-view'),
 };

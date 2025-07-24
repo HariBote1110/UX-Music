@@ -1,10 +1,8 @@
-import { state, elements } from '../state.js';
+import { state, elements } from '../state.js'; // ★★★ 修正箇所 ★★★
 import { playSong } from '../playback-manager.js';
 import { formatTime } from './utils.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
-// ★★★ ここからが修正箇所です ★★★
-import { showAlbum } from './navigation.js';
-// ★★★ ここまでが修正箇所です ★★★
+import { showAlbum } from '../navigation.js'; // ★★★ 修正箇所 ★★★
 const { ipcRenderer } = require('electron');
 
 export function renderAlbumDetailView(album) {
@@ -34,7 +32,7 @@ export function renderAlbumDetailView(album) {
             <div class="song-artist">${song.artist}</div>
             <div class="song-album">${song.album}</div>
             <div class="song-duration">${formatTime(song.duration || 0)}</div>
-            <div class="song-play-count">${state.playCounts[song.path] || 0}</div>
+            <div class="song-play-count">${(state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
         `;
         listElement.appendChild(songItem);
     });
@@ -115,7 +113,7 @@ export function renderPlaylistDetailView(playlistName, songs) {
             <div class="song-artist">${song.artist}</div>
             <div class="song-album">${song.album}</div>
             <div class="song-duration">${formatTime(song.duration || 0)}</div>
-            <div class="song-play-count">${state.playCounts[song.path] || 0}</div>
+            <div class="song-play-count">${(state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
         `;
         listElement.appendChild(songItem);
     });

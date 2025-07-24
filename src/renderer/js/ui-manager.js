@@ -88,16 +88,16 @@ export function renderCurrentView() {
         else if (activeViewId === 'playlist-view') renderPlaylistView();
         else if (activeViewId === 'artist-view') renderArtistView();
     } else {
-        const pDetail = document.getElementById('playlist-detail-view');
-        const aDetail = document.getElementById('album-detail-view');
-        const artistDetail = document.getElementById('artist-detail-view');
-        if (!pDetail.classList.contains('hidden')) {
-             renderPlaylistDetailView(pDetail.querySelector('#p-detail-title').textContent, state.originalQueueSource);
-        } else if (!aDetail.classList.contains('hidden')) {
-             const album = state.albums.get(aDetail.dataset.albumKey);
+        // 詳細画面が表示されている場合の再描画
+        const { type, identifier } = state.currentDetailView;
+        if (type === 'playlist') {
+             // プレイリスト詳細の再描画には、表示中の曲リストを使う
+             renderPlaylistDetailView(identifier, state.currentlyViewedSongs);
+        } else if (type === 'album') {
+             const album = state.albums.get(identifier);
              if (album) renderAlbumDetailView(album);
-        } else if (!artistDetail.classList.contains('hidden')) {
-            const artist = state.artists.get(artistDetail.dataset.artistName);
+        } else if (type === 'artist') {
+            const artist = state.artists.get(identifier);
             if (artist) renderArtistDetailView(artist);
         }
     }

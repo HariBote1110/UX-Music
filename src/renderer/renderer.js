@@ -1,7 +1,6 @@
 import { initUI, renderCurrentView, addSongsToLibrary, updateAudioDevices } from './js/ui-manager.js';
-import { showPlaylist } from './js/ui/navigation.js';
+import { initNavigation, showPlaylist } from './js/navigation.js';
 import { initIPC } from './js/ipc.js';
-import { initNavigation } from './js/navigation.js';
 import { initModal, showModal } from './js/modal.js';
 import { initPlaylists } from './js/playlist.js';
 import { initPlayer, togglePlayPause, applyMasterVolume } from './js/player.js';
@@ -11,7 +10,7 @@ import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from './js/
 import { showNotification, hideNotification } from './js/ui/notification.js';
 
 const { ipcRenderer } = require('electron');
-const path = require('path'); // ★★★ この行を追加 ★★★
+const path = require('path');
 
 window.addEventListener('DOMContentLoaded', () => {
     

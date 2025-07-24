@@ -150,21 +150,16 @@ function registerIpcHandlers() {
         }
     });
 
-    // ★★★ ここからが修正箇所です ★★★
     ipcMain.handle('get-lyrics', (event, song) => {
         const lyricsDir = path.join(app.getPath('userData'), 'Lyrics');
-
-        // 検索ヘルパー関数
         const findLyricsFile = (baseName) => {
-            const sanitizedName = baseName.replace(/_/g, ' '); // アンダースコアをスペースに変換
+            const sanitizedName = baseName.replace(/_/g, ' ');
             console.log(`[歌詞検索] "${sanitizedName}" で検索中...`);
-            
             const lrcPath = path.join(lyricsDir, `${sanitizedName}.lrc`);
             if (fs.existsSync(lrcPath)) {
                 console.log(`[歌詞検索] "${sanitizedName}.lrc" が見つかりました。`);
                 return { type: 'lrc', content: fs.readFileSync(lrcPath, 'utf-8') };
             }
-
             const txtPath = path.join(lyricsDir, `${sanitizedName}.txt`);
             if (fs.existsSync(txtPath)) {
                 console.log(`[歌詞検索] "${sanitizedName}.txt" が見つかりました。`);
@@ -172,22 +167,16 @@ function registerIpcHandlers() {
             }
             return null;
         };
-
-        // 試行1: 曲のファイル名から検索
         const fileNameBase = path.basename(song.path, path.extname(song.path));
         let result = findLyricsFile(fileNameBase);
         if (result) return result;
-
-        // 試行2: 曲のタグのタイトルから検索
         if (song.title && song.title !== fileNameBase) {
             result = findLyricsFile(song.title);
             if (result) return result;
         }
-
         console.log(`[歌詞検索] どの名前でも歌詞ファイルが見つかりませんでした。`);
         return null;
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
     ipcMain.on('show-playlist-song-context-menu', (event, { playlistName, song }) => {
         const window = BrowserWindow.fromWebContents(event.sender);
@@ -216,13 +205,11 @@ function registerIpcHandlers() {
             const playlist = await ytpl(playlistUrl, { limit: Infinity });
             const total = playlist.items.length;
             const playlistTitle = sanitize(playlist.title);
-            
             const createResult = playlistManager.createPlaylist(playlistTitle);
             if (createResult.success) {
                 const playlistsWithArtwork = getPlaylistsWithArtwork();
                 sendToAllWindows('playlists-updated', playlistsWithArtwork);
             }
-
             for (let i = 0; i < total; i++) {
                 const item = playlist.items[i];
                 if (window && !window.isDestroyed()) {
@@ -236,11 +223,9 @@ function registerIpcHandlers() {
                 const hubUrl = findHubUrl(videoInfo.videoDetails.description);
                 const settings = settingsStore.load();
                 const mode = settings.youtubePlaybackMode || 'download';
-                
                 if (mode === 'download' && (settings.youtubeDownloadQuality || 'full') === 'full') {
                      upgradeAndCleanup(item.url);
                 }
-                
                 let newSong;
                 if (mode === 'download') {
                     const qualitySetting = settings.youtubeDownloadQuality || 'full';
@@ -288,13 +273,10 @@ function registerIpcHandlers() {
                         hubUrl: hubUrl
                     };
                 }
-                
                 const addedSongs = addSongsToLibraryAndSave([newSong]);
-                
                 if (addedSongs.length > 0) {
                     if (window && !window.isDestroyed()) event.sender.send('youtube-link-processed', addedSongs[0]);
                 }
-                
                 playlistManager.addSongToPlaylist(playlistTitle, newSong);
             }
         } catch (error) {
@@ -393,9 +375,12 @@ function registerIpcHandlers() {
     ipcMain.on('request-initial-play-counts', (event) => {
         if (event.sender && !event.sender.isDestroyed()) event.sender.send('play-counts-updated', playCountsStore.load());
     });
-    ipcMain.on('song-finished', (event, songPath) => {
-        const counts = playCountsStore.load();
-        counts[songPath] = (counts[songPath] || 0) + 1;
+    ipcMain.on('song-finished', (event, { songPath, duration }) => {
+        const counts = playCountsStore.load() || {};
+        const existingData = counts[songPath] || { count: 0, totalDuration: 0 };
+        existingData.count += 1;
+        existingData.totalDuration += duration || 0;
+        counts[songPath] = existingData;
         playCountsStore.save(counts);
         if (event.sender && !event.sender.isDestroyed()) event.sender.send('play-counts-updated', counts);
     });

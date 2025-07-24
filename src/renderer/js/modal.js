@@ -1,8 +1,7 @@
-import { elements } from './state.js';
+import { elements } from './state.js'; // ★★★ 修正箇所 ★★★
 
 let onOkCallback = null;
 
-// ★★★ バグ修正: 引数を削除し、state.jsから直接elementsを読み込む ★★★
 export function initModal() {
     // --- イベントリスナー ---
     elements.modalCancelBtn.addEventListener('click', hideModal);
@@ -16,7 +15,6 @@ export function initModal() {
 
 // --- 公開関数 ---
 export function showModal({ title, placeholder, onOk }) {
-    // ★★★ modalTitleの参照を修正 ★★★
     elements.modalTitle.textContent = title;
     elements.modalInput.placeholder = placeholder;
     onOkCallback = onOk;

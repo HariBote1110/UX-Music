@@ -7,19 +7,15 @@ import { loadLyricsForSong } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
 
 export async function playSong(index, sourceList = null, forcePlay = false) {
-    // 1. 再生キューの更新 (初回クリック時など)
     if (sourceList) {
         state.originalQueueSource = [...sourceList];
-        
         if (state.isShuffled) {
             const songToStartWith = sourceList[index];
             let newShuffledQueue = sourceList.filter(s => s.path !== songToStartWith.path);
-            
             for (let i = newShuffledQueue.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [newShuffledQueue[i], newShuffledQueue[j]] = [newShuffledQueue[j], newShuffledQueue[i]];
             }
-            
             newShuffledQueue.unshift(songToStartWith);
             state.playbackQueue = newShuffledQueue;
             index = 0;
@@ -28,7 +24,6 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
         }
     }
 
-    // 2. 再生対象の曲を取得
     const songList = state.playbackQueue;
     if (!songList || index < 0 || index >= songList.length) {
         stopSongInPlayer();
@@ -37,7 +32,6 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     }
     const songToPlay = songList[index];
 
-    // 3. ラウドネス値の確認と再生分岐
     if (songToPlay.type === 'local' && !forcePlay) {
         const savedLoudness = await ipcRenderer.invoke('get-loudness-value', songToPlay.path);
         if (typeof savedLoudness !== 'number') {
@@ -48,13 +42,12 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
         }
     }
     
-    // 4. 再生処理の実行
     state.songWaitingForAnalysis = null;
     hideNotification();
     
     loadLyricsForSong(songToPlay);
     
-    ipcRenderer.send('song-finished', songToPlay.path);
+    ipcRenderer.send('song-finished', { songPath: songToPlay.path, duration: songToPlay.duration });
     state.currentSongIndex = index;
     
     updateNowPlayingView(songToPlay);
