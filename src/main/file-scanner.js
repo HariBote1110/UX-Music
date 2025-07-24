@@ -2,10 +2,17 @@ const path = require('path');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
 const ffprobePath = require('ffprobe-static').path;
-const ffmpegPath = require('ffmpeg-static');
+// ★★★ ここからが修正箇所です ★★★
+// require('ffmpeg-static')から、実行ファイルのパスを示す .path を取得します
+const ffmpegPath = require('ffmpeg-static').path;
 
-ffmpeg.setFfprobePath(ffprobePath);
+// ffmpegのパスを正しく設定します
 ffmpeg.setFfmpegPath(ffmpegPath);
+// ★★★ ここまでが修正箇所です ★★★
+
+// ffprobeのパスは元々正しく設定されていました
+ffmpeg.setFfprobePath(ffprobePath);
+
 
 function sanitize(name) {
     if (typeof name !== 'string') return '_';
@@ -27,6 +34,10 @@ function analyzeLoudness(filePath) {
             .withAudioFilter('loudnorm=I=-23:LRA=7:print_format=json')
             .toFormat('null')
             .on('error', (err) => {
+                // ENOENTエラーを防ぐため、エラーメッセージにffmpegのパスを含める
+                if (err.message.includes('ENOENT')) {
+                     console.error(`ffmpegの実行に失敗しました。パスを確認してください: ${ffmpegPath}`);
+                }
                 resolve({
                     success: false,
                     filePath: filePath,
@@ -34,8 +45,6 @@ function analyzeLoudness(filePath) {
                 });
             })
             .on('end', (stdout, stderr) => {
-                // ★★★ ここからが修正箇所です ★★★
-                // FFmpegの出力全体から '{' で始まり '}' で終わるブロックを探す
                 const jsonStartIndex = stderr.lastIndexOf('{');
                 const jsonEndIndex = stderr.lastIndexOf('}');
 
@@ -59,7 +68,6 @@ function analyzeLoudness(filePath) {
                          error: `ラウドネス解析結果(JSON)が見つかりませんでした。\nFFmpeg Raw Output:\n${stderr}`
                      });
                 }
-                // ★★★ ここまでが修正箇所です ★★★
             })
             .save('-');
     });
