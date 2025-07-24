@@ -146,37 +146,47 @@ window.addEventListener('DOMContentLoaded', () => {
     elements.setLibraryBtn.addEventListener('click', () => ipcRenderer.send('set-library-path'));
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
+    
+    // ★★★ ここからが修正箇所です ★★★
     elements.dropZone.addEventListener('drop', async (e) => {
         e.preventDefault();
         e.stopPropagation();
         elements.dropZone.classList.remove('drag-over');
         
-        const files = Array.from(e.dataTransfer.files);
-        const musicExtensions = ['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.mp4'];
+        // ドロップされた全てのアイテムの絶対パスを取得
+        const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
+        if (allPaths.length === 0) {
+            return;
+        }
+
         const lyricsExtensions = ['.lrc', '.txt'];
 
-        const musicFiles = files.filter(f => musicExtensions.includes(path.extname(f.name).toLowerCase()));
-        const lyricsFiles = files.filter(f => lyricsExtensions.includes(path.extname(f.name).toLowerCase()));
+        // 歌詞ファイルと音楽関連のパス（ファイルまたはフォルダ）を分離
+        const lyricsPaths = allPaths.filter(p => lyricsExtensions.includes(path.extname(p).toLowerCase()));
+        const musicPaths = allPaths.filter(p => !lyricsExtensions.includes(path.extname(p).toLowerCase()));
 
-        // 音楽ファイルの処理
-        if (musicFiles.length > 0) {
-            const musicPaths = musicFiles.map(f => f.path);
+        // 音楽関連のパスをスキャン
+        if (musicPaths.length > 0) {
             showNotification('ライブラリをスキャン中...');
             try {
+                // `scan-paths`はファイルとフォルダの両方を処理できる
                 const songs = await ipcRenderer.invoke('scan-paths', musicPaths);
                 addSongsToLibrary(songs);
-                showNotification(`${songs.length}曲が追加されました。`);
+                showNotification(`${songs.length}曲がライブラリに追加されました。`);
+            } catch (error) {
+                console.error('Error scanning paths:', error);
+                showNotification('スキャン中にエラーが発生しました。');
             } finally {
                 hideNotification(3000);
             }
         }
 
-        // 歌詞ファイルの処理
-        if (lyricsFiles.length > 0) {
-            const lyricsPaths = lyricsFiles.map(f => f.path);
+        // 歌詞ファイルを処理
+        if (lyricsPaths.length > 0) {
             ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
         }
     });
+    // ★★★ ここまでが修正箇所です ★★★
 
     elements.openSettingsBtn.addEventListener('click', async () => {
         const settings = await ipcRenderer.invoke('get-settings');
