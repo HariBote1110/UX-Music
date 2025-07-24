@@ -2,16 +2,28 @@ const path = require('path');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
 const ffprobePath = require('ffprobe-static').path;
+const ffmpegStatic = require('ffmpeg-static'); // まずライブラリを読み込む
+
 // ★★★ ここからが修正箇所です ★★★
-// require('ffmpeg-static')から、実行ファイルのパスを示す .path を取得します
-const ffmpegPath = require('ffmpeg-static').path;
+// ライブラリが返す値の形式を自動で判別し、正しいパスを取得する
+let ffmpegPath;
+if (typeof ffmpegStatic === 'string') {
+  // 値が単なる文字列の場合（例: '/path/to/ffmpeg'）
+  ffmpegPath = ffmpegStatic;
+} else if (ffmpegStatic && typeof ffmpegStatic.path === 'string') {
+  // 値が.pathプロパティを持つオブジェクトの場合（例: { path: '/path/to/ffmpeg' }）
+  ffmpegPath = ffmpegStatic.path;
+} else {
+  // 予期せぬ形式の場合のエラー処理
+  console.error('Could not automatically determine the path for ffmpeg. Please check the ffmpeg-static installation.');
+}
 
-// ffmpegのパスを正しく設定します
-ffmpeg.setFfmpegPath(ffmpegPath);
-// ★★★ ここまでが修正箇所です ★★★
-
-// ffprobeのパスは元々正しく設定されていました
+// 取得したパスをFFmpegに設定
+if (ffmpegPath) {
+  ffmpeg.setFfmpegPath(ffmpegPath);
+}
 ffmpeg.setFfprobePath(ffprobePath);
+// ★★★ ここまでが修正箇所です ★★★
 
 
 function sanitize(name) {
@@ -34,17 +46,23 @@ function analyzeLoudness(filePath) {
             .withAudioFilter('loudnorm=I=-23:LRA=7:print_format=json')
             .toFormat('null')
             .on('error', (err) => {
-                // ENOENTエラーを防ぐため、エラーメッセージにffmpegのパスを含める
-                if (err.message.includes('ENOENT')) {
-                     console.error(`ffmpegの実行に失敗しました。パスを確認してください: ${ffmpegPath}`);
+                // エラーメッセージにffmpegが見つからないという情報が含まれているか確認
+                if (err.message.includes('Cannot find ffmpeg')) {
+                    resolve({
+                        success: false,
+                        filePath: filePath,
+                        error: 'Cannot find ffmpeg' // エラーメッセージを統一
+                    });
+                } else {
+                    resolve({
+                        success: false,
+                        filePath: filePath,
+                        error: err.message
+                    });
                 }
-                resolve({
-                    success: false,
-                    filePath: filePath,
-                    error: err.message
-                });
             })
             .on('end', (stdout, stderr) => {
+                // FFmpegの出力全体から '{' で始まり '}' で終わるブロックを探す
                 const jsonStartIndex = stderr.lastIndexOf('{');
                 const jsonEndIndex = stderr.lastIndexOf('}');
 
@@ -129,7 +147,7 @@ async function scanPaths(paths) {
         try {
             const stats = await fs.promises.stat(p);
             if (stats.isDirectory()) {
-                allFiles = allFiles.concat(await scanDirectory(p));
+                allFiles = allFiles.concat(await scanDirectory(fullPath));
             } else if (supportedExtensions.includes(path.extname(p).toLowerCase())) {
                 allFiles.push(p);
             }

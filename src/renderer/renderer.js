@@ -146,14 +146,11 @@ window.addEventListener('DOMContentLoaded', () => {
     elements.setLibraryBtn.addEventListener('click', () => ipcRenderer.send('set-library-path'));
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
-    
-    // ★★★ ここからが修正箇所です ★★★
     elements.dropZone.addEventListener('drop', async (e) => {
         e.preventDefault();
         e.stopPropagation();
         elements.dropZone.classList.remove('drag-over');
         
-        // ドロップされた全てのアイテムの絶対パスを取得
         const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
         if (allPaths.length === 0) {
             return;
@@ -161,15 +158,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
         const lyricsExtensions = ['.lrc', '.txt'];
 
-        // 歌詞ファイルと音楽関連のパス（ファイルまたはフォルダ）を分離
         const lyricsPaths = allPaths.filter(p => lyricsExtensions.includes(path.extname(p).toLowerCase()));
         const musicPaths = allPaths.filter(p => !lyricsExtensions.includes(path.extname(p).toLowerCase()));
 
-        // 音楽関連のパスをスキャン
         if (musicPaths.length > 0) {
             showNotification('ライブラリをスキャン中...');
             try {
-                // `scan-paths`はファイルとフォルダの両方を処理できる
                 const songs = await ipcRenderer.invoke('scan-paths', musicPaths);
                 addSongsToLibrary(songs);
                 showNotification(`${songs.length}曲がライブラリに追加されました。`);
@@ -181,12 +175,10 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 歌詞ファイルを処理
         if (lyricsPaths.length > 0) {
             ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
     elements.openSettingsBtn.addEventListener('click', async () => {
         const settings = await ipcRenderer.invoke('get-settings');
@@ -213,4 +205,15 @@ window.addEventListener('DOMContentLoaded', () => {
             togglePlayPause();
         }
     });
+
+    // ★★★ ここからが修正箇所です ★★★
+    // アプリ情報を要求し、受け取ったらコンソールに表示する
+    ipcRenderer.on('app-info-response', (event, info) => {
+        console.log(
+            `%c[UX Music] Version: ${info.version} | OS: ${info.platform} ${info.arch} (Release: ${info.release})`,
+            'color: #1DB954; font-weight: bold; font-size: 1.1em;'
+        );
+    });
+    ipcRenderer.send('request-app-info');
+    // ★★★ ここまでが修正箇所です ★★★
 });

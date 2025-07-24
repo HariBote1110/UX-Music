@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const playlistManager = require('./playlist-manager');
 const ytpl = require('ytpl');
+const os = require('os'); // ★★★ OS情報を取得するために追加 ★★★
 
 const playCountsStore = new DataStore('playcounts.json');
 const settingsStore = new DataStore('settings.json');
@@ -526,6 +527,20 @@ function registerIpcHandlers() {
     ipcMain.handle('get-settings', () => {
         return settingsStore.load();
     });
+
+    // ★★★ ここからが修正箇所です ★★★
+    // アプリの情報を要求されたときに返す
+    ipcMain.on('request-app-info', (event) => {
+        if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('app-info-response', {
+                version: app.getVersion(),
+                platform: os.platform(),
+                arch: os.arch(),
+                release: os.release(),
+            });
+        }
+    });
+    // ★★★ ここまでが修正箇所です ★★★
 }
 
 module.exports = { registerIpcHandlers };
