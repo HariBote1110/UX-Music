@@ -1,15 +1,17 @@
 {
-  "name": "ux-music",
-  "version": "0.1.0",
+  "name": "UX-Music",
+  "version": "0.0.6",
   "description": "Music Player UX Music",
   "main": "src/main/index.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "electron": "^28.0.0"
+    "electron": "^28.0.0",
+    "electron-builder": "^24.13.3"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
@@ -18,5 +20,29 @@
     "fluent-ffmpeg": "^2.1.3",
     "music-metadata": "^7.14.0",
     "ytpl": "^2.3.0"
+  },
+  "build": {
+    "appId": "com.example.ux-music",
+    "productName": "UX Music",
+    "files": [
+      "src/**/*",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "src/renderer/assets/ux-music-icon.png"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "src/renderer/assets/ux-music-icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "src/renderer/assets/ux-music-icon.png"
+    }
   }
 }
