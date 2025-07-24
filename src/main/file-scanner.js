@@ -1,28 +1,53 @@
 const path = require('path');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
-const ffprobePath = require('ffprobe-static').path;
-const ffmpegStatic = require('ffmpeg-static'); // まずライブラリを読み込む
+const { app } = require('electron'); // Electronのappモジュールをインポート
 
 // ★★★ ここからが修正箇所です ★★★
-// ライブラリが返す値の形式を自動で判別し、正しいパスを取得する
-let ffmpegPath;
-if (typeof ffmpegStatic === 'string') {
-  // 値が単なる文字列の場合（例: '/path/to/ffmpeg'）
-  ffmpegPath = ffmpegStatic;
-} else if (ffmpegStatic && typeof ffmpegStatic.path === 'string') {
-  // 値が.pathプロパティを持つオブジェクトの場合（例: { path: '/path/to/ffmpeg' }）
-  ffmpegPath = ffmpegStatic.path;
-} else {
-  // 予期せぬ形式の場合のエラー処理
-  console.error('Could not automatically determine the path for ffmpeg. Please check the ffmpeg-static installation.');
+/**
+ * 開発環境とビルド後の両方で、外部バイナリの正しいパスを取得する、より堅牢な関数。
+ * @param {string} binaryName 'ffmpeg-static' または 'ffprobe-static'
+ * @returns {string|null} 実行ファイルの絶対パス、または見つからない場合はnull
+ */
+function getCorrectBinaryPath(binaryName) {
+  try {
+    const binaryModule = require(binaryName);
+    let binaryPath = null;
+
+    // require()が返す値の形式をチェック
+    if (typeof binaryModule === 'string') {
+      // パターン1: モジュール自体がパス文字列の場合
+      binaryPath = binaryModule;
+    } else if (binaryModule && typeof binaryModule.path === 'string') {
+      // パターン2: モジュールが .path プロパティを持つオブジェクトの場合
+      binaryPath = binaryModule.path;
+    } else {
+      console.error(`Could not determine path for ${binaryName}. Unexpected module format.`);
+      return null;
+    }
+    
+    // アプリがパッケージ化されている場合、asar用のパスに修正する
+    if (binaryPath && app.isPackaged) {
+      binaryPath = binaryPath.replace('app.asar', 'app.asar.unpacked');
+    }
+
+    return binaryPath;
+
+  } catch (error) {
+    console.error(`Error getting path for binary ${binaryName}:`, error);
+    return null;
+  }
 }
 
-// 取得したパスをFFmpegに設定
+const ffmpegPath = getCorrectBinaryPath('ffmpeg-static');
+const ffprobePath = getCorrectBinaryPath('ffprobe-static');
+
 if (ffmpegPath) {
   ffmpeg.setFfmpegPath(ffmpegPath);
 }
-ffmpeg.setFfprobePath(ffprobePath);
+if (ffprobePath) {
+  ffmpeg.setFfprobePath(ffprobePath);
+}
 // ★★★ ここまでが修正箇所です ★★★
 
 
@@ -35,23 +60,17 @@ function sanitize(name) {
 
 const supportedExtensions = ['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.mp4'];
 
-/**
- * 指定されたオーディオファイルのラウドネス値を解析します。
- * @param {string} filePath 解析するファイルのパス
- * @returns {Promise<object>} 解析結果を含むオブジェクトのPromise
- */
 function analyzeLoudness(filePath) {
     return new Promise((resolve) => {
         ffmpeg(filePath)
             .withAudioFilter('loudnorm=I=-23:LRA=7:print_format=json')
             .toFormat('null')
             .on('error', (err) => {
-                // エラーメッセージにffmpegが見つからないという情報が含まれているか確認
                 if (err.message.includes('Cannot find ffmpeg')) {
                     resolve({
                         success: false,
                         filePath: filePath,
-                        error: 'Cannot find ffmpeg' // エラーメッセージを統一
+                        error: 'Cannot find ffmpeg'
                     });
                 } else {
                     resolve({
@@ -62,7 +81,6 @@ function analyzeLoudness(filePath) {
                 }
             })
             .on('end', (stdout, stderr) => {
-                // FFmpegの出力全体から '{' で始まり '}' で終わるブロックを探す
                 const jsonStartIndex = stderr.lastIndexOf('{');
                 const jsonEndIndex = stderr.lastIndexOf('}');
 
@@ -147,7 +165,7 @@ async function scanPaths(paths) {
         try {
             const stats = await fs.promises.stat(p);
             if (stats.isDirectory()) {
-                allFiles = allFiles.concat(await scanDirectory(fullPath));
+                allFiles = allFiles.concat(await scanDirectory(p));
             } else if (supportedExtensions.includes(path.extname(p).toLowerCase())) {
                 allFiles.push(p);
             }

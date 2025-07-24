@@ -51,6 +51,7 @@ window.addEventListener('DOMContentLoaded', () => {
     initModal();
     initPlaylists();
     
+    // ★★★ ここからが修正箇所です ★★★
     initIPC(ipcRenderer, {
         onLibraryLoaded: (songs) => {
             state.library = songs || [];
@@ -92,6 +93,16 @@ window.addEventListener('DOMContentLoaded', () => {
         onShowError: (message) => {
             alert(message);
         },
+        onScanProgress: (progress) => {
+            const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+            showNotification(`ライブラリをインポート中... (${percentage}%)`);
+        },
+        // スキャン完了時の処理を追加
+        onScanComplete: (songs) => {
+            addSongsToLibrary(songs);
+            showNotification(`${songs.length}曲のインポートが完了しました。`);
+            hideNotification(3000);
+        },
         onPlaylistImportProgress: (progress) => {
             const text = `${progress.total}曲中 ${progress.current}曲目: ${progress.title}`;
             showNotification(text);
@@ -101,6 +112,7 @@ window.addEventListener('DOMContentLoaded', () => {
             hideNotification(3000);
         }
     });
+    // ★★★ ここまでが修正箇所です ★★★
     
     // --- グローバルイベントリスナーの設定 ---
     if (navigator.mediaDevices && typeof navigator.mediaDevices.ondevicechange !== 'undefined') {
@@ -116,15 +128,9 @@ window.addEventListener('DOMContentLoaded', () => {
         showModal({
             title: 'ネットワークフォルダのパス',
             placeholder: '\\\\ServerName\\ShareName',
-            onOk: async (path) => {
-                showNotification('ライブラリをスキャン中...');
-                try {
-                    const songs = await ipcRenderer.invoke('scan-paths', [path]);
-                    addSongsToLibrary(songs);
-                    showNotification(`${songs.length}曲が追加されました。`);
-                } finally {
-                    hideNotification(3000);
-                }
+            onOk: (path) => {
+                // `invoke` から `send` に変更
+                ipcRenderer.send('start-scan-paths', [path]);
             }
         });
     });
@@ -146,39 +152,31 @@ window.addEventListener('DOMContentLoaded', () => {
     elements.setLibraryBtn.addEventListener('click', () => ipcRenderer.send('set-library-path'));
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
-    elements.dropZone.addEventListener('drop', async (e) => {
+    
+    // ★★★ ここからが修正箇所です ★★★
+    elements.dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
         elements.dropZone.classList.remove('drag-over');
         
         const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
-        if (allPaths.length === 0) {
-            return;
-        }
+        if (allPaths.length === 0) return;
 
         const lyricsExtensions = ['.lrc', '.txt'];
-
         const lyricsPaths = allPaths.filter(p => lyricsExtensions.includes(path.extname(p).toLowerCase()));
         const musicPaths = allPaths.filter(p => !lyricsExtensions.includes(path.extname(p).toLowerCase()));
 
         if (musicPaths.length > 0) {
-            showNotification('ライブラリをスキャン中...');
-            try {
-                const songs = await ipcRenderer.invoke('scan-paths', musicPaths);
-                addSongsToLibrary(songs);
-                showNotification(`${songs.length}曲がライブラリに追加されました。`);
-            } catch (error) {
-                console.error('Error scanning paths:', error);
-                showNotification('スキャン中にエラーが発生しました。');
-            } finally {
-                hideNotification(3000);
-            }
+            showNotification('インポート準備中...');
+            // `invoke`をやめ、スキャン開始の合図を送るだけにする
+            ipcRenderer.send('start-scan-paths', musicPaths);
         }
 
         if (lyricsPaths.length > 0) {
             ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
         }
     });
+    // ★★★ ここまでが修正箇所です ★★★
 
     elements.openSettingsBtn.addEventListener('click', async () => {
         const settings = await ipcRenderer.invoke('get-settings');
@@ -206,8 +204,6 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ★★★ ここからが修正箇所です ★★★
-    // アプリ情報を要求し、受け取ったらコンソールに表示する
     ipcRenderer.on('app-info-response', (event, info) => {
         console.log(
             `%c[UX Music] Version: ${info.version} | OS: ${info.platform} ${info.arch} (Release: ${info.release})`,
@@ -215,5 +211,4 @@ window.addEventListener('DOMContentLoaded', () => {
         );
     });
     ipcRenderer.send('request-app-info');
-    // ★★★ ここまでが修正箇所です ★★★
 });

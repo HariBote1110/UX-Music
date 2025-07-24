@@ -42,7 +42,17 @@ export function initIPC(ipcRenderer, callbacks) {
         callbacks.onPlaylistImportFinished?.();
     });
 
+    ipcRenderer.on('scan-progress', (event, progress) => {
+        callbacks.onScanProgress?.(progress);
+    });
+
     // ★★★ ここからが修正箇所です ★★★
+    // スキャン完了の通知を受け取るリスナー
+    ipcRenderer.on('scan-complete', (event, newSongs) => {
+        callbacks.onScanComplete?.(newSongs);
+    });
+    // ★★★ ここまでが修正箇所です ★★★
+
     ipcRenderer.on('loudness-analysis-result', (event, result) => {
         const fileName = result.filePath.split(/[/\\]/).pop();
         if (result.success) {
@@ -58,17 +68,9 @@ export function initIPC(ipcRenderer, callbacks) {
             }
 
         } else {
-            // エラー内容に`ffmpeg`が見つからないことを示す `ENOENT` が含まれている場合のみ、
-            // より詳細なデバッグメッセージをコンソールに出力します。
-            // これにより、解析自体は成功しているのに誤ったエラーが表示されるのを防ぎます。
-            if (result.error && result.error.includes('ENOENT')) {
-                console.error(`[ラウドネス解析失敗] ffmpegが見つかりません。ファイルパスを確認してください: ${fileName}`, result.error);
-            } else {
-                console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
-            }
+            console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
     ipcRenderer.on('lyrics-added-notification', (event, count) => {
         showNotification(`${count}個の歌詞ファイルが追加されました。`);
