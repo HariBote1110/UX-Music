@@ -1,38 +1,24 @@
 const path = require('path');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
-const { app } = require('electron'); // Electronのappモジュールをインポート
+const { app } = require('electron');
 
-// ★★★ ここからが修正箇所です ★★★
-/**
- * 開発環境とビルド後の両方で、外部バイナリの正しいパスを取得する、より堅牢な関数。
- * @param {string} binaryName 'ffmpeg-static' または 'ffprobe-static'
- * @returns {string|null} 実行ファイルの絶対パス、または見つからない場合はnull
- */
 function getCorrectBinaryPath(binaryName) {
   try {
     const binaryModule = require(binaryName);
     let binaryPath = null;
-
-    // require()が返す値の形式をチェック
     if (typeof binaryModule === 'string') {
-      // パターン1: モジュール自体がパス文字列の場合
       binaryPath = binaryModule;
     } else if (binaryModule && typeof binaryModule.path === 'string') {
-      // パターン2: モジュールが .path プロパティを持つオブジェクトの場合
       binaryPath = binaryModule.path;
     } else {
       console.error(`Could not determine path for ${binaryName}. Unexpected module format.`);
       return null;
     }
-    
-    // アプリがパッケージ化されている場合、asar用のパスに修正する
     if (binaryPath && app.isPackaged) {
       binaryPath = binaryPath.replace('app.asar', 'app.asar.unpacked');
     }
-
     return binaryPath;
-
   } catch (error) {
     console.error(`Error getting path for binary ${binaryName}:`, error);
     return null;
@@ -48,15 +34,6 @@ if (ffmpegPath) {
 if (ffprobePath) {
   ffmpeg.setFfprobePath(ffprobePath);
 }
-// ★★★ ここまでが修正箇所です ★★★
-
-
-function sanitize(name) {
-    if (typeof name !== 'string') return '_';
-    let sanitizedName = name.replace(/[\\/:*?"<>|]/g, '_');
-    sanitizedName = sanitizedName.replace(/[. ]+$/, '');
-    return sanitizedName || '_';
-}
 
 const supportedExtensions = ['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.mp4'];
 
@@ -67,42 +44,25 @@ function analyzeLoudness(filePath) {
             .toFormat('null')
             .on('error', (err) => {
                 if (err.message.includes('Cannot find ffmpeg')) {
-                    resolve({
-                        success: false,
-                        filePath: filePath,
-                        error: 'Cannot find ffmpeg'
-                    });
+                    resolve({ success: false, filePath: filePath, error: 'Cannot find ffmpeg' });
                 } else {
-                    resolve({
-                        success: false,
-                        filePath: filePath,
-                        error: err.message
-                    });
+                    resolve({ success: false, filePath: filePath, error: err.message });
                 }
             })
             .on('end', (stdout, stderr) => {
                 const jsonStartIndex = stderr.lastIndexOf('{');
                 const jsonEndIndex = stderr.lastIndexOf('}');
-
                 if (jsonStartIndex > -1 && jsonEndIndex > -1) {
                     const jsonString = stderr.substring(jsonStartIndex, jsonEndIndex + 1);
                     try {
                         const stats = JSON.parse(jsonString);
                         const integratedLoudness = parseFloat(stats.input_i);
-                        resolve({
-                            success: true,
-                            filePath: filePath,
-                            loudness: integratedLoudness
-                        });
+                        resolve({ success: true, filePath: filePath, loudness: integratedLoudness });
                     } catch (e) {
                         resolve({ success: false, filePath: filePath, error: `ラウドネス解析結果(JSON)のパースに失敗しました。` });
                     }
                 } else {
-                     resolve({
-                         success: false,
-                         filePath: filePath,
-                         error: `ラウドネス解析結果(JSON)が見つかりませんでした。\nFFmpeg Raw Output:\n${stderr}`
-                     });
+                     resolve({ success: false, filePath: filePath, error: `ラウドネス解析結果(JSON)が見つかりませんでした。` });
                 }
             })
             .save('-');
@@ -133,13 +93,13 @@ async function parseFiles(filePaths) {
             const stats = fs.statSync(filePath);
             const metadata = await musicMetadata.parseFile(filePath);
             const common = metadata.common;
-            let artwork = null;
-            if (common.picture && common.picture.length > 0) {
-                const pic = common.picture[0];
-                if (pic.format) { 
-                    artwork = `data:${pic.format};base64,${pic.data.toString('base64')}`;
-                }
-            }
+            const artwork = (common.picture && common.picture.length > 0) ? common.picture[0] : null;
+
+            // ★★★ ここからが修正箇所です ★★★
+            // メタデータから映像トラックの有無を確認
+            const hasVideo = metadata.format.trackInfo.some(track => track.type === 'video');
+            // ★★★ ここまでが修正箇所です ★★★
+
             songs.push({
                 path: filePath,
                 title: common.title || path.basename(filePath),
@@ -150,7 +110,8 @@ async function parseFiles(filePaths) {
                 duration: metadata.format.duration,
                 year: common.year,
                 fileSize: stats.size,
-                type: 'local'
+                type: 'local',
+                hasVideo: hasVideo, // ★★★ 映像の有無を保存 ★★★
             });
         } catch (error) {
             console.error(`Error parsing metadata for ${filePath}:`, error.message);
@@ -176,4 +137,4 @@ async function scanPaths(paths) {
     return allFiles;
 }
 
-module.exports = { scanPaths, parseFiles, sanitize, analyzeLoudness };
+module.exports = { scanPaths, parseFiles, analyzeLoudness };

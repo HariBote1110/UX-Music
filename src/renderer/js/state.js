@@ -17,8 +17,9 @@ export const state = {
     isShuffled: false,
     songWaitingForAnalysis: null,
     currentLyrics: null,
-    currentlyViewedSongs: [], // ★★★ 追加: UIが表示している曲リスト
-    currentDetailView: { type: null, identifier: null }, // ★★★ 追加: 表示中の詳細画面情報
+    currentlyViewedSongs: [],
+    currentDetailView: { type: null, identifier: null },
+    activeListView: 'track-view', // ★★★ 追加: ナビゲーション履歴のため ★★★
 };
 
 // UI要素を一元管理

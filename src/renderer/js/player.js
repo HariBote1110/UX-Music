@@ -114,7 +114,6 @@ function getYouTubePlayer(videoId) {
                 createPlayer();
             };
             const tag = document.createElement('script');
-            // ★★★ 修正箇所: 正しいAPIのURLに変更 ★★★
             tag.src = "https://www.youtube.com/iframe_api";
             document.head.appendChild(tag);
         }
@@ -219,6 +218,17 @@ export async function togglePlayPause() {
         else localPlayer.pause();
     }
 }
+
+// ★★★ ここからが修正箇所です ★★★
+export async function seekToStart() {
+    if (currentSongType === 'youtube') {
+        const player = await getYouTubePlayer();
+        if (player && typeof player.seekTo === 'function') player.seekTo(0, true);
+    } else {
+        localPlayer.currentTime = 0;
+    }
+}
+// ★★★ ここまでが修正箇所です ★★★
 
 async function seek() {
     const time = parseFloat(elements.progressBar.value);

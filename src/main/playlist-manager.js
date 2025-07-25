@@ -6,22 +6,35 @@ const DataStore = require('./data-store');
 const playlistsDir = path.join(app.getPath('userData'), 'Playlists');
 const playlistOrderStore = new DataStore('playlist-order.json');
 
-if (!fs.existsSync(playlistsDir)) {
-    fs.mkdirSync(playlistsDir, { recursive: true });
+// ★★★ ここからが修正箇所です ★★★
+// モジュールが読み込まれた時点で、プレイリストディレクトリの存在を確認・作成する
+try {
+    if (!fs.existsSync(playlistsDir)) {
+        fs.mkdirSync(playlistsDir, { recursive: true });
+        console.log(`[Playlist Manager] Created playlists directory at: ${playlistsDir}`);
+    }
+} catch (error) {
+    console.error(`[Playlist Manager] Failed to create playlists directory on initial load:`, error);
 }
+// ★★★ ここまでが修正箇所です ★★★
 
 function getAllPlaylists() {
-    const files = fs.readdirSync(playlistsDir);
-    const playlistNames = files
-        .filter(file => file.endsWith('.m3u8'))
-        .map(file => path.basename(file, '.m3u8'));
+    try {
+        const files = fs.readdirSync(playlistsDir);
+        const playlistNames = files
+            .filter(file => file.endsWith('.m3u8'))
+            .map(file => path.basename(file, '.m3u8'));
 
-    const savedOrder = playlistOrderStore.load().order || [];
-    
-    const orderedPlaylists = savedOrder.filter(name => playlistNames.includes(name));
-    const newPlaylists = playlistNames.filter(name => !savedOrder.includes(name));
-    
-    return [...orderedPlaylists, ...newPlaylists.sort()];
+        const savedOrder = playlistOrderStore.load().order || [];
+        
+        const orderedPlaylists = savedOrder.filter(name => playlistNames.includes(name));
+        const newPlaylists = playlistNames.filter(name => !savedOrder.includes(name));
+        
+        return [...orderedPlaylists, ...newPlaylists.sort()];
+    } catch (error) {
+        console.error(`[Playlist Manager] Failed to get all playlists:`, error);
+        return [];
+    }
 }
 
 function createPlaylist(name) {
@@ -124,6 +137,7 @@ function removeSongFromPlaylist(playlistName, songPathToRemove) {
 
         if (songIndex > -1) {
             for (let i = 0; i < lines.length; i++) {
+                // 曲のパスとその直前の #EXTINF 行を削除
                 if (i !== songIndex && i !== songIndex - 1) {
                     newLines.push(lines[i]);
                 }
@@ -139,7 +153,6 @@ function removeSongFromPlaylist(playlistName, songPathToRemove) {
     }
 }
 
-// ★★★ ここからが修正箇所です ★★★
 function updateSongOrderInPlaylist(playlistName, newSongPaths) {
     if (!playlistName || !Array.isArray(newSongPaths)) return { success: false };
 
@@ -152,7 +165,6 @@ function updateSongOrderInPlaylist(playlistName, newSongPaths) {
         const content = fs.readFileSync(playlistPath, 'utf-8');
         const lines = content.split('\n');
         
-        // 曲のパスと#EXTINFメタ情報のペアをマップに保存
         const songInfoMap = new Map();
         for (let i = 0; i < lines.length; i++) {
             if (lines[i].startsWith('#EXTINF')) {
@@ -163,7 +175,6 @@ function updateSongOrderInPlaylist(playlistName, newSongPaths) {
             }
         }
 
-        // 新しい順序に基づいてファイル内容を再構築
         let newContent = '#EXTM3U\n';
         newSongPaths.forEach(songPath => {
             const extinf = songInfoMap.get(songPath.trim());
@@ -180,7 +191,6 @@ function updateSongOrderInPlaylist(playlistName, newSongPaths) {
         return { success: false, message: error.message };
     }
 }
-// ★★★ ここまでが修正箇所です ★★★
 
 module.exports = {
     getAllPlaylists,
@@ -189,5 +199,5 @@ module.exports = {
     addSongToPlaylist,
     removeSongFromPlaylist,
     deletePlaylist,
-    updateSongOrderInPlaylist, // ★★★ エクスポートに追加 ★★★
+    updateSongOrderInPlaylist,
 };

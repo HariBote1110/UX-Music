@@ -57,11 +57,14 @@ function groupLibraryByAlbum() {
     }
 }
 
+// ★★★ ここからが修正箇所です ★★★
 function groupLibraryByArtist() {
     state.artists.clear();
     const tempArtistGroups = new Map();
+
     state.library.forEach(song => {
-        const artistName = song.artist || 'Unknown Artist';
+        // albumartist があればそれを優先し、なければ artist を使う
+        const artistName = song.albumartist || song.artist || 'Unknown Artist';
         if (!tempArtistGroups.has(artistName)) {
             tempArtistGroups.set(artistName, []);
         }
@@ -73,10 +76,11 @@ function groupLibraryByArtist() {
         state.artists.set(artistName, {
             name: artistName,
             artwork: artwork,
-            songs: songs
+            songs: songs // そのアーティストの関連楽曲として全曲保持
         });
     }
 }
+// ★★★ ここまでが修正箇所です ★★★
 
 export function renderCurrentView() {
     const activeLink = document.querySelector('.nav-link.active');
@@ -88,10 +92,8 @@ export function renderCurrentView() {
         else if (activeViewId === 'playlist-view') renderPlaylistView();
         else if (activeViewId === 'artist-view') renderArtistView();
     } else {
-        // 詳細画面が表示されている場合の再描画
         const { type, identifier } = state.currentDetailView;
         if (type === 'playlist') {
-             // プレイリスト詳細の再描画には、表示中の曲リストを使う
              renderPlaylistDetailView(identifier, state.currentlyViewedSongs);
         } else if (type === 'album') {
              const album = state.albums.get(identifier);

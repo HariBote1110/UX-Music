@@ -1,11 +1,14 @@
 const path = require('path');
 const fs = require('fs');
+const { app } = require('electron'); // ★★★ appモジュールを直接読み込む ★★★
 
 class DataStore {
     constructor(fileName) {
-        const userDataPath = require('electron').app.getPath('userData');
+        // ★★★ app.getPathをコンストラクタ内で使用するように変更 ★★★
+        const userDataPath = app.getPath('userData');
         this.path = path.join(userDataPath, fileName);
         this.fileName = fileName;
+        console.log(`[DataStore] Path for ${this.fileName}: ${this.path}`); // デバッグ用にパスを出力
     }
 
     load() {

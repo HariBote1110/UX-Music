@@ -1,20 +1,20 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
-const { registerIpcHandlers } = require('./ipc-handlers'); // ★★★ initializeIpcHandlersから変更
+const { registerIpcHandlers } = require('./ipc-handlers');
 const fs = require('fs');
 const DataStore = require('./data-store');
 
-// ライブラリフォルダの初期設定
 function initializeLibrary() {
-    const settingsStore = new DataStore('settings.json');
-    let settings = settingsStore.load();
-    if (!settings.libraryPath) {
-        settings.libraryPath = path.join(app.getPath('music'), 'UX_Music');
-        settingsStore.save(settings);
-    }
-    if (!fs.existsSync(settings.libraryPath)) {
-        fs.mkdirSync(settings.libraryPath, { recursive: true });
-    }
+    // ★★★ この処理はipc-handlers内でapp.whenReady()後に実行されるため、ここでは不要 ★★★
+    // const settingsStore = new DataStore('settings.json');
+    // let settings = settingsStore.load();
+    // if (!settings.libraryPath) {
+    //     settings.libraryPath = path.join(app.getPath('music'), 'UX_Music');
+    //     settingsStore.save(settings);
+    // }
+    // if (!fs.existsSync(settings.libraryPath)) {
+    //     fs.mkdirSync(settings.libraryPath, { recursive: true });
+    // }
 }
 
 function createWindow() {
@@ -36,7 +36,15 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
-  // initializeIpcHandlers(mainWindow); // ★★★ この行を削除 ★★★
+  // ★★★ ここからが修正箇所です ★★★
+  // マウスのサイドボタン（戻る）が押されたことを検知
+  mainWindow.on('app-command', (e, cmd) => {
+    if (cmd === 'browser-backward') {
+      // レンダラープロセスに「戻る」ナビゲーションを指示
+      mainWindow.webContents.send('navigate-back');
+    }
+  });
+  // ★★★ ここまでが修正箇所です ★★★
 
   return mainWindow;
 }
@@ -44,7 +52,6 @@ function createWindow() {
 app.whenReady().then(() => {
   initializeLibrary();
   
-  // ★★★ グローバルハンドラを一度だけ登録 ★★★
   registerIpcHandlers(); 
 
   createWindow();

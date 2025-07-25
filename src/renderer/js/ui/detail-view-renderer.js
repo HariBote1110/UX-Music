@@ -1,13 +1,31 @@
-import { state, elements } from '../state.js'; // ★★★ 修正箇所 ★★★
+import { state, elements } from '../state.js';
 import { playSong } from '../playback-manager.js';
 import { formatTime } from './utils.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
-import { showAlbum } from '../navigation.js'; // ★★★ 修正箇所 ★★★
+import { showAlbum } from '../navigation.js';
 const { ipcRenderer } = require('electron');
+const path = require('path');
+
+// ★★★ ここからが修正箇所です ★★★
+let artworksDir = null; // アートワークディレクトリのパスをキャッシュ
+
+// アートワークのパスを非同期で解決する関数
+async function resolveArtworkPath(artworkFileName) {
+    if (!artworkFileName) return './assets/default_artwork.png';
+    if (artworkFileName.startsWith('http')) return artworkFileName;
+    
+    if (!artworksDir) {
+        artworksDir = await ipcRenderer.invoke('get-artworks-dir');
+    }
+    return `file://${path.join(artworksDir, artworkFileName)}`;
+}
+// ★★★ ここまでが修正箇所です ★★★
 
 export function renderAlbumDetailView(album) {
     const view = elements.albumDetailView;
-    view.querySelector('#a-detail-art').src = album.artwork || './assets/default_artwork.png';
+    const artImg = view.querySelector('#a-detail-art');
+    resolveArtworkPath(album.artwork).then(src => artImg.src = src); // ★★★ 修正 ★★★
+    
     view.querySelector('#a-detail-title').textContent = album.title;
     view.querySelector('#a-detail-artist').textContent = album.artist;
     const totalDuration = album.songs.reduce((sum, song) => sum + (song.duration || 0), 0);
@@ -22,11 +40,10 @@ export function renderAlbumDetailView(album) {
         songItem.className = `song-item ${isPlaying ? 'playing' : ''}`;
         songItem.addEventListener('click', () => playSong(index, album.songs));
         
-        const artworkSrc = song.artwork || './assets/default_artwork.png';
         songItem.innerHTML = `
             <div class="song-index">${index + 1}</div>
             <div class="song-title">
-                <img src="${artworkSrc}" class="artwork-small" alt="artwork">
+                <img src="./assets/default_artwork.png" class="artwork-small" alt="artwork">
                 <span>${song.title}</span>
             </div>
             <div class="song-artist">${song.artist}</div>
@@ -34,20 +51,28 @@ export function renderAlbumDetailView(album) {
             <div class="song-duration">${formatTime(song.duration || 0)}</div>
             <div class="song-play-count">${(state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
         `;
+        
+        // ★★★ 非同期でアートワークを解決 ★★★
+        const artworkImg = songItem.querySelector('.artwork-small');
+        resolveArtworkPath(song.artwork).then(src => artworkImg.src = src);
+        
         listElement.appendChild(songItem);
     });
 }
 
 export function renderArtistDetailView(artist) {
     const view = elements.artistDetailView;
-    view.querySelector('#artist-detail-art').src = artist.artwork || './assets/default_artwork.png';
+    const artImg = view.querySelector('#artist-detail-art');
+    resolveArtworkPath(artist.artwork).then(src => artImg.src = src); // ★★★ 修正 ★★★
+    
     view.querySelector('#artist-detail-name').textContent = artist.name;
 
     const gridElement = elements.artistDetailAlbumGrid;
     gridElement.innerHTML = '';
 
     const artistAlbums = [...state.albums.entries()].filter(([key, album]) => {
-        return album.artist === artist.name || album.songs.some(song => song.artist === artist.name);
+        // アーティスト詳細では、トラックアーティストではなく、アルバムアーティストが一致するものを表示
+        return album.artist === artist.name;
     });
 
     view.querySelector('#artist-detail-meta').textContent = `${artistAlbums.length}枚のアルバム, ${artist.songs.length}曲`;
@@ -61,10 +86,15 @@ export function renderArtistDetailView(artist) {
         const albumItem = document.createElement('div');
         albumItem.className = 'album-grid-item';
         albumItem.innerHTML = `
-            <img src="${album.artwork || './assets/default_artwork.png'}" class="album-artwork" alt="${album.title}">
+            <img src="./assets/default_artwork.png" class="album-artwork" alt="${album.title}">
             <div class="album-title">${album.title || 'Unknown Album'}</div>
             <div class="album-artist">${album.artist || 'Unknown Artist'}</div>
         `;
+        
+        // ★★★ 非同期でアートワークを解決 ★★★
+        const artworkImg = albumItem.querySelector('.album-artwork');
+        resolveArtworkPath(album.artwork).then(src => artworkImg.src = src);
+        
         albumItem.addEventListener('click', () => showAlbum(key));
         gridElement.appendChild(albumItem);
     }
@@ -80,7 +110,8 @@ export function renderPlaylistDetailView(playlistName, songs) {
     const artworkContainer = view.querySelector('.playlist-art-collage');
     if (artworkContainer) {
         const artworks = songs.map(s => s.artwork).filter(Boolean);
-        createPlaylistArtwork(artworkContainer, artworks);
+        // ★★★ createPlaylistArtworkにパス解決ロジックを渡す ★★★
+        createPlaylistArtwork(artworkContainer, artworks, resolveArtworkPath);
     } else {
         console.error("Could not find '.playlist-art-collage' in playlist detail view.");
     }
@@ -103,11 +134,11 @@ export function renderPlaylistDetailView(playlistName, songs) {
             e.preventDefault();
             ipcRenderer.send('show-playlist-song-context-menu', { playlistName, song });
         });
-        const artworkSrc = song.artwork || './assets/default_artwork.png';
+        
         songItem.innerHTML = `
             <div class="song-index">${index + 1}</div>
             <div class="song-title">
-                <img src="${artworkSrc}" class="artwork-small" alt="artwork">
+                <img src="./assets/default_artwork.png" class="artwork-small" alt="artwork">
                 <span>${song.title}</span>
             </div>
             <div class="song-artist">${song.artist}</div>
@@ -115,6 +146,11 @@ export function renderPlaylistDetailView(playlistName, songs) {
             <div class="song-duration">${formatTime(song.duration || 0)}</div>
             <div class="song-play-count">${(state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
         `;
+
+        // ★★★ 非同期でアートワークを解決 ★★★
+        const artworkImg = songItem.querySelector('.artwork-small');
+        resolveArtworkPath(song.artwork).then(src => artworkImg.src = src);
+
         listElement.appendChild(songItem);
     });
 

@@ -1,7 +1,20 @@
 import { elements } from '../state.js';
 const { ipcRenderer } = require('electron');
+const path = require('path');
 
-export function updateNowPlayingView(song) {
+let artworksDir = null;
+
+async function resolveArtworkPath(artworkFileName) {
+    if (!artworkFileName) return './assets/default_artwork.png';
+    if (artworkFileName.startsWith('http')) return artworkFileName;
+    
+    if (!artworksDir) {
+        artworksDir = await ipcRenderer.invoke('get-artworks-dir');
+    }
+    return `file://${path.join(artworksDir, artworkFileName)}`;
+}
+
+export async function updateNowPlayingView(song) {
     const previewContainer = elements.nowPlayingArtworkContainer;
     const localPlayer = document.getElementById('main-player');
     const ytPlayerWrapper = document.getElementById('youtube-player-container');
@@ -21,13 +34,17 @@ export function updateNowPlayingView(song) {
     } else if (song.type === 'youtube') {
         previewContainer.classList.add('video-mode');
         previewContainer.appendChild(ytPlayerWrapper);
-    } else if (song.type === 'local' && song.path && song.path.toLowerCase().endsWith('.mp4')) {
+    // ★★★ ここからが修正箇所です ★★★
+    // 拡張子(.mp4)ではなく、映像の有無(hasVideo)で判断するように変更
+    } else if (song.hasVideo) {
         previewContainer.classList.add('video-mode');
         localPlayer.style.display = 'block';
         previewContainer.appendChild(localPlayer);
+    // ★★★ ここまでが修正箇所です ★★★
     } else {
+        previewContainer.classList.remove('video-mode'); 
         const img = document.createElement('img');
-        img.src = song.artwork || './assets/default_artwork.png';
+        img.src = await resolveArtworkPath(song.artwork);
         previewContainer.appendChild(img);
     }
     

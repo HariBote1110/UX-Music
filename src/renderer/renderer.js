@@ -1,9 +1,9 @@
 import { initUI, renderCurrentView, addSongsToLibrary, updateAudioDevices } from './js/ui-manager.js';
-import { initNavigation, showPlaylist } from './js/navigation.js';
+import { initNavigation, showPlaylist, showMainView } from './js/navigation.js'; // ★★★ showMainViewを追加 ★★★
 import { initIPC } from './js/ipc.js';
 import { initModal, showModal } from './js/modal.js';
 import { initPlaylists } from './js/playlist.js';
-import { initPlayer, togglePlayPause, applyMasterVolume } from './js/player.js';
+import { initPlayer, togglePlayPause, applyMasterVolume, seekToStart } from './js/player.js'; // ★★★ seekToStartを追加 ★★★
 import { state, elements } from './js/state.js';
 window.state = state;
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from './js/playback-manager.js';
@@ -51,7 +51,6 @@ window.addEventListener('DOMContentLoaded', () => {
     initModal();
     initPlaylists();
     
-    // ★★★ ここからが修正箇所です ★★★
     initIPC(ipcRenderer, {
         onLibraryLoaded: (songs) => {
             state.library = songs || [];
@@ -87,9 +86,7 @@ window.addEventListener('DOMContentLoaded', () => {
         onShowLoading: (text) => {
             showNotification(text || '処理中...');
         },
-        onHideLoading: () => {
-            // hideNotification は完了メッセージ表示後などに個別で呼ぶので、ここでは何もしない
-        },
+        onHideLoading: () => {},
         onShowError: (message) => {
             alert(message);
         },
@@ -97,7 +94,6 @@ window.addEventListener('DOMContentLoaded', () => {
             const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
             showNotification(`ライブラリをインポート中... (${percentage}%)`);
         },
-        // スキャン完了時の処理を追加
         onScanComplete: (songs) => {
             addSongsToLibrary(songs);
             showNotification(`${songs.length}曲のインポートが完了しました。`);
@@ -112,12 +108,21 @@ window.addEventListener('DOMContentLoaded', () => {
             hideNotification(3000);
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
     
     // --- グローバルイベントリスナーの設定 ---
     if (navigator.mediaDevices && typeof navigator.mediaDevices.ondevicechange !== 'undefined') {
         navigator.mediaDevices.addEventListener('devicechange', () => updateAudioDevices());
     }
+
+    // ★★★ ここからが修正箇所です ★★★
+    // マウスの「戻る」ボタンが押されたときの処理
+    ipcRenderer.on('navigate-back', () => {
+        // 詳細画面が表示されている場合のみ、最後に表示したリスト画面に戻る
+        if (state.currentDetailView.type) {
+            showMainView(state.activeListView);
+        }
+    });
+    // ★★★ ここまでが修正箇所です ★★★
 
     elements.nextBtn.addEventListener('click', playNextSong);
     elements.prevBtn.addEventListener('click', playPrevSong);
@@ -129,7 +134,6 @@ window.addEventListener('DOMContentLoaded', () => {
             title: 'ネットワークフォルダのパス',
             placeholder: '\\\\ServerName\\ShareName',
             onOk: (path) => {
-                // `invoke` から `send` に変更
                 ipcRenderer.send('start-scan-paths', [path]);
             }
         });
@@ -152,8 +156,6 @@ window.addEventListener('DOMContentLoaded', () => {
     elements.setLibraryBtn.addEventListener('click', () => ipcRenderer.send('set-library-path'));
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
-    
-    // ★★★ ここからが修正箇所です ★★★
     elements.dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -168,7 +170,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
         if (musicPaths.length > 0) {
             showNotification('インポート準備中...');
-            // `invoke`をやめ、スキャン開始の合図を送るだけにする
             ipcRenderer.send('start-scan-paths', musicPaths);
         }
 
@@ -176,7 +177,6 @@ window.addEventListener('DOMContentLoaded', () => {
             ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
     elements.openSettingsBtn.addEventListener('click', async () => {
         const settings = await ipcRenderer.invoke('get-settings');
@@ -196,13 +196,20 @@ window.addEventListener('DOMContentLoaded', () => {
 
     initResizer();
     
+    // ★★★ ここからが修正箇所です ★★★
     window.addEventListener('keydown', (e) => {
+        // テキスト入力中はショートカットを無効化
         if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+        
         if (e.code === 'Space') {
             e.preventDefault();
             togglePlayPause();
+        } else if (e.code === 'Digit0') { // 0キーが押された場合
+            e.preventDefault();
+            seekToStart();
         }
     });
+    // ★★★ ここまでが修正箇所です ★★★
 
     ipcRenderer.on('app-info-response', (event, info) => {
         console.log(
