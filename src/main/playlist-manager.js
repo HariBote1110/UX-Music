@@ -6,8 +6,6 @@ const DataStore = require('./data-store');
 const playlistsDir = path.join(app.getPath('userData'), 'Playlists');
 const playlistOrderStore = new DataStore('playlist-order.json');
 
-// ★★★ ここからが修正箇所です ★★★
-// モジュールが読み込まれた時点で、プレイリストディレクトリの存在を確認・作成する
 try {
     if (!fs.existsSync(playlistsDir)) {
         fs.mkdirSync(playlistsDir, { recursive: true });
@@ -15,6 +13,44 @@ try {
     }
 } catch (error) {
     console.error(`[Playlist Manager] Failed to create playlists directory on initial load:`, error);
+}
+
+// ★★★ ここからが修正箇所です ★★★
+/**
+ * プレイリストの名前を変更する
+ * @param {string} oldName - 現在のプレイリスト名
+ * @param {string} newName - 新しいプレイリスト名
+ * @returns {object} - { success: boolean, message?: string }
+ */
+function renamePlaylist(oldName, newName) {
+    if (!oldName || !newName) {
+        return { success: false, message: '名前が空です。' };
+    }
+    if (oldName === newName) {
+        return { success: true }; // 名前が変わらない場合は何もしない
+    }
+
+    const oldPath = path.join(playlistsDir, `${oldName}.m3u8`);
+    const newPath = path.join(playlistsDir, `${newName}.m3u8`);
+
+    if (!fs.existsSync(oldPath)) {
+        return { success: false, message: '元のプレイリストが見つかりません。' };
+    }
+    if (fs.existsSync(newPath)) {
+        return { success: false, message: 'その名前のプレイリストは既に存在します。' };
+    }
+
+    try {
+        fs.renameSync(oldPath, newPath);
+        // 順序を保存しているファイルも更新
+        const savedOrder = playlistOrderStore.load().order || [];
+        const newOrder = savedOrder.map(name => (name === oldName ? newName : name));
+        playlistOrderStore.save({ order: newOrder });
+        return { success: true };
+    } catch (error) {
+        console.error(`Failed to rename playlist from ${oldName} to ${newName}:`, error);
+        return { success: false, message: error.message };
+    }
 }
 // ★★★ ここまでが修正箇所です ★★★
 
@@ -137,7 +173,6 @@ function removeSongFromPlaylist(playlistName, songPathToRemove) {
 
         if (songIndex > -1) {
             for (let i = 0; i < lines.length; i++) {
-                // 曲のパスとその直前の #EXTINF 行を削除
                 if (i !== songIndex && i !== songIndex - 1) {
                     newLines.push(lines[i]);
                 }
@@ -200,4 +235,5 @@ module.exports = {
     removeSongFromPlaylist,
     deletePlaylist,
     updateSongOrderInPlaylist,
+    renamePlaylist, // ★★★ エクスポートに追加 ★★★
 };

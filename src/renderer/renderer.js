@@ -1,19 +1,25 @@
 import { initUI, renderCurrentView, addSongsToLibrary, updateAudioDevices } from './js/ui-manager.js';
-import { initNavigation, showPlaylist, showMainView } from './js/navigation.js'; // ★★★ showMainViewを追加 ★★★
+import { initNavigation, showPlaylist, showMainView } from './js/navigation.js';
 import { initIPC } from './js/ipc.js';
 import { initModal, showModal } from './js/modal.js';
 import { initPlaylists } from './js/playlist.js';
-import { initPlayer, togglePlayPause, applyMasterVolume, seekToStart } from './js/player.js'; // ★★★ seekToStartを追加 ★★★
+import { initPlayer, togglePlayPause, applyMasterVolume, seekToStart } from './js/player.js';
 import { state, elements } from './js/state.js';
-window.state = state;
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from './js/playback-manager.js';
 import { showNotification, hideNotification } from './js/ui/notification.js';
+import { initDebugCommands } from './js/debug-commands.js';
 
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
 window.addEventListener('DOMContentLoaded', () => {
     
+    // メインプロセスからのログを受け取ってコンソールに表示
+    ipcRenderer.on('log-message', (event, { level, args }) => {
+        const style = 'color: cyan; font-weight: bold;';
+        console[level](`%c[Main]%c`, style, '', ...args);
+    });
+
     function initResizer() {
         const resizer = document.getElementById('resizer');
         const rightSidebar = document.querySelector('.right-sidebar');
@@ -50,6 +56,7 @@ window.addEventListener('DOMContentLoaded', () => {
     initNavigation(renderCurrentView);
     initModal();
     initPlaylists();
+    initDebugCommands();
     
     initIPC(ipcRenderer, {
         onLibraryLoaded: (songs) => {
@@ -86,7 +93,9 @@ window.addEventListener('DOMContentLoaded', () => {
         onShowLoading: (text) => {
             showNotification(text || '処理中...');
         },
-        onHideLoading: () => {},
+        onHideLoading: () => {
+            hideNotification(500);
+        },
         onShowError: (message) => {
             alert(message);
         },
@@ -113,16 +122,12 @@ window.addEventListener('DOMContentLoaded', () => {
     if (navigator.mediaDevices && typeof navigator.mediaDevices.ondevicechange !== 'undefined') {
         navigator.mediaDevices.addEventListener('devicechange', () => updateAudioDevices());
     }
-
-    // ★★★ ここからが修正箇所です ★★★
-    // マウスの「戻る」ボタンが押されたときの処理
+    
     ipcRenderer.on('navigate-back', () => {
-        // 詳細画面が表示されている場合のみ、最後に表示したリスト画面に戻る
         if (state.currentDetailView.type) {
             showMainView(state.activeListView);
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
     elements.nextBtn.addEventListener('click', playNextSong);
     elements.prevBtn.addEventListener('click', playPrevSong);
@@ -196,20 +201,17 @@ window.addEventListener('DOMContentLoaded', () => {
 
     initResizer();
     
-    // ★★★ ここからが修正箇所です ★★★
     window.addEventListener('keydown', (e) => {
-        // テキスト入力中はショートカットを無効化
         if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
         
         if (e.code === 'Space') {
             e.preventDefault();
             togglePlayPause();
-        } else if (e.code === 'Digit0') { // 0キーが押された場合
+        } else if (e.code === 'Digit0') {
             e.preventDefault();
             seekToStart();
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
     ipcRenderer.on('app-info-response', (event, info) => {
         console.log(
@@ -218,4 +220,5 @@ window.addEventListener('DOMContentLoaded', () => {
         );
     });
     ipcRenderer.send('request-app-info');
+    
 });

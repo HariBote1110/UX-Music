@@ -1,10 +1,70 @@
 import { state, elements } from './state.js';
 import { renderTrackView, renderAlbumView, renderArtistView, renderPlaylistView } from './ui/view-renderer.js';
 import { renderAlbumDetailView, renderArtistDetailView, renderPlaylistDetailView } from './ui/detail-view-renderer.js';
+import { playSong } from './playback-manager.js'; // ★★★ playSongをインポート ★★★
 const { ipcRenderer } = require('electron');
+const path = require('path'); // ★★★ pathをインポート ★★★
+
+// ★★★ ここからが修正箇所です ★★★
+let artworksDir = null; // アートワークディレクトリのパスをキャッシュ
+
+// アートワークのパスを非同期で解決する関数
+async function resolveArtworkPath(artworkFileName) {
+    if (!artworkFileName) return './assets/default_artwork.png';
+    if (artworkFileName.startsWith('http')) return artworkFileName;
+    
+    if (!artworksDir) {
+        artworksDir = await ipcRenderer.invoke('get-artworks-dir');
+    }
+    return `file://${path.join(artworksDir, artworkFileName)}`;
+}
+
+/**
+ * 再生キューリストを描画する
+ */
+function renderQueueView() {
+    elements.queueList.innerHTML = '';
+    if (state.playbackQueue.length === 0) {
+        elements.queueList.innerHTML = '<p class="no-lyrics">再生キューは空です</p>';
+        return;
+    }
+
+    state.playbackQueue.forEach((song, index) => {
+        const queueItem = document.createElement('div');
+        const isPlaying = index === state.currentSongIndex;
+        queueItem.className = `queue-item ${isPlaying ? 'playing' : ''}`;
+        queueItem.dataset.songPath = song.path;
+        queueItem.draggable = true;
+
+        queueItem.innerHTML = `
+            <img src="./assets/default_artwork.png" class="artwork-small" alt="artwork">
+            <div class="queue-item-info">
+                <span class="queue-item-title">${song.title}</span>
+                <span class="queue-item-artist">${song.artist}</span>
+            </div>
+        `;
+        
+        const artworkImg = queueItem.querySelector('.artwork-small');
+        resolveArtworkPath(song.artwork).then(src => artworkImg.src = src);
+
+        // クリックでその曲を再生
+        queueItem.addEventListener('click', () => playSong(index));
+
+        elements.queueList.appendChild(queueItem);
+    });
+}
+// ★★★ ここまでが修正箇所です ★★★
 
 export function initUI() {
-    // UI初期化（必要であれば）
+    // ★★★ 右サイドバーのタブ切り替え機能を追加 ★★★
+    elements.sidebarTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            elements.sidebarTabs.forEach(t => t.classList.remove('active'));
+            elements.sidebarTabContents.forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById(tab.dataset.tab).classList.add('active');
+        });
+    });
 }
 
 export function addSongsToLibrary(newSongs) {
@@ -57,13 +117,11 @@ function groupLibraryByAlbum() {
     }
 }
 
-// ★★★ ここからが修正箇所です ★★★
 function groupLibraryByArtist() {
     state.artists.clear();
     const tempArtistGroups = new Map();
 
     state.library.forEach(song => {
-        // albumartist があればそれを優先し、なければ artist を使う
         const artistName = song.albumartist || song.artist || 'Unknown Artist';
         if (!tempArtistGroups.has(artistName)) {
             tempArtistGroups.set(artistName, []);
@@ -76,11 +134,10 @@ function groupLibraryByArtist() {
         state.artists.set(artistName, {
             name: artistName,
             artwork: artwork,
-            songs: songs // そのアーティストの関連楽曲として全曲保持
+            songs: songs
         });
     }
 }
-// ★★★ ここまでが修正箇所です ★★★
 
 export function renderCurrentView() {
     const activeLink = document.querySelector('.nav-link.active');
@@ -103,6 +160,7 @@ export function renderCurrentView() {
             if (artist) renderArtistDetailView(artist);
         }
     }
+    renderQueueView(); // ★★★ 常に再生キューも再描画 ★★★
 }
 
 export async function updateAudioDevices(targetDeviceId = null) {

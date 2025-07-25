@@ -1,5 +1,6 @@
 import { playSong } from './playback-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
+import { state } from './state.js'; // ★★★ stateを直接インポート ★★★
 
 export function initIPC(ipcRenderer, callbacks) {
     // --- IPCリスナー群 ---
@@ -45,14 +46,12 @@ export function initIPC(ipcRenderer, callbacks) {
     ipcRenderer.on('scan-progress', (event, progress) => {
         callbacks.onScanProgress?.(progress);
     });
-
-    // ★★★ ここからが修正箇所です ★★★
-    // スキャン完了の通知を受け取るリスナー
+    
     ipcRenderer.on('scan-complete', (event, newSongs) => {
         callbacks.onScanComplete?.(newSongs);
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
+    // ★★★ ここからが修正箇所です ★★★
     ipcRenderer.on('loudness-analysis-result', (event, result) => {
         const fileName = result.filePath.split(/[/\\]/).pop();
         if (result.success) {
@@ -62,7 +61,8 @@ export function initIPC(ipcRenderer, callbacks) {
                 'color: blue; font-weight: bold;'
             );
             
-            const waitingSong = window.state.songWaitingForAnalysis;
+            // window.stateではなく、インポートしたstateを直接使用する
+            const waitingSong = state.songWaitingForAnalysis;
             if (waitingSong && waitingSong.sourceList[waitingSong.index].path === result.filePath) {
                 playSong(waitingSong.index, null, true);
             }
@@ -71,6 +71,7 @@ export function initIPC(ipcRenderer, callbacks) {
             console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
         }
     });
+    // ★★★ ここまでが修正箇所です ★★★
 
     ipcRenderer.on('lyrics-added-notification', (event, count) => {
         showNotification(`${count}個の歌詞ファイルが追加されました。`);

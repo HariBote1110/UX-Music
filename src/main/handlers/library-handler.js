@@ -3,6 +3,8 @@ const { scanPaths, parseFiles, analyzeLoudness } = require('../file-scanner');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const os = require('os');
+// const pLimit = require('p-limit'); // ← この行を完全に削除
 const { sanitize } = require('../utils');
 
 let libraryStore;
@@ -48,11 +50,14 @@ function registerLibraryHandlers(stores) {
     settingsStore = stores.settings;
     playCountsStore = stores.playCounts;
 
-    // ★★★ ここからが修正箇所です ★★★
     ipcMain.on('start-scan-paths', async (event, paths) => {
+        // ★★★ ここからが修正箇所です ★★★
+        // p-limitを動的にインポートする
+        const pLimit = (await import('p-limit')).default;
+        // ★★★ ここまでが修正箇所です ★★★
+
         const libraryPath = settingsStore.load().libraryPath;
         if (!libraryPath) {
-            console.error('Library path is not set.');
             event.sender.send('scan-complete', []);
             return;
         }
@@ -67,9 +72,7 @@ function registerLibraryHandlers(stores) {
         const loudnessData = loudnessStore.load();
         const existingLibraryPaths = new Set(libraryStore.load().map(s => s.path));
         
-        // ラウドネス解析が必要な新しい曲だけをフィルタリング
         const songsToProcess = songsWithMetadata.filter(song => {
-            // 曲の最終的な保存先パスを事前に計算
             const primaryArtist = song.albumartist || song.artist || 'Unknown Artist';
             const artistDir = sanitize(primaryArtist);
             const albumDir = sanitize(song.album || 'Unknown Album');
@@ -77,11 +80,15 @@ function registerLibraryHandlers(stores) {
             const originalFileName = path.basename(song.path);
             const safeFileName = sanitize(originalFileName);
             const destPath = path.join(destDir, safeFileName);
-            // ライブラリにまだ存在しない曲のみを対象とする
             return !existingLibraryPaths.has(destPath);
         });
 
-        const totalSteps = songsToProcess.length * 2; // 解析が必要な曲数でステップを計算
+        if (songsToProcess.length === 0) {
+            event.sender.send('scan-complete', []);
+            return;
+        }
+
+        const totalSteps = songsToProcess.length * 2;
         let completedSteps = 0;
     
         const sendProgress = () => {
@@ -91,44 +98,50 @@ function registerLibraryHandlers(stores) {
         };
         sendProgress();
     
-        // メタデータ解析は完了したとみなし、ステップを進める
         completedSteps += songsToProcess.length;
         sendProgress();
     
-        const newSongObjects = [];
-    
-        for (const song of songsToProcess) {
-            if (song.artwork) {
-                song.artwork = saveArtworkToFile(song.artwork, song.path);
-            }
-            const primaryArtist = song.albumartist || song.artist || 'Unknown Artist';
-            const artistDir = sanitize(primaryArtist);
-            const albumDir = sanitize(song.album || 'Unknown Album');
-            const destDir = path.join(libraryPath, artistDir, albumDir);
-            if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-            
-            const originalFileName = path.basename(song.path);
-            const safeFileName = sanitize(originalFileName);
-            const destPath = path.join(destDir, safeFileName);
-    
-            if (!fs.existsSync(destPath)) {
-                try {
-                    fs.copyFileSync(song.path, destPath);
-                    const result = await analyzeLoudness(destPath);
-                    event.sender.send('loudness-analysis-result', result);
-                    if (result.success) {
-                        loudnessData[destPath] = result.loudness;
-                    }
-                } catch (error) {
-                    console.error(`Failed to copy or analyze ${originalFileName}:`, error);
+        const concurrency = os.cpus().length;
+        const limit = pLimit(concurrency);
+        console.log(`[Loudness] Starting analysis with concurrency: ${concurrency}`);
+
+        const analysisPromises = songsToProcess.map(song => {
+            return limit(async () => {
+                if (song.artwork) {
+                    song.artwork = saveArtworkToFile(song.artwork, song.path);
                 }
-            }
-            song.path = destPath;
-            newSongObjects.push(song);
-            
-            completedSteps++;
-            sendProgress();
-        }
+                const primaryArtist = song.albumartist || song.artist || 'Unknown Artist';
+                const artistDir = sanitize(primaryArtist);
+                const albumDir = sanitize(song.album || 'Unknown Album');
+                const destDir = path.join(libraryPath, artistDir, albumDir);
+                if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+                
+                const originalFileName = path.basename(song.path);
+                const safeFileName = sanitize(originalFileName);
+                const destPath = path.join(destDir, safeFileName);
+        
+                if (!fs.existsSync(destPath)) {
+                    try {
+                        fs.copyFileSync(song.path, destPath);
+                        const result = await analyzeLoudness(destPath);
+                        event.sender.send('loudness-analysis-result', result);
+                        if (result.success) {
+                            loudnessData[destPath] = result.loudness;
+                        }
+                    } catch (error) {
+                        console.error(`Failed to copy or analyze ${originalFileName}:`, error);
+                    }
+                }
+                song.path = destPath;
+                
+                completedSteps++;
+                sendProgress();
+
+                return song;
+            });
+        });
+
+        const newSongObjects = await Promise.all(analysisPromises);
         
         if (newSongObjects.length > 0) {
             loudnessStore.save(loudnessData);
@@ -137,7 +150,6 @@ function registerLibraryHandlers(stores) {
         
         event.sender.send('scan-complete', addedSongs);
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
     ipcMain.on('request-loudness-analysis', async (event, songPath) => {
         const loudnessData = loudnessStore.load();

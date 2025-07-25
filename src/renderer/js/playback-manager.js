@@ -7,6 +7,9 @@ import { loadLyricsForSong } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
 
 export async function playSong(index, sourceList = null, forcePlay = false) {
+    // ★★★ 追加: 再生処理の開始時に、常に解析待ち状態をクリアする ★★★
+    state.songWaitingForAnalysis = null;
+
     if (sourceList) {
         state.originalQueueSource = [...sourceList];
         if (state.isShuffled) {
@@ -42,7 +45,6 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
         }
     }
     
-    state.songWaitingForAnalysis = null;
     hideNotification();
     
     loadLyricsForSong(songToPlay);

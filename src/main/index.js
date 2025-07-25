@@ -3,19 +3,10 @@ const path = require('path');
 const { registerIpcHandlers } = require('./ipc-handlers');
 const fs = require('fs');
 const DataStore = require('./data-store');
+const { initialize: initializeLogForwarder } = require('./log-forwarder'); // ★★★ 追加 ★★★
 
-function initializeLibrary() {
-    // ★★★ この処理はipc-handlers内でapp.whenReady()後に実行されるため、ここでは不要 ★★★
-    // const settingsStore = new DataStore('settings.json');
-    // let settings = settingsStore.load();
-    // if (!settings.libraryPath) {
-    //     settings.libraryPath = path.join(app.getPath('music'), 'UX_Music');
-    //     settingsStore.save(settings);
-    // }
-    // if (!fs.existsSync(settings.libraryPath)) {
-    //     fs.mkdirSync(settings.libraryPath, { recursive: true });
-    // }
-}
+// ★★★ アプリ起動の早い段階でログ転送を初期化 ★★★
+initializeLogForwarder();
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -25,7 +16,9 @@ function createWindow() {
     minHeight: 560,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false
+      contextIsolation: false,
+      // ★★★ ビルド後もDevToolsを開けるようにする設定 ★★★
+      devTools: !app.isPackaged, 
     },
     titleBarStyle: 'hidden',
     titleBarOverlay: {
@@ -34,26 +27,24 @@ function createWindow() {
     }
   });
 
+  // 開発モード、またはデバッグフラグがある場合はDevToolsを開く
+  if (!app.isPackaged || process.argv.includes('--debug')) {
+      mainWindow.webContents.openDevTools();
+  }
+
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
-  // ★★★ ここからが修正箇所です ★★★
-  // マウスのサイドボタン（戻る）が押されたことを検知
   mainWindow.on('app-command', (e, cmd) => {
     if (cmd === 'browser-backward') {
-      // レンダラープロセスに「戻る」ナビゲーションを指示
       mainWindow.webContents.send('navigate-back');
     }
   });
-  // ★★★ ここまでが修正箇所です ★★★
 
   return mainWindow;
 }
 
 app.whenReady().then(() => {
-  initializeLibrary();
-  
   registerIpcHandlers(); 
-
   createWindow();
 
   app.on('activate', function () {

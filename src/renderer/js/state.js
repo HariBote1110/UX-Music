@@ -19,7 +19,7 @@ export const state = {
     currentLyrics: null,
     currentlyViewedSongs: [],
     currentDetailView: { type: null, identifier: null },
-    activeListView: 'track-view', // ★★★ 追加: ナビゲーション履歴のため ★★★
+    activeListView: 'track-view',
 };
 
 // UI要素を一元管理
@@ -67,4 +67,9 @@ export const elements = {
     notificationToast: document.getElementById('notification-toast'),
     notificationText: document.getElementById('notification-text'),
     lyricsView: document.getElementById('lyrics-view'),
+    // ★★★ ここからが修正箇所です ★★★
+    sidebarTabs: document.querySelectorAll('.sidebar-tab-btn'),
+    sidebarTabContents: document.querySelectorAll('.sidebar-tab-content'),
+    queueList: document.getElementById('queue-list'),
+    // ★★★ ここまでが修正箇所です ★★★
 };

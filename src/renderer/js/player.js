@@ -1,6 +1,7 @@
 import { elements } from './state.js';
 import { updateSyncedLyrics } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
+const path = require('path'); // ★★★ この行を追加 ★★★
 
 let audioContext;
 let mainPlayerNode;
@@ -147,7 +148,12 @@ export async function play(song) {
     }
 
     if ('mediaSession' in navigator) {
-        const artworkSrc = song.artwork || '';
+        const artworkDir = await ipcRenderer.invoke('get-artworks-dir');
+        let artworkSrc = song.artwork ? `file://${path.join(artworkDir, song.artwork)}` : '';
+        if (song.artwork && song.artwork.startsWith('http')) {
+            artworkSrc = song.artwork;
+        }
+
         navigator.mediaSession.metadata = new MediaMetadata({
             title: song.title || '不明なタイトル',
             artist: song.artist || '不明なアーティスト',
@@ -158,15 +164,13 @@ export async function play(song) {
 
     const settings = await ipcRenderer.invoke('get-settings');
     const mode = settings.youtubePlaybackMode || 'download';
-    const isFromYouTube = song.sourceURL || song.type === 'youtube';
-    const hasLocalFile = song.type === 'local' && song.path;
 
-    if (mode === 'stream' && isFromYouTube) {
+    if (song.type === 'youtube' || (mode === 'stream' && song.sourceURL)) {
         currentSongType = 'youtube';
         elements.audioOutputSelect.disabled = true;
         const streamPath = song.sourceURL || song.path;
         playYoutube({ ...song, path: streamPath });
-    } else if (hasLocalFile) {
+    } else if (song.type === 'local' && song.path) {
         currentSongType = 'local';
         elements.audioOutputSelect.disabled = false;
         playLocal(song);
@@ -186,7 +190,10 @@ export async function stop() {
 
 function playLocal(song) {
     if (!song || !song.path) return;
-    localPlayer.src = `file://${song.path.replace(/\\/g, '/')}`;
+    
+    const safePath = song.path.replace(/\\/g, '/').replace(/#/g, '%23');
+    localPlayer.src = `file://${safePath}`;
+
     localPlayer.play().catch(e => {
         if (e.name !== 'AbortError') console.error("Play error:", e);
     });
@@ -219,7 +226,6 @@ export async function togglePlayPause() {
     }
 }
 
-// ★★★ ここからが修正箇所です ★★★
 export async function seekToStart() {
     if (currentSongType === 'youtube') {
         const player = await getYouTubePlayer();
@@ -228,7 +234,6 @@ export async function seekToStart() {
         localPlayer.currentTime = 0;
     }
 }
-// ★★★ ここまでが修正箇所です ★★★
 
 async function seek() {
     const time = parseFloat(elements.progressBar.value);

@@ -1,13 +1,8 @@
 const { ipcMain } = require('electron');
 const playlistManager = require('../playlist-manager');
 
-// このハンドラで使用するストア（メインのipc-handler.jsから渡される）
 let libraryStore;
 
-/**
- * プレイリストのアートワーク情報を生成する
- * @returns {Array} - アートワーク情報を含むプレイリストの配列
- */
 function getPlaylistsWithArtwork() {
     const playlistNames = playlistManager.getAllPlaylists();
     const mainLibrary = libraryStore.load() || [];
@@ -24,11 +19,6 @@ function getPlaylistsWithArtwork() {
     });
 }
 
-/**
- * プレイリスト関連のIPCハンドラを登録
- * @param {object} stores - { library }
- * @param {function} sendToAllWindows - 全てのウィンドウにIPCメッセージを送信する関数
- */
 function registerPlaylistHandlers(stores, sendToAllWindows) {
     libraryStore = stores.library;
 
@@ -71,6 +61,16 @@ function registerPlaylistHandlers(stores, sendToAllWindows) {
              event.sender.send('playlists-updated', getPlaylistsWithArtwork());
         }
     });
+
+    // ★★★ ここからが修正箇所です ★★★
+    ipcMain.handle('rename-playlist', (event, { oldName, newName }) => {
+        const result = playlistManager.renamePlaylist(oldName, newName);
+        if (result.success) {
+            sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
+        }
+        return result;
+    });
+    // ★★★ ここまでが修正箇所です ★★★
 }
 
 module.exports = { registerPlaylistHandlers, getPlaylistsWithArtwork };

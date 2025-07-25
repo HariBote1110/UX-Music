@@ -1,0 +1,117 @@
+/* ボタン、スライダー、モーダルなどの再利用可能な部品 */
+.nav-link { 
+    display: block; 
+    padding: 10px 12px; 
+    color: var(--text-secondary); 
+    border-radius: 4px; 
+    font-weight: bold; 
+}
+.nav-link:hover { 
+    color: var(--text-primary); 
+    background-color: var(--bg-light); 
+}
+.nav-link.active { 
+    color: var(--text-primary); 
+    background-color: var(--bg-light); 
+}
+
+.sidebar-actions { margin-top: auto; }
+#add-network-folder-btn, #add-youtube-btn, #add-youtube-playlist-btn, #set-library-btn, #open-settings-btn { 
+    width: 100%; 
+    padding: 10px; 
+    background-color: var(--bg-light); 
+    color: var(--text-primary); 
+    border: none; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    font-size: 14px; 
+    text-align: left; 
+    margin-top: 8px; 
+}
+#add-network-folder-btn:hover, #add-youtube-btn:hover, #add-youtube-playlist-btn:hover, #set-library-btn:hover, #open-settings-btn:hover { 
+    background-color: var(--bg-hover); 
+}
+
+.playback-controls { display: flex; align-items: center; justify-content: center; flex-grow: 0; flex-basis: 300px; }
+.playback-controls button { background: none; border: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; margin: 0 10px; transition: color 0.2s; }
+.playback-controls button:hover { color: var(--text-primary); }
+#play-pause-btn { font-size: 28px; width: 40px; height: 40px; border: 1px solid var(--text-secondary); border-radius: 50%; display: flex; justify-content: center; align-items: center; }
+#play-pause-btn:hover { border-color: var(--text-primary); }
+.playback-mode-btn { font-size: 18px; position: relative; }
+.playback-mode-btn.active { color: var(--highlight-pink); }
+.playback-mode-btn.active::after { content: ''; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 5px; height: 5px; background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue)); border-radius: 50%; box-shadow: 0 0 2px rgba(0,0,0,0.5); }
+.playback-mode-btn#loop-btn.loop-one::after { content: '1'; bottom: 0px; left: 50%; transform: translateX(-50%); width: 14px; height: 14px; line-height: 14px; font-size: 10px; font-weight: bold; text-align: center; color: var(--bg-dark); background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue)); border-radius: 50%; }
+
+.progress-container { flex-grow: 1; margin: 0 20px; display: flex; align-items: center; gap: 15px; font-size: 0.8em; color: var(--text-muted); }
+#progress-bar { flex-grow: 1; -webkit-appearance: none; width: 100%; height: 4px; background: #4d4d4d; outline: none; border-radius: 2px; cursor: pointer; }
+#progress-bar::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #fff; border-radius: 50%; }
+
+.volume-container { display: flex; align-items: center; width: 180px; }
+.volume-container #volume-icon { margin-right: 10px; font-size: 20px; cursor: pointer; }
+#volume-slider { -webkit-appearance: none; width: 100%; height: 4px; background: #4d4d4d; outline: none; border-radius: 2px; cursor: pointer; }
+#volume-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #fff; border-radius: 50%; }
+
+.device-container { margin-left: 20px; }
+#audio-output-select { background-color: var(--bg-light); color: var(--text-primary); border: 1px solid var(--text-muted); border-radius: 4px; padding: 5px; min-width: 150px; }
+
+/* ▼▼▼ ここからが修正・追加箇所です ▼▼▼ */
+#modal-overlay, #settings-modal-overlay, #loading-overlay { 
+    position: fixed; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%; 
+    background-color: rgba(0, 0, 0, 0.7); 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    z-index: 1000; 
+}
+
+#modal-overlay.hidden, #settings-modal-overlay.hidden, #loading-overlay.hidden { 
+    display: none; 
+}
+
+#modal, #settings-modal { 
+    background-color: var(--bg-light); 
+    padding: 25px; 
+    border-radius: 8px; 
+    width: 100%; 
+    max-width: 500px; 
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
+}
+#modal h3, #settings-modal h2 { margin-top: 0; }
+#modal p { color: var(--text-muted); font-size: 14px; }
+#modal-input { width: 100%; padding: 10px; box-sizing: border-box; background-color: var(--bg-dark); border: 1px solid #535353; color: #fff; border-radius: 4px; margin-top: 10px; margin-bottom: 20px; }
+.modal-buttons { text-align: right; }
+.modal-buttons button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+#modal-cancel-btn { background-color: transparent; color: #fff; }
+#modal-cancel-btn:hover { background-color: var(--bg-hover); }
+#modal-ok-btn { background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue)); color: var(--bg-dark); margin-left: 10px; border: none; }
+#modal-ok-btn:hover { opacity: 0.9; }
+
+#settings-modal .setting-item { margin-top: 20px; }
+#settings-modal .radio-group label { display: block; padding: 10px; border-radius: 4px; cursor: pointer; margin-top: 5px; }
+#settings-modal .radio-group label:hover { background-color: #3a3a3a; }
+#settings-modal .radio-group input { margin-right: 10px; }
+#settings-modal .radio-group small { color: #b3b3b3; display: block; margin-left: 25px; }
+
+#loading-overlay { 
+    background-color: rgba(0, 0, 0, 0.8); 
+    flex-direction: column; 
+    z-index: 2000; 
+    color: #fff; 
+}
+.spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid #fff; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.loading-text { font-size: 1.2em; font-weight: bold; }
+
+/* ▲▲▲ ここまでが修正・追加箇所です ▲▲▲ */
+
+#notification-toast { position: fixed; bottom: 110px; right: 20px; background-color: var(--bg-light); color: #fff; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 3000; opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s, transform 0.3s; transform: translateY(20px); }
+#notification-toast.show { opacity: 1; visibility: visible; transform: translateY(0); }
+#notification-toast.hidden { opacity: 0; visibility: hidden; transform: translateY(20px); }
+
+.context-menu { position: fixed; z-index: 10000; background-color: var(--bg-light); border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); padding: 5px 0; min-width: 150px; }
+.context-menu-item { padding: 10px 15px; color: var(--text-secondary); cursor: pointer; font-size: 14px; }
+.context-menu-item:hover { background-color: var(--bg-hover); color: var(--text-primary); }

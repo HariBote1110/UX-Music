@@ -4,8 +4,11 @@
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
     <title>UX Music</title>
-    <link rel="stylesheet" href="./style.css">
-</head>
+    <link rel="stylesheet" href="./styles/base.css">
+    <link rel="stylesheet" href="./styles/layout.css">
+    <link rel="stylesheet" href="./styles/components.css">
+    <link rel="stylesheet" href="./styles/views.css">
+    </head>
 <body>
     <div class="title-bar"></div>
     <div class="container">
@@ -128,20 +131,29 @@
         <div id="resizer" class="resizer-vertical"></div>
         <div class="sidebar right-sidebar">
             <div id="now-playing-container">
-                    <div id="now-playing-artwork-container">
-                        <img src="./assets/default_artwork.png" alt="Now Playing Artwork">
-                    </div>
+                <div id="now-playing-artwork-container">
+                    <img src="./assets/default_artwork.png" alt="Now Playing Artwork">
+                </div>
                 <div id="now-playing-details">
                     <h2 id="now-playing-title">曲を選択してください</h2>
                     <p id="now-playing-artist"></p>
                     <div id="hub-link-container"></div>
                 </div>
-                <div id="lyrics-container">
+                <div class="sidebar-tabs">
+                    <button class="sidebar-tab-btn active" data-tab="lyrics-container">歌詞</button>
+                    <button class="sidebar-tab-btn" data-tab="queue-container">再生キュー</button>
+                </div>
+                <div id="lyrics-container" class="sidebar-tab-content active">
                     <div id="lyrics-view">
                         <p class="no-lyrics">歌詞はありません</p>
                     </div>
                 </div>
+                <div id="queue-container" class="sidebar-tab-content">
+                    <div id="queue-list">
+                        <p class="no-lyrics">再生キューは空です</p>
+                    </div>
                 </div>
+            </div>
         </div>
     </div>
     <footer class="playback-bar">
