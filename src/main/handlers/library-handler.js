@@ -174,17 +174,33 @@ function registerLibraryHandlers(stores) {
             event.sender.send('load-library', songs);
         }
     });
-
     ipcMain.on('debug-reset-library', (event) => {
         try {
+            // データベースファイルをクリア
             libraryStore.save([]);
             loudnessStore.save({});
             playCountsStore.save({});
+            
+            // アートワークフォルダをクリア
             const artworksDir = path.join(app.getPath('userData'), 'Artworks');
             if (fs.existsSync(artworksDir)) {
                 fs.rmSync(artworksDir, { recursive: true, force: true });
             }
-            console.log('[DEBUG] Library has been reset.');
+            
+            // ▼▼▼ ここからが修正箇所です ▼▼▼
+            // 音楽ライブラリフォルダの中身を全て削除
+            const settings = settingsStore.load();
+            const libraryPath = settings.libraryPath;
+
+            if (libraryPath && fs.existsSync(libraryPath)) {
+                console.log(`[DEBUG] Deleting music library folder contents at: ${libraryPath}`);
+                // フォルダごと削除して、再度空のフォルダを作成する
+                fs.rmSync(libraryPath, { recursive: true, force: true });
+                fs.mkdirSync(libraryPath, { recursive: true });
+            }
+            // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
+            console.log('[DEBUG] Library has been reset completely.');
             if (event.sender && !event.sender.isDestroyed()) {
                 event.sender.send('force-reload-library');
             }
@@ -193,5 +209,6 @@ function registerLibraryHandlers(stores) {
         }
     });
 }
+
 
 module.exports = { registerLibraryHandlers };
