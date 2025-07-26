@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
     <title>UX Music</title>
     <link rel="stylesheet" href="./styles/base.css">
     <link rel="stylesheet" href="./styles/layout.css">
@@ -158,11 +158,21 @@
     </div>
     <footer class="playback-bar">
         <div class="playback-controls">
-            <button id="shuffle-btn" class="playback-mode-btn" title="シャッフル">🔀</button>
-            <button id="prev-btn">⏮</button>
-            <button id="play-pause-btn">▶</button>
-            <button id="next-btn">⏭</button>
-            <button id="loop-btn" class="playback-mode-btn" title="リピート">🔁</button>
+            <button id="shuffle-btn" class="playback-mode-btn" title="シャッフル">
+                <img src="./assets/icons/random.svg" alt="Shuffle">
+            </button>
+            <button id="prev-btn" class="control-btn">
+                <img src="./assets/icons/rewind_skip.svg" alt="Previous">
+            </button>
+            <button id="play-pause-btn" class="play-btn">
+                <img src="./assets/icons/play.svg" alt="Play">
+            </button>
+            <button id="next-btn" class="control-btn">
+                <img src="./assets/icons/next_skip.svg" alt="Next">
+            </button>
+            <button id="loop-btn" class="playback-mode-btn" title="リピート">
+                <img src="./assets/icons/repeat.svg" alt="Loop">
+            </button>
         </div>
         <div class="progress-container">
             <span id="current-time">0:00</span>
@@ -170,11 +180,18 @@
             <span id="total-duration">0:00</span>
         </div>
         <div class="volume-container">
-            <span id="volume-icon">🔊</span>
+            <button id="volume-icon-btn">
+                <img id="volume-icon" src="./assets/icons/bigger_sound.svg" alt="Volume">
+            </button>
             <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5">
         </div>
         <div class="device-container">
-            <select id="audio-output-select"></select>
+            <button id="device-select-button">
+                🔊
+            </button>
+            <div id="device-popup" class="device-popup">
+            </div>
+            <select id="audio-output-select" style="display: none;"></select>
         </div>
     </footer>
     <div id="modal-overlay" class="hidden">

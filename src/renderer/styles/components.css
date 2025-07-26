@@ -32,29 +32,137 @@
     background-color: var(--bg-hover); 
 }
 
-.playback-controls { display: flex; align-items: center; justify-content: center; flex-grow: 0; flex-basis: 300px; }
-.playback-controls button { background: none; border: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; margin: 0 10px; transition: color 0.2s; }
-.playback-controls button:hover { color: var(--text-primary); }
-#play-pause-btn { font-size: 28px; width: 40px; height: 40px; border: 1px solid var(--text-secondary); border-radius: 50%; display: flex; justify-content: center; align-items: center; }
-#play-pause-btn:hover { border-color: var(--text-primary); }
-.playback-mode-btn { font-size: 18px; position: relative; }
-.playback-mode-btn.active { color: var(--highlight-pink); }
-.playback-mode-btn.active::after { content: ''; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 5px; height: 5px; background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue)); border-radius: 50%; box-shadow: 0 0 2px rgba(0,0,0,0.5); }
-.playback-mode-btn#loop-btn.loop-one::after { content: '1'; bottom: 0px; left: 50%; transform: translateX(-50%); width: 14px; height: 14px; line-height: 14px; font-size: 10px; font-weight: bold; text-align: center; color: var(--bg-dark); background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue)); border-radius: 50%; }
+.playback-controls { 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    flex-grow: 0; 
+    flex-basis: 300px; 
+    gap: 16px; 
+}
+.playback-controls button { 
+    background: none; 
+    border: none; 
+    cursor: pointer; 
+    transition: all 0.2s; 
+    line-height: 0; /* imgの上下の余白を消す */
+    padding: 0; /* 余白をリセット */
+}
+.playback-controls button:hover { 
+    transform: scale(1.1); 
+}
+
+/* 通常のコントロールボタン (進む、戻る) */
+.control-btn img, .playback-mode-btn img {
+    width: 24px;
+    height: 24px;
+    /* SVGを灰色(#b3b3b3)にするためのfilter */
+    filter: invert(82%) sepia(8%) saturate(0%) hue-rotate(143deg) brightness(91%) contrast(89%);
+}
+.control-btn:hover img, .playback-mode-btn:hover img {
+    /* SVGを白色(#ffffff)にするためのfilter */
+    filter: invert(100%) sepia(100%) saturate(0%) hue-rotate(288deg) brightness(102%) contrast(102%);
+}
+
+/* 再生・停止ボタン */
+.playback-controls .play-btn {
+    width: 40px;
+    height: 40px;
+    background-color: var(--text-primary);
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.playback-controls .play-btn:hover {
+    transform: scale(1.05); /* ホバー時の拡大を少し抑える */
+}
+.playback-controls .play-btn img {
+    width: 28px;
+    height: 28px;
+    filter: none; /* filterを無効化し、SVG本来の色(黒)を表示 */
+}
+
+/* モード切替ボタン (シャッフル、リピート) */
+.playback-mode-btn { 
+    position: relative; 
+}
+.playback-mode-btn img {
+    width: 22px;
+    height: 22px;
+}
+.playback-mode-btn.active { 
+    color: var(--highlight-pink); 
+}
+.playback-mode-btn.active img {
+    /* SVGをピンク色にするためのfilter */
+    filter: invert(48%) sepia(21%) saturate(1475%) hue-rotate(312deg) brightness(90%) contrast(86%);
+}
+.playback-mode-btn.active::after { 
+    content: ''; 
+    position: absolute; 
+    bottom: -8px; 
+    left: 50%; 
+    transform: translateX(-50%); 
+    width: 5px; 
+    height: 5px; 
+    background: var(--highlight-pink); 
+    border-radius: 50%; 
+}
+.playback-mode-btn#loop-btn.loop-one::after { 
+    content: '1'; 
+    bottom: -10px; 
+    left: 50%; 
+    transform: translateX(-50%); 
+    width: 14px; 
+    height: 14px; 
+    line-height: 14px; 
+    font-size: 10px; 
+    font-weight: bold; 
+    text-align: center; 
+    color: var(--bg-dark); 
+    background: var(--highlight-pink); 
+    border-radius: 50%; 
+}
 
 .progress-container { flex-grow: 1; margin: 0 20px; display: flex; align-items: center; gap: 15px; font-size: 0.8em; color: var(--text-muted); }
 #progress-bar { flex-grow: 1; -webkit-appearance: none; width: 100%; height: 4px; background: #4d4d4d; outline: none; border-radius: 2px; cursor: pointer; }
 #progress-bar::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #fff; border-radius: 50%; }
 
 .volume-container { display: flex; align-items: center; width: 180px; }
-.volume-container #volume-icon { margin-right: 10px; font-size: 20px; cursor: pointer; }
+
+/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
+#volume-icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px;
+    margin-right: 10px;
+    line-height: 0;
+}
+#volume-icon {
+    width: 24px;
+    height: 24px;
+    filter: invert(82%) sepia(8%) saturate(0%) hue-rotate(143deg) brightness(91%) contrast(89%);
+    transition: filter 0.2s;
+}
+#volume-icon-btn:hover #volume-icon {
+    filter: invert(100%) sepia(100%) saturate(0%) hue-rotate(288deg) brightness(102%) contrast(102%);
+}
+/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
+
 #volume-slider { -webkit-appearance: none; width: 100%; height: 4px; background: #4d4d4d; outline: none; border-radius: 2px; cursor: pointer; }
 #volume-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #fff; border-radius: 50%; }
 
-.device-container { margin-left: 20px; }
-#audio-output-select { background-color: var(--bg-light); color: var(--text-primary); border: 1px solid var(--text-muted); border-radius: 4px; padding: 5px; min-width: 150px; }
+.device-container { position: relative; margin-left: 20px; }
+#device-select-button { background: none; border: none; color: var(--text-primary); font-size: 24px; cursor: pointer; padding: 5px; }
+.device-popup { position: absolute; bottom: calc(100% + 15px); right: 0; background-color: var(--bg-light); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); padding: 8px; z-index: 1100; width: 250px; visibility: hidden; opacity: 0; transform: translateY(10px); transition: all 0.2s ease-out; }
+.device-popup.active { visibility: visible; opacity: 1; transform: translateY(0); }
+.device-popup-item { padding: 10px 12px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.device-popup-item:hover { background-color: var(--bg-hover); }
+.device-popup-item.active { color: var(--highlight-pink); font-weight: bold; }
 
-/* ▼▼▼ ここからが修正・追加箇所です ▼▼▼ */
+
 #modal-overlay, #settings-modal-overlay, #loading-overlay { 
     position: fixed; 
     top: 0; 
@@ -105,8 +213,6 @@
 .spinner { border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top: 4px solid #fff; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 .loading-text { font-size: 1.2em; font-weight: bold; }
-
-/* ▲▲▲ ここまでが修正・追加箇所です ▲▲▲ */
 
 #notification-toast { position: fixed; bottom: 110px; right: 20px; background-color: var(--bg-light); color: #fff; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 3000; opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s, transform 0.3s; transform: translateY(20px); }
 #notification-toast.show { opacity: 1; visibility: visible; transform: translateY(0); }

@@ -1,7 +1,7 @@
 import { elements } from './state.js';
 import { updateSyncedLyrics } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
-const path = require('path'); // ★★★ この行を追加 ★★★
+const path = require('path');
 
 let audioContext;
 let mainPlayerNode;
@@ -17,6 +17,43 @@ let timeUpdateInterval;
 let onSongEndedCallback = () => {};
 let onNextSongCallback = () => {};
 let onPrevSongCallback = () => {};
+let lastVolume = 0.5; // ミュート復帰用に音量を記憶
+
+// ▼▼▼ ここからが修正・追加箇所です ▼▼▼
+let isSeeking = false; // ユーザーがプログレスバーを操作中かどうかのフラグ
+let animationFrameId = null; // requestAnimationFrameのIDを保持
+// ▲▲▲ ここまでが修正・追加箇所です ▲▲▲
+
+function setPlayPauseIcon(iconName) { // 'play', 'pause', 'stop'
+    const playPauseIcon = elements.playPauseBtn.querySelector('img');
+    if (playPauseIcon) {
+        playPauseIcon.src = `./assets/icons/${iconName}.svg`;
+    }
+}
+
+function updateVolumeIcon() {
+    const volume = parseFloat(elements.volumeSlider.value);
+    const volumeIcon = document.getElementById('volume-icon');
+    if (volume === 0) {
+        volumeIcon.src = './assets/icons/mute.svg';
+    } else if (volume < 0.5) {
+        volumeIcon.src = './assets/icons/small_sound.svg';
+    } else {
+        volumeIcon.src = './assets/icons/bigger_sound.svg';
+    }
+}
+
+function toggleMute() {
+    const currentVolume = parseFloat(elements.volumeSlider.value);
+    if (currentVolume > 0) {
+        lastVolume = currentVolume;
+        elements.volumeSlider.value = 0;
+    } else {
+        elements.volumeSlider.value = lastVolume;
+    }
+    setVolume();
+}
+
 
 export function applyMasterVolume() {
     if (!gainNode) return;
@@ -42,27 +79,74 @@ export function initPlayer(playerElement, callbacks) {
         console.error('Web Audio APIの初期化に失敗しました。', e);
     }
 
+    setPlayPauseIcon('stop');
+
+    // ▼▼▼ ここからが修正・追加箇所です ▼▼▼
+    // requestAnimationFrameを使った滑らかなUI更新ループ
+    const smoothUpdateLoop = () => {
+        if (!isSeeking) {
+            updateUiTime(localPlayer.currentTime, localPlayer.duration);
+        }
+        animationFrameId = requestAnimationFrame(smoothUpdateLoop);
+    };
+
     localPlayer.addEventListener('ended', onSongEndedCallback);
+    
+    // timeupdateは歌詞同期など、60fpsである必要がない処理に限定する
     localPlayer.addEventListener('timeupdate', () => {
-        const currentTime = localPlayer.currentTime;
-        updateUiTime(currentTime, localPlayer.duration);
-        updateSyncedLyrics(currentTime);
+        updateSyncedLyrics(localPlayer.currentTime);
     });
+    
     localPlayer.addEventListener('play', () => {
-        elements.playPauseBtn.textContent = '⏸';
+        setPlayPauseIcon('pause');
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
         if (audioContext && audioContext.state === 'suspended') {
             audioContext.resume();
         }
+        // アニメーションループを開始
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(smoothUpdateLoop);
     });
+
     localPlayer.addEventListener('pause', () => {
-        elements.playPauseBtn.textContent = '▶';
+        setPlayPauseIcon('play');
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+        // アニメーションループを停止
+        cancelAnimationFrame(animationFrameId);
     });
 
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
-    elements.progressBar.addEventListener('input', seek);
+    
+    // プログレスバーのイベントリスナーを再設定
+    elements.progressBar.addEventListener('mousedown', () => {
+        isSeeking = true;
+        // ドラッグ開始時に再生を一時停止（見た目上は再生中のまま）
+        if (!localPlayer.paused) {
+            localPlayer.pause();
+        }
+    });
+
+    elements.progressBar.addEventListener('mouseup', () => {
+        seek(); // ドラッグ終了時にシークを実行
+        isSeeking = false;
+        // 曲が再生中だった場合は再生を再開
+        if (navigator.mediaSession.playbackState === 'playing') {
+            localPlayer.play();
+        }
+    });
+
+    elements.progressBar.addEventListener('input', () => {
+        // ドラッグ中は再生時間表示のみを更新
+        const time = parseFloat(elements.progressBar.value);
+        elements.currentTimeEl.textContent = formatTime(time);
+    });
+    
     elements.volumeSlider.addEventListener('input', setVolume);
+    document.getElementById('volume-icon-btn').addEventListener('click', toggleMute);
+    updateVolumeIcon();
+
+    // ▲▲▲ ここまでが修正・追加箇所です ▲▲▲
+
     elements.audioOutputSelect.addEventListener('change', async (event) => {
         try {
             if (audioContext && typeof audioContext.setSinkId === 'function') {
@@ -125,6 +209,7 @@ function getYouTubePlayer(videoId) {
 export async function play(song) {
     await stop();
     if (!song) {
+        setPlayPauseIcon('stop'); 
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = null;
             navigator.mediaSession.playbackState = 'none';
@@ -185,6 +270,7 @@ export async function stop() {
     } else {
         localPlayer.pause();
     }
+    setPlayPauseIcon('play'); 
     clearInterval(timeUpdateInterval);
 }
 
@@ -217,12 +303,18 @@ export async function togglePlayPause() {
         const player = await getYouTubePlayer();
         if (player && typeof player.getPlayerState === 'function') {
             const state = player.getPlayerState();
-            if (state === YT.PlayerState.PLAYING) player.pauseVideo();
-            else player.playVideo();
+            if (state === YT.PlayerState.PLAYING) {
+                player.pauseVideo();
+            } else {
+                player.playVideo();
+            }
         }
     } else {
-        if (localPlayer.paused) localPlayer.play();
-        else localPlayer.pause();
+        if (localPlayer.src && !localPlayer.paused) {
+             localPlayer.pause();
+        } else if (localPlayer.src) {
+             localPlayer.play();
+        }
     }
 }
 
@@ -245,8 +337,9 @@ async function seek() {
     }
 }
 
-async function setVolume() {
+function setVolume() {
     applyMasterVolume(); 
+    updateVolumeIcon();
     
     const volume = parseFloat(elements.volumeSlider.value);
     ipcRenderer.send('save-settings', { volume: volume }); 
@@ -255,7 +348,7 @@ async function setVolume() {
 function onPlayerStateChange(event) {
     const state = event.data;
     if (state === YT.PlayerState.PLAYING) {
-        elements.playPauseBtn.textContent = '⏸';
+        setPlayPauseIcon('pause');
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
         timeUpdateInterval = setInterval(async () => {
             const player = await getYouTubePlayer();
@@ -266,12 +359,13 @@ function onPlayerStateChange(event) {
             }
         }, 500);
     } else {
-        elements.playPauseBtn.textContent = '▶';
+        setPlayPauseIcon('play');
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
         clearInterval(timeUpdateInterval);
     }
     if (state === YT.PlayerState.ENDED) onSongEndedCallback();
 }
+
 function updateUiTime(current, duration) {
     if (isNaN(duration) || duration <= 0) return;
     elements.currentTimeEl.textContent = formatTime(current);
@@ -279,6 +373,7 @@ function updateUiTime(current, duration) {
     elements.progressBar.value = current;
     elements.progressBar.max = duration;
 }
+
 function formatTime(seconds) {
     const min = Math.floor(seconds / 60);
     const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
