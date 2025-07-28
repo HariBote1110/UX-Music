@@ -129,12 +129,26 @@ function registerSystemHandlers(stores) {
         }
     });
     
-    // ★★★ ここからが修正箇所です ★★★
-    // アートワークディレクトリのパスを返すハンドラを追加
     ipcMain.handle('get-artworks-dir', () => {
         return path.join(app.getPath('userData'), 'Artworks');
     });
-    // ★★★ ここまでが修正箇所です ★★★
+
+    ipcMain.handle('get-artwork-as-data-url', (event, artworkFileName) => {
+        if (!artworkFileName) return null;
+        try {
+            const artworksDir = path.join(app.getPath('userData'), 'Artworks');
+            const artworkPath = path.join(artworksDir, artworkFileName);
+
+            if (fs.existsSync(artworkPath)) {
+                const imageBuffer = fs.readFileSync(artworkPath);
+                const mimeType = path.extname(artworkFileName).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg';
+                return `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+            }
+        } catch (error) {
+            console.error(`Failed to read artwork file for data URL: ${artworkFileName}`, error);
+        }
+        return null;
+    });
 }
 
 module.exports = { registerSystemHandlers };

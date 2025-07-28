@@ -4,7 +4,6 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const os = require('os');
-// const pLimit = require('p-limit'); // ← この行を完全に削除
 const { sanitize } = require('../utils');
 
 let libraryStore;
@@ -51,10 +50,7 @@ function registerLibraryHandlers(stores) {
     playCountsStore = stores.playCounts;
 
     ipcMain.on('start-scan-paths', async (event, paths) => {
-        // ★★★ ここからが修正箇所です ★★★
-        // p-limitを動的にインポートする
         const pLimit = (await import('p-limit')).default;
-        // ★★★ ここまでが修正箇所です ★★★
 
         const libraryPath = settingsStore.load().libraryPath;
         if (!libraryPath) {
@@ -101,7 +97,14 @@ function registerLibraryHandlers(stores) {
         completedSteps += songsToProcess.length;
         sendProgress();
     
-        const concurrency = os.cpus().length;
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        let concurrency = os.cpus().length;
+        if (os.platform() === 'win32') {
+            // Windowsの場合は、UIが固まらないように使用するコア数を最大より1つ減らす（最低1コアは使用）
+            concurrency = Math.max(1, os.cpus().length - 1);
+        }
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
         const limit = pLimit(concurrency);
         console.log(`[Loudness] Starting analysis with concurrency: ${concurrency}`);
 
@@ -187,7 +190,6 @@ function registerLibraryHandlers(stores) {
                 fs.rmSync(artworksDir, { recursive: true, force: true });
             }
             
-            // ▼▼▼ ここからが修正箇所です ▼▼▼
             // 音楽ライブラリフォルダの中身を全て削除
             const settings = settingsStore.load();
             const libraryPath = settings.libraryPath;
@@ -198,7 +200,6 @@ function registerLibraryHandlers(stores) {
                 fs.rmSync(libraryPath, { recursive: true, force: true });
                 fs.mkdirSync(libraryPath, { recursive: true });
             }
-            // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
             console.log('[DEBUG] Library has been reset completely.');
             if (event.sender && !event.sender.isDestroyed()) {

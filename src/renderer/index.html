@@ -194,14 +194,11 @@
             <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5">
         </div>
         <div class="device-container">
-            <!-- ▼▼▼ ここからが修正箇所です ▼▼▼ -->
             <button id="device-select-button">
                 <img src="./assets/icons/airplay.svg" alt="Devices">
             </button>
             <div id="device-popup" class="device-popup">
-                <!-- デバイスリストはJSによって動的に生成されます -->
-            </div>
-            <!-- ▲▲▲ ここまでが修正箇所です ▲▲▲ -->
+                </div>
         </div>
     </footer>
     <div id="modal-overlay" class="hidden">
@@ -261,7 +258,7 @@
 
     <div id="youtube-player-container" style="position: absolute; top: -9999px; left: -9999px;"></div>
     
-    <video id="main-player" style="display: none;"></video>
+    <audio id="main-player"></audio>
     <script type="module" src="./renderer.js"></script>
 
 </body>

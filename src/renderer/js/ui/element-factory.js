@@ -31,7 +31,17 @@ export function createSongItem(song, index, ipcRenderer) {
     songItem.className = 'song-item';
 
     songItem.innerHTML = `
-        <div class="song-index">${index + 1}</div>
+        <div class="song-index">
+            <span class="song-number">${index + 1}</span>
+            <div class="playing-indicator">
+                <div class="playing-indicator-bar"></div>
+                <div class="playing-indicator-bar"></div>
+                <div class="playing-indicator-bar"></div>
+                <div class="playing-indicator-bar"></div>
+                <div class="playing-indicator-bar"></div>
+                <div class="playing-indicator-bar"></div>
+            </div>
+        </div>
         <div class="song-title">
             <img src="./assets/default_artwork.png" class="artwork-small" alt="artwork">
             <div class="marquee-wrapper">
@@ -55,7 +65,7 @@ export function createSongItem(song, index, ipcRenderer) {
             </div>
         </div>
         <div class="song-duration">${formatTime(song.duration || 0)}</div>
-        <div class="song-play-count">${(state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
+        <div class="song-play-count">${(state.playCounts && state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
     `;
 
     const artworkImg = songItem.querySelector('.artwork-small');

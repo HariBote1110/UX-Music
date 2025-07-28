@@ -1,4 +1,5 @@
 import { elements } from '../state.js';
+import { setEqualizerColorFromArtwork } from '../player.js'; // 修正箇所
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
@@ -29,20 +30,30 @@ export async function updateNowPlayingView(song) {
     document.body.appendChild(ytPlayerWrapper);
     localPlayer.style.display = 'none';
 
+    const img = document.createElement('img');
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    // 画像の読み込みが完了したタイミングで色を設定する
+    img.onload = () => {
+        setEqualizerColorFromArtwork();
+    };
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
     if (!song) {
-        const img = document.createElement('img');
         img.src = './assets/default_artwork.png';
         previewContainer.appendChild(img);
     } else if (song.type === 'youtube') {
         previewContainer.classList.add('video-mode');
         previewContainer.appendChild(ytPlayerWrapper);
+        // YouTubeの場合はサムネイルから色を取得
+        img.src = song.artwork;
     } else if (song.hasVideo) {
         previewContainer.classList.add('video-mode');
         localPlayer.style.display = 'block';
         previewContainer.appendChild(localPlayer);
+        // 映像ありの場合もアートワークから色を取得
+        img.src = await resolveArtworkPath(song.artwork);
     } else {
         previewContainer.classList.remove('video-mode'); 
-        const img = document.createElement('img');
         img.src = await resolveArtworkPath(song.artwork);
         previewContainer.appendChild(img);
     }
@@ -55,8 +66,18 @@ export async function updateNowPlayingView(song) {
         hubLinkContainer.appendChild(hubButton);
     }
 
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
-    elements.nowPlayingTitle.querySelector('span').textContent = song ? song.title : '曲を選択してください';
-    elements.nowPlayingArtist.querySelector('span').textContent = song ? song.artist : '';
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+    const titleSpan = elements.nowPlayingTitle.querySelector('.marquee-content span');
+    if (titleSpan) {
+        titleSpan.textContent = song ? song.title : '曲を選択してください';
+    }
+
+    const artistSpan = elements.nowPlayingArtist.querySelector('.marquee-content span');
+    if (artistSpan) {
+        artistSpan.textContent = song ? song.artist : '';
+    }
+    
+    // 画像が既にキャッシュされている場合も考慮して、手動で呼び出す
+    if (img.complete) {
+        setEqualizerColorFromArtwork();
+    }
 }

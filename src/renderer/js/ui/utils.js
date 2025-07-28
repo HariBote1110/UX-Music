@@ -6,14 +6,10 @@ export function checkTextOverflow(wrapper) {
     if (!wrapper) return;
 
     const content = wrapper.querySelector('.marquee-content');
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
-    // content要素が見つからない場合は、処理を中断する
     if (!content) {
-        // console.warn('checkTextOverflow: .marquee-content not found in', wrapper);
         return;
     }
     const span = content.querySelector('span');
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
     if (!span) return;
 
     // 元の状態に戻す
