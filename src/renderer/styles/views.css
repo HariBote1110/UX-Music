@@ -67,18 +67,65 @@
 }
 
 .song-item .song-index { flex: 0 0 50px; color: var(--text-muted); }
-.song-item .song-title { flex: 5; display: flex; align-items: center; }
+.song-item .song-title { flex: 5; }
 .song-item .song-artist, .song-item .song-album { flex: 3; }
 .song-item .song-duration { flex: 1; text-align: right; }
 .song-item .song-play-count { flex: 1; text-align: right; padding-right: 10px; }
 
 .song-item .song-title, .song-item .song-artist, .song-item .song-album {
-    white-space: nowrap;
-    overflow: hidden;
+    min-width: 0;
     padding-right: 10px;
+    display: flex;
+    align-items: center;
 }
-.artwork-small { width: 40px; height: 40px; margin-right: 16px; border-radius: 4px; background-color: #333; object-fit: cover; flex-shrink: 0; /*
-ジャケットが縮まないようにする */ }
+
+.artwork-small { 
+    width: 40px; 
+    height: 40px; 
+    margin-right: 16px; 
+    border-radius: 4px; 
+    background-color: #333; 
+    object-fit: cover; 
+    flex-shrink: 0; 
+}
+
+.marquee-wrapper {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
+    mask-image: linear-gradient(to right, black 90%, transparent 100%);
+}
+
+.marquee-content {
+    display: flex;
+    width: max-content;
+}
+
+.marquee-content > span {
+    white-space: nowrap;
+}
+
+/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
+/* .song-itemにホバーしたら、中の.is-overflowingな要素のアニメーションを開始 */
+.song-item:hover .marquee-wrapper.is-overflowing .marquee-content {
+    animation: marquee 10s linear infinite;
+}
+
+/* アニメーション中はテキスト間にスペースを確保 */
+.song-item:hover .marquee-wrapper.is-overflowing .marquee-content > span:first-child {
+    padding-right: 40px; 
+}
+/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
+
+@keyframes marquee {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-50%);
+    }
+}
 
 
 /* --- グリッド表示のスタイル --- */
@@ -124,8 +171,7 @@
 #now-playing-artwork-container { width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background-color: #333; box-shadow: 0 4px 60px rgba(0, 0, 0, 0.5); margin-bottom: 24px; overflow: hidden; transition: aspect-ratio 0.3s ease; flex-shrink: 0; }
 #now-playing-artwork-container.video-mode { aspect-ratio: 16 / 9; }
 #now-playing-artwork-container img, #now-playing-artwork-container iframe, #now-playing-artwork-container video { width: 100%; height: 100%; border: none; object-fit: cover; }
-#now-playing-details { width: 100%; text-align: left; flex-shrink: 0; overflow: hidden; /*
-はみ出し防止 */ }
+#now-playing-details { width: 100%; text-align: left; flex-shrink: 0; overflow: hidden; }
 
 #now-playing-title, #now-playing-artist {
     white-space: nowrap;
@@ -235,13 +281,18 @@
     color: var(--text-primary);
 }
 
-.queue-item .artwork-small { width: 32px; height: 32px; margin-right: 12px; }
+.queue-item .artwork-small { width: 32px; height: 32px; margin-right: 12px; flex-shrink: 0; }
 .queue-item-info {
     display: flex;
     flex-direction: column;
     white-space: nowrap;
     overflow: hidden;
     flex-grow: 1;
+    min-width: 0;
+}
+.queue-item-title, .queue-item-artist {
+    overflow: hidden;
+    white-space: nowrap;
 }
 .queue-item-title { font-weight: 500; }
 .queue-item-artist { color: var(--text-secondary); font-size: 12px; }
@@ -252,53 +303,3 @@
 .playlist-artwork-container img, .playlist-art-collage > img { width: 100%; height: 100%; object-fit: cover; min-width: 0; }
 .collage-img-wrapper { overflow: hidden; width: 100%; height: 100%; }
 .collage-img-wrapper img { width: 100%; height: 100%; object-fit: cover; }
-
-
-/* --- テキストのフェードアウト効果 --- */
-.song-item .song-title,
-.song-item .song-artist,
-.song-item .song-album,
-.album-title,
-.playlist-title,
-.artist-name,
-.album-artist,
-#now-playing-title,
-#now-playing-artist,
-.queue-item-info {
-    -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
-    mask-image: linear-gradient(to right, black 85%, transparent 100%);
-}
-
-/* --- テキストのスクロールアニメーション（マーキー） --- */
-/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
-@keyframes marquee {
-    0% {
-        transform: translateX(0);
-    }
-    20% { /* 開始前に少し待機 */
-        transform: translateX(0);
-    }
-    80% { /* スクロール */
-        transform: translateX(calc(-100% + 20px)); /* 右側のフェード分だけ手前で止める */
-    }
-    100% { /* 終了後も少し待機 */
-        transform: translateX(calc(-100% + 20px));
-    }
-}
-
-/* ホバーされた時に、はみ出している要素の内側のspanをアニメーションさせる */
-.song-item:hover .song-title.is-overflowing span,
-.song-item:hover .song-artist.is-overflowing span,
-.song-item:hover .song-album.is-overflowing span,
-.album-grid-item:hover .album-title.is-overflowing span,
-.album-grid-item:hover .album-artist.is-overflowing span,
-.playlist-grid-item:hover .playlist-title.is-overflowing span,
-.artist-grid-item:hover .artist-name.is-overflowing span,
-#now-playing-details:hover #now-playing-title.is-overflowing span,
-#now-playing-details:hover #now-playing-artist.is-overflowing span,
-.queue-item:hover .queue-item-info.is-overflowing span {
-    display: inline-block;
-    padding-right: 30px; 
-    animation: marquee 8s linear infinite;
-}
-/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */

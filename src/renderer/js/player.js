@@ -20,7 +20,7 @@ let onPrevSongCallback = () => {};
 let lastVolume = 0.5;
 
 let isSeeking = false;
-let wasPlayingBeforeSeek = false; // ★★★ 追加: シーク前の再生状態を記憶
+let wasPlayingBeforeSeek = false;
 let animationFrameId = null;
 
 function setPlayPauseIcon(iconName) { // 'play', 'pause', 'stop'
@@ -50,7 +50,6 @@ function toggleMute() {
     } else {
         elements.volumeSlider.value = lastVolume;
     }
-    // setVolume()を直接呼び出す代わりにイベントを発火させて処理を共通化
     elements.volumeSlider.dispatchEvent(new Event('input'));
 }
 
@@ -61,6 +60,28 @@ export function applyMasterVolume() {
     const volumeMultiplier = masterVolume * 2;
     gainNode.gain.value = baseGain * volumeMultiplier;
 }
+
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+/**
+ * オーディオの出力先デバイスを設定する
+ * @param {string} deviceId - 設定するデバイスのID
+ */
+export async function setAudioOutput(deviceId) {
+    try {
+        if (audioContext && typeof audioContext.setSinkId === 'function') {
+            await audioContext.setSinkId(deviceId);
+        } else {
+            // AudioContext APIが使えない場合のフォールバック
+            await localPlayer.setSinkId(deviceId);
+        }
+        // 設定をメインプロセスに保存
+        ipcRenderer.send('save-audio-output-id', deviceId);
+        console.log(`オーディオ出力先を ${deviceId} に変更しました`);
+    } catch (error) {
+        console.error('オーディオ出力先の変更に失敗しました:', error);
+    }
+}
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
 export function initPlayer(playerElement, callbacks) {
     localPlayer = playerElement;
@@ -105,7 +126,6 @@ export function initPlayer(playerElement, callbacks) {
     });
 
     localPlayer.addEventListener('pause', () => {
-        // ★★★ 修正: ユーザーによるシーク操作中はアイコンを変更しない
         if (!isSeeking) {
             setPlayPauseIcon('play');
         }
@@ -115,10 +135,9 @@ export function initPlayer(playerElement, callbacks) {
 
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
     
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
     elements.progressBar.addEventListener('mousedown', () => {
         isSeeking = true;
-        wasPlayingBeforeSeek = !localPlayer.paused; // 再生中だったか記憶
+        wasPlayingBeforeSeek = !localPlayer.paused;
         if (wasPlayingBeforeSeek) {
             localPlayer.pause();
         }
@@ -144,21 +163,12 @@ export function initPlayer(playerElement, callbacks) {
         const volume = parseFloat(elements.volumeSlider.value);
         ipcRenderer.send('save-settings', { volume: volume });
     });
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
     document.getElementById('volume-icon-btn').addEventListener('click', toggleMute);
     updateVolumeIcon();
 
-    elements.audioOutputSelect.addEventListener('change', async (event) => {
-        try {
-            if (audioContext && typeof audioContext.setSinkId === 'function') {
-                await audioContext.setSinkId(event.target.value);
-            } else {
-                await localPlayer.setSinkId(event.target.value);
-            }
-            ipcRenderer.send('save-audio-output-id', event.target.value);
-        } catch (error) { console.error('Failed to set audio output device:', error); }
-    });
+    // ▼▼▼ この古いイベントリスナーは不要になったため削除します ▼▼▼
+    // elements.audioOutputSelect.addEventListener('change', ...);
 
     if ('mediaSession' in navigator) {
         navigator.mediaSession.setActionHandler('play', togglePlayPause);
@@ -254,12 +264,12 @@ export async function play(song) {
 
     if (song.type === 'youtube' || (mode === 'stream' && song.sourceURL)) {
         currentSongType = 'youtube';
-        elements.audioOutputSelect.disabled = true;
+        elements.deviceSelectButton.disabled = true;
         const streamPath = song.sourceURL || song.path;
         playYoutube({ ...song, path: streamPath });
     } else if (song.type === 'local' && song.path) {
         currentSongType = 'local';
-        elements.audioOutputSelect.disabled = false;
+        elements.deviceSelectButton.disabled = false;
         playLocal(song);
     } else {
         alert(`この曲はダウンロードされていません。「設定」からストリーミングモードに切り替えてください。`);

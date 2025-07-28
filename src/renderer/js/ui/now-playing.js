@@ -1,7 +1,4 @@
 import { elements } from '../state.js';
-// ▼▼▼ ここからが修正箇所です ▼▼▼
-import { checkTextOverflow } from './utils.js'; 
-// ▲▲▲ ここまでが修正箇所です ▲▲▲
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
@@ -58,12 +55,8 @@ export async function updateNowPlayingView(song) {
         hubLinkContainer.appendChild(hubButton);
     }
 
-    elements.nowPlayingTitle.innerHTML = `<span>${song ? song.title : '曲を選択してください'}</span>`;
-    elements.nowPlayingArtist.innerHTML = `<span>${song ? song.artist : ''}</span>`;
-
     // ▼▼▼ ここからが修正箇所です ▼▼▼
-    // テキストのはみ出しをチェック
-    checkTextOverflow(elements.nowPlayingTitle);
-    checkTextOverflow(elements.nowPlayingArtist);
+    elements.nowPlayingTitle.querySelector('span').textContent = song ? song.title : '曲を選択してください';
+    elements.nowPlayingArtist.querySelector('span').textContent = song ? song.artist : '';
     // ▲▲▲ ここまでが修正箇所です ▲▲▲
 }

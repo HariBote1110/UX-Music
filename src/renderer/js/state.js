@@ -41,7 +41,10 @@ export const elements = {
     totalDurationEl: document.getElementById('total-duration'),
     volumeSlider: document.getElementById('volume-slider'),
     volumeIcon: document.getElementById('volume-icon'),
-    audioOutputSelect: document.getElementById('audio-output-select'),
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    deviceSelectButton: document.getElementById('device-select-button'),
+    devicePopup: document.getElementById('device-popup'),
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
     navLinks: document.querySelectorAll('.nav-link'),
     views: document.querySelectorAll('.view-container'),
     modalOverlay: document.getElementById('modal-overlay'),
@@ -67,9 +70,7 @@ export const elements = {
     notificationToast: document.getElementById('notification-toast'),
     notificationText: document.getElementById('notification-text'),
     lyricsView: document.getElementById('lyrics-view'),
-    // ★★★ ここからが修正箇所です ★★★
     sidebarTabs: document.querySelectorAll('.sidebar-tab-btn'),
     sidebarTabContents: document.querySelectorAll('.sidebar-tab-content'),
     queueList: document.getElementById('queue-list'),
-    // ★★★ ここまでが修正箇所です ★★★
 };

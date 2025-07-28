@@ -135,8 +135,16 @@
                     <img src="./assets/default_artwork.png" alt="Now Playing Artwork">
                 </div>
                 <div id="now-playing-details">
-                    <h2 id="now-playing-title">曲を選択してください</h2>
-                    <p id="now-playing-artist"></p>
+                    <h2 id="now-playing-title" class="marquee-wrapper">
+                        <div class="marquee-content">
+                            <span>曲を選択してください</span>
+                        </div>
+                    </h2>
+                    <p id="now-playing-artist" class="marquee-wrapper">
+                        <div class="marquee-content">
+                            <span></span>
+                        </div>
+                    </p>
                     <div id="hub-link-container"></div>
                 </div>
                 <div class="sidebar-tabs">
@@ -186,12 +194,14 @@
             <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5">
         </div>
         <div class="device-container">
+            <!-- ▼▼▼ ここからが修正箇所です ▼▼▼ -->
             <button id="device-select-button">
-                🔊
+                <img src="./assets/icons/airplay.svg" alt="Devices">
             </button>
             <div id="device-popup" class="device-popup">
+                <!-- デバイスリストはJSによって動的に生成されます -->
             </div>
-            <select id="audio-output-select" style="display: none;"></select>
+            <!-- ▲▲▲ ここまでが修正箇所です ▲▲▲ -->
         </div>
     </footer>
     <div id="modal-overlay" class="hidden">

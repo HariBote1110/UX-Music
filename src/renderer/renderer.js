@@ -8,11 +8,14 @@ import { state, elements } from './js/state.js';
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from './js/playback-manager.js';
 import { showNotification, hideNotification } from './js/ui/notification.js';
 import { initDebugCommands } from './js/debug-commands.js';
+import { updateTextOverflowForSelector } from './js/ui/utils.js';
 
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
 window.addEventListener('DOMContentLoaded', () => {
+
+    const MARQUEE_SELECTOR = '.marquee-wrapper';
     
     // メインプロセスからのログを受け取ってコンソールに表示
     ipcRenderer.on('log-message', (event, { level, args }) => {
@@ -201,6 +204,47 @@ window.addEventListener('DOMContentLoaded', () => {
 
     initResizer();
     
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    elements.deviceSelectButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // ポップアップを開く前に、必ずデバイスリストを更新する
+        updateAudioDevices();
+        elements.devicePopup.classList.toggle('active');
+    });
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
+    // ポップアップの外側をクリックしたら閉じる
+    window.addEventListener('click', () => {
+        if (elements.devicePopup.classList.contains('active')) {
+            elements.devicePopup.classList.remove('active');
+        }
+    });
+    
+    // --- テキストオーバーフローチェック ---
+    
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            updateTextOverflowForSelector(MARQUEE_SELECTOR);
+        }, 250);
+    });
+
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                const target = mutation.target;
+                if (!target.classList.contains('hidden')) {
+                    setTimeout(() => updateTextOverflowForSelector(MARQUEE_SELECTOR), 100);
+                }
+            }
+        }
+    });
+
+    elements.views.forEach(view => {
+        observer.observe(view, { attributes: true });
+    });
+
     window.addEventListener('keydown', (e) => {
         if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
         

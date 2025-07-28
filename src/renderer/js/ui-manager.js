@@ -2,24 +2,12 @@ import { state, elements } from './state.js';
 import { renderTrackView, renderAlbumView, renderArtistView, renderPlaylistView } from './ui/view-renderer.js';
 import { renderAlbumDetailView, renderArtistDetailView, renderPlaylistDetailView } from './ui/detail-view-renderer.js';
 import { playSong } from './playback-manager.js';
+import { setAudioOutput } from './player.js'; // player.jsから関数をインポート
+import { createQueueItem } from './ui/element-factory.js';
+import { updateTextOverflowForSelector } from './ui/utils.js';
 const { ipcRenderer } = require('electron');
-const path = require('path');
 
-let artworksDir = null;
-
-// ▼▼▼ ここからが修正箇所です ▼▼▼
-async function resolveArtworkPath(artworkFileName) {
-    if (!artworkFileName) return './assets/default_artwork.png';
-    // Base64形式のデータURIかどうかをチェックする処理を追加
-    if (artworkFileName.startsWith('data:image')) return artworkFileName;
-    if (artworkFileName.startsWith('http')) return artworkFileName;
-    
-    if (!artworksDir) {
-        artworksDir = await ipcRenderer.invoke('get-artworks-dir');
-    }
-    return `file://${path.join(artworksDir, artworkFileName)}`;
-}
-// ▲▲▲ ここまでが修正箇所です ▲▲▲
+const MARQUEE_SELECTOR = '.marquee-wrapper';
 
 function renderQueueView() {
     elements.queueList.innerHTML = '';
@@ -29,25 +17,9 @@ function renderQueueView() {
     }
 
     state.playbackQueue.forEach((song, index) => {
-        const queueItem = document.createElement('div');
         const isPlaying = index === state.currentSongIndex;
-        queueItem.className = `queue-item ${isPlaying ? 'playing' : ''}`;
-        queueItem.dataset.songPath = song.path;
-        queueItem.draggable = true;
-
-        queueItem.innerHTML = `
-            <img src="./assets/default_artwork.png" class="artwork-small" alt="artwork">
-            <div class="queue-item-info">
-                <span class="queue-item-title">${song.title}</span>
-                <span class="queue-item-artist">${song.artist}</span>
-            </div>
-        `;
-        
-        const artworkImg = queueItem.querySelector('.artwork-small');
-        resolveArtworkPath(song.artwork).then(src => artworkImg.src = src);
-        
+        const queueItem = createQueueItem(song, isPlaying, ipcRenderer);
         queueItem.addEventListener('click', () => playSong(index));
-
         elements.queueList.appendChild(queueItem);
     });
 }
@@ -77,7 +49,6 @@ export function addSongsToLibrary(newSongs) {
 function groupLibraryByAlbum() {
     state.albums.clear();
     const tempAlbumGroups = new Map();
-    // ★★★ 修正: sourceURLを持たない、純粋なローカルファイルのみを対象にする
     const localSongs = state.library.filter(song => !song.sourceURL);
 
     localSongs.forEach(song => {
@@ -118,7 +89,6 @@ function groupLibraryByAlbum() {
 function groupLibraryByArtist() {
     state.artists.clear();
     const tempArtistGroups = new Map();
-    // ★★★ 修正: sourceURLを持たない、純粋なローカルファイルのみを対象にする
     const localSongs = state.library.filter(song => !song.sourceURL);
 
     localSongs.forEach(song => {
@@ -161,37 +131,45 @@ export function renderCurrentView() {
         }
     }
     renderQueueView();
+    updateTextOverflowForSelector(MARQUEE_SELECTOR);
 }
 
-export async function updateAudioDevices(targetDeviceId = null) {
-    const mainPlayer = document.getElementById('main-player');
-    const currentSelectedId = elements.audioOutputSelect.value; 
-
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+export async function updateAudioDevices(savedDeviceId = null) {
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioDevices = devices.filter(device => device.kind === 'audiooutput');
         
-        elements.audioOutputSelect.innerHTML = '';
+        elements.devicePopup.innerHTML = '';
+        const currentSinkId = document.getElementById('main-player').sinkId || 'default';
+        
         audioDevices.forEach(device => {
-            const option = document.createElement('option');
-            option.value = device.deviceId;
-            option.textContent = device.label || `スピーカー ${elements.audioOutputSelect.options.length + 1}`;
-            elements.audioOutputSelect.appendChild(option);
+            const item = document.createElement('div');
+            item.className = 'device-popup-item';
+            item.textContent = device.label || `スピーカー ${elements.devicePopup.children.length + 1}`;
+            item.dataset.deviceId = device.deviceId;
+
+            if (device.deviceId === currentSinkId || (currentSinkId === 'default' && device.deviceId === 'default')) {
+                item.classList.add('active');
+            }
+
+            item.addEventListener('click', () => {
+                setAudioOutput(device.deviceId);
+                // ポップアップ内のすべてのactiveクラスを削除
+                elements.devicePopup.querySelectorAll('.device-popup-item').forEach(i => i.classList.remove('active'));
+                // クリックされたアイテムにactiveクラスを追加
+                item.classList.add('active');
+                elements.devicePopup.classList.remove('active');
+            });
+            elements.devicePopup.appendChild(item);
         });
 
-        let deviceIdToSet = null;
-        if (targetDeviceId && audioDevices.some(d => d.deviceId === targetDeviceId)) {
-            deviceIdToSet = targetDeviceId;
-        } else if (audioDevices.some(d => d.deviceId === currentSelectedId)) {
-            deviceIdToSet = currentSelectedId;
-        } else if (audioDevices.length > 0) {
-            deviceIdToSet = audioDevices[0].deviceId;
+        if (savedDeviceId && audioDevices.some(d => d.deviceId === savedDeviceId)) {
+             setAudioOutput(savedDeviceId);
         }
 
-        if (deviceIdToSet) {
-            elements.audioOutputSelect.value = deviceIdToSet;
-        }
     } catch (error) {
-        console.error('Could not enumerate audio devices:', error);
+        console.error('オーディオデバイスの取得に失敗しました:', error);
     }
 }
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
