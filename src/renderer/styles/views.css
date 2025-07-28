@@ -1,43 +1,44 @@
+/* uxmusic/src/renderer/styles/views.css */
 /* 各画面（View）とリストのスタイル */
-.view-container.hidden { 
-    display: none; 
+.view-container.hidden {
+    display: none;
 }
 
-#drop-zone { 
-    border: 2px dashed transparent; 
-    transition: border-color 0.3s; 
+#drop-zone {
+    border: 2px dashed transparent;
+    transition: border-color 0.3s;
 }
 #drop-zone.drag-over {
     border-color: var(--highlight-pink);
 }
 
-.placeholder { 
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    height: 200px; 
-    color: var(--text-muted); 
-    font-size: 1.2em; 
+.placeholder {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 200px;
+    color: var(--text-muted);
+    font-size: 1.2em;
 }
 
-.view-header { 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center; 
-    margin-bottom: 20px; 
+.view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
 }
-.header-button { 
-    background-color: #333; 
-    color: var(--text-primary); 
-    border: none; 
-    border-radius: 20px; 
-    padding: 8px 16px; 
-    font-size: 14px; 
-    font-weight: bold; 
-    cursor: pointer; 
+.header-button {
+    background-color: #333;
+    color: var(--text-primary);
+    border: none;
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
 }
-.header-button:hover { 
-    background-color: #444; 
+.header-button:hover {
+    background-color: #444;
 }
 
 /* --- 曲リストのスタイル --- */
@@ -60,12 +61,10 @@
 .song-item:hover { background-color: var(--bg-light); }
 .song-item.dragging { opacity: 0.5; background: #535353; }
 
-/* ▼▼▼ 再生中の曲のスタイルを変更 ▼▼▼ */
-.song-item.playing { 
-    background-color: rgba(255, 255, 255, 0.1); /* 歌詞ハイライトと同じ背景色 */
-    color: var(--text-primary); /* テキスト色を白に戻す */
+.song-item.playing {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
 }
-/* ▲▲▲ 再生中の曲のスタイルを変更 ▲▲▲ */
 
 .song-item .song-index { flex: 0 0 50px; color: var(--text-muted); }
 .song-item .song-title { flex: 5; display: flex; align-items: center; }
@@ -73,20 +72,34 @@
 .song-item .song-duration { flex: 1; text-align: right; }
 .song-item .song-play-count { flex: 1; text-align: right; padding-right: 10px; }
 
-.song-item .song-title, .song-item .song-artist, .song-item .song-album { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
-.artwork-small { width: 40px; height: 40px; margin-right: 16px; border-radius: 4px; background-color: #333; object-fit: cover; }
+.song-item .song-title, .song-item .song-artist, .song-item .song-album {
+    white-space: nowrap;
+    overflow: hidden;
+    padding-right: 10px;
+}
+.artwork-small { width: 40px; height: 40px; margin-right: 16px; border-radius: 4px; background-color: #333; object-fit: cover; flex-shrink: 0; /*
+ジャケットが縮まないようにする */ }
 
 
 /* --- グリッド表示のスタイル --- */
 #album-grid, #playlist-grid, #artist-grid, .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 24px; }
-.album-grid-item, .playlist-grid-item, .artist-grid-item { background-color: var(--bg-medium); border-radius: 8px; padding: 16px; cursor: pointer; transition: background-color 0.2s; }
+.album-grid-item, .playlist-grid-item, .artist-grid-item { background-color: var(--bg-medium); border-radius: 8px; padding: 16px; cursor: pointer; transition: background-color 0.2s; overflow: hidden; }
 .album-grid-item:hover, .playlist-grid-item:hover, .artist-grid-item:hover { background-color: var(--bg-light); }
 
 .artist-grid-item { text-align: center; }
 .album-artwork { width: 100%; aspect-ratio: 1 / 1; border-radius: 4px; object-fit: cover; background-color: #333; margin-bottom: 12px; }
 .artist-artwork { width: 100%; aspect-ratio: 1 / 1; border-radius: 50%; object-fit: cover; background-color: #333; margin-bottom: 12px; box-shadow: 0 4px 30px rgba(0,0,0,0.4); }
-.album-title, .playlist-title, .artist-name { color: var(--text-primary); font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.album-artist { color: var(--text-secondary); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.album-title, .playlist-title, .artist-name, .album-artist {
+    color: var(--text-primary);
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.album-artist {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
 
 /* --- 詳細表示のスタイル --- */
 .detail-header { display: flex; align-items: flex-end; gap: 24px; margin-bottom: 30px; }
@@ -94,15 +107,15 @@
 .artist-detail-art-round { border-radius: 50%; }
 .detail-info h1 { font-size: 32px; font-weight: 900; margin: 0 0 16px 0; }
 .detail-info p { color: var(--text-secondary); margin: 0 0 16px 0; }
-.play-all-btn { 
-    background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue)); 
+.play-all-btn {
+    background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue));
     color: var(--text-primary);
-    border: none; 
-    border-radius: 50px; 
-    padding: 12px 24px; 
-    font-size: 16px; 
-    font-weight: bold; 
-    cursor: pointer; 
+    border: none;
+    border-radius: 50px;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
 }
 #artist-detail-view h2 { margin-top: 40px; }
 
@@ -111,35 +124,125 @@
 #now-playing-artwork-container { width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; background-color: #333; box-shadow: 0 4px 60px rgba(0, 0, 0, 0.5); margin-bottom: 24px; overflow: hidden; transition: aspect-ratio 0.3s ease; flex-shrink: 0; }
 #now-playing-artwork-container.video-mode { aspect-ratio: 16 / 9; }
 #now-playing-artwork-container img, #now-playing-artwork-container iframe, #now-playing-artwork-container video { width: 100%; height: 100%; border: none; object-fit: cover; }
-#now-playing-details { width: 100%; text-align: left; flex-shrink: 0; }
-#now-playing-title { font-size: 24px; font-weight: 700; color: #fff; margin: 0 0 8px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#now-playing-artist { font-size: 16px; font-weight: 400; color: #b3b3b3; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#now-playing-details { width: 100%; text-align: left; flex-shrink: 0; overflow: hidden; /*
+はみ出し防止 */ }
+
+#now-playing-title, #now-playing-artist {
+    white-space: nowrap;
+    overflow: hidden;
+}
+#now-playing-title { font-size: 24px; font-weight: 700; color: #fff; margin: 0 0 8px 0; }
+#now-playing-artist { font-size: 16px; font-weight: 400; color: #b3b3b3; margin: 0; }
 #hub-link-container { margin-top: 20px; width: 100%; }
 
-.sidebar-tabs { display: flex; border-bottom: 1px solid var(--bg-light); margin-top: 24px; flex-shrink: 0; }
-.sidebar-tab-btn { flex: 1; padding: 10px; background: none; border: none; color: var(--text-secondary); font-weight: bold; cursor: pointer; border-bottom: 2px solid transparent; }
-.sidebar-tab-btn.active { color: var(--text-primary); border-bottom-color: var(--highlight-pink); }
-.sidebar-tab-content { width: 100%; flex-grow: 1; min-height: 0; display: none; }
+
+.sidebar-tabs {
+    display: flex;
+    width: 100%;
+    margin-top: 24px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--bg-light);
+}
+
+.sidebar-tab-btn {
+    position: relative;
+    flex-grow: 1;
+    flex-basis: 0;
+    padding: 10px 5px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+    text-align: center;
+    transition: color 0.2s;
+}
+
+.sidebar-tab-btn:hover {
+    color: var(--text-primary);
+}
+
+.sidebar-tab-btn.active {
+    color: var(--text-primary);
+}
+
+.sidebar-tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background-color: var(--highlight-pink);
+    z-index: 2;
+}
+
+.sidebar-tab-content {
+    width: calc(100% + 24px);
+    margin-right: -24px;
+    flex-grow: 1;
+    min-height: 0;
+    display: none;
+}
 .sidebar-tab-content.active { display: flex; }
 
-#lyrics-view, #queue-list { width: 100%; overflow-y: auto; scroll-behavior: smooth; scrollbar-width: thin; scrollbar-color: #555 var(--bg-light); }
+#lyrics-view, #queue-list {
+    width: 100%;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: #555 var(--bg-light);
+    padding-left: 24px;
+    padding-right: 16px;
+    box-sizing: border-box;
+}
+
 #lyrics-view { text-align: center; font-size: 16px; line-height: 2.2; color: var(--text-secondary); }
 #lyrics-view p { margin: 0; padding: 2px 10px; border-radius: 4px; transition: color 0.3s, background-color 0.3s; }
 #lyrics-view p.active { color: var(--text-primary); font-weight: bold; background-color: rgba(255, 255, 255, 0.1); }
 .no-lyrics { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-muted); text-align: center; line-height: 1.6; }
 
-.queue-item { display: flex; align-items: center; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+
+/* Chromium (Electron) 用のスクロールバー設定 */
+#lyrics-view::-webkit-scrollbar,
+#queue-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+#lyrics-view::-webkit-scrollbar-track,
+#queue-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#lyrics-view::-webkit-scrollbar-thumb,
+#queue-list::-webkit-scrollbar-thumb {
+    background-color: var(--bg-light);
+    border-radius: 4px;
+}
+
+#lyrics-view::-webkit-scrollbar-thumb:hover,
+#queue-list::-webkit-scrollbar-thumb:hover {
+    background-color: #555;
+}
+
+
+.queue-item { display: flex; align-items: center; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 14px; overflow: hidden; }
 .queue-item:hover { background-color: var(--bg-light); }
 
-/* ▼▼▼ 再生中のキューのスタイルを変更 ▼▼▼ */
-.queue-item.playing { 
-    background-color: rgba(255, 255, 255, 0.1); /* 歌詞ハイライトと同じ背景色 */
-    color: var(--text-primary); /* テキスト色を白に戻す */
+.queue-item.playing {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
 }
-/* ▲▲▲ 再生中のキューのスタイルを変更 ▲▲▲ */
 
 .queue-item .artwork-small { width: 32px; height: 32px; margin-right: 12px; }
-.queue-item-info { display: flex; flex-direction: column; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.queue-item-info {
+    display: flex;
+    flex-direction: column;
+    white-space: nowrap;
+    overflow: hidden;
+    flex-grow: 1;
+}
 .queue-item-title { font-weight: 500; }
 .queue-item-artist { color: var(--text-secondary); font-size: 12px; }
 
@@ -149,3 +252,53 @@
 .playlist-artwork-container img, .playlist-art-collage > img { width: 100%; height: 100%; object-fit: cover; min-width: 0; }
 .collage-img-wrapper { overflow: hidden; width: 100%; height: 100%; }
 .collage-img-wrapper img { width: 100%; height: 100%; object-fit: cover; }
+
+
+/* --- テキストのフェードアウト効果 --- */
+.song-item .song-title,
+.song-item .song-artist,
+.song-item .song-album,
+.album-title,
+.playlist-title,
+.artist-name,
+.album-artist,
+#now-playing-title,
+#now-playing-artist,
+.queue-item-info {
+    -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+    mask-image: linear-gradient(to right, black 85%, transparent 100%);
+}
+
+/* --- テキストのスクロールアニメーション（マーキー） --- */
+/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
+@keyframes marquee {
+    0% {
+        transform: translateX(0);
+    }
+    20% { /* 開始前に少し待機 */
+        transform: translateX(0);
+    }
+    80% { /* スクロール */
+        transform: translateX(calc(-100% + 20px)); /* 右側のフェード分だけ手前で止める */
+    }
+    100% { /* 終了後も少し待機 */
+        transform: translateX(calc(-100% + 20px));
+    }
+}
+
+/* ホバーされた時に、はみ出している要素の内側のspanをアニメーションさせる */
+.song-item:hover .song-title.is-overflowing span,
+.song-item:hover .song-artist.is-overflowing span,
+.song-item:hover .song-album.is-overflowing span,
+.album-grid-item:hover .album-title.is-overflowing span,
+.album-grid-item:hover .album-artist.is-overflowing span,
+.playlist-grid-item:hover .playlist-title.is-overflowing span,
+.artist-grid-item:hover .artist-name.is-overflowing span,
+#now-playing-details:hover #now-playing-title.is-overflowing span,
+#now-playing-details:hover #now-playing-artist.is-overflowing span,
+.queue-item:hover .queue-item-info.is-overflowing span {
+    display: inline-block;
+    padding-right: 30px; 
+    animation: marquee 8s linear infinite;
+}
+/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */

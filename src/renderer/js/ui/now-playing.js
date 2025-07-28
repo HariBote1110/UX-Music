@@ -1,4 +1,7 @@
 import { elements } from '../state.js';
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+import { checkTextOverflow } from './utils.js'; 
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
@@ -6,6 +9,8 @@ let artworksDir = null;
 
 async function resolveArtworkPath(artworkFileName) {
     if (!artworkFileName) return './assets/default_artwork.png';
+    
+    if (artworkFileName.startsWith('data:image')) return artworkFileName;
     if (artworkFileName.startsWith('http')) return artworkFileName;
     
     if (!artworksDir) {
@@ -34,13 +39,10 @@ export async function updateNowPlayingView(song) {
     } else if (song.type === 'youtube') {
         previewContainer.classList.add('video-mode');
         previewContainer.appendChild(ytPlayerWrapper);
-    // ★★★ ここからが修正箇所です ★★★
-    // 拡張子(.mp4)ではなく、映像の有無(hasVideo)で判断するように変更
     } else if (song.hasVideo) {
         previewContainer.classList.add('video-mode');
         localPlayer.style.display = 'block';
         previewContainer.appendChild(localPlayer);
-    // ★★★ ここまでが修正箇所です ★★★
     } else {
         previewContainer.classList.remove('video-mode'); 
         const img = document.createElement('img');
@@ -56,6 +58,12 @@ export async function updateNowPlayingView(song) {
         hubLinkContainer.appendChild(hubButton);
     }
 
-    elements.nowPlayingTitle.textContent = song ? song.title : '曲を選択してください';
-    elements.nowPlayingArtist.textContent = song ? song.artist : '';
+    elements.nowPlayingTitle.innerHTML = `<span>${song ? song.title : '曲を選択してください'}</span>`;
+    elements.nowPlayingArtist.innerHTML = `<span>${song ? song.artist : ''}</span>`;
+
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    // テキストのはみ出しをチェック
+    checkTextOverflow(elements.nowPlayingTitle);
+    checkTextOverflow(elements.nowPlayingArtist);
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 }

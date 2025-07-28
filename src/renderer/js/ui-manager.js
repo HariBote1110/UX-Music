@@ -1,16 +1,17 @@
 import { state, elements } from './state.js';
 import { renderTrackView, renderAlbumView, renderArtistView, renderPlaylistView } from './ui/view-renderer.js';
 import { renderAlbumDetailView, renderArtistDetailView, renderPlaylistDetailView } from './ui/detail-view-renderer.js';
-import { playSong } from './playback-manager.js'; // ★★★ playSongをインポート ★★★
+import { playSong } from './playback-manager.js';
 const { ipcRenderer } = require('electron');
-const path = require('path'); // ★★★ pathをインポート ★★★
+const path = require('path');
 
-// ★★★ ここからが修正箇所です ★★★
-let artworksDir = null; // アートワークディレクトリのパスをキャッシュ
+let artworksDir = null;
 
-// アートワークのパスを非同期で解決する関数
+// ▼▼▼ ここからが修正箇所です ▼▼▼
 async function resolveArtworkPath(artworkFileName) {
     if (!artworkFileName) return './assets/default_artwork.png';
+    // Base64形式のデータURIかどうかをチェックする処理を追加
+    if (artworkFileName.startsWith('data:image')) return artworkFileName;
     if (artworkFileName.startsWith('http')) return artworkFileName;
     
     if (!artworksDir) {
@@ -18,10 +19,8 @@ async function resolveArtworkPath(artworkFileName) {
     }
     return `file://${path.join(artworksDir, artworkFileName)}`;
 }
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
-/**
- * 再生キューリストを描画する
- */
 function renderQueueView() {
     elements.queueList.innerHTML = '';
     if (state.playbackQueue.length === 0) {
@@ -46,17 +45,14 @@ function renderQueueView() {
         
         const artworkImg = queueItem.querySelector('.artwork-small');
         resolveArtworkPath(song.artwork).then(src => artworkImg.src = src);
-
-        // クリックでその曲を再生
+        
         queueItem.addEventListener('click', () => playSong(index));
 
         elements.queueList.appendChild(queueItem);
     });
 }
-// ★★★ ここまでが修正箇所です ★★★
 
 export function initUI() {
-    // ★★★ 右サイドバーのタブ切り替え機能を追加 ★★★
     elements.sidebarTabs.forEach(tab => {
         tab.addEventListener('click', () => {
             elements.sidebarTabs.forEach(t => t.classList.remove('active'));
@@ -81,8 +77,10 @@ export function addSongsToLibrary(newSongs) {
 function groupLibraryByAlbum() {
     state.albums.clear();
     const tempAlbumGroups = new Map();
-    state.library.forEach(song => {
-        if (song.type === 'youtube') return;
+    // ★★★ 修正: sourceURLを持たない、純粋なローカルファイルのみを対象にする
+    const localSongs = state.library.filter(song => !song.sourceURL);
+
+    localSongs.forEach(song => {
         const albumTitle = song.album || 'Unknown Album';
         if (!tempAlbumGroups.has(albumTitle)) {
             tempAlbumGroups.set(albumTitle, []);
@@ -120,8 +118,10 @@ function groupLibraryByAlbum() {
 function groupLibraryByArtist() {
     state.artists.clear();
     const tempArtistGroups = new Map();
+    // ★★★ 修正: sourceURLを持たない、純粋なローカルファイルのみを対象にする
+    const localSongs = state.library.filter(song => !song.sourceURL);
 
-    state.library.forEach(song => {
+    localSongs.forEach(song => {
         const artistName = song.albumartist || song.artist || 'Unknown Artist';
         if (!tempArtistGroups.has(artistName)) {
             tempArtistGroups.set(artistName, []);
@@ -160,7 +160,7 @@ export function renderCurrentView() {
             if (artist) renderArtistDetailView(artist);
         }
     }
-    renderQueueView(); // ★★★ 常に再生キューも再描画 ★★★
+    renderQueueView();
 }
 
 export async function updateAudioDevices(targetDeviceId = null) {

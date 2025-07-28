@@ -17,12 +17,11 @@ let timeUpdateInterval;
 let onSongEndedCallback = () => {};
 let onNextSongCallback = () => {};
 let onPrevSongCallback = () => {};
-let lastVolume = 0.5; // ミュート復帰用に音量を記憶
+let lastVolume = 0.5;
 
-// ▼▼▼ ここからが修正・追加箇所です ▼▼▼
-let isSeeking = false; // ユーザーがプログレスバーを操作中かどうかのフラグ
-let animationFrameId = null; // requestAnimationFrameのIDを保持
-// ▲▲▲ ここまでが修正・追加箇所です ▲▲▲
+let isSeeking = false;
+let wasPlayingBeforeSeek = false; // ★★★ 追加: シーク前の再生状態を記憶
+let animationFrameId = null;
 
 function setPlayPauseIcon(iconName) { // 'play', 'pause', 'stop'
     const playPauseIcon = elements.playPauseBtn.querySelector('img');
@@ -51,7 +50,8 @@ function toggleMute() {
     } else {
         elements.volumeSlider.value = lastVolume;
     }
-    setVolume();
+    // setVolume()を直接呼び出す代わりにイベントを発火させて処理を共通化
+    elements.volumeSlider.dispatchEvent(new Event('input'));
 }
 
 
@@ -81,8 +81,6 @@ export function initPlayer(playerElement, callbacks) {
 
     setPlayPauseIcon('stop');
 
-    // ▼▼▼ ここからが修正・追加箇所です ▼▼▼
-    // requestAnimationFrameを使った滑らかなUI更新ループ
     const smoothUpdateLoop = () => {
         if (!isSeeking) {
             updateUiTime(localPlayer.currentTime, localPlayer.duration);
@@ -92,7 +90,6 @@ export function initPlayer(playerElement, callbacks) {
 
     localPlayer.addEventListener('ended', onSongEndedCallback);
     
-    // timeupdateは歌詞同期など、60fpsである必要がない処理に限定する
     localPlayer.addEventListener('timeupdate', () => {
         updateSyncedLyrics(localPlayer.currentTime);
     });
@@ -103,49 +100,54 @@ export function initPlayer(playerElement, callbacks) {
         if (audioContext && audioContext.state === 'suspended') {
             audioContext.resume();
         }
-        // アニメーションループを開始
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
         animationFrameId = requestAnimationFrame(smoothUpdateLoop);
     });
 
     localPlayer.addEventListener('pause', () => {
-        setPlayPauseIcon('play');
+        // ★★★ 修正: ユーザーによるシーク操作中はアイコンを変更しない
+        if (!isSeeking) {
+            setPlayPauseIcon('play');
+        }
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-        // アニメーションループを停止
         cancelAnimationFrame(animationFrameId);
     });
 
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
     
-    // プログレスバーのイベントリスナーを再設定
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
     elements.progressBar.addEventListener('mousedown', () => {
         isSeeking = true;
-        // ドラッグ開始時に再生を一時停止（見た目上は再生中のまま）
-        if (!localPlayer.paused) {
+        wasPlayingBeforeSeek = !localPlayer.paused; // 再生中だったか記憶
+        if (wasPlayingBeforeSeek) {
             localPlayer.pause();
         }
     });
 
     elements.progressBar.addEventListener('mouseup', () => {
-        seek(); // ドラッグ終了時にシークを実行
+        seek();
         isSeeking = false;
-        // 曲が再生中だった場合は再生を再開
-        if (navigator.mediaSession.playbackState === 'playing') {
+        if (wasPlayingBeforeSeek) {
             localPlayer.play();
+            wasPlayingBeforeSeek = false;
         }
     });
 
     elements.progressBar.addEventListener('input', () => {
-        // ドラッグ中は再生時間表示のみを更新
         const time = parseFloat(elements.progressBar.value);
         elements.currentTimeEl.textContent = formatTime(time);
     });
     
-    elements.volumeSlider.addEventListener('input', setVolume);
+    elements.volumeSlider.addEventListener('input', () => {
+        applyMasterVolume();
+        updateVolumeIcon();
+        const volume = parseFloat(elements.volumeSlider.value);
+        ipcRenderer.send('save-settings', { volume: volume });
+    });
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
     document.getElementById('volume-icon-btn').addEventListener('click', toggleMute);
     updateVolumeIcon();
-
-    // ▲▲▲ ここまでが修正・追加箇所です ▲▲▲
 
     elements.audioOutputSelect.addEventListener('change', async (event) => {
         try {
@@ -337,14 +339,6 @@ async function seek() {
     }
 }
 
-function setVolume() {
-    applyMasterVolume(); 
-    updateVolumeIcon();
-    
-    const volume = parseFloat(elements.volumeSlider.value);
-    ipcRenderer.send('save-settings', { volume: volume }); 
-}
-
 function onPlayerStateChange(event) {
     const state = event.data;
     if (state === YT.PlayerState.PLAYING) {
@@ -365,7 +359,6 @@ function onPlayerStateChange(event) {
     }
     if (state === YT.PlayerState.ENDED) onSongEndedCallback();
 }
-
 function updateUiTime(current, duration) {
     if (isNaN(duration) || duration <= 0) return;
     elements.currentTimeEl.textContent = formatTime(current);
@@ -373,7 +366,6 @@ function updateUiTime(current, duration) {
     elements.progressBar.value = current;
     elements.progressBar.max = duration;
 }
-
 function formatTime(seconds) {
     const min = Math.floor(seconds / 60);
     const sec = Math.floor(seconds % 60).toString().padStart(2, '0');

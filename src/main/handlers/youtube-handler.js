@@ -4,11 +4,13 @@ const ytpl = require('ytpl');
 const path = require('path');
 const fs = require('fs');
 const { sanitize } = require('../utils');
+const { analyzeLoudness } = require('../file-scanner');
 
 let libraryStore;
 let settingsStore;
 let playlistManager;
 let addSongsToLibraryAndSave;
+let loudnessStore;
 
 function findHubUrl(description) {
     if (typeof description !== 'string') return null;
@@ -20,6 +22,7 @@ function findHubUrl(description) {
 function registerYouTubeHandlers(stores, managers) {
     libraryStore = stores.library;
     settingsStore = stores.settings;
+    loudnessStore = stores.loudness;
     playlistManager = managers.playlist;
     addSongsToLibraryAndSave = managers.addSongsFunc;
 
@@ -62,13 +65,11 @@ function registerYouTubeHandlers(stores, managers) {
         window.send('playlist-import-finished');
     });
 
-    // ★★★ ここからが修正箇所です ★★★
     ipcMain.on('add-youtube-link', async (event, url) => {
         const window = event.sender;
         try {
             if (!ytdl.validateURL(url)) return;
             
-            // ダウンロードモードの場合、先に通知を出す
             const settings = settingsStore.load();
             if ((settings.youtubePlaybackMode || 'download') === 'download') {
                 window.send('show-loading', 'YouTube動画をダウンロード中...');
@@ -85,11 +86,9 @@ function registerYouTubeHandlers(stores, managers) {
             console.error('YouTube処理エラー:', error.message);
             window.send('show-error', `YouTube楽曲の処理に失敗しました: ${error.message}`);
         } finally {
-            // 処理が終わったら通知を隠す
             window.send('hide-loading');
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
 }
 
 async function processYouTubeVideo(info, sourceUrl) {
@@ -106,7 +105,7 @@ async function processYouTubeVideo(info, sourceUrl) {
             album: 'YouTube',
             artwork: details.thumbnails[0].url,
             duration: Number(details.lengthSeconds),
-            type: 'youtube',
+            type: 'youtube', // ストリーミングの場合は'youtube'
             hasVideo: true,
             hubUrl: hubUrl
         };
@@ -144,16 +143,27 @@ async function processYouTubeVideo(info, sourceUrl) {
         videoStream.pipe(fs.createWriteStream(destPath)).on('finish', resolve).on('error', reject);
     });
 
+    console.log(`[YouTube Handler] Starting loudness analysis for ${safeFileName}`);
+    const loudnessResult = await analyzeLoudness(destPath);
+    if (loudnessResult.success) {
+        const loudnessData = loudnessStore.load();
+        loudnessData[destPath] = loudnessResult.loudness;
+        loudnessStore.save(loudnessData);
+        console.log(`[YouTube Handler] Loudness analysis successful: ${loudnessResult.loudness} LUFS`);
+    } else {
+        console.error(`[YouTube Handler] Loudness analysis failed for ${safeFileName}:`, loudnessResult.error);
+    }
+
     const stats = fs.statSync(destPath);
     return {
         path: destPath,
         title: details.title,
         artist: details.author.name,
-        album: details.author.name,
+        album: details.author.name, // ★★★ 修正: アルバム名をアーティスト(チャンネル)名に
         artwork: details.thumbnails[0].url,
         duration: Number(details.lengthSeconds),
         fileSize: stats.size,
-        type: 'local',
+        type: 'local', // ★★★ 修正: ダウンロードしたファイルは'local'として扱う
         sourceURL: sourceUrl,
         hasVideo: hasVideo,
         hubUrl: hubUrl

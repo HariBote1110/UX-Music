@@ -16,8 +16,6 @@ function registerIpcHandlers() {
     stores.library = new DataStore('library.json');
     stores.loudness = new DataStore('loudness.json');
 
-    // ★★★ 不要になったfindHubUrlを削除 ★★★
-
     const sendToAllWindows = (channel, ...args) => {
         BrowserWindow.getAllWindows().forEach(win => {
             if (win && !win.isDestroyed()) {

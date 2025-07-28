@@ -1,3 +1,25 @@
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+/**
+ * 要素内のテキストがはみ出しているかをチェックし、必要であればクラスを付与する
+ * @param {HTMLElement} element - チェック対象の親要素 (div)
+ */
+export function checkTextOverflow(element) {
+    if (!element) return;
+    // requestAnimationFrameを使い、DOMの描画が完了した後にチェックを実行
+    requestAnimationFrame(() => {
+        const span = element.querySelector('span');
+        if (span) {
+            const isOverflowing = span.scrollWidth > element.clientWidth;
+            if (isOverflowing) {
+                element.classList.add('is-overflowing');
+            } else {
+                element.classList.remove('is-overflowing');
+            }
+        }
+    });
+}
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
+
 export function formatTime(seconds) {
     if (isNaN(seconds) || seconds < 0) return '0:00';
     const min = Math.floor(seconds / 60);

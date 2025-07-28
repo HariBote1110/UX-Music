@@ -1,17 +1,19 @@
 import { state, elements } from '../state.js';
 import { playSong } from '../playback-manager.js';
-import { formatTime } from './utils.js';
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+import { formatTime, checkTextOverflow } from './utils.js';
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
 import { createPlaylistArtwork } from './playlist-artwork.js';
 import { showAlbum } from '../navigation.js';
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
-// ★★★ ここからが修正箇所です ★★★
-let artworksDir = null; // アートワークディレクトリのパスをキャッシュ
+let artworksDir = null; 
 
-// アートワークのパスを非同期で解決する関数
 async function resolveArtworkPath(artworkFileName) {
     if (!artworkFileName) return './assets/default_artwork.png';
+
+    if (artworkFileName.startsWith('data:image')) return artworkFileName;
     if (artworkFileName.startsWith('http')) return artworkFileName;
     
     if (!artworksDir) {
@@ -19,12 +21,11 @@ async function resolveArtworkPath(artworkFileName) {
     }
     return `file://${path.join(artworksDir, artworkFileName)}`;
 }
-// ★★★ ここまでが修正箇所です ★★★
 
 export function renderAlbumDetailView(album) {
     const view = elements.albumDetailView;
     const artImg = view.querySelector('#a-detail-art');
-    resolveArtworkPath(album.artwork).then(src => artImg.src = src); // ★★★ 修正 ★★★
+    resolveArtworkPath(album.artwork).then(src => artImg.src = src);
     
     view.querySelector('#a-detail-title').textContent = album.title;
     view.querySelector('#a-detail-artist').textContent = album.artist;
@@ -46,24 +47,29 @@ export function renderAlbumDetailView(album) {
                 <img src="./assets/default_artwork.png" class="artwork-small" alt="artwork">
                 <span>${song.title}</span>
             </div>
-            <div class="song-artist">${song.artist}</div>
-            <div class="song-album">${song.album}</div>
+            <div class="song-artist"><span>${song.artist}</span></div>
+            <div class="song-album"><span>${song.album}</span></div>
             <div class="song-duration">${formatTime(song.duration || 0)}</div>
             <div class="song-play-count">${(state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
         `;
         
-        // ★★★ 非同期でアートワークを解決 ★★★
         const artworkImg = songItem.querySelector('.artwork-small');
         resolveArtworkPath(song.artwork).then(src => artworkImg.src = src);
         
         listElement.appendChild(songItem);
+
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        checkTextOverflow(songItem.querySelector('.song-title'));
+        checkTextOverflow(songItem.querySelector('.song-artist'));
+        checkTextOverflow(songItem.querySelector('.song-album'));
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
     });
 }
 
 export function renderArtistDetailView(artist) {
     const view = elements.artistDetailView;
     const artImg = view.querySelector('#artist-detail-art');
-    resolveArtworkPath(artist.artwork).then(src => artImg.src = src); // ★★★ 修正 ★★★
+    resolveArtworkPath(artist.artwork).then(src => artImg.src = src);
     
     view.querySelector('#artist-detail-name').textContent = artist.name;
 
@@ -71,7 +77,6 @@ export function renderArtistDetailView(artist) {
     gridElement.innerHTML = '';
 
     const artistAlbums = [...state.albums.entries()].filter(([key, album]) => {
-        // アーティスト詳細では、トラックアーティストではなく、アルバムアーティストが一致するものを表示
         return album.artist === artist.name;
     });
 
@@ -87,16 +92,20 @@ export function renderArtistDetailView(artist) {
         albumItem.className = 'album-grid-item';
         albumItem.innerHTML = `
             <img src="./assets/default_artwork.png" class="album-artwork" alt="${album.title}">
-            <div class="album-title">${album.title || 'Unknown Album'}</div>
-            <div class="album-artist">${album.artist || 'Unknown Artist'}</div>
+            <div class="album-title"><span>${album.title || 'Unknown Album'}</span></div>
+            <div class="album-artist"><span>${album.artist || 'Unknown Artist'}</span></div>
         `;
         
-        // ★★★ 非同期でアートワークを解決 ★★★
         const artworkImg = albumItem.querySelector('.album-artwork');
         resolveArtworkPath(album.artwork).then(src => artworkImg.src = src);
         
         albumItem.addEventListener('click', () => showAlbum(key));
         gridElement.appendChild(albumItem);
+
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        checkTextOverflow(albumItem.querySelector('.album-title'));
+        checkTextOverflow(albumItem.querySelector('.album-artist'));
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
     }
 }
 
@@ -110,7 +119,6 @@ export function renderPlaylistDetailView(playlistName, songs) {
     const artworkContainer = view.querySelector('.playlist-art-collage');
     if (artworkContainer) {
         const artworks = songs.map(s => s.artwork).filter(Boolean);
-        // ★★★ createPlaylistArtworkにパス解決ロジックを渡す ★★★
         createPlaylistArtwork(artworkContainer, artworks, resolveArtworkPath);
     } else {
         console.error("Could not find '.playlist-art-collage' in playlist detail view.");
@@ -141,17 +149,22 @@ export function renderPlaylistDetailView(playlistName, songs) {
                 <img src="./assets/default_artwork.png" class="artwork-small" alt="artwork">
                 <span>${song.title}</span>
             </div>
-            <div class="song-artist">${song.artist}</div>
-            <div class="song-album">${song.album}</div>
+            <div class="song-artist"><span>${song.artist}</span></div>
+            <div class="song-album"><span>${song.album}</span></div>
             <div class="song-duration">${formatTime(song.duration || 0)}</div>
             <div class="song-play-count">${(state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
         `;
 
-        // ★★★ 非同期でアートワークを解決 ★★★
         const artworkImg = songItem.querySelector('.artwork-small');
         resolveArtworkPath(song.artwork).then(src => artworkImg.src = src);
 
         listElement.appendChild(songItem);
+
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        checkTextOverflow(songItem.querySelector('.song-title'));
+        checkTextOverflow(songItem.querySelector('.song-artist'));
+        checkTextOverflow(songItem.querySelector('.song-album'));
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
     });
 
     let draggedItem = null;
