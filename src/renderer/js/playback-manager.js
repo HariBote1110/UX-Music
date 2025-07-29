@@ -7,11 +7,9 @@ import { loadLyricsForSong } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
 
 export async function playSong(index, sourceList = null, forcePlay = false) {
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
-    // 再生が始まる前に、まずイコライザーの色をデフォルトに戻す
-    document.documentElement.style.setProperty('--eq-color-1', 'var(--highlight-pink)');
-    document.documentElement.style.setProperty('--eq-color-2', 'var(--text-secondary)');
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+    // ▼▼▼ 変更点 ▼▼▼
+    // 再生が始まる前の色リセット処理を削除しました。
+    // ▲▲▲ 変更点ここまで ▲▲▲
 
     state.songWaitingForAnalysis = null;
 

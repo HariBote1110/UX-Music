@@ -137,7 +137,6 @@
     }
 }
 
-/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
 /* --- 再生中インジケーター --- */
 .playing-indicator {
     display: flex; /* 常にflexにしておく */
@@ -155,7 +154,9 @@
     height: 4px;
     border-radius: 1.25px;
     background: linear-gradient(45deg, var(--eq-color-1), var(--eq-color-2));
-    transition: height 0.1s ease-out;
+    /* ▼▼▼ 変更点 ▼▼▼ */
+    transition: height 0.1s ease-out, background 0.3s ease-in-out;
+    /* ▲▲▲ 変更点ここまで ▲▲▲ */
 }
 
 /* 再生中の曲の番号は常に非表示 */
@@ -167,7 +168,6 @@
 .song-item.playing.indicator-ready .playing-indicator {
     opacity: 1;
 }
-/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
 
 
 /* --- グリッド表示のスタイル --- */

@@ -243,12 +243,18 @@ function getColorsFromArtwork(img) {
 
 
 export async function setEqualizerColorFromArtwork() {
+    document.querySelectorAll('.song-item.indicator-ready').forEach(item => {
+        item.classList.remove('indicator-ready');
+    });
+
     const nowPlayingArtwork = document.querySelector('#now-playing-artwork-container img');
     
+    // ▼▼▼ 変更点 ▼▼▼
     const setDefaultColors = () => {
         document.documentElement.style.setProperty('--eq-color-1', 'var(--highlight-pink)');
         document.documentElement.style.setProperty('--eq-color-2', 'var(--highlight-blue)');
     };
+    // ▲▲▲ 変更点ここまで ▲▲▲
 
     if (nowPlayingArtwork && nowPlayingArtwork.src && !nowPlayingArtwork.src.endsWith('default_artwork.png')) {
         const colors = await getColorsFromArtwork(nowPlayingArtwork);
@@ -263,13 +269,10 @@ export async function setEqualizerColorFromArtwork() {
         setDefaultColors();
     }
     
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
-    // 色の設定が完了したら、再生中の曲に表示準備完了クラスを付与
     const playingItem = document.querySelector('.song-item.playing');
     if (playingItem) {
         playingItem.classList.add('indicator-ready');
     }
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 }
 
 
