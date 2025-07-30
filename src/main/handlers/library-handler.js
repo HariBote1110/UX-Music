@@ -1,31 +1,48 @@
 const { ipcMain, app } = require('electron');
-const { scanPaths, parseFiles, analyzeLoudness } = require('../file-scanner');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const os = require('os');
-const { sanitize } = require('../utils');
+// ▼▼▼ 変更点：不要なrequireを削除 ▼▼▼
+// const { scanPaths, parseFiles, analyzeLoudness } = require('../file-scanner');
+// const os = require('os');
+// const { sanitize } = require('../utils');
+// const sharp = require('sharp');
+// ▲▲▲ 変更点ここまで ▲▲▲
 
 let libraryStore;
 let loudnessStore;
 let settingsStore;
 let playCountsStore;
+let albumsStore;
 
-function saveArtworkToFile(picture, songPath) {
+// ▼▼▼ 変更点：関数をipcMain.onの外に移動 ▼▼▼
+async function saveArtworkToFile(picture, songPath) {
+    const sharp = require('sharp'); // ★★★ 関数内でrequire
     if (!picture || !picture.data) return null;
+
     const artworksDir = path.join(app.getPath('userData'), 'Artworks');
-    if (!fs.existsSync(artworksDir)) {
-        fs.mkdirSync(artworksDir, { recursive: true });
-    }
+    const thumbnailsDir = path.join(artworksDir, 'thumbnails');
+    if (!fs.existsSync(artworksDir)) fs.mkdirSync(artworksDir, { recursive: true });
+    if (!fs.existsSync(thumbnailsDir)) fs.mkdirSync(thumbnailsDir, { recursive: true });
+
     const hash = crypto.createHash('sha256').update(songPath).digest('hex');
-    const extension = picture.format.split('/')[1] || 'jpg';
-    const artworkFileName = `${hash}.${extension}`;
-    const artworkPath = path.join(artworksDir, artworkFileName);
+    const extension = 'webp';
+    
+    const fullFileName = `${hash}.${extension}`;
+    const thumbFileName = `${hash}_thumb.${extension}`;
+
+    const fullPath = path.join(artworksDir, fullFileName);
+    const thumbPath = path.join(thumbnailsDir, thumbFileName);
+
     try {
-        if (!fs.existsSync(artworkPath)) {
-            fs.writeFileSync(artworkPath, picture.data);
+        const image = sharp(picture.data);
+        if (!fs.existsSync(fullPath)) {
+            await image.webp({ quality: 80 }).toFile(fullPath);
         }
-        return artworkFileName;
+        if (!fs.existsSync(thumbPath)) {
+            await image.resize(100, 100).webp({ quality: 75 }).toFile(thumbPath);
+        }
+        return { full: fullFileName, thumbnail: thumbFileName };
     } catch (error) {
         console.error(`Failed to save artwork for ${songPath}:`, error);
         return null;
@@ -42,29 +59,44 @@ function addSongsToLibraryAndSave(newSongs) {
     }
     return uniqueNewSongs;
 }
+// ▲▲▲ 変更点ここまで ▲▲▲
 
 function registerLibraryHandlers(stores) {
     libraryStore = stores.library;
     loudnessStore = stores.loudness;
     settingsStore = stores.settings;
     playCountsStore = stores.playCounts;
+    albumsStore = stores.albums;
 
     ipcMain.on('start-scan-paths', async (event, paths) => {
-        const pLimit = (await import('p-limit')).default;
+        // ▼▼▼ 変更点：イベントハンドラ内でモジュールを読み込む ▼▼▼
+        const { scanPaths, parseFiles, analyzeLoudness } = require('../file-scanner');
+        const os = require('os');
+        const { sanitize } = require('../utils');
+        // ▲▲▲ 変更点ここまで ▲▲▲
+        
+        console.time('Main: Total Import Process');
 
+        const pLimit = (await import('p-limit')).default;
         const libraryPath = settingsStore.load().libraryPath;
         if (!libraryPath) {
             event.sender.send('scan-complete', []);
             return;
         }
     
+        console.time('Main: scanPaths');
         const sourceFiles = await scanPaths(paths);
+        console.timeEnd('Main: scanPaths');
+        
         if (sourceFiles.length === 0) {
             event.sender.send('scan-complete', []);
             return;
         }
 
+        console.time('Main: parseFiles');
         const songsWithMetadata = await parseFiles(sourceFiles);
+        console.timeEnd('Main: parseFiles');
+        
         const loudnessData = loudnessStore.load();
         const existingLibraryPaths = new Set(libraryStore.load().map(s => s.path));
         
@@ -81,6 +113,7 @@ function registerLibraryHandlers(stores) {
 
         if (songsToProcess.length === 0) {
             event.sender.send('scan-complete', []);
+            console.timeEnd('Main: Total Import Process');
             return;
         }
 
@@ -97,21 +130,19 @@ function registerLibraryHandlers(stores) {
         completedSteps += songsToProcess.length;
         sendProgress();
     
-        // ▼▼▼ ここからが修正箇所です ▼▼▼
         let concurrency = os.cpus().length;
         if (os.platform() === 'win32') {
-            // Windowsの場合は、UIが固まらないように使用するコア数を最大より1つ減らす（最低1コアは使用）
             concurrency = Math.max(1, os.cpus().length - 1);
         }
-        // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
         const limit = pLimit(concurrency);
         console.log(`[Loudness] Starting analysis with concurrency: ${concurrency}`);
 
+        console.time('Main: Artwork, Copying, and Loudness Analysis');
         const analysisPromises = songsToProcess.map(song => {
             return limit(async () => {
                 if (song.artwork) {
-                    song.artwork = saveArtworkToFile(song.artwork, song.path);
+                    song.artwork = await saveArtworkToFile(song.artwork, song.path);
                 }
                 const primaryArtist = song.albumartist || song.artist || 'Unknown Artist';
                 const artistDir = sanitize(primaryArtist);
@@ -145,6 +176,7 @@ function registerLibraryHandlers(stores) {
         });
 
         const newSongObjects = await Promise.all(analysisPromises);
+        console.timeEnd('Main: Artwork, Copying, and Loudness Analysis');
         
         if (newSongObjects.length > 0) {
             loudnessStore.save(loudnessData);
@@ -152,9 +184,11 @@ function registerLibraryHandlers(stores) {
         const addedSongs = addSongsToLibraryAndSave(newSongObjects);
         
         event.sender.send('scan-complete', addedSongs);
+        console.timeEnd('Main: Total Import Process');
     });
 
     ipcMain.on('request-loudness-analysis', async (event, songPath) => {
+        const { analyzeLoudness } = require('../file-scanner');
         const loudnessData = loudnessStore.load();
         if (loudnessData[songPath]) return;
         const result = await analyzeLoudness(songPath);
@@ -172,31 +206,32 @@ function registerLibraryHandlers(stores) {
     });
 
     ipcMain.on('request-initial-library', (event) => {
+        console.time('Main: Load library & albums JSON');
         const songs = libraryStore.load() || [];
+        const albums = albumsStore.load() || {};
+        console.timeEnd('Main: Load library & albums JSON');
         if (event.sender && !event.sender.isDestroyed()) {
-            event.sender.send('load-library', songs);
+            event.sender.send('load-library', { songs, albums });
         }
     });
+
     ipcMain.on('debug-reset-library', (event) => {
         try {
-            // データベースファイルをクリア
             libraryStore.save([]);
             loudnessStore.save({});
             playCountsStore.save({});
+            albumsStore.save({});
             
-            // アートワークフォルダをクリア
             const artworksDir = path.join(app.getPath('userData'), 'Artworks');
             if (fs.existsSync(artworksDir)) {
                 fs.rmSync(artworksDir, { recursive: true, force: true });
             }
             
-            // 音楽ライブラリフォルダの中身を全て削除
             const settings = settingsStore.load();
             const libraryPath = settings.libraryPath;
 
             if (libraryPath && fs.existsSync(libraryPath)) {
                 console.log(`[DEBUG] Deleting music library folder contents at: ${libraryPath}`);
-                // フォルダごと削除して、再度空のフォルダを作成する
                 fs.rmSync(libraryPath, { recursive: true, force: true });
                 fs.mkdirSync(libraryPath, { recursive: true });
             }

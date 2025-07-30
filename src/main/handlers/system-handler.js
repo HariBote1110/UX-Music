@@ -129,9 +129,12 @@ function registerSystemHandlers(stores) {
         }
     });
     
+    // ▼▼▼ 変更点 ▼▼▼
     ipcMain.handle('get-artworks-dir', () => {
+        // Artworksフォルダのベースパスを返すように変更
         return path.join(app.getPath('userData'), 'Artworks');
     });
+    // ▲▲▲ 変更点ここまで ▲▲▲
 
     ipcMain.handle('get-artwork-as-data-url', (event, artworkFileName) => {
         if (!artworkFileName) return null;
@@ -141,7 +144,8 @@ function registerSystemHandlers(stores) {
 
             if (fs.existsSync(artworkPath)) {
                 const imageBuffer = fs.readFileSync(artworkPath);
-                const mimeType = path.extname(artworkFileName).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg';
+                // WebP形式に対応
+                const mimeType = 'image/webp'; 
                 return `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
             }
         } catch (error) {

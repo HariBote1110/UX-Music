@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file: safe-artwork:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
     <title>UX Music</title>
     <link rel="stylesheet" href="./styles/base.css">
     <link rel="stylesheet" href="./styles/layout.css">
@@ -255,11 +255,9 @@
     <div id="notification-toast" class="hidden">
         <p id="notification-text"></p>
     </div>
-
-    <div id="youtube-player-container" style="position: absolute; top: -9999px; left: -9999px;"></div>
     
     <audio id="main-player"></audio>
-    <script type="module" src="./renderer.js"></script>
+    <script type="module" src="./renderer.js" defer></script>
 
 </body>
 </html>

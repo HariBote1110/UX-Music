@@ -10,6 +10,16 @@
     display: none;
 }
 
+/* ▼▼▼ 変更点 ▼▼▼ */
+/* #track-view の flex レイアウトを調整 */
+#track-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* 高さを100%に指定 */
+}
+/* ▲▲▲ 変更点ここまで ▲▲▲ */
+
+
 #drop-zone {
     border: 2px dashed transparent;
     transition: border-color 0.3s;
@@ -54,7 +64,18 @@
     color: var(--text-muted);
     border-bottom: 1px solid var(--bg-light);
     font-size: 0.9em;
+    flex-shrink: 0; /* ヘッダーが縮まないように */
 }
+
+/* ▼▼▼ 変更点 ▼▼▼ */
+/* #music-list を仮想スクロール用に調整 */
+#music-list {
+    flex-grow: 1; /* 残りの高さをすべて使う */
+    position: relative;
+    overflow-y: auto;
+}
+/* ▲▲▲ 変更点ここまで ▲▲▲ */
+
 
 .header-item:nth-child(1) { flex: 0 0 50px; }
 .header-item:nth-child(2) { flex: 5; }
@@ -139,14 +160,13 @@
 
 /* --- 再生中インジケーター --- */
 .playing-indicator {
-    display: flex; /* 常にflexにしておく */
+    display: flex;
     width: 24px;
     height: 20px;
-    justify-content: space-between;
+    justify-content: space-around;
     align-items: center;
-    gap: 1.5px;
-    opacity: 0; /* デフォルトでは透明 */
-    transition: opacity 0.2s ease-in-out; /* フェードイン効果 */
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
 }
 
 .playing-indicator-bar {
@@ -154,21 +174,16 @@
     height: 4px;
     border-radius: 1.25px;
     background: linear-gradient(45deg, var(--eq-color-1), var(--eq-color-2));
-    /* ▼▼▼ 変更点 ▼▼▼ */
     transition: height 0.1s ease-out, background 0.3s ease-in-out;
-    /* ▲▲▲ 変更点ここまで ▲▲▲ */
 }
 
-/* 再生中の曲の番号は常に非表示 */
 .song-item.playing .song-number {
     display: none;
 }
 
-/* 色の準備が完了した再生中の曲のインジケーターだけを表示 */
 .song-item.playing.indicator-ready .playing-indicator {
     opacity: 1;
 }
-
 
 /* --- グリッド表示のスタイル --- */
 #album-grid, #playlist-grid, #artist-grid, .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 24px; }

@@ -148,7 +148,6 @@
 #volume-slider { -webkit-appearance: none; width: 100%; height: 4px; background: #4d4d4d; outline: none; border-radius: 2px; cursor: pointer; }
 #volume-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #fff; border-radius: 50%; }
 
-/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
 .device-container { position: relative; margin-left: 20px; }
 #device-select-button { 
     background: none; 
@@ -167,7 +166,25 @@
     filter: invert(100%) sepia(100%) saturate(0%) hue-rotate(288deg) brightness(102%) contrast(102%);
 }
 
-.device-popup { position: absolute; bottom: calc(100% + 15px); right: 0; background-color: var(--bg-light); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); padding: 8px; z-index: 1100; width: 250px; visibility: hidden; opacity: 0; transform: translateY(10px); transition: all 0.2s ease-out; }
+/* ▼▼▼ 変更点 ▼▼▼ */
+.device-popup { 
+    position: absolute; 
+    bottom: calc(100% + 15px); 
+    right: 0; 
+    background-color: var(--bg-light); 
+    border-radius: 6px; 
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5); 
+    padding: 8px; 
+    z-index: 1100; 
+    width: 250px; 
+    visibility: hidden; 
+    opacity: 0; 
+    transform: translateY(10px); 
+    transition: all 0.2s ease-out;
+    max-height: 200px; /* 高すぎる場合に備えて最大値を設定 */
+    overflow-y: auto; /* スクロールを有効化 */
+}
+/* ▲▲▲ 変更点ここまで ▲▲▲ */
 .device-popup.active { visibility: visible; opacity: 1; transform: translateY(0); }
 .device-popup-item { padding: 10px 12px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .device-popup-item:hover { background-color: var(--bg-hover); }
@@ -176,7 +193,6 @@
     font-weight: bold; 
     background-color: rgba(255, 255, 255, 0.05);
 }
-/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
 
 #modal-overlay, #settings-modal-overlay, #loading-overlay { 
     position: fixed; 

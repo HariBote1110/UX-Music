@@ -6,25 +6,39 @@ import { showAlbum } from '../navigation.js';
 import { createSongItem, createAlbumGridItem } from './element-factory.js';
 const { ipcRenderer } = require('electron');
 
-let artworksDir = null; 
-
-async function resolveArtworkPath(artworkFileName) {
-    if (!artworkFileName) return './assets/default_artwork.png';
-
-    if (artworkFileName.startsWith('data:image')) return artworkFileName;
-    if (artworkFileName.startsWith('http')) return artworkFileName;
-    
-    if (!artworksDir) {
-        artworksDir = await ipcRenderer.invoke('get-artworks-dir');
+// ▼▼▼ 変更点：関数を同期的(sync)に書き換え ▼▼▼
+function resolveArtworkPath(artwork, isThumbnail = false) {
+    if (!state.artworksDir) {
+        console.error("resolveArtworkPath called before state.artworksDir was set.");
+        return './assets/default_artwork.png';
     }
-    // `path.join` はメインプロセスでのみ利用するため、ここでは文字列結合で代用
-    return `file://${artworksDir}/${artworkFileName}`;
+    
+    if (!artwork) return './assets/default_artwork.png';
+
+    if (typeof artwork === 'string' && (artwork.startsWith('data:image') || artwork.startsWith('http'))) {
+        return artwork;
+    }
+    
+    if (typeof artwork === 'object' && artwork.full && artwork.thumbnail) {
+        const fileName = isThumbnail ? artwork.thumbnail : artwork.full;
+        const subDir = isThumbnail ? 'thumbnails' : '';
+        return `file://${state.artworksDir}/${subDir ? `${subDir}/` : ''}${fileName}`;
+    }
+
+    if (typeof artwork === 'string') {
+        return `file://${state.artworksDir}/${artwork}`;
+    }
+
+    return './assets/default_artwork.png';
 }
+// ▲▲▲ 変更点ここまで ▲▲▲
 
 export function renderAlbumDetailView(album) {
     const view = elements.albumDetailView;
     const artImg = view.querySelector('#a-detail-art');
-    resolveArtworkPath(album.artwork).then(src => artImg.src = src);
+    artImg.classList.add('lazy-load');
+    artImg.dataset.src = resolveArtworkPath(album.artwork, false);
+    window.observeNewArtworks(view);
     
     view.querySelector('#a-detail-title').textContent = album.title;
     view.querySelector('#a-detail-artist').textContent = album.artist;
@@ -45,12 +59,15 @@ export function renderAlbumDetailView(album) {
         
         listElement.appendChild(songItem);
     });
+    window.observeNewArtworks(listElement);
 }
 
 export function renderArtistDetailView(artist) {
     const view = elements.artistDetailView;
     const artImg = view.querySelector('#artist-detail-art');
-    resolveArtworkPath(artist.artwork).then(src => artImg.src = src);
+    artImg.classList.add('lazy-load');
+    artImg.dataset.src = resolveArtworkPath(artist.artwork, false);
+    window.observeNewArtworks(view);
     
     view.querySelector('#artist-detail-name').textContent = artist.name;
 
@@ -73,6 +90,7 @@ export function renderArtistDetailView(artist) {
         albumItem.addEventListener('click', () => showAlbum(key));
         gridElement.appendChild(albumItem);
     }
+    window.observeNewArtworks(gridElement);
 }
 
 export function renderPlaylistDetailView(playlistName, songs) {
@@ -84,9 +102,13 @@ export function renderPlaylistDetailView(playlistName, songs) {
     
     const artworkContainer = view.querySelector('.playlist-art-collage');
     if (artworkContainer) {
-        const artworks = songs.map(s => s.artwork).filter(Boolean);
-        const resolver = (fileName) => resolveArtworkPath(fileName, ipcRenderer);
+        const artworks = songs.map(s => {
+            const album = state.albums.get(s.albumKey);
+            return album ? album.artwork : null;
+        }).filter(Boolean);
+        const resolver = (fileName) => resolveArtworkPath(fileName, true);
         createPlaylistArtwork(artworkContainer, artworks, resolver);
+        window.observeNewArtworks(artworkContainer);
     } else {
         console.error("Could not find '.playlist-art-collage' in playlist detail view.");
     }
@@ -111,6 +133,7 @@ export function renderPlaylistDetailView(playlistName, songs) {
         
         listElement.appendChild(songItem);
     });
+    window.observeNewArtworks(listElement);
 
     let draggedItem = null;
 

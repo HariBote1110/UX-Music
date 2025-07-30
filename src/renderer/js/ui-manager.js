@@ -2,7 +2,7 @@ import { state, elements } from './state.js';
 import { renderTrackView, renderAlbumView, renderArtistView, renderPlaylistView } from './ui/view-renderer.js';
 import { renderAlbumDetailView, renderArtistDetailView, renderPlaylistDetailView } from './ui/detail-view-renderer.js';
 import { playSong } from './playback-manager.js';
-import { setAudioOutput } from './player.js'; // player.jsから関数をインポート
+import { setAudioOutput } from './player.js';
 import { createQueueItem } from './ui/element-factory.js';
 import { updateTextOverflowForSelector } from './ui/utils.js';
 const { ipcRenderer } = require('electron');
@@ -22,6 +22,7 @@ function renderQueueView() {
         queueItem.addEventListener('click', () => playSong(index));
         elements.queueList.appendChild(queueItem);
     });
+    window.observeNewArtworks(elements.queueList);
 }
 
 export function initUI() {
@@ -35,55 +36,79 @@ export function initUI() {
     });
 }
 
-export function addSongsToLibrary(newSongs) {
-    if (newSongs && newSongs.length > 0) {
+export function addSongsToLibrary({ songs, albums }) {
+    console.time('Renderer: Process Library Data');
+    let migrationNeeded = false;
+
+    if ((!albums || Object.keys(albums).length === 0) && songs.length > 0 && songs[0].artwork) {
+        migrationNeeded = true;
+        console.warn('Old library format detected. Starting migration...');
+        state.albums.clear(); 
+    } else if (albums) {
+        state.albums = new Map(Object.entries(albums));
+    }
+
+    if (songs && songs.length > 0) {
         const existingPaths = new Set(state.library.map(song => song.path));
-        const uniqueNewSongs = newSongs.filter(song => !existingPaths.has(song.path));
+        const uniqueNewSongs = songs.filter(song => !existingPaths.has(song.path));
         state.library.push(...uniqueNewSongs);
     }
-    groupLibraryByAlbum();
+    
+    groupLibraryByAlbum(migrationNeeded);
     groupLibraryByArtist();
+
+    if (migrationNeeded) {
+        const albumsToSave = Object.fromEntries(state.albums.entries());
+        ipcRenderer.send('save-migrated-data', { songs: state.library, albums: albumsToSave });
+        console.log('Migration completed. Sent updated data to main process.');
+    }
+
     renderCurrentView();
+    console.timeEnd('Renderer: Process Library Data');
 }
 
-function groupLibraryByAlbum() {
-    state.albums.clear();
+function groupLibraryByAlbum(isMigration = false) {
+    console.time('Renderer: groupLibraryByAlbum');
     const tempAlbumGroups = new Map();
     const localSongs = state.library.filter(song => !song.sourceURL);
 
     localSongs.forEach(song => {
         const albumTitle = song.album || 'Unknown Album';
-        if (!tempAlbumGroups.has(albumTitle)) {
-            tempAlbumGroups.set(albumTitle, []);
-        }
-        tempAlbumGroups.get(albumTitle).push(song);
-    });
-
-    for (const [albumTitle, songsInAlbum] of tempAlbumGroups.entries()) {
-        const albumArtistsSet = new Set(songsInAlbum.map(s => s.albumartist).filter(Boolean));
+        const albumArtistsSet = new Set([song.albumartist, song.artist].filter(Boolean));
         let representativeArtist = 'Unknown Artist';
-        if (albumArtistsSet.size > 1) {
-            representativeArtist = 'Various Artists';
-        } else if (albumArtistsSet.size === 1) {
+        if (albumArtistsSet.size > 0) {
             representativeArtist = [...albumArtistsSet][0];
-        } else {
-            const trackArtistsSet = new Set(songsInAlbum.map(s => s.artist));
-            if (trackArtistsSet.size > 1) {
-                representativeArtist = 'Various Artists';
-            } else if (trackArtistsSet.size === 1) {
-                representativeArtist = [...trackArtistsSet][0];
-            }
         }
-        const finalAlbumKey = `${albumTitle}---${representativeArtist}`;
-        if (!state.albums.has(finalAlbumKey)) {
-            state.albums.set(finalAlbumKey, {
+
+        const albumKey = `${albumTitle}---${representativeArtist}`;
+        song.albumKey = albumKey;
+
+        if (!tempAlbumGroups.has(albumKey)) {
+            tempAlbumGroups.set(albumKey, {
                 title: albumTitle,
                 artist: representativeArtist,
-                artwork: songsInAlbum[0].artwork,
-                songs: songsInAlbum
+                songs: [],
+                artwork: isMigration && song.artwork ? song.artwork : null 
             });
         }
+        tempAlbumGroups.get(albumKey).songs.push(song);
+    });
+
+    for (const [key, albumData] of tempAlbumGroups.entries()) {
+        if (!state.albums.has(key)) {
+            if (!albumData.artwork) {
+                albumData.artwork = albumData.songs.find(s => s.artwork)?.artwork || null;
+            }
+            state.albums.set(key, albumData);
+        }
     }
+    
+    if (isMigration) {
+        state.library.forEach(song => {
+            delete song.artwork;
+        });
+    }
+    console.timeEnd('Renderer: groupLibraryByAlbum');
 }
 
 function groupLibraryByArtist() {
@@ -100,16 +125,19 @@ function groupLibraryByArtist() {
     });
 
     for (const [artistName, songs] of tempArtistGroups.entries()) {
-        const artwork = songs.find(s => s.artwork)?.artwork || null;
+        const firstAlbumKey = songs[0]?.albumKey;
+        const representativeAlbum = state.albums.get(firstAlbumKey);
         state.artists.set(artistName, {
             name: artistName,
-            artwork: artwork,
+            artwork: representativeAlbum?.artwork || null,
             songs: songs
         });
     }
 }
 
 export function renderCurrentView() {
+    window.artworkLoadTimes = [];
+
     const activeLink = document.querySelector('.nav-link.active');
     
     if (activeLink) {
@@ -134,14 +162,15 @@ export function renderCurrentView() {
     updateTextOverflowForSelector(MARQUEE_SELECTOR);
 }
 
-// ▼▼▼ ここからが修正箇所です ▼▼▼
 export async function updateAudioDevices(savedDeviceId = null) {
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioDevices = devices.filter(device => device.kind === 'audiooutput');
         
         elements.devicePopup.innerHTML = '';
-        const currentSinkId = document.getElementById('main-player').sinkId || 'default';
+        const mainPlayer = document.getElementById('main-player');
+        if (!mainPlayer) return;
+        const currentSinkId = mainPlayer.sinkId || 'default';
         
         audioDevices.forEach(device => {
             const item = document.createElement('div');
@@ -155,9 +184,7 @@ export async function updateAudioDevices(savedDeviceId = null) {
 
             item.addEventListener('click', () => {
                 setAudioOutput(device.deviceId);
-                // ポップアップ内のすべてのactiveクラスを削除
                 elements.devicePopup.querySelectorAll('.device-popup-item').forEach(i => i.classList.remove('active'));
-                // クリックされたアイテムにactiveクラスを追加
                 item.classList.add('active');
                 elements.devicePopup.classList.remove('active');
             });
@@ -172,4 +199,3 @@ export async function updateAudioDevices(savedDeviceId = null) {
         console.error('オーディオデバイスの取得に失敗しました:', error);
     }
 }
-// ▲▲▲ ここまでが修正箇所です ▲▲▲

@@ -9,8 +9,6 @@ let gainNode;
 let baseGain = 1.0;
 
 let localPlayer;
-let ytPlayer;
-let ytPlayerPromise = null;
 let currentSongType = 'local';
 let timeUpdateInterval;
 
@@ -26,6 +24,7 @@ let animationFrameId = null;
 let analyser;
 let dataArray;
 let visualizerFrameId;
+let cachedIndicatorBars = null;
 
 async function resumeAudioContext() {
     if (audioContext && audioContext.state === 'suspended') {
@@ -249,12 +248,10 @@ export async function setEqualizerColorFromArtwork() {
 
     const nowPlayingArtwork = document.querySelector('#now-playing-artwork-container img');
     
-    // ▼▼▼ 変更点 ▼▼▼
     const setDefaultColors = () => {
         document.documentElement.style.setProperty('--eq-color-1', 'var(--highlight-pink)');
         document.documentElement.style.setProperty('--eq-color-2', 'var(--highlight-blue)');
     };
-    // ▲▲▲ 変更点ここまで ▲▲▲
 
     if (nowPlayingArtwork && nowPlayingArtwork.src && !nowPlayingArtwork.src.endsWith('default_artwork.png')) {
         const colors = await getColorsFromArtwork(nowPlayingArtwork);
@@ -275,37 +272,43 @@ export async function setEqualizerColorFromArtwork() {
     }
 }
 
-
-function startVisualizer() {
+export function startVisualizer() {
     if (visualizerFrameId) {
         cancelAnimationFrame(visualizerFrameId);
     }
+    
+    const playingItem = document.querySelector('.song-item.playing');
+    if (playingItem) {
+        const indicator = playingItem.querySelector('.playing-indicator');
+        cachedIndicatorBars = indicator ? indicator.querySelectorAll('.playing-indicator-bar') : null;
+    } else {
+        cachedIndicatorBars = null;
+    }
 
     const draw = () => {
-        if (!analyser) return;
+        if (!analyser || !cachedIndicatorBars || cachedIndicatorBars.length === 0) {
+            visualizerFrameId = requestAnimationFrame(draw);
+            return;
+        };
         analyser.getByteFrequencyData(dataArray);
 
-        const playingItem = document.querySelector('.song-item.playing');
-        if (playingItem) {
-            const indicator = playingItem.querySelector('.playing-indicator');
-            if (indicator) {
-                const bars = indicator.querySelectorAll('.playing-indicator-bar');
-                const bufferLength = analyser.frequencyBinCount;
-                
-                const heights = [
-                    dataArray[Math.floor(bufferLength * 0.1)],
-                    dataArray[Math.floor(bufferLength * 0.2)],
-                    dataArray[Math.floor(bufferLength * 0.3)],
-                    dataArray[Math.floor(bufferLength * 0.4)],
-                    dataArray[Math.floor(bufferLength * 0.5)],
-                    dataArray[Math.floor(bufferLength * 0.6)],
-                ].map(val => (val / 255) * 16 + 4);
+        const bufferLength = analyser.frequencyBinCount;
+        
+        let heights = [
+            dataArray[Math.floor(bufferLength * 0.1)],
+            dataArray[Math.floor(bufferLength * 0.2)],
+            dataArray[Math.floor(bufferLength * 0.3)],
+            dataArray[Math.floor(bufferLength * 0.4)],
+            dataArray[Math.floor(bufferLength * 0.5)],
+            dataArray[Math.floor(bufferLength * 0.6)],
+        ].map(val => (val / 255) * 16 + 4);
 
-                bars.forEach((bar, index) => {
-                    bar.style.height = `${heights[index]}px`;
-                });
-            }
-        }
+        heights.reverse();
+
+        cachedIndicatorBars.forEach((bar, index) => {
+            bar.style.height = `${heights[index]}px`;
+        });
+
         visualizerFrameId = requestAnimationFrame(draw);
     };
     draw();
@@ -315,50 +318,12 @@ function stopVisualizer() {
     if (visualizerFrameId) {
         cancelAnimationFrame(visualizerFrameId);
     }
+    cachedIndicatorBars = null; 
     document.querySelectorAll('.playing-indicator-bar').forEach(bar => {
         bar.style.height = '4px';
     });
 }
 
-function getYouTubePlayer(videoId) {
-    if (ytPlayerPromise) {
-        return ytPlayerPromise;
-    }
-    ytPlayerPromise = new Promise(resolve => {
-        const createPlayer = () => {
-            return new YT.Player('youtube-player-container', {
-                height: '100%', width: '100%', videoId: videoId,
-                playerVars: {
-                    'autoplay': 1, 'controls': 0, 'fs': 0, 'iv_load_policy': 3, 'modestbranding': 1,
-                    'origin': window.location.href, 'enablejsapi': 1,
-                },
-                events: {
-                    'onReady': (event) => {
-                        ytPlayer = event.target;
-                        resolve(ytPlayer);
-                    },
-                    'onStateChange': onPlayerStateChange
-                }
-            });
-        };
-
-        if (window.YT && window.YT.Player) {
-            if(ytPlayer) {
-                resolve(ytPlayer);
-            } else {
-                createPlayer();
-            }
-        } else {
-            window.onYouTubeIframeAPIReady = () => {
-                createPlayer();
-            };
-            const tag = document.createElement('script');
-            tag.src = "https://www.youtube.com/iframe_api";
-            document.head.appendChild(tag);
-        }
-    });
-    return ytPlayerPromise;
-}
 
 export async function play(song) {
     await stop();
@@ -370,8 +335,9 @@ export async function play(song) {
         }
         return;
     }
-
-    const TARGET_LOUDNESS = -23.0;
+    
+    const settings = await ipcRenderer.invoke('get-settings');
+    const TARGET_LOUDNESS = settings.targetLoudness || -23.0;
 
     if (gainNode) {
         const savedLoudness = await ipcRenderer.invoke('get-loudness-value', song.path);
@@ -379,7 +345,7 @@ export async function play(song) {
         if (typeof savedLoudness === 'number') {
             const gainDb = TARGET_LOUDNESS - savedLoudness;
             baseGain = Math.pow(10, gainDb / 20);
-            console.log(`[ノーマライザー適用] ${path.basename(song.path)}: 元音量 ${savedLoudness.toFixed(2)} LUFS -> 補正 ${gainDb.toFixed(2)} dB`);
+            console.log(`[ノーマライザー適用] ${path.basename(song.path)}: 元音量 ${savedLoudness.toFixed(2)} LUFS -> 目標 ${TARGET_LOUDNESS} LUFS -> 補正 ${gainDb.toFixed(2)} dB`);
         } else {
             baseGain = 1.0;
         }
@@ -389,10 +355,13 @@ export async function play(song) {
     if ('mediaSession' in navigator) {
         let artworkSrc = '';
         if (song.artwork) {
-            if (song.artwork.startsWith('http')) {
+            if (typeof song.artwork === 'string' && song.artwork.startsWith('http')) {
                 artworkSrc = song.artwork;
             } else {
-                artworkSrc = await ipcRenderer.invoke('get-artwork-as-data-url', song.artwork);
+                const artworkFileName = typeof song.artwork === 'object' ? song.artwork.full : song.artwork;
+                if (artworkFileName) {
+                    artworkSrc = await ipcRenderer.invoke('get-artwork-as-data-url', artworkFileName);
+                }
             }
         }
     
@@ -404,14 +373,12 @@ export async function play(song) {
         });
     }
 
-    const settings = await ipcRenderer.invoke('get-settings');
     const mode = settings.youtubePlaybackMode || 'download';
 
-    if (song.type === 'youtube' || (mode === 'stream' && song.sourceURL)) {
+    if ((song.type === 'youtube' || (mode === 'stream' && song.sourceURL))) {
         currentSongType = 'youtube';
         elements.deviceSelectButton.disabled = true;
-        const streamPath = song.sourceURL || song.path;
-        playYoutube({ ...song, path: streamPath });
+        // YouTubeの再生は now-playing.js がiframeを生成して行うので、ここでは何もしない
     } else if (song.type === 'local' && song.path) {
         currentSongType = 'local';
         elements.deviceSelectButton.disabled = false;
@@ -422,11 +389,7 @@ export async function play(song) {
 }
 
 export async function stop() {
-    if (currentSongType === 'youtube' && ytPlayer && typeof ytPlayer.pauseVideo === 'function') {
-        ytPlayer.pauseVideo();
-    } else {
-        localPlayer.pause();
-    }
+    localPlayer.pause();
     setPlayPauseIcon('play'); 
     clearInterval(timeUpdateInterval);
 }
@@ -448,28 +411,13 @@ async function playLocal(song) {
     }
 }
 
-async function playYoutube(song) {
-    const videoId = getYoutubeVideoId(song.path);
-    if (!videoId) return;
-    const player = await getYouTubePlayer(videoId);
-    if (player && typeof player.loadVideoById === 'function') {
-        player.loadVideoById(videoId);
-    }
-}
-
 export async function togglePlayPause() {
     await resumeAudioContext();
 
     if (currentSongType === 'youtube') {
-        const player = await getYouTubePlayer();
-        if (player && typeof player.getPlayerState === 'function') {
-            const state = player.getPlayerState();
-            if (state === YT.PlayerState.PLAYING) {
-                player.pauseVideo();
-            } else {
-                player.playVideo();
-            }
-        }
+        // YouTube再生はiframe API経由になるため、ここでは何もしない。
+        // UIからの再生/停止は now-playing.js でiframeを再生成するなどで対応する想定。
+        console.warn('YouTube playback toggle is not implemented in player.js');
     } else {
         if (localPlayer.src && !localPlayer.paused) {
              localPlayer.pause();
@@ -480,44 +428,14 @@ export async function togglePlayPause() {
 }
 
 export async function seekToStart() {
-    if (currentSongType === 'youtube') {
-        const player = await getYouTubePlayer();
-        if (player && typeof player.seekTo === 'function') player.seekTo(0, true);
-    } else {
-        localPlayer.currentTime = 0;
-    }
+    localPlayer.currentTime = 0;
 }
 
 async function seek() {
     const time = parseFloat(elements.progressBar.value);
-    if (currentSongType === 'youtube') {
-        const player = await getYouTubePlayer();
-        if (player && typeof player.seekTo === 'function') player.seekTo(time, true);
-    } else {
-        localPlayer.currentTime = time;
-    }
+    localPlayer.currentTime = time;
 }
 
-function onPlayerStateChange(event) {
-    const state = event.data;
-    if (state === YT.PlayerState.PLAYING) {
-        setPlayPauseIcon('pause');
-        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-        timeUpdateInterval = setInterval(async () => {
-            const player = await getYouTubePlayer();
-            if (player && typeof player.getCurrentTime === 'function') {
-                const currentTime = player.getCurrentTime();
-                updateUiTime(currentTime, player.getDuration());
-                updateSyncedLyrics(currentTime);
-            }
-        }, 500);
-    } else {
-        setPlayPauseIcon('play');
-        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-        clearInterval(timeUpdateInterval);
-    }
-    if (state === YT.PlayerState.ENDED) onSongEndedCallback();
-}
 function updateUiTime(current, duration) {
     if (isNaN(duration) || duration <= 0) return;
     elements.currentTimeEl.textContent = formatTime(current);
@@ -529,11 +447,4 @@ function formatTime(seconds) {
     const min = Math.floor(seconds / 60);
     const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
     return `${min}:${sec}`;
-}
-function getYoutubeVideoId(url) {
-    if (typeof url !== 'string') return null;
-    const regExp = /^.*(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
-    if(!regExp.test(url)) return null;
-    const match = url.match(/(?:\/|v=)([\w-]{11}).*/);
-    return match ? match[1] : null;
 }

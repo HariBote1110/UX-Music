@@ -1,14 +1,22 @@
 import { playSong } from './playback-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
-import { state } from './state.js'; // ★★★ stateを直接インポート ★★★
+import { state } from './state.js';
+
+const startTime = performance.now();
+const logPerf = (message) => {
+    console.log(`[PERF][IPC] ${message} at ${(performance.now() - startTime).toFixed(2)}ms`);
+};
+logPerf("ipc.js script execution started.");
 
 export function initIPC(ipcRenderer, callbacks) {
-    // --- IPCリスナー群 ---
-    ipcRenderer.on('load-library', (event, initialSongs) => {
-        console.log('[Debug] Received initial library with', initialSongs ? initialSongs.length : 0, 'songs.');
-        callbacks.onLibraryLoaded?.(initialSongs);
+    logPerf("initIPC called.");
+    ipcRenderer.on('load-library', (event, data) => {
+        logPerf("Received 'load-library' from main.");
+        console.log(`[Debug] Received initial library with ${data.songs ? data.songs.length : 0} songs.`);
+        callbacks.onLibraryLoaded?.(data);
     });
     ipcRenderer.on('settings-loaded', (event, settings) => {
+        logPerf("Received 'settings-loaded' from main.");
         console.log('[Debug] Settings loaded.');
         callbacks.onSettingsLoaded?.(settings);
     });
@@ -51,7 +59,6 @@ export function initIPC(ipcRenderer, callbacks) {
         callbacks.onScanComplete?.(newSongs);
     });
 
-    // ★★★ ここからが修正箇所です ★★★
     ipcRenderer.on('loudness-analysis-result', (event, result) => {
         const fileName = result.filePath.split(/[/\\]/).pop();
         if (result.success) {
@@ -61,7 +68,6 @@ export function initIPC(ipcRenderer, callbacks) {
                 'color: blue; font-weight: bold;'
             );
             
-            // window.stateではなく、インポートしたstateを直接使用する
             const waitingSong = state.songWaitingForAnalysis;
             if (waitingSong && waitingSong.sourceList[waitingSong.index].path === result.filePath) {
                 playSong(waitingSong.index, null, true);
@@ -71,15 +77,13 @@ export function initIPC(ipcRenderer, callbacks) {
             console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
         }
     });
-    // ★★★ ここまでが修正箇所です ★★★
 
     ipcRenderer.on('lyrics-added-notification', (event, count) => {
         showNotification(`${count}個の歌詞ファイルが追加されました。`);
         hideNotification(3000);
     });
 
-    // --- 初期データの要求 ---
-    console.log('[Debug] Requesting initial data from main process...');
+    logPerf("Requesting initial data from main process...");
     ipcRenderer.send('request-initial-library');
     ipcRenderer.send('request-playlists-with-artwork');
     ipcRenderer.send('request-initial-play-counts');

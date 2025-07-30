@@ -1,36 +1,43 @@
 import { elements } from '../state.js';
 import { setEqualizerColorFromArtwork } from '../player.js';
 const { ipcRenderer } = require('electron');
-const path = require('path');
 
-let artworksDir = null;
+function getYoutubeVideoId(url) {
+    if (typeof url !== 'string') return null;
+    const regExp = /^.*(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
+    if(!regExp.test(url)) return null;
+    const match = url.match(/(?:\/|v=)([\w-]{11}).*/);
+    return match ? match[1] : null;
+}
 
-// アートワークのパスを解決するヘルパー関数
-async function resolveArtworkPath(artworkFileName) {
-    if (!artworkFileName) return './assets/default_artwork.png';
-    if (artworkFileName.startsWith('data:image')) return artworkFileName;
-    if (artworkFileName.startsWith('http')) return artworkFileName;
+// ▼▼▼ 変更点：関数を同期的(sync)に書き換え ▼▼▼
+function resolveArtworkPath(artwork, isThumbnail = false) {
+    if (!state.artworksDir) {
+        console.error("resolveArtworkPath called before state.artworksDir was set.");
+        return './assets/default_artwork.png';
+    }
     
-    if (!artworksDir) {
-        artworksDir = await ipcRenderer.invoke('get-artworks-dir');
-    }
-    return `file://${path.join(artworksDir, artworkFileName)}`;
-}
+    if (!artwork) return './assets/default_artwork.png';
 
-// DOM要素の表示を切り替えるヘルパー関数
-function switchVisibleElement(container, elementToShow) {
-    // コンテナ内のすべての子要素を非表示にする
-    for (const child of container.children) {
-        child.style.display = 'none';
+    if (typeof artwork === 'string' && (artwork.startsWith('data:image') || artwork.startsWith('http'))) {
+        return artwork;
     }
-    // 指定された要素だけを表示する
-    if (elementToShow) {
-        elementToShow.style.display = 'block';
+    
+    if (typeof artwork === 'object' && artwork.full && artwork.thumbnail) {
+        const fileName = isThumbnail ? artwork.thumbnail : artwork.full;
+        const subDir = isThumbnail ? 'thumbnails' : '';
+        return `file://${state.artworksDir}/${subDir ? `${subDir}/` : ''}${fileName}`;
     }
-}
 
-// updateNowPlayingView関数
-export async function updateNowPlayingView(song) {
+    if (typeof artwork === 'string') {
+        return `file://${state.artworksDir}/${artwork}`;
+    }
+
+    return './assets/default_artwork.png';
+}
+// ▲▲▲ 変更点ここまで ▲▲▲
+
+export function updateNowPlayingView(song) {
     const { 
         nowPlayingArtworkContainer, 
         nowPlayingTitle, 
@@ -38,68 +45,52 @@ export async function updateNowPlayingView(song) {
         hubLinkContainer 
     } = elements;
     
-    // プレーヤー要素とアートワーク用img要素への参照を取得
-    const localPlayer = document.getElementById('main-player');
-    const ytPlayerWrapper = document.getElementById('youtube-player-container');
-    
-    // アートワーク用img要素がなければ作成してコンテナに追加
-    let artworkImg = nowPlayingArtworkContainer.querySelector('img');
-    if (!artworkImg) {
-        artworkImg = document.createElement('img');
-        nowPlayingArtworkContainer.appendChild(artworkImg);
-    }
-    
-    // ちらつき（FOUC）を防ぐため、srcをセットする前に一旦画像を非表示にする
-    artworkImg.style.display = 'none';
-
-    // ハブリンクコンテナをクリア
+    nowPlayingArtworkContainer.innerHTML = '';
     hubLinkContainer.innerHTML = '';
-    
-    // --- 曲のタイプに応じて表示を切り替え ---
+    nowPlayingArtworkContainer.classList.remove('video-mode');
 
-    // 曲情報がない場合
     if (!song) {
-        nowPlayingArtworkContainer.classList.remove('video-mode');
-        switchVisibleElement(nowPlayingArtworkContainer, artworkImg);
-        artworkImg.src = './assets/default_artwork.png';
-        
-    // YouTubeストリーミングの場合
+        const img = document.createElement('img');
+        img.src = './assets/default_artwork.png';
+        nowPlayingArtworkContainer.appendChild(img);
+    
     } else if (song.type === 'youtube') {
         nowPlayingArtworkContainer.classList.add('video-mode');
-        switchVisibleElement(nowPlayingArtworkContainer, ytPlayerWrapper);
-        // YouTubeのサムネイルを裏で読み込み、色抽出に使用
-        artworkImg.src = song.artwork;
+        const videoId = getYoutubeVideoId(song.sourceURL || song.path);
+        if (videoId) {
+            const iframe = document.createElement('iframe');
+            iframe.width = '100%';
+            iframe.height = '100%';
+            iframe.src = `https://www.youtube.com/iframe_api/${videoId}?autoplay=1&controls=0&fs=0&iv_load_policy=3&modestbranding=1&origin=${window.location.href}`;
+            iframe.setAttribute('frameborder', '0');
+            nowPlayingArtworkContainer.appendChild(iframe);
+        }
+        const img = new Image();
+        img.onload = setEqualizerColorFromArtwork;
+        img.src = song.artwork;
 
-    // ローカルの映像ファイルの場合
-    } else if (song.hasVideo) {
-        nowPlayingArtworkContainer.classList.add('video-mode');
-        switchVisibleElement(nowPlayingArtworkContainer, localPlayer);
-        // 映像ファイルのアートワークメタデータを色抽出に使用
-        artworkImg.src = await resolveArtworkPath(song.artwork);
-
-    // 通常のローカル音声ファイルの場合
     } else {
-        nowPlayingArtworkContainer.classList.remove('video-mode');
-        switchVisibleElement(nowPlayingArtworkContainer, artworkImg);
-        artworkImg.src = await resolveArtworkPath(song.artwork);
-    }
+        const localPlayer = document.getElementById('main-player');
+        const img = document.createElement('img');
+        
+        img.onload = setEqualizerColorFromArtwork;
 
-    // --- 色の設定とUI更新 ---
+        // ▼▼▼ 変更点：非同期処理(.then)を削除 ▼▼▼
+        const album = state.albums.get(song.albumKey);
+        const artwork = album ? album.artwork : null;
+        img.src = resolveArtworkPath(artwork, false);
+        // ▲▲▲ 変更点ここまで ▲▲▲
 
-    // 画像の読み込み完了を待って色を設定するイベントリスナー
-    const onArtworkLoad = () => {
-        setEqualizerColorFromArtwork();
-        // イベントリスナーを一度実行したら削除してメモリリークを防ぐ
-        artworkImg.removeEventListener('load', onArtworkLoad);
-    };
-    artworkImg.addEventListener('load', onArtworkLoad);
-
-    // ブラウザにキャッシュされている場合は 'load' イベントが発火しないことがあるため、手動で呼び出し
-    if (artworkImg.complete && artworkImg.src) {
-       onArtworkLoad();
+        if (song.hasVideo) {
+            nowPlayingArtworkContainer.classList.add('video-mode');
+            nowPlayingArtworkContainer.appendChild(localPlayer);
+        } else {
+            nowPlayingArtworkContainer.classList.remove('video-mode');
+            nowPlayingArtworkContainer.appendChild(img);
+        }
+        if (img.complete) setEqualizerColorFromArtwork();
     }
     
-    // ハブリンクボタンの表示
     if (song && song.hubUrl) {
         const hubButton = document.createElement('button');
         hubButton.className = 'hub-link-button-small';
@@ -108,7 +99,6 @@ export async function updateNowPlayingView(song) {
         hubLinkContainer.appendChild(hubButton);
     }
 
-    // タイトルとアーティスト名の表示更新
     const titleSpan = nowPlayingTitle.querySelector('.marquee-content span');
     if (titleSpan) {
         titleSpan.textContent = song ? song.title : '曲を選択してください';

@@ -4,20 +4,42 @@ import { initIPC } from './js/ipc.js';
 import { initModal, showModal } from './js/modal.js';
 import { initPlaylists } from './js/playlist.js';
 import { initPlayer, togglePlayPause, applyMasterVolume, seekToStart } from './js/player.js';
-import { state, elements } from './js/state.js';
+import { state, elements, initElements } from './js/state.js';
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from './js/playback-manager.js';
 import { showNotification, hideNotification } from './js/ui/notification.js';
 import { initDebugCommands } from './js/debug-commands.js';
 import { updateTextOverflowForSelector } from './js/ui/utils.js';
-
+import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
+performance.mark('renderer-script-start');
+
+const startTime = performance.now();
+const logPerf = (message) => {
+    console.log(`[PERF][Renderer] ${message} at ${(performance.now() - startTime).toFixed(2)}ms`);
+};
+logPerf("Script execution started.");
+
+window.artworkLoadTimes = [];
+
+// windowオブジェクトに関数を公開し、他のモジュールから呼び出せるようにします
+window.observeNewArtworks = (container) => {
+    observeNewImages(container || document);
+};
+
+
 window.addEventListener('DOMContentLoaded', () => {
+    performance.mark('dom-content-loaded');
+    logPerf("'DOMContentLoaded' event fired. Initializing modules...");
+
+    initElements();
+    
+    // 新しいLazy Loaderを初期化
+    initLazyLoader(document.querySelector('.main-content'));
 
     const MARQUEE_SELECTOR = '.marquee-wrapper';
     
-    // メインプロセスからのログを受け取ってコンソールに表示
     ipcRenderer.on('log-message', (event, { level, args }) => {
         const style = 'color: cyan; font-weight: bold;';
         console[level](`%c[Main]%c`, style, '', ...args);
@@ -49,23 +71,37 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- 各モジュールの初期化 ---
+    logPerf("Initializing UI...");
     initUI();
+    logPerf("Initializing Player...");
     initPlayer(document.getElementById('main-player'), {
         onSongEnded: playNextSong,
         onNextSong: playNextSong,
         onPrevSong: playPrevSong
     });
+    logPerf("Initializing Navigation...");
     initNavigation(renderCurrentView);
+    logPerf("Initializing Modal...");
     initModal();
+    logPerf("Initializing Playlists...");
     initPlaylists();
+    logPerf("Initializing Debug Commands...");
     initDebugCommands();
-    
+    logPerf("Initializing IPC...");
     initIPC(ipcRenderer, {
-        onLibraryLoaded: (songs) => {
-            state.library = songs || [];
-            addSongsToLibrary([]);
-            renderCurrentView();
+        onLibraryLoaded: async (data) => {
+            logPerf("Received 'load-library' event from main process.");
+            performance.mark('library-loaded');
+            
+            console.time('Renderer: Total Initial Load and Render');
+            
+            if (!state.artworksDir) {
+                state.artworksDir = await ipcRenderer.invoke('get-artworks-dir');
+            }
+            addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
+            
+            console.timeEnd('Renderer: Total Initial Load and Render');
+            performance.mark('initial-render-end');
         },
         onSettingsLoaded: (settings) => {
             updateAudioDevices(settings.audioOutputId);
@@ -81,7 +117,7 @@ window.addEventListener('DOMContentLoaded', () => {
         onYoutubeLinkProcessed: (song) => {
             showNotification(`「${song.title}」が追加されました。`);
             hideNotification(3000);
-            addSongsToLibrary([song]);
+            addSongsToLibrary({ songs: [song] });
         },
         onPlaylistsUpdated: (playlists) => {
             state.playlists = playlists;
@@ -107,7 +143,7 @@ window.addEventListener('DOMContentLoaded', () => {
             showNotification(`ライブラリをインポート中... (${percentage}%)`);
         },
         onScanComplete: (songs) => {
-            addSongsToLibrary(songs);
+            addSongsToLibrary({ songs });
             showNotification(`${songs.length}曲のインポートが完了しました。`);
             hideNotification(3000);
         },
@@ -120,8 +156,9 @@ window.addEventListener('DOMContentLoaded', () => {
             hideNotification(3000);
         }
     });
+    logPerf("IPC initialized.");
+    performance.mark('renderer-init-end');
     
-    // --- グローバルイベントリスナーの設定 ---
     if (navigator.mediaDevices && typeof navigator.mediaDevices.ondevicechange !== 'undefined') {
         navigator.mediaDevices.addEventListener('devicechange', () => updateAudioDevices());
     }
@@ -161,6 +198,7 @@ window.addEventListener('DOMContentLoaded', () => {
             onOk: (url) => ipcRenderer.send('import-youtube-playlist', url)
         });
     });
+
     elements.setLibraryBtn.addEventListener('click', () => ipcRenderer.send('set-library-path'));
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
@@ -195,32 +233,20 @@ window.addEventListener('DOMContentLoaded', () => {
         elements.settingsModalOverlay.classList.remove('hidden');
     });
     elements.settingsOkBtn.addEventListener('click', () => elements.settingsModalOverlay.classList.add('hidden'));
-    elements.youtubeModeRadios.forEach(radio => {
-        radio.addEventListener('change', (event) => ipcRenderer.send('save-settings', { youtubePlaybackMode: event.target.value }));
-    });
-    elements.youtubeQualityRadios.forEach(radio => {
-        radio.addEventListener('change', (event) => ipcRenderer.send('save-settings', { youtubeDownloadQuality: event.target.value }));
-    });
 
     initResizer();
     
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
     elements.deviceSelectButton.addEventListener('click', (e) => {
         e.stopPropagation();
-        // ポップアップを開く前に、必ずデバイスリストを更新する
         updateAudioDevices();
         elements.devicePopup.classList.toggle('active');
     });
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
-    // ポップアップの外側をクリックしたら閉じる
     window.addEventListener('click', () => {
         if (elements.devicePopup.classList.contains('active')) {
             elements.devicePopup.classList.remove('active');
         }
     });
-    
-    // --- テキストオーバーフローチェック ---
     
     let resizeTimer;
     window.addEventListener('resize', () => {
@@ -265,4 +291,41 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     ipcRenderer.send('request-app-info');
     
+    logPerf("All initializations and event listeners set up.");
+});
+
+window.addEventListener('load', () => {
+    performance.mark('window-load');
+    logPerf("'window.onload' event fired. All resources are fully loaded.");
+});
+
+ipcRenderer.on('measure-performance', () => {
+    console.log("--- RENDERER PERFORMANCE ANALYSIS ---");
+    const measure = (name, start, end) => {
+        try {
+            const measurement = performance.measure(name, start, end);
+            console.log(`[PERF] ${name}: ${measurement.duration.toFixed(2)}ms`);
+        } catch (e) {
+            console.warn(`[PERF] Could not measure '${name}'. Mark '${start}' or '${end}' not found.`);
+        }
+    };
+
+    measure('Script Start to DOMContentLoaded', 'renderer-script-start', 'dom-content-loaded');
+    measure('DOMContentLoaded to Initial Render End', 'dom-content-loaded', 'initial-render-end');
+    
+    if (window.artworkLoadTimes && window.artworkLoadTimes.length > 0) {
+        const firstLoad = Math.min(...window.artworkLoadTimes);
+        const lastLoad = Math.max(...window.artworkLoadTimes);
+        const initialRenderEndMark = performance.getEntriesByName('initial-render-end')[0];
+        if (initialRenderEndMark) {
+            const initialRenderEndTime = initialRenderEndMark.startTime;
+            console.log(`[PERF] Time to First Artwork Loaded: ${(firstLoad - initialRenderEndTime).toFixed(2)}ms`);
+            console.log(`[PERF] Time to Last Artwork Loaded: ${(lastLoad - initialRenderEndTime).toFixed(2)}ms`);
+            console.log(`[PERF] Total Artwork Loading Span: ${(lastLoad - firstLoad).toFixed(2)}ms`);
+        }
+    }
+    
+    measure('Initial Render End to Window Load', 'initial-render-end', 'window-load');
+    measure('Full Renderer Process Time', 'renderer-script-start', 'window-load');
+    console.log("-------------------------------------");
 });

@@ -1,53 +1,47 @@
 const path = require('path');
 const fs = require('fs');
-const ffmpeg = require('fluent-ffmpeg');
 const { app } = require('electron');
 
-function getCorrectBinaryPath(binaryName) {
-  try {
-    const binaryModule = require(binaryName);
-    let binaryPath = null;
-    if (typeof binaryModule === 'string') {
-      binaryPath = binaryModule;
-    } else if (binaryModule && typeof binaryModule.path === 'string') {
-      binaryPath = binaryModule.path;
-    } else {
-      console.error(`Could not determine path for ${binaryName}. Unexpected module format.`);
-      return null;
-    }
-    if (binaryPath && app.isPackaged) {
-      binaryPath = binaryPath.replace('app.asar', 'app.asar.unpacked');
-    }
-    return binaryPath;
-  } catch (error) {
-    console.error(`Error getting path for binary ${binaryName}:`, error);
-    return null;
-  }
-}
+// ▼▼▼ 変更点：モジュールの読み込みを関数内に移動 ▼▼▼
 
-const ffmpegPath = getCorrectBinaryPath('ffmpeg-static');
-const ffprobePath = getCorrectBinaryPath('ffprobe-static');
+let ffmpeg; // モジュールを保持する変数を定義
 
-if (ffmpegPath) {
-  ffmpeg.setFfmpegPath(ffmpegPath);
-}
-if (ffprobePath) {
-  ffmpeg.setFfprobePath(ffprobePath);
+function initializeFfmpeg() {
+    if (ffmpeg) return; // 既に初期化済みなら何もしない
+
+    ffmpeg = require('fluent-ffmpeg');
+
+    function getCorrectBinaryPath(binaryName) {
+        try {
+            const binaryModule = require(binaryName);
+            let binaryPath = binaryModule?.path || binaryModule;
+            if (binaryPath && app.isPackaged) {
+                binaryPath = binaryPath.replace('app.asar', 'app.asar.unpacked');
+            }
+            return binaryPath;
+        } catch (error) {
+            console.error(`Error getting path for binary ${binaryName}:`, error);
+            return null;
+        }
+    }
+
+    const ffmpegPath = getCorrectBinaryPath('ffmpeg-static');
+    const ffprobePath = getCorrectBinaryPath('ffprobe-static');
+
+    if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
+    if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
 }
 
 const supportedExtensions = ['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.mp4'];
 
 function analyzeLoudness(filePath) {
+    initializeFfmpeg(); // ★★★ 関数呼び出し時に初期化
     return new Promise((resolve) => {
         ffmpeg(filePath)
             .withAudioFilter('loudnorm=I=-23:LRA=7:print_format=json')
             .toFormat('null')
             .on('error', (err) => {
-                if (err.message.includes('Cannot find ffmpeg')) {
-                    resolve({ success: false, filePath: filePath, error: 'Cannot find ffmpeg' });
-                } else {
-                    resolve({ success: false, filePath: filePath, error: err.message });
-                }
+                resolve({ success: false, filePath: filePath, error: err.message });
             })
             .on('end', (stdout, stderr) => {
                 const jsonStartIndex = stderr.lastIndexOf('{');
@@ -85,7 +79,7 @@ async function scanDirectory(dirPath) {
 }
 
 async function parseFiles(filePaths) {
-    const musicMetadata = await import('music-metadata');
+    const musicMetadata = (await import('music-metadata')).default; // ★★★ 動的インポートに変更
     
     const songs = [];
     for (const filePath of filePaths) {
@@ -95,10 +89,7 @@ async function parseFiles(filePaths) {
             const common = metadata.common;
             const artwork = (common.picture && common.picture.length > 0) ? common.picture[0] : null;
 
-            // ★★★ ここからが修正箇所です ★★★
-            // メタデータから映像トラックの有無を確認
             const hasVideo = metadata.format.trackInfo.some(track => track.type === 'video');
-            // ★★★ ここまでが修正箇所です ★★★
 
             songs.push({
                 path: filePath,
@@ -111,7 +102,7 @@ async function parseFiles(filePaths) {
                 year: common.year,
                 fileSize: stats.size,
                 type: 'local',
-                hasVideo: hasVideo, // ★★★ 映像の有無を保存 ★★★
+                hasVideo: hasVideo,
             });
         } catch (error) {
             console.error(`Error parsing metadata for ${filePath}:`, error.message);
