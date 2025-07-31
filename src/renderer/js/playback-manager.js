@@ -1,16 +1,17 @@
+// uxmusic/src/renderer/js/playback-manager.js
+
 import { state, elements, PLAYBACK_MODES } from './state.js';
 import { play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
-import { renderCurrentView } from './ui-manager.js';
+import { updatePlayingIndicators, renderCurrentView } from './ui-manager.js'; // renderCurrentViewもインポートしておく
 import { showNotification, hideNotification } from './ui/notification.js';
 import { updateNowPlayingView } from './ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
 
 export async function playSong(index, sourceList = null, forcePlay = false) {
-    // ▼▼▼ 変更点 ▼▼▼
-    // 再生が始まる前の色リセット処理を削除しました。
-    // ▲▲▲ 変更点ここまで ▲▲▲
-
+    // ▼▼▼ ログ追加 ▼▼▼
+    console.log(`[Logger] 1. playSong() が呼び出されました。曲: ${sourceList ? sourceList[index].title : state.playbackQueue[index].title}`);
+    
     state.songWaitingForAnalysis = null;
 
     if (sourceList) {
@@ -56,7 +57,11 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     state.currentSongIndex = index;
     
     updateNowPlayingView(songToPlay);
-    renderCurrentView();
+
+    // ▼▼▼ ログ追加 ▼▼▼
+    console.log('[Logger] 2. これからUIの表示更新を呼び出します。');
+    updatePlayingIndicators();
+    
     await playSongInPlayer(songToPlay);
 }
 
@@ -78,7 +83,7 @@ export function playNextSong() {
             updateNowPlayingView(null);
             loadLyricsForSong(null);
             state.currentSongIndex = -1;
-            renderCurrentView();
+            updatePlayingIndicators();
             return;
         }
     }
@@ -124,7 +129,7 @@ export function toggleShuffle() {
         state.playbackQueue = [...state.originalQueueSource];
         state.currentSongIndex = currentSong ? state.playbackQueue.findIndex(s => s.path === currentSong.path) : -1;
     }
-    renderCurrentView();
+    updatePlayingIndicators();
 }
 
 

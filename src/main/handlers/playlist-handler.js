@@ -1,3 +1,5 @@
+// uxmusic/src/main/handlers/playlist-handler.js
+
 const { ipcMain } = require('electron');
 const playlistManager = require('../playlist-manager');
 
@@ -62,7 +64,6 @@ function registerPlaylistHandlers(stores, sendToAllWindows) {
         }
     });
 
-    // ★★★ ここからが修正箇所です ★★★
     ipcMain.handle('rename-playlist', (event, { oldName, newName }) => {
         const result = playlistManager.renamePlaylist(oldName, newName);
         if (result.success) {
@@ -70,7 +71,23 @@ function registerPlaylistHandlers(stores, sendToAllWindows) {
         }
         return result;
     });
-    // ★★★ ここまでが修正箇所です ★★★
+
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    ipcMain.handle('add-album-to-playlist', (event, { albumKey, playlistName }) => {
+        const library = libraryStore.load() || [];
+        const songsToAdd = library.filter(song => song.albumKey === albumKey);
+        
+        if (songsToAdd.length > 0) {
+            const result = playlistManager.addSongsToPlaylist(playlistName, songsToAdd);
+            // 曲を追加した後、UIのプレイリストアートワークを更新するために通知
+            if (result.success && result.addedCount > 0) {
+                sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
+            }
+            return result;
+        }
+        return { success: true, addedCount: 0 };
+    });
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 }
 
 module.exports = { registerPlaylistHandlers, getPlaylistsWithArtwork };

@@ -1,8 +1,9 @@
-import { initUI, renderCurrentView, addSongsToLibrary, updateAudioDevices } from './js/ui-manager.js';
-import { initNavigation, showPlaylist, showMainView } from './js/navigation.js';
+// uxmusic/src/renderer/renderer.js
+
+import { initUI, addSongsToLibrary, renderCurrentView, updateAudioDevices } from './js/ui-manager.js';
+import { initNavigation, showPlaylist, showView } from './js/navigation.js';
 import { initIPC } from './js/ipc.js';
 import { initModal, showModal } from './js/modal.js';
-import { initPlaylists } from './js/playlist.js';
 import { initPlayer, togglePlayPause, applyMasterVolume, seekToStart } from './js/player.js';
 import { state, elements, initElements } from './js/state.js';
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from './js/playback-manager.js';
@@ -23,20 +24,16 @@ logPerf("Script execution started.");
 
 window.artworkLoadTimes = [];
 
-// windowオブジェクトに関数を公開し、他のモジュールから呼び出せるようにします
 window.observeNewArtworks = (container) => {
     observeNewImages(container || document);
 };
-
 
 window.addEventListener('DOMContentLoaded', () => {
     performance.mark('dom-content-loaded');
     logPerf("'DOMContentLoaded' event fired. Initializing modules...");
 
     initElements();
-    
-    // 新しいLazy Loaderを初期化
-    initLazyLoader(document.querySelector('.main-content'));
+    initLazyLoader(elements.mainContent);
 
     const MARQUEE_SELECTOR = '.marquee-wrapper';
     
@@ -80,11 +77,9 @@ window.addEventListener('DOMContentLoaded', () => {
         onPrevSong: playPrevSong
     });
     logPerf("Initializing Navigation...");
-    initNavigation(renderCurrentView);
+    initNavigation();
     logPerf("Initializing Modal...");
     initModal();
-    logPerf("Initializing Playlists...");
-    initPlaylists();
     logPerf("Initializing Debug Commands...");
     initDebugCommands();
     logPerf("Initializing IPC...");
@@ -92,16 +87,11 @@ window.addEventListener('DOMContentLoaded', () => {
         onLibraryLoaded: async (data) => {
             logPerf("Received 'load-library' event from main process.");
             performance.mark('library-loaded');
-            
-            console.time('Renderer: Total Initial Load and Render');
-            
             if (!state.artworksDir) {
                 state.artworksDir = await ipcRenderer.invoke('get-artworks-dir');
             }
             addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
-            
-            console.timeEnd('Renderer: Total Initial Load and Render');
-            performance.mark('initial-render-end');
+            showView('track-view');
         },
         onSettingsLoaded: (settings) => {
             updateAudioDevices(settings.audioOutputId);
@@ -112,7 +102,7 @@ window.addEventListener('DOMContentLoaded', () => {
         },
         onPlayCountsUpdated: (counts) => {
             state.playCounts = counts;
-            renderCurrentView();
+            // renderCurrentView(); // ▼▼▼ 修正点: この行をコメントアウト、または削除 ▼▼▼
         },
         onYoutubeLinkProcessed: (song) => {
             showNotification(`「${song.title}」が追加されました。`);
@@ -121,7 +111,9 @@ window.addEventListener('DOMContentLoaded', () => {
         },
         onPlaylistsUpdated: (playlists) => {
             state.playlists = playlists;
-            renderCurrentView();
+            if (state.activeViewId === 'playlist-view') { // ▼▼▼ 修正点: 表示中の場合のみ再描画 ▼▼▼
+                renderCurrentView();
+            }
         },
         onForceReloadPlaylist: (playlistName) => {
             showPlaylist(playlistName);
@@ -157,7 +149,6 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
     logPerf("IPC initialized.");
-    performance.mark('renderer-init-end');
     
     if (navigator.mediaDevices && typeof navigator.mediaDevices.ondevicechange !== 'undefined') {
         navigator.mediaDevices.addEventListener('devicechange', () => updateAudioDevices());
@@ -165,7 +156,7 @@ window.addEventListener('DOMContentLoaded', () => {
     
     ipcRenderer.on('navigate-back', () => {
         if (state.currentDetailView.type) {
-            showMainView(state.activeListView);
+            showView(state.activeListView);
         }
     });
 
@@ -206,19 +197,15 @@ window.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         e.stopPropagation();
         elements.dropZone.classList.remove('drag-over');
-        
         const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
         if (allPaths.length === 0) return;
-
         const lyricsExtensions = ['.lrc', '.txt'];
         const lyricsPaths = allPaths.filter(p => lyricsExtensions.includes(path.extname(p).toLowerCase()));
         const musicPaths = allPaths.filter(p => !lyricsExtensions.includes(path.extname(p).toLowerCase()));
-
         if (musicPaths.length > 0) {
             showNotification('インポート準備中...');
             ipcRenderer.send('start-scan-paths', musicPaths);
         }
-
         if (lyricsPaths.length > 0) {
             ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
         }
@@ -252,23 +239,8 @@ window.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
-            updateTextOverflowForSelector(MARQUEE_SELECTOR);
+            updateTextOverflowForSelector('.marquee-wrapper');
         }, 250);
-    });
-
-    const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                const target = mutation.target;
-                if (!target.classList.contains('hidden')) {
-                    setTimeout(() => updateTextOverflowForSelector(MARQUEE_SELECTOR), 100);
-                }
-            }
-        }
-    });
-
-    elements.views.forEach(view => {
-        observer.observe(view, { attributes: true });
     });
 
     window.addEventListener('keydown', (e) => {
@@ -309,10 +281,8 @@ ipcRenderer.on('measure-performance', () => {
             console.warn(`[PERF] Could not measure '${name}'. Mark '${start}' or '${end}' not found.`);
         }
     };
-
     measure('Script Start to DOMContentLoaded', 'renderer-script-start', 'dom-content-loaded');
     measure('DOMContentLoaded to Initial Render End', 'dom-content-loaded', 'initial-render-end');
-    
     if (window.artworkLoadTimes && window.artworkLoadTimes.length > 0) {
         const firstLoad = Math.min(...window.artworkLoadTimes);
         const lastLoad = Math.max(...window.artworkLoadTimes);
@@ -324,7 +294,6 @@ ipcRenderer.on('measure-performance', () => {
             console.log(`[PERF] Total Artwork Loading Span: ${(lastLoad - firstLoad).toFixed(2)}ms`);
         }
     }
-    
     measure('Initial Render End to Window Load', 'initial-render-end', 'window-load');
     measure('Full Renderer Process Time', 'renderer-script-start', 'window-load');
     console.log("-------------------------------------");

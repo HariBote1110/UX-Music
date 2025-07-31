@@ -1,5 +1,8 @@
+// uxmusic/src/renderer/js/player.js
+
 import { elements } from './state.js';
 import { updateSyncedLyrics } from './lyrics-manager.js';
+import { updatePlayingIndicators } from './ui-manager.js';
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
@@ -24,19 +27,18 @@ let animationFrameId = null;
 let analyser;
 let dataArray;
 let visualizerFrameId;
-let cachedIndicatorBars = null;
+
+let currentVisualizerBars = null;
 
 async function resumeAudioContext() {
     if (audioContext && audioContext.state === 'suspended') {
         try {
             await audioContext.resume();
-            console.log('AudioContext resumed successfully.');
         } catch (e) {
             console.error('Failed to resume AudioContext:', e);
         }
     }
 }
-
 
 function setPlayPauseIcon(iconName) {
     const playPauseIcon = elements.playPauseBtn.querySelector('img');
@@ -135,6 +137,7 @@ export function initPlayer(playerElement, callbacks) {
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
         animationFrameId = requestAnimationFrame(smoothUpdateLoop);
         
+        updatePlayingIndicators();
         startVisualizer();
     });
 
@@ -145,7 +148,7 @@ export function initPlayer(playerElement, callbacks) {
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
         cancelAnimationFrame(animationFrameId);
         
-        stopVisualizer();
+        pauseVisualizer();
     });
 
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
@@ -241,21 +244,14 @@ function getColorsFromArtwork(img) {
 }
 
 
-export async function setEqualizerColorFromArtwork() {
-    document.querySelectorAll('.song-item.indicator-ready').forEach(item => {
-        item.classList.remove('indicator-ready');
-    });
-
-    const nowPlayingArtwork = document.querySelector('#now-playing-artwork-container img');
-    
+export async function setEqualizerColorFromArtwork(imageElement) {
     const setDefaultColors = () => {
         document.documentElement.style.setProperty('--eq-color-1', 'var(--highlight-pink)');
         document.documentElement.style.setProperty('--eq-color-2', 'var(--highlight-blue)');
     };
 
-    if (nowPlayingArtwork && nowPlayingArtwork.src && !nowPlayingArtwork.src.endsWith('default_artwork.png')) {
-        const colors = await getColorsFromArtwork(nowPlayingArtwork);
-        
+    if (imageElement && imageElement.src && !imageElement.src.endsWith('default_artwork.png')) {
+        const colors = await getColorsFromArtwork(imageElement);
         if (colors) {
             document.documentElement.style.setProperty('--eq-color-1', colors[0]);
             document.documentElement.style.setProperty('--eq-color-2', colors[1]);
@@ -265,65 +261,77 @@ export async function setEqualizerColorFromArtwork() {
     } else {
         setDefaultColors();
     }
-    
-    const playingItem = document.querySelector('.song-item.playing');
-    if (playingItem) {
-        playingItem.classList.add('indicator-ready');
-    }
 }
 
-export function startVisualizer() {
+
+function startVisualizer() {
     if (visualizerFrameId) {
         cancelAnimationFrame(visualizerFrameId);
     }
-    
-    const playingItem = document.querySelector('.song-item.playing');
-    if (playingItem) {
-        const indicator = playingItem.querySelector('.playing-indicator');
-        cachedIndicatorBars = indicator ? indicator.querySelectorAll('.playing-indicator-bar') : null;
+    visualizerFrameId = requestAnimationFrame(draw);
+}
+
+export function setVisualizerTarget(targetElement) {
+    document.querySelectorAll('.indicator-ready').forEach(item => {
+        item.classList.remove('indicator-ready');
+    });
+
+    if (targetElement) {
+        const bars = targetElement.querySelectorAll('.playing-indicator-bar');
+        if (bars.length > 0) {
+            targetElement.classList.add('indicator-ready');
+            currentVisualizerBars = bars;
+        } else {
+             currentVisualizerBars = null;
+        }
     } else {
-        cachedIndicatorBars = null;
+        currentVisualizerBars = null;
     }
+}
 
-    const draw = () => {
-        if (!analyser || !cachedIndicatorBars || cachedIndicatorBars.length === 0) {
-            visualizerFrameId = requestAnimationFrame(draw);
-            return;
-        };
+function draw() {
+    if (currentVisualizerBars && analyser) {
         analyser.getByteFrequencyData(dataArray);
-
         const bufferLength = analyser.frequencyBinCount;
         
-        let heights = [
+        const heights = [
             dataArray[Math.floor(bufferLength * 0.1)],
-            dataArray[Math.floor(bufferLength * 0.2)],
-            dataArray[Math.floor(bufferLength * 0.3)],
+            dataArray[Math.floor(bufferLength * 0.25)],
             dataArray[Math.floor(bufferLength * 0.4)],
-            dataArray[Math.floor(bufferLength * 0.5)],
-            dataArray[Math.floor(bufferLength * 0.6)],
+            dataArray[Math.floor(bufferLength * 0.55)],
+            dataArray[Math.floor(bufferLength * 0.7)],
+            dataArray[Math.floor(bufferLength * 0.85)],
         ].map(val => (val / 255) * 16 + 4);
 
-        heights.reverse();
-
-        cachedIndicatorBars.forEach((bar, index) => {
+        currentVisualizerBars.forEach((bar, index) => {
             bar.style.height = `${heights[index]}px`;
         });
+    }
+    visualizerFrameId = requestAnimationFrame(draw);
+}
 
-        visualizerFrameId = requestAnimationFrame(draw);
-    };
-    draw();
+function pauseVisualizer() {
+    if (visualizerFrameId) {
+        cancelAnimationFrame(visualizerFrameId);
+        visualizerFrameId = null;
+    }
+    if (currentVisualizerBars) {
+        currentVisualizerBars.forEach(bar => {
+            bar.style.height = '4px';
+        });
+    }
 }
 
 function stopVisualizer() {
     if (visualizerFrameId) {
         cancelAnimationFrame(visualizerFrameId);
+        visualizerFrameId = null;
     }
-    cachedIndicatorBars = null; 
+    setVisualizerTarget(null);
     document.querySelectorAll('.playing-indicator-bar').forEach(bar => {
         bar.style.height = '4px';
     });
 }
-
 
 export async function play(song) {
     await stop();
@@ -341,11 +349,9 @@ export async function play(song) {
 
     if (gainNode) {
         const savedLoudness = await ipcRenderer.invoke('get-loudness-value', song.path);
-        
         if (typeof savedLoudness === 'number') {
             const gainDb = TARGET_LOUDNESS - savedLoudness;
             baseGain = Math.pow(10, gainDb / 20);
-            console.log(`[ノーマライザー適用] ${path.basename(song.path)}: 元音量 ${savedLoudness.toFixed(2)} LUFS -> 目標 ${TARGET_LOUDNESS} LUFS -> 補正 ${gainDb.toFixed(2)} dB`);
         } else {
             baseGain = 1.0;
         }
@@ -354,17 +360,11 @@ export async function play(song) {
 
     if ('mediaSession' in navigator) {
         let artworkSrc = '';
-        if (song.artwork) {
-            if (typeof song.artwork === 'string' && song.artwork.startsWith('http')) {
-                artworkSrc = song.artwork;
-            } else {
-                const artworkFileName = typeof song.artwork === 'object' ? song.artwork.full : song.artwork;
-                if (artworkFileName) {
-                    artworkSrc = await ipcRenderer.invoke('get-artwork-as-data-url', artworkFileName);
-                }
-            }
+        if (song.artwork && typeof song.artwork === 'object') {
+            artworkSrc = await ipcRenderer.invoke('get-artwork-as-data-url', song.artwork.full);
+        } else if (song.artwork) {
+            artworkSrc = await ipcRenderer.invoke('get-artwork-as-data-url', song.artwork);
         }
-    
         navigator.mediaSession.metadata = new MediaMetadata({
             title: song.title || '不明なタイトル',
             artist: song.artist || '不明なアーティスト',
@@ -374,17 +374,13 @@ export async function play(song) {
     }
 
     const mode = settings.youtubePlaybackMode || 'download';
-
-    if ((song.type === 'youtube' || (mode === 'stream' && song.sourceURL))) {
+    if ((song.type === 'youtube' && mode === 'stream') || song.sourceURL) {
         currentSongType = 'youtube';
         elements.deviceSelectButton.disabled = true;
-        // YouTubeの再生は now-playing.js がiframeを生成して行うので、ここでは何もしない
-    } else if (song.type === 'local' && song.path) {
+    } else if (song.path) {
         currentSongType = 'local';
         elements.deviceSelectButton.disabled = false;
         playLocal(song);
-    } else {
-        alert(`この曲はダウンロードされていません。「設定」からストリーミングモードに切り替えてください。`);
     }
 }
 
@@ -395,35 +391,23 @@ export async function stop() {
 }
 
 async function playLocal(song) {
-    if (!song || !song.path) return;
-    
     const safePath = song.path.replace(/\\/g, '/').replace(/#/g, '%23');
     localPlayer.src = `file://${safePath}`;
-    
     try {
         await resumeAudioContext();
         localPlayer.load();
         await localPlayer.play();
     } catch (error) {
-        if (error.name !== 'AbortError') {
-            console.error("オーディオの再生に失敗しました:", error);
-        }
+        if (error.name !== 'AbortError') console.error("オーディオの再生に失敗しました:", error);
     }
 }
 
 export async function togglePlayPause() {
     await resumeAudioContext();
-
-    if (currentSongType === 'youtube') {
-        // YouTube再生はiframe API経由になるため、ここでは何もしない。
-        // UIからの再生/停止は now-playing.js でiframeを再生成するなどで対応する想定。
-        console.warn('YouTube playback toggle is not implemented in player.js');
-    } else {
-        if (localPlayer.src && !localPlayer.paused) {
-             localPlayer.pause();
-        } else if (localPlayer.src) {
-             localPlayer.play();
-        }
+    if (localPlayer.src && !localPlayer.paused) {
+        localPlayer.pause();
+    } else if (localPlayer.src) {
+        localPlayer.play();
     }
 }
 
@@ -443,6 +427,7 @@ function updateUiTime(current, duration) {
     elements.progressBar.value = current;
     elements.progressBar.max = duration;
 }
+
 function formatTime(seconds) {
     const min = Math.floor(seconds / 60);
     const sec = Math.floor(seconds % 60).toString().padStart(2, '0');

@@ -1,3 +1,5 @@
+// uxmusic/src/main/playlist-manager.js
+
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
@@ -15,19 +17,12 @@ try {
     console.error(`[Playlist Manager] Failed to create playlists directory on initial load:`, error);
 }
 
-// ★★★ ここからが修正箇所です ★★★
-/**
- * プレイリストの名前を変更する
- * @param {string} oldName - 現在のプレイリスト名
- * @param {string} newName - 新しいプレイリスト名
- * @returns {object} - { success: boolean, message?: string }
- */
 function renamePlaylist(oldName, newName) {
     if (!oldName || !newName) {
         return { success: false, message: '名前が空です。' };
     }
     if (oldName === newName) {
-        return { success: true }; // 名前が変わらない場合は何もしない
+        return { success: true };
     }
 
     const oldPath = path.join(playlistsDir, `${oldName}.m3u8`);
@@ -42,7 +37,6 @@ function renamePlaylist(oldName, newName) {
 
     try {
         fs.renameSync(oldPath, newPath);
-        // 順序を保存しているファイルも更新
         const savedOrder = playlistOrderStore.load().order || [];
         const newOrder = savedOrder.map(name => (name === oldName ? newName : name));
         playlistOrderStore.save({ order: newOrder });
@@ -52,7 +46,6 @@ function renamePlaylist(oldName, newName) {
         return { success: false, message: error.message };
     }
 }
-// ★★★ ここまでが修正箇所です ★★★
 
 function getAllPlaylists() {
     try {
@@ -132,6 +125,51 @@ function addSongToPlaylist(playlistName, song) {
         return { success: false, message: error.message };
     }
 }
+
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+/**
+ * 複数の曲をプレイリストに追加する
+ * @param {string} playlistName - プレイリスト名
+ * @param {Array<object>} songs - 追加する曲オブジェクトの配列
+ * @returns {object} - { success: boolean, addedCount: number }
+ */
+function addSongsToPlaylist(playlistName, songs) {
+    if (!playlistName || !Array.isArray(songs) || songs.length === 0) {
+        return { success: false, addedCount: 0 };
+    }
+
+    const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
+    if (!fs.existsSync(playlistPath)) {
+        return { success: false, message: 'Playlist not found.', addedCount: 0 };
+    }
+
+    try {
+        const content = fs.readFileSync(playlistPath, 'utf-8');
+        let newContent = '';
+        let addedCount = 0;
+
+        songs.forEach(song => {
+            if (song && song.path && !content.includes(song.path)) {
+                const duration = Math.round(song.duration || -1);
+                const title = `${song.artist} - ${song.title}`;
+                const extinf = `#EXTINF:${duration},${title}\n`;
+                const songPathEntry = `${song.path}\n`;
+                newContent += extinf + songPathEntry;
+                addedCount++;
+            }
+        });
+
+        if (addedCount > 0) {
+            fs.appendFileSync(playlistPath, newContent);
+        }
+
+        return { success: true, addedCount };
+    } catch (error) {
+        console.error(`Failed to add songs to ${playlistName}:`, error);
+        return { success: false, message: error.message, addedCount: 0 };
+    }
+}
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
 function getPlaylistSongs(playlistName) {
     const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
@@ -232,8 +270,9 @@ module.exports = {
     createPlaylist,
     getPlaylistSongs,
     addSongToPlaylist,
+    addSongsToPlaylist, // ▼▼▼ 修正点: エクスポートに追加 ▼▼▼
     removeSongFromPlaylist,
     deletePlaylist,
     updateSongOrderInPlaylist,
-    renamePlaylist, // ★★★ エクスポートに追加 ★★★
+    renamePlaylist,
 };

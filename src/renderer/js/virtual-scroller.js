@@ -1,3 +1,5 @@
+// uxmusic/src/renderer/js/virtual-scroller.js
+
 export class VirtualScroller {
     constructor({ element, data, renderItem, itemHeight, buffer = 10 }) {
         if (!element || !data || !renderItem || !itemHeight) {
@@ -26,12 +28,13 @@ export class VirtualScroller {
         this.onScroll = this.onScroll.bind(this);
         this.container.addEventListener('scroll', this.onScroll, { passive: true });
         
-        // 初回描画
-        this.render();
+        // ▼▼▼ 修正点: 初回描画を遅延させる ▼▼▼
+        requestAnimationFrame(() => {
+            this.render();
+        });
     }
 
     onScroll() {
-        // requestAnimationFrameを使用して、スクロールイベントを間引く
         if (!this.scrollTimeout) {
             this.scrollTimeout = requestAnimationFrame(() => {
                 this.render();
@@ -64,7 +67,6 @@ export class VirtualScroller {
             }
         }
         
-        // 見えなくなった要素をDOMから削除
         for (const [index, element] of this.renderedItems.entries()) {
             if (!visibleIndexes.has(index)) {
                 element.remove();
@@ -73,16 +75,15 @@ export class VirtualScroller {
         }
     }
 
-    // 外部からデータを更新するためのメソッド
     updateData(newData) {
         this.data = newData;
         this.sizer.style.height = `${this.data.length * this.itemHeight}px`;
-        // レンダリング中のアイテムをクリアして再描画
         for (const element of this.renderedItems.values()) {
             element.remove();
         }
         this.renderedItems.clear();
-        this.render();
+
+        requestAnimationFrame(() => this.render());
     }
 
     destroy() {

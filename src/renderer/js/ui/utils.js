@@ -1,3 +1,5 @@
+// uxmusic/src/renderer/js/ui/utils.js
+
 /**
  * 要素内のテキストがはみ出しているかをチェックし、アニメーション用の設定を行う
  * @param {HTMLElement} wrapper - .marquee-wrapper 要素
@@ -70,17 +72,45 @@ export function showContextMenu(x, y, items) {
         const menuItem = document.createElement('div');
         menuItem.className = 'context-menu-item';
         menuItem.textContent = item.label;
-        if (item.action) {
-            menuItem.onclick = () => {
+
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        if (item.submenu) {
+            menuItem.classList.add('has-submenu');
+            const submenu = document.createElement('div');
+            submenu.className = 'context-menu-submenu';
+            item.submenu.forEach(subItem => {
+                const subMenuItem = document.createElement('div');
+                subMenuItem.className = 'context-menu-item';
+                subMenuItem.textContent = subItem.label;
+                if (subItem.enabled === false) {
+                    subMenuItem.classList.add('disabled');
+                } else {
+                    subMenuItem.addEventListener('click', (e) => {
+                        e.stopPropagation(); // 親メニューのクリックイベントを防ぐ
+                        if (subItem.action) {
+                            subItem.action();
+                        }
+                        removeContextMenu();
+                    });
+                }
+                submenu.appendChild(subMenuItem);
+            });
+            menuItem.appendChild(submenu);
+        } else if (item.action) {
+            menuItem.addEventListener('click', () => {
                 item.action();
                 removeContextMenu();
-            };
+            });
         }
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
         menu.appendChild(menuItem);
     });
 
     document.body.appendChild(menu);
+    // メニュー外をクリック、または再度右クリックでメニューを閉じる
     document.addEventListener('click', removeContextMenu, { once: true });
+    document.addEventListener('contextmenu', removeContextMenu, { once: true });
 }
 
 /**
@@ -90,5 +120,8 @@ function removeContextMenu() {
     const existingMenu = document.querySelector('.context-menu');
     if (existingMenu) {
         existingMenu.remove();
+        // サブメニューも確実に削除
+        const existingSubMenus = document.querySelectorAll('.context-menu-submenu');
+        existingSubMenus.forEach(submenu => submenu.remove());
     }
 }

@@ -166,7 +166,6 @@
     filter: invert(100%) sepia(100%) saturate(0%) hue-rotate(288deg) brightness(102%) contrast(102%);
 }
 
-/* ▼▼▼ 変更点 ▼▼▼ */
 .device-popup { 
     position: absolute; 
     bottom: calc(100% + 15px); 
@@ -181,10 +180,9 @@
     opacity: 0; 
     transform: translateY(10px); 
     transition: all 0.2s ease-out;
-    max-height: 200px; /* 高すぎる場合に備えて最大値を設定 */
-    overflow-y: auto; /* スクロールを有効化 */
+    max-height: 200px;
+    overflow-y: auto;
 }
-/* ▲▲▲ 変更点ここまで ▲▲▲ */
 .device-popup.active { visibility: visible; opacity: 1; transform: translateY(0); }
 .device-popup-item { padding: 10px 12px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .device-popup-item:hover { background-color: var(--bg-hover); }
@@ -258,5 +256,31 @@
 #notification-toast.hidden { opacity: 0; visibility: hidden; transform: translateY(20px); }
 
 .context-menu { position: fixed; z-index: 10000; background-color: var(--bg-light); border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); padding: 5px 0; min-width: 150px; }
-.context-menu-item { padding: 10px 15px; color: var(--text-secondary); cursor: pointer; font-size: 14px; }
+.context-menu-item { padding: 10px 15px; color: var(--text-secondary); cursor: pointer; font-size: 14px; position: relative; }
 .context-menu-item:hover { background-color: var(--bg-hover); color: var(--text-primary); }
+.context-menu-item.disabled { color: #666; cursor: default; background-color: transparent; }
+
+.context-menu-item.has-submenu::after {
+    content: '▶';
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%) scaleX(0.7);
+    color: var(--text-secondary);
+}
+
+.context-menu-submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: -5px; /* 親メニューのpadding分を調整 */
+    background-color: var(--bg-light);
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    padding: 5px 0;
+    min-width: 150px;
+}
+
+.context-menu-item:hover > .context-menu-submenu {
+    display: block;
+}

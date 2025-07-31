@@ -10,15 +10,11 @@
     display: none;
 }
 
-/* ▼▼▼ 変更点 ▼▼▼ */
-/* #track-view の flex レイアウトを調整 */
 #track-view {
     display: flex;
     flex-direction: column;
-    height: 100%; /* 高さを100%に指定 */
+    height: 100%;
 }
-/* ▲▲▲ 変更点ここまで ▲▲▲ */
-
 
 #drop-zone {
     border: 2px dashed transparent;
@@ -64,27 +60,30 @@
     color: var(--text-muted);
     border-bottom: 1px solid var(--bg-light);
     font-size: 0.9em;
-    flex-shrink: 0; /* ヘッダーが縮まないように */
+    flex-shrink: 0;
 }
 
-/* ▼▼▼ 変更点 ▼▼▼ */
-/* #music-list を仮想スクロール用に調整 */
 #music-list {
-    flex-grow: 1; /* 残りの高さをすべて使う */
+    flex-grow: 1;
     position: relative;
     overflow-y: auto;
 }
-/* ▲▲▲ 変更点ここまで ▲▲▲ */
+
+.header-item:nth-child(1) {
+    flex: 0 0 50px;
+    display: flex;
+    justify-content: center;
+    box-sizing: border-box;
+}
 
 
-.header-item:nth-child(1) { flex: 0 0 50px; }
 .header-item:nth-child(2) { flex: 5; }
 .header-item:nth-child(3) { flex: 3; }
 .header-item:nth-child(4) { flex: 3; }
 .header-item:nth-child(5) { flex: 1; text-align: right; }
 .header-item:nth-child(6) { flex: 1; text-align: right; }
 
-.song-item { display: flex; align-items: center; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+.song-item { display: flex; align-items: center; padding: 8px 16px; border-radius: 4px; cursor: pointer; box-sizing: border-box; }
 .song-item:hover { background-color: var(--bg-light); }
 .song-item.dragging { opacity: 0.5; background: #535353; }
 
@@ -93,15 +92,38 @@
     color: var(--text-primary);
 }
 
-.song-item .song-index { 
-    flex: 0 0 50px; 
+.song-item .song-index {
+    flex: 0 0 50px;
     color: var(--text-muted);
-    position: relative;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    position: relative; /* 絶対配置の基準点として機能させる */
     height: 40px;
+    box-sizing: border-box;
 }
+
+.song-item .song-number,
+.playing-indicator {
+    position: absolute;
+    left: 35%; /* ▼▼▼ 50%から45%に修正 ▼▼▼ */
+    top: 50%;
+    /* X軸とY軸の両方で中央に来るように調整 */
+    transform: translate(-50%, -50%);
+    transition: opacity 0.2s ease-in-out;
+}
+
+.song-item .song-number {
+    opacity: 1;
+}
+
+/* --- 再生中インジケーター --- */
+.playing-indicator {
+    display: flex;
+    height: 20px;
+    gap: 2px;
+    align-items: center;
+    opacity: 0; /* 通常時は透明にする */
+}
+
+
 .song-item .song-title { flex: 5; }
 .song-item .song-artist, .song-item .song-album { flex: 3; }
 .song-item .song-duration { flex: 1; text-align: right; }
@@ -114,14 +136,14 @@
     align-items: center;
 }
 
-.artwork-small { 
-    width: 40px; 
-    height: 40px; 
-    margin-right: 16px; 
-    border-radius: 4px; 
-    background-color: #333; 
-    object-fit: cover; 
-    flex-shrink: 0; 
+.artwork-small {
+    width: 40px;
+    height: 40px;
+    margin-right: 16px;
+    border-radius: 4px;
+    background-color: #333;
+    object-fit: cover;
+    flex-shrink: 0;
 }
 
 .marquee-wrapper {
@@ -146,7 +168,7 @@
 }
 
 .song-item:hover .marquee-wrapper.is-overflowing .marquee-content > span:first-child {
-    padding-right: 40px; 
+    padding-right: 40px;
 }
 
 @keyframes marquee {
@@ -158,17 +180,6 @@
     }
 }
 
-/* --- 再生中インジケーター --- */
-.playing-indicator {
-    display: flex;
-    width: 24px;
-    height: 20px;
-    justify-content: space-around;
-    align-items: center;
-    opacity: 0;
-    transition: opacity 0.2s ease-in-out;
-}
-
 .playing-indicator-bar {
     width: 2.5px;
     height: 4px;
@@ -177,13 +188,15 @@
     transition: height 0.1s ease-out, background 0.3s ease-in-out;
 }
 
+/* 再生中は数字を透明にし、インジケーターを表示 */
 .song-item.playing .song-number {
-    display: none;
+    opacity: 0;
 }
 
 .song-item.playing.indicator-ready .playing-indicator {
     opacity: 1;
 }
+
 
 /* --- グリッド表示のスタイル --- */
 #album-grid, #playlist-grid, #artist-grid, .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 24px; }
