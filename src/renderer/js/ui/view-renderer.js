@@ -79,10 +79,15 @@ export function renderTrackView() {
     const renderItem = (song, index) => {
         const songItem = createSongItem(song, index, ipcRenderer);
         songItem.dataset.songPath = song.path;
+        
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
         if (currentPlayingSong && currentPlayingSong.path === song.path) {
             songItem.classList.add('playing');
             setVisualizerTarget(songItem);
         }
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
         songItem.addEventListener('click', () => playSong(index, state.library));
         songItem.addEventListener('contextmenu', (e) => {
             e.preventDefault();
@@ -101,7 +106,8 @@ export function renderTrackView() {
         element: musicListContainer,
         data: state.library,
         itemHeight: 56,
-        renderItem: renderItem
+        renderItem: renderItem,
+        // onScrollCallback: updatePlayingIndicators // この行は削除
     });
 }
 
@@ -358,10 +364,8 @@ export function renderPlaylistDetailView(playlistName, songs) {
         return album ? album.artwork : null;
     }).filter(Boolean);
     
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
     const resolver = (artwork) => resolveArtworkPath(artwork, true);
     createPlaylistArtwork(artworkContainer, artworks, resolver);
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
     const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
     songs.forEach((song, index) => {

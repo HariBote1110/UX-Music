@@ -4,7 +4,7 @@
  * 要素内のテキストがはみ出しているかをチェックし、アニメーション用の設定を行う
  * @param {HTMLElement} wrapper - .marquee-wrapper 要素
  */
-export function checkTextOverflow(wrapper) {
+export function checkTextOverflow(wrapper) { // ▼▼▼ この行に export を追加 ▼▼▼
     if (!wrapper) return;
 
     const content = wrapper.querySelector('.marquee-content');
@@ -73,7 +73,6 @@ export function showContextMenu(x, y, items) {
         menuItem.className = 'context-menu-item';
         menuItem.textContent = item.label;
 
-        // ▼▼▼ ここからが修正箇所です ▼▼▼
         if (item.submenu) {
             menuItem.classList.add('has-submenu');
             const submenu = document.createElement('div');
@@ -86,7 +85,7 @@ export function showContextMenu(x, y, items) {
                     subMenuItem.classList.add('disabled');
                 } else {
                     subMenuItem.addEventListener('click', (e) => {
-                        e.stopPropagation(); // 親メニューのクリックイベントを防ぐ
+                        e.stopPropagation();
                         if (subItem.action) {
                             subItem.action();
                         }
@@ -102,13 +101,11 @@ export function showContextMenu(x, y, items) {
                 removeContextMenu();
             });
         }
-        // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
         menu.appendChild(menuItem);
     });
 
     document.body.appendChild(menu);
-    // メニュー外をクリック、または再度右クリックでメニューを閉じる
     document.addEventListener('click', removeContextMenu, { once: true });
     document.addEventListener('contextmenu', removeContextMenu, { once: true });
 }
@@ -120,7 +117,6 @@ function removeContextMenu() {
     const existingMenu = document.querySelector('.context-menu');
     if (existingMenu) {
         existingMenu.remove();
-        // サブメニューも確実に削除
         const existingSubMenus = document.querySelectorAll('.context-menu-submenu');
         existingSubMenus.forEach(submenu => submenu.remove());
     }

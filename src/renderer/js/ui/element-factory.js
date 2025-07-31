@@ -1,26 +1,24 @@
-import { formatTime } from './utils.js';
+// uxmusic/src/renderer/js/ui/element-factory.js
+
+import { formatTime, checkTextOverflow } from './utils.js';
 import { state } from '../state.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
-const path = require('path'); // ★★★ この行を追加 ★★★
+const path = require('path');
 
 function resolveArtworkPath(artwork, isThumbnail = false) {
-    // この関数は file:// の代わりに safe-artwork:// を返すように変更されました
     if (!artwork) return './assets/default_artwork.png';
 
     if (typeof artwork === 'string' && (artwork.startsWith('http') || artwork.startsWith('data:'))) {
         return artwork;
     }
     
-    // オブジェクト形式の場合 (ローカルアートワーク)
     if (typeof artwork === 'object' && artwork.full && artwork.thumbnail) {
         const fileName = isThumbnail ? artwork.thumbnail : artwork.full;
         const subDir = isThumbnail ? 'thumbnails' : '';
-        // パス区切り文字を/に統一し、安全なプロトコルを使用
         const safePath = path.join(subDir, fileName).replace(/\\/g, '/');
         return `safe-artwork://${safePath}`;
     }
     
-    // 文字列形式の場合 (古いデータ形式や特殊なケース)
     if (typeof artwork === 'string') {
         return `safe-artwork://${artwork.replace(/\\/g, '/')}`;
     }
@@ -32,6 +30,7 @@ function resolveArtworkPath(artwork, isThumbnail = false) {
 export function createSongItem(song, index, ipcRenderer) {
     const songItem = document.createElement('div');
     songItem.className = 'song-item';
+    songItem.dataset.songPath = song.path;
 
     songItem.innerHTML = `
         <div class="song-index">
@@ -74,7 +73,7 @@ export function createSongItem(song, index, ipcRenderer) {
     const artworkImg = songItem.querySelector('.artwork-small');
     
     const album = state.albums.get(song.albumKey);
-    const artwork = album ? album.artwork : null;
+    const artwork = (album ? album.artwork : null) || song.artwork;
 
     artworkImg.classList.add('lazy-load');
     artworkImg.dataset.src = resolveArtworkPath(artwork, true);
@@ -82,6 +81,10 @@ export function createSongItem(song, index, ipcRenderer) {
     artworkImg.onload = () => {
         window.artworkLoadTimes.push(performance.now());
     };
+    
+    requestAnimationFrame(() => {
+        songItem.querySelectorAll('.marquee-wrapper').forEach(checkTextOverflow);
+    });
     
     return songItem;
 }
@@ -109,10 +112,22 @@ export function createQueueItem(song, isPlaying, ipcRenderer) {
     `;
     
     const artworkImg = queueItem.querySelector('.artwork-small');
+    
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
     const album = state.albums.get(song.albumKey);
-    const artwork = album ? album.artwork : null;
+    const artworkFromAlbum = album ? album.artwork : null;
+    const artworkFromSong = song.artwork;
+    const finalArtwork = artworkFromAlbum || artworkFromSong;
+
+    // ロギング
+    console.log(`[Queue Logger] Song: ${song.title}`);
+    console.log(`  - Artwork from Album (${song.albumKey}):`, artworkFromAlbum);
+    console.log(`  - Artwork from Song object:`, artworkFromSong);
+    console.log(`  - Final resolved artwork path:`, resolveArtworkPath(finalArtwork, true));
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+    
     artworkImg.classList.add('lazy-load');
-    artworkImg.dataset.src = resolveArtworkPath(artwork, true);
+    artworkImg.dataset.src = resolveArtworkPath(finalArtwork, true);
     artworkImg.onload = () => window.artworkLoadTimes.push(performance.now());
 
     return queueItem;

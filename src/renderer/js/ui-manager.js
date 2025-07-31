@@ -11,8 +11,6 @@ const { ipcRenderer } = require('electron');
  * 現在アクティブなビューの内容を再描画する
  */
 export function renderCurrentView() {
-    // ▼▼▼ ログ追加 ▼▼▼
-    console.log('[Logger] 5-A. renderCurrentView() が呼び出されました。これはUI全体を再描画するため、スクロールがリセットされる可能性があります。');
     showView(state.activeViewId, state.currentDetailView);
     renderQueueView();
 }
@@ -21,16 +19,11 @@ export function renderCurrentView() {
  * 再生中の曲の表示（ハイライトやイコライザー）を更新する
  */
 export function updatePlayingIndicators() {
-    // ▼▼▼ ログ追加 ▼▼▼
-    console.log('[Logger] 5-B. updatePlayingIndicators() が呼び出されました。');
-    
     const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
 
-    // 古い再生中アイテムのハイライトを解除
     const oldPlayingItems = document.querySelectorAll('.main-content .song-item.playing');
     oldPlayingItems.forEach(item => item.classList.remove('playing'));
 
-    // 新しい再生中アイテムをハイライト
     if (currentPlayingSong) {
         try {
             const safePath = CSS.escape(currentPlayingSong.path);
@@ -46,10 +39,30 @@ export function updatePlayingIndicators() {
         setVisualizerTarget(null);
     }
     
-    // 再生キューの表示も更新
     renderQueueView();
 }
 
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+/**
+ * 指定された曲の再生回数表示を更新する
+ * @param {string} songPath - 曲のファイルパス
+ * @param {number} count - 新しい再生回数
+ */
+export function updatePlayCountDisplay(songPath, count) {
+    try {
+        const safePath = CSS.escape(songPath);
+        const songItem = document.querySelector(`.main-content .song-item[data-song-path="${safePath}"]`);
+        if (songItem) {
+            const countElement = songItem.querySelector('.song-play-count');
+            if (countElement) {
+                countElement.textContent = count;
+            }
+        }
+    } catch (e) {
+        console.error('Error updating play count display:', e);
+    }
+}
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
 function renderQueueView() {
     elements.queueList.innerHTML = '';
@@ -104,40 +117,73 @@ export function addSongsToLibrary({ songs, albums }) {
 
 function groupLibraryByAlbum(isMigration = false) {
     console.time('Renderer: groupLibraryByAlbum');
+    
     const tempAlbumGroups = new Map();
     const localSongs = state.library.filter(song => !song.sourceURL);
+
     localSongs.forEach(song => {
         const albumTitle = song.album || 'Unknown Album';
-        const albumArtistsSet = new Set([song.albumartist, song.artist].filter(Boolean));
-        let representativeArtist = 'Unknown Artist';
-        if (albumArtistsSet.size > 0) {
-            representativeArtist = [...albumArtistsSet][0];
-        }
-        const albumKey = `${albumTitle}---${representativeArtist}`;
-        song.albumKey = albumKey;
-        if (!tempAlbumGroups.has(albumKey)) {
-            tempAlbumGroups.set(albumKey, {
-                title: albumTitle,
-                artist: representativeArtist,
+        
+        if (!tempAlbumGroups.has(albumTitle)) {
+            tempAlbumGroups.set(albumTitle, {
                 songs: [],
-                artwork: isMigration && song.artwork ? song.artwork : null 
+                artistSet: new Set(),
+                artwork: null
             });
         }
-        tempAlbumGroups.get(albumKey).songs.push(song);
-    });
-    for (const [key, albumData] of tempAlbumGroups.entries()) {
-        if (!state.albums.has(key)) {
-            if (!albumData.artwork) {
-                albumData.artwork = albumData.songs.find(s => s.artwork)?.artwork || null;
-            }
-            state.albums.set(key, albumData);
+
+        const albumGroup = tempAlbumGroups.get(albumTitle);
+        albumGroup.songs.push(song);
+        const artist = song.albumartist || song.artist;
+        if (artist) {
+            albumGroup.artistSet.add(artist);
         }
+
+        if (!albumGroup.artwork && song.artwork) {
+            albumGroup.artwork = song.artwork;
+        }
+    });
+
+    const oldAlbums = new Map(state.albums);
+    state.albums.clear(); 
+
+    for (const [albumTitle, albumData] of tempAlbumGroups.entries()) {
+        let representativeArtist;
+        if (albumData.artistSet.size === 1) {
+            representativeArtist = [...albumData.artistSet][0];
+        } else {
+            representativeArtist = 'Unknown Artist';
+        }
+
+        const albumKey = `${albumTitle}---${representativeArtist}`;
+        albumData.songs.forEach(song => {
+            song.albumKey = albumKey;
+        });
+
+        let finalArtwork = albumData.artwork;
+        if (!finalArtwork) {
+            for (const oldAlbum of oldAlbums.values()) {
+                if (oldAlbum.title === albumTitle && oldAlbum.artwork) {
+                    finalArtwork = oldAlbum.artwork;
+                    break; 
+                }
+            }
+        }
+        
+        state.albums.set(albumKey, {
+            title: albumTitle,
+            artist: representativeArtist,
+            songs: albumData.songs,
+            artwork: finalArtwork
+        });
     }
+
     if (isMigration) {
         state.library.forEach(song => {
             delete song.artwork;
         });
     }
+    
     console.timeEnd('Renderer: groupLibraryByAlbum');
 }
 

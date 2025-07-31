@@ -1,6 +1,6 @@
 // uxmusic/src/renderer/renderer.js
 
-import { initUI, addSongsToLibrary, renderCurrentView, updateAudioDevices } from './js/ui-manager.js';
+import { initUI, addSongsToLibrary, renderCurrentView, updateAudioDevices, updatePlayCountDisplay } from './js/ui-manager.js'; // ▼▼▼ この行を修正 ▼▼▼
 import { initNavigation, showPlaylist, showView } from './js/navigation.js';
 import { initIPC } from './js/ipc.js';
 import { initModal, showModal } from './js/modal.js';
@@ -100,10 +100,17 @@ window.addEventListener('DOMContentLoaded', () => {
                 applyMasterVolume();
             }
         },
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
         onPlayCountsUpdated: (counts) => {
             state.playCounts = counts;
-            // renderCurrentView(); // ▼▼▼ 修正点: この行をコメントアウト、または削除 ▼▼▼
+            // 再生回数が更新された曲の表示だけを更新する
+            for (const songPath in counts) {
+                if (counts.hasOwnProperty(songPath)) {
+                    updatePlayCountDisplay(songPath, counts[songPath].count);
+                }
+            }
         },
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
         onYoutubeLinkProcessed: (song) => {
             showNotification(`「${song.title}」が追加されました。`);
             hideNotification(3000);
@@ -111,7 +118,7 @@ window.addEventListener('DOMContentLoaded', () => {
         },
         onPlaylistsUpdated: (playlists) => {
             state.playlists = playlists;
-            if (state.activeViewId === 'playlist-view') { // ▼▼▼ 修正点: 表示中の場合のみ再描画 ▼▼▼
+            if (state.activeViewId === 'playlist-view') {
                 renderCurrentView();
             }
         },
