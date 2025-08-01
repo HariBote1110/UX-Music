@@ -1,6 +1,6 @@
 import { state, elements } from '../state.js';
 import { setEqualizerColorFromArtwork } from '../player.js';
-import { resolveArtworkPath } from './utils.js';
+import { resolveArtworkPath, formatSongTitle } from './utils.js';
 const { ipcRenderer } = require('electron');
 
 function getYoutubeVideoId(url) {
@@ -84,7 +84,7 @@ export function updateNowPlayingView(song) {
 
     const titleSpan = nowPlayingTitle.querySelector('.marquee-content span');
     if (titleSpan) {
-        titleSpan.textContent = song ? song.title : '曲を選択してください';
+        titleSpan.textContent = song ? formatSongTitle(song.title) : '曲を選択してください';
     }
 
     const artistSpan = nowPlayingArtist.querySelector('.marquee-content span');

@@ -37,7 +37,7 @@ export function resolveArtworkPath(artwork, isThumbnail = false) {
  * 要素内のテキストがはみ出しているかをチェックし、アニメーション用の設定を行う
  * @param {HTMLElement} wrapper - .marquee-wrapper 要素
  */
-export function checkTextOverflow(wrapper) { // ▼▼▼ この行に export を追加 ▼▼▼
+export function checkTextOverflow(wrapper) {
     if (!wrapper) return;
 
     const content = wrapper.querySelector('.marquee-content');
@@ -85,6 +85,26 @@ export function formatTime(seconds) {
     const min = Math.floor(seconds / 60);
     const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
     return `${min}:${sec}`;
+}
+
+/**
+ * ファイル拡張子が含まれている可能性のある曲名を整形する
+ * @param {string} title - 曲名
+ * @returns {string} - 拡張子が削除された曲名
+ */
+const supportedExtensions = ['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.mp4'];
+export function formatSongTitle(title) {
+    if (typeof title !== 'string') return 'Unknown Title';
+    const lastDotIndex = title.lastIndexOf('.');
+    // ドットがないか、先頭にある場合はファイル名ではないと判断
+    if (lastDotIndex <= 0) {
+        return title;
+    }
+    const extension = title.substring(lastDotIndex).toLowerCase();
+    if (supportedExtensions.includes(extension)) {
+        return title.substring(0, lastDotIndex);
+    }
+    return title;
 }
 
 

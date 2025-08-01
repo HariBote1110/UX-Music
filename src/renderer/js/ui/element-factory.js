@@ -1,6 +1,6 @@
 // uxmusic/src/renderer/js/ui/element-factory.js
 
-import { formatTime, checkTextOverflow, resolveArtworkPath } from './utils.js';
+import { formatTime, checkTextOverflow, resolveArtworkPath, formatSongTitle } from './utils.js';
 import { state } from '../state.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
 const path = require('path');
@@ -26,7 +26,7 @@ export function createSongItem(song, index, ipcRenderer) {
             <img src="./assets/default_artwork.png" class="artwork-small lazy-load" alt="artwork">
             <div class="marquee-wrapper">
                 <div class="marquee-content">
-                    <span>${song.title}</span>
+                    <span>${formatSongTitle(song.title)}</span>
                 </div>
             </div>
         </div>
@@ -83,7 +83,7 @@ export function createQueueItem(song, isPlaying, ipcRenderer) {
         <div class="queue-item-info">
             <div class="queue-item-title marquee-wrapper">
                 <div class="marquee-content">
-                    <span>${song.title}</span>
+                    <span>${formatSongTitle(song.title)}</span>
                 </div>
             </div>
             <div class="queue-item-artist marquee-wrapper">
