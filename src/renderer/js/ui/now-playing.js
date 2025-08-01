@@ -18,6 +18,14 @@ export function updateNowPlayingView(song) {
         hubLinkContainer 
     } = elements;
     
+    const localPlayer = document.getElementById('main-player');
+
+    // プレーヤー要素がDOMから削除されないように、一度body直下に退避させ、非表示にする
+    if (localPlayer) {
+        document.body.appendChild(localPlayer);
+        localPlayer.style.display = 'none';
+    }
+    
     nowPlayingArtworkContainer.innerHTML = '';
     hubLinkContainer.innerHTML = '';
     nowPlayingArtworkContainer.classList.remove('video-mode');
@@ -35,7 +43,7 @@ export function updateNowPlayingView(song) {
             const iframe = document.createElement('iframe');
             iframe.width = '100%';
             iframe.height = '100%';
-            iframe.src = `http://googleusercontent.com/youtube.com/8{videoId}?autoplay=1&controls=0&fs=0&iv_load_policy=3&modestbranding=1&origin=${window.location.protocol}//${window.location.host}`;
+            iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&fs=0&iv_load_policy=3&modestbranding=1&origin=${window.location.protocol}//${window.location.host}`;
             iframe.setAttribute('frameborder', '0');
             iframe.setAttribute('allow', 'autoplay; encrypted-media');
             nowPlayingArtworkContainer.appendChild(iframe);
@@ -47,7 +55,6 @@ export function updateNowPlayingView(song) {
         artworkImage.src = song.artwork;
 
     } else {
-        const localPlayer = document.getElementById('main-player');
         const img = document.createElement('img');
         
         img.onload = () => setEqualizerColorFromArtwork(img);
@@ -62,9 +69,12 @@ export function updateNowPlayingView(song) {
 
         img.src = resolveArtworkPath(artwork, false);
 
-        if (song.hasVideo) {
+        if (song.hasVideo && localPlayer) {
             nowPlayingArtworkContainer.classList.add('video-mode');
             localPlayer.poster = img.src;
+            // ▼▼▼ ここからが修正箇所です ▼▼▼
+            localPlayer.style.display = 'block'; // プレーヤーを再表示
+            // ▲▲▲ ここまでが修正箇所です ▲▲▲
             nowPlayingArtworkContainer.appendChild(localPlayer);
         } else {
             nowPlayingArtworkContainer.classList.remove('video-mode');

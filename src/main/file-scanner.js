@@ -2,8 +2,6 @@ const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
 
-// ▼▼▼ 変更点：モジュールの読み込みを関数内に移動 ▼▼▼
-
 let ffmpeg; // モジュールを保持する変数を定義
 
 function initializeFfmpeg() {
@@ -35,7 +33,7 @@ function initializeFfmpeg() {
 const supportedExtensions = ['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.mp4'];
 
 function analyzeLoudness(filePath) {
-    initializeFfmpeg(); // ★★★ 関数呼び出し時に初期化
+    initializeFfmpeg();
     return new Promise((resolve) => {
         ffmpeg(filePath)
             .withAudioFilter('loudnorm=I=-23:LRA=7:print_format=json')
@@ -79,7 +77,7 @@ async function scanDirectory(dirPath) {
 }
 
 async function parseFiles(filePaths) {
-    const musicMetadata = (await import('music-metadata')).default; // ★★★ 動的インポートに変更
+    const musicMetadata = (await import('music-metadata')).default;
     
     const songs = [];
     for (const filePath of filePaths) {
@@ -89,7 +87,12 @@ async function parseFiles(filePaths) {
             const common = metadata.common;
             const artwork = (common.picture && common.picture.length > 0) ? common.picture[0] : null;
 
-            const hasVideo = metadata.format.trackInfo.some(track => track.type === 'video');
+            // ▼▼▼ ここからが修正箇所です ▼▼▼
+            // コンテナ情報も使って、より確実に映像の有無を判定する
+            const hasVideo = 
+                (metadata.format.trackInfo && metadata.format.trackInfo.some(track => track.type === 'video')) 
+                || (metadata.format.container && metadata.format.container.toLowerCase().includes('mp4'));
+            // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
             songs.push({
                 path: filePath,

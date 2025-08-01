@@ -17,7 +17,7 @@ let albumsStore;
 
 // ▼▼▼ 変更点：関数をipcMain.onの外に移動 ▼▼▼
 async function saveArtworkToFile(picture, songPath) {
-    const sharp = require('sharp'); // ★★★ 関数内でrequire
+    const sharp = require('sharp'); // ★★★ 関数内でrequire ★★★
     if (!picture || !picture.data) return null;
 
     const artworksDir = path.join(app.getPath('userData'), 'Artworks');

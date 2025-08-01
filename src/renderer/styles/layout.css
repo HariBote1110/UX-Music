@@ -91,3 +91,100 @@
 .resizer-vertical:hover {
     background: linear-gradient(180deg, var(--highlight-pink), var(--highlight-blue));
 }
+
+/* uxmusic/src/renderer/styles/layout.css */
+/* 全体的なレイアウト構造 */
+.container {
+    display: flex;
+    flex-grow: 1;
+    height: calc(100% - 122px);
+}
+
+.title-bar {
+    height: 32px;
+    background-color: var(--bg-light);
+    width: 100%;
+    -webkit-app-region: drag;
+    flex-shrink: 0;
+}
+
+.main-content {
+    flex-grow: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+/* メインコンテンツのスクロールバーをスタイリング */
+.main-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.main-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.main-content::-webkit-scrollbar-thumb {
+    background-color: var(--bg-light);
+    border-radius: 4px;
+}
+
+.main-content::-webkit-scrollbar-thumb:hover {
+    background-color: #555;
+}
+
+
+.sidebar {
+    background-color: var(--bg-darkest);
+    padding: 20px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+}
+
+.left-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+}
+
+.right-sidebar {
+    width: 300px;
+    min-width: 240px;
+    max-width: 600px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--bg-light);
+    padding: 24px;
+}
+
+.playback-bar {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 20px;
+    box-sizing: border-box;
+    border-top: 1px solid var(--bg-light);
+    background-color: var(--bg-medium);
+    height: 90px;
+    width: 100%;
+    flex-shrink: 0;
+}
+
+.resizer-vertical {
+    width: 5px;
+    cursor: col-resize;
+    background-color: var(--bg-darkest);
+    flex-shrink: 0;
+    border-left: 1px solid var(--bg-light);
+    border-right: 1px solid var(--bg-light);
+    transition: background-color 0.2s;
+}
+.resizer-vertical:hover {
+    background: linear-gradient(180deg, var(--highlight-pink), var(--highlight-blue));
+}
+
+/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
+/* 起動時にプレーヤー要素がUIを崩さないようにデフォルトで非表示にする */
+#main-player {
+    display: none;
+}
+/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */

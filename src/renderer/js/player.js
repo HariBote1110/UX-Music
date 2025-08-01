@@ -374,7 +374,11 @@ export async function play(song) {
     }
 
     const mode = settings.youtubePlaybackMode || 'download';
-    if ((song.type === 'youtube' && mode === 'stream') || song.sourceURL) {
+    
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    // ダウンロード済みのファイル(type: 'local')はストリーミング再生の対象から除外する
+    if (song.type === 'youtube' && mode === 'stream') {
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
         currentSongType = 'youtube';
         elements.deviceSelectButton.disabled = true;
     } else if (song.path) {

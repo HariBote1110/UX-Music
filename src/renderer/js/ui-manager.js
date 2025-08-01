@@ -94,12 +94,17 @@ export function initUI() {
 export function addSongsToLibrary({ songs, albums }) {
     console.time('Renderer: Process Library Data');
     let migrationNeeded = false;
-    if ((!albums || Object.keys(albums).length === 0) && songs.length > 0 && songs[0].artwork) {
+    // ★★★ ここからが修正箇所です ★★★
+    // albumsデータがなく、かつ追加される曲のartworkが古い形式（文字列）の場合のみマイグレーションフラグを立てる
+    if ((!albums || Object.keys(albums).length === 0) && songs.length > 0 && songs[0].artwork && typeof songs[0].artwork !== 'object') {
         migrationNeeded = true;
+        console.log('[Migration Check] Old artwork format detected. Migration needed.');
         state.albums.clear(); 
     } else if (albums) {
         state.albums = new Map(Object.entries(albums));
     }
+    // ★★★ ここまでが修正箇所です ★★★
+
     if (songs && songs.length > 0) {
         const existingPaths = new Set(state.library.map(song => song.path));
         const uniqueNewSongs = songs.filter(song => !existingPaths.has(song.path));

@@ -393,3 +393,13 @@
 .playlist-artwork-container img, .playlist-art-collage > img { width: 100%; height: 100%; object-fit: cover; min-width: 0; }
 .collage-img-wrapper { overflow: hidden; width: 100%; height: 100%; }
 .collage-img-wrapper img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
+/* video要素のデフォルトコントロールを非表示にする */
+#now-playing-artwork-container video::-webkit-media-controls {
+    display: none !important;
+}
+#now-playing-artwork-container video {
+    pointer-events: none; /* クリックなどの操作を無効化 */
+}
+/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
