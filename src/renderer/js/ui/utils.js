@@ -1,4 +1,37 @@
 // uxmusic/src/renderer/js/ui/utils.js
+const path = require('path');
+
+/**
+ * Resolves the path to an artwork image. This is the single source of truth.
+ * @param {object|string|null} artwork - The artwork data from a song or album object.
+ * @param {boolean} [isThumbnail=false] - Whether to resolve the thumbnail version.
+ * @returns {string} - The URL or path to the artwork image.
+ */
+export function resolveArtworkPath(artwork, isThumbnail = false) {
+    if (!artwork) return './assets/default_artwork.png';
+
+    // Handle external URLs (http, data URIs)
+    if (typeof artwork === 'string' && (artwork.startsWith('http') || artwork.startsWith('data:'))) {
+        return artwork;
+    }
+    
+    // Handle the standard artwork object { full, thumbnail }
+    if (typeof artwork === 'object' && artwork.full && artwork.thumbnail) {
+        const fileName = isThumbnail ? artwork.thumbnail : artwork.full;
+        const subDir = isThumbnail ? 'thumbnails' : '';
+        const safePath = path.join(subDir, fileName).replace(/\\/g, '/');
+        return `safe-artwork://${safePath}`;
+    }
+    
+    // Fallback for legacy string-based artwork data
+    if (typeof artwork === 'string') {
+        const safePath = artwork.replace(/\\/g, '/');
+        return `safe-artwork://${safePath}`;
+    }
+    
+    console.warn('Unknown artwork format received, using default.', artwork);
+    return './assets/default_artwork.png';
+}
 
 /**
  * 要素内のテキストがはみ出しているかをチェックし、アニメーション用の設定を行う

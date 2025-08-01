@@ -7,35 +7,13 @@ import { setVisualizerTarget } from '../player.js';
 import { VirtualScroller } from '../virtual-scroller.js';
 import { createSongItem, createAlbumGridItem, createArtistGridItem, createPlaylistGridItem } from './element-factory.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
-import { showContextMenu } from './utils.js';
+import { showContextMenu, formatTime, resolveArtworkPath } from './utils.js';
 import { showModal } from '../modal.js';
-import { formatTime } from './utils.js';
 import { showNotification, hideNotification } from './notification.js';
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
 let trackViewScroller = null;
-
-function resolveArtworkPath(artwork, isThumbnail = false) {
-    if (!artwork) return './assets/default_artwork.png';
-
-    if (typeof artwork === 'string' && (artwork.startsWith('http') || artwork.startsWith('data:'))) {
-        return artwork;
-    }
-    
-    if (typeof artwork === 'object' && artwork.full && artwork.thumbnail) {
-        const fileName = isThumbnail ? artwork.thumbnail : artwork.full;
-        const subDir = isThumbnail ? 'thumbnails' : '';
-        const safePath = path.join(subDir, fileName).replace(/\\/g, '/');
-        return `safe-artwork://${safePath}`;
-    }
-    
-    if (typeof artwork === 'string') {
-        return `safe-artwork://${artwork.replace(/\\/g, '/')}`;
-    }
-    
-    return './assets/default_artwork.png';
-}
 
 function clearMainContent() {
     if (trackViewScroller) {
@@ -80,13 +58,11 @@ export function renderTrackView() {
         const songItem = createSongItem(song, index, ipcRenderer);
         songItem.dataset.songPath = song.path;
         
-        // ▼▼▼ ここからが修正箇所です ▼▼▼
         const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
         if (currentPlayingSong && currentPlayingSong.path === song.path) {
             songItem.classList.add('playing');
             setVisualizerTarget(songItem);
         }
-        // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
         songItem.addEventListener('click', () => playSong(index, state.library));
         songItem.addEventListener('contextmenu', (e) => {
@@ -107,7 +83,6 @@ export function renderTrackView() {
         data: state.library,
         itemHeight: 56,
         renderItem: renderItem,
-        // onScrollCallback: updatePlayingIndicators // この行は削除
     });
 }
 

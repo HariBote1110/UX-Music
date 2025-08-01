@@ -1,31 +1,9 @@
 // uxmusic/src/renderer/js/ui/element-factory.js
 
-import { formatTime, checkTextOverflow } from './utils.js';
+import { formatTime, checkTextOverflow, resolveArtworkPath } from './utils.js';
 import { state } from '../state.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
 const path = require('path');
-
-function resolveArtworkPath(artwork, isThumbnail = false) {
-    if (!artwork) return './assets/default_artwork.png';
-
-    if (typeof artwork === 'string' && (artwork.startsWith('http') || artwork.startsWith('data:'))) {
-        return artwork;
-    }
-    
-    if (typeof artwork === 'object' && artwork.full && artwork.thumbnail) {
-        const fileName = isThumbnail ? artwork.thumbnail : artwork.full;
-        const subDir = isThumbnail ? 'thumbnails' : '';
-        const safePath = path.join(subDir, fileName).replace(/\\/g, '/');
-        return `safe-artwork://${safePath}`;
-    }
-    
-    if (typeof artwork === 'string') {
-        return `safe-artwork://${artwork.replace(/\\/g, '/')}`;
-    }
-    
-    return './assets/default_artwork.png';
-}
-
 
 export function createSongItem(song, index, ipcRenderer) {
     const songItem = document.createElement('div');
@@ -73,7 +51,12 @@ export function createSongItem(song, index, ipcRenderer) {
     const artworkImg = songItem.querySelector('.artwork-small');
     
     const album = state.albums.get(song.albumKey);
-    const artwork = (album ? album.artwork : null) || song.artwork;
+    let artwork = (album ? album.artwork : null) || song.artwork;
+
+    // BUG FIX: Force default artwork for "Unknown Album"
+    if (song.album === 'Unknown Album') {
+        artwork = null;
+    }
 
     artworkImg.classList.add('lazy-load');
     artworkImg.dataset.src = resolveArtworkPath(artwork, true);
@@ -96,7 +79,7 @@ export function createQueueItem(song, isPlaying, ipcRenderer) {
     queueItem.draggable = true;
 
     queueItem.innerHTML = `
-        <img src="./assets/default_artwork.png" class="artwork-small lazy-load" alt="artwork">
+        <img src="./assets/default_artwork.png" class="artwork-small" alt="artwork">
         <div class="queue-item-info">
             <div class="queue-item-title marquee-wrapper">
                 <div class="marquee-content">
@@ -113,21 +96,18 @@ export function createQueueItem(song, isPlaying, ipcRenderer) {
     
     const artworkImg = queueItem.querySelector('.artwork-small');
     
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
     const album = state.albums.get(song.albumKey);
     const artworkFromAlbum = album ? album.artwork : null;
     const artworkFromSong = song.artwork;
-    const finalArtwork = artworkFromAlbum || artworkFromSong;
+    let finalArtwork = artworkFromAlbum || artworkFromSong;
 
-    // ロギング
-    console.log(`[Queue Logger] Song: ${song.title}`);
-    console.log(`  - Artwork from Album (${song.albumKey}):`, artworkFromAlbum);
-    console.log(`  - Artwork from Song object:`, artworkFromSong);
-    console.log(`  - Final resolved artwork path:`, resolveArtworkPath(finalArtwork, true));
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+    // BUG FIX: Force default artwork for "Unknown Album"
+    if (song.album === 'Unknown Album') {
+        finalArtwork = null;
+    }
+
+    artworkImg.src = resolveArtworkPath(finalArtwork, true);
     
-    artworkImg.classList.add('lazy-load');
-    artworkImg.dataset.src = resolveArtworkPath(finalArtwork, true);
     artworkImg.onload = () => window.artworkLoadTimes.push(performance.now());
 
     return queueItem;

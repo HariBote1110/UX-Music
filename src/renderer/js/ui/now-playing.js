@@ -1,34 +1,13 @@
 import { state, elements } from '../state.js';
 import { setEqualizerColorFromArtwork } from '../player.js';
+import { resolveArtworkPath } from './utils.js';
 const { ipcRenderer } = require('electron');
-const path = require('path');
 
 function getYoutubeVideoId(url) {
     if (typeof url !== 'string') return null;
     const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/;
     const match = url.match(regExp);
     return match ? match[1] : null;
-}
-
-function resolveArtworkPath(artwork, isThumbnail = false) {
-    if (!artwork) return './assets/default_artwork.png';
-
-    if (typeof artwork === 'string' && (artwork.startsWith('http') || artwork.startsWith('data:'))) {
-        return artwork;
-    }
-    
-    if (typeof artwork === 'object' && artwork.full && artwork.thumbnail) {
-        const fileName = isThumbnail ? artwork.thumbnail : artwork.full;
-        const subDir = isThumbnail ? 'thumbnails' : '';
-        const safePath = path.join(subDir, fileName).replace(/\\/g, '/');
-        return `safe-artwork://${safePath}`;
-    }
-    
-    if (typeof artwork === 'string') {
-        return `safe-artwork://${artwork.replace(/\\/g, '/')}`;
-    }
-    
-    return './assets/default_artwork.png';
 }
 
 export function updateNowPlayingView(song) {
@@ -62,28 +41,30 @@ export function updateNowPlayingView(song) {
             nowPlayingArtworkContainer.appendChild(iframe);
         }
         
-        // ▼▼▼ 修正点 ▼▼▼
         const artworkImage = new Image();
         artworkImage.crossOrigin = "Anonymous";
-        artworkImage.onload = () => setEqualizerColorFromArtwork(artworkImage); // 読み込み完了時に色抽出
+        artworkImage.onload = () => setEqualizerColorFromArtwork(artworkImage);
         artworkImage.src = song.artwork;
-        // ▲▲▲ ▲▲▲
 
     } else {
         const localPlayer = document.getElementById('main-player');
         const img = document.createElement('img');
         
-        // ▼▼▼ 修正点 ▼▼▼
-        img.onload = () => setEqualizerColorFromArtwork(img); // 読み込み完了時に色抽出
-        // ▲▲▲ ▲▲▲
+        img.onload = () => setEqualizerColorFromArtwork(img);
 
         const album = state.albums.get(song.albumKey);
-        const artwork = album ? album.artwork : null;
+        let artwork = album ? album.artwork : null;
+
+        // BUG FIX: Force default artwork for "Unknown Album"
+        if (song.album === 'Unknown Album') {
+            artwork = null;
+        }
+
         img.src = resolveArtworkPath(artwork, false);
 
         if (song.hasVideo) {
             nowPlayingArtworkContainer.classList.add('video-mode');
-            localPlayer.poster = img.src; // video要素のポスターとしてアートワークを設定
+            localPlayer.poster = img.src;
             nowPlayingArtworkContainer.appendChild(localPlayer);
         } else {
             nowPlayingArtworkContainer.classList.remove('video-mode');
