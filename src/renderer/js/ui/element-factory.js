@@ -170,10 +170,14 @@ export function createPlaylistGridItem(playlist, ipcRenderer) {
             </div>
         </div>
     `;
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
     const artworkContainer = playlistItem.querySelector('.playlist-artwork-container');
     
+    // アートワークのパスを解決するための関数を定義
     const resolver = (artwork) => resolveArtworkPath(artwork, true);
+    // アートワークのコラージュを生成する関数を呼び出す
     createPlaylistArtwork(artworkContainer, playlist.artworks, resolver);
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
     return playlistItem;
 }

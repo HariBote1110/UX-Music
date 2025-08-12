@@ -122,30 +122,49 @@
 <div id="settings-modal-overlay" class="hidden">
     <div id="settings-modal">
         <h2>設定</h2>
-        <div class="setting-item">
-            <h4>YouTube再生モード</h4>
-            <p>YouTubeリンク追加時の動作を選択します。</p>
-            <div class="radio-group">
-                <label>
-                    <input type="radio" name="youtube-mode" value="download" checked>
-                    <strong>ダウンロードモード (推奨)</strong>
-                    <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
-                </label>
-                <label>
-                    <input type="radio" name="youtube-mode" value="stream">
-                    <strong>ストリーミングモード</strong>
-                    <small>すぐに再生できますが、再生先の変更はできず、音と映像が同期されます。</small>
-                </label>
-                            <label>
-                <input type="radio" name="youtube-quality" value="full" checked>
-                <strong>最高品質</strong>
-                <small>映像と音声をダウンロードします。(MP4)</small>
-            </label>
-            <label>
-                <input type="radio" name="youtube-quality" value="audio_only">
-                <strong>音声のみ (省データ)</strong>
-                <small>音声のみをダウンロードし、通信量と保存容量を節約します。(M4A)</small>
-            </label>
+        <div class="setting-group">
+            <div class="setting-item">
+                <h4>YouTube再生モード</h4>
+                <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="youtube-mode" value="download">
+                        <div>
+                            <strong>ダウンロードモード (推奨)</strong>
+                            <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
+                        </div>
+                    </label>
+                    <label>
+                        <input type="radio" name="youtube-mode" value="stream">
+                        <div>
+                            <strong>ストリーミングモード</strong>
+                            <small>すぐに再生できますが、再生先の変更はできず、音と映像が同期されます。</small>
+                        </div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="setting-group" id="youtube-quality-group">
+            <div class="setting-item">
+                <h4>ダウンロード品質</h4>
+                <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="youtube-quality" value="full">
+                        <div>
+                            <strong>最高品質</strong>
+                            <small>映像と音声をダウンロードします。(MP4)</small>
+                        </div>
+                    </label>
+                    <label>
+                        <input type="radio" name="youtube-quality" value="audio_only">
+                        <div>
+                            <strong>音声のみ (省データ)</strong>
+                            <small>音声のみをダウンロードし、通信量と保存容量を節約します。(M4A)</small>
+                        </div>
+                    </label>
+                </div>
             </div>
         </div>
         <div class="modal-buttons">

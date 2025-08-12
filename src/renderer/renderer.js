@@ -1,6 +1,6 @@
 // uxmusic/src/renderer/renderer.js
 
-import { initUI, addSongsToLibrary, renderCurrentView, updateAudioDevices, updatePlayCountDisplay } from './js/ui-manager.js'; // ▼▼▼ この行を修正 ▼▼▼
+import { initUI, addSongsToLibrary, renderCurrentView, updateAudioDevices, updatePlayCountDisplay } from './js/ui-manager.js';
 import { initNavigation, showPlaylist, showView } from './js/navigation.js';
 import { initIPC } from './js/ipc.js';
 import { initModal, showModal } from './js/modal.js';
@@ -100,17 +100,14 @@ window.addEventListener('DOMContentLoaded', () => {
                 applyMasterVolume();
             }
         },
-        // ▼▼▼ ここからが修正箇所です ▼▼▼
         onPlayCountsUpdated: (counts) => {
             state.playCounts = counts;
-            // 再生回数が更新された曲の表示だけを更新する
             for (const songPath in counts) {
                 if (counts.hasOwnProperty(songPath)) {
                     updatePlayCountDisplay(songPath, counts[songPath].count);
                 }
             }
         },
-        // ▲▲▲ ここまでが修正箇所です ▲▲▲
         onYoutubeLinkProcessed: (song) => {
             showNotification(`「${song.title}」が追加されました。`);
             hideNotification(3000);
@@ -218,14 +215,35 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    const youtubeQualityGroup = document.getElementById('youtube-quality-group');
+
+    function updateQualityGroupState() {
+        const selectedMode = document.querySelector('input[name="youtube-mode"]:checked').value;
+        if (selectedMode === 'stream') {
+            youtubeQualityGroup.classList.add('disabled');
+            elements.youtubeQualityRadios.forEach(radio => radio.disabled = true);
+        } else {
+            youtubeQualityGroup.classList.remove('disabled');
+            elements.youtubeQualityRadios.forEach(radio => radio.disabled = false);
+        }
+    }
+
     elements.openSettingsBtn.addEventListener('click', async () => {
         const settings = await ipcRenderer.invoke('get-settings');
         const currentMode = settings.youtubePlaybackMode || 'download';
         const currentQuality = settings.youtubeDownloadQuality || 'full';
         document.querySelector(`input[name="youtube-mode"][value="${currentMode}"]`).checked = true;
         document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`).checked = true;
+        updateQualityGroupState(); // 初期状態を設定
         elements.settingsModalOverlay.classList.remove('hidden');
     });
+
+    elements.youtubeModeRadios.forEach(radio => {
+        radio.addEventListener('change', updateQualityGroupState);
+    });
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
     elements.settingsOkBtn.addEventListener('click', () => elements.settingsModalOverlay.classList.add('hidden'));
 
     initResizer();
