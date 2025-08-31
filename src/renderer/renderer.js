@@ -280,12 +280,17 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    ipcRenderer.on('app-info-response', (event, info) => {
-        console.log(
-            `%c[UX Music] Version: ${info.version} | OS: ${info.platform} ${info.arch} (Release: ${info.release})`,
-            'color: #1DB954; font-weight: bold; font-size: 1.1em;'
-        );
-    });
+// 修正後
+ipcRenderer.on('app-info-response', (event, info) => {
+    console.log(
+        `%c[UX Music] Version: ${info.version} | OS: ${info.platform} ${info.arch} (Release: ${info.release})`,
+        'color: #1DB954; font-weight: bold; font-size: 1.1em;'
+    );
+    const versionSpan = document.getElementById('app-version');
+    if (versionSpan) {
+        versionSpan.textContent = `v${info.version}`;
+    }
+});
     ipcRenderer.send('request-app-info');
     
     logPerf("All initializations and event listeners set up.");

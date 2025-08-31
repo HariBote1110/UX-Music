@@ -5,6 +5,8 @@ import { playSong } from './playback-manager.js';
 import { createQueueItem } from './ui/element-factory.js';
 import { showView } from './navigation.js'; 
 import { setAudioOutput, setVisualizerTarget } from './player.js';
+import { updateNowPlayingView } from './ui/now-playing.js'; // この行を追加
+import { loadLyricsForSong } from './lyrics-manager.js'; // この行を追加
 const { ipcRenderer } = require('electron');
 
 /**
@@ -222,25 +224,46 @@ export async function updateAudioDevices(savedDeviceId = null) {
         const mainPlayer = document.getElementById('main-player');
         if (!mainPlayer) return;
         const currentSinkId = mainPlayer.sinkId || 'default';
+
+        // ★★★ ここからが修正箇所です ★★★
+        // 起動時に保存されたデバイスIDが見つかった場合、すぐに適用せず変数に保存する
+        if (savedDeviceId && audioDevices.some(d => d.deviceId === savedDeviceId)) {
+            state.preferredDeviceId = savedDeviceId;
+        }
+        // ★★★ ここまでが修正箇所です ★★★
+
         audioDevices.forEach(device => {
             const item = document.createElement('div');
             item.className = 'device-popup-item';
             item.textContent = device.label || `スピーカー ${elements.devicePopup.children.length + 1}`;
             item.dataset.deviceId = device.deviceId;
+
             if (device.deviceId === currentSinkId || (currentSinkId === 'default' && device.deviceId === 'default')) {
                 item.classList.add('active');
             }
-            item.addEventListener('click', () => {
-                setAudioOutput(device.deviceId);
+
+            item.addEventListener('click', async () => {
+                if (mainPlayer.src) {
+                    mainPlayer.pause();
+                    mainPlayer.removeAttribute('src');
+                    mainPlayer.load();
+
+                    state.currentSongIndex = -1;
+                    updateNowPlayingView(null);
+                    loadLyricsForSong(null);
+                    updatePlayingIndicators();
+                }
+
+                await setAudioOutput(device.deviceId);
+
                 elements.devicePopup.querySelectorAll('.device-popup-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
                 elements.devicePopup.classList.remove('active');
             });
             elements.devicePopup.appendChild(item);
         });
-        if (savedDeviceId && audioDevices.some(d => d.deviceId === savedDeviceId)) {
-             setAudioOutput(savedDeviceId);
-        }
+        
+        // ★★★ 注意: 以前この場所にあった setAudioOutput の呼び出しは不要になりました ★★★
     } catch (error) {
         console.error('オーディオデバイスの取得に失敗しました:', error);
     }

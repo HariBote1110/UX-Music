@@ -2,12 +2,10 @@ const { ipcMain, app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-// ▼▼▼ 変更点：不要なrequireを削除 ▼▼▼
-// const { scanPaths, parseFiles, analyzeLoudness } = require('../file-scanner');
-// const os = require('os');
-// const { sanitize } = require('../utils');
-// const sharp = require('sharp');
-// ▲▲▲ 変更点ここまで ▲▲▲
+const { scanPaths, parseFiles, analyzeLoudness } = require('../file-scanner');
+const os = require('os');
+const { sanitize } = require('../utils');
+const sharp = require('sharp');
 
 let libraryStore;
 let loudnessStore;
@@ -15,9 +13,7 @@ let settingsStore;
 let playCountsStore;
 let albumsStore;
 
-// ▼▼▼ 変更点：関数をipcMain.onの外に移動 ▼▼▼
 async function saveArtworkToFile(picture, songPath) {
-    const sharp = require('sharp'); // ★★★ 関数内でrequire ★★★
     if (!picture || !picture.data) return null;
 
     const artworksDir = path.join(app.getPath('userData'), 'Artworks');
@@ -59,7 +55,6 @@ function addSongsToLibraryAndSave(newSongs) {
     }
     return uniqueNewSongs;
 }
-// ▲▲▲ 変更点ここまで ▲▲▲
 
 function registerLibraryHandlers(stores) {
     libraryStore = stores.library;
@@ -69,12 +64,6 @@ function registerLibraryHandlers(stores) {
     albumsStore = stores.albums;
 
     ipcMain.on('start-scan-paths', async (event, paths) => {
-        // ▼▼▼ 変更点：イベントハンドラ内でモジュールを読み込む ▼▼▼
-        const { scanPaths, parseFiles, analyzeLoudness } = require('../file-scanner');
-        const os = require('os');
-        const { sanitize } = require('../utils');
-        // ▲▲▲ 変更点ここまで ▲▲▲
-        
         console.time('Main: Total Import Process');
 
         const pLimit = (await import('p-limit')).default;
@@ -188,7 +177,6 @@ function registerLibraryHandlers(stores) {
     });
 
     ipcMain.on('request-loudness-analysis', async (event, songPath) => {
-        const { analyzeLoudness } = require('../file-scanner');
         const loudnessData = loudnessStore.load();
         if (loudnessData[songPath]) return;
         const result = await analyzeLoudness(songPath);

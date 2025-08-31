@@ -21,6 +21,7 @@ export const state = {
     currentDetailView: { type: null, identifier: null },
     activeListView: 'track-view',
     artworksDir: '',
+    preferredDeviceId: null, // この行を追加
     activeViewId: 'track-view',
 };
 

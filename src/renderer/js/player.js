@@ -1,6 +1,6 @@
 // uxmusic/src/renderer/js/player.js
 
-import { elements } from './state.js';
+import { elements, state } from './state.js'; // `state` を追加
 import { updateSyncedLyrics } from './lyrics-manager.js';
 import { updatePlayingIndicators } from './ui-manager.js';
 const { ipcRenderer } = require('electron');
@@ -334,6 +334,14 @@ function stopVisualizer() {
 }
 
 export async function play(song) {
+    // ★★★ ここからが修正箇所です ★★★
+    // ユーザーが設定したデバイスが保存されていれば、このタイミングで適用する
+    if (state.preferredDeviceId) {
+        await setAudioOutput(state.preferredDeviceId);
+        state.preferredDeviceId = null; // 一度適用したらクリアする
+    }
+    // ★★★ ここまでが修正箇所です ★★★
+
     await stop();
     if (!song) {
         setPlayPauseIcon('stop'); 
@@ -375,10 +383,7 @@ export async function play(song) {
 
     const mode = settings.youtubePlaybackMode || 'download';
     
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
-    // ダウンロード済みのファイル(type: 'local')はストリーミング再生の対象から除外する
     if (song.type === 'youtube' && mode === 'stream') {
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
         currentSongType = 'youtube';
         elements.deviceSelectButton.disabled = true;
     } else if (song.path) {
