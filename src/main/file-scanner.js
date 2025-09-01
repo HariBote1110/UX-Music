@@ -131,4 +131,4 @@ async function scanPaths(paths) {
     return allFiles;
 }
 
-module.exports = { scanPaths, parseFiles, analyzeLoudness };
+module.exports = { scanPaths, parseFiles, analyzeLoudness }
