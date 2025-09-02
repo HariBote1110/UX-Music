@@ -7,9 +7,9 @@ const os = require('os');
 const { sanitize } = require('../utils');
 const sharp = require('sharp');
 const MusicTempo = require('music-tempo');
-// ▼▼▼ ここからが修正箇所です ▼▼▼
 const ffmpeg = require('fluent-ffmpeg');
-// ▲▲▲ ここまでが修正箇所です ▲▲▲
+const tmp = require('tmp');
+const wavDecoder = require('wav-decoder'); // ★★★ この行を追加 ★★★
 
 let libraryStore;
 let loudnessStore;
@@ -17,44 +17,60 @@ let settingsStore;
 let playCountsStore;
 let albumsStore;
 
-// ▼▼▼ ここからが修正箇所です ▼▼▼
+// src/main/handlers/library-handler.js 内の analyzeBPM 関数
+
+
 /**
- * 音声データを解析してBPMを算出する
+ * 音声データを解析してBPMを算出する（BPM補正ロジック追加版）
  * @param {string} songPath - 解析対象の曲のパス
  * @returns {Promise<number|null>} - 解析されたBPM値 or null
  */
 async function analyzeBPM(songPath) {
-    console.log(`[BPM Analysis] Starting analysis for: ${songPath}`);
-    return new Promise((resolve, reject) => {
-        const audioData = [];
-        ffmpeg(songPath)
-            .toFormat('f32le') // 32-bit floating-point little-endian PCM
-            .audioChannels(1)    // Mono
-            .audioFrequency(44100) // Sample rate
-            .on('error', (err) => {
-                console.error(`[BPM Analysis] FFmpeg error for ${path.basename(songPath)}:`, err.message);
-                reject(err);
-            })
-            .on('data', (chunk) => {
-                audioData.push(chunk);
-            })
-            .on('end', () => {
-                try {
-                    const buffer = Buffer.concat(audioData);
-                    const calcTempo = new MusicTempo(buffer);
-                    const roundedBPM = Math.round(calcTempo.tempo);
-                    console.log(`[BPM Analysis] Analysis successful for ${path.basename(songPath)}: ${roundedBPM} BPM`);
-                    resolve(roundedBPM);
-                } catch (error) {
-                     console.error(`[BPM Analysis] music-tempo error for ${path.basename(songPath)}:`, error);
-                    resolve(null); // music-tempoが失敗した場合はnullを返す
-                }
-            })
-            .pipe(); // ストリームを開始
-    }).catch(() => null); // ffmpegまたはPromiseチェーンのエラーをキャッチしてnullを返す
-}
-// ▲▲▲ ここまでが修正箇所です ▲▲▲
+    console.log('[BPM Analysis] Executing FINAL version with octave correction...');
 
+    const tempFile = tmp.fileSync({ postfix: '.wav' });
+
+    try {
+        await new Promise((resolve, reject) => {
+            ffmpeg(songPath)
+                .toFormat('wav')
+                .audioChannels(1)
+                .audioFrequency(22050)
+                .on('error', (err) => {
+                    console.error(`[BPM Analysis] FFmpeg error for ${path.basename(songPath)}:`, err.message);
+                    reject(err);
+                })
+                .on('end', () => resolve())
+                .save(tempFile.name);
+        });
+        
+        const buffer = fs.readFileSync(tempFile.name);
+        const audioData = await wavDecoder.decode(buffer);
+        const calcTempo = new MusicTempo(audioData.channelData[0]);
+
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        let rawBPM = calcTempo.tempo;
+        
+        // 一般的な楽曲のBPM上限を180と仮定し、それを超える場合は半分にする
+        // これにより「倍テン」で検出されたBPMを補正する
+        if (rawBPM > 180) {
+            console.log(`[BPM Analysis] Octave error detected. Correcting ${rawBPM} -> ${rawBPM / 2}`);
+            rawBPM = rawBPM / 2;
+        }
+        
+        const roundedBPM = Math.round(rawBPM);
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
+        console.log(`[BPM Analysis] Analysis successful for ${path.basename(songPath)}: ${roundedBPM} BPM`);
+        return roundedBPM;
+
+    } catch (error) {
+        console.error(`[BPM Analysis] A critical error occurred during analysis for ${path.basename(songPath)}:`, error);
+        return null;
+    } finally {
+        tempFile.removeCallback();
+    }
+}
 
 async function saveArtworkToFile(picture, songPath) {
     if (!picture || !picture.data) return null;

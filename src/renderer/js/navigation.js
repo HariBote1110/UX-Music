@@ -1,5 +1,5 @@
 import { state, elements } from './state.js';
-import { renderTrackView, renderAlbumView, renderArtistView, renderPlaylistView, renderAlbumDetailView, renderArtistDetailView, renderPlaylistDetailView } from './ui/view-renderer.js';
+import { renderTrackView, renderAlbumView, renderArtistView, renderPlaylistView, renderAlbumDetailView, renderArtistDetailView, renderPlaylistDetailView, renderSituationView } from './ui/view-renderer.js';
 const { ipcRenderer } = require('electron');
 
 /**
@@ -24,6 +24,7 @@ export function showView(viewId, options = {}) {
     else if (viewId === 'album-view') renderAlbumView();
     else if (viewId === 'artist-view') renderArtistView();
     else if (viewId === 'playlist-view') renderPlaylistView();
+    else if (viewId === 'situation-view') renderSituationView();
     else if (viewId === 'album-detail-view') renderAlbumDetailView(options.data);
     else if (viewId === 'artist-detail-view') renderArtistDetailView(options.data);
     // ▼▼▼ 修正点 ▼▼▼

@@ -1,0 +1,57 @@
+[
+  {
+    "id": "morning_chill",
+    "name": "爽やかな朝に",
+    "minScore": 2,
+    "components": {
+      "bpm": { "bpm_range": [80, 125], "score": 2 },
+      "title": { "phrases": ["morning", "sun", "sky", "awake", "fresh", "good day", "朝", "太陽", "空"], "score": 1 }
+    }
+  },
+  {
+    "id": "workout_energy",
+    "name": "ワークアウト",
+    "minScore": 2,
+    "components": {
+      "bpm": { "bpm_range": [125, 180], "score": 2 },
+      "title": { "phrases": ["run", "power", "fire", "future", "step", "energy", "beat", "走", "力"], "score": 1 }
+    }
+  },
+  {
+    "id": "focus_ambient",
+    "name": "集中したい時に",
+    "minScore": 2,
+    "components": {
+      "bpm": { "bpm_range": [60, 100], "score": 2 },
+      "title": { "phrases": ["ambient", "stars", "calm", "focus", "deep", "space", "星", "静", "集中"], "score": 2 }
+    }
+  },
+  {
+    "id": "night_drive",
+    "name": "深夜のドライブ",
+    "minScore": 3,
+    "components": {
+      "bpm": { "bpm_range": [100, 130], "score": 2 },
+      "title": { "phrases": ["drive", "night", "city", "lights", "neon", "street", "夜", "街", "光"], "score": 2 }
+    },
+    "required": ["bpm", "title"]
+  },
+  {
+    "id": "party_upbeat",
+    "name": "パーティーチューン",
+    "minScore": 2,
+    "components": {
+      "bpm": { "bpm_range": [120, 160], "score": 3 },
+      "title": { "phrases": ["party", "dance", "night", "lights", "club", "weekend", "踊"], "score": 1 }
+    }
+  },
+  {
+    "id": "relax_chill",
+    "name": "リラックスタイム",
+    "minScore": 2,
+    "components": {
+      "bpm": { "bpm_range": [50, 90], "score": 2 },
+      "title": { "phrases": ["relax", "chill", "calm", "sleep", "dream", "slow", "夢", "癒"], "score": 1 }
+    }
+  }
+]

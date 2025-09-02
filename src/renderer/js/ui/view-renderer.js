@@ -284,6 +284,48 @@ export function renderAlbumDetailView(album) {
     window.observeNewArtworks(viewWrapper);
 }
 
+export async function renderSituationView() {
+    clearMainContent();
+    const viewWrapper = document.createElement('div');
+    viewWrapper.className = 'view-container';
+    viewWrapper.innerHTML = '<h1>For You</h1>';
+    const grid = document.createElement('div');
+    grid.id = 'playlist-grid'; // 既存のプレイリストグリッドのスタイルを再利用
+
+    // メインプロセスにシチュエーションプレイリストをリクエスト
+    const situationPlaylists = await ipcRenderer.invoke('get-situation-playlists');
+    const playlists = Object.values(situationPlaylists);
+
+    if (playlists.length === 0) {
+        grid.innerHTML = '<div class="placeholder">あなたのためのプレイリストはまだありません。</div>';
+    } else {
+        playlists.forEach(playlist => {
+            // プレイリストの曲からアートワークを4枚取得
+            const artworks = playlist.songs
+                .map(song => (state.albums.get(song.albumKey) || song).artwork)
+                .filter(Boolean)
+                .slice(0, 4);
+            
+            // createPlaylistGridItem を再利用してUIを生成
+            const playlistItem = createPlaylistGridItem({ name: playlist.name, artworks }, ipcRenderer);
+            
+            // クリックで曲を再生するイベントリスナーを追加
+            playlistItem.addEventListener('click', () => {
+                state.currentlyViewedSongs = playlist.songs;
+                // ここでは詳細ビューに飛ばさず、直接再生を開始する例
+                playSong(0, playlist.songs); 
+                showNotification(`「${playlist.name}」を再生します`);
+                hideNotification(3000);
+            });
+            grid.appendChild(playlistItem);
+        });
+    }
+
+    viewWrapper.appendChild(grid);
+    elements.mainContent.appendChild(viewWrapper);
+    window.observeNewArtworks(grid);
+}
+
 export function renderArtistDetailView(artist) {
     clearMainContent();
     const viewWrapper = document.createElement('div');
