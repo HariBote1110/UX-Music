@@ -21,34 +21,38 @@ function loadPatterns() {
 }
 
 /**
- * 1曲を分析して、合致するシチュエーションのIDを返す (XS-Blockerロジック版)
- * @param {object} song - 曲オブジェクト (bpm, title を含む)
+ * 1曲を分析して、合致するシチュエーションのIDを返す (減点ロジック対応版)
+ * @param {object} song - 曲オブジェクト
+ * @param {object[]} activePatterns - 現在有効なパターン
  * @returns {string[]} - 合致したパターンのIDの配列
  */
-function analyzeSong(song) {
-    if (!song || moodPatterns.length === 0) return [];
+function analyzeSong(song, activePatterns) {
+    if (!song || activePatterns.length === 0) return [];
 
     const matchedIds = new Set();
     const songTitleLower = (song.title || '').toLowerCase();
+    const songGenreLower = (song.genre || '').toLowerCase();
 
-    moodPatterns.forEach(pattern => {
+    activePatterns.forEach(pattern => {
         let totalScore = 0;
         const requiredComponentsFound = new Set();
 
+        // 加算スコアの計算
         if (pattern.components) {
             for (const compKey in pattern.components) {
                 const component = pattern.components[compKey];
                 let componentMatched = false;
 
-                // BPMコンポーネントの判定
                 if (compKey === 'bpm' && component.bpm_range && typeof song.bpm === 'number') {
                     if (song.bpm >= component.bpm_range[0] && song.bpm <= component.bpm_range[1]) {
                         componentMatched = true;
                     }
-                }
-                // タイトルキーワードの判定
-                else if (compKey === 'title' && component.phrases?.length) {
+                } else if (compKey === 'title' && component.phrases?.length) {
                     if (component.phrases.some(phrase => songTitleLower.includes(phrase.toLowerCase()))) {
+                        componentMatched = true;
+                    }
+                } else if (compKey === 'genre' && component.phrases?.length && songGenreLower) {
+                    if (component.phrases.some(phrase => songGenreLower.includes(phrase.toLowerCase()))) {
                         componentMatched = true;
                     }
                 }
@@ -61,11 +65,21 @@ function analyzeSong(song) {
                 }
             }
         }
+        
+        // 減点スコアの計算
+        if (pattern.exclude) {
+            for (const compKey in pattern.exclude) {
+                const component = pattern.exclude[compKey];
+                if (compKey === 'title' && component.phrases?.length) {
+                    if (component.phrases.some(phrase => songTitleLower.includes(phrase.toLowerCase()))) {
+                        totalScore += component.score || 0; // スコアは負の値のはず
+                    }
+                }
+            }
+        }
 
-        // 必須コンポーネントの条件をチェック
         const meetsRequired = !pattern.required || pattern.required.length === requiredComponentsFound.size;
 
-        // 最終スコアが閾値を超えているかチェック
         if (meetsRequired && totalScore >= (pattern.minScore || 1)) {
             matchedIds.add(pattern.id);
         }
@@ -75,20 +89,37 @@ function analyzeSong(song) {
 }
 
 /**
- * ライブラリ全体を分析し、シチュエーションごとの曲リストを作成する
+ * ライブラリ全体を分析し、現在時刻・季節に合ったプレイリストを作成する
  * @param {object[]} library - ライブラリの全曲
- * @returns {object} - { morning_chill: { id: "...", name: "...", songs: [...] }, ... }
+ * @returns {object}
  */
 function createSituationPlaylists(library) {
     loadPatterns();
 
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 5); // "HH:MM"
+    const currentDate = (now.getMonth() + 1).toString().padStart(2, '0') + '-' + now.getDate().toString().padStart(2, '0'); // "MM-DD"
+    
+    // 現在の時刻と季節に合致するパターン、または時間・季節指定のないパターンを抽出
+    const activePatterns = moodPatterns.filter(p => {
+        const isTimeMatch = !p.time_range || (currentTime >= p.time_range[0] && currentTime <= p.time_range[1]);
+        const isDateMatch = !p.date_range || (currentDate >= p.date_range[0] && currentDate <= p.date_range[1]);
+        
+        // 時間も季節も指定がないパターンは常に有効
+        if (!p.time_range && !p.date_range) return true;
+        // 時間または季節のどちらかが指定されていて、それがマッチすれば有効
+        return isTimeMatch && isDateMatch;
+    });
+
+    console.log(`[Mood Analyzer] ${activePatterns.length} active patterns for current time/season.`);
+
     const situationMap = {};
-    moodPatterns.forEach(p => {
+    activePatterns.forEach(p => {
         situationMap[p.id] = { id: p.id, name: p.name, songs: [] };
     });
 
     library.forEach(song => {
-        const situations = analyzeSong(song);
+        const situations = analyzeSong(song, activePatterns);
         situations.forEach(situationId => {
             if (situationMap[situationId]) {
                 situationMap[situationId].songs.push(song);
@@ -96,7 +127,6 @@ function createSituationPlaylists(library) {
         });
     });
 
-    // 曲が1曲もないプレイリストは除外する
     return Object.fromEntries(
       Object.entries(situationMap).filter(([id, playlist]) => playlist.songs.length > 0)
     );

@@ -20,7 +20,6 @@ export function updateNowPlayingView(song) {
     
     const localPlayer = document.getElementById('main-player');
 
-    // プレーヤー要素がDOMから削除されないように、一度body直下に退避させ、非表示にする
     if (localPlayer) {
         document.body.appendChild(localPlayer);
         localPlayer.style.display = 'none';
@@ -34,7 +33,7 @@ export function updateNowPlayingView(song) {
         const img = document.createElement('img');
         img.src = './assets/default_artwork.png';
         nowPlayingArtworkContainer.appendChild(img);
-        setEqualizerColorFromArtwork(img); // デフォルト色にリセット
+        setEqualizerColorFromArtwork(img);
     
     } else if (song.type === 'youtube') {
         nowPlayingArtworkContainer.classList.add('video-mode');
@@ -55,23 +54,26 @@ export function updateNowPlayingView(song) {
         artworkImage.src = song.artwork;
 
     } else {
-        // ▼▼▼ ここからが修正箇所です ▼▼▼
         const img = document.createElement('img');
-        img.crossOrigin = "Anonymous"; // CORSエラーを回避
-        
-        // 画像の読み込みが完了してから色抽出を実行する
+        img.crossOrigin = "Anonymous";
         img.onload = () => setEqualizerColorFromArtwork(img);
 
-        const album = state.albums.get(song.albumKey);
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        // どんなsongオブジェクトでもファイルパスを元にstate.libraryから完全な楽曲情報を検索
+        const masterSong = state.library.find(s => s.path === song.path) || song;
+        const album = state.albums.get(masterSong.albumKey);
+        
         let artwork = album ? album.artwork : null;
 
-        if (song.album === 'Unknown Album') {
+        // "Unknown Album"の場合はアートワークを強制的にnullにする
+        if (masterSong.album === 'Unknown Album') {
             artwork = null;
         }
 
         img.src = resolveArtworkPath(artwork, false);
 
-        if (song.hasVideo && localPlayer) {
+        // 映像の有無はmasterSongの情報で判定する
+        if (masterSong.hasVideo && localPlayer) {
             nowPlayingArtworkContainer.classList.add('video-mode');
             localPlayer.poster = img.src;
             localPlayer.style.display = 'block';
@@ -80,9 +82,6 @@ export function updateNowPlayingView(song) {
             nowPlayingArtworkContainer.classList.remove('video-mode');
             nowPlayingArtworkContainer.appendChild(img);
         }
-        
-        // 原因となっていた不要な呼び出しを削除
-        // if (img.complete) setEqualizerColorFromArtwork(img);
         // ▲▲▲ ここまでが修正箇所です ▲▲▲
     }
     

@@ -2,10 +2,70 @@
   {
     "id": "morning_chill",
     "name": "爽やかな朝に",
+    "time_range": ["05:00", "11:59"],
     "minScore": 2,
     "components": {
       "bpm": { "bpm_range": [80, 125], "score": 2 },
-      "title": { "phrases": ["morning", "sun", "sky", "awake", "fresh", "good day", "朝", "太陽", "空"], "score": 1 }
+      "genre": { "phrases": ["pop", "acoustic", "j-ポップ"], "score": 1 },
+      "title": { "phrases": ["morning", "sun", "sky", "awake", "fresh", "good day", "朝", "太陽", "空", "光"], "score": 2 }
+    },
+    "exclude": {
+      "title": { "phrases": ["night", "midnight", "dark", "夜", "闇"], "score": -3 }
+    }
+  },
+  {
+    "id": "afternoon_pop",
+    "name": "午後のリフレッシュ",
+    "time_range": ["12:00", "16:59"],
+    "minScore": 2,
+    "components": {
+      "bpm": { "bpm_range": [110, 150], "score": 2 },
+      "genre": { "phrases": ["pop", "j-ポップ", "rock", "ロック"], "score": 2 }
+    }
+  },
+  {
+    "id": "evening_mellow",
+    "name": "夕暮れに聴きたい曲",
+    "time_range": ["17:00", "20:59"],
+    "minScore": 2,
+    "components": {
+      "bpm": { "bpm_range": [80, 120], "score": 2 },
+      "genre": { "phrases": ["r&b", "soul", "jazz", "acoustic"], "score": 2 },
+      "title": { "phrases": ["sunset", "twilight", "evening", "夕", "黄昏"], "score": 1 }
+    }
+  },
+  {
+    "id": "night_drive",
+    "name": "深夜のドライブ",
+    "time_range": ["21:00", "04:59"],
+    "minScore": 3,
+    "components": {
+      "bpm": { "bpm_range": [100, 140], "score": 2 },
+      "genre": { "phrases": ["electronic", "dance", "city pop", "r&b"], "score": 1 },
+      "title": { "phrases": ["drive", "night", "city", "lights", "neon", "street", "midnight", "夜", "街", "光"], "score": 2 }
+    },
+    "required": ["bpm"]
+  },
+  {
+    "id": "summer_hits",
+    "name": "夏に聴きたい曲",
+    "date_range": ["06-01", "08-31"],
+    "minScore": 2,
+    "components": {
+      "bpm": { "bpm_range": [100, 160], "score": 1 },
+      "genre": { "phrases": ["pop", "rock", "reggae", "j-ポップ", "ロック"], "score": 1 },
+      "title": { "phrases": ["summer", "sun", "beach", "sea", "vacation", "夏", "太陽", "海", "空"], "score": 3 }
+    }
+  },
+  {
+    "id": "winter_ballads",
+    "name": "冬のバラード",
+    "date_range": ["12-01", "02-28"],
+    "minScore": 2,
+    "components": {
+      "bpm": { "bpm_range": [60, 100], "score": 2 },
+      "genre": { "phrases": ["ballad", "pop", "r&b", "バラード"], "score": 2 },
+      "title": { "phrases": ["winter", "snow", "cold", "white", "冬", "雪", "クリスマス"], "score": 2 }
     }
   },
   {
@@ -14,35 +74,28 @@
     "minScore": 2,
     "components": {
       "bpm": { "bpm_range": [125, 180], "score": 2 },
-      "title": { "phrases": ["run", "power", "fire", "future", "step", "energy", "beat", "走", "力"], "score": 1 }
+      "genre": { "phrases": ["rock", "pop", "electronic", "dance", "ロック"], "score": 1 },
+      "title": { "phrases": ["run", "power", "fire", "future", "step", "energy", "beat", "go", "fly", "hero", "ヒーロー", "走"], "score": 1 }
     }
   },
   {
-    "id": "focus_ambient",
-    "name": "集中したい時に",
-    "minScore": 2,
-    "components": {
-      "bpm": { "bpm_range": [60, 100], "score": 2 },
-      "title": { "phrases": ["ambient", "stars", "calm", "focus", "deep", "space", "星", "静", "集中"], "score": 2 }
-    }
-  },
-  {
-    "id": "night_drive",
-    "name": "深夜のドライブ",
+    "id": "focus_instrumental",
+    "name": "集中したい時に (BGM)",
     "minScore": 3,
     "components": {
-      "bpm": { "bpm_range": [100, 130], "score": 2 },
-      "title": { "phrases": ["drive", "night", "city", "lights", "neon", "street", "夜", "街", "光"], "score": 2 }
-    },
-    "required": ["bpm", "title"]
+      "bpm": { "bpm_range": [60, 110], "score": 1 },
+      "genre": { "phrases": ["ambient", "classical", "instrumental", "soundtrack", "chill", "post-rock", "インスト"], "score": 3 },
+      "title": { "phrases": ["instrumental", "bgm"], "score": 2 }
+    }
   },
   {
     "id": "party_upbeat",
     "name": "パーティーチューン",
-    "minScore": 2,
+    "minScore": 3,
     "components": {
-      "bpm": { "bpm_range": [120, 160], "score": 3 },
-      "title": { "phrases": ["party", "dance", "night", "lights", "club", "weekend", "踊"], "score": 1 }
+      "bpm": { "bpm_range": [120, 170], "score": 3 },
+      "genre": { "phrases": ["pop", "dance", "electronic", "funk", "disco"], "score": 1 },
+      "title": { "phrases": ["party", "dance", "night", "lights", "club", "weekend", "wave", "vivid", "踊", "フィーバー"], "score": 1 }
     }
   },
   {
@@ -50,8 +103,28 @@
     "name": "リラックスタイム",
     "minScore": 2,
     "components": {
-      "bpm": { "bpm_range": [50, 90], "score": 2 },
-      "title": { "phrases": ["relax", "chill", "calm", "sleep", "dream", "slow", "夢", "癒"], "score": 1 }
+      "bpm": { "bpm_range": [50, 95], "score": 2 },
+      "genre": { "phrases": ["chill", "ambient", "acoustic", "lounge", "癒し"], "score": 2 },
+      "title": { "phrases": ["relax", "chill", "calm", "sleep", "dream", "slow", "star", "breeze", "夢", "星", "静"], "score": 1 }
+    }
+  },
+  {
+    "id": "sentimental_ballad",
+    "name": "センチメンタルな夜に",
+    "minScore": 2,
+    "components": {
+      "bpm": { "bpm_range": [60, 100], "score": 2 },
+      "genre": { "phrases": ["ballad", "pop", "r&b", "バラード"], "score": 1 },
+      "title": { "phrases": ["love", "miss you", "cry", "tear", "rain", "goodbye", "farewell", "愛", "涙", "雨", "別れ", "サヨナラ", "ありがとう"], "score": 2 }
+    }
+  },
+  {
+    "id": "anime_game_songs",
+    "name": "アニソン & ゲーソン",
+    "minScore": 3,
+    "components": {
+        "genre": { "phrases": ["game", "anime", "soundtrack", "ゲーム", "アニメ"], "score": 3 },
+        "title": { "phrases": ["feat.", "主題歌", "OP", "ED", "テーマ"], "score": 1 }
     }
   }
 ]

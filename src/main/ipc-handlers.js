@@ -94,13 +94,24 @@ function registerIpcHandlers() {
     
     logPerf("Migration handler registered.");
     
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    // ▼▼▼ このハンドラをまるごと置き換えてください ▼▼▼
     ipcMain.handle('get-situation-playlists', (event) => {
         const { createSituationPlaylists } = require('./mood-analyzer');
+        const { createHistoryPlaylists } = require('./history-analyzer'); // 新しくインポート
+        
         const library = stores.library.load() || [];
-        return createSituationPlaylists(library);
+        const playCounts = stores.playCounts.load() || {};
+
+        // 1. ムードに基づくプレイリストを生成
+        const moodPlaylists = createSituationPlaylists(library);
+        
+        // 2. 再生履歴に基づくプレイリストを生成
+        const historyPlaylists = createHistoryPlaylists(playCounts, library);
+
+        // 3. 両者を結合して返す
+        return { ...historyPlaylists, ...moodPlaylists };
     });
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+    // ▲▲▲ 置き換えはここまで ▲▲▲
 
     logPerf("Requiring library-handler...");
     const { registerLibraryHandlers } = require('./handlers/library-handler');

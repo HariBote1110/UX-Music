@@ -32,34 +32,39 @@ function initializeFfmpeg() {
 
 const supportedExtensions = ['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.mp4'];
 
+// ▼▼▼ この関数をまるごと置き換えます ▼▼▼
+/**
+ * volumedetectフィルターを使用して、曲の平均音量を高速に解析します。
+ * @param {string} filePath - 解析対象の曲のパス
+ * @returns {Promise<{success: boolean, filePath: string, loudness: number|null, error?: string}>}
+ */
 function analyzeLoudness(filePath) {
     initializeFfmpeg();
     return new Promise((resolve) => {
+        let stderr = '';
         ffmpeg(filePath)
-            .withAudioFilter('loudnorm=I=-23:LRA=7:print_format=json')
+            .withAudioFilter('volumedetect')
             .toFormat('null')
             .on('error', (err) => {
                 resolve({ success: false, filePath: filePath, error: err.message });
             })
-            .on('end', (stdout, stderr) => {
-                const jsonStartIndex = stderr.lastIndexOf('{');
-                const jsonEndIndex = stderr.lastIndexOf('}');
-                if (jsonStartIndex > -1 && jsonEndIndex > -1) {
-                    const jsonString = stderr.substring(jsonStartIndex, jsonEndIndex + 1);
-                    try {
-                        const stats = JSON.parse(jsonString);
-                        const integratedLoudness = parseFloat(stats.input_i);
-                        resolve({ success: true, filePath: filePath, loudness: integratedLoudness });
-                    } catch (e) {
-                        resolve({ success: false, filePath: filePath, error: `ラウドネス解析結果(JSON)のパースに失敗しました。` });
-                    }
+            .on('stderr', (line) => {
+                stderr += line;
+            })
+            .on('end', () => {
+                // FFmpegの出力から mean_volume (平均音量) の行を探す
+                const match = stderr.match(/mean_volume:\s*(-?\d+\.\d+)\s*dB/);
+                if (match && match[1]) {
+                    const meanVolume = parseFloat(match[1]);
+                    resolve({ success: true, filePath: filePath, loudness: meanVolume });
                 } else {
-                     resolve({ success: false, filePath: filePath, error: `ラウドネス解析結果(JSON)が見つかりませんでした。` });
+                    resolve({ success: false, filePath: filePath, error: 'volumedetect: mean_volume not found in FFmpeg output.' });
                 }
             })
-            .save('-');
+            .save('-'); // 出力先をnullデバイスに指定して実行
     });
 }
+// ▲▲▲ 置き換えはここまで ▲▲▲
 
 
 async function scanDirectory(dirPath) {
@@ -100,7 +105,8 @@ async function parseFiles(filePaths) {
                 artwork: artwork,
                 duration: metadata.format.duration,
                 year: common.year,
-                bpm: common.bpm, // ★★★ この行を追加 ★★★
+                bpm: common.bpm,
+                genre: (common.genre && common.genre.length > 0) ? common.genre[0] : null,
                 fileSize: stats.size,
                 type: 'local',
                 hasVideo: hasVideo,

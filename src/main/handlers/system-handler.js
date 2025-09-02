@@ -52,18 +52,36 @@ function registerSystemHandlers(stores) {
         }
     });
 
+// ...ipcMain.on('request-initial-play-counts', ...); の下あたり
+
+    // ▼▼▼ この関数をまるごと置き換えてください ▼▼▼
     ipcMain.on('song-finished', (event, { songPath, duration }) => {
         const counts = playCountsStore.load() || {};
-        const existingData = counts[songPath] || { count: 0, totalDuration: 0 };
+        const now = new Date().toISOString(); // 現在時刻をISO形式の文字列で取得
+
+        // 既存のデータを取得、なければ初期化
+        const existingData = counts[songPath] || { count: 0, totalDuration: 0, history: [] };
+
         existingData.count += 1;
         existingData.totalDuration += duration || 0;
+        
+        // 再生履歴にタイムスタンプを追加
+        existingData.history.push(now);
+        // 履歴が長くなりすぎないように、直近100件までにする（パフォーマンスのため）
+        if (existingData.history.length > 100) {
+            existingData.history.shift();
+        }
+
         counts[songPath] = existingData;
         playCountsStore.save(counts);
+
         if (event.sender && !event.sender.isDestroyed()) {
             event.sender.send('play-counts-updated', counts);
         }
     });
+    // ▲▲▲ 置き換えはここまで ▲▲▲
 
+// ...ipcMain.on('handle-lyrics-drop', ...); の上あたり
     // --- Lyrics ---
     ipcMain.on('handle-lyrics-drop', (event, filePaths) => {
         const lyricsDir = path.join(app.getPath('userData'), 'Lyrics');

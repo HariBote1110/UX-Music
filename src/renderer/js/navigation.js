@@ -23,13 +23,11 @@ export function showView(viewId, options = {}) {
     if (viewId === 'track-view') renderTrackView();
     else if (viewId === 'album-view') renderAlbumView();
     else if (viewId === 'artist-view') renderArtistView();
-    else if (viewId === 'playlist-view') renderPlaylistView();
     else if (viewId === 'situation-view') renderSituationView();
+    else if (viewId === 'playlist-view') renderPlaylistView();
     else if (viewId === 'album-detail-view') renderAlbumDetailView(options.data);
     else if (viewId === 'artist-detail-view') renderArtistDetailView(options.data);
-    // ▼▼▼ 修正点 ▼▼▼
     else if (viewId === 'playlist-detail-view') renderPlaylistDetailView(options.data);
-    // ▲▲▲ 修正点ここまで ▲▲▲
 }
 
 export function initNavigation() {
@@ -42,13 +40,22 @@ export function initNavigation() {
     });
 }
 
-// ▼▼▼ ここからが修正箇所です ▼▼▼
+// ▼▼▼ この関数を新しく追加 ▼▼▼
+/**
+ * シチュエーションプレイリストの詳細画面を表示する
+ * @param {object} playlistDetails - {name, songs, artworks}
+ */
+export function showSituationPlaylistDetail(playlistDetails) {
+    state.currentlyViewedSongs = playlistDetails.songs;
+    showView('playlist-detail-view', { type: 'situation', identifier: playlistDetails.name, data: playlistDetails });
+}
+// ▲▲▲ 追加はここまで ▲▲▲
+
 export async function showPlaylist(playlistName) {
     const playlistDetails = await ipcRenderer.invoke('get-playlist-details', playlistName);
     state.currentlyViewedSongs = playlistDetails.songs;
     showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: playlistDetails });
 }
-// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
 export function showAlbum(albumKey) {
     const album = state.albums.get(albumKey);
