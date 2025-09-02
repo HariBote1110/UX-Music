@@ -1,183 +1,287 @@
-import { state, elements } from '../state.js';
-import { playSong } from '../playback-manager.js';
-import { formatTime } from './utils.js';
-import { createPlaylistArtwork } from './playlist-artwork.js';
-import { showAlbum } from '../navigation.js';
-import { createSongItem, createAlbumGridItem } from './element-factory.js';
-const { ipcRenderer } = require('electron');
+// uxmusic/src/main/playlist-manager.js
 
-// ▼▼▼ 変更点：関数を同期的(sync)に書き換え ▼▼▼
-function resolveArtworkPath(artwork, isThumbnail = false) {
-    if (!state.artworksDir) {
-        console.error("resolveArtworkPath called before state.artworksDir was set.");
-        return './assets/default_artwork.png';
-    }
-    
-    if (!artwork) return './assets/default_artwork.png';
+const path = require('path');
+const fs = require('fs');
+const { app } = require('electron');
+const DataStore = require('./data-store');
 
-    if (typeof artwork === 'string' && (artwork.startsWith('data:image') || artwork.startsWith('http'))) {
-        return artwork;
-    }
-    
-    if (typeof artwork === 'object' && artwork.full && artwork.thumbnail) {
-        const fileName = isThumbnail ? artwork.thumbnail : artwork.full;
-        const subDir = isThumbnail ? 'thumbnails' : '';
-        return `file://${state.artworksDir}/${subDir ? `${subDir}/` : ''}${fileName}`;
-    }
+const playlistsDir = path.join(app.getPath('userData'), 'Playlists');
+const playlistOrderStore = new DataStore('playlist-order.json');
 
-    if (typeof artwork === 'string') {
-        return `file://${state.artworksDir}/${artwork}`;
+try {
+    if (!fs.existsSync(playlistsDir)) {
+        fs.mkdirSync(playlistsDir, { recursive: true });
+        console.log(`[Playlist Manager] Created playlists directory at: ${playlistsDir}`);
     }
-
-    return './assets/default_artwork.png';
+} catch (error) {
+    console.error(`[Playlist Manager] Failed to create playlists directory on initial load:`, error);
 }
-// ▲▲▲ 変更点ここまで ▲▲▲
 
-export function renderAlbumDetailView(album) {
-    const view = elements.albumDetailView;
-    const artImg = view.querySelector('#a-detail-art');
-    artImg.classList.add('lazy-load');
-    artImg.dataset.src = resolveArtworkPath(album.artwork, false);
-    window.observeNewArtworks(view);
-    
-    view.querySelector('#a-detail-title').textContent = album.title;
-    view.querySelector('#a-detail-artist').textContent = album.artist;
-    const totalDuration = album.songs.reduce((sum, song) => sum + (song.duration || 0), 0);
-    view.querySelector('#a-detail-meta').textContent = `${album.songs.length} 曲, ${formatTime(totalDuration)}`;
+function renamePlaylist(oldName, newName) {
+    if (!oldName || !newName) {
+        return { success: false, message: '名前が空です。' };
+    }
+    if (oldName === newName) {
+        return { success: true };
+    }
 
-    const listElement = view.querySelector('#a-detail-list');
-    listElement.innerHTML = '';
-    const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-    album.songs.forEach((song, index) => {
-        const songItem = createSongItem(song, index, ipcRenderer);
+    const oldPath = path.join(playlistsDir, `${oldName}.m3u8`);
+    const newPath = path.join(playlistsDir, `${newName}.m3u8`);
+
+    if (!fs.existsSync(oldPath)) {
+        return { success: false, message: '元のプレイリストが見つかりません。' };
+    }
+    if (fs.existsSync(newPath)) {
+        return { success: false, message: 'その名前のプレイリストは既に存在します。' };
+    }
+
+    try {
+        fs.renameSync(oldPath, newPath);
+        const savedOrder = playlistOrderStore.load().order || [];
+        const newOrder = savedOrder.map(name => (name === oldName ? newName : name));
+        playlistOrderStore.save({ order: newOrder });
+        return { success: true };
+    } catch (error) {
+        console.error(`Failed to rename playlist from ${oldName} to ${newName}:`, error);
+        return { success: false, message: error.message };
+    }
+}
+
+function getAllPlaylists() {
+    try {
+        const files = fs.readdirSync(playlistsDir);
+        const playlistNames = files
+            .filter(file => file.endsWith('.m3u8'))
+            .map(file => path.basename(file, '.m3u8'));
+
+        const savedOrder = playlistOrderStore.load().order || [];
         
-        if (currentPlayingSong && currentPlayingSong.path === song.path) {
-            songItem.classList.add('playing');
+        const orderedPlaylists = savedOrder.filter(name => playlistNames.includes(name));
+        const newPlaylists = playlistNames.filter(name => !savedOrder.includes(name));
+        
+        return [...orderedPlaylists, ...newPlaylists.sort()];
+    } catch (error) {
+        console.error(`[Playlist Manager] Failed to get all playlists:`, error);
+        return [];
+    }
+}
+
+function createPlaylist(name) {
+    if (!name) return { success: false, message: 'Playlist name is empty.' };
+    const playlistPath = path.join(playlistsDir, `${name}.m3u8`);
+    if (fs.existsSync(playlistPath)) {
+        return { success: false, message: 'Playlist already exists.' };
+    }
+    try {
+        fs.writeFileSync(playlistPath, '#EXTM3U\n');
+        return { success: true, name };
+    } catch (error) {
+        console.error('Failed to create playlist:', error);
+        return { success: false, message: error.message };
+    }
+}
+
+function deletePlaylist(name) {
+    if (!name) return { success: false, message: 'Playlist name is empty.' };
+    const playlistPath = path.join(playlistsDir, `${name}.m3u8`);
+    if (!fs.existsSync(playlistPath)) {
+        return { success: false, message: 'Playlist not found.' };
+    }
+    try {
+        fs.unlinkSync(playlistPath);
+        const savedOrder = playlistOrderStore.load().order || [];
+        const newOrder = savedOrder.filter(pName => pName !== name);
+        playlistOrderStore.save({ order: newOrder });
+        return { success: true };
+    } catch (error) {
+        console.error(`Failed to delete playlist ${name}:`, error);
+        return { success: false, message: error.message };
+    }
+}
+
+function addSongToPlaylist(playlistName, song) {
+    if (!playlistName || !song || !song.path) return { success: false };
+
+    const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
+    if (!fs.existsSync(playlistPath)) {
+        return { success: false, message: 'Playlist not found.' };
+    }
+
+    try {
+        const duration = Math.round(song.duration || -1);
+        const title = `${song.artist} - ${song.title}`;
+        const extinf = `#EXTINF:${duration},${title}\n`;
+        const songPathEntry = `${song.path}\n`;
+
+        const content = fs.readFileSync(playlistPath, 'utf-8');
+        if (content.includes(song.path)) {
+            return { success: true, message: 'Song already in playlist.' };
         }
-        
-        songItem.addEventListener('click', () => playSong(index, album.songs));
-        
-        listElement.appendChild(songItem);
-    });
-    window.observeNewArtworks(listElement);
+
+        fs.appendFileSync(playlistPath, extinf + songPathEntry);
+        return { success: true };
+    } catch (error) {
+        console.error(`Failed to add song to ${playlistName}:`, error);
+        return { success: false, message: error.message };
+    }
 }
 
-export function renderArtistDetailView(artist) {
-    const view = elements.artistDetailView;
-    const artImg = view.querySelector('#artist-detail-art');
-    artImg.classList.add('lazy-load');
-    artImg.dataset.src = resolveArtworkPath(artist.artwork, false);
-    window.observeNewArtworks(view);
-    
-    view.querySelector('#artist-detail-name').textContent = artist.name;
-
-    const gridElement = elements.artistDetailAlbumGrid;
-    gridElement.innerHTML = '';
-
-    const artistAlbums = [...state.albums.entries()].filter(([key, album]) => {
-        return album.artist === artist.name;
-    });
-
-    view.querySelector('#artist-detail-meta').textContent = `${artistAlbums.length}枚のアルバム, ${artist.songs.length}曲`;
-
-    if (artistAlbums.length === 0) {
-        gridElement.innerHTML = `<div class="placeholder">このアーティストのアルバムは見つかりません</div>`;
-        return;
-    }
-    
-    for (const [key, album] of artistAlbums) {
-        const albumItem = createAlbumGridItem(key, album, ipcRenderer);
-        albumItem.addEventListener('click', () => showAlbum(key));
-        gridElement.appendChild(albumItem);
-    }
-    window.observeNewArtworks(gridElement);
-}
-
-export function renderPlaylistDetailView(playlistName, songs) {
-    const view = document.getElementById('playlist-detail-view');
-    const header = view.querySelector('.detail-header');
-    header.querySelector('#p-detail-title').textContent = playlistName;
-    const totalDuration = songs.reduce((sum, song) => sum + (song.duration || 0), 0);
-    header.querySelector('#p-detail-meta').textContent = `${songs.length} 曲, ${formatTime(totalDuration)}`;
-    
-    const artworkContainer = view.querySelector('.playlist-art-collage');
-    if (artworkContainer) {
-        const artworks = songs.map(s => {
-            const album = state.albums.get(s.albumKey);
-            return album ? album.artwork : null;
-        }).filter(Boolean);
-        const resolver = (fileName) => resolveArtworkPath(fileName, true);
-        createPlaylistArtwork(artworkContainer, artworks, resolver);
-        window.observeNewArtworks(artworkContainer);
-    } else {
-        console.error("Could not find '.playlist-art-collage' in playlist detail view.");
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+/**
+ * 複数の曲をプレイリストに追加する
+ * @param {string} playlistName - プレイリスト名
+ * @param {Array<object>} songs - 追加する曲オブジェクトの配列
+ * @returns {object} - { success: boolean, addedCount: number }
+ */
+function addSongsToPlaylist(playlistName, songs) {
+    if (!playlistName || !Array.isArray(songs) || songs.length === 0) {
+        return { success: false, addedCount: 0 };
     }
 
-    const listElement = document.getElementById('p-detail-list');
-    listElement.innerHTML = '';
-    const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-    songs.forEach((song, index) => {
-        const songItem = createSongItem(song, index, ipcRenderer);
-        songItem.dataset.songPath = song.path;
-        songItem.draggable = true;
+    const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
+    if (!fs.existsSync(playlistPath)) {
+        return { success: false, message: 'Playlist not found.', addedCount: 0 };
+    }
 
-        if (currentPlayingSong && currentPlayingSong.path === song.path) {
-            songItem.classList.add('playing');
-        }
+    try {
+        const content = fs.readFileSync(playlistPath, 'utf-8');
+        const lines = content.split('\n');
         
-        songItem.addEventListener('click', () => playSong(index, songs));
-        songItem.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            ipcRenderer.send('show-playlist-song-context-menu', { playlistName, song });
+        const existingPaths = new Set(
+            lines.map(line => line.trim().replace(/\\/g, '/')).filter(line => line && !line.startsWith('#'))
+        );
+
+        let newContent = '';
+        let addedCount = 0;
+
+        songs.forEach(song => {
+            if (song && song.path) {
+                const normalizedPath = song.path.trim().replace(/\\/g, '/');
+                if (!existingPaths.has(normalizedPath)) {
+                    const duration = Math.round(song.duration || -1);
+                    const title = `${song.artist} - ${song.title}`;
+                    const extinf = `#EXTINF:${duration},${title}\n`;
+                    const songPathEntry = `${song.path}\n`;
+                    newContent += extinf + songPathEntry;
+                    addedCount++;
+                }
+            }
         });
-        
-        listElement.appendChild(songItem);
-    });
-    window.observeNewArtworks(listElement);
 
-    let draggedItem = null;
-
-    listElement.addEventListener('dragstart', e => {
-        draggedItem = e.target.closest('.song-item');
-        setTimeout(() => {
-            if (draggedItem) draggedItem.classList.add('dragging');
-        }, 0);
-    });
-
-    listElement.addEventListener('dragover', e => {
-        e.preventDefault();
-        const afterElement = getDragAfterElement(listElement, e.clientY);
-        if (draggedItem) {
-            if (afterElement == null) {
-                listElement.appendChild(draggedItem);
-            } else {
-                listElement.insertBefore(draggedItem, afterElement);
-            }
+        if (addedCount > 0) {
+            fs.appendFileSync(playlistPath, newContent);
         }
-    });
 
-    listElement.addEventListener('dragend', async () => {
-        if (draggedItem) {
-            draggedItem.classList.remove('dragging');
-            const newOrder = [...listElement.querySelectorAll('.song-item')].map(item => item.dataset.songPath);
-            await ipcRenderer.invoke('update-playlist-song-order', { playlistName, newOrder });
-            const newSongs = newOrder.map(path => songs.find(s => s.path === path));
-            state.originalQueueSource = newSongs;
-            renderPlaylistDetailView(playlistName, newSongs);
-        }
-        draggedItem = null;
-    });
-
-    function getDragAfterElement(container, y) {
-        const draggableElements = [...container.querySelectorAll('.song-item:not(.dragging)')];
-        return draggableElements.reduce((closest, child) => {
-            const box = child.getBoundingClientRect();
-            const offset = y - box.top - box.height / 2;
-            if (offset < 0 && offset > closest.offset) {
-                return { offset: offset, element: child };
-            } else {
-                return closest;
-            }
-        }, { offset: Number.NEGATIVE_INFINITY }).element;
+        return { success: true, addedCount };
+    } catch (error) {
+        console.error(`Failed to add songs to ${playlistName}:`, error);
+        return { success: false, message: error.message, addedCount: 0 };
     }
 }
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
+
+function getPlaylistSongs(playlistName) {
+    const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
+    if (!fs.existsSync(playlistPath)) {
+        console.error(`Playlist file not found: ${playlistPath}`);
+        return [];
+    }
+
+    try {
+        const content = fs.readFileSync(playlistPath, 'utf-8');
+        const lines = content.split('\n');
+        const songPaths = lines.filter(line => line.trim() !== '' && !line.startsWith('#'));
+        return songPaths;
+    } catch (error) {
+        console.error(`Failed to read playlist ${playlistName}:`, error);
+        return [];
+    }
+}
+
+function removeSongFromPlaylist(playlistName, songPathToRemove) {
+    if (!playlistName || !songPathToRemove) return { success: false };
+
+    const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
+    if (!fs.existsSync(playlistPath)) {
+        return { success: false, message: 'Playlist not found.' };
+    }
+
+    try {
+        const content = fs.readFileSync(playlistPath, 'utf-8');
+        const lines = content.split('\n');
+        const newLines = [];
+        let songIndex = -1;
+
+        lines.forEach((line, index) => {
+            if (line.trim() === songPathToRemove.trim()) {
+                songIndex = index;
+            }
+        });
+
+        if (songIndex > -1) {
+            for (let i = 0; i < lines.length; i++) {
+                if (i !== songIndex && i !== songIndex - 1) {
+                    newLines.push(lines[i]);
+                }
+            }
+            fs.writeFileSync(playlistPath, newLines.join('\n'));
+            return { success: true };
+        } else {
+            return { success: false, message: 'Song not found in playlist.' };
+        }
+    } catch (error) {
+        console.error(`Failed to remove song from ${playlistName}:`, error);
+        return { success: false, message: error.message };
+    }
+}
+
+function updateSongOrderInPlaylist(playlistName, newSongPaths) {
+    if (!playlistName || !Array.isArray(newSongPaths)) return { success: false };
+
+    const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
+    if (!fs.existsSync(playlistPath)) {
+        return { success: false, message: 'Playlist not found.' };
+    }
+
+    try {
+        const content = fs.readFileSync(playlistPath, 'utf-8');
+        const lines = content.split('\n');
+        
+        const songInfoMap = new Map();
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].startsWith('#EXTINF')) {
+                const pathLine = lines[i + 1];
+                if (pathLine && pathLine.trim() !== '') {
+                    songInfoMap.set(pathLine.trim(), lines[i]);
+                }
+            }
+        }
+
+        let newContent = '#EXTM3U\n';
+        newSongPaths.forEach(songPath => {
+            const extinf = songInfoMap.get(songPath.trim());
+            if (extinf) {
+                newContent += `${extinf}\n${songPath}\n`;
+            }
+        });
+
+        fs.writeFileSync(playlistPath, newContent);
+        return { success: true };
+
+    } catch (error) {
+        console.error(`Failed to update song order in ${playlistName}:`, error);
+        return { success: false, message: error.message };
+    }
+}
+
+module.exports = {
+    getAllPlaylists,
+    createPlaylist,
+    getPlaylistSongs,
+    addSongToPlaylist,
+    addSongsToPlaylist,
+    removeSongFromPlaylist,
+    deletePlaylist,
+    updateSongOrderInPlaylist,
+    renamePlaylist,
+};

@@ -2,14 +2,13 @@
 
 import { state, elements, PLAYBACK_MODES } from './state.js';
 import { play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
-import { updatePlayingIndicators, renderCurrentView } from './ui-manager.js'; // renderCurrentViewもインポートしておく
+import { updatePlayingIndicators, renderCurrentView } from './ui-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
 import { updateNowPlayingView } from './ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
 
 export async function playSong(index, sourceList = null, forcePlay = false) {
-    // ▼▼▼ ログ追加 ▼▼▼
     console.log(`[Logger] 1. playSong() が呼び出されました。曲: ${sourceList ? sourceList[index].title : state.playbackQueue[index].title}`);
     
     state.songWaitingForAnalysis = null;
@@ -39,6 +38,13 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     }
     const songToPlay = songList[index];
 
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    if (songToPlay.type === 'local' && (songToPlay.bpm === undefined || songToPlay.bpm === null)) {
+        console.log(`[BPM] Requesting analysis for: ${songToPlay.title}`);
+        ipcRenderer.send('request-bpm-analysis', songToPlay);
+    }
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
     if (songToPlay.type === 'local' && !forcePlay) {
         const savedLoudness = await ipcRenderer.invoke('get-loudness-value', songToPlay.path);
         if (typeof savedLoudness !== 'number') {
@@ -57,13 +63,14 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     state.currentSongIndex = index;
     
     updateNowPlayingView(songToPlay);
-
-    // ▼▼▼ ログ追加 ▼▼▼
+    
     console.log('[Logger] 2. これからUIの表示更新を呼び出します。');
     updatePlayingIndicators();
     
     await playSongInPlayer(songToPlay);
 }
+
+// ... (他の関数は変更なし) ...
 
 export function playNextSong() {
     if (state.playbackQueue.length === 0) return;

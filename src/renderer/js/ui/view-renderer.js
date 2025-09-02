@@ -3,7 +3,9 @@
 import { state, elements } from '../state.js';
 import { showAlbum, showArtist, showPlaylist } from '../navigation.js';
 import { playSong } from '../playback-manager.js';
+// ▼▼▼ ここからが修正箇所です ▼▼▼
 import { setVisualizerTarget } from '../player.js';
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
 import { VirtualScroller } from '../virtual-scroller.js';
 import { createSongItem, createAlbumGridItem, createArtistGridItem, createPlaylistGridItem } from './element-factory.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
@@ -108,15 +110,20 @@ export function renderAlbumView() {
                 const addToPlaylistSubmenu = playlists.map(playlist => ({
                     label: playlist.name,
                     action: async () => {
-                        const result = await ipcRenderer.invoke('add-album-to-playlist', { albumKey: key, playlistName: playlist.name });
-                        if (result.success && result.addedCount > 0) {
-                            showNotification(`「${album.title}」の ${result.addedCount} 曲をプレイリスト「${playlist.name}」に追加しました。`);
-                            hideNotification(3000);
-                        } else if (result.success && result.addedCount === 0) {
-                            showNotification(`すべての曲が既にプレイリストに存在します。`);
-                            hideNotification(3000);
-                        } else {
-                            showNotification(`プレイリストへの追加に失敗しました。`, 3000);
+                        const albumToAdd = state.albums.get(key);
+                        if (albumToAdd && albumToAdd.songs) {
+                            const songPaths = albumToAdd.songs.map(s => s.path);
+                            const result = await ipcRenderer.invoke('add-album-to-playlist', { songPaths, playlistName: playlist.name });
+
+                            if (result.success && result.addedCount > 0) {
+                                showNotification(`「${album.title}」の ${result.addedCount} 曲をプレイリスト「${playlist.name}」に追加しました。`);
+                                hideNotification(3000);
+                            } else if (result.success && result.addedCount === 0) {
+                                showNotification(`すべての曲が既にプレイリストに存在します。`);
+                                hideNotification(3000);
+                            } else {
+                                showNotification(`プレイリストへの追加に失敗しました。`, 3000);
+                            }
                         }
                     }
                 }));
@@ -267,6 +274,13 @@ export function renderAlbumDetailView(album) {
     
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, album.songs));
     
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    const playingItem = listElement.querySelector('.song-item.playing');
+    if (playingItem) {
+        setVisualizerTarget(playingItem);
+    }
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+    
     window.observeNewArtworks(viewWrapper);
 }
 
@@ -306,7 +320,9 @@ export function renderArtistDetailView(artist) {
     window.observeNewArtworks(viewWrapper);
 }
 
-export function renderPlaylistDetailView(playlistName, songs) {
+export function renderPlaylistDetailView(playlistDetails) {
+    const { name: playlistName, songs, artworks } = playlistDetails;
+
     clearMainContent();
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
@@ -334,11 +350,6 @@ export function renderPlaylistDetailView(playlistName, songs) {
     listElement.className = 'music-list';
     
     const artworkContainer = viewWrapper.querySelector('.playlist-art-collage');
-    const artworks = songs.map(s => {
-        const album = state.albums.get(s.albumKey);
-        return album ? album.artwork : null;
-    }).filter(Boolean);
-    
     const resolver = (artwork) => resolveArtworkPath(artwork, true);
     createPlaylistArtwork(artworkContainer, artworks, resolver);
 
@@ -356,6 +367,13 @@ export function renderPlaylistDetailView(playlistName, songs) {
     elements.mainContent.appendChild(viewWrapper);
     
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, songs));
+    
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    const playingItem = listElement.querySelector('.song-item.playing');
+    if (playingItem) {
+        setVisualizerTarget(playingItem);
+    }
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
     
     window.observeNewArtworks(viewWrapper);
 }

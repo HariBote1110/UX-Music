@@ -4,12 +4,11 @@ const { ipcMain } = require('electron');
 const playlistManager = require('../playlist-manager');
 
 let libraryStore;
-let albumsStore; // ★★★ 修正点: albumsStore変数を追加 ★★★
+let albumsStore;
 
 function getPlaylistsWithArtwork() {
     const playlistNames = playlistManager.getAllPlaylists();
     const mainLibrary = libraryStore.load() || [];
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
     const albumsData = albumsStore.load() || {};
     const albumsMap = new Map(Object.entries(albumsData));
     const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
@@ -17,27 +16,24 @@ function getPlaylistsWithArtwork() {
     return playlistNames.map(name => {
         const songPaths = playlistManager.getPlaylistSongs(name);
         const artworks = songPaths
-            .map(path => libraryMap.get(path)) // 曲のパスから曲オブジェクトを取得
-            .filter(Boolean) // ライブラリに見つからない曲を除外
+            .map(path => libraryMap.get(path))
+            .filter(Boolean)
             .map(song => {
-                // 曲のalbumKeyを使ってアルバム情報を検索し、アートワークを取得
                 if (song.albumKey) {
                     const album = albumsMap.get(song.albumKey);
                     return album ? album.artwork : null;
                 }
-                // 念の為、古い形式のデータにも対応
                 return song.artwork;
             })
-            .filter(Boolean) // アートワークがなかったものを除外
-            .slice(0, 4); // 先頭4つだけ取得
+            .filter(Boolean)
+            .slice(0, 4);
         return { name, artworks };
     });
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 }
 
 function registerPlaylistHandlers(stores, sendToAllWindows) {
     libraryStore = stores.library;
-    albumsStore = stores.albums; // ★★★ 修正点: albumsStoreを初期化 ★★★
+    albumsStore = stores.albums;
 
     ipcMain.handle('get-all-playlists', () => {
         return playlistManager.getAllPlaylists();
@@ -51,6 +47,33 @@ function registerPlaylistHandlers(stores, sendToAllWindows) {
         const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
         const songs = songPaths.map(path => libraryMap.get(path)).filter(Boolean);
         return songs;
+    });
+    
+    ipcMain.handle('get-playlist-details', (event, playlistName) => {
+        const songPaths = playlistManager.getPlaylistSongs(playlistName);
+        if (!songPaths || songPaths.length === 0) {
+            return { name: playlistName, songs: [], artworks: [] };
+        }
+
+        const mainLibrary = libraryStore.load() || [];
+        const albumsData = albumsStore.load() || {};
+        const albumsMap = new Map(Object.entries(albumsData));
+        const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
+        
+        const songs = songPaths.map(path => libraryMap.get(path)).filter(Boolean);
+
+        const artworks = songs
+            .map(song => {
+                if (song.albumKey) {
+                    const album = albumsMap.get(song.albumKey);
+                    return album ? album.artwork : null;
+                }
+                return song.artwork;
+            })
+            .filter(Boolean)
+            .slice(0, 4);
+
+        return { name: playlistName, songs, artworks };
     });
 
     ipcMain.handle('create-playlist', (event, name) => {
@@ -87,10 +110,13 @@ function registerPlaylistHandlers(stores, sendToAllWindows) {
         return result;
     });
 
-    ipcMain.handle('add-album-to-playlist', (event, { albumKey, playlistName }) => {
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    ipcMain.handle('add-album-to-playlist', (event, { songPaths, playlistName }) => {
         const library = libraryStore.load() || [];
-        const songsToAdd = library.filter(song => song.albumKey === albumKey);
+        const libraryMap = new Map(library.map(song => [song.path, song]));
         
+        const songsToAdd = songPaths.map(p => libraryMap.get(p)).filter(Boolean);
+
         if (songsToAdd.length > 0) {
             const result = playlistManager.addSongsToPlaylist(playlistName, songsToAdd);
             if (result.success && result.addedCount > 0) {
@@ -100,6 +126,7 @@ function registerPlaylistHandlers(stores, sendToAllWindows) {
         }
         return { success: true, addedCount: 0 };
     });
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 }
 
 module.exports = { registerPlaylistHandlers, getPlaylistsWithArtwork };

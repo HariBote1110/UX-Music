@@ -1,6 +1,6 @@
 // uxmusic/src/renderer/js/player.js
 
-import { elements, state } from './state.js'; // `state` を追加
+import { elements, state } from './state.js';
 import { updateSyncedLyrics } from './lyrics-manager.js';
 import { updatePlayingIndicators } from './ui-manager.js';
 const { ipcRenderer } = require('electron');
@@ -29,6 +29,11 @@ let dataArray;
 let visualizerFrameId;
 
 let currentVisualizerBars = null;
+let observedTarget = null;
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+let lastHeights = new Array(6).fill(4); // スムージング用の高さを保持する配列
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
+
 
 async function resumeAudioContext() {
     if (audioContext && audioContext.state === 'suspended') {
@@ -91,6 +96,83 @@ export async function setAudioOutput(deviceId) {
     }
 }
 
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+function draw() {
+    if (currentVisualizerBars && analyser) {
+        let isVisible = false;
+        if (observedTarget && document.body.contains(observedTarget)) {
+            const rect = observedTarget.getBoundingClientRect();
+            const viewHeight = Math.max(document.documentElement.clientHeight, window.innerHeight);
+            isVisible = !(rect.bottom < 0 || rect.top - viewHeight >= 0);
+        }
+
+        if (isVisible) {
+            analyser.getByteFrequencyData(dataArray);
+            const bufferLength = analyser.frequencyBinCount;
+            
+            const barIndices = [
+                Math.floor(bufferLength * 0.05), // Bass
+                Math.floor(bufferLength * 0.15), // Low-mid
+                Math.floor(bufferLength * 0.30), // Mid
+                Math.floor(bufferLength * 0.50), // High-mid
+                Math.floor(bufferLength * 0.70), // Presence
+                Math.floor(bufferLength * 0.90), // Brilliance
+            ];
+
+            const heights = barIndices.map((dataIndex, i) => {
+                const value = dataArray[dataIndex] / 255;
+                const scaledValue = Math.pow(value, 2.5); // 指数カーブを少し強くしてメリハリを強調
+                const multiplier = i === 0 ? 1.1 : 1 - (Math.abs(i - 2.5) * 0.15); // 低音域を少し強調
+                
+                const targetHeight = (scaledValue * multiplier * 16) + 4;
+
+                // スムージング処理: 前回の高さから目標の高さへ滑らかに変化させる
+                const newHeight = lastHeights[i] * 0.4 + targetHeight * 0.6;
+                lastHeights[i] = newHeight;
+                return newHeight;
+            });
+
+            currentVisualizerBars.forEach((bar, index) => {
+                bar.style.height = `${heights[index]}px`;
+            });
+        } else if (currentVisualizerBars) {
+            lastHeights.fill(4); // 見えない時はリセット
+            currentVisualizerBars.forEach(bar => {
+                if (bar.style.height !== '4px') {
+                    bar.style.height = '4px';
+                }
+            });
+        }
+    }
+    
+    if (localPlayer && !localPlayer.paused) {
+        visualizerFrameId = requestAnimationFrame(draw);
+    } else {
+        visualizerFrameId = null;
+    }
+}
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
+
+export function setVisualizerTarget(targetElement) {
+    document.querySelectorAll('.indicator-ready').forEach(item => {
+        item.classList.remove('indicator-ready');
+    });
+
+    observedTarget = targetElement;
+
+    if (targetElement) {
+        const bars = targetElement.querySelectorAll('.playing-indicator-bar');
+        if (bars.length > 0) {
+            targetElement.classList.add('indicator-ready');
+            currentVisualizerBars = bars;
+        } else {
+             currentVisualizerBars = null;
+        }
+    } else {
+        currentVisualizerBars = null;
+    }
+}
+
 export function initPlayer(playerElement, callbacks) {
     localPlayer = playerElement;
     onSongEndedCallback = callbacks.onSongEnded;
@@ -103,7 +185,7 @@ export function initPlayer(playerElement, callbacks) {
         gainNode = audioContext.createGain();
 
         analyser = audioContext.createAnalyser();
-        analyser.fftSize = 64;
+        analyser.fftSize = 256;
         const bufferLength = analyser.frequencyBinCount;
         dataArray = new Uint8Array(bufferLength);
 
@@ -138,7 +220,10 @@ export function initPlayer(playerElement, callbacks) {
         animationFrameId = requestAnimationFrame(smoothUpdateLoop);
         
         updatePlayingIndicators();
-        startVisualizer();
+        
+        if (!visualizerFrameId) {
+            visualizerFrameId = requestAnimationFrame(draw);
+        }
     });
 
     localPlayer.addEventListener('pause', () => {
@@ -148,7 +233,16 @@ export function initPlayer(playerElement, callbacks) {
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
         cancelAnimationFrame(animationFrameId);
         
-        pauseVisualizer();
+        if (visualizerFrameId) {
+            cancelAnimationFrame(visualizerFrameId);
+            visualizerFrameId = null;
+        }
+        if (currentVisualizerBars) {
+            lastHeights.fill(4); // ポーズ時もリセット
+            currentVisualizerBars.forEach(bar => {
+                bar.style.height = '4px';
+            });
+        }
     });
 
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
@@ -193,7 +287,7 @@ export function initPlayer(playerElement, callbacks) {
     }
 }
 
-function getColorsFromArtwork(img) {
+async function getColorsFromArtwork(img) {
     return new Promise((resolve) => {
         const processImage = () => {
             const canvas = document.createElement('canvas');
@@ -263,84 +357,11 @@ export async function setEqualizerColorFromArtwork(imageElement) {
     }
 }
 
-
-function startVisualizer() {
-    if (visualizerFrameId) {
-        cancelAnimationFrame(visualizerFrameId);
-    }
-    visualizerFrameId = requestAnimationFrame(draw);
-}
-
-export function setVisualizerTarget(targetElement) {
-    document.querySelectorAll('.indicator-ready').forEach(item => {
-        item.classList.remove('indicator-ready');
-    });
-
-    if (targetElement) {
-        const bars = targetElement.querySelectorAll('.playing-indicator-bar');
-        if (bars.length > 0) {
-            targetElement.classList.add('indicator-ready');
-            currentVisualizerBars = bars;
-        } else {
-             currentVisualizerBars = null;
-        }
-    } else {
-        currentVisualizerBars = null;
-    }
-}
-
-function draw() {
-    if (currentVisualizerBars && analyser) {
-        analyser.getByteFrequencyData(dataArray);
-        const bufferLength = analyser.frequencyBinCount;
-        
-        const heights = [
-            dataArray[Math.floor(bufferLength * 0.1)],
-            dataArray[Math.floor(bufferLength * 0.25)],
-            dataArray[Math.floor(bufferLength * 0.4)],
-            dataArray[Math.floor(bufferLength * 0.55)],
-            dataArray[Math.floor(bufferLength * 0.7)],
-            dataArray[Math.floor(bufferLength * 0.85)],
-        ].map(val => (val / 255) * 16 + 4);
-
-        currentVisualizerBars.forEach((bar, index) => {
-            bar.style.height = `${heights[index]}px`;
-        });
-    }
-    visualizerFrameId = requestAnimationFrame(draw);
-}
-
-function pauseVisualizer() {
-    if (visualizerFrameId) {
-        cancelAnimationFrame(visualizerFrameId);
-        visualizerFrameId = null;
-    }
-    if (currentVisualizerBars) {
-        currentVisualizerBars.forEach(bar => {
-            bar.style.height = '4px';
-        });
-    }
-}
-
-function stopVisualizer() {
-    if (visualizerFrameId) {
-        cancelAnimationFrame(visualizerFrameId);
-        visualizerFrameId = null;
-    }
-    setVisualizerTarget(null);
-    document.querySelectorAll('.playing-indicator-bar').forEach(bar => {
-        bar.style.height = '4px';
-    });
-}
-
 export async function play(song) {
-    // ★★★ ここからが修正箇所です ★★★
-    // ユーザーが設定したデバイスが保存されていれば、このタイミングで適用する
     if (state.preferredDeviceId) {
         await setAudioOutput(state.preferredDeviceId);
-        state.preferredDeviceId = null; // 一度適用したらクリアする
+        state.preferredDeviceId = null;
     }
-    // ★★★ ここまでが修正箇所です ★★★
 
     await stop();
     if (!song) {

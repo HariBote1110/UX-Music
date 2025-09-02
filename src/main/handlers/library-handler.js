@@ -6,12 +6,55 @@ const { scanPaths, parseFiles, analyzeLoudness } = require('../file-scanner');
 const os = require('os');
 const { sanitize } = require('../utils');
 const sharp = require('sharp');
+const MusicTempo = require('music-tempo');
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+const ffmpeg = require('fluent-ffmpeg');
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
 let libraryStore;
 let loudnessStore;
 let settingsStore;
 let playCountsStore;
 let albumsStore;
+
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+/**
+ * 音声データを解析してBPMを算出する
+ * @param {string} songPath - 解析対象の曲のパス
+ * @returns {Promise<number|null>} - 解析されたBPM値 or null
+ */
+async function analyzeBPM(songPath) {
+    console.log(`[BPM Analysis] Starting analysis for: ${songPath}`);
+    return new Promise((resolve, reject) => {
+        const audioData = [];
+        ffmpeg(songPath)
+            .toFormat('f32le') // 32-bit floating-point little-endian PCM
+            .audioChannels(1)    // Mono
+            .audioFrequency(44100) // Sample rate
+            .on('error', (err) => {
+                console.error(`[BPM Analysis] FFmpeg error for ${path.basename(songPath)}:`, err.message);
+                reject(err);
+            })
+            .on('data', (chunk) => {
+                audioData.push(chunk);
+            })
+            .on('end', () => {
+                try {
+                    const buffer = Buffer.concat(audioData);
+                    const calcTempo = new MusicTempo(buffer);
+                    const roundedBPM = Math.round(calcTempo.tempo);
+                    console.log(`[BPM Analysis] Analysis successful for ${path.basename(songPath)}: ${roundedBPM} BPM`);
+                    resolve(roundedBPM);
+                } catch (error) {
+                     console.error(`[BPM Analysis] music-tempo error for ${path.basename(songPath)}:`, error);
+                    resolve(null); // music-tempoが失敗した場合はnullを返す
+                }
+            })
+            .pipe(); // ストリームを開始
+    }).catch(() => null); // ffmpegまたはPromiseチェーンのエラーをキャッチしてnullを返す
+}
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
+
 
 async function saveArtworkToFile(picture, songPath) {
     if (!picture || !picture.data) return null;
@@ -56,12 +99,25 @@ function addSongsToLibraryAndSave(newSongs) {
     return uniqueNewSongs;
 }
 
-function registerLibraryHandlers(stores) {
+function registerLibraryHandlers(stores, sendToAllWindows) {
     libraryStore = stores.library;
     loudnessStore = stores.loudness;
     settingsStore = stores.settings;
     playCountsStore = stores.playCounts;
     albumsStore = stores.albums;
+
+    ipcMain.on('request-bpm-analysis', async (event, song) => {
+        const bpm = await analyzeBPM(song.path);
+        if (bpm !== null) {
+            const library = libraryStore.load() || [];
+            const songIndex = library.findIndex(s => s.path === song.path);
+            if (songIndex > -1) {
+                library[songIndex].bpm = bpm;
+                libraryStore.save(library);
+                sendToAllWindows('bpm-analysis-complete', library[songIndex]);
+            }
+        }
+    });
 
     ipcMain.on('start-scan-paths', async (event, paths) => {
         console.time('Main: Total Import Process');

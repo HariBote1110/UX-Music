@@ -11,7 +11,6 @@ const playlistOrderStore = new DataStore('playlist-order.json');
 try {
     if (!fs.existsSync(playlistsDir)) {
         fs.mkdirSync(playlistsDir, { recursive: true });
-        console.log(`[Playlist Manager] Created playlists directory at: ${playlistsDir}`);
     }
 } catch (error) {
     console.error(`[Playlist Manager] Failed to create playlists directory on initial load:`, error);
@@ -127,12 +126,6 @@ function addSongToPlaylist(playlistName, song) {
 }
 
 // ▼▼▼ ここからが修正箇所です ▼▼▼
-/**
- * 複数の曲をプレイリストに追加する
- * @param {string} playlistName - プレイリスト名
- * @param {Array<object>} songs - 追加する曲オブジェクトの配列
- * @returns {object} - { success: boolean, addedCount: number }
- */
 function addSongsToPlaylist(playlistName, songs) {
     if (!playlistName || !Array.isArray(songs) || songs.length === 0) {
         return { success: false, addedCount: 0 };
@@ -145,17 +138,28 @@ function addSongsToPlaylist(playlistName, songs) {
 
     try {
         const content = fs.readFileSync(playlistPath, 'utf-8');
+        const lines = content.split('\n');
+        
+        const existingPaths = new Set(
+            lines
+                .map(line => line.trim().replace(/\\/g, '/'))
+                .filter(line => line && !line.startsWith('#'))
+        );
+
         let newContent = '';
         let addedCount = 0;
 
         songs.forEach(song => {
-            if (song && song.path && !content.includes(song.path)) {
-                const duration = Math.round(song.duration || -1);
-                const title = `${song.artist} - ${song.title}`;
-                const extinf = `#EXTINF:${duration},${title}\n`;
-                const songPathEntry = `${song.path}\n`;
-                newContent += extinf + songPathEntry;
-                addedCount++;
+            if (song && song.path) {
+                const normalizedPath = song.path.trim().replace(/\\/g, '/');
+                if (!existingPaths.has(normalizedPath)) {
+                    const duration = Math.round(song.duration || -1);
+                    const title = `${song.artist} - ${song.title}`;
+                    const extinf = `#EXTINF:${duration},${title}\n`;
+                    const songPathEntry = `${song.path}\n`;
+                    newContent += extinf + songPathEntry;
+                    addedCount++;
+                }
             }
         });
 
@@ -170,6 +174,7 @@ function addSongsToPlaylist(playlistName, songs) {
     }
 }
 // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
 
 function getPlaylistSongs(playlistName) {
     const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
@@ -270,7 +275,7 @@ module.exports = {
     createPlaylist,
     getPlaylistSongs,
     addSongToPlaylist,
-    addSongsToPlaylist, // ▼▼▼ 修正点: エクスポートに追加 ▼▼▼
+    addSongsToPlaylist,
     removeSongFromPlaylist,
     deletePlaylist,
     updateSongOrderInPlaylist,

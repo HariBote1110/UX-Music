@@ -1,0 +1,38 @@
+[
+  {
+    "id": "morning_chill",
+    "name": "爽やかな朝に",
+    "bpm_range": [80, 125],
+    "title_phrases": ["morning", "sun", "sky", "awake", "fresh", "good day"]
+  },
+  {
+    "id": "workout_energy",
+    "name": "ワークアウト",
+    "bpm_range": [125, 180],
+    "title_phrases": ["run", "power", "fire", "future", "step", "energy", "beat"]
+  },
+  {
+    "id": "focus_ambient",
+    "name": "集中したい時に",
+    "bpm_range": [60, 100],
+    "title_phrases": ["ambient", "stars", "calm", "focus", "deep", "space"]
+  },
+  {
+    "id": "night_drive",
+    "name": "深夜のドライブ",
+    "bpm_range": [100, 130],
+    "title_phrases": ["drive", "night", "city", "lights", "neon", "street"]
+  },
+  {
+    "id": "party_upbeat",
+    "name": "パーティーチューン",
+    "bpm_range": [120, 160],
+    "title_phrases": ["party", "dance", "night", "lights", "club", "weekend"]
+  },
+  {
+    "id": "relax_chill",
+    "name": "リラックスタイム",
+    "bpm_range": [50, 90],
+    "title_phrases": ["relax", "chill", "calm", "sleep", "dream", "slow"]
+  }
+]

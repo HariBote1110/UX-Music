@@ -26,7 +26,9 @@ export function showView(viewId, options = {}) {
     else if (viewId === 'playlist-view') renderPlaylistView();
     else if (viewId === 'album-detail-view') renderAlbumDetailView(options.data);
     else if (viewId === 'artist-detail-view') renderArtistDetailView(options.data);
-    else if (viewId === 'playlist-detail-view') renderPlaylistDetailView(options.identifier, options.data);
+    // ▼▼▼ 修正点 ▼▼▼
+    else if (viewId === 'playlist-detail-view') renderPlaylistDetailView(options.data);
+    // ▲▲▲ 修正点ここまで ▲▲▲
 }
 
 export function initNavigation() {
@@ -39,11 +41,13 @@ export function initNavigation() {
     });
 }
 
+// ▼▼▼ ここからが修正箇所です ▼▼▼
 export async function showPlaylist(playlistName) {
-    const songs = await ipcRenderer.invoke('get-playlist-songs', playlistName);
-    state.currentlyViewedSongs = songs;
-    showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: songs });
+    const playlistDetails = await ipcRenderer.invoke('get-playlist-details', playlistName);
+    state.currentlyViewedSongs = playlistDetails.songs;
+    showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: playlistDetails });
 }
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
 export function showAlbum(albumKey) {
     const album = state.albums.get(albumKey);

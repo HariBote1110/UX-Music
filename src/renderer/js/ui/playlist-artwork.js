@@ -1,11 +1,19 @@
 // uxmusic/src/renderer/js/ui/playlist-artwork.js
 
-export function createPlaylistArtwork(container, artworks, resolver) { // resolverを受け取るように引数を変更
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+function createPlaylistArtwork(container, artworks, resolver) {
     container.innerHTML = '';
     container.classList.remove('grid-collage');
 
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
     const defaultImgSrc = './assets/default_artwork.png';
+
+    if (!resolver) {
+        console.error('createPlaylistArtwork was called without a resolver function, which is required.');
+        const img = document.createElement('img');
+        img.src = defaultImgSrc;
+        container.appendChild(img);
+        return;
+    }
 
     if (!artworks || artworks.length === 0) {
         const img = document.createElement('img');
@@ -13,8 +21,7 @@ export function createPlaylistArtwork(container, artworks, resolver) { // resolv
         container.appendChild(img);
     } else if (artworks.length < 4) {
         const img = document.createElement('img');
-        // resolverが提供されていれば使い、なければartworks[0]をそのまま使う
-        img.src = resolver ? resolver(artworks[0]) : artworks[0];
+        img.src = resolver(artworks[0]);
         container.appendChild(img);
     } else {
         container.classList.add('grid-collage');
@@ -22,11 +29,12 @@ export function createPlaylistArtwork(container, artworks, resolver) { // resolv
             const imgWrapper = document.createElement('div');
             imgWrapper.className = 'collage-img-wrapper';
             const img = document.createElement('img');
-            // resolverが提供されていれば使い、なければartworks[i]をそのまま使う
-            img.src = resolver ? resolver(artworks[i]) : artworks[i];
+            img.src = resolver(artworks[i]);
             imgWrapper.appendChild(img);
             container.appendChild(imgWrapper);
         }
     }
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 }
+
+export { createPlaylistArtwork };
+// ▲▲▲ ここまでが修正箇所です ▲▲▲

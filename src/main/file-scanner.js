@@ -87,12 +87,9 @@ async function parseFiles(filePaths) {
             const common = metadata.common;
             const artwork = (common.picture && common.picture.length > 0) ? common.picture[0] : null;
 
-            // ▼▼▼ ここからが修正箇所です ▼▼▼
-            // コンテナ情報も使って、より確実に映像の有無を判定する
             const hasVideo = 
                 (metadata.format.trackInfo && metadata.format.trackInfo.some(track => track.type === 'video')) 
                 || (metadata.format.container && metadata.format.container.toLowerCase().includes('mp4'));
-            // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
             songs.push({
                 path: filePath,
@@ -103,6 +100,7 @@ async function parseFiles(filePaths) {
                 artwork: artwork,
                 duration: metadata.format.duration,
                 year: common.year,
+                bpm: common.bpm, // ★★★ この行を追加 ★★★
                 fileSize: stats.size,
                 type: 'local',
                 hasVideo: hasVideo,

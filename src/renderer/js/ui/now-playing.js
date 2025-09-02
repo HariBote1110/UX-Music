@@ -55,14 +55,16 @@ export function updateNowPlayingView(song) {
         artworkImage.src = song.artwork;
 
     } else {
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
         const img = document.createElement('img');
+        img.crossOrigin = "Anonymous"; // CORSエラーを回避
         
+        // 画像の読み込みが完了してから色抽出を実行する
         img.onload = () => setEqualizerColorFromArtwork(img);
 
         const album = state.albums.get(song.albumKey);
         let artwork = album ? album.artwork : null;
 
-        // BUG FIX: Force default artwork for "Unknown Album"
         if (song.album === 'Unknown Album') {
             artwork = null;
         }
@@ -72,16 +74,16 @@ export function updateNowPlayingView(song) {
         if (song.hasVideo && localPlayer) {
             nowPlayingArtworkContainer.classList.add('video-mode');
             localPlayer.poster = img.src;
-            // ▼▼▼ ここからが修正箇所です ▼▼▼
-            localPlayer.style.display = 'block'; // プレーヤーを再表示
-            // ▲▲▲ ここまでが修正箇所です ▲▲▲
+            localPlayer.style.display = 'block';
             nowPlayingArtworkContainer.appendChild(localPlayer);
         } else {
             nowPlayingArtworkContainer.classList.remove('video-mode');
             nowPlayingArtworkContainer.appendChild(img);
         }
         
-        if (img.complete) setEqualizerColorFromArtwork(img);
+        // 原因となっていた不要な呼び出しを削除
+        // if (img.complete) setEqualizerColorFromArtwork(img);
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
     }
     
     if (song && song.hubUrl) {

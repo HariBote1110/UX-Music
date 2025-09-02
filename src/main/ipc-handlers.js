@@ -2,6 +2,7 @@ const { BrowserWindow, ipcMain } = require('electron');
 const DataStore = require('./data-store');
 const playlistManager = require('./playlist-manager');
 const { performance } = require('perf_hooks');
+const fs = require('fs');
 
 const logPerf = (message) => {
     console.log(`[PERF][IPC-Handlers] ${message}`);
@@ -41,6 +42,18 @@ function registerIpcHandlers() {
     ipcMain.on('save-migrated-data', (event, { songs, albums }) => {
         console.log('Main: Saving migrated library and albums data...');
         try {
+            const libraryPath = stores.library.path;
+            const albumsPath = stores.albums.path;
+
+            if (fs.existsSync(libraryPath)) {
+                fs.copyFileSync(libraryPath, libraryPath + '.bak');
+                console.log(`[Backup] library.json backed up to ${libraryPath}.bak`);
+            }
+            if (fs.existsSync(albumsPath)) {
+                fs.copyFileSync(albumsPath, albumsPath + '.bak');
+                console.log(`[Backup] albums.json backed up to ${albumsPath}.bak`);
+            }
+
             stores.library.save(songs);
             stores.albums.save(albums);
             console.log('Main: Migration data saved successfully.');
@@ -48,11 +61,50 @@ function registerIpcHandlers() {
             console.error('Main: Failed to save migration data', error);
         }
     });
+
+    ipcMain.on('debug-rollback-migration', (event) => {
+        try {
+            console.log('[DEBUG] Rolling back migration...');
+            const libraryPath = stores.library.path;
+            const albumsPath = stores.albums.path;
+            const libraryBackupPath = libraryPath + '.bak';
+            const albumsBackupPath = albumsPath + '.bak';
+
+            if (fs.existsSync(libraryBackupPath)) {
+                fs.renameSync(libraryBackupPath, libraryPath);
+                console.log('[DEBUG] Rolled back library.json');
+            } else {
+                 console.log('[DEBUG] No library.json backup found.');
+            }
+
+            if (fs.existsSync(albumsBackupPath)) {
+                fs.renameSync(albumsBackupPath, albumsPath);
+                 console.log('[DEBUG] Rolled back albums.json');
+            } else {
+                 console.log('[DEBUG] No albums.json backup found.');
+            }
+            
+            if (event.sender && !event.sender.isDestroyed()) {
+                event.sender.send('force-reload-library');
+            }
+        } catch (error) {
+            console.error('[DEBUG] Failed to rollback migration:', error);
+        }
+    });
+    
     logPerf("Migration handler registered.");
+    
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    ipcMain.handle('get-situation-playlists', (event) => {
+        const { createSituationPlaylists } = require('./mood-analyzer');
+        const library = stores.library.load() || [];
+        return createSituationPlaylists(library);
+    });
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
     logPerf("Requiring library-handler...");
     const { registerLibraryHandlers } = require('./handlers/library-handler');
-    registerLibraryHandlers(stores);
+    registerLibraryHandlers(stores, sendToAllWindows);
     logPerf("Library handlers registered.");
 
     logPerf("Requiring youtube-handler...");

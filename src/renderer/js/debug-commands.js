@@ -23,6 +23,26 @@ export function initDebugCommands() {
             }
         },
 
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        /**
+         * 直前に行われたデータ構造のマイグレーションを元に戻します。
+         */
+        rollbackMigration: () => {
+            const confirmation = confirm(
+                '本当にマイグレーションをロールバックしますか？\n' +
+                'library.json と albums.json をマイグレーション直前の状態に戻します。\n' +
+                'この操作は元に戻せません。'
+            );
+
+            if (confirmation) {
+                console.log('[DEBUG] マイグレーションのロールバックコマンドを送信します...');
+                ipcRenderer.send('debug-rollback-migration');
+            } else {
+                console.log('[DEBUG] マイグレーションのロールバックはキャンセルされました。');
+            }
+        },
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
         /**
          * 利用可能なデバッグコマンドのヘルプを表示します。
          */
@@ -30,8 +50,9 @@ export function initDebugCommands() {
             console.log(
                 '%cUX Music デバッグコマンド一覧:\n' +
                 '%c' +
-                '  uxDebug.resetLibrary()  - 全てのライブラリデータ（曲、再生回数、ラウドネス、アートワーク）を削除します。\n' +
-                '  uxDebug.help()          - このヘルプメッセージを表示します。',
+                '  uxDebug.resetLibrary()        - 全てのライブラリデータ（曲、再生回数、ラウドネス、アートワーク）を削除します。\n' +
+                '  uxDebug.rollbackMigration() - 直前に行われたデータ構造のマイグレーションを元に戻します。\n' +
+                '  uxDebug.help()                - このヘルプメッセージを表示します。',
                 'font-weight: bold; font-size: 1.2em; color: #1DB954;',
                 'font-weight: normal; font-size: 1em; color: inherit;'
             );

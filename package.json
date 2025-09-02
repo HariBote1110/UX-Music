@@ -1,6 +1,6 @@
 {
   "name": "UX-Music",
-  "version": "0.1.8",
+  "version": "0.1.9 Alpha 1a",
   "description": "Music Player UX Music",
   "main": "src/main/index.js",
   "scripts": {
@@ -19,6 +19,7 @@
     "ffprobe-static": "^3.1.0",
     "fluent-ffmpeg": "^2.1.3",
     "music-metadata": "^7.14.0",
+    "music-tempo": "^1.0.3",
     "p-limit": "^6.2.0",
     "sharp": "^0.33.4",
     "ytpl": "^2.3.0"
