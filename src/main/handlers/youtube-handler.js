@@ -1,8 +1,4 @@
 const { ipcMain } = require('electron');
-// ▼▼▼ 変更点：不要なrequireを削除 ▼▼▼
-// const ytdl = require('@distube/ytdl-core');
-// const ytpl = require('ytpl');
-// ▲▲▲ 変更点ここまで ▲▲▲
 const path = require('path');
 const fs = require('fs');
 const { sanitize } = require('../utils');
@@ -21,9 +17,8 @@ function findHubUrl(description) {
     return match ? match[0] : null;
 }
 
-// ▼▼▼ 変更点：processYouTubeVideoをハンドラ内に移動 ▼▼▼
 async function processYouTubeVideo(info, sourceUrl) {
-    const ytdl = require('@distube/ytdl-core'); // ★★★ 関数内でrequire
+    const ytdl = require('@distube/ytdl-core'); // ★★★ 関数が呼び出された時に初めて読み込む ★★★
     const details = info.videoDetails;
     const hubUrl = findHubUrl(details.description);
     const settings = settingsStore.load();
@@ -101,7 +96,6 @@ async function processYouTubeVideo(info, sourceUrl) {
         hubUrl: hubUrl
     };
 }
-// ▲▲▲ 変更点ここまで ▲▲▲
 
 function registerYouTubeHandlers(stores, managers) {
     libraryStore = stores.library;
@@ -111,8 +105,8 @@ function registerYouTubeHandlers(stores, managers) {
     addSongsToLibraryAndSave = managers.addSongsFunc;
 
     ipcMain.on('import-youtube-playlist', async (event, playlistUrl) => {
-        const ytpl = require('ytpl'); // ★★★ ハンドラ内でrequire
-        const ytdl = require('@distube/ytdl-core'); // ★★★ ハンドラ内でrequire
+        const ytpl = require('ytpl'); // ★★★ 関数が呼び出された時に初めて読み込む ★★★
+        const ytdl = require('@distube/ytdl-core'); // ★★★ 関数が呼び出された時に初めて読み込む ★★★
 
         const window = event.sender;
         let playlist;
@@ -153,7 +147,7 @@ function registerYouTubeHandlers(stores, managers) {
     });
 
     ipcMain.on('add-youtube-link', async (event, url) => {
-        const ytdl = require('@distube/ytdl-core'); // ★★★ ハンドラ内でrequire
+        const ytdl = require('@distube/ytdl-core'); // ★★★ 関数が呼び出された時に初めて読み込む ★★★
 
         const window = event.sender;
         try {

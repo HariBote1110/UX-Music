@@ -1,64 +1,56 @@
 const { ipcRenderer } = require('electron');
+import { setVisualizerFpsLimit, toggleVisualizerEcoMode } from './player.js'; // ★ toggleVisualizerEcoMode をインポート
 
-/**
- * デバッグ用コマンドインターフェイスを初期化し、windowオブジェクトに登録する
- */
 export function initDebugCommands() {
     const uxDebug = {
-        /**
-         * ライブラリ、再生回数、ラウドネス情報、アートワークをすべて削除します。
-         */
         resetLibrary: () => {
-            const confirmation = confirm(
-                '本当にライブラリをリセットしますか？\n' +
-                'すべての曲、再生回数、ラウドネス情報、アートワークが削除されます。\n' +
-                'この操作は元に戻せません。'
-            );
-
+            const confirmation = confirm('本当にライブラリをリセットしますか？...');
             if (confirmation) {
-                console.log('[DEBUG] ライブラリのリセットコマンドを送信します...');
                 ipcRenderer.send('debug-reset-library');
-            } else {
-                console.log('[DEBUG] ライブラリのリセットはキャンセルされました。');
             }
+        },
+        rollbackMigration: () => {
+            const confirmation = confirm('本当にマイグレーションをロールバックしますか？...');
+            if (confirmation) {
+                ipcRenderer.send('debug-rollback-migration');
+            }
+        },
+        setVisualizerFps: (fps) => {
+            if (typeof fps !== 'number') {
+                console.error('[DEBUG] Please provide a number...');
+                return;
+            }
+            setVisualizerFpsLimit(fps);
         },
 
         // ▼▼▼ ここからが修正箇所です ▼▼▼
         /**
-         * 直前に行われたデータ構造のマイグレーションを元に戻します。
+         * ビジュアライザーのエコモード（表示中のみ描画）を切り替えます。
+         * @param {boolean} enabled - trueで有効、falseで無効
          */
-        rollbackMigration: () => {
-            const confirmation = confirm(
-                '本当にマイグレーションをロールバックしますか？\n' +
-                'library.json と albums.json をマイグレーション直前の状態に戻します。\n' +
-                'この操作は元に戻せません。'
-            );
-
-            if (confirmation) {
-                console.log('[DEBUG] マイグレーションのロールバックコマンドを送信します...');
-                ipcRenderer.send('debug-rollback-migration');
-            } else {
-                console.log('[DEBUG] マイグレーションのロールバックはキャンセルされました。');
+        toggleVisualizerEcoMode: (enabled) => {
+            if (typeof enabled !== 'boolean') {
+                console.error('[DEBUG] Please provide a boolean value (true or false).');
+                return;
             }
+            toggleVisualizerEcoMode(enabled);
         },
         // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
-        /**
-         * 利用可能なデバッグコマンドのヘルプを表示します。
-         */
         help: () => {
             console.log(
                 '%cUX Music デバッグコマンド一覧:\n' +
                 '%c' +
-                '  uxDebug.resetLibrary()        - 全てのライブラリデータ（曲、再生回数、ラウドネス、アートワーク）を削除します。\n' +
-                '  uxDebug.rollbackMigration() - 直前に行われたデータ構造のマイグレーションを元に戻します。\n' +
-                '  uxDebug.help()                - このヘルプメッセージを表示します。',
+                '  uxDebug.resetLibrary()                - 全てのライブラリデータを削除します。\n' +
+                '  uxDebug.rollbackMigration()         - データ構造のマイグレーションを元に戻します。\n' +
+                '  uxDebug.setVisualizerFps(fps)       - ビジュアライザーのFPS上限を設定します。(0で制限解除)\n' +
+                '  uxDebug.toggleVisualizerEcoMode(bool) - ビジュアライザーのエコモードを切り替えます。(trueで有効(デフォルト), falseで無効)\n' +
+                '  uxDebug.help()                          - このヘルプメッセージを表示します。',
                 'font-weight: bold; font-size: 1.2em; color: #1DB954;',
                 'font-weight: normal; font-size: 1em; color: inherit;'
             );
         }
     };
-
     window.uxDebug = uxDebug;
     console.log('%c[DEBUG] デバッグインターフェイスが読み込まれました。コマンド一覧は `uxDebug.help()` を実行してください。', 'color: orange;');
 }

@@ -1,7 +1,8 @@
 import { state, elements } from '../state.js';
 import { showAlbum, showArtist, showPlaylist, showSituationPlaylistDetail } from '../navigation.js';
 import { playSong } from '../playback-manager.js';
-import { setVisualizerTarget } from '../player.js';
+// ▼▼▼ disconnectVisualizerObserver をインポート ▼▼▼
+import { setVisualizerTarget, disconnectVisualizerObserver } from '../player.js';
 import { VirtualScroller } from '../virtual-scroller.js';
 import { createSongItem, createAlbumGridItem, createArtistGridItem, createPlaylistGridItem } from './element-factory.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
@@ -9,7 +10,6 @@ import { showContextMenu, formatTime, resolveArtworkPath } from './utils.js';
 import { showModal } from '../modal.js';
 import { showNotification, hideNotification } from './notification.js';
 const { ipcRenderer } = require('electron');
-const path = require('path');
 
 let trackViewScroller = null;
 
@@ -18,9 +18,12 @@ function clearMainContent() {
         trackViewScroller.destroy();
         trackViewScroller = null;
     }
+    // ▼▼▼ この行を追加 ▼▼▼
+    disconnectVisualizerObserver(); // ビューをクリアする際にObserverを解除
     elements.mainContent.innerHTML = '';
 }
 
+// ... (以降のコードは変更なし) ...
 export function destroyTrackViewScroller() {
     if (trackViewScroller) {
         trackViewScroller.destroy();

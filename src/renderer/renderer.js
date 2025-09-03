@@ -1,5 +1,3 @@
-// uxmusic/src/renderer/renderer.js
-
 import { initUI, addSongsToLibrary, renderCurrentView, updateAudioDevices, updatePlayCountDisplay } from './js/ui-manager.js';
 import { initNavigation, showPlaylist, showView } from './js/navigation.js';
 import { initIPC } from './js/ipc.js';
@@ -35,13 +33,41 @@ window.addEventListener('DOMContentLoaded', () => {
     initElements();
     initLazyLoader(elements.mainContent);
 
+    // ▼▼▼ このブロックをまるごと置き換えてください ▼▼▼
+    // --- アイドル状態検出 ---
+    let inactivityTimer;
+    const INACTIVITY_TIMEOUT_MS = 1 * 60 * 1000; // 5分間操作がなければアイドル状態に
+
+    function resetInactivityTimer() {
+        clearTimeout(inactivityTimer);
+        // アクティブに戻ったことをログに出力（クラスがあれば）
+        if (document.body.classList.contains('app-inactive')) {
+            console.log('[Performance] App is now ACTIVE.');
+        }
+        document.body.classList.remove('app-inactive');
+
+        inactivityTimer = setTimeout(() => {
+            document.body.classList.add('app-inactive');
+            // 非アクティブになったことをログに出力
+            console.log(`[Performance] App entered INACTIVE mode after ${INACTIVITY_TIMEOUT_MS / 1000 / 60} minutes of inactivity.`);
+        }, INACTIVITY_TIMEOUT_MS);
+    }
+
+    // イベントリスナーをセットアップしてタイマーをリセット
+    ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(event => {
+        document.addEventListener(event, resetInactivityTimer, true);
+    });
+    resetInactivityTimer(); // 初期化
+    // ▲▲▲ 置き換えはここまで ▲▲▲
+
     const MARQUEE_SELECTOR = '.marquee-wrapper';
     
     ipcRenderer.on('log-message', (event, { level, args }) => {
         const style = 'color: cyan; font-weight: bold;';
         console[level](`%c[Main]%c`, style, '', ...args);
     });
-
+    
+    // ... (以降のコードは変更なし) ...
     function initResizer() {
         const resizer = document.getElementById('resizer');
         const rightSidebar = document.querySelector('.right-sidebar');
@@ -215,7 +241,6 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
     const youtubeQualityGroup = document.getElementById('youtube-quality-group');
 
     function updateQualityGroupState() {
@@ -235,15 +260,14 @@ window.addEventListener('DOMContentLoaded', () => {
         const currentQuality = settings.youtubeDownloadQuality || 'full';
         document.querySelector(`input[name="youtube-mode"][value="${currentMode}"]`).checked = true;
         document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`).checked = true;
-        updateQualityGroupState(); // 初期状態を設定
+        updateQualityGroupState();
         elements.settingsModalOverlay.classList.remove('hidden');
     });
 
     elements.youtubeModeRadios.forEach(radio => {
         radio.addEventListener('change', updateQualityGroupState);
     });
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
-
+    
     elements.settingsOkBtn.addEventListener('click', () => elements.settingsModalOverlay.classList.add('hidden'));
 
     initResizer();
@@ -280,7 +304,6 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-// 修正後
 ipcRenderer.on('app-info-response', (event, info) => {
     console.log(
         `%c[UX Music] Version: ${info.version} | OS: ${info.platform} ${info.arch} (Release: ${info.release})`,

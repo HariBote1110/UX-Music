@@ -2,14 +2,17 @@ const { ipcMain, app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { scanPaths, parseFiles, analyzeLoudness } = require('../file-scanner');
+// ▼▼▼ analyzeBPM をインポートするように変更 ▼▼▼
+const { scanPaths, parseFiles, analyzeLoudness, analyzeBPM } = require('../file-scanner');
 const os = require('os');
 const { sanitize } = require('../utils');
 const sharp = require('sharp');
-const MusicTempo = require('music-tempo');
-const ffmpeg = require('fluent-ffmpeg');
-const tmp = require('tmp');
-const wavDecoder = require('wav-decoder'); // ★★★ この行を追加 ★★★
+
+// ▼▼▼ 不要になったため削除 ▼▼▼
+// const MusicTempo = require('music-tempo');
+// const ffmpeg = require('fluent-ffmpeg');
+// const tmp = require('tmp');
+// const wavDecoder = require('wav-decoder');
 
 let libraryStore;
 let loudnessStore;
@@ -17,60 +20,7 @@ let settingsStore;
 let playCountsStore;
 let albumsStore;
 
-// src/main/handlers/library-handler.js 内の analyzeBPM 関数
-
-
-/**
- * 音声データを解析してBPMを算出する（BPM補正ロジック追加版）
- * @param {string} songPath - 解析対象の曲のパス
- * @returns {Promise<number|null>} - 解析されたBPM値 or null
- */
-async function analyzeBPM(songPath) {
-    console.log('[BPM Analysis] Executing FINAL version with octave correction...');
-
-    const tempFile = tmp.fileSync({ postfix: '.wav' });
-
-    try {
-        await new Promise((resolve, reject) => {
-            ffmpeg(songPath)
-                .toFormat('wav')
-                .audioChannels(1)
-                .audioFrequency(22050)
-                .on('error', (err) => {
-                    console.error(`[BPM Analysis] FFmpeg error for ${path.basename(songPath)}:`, err.message);
-                    reject(err);
-                })
-                .on('end', () => resolve())
-                .save(tempFile.name);
-        });
-        
-        const buffer = fs.readFileSync(tempFile.name);
-        const audioData = await wavDecoder.decode(buffer);
-        const calcTempo = new MusicTempo(audioData.channelData[0]);
-
-        // ▼▼▼ ここからが修正箇所です ▼▼▼
-        let rawBPM = calcTempo.tempo;
-        
-        // 一般的な楽曲のBPM上限を180と仮定し、それを超える場合は半分にする
-        // これにより「倍テン」で検出されたBPMを補正する
-        if (rawBPM > 180) {
-            console.log(`[BPM Analysis] Octave error detected. Correcting ${rawBPM} -> ${rawBPM / 2}`);
-            rawBPM = rawBPM / 2;
-        }
-        
-        const roundedBPM = Math.round(rawBPM);
-        // ▲▲▲ ここまでが修正箇所です ▲▲▲
-
-        console.log(`[BPM Analysis] Analysis successful for ${path.basename(songPath)}: ${roundedBPM} BPM`);
-        return roundedBPM;
-
-    } catch (error) {
-        console.error(`[BPM Analysis] A critical error occurred during analysis for ${path.basename(songPath)}:`, error);
-        return null;
-    } finally {
-        tempFile.removeCallback();
-    }
-}
+// ▼▼▼ analyzeBPM 関数をここから削除 ▼▼▼
 
 async function saveArtworkToFile(picture, songPath) {
     if (!picture || !picture.data) return null;
@@ -123,7 +73,7 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
     albumsStore = stores.albums;
 
     ipcMain.on('request-bpm-analysis', async (event, song) => {
-        const bpm = await analyzeBPM(song.path);
+        const bpm = await analyzeBPM(song.path); // file-scanner.jsからインポートした関数を呼び出す
         if (bpm !== null) {
             const library = libraryStore.load() || [];
             const songIndex = library.findIndex(s => s.path === song.path);

@@ -38,23 +38,23 @@
     "id": "night_drive",
     "name": "深夜のドライブ",
     "time_range": ["21:00", "04:59"],
-    "minScore": 3,
+    "minScore": 4,
     "components": {
-      "bpm": { "bpm_range": [100, 140], "score": 2 },
-      "genre": { "phrases": ["electronic", "dance", "city pop", "r&b"], "score": 1 },
-      "title": { "phrases": ["drive", "night", "city", "lights", "neon", "street", "midnight", "夜", "街", "光"], "score": 2 }
+      "bpm": { "bpm_range": [80, 180], "score": 2 },
+      "genre": { "phrases": ["electronic", "dance", "city pop", "r&b","J-ポップ"], "score": 1 },
+      "title": { "phrases": ["drive", "night", "city", "lights", "neon", "street", "midnight", "夜", "街", "光","Lunar","月","星","star","夜空","dream"], "score": 2 }
     },
     "required": ["bpm"]
   },
   {
     "id": "summer_hits",
     "name": "夏に聴きたい曲",
-    "date_range": ["06-01", "08-31"],
+    "date_range": ["06-01", "09-16"],
     "minScore": 2,
     "components": {
       "bpm": { "bpm_range": [100, 160], "score": 1 },
       "genre": { "phrases": ["pop", "rock", "reggae", "j-ポップ", "ロック"], "score": 1 },
-      "title": { "phrases": ["summer", "sun", "beach", "sea", "vacation", "夏", "太陽", "海", "空"], "score": 3 }
+      "title": { "phrases": ["summer", "sun", "beach", "sea", "vacation", "夏", "太陽", "海", "空","祭","花火"], "score": 3 }
     }
   },
   {

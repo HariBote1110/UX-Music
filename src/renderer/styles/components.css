@@ -374,3 +374,29 @@
     font-weight: normal;
     margin-left: 8px;
 }
+
+/* 既存の .song-item:hover .marquee-wrapper... のルールを少し変更 */
+.song-item:hover .marquee-wrapper.is-overflowing .marquee-content {
+    animation: marquee 10s linear infinite;
+}
+
+/* ▼▼▼ このルールを追加 ▼▼▼ */
+/* アプリが非アクティブな時は、ホバーしてもアニメーションを再生しない */
+.app-inactive .song-item:hover .marquee-wrapper.is-overflowing .marquee-content {
+    animation-play-state: paused;
+}
+/* ▲▲▲ 追加はここまで ▲▲▲ */
+
+
+.song-item:hover .marquee-wrapper.is-overflowing .marquee-content > span:first-child {
+    padding-right: 40px;
+}
+
+@keyframes marquee {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-50%);
+    }
+}

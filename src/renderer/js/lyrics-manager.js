@@ -43,10 +43,7 @@ export async function loadLyricsForSong(song) {
 function parseLRC(lrcContent) {
     const lines = lrcContent.split('\n');
     const lyrics = [];
-    // ★★★ ここからが修正箇所です ★★★
-    // 区切り文字として ':' または '.' の両方を許可する正規表現
     const timeRegex = /\[(\d{2})[:.](\d{2})[.](\d{2,3})\]/g;
-    // ★★★ ここまでが修正箇所です ★★★
 
     lines.forEach(line => {
         const text = line.replace(timeRegex, '').trim();
@@ -112,7 +109,13 @@ function renderLyrics(lyrics) {
  * @param {number} currentTime - 現在の再生時間 (秒)
  */
 export function updateSyncedLyrics(currentTime) {
-    if (!state.currentLyrics) return;
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    // 歌詞データがない、または歌詞タブが非表示の場合は即座に処理を中断
+    const lyricsContainer = document.getElementById('lyrics-container');
+    if (!state.currentLyrics || !lyricsContainer || !lyricsContainer.classList.contains('active')) {
+        return;
+    }
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
     let currentIndex = -1;
     for (let i = state.currentLyrics.length - 1; i >= 0; i--) {

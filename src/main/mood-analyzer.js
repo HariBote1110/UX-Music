@@ -100,14 +100,34 @@ function createSituationPlaylists(library) {
     const currentTime = now.toTimeString().slice(0, 5); // "HH:MM"
     const currentDate = (now.getMonth() + 1).toString().padStart(2, '0') + '-' + now.getDate().toString().padStart(2, '0'); // "MM-DD"
     
-    // 現在の時刻と季節に合致するパターン、または時間・季節指定のないパターンを抽出
     const activePatterns = moodPatterns.filter(p => {
-        const isTimeMatch = !p.time_range || (currentTime >= p.time_range[0] && currentTime <= p.time_range[1]);
-        const isDateMatch = !p.date_range || (currentDate >= p.date_range[0] && currentDate <= p.date_range[1]);
+        let isTimeMatch = true;
+        let isDateMatch = true;
+
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        if (p.time_range) {
+            const [start, end] = p.time_range;
+            // 開始時刻が終了時刻より大きい場合、日付をまたぐ範囲と判断
+            if (start > end) {
+                // 現在時刻が開始時刻以降、または終了時刻以前であればマッチ
+                isTimeMatch = currentTime >= start || currentTime <= end;
+            } else {
+                // 通常の範囲
+                isTimeMatch = currentTime >= start && currentTime <= end;
+            }
+        }
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
+        if (p.date_range) {
+            const [start, end] = p.date_range;
+            if (start > end) { // 年をまたぐ範囲 (例: 12-01 to 02-28)
+                isDateMatch = currentDate >= start || currentDate <= end;
+            } else {
+                isDateMatch = currentDate >= start && currentDate <= end;
+            }
+        }
         
-        // 時間も季節も指定がないパターンは常に有効
         if (!p.time_range && !p.date_range) return true;
-        // 時間または季節のどちらかが指定されていて、それがマッチすれば有効
         return isTimeMatch && isDateMatch;
     });
 

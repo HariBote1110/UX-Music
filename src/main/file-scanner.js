@@ -1,6 +1,9 @@
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
+const MusicTempo = require('music-tempo');
+const tmp = require('tmp');
+const wavDecoder = require('wav-decoder');
 
 let ffmpeg; // モジュールを保持する変数を定義
 
@@ -32,14 +35,8 @@ function initializeFfmpeg() {
 
 const supportedExtensions = ['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.mp4'];
 
-// ▼▼▼ この関数をまるごと置き換えます ▼▼▼
-/**
- * volumedetectフィルターを使用して、曲の平均音量を高速に解析します。
- * @param {string} filePath - 解析対象の曲のパス
- * @returns {Promise<{success: boolean, filePath: string, loudness: number|null, error?: string}>}
- */
 function analyzeLoudness(filePath) {
-    initializeFfmpeg();
+    initializeFfmpeg(); // ★ FFmpegの初期化を呼び出し
     return new Promise((resolve) => {
         let stderr = '';
         ffmpeg(filePath)
@@ -52,7 +49,6 @@ function analyzeLoudness(filePath) {
                 stderr += line;
             })
             .on('end', () => {
-                // FFmpegの出力から mean_volume (平均音量) の行を探す
                 const match = stderr.match(/mean_volume:\s*(-?\d+\.\d+)\s*dB/);
                 if (match && match[1]) {
                     const meanVolume = parseFloat(match[1]);
@@ -61,11 +57,54 @@ function analyzeLoudness(filePath) {
                     resolve({ success: false, filePath: filePath, error: 'volumedetect: mean_volume not found in FFmpeg output.' });
                 }
             })
-            .save('-'); // 出力先をnullデバイスに指定して実行
+            .save('-');
     });
 }
-// ▲▲▲ 置き換えはここまで ▲▲▲
 
+// ▼▼▼ ここに analyzeBPM 関数を移動 ▼▼▼
+async function analyzeBPM(songPath) {
+    initializeFfmpeg(); // ★ FFmpegの初期化を呼び出し
+    console.log('[BPM Analysis] Executing FINAL version with octave correction...');
+
+    const tempFile = tmp.fileSync({ postfix: '.wav' });
+
+    try {
+        await new Promise((resolve, reject) => {
+            ffmpeg(songPath)
+                .toFormat('wav')
+                .audioChannels(1)
+                .audioFrequency(22050)
+                .on('error', (err) => {
+                    console.error(`[BPM Analysis] FFmpeg error for ${path.basename(songPath)}:`, err.message);
+                    reject(err);
+                })
+                .on('end', () => resolve())
+                .save(tempFile.name);
+        });
+        
+        const buffer = fs.readFileSync(tempFile.name);
+        const audioData = await wavDecoder.decode(buffer); 
+        const calcTempo = new MusicTempo(audioData.channelData[0]); 
+
+        let rawBPM = calcTempo.tempo;
+        
+        if (rawBPM > 180) {
+            console.log(`[BPM Analysis] Octave error detected. Correcting ${rawBPM} -> ${rawBPM / 2}`);
+            rawBPM = rawBPM / 2;
+        }
+        
+        const roundedBPM = Math.round(rawBPM);
+
+        console.log(`[BPM Analysis] Analysis successful for ${path.basename(songPath)}: ${roundedBPM} BPM`);
+        return roundedBPM;
+
+    } catch (error) {
+        console.error(`[BPM Analysis] A critical error occurred during analysis for ${path.basename(songPath)}:`, error);
+        return null;
+    } finally {
+        tempFile.removeCallback();
+    }
+}
 
 async function scanDirectory(dirPath) {
     let files = [];
@@ -135,4 +174,5 @@ async function scanPaths(paths) {
     return allFiles;
 }
 
-module.exports = { scanPaths, parseFiles, analyzeLoudness }
+// ▼▼▼ analyzeBPM をエクスポートに追加 ▼▼▼
+module.exports = { scanPaths, parseFiles, analyzeLoudness, analyzeBPM }
