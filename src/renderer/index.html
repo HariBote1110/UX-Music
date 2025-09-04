@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="./styles/layout.css">
     <link rel="stylesheet" href="./styles/components.css">
     <link rel="stylesheet" href="./styles/views.css">
-    </head>
+</head>
 <body>
     <div class="title-bar"></div>
     <div class="container">
@@ -17,8 +17,8 @@
             <div class="nav-links">
                 <a href="#" class="nav-link active" data-view="track-view">曲</a>
                 <a href="#" class="nav-link" data-view="album-view">アルバム</a>
+                <a href="#" class="nav-link" data-view="situation-view">For You</a>
                 <a href="#" class="nav-link" data-view="playlist-view">プレイリスト</a>
-                <a href="#" class="nav-link" data-view="situation-view">For You</a> 
                 <a href="#" class="nav-link" data-view="artist-view">アーティスト</a>
             </div>
             <div class="sidebar-actions">
@@ -123,6 +123,29 @@
 <div id="settings-modal-overlay" class="hidden">
     <div id="settings-modal">
         <h2>設定</h2>
+        
+        <div class="setting-group">
+            <div class="setting-item">
+                <h4>インポートモード</h4>
+                <p class="setting-description">楽曲のインポート時のCPU使用率を選択します。</p>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="import-mode" value="balanced">
+                        <div>
+                            <strong>バランスモード (推奨)</strong>
+                            <small>他の作業への影響を抑えつつ、効率的にインポートします。</small>
+                        </div>
+                    </label>
+                    <label>
+                        <input type="radio" name="import-mode" value="performance">
+                        <div>
+                            <strong>パフォーマンスモード</strong>
+                            <small>CPUを最大限活用して最速でインポートします。PCが重くなる場合があります。</small>
+                        </div>
+                    </label>
+                </div>
+            </div>
+        </div>
         <div class="setting-group">
             <div class="setting-item">
                 <h4>YouTube再生モード</h4>

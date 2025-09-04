@@ -2,10 +2,11 @@ const { ipcMain, app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { scanPaths, parseFiles, analyzeLoudness, analyzeBPM, analyzeEnergy } = require('../file-scanner'); // analyzeEnergyを追加
+const { scanPaths, parseFiles } = require('../file-scanner');
 const os = require('os');
 const { sanitize } = require('../utils');
 const sharp = require('sharp');
+const { Worker } = require('worker_threads');
 
 let libraryStore;
 let loudnessStore;
@@ -20,9 +21,8 @@ async function saveArtworkToFile(picture, songPath) {
     if (!fs.existsSync(artworksDir)) fs.mkdirSync(artworksDir, { recursive: true });
     if (!fs.existsSync(thumbnailsDir)) fs.mkdirSync(thumbnailsDir, { recursive: true });
     const hash = crypto.createHash('sha256').update(songPath).digest('hex');
-    const extension = 'webp';
-    const fullFileName = `${hash}.${extension}`;
-    const thumbFileName = `${hash}_thumb.${extension}`;
+    const fullFileName = `${hash}.webp`;
+    const thumbFileName = `${hash}_thumb.webp`;
     const fullPath = path.join(artworksDir, fullFileName);
     const thumbPath = path.join(thumbnailsDir, thumbFileName);
     try {
@@ -54,6 +54,7 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
     albumsStore = stores.albums;
 
     ipcMain.on('request-bpm-analysis', async (event, song) => {
+        const { analyzeBPM } = require('../file-scanner');
         const bpm = await analyzeBPM(song.path);
         if (bpm !== null) {
             const library = libraryStore.load() || [];
@@ -65,19 +66,17 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
             }
         }
     });
-
-    // ▼▼▼ `start-scan-paths` の中身を修正 ▼▼▼
+    
     ipcMain.on('start-scan-paths', async (event, paths) => {
         console.time('Main: Total Import Process');
-        const pLimit = (await import('p-limit')).default;
-        const libraryPath = settingsStore.load().libraryPath;
+        const settings = settingsStore.load();
+        const libraryPath = settings.libraryPath;
         if (!libraryPath) return event.sender.send('scan-complete', []);
-    
+
         const sourceFiles = await scanPaths(paths);
         if (sourceFiles.length === 0) return event.sender.send('scan-complete', []);
 
         const songsWithMetadata = await parseFiles(sourceFiles);
-        const loudnessData = loudnessStore.load();
         const existingLibraryPaths = new Set((libraryStore.load() || []).map(s => s.path));
         
         const songsToProcess = songsWithMetadata.filter(song => {
@@ -93,60 +92,94 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
         let completedSteps = 0;
         const sendProgress = () => event.sender?.send('scan-progress', { current: completedSteps, total: totalSteps });
         sendProgress();
-    
-        const concurrency = os.platform() === 'win32' ? Math.max(1, os.cpus().length - 1) : os.cpus().length;
-        const limit = pLimit(concurrency);
-        console.log(`[Import] Starting analysis with concurrency: ${concurrency}`);
 
-        const analysisPromises = songsToProcess.map(song => limit(async () => {
-            if (song.artwork) song.artwork = await saveArtworkToFile(song.artwork, song.path);
-            
-            const artistDir = sanitize(song.albumartist || song.artist || 'Unknown Artist');
-            const albumDir = sanitize(song.album || 'Unknown Album');
-            const destDir = path.join(libraryPath, artistDir, albumDir);
-            if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-            
-            const destPath = path.join(destDir, sanitize(path.basename(song.path)));
-            if (!fs.existsSync(destPath)) {
-                fs.copyFileSync(song.path, destPath);
-                const result = await analyzeLoudness(destPath);
-                if (result.success) loudnessData[destPath] = result.loudness;
-            }
-            
-            // ★ BPMとEnergyの解析を追加
-            if (typeof song.bpm !== 'number') {
-                song.bpm = await analyzeBPM(destPath);
-            }
-            song.energy = await analyzeEnergy(destPath);
-            
-            completedSteps++;
-            sendProgress();
+        const importMode = settings.importMode || 'balanced';
+        const numCpuCores = os.cpus().length;
+        const totalMemoryGB = os.totalmem() / (1024 ** 3);
+        let concurrency;
 
-            // ★ pathを更新し、解析結果を含んだ新しいオブジェクトを返す
-            return { ...song, path: destPath }; 
-        }));
-
-        const newSongObjects = await Promise.all(analysisPromises);
-        
-        if (newSongObjects.length > 0) {
-            loudnessStore.save(loudnessData);
+        if (importMode === 'performance') {
+            const memoryFactor = Math.floor(totalMemoryGB / 16);
+            concurrency = Math.min(numCpuCores * 2, numCpuCores + memoryFactor);
+        } else {
+            concurrency = os.platform() === 'win32' ? Math.max(1, numCpuCores - 1) : numCpuCores;
         }
-        const addedSongs = addSongsToLibraryAndSave(newSongObjects);
+        concurrency = Math.max(1, concurrency);
+
+        console.log(`[Import] Starting analysis in ${importMode} mode with ${totalMemoryGB.toFixed(1)}GB RAM. Concurrency set to: ${concurrency}`);
+
+        const newSongObjects = [];
+        const loudnessData = loudnessStore.load();
         
+        await new Promise(resolve => {
+            let runningWorkers = 0;
+            const queue = [...songsToProcess];
+
+            function startWorker() {
+                if (runningWorkers >= concurrency || queue.length === 0) return;
+                
+                runningWorkers++;
+                const songToProcess = queue.shift();
+                
+                const worker = new Worker(path.join(__dirname, '..', 'analysis-worker.js'));
+
+                worker.postMessage({
+                    type: 'init',
+                    ffmpegPath: require('ffmpeg-static').replace('app.asar', 'app.asar.unpacked'),
+                    ffprobePath: require('ffprobe-static').path.replace('app.asar', 'app.asar.unpacked')
+                });
+
+                saveArtworkToFile(songToProcess.artwork, songToProcess.path).then(artwork => {
+                    songToProcess.artwork = artwork;
+                    const artistDir = sanitize(songToProcess.albumartist || songToProcess.artist || 'Unknown Artist');
+                    const albumDir = sanitize(songToProcess.album || 'Unknown Album');
+                    const destDir = path.join(libraryPath, artistDir, albumDir);
+                    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+                    
+                    const destPath = path.join(destDir, sanitize(path.basename(songToProcess.path)));
+                    if (!fs.existsSync(destPath)) {
+                        fs.copyFileSync(songToProcess.path, destPath);
+                    }
+                    songToProcess.path = destPath;
+                    
+                    worker.postMessage({ type: 'analyze', song: songToProcess });
+                });
+
+                worker.on('message', (result) => {
+                    const finalSong = result.song;
+                    if (finalSong.loudness) loudnessData[finalSong.path] = finalSong.loudness;
+                    delete finalSong.loudness;
+                    
+                    // ▼▼▼ ここが修正箇所です ▼▼▼
+                    console.log(`[Import] Finished analysis for: ${finalSong.artist} - ${finalSong.title}`);
+                    // ▲▲▲ 修正はここまで ▲▲▲
+
+                    newSongObjects.push(finalSong);
+                    completedSteps++;
+                    sendProgress();
+                    
+                    worker.terminate();
+                });
+
+                worker.on('exit', (code) => {
+                    runningWorkers--;
+                    if (queue.length > 0) {
+                        startWorker();
+                    } else if (runningWorkers === 0) {
+                        resolve();
+                    }
+                });
+            }
+
+            for (let i = 0; i < concurrency; i++) {
+                startWorker();
+            }
+        });
+
+        if (newSongObjects.length > 0) loudnessStore.save(loudnessData);
+        const addedSongs = addSongsToLibraryAndSave(newSongObjects);
         event.sender.send('scan-complete', addedSongs);
         console.timeEnd('Main: Total Import Process');
-    });
-    // ▲▲▲ `start-scan-paths` の修正はここまで ▲▲▲
-
-    ipcMain.on('request-loudness-analysis', async (event, songPath) => {
-        const loudnessData = loudnessStore.load();
-        if (loudnessData[songPath]) return;
-        const result = await analyzeLoudness(songPath);
-        if (result.success) {
-            const currentLoudnessData = loudnessStore.load();
-            currentLoudnessData[songPath] = result.loudness;
-            loudnessStore.save(currentLoudnessData);
-        }
     });
 
     ipcMain.handle('get-loudness-value', (event, songPath) => (loudnessStore.load() || {})[songPath] || null);

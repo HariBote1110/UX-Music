@@ -200,7 +200,7 @@ function draw(timestamp) {
         const heights = barIndices.map((dataIndex, i) => {
             const value = dataArray[dataIndex] / 255;
             const scaledValue = Math.pow(value, 2.5);
-            const multiplier = i === 0 ? 1.1 : 1 - (Math.abs(i - 2.5) * 0.15);
+            const multiplier = i === 0 ? 1.5 : 1 - (Math.abs(i - 2.5) * 0.15);
             const targetHeight = (scaledValue * multiplier * 16) + 4;
             const newHeight = lastHeights[i] * 0.4 + targetHeight * 0.6;
             lastHeights[i] = newHeight;
@@ -246,7 +246,7 @@ export function initPlayer(playerElement, callbacks) {
         mainPlayerNode = audioContext.createMediaElementSource(localPlayer);
         gainNode = audioContext.createGain();
         analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
+        analyser.fftSize = 32;
         dataArray = new Uint8Array(analyser.frequencyBinCount);
         mainPlayerNode.connect(gainNode).connect(analyser).connect(audioContext.destination);
     } catch (e) {

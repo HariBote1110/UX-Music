@@ -256,21 +256,38 @@ window.addEventListener('DOMContentLoaded', () => {
 
     elements.openSettingsBtn.addEventListener('click', async () => {
         const settings = await ipcRenderer.invoke('get-settings');
-        const currentMode = settings.youtubePlaybackMode || 'download';
+        // YouTube設定
+        const currentYoutubeMode = settings.youtubePlaybackMode || 'download';
         const currentQuality = settings.youtubeDownloadQuality || 'full';
-        document.querySelector(`input[name="youtube-mode"][value="${currentMode}"]`).checked = true;
+        document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`).checked = true;
         document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`).checked = true;
         updateQualityGroupState();
+        
+        // ★ 新しいインポートモード設定
+        const currentImportMode = settings.importMode || 'balanced';
+        document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`).checked = true;
+        
         elements.settingsModalOverlay.classList.remove('hidden');
     });
 
     elements.youtubeModeRadios.forEach(radio => {
         radio.addEventListener('change', updateQualityGroupState);
     });
-    
-    elements.settingsOkBtn.addEventListener('click', () => elements.settingsModalOverlay.classList.add('hidden'));
 
-    initResizer();
+    // ★ 設定保存ロジック
+    elements.settingsOkBtn.addEventListener('click', () => {
+        const selectedYoutubeMode = document.querySelector('input[name="youtube-mode"]:checked').value;
+        const selectedQuality = document.querySelector('input[name="youtube-quality"]:checked').value;
+        const selectedImportMode = document.querySelector('input[name="import-mode"]:checked').value;
+        
+        ipcRenderer.send('save-settings', {
+            youtubePlaybackMode: selectedYoutubeMode,
+            youtubeDownloadQuality: selectedQuality,
+            importMode: selectedImportMode
+        });
+        
+        elements.settingsModalOverlay.classList.add('hidden');
+    });
     
     elements.deviceSelectButton.addEventListener('click', (e) => {
         e.stopPropagation();
