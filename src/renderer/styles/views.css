@@ -18,7 +18,7 @@
 
 #drop-zone {
     border: 2px dashed transparent;
-    transition: border-color 0.3s;
+    transition: border-color: 0.3s;
 }
 #drop-zone.drag-over {
     border-color: var(--highlight-pink);
@@ -69,7 +69,6 @@
     overflow-y: auto;
 }
 
-/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
 #music-list::-webkit-scrollbar {
     width: 8px;
 }
@@ -86,7 +85,6 @@
 #music-list::-webkit-scrollbar-thumb:hover {
     background-color: #555;
 }
-/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
 
 
 .header-item:nth-child(1) {
@@ -103,7 +101,15 @@
 .header-item:nth-child(5) { flex: 1; text-align: right; }
 .header-item:nth-child(6) { flex: 1; text-align: right; }
 
-.song-item { display: flex; align-items: center; padding: 8px 16px; border-radius: 4px; cursor: pointer; box-sizing: border-box; }
+.song-item { 
+    display: flex; 
+    align-items: center; 
+    padding: 8px 16px; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    box-sizing: border-box; 
+    will-change: transform; 
+}
 .song-item:hover { background-color: var(--bg-light); }
 .song-item.dragging { opacity: 0.5; background: #535353; }
 
@@ -120,15 +126,23 @@
     box-sizing: border-box;
 }
 
+/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
 .song-item .song-number,
-.playing-indicator {
+.playing-indicator,
+.static-visualizer-img {
     position: absolute;
-    left: 35%; /* ▼▼▼ 50%から45%に修正 ▼▼▼ */
+    left: 35%;
     top: 50%;
-    /* X軸とY軸の両方で中央に来るように調整 */
     transform: translate(-50%, -50%);
     transition: opacity 0.2s ease-in-out;
 }
+
+.static-visualizer-img {
+    display: none;
+    width: 15px;
+    height: 16px;
+}
+/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
 
 .song-item .song-number {
     opacity: 1;
@@ -140,7 +154,7 @@
     height: 20px;
     gap: 2px;
     align-items: center;
-    opacity: 0; /* 通常時は透明にする */
+    opacity: 0;
 }
 
 
@@ -205,17 +219,29 @@
     height: 4px;
     border-radius: 1.25px;
     background: linear-gradient(45deg, var(--eq-color-1), var(--eq-color-2));
-    transition: height 0.1s ease-out, background 0.3s ease-in-out;
+    transition: background 0.3s ease-in-out;
+    transform-origin: center;
 }
 
+/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
 /* 再生中は数字を透明にし、インジケーターを表示 */
 .song-item.playing .song-number {
     opacity: 0;
 }
 
+/* 通常モードでは .playing-indicator を表示 */
 .song-item.playing.indicator-ready .playing-indicator {
     opacity: 1;
 }
+
+/* LFモード時は .playing-indicator を隠し、.static-visualizer-img を表示 */
+body.light-flight-mode .song-item.playing.indicator-ready .playing-indicator {
+    display: none;
+}
+body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img {
+    display: block;
+}
+/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
 
 
 /* --- グリッド表示のスタイル --- */
@@ -394,7 +420,6 @@
 .collage-img-wrapper { overflow: hidden; width: 100%; height: 100%; }
 .collage-img-wrapper img { width: 100%; height: 100%; object-fit: cover; }
 
-/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
 /* video要素のデフォルトコントロールを非表示にする */
 #now-playing-artwork-container video::-webkit-media-controls {
     display: none !important;
@@ -402,4 +427,15 @@
 #now-playing-artwork-container video {
     pointer-events: none; /* クリックなどの操作を無効化 */
 }
-/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
+
+/* --- Light Flight Mode --- */
+body.light-flight-mode .artwork-small,
+body.light-flight-mode .album-artwork,
+body.light-flight-mode .artist-artwork,
+body.light-flight-mode .playlist-artwork-container {
+    display: none;
+}
+
+body.light-flight-mode .playing-indicator-bar {
+    background: var(--text-secondary);
+}

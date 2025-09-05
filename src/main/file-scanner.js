@@ -56,7 +56,6 @@ function analyzeLoudness(filePath) {
     });
 }
 
-// ▼▼▼ ここからが修正箇所です ▼▼▼
 /**
  * astatsフィルターを使用して曲のダイナミックレンジから「Energy」スコアを算出します。
  * @param {string} filePath - 解析対象の曲のパス
@@ -96,7 +95,6 @@ async function analyzeEnergy(filePath) {
             .save('-');
     });
 }
-// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
 async function analyzeBPM(songPath) {
     initializeFfmpeg();
@@ -143,7 +141,10 @@ async function parseFiles(filePaths) {
             const metadata = await musicMetadata.parseFile(filePath);
             const common = metadata.common;
             const artwork = common.picture?.[0] || null;
-            const hasVideo = metadata.format.trackInfo?.some(t => t.type === 'video') || metadata.format.container?.toLowerCase().includes('mp4');
+            // ▼▼▼ ここからが修正箇所です ▼▼▼
+            // メタデータから映像トラックの有無を厳密に判定する
+            const hasVideo = metadata.format.trackInfo?.some(t => t.type === 'video');
+            // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
             songs.push({
                 path: filePath,

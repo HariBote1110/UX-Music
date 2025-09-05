@@ -87,6 +87,8 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
         });
 
         if (songsToProcess.length === 0) return event.sender.send('scan-complete', []);
+        
+        songsToProcess.forEach(song => { song.originalPath = song.path; });
 
         const totalSteps = songsToProcess.length;
         let completedSteps = 0;
@@ -150,9 +152,7 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                     if (finalSong.loudness) loudnessData[finalSong.path] = finalSong.loudness;
                     delete finalSong.loudness;
                     
-                    // ▼▼▼ ここが修正箇所です ▼▼▼
                     console.log(`[Import] Finished analysis for: ${finalSong.artist} - ${finalSong.title}`);
-                    // ▲▲▲ 修正はここまで ▲▲▲
 
                     newSongObjects.push(finalSong);
                     completedSteps++;
@@ -175,6 +175,17 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                 startWorker();
             }
         });
+        
+        const sourceOrderMap = new Map(sourceFiles.map((path, index) => [path, index]));
+        newSongObjects.sort((a, b) => {
+            const orderA = sourceOrderMap.get(a.originalPath);
+            const orderB = sourceOrderMap.get(b.originalPath);
+            if (orderA === undefined) return 1;
+            if (orderB === undefined) return -1;
+            return orderA - orderB;
+        });
+
+        newSongObjects.forEach(song => delete song.originalPath);
 
         if (newSongObjects.length > 0) loudnessStore.save(loudnessData);
         const addedSongs = addSongsToLibraryAndSave(newSongObjects);
@@ -211,4 +222,7 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
     });
 }
 
-module.exports = { registerLibraryHandlers };
+module.exports = { 
+    registerLibraryHandlers,
+    saveArtworkToFile
+};

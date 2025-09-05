@@ -1,7 +1,6 @@
 import { state, elements } from '../state.js';
 import { showAlbum, showArtist, showPlaylist, showSituationPlaylistDetail } from '../navigation.js';
 import { playSong } from '../playback-manager.js';
-// ▼▼▼ disconnectVisualizerObserver をインポート ▼▼▼
 import { setVisualizerTarget, disconnectVisualizerObserver } from '../player.js';
 import { VirtualScroller } from '../virtual-scroller.js';
 import { createSongItem, createAlbumGridItem, createArtistGridItem, createPlaylistGridItem } from './element-factory.js';
@@ -18,12 +17,10 @@ function clearMainContent() {
         trackViewScroller.destroy();
         trackViewScroller = null;
     }
-    // ▼▼▼ この行を追加 ▼▼▼
-    disconnectVisualizerObserver(); // ビューをクリアする際にObserverを解除
+    disconnectVisualizerObserver();
     elements.mainContent.innerHTML = '';
 }
 
-// ... (以降のコードは変更なし) ...
 export function destroyTrackViewScroller() {
     if (trackViewScroller) {
         trackViewScroller.destroy();
@@ -302,6 +299,10 @@ export function renderAlbumDetailView(album) {
             songItem.classList.add('playing');
         }
         songItem.addEventListener('click', () => playSong(index, album.songs));
+        songItem.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            ipcRenderer.send('show-song-context-menu-in-library', song);
+        });
         listElement.appendChild(songItem);
     });
     
@@ -398,6 +399,10 @@ export function renderPlaylistDetailView(playlistDetails) {
             songItem.classList.add('playing');
         }
         songItem.addEventListener('click', () => playSong(index, songs));
+        songItem.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            ipcRenderer.send('show-playlist-song-context-menu', { playlistName, song });
+        });
         listElement.appendChild(songItem);
     });
     viewWrapper.appendChild(listElement);

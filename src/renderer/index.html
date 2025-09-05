@@ -26,6 +26,7 @@
                 <button id="add-youtube-btn">+ YouTubeリンクを追加</button>
                 <button id="add-youtube-playlist-btn">+ YouTubeプレイリストを追加</button>
                 <button id="set-library-btn">ライブラリ場所設定</button>
+                <button id="light-flight-mode-btn">✈️ Light Flightモード</button>
                 <button id="open-settings-btn">設定</button>
             </div>
         </div>
@@ -124,70 +125,96 @@
     <div id="settings-modal">
         <h2>設定</h2>
         
-        <div class="setting-group">
-            <div class="setting-item">
-                <h4>インポートモード</h4>
-                <p class="setting-description">楽曲のインポート時のCPU使用率を選択します。</p>
-                <div class="radio-group">
-                    <label>
-                        <input type="radio" name="import-mode" value="balanced">
-                        <div>
-                            <strong>バランスモード (推奨)</strong>
-                            <small>他の作業への影響を抑えつつ、効率的にインポートします。</small>
-                        </div>
-                    </label>
-                    <label>
-                        <input type="radio" name="import-mode" value="performance">
-                        <div>
-                            <strong>パフォーマンスモード</strong>
-                            <small>CPUを最大限活用して最速でインポートします。PCが重くなる場合があります。</small>
-                        </div>
-                    </label>
+        <div class="settings-content">
+            <div class="setting-group">
+                <div class="setting-item">
+                    <h4>インポートモード</h4>
+                    <p class="setting-description">楽曲のインポート時のCPU使用率を選択します。</p>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="import-mode" value="balanced">
+                            <div>
+                                <strong>バランスモード (推奨)</strong>
+                                <small>他の作業への影響を抑えつつ、効率的にインポートします。</small>
+                            </div>
+                        </label>
+                        <label>
+                            <input type="radio" name="import-mode" value="performance">
+                            <div>
+                                <strong>パフォーマンスモード</strong>
+                                <small>CPUを最大限活用して最速でインポートします。PCが重くなる場合があります。</small>
+                            </div>
+                        </label>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="setting-group">
-            <div class="setting-item">
-                <h4>YouTube再生モード</h4>
-                <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
-                <div class="radio-group">
-                    <label>
-                        <input type="radio" name="youtube-mode" value="download">
-                        <div>
-                            <strong>ダウンロードモード (推奨)</strong>
-                            <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
-                        </div>
-                    </label>
-                    <label>
-                        <input type="radio" name="youtube-mode" value="stream">
-                        <div>
-                            <strong>ストリーミングモード</strong>
-                            <small>すぐに再生できますが、再生先の変更はできず、音と映像が同期されます。</small>
-                        </div>
-                    </label>
+            
+            <div class="setting-group">
+                <div class="setting-item">
+                    <h4>ビジュアライザーモード</h4>
+                    <p class="setting-description">再生中の曲のインジケーターのアニメーションを選択します。</p>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="visualizer-mode" value="active">
+                            <div>
+                                <strong>アクティブ (推奨)</strong>
+                                <small>音声をリアルタイムで解析して描画します。CPUを少し使用します。</small>
+                            </div>
+                        </label>
+                        <label>
+                            <input type="radio" name="visualizer-mode" value="static">
+                            <div>
+                                <strong>スタティック (軽量)</strong>
+                                <small>シンプルなアニメーションを繰り返します。CPU負荷を軽減します。</small>
+                            </div>
+                        </label>
+                    </div>
                 </div>
             </div>
-        </div>
+            
+            <div class="setting-group">
+                <div class="setting-item">
+                    <h4>YouTube再生モード</h4>
+                    <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="youtube-mode" value="download">
+                            <div>
+                                <strong>ダウンロードモード (推奨)</strong>
+                                <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
+                            </div>
+                        </label>
+                        <label>
+                            <input type="radio" name="youtube-mode" value="stream">
+                            <div>
+                                <strong>ストリーミングモード</strong>
+                                <small>すぐに再生できますが、再生先の変更はできず、音と映像が同期されます。</small>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
 
-        <div class="setting-group" id="youtube-quality-group">
-            <div class="setting-item">
-                <h4>ダウンロード品質</h4>
-                <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>
-                <div class="radio-group">
-                    <label>
-                        <input type="radio" name="youtube-quality" value="full">
-                        <div>
-                            <strong>最高品質</strong>
-                            <small>映像と音声をダウンロードします。(MP4)</small>
-                        </div>
-                    </label>
-                    <label>
-                        <input type="radio" name="youtube-quality" value="audio_only">
-                        <div>
-                            <strong>音声のみ (省データ)</strong>
-                            <small>音声のみをダウンロードし、通信量と保存容量を節約します。(M4A)</small>
-                        </div>
-                    </label>
+            <div class="setting-group" id="youtube-quality-group">
+                <div class="setting-item">
+                    <h4>ダウンロード品質</h4>
+                    <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="youtube-quality" value="full">
+                            <div>
+                                <strong>最高品質</strong>
+                                <small>映像と音声をダウンロードします。(MP4)</small>
+                            </div>
+                        </label>
+                        <label>
+                            <input type="radio" name="youtube-quality" value="audio_only">
+                            <div>
+                                <strong>音声のみ (省データ)</strong>
+                                <small>音声のみをダウンロードし、通信量と保存容量を節約します。(M4A)</small>
+                            </div>
+                        </label>
+                    </div>
                 </div>
             </div>
         </div>

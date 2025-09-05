@@ -33,7 +33,10 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      devTools: !app.isPackaged,
+      // ▼▼▼ ここからが修正箇所です ▼▼▼
+      // app.isPackaged の値に関わらず、常にDevToolsを有効にする
+      devTools: true,
+      // ▲▲▲ ここまでが修正箇所です ▲▲▲
       webSecurity: true,
     },
     titleBarStyle: 'hidden',
@@ -45,11 +48,11 @@ function createWindow() {
   logPerf("BrowserWindow instance created");
   performance.mark('browser-window-created');
 
-  // ▼▼▼ 変更点：DevToolsを開くタイミングを'did-finish-load'イベント後に移動 ▼▼▼
   mainWindow.webContents.on('did-finish-load', () => {
     logPerf("'did-finish-load' event fired");
     performance.mark('did-finish-load');
     
+    // 起動時に自動で開くのは、開発版かデバッグフラグがある場合のみ（この動作は変更なし）
     if (!app.isPackaged || process.argv.includes('--debug')) {
       mainWindow.webContents.openDevTools();
       logPerf("DevTools opened");
@@ -58,7 +61,6 @@ function createWindow() {
     console.timeEnd("Main: Full App Startup");
     mainWindow.webContents.send('measure-performance');
   });
-  // ▲▲▲ 変更点ここまで ▲▲▲
 
   logPerf("Starting to load file...");
   performance.mark('load-file-start');

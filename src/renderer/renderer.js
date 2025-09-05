@@ -2,13 +2,16 @@ import { initUI, addSongsToLibrary, renderCurrentView, updateAudioDevices, updat
 import { initNavigation, showPlaylist, showView } from './js/navigation.js';
 import { initIPC } from './js/ipc.js';
 import { initModal, showModal } from './js/modal.js';
-import { initPlayer, togglePlayPause, applyMasterVolume, seekToStart } from './js/player.js';
+import { initPlayer, togglePlayPause, applyMasterVolume, seekToStart, setVisualizerFpsLimit } from './js/player.js';
 import { state, elements, initElements } from './js/state.js';
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from './js/playback-manager.js';
 import { showNotification, hideNotification } from './js/ui/notification.js';
 import { initDebugCommands } from './js/debug-commands.js';
 import { updateTextOverflowForSelector } from './js/ui/utils.js';
 import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+import { updateNowPlayingView } from './js/ui/now-playing.js';
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
@@ -33,14 +36,12 @@ window.addEventListener('DOMContentLoaded', () => {
     initElements();
     initLazyLoader(elements.mainContent);
 
-    // ▼▼▼ このブロックをまるごと置き換えてください ▼▼▼
     // --- アイドル状態検出 ---
     let inactivityTimer;
-    const INACTIVITY_TIMEOUT_MS = 1 * 60 * 1000; // 5分間操作がなければアイドル状態に
+    const INACTIVITY_TIMEOUT_MS = 1 * 60 * 1000;
 
     function resetInactivityTimer() {
         clearTimeout(inactivityTimer);
-        // アクティブに戻ったことをログに出力（クラスがあれば）
         if (document.body.classList.contains('app-inactive')) {
             console.log('[Performance] App is now ACTIVE.');
         }
@@ -48,17 +49,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
         inactivityTimer = setTimeout(() => {
             document.body.classList.add('app-inactive');
-            // 非アクティブになったことをログに出力
             console.log(`[Performance] App entered INACTIVE mode after ${INACTIVITY_TIMEOUT_MS / 1000 / 60} minutes of inactivity.`);
         }, INACTIVITY_TIMEOUT_MS);
     }
 
-    // イベントリスナーをセットアップしてタイマーをリセット
     ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(event => {
         document.addEventListener(event, resetInactivityTimer, true);
     });
-    resetInactivityTimer(); // 初期化
-    // ▲▲▲ 置き換えはここまで ▲▲▲
+    resetInactivityTimer();
 
     const MARQUEE_SELECTOR = '.marquee-wrapper';
     
@@ -67,31 +65,30 @@ window.addEventListener('DOMContentLoaded', () => {
         console[level](`%c[Main]%c`, style, '', ...args);
     });
     
-    // ... (以降のコードは変更なし) ...
     function initResizer() {
         const resizer = document.getElementById('resizer');
         const rightSidebar = document.querySelector('.right-sidebar');
         if (!resizer || !rightSidebar) return;
         let startX, startWidth;
-        resizer.addEventListener('mousedown', function (e) {
-            e.preventDefault();
-            startX = e.clientX;
-            startWidth = parseInt(document.defaultView.getComputedStyle(rightSidebar).width, 10);
-            document.documentElement.addEventListener('mousemove', doDrag, false);
-            document.documentElement.addEventListener('mouseup', stopDrag, false);
-        });
-        function doDrag(e) {
+        const doDrag = (e) => {
             const newWidth = startWidth - (e.clientX - startX);
             const minWidth = 240;
             const maxWidth = 600;
             if (newWidth > minWidth && newWidth < maxWidth) {
                 rightSidebar.style.width = newWidth + 'px';
             }
-        }
-        function stopDrag() {
+        };
+        const stopDrag = () => {
             document.documentElement.removeEventListener('mousemove', doDrag, false);
             document.documentElement.removeEventListener('mouseup', stopDrag, false);
-        }
+        };
+        resizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startX = e.clientX;
+            startWidth = parseInt(document.defaultView.getComputedStyle(rightSidebar).width, 10);
+            document.documentElement.addEventListener('mousemove', doDrag, false);
+            document.documentElement.addEventListener('mouseup', stopDrag, false);
+        });
     }
 
     logPerf("Initializing UI...");
@@ -125,6 +122,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 elements.volumeSlider.value = settings.volume;
                 applyMasterVolume();
             }
+            state.visualizerMode = settings.visualizerMode || 'active';
         },
         onPlayCountsUpdated: (counts) => {
             state.playCounts = counts;
@@ -180,6 +178,8 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     logPerf("IPC initialized.");
     
+    initResizer();
+
     if (navigator.mediaDevices && typeof navigator.mediaDevices.ondevicechange !== 'undefined') {
         navigator.mediaDevices.addEventListener('devicechange', () => updateAudioDevices());
     }
@@ -256,16 +256,19 @@ window.addEventListener('DOMContentLoaded', () => {
 
     elements.openSettingsBtn.addEventListener('click', async () => {
         const settings = await ipcRenderer.invoke('get-settings');
-        // YouTube設定
+        
         const currentYoutubeMode = settings.youtubePlaybackMode || 'download';
-        const currentQuality = settings.youtubeDownloadQuality || 'full';
         document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`).checked = true;
+        
+        const currentQuality = settings.youtubeDownloadQuality || 'full';
         document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`).checked = true;
         updateQualityGroupState();
         
-        // ★ 新しいインポートモード設定
         const currentImportMode = settings.importMode || 'balanced';
         document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`).checked = true;
+        
+        const currentVisualizerMode = settings.visualizerMode || 'active';
+        document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
         
         elements.settingsModalOverlay.classList.remove('hidden');
     });
@@ -274,19 +277,50 @@ window.addEventListener('DOMContentLoaded', () => {
         radio.addEventListener('change', updateQualityGroupState);
     });
 
-    // ★ 設定保存ロジック
     elements.settingsOkBtn.addEventListener('click', () => {
         const selectedYoutubeMode = document.querySelector('input[name="youtube-mode"]:checked').value;
         const selectedQuality = document.querySelector('input[name="youtube-quality"]:checked').value;
         const selectedImportMode = document.querySelector('input[name="import-mode"]:checked').value;
-        
+        const selectedVisualizerMode = document.querySelector('input[name="visualizer-mode"]:checked').value;
+
         ipcRenderer.send('save-settings', {
             youtubePlaybackMode: selectedYoutubeMode,
             youtubeDownloadQuality: selectedQuality,
-            importMode: selectedImportMode
+            importMode: selectedImportMode,
+            visualizerMode: selectedVisualizerMode
         });
         
+        state.visualizerMode = selectedVisualizerMode;
+        
         elements.settingsModalOverlay.classList.add('hidden');
+    });
+    
+    let userPreferredVisualizerMode = 'active';
+
+    elements.lightFlightModeBtn.addEventListener('click', () => {
+        state.isLightFlightMode = !state.isLightFlightMode;
+        document.body.classList.toggle('light-flight-mode', state.isLightFlightMode);
+        elements.lightFlightModeBtn.classList.toggle('active', state.isLightFlightMode);
+
+        if (state.isLightFlightMode) {
+            userPreferredVisualizerMode = state.visualizerMode;
+            state.visualizerMode = 'static';
+            state.userPreferredVisualizerFps = state.visualizerFpsLimit;
+            setVisualizerFpsLimit(30);
+            showNotification('✈️ Light FlightモードがONになりました。');
+        } else {
+            state.visualizerMode = userPreferredVisualizerMode;
+            setVisualizerFpsLimit(state.userPreferredVisualizerFps);
+            showNotification('✈️ Light FlightモードがOFFになりました。');
+        }
+        hideNotification(2000);
+        
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        // モード切替時にUI全体を再描画
+        renderCurrentView();
+        // Now Playingエリアも更新
+        updateNowPlayingView(state.playbackQueue[state.currentSongIndex]);
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
     });
     
     elements.deviceSelectButton.addEventListener('click', (e) => {
@@ -321,16 +355,16 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-ipcRenderer.on('app-info-response', (event, info) => {
-    console.log(
-        `%c[UX Music] Version: ${info.version} | OS: ${info.platform} ${info.arch} (Release: ${info.release})`,
-        'color: #1DB954; font-weight: bold; font-size: 1.1em;'
-    );
-    const versionSpan = document.getElementById('app-version');
-    if (versionSpan) {
-        versionSpan.textContent = `v${info.version}`;
-    }
-});
+    ipcRenderer.on('app-info-response', (event, info) => {
+        console.log(
+            `%c[UX Music] Version: ${info.version} | OS: ${info.platform} ${info.arch} (Release: ${info.release})`,
+            'color: #1DB954; font-weight: bold; font-size: 1.1em;'
+        );
+        const versionSpan = document.getElementById('app-version');
+        if (versionSpan) {
+            versionSpan.textContent = `v${info.version}`;
+        }
+    });
     ipcRenderer.send('request-app-info');
     
     logPerf("All initializations and event listeners set up.");

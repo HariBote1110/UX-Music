@@ -1,5 +1,14 @@
 [
   {
+    "id": "early_morning_special",
+    "name": "おはよう！朝4時になにしてるんだい？",
+    "time_range": ["04:00", "04:20"],
+    "minScore": 1,
+    "components": {
+      "title": { "phrases": [" "], "score": 1 }
+    }
+  },
+  {
     "id": "morning_chill",
     "name": "爽やかな朝に",
     "time_range": ["05:00", "11:59"],

@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const { sanitize } = require('../utils');
 const { analyzeLoudness } = require('../file-scanner');
+const { saveArtworkFromFile } = require('./library-handler');
+const miniget = require('miniget');
 
 let libraryStore;
 let settingsStore;
@@ -18,11 +20,22 @@ function findHubUrl(description) {
 }
 
 async function processYouTubeVideo(info, sourceUrl) {
-    const ytdl = require('@distube/ytdl-core'); // ★★★ 関数が呼び出された時に初めて読み込む ★★★
+    const ytdl = require('@distube/ytdl-core');
     const details = info.videoDetails;
     const hubUrl = findHubUrl(details.description);
     const settings = settingsStore.load();
     const mode = settings.youtubePlaybackMode || 'download';
+    
+    let artworkData = null;
+    const thumbnailUrl = details.thumbnails?.[0]?.url;
+    if (thumbnailUrl) {
+        try {
+            const buffer = await miniget(thumbnailUrl).concat();
+            artworkData = { data: buffer };
+        } catch (error) {
+            console.error(`Failed to download thumbnail for ${details.title}:`, error);
+        }
+    }
 
     if (mode === 'stream') {
         return {
@@ -30,7 +43,7 @@ async function processYouTubeVideo(info, sourceUrl) {
             title: details.title,
             artist: details.author.name,
             album: 'YouTube',
-            artwork: details.thumbnails[0].url,
+            artwork: thumbnailUrl,
             duration: Number(details.lengthSeconds),
             type: 'youtube',
             hasVideo: true,
@@ -82,12 +95,14 @@ async function processYouTubeVideo(info, sourceUrl) {
     }
 
     const stats = fs.statSync(destPath);
+    const savedArtwork = await saveArtworkFromFile(artworkData, destPath);
+
     return {
         path: destPath,
         title: details.title,
         artist: details.author.name,
         album: details.author.name,
-        artwork: details.thumbnails[0].url,
+        artwork: savedArtwork,
         duration: Number(details.lengthSeconds),
         fileSize: stats.size,
         type: 'local',
@@ -105,8 +120,8 @@ function registerYouTubeHandlers(stores, managers) {
     addSongsToLibraryAndSave = managers.addSongsFunc;
 
     ipcMain.on('import-youtube-playlist', async (event, playlistUrl) => {
-        const ytpl = require('ytpl'); // ★★★ 関数が呼び出された時に初めて読み込む ★★★
-        const ytdl = require('@distube/ytdl-core'); // ★★★ 関数が呼び出された時に初めて読み込む ★★★
+        const ytpl = require('ytpl');
+        const ytdl = require('@distube/ytdl-core');
 
         const window = event.sender;
         let playlist;
@@ -147,7 +162,7 @@ function registerYouTubeHandlers(stores, managers) {
     });
 
     ipcMain.on('add-youtube-link', async (event, url) => {
-        const ytdl = require('@distube/ytdl-core'); // ★★★ 関数が呼び出された時に初めて読み込む ★★★
+        const ytdl = require('@distube/ytdl-core');
 
         const window = event.sender;
         try {

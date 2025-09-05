@@ -10,10 +10,8 @@ let gainNode;
 let baseGain = 1.0;
 
 let localPlayer;
-// ▼▼▼ 削除されてしまっていた変数を元に戻します ▼▼▼
 let currentSongType = 'local';
 let timeUpdateInterval;
-// ▲▲▲ 修正はここまで ▲▲▲
 
 let onSongEndedCallback = () => {};
 let onNextSongCallback = () => {};
@@ -32,15 +30,12 @@ let currentVisualizerBars = null;
 let observedTarget = null;
 let lastHeights = new Array(6).fill(4);
 
-// FPS制限用
-let visualizerFpsLimit = 0; 
-let frameInterval = 0;
 let lastFrameTime = 0;
 
 // エコモード用
-let progressUpdateInterval = null; 
-let visualizerObserver = null; 
-let isVisualizerVisible = false; 
+let progressUpdateInterval = null;
+let visualizerObserver = null;
+let isVisualizerVisible = false;
 let isEcoModeEnabled = true;
 
 /**
@@ -101,13 +96,11 @@ export function disconnectVisualizerObserver() {
 export function setVisualizerFpsLimit(fps) {
     const newFps = parseInt(fps, 10);
     if (isNaN(newFps) || newFps <= 0) {
-        visualizerFpsLimit = 0;
-        frameInterval = 0;
+        state.visualizerFpsLimit = 0;
         console.log('[Visualizer] FPS limit removed.');
     } else {
-        visualizerFpsLimit = newFps;
-        frameInterval = 1000 / newFps;
-        console.log(`[Visualizer] FPS limit set to ${newFps} FPS (interval: ${frameInterval.toFixed(2)}ms).`);
+        state.visualizerFpsLimit = newFps;
+        console.log(`[Visualizer] FPS limit set to ${newFps} FPS.`);
     }
 }
 
@@ -179,8 +172,13 @@ function draw(timestamp) {
     if (isEcoModeEnabled && !isVisualizerVisible) {
         return;
     }
-
-    if (visualizerFpsLimit > 0) {
+    
+    if (state.isLightFlightMode || state.visualizerMode === 'static') {
+        return;
+    }
+    
+    if (state.visualizerFpsLimit > 0) {
+        const frameInterval = 1000 / state.visualizerFpsLimit;
         const elapsed = timestamp - lastFrameTime;
         if (elapsed < frameInterval) {
             return;
@@ -188,7 +186,7 @@ function draw(timestamp) {
         lastFrameTime = timestamp - (elapsed % frameInterval);
     }
 
-    if (currentVisualizerBars && analyser) {
+    if (currentVisualizerBars) {
         analyser.getByteFrequencyData(dataArray);
         const bufferLength = analyser.frequencyBinCount;
         const barIndices = [
@@ -383,6 +381,14 @@ export async function setEqualizerColorFromArtwork(imageElement) {
         document.documentElement.style.setProperty('--eq-color-1', 'var(--highlight-pink)');
         document.documentElement.style.setProperty('--eq-color-2', 'var(--highlight-blue)');
     };
+    
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    // LFモード中は色抽出を行わず、デフォルト色に設定して即座に処理を終了
+    if (state.isLightFlightMode) {
+        setDefaultColors();
+        return;
+    }
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
     if (imageElement && imageElement.src && !imageElement.src.endsWith('default_artwork.png')) {
         const colors = await getColorsFromArtwork(imageElement);

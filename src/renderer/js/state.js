@@ -21,8 +21,13 @@ export const state = {
     currentDetailView: { type: null, identifier: null },
     activeListView: 'track-view',
     artworksDir: '',
-    preferredDeviceId: null, // この行を追加
+    preferredDeviceId: null,
     activeViewId: 'track-view',
+    visualizerMode: 'active',
+    isLightFlightMode: false,
+    // ▼▼▼ ここからが修正箇所です ▼▼▼
+    userPreferredVisualizerFps: 0, // LFモードに入る前のFPS設定を保持
+    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 };
 
 export const elements = {};
@@ -62,6 +67,7 @@ export function initElements() {
     elements.addYoutubePlaylistBtn = document.getElementById('add-youtube-playlist-btn');
     elements.notificationToast = document.getElementById('notification-toast');
     elements.notificationText = document.getElementById('notification-text');
+    elements.lightFlightModeBtn = document.getElementById('light-flight-mode-btn');
     elements.lyricsView = document.getElementById('lyrics-view');
     elements.sidebarTabs = document.querySelectorAll('.sidebar-tab-btn');
     elements.sidebarTabContents = document.querySelectorAll('.sidebar-tab-content');

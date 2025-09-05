@@ -16,7 +16,7 @@
 }
 
 .sidebar-actions { margin-top: auto; }
-#add-network-folder-btn, #add-youtube-btn, #add-youtube-playlist-btn, #set-library-btn, #open-settings-btn { 
+#add-network-folder-btn, #add-youtube-btn, #add-youtube-playlist-btn, #set-library-btn, #light-flight-mode-btn, #open-settings-btn { 
     width: 100%; 
     padding: 10px; 
     background-color: var(--bg-light); 
@@ -28,8 +28,13 @@
     text-align: left; 
     margin-top: 8px; 
 }
-#add-network-folder-btn:hover, #add-youtube-btn:hover, #add-youtube-playlist-btn:hover, #set-library-btn:hover, #open-settings-btn:hover { 
+#add-network-folder-btn:hover, #add-youtube-btn:hover, #add-youtube-playlist-btn:hover, #set-library-btn:hover, #light-flight-mode-btn:hover, #open-settings-btn:hover { 
     background-color: var(--bg-hover); 
+}
+
+#light-flight-mode-btn.active {
+    color: var(--highlight-pink);
+    background-color: var(--bg-hover);
 }
 
 .playback-controls { 
@@ -216,6 +221,11 @@
     width: 100%; 
     max-width: 500px; 
     box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
+    /* ▼▼▼ ここからが修正箇所です ▼▼▼ */
+    display: flex;
+    flex-direction: column;
+    max-height: 85vh; /* ビューポートに対する最大高さを設定 */
+    /* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
 }
 #modal h3, #settings-modal h2 { margin-top: 0; }
 #modal p { color: var(--text-muted); font-size: 14px; }
@@ -236,6 +246,29 @@
 }
 
 /* ▼▼▼ ここからが修正箇所です ▼▼▼ */
+#settings-modal .settings-content {
+    overflow-y: auto; /* コンテンツがはみ出た場合にスクロールバーを表示 */
+    flex-grow: 1; /* 利用可能なスペースを埋める */
+    padding-right: 10px; /* スクロールバーのためのスペース */
+    margin-right: -10px; /* ↑のpaddingによるレイアウト崩れを補正 */
+}
+
+/* スクロールバーのスタイル */
+#settings-modal .settings-content::-webkit-scrollbar {
+    width: 8px;
+}
+#settings-modal .settings-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+#settings-modal .settings-content::-webkit-scrollbar-thumb {
+    background-color: var(--bg-dark);
+    border-radius: 4px;
+}
+#settings-modal .settings-content::-webkit-scrollbar-thumb:hover {
+    background-color: #555;
+}
+/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
+
 #settings-modal .setting-group {
     background-color: var(--bg-dark);
     border-radius: 8px;
@@ -320,8 +353,8 @@
 
 #settings-modal .modal-buttons {
     margin-top: 30px;
+    flex-shrink: 0; /* ボタン領域が縮まないようにする */
 }
-/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
 
 
 #loading-overlay { 
@@ -375,17 +408,13 @@
     margin-left: 8px;
 }
 
-/* 既存の .song-item:hover .marquee-wrapper... のルールを少し変更 */
 .song-item:hover .marquee-wrapper.is-overflowing .marquee-content {
     animation: marquee 10s linear infinite;
 }
 
-/* ▼▼▼ このルールを追加 ▼▼▼ */
-/* アプリが非アクティブな時は、ホバーしてもアニメーションを再生しない */
 .app-inactive .song-item:hover .marquee-wrapper.is-overflowing .marquee-content {
     animation-play-state: paused;
 }
-/* ▲▲▲ 追加はここまで ▲▲▲ */
 
 
 .song-item:hover .marquee-wrapper.is-overflowing .marquee-content > span:first-child {

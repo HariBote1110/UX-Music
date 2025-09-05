@@ -5,8 +5,8 @@ import { playSong } from './playback-manager.js';
 import { createQueueItem } from './ui/element-factory.js';
 import { showView } from './navigation.js'; 
 import { setAudioOutput, setVisualizerTarget } from './player.js';
-import { updateNowPlayingView } from './ui/now-playing.js'; // この行を追加
-import { loadLyricsForSong } from './lyrics-manager.js'; // この行を追加
+import { updateNowPlayingView } from './ui/now-playing.js'; 
+import { loadLyricsForSong } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
 
 /**
@@ -24,6 +24,7 @@ export function updatePlayingIndicators() {
     const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
 
     const oldPlayingItems = document.querySelectorAll('.main-content .song-item.playing');
+    // ▼▼▼ .visualization-static の付け外し処理を削除 ▼▼▼
     oldPlayingItems.forEach(item => item.classList.remove('playing'));
 
     if (currentPlayingSong) {
@@ -44,7 +45,6 @@ export function updatePlayingIndicators() {
     renderQueueView();
 }
 
-// ▼▼▼ ここからが修正箇所です ▼▼▼
 /**
  * 指定された曲の再生回数表示を更新する
  * @param {string} songPath - 曲のファイルパス
@@ -64,7 +64,6 @@ export function updatePlayCountDisplay(songPath, count) {
         console.error('Error updating play count display:', e);
     }
 }
-// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
 function renderQueueView() {
     elements.queueList.innerHTML = '';
@@ -97,8 +96,6 @@ export function addSongsToLibrary({ songs, albums }) {
     console.time('Renderer: Process Library Data');
     let migrationNeeded = false;
     
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
-    // albumsデータが明確に渡され、それが空オブジェクトの場合のみマイグレーションを検討する
     if (albums && Object.keys(albums).length === 0 && songs && songs.length > 0 && songs[0].artwork && typeof songs[0].artwork !== 'object') {
         migrationNeeded = true;
         console.log('[Migration Check] Old artwork format detected. Migration needed.');
@@ -106,7 +103,6 @@ export function addSongsToLibrary({ songs, albums }) {
     } else if (albums) {
         state.albums = new Map(Object.entries(albums));
     }
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
     if (songs && songs.length > 0) {
         const existingPaths = new Set(state.library.map(song => song.path));
@@ -226,12 +222,9 @@ export async function updateAudioDevices(savedDeviceId = null) {
         if (!mainPlayer) return;
         const currentSinkId = mainPlayer.sinkId || 'default';
 
-        // ★★★ ここからが修正箇所です ★★★
-        // 起動時に保存されたデバイスIDが見つかった場合、すぐに適用せず変数に保存する
         if (savedDeviceId && audioDevices.some(d => d.deviceId === savedDeviceId)) {
             state.preferredDeviceId = savedDeviceId;
         }
-        // ★★★ ここまでが修正箇所です ★★★
 
         audioDevices.forEach(device => {
             const item = document.createElement('div');
@@ -264,7 +257,6 @@ export async function updateAudioDevices(savedDeviceId = null) {
             elements.devicePopup.appendChild(item);
         });
         
-        // ★★★ 注意: 以前この場所にあった setAudioOutput の呼び出しは不要になりました ★★★
     } catch (error) {
         console.error('オーディオデバイスの取得に失敗しました:', error);
     }

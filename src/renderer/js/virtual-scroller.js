@@ -1,7 +1,7 @@
 // uxmusic/src/renderer/js/virtual-scroller.js
 
 export class VirtualScroller {
-    constructor({ element, data, renderItem, itemHeight, buffer = 10 }) { // onScrollCallback を削除
+    constructor({ element, data, renderItem, itemHeight, buffer = 10 }) {
         if (!element || !data || !renderItem || !itemHeight) {
             throw new Error("VirtualScroller: Missing required constructor options.");
         }
@@ -37,7 +37,6 @@ export class VirtualScroller {
         if (!this.scrollTimeout) {
             this.scrollTimeout = requestAnimationFrame(() => {
                 this.render();
-                // onScrollCallback(); // ▼▼▼ この行を削除 ▼▼▼
                 this.scrollTimeout = null;
             });
         }
@@ -57,7 +56,9 @@ export class VirtualScroller {
                 const itemData = this.data[i];
                 const element = this.renderItem(itemData, i);
                 element.style.position = 'absolute';
-                element.style.top = `${i * this.itemHeight}px`;
+                // ▼▼▼ ここからが修正箇所です ▼▼▼
+                element.style.transform = `translateY(${i * this.itemHeight}px)`;
+                // ▲▲▲ ここまでが修正箇所です ▲▲▲
                 element.style.left = '0';
                 element.style.right = '0';
                 element.style.height = `${this.itemHeight}px`;
