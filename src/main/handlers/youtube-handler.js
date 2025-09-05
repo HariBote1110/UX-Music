@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { sanitize } = require('../utils');
 const { analyzeLoudness } = require('../file-scanner');
-const { saveArtworkFromFile } = require('./library-handler');
+const { saveArtworkToFile } = require('./library-handler');
 const miniget = require('miniget');
 
 let libraryStore;
@@ -30,7 +30,13 @@ async function processYouTubeVideo(info, sourceUrl) {
     const thumbnailUrl = details.thumbnails?.[0]?.url;
     if (thumbnailUrl) {
         try {
-            const buffer = await miniget(thumbnailUrl).concat();
+            const stream = miniget(thumbnailUrl);
+            const buffer = await new Promise((resolve, reject) => {
+                const chunks = [];
+                stream.on('data', chunk => chunks.push(chunk));
+                stream.on('end', () => resolve(Buffer.concat(chunks)));
+                stream.on('error', reject);
+            });
             artworkData = { data: buffer };
         } catch (error) {
             console.error(`Failed to download thumbnail for ${details.title}:`, error);
@@ -95,7 +101,7 @@ async function processYouTubeVideo(info, sourceUrl) {
     }
 
     const stats = fs.statSync(destPath);
-    const savedArtwork = await saveArtworkFromFile(artworkData, destPath);
+    const savedArtwork = await saveArtworkToFile(artworkData, destPath);
 
     return {
         path: destPath,

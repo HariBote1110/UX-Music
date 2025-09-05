@@ -54,10 +54,11 @@ export function createSongItem(song, index, ipcRenderer) {
     if (!state.isLightFlightMode) {
         const artworkImg = songItem.querySelector('.artwork-small');
         const album = state.albums.get(song.albumKey);
-        let artwork = (album ? album.artwork : null) || song.artwork;
-        if (song.album === 'Unknown Album') {
-            artwork = null;
-        }
+        
+        // ▼▼▼ この2行を変更 ▼▼▼
+        // 楽曲自身のアートワーク (YouTubeなど) を優先し、なければアルバムのアートワークを使用
+        const artwork = song.artwork || (album ? album.artwork : null);
+        
         artworkImg.classList.add('lazy-load');
         artworkImg.dataset.src = resolveArtworkPath(artwork, true);
         artworkImg.onload = () => {
@@ -134,9 +135,14 @@ export function createAlbumGridItem(key, album, ipcRenderer) {
     `;
     
     if (!state.isLightFlightMode) {
-        const artworkImg = albumItem.querySelector('.album-artwork');
-        artworkImg.classList.add('lazy-load');
-        artworkImg.dataset.src = resolveArtworkPath(album.artwork, true);
+        const artworkImg = queueItem.querySelector('.artwork-small');
+        const album = state.albums.get(song.albumKey);
+
+        // ▼▼▼ この2行を変更 ▼▼▼
+        // 楽曲自身のアートワーク (YouTubeなど) を優先し、なければアルバムのアートワークを使用
+        const finalArtwork = song.artwork || (album ? album.artwork : null);
+
+        artworkImg.src = resolveArtworkPath(finalArtwork, true);
         artworkImg.onload = () => window.artworkLoadTimes.push(performance.now());
     }
 

@@ -63,12 +63,8 @@ export function updateNowPlayingView(song) {
         const masterSong = state.library.find(s => s.path === song.path) || song;
         const album = state.albums.get(masterSong.albumKey);
         
-        let artwork = album ? album.artwork : null;
-
-        // "Unknown Album"の場合はアートワークを強制的にnullにする
-        if (masterSong.album === 'Unknown Album') {
-            artwork = null;
-        }
+        // 楽曲自身のアートワーク(YouTubeなど)を優先し、なければアルバムのアートワークを使用
+        const artwork = masterSong.artwork || (album ? album.artwork : null);
 
         img.src = resolveArtworkPath(artwork, false);
 
