@@ -33,25 +33,29 @@ export function destroyTrackViewScroller() {
     }
 }
 
+function createListHeader() {
+    return `
+        <div id="music-list-header">
+            <div class="song-index">#</div>
+            <div class="song-artwork-col"></div>
+            <div class="song-title"><span>タイトル</span></div>
+            <div class="song-artist"><span>アーティスト</span></div>
+            <div class="song-album"><span>アルバム</span></div>
+            <div class="song-duration"><span>時間</span></div>
+            <div class="song-play-count"><span>回数</span></div>
+        </div>
+    `;
+}
+
 export function renderTrackView() {
     clearMainContent();
-    const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.id = 'track-view';
     viewWrapper.innerHTML = `
         <div class="search-bar"><input type="text" placeholder="絞り込み検索"></div>
         <h1>曲</h1>
-        <div id="music-list-header">
-            <div class="header-item">#</div>
-            <div class="header-item artwork-header"></div>
-            <div class="header-item">タイトル</div>
-            <div class="header-item">アーティスト</div>
-            <div class="header-item">アルバム</div>
-            <div class="header-item">時間</div>
-            <div class="header-item">回数</div>
-        </div>
+        ${createListHeader()}
     `;
     const musicListContainer = document.createElement('div');
     musicListContainer.id = 'music-list';
@@ -284,15 +288,7 @@ export function renderAlbumDetailView(album) {
                 <div class="detail-actions"><button class="play-all-btn">▶ すべて再生</button></div>
             </div>
         </div>
-        <div id="a-detail-list-header" class="music-list-header">
-             <div class="header-item">#</div>
-             <div class="header-item artwork-header"></div>
-             <div class="header-item">タイトル</div>
-             <div class="header-item">アーティスト</div>
-             <div class="header-item">アルバム</div>
-             <div class="header-item">時間</div>
-             <div class="header-item">回数</div>
-        </div>
+        ${createListHeader()}
     `;
     const listElement = document.createElement('div');
     listElement.id = 'a-detail-list';
@@ -389,15 +385,7 @@ export function renderPlaylistDetailView(playlistDetails) {
                 <div class="detail-actions"><button class="play-all-btn">▶ すべて再生</button></div>
             </div>
         </div>
-        <div id="p-detail-list-header" class="music-list-header">
-            <div class="header-item">#</div>
-            <div class="header-item artwork-header"></div>
-            <div class="header-item">タイトル</div>
-            <div class="header-item">アーティスト</div>
-            <div class="header-item">アルバム</div>
-            <div class="header-item">時間</div>
-            <div class="header-item">回数</div>
-        </div>
+        ${createListHeader()}
     `;
     const listElement = document.createElement('div');
     listElement.id = 'p-detail-list';

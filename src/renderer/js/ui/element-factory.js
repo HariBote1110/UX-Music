@@ -31,9 +31,9 @@ export function createSongItem(song, index, ipcRenderer) {
                 <div class="playing-indicator-bar"></div>
             </div>
             <img src="./assets/icons/static-visualizer.svg" class="static-visualizer-img" alt="Playing">
-            </div>
+        </div>
+        <div class="song-artwork-col">${artworkHTML}</div>
         <div class="song-title">
-            ${artworkHTML}
             <div class="marquee-wrapper">
                 <div class="marquee-content">
                     <span>${formatSongTitle(song.title)}</span>
