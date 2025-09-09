@@ -141,9 +141,13 @@ async function parseFiles(filePaths) {
             const metadata = await musicMetadata.parseFile(filePath);
             const common = metadata.common;
             const artwork = common.picture?.[0] || null;
-            // ▼▼▼ ここからが修正箇所です ▼▼▼
-            // メタデータから映像トラックの有無を厳密に判定する
             const hasVideo = metadata.format.trackInfo?.some(t => t.type === 'video');
+            
+            // ▼▼▼ ここからが修正箇所です ▼▼▼
+            // ハイレゾ音源かどうかの判定を追加
+            const sampleRate = metadata.format.sampleRate || 0;
+            const bitsPerSample = metadata.format.bitsPerSample || 0;
+            const isHiRes = sampleRate > 48000 || bitsPerSample > 16;
             // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
             songs.push({
@@ -160,6 +164,7 @@ async function parseFiles(filePaths) {
                 fileSize: stats.size,
                 type: 'local',
                 hasVideo,
+                isHiRes, // isHiResプロパティを追加
             });
         } catch (error) {
             console.error(`Error parsing metadata for ${filePath}:`, error.message);

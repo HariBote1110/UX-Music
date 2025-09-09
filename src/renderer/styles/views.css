@@ -54,62 +54,85 @@
 }
 
 /* --- 曲リストのスタイル --- */
-#music-list-header, #p-detail-list-header, #a-detail-list-header {
-    display: flex;
-    padding: 0 16px;
-    color: var(--text-muted);
-    border-bottom: 1px solid var(--bg-light);
-    font-size: 0.9em;
-    flex-shrink: 0;
-}
-
-#music-list {
+#music-list, #a-detail-list, #p-detail-list {
     flex-grow: 1;
     position: relative;
     overflow-y: auto;
+    overflow-x: hidden; /* 横スクロールを無効化 */
 }
 
-#music-list::-webkit-scrollbar {
+#music-list::-webkit-scrollbar, #a-detail-list::-webkit-scrollbar, #p-detail-list::-webkit-scrollbar {
     width: 8px;
 }
 
-#music-list::-webkit-scrollbar-track {
+#music-list::-webkit-scrollbar-track, #a-detail-list::-webkit-scrollbar-track, #p-detail-list::-webkit-scrollbar-track {
     background: transparent;
 }
 
-#music-list::-webkit-scrollbar-thumb {
+#music-list::-webkit-scrollbar-thumb, #a-detail-list::-webkit-scrollbar-thumb, #p-detail-list::-webkit-scrollbar-thumb {
     background-color: var(--bg-light);
     border-radius: 4px;
 }
 
-#music-list::-webkit-scrollbar-thumb:hover {
+#music-list::-webkit-scrollbar-thumb:hover, #a-detail-list::-webkit-scrollbar-thumb:hover, #p-detail-list::-webkit-scrollbar-thumb:hover {
     background-color: #555;
 }
 
-
-.header-item:nth-child(1) {
-    flex: 0 0 50px;
-    display: flex;
-    justify-content: center;
+/* ▼▼▼ CSS Gridレイアウトに全面改修 ▼▼▼ */
+#music-list-header, .song-item {
+    display: grid;
+    /* # | Art | Title | Artist | Album | Time | Plays */
+    grid-template-columns: 50px 48px minmax(0, 5fr) minmax(0, 3fr) minmax(0, 3fr) 80px 70px;
+    align-items: center;
+    column-gap: 16px;
+    padding: 0 16px;
     box-sizing: border-box;
+    width: 100%;
 }
 
-
-.header-item:nth-child(2) { flex: 5; }
-.header-item:nth-child(3) { flex: 3; }
-.header-item:nth-child(4) { flex: 3; }
-.header-item:nth-child(5) { flex: 1; text-align: right; }
-.header-item:nth-child(6) { flex: 1; text-align: right; }
-
-.song-item { 
-    display: flex; 
-    align-items: center; 
-    padding: 8px 16px; 
-    border-radius: 4px; 
-    cursor: pointer; 
-    box-sizing: border-box; 
-    will-change: transform; 
+#music-list-header {
+    height: 40px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--bg-light);
+    font-size: 0.9em;
 }
+
+.song-item {
+    height: 56px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* --- Gridセルごとのスタイル --- */
+.header-item, .song-item > div {
+    overflow: hidden;
+    white-space: nowrap;
+    height: 100%;
+    display: flex;
+    align-items: center;
+}
+
+/* # Column */
+.header-item:nth-child(1), .song-index { justify-content: center; }
+
+/* Artwork Column */
+.header-item:nth-child(2), .song-artwork-col { justify-content: center; }
+
+/* Time Column */
+.header-item:nth-child(6), .song-duration {
+    border-left: 1px solid var(--bg-light);
+    padding-left: 16px;
+}
+.song-duration { gap: 8px; }
+
+/* Play Count Column */
+.header-item:nth-child(7), .song-play-count {
+    border-left: 1px solid var(--bg-light);
+    padding-left: 16px;
+}
+/* ▲▲▲ CSS Gridへの改修はここまで ▲▲▲ */
+
+
 .song-item:hover { background-color: var(--bg-light); }
 .song-item.dragging { opacity: 0.5; background: #535353; }
 
@@ -119,61 +142,28 @@
 }
 
 .song-item .song-index {
-    flex: 0 0 50px;
     color: var(--text-muted);
-    position: relative; /* 絶対配置の基準点として機能させる */
-    height: 40px;
-    box-sizing: border-box;
+    position: relative;
 }
 
-/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
 .song-item .song-number,
 .playing-indicator,
 .static-visualizer-img {
     position: absolute;
-    left: 35%;
+    left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
     transition: opacity 0.2s ease-in-out;
 }
 
-.static-visualizer-img {
-    display: none;
-    width: 15px;
-    height: 16px;
-}
-/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
+.static-visualizer-img { display: none; width: 15px; height: 16px; }
+.song-item .song-number { opacity: 1; }
 
-.song-item .song-number {
-    opacity: 1;
-}
-
-/* --- 再生中インジケーター --- */
-.playing-indicator {
-    display: flex;
-    height: 20px;
-    gap: 2px;
-    align-items: center;
-    opacity: 0;
-}
-
-
-.song-item .song-title { flex: 5; }
-.song-item .song-artist, .song-item .song-album { flex: 3; }
-.song-item .song-duration { flex: 1; text-align: right; }
-.song-item .song-play-count { flex: 1; text-align: right; padding-right: 10px; }
-
-.song-item .song-title, .song-item .song-artist, .song-item .song-album {
-    min-width: 0;
-    padding-right: 10px;
-    display: flex;
-    align-items: center;
-}
+.playing-indicator { display: flex; height: 20px; gap: 2px; align-items: center; opacity: 0; }
 
 .artwork-small {
     width: 40px;
     height: 40px;
-    margin-right: 16px;
     border-radius: 4px;
     background-color: #333;
     object-fit: cover;
@@ -181,21 +171,13 @@
 }
 
 .marquee-wrapper {
-    flex: 1;
-    min-width: 0;
+    width: 100%;
     overflow: hidden;
     -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
     mask-image: linear-gradient(to right, black 90%, transparent 100%);
 }
 
-.marquee-content {
-    display: flex;
-    width: max-content;
-}
-
-.marquee-content > span {
-    white-space: nowrap;
-}
+.marquee-content > span { white-space: nowrap; }
 
 .song-item:hover .marquee-wrapper.is-overflowing .marquee-content {
     animation: marquee 10s linear infinite;
@@ -206,63 +188,25 @@
 }
 
 @keyframes marquee {
-    from {
-        transform: translateX(0);
-    }
-    to {
-        transform: translateX(-50%);
-    }
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
 }
 
-.playing-indicator-bar {
-    width: 2.5px;
-    height: 4px;
-    border-radius: 1.25px;
-    background: linear-gradient(45deg, var(--eq-color-1), var(--eq-color-2));
-    transition: background 0.3s ease-in-out;
-    transform-origin: center;
-}
-
-/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
-/* 再生中は数字を透明にし、インジケーターを表示 */
-.song-item.playing .song-number {
-    opacity: 0;
-}
-
-/* 通常モードでは .playing-indicator を表示 */
-.song-item.playing.indicator-ready .playing-indicator {
-    opacity: 1;
-}
-
-/* LFモード時は .playing-indicator を隠し、.static-visualizer-img を表示 */
-body.light-flight-mode .song-item.playing.indicator-ready .playing-indicator {
-    display: none;
-}
-body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img {
-    display: block;
-}
-/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
-
+.playing-indicator-bar { width: 2.5px; height: 4px; border-radius: 1.25px; background: linear-gradient(45deg, var(--eq-color-1), var(--eq-color-2)); transition: background 0.3s ease-in-out; transform-origin: center; }
+.song-item.playing .song-number { opacity: 0; }
+.song-item.playing.indicator-ready .playing-indicator { opacity: 1; }
+body.light-flight-mode .song-item.playing.indicator-ready .playing-indicator { display: none; }
+body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img { display: block; }
 
 /* --- グリッド表示のスタイル --- */
 #album-grid, #playlist-grid, #artist-grid, .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 24px; }
 .album-grid-item, .playlist-grid-item, .artist-grid-item { background-color: var(--bg-medium); border-radius: 8px; padding: 16px; cursor: pointer; transition: background-color 0.2s; overflow: hidden; }
 .album-grid-item:hover, .playlist-grid-item:hover, .artist-grid-item:hover { background-color: var(--bg-light); }
-
 .artist-grid-item { text-align: center; }
 .album-artwork { width: 100%; aspect-ratio: 1 / 1; border-radius: 4px; object-fit: cover; background-color: #333; margin-bottom: 12px; }
 .artist-artwork { width: 100%; aspect-ratio: 1 / 1; border-radius: 50%; object-fit: cover; background-color: #333; margin-bottom: 12px; box-shadow: 0 4px 30px rgba(0,0,0,0.4); }
-
-.album-title, .playlist-title, .artist-name, .album-artist {
-    color: var(--text-primary);
-    font-weight: bold;
-    white-space: nowrap;
-    overflow: hidden;
-}
-.album-artist {
-    color: var(--text-secondary);
-    font-size: 14px;
-}
+.album-title, .playlist-title, .artist-name, .album-artist { color: var(--text-primary); font-weight: bold; white-space: nowrap; overflow: hidden; }
+.album-artist { color: var(--text-secondary); font-size: 14px; }
 
 /* --- 詳細表示のスタイル --- */
 .detail-header { display: flex; align-items: flex-end; gap: 24px; margin-bottom: 30px; }
@@ -270,16 +214,7 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
 .artist-detail-art-round { border-radius: 50%; }
 .detail-info h1 { font-size: 32px; font-weight: 900; margin: 0 0 16px 0; }
 .detail-info p { color: var(--text-secondary); margin: 0 0 16px 0; }
-.play-all-btn {
-    background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue));
-    color: var(--text-primary);
-    border: none;
-    border-radius: 50px;
-    padding: 12px 24px;
-    font-size: 16px;
-    font-weight: bold;
-    cursor: pointer;
-}
+.play-all-btn { background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue)); color: var(--text-primary); border: none; border-radius: 50px; padding: 12px 24px; font-size: 16px; font-weight: bold; cursor: pointer; }
 #artist-detail-view h2 { margin-top: 40px; }
 
 /* --- 右サイドバー --- */
@@ -288,128 +223,36 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
 #now-playing-artwork-container.video-mode { aspect-ratio: 16 / 9; }
 #now-playing-artwork-container img, #now-playing-artwork-container iframe, #now-playing-artwork-container video { width: 100%; height: 100%; border: none; object-fit: cover; }
 #now-playing-details { width: 100%; text-align: left; flex-shrink: 0; overflow: hidden; }
-
-#now-playing-title, #now-playing-artist {
-    white-space: nowrap;
-    overflow: hidden;
-}
+#now-playing-title, #now-playing-artist { white-space: nowrap; overflow: hidden; }
 #now-playing-title { font-size: 24px; font-weight: 700; color: #fff; margin: 0 0 8px 0; }
 #now-playing-artist { font-size: 16px; font-weight: 400; color: #b3b3b3; margin: 0; }
 #hub-link-container { margin-top: 20px; width: 100%; }
 
-
-.sidebar-tabs {
-    display: flex;
-    width: 100%;
-    margin-top: 24px;
-    flex-shrink: 0;
-    border-bottom: 1px solid var(--bg-light);
-}
-
-.sidebar-tab-btn {
-    position: relative;
-    flex-grow: 1;
-    flex-basis: 0;
-    padding: 10px 5px;
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    font-weight: bold;
-    cursor: pointer;
-    white-space: nowrap;
-    text-align: center;
-    transition: color 0.2s;
-}
-
-.sidebar-tab-btn:hover {
-    color: var(--text-primary);
-}
-
-.sidebar-tab-btn.active {
-    color: var(--text-primary);
-}
-
-.sidebar-tab-btn.active::after {
-    content: '';
-    position: absolute;
-    bottom: -1px;
-    left: 0;
-    width: 100%;
-    height: 1px;
-    background-color: var(--highlight-pink);
-    z-index: 2;
-}
-
-.sidebar-tab-content {
-    width: calc(100% + 24px);
-    margin-right: -24px;
-    flex-grow: 1;
-    min-height: 0;
-    display: none;
-}
+.sidebar-tabs { display: flex; width: 100%; margin-top: 24px; flex-shrink: 0; border-bottom: 1px solid var(--bg-light); }
+.sidebar-tab-btn { position: relative; flex-grow: 1; flex-basis: 0; padding: 10px 5px; background: none; border: none; color: var(--text-secondary); font-weight: bold; cursor: pointer; white-space: nowrap; text-align: center; transition: color 0.2s; }
+.sidebar-tab-btn:hover { color: var(--text-primary); }
+.sidebar-tab-btn.active { color: var(--text-primary); }
+.sidebar-tab-btn.active::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 100%; height: 1px; background-color: var(--highlight-pink); z-index: 2; }
+.sidebar-tab-content { width: calc(100% + 24px); margin-right: -24px; flex-grow: 1; min-height: 0; display: none; }
 .sidebar-tab-content.active { display: flex; }
 
-#lyrics-view, #queue-list {
-    width: 100%;
-    overflow-y: auto;
-    scroll-behavior: smooth;
-    scrollbar-width: thin;
-    scrollbar-color: #555 var(--bg-light);
-    padding-left: 24px;
-    padding-right: 16px;
-    box-sizing: border-box;
-}
-
+#lyrics-view, #queue-list { width: 100%; overflow-y: auto; scroll-behavior: smooth; scrollbar-width: thin; scrollbar-color: #555 var(--bg-light); padding-left: 24px; padding-right: 16px; box-sizing: border-box; }
 #lyrics-view { text-align: center; font-size: 16px; line-height: 2.2; color: var(--text-secondary); }
 #lyrics-view p { margin: 0; padding: 2px 10px; border-radius: 4px; transition: color 0.3s, background-color 0.3s; }
 #lyrics-view p.active { color: var(--text-primary); font-weight: bold; background-color: rgba(255, 255, 255, 0.1); }
 .no-lyrics { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-muted); text-align: center; line-height: 1.6; }
 
-
-/* Chromium (Electron) 用のスクロールバー設定 */
-#lyrics-view::-webkit-scrollbar,
-#queue-list::-webkit-scrollbar {
-    width: 8px;
-}
-
-#lyrics-view::-webkit-scrollbar-track,
-#queue-list::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-#lyrics-view::-webkit-scrollbar-thumb,
-#queue-list::-webkit-scrollbar-thumb {
-    background-color: var(--bg-light);
-    border-radius: 4px;
-}
-
-#lyrics-view::-webkit-scrollbar-thumb:hover,
-#queue-list::-webkit-scrollbar-thumb:hover {
-    background-color: #555;
-}
-
+#lyrics-view::-webkit-scrollbar, #queue-list::-webkit-scrollbar { width: 8px; }
+#lyrics-view::-webkit-scrollbar-track, #queue-list::-webkit-scrollbar-track { background: transparent; }
+#lyrics-view::-webkit-scrollbar-thumb, #queue-list::-webkit-scrollbar-thumb { background-color: var(--bg-light); border-radius: 4px; }
+#lyrics-view::-webkit-scrollbar-thumb:hover, #queue-list::-webkit-scrollbar-thumb:hover { background-color: #555; }
 
 .queue-item { display: flex; align-items: center; padding: 6px 8px; border-radius: 4px; cursor: pointer; font-size: 14px; overflow: hidden; }
 .queue-item:hover { background-color: var(--bg-light); }
-
-.queue-item.playing {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: var(--text-primary);
-}
-
+.queue-item.playing { background-color: rgba(255, 255, 255, 0.1); color: var(--text-primary); }
 .queue-item .artwork-small { width: 32px; height: 32px; margin-right: 12px; flex-shrink: 0; }
-.queue-item-info {
-    display: flex;
-    flex-direction: column;
-    white-space: nowrap;
-    overflow: hidden;
-    flex-grow: 1;
-    min-width: 0;
-}
-.queue-item-title, .queue-item-artist {
-    overflow: hidden;
-    white-space: nowrap;
-}
+.queue-item-info { display: flex; flex-direction: column; white-space: nowrap; overflow: hidden; flex-grow: 1; min-width: 0; }
+.queue-item-title, .queue-item-artist { overflow: hidden; white-space: nowrap; }
 .queue-item-title { font-weight: 500; }
 .queue-item-artist { color: var(--text-secondary); font-size: 12px; }
 
@@ -421,12 +264,8 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
 .collage-img-wrapper img { width: 100%; height: 100%; object-fit: cover; }
 
 /* video要素のデフォルトコントロールを非表示にする */
-#now-playing-artwork-container video::-webkit-media-controls {
-    display: none !important;
-}
-#now-playing-artwork-container video {
-    pointer-events: none; /* クリックなどの操作を無効化 */
-}
+#now-playing-artwork-container video::-webkit-media-controls { display: none !important; }
+#now-playing-artwork-container video { pointer-events: none; }
 
 /* --- Light Flight Mode --- */
 body.light-flight-mode .artwork-small,
@@ -435,7 +274,4 @@ body.light-flight-mode .artist-artwork,
 body.light-flight-mode .playlist-artwork-container {
     display: none;
 }
-
-body.light-flight-mode .playing-indicator-bar {
-    background: var(--text-secondary);
-}
+body.light-flight-mode .playing-indicator-bar { background: var(--text-secondary); }

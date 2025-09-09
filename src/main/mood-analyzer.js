@@ -55,25 +55,33 @@ function analyzeSong(song, activePatterns) {
     return [...matchedIds];
 }
 
-function createSituationPlaylists(library) {
+// ▼▼▼ この関数の引数に settings を追加 ▼▼▼
+function createSituationPlaylists(library, settings = {}) {
     loadPatterns();
     const now = new Date();
     const currentTime = now.toTimeString().slice(0, 5);
     const currentDate = (now.getMonth() + 1).toString().padStart(2, '0') + '-' + now.getDate().toString().padStart(2, '0');
     
-    const activePatterns = moodPatterns.filter(p => {
+    // ▼▼▼ この2行を変更 ▼▼▼
+    const easterEggsEnabled = settings.enableEasterEggs !== false;
+
+    let patterns = moodPatterns.filter(p => {
+        // ▼▼▼ この行を変更 ▼▼▼
+        if (p.id === 'early_morning_special' && !easterEggsEnabled) {
+            return false;
+        }
         const isTimeMatch = !p.time_range || (p.time_range[0] > p.time_range[1] ? (currentTime >= p.time_range[0] || currentTime <= p.time_range[1]) : (currentTime >= p.time_range[0] && currentTime <= p.time_range[1]));
         const isDateMatch = !p.date_range || (p.date_range[0] > p.date_range[1] ? (currentDate >= p.date_range[0] || currentDate <= p.date_range[1]) : (currentDate >= p.date_range[0] && currentDate <= p.date_range[1]));
         return (!p.time_range && !p.date_range) || (isTimeMatch && isDateMatch);
     });
 
     const situationMap = {};
-    activePatterns.forEach(p => {
+    patterns.forEach(p => {
         situationMap[p.id] = { id: p.id, name: p.name, songs: [] };
     });
 
     library.forEach(song => {
-        const situations = analyzeSong(song, activePatterns);
+        const situations = analyzeSong(song, patterns);
         situations.forEach(id => situationMap[id]?.songs.push(song));
     });
 

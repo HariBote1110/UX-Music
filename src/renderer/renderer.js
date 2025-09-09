@@ -9,9 +9,7 @@ import { showNotification, hideNotification } from './js/ui/notification.js';
 import { initDebugCommands } from './js/debug-commands.js';
 import { updateTextOverflowForSelector } from './js/ui/utils.js';
 import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
-// ▼▼▼ ここからが修正箇所です ▼▼▼
 import { updateNowPlayingView } from './js/ui/now-playing.js';
-// ▲▲▲ ここまでが修正箇所です ▲▲▲
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
@@ -269,6 +267,11 @@ window.addEventListener('DOMContentLoaded', () => {
         
         const currentVisualizerMode = settings.visualizerMode || 'active';
         document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
+
+        // ▼▼▼ ここからが修正箇所です ▼▼▼
+        const easterEggsEnabled = settings.enableEasterEggs !== false; // デフォルトはtrue
+        document.querySelector('input[name="enable-easter-eggs"]').checked = easterEggsEnabled;
+        // ▲▲▲ ここまでが修正箇所です ▲▲▲
         
         elements.settingsModalOverlay.classList.remove('hidden');
     });
@@ -282,12 +285,15 @@ window.addEventListener('DOMContentLoaded', () => {
         const selectedQuality = document.querySelector('input[name="youtube-quality"]:checked').value;
         const selectedImportMode = document.querySelector('input[name="import-mode"]:checked').value;
         const selectedVisualizerMode = document.querySelector('input[name="visualizer-mode"]:checked').value;
+        // ▼▼▼ この行を新しく追加 ▼▼▼
+        const enableEasterEggs = document.querySelector('input[name="enable-easter-eggs"]').checked;
 
         ipcRenderer.send('save-settings', {
             youtubePlaybackMode: selectedYoutubeMode,
             youtubeDownloadQuality: selectedQuality,
             importMode: selectedImportMode,
-            visualizerMode: selectedVisualizerMode
+            visualizerMode: selectedVisualizerMode,
+            enableEasterEggs: enableEasterEggs, // enableEasterEggsプロパティを追加
         });
         
         state.visualizerMode = selectedVisualizerMode;
@@ -315,12 +321,8 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         hideNotification(2000);
         
-        // ▼▼▼ ここからが修正箇所です ▼▼▼
-        // モード切替時にUI全体を再描画
         renderCurrentView();
-        // Now Playingエリアも更新
         updateNowPlayingView(state.playbackQueue[state.currentSongIndex]);
-        // ▲▲▲ ここまでが修正箇所です ▲▲▲
     });
     
     elements.deviceSelectButton.addEventListener('click', (e) => {

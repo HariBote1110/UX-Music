@@ -11,11 +11,16 @@ import { showNotification, hideNotification } from './notification.js';
 const { ipcRenderer } = require('electron');
 
 let trackViewScroller = null;
+let detailViewScroller = null;
 
 function clearMainContent() {
     if (trackViewScroller) {
         trackViewScroller.destroy();
         trackViewScroller = null;
+    }
+    if (detailViewScroller) {
+        detailViewScroller.destroy();
+        detailViewScroller = null;
     }
     disconnectVisualizerObserver();
     elements.mainContent.innerHTML = '';
@@ -40,11 +45,12 @@ export function renderTrackView() {
         <h1>曲</h1>
         <div id="music-list-header">
             <div class="header-item">#</div>
+            <div class="header-item artwork-header"></div>
             <div class="header-item">タイトル</div>
             <div class="header-item">アーティスト</div>
             <div class="header-item">アルバム</div>
-            <div class="header-item">再生時間</div>
-            <div class="header-item">再生数</div>
+            <div class="header-item">時間</div>
+            <div class="header-item">回数</div>
         </div>
     `;
     const musicListContainer = document.createElement('div');
@@ -280,21 +286,22 @@ export function renderAlbumDetailView(album) {
         </div>
         <div id="a-detail-list-header" class="music-list-header">
              <div class="header-item">#</div>
+             <div class="header-item artwork-header"></div>
              <div class="header-item">タイトル</div>
              <div class="header-item">アーティスト</div>
              <div class="header-item">アルバム</div>
-             <div class="header-item">再生時間</div>
-             <div class="header-item">再生数</div>
+             <div class="header-item">時間</div>
+             <div class="header-item">回数</div>
         </div>
     `;
     const listElement = document.createElement('div');
     listElement.id = 'a-detail-list';
     listElement.className = 'music-list';
 
-    const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-    album.songs.forEach((song, index) => {
+    const renderItem = (song, index) => {
         const songItem = createSongItem(song, index, ipcRenderer);
         songItem.dataset.songPath = song.path;
+        const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
         if (currentPlayingSong && currentPlayingSong.path === song.path) {
             songItem.classList.add('playing');
         }
@@ -303,7 +310,15 @@ export function renderAlbumDetailView(album) {
             e.preventDefault();
             ipcRenderer.send('show-song-context-menu-in-library', song);
         });
-        listElement.appendChild(songItem);
+        window.observeNewArtworks(songItem);
+        return songItem;
+    };
+
+    detailViewScroller = new VirtualScroller({
+        element: listElement,
+        data: album.songs,
+        itemHeight: 56,
+        renderItem: renderItem
     });
     
     viewWrapper.appendChild(listElement);
@@ -376,11 +391,12 @@ export function renderPlaylistDetailView(playlistDetails) {
         </div>
         <div id="p-detail-list-header" class="music-list-header">
             <div class="header-item">#</div>
+            <div class="header-item artwork-header"></div>
             <div class="header-item">タイトル</div>
             <div class="header-item">アーティスト</div>
             <div class="header-item">アルバム</div>
-            <div class="header-item">再生時間</div>
-            <div class="header-item">再生数</div>
+            <div class="header-item">時間</div>
+            <div class="header-item">回数</div>
         </div>
     `;
     const listElement = document.createElement('div');
@@ -391,10 +407,10 @@ export function renderPlaylistDetailView(playlistDetails) {
     const resolver = (artwork) => resolveArtworkPath(artwork, true);
     createPlaylistArtwork(artworkContainer, artworks, resolver);
 
-    const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-    songs.forEach((song, index) => {
+    const renderItem = (song, index) => {
         const songItem = createSongItem(song, index, ipcRenderer);
         songItem.dataset.songPath = song.path;
+        const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
         if (currentPlayingSong && currentPlayingSong.path === song.path) {
             songItem.classList.add('playing');
         }
@@ -403,8 +419,17 @@ export function renderPlaylistDetailView(playlistDetails) {
             e.preventDefault();
             ipcRenderer.send('show-playlist-song-context-menu', { playlistName, song });
         });
-        listElement.appendChild(songItem);
+        window.observeNewArtworks(songItem);
+        return songItem;
+    };
+
+    detailViewScroller = new VirtualScroller({
+        element: listElement,
+        data: songs,
+        itemHeight: 56,
+        renderItem: renderItem
     });
+
     viewWrapper.appendChild(listElement);
     elements.mainContent.appendChild(viewWrapper);
     
