@@ -310,15 +310,15 @@ export function renderAlbumDetailView(album) {
         return songItem;
     };
 
+    viewWrapper.appendChild(listElement);
+    elements.mainContent.appendChild(viewWrapper);
+
     detailViewScroller = new VirtualScroller({
         element: listElement,
         data: album.songs,
         itemHeight: 56,
         renderItem: renderItem
     });
-    
-    viewWrapper.appendChild(listElement);
-    elements.mainContent.appendChild(viewWrapper);
     
     const artImg = viewWrapper.querySelector('.detail-art-img');
     artImg.dataset.src = resolveArtworkPath(album.artwork, false);
@@ -395,6 +395,9 @@ export function renderPlaylistDetailView(playlistDetails) {
     const resolver = (artwork) => resolveArtworkPath(artwork, true);
     createPlaylistArtwork(artworkContainer, artworks, resolver);
 
+    viewWrapper.appendChild(listElement);
+    elements.mainContent.appendChild(viewWrapper);
+
     const renderItem = (song, index) => {
         const songItem = createSongItem(song, index, ipcRenderer);
         songItem.dataset.songPath = song.path;
@@ -418,9 +421,6 @@ export function renderPlaylistDetailView(playlistDetails) {
         renderItem: renderItem
     });
 
-    viewWrapper.appendChild(listElement);
-    elements.mainContent.appendChild(viewWrapper);
-    
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, songs));
     
     const playingItem = listElement.querySelector('.song-item.playing');

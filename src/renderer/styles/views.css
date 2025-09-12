@@ -6,15 +6,19 @@
     --eq-color-2: var(--highlight-blue);
 }
 
-.view-container.hidden {
-    display: none;
-}
-
-#track-view {
+/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
+.view-container {
     display: flex;
     flex-direction: column;
     height: 100%;
 }
+/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
+
+.view-container.hidden {
+    display: none;
+}
+
+/* #track-view のスタイル定義は .view-container に統合したため削除 */
 
 #drop-zone {
     border: 2px dashed transparent;
@@ -60,6 +64,7 @@
     overflow-y: auto;
     overflow-x: hidden; /* 横スクロールを無効化 */
 }
+
 
 #music-list::-webkit-scrollbar, #a-detail-list::-webkit-scrollbar, #p-detail-list::-webkit-scrollbar {
     width: 8px;

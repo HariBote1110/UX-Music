@@ -6,6 +6,11 @@ export class VirtualScroller {
             throw new Error("VirtualScroller: Missing required constructor options.");
         }
 
+        // ▼▼▼ デバッグログを追加 ▼▼▼
+        console.log('[VirtualScroller] Initializing for element:', element);
+        console.log(`[VirtualScroller] Initial clientHeight: ${element.clientHeight}`);
+        // ▲▲▲ ここまで ▲▲▲
+
         this.container = element;
         this.data = data;
         this.renderItem = renderItem;
@@ -29,6 +34,9 @@ export class VirtualScroller {
         this.container.addEventListener('scroll', this.onScroll, { passive: true });
         
         requestAnimationFrame(() => {
+            // ▼▼▼ デバッグログを追加 ▼▼▼
+            console.log(`[VirtualScroller] Rendering after one frame. clientHeight: ${this.container.clientHeight}`);
+            // ▲▲▲ ここまで ▲▲▲
             this.render();
         });
     }
@@ -49,6 +57,18 @@ export class VirtualScroller {
         const startIndex = Math.max(0, Math.floor(scrollTop / this.itemHeight) - this.buffer);
         const endIndex = Math.min(this.data.length - 1, Math.ceil((scrollTop + containerHeight) / this.itemHeight) + this.buffer);
 
+        // ▼▼▼ デバッグログを追加 ▼▼▼
+        if (containerHeight === 0) {
+            console.warn('[VirtualScroller] containerHeight is 0, nothing will be rendered.', {
+                scrollTop,
+                containerHeight,
+                startIndex,
+                endIndex,
+                dataLength: this.data.length
+            });
+        }
+        // ▲▲▲ ここまで ▲▲▲
+
         const visibleIndexes = new Set();
         for (let i = startIndex; i <= endIndex; i++) {
             visibleIndexes.add(i);
@@ -56,9 +76,7 @@ export class VirtualScroller {
                 const itemData = this.data[i];
                 const element = this.renderItem(itemData, i);
                 element.style.position = 'absolute';
-                // ▼▼▼ ここからが修正箇所です ▼▼▼
                 element.style.transform = `translateY(${i * this.itemHeight}px)`;
-                // ▲▲▲ ここまでが修正箇所です ▲▲▲
                 element.style.left = '0';
                 element.style.right = '0';
                 element.style.height = `${this.itemHeight}px`;
