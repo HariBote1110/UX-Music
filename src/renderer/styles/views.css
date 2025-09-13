@@ -6,19 +6,15 @@
     --eq-color-2: var(--highlight-blue);
 }
 
-/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
 .view-container {
     display: flex;
     flex-direction: column;
     height: 100%;
 }
-/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
 
 .view-container.hidden {
     display: none;
 }
-
-/* #track-view のスタイル定義は .view-container に統合したため削除 */
 
 #drop-zone {
     border: 2px dashed transparent;
@@ -62,12 +58,12 @@
     flex-grow: 1;
     position: relative;
     overflow-y: auto;
-    overflow-x: hidden; /* 横スクロールを無効化 */
+    overflow-x: auto; /* 水平スクロールを許可 */
 }
-
 
 #music-list::-webkit-scrollbar, #a-detail-list::-webkit-scrollbar, #p-detail-list::-webkit-scrollbar {
     width: 8px;
+    height: 8px;
 }
 
 #music-list::-webkit-scrollbar-track, #a-detail-list::-webkit-scrollbar-track, #p-detail-list::-webkit-scrollbar-track {
@@ -83,35 +79,80 @@
     background-color: #555;
 }
 
-/* ▼▼▼ ここからが修正箇所です ▼▼▼ */
-#music-list-header, .song-item {
-    display: grid;
-    /* #, アートワーク, タイトル, アーティスト, アルバム, 時間, 回数 */
-    grid-template-columns: 50px 48px minmax(150px, 5fr) minmax(100px, 3fr) minmax(100px, 3fr) 80px 70px;
-    align-items: center;
-    padding: 0 16px;
-    box-sizing: border-box;
-    width: 100%;
-    column-gap: 10px;
-}
-
 #music-list-header {
     color: var(--text-muted);
     border-bottom: 1px solid var(--bg-light);
-    font-size: 0.9em;
     height: 40px;
+    overflow: hidden; /* はみ出したコンテンツを隠す */
+    padding: 0 16px;
+    box-sizing: border-box;
+    position: relative;
 }
 
-#music-list-header > div {
+/* ヘッダーのグリッドをこの要素に移動 */
+#music-list-header .header-scroll-content {
+    display: grid;
+    grid-template-columns: 50px 48px 5fr 4fr 4fr 40px auto auto;
+    align-items: center;
+    column-gap: 10px;
+    height: 100%;
+    min-width: 100%;
+}
+
+
+#music-list-header .header-scroll-content > div {
     white-space: nowrap;
-    overflow: hidden;
+    overflow: visible; /* リサイザーが表示されるように変更 */
+    position: relative; /* リサイザーの位置決めの基点 */
+    height: 100%;
+    display: flex;
+    align-items: center;
 }
 
-#music-list-header .song-index { text-align: center; }
+.song-item { 
+    display: grid;
+    grid-template-columns: 50px 48px 5fr 4fr 4fr 40px auto auto;
+    align-items: center;
+    padding: 0 16px;
+    box-sizing: border-box;
+    column-gap: 10px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    border-radius: 4px; 
+    cursor: pointer; 
+    will-change: transform;
+    width: 100%;
+    min-width: max-content; /* コンテンツがコンテナより大きい場合、幅を広げる */
+}
+
+.column-resizer {
+    position: absolute;
+    top: 10%;
+    bottom: 10%;
+    right: -5px; /* 10pxのgapの中央に配置 */
+    width: 10px; /* 操作エリアを確保 */
+    height: 80%;
+    cursor: col-resize;
+    z-index: 10;
+    border-right: 1px solid var(--bg-light); 
+}
+
+.column-resizer:hover {
+    border-right: 2px solid var(--highlight-blue);
+}
+
+#music-list-header .song-index,
+#music-list-header .song-hires {
+    justify-content: center;
+}
+
+#music-list-header .song-hires {
+    font-size: 0.9em;
+    color: #D9A300;
+}
 
 #music-list-header .song-duration,
 #music-list-header .song-play-count {
-    text-align: left;
     border-left: 1px solid var(--bg-light);
     padding-left: 10px;
     box-sizing: border-box;
@@ -124,16 +165,6 @@
     -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
     mask-image: linear-gradient(to right, black 90%, transparent 100%);
 }
-
-.song-item { 
-    padding-top: 8px;
-    padding-bottom: 8px;
-    border-radius: 4px; 
-    cursor: pointer; 
-    will-change: transform;
-}
-/* ▲▲▲ ここまでが修正箇所です ▲▲▲ */
-
 
 .song-item:hover { background-color: var(--bg-light); }
 .song-item.dragging { opacity: 0.5; background: #535353; }
@@ -199,6 +230,12 @@
     height: 100%;
     display: flex;
     align-items: center;
+}
+
+.song-item .song-hires {
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 

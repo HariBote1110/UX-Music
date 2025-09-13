@@ -8,6 +8,7 @@ import { createPlaylistArtwork } from './playlist-artwork.js';
 import { showContextMenu, formatTime, resolveArtworkPath } from './utils.js';
 import { showModal } from '../modal.js';
 import { showNotification, hideNotification } from './notification.js';
+import { initColumnResizing } from './column-resizer.js';
 const { ipcRenderer } = require('electron');
 
 let trackViewScroller = null;
@@ -36,15 +37,32 @@ export function destroyTrackViewScroller() {
 function createListHeader() {
     return `
         <div id="music-list-header">
-            <div class="song-index">#</div>
-            <div class="song-artwork-col"></div>
-            <div class="song-title"><span>タイトル</span></div>
-            <div class="song-artist"><span>アーティスト</span></div>
-            <div class="song-album"><span>アルバム</span></div>
-            <div class="song-duration"><span>時間</span></div>
-            <div class="song-play-count"><span>回数</span></div>
+            <div class="header-scroll-content">
+                <div class="song-index">#</div>
+                <div class="song-artwork-col"></div>
+                <div class="song-title"><span>タイトル</span></div>
+                <div class="song-artist"><span>アーティスト</span></div>
+                <div class="song-album"><span>アルバム</span></div>
+                <div class="song-hires">HR</div>
+                <div class="song-duration"><span>時間</span></div>
+                <div class="song-play-count"><span>回数</span></div>
+            </div>
         </div>
     `;
+}
+
+/**
+ * リストコンテナとヘッダーの水平スクロールを同期させる
+ * @param {HTMLElement} listContainer 
+ * @param {HTMLElement} headerContainer 
+ */
+function syncHeaderScroll(listContainer, headerContainer) {
+    const headerContent = headerContainer.querySelector('.header-scroll-content');
+    if (listContainer && headerContent) {
+        listContainer.addEventListener('scroll', () => {
+            headerContent.style.transform = `translateX(-${listContainer.scrollLeft}px)`;
+        });
+    }
 }
 
 export function renderTrackView() {
@@ -92,6 +110,10 @@ export function renderTrackView() {
         itemHeight: 56,
         renderItem: renderItem,
     });
+
+    const headerEl = viewWrapper.querySelector('#music-list-header');
+    initColumnResizing(headerEl.querySelector('.header-scroll-content'));
+    syncHeaderScroll(musicListContainer, headerEl);
 }
 
 export function renderAlbumView() {
@@ -320,6 +342,10 @@ export function renderAlbumDetailView(album) {
         renderItem: renderItem
     });
     
+    const headerEl = viewWrapper.querySelector('#music-list-header');
+    initColumnResizing(headerEl.querySelector('.header-scroll-content'));
+    syncHeaderScroll(listElement, headerEl);
+    
     const artImg = viewWrapper.querySelector('.detail-art-img');
     artImg.dataset.src = resolveArtworkPath(album.artwork, false);
     
@@ -420,6 +446,10 @@ export function renderPlaylistDetailView(playlistDetails) {
         itemHeight: 56,
         renderItem: renderItem
     });
+    
+    const headerEl = viewWrapper.querySelector('#music-list-header');
+    initColumnResizing(headerEl.querySelector('.header-scroll-content'));
+    syncHeaderScroll(listElement, headerEl);
 
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, songs));
     

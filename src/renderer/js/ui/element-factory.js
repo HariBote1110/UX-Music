@@ -54,8 +54,8 @@ export function createSongItem(song, index, ipcRenderer) {
                 </div>
             </div>
         </div>
+        <div class="song-hires">${hiResIconHTML}</div>
         <div class="song-duration">
-            ${hiResIconHTML}
             <span>${formatTime(song.duration || 0)}</span>
         </div>
         <div class="song-play-count">${(state.playCounts && state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
@@ -83,6 +83,8 @@ export function createSongItem(song, index, ipcRenderer) {
     
     return songItem;
 }
+
+// ... 以下、ファイルの残りの部分は変更ありません ...
 
 export function createQueueItem(song, isPlaying, ipcRenderer) {
     const queueItem = document.createElement('div');
