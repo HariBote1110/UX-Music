@@ -3,12 +3,33 @@ const DataStore = require('./data-store');
 const playlistManager = require('./playlist-manager');
 const { performance } = require('perf_hooks');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const logPerf = (message) => {
     console.log(`[PERF][IPC-Handlers] ${message}`);
 };
 
 let stores = {};
+
+function runMigrations(stores) {
+    const library = stores.library.load() || [];
+    let migrationNeeded = false;
+    
+    if (library.length > 0 && !library[0].id) {
+        console.log('[Migration] Assigning unique IDs to existing songs...');
+        migrationNeeded = true;
+        library.forEach(song => {
+            if (!song.id) {
+                song.id = crypto.randomUUID();
+            }
+        });
+    }
+
+    if (migrationNeeded) {
+        stores.library.save(library);
+        console.log('[Migration] Unique IDs assigned and library saved.');
+    }
+}
 
 function registerIpcHandlers() {
     logPerf("Registering handlers starts...");
@@ -19,6 +40,8 @@ function registerIpcHandlers() {
     stores.loudness = new DataStore('loudness.json');
     stores.albums = new DataStore('albums.json');
     logPerf("DataStores initialized.");
+    
+    runMigrations(stores);
 
     const sendToAllWindows = (channel, ...args) => {
         BrowserWindow.getAllWindows().forEach(win => {

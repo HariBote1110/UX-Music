@@ -23,8 +23,8 @@
             </div>
             <div class="sidebar-actions">
                 <button id="add-network-folder-btn">+ ネットワークフォルダを追加</button>
-                <button id="add-youtube-btn">+ YouTubeリンクを追加</button>
-                <button id="add-youtube-playlist-btn">+ YouTubeプレイリストを追加</button>
+                <button id="add-youtube-btn" class="hidden">+ YouTubeリンクを追加</button>
+                <button id="add-youtube-playlist-btn" class="hidden">+ YouTubeプレイリストを追加</button>
                 <button id="set-library-btn">ライブラリ場所設定</button>
                 <button id="light-flight-mode-btn">✈️ Light Flightモード</button>
                 <button id="open-settings-btn">設定</button>
@@ -127,6 +127,13 @@
         
         <div class="settings-content">
             <div class="setting-group">
+                 <div class="setting-item">
+                    <h4>オーディオデバイス</h4>
+                    <p class="setting-description">再生に使用するオーディオデバイスの表示/非表示を管理します。</p>
+                    <button id="manage-devices-btn" class="settings-button">表示するデバイスを管理...</button>
+                </div>
+            </div>
+            <div class="setting-group">
                 <div class="setting-item">
                     <h4>インポートモード</h4>
                     <p class="setting-description">楽曲のインポート時のCPU使用率を選択します。</p>
@@ -172,7 +179,7 @@
                 </div>
             </div>
             
-            <div class="setting-group">
+            <div class="setting-group hidden" data-feature="youtube">
                 <div class="setting-item">
                     <h4>YouTube再生モード</h4>
                     <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
@@ -195,7 +202,7 @@
                 </div>
             </div>
 
-            <div class="setting-group" id="youtube-quality-group">
+            <div class="setting-group hidden" data-feature="youtube" id="youtube-quality-group">
                 <div class="setting-item">
                     <h4>ダウンロード品質</h4>
                     <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>
@@ -235,6 +242,18 @@
             </div>
         <div class="modal-buttons">
             <button id="settings-ok-btn">OK</button>
+        </div>
+    </div>
+</div>
+
+<div id="devices-modal-overlay" class="hidden">
+    <div id="devices-modal">
+        <h2>表示するオーディオデバイス</h2>
+        <p>再生先デバイスの一覧に表示するものを選択してください。</p>
+        <div id="devices-list" class="checkbox-group-vertical">
+            </div>
+        <div class="modal-buttons">
+            <button id="devices-ok-btn">OK</button>
         </div>
     </div>
 </div>

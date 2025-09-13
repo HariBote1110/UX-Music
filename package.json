@@ -1,6 +1,6 @@
 {
   "name": "UX-Music",
-  "version": "0.1.9-Alpha-2a",
+  "version": "0.1.9-Alpha-2b",
   "description": "Music Player UX Music",
   "main": "src/main/index.js",
   "scripts": {
@@ -37,7 +37,8 @@
     "asarUnpack": [
       "**/node_modules/ffmpeg-static/**/*",
       "**/node_modules/ffprobe-static/**/*",
-      "**/node_modules/sharp/**/*"
+      "**/node_modules/sharp/**/*",
+      "**/node_modules/@img/**/*"
     ],
     "directories": {
       "buildResources": "assets",

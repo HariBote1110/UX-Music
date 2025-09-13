@@ -25,6 +25,7 @@ function clearMainContent() {
     }
     disconnectVisualizerObserver();
     elements.mainContent.innerHTML = '';
+    state.selectedSongIds.clear();
 }
 
 export function destroyTrackViewScroller() {
@@ -49,8 +50,23 @@ function createListHeader() {
     `;
 }
 
+function handleSongItemClick(e, song, index, songList, songItem) {
+    if (e.metaKey || e.ctrlKey) {
+        if (state.selectedSongIds.has(song.id)) {
+            state.selectedSongIds.delete(song.id);
+            songItem.classList.remove('selected');
+        } else {
+            state.selectedSongIds.add(song.id);
+            songItem.classList.add('selected');
+        }
+    } else {
+        playSong(index, songList);
+    }
+}
+
 export function renderTrackView() {
     clearMainContent();
+    state.currentlyViewedSongs = state.library;
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.id = 'track-view';
@@ -66,15 +82,18 @@ export function renderTrackView() {
 
     const renderItem = (song, index) => {
         const songItem = createSongItem(song, index, ipcRenderer);
-        songItem.dataset.songPath = song.path;
         
+        if (state.selectedSongIds.has(song.id)) {
+            songItem.classList.add('selected');
+        }
+
         const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-        if (currentPlayingSong && currentPlayingSong.path === song.path) {
+        if (currentPlayingSong && currentPlayingSong.id === song.id) {
             songItem.classList.add('playing');
             setVisualizerTarget(songItem);
         }
 
-        songItem.addEventListener('click', () => playSong(index, state.library));
+        songItem.addEventListener('click', (e) => handleSongItemClick(e, song, index, state.library, songItem));
         songItem.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             ipcRenderer.send('show-song-context-menu-in-library', song);
@@ -101,6 +120,7 @@ export function renderTrackView() {
 
 export function renderAlbumView() {
     clearMainContent();
+    state.currentlyViewedSongs = [];
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.innerHTML = '<h1>アルバム</h1>';
@@ -159,6 +179,7 @@ export function renderAlbumView() {
 
 export function renderArtistView() {
     clearMainContent();
+    state.currentlyViewedSongs = [];
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.innerHTML = '<h1>アーティスト</h1>';
@@ -181,6 +202,7 @@ export function renderArtistView() {
 
 export async function renderSituationView() {
     clearMainContent();
+    state.currentlyViewedSongs = [];
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.innerHTML = '<h1>For You</h1>';
@@ -221,6 +243,7 @@ export async function renderSituationView() {
 
 export function renderPlaylistView() {
     clearMainContent();
+    state.currentlyViewedSongs = [];
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.innerHTML = `<div class="view-header"><h1>プレイリスト</h1><button id="create-playlist-btn-main" class="header-button">+ 新規作成</button></div>`;
@@ -280,6 +303,7 @@ export function renderPlaylistView() {
 
 export function renderAlbumDetailView(album) {
     clearMainContent();
+    state.currentlyViewedSongs = album.songs;
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     const totalDuration = album.songs.reduce((sum, song) => sum + (song.duration || 0), 0);
@@ -301,12 +325,16 @@ export function renderAlbumDetailView(album) {
 
     const renderItem = (song, index) => {
         const songItem = createSongItem(song, index, ipcRenderer);
-        songItem.dataset.songPath = song.path;
+
+        if (state.selectedSongIds.has(song.id)) {
+            songItem.classList.add('selected');
+        }
+
         const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-        if (currentPlayingSong && currentPlayingSong.path === song.path) {
+        if (currentPlayingSong && currentPlayingSong.id === song.id) {
             songItem.classList.add('playing');
         }
-        songItem.addEventListener('click', () => playSong(index, album.songs));
+        songItem.addEventListener('click', (e) => handleSongItemClick(e, song, index, album.songs, songItem));
         songItem.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             ipcRenderer.send('show-song-context-menu-in-library', song);
@@ -343,6 +371,7 @@ export function renderAlbumDetailView(album) {
 
 export function renderArtistDetailView(artist) {
     clearMainContent();
+    state.currentlyViewedSongs = artist.songs;
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     const artistAlbums = [...state.albums.values()].filter(album => album.artist === artist.name);
@@ -381,6 +410,7 @@ export function renderPlaylistDetailView(playlistDetails) {
     const { name: playlistName, songs, artworks } = playlistDetails;
 
     clearMainContent();
+    state.currentlyViewedSongs = songs;
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     const totalDuration = songs.reduce((sum, song) => sum + (song.duration || 0), 0);
@@ -408,12 +438,16 @@ export function renderPlaylistDetailView(playlistDetails) {
 
     const renderItem = (song, index) => {
         const songItem = createSongItem(song, index, ipcRenderer);
-        songItem.dataset.songPath = song.path;
+
+        if (state.selectedSongIds.has(song.id)) {
+            songItem.classList.add('selected');
+        }
+
         const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-        if (currentPlayingSong && currentPlayingSong.path === song.path) {
+        if (currentPlayingSong && currentPlayingSong.id === song.id) {
             songItem.classList.add('playing');
         }
-        songItem.addEventListener('click', () => playSong(index, songs));
+        songItem.addEventListener('click', (e) => handleSongItemClick(e, song, index, songs, songItem));
         songItem.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             ipcRenderer.send('show-playlist-song-context-menu', { playlistName, song });

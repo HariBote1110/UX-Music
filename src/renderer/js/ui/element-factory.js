@@ -9,6 +9,7 @@ export function createSongItem(song, index, ipcRenderer) {
     const songItem = document.createElement('div');
     songItem.className = 'song-item';
     songItem.dataset.songPath = song.path;
+    songItem.dataset.songId = song.id;
 
     const artworkHTML = state.isLightFlightMode ? '' : `<img src="./assets/default_artwork.png" class="artwork-small lazy-load" alt="artwork">`;
     

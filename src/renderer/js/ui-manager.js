@@ -28,8 +28,8 @@ export function updatePlayingIndicators() {
 
     if (currentPlayingSong) {
         try {
-            const safePath = CSS.escape(currentPlayingSong.path);
-            const newPlayingItem = document.querySelector(`.main-content .song-item[data-song-path="${safePath}"]`);
+            const safeId = CSS.escape(currentPlayingSong.id);
+            const newPlayingItem = document.querySelector(`.main-content .song-item[data-song-id="${safeId}"]`);
             if (newPlayingItem) {
                 newPlayingItem.classList.add('playing');
                 setVisualizerTarget(newPlayingItem);
@@ -215,10 +215,15 @@ function groupLibraryByArtist() {
 export async function updateAudioDevices() {
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioDevices = devices.filter(device => device.kind === 'audiooutput');
+        const settings = await ipcRenderer.invoke('get-settings');
+        const hiddenDevices = settings.hiddenDeviceIds || [];
+        
+        const audioDevices = devices.filter(device => 
+            device.kind === 'audiooutput' && !hiddenDevices.includes(device.deviceId)
+        );
+        
         elements.devicePopup.innerHTML = '';
         
-        const settings = await ipcRenderer.invoke('get-settings');
         const activeDeviceId = settings.audioOutputId || 'default';
 
         audioDevices.forEach(device => {
@@ -242,7 +247,6 @@ export async function updateAudioDevices() {
                 
                 await setAudioOutput(newDeviceId);
 
-                // UIの選択状態を更新
                 elements.devicePopup.querySelectorAll('.device-popup-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
                 elements.devicePopup.classList.remove('active');

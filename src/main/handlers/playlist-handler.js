@@ -110,7 +110,6 @@ function registerPlaylistHandlers(stores, sendToAllWindows) {
         return result;
     });
 
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
     ipcMain.handle('add-album-to-playlist', (event, { songPaths, playlistName }) => {
         const library = libraryStore.load() || [];
         const libraryMap = new Map(library.map(song => [song.path, song]));
@@ -126,7 +125,22 @@ function registerPlaylistHandlers(stores, sendToAllWindows) {
         }
         return { success: true, addedCount: 0 };
     });
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+
+    ipcMain.handle('add-songs-to-playlist', (event, { songIds, playlistName }) => {
+        const library = libraryStore.load() || [];
+        const libraryMap = new Map(library.map(song => [song.id, song]));
+
+        const songsToAdd = songIds.map(id => libraryMap.get(id)).filter(Boolean);
+
+        if (songsToAdd.length > 0) {
+            const result = playlistManager.addSongsToPlaylist(playlistName, songsToAdd);
+            if (result.success && result.addedCount > 0) {
+                sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
+            }
+            return result;
+        }
+        return { success: true, addedCount: 0 };
+    });
 }
 
 module.exports = { registerPlaylistHandlers, getPlaylistsWithArtwork };

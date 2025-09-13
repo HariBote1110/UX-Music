@@ -5,6 +5,7 @@ const { sanitize } = require('../utils');
 const { analyzeLoudness } = require('../file-scanner');
 const { saveArtworkToFile } = require('./library-handler');
 const miniget = require('miniget');
+const crypto = require('crypto');
 
 let libraryStore;
 let settingsStore;
@@ -45,6 +46,7 @@ async function processYouTubeVideo(info, sourceUrl) {
 
     if (mode === 'stream') {
         return {
+            id: crypto.randomUUID(),
             path: sourceUrl,
             title: details.title,
             artist: details.author.name,
@@ -104,6 +106,7 @@ async function processYouTubeVideo(info, sourceUrl) {
     const savedArtwork = await saveArtworkToFile(artworkData, destPath);
 
     return {
+        id: crypto.randomUUID(),
         path: destPath,
         title: details.title,
         artist: details.author.name,

@@ -154,9 +154,19 @@
 .song-item:hover { background-color: var(--bg-light); }
 .song-item.dragging { opacity: 0.5; background: #535353; }
 
+.song-item.selected {
+    background-color: rgba(80, 120, 220, 0.25) !important;
+    box-shadow: inset 2px 0 0 0 rgba(90, 130, 255, 0.7);
+}
+
+.song-item.selected:hover {
+    background-color: rgba(80, 120, 220, 0.4) !important;
+}
+
 .song-item.playing {
     background-color: rgba(255, 255, 255, 0.1);
-    color: var(--text-primary);
+    color: #fff;
+    font-weight: bold;
 }
 
 .song-item .song-index {

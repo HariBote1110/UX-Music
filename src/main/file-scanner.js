@@ -4,6 +4,7 @@ const { app } = require('electron');
 const MusicTempo = require('music-tempo');
 const tmp = require('tmp');
 const wavDecoder = require('wav-decoder');
+const crypto = require('crypto');
 
 let ffmpeg;
 
@@ -143,14 +144,12 @@ async function parseFiles(filePaths) {
             const artwork = common.picture?.[0] || null;
             const hasVideo = metadata.format.trackInfo?.some(t => t.type === 'video');
             
-            // ▼▼▼ ここからが修正箇所です ▼▼▼
-            // ハイレゾ音源かどうかの判定を追加
             const sampleRate = metadata.format.sampleRate || 0;
             const bitsPerSample = metadata.format.bitsPerSample || 0;
             const isHiRes = sampleRate > 48000 || bitsPerSample > 16;
-            // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
             songs.push({
+                id: crypto.randomUUID(),
                 path: filePath,
                 title: common.title || path.basename(filePath),
                 artist: common.artist || 'Unknown Artist',
@@ -164,7 +163,7 @@ async function parseFiles(filePaths) {
                 fileSize: stats.size,
                 type: 'local',
                 hasVideo,
-                isHiRes, // isHiResプロパティを追加
+                isHiRes,
             });
         } catch (error) {
             console.error(`Error parsing metadata for ${filePath}:`, error.message);

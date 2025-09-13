@@ -25,9 +25,9 @@ export const state = {
     activeViewId: 'track-view',
     visualizerMode: 'active',
     isLightFlightMode: false,
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
-    userPreferredVisualizerFps: 0, // LFモードに入る前のFPS設定を保持
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
+    userPreferredVisualizerFps: 0,
+    selectedSongIds: new Set(),
+    copiedSongIds: [],
 };
 
 export const elements = {};

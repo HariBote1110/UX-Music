@@ -121,6 +121,12 @@ window.addEventListener('DOMContentLoaded', () => {
                 applyMasterVolume();
             }
             state.visualizerMode = settings.visualizerMode || 'active';
+            
+            if (settings.enableYouTube) {
+                document.querySelectorAll('[data-feature="youtube"], #add-youtube-btn, #add-youtube-playlist-btn').forEach(el => {
+                    el.classList.remove('hidden');
+                });
+            }
         },
         onPlayCountsUpdated: (counts) => {
             state.playCounts = counts;
@@ -268,10 +274,8 @@ window.addEventListener('DOMContentLoaded', () => {
         const currentVisualizerMode = settings.visualizerMode || 'active';
         document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
 
-        // ▼▼▼ ここからが修正箇所です ▼▼▼
-        const easterEggsEnabled = settings.enableEasterEggs !== false; // デフォルトはtrue
+        const easterEggsEnabled = settings.enableEasterEggs !== false;
         document.querySelector('input[name="enable-easter-eggs"]').checked = easterEggsEnabled;
-        // ▲▲▲ ここまでが修正箇所です ▲▲▲
         
         elements.settingsModalOverlay.classList.remove('hidden');
     });
@@ -285,7 +289,6 @@ window.addEventListener('DOMContentLoaded', () => {
         const selectedQuality = document.querySelector('input[name="youtube-quality"]:checked').value;
         const selectedImportMode = document.querySelector('input[name="import-mode"]:checked').value;
         const selectedVisualizerMode = document.querySelector('input[name="visualizer-mode"]:checked').value;
-        // ▼▼▼ この行を新しく追加 ▼▼▼
         const enableEasterEggs = document.querySelector('input[name="enable-easter-eggs"]').checked;
 
         ipcRenderer.send('save-settings', {
@@ -293,7 +296,7 @@ window.addEventListener('DOMContentLoaded', () => {
             youtubeDownloadQuality: selectedQuality,
             importMode: selectedImportMode,
             visualizerMode: selectedVisualizerMode,
-            enableEasterEggs: enableEasterEggs, // enableEasterEggsプロパティを追加
+            enableEasterEggs: enableEasterEggs,
         });
         
         state.visualizerMode = selectedVisualizerMode;
@@ -345,16 +348,107 @@ window.addEventListener('DOMContentLoaded', () => {
         }, 250);
     });
 
-    window.addEventListener('keydown', (e) => {
+    window.addEventListener('keydown', async (e) => {
         if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
         
-        if (e.code === 'Space') {
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        const modifierKey = isMac ? e.metaKey : e.ctrlKey;
+
+        if (e.code === 'Space' && !modifierKey) {
             e.preventDefault();
             togglePlayPause();
-        } else if (e.code === 'Digit0') {
+        } else if (e.code === 'Digit0' && !modifierKey) {
             e.preventDefault();
             seekToStart();
+        } else if (e.code === 'Escape') {
+            if (state.selectedSongIds.size > 0) {
+                e.preventDefault();
+                state.selectedSongIds.clear();
+                document.querySelectorAll('.song-item.selected').forEach(item => {
+                    item.classList.remove('selected');
+                });
+            }
+        } else if (modifierKey && e.key.toLowerCase() === 'a') {
+            e.preventDefault();
+            if (state.currentlyViewedSongs && state.currentlyViewedSongs.length > 0) {
+                const allIds = new Set(state.currentlyViewedSongs.map(s => s.id));
+                const allSelected = state.selectedSongIds.size === allIds.size;
+
+                if (allSelected) {
+                    state.selectedSongIds.clear();
+                } else {
+                    state.selectedSongIds = new Set(allIds);
+                }
+                
+                document.querySelectorAll('.song-item').forEach(item => {
+                    const songId = item.dataset.songId;
+                    if (state.selectedSongIds.has(songId)) {
+                        item.classList.add('selected');
+                    } else {
+                        item.classList.remove('selected');
+                    }
+                });
+            }
+        } else if (modifierKey && e.key.toLowerCase() === 'c') {
+            e.preventDefault();
+            if (state.selectedSongIds.size > 0) {
+                state.copiedSongIds = [...state.selectedSongIds];
+                showNotification(`${state.copiedSongIds.length}曲をコピーしました。`);
+                hideNotification(2000);
+            }
+        } else if (modifierKey && e.key.toLowerCase() === 'v') {
+            e.preventDefault();
+            if (state.copiedSongIds.length > 0 && (state.currentDetailView.type === 'playlist' || state.currentDetailView.type === 'situation')) {
+                const playlistName = state.currentDetailView.identifier;
+                
+                const result = await ipcRenderer.invoke('add-songs-to-playlist', {
+                    playlistName: playlistName,
+                    songIds: state.copiedSongIds
+                });
+
+                if (result.success) {
+                    showNotification(`${result.addedCount}曲を「${playlistName}」に追加しました。`);
+                    hideNotification(3000);
+                    showPlaylist(playlistName);
+                } else {
+                    showNotification(`追加に失敗しました: ${result.message}`, 3000);
+                }
+            }
         }
+    });
+
+    document.getElementById('manage-devices-btn').addEventListener('click', async () => {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioDevices = devices.filter(d => d.kind === 'audiooutput');
+        const settings = await ipcRenderer.invoke('get-settings');
+        const hiddenDevices = settings.hiddenDeviceIds || [];
+        
+        const listEl = document.getElementById('devices-list');
+        listEl.innerHTML = '';
+
+        audioDevices.forEach(device => {
+            const isHidden = hiddenDevices.includes(device.deviceId);
+            const label = document.createElement('label');
+            label.innerHTML = `
+                <input type="checkbox" data-device-id="${device.deviceId}" ${!isHidden ? 'checked' : ''}>
+                <span>${device.label || `スピーカー ${audioDevices.indexOf(device) + 1}`}</span>
+            `;
+            listEl.appendChild(label);
+        });
+
+        document.getElementById('devices-modal-overlay').classList.remove('hidden');
+    });
+
+    document.getElementById('devices-ok-btn').addEventListener('click', () => {
+        const hiddenDeviceIds = [];
+        document.querySelectorAll('#devices-list input[type="checkbox"]').forEach(checkbox => {
+            if (!checkbox.checked) {
+                hiddenDeviceIds.push(checkbox.dataset.deviceId);
+            }
+        });
+        ipcRenderer.send('save-settings', { hiddenDeviceIds });
+        document.getElementById('devices-modal-overlay').classList.add('hidden');
+        updateAudioDevices();
     });
 
     ipcRenderer.on('app-info-response', (event, info) => {
