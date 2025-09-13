@@ -58,7 +58,6 @@
     flex-grow: 1;
     position: relative;
     overflow-y: auto;
-    overflow-x: auto; /* 水平スクロールを許可 */
 }
 
 #music-list::-webkit-scrollbar, #a-detail-list::-webkit-scrollbar, #p-detail-list::-webkit-scrollbar {
@@ -83,27 +82,22 @@
     color: var(--text-muted);
     border-bottom: 1px solid var(--bg-light);
     height: 40px;
-    overflow: hidden; /* はみ出したコンテンツを隠す */
     padding: 0 16px;
     box-sizing: border-box;
-    position: relative;
-}
-
-/* ヘッダーのグリッドをこの要素に移動 */
-#music-list-header .header-scroll-content {
+    position: sticky;
+    top: 0;
+    background-color: var(--bg-dark);
+    z-index: 20;
     display: grid;
-    grid-template-columns: 50px 48px 5fr 4fr 4fr 40px auto auto;
     align-items: center;
     column-gap: 10px;
-    height: 100%;
-    min-width: 100%;
+    grid-template-columns: 40px 56px 5fr 4fr 4fr 40px 70px 60px;
 }
 
-
-#music-list-header .header-scroll-content > div {
+#music-list-header > div {
     white-space: nowrap;
-    overflow: visible; /* リサイザーが表示されるように変更 */
-    position: relative; /* リサイザーの位置決めの基点 */
+    overflow: hidden;
+    position: relative;
     height: 100%;
     display: flex;
     align-items: center;
@@ -111,34 +105,32 @@
 
 .song-item { 
     display: grid;
-    grid-template-columns: 50px 48px 5fr 4fr 4fr 40px auto auto;
+    grid-template-columns: 40px 56px 5fr 4fr 4fr 40px 70px 60px;
     align-items: center;
     padding: 0 16px;
     box-sizing: border-box;
     column-gap: 10px;
-    padding-top: 8px;
-    padding-bottom: 8px;
+    height: 56px;
     border-radius: 4px; 
     cursor: pointer; 
     will-change: transform;
     width: 100%;
-    min-width: max-content; /* コンテンツがコンテナより大きい場合、幅を広げる */
 }
 
 .column-resizer {
     position: absolute;
     top: 10%;
     bottom: 10%;
-    right: -5px; /* 10pxのgapの中央に配置 */
-    width: 10px; /* 操作エリアを確保 */
-    height: 80%;
+    right: -5px;
+    width: 10px;
     cursor: col-resize;
     z-index: 10;
-    border-right: 1px solid var(--bg-light); 
+    border-right: 1px solid transparent;
+    transition: border-color 0.2s;
 }
 
 .column-resizer:hover {
-    border-right: 2px solid var(--highlight-blue);
+    border-right: 1px solid var(--highlight-blue);
 }
 
 #music-list-header .song-index,
@@ -159,13 +151,6 @@
     height: 50%;
 }
 
-#music-list-header .song-title,
-#music-list-header .song-artist,
-#music-list-header .song-album {
-    -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
-    mask-image: linear-gradient(to right, black 90%, transparent 100%);
-}
-
 .song-item:hover { background-color: var(--bg-light); }
 .song-item.dragging { opacity: 0.5; background: #535353; }
 
@@ -177,7 +162,7 @@
 .song-item .song-index {
     color: var(--text-muted);
     position: relative;
-    height: 40px;
+    height: 100%;
     text-align: center;
     display: flex;
     align-items: center;
@@ -238,9 +223,13 @@
     justify-content: center;
 }
 
-
-.song-item .song-title, .song-item .song-artist, .song-item .song-album {
+.song-item .song-artwork-col,
+.song-item .song-title, 
+.song-item .song-artist, 
+.song-item .song-album {
     min-width: 0;
+    display: flex;
+    align-items: center;
 }
 
 .artwork-small {
@@ -253,11 +242,11 @@
 }
 
 .marquee-wrapper {
-    flex: 1;
+    flex-grow: 1;
     min-width: 0;
     overflow: hidden;
-    -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
-    mask-image: linear-gradient(to right, black 90%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, black 95%, transparent 100%);
+    mask-image: linear-gradient(to right, black 95%, transparent 100%);
 }
 
 .marquee-content {
@@ -498,7 +487,8 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
 body.light-flight-mode .artwork-small,
 body.light-flight-mode .album-artwork,
 body.light-flight-mode .artist-artwork,
-body.light-flight-mode .playlist-artwork-container {
+body.light-flight-mode .playlist-artwork-container,
+body.light-flight-mode .song-artwork-col {
     display: none;
 }
 

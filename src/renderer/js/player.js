@@ -11,7 +11,6 @@ let baseGain = 1.0;
 
 let localPlayer;
 let currentSongType = 'local';
-let timeUpdateInterval;
 
 let onSongEndedCallback = () => {};
 let onNextSongCallback = () => {};
@@ -20,7 +19,6 @@ let lastVolume = 0.5;
 
 let isSeeking = false;
 let wasPlayingBeforeSeek = false;
-let animationFrameId = null;
 
 let analyser;
 let dataArray;
@@ -37,6 +35,41 @@ let progressUpdateInterval = null;
 let visualizerObserver = null;
 let isVisualizerVisible = false;
 let isEcoModeEnabled = true;
+
+
+async function createAudioContext(sinkId = 'default') {
+    if (audioContext) {
+        await audioContext.close().catch(e => console.error("Error closing previous AudioContext:", e));
+    }
+    try {
+        const contextOptions = {};
+        // sinkIdが有効な値の場合のみ設定
+        if (sinkId && sinkId !== 'default' && typeof (new AudioContext()).setSinkId === 'function') {
+            contextOptions.sinkId = sinkId;
+        }
+        audioContext = new (window.AudioContext || window.webkitAudioContext)(contextOptions);
+        console.log(`AudioContext created with sinkId: ${sinkId}`);
+        return audioContext;
+    } catch (e) {
+        console.error('Failed to create AudioContext with sinkId, falling back to default:', sinkId, e);
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        return audioContext;
+    }
+}
+
+function connectAudioGraph() {
+    if (!audioContext || !localPlayer) return;
+    try {
+        mainPlayerNode = audioContext.createMediaElementSource(localPlayer);
+        gainNode = audioContext.createGain();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 32;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        mainPlayerNode.connect(gainNode).connect(analyser).connect(audioContext.destination);
+    } catch (e) {
+        console.error('Web Audio APIのグラフ接続に失敗しました。', e);
+    }
+}
 
 /**
  * ビジュアライザーのエコモード（Intersection Observerによる表示監視）を切り替える
@@ -149,16 +182,8 @@ export function applyMasterVolume() {
 }
 
 export async function setAudioOutput(deviceId) {
-    try {
-        await resumeAudioContext();
-        if (typeof localPlayer.setSinkId === 'function') {
-            await localPlayer.setSinkId(deviceId);
-            ipcRenderer.send('save-audio-output-id', deviceId);
-            console.log(`オーディオ出力先を ${deviceId} に変更しました`);
-        }
-    } catch (error) {
-        console.error('オーディオ出力先の変更に失敗しました:', error);
-    }
+    ipcRenderer.send('save-settings', { audioOutputId: deviceId });
+    await reinitPlayer(deviceId);
 }
 
 function draw(timestamp) {
@@ -186,7 +211,7 @@ function draw(timestamp) {
         lastFrameTime = timestamp - (elapsed % frameInterval);
     }
 
-    if (currentVisualizerBars) {
+    if (currentVisualizerBars && analyser) {
         analyser.getByteFrequencyData(dataArray);
         const bufferLength = analyser.frequencyBinCount;
         const barIndices = [
@@ -233,24 +258,49 @@ export function setVisualizerTarget(targetElement) {
     }
 }
 
-export function initPlayer(playerElement, callbacks) {
+async function reinitPlayer(sinkId) {
+    const wasPlaying = localPlayer && localPlayer.src && !localPlayer.paused;
+    const currentTime = localPlayer ? localPlayer.currentTime : 0;
+    const currentSrc = localPlayer ? localPlayer.src : null;
+
+    if (localPlayer && localPlayer.parentNode) {
+        localPlayer.parentNode.removeChild(localPlayer);
+    }
+    
+    const newPlayer = document.createElement('video');
+    newPlayer.id = 'main-player';
+    newPlayer.playsInline = true;
+    document.body.appendChild(newPlayer);
+    
+    await initPlayer(newPlayer, {
+        onSongEnded: onSongEndedCallback,
+        onNextSong: onNextSongCallback,
+        onPrevSong: onPrevSongCallback
+    }, sinkId);
+    
+    if (currentSrc) {
+        localPlayer.src = currentSrc;
+        localPlayer.load();
+        
+        localPlayer.addEventListener('loadedmetadata', () => {
+            localPlayer.currentTime = currentTime;
+            if (wasPlaying) {
+                localPlayer.play().catch(e => console.error("Playback resumption failed:", e));
+            }
+        }, { once: true });
+    }
+}
+
+export async function initPlayer(playerElement, callbacks, sinkId = null) {
     localPlayer = playerElement;
     onSongEndedCallback = callbacks.onSongEnded;
     onNextSongCallback = callbacks.onNextSong;
     onPrevSongCallback = callbacks.onPrevSong;
 
-    try {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        mainPlayerNode = audioContext.createMediaElementSource(localPlayer);
-        gainNode = audioContext.createGain();
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 32;
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
-        mainPlayerNode.connect(gainNode).connect(analyser).connect(audioContext.destination);
-    } catch (e) {
-        console.error('Web Audio APIの初期化に失敗しました。', e);
-    }
-
+    const finalSinkId = sinkId || (await ipcRenderer.invoke('get-settings')).audioOutputId;
+    await createAudioContext(finalSinkId);
+    connectAudioGraph();
+    
     setPlayPauseIcon('stop');
 
     localPlayer.addEventListener('ended', onSongEndedCallback);
@@ -275,7 +325,11 @@ export function initPlayer(playerElement, callbacks) {
     });
 
     localPlayer.addEventListener('pause', () => {
-        if (!isSeeking) setPlayPauseIcon('play');
+        // isSeekingフラグは、ユーザーがプログレスバーを操作している間だけtrueになる
+        // 外部要因（BT切断など）でpauseされた場合はisSeekingはfalseなので、アイコンが更新される
+        if (!isSeeking) {
+            setPlayPauseIcon('play');
+        }
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
         
         if (progressUpdateInterval) clearInterval(progressUpdateInterval);
@@ -382,13 +436,10 @@ export async function setEqualizerColorFromArtwork(imageElement) {
         document.documentElement.style.setProperty('--eq-color-2', 'var(--highlight-blue)');
     };
     
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
-    // LFモード中は色抽出を行わず、デフォルト色に設定して即座に処理を終了
     if (state.isLightFlightMode) {
         setDefaultColors();
         return;
     }
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
     if (imageElement && imageElement.src && !imageElement.src.endsWith('default_artwork.png')) {
         const colors = await getColorsFromArtwork(imageElement);
@@ -404,11 +455,6 @@ export async function setEqualizerColorFromArtwork(imageElement) {
 }
 
 export async function play(song) {
-    if (state.preferredDeviceId) {
-        await setAudioOutput(state.preferredDeviceId);
-        state.preferredDeviceId = null;
-    }
-
     await stop();
     if (!song) {
         setPlayPauseIcon('stop'); 
@@ -456,12 +502,14 @@ export async function play(song) {
     } else if (song.path) {
         currentSongType = 'local';
         elements.deviceSelectButton.disabled = false;
-        playLocal(song);
+        await playLocal(song);
     }
 }
 
 export async function stop() {
     localPlayer.pause();
+    localPlayer.removeAttribute('src');
+    localPlayer.load();
     setPlayPauseIcon('play'); 
     clearInterval(progressUpdateInterval);
 }
@@ -469,9 +517,9 @@ export async function stop() {
 async function playLocal(song) {
     const safePath = song.path.replace(/\\/g, '/').replace(/#/g, '%23');
     localPlayer.src = `file://${safePath}`;
+
     try {
         await resumeAudioContext();
-        localPlayer.load();
         await localPlayer.play();
     } catch (error) {
         if (error.name !== 'AbortError') console.error("オーディオの再生に失敗しました:", error);

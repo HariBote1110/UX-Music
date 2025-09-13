@@ -15,6 +15,13 @@ performance.mark('main-process-start');
 // 'Main: Full App Startup'の開始時間を記録
 console.time("Main: Full App Startup");
 
+// ▼▼▼ ここからが修正箇所です ▼▼▼
+// 起動スイッチを追加して、OSのメディア制御機能との衝突を回避
+app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,MediaSessionService');
+// オーディオプロセスのサンドボックスを無効化
+app.commandLine.appendSwitch('no-sandbox-and-zygote');
+// ▲▲▲ ここまでが修正箇所です ▲▲▲
+
 logPerf("Requiring log-forwarder...");
 const { initialize: initializeLogForwarder } = require('./log-forwarder');
 logPerf("Initializing log-forwarder...");
@@ -33,10 +40,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      // ▼▼▼ ここからが修正箇所です ▼▼▼
-      // app.isPackaged の値に関わらず、常にDevToolsを有効にする
       devTools: true,
-      // ▲▲▲ ここまでが修正箇所です ▲▲▲
       webSecurity: true,
     },
     titleBarStyle: 'hidden',
@@ -52,7 +56,6 @@ function createWindow() {
     logPerf("'did-finish-load' event fired");
     performance.mark('did-finish-load');
     
-    // 起動時に自動で開くのは、開発版かデバッグフラグがある場合のみ（この動作は変更なし）
     if (!app.isPackaged || process.argv.includes('--debug')) {
       mainWindow.webContents.openDevTools();
       logPerf("DevTools opened");

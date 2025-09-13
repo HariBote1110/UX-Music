@@ -4,7 +4,7 @@ import { state, elements } from './state.js';
 import { playSong } from './playback-manager.js';
 import { createQueueItem } from './ui/element-factory.js';
 import { showView } from './navigation.js'; 
-import { setAudioOutput, setVisualizerTarget } from './player.js';
+import { setAudioOutput, setVisualizerTarget, stop as stopPlayer } from './player.js';
 import { updateNowPlayingView } from './ui/now-playing.js'; 
 import { loadLyricsForSong } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
@@ -24,7 +24,6 @@ export function updatePlayingIndicators() {
     const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
 
     const oldPlayingItems = document.querySelectorAll('.main-content .song-item.playing');
-    // ▼▼▼ .visualization-static の付け外し処理を削除 ▼▼▼
     oldPlayingItems.forEach(item => item.classList.remove('playing'));
 
     if (currentPlayingSong) {
@@ -213,18 +212,14 @@ function groupLibraryByArtist() {
     }
 }
 
-export async function updateAudioDevices(savedDeviceId = null) {
+export async function updateAudioDevices() {
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioDevices = devices.filter(device => device.kind === 'audiooutput');
         elements.devicePopup.innerHTML = '';
-        const mainPlayer = document.getElementById('main-player');
-        if (!mainPlayer) return;
-        const currentSinkId = mainPlayer.sinkId || 'default';
-
-        if (savedDeviceId && audioDevices.some(d => d.deviceId === savedDeviceId)) {
-            state.preferredDeviceId = savedDeviceId;
-        }
+        
+        const settings = await ipcRenderer.invoke('get-settings');
+        const activeDeviceId = settings.audioOutputId || 'default';
 
         audioDevices.forEach(device => {
             const item = document.createElement('div');
@@ -232,24 +227,22 @@ export async function updateAudioDevices(savedDeviceId = null) {
             item.textContent = device.label || `スピーカー ${elements.devicePopup.children.length + 1}`;
             item.dataset.deviceId = device.deviceId;
 
-            if (device.deviceId === currentSinkId || (currentSinkId === 'default' && device.deviceId === 'default')) {
+            if (device.deviceId === activeDeviceId) {
                 item.classList.add('active');
             }
-
+            
             item.addEventListener('click', async () => {
-                if (mainPlayer.src) {
-                    mainPlayer.pause();
-                    mainPlayer.removeAttribute('src');
-                    mainPlayer.load();
+                const newDeviceId = item.dataset.deviceId;
+                
+                await stopPlayer();
+                state.currentSongIndex = -1;
+                updateNowPlayingView(null);
+                loadLyricsForSong(null);
+                updatePlayingIndicators();
+                
+                await setAudioOutput(newDeviceId);
 
-                    state.currentSongIndex = -1;
-                    updateNowPlayingView(null);
-                    loadLyricsForSong(null);
-                    updatePlayingIndicators();
-                }
-
-                await setAudioOutput(device.deviceId);
-
+                // UIの選択状態を更新
                 elements.devicePopup.querySelectorAll('.device-popup-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
                 elements.devicePopup.classList.remove('active');

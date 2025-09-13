@@ -11,12 +11,11 @@ function getOrCreateStyleElement() {
 }
 
 /**
- * 曲リスト全体のCSSを動的に更新する
+ * 曲リスト全体のCSS Gridスタイルを動的に更新する
  * @param {string} newColumns - 新しいgrid-template-columnsの値
  */
 function updateGridStyle(newColumns) {
     const styleEl = getOrCreateStyleElement();
-    // ヘッダーと、すべてのビューの曲アイテムにスタイルが適用されるようにセレクタを指定
     styleEl.textContent = `
         #music-list-header,
         #music-list .song-item,
@@ -32,11 +31,17 @@ function updateGridStyle(newColumns) {
  * @param {HTMLElement} headerContainer - #music-list-header要素
  */
 export function initColumnResizing(headerContainer) {
-    const headers = headerContainer.querySelectorAll(':scope > div');
+    if (!headerContainer) return;
+
+    // 既存のリサイザーをクリア
+    headerContainer.querySelectorAll('.column-resizer').forEach(el => el.remove());
     
+    const headers = Array.from(headerContainer.children);
+
     headers.forEach((header, index) => {
-        // 最後の列にはリサイザーは不要
-        if (index >= headers.length - 1) return;
+        // リサイズ可能なのはタイトル、アーティスト、アルバムの右境界線
+        // インデックス 2, 3, 4 の要素にリサイザーを追加
+        if (index < 2 || index > 4) return;
 
         const resizer = document.createElement('div');
         resizer.className = 'column-resizer';
@@ -47,35 +52,43 @@ export function initColumnResizing(headerContainer) {
             e.stopPropagation();
 
             const startX = e.clientX;
-            // ドラッグ開始時の全列の幅をピクセル単位で取得
-            const startWidths = Array.from(headers).map(h => h.offsetWidth);
+            const targetHeader = headers[index];
+            const nextHeader = headers[index + 1];
 
+            if (!targetHeader || !nextHeader) return;
+
+            const targetStartWidth = targetHeader.offsetWidth;
+            const nextStartWidth = nextHeader.offsetWidth;
+            
             const onMouseMove = (moveEvent) => {
                 const deltaX = moveEvent.clientX - startX;
                 
-                const newCurrentWidth = startWidths[index] + deltaX;
-                const newNextWidth = startWidths[index + 1] - deltaX;
-                
-                // 列が小さくなりすぎないように最小幅を50pxに制限
-                if (newCurrentWidth < 50 || newNextWidth < 50) return;
+                const newTargetWidth = targetStartWidth + deltaX;
+                const newNextWidth = nextStartWidth - deltaX;
 
-                // 新しい列幅の配列を作成
-                const newGridTemplate = startWidths.map((width, i) => {
-                    if (i === index) return `${newCurrentWidth}px`;
-                    if (i === index + 1) return `${newNextWidth}px`;
-                    return `${width}px`;
-                }).join(' ');
+                if (newTargetWidth < 80 || newNextWidth < 80) return; // 最小幅制限
+
+                const currentTemplate = window.getComputedStyle(headerContainer).gridTemplateColumns.split(' ');
                 
-                // ヘッダーのスタイルを直接更新して、ドラッグ中の見た目をスムーズに
-                headerContainer.style.gridTemplateColumns = newGridTemplate;
-                // 全ての曲アイテムに適用される動的スタイルシートを更新
-                updateGridStyle(newGridTemplate);
+                // 変更前の2つのfr値の合計を取得
+                const prevTargetFr = parseFloat(currentTemplate[index]);
+                const prevNextFr = parseFloat(currentTemplate[index + 1]);
+                const combinedFr = prevTargetFr + prevNextFr;
+
+                // 2つのセルの合計幅(px)を基準に新しい比率を計算
+                const combinedWidth = targetStartWidth + nextStartWidth;
+                const newTargetFr = (newTargetWidth / combinedWidth) * combinedFr;
+                const newNextFr = (newNextWidth / combinedWidth) * combinedFr;
+                
+                currentTemplate[index] = `${newTargetFr.toFixed(4)}fr`;
+                currentTemplate[index + 1] = `${newNextFr.toFixed(4)}fr`;
+                
+                updateGridStyle(currentTemplate.join(' '));
             };
 
             const onMouseUp = () => {
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
-                // ここでipcRenderer.sendを使って新しい列幅を保存する処理を追加可能
             };
 
             document.addEventListener('mousemove', onMouseMove);
