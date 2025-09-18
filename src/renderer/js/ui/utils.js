@@ -159,8 +159,11 @@ export function showContextMenu(x, y, items) {
     });
 
     document.body.appendChild(menu);
-    document.addEventListener('click', removeContextMenu, { once: true });
-    document.addEventListener('contextmenu', removeContextMenu, { once: true });
+    
+    setTimeout(() => {
+        document.addEventListener('click', removeContextMenu, { once: true });
+        document.addEventListener('contextmenu', removeContextMenu, { once: true });
+    }, 0);
 }
 
 /**

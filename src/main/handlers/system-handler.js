@@ -2,13 +2,16 @@ const { app, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const discordRpcManager = require('../discord-rpc-manager');
 
 let settingsStore;
 let playCountsStore;
+let libraryStore;
 
 function registerSystemHandlers(stores) {
     settingsStore = stores.settings;
     playCountsStore = stores.playCounts;
+    libraryStore = stores.library;
 
     // --- Settings ---
     ipcMain.handle('get-settings', () => {
@@ -45,43 +48,33 @@ function registerSystemHandlers(stores) {
         settingsStore.save(settings);
     });
 
-    // --- Play Counts ---
-    ipcMain.on('request-initial-play-counts', (event) => {
-        if (event.sender && !event.sender.isDestroyed()) {
-            event.sender.send('play-counts-updated', playCountsStore.load());
-        }
-    });
+    // --- Playback State & Counts ---
+    ipcMain.on('playback-started', (event, song) => {
+        discordRpcManager.setActivity(song);
 
-// ...ipcMain.on('request-initial-play-counts', ...); の下あたり
-
-    // ▼▼▼ この関数をまるごと置き換えてください ▼▼▼
-    ipcMain.on('song-finished', (event, { songPath, duration }) => {
         const counts = playCountsStore.load() || {};
-        const now = new Date().toISOString(); // 現在時刻をISO形式の文字列で取得
-
-        // 既存のデータを取得、なければ初期化
-        const existingData = counts[songPath] || { count: 0, totalDuration: 0, history: [] };
+        const now = new Date().toISOString();
+        const existingData = counts[song.path] || { count: 0, totalDuration: 0, history: [] };
 
         existingData.count += 1;
-        existingData.totalDuration += duration || 0;
-        
-        // 再生履歴にタイムスタンプを追加
+        existingData.totalDuration += song.duration || 0;
         existingData.history.push(now);
-        // 履歴が長くなりすぎないように、直近100件までにする（パフォーマンスのため）
         if (existingData.history.length > 100) {
             existingData.history.shift();
         }
 
-        counts[songPath] = existingData;
+        counts[song.path] = existingData;
         playCountsStore.save(counts);
 
         if (event.sender && !event.sender.isDestroyed()) {
             event.sender.send('play-counts-updated', counts);
         }
     });
-    // ▲▲▲ 置き換えはここまで ▲▲▲
 
-// ...ipcMain.on('handle-lyrics-drop', ...); の上あたり
+    ipcMain.on('playback-stopped', () => {
+        discordRpcManager.clearActivity();
+    });
+
     // --- Lyrics ---
     ipcMain.on('handle-lyrics-drop', (event, filePaths) => {
         const lyricsDir = path.join(app.getPath('userData'), 'Lyrics');
@@ -147,12 +140,9 @@ function registerSystemHandlers(stores) {
         }
     });
     
-    // ▼▼▼ 変更点 ▼▼▼
     ipcMain.handle('get-artworks-dir', () => {
-        // Artworksフォルダのベースパスを返すように変更
         return path.join(app.getPath('userData'), 'Artworks');
     });
-    // ▲▲▲ 変更点ここまで ▲▲▲
 
     ipcMain.handle('get-artwork-as-data-url', (event, artworkFileName) => {
         if (!artworkFileName) return null;
@@ -162,7 +152,6 @@ function registerSystemHandlers(stores) {
 
             if (fs.existsSync(artworkPath)) {
                 const imageBuffer = fs.readFileSync(artworkPath);
-                // WebP形式に対応
                 const mimeType = 'image/webp'; 
                 return `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
             }

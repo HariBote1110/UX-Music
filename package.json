@@ -1,6 +1,6 @@
 {
   "name": "UX-Music",
-  "version": "0.1.9-Alpha-2b",
+  "version": "0.1.9-Alpha-2c",
   "description": "Music Player UX Music",
   "main": "src/main/index.js",
   "scripts": {
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
+    "discord-rpc": "^4.0.1",
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
     "fluent-ffmpeg": "^2.1.3",

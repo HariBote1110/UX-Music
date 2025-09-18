@@ -17,7 +17,7 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
         state.originalQueueSource = [...sourceList];
         if (state.isShuffled) {
             const songToStartWith = sourceList[index];
-            let newShuffledQueue = sourceList.filter(s => s.path !== songToStartWith.path);
+            let newShuffledQueue = sourceList.filter(s => s.id !== songToStartWith.id);
             for (let i = newShuffledQueue.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [newShuffledQueue[i], newShuffledQueue[j]] = [newShuffledQueue[j], newShuffledQueue[i]];
@@ -38,12 +38,10 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     }
     const songToPlay = songList[index];
 
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
     if (songToPlay.type === 'local' && (songToPlay.bpm === undefined || songToPlay.bpm === null)) {
         console.log(`[BPM] Requesting analysis for: ${songToPlay.title}`);
         ipcRenderer.send('request-bpm-analysis', songToPlay);
     }
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
     if (songToPlay.type === 'local' && !forcePlay) {
         const savedLoudness = await ipcRenderer.invoke('get-loudness-value', songToPlay.path);
@@ -59,7 +57,7 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     
     loadLyricsForSong(songToPlay);
     
-    ipcRenderer.send('song-finished', { songPath: songToPlay.path, duration: songToPlay.duration });
+    ipcRenderer.send('playback-started', songToPlay);
     state.currentSongIndex = index;
     
     updateNowPlayingView(songToPlay);
@@ -91,6 +89,7 @@ export function playNextSong() {
             loadLyricsForSong(null);
             state.currentSongIndex = -1;
             updatePlayingIndicators();
+            ipcRenderer.send('playback-stopped');
             return;
         }
     }
@@ -115,7 +114,7 @@ export function toggleShuffle() {
     if (state.isShuffled) {
         const newShuffledQueue = [...state.originalQueueSource];
         
-        const currentIndexInOriginal = newShuffledQueue.findIndex(s => s.path === currentSong?.path);
+        const currentIndexInOriginal = newShuffledQueue.findIndex(s => s.id === currentSong?.id);
         if (currentIndexInOriginal > -1) {
             newShuffledQueue.splice(currentIndexInOriginal, 1);
         }
@@ -134,7 +133,7 @@ export function toggleShuffle() {
 
     } else {
         state.playbackQueue = [...state.originalQueueSource];
-        state.currentSongIndex = currentSong ? state.playbackQueue.findIndex(s => s.path === currentSong.path) : -1;
+        state.currentSongIndex = currentSong ? state.playbackQueue.findIndex(s => s.id === currentSong.id) : -1;
     }
     updatePlayingIndicators();
 }

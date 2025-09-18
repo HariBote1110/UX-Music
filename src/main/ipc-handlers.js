@@ -4,6 +4,7 @@ const playlistManager = require('./playlist-manager');
 const { performance } = require('perf_hooks');
 const fs = require('fs');
 const crypto = require('crypto');
+const discordRpcManager = require('./discord-rpc-manager');
 
 const logPerf = (message) => {
     console.log(`[PERF][IPC-Handlers] ${message}`);

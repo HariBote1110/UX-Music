@@ -198,8 +198,17 @@ window.addEventListener('DOMContentLoaded', () => {
     elements.prevBtn.addEventListener('click', playPrevSong);
     elements.shuffleBtn.addEventListener('click', toggleShuffle);
     elements.loopBtn.addEventListener('click', toggleLoopMode);
+    
+    const libraryActionsBtn = document.getElementById('library-actions-btn');
+    const libraryActionsPopup = document.getElementById('library-actions-popup');
+    
+    libraryActionsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        libraryActionsPopup.classList.toggle('hidden');
+    });
 
-    elements.addNetworkFolderBtn.addEventListener('click', () => {
+    document.getElementById('add-network-folder-btn').addEventListener('click', () => {
+        libraryActionsPopup.classList.add('hidden');
         showModal({
             title: 'ネットワークフォルダのパス',
             placeholder: '\\\\ServerName\\ShareName',
@@ -209,14 +218,17 @@ window.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    elements.addYoutubeBtn.addEventListener('click', () => {
+    document.getElementById('add-youtube-btn').addEventListener('click', () => {
+        libraryActionsPopup.classList.add('hidden');
         showModal({
             title: 'YouTubeのリンク',
             placeholder: 'https://www.youtube.com/watch?v=...',
             onOk: (url) => ipcRenderer.send('add-youtube-link', url)
         });
     });
-    elements.addYoutubePlaylistBtn.addEventListener('click', () => {
+    
+    document.getElementById('add-youtube-playlist-btn').addEventListener('click', () => {
+        libraryActionsPopup.classList.add('hidden');
         showModal({
             title: 'YouTubeプレイリストのリンク',
             placeholder: 'https://www.youtube.com/playlist?list=...',
@@ -224,7 +236,11 @@ window.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    elements.setLibraryBtn.addEventListener('click', () => ipcRenderer.send('set-library-path'));
+    document.getElementById('set-library-btn').addEventListener('click', () => {
+        libraryActionsPopup.classList.add('hidden');
+        ipcRenderer.send('set-library-path');
+    });
+
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
     elements.dropZone.addEventListener('drop', (e) => {
@@ -334,9 +350,12 @@ window.addEventListener('DOMContentLoaded', () => {
         elements.devicePopup.classList.toggle('active');
     });
 
-    window.addEventListener('click', () => {
+    window.addEventListener('click', (e) => {
         if (elements.devicePopup.classList.contains('active')) {
             elements.devicePopup.classList.remove('active');
+        }
+        if (!libraryActionsPopup.classList.contains('hidden') && !libraryActionsPopup.contains(e.target) && e.target !== libraryActionsBtn) {
+            libraryActionsPopup.classList.add('hidden');
         }
     });
     

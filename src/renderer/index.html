@@ -22,12 +22,19 @@
                 <a href="#" class="nav-link" data-view="artist-view">アーティスト</a>
             </div>
             <div class="sidebar-actions">
-                <button id="add-network-folder-btn">+ ネットワークフォルダを追加</button>
-                <button id="add-youtube-btn" class="hidden">+ YouTubeリンクを追加</button>
-                <button id="add-youtube-playlist-btn" class="hidden">+ YouTubeプレイリストを追加</button>
-                <button id="set-library-btn">ライブラリ場所設定</button>
-                <button id="light-flight-mode-btn">✈️ Light Flightモード</button>
-                <button id="open-settings-btn">設定</button>
+                <div id="library-actions-container">
+                    <button id="library-actions-btn" class="sidebar-action-button">
+                        <span>+</span> ライブラリを管理
+                    </button>
+                    <div id="library-actions-popup" class="hidden">
+                        <button id="add-network-folder-btn" class="popup-action-button">ネットワークフォルダを追加</button>
+                        <button id="add-youtube-btn" class="popup-action-button hidden" data-feature="youtube">YouTubeリンクを追加</button>
+                        <button id="add-youtube-playlist-btn" class="popup-action-button hidden" data-feature="youtube">YouTubeプレイリストを追加</button>
+                        <button id="set-library-btn" class="popup-action-button">ライブラリ場所設定</button>
+                    </div>
+                </div>
+                <button id="light-flight-mode-btn" class="sidebar-action-button">✈️ Light Flightモード</button>
+                <button id="open-settings-btn" class="sidebar-action-button">設定</button>
             </div>
         </div>
         <main class="main-content" id="main-content">

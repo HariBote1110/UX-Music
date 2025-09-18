@@ -512,6 +512,7 @@ export async function stop() {
     localPlayer.load();
     setPlayPauseIcon('play'); 
     clearInterval(progressUpdateInterval);
+    ipcRenderer.send('playback-stopped');
 }
 
 async function playLocal(song) {

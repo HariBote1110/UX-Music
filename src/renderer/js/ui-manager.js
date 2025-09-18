@@ -7,6 +7,8 @@ import { showView } from './navigation.js';
 import { setAudioOutput, setVisualizerTarget, stop as stopPlayer } from './player.js';
 import { updateNowPlayingView } from './ui/now-playing.js'; 
 import { loadLyricsForSong } from './lyrics-manager.js';
+import { showNotification, hideNotification } from './ui/notification.js';
+import { showContextMenu } from './ui/utils.js';
 const { ipcRenderer } = require('electron');
 
 /**
@@ -251,6 +253,25 @@ export async function updateAudioDevices() {
                 item.classList.add('active');
                 elements.devicePopup.classList.remove('active');
             });
+
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showContextMenu(e.pageX, e.pageY, [
+                    {
+                        label: 'このデバイスを非表示にする',
+                        action: () => {
+                            const deviceIdToHide = item.dataset.deviceId;
+                            const updatedHiddenDevices = [...hiddenDevices, deviceIdToHide];
+                            ipcRenderer.send('save-settings', { hiddenDeviceIds: updatedHiddenDevices });
+                            showNotification(`「${item.textContent}」を非表示にしました。`);
+                            hideNotification(3000);
+                            updateAudioDevices();
+                        }
+                    }
+                ]);
+            });
+
             elements.devicePopup.appendChild(item);
         });
         

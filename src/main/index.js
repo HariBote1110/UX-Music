@@ -2,6 +2,7 @@ const { app, BrowserWindow, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { performance } = require('perf_hooks');
+const { connectToDiscord } = require('./discord-rpc-manager');
 
 const startTime = performance.now();
 const logPerf = (message) => {
@@ -102,6 +103,7 @@ app.whenReady().then(() => {
   });
   
   createWindow();
+  connectToDiscord();
 
   logPerf("Requiring ipc-handlers...");
   const { registerIpcHandlers } = require('./ipc-handlers');
