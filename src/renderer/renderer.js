@@ -10,6 +10,7 @@ import { initDebugCommands } from './js/debug-commands.js';
 import { updateTextOverflowForSelector } from './js/ui/utils.js';
 import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
 import { updateNowPlayingView } from './js/ui/now-playing.js';
+import { initNormalizeView } from './js/normalize-view.js';
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
@@ -55,8 +56,6 @@ window.addEventListener('DOMContentLoaded', () => {
         document.addEventListener(event, resetInactivityTimer, true);
     });
     resetInactivityTimer();
-
-    const MARQUEE_SELECTOR = '.marquee-wrapper';
     
     ipcRenderer.on('log-message', (event, { level, args }) => {
         const style = 'color: cyan; font-weight: bold;';
@@ -103,6 +102,8 @@ window.addEventListener('DOMContentLoaded', () => {
     initModal();
     logPerf("Initializing Debug Commands...");
     initDebugCommands();
+    logPerf("Initializing Normalize View...");
+    initNormalizeView();
     logPerf("Initializing IPC...");
     initIPC(ipcRenderer, {
         onLibraryLoaded: async (data) => {
@@ -198,7 +199,7 @@ window.addEventListener('DOMContentLoaded', () => {
     elements.prevBtn.addEventListener('click', playPrevSong);
     elements.shuffleBtn.addEventListener('click', toggleShuffle);
     elements.loopBtn.addEventListener('click', toggleLoopMode);
-    
+
     const libraryActionsBtn = document.getElementById('library-actions-btn');
     const libraryActionsPopup = document.getElementById('library-actions-popup');
     
@@ -240,7 +241,7 @@ window.addEventListener('DOMContentLoaded', () => {
         libraryActionsPopup.classList.add('hidden');
         ipcRenderer.send('set-library-path');
     });
-
+    
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
     elements.dropZone.addEventListener('drop', (e) => {
@@ -264,13 +265,15 @@ window.addEventListener('DOMContentLoaded', () => {
     const youtubeQualityGroup = document.getElementById('youtube-quality-group');
 
     function updateQualityGroupState() {
+        const youtubeModeRadios = document.querySelectorAll('input[name="youtube-mode"]');
+        if (!youtubeModeRadios.length) return;
         const selectedMode = document.querySelector('input[name="youtube-mode"]:checked').value;
         if (selectedMode === 'stream') {
             youtubeQualityGroup.classList.add('disabled');
-            elements.youtubeQualityRadios.forEach(radio => radio.disabled = true);
+            document.querySelectorAll('input[name="youtube-quality"]').forEach(radio => radio.disabled = true);
         } else {
             youtubeQualityGroup.classList.remove('disabled');
-            elements.youtubeQualityRadios.forEach(radio => radio.disabled = false);
+            document.querySelectorAll('input[name="youtube-quality"]').forEach(radio => radio.disabled = false);
         }
     }
 
@@ -278,25 +281,31 @@ window.addEventListener('DOMContentLoaded', () => {
         const settings = await ipcRenderer.invoke('get-settings');
         
         const currentYoutubeMode = settings.youtubePlaybackMode || 'download';
-        document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`).checked = true;
+        const youtubeModeRadio = document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`);
+        if (youtubeModeRadio) youtubeModeRadio.checked = true;
         
         const currentQuality = settings.youtubeDownloadQuality || 'full';
-        document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`).checked = true;
+        const qualityRadio = document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`);
+        if (qualityRadio) qualityRadio.checked = true;
+        
         updateQualityGroupState();
         
         const currentImportMode = settings.importMode || 'balanced';
-        document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`).checked = true;
+        const importModeRadio = document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`);
+        if (importModeRadio) importModeRadio.checked = true;
         
         const currentVisualizerMode = settings.visualizerMode || 'active';
-        document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
+        const visualizerModeRadio = document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`);
+        if(visualizerModeRadio) visualizerModeRadio.checked = true;
 
         const easterEggsEnabled = settings.enableEasterEggs !== false;
-        document.querySelector('input[name="enable-easter-eggs"]').checked = easterEggsEnabled;
+        const easterEggsCheckbox = document.querySelector('input[name="enable-easter-eggs"]');
+        if(easterEggsCheckbox) easterEggsCheckbox.checked = easterEggsEnabled;
         
         elements.settingsModalOverlay.classList.remove('hidden');
     });
-
-    elements.youtubeModeRadios.forEach(radio => {
+    
+    document.querySelectorAll('input[name="youtube-mode"]').forEach(radio => {
         radio.addEventListener('change', updateQualityGroupState);
     });
 
@@ -351,10 +360,10 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     window.addEventListener('click', (e) => {
-        if (elements.devicePopup.classList.contains('active')) {
+        if (elements.devicePopup && elements.devicePopup.classList.contains('active')) {
             elements.devicePopup.classList.remove('active');
         }
-        if (!libraryActionsPopup.classList.contains('hidden') && !libraryActionsPopup.contains(e.target) && e.target !== libraryActionsBtn) {
+        if (libraryActionsPopup && !libraryActionsPopup.classList.contains('hidden') && !libraryActionsPopup.contains(e.target) && e.target !== libraryActionsBtn) {
             libraryActionsPopup.classList.add('hidden');
         }
     });
@@ -517,3 +526,4 @@ ipcRenderer.on('measure-performance', () => {
     measure('Full Renderer Process Time', 'renderer-script-start', 'window-load');
     console.log("-------------------------------------");
 });
+

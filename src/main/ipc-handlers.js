@@ -1,10 +1,13 @@
-const { BrowserWindow, ipcMain } = require('electron');
+const { BrowserWindow, ipcMain, dialog } = require('electron');
 const DataStore = require('./data-store');
 const playlistManager = require('./playlist-manager');
 const { performance } = require('perf_hooks');
 const fs = require('fs');
 const crypto = require('crypto');
 const discordRpcManager = require('./discord-rpc-manager');
+const { Worker } = require('worker_threads');
+const path = require('path');
+const os = require('os');
 
 const logPerf = (message) => {
     console.log(`[PERF][IPC-Handlers] ${message}`);
@@ -62,6 +65,107 @@ function registerIpcHandlers() {
         }
         return uniqueNewSongs;
     };
+
+    // --- Normalize Feature Handlers ---
+    let normalizeWorkerPool = [];
+
+    ipcMain.on('start-normalize-job', (event, { jobType, files, options }) => {
+        const numCpuCores = os.cpus().length;
+        const concurrency = Math.max(1, numCpuCores - 1);
+
+        normalizeWorkerPool.forEach(worker => worker.terminate());
+        normalizeWorkerPool = [];
+
+        for (let i = 0; i < concurrency; i++) {
+            const worker = new Worker(path.join(__dirname, 'normalize-worker.js'));
+            worker.postMessage({
+                type: 'init',
+                ffmpegPath: require('ffmpeg-static').replace('app.asar', 'app.asar.unpacked'),
+                ffprobePath: require('ffprobe-static').path.replace('app.asar', 'app.asar.unpacked')
+            });
+            worker.on('message', (message) => {
+                event.sender.send('normalize-worker-result', message);
+            });
+            normalizeWorkerPool.push(worker);
+        }
+
+        let fileIndex = 0;
+        let workerIndex = 0;
+        
+        const processNextFile = () => {
+            if (fileIndex >= files.length) return;
+            
+            const file = files[fileIndex++];
+            const worker = normalizeWorkerPool[workerIndex++ % concurrency];
+            
+            if (jobType === 'analyze') {
+                worker.postMessage({ type: 'analyze', id: file.id, filePath: file.path });
+            } else if (jobType === 'normalize') {
+                const gain = options.targetLufs - file.currentLufs;
+                worker.postMessage({ type: 'normalize', id: file.id, filePath: file.path, gain: gain, backup: options.backup, output: options.output });
+            }
+        };
+
+        for (let i = 0; i < concurrency && i < files.length; i++) {
+            processNextFile();
+        }
+
+        ipcMain.on('normalize-worker-finished-file', processNextFile);
+    });
+
+    ipcMain.on('stop-normalize-job', () => {
+        normalizeWorkerPool.forEach(worker => worker.terminate());
+        normalizeWorkerPool = [];
+        ipcMain.removeListener('normalize-worker-finished-file', () => {});
+    });
+
+    ipcMain.handle('select-files-for-normalize', async () => {
+        const result = await dialog.showOpenDialog({
+            properties: ['openFile', 'multiSelections'],
+            filters: [{ name: 'Audio Files', extensions: ['mp3', 'flac', 'wav', 'm4a', 'ogg'] }]
+        });
+        return result.filePaths;
+    });
+
+    ipcMain.handle('select-folder-for-normalize', async () => {
+        const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+        if (result.canceled || result.filePaths.length === 0) return [];
+        
+        const dirPath = result.filePaths[0];
+        const supportedExtensions = ['.mp3', '.flac', '.wav', '.m4a', '.ogg'];
+        let files = [];
+        
+        async function scanDirectory(dir) {
+            const items = await fs.promises.readdir(dir, { withFileTypes: true });
+            for (const item of items) {
+                const fullPath = path.join(dir, item.name);
+                if (item.isDirectory()) {
+                    await scanDirectory(fullPath);
+                } else if (supportedExtensions.includes(path.extname(item.name).toLowerCase())) {
+                    files.push(fullPath);
+                }
+            }
+        }
+        
+        await scanDirectory(dirPath);
+        return files;
+    });
+
+    ipcMain.handle('get-library-for-normalize', () => {
+        return stores.library.load() || [];
+    });
+    
+    ipcMain.handle('get-all-loudness-data', () => {
+        return stores.loudness.load() || {};
+    });
+
+    ipcMain.handle('select-normalize-output-folder', async () => {
+        const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+        return result.canceled ? null : result.filePaths[0];
+    });
+
+    // --- End of Normalize Feature Handlers ---
+
 
     ipcMain.on('save-migrated-data', (event, { songs, albums }) => {
         console.log('Main: Saving migrated library and albums data...');
@@ -163,3 +267,4 @@ function registerIpcHandlers() {
 }
 
 module.exports = { registerIpcHandlers };
+

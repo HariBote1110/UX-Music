@@ -33,6 +33,7 @@ export const state = {
 export const elements = {};
 
 export function initElements() {
+    // Existing elements
     elements.mainContent = document.getElementById('main-content');
     elements.nowPlayingArtworkContainer = document.getElementById('now-playing-artwork-container');
     elements.nowPlayingTitle = document.getElementById('now-playing-title');
@@ -55,16 +56,12 @@ export function initElements() {
     elements.modalInput = document.getElementById('modal-input');
     elements.modalOkBtn = document.getElementById('modal-ok-btn');
     elements.modalCancelBtn = document.getElementById('modal-cancel-btn');
-    elements.addNetworkFolderBtn = document.getElementById('add-network-folder-btn');
-    elements.addYoutubeBtn = document.getElementById('add-youtube-btn');
-    elements.setLibraryBtn = document.getElementById('set-library-btn');
     elements.loadingOverlay = document.getElementById('loading-overlay');
     elements.openSettingsBtn = document.getElementById('open-settings-btn');
     elements.settingsModalOverlay = document.getElementById('settings-modal-overlay');
     elements.settingsOkBtn = document.getElementById('settings-ok-btn');
     elements.youtubeModeRadios = document.querySelectorAll('input[name="youtube-mode"]');
     elements.youtubeQualityRadios = document.querySelectorAll('input[name="youtube-quality"]');
-    elements.addYoutubePlaylistBtn = document.getElementById('add-youtube-playlist-btn');
     elements.notificationToast = document.getElementById('notification-toast');
     elements.notificationText = document.getElementById('notification-text');
     elements.lightFlightModeBtn = document.getElementById('light-flight-mode-btn');
@@ -74,4 +71,8 @@ export function initElements() {
     elements.queueList = document.getElementById('queue-list');
     elements.hubLinkContainer = document.getElementById('hub-link-container');
     elements.dropZone = elements.mainContent;
+
+    // New Normalize View Elements
+    elements.normalizeView = document.getElementById('normalize-view');
+    elements.normalizeViewBtn = document.getElementById('normalize-view-btn');
 }

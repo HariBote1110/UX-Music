@@ -517,3 +517,17 @@
     width: 18px;
     height: 18px;
 }
+#modal-overlay, #settings-modal-overlay, #loading-overlay, #devices-modal-overlay { 
+    position: fixed; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%; 
+    background-color: rgba(0, 0, 0, 0.7); 
+    display: flex; 
+    justify-content: center; 
+    align-items: flex-start;
+    padding-top: 5vh;
+    box-sizing: border-box;
+    z-index: 1000; 
+}
