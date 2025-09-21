@@ -9,6 +9,21 @@ let outputSettings = {
     mode: 'overwrite', // 'overwrite' or 'folder'
     path: null
 };
+let commonBasePath = null;
+
+function findCommonBasePath(filePaths) {
+    if (filePaths.length === 0) return null;
+    if (filePaths.length === 1) return path.dirname(filePaths[0]);
+
+    const a1 = filePaths[0].split(path.sep);
+    const a2 = filePaths[filePaths.length - 1].split(path.sep);
+    const L = a1.length;
+    let i = 0;
+    while (i < L && a1[i] === a2[i]) {
+        i++;
+    }
+    return a1.slice(0, i).join(path.sep);
+}
 
 function updateFileList() {
     const tbody = document.getElementById('normalize-file-list');
@@ -89,10 +104,15 @@ async function addFiles(filePaths, preAnalyzedData = {}) {
             name: path.basename(filePath),
             status: typeof existingLoudness === 'number' ? 'analyzed' : 'pending',
             currentLufs: typeof existingLoudness === 'number' ? existingLoudness : null,
+            truePeak: null,
             targetLufs: targetLufs,
             selected: true,
         });
     }
+
+    const allPaths = [...normalizeFiles.values()].map(f => f.path);
+    commonBasePath = findCommonBasePath(allPaths);
+
     updateFileList();
 }
 
@@ -210,9 +230,32 @@ export function initNormalizeView() {
         if (filesToNormalize.length === 0) return;
         
         const containsMp3 = filesToNormalize.some(f => path.extname(f.path).toLowerCase() === '.mp3');
-        
+        const losslessFormats = ['.wav', '.flac'];
+        const clippingFiles = filesToNormalize.filter(f => {
+            const ext = path.extname(f.path).toLowerCase();
+            if (losslessFormats.includes(ext) && typeof f.truePeak === 'number' && typeof f.currentLufs === 'number') {
+                const gain = f.targetLufs - f.currentLufs;
+                return f.truePeak + gain > 0;
+            }
+            return false;
+        });
+
         let confirmed = true;
-        if (containsMp3 && outputSettings.mode === 'overwrite') {
+        let preventClipping = false;
+
+        if (clippingFiles.length > 0) {
+            confirmed = confirm(
+                `警告: ${clippingFiles.length}個のWAV/FLACファイルで音割れ（クリッピング）が発生する可能性があります。\n\n` +
+                'これらのファイルの音量をクリッピングしない最大限の音量に自動で調整しますか？\n\n' +
+                '「OK」を押すと自動調整して続行します。\n' +
+                '「キャンセル」を押すと処理を中止します。'
+            );
+            if (confirmed) {
+                preventClipping = true;
+            }
+        }
+        
+        if (confirmed && containsMp3 && outputSettings.mode === 'overwrite') {
             confirmed = confirm(
                 '警告: リストにMP3ファイルが含まれています。\n\n' +
                 'MP3の音量調整は再エンコードを伴うため、音質がわずかに劣化する可能性があります。\n' +
@@ -222,14 +265,28 @@ export function initNormalizeView() {
         }
 
         if (confirmed) {
+            const targetLufs = parseFloat(lufsSlider.value);
+            const filesWithGain = filesToNormalize.map(f => {
+                let gain = targetLufs - f.currentLufs;
+                const ext = path.extname(f.path).toLowerCase();
+
+                if (preventClipping && losslessFormats.includes(ext) && typeof f.truePeak === 'number') {
+                    const newPeak = f.truePeak + gain;
+                    if (newPeak > 0) {
+                        gain -= newPeak; // クリッピング分だけゲインを下げる
+                    }
+                }
+                return { ...f, gain };
+            });
+
             const backup = outputSettings.mode === 'overwrite' ? document.getElementById('backup-toggle').checked : false;
             ipcRenderer.send('start-normalize-job', { 
                 jobType: 'normalize', 
-                files: filesToNormalize, 
-                options: { 
-                    targetLufs: parseFloat(lufsSlider.value), 
+                files: filesWithGain, 
+                options: {
                     backup,
-                    output: outputSettings
+                    output: outputSettings,
+                    basePath: commonBasePath
                 } 
             });
             updateProgress(0, filesToNormalize.length, '適用中');
@@ -247,6 +304,7 @@ export function initNormalizeView() {
         if (type === 'analysis-result') {
             if (result.success) {
                 file.currentLufs = result.loudness;
+                file.truePeak = result.truePeak;
                 file.status = 'analyzed';
             } else {
                 file.status = 'error';
@@ -258,8 +316,17 @@ export function initNormalizeView() {
                 currentJob = 'analyze';
             }
         } else if (type === 'normalize-result') {
-            file.status = result.success ? 'done' : 'error';
-            if (result.error) console.error(`Normalize Error for ${file.name}:`, result.error);
+            // ▼▼▼ ここからが修正箇所です ▼▼▼
+            if (result.success) {
+                file.status = 'done';
+                if (result.outputPath) {
+                    file.name = path.basename(result.outputPath);
+                }
+            } else {
+                file.status = 'error';
+                if(result.error) console.error(`Normalize Error for ${file.name}:`, result.error);
+            }
+            // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
             if (currentJob !== 'normalize') {
                 totalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analyzed').length;
@@ -274,4 +341,3 @@ export function initNormalizeView() {
         ipcRenderer.send('normalize-worker-finished-file');
     });
 }
-

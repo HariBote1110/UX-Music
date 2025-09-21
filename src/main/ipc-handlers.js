@@ -101,8 +101,15 @@ function registerIpcHandlers() {
             if (jobType === 'analyze') {
                 worker.postMessage({ type: 'analyze', id: file.id, filePath: file.path });
             } else if (jobType === 'normalize') {
-                const gain = options.targetLufs - file.currentLufs;
-                worker.postMessage({ type: 'normalize', id: file.id, filePath: file.path, gain: gain, backup: options.backup, output: options.output });
+                worker.postMessage({ 
+                    type: 'normalize', 
+                    id: file.id, 
+                    filePath: file.path, 
+                    gain: file.gain, 
+                    backup: options.backup, 
+                    output: options.output,
+                    basePath: options.basePath
+                });
             }
         };
 
@@ -267,4 +274,3 @@ function registerIpcHandlers() {
 }
 
 module.exports = { registerIpcHandlers };
-
