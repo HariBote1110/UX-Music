@@ -1,5 +1,3 @@
-// uxmusic/src/main/playlist-manager.js
-
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
@@ -7,14 +5,37 @@ const DataStore = require('./data-store');
 
 const playlistsDir = path.join(app.getPath('userData'), 'Playlists');
 const playlistOrderStore = new DataStore('playlist-order.json');
+const FAVORITES_PLAYLIST_NAME = 'お気に入り';
 
 try {
     if (!fs.existsSync(playlistsDir)) {
         fs.mkdirSync(playlistsDir, { recursive: true });
+        console.log(`[Playlist Manager] Created playlists directory at: ${playlistsDir}`);
     }
 } catch (error) {
     console.error(`[Playlist Manager] Failed to create playlists directory on initial load:`, error);
 }
+
+function getFavoritesPlaylistName() {
+    return FAVORITES_PLAYLIST_NAME;
+}
+
+function ensureFavoritesPlaylistExists() {
+    const favoritesPath = path.join(playlistsDir, `${FAVORITES_PLAYLIST_NAME}.m3u8`);
+    if (!fs.existsSync(favoritesPath)) {
+        createPlaylist(FAVORITES_PLAYLIST_NAME);
+    }
+}
+
+function isSongInPlaylist(playlistName, songPath) {
+    const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
+    if (!fs.existsSync(playlistPath)) {
+        return false;
+    }
+    const content = fs.readFileSync(playlistPath, 'utf-8');
+    return content.includes(songPath);
+}
+
 
 function renamePlaylist(oldName, newName) {
     if (!oldName || !newName) {
@@ -125,7 +146,6 @@ function addSongToPlaylist(playlistName, song) {
     }
 }
 
-// ▼▼▼ ここからが修正箇所です ▼▼▼
 function addSongsToPlaylist(playlistName, songs) {
     if (!playlistName || !Array.isArray(songs) || songs.length === 0) {
         return { success: false, addedCount: 0 };
@@ -173,7 +193,6 @@ function addSongsToPlaylist(playlistName, songs) {
         return { success: false, message: error.message, addedCount: 0 };
     }
 }
-// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
 
 function getPlaylistSongs(playlistName) {
@@ -194,8 +213,8 @@ function getPlaylistSongs(playlistName) {
     }
 }
 
-function removeSongFromPlaylist(playlistName, songPathToRemove) {
-    if (!playlistName || !songPathToRemove) return { success: false };
+function removeSongsFromPlaylist(playlistName, songPathsToRemove) {
+    if (!playlistName || !songPathsToRemove || songPathsToRemove.length === 0) return { success: false };
 
     const playlistPath = path.join(playlistsDir, `${playlistName}.m3u8`);
     if (!fs.existsSync(playlistPath)) {
@@ -206,27 +225,30 @@ function removeSongFromPlaylist(playlistName, songPathToRemove) {
         const content = fs.readFileSync(playlistPath, 'utf-8');
         const lines = content.split('\n');
         const newLines = [];
-        let songIndex = -1;
+        const pathsToRemoveSet = new Set(songPathsToRemove.map(p => p.trim()));
 
-        lines.forEach((line, index) => {
-            if (line.trim() === songPathToRemove.trim()) {
-                songIndex = index;
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.startsWith('#EXTM3U')) {
+                newLines.push(line);
+                continue;
             }
-        });
-
-        if (songIndex > -1) {
-            for (let i = 0; i < lines.length; i++) {
-                if (i !== songIndex && i !== songIndex - 1) {
-                    newLines.push(lines[i]);
+            if (line.startsWith('#EXTINF')) {
+                const pathLine = lines[i + 1];
+                if (pathLine && !pathsToRemoveSet.has(pathLine.trim())) {
+                    newLines.push(line);
+                    newLines.push(pathLine);
                 }
+                i++; // Skip the path line as it's processed
             }
-            fs.writeFileSync(playlistPath, newLines.join('\n'));
-            return { success: true };
-        } else {
-            return { success: false, message: 'Song not found in playlist.' };
         }
+        
+        const newContent = newLines.join('\n');
+        fs.writeFileSync(playlistPath, newContent.endsWith('\n') ? newContent : newContent + '\n');
+        return { success: true };
+
     } catch (error) {
-        console.error(`Failed to remove song from ${playlistName}:`, error);
+        console.error(`Failed to remove songs from ${playlistName}:`, error);
         return { success: false, message: error.message };
     }
 }
@@ -276,8 +298,11 @@ module.exports = {
     getPlaylistSongs,
     addSongToPlaylist,
     addSongsToPlaylist,
-    removeSongFromPlaylist,
+    removeSongsFromPlaylist,
     deletePlaylist,
     updateSongOrderInPlaylist,
     renamePlaylist,
+    isSongInPlaylist,
+    getFavoritesPlaylistName,
+    ensureFavoritesPlaylistExists
 };

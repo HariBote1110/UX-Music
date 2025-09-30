@@ -143,8 +143,8 @@ function groupLibraryByAlbum(isMigration = false) {
         if (artist) {
             albumGroup.artistSet.add(artist);
         }
-
-        if (!albumGroup.artwork && song.artwork) {
+        
+        if (albumTitle !== 'Unknown Album' && !albumGroup.artwork && song.artwork) {
             albumGroup.artwork = song.artwork;
         }
     });

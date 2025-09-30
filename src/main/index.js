@@ -16,12 +16,10 @@ performance.mark('main-process-start');
 // 'Main: Full App Startup'の開始時間を記録
 console.time("Main: Full App Startup");
 
-// ▼▼▼ ここからが修正箇所です ▼▼▼
 // 起動スイッチを追加して、OSのメディア制御機能との衝突を回避
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,MediaSessionService');
 // オーディオプロセスのサンドボックスを無効化
 app.commandLine.appendSwitch('no-sandbox-and-zygote');
-// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
 logPerf("Requiring log-forwarder...");
 const { initialize: initializeLogForwarder } = require('./log-forwarder');
@@ -70,6 +68,7 @@ function createWindow() {
   performance.mark('load-file-start');
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
+  // マウスの「戻る」ボタンの処理
   mainWindow.on('app-command', (e, cmd) => {
     if (cmd === 'browser-backward') {
       mainWindow.webContents.send('navigate-back');

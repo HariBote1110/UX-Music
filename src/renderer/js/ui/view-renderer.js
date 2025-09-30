@@ -13,6 +13,7 @@ const { ipcRenderer } = require('electron');
 
 let trackViewScroller = null;
 let detailViewScroller = null;
+const lastScrollPositions = {};
 
 function clearMainContent() {
     if (trackViewScroller) {
@@ -96,7 +97,11 @@ export function renderTrackView() {
         songItem.addEventListener('click', (e) => handleSongItemClick(e, song, index, state.library, songItem));
         songItem.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            ipcRenderer.send('show-song-context-menu-in-library', song);
+            let songsForMenu = [song];
+            if (state.selectedSongIds.size > 0 && state.selectedSongIds.has(song.id)) {
+                songsForMenu = state.library.filter(s => state.selectedSongIds.has(s.id));
+            }
+            ipcRenderer.send('show-song-context-menu', { songs: songsForMenu, context: { view: 'library' } });
         });
         window.observeNewArtworks(songItem);
         return songItem;
@@ -337,7 +342,11 @@ export function renderAlbumDetailView(album) {
         songItem.addEventListener('click', (e) => handleSongItemClick(e, song, index, album.songs, songItem));
         songItem.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            ipcRenderer.send('show-song-context-menu-in-library', song);
+            let songsForMenu = [song];
+            if (state.selectedSongIds.size > 0 && state.selectedSongIds.has(song.id)) {
+                songsForMenu = state.currentlyViewedSongs.filter(s => state.selectedSongIds.has(s.id));
+            }
+            ipcRenderer.send('show-song-context-menu', { songs: songsForMenu, context: { view: 'album' } });
         });
         window.observeNewArtworks(songItem);
         return songItem;
@@ -450,7 +459,12 @@ export function renderPlaylistDetailView(playlistDetails) {
         songItem.addEventListener('click', (e) => handleSongItemClick(e, song, index, songs, songItem));
         songItem.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            ipcRenderer.send('show-playlist-song-context-menu', { playlistName, song });
+            lastScrollPositions[playlistName] = listElement.scrollTop;
+            let songsForMenu = [song];
+            if (state.selectedSongIds.size > 0 && state.selectedSongIds.has(song.id)) {
+                songsForMenu = state.currentlyViewedSongs.filter(s => state.selectedSongIds.has(s.id));
+            }
+            ipcRenderer.send('show-song-context-menu', { songs: songsForMenu, context: { view: 'playlist', playlistName } });
         });
         window.observeNewArtworks(songItem);
         return songItem;
@@ -463,6 +477,13 @@ export function renderPlaylistDetailView(playlistDetails) {
         renderItem: renderItem
     });
     
+    if (lastScrollPositions[playlistName]) {
+        requestAnimationFrame(() => {
+            listElement.scrollTop = lastScrollPositions[playlistName];
+            delete lastScrollPositions[playlistName]; 
+        });
+    }
+
     const headerEl = viewWrapper.querySelector('#music-list-header');
     initColumnResizing(headerEl);
 

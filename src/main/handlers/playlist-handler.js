@@ -1,5 +1,3 @@
-// uxmusic/src/main/handlers/playlist-handler.js
-
 const { ipcMain } = require('electron');
 const playlistManager = require('../playlist-manager');
 

@@ -63,9 +63,15 @@ function connectAudioGraph() {
         mainPlayerNode = audioContext.createMediaElementSource(localPlayer);
         gainNode = audioContext.createGain();
         analyser = audioContext.createAnalyser();
-        analyser.fftSize = 32;
+        analyser.fftSize = 256; // 解像度を上げる
+        analyser.smoothingTimeConstant = 0.8;
+        analyser.minDecibels = -80;
+        analyser.maxDecibels = -10;
         dataArray = new Uint8Array(analyser.frequencyBinCount);
-        mainPlayerNode.connect(gainNode).connect(analyser).connect(audioContext.destination);
+
+        mainPlayerNode.connect(analyser);
+        mainPlayerNode.connect(gainNode).connect(audioContext.destination);
+        
     } catch (e) {
         console.error('Web Audio APIのグラフ接続に失敗しました。', e);
     }
@@ -213,21 +219,18 @@ function draw(timestamp) {
 
     if (currentVisualizerBars && analyser) {
         analyser.getByteFrequencyData(dataArray);
-        const bufferLength = analyser.frequencyBinCount;
-        const barIndices = [
-            Math.floor(bufferLength * 0.05), Math.floor(bufferLength * 0.15),
-            Math.floor(bufferLength * 0.30), Math.floor(bufferLength * 0.50),
-            Math.floor(bufferLength * 0.70), Math.floor(bufferLength * 0.90),
-        ];
+        
+        // 各バーが担当する周波数帯を再定義（低音域の解像度を重視）
+        const barIndices = [1, 3, 7, 15, 30, 60];
 
         const heights = barIndices.map((dataIndex, i) => {
             const value = dataArray[dataIndex] / 255;
-            const scaledValue = Math.pow(value, 2.5);
-            const multiplier = i === 0 ? 1.5 : 1 - (Math.abs(i - 2.5) * 0.15);
-            const targetHeight = (scaledValue * multiplier * 16) + 4;
-            const newHeight = lastHeights[i] * 0.4 + targetHeight * 0.6;
+            const scaledValue = Math.pow(value, 1.6);
+            const multiplier = 1 + Math.sin((i / (barIndices.length - 1)) * Math.PI) * 0.5;
+            const targetHeight = (scaledValue * multiplier * 20) + 4;
+            const newHeight = lastHeights[i] * 0.5 + targetHeight * 0.5;
             lastHeights[i] = newHeight;
-            return newHeight;
+            return Math.min(20, Math.max(4, newHeight));
         });
 
         currentVisualizerBars.forEach((bar, index) => {
@@ -325,8 +328,6 @@ export async function initPlayer(playerElement, callbacks, sinkId = null) {
     });
 
     localPlayer.addEventListener('pause', () => {
-        // isSeekingフラグは、ユーザーがプログレスバーを操作している間だけtrueになる
-        // 外部要因（BT切断など）でpauseされた場合はisSeekingはfalseなので、アイコンが更新される
         if (!isSeeking) {
             setPlayPauseIcon('play');
         }

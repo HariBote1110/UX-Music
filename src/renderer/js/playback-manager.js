@@ -108,6 +108,7 @@ export function playPrevSong() {
 export function toggleShuffle() {
     state.isShuffled = !state.isShuffled;
     elements.shuffleBtn.classList.toggle('active', state.isShuffled);
+    ipcRenderer.send('save-settings', { isShuffled: state.isShuffled });
 
     const currentSong = state.playbackQueue[state.currentSongIndex];
 
@@ -147,4 +148,5 @@ export function toggleLoopMode() {
 
     elements.loopBtn.classList.toggle('active', state.playbackMode !== PLAYBACK_MODES.NORMAL);
     elements.loopBtn.classList.toggle('loop-one', state.playbackMode === PLAYBACK_MODES.LOOP_ONE);
+    ipcRenderer.send('save-settings', { playbackMode: state.playbackMode });
 }

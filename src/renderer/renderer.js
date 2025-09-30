@@ -3,7 +3,7 @@ import { initNavigation, showPlaylist, showView } from './js/navigation.js';
 import { initIPC } from './js/ipc.js';
 import { initModal, showModal } from './js/modal.js';
 import { initPlayer, togglePlayPause, applyMasterVolume, seekToStart, setVisualizerFpsLimit } from './js/player.js';
-import { state, elements, initElements } from './js/state.js';
+import { state, elements, initElements, PLAYBACK_MODES } from './js/state.js';
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from './js/playback-manager.js';
 import { showNotification, hideNotification } from './js/ui/notification.js';
 import { initDebugCommands } from './js/debug-commands.js';
@@ -123,6 +123,17 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             state.visualizerMode = settings.visualizerMode || 'active';
             
+            if (typeof settings.isShuffled === 'boolean') {
+                state.isShuffled = settings.isShuffled;
+                elements.shuffleBtn.classList.toggle('active', state.isShuffled);
+            }
+            
+            if (settings.playbackMode) {
+                state.playbackMode = settings.playbackMode;
+                elements.loopBtn.classList.toggle('active', state.playbackMode !== PLAYBACK_MODES.NORMAL);
+                elements.loopBtn.classList.toggle('loop-one', state.playbackMode === PLAYBACK_MODES.LOOP_ONE);
+            }
+
             if (settings.enableYouTube) {
                 document.querySelectorAll('[data-feature="youtube"], #add-youtube-btn, #add-youtube-playlist-btn').forEach(el => {
                     el.classList.remove('hidden');
@@ -194,6 +205,25 @@ window.addEventListener('DOMContentLoaded', () => {
             showView(state.activeListView);
         }
     });
+
+    let swipeAccumulator = 0;
+    let swipeTimeout;
+    window.addEventListener('wheel', (e) => {
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY) * 2) { 
+            swipeAccumulator += e.deltaX;
+            clearTimeout(swipeTimeout);
+            swipeTimeout = setTimeout(() => {
+                swipeAccumulator = 0;
+            }, 200);
+
+            if (swipeAccumulator > 50) {
+                if (state.currentDetailView.type) {
+                    showView(state.activeListView);
+                }
+                swipeAccumulator = 0;
+            }
+        }
+    }, { passive: true });
 
     elements.nextBtn.addEventListener('click', playNextSong);
     elements.prevBtn.addEventListener('click', playPrevSong);
@@ -526,4 +556,3 @@ ipcRenderer.on('measure-performance', () => {
     measure('Full Renderer Process Time', 'renderer-script-start', 'window-load');
     console.log("-------------------------------------");
 });
-

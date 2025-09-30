@@ -58,17 +58,18 @@ export function updateNowPlayingView(song) {
         img.crossOrigin = "Anonymous";
         img.onload = () => setEqualizerColorFromArtwork(img);
 
-        // ▼▼▼ ここからが修正箇所です ▼▼▼
-        // どんなsongオブジェクトでもファイルパスを元にstate.libraryから完全な楽曲情報を検索
         const masterSong = state.library.find(s => s.path === song.path) || song;
         const album = state.albums.get(masterSong.albumKey);
         
-        // 楽曲自身のアートワーク(YouTubeなど)を優先し、なければアルバムのアートワークを使用
-        const artwork = masterSong.artwork || (album ? album.artwork : null);
+        let artwork;
+        if (masterSong.album === 'Unknown Album' || (album && album.title === 'Unknown Album')) {
+            artwork = null;
+        } else {
+            artwork = masterSong.artwork || (album ? album.artwork : null);
+        }
 
         img.src = resolveArtworkPath(artwork, false);
 
-        // 映像の有無はmasterSongの情報で判定する
         if (masterSong.hasVideo && localPlayer) {
             nowPlayingArtworkContainer.classList.add('video-mode');
             localPlayer.poster = img.src;
@@ -78,7 +79,6 @@ export function updateNowPlayingView(song) {
             nowPlayingArtworkContainer.classList.remove('video-mode');
             nowPlayingArtworkContainer.appendChild(img);
         }
-        // ▲▲▲ ここまでが修正箇所です ▲▲▲
     }
     
     if (song && song.hubUrl) {
