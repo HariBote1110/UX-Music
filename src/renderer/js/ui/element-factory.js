@@ -5,13 +5,34 @@ import { state } from '../state.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
 const path = require('path');
 
-export function createSongItem(song, index, ipcRenderer) {
+export function createSongItem(song, index, songList, options = {}) {
+    const { groupAlbumArt = false } = options;
     const songItem = document.createElement('div');
     songItem.className = 'song-item';
     songItem.dataset.songPath = song.path;
     songItem.dataset.songId = song.id;
 
-    const artworkHTML = state.isLightFlightMode ? '' : `<img src="./assets/default_artwork.png" class="artwork-small lazy-load" alt="artwork">`;
+    let showArt = true;
+    if (groupAlbumArt && song.albumKey) {
+        const prevSong = songList[index - 1];
+        const isFirstOfGroup = !prevSong || prevSong.albumKey !== song.albumKey;
+        const nextSong = songList[index + 1];
+        const isLastOfGroup = !nextSong || nextSong.albumKey !== song.albumKey;
+
+        if (!isFirstOfGroup) {
+            showArt = false;
+            songItem.classList.add('song-item--grouped');
+            if (isLastOfGroup) {
+                songItem.classList.add('song-item--group-last');
+            }
+        }
+    }
+    
+    if (!showArt) {
+        songItem.classList.add('song-item--no-art-padding');
+    }
+
+    const artworkHTML = !state.isLightFlightMode && showArt ? `<img src="./assets/default_artwork.png" class="artwork-small lazy-load" alt="artwork">` : '';
     
     const hiResIconHTML = song.isHiRes ? `
         <svg class="hires-icon" width="24" height="14" viewBox="0 0 24 14" xmlns="http://www.w3.org/2000/svg">
@@ -22,60 +43,36 @@ export function createSongItem(song, index, ipcRenderer) {
 
     songItem.innerHTML = `
         <div class="song-index">
+            <span class="song-group-connector"></span>
             <span class="song-number">${index + 1}</span>
             <div class="playing-indicator">
-                <div class="playing-indicator-bar"></div>
-                <div class="playing-indicator-bar"></div>
-                <div class="playing-indicator-bar"></div>
-                <div class="playing-indicator-bar"></div>
-                <div class="playing-indicator-bar"></div>
-                <div class="playing-indicator-bar"></div>
+                <div class="playing-indicator-bar"></div><div class="playing-indicator-bar"></div><div class="playing-indicator-bar"></div>
+                <div class="playing-indicator-bar"></div><div class="playing-indicator-bar"></div><div class="playing-indicator-bar"></div>
             </div>
             <img src="./assets/icons/static-visualizer.svg" class="static-visualizer-img" alt="Playing">
         </div>
         <div class="song-artwork-col">${artworkHTML}</div>
-        <div class="song-title">
-            <div class="marquee-wrapper">
-                <div class="marquee-content">
-                    <span>${formatSongTitle(song.title)}</span>
-                </div>
-            </div>
-        </div>
-        <div class="song-artist">
-            <div class="marquee-wrapper">
-                <div class="marquee-content">
-                    <span>${song.artist}</span>
-                </div>
-            </div>
-        </div>
-        <div class="song-album">
-            <div class="marquee-wrapper">
-                <div class="marquee-content">
-                    <span>${song.album}</span>
-                </div>
-            </div>
-        </div>
+        <div class="song-title"><div class="marquee-wrapper"><div class="marquee-content"><span>${formatSongTitle(song.title)}</span></div></div></div>
+        <div class="song-artist"><div class="marquee-wrapper"><div class="marquee-content"><span>${song.artist}</span></div></div></div>
+        <div class="song-album"><div class="marquee-wrapper"><div class="marquee-content"><span>${song.album}</span></div></div></div>
         <div class="song-hires">${hiResIconHTML}</div>
-        <div class="song-duration">
-            <span>${formatTime(song.duration || 0)}</span>
-        </div>
+        <div class="song-duration"><span>${formatTime(song.duration || 0)}</span></div>
         <div class="song-play-count">${(state.playCounts && state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
     `;
 
-    if (!state.isLightFlightMode) {
+    if (!state.isLightFlightMode && showArt) {
         const artworkImg = songItem.querySelector('.artwork-small');
         const album = state.albums.get(song.albumKey);
         
-        let artwork = song.artwork;
-        if (!artwork && song.album !== 'Unknown Album') {
-            artwork = album ? album.artwork : null;
+        let artwork;
+        if (song.album === 'Unknown Album') {
+            artwork = null;
+        } else {
+            artwork = song.artwork || (album ? album.artwork : null);
         }
 
         artworkImg.classList.add('lazy-load');
         artworkImg.dataset.src = resolveArtworkPath(artwork, true);
-        artworkImg.onload = () => {
-            window.artworkLoadTimes.push(performance.now());
-        };
     }
     
     requestAnimationFrame(() => {
@@ -84,8 +81,6 @@ export function createSongItem(song, index, ipcRenderer) {
     
     return songItem;
 }
-
-// ... 以下、ファイルの残りの部分は変更ありません ...
 
 export function createQueueItem(song, isPlaying, ipcRenderer) {
     const queueItem = document.createElement('div');

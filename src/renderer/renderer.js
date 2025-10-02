@@ -133,6 +133,10 @@ window.addEventListener('DOMContentLoaded', () => {
                 elements.loopBtn.classList.toggle('active', state.playbackMode !== PLAYBACK_MODES.NORMAL);
                 elements.loopBtn.classList.toggle('loop-one', state.playbackMode === PLAYBACK_MODES.LOOP_ONE);
             }
+            
+            if (typeof settings.groupAlbumArt === 'boolean') {
+                state.groupAlbumArt = settings.groupAlbumArt;
+            }
 
             if (settings.enableYouTube) {
                 document.querySelectorAll('[data-feature="youtube"], #add-youtube-btn, #add-youtube-playlist-btn').forEach(el => {
@@ -328,6 +332,10 @@ window.addEventListener('DOMContentLoaded', () => {
         const visualizerModeRadio = document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`);
         if(visualizerModeRadio) visualizerModeRadio.checked = true;
 
+        const groupAlbumArt = settings.groupAlbumArt === true;
+        const groupAlbumArtCheckbox = document.querySelector('input[name="group-album-art"]');
+        if(groupAlbumArtCheckbox) groupAlbumArtCheckbox.checked = groupAlbumArt;
+
         const easterEggsEnabled = settings.enableEasterEggs !== false;
         const easterEggsCheckbox = document.querySelector('input[name="enable-easter-eggs"]');
         if(easterEggsCheckbox) easterEggsCheckbox.checked = easterEggsEnabled;
@@ -344,6 +352,7 @@ window.addEventListener('DOMContentLoaded', () => {
         const selectedQuality = document.querySelector('input[name="youtube-quality"]:checked').value;
         const selectedImportMode = document.querySelector('input[name="import-mode"]:checked').value;
         const selectedVisualizerMode = document.querySelector('input[name="visualizer-mode"]:checked').value;
+        const groupAlbumArt = document.querySelector('input[name="group-album-art"]').checked;
         const enableEasterEggs = document.querySelector('input[name="enable-easter-eggs"]').checked;
 
         ipcRenderer.send('save-settings', {
@@ -351,10 +360,15 @@ window.addEventListener('DOMContentLoaded', () => {
             youtubeDownloadQuality: selectedQuality,
             importMode: selectedImportMode,
             visualizerMode: selectedVisualizerMode,
+            groupAlbumArt: groupAlbumArt,
             enableEasterEggs: enableEasterEggs,
         });
         
         state.visualizerMode = selectedVisualizerMode;
+        if (state.groupAlbumArt !== groupAlbumArt) {
+            state.groupAlbumArt = groupAlbumArt;
+            renderCurrentView();
+        }
         
         elements.settingsModalOverlay.classList.add('hidden');
     });

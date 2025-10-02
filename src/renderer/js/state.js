@@ -28,6 +28,7 @@ export const state = {
     userPreferredVisualizerFps: 0,
     selectedSongIds: new Set(),
     copiedSongIds: [],
+    groupAlbumArt: false, // この行を追加
 };
 
 export const elements = {};
