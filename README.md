@@ -6,8 +6,7 @@
 
 ## 🖥️ 対応OS
 
--   **macOS**
--   **Windows**
+-   **macOS 26.01 Tahoe**
 
 上記OSにて動作確認済みです。
 
