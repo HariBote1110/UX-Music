@@ -82,7 +82,7 @@ export function renderTrackView() {
     elements.mainContent.appendChild(viewWrapper);
 
     const renderItem = (song, index) => {
-        const songItem = createSongItem(song, index, ipcRenderer);
+        const songItem = createSongItem(song, index, state.library, { groupAlbumArt: state.groupAlbumArt });
         
         if (state.selectedSongIds.has(song.id)) {
             songItem.classList.add('selected');
@@ -329,7 +329,7 @@ export function renderAlbumDetailView(album) {
     listElement.className = 'music-list';
 
     const renderItem = (song, index) => {
-        const songItem = createSongItem(song, index, ipcRenderer);
+        const songItem = createSongItem(song, index, album.songs, { groupAlbumArt: state.groupAlbumArt });
 
         if (state.selectedSongIds.has(song.id)) {
             songItem.classList.add('selected');
@@ -446,7 +446,7 @@ export function renderPlaylistDetailView(playlistDetails) {
     elements.mainContent.appendChild(viewWrapper);
 
     const renderItem = (song, index) => {
-        const songItem = createSongItem(song, index, ipcRenderer);
+        const songItem = createSongItem(song, index, songs, { groupAlbumArt: state.groupAlbumArt });
 
         if (state.selectedSongIds.has(song.id)) {
             songItem.classList.add('selected');

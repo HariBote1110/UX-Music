@@ -13,26 +13,21 @@ export function createSongItem(song, index, songList, options = {}) {
     songItem.dataset.songId = song.id;
 
     let showArt = true;
+    let isGrouped = false;
+    let isLastOfGroup = false;
+
     if (groupAlbumArt && song.albumKey) {
         const prevSong = songList[index - 1];
         const isFirstOfGroup = !prevSong || prevSong.albumKey !== song.albumKey;
-        const nextSong = songList[index + 1];
-        const isLastOfGroup = !nextSong || nextSong.albumKey !== song.albumKey;
-
         if (!isFirstOfGroup) {
+            const nextSong = songList[index + 1];
+            isLastOfGroup = !nextSong || nextSong.albumKey !== song.albumKey;
             showArt = false;
-            songItem.classList.add('song-item--grouped');
-            if (isLastOfGroup) {
-                songItem.classList.add('song-item--group-last');
-            }
+            isGrouped = true;
         }
     }
     
-    if (!showArt) {
-        songItem.classList.add('song-item--no-art-padding');
-    }
-
-    const artworkHTML = !state.isLightFlightMode && showArt ? `<img src="./assets/default_artwork.png" class="artwork-small lazy-load" alt="artwork">` : '';
+    const artworkHTML = !state.isLightFlightMode ? `<img src="./assets/default_artwork.png" class="artwork-small lazy-load" alt="artwork">` : '';
     
     const hiResIconHTML = song.isHiRes ? `
         <svg class="hires-icon" width="24" height="14" viewBox="0 0 24 14" xmlns="http://www.w3.org/2000/svg">
@@ -43,7 +38,6 @@ export function createSongItem(song, index, songList, options = {}) {
 
     songItem.innerHTML = `
         <div class="song-index">
-            <span class="song-group-connector"></span>
             <span class="song-number">${index + 1}</span>
             <div class="playing-indicator">
                 <div class="playing-indicator-bar"></div><div class="playing-indicator-bar"></div><div class="playing-indicator-bar"></div>
@@ -60,8 +54,40 @@ export function createSongItem(song, index, songList, options = {}) {
         <div class="song-play-count">${(state.playCounts && state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
     `;
 
-    if (!state.isLightFlightMode && showArt) {
-        const artworkImg = songItem.querySelector('.artwork-small');
+    const artworkCol = songItem.querySelector('.song-artwork-col');
+    const artworkImg = songItem.querySelector('.artwork-small');
+
+    if (isGrouped) {
+        if (artworkImg) artworkImg.style.visibility = 'hidden';
+        
+        const verticalLine = document.createElement('div');
+        verticalLine.style.position = 'absolute';
+        verticalLine.style.left = '50%';
+        verticalLine.style.width = '1px';
+        verticalLine.style.backgroundColor = 'var(--text-muted)';
+        verticalLine.style.transform = 'translateX(-50%)';
+
+        if (isLastOfGroup) {
+            verticalLine.style.top = '0';
+            verticalLine.style.height = '50%';
+
+            const horizontalLine = document.createElement('div');
+            horizontalLine.style.position = 'absolute';
+            horizontalLine.style.top = '50%';
+            horizontalLine.style.left = '50%';
+            horizontalLine.style.width = '50%';
+            horizontalLine.style.height = '1px';
+            horizontalLine.style.backgroundColor = 'var(--text-muted)';
+            
+            artworkCol.appendChild(horizontalLine);
+        } else {
+            verticalLine.style.top = '0';
+            verticalLine.style.height = '100%';
+        }
+        artworkCol.appendChild(verticalLine);
+    }
+
+    if (!state.isLightFlightMode && showArt && artworkImg) {
         const album = state.albums.get(song.albumKey);
         
         let artwork;
