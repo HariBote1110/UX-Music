@@ -11,6 +11,7 @@ import { updateTextOverflowForSelector } from './js/ui/utils.js';
 import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
 import { updateNowPlayingView } from './js/ui/now-playing.js';
 import { initNormalizeView } from './js/normalize-view.js';
+import { initEqualizer, renderEqualizer, applyCurrentSettings, renderGraphicEQ } from './js/ui/equalizer.js';
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
@@ -96,6 +97,8 @@ window.addEventListener('DOMContentLoaded', () => {
         onNextSong: playNextSong,
         onPrevSong: playPrevSong
     });
+    logPerf("Initializing Equalizer...");
+    initEqualizer();
     logPerf("Initializing Navigation...");
     initNavigation();
     logPerf("Initializing Modal...");
@@ -136,6 +139,12 @@ window.addEventListener('DOMContentLoaded', () => {
             
             if (typeof settings.groupAlbumArt === 'boolean') {
                 state.groupAlbumArt = settings.groupAlbumArt;
+            }
+
+            if (settings.equalizer) {
+                state.equalizerSettings = { ...state.equalizerSettings, ...settings.equalizer };
+                applyCurrentSettings();
+                renderEqualizer();
             }
 
             if (settings.enableYouTube) {
@@ -313,6 +322,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
     elements.openSettingsBtn.addEventListener('click', async () => {
         const settings = await ipcRenderer.invoke('get-settings');
+        
+        // グラフィックEQを描画
+        renderGraphicEQ();
         
         const currentYoutubeMode = settings.youtubePlaybackMode || 'download';
         const youtubeModeRadio = document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`);

@@ -135,6 +135,7 @@
                 <div class="sidebar-tabs">
                     <button class="sidebar-tab-btn active" data-tab="lyrics-container">歌詞</button>
                     <button class="sidebar-tab-btn" data-tab="queue-container">再生キュー</button>
+                    <button class="sidebar-tab-btn" data-tab="equalizer-container">EQ</button>
                 </div>
                 <div id="lyrics-container" class="sidebar-tab-content active">
                     <div id="lyrics-view">
@@ -145,6 +146,9 @@
                     <div id="queue-list">
                         <p class="no-lyrics">再生キューは空です</p>
                     </div>
+                </div>
+                <div id="equalizer-container" class="sidebar-tab-content">
+                    <div id="equalizer-view"></div>
                 </div>
             </div>
         </div>
@@ -212,6 +216,13 @@
                     <h4>オーディオデバイス</h4>
                     <p class="setting-description">再生に使用するオーディオデバイスの表示/非表示を管理します。</p>
                     <button id="manage-devices-btn" class="settings-button">表示するデバイスを管理...</button>
+                </div>
+            </div>
+            <div class="setting-group">
+                <div class="setting-item">
+                    <h4>グラフィックイコライザー</h4>
+                    <p class="setting-description">各周波数帯のゲインを細かく調整します。</p>
+                    <div id="graphic-eq-container"></div>
                 </div>
             </div>
             <div class="setting-group">

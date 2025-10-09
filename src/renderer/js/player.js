@@ -8,6 +8,9 @@ let audioContext;
 let mainPlayerNode;
 let gainNode;
 let baseGain = 1.0;
+let eqBands = [];
+let preampGainNode;
+
 
 let localPlayer;
 let currentSongType = 'local';
@@ -61,21 +64,52 @@ function connectAudioGraph() {
     if (!audioContext || !localPlayer) return;
     try {
         mainPlayerNode = audioContext.createMediaElementSource(localPlayer);
-        gainNode = audioContext.createGain();
+        preampGainNode = audioContext.createGain();
+
+        // --- イコライザーバンドの作成 (10バンド構成) ---
+        const frequencies = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+        eqBands = frequencies.map((freq, i) => {
+            const filter = audioContext.createBiquadFilter();
+            if (i === 0) {
+                filter.type = 'lowshelf';
+            } else if (i === frequencies.length - 1) {
+                filter.type = 'highshelf';
+            } else {
+                filter.type = 'peaking';
+                filter.Q.value = 1.41;
+            }
+            filter.frequency.value = freq;
+            filter.gain.value = 0;
+            return filter;
+        });
+
+        // --- アナライザーのセットアップ ---
         analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256; // 解像度を上げる
+        analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.8;
         analyser.minDecibels = -80;
         analyser.maxDecibels = -10;
         dataArray = new Uint8Array(analyser.frequencyBinCount);
+        
+        // --- ノードの接続 ---
+        let lastNode = preampGainNode;
+        for (const band of eqBands) {
+            lastNode.connect(band);
+            lastNode = band;
+        }
 
-        mainPlayerNode.connect(analyser);
-        mainPlayerNode.connect(gainNode).connect(audioContext.destination);
+        gainNode = audioContext.createGain();
+        
+        mainPlayerNode.connect(preampGainNode);
+        lastNode.connect(gainNode); // EQの最終出力をボリュームへ
+        lastNode.connect(analyser); // EQの最終出力をアナライザーへも接続
+        gainNode.connect(audioContext.destination); // ボリュームの出力をスピーカーへ
         
     } catch (e) {
         console.error('Web Audio APIのグラフ接続に失敗しました。', e);
     }
 }
+
 
 /**
  * ビジュアライザーのエコモード（Intersection Observerによる表示監視）を切り替える
@@ -186,6 +220,19 @@ export function applyMasterVolume() {
     const masterVolume = parseFloat(elements.volumeSlider.value);
     gainNode.gain.value = baseGain * (masterVolume * 2);
 }
+
+export function applyEqualizerSettings(settings) {
+    if (!preampGainNode || eqBands.length === 0) return;
+    
+    preampGainNode.gain.value = Math.pow(10, (settings.preamp || 0) / 20);
+
+    for (let i = 0; i < eqBands.length; i++) {
+        if (settings.bands && typeof settings.bands[i] === 'number') {
+            eqBands[i].gain.value = settings.bands[i];
+        }
+    }
+}
+
 
 export async function setAudioOutput(deviceId) {
     ipcRenderer.send('save-settings', { audioOutputId: deviceId });

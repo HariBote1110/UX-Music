@@ -28,7 +28,15 @@ export const state = {
     userPreferredVisualizerFps: 0,
     selectedSongIds: new Set(),
     copiedSongIds: [],
-    groupAlbumArt: false, // この行を追加
+    groupAlbumArt: false,
+    equalizerSettings: {
+        active: false, // EQが有効かどうか
+        preamp: 0,
+        bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 10バンドに変更
+        bass: 0,
+        mid: 0,
+        treble: 0
+    }
 };
 
 export const elements = {};
@@ -76,4 +84,8 @@ export function initElements() {
     // New Normalize View Elements
     elements.normalizeView = document.getElementById('normalize-view');
     elements.normalizeViewBtn = document.getElementById('normalize-view-btn');
+    
+    // Equalizer elements
+    elements.equalizerContainer = document.getElementById('equalizer-container');
+    elements.equalizerView = document.getElementById('equalizer-view');
 }
