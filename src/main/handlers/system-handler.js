@@ -7,11 +7,13 @@ const discordRpcManager = require('../discord-rpc-manager');
 let settingsStore;
 let playCountsStore;
 let libraryStore;
+let quizScoresStore;
 
 function registerSystemHandlers(stores) {
     settingsStore = stores.settings;
     playCountsStore = stores.playCounts;
     libraryStore = stores.library;
+    quizScoresStore = stores.quizScores;
 
     // --- Settings ---
     ipcMain.handle('get-settings', () => {
@@ -159,6 +161,23 @@ function registerSystemHandlers(stores) {
             console.error(`Failed to read artwork file for data URL: ${artworkFileName}`, error);
         }
         return null;
+    });
+
+    // --- Quiz Scores ---
+    ipcMain.handle('save-quiz-score', (event, scoreData) => {
+        const scores = quizScoresStore.load() || [];
+        scores.push(scoreData);
+        scores.sort((a, b) => {
+            if (b.score !== a.score) {
+                return b.score - a.score;
+            }
+            return a.avgTime - b.avgTime;
+        });
+        quizScoresStore.save(scores.slice(0, 50)); // 上位50件まで保存
+    });
+    
+    ipcMain.handle('get-quiz-scores', () => {
+        return quizScoresStore.load() || [];
     });
 }
 

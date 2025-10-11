@@ -8,10 +8,8 @@
     --bg-medium: #181818;
     --bg-light: #282828;
     --bg-hover: #3a3a3a;
-    /* ▼▼▼ この2行を変更 ▼▼▼ */
     --highlight-pink: #a44c65;
     --highlight-blue: #1f3453;
-    /* ▲▲▲ この2行を変更 ▲▲▲ */
 }
 
 body, html { 
@@ -24,7 +22,8 @@ body, html {
     font-family: 'Segoe UI', Meiryo, sans-serif; 
     overflow: hidden; 
     display: flex; 
-    flex-direction: column; 
+    flex-direction: column;
+    user-select: none;
 }
 
 h1, h2, h3, h4, h5, h6 {

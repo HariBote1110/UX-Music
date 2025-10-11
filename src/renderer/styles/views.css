@@ -501,7 +501,6 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
 }
 
 /* --- Light Flight Mode --- */
-/* ▼▼▼ このブロック全体を修正 ▼▼▼ */
 body.light-flight-mode .artwork-small,
 body.light-flight-mode .album-artwork,
 body.light-flight-mode .artist-artwork,
@@ -510,7 +509,6 @@ body.light-flight-mode .song-artwork-col,
 body.light-flight-mode #now-playing-artwork-container {
     display: none;
 }
-/* ▲▲▲ ここまで ▲▲▲ */
 
 body.light-flight-mode .playing-indicator-bar {
     background: var(--text-secondary);
@@ -865,9 +863,6 @@ input:checked + .slider:before {
 .slider.round:before {
   border-radius: 50%;
 }
-/* (前略) */
-
-/* --- Equalizer Styles (Final) --- */
 #equalizer-view {
     display: flex;
     flex-direction: column;
@@ -1007,11 +1002,6 @@ input:checked + .slider:before {
 .slider.round:before {
   border-radius: 50%;
 }
-/* (前略) */
-
-/* --- グラフィックEQのスタイル (設定モーダル内) --- */
-/* (前略) */
-
 /* --- グラフィックEQのスタイル (設定モーダル内) --- */
 #graphic-eq-container {
     padding-top: 15px;
@@ -1066,7 +1056,3 @@ input:checked + .slider:before {
     color: var(--text-muted);
     margin-top: 10px;
 }
-
-/* (後略) */
-
-/* (後略) */

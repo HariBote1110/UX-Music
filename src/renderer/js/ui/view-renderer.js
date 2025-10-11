@@ -15,7 +15,7 @@ let trackViewScroller = null;
 let detailViewScroller = null;
 const lastScrollPositions = {};
 
-function clearMainContent() {
+export function clearMainContent() {
     if (trackViewScroller) {
         trackViewScroller.destroy();
         trackViewScroller = null;

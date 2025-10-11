@@ -1,0 +1,140 @@
+import { state, elements } from './state.js';
+import { renderGraphicEQ } from './ui/equalizer.js';
+import { renderCurrentView, updateAudioDevices } from './ui-manager.js';
+import { setVisualizerFpsLimit } from './player.js';
+import { updateNowPlayingView } from './ui/now-playing.js';
+import { showNotification, hideNotification } from './ui/notification.js';
+const { ipcRenderer } = require('electron');
+
+export function initSettings() {
+    let settingsClickCount = 0;
+    let settingsClickTimer;
+
+    elements.openSettingsBtn.addEventListener('click', async () => {
+        const settings = await ipcRenderer.invoke('get-settings');
+        
+        renderGraphicEQ();
+        
+        const currentYoutubeMode = settings.youtubePlaybackMode || 'download';
+        document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`).checked = true;
+        
+        const currentQuality = settings.youtubeDownloadQuality || 'full';
+        document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`).checked = true;
+        
+        updateQualityGroupState();
+        
+        const currentImportMode = settings.importMode || 'balanced';
+        document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`).checked = true;
+        
+        const currentVisualizerMode = settings.visualizerMode || 'active';
+        document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
+
+        document.querySelector('input[name="group-album-art"]').checked = settings.groupAlbumArt === true;
+        document.querySelector('input[name="enable-easter-eggs"]').checked = settings.enableEasterEggs !== false;
+        
+        elements.settingsModalOverlay.classList.remove('hidden');
+
+        const settingsTitle = document.getElementById('settings-title');
+        if (settingsTitle && !settingsTitle.dataset.listenerAttached) {
+            settingsTitle.addEventListener('click', () => {
+                clearTimeout(settingsClickTimer);
+                settingsClickCount++;
+                if (settingsClickCount >= 7) {
+                    const quizBtn = document.getElementById('quiz-view-btn');
+                    if (quizBtn) {
+                        quizBtn.classList.remove('hidden');
+                        showNotification('隠し機能がアンロックされました！');
+                        hideNotification(3000);
+                    }
+                    settingsClickCount = 0;
+                }
+                settingsClickTimer = setTimeout(() => { settingsClickCount = 0; }, 1000);
+            });
+            settingsTitle.dataset.listenerAttached = 'true';
+        }
+    });
+    
+    document.querySelectorAll('input[name="youtube-mode"]').forEach(radio => {
+        radio.addEventListener('change', updateQualityGroupState);
+    });
+
+    elements.settingsOkBtn.addEventListener('click', () => {
+        const settingsToSave = {
+            youtubePlaybackMode: document.querySelector('input[name="youtube-mode"]:checked').value,
+            youtubeDownloadQuality: document.querySelector('input[name="youtube-quality"]:checked').value,
+            importMode: document.querySelector('input[name="import-mode"]:checked').value,
+            visualizerMode: document.querySelector('input[name="visualizer-mode"]:checked').value,
+            groupAlbumArt: document.querySelector('input[name="group-album-art"]').checked,
+            enableEasterEggs: document.querySelector('input[name="enable-easter-eggs"]').checked,
+        };
+    
+        ipcRenderer.send('save-settings', settingsToSave);
+        
+        state.visualizerMode = settingsToSave.visualizerMode;
+        if (state.groupAlbumArt !== settingsToSave.groupAlbumArt) {
+            state.groupAlbumArt = settingsToSave.groupAlbumArt;
+            renderCurrentView();
+        }
+        
+        elements.settingsModalOverlay.classList.add('hidden');
+    });
+
+    let userPreferredVisualizerMode = 'active';
+
+    elements.lightFlightModeBtn.addEventListener('click', () => {
+        state.isLightFlightMode = !state.isLightFlightMode;
+        document.body.classList.toggle('light-flight-mode', state.isLightFlightMode);
+        elements.lightFlightModeBtn.classList.toggle('active', state.isLightFlightMode);
+
+        if (state.isLightFlightMode) {
+            userPreferredVisualizerMode = state.visualizerMode;
+            state.visualizerMode = 'static';
+            state.userPreferredVisualizerFps = state.visualizerFpsLimit;
+            setVisualizerFpsLimit(30);
+        } else {
+            state.visualizerMode = userPreferredVisualizerMode;
+            setVisualizerFpsLimit(state.userPreferredVisualizerFps);
+        }
+        
+        renderCurrentView();
+        updateNowPlayingView(state.playbackQueue[state.currentSongIndex]);
+    });
+
+    document.getElementById('manage-devices-btn').addEventListener('click', async () => {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioDevices = devices.filter(d => d.kind === 'audiooutput');
+        const settings = await ipcRenderer.invoke('get-settings');
+        const hiddenDevices = settings.hiddenDeviceIds || [];
+        
+        const listEl = document.getElementById('devices-list');
+        listEl.innerHTML = '';
+
+        audioDevices.forEach(device => {
+            const isHidden = hiddenDevices.includes(device.deviceId);
+            const label = document.createElement('label');
+            label.innerHTML = `<input type="checkbox" data-device-id="${device.deviceId}" ${!isHidden ? 'checked' : ''}><span>${device.label || `スピーカー ${audioDevices.indexOf(device) + 1}`}</span>`;
+            listEl.appendChild(label);
+        });
+
+        document.getElementById('devices-modal-overlay').classList.remove('hidden');
+    });
+
+    document.getElementById('devices-ok-btn').addEventListener('click', () => {
+        const hiddenDeviceIds = Array.from(document.querySelectorAll('#devices-list input:not(:checked)')).map(cb => cb.dataset.deviceId);
+        ipcRenderer.send('save-settings', { hiddenDeviceIds });
+        document.getElementById('devices-modal-overlay').classList.add('hidden');
+        updateAudioDevices();
+    });
+}
+
+function updateQualityGroupState() {
+    const youtubeMode = document.querySelector('input[name="youtube-mode"]:checked')?.value;
+    const qualityGroup = document.getElementById('youtube-quality-group');
+    if (youtubeMode === 'stream') {
+        qualityGroup.classList.add('disabled');
+        document.querySelectorAll('input[name="youtube-quality"]').forEach(radio => radio.disabled = true);
+    } else {
+        qualityGroup.classList.remove('disabled');
+        document.querySelectorAll('input[name="youtube-quality"]').forEach(radio => radio.disabled = false);
+    }
+}
