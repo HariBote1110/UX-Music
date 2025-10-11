@@ -91,7 +91,10 @@ export function renderTrackView() {
         const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
         if (currentPlayingSong && currentPlayingSong.id === song.id) {
             songItem.classList.add('playing');
-            setVisualizerTarget(songItem);
+            // ビジュアライザーのターゲットを即座に設定
+            if (state.activeViewId === 'track-view') {
+                 setVisualizerTarget(songItem);
+            }
         }
 
         songItem.addEventListener('click', (e) => handleSongItemClick(e, song, index, state.library, songItem));
@@ -117,6 +120,14 @@ export function renderTrackView() {
         data: state.library,
         itemHeight: 56,
         renderItem: renderItem,
+    });
+    
+    // 再レンダリング後に再生中の曲があればビジュアライザーを再設定
+    requestAnimationFrame(() => {
+        const playingItem = musicListContainer.querySelector('.song-item.playing');
+        if (playingItem) {
+            setVisualizerTarget(playingItem);
+        }
     });
 
     const headerEl = viewWrapper.querySelector('#music-list-header');
@@ -362,6 +373,13 @@ export function renderAlbumDetailView(album) {
         renderItem: renderItem
     });
     
+    requestAnimationFrame(() => {
+        const playingItem = listElement.querySelector('.song-item.playing');
+        if (playingItem) {
+            setVisualizerTarget(playingItem);
+        }
+    });
+
     const headerEl = viewWrapper.querySelector('#music-list-header');
     initColumnResizing(headerEl);
     
@@ -369,11 +387,6 @@ export function renderAlbumDetailView(album) {
     artImg.dataset.src = resolveArtworkPath(album.artwork, false);
     
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, album.songs));
-    
-    const playingItem = listElement.querySelector('.song-item.playing');
-    if (playingItem) {
-        setVisualizerTarget(playingItem);
-    }
     
     window.observeNewArtworks(viewWrapper);
 }
@@ -484,15 +497,17 @@ export function renderPlaylistDetailView(playlistDetails) {
         });
     }
 
+    requestAnimationFrame(() => {
+        const playingItem = listElement.querySelector('.song-item.playing');
+        if (playingItem) {
+            setVisualizerTarget(playingItem);
+        }
+    });
+
     const headerEl = viewWrapper.querySelector('#music-list-header');
     initColumnResizing(headerEl);
 
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, songs));
-    
-    const playingItem = listElement.querySelector('.song-item.playing');
-    if (playingItem) {
-        setVisualizerTarget(playingItem);
-    }
     
     window.observeNewArtworks(viewWrapper);
 }

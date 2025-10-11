@@ -237,6 +237,27 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         }
     }, { passive: true });
+    
+    // コンテキストメニューからの新規プレイリスト作成要求
+    ipcRenderer.on('request-new-playlist-with-songs', (event, songs) => {
+        showModal({
+            title: '新規プレイリスト',
+            placeholder: 'プレイリスト名',
+            onOk: async (name) => {
+                const result = await ipcRenderer.invoke('create-playlist', name);
+                if (result.success) {
+                    const songIds = songs.map(s => s.id);
+                    await ipcRenderer.invoke('add-songs-to-playlist', { playlistName: name, songIds });
+                    showNotification(`${songs.length}曲を新規プレイリスト「${name}」に追加しました。`);
+                    hideNotification(3000);
+                } else {
+                    showNotification(`プレイリストの作成に失敗しました: ${result.message}`);
+                    hideNotification(3000);
+                }
+            }
+        });
+    });
+
 
     elements.nextBtn.addEventListener('click', playNextSong);
     elements.prevBtn.addEventListener('click', playPrevSong);
@@ -310,7 +331,9 @@ window.addEventListener('DOMContentLoaded', () => {
     function updateQualityGroupState() {
         const youtubeModeRadios = document.querySelectorAll('input[name="youtube-mode"]');
         if (!youtubeModeRadios.length) return;
-        const selectedMode = document.querySelector('input[name="youtube-mode"]:checked').value;
+        const selectedRadio = document.querySelector('input[name="youtube-mode"]:checked');
+        if (!selectedRadio) return; // 何も選択されていない場合は何もしない
+        const selectedMode = selectedRadio.value;
         if (selectedMode === 'stream') {
             youtubeQualityGroup.classList.add('disabled');
             document.querySelectorAll('input[name="youtube-quality"]').forEach(radio => radio.disabled = true);
@@ -360,25 +383,27 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     elements.settingsOkBtn.addEventListener('click', () => {
-        const selectedYoutubeMode = document.querySelector('input[name="youtube-mode"]:checked').value;
-        const selectedQuality = document.querySelector('input[name="youtube-quality"]:checked').value;
-        const selectedImportMode = document.querySelector('input[name="import-mode"]:checked').value;
-        const selectedVisualizerMode = document.querySelector('input[name="visualizer-mode"]:checked').value;
-        const groupAlbumArt = document.querySelector('input[name="group-album-art"]').checked;
-        const enableEasterEggs = document.querySelector('input[name="enable-easter-eggs"]').checked;
-
-        ipcRenderer.send('save-settings', {
-            youtubePlaybackMode: selectedYoutubeMode,
-            youtubeDownloadQuality: selectedQuality,
-            importMode: selectedImportMode,
-            visualizerMode: selectedVisualizerMode,
-            groupAlbumArt: groupAlbumArt,
-            enableEasterEggs: enableEasterEggs,
-        });
+        const selectedYoutubeModeEl = document.querySelector('input[name="youtube-mode"]:checked');
+        const selectedQualityEl = document.querySelector('input[name="youtube-quality"]:checked');
+        const selectedImportModeEl = document.querySelector('input[name="import-mode"]:checked');
+        const selectedVisualizerModeEl = document.querySelector('input[name="visualizer-mode"]:checked');
+        const groupAlbumArtEl = document.querySelector('input[name="group-album-art"]');
+        const enableEasterEggsEl = document.querySelector('input[name="enable-easter-eggs"]');
+    
+        const settingsToSave = {
+            youtubePlaybackMode: selectedYoutubeModeEl ? selectedYoutubeModeEl.value : 'download',
+            youtubeDownloadQuality: selectedQualityEl ? selectedQualityEl.value : 'full',
+            importMode: selectedImportModeEl ? selectedImportModeEl.value : 'balanced',
+            visualizerMode: selectedVisualizerModeEl ? selectedVisualizerModeEl.value : 'active',
+            groupAlbumArt: groupAlbumArtEl ? groupAlbumArtEl.checked : false,
+            enableEasterEggs: enableEasterEggsEl ? enableEasterEggsEl.checked : true,
+        };
+    
+        ipcRenderer.send('save-settings', settingsToSave);
         
-        state.visualizerMode = selectedVisualizerMode;
-        if (state.groupAlbumArt !== groupAlbumArt) {
-            state.groupAlbumArt = groupAlbumArt;
+        state.visualizerMode = settingsToSave.visualizerMode;
+        if (state.groupAlbumArt !== settingsToSave.groupAlbumArt) {
+            state.groupAlbumArt = settingsToSave.groupAlbumArt;
             renderCurrentView();
         }
         
