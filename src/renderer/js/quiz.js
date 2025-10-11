@@ -1,3 +1,4 @@
+// src/renderer/js/quiz.js
 import { state, elements } from './state.js';
 import { resolveArtworkPath } from './ui/utils.js';
 const { ipcRenderer } = require('electron');
@@ -17,6 +18,7 @@ const quizState = {
     answerTimes: [],
     timerInterval: null,
     isResultShowing: false,
+    isFinalScreenShowing: false,
 };
 
 const SNIPPET_DURATION = 10000;
@@ -177,6 +179,7 @@ function showResult() {
 }
 
 async function showFinalScreen() {
+    quizState.isFinalScreenShowing = true;
     quizElements.gameScreen.classList.add('hidden');
     quizElements.finalScreen.classList.remove('hidden');
 
@@ -218,6 +221,7 @@ function startQuiz() {
     quizState.score = 0;
     quizState.answerTimes = [];
     quizState.startTime = 0;
+    quizState.isFinalScreenShowing = false;
 
     quizElements.startScreen.classList.add('hidden');
     quizElements.finalScreen.classList.add('hidden');
@@ -257,6 +261,7 @@ export function initQuiz() {
     quizElements.retryBtn.addEventListener('click', () => {
         quizElements.finalScreen.classList.add('hidden');
         quizElements.startScreen.classList.remove('hidden');
+        quizState.isFinalScreenShowing = false;
     });
 
     elements.volumeSlider.addEventListener('input', () => {
@@ -269,6 +274,9 @@ export function initQuiz() {
 export function handleQuizKeyPress(e) {
     if (e.code === 'Space') {
         e.preventDefault();
+        if (quizState.isFinalScreenShowing) {
+            return;
+        }
         if (quizState.isResultShowing) {
             nextQuestion();
         } else if (!quizElements.playBtn.disabled) {
@@ -285,6 +293,7 @@ export function stopQuiz() {
     clearTimeout(quizState.snippetTimeout);
     clearInterval(quizState.timerInterval);
     quizState.isPlayingSnippet = false;
+    quizState.isFinalScreenShowing = false;
     
     if(quizElements.startScreen) {
         quizElements.startScreen.classList.remove('hidden');

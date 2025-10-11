@@ -85,7 +85,6 @@ export function initIPC(ipcRenderer, callbacks) {
 
     logPerf("Requesting initial data from main process...");
     ipcRenderer.send('request-initial-library');
-    ipcRenderer.send('request-playlists-with-artwork');
     ipcRenderer.send('request-initial-play-counts');
     ipcRenderer.send('request-initial-settings');
 }

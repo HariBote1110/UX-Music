@@ -3,7 +3,7 @@ import { initNavigation, showView } from './js/navigation.js';
 import { initIPC } from './js/ipc.js';
 import { initModal } from './js/modal.js';
 import { initPlayer, applyMasterVolume } from './js/player.js';
-import { state, initElements, PLAYBACK_MODES } from './js/state.js';
+import { state, elements, initElements, PLAYBACK_MODES } from './js/state.js';
 import { showNotification, hideNotification } from './js/ui/notification.js';
 import { initDebugCommands } from './js/debug-commands.js';
 import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
@@ -39,6 +39,8 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
             showView('track-view');
+            // ライブラリ読み込み後にプレイリストを要求
+            ipcRenderer.send('request-playlists-with-artwork');
         },
         onSettingsLoaded: (settings) => {
             if (typeof settings.volume === 'number') {
@@ -76,6 +78,13 @@ window.addEventListener('DOMContentLoaded', () => {
         onScanComplete: (songs) => {
             addSongsToLibrary({ songs });
             showNotification(`${songs.length}曲のインポートが完了しました。`, 3000);
+        },
+        // onPlaylistsUpdatedコールバックを追加
+        onPlaylistsUpdated: (playlists) => {
+            state.playlists = playlists;
+            if (state.activeViewId === 'playlist-view') {
+                renderCurrentView();
+            }
         },
     });
 

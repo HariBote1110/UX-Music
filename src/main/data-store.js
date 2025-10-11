@@ -12,18 +12,21 @@ class DataStore {
     }
 
     load() {
+        const arrayFiles = ['library.json', 'quiz-scores.json'];
+        const defaultEmpty = arrayFiles.includes(this.fileName) ? [] : {};
+
         try {
             if (fs.existsSync(this.path)) {
                 const fileContent = fs.readFileSync(this.path, 'utf-8');
                 if (fileContent.trim() === '') {
-                    return this.fileName === 'library.json' ? [] : {};
+                    return defaultEmpty;
                 }
                 return JSON.parse(fileContent);
             }
         } catch (error) {
             console.error(`Failed to load data from ${this.path}:`, error);
         }
-        return this.fileName === 'library.json' ? [] : {};
+        return defaultEmpty;
     }
 
     save(data) {
