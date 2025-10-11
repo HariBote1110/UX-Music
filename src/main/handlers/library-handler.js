@@ -69,12 +69,24 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
     
     ipcMain.on('start-scan-paths', async (event, paths) => {
         console.time('Main: Total Import Process');
+
+        const finishScan = (result) => {
+            event.sender?.send('scan-complete', result);
+            console.timeEnd('Main: Total Import Process');
+        };
+
         const settings = settingsStore.load();
         const libraryPath = settings.libraryPath;
-        if (!libraryPath) return event.sender.send('scan-complete', []);
+        if (!libraryPath) {
+            console.error('[Import] Library path is not set.');
+            return finishScan([]);
+        }
 
         const sourceFiles = await scanPaths(paths);
-        if (sourceFiles.length === 0) return event.sender.send('scan-complete', []);
+        if (sourceFiles.length === 0) {
+            console.log('[Import] No new source files found.');
+            return finishScan([]);
+        }
 
         const songsWithMetadata = await parseFiles(sourceFiles);
         const existingLibraryPaths = new Set((libraryStore.load() || []).map(s => s.path));
@@ -86,7 +98,10 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
             return !existingLibraryPaths.has(destPath);
         });
 
-        if (songsToProcess.length === 0) return event.sender.send('scan-complete', []);
+        if (songsToProcess.length === 0) {
+            console.log('[Import] All files are already in the library.');
+            return finishScan([]);
+        }
         
         songsToProcess.forEach(song => { song.originalPath = song.path; });
 
@@ -117,6 +132,15 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
             let runningWorkers = 0;
             const queue = [...songsToProcess];
 
+            const onWorkerExit = () => {
+                runningWorkers--;
+                if (queue.length > 0) {
+                    startWorker();
+                } else if (runningWorkers === 0) {
+                    resolve();
+                }
+            };
+
             function startWorker() {
                 if (runningWorkers >= concurrency || queue.length === 0) return;
                 
@@ -131,21 +155,31 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                     ffprobePath: require('ffprobe-static').path.replace('app.asar', 'app.asar.unpacked')
                 });
 
-                saveArtworkToFile(songToProcess.artwork, songToProcess.path).then(artwork => {
-                    songToProcess.artwork = artwork;
-                    const artistDir = sanitize(songToProcess.albumartist || songToProcess.artist || 'Unknown Artist');
-                    const albumDir = sanitize(songToProcess.album || 'Unknown Album');
-                    const destDir = path.join(libraryPath, artistDir, albumDir);
-                    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-                    
-                    const destPath = path.join(destDir, sanitize(path.basename(songToProcess.path)));
-                    if (!fs.existsSync(destPath)) {
-                        fs.copyFileSync(songToProcess.path, destPath);
-                    }
-                    songToProcess.path = destPath;
-                    
-                    worker.postMessage({ type: 'analyze', song: songToProcess });
-                });
+                // ▼▼▼ ここからが修正箇所です ▼▼▼
+                Promise.resolve()
+                    .then(() => saveArtworkToFile(songToProcess.artwork, songToProcess.path))
+                    .then(artwork => {
+                        songToProcess.artwork = artwork;
+                        const artistDir = sanitize(songToProcess.albumartist || songToProcess.artist || 'Unknown Artist');
+                        const albumDir = sanitize(songToProcess.album || 'Unknown Album');
+                        const destDir = path.join(libraryPath, artistDir, albumDir);
+                        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+                        
+                        const destPath = path.join(destDir, sanitize(path.basename(songToProcess.path)));
+                        if (songToProcess.path !== destPath && !fs.existsSync(destPath)) {
+                             fs.copyFileSync(songToProcess.path, destPath);
+                        }
+                        songToProcess.path = destPath;
+                        
+                        worker.postMessage({ type: 'analyze', song: songToProcess });
+                    })
+                    .catch(error => {
+                        console.error(`[Import] Failed to process file ${songToProcess.originalPath}:`, error);
+                        completedSteps++;
+                        sendProgress();
+                        worker.terminate();
+                    });
+                // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
                 worker.on('message', (result) => {
                     const finalSong = result.song;
@@ -161,13 +195,12 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                     worker.terminate();
                 });
 
-                worker.on('exit', (code) => {
-                    runningWorkers--;
-                    if (queue.length > 0) {
-                        startWorker();
-                    } else if (runningWorkers === 0) {
-                        resolve();
-                    }
+                worker.on('exit', onWorkerExit);
+                worker.on('error', (err) => {
+                    console.error(`[Import] Worker error for ${songToProcess.originalPath}:`, err);
+                    completedSteps++;
+                    sendProgress();
+                    onWorkerExit();
                 });
             }
 
@@ -188,9 +221,9 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
         newSongObjects.forEach(song => delete song.originalPath);
 
         if (newSongObjects.length > 0) loudnessStore.save(loudnessData);
+        
         const addedSongs = addSongsToLibraryAndSave(newSongObjects);
-        event.sender.send('scan-complete', addedSongs);
-        console.timeEnd('Main: Total Import Process');
+        finishScan(addedSongs);
     });
 
     ipcMain.handle('get-loudness-value', (event, songPath) => (loudnessStore.load() || {})[songPath] || null);
