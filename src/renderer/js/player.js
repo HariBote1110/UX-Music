@@ -218,7 +218,8 @@ function toggleMute() {
 export function applyMasterVolume() {
     if (!gainNode) return;
     const masterVolume = parseFloat(elements.volumeSlider.value);
-    gainNode.gain.value = baseGain * (masterVolume * 2);
+    // gainNode.gain.value = baseGain * (masterVolume * 2); // この*2が音量爆発の原因
+    gainNode.gain.value = baseGain * masterVolume;
 }
 
 export function applyEqualizerSettings(settings) {

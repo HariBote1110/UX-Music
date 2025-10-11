@@ -14,7 +14,7 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
     const isFavorited = playlistManager.isSongInPlaylist(favoritesName, firstSong.path);
 
     const addToPlaylistSubmenu = allPlaylists
-        .filter(name => name !== favoritesName)
+        // .filter(name => name !== favoritesName) // この行をコメントアウトし、すべてのプレイリストを表示
         .map(name => ({
             label: name,
             click: () => {
@@ -34,6 +34,7 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
             if (window) {
+                // rendererに曲情報と一緒に新規プレイリスト作成を要求
                 window.webContents.send('request-new-playlist-with-songs', songs);
             }
         }

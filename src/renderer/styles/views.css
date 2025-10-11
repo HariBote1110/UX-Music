@@ -501,13 +501,16 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
 }
 
 /* --- Light Flight Mode --- */
+/* ▼▼▼ このブロック全体を修正 ▼▼▼ */
 body.light-flight-mode .artwork-small,
 body.light-flight-mode .album-artwork,
 body.light-flight-mode .artist-artwork,
 body.light-flight-mode .playlist-artwork-container,
-body.light-flight-mode .song-artwork-col {
+body.light-flight-mode .song-artwork-col,
+body.light-flight-mode #now-playing-artwork-container {
     display: none;
 }
+/* ▲▲▲ ここまで ▲▲▲ */
 
 body.light-flight-mode .playing-indicator-bar {
     background: var(--text-secondary);
