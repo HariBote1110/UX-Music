@@ -1,5 +1,4 @@
-// uxmusic/src/renderer/js/ui/element-factory.js
-
+// src/renderer/js/ui/element-factory.js
 import { formatTime, checkTextOverflow, resolveArtworkPath, formatSongTitle } from './utils.js';
 import { state } from '../state.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
@@ -27,7 +26,8 @@ export function createSongItem(song, index, songList, options = {}) {
         }
     }
     
-    const artworkHTML = !state.isLightFlightMode ? `<img src="./assets/default_artwork.png" class="artwork-small lazy-load" alt="artwork">` : '';
+    // Light Flightモードでもimgタグは常に生成し、CSSで表示を制御する
+    const artworkHTML = `<img src="./assets/default_artwork.png" class="artwork-small lazy-load" alt="artwork">`;
     
     const hiResIconHTML = song.isHiRes ? `
         <svg class="hires-icon" width="24" height="14" viewBox="0 0 24 14" xmlns="http://www.w3.org/2000/svg">
@@ -87,18 +87,23 @@ export function createSongItem(song, index, songList, options = {}) {
         artworkCol.appendChild(verticalLine);
     }
 
-    if (!state.isLightFlightMode && showArt && artworkImg) {
-        const album = state.albums.get(song.albumKey);
-        
-        let artwork;
-        if (song.album === 'Unknown Album') {
-            artwork = null;
-        } else {
-            artwork = song.artwork || (album ? album.artwork : null);
+    if (artworkImg) {
+        if (state.isLightFlightMode) {
+             artworkImg.style.visibility = 'hidden';
         }
 
-        artworkImg.classList.add('lazy-load');
-        artworkImg.dataset.src = resolveArtworkPath(artwork, true);
+        if (showArt) {
+            const album = state.albums.get(song.albumKey);
+            let artwork;
+            if (song.album === 'Unknown Album') {
+                artwork = null;
+            } else {
+                artwork = song.artwork || (album ? album.artwork : null);
+            }
+
+            artworkImg.classList.add('lazy-load');
+            artworkImg.dataset.src = resolveArtworkPath(artwork, true);
+        }
     }
     
     requestAnimationFrame(() => {
@@ -153,7 +158,7 @@ export function createAlbumGridItem(key, album, ipcRenderer) {
     const albumItem = document.createElement('div');
     albumItem.className = 'album-grid-item';
     
-    const artworkHTML = state.isLightFlightMode ? '' : `<img src="./assets/default_artwork.png" class="album-artwork lazy-load" alt="${album.title}">`;
+    const artworkHTML = state.isLightFlightMode ? '<div class="album-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="album-artwork lazy-load" alt="${album.title}">`;
     
     albumItem.innerHTML = `
         ${artworkHTML}
@@ -183,7 +188,7 @@ export function createArtistGridItem(artist, ipcRenderer) {
     const artistItem = document.createElement('div');
     artistItem.className = 'artist-grid-item';
     
-    const artworkHTML = state.isLightFlightMode ? '' : `<img src="./assets/default_artwork.png" class="artist-artwork lazy-load" alt="${artist.name}">`;
+    const artworkHTML = state.isLightFlightMode ? '<div class="artist-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="artist-artwork lazy-load" alt="${artist.name}">`;
 
     artistItem.innerHTML = `
         ${artworkHTML}
@@ -208,7 +213,7 @@ export function createPlaylistGridItem(playlist, ipcRenderer) {
     const playlistItem = document.createElement('div');
     playlistItem.className = 'playlist-grid-item';
     
-    const artworkHTML = state.isLightFlightMode ? '' : `<div class="playlist-artwork-container"></div>`;
+    const artworkHTML = state.isLightFlightMode ? '<div class="playlist-artwork-container placeholder-artwork"></div>' : `<div class="playlist-artwork-container"></div>`;
     
     playlistItem.innerHTML = `
         ${artworkHTML}

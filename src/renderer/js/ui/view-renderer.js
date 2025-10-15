@@ -1,3 +1,4 @@
+// src/renderer/js/ui/view-renderer.js
 import { state, elements } from '../state.js';
 import { showAlbum, showArtist, showPlaylist, showSituationPlaylistDetail } from '../navigation.js';
 import { playSong } from '../playback-manager.js';
@@ -82,7 +83,7 @@ export function renderTrackView() {
     elements.mainContent.appendChild(viewWrapper);
 
     const renderItem = (song, index) => {
-        const songItem = createSongItem(song, index, state.library, { groupAlbumArt: state.groupAlbumArt });
+        const songItem = createSongItem(song, index, state.library, { groupAlbumArt: state.groupAlbumArt || state.isLightFlightMode });
         
         if (state.selectedSongIds.has(song.id)) {
             songItem.classList.add('selected');
@@ -91,7 +92,6 @@ export function renderTrackView() {
         const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
         if (currentPlayingSong && currentPlayingSong.id === song.id) {
             songItem.classList.add('playing');
-            // ビジュアライザーのターゲットを即座に設定
             if (state.activeViewId === 'track-view') {
                  setVisualizerTarget(songItem);
             }
@@ -122,7 +122,6 @@ export function renderTrackView() {
         renderItem: renderItem,
     });
     
-    // 再レンダリング後に再生中の曲があればビジュアライザーを再設定
     requestAnimationFrame(() => {
         const playingItem = musicListContainer.querySelector('.song-item.playing');
         if (playingItem) {
@@ -340,7 +339,7 @@ export function renderAlbumDetailView(album) {
     listElement.className = 'music-list';
 
     const renderItem = (song, index) => {
-        const songItem = createSongItem(song, index, album.songs, { groupAlbumArt: state.groupAlbumArt });
+        const songItem = createSongItem(song, index, album.songs, { groupAlbumArt: state.groupAlbumArt || state.isLightFlightMode });
 
         if (state.selectedSongIds.has(song.id)) {
             songItem.classList.add('selected');
@@ -459,7 +458,7 @@ export function renderPlaylistDetailView(playlistDetails) {
     elements.mainContent.appendChild(viewWrapper);
 
     const renderItem = (song, index) => {
-        const songItem = createSongItem(song, index, songs, { groupAlbumArt: state.groupAlbumArt });
+        const songItem = createSongItem(song, index, songs, { groupAlbumArt: state.groupAlbumArt || state.isLightFlightMode });
 
         if (state.selectedSongIds.has(song.id)) {
             songItem.classList.add('selected');

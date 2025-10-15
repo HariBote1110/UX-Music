@@ -531,11 +531,6 @@
     box-sizing: border-box;
     z-index: 1000; 
 }
-/* (前略) */
-
-/* --- グラフィックEQのスタイル (設定モーダル内) --- */
-/* (前略) */
-
 /* --- グラフィックEQのスタイル (設定モーダル内) --- */
 #graphic-eq-container {
     padding-top: 15px;
@@ -573,5 +568,27 @@
     border-radius: 4px;
     cursor: pointer;
 }
+/* Placeholder for artwork in Light Flight mode */
+.placeholder-artwork {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    background-color: var(--bg-medium);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
 
-/* (後略) */
+.placeholder-artwork::before {
+    content: '🎵';
+    font-size: 48px;
+    color: var(--bg-light);
+    opacity: 0.5;
+}
+
+/* For artist view (round) */
+.artist-artwork.placeholder-artwork {
+    border-radius: 50%;
+}

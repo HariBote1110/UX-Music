@@ -501,12 +501,9 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
 }
 
 /* --- Light Flight Mode --- */
-body.light-flight-mode .artwork-small,
-body.light-flight-mode .album-artwork,
-body.light-flight-mode .artist-artwork,
-body.light-flight-mode .playlist-artwork-container,
-body.light-flight-mode .song-artwork-col,
-body.light-flight-mode #now-playing-artwork-container {
+/* 再生中サイドバーのアートワークと詳細ビューのヘッダーアートワークのみを非表示にする */
+body.light-flight-mode #now-playing-artwork-container,
+body.light-flight-mode .detail-art-img {
     display: none;
 }
 
