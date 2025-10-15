@@ -30,15 +30,20 @@ export function updateNowPlayingView(song) {
     nowPlayingArtworkContainer.classList.remove('video-mode');
 
     // ▼▼▼ ここからが修正箇所です ▼▼▼
-    // Light Flightモードでない場合のみアートワーク関連の処理を行う
-    if (!state.isLightFlightMode) {
-        if (!song) {
-            const img = document.createElement('img');
-            img.src = './assets/default_artwork.png';
-            nowPlayingArtworkContainer.appendChild(img);
-            setEqualizerColorFromArtwork(img);
-        
-        } else if (song.type === 'youtube') {
+    if (state.isLightFlightMode && song) {
+        // LFモードが有効、かつ曲が再生中の場合はプレースホルダーを表示
+        const placeholder = document.createElement('div');
+        placeholder.className = 'placeholder-artwork';
+        nowPlayingArtworkContainer.appendChild(placeholder);
+    } else if (!song) {
+        // 曲が再生されていない場合（LFモード関係なし）は、デフォルト画像を表示
+        const img = document.createElement('img');
+        img.src = './assets/default_artwork.png';
+        nowPlayingArtworkContainer.appendChild(img);
+        setEqualizerColorFromArtwork(img);
+    } else {
+        // 通常モードで曲が再生中の場合
+        if (song.type === 'youtube') {
             nowPlayingArtworkContainer.classList.add('video-mode');
             const videoId = getYoutubeVideoId(song.sourceURL || song.path);
             if (videoId) {

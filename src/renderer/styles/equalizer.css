@@ -1,0 +1,196 @@
+/* uxmusic/src/renderer/styles/equalizer.css */
+/* イコライザー (サイドバー & グラフィックEQモーダル) のスタイル */
+
+#equalizer-view {
+    display: flex;
+    flex-direction: column;
+    padding: 15px 24px;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    gap: 20px;
+}
+
+.equalizer-header {
+    display: flex;
+    justify-content: flex-start; /* 左寄せに変更 */
+    align-items: center;
+    flex-shrink: 0;
+}
+
+#eq-controls-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    flex-grow: 1;
+    transition: opacity 0.3s;
+}
+
+#eq-controls-wrapper.eq-inactive {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+#eq-preset-select {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    border: 1px solid var(--bg-medium);
+    border-radius: 4px;
+    padding: 5px 8px;
+}
+
+.simple-eq-bands {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    flex-grow: 1;
+    justify-content: center;
+}
+
+.simple-eq-band {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.simple-eq-band label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    width: 50px; /* ラベルの幅を固定 */
+}
+
+.simple-eq-band input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex-grow: 1;
+    height: 4px;
+    background: var(--bg-light);
+    outline: none;
+    border-radius: 2px;
+}
+
+.simple-eq-band input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.equalizer-footer {
+    text-align: right;
+    flex-shrink: 0;
+}
+#open-graphic-eq-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    text-decoration: underline;
+    font-size: 12px;
+    cursor: pointer;
+}
+#open-graphic-eq-btn:hover {
+    color: var(--text-primary);
+}
+
+/* --- トグルスイッチのスタイル --- */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--bg-light);
+  transition: .4s;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+}
+input:checked + .slider {
+  background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue));
+}
+input:checked + .slider:before {
+  transform: translateX(14px);
+}
+.slider.round {
+  border-radius: 20px;
+}
+.slider.round:before {
+  border-radius: 50%;
+}
+
+/* --- グラフィックEQのスタイル (設定モーダル内) --- */
+#graphic-eq-container {
+    padding-top: 15px;
+}
+.graphic-eq-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+#graphic-eq-preset-select {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    border: 1px solid var(--bg-medium);
+    border-radius: 4px;
+    padding: 5px 8px;
+}
+#graphic-eq-reset-btn {
+    background: none;
+    border: 1px solid var(--bg-light);
+    color: var(--text-secondary);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+}
+#graphic-eq-reset-btn:hover {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+}
+#graphic-eq-bands-container {
+    display: flex;
+    justify-content: space-around;
+    align-items: stretch;
+    gap: 15px;
+    height: 160px;
+}
+#graphic-eq-bands-container .eq-band {
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+    flex-basis: 0;
+    flex-grow: 1;
+}
+#graphic-eq-bands-container .eq-band input[type="range"] {
+    -webkit-appearance: slider-vertical;
+    width: 100%;
+    flex-grow: 1;
+}
+#graphic-eq-bands-container .eq-band label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 10px;
+}

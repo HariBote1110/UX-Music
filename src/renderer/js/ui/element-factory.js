@@ -88,10 +88,6 @@ export function createSongItem(song, index, songList, options = {}) {
     }
 
     if (artworkImg) {
-        if (state.isLightFlightMode) {
-             artworkImg.style.visibility = 'hidden';
-        }
-
         if (showArt) {
             const album = state.albums.get(song.albumKey);
             let artwork;
