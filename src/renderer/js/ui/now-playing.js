@@ -30,63 +30,56 @@ export function updateNowPlayingView(song) {
     nowPlayingArtworkContainer.classList.remove('video-mode');
 
     // ▼▼▼ ここからが修正箇所です ▼▼▼
-    if (state.isLightFlightMode && song) {
-        // LFモードが有効、かつ曲が再生中の場合はプレースホルダーを表示
-        const placeholder = document.createElement('div');
-        placeholder.className = 'placeholder-artwork';
-        nowPlayingArtworkContainer.appendChild(placeholder);
-    } else if (!song) {
-        // 曲が再生されていない場合（LFモード関係なし）は、デフォルト画像を表示
+    // Light Flightモードに関する分岐をすべて削除し、常に通常のアートワーク表示処理を行う
+    if (!song) {
         const img = document.createElement('img');
         img.src = './assets/default_artwork.png';
         nowPlayingArtworkContainer.appendChild(img);
         setEqualizerColorFromArtwork(img);
+    
+    } else if (song.type === 'youtube') {
+        nowPlayingArtworkContainer.classList.add('video-mode');
+        const videoId = getYoutubeVideoId(song.sourceURL || song.path);
+        if (videoId) {
+            const iframe = document.createElement('iframe');
+            iframe.width = '100%';
+            iframe.height = '100%';
+            iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&fs=0&iv_load_policy=3&modestbranding=1&origin=${window.location.protocol}//${window.location.host}`;
+            iframe.setAttribute('frameborder', '0');
+            iframe.setAttribute('allow', 'autoplay; encrypted-media');
+            nowPlayingArtworkContainer.appendChild(iframe);
+        }
+        
+        const artworkImage = new Image();
+        artworkImage.crossOrigin = "Anonymous";
+        artworkImage.onload = () => setEqualizerColorFromArtwork(artworkImage);
+        artworkImage.src = song.artwork;
+
     } else {
-        // 通常モードで曲が再生中の場合
-        if (song.type === 'youtube') {
-            nowPlayingArtworkContainer.classList.add('video-mode');
-            const videoId = getYoutubeVideoId(song.sourceURL || song.path);
-            if (videoId) {
-                const iframe = document.createElement('iframe');
-                iframe.width = '100%';
-                iframe.height = '100%';
-                iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&fs=0&iv_load_policy=3&modestbranding=1&origin=${window.location.protocol}//${window.location.host}`;
-                iframe.setAttribute('frameborder', '0');
-                iframe.setAttribute('allow', 'autoplay; encrypted-media');
-                nowPlayingArtworkContainer.appendChild(iframe);
-            }
-            
-            const artworkImage = new Image();
-            artworkImage.crossOrigin = "Anonymous";
-            artworkImage.onload = () => setEqualizerColorFromArtwork(artworkImage);
-            artworkImage.src = song.artwork;
+        const img = document.createElement('img');
+        img.crossOrigin = "Anonymous";
+        img.onload = () => setEqualizerColorFromArtwork(img);
 
+        const masterSong = state.library.find(s => s.path === song.path) || song;
+        const album = state.albums.get(masterSong.albumKey);
+        
+        let artwork;
+        if (masterSong.album === 'Unknown Album' || (album && album.title === 'Unknown Album')) {
+            artwork = null;
         } else {
-            const img = document.createElement('img');
-            img.crossOrigin = "Anonymous";
-            img.onload = () => setEqualizerColorFromArtwork(img);
+            artwork = masterSong.artwork || (album ? album.artwork : null);
+        }
 
-            const masterSong = state.library.find(s => s.path === song.path) || song;
-            const album = state.albums.get(masterSong.albumKey);
-            
-            let artwork;
-            if (masterSong.album === 'Unknown Album' || (album && album.title === 'Unknown Album')) {
-                artwork = null;
-            } else {
-                artwork = masterSong.artwork || (album ? album.artwork : null);
-            }
+        img.src = resolveArtworkPath(artwork, false);
 
-            img.src = resolveArtworkPath(artwork, false);
-
-            if (masterSong.hasVideo && localPlayer) {
-                nowPlayingArtworkContainer.classList.add('video-mode');
-                localPlayer.poster = img.src;
-                localPlayer.style.display = 'block';
-                nowPlayingArtworkContainer.appendChild(localPlayer);
-            } else {
-                nowPlayingArtworkContainer.classList.remove('video-mode');
-                nowPlayingArtworkContainer.appendChild(img);
-            }
+        if (masterSong.hasVideo && localPlayer) {
+            nowPlayingArtworkContainer.classList.add('video-mode');
+            localPlayer.poster = img.src;
+            localPlayer.style.display = 'block';
+            nowPlayingArtworkContainer.appendChild(localPlayer);
+        } else {
+            nowPlayingArtworkContainer.classList.remove('video-mode');
+            nowPlayingArtworkContainer.appendChild(img);
         }
     }
     // ▲▲▲ ここまでが修正箇所です ▲▲▲
