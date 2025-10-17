@@ -4,6 +4,16 @@ const fs = require('fs');
 const { performance } = require('perf_hooks');
 const { connectToDiscord } = require('./discord-rpc-manager');
 
+// --- ▼▼▼ ここからが修正箇所です ▼▼▼ ---
+// '--dev' フラグがあるか確認
+if (process.argv.includes('--dev')) {
+  // 開発用のデータディレクトリを設定
+  const devUserDataPath = path.join(app.getPath('userData'), '..', `${app.getName()}-dev`);
+  app.setPath('userData', devUserDataPath);
+  console.log(`[DEV MODE] userData path set to: ${devUserDataPath}`);
+}
+// --- ▲▲▲ ここまでが修正箇所です ▲▲▲
+
 const startTime = performance.now();
 const logPerf = (message) => {
     // タイムスタンプ付きでパフォーマンスログを出力
@@ -53,7 +63,7 @@ function createWindow() {
     logPerf("'did-finish-load' event fired");
     performance.mark('did-finish-load');
     
-    if (!app.isPackaged || process.argv.includes('--debug')) {
+    if (!app.isPackaged || process.argv.includes('--debug') || process.argv.includes('--dev')) {
       mainWindow.webContents.openDevTools();
       logPerf("DevTools opened");
     }

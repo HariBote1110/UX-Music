@@ -1,4 +1,4 @@
-const { ipcMain, app } = require('electron');
+const { ipcMain, app, dialog } = require('electron'); // dialog を追加
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -14,13 +14,16 @@ let settingsStore;
 let playCountsStore;
 let albumsStore;
 
-async function saveArtworkToFile(picture, songPath) {
+async function saveArtworkToFile(picture, albumArtist, albumTitle) {
     if (!picture || !picture.data) return null;
     const artworksDir = path.join(app.getPath('userData'), 'Artworks');
     const thumbnailsDir = path.join(artworksDir, 'thumbnails');
     if (!fs.existsSync(artworksDir)) fs.mkdirSync(artworksDir, { recursive: true });
     if (!fs.existsSync(thumbnailsDir)) fs.mkdirSync(thumbnailsDir, { recursive: true });
-    const hash = crypto.createHash('sha256').update(songPath).digest('hex');
+
+    const uniqueKey = `${albumArtist || 'Unknown Artist'}-${albumTitle || 'Unknown Album'}`;
+    const hash = crypto.createHash('sha256').update(uniqueKey).digest('hex');
+    
     const fullFileName = `${hash}.webp`;
     const thumbFileName = `${hash}_thumb.webp`;
     const fullPath = path.join(artworksDir, fullFileName);
@@ -31,7 +34,7 @@ async function saveArtworkToFile(picture, songPath) {
         if (!fs.existsSync(thumbPath)) await image.resize(100, 100).webp({ quality: 75 }).toFile(thumbPath);
         return { full: fullFileName, thumbnail: thumbFileName };
     } catch (error) {
-        console.error(`Failed to save artwork for ${songPath}:`, error);
+        console.error(`Failed to save artwork for ${uniqueKey}:`, error);
         return null;
     }
 }
@@ -76,11 +79,25 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
         };
 
         const settings = settingsStore.load();
-        const libraryPath = settings.libraryPath;
+        let libraryPath = settings.libraryPath;
+
+        // --- ▼▼▼ ここからが修正箇所です ▼▼▼ ---
         if (!libraryPath) {
-            console.error('[Import] Library path is not set.');
-            return finishScan([]);
+            const result = await dialog.showOpenDialog({
+                properties: ['openDirectory'],
+                title: 'ライブラリとして使用するフォルダを選択してください'
+            });
+            if (!result.canceled && result.filePaths.length > 0) {
+                libraryPath = result.filePaths[0];
+                settings.libraryPath = libraryPath;
+                settingsStore.save(settings);
+                console.log(`[Import] Library path set to: ${libraryPath}`);
+            } else {
+                console.error('[Import] Library path selection was canceled.');
+                return finishScan([]);
+            }
         }
+        // --- ▲▲▲ ここまでが修正箇所です ▲▲▲
 
         const sourceFiles = await scanPaths(paths);
         if (sourceFiles.length === 0) {
@@ -101,6 +118,26 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
         if (songsToProcess.length === 0) {
             console.log('[Import] All files are already in the library.');
             return finishScan([]);
+        }
+
+        const albumsToProcess = new Map();
+        songsToProcess.forEach(song => {
+            const albumKey = `${song.albumartist || song.artist}-${song.album}`;
+            if (!albumsToProcess.has(albumKey)) {
+                albumsToProcess.set(albumKey, { songs: [], artworkPicture: null });
+            }
+            const albumGroup = albumsToProcess.get(albumKey);
+            albumGroup.songs.push(song);
+            if (!albumGroup.artworkPicture && song.artwork) {
+                albumGroup.artworkPicture = song.artwork;
+            }
+        });
+
+        for (const [key, group] of albumsToProcess.entries()) {
+            const savedArtwork = await saveArtworkToFile(group.artworkPicture, group.songs[0].albumartist || group.songs[0].artist, group.songs[0].album);
+            group.songs.forEach(song => {
+                song.artwork = savedArtwork;
+            });
         }
         
         songsToProcess.forEach(song => { song.originalPath = song.path; });
@@ -155,11 +192,8 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                     ffprobePath: require('ffprobe-static').path.replace('app.asar', 'app.asar.unpacked')
                 });
 
-                // ▼▼▼ ここからが修正箇所です ▼▼▼
                 Promise.resolve()
-                    .then(() => saveArtworkToFile(songToProcess.artwork, songToProcess.path))
-                    .then(artwork => {
-                        songToProcess.artwork = artwork;
+                    .then(() => {
                         const artistDir = sanitize(songToProcess.albumartist || songToProcess.artist || 'Unknown Artist');
                         const albumDir = sanitize(songToProcess.album || 'Unknown Album');
                         const destDir = path.join(libraryPath, artistDir, albumDir);
@@ -179,7 +213,6 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                         sendProgress();
                         worker.terminate();
                     });
-                // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
                 worker.on('message', (result) => {
                     const finalSong = result.song;

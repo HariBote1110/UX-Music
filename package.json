@@ -1,10 +1,11 @@
 {
   "name": "UX-Music",
-  "version": "0.1.9-Beta-1c",
+  "version": "0.1.9-Beta-1b",
   "description": "Music Player UX Music",
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
+    "start:dev": "electron . --dev",
     "build": "electron-builder"
   },
   "author": "",
