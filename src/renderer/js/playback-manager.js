@@ -8,8 +8,24 @@ import { updateNowPlayingView } from './ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 const { ipcRenderer } = require('electron');
 
+function handleSkip() {
+    if (state.analysedQueue.enabled && state.currentSongIndex > -1) {
+        const skippedSong = state.playbackQueue[state.currentSongIndex];
+        const player = document.getElementById('main-player');
+        // 再生時間が0より大きく、曲の長さも0より大きい場合のみ処理
+        if (skippedSong && player && player.currentTime > 0 && player.duration > 0) {
+            ipcRenderer.send('song-skipped', { song: skippedSong, currentTime: player.currentTime });
+        }
+    }
+}
+
 export async function playSong(index, sourceList = null, forcePlay = false) {
     console.log(`[Logger] 1. playSong() が呼び出されました。曲: ${sourceList ? sourceList[index].title : state.playbackQueue[index].title}`);
+    
+    // ユーザーがリストから新しい曲をクリックした場合、前の曲をスキップしたとみなす
+    if (sourceList) {
+        handleSkip();
+    }
     
     state.songWaitingForAnalysis = null;
 
@@ -68,9 +84,8 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     await playSongInPlayer(songToPlay);
 }
 
-// ... (他の関数は変更なし) ...
-
 export function playNextSong() {
+    handleSkip(); // 次の曲へ行く前に、現在の曲をスキップしたと記録
     if (state.playbackQueue.length === 0) return;
 
     if (state.playbackMode === PLAYBACK_MODES.LOOP_ONE) {
@@ -97,6 +112,7 @@ export function playNextSong() {
 }
 
 export function playPrevSong() {
+    handleSkip(); // 前の曲へ行く前に、現在の曲をスキップしたと記録
     if (state.playbackQueue.length === 0) return;
     let prevIndex = state.currentSongIndex - 1;
     if (prevIndex < 0) {
@@ -138,7 +154,6 @@ export function toggleShuffle() {
     }
     updatePlayingIndicators();
 }
-
 
 export function toggleLoopMode() {
     const modes = Object.values(PLAYBACK_MODES);

@@ -10,6 +10,9 @@ logPerf("ipc.js script execution started.");
 
 export function initIPC(ipcRenderer, callbacks) {
     logPerf("initIPC called.");
+    ipcRenderer.on('app-info-response', (event, info) => {
+        callbacks.onAppInfoResponse?.(info);
+    });
     ipcRenderer.on('load-library', (event, data) => {
         logPerf("Received 'load-library' from main.");
         console.log(`[Debug] Received initial library with ${data.songs ? data.songs.length : 0} songs.`);

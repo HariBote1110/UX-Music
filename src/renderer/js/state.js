@@ -29,6 +29,10 @@ export const state = {
     selectedSongIds: new Set(),
     copiedSongIds: [],
     groupAlbumArt: false,
+    analysedQueue: {
+        enabled: false,
+        decayDays: 7, // スコアの有効期間（日数）
+    },
     equalizerSettings: {
         active: false, // EQが有効かどうか
         preamp: 0,

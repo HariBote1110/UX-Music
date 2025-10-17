@@ -6,6 +6,9 @@ import { updateNowPlayingView } from './ui/now-playing.js';
 import { showNotification, hideNotification } from './ui/notification.js';
 const { ipcRenderer } = require('electron');
 
+const decaySliderValues = [1, 3, 7, 14, 30];
+const decaySliderLabels = ['1日', '3日', '7日', '2週間', '1ヶ月'];
+
 export function initSettings() {
     let settingsClickCount = 0;
     let settingsClickTimer;
@@ -30,6 +33,19 @@ export function initSettings() {
         document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
 
         document.querySelector('input[name="group-album-art"]').checked = settings.groupAlbumArt === true;
+        
+        const analysedQueueEnabled = settings.analysedQueue?.enabled === true;
+        const analysedQueueCheckbox = document.querySelector('input[name="enable-analysed-queue"]');
+        analysedQueueCheckbox.checked = analysedQueueEnabled;
+        document.getElementById('analysed-queue-options').classList.toggle('hidden', !analysedQueueEnabled);
+        
+        const currentDecayDays = settings.analysedQueue?.decayDays || 7;
+        const decaySlider = document.getElementById('analysed-queue-decay-slider');
+        const decayValueLabel = document.getElementById('analysed-queue-decay-value');
+        const sliderIndex = decaySliderValues.indexOf(currentDecayDays);
+        decaySlider.value = sliderIndex > -1 ? sliderIndex : 2; // Default to 7 days
+        decayValueLabel.textContent = decaySliderLabels[decaySlider.value];
+        
         document.querySelector('input[name="enable-easter-eggs"]').checked = settings.enableEasterEggs !== false;
         
         elements.settingsModalOverlay.classList.remove('hidden');
@@ -57,14 +73,27 @@ export function initSettings() {
     document.querySelectorAll('input[name="youtube-mode"]').forEach(radio => {
         radio.addEventListener('change', updateQualityGroupState);
     });
+    
+    document.querySelector('input[name="enable-analysed-queue"]').addEventListener('change', (e) => {
+        document.getElementById('analysed-queue-options').classList.toggle('hidden', !e.target.checked);
+    });
+
+    document.getElementById('analysed-queue-decay-slider').addEventListener('input', (e) => {
+        document.getElementById('analysed-queue-decay-value').textContent = decaySliderLabels[e.target.value];
+    });
 
     elements.settingsOkBtn.addEventListener('click', () => {
+        const decaySliderValue = document.getElementById('analysed-queue-decay-slider').value;
         const settingsToSave = {
             youtubePlaybackMode: document.querySelector('input[name="youtube-mode"]:checked').value,
             youtubeDownloadQuality: document.querySelector('input[name="youtube-quality"]:checked').value,
             importMode: document.querySelector('input[name="import-mode"]:checked').value,
             visualizerMode: document.querySelector('input[name="visualizer-mode"]:checked').value,
             groupAlbumArt: document.querySelector('input[name="group-album-art"]').checked,
+            analysedQueue: {
+                enabled: document.querySelector('input[name="enable-analysed-queue"]').checked,
+                decayDays: decaySliderValues[decaySliderValue]
+            },
             enableEasterEggs: document.querySelector('input[name="enable-easter-eggs"]').checked,
         };
     
@@ -75,6 +104,7 @@ export function initSettings() {
             state.groupAlbumArt = settingsToSave.groupAlbumArt;
             renderCurrentView();
         }
+        state.analysedQueue = settingsToSave.analysedQueue;
         
         elements.settingsModalOverlay.classList.add('hidden');
     });

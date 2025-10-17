@@ -115,11 +115,33 @@
 .playback-controls .play-btn:hover {
     transform: scale(1.05);
 }
-.playback-controls .play-btn img {
-    width: 28px;
-    height: 28px;
-    filter: none;
+
+.play-btn .play-pause-icon {
+    width: 24px;
+    height: 24px;
+    fill: var(--bg-dark);
 }
+
+.play-btn .play-pause-icon path {
+    transition: d 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* デフォルト状態（再生アイコン） */
+.play-btn .icon-part-1 {
+    d: path("M 8 5 L 18 12 L 8 12 L 8 5 Z");
+}
+.play-btn .icon-part-2 {
+    d: path("M 8 19 L 18 12 L 8 12 L 8 19 Z");
+}
+
+/* 再生中状態（一時停止アイコン） */
+.play-btn.playing .icon-part-1 {
+    d: path("M 6 5 L 10 5 L 10 19 L 6 19 Z");
+}
+.play-btn.playing .icon-part-2 {
+    d: path("M 14 5 L 18 5 L 18 19 L 14 19 Z");
+}
+
 
 /* モード切替ボタン (シャッフル、リピート) */
 .playback-mode-btn { 
@@ -531,6 +553,23 @@
     box-sizing: border-box;
     z-index: 1000; 
 }
+
+#settings-modal .setting-child-item {
+    margin-top: 10px;
+    padding-left: 20px;
+}
+
+#settings-modal .setting-child-item label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 5px;
+}
+
+#settings-modal .setting-child-item input[type="range"] {
+    width: 100%;
+}
+
 /* --- グラフィックEQのスタイル (設定モーダル内) --- */
 #graphic-eq-container {
     padding-top: 15px;

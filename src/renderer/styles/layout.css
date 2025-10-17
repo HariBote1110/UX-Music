@@ -7,6 +7,11 @@
     overflow: hidden; /* 子要素のはみ出しを防止 */
 }
 
+body.resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
 .title-bar {
     height: 32px;
     background-color: var(--bg-light);

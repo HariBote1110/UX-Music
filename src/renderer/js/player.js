@@ -33,7 +33,6 @@ let lastHeights = new Array(6).fill(4);
 
 let lastFrameTime = 0;
 
-// ▼▼▼ ここからが修正箇所です ▼▼▼
 let progressUpdateInterval = null; // 時間表示用のタイマー
 let progressFrameId = null; // シークバー用のフレームID
 let visualizerObserver = null;
@@ -53,7 +52,6 @@ function updateProgressBarLoop() {
     elements.progressBar.value = localPlayer.currentTime;
     progressFrameId = requestAnimationFrame(updateProgressBarLoop);
 }
-// ▲▲▲ ここまでが修正箇所です ▲▲▲
 
 
 async function createAudioContext(sinkId = 'default') {
@@ -201,13 +199,6 @@ async function resumeAudioContext() {
     }
 }
 
-function setPlayPauseIcon(iconName) {
-    const playPauseIcon = elements.playPauseBtn.querySelector('img');
-    if (playPauseIcon) {
-        playPauseIcon.src = `./assets/icons/${iconName}.svg`;
-    }
-}
-
 function updateVolumeIcon() {
     const volume = parseFloat(elements.volumeSlider.value);
     const volumeIcon = document.getElementById('volume-icon');
@@ -234,7 +225,6 @@ function toggleMute() {
 export function applyMasterVolume() {
     if (!gainNode) return;
     const masterVolume = parseFloat(elements.volumeSlider.value);
-    // gainNode.gain.value = baseGain * (masterVolume * 2); // この*2が音量爆発の原因
     gainNode.gain.value = baseGain * masterVolume;
 }
 
@@ -284,7 +274,6 @@ function draw(timestamp) {
     if (currentVisualizerBars && analyser) {
         analyser.getByteFrequencyData(dataArray);
         
-        // 各バーが担当する周波数帯を再定義（低音域の解像度を重視）
         const barIndices = [1, 3, 7, 15, 30, 60];
 
         const heights = barIndices.map((dataIndex, i) => {
@@ -368,20 +357,27 @@ export async function initPlayer(playerElement, callbacks, sinkId = null) {
     await createAudioContext(finalSinkId);
     connectAudioGraph();
     
-    setPlayPauseIcon('stop');
+    elements.playPauseBtn.classList.remove('playing');
 
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
     localPlayer.addEventListener('ended', () => {
         if (progressFrameId) {
             cancelAnimationFrame(progressFrameId);
             progressFrameId = null;
         }
-        onSongEndedCallback();
+        
+        const finishedSong = state.playbackQueue[state.currentSongIndex];
+        if (state.analysedQueue.enabled && finishedSong) {
+            ipcRenderer.send('song-finished', finishedSong);
+        }
+
+        if (typeof onSongEndedCallback === 'function') {
+            onSongEndedCallback();
+        }
     });
     localPlayer.addEventListener('timeupdate', () => updateSyncedLyrics(localPlayer.currentTime));
 
     localPlayer.addEventListener('play', () => {
-        setPlayPauseIcon('pause');
+        elements.playPauseBtn.classList.add('playing');
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
         resumeAudioContext();
         updatePlayingIndicators();
@@ -389,12 +385,10 @@ export async function initPlayer(playerElement, callbacks, sinkId = null) {
         if (progressUpdateInterval) clearInterval(progressUpdateInterval);
         progressUpdateInterval = setInterval(() => {
             if (!isSeeking) {
-                // 時間表示は1秒ごとに更新
                 updateUiTime(localPlayer.currentTime, localPlayer.duration);
             }
         }, 1000);
         
-        // シークバーの更新ループを開始
         if (!progressFrameId) {
             progressFrameId = requestAnimationFrame(updateProgressBarLoop);
         }
@@ -406,13 +400,12 @@ export async function initPlayer(playerElement, callbacks, sinkId = null) {
 
     localPlayer.addEventListener('pause', () => {
         if (!isSeeking) {
-            setPlayPauseIcon('play');
+            elements.playPauseBtn.classList.remove('playing');
         }
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
         
         if (progressUpdateInterval) clearInterval(progressUpdateInterval);
         
-        // シークバーの更新ループを停止
         if (progressFrameId) {
             cancelAnimationFrame(progressFrameId);
             progressFrameId = null;
@@ -442,14 +435,12 @@ export async function initPlayer(playerElement, callbacks, sinkId = null) {
             wasPlayingBeforeSeek = false;
         }
     });
-    // inputイベントでは時間表示のみを更新
     elements.progressBar.addEventListener('input', () => {
         if (isSeeking) {
             const time = parseFloat(elements.progressBar.value);
             elements.currentTimeEl.textContent = formatTime(time);
         }
     });
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
     elements.volumeSlider.addEventListener('input', () => {
         applyMasterVolume();
         updateVolumeIcon();
@@ -543,7 +534,7 @@ export async function setEqualizerColorFromArtwork(imageElement) {
 export async function play(song) {
     await stop();
     if (!song) {
-        setPlayPauseIcon('stop'); 
+        elements.playPauseBtn.classList.remove('playing');
         if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = null;
             navigator.mediaSession.playbackState = 'none';
@@ -596,7 +587,7 @@ export async function stop() {
     localPlayer.pause();
     localPlayer.removeAttribute('src');
     localPlayer.load();
-    setPlayPauseIcon('play'); 
+    elements.playPauseBtn.classList.remove('playing');
     clearInterval(progressUpdateInterval);
     ipcRenderer.send('playback-stopped');
 }
@@ -635,10 +626,6 @@ function updateUiTime(current, duration) {
     if (isNaN(duration) || duration <= 0) return;
     elements.currentTimeEl.textContent = formatTime(current);
     elements.totalDurationEl.textContent = formatTime(duration);
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
-    // requestAnimationFrameループで更新するため、ここでのシークバー更新は不要
-    // elements.progressBar.value = current;
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
     elements.progressBar.max = duration;
 }
 

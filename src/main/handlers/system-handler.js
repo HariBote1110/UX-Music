@@ -8,12 +8,14 @@ let settingsStore;
 let playCountsStore;
 let libraryStore;
 let quizScoresStore;
+let analysedQueueStore;
 
 function registerSystemHandlers(stores) {
     settingsStore = stores.settings;
     playCountsStore = stores.playCounts;
     libraryStore = stores.library;
     quizScoresStore = stores.quizScores;
+    analysedQueueStore = stores.analysedQueue;
 
     // --- Settings ---
     ipcMain.handle('get-settings', () => {
@@ -48,6 +50,42 @@ function registerSystemHandlers(stores) {
         const settings = settingsStore.load();
         settings.audioOutputId = deviceId;
         settingsStore.save(settings);
+    });
+
+    // --- Analysed Queue ---
+    ipcMain.on('song-skipped', (event, { song, currentTime }) => {
+        if (!song || typeof currentTime !== 'number' || !song.duration) return;
+        const playbackPercentage = (currentTime / song.duration) * 100;
+        let scoreIncrement = 0;
+
+        if (currentTime <= 5) {
+            scoreIncrement = 5; // Instant skip
+        } else if (playbackPercentage <= 10) {
+            scoreIncrement = 3; // Strong dislike
+        } else if (playbackPercentage <= 50) {
+            scoreIncrement = 1; // Moderate dislike
+        }
+
+        if (scoreIncrement > 0) {
+            const dislikeData = analysedQueueStore.load() || {};
+            const currentData = dislikeData[song.id] || { score: 0 };
+            
+            dislikeData[song.id] = {
+                ...currentData,
+                score: currentData.score + scoreIncrement,
+                lastSkipped: new Date().toISOString()
+            };
+            analysedQueueStore.save(dislikeData);
+        }
+    });
+
+    ipcMain.on('song-finished', (event, song) => {
+        if (!song || !song.id) return;
+        const dislikeData = analysedQueueStore.load() || {};
+        if (dislikeData[song.id]) {
+            dislikeData[song.id].score = Math.max(0, dislikeData[song.id].score - 1);
+            analysedQueueStore.save(dislikeData);
+        }
     });
 
     // --- Playback State & Counts ---

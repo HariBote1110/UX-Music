@@ -43,7 +43,8 @@ function registerIpcHandlers() {
     stores.library = new DataStore('library.json');
     stores.loudness = new DataStore('loudness.json');
     stores.albums = new DataStore('albums.json');
-    stores.quizScores = new DataStore('quiz-scores.json'); // クイズスコア用のストアを追加
+    stores.quizScores = new DataStore('quiz-scores.json');
+    stores.analysedQueue = new DataStore('analysed-queue.json'); // Analysed Queue用のストアを追加
     logPerf("DataStores initialized.");
     
     runMigrations(stores);

@@ -173,7 +173,7 @@ export function createAlbumGridItem(key, album, ipcRenderer) {
     if (!state.isLightFlightMode) {
         const artworkImg = albumItem.querySelector('.album-artwork');
         artworkImg.classList.add('lazy-load');
-        artworkImg.dataset.src = resolveArtworkPath(album.artwork, true);
+        artworkImg.dataset.src = resolveArtworkPath(album.artwork, false);
         artworkImg.onload = () => window.artworkLoadTimes.push(performance.now());
     }
 
@@ -198,7 +198,7 @@ export function createArtistGridItem(artist, ipcRenderer) {
     if (!state.isLightFlightMode) {
         const artworkImg = artistItem.querySelector('.artist-artwork');
         artworkImg.classList.add('lazy-load');
-        artworkImg.dataset.src = resolveArtworkPath(artist.artwork, true);
+        artworkImg.dataset.src = resolveArtworkPath(artist.artwork, false);
         artworkImg.onload = () => window.artworkLoadTimes.push(performance.now());
     }
 
@@ -222,7 +222,7 @@ export function createPlaylistGridItem(playlist, ipcRenderer) {
     
     if (!state.isLightFlightMode) {
         const artworkContainer = playlistItem.querySelector('.playlist-artwork-container');
-        const resolver = (artwork) => resolveArtworkPath(artwork, true);
+        const resolver = (artwork) => resolveArtworkPath(artwork, false);
         createPlaylistArtwork(artworkContainer, playlist.artworks, resolver);
     }
 

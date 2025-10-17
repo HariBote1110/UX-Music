@@ -12,6 +12,7 @@ import { initEqualizer, renderEqualizer, applyCurrentSettings } from './js/ui/eq
 import { initQuiz } from './js/quiz.js';
 import { initEventListeners } from './js/init-listeners.js';
 import { initSettings } from './js/init-settings.js';
+import { playNextSong, playPrevSong } from './js/playback-manager.js';
 const { ipcRenderer } = require('electron');
 
 window.artworkLoadTimes = [];
@@ -22,7 +23,11 @@ window.addEventListener('DOMContentLoaded', () => {
     initLazyLoader(elements.mainContent);
 
     initUI();
-    initPlayer(document.getElementById('main-player'), {});
+    initPlayer(document.getElementById('main-player'), {
+        onSongEnded: playNextSong,
+        onNextSong: playNextSong,
+        onPrevSong: playPrevSong,
+    });
     initEqualizer();
     initNavigation();
     initModal();
@@ -33,6 +38,12 @@ window.addEventListener('DOMContentLoaded', () => {
     initEventListeners();
 
     initIPC(ipcRenderer, {
+        onAppInfoResponse: (info) => {
+            const appVersionEl = document.getElementById('app-version');
+            if (appVersionEl) {
+                appVersionEl.textContent = `v${info.version}`;
+            }
+        },
         onLibraryLoaded: async (data) => {
             if (!state.artworksDir) {
                 state.artworksDir = await ipcRenderer.invoke('get-artworks-dir');
@@ -58,6 +69,9 @@ window.addEventListener('DOMContentLoaded', () => {
                 elements.loopBtn.classList.toggle('loop-one', state.playbackMode === PLAYBACK_MODES.LOOP_ONE);
             }
             if (typeof settings.groupAlbumArt === 'boolean') state.groupAlbumArt = settings.groupAlbumArt;
+            if (settings.analysedQueue) {
+                state.analysedQueue = settings.analysedQueue;
+            }
             if (settings.equalizer) {
                 state.equalizerSettings = { ...state.equalizerSettings, ...settings.equalizer };
                 applyCurrentSettings();
@@ -79,11 +93,10 @@ window.addEventListener('DOMContentLoaded', () => {
             addSongsToLibrary({ songs });
             showNotification(`${songs.length}曲のインポートが完了しました。`, 3000);
         },
-        // onPlaylistsUpdatedコールバックを追加
         onPlaylistsUpdated: (playlists) => {
             state.playlists = playlists;
             if (state.activeViewId === 'playlist-view') {
-                renderCurrentView();
+                showView('playlist-view');
             }
         },
     });

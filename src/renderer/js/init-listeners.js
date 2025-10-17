@@ -165,4 +165,28 @@ export function initEventListeners() {
             showView(state.activeListView);
         }
     });
+
+    // --- Sidebar Resizing Logic ---
+    const resizer = document.getElementById('resizer');
+    const rightSidebar = document.querySelector('.right-sidebar');
+
+    const onMouseMove = (e) => {
+        const newWidth = window.innerWidth - e.clientX - (resizer.offsetWidth / 2);
+        if (newWidth >= 240 && newWidth <= 600) {
+            rightSidebar.style.width = `${newWidth}px`;
+        }
+    };
+
+    const onMouseUp = () => {
+        document.body.classList.remove('resizing');
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    resizer.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        document.body.classList.add('resizing');
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    });
 }

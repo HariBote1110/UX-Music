@@ -16,10 +16,6 @@ performance.mark('main-process-start');
 // 'Main: Full App Startup'の開始時間を記録
 console.time("Main: Full App Startup");
 
-// ▼▼▼ 以下の2行を修正 ▼▼▼
-// OSのメディアキーハンドリングを有効化するため、関連機能の無効化スイッチを削除
-// app.commandLine.appendSwitch('disable-features', 'MediaSessionService');
-// ▲▲▲ ここまで ▲▲▲
 // オーディオプロセスのサンドボックスを無効化
 app.commandLine.appendSwitch('no-sandbox-and-zygote');
 

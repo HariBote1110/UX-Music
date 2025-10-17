@@ -221,7 +221,10 @@
                 <img src="./assets/icons/rewind_skip.svg" alt="Previous">
             </button>
             <button id="play-pause-btn" class="play-btn">
-                <img src="./assets/icons/play.svg" alt="Play">
+                <svg class="play-pause-icon" viewBox="0 0 24 24">
+                    <path class="icon-part-1"></path>
+                    <path class="icon-part-2"></path>
+                </svg>
             </button>
             <button id="next-btn" class="control-btn">
                 <img src="./assets/icons/next_skip.svg" alt="Next">
@@ -387,6 +390,17 @@
                                 <small>同じアルバムの曲が続く場合、アートワークをまとめて表示を簡略化します。</small>
                             </div>
                         </label>
+                        <label>
+                            <input type="checkbox" name="enable-analysed-queue">
+                            <div>
+                                <strong>Analysed Queueを有効にする</strong>
+                                <small>再生傾向を分析し、スキップされがちな曲をキューに入りにくくします。</small>
+                            </div>
+                        </label>
+                        <div id="analysed-queue-options" class="setting-child-item hidden">
+                            <label for="analysed-queue-decay-slider">スコアの有効期間: <span id="analysed-queue-decay-value">7日</span></label>
+                            <input type="range" id="analysed-queue-decay-slider" min="0" max="4" value="2" step="1">
+                        </div>
                         <label>
                             <input type="checkbox" name="enable-easter-eggs">
                             <div>
