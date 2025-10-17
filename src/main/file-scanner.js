@@ -102,8 +102,19 @@ async function analyzeBPM(songPath) {
     const tempFile = tmp.fileSync({ postfix: '.wav' });
     try {
         await new Promise((resolve, reject) => {
-            ffmpeg(songPath).toFormat('wav').audioChannels(1).audioFrequency(22050)
-                .on('error', reject).on('end', resolve).save(tempFile.name);
+            const inputStream = fs.createReadStream(songPath);
+            const command = ffmpeg(inputStream);
+
+            command.toFormat('wav')
+                .audioChannels(1)
+                .audioFrequency(22050)
+                .outputOptions('-map', '0:a') // Ignore non-audio streams
+                .on('error', (err, stdout, stderr) => {
+                    const detailedError = new Error(`FFmpeg error during BPM analysis: ${err.message}\n\nFFmpeg stdout:\n${stdout}\n\nFFmpeg stderr:\n${stderr}`);
+                    reject(detailedError);
+                })
+                .on('end', resolve)
+                .save(tempFile.name);
         });
         const buffer = fs.readFileSync(tempFile.name);
         const audioData = await wavDecoder.decode(buffer);

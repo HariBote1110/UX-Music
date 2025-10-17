@@ -2,7 +2,7 @@ const { ipcMain, app, dialog } = require('electron'); // dialog を追加
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { scanPaths, parseFiles } = require('../file-scanner');
+const { scanPaths, parseFiles, analyzeLoudness } = require('../file-scanner'); // analyzeLoudness を追加
 const os = require('os');
 const { sanitize } = require('../utils');
 const sharp = require('sharp');
@@ -70,6 +70,18 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
         }
     });
     
+    // --- ▼▼▼ ここからが修正箇所です ▼▼▼ ---
+    ipcMain.on('request-loudness-analysis', async (event, filePath) => {
+        const result = await analyzeLoudness(filePath);
+        if (result.success) {
+            const loudnessData = loudnessStore.load();
+            loudnessData[filePath] = result.loudness;
+            loudnessStore.save(loudnessData);
+        }
+        event.sender.send('loudness-analysis-result', result);
+    });
+    // --- ▲▲▲ ここまでが修正箇所です ▲▲▲
+    
     ipcMain.on('start-scan-paths', async (event, paths) => {
         console.time('Main: Total Import Process');
 
@@ -81,7 +93,6 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
         const settings = settingsStore.load();
         let libraryPath = settings.libraryPath;
 
-        // --- ▼▼▼ ここからが修正箇所です ▼▼▼ ---
         if (!libraryPath) {
             const result = await dialog.showOpenDialog({
                 properties: ['openDirectory'],
@@ -97,7 +108,6 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                 return finishScan([]);
             }
         }
-        // --- ▲▲▲ ここまでが修正箇所です ▲▲▲
 
         const sourceFiles = await scanPaths(paths);
         if (sourceFiles.length === 0) {

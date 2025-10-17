@@ -1,4 +1,4 @@
-import { playSong } from './playback-manager.js';
+import { playSong, playNextSong } from './playback-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
 import { state } from './state.js';
 
@@ -64,6 +64,8 @@ export function initIPC(ipcRenderer, callbacks) {
 
     ipcRenderer.on('loudness-analysis-result', (event, result) => {
         const fileName = result.filePath.split(/[/\\]/).pop();
+        const waitingSong = state.songWaitingForAnalysis;
+
         if (result.success) {
             console.log(`%c[ラウドネス解析完了]%c ${fileName} -> %c${result.loudness.toFixed(2)} LUFS`, 
                 'color: green; font-weight: bold;', 
@@ -71,13 +73,24 @@ export function initIPC(ipcRenderer, callbacks) {
                 'color: blue; font-weight: bold;'
             );
             
-            const waitingSong = state.songWaitingForAnalysis;
-            if (waitingSong && waitingSong.sourceList[waitingSong.index].path === result.filePath) {
+            if (waitingSong && waitingSong.sourceList[waitingSong.index]?.path === result.filePath) {
                 playSong(waitingSong.index, null, true);
             }
 
         } else {
             console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
+            
+            // 解析待ちの曲が失敗した曲であるかを確認
+            if (waitingSong && waitingSong.sourceList[waitingSong.index]?.path === result.filePath) {
+                showNotification(`「${fileName}」は破損しているためスキップします。`);
+                hideNotification(3000);
+
+                // playNextSongが正しく次の曲へ移動できるように、現在のインデックスを失敗した曲に設定
+                state.currentSongIndex = waitingSong.index;
+                state.songWaitingForAnalysis = null; // 待機状態を解除
+                
+                playNextSong();
+            }
         }
     });
 

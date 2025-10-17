@@ -1,6 +1,6 @@
 {
   "name": "UX-Music",
-  "version": "0.1.9-Beta-1b",
+  "version": "0.1.9-Beta-1d",
   "description": "Music Player UX Music",
   "main": "src/main/index.js",
   "scripts": {
@@ -48,7 +48,8 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "src/renderer/assets/ux-music-icon.png"
+      "icon": "src/renderer/assets/ux-music-icon.png",
+      "identity": null
     },
     "win": {
       "target": "nsis",
