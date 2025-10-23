@@ -99,6 +99,16 @@ window.addEventListener('DOMContentLoaded', () => {
                 showView('playlist-view');
             }
         },
+        // --- ▼▼▼ ここからが修正箇所です ▼▼▼ ---
+        onPlaylistImportProgress: (progress) => {
+            showNotification(`プレイリストインポート中: ${progress.current} / ${progress.total} (${progress.title})`);
+            // 完了時にhideNotificationを呼び出すため、ここでは自動非表示しない
+        },
+        onPlaylistImportFinished: () => {
+            hideNotification(); // 進捗通知を消す
+            showNotification('プレイリストのインポートが完了しました。', 3000);
+        },
+        // --- ▲▲▲ ここまでが修正箇所です ▲▲▲
     });
 
     ipcRenderer.send('request-app-info');
