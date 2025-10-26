@@ -1,6 +1,11 @@
 import { playSong, playNextSong } from './playback-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
 import { state } from './state.js';
+import { showModal } from './modal.js';
+import { renderCurrentView } from './ui-manager.js';
+// --- ▼▼▼ 新規追加 ▼▼▼ ---
+import { showEditMetadataModal } from './edit-metadata.js'; // あとで作成するファイル
+// --- ▲▲▲ ここまで ▲▲▲ ---
 
 const startTime = performance.now();
 const logPerf = (message) => {
@@ -38,26 +43,26 @@ export function initIPC(ipcRenderer, callbacks) {
     ipcRenderer.on('force-reload-library', () => {
         callbacks.onForceReloadLibrary?.();
     });
-    ipcRenderer.on('show-loading', (event, text) => {
+    ipcRenderer.on('show-loading', (event, text) => { // YouTube用
         callbacks.onShowLoading?.(text);
     });
-    ipcRenderer.on('hide-loading', () => {
+    ipcRenderer.on('hide-loading', () => { // YouTube用
         callbacks.onHideLoading?.();
     });
     ipcRenderer.on('show-error', (event, message) => {
         callbacks.onShowError?.(message);
     });
-    ipcRenderer.on('playlist-import-progress', (event, progress) => {
+    ipcRenderer.on('playlist-import-progress', (event, progress) => { // YouTube用
         callbacks.onPlaylistImportProgress?.(progress);
     });
-    ipcRenderer.on('playlist-import-finished', () => {
+    ipcRenderer.on('playlist-import-finished', () => { // YouTube用
         callbacks.onPlaylistImportFinished?.();
     });
 
     ipcRenderer.on('scan-progress', (event, progress) => {
         callbacks.onScanProgress?.(progress);
     });
-    
+
     ipcRenderer.on('scan-complete', (event, newSongs) => {
         callbacks.onScanComplete?.(newSongs);
     });
@@ -67,28 +72,26 @@ export function initIPC(ipcRenderer, callbacks) {
         const waitingSong = state.songWaitingForAnalysis;
 
         if (result.success) {
-            console.log(`%c[ラウドネス解析完了]%c ${fileName} -> %c${result.loudness.toFixed(2)} LUFS`, 
-                'color: green; font-weight: bold;', 
+            console.log(`%c[ラウドネス解析完了]%c ${fileName} -> %c${result.loudness.toFixed(2)} LUFS`,
+                'color: green; font-weight: bold;',
                 'color: inherit;',
                 'color: blue; font-weight: bold;'
             );
-            
+
             if (waitingSong && waitingSong.sourceList[waitingSong.index]?.path === result.filePath) {
                 playSong(waitingSong.index, null, true);
             }
 
         } else {
             console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
-            
-            // 解析待ちの曲が失敗した曲であるかを確認
+
             if (waitingSong && waitingSong.sourceList[waitingSong.index]?.path === result.filePath) {
                 showNotification(`「${fileName}」は破損しているためスキップします。`);
                 hideNotification(3000);
 
-                // playNextSongが正しく次の曲へ移動できるように、現在のインデックスを失敗した曲に設定
                 state.currentSongIndex = waitingSong.index;
-                state.songWaitingForAnalysis = null; // 待機状態を解除
-                
+                state.songWaitingForAnalysis = null;
+
                 playNextSong();
             }
         }
@@ -98,6 +101,37 @@ export function initIPC(ipcRenderer, callbacks) {
         showNotification(`${count}個の歌詞ファイルが追加されました。`);
         hideNotification(3000);
     });
+
+    ipcRenderer.on('show-notification', (event, message) => {
+        showNotification(message);
+        hideNotification(3000);
+    });
+
+    ipcRenderer.on('songs-deleted', (event, deletedSongPaths) => {
+        const deletedPathsSet = new Set(deletedSongPaths);
+        state.library = state.library.filter(song => !deletedPathsSet.has(song.path));
+        renderCurrentView();
+        showNotification(`${deletedSongPaths.length}曲がライブラリから削除されました。`);
+        hideNotification(3000);
+    });
+
+    ipcRenderer.on('request-new-playlist-with-songs', (event, songs) => {
+        showModal({
+            title: '新規プレイリスト作成',
+            placeholder: 'プレイリスト名を入力',
+            onOk: (playlistName) => {
+                if (playlistName && playlistName.trim() !== '') {
+                    ipcRenderer.send('create-new-playlist-with-songs', { playlistName, songs });
+                }
+            }
+        });
+    });
+
+    // --- ▼▼▼ 新規追加: メタデータ編集モーダル表示 ▼▼▼ ---
+    ipcRenderer.on('show-edit-metadata-modal', (event, song) => {
+        showEditMetadataModal(song);
+    });
+    // --- ▲▲▲ ここまで ▲▲▲ ---
 
     logPerf("Requesting initial data from main process...");
     ipcRenderer.send('request-initial-library');

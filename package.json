@@ -1,6 +1,6 @@
 {
   "name": "UX-Music",
-  "version": "0.1.9-Beta-1d",
+  "version": "0.1.9-Beta-2a",
   "description": "Music Player UX Music",
   "main": "src/main/index.js",
   "scripts": {
@@ -23,6 +23,7 @@
     "miniget": "^4.2.3",
     "music-metadata": "^7.14.0",
     "music-tempo": "^1.0.3",
+    "node-id3": "^0.2.9",
     "p-limit": "^6.2.0",
     "sharp": "^0.33.4",
     "tmp": "^0.2.5",

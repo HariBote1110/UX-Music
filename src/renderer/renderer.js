@@ -13,6 +13,8 @@ import { initQuiz } from './js/quiz.js';
 import { initEventListeners } from './js/init-listeners.js';
 import { initSettings } from './js/init-settings.js';
 import { playNextSong, playPrevSong } from './js/playback-manager.js';
+import { showEditMetadataModal } from './js/edit-metadata.js'; // ★★★ 追加 ★★★
+import { startLrcEditor } from './js/lrc-editor.js'; // ★★★ 追加 ★★★
 const { ipcRenderer } = require('electron');
 
 window.artworkLoadTimes = [];
@@ -50,7 +52,6 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
             showView('track-view');
-            // ライブラリ読み込み後にプレイリストを要求
             ipcRenderer.send('request-playlists-with-artwork');
         },
         onSettingsLoaded: (settings) => {
@@ -80,23 +81,63 @@ window.addEventListener('DOMContentLoaded', () => {
             if (settings.enableYouTube) {
                 document.querySelectorAll('[data-feature="youtube"]').forEach(el => el.classList.remove('hidden'));
             }
+            if (settings.quizUnlocked) {
+                 const quizBtn = document.getElementById('quiz-view-btn');
+                 if (quizBtn) quizBtn.classList.remove('hidden');
+            }
         },
         onPlayCountsUpdated: (counts) => {
             state.playCounts = counts;
             Object.keys(counts).forEach(songPath => updatePlayCountDisplay(songPath, counts[songPath].count));
         },
         onYoutubeLinkProcessed: (song) => {
-            showNotification(`「${song.title}」が追加されました。`, 3000);
+            showNotification(`「${song.title}」が追加されました。`);
+            hideNotification(3000);
             addSongsToLibrary({ songs: [song] });
         },
         onScanComplete: (songs) => {
             addSongsToLibrary({ songs });
-            showNotification(`${songs.length}曲のインポートが完了しました。`, 3000);
+            showNotification(`${songs.length}曲のインポートが完了しました。`);
+            hideNotification(3000);
         },
         onPlaylistsUpdated: (playlists) => {
             state.playlists = playlists;
             if (state.activeViewId === 'playlist-view') {
                 showView('playlist-view');
+            }
+        },
+        onShowLoading: (text) => {
+            showNotification(text);
+        },
+        onHideLoading: () => {
+            // No action needed for toast notifications
+        },
+        onScanProgress: (progress) => {
+             showNotification(`ライブラリをスキャン中 (${progress.current} / ${progress.total})...`);
+        },
+        onShowError: (message) => {
+             showNotification(`エラー: ${message}`);
+             hideNotification(5000);
+        },
+        onPlaylistImportProgress: (progress) => {
+             showNotification(`プレイリストインポート中: ${progress.title} (${progress.current}/${progress.total})`);
+        },
+        onPlaylistImportFinished: () => {
+             showNotification('プレイリストのインポートが完了しました。');
+             hideNotification(3000);
+             ipcRenderer.send('request-playlists-with-artwork');
+        },
+        onForceReloadLibrary: () => {
+            state.library = [];
+            state.albums.clear();
+            state.artists.clear();
+            ipcRenderer.send('request-initial-library');
+        },
+        onForceReloadPlaylist: async (playlistName) => {
+            if (state.currentDetailView.type === 'playlist' && state.currentDetailView.identifier === playlistName) {
+                const updatedDetails = await ipcRenderer.invoke('get-playlist-details', playlistName);
+                state.currentlyViewedSongs = updatedDetails.songs;
+                showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: updatedDetails });
             }
         },
     });

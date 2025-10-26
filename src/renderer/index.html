@@ -11,7 +11,8 @@
     <link rel="stylesheet" href="./styles/quiz-view.css">
     <link rel="stylesheet" href="./styles/normalize-view.css">
     <link rel="stylesheet" href="./styles/equalizer.css">
-</head>
+    <link rel="stylesheet" href="./styles/edit-metadata.css">
+    <link rel="stylesheet" href="./styles/lrc-editor.css"> </head>
 <body>
     <div class="title-bar"></div>
     <div class="container">
@@ -43,10 +44,59 @@
                 <button id="open-settings-btn" class="sidebar-action-button">設定</button>
             </div>
         </div>
-        
+
         <div class="main-column">
             <main class="main-content" id="main-content">
-            </main>
+                </main>
+
+            <div id="lrc-editor-view" class="view-container hidden">
+                <div class="lrc-editor-header">
+                    <div class="lrc-editor-song-info">
+                        <img id="lrc-editor-artwork" src="./assets/default_artwork.png" alt="Song Artwork">
+                        <div>
+                            <h2 id="lrc-editor-title">曲タイトル</h2>
+                            <p id="lrc-editor-artist">アーティスト</p>
+                        </div>
+                    </div>
+                    <div class="lrc-editor-actions">
+                         <button id="lrc-editor-help-btn" class="header-button">？ ヘルプ</button>
+                         <button id="lrc-editor-exit-btn" class="header-button">編集を終了</button>
+                         <button id="lrc-editor-save-btn" class="header-button primary">LRCを保存</button>
+                    </div>
+                </div>
+
+                <div class="lrc-editor-controls">
+                    <button id="lrc-editor-play-pause-btn" class="play-btn">
+                         <svg class="play-pause-icon" viewBox="0 0 24 24">
+                            <path class="icon-part-1"></path>
+                            <path class="icon-part-2"></path>
+                        </svg>
+                    </button>
+                    <span id="lrc-editor-current-time">0:00</span>
+                    <input type="range" id="lrc-editor-progress-bar" value="0" step="any">
+                    <span id="lrc-editor-total-duration">0:00</span>
+                    <button id="lrc-editor-timestamp-btn" class="header-button timestamp-btn">タイムスタンプ ( T )</button>
+                </div>
+
+                <div id="lrc-editor-lyrics-area">
+                    <p class="lyrics-line placeholder">ここに歌詞テキストを読み込むか、ペーストしてください...</p>
+                    </div>
+                 <textarea id="lrc-editor-textarea" class="hidden" placeholder="ここに歌詞を貼り付けてください..."></textarea>
+                 <button id="lrc-editor-load-text-btn" class="header-button hidden">テキストを読み込む</button>
+
+                 <div id="lrc-editor-help-popup" class="hidden help-popup">
+                     <h4>同期歌詞エディタの使い方</h4>
+                     <ol>
+                         <li>曲を再生し、歌詞の行が始まるタイミングで「タイムスタンプ ( T )」ボタンをクリックするか、キーボードの <kbd>T</kbd> キーを押します。</li>
+                         <li>タイムスタンプが記録されると、次の行が自動的に選択されます。</li>
+                         <li>シークバーで再生位置を調整しながら、すべての行にタイムスタンプを打ちます。</li>
+                         <li>打ち間違えた場合は、該当の行をクリックして再度タイムスタンプを打つことで上書きできます。</li>
+                         <li>歌詞がない場合は、テキストエリアに歌詞を貼り付けて「テキストを読み込む」ボタンを押してください。</li>
+                         <li>完了したら「LRCを保存」ボタンを押します。</li>
+                     </ol>
+                     <button id="lrc-editor-help-close-btn">閉じる</button>
+                 </div>
+            </div>
             <div id="normalize-view" class="view-container hidden">
                 <div class="view-header">
                     <h1>音量をノーマライズ</h1>
@@ -170,9 +220,7 @@
                     <button id="quiz-retry-btn" class="header-button">もう一度挑戦</button>
                 </div>
             </div>
-        </div>
-
-        <div id="resizer" class="resizer-vertical"></div>
+        </div> <div id="resizer" class="resizer-vertical"></div>
         <div class="sidebar right-sidebar">
             <div id="now-playing-container">
                 <div id="now-playing-artwork-container">
@@ -211,8 +259,7 @@
                 </div>
             </div>
         </div>
-    </div>
-    <footer class="playback-bar">
+    </div> <footer class="playback-bar">
         <div class="playback-controls">
             <button id="shuffle-btn" class="playback-mode-btn" title="シャッフル">
                 <img src="./assets/icons/random.svg" alt="Shuffle">
@@ -252,6 +299,7 @@
                 </div>
         </div>
     </footer>
+
     <div id="modal-overlay" class="hidden">
         <div id="modal">
             <h3>ネットワークフォルダのパス</h3>
@@ -263,177 +311,204 @@
             </div>
         </div>
     </div>
-    <div id="loading-overlay" class="hidden">
-        <div class="spinner"></div>
-        <p class="loading-text">ライブラリをスキャン中...</p>
-    </div>
-
-<div id="settings-modal-overlay" class="hidden">
-    <div id="settings-modal">
-        <h2 id="settings-title">設定</h2>
-        
-        <div class="settings-content">
-            <div class="setting-group">
-                 <div class="setting-item">
-                    <h4>オーディオデバイス</h4>
-                    <p class="setting-description">再生に使用するオーディオデバイスの表示/非表示を管理します。</p>
-                    <button id="manage-devices-btn" class="settings-button">表示するデバイスを管理...</button>
-                </div>
-            </div>
-            <div class="setting-group">
-                <div class="setting-item">
-                    <h4>グラフィックイコライザー</h4>
-                    <p class="setting-description">各周波数帯のゲインを細かく調整します。</p>
-                    <div id="graphic-eq-container"></div>
-                </div>
-            </div>
-            <div class="setting-group">
-                <div class="setting-item">
-                    <h4>インポートモード</h4>
-                    <p class="setting-description">楽曲のインポート時のCPU使用率を選択します。</p>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="import-mode" value="balanced">
-                            <div>
-                                <strong>バランスモード (推奨)</strong>
-                                <small>他の作業への影響を抑えつつ、効率的にインポートします。</small>
-                            </div>
-                        </label>
-                        <label>
-                            <input type="radio" name="import-mode" value="performance">
-                            <div>
-                                <strong>パフォーマンスモード</strong>
-                                <small>CPUを最大限活用して最速でインポートします。PCが重くなる場合があります。</small>
-                            </div>
-                        </label>
+    <div id="settings-modal-overlay" class="hidden">
+        <div id="settings-modal">
+            <h2 id="settings-title">設定</h2>
+            <div class="settings-content">
+                <div class="setting-group">
+                     <div class="setting-item">
+                        <h4>オーディオデバイス</h4>
+                        <p class="setting-description">再生に使用するオーディオデバイスの表示/非表示を管理します。</p>
+                        <button id="manage-devices-btn" class="settings-button">表示するデバイスを管理...</button>
                     </div>
                 </div>
-            </div>
-            
-            <div class="setting-group">
-                <div class="setting-item">
-                    <h4>ビジュアライザーモード</h4>
-                    <p class="setting-description">再生中の曲のインジケーターのアニメーションを選択します。</p>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="visualizer-mode" value="active">
-                            <div>
-                                <strong>アクティブ (推奨)</strong>
-                                <small>音声をリアルタイムで解析して描画します。CPUを少し使用します。</small>
-                            </div>
-                        </label>
-                        <label>
-                            <input type="radio" name="visualizer-mode" value="static">
-                            <div>
-                                <strong>スタティック (軽量)</strong>
-                                <small>シンプルなアニメーションを繰り返します。CPU負荷を軽減します。</small>
-                            </div>
-                        </label>
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>グラフィックイコライザー</h4>
+                        <p class="setting-description">各周波数帯のゲインを細かく調整します。</p>
+                        <div id="graphic-eq-container"></div>
                     </div>
                 </div>
-            </div>
-            
-            <div class="setting-group hidden" data-feature="youtube">
-                <div class="setting-item">
-                    <h4>YouTube再生モード</h4>
-                    <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="youtube-mode" value="download">
-                            <div>
-                                <strong>ダウンロードモード (推奨)</strong>
-                                <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
-                            </div>
-                        </label>
-                        <label>
-                            <input type="radio" name="youtube-mode" value="stream">
-                            <div>
-                                <strong>ストリーミングモード</strong>
-                                <small>すぐに再生できますが、再生先の変更はできず、音と映像が同期されます。</small>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="setting-group hidden" data-feature="youtube" id="youtube-quality-group">
-                <div class="setting-item">
-                    <h4>ダウンロード品質</h4>
-                    <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="youtube-quality" value="full">
-                            <div>
-                                <strong>最高品質</strong>
-                                <small>映像と音声をダウンロードします。(MP4)</small>
-                            </div>
-                        </label>
-                        <label>
-                            <input type="radio" name="youtube-quality" value="audio_only">
-                            <div>
-                                <strong>音声のみ (省データ)</strong>
-                                <small>音声のみをダウンロードし、通信量と保存容量を節約します。(M4A)</small>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="setting-group">
-                <div class="setting-item">
-                    <h4>その他</h4>
-                    <div class="checkbox-group">
-                        <label>
-                            <input type="checkbox" name="group-album-art">
-                            <div>
-                                <strong>アルバムアートをグループ化して表示</strong>
-                                <small>同じアルバムの曲が続く場合、アートワークをまとめて表示を簡略化します。</small>
-                            </div>
-                        </label>
-                        <label>
-                            <input type="checkbox" name="enable-analysed-queue">
-                            <div>
-                                <strong>Analysed Queueを有効にする</strong>
-                                <small>再生傾向を分析し、スキップされがちな曲をキューに入りにくくします。</small>
-                            </div>
-                        </label>
-                        <div id="analysed-queue-options" class="setting-child-item hidden">
-                            <label for="analysed-queue-decay-slider">スコアの有効期間: <span id="analysed-queue-decay-value">7日</span></label>
-                            <input type="range" id="analysed-queue-decay-slider" min="0" max="4" value="2" step="1">
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>インポートモード</h4>
+                        <p class="setting-description">楽曲のインポート時のCPU使用率を選択します。</p>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="import-mode" value="balanced">
+                                <div>
+                                    <strong>バランスモード (推奨)</strong>
+                                    <small>他の作業への影響を抑えつつ、効率的にインポートします。</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="radio" name="import-mode" value="performance">
+                                <div>
+                                    <strong>パフォーマンスモード</strong>
+                                    <small>CPUを最大限活用して最速でインポートします。PCが重くなる場合があります。</small>
+                                </div>
+                            </label>
                         </div>
-                        <label>
-                            <input type="checkbox" name="enable-easter-eggs">
-                            <div>
-                                <strong>イースターエッグを有効にする</strong>
-                                <small>特別なプレイリストなど、隠し機能をお楽しみいただけます。</small>
-                            </div>
-                        </label>
                     </div>
                 </div>
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>ビジュアライザーモード</h4>
+                        <p class="setting-description">再生中の曲のインジケーターのアニメーションを選択します。</p>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="visualizer-mode" value="active">
+                                <div>
+                                    <strong>アクティブ (推奨)</strong>
+                                    <small>音声をリアルタイムで解析して描画します。CPUを少し使用します。</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="radio" name="visualizer-mode" value="static">
+                                <div>
+                                    <strong>スタティック (軽量)</strong>
+                                    <small>シンプルなアニメーションを繰り返します。CPU負荷を軽減します。</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-group hidden" data-feature="youtube">
+                    <div class="setting-item">
+                        <h4>YouTube再生モード</h4>
+                        <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="youtube-mode" value="download">
+                                <div>
+                                    <strong>ダウンロードモード (推奨)</strong>
+                                    <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="radio" name="youtube-mode" value="stream">
+                                <div>
+                                    <strong>ストリーミングモード</strong>
+                                    <small>すぐに再生できますが、再生先の変更はできず、音と映像が同期されます。</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-group hidden" data-feature="youtube" id="youtube-quality-group">
+                    <div class="setting-item">
+                        <h4>ダウンロード品質</h4>
+                        <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="youtube-quality" value="full">
+                                <div>
+                                    <strong>最高品質</strong>
+                                    <small>映像と音声をダウンロードします。(MP4)</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="radio" name="youtube-quality" value="audio_only">
+                                <div>
+                                    <strong>音声のみ (省データ)</strong>
+                                    <small>音声のみをダウンロードし、通信量と保存容量を節約します。(M4A)</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>その他</h4>
+                        <div class="checkbox-group">
+                            <label>
+                                <input type="checkbox" name="group-album-art">
+                                <div>
+                                    <strong>アルバムアートをグループ化して表示</strong>
+                                    <small>同じアルバムの曲が続く場合、アートワークをまとめて表示を簡略化します。</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="checkbox" name="enable-analysed-queue">
+                                <div>
+                                    <strong>Analysed Queueを有効にする</strong>
+                                    <small>再生傾向を分析し、スキップされがちな曲をキューに入りにくくします。</small>
+                                </div>
+                            </label>
+                            <div id="analysed-queue-options" class="setting-child-item hidden">
+                                <label for="analysed-queue-decay-slider">スコアの有効期間: <span id="analysed-queue-decay-value">7日</span></label>
+                                <input type="range" id="analysed-queue-decay-slider" min="0" max="4" value="2" step="1">
+                            </div>
+                            <label>
+                                <input type="checkbox" name="enable-easter-eggs">
+                                <div>
+                                    <strong>イースターエッグを有効にする</strong>
+                                    <small>特別なプレイリストなど、隠し機能をお楽しみいただけます。</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div> <div class="modal-buttons">
+                <button id="settings-ok-btn">OK</button>
             </div>
-            </div>
-        <div class="modal-buttons">
-            <button id="settings-ok-btn">OK</button>
         </div>
     </div>
-</div>
-
-<div id="devices-modal-overlay" class="hidden">
-    <div id="devices-modal">
-        <h2>表示するオーディオデバイス</h2>
-        <p>再生先デバイスの一覧に表示するものを選択してください。</p>
-        <div id="devices-list" class="checkbox-group-vertical">
+    <div id="devices-modal-overlay" class="hidden">
+        <div id="devices-modal">
+            <h2>表示するオーディオデバイス</h2>
+            <p>再生先デバイスの一覧に表示するものを選択してください。</p>
+            <div id="devices-list" class="checkbox-group-vertical">
+                </div>
+            <div class="modal-buttons">
+                <button id="devices-ok-btn">OK</button>
             </div>
-        <div class="modal-buttons">
-            <button id="devices-ok-btn">OK</button>
         </div>
     </div>
-</div>
-
+    <div id="loading-overlay" class="hidden"> <div class="spinner"></div>
+        <p class="loading-text">処理中...</p>
+    </div>
     <div id="notification-toast" class="hidden">
         <p id="notification-text"></p>
     </div>
-    
+
+     <div id="edit-metadata-modal-overlay" class="hidden">
+        <div id="edit-metadata-modal">
+            <h2>楽曲情報を編集</h2>
+            <div class="edit-metadata-content">
+                <div class="edit-artwork-section">
+                    <img id="edit-artwork-preview" src="./assets/default_artwork.png" alt="Artwork Preview">
+                    <input type="file" id="edit-artwork-input" accept="image/png, image/jpeg, image/webp" style="display: none;">
+                    <button id="edit-artwork-change-btn">アートワークを変更...</button>
+                    <button id="edit-artwork-remove-btn">アートワークを削除</button>
+                    <p id="edit-artwork-error" class="error-message hidden"></p>
+                </div>
+                <div class="edit-fields-section">
+                    <div class="edit-field">
+                        <label for="edit-title">タイトル:</label>
+                        <input type="text" id="edit-title">
+                    </div>
+                    <div class="edit-field">
+                        <label for="edit-artist">アーティスト:</label>
+                        <input type="text" id="edit-artist">
+                    </div>
+                    <div class="edit-field">
+                        <label for="edit-album">アルバム:</label>
+                        <input type="text" id="edit-album">
+                    </div>
+                    <div class="edit-field">
+                        <label for="edit-genre">ジャンル:</label>
+                        <input type="text" id="edit-genre">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button id="edit-metadata-cancel-btn">キャンセル</button>
+                <button id="edit-metadata-save-btn">保存</button>
+            </div>
+        </div>
+    </div>
+
     <video id="main-player" playsinline></video>
     <script type="module" src="./renderer.js" defer></script>
 

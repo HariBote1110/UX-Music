@@ -17,6 +17,7 @@ export const state = {
     isShuffled: false,
     songWaitingForAnalysis: null,
     currentLyrics: null,
+    currentLyricsType: null, // ★★★ 追加: 'txt', 'lrc', または null ★★★
     currentlyViewedSongs: [],
     currentDetailView: { type: null, identifier: null },
     activeListView: 'track-view',
@@ -43,6 +44,7 @@ export const state = {
     }
 };
 
+// ... (elements and initElements remain the same) ...
 export const elements = {};
 
 export function initElements() {
@@ -78,7 +80,7 @@ export function initElements() {
     elements.notificationToast = document.getElementById('notification-toast');
     elements.notificationText = document.getElementById('notification-text');
     elements.lightFlightModeBtn = document.getElementById('light-flight-mode-btn');
-    elements.lyricsView = document.getElementById('lyrics-view');
+    elements.lyricsView = document.getElementById('lyrics-view'); // ★★★ Ensure this exists ★★★
     elements.sidebarTabs = document.querySelectorAll('.sidebar-tab-btn');
     elements.sidebarTabContents = document.querySelectorAll('.sidebar-tab-content');
     elements.queueList = document.getElementById('queue-list');
@@ -88,7 +90,7 @@ export function initElements() {
     // New Normalize View Elements
     elements.normalizeView = document.getElementById('normalize-view');
     elements.normalizeViewBtn = document.getElementById('normalize-view-btn');
-    
+
     // Equalizer elements
     elements.equalizerContainer = document.getElementById('equalizer-container');
     elements.equalizerView = document.getElementById('equalizer-view');

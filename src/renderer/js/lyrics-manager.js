@@ -1,4 +1,8 @@
 import { state, elements } from './state.js';
+// --- ▼▼▼ 追加 ▼▼▼ ---
+import { showContextMenu } from './ui/utils.js';
+import { startLrcEditor } from './lrc-editor.js'; // あとで作成
+// --- ▲▲▲ 追加 ▲▲▲ ---
 const { ipcRenderer } = require('electron');
 
 /**
@@ -8,33 +12,40 @@ const { ipcRenderer } = require('electron');
 export async function loadLyricsForSong(song) {
     clearLyrics();
     state.currentLyrics = null;
+    state.currentLyricsType = null; // ★★★ リセット ★★★
     if (!song) return;
 
     const result = await ipcRenderer.invoke('get-lyrics', song);
     if (!result) {
         displayNoLyrics();
+        // ★★★ TXT/LRCがない場合でもコンテキストメニューを設定 ★★★
+        setupLyricsContextMenu(song, null); // type を null で渡す
         return;
     }
 
     console.log('[Lyrics Debug] 歌詞ファイルが見つかりました:', result);
+    state.currentLyricsType = result.type; // ★★★ タイプを設定 ★★★
 
     if (result.type === 'lrc') {
         const parsedLyrics = parseLRC(result.content);
-        
         console.log('[Lyrics Debug] LRC解析結果:', parsedLyrics);
-
         if (parsedLyrics && parsedLyrics.length > 0) {
             state.currentLyrics = parsedLyrics;
             renderLyrics(parsedLyrics);
         } else {
             console.error('[Lyrics Debug] LRCの解析後、データが空になりました。');
+            state.currentLyricsType = null; // 解析失敗時はタイプをリセット
             displayNoLyrics();
         }
     } else if (result.type === 'txt') {
-        renderLyrics(result.content);
+        renderLyrics(result.content); // state.currentLyrics は null のまま
     }
+
+    // ★★★ コンテキストメニューを設定 ★★★
+    setupLyricsContextMenu(song, state.currentLyricsType);
 }
 
+// ... (parseLRC, clearLyrics, displayNoLyrics, renderLyrics は変更なし) ...
 /**
  * LRC形式の文字列を解析して、時間とテキストのオブジェクトの配列に変換する
  * @param {string} lrcContent - LRCファイルの中身
@@ -48,14 +59,14 @@ function parseLRC(lrcContent) {
     lines.forEach(line => {
         const text = line.replace(timeRegex, '').trim();
         const matches = [...line.matchAll(timeRegex)];
-        
+
         if (matches.length > 0) {
             matches.forEach(match => {
                 const minutes = parseInt(match[1], 10);
                 const seconds = parseInt(match[2], 10);
                 const milliseconds = parseInt(match[3].padEnd(3, '0'), 10);
                 const time = minutes * 60 + seconds + milliseconds / 1000;
-                
+
                 lyrics.push({ time, text: text || ' ' });
             });
         }
@@ -69,6 +80,8 @@ function parseLRC(lrcContent) {
  */
 function clearLyrics() {
     elements.lyricsView.innerHTML = '';
+    // 既存のリスナーがあれば削除 (念のため)
+    elements.lyricsView.removeEventListener('contextmenu', handleLyricsContextMenu);
 }
 
 /**
@@ -86,11 +99,12 @@ function displayNoLyrics() {
  * @param {Array|string} lyrics - LRCの配列またはTXTの文字列
  */
 function renderLyrics(lyrics) {
-    clearLyrics();
+    // clearLyrics(); // clearLyrics は loadLyricsForSong の冒頭で呼ばれる
     if (typeof lyrics === 'string') {
+        // テキスト歌詞を行ごとに分割し、空行もスペースとして表示
         lyrics.split('\n').forEach(line => {
             const p = document.createElement('p');
-            p.textContent = line || ' ';
+            p.textContent = line.trim() === '' ? ' ' : line; // 空行はスペースに
             elements.lyricsView.appendChild(p);
         });
     } else {
@@ -104,18 +118,63 @@ function renderLyrics(lyrics) {
     }
 }
 
+
+// --- ▼▼▼ コンテキストメニュー関連の関数を追加 ▼▼▼ ---
+
+let currentContextMenuSong = null;
+let currentContextMenuType = null;
+
+/**
+ * 歌詞表示エリアにコンテキストメニューを設定する
+ * @param {object} song - 現在の曲オブジェクト
+ * @param {'txt'|'lrc'|null} type - 現在表示中の歌詞タイプ
+ */
+function setupLyricsContextMenu(song, type) {
+    currentContextMenuSong = song;
+    currentContextMenuType = type;
+    // 既存のリスナーを削除してから追加し直す
+    elements.lyricsView.removeEventListener('contextmenu', handleLyricsContextMenu);
+    elements.lyricsView.addEventListener('contextmenu', handleLyricsContextMenu);
+}
+
+/**
+ * コンテキストメニューイベントのハンドラ
+ * @param {MouseEvent} event
+ */
+function handleLyricsContextMenu(event) {
+    event.preventDefault();
+    const menuItems = [];
+
+    // 現在曲があり、かつLRCではない場合（TXTまたは歌詞なしの場合）にメニューを表示
+    if (currentContextMenuSong && currentContextMenuType !== 'lrc') {
+        menuItems.push({
+            label: '同期歌詞を作成...',
+            action: () => {
+                // lrc-editor.js (未作成) の関数を呼び出す
+                startLrcEditor(currentContextMenuSong);
+                console.log('同期歌詞エディタを開始 (予定):', currentContextMenuSong.title);
+            }
+        });
+    }
+
+    // 他のメニュー項目（例：歌詞をコピーなど）もここに追加可能
+
+    if (menuItems.length > 0) {
+        showContextMenu(event.pageX, event.pageY, menuItems);
+    }
+}
+// --- ▲▲▲ ここまで追加 ▲▲▲ ---
+
 /**
  * 再生時間に合わせてLRC歌詞を更新・同期する
  * @param {number} currentTime - 現在の再生時間 (秒)
  */
 export function updateSyncedLyrics(currentTime) {
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
-    // 歌詞データがない、または歌詞タブが非表示の場合は即座に処理を中断
     const lyricsContainer = document.getElementById('lyrics-container');
-    if (!state.currentLyrics || !lyricsContainer || !lyricsContainer.classList.contains('active')) {
+    // ★★★ state.currentLyricsType === 'lrc' もチェック ★★★
+    if (!state.currentLyrics || state.currentLyricsType !== 'lrc' || !lyricsContainer || !lyricsContainer.classList.contains('active')) {
         return;
     }
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
     let currentIndex = -1;
     for (let i = state.currentLyrics.length - 1; i >= 0; i--) {
@@ -126,19 +185,32 @@ export function updateSyncedLyrics(currentTime) {
     }
 
     const activeLine = elements.lyricsView.querySelector('p.active');
+    // 現在アクティブな行が正しい場合は何もしない
     if (activeLine && parseInt(activeLine.dataset.index) === currentIndex) {
         return;
     }
 
-    elements.lyricsView.querySelectorAll('p').forEach(p => p.classList.remove('active'));
+    // すべてのアクティブクラスを削除
+    elements.lyricsView.querySelectorAll('p.active').forEach(p => p.classList.remove('active'));
 
     if (currentIndex !== -1) {
         const newLine = elements.lyricsView.querySelector(`p[data-index="${currentIndex}"]`);
         if (newLine) {
             newLine.classList.add('active');
+            // アクティブな行が中央に来るようにスクロール (少しだけ改善)
             const containerRect = elements.lyricsView.getBoundingClientRect();
             const lineRect = newLine.getBoundingClientRect();
-            elements.lyricsView.scrollTop += lineRect.top - containerRect.top - (containerRect.height / 2) + (lineRect.height / 2);
+
+            // 要素が表示範囲内にすでにあるかチェック
+            const isVisible = lineRect.top >= containerRect.top && lineRect.bottom <= containerRect.bottom;
+
+            if (!isVisible) {
+                // 要素の中央をコンテナの中央に合わせるようにスクロール
+                 elements.lyricsView.scrollTop += (lineRect.top + lineRect.height / 2) - (containerRect.top + containerRect.height / 2);
+            }
         }
+    } else {
+         // 曲の冒頭など、まだどの行もアクティブでない場合は一番上にスクロール
+         elements.lyricsView.scrollTop = 0;
     }
 }

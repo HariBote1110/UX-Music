@@ -9,12 +9,12 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
     const { playlistName } = context;
     const allPlaylists = playlistManager.getAllPlaylists();
     const favoritesName = playlistManager.getFavoritesPlaylistName();
-    const firstSong = songs[0];
+    const firstSong = songs[0]; // 編集対象は最初の曲とする
 
-    const isFavorited = playlistManager.isSongInPlaylist(favoritesName, firstSong.path);
+    // お気に入りは単一選択時のみ
+    const isFavorited = songs.length === 1 && playlistManager.isSongInPlaylist(favoritesName, firstSong.path);
 
     const addToPlaylistSubmenu = allPlaylists
-        // .filter(name => name !== favoritesName) // この行をコメントアウトし、すべてのプレイリストを表示
         .map(name => ({
             label: name,
             click: () => {
@@ -26,6 +26,7 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
                         `「${firstSong.title}」をプレイリスト「${name}」に追加しました。`;
                     window.webContents.send('show-notification', message);
                 }
+                sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
             }
         }));
 
@@ -34,14 +35,31 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
             if (window) {
-                // rendererに曲情報と一緒に新規プレイリスト作成を要求
                 window.webContents.send('request-new-playlist-with-songs', songs);
             }
         }
     }, { type: 'separator' });
 
-    const template = [
-        {
+    const template = [];
+
+    // --- ▼▼▼ ここから修正 ▼▼▼ ---
+    template.push({
+        label: '情報を編集...',
+        enabled: songs.length === 1, // 単一選択時のみ有効
+        click: () => {
+            const window = BrowserWindow.getAllWindows()[0];
+            if (window && songs.length === 1) {
+                // レンダラーに編集モーダル表示を依頼
+                window.webContents.send('show-edit-metadata-modal', songs[0]);
+            }
+        }
+    });
+    template.push({ type: 'separator' });
+    // --- ▲▲▲ ここまで修正 ▲▲▲ ---
+
+
+    if (songs.length === 1) {
+        template.push({
             label: isFavorited ? 'お気に入りから削除' : 'お気に入りに追加',
             click: () => {
                 playlistManager.ensureFavoritesPlaylistExists();
@@ -53,13 +71,16 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
                 }
                 sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
             }
-        },
-        {
-            label: 'プレイリストに追加',
-            submenu: addToPlaylistSubmenu.length > 2 ? addToPlaylistSubmenu : [{ label: '（追加可能なプレイリスト無し）', enabled: false }]
-        },
-        { type: 'separator' },
-    ];
+        });
+    }
+
+    template.push({
+        label: 'プレイリストに追加',
+        submenu: addToPlaylistSubmenu.length > 2 ? addToPlaylistSubmenu : [{ label: '（追加可能なプレイリスト無し）', enabled: false }]
+    });
+
+    template.push({ type: 'separator' });
+
 
     if (playlistName && playlistName !== favoritesName) {
         const label = songs.length > 1 ? `選択した${songs.length}曲をこのプレイリストから削除` : 'このプレイリストから削除';
@@ -77,10 +98,10 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
     }
 
     template.push({
-        label: 'ライブラリから削除...',
+        label: songs.length > 1 ? `選択した${songs.length}曲をライブラリから削除...` : 'ライブラリから削除...',
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
-            deleteSongFromLibrary(window, firstSong, sendToAllWindows); // Deletion is still one by one with confirmation
+            deleteSongsFromLibrary(window, songs, sendToAllWindows);
         }
     });
 
@@ -94,42 +115,80 @@ function registerContextMenuHandlers(stores, sendToAllWindows) {
     ipcMain.on('show-song-context-menu', (event, { songs, context = {} }) => {
         const window = BrowserWindow.fromWebContents(event.sender);
         if (!window || !songs || songs.length === 0) return;
-        
+
         const menu = createUnifiedSongMenu(songs, context, sendToAllWindows);
         menu.popup({ window });
     });
+
+    ipcMain.on('create-new-playlist-with-songs', (event, { playlistName, songs }) => {
+        const createResult = playlistManager.createPlaylist(playlistName);
+        if (createResult.success) {
+            const addResult = playlistManager.addSongsToPlaylist(playlistName, songs);
+            if (addResult.success) {
+                 const message = songs.length > 1 ?
+                    `${songs.length}曲を新規プレイリスト「${playlistName}」に追加しました。` :
+                    `「${songs[0].title}」を新規プレイリスト「${playlistName}」に追加しました。`;
+                event.sender.send('show-notification', message);
+                sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
+            } else {
+                 event.sender.send('show-error', `プレイリスト「${playlistName}」への曲の追加に失敗しました: ${addResult.message}`);
+            }
+        } else {
+            event.sender.send('show-error', `新規プレイリスト「${playlistName}」の作成に失敗しました: ${createResult.message}`);
+        }
+    });
 }
 
-async function deleteSongFromLibrary(window, song, sendToAllWindows) {
+async function deleteSongsFromLibrary(window, songs, sendToAllWindows) {
+    if (!songs || songs.length === 0) return;
+
+    const message = songs.length > 1
+        ? `選択された${songs.length}曲をライブラリから完全に削除しますか？`
+        : `「${songs[0].title}」をライブラリから完全に削除しますか？`;
+
     const dialogResult = await dialog.showMessageBox(window, {
         type: 'warning',
         buttons: ['キャンセル', '削除'],
         defaultId: 0,
         title: '曲の削除の確認',
-        message: `「${song.title}」をライブラリから完全に削除しますか？`,
+        message: message,
         detail: 'この操作は元に戻せません。ファイルもディスクから削除されます。'
     });
 
     if (dialogResult.response !== 1) return;
 
-    try {
-        if (fs.existsSync(song.path)) {
-            fs.unlinkSync(song.path);
+    const library = libraryStore.load() || [];
+    const pathsToRemove = new Set(songs.map(s => s.path));
+    const updatedLibrary = library.filter(s => !pathsToRemove.has(s.path));
+    let deletedCount = 0;
+    let errorCount = 0;
+
+    for (const song of songs) {
+        try {
+            if (fs.existsSync(song.path)) {
+                fs.unlinkSync(song.path);
+            }
+            deletedCount++;
+        } catch (error) {
+            console.error(`楽曲ファイル ${song.path} の削除中にエラーが発生しました:`, error);
+            errorCount++;
         }
-        
-        const library = libraryStore.load() || [];
-        const updatedLibrary = library.filter(s => s.path !== song.path);
+    }
+
+    if (deletedCount > 0) {
         libraryStore.save(updatedLibrary);
-        
-        const songPaths = [song.path];
-        playlistManager.getAllPlaylists().forEach(playlistName => {
-            playlistManager.removeSongsFromPlaylist(playlistName, songPaths);
-        });
-        
-        sendToAllWindows('song-deleted', song.path);
-    } catch (error) {
-        console.error('楽曲の削除中にエラーが発生しました:', error);
-        dialog.showErrorBox('削除エラー', '曲の削除中にエラーが発生しました。');
+
+        const allPlaylists = playlistManager.getAllPlaylists();
+        for (const playlistName of allPlaylists) {
+            playlistManager.removeSongsFromPlaylist(playlistName, Array.from(pathsToRemove));
+        }
+
+        sendToAllWindows('songs-deleted', Array.from(pathsToRemove));
+        sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
+    }
+
+    if (errorCount > 0) {
+        dialog.showErrorBox('削除エラー', `${errorCount}曲のファイル削除中にエラーが発生しました。詳細はコンソールを確認してください。`);
     }
 }
 
