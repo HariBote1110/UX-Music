@@ -59,41 +59,69 @@ export function initEventListeners() {
 
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
-    elements.dropZone.addEventListener('drop', (e) => {
+elements.dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
         elements.dropZone.classList.remove('drag-over');
 
         console.log('[Import Debug] Drop event triggered.');
-        const files = Array.from(e.dataTransfer.files);
-        console.log('[Import Debug] Raw dropped files list:', files);
+        const filePaths = []; // 抽出したファイルパスを格納する配列
 
-        // --- ▼▼▼ Send File objects to main process ▼▼▼ ---
-        if (files.length > 0) {
-            // We need to extract the minimal necessary info because File objects themselves
-            // might not serialize correctly over IPC, especially their non-standard properties.
-            // The 'path' property IS the key piece of info needed by the main process.
-            // Let's try sending just the path property again, assuming it *should* work
-            // in a nodeIntegration context based on common Electron patterns.
-            // If it's still undefined, we need a different approach (like main process handling drop).
-
-            const filePaths = files.map(f => f.path).filter(p => typeof p === 'string' && p.length > 0);
-
-            console.log('[Import Debug] Extracted paths to send:', filePaths);
-
-            if (filePaths.length > 0) {
-                // Send only the extracted paths to the main process
-                ipcRenderer.send('files-dropped', filePaths);
-            } else {
-                console.warn('[Import Debug] No valid file paths could be extracted from dropped items.');
-                // Maybe show an error to the user here
+        // e.dataTransfer.files を優先的に試す
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            console.log(`[Import Debug] Processing ${e.dataTransfer.files.length} files from dataTransfer.files`);
+            for (let i = 0; i < e.dataTransfer.files.length; i++) {
+                const file = e.dataTransfer.files[i];
+                // file.path が存在し、有効な文字列か確認
+                if (file && file.path && typeof file.path === 'string' && file.path.length > 0) {
+                    console.log(`[Import Debug] Got path via file.path: ${file.path}`);
+                    filePaths.push(file.path);
+                } else if (file) {
+                    console.warn(`[Import Debug] file.path is missing/invalid for: ${file.name}`, file);
+                    // フォールバックとして dataTransfer.items を試す (ただし期待薄)
+                    if (e.dataTransfer.items && e.dataTransfer.items[i]?.kind === 'file') {
+                        const itemFile = e.dataTransfer.items[i].getAsFile();
+                        if (itemFile && itemFile.path) {
+                             console.log(`[Import Debug] Fallback: Got path via items[${i}].getAsFile(): ${itemFile.path}`);
+                             filePaths.push(itemFile.path);
+                        } else {
+                             console.warn(`[Import Debug] Fallback using items failed for ${file.name}`);
+                        }
+                    }
+                } else {
+                    console.warn(`[Import Debug] Invalid file object at index ${i}`);
+                }
             }
-        } else {
-            console.log('[Import Debug] No files found in drop event.');
         }
-        // --- ▲▲▲ Logic simplified to send paths ▲▲▲ ---
-    });
+        // dataTransfer.files が空の場合のフォールバック (念のため)
+        else if (e.dataTransfer.items) {
+             console.log(`[Import Debug] dataTransfer.files empty, trying dataTransfer.items (${e.dataTransfer.items.length} items)`);
+             // (ここに前回の dataTransfer.items を使うロジックを入れても良いですが、
+             //  files が空で items にデータがあるケースは稀なので省略しても良いかもしれません)
+              for (let i = 0; i < e.dataTransfer.items.length; i++) {
+                const item = e.dataTransfer.items[i];
+                if (item.kind === 'file') {
+                    const file = item.getAsFile();
+                    if (file && file.path && typeof file.path === 'string' && file.path.length > 0) {
+                        console.log(`[Import Debug] Fallback (files empty): Got path via getAsFile(): ${file.path}`);
+                        filePaths.push(file.path);
+                    } else if(file) {
+                         console.warn(`[Import Debug] Fallback (files empty): getAsFile() path missing for ${file.name}`);
+                    }
+                }
+             }
+        }
 
+        console.log('[Import Debug] Final extracted paths to send:', filePaths);
+
+        if (filePaths.length > 0) {
+            ipcRenderer.send('files-dropped', filePaths);
+        } else {
+            console.warn('[Import Debug] No valid file paths could be extracted from dropped items.');
+            // ユーザーへのエラー通知を追加しても良いかもしれません
+            showNotification('ファイルのパスを取得できませんでした。', 3000); // ui/notification.js の関数を使用
+        }
+    });
 
     elements.deviceSelectButton.addEventListener('click', (e) => {
         e.stopPropagation();
