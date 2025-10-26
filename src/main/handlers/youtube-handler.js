@@ -23,21 +23,17 @@ async function initializeYTDlp() {
 
         if (isPackaged) {
             const resourcesPath = process.resourcesPath;
-            // First try the standard asar unpacked location
             ytDlpPath = path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', 'yt-dlp-wrap', 'bin', ytDlpBinaryName);
             console.log(`[yt-dlp] Packaged mode detected. Trying path: ${ytDlpPath}`);
             if (!fs.existsSync(ytDlpPath)) {
-                // Fallback for potentially different build structures
                  ytDlpPath = path.join(resourcesPath, '..', 'node_modules', 'yt-dlp-wrap', 'bin', ytDlpBinaryName);
                  console.log(`[yt-dlp] Trying alternative packaged path: ${ytDlpPath}`);
             }
              if (!fs.existsSync(ytDlpPath)) {
-                 // Try finding it adjacent to the binary if it was copied differently
                 ytDlpPath = path.join(path.dirname(app.getPath('exe')), ytDlpBinaryName);
                  console.log(`[yt-dlp] Trying path adjacent to executable: ${ytDlpPath}`);
             }
         } else {
-             // Development environment
              ytDlpPath = path.join(app.getAppPath(), 'node_modules', 'yt-dlp-wrap', 'bin', ytDlpBinaryName);
              console.log(`[yt-dlp] Development mode detected. Using path: ${ytDlpPath}`);
         }
@@ -48,7 +44,6 @@ async function initializeYTDlp() {
              if (!fs.existsSync(downloadDir)) {
                  fs.mkdirSync(downloadDir, { recursive: true });
              }
-             // Ensure YTDlpWrap downloads to the expected *file* path, not just directory
              await YTDlpWrap.downloadFromGithub(ytDlpPath);
              console.log('[yt-dlp] Download complete.');
         } else {
@@ -105,7 +100,6 @@ async function processYouTubeVideo(videoInfo, sourceUrl) {
     }
 
     if (mode === 'stream') {
-        // ... (stream mode logic remains the same) ...
         return {
             id: crypto.randomUUID(),
             path: sourceUrl,
@@ -120,7 +114,6 @@ async function processYouTubeVideo(videoInfo, sourceUrl) {
         };
     }
 
-    // --- ▼▼▼ Download Logic Changes Start ▼▼▼ ---
     const qualitySetting = settings.youtubeDownloadQuality || 'full';
     let formatCode;
     let fileExtension;
@@ -154,7 +147,7 @@ async function processYouTubeVideo(videoInfo, sourceUrl) {
             '--no-check-certificate',
             '-f', formatCode,
             '-o', finalPath, // Output directly to the final path
-            '--no-playlist',
+            '--no-playlist', // Ensure it doesn't try to download playlist items if given a video URL from a playlist context
              // '--no-continue', // yt-dlp handles resuming better, might remove this
              '--force-overwrites', // Ensure it overwrites if file exists (e.g., from failed attempt)
              '--concurrent-fragments', '4', // Example: Use multiple fragments for potentially faster download
@@ -162,7 +155,6 @@ async function processYouTubeVideo(videoInfo, sourceUrl) {
         .on('ytDlpEvent', (eventType, eventData) => console.log(`[yt-dlp Event: ${eventType}] ${eventData}`))
         .on('error', (error) => {
             console.error(`[yt-dlp Download Error] ${error}`);
-             // Clean up the potentially incomplete final file on error
              if (fs.existsSync(finalPath)) {
                  try {
                      fs.unlinkSync(finalPath);
@@ -174,7 +166,6 @@ async function processYouTubeVideo(videoInfo, sourceUrl) {
             reject(error);
         })
         .on('close', (code) => {
-             // Check the exit code. 0 usually means success.
              if (code === 0) {
                  if (fs.existsSync(finalPath)) {
                      console.log(`[YouTube Handler] Download finished successfully for ${safeFileNameBase}`);
@@ -187,7 +178,6 @@ async function processYouTubeVideo(videoInfo, sourceUrl) {
              }
         });
     });
-    // --- ▲▲▲ Download Logic Changes End ▲▲▲ ---
 
 
     console.log(`[YouTube Handler] Starting loudness analysis for ${safeFileNameBase}`);
@@ -226,9 +216,12 @@ async function getYoutubeVideoInfo(url) {
         throw new Error('yt-dlp is not initialized.');
     }
     console.log(`[YouTube Handler] Fetching video info for ${url}`);
+    // Use '--dump-json' to get metadata without downloading
+    // Use '--no-playlist' to ensure it only gets info for the single video URL
     const videoInfo = await ytDlpWrap.getVideoInfo([
         url,
         '--no-check-certificate',
+        '--no-playlist', // Added to prevent accidental playlist processing
         '--dump-json'
     ]);
     console.log(`[YouTube Handler] Info fetched for ${videoInfo.title}`);
@@ -255,21 +248,32 @@ function registerYouTubeHandlers(stores, managers) {
         let playlistInfo;
         try {
              console.log(`[YouTube Handler] Fetching playlist info for ${playlistUrl}`);
+             // Remove --flat-playlist, get info for all videos at once
              playlistInfo = await ytDlpWrap.getVideoInfo([
                  playlistUrl,
                  '--no-check-certificate',
-                 '--flat-playlist',
+                 // '--flat-playlist', // Removed
                  '-J' // Output JSON
              ]);
 
-             if (!playlistInfo || !playlistInfo.entries || playlistInfo.entries.length === 0) {
-                 throw new Error('Playlist is empty or invalid.');
+             // Check if it's a playlist object with 'entries'
+             if (!playlistInfo || playlistInfo._type !== 'playlist' || !playlistInfo.entries || playlistInfo.entries.length === 0) {
+                 // Check if it's a single video object (sometimes happens if URL is video in playlist)
+                 if (playlistInfo && playlistInfo.id && playlistInfo.title) {
+                     console.log(`[YouTube Handler] URL was likely a single video within a playlist. Processing as single video.`);
+                     playlistInfo = { // Reconstruct a playlist-like structure
+                        title: playlistInfo.title, // Use video title if playlist title absent
+                         entries: [playlistInfo]
+                     };
+                 } else {
+                    throw new Error('Playlist is empty, invalid, or returned unexpected format.');
+                 }
              }
              console.log(`[YouTube Handler] Found ${playlistInfo.entries.length} items in playlist.`);
 
         } catch(error) {
             console.error('Playlist import error (yt-dlp failed):', error);
-            window.send('show-error', 'プレイリスト情報の取得に失敗しました。URLを確認するか、プレイリストが公開されているか確認してください。');
+            window.send('show-error', `プレイリスト情報の取得に失敗しました: ${error.message}`);
             return;
         }
 
@@ -278,13 +282,20 @@ function registerYouTubeHandlers(stores, managers) {
         playlistManager.createPlaylist(playlistTitle);
         
         for (let i = 0; i < total; i++) {
-            const item = playlistInfo.entries[i];
-            const itemUrl = item.url;
+            const item = playlistInfo.entries[i]; // item now contains full video info
+            const itemUrl = item.webpage_url || item.original_url || item.url; // Get the original URL
             const itemTitle = item.title || 'Unknown Title';
             try {
+                // Check if item contains necessary info, if not, skip (might happen with deleted videos etc.)
+                if (!item.id || !itemUrl) {
+                    console.warn(`Skipping invalid playlist item at index ${i}:`, item);
+                    continue;
+                }
+                
                 window.send('playlist-import-progress', { current: i + 1, total: total, title: itemTitle });
                 
-                const videoInfo = await getYoutubeVideoInfo(itemUrl); // Use helper
+                // videoInfo is already available in 'item'
+                const videoInfo = item; 
                 
                 const newSong = await processYouTubeVideo(videoInfo, itemUrl);
                 

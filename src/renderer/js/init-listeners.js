@@ -7,7 +7,7 @@ import { handleQuizKeyPress } from './quiz.js';
 import { updateTextOverflowForSelector } from './ui/utils.js';
 import { updateAudioDevices } from './ui-manager.js';
 const { ipcRenderer } = require('electron');
-const path = require('path');
+const path = require('path'); // path is still needed for lyrics check if done here
 
 export function initEventListeners() {
     elements.nextBtn.addEventListener('click', playNextSong);
@@ -17,7 +17,7 @@ export function initEventListeners() {
 
     const libraryActionsBtn = document.getElementById('library-actions-btn');
     const libraryActionsPopup = document.getElementById('library-actions-popup');
-    
+
     libraryActionsBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         libraryActionsPopup.classList.toggle('hidden');
@@ -42,7 +42,7 @@ export function initEventListeners() {
             onOk: (url) => ipcRenderer.send('add-youtube-link', url)
         });
     });
-    
+
     document.getElementById('add-youtube-playlist-btn').addEventListener('click', () => {
         libraryActionsPopup.classList.add('hidden');
         showModal({
@@ -56,25 +56,44 @@ export function initEventListeners() {
         libraryActionsPopup.classList.add('hidden');
         ipcRenderer.send('set-library-path');
     });
-    
+
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
     elements.dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
         elements.dropZone.classList.remove('drag-over');
-        const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
-        if (allPaths.length === 0) return;
-        const lyricsExtensions = ['.lrc', '.txt'];
-        const lyricsPaths = allPaths.filter(p => lyricsExtensions.includes(path.extname(p).toLowerCase()));
-        const musicPaths = allPaths.filter(p => !lyricsExtensions.includes(path.extname(p).toLowerCase()));
-        if (musicPaths.length > 0) {
-            ipcRenderer.send('start-scan-paths', musicPaths);
+
+        console.log('[Import Debug] Drop event triggered.');
+        const files = Array.from(e.dataTransfer.files);
+        console.log('[Import Debug] Raw dropped files list:', files);
+
+        // --- ▼▼▼ Send File objects to main process ▼▼▼ ---
+        if (files.length > 0) {
+            // We need to extract the minimal necessary info because File objects themselves
+            // might not serialize correctly over IPC, especially their non-standard properties.
+            // The 'path' property IS the key piece of info needed by the main process.
+            // Let's try sending just the path property again, assuming it *should* work
+            // in a nodeIntegration context based on common Electron patterns.
+            // If it's still undefined, we need a different approach (like main process handling drop).
+
+            const filePaths = files.map(f => f.path).filter(p => typeof p === 'string' && p.length > 0);
+
+            console.log('[Import Debug] Extracted paths to send:', filePaths);
+
+            if (filePaths.length > 0) {
+                // Send only the extracted paths to the main process
+                ipcRenderer.send('files-dropped', filePaths);
+            } else {
+                console.warn('[Import Debug] No valid file paths could be extracted from dropped items.');
+                // Maybe show an error to the user here
+            }
+        } else {
+            console.log('[Import Debug] No files found in drop event.');
         }
-        if (lyricsPaths.length > 0) {
-            ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
-        }
+        // --- ▲▲▲ Logic simplified to send paths ▲▲▲ ---
     });
+
 
     elements.deviceSelectButton.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -90,7 +109,7 @@ export function initEventListeners() {
             libraryActionsPopup.classList.add('hidden');
         }
     });
-    
+
     let resizeTimer;
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimer);
@@ -101,7 +120,7 @@ export function initEventListeners() {
 
     window.addEventListener('keydown', async (e) => {
         if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-        
+
         const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
         const modifierKey = isMac ? e.metaKey : e.ctrlKey;
 
@@ -109,7 +128,7 @@ export function initEventListeners() {
             handleQuizKeyPress(e);
             return;
         }
-        
+
         if (e.code === 'Space' && !modifierKey) {
             e.preventDefault();
             togglePlayPause();
@@ -135,7 +154,7 @@ export function initEventListeners() {
                 } else {
                     state.selectedSongIds = new Set(allIds);
                 }
-                
+
                 document.querySelectorAll('.song-item').forEach(item => {
                     const songId = item.dataset.songId;
                     if (state.selectedSongIds.has(songId)) {
