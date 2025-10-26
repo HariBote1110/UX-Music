@@ -80,11 +80,15 @@ export function initIPC(ipcRenderer, callbacks) {
         } else {
             console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
             
+            // 解析待ちの曲が失敗した曲であるかを確認
             if (waitingSong && waitingSong.sourceList[waitingSong.index]?.path === result.filePath) {
                 showNotification(`「${fileName}」は破損しているためスキップします。`);
                 hideNotification(3000);
+
+                // playNextSongが正しく次の曲へ移動できるように、現在のインデックスを失敗した曲に設定
                 state.currentSongIndex = waitingSong.index;
-                state.songWaitingForAnalysis = null; 
+                state.songWaitingForAnalysis = null; // 待機状態を解除
+                
                 playNextSong();
             }
         }
@@ -94,12 +98,6 @@ export function initIPC(ipcRenderer, callbacks) {
         showNotification(`${count}個の歌詞ファイルが追加されました。`);
         hideNotification(3000);
     });
-
-    // --- ▼▼▼ ここからが修正箇所です ▼▼▼ ---
-    ipcRenderer.on('songs-deleted', (event, deletedSongIds) => {
-        callbacks.onSongsDeleted?.(deletedSongIds);
-    });
-    // --- ▲▲▲ ここまでが修正箇所です ▲▲▲ ---
 
     logPerf("Requesting initial data from main process...");
     ipcRenderer.send('request-initial-library');

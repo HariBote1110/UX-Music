@@ -7,7 +7,7 @@ import { handleQuizKeyPress } from './quiz.js';
 import { updateTextOverflowForSelector } from './ui/utils.js';
 import { updateAudioDevices } from './ui-manager.js';
 const { ipcRenderer } = require('electron');
-const path = require('path'); // path is still needed for lyrics check if done here
+const path = require('path');
 
 export function initEventListeners() {
     elements.nextBtn.addEventListener('click', playNextSong);
@@ -17,7 +17,7 @@ export function initEventListeners() {
 
     const libraryActionsBtn = document.getElementById('library-actions-btn');
     const libraryActionsPopup = document.getElementById('library-actions-popup');
-
+    
     libraryActionsBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         libraryActionsPopup.classList.toggle('hidden');
@@ -42,7 +42,7 @@ export function initEventListeners() {
             onOk: (url) => ipcRenderer.send('add-youtube-link', url)
         });
     });
-
+    
     document.getElementById('add-youtube-playlist-btn').addEventListener('click', () => {
         libraryActionsPopup.classList.add('hidden');
         showModal({
@@ -56,70 +56,23 @@ export function initEventListeners() {
         libraryActionsPopup.classList.add('hidden');
         ipcRenderer.send('set-library-path');
     });
-
+    
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
-elements.dropZone.addEventListener('drop', (e) => {
+    elements.dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
         elements.dropZone.classList.remove('drag-over');
-
-        console.log('[Import Debug] Drop event triggered.');
-        const filePaths = []; // 抽出したファイルパスを格納する配列
-
-        // e.dataTransfer.files を優先的に試す
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            console.log(`[Import Debug] Processing ${e.dataTransfer.files.length} files from dataTransfer.files`);
-            for (let i = 0; i < e.dataTransfer.files.length; i++) {
-                const file = e.dataTransfer.files[i];
-                // file.path が存在し、有効な文字列か確認
-                if (file && file.path && typeof file.path === 'string' && file.path.length > 0) {
-                    console.log(`[Import Debug] Got path via file.path: ${file.path}`);
-                    filePaths.push(file.path);
-                } else if (file) {
-                    console.warn(`[Import Debug] file.path is missing/invalid for: ${file.name}`, file);
-                    // フォールバックとして dataTransfer.items を試す (ただし期待薄)
-                    if (e.dataTransfer.items && e.dataTransfer.items[i]?.kind === 'file') {
-                        const itemFile = e.dataTransfer.items[i].getAsFile();
-                        if (itemFile && itemFile.path) {
-                             console.log(`[Import Debug] Fallback: Got path via items[${i}].getAsFile(): ${itemFile.path}`);
-                             filePaths.push(itemFile.path);
-                        } else {
-                             console.warn(`[Import Debug] Fallback using items failed for ${file.name}`);
-                        }
-                    }
-                } else {
-                    console.warn(`[Import Debug] Invalid file object at index ${i}`);
-                }
-            }
+        const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
+        if (allPaths.length === 0) return;
+        const lyricsExtensions = ['.lrc', '.txt'];
+        const lyricsPaths = allPaths.filter(p => lyricsExtensions.includes(path.extname(p).toLowerCase()));
+        const musicPaths = allPaths.filter(p => !lyricsExtensions.includes(path.extname(p).toLowerCase()));
+        if (musicPaths.length > 0) {
+            ipcRenderer.send('start-scan-paths', musicPaths);
         }
-        // dataTransfer.files が空の場合のフォールバック (念のため)
-        else if (e.dataTransfer.items) {
-             console.log(`[Import Debug] dataTransfer.files empty, trying dataTransfer.items (${e.dataTransfer.items.length} items)`);
-             // (ここに前回の dataTransfer.items を使うロジックを入れても良いですが、
-             //  files が空で items にデータがあるケースは稀なので省略しても良いかもしれません)
-              for (let i = 0; i < e.dataTransfer.items.length; i++) {
-                const item = e.dataTransfer.items[i];
-                if (item.kind === 'file') {
-                    const file = item.getAsFile();
-                    if (file && file.path && typeof file.path === 'string' && file.path.length > 0) {
-                        console.log(`[Import Debug] Fallback (files empty): Got path via getAsFile(): ${file.path}`);
-                        filePaths.push(file.path);
-                    } else if(file) {
-                         console.warn(`[Import Debug] Fallback (files empty): getAsFile() path missing for ${file.name}`);
-                    }
-                }
-             }
-        }
-
-        console.log('[Import Debug] Final extracted paths to send:', filePaths);
-
-        if (filePaths.length > 0) {
-            ipcRenderer.send('files-dropped', filePaths);
-        } else {
-            console.warn('[Import Debug] No valid file paths could be extracted from dropped items.');
-            // ユーザーへのエラー通知を追加しても良いかもしれません
-            showNotification('ファイルのパスを取得できませんでした。', 3000); // ui/notification.js の関数を使用
+        if (lyricsPaths.length > 0) {
+            ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
         }
     });
 
@@ -137,7 +90,7 @@ elements.dropZone.addEventListener('drop', (e) => {
             libraryActionsPopup.classList.add('hidden');
         }
     });
-
+    
     let resizeTimer;
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimer);
@@ -148,7 +101,7 @@ elements.dropZone.addEventListener('drop', (e) => {
 
     window.addEventListener('keydown', async (e) => {
         if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-
+        
         const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
         const modifierKey = isMac ? e.metaKey : e.ctrlKey;
 
@@ -156,7 +109,7 @@ elements.dropZone.addEventListener('drop', (e) => {
             handleQuizKeyPress(e);
             return;
         }
-
+        
         if (e.code === 'Space' && !modifierKey) {
             e.preventDefault();
             togglePlayPause();
@@ -182,7 +135,7 @@ elements.dropZone.addEventListener('drop', (e) => {
                 } else {
                     state.selectedSongIds = new Set(allIds);
                 }
-
+                
                 document.querySelectorAll('.song-item').forEach(item => {
                     const songId = item.dataset.songId;
                     if (state.selectedSongIds.has(songId)) {
