@@ -122,7 +122,7 @@ export async function startLrcEditor(song) {
     const currentIsPlaying = isPlaying();
     const currentTime = getCurrentTime();
     const duration = getDuration();
-    updateEditorControls(currentIsPlaying, currentTime, duration);
+    updateLrcEditorControls(currentIsPlaying, currentTime, duration);
     editorElements.progressBar.max = duration || 0;
 
      editorElements.view.setAttribute('tabindex', '-1');

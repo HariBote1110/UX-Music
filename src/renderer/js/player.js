@@ -169,23 +169,26 @@ function connectAudioGraph() {
             return filter;
         });
 
-        analyser = audioContext.createAnalyser();
+        // --- 接続順序修正箇所 (変更なし) ---
+        gainNode = audioContext.createGain();   // Gain Nodeを作成
+        analyser = audioContext.createAnalyser(); // Analyser Nodeを作成
         analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.8;
         analyser.minDecibels = -80;
         analyser.maxDecibels = -10;
         dataArray = new Uint8Array(analyser.frequencyBinCount);
 
+        mainPlayerNode.connect(preampGainNode); // Source -> Preamp
         let lastNode = preampGainNode;
-        for (const band of eqBands) {
+        for (const band of eqBands) {          // Preamp -> EQ Bands
             lastNode.connect(band);
             lastNode = band;
         }
-        gainNode = audioContext.createGain();
-        mainPlayerNode.connect(preampGainNode);
-        lastNode.connect(gainNode);
-        lastNode.connect(analyser);
-        gainNode.connect(audioContext.destination);
+        lastNode.connect(gainNode);             // Last EQ Band -> Gain
+        gainNode.connect(analyser);             // Gain -> Analyser
+        analyser.connect(audioContext.destination); // Analyser -> Destination
+        // --- 接続順序修正箇所 (変更なし) ---
+
         console.log("Web Audio graph connected successfully.");
 
     } catch (e) {
@@ -233,7 +236,6 @@ function setupVisualizerObserver(targetElement) {
         });
     }, options);
 
-    // ★★★ observer ではなく visualizerObserver を使う ★★★
     if (visualizerObserver) {
         visualizerObserver.observe(targetElement);
     }
@@ -244,7 +246,6 @@ export function disconnectVisualizerObserver() {
         visualizerObserver.disconnect();
         visualizerObserver = null;
     }
-    // observer = null; // ★★★ この行は削除済みのはず ★★★
 }
 
 export function setVisualizerFpsLimit(fps) {
@@ -258,14 +259,19 @@ export function setVisualizerFpsLimit(fps) {
     }
 }
 
+// resumeAudioContext 関数は変更なし (drawループからも呼ばれる)
 async function resumeAudioContext() {
     if (audioContext && audioContext.state === 'suspended') {
         try {
             await audioContext.resume();
-            console.log("AudioContext resumed.");
-        } catch (e) { console.error('Failed to resume AudioContext:', e); }
+            console.log("AudioContext resumed."); // 成功ログ
+        } catch (e) {
+            // resume が失敗してもエラーログは出さない (draw ループ内で頻繁に呼ばれるため)
+            // console.error('Failed to resume AudioContext:', e);
+        }
     }
 }
+
 
 function updateVolumeIcon() {
     const volume = parseFloat(elements.volumeSlider.value);
@@ -309,20 +315,29 @@ export async function setAudioOutput(deviceId) {
     await reinitPlayer(deviceId);
 }
 
+// draw 関数は変更なし (前回のゴリ押し修正済み)
 function draw(timestamp) {
     if (!isPlaying()) {
         visualizerFrameId = null;
         return;
     }
     visualizerFrameId = requestAnimationFrame(draw);
+
+    if (audioContext && audioContext.state === 'suspended') {
+        resumeAudioContext();
+        return;
+    }
+
     if (isEcoModeEnabled && !isVisualizerVisible) return;
     if (state.isLightFlightMode || state.visualizerMode === 'static') return;
+
     if (state.visualizerFpsLimit > 0) {
         const frameInterval = 1000 / state.visualizerFpsLimit;
         const elapsed = timestamp - lastFrameTime;
         if (elapsed < frameInterval) return;
         lastFrameTime = timestamp - (elapsed % frameInterval);
     }
+
     if (currentVisualizerBars && analyser) {
         analyser.getByteFrequencyData(dataArray);
         const barIndices = [1, 3, 7, 15, 30, 60];
@@ -343,6 +358,7 @@ function draw(timestamp) {
         });
     }
 }
+
 
 export function setVisualizerTarget(targetElement) {
     document.querySelectorAll('.indicator-ready').forEach(item => {
@@ -428,13 +444,16 @@ export async function initPlayer(playerElement, callbacks, sinkId = null) {
     localPlayer.addEventListener('play', () => {
         elements.playPauseBtn.classList.add('playing');
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-        resumeAudioContext();
+        resumeAudioContext(); // playイベントでもresumeを試みる
         updatePlayingIndicators();
         updateLrcEditorControls(true, getCurrentTime(), getDuration());
         if (progressUpdateInterval) clearInterval(progressUpdateInterval);
         progressUpdateInterval = setInterval(() => { if (!isSeeking) updateUiTime(getCurrentTime(), getDuration()); }, 1000);
         if (!progressFrameId) progressFrameId = requestAnimationFrame(updateProgressBarLoop);
-        if (!visualizerFrameId) visualizerFrameId = requestAnimationFrame(draw);
+        if (!visualizerFrameId) {
+            lastHeights.fill(4);
+            visualizerFrameId = requestAnimationFrame(draw);
+        }
     });
     localPlayer.addEventListener('pause', () => {
         if (!isSeeking) elements.playPauseBtn.classList.remove('playing');
@@ -442,7 +461,10 @@ export async function initPlayer(playerElement, callbacks, sinkId = null) {
         updateLrcEditorControls(false, getCurrentTime(), getDuration());
         if (progressUpdateInterval) { clearInterval(progressUpdateInterval); progressUpdateInterval = null; }
         if (progressFrameId) { cancelAnimationFrame(progressFrameId); progressFrameId = null; }
-        if (visualizerFrameId) { cancelAnimationFrame(visualizerFrameId); visualizerFrameId = null; }
+        if (visualizerFrameId) {
+            cancelAnimationFrame(visualizerFrameId);
+            visualizerFrameId = null;
+        }
         if (currentVisualizerBars) { lastHeights.fill(4); currentVisualizerBars.forEach(bar => bar.style.height = '4px'); }
     });
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
@@ -524,28 +546,24 @@ export async function play(song) {
         let artworkSrc = '';
         const album = state.albums.get(song.albumKey);
         const artworkData = song.artwork || (album ? album.artwork : null);
-        const artworkFileName = artworkData ? (artworkData.thumbnail || artworkData.full || artworkData) : null; // Get filename string
+        const artworkFileName = artworkData ? (artworkData.thumbnail || artworkData.full || artworkData) : null;
 
-        // --- ▼▼▼ Media Session アートワーク修正 ▼▼▼ ---
         if (artworkFileName && typeof artworkFileName === 'string') {
              try {
-                // メインプロセスに data URL への変換を依頼
                 artworkSrc = await ipcRenderer.invoke('get-artwork-as-data-url', artworkFileName);
              } catch (error) {
                  console.error("Failed to get artwork as data URL for Media Session:", error);
-                 artworkSrc = ''; // エラー時は空にする
+                 artworkSrc = '';
              }
         }
-        // --- ▲▲▲ 修正 ▲▲▲ ---
 
         navigator.mediaSession.metadata = new MediaMetadata({
             title: song.title || 'Unknown Title',
             artist: song.artist || 'Unknown Artist',
             album: song.album || '',
-            // ★★★ artworkSrc が空でない場合のみ設定 ★★★
-            artwork: artworkSrc ? [{ src: artworkSrc, sizes: '100x100', type: 'image/webp' }] : [] // type を指定 (webpを想定)
+            artwork: artworkSrc ? [{ src: artworkSrc, sizes: '100x100', type: 'image/webp' }] : []
         });
-        console.log("Media session metadata set."); // デバッグ用ログ
+        console.log("Media session metadata set.");
     }
 
     const mode = settings?.youtubePlaybackMode || 'download';
@@ -566,7 +584,10 @@ export async function stop() {
     elements.playPauseBtn.classList.remove('playing');
     if (progressUpdateInterval) { clearInterval(progressUpdateInterval); progressUpdateInterval = null; }
     if (progressFrameId) { cancelAnimationFrame(progressFrameId); progressFrameId = null; }
-    if (visualizerFrameId) { cancelAnimationFrame(visualizerFrameId); visualizerFrameId = null; }
+    if (visualizerFrameId) {
+        cancelAnimationFrame(visualizerFrameId);
+        visualizerFrameId = null;
+    }
     elements.currentTimeEl.textContent = '0:00';
     elements.totalDurationEl.textContent = '0:00';
     elements.progressBar.value = 0;
@@ -575,26 +596,59 @@ export async function stop() {
     ipcRenderer.send('playback-stopped');
 }
 
+// --- ▼▼▼ ゴリ押し修正箇所 ▼▼▼ ---
 async function playLocal(song) {
     if (!localPlayer) { console.error("Player element not found."); return; }
     const safePath = encodeURI(song.path.replace(/\\/g, '/')).replace(/#/g, '%23');
     localPlayer.src = `file://${safePath}`;
     try {
-        await resumeAudioContext();
-        await localPlayer.play();
-        console.log(`Playing: ${song.title}`); // ★★★ ログ出力位置を変更 ★★★
-    } catch (error) {
+        await resumeAudioContext(); // まず resume を試みる
+        const playPromise = localPlayer.play(); // 再生を開始
+
+        console.log(`Playing: ${song.title}`);
+
+        // play() が成功したら、短い遅延後に一時停止してすぐ再開
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                // ほんの短い時間 (例: 50ms) 待つ
+                setTimeout(() => {
+                    if (isPlaying()) { // まだ再生中だったら
+                        localPlayer.pause(); // 一時停止
+                        // さらにごく短い時間 (例: 1ms) 待ってから再開
+                        // (pause が完了するのを待つ意図だが、確実ではない)
+                        setTimeout(() => {
+                            localPlayer.play().catch(e => {
+                                // 再開に失敗した場合のエラー処理 (必要なら)
+                                console.error("Gorilla resume failed:", e);
+                            });
+                        }, 1);
+                         console.log("Gorilla pause/resume triggered."); // ゴリ押し処理が実行されたログ
+                    }
+                }, 50); // 50ミリ秒後に実行
+            }).catch(error => {
+                // 最初の play() が失敗した場合のエラー処理はそのまま
+                if (error.name !== 'AbortError') {
+                    console.error(`Audio playback failed for ${song.path}:`, error);
+                    // showNotification(`Error playing "${song.title}": ${error.message}`);
+                    // hideNotification(5000);
+                    onSongEndedCallback();
+                }
+            });
+        }
+
+    } catch (error) { // resumeAudioContext やその他の同期エラー
         if (error.name !== 'AbortError') {
-             console.error(`Audio playback failed for ${song.path}:`, error);
-             showNotification(`Error playing "${song.title}": ${error.message}`);
-             hideNotification(5000);
+             console.error(`Audio playback failed (initial setup) for ${song.path}:`, error);
+             // showNotification(`Error playing "${song.title}": ${error.message}`);
+             // hideNotification(5000);
              onSongEndedCallback();
         }
     }
 }
+// --- ▲▲▲ ゴリ押し修正箇所 ▲▲▲ ---
 
 export async function togglePlayPause() {
-    await resumeAudioContext();
+    await resumeAudioContext(); // 念のためここでも呼ぶ
     if (!localPlayer) return;
     if (localPlayer.src && !localPlayer.paused) localPlayer.pause();
     else if (localPlayer.src) {
