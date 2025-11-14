@@ -177,3 +177,24 @@ function removeContextMenu() {
         existingSubMenus.forEach(submenu => submenu.remove());
     }
 }
+
+// ▼▼▼ 新規追加箇所 ▼▼▼
+/**
+ * バイト数を適切な単位 (B, KB, MB, GB, TB) に変換する
+ * @param {number} bytes - バイト数
+ * @param {number} [decimals=2] - 小数点以下の桁数
+ * @returns {string} - フォーマットされた文字列
+ */
+export function formatBytes(bytes, decimals = 2) {
+    if (!bytes || bytes === 0) return '0 Bytes';
+    if (isNaN(bytes) || bytes < 0) return 'N/A';
+
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+// ▲▲▲ 新規追加箇所 ▲▲▲

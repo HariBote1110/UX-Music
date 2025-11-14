@@ -222,7 +222,42 @@
                     <button id="quiz-retry-btn" class="header-button">もう一度挑戦</button>
                 </div>
             </div>
-        </div> <div id="resizer" class="resizer-vertical"></div>
+
+            <div id="mtp-transfer-view" class="view-container hidden">
+                <div class="view-header">
+                    <h1>デバイスへ転送</h1>
+                    <div class="header-actions">
+                        <span id="mtp-transfer-device-name">デバイス名</span>
+                        <button id="mtp-transfer-close-btn" class="header-button">閉じる</button>
+                    </div>
+                </div>
+                <div class="transfer-content-wrapper">
+                    <div class="transfer-pane source-pane">
+                        <h3>ライブラリ</h3>
+                        <div id="mtp-transfer-source-list" class="transfer-list-container">
+                            <p>転送する曲を読み込み中...</p>
+                        </div>
+                    </div>
+
+                    <div class="transfer-actions">
+                        <button id="mtp-transfer-start-btn" title="選択した項目を転送">
+                            &gt;&gt;
+                        </button>
+                    </div>
+
+                    <div class="transfer-pane device-pane">
+                        <h3>デバイス</h3>
+                        <div id="mtp-transfer-device-list" class="transfer-list-container">
+                            <p>デバイスのファイルリストを読み込み中...</p>
+                        </div>
+                    </div>
+                </div>
+                <div id="mtp-transfer-progress-container" class="transfer-progress-container hidden">
+                    <p id="mtp-transfer-progress-label">転送中...</p>
+                    <progress id="mtp-transfer-progress-bar" value="0" max="100"></progress>
+                </div>
+            </div>
+            </div> <div id="resizer" class="resizer-vertical"></div>
         <div class="sidebar right-sidebar">
             <div id="now-playing-container">
                 <div id="now-playing-artwork-container">
@@ -299,6 +334,24 @@
             </button>
             <div id="device-popup" class="device-popup">
                 </div>
+            
+            <button id="mtp-device-button" class="hidden" title="MTPデバイス">
+                <span>📱</span> 
+            </button>
+            <div id="mtp-device-popup" class="device-popup">
+                <div class="mtp-device-info">
+                    <h4 id="mtp-device-name">デバイス名</h4>
+                    <div class="mtp-storage-bar">
+                        <div id="mtp-storage-used"></div>
+                    </div>
+                    <small id="mtp-storage-label">空き容量 (使用/合計)</small>
+                </div>
+                <div class="mtp-device-actions">
+                    <button id="mtp-transfer-queue-btn">キューを転送</button>
+                    <button id="mtp-eject-btn">デバイスを取り外す</button>
+                </div>
+            </div>
+
         </div>
     </footer>
 

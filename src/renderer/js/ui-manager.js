@@ -8,7 +8,8 @@ import { setAudioOutput, setVisualizerTarget, stop as stopPlayer } from './playe
 import { updateNowPlayingView } from './ui/now-playing.js'; 
 import { loadLyricsForSong } from './lyrics-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
-import { showContextMenu } from './ui/utils.js';
+// 'formatBytes' が 'utils.js' に存在することを前提とします
+import { showContextMenu, formatBytes } from './ui/utils.js'; 
 const { ipcRenderer } = require('electron');
 
 /**
@@ -91,7 +92,98 @@ export function initUI() {
             renderQueueView();
         });
     });
+
+    // ▼▼▼ MTPデバイス関連のUI初期化（前回までの変更点） ▼▼▼
+
+    // MTPデバイスボタンのクリックイベント
+    elements.mtpDeviceButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        elements.mtpDevicePopup.classList.toggle('active');
+        elements.devicePopup.classList.remove('active');
+    });
+
+    // MTPデバイスポップアップの外側をクリックしたら閉じる
+    document.addEventListener('click', (e) => {
+        if (!elements.mtpDevicePopup.contains(e.target) && !elements.mtpDeviceButton.contains(e.target)) {
+            elements.mtpDevicePopup.classList.remove('active');
+        }
+    });
+    
+    // メインプロセスからのMTPデバイス状態変更通知を受け取る
+    ipcRenderer.on('mtp-device-status', (event, device) => {
+        // ★ ロガー追加 (レンダラーがイベントを受信したか確認)
+        console.log('[MTP-LOG] レンダラーが "mtp-device-status" イベントを受信しました。デバイス情報:', device);
+        updateMtpDeviceView(device);
+    });
+    console.log('[MTP-LOG] initUI完了。MTPデバイスのリスナーを設定しました。'); // ★ ロガー追加
+
+    // MTPポップアップの「キューを転送」ボタンのクリックイベント
+    elements.mtpTransferQueueBtn.addEventListener('click', () => {
+        elements.mainContent.classList.add('hidden');
+        elements.mtpTransferView.classList.remove('hidden');
+        elements.mtpDevicePopup.classList.remove('active');
+        console.log('[MTP-LOG] 転送ビューを開きました。'); // ★ ロガー追加
+        // loadQueueIntoTransferView(); // (今後の実装)
+    });
+
+    // 転送ビューの「閉じる」ボタンのクリックイベント
+    elements.mtpTransferCloseBtn.addEventListener('click', () => {
+        elements.mtpTransferView.classList.add('hidden');
+        elements.mainContent.classList.remove('hidden');
+        console.log('[MTP-LOG] 転送ビューを閉じました。'); // ★ ロガー追加
+    });
+    
+    // ▲▲▲ MTPデバイス関連のUI初期化 ▲▲▲
 }
+
+// ▼▼▼ MTPデバイスUI更新（前回までの変更点） ▼▼▼
+/**
+ * MTPデバイスUIの状態を更新する
+ * @param {object | null} device - メインプロセスから送られてきたデバイス情報
+ */
+function updateMtpDeviceView(device) {
+    // ★ ロガー追加 (UI更新関数が呼ばれたか確認)
+    console.log('[MTP-LOG] updateMtpDeviceView が呼ばれました。デバイス:', device ? device.name : 'null');
+
+    if (device) {
+        // デバイスが接続された
+        elements.mtpDeviceButton.classList.remove('hidden'); // ★重要★ これでボタンが表示される
+        elements.mtpDeviceName.textContent = device.name || 'MTP Device';
+        elements.mtpTransferDeviceName.textContent = device.name || 'MTP Device';
+        
+        console.log('[MTP-LOG] ボタンの "hidden" クラスを削除しました。'); // ★ ロガー追加
+        
+        // ストレージ情報の表示
+        if (device.storage && device.storage.total > 0) {
+            const { free, total } = device.storage;
+            const used = total - free;
+            const usedPercent = (used / total) * 100;
+            
+            // formatBytesが utils.js からインポートされていることを確認
+            const fBytes = typeof formatBytes === 'function' ? formatBytes : (b) => `${(b / 1024**3).toFixed(1)} GB`;
+
+            elements.mtpStorageUsed.style.width = `${usedPercent}%`;
+            elements.mtpStorageLabel.textContent = `${fBytes(free)} 空き (${fBytes(used)} / ${fBytes(total)})`;
+        } else {
+            console.warn('[MTP-LOG] デバイスのストレージ情報が利用できません。', device.storage); // ★ ロガー追加
+            elements.mtpStorageUsed.style.width = '0%';
+            elements.mtpStorageLabel.textContent = 'ストレージ情報なし';
+        }
+    } else {
+        // デバイスが切断された
+        elements.mtpDeviceButton.classList.add('hidden');
+        elements.mtpDevicePopup.classList.remove('active');
+        console.log('[MTP-LOG] ボタンに "hidden" クラスを追加しました (切断)。'); // ★ ロガー追加
+        
+        if (!elements.mtpTransferView.classList.contains('hidden')) {
+            elements.mtpTransferView.classList.add('hidden');
+            elements.mainContent.classList.remove('hidden');
+            showNotification('MTPデバイスが切断されました。', 'error');
+            hideNotification(3000);
+        }
+    }
+}
+// ▲▲▲ MTPデバイスUI更新 ▲▲▲
 
 export function addSongsToLibrary({ songs, albums }) {
     console.time('Renderer: Process Library Data');

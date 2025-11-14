@@ -94,4 +94,31 @@ export function initElements() {
     // Equalizer elements
     elements.equalizerContainer = document.getElementById('equalizer-container');
     elements.equalizerView = document.getElementById('equalizer-view');
+
+    // MTPデバイスUI (前回追加分)
+    elements.mtpDeviceButton = document.getElementById('mtp-device-button');
+    elements.mtpDevicePopup = document.getElementById('mtp-device-popup');
+    elements.mtpDeviceName = document.getElementById('mtp-device-name');
+    elements.mtpStorageUsed = document.getElementById('mtp-storage-used');
+    elements.mtpStorageLabel = document.getElementById('mtp-storage-label');
+    
+    // ▼▼▼ 新規追加 (MTPポップアップ内ボタン ＋ 転送ビュー) ▼▼▼
+    elements.mtpTransferQueueBtn = document.getElementById('mtp-transfer-queue-btn');
+    elements.mtpEjectBtn = document.getElementById('mtp-eject-btn');
+
+    // 転送ビュー本体
+    elements.mtpTransferView = document.getElementById('mtp-transfer-view');
+    elements.mtpTransferCloseBtn = document.getElementById('mtp-transfer-close-btn');
+    elements.mtpTransferDeviceName = document.getElementById('mtp-transfer-device-name');
+    
+    // 転送ビュー - ペイン
+    elements.mtpTransferSourceList = document.getElementById('mtp-transfer-source-list');
+    elements.mtpTransferDeviceList = document.getElementById('mtp-transfer-device-list');
+    
+    // 転送ビュー - アクション
+    elements.mtpTransferStartBtn = document.getElementById('mtp-transfer-start-btn');
+    elements.mtpTransferProgressContainer = document.getElementById('mtp-transfer-progress-container');
+    elements.mtpTransferProgressLabel = document.getElementById('mtp-transfer-progress-label');
+    elements.mtpTransferProgressBar = document.getElementById('mtp-transfer-progress-bar');
+    // ▲▲▲ 新規追加 ▲▲▲
 }
