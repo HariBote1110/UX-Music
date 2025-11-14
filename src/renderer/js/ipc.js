@@ -133,6 +133,44 @@ export function initIPC(ipcRenderer, callbacks) {
     });
     // --- ▲▲▲ ここまで ▲▲▲ ---
 
+    // --- ▼▼▼ MTP機能 (ステップ9 修正版) ▼▼▼ ---
+
+    /**
+     * MTPデバイス（Walkmanなど）が接続されたときにメインプロセスから呼び出される
+     */
+    ipcRenderer.on('mtp-device-connected', (event, payload) => {
+      const deviceInfo = payload.device;
+      const storageInfo = payload.storages;
+      
+      console.log('🎉 MTP デバイス接続:', deviceInfo);
+      console.log('📦 MTP ストレージ:', storageInfo);
+      
+      // state に保存（UIに反映させるため）
+      state.mtpDevice = deviceInfo;
+      state.mtpStorages = storageInfo;
+
+      showNotification(`Walkman (${deviceInfo?.mtpDeviceInfo?.Model}) が接続されました。`);
+      hideNotification(3000);
+      
+      // ※※※ ステップ8で追加した自動転送テストコードは、このバージョンでは削除されています ※※※
+    });
+
+    /**
+     * MTPデバイスが切断されたときにメインプロセスから呼び出される
+     */
+    ipcRenderer.on('mtp-device-disconnected', () => {
+      console.log('🔌 MTP デバイス切断');
+      
+      // state をクリア
+      state.mtpDevice = null;
+      state.mtpStorages = null;
+      
+      showNotification('Walkmanが切断されました。');
+      hideNotification(3000);
+    });
+
+    // --- ▲▲▲ MTP機能 (ステップ9 修正版) ▲▲▲ ---
+
     logPerf("Requesting initial data from main process...");
     ipcRenderer.send('request-initial-library');
     ipcRenderer.send('request-initial-play-counts');

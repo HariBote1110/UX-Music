@@ -9,6 +9,10 @@ const { Worker } = require('worker_threads');
 const path = require('path');
 const os = require('os');
 
+// --- ▼▼▼ MTP機能のために追記 (ステップ8) ▼▼▼ ---
+const mtpManager = require('./mtp/mtp-manager');
+// --- ▲▲▲ MTP機能のために追記 (ステップ8) ▲▲▲ ---
+
 const logPerf = (message) => {
     console.log(`[PERF][IPC-Handlers] ${message}`);
 };
@@ -248,6 +252,80 @@ function registerIpcHandlers() {
         // 3. 両者を結合して返す
         return { ...historyPlaylists, ...moodPlaylists };
     });
+
+    // --- ▼▼▼ MTP機能のために修正 (ステップ8) ▼▼▼ ---
+    // ユーザーが提示した古い（ステップ5の）ハンドラを、
+    // mtpManager とプログレスバーを使用する新しい（ステップ8の）ハンドラで置き換え
+  
+    /**
+     * MTPデバイスへのファイル転送（アップロード）を実行
+     */
+    ipcMain.handle('mtp-upload-files', async (event, { storageId, sources, destination }) => {
+      console.log(`[MTP Transfer] 要求受信: ${sources.length}件を StorageID ${storageId} の ${destination} へ`);
+      
+      const mtpDevice = mtpManager.getDevice();
+      if (!mtpDevice) {
+        console.error('[MTP Transfer] エラー: デバイスが見つかりません');
+        return { error: 'MTP device not connected.' };
+      }
+  
+      // メインウィンドウを取得して、プログレスバーを表示する
+      const mainWindow = BrowserWindow.getAllWindows()[0];
+  
+      try {
+        const result = await mtpDevice.transferFiles({
+          direction: 'upload',
+          storageId: storageId, // 例: 65537
+          sources: sources,     // 例: ['/Users/yuki/Music/test.mp3']
+          destination: destination, // 例: '/Music/' (末尾のスラッシュが重要)
+          preprocessFiles: true,
+          
+          // --- コールバック関数 ---
+          onError: (err) => {
+            console.error('[MTP Transfer] 転送エラー:', err);
+            // TODO: UIにエラー通知
+          },
+          onPreprocess: (data) => {
+            console.log(`[MTP Transfer] 前処理中: ${data.name}`);
+            // TODO: UIに進捗表示 (例: 'ファイル 1/10: test.mp3 を準備中...')
+          },
+          onProgress: (data) => {
+            const percent = Math.round(data.bytesTransferred * 100 / data.totalBytes);
+            console.log(`[MTP Transfer] 転送中: ${data.fullPath} (${percent}%)`);
+            // メインウィンドウのプログレスバーを更新
+            if (mainWindow) {
+              // プログレスバーの値を 0 から 1 の範囲で設定
+              mainWindow.setProgressBar(data.bytesTransferred / data.totalBytes);
+            }
+          },
+          onCompleted: () => {
+            console.log('[MTP Transfer] 転送完了');
+            if (mainWindow) {
+              mainWindow.setProgressBar(-1); // プログレスバーを非表示（-1で解除）
+            }
+            // TODO: UIに完了通知
+          },
+        });
+  
+        if (mainWindow) {
+          mainWindow.setProgressBar(-1); // 完了またはエラー時にプログレスバーを非表示
+        }
+  
+        if (result.error) {
+          console.error('[MTP Transfer] 最終結果エラー:', result.error);
+        }
+  
+        return result; // UI側に最終結果を返す
+  
+      } catch (err) {
+        console.error('[MTP Transfer] ハンドラ全体のエラー:', err);
+        if (mainWindow) {
+          mainWindow.setProgressBar(-1);
+        }
+        return { error: err.message };
+      }
+    });
+    // --- ▲▲▲ MTP機能のために修正 (ステップ8) ▲▲▲ ---
 
     logPerf("Requiring library-handler...");
     const { registerLibraryHandlers } = require('./handlers/library-handler');

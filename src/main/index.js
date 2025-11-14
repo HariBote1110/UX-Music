@@ -14,6 +14,13 @@ if (process.argv.includes('--dev')) {
 }
 // --- ▲▲▲ ここまでが修正箇所です ▲▲▲
 
+// --- ▼▼▼ MTP機能のために修正 (ステップ8) ▼▼▼ ---
+const usbDetection = require('usb-detection');
+const { Kalam } = require('./mtp/Kalam'); 
+const mtpManager = require('./mtp/mtp-manager'); // mtpDevice の管理を mtpManager に移管
+// let mtpDevice = null; // mtpManager を使うため、この行は削除
+// --- ▲▲▲ MTP機能のために修正 (ステップ8) ▲▲▲ ---
+
 const startTime = performance.now();
 const logPerf = (message) => {
     // タイムスタンプ付きでパフォーマンスログを出力
@@ -49,6 +56,8 @@ function createWindow() {
       contextIsolation: false,
       devTools: true,
       webSecurity: true,
+      // MTP機能のIPC通信のために preload スクリプトが必要になる可能性があります
+      // preload: path.join(__dirname, 'preload.js'), 
     },
     titleBarStyle: 'hidden',
     titleBarOverlay: {
@@ -109,15 +118,90 @@ app.whenReady().then(() => {
     }
   });
   
-  createWindow();
+  const mainWindow = createWindow(); // mainWindow を取得
   connectToDiscord();
 
   logPerf("Requiring ipc-handlers...");
   const { registerIpcHandlers } = require('./ipc-handlers');
   logPerf("Registering IPC handlers...");
-  registerIpcHandlers(); 
+  registerIpcHandlers(); // この中で MTP 用の IPC ハンドラも登録（ステップ8）
   logPerf("IPC handlers registered.");
   performance.mark('ipc-handlers-registered');
+
+  // --- ▼▼▼ MTP機能のために修正 (ステップ8) ▼▼▼ ---
+  logPerf("Starting USB detection...");
+  try {
+    usbDetection.startMonitoring();
+
+    // デバイス接続時の処理
+    usbDetection.on('add', async (device) => {
+      console.log('USB Device Added:', device);
+      
+      // if (device.vendorId !== 0x054C) return; 
+      
+      // mtpDevice -> mtpManager.getDevice() に変更
+      if (!mtpManager.getDevice()) { 
+        const mtpDeviceInstance = new Kalam(); // 変数名を変更
+        mtpManager.setDevice(mtpDeviceInstance); // mtpManager にインスタンスをセット
+
+        try {
+          const initResult = await mtpDeviceInstance.initialize(); // 変数名変更
+          if (initResult.error) {
+            console.error('MTP Init Error:', initResult.error);
+            mtpManager.setDevice(null); // mtpManager のインスタンスをクリア
+            return;
+          }
+          console.log('MTP Initialized:', initResult.data);
+
+          // デバイス情報を取得
+          const deviceInfo = await mtpDeviceInstance.fetchDeviceInfo(); // 変数名変更
+          console.log('MTP Device Info:', deviceInfo.data);
+          
+          // ストレージ情報を取得
+          const storageInfo = await mtpDeviceInstance.listStorages(); // 変数名変更
+          if (storageInfo.error) {
+            console.error('MTP Storage Info Error:', storageInfo.error);
+          } else {
+            console.log('MTP Storage Info:', storageInfo.data);
+          }
+
+          // レンダラープロセスに通知 (ストレージ情報も渡す)
+          if (mainWindow) {
+            mainWindow.webContents.send('mtp-device-connected', {
+                device: deviceInfo.data,
+                storages: storageInfo.data || null // エラーの場合は null を送る
+            });
+          }
+
+        } catch (err) {
+          console.error('MTP Kalam Error:', err);
+          mtpManager.setDevice(null); // mtpManager のインスタンスをクリア
+        }
+      }
+    });
+
+    // デバイス切断時の処理
+    usbDetection.on('remove', async (device) => {
+      console.log('USB Device Removed:', device);
+      
+      const mtpDeviceInstance = mtpManager.getDevice(); // mtpManager からインスタンス取得
+      
+      if (mtpDeviceInstance) { // mtpDevice -> mtpDeviceInstance
+        await mtpDeviceInstance.dispose(); // 変数名変更
+        mtpManager.setDevice(null); // mtpManager のインスタンスをクリア
+        console.log('MTP Disposed.');
+        
+        // レンダラープロセスに通知
+        if (mainWindow) {
+          mainWindow.webContents.send('mtp-device-disconnected');
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error('Failed to start USB detection:', err);
+  }
+  // --- ▲▲▲ MTP機能のために修正 (ステップ8) ▲▲▲ ---
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -127,5 +211,17 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', function () {
+  // --- ▼▼▼ MTP機能のために修正 (ステップ8) ▼▼▼ ---
+  const mtpDeviceInstance = mtpManager.getDevice(); // mtpManager からインスタンス取得
+  if (mtpDeviceInstance) { // mtpDevice -> mtpDeviceInstance
+    mtpDeviceInstance.dispose().catch(err => console.error('MTP dispose error:', err)); // 変数名変更
+  }
+  try {
+    usbDetection.stopMonitoring();
+  } catch (err) {
+    console.error('Failed to stop USB monitoring:', err);
+  }
+  // --- ▲▲▲ MTP機能のために修正 (ステップ8) ▲▲▲ ---
+
   if (process.platform !== 'darwin') app.quit();
 });
