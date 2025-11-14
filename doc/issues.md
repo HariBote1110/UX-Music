@@ -3,9 +3,6 @@
 このファイルには、現在確認されている問題点やバグ、未解決の課題を記録します。
 
 ## 進行中の問題
--   **[バグ] 起動時にエラーがelement-factory.jsで発生する。**
-    - **ログ** view-renderer.js:7 Uncaught SyntaxError: The requested module './element-factory.js' does not provide an export named 'createPlaylistGridItem' (at view-renderer.js:7:69)
-index.html:1 [Deprecation] The keyword 'slider-vertical' specified to an 'appearance' property is not standardized. It will be removed in the future and replaced by vertical writing-mode (currently experimental).
 
 
 ## 解決済みの問題
