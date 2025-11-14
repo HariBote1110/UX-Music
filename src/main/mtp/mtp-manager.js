@@ -29,8 +29,10 @@ async function setDevice(deviceInstance) {
     console.log('[MTP-LOG] setDevice が呼び出されました (デバイス切断)。');
     mtpDevice = null;
     if (mainWindow && !mainWindow.isDestroyed()) {
-      console.log('[MTP-LOG] レンダラープロセスへ "mtp-device-status" (切断) を送信します。');
-      mainWindow.webContents.send('mtp-device-status', null);
+      // --- ▼▼▼ 修正 ▼▼▼ ---
+      console.log('[MTP-LOG] レンダラープロセスへ "mtp-device-disconnected" を送信します。');
+      mainWindow.webContents.send('mtp-device-disconnected');
+      // --- ▲▲▲ 修正 ▲▲▲ ---
     }
     return;
   }
@@ -55,8 +57,6 @@ async function setDevice(deviceInstance) {
     console.log('[MTP-LOG] MTP Device Info:', deviceInfo);
 
     // ストレージ情報を取得
-    // (注: ログによると初回は失敗し、2回目で成功しているため、リトライは Kalam 側で自動処理されているか、
-    // OSがストレージをマウントするのに時間がかかっているようです。このロジックはひとまず変更しません。)
     const storageInfoResult = await mtpDevice.listStorages();
     if (storageInfoResult.error) {
       console.warn('MTP Storage Info Error:', storageInfoResult.error);
@@ -66,25 +66,28 @@ async function setDevice(deviceInstance) {
 
     // --- ▼▼▼ ★★★ ここからが修正箇所です ★★★ ▼▼▼ ---
 
-    // 1. UIに渡すストレージ情報を構築
-    let storageDataForUI = null;
-    if (storageInfo && storageInfo.length > 0 && storageInfo[0].Info) {
-      // ログから判明した正しいプロパティから値を取得
-      storageDataForUI = {
-        free: storageInfo[0].Info.FreeSpaceInBytes,
-        total: storageInfo[0].Info.MaxCapability
-      };
-      console.log('[MTP-LOG] UI用のストレージ情報を構築しました:', storageDataForUI);
+    // 1. UIに渡すストレージ情報を構築 (ipc.js の期待する形式)
+    let storagesForUI = [];
+    if (storageInfo && storageInfo.length > 0) {
+      storagesForUI = storageInfo.map(storage => ({
+        id: storage.Sid, // ★★★ 転送に必要なストレージID ★★★
+        free: storage.Info.FreeSpaceInBytes,
+        total: storage.Info.MaxCapability,
+        description: storage.Info.StorageDescription
+      }));
+      console.log('[MTP-LOG] UI用のストレージ情報を構築しました:', storagesForUI);
     } else {
       console.warn('[MTP-LOG] UI用のストレージ情報を構築できませんでした。');
     }
 
-    // 2. UIに渡すデバイス情報オブジェクトを構築
-    const deviceDataForUI = {
-      // ログから判明した正しいプロパティから名前を取得
-      // (usbDeviceInfo.Product が 'WALKMAN', mtpDeviceInfo.Model が 'NW-A300Series')
-      name: deviceInfo.usbDeviceInfo.Product || deviceInfo.mtpDeviceInfo.Model || 'MTP Device',
-      storage: storageDataForUI // 上で構築した単純なオブジェクト
+    // 2. UIに渡すデバイス情報オブジェクトを構築 (ipc.js の期待する形式)
+    const payload = {
+      device: {
+        name: deviceInfo.usbDeviceInfo.Product || deviceInfo.mtpDeviceInfo.Model || 'MTP Device',
+        mtpDeviceInfo: deviceInfo.mtpDeviceInfo,
+        usbDeviceInfo: deviceInfo.usbDeviceInfo
+      },
+      storages: storagesForUI // 上で構築した配列
     };
 
     // --- ▲▲▲ ★★★ ここまでが修正箇所です ★★★ ▲▲▲ ---
@@ -92,8 +95,10 @@ async function setDevice(deviceInstance) {
 
     // ウィンドウが存在する場合のみ通知
     if (mainWindow && !mainWindow.isDestroyed()) {
-      console.log('[MTP-LOG] レンダラープロセスへ "mtp-device-status" (接続完了) を送信します。', deviceDataForUI);
-      mainWindow.webContents.send('mtp-device-status', deviceDataForUI);
+      // --- ▼▼▼ 修正 ▼▼▼ ---
+      console.log('[MTP-LOG] レンダラープロセスへ "mtp-device-connected" (接続完了) を送信します。', payload);
+      mainWindow.webContents.send('mtp-device-connected', payload);
+      // --- ▲▲▲ 修正 ▲▲▲ ---
     } else {
       console.warn('[MTP-LOG] デバイス初期化完了。しかし mainWindow が未設定のため通知できません。');
     }
@@ -102,8 +107,10 @@ async function setDevice(deviceInstance) {
     console.error('[MTP-LOG] MTPデバイスの処理中にエラー:', err);
     mtpDevice = null; // エラーが発生したらデバイスをクリア
     if (mainWindow && !mainWindow.isDestroyed()) {
+      // --- ▼▼▼ 修正 ▼▼▼ ---
       // エラーが発生したことも通知（切断扱い）
-      mainWindow.webContents.send('mtp-device-status', null);
+      mainWindow.webContents.send('mtp-device-disconnected');
+      // --- ▲▲▲ 修正 ▲▲▲ ---
     }
   }
 }

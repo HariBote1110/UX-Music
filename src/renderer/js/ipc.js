@@ -139,17 +139,19 @@ export function initIPC(ipcRenderer, callbacks) {
      * MTPデバイス（Walkmanなど）が接続されたときにメインプロセスから呼び出される
      */
     ipcRenderer.on('mtp-device-connected', (event, payload) => {
+      // --- ▼▼▼ 修正 (ペイロード形式変更のため) ▼▼▼ ---
       const deviceInfo = payload.device;
-      const storageInfo = payload.storages;
+      const storageInfo = payload.storages; // 'storages' (複数形) を受け取る
       
       console.log('🎉 MTP デバイス接続:', deviceInfo);
       console.log('📦 MTP ストレージ:', storageInfo);
       
       // state に保存（UIに反映させるため）
       state.mtpDevice = deviceInfo;
-      state.mtpStorages = storageInfo;
+      state.mtpStorages = storageInfo; // 複数形のまま保存
 
-      showNotification(`Walkman (${deviceInfo?.mtpDeviceInfo?.Model}) が接続されました。`);
+      showNotification(`Walkman (${deviceInfo?.name}) が接続されました。`);
+      // --- ▲▲▲ 修正 ▲▲▲ ---
       hideNotification(3000);
       
       // ※※※ ステップ8で追加した自動転送テストコードは、このバージョンでは削除されています ※※※
@@ -170,6 +172,57 @@ export function initIPC(ipcRenderer, callbacks) {
     });
 
     // --- ▲▲▲ MTP機能 (ステップ9 修正版) ▲▲▲ ---
+
+
+    // --- ▼▼▼ 新規追加: MTP転送要求 (コンテキストメニューから) ▼▼▼ ---
+    ipcRenderer.on('request-mtp-transfer', async (event, songs) => {
+        logPerf("Received 'request-mtp-transfer' from main.");
+        
+        if (!state.mtpStorages || state.mtpStorages.length === 0) {
+            console.error('[MTP Transfer] ストレージ情報がありません。state.mtpStorages:', state.mtpStorages);
+            showNotification('Walkmanのストレージ情報が見つかりません。');
+            hideNotification(3000);
+            return;
+        }
+
+        // 最初のストレージIDを使用
+        const storageId = state.mtpStorages[0].id;
+        // 転送先は '/Music/' にハードコード (サンプル同様)
+        const destination = '/Music/';
+        const sources = songs.map(s => s.path);
+
+        if (!storageId) {
+            console.error('[MTP Transfer] storageId が取得できませんでした。');
+            showNotification('WalkmanのストレージIDが取得できません。');
+            hideNotification(3000);
+            return;
+        }
+
+        const songCount = songs.length;
+        const message = songCount > 1 ? `${songCount}曲の転送を開始します...` : `「${songs[0].title}」の転送を開始します...`;
+        showNotification(message); // 進捗表示 (完了時に消さない)
+
+        try {
+            // メインプロセスの 'mtp-upload-files' ハンドラを呼び出す
+            const result = await ipcRenderer.invoke('mtp-upload-files', { storageId, sources, destination });
+            
+            if (result.error) {
+                console.error('[MTP Transfer] 転送に失敗しました:', result.error);
+                showNotification(`転送に失敗しました: ${result.error}`);
+            } else {
+                console.log('[MTP Transfer] 転送に成功しました:', result);
+                showNotification(songCount > 1 ? `${songCount}曲の転送が完了しました。` : `「${songs[0].title}」の転送が完了しました。`);
+            }
+
+        } catch (err) {
+            console.error('[MTP Transfer] invoke呼び出しエラー:', err);
+            showNotification(`転送実行中にエラーが発生しました: ${err.message}`);
+        }
+        
+        hideNotification(4000); // 4秒後に通知を消す
+    });
+    // --- ▲▲▲ 新規追加: MTP転送要求 ▲▲▲ ---
+
 
     logPerf("Requesting initial data from main process...");
     ipcRenderer.send('request-initial-library');

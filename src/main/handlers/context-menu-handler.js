@@ -2,6 +2,9 @@ const { ipcMain, Menu, dialog, BrowserWindow } = require('electron');
 const fs = require('fs');
 const playlistManager = require('../playlist-manager');
 const { getPlaylistsWithArtwork } = require('./playlist-handler');
+// --- ▼▼▼ 新規追加 ▼▼▼ ---
+const mtpManager = require('../mtp/mtp-manager');
+// --- ▲▲▲ ここまで ▲▲▲ ---
 
 let libraryStore;
 
@@ -56,6 +59,22 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
     });
     template.push({ type: 'separator' });
     // --- ▲▲▲ ここまで修正 ▲▲▲ ---
+
+    // --- ▼▼▼ 新規追加: Walkman転送 ▼▼▼ ---
+    const mtpDevice = mtpManager.getDevice();
+    template.push({
+        label: songs.length > 1 ? `${songs.length}曲をWalkmanへ転送` : 'Walkmanへ転送',
+        enabled: !!mtpDevice, // MTPデバイスが接続されている場合のみ有効
+        click: () => {
+            const window = BrowserWindow.getAllWindows()[0];
+            if (window && mtpDevice) {
+                // レンダラープロセスに転送実行を依頼
+                window.webContents.send('request-mtp-transfer', songs);
+            }
+        }
+    });
+    template.push({ type: 'separator' });
+    // --- ▲▲▲ 新規追加: Walkman転送 ▲▲▲ ---
 
 
     if (songs.length === 1) {
