@@ -2,7 +2,10 @@ import { initUI, addSongsToLibrary, updatePlayCountDisplay } from './js/ui-manag
 import { initNavigation, showView } from './js/navigation.js';
 import { initIPC } from './js/ipc.js';
 import { initModal } from './js/modal.js';
-import { initPlayer, applyMasterVolume } from './js/player.js';
+// ▼▼▼ 修正箇所 ▼▼▼
+import { initPlayer } from './js/player.js';
+import { applyMasterVolume } from './js/audio-graph.js'; // player.js から audio-graph.js に変更
+// ▲▲▲ 修正箇所 ▲▲▲
 import { state, elements, initElements, PLAYBACK_MODES } from './js/state.js';
 import { showNotification, hideNotification } from './js/ui/notification.js';
 import { initDebugCommands } from './js/debug-commands.js';
@@ -57,7 +60,7 @@ window.addEventListener('DOMContentLoaded', () => {
         onSettingsLoaded: (settings) => {
             if (typeof settings.volume === 'number') {
                 elements.volumeSlider.value = settings.volume;
-                applyMasterVolume();
+                applyMasterVolume(); // audio-graph.js からインポートした関数
             }
             state.visualizerMode = settings.visualizerMode || 'active';
             if (typeof settings.isShuffled === 'boolean') {

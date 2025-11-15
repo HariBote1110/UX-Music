@@ -1,5 +1,7 @@
+// src/renderer/js/ui/equalizer.js
+
 import { state, elements } from '../state.js';
-import { applyEqualizerSettings } from '../player.js';
+import { applyEqualizerSettings } from '../audio-graph.js';
 const { ipcRenderer } = require('electron');
 
 const frequencies = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
@@ -101,7 +103,17 @@ export function renderGraphicEQ() {
     `;
 
     const canvas = document.getElementById('graphic-eq-canvas');
+    
+    // ▼▼▼ 修正箇所 ▼▼▼
+    // 'd' ではなく '2d' を指定
     const ctx = canvas.getContext('2d');
+    // ▲▲▲ 修正箇所 ▲▲▲
+
+    if (!ctx) {
+        console.error("Failed to get 2D context for graphic EQ canvas.");
+        return;
+    }
+
     let draggingPoint = -1;
 
     const minFreq = 20;

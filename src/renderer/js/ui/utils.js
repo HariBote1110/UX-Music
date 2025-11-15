@@ -1,5 +1,9 @@
-// uxmusic/src/renderer/js/ui/utils.js
+// src/renderer/js/ui/utils.js
 const path = require('path');
+// ▼▼▼ 追加 (player.js から移動した setEqualizerColorFromArtwork のため) ▼▼▼
+const { ipcRenderer } = require('electron');
+import { state } from '../state.js';
+// ▲▲▲ 追加 ▲▲▲
 
 /**
  * Resolves the path to an artwork image. This is the single source of truth.
@@ -178,7 +182,6 @@ function removeContextMenu() {
     }
 }
 
-// ▼▼▼ 新規追加箇所 ▼▼▼
 /**
  * バイト数を適切な単位 (B, KB, MB, GB, TB) に変換する
  * @param {number} bytes - バイト数
@@ -197,4 +200,92 @@ export function formatBytes(bytes, decimals = 2) {
 
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
-// ▲▲▲ 新規追加箇所 ▲▲▲
+
+
+// ▼▼▼ 追加 (player.js から移動) ▼▼▼
+/**
+ * 画像要素から主要な2色を抽出する
+ * @param {HTMLImageElement} img - 対象の画像要素
+ * @returns {Promise<Array<string>|null>} [色1, 色2] の配列、または null
+ */
+async function getColorsFromArtwork(img) {
+    // 画像がロード完了していない場合、待機する
+    if (!img.complete || img.naturalWidth === 0) {
+        await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+        }).catch(e => {
+            console.error("Image loading error for color extraction:", e);
+            return null;
+        });
+        if (!img.complete) return null;
+    }
+
+    return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        const width = canvas.width = img.naturalWidth || img.width;
+        const height = canvas.height = img.naturalHeight || img.height;
+        try {
+            context.drawImage(img, 0, 0);
+            const imageData = context.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            const colorCount = {};
+            // ピクセルをサンプリングするステップ（負荷軽減のため）
+            const step = Math.max(4, Math.floor(data.length / (1000 * 4))) * 4;
+            for (let i = 0; i < data.length; i += step) {
+                // 色を量子化（丸める）してキーにする
+                const r = Math.round(data[i] / 32) * 32;
+                const g = Math.round(data[i + 1] / 32) * 32;
+                const b = Math.round(data[i + 2] / 32) * 32;
+                const key = `${r},${g},${b}`;
+                colorCount[key] = (colorCount[key] || 0) + 1;
+            }
+            // 最も多く出現した色でソート
+            const sortedColors = Object.keys(colorCount).sort((a, b) => colorCount[b] - colorCount[a]);
+            
+            if (sortedColors.length >= 2) {
+                resolve([ `rgb(${sortedColors[0]})`, `rgb(${sortedColors[1]})` ]);
+            } else if (sortedColors.length === 1) {
+                resolve([ `rgb(${sortedColors[0]})`, `rgb(${sortedColors[0]})` ]);
+            } else {
+                resolve(null);
+            }
+        } catch (e) {
+            console.error("Canvas color extraction failed (maybe CORS issue?):", e, img.src);
+            resolve(null);
+        }
+    });
+}
+
+/**
+ * アートワーク画像からイコライザーのグラデーション色を設定する
+ * @param {HTMLImageElement} imageElement - アートワークを表示する画像要素
+ */
+export async function setEqualizerColorFromArtwork(imageElement) {
+    const setDefaultColors = () => {
+        document.documentElement.style.setProperty('--eq-color-1', 'var(--highlight-pink)');
+        document.documentElement.style.setProperty('--eq-color-2', 'var(--highlight-blue)');
+    };
+
+    // ライトフライトモードでは色を変更しない
+    if (state.isLightFlightMode) {
+        setDefaultColors();
+        return;
+    }
+
+    if (imageElement && imageElement.src && !imageElement.src.endsWith('default_artwork.png')) {
+        // CORS対応
+        if (!imageElement.crossOrigin) imageElement.crossOrigin = "Anonymous";
+        const colors = await getColorsFromArtwork(imageElement);
+        if (colors) {
+            document.documentElement.style.setProperty('--eq-color-1', colors[0]);
+            document.documentElement.style.setProperty('--eq-color-2', colors[1]);
+        } else {
+            setDefaultColors();
+        }
+    } else {
+        setDefaultColors();
+    }
+}
+// ▲▲▲ 追加 ▲▲▲
