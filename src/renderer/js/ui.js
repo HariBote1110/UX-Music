@@ -1,7 +1,7 @@
 import { state, elements } from './state.js';
 import { setupSongListScroller } from './ui/list-renderer.js';
 import { resolveArtworkPath, formatSongTitle } from './ui/utils.js';
-import { setEqualizerColorFromArtwork } from './player.js'; // 必要に応じて
+import { setEqualizerColorFromArtwork } from './player.js';
 const { ipcRenderer } = require('electron');
 
 export function initUI() {
@@ -11,10 +11,43 @@ export function initUI() {
 let currentSearchQuery = '';
 
 export function updateSearchQuery(query) {
-    currentSearchQuery = query.toLowerCase().trim();
-    // トラックビューが表示されている場合のみ再描画
-    if (state.activeViewId === 'track-view') {
+    const newQuery = query.toLowerCase().trim();
+    
+    // クエリに変更がない場合は何もしない
+    if (currentSearchQuery === newQuery && state.activeViewId === 'track-view') return;
+
+    currentSearchQuery = newQuery;
+
+    // 検索クエリがある場合、または現在トラックビューにいる場合は描画更新
+    if (currentSearchQuery) {
+        // 他の画面にいても、検索時は「曲」画面に強制切り替え
+        if (state.activeViewId !== 'track-view') {
+            switchToTrackView();
+        }
         renderTrackView();
+    } else {
+        // 検索ボックスが空になった場合
+        if (state.activeViewId === 'track-view') {
+            // 全曲リストに戻す
+            renderTrackView();
+        }
+    }
+}
+
+// トラックビュー（曲リスト）への表示切り替えヘルパー
+function switchToTrackView() {
+    state.activeViewId = 'track-view';
+    state.currentDetailView = { type: null, identifier: null, data: null };
+
+    // メインコンテンツを表示
+    document.querySelectorAll('.view-container').forEach(el => el.classList.add('hidden'));
+    if (elements.mainContent) elements.mainContent.classList.remove('hidden');
+    
+    // サイドバーの「曲」をアクティブ化
+    if (elements.navLinks) {
+        elements.navLinks.forEach(l => l.classList.remove('active'));
+        const trackLink = document.querySelector('.nav-link[data-view="track-view"]');
+        if (trackLink) trackLink.classList.add('active');
     }
 }
 
@@ -48,7 +81,7 @@ export function updateNowPlayingView(song) {
         const img = document.createElement('img');
         img.src = './assets/default_artwork.png';
         nowPlayingArtworkContainer.appendChild(img);
-        setEqualizerColorFromArtwork(img); // player.jsからインポートが必要、あるいはutils等へ移動推奨
+        setEqualizerColorFromArtwork(img);
     
     } else if (song.type === 'youtube') {
         nowPlayingArtworkContainer.classList.add('video-mode');
@@ -73,8 +106,6 @@ export function updateNowPlayingView(song) {
         img.crossOrigin = "Anonymous";
         img.onload = () => setEqualizerColorFromArtwork(img);
 
-        // アートワークパスの解決（ここが以前のエラー箇所でした）
-        // resolveArtworkPath を使うことでオブジェクト形式も正しく処理されます
         const masterSong = state.library.find(s => s.path === song.path) || song;
         const album = state.albums.get(masterSong.albumKey);
         
@@ -106,7 +137,6 @@ export function updateNowPlayingView(song) {
         hubLinkContainer.appendChild(hubButton);
     }
 
-    // state.js の修正に合わせて、querySelector で span を探す
     const titleEl = nowPlayingTitle.querySelector('.marquee-content span') || nowPlayingTitle;
     if (titleEl) {
         titleEl.textContent = song ? formatSongTitle(song.title) : '曲を選択してください';
@@ -140,7 +170,6 @@ export function renderTrackView() {
     }
 
     // 2. VirtualScroller (list-renderer.js) を使用して描画
-    // これにより大量の曲でも高速に表示され、アートワークの処理も正しく行われます
     setupSongListScroller(elements.musicList, displaySongs, {
         contextView: 'track-view'
     });
