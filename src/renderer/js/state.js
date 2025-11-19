@@ -17,9 +17,9 @@ export const state = {
     isShuffled: false,
     songWaitingForAnalysis: null,
     currentLyrics: null,
-    currentLyricsType: null, // ★★★ 追加: 'txt', 'lrc', または null ★★★
+    currentLyricsType: null,
     currentlyViewedSongs: [],
-    currentDetailView: { type: null, identifier: null },
+    currentDetailView: { type: null, identifier: null, data: null },
     activeListView: 'track-view',
     artworksDir: '',
     preferredDeviceId: null,
@@ -32,27 +32,48 @@ export const state = {
     groupAlbumArt: false,
     analysedQueue: {
         enabled: false,
-        decayDays: 7, // スコアの有効期間（日数）
+        decayDays: 7,
     },
     equalizerSettings: {
-        active: false, // EQが有効かどうか
+        active: false,
         preamp: 0,
-        bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 10バンドに変更
+        bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         bass: 0,
         mid: 0,
         treble: 0
-    }
+    },
+    quiz: {
+        isPlaying: false,
+        currentQuestionIndex: 0,
+        score: 0,
+        questions: [],
+        startTime: 0,
+        timerInterval: null,
+        totalResponseTime: 0,
+        config: { length: 10, difficulty: 'normal' }
+    },
+    audioContext: null,
+    audioSource: null,
+    gainNode: null,
+    analyser: null,
+    dataArray: null,
 };
 
-// ... (elements and initElements remain the same) ...
 export const elements = {};
 
 export function initElements() {
-    // Existing elements
+    // Main Containers
     elements.mainContent = document.getElementById('main-content');
+    elements.musicList = document.getElementById('main-content');
+    
     elements.nowPlayingArtworkContainer = document.getElementById('now-playing-artwork-container');
+    
+    // ▼▼▼ 修正: コンテナ要素自体を取得するように戻しました ▼▼▼
     elements.nowPlayingTitle = document.getElementById('now-playing-title');
     elements.nowPlayingArtist = document.getElementById('now-playing-artist');
+    // ▲▲▲ 修正完了 ▲▲▲
+    
+    // Playback Controls
     elements.playPauseBtn = document.getElementById('play-pause-btn');
     elements.prevBtn = document.getElementById('prev-btn');
     elements.nextBtn = document.getElementById('next-btn');
@@ -62,63 +83,74 @@ export function initElements() {
     elements.currentTimeEl = document.getElementById('current-time');
     elements.totalDurationEl = document.getElementById('total-duration');
     elements.volumeSlider = document.getElementById('volume-slider');
-    elements.volumeIcon = document.getElementById('volume-icon');
+    elements.volumeIcon = document.getElementById('volume-icon-btn'); 
+    elements.volumeRange = document.getElementById('volume-slider');
+    
+    // Devices & Navigation
     elements.deviceSelectButton = document.getElementById('device-select-button');
     elements.devicePopup = document.getElementById('device-popup');
     elements.navLinks = document.querySelectorAll('.nav-link');
+    
+    // Modal
     elements.modalOverlay = document.getElementById('modal-overlay');
     elements.modalTitle = document.querySelector('#modal h3');
     elements.modalInput = document.getElementById('modal-input');
     elements.modalOkBtn = document.getElementById('modal-ok-btn');
     elements.modalCancelBtn = document.getElementById('modal-cancel-btn');
     elements.loadingOverlay = document.getElementById('loading-overlay');
+    
+    // Settings
     elements.openSettingsBtn = document.getElementById('open-settings-btn');
     elements.settingsModalOverlay = document.getElementById('settings-modal-overlay');
     elements.settingsOkBtn = document.getElementById('settings-ok-btn');
-    elements.youtubeModeRadios = document.querySelectorAll('input[name="youtube-mode"]');
-    elements.youtubeQualityRadios = document.querySelectorAll('input[name="youtube-quality"]');
     elements.notificationToast = document.getElementById('notification-toast');
     elements.notificationText = document.getElementById('notification-text');
     elements.lightFlightModeBtn = document.getElementById('light-flight-mode-btn');
-    elements.lyricsView = document.getElementById('lyrics-view'); // ★★★ Ensure this exists ★★★
+    
+    // Sidebar
+    elements.lyricsView = document.getElementById('lyrics-view');
     elements.sidebarTabs = document.querySelectorAll('.sidebar-tab-btn');
     elements.sidebarTabContents = document.querySelectorAll('.sidebar-tab-content');
     elements.queueList = document.getElementById('queue-list');
     elements.hubLinkContainer = document.getElementById('hub-link-container');
-    elements.dropZone = elements.mainContent;
+    elements.dropZone = document.body;
 
-    // New Normalize View Elements
+    // Normalize View Elements
     elements.normalizeView = document.getElementById('normalize-view');
     elements.normalizeViewBtn = document.getElementById('normalize-view-btn');
+    elements.normalizeDropZone = document.getElementById('normalize-drop-zone');
+    elements.normalizeFileList = document.getElementById('normalize-file-list');
+    elements.normalizeAnalyzeBtn = document.getElementById('normalize-analyze-btn');
+    elements.normalizeApplyBtn = document.getElementById('normalize-apply-btn');
+    elements.normalizeProgressBar = document.getElementById('normalize-progress-bar');
+    elements.normalizeProgressLabel = document.getElementById('normalize-progress-label');
+    elements.normalizeProgressContainer = document.getElementById('normalize-progress-container');
 
     // Equalizer elements
     elements.equalizerContainer = document.getElementById('equalizer-container');
     elements.equalizerView = document.getElementById('equalizer-view');
 
-    // MTPデバイスUI (前回追加分)
+    // MTP Device
     elements.mtpDeviceButton = document.getElementById('mtp-device-button');
     elements.mtpDevicePopup = document.getElementById('mtp-device-popup');
     elements.mtpDeviceName = document.getElementById('mtp-device-name');
     elements.mtpStorageUsed = document.getElementById('mtp-storage-used');
     elements.mtpStorageLabel = document.getElementById('mtp-storage-label');
-    
-    // ▼▼▼ 新規追加 (MTPポップアップ内ボタン ＋ 転送ビュー) ▼▼▼
     elements.mtpTransferQueueBtn = document.getElementById('mtp-transfer-queue-btn');
     elements.mtpEjectBtn = document.getElementById('mtp-eject-btn');
 
-    // 転送ビュー本体
+    // MTP Transfer View
     elements.mtpTransferView = document.getElementById('mtp-transfer-view');
     elements.mtpTransferCloseBtn = document.getElementById('mtp-transfer-close-btn');
     elements.mtpTransferDeviceName = document.getElementById('mtp-transfer-device-name');
-    
-    // 転送ビュー - ペイン
     elements.mtpTransferSourceList = document.getElementById('mtp-transfer-source-list');
     elements.mtpTransferDeviceList = document.getElementById('mtp-transfer-device-list');
-    
-    // 転送ビュー - アクション
     elements.mtpTransferStartBtn = document.getElementById('mtp-transfer-start-btn');
     elements.mtpTransferProgressContainer = document.getElementById('mtp-transfer-progress-container');
     elements.mtpTransferProgressLabel = document.getElementById('mtp-transfer-progress-label');
     elements.mtpTransferProgressBar = document.getElementById('mtp-transfer-progress-bar');
-    // ▲▲▲ 新規追加 ▲▲▲
+
+    // Other Views
+    elements.lrcEditorView = document.getElementById('lrc-editor-view');
+    elements.quizView = document.getElementById('quiz-view');
 }

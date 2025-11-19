@@ -6,6 +6,9 @@ import { showModal } from './modal.js';
 import { handleQuizKeyPress } from './quiz.js';
 import { updateTextOverflowForSelector } from './ui/utils.js';
 import { updateAudioDevices } from './ui-manager.js';
+// --- ▼▼▼ 新規追加: 検索関数インポート ▼▼▼ ---
+import { updateSearchQuery } from './ui.js';
+// --- ▲▲▲ ここまで ▲▲▲ ---
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
@@ -56,6 +59,15 @@ export function initEventListeners() {
         libraryActionsPopup.classList.add('hidden');
         ipcRenderer.send('set-library-path');
     });
+
+    // --- ▼▼▼ 新規追加: 検索ボックスのリスナー ▼▼▼ ---
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            updateSearchQuery(e.target.value);
+        });
+    }
+    // --- ▲▲▲ ここまで ▲▲▲ ---
     
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
@@ -90,6 +102,23 @@ export function initEventListeners() {
             libraryActionsPopup.classList.add('hidden');
         }
     });
+
+    // --- ▼▼▼ 新規追加: 背景での右クリック検知 ▼▼▼ ---
+    window.addEventListener('contextmenu', (e) => {
+        // 既にソングアイテムなどでハンドリングされている場合は何もしない
+        // (ソングアイテム等は stopPropagation をしていないようだが preventDefault しているはず)
+        // ここでは要素をチェックして、インタラクティブな要素でなければ汎用メニューを出す
+        if (e.target.closest('.song-item') || 
+            e.target.closest('input') || 
+            e.target.closest('button') || 
+            e.target.closest('a')) {
+            return;
+        }
+        
+        e.preventDefault();
+        ipcRenderer.send('show-general-context-menu');
+    });
+    // --- ▲▲▲ ここまで ▲▲▲ ---
     
     let resizeTimer;
     window.addEventListener('resize', () => {
@@ -136,14 +165,15 @@ export function initEventListeners() {
                     state.selectedSongIds = new Set(allIds);
                 }
                 
-                document.querySelectorAll('.song-item').forEach(item => {
-                    const songId = item.dataset.songId;
-                    if (state.selectedSongIds.has(songId)) {
-                        item.classList.add('selected');
-                    } else {
-                        item.classList.remove('selected');
-                    }
+                document.querySelectorAll('.song-item.selected').forEach(item => {
+                    item.classList.remove('selected');
                 });
+                
+                if (!allSelected) {
+                    document.querySelectorAll('.song-item').forEach(item => {
+                        item.classList.add('selected');
+                    });
+                }
             }
         } else if (modifierKey && e.key.toLowerCase() === 'c') {
             e.preventDefault();

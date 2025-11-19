@@ -1,10 +1,8 @@
-const { ipcMain, Menu, dialog, BrowserWindow } = require('electron');
+const { ipcMain, Menu, MenuItem, dialog, BrowserWindow } = require('electron');
 const fs = require('fs');
 const playlistManager = require('../playlist-manager');
 const { getPlaylistsWithArtwork } = require('./playlist-handler');
-// --- ▼▼▼ 新規追加 ▼▼▼ ---
 const mtpManager = require('../mtp/mtp-manager');
-// --- ▲▲▲ ここまで ▲▲▲ ---
 
 let libraryStore;
 
@@ -12,9 +10,8 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
     const { playlistName } = context;
     const allPlaylists = playlistManager.getAllPlaylists();
     const favoritesName = playlistManager.getFavoritesPlaylistName();
-    const firstSong = songs[0]; // 編集対象は最初の曲とする
+    const firstSong = songs[0];
 
-    // お気に入りは単一選択時のみ
     const isFavorited = songs.length === 1 && playlistManager.isSongInPlaylist(favoritesName, firstSong.path);
 
     const addToPlaylistSubmenu = allPlaylists
@@ -45,37 +42,30 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
 
     const template = [];
 
-    // --- ▼▼▼ ここから修正 ▼▼▼ ---
     template.push({
         label: '情報を編集...',
-        enabled: songs.length === 1, // 単一選択時のみ有効
+        enabled: songs.length === 1,
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
             if (window && songs.length === 1) {
-                // レンダラーに編集モーダル表示を依頼
                 window.webContents.send('show-edit-metadata-modal', songs[0]);
             }
         }
     });
     template.push({ type: 'separator' });
-    // --- ▲▲▲ ここまで修正 ▲▲▲ ---
 
-    // --- ▼▼▼ 新規追加: Walkman転送 ▼▼▼ ---
     const mtpDevice = mtpManager.getDevice();
     template.push({
         label: songs.length > 1 ? `${songs.length}曲をWalkmanへ転送` : 'Walkmanへ転送',
-        enabled: !!mtpDevice, // MTPデバイスが接続されている場合のみ有効
+        enabled: !!mtpDevice,
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
             if (window && mtpDevice) {
-                // レンダラープロセスに転送実行を依頼
                 window.webContents.send('request-mtp-transfer', songs);
             }
         }
     });
     template.push({ type: 'separator' });
-    // --- ▲▲▲ 新規追加: Walkman転送 ▲▲▲ ---
-
 
     if (songs.length === 1) {
         template.push({
@@ -99,7 +89,6 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
     });
 
     template.push({ type: 'separator' });
-
 
     if (playlistName && playlistName !== favoritesName) {
         const label = songs.length > 1 ? `選択した${songs.length}曲をこのプレイリストから削除` : 'このプレイリストから削除';
@@ -127,6 +116,22 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
     return Menu.buildFromTemplate(template);
 }
 
+// --- ▼▼▼ 新規追加: 汎用コンテキストメニュー作成 ▼▼▼ ---
+function createGeneralContextMenu(webContents) {
+    const menu = new Menu();
+    
+    // 戻るボタン
+    menu.append(new MenuItem({
+        label: '戻る',
+        accelerator: 'CmdOrCtrl+[',
+        click: () => {
+            webContents.send('navigate-back');
+        }
+    }));
+
+    return menu;
+}
+// --- ▲▲▲ ここまで ▲▲▲ ---
 
 function registerContextMenuHandlers(stores, sendToAllWindows) {
     libraryStore = stores.library;
@@ -138,6 +143,16 @@ function registerContextMenuHandlers(stores, sendToAllWindows) {
         const menu = createUnifiedSongMenu(songs, context, sendToAllWindows);
         menu.popup({ window });
     });
+
+    // --- ▼▼▼ 新規追加: 汎用メニューハンドラ ▼▼▼ ---
+    ipcMain.on('show-general-context-menu', (event) => {
+        const window = BrowserWindow.fromWebContents(event.sender);
+        if (!window) return;
+
+        const menu = createGeneralContextMenu(event.sender);
+        menu.popup({ window });
+    });
+    // --- ▲▲▲ ここまで ▲▲▲ ---
 
     ipcMain.on('create-new-playlist-with-songs', (event, { playlistName, songs }) => {
         const createResult = playlistManager.createPlaylist(playlistName);

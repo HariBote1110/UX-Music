@@ -1,0 +1,32 @@
+<div class="view-header">
+    <h1>デバイスへ転送</h1>
+    <div class="header-actions">
+        <span id="mtp-transfer-device-name">デバイス名</span>
+        <button id="mtp-transfer-close-btn" class="header-button">閉じる</button>
+    </div>
+</div>
+<div class="transfer-content-wrapper">
+    <div class="transfer-pane source-pane">
+        <h3>ライブラリ</h3>
+        <div id="mtp-transfer-source-list" class="transfer-list-container">
+            <p>転送する曲を読み込み中...</p>
+        </div>
+    </div>
+
+    <div class="transfer-actions">
+        <button id="mtp-transfer-start-btn" title="選択した項目を転送">
+            &gt;&gt;
+        </button>
+    </div>
+
+    <div class="transfer-pane device-pane">
+        <h3>デバイス</h3>
+        <div id="mtp-transfer-device-list" class="transfer-list-container">
+            <p>デバイスのファイルリストを読み込み中...</p>
+        </div>
+    </div>
+</div>
+<div id="mtp-transfer-progress-container" class="transfer-progress-container hidden">
+    <p id="mtp-transfer-progress-label">転送中...</p>
+    <progress id="mtp-transfer-progress-bar" value="0" max="100"></progress>
+</div>

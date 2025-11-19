@@ -18,6 +18,9 @@
     <div class="container">
         <div class="sidebar left-sidebar">
             <p>UX Music <span id="app-version"></span></p>
+            <div class="search-box-container" style="padding: 0 20px 15px 20px;">
+                <input type="search" id="search-input" placeholder="検索..." style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; outline: none;">
+            </div>
             <div class="nav-links">
                 <a href="#" class="nav-link active" data-view="track-view">曲</a>
                 <a href="#" class="nav-link" data-view="album-view">アルバム</a>
@@ -47,217 +50,16 @@
 
         <div class="main-column">
             <main class="main-content" id="main-content">
-                </main>
+            </main>
 
-            <div id="lrc-editor-view" class="view-container hidden">
-                <div class="lrc-editor-header">
-                    <div class="lrc-editor-song-info">
-                        <img id="lrc-editor-artwork" src="./assets/default_artwork.png" alt="Song Artwork">
-                        <div>
-                            <h2 id="lrc-editor-title">曲タイトル</h2>
-                            <p id="lrc-editor-artist">アーティスト</p>
-                        </div>
-                    </div>
-                    <div class="lrc-editor-actions">
-                        <button id="lrc-editor-undo-btn" class="header-button" disabled>元に戻す</button>
-                        <button id="lrc-editor-insert-blank-btn" class="header-button">空白行挿入</button>
-                         <button id="lrc-editor-help-btn" class="header-button">？ ヘルプ</button>
-                         <button id="lrc-editor-exit-btn" class="header-button">編集を終了</button>
-                         <button id="lrc-editor-save-btn" class="header-button primary">LRCを保存</button>
-                    </div>
-                </div>
+            <div id="lrc-editor-view" class="view-container hidden"></div>
+            <div id="normalize-view" class="view-container hidden"></div>
+            <div id="quiz-view" class="view-container hidden"></div>
+            <div id="mtp-transfer-view" class="view-container hidden"></div>
 
-                <div class="lrc-editor-controls">
-                    <button id="lrc-editor-play-pause-btn" class="play-btn">
-                         <svg class="play-pause-icon" viewBox="0 0 24 24">
-                            <path class="icon-part-1"></path>
-                            <path class="icon-part-2"></path>
-                        </svg>
-                    </button>
-                    <span id="lrc-editor-current-time">0:00</span>
-                    <input type="range" id="lrc-editor-progress-bar" value="0" step="any">
-                    <span id="lrc-editor-total-duration">0:00</span>
-                    <button id="lrc-editor-timestamp-btn" class="header-button timestamp-btn">タイムスタンプ ( T )</button>
-                </div>
-
-                <div id="lrc-editor-lyrics-area">
-                    <p class="lyrics-line placeholder">ここに歌詞テキストを読み込むか、ペーストしてください...</p>
-                    </div>
-                 <textarea id="lrc-editor-textarea" class="hidden" placeholder="ここに歌詞を貼り付けてください..."></textarea>
-                 <button id="lrc-editor-load-text-btn" class="header-button hidden">テキストを読み込む</button>
-
-                 <div id="lrc-editor-help-popup" class="hidden help-popup">
-                     <h4>同期歌詞エディタの使い方</h4>
-                     <ol>
-                         <li>曲を再生し、歌詞の行が始まるタイミングで「タイムスタンプ ( T )」ボタンをクリックするか、キーボードの <kbd>T</kbd> キーを押します。</li>
-                         <li>タイムスタンプが記録されると、次の行が自動的に選択されます。</li>
-                         <li>シークバーで再生位置を調整しながら、すべての行にタイムスタンプを打ちます。</li>
-                         <li>打ち間違えた場合は、該当の行をクリックして再度タイムスタンプを打つことで上書きできます。</li>
-                         <li>歌詞がない場合は、テキストエリアに歌詞を貼り付けて「テキストを読み込む」ボタンを押してください。</li>
-                         <li>完了したら「LRCを保存」ボタンを押します。</li>
-                     </ol>
-                     <button id="lrc-editor-help-close-btn">閉じる</button>
-                 </div>
-            </div>
-            <div id="normalize-view" class="view-container hidden">
-                <div class="view-header">
-                    <h1>音量をノーマライズ</h1>
-                </div>
-                <div class="normalize-content-wrapper">
-                    <div id="normalize-controls">
-                        <div id="normalize-drop-zone">
-                            <p>ここにファイルやフォルダをドラッグ＆ドロップ</p>
-                            <div class="normalize-buttons-primary">
-                                <button id="normalize-add-files-btn">ファイルを追加</button>
-                                <button id="normalize-add-folder-btn">フォルダを追加</button>
-                                <button id="normalize-load-library-btn">ライブラリから読み込む</button>
-                            </div>
-                        </div>
-                        <div class="normalize-settings">
-                            <div class="setting-item">
-                                <label for="target-lufs-slider">ターゲット音量:</label>
-                                <input type="range" id="target-lufs-slider" min="-24" max="-6" value="-18" step="0.5">
-                                <span id="target-lufs-value">-18.0 LUFS</span>
-                            </div>
-                        </div>
-                        <div class="normalize-settings">
-                             <div class="setting-item">
-                                <label>保存先:</label>
-                                <div class="radio-group-horizontal">
-                                    <label><input type="radio" name="output-mode" value="overwrite" checked> 上書き</label>
-                                    <label><input type="radio" name="output-mode" value="folder"> 別のフォルダ</label>
-                                </div>
-                            </div>
-                            <div class="setting-item hidden" id="output-folder-container">
-                                <button id="select-output-folder-btn">フォルダを選択...</button>
-                                <p id="output-folder-path">選択されていません</p>
-                            </div>
-                            <div class="setting-item" id="backup-container">
-                                <label>
-                                    <input type="checkbox" id="backup-toggle" checked>
-                                    <span>元ファイルのバックアップを作成する (.bak)</span>
-                                </label>
-                            </div>
-                        </div>
-                         <div class="normalize-actions">
-                            <button id="normalize-analyze-btn" disabled>解析</button>
-                            <button id="normalize-apply-btn" disabled>ノーマライズを適用</button>
-                        </div>
-                        <div id="normalize-progress-container" class="hidden">
-                            <p id="normalize-progress-label">処理中...</p>
-                            <progress id="normalize-progress-bar" value="0" max="100"></progress>
-                        </div>
-                    </div>
-                    <div id="normalize-file-container">
-                        <div class="normalize-table-container">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th><input type="checkbox" id="normalize-select-all"></th>
-                                        <th>ファイル名</th>
-                                        <th>現在の音量</th>
-                                        <th>調整値</th>
-                                        <th>ステータス</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="normalize-file-list">
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div id="quiz-view" class="view-container hidden">
-                <div id="quiz-start-screen">
-                    <h1>イントロクイズ</h1>
-                    <p>曲の冒頭を聴いて、曲名を当ててください。</p>
-                    <div class="quiz-options">
-                        <strong>問題数:</strong>
-                        <label><input type="radio" name="quiz-length" value="10" checked> 10問</label>
-                        <label><input type="radio" name="quiz-length" value="20"> 20問</label>
-                        <label><input type="radio" name="quiz-length" value="30"> 30問</label>
-                    </div>
-                    <div class="quiz-options">
-                        <strong>難易度:</strong>
-                        <label><input type="radio" name="quiz-difficulty" value="easy"> かんたん</label>
-                        <label><input type="radio" name="quiz-difficulty" value="normal" checked> ふつう</label>
-                        <label><input type="radio" name="quiz-difficulty" value="hard"> むずかしい</label>
-                    </div>
-                    <button id="quiz-start-btn" class="header-button">クイズを開始</button>
-                </div>
-                <div id="quiz-game-screen" class="hidden">
-                    <div class="quiz-header">
-                        <h2>第<span id="quiz-question-number">1</span>問 / <span id="quiz-total-questions">10</span>問</h2>
-                        <p id="quiz-timer">0.000s</p>
-                    </div>
-                    <div class="quiz-player">
-                        <p>下のボタンを押すか、Spaceキーで再生</p>
-                        <button id="quiz-play-btn" class="play-btn">
-                            <img src="./assets/icons/play.svg" alt="Play Snippet">
-                        </button>
-                    </div>
-                    <div id="quiz-answers" class="quiz-grid"></div>
-                    <div id="quiz-result" class="hidden">
-                        <p id="quiz-result-message"></p>
-                        <div class="quiz-result-details">
-                            <img id="quiz-correct-artwork" src="./assets/default_artwork.png" alt="Correct Answer Artwork">
-                            <div id="quiz-correct-info">
-                                <h3 id="quiz-correct-title"></h3>
-                                <p id="quiz-correct-artist"></p>
-                            </div>
-                        </div>
-                        <button id="quiz-next-btn" class="header-button">次の問題へ</button>
-                    </div>
-                </div>
-                <div id="quiz-final-screen" class="hidden">
-                    <h1>結果発表</h1>
-                    <div class="quiz-final-stats">
-                        <p>正解数: <span id="quiz-final-score">0</span> / <span id="quiz-final-total">10</span></p>
-                        <p>平均回答時間: <span id="quiz-final-avg-time">0.000</span>s</p>
-                    </div>
-                    <div class="quiz-ranking">
-                        <h3>ハイスコアランキング</h3>
-                        <ol id="quiz-ranking-list"></ol>
-                    </div>
-                    <button id="quiz-retry-btn" class="header-button">もう一度挑戦</button>
-                </div>
-            </div>
-
-            <div id="mtp-transfer-view" class="view-container hidden">
-                <div class="view-header">
-                    <h1>デバイスへ転送</h1>
-                    <div class="header-actions">
-                        <span id="mtp-transfer-device-name">デバイス名</span>
-                        <button id="mtp-transfer-close-btn" class="header-button">閉じる</button>
-                    </div>
-                </div>
-                <div class="transfer-content-wrapper">
-                    <div class="transfer-pane source-pane">
-                        <h3>ライブラリ</h3>
-                        <div id="mtp-transfer-source-list" class="transfer-list-container">
-                            <p>転送する曲を読み込み中...</p>
-                        </div>
-                    </div>
-
-                    <div class="transfer-actions">
-                        <button id="mtp-transfer-start-btn" title="選択した項目を転送">
-                            &gt;&gt;
-                        </button>
-                    </div>
-
-                    <div class="transfer-pane device-pane">
-                        <h3>デバイス</h3>
-                        <div id="mtp-transfer-device-list" class="transfer-list-container">
-                            <p>デバイスのファイルリストを読み込み中...</p>
-                        </div>
-                    </div>
-                </div>
-                <div id="mtp-transfer-progress-container" class="transfer-progress-container hidden">
-                    <p id="mtp-transfer-progress-label">転送中...</p>
-                    <progress id="mtp-transfer-progress-bar" value="0" max="100"></progress>
-                </div>
-            </div>
-            </div> <div id="resizer" class="resizer-vertical"></div>
+        </div>
+        
+        <div id="resizer" class="resizer-vertical"></div>
         <div class="sidebar right-sidebar">
             <div id="now-playing-container">
                 <div id="now-playing-artwork-container">
@@ -296,7 +98,9 @@
                 </div>
             </div>
         </div>
-    </div> <footer class="playback-bar">
+    </div> 
+    
+    <footer class="playback-bar">
         <div class="playback-controls">
             <button id="shuffle-btn" class="playback-mode-btn" title="シャッフル">
                 <img src="./assets/icons/random.svg" alt="Shuffle">
@@ -333,7 +137,7 @@
                 <img src="./assets/icons/airplay.svg" alt="Devices">
             </button>
             <div id="device-popup" class="device-popup">
-                </div>
+            </div>
             
             <button id="mtp-device-button" class="hidden" title="MTPデバイス">
                 <span>📱</span> 
