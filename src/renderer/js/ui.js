@@ -1,6 +1,5 @@
 import { state, elements } from './state.js';
-// ▼▼▼ createListHeader を追加インポート ▼▼▼
-import { setupSongListScroller, createListHeader } from './ui/list-renderer.js';
+import { setupSongListScroller, createListHeader, initListHeaderResizing } from './ui/list-renderer.js'; // ★★★ 追加: 必要な関数をインポート
 import { resolveArtworkPath, formatSongTitle } from './ui/utils.js';
 import { setEqualizerColorFromArtwork } from './player.js';
 const { ipcRenderer } = require('electron');
@@ -14,11 +13,12 @@ let currentSearchQuery = '';
 export function updateSearchQuery(query) {
     const newQuery = query.toLowerCase().trim();
     
-    // クエリに変更がない場合は何もしない
+    // クエリに変更がなく、かつ既にトラックビューなら何もしない
     if (currentSearchQuery === newQuery && state.activeViewId === 'track-view') return;
 
     currentSearchQuery = newQuery;
 
+    // 検索クエリがある場合、または現在トラックビューにいる場合は描画更新
     if (currentSearchQuery) {
         if (state.activeViewId !== 'track-view') {
             switchToTrackView();
@@ -27,7 +27,8 @@ export function updateSearchQuery(query) {
     } else {
         // 検索ボックスが空になった場合
         if (state.activeViewId === 'track-view') {
-            renderTrackView(); // 「曲」ヘッダーで再描画
+            // 全曲リストに戻す（ヘッダー付きで再描画）
+            renderTrackView();
         }
     }
 }
@@ -144,6 +145,7 @@ export function updateNowPlayingView(song) {
 }
 
 export function renderTrackView() {
+    // 1. フィルタリング
     let displaySongs = state.library;
     if (currentSearchQuery) {
         displaySongs = state.library.filter(song => {
@@ -156,34 +158,45 @@ export function renderTrackView() {
         });
     }
 
-    elements.musicList.innerHTML = '';
-    
-    // ▼▼▼ 修正: ページヘッダーの追加 ▼▼▼
-    const viewHeader = document.createElement('div');
-    viewHeader.className = 'view-header';
-    if (currentSearchQuery) {
-        viewHeader.innerHTML = `<h1>検索結果: "${currentSearchQuery}"</h1>`;
-    } else {
-        viewHeader.innerHTML = `<h1>曲</h1>`;
-    }
-    elements.musicList.appendChild(viewHeader);
+    // 2. メインコンテンツをクリア
+    elements.mainContent.innerHTML = '';
 
+    // 3. ビュー構造（ヘッダー等）を再構築
+    const viewWrapper = document.createElement('div');
+    viewWrapper.className = 'view-container';
+    // flexレイアウトで縦に並べるためのスタイル（views.cssの想定）
+    viewWrapper.style.display = 'flex';
+    viewWrapper.style.flexDirection = 'column';
+    viewWrapper.style.height = '100%';
+
+    // タイトルヘッダー
+    const titleText = currentSearchQuery ? `検索結果: "${currentSearchQuery}"` : '曲';
+    viewWrapper.innerHTML = `<h1>${titleText}</h1>`;
+
+    // 項目ヘッダー（タイトル・アーティスト・アルバム...）
+    const listHeaderWrapper = document.createElement('div');
+    listHeaderWrapper.innerHTML = createListHeader();
+    viewWrapper.appendChild(listHeaderWrapper.firstElementChild);
+
+    // リストコンテナ（スクロール領域）
+    const listContainer = document.createElement('div');
+    listContainer.className = 'track-list-container';
+    listContainer.style.flex = '1';
+    listContainer.style.overflowY = 'auto'; // スクロール可能にする
+    viewWrapper.appendChild(listContainer);
+
+    elements.mainContent.appendChild(viewWrapper);
+
+    // 4. リストの中身を描画
     if (displaySongs.length === 0) {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'placeholder';
-        placeholder.textContent = '検索結果が見つかりません';
-        elements.musicList.appendChild(placeholder);
+        listContainer.innerHTML = '<div class="placeholder">検索結果が見つかりません</div>';
         return;
     }
 
-    // ▼▼▼ 修正: リストの列ヘッダーの追加 ▼▼▼
-    const listHeaderContainer = document.createElement('div');
-    listHeaderContainer.innerHTML = createListHeader();
-    // createListHeaderは文字列を返すので、要素化して追加
-    elements.musicList.appendChild(listHeaderContainer.firstElementChild);
-
-    // VirtualScrollerでリストを描画
-    setupSongListScroller(elements.musicList, displaySongs, {
+    setupSongListScroller(listContainer, displaySongs, {
         contextView: 'track-view'
     });
+    
+    // 列リサイズの初期化
+    initListHeaderResizing(viewWrapper);
 }
