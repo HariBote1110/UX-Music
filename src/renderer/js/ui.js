@@ -1,5 +1,6 @@
 import { state, elements } from './state.js';
-import { setupSongListScroller } from './ui/list-renderer.js';
+// ▼▼▼ createListHeader を追加インポート ▼▼▼
+import { setupSongListScroller, createListHeader } from './ui/list-renderer.js';
 import { resolveArtworkPath, formatSongTitle } from './ui/utils.js';
 import { setEqualizerColorFromArtwork } from './player.js';
 const { ipcRenderer } = require('electron');
@@ -18,9 +19,7 @@ export function updateSearchQuery(query) {
 
     currentSearchQuery = newQuery;
 
-    // 検索クエリがある場合、または現在トラックビューにいる場合は描画更新
     if (currentSearchQuery) {
-        // 他の画面にいても、検索時は「曲」画面に強制切り替え
         if (state.activeViewId !== 'track-view') {
             switchToTrackView();
         }
@@ -28,22 +27,18 @@ export function updateSearchQuery(query) {
     } else {
         // 検索ボックスが空になった場合
         if (state.activeViewId === 'track-view') {
-            // 全曲リストに戻す
-            renderTrackView();
+            renderTrackView(); // 「曲」ヘッダーで再描画
         }
     }
 }
 
-// トラックビュー（曲リスト）への表示切り替えヘルパー
 function switchToTrackView() {
     state.activeViewId = 'track-view';
     state.currentDetailView = { type: null, identifier: null, data: null };
 
-    // メインコンテンツを表示
     document.querySelectorAll('.view-container').forEach(el => el.classList.add('hidden'));
     if (elements.mainContent) elements.mainContent.classList.remove('hidden');
     
-    // サイドバーの「曲」をアクティブ化
     if (elements.navLinks) {
         elements.navLinks.forEach(l => l.classList.remove('active'));
         const trackLink = document.querySelector('.nav-link[data-view="track-view"]');
@@ -149,7 +144,6 @@ export function updateNowPlayingView(song) {
 }
 
 export function renderTrackView() {
-    // 1. 検索クエリに基づいてリストをフィルタリング
     let displaySongs = state.library;
     if (currentSearchQuery) {
         displaySongs = state.library.filter(song => {
@@ -162,14 +156,33 @@ export function renderTrackView() {
         });
     }
 
-    elements.musicList.innerHTML = ''; // コンテナをクリア
+    elements.musicList.innerHTML = '';
     
+    // ▼▼▼ 修正: ページヘッダーの追加 ▼▼▼
+    const viewHeader = document.createElement('div');
+    viewHeader.className = 'view-header';
+    if (currentSearchQuery) {
+        viewHeader.innerHTML = `<h1>検索結果: "${currentSearchQuery}"</h1>`;
+    } else {
+        viewHeader.innerHTML = `<h1>曲</h1>`;
+    }
+    elements.musicList.appendChild(viewHeader);
+
     if (displaySongs.length === 0) {
-        elements.musicList.innerHTML = '<div class="placeholder">検索結果が見つかりません</div>';
+        const placeholder = document.createElement('div');
+        placeholder.className = 'placeholder';
+        placeholder.textContent = '検索結果が見つかりません';
+        elements.musicList.appendChild(placeholder);
         return;
     }
 
-    // 2. VirtualScroller (list-renderer.js) を使用して描画
+    // ▼▼▼ 修正: リストの列ヘッダーの追加 ▼▼▼
+    const listHeaderContainer = document.createElement('div');
+    listHeaderContainer.innerHTML = createListHeader();
+    // createListHeaderは文字列を返すので、要素化して追加
+    elements.musicList.appendChild(listHeaderContainer.firstElementChild);
+
+    // VirtualScrollerでリストを描画
     setupSongListScroller(elements.musicList, displaySongs, {
         contextView: 'track-view'
     });
