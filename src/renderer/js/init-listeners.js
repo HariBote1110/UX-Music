@@ -68,6 +68,26 @@ export function initEventListeners() {
         });
     }
     // --- ▲▲▲ ここまで ▲▲▲ ---
+
+    // --- ▼▼▼ 修正: サイドバータブの切り替えロジックを追加 ▼▼▼ ---
+    if (elements.sidebarTabs) {
+        elements.sidebarTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // アクティブクラスを全削除
+                elements.sidebarTabs.forEach(t => t.classList.remove('active'));
+                elements.sidebarTabContents.forEach(c => c.classList.remove('active'));
+                
+                // クリックされたタブをアクティブ化
+                tab.classList.add('active');
+                const targetId = tab.dataset.tab;
+                const targetContent = document.getElementById(targetId);
+                if (targetContent) {
+                    targetContent.classList.add('active');
+                }
+            });
+        });
+    }
+    // --- ▲▲▲ ここまで ▲▲▲ ---
     
     elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
     elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
