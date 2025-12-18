@@ -3,20 +3,11 @@
 const { ipcMain, app, dialog } = require('electron'); // dialog は不要になる
 const path = require('path');
 const fs = require('fs');
-// ▼▼▼ 削除 (import-handler.js へ移動) ▼▼▼
-// const crypto = require('crypto');
-// const { scanPaths, parseFiles, analyzeLoudness } = require('../file-scanner');
-// const os = require('os');
-// const { sanitize } = require('../utils');
-// const sharp = require('sharp');
-// const { Worker } = require('worker_threads');
-// ▲▲▲ 削除 ▲▲▲
-const { analyzeLoudness } = require('../file-scanner'); // analyzeLoudness は残す
+// ▼▼▼ 変更: getSampleRate をインポート ▼▼▼
+const { analyzeLoudness, getSampleRate } = require('../file-scanner'); 
+// ▲▲▲ 変更ここまで ▲▲▲
 const NodeID3 = require('node-id3');
-// ▼▼▼ 追加 ▼▼▼
-// import-handler から saveArtworkToFile をインポート
 const { saveArtworkToFile } = require('./import-handler'); 
-// ▲▲▲ 追加 ▲▲▲
 
 
 let libraryStore;
@@ -24,12 +15,6 @@ let loudnessStore;
 let settingsStore;
 let playCountsStore;
 let albumsStore;
-
-// ▼▼▼ 削除 (import-handler.js へ移動) ▼▼▼
-// async function saveArtworkToFile(picture, albumArtist, albumTitle) { ... }
-// function addSongsToLibraryAndSave(newSongs) { ... }
-// ▲▲▲ 削除 ▲▲▲
-
 
 function registerLibraryHandlers(stores, sendToAllWindows) {
     libraryStore = stores.library;
@@ -53,7 +38,7 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
     });
 
     ipcMain.on('request-loudness-analysis', async (event, filePath) => {
-        const result = await analyzeLoudness(filePath); // file-scanner の analyzeLoudness
+        const result = await analyzeLoudness(filePath);
         if (result.success) {
             const loudnessData = loudnessStore.load();
             loudnessData[filePath] = result.loudness;
@@ -62,16 +47,16 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
         event.sender.send('loudness-analysis-result', result);
     });
 
-    // ▼▼▼ 削除 (import-handler.js へ移動) ▼▼▼
-    // ipcMain.on('start-scan-paths', async (event, paths) => { ... });
-    // ▲▲▲ 削除 ▲▲▲
-
     ipcMain.handle('get-loudness-value', (event, songPath) => (loudnessStore.load() || {})[songPath] || null);
 
     ipcMain.on('request-initial-library', (event) => {
         const songs = libraryStore.load() || [];
         const albums = albumsStore.load() || {};
         event.sender?.send('load-library', { songs, albums });
+        
+        // ▼▼▼ 追加: ライブラリ読み込み後にSRマイグレーションをチェック ▼▼▼
+        checkAndMigrateSampleRates(songs, sendToAllWindows);
+        // ▲▲▲ 追加ここまで ▲▲▲
     });
 
 
@@ -106,26 +91,16 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                 tagsToWrite.image = undefined; 
                 artworkResult = null; 
             } else if (tagsToWrite.image && tagsToWrite.image.imageBuffer) {
-                // ▼▼▼ 修正箇所 (import-handler.js からインポートした関数を使用) ▼▼▼
                 artworkResult = await saveArtworkToFile({ data: tagsToWrite.image.imageBuffer }, newTags.artist || newTags.albumartist, newTags.album);
-                // ▲▲▲ 修正箇所 ▲▲▲
-                
-                // node-id3 は Buffer を期待するので、imageBuffer は削除しない
-                // tagsToWrite.image.imageBuffer = undefined; 
             } else {
                  delete tagsToWrite.image;
             }
 
-            // node-id3 に渡すタグオブジェクトから imageBuffer を除外（もしあれば）
-            // imageBuffer は saveArtworkToFile 専用
             if (tagsToWrite.image && tagsToWrite.image.imageBuffer) {
                 tagsToWrite.image = {
-                    ...tagsToWrite.image, // mime, type, description など
-                    imageBuffer: tagsToWrite.image.imageBuffer // Buffer は渡す
+                    ...tagsToWrite.image, 
+                    imageBuffer: tagsToWrite.image.imageBuffer 
                 };
-                // imageBuffer は saveArtworkToFile でのみ使い、node-id3 には渡さない場合
-                // delete tagsToWrite.image.imageBuffer; 
-                // → NodeID3.write が imageBuffer を期待しているため、削除しない
             }
 
             const success = NodeID3.write(tagsToWrite, filePath);
@@ -141,13 +116,12 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                 return { success: false, message: 'ライブラリに対象の曲が見つかりません。' };
             }
             
-            const oldSong = library[songIndex]; // 更新前の曲情報
+            const oldSong = library[songIndex]; 
             const updatedSong = { ...oldSong };
             
-            // タグ情報を更新
             updatedSong.title = newTags.title ?? updatedSong.title;
             updatedSong.artist = newTags.artist ?? updatedSong.artist;
-            updatedSong.albumartist = newTags.albumartist ?? updatedSong.albumartist; // albumartist も更新
+            updatedSong.albumartist = newTags.albumartist ?? updatedSong.albumartist; 
             updatedSong.album = newTags.album ?? updatedSong.album;
             updatedSong.genre = newTags.genre ?? updatedSong.genre;
 
@@ -155,33 +129,26 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                  updatedSong.artwork = artworkResult;
             }
 
-            // アルバムキーを再計算
             const albumArtistKey = updatedSong.albumartist || updatedSong.artist || 'Unknown Artist';
             const albumKey = `${albumArtistKey}---${updatedSong.album || 'Unknown Album'}`;
-            const oldAlbumKey = oldSong.albumKey; // 更新前のキー
+            const oldAlbumKey = oldSong.albumKey; 
             updatedSong.albumKey = albumKey; 
 
             library[songIndex] = updatedSong;
             libraryStore.save(library);
 
-            // albums.json の更新
             const albumsData = albumsStore.load() || {};
             let albumNeedsUpdate = false;
             
-            // アルバム情報が変わった場合
-            if (oldAlbumKey !== newAlbumKey) {
-                // 古いアルバムから曲を削除
+            if (oldAlbumKey !== albumKey) { // newAlbumKey was undefined in snippet, using albumKey
                 if (albumsData[oldAlbumKey]) {
                     albumsData[oldAlbumKey].songs = albumsData[oldAlbumKey].songs.filter(p => p !== filePath);
-                    // 曲がなくなったらアルバムごと削除するなども検討
                     albumNeedsUpdate = true;
                 }
             }
 
-            // 新しいアルバム（または既存のアルバム）に曲を追加/情報を更新
-            if (!albumsData[newAlbumKey]) {
-                // 新しいアルバムエントリを作成
-                albumsData[newAlbumKey] = {
+            if (!albumsData[albumKey]) {
+                albumsData[albumKey] = {
                     title: updatedSong.album,
                     artist: albumArtistKey,
                     songs: [filePath],
@@ -189,14 +156,12 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                 };
                 albumNeedsUpdate = true;
             } else {
-                // 既存のアルバム情報を更新
-                if (!albumsData[newAlbumKey].songs.includes(filePath)) {
-                    albumsData[newAlbumKey].songs.push(filePath);
+                if (!albumsData[albumKey].songs.includes(filePath)) {
+                    albumsData[albumKey].songs.push(filePath);
                     albumNeedsUpdate = true;
                 }
-                // アートワークが変更された場合
-                if (artworkResult !== undefined && JSON.stringify(albumsData[newAlbumKey].artwork) !== JSON.stringify(artworkResult)) {
-                    albumsData[newAlbumKey].artwork = artworkResult;
+                if (artworkResult !== undefined && JSON.stringify(albumsData[albumKey].artwork) !== JSON.stringify(artworkResult)) {
+                    albumsData[albumKey].artwork = artworkResult;
                     albumNeedsUpdate = true;
                 }
             }
@@ -217,7 +182,51 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
     });
 }
 
+// ▼▼▼ 追加: マイグレーション処理関数 ▼▼▼
+/**
+ * ライブラリ内の曲をチェックし、sampleRateが欠落している場合はスキャンして更新する
+ */
+async function checkAndMigrateSampleRates(songs, sendToAllWindows) {
+    let updatedCount = 0;
+    // 更新が必要な曲をリストアップ
+    const migrationList = [];
+    
+    for (let i = 0; i < songs.length; i++) {
+        const song = songs[i];
+        // sampleRateが無い、かつローカルファイルの場合
+        if (!song.sampleRate && song.type === 'local' && song.path) {
+            migrationList.push({ index: i, path: song.path });
+        }
+    }
+
+    if (migrationList.length === 0) return; // 更新対象なし
+
+    console.log(`[Library] Starting Sample Rate migration for ${migrationList.length} songs...`);
+
+    // 順次スキャンして更新
+    for (const item of migrationList) {
+        const sr = await getSampleRate(item.path);
+        if (sr) {
+            songs[item.index].sampleRate = sr;
+            // ハイレゾフラグも念のため再判定
+            songs[item.index].isHiRes = (sr > 48000); 
+            updatedCount++;
+        }
+    }
+
+    if (updatedCount > 0) {
+        // 保存
+        libraryStore.save(songs);
+        console.log(`[Library] Migration complete. Updated ${updatedCount} songs.`);
+        
+        // レンダラーへ最新状態を送信（再読み込みを促す）
+        // 既存の 'load-library' イベントを再送することでUIも最新化されます
+        const albums = albumsStore.load() || {};
+        sendToAllWindows('load-library', { songs, albums });
+    }
+}
+// ▲▲▲ 追加ここまで ▲▲▲
+
 module.exports = {
     registerLibraryHandlers
-    // saveArtworkToFile は import-handler.js からエクスポートされる
 };

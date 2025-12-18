@@ -8,7 +8,6 @@ import { setAudioOutput, setVisualizerTarget, stop as stopPlayer } from './playe
 import { updateNowPlayingView } from './ui/now-playing.js'; 
 import { loadLyricsForSong } from './lyrics-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
-// 'formatBytes' が 'utils.js' に存在することを前提とします
 import { showContextMenu, formatBytes } from './ui/utils.js'; 
 const { ipcRenderer } = require('electron');
 
@@ -49,8 +48,6 @@ export function updatePlayingIndicators() {
 
 /**
  * 指定された曲の再生回数表示を更新する
- * @param {string} songPath - 曲のファイルパス
- * @param {number} count - 新しい再生回数
  */
 export function updatePlayCountDisplay(songPath, count) {
     try {
@@ -93,8 +90,6 @@ export function initUI() {
         });
     });
 
-    // ▼▼▼ MTPデバイス関連のUI初期化（前回までの変更点） ▼▼▼
-
     // MTPデバイスボタンのクリックイベント
     elements.mtpDeviceButton.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -111,69 +106,58 @@ export function initUI() {
     
     // メインプロセスからのMTPデバイス状態変更通知を受け取る
     ipcRenderer.on('mtp-device-status', (event, device) => {
-        // ★ ロガー追加 (レンダラーがイベントを受信したか確認)
         console.log('[MTP-LOG] レンダラーが "mtp-device-status" イベントを受信しました。デバイス情報:', device);
         updateMtpDeviceView(device);
     });
-    console.log('[MTP-LOG] initUI完了。MTPデバイスのリスナーを設定しました。'); // ★ ロガー追加
+    console.log('[MTP-LOG] initUI完了。MTPデバイスのリスナーを設定しました。');
 
     // MTPポップアップの「キューを転送」ボタンのクリックイベント
     elements.mtpTransferQueueBtn.addEventListener('click', () => {
         elements.mainContent.classList.add('hidden');
         elements.mtpTransferView.classList.remove('hidden');
         elements.mtpDevicePopup.classList.remove('active');
-        console.log('[MTP-LOG] 転送ビューを開きました。'); // ★ ロガー追加
-        // loadQueueIntoTransferView(); // (今後の実装)
+        console.log('[MTP-LOG] 転送ビューを開きました。');
     });
 
     // 転送ビューの「閉じる」ボタンのクリックイベント
     elements.mtpTransferCloseBtn.addEventListener('click', () => {
         elements.mtpTransferView.classList.add('hidden');
         elements.mainContent.classList.remove('hidden');
-        console.log('[MTP-LOG] 転送ビューを閉じました。'); // ★ ロガー追加
+        console.log('[MTP-LOG] 転送ビューを閉じました。');
     });
-    
-    // ▲▲▲ MTPデバイス関連のUI初期化 ▲▲▲
 }
 
-// ▼▼▼ MTPデバイスUI更新（前回までの変更点） ▼▼▼
 /**
  * MTPデバイスUIの状態を更新する
- * @param {object | null} device - メインプロセスから送られてきたデバイス情報
  */
 function updateMtpDeviceView(device) {
-    // ★ ロガー追加 (UI更新関数が呼ばれたか確認)
     console.log('[MTP-LOG] updateMtpDeviceView が呼ばれました。デバイス:', device ? device.name : 'null');
 
     if (device) {
-        // デバイスが接続された
-        elements.mtpDeviceButton.classList.remove('hidden'); // ★重要★ これでボタンが表示される
+        elements.mtpDeviceButton.classList.remove('hidden'); 
         elements.mtpDeviceName.textContent = device.name || 'MTP Device';
         elements.mtpTransferDeviceName.textContent = device.name || 'MTP Device';
         
-        console.log('[MTP-LOG] ボタンの "hidden" クラスを削除しました。'); // ★ ロガー追加
+        console.log('[MTP-LOG] ボタンの "hidden" クラスを削除しました。'); 
         
-        // ストレージ情報の表示
         if (device.storage && device.storage.total > 0) {
             const { free, total } = device.storage;
             const used = total - free;
             const usedPercent = (used / total) * 100;
             
-            // formatBytesが utils.js からインポートされていることを確認
             const fBytes = typeof formatBytes === 'function' ? formatBytes : (b) => `${(b / 1024**3).toFixed(1)} GB`;
 
             elements.mtpStorageUsed.style.width = `${usedPercent}%`;
             elements.mtpStorageLabel.textContent = `${fBytes(free)} 空き (${fBytes(used)} / ${fBytes(total)})`;
         } else {
-            console.warn('[MTP-LOG] デバイスのストレージ情報が利用できません。', device.storage); // ★ ロガー追加
+            console.warn('[MTP-LOG] デバイスのストレージ情報が利用できません。', device.storage);
             elements.mtpStorageUsed.style.width = '0%';
             elements.mtpStorageLabel.textContent = 'ストレージ情報なし';
         }
     } else {
-        // デバイスが切断された
         elements.mtpDeviceButton.classList.add('hidden');
         elements.mtpDevicePopup.classList.remove('active');
-        console.log('[MTP-LOG] ボタンに "hidden" クラスを追加しました (切断)。'); // ★ ロガー追加
+        console.log('[MTP-LOG] ボタンに "hidden" クラスを追加しました (切断)。');
         
         if (!elements.mtpTransferView.classList.contains('hidden')) {
             elements.mtpTransferView.classList.add('hidden');
@@ -183,7 +167,6 @@ function updateMtpDeviceView(device) {
         }
     }
 }
-// ▲▲▲ MTPデバイスUI更新 ▲▲▲
 
 export function addSongsToLibrary({ songs, albums }) {
     console.time('Renderer: Process Library Data');
@@ -198,10 +181,20 @@ export function addSongsToLibrary({ songs, albums }) {
     }
 
     if (songs && songs.length > 0) {
-        const existingPaths = new Set(state.library.map(song => song.path));
-        const uniqueNewSongs = songs.filter(song => !existingPaths.has(song.path));
-        state.library.push(...uniqueNewSongs);
+        const libraryMap = new Map();
+        state.library.forEach(song => libraryMap.set(song.path, song));
+
+        songs.forEach(newSong => {
+            if (libraryMap.has(newSong.path)) {
+                // 既存の曲: プロパティを更新
+                const existingSong = libraryMap.get(newSong.path);
+                Object.assign(existingSong, newSong);
+            } else {
+                state.library.push(newSong);
+            }
+        });
     }
+
     groupLibraryByAlbum(migrationNeeded);
     groupLibraryByArtist();
     if (migrationNeeded) {
@@ -320,9 +313,26 @@ export async function updateAudioDevices() {
         
         const activeDeviceId = settings.audioOutputId || 'default';
 
-        audioDevices.forEach(device => {
+        // --- ▼▼▼ 修正: 仮想デバイス(Direct Link)を追加 ▼▼▼ ---
+        const directLinkDevice = {
+            deviceId: 'ux-direct-link',
+            label: 'UX Audio Router (Direct)',
+            isVirtual: true
+        };
+        // リストの先頭に追加
+        const displayDevices = [directLinkDevice, ...audioDevices];
+        // --- ▲▲▲ 修正ここまで ▲▲▲ ---
+
+        displayDevices.forEach(device => {
             const item = document.createElement('div');
             item.className = 'device-popup-item';
+            
+            // 仮想デバイスのスタイルリング
+            if (device.isVirtual) {
+                item.style.fontWeight = 'bold';
+                item.style.color = '#7289da'; 
+            }
+
             item.textContent = device.label || `スピーカー ${elements.devicePopup.children.length + 1}`;
             item.dataset.deviceId = device.deviceId;
 
@@ -346,23 +356,26 @@ export async function updateAudioDevices() {
                 elements.devicePopup.classList.remove('active');
             });
 
-            item.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                showContextMenu(e.pageX, e.pageY, [
-                    {
-                        label: 'このデバイスを非表示にする',
-                        action: () => {
-                            const deviceIdToHide = item.dataset.deviceId;
-                            const updatedHiddenDevices = [...hiddenDevices, deviceIdToHide];
-                            ipcRenderer.send('save-settings', { hiddenDeviceIds: updatedHiddenDevices });
-                            showNotification(`「${item.textContent}」を非表示にしました。`);
-                            hideNotification(3000);
-                            updateAudioDevices();
+            // 仮想デバイス以外のみコンテキストメニュー
+            if (!device.isVirtual) {
+                item.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showContextMenu(e.pageX, e.pageY, [
+                        {
+                            label: 'このデバイスを非表示にする',
+                            action: () => {
+                                const deviceIdToHide = item.dataset.deviceId;
+                                const updatedHiddenDevices = [...hiddenDevices, deviceIdToHide];
+                                ipcRenderer.send('save-settings', { hiddenDeviceIds: updatedHiddenDevices });
+                                showNotification(`「${item.textContent}」を非表示にしました。`);
+                                hideNotification(3000);
+                                updateAudioDevices();
+                            }
                         }
-                    }
-                ]);
-            });
+                    ]);
+                });
+            }
 
             elements.devicePopup.appendChild(item);
         });

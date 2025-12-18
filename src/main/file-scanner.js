@@ -1,3 +1,5 @@
+// src/main/file-scanner.js
+
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
@@ -155,7 +157,7 @@ async function parseFiles(filePaths) {
             const artwork = common.picture?.[0] || null;
             const hasVideo = metadata.format.trackInfo?.some(t => t.type === 'video');
             
-            const sampleRate = metadata.format.sampleRate || 0;
+            const sampleRate = metadata.format.sampleRate || 44100;
             const bitsPerSample = metadata.format.bitsPerSample || 0;
             const isHiRes = sampleRate > 48000 || bitsPerSample > 16;
 
@@ -175,6 +177,7 @@ async function parseFiles(filePaths) {
                 type: 'local',
                 hasVideo,
                 isHiRes,
+                sampleRate: sampleRate,
             });
         } catch (error) {
             console.error(`Error parsing metadata for ${filePath}:`, error.message);
@@ -200,4 +203,22 @@ async function scanPaths(paths) {
     return allFiles;
 }
 
-module.exports = { scanPaths, parseFiles, analyzeLoudness, analyzeBPM, analyzeEnergy };
+// ▼▼▼ 追加: 既存ライブラリのマイグレーション用関数 ▼▼▼
+/**
+ * 指定されたファイルのサンプリングレートのみを取得します。
+ */
+async function getSampleRate(filePath) {
+    try {
+        const musicMetadata = (await import('music-metadata')).default;
+        // parseFileのdurationオプションをtrueにするとヘッダー解析だけで済む場合があるが、
+        // デフォルトでも十分高速
+        const metadata = await musicMetadata.parseFile(filePath, { duration: false, skipCovers: true });
+        return metadata.format.sampleRate || 44100;
+    } catch (error) {
+        console.warn(`[GetSampleRate] Failed for ${filePath}:`, error.message);
+        return 44100; // 取得失敗時は安全なデフォルト値
+    }
+}
+// ▲▲▲ 追加ここまで ▲▲▲
+
+module.exports = { scanPaths, parseFiles, analyzeLoudness, analyzeBPM, analyzeEnergy, getSampleRate };

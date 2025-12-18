@@ -12,7 +12,6 @@ function handleSkip() {
     if (state.analysedQueue.enabled && state.currentSongIndex > -1) {
         const skippedSong = state.playbackQueue[state.currentSongIndex];
         const player = document.getElementById('main-player');
-        // 再生時間が0より大きく、曲の長さも0より大きい場合のみ処理
         if (skippedSong && player && player.currentTime > 0 && player.duration > 0) {
             ipcRenderer.send('song-skipped', { song: skippedSong, currentTime: player.currentTime });
         }
@@ -22,7 +21,6 @@ function handleSkip() {
 export async function playSong(index, sourceList = null, forcePlay = false) {
     console.log(`[Logger] 1. playSong() が呼び出されました。曲: ${sourceList ? sourceList[index].title : state.playbackQueue[index].title}`);
     
-    // ユーザーがリストから新しい曲をクリックした場合、前の曲をスキップしたとみなす
     if (sourceList) {
         handleSkip();
     }
@@ -52,7 +50,22 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
         updateNowPlayingView(null);
         return;
     }
-    const songToPlay = songList[index];
+    
+    let songToPlay = songList[index];
+
+    // --- ▼▼▼ 追加: ライブラリ情報の同期 ▼▼▼ ---
+    // 再生しようとしている曲がローカルファイルの場合、ライブラリの最新情報を参照して
+    // sampleRateなどのメタデータを同期させる
+    if (songToPlay.type === 'local' && songToPlay.id) {
+        const librarySong = state.library.find(s => s.id === songToPlay.id);
+        if (librarySong) {
+             // 参照切れを防ぐため、プロパティをマージする
+             Object.assign(songToPlay, librarySong);
+             // キュー内のオブジェクトも更新しておく（次回以降のために）
+             state.playbackQueue[index] = songToPlay;
+        }
+    }
+    // --- ▲▲▲ 追加ここまで ▲▲▲ ---
 
     if (songToPlay.type === 'local' && (songToPlay.bpm === undefined || songToPlay.bpm === null)) {
         console.log(`[BPM] Requesting analysis for: ${songToPlay.title}`);
@@ -85,7 +98,7 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
 }
 
 export function playNextSong() {
-    handleSkip(); // 次の曲へ行く前に、現在の曲をスキップしたと記録
+    handleSkip(); 
     if (state.playbackQueue.length === 0) return;
 
     if (state.playbackMode === PLAYBACK_MODES.LOOP_ONE) {
@@ -112,7 +125,7 @@ export function playNextSong() {
 }
 
 export function playPrevSong() {
-    handleSkip(); // 前の曲へ行く前に、現在の曲をスキップしたと記録
+    handleSkip(); 
     if (state.playbackQueue.length === 0) return;
     let prevIndex = state.currentSongIndex - 1;
     if (prevIndex < 0) {
