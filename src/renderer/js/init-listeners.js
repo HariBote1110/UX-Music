@@ -6,9 +6,7 @@ import { showModal } from './modal.js';
 import { handleQuizKeyPress } from './quiz.js';
 import { updateTextOverflowForSelector } from './ui/utils.js';
 import { updateAudioDevices } from './ui-manager.js';
-// --- ▼▼▼ 新規追加: 検索関数インポート ▼▼▼ ---
 import { updateSearchQuery } from './ui.js';
-// --- ▲▲▲ ここまで ▲▲▲ ---
 const { ipcRenderer } = require('electron');
 const path = require('path');
 
@@ -21,64 +19,109 @@ export function initEventListeners() {
     const libraryActionsBtn = document.getElementById('library-actions-btn');
     const libraryActionsPopup = document.getElementById('library-actions-popup');
     
-    libraryActionsBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        libraryActionsPopup.classList.toggle('hidden');
-    });
-
-    document.getElementById('add-network-folder-btn').addEventListener('click', () => {
-        libraryActionsPopup.classList.add('hidden');
-        showModal({
-            title: 'ネットワークフォルダのパス',
-            placeholder: '\\\\ServerName\\ShareName',
-            onOk: (path) => {
-                ipcRenderer.send('start-scan-paths', [path]);
-            }
+    if (libraryActionsBtn) {
+        libraryActionsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            libraryActionsPopup.classList.toggle('hidden');
         });
-    });
+    }
 
-    document.getElementById('add-youtube-btn').addEventListener('click', () => {
-        libraryActionsPopup.classList.add('hidden');
-        showModal({
-            title: 'YouTubeのリンク',
-            placeholder: 'https://www.youtube.com/watch?v=...',
-            onOk: (url) => ipcRenderer.send('add-youtube-link', url)
+    const addNetworkBtn = document.getElementById('add-network-folder-btn');
+    if (addNetworkBtn) {
+        addNetworkBtn.addEventListener('click', () => {
+            if (libraryActionsPopup) libraryActionsPopup.classList.add('hidden');
+            showModal({
+                title: 'ネットワークフォルダのパス',
+                placeholder: '\\\\ServerName\\ShareName',
+                onOk: (path) => {
+                    ipcRenderer.send('start-scan-paths', [path]);
+                }
+            });
         });
-    });
+    }
+
+    const addYoutubeBtn = document.getElementById('add-youtube-btn');
+    if (addYoutubeBtn) {
+        addYoutubeBtn.addEventListener('click', () => {
+            if (libraryActionsPopup) libraryActionsPopup.classList.add('hidden');
+            showModal({
+                title: 'YouTubeのリンク',
+                placeholder: 'https://www.youtube.com/watch?v=...',
+                onOk: (url) => ipcRenderer.send('add-youtube-link', url)
+            });
+        });
+    }
     
-    document.getElementById('add-youtube-playlist-btn').addEventListener('click', () => {
-        libraryActionsPopup.classList.add('hidden');
-        showModal({
-            title: 'YouTubeプレイリストのリンク',
-            placeholder: 'https://www.youtube.com/playlist?list=...',
-            onOk: (url) => ipcRenderer.send('import-youtube-playlist', url)
+    const addYoutubePlaylistBtn = document.getElementById('add-youtube-playlist-btn');
+    if (addYoutubePlaylistBtn) {
+        addYoutubePlaylistBtn.addEventListener('click', () => {
+            if (libraryActionsPopup) libraryActionsPopup.classList.add('hidden');
+            showModal({
+                title: 'YouTubeプレイリストのリンク',
+                placeholder: 'https://www.youtube.com/playlist?list=...',
+                onOk: (url) => ipcRenderer.send('import-youtube-playlist', url)
+            });
         });
-    });
+    }
 
-    document.getElementById('set-library-btn').addEventListener('click', () => {
-        libraryActionsPopup.classList.add('hidden');
-        ipcRenderer.send('set-library-path');
-    });
+    const setLibraryBtn = document.getElementById('set-library-btn');
+    if (setLibraryBtn) {
+        setLibraryBtn.addEventListener('click', () => {
+            if (libraryActionsPopup) libraryActionsPopup.classList.add('hidden');
+            ipcRenderer.send('set-library-path');
+        });
+    }
 
-    // --- ▼▼▼ 新規追加: 検索ボックスのリスナー ▼▼▼ ---
+    // 検索ボックス
     const searchInput = document.getElementById('search-input');
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
             updateSearchQuery(e.target.value);
         });
     }
-    // --- ▲▲▲ ここまで ▲▲▲ ---
+    
+    if (elements.dropZone) {
+        elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
+        elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
+        elements.dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            elements.dropZone.classList.remove('drag-over');
+            const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
+            if (allPaths.length === 0) return;
+            const lyricsExtensions = ['.lrc', '.txt'];
+            const lyricsPaths = allPaths.filter(p => lyricsExtensions.includes(path.extname(p).toLowerCase()));
+            const musicPaths = allPaths.filter(p => !lyricsExtensions.includes(path.extname(p).toLowerCase()));
+            if (musicPaths.length > 0) {
+                ipcRenderer.send('start-scan-paths', musicPaths);
+            }
+            if (lyricsPaths.length > 0) {
+                ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
+            }
+        });
+    }
 
-    // --- ▼▼▼ 修正: サイドバータブの切り替えロジックを追加 ▼▼▼ ---
-    if (elements.sidebarTabs) {
+    if (elements.deviceSelectButton) {
+        elements.deviceSelectButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            updateAudioDevices();
+            if (elements.devicePopup) elements.devicePopup.classList.toggle('active');
+        });
+    }
+
+    // --- ▼▼▼ 追加: サイドバーのタブ切り替えロジック ▼▼▼ ---
+    if (elements.sidebarTabs && elements.sidebarTabContents) {
         elements.sidebarTabs.forEach(tab => {
             tab.addEventListener('click', () => {
-                // アクティブクラスを全削除
+                // すべてのタブからactiveクラスを削除
                 elements.sidebarTabs.forEach(t => t.classList.remove('active'));
+                // クリックされたタブにactiveクラスを追加
+                tab.classList.add('active');
+
+                // すべてのコンテンツを非表示にする
                 elements.sidebarTabContents.forEach(c => c.classList.remove('active'));
                 
-                // クリックされたタブをアクティブ化
-                tab.classList.add('active');
+                // 対応するコンテンツを表示する
                 const targetId = tab.dataset.tab;
                 const targetContent = document.getElementById(targetId);
                 if (targetContent) {
@@ -87,32 +130,7 @@ export function initEventListeners() {
             });
         });
     }
-    // --- ▲▲▲ ここまで ▲▲▲ ---
-    
-    elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
-    elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
-    elements.dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        elements.dropZone.classList.remove('drag-over');
-        const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
-        if (allPaths.length === 0) return;
-        const lyricsExtensions = ['.lrc', '.txt'];
-        const lyricsPaths = allPaths.filter(p => lyricsExtensions.includes(path.extname(p).toLowerCase()));
-        const musicPaths = allPaths.filter(p => !lyricsExtensions.includes(path.extname(p).toLowerCase()));
-        if (musicPaths.length > 0) {
-            ipcRenderer.send('start-scan-paths', musicPaths);
-        }
-        if (lyricsPaths.length > 0) {
-            ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
-        }
-    });
-
-    elements.deviceSelectButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        updateAudioDevices();
-        elements.devicePopup.classList.toggle('active');
-    });
+    // --- ▲▲▲ 追加完了 ▲▲▲ ---
 
     window.addEventListener('click', (e) => {
         if (elements.devicePopup && elements.devicePopup.classList.contains('active')) {
@@ -123,11 +141,8 @@ export function initEventListeners() {
         }
     });
 
-    // --- ▼▼▼ 新規追加: 背景での右クリック検知 ▼▼▼ ---
+    // 背景での右クリック検知
     window.addEventListener('contextmenu', (e) => {
-        // 既にソングアイテムなどでハンドリングされている場合は何もしない
-        // (ソングアイテム等は stopPropagation をしていないようだが preventDefault しているはず)
-        // ここでは要素をチェックして、インタラクティブな要素でなければ汎用メニューを出す
         if (e.target.closest('.song-item') || 
             e.target.closest('input') || 
             e.target.closest('button') || 
@@ -138,7 +153,6 @@ export function initEventListeners() {
         e.preventDefault();
         ipcRenderer.send('show-general-context-menu');
     });
-    // --- ▲▲▲ ここまで ▲▲▲ ---
     
     let resizeTimer;
     window.addEventListener('resize', () => {
@@ -220,23 +234,25 @@ export function initEventListeners() {
     const resizer = document.getElementById('resizer');
     const rightSidebar = document.querySelector('.right-sidebar');
 
-    const onMouseMove = (e) => {
-        const newWidth = window.innerWidth - e.clientX - (resizer.offsetWidth / 2);
-        if (newWidth >= 240 && newWidth <= 600) {
-            rightSidebar.style.width = `${newWidth}px`;
-        }
-    };
+    if (resizer && rightSidebar) {
+        const onMouseMove = (e) => {
+            const newWidth = window.innerWidth - e.clientX - (resizer.offsetWidth / 2);
+            if (newWidth >= 240 && newWidth <= 600) {
+                rightSidebar.style.width = `${newWidth}px`;
+            }
+        };
 
-    const onMouseUp = () => {
-        document.body.classList.remove('resizing');
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-    };
+        const onMouseUp = () => {
+            document.body.classList.remove('resizing');
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
 
-    resizer.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        document.body.classList.add('resizing');
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-    });
+        resizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            document.body.classList.add('resizing');
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+    }
 }

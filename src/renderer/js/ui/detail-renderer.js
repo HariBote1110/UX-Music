@@ -54,7 +54,18 @@ export function renderAlbumDetailView(album) {
     initListHeaderResizing(viewWrapper);
     
     const artImg = viewWrapper.querySelector('.detail-art-img');
-    artImg.dataset.src = resolveArtworkPath(album.artwork, false);
+    
+    // ▼▼▼ 修正: アートワークのフォールバック処理を追加 ▼▼▼
+    let artworkToUse = album.artwork;
+    if (!artworkToUse && album.songs && album.songs.length > 0) {
+        // 曲リストを走査して、アートワークを持っている最初の曲を探す
+        const songWithArt = album.songs.find(s => s.artwork);
+        if (songWithArt) {
+            artworkToUse = songWithArt.artwork;
+        }
+    }
+    artImg.dataset.src = resolveArtworkPath(artworkToUse, false);
+    // ▲▲▲ 修正ここまで ▲▲▲
     
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, album.songs));
     

@@ -1,3 +1,4 @@
+// src/main/normalize-worker.js
 const { parentPort } = require('worker_threads');
 const fs = require('fs');
 const path = require('path');
@@ -117,6 +118,17 @@ parentPort.on('message', async (data) => {
             ffprobePath = data.ffprobePath;
             return;
         }
+
+        // ▼▼▼ 追加: macOSの一時ファイルガード ▼▼▼
+        if (data.filePath && (path.basename(data.filePath).startsWith('._') || path.basename(data.filePath) === '.DS_Store')) {
+            parentPort.postMessage({
+                type: `${data.type}-result`,
+                id: data.id,
+                result: { success: false, error: 'Ignored macOS system file' }
+            });
+            return;
+        }
+        // ▲▲▲ 追加 ▲▲▲
 
         if (data.type === 'analyze') {
             const result = await analyzeLoudness(data.filePath);

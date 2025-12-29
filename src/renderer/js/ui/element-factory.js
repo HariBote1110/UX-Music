@@ -90,12 +90,26 @@ export function createSongItem(song, index, songList, options = {}) {
     if (artworkImg) {
         if (showArt) {
             const album = state.albums.get(song.albumKey);
-            let artwork;
-            if (song.album === 'Unknown Album') {
-                artwork = null;
-            } else {
-                artwork = song.artwork || (album ? album.artwork : null);
+            
+            // ▼▼▼ 修正: アートワーク解決ロジックを強化 ▼▼▼
+            let artwork = null;
+            if (song.album !== 'Unknown Album') {
+                // 優先順位: 
+                // 1. 曲自身のアートワーク
+                // 2. アルバムオブジェクトのアートワーク
+                // 3. アルバムに含まれる最初の曲のアートワーク (アルバムオブジェクトの画像が欠落している場合の保険)
+                if (song.artwork) {
+                    artwork = song.artwork;
+                } else if (album) {
+                    if (album.artwork) {
+                        artwork = album.artwork;
+                    } else if (album.songs && album.songs.length > 0) {
+                        const songWithArt = album.songs.find(s => s.artwork);
+                        if (songWithArt) artwork = songWithArt.artwork;
+                    }
+                }
             }
+            // ▲▲▲ 修正ここまで ▲▲▲
 
             artworkImg.classList.add('lazy-load');
             artworkImg.dataset.src = resolveArtworkPath(artwork, true);
@@ -173,7 +187,16 @@ export function createAlbumGridItem(key, album, ipcRenderer) {
     if (!state.isLightFlightMode) {
         const artworkImg = albumItem.querySelector('.album-artwork');
         artworkImg.classList.add('lazy-load');
-        artworkImg.dataset.src = resolveArtworkPath(album.artwork, false);
+
+        // ▼▼▼ 修正: グリッド表示でも曲からのフォールバックを行う ▼▼▼
+        let artworkToUse = album.artwork;
+        if (!artworkToUse && album.songs && album.songs.length > 0) {
+             const songWithArt = album.songs.find(s => s.artwork);
+             if (songWithArt) artworkToUse = songWithArt.artwork;
+        }
+        artworkImg.dataset.src = resolveArtworkPath(artworkToUse, false);
+        // ▲▲▲ 修正ここまで ▲▲▲
+
         artworkImg.onload = () => window.artworkLoadTimes.push(performance.now());
     }
 

@@ -3,7 +3,7 @@ import { initEventListeners } from './js/init-listeners.js';
 import { initUI } from './js/ui.js';
 import { initSettings } from './js/init-settings.js';
 import { initNavigation, showView } from './js/navigation.js';
-import { initPlayer } from './js/player.js';
+import { initPlayer, play } from './js/player.js';
 import { updateAudioDevices, updatePlayCountDisplay, addSongsToLibrary } from './js/ui-manager.js';
 import { loadAllComponents } from './js/component-loader.js';
 import { initIPC } from './js/ipc.js';
@@ -55,9 +55,18 @@ async function initApp() {
     const mainPlayer = document.getElementById('main-player');
     if (mainPlayer) {
         await initPlayer(mainPlayer, {
-            onSongEnded: () => playNextSong(),
-            onNextSong: () => playNextSong(),
-            onPrevSong: () => playPrevSong()
+            onSongEnded: () => {
+                const nextIndex = getNextSongIndex();
+                if (nextIndex !== -1) play(state.playbackQueue[nextIndex]);
+            },
+            onNextSong: () => {
+                 const nextIndex = getNextSongIndex();
+                 if (nextIndex !== -1) play(state.playbackQueue[nextIndex]);
+            },
+            onPrevSong: () => {
+                 const prevIndex = getPrevSongIndex();
+                 if (prevIndex !== -1) play(state.playbackQueue[prevIndex]);
+            }
         });
     }
 
@@ -89,24 +98,9 @@ async function initApp() {
             }
             if (typeof settings.groupAlbumArt === 'boolean') {
                 state.groupAlbumArt = settings.groupAlbumArt;
+                // 設定画面からの通知で再描画が必要な場合
                 if (state.activeViewId === 'track-view') showView('track-view');
             }
-            
-            // ▼▼▼ 修正: EQ設定とループ設定の読み込みを追加 ▼▼▼
-            if (settings.equalizer) {
-                state.equalizerSettings = { ...state.equalizerSettings, ...settings.equalizer };
-                applyCurrentSettings();
-                renderEqualizer();
-            }
-            if (settings.playbackMode) {
-                state.playbackMode = settings.playbackMode;
-                if (elements.loopBtn) {
-                    elements.loopBtn.classList.toggle('active', state.playbackMode !== 'normal');
-                    elements.loopBtn.classList.toggle('loop-one', state.playbackMode === 'loop-one');
-                }
-            }
-            // ▲▲▲ 修正完了 ▲▲▲
-
              if (settings.enableYouTube) {
                 document.querySelectorAll('[data-feature="youtube"]').forEach(el => el.classList.remove('hidden'));
             }
@@ -133,6 +127,7 @@ async function initApp() {
     try {
         const settings = await ipcRenderer.invoke('get-settings');
         
+        // ▼▼▼ 修正: 起動時に設定を即時反映 ▼▼▼
         if (settings) {
             if (typeof settings.groupAlbumArt === 'boolean') {
                 state.groupAlbumArt = settings.groupAlbumArt;
@@ -141,22 +136,9 @@ async function initApp() {
                 state.isShuffle = settings.isShuffled;
                 if(elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffle);
             }
-
-            // ▼▼▼ 修正: 起動時の即時反映ロジックにもEQとループを追加 ▼▼▼
-            if (settings.equalizer) {
-                state.equalizerSettings = { ...state.equalizerSettings, ...settings.equalizer };
-                applyCurrentSettings();
-                renderEqualizer();
-            }
-            if (settings.playbackMode) {
-                state.playbackMode = settings.playbackMode;
-                if (elements.loopBtn) {
-                    elements.loopBtn.classList.toggle('active', state.playbackMode !== 'normal');
-                    elements.loopBtn.classList.toggle('loop-one', state.playbackMode === 'loop-one');
-                }
-            }
-            // ▲▲▲ 修正完了 ▲▲▲
+            // ... 他の設定も必要に応じて反映
         }
+        // ▲▲▲ 修正完了 ▲▲▲
 
         if (settings.libraryPath) {
             ipcRenderer.send('load-library');
@@ -176,6 +158,39 @@ async function initApp() {
         updateAudioDevices();
     } catch(e) {
         console.error('Failed to update audio devices:', e);
+    }
+}
+
+function getNextSongIndex() {
+    if (state.playbackQueue.length === 0) return -1;
+    if (state.isShuffle) {
+        let nextIndex = Math.floor(Math.random() * state.playbackQueue.length);
+        if (state.playbackQueue.length > 1 && nextIndex === state.currentSongIndex) {
+            return getNextSongIndex();
+        }
+        return nextIndex;
+    } else {
+        if (state.loopMode === 'one') return state.currentSongIndex;
+        let nextIndex = state.currentSongIndex + 1;
+        if (nextIndex >= state.playbackQueue.length) {
+             if (state.loopMode === 'all') return 0;
+             else return -1; 
+        }
+        return nextIndex;
+    }
+}
+
+function getPrevSongIndex() {
+    if (state.playbackQueue.length === 0) return -1;
+    if (state.isShuffle) {
+         return Math.floor(Math.random() * state.playbackQueue.length);
+    } else {
+        let prevIndex = state.currentSongIndex - 1;
+        if (prevIndex < 0) {
+             if (state.loopMode === 'all') return state.playbackQueue.length - 1;
+             else return 0;
+        }
+        return prevIndex;
     }
 }
 

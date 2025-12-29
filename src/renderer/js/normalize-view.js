@@ -1,3 +1,4 @@
+// src/renderer/js/normalize-view.js
 import { state, elements } from './state.js';
 import { showView } from './navigation.js';
 const { ipcRenderer } = require('electron');
@@ -95,13 +96,20 @@ function updateFileList() {
 async function addFiles(filePaths, preAnalyzedData = {}) {
     const targetLufs = parseFloat(document.getElementById('target-lufs-slider').value);
     for (const filePath of filePaths) {
+        // ▼▼▼ 修正: macOSの隠しファイル・リソースフォーク(._)を除外 ▼▼▼
+        const fileName = path.basename(filePath);
+        if (fileName.startsWith('._') || fileName === '.DS_Store') {
+            continue;
+        }
+        // ▲▲▲ 修正ここまで ▲▲▲
+
         const id = crypto.randomUUID();
         const existingLoudness = preAnalyzedData[filePath];
 
         normalizeFiles.set(id, {
             id,
             path: filePath,
-            name: path.basename(filePath),
+            name: fileName,
             status: typeof existingLoudness === 'number' ? 'analyzed' : 'pending',
             currentLufs: typeof existingLoudness === 'number' ? existingLoudness : null,
             truePeak: null,
@@ -316,7 +324,6 @@ export function initNormalizeView() {
                 currentJob = 'analyze';
             }
         } else if (type === 'normalize-result') {
-            // ▼▼▼ ここからが修正箇所です ▼▼▼
             if (result.success) {
                 file.status = 'done';
                 if (result.outputPath) {
@@ -326,7 +333,6 @@ export function initNormalizeView() {
                 file.status = 'error';
                 if(result.error) console.error(`Normalize Error for ${file.name}:`, result.error);
             }
-            // ▲▲▲ ここまでが修正箇所です ▲▲▲
 
             if (currentJob !== 'normalize') {
                 totalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analyzed').length;
