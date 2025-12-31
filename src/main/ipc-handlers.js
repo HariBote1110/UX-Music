@@ -1,3 +1,4 @@
+// src/main/ipc-handlers.js
 const { BrowserWindow, ipcMain, dialog } = require('electron');
 const DataStore = require('./data-store');
 const playlistManager = require('./playlist-manager');
@@ -140,6 +141,7 @@ function registerIpcHandlers() {
         return result.filePaths;
     });
 
+    // ▼▼▼ 修正: システムフォルダを除外してアクセス権エラーを防ぐ ▼▼▼
     ipcMain.handle('select-folder-for-normalize', async () => {
         const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
         if (result.canceled || result.filePaths.length === 0) return [];
@@ -149,20 +151,30 @@ function registerIpcHandlers() {
         let files = [];
         
         async function scanDirectory(dir) {
-            const items = await fs.promises.readdir(dir, { withFileTypes: true });
-            for (const item of items) {
-                const fullPath = path.join(dir, item.name);
-                if (item.isDirectory()) {
-                    await scanDirectory(fullPath);
-                } else if (supportedExtensions.includes(path.extname(item.name).toLowerCase())) {
-                    files.push(fullPath);
+            try {
+                const items = await fs.promises.readdir(dir, { withFileTypes: true });
+                for (const item of items) {
+                    // 隠しファイル・フォルダ（.で始まるもの）をスキップ
+                    // これにより .Spotlight-V100 や .Trashes などのシステムフォルダを回避
+                    if (item.name.startsWith('.')) continue;
+
+                    const fullPath = path.join(dir, item.name);
+                    if (item.isDirectory()) {
+                        await scanDirectory(fullPath);
+                    } else if (supportedExtensions.includes(path.extname(item.name).toLowerCase())) {
+                        files.push(fullPath);
+                    }
                 }
+            } catch (error) {
+                // アクセス権限エラー等が発生した場合はログを出力してそのフォルダをスキップ
+                console.warn(`[Folder Scan] Skipping directory ${dir}: ${error.message}`);
             }
         }
         
         await scanDirectory(dirPath);
         return files;
     });
+    // ▲▲▲ 修正ここまで ▲▲▲
 
     ipcMain.handle('get-library-for-normalize', () => {
         return stores.library.load() || [];
