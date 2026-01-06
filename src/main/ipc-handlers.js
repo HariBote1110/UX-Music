@@ -50,6 +50,12 @@ function registerIpcHandlers() {
     stores.albums = new DataStore('albums.json');
     stores.quizScores = new DataStore('quiz-scores.json');
     stores.analysedQueue = new DataStore('analysed-queue.json'); // Analysed Queue用のストアを追加
+    
+    // ▼▼▼ 追加: 名前不一致（settings vs settingsStore）を防ぐためのエイリアス ▼▼▼
+    stores.settingsStore = stores.settings;
+    stores.libraryStore = stores.library;
+    // ▲▲▲ 追加 ▲▲▲
+
     logPerf("DataStores initialized.");
     
     runMigrations(stores);
@@ -266,9 +272,6 @@ function registerIpcHandlers() {
     });
 
     // --- ▼▼▼ MTP機能のために修正 (ステップ8) ▼▼▼ ---
-    // ユーザーが提示した古い（ステップ5の）ハンドラを、
-    // mtpManager とプログレスバーを使用する新しい（ステップ8の）ハンドラで置き換え
-  
     /**
      * MTPデバイスへのファイル転送（アップロード）を実行
      */
@@ -365,4 +368,6 @@ function registerIpcHandlers() {
     logPerf("Context menu handlers registered.");
 }
 
-module.exports = { registerIpcHandlers };
+// ▼▼▼ 修正: stores をエクスポートに追加 ▼▼▼
+module.exports = { registerIpcHandlers, stores };
+// ▲▲▲ 修正 ▲▲▲

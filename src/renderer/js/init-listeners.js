@@ -72,6 +72,16 @@ export function initEventListeners() {
         });
     }
 
+    // ▼▼▼ 追加: CDインポートボタンイベント ▼▼▼
+    const cdRipBtn = document.getElementById('cd-rip-view-btn');
+    if (cdRipBtn) {
+        cdRipBtn.addEventListener('click', () => {
+            if (libraryActionsPopup) libraryActionsPopup.classList.add('hidden');
+            showView('cd-rip-view');
+        });
+    }
+    // ▲▲▲ 追加 ▲▲▲
+
     // 検索ボックス
     const searchInput = document.getElementById('search-input');
     if (searchInput) {
@@ -109,19 +119,14 @@ export function initEventListeners() {
         });
     }
 
-    // --- ▼▼▼ 追加: サイドバーのタブ切り替えロジック ▼▼▼ ---
     if (elements.sidebarTabs && elements.sidebarTabContents) {
         elements.sidebarTabs.forEach(tab => {
             tab.addEventListener('click', () => {
-                // すべてのタブからactiveクラスを削除
                 elements.sidebarTabs.forEach(t => t.classList.remove('active'));
-                // クリックされたタブにactiveクラスを追加
                 tab.classList.add('active');
 
-                // すべてのコンテンツを非表示にする
                 elements.sidebarTabContents.forEach(c => c.classList.remove('active'));
                 
-                // 対応するコンテンツを表示する
                 const targetId = tab.dataset.tab;
                 const targetContent = document.getElementById(targetId);
                 if (targetContent) {
@@ -130,7 +135,6 @@ export function initEventListeners() {
             });
         });
     }
-    // --- ▲▲▲ 追加完了 ▲▲▲ ---
 
     window.addEventListener('click', (e) => {
         if (elements.devicePopup && elements.devicePopup.classList.contains('active')) {
@@ -141,7 +145,6 @@ export function initEventListeners() {
         }
     });
 
-    // 背景での右クリック検知
     window.addEventListener('contextmenu', (e) => {
         if (e.target.closest('.song-item') || 
             e.target.closest('input') || 
@@ -213,7 +216,6 @@ export function initEventListeners() {
             e.preventDefault();
             if (state.selectedSongIds.size > 0) {
                 state.copiedSongIds = [...state.selectedSongIds];
-                // UI update for copy notification
             }
         } else if (modifierKey && e.key.toLowerCase() === 'v') {
             e.preventDefault();
@@ -230,7 +232,6 @@ export function initEventListeners() {
         }
     });
 
-    // --- Sidebar Resizing Logic ---
     const resizer = document.getElementById('resizer');
     const rightSidebar = document.querySelector('.right-sidebar');
 

@@ -41,6 +41,7 @@
                         <button id="set-library-btn" class="popup-action-button">ライブラリ場所設定</button>
                         <div class="popup-divider"></div>
                         <button id="normalize-view-btn" class="popup-action-button">音量をノーマライズ</button>
+                        <button id="cd-rip-view-btn" class="popup-action-button">CDからインポート (Beta)</button>
                     </div>
                 </div>
                 <button id="light-flight-mode-btn" class="sidebar-action-button">✈️ Light Flightモード</button>
@@ -56,6 +57,7 @@
             <div id="normalize-view" class="view-container hidden"></div>
             <div id="quiz-view" class="view-container hidden"></div>
             <div id="mtp-transfer-view" class="view-container hidden"></div>
+            <div id="cd-rip-view" class="view-container hidden"></div>
 
         </div>
         
@@ -205,6 +207,28 @@
                                 <div>
                                     <strong>パフォーマンスモード</strong>
                                     <small>CPUを最大限活用して最速でインポートします。PCが重くなる場合があります。</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>CDリッピングモード (Beta)</h4>
+                        <p class="setting-description">CD読み取りの精度と速度のバランスを設定します。</p>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="cd-rip-mode" value="paranoia" checked>
+                                <div>
+                                    <strong>高品質 (推奨)</strong>
+                                    <small>読み取りエラーを徹底的に訂正します。時間はかかりますが最も正確です。</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="radio" name="cd-rip-mode" value="burst">
+                                <div>
+                                    <strong>高速 (バースト)</strong>
+                                    <small>エラー訂正を省略して高速に読み取ります。傷の少ないディスクにおすすめです。</small>
                                 </div>
                             </label>
                         </div>

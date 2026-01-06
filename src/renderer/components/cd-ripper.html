@@ -1,0 +1,60 @@
+<div class="cd-rip-container" style="padding: 20px; color: #fff; height: 100%; display: flex; flex-direction: column;">
+    <div class="cd-rip-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin: 0;">CDインポート (Beta)</h2>
+        <div class="cd-rip-controls">
+            <button id="cd-metadata-btn" class="action-button" disabled>メタデータ検索</button>
+            <button id="cd-scan-btn" class="action-button">再スキャン</button>
+            <button id="cd-import-btn" class="action-button primary" disabled>インポート開始</button>
+        </div>
+    </div>
+
+    <div id="cd-status-message" style="margin-bottom: 15px; color: #aaa;">
+        CDドライブを確認中...
+    </div>
+
+    <div class="cd-tracks-list-container" style="flex: 1; overflow-y: auto; background: #2a2a2a; border-radius: 8px; border: 1px solid #444;">
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid #444; text-align: left;">
+                    <th style="padding: 10px; width: 50px;">#</th>
+                    <th style="padding: 10px;">タイトル</th>
+                    <th style="padding: 10px;">アーティスト</th>
+                    <th style="padding: 10px; width: 80px;">時間</th>
+                    <th style="padding: 10px; width: 100px;">状態</th>
+                </tr>
+            </thead>
+            <tbody id="cd-tracks-tbody">
+                </tbody>
+        </table>
+    </div>
+
+    <div id="cd-progress-area" class="hidden" style="margin-top: 20px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span id="cd-progress-text">準備中...</span>
+            <span id="cd-progress-percent"></span>
+        </div>
+        <div style="width: 100%; height: 8px; background: #444; border-radius: 4px; overflow: hidden;">
+            <div id="cd-progress-bar" style="width: 0%; height: 100%; background: var(--accent-color, #1db954); transition: width 0.3s;"></div>
+        </div>
+    </div>
+
+    <div id="cd-metadata-modal" class="hidden" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 100; display: flex; flex-direction: column; padding: 30px;">
+        <div style="background: #333; padding: 20px; border-radius: 8px; max-width: 600px; width: 100%; margin: auto; display: flex; flex-direction: column; max-height: 80%;">
+            <h3 style="margin-top: 0;">アルバム情報を検索</h3>
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <input type="text" id="cd-search-input" placeholder="アーティスト名 アルバム名" style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #555; background: #222; color: white;">
+                <button id="cd-search-submit-btn" class="action-button">検索</button>
+            </div>
+
+            <div style="flex: 1; overflow-y: auto; border: 1px solid #444; border-radius: 4px; background: #222;">
+                <ul id="cd-candidate-list" style="list-style: none; padding: 0; margin: 0;">
+                    </ul>
+            </div>
+
+            <div style="margin-top: 15px; text-align: right;">
+                <button id="cd-search-cancel-btn" class="action-button">キャンセル</button>
+            </div>
+        </div>
+    </div>
+    </div>

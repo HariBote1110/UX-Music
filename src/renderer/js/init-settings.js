@@ -29,6 +29,11 @@ export function initSettings() {
         const currentImportMode = settings.importMode || 'balanced';
         document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`).checked = true;
         
+        // ▼▼▼ 追加: CDリッピングモードの読み込み ▼▼▼
+        const currentCdRipMode = settings.cdRipMode || 'paranoia';
+        document.querySelector(`input[name="cd-rip-mode"][value="${currentCdRipMode}"]`).checked = true;
+        // ▲▲▲ 追加 ▲▲▲
+
         const currentVisualizerMode = settings.visualizerMode || 'active';
         document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
 
@@ -88,6 +93,9 @@ export function initSettings() {
             youtubePlaybackMode: document.querySelector('input[name="youtube-mode"]:checked').value,
             youtubeDownloadQuality: document.querySelector('input[name="youtube-quality"]:checked').value,
             importMode: document.querySelector('input[name="import-mode"]:checked').value,
+            // ▼▼▼ 追加: CDリッピングモードの保存 ▼▼▼
+            cdRipMode: document.querySelector('input[name="cd-rip-mode"]:checked').value,
+            // ▲▲▲ 追加 ▲▲▲
             visualizerMode: document.querySelector('input[name="visualizer-mode"]:checked').value,
             groupAlbumArt: document.querySelector('input[name="group-album-art"]').checked,
             analysedQueue: {

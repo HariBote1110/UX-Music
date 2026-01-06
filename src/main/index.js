@@ -1,8 +1,13 @@
+// src/main/index.js
 const { app, BrowserWindow, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { performance } = require('perf_hooks');
 const { connectToDiscord } = require('./discord-rpc-manager');
+
+// ▼▼▼ 追加: CDリッピングハンドラの読み込み ▼▼▼
+const { registerCDRipHandlers } = require('./handlers/cd-rip-handler');
+// ▲▲▲ 追加 ▲▲▲
 
 // '--dev' フラグがあるか確認
 if (process.argv.includes('--dev')) {
@@ -109,16 +114,26 @@ app.whenReady().then(() => {
   const mainWindow = createWindow();
   connectToDiscord();
 
-  // --- ▼▼▼ ★★★ 必須の修正 ★★★ ▼▼▼ ---
   // mtp-manager がレンダラーと通信するために mainWindow を渡す
   mtpManager.setMainWindow(mainWindow);
   logPerf("Main window set for MTP manager.");
-  // --- ▲▲▲ ★★★ 必須の修正 ★★★ ▲▲▲ ---
 
   logPerf("Requiring ipc-handlers...");
-  const { registerIpcHandlers } = require('./ipc-handlers');
+  // ▼▼▼ 修正: stores を受け取る ▼▼▼
+  const { registerIpcHandlers, stores } = require('./ipc-handlers');
+  // ▲▲▲ 修正 ▲▲▲
+  
   logPerf("Registering IPC handlers...");
   registerIpcHandlers();
+
+  // ▼▼▼ 追加: CD Rip Handler (macOS only) ▼▼▼
+  if (process.platform === 'darwin') {
+      // ここで stores を渡すことで設定のロードが可能になる
+      registerCDRipHandlers(stores); 
+      logPerf("CD Rip handlers registered.");
+  }
+  // ▲▲▲ 追加 ▲▲▲
+
   logPerf("IPC handlers registered.");
   performance.mark('ipc-handlers-registered');
 

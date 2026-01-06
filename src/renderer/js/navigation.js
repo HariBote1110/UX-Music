@@ -10,10 +10,11 @@ import {
     renderSituationView,
     clearMainContent
 } from './ui/view-renderer.js';
-// --- ▼▼▼ 追加 ▼▼▼ ---
-import { stopQuiz } from './quiz.js'; // クイズ終了処理をインポート
-import { stopLrcEditing } from './lrc-editor.js'; // LRCエディタ終了処理をインポート(後で作成)
-// --- ▲▲▲ 追加 ▲▲▲ ---
+import { stopQuiz } from './quiz.js'; 
+import { stopLrcEditing } from './lrc-editor.js'; 
+// ▼▼▼ 追加 ▼▼▼
+import { startCDRipView, stopCDRipView } from './cd-ripper.js';
+// ▲▲▲ 追加 ▲▲▲
 const { ipcRenderer } = require('electron');
 
 /**
@@ -22,35 +23,33 @@ const { ipcRenderer } = require('electron');
  * @param {object} options
  */
 export function showView(viewId, options = {}) {
-    // --- ▼▼▼ 修正: lrc-editor-view を特別ビューに追加 ▼▼▼ ---
-    const isSpecialView = ['normalize-view', 'quiz-view', 'lrc-editor-view'].includes(viewId);
-    // --- ▲▲▲ 修正 ▲▲▲ ---
+    // ▼▼▼ 修正: 'cd-rip-view' を追加 ▼▼▼
+    const isSpecialView = ['normalize-view', 'quiz-view', 'lrc-editor-view', 'cd-rip-view'].includes(viewId);
+    // ▲▲▲ 修正 ▲▲▲
 
-    // --- ▼▼▼ 修正: 他の特別ビューに切り替える際に既存の特別ビューを停止 ▼▼▼ ---
     if (viewId !== 'quiz-view') stopQuiz();
-    if (viewId !== 'lrc-editor-view') stopLrcEditing(); // 編集状態をリセットする関数を呼ぶ
-    // --- ▲▲▲ 修正 ▲▲▲ ---
+    if (viewId !== 'lrc-editor-view') stopLrcEditing();
+    // ▼▼▼ 追加 ▼▼▼
+    if (viewId !== 'cd-rip-view') stopCDRipView();
+    // ▲▲▲ 追加 ▲▲▲
 
 
     // Update nav link styles
     state.activeViewId = viewId;
     elements.navLinks.forEach(l => l.classList.remove('active'));
     const mainViewLink = document.querySelector(`.nav-link[data-view="${viewId}"]`);
-    if (mainViewLink && !isSpecialView) { // 通常ビューのリンクの場合
+    if (mainViewLink && !isSpecialView) { 
         mainViewLink.classList.add('active');
-        state.activeListView = viewId; // 最後に表示したリストビューを記憶
+        state.activeListView = viewId; 
         state.currentDetailView = { type: null, identifier: null };
-    } else if (!isSpecialView) { // 詳細ビューの場合
+    } else if (!isSpecialView) { 
         state.currentDetailView = { type: options.type, identifier: options.identifier, data: options.data };
-        // 対応するリストビューのリンクをアクティブにする (例: アルバム詳細ならアルバムリンク)
         const correspondingListViewLink = document.querySelector(`.nav-link[data-view="${options.type}-view"]`);
         if (correspondingListViewLink) {
              correspondingListViewLink.classList.add('active');
         }
     } else {
-         // 特別ビューの場合は currentDetailView はリセット、activeListView は維持
          state.currentDetailView = { type: null, identifier: null };
-         // 最後に表示していたリストビューのリンクをアクティブにする
          const lastListViewLink = document.querySelector(`.nav-link[data-view="${state.activeListView}"]`);
          if(lastListViewLink) lastListViewLink.classList.add('active');
     }
@@ -60,29 +59,33 @@ export function showView(viewId, options = {}) {
     elements.normalizeView.classList.add('hidden');
     const quizView = document.getElementById('quiz-view');
     if (quizView) quizView.classList.add('hidden');
-    // --- ▼▼▼ 追加 ▼▼▼ ---
     const lrcEditorView = document.getElementById('lrc-editor-view');
     if (lrcEditorView) lrcEditorView.classList.add('hidden');
-    // --- ▲▲▲ 追加 ▲▲▲ ---
+    // ▼▼▼ 追加 ▼▼▼
+    const cdRipView = document.getElementById('cd-rip-view');
+    if (cdRipView) cdRipView.classList.add('hidden');
+    // ▲▲▲ 追加 ▲▲▲
 
 
     if (isSpecialView) {
         elements.mainContent.classList.add('hidden');
-        clearMainContent(); // Clean up main content when switching away from it
+        clearMainContent(); 
 
         if (viewId === 'quiz-view' && quizView) {
             quizView.classList.remove('hidden');
         } else if (viewId === 'normalize-view') {
             elements.normalizeView.classList.remove('hidden');
-        // --- ▼▼▼ 追加 ▼▼▼ ---
         } else if (viewId === 'lrc-editor-view' && lrcEditorView) {
             lrcEditorView.classList.remove('hidden');
-        // --- ▲▲▲ 追加 ▲▲▲ ---
+        // ▼▼▼ 追加 ▼▼▼
+        } else if (viewId === 'cd-rip-view' && cdRipView) {
+            cdRipView.classList.remove('hidden');
+            startCDRipView();
         }
+        // ▲▲▲ 追加 ▲▲▲
     } else {
         elements.mainContent.classList.remove('hidden');
 
-        // Render functions will handle clearing and drawing content
         if (viewId === 'track-view') renderTrackView();
         else if (viewId === 'album-view') renderAlbumView();
         else if (viewId === 'artist-view') renderArtistView();
@@ -95,7 +98,6 @@ export function showView(viewId, options = {}) {
 }
 
 
-// ... (initNavigation, showSituationPlaylistDetail, showPlaylist, showAlbum, showArtist は変更なし) ...
 export function initNavigation() {
     elements.navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
@@ -106,10 +108,6 @@ export function initNavigation() {
     });
 }
 
-/**
- * シチュエーションプレイリストの詳細画面を表示する
- * @param {object} playlistDetails - {name, songs, artworks}
- */
 export function showSituationPlaylistDetail(playlistDetails) {
     state.currentlyViewedSongs = playlistDetails.songs;
     showView('playlist-detail-view', { type: 'situation', identifier: playlistDetails.name, data: playlistDetails });

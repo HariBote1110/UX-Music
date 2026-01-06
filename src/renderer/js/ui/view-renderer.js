@@ -69,7 +69,6 @@ export function renderTrackView() {
     viewWrapper.className = 'view-container';
     viewWrapper.id = 'track-view';
     viewWrapper.innerHTML = `
-        <div class="search-bar"><input type="text" placeholder="絞り込み検索"></div>
         <h1>曲</h1>
         ${createListHeader()}
     `;

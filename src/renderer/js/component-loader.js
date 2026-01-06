@@ -28,6 +28,9 @@ export async function loadAllComponents() {
         { id: 'normalize-view', path: './components/normalize.html' },
         { id: 'quiz-view', path: './components/quiz.html' },
         { id: 'mtp-transfer-view', path: './components/mtp-transfer.html' },
+        // ▼▼▼ 追加 ▼▼▼
+        { id: 'cd-rip-view', path: './components/cd-ripper.html' },
+        // ▲▲▲ 追加 ▲▲▲
     ];
 
     // 全ての読み込みが完了するまで待機
