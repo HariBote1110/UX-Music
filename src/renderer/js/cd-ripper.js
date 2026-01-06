@@ -1,3 +1,5 @@
+// src/renderer/js/cd-ripper.js
+
 const { ipcRenderer } = require('electron');
 
 let currentTracks = [];
@@ -7,10 +9,16 @@ export async function startCDRipView() {
     const scanBtn = document.getElementById('cd-scan-btn');
     const importBtn = document.getElementById('cd-import-btn');
     const metadataBtn = document.getElementById('cd-metadata-btn');
+    const formatSelect = document.getElementById('cd-format-select');
 
     if (scanBtn) scanBtn.onclick = scanCD;
     if (importBtn) importBtn.onclick = startImport;
     if (metadataBtn) metadataBtn.onclick = openMetadataSearch;
+
+    if (formatSelect) {
+        formatSelect.onchange = toggleBitrateSelect;
+        toggleBitrateSelect(); // 初期状態セット
+    }
 
     // モーダルイベント
     document.getElementById('cd-search-submit-btn').onclick = executeTextSearch;
@@ -32,12 +40,31 @@ export function stopCDRipView() {
     currentTracks = [];
 }
 
+function toggleBitrateSelect() {
+    const format = document.getElementById('cd-format-select').value;
+    const bitrateContainer = document.getElementById('cd-bitrate-container');
+    // 非可逆圧縮形式のみビットレート選択を表示
+    if (format === 'aac' || format === 'mp3') {
+        bitrateContainer.style.display = 'flex';
+    } else {
+        bitrateContainer.style.display = 'none';
+    }
+}
+
 async function scanCD() {
     if (isRipping) return;
     const statusMsg = document.getElementById('cd-status-message');
     const importBtn = document.getElementById('cd-import-btn');
     const metadataBtn = document.getElementById('cd-metadata-btn');
+    const albumTitle = document.getElementById('cd-album-title');
+    const albumArtist = document.getElementById('cd-album-artist');
+    const artworkImg = document.getElementById('cd-artwork-preview');
     
+    // リセット
+    if (albumTitle) albumTitle.textContent = 'Unknown Album';
+    if (albumArtist) albumArtist.textContent = 'Unknown Artist';
+    if (artworkImg) artworkImg.src = 'assets/default_artwork.png';
+
     if (statusMsg) statusMsg.textContent = 'ドライブをスキャン中...';
     if (importBtn) importBtn.disabled = true;
     if (metadataBtn) metadataBtn.disabled = true;
@@ -54,33 +81,52 @@ async function scanCD() {
             return;
         }
 
-        if (statusMsg) statusMsg.textContent = `${currentTracks.length} トラック見つかりました。`;
+        if (statusMsg) statusMsg.textContent = `${currentTracks.length} トラック検出。メタデータを検索中...`;
         renderTracks(currentTracks);
         
         if (importBtn) importBtn.disabled = false;
         if (metadataBtn) metadataBtn.disabled = false;
+
+        // 自動メタデータ検索
+        try {
+            const searchResult = await ipcRenderer.invoke('cd-search-toc', currentTracks);
+            if (searchResult.success && searchResult.releases && searchResult.releases.length > 0) {
+                const releases = searchResult.releases;
+                if (releases.length === 1) {
+                    if (statusMsg) statusMsg.textContent = 'メタデータが見つかりました。適用中...';
+                    await applyMetadata(releases[0].id);
+                } else {
+                    if (statusMsg) statusMsg.textContent = '複数の候補が見つかりました。選択してください。';
+                    showMetadataModal();
+                    renderCandidateList(releases);
+                }
+            } else {
+                if (statusMsg) statusMsg.textContent = 'メタデータが見つかりませんでした。手動で検索してください。';
+            }
+        } catch (searchError) {
+            console.error('Auto metadata search failed:', searchError);
+            if (statusMsg) statusMsg.textContent = 'メタデータ検索中にエラーが発生しました。';
+        }
+
     } catch (error) {
         console.error(error);
     }
 }
 
-// ▼▼▼ メタデータ検索機能 ▼▼▼
-
-async function openMetadataSearch() {
+// ▼▼▼ メタデータ検索機能 (変更なし) ▼▼▼
+function showMetadataModal() {
     const modal = document.getElementById('cd-metadata-modal');
-    const list = document.getElementById('cd-candidate-list');
     const input = document.getElementById('cd-search-input');
-    
-    modal.classList.remove('hidden'); // 表示にはflexが必要 (HTML側でstyle="display:flex"をclass制御に変更するか、classList操作だけでOKならそのまま)
-    // HTMLのstyleでdisplay:flex指定しているので、hiddenクラスでdisplay:noneを上書きする運用
-    // hiddenクラスの定義(views.css等)が display: none !important ならOK
-    modal.style.display = 'flex'; // 強制的にflex表示
-
-    list.innerHTML = '<li style="padding: 10px; color: #aaa;">自動検索中...</li>';
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex'; 
     input.value = '';
     input.focus();
+}
 
-    // まずはTOC(自動)検索を実行
+async function openMetadataSearch() {
+    showMetadataModal();
+    const list = document.getElementById('cd-candidate-list');
+    list.innerHTML = '<li style="padding: 10px; color: #aaa;">自動検索中...</li>';
     try {
         const result = await ipcRenderer.invoke('cd-search-toc', currentTracks);
         if (result.success && result.releases.length > 0) {
@@ -97,9 +143,7 @@ async function executeTextSearch() {
     const query = document.getElementById('cd-search-input').value;
     const list = document.getElementById('cd-candidate-list');
     if (!query) return;
-
     list.innerHTML = '<li style="padding: 10px; color: #aaa;">検索中...</li>';
-    
     try {
         const result = await ipcRenderer.invoke('cd-search-text', query);
         if (result.success && result.releases.length > 0) {
@@ -115,7 +159,6 @@ async function executeTextSearch() {
 function renderCandidateList(releases) {
     const list = document.getElementById('cd-candidate-list');
     list.innerHTML = '';
-
     releases.forEach(release => {
         const li = document.createElement('li');
         li.style.padding = '10px';
@@ -123,27 +166,14 @@ function renderCandidateList(releases) {
         li.style.cursor = 'pointer';
         li.style.display = 'flex';
         li.style.justifyContent = 'space-between';
-        
-        // ホバー効果
         li.onmouseover = () => li.style.background = '#444';
         li.onmouseout = () => li.style.background = 'transparent';
 
         const artist = release['artist-credit']?.[0]?.name || 'Unknown';
         const title = release.title;
         const date = release.date || '----';
-        const trackCount = release['track-count'] || '?';
 
-        li.innerHTML = `
-            <div>
-                <div style="font-weight: bold; color: white;">${title}</div>
-                <div style="font-size: 0.9em; color: #ccc;">${artist}</div>
-            </div>
-            <div style="font-size: 0.9em; color: #aaa; text-align: right;">
-                <div>${date}</div>
-                <div>${trackCount} Tracks</div>
-            </div>
-        `;
-
+        li.innerHTML = `<div><div style="font-weight: bold; color: white;">${title}</div><div style="font-size: 0.9em; color: #ccc;">${artist}</div></div><div style="font-size: 0.9em; color: #aaa; text-align: right;"><div>${date}</div></div>`;
         li.onclick = () => applyMetadata(release.id);
         list.appendChild(li);
     });
@@ -151,22 +181,23 @@ function renderCandidateList(releases) {
 
 async function applyMetadata(releaseId) {
     const list = document.getElementById('cd-candidate-list');
-    list.innerHTML = '<li style="padding: 10px; color: #aaa;">詳細情報を取得中...</li>';
-
+    if (list) list.innerHTML = '<li style="padding: 10px; color: #aaa;">詳細情報を取得中...</li>';
     try {
-        const result = await ipcRenderer.invoke('cd-apply-metadata', { 
-            tracks: currentTracks, 
-            releaseId: releaseId 
-        });
-
+        const result = await ipcRenderer.invoke('cd-apply-metadata', { tracks: currentTracks, releaseId: releaseId });
         if (result.success) {
             currentTracks = result.tracks;
             renderTracks(currentTracks);
-            document.getElementById('cd-status-message').textContent = `セット: ${result.artist} - ${result.album}`;
+            document.getElementById('cd-album-title').textContent = result.album;
+            document.getElementById('cd-album-artist').textContent = result.artist;
+            document.getElementById('cd-status-message').textContent = 'メタデータを適用しました。';
+            
+            const artworkImg = document.getElementById('cd-artwork-preview');
+            if (artworkImg) {
+                artworkImg.src = result.artwork ? result.artwork : 'assets/default_artwork.png';
+            }
             closeMetadataModal();
         } else {
             alert('情報の適用に失敗しました: ' + result.message);
-            // リストを再表示できればベストだが、今回は閉じる
             closeMetadataModal();
         }
     } catch (e) {
@@ -185,23 +216,15 @@ function closeMetadataModal() {
 function renderTracks(tracks) {
     const tbody = document.getElementById('cd-tracks-tbody');
     if (!tbody) return;
-
     tbody.innerHTML = tracks.map(track => `
         <tr style="border-bottom: 1px solid #333;">
             <td style="padding: 8px;">${track.number}</td>
-            <td style="padding: 8px;">
-                <input type="text" class="cd-track-input" data-id="${track.number}" data-field="title" value="${track.title}" 
-                style="background: transparent; border: none; color: white; width: 100%; border-bottom: 1px solid #555;">
-            </td>
-            <td style="padding: 8px;">
-                <input type="text" class="cd-track-input" data-id="${track.number}" data-field="artist" value="${track.artist}" 
-                style="background: transparent; border: none; color: white; width: 100%; border-bottom: 1px solid #555;">
-            </td>
+            <td style="padding: 8px;"><input type="text" class="cd-track-input" data-id="${track.number}" data-field="title" value="${track.title}" style="background: transparent; border: none; color: white; width: 100%; border-bottom: 1px solid #555;"></td>
+            <td style="padding: 8px;"><input type="text" class="cd-track-input" data-id="${track.number}" data-field="artist" value="${track.artist}" style="background: transparent; border: none; color: white; width: 100%; border-bottom: 1px solid #555;"></td>
             <td style="padding: 8px;">${track.duration || getDurationStr(track.sectors)}</td>
             <td style="padding: 8px;" id="status-cell-${track.number}">待機中</td>
         </tr>
     `).join('');
-
     tbody.querySelectorAll('.cd-track-input').forEach(input => {
         input.addEventListener('change', (e) => {
             const id = parseInt(e.target.dataset.id);
@@ -228,13 +251,28 @@ function startImport() {
     const scanBtn = document.getElementById('cd-scan-btn');
     const metadataBtn = document.getElementById('cd-metadata-btn');
     const progressArea = document.getElementById('cd-progress-area');
+    
+    // 設定値の取得
+    const format = document.getElementById('cd-format-select').value;
+    const bitrate = document.getElementById('cd-bitrate-select').value;
+    // アートワークURLの取得 (img要素からsrcを取得)
+    const artworkImg = document.getElementById('cd-artwork-preview');
+    const artworkUrl = (artworkImg && !artworkImg.src.includes('default_artwork')) ? artworkImg.src : null;
 
     if (importBtn) importBtn.disabled = true;
     if (scanBtn) scanBtn.disabled = true;
     if (metadataBtn) metadataBtn.disabled = true;
     if (progressArea) progressArea.classList.remove('hidden');
     
-    ipcRenderer.send('cd-start-rip', { tracksToRip: currentTracks });
+    // 設定とアートワーク情報を送信
+    ipcRenderer.send('cd-start-rip', { 
+        tracksToRip: currentTracks,
+        options: {
+            format: format, // flac, wav, alac, aac, mp3
+            bitrate: bitrate, // 320k, 256k...
+            artworkUrl: artworkUrl
+        }
+    });
 }
 
 function onProgress(event, data) {

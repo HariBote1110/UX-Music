@@ -5,6 +5,16 @@ const path = require('path');
 const fs = require('fs');
 const { spawn, exec } = require('child_process');
 const { sanitize } = require('../utils');
+// 依存関係
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegPath = require('ffmpeg-static');
+
+// ffmpegのパスを設定 (Electronビルド環境に対応)
+let ffmpegBinary = ffmpegPath;
+if (app.isPackaged) {
+    ffmpegBinary = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
+}
+ffmpeg.setFfmpegPath(ffmpegBinary);
 
 function getBinPath(executableName) {
     const isPackaged = app.isPackaged;
@@ -15,7 +25,6 @@ function getBinPath(executableName) {
     return path.join(basePath, executableName);
 }
 
-const XLD_PATH = getBinPath('xld');
 const CDPARANOIA_PATH = getBinPath('cdparanoia');
 
 // 共通: MusicBrainz APIへのリクエストヘルパー
@@ -44,6 +53,63 @@ function queryMusicBrainz(url) {
             });
         });
         request.on('error', (err) => reject(err));
+        request.end();
+    });
+}
+
+// Cover Art Archiveから画像を取得 (HTTPSに強制変換)
+function getCoverArtUrl(releaseId) {
+    return new Promise((resolve) => {
+        const url = `https://coverartarchive.org/release/${releaseId}`;
+        const request = net.request(url);
+        
+        request.on('response', (response) => {
+            if (response.statusCode === 200) {
+                let data = '';
+                response.on('data', (chunk) => { data += chunk; });
+                response.on('end', () => {
+                    try {
+                        const json = JSON.parse(data);
+                        // front画像を探す (優先: front=true, 次点: images[0])
+                        const front = json.images.find(img => img.front) || json.images[0];
+                        if (front && front.image) {
+                            // http を https に置換して返す
+                            resolve(front.image.replace(/^http:/, 'https:'));
+                        } else {
+                            resolve(null);
+                        }
+                    } catch (e) {
+                        resolve(null);
+                    }
+                });
+            } else {
+                resolve(null);
+            }
+        });
+        request.on('error', () => resolve(null));
+        request.end();
+    });
+}
+
+// アートワーク画像を一時ファイルにダウンロードする
+function downloadArtworkToTemp(url) {
+    if (!url) return Promise.resolve(null);
+    return new Promise((resolve) => {
+        const tempPath = path.join(app.getPath('temp'), `artwork_${Date.now()}.jpg`);
+        const request = net.request(url);
+        request.on('response', (response) => {
+            if (response.statusCode === 200) {
+                const fileStream = fs.createWriteStream(tempPath);
+                response.on('data', (chunk) => fileStream.write(chunk));
+                response.on('end', () => {
+                    fileStream.end();
+                    resolve(tempPath);
+                });
+            } else {
+                resolve(null);
+            }
+        });
+        request.on('error', () => resolve(null));
         request.end();
     });
 }
@@ -81,7 +147,7 @@ function getTrackList() {
                         number: parseInt(match[1]),
                         title: `Track ${match[1]}`,
                         artist: 'Unknown Artist',
-                        duration: '', // 表示用フォーマットはフロントで計算してもよいが、ここでは省略
+                        duration: '', 
                         sectors: parseInt(match[2])
                     });
                 }
@@ -112,9 +178,7 @@ async function searchByTOC(tracks) {
 // テキスト検索
 async function searchByText(query) {
     const encodedQuery = encodeURIComponent(query);
-    // release検索: アーティスト名やアルバム名で検索
     const url = `https://musicbrainz.org/ws/2/release/?query=${encodedQuery}&fmt=json&limit=15`;
-    
     const data = await queryMusicBrainz(url);
     return data && data.releases ? data.releases : [];
 }
@@ -125,30 +189,40 @@ async function getReleaseDetails(releaseId) {
     return await queryMusicBrainz(url);
 }
 
-// リッピング処理 (変更なし、省略)
-async function ripAndConvert(track, outputDir, event, mode) {
-    // ... 前回のコードと同じ実装 ...
-    // (スペース節約のため省略しますが、以前の実装をそのまま使います)
-    // 実際に動作させる際は前回の ripAndConvert の中身をここに貼り付けてください
-    const { number, title, artist } = track;
+// リッピングと変換処理 (ffmpeg使用)
+async function ripAndConvert(track, outputDir, event, options, tempArtworkPath) {
+    const { number, title, artist, album } = track;
+    const { format, bitrate } = options;
+    
     const safeTitle = sanitize(title) || `Track ${number}`;
     const safeArtist = sanitize(artist) || 'Unknown Artist';
     
+    // 一時WAVファイル
     const tempWav = path.join(app.getPath('temp'), `rip_${Date.now()}_track${number}.wav`);
-    const finalBaseName = `${String(number).padStart(2, '0')} - ${safeTitle}`;
-    const tempWavNamed = path.join(app.getPath('temp'), `${finalBaseName}.wav`);
+    
+    // 出力先ディレクトリ
     const artistDir = path.join(outputDir, safeArtist);
     if (!fs.existsSync(artistDir)) fs.mkdirSync(artistDir, { recursive: true });
-    const finalPath = path.join(artistDir, `${finalBaseName}.m4a`);
+
+    // 拡張子の決定
+    let ext = 'm4a';
+    if (format === 'flac') ext = 'flac';
+    else if (format === 'wav') ext = 'wav';
+    else if (format === 'mp3') ext = 'mp3';
+    else if (format === 'aac') ext = 'm4a';
+
+    const finalBaseName = `${String(number).padStart(2, '0')} - ${safeTitle}`;
+    const finalPath = path.join(artistDir, `${finalBaseName}.${ext}`);
+    
     let estimatedSizeBytes = (track.sectors || 0) * 2352 + 44;
     
     try {
+        // 1. cdparanoiaでWAVとして吸い出し
         event.sender.send('rip-progress', { status: 'ripping', track: number, percent: 0 });
         await new Promise((resolve, reject) => {
-            const ripArgs = [];
-            if (mode === 'burst') ripArgs.push('-Z');
-            ripArgs.push('-w', String(number), tempWav);
+            const ripArgs = ['-w', String(number), tempWav];
             const ripper = spawn(CDPARANOIA_PATH, ripArgs);
+            
             const progressInterval = setInterval(() => {
                 if (fs.existsSync(tempWav) && estimatedSizeBytes > 0) {
                     try {
@@ -159,11 +233,7 @@ async function ripAndConvert(track, outputDir, event, mode) {
                     } catch (e) {}
                 }
             }, 500);
-            ripper.stderr.on('data', (data) => {
-                const log = data.toString();
-                const sectorMatch = log.match(/to sector\s+(\d+)/);
-                if (sectorMatch) estimatedSizeBytes = parseInt(sectorMatch[1]) * 2352 + 44;
-            });
+
             ripper.on('close', (code) => {
                 clearInterval(progressInterval);
                 if (code === 0) {
@@ -172,21 +242,68 @@ async function ripAndConvert(track, outputDir, event, mode) {
                 } else { reject(new Error(`Ripping failed with code ${code}`)); }
             });
         });
-        if (fs.existsSync(tempWav)) fs.renameSync(tempWav, tempWavNamed);
-        else throw new Error('Ripped wav file not found');
+
+        if (!fs.existsSync(tempWav)) throw new Error('Ripped wav file not found');
+
+        // 2. ffmpegで変換 & メタデータ付与 & アートワーク埋め込み
         event.sender.send('rip-progress', { status: 'encoding', track: number });
+
         await new Promise((resolve, reject) => {
-            const args = ['-f', 'alac', '-o', artistDir, tempWavNamed];
-            const encoder = spawn(XLD_PATH, args);
-            encoder.on('close', (code) => {
-                if (code === 0) resolve(); else reject(new Error(`Encoding failed with code ${code}`));
+            let command = ffmpeg(tempWav);
+
+            // メタデータ設定
+            const metadata = {
+                title: title || `Track ${number}`,
+                artist: artist || 'Unknown Artist',
+                album: album || 'Unknown Album',
+                track: number,
+                date: new Date().getFullYear()
+            };
+
+            // フォーマットごとの設定
+            if (format === 'flac') {
+                command.audioCodec('flac');
+                command.outputOptions('-compression_level 5'); // 圧縮レベル
+            } else if (format === 'alac') {
+                command.audioCodec('alac');
+            } else if (format === 'wav') {
+                command.audioCodec('pcm_s16le'); 
+            } else if (format === 'mp3') {
+                command.audioCodec('libmp3lame').audioBitrate(bitrate || '320k');
+            } else if (format === 'aac') {
+                command.audioCodec('aac').audioBitrate(bitrate || '320k');
+            }
+
+            // タグの書き込み
+            command.outputOptions('-map_metadata', '0', '-id3v2_version', '3');
+            Object.keys(metadata).forEach(key => {
+                command.outputOptions('-metadata', `${key}=${metadata[key]}`);
             });
+
+            // アートワーク埋め込み (WAV以外で有効)
+            if (tempArtworkPath && format !== 'wav') {
+                command.input(tempArtworkPath);
+                
+                // 変更点: -c:v copy を追加して、画像をそのまま（JPEG/PNGとして）埋め込む
+                // これにより、H.264動画ストリームとして認識されてしまう問題を防ぎます
+                command.outputOptions([
+                    '-map', '0:0',
+                    '-map', '1:0',
+                    '-c:v', 'copy',            // ← 重要: 再エンコードを防止
+                    '-disposition:v', 'attached_pic'
+                ]);
+            }
+
+            command.save(finalPath)
+                .on('end', () => resolve())
+                .on('error', (err) => reject(err));
         });
-        if (fs.existsSync(tempWavNamed)) fs.unlinkSync(tempWavNamed);
+
+        if (fs.existsSync(tempWav)) fs.unlinkSync(tempWav);
         return finalPath;
+
     } catch (error) {
         if (fs.existsSync(tempWav)) fs.unlinkSync(tempWav);
-        if (fs.existsSync(tempWavNamed)) fs.unlinkSync(tempWavNamed);
         throw error;
     }
 }
@@ -205,7 +322,6 @@ function registerCDRipHandlers(stores) {
         }
     });
 
-    // ▼▼▼ 1. TOC検索 (候補リストを返す) ▼▼▼
     ipcMain.handle('cd-search-toc', async (event, tracks) => {
         try {
             const releases = await searchByTOC(tracks);
@@ -215,7 +331,6 @@ function registerCDRipHandlers(stores) {
         }
     });
 
-    // ▼▼▼ 2. テキスト検索 (候補リストを返す) ▼▼▼
     ipcMain.handle('cd-search-text', async (event, query) => {
         try {
             const releases = await searchByText(query);
@@ -225,10 +340,13 @@ function registerCDRipHandlers(stores) {
         }
     });
 
-    // ▼▼▼ 3. 詳細適用 (選択されたリリースIDからトラック情報を取得) ▼▼▼
     ipcMain.handle('cd-apply-metadata', async (event, { tracks, releaseId }) => {
         try {
-            const release = await getReleaseDetails(releaseId);
+            const [release, artworkUrl] = await Promise.all([
+                getReleaseDetails(releaseId),
+                getCoverArtUrl(releaseId)
+            ]);
+
             if (!release || !release.media || !release.media[0].tracks) {
                 return { success: false, message: 'Invalid release data' };
             }
@@ -237,10 +355,7 @@ function registerCDRipHandlers(stores) {
             const albumTitle = release.title;
             const albumArtist = release['artist-credit']?.[0]?.name || 'Unknown Artist';
 
-            // トラック情報をマージ
             const result = tracks.map((t, index) => {
-                // トラック番号が一致するものを探す (通常はindex順だが念のため)
-                // MusicBrainzは position プロパティを持つ
                 const mbTrack = mbTracks.find(m => parseInt(m.position) === t.number) || mbTracks[index];
 
                 if (mbTrack) {
@@ -255,28 +370,56 @@ function registerCDRipHandlers(stores) {
                 return t;
             });
 
-            return { success: true, tracks: result, album: albumTitle, artist: albumArtist };
+            return { 
+                success: true, 
+                tracks: result, 
+                album: albumTitle, 
+                artist: albumArtist, 
+                artwork: artworkUrl 
+            };
         } catch (e) {
             return { success: false, error: e.message };
         }
     });
 
-    ipcMain.on('cd-start-rip', async (event, { tracksToRip }) => {
+    ipcMain.on('cd-start-rip', async (event, { tracksToRip, options }) => {
         const settings = settingsStore ? settingsStore.load() : {};
         const libraryPath = settings.libraryPath || app.getPath('music');
-        const ripMode = settings.cdRipMode || 'paranoia';
+        
+        const ripOptions = {
+            format: options?.format || 'alac',
+            bitrate: options?.bitrate || '320k',
+            artworkUrl: options?.artworkUrl || null
+        };
 
         const outputDir = path.join(libraryPath, 'CD Rips');
         if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
+        // アートワークを事前にダウンロード (一度だけ)
+        let tempArtworkPath = null;
+        if (ripOptions.artworkUrl) {
+            try {
+                tempArtworkPath = await downloadArtworkToTemp(ripOptions.artworkUrl);
+            } catch (e) {
+                console.error('Artwork download failed:', e);
+            }
+        }
+
         for (const track of tracksToRip) {
             try {
-                await ripAndConvert(track, outputDir, event, ripMode);
+                await ripAndConvert(track, outputDir, event, ripOptions, tempArtworkPath);
                 event.sender.send('rip-progress', { status: 'completed', track: track.number });
             } catch (err) {
+                console.error(err);
                 event.sender.send('rip-progress', { status: 'error', track: track.number, error: err.message });
             }
         }
+        
+        // アートワーク一時ファイルの削除
+        if (tempArtworkPath && fs.existsSync(tempArtworkPath)) {
+            fs.unlinkSync(tempArtworkPath);
+        }
+
         event.sender.send('rip-complete', { count: tracksToRip.length });
         setTimeout(() => { shell.openPath(outputDir); }, 500);
     });
