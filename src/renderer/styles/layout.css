@@ -3,8 +3,14 @@
 .container {
     display: flex;
     flex-grow: 1;
-    height: calc(100% - 122px);
+    height: calc(100% - 32px); /* Playback Barをフロート化するため、高さはタイトルバー分のみ引く */
     overflow: hidden; /* 子要素のはみ出しを防止 */
+    position: relative; /* Playback Barの配置基準 */
+    
+    /* 画面下端でコンテンツがフェードアウトする演出 */
+    /* 下部92%あたりから透明になり始め、100%で完全に消える */
+    -webkit-mask-image: linear-gradient(to bottom, black 92%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 92%, transparent 100%);
 }
 
 body.resizing {
@@ -32,6 +38,7 @@ body.resizing {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    padding-bottom: 120px; /* Playback Barの裏に隠れないように余白を確保 */
 }
 
 /* main-contentに直接paddingを適用するのではなく、その中のビューコンテナに適用する */
@@ -62,6 +69,7 @@ body.resizing {
 .sidebar {
     background-color: var(--bg-darkest);
     padding: 20px;
+    padding-bottom: 120px; /* Playback Barとの重なりを防ぐため下部に余白を追加 */
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -79,20 +87,55 @@ body.resizing {
     flex-shrink: 0;
     border-left: 1px solid var(--bg-light);
     padding: 24px;
+    padding-bottom: 120px; /* 右サイドバーも同様に余白確保 */
 }
 
+/* Playback Barをホバータイル（フローティングドック）風に変更 */
 .playback-bar {
+    position: absolute;
+    bottom: 12px; /* 画面下からの距離を詰めて、より広く見せる */
+    left: 50%;
+    transform: translateX(-50%); /* 中央揃え */
+    
     display: flex;
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 20px;
+    
+    padding: 10px 24px;
     box-sizing: border-box;
-    border-top: 1px solid var(--bg-light);
-    background-color: var(--bg-medium);
-    height: 90px;
-    width: 100%;
+    
+    border-top: none;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    
+    background-color: rgba(30, 30, 30, 0.75); /* 背景を少し透過させる */
+    backdrop-filter: blur(20px); /* ブラーを強めて、裏のコンテンツのフェード感を綺麗に見せる */
+    
+    height: auto;
+    min-height: 84px;
+    
+    /* 幅を広くして画面一杯に近づける */
+    width: 98%;
+    max-width: 1600px; /* 超大型モニタでの間延び防止 */
+    
     flex-shrink: 0;
+    
+    border-radius: 16px; /* 幅が広がった分、角丸を少し調整 */
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    
+    z-index: 1000;
+    
+    /* ホバー時のアニメーション設定 */
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), 
+                box-shadow 0.3s ease,
+                background-color 0.3s ease;
+}
+
+/* ホバー時のインタラクション */
+.playback-bar:hover {
+    transform: translateX(-50%) translateY(-4px); /* 浮き上がり量を少し控えめに */
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+    background-color: rgba(40, 40, 40, 0.85);
 }
 
 .resizer-vertical {
