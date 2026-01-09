@@ -3,14 +3,14 @@
 .container {
     display: flex;
     flex-grow: 1;
-    height: calc(100% - 32px); /* Playback Barをフロート化するため、高さはタイトルバー分のみ引く */
-    overflow: hidden; /* 子要素のはみ出しを防止 */
-    position: relative; /* Playback Barの配置基準 */
+    /* タイトルバーを除いた画面全体の高さを確保し、リストを最下部まで伸ばす */
+    height: calc(100vh - 32px);
+    overflow: hidden; 
+    position: relative;
     
-    /* 画面下端でコンテンツがフェードアウトする演出 */
-    /* 下部92%あたりから透明になり始め、100%で完全に消える */
-    -webkit-mask-image: linear-gradient(to bottom, black 92%, transparent 100%);
-    mask-image: linear-gradient(to bottom, black 92%, transparent 100%);
+    /* 画面下部（85%〜100%の位置）にかけてフェードアウトさせるマスク */
+    -webkit-mask-image: linear-gradient(to bottom, black 95%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
 }
 
 body.resizing {
@@ -38,16 +38,15 @@ body.resizing {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    padding-bottom: 120px; /* Playback Barの裏に隠れないように余白を確保 */
+    /* 最後までスクロールした際に、コントロールバーの上にコンテンツが出るように大きな余白を設定 */
+    padding-bottom: 0px;
 }
 
-/* main-contentに直接paddingを適用するのではなく、その中のビューコンテナに適用する */
 .main-content .view-container {
     padding: 20px;
     box-sizing: border-box;
 }
 
-/* メインコンテンツのスクロールバーをスタイリング */
 .main-content::-webkit-scrollbar {
     width: 8px;
 }
@@ -69,7 +68,8 @@ body.resizing {
 .sidebar {
     background-color: var(--bg-darkest);
     padding: 20px;
-    padding-bottom: 120px; /* Playback Barとの重なりを防ぐため下部に余白を追加 */
+    /* サイドバーも同様に余白を確保 */
+    padding-bottom:130px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -87,13 +87,13 @@ body.resizing {
     flex-shrink: 0;
     border-left: 1px solid var(--bg-light);
     padding: 24px;
-    padding-bottom: 120px; /* 右サイドバーも同様に余白確保 */
+    padding-bottom: 160px;
 }
 
-/* Playback Barをホバータイル（フローティングドック）風に変更 */
+/* コントロールバーを画面下部に浮遊（絶対配置）させる */
 .playback-bar {
     position: absolute;
-    bottom: 12px; /* 画面下からの距離を詰めて、より広く見せる */
+    bottom: 30px;
     left: 50%;
     transform: translateX(-50%); /* 中央揃え */
     
@@ -108,35 +108,24 @@ body.resizing {
     border-top: none;
     border: 1px solid rgba(255, 255, 255, 0.08);
     
-    background-color: rgba(30, 30, 30, 0.75); /* 背景を少し透過させる */
-    backdrop-filter: blur(20px); /* ブラーを強めて、裏のコンテンツのフェード感を綺麗に見せる */
+    background-color: rgba(30, 30, 30, 0.75);
+    backdrop-filter: blur(1px);
     
     height: auto;
-    min-height: 84px;
+    min-height: 44px;
     
-    /* 幅を広くして画面一杯に近づける */
-    width: 98%;
-    max-width: 1600px; /* 超大型モニタでの間延び防止 */
+    width: 96%;
+    max-width: 160000000px;
     
     flex-shrink: 0;
     
-    border-radius: 16px; /* 幅が広がった分、角丸を少し調整 */
+    border-radius: 32px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
     
     z-index: 1000;
     
-    /* ホバー時のアニメーション設定 */
-    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), 
-                box-shadow 0.3s ease,
-                background-color 0.3s ease;
 }
 
-/* ホバー時のインタラクション */
-.playback-bar:hover {
-    transform: translateX(-50%) translateY(-4px); /* 浮き上がり量を少し控えめに */
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
-    background-color: rgba(40, 40, 40, 0.85);
-}
 
 .resizer-vertical {
     width: 5px;
@@ -151,7 +140,6 @@ body.resizing {
     background: linear-gradient(180deg, var(--highlight-pink), var(--highlight-blue));
 }
 
-/* 起動時にプレーヤー要素がUIを崩さないようにデフォルトで非表示にする */
 #main-player {
     display: none;
 }
