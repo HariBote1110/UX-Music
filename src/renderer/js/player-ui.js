@@ -7,17 +7,19 @@ import {
     togglePlayPause,
     isPlaying,
     getCurrentTime,
-    getDuration
-} from './player.js'; // player.js からコア関数をインポート
-import { applyMasterVolume } from './audio-graph.js'; // audio-graph.js からインポート
+    getDuration,
+    playCurrent,
+    pauseCurrent
+} from './player.js'; 
+import { applyMasterVolume } from './audio-graph.js'; 
 import { formatTime } from './ui/utils.js';
 const { ipcRenderer } = require('electron');
 
 let isSeeking = false;
 let wasPlayingBeforeSeek = false;
-let progressUpdateInterval = null; // 時間表示用のタイマー
-let progressFrameId = null; // シークバー用のフレームID
-let lastVolume = 0.5; // ミュート復帰用の音量
+let progressUpdateInterval = null; 
+let progressFrameId = null; 
+let lastVolume = 0.5; 
 
 
 function updateUiTime(current, duration) {
@@ -53,13 +55,25 @@ function toggleMute() {
 }
 
 function updateProgressBarLoop() {
-    if (!isPlaying() || isSeeking) {
+    // シーク中はループを止める
+    if (isSeeking) {
         progressFrameId = null;
         return;
     }
+
+    // 再生中でない場合も止めるが、readyStateが低いだけの可能性もあるためガード
+    if (!isPlaying()) {
+        progressFrameId = null;
+        return;
+    }
+
     const currentTime = getCurrentTime();
     const duration = getDuration();
-    elements.progressBar.value = currentTime;
+    
+    if (elements.progressBar) {
+        elements.progressBar.value = currentTime;
+    }
+    
     updateLrcEditorControls(true, currentTime, duration);
     progressFrameId = requestAnimationFrame(updateProgressBarLoop);
 }
@@ -71,13 +85,13 @@ export function updateSeekUI(time) {
     updateLrcEditorControls(isPlaying(), time, duration);
 }
 
-export function initPlayerControls(player, callbacks) {
+export function initPlayerControls(initialPlayer, callbacks) {
     elements.playPauseBtn.addEventListener('click', togglePlayPause); 
 
     elements.progressBar.addEventListener('mousedown', () => {
         isSeeking = true;
         wasPlayingBeforeSeek = isPlaying(); 
-        if (wasPlayingBeforeSeek) player.pause();
+        if (wasPlayingBeforeSeek) pauseCurrent(); // 汎用関数を使用
     });
 
     elements.progressBar.addEventListener('mouseup', () => {
@@ -86,12 +100,10 @@ export function initPlayerControls(player, callbacks) {
             seek(seekTime); 
             isSeeking = false;
             if (wasPlayingBeforeSeek) {
-                player.play().catch(e => console.error("Playback resumption after seek failed:", e));
+                playCurrent(); // 汎用関数を使用
                 wasPlayingBeforeSeek = false;
             }
-            if (isPlaying() && !progressFrameId) {
-                 progressFrameId = requestAnimationFrame(updateProgressBarLoop);
-            }
+            // ループは onplaying イベントから自動で再開されます
         }
     });
 
@@ -104,7 +116,7 @@ export function initPlayerControls(player, callbacks) {
     });
 
     elements.volumeSlider.addEventListener('input', () => {
-        applyMasterVolume(); // audio-graph.js からインポートした関数
+        applyMasterVolume(); 
         updateVolumeIcon();
         ipcRenderer.send('save-settings', { volume: parseFloat(elements.volumeSlider.value) });
     });
@@ -135,7 +147,10 @@ export function updatePlaybackStateUI(playing) {
             if (!isSeeking) updateUiTime(getCurrentTime(), getDuration());
         }, 1000);
         
-        if (!progressFrameId) progressFrameId = requestAnimationFrame(updateProgressBarLoop);
+        // 二重起動防止
+        if (!progressFrameId) {
+            progressFrameId = requestAnimationFrame(updateProgressBarLoop);
+        }
 
     } else {
         if (!isSeeking) elements.playPauseBtn.classList.remove('playing');
@@ -154,18 +169,10 @@ export function updatePlaybackStateUI(playing) {
     }
 }
 
-/**
- * 曲のメタデータ（総時間）が読み込まれた際にUIを更新する
- */
 export function updateMetadataUI() {
     const duration = getDuration();
     elements.totalDurationEl.textContent = formatTime(duration);
-    
-    // ▼▼▼ 修正箇所 ▼▼▼
-    // "Such as " という不要な文字列を削除
     elements.progressBar.max = duration;
-    // ▲▲▲ 修正箇所 ▲▲▲
-    
     updateLrcEditorControls(isPlaying(), getCurrentTime(), duration);
 }
 

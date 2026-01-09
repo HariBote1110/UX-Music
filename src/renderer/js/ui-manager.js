@@ -15,6 +15,7 @@ const { ipcRenderer } = require('electron');
  * 現在アクティブなビューの内容を再描画する
  */
 export function renderCurrentView() {
+    console.log(`[Debug:UI] renderCurrentView 実行 - ViewId: ${state.activeViewId}`);
     showView(state.activeViewId, state.currentDetailView);
     renderQueueView();
 }
@@ -24,6 +25,7 @@ export function renderCurrentView() {
  */
 export function updatePlayingIndicators() {
     const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
+    console.log(`[Debug:UI] updatePlayingIndicators 実行 - SongID: ${currentPlayingSong?.id}`);
 
     const oldPlayingItems = document.querySelectorAll('.main-content .song-item.playing');
     oldPlayingItems.forEach(item => item.classList.remove('playing'));
@@ -31,13 +33,18 @@ export function updatePlayingIndicators() {
     if (currentPlayingSong) {
         try {
             const safeId = CSS.escape(currentPlayingSong.id);
-            const newPlayingItem = document.querySelector(`.main-content .song-item[data-song-id="${safeId}"]`);
+            const selector = `.main-content .song-item[data-song-id="${safeId}"]`;
+            const newPlayingItem = document.querySelector(selector);
+            
             if (newPlayingItem) {
+                console.log('[Debug:UI] 該当する song-item を発見しました。ハイライトを適用します。');
                 newPlayingItem.classList.add('playing');
                 setVisualizerTarget(newPlayingItem);
+            } else {
+                console.warn(`[Debug:UI] セレクター "${selector}" に一致する要素が見つかりませんでした。`);
             }
         } catch (e) {
-            console.error('Error selecting song item:', e);
+            console.error('[Debug:UI] エラー:', e);
         }
     } else {
         setVisualizerTarget(null);
@@ -76,7 +83,10 @@ function renderQueueView() {
         queueItem.addEventListener('click', () => playSong(index));
         elements.queueList.appendChild(queueItem);
     });
-    window.observeNewArtworks(elements.queueList);
+    
+    if (typeof window.observeNewArtworks === 'function') {
+        window.observeNewArtworks(elements.queueList);
+    }
 }
 
 export function initUI() {
@@ -85,79 +95,61 @@ export function initUI() {
             elements.sidebarTabs.forEach(t => t.classList.remove('active'));
             elements.sidebarTabContents.forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
-            document.getElementById(tab.dataset.tab).classList.add('active');
+            const targetContent = document.getElementById(tab.dataset.tab);
+            if (targetContent) targetContent.classList.add('active');
             renderQueueView();
         });
     });
 
-    // MTPデバイスボタンのクリックイベント
     elements.mtpDeviceButton.addEventListener('click', (e) => {
         e.stopPropagation();
         elements.mtpDevicePopup.classList.toggle('active');
         elements.devicePopup.classList.remove('active');
     });
 
-    // MTPデバイスポップアップの外側をクリックしたら閉じる
     document.addEventListener('click', (e) => {
         if (!elements.mtpDevicePopup.contains(e.target) && !elements.mtpDeviceButton.contains(e.target)) {
             elements.mtpDevicePopup.classList.remove('active');
         }
     });
     
-    // メインプロセスからのMTPデバイス状態変更通知を受け取る
     ipcRenderer.on('mtp-device-status', (event, device) => {
-        console.log('[MTP-LOG] レンダラーが "mtp-device-status" イベントを受信しました。デバイス情報:', device);
+        console.log('[MTP-LOG] MTPデバイスステータス受信:', device);
         updateMtpDeviceView(device);
     });
-    console.log('[MTP-LOG] initUI完了。MTPデバイスのリスナーを設定しました。');
 
-    // MTPポップアップの「キューを転送」ボタンのクリックイベント
     elements.mtpTransferQueueBtn.addEventListener('click', () => {
         elements.mainContent.classList.add('hidden');
         elements.mtpTransferView.classList.remove('hidden');
         elements.mtpDevicePopup.classList.remove('active');
-        console.log('[MTP-LOG] 転送ビューを開きました。');
     });
 
-    // 転送ビューの「閉じる」ボタンのクリックイベント
     elements.mtpTransferCloseBtn.addEventListener('click', () => {
         elements.mtpTransferView.classList.add('hidden');
         elements.mainContent.classList.remove('hidden');
-        console.log('[MTP-LOG] 転送ビューを閉じました。');
     });
 }
 
-/**
- * MTPデバイスUIの状態を更新する
- */
 function updateMtpDeviceView(device) {
-    console.log('[MTP-LOG] updateMtpDeviceView が呼ばれました。デバイス:', device ? device.name : 'null');
-
     if (device) {
         elements.mtpDeviceButton.classList.remove('hidden'); 
         elements.mtpDeviceName.textContent = device.name || 'MTP Device';
         elements.mtpTransferDeviceName.textContent = device.name || 'MTP Device';
         
-        console.log('[MTP-LOG] ボタンの "hidden" クラスを削除しました。'); 
-        
         if (device.storage && device.storage.total > 0) {
             const { free, total } = device.storage;
             const used = total - free;
             const usedPercent = (used / total) * 100;
-            
             const fBytes = typeof formatBytes === 'function' ? formatBytes : (b) => `${(b / 1024**3).toFixed(1)} GB`;
-
             elements.mtpStorageUsed.style.width = `${usedPercent}%`;
             elements.mtpStorageLabel.textContent = `${fBytes(free)} 空き (${fBytes(used)} / ${fBytes(total)})`;
         } else {
-            console.warn('[MTP-LOG] デバイスのストレージ情報が利用できません。', device.storage);
             elements.mtpStorageUsed.style.width = '0%';
             elements.mtpStorageLabel.textContent = 'ストレージ情報なし';
         }
     } else {
         elements.mtpDeviceButton.classList.add('hidden');
         elements.mtpDevicePopup.classList.remove('active');
-        console.log('[MTP-LOG] ボタンに "hidden" クラスを追加しました (切断)。');
         
         if (!elements.mtpTransferView.classList.contains('hidden')) {
             elements.mtpTransferView.classList.add('hidden');
@@ -174,7 +166,6 @@ export function addSongsToLibrary({ songs, albums }) {
     
     if (albums && Object.keys(albums).length === 0 && songs && songs.length > 0 && songs[0].artwork && typeof songs[0].artwork !== 'object') {
         migrationNeeded = true;
-        console.log('[Migration Check] Old artwork format detected. Migration needed.');
         state.albums.clear(); 
     } else if (albums) {
         state.albums = new Map(Object.entries(albums));
@@ -186,7 +177,6 @@ export function addSongsToLibrary({ songs, albums }) {
 
         songs.forEach(newSong => {
             if (libraryMap.has(newSong.path)) {
-                // 既存の曲: プロパティを更新
                 const existingSong = libraryMap.get(newSong.path);
                 Object.assign(existingSong, newSong);
             } else {
@@ -206,8 +196,6 @@ export function addSongsToLibrary({ songs, albums }) {
 }
 
 function groupLibraryByAlbum(isMigration = false) {
-    console.time('Renderer: groupLibraryByAlbum');
-    
     const tempAlbumGroups = new Map();
     const localSongs = state.library.filter(song => !song.sourceURL);
 
@@ -273,8 +261,6 @@ function groupLibraryByAlbum(isMigration = false) {
             delete song.artwork;
         });
     }
-    
-    console.timeEnd('Renderer: groupLibraryByAlbum');
 }
 
 function groupLibraryByArtist() {
@@ -310,24 +296,19 @@ export async function updateAudioDevices() {
         );
         
         elements.devicePopup.innerHTML = '';
-        
         const activeDeviceId = settings.audioOutputId || 'default';
 
-        // --- ▼▼▼ 修正: 仮想デバイス(Direct Link)を追加 ▼▼▼ ---
         const directLinkDevice = {
             deviceId: 'ux-direct-link',
             label: 'UX Audio Router (Direct)',
             isVirtual: true
         };
-        // リストの先頭に追加
         const displayDevices = [directLinkDevice, ...audioDevices];
-        // --- ▲▲▲ 修正ここまで ▲▲▲ ---
 
         displayDevices.forEach(device => {
             const item = document.createElement('div');
             item.className = 'device-popup-item';
             
-            // 仮想デバイスのスタイルリング
             if (device.isVirtual) {
                 item.style.fontWeight = 'bold';
                 item.style.color = '#7289da'; 
@@ -342,21 +323,17 @@ export async function updateAudioDevices() {
             
             item.addEventListener('click', async () => {
                 const newDeviceId = item.dataset.deviceId;
-                
                 await stopPlayer();
                 state.currentSongIndex = -1;
                 updateNowPlayingView(null);
                 loadLyricsForSong(null);
                 updatePlayingIndicators();
-                
                 await setAudioOutput(newDeviceId);
-
                 elements.devicePopup.querySelectorAll('.device-popup-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
                 elements.devicePopup.classList.remove('active');
             });
 
-            // 仮想デバイス以外のみコンテキストメニュー
             if (!device.isVirtual) {
                 item.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
@@ -368,18 +345,14 @@ export async function updateAudioDevices() {
                                 const deviceIdToHide = item.dataset.deviceId;
                                 const updatedHiddenDevices = [...hiddenDevices, deviceIdToHide];
                                 ipcRenderer.send('save-settings', { hiddenDeviceIds: updatedHiddenDevices });
-                                showNotification(`「${item.textContent}」を非表示にしました。`);
-                                hideNotification(3000);
                                 updateAudioDevices();
                             }
                         }
                     ]);
                 });
             }
-
             elements.devicePopup.appendChild(item);
         });
-        
     } catch (error) {
         console.error('オーディオデバイスの取得に失敗しました:', error);
     }

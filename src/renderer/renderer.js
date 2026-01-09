@@ -1,17 +1,20 @@
+// src/renderer/renderer.js
+
 import { state, elements, initElements } from './js/state.js';
 import { initEventListeners } from './js/init-listeners.js';
 import { initUI } from './js/ui.js';
 import { initSettings } from './js/init-settings.js';
 import { initNavigation, showView } from './js/navigation.js';
-import { initPlayer, play } from './js/player.js';
+import { initPlayer } from './js/player.js';
 import { updateAudioDevices, updatePlayCountDisplay, addSongsToLibrary } from './js/ui-manager.js';
 import { loadAllComponents } from './js/component-loader.js';
 import { initIPC } from './js/ipc.js';
 import { initModal } from './js/modal.js';
 import { initDebugCommands } from './js/debug-commands.js';
 import { initNormalizeView } from './js/normalize-view.js';
-import { initEqualizer, renderEqualizer, applyCurrentSettings } from './js/ui/equalizer.js';
+import { initEqualizer } from './js/ui/equalizer.js';
 import { initQuiz } from './js/quiz.js';
+// ▼▼▼ 修正: playNextSong, playPrevSong を適切にインポート ▼▼▼
 import { playNextSong, playPrevSong } from './js/playback-manager.js';
 import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
 
@@ -54,20 +57,23 @@ async function initApp() {
 
     const mainPlayer = document.getElementById('main-player');
     if (mainPlayer) {
+        // ▼▼▼ 修正: player.js のコールバックで playback-manager の関数を呼ぶように変更 ▼▼▼
+        // これにより、曲遷移時に state.currentSongIndex が正しく更新され、UIが同期されます。
         await initPlayer(mainPlayer, {
             onSongEnded: () => {
-                const nextIndex = getNextSongIndex();
-                if (nextIndex !== -1) play(state.playbackQueue[nextIndex]);
+                console.log('[Renderer] 曲が終了しました。次を再生します。');
+                playNextSong();
             },
             onNextSong: () => {
-                 const nextIndex = getNextSongIndex();
-                 if (nextIndex !== -1) play(state.playbackQueue[nextIndex]);
+                 console.log('[Renderer] 次へボタンが押されました。');
+                 playNextSong();
             },
             onPrevSong: () => {
-                 const prevIndex = getPrevSongIndex();
-                 if (prevIndex !== -1) play(state.playbackQueue[prevIndex]);
+                 console.log('[Renderer] 前へボタンが押されました。');
+                 playPrevSong();
             }
         });
+        // ▲▲▲ 修正完了 ▲▲▲
     }
 
     initIPC(ipcRenderer, {
@@ -89,16 +95,16 @@ async function initApp() {
         onSettingsLoaded: (settings) => {
             if (typeof settings.volume === 'number') {
                 if(elements.volumeSlider) elements.volumeSlider.value = settings.volume;
-                if(elements.volumeRange) elements.volumeRange.value = settings.volume;
             }
             state.visualizerMode = settings.visualizerMode || 'active';
+            
+            // プロパティ名を isShuffled に統一
             if (typeof settings.isShuffled === 'boolean') {
-                state.isShuffle = settings.isShuffled;
-                if(elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffle);
+                state.isShuffled = settings.isShuffled;
+                if(elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
             }
             if (typeof settings.groupAlbumArt === 'boolean') {
                 state.groupAlbumArt = settings.groupAlbumArt;
-                // 設定画面からの通知で再描画が必要な場合
                 if (state.activeViewId === 'track-view') showView('track-view');
             }
              if (settings.enableYouTube) {
@@ -126,19 +132,16 @@ async function initApp() {
     
     try {
         const settings = await ipcRenderer.invoke('get-settings');
-        
-        // ▼▼▼ 修正: 起動時に設定を即時反映 ▼▼▼
         if (settings) {
             if (typeof settings.groupAlbumArt === 'boolean') {
                 state.groupAlbumArt = settings.groupAlbumArt;
             }
+            // プロパティ名を isShuffled に統一
             if (typeof settings.isShuffled === 'boolean') {
-                state.isShuffle = settings.isShuffled;
-                if(elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffle);
+                state.isShuffled = settings.isShuffled;
+                if(elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
             }
-            // ... 他の設定も必要に応じて反映
         }
-        // ▲▲▲ 修正完了 ▲▲▲
 
         if (settings.libraryPath) {
             ipcRenderer.send('load-library');
@@ -161,37 +164,7 @@ async function initApp() {
     }
 }
 
-function getNextSongIndex() {
-    if (state.playbackQueue.length === 0) return -1;
-    if (state.isShuffle) {
-        let nextIndex = Math.floor(Math.random() * state.playbackQueue.length);
-        if (state.playbackQueue.length > 1 && nextIndex === state.currentSongIndex) {
-            return getNextSongIndex();
-        }
-        return nextIndex;
-    } else {
-        if (state.loopMode === 'one') return state.currentSongIndex;
-        let nextIndex = state.currentSongIndex + 1;
-        if (nextIndex >= state.playbackQueue.length) {
-             if (state.loopMode === 'all') return 0;
-             else return -1; 
-        }
-        return nextIndex;
-    }
-}
-
-function getPrevSongIndex() {
-    if (state.playbackQueue.length === 0) return -1;
-    if (state.isShuffle) {
-         return Math.floor(Math.random() * state.playbackQueue.length);
-    } else {
-        let prevIndex = state.currentSongIndex - 1;
-        if (prevIndex < 0) {
-             if (state.loopMode === 'all') return state.playbackQueue.length - 1;
-             else return 0;
-        }
-        return prevIndex;
-    }
-}
+// 冗長で property 名が間違っていた古いヘルパー関数を削除
+// 今後は playback-manager.js 内のロジックが使用されます。
 
 initApp().catch(err => console.error('App initialization failed:', err));

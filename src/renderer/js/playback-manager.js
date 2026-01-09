@@ -18,8 +18,32 @@ function handleSkip() {
     }
 }
 
+/**
+ * 起動時に保存された再生設定を読み込んで適用する
+ */
+export async function initPlaybackSettings() {
+    console.log('[Debug:Playback] initPlaybackSettings を開始します。');
+    const settings = await ipcRenderer.invoke('get-settings');
+    
+    if (settings.isShuffled !== undefined) {
+        state.isShuffled = settings.isShuffled;
+        elements.shuffleBtn.classList.toggle('active', state.isShuffled);
+        console.log(`[Debug:Playback] シャッフル設定を復元: ${state.isShuffled}`);
+    }
+    
+    if (settings.playbackMode !== undefined) {
+        state.playbackMode = settings.playbackMode;
+        elements.loopBtn.classList.toggle('active', state.playbackMode !== PLAYBACK_MODES.NORMAL);
+        elements.loopBtn.classList.toggle('loop-one', state.playbackMode === PLAYBACK_MODES.LOOP_ONE);
+        console.log(`[Debug:Playback] ループモードを復元: ${state.playbackMode}`);
+    }
+}
+
 export async function playSong(index, sourceList = null, forcePlay = false) {
-    console.log(`[Logger] 1. playSong() が呼び出されました。曲: ${sourceList ? sourceList[index].title : state.playbackQueue[index].title}`);
+    const targetQueue = sourceList || state.playbackQueue;
+    const songToPlay = targetQueue[index];
+
+    console.log(`[Debug:Playback] playSong 開始 - index: ${index}, 曲名: ${songToPlay?.title}`);
     
     if (sourceList) {
         handleSkip();
@@ -46,55 +70,47 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
 
     const songList = state.playbackQueue;
     if (!songList || index < 0 || index >= songList.length) {
+        console.warn('[Debug:Playback] 再生対象が見つかりません。停止します。');
         stopSongInPlayer();
         updateNowPlayingView(null);
         return;
     }
     
-    let songToPlay = songList[index];
+    let songToPlayActual = songList[index];
 
-    // --- ▼▼▼ 追加: ライブラリ情報の同期 ▼▼▼ ---
-    // 再生しようとしている曲がローカルファイルの場合、ライブラリの最新情報を参照して
-    // sampleRateなどのメタデータを同期させる
-    if (songToPlay.type === 'local' && songToPlay.id) {
-        const librarySong = state.library.find(s => s.id === songToPlay.id);
+    if (songToPlayActual.type === 'local' && songToPlayActual.id) {
+        const librarySong = state.library.find(s => s.id === songToPlayActual.id);
         if (librarySong) {
-             // 参照切れを防ぐため、プロパティをマージする
-             Object.assign(songToPlay, librarySong);
-             // キュー内のオブジェクトも更新しておく（次回以降のために）
-             state.playbackQueue[index] = songToPlay;
+             Object.assign(songToPlayActual, librarySong);
+             state.playbackQueue[index] = songToPlayActual;
         }
     }
-    // --- ▲▲▲ 追加ここまで ▲▲▲ ---
 
-    if (songToPlay.type === 'local' && (songToPlay.bpm === undefined || songToPlay.bpm === null)) {
-        console.log(`[BPM] Requesting analysis for: ${songToPlay.title}`);
-        ipcRenderer.send('request-bpm-analysis', songToPlay);
+    if (songToPlayActual.type === 'local' && (songToPlayActual.bpm === undefined || songToPlayActual.bpm === null)) {
+        ipcRenderer.send('request-bpm-analysis', songToPlayActual);
     }
 
-    if (songToPlay.type === 'local' && !forcePlay) {
-        const savedLoudness = await ipcRenderer.invoke('get-loudness-value', songToPlay.path);
+    if (songToPlayActual.type === 'local' && !forcePlay) {
+        const savedLoudness = await ipcRenderer.invoke('get-loudness-value', songToPlayActual.path);
         if (typeof savedLoudness !== 'number') {
             state.songWaitingForAnalysis = { index, sourceList: state.playbackQueue };
-            showNotification(`「${songToPlay.title}」の再生準備中です...`);
-            ipcRenderer.send('request-loudness-analysis', songToPlay.path);
+            showNotification(`「${songToPlayActual.title}」の再生準備中です...`);
+            ipcRenderer.send('request-loudness-analysis', songToPlayActual.path);
             return;
         }
     }
     
     hideNotification();
+    loadLyricsForSong(songToPlayActual);
     
-    loadLyricsForSong(songToPlay);
-    
-    ipcRenderer.send('playback-started', songToPlay);
+    ipcRenderer.send('playback-started', songToPlayActual);
     state.currentSongIndex = index;
     
-    updateNowPlayingView(songToPlay);
-    
-    console.log('[Logger] 2. これからUIの表示更新を呼び出します。');
+    console.log('[Debug:Playback] UI更新関数(updateNowPlayingView, updatePlayingIndicators)を呼び出します。');
+    updateNowPlayingView(songToPlayActual);
     updatePlayingIndicators();
     
-    await playSongInPlayer(songToPlay);
+    await playSongInPlayer(songToPlayActual);
 }
 
 export function playNextSong() {

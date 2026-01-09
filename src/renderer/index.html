@@ -73,11 +73,11 @@
                             <span>曲を選択してください</span>
                         </div>
                     </h2>
-                    <p id="now-playing-artist" class="marquee-wrapper">
+                    <div id="now-playing-artist" class="marquee-wrapper">
                         <div class="marquee-content">
                             <span></span>
                         </div>
-                    </p>
+                    </div>
                     <div id="hub-link-container"></div>
                 </div>
                 <div class="sidebar-tabs">
@@ -123,11 +123,13 @@
                 <img src="./assets/icons/repeat.svg" alt="Loop">
             </button>
         </div>
+
         <div class="progress-container">
             <span id="current-time">0:00</span>
             <input type="range" id="progress-bar" value="0" step="any">
             <span id="total-duration">0:00</span>
         </div>
+
         <div class="volume-container">
             <button id="volume-icon-btn">
                 <img id="volume-icon" src="./assets/icons/bigger_sound.svg" alt="Volume">
@@ -157,7 +159,6 @@
                     <button id="mtp-eject-btn">デバイスを取り外す</button>
                 </div>
             </div>
-
         </div>
     </footer>
 

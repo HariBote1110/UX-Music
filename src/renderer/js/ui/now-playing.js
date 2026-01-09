@@ -1,3 +1,5 @@
+// src/renderer/js/ui/now-playing.js
+
 import { state, elements } from '../state.js';
 import { setEqualizerColorFromArtwork } from '../player.js';
 import { resolveArtworkPath, formatSongTitle } from './utils.js';
@@ -11,6 +13,8 @@ function getYoutubeVideoId(url) {
 }
 
 export function updateNowPlayingView(song) {
+    console.log('[Debug:NowPlaying] updateNowPlayingView 開始 - 曲:', song?.title);
+    
     const { 
         nowPlayingArtworkContainer, 
         nowPlayingTitle, 
@@ -25,20 +29,20 @@ export function updateNowPlayingView(song) {
         localPlayer.style.display = 'none';
     }
     
-    nowPlayingArtworkContainer.innerHTML = '';
-    hubLinkContainer.innerHTML = '';
-    nowPlayingArtworkContainer.classList.remove('video-mode');
+    if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.innerHTML = '';
+    if (hubLinkContainer) hubLinkContainer.innerHTML = '';
+    if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.classList.remove('video-mode');
 
-    // ▼▼▼ ここからが修正箇所です ▼▼▼
-    // Light Flightモードに関する分岐をすべて削除し、常に通常のアートワーク表示処理を行う
     if (!song) {
+        console.log('[Debug:NowPlaying] 曲が指定されていないため、デフォルト画像を表示します。');
         const img = document.createElement('img');
         img.src = './assets/default_artwork.png';
-        nowPlayingArtworkContainer.appendChild(img);
+        if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.appendChild(img);
         setEqualizerColorFromArtwork(img);
     
     } else if (song.type === 'youtube') {
-        nowPlayingArtworkContainer.classList.add('video-mode');
+        console.log('[Debug:NowPlaying] YouTube モードで描画します。');
+        if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.classList.add('video-mode');
         const videoId = getYoutubeVideoId(song.sourceURL || song.path);
         if (videoId) {
             const iframe = document.createElement('iframe');
@@ -47,7 +51,7 @@ export function updateNowPlayingView(song) {
             iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&fs=0&iv_load_policy=3&modestbranding=1&origin=${window.location.protocol}//${window.location.host}`;
             iframe.setAttribute('frameborder', '0');
             iframe.setAttribute('allow', 'autoplay; encrypted-media');
-            nowPlayingArtworkContainer.appendChild(iframe);
+            if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.appendChild(iframe);
         }
         
         const artworkImage = new Image();
@@ -56,9 +60,13 @@ export function updateNowPlayingView(song) {
         artworkImage.src = song.artwork;
 
     } else {
+        console.log('[Debug:NowPlaying] ローカル曲として描画します。');
         const img = document.createElement('img');
         img.crossOrigin = "Anonymous";
-        img.onload = () => setEqualizerColorFromArtwork(img);
+        img.onload = () => {
+            console.log('[Debug:NowPlaying] アートワーク画像の読み込みが完了しました。');
+            setEqualizerColorFromArtwork(img);
+        };
 
         const masterSong = state.library.find(s => s.path === song.path) || song;
         const album = state.albums.get(masterSong.albumKey);
@@ -72,19 +80,18 @@ export function updateNowPlayingView(song) {
 
         img.src = resolveArtworkPath(artwork, false);
 
-        if (masterSong.hasVideo && localPlayer) {
+        if (masterSong.hasVideo && localPlayer && nowPlayingArtworkContainer) {
             nowPlayingArtworkContainer.classList.add('video-mode');
             localPlayer.poster = img.src;
             localPlayer.style.display = 'block';
             nowPlayingArtworkContainer.appendChild(localPlayer);
-        } else {
+        } else if (nowPlayingArtworkContainer) {
             nowPlayingArtworkContainer.classList.remove('video-mode');
             nowPlayingArtworkContainer.appendChild(img);
         }
     }
-    // ▲▲▲ ここまでが修正箇所です ▲▲▲
     
-    if (song && song.hubUrl) {
+    if (song && song.hubUrl && hubLinkContainer) {
         const hubButton = document.createElement('button');
         hubButton.className = 'hub-link-button-small';
         hubButton.textContent = '🔗 公式リンクを開く';
@@ -92,13 +99,21 @@ export function updateNowPlayingView(song) {
         hubLinkContainer.appendChild(hubButton);
     }
 
-    const titleSpan = nowPlayingTitle.querySelector('.marquee-content span');
+    // タイトルの更新
+    const titleSpan = nowPlayingTitle ? nowPlayingTitle.querySelector('.marquee-content span') : null;
     if (titleSpan) {
         titleSpan.textContent = song ? formatSongTitle(song.title) : '曲を選択してください';
+        console.log('[Debug:NowPlaying] タイトルを更新しました:', titleSpan.textContent);
+    } else {
+        console.error('[Debug:NowPlaying] エラー: タイトルを表示する DOM 要素 (.marquee-content span) が見つかりません。');
     }
 
-    const artistSpan = nowPlayingArtist.querySelector('.marquee-content span');
+    // アーティストの更新
+    const artistSpan = nowPlayingArtist ? nowPlayingArtist.querySelector('.marquee-content span') : null;
     if (artistSpan) {
         artistSpan.textContent = song ? song.artist : '';
+        console.log('[Debug:NowPlaying] アーティストを更新しました:', artistSpan.textContent);
+    } else {
+        console.error('[Debug:NowPlaying] エラー: アーティストを表示する DOM 要素 (.marquee-content span) が見つかりません。');
     }
 }

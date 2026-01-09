@@ -4,12 +4,16 @@ import { renderCurrentView, updateAudioDevices } from './ui-manager.js';
 import { setVisualizerFpsLimit } from './player.js';
 import { updateNowPlayingView } from './ui/now-playing.js';
 import { showNotification, hideNotification } from './ui/notification.js';
+import { initPlaybackSettings } from './playback-manager.js';
 const { ipcRenderer } = require('electron');
 
 const decaySliderValues = [1, 3, 7, 14, 30];
 const decaySliderLabels = ['1日', '3日', '7日', '2週間', '1ヶ月'];
 
 export function initSettings() {
+    // Initialise playback settings from storage
+    initPlaybackSettings();
+
     let settingsClickCount = 0;
     let settingsClickTimer;
 
@@ -29,10 +33,8 @@ export function initSettings() {
         const currentImportMode = settings.importMode || 'balanced';
         document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`).checked = true;
         
-        // ▼▼▼ 追加: CDリッピングモードの読み込み ▼▼▼
         const currentCdRipMode = settings.cdRipMode || 'paranoia';
         document.querySelector(`input[name="cd-rip-mode"][value="${currentCdRipMode}"]`).checked = true;
-        // ▲▲▲ 追加 ▲▲▲
 
         const currentVisualizerMode = settings.visualizerMode || 'active';
         document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
@@ -48,7 +50,7 @@ export function initSettings() {
         const decaySlider = document.getElementById('analysed-queue-decay-slider');
         const decayValueLabel = document.getElementById('analysed-queue-decay-value');
         const sliderIndex = decaySliderValues.indexOf(currentDecayDays);
-        decaySlider.value = sliderIndex > -1 ? sliderIndex : 2; // Default to 7 days
+        decaySlider.value = sliderIndex > -1 ? sliderIndex : 2; 
         decayValueLabel.textContent = decaySliderLabels[decaySlider.value];
         
         document.querySelector('input[name="enable-easter-eggs"]').checked = settings.enableEasterEggs !== false;
@@ -93,9 +95,7 @@ export function initSettings() {
             youtubePlaybackMode: document.querySelector('input[name="youtube-mode"]:checked').value,
             youtubeDownloadQuality: document.querySelector('input[name="youtube-quality"]:checked').value,
             importMode: document.querySelector('input[name="import-mode"]:checked').value,
-            // ▼▼▼ 追加: CDリッピングモードの保存 ▼▼▼
             cdRipMode: document.querySelector('input[name="cd-rip-mode"]:checked').value,
-            // ▲▲▲ 追加 ▲▲▲
             visualizerMode: document.querySelector('input[name="visualizer-mode"]:checked').value,
             groupAlbumArt: document.querySelector('input[name="group-album-art"]').checked,
             analysedQueue: {
@@ -103,6 +103,9 @@ export function initSettings() {
                 decayDays: decaySliderValues[decaySliderValue]
             },
             enableEasterEggs: document.querySelector('input[name="enable-easter-eggs"]').checked,
+            // Maintain current playback state during settings save
+            isShuffled: state.isShuffled,
+            playbackMode: state.playbackMode
         };
     
         ipcRenderer.send('save-settings', settingsToSave);

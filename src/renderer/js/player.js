@@ -26,14 +26,13 @@ import {
     setBaseGain,
     applyEqualizerSettings,
     setAudioOutput as setAudioOutputDevice,
-    activateAudioGraph, // ▼▼▼ 変更: 新しい関数 ▼▼▼
+    activateAudioGraph,
     analyser,
     dataArray
 } from './audio-graph.js';
 const { ipcRenderer } = require('electron');
-const path = require('path');
 
-let localPlayer; // 現在DOMに表示されているアクティブなプレイヤー要素
+let localPlayer; 
 let currentSongType = 'local';
 
 let savedCallbacks = {
@@ -42,7 +41,6 @@ let savedCallbacks = {
     onPrevSong: () => {}
 };
 
-// ヘルパー: 現在のプレイヤーからプロパティを取得
 export function getCurrentTime() {
     return localPlayer ? localPlayer.currentTime : 0;
 }
@@ -50,8 +48,24 @@ export function getDuration() {
     return localPlayer && Number.isFinite(localPlayer.duration) ? localPlayer.duration : 0;
 }
 export function isPlaying() {
+    // 準備完了状態（readyState > 2）も加味して判定
     return localPlayer && !localPlayer.paused && !localPlayer.ended && localPlayer.readyState > 2;
 }
+
+// UI操作用の関数（常に最新の localPlayer を操作する）
+export async function playCurrent() {
+    if (localPlayer) {
+        try {
+            await localPlayer.play();
+        } catch (e) {
+            if (e.name !== 'AbortError') console.error("Playback failed:", e);
+        }
+    }
+}
+export function pauseCurrent() {
+    if (localPlayer) localPlayer.pause();
+}
+
 export function seek(time) {
     if (localPlayer && !isNaN(time)) {
         const duration = getDuration();
@@ -76,11 +90,7 @@ export {
     setEqualizerColorFromArtwork
 };
 
-// ▼▼▼ イベントリスナーのアタッチ関数 ▼▼▼
 function attachPlayerListeners(player) {
-    // 既存のリスナーを重複登録しないよう、あるいは新要素なので新規登録
-    // 古い要素のリスナー解除はGC任せでOK
-
     player.onended = () => {
         const finishedSong = state.playbackQueue[state.currentSongIndex];
         if (state.analysedQueue.enabled && finishedSong) ipcRenderer.send('song-finished', finishedSong);
@@ -88,20 +98,22 @@ function attachPlayerListeners(player) {
         updateLrcEditorControls(false, getDuration(), getDuration());
     };
     player.ontimeupdate = () => {
-        const currentTime = player.currentTime;
-        updateSyncedLyrics(currentTime);
+        updateSyncedLyrics(player.currentTime);
     };
     player.onloadedmetadata = () => {
         updateMetadataUI();
         updateMediaSessionHandlers();
     };
-    player.onplay = () => {
+    
+    // onplay よりも確実な onplaying (データが届いて動き出した時) を使用
+    player.onplaying = () => {
         updatePlaybackStateUI(true);
         resumeAudioContext();
         updatePlayingIndicators();
         startVisualizerLoop();
         updateMediaSessionState('playing');
     };
+    
     player.onpause = () => {
         updatePlaybackStateUI(false);
         stopVisualizerLoop();
@@ -110,21 +122,19 @@ function attachPlayerListeners(player) {
 }
 
 export async function initPlayer(playerElement, callbacks, sinkId = null) {
-    localPlayer = playerElement; // 初期要素
+    localPlayer = playerElement; 
     savedCallbacks = { ...callbacks };
     
-    // 初期化時はデフォルト44.1k等のグラフを作っておく（必須ではないが）
     await initAudioGraph(localPlayer, sinkId);
-
     attachPlayerListeners(localPlayer);
 
+    // コントロールの初期化はアプリ起動時のこの1回のみ
     initPlayerControls(localPlayer, {
         onNextSong: savedCallbacks.onNextSong,
         onPrevSong: savedCallbacks.onPrevSong
     });
 }
 
-// MediaSession関連 (省略: 変更なし)
 function updateMediaSessionState(state) {
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = state;
 }
@@ -146,24 +156,20 @@ async function setMediaSessionMetadata(song) {
     const album = state.albums.get(song.albumKey);
     let artworkSource = song.artwork || (album ? album.artwork : null);
     if (typeof artworkSource === 'object' && artworkSource !== null) artworkSource = artworkSource.full || artworkSource.thumbnail;
+    
     if (typeof artworkSource === 'string' && artworkSource) {
         let src = artworkSource;
         if (!src.startsWith('http') && !src.startsWith('https') && !src.startsWith('data:') && !src.startsWith('blob:')) {
-             try { const dataUrl = await ipcRenderer.invoke('get-artwork-as-data-url', src); if (dataUrl) src = dataUrl; else src = null; } catch (error) { src = null; }
+             try { const dataUrl = await ipcRenderer.invoke('get-artwork-as-data-url', src); if (dataUrl) src = dataUrl; } catch (error) {}
         }
-        if (src) {
-            let type = 'image/png';
-            if (src.startsWith('data:image/jpeg')) type = 'image/jpeg';
-            else if (src.startsWith('data:image/webp')) type = 'image/webp';
-            ['96x96', '128x128', '256x256', '384x384', '512x512'].forEach(size => artwork.push({ src, sizes: size, type }));
-        }
+        ['96x96', '128x128', '256x256', '384x384', '512x512'].forEach(size => artwork.push({ src, sizes: size, type: 'image/png' }));
     }
     if (artwork.length === 0) artwork.push({ src: './assets/default_artwork.png', sizes: '512x512', type: 'image/png' });
     navigator.mediaSession.metadata = new MediaMetadata({ title: song.title || 'Unknown', artist: song.artist || 'Unknown', album: song.album || '', artwork });
 }
 
 export async function play(song) {
-    await stop(); // 既存再生の停止
+    await stop(); 
     if (!song) return;
 
     const settings = await ipcRenderer.invoke('get-settings');
@@ -175,7 +181,7 @@ export async function play(song) {
         newBaseGain = Math.pow(10, gainDb / 20);
     }
     setBaseGain(newBaseGain);
-    setMediaSessionMetadata(song).catch(e=>{});
+    setMediaSessionMetadata(song).catch(()=>{});
 
     if (song.path) {
         currentSongType = 'local';
@@ -186,9 +192,6 @@ export async function play(song) {
 export async function stop() {
     if (!localPlayer) return;
     localPlayer.pause();
-    // srcを空にするとロードが走るが、キャッシュしている場合は保持したい？
-    // いや、停止時は止めるだけで良い。srcクリアは次の再生時でOK。
-    // ただしUIリセットのためイベント発火等は必要
     stopVisualizerLoop();
     resetPlaybackUI(); 
     ipcRenderer.send('playback-stopped');
@@ -197,37 +200,23 @@ export async function stop() {
 
 async function playLocal(song) {
     const rate = song.sampleRate || 44100;
-    
-    // ▼▼▼ 高速化: GraphとAudio要素をプールから取得 ▼▼▼
     const graph = await activateAudioGraph(rate);
     const newPlayer = graph.audioElement;
 
-    // DOM上の要素を入れ替え（もし違えば）
     if (localPlayer !== newPlayer) {
         console.log(`[Player] Swapping player element for ${rate}Hz.`);
-        
-        // 旧プレイヤーの後始末（停止）
         if (localPlayer) {
             localPlayer.pause();
-            localPlayer.removeAttribute('src'); // メモリ解放促進
+            localPlayer.removeAttribute('src'); 
         }
 
-        // DOM置換
-        // 親要素（#main-content内や隠しコンテナ）にあるはず
-        const container = document.getElementById('player-container') || document.body; // 適切なコンテナへ
-        // 既存の main-player IDを持つ要素を探して置換
         const oldEl = document.getElementById('main-player');
-        
-        // 新プレイヤーの設定
         newPlayer.id = 'main-player';
-        // 属性コピーが必要ならここで行う（volumeなど）
         newPlayer.volume = localPlayer ? localPlayer.volume : 1.0;
 
         if (oldEl) {
             oldEl.replaceWith(newPlayer);
         } else {
-            // 見つからない場合はAppend（初回など）
-            // UI上の場所依存だが、基本は非表示Audioならどこでも良い
             newPlayer.style.display = 'none'; 
             document.body.appendChild(newPlayer);
         }
@@ -235,30 +224,19 @@ async function playLocal(song) {
         localPlayer = newPlayer;
         attachPlayerListeners(localPlayer);
         
-        // コントロール再初期化（シークバーなどのイベントリスナー再紐付け）
-        initPlayerControls(localPlayer, {
-            onNextSong: savedCallbacks.onNextSong,
-            onPrevSong: savedCallbacks.onPrevSong
-        });
+        // initPlayerControls はここから削除しました (二重登録防止)
     }
-    // ▲▲▲ 高速化ここまで ▲▲▲
 
     const safePath = encodeURI(song.path.replace(/\\/g, '/')).replace(/#/g, '%23');
     localPlayer.src = `file://${safePath}`;
     
     try {
-        const playPromise = localPlayer.play();
-        console.log(`Playing: ${song.title} (${rate}Hz)`);
-        if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                if (error.name !== 'AbortError') {
-                    console.error(`Playback failed:`, error);
-                    savedCallbacks.onSongEnded();
-                }
-            });
-        }
+        await localPlayer.play();
     } catch (error) {
-        console.error(`Playback setup failed:`, error);
+        if (error.name !== 'AbortError') {
+            console.error(`Playback failed:`, error);
+            savedCallbacks.onSongEnded();
+        }
     }
 }
 
