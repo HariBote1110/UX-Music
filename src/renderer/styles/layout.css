@@ -45,6 +45,7 @@ body.resizing {
 .main-content .view-container {
     padding: 20px;
     box-sizing: border-box;
+    padding-bottom: 0px;
 }
 
 .main-content::-webkit-scrollbar {
