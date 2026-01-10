@@ -6,11 +6,6 @@ export class VirtualScroller {
             throw new Error("VirtualScroller: Missing required constructor options.");
         }
 
-        // ▼▼▼ デバッグログを追加 ▼▼▼
-        console.log('[VirtualScroller] Initializing for element:', element);
-        console.log(`[VirtualScroller] Initial clientHeight: ${element.clientHeight}`);
-        // ▲▲▲ ここまで ▲▲▲
-
         this.container = element;
         this.data = data;
         this.renderItem = renderItem;
@@ -20,12 +15,14 @@ export class VirtualScroller {
         this.container.style.position = 'relative';
         this.container.style.overflowY = 'auto';
 
+        // スクロール領域の高さを確保する要素
+        // データ量に応じた高さ + 再生バー分の余白(CSS変数) を計算して設定
         this.sizer = document.createElement('div');
         this.sizer.style.position = 'absolute';
         this.sizer.style.top = '0';
         this.sizer.style.left = '0';
         this.sizer.style.width = '1px';
-        this.sizer.style.height = `${this.data.length * this.itemHeight}px`;
+        this.sizer.style.height = `calc(${this.data.length * this.itemHeight}px + var(--footer-height, 0px))`;
         this.container.appendChild(this.sizer);
         
         this.renderedItems = new Map();
@@ -34,10 +31,10 @@ export class VirtualScroller {
         this.container.addEventListener('scroll', this.onScroll, { passive: true });
         
         requestAnimationFrame(() => {
-            // ▼▼▼ デバッグログを追加 ▼▼▼
-            console.log(`[VirtualScroller] Rendering after one frame. clientHeight: ${this.container.clientHeight}`);
-            // ▲▲▲ ここまで ▲▲▲
-            this.render();
+            // 要素がDOMに接続されている場合のみ描画
+            if (this.container.isConnected) {
+                this.render();
+            }
         });
     }
 
@@ -51,23 +48,16 @@ export class VirtualScroller {
     }
 
     render() {
+        // コンテナがDOMに存在しない、または非表示の場合は処理をスキップ
+        if (!this.container.isConnected || this.container.clientHeight === 0) {
+            return;
+        }
+
         const scrollTop = this.container.scrollTop;
         const containerHeight = this.container.clientHeight;
 
         const startIndex = Math.max(0, Math.floor(scrollTop / this.itemHeight) - this.buffer);
         const endIndex = Math.min(this.data.length - 1, Math.ceil((scrollTop + containerHeight) / this.itemHeight) + this.buffer);
-
-        // ▼▼▼ デバッグログを追加 ▼▼▼
-        if (containerHeight === 0) {
-            console.warn('[VirtualScroller] containerHeight is 0, nothing will be rendered.', {
-                scrollTop,
-                containerHeight,
-                startIndex,
-                endIndex,
-                dataLength: this.data.length
-            });
-        }
-        // ▲▲▲ ここまで ▲▲▲
 
         const visibleIndexes = new Set();
         for (let i = startIndex; i <= endIndex; i++) {
@@ -96,13 +86,19 @@ export class VirtualScroller {
 
     updateData(newData) {
         this.data = newData;
-        this.sizer.style.height = `${this.data.length * this.itemHeight}px`;
+        const totalHeight = this.data.length * this.itemHeight;
+        
+        // 高さの更新 (再生バーの余白も考慮)
+        this.sizer.style.height = `calc(${totalHeight}px + var(--footer-height, 0px))`;
+
         for (const element of this.renderedItems.values()) {
             element.remove();
         }
         this.renderedItems.clear();
 
-        requestAnimationFrame(() => this.render());
+        requestAnimationFrame(() => {
+            if (this.container.isConnected) this.render();
+        });
     }
 
     destroy() {

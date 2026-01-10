@@ -1,11 +1,39 @@
 import { state, elements } from './state.js';
-import { setupSongListScroller, createListHeader, initListHeaderResizing } from './ui/list-renderer.js'; // ★★★ 追加: 必要な関数をインポート
+import { setupSongListScroller, createListHeader, initListHeaderResizing } from './ui/list-renderer.js';
 import { resolveArtworkPath, formatSongTitle } from './ui/utils.js';
 import { setEqualizerColorFromArtwork } from './player.js';
 const { ipcRenderer } = require('electron');
 
+/**
+ * リストの下部に再生バーの高さ分の余白を確保するための関数
+ * CSS変数 --footer-height をコンテナに設定する
+ * @param {HTMLElement} container - 対象のリストコンテナ要素
+ */
+function updateListSpacer(container) {
+    if (!container) return;
+
+    const playbackBar = document.querySelector('.playback-bar');
+    if (playbackBar) {
+        // バーの高さ + 余裕(20px)
+        const barHeight = playbackBar.offsetHeight;
+        const spacerHeight = barHeight + 40;
+
+        // コンテナのCSS変数を更新
+        // これによりCSSの ::after 要素の高さが変わり、スクロール領域が広がる
+        container.style.setProperty('--footer-height', `${spacerHeight}px`);
+    } else {
+        container.style.removeProperty('--footer-height');
+    }
+}
+
 export function initUI() {
-    // UI初期化ロジックがあればここに記述
+    // ウィンドウリサイズ時にスペーサーの高さを再計算
+    window.addEventListener('resize', () => {
+        const activeContainer = document.querySelector('.track-list-container, #music-list, #queue-list, #lyrics-view'); 
+        if (activeContainer) {
+            updateListSpacer(activeContainer);
+        }
+    });
 }
 
 let currentSearchQuery = '';
@@ -164,7 +192,6 @@ export function renderTrackView() {
     // 3. ビュー構造（ヘッダー等）を再構築
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
-    // flexレイアウトで縦に並べるためのスタイル（views.cssの想定）
     viewWrapper.style.display = 'flex';
     viewWrapper.style.flexDirection = 'column';
     viewWrapper.style.height = '100%';
@@ -190,12 +217,17 @@ export function renderTrackView() {
     // 4. リストの中身を描画
     if (displaySongs.length === 0) {
         listContainer.innerHTML = '<div class="placeholder">検索結果が見つかりません</div>';
+        // 検索結果ゼロでも、念のため高さを適用しておく
+        updateListSpacer(listContainer);
         return;
     }
 
     setupSongListScroller(listContainer, displaySongs, {
         contextView: 'track-view'
     });
+    
+    // 生成後にCSS変数を更新して余白を確保
+    updateListSpacer(listContainer);
     
     // 列リサイズの初期化
     initListHeaderResizing(viewWrapper);

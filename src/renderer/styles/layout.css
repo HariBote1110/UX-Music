@@ -43,7 +43,7 @@ body.resizing {
 }
 
 .main-content .view-container {
-    padding: 20px;
+    padding: 10px;
     box-sizing: border-box;
     padding-bottom: 0px;
 }
@@ -113,14 +113,14 @@ body.resizing {
     backdrop-filter: blur(1px);
     
     height: auto;
-    min-height: 44px;
+    min-height: 40px;
     
     width: 96%;
     max-width: 160000000px;
     
     flex-shrink: 0;
     
-    border-radius: 32px;
+    border-radius: 40px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
     
     z-index: 1000;

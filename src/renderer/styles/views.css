@@ -54,10 +54,34 @@
 }
 
 /* --- 曲リストのスタイル --- */
-#music-list, #a-detail-list, #p-detail-list {
+/* コンテナの設定とスペーサー（Playback Bar回避用）の追加 */
+/* --- 修正後: コンテナの設定は position: relative だけあればOKです --- */
+#music-list, 
+.track-list-container, 
+#queue-list, 
+#lyrics-view,
+#a-detail-list, 
+#p-detail-list {
     flex-grow: 1;
     position: relative;
     overflow-y: auto;
+}
+/* リストの最後に透明なブロックを生成して、再生バーの高さ分だけ押し広げる。
+   高さはJS (ui.js) から --footer-height 変数として渡される。
+*/
+#music-list::after, 
+.track-list-container::after, 
+#queue-list::after, 
+#lyrics-view::after,
+#a-detail-list::after, 
+#p-detail-list::after {
+    content: "";
+    display: block;
+    width: 100%;
+    height: var(--footer-height, 0px); 
+    min-height: var(--footer-height, 0px);
+    flex-shrink: 0;
+    pointer-events: none;
 }
 
 #music-list::-webkit-scrollbar, #a-detail-list::-webkit-scrollbar, #p-detail-list::-webkit-scrollbar {
@@ -509,4 +533,15 @@ body.light-flight-mode .detail-art-img {
 /* ビジュアライザーの色を変更 */
 body.light-flight-mode .playing-indicator-bar {
     background: var(--text-secondary);
+}
+#music-list::-webkit-scrollbar-button:vertical:end:increment,
+#a-detail-list::-webkit-scrollbar-button:vertical:end:increment,
+#p-detail-list::-webkit-scrollbar-button:vertical:end:increment,
+.track-list-container::-webkit-scrollbar-button:vertical:end:increment,
+#queue-list::-webkit-scrollbar-button:vertical:end:increment,
+#lyrics-view::-webkit-scrollbar-button:vertical:end:increment {
+    display: block;
+    height: var(--footer-height, 0px); /* 再生バーの高さ分押し上げる */
+    background-color: transparent;
+    pointer-events: none; /* クリックを無効化 */
 }
