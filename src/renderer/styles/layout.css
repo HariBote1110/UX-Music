@@ -69,8 +69,8 @@ body.resizing {
 .sidebar {
     background-color: var(--bg-darkest);
     padding: 20px;
-    /* サイドバーも同様に余白を確保 */
-    padding-bottom:130px;
+    /* スペーサーで制御するため、固定の余白は削除 */
+    padding-bottom: 0px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -88,7 +88,8 @@ body.resizing {
     flex-shrink: 0;
     border-left: 1px solid var(--bg-light);
     padding: 24px;
-    padding-bottom: 160px;
+    /* スペーサーで制御するため、固定の余白は削除 */
+    padding-bottom: 0px;
 }
 
 /* コントロールバーを画面下部に浮遊（絶対配置）させる */

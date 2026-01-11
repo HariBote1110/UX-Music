@@ -5,35 +5,29 @@ import { setEqualizerColorFromArtwork } from './player.js';
 const { ipcRenderer } = require('electron');
 
 /**
- * リストの下部に再生バーの高さ分の余白を確保するための関数
- * CSS変数 --footer-height をコンテナに設定する
- * @param {HTMLElement} container - 対象のリストコンテナ要素
+ * 再生バーの高さに基づいて、全リスト共通の余白（--footer-height）を更新する
+ * :root に設定することで、VirtualScroller や CSS ::after が参照可能になる
  */
-function updateListSpacer(container) {
-    if (!container) return;
-
+export function updateListSpacer() {
     const playbackBar = document.querySelector('.playback-bar');
     if (playbackBar) {
-        // バーの高さ + 余裕(20px)
+        // バーの高さ + 余裕
         const barHeight = playbackBar.offsetHeight;
-        const spacerHeight = barHeight + 40;
-
-        // コンテナのCSS変数を更新
-        // これによりCSSの ::after 要素の高さが変わり、スクロール領域が広がる
-        container.style.setProperty('--footer-height', `${spacerHeight}px`);
+        if (barHeight > 0) {
+            const spacerHeight = barHeight + 40;
+            document.documentElement.style.setProperty('--footer-height', `${spacerHeight}px`);
+        }
     } else {
-        container.style.removeProperty('--footer-height');
+        document.documentElement.style.removeProperty('--footer-height');
     }
 }
 
 export function initUI() {
     // ウィンドウリサイズ時にスペーサーの高さを再計算
-    window.addEventListener('resize', () => {
-        const activeContainer = document.querySelector('.track-list-container, #music-list, #queue-list, #lyrics-view'); 
-        if (activeContainer) {
-            updateListSpacer(activeContainer);
-        }
-    });
+    window.addEventListener('resize', updateListSpacer);
+    
+    // 初回実行（レンダリング完了を見越して少し遅延させる）
+    setTimeout(updateListSpacer, 100);
 }
 
 let currentSearchQuery = '';
@@ -217,8 +211,7 @@ export function renderTrackView() {
     // 4. リストの中身を描画
     if (displaySongs.length === 0) {
         listContainer.innerHTML = '<div class="placeholder">検索結果が見つかりません</div>';
-        // 検索結果ゼロでも、念のため高さを適用しておく
-        updateListSpacer(listContainer);
+        updateListSpacer();
         return;
     }
 
@@ -226,8 +219,8 @@ export function renderTrackView() {
         contextView: 'track-view'
     });
     
-    // 生成後にCSS変数を更新して余白を確保
-    updateListSpacer(listContainer);
+    // 生成後に高さを更新
+    updateListSpacer();
     
     // 列リサイズの初期化
     initListHeaderResizing(viewWrapper);

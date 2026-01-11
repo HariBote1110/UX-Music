@@ -11,7 +11,8 @@ import {
     setupSongListScroller,
     initListHeaderResizing
 } from './list-renderer.js';
-import { clearMainContent } from './view-renderer.js'; // clearMainContent は view-renderer から
+import { clearMainContent } from './view-renderer.js';
+import { updateListSpacer } from '../ui.js'; // 追加
 const { ipcRenderer } = require('electron');
 
 // モジュールスコープでスクロール位置を記憶
@@ -19,8 +20,6 @@ let lastScrollPositions = {};
 
 /**
  * アルバム詳細ビューを描画する
- * @param {object} album - アルバムオブジェクト
- * @returns {VirtualScroller|null} 生成された VirtualScroller インスタンス
  */
 export function renderAlbumDetailView(album) {
     clearMainContent();
@@ -51,36 +50,34 @@ export function renderAlbumDetailView(album) {
         contextView: 'album'
     });
     
+    // スペーサーを更新
+    updateListSpacer();
+    
     initListHeaderResizing(viewWrapper);
     
     const artImg = viewWrapper.querySelector('.detail-art-img');
     
-    // ▼▼▼ 修正: アートワークのフォールバック処理を追加 ▼▼▼
     let artworkToUse = album.artwork;
     if (!artworkToUse && album.songs && album.songs.length > 0) {
-        // 曲リストを走査して、アートワークを持っている最初の曲を探す
         const songWithArt = album.songs.find(s => s.artwork);
         if (songWithArt) {
             artworkToUse = songWithArt.artwork;
         }
     }
     artImg.dataset.src = resolveArtworkPath(artworkToUse, false);
-    // ▲▲▲ 修正ここまで ▲▲▲
     
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, album.songs));
     
     window.observeNewArtworks(viewWrapper);
-    return scroller; // VirtualScroller インスタンスを返す
+    return scroller;
 }
 
 /**
  * アーティスト詳細ビューを描画する
- * @param {object} artist - アーティストオブジェクト
- * @returns {null} このビューは VirtualScroller を使用しない
  */
 export function renderArtistDetailView(artist) {
     clearMainContent();
-    state.currentlyViewedSongs = artist.songs; // アーティストの全曲をセット
+    state.currentlyViewedSongs = artist.songs;
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     const artistAlbums = [...state.albums.values()].filter(album => album.artist === artist.name);
@@ -109,17 +106,18 @@ export function renderArtistDetailView(artist) {
     viewWrapper.appendChild(grid);
     elements.mainContent.appendChild(viewWrapper);
 
+    // スペーサーを更新
+    updateListSpacer();
+
     const artImg = viewWrapper.querySelector('.detail-art-img');
     artImg.dataset.src = resolveArtworkPath(artist.artwork, false);
 
     window.observeNewArtworks(viewWrapper);
-    return null; // このビューはスクローラーを返さない
+    return null;
 }
 
 /**
  * プレイリスト詳細ビューを描画する
- * @param {object} playlistDetails - プレイリスト詳細
- * @returns {VirtualScroller|null} 生成された VirtualScroller インスタンス
  */
 export function renderPlaylistDetailView(playlistDetails) {
     const { name: playlistName, songs, artworks } = playlistDetails;
@@ -163,13 +161,16 @@ export function renderPlaylistDetailView(playlistDetails) {
     });
 
     if (savedScrollTop > 0) {
-        delete lastScrollPositions[playlistName]; // 復元したら削除
+        delete lastScrollPositions[playlistName];
     }
+    
+    // スペーサーを更新
+    updateListSpacer();
     
     initListHeaderResizing(viewWrapper);
 
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, songs));
     
     window.observeNewArtworks(viewWrapper);
-    return scroller; // VirtualScroller インスタンスを返す
+    return scroller;
 }

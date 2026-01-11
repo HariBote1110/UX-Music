@@ -54,8 +54,6 @@
 }
 
 /* --- 曲リストのスタイル --- */
-/* コンテナの設定とスペーサー（Playback Bar回避用）の追加 */
-/* --- 修正後: コンテナの設定は position: relative だけあればOKです --- */
 #music-list, 
 .track-list-container, 
 #queue-list, 
@@ -66,8 +64,10 @@
     position: relative;
     overflow-y: auto;
 }
-/* リストの最後に透明なブロックを生成して、再生バーの高さ分だけ押し広げる。
-   高さはJS (ui.js) から --footer-height 変数として渡される。
+
+/* 仮想スクロールではないリストの最後に透明なブロックを生成。
+   VirtualScroller を使用している場合はスクローラー内部の sizer が余白を担当しますが、
+   念のため CSS ::after も定義しておきます。
 */
 #music-list::after, 
 .track-list-container::after, 
@@ -81,6 +81,19 @@
     height: var(--footer-height, 0px); 
     min-height: var(--footer-height, 0px);
     flex-shrink: 0;
+    pointer-events: none;
+}
+
+/* --- グリッドビュー用のスペーサー --- */
+#album-grid::after,
+#artist-grid::after,
+#playlist-grid::after,
+.album-grid::after {
+    content: "";
+    display: block;
+    grid-column: 1 / -1; 
+    height: var(--footer-height, 0px);
+    min-height: var(--footer-height, 0px);
     pointer-events: none;
 }
 
@@ -448,6 +461,7 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     scroll-behavior: smooth;
     scrollbar-width: thin;
     scrollbar-color: #555 var(--bg-light);
+    /* padding-bottom を 0 に設定（ショートハンドの3番目が 0 ） */
     padding: 0 16px 0 24px;
     box-sizing: border-box;
 }
@@ -534,6 +548,8 @@ body.light-flight-mode .detail-art-img {
 body.light-flight-mode .playing-indicator-bar {
     background: var(--text-secondary);
 }
+
+/* リストのスクロールバー末尾（下部）を再生バーの高さ分押し上げる */
 #music-list::-webkit-scrollbar-button:vertical:end:increment,
 #a-detail-list::-webkit-scrollbar-button:vertical:end:increment,
 #p-detail-list::-webkit-scrollbar-button:vertical:end:increment,
@@ -541,7 +557,7 @@ body.light-flight-mode .playing-indicator-bar {
 #queue-list::-webkit-scrollbar-button:vertical:end:increment,
 #lyrics-view::-webkit-scrollbar-button:vertical:end:increment {
     display: block;
-    height: var(--footer-height, 0px); /* 再生バーの高さ分押し上げる */
+    height: var(--footer-height, 0px); 
     background-color: transparent;
-    pointer-events: none; /* クリックを無効化 */
+    pointer-events: none; 
 }
