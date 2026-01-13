@@ -4,7 +4,7 @@ const { ipcMain, app, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { scanPaths, parseFiles } = require('../file-scanner');
+const { scanPaths, parseFiles, extractArtwork } = require('../file-scanner');
 const os = require('os');
 const { sanitize } = require('../utils');
 const sharp = require('sharp');
@@ -17,7 +17,7 @@ let albumsStore;
  */
 // ▼▼▼ 'export' を削除 ▼▼▼
 async function saveArtworkToFile(picture, albumArtist, albumTitle) {
-// ▲▲▲ 修正 ▲▲▲
+    // ▲▲▲ 修正 ▲▲▲
     if (!picture || !picture.data) return null;
     const artworksDir = path.join(app.getPath('userData'), 'Artworks');
     const thumbnailsDir = path.join(artworksDir, 'thumbnails');
@@ -60,7 +60,7 @@ function addSongsToLibraryAndSave(newSongs, libraryStore) {
  */
 // ▼▼▼ 'export' を削除 ▼▼▼
 function registerImportHandlers(stores) {
-// ▲▲▲ 修正 ▲▲▲
+    // ▲▲▲ 修正 ▲▲▲
     const { libraryStore, loudnessStore, settingsStore } = stores;
     albumsStore = stores.albumsStore; // saveArtworkToFile が参照 (このファイル内では不要)
 
@@ -120,21 +120,21 @@ function registerImportHandlers(stores) {
             if (!albumsToProcess.has(albumKey)) {
                 albumsToProcess.set(albumKey, {
                     songs: [],
-                    artworkPicture: null,
+                    firstSongPath: song.path,
                     albumArtist: albumArtistKey,
                     albumTitle: song.album || 'Unknown Album'
                 });
             }
             const albumGroup = albumsToProcess.get(albumKey);
             albumGroup.songs.push(song);
-            if (!albumGroup.artworkPicture && song.artwork) {
-                albumGroup.artworkPicture = song.artwork;
-            }
         });
 
         const albumsData = stores.albumsStore.load() || {};
         for (const [key, group] of albumsToProcess.entries()) {
-            const savedArtwork = await saveArtworkToFile(group.artworkPicture, group.albumArtist, group.albumTitle);
+            // アルバムごとに1回だけアートワークを抽出する
+            const artworkPicture = await extractArtwork(group.firstSongPath);
+            const savedArtwork = await saveArtworkToFile(artworkPicture, group.albumArtist, group.albumTitle);
+
             group.songs.forEach(song => {
                 song.artwork = savedArtwork;
             });
@@ -144,6 +144,8 @@ function registerImportHandlers(stores) {
                 songs: group.songs.map(s => s.path),
                 artwork: savedArtwork
             };
+            // メモリ解放のヒントとして一時的なバッファ参照をクリア
+            if (artworkPicture) artworkPicture.data = null;
         }
         stores.albumsStore.save(albumsData);
 
@@ -214,7 +216,7 @@ function registerImportHandlers(stores) {
 
                         const destPath = path.join(destDir, sanitize(path.basename(songToProcess.path)));
                         if (songToProcess.path !== destPath && !fs.existsSync(destPath)) {
-                             fs.copyFileSync(songToProcess.path, destPath);
+                            fs.copyFileSync(songToProcess.path, destPath);
                         }
                         songToProcess.path = destPath;
 

@@ -84,7 +84,7 @@ async function analyzeEnergy(filePath) {
                     const peak = parseFloat(peakMatch[1]);
                     const rms = parseFloat(rmsMatch[1]);
                     const crestFactor = peak - rms; // ピークと平均音量の差（ダイナミックレンジの指標）
-                    
+
                     // Crest Factorを0-10のEnergyスコアに変換
                     // 20dB以上の非常にダイナミックな曲を10とする
                     const energy = Math.min(10, Math.round((crestFactor / 20) * 10));
@@ -104,21 +104,21 @@ async function analyzeBPM(songPath) {
     const tempFile = tmp.fileSync({ postfix: '.wav' });
     try {
         await new Promise((resolve, reject) => {
-            const inputStream = fs.createReadStream(songPath);
-            const command = ffmpeg(inputStream);
+            const command = ffmpeg(songPath);
 
             command.toFormat('wav')
                 .audioChannels(1)
                 .audioFrequency(22050)
                 .outputOptions('-map', '0:a') // Ignore non-audio streams
                 .on('error', (err, stdout, stderr) => {
-                    const detailedError = new Error(`FFmpeg error during BPM analysis: ${err.message}\n\nFFmpeg stdout:\n${stdout}\n\nFFmpeg stderr:\n${stderr}`);
+                    const detailedError = new Error(`FFmpeg error during BPM analysis: ${err.message}`);
                     reject(detailedError);
                 })
                 .on('end', resolve)
                 .save(tempFile.name);
         });
-        const buffer = fs.readFileSync(tempFile.name);
+        // fs.readFileSyncを避け、ストリームやバッファ管理を意識（wav-decoderはバッファを要求するが）
+        const buffer = await fs.promises.readFile(tempFile.name);
         const audioData = await wavDecoder.decode(buffer);
         const calcTempo = new MusicTempo(audioData.channelData[0]);
         let rawBPM = calcTempo.tempo;
@@ -132,18 +132,17 @@ async function analyzeBPM(songPath) {
     }
 }
 
-async function scanDirectory(dirPath) {
-    let files = [];
+async function scanDirectory(dirPath, allFiles = []) {
     const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
     for (const item of items) {
         const fullPath = path.join(dirPath, item.name);
         if (item.isDirectory()) {
-            files = files.concat(await scanDirectory(fullPath));
+            await scanDirectory(fullPath, allFiles);
         } else if (supportedExtensions.includes(path.extname(item.name).toLowerCase())) {
-            files.push(fullPath);
+            allFiles.push(fullPath);
         }
     }
-    return files;
+    return allFiles;
 }
 
 async function parseFiles(filePaths) {
@@ -152,11 +151,11 @@ async function parseFiles(filePaths) {
     for (const filePath of filePaths) {
         try {
             const stats = fs.statSync(filePath);
-            const metadata = await musicMetadata.parseFile(filePath);
+            // skipCovers: true を指定してメモリ消費を抑える
+            const metadata = await musicMetadata.parseFile(filePath, { skipCovers: true });
             const common = metadata.common;
-            const artwork = common.picture?.[0] || null;
             const hasVideo = metadata.format.trackInfo?.some(t => t.type === 'video');
-            
+
             const sampleRate = metadata.format.sampleRate || 44100;
             const bitsPerSample = metadata.format.bitsPerSample || 0;
             const isHiRes = sampleRate > 48000 || bitsPerSample > 16;
@@ -168,7 +167,7 @@ async function parseFiles(filePaths) {
                 artist: common.artist || 'Unknown Artist',
                 albumartist: common.albumartist,
                 album: common.album || 'Unknown Album',
-                artwork,
+                artwork: null, // アートワークはここでは読み込まない
                 duration: metadata.format.duration,
                 year: common.year,
                 bpm: common.bpm,
@@ -184,6 +183,20 @@ async function parseFiles(filePaths) {
         }
     }
     return songs;
+}
+
+/**
+ * 必要に応じてアートワークを抽出します。
+ */
+async function extractArtwork(filePath) {
+    try {
+        const musicMetadata = (await import('music-metadata')).default;
+        const metadata = await musicMetadata.parseFile(filePath);
+        return metadata.common.picture?.[0] || null;
+    } catch (error) {
+        console.error(`Error extracting artwork for ${filePath}:`, error.message);
+        return null;
+    }
 }
 
 async function scanPaths(paths) {
@@ -221,4 +234,4 @@ async function getSampleRate(filePath) {
 }
 // ▲▲▲ 追加ここまで ▲▲▲
 
-module.exports = { scanPaths, parseFiles, analyzeLoudness, analyzeBPM, analyzeEnergy, getSampleRate };
+module.exports = { scanPaths, parseFiles, analyzeLoudness, analyzeBPM, analyzeEnergy, getSampleRate, extractArtwork };

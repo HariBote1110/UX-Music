@@ -62,7 +62,7 @@ async function analyzeBPM(filePath) {
             ffmpeg(filePath).toFormat('wav').audioChannels(1).audioFrequency(22050)
                 .on('error', reject).on('end', resolve).save(tempFile.name);
         });
-        const buffer = fs.readFileSync(tempFile.name);
+        const buffer = await fs.promises.readFile(tempFile.name);
         const audioData = await wavDecoder.decode(buffer);
         const calcTempo = new MusicTempo(audioData.channelData[0]);
         let rawBPM = calcTempo.tempo;
@@ -85,7 +85,7 @@ parentPort.on('message', async (data) => {
 
     if (data.type === 'analyze') {
         const { song } = data;
-        
+
         const loudnessResult = await analyzeLoudness(song.path);
         if (loudnessResult.success) {
             song.loudness = loudnessResult.loudness;
@@ -95,7 +95,7 @@ parentPort.on('message', async (data) => {
             song.bpm = await analyzeBPM(song.path);
         }
         song.energy = await analyzeEnergy(song.path);
-        
+
         // 解析結果をメインスレッドに送り返す
         parentPort.postMessage({ type: 'result', song });
     }

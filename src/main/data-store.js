@@ -31,7 +31,7 @@ class DataStore {
 
     save(data) {
         try {
-            fs.writeFileSync(this.path, JSON.stringify(data, null, 2));
+            fs.writeFileSync(this.path, JSON.stringify(data));
         } catch (error) {
             console.error(`Failed to save data to ${this.path}:`, error);
         }
