@@ -1,32 +1,47 @@
 /* 基本的なスタイルと変数 */
 :root {
     --text-primary: #ffffff;
-    --text-secondary: #b3b3b3;
-    --text-muted: #888;
-    --bg-darkest: #000000;
-    --bg-dark: #121212;
-    --bg-medium: #181818;
-    --bg-light: #282828;
-    --bg-hover: #3a3a3a;
-    --highlight-pink: #a44c65;
-    --highlight-blue: #1f3453;
+    --text-secondary: #a1a1aa;
+    /* Zinc 400 */
+    --text-muted: #71717a;
+    /* Zinc 500 */
+    --bg-darkest: #161618;
+    /* 深みのあるチャコール */
+    --bg-dark: #1c1c1e;
+    /* メイン背景 */
+    --bg-medium: #2c2c2e;
+    /* コンポーネント背景 */
+    --bg-light: #3a3a3c;
+    /* 境界線・ヘッダー */
+    --bg-hover: #444446;
+    /* ホバー状態 */
+    --highlight-pink: #ff5d77;
+    /* 鮮やかなピンク */
+    --highlight-blue: #3b82f6;
+    /* 清潔感のあるブルー */
 }
 
-body, html { 
-    margin: 0; 
-    padding: 0; 
-    height: 100vh; 
-    width: 100vw; 
-    background-color: var(--bg-dark); 
-    color: var(--text-primary); 
-    font-family: 'Segoe UI', Meiryo, sans-serif; 
-    overflow: hidden; 
-    display: flex; 
+body,
+html {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    width: 100vw;
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    font-family: 'Segoe UI', Meiryo, sans-serif;
+    overflow: hidden;
+    display: flex;
     flex-direction: column;
     user-select: none;
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
     margin: 0;
 }
 
