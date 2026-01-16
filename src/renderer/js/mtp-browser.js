@@ -27,6 +27,18 @@ let browserElements = {};
 export async function initMtpBrowser(storageId, initialPath = '/') {
     console.log(`[MTP Browser] 初期化: StorageID=${storageId}, Path=${initialPath}`);
 
+    // storageIdがundefinedの場合、state.mtpStoragesから取得
+    if (!storageId && state.mtpStorages && state.mtpStorages.length > 0) {
+        storageId = state.mtpStorages[0].id;
+        console.log(`[MTP Browser] storageIdをstateから取得: ${storageId}`);
+    }
+
+    // それでもstorageIdがない場合はエラー
+    if (!storageId) {
+        console.error('[MTP Browser] エラー: storageIdが取得できません');
+        return;
+    }
+
     // DOM要素を取得
     browserElements = {
         view: document.getElementById('mtp-browser-view'),

@@ -517,6 +517,12 @@ function registerIpcHandlers() {
                     }
 
                     for (const item of result.data) {
+                        // item.nameがundefinedの場合はスキップ
+                        if (!item.name) {
+                            console.warn('[MTP Sync] item.nameがundefinedのためスキップ:', item);
+                            continue;
+                        }
+
                         if (item.isFolder) {
                             // fullPathがundefinedの場合はパスを手動で構築
                             const folderPath = item.fullPath || `${dirPath}${dirPath.endsWith('/') ? '' : '/'}${item.name}`;
