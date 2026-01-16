@@ -266,7 +266,7 @@ export function initIPC(ipcRenderer, callbacks) {
                     });
                     hideNotification();
 
-                    // UIを更新
+                    // ソース（ライブラリ）リストを更新
                     const sourceList = document.getElementById('mtp-transfer-source-list');
                     if (sourceList) {
                         if (untransferredSongs && untransferredSongs.length > 0) {
@@ -284,6 +284,14 @@ export function initIPC(ipcRenderer, callbacks) {
                             state.pendingTransferSongs = [];
                         }
                     }
+
+                    // デバイス側のリストを更新
+                    const deviceList = document.getElementById('mtp-transfer-device-list');
+                    if (deviceList) {
+                        const transferredCount = state.library.length - (untransferredSongs?.length || 0);
+                        deviceList.innerHTML = `<p>転送済み: ${transferredCount}曲</p>`;
+                    }
+
                 } catch (error) {
                     console.error('未転送曲の検出に失敗:', error);
                     hideNotification();
