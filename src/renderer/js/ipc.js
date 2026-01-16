@@ -139,36 +139,42 @@ export function initIPC(ipcRenderer, callbacks) {
      * MTPデバイス（Walkmanなど）が接続されたときにメインプロセスから呼び出される
      */
     ipcRenderer.on('mtp-device-connected', (event, payload) => {
-      // --- ▼▼▼ 修正 (ペイロード形式変更のため) ▼▼▼ ---
-      const deviceInfo = payload.device;
-      const storageInfo = payload.storages; // 'storages' (複数形) を受け取る
-      
-      console.log('🎉 MTP デバイス接続:', deviceInfo);
-      console.log('📦 MTP ストレージ:', storageInfo);
-      
-      // state に保存（UIに反映させるため）
-      state.mtpDevice = deviceInfo;
-      state.mtpStorages = storageInfo; // 複数形のまま保存
+        // --- ▼▼▼ 修正 (ペイロード形式変更のため) ▼▼▼ ---
+        const deviceInfo = payload.device;
+        const storageInfo = payload.storages; // 'storages' (複数形) を受け取る
 
-      showNotification(`Walkman (${deviceInfo?.name}) が接続されました。`);
-      // --- ▲▲▲ 修正 ▲▲▲ ---
-      hideNotification(3000);
-      
-      // ※※※ ステップ8で追加した自動転送テストコードは、このバージョンでは削除されています ※※※
+        console.log('🎉 MTP デバイス接続:', deviceInfo);
+        console.log('📦 MTP ストレージ:', storageInfo);
+
+        // state に保存（UIに反映させるため）
+        state.mtpDevice = deviceInfo;
+        state.mtpStorages = storageInfo; // 複数形のまま保存
+
+        showNotification(`Walkman (${deviceInfo?.name}) が接続されました。`);
+        // --- ▲▲▲ 修正 ▲▲▲ ---
+        hideNotification(3000);
+
+        // --- ▼▼▼ サイドバーにデバイスを表示 ▼▼▼ ---
+        updateDevicesSidebar(deviceInfo);
+        // --- ▲▲▲ サイドバーにデバイスを表示 ▲▲▲ ---
     });
 
     /**
      * MTPデバイスが切断されたときにメインプロセスから呼び出される
      */
     ipcRenderer.on('mtp-device-disconnected', () => {
-      console.log('🔌 MTP デバイス切断');
-      
-      // state をクリア
-      state.mtpDevice = null;
-      state.mtpStorages = null;
-      
-      showNotification('Walkmanが切断されました。');
-      hideNotification(3000);
+        console.log('🔌 MTP デバイス切断');
+
+        // state をクリア
+        state.mtpDevice = null;
+        state.mtpStorages = null;
+
+        showNotification('Walkmanが切断されました。');
+        hideNotification(3000);
+
+        // --- ▼▼▼ サイドバーからデバイスを非表示 ▼▼▼ ---
+        updateDevicesSidebar(null);
+        // --- ▲▲▲ サイドバーからデバイスを非表示 ▲▲▲ ---
     });
 
     // --- ▲▲▲ MTP機能 (ステップ9 修正版) ▲▲▲ ---
@@ -177,7 +183,7 @@ export function initIPC(ipcRenderer, callbacks) {
     // --- ▼▼▼ 新規追加: MTP転送要求 (コンテキストメニューから) ▼▼▼ ---
     ipcRenderer.on('request-mtp-transfer', async (event, songs) => {
         logPerf("Received 'request-mtp-transfer' from main.");
-        
+
         if (!state.mtpStorages || state.mtpStorages.length === 0) {
             console.error('[MTP Transfer] ストレージ情報がありません。state.mtpStorages:', state.mtpStorages);
             showNotification('Walkmanのストレージ情報が見つかりません。');
@@ -205,7 +211,7 @@ export function initIPC(ipcRenderer, callbacks) {
         try {
             // メインプロセスの 'mtp-upload-files' ハンドラを呼び出す
             const result = await ipcRenderer.invoke('mtp-upload-files', { storageId, sources, destination });
-            
+
             if (result.error) {
                 console.error('[MTP Transfer] 転送に失敗しました:', result.error);
                 showNotification(`転送に失敗しました: ${result.error}`);
@@ -218,7 +224,7 @@ export function initIPC(ipcRenderer, callbacks) {
             console.error('[MTP Transfer] invoke呼び出しエラー:', err);
             showNotification(`転送実行中にエラーが発生しました: ${err.message}`);
         }
-        
+
         hideNotification(4000); // 4秒後に通知を消す
     });
     // --- ▲▲▲ 新規追加: MTP転送要求 ▲▲▲ ---
@@ -228,4 +234,53 @@ export function initIPC(ipcRenderer, callbacks) {
     ipcRenderer.send('request-initial-library');
     ipcRenderer.send('request-initial-play-counts');
     ipcRenderer.send('request-initial-settings');
+
+    // --- ▼▼▼ デバイスリンクのクリックハンドラ ▼▼▼ ---
+    const mtpDeviceNavLink = document.getElementById('mtp-device-nav-link');
+    if (mtpDeviceNavLink) {
+        mtpDeviceNavLink.addEventListener('click', (e) => {
+            e.preventDefault();
+
+            if (!state.mtpStorages || state.mtpStorages.length === 0) {
+                showNotification('ストレージ情報がありません');
+                hideNotification(3000);
+                return;
+            }
+
+            // MTPブラウザビューを表示
+            const { showView } = require('./navigation.js');
+            showView('mtp-browser-view', {
+                storageId: state.mtpStorages[0].id,
+                initialPath: '/'
+            });
+        });
+    }
+    // --- ▲▲▲ デバイスリンクのクリックハンドラ ▲▲▲ ---
+}
+
+/**
+ * サイドバーのデバイスセクションを更新
+ * @param {object|null} device - デバイス情報（nullで非表示）
+ */
+function updateDevicesSidebar(device) {
+    const devicesSection = document.getElementById('devices-section');
+    const deviceNavName = document.getElementById('mtp-device-nav-name');
+
+    if (!devicesSection) {
+        console.warn('[IPC] devices-section が見つかりません');
+        return;
+    }
+
+    if (device) {
+        // デバイス接続時: セクションを表示
+        devicesSection.classList.remove('hidden');
+        if (deviceNavName) {
+            deviceNavName.textContent = device.name || 'MTPデバイス';
+        }
+        console.log('[IPC] サイドバーにデバイスを表示:', device.name);
+    } else {
+        // デバイス切断時: セクションを非表示
+        devicesSection.classList.add('hidden');
+        console.log('[IPC] サイドバーからデバイスを非表示');
+    }
 }
