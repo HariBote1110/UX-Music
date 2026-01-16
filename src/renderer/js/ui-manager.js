@@ -147,6 +147,150 @@ export function initUI() {
             });
         });
     }
+
+    // 未転送曲検出ボタン
+    const detectBtn = document.getElementById('mtp-detect-untransferred-btn');
+    if (detectBtn) {
+        detectBtn.addEventListener('click', detectUntransferredSongs);
+    }
+
+    // すべて転送ボタン
+    const transferAllBtn = document.getElementById('mtp-transfer-all-btn');
+    if (transferAllBtn) {
+        transferAllBtn.addEventListener('click', transferAllUntransferred);
+    }
+}
+
+/**
+ * 未転送曲を検出
+ */
+async function detectUntransferredSongs() {
+    const statusEl = document.getElementById('mtp-sync-status');
+    const listEl = document.getElementById('mtp-untransferred-list');
+    const actionsEl = document.getElementById('mtp-sync-actions');
+    const countEl = document.getElementById('mtp-untransferred-count');
+    const detectBtn = document.getElementById('mtp-detect-untransferred-btn');
+
+    if (!state.mtpStorages || state.mtpStorages.length === 0) {
+        statusEl.textContent = '❌ デバイスが接続されていません';
+        return;
+    }
+
+    detectBtn.disabled = true;
+    statusEl.textContent = '🔍 デバイス内の曲をスキャン中...';
+    listEl.classList.add('hidden');
+    actionsEl.classList.add('hidden');
+
+    try {
+        // Walkman内の全音楽ファイルを取得
+        const result = await ipcRenderer.invoke('mtp-scan-all-music', {
+            storageId: state.mtpStorages[0].id,
+            basePath: '/Music'
+        });
+
+        if (result.error) {
+            statusEl.textContent = `❌ スキャンエラー: ${result.error}`;
+            detectBtn.disabled = false;
+            return;
+        }
+
+        const deviceFiles = result.files || [];
+        const deviceFileNames = new Set(deviceFiles.map(f => f.name.toLowerCase()));
+
+        // ライブラリと比較して未転送曲を検出
+        const untransferred = state.library.filter(song => {
+            const fileName = song.path.split('/').pop().toLowerCase();
+            return !deviceFileNames.has(fileName);
+        });
+
+        state.untransferredSongs = untransferred;
+
+        if (untransferred.length === 0) {
+            statusEl.textContent = '✅ すべての曲が転送済みです';
+            listEl.classList.add('hidden');
+            actionsEl.classList.add('hidden');
+        } else {
+            statusEl.textContent = `📋 ${untransferred.length}件の未転送曲が見つかりました`;
+
+            // リストを表示
+            listEl.innerHTML = untransferred.slice(0, 50).map(song => `
+                <div class="untransferred-item">
+                    <span class="song-title">${escapeHtml(song.title || song.path.split('/').pop())}</span>
+                    <span class="song-artist">${escapeHtml(song.artist || '不明なアーティスト')}</span>
+                </div>
+            `).join('');
+
+            if (untransferred.length > 50) {
+                listEl.innerHTML += `<div class="untransferred-item">... 他${untransferred.length - 50}件</div>`;
+            }
+
+            listEl.classList.remove('hidden');
+            actionsEl.classList.remove('hidden');
+            countEl.textContent = `${untransferred.length}曲`;
+        }
+
+    } catch (err) {
+        statusEl.textContent = `❌ エラー: ${err.message}`;
+    } finally {
+        detectBtn.disabled = false;
+    }
+}
+
+/**
+ * 未転送曲をすべて転送
+ */
+async function transferAllUntransferred() {
+    if (!state.untransferredSongs || state.untransferredSongs.length === 0) {
+        showNotification('転送する曲がありません');
+        hideNotification(3000);
+        return;
+    }
+
+    if (!state.mtpStorages || state.mtpStorages.length === 0) {
+        showNotification('デバイスが接続されていません');
+        hideNotification(3000);
+        return;
+    }
+
+    const count = state.untransferredSongs.length;
+    if (!confirm(`${count}曲をデバイスに転送しますか？`)) {
+        return;
+    }
+
+    const paths = state.untransferredSongs.map(song => song.path);
+    const storageId = state.mtpStorages[0].id;
+
+    showNotification(`${count}曲の転送を開始します...`);
+
+    try {
+        // request-mtp-transfer を使用して転送
+        ipcRenderer.send('request-mtp-transfer', {
+            filePaths: paths,
+            storageId: storageId,
+            destinationPath: '/Music/'
+        });
+
+        // 転送完了後は再スキャンを促す
+        showNotification('転送を開始しました。完了後は再スキャンしてください。');
+        hideNotification(5000);
+
+    } catch (err) {
+        showNotification(`転送エラー: ${err.message}`);
+        hideNotification(3000);
+    }
+}
+
+/**
+ * HTMLエスケープ
+ */
+function escapeHtml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 function updateMtpDeviceView(device) {

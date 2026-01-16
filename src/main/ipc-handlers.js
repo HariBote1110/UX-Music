@@ -486,6 +486,68 @@ function registerIpcHandlers() {
         return result.filePaths[0];
     });
 
+    /**
+     * MTPデバイス内の全音楽ファイルを再帰的にスキャン
+     */
+    ipcMain.handle('mtp-scan-all-music', async (event, { storageId, basePath = '/Music' }) => {
+        console.log(`[MTP Scan] 全音楽ファイルスキャン開始: StorageID ${storageId}, BasePath: ${basePath}`);
+
+        const mtpDevice = mtpManager.getDevice();
+        if (!mtpDevice) {
+            console.error('[MTP Scan] エラー: デバイスが見つかりません');
+            return { error: 'MTP device not connected.', files: [] };
+        }
+
+        const audioExtensions = ['mp3', 'flac', 'm4a', 'wav', 'ogg', 'aac', 'wma', 'alac', 'aiff'];
+        const allMusicFiles = [];
+
+        // 再帰的にディレクトリをスキャン
+        async function scanDirectory(dirPath) {
+            try {
+                const result = await mtpDevice.walk({
+                    storageId: storageId,
+                    fullPath: dirPath,
+                    skipHiddenFiles: true
+                });
+
+                if (result.error || !result.data) {
+                    console.warn(`[MTP Scan] スキップ: ${dirPath}`, result.error);
+                    return;
+                }
+
+                for (const item of result.data) {
+                    const itemPath = item.fullPath || `${dirPath}${dirPath.endsWith('/') ? '' : '/'}${item.name}`;
+
+                    if (item.isFolder) {
+                        // サブディレクトリを再帰スキャン
+                        await scanDirectory(itemPath);
+                    } else {
+                        // ファイルの場合、音楽ファイルかチェック
+                        const ext = (item.name || '').split('.').pop().toLowerCase();
+                        if (audioExtensions.includes(ext)) {
+                            allMusicFiles.push({
+                                name: item.name,
+                                path: itemPath,
+                                size: item.size || 0
+                            });
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn(`[MTP Scan] エラー at ${dirPath}:`, err.message);
+            }
+        }
+
+        try {
+            await scanDirectory(basePath);
+            console.log(`[MTP Scan] スキャン完了: ${allMusicFiles.length} 件の音楽ファイル`);
+            return { files: allMusicFiles };
+        } catch (err) {
+            console.error('[MTP Scan] 全体エラー:', err);
+            return { error: err.message, files: [] };
+        }
+    });
+
     // --- ▲▲▲ MTPブラウザ機能 ▲▲▲ ---
 
     logPerf("Requiring library-handler...");
