@@ -38,7 +38,11 @@ export async function initMtpBrowser(storageId, initialPath = '/') {
         downloadBtn: document.getElementById('mtp-browser-download-btn'),
         deleteBtn: document.getElementById('mtp-browser-delete-btn'),
         selectionInfo: document.getElementById('mtp-browser-selection-info'),
-        refreshBtn: document.getElementById('mtp-browser-refresh-btn')
+        refreshBtn: document.getElementById('mtp-browser-refresh-btn'),
+        // デバイス情報ヘッダー
+        headerDeviceName: document.getElementById('mtp-header-device-name'),
+        headerStorageInfo: document.getElementById('mtp-header-storage-info'),
+        headerStorageUsed: document.getElementById('mtp-header-storage-used')
     };
 
     // 状態をリセット
@@ -53,6 +57,9 @@ export async function initMtpBrowser(storageId, initialPath = '/') {
 
     // イベントリスナーを設定
     setupEventListeners();
+
+    // デバイス情報ヘッダーを更新
+    updateDeviceHeader();
 
     // 初期ディレクトリを読み込み
     await browseDirectory(storageId, initialPath, false);
@@ -509,4 +516,42 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+/**
+ * デバイス情報ヘッダーを更新
+ */
+function updateDeviceHeader() {
+    const device = state.mtpDevice;
+    const storages = state.mtpStorages;
+
+    // デバイス名
+    if (browserElements.headerDeviceName) {
+        browserElements.headerDeviceName.textContent = device?.name || 'MTPデバイス';
+    }
+
+    // ストレージ情報
+    if (storages && storages.length > 0) {
+        const storage = storages[0];
+        const used = storage.total - storage.free;
+        const usedPercent = ((used / storage.total) * 100).toFixed(1);
+
+        // ストレージ情報テキスト
+        if (browserElements.headerStorageInfo) {
+            browserElements.headerStorageInfo.textContent =
+                `${formatBytes(storage.free)} 空き / ${formatBytes(storage.total)} (${usedPercent}% 使用中)`;
+        }
+
+        // ストレージバー
+        if (browserElements.headerStorageUsed) {
+            browserElements.headerStorageUsed.style.width = `${usedPercent}%`;
+        }
+    } else {
+        if (browserElements.headerStorageInfo) {
+            browserElements.headerStorageInfo.textContent = 'ストレージ情報なし';
+        }
+        if (browserElements.headerStorageUsed) {
+            browserElements.headerStorageUsed.style.width = '0%';
+        }
+    }
 }

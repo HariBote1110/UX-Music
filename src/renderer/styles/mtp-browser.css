@@ -8,6 +8,61 @@
     color: var(--text-primary, #fff);
 }
 
+/* デバイス情報ヘッダー */
+.mtp-device-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    background: linear-gradient(135deg, rgba(114, 137, 218, 0.15) 0%, rgba(114, 137, 218, 0.05) 100%);
+    border-bottom: 1px solid var(--border-color, #333);
+}
+
+.mtp-device-header-icon {
+    font-size: 48px;
+    flex-shrink: 0;
+}
+
+.mtp-device-header-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.mtp-device-header-info h2 {
+    margin: 0 0 4px 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary, #fff);
+}
+
+.mtp-device-header-info p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary, #888);
+}
+
+.mtp-header-storage-bar {
+    width: 120px;
+    height: 8px;
+    background: var(--bg-dark, #1a1a1a);
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.mtp-header-storage-bar>div {
+    height: 100%;
+    background: linear-gradient(90deg, var(--highlight-pink, #e91e63), var(--highlight-blue, #7289da));
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+/* スペーサー（フッターとのかぶりを防ぐ） */
+.mtp-browser-spacer {
+    height: var(--footer-height, 100px);
+    flex-shrink: 0;
+}
+
 /* ツールバー */
 .mtp-browser-toolbar {
     display: flex;

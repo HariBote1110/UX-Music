@@ -79,6 +79,19 @@
 
             <!-- MTPストレージブラウザ -->
             <div id="mtp-browser-view" class="view-container hidden">
+                <!-- デバイス情報ヘッダー -->
+                <div class="mtp-device-header">
+                    <div class="mtp-device-header-icon">📱</div>
+                    <div class="mtp-device-header-info">
+                        <h2 id="mtp-header-device-name">デバイス</h2>
+                        <p id="mtp-header-storage-info">ストレージ情報</p>
+                    </div>
+                    <div id="mtp-header-storage-bar" class="mtp-header-storage-bar">
+                        <div id="mtp-header-storage-used"></div>
+                    </div>
+                </div>
+
+                <!-- ツールバー -->
                 <div class="mtp-browser-toolbar">
                     <button id="mtp-browser-back-btn" disabled title="戻る">←</button>
                     <button id="mtp-browser-forward-btn" disabled title="進む">→</button>
@@ -88,9 +101,16 @@
                     <button id="mtp-browser-refresh-btn" title="更新">🔄</button>
                     <button id="mtp-browser-close-btn" title="閉じる">✕</button>
                 </div>
+
+                <!-- ファイルリスト -->
                 <div id="mtp-browser-content" class="mtp-file-list">
                     <p class="mtp-empty">ストレージを選択してください</p>
                 </div>
+
+                <!-- スペーサー（フッターとのかぶりを防ぐ） -->
+                <div class="mtp-browser-spacer"></div>
+
+                <!-- アクションバー -->
                 <div class="mtp-browser-actions">
                     <button id="mtp-browser-download-btn" disabled>⬇ ダウンロード</button>
                     <button id="mtp-browser-delete-btn" disabled>🗑 削除</button>
