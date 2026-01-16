@@ -124,11 +124,6 @@ export function initUI() {
         elements.mtpDevicePopup.classList.remove('active');
     });
 
-    elements.mtpTransferCloseBtn.addEventListener('click', () => {
-        elements.mtpTransferView.classList.add('hidden');
-        elements.mainContent.classList.remove('hidden');
-    });
-
     // MTPストレージを参照ボタン
     if (elements.mtpBrowseStorageBtn) {
         elements.mtpBrowseStorageBtn.addEventListener('click', () => {
@@ -148,21 +143,33 @@ export function initUI() {
         });
     }
 
-    // 転送画面内の「ディレクトリを見る」ボタン
-    if (elements.mtpTransferBrowseBtn) {
-        elements.mtpTransferBrowseBtn.addEventListener('click', () => {
-            if (!state.mtpStorages || state.mtpStorages.length === 0) {
-                showNotification('ストレージ情報がありません');
-                hideNotification(3000);
-                return;
+    // 転送画面内のボタン（イベント委譲で動的要素に対応）
+    if (elements.mtpTransferView) {
+        elements.mtpTransferView.addEventListener('click', (e) => {
+            const target = e.target.closest('button');
+            if (!target) return;
+
+            // 「ディレクトリを見る」ボタン
+            if (target.id === 'mtp-transfer-browse-btn') {
+                if (!state.mtpStorages || state.mtpStorages.length === 0) {
+                    showNotification('ストレージ情報がありません');
+                    hideNotification(3000);
+                    return;
+                }
+
+                // 転送画面を閉じてMTPブラウザビューを表示
+                elements.mtpTransferView.classList.add('hidden');
+                showView('mtp-browser-view', {
+                    storageId: state.mtpStorages[0].id,
+                    initialPath: '/'
+                });
             }
 
-            // 転送画面を閉じてMTPブラウザビューを表示
-            elements.mtpTransferView.classList.add('hidden');
-            showView('mtp-browser-view', {
-                storageId: state.mtpStorages[0].id,
-                initialPath: '/'
-            });
+            // 「閉じる」ボタン
+            if (target.id === 'mtp-transfer-close-btn') {
+                elements.mtpTransferView.classList.add('hidden');
+                elements.mainContent.classList.remove('hidden');
+            }
         });
     }
 }
