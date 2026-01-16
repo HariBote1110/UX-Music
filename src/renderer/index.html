@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file: safe-artwork:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file: safe-artwork:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
     <title>UX Music</title>
     <link rel="stylesheet" href="./styles/base.css">
     <link rel="stylesheet" href="./styles/layout.css">
@@ -12,14 +14,18 @@
     <link rel="stylesheet" href="./styles/normalize-view.css">
     <link rel="stylesheet" href="./styles/equalizer.css">
     <link rel="stylesheet" href="./styles/edit-metadata.css">
-    <link rel="stylesheet" href="./styles/lrc-editor.css"> </head>
+    <link rel="stylesheet" href="./styles/lrc-editor.css">
+    <link rel="stylesheet" href="./styles/mtp-browser.css">
+</head>
+
 <body>
     <div class="title-bar"></div>
     <div class="container">
         <div class="sidebar left-sidebar">
             <p>UX Music <span id="app-version"></span></p>
             <div class="search-box-container" style="padding: 0 20px 15px 20px;">
-                <input type="search" id="search-input" placeholder="検索..." style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; outline: none;">
+                <input type="search" id="search-input" placeholder="検索..."
+                    style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; outline: none;">
             </div>
             <div class="nav-links">
                 <a href="#" class="nav-link active" data-view="track-view">曲</a>
@@ -36,8 +42,10 @@
                     </button>
                     <div id="library-actions-popup" class="hidden">
                         <button id="add-network-folder-btn" class="popup-action-button">ネットワークフォルダを追加</button>
-                        <button id="add-youtube-btn" class="popup-action-button hidden" data-feature="youtube">YouTubeリンクを追加</button>
-                        <button id="add-youtube-playlist-btn" class="popup-action-button hidden" data-feature="youtube">YouTubeプレイリストを追加</button>
+                        <button id="add-youtube-btn" class="popup-action-button hidden"
+                            data-feature="youtube">YouTubeリンクを追加</button>
+                        <button id="add-youtube-playlist-btn" class="popup-action-button hidden"
+                            data-feature="youtube">YouTubeプレイリストを追加</button>
                         <button id="set-library-btn" class="popup-action-button">ライブラリ場所設定</button>
                         <div class="popup-divider"></div>
                         <button id="normalize-view-btn" class="popup-action-button">音量をノーマライズ</button>
@@ -59,8 +67,29 @@
             <div id="mtp-transfer-view" class="view-container hidden"></div>
             <div id="cd-rip-view" class="view-container hidden"></div>
 
+            <!-- MTPストレージブラウザ -->
+            <div id="mtp-browser-view" class="view-container hidden">
+                <div class="mtp-browser-toolbar">
+                    <button id="mtp-browser-back-btn" disabled title="戻る">←</button>
+                    <button id="mtp-browser-forward-btn" disabled title="進む">→</button>
+                    <div id="mtp-browser-breadcrumb" class="breadcrumb">
+                        <span class="breadcrumb-item">📱 デバイス</span>
+                    </div>
+                    <button id="mtp-browser-refresh-btn" title="更新">🔄</button>
+                    <button id="mtp-browser-close-btn" title="閉じる">✕</button>
+                </div>
+                <div id="mtp-browser-content" class="mtp-file-list">
+                    <p class="mtp-empty">ストレージを選択してください</p>
+                </div>
+                <div class="mtp-browser-actions">
+                    <button id="mtp-browser-download-btn" disabled>⬇ ダウンロード</button>
+                    <button id="mtp-browser-delete-btn" disabled>🗑 削除</button>
+                    <span id="mtp-browser-selection-info"></span>
+                </div>
+            </div>
+
         </div>
-        
+
         <div id="resizer" class="resizer-vertical"></div>
         <div class="sidebar right-sidebar">
             <div id="now-playing-container">
@@ -100,8 +129,8 @@
                 </div>
             </div>
         </div>
-    </div> 
-    
+    </div>
+
     <footer class="playback-bar">
         <div class="playback-controls">
             <button id="shuffle-btn" class="playback-mode-btn" title="シャッフル">
@@ -142,9 +171,9 @@
             </button>
             <div id="device-popup" class="device-popup">
             </div>
-            
+
             <button id="mtp-device-button" class="hidden" title="MTPデバイス">
-                <span>📱</span> 
+                <span>📱</span>
             </button>
             <div id="mtp-device-popup" class="device-popup">
                 <div class="mtp-device-info">
@@ -155,6 +184,7 @@
                     <small id="mtp-storage-label">空き容量 (使用/合計)</small>
                 </div>
                 <div class="mtp-device-actions">
+                    <button id="mtp-browse-storage-btn">📂 ストレージを参照</button>
                     <button id="mtp-transfer-queue-btn">キューを転送</button>
                     <button id="mtp-eject-btn">デバイスを取り外す</button>
                 </div>
@@ -178,7 +208,7 @@
             <h2 id="settings-title">設定</h2>
             <div class="settings-content">
                 <div class="setting-group">
-                     <div class="setting-item">
+                    <div class="setting-item">
                         <h4>オーディオデバイス</h4>
                         <p class="setting-description">再生に使用するオーディオデバイスの表示/非表示を管理します。</p>
                         <button id="manage-devices-btn" class="settings-button">表示するデバイスを管理...</button>
@@ -320,7 +350,8 @@
                                 </div>
                             </label>
                             <div id="analysed-queue-options" class="setting-child-item hidden">
-                                <label for="analysed-queue-decay-slider">スコアの有効期間: <span id="analysed-queue-decay-value">7日</span></label>
+                                <label for="analysed-queue-decay-slider">スコアの有効期間: <span
+                                        id="analysed-queue-decay-value">7日</span></label>
                                 <input type="range" id="analysed-queue-decay-slider" min="0" max="4" value="2" step="1">
                             </div>
                             <label>
@@ -333,7 +364,8 @@
                         </div>
                     </div>
                 </div>
-            </div> <div class="modal-buttons">
+            </div>
+            <div class="modal-buttons">
                 <button id="settings-ok-btn">OK</button>
             </div>
         </div>
@@ -343,26 +375,28 @@
             <h2>表示するオーディオデバイス</h2>
             <p>再生先デバイスの一覧に表示するものを選択してください。</p>
             <div id="devices-list" class="checkbox-group-vertical">
-                </div>
+            </div>
             <div class="modal-buttons">
                 <button id="devices-ok-btn">OK</button>
             </div>
         </div>
     </div>
-    <div id="loading-overlay" class="hidden"> <div class="spinner"></div>
+    <div id="loading-overlay" class="hidden">
+        <div class="spinner"></div>
         <p class="loading-text">処理中...</p>
     </div>
     <div id="notification-toast" class="hidden">
         <p id="notification-text"></p>
     </div>
 
-     <div id="edit-metadata-modal-overlay" class="hidden">
+    <div id="edit-metadata-modal-overlay" class="hidden">
         <div id="edit-metadata-modal">
             <h2>楽曲情報を編集</h2>
             <div class="edit-metadata-content">
                 <div class="edit-artwork-section">
                     <img id="edit-artwork-preview" src="./assets/default_artwork.png" alt="Artwork Preview">
-                    <input type="file" id="edit-artwork-input" accept="image/png, image/jpeg, image/webp" style="display: none;">
+                    <input type="file" id="edit-artwork-input" accept="image/png, image/jpeg, image/webp"
+                        style="display: none;">
                     <button id="edit-artwork-change-btn">アートワークを変更...</button>
                     <button id="edit-artwork-remove-btn">アートワークを削除</button>
                     <p id="edit-artwork-error" class="error-message hidden"></p>
@@ -397,4 +431,5 @@
     <script type="module" src="./renderer.js" defer></script>
 
 </body>
+
 </html>

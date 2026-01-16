@@ -23,7 +23,7 @@ let stores = {};
 function runMigrations(stores) {
     const library = stores.library.load() || [];
     let migrationNeeded = false;
-    
+
     if (library.length > 0 && !library[0].id) {
         console.log('[Migration] Assigning unique IDs to existing songs...');
         migrationNeeded = true;
@@ -42,7 +42,7 @@ function runMigrations(stores) {
 
 function registerIpcHandlers() {
     logPerf("Registering handlers starts...");
-    
+
     stores.playCounts = new DataStore('playcounts.json');
     stores.settings = new DataStore('settings.json');
     stores.library = new DataStore('library.json');
@@ -50,14 +50,14 @@ function registerIpcHandlers() {
     stores.albums = new DataStore('albums.json');
     stores.quizScores = new DataStore('quiz-scores.json');
     stores.analysedQueue = new DataStore('analysed-queue.json'); // Analysed Queue用のストアを追加
-    
+
     // ▼▼▼ 追加: 名前不一致（settings vs settingsStore）を防ぐためのエイリアス ▼▼▼
     stores.settingsStore = stores.settings;
     stores.libraryStore = stores.library;
     // ▲▲▲ 追加 ▲▲▲
 
     logPerf("DataStores initialized.");
-    
+
     runMigrations(stores);
 
     const sendToAllWindows = (channel, ...args) => {
@@ -67,7 +67,7 @@ function registerIpcHandlers() {
             }
         });
     };
-    
+
     const addSongsToLibraryAndSave = (newSongs) => {
         const library = stores.library.load() || [];
         const existingPaths = new Set(library.map(s => s.path));
@@ -104,22 +104,22 @@ function registerIpcHandlers() {
 
         let fileIndex = 0;
         let workerIndex = 0;
-        
+
         const processNextFile = () => {
             if (fileIndex >= files.length) return;
-            
+
             const file = files[fileIndex++];
             const worker = normalizeWorkerPool[workerIndex++ % concurrency];
-            
+
             if (jobType === 'analyze') {
                 worker.postMessage({ type: 'analyze', id: file.id, filePath: file.path });
             } else if (jobType === 'normalize') {
-                worker.postMessage({ 
-                    type: 'normalize', 
-                    id: file.id, 
-                    filePath: file.path, 
-                    gain: file.gain, 
-                    backup: options.backup, 
+                worker.postMessage({
+                    type: 'normalize',
+                    id: file.id,
+                    filePath: file.path,
+                    gain: file.gain,
+                    backup: options.backup,
                     output: options.output,
                     basePath: options.basePath
                 });
@@ -136,7 +136,7 @@ function registerIpcHandlers() {
     ipcMain.on('stop-normalize-job', () => {
         normalizeWorkerPool.forEach(worker => worker.terminate());
         normalizeWorkerPool = [];
-        ipcMain.removeListener('normalize-worker-finished-file', () => {});
+        ipcMain.removeListener('normalize-worker-finished-file', () => { });
     });
 
     ipcMain.handle('select-files-for-normalize', async () => {
@@ -151,11 +151,11 @@ function registerIpcHandlers() {
     ipcMain.handle('select-folder-for-normalize', async () => {
         const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
         if (result.canceled || result.filePaths.length === 0) return [];
-        
+
         const dirPath = result.filePaths[0];
         const supportedExtensions = ['.mp3', '.flac', '.wav', '.m4a', '.ogg'];
         let files = [];
-        
+
         async function scanDirectory(dir) {
             try {
                 const items = await fs.promises.readdir(dir, { withFileTypes: true });
@@ -176,7 +176,7 @@ function registerIpcHandlers() {
                 console.warn(`[Folder Scan] Skipping directory ${dir}: ${error.message}`);
             }
         }
-        
+
         await scanDirectory(dirPath);
         return files;
     });
@@ -185,7 +185,7 @@ function registerIpcHandlers() {
     ipcMain.handle('get-library-for-normalize', () => {
         return stores.library.load() || [];
     });
-    
+
     ipcMain.handle('get-all-loudness-data', () => {
         return stores.loudness.load() || {};
     });
@@ -233,16 +233,16 @@ function registerIpcHandlers() {
                 fs.renameSync(libraryBackupPath, libraryPath);
                 console.log('[DEBUG] Rolled back library.json');
             } else {
-                 console.log('[DEBUG] No library.json backup found.');
+                console.log('[DEBUG] No library.json backup found.');
             }
 
             if (fs.existsSync(albumsBackupPath)) {
                 fs.renameSync(albumsBackupPath, albumsPath);
-                 console.log('[DEBUG] Rolled back albums.json');
+                console.log('[DEBUG] Rolled back albums.json');
             } else {
-                 console.log('[DEBUG] No albums.json backup found.');
+                console.log('[DEBUG] No albums.json backup found.');
             }
-            
+
             if (event.sender && !event.sender.isDestroyed()) {
                 event.sender.send('force-reload-library');
             }
@@ -250,20 +250,20 @@ function registerIpcHandlers() {
             console.error('[DEBUG] Failed to rollback migration:', error);
         }
     });
-    
+
     logPerf("Migration handler registered.");
-    
+
     ipcMain.handle('get-situation-playlists', (event) => {
         const { createSituationPlaylists } = require('./mood-analyzer');
         const { createHistoryPlaylists } = require('./history-analyzer');
-        
+
         const library = stores.library.load() || [];
         const playCounts = stores.playCounts.load() || {};
         const settings = stores.settings.load() || {}; // 設定を読み込む
 
         // 1. ムードに基づくプレイリストを生成 (設定を渡す)
         const moodPlaylists = createSituationPlaylists(library, settings);
-        
+
         // 2. 再生履歴に基づくプレイリストを生成
         const historyPlaylists = createHistoryPlaylists(playCounts, library);
 
@@ -276,71 +276,217 @@ function registerIpcHandlers() {
      * MTPデバイスへのファイル転送（アップロード）を実行
      */
     ipcMain.handle('mtp-upload-files', async (event, { storageId, sources, destination }) => {
-      console.log(`[MTP Transfer] 要求受信: ${sources.length}件を StorageID ${storageId} の ${destination} へ`);
-      
-      const mtpDevice = mtpManager.getDevice();
-      if (!mtpDevice) {
-        console.error('[MTP Transfer] エラー: デバイスが見つかりません');
-        return { error: 'MTP device not connected.' };
-      }
-  
-      // メインウィンドウを取得して、プログレスバーを表示する
-      const mainWindow = BrowserWindow.getAllWindows()[0];
-  
-      try {
-        const result = await mtpDevice.transferFiles({
-          direction: 'upload',
-          storageId: storageId, // 例: 65537
-          sources: sources,     // 例: ['/Users/yuki/Music/test.mp3']
-          destination: destination, // 例: '/Music/' (末尾のスラッシュが重要)
-          preprocessFiles: true,
-          
-          // --- コールバック関数 ---
-          onError: (err) => {
-            console.error('[MTP Transfer] 転送エラー:', err);
-            // TODO: UIにエラー通知
-          },
-          onPreprocess: (data) => {
-            console.log(`[MTP Transfer] 前処理中: ${data.name}`);
-            // TODO: UIに進捗表示 (例: 'ファイル 1/10: test.mp3 を準備中...')
-          },
-          onProgress: (data) => {
-            const percent = Math.round(data.bytesTransferred * 100 / data.totalBytes);
-            console.log(`[MTP Transfer] 転送中: ${data.fullPath} (${percent}%)`);
-            // メインウィンドウのプログレスバーを更新
+        console.log(`[MTP Transfer] 要求受信: ${sources.length}件を StorageID ${storageId} の ${destination} へ`);
+
+        const mtpDevice = mtpManager.getDevice();
+        if (!mtpDevice) {
+            console.error('[MTP Transfer] エラー: デバイスが見つかりません');
+            return { error: 'MTP device not connected.' };
+        }
+
+        // メインウィンドウを取得して、プログレスバーを表示する
+        const mainWindow = BrowserWindow.getAllWindows()[0];
+
+        try {
+            const result = await mtpDevice.transferFiles({
+                direction: 'upload',
+                storageId: storageId, // 例: 65537
+                sources: sources,     // 例: ['/Users/yuki/Music/test.mp3']
+                destination: destination, // 例: '/Music/' (末尾のスラッシュが重要)
+                preprocessFiles: true,
+
+                // --- コールバック関数 ---
+                onError: (err) => {
+                    console.error('[MTP Transfer] 転送エラー:', err);
+                    // TODO: UIにエラー通知
+                },
+                onPreprocess: (data) => {
+                    console.log(`[MTP Transfer] 前処理中: ${data.name}`);
+                    // TODO: UIに進捗表示 (例: 'ファイル 1/10: test.mp3 を準備中...')
+                },
+                onProgress: (data) => {
+                    const percent = Math.round(data.bytesTransferred * 100 / data.totalBytes);
+                    console.log(`[MTP Transfer] 転送中: ${data.fullPath} (${percent}%)`);
+                    // メインウィンドウのプログレスバーを更新
+                    if (mainWindow) {
+                        // プログレスバーの値を 0 から 1 の範囲で設定
+                        mainWindow.setProgressBar(data.bytesTransferred / data.totalBytes);
+                    }
+                },
+                onCompleted: () => {
+                    console.log('[MTP Transfer] 転送完了');
+                    if (mainWindow) {
+                        mainWindow.setProgressBar(-1); // プログレスバーを非表示（-1で解除）
+                    }
+                    // TODO: UIに完了通知
+                },
+            });
+
             if (mainWindow) {
-              // プログレスバーの値を 0 から 1 の範囲で設定
-              mainWindow.setProgressBar(data.bytesTransferred / data.totalBytes);
+                mainWindow.setProgressBar(-1); // 完了またはエラー時にプログレスバーを非表示
             }
-          },
-          onCompleted: () => {
-            console.log('[MTP Transfer] 転送完了');
+
+            if (result.error) {
+                console.error('[MTP Transfer] 最終結果エラー:', result.error);
+            }
+
+            return result; // UI側に最終結果を返す
+
+        } catch (err) {
+            console.error('[MTP Transfer] ハンドラ全体のエラー:', err);
             if (mainWindow) {
-              mainWindow.setProgressBar(-1); // プログレスバーを非表示（-1で解除）
+                mainWindow.setProgressBar(-1);
             }
-            // TODO: UIに完了通知
-          },
-        });
-  
-        if (mainWindow) {
-          mainWindow.setProgressBar(-1); // 完了またはエラー時にプログレスバーを非表示
+            return { error: err.message };
         }
-  
-        if (result.error) {
-          console.error('[MTP Transfer] 最終結果エラー:', result.error);
-        }
-  
-        return result; // UI側に最終結果を返す
-  
-      } catch (err) {
-        console.error('[MTP Transfer] ハンドラ全体のエラー:', err);
-        if (mainWindow) {
-          mainWindow.setProgressBar(-1);
-        }
-        return { error: err.message };
-      }
     });
-    // --- ▲▲▲ MTP機能のために修正 (ステップ8) ▲▲▲ ---
+
+    // --- ▼▼▼ MTPブラウザ機能 ▼▼▼ ---
+
+    /**
+     * MTPデバイスのディレクトリ内容を取得
+     */
+    ipcMain.handle('mtp-browse-directory', async (event, { storageId, fullPath }) => {
+        console.log(`[MTP Browse] ディレクトリ閲覧要求: StorageID ${storageId}, Path: ${fullPath}`);
+
+        const mtpDevice = mtpManager.getDevice();
+        if (!mtpDevice) {
+            console.error('[MTP Browse] エラー: デバイスが見つかりません');
+            return { error: 'MTP device not connected.' };
+        }
+
+        try {
+            const result = await mtpDevice.walk({
+                storageId: storageId,
+                fullPath: fullPath,
+                skipHiddenFiles: true
+            });
+
+            if (result.error) {
+                console.error('[MTP Browse] walk エラー:', result.error);
+                return { error: result.error };
+            }
+
+            console.log(`[MTP Browse] ${fullPath} の内容: ${result.data?.length || 0} 件`);
+            return result;
+
+        } catch (err) {
+            console.error('[MTP Browse] ハンドラ全体のエラー:', err);
+            return { error: err.message };
+        }
+    });
+
+    /**
+     * MTPデバイスからファイルをダウンロード
+     */
+    ipcMain.handle('mtp-download-files', async (event, { storageId, sources, destination }) => {
+        console.log(`[MTP Download] ダウンロード要求: ${sources.length}件を ${destination} へ`);
+
+        const mtpDevice = mtpManager.getDevice();
+        if (!mtpDevice) {
+            console.error('[MTP Download] エラー: デバイスが見つかりません');
+            return { error: 'MTP device not connected.' };
+        }
+
+        const mainWindow = BrowserWindow.getAllWindows()[0];
+
+        try {
+            const result = await mtpDevice.transferFiles({
+                direction: 'download',
+                storageId: storageId,
+                sources: sources,       // 端末上のファイルパス
+                destination: destination, // PC上の保存先パス
+                preprocessFiles: true,
+
+                onError: (err) => {
+                    console.error('[MTP Download] 転送エラー:', err);
+                },
+                onPreprocess: (data) => {
+                    console.log(`[MTP Download] 前処理中: ${data.name}`);
+                },
+                onProgress: (data) => {
+                    const percent = Math.round(data.bytesTransferred * 100 / data.totalBytes);
+                    console.log(`[MTP Download] 転送中: ${data.fullPath} (${percent}%)`);
+                    if (mainWindow) {
+                        mainWindow.setProgressBar(data.bytesTransferred / data.totalBytes);
+                    }
+                },
+                onCompleted: () => {
+                    console.log('[MTP Download] ダウンロード完了');
+                    if (mainWindow) {
+                        mainWindow.setProgressBar(-1);
+                    }
+                },
+            });
+
+            if (mainWindow) {
+                mainWindow.setProgressBar(-1);
+            }
+
+            if (result.error) {
+                console.error('[MTP Download] 最終結果エラー:', result.error);
+            }
+
+            return result;
+
+        } catch (err) {
+            console.error('[MTP Download] ハンドラ全体のエラー:', err);
+            if (mainWindow) {
+                mainWindow.setProgressBar(-1);
+            }
+            return { error: err.message };
+        }
+    });
+
+    /**
+     * MTPデバイス上のファイル/フォルダを削除
+     */
+    ipcMain.handle('mtp-delete-files', async (event, { storageId, files }) => {
+        console.log(`[MTP Delete] 削除要求: ${files.length}件`);
+
+        const mtpDevice = mtpManager.getDevice();
+        if (!mtpDevice) {
+            console.error('[MTP Delete] エラー: デバイスが見つかりません');
+            return { error: 'MTP device not connected.' };
+        }
+
+        try {
+            const result = await mtpDevice.deleteFile({
+                storageId: storageId,
+                files: files
+            });
+
+            if (result.error) {
+                console.error('[MTP Delete] エラー:', result.error);
+                return { error: result.error };
+            }
+
+            console.log('[MTP Delete] 削除完了:', result.data);
+            return result;
+
+        } catch (err) {
+            console.error('[MTP Delete] ハンドラ全体のエラー:', err);
+            return { error: err.message };
+        }
+    });
+
+    /**
+     * ダウンロード先フォルダを選択
+     */
+    ipcMain.handle('mtp-select-download-folder', async () => {
+        const result = await dialog.showOpenDialog({
+            properties: ['openDirectory', 'createDirectory'],
+            title: 'ダウンロード先を選択'
+        });
+
+        if (result.canceled || result.filePaths.length === 0) {
+            return null;
+        }
+
+        return result.filePaths[0];
+    });
+
+    // --- ▲▲▲ MTPブラウザ機能 ▲▲▲ ---
 
     logPerf("Requiring library-handler...");
     const { registerLibraryHandlers } = require('./handlers/library-handler');

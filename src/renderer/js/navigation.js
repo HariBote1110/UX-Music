@@ -10,10 +10,11 @@ import {
     renderSituationView,
     clearMainContent
 } from './ui/view-renderer.js';
-import { stopQuiz } from './quiz.js'; 
-import { stopLrcEditing } from './lrc-editor.js'; 
+import { stopQuiz } from './quiz.js';
+import { stopLrcEditing } from './lrc-editor.js';
 // ▼▼▼ 追加 ▼▼▼
 import { startCDRipView, stopCDRipView } from './cd-ripper.js';
+import { initMtpBrowser, stopMtpBrowser } from './mtp-browser.js';
 // ▲▲▲ 追加 ▲▲▲
 const { ipcRenderer } = require('electron');
 
@@ -23,14 +24,15 @@ const { ipcRenderer } = require('electron');
  * @param {object} options
  */
 export function showView(viewId, options = {}) {
-    // ▼▼▼ 修正: 'cd-rip-view' を追加 ▼▼▼
-    const isSpecialView = ['normalize-view', 'quiz-view', 'lrc-editor-view', 'cd-rip-view'].includes(viewId);
+    // ▼▼▼ 修正: 'cd-rip-view' と 'mtp-browser-view' を追加 ▼▼▼
+    const isSpecialView = ['normalize-view', 'quiz-view', 'lrc-editor-view', 'cd-rip-view', 'mtp-browser-view'].includes(viewId);
     // ▲▲▲ 修正 ▲▲▲
 
     if (viewId !== 'quiz-view') stopQuiz();
     if (viewId !== 'lrc-editor-view') stopLrcEditing();
     // ▼▼▼ 追加 ▼▼▼
     if (viewId !== 'cd-rip-view') stopCDRipView();
+    if (viewId !== 'mtp-browser-view') stopMtpBrowser();
     // ▲▲▲ 追加 ▲▲▲
 
 
@@ -38,20 +40,20 @@ export function showView(viewId, options = {}) {
     state.activeViewId = viewId;
     elements.navLinks.forEach(l => l.classList.remove('active'));
     const mainViewLink = document.querySelector(`.nav-link[data-view="${viewId}"]`);
-    if (mainViewLink && !isSpecialView) { 
+    if (mainViewLink && !isSpecialView) {
         mainViewLink.classList.add('active');
-        state.activeListView = viewId; 
+        state.activeListView = viewId;
         state.currentDetailView = { type: null, identifier: null };
-    } else if (!isSpecialView) { 
+    } else if (!isSpecialView) {
         state.currentDetailView = { type: options.type, identifier: options.identifier, data: options.data };
         const correspondingListViewLink = document.querySelector(`.nav-link[data-view="${options.type}-view"]`);
         if (correspondingListViewLink) {
-             correspondingListViewLink.classList.add('active');
+            correspondingListViewLink.classList.add('active');
         }
     } else {
-         state.currentDetailView = { type: null, identifier: null };
-         const lastListViewLink = document.querySelector(`.nav-link[data-view="${state.activeListView}"]`);
-         if(lastListViewLink) lastListViewLink.classList.add('active');
+        state.currentDetailView = { type: null, identifier: null };
+        const lastListViewLink = document.querySelector(`.nav-link[data-view="${state.activeListView}"]`);
+        if (lastListViewLink) lastListViewLink.classList.add('active');
     }
 
 
@@ -64,12 +66,14 @@ export function showView(viewId, options = {}) {
     // ▼▼▼ 追加 ▼▼▼
     const cdRipView = document.getElementById('cd-rip-view');
     if (cdRipView) cdRipView.classList.add('hidden');
+    const mtpBrowserView = document.getElementById('mtp-browser-view');
+    if (mtpBrowserView) mtpBrowserView.classList.add('hidden');
     // ▲▲▲ 追加 ▲▲▲
 
 
     if (isSpecialView) {
         elements.mainContent.classList.add('hidden');
-        clearMainContent(); 
+        clearMainContent();
 
         if (viewId === 'quiz-view' && quizView) {
             quizView.classList.remove('hidden');
@@ -77,10 +81,13 @@ export function showView(viewId, options = {}) {
             elements.normalizeView.classList.remove('hidden');
         } else if (viewId === 'lrc-editor-view' && lrcEditorView) {
             lrcEditorView.classList.remove('hidden');
-        // ▼▼▼ 追加 ▼▼▼
+            // ▼▼▼ 追加 ▼▼▼
         } else if (viewId === 'cd-rip-view' && cdRipView) {
             cdRipView.classList.remove('hidden');
             startCDRipView();
+        } else if (viewId === 'mtp-browser-view' && mtpBrowserView) {
+            mtpBrowserView.classList.remove('hidden');
+            initMtpBrowser(options.storageId, options.initialPath || '/');
         }
         // ▲▲▲ 追加 ▲▲▲
     } else {

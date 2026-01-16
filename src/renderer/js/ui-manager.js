@@ -3,12 +3,12 @@
 import { state, elements } from './state.js';
 import { playSong } from './playback-manager.js';
 import { createQueueItem } from './ui/element-factory.js';
-import { showView } from './navigation.js'; 
+import { showView } from './navigation.js';
 import { setAudioOutput, setVisualizerTarget, stop as stopPlayer } from './player.js';
-import { updateNowPlayingView } from './ui/now-playing.js'; 
+import { updateNowPlayingView } from './ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
-import { showContextMenu, formatBytes } from './ui/utils.js'; 
+import { showContextMenu, formatBytes } from './ui/utils.js';
 const { ipcRenderer } = require('electron');
 
 /**
@@ -35,7 +35,7 @@ export function updatePlayingIndicators() {
             const safeId = CSS.escape(currentPlayingSong.id);
             const selector = `.main-content .song-item[data-song-id="${safeId}"]`;
             const newPlayingItem = document.querySelector(selector);
-            
+
             if (newPlayingItem) {
                 console.log('[Debug:UI] 該当する song-item を発見しました。ハイライトを適用します。');
                 newPlayingItem.classList.add('playing');
@@ -49,7 +49,7 @@ export function updatePlayingIndicators() {
     } else {
         setVisualizerTarget(null);
     }
-    
+
     renderQueueView();
 }
 
@@ -83,7 +83,7 @@ function renderQueueView() {
         queueItem.addEventListener('click', () => playSong(index));
         elements.queueList.appendChild(queueItem);
     });
-    
+
     if (typeof window.observeNewArtworks === 'function') {
         window.observeNewArtworks(elements.queueList);
     }
@@ -112,7 +112,7 @@ export function initUI() {
             elements.mtpDevicePopup.classList.remove('active');
         }
     });
-    
+
     ipcRenderer.on('mtp-device-status', (event, device) => {
         console.log('[MTP-LOG] MTPデバイスステータス受信:', device);
         updateMtpDeviceView(device);
@@ -128,19 +128,38 @@ export function initUI() {
         elements.mtpTransferView.classList.add('hidden');
         elements.mainContent.classList.remove('hidden');
     });
+
+    // MTPストレージを参照ボタン
+    if (elements.mtpBrowseStorageBtn) {
+        elements.mtpBrowseStorageBtn.addEventListener('click', () => {
+            elements.mtpDevicePopup.classList.remove('active');
+
+            if (!state.mtpStorages || state.mtpStorages.length === 0) {
+                showNotification('ストレージ情報がありません');
+                hideNotification(3000);
+                return;
+            }
+
+            // ナビゲーションを使用してMTPブラウザビューを表示
+            showView('mtp-browser-view', {
+                storageId: state.mtpStorages[0].id,
+                initialPath: '/'
+            });
+        });
+    }
 }
 
 function updateMtpDeviceView(device) {
     if (device) {
-        elements.mtpDeviceButton.classList.remove('hidden'); 
+        elements.mtpDeviceButton.classList.remove('hidden');
         elements.mtpDeviceName.textContent = device.name || 'MTP Device';
         elements.mtpTransferDeviceName.textContent = device.name || 'MTP Device';
-        
+
         if (device.storage && device.storage.total > 0) {
             const { free, total } = device.storage;
             const used = total - free;
             const usedPercent = (used / total) * 100;
-            const fBytes = typeof formatBytes === 'function' ? formatBytes : (b) => `${(b / 1024**3).toFixed(1)} GB`;
+            const fBytes = typeof formatBytes === 'function' ? formatBytes : (b) => `${(b / 1024 ** 3).toFixed(1)} GB`;
             elements.mtpStorageUsed.style.width = `${usedPercent}%`;
             elements.mtpStorageLabel.textContent = `${fBytes(free)} 空き (${fBytes(used)} / ${fBytes(total)})`;
         } else {
@@ -150,7 +169,7 @@ function updateMtpDeviceView(device) {
     } else {
         elements.mtpDeviceButton.classList.add('hidden');
         elements.mtpDevicePopup.classList.remove('active');
-        
+
         if (!elements.mtpTransferView.classList.contains('hidden')) {
             elements.mtpTransferView.classList.add('hidden');
             elements.mainContent.classList.remove('hidden');
@@ -163,10 +182,10 @@ function updateMtpDeviceView(device) {
 export function addSongsToLibrary({ songs, albums }) {
     console.time('Renderer: Process Library Data');
     let migrationNeeded = false;
-    
+
     if (albums && Object.keys(albums).length === 0 && songs && songs.length > 0 && songs[0].artwork && typeof songs[0].artwork !== 'object') {
         migrationNeeded = true;
-        state.albums.clear(); 
+        state.albums.clear();
     } else if (albums) {
         state.albums = new Map(Object.entries(albums));
     }
@@ -201,7 +220,7 @@ function groupLibraryByAlbum(isMigration = false) {
 
     localSongs.forEach(song => {
         const albumTitle = song.album || 'Unknown Album';
-        
+
         if (!tempAlbumGroups.has(albumTitle)) {
             tempAlbumGroups.set(albumTitle, {
                 songs: [],
@@ -216,14 +235,14 @@ function groupLibraryByAlbum(isMigration = false) {
         if (artist) {
             albumGroup.artistSet.add(artist);
         }
-        
+
         if (albumTitle !== 'Unknown Album' && !albumGroup.artwork && song.artwork) {
             albumGroup.artwork = song.artwork;
         }
     });
 
     const oldAlbums = new Map(state.albums);
-    state.albums.clear(); 
+    state.albums.clear();
 
     for (const [albumTitle, albumData] of tempAlbumGroups.entries()) {
         let representativeArtist;
@@ -243,11 +262,11 @@ function groupLibraryByAlbum(isMigration = false) {
             for (const oldAlbum of oldAlbums.values()) {
                 if (oldAlbum.title === albumTitle && oldAlbum.artwork) {
                     finalArtwork = oldAlbum.artwork;
-                    break; 
+                    break;
                 }
             }
         }
-        
+
         state.albums.set(albumKey, {
             title: albumTitle,
             artist: representativeArtist,
@@ -290,11 +309,11 @@ export async function updateAudioDevices() {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const settings = await ipcRenderer.invoke('get-settings');
         const hiddenDevices = settings.hiddenDeviceIds || [];
-        
-        const audioDevices = devices.filter(device => 
+
+        const audioDevices = devices.filter(device =>
             device.kind === 'audiooutput' && !hiddenDevices.includes(device.deviceId)
         );
-        
+
         elements.devicePopup.innerHTML = '';
         const activeDeviceId = settings.audioOutputId || 'default';
 
@@ -308,10 +327,10 @@ export async function updateAudioDevices() {
         displayDevices.forEach(device => {
             const item = document.createElement('div');
             item.className = 'device-popup-item';
-            
+
             if (device.isVirtual) {
                 item.style.fontWeight = 'bold';
-                item.style.color = '#7289da'; 
+                item.style.color = '#7289da';
             }
 
             item.textContent = device.label || `スピーカー ${elements.devicePopup.children.length + 1}`;
@@ -320,7 +339,7 @@ export async function updateAudioDevices() {
             if (device.deviceId === activeDeviceId) {
                 item.classList.add('active');
             }
-            
+
             item.addEventListener('click', async () => {
                 const newDeviceId = item.dataset.deviceId;
                 await stopPlayer();
