@@ -6,6 +6,27 @@
         <button id="mtp-transfer-close-btn" class="header-button">閉じる</button>
     </div>
 </div>
+
+<!-- 未転送曲検出セクション -->
+<div class="sync-section">
+    <div class="sync-header">
+        <h3>📋 未転送曲を検出</h3>
+        <button id="mtp-detect-untransferred-btn" class="primary-button">
+            🔍 スキャン開始
+        </button>
+    </div>
+    <div id="mtp-sync-status" class="sync-status"></div>
+    <div id="mtp-untransferred-list" class="untransferred-list hidden">
+        <!-- 未転送曲リストがここに表示される -->
+    </div>
+    <div id="mtp-sync-actions" class="sync-actions hidden">
+        <button id="mtp-transfer-all-btn" class="primary-button">
+            📤 すべて転送
+        </button>
+        <span id="mtp-untransferred-count"></span>
+    </div>
+</div>
+
 <div class="transfer-content-wrapper">
     <div class="transfer-pane source-pane">
         <h3>ライブラリ</h3>
