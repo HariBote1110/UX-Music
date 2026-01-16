@@ -239,7 +239,7 @@ export function initIPC(ipcRenderer, callbacks) {
     // --- ▼▼▼ デバイスリンクのクリックハンドラ ▼▼▼ ---
     const mtpDeviceNavLink = document.getElementById('mtp-device-nav-link');
     if (mtpDeviceNavLink) {
-        mtpDeviceNavLink.addEventListener('click', (e) => {
+        mtpDeviceNavLink.addEventListener('click', async (e) => {
             e.preventDefault();
 
             if (!state.mtpStorages || state.mtpStorages.length === 0) {
@@ -248,11 +248,49 @@ export function initIPC(ipcRenderer, callbacks) {
                 return;
             }
 
-            // MTPブラウザビューを表示
-            showView('mtp-browser-view', {
-                storageId: state.mtpStorages[0].id,
-                initialPath: '/'
-            });
+            // 未転送曲確認UIを表示（mtp-transfer-viewを再利用）
+            const mainContent = document.getElementById('main-content');
+            const mtpTransferView = document.getElementById('mtp-transfer-view');
+
+            if (mainContent && mtpTransferView) {
+                mainContent.classList.add('hidden');
+                mtpTransferView.classList.remove('hidden');
+
+                // 未転送曲の検出を開始
+                showNotification('未転送の曲を確認中...');
+                try {
+                    const storageId = state.mtpStorages[0].id;
+                    const untransferredSongs = await ipcRenderer.invoke('mtp-get-untransferred-songs', {
+                        storageId,
+                        librarySongs: state.library
+                    });
+                    hideNotification();
+
+                    // UIを更新
+                    const sourceList = document.getElementById('mtp-transfer-source-list');
+                    if (sourceList) {
+                        if (untransferredSongs && untransferredSongs.length > 0) {
+                            sourceList.innerHTML = `<p>未転送の曲: ${untransferredSongs.length}曲</p>`;
+                            untransferredSongs.forEach(song => {
+                                const item = document.createElement('div');
+                                item.className = 'transfer-item';
+                                item.innerHTML = `<span>${song.title || song.path.split('/').pop()}</span>`;
+                                item.dataset.path = song.path;
+                                sourceList.appendChild(item);
+                            });
+                            state.pendingTransferSongs = untransferredSongs;
+                        } else {
+                            sourceList.innerHTML = '<p>すべての曲が転送済みです 🎉</p>';
+                            state.pendingTransferSongs = [];
+                        }
+                    }
+                } catch (error) {
+                    console.error('未転送曲の検出に失敗:', error);
+                    hideNotification();
+                    showNotification('未転送曲の確認に失敗しました');
+                    hideNotification(3000);
+                }
+            }
         });
     }
     // --- ▲▲▲ デバイスリンクのクリックハンドラ ▲▲▲ ---

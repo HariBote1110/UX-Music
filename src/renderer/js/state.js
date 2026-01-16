@@ -150,6 +150,7 @@ export function initElements() {
     elements.mtpTransferProgressContainer = document.getElementById('mtp-transfer-progress-container');
     elements.mtpTransferProgressLabel = document.getElementById('mtp-transfer-progress-label');
     elements.mtpTransferProgressBar = document.getElementById('mtp-transfer-progress-bar');
+    elements.mtpTransferBrowseBtn = document.getElementById('mtp-transfer-browse-btn');
 
     // Other Views
     elements.lrcEditorView = document.getElementById('lrc-editor-view');

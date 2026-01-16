@@ -486,6 +486,70 @@ function registerIpcHandlers() {
         return result.filePaths[0];
     });
 
+    /**
+     * 未転送曲を検出する
+     * ライブラリ内の楽曲とWalkman内の楽曲をファイル名で比較
+     */
+    ipcMain.handle('mtp-get-untransferred-songs', async (event, { storageId, librarySongs }) => {
+        console.log(`[MTP Sync] 未転送曲の検出を開始: StorageID ${storageId}, ライブラリ ${librarySongs?.length || 0}曲`);
+
+        const mtpDevice = mtpManager.getDevice();
+        if (!mtpDevice) {
+            console.error('[MTP Sync] エラー: デバイスが見つかりません');
+            return [];
+        }
+
+        try {
+            // Walkmanの/Music/フォルダ内のファイルを再帰的に取得
+            const deviceFiles = new Set();
+
+            async function scanDirectory(dirPath) {
+                try {
+                    const result = await mtpDevice.walk({
+                        storageId: storageId,
+                        fullPath: dirPath,
+                        skipHiddenFiles: true
+                    });
+
+                    if (result.error || !result.data) {
+                        console.warn(`[MTP Sync] ディレクトリ ${dirPath} の取得に失敗:`, result.error);
+                        return;
+                    }
+
+                    for (const item of result.data) {
+                        if (item.isFolder) {
+                            await scanDirectory(item.fullPath);
+                        } else {
+                            // ファイル名のみを取得して比較用セットに追加
+                            const fileName = item.name.toLowerCase();
+                            deviceFiles.add(fileName);
+                        }
+                    }
+                } catch (err) {
+                    console.warn(`[MTP Sync] スキャンエラー (${dirPath}):`, err.message);
+                }
+            }
+
+            await scanDirectory('/MUSIC/');
+            console.log(`[MTP Sync] Walkman内のファイル数: ${deviceFiles.size}`);
+
+            // ライブラリ楽曲と比較して未転送曲を抽出
+            const untransferredSongs = librarySongs.filter(song => {
+                if (!song.path) return false;
+                // ファイル名のみを抽出して比較
+                const fileName = path.basename(song.path).toLowerCase();
+                return !deviceFiles.has(fileName);
+            });
+
+            console.log(`[MTP Sync] 未転送曲: ${untransferredSongs.length}曲`);
+            return untransferredSongs;
+
+        } catch (err) {
+            console.error('[MTP Sync] 未転送曲検出エラー:', err);
+            return [];
+        }
+    });
+
     // --- ▲▲▲ MTPブラウザ機能 ▲▲▲ ---
 
     logPerf("Requiring library-handler...");

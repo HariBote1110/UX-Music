@@ -147,6 +147,24 @@ export function initUI() {
             });
         });
     }
+
+    // 転送画面内の「ディレクトリを見る」ボタン
+    if (elements.mtpTransferBrowseBtn) {
+        elements.mtpTransferBrowseBtn.addEventListener('click', () => {
+            if (!state.mtpStorages || state.mtpStorages.length === 0) {
+                showNotification('ストレージ情報がありません');
+                hideNotification(3000);
+                return;
+            }
+
+            // 転送画面を閉じてMTPブラウザビューを表示
+            elements.mtpTransferView.classList.add('hidden');
+            showView('mtp-browser-view', {
+                storageId: state.mtpStorages[0].id,
+                initialPath: '/'
+            });
+        });
+    }
 }
 
 function updateMtpDeviceView(device) {
