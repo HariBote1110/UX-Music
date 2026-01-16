@@ -107,6 +107,9 @@ export function showView(viewId, options = {}) {
 
 export function initNavigation() {
     elements.navLinks.forEach(link => {
+        // mtp-device-nav-linkはipc.jsで別途ハンドルするため除外
+        if (link.id === 'mtp-device-nav-link') return;
+
         link.addEventListener('click', (e) => {
             e.preventDefault();
             const viewId = link.dataset.view;
