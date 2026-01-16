@@ -141,53 +141,6 @@ export function initUI() {
                 initialPath: '/'
             });
         });
-    }
-
-    // 転送画面内のボタン（documentレベルでイベント委譲、動的要素に対応）
-    document.addEventListener('click', (e) => {
-        // デバッグ: クリックされた要素を出力
-        console.log('[Document Click Debug] クリックされた要素:', e.target);
-        console.log('[Document Click Debug] e.target.tagName:', e.target.tagName);
-        console.log('[Document Click Debug] e.target.id:', e.target.id);
-
-        const target = e.target.closest('button');
-        console.log('[Document Click Debug] closest button:', target);
-        if (!target) return;
-
-        console.log('[Document Click Debug] button.id:', target.id);
-
-        // 「ディレクトリを見る」ボタン
-        if (target.id === 'mtp-transfer-browse-btn') {
-            console.log('[MTP Transfer] ディレクトリを見るボタンがクリックされました');
-            console.log('[MTP Transfer] state.mtpStorages:', state.mtpStorages);
-
-            if (!state.mtpStorages || state.mtpStorages.length === 0) {
-                showNotification('ストレージ情報がありません');
-                hideNotification(3000);
-                return;
-            }
-
-            const storageId = state.mtpStorages[0].id;
-            console.log('[MTP Transfer] storageId:', storageId);
-
-            // 転送画面を閉じてMTPブラウザビューを表示
-            const mtpTransferView = document.getElementById('mtp-transfer-view');
-            if (mtpTransferView) {
-                mtpTransferView.classList.add('hidden');
-            }
-            showView('mtp-browser-view', {
-                storageId: storageId,
-                initialPath: '/'
-            });
-        }
-
-        // 「閉じる」ボタン
-        if (target.id === 'mtp-transfer-close-btn') {
-            const mtpTransferView = document.getElementById('mtp-transfer-view');
-            const mainContent = document.getElementById('main-content');
-            if (mtpTransferView) mtpTransferView.classList.add('hidden');
-            if (mainContent) mainContent.classList.remove('hidden');
-        }
     });
 }
 

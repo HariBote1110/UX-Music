@@ -25,16 +25,57 @@ export function updateListSpacer() {
 export function initUI() {
     // ウィンドウリサイズ時にスペーサーの高さを再計算
     window.addEventListener('resize', updateListSpacer);
-    
+
     // 初回実行（レンダリング完了を見越して少し遅延させる）
     setTimeout(updateListSpacer, 100);
+
+    // --- MTP転送画面のボタン用イベントハンドラ（動的コンポーネント対応） ---
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('button');
+        if (!target) return;
+
+        // 「ディレクトリを見る」ボタン
+        if (target.id === 'mtp-transfer-browse-btn') {
+            console.log('[MTP Transfer] ディレクトリを見るボタンがクリックされました');
+
+            if (!state.mtpStorages || state.mtpStorages.length === 0) {
+                console.warn('[MTP Transfer] ストレージ情報がありません');
+                return;
+            }
+
+            const storageId = state.mtpStorages[0].id;
+            console.log('[MTP Transfer] storageId:', storageId);
+
+            // 転送画面を閉じてMTPブラウザビューを表示
+            const mtpTransferView = document.getElementById('mtp-transfer-view');
+            if (mtpTransferView) {
+                mtpTransferView.classList.add('hidden');
+            }
+
+            // navigation.jsからshowViewをインポートできないため、直接遷移処理
+            import('./navigation.js').then(({ showView }) => {
+                showView('mtp-browser-view', {
+                    storageId: storageId,
+                    initialPath: '/'
+                });
+            });
+        }
+
+        // 「閉じる」ボタン
+        if (target.id === 'mtp-transfer-close-btn') {
+            const mtpTransferView = document.getElementById('mtp-transfer-view');
+            const mainContent = document.getElementById('main-content');
+            if (mtpTransferView) mtpTransferView.classList.add('hidden');
+            if (mainContent) mainContent.classList.remove('hidden');
+        }
+    });
 }
 
 let currentSearchQuery = '';
 
 export function updateSearchQuery(query) {
     const newQuery = query.toLowerCase().trim();
-    
+
     // クエリに変更がなく、かつ既にトラックビューなら何もしない
     if (currentSearchQuery === newQuery && state.activeViewId === 'track-view') return;
 
@@ -61,7 +102,7 @@ function switchToTrackView() {
 
     document.querySelectorAll('.view-container').forEach(el => el.classList.add('hidden'));
     if (elements.mainContent) elements.mainContent.classList.remove('hidden');
-    
+
     if (elements.navLinks) {
         elements.navLinks.forEach(l => l.classList.remove('active'));
         const trackLink = document.querySelector('.nav-link[data-view="track-view"]');
@@ -77,20 +118,20 @@ function getYoutubeVideoId(url) {
 }
 
 export function updateNowPlayingView(song) {
-    const { 
-        nowPlayingArtworkContainer, 
-        nowPlayingTitle, 
+    const {
+        nowPlayingArtworkContainer,
+        nowPlayingTitle,
         nowPlayingArtist,
-        hubLinkContainer 
+        hubLinkContainer
     } = elements;
-    
+
     const localPlayer = document.getElementById('main-player');
 
     if (localPlayer) {
         document.body.appendChild(localPlayer);
         localPlayer.style.display = 'none';
     }
-    
+
     nowPlayingArtworkContainer.innerHTML = '';
     hubLinkContainer.innerHTML = '';
     nowPlayingArtworkContainer.classList.remove('video-mode');
@@ -100,7 +141,7 @@ export function updateNowPlayingView(song) {
         img.src = './assets/default_artwork.png';
         nowPlayingArtworkContainer.appendChild(img);
         setEqualizerColorFromArtwork(img);
-    
+
     } else if (song.type === 'youtube') {
         nowPlayingArtworkContainer.classList.add('video-mode');
         const videoId = getYoutubeVideoId(song.sourceURL || song.path);
@@ -113,7 +154,7 @@ export function updateNowPlayingView(song) {
             iframe.setAttribute('allow', 'autoplay; encrypted-media');
             nowPlayingArtworkContainer.appendChild(iframe);
         }
-        
+
         const artworkImage = new Image();
         artworkImage.crossOrigin = "Anonymous";
         artworkImage.onload = () => setEqualizerColorFromArtwork(artworkImage);
@@ -126,7 +167,7 @@ export function updateNowPlayingView(song) {
 
         const masterSong = state.library.find(s => s.path === song.path) || song;
         const album = state.albums.get(masterSong.albumKey);
-        
+
         let artwork;
         if (masterSong.album === 'Unknown Album' || (album && album.title === 'Unknown Album')) {
             artwork = null;
@@ -146,7 +187,7 @@ export function updateNowPlayingView(song) {
             nowPlayingArtworkContainer.appendChild(img);
         }
     }
-    
+
     if (song && song.hubUrl) {
         const hubButton = document.createElement('button');
         hubButton.className = 'hub-link-button-small';
@@ -172,8 +213,8 @@ export function renderTrackView() {
     if (currentSearchQuery) {
         displaySongs = state.library.filter(song => {
             const targetText = (
-                (song.title || '') + 
-                (song.artist || '') + 
+                (song.title || '') +
+                (song.artist || '') +
                 (song.album || '')
             ).toLowerCase();
             return targetText.includes(currentSearchQuery);
@@ -218,10 +259,10 @@ export function renderTrackView() {
     setupSongListScroller(listContainer, displaySongs, {
         contextView: 'track-view'
     });
-    
+
     // 生成後に高さを更新
     updateListSpacer();
-    
+
     // 列リサイズの初期化
     initListHeaderResizing(viewWrapper);
 }
