@@ -3,7 +3,7 @@
 
 import { state, elements } from './state.js';
 import { showNotification, hideNotification } from './ui/notification.js';
-import { formatBytes } from './ui/utils.js';
+import { formatBytes, showContextMenu } from './ui/utils.js';
 const { ipcRenderer } = require('electron');
 
 // 状態管理
@@ -213,6 +213,19 @@ function renderFileList(files) {
                 browseDirectory(browserState.currentStorageId, path);
             }
         });
+
+        // 右クリック: コンテキストメニュー
+        item.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // まだ選択されていなければ選択する
+            if (!browserState.selectedItems.has(item.dataset.path)) {
+                selectOnly(item);
+            }
+
+            showMtpContextMenu(e.pageX, e.pageY);
+        });
     });
 }
 
@@ -396,78 +409,6 @@ function updateSelectionUI() {
 }
 
 /**
- * 選択したファイルをダウンロード
- */
-async function downloadSelected() {
-    if (browserState.selectedItems.size === 0) return;
-
-    // ダウンロード先を選択
-    const destination = await ipcRenderer.invoke('mtp-select-download-folder');
-    if (!destination) return;
-
-    const sources = Array.from(browserState.selectedItems);
-    showNotification(`${sources.length}件のダウンロードを開始します...`);
-
-    try {
-        const result = await ipcRenderer.invoke('mtp-download-files', {
-            storageId: browserState.currentStorageId,
-            sources: sources,
-            destination: destination
-        });
-
-        if (result.error) {
-            showNotification(`ダウンロードエラー: ${result.error}`);
-        } else {
-            showNotification(`${sources.length}件のダウンロードが完了しました`);
-        }
-        hideNotification(3000);
-
-    } catch (err) {
-        showNotification(`エラー: ${err.message}`);
-        hideNotification(3000);
-    }
-}
-
-/**
- * 選択したファイルを削除
- */
-async function deleteSelected() {
-    if (browserState.selectedItems.size === 0) return;
-
-    const count = browserState.selectedItems.size;
-    const confirmMessage = count === 1
-        ? 'このアイテムを削除しますか？'
-        : `${count}件のアイテムを削除しますか？`;
-
-    if (!confirm(`${confirmMessage}\n\nこの操作は取り消せません。`)) {
-        return;
-    }
-
-    const files = Array.from(browserState.selectedItems);
-    showNotification(`${count}件を削除中...`);
-
-    try {
-        const result = await ipcRenderer.invoke('mtp-delete-files', {
-            storageId: browserState.currentStorageId,
-            files: files
-        });
-
-        if (result.error) {
-            showNotification(`削除エラー: ${result.error}`);
-        } else {
-            showNotification(`${count}件を削除しました`);
-            // ディレクトリを再読み込み
-            await refresh();
-        }
-        hideNotification(3000);
-
-    } catch (err) {
-        showNotification(`エラー: ${err.message}`);
-        hideNotification(3000);
-    }
-}
-
-/**
  * ブラウザを閉じる
  */
 function closeBrowser() {
@@ -537,5 +478,100 @@ function updateDeviceHeader() {
         if (browserElements.headerStorageUsed) {
             browserElements.headerStorageUsed.style.width = '0%';
         }
+    }
+}
+
+/**
+ * MTPブラウザ用コンテキストメニューを表示
+ * @param {number} x - X座標
+ * @param {number} y - Y座標
+ */
+function showMtpContextMenu(x, y) {
+    const count = browserState.selectedItems.size;
+    const label = count === 1 ? '選択中のアイテム' : `${count}件選択中`;
+
+    const menuItems = [
+        {
+            label: `⬇️ ダウンロード (${label})`,
+            action: () => downloadSelected()
+        },
+        {
+            label: `🗑️ 削除 (${label})`,
+            action: () => deleteSelected()
+        }
+    ];
+
+    showContextMenu(x, y, menuItems);
+}
+
+/**
+ * 選択したファイルをダウンロード
+ */
+async function downloadSelected() {
+    if (browserState.selectedItems.size === 0) return;
+
+    // ダウンロード先を選択
+    const destination = await ipcRenderer.invoke('mtp-select-download-folder');
+    if (!destination) return;
+
+    const sources = Array.from(browserState.selectedItems);
+    showNotification(`${sources.length}件のダウンロードを開始します...`);
+
+    try {
+        const result = await ipcRenderer.invoke('mtp-download-files', {
+            storageId: browserState.currentStorageId,
+            sources: sources,
+            destination: destination
+        });
+
+        if (result.error) {
+            showNotification(`ダウンロードエラー: ${result.error}`);
+        } else {
+            showNotification(`${sources.length}件のダウンロードが完了しました`);
+        }
+        hideNotification(3000);
+
+    } catch (err) {
+        showNotification(`エラー: ${err.message}`);
+        hideNotification(3000);
+    }
+}
+
+/**
+ * 選択したファイルを削除
+ */
+async function deleteSelected() {
+    if (browserState.selectedItems.size === 0) return;
+
+    const count = browserState.selectedItems.size;
+    const confirmMessage = count === 1
+        ? 'このアイテムを削除しますか？'
+        : `${count}件のアイテムを削除しますか？`;
+
+    if (!confirm(`${confirmMessage}\n\nこの操作は取り消せません。`)) {
+        return;
+    }
+
+    const files = Array.from(browserState.selectedItems);
+    showNotification(`${count}件を削除中...`);
+
+    try {
+        const result = await ipcRenderer.invoke('mtp-delete-files', {
+            storageId: browserState.currentStorageId,
+            files: files
+        });
+
+        if (result.error) {
+            showNotification(`削除エラー: ${result.error}`);
+        } else {
+            showNotification(`${count}件を削除しました`);
+            // ディレクトリを再読み込み
+            await refresh();
+        }
+        hideNotification(3000);
+
+    } catch (err) {
+        showNotification(`エラー: ${err.message}`);
+        hideNotification(3000);
     }
 }
