@@ -3,6 +3,7 @@ import { showNotification, hideNotification } from './ui/notification.js';
 import { state } from './state.js';
 import { showModal } from './modal.js';
 import { renderCurrentView } from './ui-manager.js';
+import { showView } from './navigation.js';
 // --- ▼▼▼ 新規追加 ▼▼▼ ---
 import { showEditMetadataModal } from './edit-metadata.js'; // あとで作成するファイル
 // --- ▲▲▲ ここまで ▲▲▲ ---
@@ -248,7 +249,6 @@ export function initIPC(ipcRenderer, callbacks) {
             }
 
             // MTPブラウザビューを表示
-            const { showView } = require('./navigation.js');
             showView('mtp-browser-view', {
                 storageId: state.mtpStorages[0].id,
                 initialPath: '/'
