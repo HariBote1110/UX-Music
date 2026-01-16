@@ -237,10 +237,18 @@ export function initIPC(ipcRenderer, callbacks) {
     ipcRenderer.send('request-initial-settings');
 
     // --- ▼▼▼ デバイスリンクのクリックハンドラ ▼▼▼ ---
+    let mtpOperationInProgress = false; // MTP操作中フラグ
+
     const mtpDeviceNavLink = document.getElementById('mtp-device-nav-link');
     if (mtpDeviceNavLink) {
         mtpDeviceNavLink.addEventListener('click', async (e) => {
             e.preventDefault();
+
+            // 操作中なら無視
+            if (mtpOperationInProgress) {
+                console.log('[MTP] 操作中のため無視');
+                return;
+            }
 
             if (!state.mtpStorages || state.mtpStorages.length === 0) {
                 showNotification('ストレージ情報がありません');
@@ -258,6 +266,8 @@ export function initIPC(ipcRenderer, callbacks) {
 
                 // 未転送曲の検出を開始
                 showNotification('未転送の曲を確認中...');
+                mtpOperationInProgress = true; // 操作開始
+
                 try {
                     const storageId = state.mtpStorages[0].id;
                     const untransferredSongs = await ipcRenderer.invoke('mtp-get-untransferred-songs', {
@@ -297,6 +307,8 @@ export function initIPC(ipcRenderer, callbacks) {
                     hideNotification();
                     showNotification('未転送曲の確認に失敗しました');
                     hideNotification(3000);
+                } finally {
+                    mtpOperationInProgress = false; // 操作完了
                 }
             }
         });
