@@ -561,12 +561,31 @@ function registerIpcHandlers() {
                 await scanDirectory('/MUSIC/');
                 console.log(`[MTP Sync] Walkman内のファイル数: ${deviceFiles.size}`);
 
+                // トラック番号プレフィックスを除去する関数
+                // 例: "01-Title.flac" → "title.flac", "01 Title.flac" → "title.flac"
+                function normalizeFileName(fileName) {
+                    // パターン: "数字-" or "数字 " から始まる場合に除去
+                    return fileName.replace(/^\d+[-\s]+/, '').toLowerCase();
+                }
+
                 // ライブラリ楽曲と比較して未転送曲を抽出
                 const untransferredSongs = librarySongs.filter(song => {
                     if (!song.path) return false;
-                    // ファイル名のみを抽出して比較
+                    // ファイル名のみを抽出
                     const fileName = path.basename(song.path).toLowerCase();
-                    return !deviceFiles.has(fileName);
+                    const normalizedFileName = normalizeFileName(fileName);
+
+                    // 完全一致または正規化後の一致をチェック
+                    if (deviceFiles.has(fileName)) return false;
+
+                    // デバイス上のファイルも正規化して比較
+                    for (const deviceFile of deviceFiles) {
+                        if (normalizeFileName(deviceFile) === normalizedFileName) {
+                            return false; // 同じ曲と判断
+                        }
+                    }
+
+                    return true; // 未転送
                 });
 
                 console.log(`[MTP Sync] 未転送曲: ${untransferredSongs.length}曲`);
