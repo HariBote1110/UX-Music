@@ -521,7 +521,22 @@ function registerIpcHandlers() {
 
             try {
                 // Walkmanの/Music/フォルダ内のファイルを再帰的に取得
-                const deviceFiles = new Set();
+                // Map: 正規化ファイル名 -> [{size, originalName}, ...]
+                const deviceFiles = new Map();
+
+                // ファイル名を正規化する関数
+                // 拡張子除去、トラック番号除去、特殊文字正規化
+                function normalizeFileName(fileName) {
+                    // 拡張子を除去
+                    const withoutExt = fileName.replace(/\.[^.]+$/, '');
+                    // トラック番号プレフィックスを除去 (01-, 02 など)
+                    const withoutTrackNum = withoutExt.replace(/^\d+[-\s.]*/, '');
+                    // 小文字化、特殊文字除去、スペース正規化
+                    return withoutTrackNum
+                        .toLowerCase()
+                        .replace(/[^\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/g, '') // 英数字と日本語のみ
+                        .trim();
+                }
 
                 async function scanDirectory(dirPath) {
                     try {
@@ -548,9 +563,17 @@ function registerIpcHandlers() {
                                 const folderPath = item.fullPath || `${dirPath}${dirPath.endsWith('/') ? '' : '/'}${item.name}`;
                                 await scanDirectory(folderPath);
                             } else {
-                                // ファイル名のみを取得して比較用セットに追加
-                                const fileName = item.name.toLowerCase();
-                                deviceFiles.add(fileName);
+                                // 正規化ファイル名をキーに、サイズと元のファイル名を保存
+                                const normalizedName = normalizeFileName(item.name);
+                                const fileSize = item.size || 0;
+
+                                if (!deviceFiles.has(normalizedName)) {
+                                    deviceFiles.set(normalizedName, []);
+                                }
+                                deviceFiles.get(normalizedName).push({
+                                    size: fileSize,
+                                    originalName: item.name
+                                });
                             }
                         }
                     } catch (err) {
@@ -559,33 +582,34 @@ function registerIpcHandlers() {
                 }
 
                 await scanDirectory('/MUSIC/');
-                console.log(`[MTP Sync] Walkman内のファイル数: ${deviceFiles.size}`);
-
-                // トラック番号プレフィックスを除去する関数
-                // 例: "01-Title.flac" → "title.flac", "01 Title.flac" → "title.flac"
-                function normalizeFileName(fileName) {
-                    // パターン: "数字-" or "数字 " から始まる場合に除去
-                    return fileName.replace(/^\d+[-\s]+/, '').toLowerCase();
-                }
+                console.log(`[MTP Sync] Walkman内のファイル数: ${deviceFiles.size}件（正規化後）`);
 
                 // ライブラリ楽曲と比較して未転送曲を抽出
                 const untransferredSongs = librarySongs.filter(song => {
                     if (!song.path) return false;
-                    // ファイル名のみを抽出
-                    const fileName = path.basename(song.path).toLowerCase();
-                    const normalizedFileName = normalizeFileName(fileName);
 
-                    // 完全一致または正規化後の一致をチェック
-                    if (deviceFiles.has(fileName)) return false;
+                    // ライブラリ側のファイル情報
+                    const fileName = path.basename(song.path);
+                    const normalizedName = normalizeFileName(fileName);
+                    const libFileSize = song.size || 0;
 
-                    // デバイス上のファイルも正規化して比較
-                    for (const deviceFile of deviceFiles) {
-                        if (normalizeFileName(deviceFile) === normalizedFileName) {
-                            return false; // 同じ曲と判断
-                        }
+                    // 正規化名が一致するファイルがあるか確認
+                    const deviceFileList = deviceFiles.get(normalizedName);
+                    if (!deviceFileList || deviceFileList.length === 0) {
+                        return true; // 未転送
                     }
 
-                    return true; // 未転送
+                    // サイズ比較（ライブラリにサイズ情報がある場合）
+                    if (libFileSize > 0) {
+                        for (const deviceFile of deviceFileList) {
+                            if (deviceFile.size === libFileSize) {
+                                return false; // サイズも一致 → 転送済み
+                            }
+                        }
+                        // サイズは不一致だが、名前が一致していれば転送済みとみなす
+                    }
+
+                    return false; // 名前が一致 → 転送済み
                 });
 
                 console.log(`[MTP Sync] 未転送曲: ${untransferredSongs.length}曲`);
