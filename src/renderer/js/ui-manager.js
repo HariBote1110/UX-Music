@@ -145,8 +145,16 @@ export function initUI() {
 
     // 転送画面内のボタン（documentレベルでイベント委譲、動的要素に対応）
     document.addEventListener('click', (e) => {
+        // デバッグ: クリックされた要素を出力
+        console.log('[Document Click Debug] クリックされた要素:', e.target);
+        console.log('[Document Click Debug] e.target.tagName:', e.target.tagName);
+        console.log('[Document Click Debug] e.target.id:', e.target.id);
+
         const target = e.target.closest('button');
+        console.log('[Document Click Debug] closest button:', target);
         if (!target) return;
+
+        console.log('[Document Click Debug] button.id:', target.id);
 
         // 「ディレクトリを見る」ボタン
         if (target.id === 'mtp-transfer-browse-btn') {
