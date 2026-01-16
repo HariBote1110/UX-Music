@@ -18,6 +18,23 @@ const logPerf = (message) => {
     console.log(`[PERF][IPC-Handlers] ${message}`);
 };
 
+// --- ▼▼▼ MTP操作の排他制御 ▼▼▼ ---
+let mtpOperationLock = false;
+
+async function withMtpLock(operation) {
+    if (mtpOperationLock) {
+        console.warn('[MTP Lock] 操作中のためスキップ');
+        return { error: 'MTP operation in progress' };
+    }
+    mtpOperationLock = true;
+    try {
+        return await operation();
+    } finally {
+        mtpOperationLock = false;
+    }
+}
+// --- ▲▲▲ MTP操作の排他制御 ▲▲▲ ---
+
 let stores = {};
 
 function runMigrations(stores) {
@@ -349,31 +366,33 @@ function registerIpcHandlers() {
     ipcMain.handle('mtp-browse-directory', async (event, { storageId, fullPath }) => {
         console.log(`[MTP Browse] ディレクトリ閲覧要求: StorageID ${storageId}, Path: ${fullPath}`);
 
-        const mtpDevice = mtpManager.getDevice();
-        if (!mtpDevice) {
-            console.error('[MTP Browse] エラー: デバイスが見つかりません');
-            return { error: 'MTP device not connected.' };
-        }
-
-        try {
-            const result = await mtpDevice.walk({
-                storageId: storageId,
-                fullPath: fullPath,
-                skipHiddenFiles: true
-            });
-
-            if (result.error) {
-                console.error('[MTP Browse] walk エラー:', result.error);
-                return { error: result.error };
+        return withMtpLock(async () => {
+            const mtpDevice = mtpManager.getDevice();
+            if (!mtpDevice) {
+                console.error('[MTP Browse] エラー: デバイスが見つかりません');
+                return { error: 'MTP device not connected.' };
             }
 
-            console.log(`[MTP Browse] ${fullPath} の内容: ${result.data?.length || 0} 件`);
-            return result;
+            try {
+                const result = await mtpDevice.walk({
+                    storageId: storageId,
+                    fullPath: fullPath,
+                    skipHiddenFiles: true
+                });
 
-        } catch (err) {
-            console.error('[MTP Browse] ハンドラ全体のエラー:', err);
-            return { error: err.message };
-        }
+                if (result.error) {
+                    console.error('[MTP Browse] walk エラー:', result.error);
+                    return { error: result.error };
+                }
+
+                console.log(`[MTP Browse] ${fullPath} の内容: ${result.data?.length || 0} 件`);
+                return result;
+
+            } catch (err) {
+                console.error('[MTP Browse] ハンドラ全体のエラー:', err);
+                return { error: err.message };
+            }
+        });
     });
 
     /**
@@ -493,69 +512,71 @@ function registerIpcHandlers() {
     ipcMain.handle('mtp-get-untransferred-songs', async (event, { storageId, librarySongs }) => {
         console.log(`[MTP Sync] 未転送曲の検出を開始: StorageID ${storageId}, ライブラリ ${librarySongs?.length || 0}曲`);
 
-        const mtpDevice = mtpManager.getDevice();
-        if (!mtpDevice) {
-            console.error('[MTP Sync] エラー: デバイスが見つかりません');
-            return [];
-        }
-
-        try {
-            // Walkmanの/Music/フォルダ内のファイルを再帰的に取得
-            const deviceFiles = new Set();
-
-            async function scanDirectory(dirPath) {
-                try {
-                    const result = await mtpDevice.walk({
-                        storageId: storageId,
-                        fullPath: dirPath,
-                        skipHiddenFiles: true
-                    });
-
-                    if (result.error || !result.data) {
-                        console.warn(`[MTP Sync] ディレクトリ ${dirPath} の取得に失敗:`, result.error);
-                        return;
-                    }
-
-                    for (const item of result.data) {
-                        // item.nameがundefinedの場合はスキップ
-                        if (!item.name) {
-                            console.warn('[MTP Sync] item.nameがundefinedのためスキップ:', item);
-                            continue;
-                        }
-
-                        if (item.isFolder) {
-                            // fullPathがundefinedの場合はパスを手動で構築
-                            const folderPath = item.fullPath || `${dirPath}${dirPath.endsWith('/') ? '' : '/'}${item.name}`;
-                            await scanDirectory(folderPath);
-                        } else {
-                            // ファイル名のみを取得して比較用セットに追加
-                            const fileName = item.name.toLowerCase();
-                            deviceFiles.add(fileName);
-                        }
-                    }
-                } catch (err) {
-                    console.warn(`[MTP Sync] スキャンエラー (${dirPath}):`, err.message);
-                }
+        return withMtpLock(async () => {
+            const mtpDevice = mtpManager.getDevice();
+            if (!mtpDevice) {
+                console.error('[MTP Sync] エラー: デバイスが見つかりません');
+                return [];
             }
 
-            await scanDirectory('/MUSIC/');
-            console.log(`[MTP Sync] Walkman内のファイル数: ${deviceFiles.size}`);
+            try {
+                // Walkmanの/Music/フォルダ内のファイルを再帰的に取得
+                const deviceFiles = new Set();
 
-            // ライブラリ楽曲と比較して未転送曲を抽出
-            const untransferredSongs = librarySongs.filter(song => {
-                if (!song.path) return false;
-                // ファイル名のみを抽出して比較
-                const fileName = path.basename(song.path).toLowerCase();
-                return !deviceFiles.has(fileName);
-            });
+                async function scanDirectory(dirPath) {
+                    try {
+                        const result = await mtpDevice.walk({
+                            storageId: storageId,
+                            fullPath: dirPath,
+                            skipHiddenFiles: true
+                        });
 
-            console.log(`[MTP Sync] 未転送曲: ${untransferredSongs.length}曲`);
-            return untransferredSongs;
+                        if (result.error || !result.data) {
+                            console.warn(`[MTP Sync] ディレクトリ ${dirPath} の取得に失敗:`, result.error);
+                            return;
+                        }
 
-        } catch (err) {
-            console.error('[MTP Sync] 未転送曲検出エラー:', err);
-            return [];
-        }
+                        for (const item of result.data) {
+                            // item.nameがundefinedの場合はスキップ
+                            if (!item.name) {
+                                console.warn('[MTP Sync] item.nameがundefinedのためスキップ:', item);
+                                continue;
+                            }
+
+                            if (item.isFolder) {
+                                // fullPathがundefinedの場合はパスを手動で構築
+                                const folderPath = item.fullPath || `${dirPath}${dirPath.endsWith('/') ? '' : '/'}${item.name}`;
+                                await scanDirectory(folderPath);
+                            } else {
+                                // ファイル名のみを取得して比較用セットに追加
+                                const fileName = item.name.toLowerCase();
+                                deviceFiles.add(fileName);
+                            }
+                        }
+                    } catch (err) {
+                        console.warn(`[MTP Sync] スキャンエラー (${dirPath}):`, err.message);
+                    }
+                }
+
+                await scanDirectory('/MUSIC/');
+                console.log(`[MTP Sync] Walkman内のファイル数: ${deviceFiles.size}`);
+
+                // ライブラリ楽曲と比較して未転送曲を抽出
+                const untransferredSongs = librarySongs.filter(song => {
+                    if (!song.path) return false;
+                    // ファイル名のみを抽出して比較
+                    const fileName = path.basename(song.path).toLowerCase();
+                    return !deviceFiles.has(fileName);
+                });
+
+                console.log(`[MTP Sync] 未転送曲: ${untransferredSongs.length}曲`);
+                return untransferredSongs;
+
+            } catch (err) {
+                console.error('[MTP Sync] 未転送曲検出エラー:', err);
+                return [];
+            }
+        });
     });
 
     // --- ▲▲▲ MTPブラウザ機能 ▲▲▲ ---

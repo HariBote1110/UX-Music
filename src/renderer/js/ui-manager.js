@@ -141,7 +141,7 @@ export function initUI() {
                 initialPath: '/'
             });
         });
-    });
+    };
 }
 
 function updateMtpDeviceView(device) {
