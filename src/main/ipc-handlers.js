@@ -518,7 +518,9 @@ function registerIpcHandlers() {
 
                     for (const item of result.data) {
                         if (item.isFolder) {
-                            await scanDirectory(item.fullPath);
+                            // fullPathがundefinedの場合はパスを手動で構築
+                            const folderPath = item.fullPath || `${dirPath}${dirPath.endsWith('/') ? '' : '/'}${item.name}`;
+                            await scanDirectory(folderPath);
                         } else {
                             // ファイル名のみを取得して比較用セットに追加
                             const fileName = item.name.toLowerCase();

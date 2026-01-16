@@ -151,16 +151,22 @@ export function initUI() {
 
             // 「ディレクトリを見る」ボタン
             if (target.id === 'mtp-transfer-browse-btn') {
+                console.log('[MTP Transfer] ディレクトリを見るボタンがクリックされました');
+                console.log('[MTP Transfer] state.mtpStorages:', state.mtpStorages);
+
                 if (!state.mtpStorages || state.mtpStorages.length === 0) {
                     showNotification('ストレージ情報がありません');
                     hideNotification(3000);
                     return;
                 }
 
+                const storageId = state.mtpStorages[0].id;
+                console.log('[MTP Transfer] storageId:', storageId);
+
                 // 転送画面を閉じてMTPブラウザビューを表示
                 elements.mtpTransferView.classList.add('hidden');
                 showView('mtp-browser-view', {
-                    storageId: state.mtpStorages[0].id,
+                    storageId: storageId,
                     initialPath: '/'
                 });
             }
