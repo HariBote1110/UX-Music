@@ -57,10 +57,11 @@
     transition: width 0.3s ease;
 }
 
-/* スペーサー（フッターとのかぶりを防ぐ） */
-.mtp-browser-spacer {
+/* リスト内のスペーサー（フッターとのかぶりを防ぐ） */
+.mtp-list-spacer {
     height: var(--footer-height, 100px);
     flex-shrink: 0;
+    pointer-events: none;
 }
 
 /* ツールバー */

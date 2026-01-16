@@ -35,9 +35,6 @@ export async function initMtpBrowser(storageId, initialPath = '/') {
         breadcrumb: document.getElementById('mtp-browser-breadcrumb'),
         closeBtn: document.getElementById('mtp-browser-close-btn'),
         content: document.getElementById('mtp-browser-content'),
-        downloadBtn: document.getElementById('mtp-browser-download-btn'),
-        deleteBtn: document.getElementById('mtp-browser-delete-btn'),
-        selectionInfo: document.getElementById('mtp-browser-selection-info'),
         refreshBtn: document.getElementById('mtp-browser-refresh-btn'),
         // デバイス情報ヘッダー
         headerDeviceName: document.getElementById('mtp-header-device-name'),
@@ -82,12 +79,6 @@ function setupEventListeners() {
     if (browserElements.refreshBtn) {
         browserElements.refreshBtn.onclick = () => refresh();
     }
-
-    // ダウンロードボタン
-    browserElements.downloadBtn.onclick = () => downloadSelected();
-
-    // 削除ボタン
-    browserElements.deleteBtn.onclick = () => deleteSelected();
 
     // 背景クリックで選択解除
     browserElements.content.onclick = (e) => {
@@ -189,7 +180,10 @@ function renderFileList(files) {
     `;
     }).join('');
 
-    browserElements.content.innerHTML = listHtml;
+    // スペーサーをリストの末尾に追加（フッターとのかぶりを防ぐ）
+    const spacerHtml = '<div class="mtp-list-spacer"></div>';
+
+    browserElements.content.innerHTML = listHtml + spacerHtml;
 
     // ファイルアイテムにイベントを追加
     browserElements.content.querySelectorAll('.mtp-file-item').forEach(item => {
@@ -395,20 +389,10 @@ function clearSelection() {
  * 選択状態のUIを更新
  */
 function updateSelectionUI() {
+    // 現在は選択状態の表示のみ
+    // 将来的にコンテキストメニューでダウンロード・削除を実装可能
     const count = browserState.selectedItems.size;
-
-    browserElements.downloadBtn.disabled = count === 0;
-    browserElements.deleteBtn.disabled = count === 0;
-
-    if (count === 0) {
-        browserElements.selectionInfo.textContent = '';
-    } else if (count === 1) {
-        const path = Array.from(browserState.selectedItems)[0];
-        const item = browserElements.content.querySelector(`[data-path="${CSS.escape(path)}"]`);
-        browserElements.selectionInfo.textContent = item?.dataset.name || '1件選択中';
-    } else {
-        browserElements.selectionInfo.textContent = `${count}件選択中`;
-    }
+    console.log(`[MTP Browser] ${count}件選択中`);
 }
 
 /**
