@@ -541,6 +541,7 @@ function registerIpcHandlers() {
                 }
 
                 async function scanDirectory(dirPath) {
+                    console.log(`[MTP Scan] スキャン開始: ${dirPath}`);
                     try {
                         const result = await mtpDevice.walk({
                             storageId: storageId,
@@ -549,46 +550,64 @@ function registerIpcHandlers() {
                         });
 
                         if (result.error || !result.data) {
-                            console.warn(`[MTP Sync] ディレクトリ ${dirPath} の取得に失敗:`, result.error);
+                            console.warn(`[MTP Scan] ディレクトリ ${dirPath} の取得に失敗:`, result.error);
                             return;
                         }
 
+                        console.log(`[MTP Scan] ${dirPath}: ${result.data.length}件のアイテム`);
+
+                        // フォルダとファイルを分離
+                        const folders = [];
+                        const files = [];
                         for (const item of result.data) {
-                            // item.nameがundefinedの場合はスキップ
                             if (!item.name) {
-                                console.warn('[MTP Sync] item.nameがundefinedのためスキップ:', item);
+                                console.warn('[MTP Scan] item.nameがundefinedのためスキップ:', item);
                                 continue;
                             }
-
                             if (item.isFolder) {
-                                // fullPathがundefinedの場合はパスを手動で構築
-                                const folderPath = item.fullPath || `${dirPath}${dirPath.endsWith('/') ? '' : '/'}${item.name}`;
-                                await scanDirectory(folderPath);
+                                folders.push(item);
                             } else {
-                                // 正規化ファイル名をキーに、サイズと元のファイル名を保存
-                                const normalizedName = normalizeFileName(item.name);
-                                const fileSize = item.size || 0;
-                                const fullPath = item.fullPath || `${dirPath}${dirPath.endsWith('/') ? '' : '/'}${item.name}`;
-
-                                // UI表示用リストに追加
-                                deviceFilesList.push({
-                                    name: item.name,
-                                    normalizedName: normalizedName,
-                                    size: fileSize,
-                                    fullPath: fullPath
-                                });
-
-                                if (!deviceFiles.has(normalizedName)) {
-                                    deviceFiles.set(normalizedName, []);
-                                }
-                                deviceFiles.get(normalizedName).push({
-                                    size: fileSize,
-                                    originalName: item.name
-                                });
+                                files.push(item);
                             }
                         }
+
+                        console.log(`[MTP Scan] ${dirPath}: フォルダ${folders.length}件, ファイル${files.length}件`);
+
+                        // フォルダ名をすべてログ出力
+                        if (folders.length > 0) {
+                            console.log(`[MTP Scan] フォルダ一覧: ${folders.map(f => f.name).join(', ')}`);
+                        }
+
+                        // ファイルを処理
+                        for (const item of files) {
+                            const normalizedName = normalizeFileName(item.name);
+                            const fileSize = item.size || 0;
+                            const fullPath = item.fullPath || `${dirPath}${dirPath.endsWith('/') ? '' : '/'}${item.name}`;
+
+                            deviceFilesList.push({
+                                name: item.name,
+                                normalizedName: normalizedName,
+                                size: fileSize,
+                                fullPath: fullPath
+                            });
+
+                            if (!deviceFiles.has(normalizedName)) {
+                                deviceFiles.set(normalizedName, []);
+                            }
+                            deviceFiles.get(normalizedName).push({
+                                size: fileSize,
+                                originalName: item.name
+                            });
+                        }
+
+                        // サブフォルダを再帰スキャン
+                        for (const folder of folders) {
+                            const folderPath = folder.fullPath || `${dirPath}${dirPath.endsWith('/') ? '' : '/'}${folder.name}`;
+                            await scanDirectory(folderPath);
+                        }
+
                     } catch (err) {
-                        console.warn(`[MTP Sync] スキャンエラー (${dirPath}):`, err.message);
+                        console.error(`[MTP Scan] スキャンエラー (${dirPath}):`, err.message, err.stack);
                     }
                 }
 
