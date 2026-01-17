@@ -865,7 +865,8 @@ body.light-flight-mode .playing-indicator-bar {
 
 .transfer-item {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
     padding: 10px 12px;
     border-radius: 6px;
     cursor: pointer;
@@ -881,12 +882,23 @@ body.light-flight-mode .playing-indicator-bar {
     background: var(--accent-color-dim, rgba(114, 137, 218, 0.2));
 }
 
-.transfer-item span {
+.transfer-item-title {
     font-size: 13px;
     color: var(--text-primary, #fff);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 100%;
+}
+
+.transfer-item-reason {
+    font-size: 10px;
+    color: var(--text-secondary, #888);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+    margin-top: 2px;
 }
 
 .transfer-actions {

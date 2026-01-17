@@ -284,7 +284,12 @@ export function initIPC(ipcRenderer, callbacks) {
                             untransferredSongs.forEach(song => {
                                 const item = document.createElement('div');
                                 item.className = 'transfer-item';
-                                item.innerHTML = `<span>${song.title || song.path.split('/').pop()}</span>`;
+                                const title = song.title || song.path.split('/').pop();
+                                const reason = song._reason || '理由不明';
+                                item.innerHTML = `
+                                    <span class="transfer-item-title">${title}</span>
+                                    <span class="transfer-item-reason">${reason}</span>
+                                `;
                                 item.dataset.path = song.path;
                                 sourceList.appendChild(item);
                             });

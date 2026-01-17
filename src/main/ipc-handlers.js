@@ -584,9 +584,11 @@ function registerIpcHandlers() {
                 await scanDirectory('/MUSIC/');
                 console.log(`[MTP Sync] Walkman内のファイル数: ${deviceFiles.size}件（正規化後）`);
 
-                // ライブラリ楽曲と比較して未転送曲を抽出
-                const untransferredSongs = librarySongs.filter(song => {
-                    if (!song.path) return false;
+                // ライブラリ楽曲と比較して未転送曲を抽出（理由付き）
+                const untransferredSongs = [];
+
+                for (const song of librarySongs) {
+                    if (!song.path) continue;
 
                     // ライブラリ側のファイル情報
                     const fileName = path.basename(song.path);
@@ -595,22 +597,46 @@ function registerIpcHandlers() {
 
                     // 正規化名が一致するファイルがあるか確認
                     const deviceFileList = deviceFiles.get(normalizedName);
+
                     if (!deviceFileList || deviceFileList.length === 0) {
-                        return true; // 未転送
+                        // 名前が一致するファイルがない
+                        untransferredSongs.push({
+                            ...song,
+                            _reason: `名前不一致: ${normalizedName}`,
+                            _normalizedName: normalizedName,
+                            _libFileSize: libFileSize
+                        });
+                        continue;
                     }
 
-                    // サイズ比較（ライブラリにサイズ情報がある場合）
+                    // 名前は一致、サイズを比較
+                    let transferred = false;
+                    const deviceFileNames = deviceFileList.map(f => f.originalName).join(', ');
+
                     if (libFileSize > 0) {
                         for (const deviceFile of deviceFileList) {
                             if (deviceFile.size === libFileSize) {
-                                return false; // サイズも一致 → 転送済み
+                                transferred = true;
+                                break;
                             }
                         }
-                        // サイズは不一致だが、名前が一致していれば転送済みとみなす
+                    } else {
+                        // サイズ情報がない場合は名前の一致のみで判定
+                        transferred = true;
                     }
 
-                    return false; // 名前が一致 → 転送済み
-                });
+                    if (!transferred) {
+                        // 名前は一致したがサイズが不一致
+                        const deviceSizes = deviceFileList.map(f => f.size).join(', ');
+                        untransferredSongs.push({
+                            ...song,
+                            _reason: `サイズ不一致: ライブラリ=${libFileSize}, デバイス=${deviceSizes} (${deviceFileNames})`,
+                            _normalizedName: normalizedName,
+                            _libFileSize: libFileSize,
+                            _matchedDeviceFiles: deviceFileNames
+                        });
+                    }
+                }
 
                 console.log(`[MTP Sync] 未転送曲: ${untransferredSongs.length}曲`);
                 return untransferredSongs;
