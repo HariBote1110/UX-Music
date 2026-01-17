@@ -68,6 +68,58 @@ export function initUI() {
             if (mtpTransferView) mtpTransferView.classList.add('hidden');
             if (mainContent) mainContent.classList.remove('hidden');
         }
+
+        // 「>>」転送ボタン or 「すべて転送」ボタン
+        if (target.id === 'mtp-transfer-start-btn' || target.id === 'mtp-transfer-all-btn') {
+            console.log('[MTP Transfer] 転送ボタンがクリックされました');
+
+            if (!state.mtpStorages || state.mtpStorages.length === 0) {
+                console.warn('[MTP Transfer] ストレージ情報がありません');
+                import('./ui/notification.js').then(({ showNotification, hideNotification }) => {
+                    showNotification('Walkmanのストレージ情報が見つかりません。');
+                    hideNotification(3000);
+                });
+                return;
+            }
+
+            if (!state.pendingTransferSongs || state.pendingTransferSongs.length === 0) {
+                console.warn('[MTP Transfer] 転送する曲がありません');
+                import('./ui/notification.js').then(({ showNotification, hideNotification }) => {
+                    showNotification('転送する曲がありません。');
+                    hideNotification(3000);
+                });
+                return;
+            }
+
+            const storageId = state.mtpStorages[0].id;
+            const destination = '/Music/';
+            const sources = state.pendingTransferSongs.map(s => s.path);
+            const songCount = sources.length;
+
+            console.log(`[MTP Transfer] ${songCount}曲を転送開始...`);
+
+            import('./ui/notification.js').then(async ({ showNotification, hideNotification }) => {
+                showNotification(`${songCount}曲の転送を開始します...`);
+
+                try {
+                    const result = await ipcRenderer.invoke('mtp-upload-files', { storageId, sources, destination });
+
+                    if (result.error) {
+                        console.error('[MTP Transfer] 転送に失敗しました:', result.error);
+                        showNotification(`転送に失敗しました: ${result.error}`);
+                    } else {
+                        console.log('[MTP Transfer] 転送に成功しました:', result);
+                        showNotification(`${songCount}曲の転送が完了しました。`);
+                        state.pendingTransferSongs = []; // 転送完了後クリア
+                    }
+                } catch (err) {
+                    console.error('[MTP Transfer] 転送エラー:', err);
+                    showNotification(`転送中にエラーが発生しました: ${err.message}`);
+                }
+
+                hideNotification(4000);
+            });
+        }
     });
 }
 
