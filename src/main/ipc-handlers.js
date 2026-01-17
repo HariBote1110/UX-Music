@@ -593,7 +593,7 @@ function registerIpcHandlers() {
                     // ライブラリ側のファイル情報
                     const fileName = path.basename(song.path);
                     const normalizedName = normalizeFileName(fileName);
-                    const libFileSize = song.size || 0;
+                    const libFileSize = song.fileSize || 0;
 
                     // 正規化名が一致するファイルがあるか確認
                     const deviceFileList = deviceFiles.get(normalizedName);
