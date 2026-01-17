@@ -115,33 +115,34 @@ export function initUI() {
             import('./ui/notification.js').then(async ({ showNotification, hideNotification }) => {
                 showNotification(`${songCount}曲の転送を開始します...`);
 
-                let successCount = 0;
-                let errorCount = 0;
+                // 転送リストを作成（ソースパスと転送先パスのペア）
+                const transferList = [];
+                for (const [destination, sources] of groupedSongs) {
+                    for (const sourcePath of sources) {
+                        transferList.push({ source: sourcePath, destination });
+                    }
+                }
 
                 try {
-                    // グループごとに転送
-                    for (const [destination, sources] of groupedSongs) {
-                        console.log(`[MTP Transfer] ${destination} へ ${sources.length}曲を転送`);
+                    // 1回のIPC呼び出しで全ファイルを転送
+                    const result = await ipcRenderer.invoke('mtp-upload-files-with-structure', {
+                        storageId,
+                        transferList
+                    });
 
-                        const result = await ipcRenderer.invoke('mtp-upload-files', {
-                            storageId,
-                            sources,
-                            destination
-                        });
-
-                        if (result.error) {
-                            console.error(`[MTP Transfer] ${destination} への転送失敗:`, result.error);
-                            errorCount += sources.length;
-                        } else {
-                            successCount += sources.length;
-                        }
-                    }
-
-                    if (errorCount === 0) {
-                        showNotification(`${successCount}曲の転送が完了しました。`);
-                        state.pendingTransferSongs = [];
+                    if (result.error) {
+                        console.error('[MTP Transfer] 転送に失敗しました:', result.error);
+                        showNotification(`転送に失敗しました: ${result.error}`);
                     } else {
-                        showNotification(`転送完了: ${successCount}曲成功, ${errorCount}曲失敗`);
+                        const successCount = result.successCount || songCount;
+                        const errorCount = result.errorCount || 0;
+
+                        if (errorCount === 0) {
+                            showNotification(`${successCount}曲の転送が完了しました。`);
+                            state.pendingTransferSongs = [];
+                        } else {
+                            showNotification(`転送完了: ${successCount}曲成功, ${errorCount}曲失敗`);
+                        }
                     }
                 } catch (err) {
                     console.error('[MTP Transfer] 転送エラー:', err);

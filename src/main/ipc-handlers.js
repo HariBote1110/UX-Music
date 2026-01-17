@@ -358,6 +358,92 @@ function registerIpcHandlers() {
         }
     });
 
+    /**
+     * ディレクトリ構造を維持したMTPファイル転送
+     * transferList: [{ source: '/path/to/file.flac', destination: '/Music/Artist/Album/' }, ...]
+     */
+    ipcMain.handle('mtp-upload-files-with-structure', async (event, { storageId, transferList }) => {
+        console.log(`[MTP Transfer] 構造化転送要求受信: ${transferList.length}件`);
+
+        const mtpDevice = mtpManager.getDevice();
+        if (!mtpDevice) {
+            console.error('[MTP Transfer] エラー: デバイスが見つかりません');
+            return { error: 'MTP device not connected.' };
+        }
+
+        const mainWindow = BrowserWindow.getAllWindows()[0];
+
+        // 転送先ごとにグループ化
+        const groupedTransfers = new Map();
+        for (const item of transferList) {
+            if (!groupedTransfers.has(item.destination)) {
+                groupedTransfers.set(item.destination, []);
+            }
+            groupedTransfers.get(item.destination).push(item.source);
+        }
+
+        console.log(`[MTP Transfer] ${groupedTransfers.size}グループに分けて転送`);
+
+        let successCount = 0;
+        let errorCount = 0;
+        let totalTransferred = 0;
+        const totalFiles = transferList.length;
+
+        try {
+            for (const [destination, sources] of groupedTransfers) {
+                console.log(`[MTP Transfer] ${destination} へ ${sources.length}曲を転送中...`);
+
+                const result = await mtpDevice.transferFiles({
+                    direction: 'upload',
+                    storageId: storageId,
+                    sources: sources,
+                    destination: destination,
+                    preprocessFiles: true,
+
+                    onError: (err) => {
+                        console.error('[MTP Transfer] 転送エラー:', err);
+                    },
+                    onPreprocess: (data) => {
+                        console.log(`[MTP Transfer] 前処理中: ${data.name}`);
+                    },
+                    onProgress: (data) => {
+                        const filePercent = data.totalBytes > 0 ? Math.round(data.bytesTransferred * 100 / data.totalBytes) : 0;
+                        console.log(`[MTP Transfer] 転送中: ${data.name || data.fullPath} (${filePercent}%)`);
+                        if (mainWindow) {
+                            const overallProgress = (totalTransferred + (data.bytesTransferred / data.totalBytes)) / totalFiles;
+                            mainWindow.setProgressBar(overallProgress);
+                        }
+                    },
+                    onCompleted: () => {
+                        totalTransferred += sources.length;
+                        console.log(`[MTP Transfer] ${destination} への転送完了 (${totalTransferred}/${totalFiles})`);
+                    },
+                });
+
+                if (result.error) {
+                    console.error(`[MTP Transfer] ${destination} への転送失敗:`, result.error);
+                    errorCount += sources.length;
+                } else {
+                    successCount += sources.length;
+                }
+            }
+
+            if (mainWindow) {
+                mainWindow.setProgressBar(-1);
+            }
+
+            console.log(`[MTP Transfer] 全転送完了: ${successCount}成功, ${errorCount}失敗`);
+            return { successCount, errorCount };
+
+        } catch (err) {
+            console.error('[MTP Transfer] ハンドラ全体のエラー:', err);
+            if (mainWindow) {
+                mainWindow.setProgressBar(-1);
+            }
+            return { error: err.message, successCount, errorCount };
+        }
+    });
+
     // --- ▼▼▼ MTPブラウザ機能 ▼▼▼ ---
 
     /**
