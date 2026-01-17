@@ -92,25 +92,56 @@ export function initUI() {
             }
 
             const storageId = state.mtpStorages[0].id;
-            const destination = '/Music/';
-            const sources = state.pendingTransferSongs.map(s => s.path);
-            const songCount = sources.length;
+            const songCount = state.pendingTransferSongs.length;
 
             console.log(`[MTP Transfer] ${songCount}曲を転送開始...`);
+
+            // アーティスト/アルバムでグループ化
+            const groupedSongs = new Map();
+            for (const song of state.pendingTransferSongs) {
+                // アーティスト名とアルバム名を安全な文字列に変換
+                const artist = (song.artist || 'Unknown Artist').replace(/[\\/:*?"<>|]/g, '_');
+                const album = (song.album || 'Unknown Album').replace(/[\\/:*?"<>|]/g, '_');
+                const destPath = `/Music/${artist}/${album}/`;
+
+                if (!groupedSongs.has(destPath)) {
+                    groupedSongs.set(destPath, []);
+                }
+                groupedSongs.get(destPath).push(song.path);
+            }
+
+            console.log(`[MTP Transfer] ${groupedSongs.size}個のディレクトリに分けて転送`);
 
             import('./ui/notification.js').then(async ({ showNotification, hideNotification }) => {
                 showNotification(`${songCount}曲の転送を開始します...`);
 
-                try {
-                    const result = await ipcRenderer.invoke('mtp-upload-files', { storageId, sources, destination });
+                let successCount = 0;
+                let errorCount = 0;
 
-                    if (result.error) {
-                        console.error('[MTP Transfer] 転送に失敗しました:', result.error);
-                        showNotification(`転送に失敗しました: ${result.error}`);
+                try {
+                    // グループごとに転送
+                    for (const [destination, sources] of groupedSongs) {
+                        console.log(`[MTP Transfer] ${destination} へ ${sources.length}曲を転送`);
+
+                        const result = await ipcRenderer.invoke('mtp-upload-files', {
+                            storageId,
+                            sources,
+                            destination
+                        });
+
+                        if (result.error) {
+                            console.error(`[MTP Transfer] ${destination} への転送失敗:`, result.error);
+                            errorCount += sources.length;
+                        } else {
+                            successCount += sources.length;
+                        }
+                    }
+
+                    if (errorCount === 0) {
+                        showNotification(`${successCount}曲の転送が完了しました。`);
+                        state.pendingTransferSongs = [];
                     } else {
-                        console.log('[MTP Transfer] 転送に成功しました:', result);
-                        showNotification(`${songCount}曲の転送が完了しました。`);
-                        state.pendingTransferSongs = []; // 転送完了後クリア
+                        showNotification(`転送完了: ${successCount}曲成功, ${errorCount}曲失敗`);
                     }
                 } catch (err) {
                     console.error('[MTP Transfer] 転送エラー:', err);
