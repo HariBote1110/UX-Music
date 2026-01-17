@@ -527,17 +527,32 @@ function registerIpcHandlers() {
                 const deviceFilesList = [];
 
                 // ファイル名を正規化する関数
-                // 拡張子除去、トラック番号除去、特殊文字正規化
+                // 拡張子除去、トラック番号除去、Unicode正規化、特殊文字正規化
                 function normalizeFileName(fileName) {
                     // 拡張子を除去
-                    const withoutExt = fileName.replace(/\.[^.]+$/, '');
+                    let result = fileName.replace(/\.[^.]+$/, '');
+
                     // トラック番号プレフィックスを除去 (01-, 02 など)
-                    const withoutTrackNum = withoutExt.replace(/^\d+[-\s.]*/, '');
-                    // 小文字化、特殊文字除去、スペース正規化
-                    return withoutTrackNum
-                        .toLowerCase()
-                        .replace(/[^\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/g, '') // 英数字と日本語のみ
-                        .trim();
+                    result = result.replace(/^\d+[-\s.]*/, '');
+
+                    // Unicode正規化 (NFC形式に統一)
+                    result = result.normalize('NFC');
+
+                    // 全角英数字を半角に変換
+                    result = result.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (char) =>
+                        String.fromCharCode(char.charCodeAt(0) - 0xFEE0)
+                    );
+
+                    // カタカナ長音記号の統一（ー、ｰ、―、─ など）
+                    result = result.replace(/[ー－―─ｰ]/g, 'ー');
+
+                    // 小文字化
+                    result = result.toLowerCase();
+
+                    // 英数字と日本語のみ残す（ひらがな、カタカナ、漢字、長音記号）
+                    result = result.replace(/[^\w\u3040-\u309F\u30A0-\u30FFー\u4E00-\u9FAF]/g, '');
+
+                    return result.trim();
                 }
 
                 async function scanDirectory(dirPath) {
