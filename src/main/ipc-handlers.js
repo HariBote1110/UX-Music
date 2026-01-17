@@ -611,7 +611,7 @@ function registerIpcHandlers() {
                     }
                 }
 
-                await scanDirectory('/MUSIC/');
+                await scanDirectory('/Music/');
                 console.log(`[MTP Sync] Walkman内のファイル数: ${deviceFiles.size}件（正規化後）, 実ファイル: ${deviceFilesList.length}件`);
 
                 // ライブラリ楽曲と比較して未転送曲を抽出（理由付き）
