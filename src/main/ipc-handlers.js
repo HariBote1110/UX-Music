@@ -516,13 +516,15 @@ function registerIpcHandlers() {
             const mtpDevice = mtpManager.getDevice();
             if (!mtpDevice) {
                 console.error('[MTP Sync] エラー: デバイスが見つかりません');
-                return [];
+                return { untransferredSongs: [], deviceFilesList: [] };
             }
 
             try {
                 // Walkmanの/Music/フォルダ内のファイルを再帰的に取得
-                // Map: 正規化ファイル名 -> [{size, originalName}, ...]
+                // Map: 正規化ファイル名 -> [{size, originalName, fullPath}, ...]
                 const deviceFiles = new Map();
+                // デバイス上の全ファイルリスト（UI表示用）
+                const deviceFilesList = [];
 
                 // ファイル名を正規化する関数
                 // 拡張子除去、トラック番号除去、特殊文字正規化
@@ -566,6 +568,15 @@ function registerIpcHandlers() {
                                 // 正規化ファイル名をキーに、サイズと元のファイル名を保存
                                 const normalizedName = normalizeFileName(item.name);
                                 const fileSize = item.size || 0;
+                                const fullPath = item.fullPath || `${dirPath}${dirPath.endsWith('/') ? '' : '/'}${item.name}`;
+
+                                // UI表示用リストに追加
+                                deviceFilesList.push({
+                                    name: item.name,
+                                    normalizedName: normalizedName,
+                                    size: fileSize,
+                                    fullPath: fullPath
+                                });
 
                                 if (!deviceFiles.has(normalizedName)) {
                                     deviceFiles.set(normalizedName, []);
@@ -582,7 +593,7 @@ function registerIpcHandlers() {
                 }
 
                 await scanDirectory('/MUSIC/');
-                console.log(`[MTP Sync] Walkman内のファイル数: ${deviceFiles.size}件（正規化後）`);
+                console.log(`[MTP Sync] Walkman内のファイル数: ${deviceFiles.size}件（正規化後）, 実ファイル: ${deviceFilesList.length}件`);
 
                 // ライブラリ楽曲と比較して未転送曲を抽出（理由付き）
                 const untransferredSongs = [];
@@ -602,7 +613,7 @@ function registerIpcHandlers() {
                         // 名前が一致するファイルがない
                         untransferredSongs.push({
                             ...song,
-                            _reason: `名前不一致: ${normalizedName}`,
+                            _reason: `名前不一致: "${normalizedName}"`,
                             _normalizedName: normalizedName,
                             _libFileSize: libFileSize
                         });
@@ -639,11 +650,11 @@ function registerIpcHandlers() {
                 }
 
                 console.log(`[MTP Sync] 未転送曲: ${untransferredSongs.length}曲`);
-                return untransferredSongs;
+                return { untransferredSongs, deviceFilesList };
 
             } catch (err) {
                 console.error('[MTP Sync] 未転送曲検出エラー:', err);
-                return [];
+                return { untransferredSongs: [], deviceFilesList: [] };
             }
         });
     });

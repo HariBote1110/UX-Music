@@ -270,13 +270,17 @@ export function initIPC(ipcRenderer, callbacks) {
 
                 try {
                     const storageId = state.mtpStorages[0].id;
-                    const untransferredSongs = await ipcRenderer.invoke('mtp-get-untransferred-songs', {
+                    const result = await ipcRenderer.invoke('mtp-get-untransferred-songs', {
                         storageId,
                         librarySongs: state.library
                     });
                     hideNotification();
 
-                    // ソース（ライブラリ）リストを更新
+                    // 新形式の戻り値を展開
+                    const untransferredSongs = result?.untransferredSongs || [];
+                    const deviceFilesList = result?.deviceFilesList || [];
+
+                    // ソース（ライブラリ）リストを更新 - 未転送曲
                     const sourceList = document.getElementById('mtp-transfer-source-list');
                     if (sourceList) {
                         if (untransferredSongs && untransferredSongs.length > 0) {
@@ -300,11 +304,20 @@ export function initIPC(ipcRenderer, callbacks) {
                         }
                     }
 
-                    // デバイス側のリストを更新
+                    // デバイス側のリストを更新 - デバイス上のファイル一覧を表示
                     const deviceList = document.getElementById('mtp-transfer-device-list');
                     if (deviceList) {
-                        const transferredCount = state.library.length - (untransferredSongs?.length || 0);
-                        deviceList.innerHTML = `<p>転送済み: ${transferredCount}曲</p>`;
+                        deviceList.innerHTML = `<p>デバイス上のファイル: ${deviceFilesList.length}件</p>`;
+                        deviceFilesList.forEach(file => {
+                            const item = document.createElement('div');
+                            item.className = 'transfer-item';
+                            const sizeKB = Math.round((file.size || 0) / 1024);
+                            item.innerHTML = `
+                                <span class="transfer-item-title">${file.name}</span>
+                                <span class="transfer-item-reason">正規化: "${file.normalizedName}" (${sizeKB} KB)</span>
+                            `;
+                            deviceList.appendChild(item);
+                        });
                     }
 
                 } catch (error) {
