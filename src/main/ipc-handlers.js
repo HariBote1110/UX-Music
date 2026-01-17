@@ -638,49 +638,20 @@ function registerIpcHandlers() {
                     // ライブラリ側のファイル情報
                     const fileName = path.basename(song.path);
                     const normalizedName = normalizeFileName(fileName);
-                    const libFileSize = song.fileSize || 0;
 
                     // 正規化名が一致するファイルがあるか確認
+                    // フォーマット変換（FLAC→WAV等）を考慮し、名前一致のみで判定
                     const deviceFileList = deviceFiles.get(normalizedName);
 
                     if (!deviceFileList || deviceFileList.length === 0) {
-                        // 名前が一致するファイルがない
+                        // 名前が一致するファイルがない → 未転送
                         untransferredSongs.push({
                             ...song,
                             _reason: `名前不一致: "${normalizedName}"`,
-                            _normalizedName: normalizedName,
-                            _libFileSize: libFileSize
-                        });
-                        continue;
-                    }
-
-                    // 名前は一致、サイズを比較
-                    let transferred = false;
-                    const deviceFileNames = deviceFileList.map(f => f.originalName).join(', ');
-
-                    if (libFileSize > 0) {
-                        for (const deviceFile of deviceFileList) {
-                            if (deviceFile.size === libFileSize) {
-                                transferred = true;
-                                break;
-                            }
-                        }
-                    } else {
-                        // サイズ情報がない場合は名前の一致のみで判定
-                        transferred = true;
-                    }
-
-                    if (!transferred) {
-                        // 名前は一致したがサイズが不一致
-                        const deviceSizes = deviceFileList.map(f => f.size).join(', ');
-                        untransferredSongs.push({
-                            ...song,
-                            _reason: `サイズ不一致: ライブラリ=${libFileSize}, デバイス=${deviceSizes} (${deviceFileNames})`,
-                            _normalizedName: normalizedName,
-                            _libFileSize: libFileSize,
-                            _matchedDeviceFiles: deviceFileNames
+                            _normalizedName: normalizedName
                         });
                     }
+                    // 名前が一致 → 転送済み（サイズ違いはフォーマット変換によるものと判断）
                 }
 
                 console.log(`[MTP Sync] 未転送曲: ${untransferredSongs.length}曲`);
