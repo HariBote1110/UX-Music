@@ -2,75 +2,49 @@
 
 ## 1. プロジェクト概要
 
-このプロジェクトは、Electronフレームワークを使用して構築されたデスクトップ音楽プレーヤー「UX Music」です。ローカルの音楽ファイルだけでなく、YouTubeからのストリーミングやダウンロードにも対応し、それらを統合的に管理・再生することを目的としています。
-
-UIの描画はHTML/CSS/JavaScriptで行われ、ファイル操作、音声解析、外部サービス連携などの重い処理はNode.jsが動作するメインプロセスが担当します。
+このプロジェクトは、Electronフレームワークを使用して構築されたデスクトップ音楽プレーヤー「UX Music」です。ローカルの音楽ファイル、YouTube、そしてCDなどの多岐にわたる音源を統合的に管理・再生することを目的としています。
 
 ## 2. ディレクトリ構造と主要ファイルの役割
 
 ### 2.1. `src/main/` - メインプロセス
 
-アプリケーションのバックエンド処理を担当するファイル群です。Node.jsのAPIがすべて利用可能です。
-
--   **`index.js`**:
-    アプリケーションのエントリーポイント。`BrowserWindow`を生成し、レンダラープロセス（UI）を読み込みます。`protocol.registerFileProtocol`で、ローカルのアートワークファイルに安全にアクセスするためのカスタムプロトコル(`safe-artwork://`)を登録しています。
-
--   **`ipc-handlers.js`**:
-    レンダラープロセスとの非同期通信（IPC）の窓口となるハンドラを登録します。各機能のハンドラ（`library-handler`, `system-handler`など）をここで集約して初期化します。
-
--   **`data-store.js`**:
-    設定(`settings.json`)、ライブラリ情報(`library.json`)、再生履歴(`playcounts.json`)などをJSONファイルとして永続化するための汎用クラスです。
-
--   **`handlers/`**: 機能ごとに分割されたIPCハンドラ群。
-    -   `system-handler.js`: 設定の読み書き、再生履歴の更新、Discord連携、クイズスコアの保存など、システム全体の動作を管理します。
-    -   `library-handler.js`: 楽曲のインポート、スキャン、メタデータ解析、アートワークの保存など、音楽ライブラリの構築と管理を担当します。
-    -   `playlist-handler.js`: プレイリストの作成、削除、曲の追加・削除など、`.m3u8`形式のプレイリストファイルを操作します。
-    -   `youtube-handler.js`: YouTube動画のダウンロードやストリーミング再生に関する処理を担当します。
-
--   **`*-worker.js` (e.g., `analysis-worker.js`, `normalize-worker.js`)**:
-    CPU負荷の高い処理（音声解析、ファイル変換など）をメインスレッドから分離し、バックグラウンドで実行するための**Workerスレッド**です。これにより、重い処理中もUIが固まるのを防ぎます。
+-   **`index.js`**: エントリーポイント。カスタムプロトコルの登録や、メインプロセスの初期化を担当。
+-   **`ipc-handlers.js`**: 各ハンドラを集約し、レンダラープロセスとの通信を管理。
+-   **`data-store.js`**: 設定やライブラリ情報のJSON永続化クラス。
+-   **`handlers/`**:
+    -   `library-handler.js`: ライブラリのスキャン、インポート、メタデータ解析。
+    -   `cd-rip-handler.js`: CDの吸い出し、MusicBrainz連携、エンコード処理。
+    -   `system-handler.js`: 設定、履歴、Discord連携、クイズスコア管理。
+    -   `playlist-handler.js`: プレイリストファイル(`.m3u8`)の操作。
+    -   `youtube-handler.js`: YouTube音源の処理。
+-   **`mtp/`**: MTPデバイス（Walkman等）との通信・転送ロジック。
+-   **`mood-analyzer.js`**: 楽曲データからムードパターンの適合性を解析し、プレイリストを生成。
+-   **`history-analyzer.js`**: 再生履歴を解析し、パーソナルプレイリストを生成。
+-   **`*-worker.js`**: 重い処理を行うためのWorkerスレッド群。
 
 ### 2.2. `src/renderer/` - レンダラープロセス
 
-アプリケーションのUI（ユーザーインターフェース）を担当します。HTML、CSS、そしてDOM操作を行うJavaScriptが配置されています。
-
--   **`index.html`**:
-    アプリケーションの骨格となる唯一のHTMLファイル。すべての画面（曲一覧、アルバム、クイズなど）はこのファイル内のDOMを切り替えることで表示されます（シングルページアプリケーション）。
-
--   **`renderer.js`**:
-    レンダラープロセスのエントリーポイント。`DOMContentLoaded`イベントを起点に、各種モジュール（UI、プレーヤー、IPC通信など）を初期化します。
-
--   **`js/`**: UIの動作を制御するJavaScriptファイル群。
-    -   `state.js`: アプリケーション全体の状態（再生中の曲、ライブラリデータ、設定値など）を一元管理するオブジェクトを定義します。
-    -   `ipc.js`: メインプロセスとのIPC通信のイベントリスナーをセットアップします。
-    -   `init-listeners.js`: DOM要素に対するクリックやキーボード入力などのイベントリスナーをまとめて初期化します。
-    -   `init-settings.js`: 設定画面のUI操作や設定値の保存に関する処理を初期化します。
-    -   `navigation.js`: `showView`関数を中心に、画面遷移（ビューの切り替え）を制御します。
-    -   `player.js`: Web Audio APIを利用した音声再生のコア機能。再生/停止、音量調整、イコライザー、ビジュアライザーなどを管理します。
-    -   `quiz.js`: イントロクイズ機能のすべてのロジック（問題生成、再生、正誤判定、スコア計算、ランキング表示）を管理します。
-    -   `ui-manager.js` / `ui/view-renderer.js`: `state`オブジェクトのデータに基づいて、曲リストやアルバムグリッドなどのHTML要素を動的に生成・描画します。
-
--   **`styles/`**: アプリケーションの見た目を定義するCSSファイル群。
-    -   `base.css`: 基本的なスタイル（フォント、カラー変数など）。
-    -   `layout.css`: 全体的なレイアウト（サイドバー、メインコンテンツなど）。
-    -   `components.css`: ボタン、スライダー、モーダルなどの部品スタイル。
-    -   `views.css`: 各画面（曲リスト、アルバムグリッドなど）のスタイル。
-    -   `quiz-view.css`: クイズ画面専用のスタイル。
+-   **`index.html`**: シングルページアプリケーションのベースHTML。
+-   **`renderer.js`**: レンダラープロセスの起動とモジュール初期化。
+-   **`js/`**:
+    -   `player.js`: Web Audio API。EQ、ビジュアライザー、再生制御の核。
+    -   `state.js`: アプリ全体のグローバルな状態管理。
+    -   `navigation.js`: ビューの切り替えと履歴管理。
+    -   `ui-manager.js` / `ui/`: 仮想スクロールや要素の動的生成。
+    -   `quiz.js`: イントロクイズのゲームロジック。
+    -   `mtp-browser.js`: MTP転送用UIの制御。
+    -   `cd-ripper.js`: CDリッピングUIの制御。
 
 ## 3. 主要な処理フロー
 
 ### アプリケーションの起動
-1.  **`main/index.js`**: メインプロセスが起動。
-2.  `BrowserWindow`を生成し、`renderer/index.html`を読み込む。
-3.  **`main/ipc-handlers.js`**: 各種IPCハンドラを登録。
-4.  **`renderer/renderer.js`**: レンダラープロセスが起動。
-5.  `initIPC`を呼び出し、メインプロセスに初期データ（ライブラリ、設定など）を要求。
-6.  メインプロセスからデータが送られてくると、`ui-manager.js`がUIを描画。
+1.  **`main/index.js`**: 起動時にプロトコル登録、USB監視開始。
+2.  `renderer/index.html` のロード。
+3.  **`ipc-handlers.js`**: 各ハンドラの初期化（`stores`を経由して設定を共有）。
+4.  **`renderer/renderer.js`**: ライブラリ、設定、プレイリストのフェッチとUI描画。
 
-### 楽曲の再生
-1.  ユーザーが曲リストのアイテムをクリック。
-2.  **`playback-manager.js`**の`playSong`関数が呼び出される。
-3.  再生キュー(`state.playbackQueue`)を更新。
-4.  **`player.js`**の`play`関数が呼び出され、Web Audio APIを通じて音声が再生される。
-5.  `play`イベントが発火し、UI（再生ボタンのアイコン変更など）が更新される。
-6.  `timeupdate`イベントが定期的に発火し、シークバーや歌詞の表示が更新される。
+### CDリッピングフロー
+1.  `cd-rip-handler.js` が `cdparanoia` を実行してTOCを取得。
+2.  MusicBrainz APIからメタデータを取得。
+3.  `ffmpeg` Workerが一時WAVを生成し、指定フォーマットにエンコード＆タグ付与。
+4.  完了後、ライブラリパスへ移動。
