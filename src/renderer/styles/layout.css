@@ -97,9 +97,8 @@ body.resizing {
 .playback-bar {
     position: absolute;
     bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    /* 中央揃え */
+    left: 20px;
+    right: 20px;
 
     display: flex;
     flex-direction: row;
@@ -119,8 +118,9 @@ body.resizing {
     height: auto;
     min-height: 40px;
 
-    width: 97%;
+    width: auto;
     max-width: 1600px;
+    margin: 0 auto;
 
     flex-shrink: 0;
 
