@@ -67,7 +67,8 @@ body.resizing {
 
 
 .sidebar {
-    background-color: var(--bg-darkest);
+    background-color: #1a1a1c;
+    /* 少しだけ暗いトーンで区別しつつ馴染ませる */
     padding: 20px;
     /* スペーサーで制御するため、固定の余白は削除。動的な余白を追加 */
     padding-bottom: var(--footer-height, 0px);
@@ -95,7 +96,7 @@ body.resizing {
 /* コントロールバーを画面下部に浮遊（絶対配置）させる */
 .playback-bar {
     position: absolute;
-    bottom: 30px;
+    bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
     /* 中央揃え */
@@ -105,25 +106,26 @@ body.resizing {
     justify-content: space-between;
     align-items: center;
 
-    padding: 10px 24px;
+    padding: 8px 24px;
     box-sizing: border-box;
 
     border-top: none;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
 
-    background-color: rgba(30, 30, 32, 0.85);
-
+    background-color: rgba(28, 28, 30, 0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
 
     height: auto;
     min-height: 40px;
 
-    width: 96%;
-    max-width: 160000000px;
+    width: 97%;
+    max-width: 1600px;
 
     flex-shrink: 0;
 
-    border-radius: 40px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 
     z-index: 1000;
 
