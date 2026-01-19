@@ -1,6 +1,6 @@
 {
   "name": "UX-Music",
-  "version": "0.1.9-Beta-5c",
+  "version": "0.1.9-Beta-5d",
   "description": "Music Player UX Music",
   "main": "src/main/index.js",
   "scripts": {
@@ -13,7 +13,7 @@
   "devDependencies": {
     "electron": "^28.0.0",
     "electron-builder": "^24.13.3",
-    "electron-rebuild": "^3.2.9"
+    "@electron/rebuild": "^4.0.2"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
@@ -63,5 +63,8 @@
       "target": "AppImage",
       "icon": "src/renderer/assets/ux-music-icon.png"
     }
+  },
+  "overrides": {
+    "node-gyp": "^10.0.0"
   }
 }
