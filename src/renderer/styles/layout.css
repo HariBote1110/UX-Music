@@ -109,11 +109,11 @@ body.resizing {
     box-sizing: border-box;
 
     border-top: none;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
 
-    background-color: rgba(20, 20, 22, 0.4);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    background-color: rgba(20, 20, 22, 0.15);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 
     height: auto;
     min-height: 40px;
