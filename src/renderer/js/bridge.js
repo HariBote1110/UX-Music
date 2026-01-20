@@ -103,6 +103,30 @@ export const musicApi = {
         }
         return api && api.invoke(CHANNELS.INVOKE.GET_LYRICS, song);
     },
+    getSituationPlaylists: () => {
+        if (isWails) {
+            return window.go.main.App.GetSituationPlaylists();
+        }
+        return api && api.invoke('get-situation-playlists');
+    },
+    createPlaylist: (name) => {
+        if (isWails) {
+            return window.go.main.App.CreatePlaylist(name);
+        }
+        return api && api.invoke('create-playlist', name);
+    },
+    renamePlaylist: (data) => {
+        if (isWails) {
+            return window.go.main.App.RenamePlaylist(data);
+        }
+        return api && api.invoke('rename-playlist', data);
+    },
+    deletePlaylist: (name) => {
+        if (isWails) {
+            return window.go.main.App.DeletePlaylist(name);
+        }
+        return api && api.invoke('delete-playlist', name);
+    },
 
     // --- Event Listeners (On) ---
     onAppInfoResponse: (callback) => api && api.on(CHANNELS.ON.APP_INFO_RESPONSE, callback),
