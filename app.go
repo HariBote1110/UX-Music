@@ -110,7 +110,7 @@ func (a *App) RequestInitialLibrary() {
 // LoadPlayCounts loads play counts and emits an event
 func (a *App) LoadPlayCounts() {
 	fmt.Println("[Wails] LoadPlayCounts called")
-	counts, _ := stores.Load("play-counts")
+	counts, _ := stores.Load("playcounts")
 	if counts == nil {
 		counts = make(map[string]interface{})
 	}
@@ -125,7 +125,7 @@ func (a *App) IncrementPlayCount(song map[string]interface{}) {
 		return
 	}
 
-	counts, _ := stores.Load("play-counts")
+	counts, _ := stores.Load("playcounts")
 	var countsMap map[string]interface{}
 	if counts == nil {
 		countsMap = make(map[string]interface{})
@@ -159,7 +159,7 @@ func (a *App) IncrementPlayCount(song map[string]interface{}) {
 	existingData["history"] = history
 
 	countsMap[path] = existingData
-	stores.Save("play-counts", countsMap)
+	stores.Save("playcounts", countsMap)
 
 	runtime.EventsEmit(a.ctx, "play-counts-updated", countsMap)
 }
@@ -358,7 +358,7 @@ func (a *App) GetSituationPlaylists() (interface{}, error) {
 	}
 
 	// 2. Most Played (よく聴く曲) - play-counts データを使用
-	playCounts, _ := stores.Load("play-counts")
+	playCounts, _ := stores.Load("playcounts")
 	if playCounts != nil {
 		countsMap := playCounts.(map[string]interface{})
 		if len(countsMap) > 0 {

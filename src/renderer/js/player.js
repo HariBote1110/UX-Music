@@ -188,7 +188,6 @@ export async function play(song) {
 
     if (song.path) {
         currentSongType = 'local';
-        musicApi.playbackStarted(song);
         await playLocal(song);
     }
 }
