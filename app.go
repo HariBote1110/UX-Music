@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -23,16 +22,6 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-
-	// UserDataPath の初期化
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		fmt.Printf("Error getting user config dir: %v\n", err)
-		return
-	}
-	userDataPath := filepath.Join(configDir, "ux-music")
-	config.SetUserDataPath(userDataPath)
-	fmt.Printf("[Wails] UserDataPath initialized: %s\n", userDataPath)
 }
 
 // Ping returns a pong message

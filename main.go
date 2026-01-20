@@ -19,6 +19,11 @@ import (
 var assets embed.FS
 
 func main() {
+	// UserDataPath の初期化 (AssetHandler でも使用するため wails.Run の前に実行)
+	configDir, _ := os.UserConfigDir()
+	userDataPath := filepath.Join(configDir, "ux-music")
+	config.SetUserDataPath(userDataPath)
+
 	// Create an instance of the app structure
 	app := NewApp()
 
