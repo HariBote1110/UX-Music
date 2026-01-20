@@ -101,12 +101,24 @@ export function setupSongListScroller(listElement, songList, options = {}) {
                     {
                         label: '再生',
                         action: () => playSong(index, songList)
-                    },
-                    {
-                        label: 'プレイリストに追加',
-                        submenu: [] // TODO: プレイリスト一覧を動的に取得
                     }
                 ];
+
+                // プレイリストがある場合のみサブメニューを追加
+                if (state.playlists && state.playlists.length > 0) {
+                    const playlistSubmenu = state.playlists.map(playlist => ({
+                        label: playlist.name,
+                        action: () => {
+                            // TODO: プレイリストに曲を追加する処理
+                            console.log(`Adding songs to playlist: ${playlist.name}`, songsForMenu);
+                        }
+                    }));
+                    menuItems.push({
+                        label: 'プレイリストに追加',
+                        submenu: playlistSubmenu
+                    });
+                }
+
                 showContextMenu(e.pageX, e.pageY, menuItems);
             } else {
                 // Electron 環境: メインプロセスにメニュー表示を委譲
