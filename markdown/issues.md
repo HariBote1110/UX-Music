@@ -4,14 +4,15 @@
 
 ## 進行中の問題
 
--   **[重大] De-node-integration 移行後の表示・再生不具合**
-    -   **概要**: セキュリティ強化のための `contextIsolation: true` 移行後、レンダラープロセスで IPC 通信が正常に行われず、楽曲リストが空になる、再生が開始されないなどの問題が発生している。
-    -   **原因**: `preload.js` のホワイトリスト不足、および `electronAPI.on` のコールバック引数（`event`）の扱いの不整合。
-    -   **状況**: 主要なチャネルのホワイトリスト化と引数の修正を試みたが、依然として不整合が残っており、抜本的な対応（全チャネルの突合と形式統一）が必要。
-    -   **詳細レポート**: [issue-report-de-node-integration.md](./issue-report-de-node-integration.md)
+（現在なし）
 
 
 ## 解決済みの問題
+
+-   **[重大] De-node-integration 移行後の表示・再生不具合**
+    -   **概要**: セキュリティ強化のための `contextIsolation: true` 移行後、レンダラープロセスで IPC 通信が正常に行われず、楽曲リストが空になる、再生が開始されないなどの問題が発生していた。
+    -   **原因**: `preload.js` の send ホワイトリストに、`playback-started`, `song-skipped`, `save-audio-output-id`, `normalize-worker-finished-file` の4チャネルが不足していた。
+    -   **修正**: 不足していたチャネルを `preload.js` のホワイトリストに追加。
 
 -   **[バグ] クイズ終了時にスコアが保存できない**
     -   **原因**: ランキングデータファイル(`quiz-scores.json`)が空の場合、データを配列として正しく初期化できず、`scores.push`が失敗していた。
