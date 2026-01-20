@@ -23,6 +23,7 @@ body.resizing {
     background-color: var(--bg-light);
     width: 100%;
     -webkit-app-region: drag;
+    --wails-draggable: drag;
     flex-shrink: 0;
 }
 
@@ -119,7 +120,7 @@ body.resizing {
     min-height: 40px;
 
     width: auto;
-    max-width: 1600px;
+    /* max-width を削除してフルスクリーンでも伸びるように */
     margin: 0 auto;
 
     flex-shrink: 0;
