@@ -250,7 +250,50 @@ func handleRequest(req Request) {
 			}
 		}
 
+	// --- YouTube ---
+	case "youtube-info":
+		var payload struct {
+			URL string `json:"url"`
+		}
+		if parsePayload(req.ID, req.Payload, &payload) {
+			info, err := GetYouTubeVideoInfo(payload.URL)
+			if err != nil {
+				fail("youtube-error", err.Error())
+			} else {
+				respond("youtube-info", info)
+			}
+		}
+
+	case "youtube-download":
+		var payload struct {
+			URL       string `json:"url"`
+			DestDir   string `json:"destDir"`
+			AudioOnly bool   `json:"audioOnly"`
+		}
+		if parsePayload(req.ID, req.Payload, &payload) {
+			result, err := DownloadYouTubeVideo(payload.URL, payload.DestDir, payload.AudioOnly)
+			if err != nil {
+				fail("youtube-error", err.Error())
+			} else {
+				respond("youtube-downloaded", result)
+			}
+		}
+
+	case "youtube-stream-url":
+		var payload struct {
+			URL string `json:"url"`
+		}
+		if parsePayload(req.ID, req.Payload, &payload) {
+			streamURL, err := GetYouTubeStreamURL(payload.URL)
+			if err != nil {
+				fail("youtube-error", err.Error())
+			} else {
+				respond("youtube-stream-url", map[string]string{"url": streamURL})
+			}
+		}
+
 	// --- MTP Sidecar ---
+
 	case "mtp-test":
 		var payload struct {
 			ScriptPath string `json:"scriptPath"`
