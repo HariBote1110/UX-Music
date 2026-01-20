@@ -310,7 +310,7 @@ export function initNormalizeView() {
     let totalCount = 0;
     let currentJob = '';
 
-    electronAPI.on('normalize-worker-result', (event, { type, id, result }) => {
+    electronAPI.on('normalize-worker-result', ({ type, id, result }) => {
         const file = normalizeFiles.get(id);
         if (!file) return;
 

@@ -82,7 +82,7 @@ async function initApp() {
         if (appVersionEl) appVersionEl.textContent = `v${info.version}`;
     });
 
-    electronAPI.on('library-loaded', async (data) => {
+    electronAPI.on('load-library', async (data) => {
         if (!state.artworksDir) state.artworksDir = await electronAPI.invoke('get-artworks-dir');
         addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
 
