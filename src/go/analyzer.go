@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"sync"
 )
 
 // FFmpegPath stores the paths which should be Set via `init` message
@@ -119,16 +120,35 @@ func analyzeEnergy(path string) (int, error) {
 	return 0, fmt.Errorf("stats not found")
 }
 
-// Helper to batch analyze
+// BatchAnalyze runs analysis on multiple files in parallel using goroutines
 func BatchAnalyze(paths []string) []AnalysisResult {
 	results := make([]AnalysisResult, len(paths))
+
+	// Use a semaphore to limit concurrent ffmpeg processes
+	// Too many concurrent processes can overwhelm the system
+	maxWorkers := 4 // Can be tuned based on system
+
+	sem := make(chan struct{}, maxWorkers)
+	var wg sync.WaitGroup
+
 	for i, p := range paths {
-		res, err := AnalyzeSong(p)
-		if err == nil {
-			results[i] = *res
-		} else {
-			results[i] = AnalysisResult{Path: p} // Empty result on error
-		}
+		wg.Add(1)
+		go func(idx int, path string) {
+			defer wg.Done()
+
+			// Acquire semaphore
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			res, err := AnalyzeSong(path)
+			if err == nil && res != nil {
+				results[idx] = *res
+			} else {
+				results[idx] = AnalysisResult{Path: path} // Empty result on error
+			}
+		}(i, p)
 	}
+
+	wg.Wait()
 	return results
 }
