@@ -119,8 +119,8 @@ export function renderArtistDetailView(artist) {
 /**
  * プレイリスト詳細ビューを描画する
  */
-export function renderPlaylistDetailView(playlistDetails) {
-    const { name: playlistName, songs, artworks } = playlistDetails;
+export function renderPlaylistDetailView(playlistDetails = {}) {
+    const { name: playlistName = '不明なプレイリスト', songs = [], artworks = [] } = playlistDetails;
 
     clearMainContent();
     state.currentlyViewedSongs = songs;

@@ -306,7 +306,7 @@ func (a *App) GetPlaylistDetails(name string) (interface{}, error) {
 		librarySongs = library.([]interface{})
 	}
 
-	var playlistSongs []interface{}
+	playlistSongs := make([]interface{}, 0)
 	for _, p := range paths {
 		for _, s := range librarySongs {
 			song := s.(map[string]interface{})

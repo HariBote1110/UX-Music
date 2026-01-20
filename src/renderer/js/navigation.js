@@ -12,11 +12,10 @@ import {
 } from './ui/view-renderer.js';
 import { stopQuiz } from './quiz.js';
 import { stopLrcEditing } from './lrc-editor.js';
-// ▼▼▼ 追加 ▼▼▼
 import { startCDRipView, stopCDRipView } from './cd-ripper.js';
 import { initMtpBrowser, stopMtpBrowser } from './mtp-browser.js';
+import { musicApi } from './bridge.js';
 // ▲▲▲ 追加 ▲▲▲
-const electronAPI = window.electronAPI;
 
 /**
  * 指定されたIDのビューを表示する
@@ -124,9 +123,17 @@ export function showSituationPlaylistDetail(playlistDetails) {
 }
 
 export async function showPlaylist(playlistName) {
-    const playlistDetails = await electronAPI.invoke('get-playlist-details', playlistName);
-    state.currentlyViewedSongs = playlistDetails.songs;
-    showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: playlistDetails });
+    try {
+        const playlistDetails = await musicApi.getPlaylistDetails(playlistName);
+        if (!playlistDetails) {
+            console.error('[Navigation] Playlist details are null');
+            return;
+        }
+        state.currentlyViewedSongs = playlistDetails.songs || [];
+        showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: playlistDetails });
+    } catch (error) {
+        console.error(`[Navigation] Failed to show playlist: ${playlistName}`, error);
+    }
 }
 
 export function showAlbum(albumKey) {

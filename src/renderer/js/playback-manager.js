@@ -77,7 +77,10 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
         return;
     }
 
-    let songToPlayActual = songList[index];
+    let songToPlayActual = { ...songList[index] };
+    if (!songToPlayActual.type && songToPlayActual.path) {
+        songToPlayActual.type = 'local';
+    }
 
     if (songToPlayActual.type === 'local' && songToPlayActual.id) {
         const librarySong = state.library.find(s => s.id === songToPlayActual.id);
