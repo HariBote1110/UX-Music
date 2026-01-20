@@ -3,6 +3,7 @@ const fs = require('fs');
 const playlistManager = require('../playlist-manager');
 const { getPlaylistsWithArtwork } = require('./playlist-handler');
 const mtpManager = require('../mtp/mtp-manager');
+const IPC_CHANNELS = require('../ipc-channels');
 
 let libraryStore;
 
@@ -24,9 +25,9 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
                     const message = songs.length > 1 ?
                         `${songs.length}曲をプレイリスト「${name}」に追加しました。` :
                         `「${firstSong.title}」をプレイリスト「${name}」に追加しました。`;
-                    window.webContents.send('show-notification', message);
+                    window.webContents.send(IPC_CHANNELS.ON.SHOW_NOTIFICATION, message);
                 }
-                sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
+                sendToAllWindows(IPC_CHANNELS.ON.PLAYLISTS_UPDATED, getPlaylistsWithArtwork());
             }
         }));
 
@@ -35,7 +36,7 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
             if (window) {
-                window.webContents.send('request-new-playlist-with-songs', songs);
+                window.webContents.send(IPC_CHANNELS.ON.REQUEST_NEW_PLAYLIST_WITH_SONGS, songs);
             }
         }
     }, { type: 'separator' });
@@ -48,7 +49,7 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
             if (window && songs.length === 1) {
-                window.webContents.send('show-edit-metadata-modal', songs[0]);
+                window.webContents.send(IPC_CHANNELS.ON.SHOW_EDIT_METADATA_MODAL, songs[0]);
             }
         }
     });
@@ -61,7 +62,7 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
             if (window && mtpDevice) {
-                window.webContents.send('request-mtp-transfer', songs);
+                window.webContents.send(IPC_CHANNELS.ON.REQUEST_MTP_TRANSFER, songs);
             }
         }
     });
@@ -78,7 +79,7 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
                 } else {
                     playlistManager.addSongsToPlaylist(favoritesName, songs);
                 }
-                sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
+                sendToAllWindows(IPC_CHANNELS.ON.PLAYLISTS_UPDATED, getPlaylistsWithArtwork());
             }
         });
     }
@@ -99,7 +100,7 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
                 playlistManager.removeSongsFromPlaylist(playlistName, songPaths);
                 const window = BrowserWindow.getAllWindows()[0];
                 if (window && !window.isDestroyed()) {
-                    window.webContents.send('force-reload-playlist', playlistName);
+                    window.webContents.send(IPC_CHANNELS.ON.FORCE_RELOAD_PLAYLIST, playlistName);
                 }
             }
         }, { type: 'separator' });
@@ -119,13 +120,13 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
 // --- ▼▼▼ 新規追加: 汎用コンテキストメニュー作成 ▼▼▼ ---
 function createGeneralContextMenu(webContents) {
     const menu = new Menu();
-    
+
     // 戻るボタン
     menu.append(new MenuItem({
         label: '戻る',
         accelerator: 'CmdOrCtrl+[',
         click: () => {
-            webContents.send('navigate-back');
+            webContents.send(IPC_CHANNELS.ON.NAVIGATE_BACK);
         }
     }));
 
@@ -136,7 +137,7 @@ function createGeneralContextMenu(webContents) {
 function registerContextMenuHandlers(stores, sendToAllWindows) {
     libraryStore = stores.library;
 
-    ipcMain.on('show-song-context-menu', (event, { songs, context = {} }) => {
+    ipcMain.on(IPC_CHANNELS.SEND.SHOW_SONG_CONTEXT_MENU, (event, { songs, context = {} }) => {
         const window = BrowserWindow.fromWebContents(event.sender);
         if (!window || !songs || songs.length === 0) return;
 
@@ -145,7 +146,7 @@ function registerContextMenuHandlers(stores, sendToAllWindows) {
     });
 
     // --- ▼▼▼ 新規追加: 汎用メニューハンドラ ▼▼▼ ---
-    ipcMain.on('show-general-context-menu', (event) => {
+    ipcMain.on(IPC_CHANNELS.SEND.SHOW_GENERAL_CONTEXT_MENU, (event) => {
         const window = BrowserWindow.fromWebContents(event.sender);
         if (!window) return;
 
@@ -154,21 +155,21 @@ function registerContextMenuHandlers(stores, sendToAllWindows) {
     });
     // --- ▲▲▲ ここまで ▲▲▲ ---
 
-    ipcMain.on('create-new-playlist-with-songs', (event, { playlistName, songs }) => {
+    ipcMain.on(IPC_CHANNELS.SEND.CREATE_NEW_PLAYLIST_WITH_SONGS, (event, { playlistName, songs }) => {
         const createResult = playlistManager.createPlaylist(playlistName);
         if (createResult.success) {
             const addResult = playlistManager.addSongsToPlaylist(playlistName, songs);
             if (addResult.success) {
-                 const message = songs.length > 1 ?
+                const message = songs.length > 1 ?
                     `${songs.length}曲を新規プレイリスト「${playlistName}」に追加しました。` :
                     `「${songs[0].title}」を新規プレイリスト「${playlistName}」に追加しました。`;
-                event.sender.send('show-notification', message);
-                sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
+                event.sender.send(IPC_CHANNELS.ON.SHOW_NOTIFICATION, message);
+                sendToAllWindows(IPC_CHANNELS.ON.PLAYLISTS_UPDATED, getPlaylistsWithArtwork());
             } else {
-                 event.sender.send('show-error', `プレイリスト「${playlistName}」への曲の追加に失敗しました: ${addResult.message}`);
+                event.sender.send(IPC_CHANNELS.ON.SHOW_ERROR, `プレイリスト「${playlistName}」への曲の追加に失敗しました: ${addResult.message}`);
             }
         } else {
-            event.sender.send('show-error', `新規プレイリスト「${playlistName}」の作成に失敗しました: ${createResult.message}`);
+            event.sender.send(IPC_CHANNELS.ON.SHOW_ERROR, `新規プレイリスト「${playlistName}」の作成に失敗しました: ${createResult.message}`);
         }
     });
 }
@@ -217,8 +218,8 @@ async function deleteSongsFromLibrary(window, songs, sendToAllWindows) {
             playlistManager.removeSongsFromPlaylist(playlistName, Array.from(pathsToRemove));
         }
 
-        sendToAllWindows('songs-deleted', Array.from(pathsToRemove));
-        sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
+        sendToAllWindows(IPC_CHANNELS.ON.SONGS_DELETED, Array.from(pathsToRemove));
+        sendToAllWindows(IPC_CHANNELS.ON.PLAYLISTS_UPDATED, getPlaylistsWithArtwork());
     }
 
     if (errorCount > 0) {

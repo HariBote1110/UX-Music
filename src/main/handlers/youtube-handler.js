@@ -4,6 +4,7 @@ const fs = require('fs');
 const { sanitize } = require('../utils');
 const { analyzeLoudness } = require('../file-scanner');
 const { saveArtworkToFile } = require('./library-handler');
+const IPC_CHANNELS = require('../ipc-channels');
 const miniget = require('miniget');
 const crypto = require('crypto');
 
@@ -26,7 +27,7 @@ async function processYouTubeVideo(info, sourceUrl) {
     const hubUrl = findHubUrl(details.description);
     const settings = settingsStore.load();
     const mode = settings.youtubePlaybackMode || 'download';
-    
+
     let artworkData = null;
     const thumbnailUrl = details.thumbnails?.[0]?.url;
     if (thumbnailUrl) {
@@ -82,7 +83,7 @@ async function processYouTubeVideo(info, sourceUrl) {
     const artistDir = sanitize(details.author.name || 'YouTube');
     const destDir = path.join(libraryPath, artistDir);
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-    
+
     const safeFileName = sanitize(details.title) + fileExtension;
     const destPath = path.join(destDir, safeFileName);
 
@@ -128,7 +129,7 @@ function registerYouTubeHandlers(stores, managers) {
     playlistManager = managers.playlist;
     addSongsToLibraryAndSave = managers.addSongsFunc;
 
-    ipcMain.on('import-youtube-playlist', async (event, playlistUrl) => {
+    ipcMain.on(IPC_CHANNELS.SEND.IMPORT_YOUTUBE_PLAYLIST, async (event, playlistUrl) => {
         const ytpl = require('ytpl');
         const ytdl = require('@distube/ytdl-core');
 
@@ -136,30 +137,30 @@ function registerYouTubeHandlers(stores, managers) {
         let playlist;
         try {
             if (!ytpl.validateID(playlistUrl)) {
-                window.send('show-error', '無効なYouTubeプレイリストのURLです。');
+                window.send(IPC_CHANNELS.ON.SHOW_ERROR, '無効なYouTubeプレイリストのURLです。');
                 return;
             }
             playlist = await ytpl(playlistUrl, { limit: Infinity });
-        } catch(error) {
+        } catch (error) {
             console.error('Playlist import error (ytpl failed):', error);
-            window.send('show-error', 'プレイリスト情報の取得に失敗しました。非公開または削除された動画が含まれている可能性があります。');
+            window.send(IPC_CHANNELS.ON.SHOW_ERROR, 'プレイリスト情報の取得に失敗しました。非公開または削除された動画が含まれている可能性があります。');
             return;
         }
 
         const total = playlist.items.length;
         const playlistTitle = sanitize(playlist.title);
         playlistManager.createPlaylist(playlistTitle);
-        
+
         for (let i = 0; i < total; i++) {
             const item = playlist.items[i];
             try {
-                window.send('playlist-import-progress', { current: i + 1, total: total, title: item.title });
+                window.send(IPC_CHANNELS.ON.PLAYLIST_IMPORT_PROGRESS, { current: i + 1, total: total, title: item.title });
                 const videoInfo = await ytdl.getInfo(item.url);
                 const newSong = await processYouTubeVideo(videoInfo, item.url);
-                
+
                 const addedSongs = addSongsToLibraryAndSave([newSong]);
                 if (addedSongs.length > 0) {
-                    window.send('youtube-link-processed', addedSongs[0]);
+                    window.send(IPC_CHANNELS.ON.YOUTUBE_LINK_PROCESSED, addedSongs[0]);
                 }
                 playlistManager.addSongToPlaylist(playlistTitle, newSong);
             } catch (error) {
@@ -167,19 +168,19 @@ function registerYouTubeHandlers(stores, managers) {
                 continue;
             }
         }
-        window.send('playlist-import-finished');
+        window.send(IPC_CHANNELS.ON.PLAYLIST_IMPORT_FINISHED);
     });
 
-    ipcMain.on('add-youtube-link', async (event, url) => {
+    ipcMain.on(IPC_CHANNELS.SEND.ADD_YOUTUBE_LINK, async (event, url) => {
         const ytdl = require('@distube/ytdl-core');
 
         const window = event.sender;
         try {
             if (!ytdl.validateURL(url)) return;
-            
+
             const settings = settingsStore.load();
             if ((settings.youtubePlaybackMode || 'download') === 'download') {
-                window.send('show-loading', 'YouTube動画をダウンロード中...');
+                window.send(IPC_CHANNELS.ON.SHOW_LOADING, 'YouTube動画をダウンロード中...');
             }
 
             const info = await ytdl.getInfo(url);
@@ -187,13 +188,13 @@ function registerYouTubeHandlers(stores, managers) {
 
             const addedSongs = addSongsToLibraryAndSave([newSong]);
             if (addedSongs.length > 0) {
-                window.send('youtube-link-processed', addedSongs[0]);
+                window.send(IPC_CHANNELS.ON.YOUTUBE_LINK_PROCESSED, addedSongs[0]);
             }
         } catch (error) {
             console.error('YouTube処理エラー:', error.message);
-            window.send('show-error', `YouTube楽曲の処理に失敗しました: ${error.message}`);
+            window.send(IPC_CHANNELS.ON.SHOW_ERROR, `YouTube楽曲の処理に失敗しました: ${error.message}`);
         } finally {
-            window.send('hide-loading');
+            window.send(IPC_CHANNELS.ON.HIDE_LOADING);
         }
     });
 }

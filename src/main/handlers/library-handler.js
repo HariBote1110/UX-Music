@@ -1,13 +1,11 @@
 // src/main/handlers/library-handler.js
-
-const { ipcMain, app, dialog } = require('electron'); // dialog は不要になる
+const { ipcMain, app } = require('electron');
 const path = require('path');
 const fs = require('fs');
-// ▼▼▼ 変更: getSampleRate をインポート ▼▼▼
-const { analyzeLoudness, getSampleRate } = require('../file-scanner');
-// ▲▲▲ 変更ここまで ▲▲▲
 const NodeID3 = require('node-id3');
 const { saveArtworkToFile } = require('./import-handler');
+const { analyzeLoudness, getSampleRate } = require('../file-scanner');
+const IPC_CHANNELS = require('../ipc-channels');
 
 
 let libraryStore;
@@ -44,17 +42,17 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
             loudnessData[filePath] = result.loudness;
             loudnessStore.save(loudnessData);
         }
-        event.sender.send('loudness-analysis-result', result);
+        event.sender.send(IPC_CHANNELS.ON.LOUDNESS_ANALYSIS_RESULT, result);
     });
 
-    ipcMain.handle('get-loudness-value', (event, songPath) => (loudnessStore.load() || {})[songPath] || null);
+    ipcMain.handle(IPC_CHANNELS.INVOKE.GET_LOUDNESS_VALUE, (event, songPath) => (loudnessStore.load() || {})[songPath] || null);
 
-    ipcMain.on('request-initial-library', (event) => {
-        console.log('[DEBUG][Main] Received request-initial-library');
+    ipcMain.on(IPC_CHANNELS.SEND.REQUEST_INITIAL_LIBRARY, (event) => {
+
         const songs = libraryStore.load() || [];
         const albums = albumsStore.load() || {};
-        console.log('[DEBUG][Main] Sending load-library with', songs.length, 'songs');
-        event.sender?.send('load-library', { songs, albums });
+
+        event.sender?.send(IPC_CHANNELS.ON.LOAD_LIBRARY, { songs, albums });
 
         // ▼▼▼ 追加: ライブラリ読み込み後にSRマイグレーションをチェック ▼▼▼
         checkAndMigrateSampleRates(songs, sendToAllWindows);
@@ -62,19 +60,19 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
     });
 
     // ▼▼▼ 追加: レンダラーからの 'load-library' リクエストにも対応 ▼▼▼
-    ipcMain.on('load-library', (event) => {
-        console.log('[DEBUG][Main] Received load-library request');
+    ipcMain.on(IPC_CHANNELS.SEND.LOAD_LIBRARY, (event) => {
+
         const songs = libraryStore.load() || [];
         const albums = albumsStore.load() || {};
-        console.log('[DEBUG][Main] Sending load-library response with', songs.length, 'songs');
-        event.sender?.send('load-library', { songs, albums });
+
+        event.sender?.send(IPC_CHANNELS.ON.LOAD_LIBRARY, { songs, albums });
 
         checkAndMigrateSampleRates(songs, sendToAllWindows);
     });
     // ▲▲▲ 追加ここまで ▲▲▲
 
 
-    ipcMain.on('debug-reset-library', (event) => {
+    ipcMain.on(IPC_CHANNELS.SEND.DEBUG_RESET_LIBRARY, (event) => {
         try {
             libraryStore.save([]);
             loudnessStore.save({});
@@ -89,14 +87,13 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                     fs.rmSync(curPath, { recursive: true, force: true });
                 });
             }
-            console.log('[DEBUG] Library has been reset completely.');
-            event.sender?.send('force-reload-library');
+            event.sender?.send(IPC_CHANNELS.ON.FORCE_RELOAD_LIBRARY);
         } catch (error) {
-            console.error('[DEBUG] Failed to reset library:', error);
+            console.error('Failed to reset library:', error);
         }
     });
 
-    ipcMain.handle('edit-metadata', async (event, { filePath, newTags }) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.EDIT_METADATA, async (event, { filePath, newTags }) => {
         try {
             const tagsToWrite = { ...newTags };
             let artworkResult = undefined;
@@ -236,7 +233,7 @@ async function checkAndMigrateSampleRates(songs, sendToAllWindows) {
         // レンダラーへ最新状態を送信（再読み込みを促す）
         // 既存の 'load-library' イベントを再送することでUIも最新化されます
         const albums = albumsStore.load() || {};
-        sendToAllWindows('load-library', { songs, albums });
+        sendToAllWindows(IPC_CHANNELS.ON.LOAD_LIBRARY, { songs, albums });
     }
 }
 // ▲▲▲ 追加ここまで ▲▲▲

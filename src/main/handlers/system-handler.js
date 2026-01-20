@@ -3,9 +3,8 @@ const path = require('path');
 const fs = require('fs'); // ★★★ fs を require ★★★
 const os = require('os');
 const discordRpcManager = require('../discord-rpc-manager');
-// --- ▼▼▼ sanitize を utils からインポート ▼▼▼ ---
 const { sanitize } = require('../utils');
-// --- ▲▲▲ インポート ▲▲▲ ---
+const IPC_CHANNELS = require('../ipc-channels');
 
 
 let settingsStore;
@@ -23,23 +22,23 @@ function registerSystemHandlers(stores) {
 
     // --- Settings ---
     // ... (既存のハンドラ) ...
-    ipcMain.handle('get-settings', () => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.GET_SETTINGS, () => {
         return settingsStore.load();
     });
 
-    ipcMain.on('save-settings', (event, settings) => {
+    ipcMain.on(IPC_CHANNELS.SEND.SAVE_SETTINGS, (event, settings) => {
         const currentSettings = settingsStore.load();
         const newSettings = { ...currentSettings, ...settings };
         settingsStore.save(newSettings);
     });
 
-    ipcMain.on('request-initial-settings', (event) => {
+    ipcMain.on(IPC_CHANNELS.SEND.REQUEST_INITIAL_SETTINGS, (event) => {
         if (event.sender && !event.sender.isDestroyed()) {
-            event.sender.send('settings-loaded', settingsStore.load());
+            event.sender.send(IPC_CHANNELS.ON.SETTINGS_LOADED, settingsStore.load());
         }
     });
 
-    ipcMain.on('set-library-path', async (event) => {
+    ipcMain.on(IPC_CHANNELS.SEND.SET_LIBRARY_PATH, async (event) => {
         const result = await dialog.showOpenDialog({
             properties: ['openDirectory']
         });
@@ -51,7 +50,7 @@ function registerSystemHandlers(stores) {
         }
     });
 
-    ipcMain.on('save-audio-output-id', (event, deviceId) => {
+    ipcMain.on(IPC_CHANNELS.SEND.SAVE_AUDIO_OUTPUT_ID, (event, deviceId) => {
         const settings = settingsStore.load();
         settings.audioOutputId = deviceId;
         settingsStore.save(settings);
@@ -60,7 +59,7 @@ function registerSystemHandlers(stores) {
 
     // --- Analysed Queue ---
     // ... (既存のハンドラ) ...
-     ipcMain.on('song-skipped', (event, { song, currentTime }) => {
+    ipcMain.on(IPC_CHANNELS.SEND.SONG_SKIPPED, (event, { song, currentTime }) => {
         if (!song || typeof currentTime !== 'number' || !song.duration) return;
         const playbackPercentage = (currentTime / song.duration) * 100;
         let scoreIncrement = 0;
@@ -86,7 +85,7 @@ function registerSystemHandlers(stores) {
         }
     });
 
-    ipcMain.on('song-finished', (event, song) => {
+    ipcMain.on(IPC_CHANNELS.SEND.SONG_FINISHED, (event, song) => {
         if (!song || !song.id) return;
         const dislikeData = analysedQueueStore.load() || {};
         if (dislikeData[song.id]) {
@@ -98,7 +97,7 @@ function registerSystemHandlers(stores) {
 
     // --- Playback State & Counts ---
     // ... (既存のハンドラ) ...
-    ipcMain.on('playback-started', (event, song) => {
+    ipcMain.on(IPC_CHANNELS.SEND.PLAYBACK_STARTED, (event, song) => {
         discordRpcManager.setActivity(song);
 
         const counts = playCountsStore.load() || {};
@@ -116,18 +115,18 @@ function registerSystemHandlers(stores) {
         playCountsStore.save(counts);
 
         if (event.sender && !event.sender.isDestroyed()) {
-            event.sender.send('play-counts-updated', counts);
+            event.sender.send(IPC_CHANNELS.ON.PLAY_COUNTS_UPDATED, counts);
         }
     });
 
-    ipcMain.on('playback-stopped', () => {
+    ipcMain.on(IPC_CHANNELS.SEND.PLAYBACK_STOPPED, () => {
         discordRpcManager.clearActivity();
     });
 
 
     // --- Lyrics ---
     // ... (既存のハンドラ) ...
-    ipcMain.on('handle-lyrics-drop', (event, filePaths) => {
+    ipcMain.on(IPC_CHANNELS.SEND.HANDLE_LYRICS_DROP, (event, filePaths) => {
         const lyricsDir = path.join(app.getPath('userData'), 'Lyrics');
         if (!fs.existsSync(lyricsDir)) fs.mkdirSync(lyricsDir, { recursive: true });
 
@@ -143,11 +142,11 @@ function registerSystemHandlers(stores) {
             }
         });
         if (count > 0 && event.sender && !event.sender.isDestroyed()) {
-            event.sender.send('lyrics-added-notification', count);
+            event.sender.send(IPC_CHANNELS.ON.LYRICS_ADDED_NOTIFICATION, count);
         }
     });
 
-    ipcMain.handle('get-lyrics', (event, song) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.GET_LYRICS, (event, song) => {
         const lyricsDir = path.join(app.getPath('userData'), 'Lyrics');
 
         // ファイル名として安全でない文字をアンダースコアに置換してから検索
@@ -176,8 +175,8 @@ function registerSystemHandlers(stores) {
         return null;
     });
 
-     // --- ▼▼▼ LRCファイル保存ハンドラを追加 ▼▼▼ ---
-     ipcMain.handle('save-lrc-file', (event, { fileName, content }) => {
+    // --- ▼▼▼ LRCファイル保存ハンドラを追加 ▼▼▼ ---
+    ipcMain.handle(IPC_CHANNELS.INVOKE.SAVE_LRC_FILE, (event, { fileName, content }) => {
         if (!fileName || typeof content !== 'string') {
             return { success: false, message: 'ファイル名または内容が無効です。' };
         }
@@ -189,7 +188,7 @@ function registerSystemHandlers(stores) {
             // ファイル名をサニタイズしてから結合
             const safeFileName = sanitize(fileName);
             if (!safeFileName.toLowerCase().endsWith('.lrc')) {
-                 return { success: false, message: 'ファイル名の拡張子が .lrc ではありません。' };
+                return { success: false, message: 'ファイル名の拡張子が .lrc ではありません。' };
             }
             const filePath = path.join(lyricsDir, safeFileName);
 
@@ -205,9 +204,9 @@ function registerSystemHandlers(stores) {
 
     // --- App Info & Misc ---
     // ... (既存のハンドラ) ...
-     ipcMain.on('request-app-info', (event) => {
+    ipcMain.on(IPC_CHANNELS.SEND.REQUEST_APP_INFO, (event) => {
         if (event.sender && !event.sender.isDestroyed()) {
-            event.sender.send('app-info-response', {
+            event.sender.send(IPC_CHANNELS.ON.APP_INFO_RESPONSE, {
                 version: app.getVersion(),
                 platform: os.platform(),
                 arch: os.arch(),
@@ -216,17 +215,17 @@ function registerSystemHandlers(stores) {
         }
     });
 
-    ipcMain.on('open-external-link', (event, url) => {
+    ipcMain.on(IPC_CHANNELS.SEND.OPEN_EXTERNAL_LINK, (event, url) => {
         if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
             shell.openExternal(url);
         }
     });
 
-    ipcMain.handle('get-artworks-dir', () => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.GET_ARTWORKS_DIR, () => {
         return path.join(app.getPath('userData'), 'Artworks');
     });
 
-    ipcMain.handle('get-artwork-as-data-url', (event, artworkFileName) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.GET_ARTWORK_AS_DATA_URL, (event, artworkFileName) => {
         if (!artworkFileName) return null;
         try {
             const artworksDir = path.join(app.getPath('userData'), 'Artworks');
@@ -245,7 +244,7 @@ function registerSystemHandlers(stores) {
 
     // --- Quiz Scores ---
     // ... (既存のハンドラ) ...
-     ipcMain.handle('save-quiz-score', (event, scoreData) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.SAVE_QUIZ_SCORE, (event, scoreData) => {
         const scores = quizScoresStore.load() || [];
         scores.push(scoreData);
         scores.sort((a, b) => {
@@ -257,7 +256,7 @@ function registerSystemHandlers(stores) {
         quizScoresStore.save(scores.slice(0, 50)); // 上位50件まで保存
     });
 
-    ipcMain.handle('get-quiz-scores', () => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.GET_QUIZ_SCORES, () => {
         return quizScoresStore.load() || [];
     });
 }

@@ -9,6 +9,7 @@ const discordRpcManager = require('./discord-rpc-manager');
 const { Worker } = require('worker_threads');
 const path = require('path');
 const os = require('os');
+const IPC_CHANNELS = require('./ipc-channels');
 
 // --- ▼▼▼ MTP機能のために追記 (ステップ8) ▼▼▼ ---
 const mtpManager = require('./mtp/mtp-manager');
@@ -99,7 +100,7 @@ function registerIpcHandlers() {
     // --- Normalize Feature Handlers ---
     let normalizeWorkerPool = [];
 
-    ipcMain.on('start-normalize-job', (event, { jobType, files, options }) => {
+    ipcMain.on(IPC_CHANNELS.SEND.START_NORMALIZE_JOB, (event, { jobType, files, options }) => {
         const numCpuCores = os.cpus().length;
         const concurrency = Math.max(1, numCpuCores - 1);
 
@@ -114,7 +115,7 @@ function registerIpcHandlers() {
                 ffprobePath: require('ffprobe-static').path.replace('app.asar', 'app.asar.unpacked')
             });
             worker.on('message', (message) => {
-                event.sender.send('normalize-worker-result', message);
+                event.sender.send(IPC_CHANNELS.ON.NORMALIZE_WORKER_RESULT, message);
             });
             normalizeWorkerPool.push(worker);
         }
@@ -147,16 +148,16 @@ function registerIpcHandlers() {
             processNextFile();
         }
 
-        ipcMain.on('normalize-worker-finished-file', processNextFile);
+        ipcMain.on(IPC_CHANNELS.SEND.NORMALIZE_WORKER_FINISHED_FILE, processNextFile);
     });
 
-    ipcMain.on('stop-normalize-job', () => {
+    ipcMain.on(IPC_CHANNELS.SEND.STOP_NORMALIZE_JOB, () => {
         normalizeWorkerPool.forEach(worker => worker.terminate());
         normalizeWorkerPool = [];
-        ipcMain.removeListener('normalize-worker-finished-file', () => { });
+        ipcMain.removeListener(IPC_CHANNELS.SEND.NORMALIZE_WORKER_FINISHED_FILE, () => { });
     });
 
-    ipcMain.handle('select-files-for-normalize', async () => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.SELECT_FILES_FOR_NORMALIZE, async () => {
         const result = await dialog.showOpenDialog({
             properties: ['openFile', 'multiSelections'],
             filters: [{ name: 'Audio Files', extensions: ['mp3', 'flac', 'wav', 'm4a', 'ogg'] }]
@@ -165,7 +166,7 @@ function registerIpcHandlers() {
     });
 
     // ▼▼▼ 修正: システムフォルダを除外してアクセス権エラーを防ぐ ▼▼▼
-    ipcMain.handle('select-folder-for-normalize', async () => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.SELECT_FOLDER_FOR_NORMALIZE, async () => {
         const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
         if (result.canceled || result.filePaths.length === 0) return [];
 
@@ -199,15 +200,15 @@ function registerIpcHandlers() {
     });
     // ▲▲▲ 修正ここまで ▲▲▲
 
-    ipcMain.handle('get-library-for-normalize', () => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.GET_LIBRARY_FOR_NORMALIZE, () => {
         return stores.library.load() || [];
     });
 
-    ipcMain.handle('get-all-loudness-data', () => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.GET_ALL_LOUDNESS_DATA, () => {
         return stores.loudness.load() || {};
     });
 
-    ipcMain.handle('select-normalize-output-folder', async () => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.SELECT_NORMALIZE_OUTPUT_FOLDER, async () => {
         const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
         return result.canceled ? null : result.filePaths[0];
     });
@@ -215,7 +216,7 @@ function registerIpcHandlers() {
     // --- End of Normalize Feature Handlers ---
 
 
-    ipcMain.on('save-migrated-data', (event, { songs, albums }) => {
+    ipcMain.on(IPC_CHANNELS.SEND.SAVE_MIGRATED_DATA, (event, { songs, albums }) => {
         console.log('Main: Saving migrated library and albums data...');
         try {
             const libraryPath = stores.library.path;
@@ -238,7 +239,7 @@ function registerIpcHandlers() {
         }
     });
 
-    ipcMain.on('debug-rollback-migration', (event) => {
+    ipcMain.on(IPC_CHANNELS.SEND.DEBUG_ROLLBACK_MIGRATION, (event) => {
         try {
             console.log('[DEBUG] Rolling back migration...');
             const libraryPath = stores.library.path;
@@ -261,7 +262,7 @@ function registerIpcHandlers() {
             }
 
             if (event.sender && !event.sender.isDestroyed()) {
-                event.sender.send('force-reload-library');
+                event.sender.send(IPC_CHANNELS.ON.FORCE_RELOAD_LIBRARY);
             }
         } catch (error) {
             console.error('[DEBUG] Failed to rollback migration:', error);
@@ -270,7 +271,7 @@ function registerIpcHandlers() {
 
     logPerf("Migration handler registered.");
 
-    ipcMain.handle('get-situation-playlists', (event) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.GET_SITUATION_PLAYLISTS, (event) => {
         const { createSituationPlaylists } = require('./mood-analyzer');
         const { createHistoryPlaylists } = require('./history-analyzer');
 
@@ -292,7 +293,7 @@ function registerIpcHandlers() {
     /**
      * MTPデバイスへのファイル転送（アップロード）を実行
      */
-    ipcMain.handle('mtp-upload-files', async (event, { storageId, sources, destination }) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.MTP_UPLOAD_FILES, async (event, { storageId, sources, destination }) => {
         console.log(`[MTP Transfer] 要求受信: ${sources.length}件を StorageID ${storageId} の ${destination} へ`);
 
         const mtpDevice = mtpManager.getDevice();
@@ -362,7 +363,7 @@ function registerIpcHandlers() {
      * ディレクトリ構造を維持したMTPファイル転送
      * transferList: [{ source: '/path/to/file.flac', destination: '/Music/Artist/Album/' }, ...]
      */
-    ipcMain.handle('mtp-upload-files-with-structure', async (event, { storageId, transferList }) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.MTP_UPLOAD_FILES_WITH_STRUCTURE, async (event, { storageId, transferList }) => {
         console.log(`[MTP Transfer] 構造化転送要求受信: ${transferList.length}件`);
 
         const mtpDevice = mtpManager.getDevice();
@@ -449,7 +450,7 @@ function registerIpcHandlers() {
     /**
      * MTPデバイスのディレクトリ内容を取得
      */
-    ipcMain.handle('mtp-browse-directory', async (event, { storageId, fullPath }) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.MTP_BROWSE_DIRECTORY, async (event, { storageId, fullPath }) => {
         console.log(`[MTP Browse] ディレクトリ閲覧要求: StorageID ${storageId}, Path: ${fullPath}`);
 
         return withMtpLock(async () => {
@@ -484,7 +485,7 @@ function registerIpcHandlers() {
     /**
      * MTPデバイスからファイルをダウンロード
      */
-    ipcMain.handle('mtp-download-files', async (event, { storageId, sources, destination }) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.MTP_DOWNLOAD_FILES, async (event, { storageId, sources, destination }) => {
         console.log(`[MTP Download] ダウンロード要求: ${sources.length}件を ${destination} へ`);
 
         const mtpDevice = mtpManager.getDevice();
@@ -546,7 +547,7 @@ function registerIpcHandlers() {
     /**
      * MTPデバイス上のファイル/フォルダを削除
      */
-    ipcMain.handle('mtp-delete-files', async (event, { storageId, files }) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.MTP_DELETE_FILES, async (event, { storageId, files }) => {
         console.log(`[MTP Delete] 削除要求: ${files.length}件`);
 
         const mtpDevice = mtpManager.getDevice();
@@ -578,7 +579,7 @@ function registerIpcHandlers() {
     /**
      * ダウンロード先フォルダを選択
      */
-    ipcMain.handle('mtp-select-download-folder', async () => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.MTP_SELECT_DOWNLOAD_FOLDER, async () => {
         const result = await dialog.showOpenDialog({
             properties: ['openDirectory', 'createDirectory'],
             title: 'ダウンロード先を選択'
@@ -595,7 +596,7 @@ function registerIpcHandlers() {
      * 未転送曲を検出する
      * ライブラリ内の楽曲とWalkman内の楽曲をファイル名で比較
      */
-    ipcMain.handle('mtp-get-untransferred-songs', async (event, { storageId, librarySongs }) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.MTP_GET_UNTRANSFERRED_SONGS, async (event, { storageId, librarySongs }) => {
         console.log(`[MTP Sync] 未転送曲の検出を開始: StorageID ${storageId}, ライブラリ ${librarySongs?.length || 0}曲`);
 
         return withMtpLock(async () => {

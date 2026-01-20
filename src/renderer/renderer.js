@@ -17,13 +17,11 @@ import { initQuiz } from './js/quiz.js';
 // ▼▼▼ 修正: playNextSong, playPrevSong を適切にインポート ▼▼▼
 import { playNextSong, playPrevSong } from './js/playback-manager.js';
 import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
+import { musicApi } from './js/bridge.js';
 
 // window.electronAPI は preload.js によって公開されます
+// 直接の使用は避け、musicApi (bridge.js) を通じたアクセスを推奨します
 const electronAPI = window.electronAPI;
-console.log('[DEBUG] electronAPI exists:', !!electronAPI);
-console.log('[DEBUG] electronAPI.on exists:', !!electronAPI?.on);
-console.log('[DEBUG] electronAPI.send exists:', !!electronAPI?.send);
-console.log('[DEBUG] electronAPI.invoke exists:', !!electronAPI?.invoke);
 
 window.artworkLoadTimes = [];
 window.observeNewArtworks = (container) => observeNewImages(container || document);
@@ -81,25 +79,19 @@ async function initApp() {
         // ▲▲▲ 修正完了 ▲▲▲
     }
 
-    console.log('[DEBUG] Subscribing to app-info-response...');
-    electronAPI.on('app-info-response', (info) => {
-        console.log('[DEBUG] Received app-info-response:', info);
+    musicApi.onAppInfoResponse((info) => {
         const appVersionEl = document.getElementById('app-version');
         if (appVersionEl) appVersionEl.textContent = `v${info.version}`;
     });
 
-    console.log('[DEBUG] Subscribing to load-library...');
-    electronAPI.on('load-library', async (data) => {
-        console.log('[DEBUG] ★★★ Received load-library event! ★★★');
-        console.log('[DEBUG] load-library data:', data);
-        console.log('[DEBUG] songs count:', data?.songs?.length || 0);
-        if (!state.artworksDir) state.artworksDir = await electronAPI.invoke('get-artworks-dir');
+    musicApi.onLoadLibrary(async (data) => {
+        if (!state.artworksDir) state.artworksDir = await musicApi.getArtworksDir();
         addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
 
         const initialView = state.activeViewId || 'track-view';
         showView(initialView);
 
-        electronAPI.send('request-playlists-with-artwork');
+        musicApi.requestPlaylistsWithArtwork();
         const loadingOverlay = document.getElementById('loading-overlay');
         if (loadingOverlay) loadingOverlay.classList.add('hidden');
     });
@@ -123,29 +115,28 @@ async function initApp() {
         }
     });
 
-    electronAPI.on('play-counts-updated', (counts) => {
+    musicApi.onPlayCountsUpdated((counts) => {
         state.playCounts = counts;
         Object.keys(counts).forEach(songPath => updatePlayCountDisplay(songPath, counts[songPath].count));
     });
 
-    electronAPI.on('playlists-updated', (playlists) => {
+    musicApi.onPlaylistsUpdated((playlists) => {
         state.playlists = playlists;
         if (state.activeViewId === 'playlist-view') showView('playlist-view');
     });
 
-    electronAPI.on('force-reload-playlist', async (playlistName) => {
+    musicApi.onForceReloadPlaylist(async (playlistName) => {
         if (state.currentDetailView.type === 'playlist' && state.currentDetailView.identifier === playlistName) {
-            const updatedDetails = await electronAPI.invoke('get-playlist-details', playlistName);
+            const updatedDetails = await musicApi.getPlaylistDetails(playlistName);
             state.currentlyViewedSongs = updatedDetails.songs;
             showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: updatedDetails });
         }
     });
 
-    console.log('[DEBUG] Sending request-app-info...');
-    electronAPI.send('request-app-info');
+    musicApi.requestAppInfo();
 
     try {
-        const settings = await electronAPI.invoke('get-settings');
+        const settings = await musicApi.getSettings();
         if (settings) {
             if (typeof settings.groupAlbumArt === 'boolean') {
                 state.groupAlbumArt = settings.groupAlbumArt;
@@ -156,10 +147,8 @@ async function initApp() {
             }
         }
 
-        console.log('[DEBUG] settings.libraryPath:', settings.libraryPath);
         if (settings.libraryPath) {
-            console.log('[DEBUG] Sending load-library request...');
-            electronAPI.send('load-library');
+            musicApi.loadLibrary();
         } else {
             const loadingOverlay = document.getElementById('loading-overlay');
             if (loadingOverlay) loadingOverlay.classList.add('hidden');
