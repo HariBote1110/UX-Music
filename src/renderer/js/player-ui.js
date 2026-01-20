@@ -20,6 +20,66 @@ let wasPlayingBeforeSeek = false;
 let progressUpdateInterval = null;
 let progressFrameId = null;
 let lastVolume = 0.5;
+let iconAnimationId = null;
+
+// SVGパス定義（座標を配列で管理）
+const PLAY_ICON = {
+    part1: [[8, 5], [18, 12], [8, 12], [8, 5]],   // 三角形の上半分
+    part2: [[8, 19], [18, 12], [8, 12], [8, 19]]  // 三角形の下半分
+};
+const PAUSE_ICON = {
+    part1: [[6, 5], [10, 5], [10, 19], [6, 19]],  // 左の縦棒
+    part2: [[14, 5], [18, 5], [18, 19], [14, 19]] // 右の縦棒
+};
+
+// パス座標を文字列に変換
+function pathToString(points) {
+    return `M ${points.map(p => p.join(' ')).join(' L ')} Z`;
+}
+
+// 2つのパス間を補間
+function interpolatePath(from, to, progress) {
+    return from.map((point, i) => [
+        point[0] + (to[i][0] - point[0]) * progress,
+        point[1] + (to[i][1] - point[1]) * progress
+    ]);
+}
+
+// イージング関数（cubic-bezier(0.4, 0, 0.2, 1) の近似）
+function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+}
+
+// SVGパスをアニメーションで変更
+function animateIconPaths(iconPart1, iconPart2, toPlaying, duration = 250) {
+    if (iconAnimationId) {
+        cancelAnimationFrame(iconAnimationId);
+    }
+
+    const fromIcon = toPlaying ? PLAY_ICON : PAUSE_ICON;
+    const toIcon = toPlaying ? PAUSE_ICON : PLAY_ICON;
+    const startTime = performance.now();
+
+    function animate(currentTime) {
+        const elapsed = currentTime - startTime;
+        const rawProgress = Math.min(elapsed / duration, 1);
+        const progress = easeOutCubic(rawProgress);
+
+        const currentPart1 = interpolatePath(fromIcon.part1, toIcon.part1, progress);
+        const currentPart2 = interpolatePath(fromIcon.part2, toIcon.part2, progress);
+
+        if (iconPart1) iconPart1.setAttribute('d', pathToString(currentPart1));
+        if (iconPart2) iconPart2.setAttribute('d', pathToString(currentPart2));
+
+        if (rawProgress < 1) {
+            iconAnimationId = requestAnimationFrame(animate);
+        } else {
+            iconAnimationId = null;
+        }
+    }
+
+    iconAnimationId = requestAnimationFrame(animate);
+}
 
 
 function updateUiTime(current, duration) {
@@ -137,37 +197,13 @@ export function updatePlaybackStateUI(playing) {
     const currentTime = getCurrentTime();
     const duration = getDuration();
 
-    // SVGアイコンを直接更新（Wails webviewのCSS d プロパティ非対応に対応）
+    // SVGアイコンをモーフィングアニメーションで更新（Wails webviewのCSS d プロパティ非対応に対応）
     const iconPart1 = elements.playPauseBtn.querySelector('.icon-part-1');
     const iconPart2 = elements.playPauseBtn.querySelector('.icon-part-2');
-    const svg = elements.playPauseBtn.querySelector('svg');
 
-    // アニメーション効果（scale で視覚的フィードバック）
-    if (svg) {
-        svg.style.transition = 'transform 0.15s ease-out';
-        svg.style.transform = 'scale(0.8)';
-        setTimeout(() => {
-            // パスを更新
-            if (playing) {
-                // 一時停止アイコン（2本の縦線）
-                if (iconPart1) iconPart1.setAttribute('d', 'M 6 5 L 10 5 L 10 19 L 6 19 Z');
-                if (iconPart2) iconPart2.setAttribute('d', 'M 14 5 L 18 5 L 18 19 L 14 19 Z');
-            } else if (!isSeeking) {
-                // 再生アイコン（三角形）
-                if (iconPart1) iconPart1.setAttribute('d', 'M 8 5 L 18 12 L 8 12 L 8 5 Z');
-                if (iconPart2) iconPart2.setAttribute('d', 'M 8 19 L 18 12 L 8 12 L 8 19 Z');
-            }
-            svg.style.transform = 'scale(1)';
-        }, 75);
-    } else {
-        // SVGがない場合は直接更新
-        if (playing) {
-            if (iconPart1) iconPart1.setAttribute('d', 'M 6 5 L 10 5 L 10 19 L 6 19 Z');
-            if (iconPart2) iconPart2.setAttribute('d', 'M 14 5 L 18 5 L 18 19 L 14 19 Z');
-        } else if (!isSeeking) {
-            if (iconPart1) iconPart1.setAttribute('d', 'M 8 5 L 18 12 L 8 12 L 8 5 Z');
-            if (iconPart2) iconPart2.setAttribute('d', 'M 8 19 L 18 12 L 8 12 L 8 19 Z');
-        }
+    // シーク中でなければアニメーション実行
+    if (!isSeeking || playing) {
+        animateIconPaths(iconPart1, iconPart2, playing);
     }
 
     if (playing) {
