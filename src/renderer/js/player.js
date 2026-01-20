@@ -107,6 +107,7 @@ function attachPlayerListeners(player) {
 
     // onplay よりも確実な onplaying (データが届いて動き出した時) を使用
     player.onplaying = () => {
+        console.log('[Player] onplaying event fired');
         updatePlaybackStateUI(true);
         resumeAudioContext();
         updatePlayingIndicators();
@@ -115,6 +116,7 @@ function attachPlayerListeners(player) {
     };
 
     player.onpause = () => {
+        console.log('[Player] onpause event fired');
         updatePlaybackStateUI(false);
         stopVisualizerLoop();
         updateMediaSessionState('paused');

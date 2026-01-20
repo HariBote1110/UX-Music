@@ -118,10 +118,57 @@ func (a *App) LoadPlayCounts() {
 // RequestPlaylistsWithArtwork loads playlists and emits an event
 func (a *App) RequestPlaylistsWithArtwork() {
 	fmt.Println("[Wails] RequestPlaylistsWithArtwork called")
-	playlists, _ := stores.Load("playlists")
-	if playlists == nil {
-		playlists = []interface{}{}
+
+	// Get playlist names from file system
+	playlistNames, err := GetAllPlaylists()
+	if err != nil {
+		fmt.Printf("[Wails] Error getting playlists: %v\n", err)
+		runtime.EventsEmit(a.ctx, "playlists-updated", []interface{}{})
+		return
 	}
+
+	// Load library to get artwork info
+	library, _ := stores.Load("library")
+	var librarySongs []interface{}
+	if library != nil {
+		librarySongs = library.([]interface{})
+	}
+
+	// Create a map from path to artwork
+	pathToArtwork := make(map[string]string)
+	for _, s := range librarySongs {
+		song := s.(map[string]interface{})
+		if path, ok := song["path"].(string); ok {
+			if artwork, ok := song["artwork"].(string); ok && artwork != "" {
+				pathToArtwork[path] = artwork
+			}
+		}
+	}
+
+	// Build playlist objects with artworks
+	var playlists []interface{}
+	for _, name := range playlistNames {
+		songPaths, _ := GetPlaylistSongs(name)
+
+		// Get first 4 unique artworks for collage
+		var artworks []string
+		seenArtworks := make(map[string]bool)
+		for _, path := range songPaths {
+			if artwork, exists := pathToArtwork[path]; exists && !seenArtworks[artwork] {
+				artworks = append(artworks, artwork)
+				seenArtworks[artwork] = true
+				if len(artworks) >= 4 {
+					break
+				}
+			}
+		}
+
+		playlists = append(playlists, map[string]interface{}{
+			"name":     name,
+			"artworks": artworks,
+		})
+	}
+
 	runtime.EventsEmit(a.ctx, "playlists-updated", playlists)
 }
 
@@ -159,8 +206,115 @@ func (a *App) GetPlaylistDetails(name string) (interface{}, error) {
 // GetSituationPlaylists returns generated playlists for "For You"
 func (a *App) GetSituationPlaylists() (interface{}, error) {
 	fmt.Println("[Wails] GetSituationPlaylists called")
-	// TODO: Replace with sidecar logic in future phase
-	return make(map[string]interface{}), nil
+
+	// Load library
+	library, _ := stores.Load("library")
+	if library == nil {
+		return make(map[string]interface{}), nil
+	}
+
+	songs := library.([]interface{})
+	if len(songs) == 0 {
+		return make(map[string]interface{}), nil
+	}
+
+	result := make(map[string]interface{})
+
+	// 1. Recently Added (最近追加した曲) - 最新の20曲
+	recentSongs := make([]interface{}, 0)
+	maxRecent := 20
+	if len(songs) < maxRecent {
+		maxRecent = len(songs)
+	}
+	// 最後に追加された曲を取得（配列の後ろから）
+	for i := len(songs) - 1; i >= len(songs)-maxRecent && i >= 0; i-- {
+		recentSongs = append(recentSongs, songs[i])
+	}
+	if len(recentSongs) > 0 {
+		result["recently_added"] = map[string]interface{}{
+			"name":  "最近追加した曲",
+			"songs": recentSongs,
+		}
+	}
+
+	// 2. Most Played (よく聴く曲) - play-counts データを使用
+	playCounts, _ := stores.Load("play-counts")
+	if playCounts != nil {
+		countsMap := playCounts.(map[string]interface{})
+		if len(countsMap) > 0 {
+			// 再生回数でソートした曲を取得
+			type songWithCount struct {
+				song  interface{}
+				count int
+			}
+			var songsWithCounts []songWithCount
+
+			for _, s := range songs {
+				song := s.(map[string]interface{})
+				path, ok := song["path"].(string)
+				if !ok {
+					continue
+				}
+				if countData, exists := countsMap[path]; exists {
+					countMap := countData.(map[string]interface{})
+					if count, ok := countMap["count"].(float64); ok && count > 0 {
+						songsWithCounts = append(songsWithCounts, songWithCount{song: s, count: int(count)})
+					}
+				}
+			}
+
+			// 簡易的なソート（降順）
+			for i := 0; i < len(songsWithCounts)-1; i++ {
+				for j := i + 1; j < len(songsWithCounts); j++ {
+					if songsWithCounts[j].count > songsWithCounts[i].count {
+						songsWithCounts[i], songsWithCounts[j] = songsWithCounts[j], songsWithCounts[i]
+					}
+				}
+			}
+
+			// 上位20曲を取得
+			mostPlayedSongs := make([]interface{}, 0)
+			maxPlayed := 20
+			if len(songsWithCounts) < maxPlayed {
+				maxPlayed = len(songsWithCounts)
+			}
+			for i := 0; i < maxPlayed; i++ {
+				mostPlayedSongs = append(mostPlayedSongs, songsWithCounts[i].song)
+			}
+
+			if len(mostPlayedSongs) > 0 {
+				result["most_played"] = map[string]interface{}{
+					"name":  "よく聴く曲",
+					"songs": mostPlayedSongs,
+				}
+			}
+		}
+	}
+
+	// 3. Random Pick (ランダムピック) - ランダムに20曲選択
+	if len(songs) >= 5 {
+		randomSongs := make([]interface{}, 0)
+		maxRandom := 20
+		if len(songs) < maxRandom {
+			maxRandom = len(songs)
+		}
+		// シンプルな疑似ランダム選択（現在時刻ベース）
+		step := len(songs) / maxRandom
+		if step < 1 {
+			step = 1
+		}
+		for i := 0; i < len(songs) && len(randomSongs) < maxRandom; i += step {
+			randomSongs = append(randomSongs, songs[i])
+		}
+		if len(randomSongs) > 0 {
+			result["random_pick"] = map[string]interface{}{
+				"name":  "ランダムピック",
+				"songs": randomSongs,
+			}
+		}
+	}
+
+	return result, nil
 }
 
 // CreatePlaylist moves the playlist creation logic to Go
