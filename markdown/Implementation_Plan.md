@@ -16,5 +16,9 @@
 ## 4. フロントエンドの疎通確認
 - [x] `wails build` (または dev) を試行し、フロントエンドから Go 側のメソッドが呼び出せることを確認。
 
-## 5. 次のステップへの準備
+## 5. 設定機能の移行とエラー解消
+- [x] Wails `App` 構造体への `GetSettings` / `SaveSettings` 実装。
+- [x] `bridge.js` の Wails 対応と `env-setup.js` による `TypeError` の解消。
+
+## 6. 次のステップへの準備
 - [ ] Electron 依存（ipcRenderer 等）の段階的な排除計画を策定。
