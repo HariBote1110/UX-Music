@@ -163,9 +163,17 @@ export function showContextMenu(x, y, items) {
 
     document.body.appendChild(menu);
 
+    // クリックでメニューを閉じる（次のフレームで登録して、現在のクリックイベントを無視）
     setTimeout(() => {
-        document.addEventListener('click', removeContextMenu, { once: true });
-        document.addEventListener('contextmenu', removeContextMenu, { once: true });
+        const closeHandler = (e) => {
+            // コンテキストメニュー内のクリックは無視
+            if (menu.contains(e.target)) return;
+            removeContextMenu();
+            document.removeEventListener('click', closeHandler);
+            document.removeEventListener('contextmenu', closeHandler);
+        };
+        document.addEventListener('click', closeHandler);
+        document.addEventListener('contextmenu', closeHandler);
     }, 0);
 }
 
