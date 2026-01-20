@@ -9,6 +9,8 @@ class SidecarManager extends EventEmitter {
         this.sidecarProcess = null;
         this.pendingRequests = new Map();
         this.requestIdCounter = 0;
+        this.isReady = false; // Sidecarの初期化(init)完了フラグ
+        this.requestQueue = []; // 初期化待ちのリクエストキュー
     }
 
     startSidecar() {
@@ -46,7 +48,7 @@ class SidecarManager extends EventEmitter {
                             } else {
                                 resolve(message.payload);
                             }
-                            return; // 独自ハンドリングしたので終了
+                            return;
                         }
 
                         // メッセージ全体を 'message' イベントとして発火
@@ -57,7 +59,7 @@ class SidecarManager extends EventEmitter {
                             this.emit(message.type, message.payload);
                         }
                     } catch (e) {
-                        console.log('[SidecarManager] Raw Output:', line);
+                        // JSONパースエラーは無視 (ログ出力も抑制)
                     }
                 });
             });
@@ -71,11 +73,15 @@ class SidecarManager extends EventEmitter {
             this.sidecarProcess.on('close', (code) => {
                 console.log(`[SidecarManager] Process exited with code ${code}`);
                 this.sidecarProcess = null;
+                this.isReady = false;
                 // 全てのペンディングリクエストをreject
                 for (const { reject } of this.pendingRequests.values()) {
                     reject(new Error(`Sidecar process exited with code ${code}`));
                 }
                 this.pendingRequests.clear();
+                // キューもクリア
+                this.requestQueue.forEach(({ reject }) => reject(new Error('Sidecar process exited')));
+                this.requestQueue = [];
             });
 
             // プロセスが安定して立ち上がったとみなしてresolve
@@ -88,12 +94,19 @@ class SidecarManager extends EventEmitter {
                     const ffprobePath = require('ffprobe-static').path.replace('app.asar', 'app.asar.unpacked');
 
                     try {
+                        // init メッセージは直接送る（まだ isReady = false なので invoke を使うとデッドロックする恐れがあるが、
+                        // 下記の invoke 修正で type==='init' はスルーするようにする）
                         await this.invoke('init', {
                             userDataPath: app.getPath('userData'),
                             ffmpegPath,
                             ffprobePath
                         });
                         console.log('[SidecarManager] Sidecar initialized.');
+
+                        // ★★★ 初期化完了。キューを消化 ★★★
+                        this.isReady = true;
+                        this.processQueue();
+
                     } catch (initErr) {
                         console.error('[SidecarManager] Failed to initialize sidecar:', initErr);
                         // 初期化失敗でもプロセスは生きているので進めるか、rejectするか。
@@ -114,7 +127,10 @@ class SidecarManager extends EventEmitter {
             console.warn('[SidecarManager] Sidecar is not running.');
             return;
         }
-        // Fire-and-forget: IDなし
+        // Fire-and-forget でも初期化待ちをするべきだが、簡易的な通知なら無視してよい場合もある。
+        // ここでは安全のため、もし初期化前なら送らない（もしくはキューする）のが正しいが、
+        // sendToSidecar は void 返却なので待てない。
+        // なので、invoke を使うように推奨していく。ここは既存互換のためそのまま。
         const message = JSON.stringify({ type, payload }) + '\n';
         this.sidecarProcess.stdin.write(message);
     }
@@ -128,30 +144,48 @@ class SidecarManager extends EventEmitter {
      */
     invoke(type, payload = {}, timeout = 30000) {
         return new Promise((resolve, reject) => {
-            if (!this.sidecarProcess) {
-                return reject(new Error('Sidecar is not running.'));
-            }
-
-            const id = (this.requestIdCounter++).toString();
-            this.pendingRequests.set(id, { resolve, reject });
-
-            const message = JSON.stringify({ id, type, payload }) + '\n';
-            try {
-                this.sidecarProcess.stdin.write(message);
-            } catch (err) {
-                this.pendingRequests.delete(id);
-                reject(err);
+            // 'init' は特別扱いして通す
+            if (!this.isReady && type !== 'init') {
+                // まだ準備ができていないのでキューに積む
+                this.requestQueue.push({ type, payload, timeout, resolve, reject });
                 return;
             }
 
-            // タイムアウト設定
-            setTimeout(() => {
-                if (this.pendingRequests.has(id)) {
-                    this.pendingRequests.delete(id);
-                    reject(new Error(`Request ${type} timed out after ${timeout}ms`));
-                }
-            }, timeout);
+            this._executeRequest(type, payload, timeout, resolve, reject);
         });
+    }
+
+    processQueue() {
+        while (this.requestQueue.length > 0) {
+            const { type, payload, timeout, resolve, reject } = this.requestQueue.shift();
+            this._executeRequest(type, payload, timeout, resolve, reject);
+        }
+    }
+
+    _executeRequest(type, payload, timeout, resolve, reject) {
+        if (!this.sidecarProcess) {
+            return reject(new Error('Sidecar is not running.'));
+        }
+
+        const id = (this.requestIdCounter++).toString();
+        this.pendingRequests.set(id, { resolve, reject });
+
+        const message = JSON.stringify({ id, type, payload }) + '\n';
+        try {
+            this.sidecarProcess.stdin.write(message);
+        } catch (err) {
+            this.pendingRequests.delete(id);
+            reject(err);
+            return;
+        }
+
+        // タイムアウト設定
+        setTimeout(() => {
+            if (this.pendingRequests.has(id)) {
+                this.pendingRequests.delete(id);
+                reject(new Error(`Request ${type} timed out after ${timeout}ms`));
+            }
+        }, timeout);
     }
 
     stopSidecar() {
