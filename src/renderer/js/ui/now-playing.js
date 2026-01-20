@@ -3,7 +3,7 @@
 import { state, elements } from '../state.js';
 import { setEqualizerColorFromArtwork } from '../player.js';
 import { resolveArtworkPath, formatSongTitle } from './utils.js';
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 function getYoutubeVideoId(url) {
     if (typeof url !== 'string') return null;
@@ -14,21 +14,21 @@ function getYoutubeVideoId(url) {
 
 export function updateNowPlayingView(song) {
     console.log('[Debug:NowPlaying] updateNowPlayingView 開始 - 曲:', song?.title);
-    
-    const { 
-        nowPlayingArtworkContainer, 
-        nowPlayingTitle, 
+
+    const {
+        nowPlayingArtworkContainer,
+        nowPlayingTitle,
         nowPlayingArtist,
-        hubLinkContainer 
+        hubLinkContainer
     } = elements;
-    
+
     const localPlayer = document.getElementById('main-player');
 
     if (localPlayer) {
         document.body.appendChild(localPlayer);
         localPlayer.style.display = 'none';
     }
-    
+
     if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.innerHTML = '';
     if (hubLinkContainer) hubLinkContainer.innerHTML = '';
     if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.classList.remove('video-mode');
@@ -39,7 +39,7 @@ export function updateNowPlayingView(song) {
         img.src = './assets/default_artwork.png';
         if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.appendChild(img);
         setEqualizerColorFromArtwork(img);
-    
+
     } else if (song.type === 'youtube') {
         console.log('[Debug:NowPlaying] YouTube モードで描画します。');
         if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.classList.add('video-mode');
@@ -53,7 +53,7 @@ export function updateNowPlayingView(song) {
             iframe.setAttribute('allow', 'autoplay; encrypted-media');
             if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.appendChild(iframe);
         }
-        
+
         const artworkImage = new Image();
         artworkImage.crossOrigin = "Anonymous";
         artworkImage.onload = () => setEqualizerColorFromArtwork(artworkImage);
@@ -70,7 +70,7 @@ export function updateNowPlayingView(song) {
 
         const masterSong = state.library.find(s => s.path === song.path) || song;
         const album = state.albums.get(masterSong.albumKey);
-        
+
         let artwork;
         if (masterSong.album === 'Unknown Album' || (album && album.title === 'Unknown Album')) {
             artwork = null;
@@ -90,12 +90,12 @@ export function updateNowPlayingView(song) {
             nowPlayingArtworkContainer.appendChild(img);
         }
     }
-    
+
     if (song && song.hubUrl && hubLinkContainer) {
         const hubButton = document.createElement('button');
         hubButton.className = 'hub-link-button-small';
         hubButton.textContent = '🔗 公式リンクを開く';
-        hubButton.addEventListener('click', () => ipcRenderer.send('open-external-link', song.hubUrl));
+        hubButton.addEventListener('click', () => electronAPI.send('open-external-link', song.hubUrl));
         hubLinkContainer.appendChild(hubButton);
     }
 

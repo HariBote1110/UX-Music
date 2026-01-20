@@ -1,7 +1,4 @@
-// src/renderer/js/ui/utils.js
-const path = require('path');
-// ▼▼▼ 追加 (player.js から移動した setEqualizerColorFromArtwork のため) ▼▼▼
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 import { state } from '../state.js';
 // ▲▲▲ 追加 ▲▲▲
 
@@ -18,21 +15,21 @@ export function resolveArtworkPath(artwork, isThumbnail = false) {
     if (typeof artwork === 'string' && (artwork.startsWith('http') || artwork.startsWith('data:'))) {
         return artwork;
     }
-    
+
     // Handle the standard artwork object { full, thumbnail }
     if (typeof artwork === 'object' && artwork.full && artwork.thumbnail) {
         const fileName = isThumbnail ? artwork.thumbnail : artwork.full;
         const subDir = isThumbnail ? 'thumbnails' : '';
-        const safePath = path.join(subDir, fileName).replace(/\\/g, '/');
+        const safePath = (subDir ? subDir + '/' : '') + fileName.replace(/\\/g, '/');
         return `safe-artwork://${safePath}`;
     }
-    
+
     // Fallback for legacy string-based artwork data
     if (typeof artwork === 'string') {
         const safePath = artwork.replace(/\\/g, '/');
         return `safe-artwork://${safePath}`;
     }
-    
+
     console.warn('Unknown artwork format received, using default.', artwork);
     return './assets/default_artwork.png';
 }
@@ -163,7 +160,7 @@ export function showContextMenu(x, y, items) {
     });
 
     document.body.appendChild(menu);
-    
+
     setTimeout(() => {
         document.addEventListener('click', removeContextMenu, { once: true });
         document.addEventListener('contextmenu', removeContextMenu, { once: true });
@@ -243,11 +240,11 @@ async function getColorsFromArtwork(img) {
             }
             // 最も多く出現した色でソート
             const sortedColors = Object.keys(colorCount).sort((a, b) => colorCount[b] - colorCount[a]);
-            
+
             if (sortedColors.length >= 2) {
-                resolve([ `rgb(${sortedColors[0]})`, `rgb(${sortedColors[1]})` ]);
+                resolve([`rgb(${sortedColors[0]})`, `rgb(${sortedColors[1]})`]);
             } else if (sortedColors.length === 1) {
-                resolve([ `rgb(${sortedColors[0]})`, `rgb(${sortedColors[0]})` ]);
+                resolve([`rgb(${sortedColors[0]})`, `rgb(${sortedColors[0]})`]);
             } else {
                 resolve(null);
             }

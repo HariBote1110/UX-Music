@@ -16,7 +16,7 @@ import { stopLrcEditing } from './lrc-editor.js';
 import { startCDRipView, stopCDRipView } from './cd-ripper.js';
 import { initMtpBrowser, stopMtpBrowser } from './mtp-browser.js';
 // ▲▲▲ 追加 ▲▲▲
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 /**
  * 指定されたIDのビューを表示する
@@ -124,7 +124,7 @@ export function showSituationPlaylistDetail(playlistDetails) {
 }
 
 export async function showPlaylist(playlistName) {
-    const playlistDetails = await ipcRenderer.invoke('get-playlist-details', playlistName);
+    const playlistDetails = await electronAPI.invoke('get-playlist-details', playlistName);
     state.currentlyViewedSongs = playlistDetails.songs;
     showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: playlistDetails });
 }

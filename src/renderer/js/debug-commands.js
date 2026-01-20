@@ -1,4 +1,4 @@
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 import { setVisualizerFpsLimit, toggleVisualizerEcoMode } from './player.js';
 
 export function initDebugCommands() {
@@ -6,13 +6,13 @@ export function initDebugCommands() {
         resetLibrary: () => {
             const confirmation = confirm('本当にライブラリをリセットしますか？...');
             if (confirmation) {
-                ipcRenderer.send('debug-reset-library');
+                electronAPI.send('debug-reset-library');
             }
         },
         rollbackMigration: () => {
             const confirmation = confirm('本当にマイグレーションをロールバックしますか？...');
             if (confirmation) {
-                ipcRenderer.send('debug-rollback-migration');
+                electronAPI.send('debug-rollback-migration');
             }
         },
         setVisualizerFps: (fps) => {
@@ -44,7 +44,7 @@ export function initDebugCommands() {
             const confirmation = confirm(confirmationMessage);
             if (confirmation) {
                 console.log('[DEBUG] YouTube features ENABLED.');
-                ipcRenderer.send('save-settings', { enableYouTube: true });
+                electronAPI.send('save-settings', { enableYouTube: true });
                 document.querySelectorAll('[data-feature="youtube"], #add-youtube-btn, #add-youtube-playlist-btn').forEach(el => {
                     el.classList.remove('hidden');
                 });

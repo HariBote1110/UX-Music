@@ -2,7 +2,7 @@ import { state, elements } from './state.js';
 import { setupSongListScroller, createListHeader, initListHeaderResizing } from './ui/list-renderer.js';
 import { resolveArtworkPath, formatSongTitle } from './ui/utils.js';
 import { setEqualizerColorFromArtwork } from './player.js';
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 /**
  * 再生バーの高さに基づいて、全リスト共通の余白（--footer-height）を更新する
@@ -125,7 +125,7 @@ export function initUI() {
 
                 try {
                     // 1回のIPC呼び出しで全ファイルを転送
-                    const result = await ipcRenderer.invoke('mtp-upload-files-with-structure', {
+                    const result = await electronAPI.invoke('mtp-upload-files-with-structure', {
                         storageId,
                         transferList
                     });
@@ -276,7 +276,7 @@ export function updateNowPlayingView(song) {
         const hubButton = document.createElement('button');
         hubButton.className = 'hub-link-button-small';
         hubButton.textContent = '🔗 公式リンクを開く';
-        hubButton.addEventListener('click', () => ipcRenderer.send('open-external-link', song.hubUrl));
+        hubButton.addEventListener('click', () => electronAPI.send('open-external-link', song.hubUrl));
         hubLinkContainer.appendChild(hubButton);
     }
 

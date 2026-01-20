@@ -18,7 +18,8 @@ import { initQuiz } from './js/quiz.js';
 import { playNextSong, playPrevSong } from './js/playback-manager.js';
 import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
 
-const { ipcRenderer } = require('electron');
+// window.electronAPI は preload.js によって公開されます
+const electronAPI = window.electronAPI;
 
 window.artworkLoadTimes = [];
 window.observeNewArtworks = (container) => observeNewImages(container || document);
@@ -38,7 +39,7 @@ async function initApp() {
     } catch (e) {
         console.error('Failed to init elements:', e);
     }
-    
+
     initLazyLoader(elements.mainContent);
 
     const safeInit = (fn, name) => {
@@ -65,101 +66,102 @@ async function initApp() {
                 playNextSong();
             },
             onNextSong: () => {
-                 console.log('[Renderer] 次へボタンが押されました。');
-                 playNextSong();
+                console.log('[Renderer] 次へボタンが押されました。');
+                playNextSong();
             },
             onPrevSong: () => {
-                 console.log('[Renderer] 前へボタンが押されました。');
-                 playPrevSong();
+                console.log('[Renderer] 前へボタンが押されました。');
+                playPrevSong();
             }
         });
         // ▲▲▲ 修正完了 ▲▲▲
     }
 
-    initIPC(ipcRenderer, {
-        onAppInfoResponse: (info) => {
-            const appVersionEl = document.getElementById('app-version');
-            if (appVersionEl) appVersionEl.textContent = `v${info.version}`;
-        },
-        onLibraryLoaded: async (data) => {
-            if (!state.artworksDir) state.artworksDir = await ipcRenderer.invoke('get-artworks-dir');
-            addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
-            
-            const initialView = state.activeViewId || 'track-view';
-            showView(initialView);
-            
-            ipcRenderer.send('request-playlists-with-artwork');
-            const loadingOverlay = document.getElementById('loading-overlay');
-            if(loadingOverlay) loadingOverlay.classList.add('hidden');
-        },
-        onSettingsLoaded: (settings) => {
-            if (typeof settings.volume === 'number') {
-                if(elements.volumeSlider) elements.volumeSlider.value = settings.volume;
-            }
-            state.visualizerMode = settings.visualizerMode || 'active';
-            
-            // プロパティ名を isShuffled に統一
-            if (typeof settings.isShuffled === 'boolean') {
-                state.isShuffled = settings.isShuffled;
-                if(elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
-            }
-            if (typeof settings.groupAlbumArt === 'boolean') {
-                state.groupAlbumArt = settings.groupAlbumArt;
-                if (state.activeViewId === 'track-view') showView('track-view');
-            }
-             if (settings.enableYouTube) {
-                document.querySelectorAll('[data-feature="youtube"]').forEach(el => el.classList.remove('hidden'));
-            }
-        },
-        onPlayCountsUpdated: (counts) => {
-            state.playCounts = counts;
-            Object.keys(counts).forEach(songPath => updatePlayCountDisplay(songPath, counts[songPath].count));
-        },
-        onPlaylistsUpdated: (playlists) => {
-            state.playlists = playlists;
-            if (state.activeViewId === 'playlist-view') showView('playlist-view');
-        },
-        onForceReloadPlaylist: async (playlistName) => {
-            if (state.currentDetailView.type === 'playlist' && state.currentDetailView.identifier === playlistName) {
-                const updatedDetails = await ipcRenderer.invoke('get-playlist-details', playlistName);
-                state.currentlyViewedSongs = updatedDetails.songs;
-                showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: updatedDetails });
-            }
-        },
+    electronAPI.on('app-info-response', (info) => {
+        const appVersionEl = document.getElementById('app-version');
+        if (appVersionEl) appVersionEl.textContent = `v${info.version}`;
     });
 
-    ipcRenderer.send('request-app-info');
-    
+    electronAPI.on('library-loaded', async (data) => {
+        if (!state.artworksDir) state.artworksDir = await electronAPI.invoke('get-artworks-dir');
+        addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
+
+        const initialView = state.activeViewId || 'track-view';
+        showView(initialView);
+
+        electronAPI.send('request-playlists-with-artwork');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    });
+
+    electronAPI.on('settings-loaded', (settings) => {
+        if (typeof settings.volume === 'number') {
+            if (elements.volumeSlider) elements.volumeSlider.value = settings.volume;
+        }
+        state.visualizerMode = settings.visualizerMode || 'active';
+
+        if (typeof settings.isShuffled === 'boolean') {
+            state.isShuffled = settings.isShuffled;
+            if (elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
+        }
+        if (typeof settings.groupAlbumArt === 'boolean') {
+            state.groupAlbumArt = settings.groupAlbumArt;
+            if (state.activeViewId === 'track-view') showView('track-view');
+        }
+        if (settings.enableYouTube) {
+            document.querySelectorAll('[data-feature="youtube"]').forEach(el => el.classList.remove('hidden'));
+        }
+    });
+
+    electronAPI.on('play-counts-updated', (counts) => {
+        state.playCounts = counts;
+        Object.keys(counts).forEach(songPath => updatePlayCountDisplay(songPath, counts[songPath].count));
+    });
+
+    electronAPI.on('playlists-updated', (playlists) => {
+        state.playlists = playlists;
+        if (state.activeViewId === 'playlist-view') showView('playlist-view');
+    });
+
+    electronAPI.on('force-reload-playlist', async (playlistName) => {
+        if (state.currentDetailView.type === 'playlist' && state.currentDetailView.identifier === playlistName) {
+            const updatedDetails = await electronAPI.invoke('get-playlist-details', playlistName);
+            state.currentlyViewedSongs = updatedDetails.songs;
+            showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: updatedDetails });
+        }
+    });
+
+    electronAPI.send('request-app-info');
+
     try {
-        const settings = await ipcRenderer.invoke('get-settings');
+        const settings = await electronAPI.invoke('get-settings');
         if (settings) {
             if (typeof settings.groupAlbumArt === 'boolean') {
                 state.groupAlbumArt = settings.groupAlbumArt;
             }
-            // プロパティ名を isShuffled に統一
             if (typeof settings.isShuffled === 'boolean') {
                 state.isShuffled = settings.isShuffled;
-                if(elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
+                if (elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
             }
         }
 
         if (settings.libraryPath) {
-            ipcRenderer.send('load-library');
+            electronAPI.send('load-library');
         } else {
             const loadingOverlay = document.getElementById('loading-overlay');
-            if(loadingOverlay) loadingOverlay.classList.add('hidden');
+            if (loadingOverlay) loadingOverlay.classList.add('hidden');
         }
     } catch (e) {
         console.error('Failed to load settings or library:', e);
         const loadingOverlay = document.getElementById('loading-overlay');
-        if(loadingOverlay) loadingOverlay.classList.add('hidden');
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
     }
-    
-    ipcRenderer.send('app-ready');
+
+    electronAPI.send('app-ready');
 
     try {
         updateAudioDevices();
-    } catch(e) {
+    } catch (e) {
         console.error('Failed to update audio devices:', e);
     }
 }

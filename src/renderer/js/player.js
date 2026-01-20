@@ -30,15 +30,15 @@ import {
     analyser,
     dataArray
 } from './audio-graph.js';
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
-let localPlayer; 
+let localPlayer;
 let currentSongType = 'local';
 
 let savedCallbacks = {
-    onSongEnded: () => {},
-    onNextSong: () => {},
-    onPrevSong: () => {}
+    onSongEnded: () => { },
+    onNextSong: () => { },
+    onPrevSong: () => { }
 };
 
 export function getCurrentTime() {
@@ -93,7 +93,7 @@ export {
 function attachPlayerListeners(player) {
     player.onended = () => {
         const finishedSong = state.playbackQueue[state.currentSongIndex];
-        if (state.analysedQueue.enabled && finishedSong) ipcRenderer.send('song-finished', finishedSong);
+        if (state.analysedQueue.enabled && finishedSong) electronAPI.send('song-finished', finishedSong);
         if (typeof savedCallbacks.onSongEnded === 'function') savedCallbacks.onSongEnded();
         updateLrcEditorControls(false, getDuration(), getDuration());
     };
@@ -104,7 +104,7 @@ function attachPlayerListeners(player) {
         updateMetadataUI();
         updateMediaSessionHandlers();
     };
-    
+
     // onplay よりも確実な onplaying (データが届いて動き出した時) を使用
     player.onplaying = () => {
         updatePlaybackStateUI(true);
@@ -113,7 +113,7 @@ function attachPlayerListeners(player) {
         startVisualizerLoop();
         updateMediaSessionState('playing');
     };
-    
+
     player.onpause = () => {
         updatePlaybackStateUI(false);
         stopVisualizerLoop();
@@ -122,9 +122,9 @@ function attachPlayerListeners(player) {
 }
 
 export async function initPlayer(playerElement, callbacks, sinkId = null) {
-    localPlayer = playerElement; 
+    localPlayer = playerElement;
     savedCallbacks = { ...callbacks };
-    
+
     await initAudioGraph(localPlayer, sinkId);
     attachPlayerListeners(localPlayer);
 
@@ -144,10 +144,10 @@ function updateMediaSessionHandlers() {
             navigator.mediaSession.setActionHandler('play', () => togglePlayPause());
             navigator.mediaSession.setActionHandler('pause', () => togglePlayPause());
             navigator.mediaSession.setActionHandler('stop', () => stop());
-            navigator.mediaSession.setActionHandler('previoustrack', () => { if(savedCallbacks.onPrevSong) savedCallbacks.onPrevSong(); });
-            navigator.mediaSession.setActionHandler('nexttrack', () => { if(savedCallbacks.onNextSong) savedCallbacks.onNextSong(); });
+            navigator.mediaSession.setActionHandler('previoustrack', () => { if (savedCallbacks.onPrevSong) savedCallbacks.onPrevSong(); });
+            navigator.mediaSession.setActionHandler('nexttrack', () => { if (savedCallbacks.onNextSong) savedCallbacks.onNextSong(); });
             navigator.mediaSession.setActionHandler('seekto', (details) => { if (details.seekTime !== undefined) seek(details.seekTime); });
-        } catch (e) {}
+        } catch (e) { }
     }
 }
 async function setMediaSessionMetadata(song) {
@@ -156,11 +156,11 @@ async function setMediaSessionMetadata(song) {
     const album = state.albums.get(song.albumKey);
     let artworkSource = song.artwork || (album ? album.artwork : null);
     if (typeof artworkSource === 'object' && artworkSource !== null) artworkSource = artworkSource.full || artworkSource.thumbnail;
-    
+
     if (typeof artworkSource === 'string' && artworkSource) {
         let src = artworkSource;
         if (!src.startsWith('http') && !src.startsWith('https') && !src.startsWith('data:') && !src.startsWith('blob:')) {
-             try { const dataUrl = await ipcRenderer.invoke('get-artwork-as-data-url', src); if (dataUrl) src = dataUrl; } catch (error) {}
+            try { const dataUrl = await electronAPI.invoke('get-artwork-as-data-url', artworkSource); if (dataUrl) src = dataUrl; } catch (error) { }
         }
         ['96x96', '128x128', '256x256', '384x384', '512x512'].forEach(size => artwork.push({ src, sizes: size, type: 'image/png' }));
     }
@@ -169,19 +169,19 @@ async function setMediaSessionMetadata(song) {
 }
 
 export async function play(song) {
-    await stop(); 
+    await stop();
     if (!song) return;
 
-    const settings = await ipcRenderer.invoke('get-settings');
+    const settings = await electronAPI.invoke('get-settings');
     const TARGET_LOUDNESS = settings?.targetLoudness ?? -18.0;
-    const savedLoudness = await ipcRenderer.invoke('get-loudness-value', song.path);
+    const savedLoudness = await electronAPI.invoke('get-loudness-value', song.path);
     let newBaseGain = 1.0;
     if (typeof savedLoudness === 'number' && Number.isFinite(savedLoudness)) {
         const gainDb = TARGET_LOUDNESS - savedLoudness;
         newBaseGain = Math.pow(10, gainDb / 20);
     }
     setBaseGain(newBaseGain);
-    setMediaSessionMetadata(song).catch(()=>{});
+    setMediaSessionMetadata(song).catch(() => { });
 
     if (song.path) {
         currentSongType = 'local';
@@ -193,8 +193,8 @@ export async function stop() {
     if (!localPlayer) return;
     localPlayer.pause();
     stopVisualizerLoop();
-    resetPlaybackUI(); 
-    ipcRenderer.send('playback-stopped');
+    resetPlaybackUI();
+    electronAPI.send('playback-stopped');
     updateMediaSessionState('none');
 }
 
@@ -207,7 +207,7 @@ async function playLocal(song) {
         console.log(`[Player] Swapping player element for ${rate}Hz.`);
         if (localPlayer) {
             localPlayer.pause();
-            localPlayer.removeAttribute('src'); 
+            localPlayer.removeAttribute('src');
         }
 
         const oldEl = document.getElementById('main-player');
@@ -217,19 +217,19 @@ async function playLocal(song) {
         if (oldEl) {
             oldEl.replaceWith(newPlayer);
         } else {
-            newPlayer.style.display = 'none'; 
+            newPlayer.style.display = 'none';
             document.body.appendChild(newPlayer);
         }
 
         localPlayer = newPlayer;
         attachPlayerListeners(localPlayer);
-        
+
         // initPlayerControls はここから削除しました (二重登録防止)
     }
 
     const safePath = encodeURI(song.path.replace(/\\/g, '/')).replace(/#/g, '%23');
     localPlayer.src = `file://${safePath}`;
-    
+
     try {
         await localPlayer.play();
     } catch (error) {
@@ -246,7 +246,7 @@ export async function togglePlayPause() {
     if (!localPlayer.paused) {
         localPlayer.pause();
     } else {
-         try { await localPlayer.play(); } catch (e) {}
+        try { await localPlayer.play(); } catch (e) { }
     }
 }
 export async function seekToStart() { seek(0); }

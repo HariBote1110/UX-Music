@@ -2,7 +2,6 @@
 import { formatTime, checkTextOverflow, resolveArtworkPath, formatSongTitle } from './utils.js';
 import { state } from '../state.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
-const path = require('path');
 
 export function createSongItem(song, index, songList, options = {}) {
     const { groupAlbumArt = false } = options;
@@ -25,10 +24,10 @@ export function createSongItem(song, index, songList, options = {}) {
             isGrouped = true;
         }
     }
-    
+
     // Light Flightモードでもimgタグは常に生成し、CSSで表示を制御する
     const artworkHTML = `<img src="./assets/default_artwork.png" class="artwork-small lazy-load" alt="artwork">`;
-    
+
     const hiResIconHTML = song.isHiRes ? `
         <svg class="hires-icon" width="24" height="14" viewBox="0 0 24 14" xmlns="http://www.w3.org/2000/svg">
             <rect x="0.5" y="0.5" width="23" height="13" rx="2" stroke="#D9A300" stroke-opacity="0.8" fill="none"/>
@@ -59,7 +58,7 @@ export function createSongItem(song, index, songList, options = {}) {
 
     if (isGrouped) {
         if (artworkImg) artworkImg.style.visibility = 'hidden';
-        
+
         const verticalLine = document.createElement('div');
         verticalLine.style.position = 'absolute';
         verticalLine.style.left = '50%';
@@ -78,7 +77,7 @@ export function createSongItem(song, index, songList, options = {}) {
             horizontalLine.style.width = '50%';
             horizontalLine.style.height = '1px';
             horizontalLine.style.backgroundColor = 'var(--text-muted)';
-            
+
             artworkCol.appendChild(horizontalLine);
         } else {
             verticalLine.style.top = '0';
@@ -90,14 +89,9 @@ export function createSongItem(song, index, songList, options = {}) {
     if (artworkImg) {
         if (showArt) {
             const album = state.albums.get(song.albumKey);
-            
-            // ▼▼▼ 修正: アートワーク解決ロジックを強化 ▼▼▼
+
             let artwork = null;
             if (song.album !== 'Unknown Album') {
-                // 優先順位: 
-                // 1. 曲自身のアートワーク
-                // 2. アルバムオブジェクトのアートワーク
-                // 3. アルバムに含まれる最初の曲のアートワーク (アルバムオブジェクトの画像が欠落している場合の保険)
                 if (song.artwork) {
                     artwork = song.artwork;
                 } else if (album) {
@@ -109,26 +103,25 @@ export function createSongItem(song, index, songList, options = {}) {
                     }
                 }
             }
-            // ▲▲▲ 修正ここまで ▲▲▲
 
             artworkImg.classList.add('lazy-load');
             artworkImg.dataset.src = resolveArtworkPath(artwork, true);
         }
     }
-    
+
     requestAnimationFrame(() => {
         songItem.querySelectorAll('.marquee-wrapper').forEach(checkTextOverflow);
     });
-    
+
     return songItem;
 }
 
-export function createQueueItem(song, isPlaying, ipcRenderer) {
+export function createQueueItem(song, isPlaying) {
     const queueItem = document.createElement('div');
     queueItem.className = `queue-item ${isPlaying ? 'playing' : ''}`;
     queueItem.dataset.songPath = song.path;
     queueItem.draggable = true;
-    
+
     const artworkHTML = state.isLightFlightMode ? '' : `<img src="./assets/default_artwork.png" class="artwork-small" alt="artwork">`;
 
     queueItem.innerHTML = `
@@ -146,7 +139,7 @@ export function createQueueItem(song, isPlaying, ipcRenderer) {
             </div>
         </div>
     `;
-    
+
     if (!state.isLightFlightMode) {
         const artworkImg = queueItem.querySelector('.artwork-small');
         const album = state.albums.get(song.albumKey);
@@ -164,12 +157,12 @@ export function createQueueItem(song, isPlaying, ipcRenderer) {
 }
 
 
-export function createAlbumGridItem(key, album, ipcRenderer) {
+export function createAlbumGridItem(key, album) {
     const albumItem = document.createElement('div');
     albumItem.className = 'album-grid-item';
-    
+
     const artworkHTML = state.isLightFlightMode ? '<div class="album-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="album-artwork lazy-load" alt="${album.title}">`;
-    
+
     albumItem.innerHTML = `
         ${artworkHTML}
         <div class="album-title marquee-wrapper">
@@ -183,19 +176,17 @@ export function createAlbumGridItem(key, album, ipcRenderer) {
             </div>
         </div>
     `;
-    
+
     if (!state.isLightFlightMode) {
         const artworkImg = albumItem.querySelector('.album-artwork');
         artworkImg.classList.add('lazy-load');
 
-        // ▼▼▼ 修正: グリッド表示でも曲からのフォールバックを行う ▼▼▼
         let artworkToUse = album.artwork;
         if (!artworkToUse && album.songs && album.songs.length > 0) {
-             const songWithArt = album.songs.find(s => s.artwork);
-             if (songWithArt) artworkToUse = songWithArt.artwork;
+            const songWithArt = album.songs.find(s => s.artwork);
+            if (songWithArt) artworkToUse = songWithArt.artwork;
         }
         artworkImg.dataset.src = resolveArtworkPath(artworkToUse, false);
-        // ▲▲▲ 修正ここまで ▲▲▲
 
         artworkImg.onload = () => window.artworkLoadTimes.push(performance.now());
     }
@@ -203,10 +194,10 @@ export function createAlbumGridItem(key, album, ipcRenderer) {
     return albumItem;
 }
 
-export function createArtistGridItem(artist, ipcRenderer) {
+export function createArtistGridItem(artist) {
     const artistItem = document.createElement('div');
     artistItem.className = 'artist-grid-item';
-    
+
     const artworkHTML = state.isLightFlightMode ? '<div class="artist-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="artist-artwork lazy-load" alt="${artist.name}">`;
 
     artistItem.innerHTML = `
@@ -228,12 +219,12 @@ export function createArtistGridItem(artist, ipcRenderer) {
     return artistItem;
 }
 
-export function createPlaylistGridItem(playlist, ipcRenderer) {
+export function createPlaylistGridItem(playlist) {
     const playlistItem = document.createElement('div');
     playlistItem.className = 'playlist-grid-item';
-    
+
     const artworkHTML = state.isLightFlightMode ? '<div class="playlist-artwork-container placeholder-artwork"></div>' : `<div class="playlist-artwork-container"></div>`;
-    
+
     playlistItem.innerHTML = `
         ${artworkHTML}
         <div class="playlist-title marquee-wrapper">
@@ -242,7 +233,7 @@ export function createPlaylistGridItem(playlist, ipcRenderer) {
             </div>
         </div>
     `;
-    
+
     if (!state.isLightFlightMode) {
         const artworkContainer = playlistItem.querySelector('.playlist-artwork-container');
         const resolver = (artwork) => resolveArtworkPath(artwork, false);

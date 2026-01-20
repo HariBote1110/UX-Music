@@ -6,14 +6,14 @@ import { updatePlayingIndicators, renderCurrentView } from './ui-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
 import { updateNowPlayingView } from './ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 function handleSkip() {
     if (state.analysedQueue.enabled && state.currentSongIndex > -1) {
         const skippedSong = state.playbackQueue[state.currentSongIndex];
         const player = document.getElementById('main-player');
         if (skippedSong && player && player.currentTime > 0 && player.duration > 0) {
-            ipcRenderer.send('song-skipped', { song: skippedSong, currentTime: player.currentTime });
+            electronAPI.send('song-skipped', { song: skippedSong, currentTime: player.currentTime });
         }
     }
 }
@@ -23,14 +23,14 @@ function handleSkip() {
  */
 export async function initPlaybackSettings() {
     console.log('[Debug:Playback] initPlaybackSettings を開始します。');
-    const settings = await ipcRenderer.invoke('get-settings');
-    
+    const settings = await electronAPI.invoke('get-settings');
+
     if (settings.isShuffled !== undefined) {
         state.isShuffled = settings.isShuffled;
         elements.shuffleBtn.classList.toggle('active', state.isShuffled);
         console.log(`[Debug:Playback] シャッフル設定を復元: ${state.isShuffled}`);
     }
-    
+
     if (settings.playbackMode !== undefined) {
         state.playbackMode = settings.playbackMode;
         elements.loopBtn.classList.toggle('active', state.playbackMode !== PLAYBACK_MODES.NORMAL);
@@ -44,11 +44,11 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     const songToPlay = targetQueue[index];
 
     console.log(`[Debug:Playback] playSong 開始 - index: ${index}, 曲名: ${songToPlay?.title}`);
-    
+
     if (sourceList) {
         handleSkip();
     }
-    
+
     state.songWaitingForAnalysis = null;
 
     if (sourceList) {
@@ -75,46 +75,46 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
         updateNowPlayingView(null);
         return;
     }
-    
+
     let songToPlayActual = songList[index];
 
     if (songToPlayActual.type === 'local' && songToPlayActual.id) {
         const librarySong = state.library.find(s => s.id === songToPlayActual.id);
         if (librarySong) {
-             Object.assign(songToPlayActual, librarySong);
-             state.playbackQueue[index] = songToPlayActual;
+            Object.assign(songToPlayActual, librarySong);
+            state.playbackQueue[index] = songToPlayActual;
         }
     }
 
     if (songToPlayActual.type === 'local' && (songToPlayActual.bpm === undefined || songToPlayActual.bpm === null)) {
-        ipcRenderer.send('request-bpm-analysis', songToPlayActual);
+        electronAPI.send('request-bpm-analysis', songToPlayActual);
     }
 
     if (songToPlayActual.type === 'local' && !forcePlay) {
-        const savedLoudness = await ipcRenderer.invoke('get-loudness-value', songToPlayActual.path);
+        const savedLoudness = await electronAPI.invoke('get-loudness-value', songToPlayActual.path);
         if (typeof savedLoudness !== 'number') {
             state.songWaitingForAnalysis = { index, sourceList: state.playbackQueue };
             showNotification(`「${songToPlayActual.title}」の再生準備中です...`);
-            ipcRenderer.send('request-loudness-analysis', songToPlayActual.path);
+            electronAPI.send('request-loudness-analysis', songToPlayActual.path);
             return;
         }
     }
-    
+
     hideNotification();
     loadLyricsForSong(songToPlayActual);
-    
-    ipcRenderer.send('playback-started', songToPlayActual);
+
+    electronAPI.send('playback-started', songToPlayActual);
     state.currentSongIndex = index;
-    
+
     console.log('[Debug:Playback] UI更新関数(updateNowPlayingView, updatePlayingIndicators)を呼び出します。');
     updateNowPlayingView(songToPlayActual);
     updatePlayingIndicators();
-    
+
     await playSongInPlayer(songToPlayActual);
 }
 
 export function playNextSong() {
-    handleSkip(); 
+    handleSkip();
     if (state.playbackQueue.length === 0) return;
 
     if (state.playbackMode === PLAYBACK_MODES.LOOP_ONE) {
@@ -133,7 +133,7 @@ export function playNextSong() {
             loadLyricsForSong(null);
             state.currentSongIndex = -1;
             updatePlayingIndicators();
-            ipcRenderer.send('playback-stopped');
+            electronAPI.send('playback-stopped');
             return;
         }
     }
@@ -141,7 +141,7 @@ export function playNextSong() {
 }
 
 export function playPrevSong() {
-    handleSkip(); 
+    handleSkip();
     if (state.playbackQueue.length === 0) return;
     let prevIndex = state.currentSongIndex - 1;
     if (prevIndex < 0) {
@@ -153,13 +153,13 @@ export function playPrevSong() {
 export function toggleShuffle() {
     state.isShuffled = !state.isShuffled;
     elements.shuffleBtn.classList.toggle('active', state.isShuffled);
-    ipcRenderer.send('save-settings', { isShuffled: state.isShuffled });
+    electronAPI.send('save-settings', { isShuffled: state.isShuffled });
 
     const currentSong = state.playbackQueue[state.currentSongIndex];
 
     if (state.isShuffled) {
         const newShuffledQueue = [...state.originalQueueSource];
-        
+
         const currentIndexInOriginal = newShuffledQueue.findIndex(s => s.id === currentSong?.id);
         if (currentIndexInOriginal > -1) {
             newShuffledQueue.splice(currentIndexInOriginal, 1);
@@ -192,5 +192,5 @@ export function toggleLoopMode() {
 
     elements.loopBtn.classList.toggle('active', state.playbackMode !== PLAYBACK_MODES.NORMAL);
     elements.loopBtn.classList.toggle('loop-one', state.playbackMode === PLAYBACK_MODES.LOOP_ONE);
-    ipcRenderer.send('save-settings', { playbackMode: state.playbackMode });
+    electronAPI.send('save-settings', { playbackMode: state.playbackMode });
 }

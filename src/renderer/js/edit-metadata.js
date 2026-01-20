@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { resolveArtworkPath } from './ui/utils.js';
 import { renderCurrentView } from './ui-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 let currentEditingSong = null;
 let newArtworkBuffer = null; // 新しいアートワークのバイナリデータ
@@ -101,9 +101,9 @@ async function handleArtworkChange(event) {
         newArtworkBuffer = null;
         removeArtwork = false;
         // プレビューを元の画像に戻す（もし曲に元々アートワークがあれば）
-         const album = state.albums.get(currentEditingSong.albumKey);
-         const artwork = currentEditingSong.artwork || (album ? album.artwork : null);
-         elements.artworkPreview.src = resolveArtworkPath(artwork, false);
+        const album = state.albums.get(currentEditingSong.albumKey);
+        const artwork = currentEditingSong.artwork || (album ? album.artwork : null);
+        elements.artworkPreview.src = resolveArtworkPath(artwork, false);
         return;
     }
 
@@ -154,7 +154,7 @@ async function handleSave() {
     elements.saveBtn.textContent = '保存中...';
 
     try {
-        const result = await ipcRenderer.invoke('edit-metadata', {
+        const result = await electronAPI.invoke('edit-metadata', {
             filePath: currentEditingSong.path,
             newTags: newTags
         });
@@ -168,7 +168,7 @@ async function handleSave() {
 
                 // state.albums も更新する必要がある
                 // 簡単のため、ライブラリ全体からアルバムとアーティストを再グループ化
-                ipcRenderer.send('request-initial-library'); // ライブラリ再読み込みを要求
+                electronAPI.send('request-initial-library'); // ライブラリ再読み込みを要求
             }
 
             hideEditMetadataModal();

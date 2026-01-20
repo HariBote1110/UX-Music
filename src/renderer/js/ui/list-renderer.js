@@ -6,7 +6,7 @@ import { setVisualizerTarget } from '../player.js';
 import { VirtualScroller } from '../virtual-scroller.js';
 import { createSongItem } from './element-factory.js';
 import { initColumnResizing } from './column-resizer.js';
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 /**
  * 曲リストの共通ヘッダーHTMLを作成する
@@ -58,8 +58,8 @@ export function setupSongListScroller(listElement, songList, options = {}) {
      * VirtualScroller が各アイテムを描画するための関数
      */
     const renderItem = (song, index) => {
-        const songItem = createSongItem(song, index, songList, { 
-            groupAlbumArt: state.groupAlbumArt || state.isLightFlightMode 
+        const songItem = createSongItem(song, index, songList, {
+            groupAlbumArt: state.groupAlbumArt || state.isLightFlightMode
         });
 
         // 選択状態の復元
@@ -71,19 +71,19 @@ export function setupSongListScroller(listElement, songList, options = {}) {
         const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
         if (currentPlayingSong && currentPlayingSong.id === song.id) {
             songItem.classList.add('playing');
-            
+
             // このアイテムがDOMに挿入された時点でターゲットに設定
             // (visualizer.js 側で同一要素チェックを行う)
             setVisualizerTarget(songItem);
         }
         // ▲▲▲ 修正箇所 ▲▲▲
-        
+
         // イベントリスナー
         songItem.addEventListener('click', (e) => handleSongItemClick(e, song, index, songList, songItem));
-        
+
         songItem.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            
+
             if (playlistName && typeof saveScrollPosition === 'function') {
                 saveScrollPosition(listElement.scrollTop);
             }
@@ -92,13 +92,13 @@ export function setupSongListScroller(listElement, songList, options = {}) {
             if (state.selectedSongIds.size > 0 && state.selectedSongIds.has(song.id)) {
                 songsForMenu = songList.filter(s => state.selectedSongIds.has(s.id));
             }
-            
-            ipcRenderer.send('show-song-context-menu', { 
-                songs: songsForMenu, 
-                context: { view: contextView, playlistName } 
+
+            electronAPI.send('show-song-context-menu', {
+                songs: songsForMenu,
+                context: { view: contextView, playlistName }
             });
         });
-        
+
         window.observeNewArtworks(songItem); // Lazy-load 用
         return songItem;
     };
@@ -116,7 +116,7 @@ export function setupSongListScroller(listElement, songList, options = {}) {
             listElement.scrollTop = initialScrollTop;
         });
     }
-    
+
     // ▼▼▼ 削除（renderItem 内に移動したため） ▼▼▼
     // requestAnimationFrame(() => {
     //     const playingItem = listElement.querySelector('.song-item.playing');

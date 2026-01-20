@@ -5,7 +5,7 @@ import { setVisualizerFpsLimit } from './player.js';
 import { updateNowPlayingView } from './ui/now-playing.js';
 import { showNotification, hideNotification } from './ui/notification.js';
 import { initPlaybackSettings } from './playback-manager.js';
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 const decaySliderValues = [1, 3, 7, 14, 30];
 const decaySliderLabels = ['1日', '3日', '7日', '2週間', '1ヶ月'];
@@ -18,21 +18,21 @@ export function initSettings() {
     let settingsClickTimer;
 
     elements.openSettingsBtn.addEventListener('click', async () => {
-        const settings = await ipcRenderer.invoke('get-settings');
-        
+        const settings = await electronAPI.invoke('get-settings');
+
         renderGraphicEQ();
-        
+
         const currentYoutubeMode = settings.youtubePlaybackMode || 'download';
         document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`).checked = true;
-        
+
         const currentQuality = settings.youtubeDownloadQuality || 'full';
         document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`).checked = true;
-        
+
         updateQualityGroupState();
-        
+
         const currentImportMode = settings.importMode || 'balanced';
         document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`).checked = true;
-        
+
         const currentCdRipMode = settings.cdRipMode || 'paranoia';
         document.querySelector(`input[name="cd-rip-mode"][value="${currentCdRipMode}"]`).checked = true;
 
@@ -40,21 +40,21 @@ export function initSettings() {
         document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
 
         document.querySelector('input[name="group-album-art"]').checked = settings.groupAlbumArt === true;
-        
+
         const analysedQueueEnabled = settings.analysedQueue?.enabled === true;
         const analysedQueueCheckbox = document.querySelector('input[name="enable-analysed-queue"]');
         analysedQueueCheckbox.checked = analysedQueueEnabled;
         document.getElementById('analysed-queue-options').classList.toggle('hidden', !analysedQueueEnabled);
-        
+
         const currentDecayDays = settings.analysedQueue?.decayDays || 7;
         const decaySlider = document.getElementById('analysed-queue-decay-slider');
         const decayValueLabel = document.getElementById('analysed-queue-decay-value');
         const sliderIndex = decaySliderValues.indexOf(currentDecayDays);
-        decaySlider.value = sliderIndex > -1 ? sliderIndex : 2; 
+        decaySlider.value = sliderIndex > -1 ? sliderIndex : 2;
         decayValueLabel.textContent = decaySliderLabels[decaySlider.value];
-        
+
         document.querySelector('input[name="enable-easter-eggs"]').checked = settings.enableEasterEggs !== false;
-        
+
         elements.settingsModalOverlay.classList.remove('hidden');
 
         const settingsTitle = document.getElementById('settings-title');
@@ -76,11 +76,11 @@ export function initSettings() {
             settingsTitle.dataset.listenerAttached = 'true';
         }
     });
-    
+
     document.querySelectorAll('input[name="youtube-mode"]').forEach(radio => {
         radio.addEventListener('change', updateQualityGroupState);
     });
-    
+
     document.querySelector('input[name="enable-analysed-queue"]').addEventListener('change', (e) => {
         document.getElementById('analysed-queue-options').classList.toggle('hidden', !e.target.checked);
     });
@@ -107,16 +107,16 @@ export function initSettings() {
             isShuffled: state.isShuffled,
             playbackMode: state.playbackMode
         };
-    
-        ipcRenderer.send('save-settings', settingsToSave);
-        
+
+        electronAPI.send('save-settings', settingsToSave);
+
         state.visualizerMode = settingsToSave.visualizerMode;
         if (state.groupAlbumArt !== settingsToSave.groupAlbumArt) {
             state.groupAlbumArt = settingsToSave.groupAlbumArt;
             renderCurrentView();
         }
         state.analysedQueue = settingsToSave.analysedQueue;
-        
+
         elements.settingsModalOverlay.classList.add('hidden');
     });
 
@@ -136,7 +136,7 @@ export function initSettings() {
             state.visualizerMode = userPreferredVisualizerMode;
             setVisualizerFpsLimit(state.userPreferredVisualizerFps);
         }
-        
+
         renderCurrentView();
         updateNowPlayingView(state.playbackQueue[state.currentSongIndex]);
     });
@@ -144,9 +144,9 @@ export function initSettings() {
     document.getElementById('manage-devices-btn').addEventListener('click', async () => {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioDevices = devices.filter(d => d.kind === 'audiooutput');
-        const settings = await ipcRenderer.invoke('get-settings');
+        const settings = await electronAPI.invoke('get-settings');
         const hiddenDevices = settings.hiddenDeviceIds || [];
-        
+
         const listEl = document.getElementById('devices-list');
         listEl.innerHTML = '';
 
@@ -162,7 +162,7 @@ export function initSettings() {
 
     document.getElementById('devices-ok-btn').addEventListener('click', () => {
         const hiddenDeviceIds = Array.from(document.querySelectorAll('#devices-list input:not(:checked)')).map(cb => cb.dataset.deviceId);
-        ipcRenderer.send('save-settings', { hiddenDeviceIds });
+        electronAPI.send('save-settings', { hiddenDeviceIds });
         document.getElementById('devices-modal-overlay').classList.add('hidden');
         updateAudioDevices();
     });

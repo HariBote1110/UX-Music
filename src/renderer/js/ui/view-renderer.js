@@ -26,7 +26,7 @@ import {
     renderPlaylistDetailView as renderPlaylistDetail
 } from './detail-renderer.js';
 // ▲▲▲ 追加 ▲▲▲
-const { ipcRenderer } = require('electron'); // renderTrackView が使用
+const electronAPI = window.electronAPI; // renderTrackView が使用
 
 let trackViewScroller = null;
 let detailViewScroller = null;
@@ -85,7 +85,7 @@ export function renderTrackView() {
     trackViewScroller = setupSongListScroller(musicListContainer, state.library, {
         contextView: 'library'
     });
-    
+
     initListHeaderResizing(viewWrapper);
 }
 

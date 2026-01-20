@@ -7,8 +7,7 @@ import { handleQuizKeyPress } from './quiz.js';
 import { updateTextOverflowForSelector } from './ui/utils.js';
 import { updateAudioDevices } from './ui-manager.js';
 import { updateSearchQuery } from './ui.js';
-const { ipcRenderer } = require('electron');
-const path = require('path');
+const electronAPI = window.electronAPI;
 
 export function initEventListeners() {
     elements.nextBtn.addEventListener('click', playNextSong);
@@ -18,7 +17,7 @@ export function initEventListeners() {
 
     const libraryActionsBtn = document.getElementById('library-actions-btn');
     const libraryActionsPopup = document.getElementById('library-actions-popup');
-    
+
     if (libraryActionsBtn) {
         libraryActionsBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -34,7 +33,7 @@ export function initEventListeners() {
                 title: 'ネットワークフォルダのパス',
                 placeholder: '\\\\ServerName\\ShareName',
                 onOk: (path) => {
-                    ipcRenderer.send('start-scan-paths', [path]);
+                    electronAPI.send('start-scan-paths', [path]);
                 }
             });
         });
@@ -47,11 +46,11 @@ export function initEventListeners() {
             showModal({
                 title: 'YouTubeのリンク',
                 placeholder: 'https://www.youtube.com/watch?v=...',
-                onOk: (url) => ipcRenderer.send('add-youtube-link', url)
+                onOk: (url) => electronAPI.send('add-youtube-link', url)
             });
         });
     }
-    
+
     const addYoutubePlaylistBtn = document.getElementById('add-youtube-playlist-btn');
     if (addYoutubePlaylistBtn) {
         addYoutubePlaylistBtn.addEventListener('click', () => {
@@ -59,7 +58,7 @@ export function initEventListeners() {
             showModal({
                 title: 'YouTubeプレイリストのリンク',
                 placeholder: 'https://www.youtube.com/playlist?list=...',
-                onOk: (url) => ipcRenderer.send('import-youtube-playlist', url)
+                onOk: (url) => electronAPI.send('import-youtube-playlist', url)
             });
         });
     }
@@ -68,7 +67,7 @@ export function initEventListeners() {
     if (setLibraryBtn) {
         setLibraryBtn.addEventListener('click', () => {
             if (libraryActionsPopup) libraryActionsPopup.classList.add('hidden');
-            ipcRenderer.send('set-library-path');
+            electronAPI.send('set-library-path');
         });
     }
 
@@ -89,7 +88,7 @@ export function initEventListeners() {
             updateSearchQuery(e.target.value);
         });
     }
-    
+
     if (elements.dropZone) {
         elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
         elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
@@ -100,13 +99,21 @@ export function initEventListeners() {
             const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
             if (allPaths.length === 0) return;
             const lyricsExtensions = ['.lrc', '.txt'];
-            const lyricsPaths = allPaths.filter(p => lyricsExtensions.includes(path.extname(p).toLowerCase()));
-            const musicPaths = allPaths.filter(p => !lyricsExtensions.includes(path.extname(p).toLowerCase()));
+            const lyricsPaths = allPaths.filter(p => {
+                const lastDot = p.lastIndexOf('.');
+                const ext = lastDot !== -1 ? p.substring(lastDot).toLowerCase() : '';
+                return lyricsExtensions.includes(ext);
+            });
+            const musicPaths = allPaths.filter(p => {
+                const lastDot = p.lastIndexOf('.');
+                const ext = lastDot !== -1 ? p.substring(lastDot).toLowerCase() : '';
+                return !lyricsExtensions.includes(ext);
+            });
             if (musicPaths.length > 0) {
-                ipcRenderer.send('start-scan-paths', musicPaths);
+                electronAPI.send('start-scan-paths', musicPaths);
             }
             if (lyricsPaths.length > 0) {
-                ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
+                electronAPI.send('handle-lyrics-drop', lyricsPaths);
             }
         });
     }
@@ -126,7 +133,7 @@ export function initEventListeners() {
                 tab.classList.add('active');
 
                 elements.sidebarTabContents.forEach(c => c.classList.remove('active'));
-                
+
                 const targetId = tab.dataset.tab;
                 const targetContent = document.getElementById(targetId);
                 if (targetContent) {
@@ -146,17 +153,17 @@ export function initEventListeners() {
     });
 
     window.addEventListener('contextmenu', (e) => {
-        if (e.target.closest('.song-item') || 
-            e.target.closest('input') || 
-            e.target.closest('button') || 
+        if (e.target.closest('.song-item') ||
+            e.target.closest('input') ||
+            e.target.closest('button') ||
             e.target.closest('a')) {
             return;
         }
-        
+
         e.preventDefault();
-        ipcRenderer.send('show-general-context-menu');
+        electronAPI.send('show-general-context-menu');
     });
-    
+
     let resizeTimer;
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimer);
@@ -167,7 +174,7 @@ export function initEventListeners() {
 
     window.addEventListener('keydown', async (e) => {
         if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-        
+
         const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
         const modifierKey = isMac ? e.metaKey : e.ctrlKey;
 
@@ -175,7 +182,7 @@ export function initEventListeners() {
             handleQuizKeyPress(e);
             return;
         }
-        
+
         if (e.code === 'Space' && !modifierKey) {
             e.preventDefault();
             togglePlayPause();
@@ -201,11 +208,11 @@ export function initEventListeners() {
                 } else {
                     state.selectedSongIds = new Set(allIds);
                 }
-                
+
                 document.querySelectorAll('.song-item.selected').forEach(item => {
                     item.classList.remove('selected');
                 });
-                
+
                 if (!allSelected) {
                     document.querySelectorAll('.song-item').forEach(item => {
                         item.classList.add('selected');
@@ -221,12 +228,12 @@ export function initEventListeners() {
             e.preventDefault();
             if (state.copiedSongIds.length > 0 && (state.currentDetailView.type === 'playlist' || state.currentDetailView.type === 'situation')) {
                 const playlistName = state.currentDetailView.identifier;
-                ipcRenderer.invoke('add-songs-to-playlist', { playlistName, songIds: state.copiedSongIds });
+                electronAPI.invoke('add-songs-to-playlist', { playlistName, songIds: state.copiedSongIds });
             }
         }
     });
 
-    ipcRenderer.on('navigate-back', () => {
+    electronAPI.on('navigate-back', () => {
         if (state.currentDetailView.type) {
             showView(state.activeListView);
         }

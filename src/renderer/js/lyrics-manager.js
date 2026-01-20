@@ -3,7 +3,7 @@ import { state, elements } from './state.js';
 import { showContextMenu } from './ui/utils.js';
 import { startLrcEditor } from './lrc-editor.js'; // あとで作成
 // --- ▲▲▲ 追加 ▲▲▲ ---
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 /**
  * 曲が再生されたときに歌詞を読み込んで表示するメイン関数
@@ -15,7 +15,7 @@ export async function loadLyricsForSong(song) {
     state.currentLyricsType = null; // ★★★ リセット ★★★
     if (!song) return;
 
-    const result = await ipcRenderer.invoke('get-lyrics', song);
+    const result = await electronAPI.invoke('get-lyrics', song);
     if (!result) {
         displayNoLyrics();
         // ★★★ TXT/LRCがない場合でもコンテキストメニューを設定 ★★★
@@ -206,11 +206,11 @@ export function updateSyncedLyrics(currentTime) {
 
             if (!isVisible) {
                 // 要素の中央をコンテナの中央に合わせるようにスクロール
-                 elements.lyricsView.scrollTop += (lineRect.top + lineRect.height / 2) - (containerRect.top + containerRect.height / 2);
+                elements.lyricsView.scrollTop += (lineRect.top + lineRect.height / 2) - (containerRect.top + containerRect.height / 2);
             }
         }
     } else {
-         // 曲の冒頭など、まだどの行もアクティブでない場合は一番上にスクロール
-         elements.lyricsView.scrollTop = 0;
+        // 曲の冒頭など、まだどの行もアクティブでない場合は一番上にスクロール
+        elements.lyricsView.scrollTop = 0;
     }
 }

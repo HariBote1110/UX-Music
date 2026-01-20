@@ -1,7 +1,7 @@
 // src/renderer/js/quiz.js
 import { state, elements } from './state.js';
 import { resolveArtworkPath } from './ui/utils.js';
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 let quizElements = {};
 
@@ -33,14 +33,14 @@ function getQuizSongs() {
             uniqueSongsMap.set(key, song);
         }
     });
-    
+
     const uniqueSongs = Array.from(uniqueSongsMap.values());
     const playCounts = state.playCounts;
 
     if (quizState.difficulty === 'easy') {
-        return uniqueSongs.filter(s => (playCounts[s.path]?.count || 0) > 5).sort((a,b) => (playCounts[b.path]?.count || 0) - (playCounts[a.path]?.count || 0));
+        return uniqueSongs.filter(s => (playCounts[s.path]?.count || 0) > 5).sort((a, b) => (playCounts[b.path]?.count || 0) - (playCounts[a.path]?.count || 0));
     } else if (quizState.difficulty === 'hard') {
-        return uniqueSongs.filter(s => (playCounts[s.path]?.count || 0) <= 5).sort((a,b) => (playCounts[a.path]?.count || 0) - (playCounts[b.path]?.count || 0));
+        return uniqueSongs.filter(s => (playCounts[s.path]?.count || 0) <= 5).sort((a, b) => (playCounts[a.path]?.count || 0) - (playCounts[b.path]?.count || 0));
     }
     return uniqueSongs;
 }
@@ -63,12 +63,12 @@ function generateQuestion() {
     quizElements.result.classList.add('hidden');
     quizElements.answers.innerHTML = '';
     quizElements.timer.textContent = '0.000s';
-    
+
     const songPool = quizState.difficulty === 'normal' ? availableSongs : availableSongs.slice(0, 100);
 
     const correctIndex = Math.floor(Math.random() * songPool.length);
     quizState.correctAnswer = songPool[correctIndex];
-    
+
     const choices = new Set([quizState.correctAnswer]);
     while (choices.size < CHOICES_COUNT) {
         const randomIndex = Math.floor(Math.random() * availableSongs.length);
@@ -88,7 +88,7 @@ function generateQuestion() {
 
     quizState.currentQuestionIndex++;
     quizElements.questionNumber.textContent = quizState.currentQuestionIndex + 1;
-    
+
     const safePath = quizState.correctAnswer.path.replace(/\\/g, '/').replace(/#/g, '%23');
     quizState.quizAudio.src = `file://${safePath}`;
     quizElements.playBtn.disabled = false;
@@ -102,11 +102,11 @@ function playSnippet() {
     if (mainPlayer && !mainPlayer.paused) {
         mainPlayer.pause();
     }
-    
+
     quizState.quizAudio.volume = elements.volumeSlider.value;
     quizState.isPlayingSnippet = true;
     quizElements.playBtn.disabled = true;
-    
+
     quizState.quizAudio.currentTime = 0;
     quizState.quizAudio.play();
     quizElements.playBtn.querySelector('img').src = './assets/icons/pause.svg';
@@ -185,7 +185,7 @@ async function showFinalScreen() {
 
     const avgTime = quizState.answerTimes.reduce((a, b) => a + b, 0) / quizState.answerTimes.length;
     const finalAvgTime = isNaN(avgTime) ? 0 : avgTime;
-    
+
     quizElements.finalScore.textContent = quizState.score;
     quizElements.finalTotal.textContent = quizState.totalQuestions;
     quizElements.finalAvgTime.textContent = finalAvgTime.toFixed(3);
@@ -195,9 +195,9 @@ async function showFinalScreen() {
         avgTime: finalAvgTime,
         date: new Date().toISOString()
     };
-    await ipcRenderer.invoke('save-quiz-score', scoreData);
-    
-    const scores = await ipcRenderer.invoke('get-quiz-scores');
+    await electronAPI.invoke('save-quiz-score', scoreData);
+
+    const scores = await electronAPI.invoke('get-quiz-scores');
     quizElements.rankingList.innerHTML = '';
     scores.slice(0, 5).forEach(s => {
         const li = document.createElement('li');
@@ -227,7 +227,7 @@ function startQuiz() {
     quizElements.finalScreen.classList.add('hidden');
     quizElements.gameScreen.classList.remove('hidden');
     quizElements.totalQuestions.textContent = quizState.totalQuestions;
-    
+
     generateQuestion();
 }
 
@@ -294,8 +294,8 @@ export function stopQuiz() {
     clearInterval(quizState.timerInterval);
     quizState.isPlayingSnippet = false;
     quizState.isFinalScreenShowing = false;
-    
-    if(quizElements.startScreen) {
+
+    if (quizElements.startScreen) {
         quizElements.startScreen.classList.remove('hidden');
         quizElements.gameScreen.classList.add('hidden');
         quizElements.finalScreen.classList.add('hidden');

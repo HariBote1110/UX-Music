@@ -13,7 +13,7 @@ import {
 } from './list-renderer.js';
 import { clearMainContent } from './view-renderer.js';
 import { updateListSpacer } from '../ui.js'; // 追加
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 // モジュールスコープでスクロール位置を記憶
 let lastScrollPositions = {};
@@ -49,14 +49,14 @@ export function renderAlbumDetailView(album) {
     const scroller = setupSongListScroller(listElement, album.songs, {
         contextView: 'album'
     });
-    
+
     // スペーサーを更新
     updateListSpacer();
-    
+
     initListHeaderResizing(viewWrapper);
-    
+
     const artImg = viewWrapper.querySelector('.detail-art-img');
-    
+
     let artworkToUse = album.artwork;
     if (!artworkToUse && album.songs && album.songs.length > 0) {
         const songWithArt = album.songs.find(s => s.artwork);
@@ -65,9 +65,9 @@ export function renderAlbumDetailView(album) {
         }
     }
     artImg.dataset.src = resolveArtworkPath(artworkToUse, false);
-    
+
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, album.songs));
-    
+
     window.observeNewArtworks(viewWrapper);
     return scroller;
 }
@@ -98,7 +98,7 @@ export function renderArtistDetailView(artist) {
     } else {
         artistAlbums.forEach(album => {
             const albumKey = `${album.title}---${album.artist}`;
-            const albumItem = createAlbumGridItem(albumKey, album, ipcRenderer);
+            const albumItem = createAlbumGridItem(albumKey, album, electronAPI);
             albumItem.addEventListener('click', () => showAlbum(albumKey));
             grid.appendChild(albumItem);
         });
@@ -141,7 +141,7 @@ export function renderPlaylistDetailView(playlistDetails) {
     const listElement = document.createElement('div');
     listElement.id = 'p-detail-list';
     listElement.className = 'music-list';
-    
+
     const artworkContainer = viewWrapper.querySelector('.playlist-art-collage');
     const resolver = (artwork) => resolveArtworkPath(artwork, true);
     createPlaylistArtwork(artworkContainer, artworks, resolver);
@@ -150,7 +150,7 @@ export function renderPlaylistDetailView(playlistDetails) {
     elements.mainContent.appendChild(viewWrapper);
 
     const savedScrollTop = lastScrollPositions[playlistName] || 0;
-    
+
     const scroller = setupSongListScroller(listElement, songs, {
         contextView: 'playlist',
         playlistName: playlistName,
@@ -163,14 +163,14 @@ export function renderPlaylistDetailView(playlistDetails) {
     if (savedScrollTop > 0) {
         delete lastScrollPositions[playlistName];
     }
-    
+
     // スペーサーを更新
     updateListSpacer();
-    
+
     initListHeaderResizing(viewWrapper);
 
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, songs));
-    
+
     window.observeNewArtworks(viewWrapper);
     return scroller;
 }

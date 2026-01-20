@@ -1,36 +1,41 @@
 // src/renderer/js/normalize-view.js
 import { state, elements } from './state.js';
 import { showView } from './navigation.js';
-const { ipcRenderer } = require('electron');
-const path = require('path');
-const crypto = require('crypto');
+const electronAPI = window.electronAPI;
 
-let normalizeFiles = new Map();
-let outputSettings = {
-    mode: 'overwrite', // 'overwrite' or 'folder'
-    path: null
-};
-let commonBasePath = null;
+function getBasename(path) {
+    return path.split(/[\\/]/).pop();
+}
+
+function getExtname(path) {
+    const dotIndex = path.lastIndexOf('.');
+    return dotIndex === -1 ? '' : path.substring(dotIndex);
+}
+
+function getDirname(path) {
+    const lastIndex = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    return lastIndex === -1 ? '' : path.substring(0, lastIndex);
+}
 
 function findCommonBasePath(filePaths) {
     if (filePaths.length === 0) return null;
-    if (filePaths.length === 1) return path.dirname(filePaths[0]);
+    if (filePaths.length === 1) return getDirname(filePaths[0]);
 
-    const a1 = filePaths[0].split(path.sep);
-    const a2 = filePaths[filePaths.length - 1].split(path.sep);
+    const a1 = filePaths[0].split(/[\\/]/);
+    const a2 = filePaths[filePaths.length - 1].split(/[\\/]/);
     const L = a1.length;
     let i = 0;
     while (i < L && a1[i] === a2[i]) {
         i++;
     }
-    return a1.slice(0, i).join(path.sep);
+    return a1.slice(0, i).join('/');
 }
 
 function updateFileList() {
     const tbody = document.getElementById('normalize-file-list');
     const selectAllCheckbox = document.getElementById('normalize-select-all');
     tbody.innerHTML = '';
-    
+
     if (normalizeFiles.size === 0) {
         document.getElementById('normalize-analyze-btn').disabled = true;
         document.getElementById('normalize-apply-btn').disabled = true;
@@ -47,7 +52,7 @@ function updateFileList() {
     for (const [id, file] of normalizeFiles.entries()) {
         const row = document.createElement('tr');
         const diff = typeof file.currentLufs === 'number' ? (file.targetLufs - file.currentLufs).toFixed(2) : '-';
-        
+
         row.innerHTML = `
             <td><input type="checkbox" class="normalize-select-item" data-id="${id}" ${file.selected ? 'checked' : ''}></td>
             <td>${file.name}</td>
@@ -63,7 +68,7 @@ function updateFileList() {
             if (file.status !== 'analyzed') canApply = false;
         }
     }
-    
+
     // Add event listeners to new checkboxes
     tbody.querySelectorAll('.normalize-select-item').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
@@ -88,7 +93,7 @@ function updateFileList() {
     }
 
     document.getElementById('normalize-analyze-btn').disabled = !hasUnanalyzedSelected;
-    
+
     const applyButtonDisabled = !(selectedCount > 0 && canApply && (outputSettings.mode === 'overwrite' || (outputSettings.mode === 'folder' && outputSettings.path)));
     document.getElementById('normalize-apply-btn').disabled = applyButtonDisabled;
 }
@@ -97,13 +102,13 @@ async function addFiles(filePaths, preAnalyzedData = {}) {
     const targetLufs = parseFloat(document.getElementById('target-lufs-slider').value);
     for (const filePath of filePaths) {
         // ▼▼▼ 修正: macOSの隠しファイル・リソースフォーク(._)を除外 ▼▼▼
-        const fileName = path.basename(filePath);
+        const fileName = getBasename(filePath);
         if (fileName.startsWith('._') || fileName === '.DS_Store') {
             continue;
         }
         // ▲▲▲ 修正ここまで ▲▲▲
 
-        const id = crypto.randomUUID();
+        const id = self.crypto.randomUUID();
         const existingLoudness = preAnalyzedData[filePath];
 
         normalizeFiles.set(id, {
@@ -133,7 +138,7 @@ function updateProgress(processed, total, label) {
         progressContainer.classList.add('hidden');
         return;
     }
-    
+
     progressContainer.classList.remove('hidden');
     progressBar.value = processed;
     progressBar.max = total;
@@ -146,7 +151,7 @@ export function initNormalizeView() {
         elements.normalizeView.classList.remove('hidden');
         elements.navLinks.forEach(l => l.classList.remove('active'));
     });
-    
+
     document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', () => {
             elements.mainContent.classList.remove('hidden');
@@ -166,22 +171,22 @@ export function initNormalizeView() {
     });
 
     document.getElementById('normalize-add-files-btn').addEventListener('click', async () => {
-        const filePaths = await ipcRenderer.invoke('select-files-for-normalize');
+        const filePaths = await electronAPI.invoke('select-files-for-normalize');
         if (filePaths.length > 0) addFiles(filePaths);
     });
 
     document.getElementById('normalize-add-folder-btn').addEventListener('click', async () => {
-        const filePaths = await ipcRenderer.invoke('select-folder-for-normalize');
+        const filePaths = await electronAPI.invoke('select-folder-for-normalize');
         if (filePaths.length > 0) addFiles(filePaths);
     });
-    
+
     document.getElementById('normalize-load-library-btn').addEventListener('click', async () => {
-        const library = await ipcRenderer.invoke('get-library-for-normalize');
-        const loudnessData = await ipcRenderer.invoke('get-all-loudness-data');
+        const library = await electronAPI.invoke('get-library-for-normalize');
+        const loudnessData = await electronAPI.invoke('get-all-loudness-data');
         const filePaths = library.map(song => song.path);
         addFiles(filePaths, loudnessData);
     });
-    
+
     document.getElementById('normalize-select-all').addEventListener('change', (e) => {
         const isChecked = e.target.checked;
         for (const file of normalizeFiles.values()) {
@@ -200,7 +205,7 @@ export function initNormalizeView() {
         }
         if (normalizeFiles.size > 0) updateFileList();
     });
-    
+
     const outputFolderContainer = document.getElementById('output-folder-container');
     const backupContainer = document.getElementById('backup-container');
     document.querySelectorAll('input[name="output-mode"]').forEach(radio => {
@@ -218,7 +223,7 @@ export function initNormalizeView() {
     });
 
     document.getElementById('select-output-folder-btn').addEventListener('click', async () => {
-        const selectedPath = await ipcRenderer.invoke('select-normalize-output-folder');
+        const selectedPath = await electronAPI.invoke('select-normalize-output-folder');
         if (selectedPath) {
             outputSettings.path = selectedPath;
             document.getElementById('output-folder-path').textContent = selectedPath;
@@ -229,18 +234,18 @@ export function initNormalizeView() {
     document.getElementById('normalize-analyze-btn').addEventListener('click', () => {
         const filesToAnalyze = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'pending');
         if (filesToAnalyze.length === 0) return;
-        ipcRenderer.send('start-normalize-job', { jobType: 'analyze', files: filesToAnalyze });
+        electronAPI.send('start-normalize-job', { jobType: 'analyze', files: filesToAnalyze });
         updateProgress(0, filesToAnalyze.length, '解析中');
     });
-    
+
     document.getElementById('normalize-apply-btn').addEventListener('click', () => {
         const filesToNormalize = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analyzed');
         if (filesToNormalize.length === 0) return;
-        
-        const containsMp3 = filesToNormalize.some(f => path.extname(f.path).toLowerCase() === '.mp3');
+
+        const containsMp3 = filesToNormalize.some(f => getExtname(f.path).toLowerCase() === '.mp3');
         const losslessFormats = ['.wav', '.flac'];
         const clippingFiles = filesToNormalize.filter(f => {
-            const ext = path.extname(f.path).toLowerCase();
+            const ext = getExtname(f.path).toLowerCase();
             if (losslessFormats.includes(ext) && typeof f.truePeak === 'number' && typeof f.currentLufs === 'number') {
                 const gain = f.targetLufs - f.currentLufs;
                 return f.truePeak + gain > 0;
@@ -262,7 +267,7 @@ export function initNormalizeView() {
                 preventClipping = true;
             }
         }
-        
+
         if (confirmed && containsMp3 && outputSettings.mode === 'overwrite') {
             confirmed = confirm(
                 '警告: リストにMP3ファイルが含まれています。\n\n' +
@@ -276,7 +281,7 @@ export function initNormalizeView() {
             const targetLufs = parseFloat(lufsSlider.value);
             const filesWithGain = filesToNormalize.map(f => {
                 let gain = targetLufs - f.currentLufs;
-                const ext = path.extname(f.path).toLowerCase();
+                const ext = getExtname(f.path).toLowerCase();
 
                 if (preventClipping && losslessFormats.includes(ext) && typeof f.truePeak === 'number') {
                     const newPeak = f.truePeak + gain;
@@ -288,14 +293,14 @@ export function initNormalizeView() {
             });
 
             const backup = outputSettings.mode === 'overwrite' ? document.getElementById('backup-toggle').checked : false;
-            ipcRenderer.send('start-normalize-job', { 
-                jobType: 'normalize', 
-                files: filesWithGain, 
+            electronAPI.send('start-normalize-job', {
+                jobType: 'normalize',
+                files: filesWithGain,
                 options: {
                     backup,
                     output: outputSettings,
                     basePath: commonBasePath
-                } 
+                }
             });
             updateProgress(0, filesToNormalize.length, '適用中');
         }
@@ -305,7 +310,7 @@ export function initNormalizeView() {
     let totalCount = 0;
     let currentJob = '';
 
-    ipcRenderer.on('normalize-worker-result', (event, { type, id, result }) => {
+    electronAPI.on('normalize-worker-result', (event, { type, id, result }) => {
         const file = normalizeFiles.get(id);
         if (!file) return;
 
@@ -327,11 +332,11 @@ export function initNormalizeView() {
             if (result.success) {
                 file.status = 'done';
                 if (result.outputPath) {
-                    file.name = path.basename(result.outputPath);
+                    file.name = getBasename(result.outputPath);
                 }
             } else {
                 file.status = 'error';
-                if(result.error) console.error(`Normalize Error for ${file.name}:`, result.error);
+                if (result.error) console.error(`Normalize Error for ${file.name}:`, result.error);
             }
 
             if (currentJob !== 'normalize') {
@@ -340,10 +345,10 @@ export function initNormalizeView() {
                 currentJob = 'normalize';
             }
         }
-        
+
         processedCount++;
         updateFileList();
         updateProgress(processedCount, totalCount, currentJob === 'analyze' ? '解析中' : '適用中');
-        ipcRenderer.send('normalize-worker-finished-file');
+        electronAPI.send('normalize-worker-finished-file');
     });
 }

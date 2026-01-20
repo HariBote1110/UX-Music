@@ -5,8 +5,16 @@ import { showNotification, hideNotification } from './ui/notification.js';
 import { showView } from './navigation.js';
 import { resolveArtworkPath, formatSongTitle } from './ui/utils.js';
 import { togglePlayPause, seek, getCurrentTime, getDuration, isPlaying } from './player.js';
-const { ipcRenderer } = require('electron');
-const path = require('path');
+const electronAPI = window.electronAPI;
+
+function getBasename(path) {
+    return path.split(/[\\/]/).pop();
+}
+
+function getExtname(path) {
+    const dotIndex = path.lastIndexOf('.');
+    return dotIndex === -1 ? '' : path.substring(dotIndex);
+}
 
 let currentEditorSong = null;
 let lyricsLines = []; // { text: string, timestamp: number | null } の配列
@@ -132,7 +140,7 @@ function redrawLyricsArea() {
         lineElement.addEventListener('click', () => setActiveLine(index));
         editorElements.lyricsArea.appendChild(lineElement);
     });
-     // アクティブ行のスタイル復元
+    // アクティブ行のスタイル復元
     const activeLineEl = editorElements.lyricsArea.querySelector(`.lyrics-line[data-index="${activeLineIndex}"]`);
     if (activeLineEl) {
         activeLineEl.classList.add('active');
@@ -240,7 +248,7 @@ export async function startLrcEditor(song) {
     editorElements.loadTextBtn.classList.add('hidden');
 
     try {
-        const lyricsContent = await ipcRenderer.invoke('get-lyrics', song);
+        const lyricsContent = await electronAPI.invoke('get-lyrics', song);
         if (lyricsContent && (lyricsContent.type === 'txt' || lyricsContent.type === 'lrc')) { // LRCも読み込めるように
             parseAndDisplayLyrics(lyricsContent.content, lyricsContent.type); // タイプを渡す
         } else {
@@ -288,7 +296,7 @@ function parseAndDisplayLyrics(textContent, type = 'txt') {
                 const milliseconds = parseInt(match[3].padEnd(3, '0'), 10);
                 timestamp = minutes * 60 + seconds + milliseconds / 1000;
             }
-             // 空行も保持する (text: ' ')
+            // 空行も保持する (text: ' ')
             return { text: text === '' ? ' ' : text, timestamp: timestamp };
         }).sort((a, b) => (a.timestamp ?? Infinity) - (b.timestamp ?? Infinity)); // タイムスタンプ順にソート
 
@@ -418,22 +426,22 @@ function handleEditorKeyDown(event) {
         undo();
         return; // 他のキー操作をブロック
     }
-     // Cmd+Shift+Z or Ctrl+Y で Redo (今回は実装しない)
-     /*
-     if ((event.metaKey || event.ctrlKey) && (event.key === 'Y' || (event.shiftKey && event.key === 'z'))) {
-         event.preventDefault();
-         redo();
-         return;
-     }
-     */
+    // Cmd+Shift+Z or Ctrl+Y で Redo (今回は実装しない)
+    /*
+    if ((event.metaKey || event.ctrlKey) && (event.key === 'Y' || (event.shiftKey && event.key === 'z'))) {
+        event.preventDefault();
+        redo();
+        return;
+    }
+    */
     if (event.key.toUpperCase() === 'T') {
         event.preventDefault();
         addTimestamp();
     }
-     if (event.code === 'Space' && !(event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)) { // 修飾キーなしのスペースのみ
-         event.preventDefault();
-         togglePlayPause();
-     }
+    if (event.code === 'Space' && !(event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)) { // 修飾キーなしのスペースのみ
+        event.preventDefault();
+        togglePlayPause();
+    }
 }
 
 // LRCデータを生成し、メインプロセスに保存を要求する関数 (変更なし)
@@ -454,14 +462,14 @@ async function handleSaveLrc() {
         .map(line => `[${formatLrcTime(line.timestamp)}]${line.text}`) // 空白行も text: ' ' として保存される
         .join('\n');
 
-    const baseName = path.basename(currentEditorSong.path, path.extname(currentEditorSong.path));
+    const baseName = getBasename(currentEditorSong.path).replace(getExtname(currentEditorSong.path), '');
     const lrcFileName = `${baseName}.lrc`;
 
     editorElements.saveBtn.disabled = true;
     editorElements.saveBtn.textContent = '保存中...';
 
     try {
-        const result = await ipcRenderer.invoke('save-lrc-file', {
+        const result = await electronAPI.invoke('save-lrc-file', {
             fileName: lrcFileName,
             content: lrcContent
         });
@@ -504,10 +512,10 @@ export function updateLrcEditorControls(playing, currentTime, duration) {
     if (!isNaN(duration)) {
         const formattedDuration = formatEditorTime(duration);
         if (editorElements.totalDuration.textContent !== formattedDuration) {
-             editorElements.totalDuration.textContent = formattedDuration;
+            editorElements.totalDuration.textContent = formattedDuration;
         }
         if (editorElements.progressBar.max != duration) {
-             editorElements.progressBar.max = duration;
+            editorElements.progressBar.max = duration;
         }
     }
 }

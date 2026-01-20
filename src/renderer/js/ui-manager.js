@@ -9,7 +9,7 @@ import { updateNowPlayingView } from './ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
 import { showContextMenu, formatBytes } from './ui/utils.js';
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 /**
  * 現在アクティブなビューの内容を再描画する
@@ -79,7 +79,7 @@ function renderQueueView() {
     }
     state.playbackQueue.forEach((song, index) => {
         const isPlaying = index === state.currentSongIndex;
-        const queueItem = createQueueItem(song, isPlaying, ipcRenderer);
+        const queueItem = createQueueItem(song, isPlaying);
         queueItem.addEventListener('click', () => playSong(index));
         elements.queueList.appendChild(queueItem);
     });
@@ -113,7 +113,7 @@ export function initUI() {
         }
     });
 
-    ipcRenderer.on('mtp-device-status', (event, device) => {
+    electronAPI.on('mtp-device-status', (device) => {
         console.log('[MTP-LOG] MTPデバイスステータス受信:', device);
         updateMtpDeviceView(device);
     });
@@ -203,7 +203,7 @@ export function addSongsToLibrary({ songs, albums }) {
     groupLibraryByArtist();
     if (migrationNeeded) {
         const albumsToSave = Object.fromEntries(state.albums.entries());
-        ipcRenderer.send('save-migrated-data', { songs: state.library, albums: albumsToSave });
+        electronAPI.send('save-migrated-data', { songs: state.library, albums: albumsToSave });
     }
     renderCurrentView();
     console.timeEnd('Renderer: Process Library Data');
@@ -302,7 +302,7 @@ function groupLibraryByArtist() {
 export async function updateAudioDevices() {
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const settings = await ipcRenderer.invoke('get-settings');
+        const settings = await electronAPI.invoke('get-settings');
         const hiddenDevices = settings.hiddenDeviceIds || [];
 
         const audioDevices = devices.filter(device =>
@@ -358,7 +358,7 @@ export async function updateAudioDevices() {
                             action: () => {
                                 const deviceIdToHide = item.dataset.deviceId;
                                 const updatedHiddenDevices = [...hiddenDevices, deviceIdToHide];
-                                ipcRenderer.send('save-settings', { hiddenDeviceIds: updatedHiddenDevices });
+                                electronAPI.send('save-settings', { hiddenDeviceIds: updatedHiddenDevices });
                                 updateAudioDevices();
                             }
                         }

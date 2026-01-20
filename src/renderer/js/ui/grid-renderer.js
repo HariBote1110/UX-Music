@@ -8,7 +8,7 @@ import { showContextMenu, resolveArtworkPath } from './utils.js';
 import { showModal } from '../modal.js';
 import { showNotification, hideNotification } from './notification.js';
 import { clearMainContent } from './view-renderer.js'; // clearMainContent は view-renderer からインポート
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 /**
  * アルバム一覧ビューを描画する
@@ -25,13 +25,13 @@ export function renderAlbumView() {
         grid.innerHTML = '<div class="placeholder">ライブラリにアルバムが見つかりません</div>';
     } else {
         for (const [key, album] of state.albums.entries()) {
-            const albumItem = createAlbumGridItem(key, album, ipcRenderer);
+            const albumItem = createAlbumGridItem(key, album, electronAPI);
             albumItem.addEventListener('click', () => showAlbum(key));
 
             albumItem.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                
+
                 const playlists = state.playlists || [];
                 const addToPlaylistSubmenu = playlists.map(playlist => ({
                     label: playlist.name,
@@ -39,7 +39,7 @@ export function renderAlbumView() {
                         const albumToAdd = state.albums.get(key);
                         if (albumToAdd && albumToAdd.songs) {
                             const songPaths = albumToAdd.songs.map(s => s.path);
-                            const result = await ipcRenderer.invoke('add-album-to-playlist', { songPaths, playlistName: playlist.name });
+                            const result = await electronAPI.invoke('add-album-to-playlist', { songPaths, playlistName: playlist.name });
 
                             if (result.success && result.addedCount > 0) {
                                 showNotification(`「${album.title}」の ${result.addedCount} 曲をプレイリスト「${playlist.name}」に追加しました。`);
@@ -88,7 +88,7 @@ export function renderArtistView() {
     } else {
         const sortedArtists = [...state.artists.values()].sort((a, b) => a.name.localeCompare(b.name));
         sortedArtists.forEach(artist => {
-            const artistItem = createArtistGridItem(artist, ipcRenderer);
+            const artistItem = createArtistGridItem(artist, electronAPI);
             artistItem.addEventListener('click', () => showArtist(artist.name));
             grid.appendChild(artistItem);
         });
@@ -110,7 +110,7 @@ export async function renderSituationView() {
     const grid = document.createElement('div');
     grid.id = 'playlist-grid'; // 'playlist-grid' を再利用
 
-    const situationPlaylists = await ipcRenderer.invoke('get-situation-playlists');
+    const situationPlaylists = await electronAPI.invoke('get-situation-playlists');
     const playlists = Object.values(situationPlaylists);
 
     if (playlists.length === 0) {
@@ -121,9 +121,9 @@ export async function renderSituationView() {
                 .map(song => (state.albums.get(song.albumKey) || song).artwork)
                 .filter(Boolean)
                 .slice(0, 4);
-            
-            const playlistItem = createPlaylistGridItem({ name: playlist.name, artworks }, ipcRenderer);
-            
+
+            const playlistItem = createPlaylistGridItem({ name: playlist.name, artworks }, electronAPI);
+
             playlistItem.addEventListener('click', () => {
                 const playlistDetails = {
                     name: playlist.name,
@@ -157,7 +157,7 @@ export function renderPlaylistView() {
         grid.innerHTML = '<p>プレイリストはまだありません。「+ 新規作成」から作成できます。</p>';
     } else {
         state.playlists.forEach(playlist => {
-            const playlistItem = createPlaylistGridItem(playlist, ipcRenderer);
+            const playlistItem = createPlaylistGridItem(playlist, electronAPI);
             playlistItem.addEventListener('click', () => showPlaylist(playlist.name));
             playlistItem.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
@@ -171,7 +171,7 @@ export function renderPlaylistView() {
                                 placeholder: '新しい名前',
                                 onOk: async (newName) => {
                                     if (newName && newName.trim() !== '' && newName !== playlist.name) {
-                                       await ipcRenderer.invoke('rename-playlist', { oldName: playlist.name, newName });
+                                        await electronAPI.invoke('rename-playlist', { oldName: playlist.name, newName });
                                     }
                                 }
                             });
@@ -182,7 +182,7 @@ export function renderPlaylistView() {
                         action: async () => {
                             const confirmed = confirm(`プレイリスト「${playlist.name}」を削除しますか？\nこの操作は元に戻せません。`);
                             if (confirmed) {
-                                await ipcRenderer.invoke('delete-playlist', playlist.name);
+                                await electronAPI.invoke('delete-playlist', playlist.name);
                             }
                         }
                     }
@@ -198,7 +198,7 @@ export function renderPlaylistView() {
             title: '新規プレイリスト',
             placeholder: 'プレイリスト名',
             onOk: async (name) => {
-                await ipcRenderer.invoke('create-playlist', name);
+                await electronAPI.invoke('create-playlist', name);
             }
         });
     });

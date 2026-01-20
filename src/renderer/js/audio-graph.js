@@ -1,9 +1,7 @@
 // src/renderer/js/audio-graph.js
 
 import { elements } from './state.js';
-const { ipcRenderer } = require('electron');
-const net = require('net');
-const os = require('os');
+const electronAPI = window.electronAPI;
 
 // ▼▼▼ 変更: グラフ（Context+Nodes）のキャッシュ管理 ▼▼▼
 const graphCache = new Map(); // key: sampleRate, value: GraphObject
@@ -13,9 +11,8 @@ let currentGraph = null;      // 現在アクティブなグラフ
 export let analyser = null;
 export let dataArray = null;
 
-let baseGain = 1.0; 
-let isDirectLinkEnabled = false; 
-const PIPE_NAME = os.platform() === 'win32' ? '\\\\.\\pipe\\ux_audio_router_pipe' : '/tmp/ux_audio_router.sock';
+let baseGain = 1.0;
+let isDirectLinkEnabled = false;
 
 /**
  * グラフオブジェクトの構造
@@ -44,7 +41,7 @@ export async function activateAudioGraph(rate) {
     if (currentGraph) {
         // Direct Link接続があれば切断（ソケットはSRごとに作り直すため）
         await stopDirectLink(currentGraph);
-        
+
         // コンテキストを一時停止（CPU負荷軽減）
         if (currentGraph.context.state === 'running') {
             await currentGraph.context.suspend();
@@ -80,11 +77,11 @@ export async function activateAudioGraph(rate) {
         try {
             currentGraph.nodes.gain.disconnect();
             currentGraph.nodes.gain.connect(currentGraph.context.destination);
-        } catch(e) {}
+        } catch (e) { }
     }
 
     // 音量・EQ設定を適用
-    applyMasterVolume(); 
+    applyMasterVolume();
     // (EQ適用関数は個別に呼ぶ必要があるが、ここではゲインのみ即時適用)
 
     return currentGraph;
@@ -103,11 +100,11 @@ async function createGraph(rate) {
     // 専用のAudio要素を作成
     const audioElement = new Audio();
     // クロスオリジン設定など必要なら記述
-    
+
     // ノード作成
     const source = context.createMediaElementSource(audioElement);
     const preamp = context.createGain();
-    
+
     // EQ
     const frequencies = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
     const eqBands = frequencies.map((freq, i) => {
@@ -135,7 +132,7 @@ async function createGraph(rate) {
     }
     lastNode.connect(ana);
     ana.connect(gain);
-    
+
     // デフォルト出力
     gain.connect(context.destination);
 
@@ -153,17 +150,17 @@ export async function initAudioGraph(playerElement, sinkId) {
     // 初回初期化またはデバイス変更
     // デバイス変更（SinkID変更）は全キャッシュに対して行う必要があるが、
     // 簡略化のため「次回アクティブになった時」または「現在のグラフ」に適用する
-    
-    ipcRenderer.send('save-settings', { audioOutputId: sinkId });
-    
+
+    electronAPI.send('save-settings', { audioOutputId: sinkId });
+
     if (sinkId === 'ux-direct-link') {
         isDirectLinkEnabled = true;
         // グラフのアクティベートは再生時(playLocal)に行われるので、ここではフラグ設定のみでOK
-        if (currentGraph) startDirectLink(currentGraph);
+        if (currentGraph) electronAPI.send('direct-link-command', { action: 'start', sampleRate: currentGraph.sampleRate });
     } else {
         isDirectLinkEnabled = false;
         if (currentGraph) {
-            stopDirectLink(currentGraph);
+            electronAPI.send('direct-link-command', { action: 'stop' });
             // スピーカー出力へ戻す
             try {
                 currentGraph.nodes.gain.connect(currentGraph.context.destination);
@@ -171,7 +168,7 @@ export async function initAudioGraph(playerElement, sinkId) {
                 if (typeof currentGraph.context.setSinkId === 'function' && sinkId !== 'default') {
                     currentGraph.context.setSinkId(sinkId);
                 }
-            } catch(e) {}
+            } catch (e) { }
         }
     }
 }
@@ -188,7 +185,7 @@ export async function resumeAudioContext() {
 
 export function setBaseGain(newBaseGain) {
     baseGain = newBaseGain;
-    applyMasterVolume(); 
+    applyMasterVolume();
 }
 
 export function applyMasterVolume() {
@@ -203,11 +200,11 @@ export function applyEqualizerSettings(settings) {
     // 他のグラフはアクティブ化された時に適用する設計が理想だが、
     // 今回は簡易的に「現在のグラフ」のみ即時反映する
     if (!currentGraph) return;
-    
+
     const context = currentGraph.context;
     const preampValue = Math.pow(10, (settings.preamp || 0) / 20);
     currentGraph.nodes.preamp.gain.setValueAtTime(preampValue, context.currentTime);
-    
+
     for (let i = 0; i < currentGraph.nodes.eqBands.length; i++) {
         if (settings.bands && typeof settings.bands[i] === 'number') {
             currentGraph.nodes.eqBands[i].gain.setValueAtTime(settings.bands[i], context.currentTime);
@@ -216,87 +213,3 @@ export function applyEqualizerSettings(settings) {
 }
 
 // --- Direct Link Functions ---
-
-function startDirectLink(graph) {
-    if (!graph || graph.directLink.socket) return; // 既に接続済みなら無視
-
-    console.log(`[DirectLink] Connecting (${graph.sampleRate}Hz)...`);
-
-    try {
-        const socket = net.connect(PIPE_NAME, () => {
-            console.log(`[DirectLink] Connected (${graph.sampleRate}Hz)`);
-            const header = Buffer.alloc(8);
-            header.write('UXD1', 0); 
-            header.writeUInt32LE(graph.sampleRate, 4);
-            socket.write(header);
-        });
-        
-        socket.setNoDelay(true);
-        socket.on('error', (err) => {
-            console.error('[DirectLink] Error:', err.message);
-            stopDirectLink(graph);
-        });
-        socket.on('close', () => {
-            console.log('[DirectLink] Closed.');
-            stopDirectLink(graph);
-        });
-
-        // 既存出力のミュート
-        try { graph.nodes.gain.disconnect(graph.context.destination); } catch(e){}
-
-        // ScriptProcessor作成
-        // ノード再利用はトラブルの元なので毎回作成
-        const processor = graph.context.createScriptProcessor(4096, 2, 2);
-        processor.onaudioprocess = (e) => {
-            if (!socket || socket.destroyed) return;
-            const left = e.inputBuffer.getChannelData(0);
-            const right = e.inputBuffer.getChannelData(1);
-            const interleaved = new Float32Array(left.length + right.length);
-            for (let i = 0; i < left.length; i++) {
-                interleaved[i * 2] = left[i];
-                interleaved[i * 2 + 1] = right[i];
-            }
-            try { socket.write(Buffer.from(interleaved.buffer)); } catch (err) {}
-        };
-
-        // サイレントゲイン（プロセス駆動用）
-        let silent = graph.directLink.silentGain;
-        if (!silent) {
-            silent = graph.context.createGain();
-            silent.gain.value = 0;
-            silent.connect(graph.context.destination);
-            graph.directLink.silentGain = silent;
-        }
-
-        // 接続
-        graph.nodes.analyser.connect(processor);
-        processor.connect(silent);
-
-        graph.directLink.socket = socket;
-        graph.directLink.processor = processor;
-
-    } catch (e) {
-        console.error('[DirectLink] Start failed:', e);
-    }
-}
-
-function stopDirectLink(graph) {
-    if (!graph) return;
-    const dl = graph.directLink;
-
-    if (dl.socket) {
-        dl.socket.destroy();
-        dl.socket = null;
-    }
-    if (dl.processor) {
-        try {
-            dl.processor.disconnect();
-            graph.nodes.analyser.disconnect(dl.processor);
-        } catch(e){}
-        dl.processor = null;
-    }
-    // silentGainは維持してても良いが、切っておく
-    if (dl.silentGain) {
-        // 再利用のため保持しておくか、破棄するか。ここでは保持。
-    }
-}

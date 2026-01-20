@@ -10,16 +10,16 @@ import {
     getDuration,
     playCurrent,
     pauseCurrent
-} from './player.js'; 
-import { applyMasterVolume } from './audio-graph.js'; 
+} from './player.js';
+import { applyMasterVolume } from './audio-graph.js';
 import { formatTime } from './ui/utils.js';
-const { ipcRenderer } = require('electron');
+const electronAPI = window.electronAPI;
 
 let isSeeking = false;
 let wasPlayingBeforeSeek = false;
-let progressUpdateInterval = null; 
-let progressFrameId = null; 
-let lastVolume = 0.5; 
+let progressUpdateInterval = null;
+let progressFrameId = null;
+let lastVolume = 0.5;
 
 
 function updateUiTime(current, duration) {
@@ -69,11 +69,11 @@ function updateProgressBarLoop() {
 
     const currentTime = getCurrentTime();
     const duration = getDuration();
-    
+
     if (elements.progressBar) {
         elements.progressBar.value = currentTime;
     }
-    
+
     updateLrcEditorControls(true, currentTime, duration);
     progressFrameId = requestAnimationFrame(updateProgressBarLoop);
 }
@@ -86,18 +86,18 @@ export function updateSeekUI(time) {
 }
 
 export function initPlayerControls(initialPlayer, callbacks) {
-    elements.playPauseBtn.addEventListener('click', togglePlayPause); 
+    elements.playPauseBtn.addEventListener('click', togglePlayPause);
 
     elements.progressBar.addEventListener('mousedown', () => {
         isSeeking = true;
-        wasPlayingBeforeSeek = isPlaying(); 
+        wasPlayingBeforeSeek = isPlaying();
         if (wasPlayingBeforeSeek) pauseCurrent(); // 汎用関数を使用
     });
 
     elements.progressBar.addEventListener('mouseup', () => {
         if (isSeeking) {
             const seekTime = parseFloat(elements.progressBar.value);
-            seek(seekTime); 
+            seek(seekTime);
             isSeeking = false;
             if (wasPlayingBeforeSeek) {
                 playCurrent(); // 汎用関数を使用
@@ -110,15 +110,15 @@ export function initPlayerControls(initialPlayer, callbacks) {
     elements.progressBar.addEventListener('input', () => {
         if (isSeeking) {
             const time = parseFloat(elements.progressBar.value);
-            elements.currentTimeEl.textContent = formatTime(time); 
+            elements.currentTimeEl.textContent = formatTime(time);
             updateLrcEditorControls(false, time, getDuration());
         }
     });
 
     elements.volumeSlider.addEventListener('input', () => {
-        applyMasterVolume(); 
+        applyMasterVolume();
         updateVolumeIcon();
-        ipcRenderer.send('save-settings', { volume: parseFloat(elements.volumeSlider.value) });
+        electronAPI.send('save-settings', { volume: parseFloat(elements.volumeSlider.value) });
     });
 
     document.getElementById('volume-icon-btn').addEventListener('click', toggleMute);
@@ -128,8 +128,8 @@ export function initPlayerControls(initialPlayer, callbacks) {
     if ('mediaSession' in navigator) {
         navigator.mediaSession.setActionHandler('play', togglePlayPause);
         navigator.mediaSession.setActionHandler('pause', togglePlayPause);
-        if(callbacks.onNextSong) navigator.mediaSession.setActionHandler('nexttrack', callbacks.onNextSong);
-        if(callbacks.onPrevSong) navigator.mediaSession.setActionHandler('previoustrack', callbacks.onPrevSong);
+        if (callbacks.onNextSong) navigator.mediaSession.setActionHandler('nexttrack', callbacks.onNextSong);
+        if (callbacks.onPrevSong) navigator.mediaSession.setActionHandler('previoustrack', callbacks.onPrevSong);
     }
 }
 
@@ -146,7 +146,7 @@ export function updatePlaybackStateUI(playing) {
         progressUpdateInterval = setInterval(() => {
             if (!isSeeking) updateUiTime(getCurrentTime(), getDuration());
         }, 1000);
-        
+
         // 二重起動防止
         if (!progressFrameId) {
             progressFrameId = requestAnimationFrame(updateProgressBarLoop);
@@ -161,7 +161,7 @@ export function updatePlaybackStateUI(playing) {
             clearInterval(progressUpdateInterval);
             progressUpdateInterval = null;
         }
-        
+
         if (progressFrameId) {
             cancelAnimationFrame(progressFrameId);
             progressFrameId = null;
@@ -187,7 +187,7 @@ export function resetPlaybackUI() {
         clearInterval(progressUpdateInterval);
         progressUpdateInterval = null;
     }
-    
+
     if (progressFrameId) {
         cancelAnimationFrame(progressFrameId);
         progressFrameId = null;
