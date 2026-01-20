@@ -758,6 +758,16 @@ function registerIpcHandlers() {
     registerLibraryHandlers(stores, sendToAllWindows);
     logPerf("Library handlers registered.");
 
+    logPerf("Requiring import-handler...");
+    const { registerImportHandlers } = require('./handlers/import-handler');
+    registerImportHandlers({
+        libraryStore: stores.library,
+        loudnessStore: stores.loudness,
+        settingsStore: stores.settings,
+        albumsStore: stores.albums
+    });
+    logPerf("Import handlers registered.");
+
     logPerf("Requiring youtube-handler...");
     const { registerYouTubeHandlers } = require('./handlers/youtube-handler');
     registerYouTubeHandlers(stores, { playlist: playlistManager, addSongsFunc: addSongsToLibraryAndSave });

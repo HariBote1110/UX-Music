@@ -20,6 +20,7 @@ if (process.argv.includes('--dev')) {
 const usbDetection = require('usb-detection');
 const { Kalam } = require('./mtp/Kalam');
 const mtpManager = require('./mtp/mtp-manager');
+const sidecarManager = require('./sidecar-manager');
 
 const startTime = performance.now();
 const logPerf = (message) => {
@@ -116,6 +117,16 @@ app.whenReady().then(() => {
 
   const mainWindow = createWindow();
   connectToDiscord();
+
+  // ▼▼▼ Sidecar (Go) の起動 ▼▼▼
+  sidecarManager.startSidecar()
+    .then(() => {
+      console.log('[Main] Sidecar started ready for requests.');
+    })
+    .catch(err => {
+      console.error('[Main] Failed to start Sidecar:', err);
+    });
+  // ▲▲▲ Sidecar 追加終了 ▲▲▲
 
   // mtp-manager がレンダラーと通信するために mainWindow を渡す
   mtpManager.setMainWindow(mainWindow);

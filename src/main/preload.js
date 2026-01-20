@@ -1,16 +1,20 @@
+console.log('[Preload] Initializing...');
 const { contextBridge, ipcRenderer } = require('electron');
 const IPC_CHANNELS = require('./ipc-channels');
+
+console.log('[Preload] IPC_CHANNELS loaded:', Object.keys(IPC_CHANNELS).length, 'keys');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     CHANNELS: IPC_CHANNELS,
 
     // ipcRenderer の主要な機能をラップして公開
     send: (channel, ...args) => {
+        // console.log(`[Preload] Sending IPC: ${channel}`);
         const validChannels = Object.values(IPC_CHANNELS.SEND);
         if (validChannels.includes(channel)) {
             ipcRenderer.send(channel, ...args);
         } else {
-            console.warn(`[IPC] Unauthorized send channel: ${channel}`);
+            console.error(`[IPC] Blocked unauthorized send channel: ${channel}`);
         }
     },
     invoke: (channel, ...args) => {

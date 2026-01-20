@@ -12,6 +12,13 @@ export const musicApi = {
     appReady: () => window.electronAPI.send(CHANNELS.SEND.APP_READY),
     loadLibrary: () => window.electronAPI.send(CHANNELS.SEND.LOAD_LIBRARY),
     requestPlaylistsWithArtwork: () => window.electronAPI.send(CHANNELS.SEND.REQUEST_PLAYLISTS_WITH_ARTWORK),
+    startScanPaths: (paths) => {
+        console.log('[Bridge] startScanPaths called', paths);
+        console.log('[Bridge] CHANNELS.SEND.START_SCAN_PATHS =', CHANNELS.SEND.START_SCAN_PATHS);
+        console.log('[Bridge] window.electronAPI =', window.electronAPI);
+        window.electronAPI.send(CHANNELS.SEND.START_SCAN_PATHS, paths);
+    },
+    handleLyricsDrop: (paths) => window.electronAPI.send(CHANNELS.SEND.HANDLE_LYRICS_DROP, paths),
 
     // --- Two-way (Invoke) ---
     getSettings: () => window.electronAPI.invoke(CHANNELS.INVOKE.GET_SETTINGS),

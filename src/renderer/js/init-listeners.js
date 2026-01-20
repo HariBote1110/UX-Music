@@ -7,6 +7,7 @@ import { handleQuizKeyPress } from './quiz.js';
 import { updateTextOverflowForSelector } from './ui/utils.js';
 import { updateAudioDevices } from './ui-manager.js';
 import { updateSearchQuery } from './ui.js';
+import { musicApi } from './bridge.js';
 const electronAPI = window.electronAPI;
 
 export function initEventListeners() {
@@ -33,7 +34,8 @@ export function initEventListeners() {
                 title: 'ネットワークフォルダのパス',
                 placeholder: '\\\\ServerName\\ShareName',
                 onOk: (path) => {
-                    electronAPI.send('start-scan-paths', [path]);
+                    // electronAPI.send('start-scan-paths', [path]);
+                    musicApi.startScanPaths([path]);
                 }
             });
         });
@@ -96,7 +98,10 @@ export function initEventListeners() {
             e.preventDefault();
             e.stopPropagation();
             elements.dropZone.classList.remove('drag-over');
+            console.log('[DnD] Drop event fired');
             const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
+            console.log('[DnD] Dropped paths:', allPaths);
+
             if (allPaths.length === 0) return;
             const lyricsExtensions = ['.lrc', '.txt'];
             const lyricsPaths = allPaths.filter(p => {
@@ -109,11 +114,17 @@ export function initEventListeners() {
                 const ext = lastDot !== -1 ? p.substring(lastDot).toLowerCase() : '';
                 return !lyricsExtensions.includes(ext);
             });
+
+            console.log('[DnD] Music paths to process:', musicPaths);
+
             if (musicPaths.length > 0) {
-                electronAPI.send('start-scan-paths', musicPaths);
+                // electronAPI.send('start-scan-paths', musicPaths);
+                console.log('[DnD] Calling musicApi.startScanPaths...');
+                musicApi.startScanPaths(musicPaths);
             }
             if (lyricsPaths.length > 0) {
-                electronAPI.send('handle-lyrics-drop', lyricsPaths);
+                // electronAPI.send('handle-lyrics-drop', lyricsPaths);
+                musicApi.handleLyricsDrop(lyricsPaths);
             }
         });
     }

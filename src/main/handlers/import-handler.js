@@ -4,7 +4,8 @@ const { ipcMain, app, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { scanPaths, parseFiles, extractArtwork } = require('../file-scanner');
+const { extractArtwork } = require('../file-scanner'); // scanPaths, parseFiles は削除
+const sidecarManager = require('../sidecar-manager'); // 追加
 const os = require('os');
 const { sanitize } = require('../utils');
 const sharp = require('sharp');
@@ -15,9 +16,7 @@ let albumsStore;
 /**
  * アートワークをファイル（webp/thumbnail）に保存する
  */
-// ▼▼▼ 'export' を削除 ▼▼▼
 async function saveArtworkToFile(picture, albumArtist, albumTitle) {
-    // ▲▲▲ 修正 ▲▲▲
     if (!picture || !picture.data) return null;
     const artworksDir = path.join(app.getPath('userData'), 'Artworks');
     const thumbnailsDir = path.join(artworksDir, 'thumbnails');
@@ -55,16 +54,12 @@ function addSongsToLibraryAndSave(newSongs, libraryStore) {
     return uniqueNewSongs;
 }
 
-/**
- * ライブラリのインポート関連のIPCハンドラを登録する
- */
-// ▼▼▼ 'export' を削除 ▼▼▼
 function registerImportHandlers(stores) {
-    // ▲▲▲ 修正 ▲▲▲
     const { libraryStore, loudnessStore, settingsStore } = stores;
-    albumsStore = stores.albumsStore; // saveArtworkToFile が参照 (このファイル内では不要)
+    albumsStore = stores.albumsStore;
 
     ipcMain.on('start-scan-paths', async (event, paths) => {
+        console.log('[Main] Received start-scan-paths event', paths);
         console.time('Main: Total Import Process');
 
         const finishScan = (result) => {
@@ -91,13 +86,46 @@ function registerImportHandlers(stores) {
             }
         }
 
-        const sourceFiles = await scanPaths(paths);
-        if (sourceFiles.length === 0) {
+        // ▼▼▼ Go Sidecar によるスキャン ▼▼▼
+        console.log('[Import] Requesting scan from Go Sidecar...');
+        let songsFromGo = [];
+        try {
+            songsFromGo = await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    sidecarManager.off('scan-library-success', onSuccess);
+                    reject(new Error('Scan timed out'));
+                }, 600000); // 10分タイムアウト
+
+                const onSuccess = (result) => {
+                    clearTimeout(timeout);
+                    resolve(result.songs || []);
+                };
+
+                sidecarManager.once('scan-library-success', onSuccess);
+                sidecarManager.sendToSidecar('scan-library', paths);
+            });
+        } catch (err) {
+            console.error('[Import] Sidecar scan failed:', err);
+            return finishScan([]);
+        }
+
+        if (songsFromGo.length === 0) {
             console.log('[Import] No new source files found.');
             return finishScan([]);
         }
 
-        const songsWithMetadata = await parseFiles(sourceFiles);
+        // Goからのデータを既存形式にマッピング
+        const songsWithMetadata = songsFromGo.map(s => ({
+            ...s,
+            id: crypto.randomUUID(),
+            type: 'local',
+            // Go側で取れていないフィールドの補完
+            duration: s.duration || 0,
+            hasVideo: false, // 簡易的
+            isHiRes: (s.sampleRate || 0) > 48000,
+            sampleRate: s.sampleRate || 44100
+        }));
+        // ▲▲▲ Go Sidecar 連携終了 ▲▲▲
         const existingLibraryPaths = new Set((libraryStore.load() || []).map(s => s.path));
 
         const songsToProcess = songsWithMetadata.filter(song => {
