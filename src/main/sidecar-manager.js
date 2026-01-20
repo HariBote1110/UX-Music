@@ -79,19 +79,26 @@ class SidecarManager extends EventEmitter {
             });
 
             // プロセスが安定して立ち上がったとみなしてresolve
-            setTimeout(() => {
+            setTimeout(async () => {
                 if (this.sidecarProcess && !this.sidecarProcess.killed) {
                     console.log('[SidecarManager] Sidecar started successfully.');
 
-                    // ▼▼▼ 初期化メッセージを送信 ▼▼▼
+                    // ▼▼▼ 初期化メッセージを送信 (待機する) ▼▼▼
                     const ffmpegPath = require('ffmpeg-static').replace('app.asar', 'app.asar.unpacked');
                     const ffprobePath = require('ffprobe-static').path.replace('app.asar', 'app.asar.unpacked');
 
-                    this.sendToSidecar('init', {
-                        userDataPath: app.getPath('userData'),
-                        ffmpegPath,
-                        ffprobePath
-                    });
+                    try {
+                        await this.invoke('init', {
+                            userDataPath: app.getPath('userData'),
+                            ffmpegPath,
+                            ffprobePath
+                        });
+                        console.log('[SidecarManager] Sidecar initialized.');
+                    } catch (initErr) {
+                        console.error('[SidecarManager] Failed to initialize sidecar:', initErr);
+                        // 初期化失敗でもプロセスは生きているので進めるか、rejectするか。
+                        // パス設定がないと動かない機能が多いのでログを出して進める（後で再送などのリカバリは今は考えない）
+                    }
                     // ▲▲▲ 送信終了 ▲▲▲
 
                     resolve();
