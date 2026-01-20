@@ -230,15 +230,23 @@ async function playLocal(song) {
         // initPlayerControls はここから削除しました (二重登録防止)
     }
 
-    const safePath = encodeURI(song.path.replace(/\\/g, '/')).replace(/#/g, '%23');
+    const normalizedPath = song.path.replace(/\\/g, '/');
+    const safePath = encodeURI(normalizedPath).replace(/#/g, '%23');
     const isWails = window.go !== undefined;
-    localPlayer.src = isWails ? `/safe-media/${song.path}` : `file://${safePath}`;
+
+    if (isWails) {
+        // Wails 環境: /safe-media/ + 絶対パス
+        localPlayer.src = `/safe-media${normalizedPath.startsWith('/') ? '' : '/'}${safePath}`;
+        console.log(`[Player] Setting Wails src: ${localPlayer.src}`);
+    } else {
+        localPlayer.src = `file://${safePath}`;
+    }
 
     try {
         await localPlayer.play();
     } catch (error) {
         if (error.name !== 'AbortError') {
-            console.error(`Playback failed:`, error);
+            console.error(`Playback failed for ${song.title}:`, error, 'Path:', localPlayer.src);
             savedCallbacks.onSongEnded();
         }
     }

@@ -68,8 +68,18 @@ func main() {
 					return
 				} else if strings.HasPrefix(path, "/safe-media/") {
 					// Wails 環境での音楽再生用
-					fullPath := strings.TrimPrefix(path, "/safe-media")
-					// ServeFile は Range リクエストなどを適切に処理してくれる
+					relPath := strings.TrimPrefix(path, "/safe-media/")
+					// filepath.Clean で // などを正規化し、OSに依存しないスラッシュにする
+					// ただし Mac の絶対パスを維持するため、先頭に / を付ける
+					fullPath := "/" + filepath.Clean(relPath)
+
+					if _, err := os.Stat(fullPath); err != nil {
+						fmt.Printf("[Wails] Media file not found: %s (error: %v)\n", fullPath, err)
+						http.NotFound(w, r)
+						return
+					}
+
+					// fmt.Printf("[Wails] Serving media: %s\n", fullPath) // 頻度が高いので必要時のみ有効化
 					http.ServeFile(w, r, fullPath)
 					return
 				}

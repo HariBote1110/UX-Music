@@ -55,7 +55,7 @@ export async function activateAudioGraph(rate) {
         graph = await createGraph(rate);
         graphCache.set(rate, graph);
     } else {
-        console.log(`[AudioGraph] Resuming cached graph for ${rate}Hz.`);
+        console.log(`[AudioGraph] Resuming cached graph for ${rate}Hz. AudioContext state: ${graph.context.state}`);
     }
 
     currentGraph = graph;
