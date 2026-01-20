@@ -11,8 +11,11 @@
 
 -   **[重大] De-node-integration 移行後の表示・再生不具合**
     -   **概要**: セキュリティ強化のための `contextIsolation: true` 移行後、レンダラープロセスで IPC 通信が正常に行われず、楽曲リストが空になる、再生が開始されないなどの問題が発生していた。
-    -   **原因**: `preload.js` の send ホワイトリストに、`playback-started`, `song-skipped`, `save-audio-output-id`, `normalize-worker-finished-file` の4チャネルが不足していた。
-    -   **修正**: 不足していたチャネルを `preload.js` のホワイトリストに追加。
+    -   **原因**: 
+        1. `preload.js` の send ホワイトリストに不足チャネルあり
+        2. **イベント名の不一致**: メインは `load-library` を送信、レンダラーは `library-loaded` を購読していた
+        3. `normalize-view.js` でコールバック引数に不要な `event` を含んでいた
+    -   **修正**: ホワイトリストへのチャネル追加、イベント名統一、引数形式の修正を実施。
 
 -   **[バグ] クイズ終了時にスコアが保存できない**
     -   **原因**: ランキングデータファイル(`quiz-scores.json`)が空の場合、データを配列として正しく初期化できず、`scores.push`が失敗していた。
