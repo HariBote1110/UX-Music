@@ -292,6 +292,31 @@ func handleRequest(req Request) {
 			}
 		}
 
+	// --- Discord RPC ---
+	case "discord-connect":
+		if err := ConnectToDiscord(); err != nil {
+			fail("discord-error", err.Error())
+		} else {
+			respond("discord-connected", nil)
+		}
+
+	case "discord-set-activity":
+		var payload DiscordActivity
+		if parsePayload(req.ID, req.Payload, &payload) {
+			if err := SetDiscordActivity(payload); err != nil {
+				fail("discord-error", err.Error())
+			} else {
+				respond("discord-activity-set", nil)
+			}
+		}
+
+	case "discord-clear":
+		if err := ClearDiscordActivity(); err != nil {
+			fail("discord-error", err.Error())
+		} else {
+			respond("discord-cleared", nil)
+		}
+
 	// --- MTP Sidecar ---
 
 	case "mtp-test":
