@@ -1,5 +1,5 @@
 // src/renderer/renderer.js
-
+import './js/env-setup.js';
 import { state, elements, initElements } from './js/state.js';
 import { initEventListeners } from './js/init-listeners.js';
 import { initUI } from './js/ui.js';
@@ -18,9 +18,8 @@ import { initQuiz } from './js/quiz.js';
 import { playNextSong, playPrevSong } from './js/playback-manager.js';
 import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
 import { musicApi } from './js/bridge.js';
+import { checkWails } from './js/wails-check.js';
 
-// window.electronAPI は preload.js によって公開されます
-// 直接の使用は避け、musicApi (bridge.js) を通じたアクセスを推奨します
 const electronAPI = window.electronAPI;
 
 window.artworkLoadTimes = [];
@@ -187,4 +186,6 @@ async function initApp() {
 // 冗長で property 名が間違っていた古いヘルパー関数を削除
 // 今後は playback-manager.js 内のロジックが使用されます。
 
-initApp().catch(err => console.error('App initialization failed:', err));
+initApp()
+    .then(() => checkWails())
+    .catch(err => console.error('App initialization failed:', err));

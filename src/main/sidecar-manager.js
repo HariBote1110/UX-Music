@@ -17,7 +17,7 @@ class SidecarManager extends EventEmitter {
         return new Promise((resolve, reject) => {
             // 開発環境では 'go run' を使用し、ビルドの手間を省く
             // 本番ビルド時はバイナリのパスを指定するように書き換える必要がある
-            const goDir = path.join(__dirname, '../go');
+            const goDir = path.join(__dirname, '../../');
 
             console.log('[SidecarManager] Starting Go sidecar...');
             this.sidecarProcess = spawn('go', ['run', '.'], {
