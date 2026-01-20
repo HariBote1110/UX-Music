@@ -6,6 +6,7 @@ import { updatePlayingIndicators, renderCurrentView } from './ui-manager.js';
 import { showNotification, hideNotification } from './ui/notification.js';
 import { updateNowPlayingView } from './ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
+import { musicApi } from './bridge.js';
 const electronAPI = window.electronAPI;
 
 function handleSkip() {
@@ -13,7 +14,7 @@ function handleSkip() {
         const skippedSong = state.playbackQueue[state.currentSongIndex];
         const player = document.getElementById('main-player');
         if (skippedSong && player && player.currentTime > 0 && player.duration > 0) {
-            electronAPI.send('song-skipped', { song: skippedSong, currentTime: player.currentTime });
+            musicApi.songSkipped({ song: skippedSong, currentTime: player.currentTime });
         }
     }
 }
@@ -23,7 +24,7 @@ function handleSkip() {
  */
 export async function initPlaybackSettings() {
     console.log('[Debug:Playback] initPlaybackSettings を開始します。');
-    const settings = await electronAPI.invoke('get-settings');
+    const settings = await musicApi.getSettings();
 
     if (settings.isShuffled !== undefined) {
         state.isShuffled = settings.isShuffled;
@@ -103,7 +104,7 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     hideNotification();
     loadLyricsForSong(songToPlayActual);
 
-    electronAPI.send('playback-started', songToPlayActual);
+    musicApi.playbackStarted(songToPlayActual);
     state.currentSongIndex = index;
 
     console.log('[Debug:Playback] UI更新関数(updateNowPlayingView, updatePlayingIndicators)を呼び出します。');
@@ -153,7 +154,7 @@ export function playPrevSong() {
 export function toggleShuffle() {
     state.isShuffled = !state.isShuffled;
     elements.shuffleBtn.classList.toggle('active', state.isShuffled);
-    electronAPI.send('save-settings', { isShuffled: state.isShuffled });
+    musicApi.saveSettings({ isShuffled: state.isShuffled });
 
     const currentSong = state.playbackQueue[state.currentSongIndex];
 
@@ -192,5 +193,5 @@ export function toggleLoopMode() {
 
     elements.loopBtn.classList.toggle('active', state.playbackMode !== PLAYBACK_MODES.NORMAL);
     elements.loopBtn.classList.toggle('loop-one', state.playbackMode === PLAYBACK_MODES.LOOP_ONE);
-    electronAPI.send('save-settings', { playbackMode: state.playbackMode });
+    musicApi.saveSettings({ playbackMode: state.playbackMode });
 }

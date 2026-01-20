@@ -193,7 +193,7 @@ export function initIPC(callbacks) {
 
     logPerf("Requesting initial data from main process...");
     electronAPI.send('request-initial-library');
-    electronAPI.send('request-initial-play-counts');
+    musicApi.requestInitialPlayCounts();
     electronAPI.send('request-initial-settings');
 
     const mtpDeviceNavLink = document.getElementById('mtp-device-nav-link');

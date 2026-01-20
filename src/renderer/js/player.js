@@ -30,6 +30,7 @@ import {
     analyser,
     dataArray
 } from './audio-graph.js';
+import { musicApi } from './bridge.js';
 const electronAPI = window.electronAPI;
 
 let localPlayer;
@@ -93,7 +94,7 @@ export {
 function attachPlayerListeners(player) {
     player.onended = () => {
         const finishedSong = state.playbackQueue[state.currentSongIndex];
-        if (state.analysedQueue.enabled && finishedSong) electronAPI.send('song-finished', finishedSong);
+        if (state.analysedQueue.enabled && finishedSong) musicApi.songFinished(finishedSong);
         if (typeof savedCallbacks.onSongEnded === 'function') savedCallbacks.onSongEnded();
         updateLrcEditorControls(false, getDuration(), getDuration());
     };
@@ -187,6 +188,7 @@ export async function play(song) {
 
     if (song.path) {
         currentSongType = 'local';
+        musicApi.playbackStarted(song);
         await playLocal(song);
     }
 }

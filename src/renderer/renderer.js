@@ -149,6 +149,7 @@ async function initApp() {
     // ▲▲▲ 追加ここまで ▲▲▲
 
     musicApi.requestAppInfo();
+    musicApi.requestInitialPlayCounts();
 
     try {
         const settings = await musicApi.getSettings();

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -108,11 +109,130 @@ func (a *App) RequestInitialLibrary() {
 
 // LoadPlayCounts loads play counts and emits an event
 func (a *App) LoadPlayCounts() {
+	fmt.Println("[Wails] LoadPlayCounts called")
 	counts, _ := stores.Load("play-counts")
 	if counts == nil {
 		counts = make(map[string]interface{})
 	}
 	runtime.EventsEmit(a.ctx, "play-counts-updated", counts)
+}
+
+// IncrementPlayCount increments the play count for a song
+func (a *App) IncrementPlayCount(song map[string]interface{}) {
+	fmt.Printf("[Wails] IncrementPlayCount called for: %v\n", song["title"])
+	path, ok := song["path"].(string)
+	if !ok {
+		return
+	}
+
+	counts, _ := stores.Load("play-counts")
+	var countsMap map[string]interface{}
+	if counts == nil {
+		countsMap = make(map[string]interface{})
+	} else {
+		countsMap = counts.(map[string]interface{})
+	}
+
+	isoNow := time.Now().Format(time.RFC3339)
+
+	var existingData map[string]interface{}
+	if data, exists := countsMap[path]; exists {
+		existingData = data.(map[string]interface{})
+	} else {
+		existingData = map[string]interface{}{
+			"count":         0.0,
+			"totalDuration": 0.0,
+			"history":       []interface{}{},
+		}
+	}
+
+	existingData["count"] = existingData["count"].(float64) + 1
+	if duration, ok := song["duration"].(float64); ok {
+		existingData["totalDuration"] = existingData["totalDuration"].(float64) + duration
+	}
+
+	history := existingData["history"].([]interface{})
+	history = append(history, isoNow)
+	if len(history) > 100 {
+		history = history[1:]
+	}
+	existingData["history"] = history
+
+	countsMap[path] = existingData
+	stores.Save("play-counts", countsMap)
+
+	runtime.EventsEmit(a.ctx, "play-counts-updated", countsMap)
+}
+
+// SongFinished handles the end of a song, updating analysis score
+func (a *App) SongFinished(song map[string]interface{}) {
+	fmt.Printf("[Wails] SongFinished called for: %v\n", song["title"])
+	id, ok := song["id"].(string)
+	if !ok {
+		return
+	}
+
+	data, _ := stores.Load("analysed-queue")
+	if data == nil {
+		return
+	}
+
+	analysedData := data.(map[string]interface{})
+	if songData, exists := analysedData[id]; exists {
+		sMap := songData.(map[string]interface{})
+		score := sMap["score"].(float64)
+		if score > 0 {
+			sMap["score"] = score - 1
+			analysedData[id] = sMap
+			stores.Save("analysed-queue", analysedData)
+		}
+	}
+}
+
+func (a *App) SongSkipped(data map[string]interface{}) {
+	// Electron版の ipcMain.on(IPC_CHANNELS.SEND.SONG_SKIPPED, ...) の移植
+	song := data["song"].(map[string]interface{})
+	currentTime := data["currentTime"].(float64)
+
+	id, ok := song["id"].(string)
+	duration, okDur := song["duration"].(float64)
+	if !ok || !okDur || duration == 0 {
+		return
+	}
+
+	playbackPercentage := (currentTime / duration) * 100
+	var scoreIncrement float64 = 0
+
+	if currentTime <= 5 {
+		scoreIncrement = 5 // Instant skip
+	} else if playbackPercentage <= 10 {
+		scoreIncrement = 3 // Strong dislike
+	} else if playbackPercentage <= 50 {
+		scoreIncrement = 1 // Moderate dislike
+	}
+
+	if scoreIncrement > 0 {
+		dislikeData, _ := stores.Load("analysed-queue")
+		var dislikeMap map[string]interface{}
+		if dislikeData == nil {
+			dislikeMap = make(map[string]interface{})
+		} else {
+			dislikeMap = dislikeData.(map[string]interface{})
+		}
+
+		var currentData map[string]interface{}
+		if d, exists := dislikeMap[id]; exists {
+			currentData = d.(map[string]interface{})
+		} else {
+			currentData = map[string]interface{}{"score": 0.0}
+		}
+
+		currentData["score"] = currentData["score"].(float64) + scoreIncrement
+		currentData["lastSkipped"] = time.Now().Format(time.RFC3339)
+
+		dislikeMap[id] = currentData
+		stores.Save("analysed-queue", dislikeMap)
+	}
 }
 
 // RequestPlaylistsWithArtwork loads playlists and emits an event

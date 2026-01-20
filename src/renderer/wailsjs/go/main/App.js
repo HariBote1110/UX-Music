@@ -58,6 +58,10 @@ export function HandleLyricsDrop(arg1) {
   return window['go']['main']['App']['HandleLyricsDrop'](arg1);
 }
 
+export function IncrementPlayCount(arg1) {
+  return window['go']['main']['App']['IncrementPlayCount'](arg1);
+}
+
 export function LoadLibrary() {
   return window['go']['main']['App']['LoadLibrary']();
 }
@@ -92,6 +96,14 @@ export function SaveSettings(arg1) {
 
 export function ScanLibrary(arg1) {
   return window['go']['main']['App']['ScanLibrary'](arg1);
+}
+
+export function SongFinished(arg1) {
+  return window['go']['main']['App']['SongFinished'](arg1);
+}
+
+export function SongSkipped(arg1) {
+  return window['go']['main']['App']['SongSkipped'](arg1);
 }
 
 export function UpdatePlaylistSongOrder(arg1) {

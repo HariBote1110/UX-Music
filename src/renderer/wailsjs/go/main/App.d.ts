@@ -30,6 +30,8 @@ export function GetYouTubeInfo(arg1:string):Promise<any>;
 
 export function HandleLyricsDrop(arg1:Array<string>):Promise<void>;
 
+export function IncrementPlayCount(arg1:Record<string, any>):Promise<void>;
+
 export function LoadLibrary():Promise<void>;
 
 export function LoadPlayCounts():Promise<void>;
@@ -47,5 +49,9 @@ export function SaveLrcFile(arg1:string,arg2:string):Promise<void>;
 export function SaveSettings(arg1:any):Promise<void>;
 
 export function ScanLibrary(arg1:Array<string>):Promise<main.ScanResult>;
+
+export function SongFinished(arg1:Record<string, any>):Promise<void>;
+
+export function SongSkipped(arg1:Record<string, any>):Promise<void>;
 
 export function UpdatePlaylistSongOrder(arg1:Record<string, any>):Promise<void>;

@@ -1,6 +1,6 @@
 {
   "name": "ux-music",
-  "version": "0.1.9-Beta-6h",
+  "version": "0.1.9-Beta-6i",
   "description": "Music Player UX Music",
   "main": "src/main/index.js",
   "scripts": {

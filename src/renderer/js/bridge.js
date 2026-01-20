@@ -41,6 +41,30 @@ export const musicApi = {
         api.send(CHANNELS.SEND.START_SCAN_PATHS, paths);
     },
     handleLyricsDrop: (paths) => api && api.send(CHANNELS.SEND.HANDLE_LYRICS_DROP, paths),
+    requestInitialPlayCounts: () => {
+        if (isWails) {
+            return window.go.main.App.LoadPlayCounts();
+        }
+        return api && api.send(CHANNELS.SEND.REQUEST_INITIAL_PLAY_COUNTS);
+    },
+    playbackStarted: (song) => {
+        if (isWails) {
+            return window.go.main.App.IncrementPlayCount(song);
+        }
+        return api && api.send(CHANNELS.SEND.PLAYBACK_STARTED, song);
+    },
+    songFinished: (song) => {
+        if (isWails) {
+            return window.go.main.App.SongFinished(song);
+        }
+        return api && api.send(CHANNELS.SEND.SONG_FINISHED, song);
+    },
+    songSkipped: (data) => {
+        if (isWails) {
+            return window.go.main.App.SongSkipped(data);
+        }
+        return api && api.send(CHANNELS.SEND.SONG_SKIPPED, data);
+    },
 
     // --- Two-way (Invoke) ---
     getSettings: async () => {
@@ -55,13 +79,30 @@ export const musicApi = {
         }
         return api && api.send(CHANNELS.SEND.SAVE_SETTINGS, settings);
     },
+    addSongsToPlaylist: (data) => {
+        if (isWails) {
+            return window.go.main.App.AddSongsToPlaylist(data);
+        }
+        return api && api.invoke(CHANNELS.INVOKE.ADD_SONGS_TO_PLAYLIST, data);
+    },
     getArtworksDir: () => {
         if (isWails) {
             return window.go.main.App.GetArtworksDir();
         }
         return api ? api.invoke(CHANNELS.INVOKE.GET_ARTWORKS_DIR) : Promise.resolve('');
     },
-    getPlaylistDetails: (name) => api ? api.invoke(CHANNELS.INVOKE.GET_PLAYLIST_DETAILS, name) : Promise.resolve({ songs: [] }),
+    getPlaylistDetails: (name) => {
+        if (isWails) {
+            return window.go.main.App.GetPlaylistDetails(name);
+        }
+        return api ? api.invoke(CHANNELS.INVOKE.GET_PLAYLIST_DETAILS, name) : Promise.resolve({ songs: [] });
+    },
+    getLyrics: (song) => {
+        if (isWails) {
+            return window.go.main.App.GetLyrics(song.title);
+        }
+        return api && api.invoke(CHANNELS.INVOKE.GET_LYRICS, song);
+    },
 
     // --- Event Listeners (On) ---
     onAppInfoResponse: (callback) => api && api.on(CHANNELS.ON.APP_INFO_RESPONSE, callback),
