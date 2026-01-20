@@ -8,7 +8,8 @@ import { showContextMenu, resolveArtworkPath } from './utils.js';
 import { showModal } from '../modal.js';
 import { showNotification, hideNotification } from './notification.js';
 import { clearMainContent } from './view-renderer.js'; // clearMainContent は view-renderer からインポート
-const electronAPI = window.electronAPI;
+import { musicApi } from '../bridge.js';
+// ▲▲▲ 追加 ▲▲▲
 
 /**
  * アルバム一覧ビューを描画する
@@ -39,7 +40,7 @@ export function renderAlbumView() {
                         const albumToAdd = state.albums.get(key);
                         if (albumToAdd && albumToAdd.songs) {
                             const songPaths = albumToAdd.songs.map(s => s.path);
-                            const result = await electronAPI.invoke('add-album-to-playlist', { songPaths, playlistName: playlist.name });
+                            const result = await musicApi.addSongsToPlaylist({ songPaths, playlistName: playlist.name });
 
                             if (result.success && result.addedCount > 0) {
                                 showNotification(`「${album.title}」の ${result.addedCount} 曲をプレイリスト「${playlist.name}」に追加しました。`);
@@ -110,14 +111,14 @@ export async function renderSituationView() {
     const grid = document.createElement('div');
     grid.id = 'playlist-grid'; // 'playlist-grid' を再利用
 
-    const situationPlaylists = await electronAPI.invoke('get-situation-playlists');
+    const situationPlaylists = await musicApi.getSituationPlaylists();
     const playlists = Object.values(situationPlaylists);
 
     if (playlists.length === 0) {
         grid.innerHTML = '<div class="placeholder">あなたのためのプレイリストはまだありません。</div>';
     } else {
         playlists.forEach(playlist => {
-            const artworks = playlist.songs
+            const artworks = (playlist.songs || [])
                 .map(song => (state.albums.get(song.albumKey) || song).artwork)
                 .filter(Boolean)
                 .slice(0, 4);
@@ -127,7 +128,7 @@ export async function renderSituationView() {
             playlistItem.addEventListener('click', () => {
                 const playlistDetails = {
                     name: playlist.name,
-                    songs: playlist.songs,
+                    songs: playlist.songs || [],
                     artworks: artworks
                 };
                 showSituationPlaylistDetail(playlistDetails);
@@ -171,7 +172,7 @@ export function renderPlaylistView() {
                                 placeholder: '新しい名前',
                                 onOk: async (newName) => {
                                     if (newName && newName.trim() !== '' && newName !== playlist.name) {
-                                        await electronAPI.invoke('rename-playlist', { oldName: playlist.name, newName });
+                                        await musicApi.renamePlaylist({ oldName: playlist.name, newName });
                                     }
                                 }
                             });
@@ -182,7 +183,7 @@ export function renderPlaylistView() {
                         action: async () => {
                             const confirmed = confirm(`プレイリスト「${playlist.name}」を削除しますか？\nこの操作は元に戻せません。`);
                             if (confirmed) {
-                                await electronAPI.invoke('delete-playlist', playlist.name);
+                                await musicApi.deletePlaylist(playlist.name);
                             }
                         }
                     }
@@ -198,7 +199,7 @@ export function renderPlaylistView() {
             title: '新規プレイリスト',
             placeholder: 'プレイリスト名',
             onOk: async (name) => {
-                await electronAPI.invoke('create-playlist', name);
+                await musicApi.createPlaylist(name);
             }
         });
     });

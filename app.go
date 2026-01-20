@@ -327,18 +327,18 @@ func (a *App) GetPlaylistDetails(name string) (interface{}, error) {
 func (a *App) GetSituationPlaylists() (interface{}, error) {
 	fmt.Println("[Wails] GetSituationPlaylists called")
 
+	result := make(map[string]interface{})
+
 	// Load library
 	library, _ := stores.Load("library")
 	if library == nil {
-		return make(map[string]interface{}), nil
+		return result, nil
 	}
 
 	songs := library.([]interface{})
 	if len(songs) == 0 {
-		return make(map[string]interface{}), nil
+		return result, nil
 	}
-
-	result := make(map[string]interface{})
 
 	// 1. Recently Added (最近追加した曲) - 最新の20曲
 	recentSongs := make([]interface{}, 0)
