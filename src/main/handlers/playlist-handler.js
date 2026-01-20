@@ -12,16 +12,13 @@ async function getPlaylistsWithArtwork() {
     try {
         // Go からプレイリスト名のリストを取得
         const playlistNames = await sidecarManager.invoke('get-all-playlists');
-        console.log('[Debug] getPlaylistsWithArtwork - playlistNames:', playlistNames);
 
         if (!Array.isArray(playlistNames)) {
-            console.log('[Debug] playlistNames is not array, returning empty.');
             return [];
         }
 
         // ライブラリデータをロード (Electron側)
         const mainLibrary = libraryStore.load() || [];
-        console.log('[Debug] getPlaylistsWithArtwork - mainLibrary length:', mainLibrary.length);
 
         const albumsData = albumsStore.load() || {};
         const albumsMap = new Map(Object.entries(albumsData));
@@ -34,7 +31,9 @@ async function getPlaylistsWithArtwork() {
             try {
                 const songPaths = await sidecarManager.invoke('get-playlist-songs', { name });
 
-                const artworks = songPaths
+                const safeSongPaths = Array.isArray(songPaths) ? songPaths : [];
+
+                const artworks = safeSongPaths
                     .map(path => libraryMap.get(path))
                     .filter(Boolean)
                     .map(song => {
@@ -92,12 +91,14 @@ function registerPlaylistHandlers(stores, sendToAllWindows) {
     ipcMain.handle(IPC_CHANNELS.INVOKE.GET_PLAYLIST_DETAILS, async (event, playlistName) => {
         try {
             const songPaths = await sidecarManager.invoke('get-playlist-songs', { name: playlistName });
+            const safeSongPaths = Array.isArray(songPaths) ? songPaths : [];
+
             const mainLibrary = libraryStore.load() || [];
             const albumsData = albumsStore.load() || {};
             const albumsMap = new Map(Object.entries(albumsData));
             const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
 
-            const songs = songPaths.map(path => libraryMap.get(path)).filter(Boolean);
+            const songs = safeSongPaths.map(path => libraryMap.get(path)).filter(Boolean);
             const artworks = songs
                 .map(song => {
                     if (song.albumKey) {
