@@ -275,8 +275,11 @@ function startImport() {
     });
 }
 
-function onProgress(event, data) {
+function onProgress(data) {
+    // preload.js は event を除いて args のみを渡すので、data が最初の引数
+    if (!data) return;
     const { status, track, percent, error } = data;
+
     const statusCell = document.getElementById(`status-cell-${track}`);
     const progressText = document.getElementById('cd-progress-text');
     const progressBar = document.getElementById('cd-progress-bar');
@@ -303,8 +306,10 @@ function onProgress(event, data) {
     }
 }
 
-function onComplete(event, data) {
+function onComplete(data) {
+    if (!data) return;
     isRipping = false;
+
     const importBtn = document.getElementById('cd-import-btn');
     const scanBtn = document.getElementById('cd-scan-btn');
     const metadataBtn = document.getElementById('cd-metadata-btn');
