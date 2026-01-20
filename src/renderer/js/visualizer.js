@@ -17,8 +17,8 @@ let isEcoModeEnabled = true;
  * ビジュアライザーの描画ループを開始する
  */
 export function startVisualizerLoop() {
-    lastHeights.fill(4); 
-    
+    lastHeights.fill(4);
+
     if (!visualizerFrameId && isPlaying()) {
         visualizerFrameId = requestAnimationFrame(draw);
     }
@@ -144,21 +144,53 @@ function draw(timestamp) {
 
     if (currentVisualizerBars && analyser && dataArray) {
         analyser.getByteFrequencyData(dataArray);
-        const barIndices = [1, 3, 7, 15, 30, 60];
-        const heights = barIndices.map((dataIndex, i) => {
-            const value = dataArray[dataIndex] / 255;
-            const scaledValue = Math.pow(value, 1.6);
-            const multiplier = 1 + Math.sin((i / (barIndices.length - 1)) * Math.PI) * 0.5;
+
+        // iPhoneスタイルの対数スケール周波数配分
+        // サンプルレート48kHz、FFTサイズ256の場合、各binは約187.5Hzの帯域幅
+        // ターゲット周波数: 60Hz(低音), 250Hz, 1kHz, 4kHz, 8kHz, 16kHz(高音)
+        // 対数スケールで均等に分散
+        const targetFrequencies = [60, 250, 1000, 4000, 8000, 16000];
+        const sampleRate = 48000; // 標準サンプルレート
+        const fftSize = 256;
+        const binWidth = sampleRate / fftSize; // ~187.5Hz per bin
+
+        // 各ターゲット周波数に対応するビンインデックスを計算
+        // 低周波数帯域では複数のビンを平均化してより滑らかな表示を実現
+        const heights = targetFrequencies.map((freq, i) => {
+            const centerBin = Math.round(freq / binWidth);
+
+            // 周波数帯域に応じてビン範囲を調整（低音は広く、高音は狭く）
+            let binRange = Math.max(1, Math.floor(3 - i * 0.4));
+            const startBin = Math.max(0, centerBin - binRange);
+            const endBin = Math.min(dataArray.length - 1, centerBin + binRange);
+
+            // 範囲内のビンの平均値を計算
+            let sum = 0;
+            let count = 0;
+            for (let b = startBin; b <= endBin; b++) {
+                sum += dataArray[b];
+                count++;
+            }
+            const avgValue = count > 0 ? sum / count / 255 : 0;
+
+            // べき乗でダイナミクスを調整（低めの値を強調）
+            const scaledValue = Math.pow(avgValue, 1.4);
+
+            // 中央のバーを少し強調（視覚的なバランス調整）
+            const multiplier = 1 + Math.sin((i / (targetFrequencies.length - 1)) * Math.PI) * 0.3;
             const targetHeight = (scaledValue * multiplier * 20) + 4;
-            const newHeight = lastHeights[i] * 0.5 + targetHeight * 0.5;
+
+            // スムージング（前フレームとの補間）
+            const newHeight = lastHeights[i] * 0.4 + targetHeight * 0.6;
             lastHeights[i] = newHeight;
             return Math.min(20, Math.max(4, newHeight));
         });
+
         currentVisualizerBars.forEach((bar, index) => {
-             const newHeightPx = `${heights[index]}px`;
-             if (bar.style.height !== newHeightPx) {
-                 bar.style.height = newHeightPx;
-             }
+            const newHeightPx = `${heights[index]}px`;
+            if (bar.style.height !== newHeightPx) {
+                bar.style.height = newHeightPx;
+            }
         });
     }
 }
