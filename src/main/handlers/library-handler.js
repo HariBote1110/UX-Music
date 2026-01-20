@@ -4,10 +4,10 @@ const { ipcMain, app, dialog } = require('electron'); // dialog は不要にな�
 const path = require('path');
 const fs = require('fs');
 // ▼▼▼ 変更: getSampleRate をインポート ▼▼▼
-const { analyzeLoudness, getSampleRate } = require('../file-scanner'); 
+const { analyzeLoudness, getSampleRate } = require('../file-scanner');
 // ▲▲▲ 変更ここまで ▲▲▲
 const NodeID3 = require('node-id3');
-const { saveArtworkToFile } = require('./import-handler'); 
+const { saveArtworkToFile } = require('./import-handler');
 
 
 let libraryStore;
@@ -50,14 +50,28 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
     ipcMain.handle('get-loudness-value', (event, songPath) => (loudnessStore.load() || {})[songPath] || null);
 
     ipcMain.on('request-initial-library', (event) => {
+        console.log('[DEBUG][Main] Received request-initial-library');
         const songs = libraryStore.load() || [];
         const albums = albumsStore.load() || {};
+        console.log('[DEBUG][Main] Sending load-library with', songs.length, 'songs');
         event.sender?.send('load-library', { songs, albums });
-        
+
         // ▼▼▼ 追加: ライブラリ読み込み後にSRマイグレーションをチェック ▼▼▼
         checkAndMigrateSampleRates(songs, sendToAllWindows);
         // ▲▲▲ 追加ここまで ▲▲▲
     });
+
+    // ▼▼▼ 追加: レンダラーからの 'load-library' リクエストにも対応 ▼▼▼
+    ipcMain.on('load-library', (event) => {
+        console.log('[DEBUG][Main] Received load-library request');
+        const songs = libraryStore.load() || [];
+        const albums = albumsStore.load() || {};
+        console.log('[DEBUG][Main] Sending load-library response with', songs.length, 'songs');
+        event.sender?.send('load-library', { songs, albums });
+
+        checkAndMigrateSampleRates(songs, sendToAllWindows);
+    });
+    // ▲▲▲ 追加ここまで ▲▲▲
 
 
     ipcMain.on('debug-reset-library', (event) => {
@@ -71,8 +85,8 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
             const libraryPath = settingsStore.load().libraryPath;
             if (libraryPath && fs.existsSync(libraryPath)) {
                 fs.readdirSync(libraryPath).forEach(file => {
-                     const curPath = path.join(libraryPath, file);
-                     fs.rmSync(curPath, { recursive: true, force: true });
+                    const curPath = path.join(libraryPath, file);
+                    fs.rmSync(curPath, { recursive: true, force: true });
                 });
             }
             console.log('[DEBUG] Library has been reset completely.');
@@ -85,29 +99,29 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
     ipcMain.handle('edit-metadata', async (event, { filePath, newTags }) => {
         try {
             const tagsToWrite = { ...newTags };
-            let artworkResult = undefined; 
+            let artworkResult = undefined;
 
             if (tagsToWrite.image === null) {
-                tagsToWrite.image = undefined; 
-                artworkResult = null; 
+                tagsToWrite.image = undefined;
+                artworkResult = null;
             } else if (tagsToWrite.image && tagsToWrite.image.imageBuffer) {
                 artworkResult = await saveArtworkToFile({ data: tagsToWrite.image.imageBuffer }, newTags.artist || newTags.albumartist, newTags.album);
             } else {
-                 delete tagsToWrite.image;
+                delete tagsToWrite.image;
             }
 
             if (tagsToWrite.image && tagsToWrite.image.imageBuffer) {
                 tagsToWrite.image = {
-                    ...tagsToWrite.image, 
-                    imageBuffer: tagsToWrite.image.imageBuffer 
+                    ...tagsToWrite.image,
+                    imageBuffer: tagsToWrite.image.imageBuffer
                 };
             }
 
             const success = NodeID3.write(tagsToWrite, filePath);
 
             if (!success) {
-                 console.error(`NodeID3.write failed for ${filePath}`);
-                 return { success: false, message: 'ファイルへのタグ書き込みに失敗しました。' };
+                console.error(`NodeID3.write failed for ${filePath}`);
+                return { success: false, message: 'ファイルへのタグ書き込みに失敗しました。' };
             }
 
             const library = libraryStore.load() || [];
@@ -115,31 +129,31 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
             if (songIndex === -1) {
                 return { success: false, message: 'ライブラリに対象の曲が見つかりません。' };
             }
-            
-            const oldSong = library[songIndex]; 
+
+            const oldSong = library[songIndex];
             const updatedSong = { ...oldSong };
-            
+
             updatedSong.title = newTags.title ?? updatedSong.title;
             updatedSong.artist = newTags.artist ?? updatedSong.artist;
-            updatedSong.albumartist = newTags.albumartist ?? updatedSong.albumartist; 
+            updatedSong.albumartist = newTags.albumartist ?? updatedSong.albumartist;
             updatedSong.album = newTags.album ?? updatedSong.album;
             updatedSong.genre = newTags.genre ?? updatedSong.genre;
 
             if (artworkResult !== undefined) {
-                 updatedSong.artwork = artworkResult;
+                updatedSong.artwork = artworkResult;
             }
 
             const albumArtistKey = updatedSong.albumartist || updatedSong.artist || 'Unknown Artist';
             const albumKey = `${albumArtistKey}---${updatedSong.album || 'Unknown Album'}`;
-            const oldAlbumKey = oldSong.albumKey; 
-            updatedSong.albumKey = albumKey; 
+            const oldAlbumKey = oldSong.albumKey;
+            updatedSong.albumKey = albumKey;
 
             library[songIndex] = updatedSong;
             libraryStore.save(library);
 
             const albumsData = albumsStore.load() || {};
             let albumNeedsUpdate = false;
-            
+
             if (oldAlbumKey !== albumKey) { // newAlbumKey was undefined in snippet, using albumKey
                 if (albumsData[oldAlbumKey]) {
                     albumsData[oldAlbumKey].songs = albumsData[oldAlbumKey].songs.filter(p => p !== filePath);
@@ -165,7 +179,7 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                     albumNeedsUpdate = true;
                 }
             }
-            
+
             if (albumNeedsUpdate) {
                 albumsStore.save(albumsData);
             }
@@ -174,10 +188,10 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
 
         } catch (error) {
             console.error(`メタデータ編集エラー (${filePath}):`, error);
-             if (error instanceof Error) {
-                 return { success: false, message: `タグ書き込みエラー: ${error.message}` };
-             }
-             return { success: false, message: '不明なエラーが発生しました。' };
+            if (error instanceof Error) {
+                return { success: false, message: `タグ書き込みエラー: ${error.message}` };
+            }
+            return { success: false, message: '不明なエラーが発生しました。' };
         }
     });
 }
@@ -190,7 +204,7 @@ async function checkAndMigrateSampleRates(songs, sendToAllWindows) {
     let updatedCount = 0;
     // 更新が必要な曲をリストアップ
     const migrationList = [];
-    
+
     for (let i = 0; i < songs.length; i++) {
         const song = songs[i];
         // sampleRateが無い、かつローカルファイルの場合
@@ -209,7 +223,7 @@ async function checkAndMigrateSampleRates(songs, sendToAllWindows) {
         if (sr) {
             songs[item.index].sampleRate = sr;
             // ハイレゾフラグも念のため再判定
-            songs[item.index].isHiRes = (sr > 48000); 
+            songs[item.index].isHiRes = (sr > 48000);
             updatedCount++;
         }
     }
@@ -218,7 +232,7 @@ async function checkAndMigrateSampleRates(songs, sendToAllWindows) {
         // 保存
         libraryStore.save(songs);
         console.log(`[Library] Migration complete. Updated ${updatedCount} songs.`);
-        
+
         // レンダラーへ最新状態を送信（再読み込みを促す）
         // 既存の 'load-library' イベントを再送することでUIも最新化されます
         const albums = albumsStore.load() || {};

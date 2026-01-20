@@ -20,6 +20,10 @@ import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
 
 // window.electronAPI は preload.js によって公開されます
 const electronAPI = window.electronAPI;
+console.log('[DEBUG] electronAPI exists:', !!electronAPI);
+console.log('[DEBUG] electronAPI.on exists:', !!electronAPI?.on);
+console.log('[DEBUG] electronAPI.send exists:', !!electronAPI?.send);
+console.log('[DEBUG] electronAPI.invoke exists:', !!electronAPI?.invoke);
 
 window.artworkLoadTimes = [];
 window.observeNewArtworks = (container) => observeNewImages(container || document);
@@ -77,12 +81,18 @@ async function initApp() {
         // ▲▲▲ 修正完了 ▲▲▲
     }
 
+    console.log('[DEBUG] Subscribing to app-info-response...');
     electronAPI.on('app-info-response', (info) => {
+        console.log('[DEBUG] Received app-info-response:', info);
         const appVersionEl = document.getElementById('app-version');
         if (appVersionEl) appVersionEl.textContent = `v${info.version}`;
     });
 
+    console.log('[DEBUG] Subscribing to load-library...');
     electronAPI.on('load-library', async (data) => {
+        console.log('[DEBUG] ★★★ Received load-library event! ★★★');
+        console.log('[DEBUG] load-library data:', data);
+        console.log('[DEBUG] songs count:', data?.songs?.length || 0);
         if (!state.artworksDir) state.artworksDir = await electronAPI.invoke('get-artworks-dir');
         addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
 
@@ -131,6 +141,7 @@ async function initApp() {
         }
     });
 
+    console.log('[DEBUG] Sending request-app-info...');
     electronAPI.send('request-app-info');
 
     try {
@@ -145,7 +156,9 @@ async function initApp() {
             }
         }
 
+        console.log('[DEBUG] settings.libraryPath:', settings.libraryPath);
         if (settings.libraryPath) {
+            console.log('[DEBUG] Sending load-library request...');
             electronAPI.send('load-library');
         } else {
             const loadingOverlay = document.getElementById('loading-overlay');
