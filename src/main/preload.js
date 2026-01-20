@@ -11,7 +11,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             'request-bpm-analysis', 'request-loudness-analysis', 'start-normalize-job',
             'stop-normalize-job', 'direct-link-command', 'add-youtube-link', 'import-youtube-playlist',
             'show-general-context-menu', 'show-song-context-menu', 'open-external-link',
-            'create-new-playlist-with-songs', 'request-playlists-with-artwork', 'cd-start-rip'
+            'create-new-playlist-with-songs', 'request-playlists-with-artwork', 'cd-start-rip',
+            'playback-started', 'song-skipped', 'save-audio-output-id', 'normalize-worker-finished-file'
         ];
         if (validChannels.includes(channel)) {
             ipcRenderer.send(channel, ...args);
