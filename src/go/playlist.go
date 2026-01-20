@@ -198,6 +198,54 @@ func AddSongsToPlaylist(name string, songs []SongToAdd) (int, error) {
 	return addedCount, err
 }
 
+func RemoveSongsFromPlaylist(name string, pathsToRemove []string) error {
+	path := filepath.Join(GetPlaylistsDir(), name+".m3u8")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	currentEntries := parseM3U8(string(content))
+	removeMap := make(map[string]bool)
+	for _, p := range pathsToRemove {
+		removeMap[p] = true
+	}
+
+	var newEntries []PlaylistEntry
+	for _, e := range currentEntries {
+		if !removeMap[e.Path] {
+			newEntries = append(newEntries, e)
+		}
+	}
+
+	// Write back even if empty
+	return writeM3U8(path, newEntries)
+}
+
+func UpdatePlaylistOrder(name string, newPaths []string) error {
+	path := filepath.Join(GetPlaylistsDir(), name+".m3u8")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	// Create map of path -> entry to preserve metadata (duration, title)
+	currentEntries := parseM3U8(string(content))
+	entryMap := make(map[string]PlaylistEntry)
+	for _, e := range currentEntries {
+		entryMap[e.Path] = e
+	}
+
+	var newEntries []PlaylistEntry
+	for _, p := range newPaths {
+		if e, ok := entryMap[p]; ok {
+			newEntries = append(newEntries, e)
+		}
+	}
+
+	return writeM3U8(path, newEntries)
+}
+
 func RenamePlaylist(oldName, newName string) error {
 	oldPath := filepath.Join(GetPlaylistsDir(), oldName+".m3u8")
 	newPath := filepath.Join(GetPlaylistsDir(), newName+".m3u8")

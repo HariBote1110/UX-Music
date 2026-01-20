@@ -126,77 +126,77 @@ function registerSystemHandlers(stores) {
 
     // --- Lyrics ---
     // ... (既存のハンドラ) ...
-    ipcMain.on(IPC_CHANNELS.SEND.HANDLE_LYRICS_DROP, (event, filePaths) => {
-        const lyricsDir = path.join(app.getPath('userData'), 'Lyrics');
-        if (!fs.existsSync(lyricsDir)) fs.mkdirSync(lyricsDir, { recursive: true });
+    const sidecarManager = require('../sidecar-manager'); // ★★★ 追加 ★★★
 
-        let count = 0;
-        filePaths.forEach(filePath => {
-            const fileName = path.basename(filePath);
-            const destPath = path.join(lyricsDir, fileName);
-            try {
-                fs.copyFileSync(filePath, destPath);
-                count++;
-            } catch (error) {
-                console.error(`歌詞ファイルのコピーに失敗: ${fileName}`, error);
+    // --- Lyrics ---
+    // ... (既存のハンドラ) ...
+    ipcMain.on(IPC_CHANNELS.SEND.HANDLE_LYRICS_DROP, async (event, filePaths) => { // async に変更
+        // Go 側に処理を委譲。I/O なので非同期で良いが、今回は invoke で結果を待つ必要はないかもしれない
+        // しかし、失敗時のログなどは Go 側で管理するか、invoke でエラーを受け取るか
+        // ここではコピー処理なので、完了通知のために invoke する
+        try {
+            // Go側には copy-lyrics というメッセージが必要だが、lyrics.go の実装では "copy-lyrics" というメッセージタイプはまだ main.go で未登録だった可能性がある
+            // main.goの実装を確認すると、"copy-lyrics" は未実装だった。
+            // なので、以前の実装通り Node.js でやるか、Go に実装を追加するか。
+            // 今回は lyrics.go に `CopyLyricsFiles` は実装されたが、main.go の routing に漏れていた可能性がある。
+            // 確認のため、一旦Node.js実装を残しつつ、歌詞取得と保存のみ移行する。
+
+            // ... と思ったが、lyrics.go には `CopyLyricsFiles` がある。
+            // main.go を確認すると `copy-lyrics` は無い。
+            // よってここは Node.js 実装のままにする（安全策）。
+
+            // 元の実装に戻す
+            const lyricsDir = path.join(app.getPath('userData'), 'Lyrics');
+            if (!fs.existsSync(lyricsDir)) fs.mkdirSync(lyricsDir, { recursive: true });
+
+            let count = 0;
+            filePaths.forEach(filePath => {
+                const fileName = path.basename(filePath);
+                const destPath = path.join(lyricsDir, fileName);
+                try {
+                    fs.copyFileSync(filePath, destPath);
+                    count++;
+                } catch (error) {
+                    console.error(`歌詞ファイルのコピーに失敗: ${fileName}`, error);
+                }
+            });
+            if (count > 0 && event.sender && !event.sender.isDestroyed()) {
+                event.sender.send(IPC_CHANNELS.ON.LYRICS_ADDED_NOTIFICATION, count);
             }
-        });
-        if (count > 0 && event.sender && !event.sender.isDestroyed()) {
-            event.sender.send(IPC_CHANNELS.ON.LYRICS_ADDED_NOTIFICATION, count);
+        } catch (err) {
+            console.error('Lyrics drop error:', err);
         }
     });
 
-    ipcMain.handle(IPC_CHANNELS.INVOKE.GET_LYRICS, (event, song) => {
-        const lyricsDir = path.join(app.getPath('userData'), 'Lyrics');
-
-        // ファイル名として安全でない文字をアンダースコアに置換してから検索
-        const findLyricsFile = (baseName) => {
-            const sanitizedName = sanitize(baseName.replace(/_/g, ' ')); // sanitize を適用
-            const lrcPath = path.join(lyricsDir, `${sanitizedName}.lrc`);
-            if (fs.existsSync(lrcPath)) return { type: 'lrc', content: fs.readFileSync(lrcPath, 'utf-8') };
-
-            const txtPath = path.join(lyricsDir, `${sanitizedName}.txt`);
-            if (fs.existsSync(txtPath)) return { type: 'txt', content: fs.readFileSync(txtPath, 'utf-8') };
-
+    ipcMain.handle(IPC_CHANNELS.INVOKE.GET_LYRICS, async (event, song) => {
+        try {
+            // Go Sidecar にリクエスト
+            const result = await sidecarManager.invoke('get-lyrics', {
+                title: song.title,
+                path: song.path
+            });
+            // Go からは { type: "lrc"|"txt", content: "..." } が返る。見つからない場合は null or error
+            return result;
+        } catch (error) {
+            // エラーなら null を返す（見つからない扱い）
+            // console.warn('Lyrics fetch failed:', error.message);
             return null;
-        };
-
-        // 1. ファイル名ベースで検索
-        const fileNameBase = path.basename(song.path, path.extname(song.path));
-        let result = findLyricsFile(fileNameBase);
-        if (result) return result;
-
-        // 2. 曲タイトルで検索 (ファイル名と違う場合)
-        if (song.title && song.title !== fileNameBase) {
-            result = findLyricsFile(song.title);
-            if (result) return result;
         }
-
-        return null;
     });
 
     // --- ▼▼▼ LRCファイル保存ハンドラを追加 ▼▼▼ ---
-    ipcMain.handle(IPC_CHANNELS.INVOKE.SAVE_LRC_FILE, (event, { fileName, content }) => {
+    ipcMain.handle(IPC_CHANNELS.INVOKE.SAVE_LRC_FILE, async (event, { fileName, content }) => {
         if (!fileName || typeof content !== 'string') {
             return { success: false, message: 'ファイル名または内容が無効です。' };
         }
         try {
-            const lyricsDir = path.join(app.getPath('userData'), 'Lyrics');
-            if (!fs.existsSync(lyricsDir)) {
-                fs.mkdirSync(lyricsDir, { recursive: true });
-            }
-            // ファイル名をサニタイズしてから結合
-            const safeFileName = sanitize(fileName);
-            if (!safeFileName.toLowerCase().endsWith('.lrc')) {
-                return { success: false, message: 'ファイル名の拡張子が .lrc ではありません。' };
-            }
-            const filePath = path.join(lyricsDir, safeFileName);
-
-            fs.writeFileSync(filePath, content, 'utf-8');
-            console.log(`[LRC Editor] Saved LRC file to: ${filePath}`);
+            await sidecarManager.invoke('save-lrc', {
+                fileName,
+                content
+            });
             return { success: true };
         } catch (error) {
-            console.error('[LRC Editor] Failed to save LRC file:', error);
+            console.error('[LRC Editor] Failed to save LRC file (Go):', error);
             return { success: false, message: error.message };
         }
     });

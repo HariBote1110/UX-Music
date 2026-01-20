@@ -7,6 +7,8 @@ class SidecarManager extends EventEmitter {
     constructor() {
         super();
         this.sidecarProcess = null;
+        this.pendingRequests = new Map();
+        this.requestIdCounter = 0;
     }
 
     startSidecar() {
@@ -33,13 +35,24 @@ class SidecarManager extends EventEmitter {
                     if (!line.trim()) return;
                     try {
                         const message = JSON.parse(line);
-                        // 受信ログはうるさいのでデバッグ時のみ有効化推奨
-                        // console.log('[SidecarManager] Received:', message);
+
+                        // リクエストIDがあればPromiseを解決
+                        if (message.id && this.pendingRequests.has(message.id)) {
+                            const { resolve, reject } = this.pendingRequests.get(message.id);
+                            this.pendingRequests.delete(message.id);
+
+                            if (message.error) {
+                                reject(new Error(message.error));
+                            } else {
+                                resolve(message.payload);
+                            }
+                            return; // 独自ハンドリングしたので終了
+                        }
 
                         // メッセージ全体を 'message' イベントとして発火
                         this.emit('message', message);
 
-                        // typeごとのイベントも発火 (例: 'scan-library-success')
+                        // typeごとのイベントも発火
                         if (message.type) {
                             this.emit(message.type, message.payload);
                         }
@@ -51,7 +64,6 @@ class SidecarManager extends EventEmitter {
 
             // Goのログ (stderr)
             this.sidecarProcess.stderr.on('data', (data) => {
-                // 改行を取り除いてログ出力
                 const text = data.toString().trim();
                 if (text) console.error(`[Sidecar Log] ${text}`);
             });
@@ -59,6 +71,11 @@ class SidecarManager extends EventEmitter {
             this.sidecarProcess.on('close', (code) => {
                 console.log(`[SidecarManager] Process exited with code ${code}`);
                 this.sidecarProcess = null;
+                // 全てのペンディングリクエストをreject
+                for (const { reject } of this.pendingRequests.values()) {
+                    reject(new Error(`Sidecar process exited with code ${code}`));
+                }
+                this.pendingRequests.clear();
             });
 
             // プロセスが安定して立ち上がったとみなしてresolve
@@ -90,8 +107,44 @@ class SidecarManager extends EventEmitter {
             console.warn('[SidecarManager] Sidecar is not running.');
             return;
         }
+        // Fire-and-forget: IDなし
         const message = JSON.stringify({ type, payload }) + '\n';
         this.sidecarProcess.stdin.write(message);
+    }
+
+    /**
+     * Go Sidecar にリクエストを送り、レスポンスを待機する
+     * @param {string} type 
+     * @param {object} payload 
+     * @param {number} timeout timeout in ms
+     * @returns {Promise<any>}
+     */
+    invoke(type, payload = {}, timeout = 30000) {
+        return new Promise((resolve, reject) => {
+            if (!this.sidecarProcess) {
+                return reject(new Error('Sidecar is not running.'));
+            }
+
+            const id = (this.requestIdCounter++).toString();
+            this.pendingRequests.set(id, { resolve, reject });
+
+            const message = JSON.stringify({ id, type, payload }) + '\n';
+            try {
+                this.sidecarProcess.stdin.write(message);
+            } catch (err) {
+                this.pendingRequests.delete(id);
+                reject(err);
+                return;
+            }
+
+            // タイムアウト設定
+            setTimeout(() => {
+                if (this.pendingRequests.has(id)) {
+                    this.pendingRequests.delete(id);
+                    reject(new Error(`Request ${type} timed out after ${timeout}ms`));
+                }
+            }, timeout);
+        });
     }
 
     stopSidecar() {
