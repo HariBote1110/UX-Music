@@ -137,8 +137,15 @@ export function updatePlaybackStateUI(playing) {
     const currentTime = getCurrentTime();
     const duration = getDuration();
 
+    // SVGアイコンを直接更新（Wails webviewのCSS d プロパティ非対応に対応）
+    const iconPart1 = elements.playPauseBtn.querySelector('.icon-part-1');
+    const iconPart2 = elements.playPauseBtn.querySelector('.icon-part-2');
+
     if (playing) {
         elements.playPauseBtn.classList.add('playing');
+        // 一時停止アイコン（2本の縦線）
+        if (iconPart1) iconPart1.setAttribute('d', 'M 6 5 L 10 5 L 10 19 L 6 19 Z');
+        if (iconPart2) iconPart2.setAttribute('d', 'M 14 5 L 18 5 L 18 19 L 14 19 Z');
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
         updateLrcEditorControls(true, currentTime, duration);
 
@@ -153,7 +160,12 @@ export function updatePlaybackStateUI(playing) {
         }
 
     } else {
-        if (!isSeeking) elements.playPauseBtn.classList.remove('playing');
+        if (!isSeeking) {
+            elements.playPauseBtn.classList.remove('playing');
+            // 再生アイコン（三角形）
+            if (iconPart1) iconPart1.setAttribute('d', 'M 8 5 L 18 12 L 8 12 L 8 5 Z');
+            if (iconPart2) iconPart2.setAttribute('d', 'M 8 19 L 18 12 L 8 12 L 8 19 Z');
+        }
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
         updateLrcEditorControls(false, currentTime, duration);
 
