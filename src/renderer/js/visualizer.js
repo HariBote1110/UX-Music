@@ -178,7 +178,7 @@ function draw(timestamp) {
 
             // 中央のバーを少し強調（視覚的なバランス調整）
             const multiplier = 1 + Math.sin((i / (targetFrequencies.length - 1)) * Math.PI) * 0.3;
-            const targetHeight = (scaledValue * multiplier * 20) + 4;
+            const targetHeight = (scaledValue * multiplier * 12) + 4;
 
             // スムージング（前フレームとの補間）
             const newHeight = lastHeights[i] * 0.4 + targetHeight * 0.6;
