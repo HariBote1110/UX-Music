@@ -6,7 +6,9 @@ import { setVisualizerTarget } from '../player.js';
 import { VirtualScroller } from '../virtual-scroller.js';
 import { createSongItem } from './element-factory.js';
 import { initColumnResizing } from './column-resizer.js';
+import { showContextMenu } from './utils.js';
 const electronAPI = window.electronAPI;
+const isWails = window.go !== undefined;
 
 /**
  * 曲リストの共通ヘッダーHTMLを作成する
@@ -93,10 +95,26 @@ export function setupSongListScroller(listElement, songList, options = {}) {
                 songsForMenu = songList.filter(s => state.selectedSongIds.has(s.id));
             }
 
-            electronAPI.send('show-song-context-menu', {
-                songs: songsForMenu,
-                context: { view: contextView, playlistName }
-            });
+            if (isWails) {
+                // Wails 環境: JavaScript ベースのコンテキストメニュー
+                const menuItems = [
+                    {
+                        label: '再生',
+                        action: () => playSong(index, songList)
+                    },
+                    {
+                        label: 'プレイリストに追加',
+                        submenu: [] // TODO: プレイリスト一覧を動的に取得
+                    }
+                ];
+                showContextMenu(e.pageX, e.pageY, menuItems);
+            } else {
+                // Electron 環境: メインプロセスにメニュー表示を委譲
+                electronAPI.send('show-song-context-menu', {
+                    songs: songsForMenu,
+                    context: { view: contextView, playlistName }
+                });
+            }
         });
 
         window.observeNewArtworks(songItem); // Lazy-load 用
