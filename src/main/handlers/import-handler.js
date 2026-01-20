@@ -285,7 +285,8 @@ function registerImportHandlers(stores) {
             }
         });
 
-        const sourceOrderMap = new Map(sourceFiles.map((path, index) => [path, index]));
+        // 元の処理順序（paths）を維持するためのマップ
+        const sourceOrderMap = new Map(paths.map((filePath, index) => [filePath, index]));
         newSongObjects.sort((a, b) => {
             const orderA = sourceOrderMap.get(a.originalPath);
             const orderB = sourceOrderMap.get(b.originalPath);
