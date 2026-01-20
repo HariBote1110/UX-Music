@@ -12,6 +12,9 @@ async function getPlaylistsWithArtwork() {
     try {
         // Go からプレイリスト名のリストを取得
         const playlistNames = await sidecarManager.invoke('get-all-playlists');
+        if (!Array.isArray(playlistNames)) {
+            return [];
+        }
 
         // ライブラリデータをロード (Electron側)
         const mainLibrary = libraryStore.load() || [];
