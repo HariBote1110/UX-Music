@@ -65,6 +65,18 @@ class SidecarManager extends EventEmitter {
             setTimeout(() => {
                 if (this.sidecarProcess && !this.sidecarProcess.killed) {
                     console.log('[SidecarManager] Sidecar started successfully.');
+
+                    // ▼▼▼ 初期化メッセージを送信 ▼▼▼
+                    const ffmpegPath = require('ffmpeg-static').replace('app.asar', 'app.asar.unpacked');
+                    const ffprobePath = require('ffprobe-static').path.replace('app.asar', 'app.asar.unpacked');
+
+                    this.sendToSidecar('init', {
+                        userDataPath: app.getPath('userData'),
+                        ffmpegPath,
+                        ffprobePath
+                    });
+                    // ▲▲▲ 送信終了 ▲▲▲
+
                     resolve();
                 } else {
                     reject(new Error('Sidecar process died immediately.'));
