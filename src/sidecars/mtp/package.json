@@ -1,0 +1,12 @@
+{
+    "name": "mtp-sidecar",
+    "version": "1.0.0",
+    "description": "MTP transfer sidecar for Wails",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "dependencies": {
+        "koffi": "^2.14.1"
+    }
+}

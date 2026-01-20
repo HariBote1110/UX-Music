@@ -250,8 +250,34 @@ func handleRequest(req Request) {
 			}
 		}
 
+	// --- MTP Sidecar ---
+	case "mtp-test":
+		var payload struct {
+			ScriptPath string `json:"scriptPath"`
+		}
+		if parsePayload(req.ID, req.Payload, &payload) {
+			sidecar := NewNodeSidecar(payload.ScriptPath)
+			if err := sidecar.Start(); err != nil {
+				fail("mtp-error", err.Error())
+				return
+			}
+			defer sidecar.Stop()
+
+			// Send init command to MTP sidecar
+			initResp, err := sidecar.Invoke("init", nil)
+			if err != nil {
+				fail("mtp-error", err.Error())
+				return
+			}
+
+			respond("mtp-test-result", map[string]interface{}{
+				"sidecarResponse": initResp,
+			})
+		}
+
 	default:
 		fail("unknown_command", fmt.Sprintf("Command '%s' not found", req.Type))
+
 	}
 }
 
