@@ -12,12 +12,17 @@ async function getPlaylistsWithArtwork() {
     try {
         // Go からプレイリスト名のリストを取得
         const playlistNames = await sidecarManager.invoke('get-all-playlists');
+        console.log('[Debug] getPlaylistsWithArtwork - playlistNames:', playlistNames);
+
         if (!Array.isArray(playlistNames)) {
+            console.log('[Debug] playlistNames is not array, returning empty.');
             return [];
         }
 
         // ライブラリデータをロード (Electron側)
         const mainLibrary = libraryStore.load() || [];
+        console.log('[Debug] getPlaylistsWithArtwork - mainLibrary length:', mainLibrary.length);
+
         const albumsData = albumsStore.load() || {};
         const albumsMap = new Map(Object.entries(albumsData));
         const libraryMap = new Map(mainLibrary.map(song => [song.path, song]));
