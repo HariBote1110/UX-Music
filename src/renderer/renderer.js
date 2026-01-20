@@ -133,6 +133,22 @@ async function initApp() {
         }
     });
 
+    // ▼▼▼ 追加: スキャン完了時にライブラリを更新 ▼▼▼
+    electronAPI.on('scan-complete', (newSongs) => {
+        console.log(`[Renderer] スキャン完了: ${newSongs?.length || 0}曲が追加されました`);
+        if (newSongs && newSongs.length > 0) {
+            addSongsToLibrary({ songs: newSongs, albums: {} });
+            // 通知を表示（ipc.js の showNotification をインポートできない場合は直接表示）
+            const notification = document.getElementById('notification');
+            if (notification) {
+                notification.textContent = `${newSongs.length}曲がライブラリに追加されました`;
+                notification.classList.add('visible');
+                setTimeout(() => notification.classList.remove('visible'), 3000);
+            }
+        }
+    });
+    // ▲▲▲ 追加ここまで ▲▲▲
+
     musicApi.requestAppInfo();
 
     try {
