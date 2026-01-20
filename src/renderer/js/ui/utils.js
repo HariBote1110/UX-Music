@@ -21,13 +21,15 @@ export function resolveArtworkPath(artwork, isThumbnail = false) {
         const fileName = isThumbnail ? artwork.thumbnail : artwork.full;
         const subDir = isThumbnail ? 'thumbnails' : '';
         const safePath = (subDir ? subDir + '/' : '') + fileName.replace(/\\/g, '/');
-        return `safe-artwork://${safePath}`;
+        const url = `safe-artwork://${safePath}`;
+        return window.go !== undefined ? url.replace('safe-artwork://', '/safe-artwork/') : url;
     }
 
     // Fallback for legacy string-based artwork data
     if (typeof artwork === 'string') {
         const safePath = artwork.replace(/\\/g, '/');
-        return `safe-artwork://${safePath}`;
+        const url = `safe-artwork://${safePath}`;
+        return window.go !== undefined ? url.replace('safe-artwork://', '/safe-artwork/') : url;
     }
 
     console.warn('Unknown artwork format received, using default.', artwork);

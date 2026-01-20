@@ -228,7 +228,8 @@ async function playLocal(song) {
     }
 
     const safePath = encodeURI(song.path.replace(/\\/g, '/')).replace(/#/g, '%23');
-    localPlayer.src = `file://${safePath}`;
+    const isWails = window.go !== undefined;
+    localPlayer.src = isWails ? `/safe-media/${song.path}` : `file://${safePath}`;
 
     try {
         await localPlayer.play();

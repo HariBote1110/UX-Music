@@ -10,14 +10,17 @@ window.electronAPI = window.electronAPI || {
                 window.go.main.App.RequestInitialLibrary?.();
             } else if (channel === 'request-initial-play-counts') {
                 window.go.main.App.LoadPlayCounts?.();
+            } else if (channel === 'handle-lyrics-drop') {
+                window.go.main.App.HandleLyricsDrop?.(args[0]);
             } else if (channel === 'request-initial-settings') {
-                // GetSettings を呼び出して結果を events-on で模したほうがいいかもしれないが、
-                // renderer.js で既に個別に await GetSettings しているので不要な可能性が高い
+                window.go.main.App.GetSettings?.().then(settings => {
+                    if (window.runtime) window.runtime.EventsEmit('settings-loaded', settings);
+                });
             }
         }
     },
     on: (channel, callback) => {
-        if (isWails && window.runtime && window.runtime.EventsOn) {
+        if (isWails && window.runtime) {
             console.log(`[Wails-Mock] on: subscribing to ${channel}`);
             window.runtime.EventsOn(channel, callback);
         }
@@ -25,18 +28,102 @@ window.electronAPI = window.electronAPI || {
     invoke: async (channel, ...args) => {
         if (isWails && window.go && window.go.main && window.go.main.App) {
             console.log(`[Wails-Mock] invoke: ${channel}`, args);
-            // チャネル名とメソッド名のマッピング
-            const mapping = {
-                'get-settings': 'GetSettings',
-                'get-artworks-dir': 'GetArtworksDir',
-                'get-playlist-details': 'GetPlaylistDetails',
+
+            const dispatch = {
+                'get-settings': async () => {
+                    if (window.go?.main?.App?.GetSettings) {
+                        return await window.go.main.App.GetSettings();
+                    }
+                    return {};
+                },
+                'get-artworks-dir': async () => {
+                    if (window.go?.main?.App?.GetArtworksDir) {
+                        return await window.go.main.App.GetArtworksDir();
+                    }
+                    return '';
+                },
+                'get-playlist-details': async (name) => {
+                    if (window.go?.main?.App?.GetPlaylistDetails) {
+                        return await window.go.main.App.GetPlaylistDetails(name);
+                    }
+                    return { songs: [] };
+                },
+                'get-situation-playlists': async () => {
+                    if (window.go?.main?.App?.GetSituationPlaylists) {
+                        return await window.go.main.App.GetSituationPlaylists();
+                    }
+                    return {};
+                },
+                'rename-playlist': async (data) => {
+                    if (window.go?.main?.App?.RenamePlaylist) {
+                        return await window.go.main.App.RenamePlaylist(data);
+                    }
+                },
+                'delete-playlist': async (name) => {
+                    if (window.go?.main?.App?.DeletePlaylist) {
+                        return await window.go.main.App.DeletePlaylist(name);
+                    }
+                },
+                'create-playlist': async (name) => {
+                    if (window.go?.main?.App?.CreatePlaylist) {
+                        return await window.go.main.App.CreatePlaylist(name);
+                    }
+                },
+                'update-playlist-song-order': async (data) => {
+                    if (window.go?.main?.App?.UpdatePlaylistSongOrder) {
+                        return await window.go.main.App.UpdatePlaylistSongOrder(data);
+                    }
+                },
+                'add-songs-to-playlist': async (data) => {
+                    if (window.go?.main?.App?.AddSongsToPlaylist) {
+                        return await window.go.main.App.AddSongsToPlaylist(data);
+                    }
+                },
+                'add-album-to-playlist': async (data) => {
+                    if (window.go?.main?.App?.AddAlbumToPlaylist) {
+                        return await window.go.main.App.AddAlbumToPlaylist(data);
+                    }
+                },
+                'get-all-playlists': async () => {
+                    if (window.go?.main?.App?.GetAllPlaylists) {
+                        return await window.go.main.App.GetAllPlaylists();
+                    }
+                },
+                'get-loudness-value': async (path) => {
+                    if (window.go?.main?.App?.GetLoudnessValue) {
+                        return await window.go.main.App.GetLoudnessValue(path);
+                    }
+                },
+                'get-lyrics': async (song) => {
+                    if (window.go?.main?.App?.GetLyrics) {
+                        // Go 側は string を受け取るのでタイトルを渡す
+                        return await window.go.main.App.GetLyrics(song?.title || '');
+                    }
+                },
+                'save-lrc-file': async (data) => {
+                    if (window.go?.main?.App?.SaveLrcFile) {
+                        return await window.go.main.App.SaveLrcFile(data.fileName, data.content);
+                    }
+                },
+                'get-artwork-as-data-url': async (filename) => {
+                    if (window.go?.main?.App?.GetArtworkAsDataURL) {
+                        return await window.go.main.App.GetArtworkAsDataURL(filename);
+                    }
+                    return null;
+                },
+                'get-youtube-info': async (url) => {
+                    if (window.go?.main?.App?.GetYouTubeInfo) {
+                        return await window.go.main.App.GetYouTubeInfo(url);
+                    }
+                    return null;
+                }
             };
-            const methodName = mapping[channel];
-            if (methodName && window.go.main.App[methodName]) {
-                return await window.go.main.App[methodName](...args);
+
+            if (dispatch[channel]) {
+                return await dispatch[channel](...args);
             }
         }
-        return Promise.resolve({}); // null ではなく空オブジェクトを返す
+        return Promise.resolve(null); // オブジェクトではなく null を返すことで [object Object] を防ぐ
     },
     removeAllListeners: () => { },
     CHANNELS: {

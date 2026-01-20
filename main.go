@@ -65,6 +65,12 @@ func main() {
 					w.Header().Set("Content-Type", contentType)
 					w.Write(data)
 					return
+				} else if strings.HasPrefix(path, "/safe-media/") {
+					// Wails 環境での音楽再生用
+					fullPath := strings.TrimPrefix(path, "/safe-media")
+					// ServeFile は Range リクエストなどを適切に処理してくれる
+					http.ServeFile(w, r, fullPath)
+					return
 				}
 				http.NotFound(w, r)
 			}),

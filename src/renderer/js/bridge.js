@@ -28,9 +28,7 @@ export const musicApi = {
     },
     requestPlaylistsWithArtwork: () => {
         if (isWails) {
-            // TODO: Go 側での実装
-            console.log('[Wails] requestPlaylistsWithArtwork called (Not Implemented)');
-            return;
+            return window.go.main.App.RequestPlaylistsWithArtwork?.();
         }
         return api && api.send(CHANNELS.SEND.REQUEST_PLAYLISTS_WITH_ARTWORK)
     },
