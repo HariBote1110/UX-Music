@@ -301,7 +301,9 @@ function groupLibraryByArtist() {
 
 export async function updateAudioDevices() {
     try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
+        console.log('[AudioDevices] enumerating devices...');
+        let devices = await navigator.mediaDevices.enumerateDevices();
+        console.log('[AudioDevices] all devices found:', devices.map(d => ({ kind: d.kind, label: d.label, id: d.deviceId })));
         const settings = await electronAPI.invoke('get-settings');
         const hiddenDevices = settings.hiddenDeviceIds || [];
 
@@ -309,8 +311,13 @@ export async function updateAudioDevices() {
             device.kind === 'audiooutput' && !hiddenDevices.includes(device.deviceId)
         );
 
-        elements.devicePopup.innerHTML = '';
         const activeDeviceId = settings.audioOutputId || 'default';
+        elements.devicePopup.innerHTML = '';
+
+        if (audioDevices.length === 0 && devices.length > 0) {
+            console.log('[AudioDevices] No audiooutput devices found by type filter. Checking all devices...');
+            // WebKit 等では kind が正しく取得できない場合や制限されている場合がある
+        }
 
         const directLinkDevice = {
             deviceId: 'ux-direct-link',
@@ -318,6 +325,45 @@ export async function updateAudioDevices() {
             isVirtual: true
         };
         const displayDevices = [directLinkDevice, ...audioDevices];
+
+        // デバイスが見つからない場合のヘルパー
+        if (audioDevices.length === 0 && window.go) {
+            const permissionItem = document.createElement('div');
+            permissionItem.className = 'device-popup-item permission-prompt';
+            permissionItem.textContent = '🔊 デバイス一覧を更新（アクセス許可）';
+            permissionItem.style.color = '#ffaa00';
+            permissionItem.style.fontSize = '0.9em';
+            permissionItem.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    stream.getTracks().forEach(t => t.stop());
+                    await updateAudioDevices();
+                } catch (err) {
+                    console.error('Permission denied:', err);
+                }
+            });
+            elements.devicePopup.appendChild(permissionItem);
+        }
+
+        // selectAudioOutput (ブラウザネイティブの選択画面) が使える場合
+        if (navigator.mediaDevices.selectAudioOutput) {
+            const selectItem = document.createElement('div');
+            selectItem.className = 'device-popup-item';
+            selectItem.textContent = '📄 システムの選択画面を開く...';
+            selectItem.style.borderBottom = '1px solid #334';
+            selectItem.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                try {
+                    const device = await navigator.mediaDevices.selectAudioOutput();
+                    await setAudioOutput(device.deviceId);
+                    updateAudioDevices();
+                } catch (err) {
+                    if (err.name !== 'NotAllowedError') console.error('selectAudioOutput error:', err);
+                }
+            });
+            elements.devicePopup.appendChild(selectItem);
+        }
 
         displayDevices.forEach(device => {
             const item = document.createElement('div');
