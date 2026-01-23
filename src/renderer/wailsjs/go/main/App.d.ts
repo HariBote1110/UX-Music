@@ -6,6 +6,16 @@ export function AddAlbumToPlaylist(arg1:Record<string, any>):Promise<Record<stri
 
 export function AddSongsToPlaylist(arg1:Record<string, any>):Promise<number>;
 
+export function CDApplyMetadata(arg1:any,arg2:string):Promise<any>;
+
+export function CDScan():Promise<any>;
+
+export function CDSearchTOC(arg1:any):Promise<any>;
+
+export function CDSearchText(arg1:string):Promise<any>;
+
+export function CDStartRip(arg1:any,arg2:any):Promise<any>;
+
 export function CreatePlaylist(arg1:string):Promise<void>;
 
 export function DeletePlaylist(arg1:string):Promise<void>;

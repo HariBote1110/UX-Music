@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,7 +15,8 @@ import (
 
 // App struct
 type App struct {
-	ctx context.Context
+	ctx          context.Context
+	cdRipSidecar *NodeSidecar
 }
 
 // NewApp creates a new App struct
@@ -26,6 +28,20 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Initialize CD-RIP sidecar
+	// 開発環境と製品環境でパスを切り替える必要があるが、一旦開発用パス
+	scriptPath := filepath.Join("src", "sidecars", "cd-rip", "index.js")
+	// もし絶対パスが必要なら調整
+	absPath, _ := filepath.Abs(scriptPath)
+	a.cdRipSidecar = NewNodeSidecar(absPath)
+
+	a.cdRipSidecar.SetEventCallback(func(eventType string, payload json.RawMessage) {
+		fmt.Printf("[Wails] CD-RIP Event: %s\n", eventType)
+		var data interface{}
+		json.Unmarshal(payload, &data)
+		runtime.EventsEmit(a.ctx, eventType, data)
+	})
 }
 
 // Ping returns a pong message
@@ -595,4 +611,112 @@ func (a *App) GetArtworkAsDataURL(filename string) (string, error) {
 
 	base64Data := base64.StdEncoding.EncodeToString(data)
 	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data), nil
+}
+
+// --- CD-RIP Methods ---
+
+func (a *App) ensureCDSidecar() error {
+	if !a.cdRipSidecar.IsRunning() {
+		if err := a.cdRipSidecar.Start(); err != nil {
+			return err
+		}
+		// Init sidecar
+		payload := map[string]string{
+			"userDataPath": config.GetUserDataPath(),
+		}
+		_, err := a.cdRipSidecar.Invoke("init", payload)
+		return err
+	}
+	return nil
+}
+
+func (a *App) CDScan() (interface{}, error) {
+	if err := a.ensureCDSidecar(); err != nil {
+		return nil, err
+	}
+	resp, err := a.cdRipSidecar.Invoke("scan", nil)
+	if err != nil {
+		return nil, err
+	}
+	var result interface{}
+	json.Unmarshal(resp.Payload, &result)
+	return result, nil
+}
+
+func (a *App) CDSearchTOC(tracks interface{}) (interface{}, error) {
+	if err := a.ensureCDSidecar(); err != nil {
+		return nil, err
+	}
+	resp, err := a.cdRipSidecar.Invoke("search-toc", tracks)
+	if err != nil {
+		return nil, err
+	}
+	var result interface{}
+	json.Unmarshal(resp.Payload, &result)
+	return result, nil
+}
+
+func (a *App) CDSearchText(query string) (interface{}, error) {
+	if err := a.ensureCDSidecar(); err != nil {
+		return nil, err
+	}
+	resp, err := a.cdRipSidecar.Invoke("search-text", query)
+	if err != nil {
+		return nil, err
+	}
+	var result interface{}
+	json.Unmarshal(resp.Payload, &result)
+	return result, nil
+}
+
+func (a *App) CDApplyMetadata(tracks interface{}, releaseId string) (interface{}, error) {
+	if err := a.ensureCDSidecar(); err != nil {
+		return nil, err
+	}
+	payload := map[string]interface{}{
+		"tracks":    tracks,
+		"releaseId": releaseId,
+	}
+	resp, err := a.cdRipSidecar.Invoke("apply-metadata", payload)
+	if err != nil {
+		return nil, err
+	}
+	var result interface{}
+	json.Unmarshal(resp.Payload, &result)
+	return result, nil
+}
+
+func (a *App) CDStartRip(tracks interface{}, options interface{}) (interface{}, error) {
+	if err := a.ensureCDSidecar(); err != nil {
+		return nil, err
+	}
+
+	// 便宜上ライブラリパスを取得して渡す
+	settings, _ := stores.Load("settings")
+	libraryPath := ""
+	if settings != nil {
+		if sMap, ok := settings.(map[string]interface{}); ok {
+			if lp, ok := sMap["libraryPath"].(string); ok {
+				libraryPath = lp
+			}
+		}
+	}
+	if libraryPath == "" {
+		// Fallback to Music folder
+		home, _ := os.UserHomeDir()
+		libraryPath = filepath.Join(home, "Music")
+	}
+
+	payload := map[string]interface{}{
+		"tracksToRip": tracks,
+		"options":     options,
+		"libraryPath": libraryPath,
+	}
+	resp, err := a.cdRipSidecar.Invoke("start-rip", payload)
+	if err != nil {
+		return nil, err
+	}
+	var result interface{}
+	json.Unmarshal(resp.Payload, &result)
+	return result, nil
 }

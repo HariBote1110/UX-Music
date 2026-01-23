@@ -116,6 +116,36 @@ window.electronAPI = window.electronAPI || {
                         return await window.go.main.App.GetYouTubeInfo(url);
                     }
                     return null;
+                },
+                'cd-scan': async () => {
+                    if (window.go?.main?.App?.CDScan) {
+                        return await window.go.main.App.CDScan();
+                    }
+                    return { success: false, error: 'CDScan not available' };
+                },
+                'cd-search-toc': async (tracks) => {
+                    if (window.go?.main?.App?.CDSearchTOC) {
+                        return await window.go.main.App.CDSearchTOC(tracks);
+                    }
+                    return { success: false, error: 'CDSearchTOC not available' };
+                },
+                'cd-search-text': async (query) => {
+                    if (window.go?.main?.App?.CDSearchText) {
+                        return await window.go.main.App.CDSearchText(query);
+                    }
+                    return { success: false, error: 'CDSearchText not available' };
+                },
+                'cd-apply-metadata': async (data) => {
+                    if (window.go?.main?.App?.CDApplyMetadata) {
+                        return await window.go.main.App.CDApplyMetadata(data.tracks, data.releaseId);
+                    }
+                    return { success: false, error: 'CDApplyMetadata not available' };
+                },
+                'cd-start-rip': async (data) => {
+                    if (window.go?.main?.App?.CDStartRip) {
+                        return await window.go.main.App.CDStartRip(data.tracksToRip, data.options);
+                    }
+                    return { success: false, error: 'CDStartRip not available' };
                 }
             };
 

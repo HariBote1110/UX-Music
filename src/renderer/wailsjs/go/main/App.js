@@ -10,6 +10,26 @@ export function AddSongsToPlaylist(arg1) {
   return window['go']['main']['App']['AddSongsToPlaylist'](arg1);
 }
 
+export function CDApplyMetadata(arg1, arg2) {
+  return window['go']['main']['App']['CDApplyMetadata'](arg1, arg2);
+}
+
+export function CDScan() {
+  return window['go']['main']['App']['CDScan']();
+}
+
+export function CDSearchTOC(arg1) {
+  return window['go']['main']['App']['CDSearchTOC'](arg1);
+}
+
+export function CDSearchText(arg1) {
+  return window['go']['main']['App']['CDSearchText'](arg1);
+}
+
+export function CDStartRip(arg1, arg2) {
+  return window['go']['main']['App']['CDStartRip'](arg1, arg2);
+}
+
 export function CreatePlaylist(arg1) {
   return window['go']['main']['App']['CreatePlaylist'](arg1);
 }

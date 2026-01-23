@@ -21,6 +21,7 @@ type NodeSidecar struct {
 	pending    map[string]chan *SidecarResponse
 	running    bool
 	scriptPath string
+	onEvent    func(string, json.RawMessage)
 }
 
 // SidecarRequest represents a request sent to the Node.js sidecar
@@ -182,15 +183,34 @@ func (s *NodeSidecar) readResponses() {
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		var resp SidecarResponse
+		var resp struct {
+			ID      string          `json:"id"`
+			Type    string          `json:"type"`
+			Payload json.RawMessage `json:"payload"`
+			IsEvent bool            `json:"isEvent"`
+		}
 		if err := json.Unmarshal([]byte(line), &resp); err != nil {
 			fmt.Fprintf(os.Stderr, "[NodeSidecar] Invalid JSON response: %v\n", err)
 			continue
 		}
 
+		if resp.IsEvent || resp.ID == "" {
+			s.mu.Lock()
+			cb := s.onEvent
+			s.mu.Unlock()
+			if cb != nil {
+				cb(resp.Type, resp.Payload)
+			}
+			continue
+		}
+
 		s.mu.Lock()
 		if ch, ok := s.pending[resp.ID]; ok {
-			ch <- &resp
+			ch <- &SidecarResponse{
+				ID:      resp.ID,
+				Type:    resp.Type,
+				Payload: resp.Payload,
+			}
 		}
 		s.mu.Unlock()
 	}
@@ -213,4 +233,11 @@ func (s *NodeSidecar) IsRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.running
+}
+
+// SetEventCallback sets a function to be called when an event is received
+func (s *NodeSidecar) SetEventCallback(cb func(string, json.RawMessage)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onEvent = cb
 }

@@ -93,7 +93,7 @@ export async function activateAudioGraph(rate) {
 async function createGraph(rate) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     const context = new AudioContextClass({
-        latencyHint: 'interactive',
+        latencyHint: 'playback', // 'interactive' から変更 (プチフリ時のピッチ上昇対策)
         sampleRate: rate
     });
 
