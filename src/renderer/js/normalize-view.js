@@ -3,6 +3,14 @@ import { state, elements } from './state.js';
 import { showView } from './navigation.js';
 const electronAPI = window.electronAPI;
 
+// モジュールスコープで変数を宣言（グローバルリーク防止）
+const normalizeFiles = new Map();
+let commonBasePath = null;
+const outputSettings = {
+    mode: 'overwrite', // 'overwrite' or 'folder'
+    path: null
+};
+
 function getBasename(path) {
     return path.split(/[\\/]/).pop();
 }
@@ -146,19 +154,6 @@ function updateProgress(processed, total, label) {
 }
 
 export function initNormalizeView() {
-    elements.normalizeViewBtn.addEventListener('click', () => {
-        elements.mainContent.classList.add('hidden');
-        elements.normalizeView.classList.remove('hidden');
-        elements.navLinks.forEach(l => l.classList.remove('active'));
-    });
-
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.addEventListener('click', () => {
-            elements.mainContent.classList.remove('hidden');
-            elements.normalizeView.classList.add('hidden');
-        });
-    });
-
     const dropZone = document.getElementById('normalize-drop-zone');
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('drag-over'); });
     dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('drag-over'); });

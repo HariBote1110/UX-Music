@@ -73,7 +73,14 @@ export function initEventListeners() {
         });
     }
 
-    // ▼▼▼ 追加: CDインポートボタンイベント ▼▼▼
+    const normalizeBtn = document.getElementById('normalize-view-btn');
+    if (normalizeBtn) {
+        normalizeBtn.addEventListener('click', () => {
+            if (libraryActionsPopup) libraryActionsPopup.classList.add('hidden');
+            showView('normalize-view');
+        });
+    }
+
     const cdRipBtn = document.getElementById('cd-rip-view-btn');
     if (cdRipBtn) {
         cdRipBtn.addEventListener('click', () => {
@@ -81,7 +88,6 @@ export function initEventListeners() {
             showView('cd-rip-view');
         });
     }
-    // ▲▲▲ 追加 ▲▲▲
 
     // 検索ボックス
     const searchInput = document.getElementById('search-input');
