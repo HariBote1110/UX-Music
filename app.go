@@ -22,10 +22,12 @@ import (
 
 // App struct
 type App struct {
-	ctx        context.Context
-	ripper     *cdrip.Ripper
-	mtpManager *mtp.Manager
-	normalizer *normalize.Normalizer
+	ctx          context.Context
+	ripper       *cdrip.Ripper
+	mtpManager   *mtp.Manager
+	normalizer   *normalize.Normalizer
+	mtpConnected bool
+	mtpMu        sync.Mutex
 }
 
 // NewApp creates a new App struct
@@ -61,6 +63,9 @@ func (a *App) startup(ctx context.Context) {
 	a.normalizer = normalize.NewNormalizer(ffmpegPath, ffprobePath)
 
 	fmt.Println("[Wails] App components initialized")
+
+	// Start MTP device monitoring
+	a.startMTPMonitor()
 }
 
 // Ping returns a pong message
@@ -746,6 +751,94 @@ func (a *App) MTPMakeDirectory(opts mtp.MakeDirOptions) error {
 
 func (a *App) MTPDispose() error {
 	return a.mtpManager.Dispose()
+}
+
+// startMTPMonitor starts a goroutine that polls for MTP device connection
+func (a *App) startMTPMonitor() {
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+
+		fmt.Println("[MTP Monitor] Started polling for MTP devices")
+
+		for range ticker.C {
+			a.mtpMu.Lock()
+			wasConnected := a.mtpConnected
+			a.mtpMu.Unlock()
+
+			// Try to initialize MTP
+			err := a.mtpManager.Initialize()
+			if err != nil {
+				// Device not found or error
+				if wasConnected {
+					fmt.Println("[MTP Monitor] Device disconnected")
+					a.mtpManager.Dispose()
+					a.mtpMu.Lock()
+					a.mtpConnected = false
+					a.mtpMu.Unlock()
+					wailsRuntime.EventsEmit(a.ctx, "mtp-device-disconnected")
+				}
+				continue
+			}
+
+			// Device found
+			if !wasConnected {
+				fmt.Println("[MTP Monitor] Device connected, fetching info...")
+
+				// Fetch device info
+				deviceInfo, err := a.mtpManager.FetchDeviceInfo()
+				if err != nil {
+					fmt.Printf("[MTP Monitor] Failed to fetch device info: %v\n", err)
+					a.mtpManager.Dispose()
+					continue
+				}
+
+				// Fetch storages
+				storages, err := a.mtpManager.FetchStorages()
+				if err != nil {
+					fmt.Printf("[MTP Monitor] Failed to fetch storages: %v\n", err)
+					// Continue anyway, storage info is not critical
+				}
+
+				// Build storage info for UI (matching Electron format)
+				storagesForUI := make([]map[string]interface{}, 0)
+				for _, s := range storages {
+					storagesForUI = append(storagesForUI, map[string]interface{}{
+						"id":          s.ID,
+						"free":        s.FreeSpace,
+						"total":       s.Capacity,
+						"description": s.Description,
+					})
+				}
+
+				// Build device name
+				deviceName := "MTP Device"
+				if deviceInfo != nil {
+					if name, ok := deviceInfo["Model"].(string); ok && name != "" {
+						deviceName = name
+					} else if name, ok := deviceInfo["Manufacturer"].(string); ok && name != "" {
+						deviceName = name
+					}
+				}
+
+				// Build payload matching Electron format
+				payload := map[string]interface{}{
+					"device": map[string]interface{}{
+						"name":          deviceName,
+						"mtpDeviceInfo": deviceInfo,
+					},
+					"storages": storagesForUI,
+				}
+
+				a.mtpMu.Lock()
+				a.mtpConnected = true
+				a.mtpMu.Unlock()
+
+				fmt.Printf("[MTP Monitor] Device connected: %s\n", deviceName)
+				wailsRuntime.EventsEmit(a.ctx, "mtp-device-connected", payload)
+			}
+		}
+	}()
 }
 
 // --- Normalize Methods ---
