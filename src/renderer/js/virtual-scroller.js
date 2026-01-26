@@ -24,12 +24,12 @@ export class VirtualScroller {
         this.sizer.style.width = '1px';
         this.sizer.style.height = `calc(${this.data.length * this.itemHeight}px + var(--footer-height, 0px))`;
         this.container.appendChild(this.sizer);
-        
+
         this.renderedItems = new Map();
-        
+
         this.onScroll = this.onScroll.bind(this);
         this.container.addEventListener('scroll', this.onScroll, { passive: true });
-        
+
         requestAnimationFrame(() => {
             // 要素がDOMに接続されている場合のみ描画
             if (this.container.isConnected) {
@@ -70,12 +70,12 @@ export class VirtualScroller {
                 element.style.left = '0';
                 element.style.right = '0';
                 element.style.height = `${this.itemHeight}px`;
-                
+
                 this.container.appendChild(element);
                 this.renderedItems.set(i, element);
             }
         }
-        
+
         for (const [index, element] of this.renderedItems.entries()) {
             if (!visibleIndexes.has(index)) {
                 element.remove();
@@ -87,7 +87,7 @@ export class VirtualScroller {
     updateData(newData) {
         this.data = newData;
         const totalHeight = this.data.length * this.itemHeight;
-        
+
         // 高さの更新 (再生バーの余白も考慮)
         this.sizer.style.height = `calc(${totalHeight}px + var(--footer-height, 0px))`;
 
@@ -103,6 +103,14 @@ export class VirtualScroller {
 
     destroy() {
         this.container.removeEventListener('scroll', this.onScroll);
+
+        // 明示的に要素を削除し、参照を解除する
+        for (const element of this.renderedItems.values()) {
+            element.remove();
+        }
+        this.renderedItems.clear();
+        this.data = [];
+
         this.container.innerHTML = '';
         if (this.scrollTimeout) {
             cancelAnimationFrame(this.scrollTimeout);

@@ -129,18 +129,15 @@ func (a *App) GetArtworksDir() string {
 func (a *App) LoadLibrary() {
 	fmt.Println("[Wails] LoadLibrary current")
 	songs, _ := stores.Load("library")
-	albums, _ := stores.Load("albums")
 
+	// 必要最小限の情報を送るようにする。
 	if songs == nil {
 		songs = []interface{}{}
-	}
-	if albums == nil {
-		albums = make(map[string]interface{})
 	}
 
 	data := map[string]interface{}{
 		"songs":  songs,
-		"albums": albums,
+		"albums": make(map[string]interface{}),
 	}
 	wailsRuntime.EventsEmit(a.ctx, "load-library", data)
 }

@@ -48,21 +48,8 @@ func main() {
 						return
 					}
 
-					data, err := os.ReadFile(fullPath)
-					if err != nil {
-						fmt.Printf("[Wails] Artwork read error: %v (path: %s)\n", err, fullPath)
-						http.NotFound(w, r)
-						return
-					}
-					// 簡易的な MIME タイプの判定
-					contentType := "image/jpeg"
-					if strings.HasSuffix(filename, ".png") {
-						contentType = "image/png"
-					} else if strings.HasSuffix(filename, ".webp") {
-						contentType = "image/webp"
-					}
-					w.Header().Set("Content-Type", contentType)
-					w.Write(data)
+					// http.ServeFile を使用してメモリ効率を高める（ストリーミング配信）
+					http.ServeFile(w, r, fullPath)
 					return
 				} else if strings.HasPrefix(path, "/safe-media/") {
 					// Wails 環境での音楽再生用

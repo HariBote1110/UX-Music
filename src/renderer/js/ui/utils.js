@@ -9,6 +9,9 @@ import { state } from '../state.js';
  * @returns {string} - The URL or path to the artwork image.
  */
 export function resolveArtworkPath(artwork, isThumbnail = false) {
+    // Light Flight Mode が有効な場合は、アートワークの読み込みを完全に停止する
+    if (state.isLightFlightMode) return './assets/default_artwork.png';
+
     if (!artwork) return './assets/default_artwork.png';
 
     // Handle external URLs (http, data URIs)
