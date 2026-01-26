@@ -16,9 +16,6 @@ logPerf("ipc.js script execution started.");
 
 const electronAPI = window.electronAPI;
 
-// MTP操作中フラグ
-let mtpOperationInProgress = false;
-
 export function initIPC(callbacks) {
     logPerf("initIPC called.");
 
