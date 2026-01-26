@@ -766,11 +766,11 @@ func (a *App) startMTPMonitor() {
 			wasConnected := a.mtpConnected
 			a.mtpMu.Unlock()
 
-			// Try to initialize MTP
-			err := a.mtpManager.Initialize()
-			if err != nil {
-				// Device not found or error
-				if wasConnected {
+			if wasConnected {
+				// Already connected - check if still connected by trying FetchStorages
+				_, err := a.mtpManager.FetchStorages()
+				if err != nil {
+					// Device disconnected
 					fmt.Println("[MTP Monitor] Device disconnected")
 					a.mtpManager.Dispose()
 					a.mtpMu.Lock()
@@ -778,65 +778,72 @@ func (a *App) startMTPMonitor() {
 					a.mtpMu.Unlock()
 					wailsRuntime.EventsEmit(a.ctx, "mtp-device-disconnected")
 				}
+				// Still connected, do nothing
 				continue
 			}
 
-			// Device found
-			if !wasConnected {
-				fmt.Println("[MTP Monitor] Device connected, fetching info...")
-
-				// Fetch device info
-				deviceInfo, err := a.mtpManager.FetchDeviceInfo()
-				if err != nil {
-					fmt.Printf("[MTP Monitor] Failed to fetch device info: %v\n", err)
-					a.mtpManager.Dispose()
-					continue
-				}
-
-				// Fetch storages
-				storages, err := a.mtpManager.FetchStorages()
-				if err != nil {
-					fmt.Printf("[MTP Monitor] Failed to fetch storages: %v\n", err)
-					// Continue anyway, storage info is not critical
-				}
-
-				// Build storage info for UI (matching Electron format)
-				storagesForUI := make([]map[string]interface{}, 0)
-				for _, s := range storages {
-					storagesForUI = append(storagesForUI, map[string]interface{}{
-						"id":          s.ID,
-						"free":        s.FreeSpace,
-						"total":       s.Capacity,
-						"description": s.Description,
-					})
-				}
-
-				// Build device name
-				deviceName := "MTP Device"
-				if deviceInfo != nil {
-					if name, ok := deviceInfo["Model"].(string); ok && name != "" {
-						deviceName = name
-					} else if name, ok := deviceInfo["Manufacturer"].(string); ok && name != "" {
-						deviceName = name
-					}
-				}
-
-				// Build payload matching Electron format
-				payload := map[string]interface{}{
-					"device": map[string]interface{}{
-						"name":          deviceName,
-						"mtpDeviceInfo": deviceInfo,
-					},
-					"storages": storagesForUI,
-				}
-
-				a.mtpMu.Lock()
-				a.mtpConnected = true
-				a.mtpMu.Unlock()
-
-				fmt.Printf("[MTP Monitor] Device connected: %s\n", deviceName)
-				wailsRuntime.EventsEmit(a.ctx, "mtp-device-connected", payload)
+			// Not connected - try to initialize MTP
+			err := a.mtpManager.Initialize()
+			if err != nil {
+				// Device not found or error - that's normal when no device connected
+				continue
 			}
+
+			// Device found - fetch info
+			fmt.Println("[MTP Monitor] Device connected, fetching info...")
+
+			// Fetch device info
+			deviceInfo, err := a.mtpManager.FetchDeviceInfo()
+			if err != nil {
+				fmt.Printf("[MTP Monitor] Failed to fetch device info: %v\n", err)
+				a.mtpManager.Dispose()
+				continue
+			}
+
+			// Fetch storages
+			storages, err := a.mtpManager.FetchStorages()
+			if err != nil {
+				fmt.Printf("[MTP Monitor] Failed to fetch storages: %v\n", err)
+				a.mtpManager.Dispose()
+				continue
+			}
+
+			// Build storage info for UI (matching Electron format)
+			storagesForUI := make([]map[string]interface{}, 0)
+			for _, s := range storages {
+				storagesForUI = append(storagesForUI, map[string]interface{}{
+					"id":          s.ID,
+					"free":        s.FreeSpace,
+					"total":       s.Capacity,
+					"description": s.Description,
+				})
+			}
+
+			// Build device name
+			deviceName := "MTP Device"
+			if deviceInfo != nil {
+				if name, ok := deviceInfo["Model"].(string); ok && name != "" {
+					deviceName = name
+				} else if name, ok := deviceInfo["Manufacturer"].(string); ok && name != "" {
+					deviceName = name
+				}
+			}
+
+			// Build payload matching Electron format
+			payload := map[string]interface{}{
+				"device": map[string]interface{}{
+					"name":          deviceName,
+					"mtpDeviceInfo": deviceInfo,
+				},
+				"storages": storagesForUI,
+			}
+
+			a.mtpMu.Lock()
+			a.mtpConnected = true
+			a.mtpMu.Unlock()
+
+			fmt.Printf("[MTP Monitor] Device connected: %s\n", deviceName)
+			wailsRuntime.EventsEmit(a.ctx, "mtp-device-connected", payload)
 		}
 	}()
 }
