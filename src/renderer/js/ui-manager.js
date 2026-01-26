@@ -317,6 +317,23 @@ export async function updateAudioDevices() {
     try {
         console.log('[AudioDevices] enumerating devices...');
         let devices = await navigator.mediaDevices.enumerateDevices();
+
+        // 権限がない場合 deviceId と label が空文字になる
+        // Wails環境では getUserMedia で権限を取得してから再度 enumerateDevices を呼ぶ必要がある
+        const hasEmptyDeviceIds = devices.some(d => d.kind === 'audiooutput' && d.deviceId === '');
+        if (hasEmptyDeviceIds && window.go) {
+            console.log('[AudioDevices] Detected devices with empty IDs, requesting media permission...');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream.getTracks().forEach(t => t.stop());
+                // 権限取得後に再度列挙
+                devices = await navigator.mediaDevices.enumerateDevices();
+                console.log('[AudioDevices] Devices after permission:', devices.map(d => ({ kind: d.kind, label: d.label, id: d.deviceId })));
+            } catch (permErr) {
+                console.warn('[AudioDevices] Permission request failed:', permErr);
+            }
+        }
+
         console.log('[AudioDevices] all devices found:', devices.map(d => ({ kind: d.kind, label: d.label, id: d.deviceId })));
         const settings = await electronAPI.invoke('get-settings');
         const hiddenDevices = settings.hiddenDeviceIds || [];

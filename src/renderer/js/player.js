@@ -76,6 +76,7 @@ export function seek(time) {
     }
 }
 export async function setAudioOutput(deviceId) {
+    console.log('[Player] setAudioOutput called with deviceId:', deviceId);
     await setAudioOutputDevice(deviceId, localPlayer);
 }
 

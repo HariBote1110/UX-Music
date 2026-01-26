@@ -97,10 +97,20 @@ export async function activateAudioGraph(rate) {
  */
 async function createGraph(rate) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    const context = new AudioContextClass({
-        latencyHint: 'playback', // 'interactive' から変更 (プチフリ時のピッチ上昇対策)
+
+    // AudioContext作成オプション（sinkIdサポートは限定的）
+    const contextOptions = {
+        latencyHint: 'playback',
         sampleRate: rate
-    });
+    };
+
+    // AudioContextのsinkIdオプションサポートを試行（Chrome 110+）
+    if (savedSinkId && savedSinkId !== 'default' && savedSinkId !== 'ux-direct-link') {
+        contextOptions.sinkId = savedSinkId;
+        console.log('[AudioGraph] Creating AudioContext with sinkId:', savedSinkId);
+    }
+
+    const context = new AudioContextClass(contextOptions);
 
     // 専用のAudio要素を作成
     const audioElement = new Audio();
@@ -153,8 +163,17 @@ async function createGraph(rate) {
 
 export async function initAudioGraph(playerElement, sinkId) {
     // 初回初期化またはデバイス変更
-    // デバイス変更（SinkID変更）は全キャッシュに対して行う必要があるが、
-    // 簡略化のため「次回アクティブになった時」または「現在のグラフ」に適用する
+    console.log('[AudioGraph] initAudioGraph called with sinkId:', sinkId);
+
+    // 空文字のsinkIdは無視（権限がない場合にブラウザが空文字を返す）
+    if (sinkId === '') {
+        console.warn('[AudioGraph] Empty sinkId received, ignoring');
+        return;
+    }
+
+    // sinkIdが変更された場合、グラフキャッシュをクリアして再作成を強制
+    const previousSinkId = savedSinkId;
+    const sinkIdChanged = sinkId && sinkId !== previousSinkId;
 
     // sinkIdが渡された場合のみ設定を保存（nullや未定義の場合は保存しない）
     if (sinkId) {
@@ -164,25 +183,38 @@ export async function initAudioGraph(playerElement, sinkId) {
 
     if (sinkId === 'ux-direct-link') {
         isDirectLinkEnabled = true;
-        // グラフのアクティベートは再生時(playLocal)に行われるので、ここではフラグ設定のみでOK
         if (currentGraph) electronAPI.send('direct-link-command', { action: 'start', sampleRate: currentGraph.sampleRate });
     } else {
         isDirectLinkEnabled = false;
-        // sinkIdを保持（currentGraphが無くても保持する）
-        if (sinkId) {
-            savedSinkId = sinkId;
-        }
-        if (currentGraph) {
+
+        // sinkIdが変更された場合、すべてのキャッシュをクリアして再作成を強制
+        if (sinkIdChanged) {
+            console.log('[AudioGraph] SinkId changed, clearing graph cache for recreation.');
+            // 現在のグラフを停止
+            if (currentGraph) {
+                electronAPI.send('direct-link-command', { action: 'stop' });
+                try {
+                    currentGraph.context.close();
+                } catch (e) { }
+            }
+            // キャッシュをクリア
+            graphCache.clear();
+            currentGraph = null;
+        } else if (currentGraph) {
+            // sinkId変更なしの場合は既存の接続を維持
             electronAPI.send('direct-link-command', { action: 'stop' });
-            // スピーカー出力へ戻す
             try {
                 currentGraph.nodes.gain.connect(currentGraph.context.destination);
-                // SinkID適用
+                // setSinkIdを試行（サポートされている場合）
                 const targetSinkId = sinkId || savedSinkId;
                 if (typeof currentGraph.context.setSinkId === 'function' && targetSinkId && targetSinkId !== 'default') {
-                    currentGraph.context.setSinkId(targetSinkId);
+                    console.log('[AudioGraph] Applying setSinkId:', targetSinkId);
+                    await currentGraph.context.setSinkId(targetSinkId);
+                    console.log('[AudioGraph] setSinkId applied successfully');
                 }
-            } catch (e) { }
+            } catch (e) {
+                console.warn('[AudioGraph] Failed to apply sinkId:', e);
+            }
         }
     }
 }
