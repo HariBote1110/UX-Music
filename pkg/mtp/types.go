@@ -8,11 +8,12 @@ type MTPResponse struct {
 
 // Storage represents an MTP storage device
 type Storage struct {
-	ID          uint32 `json:"Id"`
-	Description string `json:"Description"`
-	Name        string `json:"Name"`
-	Capacity    int64  `json:"Capacity"`
-	FreeSpace   int64  `json:"FreeSpace"`
+	ID   uint32 `json:"Sid"`
+	Info struct {
+		StorageDescription string `json:"StorageDescription"`
+		MaxCapability      int64  `json:"MaxCapability"`
+		FreeSpaceInBytes   int64  `json:"FreeSpaceInBytes"`
+	} `json:"Info"`
 }
 
 // FileInfo represents a file on MTP device

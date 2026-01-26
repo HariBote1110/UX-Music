@@ -102,6 +102,7 @@ export function initUI() {
     });
 
     elements.mtpDeviceButton.addEventListener('click', (e) => {
+        console.log('[UI-Manager][Click] mtpDeviceButton clicked');
         e.stopPropagation();
         elements.mtpDevicePopup.classList.toggle('active');
         elements.devicePopup.classList.remove('active');
@@ -113,9 +114,15 @@ export function initUI() {
         }
     });
 
-    electronAPI.on('mtp-device-status', (device) => {
-        console.log('[MTP-LOG] MTPデバイスステータス受信:', device);
-        updateMtpDeviceView(device);
+    electronAPI.on('mtp-device-connected', (payload) => {
+        console.log('[MTP-LOG] mtp-device-connected 受信:', payload);
+        // payload: { device: { name, ... }, storages: [...] }
+        updateMtpDeviceView(payload);
+    });
+
+    electronAPI.on('mtp-device-disconnected', () => {
+        console.log('[MTP-LOG] mtp-device-disconnected 受信');
+        updateMtpDeviceView(null);
     });
 
     elements.mtpTransferQueueBtn.addEventListener('click', () => {
@@ -127,6 +134,7 @@ export function initUI() {
     // MTPストレージを参照ボタン
     if (elements.mtpBrowseStorageBtn) {
         elements.mtpBrowseStorageBtn.addEventListener('click', () => {
+            console.log('[UI-Manager][Click] mtpBrowseStorageBtn clicked');
             elements.mtpDevicePopup.classList.remove('active');
 
             if (!state.mtpStorages || state.mtpStorages.length === 0) {
@@ -144,16 +152,22 @@ export function initUI() {
     };
 }
 
-function updateMtpDeviceView(device) {
-    if (device) {
+function updateMtpDeviceView(payload) {
+    if (payload && payload.device) {
+        const device = payload.device;
+        const storages = payload.storages;
+
         elements.mtpDeviceButton.classList.remove('hidden');
         elements.mtpDeviceName.textContent = device.name || 'MTP Device';
         elements.mtpTransferDeviceName.textContent = device.name || 'MTP Device';
 
-        if (device.storage && device.storage.total > 0) {
-            const { free, total } = device.storage;
+        if (storages && storages.length > 0) {
+            const storage = storages[0];
+            const free = storage.free || 0;
+            const total = storage.total || 0;
             const used = total - free;
-            const usedPercent = (used / total) * 100;
+            const usedPercent = total > 0 ? (used / total) * 100 : 0;
+
             const fBytes = typeof formatBytes === 'function' ? formatBytes : (b) => `${(b / 1024 ** 3).toFixed(1)} GB`;
             elements.mtpStorageUsed.style.width = `${usedPercent}%`;
             elements.mtpStorageLabel.textContent = `${fBytes(free)} 空き (${fBytes(used)} / ${fBytes(total)})`;

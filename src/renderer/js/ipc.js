@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { showModal } from './modal.js';
 import { renderCurrentView } from './ui-manager.js';
 import { showView } from './navigation.js';
+import { musicApi } from './bridge.js';
 // --- ▼▼▼ 新規追加 ▼▼▼ ---
 import { showEditMetadataModal } from './edit-metadata.js'; // あとで作成するファイル
 // --- ▲▲▲ ここまで ▲▲▲ ---
@@ -15,8 +16,10 @@ const logPerf = (message) => {
 logPerf("ipc.js script execution started.");
 
 const electronAPI = window.electronAPI;
+let mtpOperationInProgress = false;
 
 export function initIPC(callbacks) {
+    console.log('[IPC] initIPC called');
     logPerf("initIPC called.");
 
     electronAPI.on('app-info-response', (info) => {
@@ -135,19 +138,22 @@ export function initIPC(callbacks) {
         showEditMetadataModal(song);
     });
 
-    electronAPI.on('mtp-device-connected', (payload) => {
+    function handleMtpConnected(payload) {
+        console.log('🎉 [IPC] handleMtpConnected:', payload);
         const deviceInfo = payload.device;
         const storageInfo = payload.storages;
-
-        console.log('🎉 MTP デバイス接続:', deviceInfo);
-        console.log('📦 MTP ストレージ:', storageInfo);
 
         state.mtpDevice = deviceInfo;
         state.mtpStorages = storageInfo;
 
-        showNotification(`Walkman (${deviceInfo?.name}) が接続されました。`);
-        hideNotification(3000);
         updateDevicesSidebar(deviceInfo);
+    }
+
+    console.log('[IPC] Registering mtp-device-connected listener');
+    electronAPI.on('mtp-device-connected', (payload) => {
+        handleMtpConnected(payload);
+        showNotification(`Walkman (${payload.device?.name}) が接続されました。`);
+        hideNotification(3000);
     });
 
     electronAPI.on('mtp-device-disconnected', () => {
@@ -196,11 +202,28 @@ export function initIPC(callbacks) {
     musicApi.requestInitialPlayCounts();
     electronAPI.send('request-initial-settings');
 
+    // MTP初期状態の取得
+    electronAPI.invoke('mtp-get-status').then(status => {
+        if (status) {
+            console.log('[IPC] Initial MTP Status found:', status);
+            handleMtpConnected(status);
+        } else {
+            console.log('[IPC] No MTP device connected initially');
+        }
+    }).catch(err => {
+        console.error('[IPC] Failed to get initial MTP status:', err);
+    });
+
     const mtpDeviceNavLink = document.getElementById('mtp-device-nav-link');
     if (mtpDeviceNavLink) {
+        console.log('[IPC] mtp-device-nav-link listener attached');
         mtpDeviceNavLink.addEventListener('click', async (e) => {
+            console.log('[IPC][Click] mtp-device-nav-link clicked');
             e.preventDefault();
-            if (mtpOperationInProgress) return;
+            if (mtpOperationInProgress) {
+                console.warn('[IPC] MTP operation already in progress, skipping click');
+                return;
+            }
 
             if (!state.mtpStorages || state.mtpStorages.length === 0) {
                 showNotification('ストレージ情報がありません');
@@ -268,6 +291,7 @@ export function initIPC(callbacks) {
                     }
 
                 } catch (error) {
+                    console.error('[IPC] MTP操作中にエラー発生:', error);
                     hideNotification();
                     showNotification('未転送曲の確認に失敗しました');
                     hideNotification(3000);

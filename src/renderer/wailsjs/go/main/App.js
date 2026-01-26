@@ -110,6 +110,14 @@ export function MTPFetchStorages() {
   return window['go']['main']['App']['MTPFetchStorages']();
 }
 
+export function MTPGetStatus() {
+  return window['go']['main']['App']['MTPGetStatus']();
+}
+
+export function MTPGetUntransferredSongs(arg1) {
+  return window['go']['main']['App']['MTPGetUntransferredSongs'](arg1);
+}
+
 export function MTPInitialize() {
   return window['go']['main']['App']['MTPInitialize']();
 }
@@ -120,6 +128,10 @@ export function MTPMakeDirectory(arg1) {
 
 export function MTPUploadFiles(arg1) {
   return window['go']['main']['App']['MTPUploadFiles'](arg1);
+}
+
+export function MTPUploadFilesWithStructure(arg1) {
+  return window['go']['main']['App']['MTPUploadFilesWithStructure'](arg1);
 }
 
 export function MTPWalk(arg1) {

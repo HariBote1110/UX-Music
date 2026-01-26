@@ -7,17 +7,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/text/unicode/norm"
+	"golang.org/x/text/width"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+
 	"ux-music-sidecar/pkg/cdrip"
 	"ux-music-sidecar/pkg/mtp"
 	"ux-music-sidecar/pkg/normalize"
-
-	"runtime"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -722,7 +725,15 @@ func (a *App) MTPFetchStorages() ([]mtp.Storage, error) {
 }
 
 func (a *App) MTPWalk(opts mtp.WalkOptions) (interface{}, error) {
-	return a.mtpManager.Walk(opts)
+	fmt.Printf("[Wails] MTPWalk called: StorageID=%d, Path=%s\n", opts.StorageID, opts.FullPath)
+	res, err := a.mtpManager.Walk(opts)
+	if err != nil {
+		fmt.Printf("[Wails] MTPWalk error: %v\n", err)
+		return nil, err
+	}
+	return map[string]interface{}{
+		"data": res,
+	}, nil
 }
 
 func (a *App) MTPUploadFiles(opts mtp.TransferOptions) error {
@@ -741,6 +752,63 @@ func (a *App) MTPDownloadFiles(opts mtp.TransferOptions) error {
 	})
 }
 
+func (a *App) MTPUploadFilesWithStructure(data map[string]interface{}) (map[string]interface{}, error) {
+	storageID := uint32(data["storageId"].(float64))
+	transferList := data["transferList"].([]interface{})
+
+	fmt.Printf("[Wails] MTPUploadFilesWithStructure: storage=%d, items=%d\n", storageID, len(transferList))
+
+	// Destination ごとに Grouping
+	groups := make(map[string][]string)
+	for _, item := range transferList {
+		m := item.(map[string]interface{})
+		src := m["source"].(string)
+		dest := m["destination"].(string)
+		groups[dest] = append(groups[dest], src)
+	}
+
+	successCount := 0
+	errorCount := 0
+
+	for dest, sources := range groups {
+		// 1. ディレクトリの存在確認と作成
+		// Kalam の MakeDirectory が再帰的でない場合に備えて、各階層を作成
+		parts := strings.Split(strings.Trim(dest, "/"), "/")
+		currentPath := ""
+		for _, part := range parts {
+			currentPath += "/" + part
+			// エラーを無視して作成を試みる（既存の場合はエラーになるがスキップ）
+			_ = a.mtpManager.MakeDirectory(mtp.MakeDirOptions{
+				StorageID: storageID,
+				FullPath:  currentPath,
+			})
+		}
+
+		// 2. アップロード実行
+		err := a.mtpManager.UploadFiles(mtp.TransferOptions{
+			StorageID:   storageID,
+			Sources:     sources,
+			Destination: dest,
+		}, func(data interface{}) {
+			wailsRuntime.EventsEmit(a.ctx, "mtp-upload-preprocess", data)
+		}, func(prog mtp.TransferProgress) {
+			wailsRuntime.EventsEmit(a.ctx, "mtp-upload-progress", prog)
+		})
+
+		if err != nil {
+			fmt.Printf("[Wails] Upload error to %s: %v\n", dest, err)
+			errorCount += len(sources)
+		} else {
+			successCount += len(sources)
+		}
+	}
+
+	return map[string]interface{}{
+		"successCount": successCount,
+		"errorCount":   errorCount,
+	}, nil
+}
+
 func (a *App) MTPDeleteFile(opts mtp.DeleteOptions) error {
 	return a.mtpManager.DeleteFile(opts)
 }
@@ -751,6 +819,193 @@ func (a *App) MTPMakeDirectory(opts mtp.MakeDirOptions) error {
 
 func (a *App) MTPDispose() error {
 	return a.mtpManager.Dispose()
+}
+
+func (a *App) MTPGetUntransferredSongs(librarySongs []interface{}) (map[string]interface{}, error) {
+	fmt.Printf("[Wails] MTPGetUntransferredSongs started: processing %d library songs\n", len(librarySongs))
+
+	a.mtpMu.Lock()
+	connected := a.mtpConnected
+	a.mtpMu.Unlock()
+
+	if !connected {
+		fmt.Println("[Wails] MTPGetUntransferredSongs: device not connected")
+		return map[string]interface{}{
+			"untransferredSongs": []interface{}{},
+			"deviceFilesList":    []interface{}{},
+		}, nil
+	}
+
+	// 1. デバイス上の /Music/ フォルダを再帰的にスキャン
+	deviceFilesMap := make(map[string][]map[string]interface{})
+	deviceFilesList := make([]map[string]interface{}, 0)
+
+	storages, err := a.mtpManager.FetchStorages()
+	if err != nil || len(storages) == 0 {
+		return nil, fmt.Errorf("failed to fetch storages: %v", err)
+	}
+	storageID := storages[0].ID
+
+	var scanDir func(string)
+	scanDir = func(path string) {
+		res, err := a.mtpManager.Walk(mtp.WalkOptions{
+			StorageID:       storageID,
+			FullPath:        path,
+			SkipHiddenFiles: true,
+		})
+		if err != nil {
+			fmt.Printf("[Wails] scanDir error (%s): %v\n", path, err)
+			return
+		}
+
+		items, ok := res.([]interface{})
+		if !ok {
+			return
+		}
+
+		for _, item := range items {
+			m, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			name, _ := m["name"].(string)
+			isFolder, _ := m["isFolder"].(bool)
+			path, _ := m["path"].(string)
+
+			var size int64
+			if s, ok := m["size"].(float64); ok {
+				size = int64(s)
+			} else if s, ok := m["size"].(json.Number); ok {
+				size, _ = s.Int64()
+			}
+
+			if isFolder {
+				if path != "" {
+					scanDir(path)
+				}
+			} else {
+				normName := normalizeFileNameGo(name)
+				fileInfo := map[string]interface{}{
+					"name":           name,
+					"normalizedName": normName,
+					"size":           size,
+					"fullPath":       path, // 互換性のために一旦残す
+					"path":           path,
+				}
+				deviceFilesList = append(deviceFilesList, fileInfo)
+				deviceFilesMap[normName] = append(deviceFilesMap[normName], fileInfo)
+			}
+		}
+	}
+
+	scanDir("/Music/")
+	fmt.Printf("[Wails] Scan complete: %d files found on device\n", len(deviceFilesList))
+
+	// 2. ライブラリ内の曲と比較
+	untransferredSongs := make([]interface{}, 0)
+	for _, song := range librarySongs {
+		sMap, ok := song.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		pathStr, _ := sMap["path"].(string)
+		if pathStr == "" {
+			continue
+		}
+
+		fileName := filepath.Base(pathStr)
+		normName := normalizeFileNameGo(fileName)
+
+		if _, exists := deviceFilesMap[normName]; !exists {
+			// 未転送
+			// 元のデータを壊さないようコピーして使うのが安全だが、一旦そのまま。
+			// UI側で _reason が必要
+			sMap["_reason"] = fmt.Sprintf("名前不一致: \"%s\"", normName)
+			sMap["_normalizedName"] = normName
+			untransferredSongs = append(untransferredSongs, sMap)
+		}
+	}
+
+	fmt.Printf("[Wails] Found %d untransferred songs\n", len(untransferredSongs))
+	return map[string]interface{}{
+		"untransferredSongs": untransferredSongs,
+		"deviceFilesList":    deviceFilesList,
+	}, nil
+}
+
+func normalizeFileNameGo(fileName string) string {
+	// Unicode正規化 (NFCに統一、macOSのNFD問題を解決)
+	name := norm.NFC.String(fileName)
+
+	// 拡張子除去
+	ext := filepath.Ext(name)
+	name = strings.TrimSuffix(name, ext)
+
+	// 全角英数字を半角に、半角カタカナを全角に変換
+	name = width.Fold.String(name)
+
+	// トラック番号除去 (01-, 02. , etc)
+	reTrack := regexp.MustCompile(`^\d+[-\s.]*`)
+	name = reTrack.ReplaceAllString(name, "")
+
+	// カタカナ長音記号の統一（ー、－、―、─、ｰ など）
+	reChon := regexp.MustCompile(`[ー－―─ｰ]`)
+	name = reChon.ReplaceAllString(name, "ー")
+
+	// 小文字化
+	name = strings.ToLower(name)
+
+	// 特殊記号や空白を除去（英数字、アンダーバー、日本語文字のみ残す）
+	// \w はアンダーバーを含む英数字。日本語は Unicode レンジで指定。
+	// [^\w\x{3040}-\x{309F}\x{30A0}-\x{30FF}\x{4E00}-\x{9FAF}ー]
+	reClean := regexp.MustCompile(`[^\w\x{3040}-\x{309F}\x{30A0}-\x{30FF}\x{4E00}-\x{9FAF}ー]`)
+	name = reClean.ReplaceAllString(name, "")
+
+	return strings.TrimSpace(name)
+}
+
+func (a *App) MTPGetStatus() (map[string]interface{}, error) {
+	a.mtpMu.Lock()
+	connected := a.mtpConnected
+	a.mtpMu.Unlock()
+
+	if !connected {
+		return nil, nil
+	}
+
+	// すでに接続されている場合は、キャッシュされた情報または新規に取得した情報を返す
+	// ここでは確実に最新を返すために再度取得を試みる
+	deviceInfo, _ := a.mtpManager.FetchDeviceInfo()
+	storages, _ := a.mtpManager.FetchStorages()
+
+	// Build payload (startMTPMonitor と同じロジック)
+	storagesForUI := make([]map[string]interface{}, 0)
+	for _, s := range storages {
+		storagesForUI = append(storagesForUI, map[string]interface{}{
+			"id":          s.ID,
+			"free":        s.Info.FreeSpaceInBytes,
+			"total":       s.Info.MaxCapability,
+			"description": s.Info.StorageDescription,
+		})
+	}
+
+	deviceName := "MTP Device"
+	if deviceInfo != nil {
+		if mtpInfo, ok := deviceInfo["mtpDeviceInfo"].(map[string]interface{}); ok {
+			if name, ok := mtpInfo["Model"].(string); ok && name != "" {
+				deviceName = name
+			}
+		}
+	}
+
+	return map[string]interface{}{
+		"device": map[string]interface{}{
+			"name": deviceName,
+		},
+		"storages": storagesForUI,
+	}, nil
 }
 
 // startMTPMonitor starts a goroutine that polls for MTP device connection
@@ -785,7 +1040,7 @@ func (a *App) startMTPMonitor() {
 			// Not connected - try to initialize MTP
 			err := a.mtpManager.Initialize()
 			if err != nil {
-				// Device not found or error - that's normal when no device connected
+				// 頻繁な Initialize 失敗ログを避ける（デバイスがないのが通常）
 				continue
 			}
 
@@ -807,25 +1062,34 @@ func (a *App) startMTPMonitor() {
 				a.mtpManager.Dispose()
 				continue
 			}
+			fmt.Printf("[MTP Monitor] Fetched %d storages: %+v\n", len(storages), storages)
 
 			// Build storage info for UI (matching Electron format)
 			storagesForUI := make([]map[string]interface{}, 0)
 			for _, s := range storages {
 				storagesForUI = append(storagesForUI, map[string]interface{}{
 					"id":          s.ID,
-					"free":        s.FreeSpace,
-					"total":       s.Capacity,
-					"description": s.Description,
+					"free":        s.Info.FreeSpaceInBytes,
+					"total":       s.Info.MaxCapability,
+					"description": s.Info.StorageDescription,
 				})
 			}
 
 			// Build device name
 			deviceName := "MTP Device"
 			if deviceInfo != nil {
-				if name, ok := deviceInfo["Model"].(string); ok && name != "" {
-					deviceName = name
-				} else if name, ok := deviceInfo["Manufacturer"].(string); ok && name != "" {
-					deviceName = name
+				// Kalamライブラリの deviceInfo は { "mtpDeviceInfo": {...}, "usbDeviceInfo": {...} } という構造
+				if mtpInfo, ok := deviceInfo["mtpDeviceInfo"].(map[string]interface{}); ok {
+					if name, ok := mtpInfo["Model"].(string); ok && name != "" {
+						deviceName = name
+					}
+				}
+				if deviceName == "MTP Device" {
+					if usbInfo, ok := deviceInfo["usbDeviceInfo"].(map[string]interface{}); ok {
+						if name, ok := usbInfo["Product"].(string); ok && name != "" {
+							deviceName = name
+						}
+					}
 				}
 			}
 
@@ -844,6 +1108,9 @@ func (a *App) startMTPMonitor() {
 
 			fmt.Printf("[MTP Monitor] Device connected: %s\n", deviceName)
 			wailsRuntime.EventsEmit(a.ctx, "mtp-device-connected", payload)
+
+			// 接続されたらポーリング間隔を広げる（切断チェックのみにする）
+			ticker.Reset(5 * time.Second)
 		}
 	}()
 }

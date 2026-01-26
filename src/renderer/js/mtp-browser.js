@@ -176,7 +176,7 @@ function renderFileList(files) {
         const icon = getFileIcon(item);
         const sizeStr = item.isFolder ? '' : formatBytes(item.size || 0);
         const typeStr = item.isFolder ? 'フォルダ' : getFileType(item.name);
-        const fullPath = item.fullPath || `${browserState.currentPath}${browserState.currentPath.endsWith('/') ? '' : '/'}${item.name}`;
+        const fullPath = item.path || item.fullPath || `${browserState.currentPath}${browserState.currentPath.endsWith('/') ? '' : '/'}${item.name}`;
 
         return `
       <div class="mtp-file-item" 

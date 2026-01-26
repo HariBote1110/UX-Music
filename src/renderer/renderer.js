@@ -20,6 +20,15 @@ import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
 import { musicApi } from './js/bridge.js';
 import { checkWails } from './js/wails-check.js';
 
+window.onerror = function (msg, url, line, col, error) {
+    console.error(`[Global Error] ${msg} at ${url}:${line}:${col}`, error);
+    return false;
+};
+
+window.onunhandledrejection = function (event) {
+    console.error('[Unhandled Rejection]', event.reason);
+};
+
 const electronAPI = window.electronAPI;
 
 window.artworkLoadTimes = [];
@@ -182,6 +191,9 @@ async function initApp() {
     } catch (e) {
         console.error('Failed to update audio devices:', e);
     }
+
+    console.log('[Renderer] Initializing IPC listeners...');
+    initIPC({});
 }
 
 // 冗長で property 名が間違っていた古いヘルパー関数を削除

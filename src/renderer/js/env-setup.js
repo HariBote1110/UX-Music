@@ -22,9 +22,18 @@ window.electronAPI = window.electronAPI || {
         }
     },
     on: (channel, callback) => {
-        if (isWails && window.runtime) {
-            console.log(`[Wails-Mock] on: subscribing to ${channel}`);
-            window.runtime.EventsOn(channel, callback);
+        const dynamicallyIsWails = window.go !== undefined || window.runtime !== undefined;
+        if (dynamicallyIsWails) {
+            if (window.runtime) {
+                console.log(`[Wails-Bridge] on: subscribing to ${channel}`);
+                window.runtime.EventsOn(channel, callback);
+            } else {
+                console.warn(`[Wails-Bridge] on: failed to subscribe to ${channel} (window.runtime is missing)`);
+                // Wails の実行準備ができるまで待機する仕組みが必要な場合がある
+                setTimeout(() => window.electronAPI.on(channel, callback), 100);
+            }
+        } else {
+            console.log(`[Electron-Mock] on: mock subscribing to ${channel}`);
         }
     },
     invoke: async (channel, ...args) => {
@@ -197,8 +206,17 @@ window.electronAPI = window.electronAPI || {
                 'mtp-upload-files': async (data) => {
                     return await window.go.main.App.MTPUploadFiles?.(data);
                 },
+                'mtp-upload-files-with-structure': async (data) => {
+                    return await window.go.main.App.MTPUploadFilesWithStructure?.(data);
+                },
                 'mtp-download-files': async (data) => {
                     return await window.go.main.App.MTPDownloadFiles?.(data);
+                },
+                'mtp-get-untransferred-songs': async (data) => {
+                    return await window.go.main.App.MTPGetUntransferredSongs?.(data.librarySongs);
+                },
+                'mtp-get-status': async () => {
+                    return await window.go.main.App.MTPGetStatus?.();
                 },
                 'mtp-delete-files': async (data) => {
                     return await window.go.main.App.MTPDeleteFile?.(data);

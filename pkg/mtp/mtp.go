@@ -203,6 +203,7 @@ func (m *Manager) FetchDeviceInfo() (map[string]interface{}, error) {
 
 	fnFetchDeviceInfo(cb)
 	raw := <-resChan
+	fmt.Printf("[MTP Debug] Raw DeviceInfo JSON: %s\n", string(raw))
 
 	var resp MTPResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
@@ -230,6 +231,7 @@ func (m *Manager) FetchStorages() ([]Storage, error) {
 
 	fnFetchStorages(cb)
 	raw := <-resChan
+	fmt.Printf("[MTP Debug] Raw Storages JSON: %s\n", string(raw))
 
 	var resp MTPResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
@@ -261,6 +263,7 @@ func (m *Manager) Walk(opts WalkOptions) (interface{}, error) {
 
 	fnWalk(string(inputJSON), cb)
 	raw := <-resChan
+	fmt.Printf("[MTP Debug] Raw Walk JSON: %s\n", string(raw))
 
 	var resp MTPResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {

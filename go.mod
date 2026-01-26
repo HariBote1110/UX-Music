@@ -8,6 +8,7 @@ require (
 	github.com/hugolgst/rich-go v0.0.0-20240715122152-74618cc1ace2
 	github.com/kkdai/youtube/v2 v2.10.5
 	github.com/wailsapp/wails/v2 v2.11.0
+	golang.org/x/text v0.22.0
 )
 
 require (
@@ -42,6 +43,5 @@ require (
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 )

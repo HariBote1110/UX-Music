@@ -59,11 +59,17 @@ export function MTPFetchDeviceInfo():Promise<Record<string, any>>;
 
 export function MTPFetchStorages():Promise<Array<mtp.Storage>>;
 
+export function MTPGetStatus():Promise<Record<string, any>>;
+
+export function MTPGetUntransferredSongs(arg1:Array<any>):Promise<Record<string, any>>;
+
 export function MTPInitialize():Promise<void>;
 
 export function MTPMakeDirectory(arg1:mtp.MakeDirOptions):Promise<void>;
 
 export function MTPUploadFiles(arg1:mtp.TransferOptions):Promise<void>;
+
+export function MTPUploadFilesWithStructure(arg1:Record<string, any>):Promise<Record<string, any>>;
 
 export function MTPWalk(arg1:mtp.WalkOptions):Promise<any>;
 
