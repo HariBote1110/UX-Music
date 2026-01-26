@@ -13,6 +13,7 @@ export let dataArray = null;
 
 let baseGain = 1.0;
 let isDirectLinkEnabled = false;
+let savedSinkId = 'default'; // 保存されたオーディオ出力デバイスID
 
 /**
  * グラフオブジェクトの構造
@@ -77,6 +78,10 @@ export async function activateAudioGraph(rate) {
         try {
             currentGraph.nodes.gain.disconnect();
             currentGraph.nodes.gain.connect(currentGraph.context.destination);
+            // 保存されたSinkIDを適用
+            if (savedSinkId && savedSinkId !== 'default' && typeof currentGraph.context.setSinkId === 'function') {
+                currentGraph.context.setSinkId(savedSinkId).catch(e => console.warn('[AudioGraph] Failed to apply saved sinkId:', e));
+            }
         } catch (e) { }
     }
 
@@ -151,7 +156,11 @@ export async function initAudioGraph(playerElement, sinkId) {
     // デバイス変更（SinkID変更）は全キャッシュに対して行う必要があるが、
     // 簡略化のため「次回アクティブになった時」または「現在のグラフ」に適用する
 
-    electronAPI.send('save-settings', { audioOutputId: sinkId });
+    // sinkIdが渡された場合のみ設定を保存（nullや未定義の場合は保存しない）
+    if (sinkId) {
+        savedSinkId = sinkId;
+        electronAPI.send('save-settings', { audioOutputId: sinkId });
+    }
 
     if (sinkId === 'ux-direct-link') {
         isDirectLinkEnabled = true;
@@ -159,16 +168,35 @@ export async function initAudioGraph(playerElement, sinkId) {
         if (currentGraph) electronAPI.send('direct-link-command', { action: 'start', sampleRate: currentGraph.sampleRate });
     } else {
         isDirectLinkEnabled = false;
+        // sinkIdを保持（currentGraphが無くても保持する）
+        if (sinkId) {
+            savedSinkId = sinkId;
+        }
         if (currentGraph) {
             electronAPI.send('direct-link-command', { action: 'stop' });
             // スピーカー出力へ戻す
             try {
                 currentGraph.nodes.gain.connect(currentGraph.context.destination);
                 // SinkID適用
-                if (typeof currentGraph.context.setSinkId === 'function' && sinkId !== 'default') {
-                    currentGraph.context.setSinkId(sinkId);
+                const targetSinkId = sinkId || savedSinkId;
+                if (typeof currentGraph.context.setSinkId === 'function' && targetSinkId && targetSinkId !== 'default') {
+                    currentGraph.context.setSinkId(targetSinkId);
                 }
             } catch (e) { }
+        }
+    }
+}
+
+/**
+ * 保存されたSinkIDを設定する（起動時の設定復元用）
+ */
+export function restoreSavedSinkId(sinkId) {
+    if (sinkId && sinkId !== 'default') {
+        savedSinkId = sinkId;
+        console.log('[AudioGraph] Restored saved sinkId:', sinkId);
+        // 既にグラフがあれば適用
+        if (currentGraph && typeof currentGraph.context.setSinkId === 'function') {
+            currentGraph.context.setSinkId(sinkId).catch(e => console.warn('[AudioGraph] Failed to apply restored sinkId:', e));
         }
     }
 }
@@ -213,3 +241,21 @@ export function applyEqualizerSettings(settings) {
 }
 
 // --- Direct Link Functions ---
+// Note: Direct Link requires Node.js net module which is not available in Wails environment.
+// These are stub functions to prevent ReferenceError.
+
+function startDirectLink(graph) {
+    if (!graph) return;
+    console.log('[DirectLink] Direct Link is not available in Wails environment.');
+    // Wails環境ではDirect Linkが使用できないため、通常出力に切り替え
+    isDirectLinkEnabled = false;
+    try {
+        graph.nodes.gain.disconnect();
+        graph.nodes.gain.connect(graph.context.destination);
+    } catch (e) { }
+}
+
+async function stopDirectLink(graph) {
+    if (!graph) return;
+    // スタブ関数 - 何もしない
+}

@@ -7,6 +7,7 @@ import { initSettings } from './js/init-settings.js';
 import { initNavigation, showView } from './js/navigation.js';
 import { initPlayer } from './js/player.js';
 import { updateAudioDevices, updatePlayCountDisplay, addSongsToLibrary } from './js/ui-manager.js';
+import { restoreSavedSinkId } from './js/audio-graph.js';
 import { loadAllComponents } from './js/component-loader.js';
 import { initIPC } from './js/ipc.js';
 import { initModal } from './js/modal.js';
@@ -109,6 +110,11 @@ async function initApp() {
             if (elements.volumeSlider) elements.volumeSlider.value = settings.volume;
         }
         state.visualizerMode = settings.visualizerMode || 'active';
+
+        // オーディオ出力デバイスの設定を復元
+        if (settings.audioOutputId) {
+            restoreSavedSinkId(settings.audioOutputId);
+        }
 
         if (typeof settings.isShuffled === 'boolean') {
             state.isShuffled = settings.isShuffled;
