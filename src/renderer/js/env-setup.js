@@ -16,6 +16,8 @@ window.electronAPI = window.electronAPI || {
                 window.go.main.App.GetSettings?.().then(settings => {
                     if (window.runtime) window.runtime.EventsEmit('settings-loaded', settings);
                 });
+            } else if (channel === 'cd-start-rip') {
+                window.go.main.App.CDStartRip?.(args[0]);
             }
         }
     },
@@ -119,33 +121,102 @@ window.electronAPI = window.electronAPI || {
                 },
                 'cd-scan': async () => {
                     if (window.go?.main?.App?.CDScan) {
-                        return await window.go.main.App.CDScan();
+                        try {
+                            const tracks = await window.go.main.App.CDScan();
+                            return { success: true, tracks: tracks };
+                        } catch (e) {
+                            return { success: false, message: e || 'Unknown error' };
+                        }
                     }
-                    return { success: false, error: 'CDScan not available' };
+                    return { success: false, message: 'CDScan not available' };
                 },
                 'cd-search-toc': async (tracks) => {
                     if (window.go?.main?.App?.CDSearchTOC) {
-                        return await window.go.main.App.CDSearchTOC(tracks);
+                        try {
+                            const releases = await window.go.main.App.CDSearchTOC(tracks);
+                            return { success: true, releases: releases };
+                        } catch (e) {
+                            return { success: false, message: e || 'Unknown error' };
+                        }
                     }
-                    return { success: false, error: 'CDSearchTOC not available' };
+                    return { success: false, message: 'CDSearchTOC not available' };
                 },
                 'cd-search-text': async (query) => {
                     if (window.go?.main?.App?.CDSearchText) {
-                        return await window.go.main.App.CDSearchText(query);
+                        try {
+                            const releases = await window.go.main.App.CDSearchText(query);
+                            return { success: true, releases: releases };
+                        } catch (e) {
+                            return { success: false, message: e || 'Unknown error' };
+                        }
                     }
-                    return { success: false, error: 'CDSearchText not available' };
+                    return { success: false, message: 'CDSearchText not available' };
                 },
                 'cd-apply-metadata': async (data) => {
                     if (window.go?.main?.App?.CDApplyMetadata) {
-                        return await window.go.main.App.CDApplyMetadata(data.tracks, data.releaseId);
+                        try {
+                            const info = await window.go.main.App.CDApplyMetadata(data);
+                            // Map fields: Go Title -> JS album
+                            return {
+                                success: true,
+                                tracks: info.tracks,
+                                album: info.title,
+                                artist: info.artist,
+                                artwork: info.artwork
+                            };
+                        } catch (e) {
+                            return { success: false, message: e || 'Unknown error' };
+                        }
                     }
-                    return { success: false, error: 'CDApplyMetadata not available' };
+                    return { success: false, message: 'CDApplyMetadata not available' };
                 },
                 'cd-start-rip': async (data) => {
+                    // This is usually called via send, but if invoked:
                     if (window.go?.main?.App?.CDStartRip) {
-                        return await window.go.main.App.CDStartRip(data.tracksToRip, data.options);
+                        return await window.go.main.App.CDStartRip(data);
                     }
                     return { success: false, error: 'CDStartRip not available' };
+                },
+                // --- MTP ---
+                'mtp-initialize': async () => {
+                    return await window.go.main.App.MTPInitialize?.();
+                },
+                'mtp-fetch-device-info': async () => {
+                    return await window.go.main.App.MTPFetchDeviceInfo?.();
+                },
+                'mtp-list-storages': async () => {
+                    return await window.go.main.App.MTPFetchStorages?.();
+                },
+                'mtp-browse-directory': async (data) => {
+                    // data: { storageId, fullPath, ... } -> WalkOptions is struct
+                    // Go expects generic map if from JS? 
+                    // Wails maps JS object to Struct automatically if fields match?
+                    // Yes.
+                    return await window.go.main.App.MTPWalk?.(data);
+                },
+                'mtp-upload-files': async (data) => {
+                    return await window.go.main.App.MTPUploadFiles?.(data);
+                },
+                'mtp-download-files': async (data) => {
+                    return await window.go.main.App.MTPDownloadFiles?.(data);
+                },
+                'mtp-delete-files': async (data) => {
+                    return await window.go.main.App.MTPDeleteFile?.(data);
+                },
+                'mtp-make-directory': async (data) => {
+                    return await window.go.main.App.MTPMakeDirectory?.(data);
+                },
+                'mtp-dispose': async () => {
+                    return await window.go.main.App.MTPDispose?.();
+                },
+                // --- Normalize ---
+                'start-normalize-job': async (data) => {
+                    // data: { jobType, files, options }
+                    if (window.go?.main?.App?.NormalizeStartJob) {
+                        // NormalizeStartJob(jobType string, files []interface{}, options OutputSettings)
+                        // data.jobType, data.files, data.options
+                        return await window.go.main.App.NormalizeStartJob(data.jobType, data.files, data.options);
+                    }
                 }
             };
 

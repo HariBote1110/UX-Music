@@ -10,8 +10,8 @@ export function AddSongsToPlaylist(arg1) {
   return window['go']['main']['App']['AddSongsToPlaylist'](arg1);
 }
 
-export function CDApplyMetadata(arg1, arg2) {
-  return window['go']['main']['App']['CDApplyMetadata'](arg1, arg2);
+export function CDApplyMetadata(arg1) {
+  return window['go']['main']['App']['CDApplyMetadata'](arg1);
 }
 
 export function CDScan() {
@@ -26,8 +26,8 @@ export function CDSearchText(arg1) {
   return window['go']['main']['App']['CDSearchText'](arg1);
 }
 
-export function CDStartRip(arg1, arg2) {
-  return window['go']['main']['App']['CDStartRip'](arg1, arg2);
+export function CDStartRip(arg1) {
+  return window['go']['main']['App']['CDStartRip'](arg1);
 }
 
 export function CreatePlaylist(arg1) {
@@ -88,6 +88,54 @@ export function LoadLibrary() {
 
 export function LoadPlayCounts() {
   return window['go']['main']['App']['LoadPlayCounts']();
+}
+
+export function MTPDeleteFile(arg1) {
+  return window['go']['main']['App']['MTPDeleteFile'](arg1);
+}
+
+export function MTPDispose() {
+  return window['go']['main']['App']['MTPDispose']();
+}
+
+export function MTPDownloadFiles(arg1) {
+  return window['go']['main']['App']['MTPDownloadFiles'](arg1);
+}
+
+export function MTPFetchDeviceInfo() {
+  return window['go']['main']['App']['MTPFetchDeviceInfo']();
+}
+
+export function MTPFetchStorages() {
+  return window['go']['main']['App']['MTPFetchStorages']();
+}
+
+export function MTPInitialize() {
+  return window['go']['main']['App']['MTPInitialize']();
+}
+
+export function MTPMakeDirectory(arg1) {
+  return window['go']['main']['App']['MTPMakeDirectory'](arg1);
+}
+
+export function MTPUploadFiles(arg1) {
+  return window['go']['main']['App']['MTPUploadFiles'](arg1);
+}
+
+export function MTPWalk(arg1) {
+  return window['go']['main']['App']['MTPWalk'](arg1);
+}
+
+export function NormalizeAnalyze(arg1) {
+  return window['go']['main']['App']['NormalizeAnalyze'](arg1);
+}
+
+export function NormalizeApply(arg1) {
+  return window['go']['main']['App']['NormalizeApply'](arg1);
+}
+
+export function NormalizeStartJob(arg1, arg2, arg3) {
+  return window['go']['main']['App']['NormalizeStartJob'](arg1, arg2, arg3);
 }
 
 export function Ping() {

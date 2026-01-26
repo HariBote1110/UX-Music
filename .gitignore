@@ -5,3 +5,7 @@
 /build/bin/UX-Music.app/Contents/MacOS
 build/bin/UX-Music.app/Contents/MacOS/UX-Music
 build/bin/UX-Music.app/Contents/MacOS/UX-Music
+/src/sidecars/mtp/node_modules
+/src/sidecars/mtp/node_modules
+/src/sidecars/mtp/node_modules
+/src/sidecars/mtp/node_modules

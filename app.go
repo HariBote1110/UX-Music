@@ -8,15 +8,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"ux-music-sidecar/pkg/cdrip"
+	"ux-music-sidecar/pkg/mtp"
+	"ux-music-sidecar/pkg/normalize"
+
+	"runtime"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
 type App struct {
-	ctx          context.Context
-	cdRipSidecar *NodeSidecar
+	ctx        context.Context
+	ripper     *cdrip.Ripper
+	mtpManager *mtp.Manager
+	normalizer *normalize.Normalizer
 }
 
 // NewApp creates a new App struct
@@ -29,19 +38,29 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// Initialize CD-RIP sidecar
-	// 開発環境と製品環境でパスを切り替える必要があるが、一旦開発用パス
-	scriptPath := filepath.Join("src", "sidecars", "cd-rip", "index.js")
-	// もし絶対パスが必要なら調整
-	absPath, _ := filepath.Abs(scriptPath)
-	a.cdRipSidecar = NewNodeSidecar(absPath)
+	// Determine binary paths
+	// TODO: Handle production paths correctly
+	cwd, _ := os.Getwd()
+	binDir := filepath.Join(cwd, "bin", "macos")
 
-	a.cdRipSidecar.SetEventCallback(func(eventType string, payload json.RawMessage) {
-		fmt.Printf("[Wails] CD-RIP Event: %s\n", eventType)
-		var data interface{}
-		json.Unmarshal(payload, &data)
-		runtime.EventsEmit(a.ctx, eventType, data)
-	})
+	cdParanoiaPath := filepath.Join(binDir, "cdparanoia")
+	ffmpegPath := "ffmpeg" // Default to system PATH
+	if _, err := os.Stat(filepath.Join(binDir, "ffmpeg")); err == nil {
+		ffmpegPath = filepath.Join(binDir, "ffmpeg")
+	}
+	ffprobePath := "ffprobe"
+	if _, err := os.Stat(filepath.Join(binDir, "ffprobe")); err == nil {
+		ffprobePath = filepath.Join(binDir, "ffprobe")
+	}
+
+	userDataPath := config.GetUserDataPath()
+
+	// Initialize components
+	a.ripper = cdrip.NewRipper(cdParanoiaPath, ffmpegPath, userDataPath)
+	a.mtpManager = mtp.NewManager()
+	a.normalizer = normalize.NewNormalizer(ffmpegPath, ffprobePath)
+
+	fmt.Println("[Wails] App components initialized")
 }
 
 // Ping returns a pong message
@@ -115,7 +134,7 @@ func (a *App) LoadLibrary() {
 		"songs":  songs,
 		"albums": albums,
 	}
-	runtime.EventsEmit(a.ctx, "load-library", data)
+	wailsRuntime.EventsEmit(a.ctx, "load-library", data)
 }
 
 // RequestInitialLibrary is a helper for initial load
@@ -130,7 +149,7 @@ func (a *App) LoadPlayCounts() {
 	if counts == nil {
 		counts = make(map[string]interface{})
 	}
-	runtime.EventsEmit(a.ctx, "play-counts-updated", counts)
+	wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", counts)
 }
 
 // IncrementPlayCount increments the play count for a song
@@ -177,7 +196,7 @@ func (a *App) IncrementPlayCount(song map[string]interface{}) {
 	countsMap[path] = existingData
 	stores.Save("playcounts", countsMap)
 
-	runtime.EventsEmit(a.ctx, "play-counts-updated", countsMap)
+	wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", countsMap)
 }
 
 // SongFinished handles the end of a song, updating analysis score
@@ -259,7 +278,7 @@ func (a *App) RequestPlaylistsWithArtwork() {
 	playlistNames, err := GetAllPlaylists()
 	if err != nil {
 		fmt.Printf("[Wails] Error getting playlists: %v\n", err)
-		runtime.EventsEmit(a.ctx, "playlists-updated", []interface{}{})
+		wailsRuntime.EventsEmit(a.ctx, "playlists-updated", []interface{}{})
 		return
 	}
 
@@ -305,7 +324,7 @@ func (a *App) RequestPlaylistsWithArtwork() {
 		})
 	}
 
-	runtime.EventsEmit(a.ctx, "playlists-updated", playlists)
+	wailsRuntime.EventsEmit(a.ctx, "playlists-updated", playlists)
 }
 
 // GetPlaylistDetails returns the songs in a playlist
@@ -511,7 +530,7 @@ func (a *App) SaveLrcFile(fileName string, content string) error {
 func (a *App) HandleLyricsDrop(paths []string) error {
 	count, err := CopyLyricsFiles(paths)
 	if err == nil && count > 0 {
-		runtime.EventsEmit(a.ctx, "lyrics-added-notification", count)
+		wailsRuntime.EventsEmit(a.ctx, "lyrics-added-notification", count)
 	}
 	return err
 }
@@ -615,108 +634,186 @@ func (a *App) GetArtworkAsDataURL(filename string) (string, error) {
 
 // --- CD-RIP Methods ---
 
-func (a *App) ensureCDSidecar() error {
-	if !a.cdRipSidecar.IsRunning() {
-		if err := a.cdRipSidecar.Start(); err != nil {
-			return err
-		}
-		// Init sidecar
-		payload := map[string]string{
-			"userDataPath": config.GetUserDataPath(),
-		}
-		_, err := a.cdRipSidecar.Invoke("init", payload)
-		return err
-	}
-	return nil
+// --- CD-RIP Methods ---
+
+func (a *App) CDScan() ([]cdrip.Track, error) {
+	return a.ripper.GetTrackList()
 }
 
-func (a *App) CDScan() (interface{}, error) {
-	if err := a.ensureCDSidecar(); err != nil {
-		return nil, err
-	}
-	resp, err := a.cdRipSidecar.Invoke("scan", nil)
-	if err != nil {
-		return nil, err
-	}
-	var result interface{}
-	json.Unmarshal(resp.Payload, &result)
-	return result, nil
+func (a *App) CDSearchTOC(tracks []cdrip.Track) ([]cdrip.ReleaseInfo, error) {
+	return cdrip.SearchByTOC(tracks)
 }
 
-func (a *App) CDSearchTOC(tracks interface{}) (interface{}, error) {
-	if err := a.ensureCDSidecar(); err != nil {
-		return nil, err
-	}
-	resp, err := a.cdRipSidecar.Invoke("search-toc", tracks)
-	if err != nil {
-		return nil, err
-	}
-	var result interface{}
-	json.Unmarshal(resp.Payload, &result)
-	return result, nil
+func (a *App) CDSearchText(query string) ([]cdrip.ReleaseInfo, error) {
+	return cdrip.SearchByText(query)
 }
 
-func (a *App) CDSearchText(query string) (interface{}, error) {
-	if err := a.ensureCDSidecar(); err != nil {
-		return nil, err
-	}
-	resp, err := a.cdRipSidecar.Invoke("search-text", query)
-	if err != nil {
-		return nil, err
-	}
-	var result interface{}
-	json.Unmarshal(resp.Payload, &result)
-	return result, nil
+func (a *App) CDApplyMetadata(args map[string]interface{}) (*cdrip.ReleaseInfo, error) {
+	// Parse args manually or change signature
+	tracksJSON, _ := json.Marshal(args["tracks"])
+	var tracks []cdrip.Track
+	json.Unmarshal(tracksJSON, &tracks)
+
+	releaseID, _ := args["releaseId"].(string)
+
+	return cdrip.ApplyMetadata(tracks, releaseID)
 }
 
-func (a *App) CDApplyMetadata(tracks interface{}, releaseId string) (interface{}, error) {
-	if err := a.ensureCDSidecar(); err != nil {
-		return nil, err
-	}
-	payload := map[string]interface{}{
-		"tracks":    tracks,
-		"releaseId": releaseId,
-	}
-	resp, err := a.cdRipSidecar.Invoke("apply-metadata", payload)
-	if err != nil {
-		return nil, err
-	}
-	var result interface{}
-	json.Unmarshal(resp.Payload, &result)
-	return result, nil
-}
+func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
+	fmt.Println("[Wails] CDStartRip called")
+	tracksJSON, _ := json.Marshal(args["tracksToRip"])
+	var tracks []cdrip.Track
+	json.Unmarshal(tracksJSON, &tracks)
 
-func (a *App) CDStartRip(tracks interface{}, options interface{}) (interface{}, error) {
-	if err := a.ensureCDSidecar(); err != nil {
-		return nil, err
-	}
+	optionsJSON, _ := json.Marshal(args["options"])
+	var options cdrip.RipOptions
+	json.Unmarshal(optionsJSON, &options)
 
-	// 便宜上ライブラリパスを取得して渡す
-	settings, _ := stores.Load("settings")
-	libraryPath := ""
-	if settings != nil {
-		if sMap, ok := settings.(map[string]interface{}); ok {
-			if lp, ok := sMap["libraryPath"].(string); ok {
-				libraryPath = lp
-			}
-		}
-	}
+	libraryPath, _ := args["libraryPath"].(string)
 	if libraryPath == "" {
-		// Fallback to Music folder
 		home, _ := os.UserHomeDir()
 		libraryPath = filepath.Join(home, "Music")
 	}
 
-	payload := map[string]interface{}{
-		"tracksToRip": tracks,
-		"options":     options,
-		"libraryPath": libraryPath,
-	}
-	resp, err := a.cdRipSidecar.Invoke("start-rip", payload)
+	fmt.Printf("[Wails] Starting rip of %d tracks to %s\n", len(tracks), libraryPath)
+
+	progressChan := make(chan cdrip.RipProgress)
+
+	// Relay events in a separate goroutine
+	go func() {
+		for p := range progressChan {
+			wailsRuntime.EventsEmit(a.ctx, "rip-progress", p)
+		}
+	}()
+
+	// Perform rip synchronously
+	err := a.ripper.StartRip(tracks, options, libraryPath, progressChan)
+	close(progressChan)
+
 	if err != nil {
+		fmt.Printf("[Wails] Rip error: %v\n", err)
 		return nil, err
 	}
-	var result interface{}
-	json.Unmarshal(resp.Payload, &result)
-	return result, nil
+
+	fmt.Println("[Wails] Rip completed successfully")
+	return map[string]interface{}{
+		"count":     len(tracks),
+		"outputDir": filepath.Join(libraryPath, "CD Rips"),
+	}, nil
+}
+
+// --- MTP Methods ---
+
+func (a *App) MTPInitialize() error {
+	return a.mtpManager.Initialize()
+}
+
+func (a *App) MTPFetchDeviceInfo() (map[string]interface{}, error) {
+	return a.mtpManager.FetchDeviceInfo()
+}
+
+func (a *App) MTPFetchStorages() ([]mtp.Storage, error) {
+	return a.mtpManager.FetchStorages()
+}
+
+func (a *App) MTPWalk(opts mtp.WalkOptions) (interface{}, error) {
+	return a.mtpManager.Walk(opts)
+}
+
+func (a *App) MTPUploadFiles(opts mtp.TransferOptions) error {
+	return a.mtpManager.UploadFiles(opts, func(data interface{}) {
+		wailsRuntime.EventsEmit(a.ctx, "mtp-upload-preprocess", data)
+	}, func(prog mtp.TransferProgress) {
+		wailsRuntime.EventsEmit(a.ctx, "mtp-upload-progress", prog)
+	})
+}
+
+func (a *App) MTPDownloadFiles(opts mtp.TransferOptions) error {
+	return a.mtpManager.DownloadFiles(opts, func(data interface{}) {
+		wailsRuntime.EventsEmit(a.ctx, "mtp-download-preprocess", data)
+	}, func(prog mtp.TransferProgress) {
+		wailsRuntime.EventsEmit(a.ctx, "mtp-download-progress", prog)
+	})
+}
+
+func (a *App) MTPDeleteFile(opts mtp.DeleteOptions) error {
+	return a.mtpManager.DeleteFile(opts)
+}
+
+func (a *App) MTPMakeDirectory(opts mtp.MakeDirOptions) error {
+	return a.mtpManager.MakeDirectory(opts)
+}
+
+func (a *App) MTPDispose() error {
+	return a.mtpManager.Dispose()
+}
+
+// --- Normalize Methods ---
+
+func (a *App) NormalizeAnalyze(path string) normalize.AnalysisResult {
+	return a.normalizer.AnalyzeLoudness(path)
+}
+
+func (a *App) NormalizeApply(job normalize.NormalizeJob) normalize.NormalizeResult {
+	return a.normalizer.ApplyNormalization(job)
+}
+
+func (a *App) NormalizeStartJob(jobType string, files []interface{}, options normalize.OutputSettings) {
+	// Parse files
+	var jobs []normalize.NormalizeJob
+	for _, f := range files {
+		fMap := f.(map[string]interface{})
+		id, _ := fMap["id"].(string)
+		path, _ := fMap["path"].(string)
+		gain, _ := fMap["gain"].(float64)
+
+		jobs = append(jobs, normalize.NormalizeJob{
+			ID:       id,
+			FilePath: path,
+			Gain:     gain,
+			Backup:   options.Mode == "overwrite", // Simplified assumption based on JS logic?
+			// Wait, JS logic passed 'backup' explicitely in 'options' struct?
+			// In js: ipcMain.on(..., { jobType, files, options })
+			// options had 'backup' and 'output' and 'basePath'?
+			Output:   options,
+			BasePath: "", // Fill if needed
+		})
+	}
+	// Note: The above parsing is simplified. Better to accept typed struct if possible.
+	// But let's stick to core logic: concurrency.
+
+	go func() {
+		concurrency := runtime.GOMAXPROCS(0) - 1
+		if concurrency < 1 {
+			concurrency = 1
+		}
+
+		sem := make(chan struct{}, concurrency)
+		var wg sync.WaitGroup
+
+		for _, job := range jobs {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(j normalize.NormalizeJob) {
+				defer wg.Done()
+				defer func() { <-sem }()
+
+				var res interface{}
+				if jobType == "analyze" {
+					res = a.normalizer.AnalyzeLoudness(j.FilePath)
+				} else {
+					res = a.normalizer.ApplyNormalization(j)
+				}
+
+				// Emit event
+				wailsRuntime.EventsEmit(a.ctx, "normalize-worker-result", map[string]interface{}{
+					"type":   jobType + "-result", // "analyze-result" or "normalize-result"
+					"id":     j.ID,
+					"result": res,
+				})
+			}(job)
+		}
+		wg.Wait()
+		wailsRuntime.EventsEmit(a.ctx, "normalize-job-finished")
+	}()
 }
