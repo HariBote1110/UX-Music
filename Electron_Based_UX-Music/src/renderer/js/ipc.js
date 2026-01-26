@@ -14,67 +14,61 @@ const logPerf = (message) => {
 };
 logPerf("ipc.js script execution started.");
 
-const electronAPI = window.electronAPI;
-
-// MTP操作中フラグ
-let mtpOperationInProgress = false;
-
-export function initIPC(callbacks) {
+export function initIPC(ipcRenderer, callbacks) {
     logPerf("initIPC called.");
-
-    electronAPI.on('app-info-response', (info) => {
+    ipcRenderer.on('app-info-response', (event, info) => {
         callbacks.onAppInfoResponse?.(info);
     });
-    electronAPI.on('load-library', (data) => {
+    ipcRenderer.on('load-library', (event, data) => {
         logPerf("Received 'load-library' from main.");
         console.log(`[Debug] Received initial library with ${data.songs ? data.songs.length : 0} songs.`);
         callbacks.onLibraryLoaded?.(data);
     });
-    electronAPI.on('settings-loaded', (settings) => {
+    ipcRenderer.on('settings-loaded', (event, settings) => {
         logPerf("Received 'settings-loaded' from main.");
         console.log('[Debug] Settings loaded.');
         callbacks.onSettingsLoaded?.(settings);
     });
-    electronAPI.on('play-counts-updated', (counts) => {
+    ipcRenderer.on('play-counts-updated', (event, counts) => {
         callbacks.onPlayCountsUpdated?.(counts);
     });
-    electronAPI.on('youtube-link-processed', (newSong) => {
+    ipcRenderer.on('youtube-link-processed', (event, newSong) => {
         callbacks.onYoutubeLinkProcessed?.(newSong);
     });
-    electronAPI.on('playlists-updated', (playlists) => {
+    ipcRenderer.on('playlists-updated', (event, playlists) => {
         callbacks.onPlaylistsUpdated?.(playlists);
     });
-    electronAPI.on('force-reload-playlist', (playlistName) => {
+    ipcRenderer.on('force-reload-playlist', (event, playlistName) => {
         callbacks.onForceReloadPlaylist?.(playlistName);
     });
-    electronAPI.on('force-reload-library', () => {
+    ipcRenderer.on('force-reload-library', () => {
         callbacks.onForceReloadLibrary?.();
     });
-    electronAPI.on('show-loading', (text) => { // YouTube用
+    ipcRenderer.on('show-loading', (event, text) => { // YouTube用
         callbacks.onShowLoading?.(text);
     });
-    electronAPI.on('hide-loading', () => { // YouTube用
+    ipcRenderer.on('hide-loading', () => { // YouTube用
         callbacks.onHideLoading?.();
     });
-    electronAPI.on('show-error', (message) => {
+    ipcRenderer.on('show-error', (event, message) => {
         callbacks.onShowError?.(message);
     });
-    electronAPI.on('playlist-import-progress', (progress) => { // YouTube用
+    ipcRenderer.on('playlist-import-progress', (event, progress) => { // YouTube用
         callbacks.onPlaylistImportProgress?.(progress);
     });
-    electronAPI.on('playlist-import-finished', () => { // YouTube用
+    ipcRenderer.on('playlist-import-finished', () => { // YouTube用
         callbacks.onPlaylistImportFinished?.();
     });
 
-    electronAPI.on('scan-progress', (progress) => {
+    ipcRenderer.on('scan-progress', (event, progress) => {
         callbacks.onScanProgress?.(progress);
     });
 
-    electronAPI.on('scan-complete', (newSongs) => {
+    ipcRenderer.on('scan-complete', (event, newSongs) => {
         callbacks.onScanComplete?.(newSongs);
     });
 
-    electronAPI.on('loudness-analysis-result', (result) => {
+    ipcRenderer.on('loudness-analysis-result', (event, result) => {
         const fileName = result.filePath.split(/[/\\]/).pop();
         const waitingSong = state.songWaitingForAnalysis;
 
@@ -104,17 +98,17 @@ export function initIPC(callbacks) {
         }
     });
 
-    electronAPI.on('lyrics-added-notification', (count) => {
+    ipcRenderer.on('lyrics-added-notification', (event, count) => {
         showNotification(`${count}個の歌詞ファイルが追加されました。`);
         hideNotification(3000);
     });
 
-    electronAPI.on('show-notification', (message) => {
+    ipcRenderer.on('show-notification', (event, message) => {
         showNotification(message);
         hideNotification(3000);
     });
 
-    electronAPI.on('songs-deleted', (deletedSongPaths) => {
+    ipcRenderer.on('songs-deleted', (event, deletedSongPaths) => {
         const deletedPathsSet = new Set(deletedSongPaths);
         state.library = state.library.filter(song => !deletedPathsSet.has(song.path));
         renderCurrentView();
@@ -122,88 +116,139 @@ export function initIPC(callbacks) {
         hideNotification(3000);
     });
 
-    electronAPI.on('request-new-playlist-with-songs', (songs) => {
+    ipcRenderer.on('request-new-playlist-with-songs', (event, songs) => {
         showModal({
             title: '新規プレイリスト作成',
             placeholder: 'プレイリスト名を入力',
             onOk: (playlistName) => {
                 if (playlistName && playlistName.trim() !== '') {
-                    electronAPI.send('create-new-playlist-with-songs', { playlistName, songs });
+                    ipcRenderer.send('create-new-playlist-with-songs', { playlistName, songs });
                 }
             }
         });
     });
 
-    electronAPI.on('show-edit-metadata-modal', (song) => {
+    // --- ▼▼▼ 新規追加: メタデータ編集モーダル表示 ▼▼▼ ---
+    ipcRenderer.on('show-edit-metadata-modal', (event, song) => {
         showEditMetadataModal(song);
     });
+    // --- ▲▲▲ ここまで ▲▲▲ ---
 
-    electronAPI.on('mtp-device-connected', (payload) => {
+    // --- ▼▼▼ MTP機能 (ステップ9 修正版) ▼▼▼ ---
+
+    /**
+     * MTPデバイス（Walkmanなど）が接続されたときにメインプロセスから呼び出される
+     */
+    ipcRenderer.on('mtp-device-connected', (event, payload) => {
+        // --- ▼▼▼ 修正 (ペイロード形式変更のため) ▼▼▼ ---
         const deviceInfo = payload.device;
-        const storageInfo = payload.storages;
+        const storageInfo = payload.storages; // 'storages' (複数形) を受け取る
 
         console.log('🎉 MTP デバイス接続:', deviceInfo);
         console.log('📦 MTP ストレージ:', storageInfo);
 
+        // state に保存（UIに反映させるため）
         state.mtpDevice = deviceInfo;
-        state.mtpStorages = storageInfo;
+        state.mtpStorages = storageInfo; // 複数形のまま保存
 
         showNotification(`Walkman (${deviceInfo?.name}) が接続されました。`);
+        // --- ▲▲▲ 修正 ▲▲▲ ---
         hideNotification(3000);
+
+        // --- ▼▼▼ サイドバーにデバイスを表示 ▼▼▼ ---
         updateDevicesSidebar(deviceInfo);
+        // --- ▲▲▲ サイドバーにデバイスを表示 ▲▲▲ ---
     });
 
-    electronAPI.on('mtp-device-disconnected', () => {
+    /**
+     * MTPデバイスが切断されたときにメインプロセスから呼び出される
+     */
+    ipcRenderer.on('mtp-device-disconnected', () => {
         console.log('🔌 MTP デバイス切断');
+
+        // state をクリア
         state.mtpDevice = null;
         state.mtpStorages = null;
 
         showNotification('Walkmanが切断されました。');
         hideNotification(3000);
+
+        // --- ▼▼▼ サイドバーからデバイスを非表示 ▼▼▼ ---
         updateDevicesSidebar(null);
+        // --- ▲▲▲ サイドバーからデバイスを非表示 ▲▲▲ ---
     });
 
-    electronAPI.on('request-mtp-transfer', async (songs) => {
+    // --- ▲▲▲ MTP機能 (ステップ9 修正版) ▲▲▲ ---
+
+
+    // --- ▼▼▼ 新規追加: MTP転送要求 (コンテキストメニューから) ▼▼▼ ---
+    ipcRenderer.on('request-mtp-transfer', async (event, songs) => {
         logPerf("Received 'request-mtp-transfer' from main.");
 
         if (!state.mtpStorages || state.mtpStorages.length === 0) {
+            console.error('[MTP Transfer] ストレージ情報がありません。state.mtpStorages:', state.mtpStorages);
             showNotification('Walkmanのストレージ情報が見つかりません。');
             hideNotification(3000);
             return;
         }
 
+        // 最初のストレージIDを使用
         const storageId = state.mtpStorages[0].id;
+        // 転送先は '/Music/' にハードコード (サンプル同様)
         const destination = '/Music/';
         const sources = songs.map(s => s.path);
 
+        if (!storageId) {
+            console.error('[MTP Transfer] storageId が取得できませんでした。');
+            showNotification('WalkmanのストレージIDが取得できません。');
+            hideNotification(3000);
+            return;
+        }
+
         const songCount = songs.length;
         const message = songCount > 1 ? `${songCount}曲の転送を開始します...` : `「${songs[0].title}」の転送を開始します...`;
-        showNotification(message);
+        showNotification(message); // 進捗表示 (完了時に消さない)
 
         try {
-            const result = await electronAPI.invoke('mtp-upload-files', { storageId, sources, destination });
+            // メインプロセスの 'mtp-upload-files' ハンドラを呼び出す
+            const result = await ipcRenderer.invoke('mtp-upload-files', { storageId, sources, destination });
 
             if (result.error) {
+                console.error('[MTP Transfer] 転送に失敗しました:', result.error);
                 showNotification(`転送に失敗しました: ${result.error}`);
             } else {
+                console.log('[MTP Transfer] 転送に成功しました:', result);
                 showNotification(songCount > 1 ? `${songCount}曲の転送が完了しました。` : `「${songs[0].title}」の転送が完了しました。`);
             }
+
         } catch (err) {
+            console.error('[MTP Transfer] invoke呼び出しエラー:', err);
             showNotification(`転送実行中にエラーが発生しました: ${err.message}`);
         }
-        hideNotification(4000);
+
+        hideNotification(4000); // 4秒後に通知を消す
     });
+    // --- ▲▲▲ 新規追加: MTP転送要求 ▲▲▲ ---
+
 
     logPerf("Requesting initial data from main process...");
-    electronAPI.send('request-initial-library');
-    musicApi.requestInitialPlayCounts();
-    electronAPI.send('request-initial-settings');
+    ipcRenderer.send('request-initial-library');
+    ipcRenderer.send('request-initial-play-counts');
+    ipcRenderer.send('request-initial-settings');
+
+    // --- ▼▼▼ デバイスリンクのクリックハンドラ ▼▼▼ ---
+    let mtpOperationInProgress = false; // MTP操作中フラグ
 
     const mtpDeviceNavLink = document.getElementById('mtp-device-nav-link');
     if (mtpDeviceNavLink) {
         mtpDeviceNavLink.addEventListener('click', async (e) => {
             e.preventDefault();
-            if (mtpOperationInProgress) return;
+
+            // 操作中なら無視
+            if (mtpOperationInProgress) {
+                console.log('[MTP] 操作中のため無視');
+                return;
+            }
 
             if (!state.mtpStorages || state.mtpStorages.length === 0) {
                 showNotification('ストレージ情報がありません');
@@ -211,6 +256,7 @@ export function initIPC(callbacks) {
                 return;
             }
 
+            // 未転送曲確認UIを表示（mtp-transfer-viewを再利用）
             const mainContent = document.getElementById('main-content');
             const mtpTransferView = document.getElementById('mtp-transfer-view');
 
@@ -218,20 +264,23 @@ export function initIPC(callbacks) {
                 mainContent.classList.add('hidden');
                 mtpTransferView.classList.remove('hidden');
 
+                // 未転送曲の検出を開始
                 showNotification('未転送の曲を確認中...');
-                mtpOperationInProgress = true;
+                mtpOperationInProgress = true; // 操作開始
 
                 try {
                     const storageId = state.mtpStorages[0].id;
-                    const result = await electronAPI.invoke('mtp-get-untransferred-songs', {
+                    const result = await ipcRenderer.invoke('mtp-get-untransferred-songs', {
                         storageId,
                         librarySongs: state.library
                     });
                     hideNotification();
 
+                    // 新形式の戻り値を展開
                     const untransferredSongs = result?.untransferredSongs || [];
                     const deviceFilesList = result?.deviceFilesList || [];
 
+                    // ソース（ライブラリ）リストを更新 - 未転送曲
                     const sourceList = document.getElementById('mtp-transfer-source-list');
                     if (sourceList) {
                         if (untransferredSongs && untransferredSongs.length > 0) {
@@ -255,6 +304,7 @@ export function initIPC(callbacks) {
                         }
                     }
 
+                    // デバイス側のリストを更新 - デバイス上のファイル一覧を表示
                     const deviceList = document.getElementById('mtp-transfer-device-list');
                     if (deviceList) {
                         deviceList.innerHTML = `<p>デバイス上のファイル: ${deviceFilesList.length}件</p>`;
@@ -271,11 +321,12 @@ export function initIPC(callbacks) {
                     }
 
                 } catch (error) {
+                    console.error('未転送曲の検出に失敗:', error);
                     hideNotification();
                     showNotification('未転送曲の確認に失敗しました');
                     hideNotification(3000);
                 } finally {
-                    mtpOperationInProgress = false;
+                    mtpOperationInProgress = false; // 操作完了
                 }
             }
         });

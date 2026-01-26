@@ -1,0 +1,53 @@
+<div id="quiz-start-screen">
+    <h1>イントロクイズ</h1>
+    <p>曲の冒頭を聴いて、曲名を当ててください。</p>
+    <div class="quiz-options">
+        <strong>問題数:</strong>
+        <label><input type="radio" name="quiz-length" value="10" checked> 10問</label>
+        <label><input type="radio" name="quiz-length" value="20"> 20問</label>
+        <label><input type="radio" name="quiz-length" value="30"> 30問</label>
+    </div>
+    <div class="quiz-options">
+        <strong>難易度:</strong>
+        <label><input type="radio" name="quiz-difficulty" value="easy"> かんたん</label>
+        <label><input type="radio" name="quiz-difficulty" value="normal" checked> ふつう</label>
+        <label><input type="radio" name="quiz-difficulty" value="hard"> むずかしい</label>
+    </div>
+    <button id="quiz-start-btn" class="header-button">クイズを開始</button>
+</div>
+<div id="quiz-game-screen" class="hidden">
+    <div class="quiz-header">
+        <h2>第<span id="quiz-question-number">1</span>問 / <span id="quiz-total-questions">10</span>問</h2>
+        <p id="quiz-timer">0.000s</p>
+    </div>
+    <div class="quiz-player">
+        <p>下のボタンを押すか、Spaceキーで再生</p>
+        <button id="quiz-play-btn" class="play-btn">
+            <img src="./assets/icons/play.svg" alt="Play Snippet">
+        </button>
+    </div>
+    <div id="quiz-answers" class="quiz-grid"></div>
+    <div id="quiz-result" class="hidden">
+        <p id="quiz-result-message"></p>
+        <div class="quiz-result-details">
+            <img id="quiz-correct-artwork" src="./assets/default_artwork.png" alt="Correct Answer Artwork">
+            <div id="quiz-correct-info">
+                <h3 id="quiz-correct-title"></h3>
+                <p id="quiz-correct-artist"></p>
+            </div>
+        </div>
+        <button id="quiz-next-btn" class="header-button">次の問題へ</button>
+    </div>
+</div>
+<div id="quiz-final-screen" class="hidden">
+    <h1>結果発表</h1>
+    <div class="quiz-final-stats">
+        <p>正解数: <span id="quiz-final-score">0</span> / <span id="quiz-final-total">10</span></p>
+        <p>平均回答時間: <span id="quiz-final-avg-time">0.000</span>s</p>
+    </div>
+    <div class="quiz-ranking">
+        <h3>ハイスコアランキング</h3>
+        <ol id="quiz-ranking-list"></ol>
+    </div>
+    <button id="quiz-retry-btn" class="header-button">もう一度挑戦</button>
+</div>
