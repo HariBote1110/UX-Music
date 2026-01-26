@@ -10,6 +10,58 @@ export function AddSongsToPlaylist(arg1) {
   return window['go']['main']['App']['AddSongsToPlaylist'](arg1);
 }
 
+export function AudioGetCurrentDevice() {
+  return window['go']['main']['App']['AudioGetCurrentDevice']();
+}
+
+export function AudioGetDuration() {
+  return window['go']['main']['App']['AudioGetDuration']();
+}
+
+export function AudioGetPosition() {
+  return window['go']['main']['App']['AudioGetPosition']();
+}
+
+export function AudioIsPaused() {
+  return window['go']['main']['App']['AudioIsPaused']();
+}
+
+export function AudioIsPlaying() {
+  return window['go']['main']['App']['AudioIsPlaying']();
+}
+
+export function AudioListDevices() {
+  return window['go']['main']['App']['AudioListDevices']();
+}
+
+export function AudioPause() {
+  return window['go']['main']['App']['AudioPause']();
+}
+
+export function AudioPlay(arg1) {
+  return window['go']['main']['App']['AudioPlay'](arg1);
+}
+
+export function AudioResume() {
+  return window['go']['main']['App']['AudioResume']();
+}
+
+export function AudioSeek(arg1) {
+  return window['go']['main']['App']['AudioSeek'](arg1);
+}
+
+export function AudioSetDevice(arg1) {
+  return window['go']['main']['App']['AudioSetDevice'](arg1);
+}
+
+export function AudioSetVolume(arg1) {
+  return window['go']['main']['App']['AudioSetVolume'](arg1);
+}
+
+export function AudioStop() {
+  return window['go']['main']['App']['AudioStop']();
+}
+
 export function CDApplyMetadata(arg1) {
   return window['go']['main']['App']['CDApplyMetadata'](arg1);
 }

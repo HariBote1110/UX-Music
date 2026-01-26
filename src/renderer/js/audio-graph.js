@@ -79,10 +79,23 @@ export async function activateAudioGraph(rate) {
             currentGraph.nodes.gain.disconnect();
             currentGraph.nodes.gain.connect(currentGraph.context.destination);
             // 保存されたSinkIDを適用
+            console.log('[AudioGraph] Checking sinkId for setSinkId:', {
+                savedSinkId,
+                hasSinkIdMethod: typeof currentGraph.context.setSinkId === 'function',
+                currentContextSinkId: currentGraph.context.sinkId
+            });
             if (savedSinkId && savedSinkId !== 'default' && typeof currentGraph.context.setSinkId === 'function') {
-                currentGraph.context.setSinkId(savedSinkId).catch(e => console.warn('[AudioGraph] Failed to apply saved sinkId:', e));
+                console.log('[AudioGraph] Applying setSinkId:', savedSinkId);
+                try {
+                    await currentGraph.context.setSinkId(savedSinkId);
+                    console.log('[AudioGraph] setSinkId succeeded, new sinkId:', currentGraph.context.sinkId);
+                } catch (e) {
+                    console.error('[AudioGraph] setSinkId FAILED:', e.name, e.message);
+                }
             }
-        } catch (e) { }
+        } catch (e) {
+            console.error('[AudioGraph] Error during speaker connection:', e);
+        }
     }
 
     // 音量・EQ設定を適用
@@ -111,10 +124,25 @@ async function createGraph(rate) {
     }
 
     const context = new AudioContextClass(contextOptions);
+    console.log('[AudioGraph] AudioContext created:', {
+        sampleRate: context.sampleRate,
+        state: context.state,
+        sinkId: context.sinkId,
+        requestedSinkId: savedSinkId
+    });
 
     // 専用のAudio要素を作成
     const audioElement = new Audio();
-    // クロスオリジン設定など必要なら記述
+
+    // Audio要素にもsinkIdを適用する（WebKitではAudioContext.setSinkIdが機能しない場合がある）
+    if (savedSinkId && savedSinkId !== 'default' && savedSinkId !== 'ux-direct-link' && typeof audioElement.setSinkId === 'function') {
+        try {
+            await audioElement.setSinkId(savedSinkId);
+            console.log('[AudioGraph] audioElement.setSinkId succeeded:', savedSinkId);
+        } catch (e) {
+            console.warn('[AudioGraph] audioElement.setSinkId failed:', e);
+        }
+    }
 
     // ノード作成
     const source = context.createMediaElementSource(audioElement);
@@ -234,7 +262,14 @@ export function restoreSavedSinkId(sinkId) {
 }
 
 export async function setAudioOutput(deviceId, playerElement) {
+    console.log('[AudioGraph] setAudioOutput called:', {
+        deviceId,
+        hasPlayerElement: !!playerElement,
+        currentGraphExists: !!currentGraph,
+        currentSinkId: savedSinkId
+    });
     await initAudioGraph(playerElement, deviceId);
+    console.log('[AudioGraph] setAudioOutput finished, new savedSinkId:', savedSinkId);
 }
 
 export async function resumeAudioContext() {

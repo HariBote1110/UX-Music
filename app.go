@@ -18,6 +18,7 @@ import (
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"ux-music-sidecar/pkg/audio"
 	"ux-music-sidecar/pkg/cdrip"
 	"ux-music-sidecar/pkg/mtp"
 	"ux-music-sidecar/pkg/normalize"
@@ -29,6 +30,7 @@ type App struct {
 	ripper       *cdrip.Ripper
 	mtpManager   *mtp.Manager
 	normalizer   *normalize.Normalizer
+	audioPlayer  *audio.Player
 	mtpConnected bool
 	mtpMu        sync.Mutex
 }
@@ -64,6 +66,19 @@ func (a *App) startup(ctx context.Context) {
 	a.ripper = cdrip.NewRipper(cdParanoiaPath, ffmpegPath, userDataPath)
 	a.mtpManager = mtp.NewManager()
 	a.normalizer = normalize.NewNormalizer(ffmpegPath, ffprobePath)
+
+	// Initialize audio player
+	player, err := audio.NewPlayer()
+	if err != nil {
+		fmt.Printf("[Wails] Warning: Failed to initialize audio player: %v\n", err)
+	} else {
+		a.audioPlayer = player
+		// Set up playback finished callback
+		player.SetOnFinished(func() {
+			wailsRuntime.EventsEmit(a.ctx, "audio-playback-finished", nil)
+		})
+		fmt.Println("[Wails] Audio player initialized")
+	}
 
 	fmt.Println("[Wails] App components initialized")
 
@@ -1180,4 +1195,110 @@ func (a *App) NormalizeStartJob(jobType string, files []interface{}, options nor
 		wg.Wait()
 		wailsRuntime.EventsEmit(a.ctx, "normalize-job-finished")
 	}()
+}
+
+// --- Audio Player Methods ---
+
+// AudioListDevices returns available audio output devices
+func (a *App) AudioListDevices() ([]audio.Device, error) {
+	if a.audioPlayer == nil {
+		return nil, fmt.Errorf("audio player not initialized")
+	}
+	return a.audioPlayer.ListDevices()
+}
+
+// AudioSetDevice sets the audio output device
+func (a *App) AudioSetDevice(deviceID string) error {
+	if a.audioPlayer == nil {
+		return fmt.Errorf("audio player not initialized")
+	}
+	return a.audioPlayer.SetDevice(deviceID)
+}
+
+// AudioGetCurrentDevice returns the current device name
+func (a *App) AudioGetCurrentDevice() string {
+	if a.audioPlayer == nil {
+		return ""
+	}
+	return a.audioPlayer.GetCurrentDevice()
+}
+
+// AudioPlay starts playback of an audio file
+func (a *App) AudioPlay(filePath string) error {
+	if a.audioPlayer == nil {
+		return fmt.Errorf("audio player not initialized")
+	}
+	return a.audioPlayer.Play(filePath)
+}
+
+// AudioPause pauses playback
+func (a *App) AudioPause() error {
+	if a.audioPlayer == nil {
+		return nil
+	}
+	return a.audioPlayer.Pause()
+}
+
+// AudioResume resumes playback
+func (a *App) AudioResume() error {
+	if a.audioPlayer == nil {
+		return nil
+	}
+	return a.audioPlayer.Resume()
+}
+
+// AudioStop stops playback
+func (a *App) AudioStop() error {
+	if a.audioPlayer == nil {
+		return nil
+	}
+	return a.audioPlayer.Stop()
+}
+
+// AudioSeek seeks to a position in seconds
+func (a *App) AudioSeek(seconds float64) error {
+	if a.audioPlayer == nil {
+		return nil
+	}
+	return a.audioPlayer.Seek(seconds)
+}
+
+// AudioSetVolume sets the volume (0.0 to 1.0)
+func (a *App) AudioSetVolume(volume float64) {
+	if a.audioPlayer == nil {
+		return
+	}
+	a.audioPlayer.SetVolume(volume)
+}
+
+// AudioGetPosition returns the current position in seconds
+func (a *App) AudioGetPosition() float64 {
+	if a.audioPlayer == nil {
+		return 0
+	}
+	return a.audioPlayer.GetPosition()
+}
+
+// AudioGetDuration returns the total duration in seconds
+func (a *App) AudioGetDuration() float64 {
+	if a.audioPlayer == nil {
+		return 0
+	}
+	return a.audioPlayer.GetDuration()
+}
+
+// AudioIsPlaying returns true if currently playing
+func (a *App) AudioIsPlaying() bool {
+	if a.audioPlayer == nil {
+		return false
+	}
+	return a.audioPlayer.IsPlaying()
+}
+
+// AudioIsPaused returns true if paused
+func (a *App) AudioIsPaused() bool {
+	if a.audioPlayer == nil {
+		return false
+	}
+	return a.audioPlayer.IsPaused()
 }
