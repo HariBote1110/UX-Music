@@ -18,6 +18,10 @@ export function AudioGetDuration() {
   return window['go']['main']['App']['AudioGetDuration']();
 }
 
+export function AudioGetFrequencyData() {
+  return window['go']['main']['App']['AudioGetFrequencyData']();
+}
+
 export function AudioGetPosition() {
   return window['go']['main']['App']['AudioGetPosition']();
 }

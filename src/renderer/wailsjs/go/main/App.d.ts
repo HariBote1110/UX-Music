@@ -14,6 +14,8 @@ export function AudioGetCurrentDevice():Promise<string>;
 
 export function AudioGetDuration():Promise<number>;
 
+export function AudioGetFrequencyData():Promise<Array<number>>;
+
 export function AudioGetPosition():Promise<number>;
 
 export function AudioIsPaused():Promise<boolean>;

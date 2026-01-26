@@ -12,6 +12,7 @@ require (
 	github.com/hugolgst/rich-go v0.0.0-20240715122152-74618cc1ace2
 	github.com/kkdai/youtube/v2 v2.10.5
 	github.com/mewkiz/flac v1.0.13
+	github.com/mjibson/go-dsp v0.0.0-20180508042940-11479a337f12
 	github.com/wailsapp/wails/v2 v2.11.0
 	golang.org/x/text v0.23.0
 )

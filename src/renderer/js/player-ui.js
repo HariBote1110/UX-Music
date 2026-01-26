@@ -175,10 +175,16 @@ export function initPlayerControls(initialPlayer, callbacks) {
         }
     });
 
-    elements.volumeSlider.addEventListener('input', () => {
-        applyMasterVolume();
+    elements.volumeSlider.addEventListener('input', async () => {
+        const volume = parseFloat(elements.volumeSlider.value);
+        if (window.go) {
+            await window.go.main.App.AudioSetVolume(volume);
+            await window.go.main.App.SaveSettings({ volume: volume });
+        } else {
+            applyMasterVolume();
+            electronAPI.send('save-settings', { volume: volume });
+        }
         updateVolumeIcon();
-        electronAPI.send('save-settings', { volume: parseFloat(elements.volumeSlider.value) });
     });
 
     document.getElementById('volume-icon-btn').addEventListener('click', toggleMute);

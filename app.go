@@ -78,6 +78,17 @@ func (a *App) startup(ctx context.Context) {
 			wailsRuntime.EventsEmit(a.ctx, "audio-playback-finished", nil)
 		})
 		fmt.Println("[Wails] Audio player initialized")
+
+		// Restore settings (volume)
+		settings, _ := stores.Load("settings")
+		if settings != nil {
+			if sMap, ok := settings.(map[string]interface{}); ok {
+				if vol, ok := sMap["volume"].(float64); ok {
+					player.SetVolume(vol)
+					fmt.Printf("[Wails] Restored volume: %.2f\n", vol)
+				}
+			}
+		}
 	}
 
 	fmt.Println("[Wails] App components initialized")
@@ -1301,4 +1312,17 @@ func (a *App) AudioIsPaused() bool {
 		return false
 	}
 	return a.audioPlayer.IsPaused()
+}
+
+// AudioGetFrequencyData returns the current frequency data for visualization
+func (a *App) AudioGetFrequencyData() []uint8 {
+	if a.audioPlayer == nil {
+		return []uint8{}
+	}
+	data := a.audioPlayer.GetFrequencyData()
+	// デバッグ用（大量に出るので一瞬だけ有効化するか、条件付きで出す）
+	if len(data) > 0 && data[0] > 0 {
+		// fmt.Printf("FFT: %v\n", data[:5])
+	}
+	return data
 }

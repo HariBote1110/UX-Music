@@ -121,6 +121,44 @@ export function setVisualizerFpsLimit(fps) {
 /**
  * ビジュアライザーの描画関数 (requestAnimationFrameでループ)
  */
+// Go用のデータキャッシュ
+let goDataCache = [];
+let isFetchingGoData = false;
+
+async function fetchGoData() {
+    if (isFetchingGoData || !window.go) return;
+    isFetchingGoData = true;
+    try {
+        const data = await window.go.main.App.AudioGetFrequencyData();
+
+        if (data) {
+            let arrayData = null;
+            if (typeof data === 'string') {
+                // Base64 decode
+                const binaryString = atob(data);
+                const len = binaryString.length;
+                arrayData = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    arrayData[i] = binaryString.charCodeAt(i);
+                }
+            } else if (Array.isArray(data) || data instanceof Uint8Array) {
+                arrayData = data;
+            }
+
+            if (arrayData && arrayData.length > 0) {
+                goDataCache = arrayData;
+            }
+        }
+    } catch (e) {
+        // エラー無視
+    } finally {
+        isFetchingGoData = false;
+    }
+}
+
+/**
+ * ビジュアライザーの描画関数 (requestAnimationFrameでループ)
+ */
 function draw(timestamp) {
     if (!isPlaying()) {
         visualizerFrameId = null;
@@ -142,17 +180,33 @@ function draw(timestamp) {
         lastFrameTime = timestamp - (elapsed % frameInterval);
     }
 
-    if (currentVisualizerBars && analyser && dataArray) {
-        analyser.getByteFrequencyData(dataArray);
+    let sourceData = null;
+    let fftSize = 256; // Default
+    let sampleRate = 48000; // Default
 
+    if (window.go) {
+        fetchGoData(); // 非同期でデータ更新
+        if (goDataCache && goDataCache.length > 0) {
+            sourceData = goDataCache;
+            fftSize = goDataCache.length * 2; // FFT size is usually 2x result stats
+            // Go側のサンプルレートが不明だが、ここでは44100か48000と仮定
+            // bin幅の計算に影響する
+            sampleRate = 44100;
+        }
+    } else if (analyser && dataArray) {
+        analyser.getByteFrequencyData(dataArray);
+        sourceData = dataArray;
+        fftSize = analyser.fftSize;
+        sampleRate = analyser.context.sampleRate;
+    }
+
+    if (currentVisualizerBars && sourceData) {
         // iPhoneスタイルの対数スケール周波数配分
         // サンプルレート48kHz、FFTサイズ256の場合、各binは約187.5Hzの帯域幅
         // ターゲット周波数: 60Hz(低音), 250Hz, 1kHz, 4kHz, 8kHz, 16kHz(高音)
         // 対数スケールで均等に分散
         const targetFrequencies = [60, 250, 1000, 4000, 8000, 16000];
-        const sampleRate = 48000; // 標準サンプルレート
-        const fftSize = 256;
-        const binWidth = sampleRate / fftSize; // ~187.5Hz per bin
+        const binWidth = sampleRate / fftSize;
 
         // 各ターゲット周波数に対応するビンインデックスを計算
         // 低周波数帯域では複数のビンを平均化してより滑らかな表示を実現
@@ -161,14 +215,18 @@ function draw(timestamp) {
 
             // 周波数帯域に応じてビン範囲を調整（低音は広く、高音は狭く）
             let binRange = Math.max(1, Math.floor(3 - i * 0.4));
+
+            // Goデータの場合、ビン配列の範囲内かチェック
+            if (centerBin >= sourceData.length) return 4;
+
             const startBin = Math.max(0, centerBin - binRange);
-            const endBin = Math.min(dataArray.length - 1, centerBin + binRange);
+            const endBin = Math.min(sourceData.length - 1, centerBin + binRange);
 
             // 範囲内のビンの平均値を計算
             let sum = 0;
             let count = 0;
             for (let b = startBin; b <= endBin; b++) {
-                sum += dataArray[b];
+                sum += sourceData[b];
                 count++;
             }
             const avgValue = count > 0 ? sum / count / 255 : 0;

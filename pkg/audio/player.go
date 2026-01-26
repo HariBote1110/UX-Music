@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/cmplx"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,7 @@ import (
 	"github.com/hajimehoshi/go-mp3"
 	"github.com/mewkiz/flac"
 	"github.com/mewkiz/flac/frame"
+	"github.com/mjibson/go-dsp/fft"
 )
 
 // Device represents an audio output device
@@ -44,6 +47,13 @@ type Player struct {
 	channels     int
 	volume       float64
 
+	// FFT Analysis
+	fftMu      sync.RWMutex
+	fftSamples []float64
+	fftResult  []uint8 // 0-255 frequency data
+	fftSize    int
+	fftWindow  []float64 // Hanning window
+
 	// Callback for events
 	onFinished func()
 	onProgress func(position, duration float64)
@@ -69,6 +79,9 @@ func NewPlayer() (*Player, error) {
 		volume: 1.0,
 	}
 
+	// Initialize FFT
+	p.initFFT(2048)
+
 	// Get available devices
 	if err := p.refreshDevices(); err != nil {
 		portaudio.Terminate()
@@ -82,6 +95,19 @@ func NewPlayer() (*Player, error) {
 	}
 
 	return p, nil
+}
+
+// initFFT initializes FFT buffers
+func (p *Player) initFFT(size int) {
+	p.fftSize = size
+	p.fftSamples = make([]float64, 0, size)
+	p.fftResult = make([]uint8, size/2)
+	p.fftWindow = make([]float64, size)
+
+	// Hanning Window
+	for i := 0; i < size; i++ {
+		p.fftWindow[i] = 0.5 * (1 - math.Cos(2*math.Pi*float64(i)/float64(size-1)))
+	}
 }
 
 // Close terminates the player
@@ -278,6 +304,67 @@ func (p *Player) Play(filePath string) error {
 	return nil
 }
 
+// calculateFFT computes FFT and updates frequency data
+func (p *Player) calculateFFT(input []float64) {
+	if len(input) != p.fftSize {
+		return
+	}
+
+	// Apply window
+	for i := 0; i < p.fftSize; i++ {
+		input[i] *= p.fftWindow[i]
+	}
+
+	// Calculate FFT
+	fftRes := fft.FFTReal(input)
+
+	p.fftMu.Lock()
+	defer p.fftMu.Unlock()
+
+	// Convert to magnitude and scale to 0-255
+	// We only need first half (Nyquist)
+	for i := 0; i < len(p.fftResult) && i < len(fftRes); i++ {
+		mag := cmplx.Abs(fftRes[i])
+
+		// Log scale mapping simluating AnalyserNode
+		// mag approaches 0 -> -inf dB
+		// mag ~ 1 -> 0 dB? (depends on normalization)
+
+		var db float64
+		if mag > 0 {
+			db = 20 * math.Log10(mag)
+		} else {
+			db = -100
+		}
+
+		// Map -100dB..-30dB to 0..255
+		// This is generic, might need tuning
+		minDecibels := -100.0
+		maxDecibels := -30.0
+
+		if db < minDecibels {
+			db = minDecibels
+		}
+		if db > maxDecibels {
+			db = maxDecibels
+		}
+
+		scaled := uint8((db - minDecibels) * 255 / (maxDecibels - minDecibels))
+		p.fftResult[i] = scaled
+	}
+}
+
+// GetFrequencyData returns the current frequency data for visualization
+func (p *Player) GetFrequencyData() []uint8 {
+	p.fftMu.RLock()
+	defer p.fftMu.RUnlock()
+
+	// Copy data to avoid race conditions
+	result := make([]uint8, len(p.fftResult))
+	copy(result, p.fftResult)
+	return result
+}
+
 // processAudio is called by PortAudio to fill the output buffer
 func (p *Player) processAudio(out []float32) {
 	p.mu.RLock()
@@ -285,6 +372,7 @@ func (p *Player) processAudio(out []float32) {
 	playing := p.playing
 	paused := p.paused
 	volume := p.volume
+	channels := p.channels
 	p.mu.RUnlock()
 
 	if !playing || paused || decoding == nil {
@@ -292,6 +380,13 @@ func (p *Player) processAudio(out []float32) {
 		for i := range out {
 			out[i] = 0
 		}
+
+		// Clear FFT result when not playing
+		p.fftMu.Lock()
+		for i := range p.fftResult {
+			p.fftResult[i] = 0
+		}
+		p.fftMu.Unlock()
 		return
 	}
 
@@ -309,9 +404,43 @@ func (p *Player) processAudio(out []float32) {
 
 	// Convert int16 to float32
 	samples := n / 2
+
+	// Collect mix down samples for FFT
 	for i := 0; i < samples && i < len(out); i++ {
 		sample := int16(buf[i*2]) | int16(buf[i*2+1])<<8
-		out[i] = float32(sample) / 32768.0 * float32(volume)
+		floatSample := float32(sample) / 32768.0 * float32(volume)
+		out[i] = floatSample
+
+		// Downmix for FFT (take average of channels, or just first channel)
+		if i%channels == 0 {
+			// Simply using Left channel for now for performance
+			// Ideally we should sum channels but we are in the hot loop
+			val := float64(floatSample)
+			// Collect for FFT
+			p.fftMu.Lock()
+			if len(p.fftSamples) < p.fftSize {
+				p.fftSamples = append(p.fftSamples, val)
+			}
+			// If buffer full, triggering update elsewhere or double buffering would be better
+			// For simplicity, we just keep the buffer full-ish
+			p.fftMu.Unlock()
+		}
+	}
+
+	// Process FFT if we have enough samples
+	// Doing this in a separate goroutine to avoid blocking audio callback
+	p.fftMu.Lock()
+	if len(p.fftSamples) >= p.fftSize {
+		// Copy buffer and clear
+		input := make([]float64, p.fftSize)
+		copy(input, p.fftSamples[:p.fftSize])
+		// Keep some overlap? For now just clear
+		p.fftSamples = p.fftSamples[:0]
+		p.fftMu.Unlock()
+
+		go p.calculateFFT(input)
+	} else {
+		p.fftMu.Unlock()
 	}
 
 	// Fill remaining with silence
@@ -320,9 +449,11 @@ func (p *Player) processAudio(out []float32) {
 	}
 
 	// Update position
-	p.mu.Lock()
-	p.position += int64(samples / p.channels)
-	p.mu.Unlock()
+	if channels > 0 {
+		p.mu.Lock()
+		p.position += int64(samples / channels)
+		p.mu.Unlock()
+	}
 
 	// Check if finished
 	if err == io.EOF || n == 0 {

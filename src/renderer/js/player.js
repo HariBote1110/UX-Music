@@ -26,15 +26,24 @@ import {
     setBaseGain,
     applyEqualizerSettings,
     setAudioOutput as setAudioOutputDevice,
-    activateAudioGraph,
     analyser,
     dataArray
 } from './audio-graph.js';
 import { musicApi } from './bridge.js';
 const electronAPI = window.electronAPI;
 
-let localPlayer;
+let localPlayer; // Web用（Go環境ではnullまたは未使用）
 let currentSongType = 'local';
+let isWails = false; // Wails環境フラグ
+
+// Goバックエンドの状態キャッシュ
+let goState = {
+    currentTime: 0,
+    duration: 0,
+    isPlaying: false,
+    isPaused: false
+};
+let pollingInterval = null;
 
 let savedCallbacks = {
     onSongEnded: () => { },
@@ -42,20 +51,26 @@ let savedCallbacks = {
     onPrevSong: () => { }
 };
 
+// 状態取得関数の変更
 export function getCurrentTime() {
+    if (isWails) return goState.currentTime;
     return localPlayer ? localPlayer.currentTime : 0;
 }
 export function getDuration() {
+    if (isWails) return goState.duration;
     return localPlayer && Number.isFinite(localPlayer.duration) ? localPlayer.duration : 0;
 }
 export function isPlaying() {
-    // 準備完了状態（readyState > 2）も加味して判定
+    if (isWails) return goState.isPlaying;
     return localPlayer && !localPlayer.paused && !localPlayer.ended && localPlayer.readyState > 2;
 }
 
-// UI操作用の関数（常に最新の localPlayer を操作する）
+// UI操作用の関数
 export async function playCurrent() {
-    if (localPlayer) {
+    if (isWails) {
+        await window.go.main.App.AudioResume();
+        // ポーリングでUI更新されるのでここでは状態強制更新しない
+    } else if (localPlayer) {
         try {
             await localPlayer.play();
         } catch (e) {
@@ -63,21 +78,35 @@ export async function playCurrent() {
         }
     }
 }
-export function pauseCurrent() {
-    if (localPlayer) localPlayer.pause();
+export async function pauseCurrent() {
+    if (isWails) {
+        await window.go.main.App.AudioPause();
+    } else if (localPlayer) {
+        localPlayer.pause();
+    }
 }
 
-export function seek(time) {
-    if (localPlayer && !isNaN(time)) {
-        const duration = getDuration();
-        const seekTime = Math.max(0, Math.min(time, duration));
+export async function seek(time) {
+    const duration = getDuration();
+    const seekTime = Math.max(0, Math.min(time, duration));
+
+    if (isWails) {
+        await window.go.main.App.AudioSeek(seekTime);
+        goState.currentTime = seekTime; // 即時反映
+        updateSeekUI(seekTime);
+    } else if (localPlayer && !isNaN(time)) {
         localPlayer.currentTime = seekTime;
         updateSeekUI(seekTime);
     }
 }
 export async function setAudioOutput(deviceId) {
     console.log('[Player] setAudioOutput called with deviceId:', deviceId);
-    await setAudioOutputDevice(deviceId, localPlayer);
+    if (isWails) {
+        await window.go.main.App.AudioSetDevice(deviceId);
+        await window.go.main.App.SaveSettings({ audioOutputId: deviceId });
+    } else {
+        await setAudioOutputDevice(deviceId, localPlayer);
+    }
 }
 
 export {
@@ -93,6 +122,8 @@ export {
 };
 
 function attachPlayerListeners(player) {
+    if (!player) return;
+
     player.onended = () => {
         const finishedSong = state.playbackQueue[state.currentSongIndex];
         if (state.analysedQueue.enabled && finishedSong) musicApi.songFinished(finishedSong);
@@ -107,9 +138,7 @@ function attachPlayerListeners(player) {
         updateMediaSessionHandlers();
     };
 
-    // onplay よりも確実な onplaying (データが届いて動き出した時) を使用
     player.onplaying = () => {
-        console.log('[Player] onplaying event fired');
         updatePlaybackStateUI(true);
         resumeAudioContext();
         updatePlayingIndicators();
@@ -118,21 +147,93 @@ function attachPlayerListeners(player) {
     };
 
     player.onpause = () => {
-        console.log('[Player] onpause event fired');
         updatePlaybackStateUI(false);
         stopVisualizerLoop();
         updateMediaSessionState('paused');
     };
 }
 
+// Goバックエンドの状態をポーリングする関数
+function startGoStatePolling() {
+    if (pollingInterval) clearInterval(pollingInterval);
+
+    pollingInterval = setInterval(async () => {
+        if (!window.go || !window.go.main || !window.go.main.App) return;
+
+        try {
+            const [pos, dur, playing, paused] = await Promise.all([
+                window.go.main.App.AudioGetPosition(),
+                window.go.main.App.AudioGetDuration(),
+                window.go.main.App.AudioIsPlaying(),
+                window.go.main.App.AudioIsPaused()
+            ]);
+
+            const wasPlaying = goState.isPlaying;
+
+            goState.currentTime = pos;
+            goState.duration = dur;
+            goState.isPlaying = playing;
+            goState.isPaused = paused;
+
+            if (playing) {
+                updateSyncedLyrics(pos);
+                updateSeekUI(pos); // UI側のシークバー更新
+
+                if (!wasPlaying) {
+                    // 再生開始時イベント相当
+                    updatePlaybackStateUI(true);
+                    updatePlayingIndicators();
+                    updateMediaSessionState('playing');
+                    startVisualizerLoop();
+                }
+            } else if (paused && wasPlaying) {
+                // 一時停止イベント相当
+                updatePlaybackStateUI(false);
+                updateMediaSessionState('paused');
+                stopVisualizerLoop();
+            }
+
+            // duration更新（ロード完了検知など）
+            if (dur > 0 && Math.abs(state.currentDuration - dur) > 0.5) {
+                state.currentDuration = dur; // state.jsの更新はしていないが、UI更新用
+                updateMetadataUI();
+                updateMediaSessionHandlers();
+            }
+
+        } catch (e) {
+            // エラー時は何もしない
+        }
+    }, 200);
+}
+
 export async function initPlayer(playerElement, callbacks, sinkId = null) {
-    localPlayer = playerElement;
     savedCallbacks = { ...callbacks };
+    isWails = typeof window.go !== 'undefined';
 
-    await initAudioGraph(localPlayer, sinkId);
-    attachPlayerListeners(localPlayer);
+    if (isWails) {
+        console.log('[Player] Initializing in Wails mode (Go Backend)');
+        localPlayer = null; // WailsではAudioElementを使わない
 
-    // コントロールの初期化はアプリ起動時のこの1回のみ
+        startGoStatePolling();
+
+        // Goからのイベントリスナー設定
+        if (window.runtime) {
+            window.runtime.EventsOn("audio-playback-finished", () => {
+                console.log('[Player] audio-playback-finished received');
+                const finishedSong = state.playbackQueue[state.currentSongIndex];
+                if (state.analysedQueue.enabled && finishedSong) musicApi.songFinished(finishedSong);
+                if (typeof savedCallbacks.onSongEnded === 'function') savedCallbacks.onSongEnded();
+                updateLrcEditorControls(false, getDuration(), getDuration());
+            });
+        }
+
+    } else {
+        localPlayer = playerElement;
+        await initAudioGraph(localPlayer, sinkId);
+        attachPlayerListeners(localPlayer);
+    }
+
+    // コントロールの初期化
     initPlayerControls(localPlayer, {
         onNextSong: savedCallbacks.onNextSong,
         onPrevSong: savedCallbacks.onPrevSong
@@ -184,7 +285,16 @@ export async function play(song) {
         const gainDb = TARGET_LOUDNESS - savedLoudness;
         newBaseGain = Math.pow(10, gainDb / 20);
     }
-    setBaseGain(newBaseGain);
+
+    if (isWails) {
+        // Go側でボリューム制御を行う（baseGain * masterVolume）
+        // 現状の簡易実装ではAPIがないため、後でAudioPlayer側でBaseGain対応が必要かも
+        // とりあえずVolume設定だけ呼んでおく（UIのSlider値は反映されないので注意）
+        // TODO: BaseGainとMasterVolumeを統合
+    } else {
+        setBaseGain(newBaseGain);
+    }
+
     setMediaSessionMetadata(song).catch(() => { });
 
     if (song.path) {
@@ -194,8 +304,14 @@ export async function play(song) {
 }
 
 export async function stop() {
-    if (!localPlayer) return;
-    localPlayer.pause();
+    if (isWails) {
+        await window.go.main.App.AudioStop();
+        goState.isPlaying = false;
+        goState.isPaused = false;
+        goState.currentTime = 0;
+    } else if (localPlayer) {
+        localPlayer.pause();
+    }
     stopVisualizerLoop();
     resetPlaybackUI();
     electronAPI.send('playback-stopped');
@@ -203,6 +319,24 @@ export async function stop() {
 }
 
 async function playLocal(song) {
+    if (isWails) {
+        console.log(`[Player] Playing with Go Backend: ${song.path}`);
+        try {
+            await window.go.main.App.AudioPlay(song.path);
+            // Volume適用（初期値）
+            const volume = parseFloat(elements.volumeSlider.value);
+            await window.go.main.App.AudioSetVolume(volume);
+
+            updatePlayingIndicators();
+            updatePlaybackStateUI(true);
+            updateMediaSessionState('playing');
+        } catch (e) {
+            console.error('[Player] Go AudioPlay failed:', e);
+            savedCallbacks.onSongEnded(); // エラー時は次の曲へ
+        }
+        return;
+    }
+
     const rate = song.sampleRate || 44100;
     const graph = await activateAudioGraph(rate);
     const newPlayer = graph.audioElement;
@@ -227,21 +361,11 @@ async function playLocal(song) {
 
         localPlayer = newPlayer;
         attachPlayerListeners(localPlayer);
-
-        // initPlayerControls はここから削除しました (二重登録防止)
     }
 
     const normalizedPath = song.path.replace(/\\/g, '/');
     const safePath = encodeURI(normalizedPath).replace(/#/g, '%23');
-    const isWails = window.go !== undefined;
-
-    if (isWails) {
-        // Wails 環境: /safe-media/ + 絶対パス
-        localPlayer.src = `/safe-media${normalizedPath.startsWith('/') ? '' : '/'}${safePath}`;
-        console.log(`[Player] Setting Wails src: ${localPlayer.src}`);
-    } else {
-        localPlayer.src = `file://${safePath}`;
-    }
+    localPlayer.src = `file://${safePath}`;
 
     try {
         await localPlayer.play();
@@ -254,6 +378,16 @@ async function playLocal(song) {
 }
 
 export async function togglePlayPause() {
+    if (isWails) {
+        const isPlaying = goState.isPlaying;
+        if (isPlaying) {
+            await window.go.main.App.AudioPause();
+        } else {
+            await window.go.main.App.AudioResume();
+        }
+        return;
+    }
+
     await resumeAudioContext();
     if (!localPlayer) return;
     if (!localPlayer.paused) {

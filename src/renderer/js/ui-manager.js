@@ -316,6 +316,42 @@ function groupLibraryByArtist() {
 export async function updateAudioDevices() {
     try {
         console.log('[AudioDevices] enumerating devices...');
+
+        if (window.go) {
+            const settings = await electronAPI.invoke('get-settings');
+            const activeDeviceId = settings.audioOutputId || 'default';
+            elements.devicePopup.innerHTML = '';
+
+            try {
+                const goDevices = await window.go.main.App.AudioListDevices();
+                console.log('[AudioDevices] Go devices:', goDevices);
+
+                goDevices.forEach(d => {
+                    const item = document.createElement('div');
+                    item.className = 'device-popup-item';
+                    item.textContent = d.name;
+                    item.dataset.deviceId = d.id;
+                    if (d.id === activeDeviceId) item.classList.add('active');
+
+                    item.addEventListener('click', async () => {
+                        const newDeviceId = item.dataset.deviceId;
+                        await stopPlayer();
+                        state.currentSongIndex = -1;
+                        updateNowPlayingView(null);
+                        loadLyricsForSong(null);
+                        updatePlayingIndicators();
+                        await setAudioOutput(newDeviceId);
+                        // UI更新のために再描画
+                        elements.devicePopup.querySelectorAll('.device-popup-item').forEach(i => i.classList.remove('active'));
+                        item.classList.add('active');
+                        elements.devicePopup.classList.remove('active');
+                    });
+                    elements.devicePopup.appendChild(item);
+                });
+            } catch (e) { console.error("Failed to list audio devices via Go:", e); }
+            return;
+        }
+
         let devices = await navigator.mediaDevices.enumerateDevices();
 
         // 権限がない場合 deviceId と label が空文字になる

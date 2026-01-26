@@ -169,6 +169,16 @@ async function initApp() {
     try {
         const settings = await musicApi.getSettings();
         if (settings) {
+            if (typeof settings.volume === 'number') {
+                if (elements.volumeSlider) {
+                    elements.volumeSlider.value = settings.volume;
+                    // UIの数値表示などの更新が必要ならここで行う
+                }
+            }
+            if (settings.audioOutputId) {
+                restoreSavedSinkId(settings.audioOutputId);
+            }
+
             if (typeof settings.groupAlbumArt === 'boolean') {
                 state.groupAlbumArt = settings.groupAlbumArt;
             }
