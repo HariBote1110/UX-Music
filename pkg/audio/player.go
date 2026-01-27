@@ -48,6 +48,15 @@ type Player struct {
 	channels     int
 	volume       atomic.Uint64 // stored as float64 bits
 
+	// Ring buffer for pre-decoded audio data
+	ringBuf       []float32     // Pre-decoded float32 samples
+	ringBufSize   int           // Total size of ring buffer
+	ringReadPos   atomic.Int64  // Read position (callback reads from here)
+	ringWritePos  atomic.Int64  // Write position (decoder writes here)
+	ringAvailable atomic.Int64  // Number of samples available
+	decoderStop   chan struct{} // Signal to stop decoder goroutine
+	decoderDone   chan struct{} // Signal that decoder has stopped
+
 	// Audio buffer (pre-allocated to avoid allocation in callback)
 	audioBuf     []byte
 	audioBufSize int
@@ -246,7 +255,11 @@ func (p *Player) Play(filePath string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Stop current playback
+	// Stop current playback and decoder goroutine
+	if p.decoderStop != nil {
+		close(p.decoderStop)
+		<-p.decoderDone
+	}
 	if p.stream != nil {
 		p.stream.Stop()
 		p.stream.Close()
@@ -304,6 +317,15 @@ func (p *Player) Play(filePath string) error {
 	p.totalSamples = p.decoder.Length()
 	p.position.Store(0)
 
+	// Initialize ring buffer (1 second of audio)
+	p.ringBufSize = p.sampleRate * p.channels * 2 // 2 seconds buffer
+	p.ringBuf = make([]float32, p.ringBufSize)
+	p.ringReadPos.Store(0)
+	p.ringWritePos.Store(0)
+	p.ringAvailable.Store(0)
+	p.decoderStop = make(chan struct{})
+	p.decoderDone = make(chan struct{})
+
 	// Select device
 	device := p.currentDevice
 	if device == nil {
@@ -324,9 +346,6 @@ func (p *Player) Play(filePath string) error {
 		FramesPerBuffer: 4096,
 	}
 
-	// Buffer for audio data
-	buffer := make([]float32, params.FramesPerBuffer*params.Output.Channels)
-
 	// Create callback stream
 	stream, err := portaudio.OpenStream(params, func(out []float32) {
 		p.processAudio(out)
@@ -338,7 +357,9 @@ func (p *Player) Play(filePath string) error {
 	p.stream = stream
 	p.playing.Store(true)
 	p.paused.Store(false)
-	_ = buffer // Will be used in callback
+
+	// Start background decoder goroutine
+	go p.decoderLoop()
 
 	if err := stream.Start(); err != nil {
 		return fmt.Errorf("failed to start stream: %w", err)
@@ -346,6 +367,88 @@ func (p *Player) Play(filePath string) error {
 
 	fmt.Printf("[Audio] Playing: %s on %s (SR: %d, CH: %d)\n", filePath, device.Name, p.sampleRate, p.channels)
 	return nil
+}
+
+// decoderLoop runs in background and fills the ring buffer
+func (p *Player) decoderLoop() {
+	defer close(p.decoderDone)
+
+	// Temporary buffer for reading from decoder
+	readBuf := make([]byte, 8192)
+
+	for {
+		select {
+		case <-p.decoderStop:
+			return
+		default:
+		}
+
+		// Check if buffer has space
+		available := p.ringAvailable.Load()
+		if available >= int64(p.ringBufSize-8192) {
+			// Buffer is full enough, wait a bit
+			time.Sleep(5 * time.Millisecond)
+			continue
+		}
+
+		// Read from decoder
+		p.mu.RLock()
+		decoder := p.decoder
+		channels := p.channels
+		p.mu.RUnlock()
+
+		if decoder == nil {
+			return
+		}
+
+		n, err := decoder.Read(readBuf)
+		if n > 0 {
+			// Convert int16 to float32 and write to ring buffer
+			samples := n / 2
+			writePos := p.ringWritePos.Load()
+
+			for i := 0; i < samples; i++ {
+				sample := int16(readBuf[i*2]) | int16(readBuf[i*2+1])<<8
+				floatSample := float32(sample) / 32768.0
+
+				idx := (writePos + int64(i)) % int64(p.ringBufSize)
+				p.ringBuf[idx] = floatSample
+			}
+
+			p.ringWritePos.Store((writePos + int64(samples)) % int64(p.ringBufSize))
+			p.ringAvailable.Add(int64(samples))
+		}
+
+		if err == io.EOF || n == 0 {
+			// Wait for buffer to drain, then signal end
+			for p.ringAvailable.Load() > 0 && p.playing.Load() {
+				time.Sleep(10 * time.Millisecond)
+			}
+
+			p.playing.Store(false)
+
+			p.mu.RLock()
+			callback := p.onFinished
+			p.mu.RUnlock()
+
+			if callback != nil {
+				go callback()
+			}
+			return
+		}
+
+		if err != nil {
+			fmt.Printf("[Audio] Decoder error: %v\n", err)
+			return
+		}
+
+		// Small sleep to prevent busy loop
+		if available > int64(p.ringBufSize/2) {
+			time.Sleep(1 * time.Millisecond)
+		}
+
+		_ = channels // Used for position tracking if needed
+	}
 }
 
 // calculateFFT computes FFT and updates frequency data
@@ -410,20 +513,14 @@ func (p *Player) GetFrequencyData() []uint8 {
 }
 
 // processAudio is called by PortAudio to fill the output buffer
-// CRITICAL: This runs in a real-time audio thread - NO LOCKS ALLOWED
+// CRITICAL: This runs in a real-time audio thread - NO LOCKS, NO ALLOCATIONS
 func (p *Player) processAudio(out []float32) {
 	// Read atomic state without locks
 	playing := p.playing.Load()
 	paused := p.paused.Load()
 	volume := p.getVolume()
 
-	// Read decoder pointer with lock (needed for pointer safety)
-	p.mu.RLock()
-	decoding := p.decoder
-	channels := p.channels
-	p.mu.RUnlock()
-
-	if !playing || paused || decoding == nil {
+	if !playing || paused {
 		// Fill with silence
 		for i := range out {
 			out[i] = 0
@@ -431,73 +528,51 @@ func (p *Player) processAudio(out []float32) {
 		return
 	}
 
-	// Read samples from decoder
-	// The decoder returns int16 samples, we need to convert to float32
-	bytesNeeded := len(out) * 2 // 2 bytes per sample for int16
+	// Read from ring buffer (completely lock-free)
+	available := p.ringAvailable.Load()
+	readPos := p.ringReadPos.Load()
+	ringBuf := p.ringBuf
+	ringBufSize := int64(p.ringBufSize)
+	channels := p.channels
 
-	// Use a local buffer (avoid lock on shared buffer)
-	buf := make([]byte, bytesNeeded)
-
-	n, err := decoding.Read(buf)
-	if err != nil && err != io.EOF {
-		for i := range out {
-			out[i] = 0
-		}
-		return
+	samplesToRead := len(out)
+	if int64(samplesToRead) > available {
+		samplesToRead = int(available)
 	}
 
-	// Convert int16 to float32
-	samples := n / 2
-
-	// Collect samples for FFT locally
-	var localFFT []float64
-	if channels > 0 {
-		localFFT = make([]float64, 0, samples/channels)
-	}
-
-	// Process all samples
-	for i := 0; i < samples && i < len(out); i++ {
-		sample := int16(buf[i*2]) | int16(buf[i*2+1])<<8
-		floatSample := float32(sample) / 32768.0 * float32(volume)
-		out[i] = floatSample
-
-		// Collect left channel samples for FFT
-		if channels > 0 && i%channels == 0 {
-			localFFT = append(localFFT, float64(floatSample))
-		}
-	}
-
-	// Send FFT samples to async processor (non-blocking)
-	if len(localFFT) > 0 {
-		select {
-		case p.fftChan <- localFFT:
-			// Sent successfully
-		default:
-			// Channel full, skip this batch (acceptable for visualization)
-		}
+	// Read samples from ring buffer
+	for i := 0; i < samplesToRead; i++ {
+		idx := (readPos + int64(i)) % ringBufSize
+		out[i] = ringBuf[idx] * float32(volume)
 	}
 
 	// Fill remaining with silence
-	for i := samples; i < len(out); i++ {
+	for i := samplesToRead; i < len(out); i++ {
 		out[i] = 0
 	}
 
-	// Update position atomically (no lock needed)
-	if channels > 0 {
-		p.position.Add(int64(samples / channels))
-	}
+	// Update read position and available count
+	if samplesToRead > 0 {
+		p.ringReadPos.Store((readPos + int64(samplesToRead)) % ringBufSize)
+		p.ringAvailable.Add(-int64(samplesToRead))
 
-	// Check if finished
-	if err == io.EOF || n == 0 {
-		p.playing.Store(false)
+		// Update position (samples played)
+		if channels > 0 {
+			p.position.Add(int64(samplesToRead / channels))
+		}
 
-		// Get callback with lock (only for pointer access)
-		p.mu.RLock()
-		callback := p.onFinished
-		p.mu.RUnlock()
-
-		if callback != nil {
-			go callback()
+		// Send samples for FFT (every nth callback to reduce overhead)
+		if p.fftChan != nil && samplesToRead >= 512 {
+			// Create FFT samples from left channel
+			fftSamples := make([]float64, samplesToRead/channels)
+			for i := 0; i < samplesToRead && i/channels < len(fftSamples); i += channels {
+				idx := (readPos + int64(i)) % ringBufSize
+				fftSamples[i/channels] = float64(ringBuf[idx])
+			}
+			select {
+			case p.fftChan <- fftSamples:
+			default:
+			}
 		}
 	}
 }
@@ -532,6 +607,14 @@ func (p *Player) Resume() error {
 
 // Stop stops playback
 func (p *Player) Stop() error {
+	// Stop decoder goroutine first
+	if p.decoderStop != nil {
+		close(p.decoderStop)
+		<-p.decoderDone
+		p.decoderStop = nil
+		p.decoderDone = nil
+	}
+
 	p.mu.Lock()
 	if p.stream != nil {
 		p.stream.Stop()
@@ -543,6 +626,9 @@ func (p *Player) Stop() error {
 	p.playing.Store(false)
 	p.paused.Store(false)
 	p.position.Store(0)
+	p.ringAvailable.Store(0)
+	p.ringReadPos.Store(0)
+	p.ringWritePos.Store(0)
 
 	return nil
 }
@@ -567,6 +653,11 @@ func (p *Player) Seek(seconds float64) error {
 	if err := p.decoder.Seek(targetSample); err != nil {
 		return err
 	}
+
+	// Clear ring buffer on seek
+	p.ringAvailable.Store(0)
+	p.ringReadPos.Store(0)
+	p.ringWritePos.Store(0)
 
 	p.position.Store(targetSample)
 	return nil
