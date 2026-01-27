@@ -47,12 +47,17 @@ type Player struct {
 	channels     int
 	volume       float64
 
+	// Audio buffer (pre-allocated to avoid allocation in callback)
+	audioBuf     []byte
+	audioBufSize int
+
 	// FFT Analysis
-	fftMu      sync.RWMutex
-	fftSamples []float64
-	fftResult  []uint8 // 0-255 frequency data
-	fftSize    int
-	fftWindow  []float64 // Hanning window
+	fftMu       sync.RWMutex
+	fftSamples  []float64
+	fftResult   []uint8 // 0-255 frequency data
+	fftSize     int
+	fftWindow   []float64 // Hanning window
+	fftLocalBuf []float64 // Local buffer for collecting samples
 
 	// Callback for events
 	onFinished func()
@@ -103,11 +108,16 @@ func (p *Player) initFFT(size int) {
 	p.fftSamples = make([]float64, 0, size)
 	p.fftResult = make([]uint8, size/2)
 	p.fftWindow = make([]float64, size)
+	p.fftLocalBuf = make([]float64, 0, size) // Local buffer for batch collection
 
 	// Hanning Window
 	for i := 0; i < size; i++ {
 		p.fftWindow[i] = 0.5 * (1 - math.Cos(2*math.Pi*float64(i)/float64(size-1)))
 	}
+
+	// Pre-allocate audio buffer (enough for typical frame size)
+	p.audioBufSize = 4096 * 4 * 2 // 4096 frames * 4 bytes per sample (stereo int16)
+	p.audioBuf = make([]byte, p.audioBufSize)
 }
 
 // Close terminates the player
@@ -395,7 +405,17 @@ func (p *Player) processAudio(out []float32) {
 	// Read samples from decoder
 	// The decoder returns int16 samples, we need to convert to float32
 	bytesNeeded := len(out) * 2 // 2 bytes per sample for int16
-	buf := make([]byte, bytesNeeded)
+
+	// Use pre-allocated buffer if possible
+	var buf []byte
+	p.mu.Lock()
+	if bytesNeeded <= len(p.audioBuf) {
+		buf = p.audioBuf[:bytesNeeded]
+	} else {
+		buf = make([]byte, bytesNeeded)
+	}
+	p.mu.Unlock()
+
 	n, err := decoding.Read(buf)
 	if err != nil && err != io.EOF {
 		for i := range out {
@@ -407,36 +427,34 @@ func (p *Player) processAudio(out []float32) {
 	// Convert int16 to float32
 	samples := n / 2
 
-	// Collect mix down samples for FFT
+	// Collect samples for FFT locally first (no lock)
+	localFFT := make([]float64, 0, samples/channels)
+
+	// Process all samples
 	for i := 0; i < samples && i < len(out); i++ {
 		sample := int16(buf[i*2]) | int16(buf[i*2+1])<<8
 		floatSample := float32(sample) / 32768.0 * float32(volume)
 		out[i] = floatSample
 
-		// Downmix for FFT (take average of channels, or just first channel)
+		// Collect left channel samples for FFT (no lock here)
 		if i%channels == 0 {
-			// Simply using Left channel for now for performance
-			// Ideally we should sum channels but we are in the hot loop
-			val := float64(floatSample)
-			// Collect for FFT
-			p.fftMu.Lock()
-			if len(p.fftSamples) < p.fftSize {
-				p.fftSamples = append(p.fftSamples, val)
-			}
-			// If buffer full, triggering update elsewhere or double buffering would be better
-			// For simplicity, we just keep the buffer full-ish
-			p.fftMu.Unlock()
+			localFFT = append(localFFT, float64(floatSample))
+		}
+	}
+
+	// Batch update FFT samples (single lock)
+	p.fftMu.Lock()
+	for _, v := range localFFT {
+		if len(p.fftSamples) < p.fftSize {
+			p.fftSamples = append(p.fftSamples, v)
 		}
 	}
 
 	// Process FFT if we have enough samples
-	// Doing this in a separate goroutine to avoid blocking audio callback
-	p.fftMu.Lock()
 	if len(p.fftSamples) >= p.fftSize {
 		// Copy buffer and clear
 		input := make([]float64, p.fftSize)
 		copy(input, p.fftSamples[:p.fftSize])
-		// Keep some overlap? For now just clear
 		p.fftSamples = p.fftSamples[:0]
 		p.fftMu.Unlock()
 
@@ -765,14 +783,24 @@ func (d *wavDecoder) Close() error {
 
 // ============ FLAC Decoder ============
 
+// flacFrameIndex stores sample position to file offset mapping
+type flacFrameIndex struct {
+	samplePos int64 // Sample position at start of frame
+	// Note: We use stream.Seek which already handles positioning
+}
+
 type flacDecoder struct {
-	file       *os.File // Keep file handle for closing
-	stream     *flac.Stream
-	sampleRate int
-	channels   int
-	length     int64
-	frame      *frame.Frame
-	framePos   int
+	file          *os.File // Keep file handle for closing
+	filePath      string   // Keep path for re-opening if needed
+	stream        *flac.Stream
+	sampleRate    int
+	channels      int
+	length        int64
+	frame         *frame.Frame
+	framePos      int
+	frameIndex    []flacFrameIndex // Index of frame positions
+	indexBuilt    bool             // Whether index has been built
+	indexBuilding bool             // Whether index is being built
 }
 
 func newFLACDecoder(file *os.File) (*flacDecoder, error) {
@@ -782,13 +810,62 @@ func newFLACDecoder(file *os.File) (*flacDecoder, error) {
 		return nil, fmt.Errorf("failed to open FLAC: %w", err)
 	}
 
-	return &flacDecoder{
+	dec := &flacDecoder{
 		file:       file,
+		filePath:   file.Name(),
 		stream:     stream,
 		sampleRate: int(stream.Info.SampleRate),
 		channels:   int(stream.Info.NChannels),
 		length:     int64(stream.Info.NSamples),
-	}, nil
+		frameIndex: make([]flacFrameIndex, 0),
+	}
+
+	// Start building index in background
+	go dec.buildIndex()
+
+	return dec, nil
+}
+
+// buildIndex builds frame index in background
+func (d *flacDecoder) buildIndex() {
+	if d.indexBuilding || d.indexBuilt {
+		return
+	}
+	d.indexBuilding = true
+
+	// Open a separate file handle for indexing
+	indexFile, err := os.Open(d.filePath)
+	if err != nil {
+		d.indexBuilding = false
+		return
+	}
+	defer indexFile.Close()
+
+	// Create a separate stream for indexing
+	indexStream, err := flac.NewSeek(indexFile)
+	if err != nil {
+		d.indexBuilding = false
+		return
+	}
+	defer indexStream.Close()
+
+	// Parse all frames and record their sample positions
+	var samplePos int64 = 0
+	for {
+		fr, err := indexStream.ParseNext()
+		if err != nil {
+			break // EOF or error
+		}
+
+		d.frameIndex = append(d.frameIndex, flacFrameIndex{
+			samplePos: samplePos,
+		})
+
+		samplePos += int64(fr.BlockSize)
+	}
+
+	d.indexBuilt = true
+	d.indexBuilding = false
 }
 
 func (d *flacDecoder) Read(p []byte) (int, error) {
