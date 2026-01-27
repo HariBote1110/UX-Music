@@ -38,6 +38,8 @@ export function AudioSetVolume(arg1:number):Promise<void>;
 
 export function AudioStop():Promise<void>;
 
+export function BuildFLACIndexes():Promise<void>;
+
 export function CDApplyMetadata(arg1:Record<string, any>):Promise<cdrip.ReleaseInfo>;
 
 export function CDScan():Promise<Array<cdrip.Track>>;

@@ -12,19 +12,20 @@ import (
 
 // Song represents the metadata of a music file
 type Song struct {
-	Path        string  `json:"path"`
-	Title       string  `json:"title"`
-	Artist      string  `json:"artist"`
-	Album       string  `json:"album"`
-	AlbumArtist string  `json:"albumartist"`
-	Year        int     `json:"year"`
-	Genre       string  `json:"genre"`
-	Duration    float64 `json:"duration"`
-	TrackNumber int     `json:"trackNumber"`
-	DiscNumber  int     `json:"discNumber"`
-	FileSize    int64   `json:"fileSize"`
-	FileType    string  `json:"fileType"`
-	SampleRate  int     `json:"sampleRate,omitempty"` // dhowden/tag では取れない場合があるが枠だけ用意
+	Path        string      `json:"path"`
+	Title       string      `json:"title"`
+	Artist      string      `json:"artist"`
+	Album       string      `json:"album"`
+	AlbumArtist string      `json:"albumartist"`
+	Year        int         `json:"year"`
+	Genre       string      `json:"genre"`
+	Duration    float64     `json:"duration"`
+	TrackNumber int         `json:"trackNumber"`
+	DiscNumber  int         `json:"discNumber"`
+	FileSize    int64       `json:"fileSize"`
+	FileType    string      `json:"fileType"`
+	SampleRate  int         `json:"sampleRate,omitempty"` // dhowden/tag では取れない場合があるが枠だけ用意
+	Artwork     interface{} `json:"artwork,omitempty"`    // {full: string, thumbnail: string} or nil
 }
 
 var supportedExtensions = map[string]bool{
@@ -44,7 +45,7 @@ type ScanResult struct {
 }
 
 // ScanLibrary scans the given directories for music files
-func ScanLibrary(paths []string) ScanResult {
+func ScanLibrary(paths []string, artworksDir string) ScanResult {
 	start := time.Now()
 	var wg sync.WaitGroup
 	songsChan := make(chan Song, 100) // Buffer to prevent blocking
@@ -54,7 +55,7 @@ func ScanLibrary(paths []string) ScanResult {
 		wg.Add(1)
 		go func(p string) {
 			defer wg.Done()
-			walkDirectory(p, &wg, songsChan)
+			walkDirectory(p, &wg, songsChan, artworksDir)
 		}(rootPath)
 	}
 
@@ -78,7 +79,7 @@ func ScanLibrary(paths []string) ScanResult {
 	}
 }
 
-func walkDirectory(root string, wg *sync.WaitGroup, songsChan chan<- Song) {
+func walkDirectory(root string, wg *sync.WaitGroup, songsChan chan<- Song, artworksDir string) {
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -94,7 +95,7 @@ func walkDirectory(root string, wg *sync.WaitGroup, songsChan chan<- Song) {
 			wg.Add(1)
 			go func(filePath string, info os.FileInfo) {
 				defer wg.Done()
-				song := parseFile(filePath, info)
+				song := parseFile(filePath, info, artworksDir)
 				songsChan <- song
 			}(path, nil) // passing nil for info to let parseFile stat if needed, or we can get info from d.Info()
 		}
@@ -102,7 +103,7 @@ func walkDirectory(root string, wg *sync.WaitGroup, songsChan chan<- Song) {
 	})
 }
 
-func parseFile(path string, info os.FileInfo) Song {
+func parseFile(path string, info os.FileInfo, artworksDir string) Song {
 	f, err := os.Open(path)
 	if err != nil {
 		return Song{Path: path, Title: filepath.Base(path)}
@@ -151,7 +152,7 @@ func parseFile(path string, info os.FileInfo) Song {
 	// Electron側でDurationがないものだけ補完するハイブリッド戦略も取れる。
 	// 一旦、tagライブラリで取れる範囲のメタデータのみを返す。
 
-	return Song{
+	song := Song{
 		Path:        path,
 		Title:       title,
 		Artist:      artist,
@@ -165,4 +166,13 @@ func parseFile(path string, info os.FileInfo) Song {
 		FileType:    strings.ToLower(filepath.Ext(path)),
 		// Duration: 0, // JS側でmetadata取得済みのDBがあればそれを使う等の工夫が必要
 	}
+
+	// アートワーク抽出
+	if artworksDir != "" {
+		if artwork, err := extractAndSaveArtwork(path, artworksDir); err == nil {
+			song.Artwork = artwork
+		}
+	}
+
+	return song
 }

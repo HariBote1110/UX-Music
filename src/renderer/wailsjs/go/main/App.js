@@ -66,6 +66,10 @@ export function AudioStop() {
   return window['go']['main']['App']['AudioStop']();
 }
 
+export function BuildFLACIndexes() {
+  return window['go']['main']['App']['BuildFLACIndexes']();
+}
+
 export function CDApplyMetadata(arg1) {
   return window['go']['main']['App']['CDApplyMetadata'](arg1);
 }

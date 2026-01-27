@@ -64,6 +64,7 @@ func (a *App) startup(ctx context.Context) {
 	userDataPath := config.GetUserDataPath()
 
 	// Initialize components
+	SetAnalyzerPaths(ffmpegPath, ffprobePath)
 	a.ripper = cdrip.NewRipper(cdParanoiaPath, ffmpegPath, userDataPath)
 	a.mtpManager = mtp.NewManager()
 	a.normalizer = normalize.NewNormalizer(ffmpegPath, ffprobePath)
@@ -1325,12 +1326,13 @@ func (a *App) AudioGetFrequencyData() []uint8 {
 // ScanLibrary calls the existing ScanLibrary logic
 func (a *App) ScanLibrary(paths []string) ScanResult {
 	fmt.Printf("[Wails] Scanning library: %v\n", paths)
-	result := ScanLibrary(paths)
+	artworksDir := filepath.Join(config.GetUserDataPath(), "Artworks")
+	scanResult := ScanLibrary(paths, artworksDir)
 
 	// Automatically trigger FLAC indexing for newly scanned files
 	go a.BuildFLACIndexes()
 
-	return result
+	return scanResult
 }
 
 // BuildFLACIndexes iterates through the library and pre-generates indexes for all FLAC files

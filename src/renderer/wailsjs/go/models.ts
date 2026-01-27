@@ -102,6 +102,7 @@ export namespace main {
 	    fileSize: number;
 	    fileType: string;
 	    sampleRate?: number;
+	    artwork?: any;
 	
 	    static createFrom(source: any = {}) {
 	        return new Song(source);
@@ -122,6 +123,7 @@ export namespace main {
 	        this.fileSize = source["fileSize"];
 	        this.fileType = source["fileType"];
 	        this.sampleRate = source["sampleRate"];
+	        this.artwork = source["artwork"];
 	    }
 	}
 	export class ScanResult {
