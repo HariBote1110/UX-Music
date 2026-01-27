@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/text/unicode/norm"
@@ -100,12 +101,6 @@ func (a *App) startup(ctx context.Context) {
 // Ping returns a pong message
 func (a *App) Ping() string {
 	return "pong from Wails!"
-}
-
-// ScanLibrary calls the existing ScanLibrary logic
-func (a *App) ScanLibrary(paths []string) ScanResult {
-	fmt.Printf("[Wails] Scanning library: %v\n", paths)
-	return ScanLibrary(paths)
 }
 
 // GetYouTubeInfo calls the existing GetYouTubeVideoInfo logic
@@ -1327,6 +1322,17 @@ func (a *App) AudioGetFrequencyData() []uint8 {
 	return data
 }
 
+// ScanLibrary calls the existing ScanLibrary logic
+func (a *App) ScanLibrary(paths []string) ScanResult {
+	fmt.Printf("[Wails] Scanning library: %v\n", paths)
+	result := ScanLibrary(paths)
+
+	// Automatically trigger FLAC indexing for newly scanned files
+	go a.BuildFLACIndexes()
+
+	return result
+}
+
 // BuildFLACIndexes iterates through the library and pre-generates indexes for all FLAC files
 func (a *App) BuildFLACIndexes() {
 	fmt.Println("[Wails] BuildFLACIndexes started")
@@ -1341,25 +1347,60 @@ func (a *App) BuildFLACIndexes() {
 		song := s.(map[string]interface{})
 		path, ok := song["path"].(string)
 		if ok && strings.HasSuffix(strings.ToLower(path), ".flac") {
+			// Skip if already cached to avoid heavy re-parsing
+			// BuildFLACIndex itself checks this, but we filter here for better progress reporting
 			flacPaths = append(flacPaths, path)
 		}
 	}
 
 	total := len(flacPaths)
+	if total == 0 {
+		return
+	}
 	fmt.Printf("[Wails] Found %d FLAC files to index\n", total)
 
 	go func() {
-		for i, path := range flacPaths {
-			wailsRuntime.EventsEmit(a.ctx, "flac-index-progress", map[string]interface{}{
-				"current": i + 1,
-				"total":   total,
-				"path":    filepath.Base(path),
-			})
-
-			if err := audio.BuildFLACIndex(path); err != nil {
-				fmt.Printf("[Audio] Error indexing %s: %v\n", path, err)
-			}
+		// Worker pool setup
+		numWorkers := runtime.NumCPU()
+		if numWorkers > 4 {
+			numWorkers = 4 // Limit to 4 workers to avoid excessive I/O contention
 		}
+
+		type job struct {
+			index int
+			path  string
+		}
+		jobs := make(chan job, total)
+		var wg sync.WaitGroup
+
+		var completed atomic.Int32
+
+		// Start workers
+		for w := 0; w < numWorkers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for j := range jobs {
+					if err := audio.BuildFLACIndex(j.path); err != nil {
+						fmt.Printf("[Audio] Error indexing %s: %v\n", j.path, err)
+					}
+					c := completed.Add(1)
+					wailsRuntime.EventsEmit(a.ctx, "flac-index-progress", map[string]interface{}{
+						"current": int(c),
+						"total":   total,
+						"path":    filepath.Base(j.path),
+					})
+				}
+			}()
+		}
+
+		// Send jobs
+		for i, path := range flacPaths {
+			jobs <- job{index: i, path: path}
+		}
+		close(jobs)
+
+		wg.Wait()
 		wailsRuntime.EventsEmit(a.ctx, "flac-index-complete", total)
 		fmt.Println("[Wails] BuildFLACIndexes completed")
 	}()
