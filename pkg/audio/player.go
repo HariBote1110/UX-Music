@@ -1,6 +1,8 @@
 package audio
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -924,6 +926,19 @@ func newFLACDecoder(file *os.File) (*flacDecoder, error) {
 		indexDone:  make(chan struct{}),
 	}
 
+	// Check disk cache first
+	cachePath := getFLACCachePath(dec.filePath)
+	if cachePath != "" {
+		if points := loadFLACIndex(cachePath); len(points) > 0 {
+			fmt.Printf("[Audio] FLAC: Loaded index from cache (%d points)\n", len(points))
+			dec.seekTable = &meta.SeekTable{Points: points}
+			dec.indexBuilt = true
+			close(dec.indexDone)
+			dec.applySeekTable()
+			return dec, nil
+		}
+	}
+
 	// Check if the stream already has a SeekTable in its metadata blocks
 	var existingTable *meta.SeekTable
 	for _, block := range stream.Blocks {
@@ -961,8 +976,7 @@ func (d *flacDecoder) buildIndex() {
 		d.mu.Lock()
 		d.indexBuilding = false
 		d.indexBuilt = true
-		// Ensure channel is not already closed (it shouldn't be if we are here,
-		// but let's be safe as newFLACDecoder might have closed it)
+		// Ensure channel is not already closed
 		select {
 		case <-d.indexDone:
 		default:
@@ -1030,6 +1044,13 @@ func (d *flacDecoder) buildIndex() {
 	d.mu.Lock()
 	d.seekTable = &meta.SeekTable{Points: points}
 	d.mu.Unlock()
+
+	// Save to disk cache
+	cachePath := getFLACCachePath(d.filePath)
+	if cachePath != "" {
+		saveFLACIndex(cachePath, points)
+		fmt.Printf("[Audio] FLAC: Saved index to cache (%d points)\n", len(points))
+	}
 }
 
 func flacStreamReadSeeker(stream *flac.Stream) (io.ReadSeeker, bool) {
@@ -1126,18 +1147,15 @@ func (d *flacDecoder) waitForIndex() {
 func (d *flacDecoder) applySeekTable() {
 	d.mu.RLock()
 	seekTable := d.seekTable
-	applied := d.seekApplied
 	d.mu.RUnlock()
 
-	if seekTable == nil || applied {
+	if seekTable == nil {
 		return
 	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.seekApplied || d.seekTable == nil {
-		return
-	}
+	// Always apply the current seekTable to ensure we have the best accuracy
 	if flacStreamSetSeekTable(d.stream, d.seekTable) {
 		d.seekApplied = true
 	}
@@ -1151,7 +1169,7 @@ func (d *flacDecoder) Seek(sample int64) error {
 		sample = d.length
 	}
 
-	d.waitForIndex()
+	// Non-blocking: apply whatever index we have right now
 	d.applySeekTable()
 
 	// Use the stream's Seek method
@@ -1176,4 +1194,77 @@ func (d *flacDecoder) Close() error {
 		return d.file.Close()
 	}
 	return nil
+}
+
+// ============ FLAC Cache Helpers ============
+
+func getFLACCacheDir() string {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Join(cacheDir, "UX-Music", "flac-index")
+	os.MkdirAll(dir, 0755)
+	return dir
+}
+
+func getFLACCachePath(filePath string) string {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return ""
+	}
+	h := sha256.New()
+	h.Write([]byte(filePath))
+	binary.Write(h, binary.LittleEndian, info.Size())
+	binary.Write(h, binary.LittleEndian, info.ModTime().Unix())
+	hash := fmt.Sprintf("%x", h.Sum(nil))
+
+	dir := getFLACCacheDir()
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, hash+".idx")
+}
+
+func saveFLACIndex(cachePath string, points []meta.SeekPoint) {
+	f, err := os.Create(cachePath)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	for _, p := range points {
+		binary.Write(f, binary.LittleEndian, p.SampleNum)
+		binary.Write(f, binary.LittleEndian, p.Offset)
+		binary.Write(f, binary.LittleEndian, uint16(p.NSamples))
+	}
+}
+
+func loadFLACIndex(cachePath string) []meta.SeekPoint {
+	f, err := os.Open(cachePath)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var points []meta.SeekPoint
+	for {
+		var sampleNum, offset uint64
+		var nSamples uint16
+		if err := binary.Read(f, binary.LittleEndian, &sampleNum); err != nil {
+			break
+		}
+		if err := binary.Read(f, binary.LittleEndian, &offset); err != nil {
+			break
+		}
+		if err := binary.Read(f, binary.LittleEndian, &nSamples); err != nil {
+			break
+		}
+		points = append(points, meta.SeekPoint{
+			SampleNum: sampleNum,
+			Offset:    offset,
+			NSamples:  uint16(nSamples),
+		})
+	}
+	return points
 }
