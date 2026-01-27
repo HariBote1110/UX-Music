@@ -244,12 +244,14 @@ func (p *Player) Play(filePath string) error {
 		}
 		p.decoder = dec
 	case ".flac":
-		file.Close() // flac package opens file itself
-		dec, err := newFLACDecoder(filePath)
+		// Pass file to FLAC decoder (it needs io.ReadSeeker for seeking)
+		dec, err := newFLACDecoder(file)
 		if err != nil {
+			file.Close()
 			return err
 		}
 		p.decoder = dec
+		p.file = nil // FLAC decoder manages the file now
 	default:
 		file.Close()
 		return fmt.Errorf("unsupported format: %s", ext)
@@ -740,8 +742,20 @@ func (d *wavDecoder) Length() int64 {
 }
 
 func (d *wavDecoder) Seek(sample int64) error {
-	// WAV seeking is complex and not reliably supported
-	// TODO: implement proper seeking in future version
+	bytesPerSample := d.bitsPerSample / 8
+	if bytesPerSample == 0 {
+		bytesPerSample = 2 // Default to 16-bit
+	}
+
+	// Calculate byte offset from start of audio data
+	offset := sample * int64(d.channels) * int64(bytesPerSample)
+
+	// Use the decoder's Seek method which handles seeking within PCM data
+	_, err := d.decoder.Seek(offset, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek WAV: %w", err)
+	}
+
 	return nil
 }
 
@@ -752,6 +766,7 @@ func (d *wavDecoder) Close() error {
 // ============ FLAC Decoder ============
 
 type flacDecoder struct {
+	file       *os.File // Keep file handle for closing
 	stream     *flac.Stream
 	sampleRate int
 	channels   int
@@ -760,13 +775,15 @@ type flacDecoder struct {
 	framePos   int
 }
 
-func newFLACDecoder(path string) (*flacDecoder, error) {
-	stream, err := flac.Open(path)
+func newFLACDecoder(file *os.File) (*flacDecoder, error) {
+	// Use NewSeek to create a seekable stream
+	stream, err := flac.NewSeek(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open FLAC: %w", err)
 	}
 
 	return &flacDecoder{
+		file:       file,
 		stream:     stream,
 		sampleRate: int(stream.Info.SampleRate),
 		channels:   int(stream.Info.NChannels),
@@ -821,11 +838,33 @@ func (d *flacDecoder) Length() int64 {
 }
 
 func (d *flacDecoder) Seek(sample int64) error {
-	// FLAC seeking is not reliably supported with current implementation
-	// TODO: implement proper seeking in future version
+	if sample < 0 {
+		sample = 0
+	}
+	if sample > d.length {
+		sample = d.length
+	}
+
+	// Use the stream's Seek method
+	actualSample, err := d.stream.Seek(uint64(sample))
+	if err != nil {
+		return fmt.Errorf("failed to seek FLAC: %w", err)
+	}
+
+	// Reset frame state so Read will get a fresh frame
+	d.frame = nil
+	d.framePos = 0
+
+	_ = actualSample // The stream seeks to the frame containing this sample
 	return nil
 }
 
 func (d *flacDecoder) Close() error {
-	return d.stream.Close()
+	if d.stream != nil {
+		d.stream.Close()
+	}
+	if d.file != nil {
+		return d.file.Close()
+	}
+	return nil
 }
