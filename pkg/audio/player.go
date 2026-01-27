@@ -924,8 +924,25 @@ func newFLACDecoder(file *os.File) (*flacDecoder, error) {
 		indexDone:  make(chan struct{}),
 	}
 
-	// Start building index in background
-	go dec.buildIndex()
+	// Check if the stream already has a SeekTable in its metadata blocks
+	var existingTable *meta.SeekTable
+	for _, block := range stream.Blocks {
+		if table, ok := block.Body.(*meta.SeekTable); ok {
+			existingTable = table
+			break
+		}
+	}
+
+	if existingTable != nil {
+		fmt.Printf("[Audio] FLAC: Using existing SeekTable with %d points\n", len(existingTable.Points))
+		dec.seekTable = existingTable
+		dec.indexBuilt = true
+		close(dec.indexDone)
+		dec.applySeekTable()
+	} else {
+		// Start building index in background only if no SeekTable exists
+		go dec.buildIndex()
+	}
 
 	return dec, nil
 }
@@ -944,7 +961,13 @@ func (d *flacDecoder) buildIndex() {
 		d.mu.Lock()
 		d.indexBuilding = false
 		d.indexBuilt = true
-		close(d.indexDone)
+		// Ensure channel is not already closed (it shouldn't be if we are here,
+		// but let's be safe as newFLACDecoder might have closed it)
+		select {
+		case <-d.indexDone:
+		default:
+			close(d.indexDone)
+		}
 		d.mu.Unlock()
 	}()
 
@@ -1036,6 +1059,8 @@ func flacStreamSetSeekTable(stream *flac.Stream, table *meta.SeekTable) bool {
 	if !field.IsValid() {
 		return false
 	}
+	// Important: Use TryLock if available or just ensure we're not violating internal invariants.
+	// The flac.Stream.Seek method uses this field.
 	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(table))
 	return true
 }
