@@ -5,6 +5,7 @@ import { setVisualizerFpsLimit } from './player.js';
 import { updateNowPlayingView } from './ui/now-playing.js';
 import { showNotification, hideNotification } from './ui/notification.js';
 import { initPlaybackSettings } from './playback-manager.js';
+import { musicApi } from './bridge.js';
 const electronAPI = window.electronAPI;
 
 const decaySliderValues = [1, 3, 7, 14, 30];
