@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-audio/audio"
@@ -38,14 +39,14 @@ type Player struct {
 	decoder       Decoder
 	file          *os.File
 
-	// Playback state
-	playing      bool
-	paused       bool
-	position     int64 // samples played
+	// Playback state (atomic for lock-free access in callback)
+	playing      atomic.Bool
+	paused       atomic.Bool
+	position     atomic.Int64 // samples played
 	totalSamples int64
 	sampleRate   int
 	channels     int
-	volume       float64
+	volume       atomic.Uint64 // stored as float64 bits
 
 	// Audio buffer (pre-allocated to avoid allocation in callback)
 	audioBuf     []byte
@@ -56,8 +57,9 @@ type Player struct {
 	fftSamples  []float64
 	fftResult   []uint8 // 0-255 frequency data
 	fftSize     int
-	fftWindow   []float64 // Hanning window
-	fftLocalBuf []float64 // Local buffer for collecting samples
+	fftWindow   []float64      // Hanning window
+	fftLocalBuf []float64      // Local buffer for collecting samples
+	fftChan     chan []float64 // Channel for async FFT processing
 
 	// Callback for events
 	onFinished func()
@@ -80,9 +82,8 @@ func NewPlayer() (*Player, error) {
 		return nil, fmt.Errorf("failed to initialize PortAudio: %w", err)
 	}
 
-	p := &Player{
-		volume: 1.0,
-	}
+	p := &Player{}
+	p.setVolume(1.0)
 
 	// Initialize FFT
 	p.initFFT(2048)
@@ -109,6 +110,10 @@ func (p *Player) initFFT(size int) {
 	p.fftResult = make([]uint8, size/2)
 	p.fftWindow = make([]float64, size)
 	p.fftLocalBuf = make([]float64, 0, size) // Local buffer for batch collection
+	p.fftChan = make(chan []float64, 4)      // Buffered channel for async FFT
+
+	// Start FFT processor goroutine
+	go p.fftProcessor()
 
 	// Hanning Window
 	for i := 0; i < size; i++ {
@@ -118,6 +123,33 @@ func (p *Player) initFFT(size int) {
 	// Pre-allocate audio buffer (enough for typical frame size)
 	p.audioBufSize = 4096 * 4 * 2 // 4096 frames * 4 bytes per sample (stereo int16)
 	p.audioBuf = make([]byte, p.audioBufSize)
+}
+
+// fftProcessor processes FFT data asynchronously
+func (p *Player) fftProcessor() {
+	var samples []float64
+	for input := range p.fftChan {
+		samples = append(samples, input...)
+
+		// Process when we have enough samples
+		for len(samples) >= p.fftSize {
+			// Extract exactly fftSize samples
+			fftInput := make([]float64, p.fftSize)
+			copy(fftInput, samples[:p.fftSize])
+			samples = samples[p.fftSize:]
+
+			p.calculateFFT(fftInput)
+		}
+	}
+}
+
+// Atomic helper functions
+func (p *Player) setVolume(v float64) {
+	p.volume.Store(math.Float64bits(v))
+}
+
+func (p *Player) getVolume() float64 {
+	return math.Float64frombits(p.volume.Load())
 }
 
 // Close terminates the player
@@ -270,7 +302,7 @@ func (p *Player) Play(filePath string) error {
 	p.sampleRate = p.decoder.SampleRate()
 	p.channels = p.decoder.Channels()
 	p.totalSamples = p.decoder.Length()
-	p.position = 0
+	p.position.Store(0)
 
 	// Select device
 	device := p.currentDevice
@@ -304,8 +336,8 @@ func (p *Player) Play(filePath string) error {
 	}
 
 	p.stream = stream
-	p.playing = true
-	p.paused = false
+	p.playing.Store(true)
+	p.paused.Store(false)
 	_ = buffer // Will be used in callback
 
 	if err := stream.Start(); err != nil {
@@ -378,12 +410,16 @@ func (p *Player) GetFrequencyData() []uint8 {
 }
 
 // processAudio is called by PortAudio to fill the output buffer
+// CRITICAL: This runs in a real-time audio thread - NO LOCKS ALLOWED
 func (p *Player) processAudio(out []float32) {
+	// Read atomic state without locks
+	playing := p.playing.Load()
+	paused := p.paused.Load()
+	volume := p.getVolume()
+
+	// Read decoder pointer with lock (needed for pointer safety)
 	p.mu.RLock()
 	decoding := p.decoder
-	playing := p.playing
-	paused := p.paused
-	volume := p.volume
 	channels := p.channels
 	p.mu.RUnlock()
 
@@ -392,13 +428,6 @@ func (p *Player) processAudio(out []float32) {
 		for i := range out {
 			out[i] = 0
 		}
-
-		// Clear FFT result when not playing
-		p.fftMu.Lock()
-		for i := range p.fftResult {
-			p.fftResult[i] = 0
-		}
-		p.fftMu.Unlock()
 		return
 	}
 
@@ -406,15 +435,8 @@ func (p *Player) processAudio(out []float32) {
 	// The decoder returns int16 samples, we need to convert to float32
 	bytesNeeded := len(out) * 2 // 2 bytes per sample for int16
 
-	// Use pre-allocated buffer if possible
-	var buf []byte
-	p.mu.Lock()
-	if bytesNeeded <= len(p.audioBuf) {
-		buf = p.audioBuf[:bytesNeeded]
-	} else {
-		buf = make([]byte, bytesNeeded)
-	}
-	p.mu.Unlock()
+	// Use a local buffer (avoid lock on shared buffer)
+	buf := make([]byte, bytesNeeded)
 
 	n, err := decoding.Read(buf)
 	if err != nil && err != io.EOF {
@@ -427,8 +449,11 @@ func (p *Player) processAudio(out []float32) {
 	// Convert int16 to float32
 	samples := n / 2
 
-	// Collect samples for FFT locally first (no lock)
-	localFFT := make([]float64, 0, samples/channels)
+	// Collect samples for FFT locally
+	var localFFT []float64
+	if channels > 0 {
+		localFFT = make([]float64, 0, samples/channels)
+	}
 
 	// Process all samples
 	for i := 0; i < samples && i < len(out); i++ {
@@ -436,31 +461,20 @@ func (p *Player) processAudio(out []float32) {
 		floatSample := float32(sample) / 32768.0 * float32(volume)
 		out[i] = floatSample
 
-		// Collect left channel samples for FFT (no lock here)
-		if i%channels == 0 {
+		// Collect left channel samples for FFT
+		if channels > 0 && i%channels == 0 {
 			localFFT = append(localFFT, float64(floatSample))
 		}
 	}
 
-	// Batch update FFT samples (single lock)
-	p.fftMu.Lock()
-	for _, v := range localFFT {
-		if len(p.fftSamples) < p.fftSize {
-			p.fftSamples = append(p.fftSamples, v)
+	// Send FFT samples to async processor (non-blocking)
+	if len(localFFT) > 0 {
+		select {
+		case p.fftChan <- localFFT:
+			// Sent successfully
+		default:
+			// Channel full, skip this batch (acceptable for visualization)
 		}
-	}
-
-	// Process FFT if we have enough samples
-	if len(p.fftSamples) >= p.fftSize {
-		// Copy buffer and clear
-		input := make([]float64, p.fftSize)
-		copy(input, p.fftSamples[:p.fftSize])
-		p.fftSamples = p.fftSamples[:0]
-		p.fftMu.Unlock()
-
-		go p.calculateFFT(input)
-	} else {
-		p.fftMu.Unlock()
 	}
 
 	// Fill remaining with silence
@@ -468,19 +482,19 @@ func (p *Player) processAudio(out []float32) {
 		out[i] = 0
 	}
 
-	// Update position
+	// Update position atomically (no lock needed)
 	if channels > 0 {
-		p.mu.Lock()
-		p.position += int64(samples / channels)
-		p.mu.Unlock()
+		p.position.Add(int64(samples / channels))
 	}
 
 	// Check if finished
 	if err == io.EOF || n == 0 {
-		p.mu.Lock()
-		p.playing = false
+		p.playing.Store(false)
+
+		// Get callback with lock (only for pointer access)
+		p.mu.RLock()
 		callback := p.onFinished
-		p.mu.Unlock()
+		p.mu.RUnlock()
 
 		if callback != nil {
 			go callback()
@@ -490,44 +504,45 @@ func (p *Player) processAudio(out []float32) {
 
 // Pause pauses playback
 func (p *Player) Pause() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	stream := p.stream
+	p.mu.RUnlock()
 
-	if p.stream == nil {
+	if stream == nil {
 		return nil
 	}
 
-	p.paused = true
+	p.paused.Store(true)
 	return nil
 }
 
 // Resume resumes playback
 func (p *Player) Resume() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	stream := p.stream
+	p.mu.RUnlock()
 
-	if p.stream == nil {
+	if stream == nil {
 		return nil
 	}
 
-	p.paused = false
+	p.paused.Store(false)
 	return nil
 }
 
 // Stop stops playback
 func (p *Player) Stop() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	if p.stream != nil {
 		p.stream.Stop()
 		p.stream.Close()
 		p.stream = nil
 	}
+	p.mu.Unlock()
 
-	p.playing = false
-	p.paused = false
-	p.position = 0
+	p.playing.Store(false)
+	p.paused.Store(false)
+	p.position.Store(0)
 
 	return nil
 }
@@ -553,33 +568,31 @@ func (p *Player) Seek(seconds float64) error {
 		return err
 	}
 
-	p.position = targetSample
+	p.position.Store(targetSample)
 	return nil
 }
 
 // SetVolume sets the volume (0.0 to 1.0)
 func (p *Player) SetVolume(volume float64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	if volume < 0 {
 		volume = 0
 	}
 	if volume > 1 {
 		volume = 1
 	}
-	p.volume = volume
+	p.setVolume(volume)
 }
 
 // GetPosition returns the current position in seconds
 func (p *Player) GetPosition() float64 {
 	p.mu.RLock()
-	defer p.mu.RUnlock()
+	sampleRate := p.sampleRate
+	p.mu.RUnlock()
 
-	if p.sampleRate == 0 {
+	if sampleRate == 0 {
 		return 0
 	}
-	return float64(p.position) / float64(p.sampleRate)
+	return float64(p.position.Load()) / float64(sampleRate)
 }
 
 // GetDuration returns the total duration in seconds
@@ -595,16 +608,12 @@ func (p *Player) GetDuration() float64 {
 
 // IsPlaying returns true if currently playing
 func (p *Player) IsPlaying() bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.playing && !p.paused
+	return p.playing.Load() && !p.paused.Load()
 }
 
 // IsPaused returns true if paused
 func (p *Player) IsPaused() bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.paused
+	return p.paused.Load()
 }
 
 // SetOnFinished sets the callback for when playback finishes
@@ -621,11 +630,7 @@ func (p *Player) StartProgressReporting(interval time.Duration, callback func(po
 		defer ticker.Stop()
 
 		for range ticker.C {
-			p.mu.RLock()
-			playing := p.playing
-			p.mu.RUnlock()
-
-			if !playing {
+			if !p.playing.Load() {
 				return
 			}
 
