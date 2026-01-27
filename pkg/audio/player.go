@@ -8,10 +8,12 @@ import (
 	"math/cmplx"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
@@ -19,6 +21,7 @@ import (
 	"github.com/hajimehoshi/go-mp3"
 	"github.com/mewkiz/flac"
 	"github.com/mewkiz/flac/frame"
+	"github.com/mewkiz/flac/meta"
 	"github.com/mjibson/go-dsp/fft"
 )
 
@@ -882,7 +885,7 @@ func (d *wavDecoder) Close() error {
 // flacFrameIndex stores sample position to file offset mapping
 type flacFrameIndex struct {
 	samplePos int64 // Sample position at start of frame
-	// Note: We use stream.Seek which already handles positioning
+	offset    int64 // File offset at start of frame (absolute)
 }
 
 type flacDecoder struct {
@@ -897,6 +900,10 @@ type flacDecoder struct {
 	frameIndex    []flacFrameIndex // Index of frame positions
 	indexBuilt    bool             // Whether index has been built
 	indexBuilding bool             // Whether index is being built
+	indexDone     chan struct{}    // Signals that indexing is complete
+	seekTable     *meta.SeekTable
+	seekApplied   bool
+	mu            sync.RWMutex
 }
 
 func newFLACDecoder(file *os.File) (*flacDecoder, error) {
@@ -914,6 +921,7 @@ func newFLACDecoder(file *os.File) (*flacDecoder, error) {
 		channels:   int(stream.Info.NChannels),
 		length:     int64(stream.Info.NSamples),
 		frameIndex: make([]flacFrameIndex, 0),
+		indexDone:  make(chan struct{}),
 	}
 
 	// Start building index in background
@@ -924,15 +932,25 @@ func newFLACDecoder(file *os.File) (*flacDecoder, error) {
 
 // buildIndex builds frame index in background
 func (d *flacDecoder) buildIndex() {
+	d.mu.Lock()
 	if d.indexBuilding || d.indexBuilt {
+		d.mu.Unlock()
 		return
 	}
 	d.indexBuilding = true
+	d.mu.Unlock()
+
+	defer func() {
+		d.mu.Lock()
+		d.indexBuilding = false
+		d.indexBuilt = true
+		close(d.indexDone)
+		d.mu.Unlock()
+	}()
 
 	// Open a separate file handle for indexing
 	indexFile, err := os.Open(d.filePath)
 	if err != nil {
-		d.indexBuilding = false
 		return
 	}
 	defer indexFile.Close()
@@ -940,28 +958,86 @@ func (d *flacDecoder) buildIndex() {
 	// Create a separate stream for indexing
 	indexStream, err := flac.NewSeek(indexFile)
 	if err != nil {
-		d.indexBuilding = false
 		return
 	}
 	defer indexStream.Close()
 
-	// Parse all frames and record their sample positions
-	var samplePos int64 = 0
-	for {
-		fr, err := indexStream.ParseNext()
-		if err != nil {
-			break // EOF or error
-		}
-
-		d.frameIndex = append(d.frameIndex, flacFrameIndex{
-			samplePos: samplePos,
-		})
-
-		samplePos += int64(fr.BlockSize)
+	rs, ok := flacStreamReadSeeker(indexStream)
+	if !ok {
+		return
+	}
+	dataStart, ok := flacStreamDataStart(indexStream)
+	if !ok {
+		return
 	}
 
-	d.indexBuilt = true
-	d.indexBuilding = false
+	// Parse all frames and record their sample positions + offsets
+	var samplePos uint64
+	var points []meta.SeekPoint
+	for {
+		offset, err := rs.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return
+		}
+		fr, err := indexStream.ParseNext()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return
+		}
+
+		points = append(points, meta.SeekPoint{
+			SampleNum: samplePos,
+			Offset:    uint64(offset - dataStart),
+			NSamples:  fr.BlockSize,
+		})
+		d.frameIndex = append(d.frameIndex, flacFrameIndex{
+			samplePos: int64(samplePos),
+			offset:    offset,
+		})
+
+		samplePos += uint64(fr.BlockSize)
+	}
+
+	if len(points) == 0 {
+		return
+	}
+
+	d.mu.Lock()
+	d.seekTable = &meta.SeekTable{Points: points}
+	d.mu.Unlock()
+}
+
+func flacStreamReadSeeker(stream *flac.Stream) (io.ReadSeeker, bool) {
+	value := reflect.ValueOf(stream).Elem()
+	field := value.FieldByName("r")
+	if !field.IsValid() {
+		return nil, false
+	}
+	reader := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Interface()
+	rs, ok := reader.(io.ReadSeeker)
+	return rs, ok
+}
+
+func flacStreamDataStart(stream *flac.Stream) (int64, bool) {
+	value := reflect.ValueOf(stream).Elem()
+	field := value.FieldByName("dataStart")
+	if !field.IsValid() {
+		return 0, false
+	}
+	dataStart := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Int()
+	return dataStart, true
+}
+
+func flacStreamSetSeekTable(stream *flac.Stream, table *meta.SeekTable) bool {
+	value := reflect.ValueOf(stream).Elem()
+	field := value.FieldByName("seekTable")
+	if !field.IsValid() {
+		return false
+	}
+	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(table))
+	return true
 }
 
 func (d *flacDecoder) Read(p []byte) (int, error) {
@@ -1010,6 +1086,38 @@ func (d *flacDecoder) Length() int64 {
 	return d.length
 }
 
+func (d *flacDecoder) waitForIndex() {
+	d.mu.RLock()
+	built := d.indexBuilt
+	done := d.indexDone
+	d.mu.RUnlock()
+
+	if built {
+		return
+	}
+	<-done
+}
+
+func (d *flacDecoder) applySeekTable() {
+	d.mu.RLock()
+	seekTable := d.seekTable
+	applied := d.seekApplied
+	d.mu.RUnlock()
+
+	if seekTable == nil || applied {
+		return
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.seekApplied || d.seekTable == nil {
+		return
+	}
+	if flacStreamSetSeekTable(d.stream, d.seekTable) {
+		d.seekApplied = true
+	}
+}
+
 func (d *flacDecoder) Seek(sample int64) error {
 	if sample < 0 {
 		sample = 0
@@ -1017,6 +1125,9 @@ func (d *flacDecoder) Seek(sample int64) error {
 	if sample > d.length {
 		sample = d.length
 	}
+
+	d.waitForIndex()
+	d.applySeekTable()
 
 	// Use the stream's Seek method
 	actualSample, err := d.stream.Seek(uint64(sample))
