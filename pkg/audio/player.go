@@ -244,12 +244,14 @@ func (p *Player) Play(filePath string) error {
 		}
 		p.decoder = dec
 	case ".flac":
-		file.Close() // flac package opens file itself
-		dec, err := newFLACDecoder(filePath)
+		// Pass file to FLAC decoder (it needs io.ReadSeeker for seeking)
+		dec, err := newFLACDecoder(file)
 		if err != nil {
+			file.Close()
 			return err
 		}
 		p.decoder = dec
+		p.file = nil // FLAC decoder manages the file now
 	default:
 		file.Close()
 		return fmt.Errorf("unsupported format: %s", ext)
@@ -764,6 +766,7 @@ func (d *wavDecoder) Close() error {
 // ============ FLAC Decoder ============
 
 type flacDecoder struct {
+	file       *os.File // Keep file handle for closing
 	stream     *flac.Stream
 	sampleRate int
 	channels   int
@@ -772,13 +775,15 @@ type flacDecoder struct {
 	framePos   int
 }
 
-func newFLACDecoder(path string) (*flacDecoder, error) {
-	stream, err := flac.Open(path)
+func newFLACDecoder(file *os.File) (*flacDecoder, error) {
+	// Use NewSeek to create a seekable stream
+	stream, err := flac.NewSeek(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open FLAC: %w", err)
 	}
 
 	return &flacDecoder{
+		file:       file,
 		stream:     stream,
 		sampleRate: int(stream.Info.SampleRate),
 		channels:   int(stream.Info.NChannels),
@@ -855,5 +860,11 @@ func (d *flacDecoder) Seek(sample int64) error {
 }
 
 func (d *flacDecoder) Close() error {
-	return d.stream.Close()
+	if d.stream != nil {
+		d.stream.Close()
+	}
+	if d.file != nil {
+		return d.file.Close()
+	}
+	return nil
 }
