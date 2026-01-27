@@ -674,11 +674,14 @@ func (d *mp3Decoder) Close() error {
 // ============ WAV Decoder ============
 
 type wavDecoder struct {
-	decoder    *wav.Decoder
-	sampleRate int
-	channels   int
-	length     int64
-	buffer     *audio.IntBuffer
+	reader        io.ReadSeeker
+	decoder       *wav.Decoder
+	sampleRate    int
+	channels      int
+	bitsPerSample int
+	length        int64
+	dataOffset    int64 // Offset where audio data starts
+	buffer        *audio.IntBuffer
 }
 
 func newWAVDecoder(r io.ReadSeeker) (*wavDecoder, error) {
@@ -688,13 +691,43 @@ func newWAVDecoder(r io.ReadSeeker) (*wavDecoder, error) {
 	}
 
 	format := dec.Format()
+	bytesPerSample := int(dec.BitDepth) / 8
+	if bytesPerSample == 0 {
+		bytesPerSample = 2 // Default to 16-bit
+	}
+
+	// Calculate data offset by getting current position after parsing header
+	// The decoder has already parsed the header, so we need to get the data chunk position
+	// WAV header is typically 44 bytes for standard PCM, but can vary
+	// We'll use PCMLen to calculate: total file size - PCM data size = header size
+	currentPos, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current position: %w", err)
+	}
+	// Seek to end to get file size
+	endPos, err := r.Seek(0, io.SeekEnd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to seek to end: %w", err)
+	}
+	// Data offset = file size - PCM data length
+	pcmLen := dec.PCMLen()
+	dataOffset := endPos - int64(pcmLen)
+
+	// Seek back to where we were
+	_, err = r.Seek(currentPos, io.SeekStart)
+	if err != nil {
+		return nil, fmt.Errorf("failed to seek back: %w", err)
+	}
 
 	return &wavDecoder{
-		decoder:    dec,
-		sampleRate: int(format.SampleRate),
-		channels:   int(format.NumChannels),
-		length:     int64(dec.PCMLen()) / int64(format.NumChannels) / 2, // 2 bytes per sample
-		buffer:     &audio.IntBuffer{Data: make([]int, 4096)},
+		reader:        r,
+		decoder:       dec,
+		sampleRate:    int(format.SampleRate),
+		channels:      int(format.NumChannels),
+		bitsPerSample: int(dec.BitDepth),
+		length:        int64(pcmLen) / int64(format.NumChannels) / int64(bytesPerSample),
+		dataOffset:    dataOffset,
+		buffer:        &audio.IntBuffer{Data: make([]int, 4096)},
 	}, nil
 }
 
@@ -732,11 +765,30 @@ func (d *wavDecoder) Length() int64 {
 }
 
 func (d *wavDecoder) Seek(sample int64) error {
-	offset := sample * int64(d.channels) * 2
-	return d.decoder.Rewind()
-	// WAV seeking is complex, for now just rewind
-	// TODO: implement proper seeking
-	_ = offset
+	bytesPerSample := d.bitsPerSample / 8
+	if bytesPerSample == 0 {
+		bytesPerSample = 2 // Default to 16-bit
+	}
+
+	// Calculate byte offset from start of audio data
+	offset := d.dataOffset + (sample * int64(d.channels) * int64(bytesPerSample))
+
+	// Seek in the underlying reader
+	_, err := d.reader.Seek(offset, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek WAV: %w", err)
+	}
+
+	// Reset the decoder by rewinding it first (this resets internal state)
+	// Then seek the reader to our desired position
+	// Note: go-audio/wav decoder doesn't support seeking directly,
+	// so we manipulate the underlying reader
+	d.decoder.Rewind()
+	_, err = d.reader.Seek(offset, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek WAV after rewind: %w", err)
+	}
+
 	return nil
 }
 
