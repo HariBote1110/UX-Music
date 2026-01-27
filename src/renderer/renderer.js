@@ -209,7 +209,30 @@ async function initApp() {
     }
 
     console.log('[Renderer] Initializing IPC listeners...');
-    initIPC({});
+    initIPC({
+        onFlacIndexProgress: (progress) => {
+            const container = document.getElementById('flac-index-progress-container');
+            const bar = document.getElementById('flac-index-progress-bar');
+            const status = document.getElementById('flac-index-status');
+            if (container && bar && status) {
+                container.classList.remove('hidden');
+                const percent = (progress.current / progress.total) * 100;
+                bar.style.width = `${percent}%`;
+                status.textContent = `解析中: ${progress.current} / ${progress.total} (${progress.path})`;
+            }
+        },
+        onFlacIndexComplete: (total) => {
+            const status = document.getElementById('flac-index-status');
+            if (status) {
+                status.textContent = `完了: ${total}個のファイルを解析しました。`;
+                status.style.color = '#28a745';
+            }
+            setTimeout(() => {
+                const container = document.getElementById('flac-index-progress-container');
+                if (container) container.classList.add('hidden');
+            }, 5000);
+        }
+    });
 }
 
 // 冗長で property 名が間違っていた古いヘルパー関数を削除

@@ -166,6 +166,15 @@ export function initSettings() {
         document.getElementById('devices-modal-overlay').classList.add('hidden');
         updateAudioDevices();
     });
+
+    const buildFlacBtn = document.getElementById('build-flac-indexes-btn');
+    if (buildFlacBtn) {
+        buildFlacBtn.addEventListener('click', () => {
+            buildFlacBtn.disabled = true;
+            buildFlacBtn.textContent = '構築中...';
+            musicApi.buildFLACIndexes();
+        });
+    }
 }
 
 function updateQualityGroupState() {

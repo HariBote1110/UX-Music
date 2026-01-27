@@ -381,6 +381,21 @@
                                     <small>特別なプレイリストなど、隠し機能をお楽しみいただけます。</small>
                                 </div>
                             </label>
+                            <div class="setting-child-item">
+                                <strong>高度な設定</strong>
+                                <p class="setting-description">FLACファイルのシークを高速化するためのインデックスを一括構築します。</p>
+                                <button id="build-flac-indexes-btn" class="settings-button">FLACシークインデックスを構築</button>
+                                <div id="flac-index-progress-container" class="hidden" style="margin-top: 10px;">
+                                    <div class="progress-bar-bg"
+                                        style="width: 100%; height: 8px; background: #333; border-radius: 4px; overflow: hidden;">
+                                        <div id="flac-index-progress-bar"
+                                            style="width: 0%; height: 100%; background: #007bff; transition: width 0.3s;">
+                                        </div>
+                                    </div>
+                                    <small id="flac-index-status"
+                                        style="display: block; margin-top: 5px; color: #aaa;">準備中...</small>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

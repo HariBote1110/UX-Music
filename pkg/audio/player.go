@@ -1086,6 +1086,68 @@ func flacStreamSetSeekTable(stream *flac.Stream, table *meta.SeekTable) bool {
 	return true
 }
 
+// BuildFLACIndex pre-generates the seeking index for a FLAC file
+func BuildFLACIndex(filePath string) error {
+	// Check if already exists
+	cachePath := getFLACCachePath(filePath)
+	if cachePath == "" {
+		return errors.New("failed to get cache path")
+	}
+	if _, err := os.Stat(cachePath); err == nil {
+		// Already exists
+		return nil
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	stream, err := flac.NewSeek(file)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+
+	rs, ok := flacStreamReadSeeker(stream)
+	if !ok {
+		return errors.New("failed to get read seeker")
+	}
+	dataStart, ok := flacStreamDataStart(stream)
+	if !ok {
+		return errors.New("failed to get data start")
+	}
+
+	var samplePos uint64
+	var points []meta.SeekPoint
+	for {
+		offset, err := rs.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return err
+		}
+		fr, err := stream.ParseNext()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+
+		points = append(points, meta.SeekPoint{
+			SampleNum: samplePos,
+			Offset:    uint64(offset - dataStart),
+			NSamples:  fr.BlockSize,
+		})
+		samplePos += uint64(fr.BlockSize)
+	}
+
+	if len(points) > 0 {
+		saveFLACIndex(cachePath, points)
+	}
+	return nil
+}
+
 func (d *flacDecoder) Read(p []byte) (int, error) {
 	bytesWritten := 0
 

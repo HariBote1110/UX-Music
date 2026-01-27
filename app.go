@@ -1326,3 +1326,41 @@ func (a *App) AudioGetFrequencyData() []uint8 {
 	}
 	return data
 }
+
+// BuildFLACIndexes iterates through the library and pre-generates indexes for all FLAC files
+func (a *App) BuildFLACIndexes() {
+	fmt.Println("[Wails] BuildFLACIndexes started")
+	data, _ := stores.Load("library")
+	if data == nil {
+		return
+	}
+
+	songs := data.([]interface{})
+	var flacPaths []string
+	for _, s := range songs {
+		song := s.(map[string]interface{})
+		path, ok := song["path"].(string)
+		if ok && strings.HasSuffix(strings.ToLower(path), ".flac") {
+			flacPaths = append(flacPaths, path)
+		}
+	}
+
+	total := len(flacPaths)
+	fmt.Printf("[Wails] Found %d FLAC files to index\n", total)
+
+	go func() {
+		for i, path := range flacPaths {
+			wailsRuntime.EventsEmit(a.ctx, "flac-index-progress", map[string]interface{}{
+				"current": i + 1,
+				"total":   total,
+				"path":    filepath.Base(path),
+			})
+
+			if err := audio.BuildFLACIndex(path); err != nil {
+				fmt.Printf("[Audio] Error indexing %s: %v\n", path, err)
+			}
+		}
+		wailsRuntime.EventsEmit(a.ctx, "flac-index-complete", total)
+		fmt.Println("[Wails] BuildFLACIndexes completed")
+	}()
+}

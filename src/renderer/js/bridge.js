@@ -127,6 +127,12 @@ export const musicApi = {
         }
         return api && api.invoke('delete-playlist', name);
     },
+    buildFLACIndexes: () => {
+        if (isWails) {
+            return window.go.main.App.BuildFLACIndexes();
+        }
+        return api && api.send('build-flac-indexes');
+    },
 
     // --- Event Listeners (On) ---
     onAppInfoResponse: (callback) => api && api.on(CHANNELS.ON.APP_INFO_RESPONSE, callback),

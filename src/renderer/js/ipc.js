@@ -73,6 +73,12 @@ export function initIPC(callbacks) {
     electronAPI.on('scan-complete', (newSongs) => {
         callbacks.onScanComplete?.(newSongs);
     });
+    electronAPI.on('flac-index-progress', (progress) => {
+        callbacks.onFlacIndexProgress?.(progress);
+    });
+    electronAPI.on('flac-index-complete', (total) => {
+        callbacks.onFlacIndexComplete?.(total);
+    });
 
     electronAPI.on('loudness-analysis-result', (result) => {
         const fileName = result.filePath.split(/[/\\]/).pop();
