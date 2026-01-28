@@ -1,14 +1,14 @@
 // src/renderer/js/ui/grid-renderer.js
 
-import { state } from '../state.js';
-import { showAlbum, showArtist, showPlaylist, showSituationPlaylistDetail } from '../navigation.js';
+import { state } from '../core/state.js';
+import { showAlbum, showArtist, showPlaylist, showSituationPlaylistDetail } from '../core/navigation.js';
 import { createAlbumGridItem, createArtistGridItem, createPlaylistGridItem } from './element-factory.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
 import { showContextMenu, resolveArtworkPath } from './utils.js';
-import { showModal } from '../modal.js';
+import { showModal } from './modal.js';
 import { showNotification, hideNotification } from './notification.js';
 import { clearMainContent } from './view-renderer.js'; // clearMainContent は view-renderer からインポート
-import { musicApi } from '../bridge.js';
+import { musicApi } from '../core/bridge.js';
 // ▲▲▲ 追加 ▲▲▲
 
 /**

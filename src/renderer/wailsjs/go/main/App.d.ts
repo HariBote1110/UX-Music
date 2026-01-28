@@ -4,7 +4,7 @@ import {audio} from '../models';
 import {cdrip} from '../models';
 import {mtp} from '../models';
 import {normalize} from '../models';
-import {main} from '../models';
+import {scanner} from '../models';
 
 export function AddAlbumToPlaylist(arg1:Record<string, any>):Promise<Record<string, any>>;
 
@@ -64,6 +64,8 @@ export function GetLoudnessValue(arg1:string):Promise<any>;
 
 export function GetLyrics(arg1:string):Promise<any>;
 
+export function GetMTPDevices():Promise<any>;
+
 export function GetPlaylistDetails(arg1:string):Promise<any>;
 
 export function GetSettings():Promise<any>;
@@ -89,8 +91,6 @@ export function MTPDownloadFiles(arg1:mtp.TransferOptions):Promise<void>;
 export function MTPFetchDeviceInfo():Promise<Record<string, any>>;
 
 export function MTPFetchStorages():Promise<Array<mtp.Storage>>;
-
-export function MTPGetStatus():Promise<Record<string, any>>;
 
 export function MTPGetUntransferredSongs(arg1:Array<any>):Promise<Record<string, any>>;
 
@@ -122,7 +122,7 @@ export function SaveLrcFile(arg1:string,arg2:string):Promise<void>;
 
 export function SaveSettings(arg1:any):Promise<void>;
 
-export function ScanLibrary(arg1:Array<string>):Promise<main.ScanResult>;
+export function ScanLibrary(arg1:Array<string>):Promise<scanner.ScanResult>;
 
 export function SongFinished(arg1:Record<string, any>):Promise<void>;
 

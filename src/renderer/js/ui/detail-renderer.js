@@ -1,8 +1,8 @@
 // src/renderer/js/ui/detail-renderer.js
 
-import { state, elements } from '../state.js';
-import { showAlbum } from '../navigation.js';
-import { playSong } from '../playback-manager.js';
+import { state, elements } from '../core/state.js';
+import { showAlbum } from '../core/navigation.js';
+import { playSong } from '../features/playback-manager.js';
 import { createAlbumGridItem } from './element-factory.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
 import { formatTime, resolveArtworkPath } from './utils.js';
@@ -12,7 +12,7 @@ import {
     initListHeaderResizing
 } from './list-renderer.js';
 import { clearMainContent } from './view-renderer.js';
-import { updateListSpacer } from '../ui.js'; // 追加
+import { updateListSpacer } from './ui.js'; // 追加
 const electronAPI = window.electronAPI;
 
 // モジュールスコープでスクロール位置を記憶

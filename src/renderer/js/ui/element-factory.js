@@ -1,6 +1,6 @@
 // src/renderer/js/ui/element-factory.js
 import { formatTime, checkTextOverflow, resolveArtworkPath, formatSongTitle } from './utils.js';
-import { state } from '../state.js';
+import { state } from '../core/state.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
 
 export function createSongItem(song, index, songList, options = {}) {

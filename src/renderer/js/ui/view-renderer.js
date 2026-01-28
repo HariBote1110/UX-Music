@@ -1,5 +1,4 @@
-// src/renderer/js/ui/view-renderer.js
-import { state, elements } from '../state.js';
+import { state, elements } from '../core/state.js';
 // ▼▼▼ 削除 (detail-renderer.js が担当) ▼▼▼
 // import { showAlbum, showArtist } from '../navigation.js';
 // import { playSong } from '../playback-manager.js';
@@ -7,7 +6,7 @@ import { state, elements } from '../state.js';
 // import { createPlaylistArtwork } from './playlist-artwork.js';
 // import { formatTime, resolveArtworkPath } from './utils.js';
 // ▲▲▲ 削除 ▲▲▲
-import { setVisualizerTarget, disconnectVisualizerObserver } from '../player.js';
+import { setVisualizerTarget, disconnectVisualizerObserver } from '../features/player.js';
 import {
     createListHeader,
     setupSongListScroller,

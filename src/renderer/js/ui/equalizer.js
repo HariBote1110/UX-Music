@@ -1,6 +1,6 @@
 // src/renderer/js/ui/equalizer.js
-import { state, elements } from '../state.js';
-import { applyEqualizerSettings } from '../audio-graph.js';
+import { state, elements } from '../core/state.js';
+import { applyEqualizerSettings } from '../features/audio-graph.js';
 const electronAPI = window.electronAPI;
 
 // ... (frequencies, presets, saveSettings, applyPreset, applyCurrentSettings は変更なし) ...

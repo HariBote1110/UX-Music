@@ -1,5 +1,5 @@
 const electronAPI = window.electronAPI;
-import { state } from '../state.js';
+import { state } from '../core/state.js';
 // ▲▲▲ 追加 ▲▲▲
 
 /**

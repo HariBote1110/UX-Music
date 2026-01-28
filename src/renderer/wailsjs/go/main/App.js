@@ -118,6 +118,10 @@ export function GetLyrics(arg1) {
   return window['go']['main']['App']['GetLyrics'](arg1);
 }
 
+export function GetMTPDevices() {
+  return window['go']['main']['App']['GetMTPDevices']();
+}
+
 export function GetPlaylistDetails(arg1) {
   return window['go']['main']['App']['GetPlaylistDetails'](arg1);
 }
@@ -168,10 +172,6 @@ export function MTPFetchDeviceInfo() {
 
 export function MTPFetchStorages() {
   return window['go']['main']['App']['MTPFetchStorages']();
-}
-
-export function MTPGetStatus() {
-  return window['go']['main']['App']['MTPGetStatus']();
 }
 
 export function MTPGetUntransferredSongs(arg1) {

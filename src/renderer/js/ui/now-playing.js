@@ -1,7 +1,7 @@
 // src/renderer/js/ui/now-playing.js
 
-import { state, elements } from '../state.js';
-import { setEqualizerColorFromArtwork } from '../player.js';
+import { state, elements } from '../core/state.js';
+import { setEqualizerColorFromArtwork } from '../features/player.js';
 import { resolveArtworkPath, formatSongTitle } from './utils.js';
 const electronAPI = window.electronAPI;
 

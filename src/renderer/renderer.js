@@ -1,25 +1,25 @@
 // src/renderer/renderer.js
-import './js/env-setup.js';
-import { state, elements, initElements } from './js/state.js';
-import { initEventListeners } from './js/init-listeners.js';
-import { initUI } from './js/ui.js';
-import { initSettings } from './js/init-settings.js';
-import { initNavigation, showView } from './js/navigation.js';
-import { initPlayer } from './js/player.js';
-import { updateAudioDevices, updatePlayCountDisplay, addSongsToLibrary } from './js/ui-manager.js';
-import { restoreSavedSinkId } from './js/audio-graph.js';
-import { loadAllComponents } from './js/component-loader.js';
-import { initIPC } from './js/ipc.js';
-import { initModal } from './js/modal.js';
-import { initDebugCommands } from './js/debug-commands.js';
-import { initNormalizeView } from './js/normalize-view.js';
+import './js/core/env-setup.js';
+import { state, elements, initElements } from './js/core/state.js';
+import { initEventListeners } from './js/core/init-listeners.js';
+import { initUI } from './js/ui/ui.js';
+import { initSettings } from './js/utils/init-settings.js';
+import { initNavigation, showView } from './js/core/navigation.js';
+import { initPlayer } from './js/features/player.js';
+import { updateAudioDevices, updatePlayCountDisplay, addSongsToLibrary } from './js/ui/ui-manager.js';
+import { restoreSavedSinkId } from './js/features/audio-graph.js';
+import { loadAllComponents } from './js/ui/component-loader.js';
+import { initIPC } from './js/core/ipc.js';
+import { initModal } from './js/ui/modal.js';
+import { initDebugCommands } from './js/utils/debug-commands.js';
+import { initNormalizeView } from './js/features/normalize-view.js';
 import { initEqualizer } from './js/ui/equalizer.js';
-import { initQuiz } from './js/quiz.js';
+import { initQuiz } from './js/features/quiz.js';
 // ▼▼▼ 修正: playNextSong, playPrevSong を適切にインポート ▼▼▼
-import { playNextSong, playPrevSong } from './js/playback-manager.js';
-import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
-import { musicApi } from './js/bridge.js';
-import { checkWails } from './js/wails-check.js';
+import { playNextSong, playPrevSong } from './js/features/playback-manager.js';
+import { initLazyLoader, observeNewImages } from './js/utils/lazy-loader.js';
+import { musicApi } from './js/core/bridge.js';
+import { checkWails } from './js/core/wails-check.js';
 
 window.onerror = function (msg, url, line, col, error) {
     console.error(`[Global Error] ${msg} at ${url}:${line}:${col}`, error);

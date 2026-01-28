@@ -1,9 +1,9 @@
 // src/renderer/js/ui/list-renderer.js
 
-import { state, elements } from '../state.js';
-import { playSong } from '../playback-manager.js';
-import { setVisualizerTarget } from '../player.js';
-import { VirtualScroller } from '../virtual-scroller.js';
+import { state, elements } from '../core/state.js';
+import { playSong } from '../features/playback-manager.js';
+import { setVisualizerTarget } from '../features/player.js';
+import { VirtualScroller } from './virtual-scroller.js';
 import { createSongItem } from './element-factory.js';
 import { initColumnResizing } from './column-resizer.js';
 import { showContextMenu } from './utils.js';
