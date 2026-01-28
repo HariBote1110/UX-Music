@@ -17,6 +17,8 @@ import (
 	"time"
 	"unsafe"
 
+	"ux-music-sidecar/internal/config"
+
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 	"github.com/gordonklaus/portaudio"
@@ -26,6 +28,15 @@ import (
 	"github.com/mewkiz/flac/meta"
 	"github.com/mjibson/go-dsp/fft"
 )
+
+/*
+#cgo CFLAGS: -x objective-c
+#cgo LDFLAGS: -framework CoreML -framework Foundation
+#include "coreml_wrapper.h"
+#include <stdlib.h>
+#include <stddef.h>
+*/
+import "C"
 
 // Device represents an audio output device
 type Device struct {
@@ -78,6 +89,10 @@ type Player struct {
 	// Callback for events
 	onFinished func()
 	onProgress func(position, duration float64)
+
+	// Upsampling (Apple Silicon ANE)
+	upsampler    *C.CoreMLUpsampler
+	upsamplingOn atomic.Bool
 }
 
 // Decoder interface for different audio formats
@@ -101,6 +116,19 @@ func NewPlayer() (*Player, error) {
 
 	// Initialize FFT
 	p.initFFT(2048)
+
+	// Initialize Core ML Upsampler if on Apple Silicon (optional/manual path for now)
+	userDataPath := config.GetUserDataPath()
+	modelPath := filepath.Join(userDataPath, "Models", "Upsampler.mlmodelc")
+	if _, err := os.Stat(modelPath); err == nil {
+		cModelPath := C.CString(modelPath)
+		defer C.free(unsafe.Pointer(cModelPath))
+		p.upsampler = C.coreml_upsampler_create(cModelPath)
+		if p.upsampler != nil {
+			p.upsamplingOn.Store(true)
+			fmt.Println("[Audio] Core ML ANE Upsampler initialized")
+		}
+	}
 
 	// Get available devices
 	if err := p.refreshDevices(); err != nil {
@@ -177,6 +205,11 @@ func (p *Player) Close() error {
 	}
 	if p.file != nil {
 		p.file.Close()
+	}
+
+	if p.upsampler != nil {
+		C.coreml_upsampler_destroy(p.upsampler)
+		p.upsampler = nil
 	}
 
 	return portaudio.Terminate()
@@ -408,20 +441,40 @@ func (p *Player) decoderLoop() {
 
 		n, err := decoder.Read(readBuf)
 		if n > 0 {
-			// Convert int16 to float32 and write to ring buffer
+			// Convert int16 to float32
 			samples := n / 2
-			writePos := p.ringWritePos.Load()
-
+			input := make([]float32, samples)
 			for i := 0; i < samples; i++ {
 				sample := int16(readBuf[i*2]) | int16(readBuf[i*2+1])<<8
-				floatSample := float32(sample) / 32768.0
-
-				idx := (writePos + int64(i)) % int64(p.ringBufSize)
-				p.ringBuf[idx] = floatSample
+				input[i] = float32(sample) / 32768.0
 			}
 
-			p.ringWritePos.Store((writePos + int64(samples)) % int64(p.ringBufSize))
-			p.ringAvailable.Add(int64(samples))
+			// Core ML Upsampling / BWE
+			output := input
+			if p.upsamplingOn.Load() && p.upsampler != nil {
+				outBuf := make([]float32, samples)
+				var outSize C.size_t
+				success := C.coreml_upsampler_process(
+					p.upsampler,
+					(*C.float)(&input[0]),
+					C.size_t(samples),
+					(*C.float)(&outBuf[0]),
+					&outSize,
+				)
+				if bool(success) {
+					output = outBuf[:int(outSize)]
+				}
+			}
+
+			// Write to ring buffer
+			writePos := p.ringWritePos.Load()
+			for i, val := range output {
+				idx := (writePos + int64(i)) % int64(p.ringBufSize)
+				p.ringBuf[idx] = val
+			}
+
+			p.ringWritePos.Store((writePos + int64(len(output))) % int64(p.ringBufSize))
+			p.ringAvailable.Add(int64(len(output)))
 		}
 
 		if err == io.EOF || n == 0 {
