@@ -159,6 +159,9 @@ async function initApp() {
                 notification.classList.add('visible');
                 setTimeout(() => notification.classList.remove('visible'), 3000);
             }
+        } else if (window.go) {
+            // In Wails mode, refresh from persisted library to recover from stale in-memory state.
+            musicApi.loadLibrary();
         }
     });
     // ▲▲▲ 追加ここまで ▲▲▲
@@ -188,7 +191,7 @@ async function initApp() {
             }
         }
 
-        if (settings.libraryPath) {
+        if (window.go || settings.libraryPath) {
             musicApi.loadLibrary();
         } else {
             const loadingOverlay = document.getElementById('loading-overlay');

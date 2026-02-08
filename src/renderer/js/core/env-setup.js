@@ -16,6 +16,8 @@ window.electronAPI = window.electronAPI || {
                 window.go.main.App.GetSettings?.().then(settings => {
                     if (window.runtime) window.runtime.EventsEmit('settings-loaded', settings);
                 });
+            } else if (channel === 'save-settings') {
+                window.go.main.App.SaveSettings?.(args[0] || {});
             } else if (channel === 'cd-start-rip') {
                 window.go.main.App.CDStartRip?.(args[0]);
             }

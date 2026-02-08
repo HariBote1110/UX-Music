@@ -9,13 +9,16 @@ import (
 	"math"
 	"math/cmplx"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
+	"ux-music-sidecar/internal/config"
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
@@ -312,6 +315,14 @@ func (p *Player) Play(filePath string) error {
 		}
 		p.decoder = dec
 		p.file = nil // FLAC decoder manages the file now
+	case ".m4a", ".mp4", ".aac", ".ogg":
+		file.Close()
+		p.file = nil
+		dec, err := newFFmpegDecoder(filePath)
+		if err != nil {
+			return err
+		}
+		p.decoder = dec
 	default:
 		file.Close()
 		return fmt.Errorf("unsupported format: %s", ext)
@@ -810,19 +821,24 @@ func newWAVDecoder(r io.ReadSeeker) (*wavDecoder, error) {
 	}
 
 	format := dec.Format()
-	bytesPerSample := int(dec.BitDepth) / 8
+	bytesPerSample := (int(dec.BitDepth) + 7) / 8
 	if bytesPerSample == 0 {
 		bytesPerSample = 2 // Default to 16-bit
 	}
 
 	pcmLen := dec.PCMLen()
+	bytesPerFrame := int64(bytesPerSample * format.NumChannels)
+	length := int64(0)
+	if bytesPerFrame > 0 {
+		length = int64(pcmLen) / bytesPerFrame
+	}
 
 	return &wavDecoder{
 		decoder:       dec,
 		sampleRate:    int(format.SampleRate),
 		channels:      int(format.NumChannels),
 		bitsPerSample: int(dec.BitDepth),
-		length:        int64(pcmLen) / int64(format.NumChannels) / int64(bytesPerSample),
+		length:        length,
 		buffer:        &audio.IntBuffer{Data: make([]int, 4096)},
 	}, nil
 }
@@ -839,13 +855,46 @@ func (d *wavDecoder) Read(p []byte) (int, error) {
 	// Convert int samples to bytes
 	bytesWritten := 0
 	for i := 0; i < n && bytesWritten+1 < len(p); i++ {
-		sample := int16(d.buffer.Data[i])
+		sample := wavSampleToInt16(d.buffer.Data[i], d.bitsPerSample)
 		p[bytesWritten] = byte(sample)
 		p[bytesWritten+1] = byte(sample >> 8)
 		bytesWritten += 2
 	}
 
 	return bytesWritten, nil
+}
+
+func wavSampleToInt16(sample int, bitDepth int) int16 {
+	if bitDepth <= 0 {
+		return int16(clamp(sample, -32768, 32767))
+	}
+
+	switch {
+	case bitDepth == 8:
+		// WAV 8-bit PCM is unsigned (0..255). Center and scale to int16 range.
+		scaled := (sample - 128) << 8
+		return int16(clamp(scaled, -32768, 32767))
+	case bitDepth < 16:
+		shift := 16 - bitDepth
+		scaled := sample << shift
+		return int16(clamp(scaled, -32768, 32767))
+	case bitDepth > 16:
+		shift := bitDepth - 16
+		scaled := sample >> shift
+		return int16(clamp(scaled, -32768, 32767))
+	default:
+		return int16(clamp(sample, -32768, 32767))
+	}
+}
+
+func clamp(v, minV, maxV int) int {
+	if v < minV {
+		return minV
+	}
+	if v > maxV {
+		return maxV
+	}
+	return v
 }
 
 func (d *wavDecoder) SampleRate() int {
@@ -879,6 +928,170 @@ func (d *wavDecoder) Seek(sample int64) error {
 }
 
 func (d *wavDecoder) Close() error {
+	return nil
+}
+
+// ============ FFmpeg Decoder (M4A/MP4/AAC/OGG) ============
+
+type ffmpegDecoder struct {
+	filePath   string
+	sampleRate int
+	channels   int
+	length     int64
+	cmd        *exec.Cmd
+	stdout     io.ReadCloser
+}
+
+func newFFmpegDecoder(filePath string) (*ffmpegDecoder, error) {
+	const outputSampleRate = 44100
+	const outputChannels = 2
+
+	d := &ffmpegDecoder{
+		filePath:   filePath,
+		sampleRate: outputSampleRate,
+		channels:   outputChannels,
+	}
+
+	if durationSec, ok := probeDurationSeconds(filePath); ok && durationSec > 0 {
+		d.length = int64(durationSec * float64(outputSampleRate))
+	}
+
+	if err := d.startAt(0); err != nil {
+		return nil, err
+	}
+
+	return d, nil
+}
+
+func resolveCommandPath(name string) (string, error) {
+	if name == "ffmpeg" && config.FFmpegPath != "" {
+		return config.FFmpegPath, nil
+	}
+	if name == "ffprobe" && config.FFprobePath != "" {
+		return config.FFprobePath, nil
+	}
+
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return "", fmt.Errorf("%s not found in PATH", name)
+	}
+	return path, nil
+}
+
+func probeDurationSeconds(filePath string) (float64, bool) {
+	ffprobePath, err := resolveCommandPath("ffprobe")
+	if err != nil {
+		return 0, false
+	}
+
+	cmd := exec.Command(
+		ffprobePath,
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		filePath,
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, false
+	}
+
+	s := strings.TrimSpace(string(out))
+	if s == "" || s == "N/A" {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil || v <= 0 {
+		return 0, false
+	}
+	return v, true
+}
+
+func (d *ffmpegDecoder) startAt(seconds float64) error {
+	ffmpegPath, err := resolveCommandPath("ffmpeg")
+	if err != nil {
+		return err
+	}
+
+	args := []string{"-hide_banner", "-loglevel", "error"}
+	if seconds > 0 {
+		args = append(args, "-ss", fmt.Sprintf("%.3f", seconds))
+	}
+	args = append(args,
+		"-i", d.filePath,
+		"-vn",
+		"-f", "s16le",
+		"-acodec", "pcm_s16le",
+		"-ac", strconv.Itoa(d.channels),
+		"-ar", strconv.Itoa(d.sampleRate),
+		"-",
+	)
+
+	cmd := exec.Command(ffmpegPath, args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to open ffmpeg stdout: %w", err)
+	}
+	cmd.Stderr = io.Discard
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start ffmpeg: %w", err)
+	}
+
+	d.cmd = cmd
+	d.stdout = stdout
+	return nil
+}
+
+func (d *ffmpegDecoder) stopProcess() {
+	if d.stdout != nil {
+		_ = d.stdout.Close()
+		d.stdout = nil
+	}
+	if d.cmd != nil {
+		if d.cmd.Process != nil {
+			_ = d.cmd.Process.Kill()
+		}
+		_ = d.cmd.Wait()
+		d.cmd = nil
+	}
+}
+
+func (d *ffmpegDecoder) Read(p []byte) (int, error) {
+	if d.stdout == nil {
+		return 0, io.EOF
+	}
+
+	n, err := d.stdout.Read(p)
+	if err == io.EOF {
+		d.stopProcess()
+	}
+	return n, err
+}
+
+func (d *ffmpegDecoder) SampleRate() int {
+	return d.sampleRate
+}
+
+func (d *ffmpegDecoder) Channels() int {
+	return d.channels
+}
+
+func (d *ffmpegDecoder) Length() int64 {
+	return d.length
+}
+
+func (d *ffmpegDecoder) Seek(sample int64) error {
+	if sample < 0 {
+		sample = 0
+	}
+	seconds := float64(sample) / float64(d.sampleRate)
+	d.stopProcess()
+	return d.startAt(seconds)
+}
+
+func (d *ffmpegDecoder) Close() error {
+	d.stopProcess()
 	return nil
 }
 

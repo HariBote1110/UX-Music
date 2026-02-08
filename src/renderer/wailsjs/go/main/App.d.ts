@@ -54,6 +54,8 @@ export function CreatePlaylist(arg1:string):Promise<void>;
 
 export function DeletePlaylist(arg1:string):Promise<void>;
 
+export function DeleteSongs(arg1:Array<string>,arg2:boolean):Promise<Array<string>>;
+
 export function GetAllPlaylists():Promise<Array<string>>;
 
 export function GetArtworkAsDataURL(arg1:string):Promise<string>;

@@ -229,21 +229,20 @@ function groupLibraryByAlbum(isMigration = false) {
 
     localSongs.forEach(song => {
         const albumTitle = song.album || 'Unknown Album';
+        const albumArtist = song.albumartist || song.artist || 'Unknown Artist';
+        const groupKey = `${albumTitle}---${albumArtist}`;
 
-        if (!tempAlbumGroups.has(albumTitle)) {
-            tempAlbumGroups.set(albumTitle, {
+        if (!tempAlbumGroups.has(groupKey)) {
+            tempAlbumGroups.set(groupKey, {
+                title: albumTitle,
+                artist: albumArtist,
                 songs: [],
-                artistSet: new Set(),
                 artwork: null
             });
         }
 
-        const albumGroup = tempAlbumGroups.get(albumTitle);
+        const albumGroup = tempAlbumGroups.get(groupKey);
         albumGroup.songs.push(song);
-        const artist = song.albumartist || song.artist;
-        if (artist) {
-            albumGroup.artistSet.add(artist);
-        }
 
         if (albumTitle !== 'Unknown Album' && !albumGroup.artwork && song.artwork) {
             albumGroup.artwork = song.artwork;
@@ -253,15 +252,10 @@ function groupLibraryByAlbum(isMigration = false) {
     const oldAlbums = new Map(state.albums);
     state.albums.clear();
 
-    for (const [albumTitle, albumData] of tempAlbumGroups.entries()) {
-        let representativeArtist;
-        if (albumData.artistSet.size === 1) {
-            representativeArtist = [...albumData.artistSet][0];
-        } else {
-            representativeArtist = 'Unknown Artist';
-        }
-
-        const albumKey = `${albumTitle}---${representativeArtist}`;
+    for (const [groupKey, albumData] of tempAlbumGroups.entries()) {
+        const albumTitle = albumData.title;
+        const representativeArtist = albumData.artist;
+        const albumKey = groupKey;
         albumData.songs.forEach(song => {
             song.albumKey = albumKey;
         });
@@ -269,7 +263,7 @@ function groupLibraryByAlbum(isMigration = false) {
         let finalArtwork = albumData.artwork;
         if (!finalArtwork) {
             for (const oldAlbum of oldAlbums.values()) {
-                if (oldAlbum.title === albumTitle && oldAlbum.artwork) {
+                if (oldAlbum.title === albumTitle && oldAlbum.artist === representativeArtist && oldAlbum.artwork) {
                     finalArtwork = oldAlbum.artwork;
                     break;
                 }
@@ -311,6 +305,11 @@ function groupLibraryByArtist() {
             songs: songs
         });
     }
+}
+
+export function regroupLibraryCollections() {
+    groupLibraryByAlbum(false);
+    groupLibraryByArtist();
 }
 
 export async function updateAudioDevices() {

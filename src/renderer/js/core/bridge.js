@@ -40,7 +40,12 @@ export const musicApi = {
         console.log('[Bridge] startScanPaths called', paths);
         api.send(CHANNELS.SEND.START_SCAN_PATHS, paths);
     },
-    handleLyricsDrop: (paths) => api && api.send(CHANNELS.SEND.HANDLE_LYRICS_DROP, paths),
+    handleLyricsDrop: (paths) => {
+        if (isWails) {
+            return window.go.main.App.HandleLyricsDrop(paths);
+        }
+        return api && api.send(CHANNELS.SEND.HANDLE_LYRICS_DROP, paths);
+    },
     requestInitialPlayCounts: () => {
         if (isWails) {
             return window.go.main.App.LoadPlayCounts();

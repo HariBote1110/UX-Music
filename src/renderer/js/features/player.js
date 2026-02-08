@@ -44,6 +44,8 @@ let goState = {
     isPaused: false
 };
 let pollingInterval = null;
+let goPollInFlight = false;
+let lastSeekAtMs = 0;
 
 let savedCallbacks = {
     onSongEnded: () => { },
@@ -92,6 +94,7 @@ export async function seek(time) {
 
     if (isWails) {
         await window.go.main.App.AudioSeek(seekTime);
+        lastSeekAtMs = Date.now();
         goState.currentTime = seekTime; // 即時反映
         updateSeekUI(seekTime);
     } else if (localPlayer && !isNaN(time)) {
@@ -158,8 +161,10 @@ function startGoStatePolling() {
     if (pollingInterval) clearInterval(pollingInterval);
 
     pollingInterval = setInterval(async () => {
+        if (goPollInFlight) return;
         if (!window.go || !window.go.main || !window.go.main.App) return;
 
+        goPollInFlight = true;
         try {
             const [pos, dur, playing, paused] = await Promise.all([
                 window.go.main.App.AudioGetPosition(),
@@ -169,15 +174,23 @@ function startGoStatePolling() {
             ]);
 
             const wasPlaying = goState.isPlaying;
+            const prevPos = goState.currentTime;
+            const recentSeek = Date.now() - lastSeekAtMs < 1500;
+            let nextPos = pos;
 
-            goState.currentTime = pos;
+            // Guard against out-of-order async poll results that momentarily rewind time.
+            if (playing && wasPlaying && !recentSeek && Number.isFinite(prevPos) && pos+0.15 < prevPos) {
+                nextPos = prevPos;
+            }
+
+            goState.currentTime = nextPos;
             goState.duration = dur;
             goState.isPlaying = playing;
             goState.isPaused = paused;
 
             if (playing) {
-                updateSyncedLyrics(pos);
-                updateSeekUI(pos); // UI側のシークバー更新
+                updateSyncedLyrics(nextPos);
+                updateSeekUI(nextPos); // UI側のシークバー更新
 
                 if (!wasPlaying) {
                     // 再生開始時イベント相当
@@ -202,6 +215,8 @@ function startGoStatePolling() {
 
         } catch (e) {
             // エラー時は何もしない
+        } finally {
+            goPollInFlight = false;
         }
     }, 200);
 }

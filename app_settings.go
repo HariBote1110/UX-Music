@@ -24,7 +24,37 @@ func (a *App) GetSettings() (interface{}, error) {
 
 // SaveSettings saves the application settings
 func (a *App) SaveSettings(settings interface{}) error {
-	return store.Instance.Save("settings", settings)
+	incoming, ok := settings.(map[string]interface{})
+	if !ok {
+		// Fallback for non-object payloads
+		return store.Instance.Save("settings", settings)
+	}
+
+	currentRaw, err := store.Instance.Load("settings")
+	if err != nil {
+		return err
+	}
+
+	current := map[string]interface{}{}
+	if existing, ok := currentRaw.(map[string]interface{}); ok {
+		current = existing
+	}
+
+	merged := mergeSettings(current, incoming)
+	return store.Instance.Save("settings", merged)
+}
+
+func mergeSettings(base, patch map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(base)+len(patch))
+	for k, v := range base {
+		out[k] = v
+	}
+
+	for k, v := range patch {
+		out[k] = v
+	}
+
+	return out
 }
 
 // GetArtworksDir returns the path to the artworks directory

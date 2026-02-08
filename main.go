@@ -81,6 +81,10 @@ func main() {
 		Debug: options.Debug{
 			OpenInspectorOnStartup: true,
 		},
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop:   true,
+			DisableWebViewDrop: true,
+		},
 		Mac: &mac.Options{
 			TitleBar: &mac.TitleBar{
 				TitlebarAppearsTransparent: true,

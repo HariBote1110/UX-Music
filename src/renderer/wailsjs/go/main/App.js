@@ -98,6 +98,10 @@ export function DeletePlaylist(arg1) {
   return window['go']['main']['App']['DeletePlaylist'](arg1);
 }
 
+export function DeleteSongs(arg1, arg2) {
+  return window['go']['main']['App']['DeleteSongs'](arg1, arg2);
+}
+
 export function GetAllPlaylists() {
   return window['go']['main']['App']['GetAllPlaylists']();
 }

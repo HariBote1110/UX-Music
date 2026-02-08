@@ -7,8 +7,8 @@ import { VirtualScroller } from './virtual-scroller.js';
 import { createSongItem } from './element-factory.js';
 import { initColumnResizing } from './column-resizer.js';
 import { showContextMenu } from './utils.js';
+import { showModalAdvanced } from './modal.js';
 const electronAPI = window.electronAPI;
-const isWails = window.go !== undefined;
 
 /**
  * 曲リストの共通ヘッダーHTMLを作成する
@@ -43,6 +43,74 @@ function handleSongItemClick(e, song, index, songList, songItem) {
     } else {
         playSong(index, songList);
     }
+}
+
+function deleteSongsFromLibrary(songs) {
+    console.log('[DeleteSongs] context action invoked', songs);
+
+    const libraryById = new Map((state.library || []).map(song => [song.id, song]));
+    const paths = (songs || [])
+        .map((s) => {
+            if (s?.path) return s.path;
+            const resolved = s?.id ? libraryById.get(s.id) : null;
+            return resolved?.path || '';
+        })
+        .filter(Boolean);
+    console.log('[DeleteSongs] resolved paths:', paths);
+    if (paths.length === 0) {
+        console.warn('[DeleteSongs] No valid file paths found in selected songs');
+        return;
+    }
+
+    const targetCount = paths.length;
+    const message = targetCount === 1
+        ? '選択した1曲をライブラリから削除します。ファイルも削除されます。'
+        : `選択した${targetCount}曲をライブラリから削除します。ファイルも削除されます。`;
+
+    showModalAdvanced({
+        title: '曲を削除',
+        message,
+        requireInput: false,
+        okText: '削除',
+        cancelText: 'キャンセル',
+        onOk: () => {
+            if (!window.go?.main?.App?.DeleteSongs) {
+                console.error('[DeleteSongs] App.DeleteSongs is not available on window.go.main.App');
+                return;
+            }
+
+            console.log('[DeleteSongs] invoking backend DeleteSongs');
+            let pendingWarnTimer = null;
+            let deletePromise;
+            try {
+                deletePromise = window.go.main.App.DeleteSongs(paths, true);
+            } catch (err) {
+                console.error('[DeleteSongs] invocation threw:', err);
+                return;
+            }
+            pendingWarnTimer = setTimeout(() => {
+                console.warn('[DeleteSongs] backend call is still pending after 5s');
+            }, 5000);
+
+            Promise.resolve(deletePromise)
+                .then((deletedPaths) => {
+                    clearTimeout(pendingWarnTimer);
+                    console.log('[DeleteSongs] backend result:', deletedPaths);
+                    const normalizedDeleted = Array.isArray(deletedPaths) ? deletedPaths : paths;
+                    if (window.runtime?.EventsEmit && normalizedDeleted.length > 0) {
+                        window.runtime.EventsEmit('songs-deleted', normalizedDeleted);
+                    }
+                    if (window.go?.main?.App?.LoadLibrary) {
+                        // Always refresh from persisted library in Wails to avoid stale in-memory state.
+                        window.go.main.App.LoadLibrary();
+                    }
+                })
+                .catch((err) => {
+                    clearTimeout(pendingWarnTimer);
+                    console.error('[DeleteSongs] failed:', err);
+                });
+        }
+    });
 }
 
 /**
@@ -95,12 +163,16 @@ export function setupSongListScroller(listElement, songList, options = {}) {
                 songsForMenu = songList.filter(s => state.selectedSongIds.has(s.id));
             }
 
-            if (isWails) {
+            if (typeof window.go !== 'undefined') {
                 // Wails 環境: JavaScript ベースのコンテキストメニュー
                 const menuItems = [
                     {
                         label: '再生',
                         action: () => playSong(index, songList)
+                    },
+                    {
+                        label: songsForMenu.length > 1 ? `ライブラリから削除 (${songsForMenu.length}曲)` : 'ライブラリから削除',
+                        action: () => deleteSongsFromLibrary(songsForMenu)
                     }
                 ];
 

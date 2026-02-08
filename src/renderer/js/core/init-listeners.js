@@ -97,6 +97,71 @@ export function initEventListeners() {
         });
     }
 
+    const deleteSelectedSongs = async () => {
+        if (state.selectedSongIds.size === 0) return;
+
+        const selectedPaths = state.library
+            .filter(song => state.selectedSongIds.has(song.id))
+            .map(song => song.path)
+            .filter(Boolean);
+
+        if (selectedPaths.length === 0) return;
+
+        const targetCount = selectedPaths.length;
+        const message = targetCount === 1
+            ? '選択した1曲をライブラリから削除しますか？\n（ファイルも削除されます）'
+            : `選択した${targetCount}曲をライブラリから削除しますか？\n（ファイルも削除されます）`;
+
+        if (!window.confirm(message)) return;
+
+        if (window.go?.main?.App?.DeleteSongs) {
+            window.go.main.App.DeleteSongs(selectedPaths, true).catch((err) => {
+                console.error('[DeleteSongs] failed:', err);
+            });
+        }
+    };
+
+    const processDroppedPaths = (allPaths) => {
+        if (!Array.isArray(allPaths) || allPaths.length === 0) return;
+
+        const normalized = allPaths
+            .filter(p => typeof p === 'string' && p.trim() !== '')
+            .map(p => p.trim());
+        if (normalized.length === 0) return;
+
+        console.log('[DnD] Dropped paths:', normalized);
+
+        const lyricsExtensions = ['.lrc', '.txt'];
+        const lyricsPaths = normalized.filter(p => {
+            const lastDot = p.lastIndexOf('.');
+            const ext = lastDot !== -1 ? p.substring(lastDot).toLowerCase() : '';
+            return lyricsExtensions.includes(ext);
+        });
+        const musicPaths = normalized.filter(p => {
+            const lastDot = p.lastIndexOf('.');
+            const ext = lastDot !== -1 ? p.substring(lastDot).toLowerCase() : '';
+            return !lyricsExtensions.includes(ext);
+        });
+
+        console.log('[DnD] Music paths to process:', musicPaths);
+        if (musicPaths.length > 0) {
+            console.log('[DnD] Calling musicApi.startScanPaths...');
+            musicApi.startScanPaths(musicPaths);
+        }
+        if (lyricsPaths.length > 0) {
+            musicApi.handleLyricsDrop(lyricsPaths);
+        }
+    };
+
+    const hasWailsFileDrop = !!(window.runtime && typeof window.runtime.OnFileDrop === 'function');
+    if (hasWailsFileDrop) {
+        // Wails provides native path strings directly. This is more reliable than File.path.
+        window.runtime.OnFileDrop((x, y, paths) => {
+            console.log('[DnD][Wails] OnFileDrop:', { x, y, count: Array.isArray(paths) ? paths.length : 0 });
+            processDroppedPaths(paths || []);
+        }, false);
+    }
+
     if (elements.dropZone) {
         elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
         elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
@@ -105,33 +170,13 @@ export function initEventListeners() {
             e.stopPropagation();
             elements.dropZone.classList.remove('drag-over');
             console.log('[DnD] Drop event fired');
-            const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
-            console.log('[DnD] Dropped paths:', allPaths);
+            // In Wails, use OnFileDrop callback path list to avoid duplicate handling.
+            if (hasWailsFileDrop) return;
 
-            if (allPaths.length === 0) return;
-            const lyricsExtensions = ['.lrc', '.txt'];
-            const lyricsPaths = allPaths.filter(p => {
-                const lastDot = p.lastIndexOf('.');
-                const ext = lastDot !== -1 ? p.substring(lastDot).toLowerCase() : '';
-                return lyricsExtensions.includes(ext);
-            });
-            const musicPaths = allPaths.filter(p => {
-                const lastDot = p.lastIndexOf('.');
-                const ext = lastDot !== -1 ? p.substring(lastDot).toLowerCase() : '';
-                return !lyricsExtensions.includes(ext);
-            });
-
-            console.log('[DnD] Music paths to process:', musicPaths);
-
-            if (musicPaths.length > 0) {
-                // electronAPI.send('start-scan-paths', musicPaths);
-                console.log('[DnD] Calling musicApi.startScanPaths...');
-                musicApi.startScanPaths(musicPaths);
-            }
-            if (lyricsPaths.length > 0) {
-                // electronAPI.send('handle-lyrics-drop', lyricsPaths);
-                musicApi.handleLyricsDrop(lyricsPaths);
-            }
+            const allPaths = Array.from(e.dataTransfer.files || [])
+                .map(f => f.path)
+                .filter(Boolean);
+            processDroppedPaths(allPaths);
         });
     }
 
@@ -247,6 +292,9 @@ export function initEventListeners() {
                 const playlistName = state.currentDetailView.identifier;
                 electronAPI.invoke('add-songs-to-playlist', { playlistName, songIds: state.copiedSongIds });
             }
+        } else if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedSongIds.size > 0) {
+            e.preventDefault();
+            deleteSelectedSongs();
         }
     });
 
