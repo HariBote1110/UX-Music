@@ -536,3 +536,16 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6r` に更新。
+
+### 上フェードの緩和と上固定位置の下方オフセット調整
+
+- **表示基準位置の調整**:
+    - `src/renderer/js/features/lyrics-manager.js`: 上固定アンカー値 `LYRICS_TOP_ANCHOR_OFFSET_PX` を増加し、表示行がやや下に来るよう調整。
+- **フェード量の調整**:
+    - `src/renderer/styles/views.css`: 歌詞ビュー上端のマスク勾配を緩和し、上側フェードアウトの強さを低減。
+- **改行時の行内行間対策**:
+    - `src/renderer/styles/views.css`: `#lyrics-view p` に個別 `line-height` を設定し、長い歌詞が折り返した際の行内間隔が過大になる問題を修正。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6s` に更新。
