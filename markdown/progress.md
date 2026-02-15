@@ -305,3 +305,15 @@
     - `node --check src/renderer/js/ui/ui.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6b` に更新。
+
+### リスト表示のフッター背面スクロール仕様を復元
+
+- **仕様再調整**:
+    - 曲リスト等は「フッター背面までスクロールできる」挙動が正であるため、通常ビュー全体への下パディング付与を取り消し。
+- **修正内容**:
+    - `src/renderer/styles/layout.css`: `.main-content .view-container` の `padding-bottom` を `0px` に戻し、リスト側スペーサー方式（`--footer-height` と末尾スペーサー）を優先する構成へ復元。
+    - LRCエディタおよび特殊ビュー側の下余白調整は維持。
+- **検証**:
+    - `node --check src/renderer/js/ui/ui.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6c` に更新。
