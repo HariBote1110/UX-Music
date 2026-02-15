@@ -672,8 +672,8 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     position: absolute;
     top: 0;
     left: 50%;
-    width: fit-content;
-    max-width: min(100%, 26ch);
+    width: max-content;
+    max-width: 100%;
     text-align: inherit;
     margin: 0;
     opacity: 0.35;

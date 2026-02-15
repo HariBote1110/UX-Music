@@ -310,7 +310,7 @@ export function initEventListeners() {
     if (resizer && rightSidebar) {
         const onMouseMove = (e) => {
             const newWidth = window.innerWidth - e.clientX - (resizer.offsetWidth / 2);
-            if (newWidth >= 320 && newWidth <= 760) {
+            if (newWidth >= 240 && newWidth <= 600) {
                 rightSidebar.style.width = `${newWidth}px`;
             }
         };
