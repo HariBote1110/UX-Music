@@ -236,3 +236,20 @@
     - `src/renderer/js/core/init-listeners.js` の選択削除（ショートカット経路）も、実ファイル削除なしに統一。
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5x` に更新。
+
+### ライブラリ末尾曲の再生ハイライト不整合修正
+
+- **ライブラリ曲IDの安定化**:
+    - `internal/scanner/scanner.go`: `Song` に `id` を追加し、スキャン時の既定値として `path` を設定。
+    - `app_scanner.go`: ライブラリへコピー後の保存先パスを `song.id` に反映し、マージ時に `id` を維持するよう修正。
+    - `app_playlist.go`: 既存ライブラリ読込時、`id` が欠落している曲へ `path` を補完して保存する移行処理を追加。
+- **UI のハイライト判定を一意識別子ベースへ修正**:
+    - `src/renderer/js/ui/element-factory.js`: `data-song-id` を `song.id || song.path` で設定。
+    - `src/renderer/js/ui/list-renderer.js`: 再生中判定を `id` フォールバック付きで比較。
+    - `src/renderer/js/ui/ui-manager.js`: `updatePlayingIndicators()` のセレクタを `id || path` ベースに変更し、ライブラリ追加時も欠落IDを補完。
+- **型定義更新**:
+    - `src/renderer/wailsjs/go/models.ts`: `scanner.Song` に `id` を追加。
+- **検証**:
+    - `go test ./...` を実行し、全パッケージで成功（テスト未定義パッケージを除く）。
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5y` に更新。

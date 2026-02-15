@@ -286,6 +286,7 @@ export namespace normalize {
 export namespace scanner {
 	
 	export class Song {
+	    id: string;
 	    path: string;
 	    title: string;
 	    artist: string;
@@ -307,6 +308,7 @@ export namespace scanner {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
 	        this.path = source["path"];
 	        this.title = source["title"];
 	        this.artist = source["artist"];

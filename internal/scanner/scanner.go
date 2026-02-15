@@ -12,6 +12,7 @@ import (
 
 // Song represents the metadata of a music file
 type Song struct {
+	ID          string      `json:"id"`
 	Path        string      `json:"path"`
 	Title       string      `json:"title"`
 	Artist      string      `json:"artist"`
@@ -101,7 +102,7 @@ func walkDirectory(root string, wg *sync.WaitGroup, songsChan chan<- Song, artwo
 func parseFile(path string, info os.FileInfo, artworksDir string) Song {
 	f, err := os.Open(path)
 	if err != nil {
-		return Song{Path: path, Title: filepath.Base(path)}
+		return Song{ID: path, Path: path, Title: filepath.Base(path)}
 	}
 	defer f.Close()
 
@@ -113,6 +114,7 @@ func parseFile(path string, info os.FileInfo, artworksDir string) Song {
 
 	fileType := strings.ToLower(filepath.Ext(path))
 	song := Song{
+		ID:       path,
 		Path:     path,
 		FileSize: size,
 		FileType: fileType,

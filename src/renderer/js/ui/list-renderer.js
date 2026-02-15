@@ -139,7 +139,9 @@ export function setupSongListScroller(listElement, songList, options = {}) {
 
         // ▼▼▼ 修正箇所 ▼▼▼
         const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-        if (currentPlayingSong && currentPlayingSong.id === song.id) {
+        const currentIdentifier = currentPlayingSong?.id || currentPlayingSong?.path;
+        const rowIdentifier = song?.id || song?.path;
+        if (currentPlayingSong && currentIdentifier && rowIdentifier && currentIdentifier === rowIdentifier) {
             songItem.classList.add('playing');
 
             // このアイテムがDOMに挿入された時点でターゲットに設定

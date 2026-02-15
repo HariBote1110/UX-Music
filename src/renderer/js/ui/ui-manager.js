@@ -25,14 +25,15 @@ export function renderCurrentView() {
  */
 export function updatePlayingIndicators() {
     const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-    console.log(`[Debug:UI] updatePlayingIndicators 実行 - SongID: ${currentPlayingSong?.id}`);
+    const playingIdentifier = currentPlayingSong?.id || currentPlayingSong?.path;
+    console.log(`[Debug:UI] updatePlayingIndicators 実行 - SongID: ${playingIdentifier}`);
 
     const oldPlayingItems = document.querySelectorAll('.main-content .song-item.playing');
     oldPlayingItems.forEach(item => item.classList.remove('playing'));
 
-    if (currentPlayingSong) {
+    if (currentPlayingSong && playingIdentifier) {
         try {
-            const safeId = CSS.escape(currentPlayingSong.id);
+            const safeId = CSS.escape(playingIdentifier);
             const selector = `.main-content .song-item[data-song-id="${safeId}"]`;
             const newPlayingItem = document.querySelector(selector);
 
@@ -200,10 +201,19 @@ export function addSongsToLibrary({ songs, albums }) {
     }
 
     if (songs && songs.length > 0) {
+        state.library.forEach(existingSong => {
+            if (!existingSong.id && existingSong.path) {
+                existingSong.id = existingSong.path;
+            }
+        });
+
         const libraryMap = new Map();
         state.library.forEach(song => libraryMap.set(song.path, song));
 
         songs.forEach(newSong => {
+            if (!newSong.id && newSong.path) {
+                newSong.id = newSong.path;
+            }
             if (libraryMap.has(newSong.path)) {
                 const existingSong = libraryMap.get(newSong.path);
                 Object.assign(existingSong, newSong);

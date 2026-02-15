@@ -183,6 +183,7 @@ func importSongsToLibrary(songs []scanner.Song, libraryPath string) []scanner.So
 		}
 
 		song.Path = destPath
+		song.ID = destPath
 		if info, statErr := os.Stat(destPath); statErr == nil {
 			song.FileSize = info.Size()
 		}
@@ -280,6 +281,7 @@ func mergeScannedSong(existing map[string]interface{}, scanned scanner.Song) {
 	currentTitle, _ := existing["title"].(string)
 	preferTitle := currentTitle == "" || currentTitle == baseName
 
+	updateString("id", firstNonEmpty(scanned.ID, scanned.Path), false)
 	updateString("title", scanned.Title, preferTitle)
 	updateString("artist", scanned.Artist, false)
 	updateString("album", scanned.Album, false)
@@ -305,6 +307,15 @@ func mergeScannedSong(existing map[string]interface{}, scanned scanner.Song) {
 			existing["artwork"] = scanned.Artwork
 		}
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // BuildFLACIndexes iterates through the library and pre-generates indexes for all FLAC files

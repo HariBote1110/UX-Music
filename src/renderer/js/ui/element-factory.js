@@ -5,10 +5,11 @@ import { createPlaylistArtwork } from './playlist-artwork.js';
 
 export function createSongItem(song, index, songList, options = {}) {
     const { groupAlbumArt = false } = options;
+    const songIdentifier = song.id || song.path || '';
     const songItem = document.createElement('div');
     songItem.className = 'song-item';
     songItem.dataset.songPath = song.path;
-    songItem.dataset.songId = song.id;
+    songItem.dataset.songId = songIdentifier;
 
     let showArt = true;
     let isGrouped = false;

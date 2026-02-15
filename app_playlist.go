@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 	"ux-music-sidecar/internal/playlist"
 	"ux-music-sidecar/internal/store"
@@ -17,6 +18,27 @@ func (a *App) LoadLibrary() {
 
 	if songs == nil {
 		songs = []interface{}{}
+	}
+
+	// Ensure all songs have stable ids for UI selection/highlight logic.
+	if arr, ok := songs.([]interface{}); ok {
+		migrated := false
+		for _, item := range arr {
+			songMap, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			id, _ := songMap["id"].(string)
+			path, _ := songMap["path"].(string)
+			if strings.TrimSpace(id) == "" && strings.TrimSpace(path) != "" {
+				songMap["id"] = path
+				migrated = true
+			}
+		}
+		if migrated {
+			_ = store.Instance.Save("library", arr)
+		}
+		songs = arr
 	}
 
 	data := map[string]interface{}{
