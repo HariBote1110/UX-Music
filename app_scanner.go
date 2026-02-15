@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -19,7 +21,24 @@ import (
 func (a *App) ScanLibrary(paths []string) scanner.ScanResult {
 	fmt.Printf("[Wails] Scanning library: %v\n", paths)
 	artworksDir := filepath.Join(config.GetUserDataPath(), "Artworks")
+	libraryPath, err := a.getOrPromptLibraryPath()
+	if err != nil {
+		fmt.Printf("[Wails] Failed to prepare library path: %v\n", err)
+		scanResult := scanner.ScanResult{Songs: []scanner.Song{}, Count: 0, Time: 0}
+		wailsRuntime.EventsEmit(a.ctx, "scan-complete", scanResult.Songs)
+		return scanResult
+	}
+	if libraryPath == "" {
+		fmt.Println("[Wails] Library path selection cancelled")
+		scanResult := scanner.ScanResult{Songs: []scanner.Song{}, Count: 0, Time: 0}
+		wailsRuntime.EventsEmit(a.ctx, "scan-complete", scanResult.Songs)
+		return scanResult
+	}
+
 	scanResult := scanner.ScanLibrary(paths, artworksDir)
+	importedSongs := importSongsToLibrary(scanResult.Songs, libraryPath)
+	scanResult.Songs = importedSongs
+	scanResult.Count = len(importedSongs)
 
 	// Merge newly scanned songs into persisted library (dedupe by path).
 	existingRaw, _ := store.Instance.Load("library")
@@ -61,6 +80,171 @@ func (a *App) ScanLibrary(paths []string) scanner.ScanResult {
 	scanResult.Songs = newSongs
 	scanResult.Count = len(newSongs)
 	return scanResult
+}
+
+func loadSettingsMap() map[string]interface{} {
+	settingsRaw, _ := store.Instance.Load("settings")
+	if settings, ok := settingsRaw.(map[string]interface{}); ok {
+		return settings
+	}
+	return map[string]interface{}{}
+}
+
+func (a *App) getOrPromptLibraryPath() (string, error) {
+	settings := loadSettingsMap()
+	libraryPath, _ := settings["libraryPath"].(string)
+	libraryPath = strings.TrimSpace(libraryPath)
+	if libraryPath != "" {
+		return libraryPath, nil
+	}
+
+	selectedPath, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "ライブラリとして使用するフォルダを選択してください",
+	})
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(selectedPath) == "" {
+		return "", nil
+	}
+
+	settings["libraryPath"] = selectedPath
+	if err := store.Instance.Save("settings", settings); err != nil {
+		return "", err
+	}
+	wailsRuntime.EventsEmit(a.ctx, "settings-loaded", settings)
+	return selectedPath, nil
+}
+
+func (a *App) SetLibraryPath() (string, error) {
+	selectedPath, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "ライブラリフォルダを選択してください",
+	})
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(selectedPath) == "" {
+		return "", nil
+	}
+
+	settings := loadSettingsMap()
+	settings["libraryPath"] = selectedPath
+	if err := store.Instance.Save("settings", settings); err != nil {
+		return "", err
+	}
+
+	wailsRuntime.EventsEmit(a.ctx, "settings-loaded", settings)
+	wailsRuntime.EventsEmit(a.ctx, "show-notification", "ライブラリフォルダを設定しました。")
+	return selectedPath, nil
+}
+
+func importSongsToLibrary(songs []scanner.Song, libraryPath string) []scanner.Song {
+	imported := make([]scanner.Song, 0, len(songs))
+	seenDestinations := make(map[string]struct{}, len(songs))
+
+	for _, song := range songs {
+		if song.Path == "" {
+			continue
+		}
+
+		artistDir := sanitiseFileName(song.AlbumArtist)
+		if artistDir == "_" {
+			artistDir = sanitiseFileName(song.Artist)
+		}
+		if artistDir == "_" {
+			artistDir = "Unknown Artist"
+		}
+
+		albumDir := sanitiseFileName(song.Album)
+		if albumDir == "_" {
+			albumDir = "Unknown Album"
+		}
+
+		fileName := sanitiseFileName(filepath.Base(song.Path))
+		destDir := filepath.Join(libraryPath, artistDir, albumDir)
+		destPath := filepath.Join(destDir, fileName)
+
+		if _, exists := seenDestinations[destPath]; exists {
+			continue
+		}
+		seenDestinations[destPath] = struct{}{}
+
+		if !samePath(song.Path, destPath) {
+			if err := os.MkdirAll(destDir, 0755); err != nil {
+				fmt.Printf("[Import] Failed to create directory %s: %v\n", destDir, err)
+				continue
+			}
+			if _, err := os.Stat(destPath); os.IsNotExist(err) {
+				if err := copyFile(song.Path, destPath); err != nil {
+					fmt.Printf("[Import] Failed to copy %s -> %s: %v\n", song.Path, destPath, err)
+					continue
+				}
+			}
+		}
+
+		song.Path = destPath
+		if info, statErr := os.Stat(destPath); statErr == nil {
+			song.FileSize = info.Size()
+		}
+		imported = append(imported, song)
+	}
+
+	return imported
+}
+
+func sanitiseFileName(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return "_"
+	}
+	replacer := strings.NewReplacer(
+		"\\", "_",
+		"/", "_",
+		":", "_",
+		"*", "_",
+		"?", "_",
+		"\"", "_",
+		"<", "_",
+		">", "_",
+		"|", "_",
+	)
+	sanitised := replacer.Replace(name)
+	sanitised = strings.TrimRight(sanitised, ". ")
+	if sanitised == "" {
+		return "_"
+	}
+	return sanitised
+}
+
+func samePath(aPath, bPath string) bool {
+	aAbs, aErr := filepath.Abs(aPath)
+	bAbs, bErr := filepath.Abs(bPath)
+	if aErr != nil || bErr != nil {
+		return filepath.Clean(aPath) == filepath.Clean(bPath)
+	}
+	return filepath.Clean(aAbs) == filepath.Clean(bAbs)
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(out, in)
+	closeErr := out.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return nil
 }
 
 func mergeScannedSong(existing map[string]interface{}, scanned scanner.Song) {

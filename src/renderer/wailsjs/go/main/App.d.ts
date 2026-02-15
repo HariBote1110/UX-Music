@@ -136,6 +136,8 @@ export function SelectFolderForNormalize():Promise<Array<string>>;
 
 export function SelectNormalizeOutputFolder():Promise<string>;
 
+export function SetLibraryPath():Promise<string>;
+
 export function SongFinished(arg1:Record<string, any>):Promise<void>;
 
 export function SongSkipped(arg1:Record<string, any>):Promise<void>;

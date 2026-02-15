@@ -109,13 +109,13 @@ export function initEventListeners() {
 
         const targetCount = selectedPaths.length;
         const message = targetCount === 1
-            ? '選択した1曲をライブラリから削除しますか？\n（ファイルも削除されます）'
-            : `選択した${targetCount}曲をライブラリから削除しますか？\n（ファイルも削除されます）`;
+            ? '選択した1曲をライブラリから削除しますか？'
+            : `選択した${targetCount}曲をライブラリから削除しますか？`;
 
         if (!window.confirm(message)) return;
 
         if (window.go?.main?.App?.DeleteSongs) {
-            window.go.main.App.DeleteSongs(selectedPaths, true).catch((err) => {
+            window.go.main.App.DeleteSongs(selectedPaths, false).catch((err) => {
                 console.error('[DeleteSongs] failed:', err);
             });
         }

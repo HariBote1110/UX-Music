@@ -18,6 +18,13 @@ window.electronAPI = window.electronAPI || {
                 });
             } else if (channel === 'save-settings') {
                 window.go.main.App.SaveSettings?.(args[0] || {});
+            } else if (channel === 'set-library-path') {
+                if (window.go?.main?.App?.SetLibraryPath) {
+                    window.go.main.App.SetLibraryPath()
+                        .catch((error) => {
+                            console.error('[Wails-Mock] set-library-path failed:', error);
+                        });
+                }
             } else if (channel === 'cd-start-rip') {
                 window.go.main.App.CDStartRip?.(args[0]);
             } else if (channel === 'start-normalize-job') {

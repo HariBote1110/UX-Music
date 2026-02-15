@@ -222,3 +222,17 @@
     - 削除確認文言から「ファイルも削除」を除去。
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5w` に更新。
+
+### D&D インポート時の実ファイルコピー対応
+
+- **D&D 取り込みフローの修正**:
+    - `app_scanner.go` で、スキャンした曲をライブラリフォルダ（`settings.libraryPath`）配下へコピーしてからライブラリへ登録する処理を実装。
+    - 保存先は `アーティスト/アルバム/ファイル名` 構成（ファイル名はサニタイズ）とし、同一保存先の重複取り込みを抑制。
+    - `libraryPath` 未設定時は初回取り込み時にフォルダ選択ダイアログを表示し、設定へ保存する処理を追加。
+- **ライブラリパス設定操作の Wails 接続**:
+    - `src/renderer/js/core/env-setup.js` に `set-library-path` の Wails 分岐を追加。
+    - Go 側 `SetLibraryPath()` を呼び出して `settings.libraryPath` を更新可能にした。
+- **元音源削除リスクの追加対策**:
+    - `src/renderer/js/core/init-listeners.js` の選択削除（ショートカット経路）も、実ファイル削除なしに統一。
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5x` に更新。

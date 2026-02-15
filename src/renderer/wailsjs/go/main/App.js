@@ -262,6 +262,10 @@ export function SelectNormalizeOutputFolder() {
   return window['go']['main']['App']['SelectNormalizeOutputFolder']();
 }
 
+export function SetLibraryPath() {
+  return window['go']['main']['App']['SetLibraryPath']();
+}
+
 export function SongFinished(arg1) {
   return window['go']['main']['App']['SongFinished'](arg1);
 }
