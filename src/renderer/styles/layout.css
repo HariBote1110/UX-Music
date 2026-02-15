@@ -84,9 +84,9 @@ body.resizing {
 }
 
 .right-sidebar {
-    width: 300px;
-    min-width: 240px;
-    max-width: 600px;
+    width: clamp(340px, 52vw, 600px);
+    min-width: 320px;
+    max-width: 760px;
     flex-shrink: 0;
     border-left: 1px solid var(--bg-light);
     padding: 24px;
