@@ -672,9 +672,15 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     position: absolute;
     top: 0;
     left: 50%;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+    padding-inline: clamp(20px, 6vw, 72px);
     margin: 0;
     opacity: 0.35;
     transform: translate3d(-50%, 0, 0) scale(0.9);
+    transform-origin: left center;
     filter: blur(1.5px);
     color: rgba(255, 255, 255, 0.62);
     z-index: 1;
