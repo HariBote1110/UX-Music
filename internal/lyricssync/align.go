@@ -188,11 +188,7 @@ func interpolateMissingTimestamps(lines []AlignedLine) {
 		return
 	}
 
-	cursor := firstMatchedTS
-	for i := firstMatchedIndex - 1; i >= 0; i-- {
-		cursor = math.Max(0, cursor-interpolationStepForLine(typicalStep, lines[i]))
-		lines[i].Timestamp = roundTo3(cursor)
-	}
+	fillLeadingBeforeFirstMatch(lines, firstMatchedIndex, firstMatchedTS, typicalStep)
 
 	lastMatchedIndex := firstMatchedIndex
 	lastMatchedTS := firstMatchedTS
@@ -212,17 +208,50 @@ func interpolateMissingTimestamps(lines []AlignedLine) {
 		lastMatchedTS = currentMatchedTS
 	}
 
-	cursor = lastMatchedTS
+	cursor := lastMatchedTS
 	for i := lastMatchedIndex + 1; i < len(lines); i++ {
 		cursor += interpolationStepForLine(typicalStep, lines[i])
 		lines[i].Timestamp = roundTo3(cursor)
 	}
 }
 
+func fillLeadingBeforeFirstMatch(lines []AlignedLine, firstMatchedIndex int, firstMatchedTS float64, typicalStep float64) {
+	if firstMatchedIndex <= 0 {
+		return
+	}
+
+	if firstMatchedTS <= 0 {
+		cursor := firstMatchedTS
+		for i := firstMatchedIndex - 1; i >= 0; i-- {
+			cursor = math.Max(0, cursor-interpolationStepForLine(typicalStep, lines[i]))
+			lines[i].Timestamp = roundTo3(cursor)
+		}
+		return
+	}
+
+	start := 0
+	anchorTS := 0.0
+	if lines[0].Source == "interlude" {
+		lines[0].Timestamp = 0
+		start = 1
+		anchorTS = 0
+	}
+
+	if start >= firstMatchedIndex {
+		return
+	}
+
+	fillGapWithRange(lines, start, firstMatchedIndex, anchorTS, firstMatchedTS, typicalStep)
+}
+
 func fillGapByWeightedInterpolation(lines []AlignedLine, leftIndex int, rightIndex int, leftTS float64, rightTS float64, typicalStep float64) {
-	indices := make([]int, 0, rightIndex-leftIndex-1)
-	weights := make([]float64, 0, rightIndex-leftIndex-1)
-	for i := leftIndex + 1; i < rightIndex; i++ {
+	fillGapWithRange(lines, leftIndex+1, rightIndex, leftTS, rightTS, typicalStep)
+}
+
+func fillGapWithRange(lines []AlignedLine, startIndex int, rightAnchorIndex int, leftTS float64, rightTS float64, typicalStep float64) {
+	indices := make([]int, 0, maxInt(0, rightAnchorIndex-startIndex))
+	weights := make([]float64, 0, rightAnchorIndex-startIndex)
+	for i := startIndex; i < rightAnchorIndex; i++ {
 		if isFinite(lines[i].Timestamp) {
 			continue
 		}

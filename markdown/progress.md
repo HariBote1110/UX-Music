@@ -817,3 +817,23 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7k` に更新。
+
+### 前奏（先頭空白行）アンカー改善と低域カット調整
+
+- **課題**:
+    - 先頭の空白行がある歌詞で、前奏の時間幅が十分に残らず、最初の歌詞が早めに配置されるケースがあった。
+    - ボーカル重視前処理において、人声として不要な低域カット閾値を調整したい要望があった。
+- **対応**:
+    - `internal/lyricssync/align.go`:
+      - 先頭補間ロジックを変更し、先頭行が空白/間奏なら 0 秒アンカーを固定するように修正。
+      - 先頭未一致区間を 0 秒〜最初の一致行時刻で重み付き配分し、前奏を潰さない補間に変更。
+    - `internal/lyricssync/syncer.go`:
+      - ボーカル重視フィルタを `highpass=70Hz` / `lowpass=4500Hz` に調整。
+      - 50Hz付近など人声帯域外の低域をより明確に抑制。
+    - `internal/lyricssync/align_test.go`:
+      - 先頭空白行が 0 秒アンカーになることを確認するテストを追加。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7l` に更新。

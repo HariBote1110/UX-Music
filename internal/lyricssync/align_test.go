@@ -98,3 +98,29 @@ func TestInterludeStepIsSmallerWithoutMatches(t *testing.T) {
 		t.Fatalf("expected interlude step to be smaller: interlude=%f lyric=%f", stepInterlude, stepLyric)
 	}
 }
+
+func TestLeadingInterludeAnchorsAtZero(t *testing.T) {
+	lines := []string{
+		"",
+		"first lyric",
+		"second lyric",
+	}
+	segments := []whisperSegment{
+		{Start: 12.0, End: 13.0, Text: "first lyric"},
+		{Start: 16.0, End: 17.0, Text: "second lyric"},
+	}
+
+	aligned, matched := alignLines(lines, segments)
+	if matched < 2 {
+		t.Fatalf("matched=%d, want at least 2", matched)
+	}
+	if aligned[0].Timestamp != 0 {
+		t.Fatalf("leading interlude timestamp=%f, want 0", aligned[0].Timestamp)
+	}
+	if aligned[1].Timestamp < 11.5 {
+		t.Fatalf("first lyric should preserve intro gap: %+v", aligned)
+	}
+	if aligned[2].Timestamp <= aligned[1].Timestamp {
+		t.Fatalf("timestamps should increase: %+v", aligned)
+	}
+}

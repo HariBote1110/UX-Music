@@ -15,7 +15,7 @@ import (
 const (
 	lyricsSyncTimeout       = 2 * time.Minute
 	minVocalMatchRatio      = 0.52
-	defaultVocalFocusFilter = "highpass=f=120,lowpass=f=5200,acompressor=threshold=-18dB:ratio=3.5:attack=8:release=120:makeup=4,afftdn=nf=-20"
+	defaultVocalFocusFilter = "highpass=f=70,lowpass=f=4500,acompressor=threshold=-18dB:ratio=3.5:attack=8:release=120:makeup=4,afftdn=nf=-20"
 )
 
 type Syncer struct {
