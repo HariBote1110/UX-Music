@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vanilla JS Lyrics Player</title>
+    <!-- Tailwind CSS (スタイリング用) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- GSAP (アニメーション用) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
+    <style>
+        /* カスタムスタイル */
+        body {
+            background-color: #0a0a0a;
+            color: white;
+            font-family: sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* 歌詞エリアの上下フェードマスク */
+        .mask-linear-fade {
+            mask-image: linear-gradient(to bottom, transparent 0%, black 25%, black 75%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 25%, black 75%, transparent 100%);
+        }
+
+        /* 背景のノイズ */
+        .noise-bg {
+            background-image: url('https://grainy-gradients.vercel.app/noise.svg');
+            opacity: 0.03;
+        }
+
+        /* 歌詞行の基本スタイル */
+        .lyric-line {
+            position: absolute;
+            width: 100%;
+            display: flex;
+            justify-content: flex-start;
+            padding-left: 2rem;
+            padding-right: 2rem;
+            cursor: pointer;
+            will-change: transform, opacity, filter;
+            /* パフォーマンス最適化 */
+        }
+
+        @media (min-width: 768px) {
+            .lyric-line {
+                padding-left: 6rem;
+            }
+        }
+
+        .lyric-text {
+            font-size: 1.875rem;
+            /* 3xl */
+            line-height: 1.25;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            transition: color 0.3s ease;
+        }
+
+        @media (min-width: 768px) {
+            .lyric-text {
+                font-size: 3rem;
+                /* 5xl */
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 背景オーブコンテナ -->
+    <div id="background-container" class="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <!-- JSで生成されます -->
+        <div class="absolute inset-0 noise-bg"></div>
+    </div>
+
+    <!-- メインコンテンツ -->
+    <div class="relative z-10 w-full h-screen flex flex-col">
+
+        <!-- ヘッダー -->
+        <div class="p-6 flex justify-between items-center bg-gradient-to-b from-black/40 to-transparent z-30 shrink-0">
+            <div class="flex items-center gap-4">
+                <!-- アルバムアート & 再生ボタン -->
+                <div id="play-trigger"
+                    class="w-12 h-12 bg-gray-800 rounded-lg shadow-lg overflow-hidden relative group cursor-pointer">
+                    <div id="album-art-bg"
+                        class="absolute inset-0 bg-gradient-to-br from-indigo-500 to-purple-600 transition-transform duration-700 scale-110">
+                    </div>
+                    <div class="absolute inset-0 flex items-center justify-center">
+                        <!-- 再生中のビジュアライザー (CSSアニメーション代用) -->
+                        <div id="visualizer" class="flex gap-1 hidden">
+                            <div class="w-1 bg-white rounded-full h-2 animate-[bounce_0.8s_infinite]"></div>
+                            <div class="w-1 bg-white rounded-full h-3 animate-[bounce_0.6s_infinite]"></div>
+                            <div class="w-1 bg-white rounded-full h-1 animate-[bounce_0.9s_infinite]"></div>
+                        </div>
+                        <!-- 停止中のアイコン -->
+                        <div id="play-icon"
+                            class="w-0 h-0 border-l-[12px] border-l-white border-y-[8px] border-y-transparent ml-1">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">Midnight Howl</h1>
+                    <p class="text-white/60 text-sm">Sample Artist</p>
+                </div>
+            </div>
+            <button id="toggle-btn"
+                class="px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md text-sm font-medium transition-colors border border-white/5">
+                Play
+            </button>
+        </div>
+
+        <!-- 歌詞表示エリア -->
+        <div class="flex-1 relative overflow-hidden mask-linear-fade">
+            <!-- 基準点: 画面上部35% -->
+            <div id="lyrics-container" class="absolute top-[35%] left-0 w-full h-0 flex justify-center">
+                <!-- JSで歌詞行が挿入されます -->
+            </div>
+
+            <!-- 上下のグラデーションマスク (念のためCSSマスクが効かない環境用) -->
+            <div
+                class="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-[#0a0a0a] to-transparent z-20 pointer-events-none">
+            </div>
+            <div
+                class="absolute bottom-0 left-0 w-full h-48 bg-gradient-to-t from-[#0a0a0a] to-transparent z-20 pointer-events-none">
+            </div>
+        </div>
+
+        <!-- フッター (プログレスバー) -->
+        <div class="p-8 pb-12 w-full max-w-2xl mx-auto opacity-80 z-30 shrink-0">
+            <div class="flex justify-between text-xs text-white/50 mb-2 font-mono">
+                <span id="current-time">--:--</span>
+                <span>3:45</span>
+            </div>
+            <div class="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                <div id="progress-bar" class="h-full bg-white/80 rounded-full w-0"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- データ設定 ---
+        const LYRICS_DATA = [
+            { id: 1, text: "Midnight,", duration: 2500 },
+            { id: 2, text: "Paint the world in black and white", duration: 3500 },
+            { id: 3, text: "The darkness holds me tight", duration: 3000 },
+            { id: 4, text: "As I howl into the night", duration: 4000 },
+            { id: 5, text: "Lost within the shadows cast", duration: 3000 },
+            { id: 6, text: "Memories of the distant past", duration: 3500 },
+            { id: 7, text: "Echoes calling out your name", duration: 3000 },
+            { id: 8, text: "Nothing here remains the same", duration: 4000 },
+            { id: 9, text: "Running through the empty street", duration: 3200 },
+            { id: 10, text: "Rhythm of my own heart beat", duration: 3200 },
+            { id: 11, text: "Searching for a guiding light", duration: 3500 },
+            { id: 12, text: "In the silence of the night", duration: 4000 },
+            { id: 13, text: "Fading like a morning star", duration: 3000 },
+            { id: 14, text: "Wondering just where you are", duration: 3500 },
+            { id: 15, text: "...", duration: 5000 }
+        ];
+
+        const LINE_HEIGHT = 80; // 各行の間隔
+
+        // --- 状態管理 ---
+        let currentIndex = 0;
+        let isPlaying = false;
+        let playbackTimer = null;
+
+        // --- DOM要素の取得 ---
+        const container = document.getElementById('lyrics-container');
+        const playBtn = document.getElementById('toggle-btn');
+        const playTrigger = document.getElementById('play-trigger');
+        const albumArtBg = document.getElementById('album-art-bg');
+        const visualizer = document.getElementById('visualizer');
+        const playIcon = document.getElementById('play-icon');
+        const progressBar = document.getElementById('progress-bar');
+        const currentTimeEl = document.getElementById('current-time');
+        const bgContainer = document.getElementById('background-container');
+
+        // --- 初期化 ---
+        function init() {
+            createBackgroundOrbs();
+            renderLyrics();
+            updateLyricsDisplay(true); // 即時適用（アニメーションなし）
+        }
+
+        // --- 背景オーブの生成とアニメーション ---
+        function createBackgroundOrbs() {
+            const orbs = [
+                { color: 'bg-blue-900', x: -100, y: -100, size: '40vw', duration: 15 },
+                { color: 'bg-purple-900', x: 200, y: 300, size: '40vw', duration: 18 },
+                { color: 'bg-pink-900', x: -150, y: 400, size: '40vw', duration: 20 }
+            ];
+
+            orbs.forEach(orbData => {
+                const orb = document.createElement('div');
+                orb.className = `absolute rounded-full mix-blend-screen filter blur-[80px] opacity-60 ${orbData.color}`;
+                orb.style.width = orbData.size;
+                orb.style.height = orbData.size;
+                // 初期位置
+                gsap.set(orb, { x: orbData.x, y: orbData.y });
+                bgContainer.appendChild(orb);
+
+                // ゆらゆら動くアニメーション
+                gsap.to(orb, {
+                    x: `random(${orbData.x - 50}, ${orbData.x + 100})`,
+                    y: `random(${orbData.y - 100}, ${orbData.y + 100})`,
+                    scale: "random(0.8, 1.2)",
+                    duration: orbData.duration,
+                    repeat: -1,
+                    yoyo: true,
+                    ease: "sine.inOut"
+                });
+            });
+        }
+
+        // --- 歌詞のDOM生成 ---
+        function renderLyrics() {
+            container.innerHTML = '';
+            LYRICS_DATA.forEach((line, index) => {
+                const el = document.createElement('div');
+                el.className = 'lyric-line';
+                el.dataset.index = index;
+
+                // クリックイベント
+                el.addEventListener('click', () => {
+                    setCurrentIndex(index);
+                    if (!isPlaying) togglePlay();
+                });
+
+                const textSpan = document.createElement('span');
+                textSpan.className = 'lyric-text text-white/60'; // 初期状態は薄く
+                textSpan.textContent = line.text;
+
+                el.appendChild(textSpan);
+                container.appendChild(el);
+            });
+        }
+
+        // --- 歌詞表示の更新（メインアニメーション） ---
+        function updateLyricsDisplay(immediate = false) {
+            const lines = document.querySelectorAll('.lyric-line');
+
+            lines.forEach((el, index) => {
+                const textSpan = el.querySelector('.lyric-text');
+                const isActive = index === currentIndex;
+
+                // 位置計算 (中心からのオフセット)
+                const targetY = (index - currentIndex) * LINE_HEIGHT;
+
+                // 中心からの距離（遅延計算用）
+                const distanceFromActive = Math.abs(index - currentIndex);
+
+                // --- アニメーション設定 (GSAP) ---
+
+                // 1. 位置と不透明度、スケール、ブラーの制御
+                // React版のSpring設定 (stiffness: 170, damping: 26) に近い動きをGSAPで再現
+                // ease: "back.out(1.2)" が「行き過ぎて戻る」動きを作る
+
+                gsap.to(el, {
+                    y: targetY,
+                    opacity: isActive ? 1 : 0.35,
+                    scale: isActive ? 1 : 0.9,
+                    filter: isActive ? 'blur(0px)' : 'blur(1.5px)',
+                    zIndex: isActive ? 10 : 1,
+
+                    duration: immediate ? 0 : 0.8,
+                    // delay: 中心から離れているほど遅れて動き出す（波及効果）
+                    delay: immediate ? 0 : distanceFromActive * 0.04,
+                    // ease: バネっぽい動き
+                    ease: "back.out(1.0)"
+                });
+
+                // 2. テキスト色の制御 (CSS transitionと併用またはGSAPで直接)
+                if (isActive) {
+                    textSpan.classList.remove('text-white/60');
+                    textSpan.classList.add('text-white', 'drop-shadow-xl');
+                } else {
+                    textSpan.classList.remove('text-white', 'drop-shadow-xl');
+                    textSpan.classList.add('text-white/60');
+                }
+            });
+
+            // プログレスバーの更新
+            const progress = ((currentIndex + 1) / LYRICS_DATA.length) * 100;
+            gsap.to(progressBar, { width: `${progress}%`, duration: 0.5 });
+        }
+
+        // --- 再生ロジック ---
+        function setCurrentIndex(index) {
+            currentIndex = index;
+            updateLyricsDisplay();
+
+            // ループ処理
+            if (currentIndex >= LYRICS_DATA.length) {
+                currentIndex = 0;
+            }
+
+            // 現在時刻表示の更新（擬似）
+            currentTimeEl.textContent = isPlaying ? `0:${(12 + currentIndex * 3).toString().padStart(2, '0')}` : '--:--';
+        }
+
+        function nextLine() {
+            if (currentIndex < LYRICS_DATA.length - 1) {
+                setCurrentIndex(currentIndex + 1);
+            } else {
+                setCurrentIndex(0); // 最初に戻る
+            }
+            scheduleNext();
+        }
+
+        function scheduleNext() {
+            if (!isPlaying) return;
+            const currentDuration = LYRICS_DATA[currentIndex].duration;
+
+            clearTimeout(playbackTimer);
+            playbackTimer = setTimeout(nextLine, currentDuration);
+        }
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+
+            // UI更新
+            playBtn.textContent = isPlaying ? 'Pause' : 'Play';
+            currentTimeEl.textContent = isPlaying ? '0:12' : '--:--';
+
+            if (isPlaying) {
+                playIcon.classList.add('hidden');
+                visualizer.classList.remove('hidden');
+                albumArtBg.classList.remove('scale-110');
+                albumArtBg.classList.add('scale-100');
+
+                scheduleNext();
+            } else {
+                playIcon.classList.remove('hidden');
+                visualizer.classList.add('hidden');
+                albumArtBg.classList.add('scale-110');
+                albumArtBg.classList.remove('scale-100');
+
+                clearTimeout(playbackTimer);
+            }
+        }
+
+        // --- イベントリスナー ---
+        playBtn.addEventListener('click', togglePlay);
+        playTrigger.addEventListener('click', togglePlay);
+
+        // 開始
+        init();
+
+    </script>
+</body>
+
+</html>
