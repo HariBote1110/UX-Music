@@ -704,3 +704,16 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7e` に更新。
+
+### 行切り替えのクイック感をさらに抑制
+
+- **切り替え時の速度上限を導入**:
+    - `src/renderer/js/features/lyrics-manager.js`: 行切替時/通常時の `followStrength` をさらに低下。
+    - 1フレームあたりの移動量に上限（`maxStep`）を追加し、急なジャンプ移動を抑制。
+    - 切替時は最大 4.6px、通常時は最大 6.2px に制限して視覚的な「クイッ」を軽減。
+- **ラグ演出の発火条件を調整**:
+    - `triggerLag` の発火を大きめの移動時（24px超）に限定し、細かい行切替での過剰演出を回避。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7f` に更新。

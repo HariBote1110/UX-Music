@@ -6,6 +6,7 @@ import { startLrcEditor } from './lrc-editor.js'; // あとで作成
 const electronAPI = window.electronAPI;
 const LYRICS_SCROLL_MIN_DISTANCE_PX = 6;
 const LYRICS_TOP_ANCHOR_OFFSET_PX = 26;
+const LYRICS_LAG_TRIGGER_MIN_DISTANCE_PX = 24;
 let lyricsScrollAnimationFrame = null;
 let lyricsScrollTargetTop = null;
 let lyricsScrollContainer = null;
@@ -383,7 +384,7 @@ function animateLyricsScrollTo(container, targetTop, options = {}) {
         return;
     }
 
-    if (triggerLag && Math.abs(distance) > LYRICS_SCROLL_MIN_DISTANCE_PX) {
+    if (triggerLag && Math.abs(distance) > LYRICS_LAG_TRIGGER_MIN_DISTANCE_PX) {
         applyTrafficWaveLag(distance);
     }
 
@@ -416,9 +417,12 @@ function animateLyricsScrollTo(container, targetTop, options = {}) {
         const distanceRatio = clamp(Math.abs(delta) / 260, 0, 1);
         const easedDistanceRatio = easeOutCubic(distanceRatio);
         const followStrength = lyricsScrollSwitchEasing
-            ? 0.06 + easedDistanceRatio * 0.17
-            : 0.09 + distanceRatio * 0.13;
-        lyricsScrollContainer.scrollTop += delta * followStrength;
+            ? 0.04 + easedDistanceRatio * 0.11
+            : 0.06 + distanceRatio * 0.09;
+        const rawStep = delta * followStrength;
+        const maxStep = lyricsScrollSwitchEasing ? 4.6 : 6.2;
+        const boundedStep = clamp(rawStep, -maxStep, maxStep);
+        lyricsScrollContainer.scrollTop += boundedStep;
         lyricsScrollAnimationFrame = requestAnimationFrame(step);
     };
 
