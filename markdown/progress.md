@@ -655,3 +655,17 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7a` に更新。
+
+### 行切り替え時の急なスクロールを連続追従へ変更
+
+- **スクロール制御の平滑化**:
+    - `src/renderer/js/features/lyrics-manager.js`: 行切替時のみ移動していた方式を改め、再生時間に応じた連続スクロールへ変更。
+    - 現在行から次行までの時間進行を使って目標位置を補間し、次行へ向けて先行的に少しずつ移動するよう調整。
+    - `animateLyricsScrollTo()` を再始動型アニメーションから「目標値追従型」に変更し、目標更新時のガクつきを抑制。
+    - 行が切り替わった瞬間のみ wave ラグを発火し、常時発火によるノイズを防止。
+- **強調表示の扱い**:
+    - `active` の切り替えは従来どおり維持しつつ、背景スクロールだけを連続化して急な切替感を軽減。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7b` に更新。

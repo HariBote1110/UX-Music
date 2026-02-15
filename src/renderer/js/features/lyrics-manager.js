@@ -4,11 +4,11 @@ import { showContextMenu } from '../ui/utils.js';
 import { startLrcEditor } from './lrc-editor.js'; // あとで作成
 // --- ▲▲▲ 追加 ▲▲▲ ---
 const electronAPI = window.electronAPI;
-const LYRICS_SCROLL_MIN_DURATION_MS = 700;
-const LYRICS_SCROLL_MAX_DURATION_MS = 1020;
 const LYRICS_SCROLL_MIN_DISTANCE_PX = 6;
 const LYRICS_TOP_ANCHOR_OFFSET_PX = 26;
 let lyricsScrollAnimationFrame = null;
+let lyricsScrollTargetTop = null;
+let lyricsScrollContainer = null;
 const LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS = 84;
 const LYRICS_TRAFFIC_WAVE_BASE_DURATION_MS = 760;
 const LYRICS_TRAFFIC_WAVE_MIN_DURATION_MS = 300;
@@ -189,6 +189,8 @@ function stopLyricsScrollAnimation() {
         cancelAnimationFrame(lyricsScrollAnimationFrame);
         lyricsScrollAnimationFrame = null;
     }
+    lyricsScrollTargetTop = null;
+    lyricsScrollContainer = null;
 }
 
 function stopLyricsLagAnimation(reset = true) {
@@ -359,47 +361,54 @@ function applyTrafficWaveLag(distance) {
     });
 }
 
-function getLyricsScrollDuration(distance) {
-    const adaptiveDuration = LYRICS_SCROLL_MIN_DURATION_MS + Math.abs(distance) * 0.42;
-    return clamp(adaptiveDuration, LYRICS_SCROLL_MIN_DURATION_MS, LYRICS_SCROLL_MAX_DURATION_MS);
-}
-
-function animateLyricsScrollTo(container, targetTop) {
+function animateLyricsScrollTo(container, targetTop, options = {}) {
+    const { triggerLag = false } = options;
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    const clampedTargetTop = Math.min(maxTop, Math.max(0, targetTop));
+
     if (reducedMotionQuery.matches) {
         stopLyricsScrollAnimation();
         stopLyricsLagAnimation();
-        container.scrollTop = targetTop;
+        container.scrollTop = clampedTargetTop;
         return;
     }
 
-    stopLyricsScrollAnimation();
-
-    const startTop = container.scrollTop;
-    const distance = targetTop - startTop;
-    if (Math.abs(distance) <= LYRICS_SCROLL_MIN_DISTANCE_PX) {
-        container.scrollTop = targetTop;
-        stopLyricsLagAnimation();
+    const distance = clampedTargetTop - container.scrollTop;
+    if (Math.abs(distance) <= 0.35) {
+        container.scrollTop = clampedTargetTop;
+        lyricsScrollTargetTop = clampedTargetTop;
         return;
     }
 
-    applyTrafficWaveLag(distance);
+    if (triggerLag && Math.abs(distance) > LYRICS_SCROLL_MIN_DISTANCE_PX) {
+        applyTrafficWaveLag(distance);
+    }
 
-    const scrollDuration = getLyricsScrollDuration(distance);
-    const startTime = performance.now();
-    const step = (now) => {
-        const elapsed = now - startTime;
-        const progress = Math.min(1, elapsed / scrollDuration);
-        const easedProgress = easeOutCubic(progress);
-        container.scrollTop = startTop + distance * easedProgress;
+    lyricsScrollContainer = container;
+    lyricsScrollTargetTop = clampedTargetTop;
 
-        if (progress < 1) {
-            lyricsScrollAnimationFrame = requestAnimationFrame(step);
+    if (lyricsScrollAnimationFrame) {
+        return;
+    }
+
+    const step = () => {
+        if (!lyricsScrollContainer || lyricsScrollTargetTop === null) {
+            lyricsScrollAnimationFrame = null;
             return;
         }
 
-        container.scrollTop = targetTop;
-        lyricsScrollAnimationFrame = null;
+        const delta = lyricsScrollTargetTop - lyricsScrollContainer.scrollTop;
+        if (Math.abs(delta) <= 0.35) {
+            lyricsScrollContainer.scrollTop = lyricsScrollTargetTop;
+            lyricsScrollAnimationFrame = null;
+            return;
+        }
+
+        const distanceRatio = clamp(Math.abs(delta) / 260, 0, 1);
+        const followStrength = 0.16 + distanceRatio * 0.2;
+        lyricsScrollContainer.scrollTop += delta * followStrength;
+        lyricsScrollAnimationFrame = requestAnimationFrame(step);
     };
 
     lyricsScrollAnimationFrame = requestAnimationFrame(step);
@@ -412,6 +421,36 @@ function setActiveLyricsLineByIndex(index) {
     if (targetLine) {
         targetLine.classList.add('active');
     }
+}
+
+function getInterpolatedLyricsScrollTarget(container, currentIndex, currentTime) {
+    const currentLine = container.querySelector(`p[data-index="${currentIndex}"]`);
+    if (!currentLine) return container.scrollTop;
+
+    const currentTargetTop = getLyricsScrollTarget(container, currentLine);
+    const currentLyric = state.currentLyrics[currentIndex];
+    const nextLyric = state.currentLyrics[currentIndex + 1];
+    if (!currentLyric || !nextLyric) {
+        return currentTargetTop;
+    }
+
+    const nextLine = container.querySelector(`p[data-index="${currentIndex + 1}"]`);
+    if (!nextLine) {
+        return currentTargetTop;
+    }
+
+    const interval = nextLyric.time - currentLyric.time;
+    if (interval <= 0.001) {
+        return currentTargetTop;
+    }
+
+    const rawProgress = clamp((currentTime - currentLyric.time) / interval, 0, 1);
+    const preScrollStart = 0.22;
+    const preScrollProgress = clamp((rawProgress - preScrollStart) / (1 - preScrollStart), 0, 1);
+    const easedProgress = easeOutCubic(preScrollProgress);
+    const nextTargetTop = getLyricsScrollTarget(container, nextLine);
+
+    return currentTargetTop + (nextTargetTop - currentTargetTop) * easedProgress;
 }
 
 
@@ -482,19 +521,16 @@ export function updateSyncedLyrics(currentTime) {
 
     const activeLine = elements.lyricsView.querySelector('p.active');
     const activeIndex = activeLine ? parseInt(activeLine.dataset.index, 10) : -1;
-    // 現在アクティブな行が正しい場合は何もしない
-    if (activeIndex === currentIndex) {
-        return;
-    }
 
     if (currentIndex !== -1) {
-        const newLine = elements.lyricsView.querySelector(`p[data-index="${currentIndex}"]`);
-        if (newLine) {
+        if (activeIndex !== currentIndex) {
             setActiveLyricsLineByIndex(currentIndex);
-            const targetTop = getLyricsScrollTarget(elements.lyricsView, newLine);
-            if (Math.abs(elements.lyricsView.scrollTop - targetTop) > 1) {
-                animateLyricsScrollTo(elements.lyricsView, targetTop);
-            }
+        }
+
+        const targetTop = getInterpolatedLyricsScrollTarget(elements.lyricsView, currentIndex, currentTime);
+        const shouldTriggerLag = activeIndex !== currentIndex;
+        if (Math.abs(elements.lyricsView.scrollTop - targetTop) > 0.35) {
+            animateLyricsScrollTo(elements.lyricsView, targetTop, { triggerLag: shouldTriggerLag });
         }
     } else {
         // 曲の冒頭など、まだどの行もアクティブでない場合は一番上にスクロール
