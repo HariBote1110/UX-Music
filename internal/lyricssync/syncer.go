@@ -3,6 +3,7 @@ package lyricssync
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,8 +12,21 @@ import (
 	"ux-music-sidecar/internal/config"
 )
 
+const (
+	lyricsSyncTimeout       = 2 * time.Minute
+	minVocalMatchRatio      = 0.52
+	defaultVocalFocusFilter = "highpass=f=120,lowpass=f=5200,acompressor=threshold=-18dB:ratio=3.5:attack=8:release=120:makeup=4,afftdn=nf=-20"
+)
+
 type Syncer struct {
 	runner *WhisperRunner
+}
+
+type alignmentCandidate struct {
+	name          string
+	lines         []AlignedLine
+	matchedCount  int
+	avgConfidence float64
 }
 
 func NewSyncer() *Syncer {
@@ -38,26 +52,134 @@ func (s *Syncer) Sync(req Request) Result {
 	}
 	defer os.RemoveAll(workDir)
 
-	wavPath := filepath.Join(workDir, "input.wav")
-	if err := extractMonoWAV(sanitised.SongPath, wavPath); err != nil {
+	plainWavPath := filepath.Join(workDir, "input.wav")
+	if err := extractMonoWAV(sanitised.SongPath, plainWavPath, ""); err != nil {
 		return failResult(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	vocalWavPath := filepath.Join(workDir, "input-vocal.wav")
+	vocalPrepared := true
+	if err := extractMonoWAV(sanitised.SongPath, vocalWavPath, defaultVocalFocusFilter); err != nil {
+		logAutoSync("ボーカル重視前処理の抽出に失敗したため通常音声へフォールバック: %v", err)
+		vocalPrepared = false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), lyricsSyncTimeout)
 	defer cancel()
 
-	segments, err := s.runner.Run(ctx, wavPath, sanitised)
-	if err != nil {
-		return failResult(err)
+	lineTargetCount := countTargetLyricLines(sanitised.Lines)
+	best := alignmentCandidate{}
+	bestSet := false
+	var lastErr error
+
+	if vocalPrepared {
+		vocalCandidate, vocalErr := s.runAlignmentCandidate(ctx, vocalWavPath, sanitised, "vocal-focus")
+		if vocalErr == nil {
+			best = vocalCandidate
+			bestSet = true
+			if lineTargetCount > 0 {
+				matchRatio := float64(vocalCandidate.matchedCount) / float64(lineTargetCount)
+				logAutoSync("ボーカル重視候補: matched=%d ratio=%.3f avg=%.3f", vocalCandidate.matchedCount, matchRatio, vocalCandidate.avgConfidence)
+				if matchRatio >= minVocalMatchRatio {
+					logAutoSync("同期完了: candidate=%s matched=%d total=%d", best.name, best.matchedCount, len(best.lines))
+					return Result{
+						Success:      true,
+						Lines:        best.lines,
+						MatchedCount: best.matchedCount,
+					}
+				}
+				logAutoSync("一致率が閾値(%.2f)未満のため通常音声でも再解析します", minVocalMatchRatio)
+			}
+		} else {
+			lastErr = vocalErr
+			logAutoSync("ボーカル重視候補の解析に失敗: %v", vocalErr)
+		}
 	}
 
-	aligned, matchedCount := alignLines(sanitised.Lines, segments)
-	logAutoSync("同期完了: matched=%d total=%d", matchedCount, len(aligned))
+	plainCandidate, plainErr := s.runAlignmentCandidate(ctx, plainWavPath, sanitised, "plain")
+	if plainErr != nil {
+		if bestSet {
+			logAutoSync("通常音声候補は失敗したため、ボーカル重視候補を採用します")
+			logAutoSync("同期完了: candidate=%s matched=%d total=%d", best.name, best.matchedCount, len(best.lines))
+			return Result{
+				Success:      true,
+				Lines:        best.lines,
+				MatchedCount: best.matchedCount,
+			}
+		}
+		if lastErr != nil {
+			return failResult(fmt.Errorf("ボーカル重視/通常音声の両方で失敗: vocal=%v plain=%v", lastErr, plainErr))
+		}
+		return failResult(plainErr)
+	}
+
+	if !bestSet || isBetterCandidate(plainCandidate, best) {
+		best = plainCandidate
+		bestSet = true
+	}
+
+	if !bestSet {
+		return failResult(fmt.Errorf("同期候補が生成できませんでした"))
+	}
+
+	logAutoSync("同期完了: candidate=%s matched=%d total=%d", best.name, best.matchedCount, len(best.lines))
 	return Result{
 		Success:      true,
-		Lines:        aligned,
-		MatchedCount: matchedCount,
+		Lines:        best.lines,
+		MatchedCount: best.matchedCount,
 	}
+}
+
+func (s *Syncer) runAlignmentCandidate(ctx context.Context, wavPath string, req Request, name string) (alignmentCandidate, error) {
+	segments, err := s.runner.Run(ctx, wavPath, req)
+	if err != nil {
+		return alignmentCandidate{}, err
+	}
+
+	aligned, matchedCount := alignLines(req.Lines, segments)
+	return alignmentCandidate{
+		name:          name,
+		lines:         aligned,
+		matchedCount:  matchedCount,
+		avgConfidence: averageMatchConfidence(aligned),
+	}, nil
+}
+
+func isBetterCandidate(a alignmentCandidate, b alignmentCandidate) bool {
+	if a.matchedCount != b.matchedCount {
+		return a.matchedCount > b.matchedCount
+	}
+	if math.Abs(a.avgConfidence-b.avgConfidence) > 0.0001 {
+		return a.avgConfidence > b.avgConfidence
+	}
+	return a.name == "vocal-focus" && b.name != "vocal-focus"
+}
+
+func averageMatchConfidence(lines []AlignedLine) float64 {
+	total := 0.0
+	count := 0.0
+	for _, line := range lines {
+		if line.Source != "match" {
+			continue
+		}
+		total += line.Confidence
+		count++
+	}
+	if count == 0 {
+		return 0
+	}
+	return total / count
+}
+
+func countTargetLyricLines(lines []string) int {
+	count := 0
+	for _, line := range lines {
+		if isInterludeLine(line) {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 func failResult(err error) Result {
@@ -106,7 +228,7 @@ func validateRequest(req Request) error {
 	return nil
 }
 
-func extractMonoWAV(inputPath string, outputPath string) error {
+func extractMonoWAV(inputPath string, outputPath string, filter string) error {
 	ffmpegPath, err := resolveFFmpegPath()
 	if err != nil {
 		return err
@@ -118,8 +240,11 @@ func extractMonoWAV(inputPath string, outputPath string) error {
 		"-vn",
 		"-ac", "1",
 		"-ar", "16000",
-		outputPath,
 	}
+	if strings.TrimSpace(filter) != "" {
+		args = append(args, "-af", filter)
+	}
+	args = append(args, outputPath)
 
 	logAutoSync("ffmpeg実行: %s %s", ffmpegPath, strings.Join(args, " "))
 	cmd := exec.Command(ffmpegPath, args...)

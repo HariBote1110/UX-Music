@@ -1,6 +1,7 @@
 package lyricssync
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,6 +123,52 @@ func TestSyncWithFakeWhisperAndFFmpeg(t *testing.T) {
 	}
 	if result.Lines[0].Timestamp >= result.Lines[1].Timestamp {
 		t.Fatalf("timestamps are not increasing: %+v", result.Lines)
+	}
+}
+
+func TestIsBetterCandidate(t *testing.T) {
+	a := alignmentCandidate{name: "plain", matchedCount: 10, avgConfidence: 0.7}
+	b := alignmentCandidate{name: "vocal-focus", matchedCount: 9, avgConfidence: 0.9}
+	if !isBetterCandidate(a, b) {
+		t.Fatalf("expected candidate a to be better by matched count")
+	}
+
+	c := alignmentCandidate{name: "plain", matchedCount: 10, avgConfidence: 0.8}
+	d := alignmentCandidate{name: "vocal-focus", matchedCount: 10, avgConfidence: 0.81}
+	if !isBetterCandidate(d, c) {
+		t.Fatalf("expected candidate d to be better by confidence")
+	}
+
+	e := alignmentCandidate{name: "plain", matchedCount: 10, avgConfidence: 0.8}
+	f := alignmentCandidate{name: "vocal-focus", matchedCount: 10, avgConfidence: 0.8}
+	if !isBetterCandidate(f, e) {
+		t.Fatalf("expected vocal-focus tie-breaker")
+	}
+}
+
+func TestAverageMatchConfidence(t *testing.T) {
+	lines := []AlignedLine{
+		{Source: "match", Confidence: 0.5},
+		{Source: "interpolated", Confidence: 1.0},
+		{Source: "match", Confidence: 0.9},
+	}
+	got := averageMatchConfidence(lines)
+	want := 0.7
+	if math.Abs(got-want) > 0.00001 {
+		t.Fatalf("averageMatchConfidence() = %f, want %f", got, want)
+	}
+}
+
+func TestCountTargetLyricLines(t *testing.T) {
+	lines := []string{
+		"line 1",
+		"",
+		"[間奏]",
+		"line 2",
+	}
+	got := countTargetLyricLines(lines)
+	if got != 2 {
+		t.Fatalf("countTargetLyricLines() = %d, want 2", got)
 	}
 }
 

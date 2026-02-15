@@ -774,3 +774,28 @@
     - `markdown/requirement.md`: CoreML前提の運用条件と仕様を追加。
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7i` に更新。
+
+### 歌詞自動同期のボーカル重視前処理とフォールバック改善
+
+- **症状**:
+    - 実機ログで `whisper のセグメント結果が空です` が発生するケースがあった。
+    - 同期精度向上のため、伴奏影響を抑えた前処理の要望を受領。
+- **対応**:
+    - `internal/lyricssync/whisper_runner.go`:
+      - `whisper-cli` の JSON 解析を `segments` 形式に加えて `transcription` 形式にも対応。
+      - `timestamps` / `offsets` から秒への変換処理を追加。
+    - `internal/lyricssync/syncer.go`:
+      - 同期前処理にボーカル重視フィルタ音声を追加（帯域制限・コンプレッション・ノイズ低減）。
+      - ボーカル重視候補の一致率が低い場合、通常音声候補を追加解析して自動比較。
+      - 一致行数と平均信頼度で最良候補を採用するロジックへ拡張。
+    - `internal/lyricssync/syncer_test.go`:
+      - 候補比較ロジックと補助関数のテストを追加。
+    - `internal/lyricssync/whisper_runner_test.go`:
+      - `segments` と `transcription` の両 JSON フォーマット解析テストを追加。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+    - `node --check src/renderer/js/features/lrc-editor.js`
+    - `node --check src/renderer/js/core/env-setup.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7j` に更新。
