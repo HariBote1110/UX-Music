@@ -728,3 +728,18 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7g` に更新。
+
+### 行切替クイック感を復帰し、TXT表示の特殊効果を無効化
+
+- **行切替スクロールのクイック感を復帰**:
+    - `src/renderer/js/features/lyrics-manager.js`: 速度抑制のために追加した1フレーム移動量上限を撤去。
+    - `followStrength` を以前の値（切替時 `0.06 + easedDistanceRatio * 0.17` / 通常時 `0.09 + distanceRatio * 0.13`）へ復元。
+    - wave ラグ発火条件を `LYRICS_SCROLL_MIN_DISTANCE_PX` 基準へ戻し、切替時のテンポ感を復帰。
+- **TXT歌詞のエフェクト無効化**:
+    - `src/renderer/js/features/lyrics-manager.js`: 歌詞ビューに `lyrics-mode-lrc` / `lyrics-mode-txt` クラスを付与する処理を追加。
+    - `clearLyrics()` / `displayNoLyrics()` でモードクラスをリセットし、前曲の表示効果を持ち越さないよう修正。
+    - `src/renderer/styles/views.css`: `#lyrics-view.lyrics-mode-txt p` で blur/transform/遅延遷移を無効化し、通常テキスト表示へ変更。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7h` に更新。

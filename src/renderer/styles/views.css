@@ -682,6 +682,17 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
 }
 
+#lyrics-view.lyrics-mode-txt p {
+    --line-focus-delay: 0ms;
+    --line-lag-delay: 0ms;
+    --line-lag-duration: 0ms;
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: color 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    text-shadow: none;
+}
+
 #lyrics-view p.no-lyrics {
     width: 100%;
     max-width: none;
