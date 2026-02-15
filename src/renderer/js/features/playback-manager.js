@@ -41,7 +41,6 @@ export async function initPlaybackSettings() {
 }
 
 export async function playSong(index, sourceList = null, forcePlay = false) {
-    const isWails = typeof window.go !== 'undefined';
     const targetQueue = sourceList || state.playbackQueue;
     const songToPlay = targetQueue[index];
 
@@ -95,7 +94,7 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
         electronAPI.send('request-bpm-analysis', songToPlayActual);
     }
 
-    if (songToPlayActual.type === 'local' && !forcePlay && !isWails) {
+    if (songToPlayActual.type === 'local' && !forcePlay) {
         const savedLoudness = await electronAPI.invoke('get-loudness-value', songToPlayActual.path);
         if (typeof savedLoudness !== 'number') {
             state.songWaitingForAnalysis = { index, sourceList: state.playbackQueue };

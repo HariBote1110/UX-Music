@@ -64,8 +64,8 @@ function deleteSongsFromLibrary(songs) {
 
     const targetCount = paths.length;
     const message = targetCount === 1
-        ? '選択した1曲をライブラリから削除します。ファイルも削除されます。'
-        : `選択した${targetCount}曲をライブラリから削除します。ファイルも削除されます。`;
+        ? '選択した1曲をライブラリから削除します。'
+        : `選択した${targetCount}曲をライブラリから削除します。`;
 
     showModalAdvanced({
         title: '曲を削除',
@@ -83,7 +83,7 @@ function deleteSongsFromLibrary(songs) {
             let pendingWarnTimer = null;
             let deletePromise;
             try {
-                deletePromise = window.go.main.App.DeleteSongs(paths, true);
+                deletePromise = window.go.main.App.DeleteSongs(paths, false);
             } catch (err) {
                 console.error('[DeleteSongs] invocation threw:', err);
                 return;

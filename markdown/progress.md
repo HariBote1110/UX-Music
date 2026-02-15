@@ -209,3 +209,16 @@
     - `NormalizeAnalyze` の結果を `loudness-analysis-result` としてフロントへイベント送信するように修正。
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5v` に更新。
+
+### Wails 再生前ラウドネス解析の有効化と安全対策
+
+- **再生前ラウドネス解析の有効化**:
+    - `src/renderer/js/features/playback-manager.js` で Wails 環境でも `request-loudness-analysis` を発行するように変更。
+    - 解析完了までの「再生準備中」通知と待機フローを Wails でも有効化。
+- **解析失敗時イベントの補完**:
+    - `src/renderer/js/core/env-setup.js` の `request-loudness-analysis` 失敗時に `loudness-analysis-result`（`success: false`）を emit するよう修正。
+- **元音源消失リスクの低減**:
+    - `src/renderer/js/ui/list-renderer.js` の「ライブラリから削除」をライブラリ上の削除のみ（`DeleteSongs(..., false)`）に変更。
+    - 削除確認文言から「ファイルも削除」を除去。
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5w` に更新。

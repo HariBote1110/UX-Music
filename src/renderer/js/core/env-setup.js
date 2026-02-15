@@ -1,10 +1,10 @@
 // src/renderer/js/env-setup.js
 // Wails などの非 Electron 環境でも動作するように、window.electronAPI を安全化する
-const isWails = window.go !== undefined;
+const isWailsEnvironment = () => window.go !== undefined || window.runtime !== undefined;
 
 window.electronAPI = window.electronAPI || {
     send: (channel, ...args) => {
-        if (isWails) {
+        if (isWailsEnvironment()) {
             console.log(`[Wails-Mock] send: ${channel}`, args);
             if (channel === 'request-initial-library') {
                 window.go.main.App.RequestInitialLibrary?.();
@@ -37,6 +37,13 @@ window.electronAPI = window.electronAPI || {
                         })
                         .catch((error) => {
                             console.error('[Wails-Mock] request-loudness-analysis failed:', error);
+                            if (window.runtime?.EventsEmit) {
+                                window.runtime.EventsEmit('loudness-analysis-result', {
+                                    success: false,
+                                    error: error?.message || String(error),
+                                    filePath
+                                });
+                            }
                         });
                 }
             } else if (channel === 'normalize-worker-finished-file') {
@@ -60,7 +67,7 @@ window.electronAPI = window.electronAPI || {
         }
     },
     invoke: async (channel, ...args) => {
-        if (isWails && window.go && window.go.main && window.go.main.App) {
+        if (isWailsEnvironment() && window.go && window.go.main && window.go.main.App) {
             console.log(`[Wails-Mock] invoke: ${channel}`, args);
 
             const dispatch = {
