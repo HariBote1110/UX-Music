@@ -15,7 +15,11 @@ import (
 )
 
 func (a *App) NormalizeAnalyze(path string) normalize.AnalysisResult {
-	return a.normalizer.AnalyzeLoudness(path)
+	result := a.normalizer.AnalyzeLoudness(path)
+	if result.Success {
+		a.saveLoudnessValue(path, result.Loudness)
+	}
+	return result
 }
 
 func (a *App) NormalizeApply(job normalize.NormalizeJob) normalize.NormalizeResult {
@@ -143,7 +147,11 @@ func (a *App) NormalizeStartJob(jobType string, files []interface{}, options int
 
 				var res interface{}
 				if jobType == "analyze" {
-					res = a.normalizer.AnalyzeLoudness(j.FilePath)
+					analyzeResult := a.normalizer.AnalyzeLoudness(j.FilePath)
+					if analyzeResult.Success {
+						a.saveLoudnessValue(j.FilePath, analyzeResult.Loudness)
+					}
+					res = analyzeResult
 				} else if jobType == "normalize" {
 					res = a.normalizer.ApplyNormalization(j)
 				} else {
@@ -164,23 +172,12 @@ func (a *App) NormalizeStartJob(jobType string, files []interface{}, options int
 
 // GetLoudnessValue returns the saved loudness for a song
 func (a *App) GetLoudnessValue(path string) (interface{}, error) {
-	data, _ := store.Instance.Load("loudness")
-	if data == nil {
-		return nil, nil
-	}
-	loudnessMap := data.(map[string]interface{})
+	loudnessMap := loadLoudnessMap()
 	return loudnessMap[path], nil
 }
 
 func (a *App) GetAllLoudnessData() (map[string]interface{}, error) {
-	data, _ := store.Instance.Load("loudness")
-	if data == nil {
-		return map[string]interface{}{}, nil
-	}
-	if loudnessMap, ok := data.(map[string]interface{}); ok {
-		return loudnessMap, nil
-	}
-	return map[string]interface{}{}, nil
+	return loadLoudnessMap(), nil
 }
 
 func (a *App) GetLibraryForNormalize() ([]interface{}, error) {
@@ -264,4 +261,23 @@ func (a *App) SelectFolderForNormalize() ([]string, error) {
 
 	sort.Strings(files)
 	return files, nil
+}
+
+func loadLoudnessMap() map[string]interface{} {
+	data, _ := store.Instance.Load("loudness")
+	if loudnessMap, ok := data.(map[string]interface{}); ok {
+		return loudnessMap
+	}
+	return map[string]interface{}{}
+}
+
+func (a *App) saveLoudnessValue(path string, loudness float64) {
+	if path == "" {
+		return
+	}
+	loudnessMap := loadLoudnessMap()
+	loudnessMap[path] = loudness
+	if err := store.Instance.Save("loudness", loudnessMap); err != nil {
+		fmt.Printf("[Normalize] Failed to save loudness for %s: %v\n", path, err)
+	}
 }

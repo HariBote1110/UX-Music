@@ -198,3 +198,14 @@
     - `pkg/normalize/normalizer.go` で `config` 未設定時も `PATH` から `ffmpeg` を解決するフォールバックを追加。
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5u` に更新。
+
+### ラウドネス永続化の修正
+
+- **`loudness.json` への保存を復元**:
+    - `app_normalize.go` の `NormalizeAnalyze` と `NormalizeStartJob(jobType=analyze)` で解析成功時に `loudness` ストアへ保存する処理を追加。
+    - `GetLoudnessValue` / `GetAllLoudnessData` で安全なロード関数を使うように変更し、空ファイル時も安定動作。
+- **再生時のラウドネス解析イベントを Wails に接続**:
+    - `src/renderer/js/core/env-setup.js` に `request-loudness-analysis` の Wails 分岐を追加。
+    - `NormalizeAnalyze` の結果を `loudness-analysis-result` としてフロントへイベント送信するように修正。
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5v` に更新。

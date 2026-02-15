@@ -23,6 +23,22 @@ window.electronAPI = window.electronAPI || {
             } else if (channel === 'start-normalize-job') {
                 const data = args[0] || {};
                 window.go.main.App.NormalizeStartJob?.(data.jobType, data.files || [], data.options || {});
+            } else if (channel === 'request-loudness-analysis') {
+                const filePath = args[0];
+                if (window.go?.main?.App?.NormalizeAnalyze && filePath) {
+                    window.go.main.App.NormalizeAnalyze(filePath)
+                        .then((result) => {
+                            if (window.runtime?.EventsEmit) {
+                                window.runtime.EventsEmit('loudness-analysis-result', {
+                                    ...result,
+                                    filePath
+                                });
+                            }
+                        })
+                        .catch((error) => {
+                            console.error('[Wails-Mock] request-loudness-analysis failed:', error);
+                        });
+                }
             } else if (channel === 'normalize-worker-finished-file') {
                 // Worker-pool signalling is Electron-specific. Wails side runs with goroutine semaphore.
             }
