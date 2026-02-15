@@ -111,46 +111,70 @@ func parseFile(path string, info os.FileInfo, artworksDir string) Song {
 		size = fileInfo.Size()
 	}
 
+	fileType := strings.ToLower(filepath.Ext(path))
+	song := Song{
+		Path:     path,
+		FileSize: size,
+		FileType: fileType,
+	}
+
 	m, err := tag.ReadFrom(f)
-	if err != nil {
-		return Song{
-			Path:     path,
-			Title:    filepath.Base(path),
-			FileSize: size,
-			FileType: strings.ToLower(filepath.Ext(path)),
+	if err == nil {
+		song.Title = m.Title()
+		song.Artist = m.Artist()
+		song.Album = m.Album()
+		song.AlbumArtist = m.AlbumArtist()
+		song.Year = m.Year()
+		song.Genre = m.Genre()
+		song.TrackNumber, _ = m.Track()
+		song.DiscNumber, _ = m.Disc()
+	}
+
+	needsProbe := fileType == ".m4a" || fileType == ".mp4" ||
+		song.Title == "" || song.Artist == "" || song.Album == "" || song.TrackNumber == 0 || song.DiscNumber == 0
+	if needsProbe {
+		if probe, probeErr := readMetadataWithFFprobe(path); probeErr == nil {
+			if song.Title == "" && probe.Title != "" {
+				song.Title = probe.Title
+			}
+			if song.Artist == "" && probe.Artist != "" {
+				song.Artist = probe.Artist
+			}
+			if song.Album == "" && probe.Album != "" {
+				song.Album = probe.Album
+			}
+			if song.AlbumArtist == "" && probe.AlbumArtist != "" {
+				song.AlbumArtist = probe.AlbumArtist
+			}
+			if song.Year == 0 && probe.Year > 0 {
+				song.Year = probe.Year
+			}
+			if song.Genre == "" && probe.Genre != "" {
+				song.Genre = probe.Genre
+			}
+			if song.TrackNumber == 0 && probe.TrackNumber > 0 {
+				song.TrackNumber = probe.TrackNumber
+			}
+			if song.DiscNumber == 0 && probe.DiscNumber > 0 {
+				song.DiscNumber = probe.DiscNumber
+			}
+			if song.Duration == 0 && probe.Duration > 0 {
+				song.Duration = probe.Duration
+			}
+			if song.SampleRate == 0 && probe.SampleRate > 0 {
+				song.SampleRate = probe.SampleRate
+			}
 		}
 	}
 
-	title := m.Title()
-	if title == "" {
-		title = filepath.Base(path)
+	if song.Title == "" {
+		song.Title = filepath.Base(path)
 	}
-	artist := m.Artist()
-	if artist == "" {
-		artist = "Unknown Artist"
+	if song.Artist == "" {
+		song.Artist = "Unknown Artist"
 	}
-	album := m.Album()
-	if album == "" {
-		album = "Unknown Album"
-	}
-
-	track, _ := m.Track()
-	disc, _ := m.Disc()
-	year := m.Year()
-	genre := m.Genre()
-
-	song := Song{
-		Path:        path,
-		Title:       title,
-		Artist:      artist,
-		Album:       album,
-		AlbumArtist: m.AlbumArtist(),
-		Year:        year,
-		Genre:       genre,
-		TrackNumber: track,
-		DiscNumber:  disc,
-		FileSize:    size,
-		FileType:    strings.ToLower(filepath.Ext(path)),
+	if song.Album == "" {
+		song.Album = "Unknown Album"
 	}
 
 	if artworksDir != "" {

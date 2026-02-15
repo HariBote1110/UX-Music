@@ -169,3 +169,18 @@
 - **ビルド・検証**:
     - `wails build` が正常に完了することを確認。
     - バージョンを `0.1.9-Beta-5k` へ更新。
+
+---
+
+## 2026年2月15日
+
+### Wails 移行中のメタデータ読込改善
+
+- **m4a メタデータ読込の強化**:
+    - `internal/scanner/scanner.go`: `tag` で取得できない項目を `ffprobe` で補完する処理を追加。
+    - `internal/scanner/ffprobe.go`: タイトル・アーティスト・アルバム・アルバムアーティスト・年・ジャンル・トラック番号・ディスク番号・再生時間・サンプルレートの抽出を実装。
+- **ジャケット抽出の強化**:
+    - `internal/scanner/artwork.go`: `tag.Picture()` で取得できない場合に `ffmpeg` で埋め込み画像（attached picture）を抽出するフォールバックを追加。
+    - `ffmpeg` / `ffprobe` のパス解決を設定値優先 + `PATH` フォールバックへ変更し、Wails 環境でも実行可能に改善。
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5t` に更新。

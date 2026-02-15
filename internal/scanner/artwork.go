@@ -10,12 +10,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"ux-music-sidecar/internal/config"
+	"strings"
 
 	"github.com/dhowden/tag"
 )
 
 func extractAndSaveArtwork(songPath string, artworksDir string) (interface{}, error) {
+	albumArtist := ""
+	albumTitle := ""
+	var imageData []byte
+
 	f, err := os.Open(songPath)
 	if err != nil {
 		return nil, err
@@ -23,20 +27,43 @@ func extractAndSaveArtwork(songPath string, artworksDir string) (interface{}, er
 	defer f.Close()
 
 	m, err := tag.ReadFrom(f)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		albumArtist = m.AlbumArtist()
+		if albumArtist == "" {
+			albumArtist = m.Artist()
+		}
+		albumTitle = m.Album()
+		if p := m.Picture(); p != nil && len(p.Data) > 0 {
+			imageData = p.Data
+		}
 	}
 
-	p := m.Picture()
-	if p == nil {
-		return nil, nil
+	if imageData == nil {
+		if md, probeErr := readMetadataWithFFprobe(songPath); probeErr == nil {
+			if albumArtist == "" {
+				albumArtist = md.AlbumArtist
+			}
+			if albumArtist == "" {
+				albumArtist = md.Artist
+			}
+			if albumTitle == "" {
+				albumTitle = md.Album
+			}
+		}
+
+		imageData, err = extractArtworkWithFFmpeg(songPath)
+		if err != nil || len(imageData) == 0 {
+			return nil, nil
+		}
 	}
 
-	albumArtist := m.AlbumArtist()
 	if albumArtist == "" {
-		albumArtist = m.Artist()
+		albumArtist = "Unknown Artist"
 	}
-	albumTitle := m.Album()
+	if albumTitle == "" {
+		albumTitle = filepath.Base(songPath)
+	}
+
 	uniqueKey := fmt.Sprintf("%s---%s", albumArtist, albumTitle)
 	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(uniqueKey)))
 
@@ -54,11 +81,11 @@ func extractAndSaveArtwork(songPath string, artworksDir string) (interface{}, er
 
 	os.MkdirAll(filepath.Join(artworksDir, "thumbnails"), 0755)
 
-	if err := convertToWebP(p.Data, fullPath, 0); err != nil {
+	if err := convertToWebP(imageData, fullPath, 0); err != nil {
 		return nil, fmt.Errorf("failed to convert full artwork: %v", err)
 	}
 
-	if err := convertToWebP(p.Data, thumbPath, 200); err != nil {
+	if err := convertToWebP(imageData, thumbPath, 200); err != nil {
 		fmt.Printf("[Artwork] Warning: failed to create thumbnail: %v\n", err)
 	}
 
@@ -69,8 +96,9 @@ func extractAndSaveArtwork(songPath string, artworksDir string) (interface{}, er
 }
 
 func convertToWebP(data []byte, outputPath string, width int) error {
-	if config.FFmpegPath == "" {
-		return fmt.Errorf("ffmpeg path not set")
+	ffmpegPath, err := resolveMediaCommandPath("ffmpeg")
+	if err != nil {
+		return err
 	}
 
 	args := []string{"-i", "pipe:0"}
@@ -79,14 +107,14 @@ func convertToWebP(data []byte, outputPath string, width int) error {
 	}
 	args = append(args, "-c:v", "webp", "-q:v", "80", "-y", outputPath)
 
-	cmd := exec.Command(config.FFmpegPath, args...)
+	cmd := exec.Command(ffmpegPath, args...)
 	cmd.Stdin = bytes.NewReader(data)
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ffmpeg error: %v, stderr: %s", err, stderr.String())
+		return fmt.Errorf("ffmpeg error: %v, stderr: %s", err, strings.TrimSpace(stderr.String()))
 	}
 
 	return nil
