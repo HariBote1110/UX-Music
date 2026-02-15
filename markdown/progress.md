@@ -639,3 +639,19 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6z` に更新。
+
+### 行数差で不安定だった強調切替方式を廃止し表示を簡素化
+
+- **強調切替ロジックの回帰**:
+    - `src/renderer/js/features/lyrics-manager.js`: スクロール完了後に `active` を切り替える方式を廃止。
+    - `updateSyncedLyrics()` を即時強調切替に戻し、行数差による不自然な遷移を解消。
+    - `lyricsActiveSwapToken` / `pendingActiveLyricsIndex` を削除し、分岐を簡素化。
+    - `animateLyricsScrollTo()` から完了コールバックを除去。
+- **歌詞スタイルの簡素化**:
+    - `src/renderer/styles/views.css`: `active` 行のグラデーション背景とボックスシャドウを削除。
+    - `active` 行は白文字でクリアに表示し、他行はぼかしと低めの不透明度で背景化。
+    - これにより「強調行ははっきり、その他はぼける」見え方へ調整。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7a` に更新。
