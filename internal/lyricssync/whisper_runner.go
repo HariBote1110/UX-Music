@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"ux-music-sidecar/internal/config"
 )
@@ -155,6 +156,20 @@ func parseWhisperJSON(raw []byte) ([]whisperSegment, error) {
 			Segments []rawSegment `json:"segments"`
 		} `json:"result"`
 	}
+	type rawTranscriptionSegment struct {
+		Timestamps struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+		} `json:"timestamps"`
+		Offsets struct {
+			From *int64 `json:"from"`
+			To   *int64 `json:"to"`
+		} `json:"offsets"`
+		Text string `json:"text"`
+	}
+	type transcriptionPayload struct {
+		Transcription []rawTranscriptionSegment `json:"transcription"`
+	}
 
 	var direct directPayload
 	if err := json.Unmarshal(raw, &direct); err != nil {
@@ -168,6 +183,39 @@ func parseWhisperJSON(raw []byte) ([]whisperSegment, error) {
 			return nil, fmt.Errorf("whisper JSON の解析に失敗しました: %w", err)
 		}
 		rawSegments = nested.Result.Segments
+	}
+
+	if len(rawSegments) == 0 {
+		var transcribed transcriptionPayload
+		if err := json.Unmarshal(raw, &transcribed); err != nil {
+			return nil, fmt.Errorf("whisper JSON の解析に失敗しました: %w", err)
+		}
+
+		if len(transcribed.Transcription) > 0 {
+			segments := make([]whisperSegment, 0, len(transcribed.Transcription))
+			for _, ts := range transcribed.Transcription {
+				start := 0.0
+				end := 0.0
+
+				if ts.Offsets.From != nil {
+					start = float64(*ts.Offsets.From) / 1000.0
+				} else if parsed, ok := parseTimestampString(ts.Timestamps.From); ok {
+					start = parsed
+				}
+				if ts.Offsets.To != nil {
+					end = float64(*ts.Offsets.To) / 1000.0
+				} else if parsed, ok := parseTimestampString(ts.Timestamps.To); ok {
+					end = parsed
+				}
+
+				segments = append(segments, whisperSegment{
+					Start: start,
+					End:   end,
+					Text:  strings.TrimSpace(ts.Text),
+				})
+			}
+			return segments, nil
+		}
 	}
 
 	segments := make([]whisperSegment, 0, len(rawSegments))
@@ -194,6 +242,37 @@ func parseWhisperJSON(raw []byte) ([]whisperSegment, error) {
 	}
 
 	return segments, nil
+}
+
+func parseTimestampString(value string) (float64, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0, false
+	}
+
+	parts := strings.Split(trimmed, ":")
+	if len(parts) != 3 {
+		return 0, false
+	}
+
+	hours, errH := strconv.Atoi(parts[0])
+	minutes, errM := strconv.Atoi(parts[1])
+	if errH != nil || errM != nil {
+		return 0, false
+	}
+
+	secParts := strings.Split(parts[2], ",")
+	if len(secParts) != 2 {
+		return 0, false
+	}
+	seconds, errS := strconv.Atoi(secParts[0])
+	millis, errMs := strconv.Atoi(secParts[1])
+	if errS != nil || errMs != nil {
+		return 0, false
+	}
+
+	total := float64(hours*3600+minutes*60+seconds) + float64(millis)/1000.0
+	return total, true
 }
 
 func mapLanguage(language string) string {
