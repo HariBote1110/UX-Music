@@ -1,7 +1,7 @@
 /* src/renderer/styles/lrc-editor.css */
 
 #lrc-editor-view {
-    padding: 20px;
+    padding: 20px 20px calc(20px + var(--footer-height, 0px)) 20px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;

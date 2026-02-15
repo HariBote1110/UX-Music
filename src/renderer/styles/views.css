@@ -802,7 +802,7 @@ body.light-flight-mode .playing-indicator-bar {
 
 /* --- MTP Transfer View Styles --- */
 #mtp-transfer-view {
-    padding: 20px;
+    padding: 20px 20px calc(20px + var(--footer-height, 0px)) 20px;
     background: var(--bg-secondary, #1a1a1a);
     display: flex;
     flex-direction: column;

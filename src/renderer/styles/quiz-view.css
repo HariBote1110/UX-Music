@@ -2,7 +2,7 @@
     justify-content: center;
     align-items: center;
     text-align: center;
-    padding: 20px;
+    padding: 20px 20px calc(20px + var(--footer-height, 0px)) 20px;
     box-sizing: border-box;
 }
 

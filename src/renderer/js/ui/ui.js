@@ -11,10 +11,11 @@ const electronAPI = window.electronAPI;
 export function updateListSpacer() {
     const playbackBar = document.querySelector('.playback-bar');
     if (playbackBar) {
-        // バーの高さ + 余裕
-        const barHeight = playbackBar.offsetHeight;
-        if (barHeight > 0) {
-            const spacerHeight = barHeight + 40;
+        const barRect = playbackBar.getBoundingClientRect();
+        if (barRect.height > 0) {
+            // ビューポート下端から再生バー上端までの実距離をそのまま使用する。
+            const overlapHeight = window.innerHeight - barRect.top;
+            const spacerHeight = Math.max(0, Math.ceil(overlapHeight + 8));
             document.documentElement.style.setProperty('--footer-height', `${spacerHeight}px`);
         }
     } else {

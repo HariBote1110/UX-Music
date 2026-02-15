@@ -286,3 +286,22 @@
     - `node --check src/renderer/js/features/lrc-editor.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6a` に更新。
+
+### 各UIでフッターとコンテンツが重なる問題の修正
+
+- **フッター余白計算の実測化**:
+    - `src/renderer/js/ui/ui.js`: `updateListSpacer()` を修正。
+    - `playback-bar` の実測矩形（`getBoundingClientRect()`）から、ビューポート下端との重なり量を算出して `--footer-height` へ反映するよう変更。
+- **通常ビューの下余白を統一**:
+    - `src/renderer/styles/layout.css`: `.main-content .view-container` の `padding-bottom` を `--footer-height` へ変更。
+- **特殊ビューの下余白を統一**:
+    - `src/renderer/styles/normalize-view.css`: `#normalize-view` の下パディングを `calc(20px + var(--footer-height))` に変更。
+    - `src/renderer/styles/quiz-view.css`: `#quiz-view` の下パディングを `calc(20px + var(--footer-height))` に変更。
+    - `src/renderer/styles/lrc-editor.css`: `#lrc-editor-view` の下パディングを `calc(20px + var(--footer-height))` に変更。
+    - `src/renderer/styles/views.css`: `#mtp-transfer-view` の下パディングを `calc(20px + var(--footer-height))` に変更。
+    - `src/renderer/styles/mtp-browser.css`: `#mtp-browser-view` に `padding-bottom: var(--footer-height)` を追加。
+    - `src/renderer/components/cd-ripper.html`: `.cd-rip-container` の下パディングを `calc(30px + var(--footer-height))` に変更。
+- **検証**:
+    - `node --check src/renderer/js/ui/ui.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6b` に更新。

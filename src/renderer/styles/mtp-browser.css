@@ -4,6 +4,8 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    padding-bottom: var(--footer-height, 0px);
+    box-sizing: border-box;
     background: var(--bg-secondary, #1a1a1a);
     color: var(--text-primary, #fff);
 }
