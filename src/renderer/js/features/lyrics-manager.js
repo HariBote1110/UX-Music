@@ -423,37 +423,6 @@ function setActiveLyricsLineByIndex(index) {
     }
 }
 
-function getInterpolatedLyricsScrollTarget(container, currentIndex, currentTime) {
-    const currentLine = container.querySelector(`p[data-index="${currentIndex}"]`);
-    if (!currentLine) return container.scrollTop;
-
-    const currentTargetTop = getLyricsScrollTarget(container, currentLine);
-    const currentLyric = state.currentLyrics[currentIndex];
-    const nextLyric = state.currentLyrics[currentIndex + 1];
-    if (!currentLyric || !nextLyric) {
-        return currentTargetTop;
-    }
-
-    const nextLine = container.querySelector(`p[data-index="${currentIndex + 1}"]`);
-    if (!nextLine) {
-        return currentTargetTop;
-    }
-
-    const interval = nextLyric.time - currentLyric.time;
-    if (interval <= 0.001) {
-        return currentTargetTop;
-    }
-
-    const rawProgress = clamp((currentTime - currentLyric.time) / interval, 0, 1);
-    const preScrollStart = 0.22;
-    const preScrollProgress = clamp((rawProgress - preScrollStart) / (1 - preScrollStart), 0, 1);
-    const easedProgress = easeOutCubic(preScrollProgress);
-    const nextTargetTop = getLyricsScrollTarget(container, nextLine);
-
-    return currentTargetTop + (nextTargetTop - currentTargetTop) * easedProgress;
-}
-
-
 // --- ▼▼▼ コンテキストメニュー関連の関数を追加 ▼▼▼ ---
 
 let currentContextMenuSong = null;
@@ -523,11 +492,14 @@ export function updateSyncedLyrics(currentTime) {
     const activeIndex = activeLine ? parseInt(activeLine.dataset.index, 10) : -1;
 
     if (currentIndex !== -1) {
+        const currentLine = elements.lyricsView.querySelector(`p[data-index="${currentIndex}"]`);
+        if (!currentLine) return;
+
         if (activeIndex !== currentIndex) {
             setActiveLyricsLineByIndex(currentIndex);
         }
 
-        const targetTop = getInterpolatedLyricsScrollTarget(elements.lyricsView, currentIndex, currentTime);
+        const targetTop = getLyricsScrollTarget(elements.lyricsView, currentLine);
         const shouldTriggerLag = activeIndex !== currentIndex;
         if (Math.abs(elements.lyricsView.scrollTop - targetTop) > 0.35) {
             animateLyricsScrollTo(elements.lyricsView, targetTop, { triggerLag: shouldTriggerLag });

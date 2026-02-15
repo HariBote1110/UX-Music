@@ -669,3 +669,14 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7b` に更新。
+
+### スクロール開始タイミングを従来基準へ回帰
+
+- **開始タイミングの調整**:
+    - `src/renderer/js/features/lyrics-manager.js`: 次行への先行スクロール補間（時間進行ベース）を廃止。
+    - スクロール目標は再び「現在アクティブ行の位置」のみに設定し、動き始めのタイミングを従来と同等に戻した。
+    - 目標値追従型のスクロール制御は維持し、開始タイミングを遅らせつつ移動自体は滑らかに保つ構成へ調整。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7c` に更新。
