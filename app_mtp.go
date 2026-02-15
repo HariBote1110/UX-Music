@@ -277,7 +277,14 @@ func (a *App) GetMTPDevices() (interface{}, error) {
 
 func (a *App) startMTPMonitor() {
 	go func() {
-		ticker := time.NewTicker(3 * time.Second)
+		const (
+			minInterval       = 5 * time.Second
+			maxInterval       = 60 * time.Second
+			connectedInterval = 5 * time.Second
+		)
+
+		currentInterval := minInterval
+		ticker := time.NewTicker(currentInterval)
 		defer ticker.Stop()
 
 		fmt.Println("[MTP Monitor] Started polling for MTP devices")
@@ -296,12 +303,22 @@ func (a *App) startMTPMonitor() {
 					a.mtpConnected = false
 					a.mtpMu.Unlock()
 					wailsRuntime.EventsEmit(a.ctx, "mtp-device-disconnected")
+					// Reset to fast polling after disconnect
+					currentInterval = minInterval
+					ticker.Reset(currentInterval)
 				}
 				continue
 			}
 
 			err := a.mtpManager.Initialize()
 			if err != nil {
+				// Exponential backoff: double the interval on each failure,
+				// up to the maximum, to reduce log noise from libusb.
+				currentInterval = currentInterval * 2
+				if currentInterval > maxInterval {
+					currentInterval = maxInterval
+				}
+				ticker.Reset(currentInterval)
 				continue
 			}
 
@@ -360,10 +377,12 @@ func (a *App) startMTPMonitor() {
 			a.mtpConnected = true
 			a.mtpMu.Unlock()
 
+			// Reset to connected interval on success
+			currentInterval = connectedInterval
+			ticker.Reset(currentInterval)
+
 			fmt.Printf("[MTP Monitor] Device connected: %s\n", deviceName)
 			wailsRuntime.EventsEmit(a.ctx, "mtp-device-connected", payload)
-
-			ticker.Reset(5 * time.Second)
 		}
 	}()
 }

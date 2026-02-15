@@ -63,7 +63,10 @@ func NewManager() *Manager {
 	return &Manager{}
 }
 
-// Initialize initializes the MTP library
+// Initialize initializes the MTP library.
+// stderr is temporarily suppressed during the call because libkalam/libusb
+// writes "fatal error LIBUSB_ERROR_NOT_FOUND" directly to file descriptor 2
+// when no MTP device is connected, which cannot be caught via Go error handling.
 func (m *Manager) Initialize() error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -74,6 +77,9 @@ func (m *Manager) Initialize() error {
 		}
 	}
 
+	// Suppress stderr during the C call to silence libusb log output.
+	savedStderr := suppressStderr()
+
 	resChan := make(chan []byte, 1)
 	cb := purego.NewCallback(func(cStr *byte) {
 		resChan <- parseCString(cStr)
@@ -82,6 +88,9 @@ func (m *Manager) Initialize() error {
 	fnInitialize(cb)
 
 	raw := <-resChan
+
+	restoreStderr(savedStderr)
+
 	return parseErrorOnly(raw)
 }
 
