@@ -512,3 +512,17 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6p` に更新。
+
+### 歌詞遅延アニメーションを単純ディレイ方式へ回帰
+
+- **アニメーション方式の回帰**:
+    - `src/renderer/js/features/lyrics-manager.js`: 行ごとの wave 遅延（表示基準インデックス/段階遅延）を廃止。
+    - 早期段階で採用していた「全体ラグオフセット（`--lyrics-lag-offset`）」方式へ戻し、単純な遅延追従に統一。
+    - `animateLyricsLagByDistance()` による「ホールド→減衰」制御へ復元し、スクロール追従との干渉を低減。
+- **表示スタイルの整理**:
+    - `src/renderer/styles/views.css`: 行単位ラグ用の CSS 変数/クラス（`--line-lag-*`, `.lag-prime`）を削除。
+    - 同一元行/行切り替えの行間制御（`line-continuation`, `line-break`）は維持。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6q` に更新。
