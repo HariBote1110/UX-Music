@@ -624,3 +624,18 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6y` に更新。
+
+### 強調行を固定しつつ背景歌詞をスクロールする遷移へ改善
+
+- **ガタつき対策（切り替え順序の変更）**:
+    - `src/renderer/js/features/lyrics-manager.js`: `active` クラスの切り替えを「スクロール開始前」から「スクロール完了時」へ変更。
+    - 既存の強調行がある場合は、次行への強調切り替えを保留し、背景歌詞の移動完了後に切り替えるフローを追加。
+    - これにより、強調位置が先にガクッと切り替わる見え方を抑え、後ろのテキストだけが流れる印象へ調整。
+- **実装詳細**:
+    - `animateLyricsScrollTo()` に完了コールバックを追加し、アニメーション終端で `active` を更新。
+    - `setActiveLyricsLineByIndex()` を新設して強調切り替え処理を一元化。
+    - 連続更新時の古い完了処理を無効化するため、`lyricsActiveSwapToken` を導入。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6z` に更新。

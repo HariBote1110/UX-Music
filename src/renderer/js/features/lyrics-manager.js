@@ -19,6 +19,8 @@ const LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR = 0.22;
 const LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX = 22;
 let lyricsLagPrimeFrame = null;
 let lyricsLagRunFrame = null;
+let lyricsActiveSwapToken = 0;
+let pendingActiveLyricsIndex = null;
 
 /**
  * 曲が再生されたときに歌詞を読み込んで表示するメイン関数
@@ -364,12 +366,13 @@ function getLyricsScrollDuration(distance) {
     return clamp(adaptiveDuration, LYRICS_SCROLL_MIN_DURATION_MS, LYRICS_SCROLL_MAX_DURATION_MS);
 }
 
-function animateLyricsScrollTo(container, targetTop) {
+function animateLyricsScrollTo(container, targetTop, onComplete = null) {
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     if (reducedMotionQuery.matches) {
         stopLyricsScrollAnimation();
         stopLyricsLagAnimation();
         container.scrollTop = targetTop;
+        if (typeof onComplete === 'function') onComplete();
         return;
     }
 
@@ -380,6 +383,7 @@ function animateLyricsScrollTo(container, targetTop) {
     if (Math.abs(distance) <= LYRICS_SCROLL_MIN_DISTANCE_PX) {
         container.scrollTop = targetTop;
         stopLyricsLagAnimation();
+        if (typeof onComplete === 'function') onComplete();
         return;
     }
 
@@ -400,9 +404,19 @@ function animateLyricsScrollTo(container, targetTop) {
 
         container.scrollTop = targetTop;
         lyricsScrollAnimationFrame = null;
+        if (typeof onComplete === 'function') onComplete();
     };
 
     lyricsScrollAnimationFrame = requestAnimationFrame(step);
+}
+
+function setActiveLyricsLineByIndex(index) {
+    elements.lyricsView.querySelectorAll('p.active').forEach(p => p.classList.remove('active'));
+    if (index === -1) return;
+    const targetLine = elements.lyricsView.querySelector(`p[data-index="${index}"]`);
+    if (targetLine) {
+        targetLine.classList.add('active');
+    }
 }
 
 
@@ -472,25 +486,42 @@ export function updateSyncedLyrics(currentTime) {
     }
 
     const activeLine = elements.lyricsView.querySelector('p.active');
-    // 現在アクティブな行が正しい場合は何もしない
-    if (activeLine && parseInt(activeLine.dataset.index, 10) === currentIndex) {
+    const activeIndex = activeLine ? parseInt(activeLine.dataset.index, 10) : -1;
+    // 現在アクティブな行が正しく、切り替え保留もない場合は何もしない
+    if (activeIndex === currentIndex && pendingActiveLyricsIndex === null) {
         return;
     }
-
-    // すべてのアクティブクラスを削除
-    elements.lyricsView.querySelectorAll('p.active').forEach(p => p.classList.remove('active'));
 
     if (currentIndex !== -1) {
         const newLine = elements.lyricsView.querySelector(`p[data-index="${currentIndex}"]`);
         if (newLine) {
-            newLine.classList.add('active');
             const targetTop = getLyricsScrollTarget(elements.lyricsView, newLine);
-            if (Math.abs(elements.lyricsView.scrollTop - targetTop) > 1) {
+            const needsScroll = Math.abs(elements.lyricsView.scrollTop - targetTop) > 1;
+
+            // 既存の強調行がある場合は、強調切り替えをスクロール完了まで遅らせる
+            if (activeIndex !== -1 && needsScroll) {
+                pendingActiveLyricsIndex = currentIndex;
+                const swapToken = ++lyricsActiveSwapToken;
+                animateLyricsScrollTo(elements.lyricsView, targetTop, () => {
+                    if (swapToken !== lyricsActiveSwapToken) return;
+                    setActiveLyricsLineByIndex(currentIndex);
+                    pendingActiveLyricsIndex = null;
+                });
+                return;
+            }
+
+            pendingActiveLyricsIndex = null;
+            lyricsActiveSwapToken += 1;
+            setActiveLyricsLineByIndex(currentIndex);
+            if (needsScroll) {
                 animateLyricsScrollTo(elements.lyricsView, targetTop);
             }
         }
     } else {
         // 曲の冒頭など、まだどの行もアクティブでない場合は一番上にスクロール
+        pendingActiveLyricsIndex = null;
+        lyricsActiveSwapToken += 1;
+        setActiveLyricsLineByIndex(-1);
         stopLyricsScrollAnimation();
         stopLyricsLagAnimation();
         elements.lyricsView.scrollTop = 0;
