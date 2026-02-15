@@ -23,28 +23,43 @@ let editorIsSeeking = false;
 let historyStack = []; // <<<--- 追加: 操作履歴スタック
 let redoStack = [];    // <<<--- 追加: Redo用スタック (今回はUndoのみ実装)
 
-// エディタ要素への参照
-const editorElements = {
-    view: document.getElementById('lrc-editor-view'),
-    artwork: document.getElementById('lrc-editor-artwork'),
-    title: document.getElementById('lrc-editor-title'),
-    artist: document.getElementById('lrc-editor-artist'),
-    helpBtn: document.getElementById('lrc-editor-help-btn'),
-    exitBtn: document.getElementById('lrc-editor-exit-btn'),
-    saveBtn: document.getElementById('lrc-editor-save-btn'),
-    playPauseBtn: document.getElementById('lrc-editor-play-pause-btn'),
-    currentTime: document.getElementById('lrc-editor-current-time'),
-    progressBar: document.getElementById('lrc-editor-progress-bar'),
-    totalDuration: document.getElementById('lrc-editor-total-duration'),
-    timestampBtn: document.getElementById('lrc-editor-timestamp-btn'),
-    lyricsArea: document.getElementById('lrc-editor-lyrics-area'),
-    textarea: document.getElementById('lrc-editor-textarea'),
-    loadTextBtn: document.getElementById('lrc-editor-load-text-btn'),
-    helpPopup: document.getElementById('lrc-editor-help-popup'),
-    helpCloseBtn: document.getElementById('lrc-editor-help-close-btn'),
-    undoBtn: document.getElementById('lrc-editor-undo-btn'),         // <<<--- 追加
-    insertBlankBtn: document.getElementById('lrc-editor-insert-blank-btn'), // <<<--- 追加
-};
+// コンポーネントは動的に挿入されるため、参照は開始時に解決する。
+let editorElements = {};
+
+function refreshEditorElements() {
+    editorElements = {
+        view: document.getElementById('lrc-editor-view'),
+        artwork: document.getElementById('lrc-editor-artwork'),
+        title: document.getElementById('lrc-editor-title'),
+        artist: document.getElementById('lrc-editor-artist'),
+        helpBtn: document.getElementById('lrc-editor-help-btn'),
+        exitBtn: document.getElementById('lrc-editor-exit-btn'),
+        saveBtn: document.getElementById('lrc-editor-save-btn'),
+        playPauseBtn: document.getElementById('lrc-editor-play-pause-btn'),
+        currentTime: document.getElementById('lrc-editor-current-time'),
+        progressBar: document.getElementById('lrc-editor-progress-bar'),
+        totalDuration: document.getElementById('lrc-editor-total-duration'),
+        timestampBtn: document.getElementById('lrc-editor-timestamp-btn'),
+        lyricsArea: document.getElementById('lrc-editor-lyrics-area'),
+        textarea: document.getElementById('lrc-editor-textarea'),
+        loadTextBtn: document.getElementById('lrc-editor-load-text-btn'),
+        helpPopup: document.getElementById('lrc-editor-help-popup'),
+        helpCloseBtn: document.getElementById('lrc-editor-help-close-btn'),
+        undoBtn: document.getElementById('lrc-editor-undo-btn'),
+        insertBlankBtn: document.getElementById('lrc-editor-insert-blank-btn'),
+    };
+    return Object.values(editorElements).every(Boolean);
+}
+
+function ensureEditorElements() {
+    if (refreshEditorElements()) {
+        return true;
+    }
+    console.error('[LRC Editor] Required editor elements are missing.');
+    showNotification('LRCエディタの初期化に失敗しました。');
+    hideNotification(3000);
+    return false;
+}
 
 let isEditorInitialized = false;
 
@@ -64,6 +79,7 @@ function saveHistory() {
 
 // --- ▼▼▼ 新規追加: Undo/Redoボタンの状態を更新する関数 ▼▼▼ ---
 function updateUndoRedoButtons() {
+    if (!editorElements.undoBtn) return;
     editorElements.undoBtn.disabled = historyStack.length <= 1; // 初期状態を除いて1つ以上履歴があれば有効
     // Redoボタンがあれば有効/無効を切り替える (今回はUndoのみ)
     // editorElements.redoBtn.disabled = redoStack.length === 0;
@@ -175,53 +191,58 @@ function insertBlankLine() {
 
 // イベントリスナー初期化に関数を追加
 function initLrcEditorListeners() {
-    if (isEditorInitialized) return;
+    if (!ensureEditorElements()) return false;
 
-    editorElements.exitBtn.addEventListener('click', () => {
-        showView(state.activeListView);
-    });
+    if (!isEditorInitialized) {
+        editorElements.exitBtn.addEventListener('click', () => {
+            showView(state.activeListView);
+        });
 
-    editorElements.helpBtn.addEventListener('click', () => {
-        editorElements.helpPopup.classList.remove('hidden');
-    });
-    editorElements.helpCloseBtn.addEventListener('click', () => {
-        editorElements.helpPopup.classList.add('hidden');
-    });
+        editorElements.helpBtn.addEventListener('click', () => {
+            editorElements.helpPopup.classList.remove('hidden');
+        });
+        editorElements.helpCloseBtn.addEventListener('click', () => {
+            editorElements.helpPopup.classList.add('hidden');
+        });
 
-    editorElements.loadTextBtn.addEventListener('click', loadTextFromTextarea);
-    editorElements.playPauseBtn.addEventListener('click', togglePlayPause);
+        editorElements.loadTextBtn.addEventListener('click', loadTextFromTextarea);
+        editorElements.playPauseBtn.addEventListener('click', togglePlayPause);
 
-    editorElements.progressBar.addEventListener('mousedown', () => { editorIsSeeking = true; });
-    editorElements.progressBar.addEventListener('mouseup', () => {
-        if (editorIsSeeking) {
-            seek(parseFloat(editorElements.progressBar.value));
-            editorIsSeeking = false;
-        }
-    });
-    editorElements.progressBar.addEventListener('input', () => {
-        if (editorIsSeeking) {
-            editorElements.currentTime.textContent = formatEditorTime(parseFloat(editorElements.progressBar.value));
-        }
-    });
+        editorElements.progressBar.addEventListener('mousedown', () => { editorIsSeeking = true; });
+        editorElements.progressBar.addEventListener('mouseup', () => {
+            if (editorIsSeeking) {
+                seek(parseFloat(editorElements.progressBar.value));
+                editorIsSeeking = false;
+            }
+        });
+        editorElements.progressBar.addEventListener('input', () => {
+            if (editorIsSeeking) {
+                editorElements.currentTime.textContent = formatEditorTime(parseFloat(editorElements.progressBar.value));
+            }
+        });
 
-    editorElements.timestampBtn.addEventListener('click', addTimestamp);
+        editorElements.timestampBtn.addEventListener('click', addTimestamp);
+        editorElements.saveBtn.addEventListener('click', handleSaveLrc);
+
+        // --- ▼▼▼ 新しいボタンのリスナーを追加 ▼▼▼ ---
+        editorElements.undoBtn.addEventListener('click', undo);
+        editorElements.insertBlankBtn.addEventListener('click', insertBlankLine);
+        // --- ▲▲▲ リスナーを追加 ▲▲▲ ---
+
+        isEditorInitialized = true;
+    }
+
+    editorElements.view.removeEventListener('keydown', handleEditorKeyDown);
     editorElements.view.addEventListener('keydown', handleEditorKeyDown);
 
-    editorElements.saveBtn.addEventListener('click', handleSaveLrc);
-
-    // --- ▼▼▼ 新しいボタンのリスナーを追加 ▼▼▼ ---
-    editorElements.undoBtn.addEventListener('click', undo);
-    editorElements.insertBlankBtn.addEventListener('click', insertBlankLine);
-    // --- ▲▲▲ リスナーを追加 ▲▲▲ ---
-
-    isEditorInitialized = true;
     updateUndoRedoButtons(); // 初期状態を設定
+    return true;
 }
 
 // startLrcEditor で履歴を初期化
 export async function startLrcEditor(song) {
-    console.log('[LRC Editor] Starting editor for:', song.title);
     if (!song) return;
+    console.log('[LRC Editor] Starting editor for:', song.title);
 
     currentEditorSong = song;
     lyricsLines = [];
@@ -233,7 +254,7 @@ export async function startLrcEditor(song) {
     // --- ▲▲▲ 履歴をクリア ▲▲▲ ---
 
 
-    initLrcEditorListeners();
+    if (!initLrcEditorListeners()) return;
 
     showView('lrc-editor-view');
 
@@ -494,7 +515,9 @@ async function handleSaveLrc() {
 
 // LRCエディタビューから離れる際のクリーンアップ処理 (変更なし)
 export function stopLrcEditing() {
-    editorElements.view.removeEventListener('keydown', handleEditorKeyDown);
+    if (editorElements.view) {
+        editorElements.view.removeEventListener('keydown', handleEditorKeyDown);
+    }
     currentEditorSong = null;
     console.log('[LRC Editor] Editor stopped.');
 }

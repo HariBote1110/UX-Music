@@ -268,3 +268,21 @@
     - `go test ./...` を実行し、全パッケージで成功（テスト未定義パッケージを除く）。
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5z` に更新。
+
+### LRC作成機能のWails互換復元
+
+- **歌詞検索ロジックをElectron互換へ調整**:
+    - `src/renderer/js/core/env-setup.js`: `get-lyrics` のWails分岐を修正。
+    - 検索順を「`song.path` のベース名」→「`song.title`」に変更し、既存の `.lrc/.txt` を見つけやすくした。
+- **LRC保存レスポンス形式の互換化**:
+    - `src/renderer/js/core/env-setup.js`: `save-lrc-file` のWails分岐を修正。
+    - Go呼び出し結果を `{ success: true/false, message }` に正規化し、Electron版のUI期待値に合わせた。
+- **LRCエディタ初期化の安定化**:
+    - `src/renderer/js/features/lrc-editor.js`: エディタ要素参照をモジュール読込時固定から、開始時の動的解決に変更。
+    - 要素未解決時は通知して安全に中断する処理を追加。
+    - エディタ再オープン時も `keydown` ハンドラが確実に再接続されるよう調整。
+- **検証**:
+    - `node --check src/renderer/js/core/env-setup.js`
+    - `node --check src/renderer/js/features/lrc-editor.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6a` に更新。

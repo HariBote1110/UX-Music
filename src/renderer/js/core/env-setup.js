@@ -173,14 +173,50 @@ window.electronAPI = window.electronAPI || {
                     return null;
                 },
                 'get-lyrics': async (song) => {
-                    if (window.go?.main?.App?.GetLyrics) {
-                        // Go 側は string を受け取るのでタイトルを渡す
-                        return await window.go.main.App.GetLyrics(song?.title || '');
+                    if (!window.go?.main?.App?.GetLyrics) return null;
+
+                    const candidates = [];
+                    const songPath = typeof song?.path === 'string' ? song.path.trim() : '';
+                    const songTitle = typeof song?.title === 'string' ? song.title.trim() : '';
+
+                    if (songPath) {
+                        const fileName = songPath.split(/[\\/]/).pop() || '';
+                        const dotIndex = fileName.lastIndexOf('.');
+                        const baseName = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+                        if (baseName.trim()) {
+                            candidates.push(baseName.trim());
+                        }
                     }
+                    if (songTitle) {
+                        candidates.push(songTitle);
+                    }
+
+                    const uniqueCandidates = [...new Set(candidates)];
+                    for (const candidate of uniqueCandidates) {
+                        const result = await window.go.main.App.GetLyrics(candidate);
+                        if (result && (result.type === 'lrc' || result.type === 'txt')) {
+                            return result;
+                        }
+                    }
+
+                    return null;
                 },
                 'save-lrc-file': async (data) => {
-                    if (window.go?.main?.App?.SaveLrcFile) {
-                        return await window.go.main.App.SaveLrcFile(data.fileName, data.content);
+                    if (!window.go?.main?.App?.SaveLrcFile) {
+                        return { success: false, message: 'SaveLrcFile が利用できません' };
+                    }
+
+                    const fileName = typeof data?.fileName === 'string' ? data.fileName : '';
+                    const content = typeof data?.content === 'string' ? data.content : '';
+
+                    try {
+                        await window.go.main.App.SaveLrcFile(fileName, content);
+                        return { success: true };
+                    } catch (error) {
+                        return {
+                            success: false,
+                            message: error?.message || String(error),
+                        };
                     }
                 },
                 'get-artwork-as-data-url': async (filename) => {
