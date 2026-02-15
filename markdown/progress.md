@@ -484,3 +484,18 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6n` に更新。
+
+### 元行単位の行間制御と後段遅延の強化
+
+- **元行単位の行間制御**:
+    - `src/renderer/js/features/lyrics-manager.js`: LRC 解析時に `sourceLine` を保持し、描画時に `line-break` / `line-continuation` クラスを付与。
+    - `src/renderer/styles/views.css`: 同一元行の連続表示は狭め、元行が変わる箇所は広めのマージンを適用するスタイルを追加。
+    - これにより、折り返しや同一元行の表示密度を保ちつつ、歌詞行の切れ目を明確化。
+- **後段遅延の強化（前行完了に近い感覚）**:
+    - `src/renderer/js/features/lyrics-manager.js`: 段階遅延のベース値とステップ値を大幅に増加。
+    - 遅延関数を非線形（`order^1.22`）かつ上限付きに変更し、後ろの行ほど目立って遅れる挙動へ調整。
+    - 遅延対象距離を絞り、強い段階感を保ちながら極端なロングテールを抑制。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6o` に更新。

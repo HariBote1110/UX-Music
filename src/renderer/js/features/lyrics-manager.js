@@ -8,10 +8,12 @@ const LYRICS_SCROLL_MIN_DURATION_MS = 700;
 const LYRICS_SCROLL_MAX_DURATION_MS = 1020;
 const LYRICS_SCROLL_MIN_DISTANCE_PX = 6;
 let lyricsScrollAnimationFrame = null;
-const LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS = 36;
-const LYRICS_TRAFFIC_WAVE_STEP_MS = 34;
-const LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT = 28;
-const LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY = 0.05;
+const LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS = 60;
+const LYRICS_TRAFFIC_WAVE_STEP_MS = 420;
+const LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT = 1.22;
+const LYRICS_TRAFFIC_WAVE_MAX_DELAY_MS = 4800;
+const LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT = 12;
+const LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY = 0.06;
 const LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR = 0.24;
 const LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX = 30;
 let lyricsLagPrimeFrame = null;
@@ -69,7 +71,7 @@ function parseLRC(lrcContent) {
     const lyrics = [];
     const timeRegex = /\[(\d{2})[:.](\d{2})[.](\d{2,3})\]/g;
 
-    lines.forEach(line => {
+    lines.forEach((line, sourceLine) => {
         const text = line.replace(timeRegex, '').trim();
         const matches = [...line.matchAll(timeRegex)];
 
@@ -80,12 +82,12 @@ function parseLRC(lrcContent) {
                 const milliseconds = parseInt(match[3].padEnd(3, '0'), 10);
                 const time = minutes * 60 + seconds + milliseconds / 1000;
 
-                lyrics.push({ time, text: text || ' ' });
+                lyrics.push({ time, text: text || ' ', sourceLine });
             });
         }
     });
 
-    return lyrics.sort((a, b) => a.time - b.time);
+    return lyrics.sort((a, b) => (a.time - b.time) || (a.sourceLine - b.sourceLine));
 }
 
 /**
@@ -119,18 +121,33 @@ function renderLyrics(lyrics) {
     // clearLyrics(); // clearLyrics は loadLyricsForSong の冒頭で呼ばれる
     if (typeof lyrics === 'string') {
         // テキスト歌詞を行ごとに分割し、空行もスペースとして表示
-        lyrics.split('\n').forEach(line => {
+        lyrics.split('\n').forEach((line, index) => {
             const p = document.createElement('p');
             p.textContent = line.trim() === '' ? ' ' : line; // 空行はスペースに
+            p.dataset.sourceLine = String(index);
+            if (index > 0) {
+                p.classList.add('line-break');
+            }
             elements.lyricsView.appendChild(p);
         });
     } else {
         console.log(`[Lyrics Debug] ${lyrics.length}行のLRC歌詞を描画します。`);
+        let previousSourceLine = null;
         lyrics.forEach((line, index) => {
             const p = document.createElement('p');
             p.textContent = line.text;
             p.dataset.index = index;
+            if (Number.isFinite(line.sourceLine)) {
+                p.dataset.sourceLine = String(line.sourceLine);
+            }
+            if (index > 0) {
+                const sameSourceLine = Number.isFinite(line.sourceLine)
+                    && previousSourceLine !== null
+                    && line.sourceLine === previousSourceLine;
+                p.classList.add(sameSourceLine ? 'line-continuation' : 'line-break');
+            }
             elements.lyricsView.appendChild(p);
+            previousSourceLine = Number.isFinite(line.sourceLine) ? line.sourceLine : previousSourceLine;
         });
     }
 }
@@ -251,8 +268,12 @@ function applyTrafficWaveLag(activeIndex, distance) {
         const attenuation = clamp(1 - distanceFromActive * LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY, 0.24, 1);
         const activeAttenuation = distanceFromActive === 0 ? 0.42 : 1;
         const lineOffset = peakOffset * attenuation * activeAttenuation;
-        const staggerDelay = Math.pow(order, 1.12) * LYRICS_TRAFFIC_WAVE_STEP_MS;
-        const lineDelay = LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS + staggerDelay;
+        const staggerDelay = Math.pow(order, LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT) * LYRICS_TRAFFIC_WAVE_STEP_MS;
+        const lineDelay = clamp(
+            LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS + staggerDelay,
+            LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS,
+            LYRICS_TRAFFIC_WAVE_MAX_DELAY_MS,
+        );
 
         item.line.classList.add('lag-prime');
         item.line.style.setProperty('--line-lag-delay', `${lineDelay}ms`);

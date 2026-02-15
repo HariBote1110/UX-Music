@@ -642,7 +642,7 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     --line-lag-offset: 0px;
     --line-lag-delay: 0ms;
     --line-scale: 0.958;
-    margin: 4px 0;
+    margin: 0;
     width: fit-content;
     max-width: min(100%, 26ch);
     padding: 8px 14px;
@@ -654,6 +654,14 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     margin-inline: auto;
     word-break: break-word;
     will-change: transform, opacity, filter;
+}
+
+#lyrics-view p.line-continuation {
+    margin-top: clamp(6px, 1vh, 10px);
+}
+
+#lyrics-view p.line-break {
+    margin-top: clamp(14px, 2.1vh, 24px);
 }
 
 #lyrics-view p.lag-prime {
