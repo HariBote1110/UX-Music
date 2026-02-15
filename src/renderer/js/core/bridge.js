@@ -15,7 +15,7 @@ export const musicApi = {
     requestAppInfo: () => {
         if (isWails) {
             // Wails では別ルートでの実装が必要だが、一旦保留
-            return Promise.resolve({ version: '0.1.9-Beta-6t', platform: 'darwin' });
+            return Promise.resolve({ version: '0.1.9-Beta-6u', platform: 'darwin' });
         }
         return api && api.send(CHANNELS.SEND.REQUEST_APP_INFO);
     },

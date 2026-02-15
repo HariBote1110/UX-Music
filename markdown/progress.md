@@ -563,3 +563,15 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6t` に更新。
+
+### 行ごとの遅延カーブを緩やかに調整
+
+- **遅延カーブの再調整**:
+    - `src/renderer/js/features/lyrics-manager.js`: 行ごとの遅延増加が急すぎるため、段階遅延パラメータを緩和。
+    - `LYRICS_TRAFFIC_WAVE_STEP_MS` を 280 から 120 へ縮小。
+    - `LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT` を 1.18 から 1.08 へ下げ、後段の遅延伸びを抑制。
+    - `LYRICS_TRAFFIC_WAVE_MAX_DELAY_MS` を 3200 から 2000 へ下げ、過剰なロングテールを制限。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6u` に更新。
