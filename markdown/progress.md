@@ -349,3 +349,20 @@
     - `node --check src/renderer/js/features/lrc-editor.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6e` に更新。
+
+### LRCエディタのT連打ワークフローに再調整
+
+- **仕様調整**:
+    - `T` 1回目: 現在行にタイムスタンプを打ち、青表示をその行に維持。
+    - 同じ行が青い状態で `T` を再度押す: 次の歌詞行へタイムスタンプを打ち、青表示を次行へ進める。
+    - これにより「今どこを歌っているか」を見失いにくい進行に変更。
+- **修正内容**:
+    - `src/renderer/js/features/lrc-editor.js`: `addTimestamp()` を連続入力対応ロジックへ変更（同一行連続T時のみ次行へ進行）。
+    - `src/renderer/js/features/lrc-editor.js`: 手動行選択（クリック、`↑/↓`）時は自動進行状態を解除するよう調整。
+    - `src/renderer/components/lrc-editor.html`: ヘルプ文言を新しいT連打フローに更新。
+- **不要機能の整理**:
+    - `src/renderer/components/lrc-editor.html` / `src/renderer/js/features/lrc-editor.js` / `src/renderer/styles/lrc-editor.css`: 手動「行ハイライト ( H )」機能を削除。
+- **検証**:
+    - `node --check src/renderer/js/features/lrc-editor.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6f` に更新。

@@ -27,7 +27,6 @@
     <input type="range" id="lrc-editor-progress-bar" value="0" step="any">
     <span id="lrc-editor-total-duration">0:00</span>
     <button id="lrc-editor-timestamp-btn" class="header-button timestamp-btn">タイムスタンプ ( T )</button>
-    <button id="lrc-editor-highlight-btn" class="header-button">行ハイライト ( H )</button>
 </div>
 
 <div id="lrc-editor-lyrics-area">
@@ -40,12 +39,12 @@
     <h4>同期歌詞エディタの使い方</h4>
     <ol>
         <li>曲を再生し、歌詞の行が始まるタイミングで「タイムスタンプ ( T )」ボタンをクリックするか、キーボードの <kbd>T</kbd> キーを押します。</li>
-        <li>タイムスタンプを打っても選択行はそのまま維持されます。どこに打ったかを青表示で確認できます。</li>
+        <li>最初の <kbd>T</kbd> で選択行にタイムスタンプを打ち、青表示はその行に残ります。</li>
         <li>シークバーで再生位置を調整しながら、すべての行にタイムスタンプを打ちます。</li>
-        <li>打ち間違えた場合は、該当の行をクリックして再度タイムスタンプを打つことで上書きできます。</li>
-        <li>次の行へは <kbd>↑</kbd> / <kbd>↓</kbd> で移動できます。</li>
+        <li>同じ行が青い状態で再度 <kbd>T</kbd> を押すと、次の行にタイムスタンプを打って青表示が次行へ移動します。</li>
+        <li>打ち間違えた場合は、該当行をクリック後に <kbd>T</kbd> で上書きできます。</li>
+        <li>必要に応じて <kbd>↑</kbd> / <kbd>↓</kbd> でも行移動できます。</li>
         <li>間奏を明示したい場合は「間奏挿入 ( I )」で <code>[間奏]</code> 行を追加してタイムスタンプを打てます。</li>
-        <li>作業中の目印として、選択行に「行ハイライト ( H )」を付けられます。</li>
         <li>歌詞がない場合は、テキストエリアに歌詞を貼り付けて「テキストを読み込む」ボタンを押してください。</li>
         <li>完了したら「LRCを保存」ボタンを押します。</li>
     </ol>

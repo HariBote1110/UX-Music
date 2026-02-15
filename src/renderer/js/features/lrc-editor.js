@@ -18,11 +18,10 @@ function getExtname(path) {
 
 const INTERLUDE_LABEL = '[間奏]';
 
-function createLyricLine(text, timestamp = null, isHighlighted = false) {
+function createLyricLine(text, timestamp = null) {
     return {
         text,
         timestamp,
-        isHighlighted,
     };
 }
 
@@ -32,9 +31,11 @@ function isInterludeText(text) {
 }
 
 let currentEditorSong = null;
-let lyricsLines = []; // { text: string, timestamp: number | null, isHighlighted: boolean } の配列
+let lyricsLines = []; // { text: string, timestamp: number | null } の配列
 let activeLineIndex = -1;
 let editorIsSeeking = false;
+let lastTimestampedLineIndex = -1;
+let autoAdvanceArmed = false;
 let historyStack = []; // <<<--- 追加: 操作履歴スタック
 let redoStack = [];    // <<<--- 追加: Redo用スタック (今回はUndoのみ実装)
 
@@ -63,7 +64,6 @@ function refreshEditorElements() {
         undoBtn: document.getElementById('lrc-editor-undo-btn'),
         insertBlankBtn: document.getElementById('lrc-editor-insert-blank-btn'),
         insertInterludeBtn: document.getElementById('lrc-editor-insert-interlude-btn'),
-        highlightBtn: document.getElementById('lrc-editor-highlight-btn'),
     };
     return Object.values(editorElements).every(Boolean);
 }
@@ -103,16 +103,6 @@ function updateUndoRedoButtons() {
 }
 // --- ▲▲▲ 新規追加 ▲▲▲ ---
 
-function updateHighlightButtonState() {
-    if (!editorElements.highlightBtn) return;
-    const hasActiveLine = activeLineIndex >= 0 && activeLineIndex < lyricsLines.length;
-    const highlighted = hasActiveLine && lyricsLines[activeLineIndex]?.isHighlighted === true;
-
-    editorElements.highlightBtn.disabled = !hasActiveLine;
-    editorElements.highlightBtn.classList.toggle('is-active', highlighted);
-    editorElements.highlightBtn.textContent = highlighted ? 'ハイライト解除 ( H )' : '行ハイライト ( H )';
-}
-
 // --- ▼▼▼ 新規追加: Undo処理 ▼▼▼ ---
 function undo() {
     if (historyStack.length <= 1) return; // 初期状態しか残っていない場合は何もしない
@@ -124,6 +114,8 @@ function undo() {
     historyStack.pop(); // 現在の状態を捨てる
     const previousState = historyStack[historyStack.length - 1]; // 一つ前の状態を取得
     lyricsLines = JSON.parse(JSON.stringify(previousState)); // ディープコピーして復元
+    lastTimestampedLineIndex = -1;
+    autoAdvanceArmed = false;
 
     // UIを再描画
     redrawLyricsArea();
@@ -157,16 +149,12 @@ function redrawLyricsArea() {
     editorElements.lyricsArea.innerHTML = ''; // 一旦クリア
     if (lyricsLines.length === 0) {
         editorElements.lyricsArea.innerHTML = '<p class="lyrics-line placeholder">歌詞がありません。</p>';
-        updateHighlightButtonState();
         return;
     }
     lyricsLines.forEach((lineData, index) => {
         const lineElement = document.createElement('p');
         lineElement.classList.add('lyrics-line');
         lineElement.dataset.index = index;
-        if (lineData.isHighlighted) {
-            lineElement.classList.add('manual-highlight');
-        }
         if (isInterludeText(lineData.text)) {
             lineElement.classList.add('interlude-line');
         }
@@ -187,7 +175,7 @@ function redrawLyricsArea() {
 
         lineElement.appendChild(textSpan);
         lineElement.appendChild(timeSpan);
-        lineElement.addEventListener('click', () => setActiveLine(index));
+        lineElement.addEventListener('click', () => setActiveLine(index, true));
         editorElements.lyricsArea.appendChild(lineElement);
     });
     // アクティブ行のスタイル復元
@@ -200,14 +188,13 @@ function redrawLyricsArea() {
         // アクティブ行が見つからない場合は最初の行をアクティブにする
         setActiveLine(0);
     }
-    updateHighlightButtonState();
 }
 // --- ▲▲▲ 新規追加 ▲▲▲ ---
 
 // --- ▼▼▼ 新規追加: 空白行を挿入する関数 ▼▼▼ ---
 function insertBlankLine() {
     saveHistory(); // 操作履歴を保存
-    const blankLine = createLyricLine(' ', null, false); // textは半角スペース一つにする
+    const blankLine = createLyricLine(' ', null); // textは半角スペース一つにする
     if (activeLineIndex === -1 || lyricsLines.length === 0) {
         // 歌詞がない場合や選択がない場合は末尾に追加
         lyricsLines.push(blankLine);
@@ -217,6 +204,8 @@ function insertBlankLine() {
         lyricsLines.splice(activeLineIndex + 1, 0, blankLine);
         activeLineIndex += 1; // 新しく挿入した行をアクティブにする
     }
+    lastTimestampedLineIndex = -1;
+    autoAdvanceArmed = false;
     redrawLyricsArea(); // UIを再描画
     setActiveLine(activeLineIndex); // 新しい行にフォーカス
     updateUndoRedoButtons();
@@ -225,7 +214,7 @@ function insertBlankLine() {
 
 function insertInterludeLine() {
     saveHistory();
-    const interludeLine = createLyricLine(INTERLUDE_LABEL, null, false);
+    const interludeLine = createLyricLine(INTERLUDE_LABEL, null);
 
     if (activeLineIndex === -1 || lyricsLines.length === 0) {
         lyricsLines.push(interludeLine);
@@ -235,16 +224,8 @@ function insertInterludeLine() {
         activeLineIndex += 1;
     }
 
-    redrawLyricsArea();
-    setActiveLine(activeLineIndex);
-    updateUndoRedoButtons();
-}
-
-function toggleLineHighlight() {
-    if (activeLineIndex < 0 || activeLineIndex >= lyricsLines.length) return;
-    saveHistory();
-    const current = lyricsLines[activeLineIndex];
-    current.isHighlighted = !current.isHighlighted;
+    lastTimestampedLineIndex = -1;
+    autoAdvanceArmed = false;
     redrawLyricsArea();
     setActiveLine(activeLineIndex);
     updateUndoRedoButtons();
@@ -290,7 +271,6 @@ function initLrcEditorListeners() {
         editorElements.undoBtn.addEventListener('click', undo);
         editorElements.insertBlankBtn.addEventListener('click', insertBlankLine);
         editorElements.insertInterludeBtn.addEventListener('click', insertInterludeLine);
-        editorElements.highlightBtn.addEventListener('click', toggleLineHighlight);
         // --- ▲▲▲ リスナーを追加 ▲▲▲ ---
 
         isEditorInitialized = true;
@@ -312,6 +292,8 @@ export async function startLrcEditor(song) {
     lyricsLines = [];
     activeLineIndex = -1;
     editorIsSeeking = false;
+    lastTimestampedLineIndex = -1;
+    autoAdvanceArmed = false;
     // --- ▼▼▼ 履歴をクリア ▼▼▼ ---
     historyStack = [];
     redoStack = [];
@@ -359,13 +341,14 @@ export async function startLrcEditor(song) {
     editorElements.view.setAttribute('tabindex', '-1');
     editorElements.view.focus();
     updateUndoRedoButtons(); // ボタン状態初期化
-    updateHighlightButtonState();
 }
 
 // 歌詞テキストを解析して表示エリアに描画する関数を修正
 // LRC読み込みにも対応
 function parseAndDisplayLyrics(textContent, type = 'txt') {
     editorElements.lyricsArea.innerHTML = '';
+    lastTimestampedLineIndex = -1;
+    autoAdvanceArmed = false;
 
     if (type === 'lrc') {
         const lines = textContent.split('\n');
@@ -383,14 +366,14 @@ function parseAndDisplayLyrics(textContent, type = 'txt') {
                 timestamp = minutes * 60 + seconds + milliseconds / 1000;
             }
             // 空行も保持する (text: ' ')
-            return createLyricLine(text === '' ? ' ' : text, timestamp, false);
+            return createLyricLine(text === '' ? ' ' : text, timestamp);
         }).sort((a, b) => (a.timestamp ?? Infinity) - (b.timestamp ?? Infinity)); // タイムスタンプ順にソート
 
     } else { // TXTの場合
         lyricsLines = textContent
             .split('\n')
             // 空行も保持 (text: ' ')、タイムスタンプは null
-            .map(line => createLyricLine(line.trim() === '' ? ' ' : line, null, false));
+            .map(line => createLyricLine(line.trim() === '' ? ' ' : line, null));
     }
 
 
@@ -416,7 +399,9 @@ function loadTextFromTextarea() {
     // ここで saveHistory を呼ぶ前に lyricsLines を更新する
     lyricsLines = textContent
         .split('\n')
-        .map(line => createLyricLine(line.trim() === '' ? ' ' : line, null, false));
+        .map(line => createLyricLine(line.trim() === '' ? ' ' : line, null));
+    lastTimestampedLineIndex = -1;
+    autoAdvanceArmed = false;
 
     saveHistory(); // 変更前の状態ではなく、テキストエリア読み込み後の状態を保存
 
@@ -437,9 +422,14 @@ function loadTextFromTextarea() {
 
 
 // 指定したインデックスの行をアクティブにする関数 (変更なし)
-function setActiveLine(index) {
+function setActiveLine(index, isManual = false) {
     if (index < 0 || index >= lyricsLines.length) return;
     activeLineIndex = index;
+    if (isManual) {
+        // 手動選択時は自動先送りモードを解除する。
+        autoAdvanceArmed = false;
+        lastTimestampedLineIndex = -1;
+    }
     editorElements.lyricsArea.querySelectorAll('.lyrics-line.active').forEach(el => {
         el.classList.remove('active');
     });
@@ -449,14 +439,13 @@ function setActiveLine(index) {
         // スクロール処理を redrawLyricsArea に移動したので、ここでは不要かも
         targetLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-    updateHighlightButtonState();
 }
 
 function moveActiveLine(step) {
     if (lyricsLines.length === 0) return;
     const currentIndex = activeLineIndex < 0 ? 0 : activeLineIndex;
     const nextIndex = Math.max(0, Math.min(lyricsLines.length - 1, currentIndex + step));
-    setActiveLine(nextIndex);
+    setActiveLine(nextIndex, true);
 }
 
 // 現在アクティブな行にタイムスタンプを記録する関数を修正
@@ -465,7 +454,8 @@ function addTimestamp() {
 
     // --- ▼▼▼ 空白行の場合はタイムスタンプを設定しない ▼▼▼ ---
     if (lyricsLines[activeLineIndex].text.trim() === '') {
-        showNotification("空白行にはタイムスタンプを設定できません。", 2000); // 少し短めに表示
+        showNotification('空白行にはタイムスタンプを設定できません。');
+        hideNotification(2000);
         // 次の空でない行へ移動する
         let nextIndex = activeLineIndex + 1;
         while (nextIndex < lyricsLines.length && lyricsLines[nextIndex].text.trim() === '') {
@@ -478,15 +468,33 @@ function addTimestamp() {
     }
     // --- ▲▲▲ 空白行チェック ▲▲▲ ---
 
+    const findNextStampableIndex = (startIndex) => {
+        for (let i = startIndex; i < lyricsLines.length; i++) {
+            if (lyricsLines[i].text.trim() !== '') return i;
+        }
+        return -1;
+    };
+
+    let targetIndex = activeLineIndex;
+    if (autoAdvanceArmed && lastTimestampedLineIndex === activeLineIndex) {
+        const nextIndex = findNextStampableIndex(activeLineIndex + 1);
+        if (nextIndex !== -1) {
+            targetIndex = nextIndex;
+        } else {
+            showNotification('次にタイムスタンプを付ける行がありません。');
+            hideNotification(2000);
+        }
+    }
+
     saveHistory(); // ★★★ 操作履歴を保存 ★★★
     const currentTime = getCurrentTime();
-    lyricsLines[activeLineIndex].timestamp = currentTime; // 状態を更新
+    lyricsLines[targetIndex].timestamp = currentTime; // 状態を更新
 
     // UIを更新
     redrawLyricsArea(); // UI全体を再描画してタイムスタンプを表示
-    // 指定した行をそのままアクティブに維持する。
-    // どこにタイムスタンプを打ったかを視認しやすくするため、次行へ自動移動しない。
-    setActiveLine(activeLineIndex);
+    setActiveLine(targetIndex);
+    lastTimestampedLineIndex = targetIndex;
+    autoAdvanceArmed = true;
     updateUndoRedoButtons(); // ★★★ ボタン状態更新 ★★★
 }
 
@@ -521,11 +529,6 @@ function handleEditorKeyDown(event) {
     if (event.key.toUpperCase() === 'T') {
         event.preventDefault();
         addTimestamp();
-        return;
-    }
-    if (event.key.toUpperCase() === 'H') {
-        event.preventDefault();
-        toggleLineHighlight();
         return;
     }
     if (event.key.toUpperCase() === 'I') {
