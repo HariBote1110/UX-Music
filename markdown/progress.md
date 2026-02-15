@@ -743,3 +743,34 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7h` に更新。
+
+### CoreML 前提 TXT 自動同期歌詞の追加
+
+- **バックエンド同期サービスの新設**:
+    - `internal/lyricssync/` を新規作成し、以下を実装。
+      - `syncer.go`: ffmpeg 抽出 → whisper 実行 → 行整列 → 補間 → 単調性補正の統合パイプライン。
+      - `whisper_runner.go`: `whisper-cli` 実行、JSONセグメント解析、モデル探索（環境変数優先 + 既定パス）。
+      - `align.go`: TXT行と認識セグメントの単調整列、未一致行の補間、逆転時刻の補正。
+      - `normalise.go`: 記号/空白除去、全角半角吸収、大小文字吸収の正規化。
+      - `types.go`: `Request` / `AlignedLine` / `Result` の I/O 定義。
+    - ログプレフィックスを `[Lyrics AutoSync]` で統一。
+- **Wails 公開APIの追加**:
+    - `app.go`: `lyricsSyncer` を App 構造体に組み込み。
+    - `app_lyrics.go`: `AutoSyncLyrics(req lyricssync.Request)` を追加。
+- **フロントエンド連携**:
+    - `src/renderer/components/lrc-editor.html`: 「自動同期解析」ボタンを追加。
+    - `src/renderer/js/features/lrc-editor.js`: `lyrics-auto-sync` invoke、実行中状態、結果反映、通知表示を実装。
+    - `src/renderer/styles/lrc-editor.css`: 自動同期ボタンの通常/実行中/無効状態スタイルを追加。
+    - `src/renderer/js/core/env-setup.js`: Wails invoke dispatch に `lyrics-auto-sync` を追加。
+- **保存方針**:
+    - 自動同期はエディタ上のプレビュー反映のみで、既存の「LRCを保存」操作でのみファイル保存される設計を維持。
+- **テスト追加**:
+    - `internal/lyricssync/normalise_test.go`: 文字正規化と間奏判定。
+    - `internal/lyricssync/align_test.go`: 単調整列と補間の挙動。
+    - `internal/lyricssync/syncer_test.go`: 空行エラー、CLI未配置、モデル未配置、擬似 `ffmpeg` / `whisper-cli` による結合検証。
+- **ドキュメント更新**:
+    - `markdown/Task.md`: 本タスクの完了条件を追加。
+    - `markdown/features.md`: TXT自動同期解析を機能一覧に追記。
+    - `markdown/requirement.md`: CoreML前提の運用条件と仕様を追加。
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7i` に更新。

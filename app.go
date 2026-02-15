@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"ux-music-sidecar/internal/config"
+	"ux-music-sidecar/internal/lyricssync"
 	"ux-music-sidecar/pkg/audio"
 	"ux-music-sidecar/pkg/cdrip"
 	"ux-music-sidecar/pkg/mtp"
@@ -17,6 +18,7 @@ type App struct {
 	mtpManager   *mtp.Manager
 	normalizer   *normalize.Normalizer
 	audioPlayer  *audio.Player
+	lyricsSyncer *lyricssync.Syncer
 	mtpConnected bool
 	mtpMu        sync.Mutex
 }
@@ -24,9 +26,10 @@ type App struct {
 // NewApp creates a new App struct
 func NewApp() *App {
 	return &App{
-		ripper:     cdrip.NewRipper("", config.FFmpegPath, config.GetUserDataPath()),
-		mtpManager: mtp.NewManager(),
-		normalizer: normalize.NewNormalizer(config.FFmpegPath, config.FFprobePath),
+		ripper:       cdrip.NewRipper("", config.FFmpegPath, config.GetUserDataPath()),
+		mtpManager:   mtp.NewManager(),
+		normalizer:   normalize.NewNormalizer(config.FFmpegPath, config.FFprobePath),
+		lyricsSyncer: lyricssync.NewSyncer(),
 	}
 }
 

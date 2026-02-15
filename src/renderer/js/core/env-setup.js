@@ -219,6 +219,19 @@ window.electronAPI = window.electronAPI || {
                         };
                     }
                 },
+                'lyrics-auto-sync': async (data) => {
+                    if (!window.go?.main?.App?.AutoSyncLyrics) {
+                        return { success: false, error: 'AutoSyncLyrics が利用できません' };
+                    }
+                    try {
+                        return await window.go.main.App.AutoSyncLyrics(data || {});
+                    } catch (error) {
+                        return {
+                            success: false,
+                            error: error?.message || String(error),
+                        };
+                    }
+                },
                 'get-artwork-as-data-url': async (filename) => {
                     if (window.go?.main?.App?.GetArtworkAsDataURL) {
                         return await window.go.main.App.GetArtworkAsDataURL(filename);

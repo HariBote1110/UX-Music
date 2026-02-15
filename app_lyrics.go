@@ -2,6 +2,7 @@ package main
 
 import (
 	"ux-music-sidecar/internal/lyrics"
+	"ux-music-sidecar/internal/lyricssync"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -23,4 +24,12 @@ func (a *App) HandleLyricsDrop(paths []string) error {
 		wailsRuntime.EventsEmit(a.ctx, "lyrics-added-notification", count)
 	}
 	return err
+}
+
+// AutoSyncLyrics performs automatic lyric timestamp alignment
+func (a *App) AutoSyncLyrics(req lyricssync.Request) (lyricssync.Result, error) {
+	if a.lyricsSyncer == nil {
+		a.lyricsSyncer = lyricssync.NewSyncer()
+	}
+	return a.lyricsSyncer.Sync(req), nil
 }

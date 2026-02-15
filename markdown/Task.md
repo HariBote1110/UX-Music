@@ -29,3 +29,18 @@ Node.js および Electron に依存していたバックエンド処理（CDリ
 - [x] `src/sidecars` および `src/main` の削除
 - [x] `package.json` からのエレクトロン依存削除
 
+# Task: CoreML 前提 TXT 自動歌詞同期
+
+## 概要
+CoreML が使える macOS 環境を前提に、`TXT` 歌詞を自動で時刻同期し、`LRC` 作成を支援する機能を追加する。
+同期解析は `whisper.cpp` の CoreML 実行を利用し、結果は LRC エディタにプレビュー反映する。
+
+## 完了条件
+- [x] `internal/lyricssync` パッケージを追加し、同期解析の実行パイプライン（ffmpeg抽出 / whisper実行 / 単調整列 / 補完 / 単調性補正）を実装。
+- [x] `App.AutoSyncLyrics` を公開し、Wails から呼び出せること。
+- [x] `env-setup.js` に `lyrics-auto-sync` invoke ルートを追加すること。
+- [x] `lrc-editor` へ「自動同期解析」ボタンを追加し、実行中状態・完了通知・失敗通知を実装すること。
+- [x] 自動同期結果は保存せず、既存の「LRCを保存」操作でのみファイル保存されること。
+- [x] `whisper-cli` / モデル未配置時に配置先を含むエラーメッセージが返ること。
+- [x] `markdown/requirement.md` のバージョンを `0.1.9-Beta-7i` に更新すること。
+- [x] 単体テスト・結合テスト（擬似 `ffmpeg` / `whisper-cli`）を追加すること。

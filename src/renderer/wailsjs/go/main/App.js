@@ -66,6 +66,10 @@ export function AudioStop() {
   return window['go']['main']['App']['AudioStop']();
 }
 
+export function AutoSyncLyrics(arg1) {
+  return window['go']['main']['App']['AutoSyncLyrics'](arg1);
+}
+
 export function BuildFLACIndexes() {
   return window['go']['main']['App']['BuildFLACIndexes']();
 }
