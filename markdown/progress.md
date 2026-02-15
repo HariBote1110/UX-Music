@@ -717,3 +717,14 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7f` に更新。
+
+### ぼかし解除に短いフェードインを追加
+
+- **フォーカス遷移の調整**:
+    - `src/renderer/styles/views.css`: `#lyrics-view p` に `--line-focus-delay` を追加。
+    - `opacity` / `filter` / `text-shadow` の遷移に `--line-focus-delay` を適用し、ぼかし解除を即時ではなく短い遅延付きで開始。
+    - `#lyrics-view p.active` で `--line-focus-delay: 72ms` を設定し、アクティブ化時にわずかなフェードイン感を付与。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7g` に更新。
