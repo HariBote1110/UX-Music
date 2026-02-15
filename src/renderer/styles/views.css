@@ -657,7 +657,7 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
 }
 
 #lyrics-view p.line-continuation {
-    margin-top: clamp(6px, 1vh, 10px);
+    margin-top: clamp(2px, 0.45vh, 5px);
 }
 
 #lyrics-view p.line-break {

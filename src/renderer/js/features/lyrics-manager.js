@@ -19,6 +19,7 @@ const LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX = 30;
 let lyricsLagPrimeFrame = null;
 let lyricsLagRunFrame = null;
 let previousActiveLyricsIndex = -1;
+let previousDisplayedLyricsIndex = -1;
 
 /**
  * 曲が再生されたときに歌詞を読み込んで表示するメイン関数
@@ -97,6 +98,7 @@ function clearLyrics() {
     stopLyricsScrollAnimation();
     stopLyricsLagAnimation();
     previousActiveLyricsIndex = -1;
+    previousDisplayedLyricsIndex = -1;
     elements.lyricsView.innerHTML = '';
     elements.lyricsView.scrollTop = 0;
     // 既存のリスナーがあれば削除 (念のため)
@@ -228,6 +230,48 @@ function getLyricsIndexFromElement(line) {
     return Number.parseInt(line.dataset.index || '', 10);
 }
 
+function getDisplayedLyricsIndex(container) {
+    if (!container) return -1;
+
+    const containerRect = container.getBoundingClientRect();
+    const visibleRect = getLyricsVisibleRect(containerRect);
+    const visibleCentre = visibleRect.top + (visibleRect.bottom - visibleRect.top) / 2;
+    const lines = Array.from(container.querySelectorAll('p[data-index]'));
+    if (lines.length === 0) return -1;
+
+    let closestIndex = -1;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    lines.forEach(line => {
+        const index = getLyricsIndexFromElement(line);
+        if (!Number.isFinite(index)) return;
+        const rect = line.getBoundingClientRect();
+        if (rect.bottom < visibleRect.top || rect.top > visibleRect.bottom) {
+            return;
+        }
+        const lineCentre = rect.top + rect.height / 2;
+        const distance = Math.abs(lineCentre - visibleCentre);
+        if (distance < closestDistance) {
+            closestDistance = distance;
+            closestIndex = index;
+        }
+    });
+
+    if (closestIndex !== -1) {
+        return closestIndex;
+    }
+
+    const fallbackLine = lines.reduce((prev, current) => {
+        const prevRect = prev.getBoundingClientRect();
+        const currentRect = current.getBoundingClientRect();
+        const prevDistance = Math.abs((prevRect.top + prevRect.height / 2) - visibleCentre);
+        const currentDistance = Math.abs((currentRect.top + currentRect.height / 2) - visibleCentre);
+        return currentDistance < prevDistance ? current : prev;
+    });
+
+    return getLyricsIndexFromElement(fallbackLine);
+}
+
 function applyTrafficWaveLag(activeIndex, distance) {
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     if (reducedMotionQuery.matches || !elements.lyricsView) {
@@ -242,7 +286,12 @@ function applyTrafficWaveLag(activeIndex, distance) {
 
     stopLyricsLagAnimation(false);
 
-    const direction = activeIndex >= previousActiveLyricsIndex ? 1 : -1;
+    const displayedIndex = getDisplayedLyricsIndex(elements.lyricsView);
+    const baseIndex = displayedIndex !== -1 ? displayedIndex : activeIndex;
+    const previousBaseIndex = previousDisplayedLyricsIndex !== -1
+        ? previousDisplayedLyricsIndex
+        : previousActiveLyricsIndex;
+    const direction = baseIndex >= previousBaseIndex ? 1 : -1;
     const peakOffset = clamp(
         distance * LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR,
         -LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX,
@@ -256,7 +305,7 @@ function applyTrafficWaveLag(activeIndex, distance) {
     const targetLines = allLines
         .map(line => ({ line, index: getLyricsIndexFromElement(line) }))
         .filter(item => Number.isFinite(item.index))
-        .filter(item => Math.abs(item.index - activeIndex) <= LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT)
+        .filter(item => Math.abs(item.index - baseIndex) <= LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT)
         .sort((a, b) => (direction >= 0 ? a.index - b.index : b.index - a.index));
 
     if (targetLines.length === 0) {
@@ -264,10 +313,10 @@ function applyTrafficWaveLag(activeIndex, distance) {
     }
 
     targetLines.forEach((item, order) => {
-        const distanceFromActive = Math.abs(item.index - activeIndex);
-        const attenuation = clamp(1 - distanceFromActive * LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY, 0.24, 1);
-        const activeAttenuation = distanceFromActive === 0 ? 0.42 : 1;
-        const lineOffset = peakOffset * attenuation * activeAttenuation;
+        const distanceFromBase = Math.abs(item.index - baseIndex);
+        const attenuation = clamp(1 - distanceFromBase * LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY, 0.24, 1);
+        const baseAttenuation = distanceFromBase === 0 ? 0.42 : 1;
+        const lineOffset = peakOffset * attenuation * baseAttenuation;
         const staggerDelay = Math.pow(order, LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT) * LYRICS_TRAFFIC_WAVE_STEP_MS;
         const lineDelay = clamp(
             LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS + staggerDelay,
@@ -279,6 +328,8 @@ function applyTrafficWaveLag(activeIndex, distance) {
         item.line.style.setProperty('--line-lag-delay', `${lineDelay}ms`);
         item.line.style.setProperty('--line-lag-offset', `${lineOffset.toFixed(3)}px`);
     });
+
+    previousDisplayedLyricsIndex = baseIndex;
 
     lyricsLagPrimeFrame = requestAnimationFrame(() => {
         targetLines.forEach(item => item.line.classList.remove('lag-prime'));
@@ -301,6 +352,7 @@ function animateLyricsScrollTo(container, targetTop, activeIndex) {
         stopLyricsScrollAnimation();
         stopLyricsLagAnimation();
         container.scrollTop = targetTop;
+        previousDisplayedLyricsIndex = activeIndex;
         return;
     }
 
@@ -311,6 +363,7 @@ function animateLyricsScrollTo(container, targetTop, activeIndex) {
     if (Math.abs(distance) <= LYRICS_SCROLL_MIN_DISTANCE_PX) {
         container.scrollTop = targetTop;
         stopLyricsLagAnimation();
+        previousDisplayedLyricsIndex = activeIndex;
         return;
     }
 
@@ -427,5 +480,6 @@ export function updateSyncedLyrics(currentTime) {
         stopLyricsLagAnimation();
         elements.lyricsView.scrollTop = 0;
         previousActiveLyricsIndex = -1;
+        previousDisplayedLyricsIndex = -1;
     }
 }

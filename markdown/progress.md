@@ -499,3 +499,16 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6o` に更新。
+
+### 表示中行基準への変更と同一元行の行間圧縮
+
+- **遅延基準点の変更**:
+    - `src/renderer/js/features/lyrics-manager.js`: 可視領域中心に最も近い行を `displayed index` として算出する処理を追加。
+    - wave 遅延の基準を `active index` から `displayed index` へ変更し、「今表示している行」を軸に段階遅延が発生するよう調整。
+    - スクロール中断・リセット時の表示基準インデックスの状態管理を追加し、方向判定の安定性を改善。
+- **同一元行の行間調整**:
+    - `src/renderer/styles/views.css`: `line-continuation` の `margin-top` をさらに縮小し、同一元行の連続表示をより詰めた見た目に変更。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6p` に更新。
