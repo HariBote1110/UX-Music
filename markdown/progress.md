@@ -587,3 +587,14 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6v` に更新。
+
+### スクロールイージングを初速高めの減速型へ変更
+
+- **イージング関数の置換**:
+    - `src/renderer/js/features/lyrics-manager.js`: スクロールで使用していた `easeOutBack23`（Back系）を廃止。
+    - オーバーシュート由来の引っかかり感を減らすため、`easeOutCubic`（初速高め・終端減速）へ差し替え。
+    - `animateLyricsScrollTo()` の進行率計算で新イージングを適用。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6w` に更新。

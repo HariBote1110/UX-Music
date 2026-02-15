@@ -211,12 +211,9 @@ function stopLyricsLagAnimation(reset = true) {
     });
 }
 
-// イージング 23 番相当（easeOutBack）
-function easeOutBack23(progress) {
-    const overshoot = 1.70158;
-    const weight = overshoot + 1;
-    const shifted = progress - 1;
-    return 1 + weight * Math.pow(shifted, 3) + overshoot * Math.pow(shifted, 2);
+// 立ち上がりを速くしつつ終端で滑らかに減速する ease-out
+function easeOutCubic(progress) {
+    return 1 - Math.pow(1 - progress, 3);
 }
 
 function clamp(value, min, max) {
@@ -390,7 +387,7 @@ function animateLyricsScrollTo(container, targetTop) {
     const step = (now) => {
         const elapsed = now - startTime;
         const progress = Math.min(1, elapsed / scrollDuration);
-        const easedProgress = easeOutBack23(progress);
+        const easedProgress = easeOutCubic(progress);
         container.scrollTop = startTop + distance * easedProgress;
 
         if (progress < 1) {
