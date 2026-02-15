@@ -549,3 +549,17 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6s` に更新。
+
+### 行ごとの遅延増加を再導入（表示中行基準・表示済み除外）
+
+- **遅延ロジックの再構成**:
+    - `src/renderer/js/features/lyrics-manager.js`: 単純ディレイ（全体オフセット）方式を廃止し、行ごとの段階遅延方式を再導入。
+    - 基準点は「表示中の行」（可視領域上端アンカー付近）として算出する方式に変更。
+    - スクロール方向に応じて、表示済み側の行（過ぎた側）を遅延対象から除外するフィルタを追加。
+- **CSS 連携の復元**:
+    - `src/renderer/styles/views.css`: `--line-lag-offset` / `--line-lag-delay` と `.lag-prime` を復元し、行単位の時間差トランジションへ戻した。
+    - 同一元行/行切替の行間制御（`line-continuation`, `line-break`）は維持。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6t` に更新。

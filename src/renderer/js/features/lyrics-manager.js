@@ -9,12 +9,16 @@ const LYRICS_SCROLL_MAX_DURATION_MS = 1020;
 const LYRICS_SCROLL_MIN_DISTANCE_PX = 6;
 const LYRICS_TOP_ANCHOR_OFFSET_PX = 26;
 let lyricsScrollAnimationFrame = null;
-const LYRICS_LAG_HOLD_MS = 120;
-const LYRICS_LAG_SETTLE_MS = 760;
-const LYRICS_LAG_FACTOR = 0.18;
-const LYRICS_LAG_MAX_PX = 20;
-let lyricsLagAnimationFrame = null;
-let lyricsLagOffsetPx = 0;
+const LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS = 70;
+const LYRICS_TRAFFIC_WAVE_STEP_MS = 280;
+const LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT = 1.18;
+const LYRICS_TRAFFIC_WAVE_MAX_DELAY_MS = 3200;
+const LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT = 14;
+const LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY = 0.07;
+const LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR = 0.22;
+const LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX = 22;
+let lyricsLagPrimeFrame = null;
+let lyricsLagRunFrame = null;
 
 /**
  * 曲が再生されたときに歌詞を読み込んで表示するメイン関数
@@ -187,20 +191,24 @@ function stopLyricsScrollAnimation() {
     }
 }
 
-function applyLyricsLagOffset(offsetPx) {
-    lyricsLagOffsetPx = offsetPx;
-    if (!elements.lyricsView) return;
-    elements.lyricsView.style.setProperty('--lyrics-lag-offset', `${offsetPx.toFixed(3)}px`);
-}
-
 function stopLyricsLagAnimation(reset = true) {
-    if (lyricsLagAnimationFrame) {
-        cancelAnimationFrame(lyricsLagAnimationFrame);
-        lyricsLagAnimationFrame = null;
+    if (lyricsLagPrimeFrame) {
+        cancelAnimationFrame(lyricsLagPrimeFrame);
+        lyricsLagPrimeFrame = null;
     }
-    if (reset) {
-        applyLyricsLagOffset(0);
+    if (lyricsLagRunFrame) {
+        cancelAnimationFrame(lyricsLagRunFrame);
+        lyricsLagRunFrame = null;
     }
+    if (!reset || !elements.lyricsView) {
+        return;
+    }
+
+    elements.lyricsView.querySelectorAll('p[data-index]').forEach(line => {
+        line.classList.remove('lag-prime');
+        line.style.removeProperty('--line-lag-delay');
+        line.style.removeProperty('--line-lag-offset');
+    });
 }
 
 // イージング 23 番相当（easeOutBack）
@@ -211,56 +219,108 @@ function easeOutBack23(progress) {
     return 1 + weight * Math.pow(shifted, 3) + overshoot * Math.pow(shifted, 2);
 }
 
-function easeOutCubic(progress) {
-    return 1 - Math.pow(1 - progress, 3);
-}
-
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
 
-function animateLyricsLagByDistance(distance) {
+function getLyricsIndexFromElement(line) {
+    return Number.parseInt(line.dataset.index || '', 10);
+}
+
+function getDisplayedLyricsIndex(container) {
+    if (!container) return -1;
+
+    const containerRect = container.getBoundingClientRect();
+    const visibleRect = getLyricsVisibleRect(containerRect);
+    const anchorTop = visibleRect.top + LYRICS_TOP_ANCHOR_OFFSET_PX;
+    const lines = Array.from(container.querySelectorAll('p[data-index]'));
+    if (lines.length === 0) return -1;
+
+    let closestIndex = -1;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    lines.forEach(line => {
+        const index = getLyricsIndexFromElement(line);
+        if (!Number.isFinite(index)) return;
+        const rect = line.getBoundingClientRect();
+        if (rect.bottom < visibleRect.top || rect.top > visibleRect.bottom) {
+            return;
+        }
+
+        const distance = Math.abs(rect.top - anchorTop);
+        if (distance < closestDistance) {
+            closestDistance = distance;
+            closestIndex = index;
+        }
+    });
+
+    return closestIndex;
+}
+
+function applyTrafficWaveLag(distance) {
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     if (reducedMotionQuery.matches) {
         stopLyricsLagAnimation();
         return;
     }
 
-    stopLyricsLagAnimation(false);
-
-    const peakOffset = clamp(distance * LYRICS_LAG_FACTOR, -LYRICS_LAG_MAX_PX, LYRICS_LAG_MAX_PX);
-    if (Math.abs(peakOffset) < 0.5) {
-        applyLyricsLagOffset(0);
+    if (!elements.lyricsView) {
         return;
     }
 
-    const startOffset = lyricsLagOffsetPx;
-    const startTime = performance.now();
-    const step = (now) => {
-        const elapsed = now - startTime;
+    const baseIndex = getDisplayedLyricsIndex(elements.lyricsView);
+    if (baseIndex === -1) {
+        return;
+    }
 
-        if (elapsed <= LYRICS_LAG_HOLD_MS) {
-            const holdProgress = elapsed / LYRICS_LAG_HOLD_MS;
-            const easedHold = easeOutCubic(holdProgress);
-            applyLyricsLagOffset(startOffset + (peakOffset - startOffset) * easedHold);
-            lyricsLagAnimationFrame = requestAnimationFrame(step);
-            return;
-        }
+    const direction = distance >= 0 ? 1 : -1;
+    const peakOffset = clamp(
+        distance * LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR,
+        -LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX,
+        LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX,
+    );
+    if (Math.abs(peakOffset) < 0.5) {
+        return;
+    }
 
-        const settleProgress = Math.min(1, (elapsed - LYRICS_LAG_HOLD_MS) / LYRICS_LAG_SETTLE_MS);
-        const easedSettle = easeOutCubic(settleProgress);
-        applyLyricsLagOffset(peakOffset * (1 - easedSettle));
+    stopLyricsLagAnimation(false);
 
-        if (settleProgress < 1) {
-            lyricsLagAnimationFrame = requestAnimationFrame(step);
-            return;
-        }
+    const targetLines = Array.from(elements.lyricsView.querySelectorAll('p[data-index]'))
+        .map(line => ({ line, index: getLyricsIndexFromElement(line) }))
+        .filter(item => Number.isFinite(item.index))
+        .filter(item => direction > 0 ? item.index >= baseIndex : item.index <= baseIndex)
+        .filter(item => Math.abs(item.index - baseIndex) <= LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT)
+        .sort((a, b) => (direction > 0 ? a.index - b.index : b.index - a.index));
 
-        applyLyricsLagOffset(0);
-        lyricsLagAnimationFrame = null;
-    };
+    if (targetLines.length === 0) {
+        return;
+    }
 
-    lyricsLagAnimationFrame = requestAnimationFrame(step);
+    targetLines.forEach((item, order) => {
+        const distanceFromBase = Math.abs(item.index - baseIndex);
+        const attenuation = clamp(1 - distanceFromBase * LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY, 0.24, 1);
+        const anchorAttenuation = distanceFromBase === 0 ? 0.44 : 1;
+        const lineOffset = peakOffset * attenuation * anchorAttenuation;
+        const staggerDelay = Math.pow(order, LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT) * LYRICS_TRAFFIC_WAVE_STEP_MS;
+        const lineDelay = clamp(
+            LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS + staggerDelay,
+            LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS,
+            LYRICS_TRAFFIC_WAVE_MAX_DELAY_MS,
+        );
+
+        item.line.classList.add('lag-prime');
+        item.line.style.setProperty('--line-lag-delay', `${lineDelay}ms`);
+        item.line.style.setProperty('--line-lag-offset', `${lineOffset.toFixed(3)}px`);
+    });
+
+    lyricsLagPrimeFrame = requestAnimationFrame(() => {
+        targetLines.forEach(item => item.line.classList.remove('lag-prime'));
+        lyricsLagRunFrame = requestAnimationFrame(() => {
+            targetLines.forEach(item => item.line.style.setProperty('--line-lag-offset', '0px'));
+            lyricsLagRunFrame = null;
+        });
+        lyricsLagPrimeFrame = null;
+    });
 }
 
 function getLyricsScrollDuration(distance) {
@@ -287,7 +347,7 @@ function animateLyricsScrollTo(container, targetTop) {
         return;
     }
 
-    animateLyricsLagByDistance(distance);
+    applyTrafficWaveLag(distance);
 
     const scrollDuration = getLyricsScrollDuration(distance);
     const startTime = performance.now();
