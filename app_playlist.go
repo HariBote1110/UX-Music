@@ -8,6 +8,7 @@ import (
 	"ux-music-sidecar/internal/playlist"
 	"ux-music-sidecar/internal/store"
 
+	"github.com/google/uuid"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -31,7 +32,7 @@ func (a *App) LoadLibrary() {
 			id, _ := songMap["id"].(string)
 			path, _ := songMap["path"].(string)
 			if strings.TrimSpace(id) == "" && strings.TrimSpace(path) != "" {
-				songMap["id"] = path
+				songMap["id"] = uuid.NewString()
 				migrated = true
 			}
 		}

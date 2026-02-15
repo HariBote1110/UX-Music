@@ -14,6 +14,7 @@ import (
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/pkg/audio"
 
+	"github.com/google/uuid"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -183,7 +184,7 @@ func importSongsToLibrary(songs []scanner.Song, libraryPath string) []scanner.So
 		}
 
 		song.Path = destPath
-		song.ID = destPath
+		song.ID = uuid.NewString()
 		if info, statErr := os.Stat(destPath); statErr == nil {
 			song.FileSize = info.Size()
 		}

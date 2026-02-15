@@ -253,3 +253,18 @@
     - `go test ./...` を実行し、全パッケージで成功（テスト未定義パッケージを除く）。
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5y` に更新。
+
+### Wails取り込み時の曲ID付与をUUIDへ統一
+
+- **新規取り込み曲のID生成を修正**:
+    - `app_scanner.go`: `importSongsToLibrary()` で取り込み後の `song.id` に `uuid` を付与するよう変更。
+    - これにより、Wails 経由で追加した曲も `library.json` に `id` が永続化されるように修正。
+- **既存ライブラリの欠落ID補完を修正**:
+    - `app_playlist.go`: `LoadLibrary()` の移行処理を `path` 補完から `uuid` 補完へ変更。
+    - `id` が欠落した過去データを読み込んだ際にも一意IDを生成して保存。
+- **依存関係の更新**:
+    - `go.mod`: `github.com/google/uuid` を直接依存として追加。
+- **検証**:
+    - `go test ./...` を実行し、全パッケージで成功（テスト未定義パッケージを除く）。
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5z` に更新。
