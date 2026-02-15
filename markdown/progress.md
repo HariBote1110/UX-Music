@@ -692,3 +692,15 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7d` に更新。
+
+### 行切り替えスクロールをゆったり化
+
+- **追従速度の再調整**:
+    - `src/renderer/js/features/lyrics-manager.js`: 行切替時/通常時の `followStrength` をともに低下。
+    - 切替時は `0.06 + easedDistanceRatio * 0.17` へ変更し、最大追従速度を抑制。
+    - 通常時は `0.09 + distanceRatio * 0.13` へ変更し、全体の追従を穏やかに調整。
+    - イージング形状は維持し、テンポ感のみ「クイック」から「ゆったり」へ変更。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7e` に更新。

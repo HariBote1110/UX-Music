@@ -416,8 +416,8 @@ function animateLyricsScrollTo(container, targetTop, options = {}) {
         const distanceRatio = clamp(Math.abs(delta) / 260, 0, 1);
         const easedDistanceRatio = easeOutCubic(distanceRatio);
         const followStrength = lyricsScrollSwitchEasing
-            ? 0.1 + easedDistanceRatio * 0.24
-            : 0.14 + distanceRatio * 0.18;
+            ? 0.06 + easedDistanceRatio * 0.17
+            : 0.09 + distanceRatio * 0.13;
         lyricsScrollContainer.scrollTop += delta * followStrength;
         lyricsScrollAnimationFrame = requestAnimationFrame(step);
     };
