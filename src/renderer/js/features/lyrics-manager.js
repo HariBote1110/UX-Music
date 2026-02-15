@@ -4,7 +4,8 @@ import { showContextMenu } from '../ui/utils.js';
 import { startLrcEditor } from './lrc-editor.js'; // あとで作成
 // --- ▲▲▲ 追加 ▲▲▲ ---
 const electronAPI = window.electronAPI;
-const LYRICS_SCROLL_DURATION_MS = 540;
+const LYRICS_SCROLL_DURATION_MS = 560;
+const LYRICS_SCROLL_MIN_DISTANCE_PX = 6;
 let lyricsScrollAnimationFrame = null;
 
 /**
@@ -162,8 +163,12 @@ function stopLyricsScrollAnimation() {
     }
 }
 
-function easeOutCubic(progress) {
-    return 1 - Math.pow(1 - progress, 3);
+// イージング 23 番相当（easeOutBack）
+function easeOutBack23(progress) {
+    const overshoot = 1.70158;
+    const weight = overshoot + 1;
+    const shifted = progress - 1;
+    return 1 + weight * Math.pow(shifted, 3) + overshoot * Math.pow(shifted, 2);
 }
 
 function animateLyricsScrollTo(container, targetTop) {
@@ -178,7 +183,7 @@ function animateLyricsScrollTo(container, targetTop) {
 
     const startTop = container.scrollTop;
     const distance = targetTop - startTop;
-    if (Math.abs(distance) <= 0.5) {
+    if (Math.abs(distance) <= LYRICS_SCROLL_MIN_DISTANCE_PX) {
         container.scrollTop = targetTop;
         return;
     }
@@ -187,7 +192,7 @@ function animateLyricsScrollTo(container, targetTop) {
     const step = (now) => {
         const elapsed = now - startTime;
         const progress = Math.min(1, elapsed / LYRICS_SCROLL_DURATION_MS);
-        const easedProgress = easeOutCubic(progress);
+        const easedProgress = easeOutBack23(progress);
         container.scrollTop = startTop + distance * easedProgress;
 
         if (progress < 1) {

@@ -427,3 +427,16 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6j` に更新。
+
+### 歌詞スクロールのガタつき低減とイージング23番対応
+
+- **ガタつき対策**:
+    - `src/renderer/styles/views.css`: `#lyrics-view` の `scroll-snap-type` と歌詞行の `scroll-snap-align` を削除し、スクロール追従との干渉を解消。
+    - `src/renderer/js/features/lyrics-manager.js`: 微小移動量ではアニメーションを開始しない閾値（`LYRICS_SCROLL_MIN_DISTANCE_PX`）を追加。
+- **イージング調整**:
+    - `src/renderer/js/features/lyrics-manager.js`: 追従スクロールの補間を `easeOutBack`（イージング23番相当）へ変更。
+    - `src/renderer/styles/views.css`: 歌詞行の `transform` トランジションを `cubic-bezier(0.175, 0.885, 0.32, 1.275)` へ変更し、動きの質感を統一。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6k` に更新。
