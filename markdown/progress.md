@@ -598,3 +598,14 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6w` に更新。
+
+### オーバーシュート挙動（0=>1.2=>1）を解消
+
+- **トランジション曲線の修正**:
+    - `src/renderer/styles/views.css`: 歌詞行の `transform` トランジションで使っていた `cubic-bezier(0.175, 0.885, 0.32, 1.275)` を廃止。
+    - 終端で 1 を超えない `cubic-bezier(0.22, 1, 0.36, 1)` へ統一し、`0 => 1` の単調遷移に変更。
+    - これにより「一瞬上に上がってから落ちる」上振れ挙動を除去。
+- **検証**:
+    - `rg "1.275" src/renderer/styles/views.css`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6x` に更新。
