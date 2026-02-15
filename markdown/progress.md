@@ -440,3 +440,17 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6k` に更新。
+
+### 歌詞表示をさらにゆったり化し、遅延追従スクロールを追加
+
+- **ゆったりした追従スクロール**:
+    - `src/renderer/js/features/lyrics-manager.js`: スクロール時間を固定値から距離依存（最小/最大あり）へ変更し、長距離移動ほどゆっくり追従するよう調整。
+    - 微小なスクロール差分は即時反映し、不要なアニメーションを抑えて安定性を維持。
+- **遅延追従（ワンテンポ遅れ）演出の追加**:
+    - `src/renderer/js/features/lyrics-manager.js`: 歌詞行のラグオフセットを `requestAnimationFrame` で制御する処理を追加。
+    - `src/renderer/styles/views.css`: `--lyrics-lag-offset` を導入し、歌詞行の `transform` に反映。アクティブ行は遅延量を軽減して視認性を保持。
+    - ラグは「ホールド → 減衰」の2段階で戻すことで、Apple Music 風の後追い感を表現。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6l` に更新。
