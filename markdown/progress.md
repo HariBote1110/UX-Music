@@ -526,3 +526,13 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6q` に更新。
+
+### 歌詞の追従基準を中央から上固定へ変更
+
+- **追従基準の調整**:
+    - `src/renderer/js/features/lyrics-manager.js`: `getLyricsScrollTarget()` の計算基準を「可視領域の中心」から「可視領域の上端」へ変更。
+    - 上端貼り付きで見切れないように最小オフセット（`LYRICS_TOP_ANCHOR_OFFSET_PX`）を導入。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6r` に更新。

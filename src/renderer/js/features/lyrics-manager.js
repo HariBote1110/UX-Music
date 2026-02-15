@@ -7,6 +7,7 @@ const electronAPI = window.electronAPI;
 const LYRICS_SCROLL_MIN_DURATION_MS = 700;
 const LYRICS_SCROLL_MAX_DURATION_MS = 1020;
 const LYRICS_SCROLL_MIN_DISTANCE_PX = 6;
+const LYRICS_TOP_ANCHOR_OFFSET_PX = 8;
 let lyricsScrollAnimationFrame = null;
 const LYRICS_LAG_HOLD_MS = 120;
 const LYRICS_LAG_SETTLE_MS = 760;
@@ -172,9 +173,9 @@ function getLyricsScrollTarget(container, lineElement) {
     const containerRect = container.getBoundingClientRect();
     const lineRect = lineElement.getBoundingClientRect();
     const visibleRect = getLyricsVisibleRect(containerRect);
-    const lineCentre = lineRect.top + lineRect.height / 2;
-    const visibleCentre = visibleRect.top + (visibleRect.bottom - visibleRect.top) / 2;
-    const desiredTop = container.scrollTop + (lineCentre - visibleCentre);
+    const lineTop = lineRect.top;
+    const visibleTop = visibleRect.top + LYRICS_TOP_ANCHOR_OFFSET_PX;
+    const desiredTop = container.scrollTop + (lineTop - visibleTop);
     const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
     return Math.min(maxTop, Math.max(0, desiredTop));
 }
