@@ -24,14 +24,14 @@ func (a *App) ScanLibrary(paths []string) scanner.ScanResult {
 	// Merge newly scanned songs into persisted library (dedupe by path).
 	existingRaw, _ := store.Instance.Load("library")
 	existingSongs := []interface{}{}
-	existingPaths := map[string]struct{}{}
+	existingPathIndex := map[string]int{}
 
 	if arr, ok := existingRaw.([]interface{}); ok {
 		existingSongs = arr
-		for _, item := range arr {
+		for i, item := range arr {
 			if m, ok := item.(map[string]interface{}); ok {
 				if p, ok := m["path"].(string); ok && p != "" {
-					existingPaths[p] = struct{}{}
+					existingPathIndex[p] = i
 				}
 			}
 		}
@@ -42,10 +42,13 @@ func (a *App) ScanLibrary(paths []string) scanner.ScanResult {
 		if song.Path == "" {
 			continue
 		}
-		if _, exists := existingPaths[song.Path]; exists {
+		if idx, exists := existingPathIndex[song.Path]; exists {
+			if existingMap, ok := existingSongs[idx].(map[string]interface{}); ok {
+				mergeScannedSong(existingMap, song)
+			}
 			continue
 		}
-		existingPaths[song.Path] = struct{}{}
+		existingPathIndex[song.Path] = len(existingSongs)
 		existingSongs = append(existingSongs, song)
 		newSongs = append(newSongs, song)
 	}
@@ -58,6 +61,66 @@ func (a *App) ScanLibrary(paths []string) scanner.ScanResult {
 	scanResult.Songs = newSongs
 	scanResult.Count = len(newSongs)
 	return scanResult
+}
+
+func mergeScannedSong(existing map[string]interface{}, scanned scanner.Song) {
+	updateString := func(key, value string, prefer bool) {
+		if value == "" {
+			return
+		}
+		current, _ := existing[key].(string)
+		if prefer || current == "" || current == "Unknown Artist" || current == "Unknown Album" {
+			existing[key] = value
+		}
+	}
+	updateInt := func(key string, value int) {
+		if value <= 0 {
+			return
+		}
+		current, _ := existing[key].(float64)
+		if current <= 0 {
+			existing[key] = value
+		}
+	}
+	updateFloat := func(key string, value float64) {
+		if value <= 0 {
+			return
+		}
+		current, _ := existing[key].(float64)
+		if current <= 0 {
+			existing[key] = value
+		}
+	}
+
+	baseName := filepath.Base(scanned.Path)
+	currentTitle, _ := existing["title"].(string)
+	preferTitle := currentTitle == "" || currentTitle == baseName
+
+	updateString("title", scanned.Title, preferTitle)
+	updateString("artist", scanned.Artist, false)
+	updateString("album", scanned.Album, false)
+	updateString("albumartist", scanned.AlbumArtist, false)
+	updateString("genre", scanned.Genre, false)
+	updateString("fileType", scanned.FileType, false)
+
+	updateInt("year", scanned.Year)
+	updateInt("trackNumber", scanned.TrackNumber)
+	updateInt("discNumber", scanned.DiscNumber)
+	updateInt("sampleRate", scanned.SampleRate)
+	updateFloat("duration", scanned.Duration)
+
+	if scanned.FileSize > 0 {
+		current, _ := existing["fileSize"].(float64)
+		if current <= 0 {
+			existing["fileSize"] = scanned.FileSize
+		}
+	}
+
+	if scanned.Artwork != nil {
+		if _, exists := existing["artwork"]; !exists || existing["artwork"] == nil {
+			existing["artwork"] = scanned.Artwork
+		}
+	}
 }
 
 // BuildFLACIndexes iterates through the library and pre-generates indexes for all FLAC files
