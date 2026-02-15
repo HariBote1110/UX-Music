@@ -9,10 +9,10 @@ const LYRICS_SCROLL_MAX_DURATION_MS = 1020;
 const LYRICS_SCROLL_MIN_DISTANCE_PX = 6;
 const LYRICS_TOP_ANCHOR_OFFSET_PX = 26;
 let lyricsScrollAnimationFrame = null;
-const LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS = 70;
-const LYRICS_TRAFFIC_WAVE_STEP_MS = 120;
-const LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT = 1.08;
-const LYRICS_TRAFFIC_WAVE_MAX_DELAY_MS = 2000;
+const LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS = 84;
+const LYRICS_TRAFFIC_WAVE_BASE_DURATION_MS = 760;
+const LYRICS_TRAFFIC_WAVE_MIN_DURATION_MS = 300;
+const LYRICS_TRAFFIC_WAVE_SPEED_CURVE_EXPONENT = 0.84;
 const LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT = 14;
 const LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY = 0.07;
 const LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR = 0.22;
@@ -207,6 +207,7 @@ function stopLyricsLagAnimation(reset = true) {
     elements.lyricsView.querySelectorAll('p[data-index]').forEach(line => {
         line.classList.remove('lag-prime');
         line.style.removeProperty('--line-lag-delay');
+        line.style.removeProperty('--line-lag-duration');
         line.style.removeProperty('--line-lag-offset');
     });
 }
@@ -288,24 +289,19 @@ function applyTrafficWaveLag(distance) {
     const visibleLineCount = getVisibleLyricsLineCount(elements.lyricsView);
     const sparseViewFactor = clamp((3 - visibleLineCount) / 2, 0, 1);
     const effectiveBaseDelay = clamp(
-        LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS * (1 - sparseViewFactor * 0.55),
-        22,
+        LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS * (1 - sparseViewFactor * 0.62),
+        18,
         LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS,
     );
-    const effectiveStepDelay = clamp(
-        LYRICS_TRAFFIC_WAVE_STEP_MS * (1 - sparseViewFactor * 0.68),
-        34,
-        LYRICS_TRAFFIC_WAVE_STEP_MS,
+    const effectiveBaseDuration = clamp(
+        LYRICS_TRAFFIC_WAVE_BASE_DURATION_MS * (1 - sparseViewFactor * 0.24),
+        460,
+        LYRICS_TRAFFIC_WAVE_BASE_DURATION_MS,
     );
-    const effectiveExponent = clamp(
-        LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT - sparseViewFactor * 0.14,
-        0.9,
-        LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT,
-    );
-    const effectiveMaxDelay = clamp(
-        LYRICS_TRAFFIC_WAVE_MAX_DELAY_MS * (1 - sparseViewFactor * 0.5),
-        620,
-        LYRICS_TRAFFIC_WAVE_MAX_DELAY_MS,
+    const effectiveMinDuration = clamp(
+        LYRICS_TRAFFIC_WAVE_MIN_DURATION_MS * (1 - sparseViewFactor * 0.2),
+        210,
+        LYRICS_TRAFFIC_WAVE_MIN_DURATION_MS,
     );
     const peakOffset = clamp(
         distance * LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR,
@@ -329,20 +325,27 @@ function applyTrafficWaveLag(distance) {
         return;
     }
 
-    targetLines.forEach((item, order) => {
+    targetLines.forEach(item => {
         const distanceFromBase = Math.abs(item.index - baseIndex);
+        const distanceRatio = clamp(distanceFromBase / LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT, 0, 1);
+        const speedFactor = Math.pow(distanceRatio, LYRICS_TRAFFIC_WAVE_SPEED_CURVE_EXPONENT);
         const attenuation = clamp(1 - distanceFromBase * LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY, 0.24, 1);
         const anchorAttenuation = distanceFromBase === 0 ? 0.44 : 1;
         const lineOffset = peakOffset * attenuation * anchorAttenuation;
-        const staggerDelay = Math.pow(order, effectiveExponent) * effectiveStepDelay;
         const lineDelay = clamp(
-            effectiveBaseDelay + staggerDelay,
+            effectiveBaseDelay * (1 - speedFactor),
+            0,
             effectiveBaseDelay,
-            effectiveMaxDelay,
+        );
+        const lineDuration = clamp(
+            effectiveBaseDuration - (effectiveBaseDuration - effectiveMinDuration) * speedFactor,
+            effectiveMinDuration,
+            effectiveBaseDuration,
         );
 
         item.line.classList.add('lag-prime');
         item.line.style.setProperty('--line-lag-delay', `${lineDelay}ms`);
+        item.line.style.setProperty('--line-lag-duration', `${lineDuration}ms`);
         item.line.style.setProperty('--line-lag-offset', `${lineOffset.toFixed(3)}px`);
     });
 

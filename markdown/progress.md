@@ -609,3 +609,18 @@
     - `rg "1.275" src/renderer/styles/views.css`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6x` に更新。
+
+### 距離に応じた可変速度追従へ変更
+
+- **遅延主体から速度主体へ移行**:
+    - `src/renderer/js/features/lyrics-manager.js`: 行ごとの動きを単純な段階遅延から、距離依存の可変速度制御へ変更。
+    - 「基準行から遠い行ほど速く戻る」ように、`distance ratio` から `speed factor` を算出。
+    - 近い行は遅延が残り、遠い行は遅延が小さくなるよう `line delay` を反比例で調整。
+    - さらに遠い行ほど `line-lag-duration` を短くし、収束速度を上げる挙動を追加。
+    - 少表示行（1〜2行）時の補正は維持し、過度な置いていかれ感を抑制。
+- **スタイル連携の拡張**:
+    - `src/renderer/styles/views.css`: `--line-lag-duration` を追加し、`transform` トランジション時間を行ごとに受け取るよう更新。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6y` に更新。
