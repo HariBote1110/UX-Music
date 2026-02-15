@@ -623,7 +623,7 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     padding: clamp(28px, 8vh, 72px) clamp(10px, 4.2vw, 18px) 0;
     text-align: center;
     font-size: clamp(17px, 1.65vw, 22px);
-    line-height: 1.9;
+    line-height: 2.2;
     letter-spacing: 0.02em;
     color: var(--text-secondary);
     scroll-behavior: auto;
@@ -642,15 +642,15 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     --line-lag-offset: 0px;
     --line-lag-delay: 0ms;
     --line-scale: 0.958;
-    margin: 0;
+    margin: 4px 0;
     width: fit-content;
     max-width: min(100%, 26ch);
-    padding: 6px 14px;
+    padding: 8px 14px;
     border-radius: 12px;
     opacity: 0.42;
     transform: translate3d(0, var(--line-lag-offset), 0) scale(var(--line-scale));
     filter: blur(0.2px);
-    transition: color 0.68s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.68s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.68s cubic-bezier(0.22, 1, 0.36, 1), transform 0.78s cubic-bezier(0.175, 0.885, 0.32, 1.275) var(--line-lag-delay), filter 0.68s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.68s cubic-bezier(0.22, 1, 0.36, 1), text-shadow 0.68s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: color 0.68s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.68s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.68s cubic-bezier(0.22, 1, 0.36, 1), transform 0.9s cubic-bezier(0.175, 0.885, 0.32, 1.275) var(--line-lag-delay), filter 0.68s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.68s cubic-bezier(0.22, 1, 0.36, 1), text-shadow 0.68s cubic-bezier(0.22, 1, 0.36, 1);
     margin-inline: auto;
     word-break: break-word;
     will-change: transform, opacity, filter;
@@ -699,7 +699,7 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     #lyrics-view {
         font-size: clamp(16px, 2vw, 19px);
         padding-inline: clamp(8px, 3vw, 12px);
-        line-height: 1.82;
+        line-height: 2;
     }
 }
 

@@ -8,12 +8,12 @@ const LYRICS_SCROLL_MIN_DURATION_MS = 700;
 const LYRICS_SCROLL_MAX_DURATION_MS = 1020;
 const LYRICS_SCROLL_MIN_DISTANCE_PX = 6;
 let lyricsScrollAnimationFrame = null;
-const LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS = 20;
-const LYRICS_TRAFFIC_WAVE_STEP_MS = 18;
-const LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT = 22;
-const LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY = 0.08;
-const LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR = 0.18;
-const LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX = 20;
+const LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS = 36;
+const LYRICS_TRAFFIC_WAVE_STEP_MS = 34;
+const LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT = 28;
+const LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY = 0.05;
+const LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR = 0.24;
+const LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX = 30;
 let lyricsLagPrimeFrame = null;
 let lyricsLagRunFrame = null;
 let previousActiveLyricsIndex = -1;
@@ -251,7 +251,8 @@ function applyTrafficWaveLag(activeIndex, distance) {
         const attenuation = clamp(1 - distanceFromActive * LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY, 0.24, 1);
         const activeAttenuation = distanceFromActive === 0 ? 0.42 : 1;
         const lineOffset = peakOffset * attenuation * activeAttenuation;
-        const lineDelay = LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS + order * LYRICS_TRAFFIC_WAVE_STEP_MS;
+        const staggerDelay = Math.pow(order, 1.12) * LYRICS_TRAFFIC_WAVE_STEP_MS;
+        const lineDelay = LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS + staggerDelay;
 
         item.line.classList.add('lag-prime');
         item.line.style.setProperty('--line-lag-delay', `${lineDelay}ms`);

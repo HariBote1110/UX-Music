@@ -470,3 +470,17 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6m` に更新。
+
+### 歌詞の行間拡張と段階遅延をさらに強調
+
+- **行間と視認性の調整**:
+    - `src/renderer/styles/views.css`: 歌詞全体の `line-height` を拡大し、各行の上下余白（`margin` / `padding`）を増加。
+    - モバイル幅でも行間が詰まりすぎないように `@media` 側の `line-height` も引き上げ。
+- **一行ずつ動く演出の強調**:
+    - `src/renderer/js/features/lyrics-manager.js`: wave 遅延パラメータ（ベース遅延・段階遅延・オフセット量）を増やし、前行と後行の差を明確化。
+    - 遅延時間を `order` の線形ではなく `order^1.12` の非線形に変更し、後段行ほど明確に遅れて動くよう調整。
+    - `src/renderer/styles/views.css`: `transform` トランジション時間を延長し、段階遅延の視覚差を強化。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6n` に更新。
