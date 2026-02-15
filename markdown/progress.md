@@ -680,3 +680,15 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7c` に更新。
+
+### 行切り替えスクロールへイージングを適用
+
+- **切り替え時スクロールの補間を改善**:
+    - `src/renderer/js/features/lyrics-manager.js`: 行切り替え時の追従係数に `easeOutCubic` を適用。
+    - `animateLyricsScrollTo()` に `switchEasing` オプションを追加し、行切替時だけ明示的なイージングカーブで追従。
+    - 通常追従時と切替時で追従係数を分離し、切替スクロールの急な印象を緩和。
+    - 切替スクロール完了後は `switchEasing` 状態をリセットし、次の通常追従に復帰。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7d` に更新。
