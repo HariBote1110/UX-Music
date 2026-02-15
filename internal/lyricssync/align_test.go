@@ -1,6 +1,9 @@
 package lyricssync
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestAlignLinesMonotonic(t *testing.T) {
 	lines := []string{
@@ -53,5 +56,45 @@ func TestAlignLinesInterpolatesWhenNoMatch(t *testing.T) {
 	}
 	if aligned[1].Timestamp <= aligned[0].Timestamp || aligned[2].Timestamp <= aligned[1].Timestamp {
 		t.Fatalf("interpolated timestamps are not increasing: %+v", aligned)
+	}
+}
+
+func TestInterludeWeightedInterpolationWithinGap(t *testing.T) {
+	lines := []AlignedLine{
+		{Index: 0, Text: "A", Timestamp: 0, Source: "match"},
+		{Index: 1, Text: "", Timestamp: math.NaN(), Source: "interlude"},
+		{Index: 2, Text: "B", Timestamp: math.NaN(), Source: "interpolated"},
+		{Index: 3, Text: "C", Timestamp: 8, Source: "match"},
+	}
+
+	interpolateMissingTimestamps(lines)
+
+	if !isFinite(lines[1].Timestamp) || !isFinite(lines[2].Timestamp) {
+		t.Fatalf("timestamps should be finite: %+v", lines)
+	}
+	if lines[1].Timestamp >= lines[2].Timestamp {
+		t.Fatalf("interlude line should stay earlier than lyric line: %+v", lines)
+	}
+	if lines[1].Timestamp > 2.0 {
+		t.Fatalf("interlude line consumed too much span: %+v", lines)
+	}
+	if lines[2].Timestamp >= 8.0 {
+		t.Fatalf("lyric line must remain before right anchor: %+v", lines)
+	}
+}
+
+func TestInterludeStepIsSmallerWithoutMatches(t *testing.T) {
+	lines := []AlignedLine{
+		{Index: 0, Text: "first", Timestamp: math.NaN(), Source: "interpolated"},
+		{Index: 1, Text: "", Timestamp: math.NaN(), Source: "interlude"},
+		{Index: 2, Text: "second", Timestamp: math.NaN(), Source: "interpolated"},
+	}
+
+	interpolateMissingTimestamps(lines)
+
+	stepInterlude := lines[1].Timestamp - lines[0].Timestamp
+	stepLyric := lines[2].Timestamp - lines[1].Timestamp
+	if stepInterlude >= stepLyric {
+		t.Fatalf("expected interlude step to be smaller: interlude=%f lyric=%f", stepInterlude, stepLyric)
 	}
 }

@@ -799,3 +799,21 @@
     - `node --check src/renderer/js/core/env-setup.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7j` に更新。
+
+### 空白行（前奏・間奏）補間の改善
+
+- **課題**:
+    - 空白行が多い区間で、未一致行の補間時に空白が時間配分を取りすぎるケースがあった。
+- **対応**:
+    - `internal/lyricssync/align.go`:
+      - 補間を重み付き方式へ変更。
+      - 空白/間奏行（`Source=interlude`）の重みを下げ、歌詞行へ時間配分を優先。
+      - 先頭/末尾の補間ステップも空白行で縮小するよう調整。
+    - `internal/lyricssync/align_test.go`:
+      - 空白行が混在する区間での重み付き補間テストを追加。
+      - 一致ゼロ時に空白行ステップが歌詞行より小さくなることを検証。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7k` に更新。

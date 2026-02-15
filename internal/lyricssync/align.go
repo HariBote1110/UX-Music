@@ -9,6 +9,9 @@ const (
 	defaultInterpolationStep = 2.0
 	matchLookaheadWindow     = 8
 	matchThreshold           = 0.28
+	interludeLineWeight      = 0.22
+	interludeStepScale       = 0.35
+	anchorTailWeight         = 1.0
 )
 
 func alignLines(lines []string, segments []whisperSegment) ([]AlignedLine, int) {
@@ -173,15 +176,22 @@ func interpolateMissingTimestamps(lines []AlignedLine) {
 	}
 
 	if firstMatchedIndex == -1 {
+		cursor := 0.0
 		for i := range lines {
-			lines[i].Timestamp = roundTo3(float64(i) * typicalStep)
+			if i == 0 {
+				lines[i].Timestamp = 0
+				continue
+			}
+			cursor += interpolationStepForLine(typicalStep, lines[i])
+			lines[i].Timestamp = roundTo3(cursor)
 		}
 		return
 	}
 
+	cursor := firstMatchedTS
 	for i := firstMatchedIndex - 1; i >= 0; i-- {
-		delta := float64(firstMatchedIndex-i) * typicalStep
-		lines[i].Timestamp = roundTo3(math.Max(0, firstMatchedTS-delta))
+		cursor = math.Max(0, cursor-interpolationStepForLine(typicalStep, lines[i]))
+		lines[i].Timestamp = roundTo3(cursor)
 	}
 
 	lastMatchedIndex := firstMatchedIndex
@@ -195,21 +205,76 @@ func interpolateMissingTimestamps(lines []AlignedLine) {
 		currentMatchedTS := lines[i].Timestamp
 		gap := currentMatchedIndex - lastMatchedIndex
 		if gap > 1 {
-			span := currentMatchedTS - lastMatchedTS
-			for j := 1; j < gap; j++ {
-				ratio := float64(j) / float64(gap)
-				lines[lastMatchedIndex+j].Timestamp = roundTo3(lastMatchedTS + span*ratio)
-			}
+			fillGapByWeightedInterpolation(lines, lastMatchedIndex, currentMatchedIndex, lastMatchedTS, currentMatchedTS, typicalStep)
 		}
 
 		lastMatchedIndex = currentMatchedIndex
 		lastMatchedTS = currentMatchedTS
 	}
 
+	cursor = lastMatchedTS
 	for i := lastMatchedIndex + 1; i < len(lines); i++ {
-		delta := float64(i-lastMatchedIndex) * typicalStep
-		lines[i].Timestamp = roundTo3(lastMatchedTS + delta)
+		cursor += interpolationStepForLine(typicalStep, lines[i])
+		lines[i].Timestamp = roundTo3(cursor)
 	}
+}
+
+func fillGapByWeightedInterpolation(lines []AlignedLine, leftIndex int, rightIndex int, leftTS float64, rightTS float64, typicalStep float64) {
+	indices := make([]int, 0, rightIndex-leftIndex-1)
+	weights := make([]float64, 0, rightIndex-leftIndex-1)
+	for i := leftIndex + 1; i < rightIndex; i++ {
+		if isFinite(lines[i].Timestamp) {
+			continue
+		}
+		indices = append(indices, i)
+		weights = append(weights, interpolationWeight(lines[i]))
+	}
+	if len(indices) == 0 {
+		return
+	}
+
+	span := rightTS - leftTS
+	if span <= 0 {
+		cursor := leftTS
+		for _, idx := range indices {
+			cursor += interpolationStepForLine(typicalStep, lines[idx])
+			lines[idx].Timestamp = roundTo3(cursor)
+		}
+		return
+	}
+
+	totalWeight := anchorTailWeight
+	for _, weight := range weights {
+		totalWeight += weight
+	}
+	if totalWeight <= 0 {
+		totalWeight = float64(len(indices) + 1)
+		weights = make([]float64, len(indices))
+		for i := range weights {
+			weights[i] = 1
+		}
+	}
+
+	cumulative := 0.0
+	for i, idx := range indices {
+		cumulative += weights[i]
+		ratio := cumulative / totalWeight
+		lines[idx].Timestamp = roundTo3(leftTS + span*ratio)
+	}
+}
+
+func interpolationWeight(line AlignedLine) float64 {
+	if line.Source == "interlude" {
+		return interludeLineWeight
+	}
+	return 1.0
+}
+
+func interpolationStepForLine(typicalStep float64, line AlignedLine) float64 {
+	if line.Source == "interlude" {
+		return typicalStep * interludeStepScale
+	}
+	return typicalStep
 }
 
 func enforceMonotonicTimestamps(lines []AlignedLine) {
