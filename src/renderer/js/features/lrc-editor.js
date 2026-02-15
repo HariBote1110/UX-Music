@@ -484,19 +484,9 @@ function addTimestamp() {
 
     // UIを更新
     redrawLyricsArea(); // UI全体を再描画してタイムスタンプを表示
-
-    // 次の空でない行を探してアクティブにする
-    let nextIndex = activeLineIndex + 1;
-    while (nextIndex < lyricsLines.length && lyricsLines[nextIndex].text.trim() === '') {
-        nextIndex++;
-    }
-    if (nextIndex < lyricsLines.length) {
-        setActiveLine(nextIndex);
-    } else {
-        console.log('[LRC Editor] All non-blank lines timestamped.');
-        // 最後まで行ったらアクティブを解除するか、最終行に留まる
-        // setActiveLine(activeLineIndex); // 最終行に留まる場合
-    }
+    // 指定した行をそのままアクティブに維持する。
+    // どこにタイムスタンプを打ったかを視認しやすくするため、次行へ自動移動しない。
+    setActiveLine(activeLineIndex);
     updateUndoRedoButtons(); // ★★★ ボタン状態更新 ★★★
 }
 

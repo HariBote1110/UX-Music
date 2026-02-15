@@ -336,3 +336,16 @@
     - `node --check src/renderer/js/features/lrc-editor.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6d` に更新。
+
+### LRCエディタのタイムスタンプ時ハイライト挙動を調整
+
+- **仕様調整**:
+    - `T` でタイムスタンプを打った際、次行へ自動移動せず、指定した行をアクティブ（青表示）に維持するよう変更。
+    - 「どこに打ったか」を視認しやすくし、歌唱位置の混乱を減らす目的。
+- **修正内容**:
+    - `src/renderer/js/features/lrc-editor.js`: `addTimestamp()` の自動次行選択ロジックを削除し、現在行を維持する実装へ変更。
+    - `src/renderer/components/lrc-editor.html`: ヘルプ文言を実挙動に合わせて更新（行維持と `↑/↓` 移動を明記）。
+- **検証**:
+    - `node --check src/renderer/js/features/lrc-editor.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6e` に更新。
