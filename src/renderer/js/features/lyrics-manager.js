@@ -118,6 +118,28 @@ function renderLyrics(lyrics) {
     }
 }
 
+function getLyricsVisibleRect(containerRect) {
+    const footerHeightRaw = getComputedStyle(document.documentElement).getPropertyValue('--footer-height');
+    const footerHeight = Number.parseFloat(footerHeightRaw) || 0;
+    if (footerHeight <= 0) {
+        return {
+            top: containerRect.top,
+            bottom: containerRect.bottom,
+        };
+    }
+
+    const footerTop = window.innerHeight - footerHeight;
+    const overlapTop = Math.max(containerRect.top, footerTop);
+    const overlapBottom = Math.min(containerRect.bottom, window.innerHeight);
+    const overlapHeight = Math.max(0, overlapBottom - overlapTop);
+    const visibleBottom = containerRect.bottom - overlapHeight;
+
+    return {
+        top: containerRect.top,
+        bottom: Math.max(containerRect.top, visibleBottom),
+    };
+}
+
 
 // --- ▼▼▼ コンテキストメニュー関連の関数を追加 ▼▼▼ ---
 
@@ -197,17 +219,14 @@ export function updateSyncedLyrics(currentTime) {
         const newLine = elements.lyricsView.querySelector(`p[data-index="${currentIndex}"]`);
         if (newLine) {
             newLine.classList.add('active');
-            // アクティブな行が中央に来るようにスクロール (少しだけ改善)
+            // フッター重なり領域を除いた可視領域の中心へスクロールする。
             const containerRect = elements.lyricsView.getBoundingClientRect();
             const lineRect = newLine.getBoundingClientRect();
+            const visibleRect = getLyricsVisibleRect(containerRect);
+            const lineCentre = lineRect.top + lineRect.height / 2;
+            const visibleCentre = visibleRect.top + (visibleRect.bottom - visibleRect.top) / 2;
 
-            // 要素が表示範囲内にすでにあるかチェック
-            const isVisible = lineRect.top >= containerRect.top && lineRect.bottom <= containerRect.bottom;
-
-            if (!isVisible) {
-                // 要素の中央をコンテナの中央に合わせるようにスクロール
-                elements.lyricsView.scrollTop += (lineRect.top + lineRect.height / 2) - (containerRect.top + containerRect.height / 2);
-            }
+            elements.lyricsView.scrollTop += lineCentre - visibleCentre;
         }
     } else {
         // 曲の冒頭など、まだどの行もアクティブでない場合は一番上にスクロール

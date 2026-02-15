@@ -383,3 +383,17 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6g` に更新。
+
+### 歌詞表示の追従スクロール中心を可視領域基準へ調整
+
+- **仕様調整**:
+    - 再生中の歌詞ハイライト行は、フッター重なり領域を除いた可視範囲の中心へ追従させる。
+    - 「フッターに完全に隠れてからスクロール」する遅れを解消。
+- **修正内容**:
+    - `src/renderer/js/features/lyrics-manager.js`: `--footer-height` とビューポート座標から、歌詞ビューの実可視領域を算出する処理を追加。
+    - `src/renderer/js/features/lyrics-manager.js`: LRCのアクティブ行更新時、従来の可視判定分岐を廃止し、実可視領域の中心へ常時スクロール補正するよう変更。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6h` に更新。
