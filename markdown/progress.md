@@ -454,3 +454,19 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6l` に更新。
+
+### 歌詞ハイライト形状の調整と車列風の段階遅延アニメーション
+
+- **ハイライト形状の調整**:
+    - `src/renderer/styles/views.css`: アクティブ歌詞のハイライトをピル形状から角丸四角形（`border-radius: 12px`）へ変更。
+    - 行パディングを微調整し、Apple Music 風の矩形ハイライトに近づけた。
+- **段階遅延（信号待ちの車列）アニメーション**:
+    - `src/renderer/js/features/lyrics-manager.js`: 全行一括ラグ方式を廃止し、行ごとに遅延開始する wave 方式へ変更。
+    - スクロール方向に応じて行の遅延順を切り替え、前方行から順に動き出す挙動を実装。
+    - アクティブ行から離れるほどオフセットを減衰させ、可読性を維持。
+    - `src/renderer/styles/views.css`: `--line-lag-offset` / `--line-lag-delay` を導入し、行ごとに異なる追従タイミングを実現。
+    - 初期フレーム固定用の `.lag-prime` を追加し、段階遅延開始時のちらつきを抑制。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6m` に更新。

@@ -8,12 +8,15 @@ const LYRICS_SCROLL_MIN_DURATION_MS = 700;
 const LYRICS_SCROLL_MAX_DURATION_MS = 1020;
 const LYRICS_SCROLL_MIN_DISTANCE_PX = 6;
 let lyricsScrollAnimationFrame = null;
-const LYRICS_LAG_HOLD_MS = 120;
-const LYRICS_LAG_SETTLE_MS = 760;
-const LYRICS_LAG_FACTOR = 0.18;
-const LYRICS_LAG_MAX_PX = 20;
-let lyricsLagAnimationFrame = null;
-let lyricsLagOffsetPx = 0;
+const LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS = 20;
+const LYRICS_TRAFFIC_WAVE_STEP_MS = 18;
+const LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT = 22;
+const LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY = 0.08;
+const LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR = 0.18;
+const LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX = 20;
+let lyricsLagPrimeFrame = null;
+let lyricsLagRunFrame = null;
+let previousActiveLyricsIndex = -1;
 
 /**
  * 曲が再生されたときに歌詞を読み込んで表示するメイン関数
@@ -91,6 +94,7 @@ function parseLRC(lrcContent) {
 function clearLyrics() {
     stopLyricsScrollAnimation();
     stopLyricsLagAnimation();
+    previousActiveLyricsIndex = -1;
     elements.lyricsView.innerHTML = '';
     elements.lyricsView.scrollTop = 0;
     // 既存のリスナーがあれば削除 (念のため)
@@ -171,20 +175,24 @@ function stopLyricsScrollAnimation() {
     }
 }
 
-function applyLyricsLagOffset(offsetPx) {
-    lyricsLagOffsetPx = offsetPx;
-    if (!elements.lyricsView) return;
-    elements.lyricsView.style.setProperty('--lyrics-lag-offset', `${offsetPx.toFixed(3)}px`);
-}
-
 function stopLyricsLagAnimation(reset = true) {
-    if (lyricsLagAnimationFrame) {
-        cancelAnimationFrame(lyricsLagAnimationFrame);
-        lyricsLagAnimationFrame = null;
+    if (lyricsLagPrimeFrame) {
+        cancelAnimationFrame(lyricsLagPrimeFrame);
+        lyricsLagPrimeFrame = null;
     }
-    if (reset) {
-        applyLyricsLagOffset(0);
+    if (lyricsLagRunFrame) {
+        cancelAnimationFrame(lyricsLagRunFrame);
+        lyricsLagRunFrame = null;
     }
+    if (!reset || !elements.lyricsView) {
+        return;
+    }
+
+    elements.lyricsView.querySelectorAll('p[data-index]').forEach(line => {
+        line.classList.remove('lag-prime');
+        line.style.removeProperty('--line-lag-delay');
+        line.style.removeProperty('--line-lag-offset');
+    });
 }
 
 // イージング 23 番相当（easeOutBack）
@@ -195,12 +203,69 @@ function easeOutBack23(progress) {
     return 1 + weight * Math.pow(shifted, 3) + overshoot * Math.pow(shifted, 2);
 }
 
-function easeOutCubic(progress) {
-    return 1 - Math.pow(1 - progress, 3);
-}
-
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+}
+
+function getLyricsIndexFromElement(line) {
+    return Number.parseInt(line.dataset.index || '', 10);
+}
+
+function applyTrafficWaveLag(activeIndex, distance) {
+    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (reducedMotionQuery.matches || !elements.lyricsView) {
+        stopLyricsLagAnimation();
+        return;
+    }
+
+    const allLines = Array.from(elements.lyricsView.querySelectorAll('p[data-index]'));
+    if (allLines.length === 0) {
+        return;
+    }
+
+    stopLyricsLagAnimation(false);
+
+    const direction = activeIndex >= previousActiveLyricsIndex ? 1 : -1;
+    const peakOffset = clamp(
+        distance * LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR,
+        -LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX,
+        LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX,
+    );
+
+    if (Math.abs(peakOffset) < 0.5) {
+        return;
+    }
+
+    const targetLines = allLines
+        .map(line => ({ line, index: getLyricsIndexFromElement(line) }))
+        .filter(item => Number.isFinite(item.index))
+        .filter(item => Math.abs(item.index - activeIndex) <= LYRICS_TRAFFIC_WAVE_DISTANCE_LIMIT)
+        .sort((a, b) => (direction >= 0 ? a.index - b.index : b.index - a.index));
+
+    if (targetLines.length === 0) {
+        return;
+    }
+
+    targetLines.forEach((item, order) => {
+        const distanceFromActive = Math.abs(item.index - activeIndex);
+        const attenuation = clamp(1 - distanceFromActive * LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY, 0.24, 1);
+        const activeAttenuation = distanceFromActive === 0 ? 0.42 : 1;
+        const lineOffset = peakOffset * attenuation * activeAttenuation;
+        const lineDelay = LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS + order * LYRICS_TRAFFIC_WAVE_STEP_MS;
+
+        item.line.classList.add('lag-prime');
+        item.line.style.setProperty('--line-lag-delay', `${lineDelay}ms`);
+        item.line.style.setProperty('--line-lag-offset', `${lineOffset.toFixed(3)}px`);
+    });
+
+    lyricsLagPrimeFrame = requestAnimationFrame(() => {
+        targetLines.forEach(item => item.line.classList.remove('lag-prime'));
+        lyricsLagRunFrame = requestAnimationFrame(() => {
+            targetLines.forEach(item => item.line.style.setProperty('--line-lag-offset', '0px'));
+            lyricsLagRunFrame = null;
+        });
+        lyricsLagPrimeFrame = null;
+    });
 }
 
 function getLyricsScrollDuration(distance) {
@@ -208,51 +273,7 @@ function getLyricsScrollDuration(distance) {
     return clamp(adaptiveDuration, LYRICS_SCROLL_MIN_DURATION_MS, LYRICS_SCROLL_MAX_DURATION_MS);
 }
 
-function animateLyricsLagByDistance(distance) {
-    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    if (reducedMotionQuery.matches) {
-        stopLyricsLagAnimation();
-        return;
-    }
-
-    stopLyricsLagAnimation(false);
-
-    const peakOffset = clamp(distance * LYRICS_LAG_FACTOR, -LYRICS_LAG_MAX_PX, LYRICS_LAG_MAX_PX);
-    if (Math.abs(peakOffset) < 0.5) {
-        applyLyricsLagOffset(0);
-        return;
-    }
-
-    const startOffset = lyricsLagOffsetPx;
-    const startTime = performance.now();
-    const step = (now) => {
-        const elapsed = now - startTime;
-
-        if (elapsed <= LYRICS_LAG_HOLD_MS) {
-            const holdProgress = elapsed / LYRICS_LAG_HOLD_MS;
-            const easedHold = easeOutCubic(holdProgress);
-            applyLyricsLagOffset(startOffset + (peakOffset - startOffset) * easedHold);
-            lyricsLagAnimationFrame = requestAnimationFrame(step);
-            return;
-        }
-
-        const settleProgress = Math.min(1, (elapsed - LYRICS_LAG_HOLD_MS) / LYRICS_LAG_SETTLE_MS);
-        const easedSettle = easeOutCubic(settleProgress);
-        applyLyricsLagOffset(peakOffset * (1 - easedSettle));
-
-        if (settleProgress < 1) {
-            lyricsLagAnimationFrame = requestAnimationFrame(step);
-            return;
-        }
-
-        applyLyricsLagOffset(0);
-        lyricsLagAnimationFrame = null;
-    };
-
-    lyricsLagAnimationFrame = requestAnimationFrame(step);
-}
-
-function animateLyricsScrollTo(container, targetTop) {
+function animateLyricsScrollTo(container, targetTop, activeIndex) {
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     if (reducedMotionQuery.matches) {
         stopLyricsScrollAnimation();
@@ -271,7 +292,7 @@ function animateLyricsScrollTo(container, targetTop) {
         return;
     }
 
-    animateLyricsLagByDistance(distance);
+    applyTrafficWaveLag(activeIndex, distance);
 
     const scrollDuration = getLyricsScrollDuration(distance);
     const startTime = performance.now();
@@ -374,13 +395,15 @@ export function updateSyncedLyrics(currentTime) {
             newLine.classList.add('active');
             const targetTop = getLyricsScrollTarget(elements.lyricsView, newLine);
             if (Math.abs(elements.lyricsView.scrollTop - targetTop) > 1) {
-                animateLyricsScrollTo(elements.lyricsView, targetTop);
+                animateLyricsScrollTo(elements.lyricsView, targetTop, currentIndex);
             }
         }
+        previousActiveLyricsIndex = currentIndex;
     } else {
         // 曲の冒頭など、まだどの行もアクティブでない場合は一番上にスクロール
         stopLyricsScrollAnimation();
         stopLyricsLagAnimation();
         elements.lyricsView.scrollTop = 0;
+        previousActiveLyricsIndex = -1;
     }
 }
