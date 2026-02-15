@@ -56,11 +56,15 @@ export function DeletePlaylist(arg1:string):Promise<void>;
 
 export function DeleteSongs(arg1:Array<string>,arg2:boolean):Promise<Array<string>>;
 
+export function GetAllLoudnessData():Promise<Record<string, any>>;
+
 export function GetAllPlaylists():Promise<Array<string>>;
 
 export function GetArtworkAsDataURL(arg1:string):Promise<string>;
 
 export function GetArtworksDir():Promise<string>;
+
+export function GetLibraryForNormalize():Promise<Array<any>>;
 
 export function GetLoudnessValue(arg1:string):Promise<any>;
 
@@ -110,7 +114,7 @@ export function NormalizeAnalyze(arg1:string):Promise<normalize.AnalysisResult>;
 
 export function NormalizeApply(arg1:normalize.NormalizeJob):Promise<normalize.NormalizeResult>;
 
-export function NormalizeStartJob(arg1:string,arg2:Array<any>,arg3:normalize.OutputSettings):Promise<void>;
+export function NormalizeStartJob(arg1:string,arg2:Array<any>,arg3:any):Promise<void>;
 
 export function Ping():Promise<string>;
 
@@ -125,6 +129,12 @@ export function SaveLrcFile(arg1:string,arg2:string):Promise<void>;
 export function SaveSettings(arg1:any):Promise<void>;
 
 export function ScanLibrary(arg1:Array<string>):Promise<scanner.ScanResult>;
+
+export function SelectFilesForNormalize():Promise<Array<string>>;
+
+export function SelectFolderForNormalize():Promise<Array<string>>;
+
+export function SelectNormalizeOutputFolder():Promise<string>;
 
 export function SongFinished(arg1:Record<string, any>):Promise<void>;
 

@@ -184,3 +184,17 @@
     - `ffmpeg` / `ffprobe` のパス解決を設定値優先 + `PATH` フォールバックへ変更し、Wails 環境でも実行可能に改善。
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5t` に更新。
+
+### ノーマライザー機能の Wails 互換修正
+
+- **移行で欠落していたブリッジの復元**:
+    - `src/renderer/js/core/env-setup.js` に `start-normalize-job` の `send` ルートを追加。
+    - `select-files-for-normalize` / `select-folder-for-normalize` / `get-library-for-normalize` / `get-all-loudness-data` / `select-normalize-output-folder` の `invoke` ルートを Wails 側へ追加。
+- **Go 側ジョブ処理の互換性修正**:
+    - `app_normalize.go` で `options` の構造（`backup` / `output` / `basePath`）を解釈する実装に変更。
+    - 解析結果イベント名を Electron 互換の `analysis-result` に統一（`normalize-result` は継続）。
+    - ノーマライズ画面から使う API（ファイル選択、フォルダ再帰走査、ライブラリ読込、ラウドネス一括取得、出力先選択）を追加。
+- **FFmpeg 解決の耐障害性向上**:
+    - `pkg/normalize/normalizer.go` で `config` 未設定時も `PATH` から `ffmpeg` を解決するフォールバックを追加。
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-5u` に更新。

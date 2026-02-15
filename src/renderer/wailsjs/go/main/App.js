@@ -102,6 +102,10 @@ export function DeleteSongs(arg1, arg2) {
   return window['go']['main']['App']['DeleteSongs'](arg1, arg2);
 }
 
+export function GetAllLoudnessData() {
+  return window['go']['main']['App']['GetAllLoudnessData']();
+}
+
 export function GetAllPlaylists() {
   return window['go']['main']['App']['GetAllPlaylists']();
 }
@@ -112,6 +116,10 @@ export function GetArtworkAsDataURL(arg1) {
 
 export function GetArtworksDir() {
   return window['go']['main']['App']['GetArtworksDir']();
+}
+
+export function GetLibraryForNormalize() {
+  return window['go']['main']['App']['GetLibraryForNormalize']();
 }
 
 export function GetLoudnessValue(arg1) {
@@ -240,6 +248,18 @@ export function SaveSettings(arg1) {
 
 export function ScanLibrary(arg1) {
   return window['go']['main']['App']['ScanLibrary'](arg1);
+}
+
+export function SelectFilesForNormalize() {
+  return window['go']['main']['App']['SelectFilesForNormalize']();
+}
+
+export function SelectFolderForNormalize() {
+  return window['go']['main']['App']['SelectFolderForNormalize']();
+}
+
+export function SelectNormalizeOutputFolder() {
+  return window['go']['main']['App']['SelectNormalizeOutputFolder']();
 }
 
 export function SongFinished(arg1) {

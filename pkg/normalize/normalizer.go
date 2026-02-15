@@ -26,9 +26,29 @@ func NewNormalizer(ffmpegPath, ffprobePath string) *Normalizer {
 	}
 }
 
+func (n *Normalizer) resolveCommandPath(name string) (string, error) {
+	if name == "ffmpeg" && n.FFmpegPath != "" {
+		return n.FFmpegPath, nil
+	}
+	if name == "ffprobe" && n.FFprobePath != "" {
+		return n.FFprobePath, nil
+	}
+
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return "", fmt.Errorf("%s not found in PATH", name)
+	}
+	return path, nil
+}
+
 // AnalyzeLoudness runs volumedetect filter
 func (n *Normalizer) AnalyzeLoudness(filePath string) AnalysisResult {
-	cmd := exec.Command(n.FFmpegPath, "-i", filePath, "-af", "volumedetect", "-f", "null", "-")
+	ffmpegPath, err := n.resolveCommandPath("ffmpeg")
+	if err != nil {
+		return AnalysisResult{Success: false, Error: err.Error()}
+	}
+
+	cmd := exec.Command(ffmpegPath, "-i", filePath, "-af", "volumedetect", "-f", "null", "-")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -58,6 +78,11 @@ func (n *Normalizer) AnalyzeLoudness(filePath string) AnalysisResult {
 
 // ApplyNormalization applies volume gain
 func (n *Normalizer) ApplyNormalization(job NormalizeJob) NormalizeResult {
+	ffmpegPath, err := n.resolveCommandPath("ffmpeg")
+	if err != nil {
+		return NormalizeResult{Success: false, Error: err.Error()}
+	}
+
 	isOverwrite := job.Output.Mode == "overwrite"
 	originalExt := strings.ToLower(filepath.Ext(job.FilePath))
 
@@ -125,7 +150,7 @@ func (n *Normalizer) ApplyNormalization(job NormalizeJob) NormalizeResult {
 
 	args = append(args, "-y", tempPath)
 
-	cmd := exec.Command(n.FFmpegPath, args...)
+	cmd := exec.Command(ffmpegPath, args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		os.Remove(tempPath)
 		return NormalizeResult{Success: false, Error: fmt.Sprintf("FFmpeg error: %s (%v)", string(output), err)}

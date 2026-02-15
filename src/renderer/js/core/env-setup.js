@@ -20,6 +20,11 @@ window.electronAPI = window.electronAPI || {
                 window.go.main.App.SaveSettings?.(args[0] || {});
             } else if (channel === 'cd-start-rip') {
                 window.go.main.App.CDStartRip?.(args[0]);
+            } else if (channel === 'start-normalize-job') {
+                const data = args[0] || {};
+                window.go.main.App.NormalizeStartJob?.(data.jobType, data.files || [], data.options || {});
+            } else if (channel === 'normalize-worker-finished-file') {
+                // Worker-pool signalling is Electron-specific. Wails side runs with goroutine semaphore.
             }
         }
     },
@@ -106,6 +111,36 @@ window.electronAPI = window.electronAPI || {
                     if (window.go?.main?.App?.GetLoudnessValue) {
                         return await window.go.main.App.GetLoudnessValue(path);
                     }
+                },
+                'get-all-loudness-data': async () => {
+                    if (window.go?.main?.App?.GetAllLoudnessData) {
+                        return await window.go.main.App.GetAllLoudnessData();
+                    }
+                    return {};
+                },
+                'get-library-for-normalize': async () => {
+                    if (window.go?.main?.App?.GetLibraryForNormalize) {
+                        return await window.go.main.App.GetLibraryForNormalize();
+                    }
+                    return [];
+                },
+                'select-files-for-normalize': async () => {
+                    if (window.go?.main?.App?.SelectFilesForNormalize) {
+                        return await window.go.main.App.SelectFilesForNormalize();
+                    }
+                    return [];
+                },
+                'select-folder-for-normalize': async () => {
+                    if (window.go?.main?.App?.SelectFolderForNormalize) {
+                        return await window.go.main.App.SelectFolderForNormalize();
+                    }
+                    return [];
+                },
+                'select-normalize-output-folder': async () => {
+                    if (window.go?.main?.App?.SelectNormalizeOutputFolder) {
+                        return await window.go.main.App.SelectNormalizeOutputFolder();
+                    }
+                    return null;
                 },
                 'get-lyrics': async (song) => {
                     if (window.go?.main?.App?.GetLyrics) {
