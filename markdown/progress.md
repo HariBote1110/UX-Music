@@ -413,3 +413,17 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6i` に更新。
+
+### 歌詞表示アニメーションの「ぬるっと感」を強化
+
+- **スクロール追従の改善**:
+    - `src/renderer/js/features/lyrics-manager.js`: `requestAnimationFrame` ベースの独自イージングスクロールを追加。
+    - アクティブ行の更新時は既存アニメーションを中断し、最新ターゲット位置へ再補間するよう変更。
+    - `prefers-reduced-motion` 時は即時スクロールへフォールバックするよう対応。
+- **視覚トランジションの改善**:
+    - `src/renderer/styles/views.css`: 歌詞行トランジションを 0.52s + `cubic-bezier(0.22, 1, 0.36, 1)` に統一し、移行を滑らかに調整。
+    - 非アクティブ行のスケール・不透明度を微調整し、アクティブ行への寄りを自然化。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6j` に更新。

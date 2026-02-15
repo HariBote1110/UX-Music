@@ -4,6 +4,8 @@ import { showContextMenu } from '../ui/utils.js';
 import { startLrcEditor } from './lrc-editor.js'; // あとで作成
 // --- ▲▲▲ 追加 ▲▲▲ ---
 const electronAPI = window.electronAPI;
+const LYRICS_SCROLL_DURATION_MS = 540;
+let lyricsScrollAnimationFrame = null;
 
 /**
  * 曲が再生されたときに歌詞を読み込んで表示するメイン関数
@@ -79,6 +81,7 @@ function parseLRC(lrcContent) {
  * 歌詞表示エリアをクリアする
  */
 function clearLyrics() {
+    stopLyricsScrollAnimation();
     elements.lyricsView.innerHTML = '';
     elements.lyricsView.scrollTop = 0;
     // 既存のリスナーがあれば削除 (念のため)
@@ -150,6 +153,53 @@ function getLyricsScrollTarget(container, lineElement) {
     const desiredTop = container.scrollTop + (lineCentre - visibleCentre);
     const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
     return Math.min(maxTop, Math.max(0, desiredTop));
+}
+
+function stopLyricsScrollAnimation() {
+    if (lyricsScrollAnimationFrame) {
+        cancelAnimationFrame(lyricsScrollAnimationFrame);
+        lyricsScrollAnimationFrame = null;
+    }
+}
+
+function easeOutCubic(progress) {
+    return 1 - Math.pow(1 - progress, 3);
+}
+
+function animateLyricsScrollTo(container, targetTop) {
+    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (reducedMotionQuery.matches) {
+        stopLyricsScrollAnimation();
+        container.scrollTop = targetTop;
+        return;
+    }
+
+    stopLyricsScrollAnimation();
+
+    const startTop = container.scrollTop;
+    const distance = targetTop - startTop;
+    if (Math.abs(distance) <= 0.5) {
+        container.scrollTop = targetTop;
+        return;
+    }
+
+    const startTime = performance.now();
+    const step = (now) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(1, elapsed / LYRICS_SCROLL_DURATION_MS);
+        const easedProgress = easeOutCubic(progress);
+        container.scrollTop = startTop + distance * easedProgress;
+
+        if (progress < 1) {
+            lyricsScrollAnimationFrame = requestAnimationFrame(step);
+            return;
+        }
+
+        container.scrollTop = targetTop;
+        lyricsScrollAnimationFrame = null;
+    };
+
+    lyricsScrollAnimationFrame = requestAnimationFrame(step);
 }
 
 
@@ -233,15 +283,12 @@ export function updateSyncedLyrics(currentTime) {
             newLine.classList.add('active');
             const targetTop = getLyricsScrollTarget(elements.lyricsView, newLine);
             if (Math.abs(elements.lyricsView.scrollTop - targetTop) > 1) {
-                const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-                elements.lyricsView.scrollTo({
-                    top: targetTop,
-                    behavior: prefersReducedMotion ? 'auto' : 'smooth',
-                });
+                animateLyricsScrollTo(elements.lyricsView, targetTop);
             }
         }
     } else {
         // 曲の冒頭など、まだどの行もアクティブでない場合は一番上にスクロール
-        elements.lyricsView.scrollTo({ top: 0, behavior: 'auto' });
+        stopLyricsScrollAnimation();
+        elements.lyricsView.scrollTop = 0;
     }
 }
