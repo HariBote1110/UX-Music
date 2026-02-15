@@ -397,3 +397,19 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6h` に更新。
+
+### 歌詞表示を Apple Music 風に調整（見た目・追従スクロール）
+
+- **UIスタイルの改善**:
+    - `src/renderer/styles/views.css`: 歌詞表示を専用スタイルへ分離し、左右余白を `clamp()` で最適化。
+    - 非アクティブ行の減光とアクティブ行の強調（グラデーション・影・スケール）を追加し、視線誘導を改善。
+    - 歌詞行をテキスト幅ベース（`width: fit-content`）で表示し、全幅ハイライトによる左右の不自然な空白感を解消。
+    - 上下フェード（mask）と小画面向けのフォント/余白調整を追加。
+- **追従スクロールの改善**:
+    - `src/renderer/js/features/lyrics-manager.js`: アクティブ行の目標スクロール位置を算出する `getLyricsScrollTarget()` を追加。
+    - `scrollTop += ...` を廃止し、`scrollTo({ behavior: 'smooth' })` ベースで中心追従するよう変更。
+    - 連続更新時の過剰スクロールを抑える差分判定を追加し、体感の滑らかさを向上。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6i` に更新。

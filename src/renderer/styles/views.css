@@ -613,32 +613,69 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
 #equalizer-view {
     width: 100%;
     overflow-y: auto;
-    scroll-behavior: smooth;
     scrollbar-width: thin;
     scrollbar-color: #555 var(--bg-light);
-    /* padding-bottom を 0 に設定（ショートハンドの3番目が 0 ） */
-    padding: 0 16px 0 24px;
     box-sizing: border-box;
 }
 
 #lyrics-view {
+    position: relative;
+    padding: clamp(28px, 8vh, 72px) clamp(10px, 4.2vw, 18px) 0;
     text-align: center;
-    font-size: 16px;
-    line-height: 2.2;
+    font-size: clamp(17px, 1.65vw, 22px);
+    line-height: 1.9;
+    letter-spacing: 0.02em;
     color: var(--text-secondary);
+    scroll-behavior: auto;
+    overscroll-behavior: contain;
+    scroll-snap-type: y proximity;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);
+}
+
+#queue-list,
+#equalizer-view {
+    scroll-behavior: smooth;
+    padding: 0 16px 0 24px;
 }
 
 #lyrics-view p {
     margin: 0;
-    padding: 2px 10px;
-    border-radius: 4px;
-    transition: color 0.3s, background-color 0.3s;
+    width: fit-content;
+    max-width: min(100%, 26ch);
+    padding: 4px 14px;
+    border-radius: 999px;
+    opacity: 0.44;
+    transform: scale(0.965);
+    filter: blur(0.2px);
+    transition: color 0.34s ease, background-color 0.34s ease, opacity 0.34s ease, transform 0.34s ease, filter 0.34s ease;
+    margin-inline: auto;
+    word-break: break-word;
+    scroll-snap-align: center;
 }
 
 #lyrics-view p.active {
     color: var(--text-primary);
-    font-weight: bold;
-    background-color: rgba(255, 255, 255, 0.1);
+    font-weight: 700;
+    opacity: 1;
+    transform: scale(1.02);
+    filter: blur(0);
+    background: linear-gradient(90deg, rgba(255, 93, 119, 0.24), rgba(59, 130, 246, 0.22));
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+#lyrics-view p.no-lyrics {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    opacity: 1;
+    transform: none;
+    filter: none;
+    text-shadow: none;
+    background: none;
 }
 
 .no-lyrics {
@@ -649,6 +686,14 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     color: var(--text-muted);
     text-align: center;
     line-height: 1.6;
+}
+
+@media (max-width: 1100px) {
+    #lyrics-view {
+        font-size: clamp(16px, 2vw, 19px);
+        padding-inline: clamp(8px, 3vw, 12px);
+        line-height: 1.82;
+    }
 }
 
 

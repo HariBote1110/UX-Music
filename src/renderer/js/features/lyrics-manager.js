@@ -80,6 +80,7 @@ function parseLRC(lrcContent) {
  */
 function clearLyrics() {
     elements.lyricsView.innerHTML = '';
+    elements.lyricsView.scrollTop = 0;
     // 既存のリスナーがあれば削除 (念のため)
     elements.lyricsView.removeEventListener('contextmenu', handleLyricsContextMenu);
 }
@@ -138,6 +139,17 @@ function getLyricsVisibleRect(containerRect) {
         top: containerRect.top,
         bottom: Math.max(containerRect.top, visibleBottom),
     };
+}
+
+function getLyricsScrollTarget(container, lineElement) {
+    const containerRect = container.getBoundingClientRect();
+    const lineRect = lineElement.getBoundingClientRect();
+    const visibleRect = getLyricsVisibleRect(containerRect);
+    const lineCentre = lineRect.top + lineRect.height / 2;
+    const visibleCentre = visibleRect.top + (visibleRect.bottom - visibleRect.top) / 2;
+    const desiredTop = container.scrollTop + (lineCentre - visibleCentre);
+    const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    return Math.min(maxTop, Math.max(0, desiredTop));
 }
 
 
@@ -208,7 +220,7 @@ export function updateSyncedLyrics(currentTime) {
 
     const activeLine = elements.lyricsView.querySelector('p.active');
     // 現在アクティブな行が正しい場合は何もしない
-    if (activeLine && parseInt(activeLine.dataset.index) === currentIndex) {
+    if (activeLine && parseInt(activeLine.dataset.index, 10) === currentIndex) {
         return;
     }
 
@@ -219,17 +231,17 @@ export function updateSyncedLyrics(currentTime) {
         const newLine = elements.lyricsView.querySelector(`p[data-index="${currentIndex}"]`);
         if (newLine) {
             newLine.classList.add('active');
-            // フッター重なり領域を除いた可視領域の中心へスクロールする。
-            const containerRect = elements.lyricsView.getBoundingClientRect();
-            const lineRect = newLine.getBoundingClientRect();
-            const visibleRect = getLyricsVisibleRect(containerRect);
-            const lineCentre = lineRect.top + lineRect.height / 2;
-            const visibleCentre = visibleRect.top + (visibleRect.bottom - visibleRect.top) / 2;
-
-            elements.lyricsView.scrollTop += lineCentre - visibleCentre;
+            const targetTop = getLyricsScrollTarget(elements.lyricsView, newLine);
+            if (Math.abs(elements.lyricsView.scrollTop - targetTop) > 1) {
+                const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                elements.lyricsView.scrollTo({
+                    top: targetTop,
+                    behavior: prefersReducedMotion ? 'auto' : 'smooth',
+                });
+            }
         }
     } else {
         // 曲の冒頭など、まだどの行もアクティブでない場合は一番上にスクロール
-        elements.lyricsView.scrollTop = 0;
+        elements.lyricsView.scrollTo({ top: 0, behavior: 'auto' });
     }
 }
