@@ -27,7 +27,7 @@ function createLyricLine(text, timestamp = null) {
 
 function isInterludeText(text) {
     const normalised = (text || '').trim().toLowerCase();
-    return normalised === '[間奏]' || normalised === '[interlude]' || normalised === '(interlude)';
+    return normalised === '' || normalised === '[間奏]' || normalised === '[interlude]' || normalised === '(interlude)';
 }
 
 let currentEditorSong = null;
@@ -62,7 +62,6 @@ function refreshEditorElements() {
         helpPopup: document.getElementById('lrc-editor-help-popup'),
         helpCloseBtn: document.getElementById('lrc-editor-help-close-btn'),
         undoBtn: document.getElementById('lrc-editor-undo-btn'),
-        insertBlankBtn: document.getElementById('lrc-editor-insert-blank-btn'),
         insertInterludeBtn: document.getElementById('lrc-editor-insert-interlude-btn'),
     };
     return Object.values(editorElements).every(Boolean);
@@ -191,27 +190,6 @@ function redrawLyricsArea() {
 }
 // --- ▲▲▲ 新規追加 ▲▲▲ ---
 
-// --- ▼▼▼ 新規追加: 空白行を挿入する関数 ▼▼▼ ---
-function insertBlankLine() {
-    saveHistory(); // 操作履歴を保存
-    const blankLine = createLyricLine(' ', null); // textは半角スペース一つにする
-    if (activeLineIndex === -1 || lyricsLines.length === 0) {
-        // 歌詞がない場合や選択がない場合は末尾に追加
-        lyricsLines.push(blankLine);
-        activeLineIndex = lyricsLines.length - 1;
-    } else {
-        // アクティブな行の直後に挿入
-        lyricsLines.splice(activeLineIndex + 1, 0, blankLine);
-        activeLineIndex += 1; // 新しく挿入した行をアクティブにする
-    }
-    lastTimestampedLineIndex = -1;
-    autoAdvanceArmed = false;
-    redrawLyricsArea(); // UIを再描画
-    setActiveLine(activeLineIndex); // 新しい行にフォーカス
-    updateUndoRedoButtons();
-}
-// --- ▲▲▲ 新規追加 ▲▲▲ ---
-
 function insertInterludeLine() {
     saveHistory();
     const interludeLine = createLyricLine(INTERLUDE_LABEL, null);
@@ -269,7 +247,6 @@ function initLrcEditorListeners() {
 
         // --- ▼▼▼ 新しいボタンのリスナーを追加 ▼▼▼ ---
         editorElements.undoBtn.addEventListener('click', undo);
-        editorElements.insertBlankBtn.addEventListener('click', insertBlankLine);
         editorElements.insertInterludeBtn.addEventListener('click', insertInterludeLine);
         // --- ▲▲▲ リスナーを追加 ▲▲▲ ---
 
@@ -365,15 +342,15 @@ function parseAndDisplayLyrics(textContent, type = 'txt') {
                 const milliseconds = parseInt(match[3].padEnd(3, '0'), 10);
                 timestamp = minutes * 60 + seconds + milliseconds / 1000;
             }
-            // 空行も保持する (text: ' ')
-            return createLyricLine(text === '' ? ' ' : text, timestamp);
+            // 空行も保持する (text: '')
+            return createLyricLine(text === '' ? '' : text, timestamp);
         }).sort((a, b) => (a.timestamp ?? Infinity) - (b.timestamp ?? Infinity)); // タイムスタンプ順にソート
 
     } else { // TXTの場合
         lyricsLines = textContent
             .split('\n')
-            // 空行も保持 (text: ' ')、タイムスタンプは null
-            .map(line => createLyricLine(line.trim() === '' ? ' ' : line, null));
+            // 空行も保持 (text: '')、タイムスタンプは null
+            .map(line => createLyricLine(line.trim() === '' ? '' : line, null));
     }
 
 
@@ -399,7 +376,7 @@ function loadTextFromTextarea() {
     // ここで saveHistory を呼ぶ前に lyricsLines を更新する
     lyricsLines = textContent
         .split('\n')
-        .map(line => createLyricLine(line.trim() === '' ? ' ' : line, null));
+        .map(line => createLyricLine(line.trim() === '' ? '' : line, null));
     lastTimestampedLineIndex = -1;
     autoAdvanceArmed = false;
 
@@ -452,27 +429,8 @@ function moveActiveLine(step) {
 function addTimestamp() {
     if (activeLineIndex === -1 || activeLineIndex >= lyricsLines.length || !currentEditorSong) return;
 
-    // --- ▼▼▼ 空白行の場合はタイムスタンプを設定しない ▼▼▼ ---
-    if (lyricsLines[activeLineIndex].text.trim() === '') {
-        showNotification('空白行にはタイムスタンプを設定できません。');
-        hideNotification(2000);
-        // 次の空でない行へ移動する
-        let nextIndex = activeLineIndex + 1;
-        while (nextIndex < lyricsLines.length && lyricsLines[nextIndex].text.trim() === '') {
-            nextIndex++;
-        }
-        if (nextIndex < lyricsLines.length) {
-            setActiveLine(nextIndex);
-        }
-        return;
-    }
-    // --- ▲▲▲ 空白行チェック ▲▲▲ ---
-
     const findNextStampableIndex = (startIndex) => {
-        for (let i = startIndex; i < lyricsLines.length; i++) {
-            if (lyricsLines[i].text.trim() !== '') return i;
-        }
-        return -1;
+        return startIndex < lyricsLines.length ? startIndex : -1;
     };
 
     let targetIndex = activeLineIndex;
@@ -567,7 +525,7 @@ async function handleSaveLrc() {
         .sort((a, b) => a.timestamp - b.timestamp);
 
     const lrcContent = sortedLines
-        .map(line => `[${formatLrcTime(line.timestamp)}]${line.text}`) // 空白行も text: ' ' として保存される
+        .map(line => `[${formatLrcTime(line.timestamp)}]${line.text}`) // 空行も text: '' として保存される
         .join('\n');
 
     const baseName = getBasename(currentEditorSong.path).replace(getExtname(currentEditorSong.path), '');

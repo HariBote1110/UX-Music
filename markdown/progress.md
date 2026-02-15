@@ -366,3 +366,20 @@
     - `node --check src/renderer/js/features/lrc-editor.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6f` に更新。
+
+### LRCエディタの空行間奏仕様へ変更
+
+- **仕様変更**:
+    - 空白行挿入ボタンによるスペース文字の疑似空行を廃止。
+    - 文字がない行（空行）を間奏扱いとして扱い、`T` でタイムスタンプ付与可能に変更。
+- **修正内容**:
+    - `src/renderer/components/lrc-editor.html`: 「空白行挿入」ボタンを削除し、ヘルプに「空行も間奏扱いでタイムスタンプ可能」を追記。
+    - `src/renderer/js/features/lrc-editor.js`: `insertBlankLine()` と関連リスナーを削除。
+    - `src/renderer/js/features/lrc-editor.js`: LRC/TXT/テキストエリアの読込時に空行を `' '` ではなく `''` で保持するよう統一。
+    - `src/renderer/js/features/lrc-editor.js`: `addTimestamp()` の空行スキップ制御を削除し、空行を含めて次行へ進行するよう調整。
+    - `src/renderer/js/features/lrc-editor.js`: `isInterludeText()` で空行を間奏行として判定するよう変更。
+- **検証**:
+    - `node --check src/renderer/js/features/lrc-editor.js`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6g` に更新。
