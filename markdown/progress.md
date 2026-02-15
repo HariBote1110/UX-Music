@@ -317,3 +317,22 @@
     - `node --check src/renderer/js/ui/ui.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6c` に更新。
+
+### LRCエディタの操作性改善（ハイライト指定・間奏指定）
+
+- **任意行ハイライト機能の追加**:
+    - `src/renderer/components/lrc-editor.html`: 「行ハイライト ( H )」ボタンを追加。
+    - `src/renderer/js/features/lrc-editor.js`: 選択行にハイライトをトグルする処理を実装。
+    - `src/renderer/styles/lrc-editor.css`: 手動ハイライト行とアクティブ行の視認性を強化。
+- **間奏指定機能の追加**:
+    - `src/renderer/components/lrc-editor.html`: 「間奏挿入 ( I )」ボタンを追加。
+    - `src/renderer/js/features/lrc-editor.js`: `[間奏]` 行を挿入する処理を実装。
+    - 保存時は通常のLRC行として `[mm:ss.xx][間奏]` 形式で出力されるため、間奏開始位置を明示可能にした。
+- **キーボード操作の拡張**:
+    - `src/renderer/js/features/lrc-editor.js`: `H` でハイライト切替、`I` で間奏行挿入、`↑/↓` で選択行移動を追加。
+- **ヘルプ表記の更新**:
+    - `src/renderer/components/lrc-editor.html`: 新しい操作（間奏挿入・行ハイライト）をヘルプへ追記。
+- **検証**:
+    - `node --check src/renderer/js/features/lrc-editor.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6d` に更新。

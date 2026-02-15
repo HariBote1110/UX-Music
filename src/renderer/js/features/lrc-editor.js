@@ -16,8 +16,23 @@ function getExtname(path) {
     return dotIndex === -1 ? '' : path.substring(dotIndex);
 }
 
+const INTERLUDE_LABEL = '[間奏]';
+
+function createLyricLine(text, timestamp = null, isHighlighted = false) {
+    return {
+        text,
+        timestamp,
+        isHighlighted,
+    };
+}
+
+function isInterludeText(text) {
+    const normalised = (text || '').trim().toLowerCase();
+    return normalised === '[間奏]' || normalised === '[interlude]' || normalised === '(interlude)';
+}
+
 let currentEditorSong = null;
-let lyricsLines = []; // { text: string, timestamp: number | null } の配列
+let lyricsLines = []; // { text: string, timestamp: number | null, isHighlighted: boolean } の配列
 let activeLineIndex = -1;
 let editorIsSeeking = false;
 let historyStack = []; // <<<--- 追加: 操作履歴スタック
@@ -47,6 +62,8 @@ function refreshEditorElements() {
         helpCloseBtn: document.getElementById('lrc-editor-help-close-btn'),
         undoBtn: document.getElementById('lrc-editor-undo-btn'),
         insertBlankBtn: document.getElementById('lrc-editor-insert-blank-btn'),
+        insertInterludeBtn: document.getElementById('lrc-editor-insert-interlude-btn'),
+        highlightBtn: document.getElementById('lrc-editor-highlight-btn'),
     };
     return Object.values(editorElements).every(Boolean);
 }
@@ -85,6 +102,16 @@ function updateUndoRedoButtons() {
     // editorElements.redoBtn.disabled = redoStack.length === 0;
 }
 // --- ▲▲▲ 新規追加 ▲▲▲ ---
+
+function updateHighlightButtonState() {
+    if (!editorElements.highlightBtn) return;
+    const hasActiveLine = activeLineIndex >= 0 && activeLineIndex < lyricsLines.length;
+    const highlighted = hasActiveLine && lyricsLines[activeLineIndex]?.isHighlighted === true;
+
+    editorElements.highlightBtn.disabled = !hasActiveLine;
+    editorElements.highlightBtn.classList.toggle('is-active', highlighted);
+    editorElements.highlightBtn.textContent = highlighted ? 'ハイライト解除 ( H )' : '行ハイライト ( H )';
+}
 
 // --- ▼▼▼ 新規追加: Undo処理 ▼▼▼ ---
 function undo() {
@@ -130,12 +157,19 @@ function redrawLyricsArea() {
     editorElements.lyricsArea.innerHTML = ''; // 一旦クリア
     if (lyricsLines.length === 0) {
         editorElements.lyricsArea.innerHTML = '<p class="lyrics-line placeholder">歌詞がありません。</p>';
+        updateHighlightButtonState();
         return;
     }
     lyricsLines.forEach((lineData, index) => {
         const lineElement = document.createElement('p');
         lineElement.classList.add('lyrics-line');
         lineElement.dataset.index = index;
+        if (lineData.isHighlighted) {
+            lineElement.classList.add('manual-highlight');
+        }
+        if (isInterludeText(lineData.text)) {
+            lineElement.classList.add('interlude-line');
+        }
 
         const textSpan = document.createElement('span');
         // 空白行は視覚的にわかるように placeholder スタイルを適用（任意）
@@ -166,13 +200,14 @@ function redrawLyricsArea() {
         // アクティブ行が見つからない場合は最初の行をアクティブにする
         setActiveLine(0);
     }
+    updateHighlightButtonState();
 }
 // --- ▲▲▲ 新規追加 ▲▲▲ ---
 
 // --- ▼▼▼ 新規追加: 空白行を挿入する関数 ▼▼▼ ---
 function insertBlankLine() {
     saveHistory(); // 操作履歴を保存
-    const blankLine = { text: ' ', timestamp: null }; // textは半角スペース一つにする
+    const blankLine = createLyricLine(' ', null, false); // textは半角スペース一つにする
     if (activeLineIndex === -1 || lyricsLines.length === 0) {
         // 歌詞がない場合や選択がない場合は末尾に追加
         lyricsLines.push(blankLine);
@@ -187,6 +222,33 @@ function insertBlankLine() {
     updateUndoRedoButtons();
 }
 // --- ▲▲▲ 新規追加 ▲▲▲ ---
+
+function insertInterludeLine() {
+    saveHistory();
+    const interludeLine = createLyricLine(INTERLUDE_LABEL, null, false);
+
+    if (activeLineIndex === -1 || lyricsLines.length === 0) {
+        lyricsLines.push(interludeLine);
+        activeLineIndex = lyricsLines.length - 1;
+    } else {
+        lyricsLines.splice(activeLineIndex + 1, 0, interludeLine);
+        activeLineIndex += 1;
+    }
+
+    redrawLyricsArea();
+    setActiveLine(activeLineIndex);
+    updateUndoRedoButtons();
+}
+
+function toggleLineHighlight() {
+    if (activeLineIndex < 0 || activeLineIndex >= lyricsLines.length) return;
+    saveHistory();
+    const current = lyricsLines[activeLineIndex];
+    current.isHighlighted = !current.isHighlighted;
+    redrawLyricsArea();
+    setActiveLine(activeLineIndex);
+    updateUndoRedoButtons();
+}
 
 
 // イベントリスナー初期化に関数を追加
@@ -227,6 +289,8 @@ function initLrcEditorListeners() {
         // --- ▼▼▼ 新しいボタンのリスナーを追加 ▼▼▼ ---
         editorElements.undoBtn.addEventListener('click', undo);
         editorElements.insertBlankBtn.addEventListener('click', insertBlankLine);
+        editorElements.insertInterludeBtn.addEventListener('click', insertInterludeLine);
+        editorElements.highlightBtn.addEventListener('click', toggleLineHighlight);
         // --- ▲▲▲ リスナーを追加 ▲▲▲ ---
 
         isEditorInitialized = true;
@@ -295,6 +359,7 @@ export async function startLrcEditor(song) {
     editorElements.view.setAttribute('tabindex', '-1');
     editorElements.view.focus();
     updateUndoRedoButtons(); // ボタン状態初期化
+    updateHighlightButtonState();
 }
 
 // 歌詞テキストを解析して表示エリアに描画する関数を修正
@@ -318,14 +383,14 @@ function parseAndDisplayLyrics(textContent, type = 'txt') {
                 timestamp = minutes * 60 + seconds + milliseconds / 1000;
             }
             // 空行も保持する (text: ' ')
-            return { text: text === '' ? ' ' : text, timestamp: timestamp };
+            return createLyricLine(text === '' ? ' ' : text, timestamp, false);
         }).sort((a, b) => (a.timestamp ?? Infinity) - (b.timestamp ?? Infinity)); // タイムスタンプ順にソート
 
     } else { // TXTの場合
         lyricsLines = textContent
             .split('\n')
             // 空行も保持 (text: ' ')、タイムスタンプは null
-            .map(line => ({ text: line.trim() === '' ? ' ' : line, timestamp: null }));
+            .map(line => createLyricLine(line.trim() === '' ? ' ' : line, null, false));
     }
 
 
@@ -351,7 +416,7 @@ function loadTextFromTextarea() {
     // ここで saveHistory を呼ぶ前に lyricsLines を更新する
     lyricsLines = textContent
         .split('\n')
-        .map(line => ({ text: line.trim() === '' ? ' ' : line, timestamp: null }));
+        .map(line => createLyricLine(line.trim() === '' ? ' ' : line, null, false));
 
     saveHistory(); // 変更前の状態ではなく、テキストエリア読み込み後の状態を保存
 
@@ -384,6 +449,14 @@ function setActiveLine(index) {
         // スクロール処理を redrawLyricsArea に移動したので、ここでは不要かも
         targetLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
+    updateHighlightButtonState();
+}
+
+function moveActiveLine(step) {
+    if (lyricsLines.length === 0) return;
+    const currentIndex = activeLineIndex < 0 ? 0 : activeLineIndex;
+    const nextIndex = Math.max(0, Math.min(lyricsLines.length - 1, currentIndex + step));
+    setActiveLine(nextIndex);
 }
 
 // 現在アクティブな行にタイムスタンプを記録する関数を修正
@@ -458,6 +531,27 @@ function handleEditorKeyDown(event) {
     if (event.key.toUpperCase() === 'T') {
         event.preventDefault();
         addTimestamp();
+        return;
+    }
+    if (event.key.toUpperCase() === 'H') {
+        event.preventDefault();
+        toggleLineHighlight();
+        return;
+    }
+    if (event.key.toUpperCase() === 'I') {
+        event.preventDefault();
+        insertInterludeLine();
+        return;
+    }
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveActiveLine(-1);
+        return;
+    }
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        moveActiveLine(1);
+        return;
     }
     if (event.code === 'Space' && !(event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)) { // 修飾キーなしのスペースのみ
         event.preventDefault();

@@ -9,6 +9,7 @@
     <div class="lrc-editor-actions">
         <button id="lrc-editor-undo-btn" class="header-button" disabled>元に戻す</button>
         <button id="lrc-editor-insert-blank-btn" class="header-button">空白行挿入</button>
+        <button id="lrc-editor-insert-interlude-btn" class="header-button">間奏挿入 ( I )</button>
         <button id="lrc-editor-help-btn" class="header-button">？ ヘルプ</button>
         <button id="lrc-editor-exit-btn" class="header-button">編集を終了</button>
         <button id="lrc-editor-save-btn" class="header-button primary">LRCを保存</button>
@@ -26,6 +27,7 @@
     <input type="range" id="lrc-editor-progress-bar" value="0" step="any">
     <span id="lrc-editor-total-duration">0:00</span>
     <button id="lrc-editor-timestamp-btn" class="header-button timestamp-btn">タイムスタンプ ( T )</button>
+    <button id="lrc-editor-highlight-btn" class="header-button">行ハイライト ( H )</button>
 </div>
 
 <div id="lrc-editor-lyrics-area">
@@ -41,6 +43,8 @@
         <li>タイムスタンプが記録されると、次の行が自動的に選択されます。</li>
         <li>シークバーで再生位置を調整しながら、すべての行にタイムスタンプを打ちます。</li>
         <li>打ち間違えた場合は、該当の行をクリックして再度タイムスタンプを打つことで上書きできます。</li>
+        <li>間奏を明示したい場合は「間奏挿入 ( I )」で <code>[間奏]</code> 行を追加してタイムスタンプを打てます。</li>
+        <li>作業中の目印として、選択行に「行ハイライト ( H )」を付けられます。</li>
         <li>歌詞がない場合は、テキストエリアに歌詞を貼り付けて「テキストを読み込む」ボタンを押してください。</li>
         <li>完了したら「LRCを保存」ボタンを押します。</li>
     </ol>
