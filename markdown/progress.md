@@ -575,3 +575,15 @@
     - `node --check src/renderer/js/features/lyrics-manager.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6u` に更新。
+
+### 少表示行（1〜2行）時の遅延追従を補正
+
+- **表示行数ベースの補正を追加**:
+    - `src/renderer/js/features/lyrics-manager.js`: 可視領域内の表示行数を計測する `getVisibleLyricsLineCount()` を追加。
+    - 表示行数が 3 行未満のとき、遅延カーブを自動的に緩和する係数（`sparseViewFactor`）を導入。
+    - `base delay / step / exponent / max delay` を表示行数に応じて縮小し、1〜2行時の「置いていかれてから動く」印象を軽減。
+    - 同時に `peakOffset` も表示行数が少ないほど抑え、視覚的な遅れ感を低減。
+- **検証**:
+    - `node --check src/renderer/js/features/lyrics-manager.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-6v` に更新。

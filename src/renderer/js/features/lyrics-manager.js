@@ -257,6 +257,20 @@ function getDisplayedLyricsIndex(container) {
     return closestIndex;
 }
 
+function getVisibleLyricsLineCount(container) {
+    if (!container) return 0;
+
+    const containerRect = container.getBoundingClientRect();
+    const visibleRect = getLyricsVisibleRect(containerRect);
+    const lines = Array.from(container.querySelectorAll('p[data-index]'));
+
+    return lines.reduce((count, line) => {
+        const rect = line.getBoundingClientRect();
+        const intersects = rect.bottom >= visibleRect.top && rect.top <= visibleRect.bottom;
+        return intersects ? count + 1 : count;
+    }, 0);
+}
+
 function applyTrafficWaveLag(distance) {
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     if (reducedMotionQuery.matches) {
@@ -274,11 +288,33 @@ function applyTrafficWaveLag(distance) {
     }
 
     const direction = distance >= 0 ? 1 : -1;
+    const visibleLineCount = getVisibleLyricsLineCount(elements.lyricsView);
+    const sparseViewFactor = clamp((3 - visibleLineCount) / 2, 0, 1);
+    const effectiveBaseDelay = clamp(
+        LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS * (1 - sparseViewFactor * 0.55),
+        22,
+        LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS,
+    );
+    const effectiveStepDelay = clamp(
+        LYRICS_TRAFFIC_WAVE_STEP_MS * (1 - sparseViewFactor * 0.68),
+        34,
+        LYRICS_TRAFFIC_WAVE_STEP_MS,
+    );
+    const effectiveExponent = clamp(
+        LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT - sparseViewFactor * 0.14,
+        0.9,
+        LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT,
+    );
+    const effectiveMaxDelay = clamp(
+        LYRICS_TRAFFIC_WAVE_MAX_DELAY_MS * (1 - sparseViewFactor * 0.5),
+        620,
+        LYRICS_TRAFFIC_WAVE_MAX_DELAY_MS,
+    );
     const peakOffset = clamp(
         distance * LYRICS_TRAFFIC_WAVE_OFFSET_FACTOR,
         -LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX,
         LYRICS_TRAFFIC_WAVE_MAX_OFFSET_PX,
-    );
+    ) * (1 - sparseViewFactor * 0.35);
     if (Math.abs(peakOffset) < 0.5) {
         return;
     }
@@ -301,11 +337,11 @@ function applyTrafficWaveLag(distance) {
         const attenuation = clamp(1 - distanceFromBase * LYRICS_TRAFFIC_WAVE_DISTANCE_DECAY, 0.24, 1);
         const anchorAttenuation = distanceFromBase === 0 ? 0.44 : 1;
         const lineOffset = peakOffset * attenuation * anchorAttenuation;
-        const staggerDelay = Math.pow(order, LYRICS_TRAFFIC_WAVE_DELAY_EXPONENT) * LYRICS_TRAFFIC_WAVE_STEP_MS;
+        const staggerDelay = Math.pow(order, effectiveExponent) * effectiveStepDelay;
         const lineDelay = clamp(
-            LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS + staggerDelay,
-            LYRICS_TRAFFIC_WAVE_BASE_DELAY_MS,
-            LYRICS_TRAFFIC_WAVE_MAX_DELAY_MS,
+            effectiveBaseDelay + staggerDelay,
+            effectiveBaseDelay,
+            effectiveMaxDelay,
         );
 
         item.line.classList.add('lag-prime');
