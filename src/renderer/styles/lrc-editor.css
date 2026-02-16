@@ -171,6 +171,186 @@
     cursor: not-allowed;
 }
 
+.lrc-editor-timeline-panel {
+    border: 1px solid var(--bg-light);
+    border-radius: 8px;
+    background: linear-gradient(180deg, rgba(38, 42, 56, 0.95) 0%, rgba(24, 27, 38, 0.95) 100%);
+    padding: 12px;
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.timeline-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.timeline-panel-header h3 {
+    margin: 0;
+    font-size: 15px;
+    color: var(--text-primary);
+}
+
+.timeline-panel-header p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.timeline-ruler {
+    position: relative;
+    height: 24px;
+    border-bottom: 1px solid rgba(141, 152, 180, 0.35);
+}
+
+.timeline-ruler-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(141, 152, 180, 0.45);
+}
+
+.timeline-ruler-tick span {
+    position: absolute;
+    top: 0;
+    left: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+    transform: translateY(-2px);
+    white-space: nowrap;
+}
+
+.timeline-track {
+    position: relative;
+    height: 86px;
+    border-radius: 8px;
+    border: 1px solid var(--bg-light);
+    background-color: rgba(10, 12, 18, 0.75);
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.timeline-track::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        repeating-linear-gradient(
+            to right,
+            rgba(98, 112, 145, 0.15) 0 1px,
+            transparent 1px 40px
+        );
+    pointer-events: none;
+}
+
+.timeline-playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #ff4f6d;
+    box-shadow: 0 0 0 1px rgba(255, 79, 109, 0.25), 0 0 10px rgba(255, 79, 109, 0.45);
+    pointer-events: none;
+    z-index: 6;
+    transform: translateX(-1px);
+}
+
+.timeline-clips {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+}
+
+.timeline-clip {
+    position: absolute;
+    top: 16px;
+    height: 52px;
+    border-radius: 6px;
+    border: 1px solid rgba(103, 148, 255, 0.45);
+    background: linear-gradient(90deg, rgba(63, 107, 205, 0.75), rgba(33, 80, 170, 0.78));
+    color: #f3f7ff;
+    font-size: 12px;
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    cursor: grab;
+    overflow: hidden;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+.timeline-clip.active {
+    border-color: rgba(255, 213, 98, 0.95);
+    background: linear-gradient(90deg, rgba(176, 127, 41, 0.88), rgba(128, 87, 24, 0.88));
+    box-shadow: 0 0 0 1px rgba(255, 213, 98, 0.25);
+}
+
+.timeline-clip.dragging {
+    cursor: grabbing;
+    filter: brightness(1.08);
+}
+
+.timeline-clip-time {
+    font-size: 11px;
+    opacity: 0.88;
+    white-space: nowrap;
+}
+
+.timeline-clip-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.timeline-unassigned {
+    min-height: 30px;
+    border: 1px dashed rgba(126, 135, 156, 0.55);
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.timeline-unassigned-placeholder {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.timeline-unassigned-item {
+    border: 1px solid rgba(126, 135, 156, 0.45);
+    border-radius: 999px;
+    background-color: rgba(58, 63, 80, 0.45);
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 4px 10px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.timeline-unassigned-item:hover {
+    background-color: rgba(79, 86, 109, 0.55);
+    color: var(--text-primary);
+}
+
+.timeline-unassigned-item.active {
+    border-color: rgba(255, 213, 98, 0.95);
+    color: #ffe7b6;
+}
+
 #lrc-editor-lyrics-area {
     flex-grow: 1;
     overflow-y: auto;
@@ -358,4 +538,19 @@
 #lrc-editor-detected-close-btn:hover {
     background-color: var(--bg-light);
     color: var(--text-primary);
+}
+
+@media (max-width: 960px) {
+    .lrc-editor-controls {
+        gap: 10px;
+    }
+
+    .timeline-panel-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .timeline-track {
+        height: 96px;
+    }
 }

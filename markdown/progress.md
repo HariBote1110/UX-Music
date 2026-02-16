@@ -16,6 +16,21 @@
 - **仕様同期とバージョン更新**:
     - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-7w` に更新。
 
+### LRCエディタ: タイムライン編集UIと既存LRC再編集対応
+
+- **タイムライン編集を追加**:
+    - `src/renderer/components/lrc-editor.html` に、ルーラー・プレイヘッド・クリップ表示を持つタイムライン領域を追加。
+    - `src/renderer/styles/lrc-editor.css` に、クリップ表示・ドラッグ中表示・未配置行表示のスタイルを追加。
+- **編集ロジックを刷新**:
+    - `src/renderer/js/features/lrc-editor.js` で、歌詞クリップのドラッグによる時刻微調整を実装。
+    - タイムラインクリックによるシーク、再生位置プレイヘッド同期、未配置行一覧からの行選択に対応。
+    - 既存 `.lrc` のメタタグ（`[ar:]` など）を保持し、保存時に再出力するよう変更。
+    - 複数タイムスタンプ付きLRC行を編集用に展開して読み込み可能に変更。
+- **導線改善**:
+    - `src/renderer/js/features/lyrics-manager.js` を更新し、LRC表示中でも右クリックから「同期歌詞を編集...」を開けるよう変更。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-7x` に更新。
+
 ## 2025年10月11日
 
 ### ユーザーからの依頼

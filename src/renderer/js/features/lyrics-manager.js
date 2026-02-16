@@ -269,9 +269,10 @@ function handleLyricsContextMenu(event) {
     event.preventDefault();
     const menuItems = [];
 
-    if (currentContextMenuSong && currentContextMenuType !== 'lrc') {
+    if (currentContextMenuSong) {
+        const isLrc = currentContextMenuType === 'lrc';
         menuItems.push({
-            label: '同期歌詞を作成...',
+            label: isLrc ? '同期歌詞を編集...' : '同期歌詞を作成...',
             action: () => {
                 startLrcEditor(currentContextMenuSong);
                 console.log('同期歌詞エディタを開始:', currentContextMenuSong.title);

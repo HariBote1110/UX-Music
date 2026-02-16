@@ -1,11 +1,18 @@
-// src/renderer/js/lrc-editor.js
+// src/renderer/js/features/lrc-editor.js
 
 import { state } from '../core/state.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { showView } from '../core/navigation.js';
 import { resolveArtworkPath, formatSongTitle } from '../ui/utils.js';
 import { togglePlayPause, seek, getCurrentTime, getDuration, isPlaying } from './player.js';
+
 const electronAPI = window.electronAPI;
+
+const INTERLUDE_LABEL = '[間奏]';
+const TIMELINE_MIN_DURATION_SEC = 30;
+const TIMELINE_MIN_CLIP_WIDTH_SEC = 0.35;
+const TIMELINE_MIN_GAP_SEC = 0.02;
+const LRC_META_LINE_REGEX = /^\[(ar|ti|al|by|offset|re|ve):.*\]$/i;
 
 function getBasename(path) {
     return path.split(/[\\/]/).pop();
@@ -15,8 +22,6 @@ function getExtname(path) {
     const dotIndex = path.lastIndexOf('.');
     return dotIndex === -1 ? '' : path.substring(dotIndex);
 }
-
-const INTERLUDE_LABEL = '[間奏]';
 
 function createLyricLine(text, timestamp = null) {
     return {
@@ -30,8 +35,115 @@ function isInterludeText(text) {
     return normalised === '' || normalised === '[間奏]' || normalised === '[interlude]' || normalised === '(interlude)';
 }
 
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function normaliseTimestamp(seconds) {
+    if (!Number.isFinite(seconds)) {
+        return null;
+    }
+    return Number.parseFloat(Math.max(0, seconds).toFixed(3));
+}
+
+function createHistorySnapshot() {
+    return {
+        lyricsLines: lyricsLines.map(line => ({
+            text: line.text,
+            timestamp: line.timestamp,
+        })),
+        lrcMetadataLines: [...lrcMetadataLines],
+    };
+}
+
+function restoreHistorySnapshot(snapshot) {
+    lyricsLines = Array.isArray(snapshot?.lyricsLines)
+        ? snapshot.lyricsLines.map(line => createLyricLine(line?.text || '', typeof line?.timestamp === 'number' ? line.timestamp : null))
+        : [];
+    lrcMetadataLines = Array.isArray(snapshot?.lrcMetadataLines)
+        ? snapshot.lrcMetadataLines.filter(line => typeof line === 'string')
+        : [];
+}
+
+function snapshotSignature(snapshot) {
+    return JSON.stringify(snapshot);
+}
+
+function parseLrcTimestamp(match) {
+    const minutes = Number.parseInt(match[1], 10);
+    const seconds = Number.parseInt(match[2], 10);
+    const milliseconds = Number.parseInt(String(match[3]).padEnd(3, '0').slice(0, 3), 10);
+
+    if (!Number.isFinite(minutes) || !Number.isFinite(seconds) || !Number.isFinite(milliseconds)) {
+        return null;
+    }
+
+    return normaliseTimestamp(minutes * 60 + seconds + milliseconds / 1000);
+}
+
+function getTimelineDuration() {
+    const duration = Number(getDuration());
+    const maxTimestamp = lyricsLines.reduce((max, line) => {
+        if (typeof line.timestamp !== 'number') {
+            return max;
+        }
+        return Math.max(max, line.timestamp);
+    }, 0);
+
+    const candidate = Math.max(
+        TIMELINE_MIN_DURATION_SEC,
+        Number.isFinite(duration) ? duration : 0,
+        maxTimestamp + 2,
+    );
+
+    return Number.isFinite(candidate) && candidate > 0 ? candidate : TIMELINE_MIN_DURATION_SEC;
+}
+
+function getAdjacentTimestamp(index, direction) {
+    if (direction === 0) return null;
+    const step = direction > 0 ? 1 : -1;
+
+    for (let i = index + step; i >= 0 && i < lyricsLines.length; i += step) {
+        const timestamp = lyricsLines[i]?.timestamp;
+        if (typeof timestamp === 'number') {
+            return timestamp;
+        }
+    }
+
+    return null;
+}
+
+function clampTimestampForIndex(index, candidate, duration) {
+    const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : getTimelineDuration();
+    const prev = getAdjacentTimestamp(index, -1);
+    const next = getAdjacentTimestamp(index, 1);
+
+    const min = prev === null ? 0 : prev + TIMELINE_MIN_GAP_SEC;
+    const max = next === null ? safeDuration : next - TIMELINE_MIN_GAP_SEC;
+
+    if (max <= min) {
+        return min;
+    }
+
+    return clamp(candidate, min, max);
+}
+
+function chooseRulerStep(duration) {
+    const target = duration / 12;
+    const steps = [1, 2, 5, 10, 15, 20, 30, 60, 90, 120, 180, 300];
+    return steps.find(step => step >= target) || 300;
+}
+
+function formatTimelineTime(seconds) {
+    const sec = Math.max(0, Math.floor(seconds));
+    const minPart = Math.floor(sec / 60);
+    const secPart = String(sec % 60).padStart(2, '0');
+    return `${minPart}:${secPart}`;
+}
+
 let currentEditorSong = null;
-let lyricsLines = []; // { text: string, timestamp: number | null } の配列
+let lyricsLines = [];
+let lrcMetadataLines = [];
 let activeLineIndex = -1;
 let editorIsSeeking = false;
 let lastTimestampedLineIndex = -1;
@@ -39,10 +151,10 @@ let autoAdvanceArmed = false;
 let isAutoSyncRunning = false;
 let latestDetectedSegments = [];
 let latestDetectedBy = '';
-let historyStack = []; // <<<--- 追加: 操作履歴スタック
-let redoStack = [];    // <<<--- 追加: Redo用スタック (今回はUndoのみ実装)
+let historyStack = [];
+let redoStack = [];
+let timelineDragState = null;
 
-// コンポーネントは動的に挿入されるため、参照は開始時に解決する。
 let editorElements = {};
 
 function refreshEditorElements() {
@@ -61,6 +173,11 @@ function refreshEditorElements() {
         autoSyncBtn: document.getElementById('lrc-editor-auto-sync-btn'),
         showDetectedBtn: document.getElementById('lrc-editor-show-detected-btn'),
         timestampBtn: document.getElementById('lrc-editor-timestamp-btn'),
+        timelineRuler: document.getElementById('lrc-editor-timeline-ruler'),
+        timelineTrack: document.getElementById('lrc-editor-timeline-track'),
+        timelinePlayhead: document.getElementById('lrc-editor-timeline-playhead'),
+        timelineClips: document.getElementById('lrc-editor-timeline-clips'),
+        unassignedLines: document.getElementById('lrc-editor-unassigned-lines'),
         lyricsArea: document.getElementById('lrc-editor-lyrics-area'),
         textarea: document.getElementById('lrc-editor-textarea'),
         loadTextBtn: document.getElementById('lrc-editor-load-text-btn'),
@@ -73,6 +190,7 @@ function refreshEditorElements() {
         undoBtn: document.getElementById('lrc-editor-undo-btn'),
         insertInterludeBtn: document.getElementById('lrc-editor-insert-interlude-btn'),
     };
+
     return Object.values(editorElements).every(Boolean);
 }
 
@@ -80,6 +198,7 @@ function ensureEditorElements() {
     if (refreshEditorElements()) {
         return true;
     }
+
     console.error('[LRC Editor] Required editor elements are missing.');
     showNotification('LRCエディタの初期化に失敗しました。');
     hideNotification(3000);
@@ -88,94 +207,227 @@ function ensureEditorElements() {
 
 let isEditorInitialized = false;
 
-// --- ▼▼▼ 新規追加: 操作履歴を保存する関数 ▼▼▼ ---
 function saveHistory() {
-    // 状態が変化する場合のみ履歴に追加 (Undo/Redoによるループを防ぐ)
-    const currentStateString = JSON.stringify(lyricsLines);
-    const lastStateString = historyStack.length > 0 ? JSON.stringify(historyStack[historyStack.length - 1]) : null;
+    const snapshot = createHistorySnapshot();
+    const snapshotString = snapshotSignature(snapshot);
+    const lastSnapshotString = historyStack.length > 0
+        ? snapshotSignature(historyStack[historyStack.length - 1])
+        : null;
 
-    if (currentStateString !== lastStateString) {
-        historyStack.push(JSON.parse(currentStateString)); // ディープコピー
-        redoStack = []; // 新しい操作をしたらRedo履歴はクリア
+    if (snapshotString !== lastSnapshotString) {
+        historyStack.push(snapshot);
+        redoStack = [];
         updateUndoRedoButtons();
     }
 }
-// --- ▲▲▲ 新規追加 ▲▲▲ ---
 
-// --- ▼▼▼ 新規追加: Undo/Redoボタンの状態を更新する関数 ▼▼▼ ---
 function updateUndoRedoButtons() {
     if (!editorElements.undoBtn) return;
-    editorElements.undoBtn.disabled = historyStack.length <= 1; // 初期状態を除いて1つ以上履歴があれば有効
-    // Redoボタンがあれば有効/無効を切り替える (今回はUndoのみ)
-    // editorElements.redoBtn.disabled = redoStack.length === 0;
+    editorElements.undoBtn.disabled = historyStack.length <= 1;
 }
-// --- ▲▲▲ 新規追加 ▲▲▲ ---
 
-// --- ▼▼▼ 新規追加: Undo処理 ▼▼▼ ---
 function undo() {
-    if (historyStack.length <= 1) return; // 初期状態しか残っていない場合は何もしない
+    if (historyStack.length <= 1) return;
 
-    // 現在の状態をRedoスタックへ（任意）
-    redoStack.push(JSON.parse(JSON.stringify(lyricsLines)));
+    redoStack.push(createHistorySnapshot());
+    historyStack.pop();
 
-    // 最新の履歴（現在の状態）を捨てて、一つ前の状態を取り出す
-    historyStack.pop(); // 現在の状態を捨てる
-    const previousState = historyStack[historyStack.length - 1]; // 一つ前の状態を取得
-    lyricsLines = JSON.parse(JSON.stringify(previousState)); // ディープコピーして復元
+    const previousState = historyStack[historyStack.length - 1];
+    restoreHistorySnapshot(previousState);
+
     lastTimestampedLineIndex = -1;
     autoAdvanceArmed = false;
 
-    // UIを再描画
     redrawLyricsArea();
-    // アクティブ行を復元 (範囲外チェックも行う)
-    if (activeLineIndex < 0 || activeLineIndex >= lyricsLines.length) {
-        activeLineIndex = lyricsLines.findIndex((_, i) => i === activeLineIndex) > -1 ? activeLineIndex : 0;
-    }
-    setActiveLine(activeLineIndex >= 0 ? activeLineIndex : 0); // 復元または最初の行へ
-    updateUndoRedoButtons();
-}
-// --- ▲▲▲ 新規追加 ▲▲▲ ---
 
-// Redo処理（今回は実装しないが、構造は以下のようになる）
-/*
-function redo() {
-    if (redoStack.length === 0) return;
-    // 現在の状態をUndoスタックへ
-    saveHistory(); // saveHistory内でRedoスタックはクリアされるので先に呼ぶ
-    // Redoスタックから状態を取り出す
-    const nextState = redoStack.pop();
-    lyricsLines = nextState;
-    // UIを再描画
-    redrawLyricsArea();
-    setActiveLine(activeLineIndex >= 0 ? activeLineIndex : 0);
-    updateUndoRedoButtons();
-}
-*/
-
-// --- ▼▼▼ 新規追加: UIを再描画する関数 ▼▼▼ ---
-function redrawLyricsArea() {
-    editorElements.lyricsArea.innerHTML = ''; // 一旦クリア
     if (lyricsLines.length === 0) {
-        editorElements.lyricsArea.innerHTML = '<p class="lyrics-line placeholder">歌詞がありません。</p>';
+        activeLineIndex = -1;
+    } else if (activeLineIndex < 0 || activeLineIndex >= lyricsLines.length) {
+        activeLineIndex = 0;
+    }
+
+    if (activeLineIndex >= 0) {
+        setActiveLine(activeLineIndex);
+    }
+
+    updateUndoRedoButtons();
+}
+
+function updateLineTimestampDisplay(index) {
+    const lineElement = editorElements.lyricsArea.querySelector(`.lyrics-line[data-index="${index}"] .timestamp`);
+    if (!lineElement) return;
+
+    const timestamp = lyricsLines[index]?.timestamp;
+    lineElement.textContent = typeof timestamp === 'number' ? formatLrcTime(timestamp) : '--:--.--';
+}
+
+function renderTimelineRuler(duration) {
+    if (!editorElements.timelineRuler) return;
+
+    editorElements.timelineRuler.innerHTML = '';
+    const step = chooseRulerStep(duration);
+
+    for (let sec = 0; sec <= duration; sec += step) {
+        const tick = document.createElement('div');
+        tick.className = 'timeline-ruler-tick';
+        tick.style.left = `${(sec / duration) * 100}%`;
+
+        const label = document.createElement('span');
+        label.textContent = formatTimelineTime(sec);
+        tick.appendChild(label);
+        editorElements.timelineRuler.appendChild(tick);
+    }
+
+    if (duration % step !== 0) {
+        const lastTick = document.createElement('div');
+        lastTick.className = 'timeline-ruler-tick';
+        lastTick.style.left = '100%';
+
+        const label = document.createElement('span');
+        label.textContent = formatTimelineTime(duration);
+        lastTick.appendChild(label);
+        editorElements.timelineRuler.appendChild(lastTick);
+    }
+}
+
+function renderTimelineClips(duration) {
+    if (!editorElements.timelineClips) return;
+
+    editorElements.timelineClips.innerHTML = '';
+
+    lyricsLines.forEach((line, index) => {
+        if (typeof line.timestamp !== 'number') {
+            return;
+        }
+
+        const start = clamp(line.timestamp, 0, duration);
+        const next = getAdjacentTimestamp(index, 1);
+        let end = typeof next === 'number' ? next : duration;
+
+        if (end <= start) {
+            end = Math.min(duration, start + TIMELINE_MIN_CLIP_WIDTH_SEC);
+        }
+
+        let leftPercent = (start / duration) * 100;
+        let widthPercent = Math.max(((end - start) / duration) * 100, 0.8);
+
+        leftPercent = clamp(leftPercent, 0, 99.2);
+        const availableWidth = 100 - leftPercent;
+        widthPercent = clamp(widthPercent, 0.8, Math.max(availableWidth, 0.8));
+
+        const clip = document.createElement('div');
+        clip.className = 'timeline-clip';
+        if (index === activeLineIndex) {
+            clip.classList.add('active');
+        }
+        clip.dataset.index = String(index);
+        clip.style.left = `${leftPercent}%`;
+        clip.style.width = `${widthPercent}%`;
+        clip.title = `${formatLrcTime(start)} ${line.text || '(空白)'}`;
+
+        const timeLabel = document.createElement('span');
+        timeLabel.className = 'timeline-clip-time';
+        timeLabel.textContent = formatLrcTime(start);
+
+        const textLabel = document.createElement('span');
+        textLabel.className = 'timeline-clip-text';
+        textLabel.textContent = `${index + 1}. ${line.text || '(空白)'}`;
+
+        clip.appendChild(timeLabel);
+        clip.appendChild(textLabel);
+
+        clip.addEventListener('mousedown', (event) => {
+            beginTimelineClipDrag(event, index);
+        });
+
+        clip.addEventListener('click', (event) => {
+            event.stopPropagation();
+            setActiveLine(index, true);
+        });
+
+        editorElements.timelineClips.appendChild(clip);
+    });
+}
+
+function renderUnassignedLines() {
+    if (!editorElements.unassignedLines) return;
+
+    editorElements.unassignedLines.innerHTML = '';
+    const unassigned = lyricsLines
+        .map((line, index) => ({ line, index }))
+        .filter(item => typeof item.line.timestamp !== 'number');
+
+    if (unassigned.length === 0) {
+        const placeholder = document.createElement('p');
+        placeholder.className = 'timeline-unassigned-placeholder';
+        placeholder.textContent = '未配置の歌詞行はありません。';
+        editorElements.unassignedLines.appendChild(placeholder);
         return;
     }
+
+    unassigned.forEach(({ line, index }) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'timeline-unassigned-item';
+        if (index === activeLineIndex) {
+            item.classList.add('active');
+        }
+        item.dataset.index = String(index);
+        const text = (line.text || '').trim();
+        item.textContent = `${index + 1}. ${text === '' ? '(空白)' : text}`;
+        item.title = item.textContent;
+
+        item.addEventListener('click', () => {
+            setActiveLine(index, true);
+            editorElements.view.focus();
+        });
+
+        editorElements.unassignedLines.appendChild(item);
+    });
+}
+
+function updateTimelinePlayhead(currentTime) {
+    if (!editorElements.timelinePlayhead) return;
+
+    const duration = getTimelineDuration();
+    const safeCurrentTime = Number.isFinite(currentTime) ? clamp(currentTime, 0, duration) : 0;
+    editorElements.timelinePlayhead.style.left = `${(safeCurrentTime / duration) * 100}%`;
+}
+
+function renderTimeline() {
+    if (!editorElements.timelineTrack) return;
+
+    const duration = getTimelineDuration();
+    renderTimelineRuler(duration);
+    renderTimelineClips(duration);
+    renderUnassignedLines();
+    updateTimelinePlayhead(getCurrentTime());
+}
+
+function redrawLyricsArea() {
+    editorElements.lyricsArea.innerHTML = '';
+
+    if (lyricsLines.length === 0) {
+        editorElements.lyricsArea.innerHTML = '<p class="lyrics-line placeholder">歌詞がありません。</p>';
+        renderTimeline();
+        return;
+    }
+
     lyricsLines.forEach((lineData, index) => {
         const lineElement = document.createElement('p');
         lineElement.classList.add('lyrics-line');
-        lineElement.dataset.index = index;
+        lineElement.dataset.index = String(index);
+
         if (isInterludeText(lineData.text)) {
             lineElement.classList.add('interlude-line');
         }
 
         const textSpan = document.createElement('span');
-        // 空白行は視覚的にわかるように placeholder スタイルを適用（任意）
-        if (lineData.text.trim() === '') {
-            textSpan.innerHTML = '&nbsp;'; // 非改行スペースを表示
-            // lineElement.classList.add('placeholder-line'); // 必要ならCSSでスタイル定義
+        if ((lineData.text || '').trim() === '') {
+            textSpan.innerHTML = '&nbsp;';
         } else {
             textSpan.textContent = lineData.text;
         }
-
 
         const timeSpan = document.createElement('time');
         timeSpan.classList.add('timestamp');
@@ -186,21 +438,138 @@ function redrawLyricsArea() {
         lineElement.addEventListener('click', () => setActiveLine(index, true));
         editorElements.lyricsArea.appendChild(lineElement);
     });
-    // アクティブ行のスタイル復元
-    const activeLineEl = editorElements.lyricsArea.querySelector(`.lyrics-line[data-index="${activeLineIndex}"]`);
-    if (activeLineEl) {
-        activeLineEl.classList.add('active');
-        // 必要ならスクロール位置も復元
-        activeLineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    renderTimeline();
+
+    if (activeLineIndex >= 0 && activeLineIndex < lyricsLines.length) {
+        const activeLineEl = editorElements.lyricsArea.querySelector(`.lyrics-line[data-index="${activeLineIndex}"]`);
+        if (activeLineEl) {
+            activeLineEl.classList.add('active');
+        }
     } else if (lyricsLines.length > 0) {
-        // アクティブ行が見つからない場合は最初の行をアクティブにする
         setActiveLine(0);
     }
 }
-// --- ▲▲▲ 新規追加 ▲▲▲ ---
+
+function clearTimelineDragState() {
+    document.removeEventListener('mousemove', handleTimelineClipDragMove);
+    document.removeEventListener('mouseup', endTimelineClipDrag);
+
+    if (timelineDragState?.clipElement && timelineDragState.clipElement.isConnected) {
+        timelineDragState.clipElement.classList.remove('dragging');
+    }
+
+    timelineDragState = null;
+}
+
+function beginTimelineClipDrag(event, lineIndex) {
+    if (event.button !== 0) {
+        return;
+    }
+
+    if (!editorElements.timelineTrack) {
+        return;
+    }
+
+    const line = lyricsLines[lineIndex];
+    if (!line || typeof line.timestamp !== 'number') {
+        return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    setActiveLine(lineIndex, true);
+
+    const trackRect = editorElements.timelineTrack.getBoundingClientRect();
+    if (trackRect.width <= 0) {
+        return;
+    }
+
+    timelineDragState = {
+        index: lineIndex,
+        startX: event.clientX,
+        originalTimestamp: line.timestamp,
+        duration: getTimelineDuration(),
+        trackRect,
+        savedHistory: false,
+        moved: false,
+        clipElement: event.currentTarget,
+    };
+
+    if (timelineDragState.clipElement) {
+        timelineDragState.clipElement.classList.add('dragging');
+    }
+
+    document.addEventListener('mousemove', handleTimelineClipDragMove);
+    document.addEventListener('mouseup', endTimelineClipDrag);
+}
+
+function handleTimelineClipDragMove(event) {
+    if (!timelineDragState) {
+        return;
+    }
+
+    event.preventDefault();
+
+    const deltaPx = event.clientX - timelineDragState.startX;
+    const deltaSec = (deltaPx / timelineDragState.trackRect.width) * timelineDragState.duration;
+    const candidate = timelineDragState.originalTimestamp + deltaSec;
+    const clampedTime = clampTimestampForIndex(timelineDragState.index, candidate, timelineDragState.duration);
+    const timestamp = normaliseTimestamp(clampedTime);
+
+    if (timestamp === null) {
+        return;
+    }
+
+    if (lyricsLines[timelineDragState.index].timestamp === timestamp) {
+        return;
+    }
+
+    lyricsLines[timelineDragState.index].timestamp = timestamp;
+    timelineDragState.moved = true;
+
+    if (!timelineDragState.savedHistory) {
+        saveHistory();
+        timelineDragState.savedHistory = true;
+    }
+
+    updateLineTimestampDisplay(timelineDragState.index);
+    renderTimelineClips(timelineDragState.duration);
+}
+
+function endTimelineClipDrag() {
+    if (!timelineDragState) {
+        return;
+    }
+
+    const moved = timelineDragState.moved;
+    clearTimelineDragState();
+
+    if (moved) {
+        updateUndoRedoButtons();
+    }
+}
+
+function handleTimelineTrackClick(event) {
+    if (!editorElements.timelineTrack) return;
+    if (event.target.closest('.timeline-clip')) return;
+
+    const rect = editorElements.timelineTrack.getBoundingClientRect();
+    if (rect.width <= 0) return;
+
+    const duration = getTimelineDuration();
+    const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    const targetTime = ratio * duration;
+
+    seek(targetTime);
+    editorElements.currentTime.textContent = formatEditorTime(targetTime);
+    editorElements.progressBar.value = targetTime;
+    updateTimelinePlayhead(targetTime);
+    editorElements.view.focus();
+}
 
 function insertInterludeLine() {
-    saveHistory();
     const interludeLine = createLyricLine(INTERLUDE_LABEL, null);
 
     if (activeLineIndex === -1 || lyricsLines.length === 0) {
@@ -213,13 +582,13 @@ function insertInterludeLine() {
 
     lastTimestampedLineIndex = -1;
     autoAdvanceArmed = false;
+
     redrawLyricsArea();
     setActiveLine(activeLineIndex);
+    saveHistory();
     updateUndoRedoButtons();
 }
 
-
-// イベントリスナー初期化に関数を追加
 function initLrcEditorListeners() {
     if (!ensureEditorElements()) return false;
 
@@ -231,36 +600,43 @@ function initLrcEditorListeners() {
         editorElements.helpBtn.addEventListener('click', () => {
             editorElements.helpPopup.classList.remove('hidden');
         });
+
         editorElements.helpCloseBtn.addEventListener('click', () => {
             editorElements.helpPopup.classList.add('hidden');
         });
+
         editorElements.showDetectedBtn.addEventListener('click', openDetectedPopup);
         editorElements.detectedCloseBtn.addEventListener('click', closeDetectedPopup);
 
         editorElements.loadTextBtn.addEventListener('click', loadTextFromTextarea);
         editorElements.playPauseBtn.addEventListener('click', togglePlayPause);
 
-        editorElements.progressBar.addEventListener('mousedown', () => { editorIsSeeking = true; });
+        editorElements.progressBar.addEventListener('mousedown', () => {
+            editorIsSeeking = true;
+        });
+
         editorElements.progressBar.addEventListener('mouseup', () => {
             if (editorIsSeeking) {
-                seek(parseFloat(editorElements.progressBar.value));
+                seek(Number.parseFloat(editorElements.progressBar.value));
                 editorIsSeeking = false;
             }
         });
+
         editorElements.progressBar.addEventListener('input', () => {
             if (editorIsSeeking) {
-                editorElements.currentTime.textContent = formatEditorTime(parseFloat(editorElements.progressBar.value));
+                const seekTime = Number.parseFloat(editorElements.progressBar.value);
+                editorElements.currentTime.textContent = formatEditorTime(seekTime);
+                updateTimelinePlayhead(seekTime);
             }
         });
+
+        editorElements.timelineTrack.addEventListener('click', handleTimelineTrackClick);
 
         editorElements.timestampBtn.addEventListener('click', addTimestamp);
         editorElements.autoSyncBtn.addEventListener('click', runAutoSync);
         editorElements.saveBtn.addEventListener('click', handleSaveLrc);
-
-        // --- ▼▼▼ 新しいボタンのリスナーを追加 ▼▼▼ ---
         editorElements.undoBtn.addEventListener('click', undo);
         editorElements.insertInterludeBtn.addEventListener('click', insertInterludeLine);
-        // --- ▲▲▲ リスナーを追加 ▲▲▲ ---
 
         isEditorInitialized = true;
     }
@@ -269,17 +645,17 @@ function initLrcEditorListeners() {
     editorElements.view.addEventListener('keydown', handleEditorKeyDown);
 
     setAutoSyncButtonState(false);
-    updateUndoRedoButtons(); // 初期状態を設定
+    updateUndoRedoButtons();
     return true;
 }
 
-// startLrcEditor で履歴を初期化
 export async function startLrcEditor(song) {
     if (!song) return;
     console.log('[LRC Editor] Starting editor for:', song.title);
 
     currentEditorSong = song;
     lyricsLines = [];
+    lrcMetadataLines = [];
     activeLineIndex = -1;
     editorIsSeeking = false;
     lastTimestampedLineIndex = -1;
@@ -287,11 +663,9 @@ export async function startLrcEditor(song) {
     isAutoSyncRunning = false;
     latestDetectedSegments = [];
     latestDetectedBy = '';
-    // --- ▼▼▼ 履歴をクリア ▼▼▼ ---
     historyStack = [];
     redoStack = [];
-    // --- ▲▲▲ 履歴をクリア ▲▲▲ ---
-
+    clearTimelineDragState();
 
     if (!initLrcEditorListeners()) return;
 
@@ -309,118 +683,128 @@ export async function startLrcEditor(song) {
 
     try {
         const lyricsContent = await electronAPI.invoke('get-lyrics', song);
-        if (lyricsContent && (lyricsContent.type === 'txt' || lyricsContent.type === 'lrc')) { // LRCも読み込めるように
-            parseAndDisplayLyrics(lyricsContent.content, lyricsContent.type); // タイプを渡す
+        if (lyricsContent && (lyricsContent.type === 'txt' || lyricsContent.type === 'lrc')) {
+            parseAndDisplayLyrics(lyricsContent.content, lyricsContent.type);
         } else {
             editorElements.lyricsArea.innerHTML = '<p class="lyrics-line placeholder">歌詞テキストが見つかりません。下に貼り付けて読み込んでください。</p>';
             editorElements.textarea.value = '';
             editorElements.textarea.classList.remove('hidden');
             editorElements.loadTextBtn.classList.remove('hidden');
-            saveHistory(); // 歌詞がない状態も履歴に保存
+            renderTimeline();
+            saveHistory();
         }
     } catch (error) {
         console.error('Error fetching lyrics for editor:', error);
         showNotification('歌詞の読み込み中にエラーが発生しました。');
         editorElements.lyricsArea.innerHTML = '<p class="lyrics-line placeholder">歌詞の読み込みエラー</p>';
-        saveHistory(); // エラー状態も履歴に保存
+        renderTimeline();
+        saveHistory();
     }
 
     const currentIsPlaying = isPlaying();
     const currentTime = getCurrentTime();
     const duration = getDuration();
+
     updateLrcEditorControls(currentIsPlaying, currentTime, duration);
-    editorElements.progressBar.max = duration || 0;
+    editorElements.progressBar.max = Number.isFinite(duration) ? duration : 0;
 
     editorElements.view.setAttribute('tabindex', '-1');
     editorElements.view.focus();
+
     closeDetectedPopup();
     updateDetectedPreviewUI();
     setAutoSyncButtonState(false);
-    updateUndoRedoButtons(); // ボタン状態初期化
+    updateUndoRedoButtons();
 }
 
-// 歌詞テキストを解析して表示エリアに描画する関数を修正
-// LRC読み込みにも対応
 function parseAndDisplayLyrics(textContent, type = 'txt') {
     editorElements.lyricsArea.innerHTML = '';
     lastTimestampedLineIndex = -1;
     autoAdvanceArmed = false;
 
-    if (type === 'lrc') {
-        const lines = textContent.split('\n');
-        const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/g; // LRCタイムスタンプ正規表現
-        lyricsLines = lines.map(line => {
-            const text = line.replace(timeRegex, '').trim();
-            const matches = [...line.matchAll(timeRegex)];
-            let timestamp = null;
-            if (matches.length > 0) {
-                const match = matches[0]; // 最初のタイムスタンプを採用
-                const minutes = parseInt(match[1], 10);
-                const seconds = parseInt(match[2], 10);
-                // ミリ秒を2桁または3桁で取得し、3桁に正規化
-                const milliseconds = parseInt(match[3].padEnd(3, '0'), 10);
-                timestamp = minutes * 60 + seconds + milliseconds / 1000;
-            }
-            // 空行も保持する (text: '')
-            return createLyricLine(text === '' ? '' : text, timestamp);
-        }).sort((a, b) => (a.timestamp ?? Infinity) - (b.timestamp ?? Infinity)); // タイムスタンプ順にソート
+    const normalisedContent = String(textContent || '').replace(/\r\n?/g, '\n');
+    lrcMetadataLines = [];
 
-    } else { // TXTの場合
-        lyricsLines = textContent
+    if (type === 'lrc') {
+        const lines = normalisedContent.split('\n');
+        lyricsLines = [];
+
+        lines.forEach(rawLine => {
+            const line = rawLine.trim();
+            const timestampRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/g;
+            const matches = [...line.matchAll(timestampRegex)];
+
+            if (matches.length === 0) {
+                if (line === '') {
+                    lyricsLines.push(createLyricLine('', null));
+                    return;
+                }
+
+                if (LRC_META_LINE_REGEX.test(line)) {
+                    lrcMetadataLines.push(line);
+                    return;
+                }
+
+                lyricsLines.push(createLyricLine(line, null));
+                return;
+            }
+
+            const lyricText = line.replace(timestampRegex, '').trim();
+            let pushed = 0;
+
+            matches.forEach(match => {
+                const timestamp = parseLrcTimestamp(match);
+                if (typeof timestamp === 'number') {
+                    lyricsLines.push(createLyricLine(lyricText, timestamp));
+                    pushed += 1;
+                }
+            });
+
+            if (pushed === 0) {
+                lyricsLines.push(createLyricLine(lyricText, null));
+            }
+        });
+    } else {
+        lyricsLines = normalisedContent
             .split('\n')
-            // 空行も保持 (text: '')、タイムスタンプは null
             .map(line => createLyricLine(line.trim() === '' ? '' : line, null));
     }
 
-
     if (lyricsLines.length === 0) {
         editorElements.lyricsArea.innerHTML = '<p class="lyrics-line placeholder">歌詞が空です。</p>';
+        renderTimeline();
+        saveHistory();
         return;
     }
 
-    redrawLyricsArea(); // UI描画関数を呼び出す
+    redrawLyricsArea();
     setActiveLine(0);
-    saveHistory(); // 初期状態を履歴に追加
+    saveHistory();
 }
 
-
-// テキストエリアから歌詞を読み込む関数を修正
 function loadTextFromTextarea() {
     const textContent = editorElements.textarea.value;
     if (textContent.trim() === '') {
         showNotification('テキストエリアに歌詞を入力または貼り付けてください。');
         return;
     }
-    // --- ▼▼▼ 修正 ▼▼▼ ---
-    // ここで saveHistory を呼ぶ前に lyricsLines を更新する
-    lyricsLines = textContent
-        .split('\n')
-        .map(line => createLyricLine(line.trim() === '' ? '' : line, null));
-    lastTimestampedLineIndex = -1;
-    autoAdvanceArmed = false;
 
-    saveHistory(); // 変更前の状態ではなく、テキストエリア読み込み後の状態を保存
-
-    if (lyricsLines.length === 0) {
-        editorElements.lyricsArea.innerHTML = '<p class="lyrics-line placeholder">歌詞が空です。</p>';
-        return;
-    }
-    redrawLyricsArea(); // UI再描画
-    setActiveLine(0);   // 最初の行を選択
-    // saveHistory();   // ここでは呼ばない (上で呼んだため)
-    // --- ▲▲▲ 修正 ▲▲▲ ---
+    const looksLikeLrc = /\[\d{2}:\d{2}\.\d{2,3}\]/.test(textContent);
+    parseAndDisplayLyrics(textContent, looksLikeLrc ? 'lrc' : 'txt');
 
     editorElements.textarea.classList.add('hidden');
     editorElements.loadTextBtn.classList.add('hidden');
     editorElements.view.focus();
-    updateUndoRedoButtons(); // ボタン状態更新
+    updateUndoRedoButtons();
 }
 
 function setAutoSyncButtonState(running) {
     if (!editorElements.autoSyncBtn) return;
+
     editorElements.autoSyncBtn.disabled = running;
     editorElements.autoSyncBtn.dataset.running = running ? 'true' : 'false';
     editorElements.autoSyncBtn.textContent = running ? '解析中...' : '自動同期解析';
+
     if (editorElements.showDetectedBtn) {
         editorElements.showDetectedBtn.disabled = running || latestDetectedSegments.length === 0;
     }
@@ -486,11 +870,13 @@ function applyDetectedPreview(result) {
 
 async function runAutoSync() {
     if (isAutoSyncRunning) return;
+
     if (!currentEditorSong || !currentEditorSong.path) {
         showNotification('同期対象の曲情報が見つかりません。');
         hideNotification(2500);
         return;
     }
+
     if (lyricsLines.length === 0) {
         showNotification('先に歌詞テキストを読み込んでください。');
         hideNotification(2500);
@@ -536,18 +922,19 @@ async function runAutoSync() {
             return;
         }
 
-        saveHistory();
         for (const aligned of alignedLines) {
             if (!Number.isInteger(aligned?.index)) continue;
             if (aligned.index < 0 || aligned.index >= lyricsLines.length) continue;
             if (typeof aligned.timestamp !== 'number' || Number.isNaN(aligned.timestamp)) continue;
-            lyricsLines[aligned.index].timestamp = aligned.timestamp;
+            lyricsLines[aligned.index].timestamp = normaliseTimestamp(aligned.timestamp);
         }
 
+        saveHistory();
         redrawLyricsArea();
+
         if (activeLineIndex >= 0 && activeLineIndex < lyricsLines.length) {
             setActiveLine(activeLineIndex);
-        } else {
+        } else if (lyricsLines.length > 0) {
             setActiveLine(0);
         }
 
@@ -572,35 +959,53 @@ async function runAutoSync() {
     }
 }
 
-
-// 指定したインデックスの行をアクティブにする関数 (変更なし)
 function setActiveLine(index, isManual = false) {
     if (index < 0 || index >= lyricsLines.length) return;
+
     activeLineIndex = index;
+
     if (isManual) {
-        // 手動選択時は自動先送りモードを解除する。
         autoAdvanceArmed = false;
         lastTimestampedLineIndex = -1;
     }
+
     editorElements.lyricsArea.querySelectorAll('.lyrics-line.active').forEach(el => {
         el.classList.remove('active');
     });
+
+    editorElements.timelineClips.querySelectorAll('.timeline-clip.active').forEach(el => {
+        el.classList.remove('active');
+    });
+
+    editorElements.unassignedLines.querySelectorAll('.timeline-unassigned-item.active').forEach(el => {
+        el.classList.remove('active');
+    });
+
     const targetLine = editorElements.lyricsArea.querySelector(`.lyrics-line[data-index="${index}"]`);
     if (targetLine) {
         targetLine.classList.add('active');
-        // スクロール処理を redrawLyricsArea に移動したので、ここでは不要かも
-        targetLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        targetLine.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    const targetClip = editorElements.timelineClips.querySelector(`.timeline-clip[data-index="${index}"]`);
+    if (targetClip) {
+        targetClip.classList.add('active');
+    }
+
+    const targetUnassigned = editorElements.unassignedLines.querySelector(`.timeline-unassigned-item[data-index="${index}"]`);
+    if (targetUnassigned) {
+        targetUnassigned.classList.add('active');
     }
 }
 
 function moveActiveLine(step) {
     if (lyricsLines.length === 0) return;
+
     const currentIndex = activeLineIndex < 0 ? 0 : activeLineIndex;
     const nextIndex = Math.max(0, Math.min(lyricsLines.length - 1, currentIndex + step));
     setActiveLine(nextIndex, true);
 }
 
-// 現在アクティブな行にタイムスタンプを記録する関数を修正
 function addTimestamp() {
     if (activeLineIndex === -1 || activeLineIndex >= lyricsLines.length || !currentEditorSong) return;
 
@@ -619,73 +1024,72 @@ function addTimestamp() {
         }
     }
 
-    saveHistory(); // ★★★ 操作履歴を保存 ★★★
     const currentTime = getCurrentTime();
-    lyricsLines[targetIndex].timestamp = currentTime; // 状態を更新
+    const timelineDuration = getTimelineDuration();
+    const timestamp = normaliseTimestamp(clampTimestampForIndex(targetIndex, currentTime, timelineDuration));
 
-    // UIを更新
-    redrawLyricsArea(); // UI全体を再描画してタイムスタンプを表示
+    if (timestamp !== null) {
+        lyricsLines[targetIndex].timestamp = timestamp;
+    }
+
+    redrawLyricsArea();
     setActiveLine(targetIndex);
+    saveHistory();
+
     lastTimestampedLineIndex = targetIndex;
     autoAdvanceArmed = true;
-    updateUndoRedoButtons(); // ★★★ ボタン状態更新 ★★★
+    updateUndoRedoButtons();
 }
 
-
-// LRCフォーマット用の時間文字列を生成 (mm:ss.xx) (変更なし)
 function formatLrcTime(seconds) {
     if (isNaN(seconds) || seconds < 0) return '00:00.00';
+
     const min = Math.floor(seconds / 60).toString().padStart(2, '0');
     const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
-    // ミリ秒を2桁に修正 (LRC標準に合わせて)
     const ms = Math.floor((seconds % 1) * 100).toString().padStart(2, '0');
+
     return `${min}:${sec}.${ms}`;
 }
 
-// エディタ内のキーボードイベントを処理 (変更なし)
 function handleEditorKeyDown(event) {
     if (event.target === editorElements.textarea) return;
-    // Cmd+Z or Ctrl+Z で Undo
+
     if ((event.metaKey || event.ctrlKey) && event.key === 'z') {
         event.preventDefault();
         undo();
-        return; // 他のキー操作をブロック
-    }
-    // Cmd+Shift+Z or Ctrl+Y で Redo (今回は実装しない)
-    /*
-    if ((event.metaKey || event.ctrlKey) && (event.key === 'Y' || (event.shiftKey && event.key === 'z'))) {
-        event.preventDefault();
-        redo();
         return;
     }
-    */
+
     if (event.key.toUpperCase() === 'T') {
         event.preventDefault();
         addTimestamp();
         return;
     }
+
     if (event.key.toUpperCase() === 'I') {
         event.preventDefault();
         insertInterludeLine();
         return;
     }
+
     if (event.key === 'ArrowUp') {
         event.preventDefault();
         moveActiveLine(-1);
         return;
     }
+
     if (event.key === 'ArrowDown') {
         event.preventDefault();
         moveActiveLine(1);
         return;
     }
-    if (event.code === 'Space' && !(event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)) { // 修飾キーなしのスペースのみ
+
+    if (event.code === 'Space' && !(event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)) {
         event.preventDefault();
         togglePlayPause();
     }
 }
 
-// LRCデータを生成し、メインプロセスに保存を要求する関数 (変更なし)
 async function handleSaveLrc() {
     if (!currentEditorSong || lyricsLines.length === 0) return;
 
@@ -696,12 +1100,11 @@ async function handleSaveLrc() {
     }
 
     const sortedLines = [...lyricsLines]
-        .filter(line => line.timestamp !== null) // タイムスタンプがある行のみ
+        .filter(line => typeof line.timestamp === 'number')
         .sort((a, b) => a.timestamp - b.timestamp);
 
-    const lrcContent = sortedLines
-        .map(line => `[${formatLrcTime(line.timestamp)}]${line.text}`) // 空行も text: '' として保存される
-        .join('\n');
+    const bodyLines = sortedLines.map(line => `[${formatLrcTime(line.timestamp)}]${line.text}`);
+    const lrcContent = [...lrcMetadataLines, ...bodyLines].join('\n');
 
     const baseName = getBasename(currentEditorSong.path).replace(getExtname(currentEditorSong.path), '');
     const lrcFileName = `${baseName}.lrc`;
@@ -712,7 +1115,7 @@ async function handleSaveLrc() {
     try {
         const result = await electronAPI.invoke('save-lrc-file', {
             fileName: lrcFileName,
-            content: lrcContent
+            content: lrcContent,
         });
 
         if (result.success) {
@@ -733,39 +1136,44 @@ async function handleSaveLrc() {
     }
 }
 
-// LRCエディタビューから離れる際のクリーンアップ処理 (変更なし)
 export function stopLrcEditing() {
     if (editorElements.view) {
         editorElements.view.removeEventListener('keydown', handleEditorKeyDown);
     }
+    clearTimelineDragState();
     currentEditorSong = null;
     console.log('[LRC Editor] Editor stopped.');
 }
 
-// player.js からの情報をもとにエディタの再生コントロールUIを更新する (変更なし)
 export function updateLrcEditorControls(playing, currentTime, duration) {
     if (!editorElements.view || editorElements.view.classList.contains('hidden')) return;
+
     editorElements.playPauseBtn.classList.toggle('playing', playing);
+
     if (!isNaN(currentTime)) {
         editorElements.currentTime.textContent = formatEditorTime(currentTime);
         if (!editorIsSeeking) {
             editorElements.progressBar.value = currentTime;
         }
+        updateTimelinePlayhead(currentTime);
     }
+
     if (!isNaN(duration)) {
         const formattedDuration = formatEditorTime(duration);
         if (editorElements.totalDuration.textContent !== formattedDuration) {
             editorElements.totalDuration.textContent = formattedDuration;
         }
+
         if (editorElements.progressBar.max != duration) {
             editorElements.progressBar.max = duration;
+            renderTimeline();
         }
     }
 }
 
-// エディタ表示用の時間フォーマット (m:ss) (変更なし)
 function formatEditorTime(seconds) {
     if (isNaN(seconds) || seconds < 0) return '0:00';
+
     const min = Math.floor(seconds / 60);
     const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
     return `${min}:${sec}`;

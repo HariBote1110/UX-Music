@@ -1,3 +1,17 @@
+# Task: LRCエディタのタイムライン編集化と既存LRC再編集
+
+## 概要
+従来の打鍵中心UIに加えて、動画編集ソフトのタイムラインに近い形で歌詞タイミングを調整できるLRCエディタへ拡張する。既存の `.lrc` を読み込んで再編集できることも必須とする。
+
+## 完了条件
+- [x] `src/renderer/components/lrc-editor.html` にタイムラインUI（ルーラー・プレイヘッド・クリップ領域）が追加されていること。
+- [x] `src/renderer/styles/lrc-editor.css` にタイムライン編集用スタイルが追加されていること。
+- [x] `src/renderer/js/features/lrc-editor.js` で、クリップのドラッグ移動による時刻調整が可能であること。
+- [x] タイムラインクリックでシークでき、再生位置がプレイヘッドに反映されること。
+- [x] 既存 `.lrc` を読み込んで編集し、保存できること（メタタグ保持を含む）。
+- [x] `src/renderer/js/features/lyrics-manager.js` の右クリック導線から、既存LRC時もエディタを開けること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-7x` に更新されていること。
+
 # Task: Wails への移行 Phase 1 - プロジェクト初期化と基盤設計
 
 ## 概要
