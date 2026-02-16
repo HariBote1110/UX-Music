@@ -80,7 +80,7 @@ export function renderArtistDetailView(artist) {
     state.currentlyViewedSongs = artist.songs;
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
-    const artistAlbums = [...state.albums.values()].filter(album => album.artist === artist.name);
+    const artistAlbums = [...state.albums.entries()].filter(([, album]) => album.artist === artist.name);
     viewWrapper.innerHTML = `
         <div class="detail-header">
             <img class="detail-art-img artist-detail-art-round lazy-load">
@@ -96,8 +96,7 @@ export function renderArtistDetailView(artist) {
     if (artistAlbums.length === 0) {
         grid.innerHTML = `<div class="placeholder">このアーティストのアルバムは見つかりません</div>`;
     } else {
-        artistAlbums.forEach(album => {
-            const albumKey = `${album.title}---${album.artist}`;
+        artistAlbums.forEach(([albumKey, album]) => {
             const albumItem = createAlbumGridItem(albumKey, album, electronAPI);
             albumItem.addEventListener('click', () => showAlbum(albumKey));
             grid.appendChild(albumItem);

@@ -233,19 +233,75 @@ export function addSongsToLibrary({ songs, albums }) {
     console.timeEnd('Renderer: Process Library Data');
 }
 
+function normaliseTagText(value, fallback = '') {
+    if (typeof value !== 'string') {
+        return fallback;
+    }
+    const trimmed = value.trim();
+    return trimmed || fallback;
+}
+
+function getAlbumPathHint(songPath) {
+    if (typeof songPath !== 'string' || !songPath) {
+        return '';
+    }
+
+    const segments = songPath.replace(/\\/g, '/').split('/');
+    if (segments.length < 2) {
+        return '';
+    }
+
+    const fileNameIndex = segments.length - 1;
+    const parentIndex = fileNameIndex - 1;
+    if (parentIndex < 0) {
+        return '';
+    }
+
+    const parentDir = segments[parentIndex];
+    const grandParentIndex = fileNameIndex - 2;
+    const discFolderPattern = /^(disc|cd)[\s_-]*\d+\b/i;
+    const albumDirIndex = discFolderPattern.test(parentDir) && grandParentIndex >= 0 ? grandParentIndex : parentIndex;
+    const albumDirPath = segments.slice(0, albumDirIndex + 1).join('/');
+    return albumDirPath.trim().toLowerCase();
+}
+
 function groupLibraryByAlbum(isMigration = false) {
     const tempAlbumGroups = new Map();
     const localSongs = state.library.filter(song => !song.sourceURL);
 
+    const compilationCandidates = new Map();
     localSongs.forEach(song => {
-        const albumTitle = song.album || 'Unknown Album';
-        const albumArtist = song.albumartist || song.artist || 'Unknown Artist';
-        const groupKey = `${albumTitle}---${albumArtist}`;
+        const albumTitle = normaliseTagText(song.album, 'Unknown Album');
+        const albumArtistFromTag = normaliseTagText(song.albumartist);
+        if (albumArtistFromTag) {
+            return;
+        }
+
+        const pathHint = getAlbumPathHint(song.path);
+        const detectorKey = `${albumTitle}---${pathHint}`;
+        if (!compilationCandidates.has(detectorKey)) {
+            compilationCandidates.set(detectorKey, new Set());
+        }
+        compilationCandidates.get(detectorKey).add(normaliseTagText(song.artist, 'Unknown Artist'));
+    });
+
+    localSongs.forEach(song => {
+        const albumTitle = normaliseTagText(song.album, 'Unknown Album');
+        const albumArtistFromTag = normaliseTagText(song.albumartist);
+        const fallbackArtist = normaliseTagText(song.artist, 'Unknown Artist');
+        const pathHint = getAlbumPathHint(song.path);
+        const detectorKey = `${albumTitle}---${pathHint}`;
+        const candidateArtists = compilationCandidates.get(detectorKey);
+        const isCompilationAlbum = !albumArtistFromTag && candidateArtists && candidateArtists.size > 1;
+        const albumArtist = albumArtistFromTag || (isCompilationAlbum ? 'Various Artists' : fallbackArtist);
+        const groupScope = albumArtistFromTag ? '' : pathHint;
+        const groupKey = JSON.stringify({ title: albumTitle, artist: albumArtist, scope: groupScope });
 
         if (!tempAlbumGroups.has(groupKey)) {
             tempAlbumGroups.set(groupKey, {
                 title: albumTitle,
                 artist: albumArtist,
+                scope: groupScope,
                 songs: [],
                 artwork: null
             });
@@ -265,6 +321,7 @@ function groupLibraryByAlbum(isMigration = false) {
     for (const [groupKey, albumData] of tempAlbumGroups.entries()) {
         const albumTitle = albumData.title;
         const representativeArtist = albumData.artist;
+        const groupScope = albumData.scope || '';
         const albumKey = groupKey;
         albumData.songs.forEach(song => {
             song.albumKey = albumKey;
@@ -273,7 +330,13 @@ function groupLibraryByAlbum(isMigration = false) {
         let finalArtwork = albumData.artwork;
         if (!finalArtwork) {
             for (const oldAlbum of oldAlbums.values()) {
-                if (oldAlbum.title === albumTitle && oldAlbum.artist === representativeArtist && oldAlbum.artwork) {
+                const oldScope = typeof oldAlbum.scope === 'string' ? oldAlbum.scope : '';
+                if (
+                    oldAlbum.title === albumTitle
+                    && oldAlbum.artist === representativeArtist
+                    && oldScope === groupScope
+                    && oldAlbum.artwork
+                ) {
                     finalArtwork = oldAlbum.artwork;
                     break;
                 }
@@ -283,6 +346,7 @@ function groupLibraryByAlbum(isMigration = false) {
         state.albums.set(albumKey, {
             title: albumTitle,
             artist: representativeArtist,
+            scope: groupScope,
             songs: albumData.songs,
             artwork: finalArtwork
         });
