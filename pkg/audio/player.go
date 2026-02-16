@@ -310,11 +310,19 @@ func (p *Player) Play(filePath string) error {
 		// Pass file to FLAC decoder (it needs io.ReadSeeker for seeking)
 		dec, err := newFLACDecoder(file)
 		if err != nil {
+			// mewkiz/flac が対応できないFLACファイルの場合、FFmpegにフォールバック
+			fmt.Printf("[Audio] FLAC native decoder failed: %v — falling back to FFmpeg\n", err)
 			file.Close()
-			return err
+			p.file = nil
+			ffDec, ffErr := newFFmpegDecoder(filePath)
+			if ffErr != nil {
+				return fmt.Errorf("both FLAC and FFmpeg decoders failed: FLAC=%w, FFmpeg=%v", err, ffErr)
+			}
+			p.decoder = ffDec
+		} else {
+			p.decoder = dec
+			p.file = nil // FLAC decoder manages the file now
 		}
-		p.decoder = dec
-		p.file = nil // FLAC decoder manages the file now
 	case ".m4a", ".mp4", ".aac", ".ogg":
 		file.Close()
 		p.file = nil
@@ -1119,6 +1127,11 @@ type flacDecoder struct {
 	seekTable     *meta.SeekTable
 	seekApplied   bool
 	mu            sync.RWMutex
+
+	// FFmpeg fallback for files that mewkiz/flac cannot parse
+	ffmpegFallback *ffmpegDecoder
+	useFFmpeg      bool
+	parseErrors    int // consecutive parse errors
 }
 
 func newFLACDecoder(file *os.File) (*flacDecoder, error) {
@@ -1362,6 +1375,11 @@ func BuildFLACIndex(filePath string) error {
 }
 
 func (d *flacDecoder) Read(p []byte) (int, error) {
+	// If already switched to FFmpeg fallback, delegate
+	if d.useFFmpeg && d.ffmpegFallback != nil {
+		return d.ffmpegFallback.Read(p)
+	}
+
 	bytesWritten := 0
 
 	for bytesWritten+1 < len(p) {
@@ -1372,18 +1390,43 @@ func (d *flacDecoder) Read(p []byte) (int, error) {
 				if err == io.EOF {
 					return bytesWritten, io.EOF
 				}
-				return bytesWritten, err
+
+				// mewkiz/flac がフレームをパースできない場合、FFmpegにフォールバック
+				d.parseErrors++
+				fmt.Printf("[Audio] FLAC ParseNext error (count=%d): %v\n", d.parseErrors, err)
+
+				if d.parseErrors >= 3 || bytesWritten == 0 {
+					if switchErr := d.switchToFFmpeg(); switchErr == nil {
+						// FFmpegに切り替え成功。残りはFFmpegから読む
+						if bytesWritten > 0 {
+							return bytesWritten, nil
+						}
+						return d.ffmpegFallback.Read(p)
+					}
+					return bytesWritten, err
+				}
+				// Skip this frame and try the next
+				continue
 			}
+			d.parseErrors = 0 // reset on success
 			d.frame = frame
 			d.framePos = 0
 		}
 
 		// Read samples from frame
+		bps := d.stream.Info.BitsPerSample
 		for d.framePos < int(d.frame.BlockSize) && bytesWritten+1 < len(p) {
 			for ch := 0; ch < d.channels && bytesWritten+1 < len(p); ch++ {
 				sample := d.frame.Subframes[ch].Samples[d.framePos]
 				// Scale to 16-bit
-				sample16 := int16(sample >> (d.stream.Info.BitsPerSample - 16))
+				var sample16 int16
+				if bps > 16 {
+					sample16 = int16(sample >> (bps - 16))
+				} else if bps < 16 {
+					sample16 = int16(sample << (16 - bps))
+				} else {
+					sample16 = int16(sample)
+				}
 				p[bytesWritten] = byte(sample16)
 				p[bytesWritten+1] = byte(sample16 >> 8)
 				bytesWritten += 2
@@ -1393,6 +1436,34 @@ func (d *flacDecoder) Read(p []byte) (int, error) {
 	}
 
 	return bytesWritten, nil
+}
+
+// switchToFFmpeg は mewkiz/flac でデコードできないFLACファイルをFFmpegに切り替える
+func (d *flacDecoder) switchToFFmpeg() error {
+	if d.useFFmpeg {
+		return nil // Already switched
+	}
+
+	fmt.Printf("[Audio] FLAC: Switching to FFmpeg fallback for %s\n", d.filePath)
+
+	// Close native FLAC stream
+	if d.stream != nil {
+		d.stream.Close()
+		d.stream = nil
+	}
+	if d.file != nil {
+		d.file.Close()
+		d.file = nil
+	}
+
+	ffDec, err := newFFmpegDecoder(d.filePath)
+	if err != nil {
+		return fmt.Errorf("FFmpeg fallback failed: %w", err)
+	}
+
+	d.ffmpegFallback = ffDec
+	d.useFFmpeg = true
+	return nil
 }
 
 func (d *flacDecoder) SampleRate() int {
@@ -1444,6 +1515,11 @@ func (d *flacDecoder) Seek(sample int64) error {
 		sample = d.length
 	}
 
+	// If using FFmpeg fallback, delegate seek
+	if d.useFFmpeg && d.ffmpegFallback != nil {
+		return d.ffmpegFallback.Seek(sample)
+	}
+
 	// Non-blocking: apply whatever index we have right now
 	d.applySeekTable()
 
@@ -1462,6 +1538,9 @@ func (d *flacDecoder) Seek(sample int64) error {
 }
 
 func (d *flacDecoder) Close() error {
+	if d.ffmpegFallback != nil {
+		d.ffmpegFallback.Close()
+	}
 	if d.stream != nil {
 		d.stream.Close()
 	}
