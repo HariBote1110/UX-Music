@@ -2,6 +2,16 @@
 
 ## 2026年2月16日
 
+### 同期歌詞: ハイライト時の折り返し揺れを抑制
+
+- **折り返し位置の安定化**:
+    - `src/renderer/js/features/lyrics-manager.js` の LRC モーション適用で、アクティブ時の `scale` 変化を廃止。
+    - `src/renderer/styles/views.css` の LRC 行スタイルで、アクティブ/非アクティブ間の `font-weight` 変化をなくし、横方向の文字組みが変わらないよう調整。
+- **視認性は維持**:
+    - 強調は `opacity` / `blur` / `text-shadow` 中心に統一し、表示の滑らかさを優先。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8f` に更新。
+
 ### 自動歌詞同期: MLボーカル抽出のmacOS加速とフォールバック改善
 
 - **demucs 実行デバイス制御を追加**:
