@@ -266,7 +266,7 @@ func sanitiseRequest(req Request) Request {
 		req.Profile = "fast"
 	}
 	if strings.TrimSpace(req.Language) == "" {
-		req.Language = "auto-ja"
+		req.Language = "auto"
 	}
 
 	sanitisedLines := make([]string, len(req.Lines))

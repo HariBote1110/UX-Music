@@ -280,7 +280,11 @@ func mapLanguage(language string) string {
 		return "auto"
 	}
 	switch strings.TrimSpace(strings.ToLower(language)) {
-	case "auto-ja":
+	case "auto-ja", "ja":
+		return "ja"
+	case "auto-en", "en":
+		return "en"
+	case "auto":
 		return "auto"
 	default:
 		return "auto"

@@ -184,6 +184,7 @@ function refreshEditorElements() {
         currentTime: document.getElementById('lrc-editor-current-time'),
         progressBar: document.getElementById('lrc-editor-progress-bar'),
         totalDuration: document.getElementById('lrc-editor-total-duration'),
+        languageSelect: document.getElementById('lrc-editor-language-select'),
         autoSyncBtn: document.getElementById('lrc-editor-auto-sync-btn'),
         showDetectedBtn: document.getElementById('lrc-editor-show-detected-btn'),
         timestampBtn: document.getElementById('lrc-editor-timestamp-btn'),
@@ -998,6 +999,10 @@ function setAutoSyncButtonState(running) {
     editorElements.autoSyncBtn.dataset.running = running ? 'true' : 'false';
     editorElements.autoSyncBtn.textContent = running ? '解析中...' : '自動同期解析';
 
+    if (editorElements.languageSelect) {
+        editorElements.languageSelect.disabled = running;
+    }
+
     if (editorElements.showDetectedBtn) {
         editorElements.showDetectedBtn.disabled = running || latestDetectedSegments.length === 0;
     }
@@ -1094,7 +1099,7 @@ async function runAutoSync() {
         const payload = {
             songPath: currentEditorSong.path,
             lines: lyricsLines.map(line => line.text || ''),
-            language: 'auto-ja',
+            language: editorElements.languageSelect ? editorElements.languageSelect.value : 'auto',
             profile: 'fast',
         };
 
