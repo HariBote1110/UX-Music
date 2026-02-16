@@ -1,5 +1,21 @@
 # 開発進捗ログ (progress.md)
 
+## 2026年2月16日
+
+### 自動歌詞同期: MLボーカル抽出のmacOS加速とフォールバック改善
+
+- **demucs 実行デバイス制御を追加**:
+    - `internal/lyricssync/vocal_ml.go` で `--device` 指定を追加。
+    - Apple Silicon（`darwin/arm64`）では `mps` を優先し、失敗時は `cpu` へ自動フォールバック。
+    - `UXMUSIC_LYRICS_SYNC_DEMUCS_DEVICE` 環境変数で実行順を上書き可能（例: `mps,cpu`）。
+- **フォールバック耐性の向上**:
+    - モデル候補（`*_q` など）ごとにデバイス候補を切り替え、失敗時のリトライ精度を改善。
+    - `diffq` 未導入時は既存どおり非量子化モデルへ切替。
+- **テスト拡充**:
+    - `internal/lyricssync/vocal_ml_test.go` にデバイス候補生成テストと `mps -> cpu` フォールバック試験を追加。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-7w` に更新。
+
 ## 2025年10月11日
 
 ### ユーザーからの依頼

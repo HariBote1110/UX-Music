@@ -112,6 +112,33 @@ func TestBuildDemucsModelCandidatesFromQuantisedModel(t *testing.T) {
 	}
 }
 
+func TestBuildDemucsDeviceCandidatesFromEnvMPSAddsCPUFallback(t *testing.T) {
+	t.Setenv(envDemucsDevice, "mps")
+
+	candidates := buildDemucsDeviceCandidates()
+	if len(candidates) < 2 {
+		t.Fatalf("unexpected candidates: %+v", candidates)
+	}
+	if candidates[0] != "mps" {
+		t.Fatalf("first candidate=%s", candidates[0])
+	}
+	if candidates[1] != "cpu" {
+		t.Fatalf("second candidate=%s", candidates[1])
+	}
+}
+
+func TestBuildDemucsDeviceCandidatesFromEnvList(t *testing.T) {
+	t.Setenv(envDemucsDevice, "cpu,mps")
+
+	candidates := buildDemucsDeviceCandidates()
+	if len(candidates) != 2 {
+		t.Fatalf("unexpected candidates: %+v", candidates)
+	}
+	if candidates[0] != "cpu" || candidates[1] != "mps" {
+		t.Fatalf("unexpected candidates order: %+v", candidates)
+	}
+}
+
 func TestRunDemucsVocalSeparatorFallsBackWhenDiffqMissing(t *testing.T) {
 	songPath := createDummyAudioFile(t)
 	ffmpeg := createFakeFFmpegScript(t)
@@ -125,6 +152,31 @@ func TestRunDemucsVocalSeparatorFallsBackWhenDiffqMissing(t *testing.T) {
 	demucsPath := createFakeDemucsWithDiffqFallbackScript(t)
 	t.Setenv(envDemucsPath, demucsPath)
 	t.Setenv(envDemucsModel, "mdx_extra_q")
+
+	workDir := t.TempDir()
+	outputPath := filepath.Join(workDir, "vocal-ml.wav")
+	if err := runDemucsVocalSeparator(context.Background(), songPath, workDir, outputPath); err != nil {
+		t.Fatalf("runDemucsVocalSeparator returned error: %v", err)
+	}
+	if _, err := os.Stat(outputPath); err != nil {
+		t.Fatalf("output file not found: %v", err)
+	}
+}
+
+func TestRunDemucsVocalSeparatorFallsBackDeviceFromMPS(t *testing.T) {
+	songPath := createDummyAudioFile(t)
+	ffmpeg := createFakeFFmpegScript(t)
+	oldFFmpeg := config.FFmpegPath
+	oldFFprobe := config.FFprobePath
+	config.SetFFmpegPaths(ffmpeg, oldFFprobe)
+	t.Cleanup(func() {
+		config.SetFFmpegPaths(oldFFmpeg, oldFFprobe)
+	})
+
+	demucsPath := createFakeDemucsWithDeviceFallbackScript(t)
+	t.Setenv(envDemucsPath, demucsPath)
+	t.Setenv(envDemucsModel, "mdx_extra")
+	t.Setenv(envDemucsDevice, "mps,cpu")
 
 	workDir := t.TempDir()
 	outputPath := filepath.Join(workDir, "vocal-ml.wav")
@@ -166,6 +218,12 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --out)
       out="$2"
+      shift 2
+      ;;
+    --name|--device)
+      shift 2
+      ;;
+    --jobs)
       shift 2
       ;;
     --two-stems=vocals)
@@ -213,7 +271,13 @@ while [ "$#" -gt 0 ]; do
       model="$2"
       shift 2
       ;;
-    --jobs|--two-stems=vocals)
+    --device)
+      shift 2
+      ;;
+    --jobs)
+      shift 2
+      ;;
+    --two-stems=vocals)
       shift 1
       ;;
     *)
@@ -241,6 +305,64 @@ exit 0
 `
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("failed to create fake demucs fallback script: %v", err)
+	}
+	return path
+}
+
+func createFakeDemucsWithDeviceFallbackScript(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "demucs")
+	script := `#!/bin/sh
+out=""
+input=""
+model=""
+device=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --out)
+      out="$2"
+      shift 2
+      ;;
+    --name)
+      model="$2"
+      shift 2
+      ;;
+    --device)
+      device="$2"
+      shift 2
+      ;;
+    --jobs)
+      shift 2
+      ;;
+    --two-stems=vocals)
+      shift 1
+      ;;
+    *)
+      input="$1"
+      shift 1
+      ;;
+  esac
+done
+
+if [ -z "$out" ] || [ -z "$input" ] || [ -z "$model" ] || [ -z "$device" ]; then
+  echo "missing args" 1>&2
+  exit 1
+fi
+
+if [ "$device" = "mps" ]; then
+  echo "MPS backend unavailable" 1>&2
+  exit 1
+fi
+
+name=$(basename "$input")
+base="${name%.*}"
+mkdir -p "$out/$model/$base"
+: > "$out/$model/$base/vocals.wav"
+exit 0
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to create fake demucs device fallback script: %v", err)
 	}
 	return path
 }

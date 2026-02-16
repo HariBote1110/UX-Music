@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -15,6 +16,7 @@ const (
 	envVocalSeparatorPath = "UXMUSIC_LYRICS_SYNC_VOCAL_SEPARATOR"
 	envDemucsPath         = "UXMUSIC_LYRICS_SYNC_DEMUCS"
 	envDemucsModel        = "UXMUSIC_LYRICS_SYNC_DEMUCS_MODEL"
+	envDemucsDevice       = "UXMUSIC_LYRICS_SYNC_DEMUCS_DEVICE"
 	defaultDemucsModel    = "mdx_extra"
 )
 
@@ -63,42 +65,55 @@ func runDemucsVocalSeparator(ctx context.Context, inputPath string, workDir stri
 		modelName = defaultDemucsModel
 	}
 	modelCandidates := buildDemucsModelCandidates(modelName)
-	errors := make([]string, 0, len(modelCandidates))
+	deviceCandidates := buildDemucsDeviceCandidates()
+	errors := make([]string, 0, len(modelCandidates)*len(deviceCandidates))
 
 	for _, model := range modelCandidates {
-		_ = os.RemoveAll(outDir)
+		modelShouldSkip := false
+		for deviceIndex, device := range deviceCandidates {
+			_ = os.RemoveAll(outDir)
 
-		args := []string{
-			"--name", model,
-			"--jobs", "1",
-			"--two-stems=vocals",
-			"--out", outDir,
-			inputPath,
-		}
-		logAutoSync("MLボーカル抽出(demucs)実行: %s %s", demucsPath, strings.Join(args, " "))
-
-		cmd := exec.CommandContext(ctx, demucsPath, args...)
-		output, runErr := cmd.CombinedOutput()
-		if runErr != nil {
-			message := strings.TrimSpace(string(output))
-			errors = append(errors, fmt.Sprintf("%s: %v (%s)", model, runErr, message))
-			if isDemucsDiffqError(message) {
-				logAutoSync("demucsモデル %s は diffq 未導入のため利用不可。次候補へ切替します", model)
+			args := []string{
+				"--name", model,
+				"--jobs", "1",
+				"--device", device,
+				"--two-stems=vocals",
+				"--out", outDir,
+				inputPath,
 			}
-			continue
-		}
+			logAutoSync("MLボーカル抽出(demucs)実行: %s %s", demucsPath, strings.Join(args, " "))
 
-		vocalStemPath, findErr := findDemucsVocalStem(outDir)
-		if findErr != nil {
-			errors = append(errors, fmt.Sprintf("%s: %v", model, findErr))
-			continue
-		}
+			cmd := exec.CommandContext(ctx, demucsPath, args...)
+			output, runErr := cmd.CombinedOutput()
+			if runErr != nil {
+				message := strings.TrimSpace(string(output))
+				errors = append(errors, fmt.Sprintf("%s/%s: %v (%s)", model, device, runErr, message))
+				if isDemucsDiffqError(message) {
+					logAutoSync("demucsモデル %s は diffq 未導入のため利用不可。次候補へ切替します", model)
+					modelShouldSkip = true
+					break
+				}
+				if deviceIndex < len(deviceCandidates)-1 {
+					logAutoSync("demucsモデル %s のデバイス %s が失敗。次デバイスへ切替します", model, device)
+				}
+				continue
+			}
 
-		if convErr := extractMonoWAV(vocalStemPath, outputWavPath, ""); convErr != nil {
-			errors = append(errors, fmt.Sprintf("%s: demucs 出力の変換に失敗しました: %v", model, convErr))
+			vocalStemPath, findErr := findDemucsVocalStem(outDir)
+			if findErr != nil {
+				errors = append(errors, fmt.Sprintf("%s/%s: %v", model, device, findErr))
+				continue
+			}
+
+			if convErr := extractMonoWAV(vocalStemPath, outputWavPath, ""); convErr != nil {
+				errors = append(errors, fmt.Sprintf("%s/%s: demucs 出力の変換に失敗しました: %v", model, device, convErr))
+				continue
+			}
+			return nil
+		}
+		if modelShouldSkip {
 			continue
 		}
-		return nil
 	}
 
 	if len(errors) == 0 {
@@ -127,6 +142,42 @@ func buildDemucsModelCandidates(primary string) []string {
 		appendIfAbsent(strings.TrimSuffix(primary, "_q"))
 	}
 	appendIfAbsent(defaultDemucsModel)
+	return candidates
+}
+
+func buildDemucsDeviceCandidates() []string {
+	candidates := make([]string, 0, 3)
+	seen := make(map[string]struct{})
+	appendIfAbsent := func(name string) {
+		norm := strings.ToLower(strings.TrimSpace(name))
+		if norm == "" {
+			return
+		}
+		if _, exists := seen[norm]; exists {
+			return
+		}
+		seen[norm] = struct{}{}
+		candidates = append(candidates, norm)
+	}
+
+	raw := strings.TrimSpace(os.Getenv(envDemucsDevice))
+	if raw != "" && !strings.EqualFold(raw, "auto") {
+		for _, value := range strings.Split(raw, ",") {
+			appendIfAbsent(value)
+		}
+		if len(candidates) == 1 && candidates[0] == "mps" {
+			appendIfAbsent("cpu")
+		}
+		if len(candidates) == 0 {
+			appendIfAbsent("cpu")
+		}
+		return candidates
+	}
+
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		appendIfAbsent("mps")
+	}
+	appendIfAbsent("cpu")
 	return candidates
 }
 
