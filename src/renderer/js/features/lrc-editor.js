@@ -578,7 +578,10 @@ function beginTimelineClipPointerInteraction(event, lineIndex, mode) {
     event.preventDefault();
     event.stopPropagation();
 
-    setActiveLine(lineIndex, true);
+    setActiveLine(lineIndex, true, {
+        scrollLyric: false,
+        scrollTimeline: false,
+    });
 
     const nextInfo = getAdjacentTimestampInfo(lineIndex, 1);
     if (mode === 'resize-end' && !nextInfo) {
@@ -1149,7 +1152,12 @@ async function runAutoSync() {
     }
 }
 
-function setActiveLine(index, isManual = false) {
+function setActiveLine(index, isManual = false, options = {}) {
+    const {
+        scrollLyric = true,
+        scrollTimeline = true,
+    } = options;
+
     if (index < 0 || index >= lyricsLines.length) return;
 
     activeLineIndex = index;
@@ -1174,13 +1182,17 @@ function setActiveLine(index, isManual = false) {
     const targetLine = editorElements.lyricsArea.querySelector(`.lyrics-line[data-index="${index}"]`);
     if (targetLine) {
         targetLine.classList.add('active');
-        targetLine.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (scrollLyric) {
+            targetLine.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
     }
 
     const targetClip = editorElements.timelineClips.querySelector(`.timeline-clip[data-index="${index}"]`);
     if (targetClip) {
         targetClip.classList.add('active');
-        targetClip.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        if (scrollTimeline) {
+            targetClip.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
     }
 
     const targetUnassigned = editorElements.unassignedLines.querySelector(`.timeline-unassigned-item[data-index="${index}"]`);

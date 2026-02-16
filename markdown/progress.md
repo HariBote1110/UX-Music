@@ -43,6 +43,14 @@
 - **仕様同期とバージョン更新**:
     - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-7y` に更新。
 
+### LRCエディタ: ドラッグ時のルーラー不要移動を抑制
+
+- **ドラッグ開始時のスクロール制御を修正**:
+    - `src/renderer/js/features/lrc-editor.js` の `setActiveLine` にスクロール制御オプションを追加。
+    - クリップのドラッグ開始時は `scrollIntoView` を無効化し、タイムライン（ルーラー）が意図せず動かないように調整。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-7z` に更新。
+
 ## 2025年10月11日
 
 ### ユーザーからの依頼
