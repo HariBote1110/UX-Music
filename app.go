@@ -9,6 +9,8 @@ import (
 	"ux-music-sidecar/pkg/cdrip"
 	"ux-music-sidecar/pkg/mtp"
 	"ux-music-sidecar/pkg/normalize"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -44,6 +46,14 @@ func (a *App) startup(ctx context.Context) {
 		println("Error initializing audio player:", err.Error())
 	}
 	a.audioPlayer = player
+
+	if a.audioPlayer != nil {
+		a.audioPlayer.SetOnFinished(func() {
+			if a.ctx != nil {
+				wailsRuntime.EventsEmit(a.ctx, "audio-playback-finished")
+			}
+		})
+	}
 
 	// Start MTP device monitor
 	a.startMTPMonitor()
