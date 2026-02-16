@@ -37,6 +37,8 @@ let editorIsSeeking = false;
 let lastTimestampedLineIndex = -1;
 let autoAdvanceArmed = false;
 let isAutoSyncRunning = false;
+let latestDetectedSegments = [];
+let latestDetectedBy = '';
 let historyStack = []; // <<<--- 追加: 操作履歴スタック
 let redoStack = [];    // <<<--- 追加: Redo用スタック (今回はUndoのみ実装)
 
@@ -57,12 +59,17 @@ function refreshEditorElements() {
         progressBar: document.getElementById('lrc-editor-progress-bar'),
         totalDuration: document.getElementById('lrc-editor-total-duration'),
         autoSyncBtn: document.getElementById('lrc-editor-auto-sync-btn'),
+        showDetectedBtn: document.getElementById('lrc-editor-show-detected-btn'),
         timestampBtn: document.getElementById('lrc-editor-timestamp-btn'),
         lyricsArea: document.getElementById('lrc-editor-lyrics-area'),
         textarea: document.getElementById('lrc-editor-textarea'),
         loadTextBtn: document.getElementById('lrc-editor-load-text-btn'),
         helpPopup: document.getElementById('lrc-editor-help-popup'),
         helpCloseBtn: document.getElementById('lrc-editor-help-close-btn'),
+        detectedPopup: document.getElementById('lrc-editor-detected-popup'),
+        detectedMeta: document.getElementById('lrc-editor-detected-meta'),
+        detectedContent: document.getElementById('lrc-editor-detected-content'),
+        detectedCloseBtn: document.getElementById('lrc-editor-detected-close-btn'),
         undoBtn: document.getElementById('lrc-editor-undo-btn'),
         insertInterludeBtn: document.getElementById('lrc-editor-insert-interlude-btn'),
     };
@@ -227,6 +234,8 @@ function initLrcEditorListeners() {
         editorElements.helpCloseBtn.addEventListener('click', () => {
             editorElements.helpPopup.classList.add('hidden');
         });
+        editorElements.showDetectedBtn.addEventListener('click', openDetectedPopup);
+        editorElements.detectedCloseBtn.addEventListener('click', closeDetectedPopup);
 
         editorElements.loadTextBtn.addEventListener('click', loadTextFromTextarea);
         editorElements.playPauseBtn.addEventListener('click', togglePlayPause);
@@ -276,6 +285,8 @@ export async function startLrcEditor(song) {
     lastTimestampedLineIndex = -1;
     autoAdvanceArmed = false;
     isAutoSyncRunning = false;
+    latestDetectedSegments = [];
+    latestDetectedBy = '';
     // --- ▼▼▼ 履歴をクリア ▼▼▼ ---
     historyStack = [];
     redoStack = [];
@@ -322,6 +333,8 @@ export async function startLrcEditor(song) {
 
     editorElements.view.setAttribute('tabindex', '-1');
     editorElements.view.focus();
+    closeDetectedPopup();
+    updateDetectedPreviewUI();
     setAutoSyncButtonState(false);
     updateUndoRedoButtons(); // ボタン状態初期化
 }
@@ -408,6 +421,67 @@ function setAutoSyncButtonState(running) {
     editorElements.autoSyncBtn.disabled = running;
     editorElements.autoSyncBtn.dataset.running = running ? 'true' : 'false';
     editorElements.autoSyncBtn.textContent = running ? '解析中...' : '自動同期解析';
+    if (editorElements.showDetectedBtn) {
+        editorElements.showDetectedBtn.disabled = running || latestDetectedSegments.length === 0;
+    }
+}
+
+function formatDetectedSegments(segments) {
+    if (!Array.isArray(segments) || segments.length === 0) {
+        return '(空)';
+    }
+
+    return segments.map((segment, index) => {
+        const start = Number.isFinite(segment?.start) ? segment.start : 0;
+        const end = Number.isFinite(segment?.end) ? segment.end : start;
+        const text = (segment?.text || '').trim();
+        const label = text === '' ? '(空白)' : text;
+        return `${String(index + 1).padStart(2, '0')}. [${formatLrcTime(start)} - ${formatLrcTime(end)}] ${label}`;
+    }).join('\n');
+}
+
+function updateDetectedPreviewUI() {
+    const hasSegments = latestDetectedSegments.length > 0;
+
+    if (editorElements.showDetectedBtn) {
+        editorElements.showDetectedBtn.disabled = isAutoSyncRunning || !hasSegments;
+    }
+
+    if (editorElements.detectedMeta) {
+        if (!hasSegments) {
+            editorElements.detectedMeta.textContent = 'まだ解析結果がありません。';
+        } else {
+            const source = latestDetectedBy ? latestDetectedBy : 'unknown';
+            editorElements.detectedMeta.textContent = `採用候補: ${source} / セグメント数: ${latestDetectedSegments.length}`;
+        }
+    }
+
+    if (editorElements.detectedContent) {
+        editorElements.detectedContent.textContent = formatDetectedSegments(latestDetectedSegments);
+    }
+}
+
+function openDetectedPopup() {
+    if (!editorElements.detectedPopup) return;
+    updateDetectedPreviewUI();
+    editorElements.detectedPopup.classList.remove('hidden');
+}
+
+function closeDetectedPopup() {
+    if (!editorElements.detectedPopup) return;
+    editorElements.detectedPopup.classList.add('hidden');
+}
+
+function applyDetectedPreview(result) {
+    latestDetectedBy = typeof result?.detectedBy === 'string' ? result.detectedBy : '';
+    latestDetectedSegments = Array.isArray(result?.detectedSegments)
+        ? result.detectedSegments.map(segment => ({
+            start: Number.isFinite(segment?.start) ? segment.start : 0,
+            end: Number.isFinite(segment?.end) ? segment.end : (Number.isFinite(segment?.start) ? segment.start : 0),
+            text: typeof segment?.text === 'string' ? segment.text : '',
+        }))
+        : [];
+    updateDetectedPreviewUI();
 }
 
 async function runAutoSync() {
@@ -431,6 +505,10 @@ async function runAutoSync() {
     }
 
     isAutoSyncRunning = true;
+    latestDetectedSegments = [];
+    latestDetectedBy = '';
+    closeDetectedPopup();
+    updateDetectedPreviewUI();
     setAutoSyncButtonState(true);
 
     try {
@@ -443,10 +521,13 @@ async function runAutoSync() {
 
         const result = await electronAPI.invoke('lyrics-auto-sync', payload);
         if (!result || result.success !== true) {
+            applyDetectedPreview(result);
             showNotification(`自動同期に失敗しました: ${result?.error || '不明なエラー'}`);
             hideNotification(5000);
             return;
         }
+
+        applyDetectedPreview(result);
 
         const alignedLines = Array.isArray(result.lines) ? result.lines : [];
         if (alignedLines.length === 0) {
@@ -475,10 +556,14 @@ async function runAutoSync() {
         updateUndoRedoButtons();
 
         const matchedCount = typeof result.matchedCount === 'number' ? result.matchedCount : 0;
-        showNotification(`自動同期が完了しました（一致: ${matchedCount}行）`);
+        const detectedCount = latestDetectedSegments.length;
+        showNotification(`自動同期が完了しました（一致: ${matchedCount}行 / 検知: ${detectedCount}件）`);
         hideNotification(3500);
     } catch (error) {
         console.error('[LRC Editor] Auto sync failed:', error);
+        latestDetectedSegments = [];
+        latestDetectedBy = '';
+        updateDetectedPreviewUI();
         showNotification(`自動同期の実行中にエラーが発生しました: ${error?.message || String(error)}`);
         hideNotification(5000);
     } finally {

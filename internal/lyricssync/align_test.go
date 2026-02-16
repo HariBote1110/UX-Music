@@ -124,3 +124,78 @@ func TestLeadingInterludeAnchorsAtZero(t *testing.T) {
 		t.Fatalf("timestamps should increase: %+v", aligned)
 	}
 }
+
+func TestLeadingLongSegmentTrimsSilenceForFirstLyric(t *testing.T) {
+	lines := []string{
+		"",
+		"目を離しただけで",
+		"儚さと脆さが",
+	}
+	segments := []whisperSegment{
+		{Start: 0.0, End: 22.39, Text: "目を話しただけで消えてしまうような"},
+		{Start: 22.39, End: 29.80, Text: "儚さともろさが愛しく思えた"},
+	}
+
+	aligned, matched := alignLines(lines, segments)
+	if matched < 2 {
+		t.Fatalf("matched=%d, want at least 2", matched)
+	}
+	if aligned[0].Timestamp != 0 {
+		t.Fatalf("leading interlude should stay at zero: %+v", aligned)
+	}
+	if aligned[1].Timestamp <= 10.0 {
+		t.Fatalf("first lyric is still too early: %+v", aligned)
+	}
+	if aligned[1].Timestamp >= aligned[2].Timestamp {
+		t.Fatalf("timestamps should increase: %+v", aligned)
+	}
+}
+
+func TestLeadingUnmatchedLyricIsNotDraggedByInterlude(t *testing.T) {
+	lines := []string{
+		"",
+		"未一致の歌詞",
+		"一致する歌詞",
+	}
+	segments := []whisperSegment{
+		{Start: 0.0, End: 24.0, Text: "別の内容です"},
+		{Start: 24.0, End: 30.0, Text: "一致する歌詞"},
+	}
+
+	aligned, matched := alignLines(lines, segments)
+	if matched < 1 {
+		t.Fatalf("matched=%d, want at least 1", matched)
+	}
+	if aligned[0].Timestamp != 0 {
+		t.Fatalf("leading interlude should stay at zero: %+v", aligned)
+	}
+	if aligned[1].Timestamp <= 15.0 {
+		t.Fatalf("unmatched lyric should stay near right anchor: %+v", aligned)
+	}
+	if aligned[1].Timestamp >= aligned[2].Timestamp {
+		t.Fatalf("timestamps should increase: %+v", aligned)
+	}
+}
+
+func TestInterludeOnlyGapIsPlacedNearRightAnchor(t *testing.T) {
+	lines := []string{
+		"line A",
+		"",
+		"line B",
+	}
+	segments := []whisperSegment{
+		{Start: 40.0, End: 46.0, Text: "line A"},
+		{Start: 53.0, End: 59.0, Text: "line B"},
+	}
+
+	aligned, matched := alignLines(lines, segments)
+	if matched < 2 {
+		t.Fatalf("matched=%d, want at least 2", matched)
+	}
+	if aligned[1].Timestamp <= 47.0 {
+		t.Fatalf("interlude line should not jump immediately after previous lyric: %+v", aligned)
+	}
+	if aligned[1].Timestamp >= aligned[2].Timestamp {
+		t.Fatalf("timestamps should increase: %+v", aligned)
+	}
+}

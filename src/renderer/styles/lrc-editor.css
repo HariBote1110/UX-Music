@@ -154,6 +154,23 @@
     cursor: not-allowed;
 }
 
+.detected-btn {
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    background-color: #3f5f9a;
+    color: #fff;
+}
+
+.detected-btn:hover {
+    opacity: 0.92;
+}
+
+.detected-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 #lrc-editor-lyrics-area {
     flex-grow: 1;
     overflow-y: auto;
@@ -282,6 +299,63 @@
     cursor: pointer;
 }
 #lrc-editor-help-close-btn:hover {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+}
+
+.detected-popup {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: var(--bg-medium);
+    border: 1px solid var(--bg-light);
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    z-index: 1100;
+    width: min(760px, 90vw);
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.detected-popup h4 {
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.detected-meta {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.detected-content {
+    margin: 0;
+    background-color: var(--bg-dark);
+    border: 1px solid var(--bg-light);
+    border-radius: 6px;
+    padding: 10px;
+    color: var(--text-primary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    line-height: 1.5;
+    overflow: auto;
+    white-space: pre-wrap;
+}
+
+#lrc-editor-detected-close-btn {
+    align-self: flex-end;
+    background: none;
+    border: 1px solid var(--bg-light);
+    color: var(--text-secondary);
+    border-radius: 4px;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+#lrc-editor-detected-close-btn:hover {
     background-color: var(--bg-light);
     color: var(--text-primary);
 }

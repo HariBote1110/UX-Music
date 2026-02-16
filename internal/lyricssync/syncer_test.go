@@ -121,6 +121,12 @@ func TestSyncWithFakeWhisperAndFFmpeg(t *testing.T) {
 	if result.MatchedCount < 2 {
 		t.Fatalf("MatchedCount=%d, want at least 2", result.MatchedCount)
 	}
+	if result.DetectedBy == "" {
+		t.Fatalf("DetectedBy should not be empty")
+	}
+	if len(result.DetectedSegments) < 2 {
+		t.Fatalf("DetectedSegments=%d, want at least 2", len(result.DetectedSegments))
+	}
 	if result.Lines[0].Timestamp >= result.Lines[1].Timestamp {
 		t.Fatalf("timestamps are not increasing: %+v", result.Lines)
 	}

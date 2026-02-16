@@ -15,11 +15,19 @@ type AlignedLine struct {
 	Source     string  `json:"source"` // "match" | "interpolated" | "interlude"
 }
 
+type DetectedSegment struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+	Text  string  `json:"text"`
+}
+
 type Result struct {
-	Success      bool          `json:"success"`
-	Lines        []AlignedLine `json:"lines,omitempty"`
-	MatchedCount int           `json:"matchedCount,omitempty"`
-	Error        string        `json:"error,omitempty"`
+	Success          bool              `json:"success"`
+	Lines            []AlignedLine     `json:"lines,omitempty"`
+	MatchedCount     int               `json:"matchedCount,omitempty"`
+	DetectedBy       string            `json:"detectedBy,omitempty"`
+	DetectedSegments []DetectedSegment `json:"detectedSegments,omitempty"`
+	Error            string            `json:"error,omitempty"`
 }
 
 type whisperSegment struct {

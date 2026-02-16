@@ -27,6 +27,7 @@ type alignmentCandidate struct {
 	lines         []AlignedLine
 	matchedCount  int
 	avgConfidence float64
+	segments      []whisperSegment
 }
 
 func NewSyncer() *Syncer {
@@ -83,9 +84,11 @@ func (s *Syncer) Sync(req Request) Result {
 				if matchRatio >= minVocalMatchRatio {
 					logAutoSync("同期完了: candidate=%s matched=%d total=%d", best.name, best.matchedCount, len(best.lines))
 					return Result{
-						Success:      true,
-						Lines:        best.lines,
-						MatchedCount: best.matchedCount,
+						Success:          true,
+						Lines:            best.lines,
+						MatchedCount:     best.matchedCount,
+						DetectedBy:       best.name,
+						DetectedSegments: toDetectedSegments(best.segments),
 					}
 				}
 				logAutoSync("一致率が閾値(%.2f)未満のため通常音声でも再解析します", minVocalMatchRatio)
@@ -102,9 +105,11 @@ func (s *Syncer) Sync(req Request) Result {
 			logAutoSync("通常音声候補は失敗したため、ボーカル重視候補を採用します")
 			logAutoSync("同期完了: candidate=%s matched=%d total=%d", best.name, best.matchedCount, len(best.lines))
 			return Result{
-				Success:      true,
-				Lines:        best.lines,
-				MatchedCount: best.matchedCount,
+				Success:          true,
+				Lines:            best.lines,
+				MatchedCount:     best.matchedCount,
+				DetectedBy:       best.name,
+				DetectedSegments: toDetectedSegments(best.segments),
 			}
 		}
 		if lastErr != nil {
@@ -124,9 +129,11 @@ func (s *Syncer) Sync(req Request) Result {
 
 	logAutoSync("同期完了: candidate=%s matched=%d total=%d", best.name, best.matchedCount, len(best.lines))
 	return Result{
-		Success:      true,
-		Lines:        best.lines,
-		MatchedCount: best.matchedCount,
+		Success:          true,
+		Lines:            best.lines,
+		MatchedCount:     best.matchedCount,
+		DetectedBy:       best.name,
+		DetectedSegments: toDetectedSegments(best.segments),
 	}
 }
 
@@ -142,7 +149,24 @@ func (s *Syncer) runAlignmentCandidate(ctx context.Context, wavPath string, req 
 		lines:         aligned,
 		matchedCount:  matchedCount,
 		avgConfidence: averageMatchConfidence(aligned),
+		segments:      segments,
 	}, nil
+}
+
+func toDetectedSegments(segments []whisperSegment) []DetectedSegment {
+	if len(segments) == 0 {
+		return nil
+	}
+
+	result := make([]DetectedSegment, 0, len(segments))
+	for _, segment := range segments {
+		result = append(result, DetectedSegment{
+			Start: segment.Start,
+			End:   segment.End,
+			Text:  segment.Text,
+		})
+	}
+	return result
 }
 
 func isBetterCandidate(a alignmentCandidate, b alignmentCandidate) bool {

@@ -108,6 +108,22 @@ export namespace lyricssync {
 	        this.source = source["source"];
 	    }
 	}
+	export class DetectedSegment {
+	    start: number;
+	    end: number;
+	    text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DetectedSegment(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.start = source["start"];
+	        this.end = source["end"];
+	        this.text = source["text"];
+	    }
+	}
 	export class Request {
 	    songPath: string;
 	    lines: string[];
@@ -130,6 +146,8 @@ export namespace lyricssync {
 	    success: boolean;
 	    lines?: AlignedLine[];
 	    matchedCount?: number;
+	    detectedBy?: string;
+	    detectedSegments?: DetectedSegment[];
 	    error?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -141,6 +159,8 @@ export namespace lyricssync {
 	        this.success = source["success"];
 	        this.lines = this.convertValues(source["lines"], AlignedLine);
 	        this.matchedCount = source["matchedCount"];
+	        this.detectedBy = source["detectedBy"];
+	        this.detectedSegments = this.convertValues(source["detectedSegments"], DetectedSegment);
 	        this.error = source["error"];
 	    }
 	

@@ -837,3 +837,83 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7l` に更新。
+
+### 自動同期の検知テキスト可視化（デバッグ表示）
+
+- **課題**:
+    - 自動同期時に `whisper` が実際に何を検知しているかを画面上で確認したい要望があった。
+- **対応**:
+    - `internal/lyricssync/types.go`:
+      - `Result` に `DetectedBy` と `DetectedSegments` を追加し、採用候補と検知セグメントを返せるように拡張。
+    - `internal/lyricssync/syncer.go`:
+      - 最終採用候補（`vocal-focus` / `plain`）のセグメントを `Result` に格納して返却する処理を追加。
+    - `src/renderer/components/lrc-editor.html`:
+      - 「検知テキスト表示」ボタンと表示ポップアップを追加。
+    - `src/renderer/js/features/lrc-editor.js`:
+      - 自動同期結果から `detectedSegments` を保持し、ポップアップで時刻付きテキストを表示する処理を実装。
+    - `src/renderer/styles/lrc-editor.css`:
+      - 検知テキスト表示ボタンとポップアップのスタイルを追加。
+    - `wails generate module`:
+      - `lyricssync.DetectedSegment` を含む生成コードを更新。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+    - `node --check src/renderer/js/features/lrc-editor.js`
+    - `node --check src/renderer/js/core/env-setup.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7m` に更新。
+
+### 先頭セグメントの無音トリム補正（前奏つぶれ対策）
+
+- **課題**:
+    - 実機で、先頭セグメントが `0.00` 開始かつ長尺になり、最初の歌詞行が早すぎる時刻に吸着するケースがあった。
+- **対応**:
+    - `internal/lyricssync/align.go`:
+      - セグメント整列前にアンカー時刻を算出する処理を追加。
+      - 先頭セグメントのみ、開始 `0.00` かつ異常長の場合に、テキスト長と推定文字速度から先頭無音ぶんをトリムする補正を実装。
+      - 一般ケースは従来どおり `segment.Start` を使用し、副作用を最小化。
+    - `internal/lyricssync/align_test.go`:
+      - 先頭長尺セグメント時に、先頭空白行を `0` に維持しつつ最初の歌詞行が早すぎないことを検証するテストを追加。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+    - `node --check src/renderer/js/features/lrc-editor.js`
+    - `node --check src/renderer/js/core/env-setup.js`
+    - `node --check src/renderer/js/core/bridge.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7n` に更新。
+
+### 空白行の時刻吸収を抑制する補間調整
+
+- **課題**:
+    - 空白/間奏行がある区間で、未一致歌詞行の時刻が想定より手前に引っ張られるケースがあった。
+- **対応**:
+    - `internal/lyricssync/align.go`:
+      - 補間時に、同一区間内に歌詞行が存在する場合は空白/間奏行の重みを極小値へ切替するロジックを追加。
+      - 先頭空白アンカー (`0s`) から最初の一致行までの補間では、右アンカー寄せの tail weight を導入し、先頭歌詞が早まりにくいよう調整。
+    - `internal/lyricssync/align_test.go`:
+      - 先頭空白 + 先頭歌詞未一致のケースで、歌詞行が過度に早くならないことを確認するテストを追加。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+    - `node --check src/renderer/js/features/lrc-editor.js`
+    - `node --check src/renderer/js/core/env-setup.js`
+    - `node --check src/renderer/js/core/bridge.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7o` に更新。
+
+### 空白行のみ区間の右アンカー寄せ補間
+
+- **課題**:
+    - 空白行のみの区間で、空白行が直前歌詞の直後に配置され、歌詞表示がすぐ空行へ遷移して見える問題があった。
+- **対応**:
+    - `internal/lyricssync/align.go`:
+      - 空白/間奏行のみで構成される補間区間は、右アンカー寄せの tail weight を適用する処理を追加。
+      - これにより空白行が前詰めされず、直前歌詞の表示時間を確保。
+    - `internal/lyricssync/align_test.go`:
+      - 空白行のみ区間で空白タイムスタンプが即時ジャンプ位置にならないことを検証するテストを追加。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7p` に更新。
