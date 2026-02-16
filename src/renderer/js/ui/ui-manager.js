@@ -281,7 +281,7 @@ function groupLibraryByAlbum(isMigration = false) {
         }
 
         return 'Unknown Artist';
-    });
+    };
 
     localSongs.forEach(song => {
         const albumTitle = normaliseTagText(song.album, 'Unknown Album');
