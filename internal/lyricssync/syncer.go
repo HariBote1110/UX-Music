@@ -53,9 +53,20 @@ func (s *Syncer) Sync(req Request) Result {
 	}
 	defer os.RemoveAll(workDir)
 
+	ctx, cancel := context.WithTimeout(context.Background(), lyricsSyncTimeout)
+	defer cancel()
+
 	plainWavPath := filepath.Join(workDir, "input.wav")
 	if err := extractMonoWAV(sanitised.SongPath, plainWavPath, ""); err != nil {
 		return failResult(err)
+	}
+
+	vocalMLWavPath := filepath.Join(workDir, "input-vocal-ml.wav")
+	vocalMLPrepared := false
+	if err := extractVocalWithML(ctx, sanitised.SongPath, workDir, vocalMLWavPath); err != nil {
+		logAutoSync("MLボーカル抽出は利用できないためフォールバックします: %v", err)
+	} else {
+		vocalMLPrepared = true
 	}
 
 	vocalWavPath := filepath.Join(workDir, "input-vocal.wav")
@@ -65,76 +76,72 @@ func (s *Syncer) Sync(req Request) Result {
 		vocalPrepared = false
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), lyricsSyncTimeout)
-	defer cancel()
-
 	lineTargetCount := countTargetLyricLines(sanitised.Lines)
+	type candidateSource struct {
+		name       string
+		wavPath    string
+		allowEarly bool
+	}
+
+	sources := make([]candidateSource, 0, 3)
+	if vocalMLPrepared {
+		sources = append(sources, candidateSource{
+			name:       "vocal-ml",
+			wavPath:    vocalMLWavPath,
+			allowEarly: true,
+		})
+	}
+	if vocalPrepared {
+		sources = append(sources, candidateSource{
+			name:       "vocal-focus",
+			wavPath:    vocalWavPath,
+			allowEarly: true,
+		})
+	}
+	sources = append(sources, candidateSource{
+		name:       "plain",
+		wavPath:    plainWavPath,
+		allowEarly: false,
+	})
+
 	best := alignmentCandidate{}
 	bestSet := false
-	var lastErr error
+	errors := make([]string, 0, len(sources))
 
-	if vocalPrepared {
-		vocalCandidate, vocalErr := s.runAlignmentCandidate(ctx, vocalWavPath, sanitised, "vocal-focus")
-		if vocalErr == nil {
-			best = vocalCandidate
-			bestSet = true
-			if lineTargetCount > 0 {
-				matchRatio := float64(vocalCandidate.matchedCount) / float64(lineTargetCount)
-				logAutoSync("ボーカル重視候補: matched=%d ratio=%.3f avg=%.3f", vocalCandidate.matchedCount, matchRatio, vocalCandidate.avgConfidence)
-				if matchRatio >= minVocalMatchRatio {
-					logAutoSync("同期完了: candidate=%s matched=%d total=%d", best.name, best.matchedCount, len(best.lines))
-					return Result{
-						Success:          true,
-						Lines:            best.lines,
-						MatchedCount:     best.matchedCount,
-						DetectedBy:       best.name,
-						DetectedSegments: toDetectedSegments(best.segments),
-					}
-				}
-				logAutoSync("一致率が閾値(%.2f)未満のため通常音声でも再解析します", minVocalMatchRatio)
+	for _, source := range sources {
+		candidate, runErr := s.runAlignmentCandidate(ctx, source.wavPath, sanitised, source.name)
+		if runErr != nil {
+			errors = append(errors, fmt.Sprintf("%s=%v", source.name, runErr))
+			logAutoSync("%s候補の解析に失敗: %v", source.name, runErr)
+			continue
+		}
+
+		if lineTargetCount > 0 {
+			matchRatio := float64(candidate.matchedCount) / float64(lineTargetCount)
+			logAutoSync("%s候補: matched=%d ratio=%.3f avg=%.3f", source.name, candidate.matchedCount, matchRatio, candidate.avgConfidence)
+			if source.allowEarly && matchRatio >= minVocalMatchRatio {
+				logAutoSync("同期完了: candidate=%s matched=%d total=%d", candidate.name, candidate.matchedCount, len(candidate.lines))
+				return successResult(candidate)
 			}
 		} else {
-			lastErr = vocalErr
-			logAutoSync("ボーカル重視候補の解析に失敗: %v", vocalErr)
+			logAutoSync("%s候補: matched=%d avg=%.3f", source.name, candidate.matchedCount, candidate.avgConfidence)
 		}
-	}
 
-	plainCandidate, plainErr := s.runAlignmentCandidate(ctx, plainWavPath, sanitised, "plain")
-	if plainErr != nil {
-		if bestSet {
-			logAutoSync("通常音声候補は失敗したため、ボーカル重視候補を採用します")
-			logAutoSync("同期完了: candidate=%s matched=%d total=%d", best.name, best.matchedCount, len(best.lines))
-			return Result{
-				Success:          true,
-				Lines:            best.lines,
-				MatchedCount:     best.matchedCount,
-				DetectedBy:       best.name,
-				DetectedSegments: toDetectedSegments(best.segments),
-			}
+		if !bestSet || isBetterCandidate(candidate, best) {
+			best = candidate
+			bestSet = true
 		}
-		if lastErr != nil {
-			return failResult(fmt.Errorf("ボーカル重視/通常音声の両方で失敗: vocal=%v plain=%v", lastErr, plainErr))
-		}
-		return failResult(plainErr)
-	}
-
-	if !bestSet || isBetterCandidate(plainCandidate, best) {
-		best = plainCandidate
-		bestSet = true
 	}
 
 	if !bestSet {
+		if len(errors) > 0 {
+			return failResult(fmt.Errorf("候補解析がすべて失敗: %s", strings.Join(errors, " / ")))
+		}
 		return failResult(fmt.Errorf("同期候補が生成できませんでした"))
 	}
 
 	logAutoSync("同期完了: candidate=%s matched=%d total=%d", best.name, best.matchedCount, len(best.lines))
-	return Result{
-		Success:          true,
-		Lines:            best.lines,
-		MatchedCount:     best.matchedCount,
-		DetectedBy:       best.name,
-		DetectedSegments: toDetectedSegments(best.segments),
-	}
+	return successResult(best)
 }
 
 func (s *Syncer) runAlignmentCandidate(ctx context.Context, wavPath string, req Request, name string) (alignmentCandidate, error) {
@@ -169,6 +176,16 @@ func toDetectedSegments(segments []whisperSegment) []DetectedSegment {
 	return result
 }
 
+func successResult(candidate alignmentCandidate) Result {
+	return Result{
+		Success:          true,
+		Lines:            candidate.lines,
+		MatchedCount:     candidate.matchedCount,
+		DetectedBy:       candidate.name,
+		DetectedSegments: toDetectedSegments(candidate.segments),
+	}
+}
+
 func isBetterCandidate(a alignmentCandidate, b alignmentCandidate) bool {
 	if a.matchedCount != b.matchedCount {
 		return a.matchedCount > b.matchedCount
@@ -176,7 +193,20 @@ func isBetterCandidate(a alignmentCandidate, b alignmentCandidate) bool {
 	if math.Abs(a.avgConfidence-b.avgConfidence) > 0.0001 {
 		return a.avgConfidence > b.avgConfidence
 	}
-	return a.name == "vocal-focus" && b.name != "vocal-focus"
+	return candidatePriority(a.name) > candidatePriority(b.name)
+}
+
+func candidatePriority(name string) int {
+	switch name {
+	case "vocal-ml":
+		return 3
+	case "vocal-focus":
+		return 2
+	case "plain":
+		return 1
+	default:
+		return 0
+	}
 }
 
 func averageMatchConfidence(lines []AlignedLine) float64 {

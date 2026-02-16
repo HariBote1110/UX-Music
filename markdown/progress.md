@@ -935,3 +935,45 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7q` に更新。
+
+### MLボーカル抽出（demucs / カスタム抽出器）対応
+
+- **課題**:
+    - 既存の帯域フィルタのみでは伴奏残りが多い曲で認識誤りが発生し、さらなる同期精度向上余地があった。
+- **対応**:
+    - `internal/lyricssync/vocal_ml.go` を新規追加。
+      - `UXMUSIC_LYRICS_SYNC_VOCAL_SEPARATOR` 指定時はカスタム抽出器を実行（`<input> <output>` 引数契約）。
+      - 未指定時は `demucs` を自動探索し `--two-stems=vocals` で抽出。
+      - 抽出結果を `ffmpeg` で 16kHz/mono WAV に正規化して同期処理へ投入。
+    - `internal/lyricssync/syncer.go`:
+      - 候補評価を `vocal-ml` → `vocal-focus` → `plain` の順に統合。
+      - 候補の一致率・信頼度・優先順位で最良候補を採用する方式に更新。
+    - `internal/lyricssync/syncer_test.go`:
+      - 候補優先順位（`vocal-ml` 優先）テストを追加。
+    - `internal/lyricssync/vocal_ml_test.go` を新規追加。
+      - カスタム抽出器経由の成功ケース
+      - demucs 経由の成功ケース
+      - 抽出器未検出のエラーケース
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7r` に更新。
+
+### demucs 実行パス解決の強化と導入確認
+
+- **課題**:
+    - macOS GUI 起動時は `PATH` が限定される場合があり、`demucs` が存在しても検出できないケースがある。
+    - Python 3.14 環境では `demucs` 依存が解決しづらい導入エラーが発生した。
+- **対応**:
+    - `internal/lyricssync/vocal_ml.go`:
+      - `resolveDemucsPath()` を追加し、`demucs` の探索順を `UXMUSIC_LYRICS_SYNC_DEMUCS` → `PATH` → `/opt/homebrew/bin/demucs` → `/usr/local/bin/demucs` に拡張。
+    - `internal/lyricssync/vocal_ml_test.go`:
+      - `UXMUSIC_LYRICS_SYNC_DEMUCS` の有効/無効ケースを検証する単体テストを追加。
+    - 実機導入確認:
+      - `python3.10 -m pip install demucs==4.0.1` で導入可能なことを確認（Python 3.14 失敗時の代替手順）。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7s` に更新。

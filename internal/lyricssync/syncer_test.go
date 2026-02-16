@@ -150,6 +150,12 @@ func TestIsBetterCandidate(t *testing.T) {
 	if !isBetterCandidate(f, e) {
 		t.Fatalf("expected vocal-focus tie-breaker")
 	}
+
+	g := alignmentCandidate{name: "vocal-focus", matchedCount: 10, avgConfidence: 0.8}
+	h := alignmentCandidate{name: "vocal-ml", matchedCount: 10, avgConfidence: 0.8}
+	if !isBetterCandidate(h, g) {
+		t.Fatalf("expected vocal-ml tie-breaker")
+	}
 }
 
 func TestAverageMatchConfidence(t *testing.T) {
