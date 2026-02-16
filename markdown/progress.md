@@ -31,6 +31,18 @@
 - **仕様同期とバージョン更新**:
     - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-7x` に更新。
 
+### LRCエディタ: オブジェクト伸縮編集とルーラー倍率変更
+
+- **AviUtlライク編集を追加**:
+    - `src/renderer/js/features/lrc-editor.js` でクリップ中央ドラッグの移動ロジックを拡張。
+    - 左右端ハンドルを追加し、左端で開始位置、右端で終了境界（次行時刻）を伸縮できるように変更。
+- **ルーラーズームを追加**:
+    - `src/renderer/components/lrc-editor.html` に倍率スライダーを追加。
+    - `src/renderer/styles/lrc-editor.css` にズームUI・横スクロールタイムライン・ハンドルスタイルを追加。
+    - `src/renderer/js/features/lrc-editor.js` で倍率に応じたルーラー密度・描画幅切り替えを実装。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-7y` に更新。
+
 ## 2025年10月11日
 
 ### ユーザーからの依頼

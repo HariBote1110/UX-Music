@@ -12,6 +12,11 @@ const INTERLUDE_LABEL = '[間奏]';
 const TIMELINE_MIN_DURATION_SEC = 30;
 const TIMELINE_MIN_CLIP_WIDTH_SEC = 0.35;
 const TIMELINE_MIN_GAP_SEC = 0.02;
+const TIMELINE_ZOOM_MIN = 1;
+const TIMELINE_ZOOM_MAX = 8;
+const TIMELINE_ZOOM_DEFAULT = 1;
+const TIMELINE_PX_PER_SECOND = 12;
+const TIMELINE_RENDER_WIDTH_MAX = 60000;
 const LRC_META_LINE_REGEX = /^\[(ar|ti|al|by|offset|re|ve):.*\]$/i;
 
 function getBasename(path) {
@@ -99,18 +104,25 @@ function getTimelineDuration() {
     return Number.isFinite(candidate) && candidate > 0 ? candidate : TIMELINE_MIN_DURATION_SEC;
 }
 
-function getAdjacentTimestamp(index, direction) {
+function getAdjacentTimestampInfo(index, direction) {
     if (direction === 0) return null;
     const step = direction > 0 ? 1 : -1;
 
     for (let i = index + step; i >= 0 && i < lyricsLines.length; i += step) {
         const timestamp = lyricsLines[i]?.timestamp;
         if (typeof timestamp === 'number') {
-            return timestamp;
+            return {
+                index: i,
+                timestamp,
+            };
         }
     }
 
     return null;
+}
+
+function getAdjacentTimestamp(index, direction) {
+    return getAdjacentTimestampInfo(index, direction)?.timestamp ?? null;
 }
 
 function clampTimestampForIndex(index, candidate, duration) {
@@ -128,8 +140,9 @@ function clampTimestampForIndex(index, candidate, duration) {
     return clamp(candidate, min, max);
 }
 
-function chooseRulerStep(duration) {
-    const target = duration / 12;
+function chooseRulerStep(duration, zoom) {
+    const targetTickCount = clamp(Math.round(10 * zoom), 10, 28);
+    const target = duration / targetTickCount;
     const steps = [1, 2, 5, 10, 15, 20, 30, 60, 90, 120, 180, 300];
     return steps.find(step => step >= target) || 300;
 }
@@ -154,6 +167,7 @@ let latestDetectedBy = '';
 let historyStack = [];
 let redoStack = [];
 let timelineDragState = null;
+let timelineZoom = TIMELINE_ZOOM_DEFAULT;
 
 let editorElements = {};
 
@@ -173,10 +187,13 @@ function refreshEditorElements() {
         autoSyncBtn: document.getElementById('lrc-editor-auto-sync-btn'),
         showDetectedBtn: document.getElementById('lrc-editor-show-detected-btn'),
         timestampBtn: document.getElementById('lrc-editor-timestamp-btn'),
+        timelineScroll: document.getElementById('lrc-editor-timeline-scroll'),
         timelineRuler: document.getElementById('lrc-editor-timeline-ruler'),
         timelineTrack: document.getElementById('lrc-editor-timeline-track'),
         timelinePlayhead: document.getElementById('lrc-editor-timeline-playhead'),
         timelineClips: document.getElementById('lrc-editor-timeline-clips'),
+        timelineZoomRange: document.getElementById('lrc-editor-timeline-zoom'),
+        timelineZoomLabel: document.getElementById('lrc-editor-timeline-zoom-label'),
         unassignedLines: document.getElementById('lrc-editor-unassigned-lines'),
         lyricsArea: document.getElementById('lrc-editor-lyrics-area'),
         textarea: document.getElementById('lrc-editor-textarea'),
@@ -261,11 +278,68 @@ function updateLineTimestampDisplay(index) {
     lineElement.textContent = typeof timestamp === 'number' ? formatLrcTime(timestamp) : '--:--.--';
 }
 
+function updateTimelineZoomDisplay() {
+    if (editorElements.timelineZoomRange) {
+        editorElements.timelineZoomRange.value = String(timelineZoom);
+    }
+    if (editorElements.timelineZoomLabel) {
+        editorElements.timelineZoomLabel.textContent = `${timelineZoom.toFixed(1)}x`;
+    }
+}
+
+function getTimelineViewportWidth() {
+    if (editorElements.timelineScroll && editorElements.timelineScroll.clientWidth > 0) {
+        return editorElements.timelineScroll.clientWidth;
+    }
+    if (editorElements.timelineTrack && editorElements.timelineTrack.clientWidth > 0) {
+        return editorElements.timelineTrack.clientWidth;
+    }
+    return 640;
+}
+
+function applyTimelineRenderWidth(duration) {
+    const viewportWidth = getTimelineViewportWidth();
+    const basedOnDuration = duration * TIMELINE_PX_PER_SECOND * timelineZoom;
+    const renderWidth = clamp(Math.ceil(basedOnDuration), viewportWidth, TIMELINE_RENDER_WIDTH_MAX);
+
+    editorElements.timelineRuler.style.width = `${renderWidth}px`;
+    editorElements.timelineTrack.style.width = `${renderWidth}px`;
+    return renderWidth;
+}
+
+function setTimelineZoom(nextZoom) {
+    const previousZoom = timelineZoom;
+    timelineZoom = clamp(Number.parseFloat(nextZoom) || TIMELINE_ZOOM_DEFAULT, TIMELINE_ZOOM_MIN, TIMELINE_ZOOM_MAX);
+
+    if (Math.abs(previousZoom - timelineZoom) < 0.001) {
+        updateTimelineZoomDisplay();
+        return;
+    }
+
+    const scroll = editorElements.timelineScroll;
+    let anchorRatio = 0;
+    if (scroll && scroll.scrollWidth > 0) {
+        anchorRatio = (scroll.scrollLeft + scroll.clientWidth * 0.5) / scroll.scrollWidth;
+    }
+
+    updateTimelineZoomDisplay();
+    renderTimeline();
+
+    if (scroll && scroll.scrollWidth > 0) {
+        const targetScroll = anchorRatio * scroll.scrollWidth - scroll.clientWidth * 0.5;
+        scroll.scrollLeft = clamp(targetScroll, 0, Math.max(0, scroll.scrollWidth - scroll.clientWidth));
+    }
+}
+
+function handleTimelineZoomInput(event) {
+    setTimelineZoom(event?.target?.value);
+}
+
 function renderTimelineRuler(duration) {
     if (!editorElements.timelineRuler) return;
 
     editorElements.timelineRuler.innerHTML = '';
-    const step = chooseRulerStep(duration);
+    const step = chooseRulerStep(duration, timelineZoom);
 
     for (let sec = 0; sec <= duration; sec += step) {
         const tick = document.createElement('div');
@@ -301,8 +375,8 @@ function renderTimelineClips(duration) {
         }
 
         const start = clamp(line.timestamp, 0, duration);
-        const next = getAdjacentTimestamp(index, 1);
-        let end = typeof next === 'number' ? next : duration;
+        const nextInfo = getAdjacentTimestampInfo(index, 1);
+        let end = typeof nextInfo?.timestamp === 'number' ? nextInfo.timestamp : duration;
 
         if (end <= start) {
             end = Math.min(duration, start + TIMELINE_MIN_CLIP_WIDTH_SEC);
@@ -325,6 +399,28 @@ function renderTimelineClips(duration) {
         clip.style.width = `${widthPercent}%`;
         clip.title = `${formatLrcTime(start)} ${line.text || '(空白)'}`;
 
+        const startHandle = document.createElement('button');
+        startHandle.type = 'button';
+        startHandle.className = 'timeline-clip-handle start';
+        startHandle.title = '開始位置を調整';
+        startHandle.addEventListener('mousedown', (event) => {
+            beginTimelineClipPointerInteraction(event, index, 'resize-start');
+        });
+
+        const endHandle = document.createElement('button');
+        endHandle.type = 'button';
+        endHandle.className = 'timeline-clip-handle end';
+        if (!nextInfo) {
+            endHandle.classList.add('disabled');
+            endHandle.disabled = true;
+            endHandle.title = '末尾クリップは右端調整できません';
+        } else {
+            endHandle.title = '終了位置を調整';
+            endHandle.addEventListener('mousedown', (event) => {
+                beginTimelineClipPointerInteraction(event, index, 'resize-end');
+            });
+        }
+
         const timeLabel = document.createElement('span');
         timeLabel.className = 'timeline-clip-time';
         timeLabel.textContent = formatLrcTime(start);
@@ -333,11 +429,13 @@ function renderTimelineClips(duration) {
         textLabel.className = 'timeline-clip-text';
         textLabel.textContent = `${index + 1}. ${line.text || '(空白)'}`;
 
+        clip.appendChild(startHandle);
+        clip.appendChild(endHandle);
         clip.appendChild(timeLabel);
         clip.appendChild(textLabel);
 
         clip.addEventListener('mousedown', (event) => {
-            beginTimelineClipDrag(event, index);
+            beginTimelineClipPointerInteraction(event, index, 'move');
         });
 
         clip.addEventListener('click', (event) => {
@@ -398,6 +496,7 @@ function renderTimeline() {
     if (!editorElements.timelineTrack) return;
 
     const duration = getTimelineDuration();
+    applyTimelineRenderWidth(duration);
     renderTimelineRuler(duration);
     renderTimelineClips(duration);
     renderUnassignedLines();
@@ -462,7 +561,7 @@ function clearTimelineDragState() {
     timelineDragState = null;
 }
 
-function beginTimelineClipDrag(event, lineIndex) {
+function beginTimelineClipPointerInteraction(event, lineIndex, mode) {
     if (event.button !== 0) {
         return;
     }
@@ -481,20 +580,31 @@ function beginTimelineClipDrag(event, lineIndex) {
 
     setActiveLine(lineIndex, true);
 
+    const nextInfo = getAdjacentTimestampInfo(lineIndex, 1);
+    if (mode === 'resize-end' && !nextInfo) {
+        return;
+    }
+
+    const followingInfo = nextInfo ? getAdjacentTimestampInfo(nextInfo.index, 1) : null;
     const trackRect = editorElements.timelineTrack.getBoundingClientRect();
     if (trackRect.width <= 0) {
         return;
     }
 
     timelineDragState = {
+        mode,
         index: lineIndex,
         startX: event.clientX,
         originalTimestamp: line.timestamp,
+        nextIndex: nextInfo ? nextInfo.index : -1,
+        originalNextTimestamp: nextInfo ? nextInfo.timestamp : null,
+        followingTimestamp: followingInfo ? followingInfo.timestamp : null,
+        segmentDuration: nextInfo ? (nextInfo.timestamp - line.timestamp) : null,
         duration: getTimelineDuration(),
         trackRect,
         savedHistory: false,
         moved: false,
-        clipElement: event.currentTarget,
+        clipElement: event.currentTarget.closest('.timeline-clip') || event.currentTarget,
     };
 
     if (timelineDragState.clipElement) {
@@ -503,6 +613,88 @@ function beginTimelineClipDrag(event, lineIndex) {
 
     document.addEventListener('mousemove', handleTimelineClipDragMove);
     document.addEventListener('mouseup', endTimelineClipDrag);
+}
+
+function collectTimelineDeltaUpdates(deltaSec) {
+    if (!timelineDragState) {
+        return [];
+    }
+
+    const updates = [];
+    const state = timelineDragState;
+
+    if (state.mode === 'move') {
+        if (state.nextIndex >= 0 && Number.isFinite(state.segmentDuration) && state.segmentDuration > 0) {
+            const prev = getAdjacentTimestamp(state.index, -1);
+            const min = prev === null ? 0 : prev + TIMELINE_MIN_GAP_SEC;
+            const max = state.followingTimestamp === null
+                ? state.duration - state.segmentDuration
+                : state.followingTimestamp - TIMELINE_MIN_GAP_SEC - state.segmentDuration;
+            const nextStart = max <= min
+                ? min
+                : clamp(state.originalTimestamp + deltaSec, min, max);
+            const nextEnd = nextStart + state.segmentDuration;
+
+            const nextStartValue = normaliseTimestamp(nextStart);
+            const nextEndValue = normaliseTimestamp(nextEnd);
+
+            if (nextStartValue !== null && lyricsLines[state.index].timestamp !== nextStartValue) {
+                updates.push({ index: state.index, timestamp: nextStartValue });
+            }
+
+            if (nextEndValue !== null && lyricsLines[state.nextIndex].timestamp !== nextEndValue) {
+                updates.push({ index: state.nextIndex, timestamp: nextEndValue });
+            }
+            return updates;
+        }
+
+        const candidate = state.originalTimestamp + deltaSec;
+        const clamped = clampTimestampForIndex(state.index, candidate, state.duration);
+        const value = normaliseTimestamp(clamped);
+        if (value !== null && lyricsLines[state.index].timestamp !== value) {
+            updates.push({ index: state.index, timestamp: value });
+        }
+        return updates;
+    }
+
+    if (state.mode === 'resize-start') {
+        const prev = getAdjacentTimestamp(state.index, -1);
+        const min = prev === null ? 0 : prev + TIMELINE_MIN_GAP_SEC;
+        const max = state.originalNextTimestamp === null
+            ? state.duration - TIMELINE_MIN_CLIP_WIDTH_SEC
+            : state.originalNextTimestamp - TIMELINE_MIN_CLIP_WIDTH_SEC;
+        const nextStart = max <= min
+            ? min
+            : clamp(state.originalTimestamp + deltaSec, min, max);
+        const value = normaliseTimestamp(nextStart);
+        if (value !== null && lyricsLines[state.index].timestamp !== value) {
+            updates.push({ index: state.index, timestamp: value });
+        }
+        return updates;
+    }
+
+    if (state.mode === 'resize-end') {
+        if (state.nextIndex < 0 || state.originalNextTimestamp === null) {
+            return updates;
+        }
+
+        const currentStart = typeof lyricsLines[state.index]?.timestamp === 'number'
+            ? lyricsLines[state.index].timestamp
+            : state.originalTimestamp;
+        const min = currentStart + TIMELINE_MIN_CLIP_WIDTH_SEC;
+        const max = state.followingTimestamp === null
+            ? state.duration
+            : state.followingTimestamp - TIMELINE_MIN_GAP_SEC;
+        const nextEnd = max <= min
+            ? min
+            : clamp(state.originalNextTimestamp + deltaSec, min, max);
+        const value = normaliseTimestamp(nextEnd);
+        if (value !== null && lyricsLines[state.nextIndex].timestamp !== value) {
+            updates.push({ index: state.nextIndex, timestamp: value });
+        }
+    }
+
+    return updates;
 }
 
 function handleTimelineClipDragMove(event) {
@@ -514,27 +706,23 @@ function handleTimelineClipDragMove(event) {
 
     const deltaPx = event.clientX - timelineDragState.startX;
     const deltaSec = (deltaPx / timelineDragState.trackRect.width) * timelineDragState.duration;
-    const candidate = timelineDragState.originalTimestamp + deltaSec;
-    const clampedTime = clampTimestampForIndex(timelineDragState.index, candidate, timelineDragState.duration);
-    const timestamp = normaliseTimestamp(clampedTime);
+    const updates = collectTimelineDeltaUpdates(deltaSec);
 
-    if (timestamp === null) {
+    if (updates.length === 0) {
         return;
     }
 
-    if (lyricsLines[timelineDragState.index].timestamp === timestamp) {
-        return;
-    }
-
-    lyricsLines[timelineDragState.index].timestamp = timestamp;
-    timelineDragState.moved = true;
+    updates.forEach((update) => {
+        lyricsLines[update.index].timestamp = update.timestamp;
+        updateLineTimestampDisplay(update.index);
+    });
 
     if (!timelineDragState.savedHistory) {
         saveHistory();
         timelineDragState.savedHistory = true;
     }
 
-    updateLineTimestampDisplay(timelineDragState.index);
+    timelineDragState.moved = true;
     renderTimelineClips(timelineDragState.duration);
 }
 
@@ -631,6 +819,7 @@ function initLrcEditorListeners() {
         });
 
         editorElements.timelineTrack.addEventListener('click', handleTimelineTrackClick);
+        editorElements.timelineZoomRange.addEventListener('input', handleTimelineZoomInput);
 
         editorElements.timestampBtn.addEventListener('click', addTimestamp);
         editorElements.autoSyncBtn.addEventListener('click', runAutoSync);
@@ -645,6 +834,7 @@ function initLrcEditorListeners() {
     editorElements.view.addEventListener('keydown', handleEditorKeyDown);
 
     setAutoSyncButtonState(false);
+    updateTimelineZoomDisplay();
     updateUndoRedoButtons();
     return true;
 }
@@ -990,6 +1180,7 @@ function setActiveLine(index, isManual = false) {
     const targetClip = editorElements.timelineClips.querySelector(`.timeline-clip[data-index="${index}"]`);
     if (targetClip) {
         targetClip.classList.add('active');
+        targetClip.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     }
 
     const targetUnassigned = editorElements.unassignedLines.querySelector(`.timeline-unassigned-item[data-index="${index}"]`);

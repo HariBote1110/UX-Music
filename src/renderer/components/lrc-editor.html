@@ -33,12 +33,20 @@
 <div class="lrc-editor-timeline-panel">
     <div class="timeline-panel-header">
         <h3>タイムライン編集</h3>
-        <p>クリップを左右にドラッグして、歌詞の開始タイミングを調整します。</p>
+        <p>中央ドラッグで移動、左右端ドラッグで長さを調整できます。</p>
+        <div class="timeline-zoom-controls">
+            <label for="lrc-editor-timeline-zoom">倍率</label>
+            <input type="range" id="lrc-editor-timeline-zoom" min="1" max="8" step="0.5" value="1">
+            <span id="lrc-editor-timeline-zoom-label">1.0x</span>
+        </div>
     </div>
-    <div id="lrc-editor-timeline-ruler" class="timeline-ruler"></div>
-    <div id="lrc-editor-timeline-track" class="timeline-track">
-        <div id="lrc-editor-timeline-playhead" class="timeline-playhead"></div>
-        <div id="lrc-editor-timeline-clips" class="timeline-clips"></div>
+
+    <div id="lrc-editor-timeline-scroll" class="timeline-scroll">
+        <div id="lrc-editor-timeline-ruler" class="timeline-ruler"></div>
+        <div id="lrc-editor-timeline-track" class="timeline-track">
+            <div id="lrc-editor-timeline-playhead" class="timeline-playhead"></div>
+            <div id="lrc-editor-timeline-clips" class="timeline-clips"></div>
+        </div>
     </div>
     <div id="lrc-editor-unassigned-lines" class="timeline-unassigned">
         <p class="timeline-unassigned-placeholder">未配置の歌詞行はありません。</p>
@@ -55,7 +63,8 @@
     <h4>同期歌詞エディタの使い方</h4>
     <ol>
         <li>曲を再生し、歌詞行を選択した状態で「選択行を現在位置へ ( T )」または <kbd>T</kbd> キーを押します。</li>
-        <li>タイムライン上に歌詞クリップが表示されます。クリップを左右へドラッグして微調整できます。</li>
+        <li>タイムライン上に歌詞クリップが表示されます。中央ドラッグで移動、左右端ドラッグで伸縮できます。</li>
+        <li>倍率スライダーでルーラーの表示倍率を切り替え、細かい位置合わせができます。</li>
         <li>タイムラインの空いている場所をクリックすると、その位置へシークできます。</li>
         <li>青表示の行で再度 <kbd>T</kbd> を押すと、次行へ自動で進めながら打鍵できます。</li>
         <li>必要に応じて <kbd>↑</kbd> / <kbd>↓</kbd> で選択行を移動できます。</li>

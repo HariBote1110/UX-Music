@@ -203,10 +203,58 @@
     font-size: 12px;
 }
 
+.timeline-zoom-controls {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border: 1px solid rgba(126, 135, 156, 0.5);
+    border-radius: 999px;
+    background: rgba(14, 17, 28, 0.55);
+}
+
+.timeline-zoom-controls label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+#lrc-editor-timeline-zoom {
+    width: 120px;
+}
+
+#lrc-editor-timeline-zoom-label {
+    min-width: 38px;
+    text-align: right;
+    font-size: 12px;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.timeline-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-radius: 8px;
+}
+
+.timeline-scroll::-webkit-scrollbar {
+    height: 10px;
+}
+
+.timeline-scroll::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.timeline-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(108, 118, 148, 0.75);
+    border-radius: 999px;
+}
+
 .timeline-ruler {
     position: relative;
     height: 24px;
     border-bottom: 1px solid rgba(141, 152, 180, 0.35);
+    min-width: 100%;
 }
 
 .timeline-ruler-tick {
@@ -235,6 +283,7 @@
     background-color: rgba(10, 12, 18, 0.75);
     overflow: hidden;
     cursor: pointer;
+    min-width: 100%;
 }
 
 .timeline-track::before {
@@ -286,6 +335,9 @@
     overflow: hidden;
     user-select: none;
     box-sizing: border-box;
+    touch-action: none;
+    padding-left: 14px;
+    padding-right: 14px;
 }
 
 .timeline-clip.active {
@@ -299,16 +351,46 @@
     filter: brightness(1.08);
 }
 
+.timeline-clip-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    z-index: 3;
+    cursor: ew-resize;
+    border: none;
+    padding: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.02));
+    opacity: 0.75;
+}
+
+.timeline-clip-handle.start {
+    left: 0;
+    border-right: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.timeline-clip-handle.end {
+    right: 0;
+    border-left: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.timeline-clip-handle.disabled {
+    cursor: default;
+    opacity: 0.2;
+}
+
 .timeline-clip-time {
     font-size: 11px;
     opacity: 0.88;
     white-space: nowrap;
+    pointer-events: none;
 }
 
 .timeline-clip-text {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    pointer-events: none;
 }
 
 .timeline-unassigned {
@@ -552,5 +634,16 @@
 
     .timeline-track {
         height: 96px;
+    }
+
+    .timeline-zoom-controls {
+        margin-left: 0;
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    #lrc-editor-timeline-zoom {
+        flex: 1;
+        width: auto;
     }
 }
