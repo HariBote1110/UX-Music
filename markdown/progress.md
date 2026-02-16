@@ -994,3 +994,21 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7t` に更新。
+
+### demucs diffq 依存エラー時の自動モデルフォールバック
+
+- **課題**:
+    - `demucs --name mdx_extra_q` 実行時に `diffq` 未導入エラーで ML 抽出が失敗するケースがあった。
+- **対応**:
+    - `internal/lyricssync/vocal_ml.go`:
+      - 既定モデルを `mdx_extra` に変更し、追加依存なしで動作しやすい構成へ修正。
+      - 指定モデル失敗時の再試行候補を生成し、`*_q` モデルで `diffq` エラー検出時は自動で非量子化モデルへフォールバック。
+      - demucs 実行失敗ログを候補別に集約して返却するよう改善。
+    - `internal/lyricssync/vocal_ml_test.go`:
+      - `mdx_extra_q` 失敗（diffqエラー）から `mdx_extra` 成功へ自動切替するテストを追加。
+      - モデル候補生成ロジックの単体テストを追加。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7u` に更新。

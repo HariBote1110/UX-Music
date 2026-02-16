@@ -99,6 +99,43 @@ func TestResolveDemucsPathInvalidEnv(t *testing.T) {
 	}
 }
 
+func TestBuildDemucsModelCandidatesFromQuantisedModel(t *testing.T) {
+	candidates := buildDemucsModelCandidates("mdx_extra_q")
+	if len(candidates) < 2 {
+		t.Fatalf("unexpected candidates: %+v", candidates)
+	}
+	if candidates[0] != "mdx_extra_q" {
+		t.Fatalf("first candidate=%s", candidates[0])
+	}
+	if candidates[1] != "mdx_extra" {
+		t.Fatalf("second candidate=%s", candidates[1])
+	}
+}
+
+func TestRunDemucsVocalSeparatorFallsBackWhenDiffqMissing(t *testing.T) {
+	songPath := createDummyAudioFile(t)
+	ffmpeg := createFakeFFmpegScript(t)
+	oldFFmpeg := config.FFmpegPath
+	oldFFprobe := config.FFprobePath
+	config.SetFFmpegPaths(ffmpeg, oldFFprobe)
+	t.Cleanup(func() {
+		config.SetFFmpegPaths(oldFFmpeg, oldFFprobe)
+	})
+
+	demucsPath := createFakeDemucsWithDiffqFallbackScript(t)
+	t.Setenv(envDemucsPath, demucsPath)
+	t.Setenv(envDemucsModel, "mdx_extra_q")
+
+	workDir := t.TempDir()
+	outputPath := filepath.Join(workDir, "vocal-ml.wav")
+	if err := runDemucsVocalSeparator(context.Background(), songPath, workDir, outputPath); err != nil {
+		t.Fatalf("runDemucsVocalSeparator returned error: %v", err)
+	}
+	if _, err := os.Stat(outputPath); err != nil {
+		t.Fatalf("output file not found: %v", err)
+	}
+}
+
 func createFakeCustomVocalSeparator(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -154,6 +191,56 @@ exit 0
 `
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("failed to create fake demucs script: %v", err)
+	}
+	return path
+}
+
+func createFakeDemucsWithDiffqFallbackScript(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "demucs")
+	script := `#!/bin/sh
+out=""
+input=""
+model=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --out)
+      out="$2"
+      shift 2
+      ;;
+    --name)
+      model="$2"
+      shift 2
+      ;;
+    --jobs|--two-stems=vocals)
+      shift 1
+      ;;
+    *)
+      input="$1"
+      shift 1
+      ;;
+  esac
+done
+
+if [ -z "$out" ] || [ -z "$input" ] || [ -z "$model" ]; then
+  echo "missing args" 1>&2
+  exit 1
+fi
+
+if [ "$model" = "mdx_extra_q" ]; then
+  echo "FATAL: Trying to use DiffQ, but diffq is not installed." 1>&2
+  exit 1
+fi
+
+name=$(basename "$input")
+base="${name%.*}"
+mkdir -p "$out/$model/$base"
+: > "$out/$model/$base/vocals.wav"
+exit 0
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to create fake demucs fallback script: %v", err)
 	}
 	return path
 }
