@@ -242,7 +242,7 @@ function applyLyricsMotionByIndex(activeIndex, immediate = false) {
         line.classList.toggle('active', isActive);
         line.style.setProperty('--line-motion-delay', `${motionDelay}ms`);
         line.style.setProperty('--line-motion-duration', `${motionDuration}ms`);
-        line.style.transform = `translate3d(-50%, ${y.toFixed(3)}px, 0)`;
+        line.style.transform = `translate3d(-50%, ${y.toFixed(3)}px, 0) scale(${isActive ? 1 : 0.9})`;
         line.style.opacity = isActive ? '1' : '0.35';
         line.style.filter = isActive ? 'blur(0px)' : 'blur(1.5px)';
         line.style.zIndex = isActive ? '10' : '1';

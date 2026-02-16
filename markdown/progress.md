@@ -2,6 +2,15 @@
 
 ## 2026年2月16日
 
+### 同期歌詞: 拡大演出を維持したまま折り返し位置を安定化
+
+- **拡大演出を復帰**:
+    - `src/renderer/js/features/lyrics-manager.js` と `src/renderer/styles/views.css` で `scale(0.9 -> 1)` のモーションを再適用。
+- **改行位置が変わる要因を排除**:
+    - `font-weight` はアクティブ/非アクティブで固定し、ハイライト切り替え時に文字幅が変わらないよう維持。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8g` に更新。
+
 ### 同期歌詞: ハイライト時の折り返し揺れを抑制
 
 - **折り返し位置の安定化**:
