@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	lyricsSyncTimeout       = 2 * time.Minute
-	minVocalMatchRatio      = 0.52
-	defaultVocalFocusFilter = "highpass=f=70,lowpass=f=4500,acompressor=threshold=-18dB:ratio=3.5:attack=8:release=120:makeup=4,afftdn=nf=-20"
+	lyricsSyncWhisperTimeout = 2 * time.Minute
+	lyricsSyncVocalMLTimeout = 3 * time.Minute
+	minVocalMatchRatio       = 0.52
+	defaultVocalFocusFilter  = "highpass=f=70,lowpass=f=4500,acompressor=threshold=-18dB:ratio=3.5:attack=8:release=120:makeup=4,afftdn=nf=-20"
 )
 
 type Syncer struct {
@@ -53,9 +54,6 @@ func (s *Syncer) Sync(req Request) Result {
 	}
 	defer os.RemoveAll(workDir)
 
-	ctx, cancel := context.WithTimeout(context.Background(), lyricsSyncTimeout)
-	defer cancel()
-
 	plainWavPath := filepath.Join(workDir, "input.wav")
 	if err := extractMonoWAV(sanitised.SongPath, plainWavPath, ""); err != nil {
 		return failResult(err)
@@ -63,11 +61,13 @@ func (s *Syncer) Sync(req Request) Result {
 
 	vocalMLWavPath := filepath.Join(workDir, "input-vocal-ml.wav")
 	vocalMLPrepared := false
-	if err := extractVocalWithML(ctx, sanitised.SongPath, workDir, vocalMLWavPath); err != nil {
+	vocalMLCtx, vocalMLCancel := context.WithTimeout(context.Background(), lyricsSyncVocalMLTimeout)
+	if err := extractVocalWithML(vocalMLCtx, sanitised.SongPath, workDir, vocalMLWavPath); err != nil {
 		logAutoSync("MLボーカル抽出は利用できないためフォールバックします: %v", err)
 	} else {
 		vocalMLPrepared = true
 	}
+	vocalMLCancel()
 
 	vocalWavPath := filepath.Join(workDir, "input-vocal.wav")
 	vocalPrepared := true
@@ -109,7 +109,9 @@ func (s *Syncer) Sync(req Request) Result {
 	errors := make([]string, 0, len(sources))
 
 	for _, source := range sources {
-		candidate, runErr := s.runAlignmentCandidate(ctx, source.wavPath, sanitised, source.name)
+		candidateCtx, candidateCancel := context.WithTimeout(context.Background(), lyricsSyncWhisperTimeout)
+		candidate, runErr := s.runAlignmentCandidate(candidateCtx, source.wavPath, sanitised, source.name)
+		candidateCancel()
 		if runErr != nil {
 			errors = append(errors, fmt.Sprintf("%s=%v", source.name, runErr))
 			logAutoSync("%s候補の解析に失敗: %v", source.name, runErr)

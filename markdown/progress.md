@@ -977,3 +977,20 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7s` に更新。
+
+### demucs 失敗時の連鎖タイムアウト対策
+
+- **課題**:
+    - `demucs` が長時間実行または強制終了された場合、同一 `context` を使い回していたため後続 `whisper` 候補まで `context deadline exceeded` で連鎖失敗していた。
+- **対応**:
+    - `internal/lyricssync/syncer.go`:
+      - タイムアウトを段階分離（ML抽出用・候補解析用）へ変更。
+      - 候補解析ごとに新しい `context.WithTimeout` を作成し、前段失敗が後段に波及しないよう修正。
+    - `internal/lyricssync/vocal_ml.go`:
+      - demucs の既定引数を `--name mdx_extra_q --jobs 1` に変更し、メモリ負荷を低減。
+      - `UXMUSIC_LYRICS_SYNC_DEMUCS_MODEL` でモデル上書きを可能化。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7t` に更新。

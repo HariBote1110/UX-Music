@@ -14,6 +14,8 @@ import (
 const (
 	envVocalSeparatorPath = "UXMUSIC_LYRICS_SYNC_VOCAL_SEPARATOR"
 	envDemucsPath         = "UXMUSIC_LYRICS_SYNC_DEMUCS"
+	envDemucsModel        = "UXMUSIC_LYRICS_SYNC_DEMUCS_MODEL"
+	defaultDemucsModel    = "mdx_extra_q"
 )
 
 func extractVocalWithML(ctx context.Context, inputPath string, workDir string, outputWavPath string) error {
@@ -56,7 +58,13 @@ func runDemucsVocalSeparator(ctx context.Context, inputPath string, workDir stri
 	}
 
 	outDir := filepath.Join(workDir, "demucs-out")
+	modelName := strings.TrimSpace(os.Getenv(envDemucsModel))
+	if modelName == "" {
+		modelName = defaultDemucsModel
+	}
 	args := []string{
+		"--name", modelName,
+		"--jobs", "1",
 		"--two-stems=vocals",
 		"--out", outDir,
 		inputPath,
