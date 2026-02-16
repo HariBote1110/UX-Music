@@ -1134,7 +1134,117 @@ type flacDecoder struct {
 	parseErrors    int // consecutive parse errors
 }
 
+// detectID3v2Size checks for an ID3v2 header at the start of the reader.
+// Returns the total size of the ID3v2 tag (header + data + optional footer).
+// Returns 0 if no ID3v2 header is found. Reader position is restored after checking.
+func detectID3v2Size(r io.ReadSeeker) int64 {
+	pos, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0
+	}
+
+	header := make([]byte, 10)
+	if _, err := io.ReadFull(r, header); err != nil {
+		r.Seek(pos, io.SeekStart)
+		return 0
+	}
+
+	// Restore position
+	r.Seek(pos, io.SeekStart)
+
+	// Check "ID3" magic bytes
+	if header[0] != 'I' || header[1] != 'D' || header[2] != '3' {
+		return 0
+	}
+
+	// Parse synchsafe integer (4 bytes, each byte uses only lower 7 bits)
+	size := int64(header[6]&0x7F)<<21 |
+		int64(header[7]&0x7F)<<14 |
+		int64(header[8]&0x7F)<<7 |
+		int64(header[9]&0x7F)
+
+	total := int64(10) + size // 10-byte header + tag data
+
+	// Check footer flag (bit 4 of flags byte)
+	if header[5]&0x10 != 0 {
+		total += 10
+	}
+
+	return total
+}
+
+// remuxFLACFile uses FFmpeg to remux a FLAC file, converting ID3v2 tags to
+// proper VorbisComment metadata. Audio data is copied without re-encoding.
+func remuxFLACFile(filePath string) error {
+	ffmpegPath, err := resolveCommandPath("ffmpeg")
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(filePath)
+	base := filepath.Base(filePath)
+	tmpPath := filepath.Join(dir, ".uxmusic_fix_"+base)
+
+	cmd := exec.Command(ffmpegPath,
+		"-hide_banner", "-loglevel", "error",
+		"-i", filePath,
+		"-c:a", "copy", // Copy audio stream — no re-encoding
+		"-map_metadata", "0", // Preserve metadata
+		"-y",
+		tmpPath,
+	)
+	cmd.Stderr = io.Discard
+
+	if err := cmd.Run(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("ffmpeg remux failed: %w", err)
+	}
+
+	// Verify output file has reasonable size
+	outInfo, err := os.Stat(tmpPath)
+	if err != nil {
+		return fmt.Errorf("remuxed file not found: %w", err)
+	}
+	inInfo, err := os.Stat(filePath)
+	if err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	// Sanity: output should be at least 70% of input (audio is identical, only metadata differs)
+	if outInfo.Size() < inInfo.Size()*70/100 {
+		os.Remove(tmpPath)
+		return fmt.Errorf("remuxed file unexpectedly small (%d vs %d bytes)", outInfo.Size(), inInfo.Size())
+	}
+
+	// Atomic replace (Unix: old fd remains valid after rename)
+	if err := os.Rename(tmpPath, filePath); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+
+	// Clear cached FLAC index (file content/offsets changed)
+	if cachePath := getFLACCachePath(filePath); cachePath != "" {
+		os.Remove(cachePath)
+	}
+
+	return nil
+}
+
 func newFLACDecoder(file *os.File) (*flacDecoder, error) {
+	var id3v2Detected bool
+
+	// Check for ID3v2 header at the start of the file
+	id3Size := detectID3v2Size(file)
+	if id3Size > 0 {
+		id3v2Detected = true
+		fmt.Printf("[Audio] FLAC: ID3v2 tag detected (%d bytes) in %s — skipping for native playback\n",
+			id3Size, filepath.Base(file.Name()))
+		// Seek past ID3v2 header so mewkiz/flac can find the "fLaC" signature
+		if _, err := file.Seek(id3Size, io.SeekStart); err != nil {
+			return nil, fmt.Errorf("failed to seek past ID3v2 header: %w", err)
+		}
+	}
+
 	// Use NewSeek to create a seekable stream
 	stream, err := flac.NewSeek(file)
 	if err != nil {
@@ -1151,6 +1261,37 @@ func newFLACDecoder(file *os.File) (*flacDecoder, error) {
 		frameIndex: make([]flacFrameIndex, 0),
 		indexDone:  make(chan struct{}),
 	}
+
+	if id3v2Detected {
+		// For ID3v2 files: skip background index building (file will be remuxed).
+		// Seeking still works via the stream's built-in SeekTable if present.
+		dec.indexBuilt = true
+		close(dec.indexDone)
+
+		// Apply existing SeekTable from stream metadata if available
+		for _, block := range stream.Blocks {
+			if table, ok := block.Body.(*meta.SeekTable); ok {
+				dec.seekTable = table
+				dec.applySeekTable()
+				break
+			}
+		}
+
+		// Schedule background remux: ID3v2 → VorbisComment
+		go func(path string) {
+			// Wait briefly for decoder initialisation to settle
+			time.Sleep(2 * time.Second)
+			if err := remuxFLACFile(path); err != nil {
+				fmt.Printf("[Audio] FLAC: Metadata fix failed for %s: %v\n", filepath.Base(path), err)
+			} else {
+				fmt.Printf("[Audio] FLAC: Metadata fixed for %s (ID3v2 → VorbisComment)\n", filepath.Base(path))
+			}
+		}(dec.filePath)
+
+		return dec, nil
+	}
+
+	// ---- Normal path (no ID3v2) ----
 
 	// Check disk cache first
 	cachePath := getFLACCachePath(dec.filePath)
