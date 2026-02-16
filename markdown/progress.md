@@ -1012,3 +1012,20 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7u` に更新。
+
+### 長尺曲での候補解析タイムアウト自動調整
+
+- **課題**:
+    - 長尺曲で `whisper` 候補解析が固定2分タイムアウトに達し、`context deadline exceeded` で失敗するケースがあった。
+- **対応**:
+    - `internal/lyricssync/syncer.go`:
+      - `ffprobe` で音声長を取得し、`whisper` / `vocal-ml` タイムアウトを音声長ベースで動的算出するロジックを追加。
+      - 段階別タイムアウト設定値をログ出力し、解析失敗時の原因切り分けを容易化。
+      - `ffprobe` パス解決関数を追加（`config.FFprobePath` 優先 + `PATH` フォールバック）。
+    - `internal/lyricssync/syncer_test.go`:
+      - `computeWhisperTimeout` / `computeVocalMLTimeout` の単体テストを追加。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7v` に更新。

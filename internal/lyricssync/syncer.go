@@ -7,16 +7,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"ux-music-sidecar/internal/config"
 )
 
 const (
-	lyricsSyncWhisperTimeout = 2 * time.Minute
-	lyricsSyncVocalMLTimeout = 3 * time.Minute
-	minVocalMatchRatio       = 0.52
-	defaultVocalFocusFilter  = "highpass=f=70,lowpass=f=4500,acompressor=threshold=-18dB:ratio=3.5:attack=8:release=120:makeup=4,afftdn=nf=-20"
+	defaultWhisperTimeout   = 6 * time.Minute
+	defaultVocalMLTimeout   = 8 * time.Minute
+	minWhisperTimeout       = 4 * time.Minute
+	maxWhisperTimeout       = 15 * time.Minute
+	minVocalMLTimeout       = 5 * time.Minute
+	maxVocalMLTimeout       = 20 * time.Minute
+	minVocalMatchRatio      = 0.52
+	defaultVocalFocusFilter = "highpass=f=70,lowpass=f=4500,acompressor=threshold=-18dB:ratio=3.5:attack=8:release=120:makeup=4,afftdn=nf=-20"
 )
 
 type Syncer struct {
@@ -54,6 +59,15 @@ func (s *Syncer) Sync(req Request) Result {
 	}
 	defer os.RemoveAll(workDir)
 
+	audioDuration, durationErr := probeAudioDuration(sanitised.SongPath)
+	if durationErr != nil {
+		logAutoSync("音声長の取得に失敗（既定タイムアウト使用）: %v", durationErr)
+		audioDuration = 0
+	}
+	whisperTimeout := computeWhisperTimeout(audioDuration)
+	vocalMLTimeout := computeVocalMLTimeout(audioDuration)
+	logAutoSync("タイムアウト設定: whisper=%s vocalML=%s duration=%.1fs", whisperTimeout.String(), vocalMLTimeout.String(), audioDuration)
+
 	plainWavPath := filepath.Join(workDir, "input.wav")
 	if err := extractMonoWAV(sanitised.SongPath, plainWavPath, ""); err != nil {
 		return failResult(err)
@@ -61,7 +75,7 @@ func (s *Syncer) Sync(req Request) Result {
 
 	vocalMLWavPath := filepath.Join(workDir, "input-vocal-ml.wav")
 	vocalMLPrepared := false
-	vocalMLCtx, vocalMLCancel := context.WithTimeout(context.Background(), lyricsSyncVocalMLTimeout)
+	vocalMLCtx, vocalMLCancel := context.WithTimeout(context.Background(), vocalMLTimeout)
 	if err := extractVocalWithML(vocalMLCtx, sanitised.SongPath, workDir, vocalMLWavPath); err != nil {
 		logAutoSync("MLボーカル抽出は利用できないためフォールバックします: %v", err)
 	} else {
@@ -109,7 +123,7 @@ func (s *Syncer) Sync(req Request) Result {
 	errors := make([]string, 0, len(sources))
 
 	for _, source := range sources {
-		candidateCtx, candidateCancel := context.WithTimeout(context.Background(), lyricsSyncWhisperTimeout)
+		candidateCtx, candidateCancel := context.WithTimeout(context.Background(), whisperTimeout)
 		candidate, runErr := s.runAlignmentCandidate(candidateCtx, source.wavPath, sanitised, source.name)
 		candidateCancel()
 		if runErr != nil {
@@ -322,6 +336,81 @@ func resolveFFmpegPath() (string, error) {
 		return "", fmt.Errorf("ffmpeg が見つかりません")
 	}
 	return path, nil
+}
+
+func resolveFFprobePath() (string, error) {
+	if strings.TrimSpace(config.FFprobePath) != "" {
+		if _, err := os.Stat(config.FFprobePath); err == nil {
+			return config.FFprobePath, nil
+		}
+	}
+	path, err := exec.LookPath("ffprobe")
+	if err != nil {
+		return "", fmt.Errorf("ffprobe が見つかりません")
+	}
+	return path, nil
+}
+
+func probeAudioDuration(inputPath string) (float64, error) {
+	ffprobePath, err := resolveFFprobePath()
+	if err != nil {
+		return 0, err
+	}
+
+	args := []string{
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		inputPath,
+	}
+	cmd := exec.Command(ffprobePath, args...)
+	output, runErr := cmd.CombinedOutput()
+	if runErr != nil {
+		return 0, fmt.Errorf("ffprobe 実行に失敗しました: %v (%s)", runErr, strings.TrimSpace(string(output)))
+	}
+
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed == "" {
+		return 0, fmt.Errorf("ffprobe の出力が空です")
+	}
+	duration, parseErr := strconv.ParseFloat(trimmed, 64)
+	if parseErr != nil {
+		return 0, fmt.Errorf("ffprobe 出力の解析に失敗しました: %w", parseErr)
+	}
+	if duration <= 0 {
+		return 0, fmt.Errorf("音声長が0以下です: %f", duration)
+	}
+	return duration, nil
+}
+
+func computeWhisperTimeout(durationSeconds float64) time.Duration {
+	if durationSeconds <= 0 {
+		return defaultWhisperTimeout
+	}
+
+	computed := time.Duration((durationSeconds*1.6)+90.0) * time.Second
+	if computed < minWhisperTimeout {
+		return minWhisperTimeout
+	}
+	if computed > maxWhisperTimeout {
+		return maxWhisperTimeout
+	}
+	return computed
+}
+
+func computeVocalMLTimeout(durationSeconds float64) time.Duration {
+	if durationSeconds <= 0 {
+		return defaultVocalMLTimeout
+	}
+
+	computed := time.Duration((durationSeconds*2.2)+120.0) * time.Second
+	if computed < minVocalMLTimeout {
+		return minVocalMLTimeout
+	}
+	if computed > maxVocalMLTimeout {
+		return maxVocalMLTimeout
+	}
+	return computed
 }
 
 func logAutoSync(format string, args ...interface{}) {

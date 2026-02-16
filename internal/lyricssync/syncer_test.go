@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"ux-music-sidecar/internal/config"
 )
 
@@ -181,6 +182,36 @@ func TestCountTargetLyricLines(t *testing.T) {
 	got := countTargetLyricLines(lines)
 	if got != 2 {
 		t.Fatalf("countTargetLyricLines() = %d, want 2", got)
+	}
+}
+
+func TestComputeWhisperTimeout(t *testing.T) {
+	gotDefault := computeWhisperTimeout(0)
+	if gotDefault != defaultWhisperTimeout {
+		t.Fatalf("computeWhisperTimeout(0) = %s, want %s", gotDefault, defaultWhisperTimeout)
+	}
+
+	gotLong := computeWhisperTimeout(360.0)
+	if gotLong < 10*time.Minute {
+		t.Fatalf("computeWhisperTimeout(360) should be >= 10m, got %s", gotLong)
+	}
+	if gotLong > maxWhisperTimeout {
+		t.Fatalf("computeWhisperTimeout(360) should be <= max timeout, got %s", gotLong)
+	}
+}
+
+func TestComputeVocalMLTimeout(t *testing.T) {
+	gotDefault := computeVocalMLTimeout(0)
+	if gotDefault != defaultVocalMLTimeout {
+		t.Fatalf("computeVocalMLTimeout(0) = %s, want %s", gotDefault, defaultVocalMLTimeout)
+	}
+
+	gotLong := computeVocalMLTimeout(360.0)
+	if gotLong < 12*time.Minute {
+		t.Fatalf("computeVocalMLTimeout(360) should be >= 12m, got %s", gotLong)
+	}
+	if gotLong > maxVocalMLTimeout {
+		t.Fatalf("computeVocalMLTimeout(360) should be <= max timeout, got %s", gotLong)
 	}
 }
 
