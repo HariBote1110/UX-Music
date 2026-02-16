@@ -199,3 +199,37 @@ func TestInterludeOnlyGapIsPlacedNearRightAnchor(t *testing.T) {
 		t.Fatalf("timestamps should increase: %+v", aligned)
 	}
 }
+
+func TestUnmatchedLyricDoesNotSkipToFollowingInterlude(t *testing.T) {
+	lines := []string{
+		"line1",
+		"line2",
+		"line3",
+		"line4",
+		"",
+		"line5",
+	}
+	segments := []whisperSegment{
+		{Start: 34.0, End: 40.0, Text: "line1"},
+		{Start: 40.0, End: 46.0, Text: "line2"},
+		{Start: 46.0, End: 50.0, Text: "line3"},
+		{Start: 53.0, End: 59.0, Text: "line5"},
+	}
+
+	aligned, matched := alignLines(lines, segments)
+	if matched < 4 {
+		t.Fatalf("matched=%d, want at least 4", matched)
+	}
+	if aligned[3].Timestamp <= aligned[2].Timestamp {
+		t.Fatalf("unmatched lyric line should remain between neighbours: %+v", aligned)
+	}
+	if aligned[4].Timestamp <= aligned[3].Timestamp || aligned[4].Timestamp >= aligned[5].Timestamp {
+		t.Fatalf("interlude line should be between lyric anchors: %+v", aligned)
+	}
+
+	leftGap := aligned[4].Timestamp - aligned[3].Timestamp
+	rightGap := aligned[5].Timestamp - aligned[4].Timestamp
+	if leftGap <= rightGap {
+		t.Fatalf("interlude should be right-biased (leftGap=%f rightGap=%f): %+v", leftGap, rightGap, aligned)
+	}
+}

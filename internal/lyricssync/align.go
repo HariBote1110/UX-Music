@@ -20,8 +20,8 @@ const (
 
 func alignLines(lines []string, segments []whisperSegment) ([]AlignedLine, int) {
 	aligned := make([]AlignedLine, len(lines))
-	segmentCursor := 0
-	matchedCount := 0
+	lyricLineIndexes := make([]int, 0, len(lines))
+	lyricLines := make([]AlignedLine, 0, len(lines))
 	segmentAnchors := buildSegmentAnchors(segments)
 
 	for i, line := range lines {
@@ -37,24 +37,121 @@ func alignLines(lines []string, segments []whisperSegment) ([]AlignedLine, int) 
 			aligned[i].Source = "interlude"
 			continue
 		}
+		lyricLineIndexes = append(lyricLineIndexes, i)
+		lyricLines = append(lyricLines, aligned[i])
+	}
 
-		bestIndex, bestScore := findBestSegment(line, segments, segmentCursor, matchLookaheadWindow)
+	if len(lyricLines) == 0 {
+		interpolateMissingTimestamps(aligned)
+		enforceMonotonicTimestamps(aligned)
+		return aligned, 0
+	}
+
+	segmentCursor := 0
+	matchedCount := 0
+	for i := range lyricLines {
+		bestIndex, bestScore := findBestSegment(lyricLines[i].Text, segments, segmentCursor, matchLookaheadWindow)
 		if bestIndex >= 0 && bestScore >= matchThreshold {
 			anchor := segments[bestIndex].Start
 			if bestIndex >= 0 && bestIndex < len(segmentAnchors) {
 				anchor = segmentAnchors[bestIndex]
 			}
-			aligned[i].Timestamp = clampTimestamp(anchor)
-			aligned[i].Confidence = roundTo3(bestScore)
-			aligned[i].Source = "match"
+			lyricLines[i].Timestamp = clampTimestamp(anchor)
+			lyricLines[i].Confidence = roundTo3(bestScore)
+			lyricLines[i].Source = "match"
 			segmentCursor = bestIndex + 1
 			matchedCount++
 		}
 	}
 
-	interpolateMissingTimestamps(aligned)
+	interpolateMissingTimestamps(lyricLines)
+	for i, lineIndex := range lyricLineIndexes {
+		aligned[lineIndex].Timestamp = lyricLines[i].Timestamp
+		aligned[lineIndex].Confidence = lyricLines[i].Confidence
+		aligned[lineIndex].Source = lyricLines[i].Source
+	}
+
+	fillInterludeTimestamps(aligned)
 	enforceMonotonicTimestamps(aligned)
 	return aligned, matchedCount
+}
+
+func fillInterludeTimestamps(lines []AlignedLine) {
+	if len(lines) == 0 {
+		return
+	}
+
+	typicalStep := estimateTypicalStep(lines)
+	if typicalStep <= 0 {
+		typicalStep = defaultInterpolationStep
+	}
+
+	for i := 0; i < len(lines); {
+		if lines[i].Source != "interlude" || isFinite(lines[i].Timestamp) {
+			i++
+			continue
+		}
+
+		start := i
+		end := i
+		for end+1 < len(lines) && lines[end+1].Source == "interlude" && !isFinite(lines[end+1].Timestamp) {
+			end++
+		}
+
+		leftIndex := findPrevFiniteTimestampIndex(lines, start-1)
+		rightIndex := findNextFiniteTimestampIndex(lines, end+1)
+
+		switch {
+		case leftIndex >= 0 && rightIndex >= 0:
+			fillGapWithRangeAndTailWeight(lines, start, rightIndex, lines[leftIndex].Timestamp, lines[rightIndex].Timestamp, typicalStep, interludeOnlyTailWeight)
+		case leftIndex < 0 && rightIndex >= 0:
+			rightTS := lines[rightIndex].Timestamp
+			if start == 0 {
+				lines[0].Timestamp = 0
+				if start < end {
+					fillGapWithRangeAndTailWeight(lines, start+1, rightIndex, 0, rightTS, typicalStep, interludeOnlyTailWeight)
+				}
+			} else {
+				fillGapWithRangeAndTailWeight(lines, start, rightIndex, 0, rightTS, typicalStep, interludeOnlyTailWeight)
+			}
+		case leftIndex >= 0:
+			cursor := lines[leftIndex].Timestamp
+			for j := start; j <= end; j++ {
+				cursor += interpolationStepForLine(typicalStep, lines[j])
+				lines[j].Timestamp = roundTo3(cursor)
+			}
+		default:
+			cursor := 0.0
+			for j := start; j <= end; j++ {
+				if j == 0 {
+					lines[j].Timestamp = 0
+					continue
+				}
+				cursor += interpolationStepForLine(typicalStep, lines[j])
+				lines[j].Timestamp = roundTo3(cursor)
+			}
+		}
+
+		i = end + 1
+	}
+}
+
+func findPrevFiniteTimestampIndex(lines []AlignedLine, from int) int {
+	for i := from; i >= 0; i-- {
+		if isFinite(lines[i].Timestamp) {
+			return i
+		}
+	}
+	return -1
+}
+
+func findNextFiniteTimestampIndex(lines []AlignedLine, from int) int {
+	for i := from; i < len(lines); i++ {
+		if isFinite(lines[i].Timestamp) {
+			return i
+		}
+	}
+	return -1
 }
 
 func findBestSegment(line string, segments []whisperSegment, start int, lookahead int) (int, float64) {

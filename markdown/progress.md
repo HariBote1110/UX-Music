@@ -917,3 +917,21 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7p` に更新。
+
+### 歌詞行先行整列（空白行後段補完）への変更
+
+- **課題**:
+    - 空白行が混在することで、未一致歌詞の補間位置が不安定になり、次の空白行に先に飛んで見えるケースがあった。
+- **対応**:
+    - `internal/lyricssync/align.go`:
+      - 整列処理を 2 段階へ変更。
+      - 1段階目で歌詞行のみをセグメント整列・補間。
+      - 2段階目で空白/間奏行に時刻を補完（右アンカー寄せを維持）。
+      - 空白行探索用の補助関数を追加し、前後アンカーがない場合の補間も安定化。
+    - `internal/lyricssync/align_test.go`:
+      - 「未一致歌詞の次にある空白行へ早跳びしない」回帰テストを追加。
+- **検証**:
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7q` に更新。
