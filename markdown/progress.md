@@ -1,5 +1,21 @@
 # 開発進捗ログ (progress.md)
 
+## 2026年2月17日
+
+### Wailsバックエンド再生でイコライザーが効かない不具合を修正
+
+- **Go再生エンジンへ10バンドEQを実装**:
+    - `pkg/audio/player.go` に 10 バンド（31Hz〜16kHz）の Biquad フィルタ処理を追加。
+    - PortAudio のリアルタイムコールバックでロック不要の係数参照を行う構成にし、`SetEqualizer` で設定を即時反映できるように変更。
+- **Wails公開APIを追加**:
+    - `app_audio.go` に `AudioSetEqualizer` を追加し、フロントエンドから `active` / `preamp` / `bands` を受け取って再生エンジンへ反映。
+- **フロント側の適用経路を修正**:
+    - `src/renderer/js/features/audio-graph.js` の `applyEqualizerSettings` で、Wails 環境時に Go 側 `AudioSetEqualizer` を呼び出すよう変更。
+    - `src/renderer/js/ui/equalizer.js` から `active` フラグ付きで設定を送るように変更し、EQ OFF 時は確実に無効化されるよう修正。
+    - `src/renderer/js/features/player.js` の `activateAudioGraph` import 抜けを補完し、ローカル再生経路の回帰も防止。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8h` に更新。
+
 ## 2026年2月16日
 
 ### 同期歌詞: 拡大演出を維持したまま折り返し位置を安定化

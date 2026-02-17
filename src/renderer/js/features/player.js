@@ -26,6 +26,7 @@ import {
     setBaseGain,
     applyEqualizerSettings,
     setAudioOutput as setAudioOutputDevice,
+    activateAudioGraph,
     analyser,
     dataArray
 } from './audio-graph.js';

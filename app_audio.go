@@ -6,6 +6,12 @@ import (
 	"ux-music-sidecar/pkg/audio"
 )
 
+type AudioEqualizerSettings struct {
+	Active bool      `json:"active"`
+	Preamp float64   `json:"preamp"`
+	Bands  []float64 `json:"bands"`
+}
+
 func sanitizeFiniteFloat64(value float64) float64 {
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return 0
@@ -99,6 +105,14 @@ func (a *App) AudioSetVolume(volume float64) {
 		return
 	}
 	a.audioPlayer.SetVolume(volume)
+}
+
+// AudioSetEqualizer updates equaliser settings for backend playback.
+func (a *App) AudioSetEqualizer(settings AudioEqualizerSettings) {
+	if a.audioPlayer == nil {
+		return
+	}
+	a.audioPlayer.SetEqualizer(settings.Active, sanitizeFiniteFloat64(settings.Preamp), settings.Bands)
 }
 
 // AudioGetPosition returns the current position in seconds

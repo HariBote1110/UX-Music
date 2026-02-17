@@ -38,6 +38,41 @@ type Device struct {
 	MaxChannels int    `json:"maxChannels"`
 }
 
+const (
+	equalizerBandCount  = 10
+	equalizerDefaultQ   = 1.41
+	equalizerShelfSlope = 1.0
+)
+
+var equalizerFrequencies = [equalizerBandCount]float64{31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000}
+
+type biquadCoefficients struct {
+	b0 float64
+	b1 float64
+	b2 float64
+	a1 float64
+	a2 float64
+}
+
+type biquadState struct {
+	x1 float64
+	x2 float64
+	y1 float64
+	y2 float64
+}
+
+type equalizerConfig struct {
+	active       bool
+	preamp       float32
+	coefficients [equalizerBandCount]biquadCoefficients
+}
+
+type equalizerSettings struct {
+	active   bool
+	preampDB float64
+	bandDB   [equalizerBandCount]float64
+}
+
 // Player handles audio playback using PortAudio
 type Player struct {
 	mu            sync.RWMutex
@@ -78,6 +113,12 @@ type Player struct {
 	fftLocalBuf []float64      // Local buffer for collecting samples
 	fftChan     chan []float64 // Channel for async FFT processing
 
+	// Equaliser
+	eqSettingsMu sync.RWMutex
+	eqSettings   equalizerSettings
+	eqConfig     atomic.Value // equalizerConfig
+	eqStates     [][]biquadState
+
 	// Callback for events
 	onFinished func()
 	onProgress func(position, duration float64)
@@ -104,6 +145,7 @@ func NewPlayer() (*Player, error) {
 
 	// Initialize FFT
 	p.initFFT(2048)
+	p.eqConfig.Store(defaultEqualizerConfig())
 
 	// Get available devices
 	if err := p.refreshDevices(); err != nil {
@@ -349,6 +391,11 @@ func (p *Player) Play(filePath string) error {
 	p.ringAvailable.Store(0)
 	p.decoderStop = make(chan struct{})
 	p.decoderDone = make(chan struct{})
+	p.eqStates = make([][]biquadState, max(1, p.channels))
+	for channelIndex := 0; channelIndex < len(p.eqStates); channelIndex++ {
+		p.eqStates[channelIndex] = make([]biquadState, equalizerBandCount)
+	}
+	p.rebuildEqualizerConfig(p.sampleRate)
 
 	// Select device
 	device := p.currentDevice
@@ -558,6 +605,12 @@ func (p *Player) processAudio(out []float32) {
 	ringBuf := p.ringBuf
 	ringBufSize := int64(p.ringBufSize)
 	channels := p.channels
+	eqCfg := defaultEqualizerConfig()
+	if loadedConfig, ok := p.eqConfig.Load().(equalizerConfig); ok {
+		eqCfg = loadedConfig
+	}
+	eqStates := p.eqStates
+	useEqualizer := eqCfg.active && channels > 0 && len(eqStates) >= channels
 
 	samplesToRead := len(out)
 	if int64(samplesToRead) > available {
@@ -567,7 +620,25 @@ func (p *Player) processAudio(out []float32) {
 	// Read samples from ring buffer
 	for i := 0; i < samplesToRead; i++ {
 		idx := (readPos + int64(i)) % ringBufSize
-		out[i] = ringBuf[idx] * float32(volume)
+		outputSample := float64(ringBuf[idx])
+
+		if useEqualizer {
+			outputSample *= float64(eqCfg.preamp)
+			channelIndex := i % channels
+			channelState := eqStates[channelIndex]
+
+			for bandIndex := 0; bandIndex < equalizerBandCount; bandIndex++ {
+				outputSample = processBiquadSample(outputSample, eqCfg.coefficients[bandIndex], &channelState[bandIndex])
+			}
+		}
+
+		outputSample *= volume
+		if outputSample > 1 {
+			outputSample = 1
+		} else if outputSample < -1 {
+			outputSample = -1
+		}
+		out[i] = float32(outputSample)
 	}
 
 	// Fill remaining with silence
@@ -698,6 +769,30 @@ func (p *Player) SetVolume(volume float64) {
 	p.setVolume(volume)
 }
 
+// SetEqualizer updates equaliser settings used by real-time audio callback.
+func (p *Player) SetEqualizer(active bool, preampDB float64, bands []float64) {
+	nextSettings := equalizerSettings{
+		active:   active,
+		preampDB: clampFloat64(sanitiseFinite(preampDB), -24, 24),
+	}
+	for i := 0; i < equalizerBandCount; i++ {
+		if i >= len(bands) {
+			continue
+		}
+		nextSettings.bandDB[i] = clampFloat64(sanitiseFinite(bands[i]), -24, 24)
+	}
+
+	p.eqSettingsMu.Lock()
+	p.eqSettings = nextSettings
+	p.eqSettingsMu.Unlock()
+
+	p.mu.RLock()
+	sampleRate := p.sampleRate
+	p.mu.RUnlock()
+
+	p.rebuildEqualizerConfig(sampleRate)
+}
+
 // GetPosition returns the current position in seconds
 func (p *Player) GetPosition() float64 {
 	p.mu.RLock()
@@ -760,6 +855,184 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func defaultEqualizerConfig() equalizerConfig {
+	cfg := equalizerConfig{
+		active: false,
+		preamp: 1,
+	}
+	for i := 0; i < equalizerBandCount; i++ {
+		cfg.coefficients[i] = identityBiquad()
+	}
+	return cfg
+}
+
+func (p *Player) rebuildEqualizerConfig(sampleRate int) {
+	if sampleRate <= 0 {
+		sampleRate = 44100
+	}
+
+	p.eqSettingsMu.RLock()
+	settings := p.eqSettings
+	p.eqSettingsMu.RUnlock()
+
+	cfg := defaultEqualizerConfig()
+	if !settings.active {
+		p.eqConfig.Store(cfg)
+		return
+	}
+
+	cfg.active = true
+	cfg.preamp = float32(math.Pow(10, settings.preampDB/20))
+	for bandIndex := 0; bandIndex < equalizerBandCount; bandIndex++ {
+		frequency := limitFrequency(equalizerFrequencies[bandIndex], sampleRate)
+		gainDB := settings.bandDB[bandIndex]
+		switch {
+		case bandIndex == 0:
+			cfg.coefficients[bandIndex] = makeLowShelfCoefficients(sampleRate, frequency, equalizerShelfSlope, gainDB)
+		case bandIndex == equalizerBandCount-1:
+			cfg.coefficients[bandIndex] = makeHighShelfCoefficients(sampleRate, frequency, equalizerShelfSlope, gainDB)
+		default:
+			cfg.coefficients[bandIndex] = makePeakingCoefficients(sampleRate, frequency, equalizerDefaultQ, gainDB)
+		}
+	}
+
+	p.eqConfig.Store(cfg)
+}
+
+func limitFrequency(frequency float64, sampleRate int) float64 {
+	minimum := 10.0
+	nyquist := float64(sampleRate) / 2
+	maximum := nyquist * 0.95
+	if maximum < minimum {
+		maximum = minimum
+	}
+	return clampFloat64(frequency, minimum, maximum)
+}
+
+func makePeakingCoefficients(sampleRate int, frequency, q, gainDB float64) biquadCoefficients {
+	if math.Abs(gainDB) < 0.0001 {
+		return identityBiquad()
+	}
+	if q <= 0 {
+		q = equalizerDefaultQ
+	}
+
+	omega := 2 * math.Pi * frequency / float64(sampleRate)
+	sinOmega := math.Sin(omega)
+	cosOmega := math.Cos(omega)
+	alpha := sinOmega / (2 * q)
+	a := math.Pow(10, gainDB/40)
+
+	b0 := 1 + alpha*a
+	b1 := -2 * cosOmega
+	b2 := 1 - alpha*a
+	a0 := 1 + alpha/a
+	a1 := -2 * cosOmega
+	a2 := 1 - alpha/a
+
+	return normaliseBiquad(b0, b1, b2, a0, a1, a2)
+}
+
+func makeLowShelfCoefficients(sampleRate int, frequency, slope, gainDB float64) biquadCoefficients {
+	if math.Abs(gainDB) < 0.0001 {
+		return identityBiquad()
+	}
+	if slope <= 0 {
+		slope = equalizerShelfSlope
+	}
+
+	omega := 2 * math.Pi * frequency / float64(sampleRate)
+	sinOmega := math.Sin(omega)
+	cosOmega := math.Cos(omega)
+	a := math.Pow(10, gainDB/40)
+	alpha := sinOmega / 2 * math.Sqrt((a+1/a)*(1/slope-1)+2)
+	beta := 2 * math.Sqrt(a) * alpha
+
+	b0 := a * ((a + 1) - (a-1)*cosOmega + beta)
+	b1 := 2 * a * ((a - 1) - (a+1)*cosOmega)
+	b2 := a * ((a + 1) - (a-1)*cosOmega - beta)
+	a0 := (a + 1) + (a-1)*cosOmega + beta
+	a1 := -2 * ((a - 1) + (a+1)*cosOmega)
+	a2 := (a + 1) + (a-1)*cosOmega - beta
+
+	return normaliseBiquad(b0, b1, b2, a0, a1, a2)
+}
+
+func makeHighShelfCoefficients(sampleRate int, frequency, slope, gainDB float64) biquadCoefficients {
+	if math.Abs(gainDB) < 0.0001 {
+		return identityBiquad()
+	}
+	if slope <= 0 {
+		slope = equalizerShelfSlope
+	}
+
+	omega := 2 * math.Pi * frequency / float64(sampleRate)
+	sinOmega := math.Sin(omega)
+	cosOmega := math.Cos(omega)
+	a := math.Pow(10, gainDB/40)
+	alpha := sinOmega / 2 * math.Sqrt((a+1/a)*(1/slope-1)+2)
+	beta := 2 * math.Sqrt(a) * alpha
+
+	b0 := a * ((a + 1) + (a-1)*cosOmega + beta)
+	b1 := -2 * a * ((a - 1) + (a+1)*cosOmega)
+	b2 := a * ((a + 1) + (a-1)*cosOmega - beta)
+	a0 := (a + 1) - (a-1)*cosOmega + beta
+	a1 := 2 * ((a - 1) - (a+1)*cosOmega)
+	a2 := (a + 1) - (a-1)*cosOmega - beta
+
+	return normaliseBiquad(b0, b1, b2, a0, a1, a2)
+}
+
+func normaliseBiquad(b0, b1, b2, a0, a1, a2 float64) biquadCoefficients {
+	if math.Abs(a0) < 1e-12 {
+		return identityBiquad()
+	}
+	return biquadCoefficients{
+		b0: b0 / a0,
+		b1: b1 / a0,
+		b2: b2 / a0,
+		a1: a1 / a0,
+		a2: a2 / a0,
+	}
+}
+
+func identityBiquad() biquadCoefficients {
+	return biquadCoefficients{b0: 1}
+}
+
+func processBiquadSample(input float64, coeff biquadCoefficients, state *biquadState) float64 {
+	output := coeff.b0*input + coeff.b1*state.x1 + coeff.b2*state.x2 - coeff.a1*state.y1 - coeff.a2*state.y2
+	state.x2 = state.x1
+	state.x1 = input
+	state.y2 = state.y1
+	state.y1 = output
+	return output
+}
+
+func sanitiseFinite(value float64) float64 {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0
+	}
+	return value
+}
+
+func clampFloat64(value, minimum, maximum float64) float64 {
+	if value < minimum {
+		return minimum
+	}
+	if value > maximum {
+		return maximum
+	}
+	return value
 }
 
 // ============ MP3 Decoder ============

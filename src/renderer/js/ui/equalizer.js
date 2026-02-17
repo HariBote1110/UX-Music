@@ -36,14 +36,14 @@ function applyPreset(presetName) {
 export function applyCurrentSettings() {
     const { active, bass, mid, treble, bands, preamp } = state.equalizerSettings;
     if (!active) {
-        applyEqualizerSettings({ preamp: 0, bands: Array(10).fill(0) });
+        applyEqualizerSettings({ active: false, preamp: 0, bands: Array(10).fill(0) });
         return;
     }
     const finalBands = [...bands];
     finalBands[0] += bass; finalBands[1] += bass; finalBands[2] += bass * 0.5;
     finalBands[3] += mid * 0.5; finalBands[4] += mid; finalBands[5] += mid; finalBands[6] += mid * 0.5;
     finalBands[7] += treble * 0.5; finalBands[8] += treble; finalBands[9] += treble;
-    applyEqualizerSettings({ preamp, bands: finalBands });
+    applyEqualizerSettings({ active: true, preamp, bands: finalBands });
 }
 
 export function renderEqualizer() {

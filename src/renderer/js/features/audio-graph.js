@@ -14,6 +14,8 @@ export let dataArray = null;
 let baseGain = 1.0;
 let isDirectLinkEnabled = false;
 let savedSinkId = 'default'; // 保存されたオーディオ出力デバイスID
+const EQ_BAND_COUNT = 10;
+let isEqualizerBackendWarningShown = false;
 
 /**
  * グラフオブジェクトの構造
@@ -291,19 +293,37 @@ export function applyMasterVolume() {
 }
 
 export function applyEqualizerSettings(settings) {
+    const safePreamp = Number.isFinite(settings?.preamp) ? settings.preamp : 0;
+    const safeBands = Array.from({ length: EQ_BAND_COUNT }, (_, index) => {
+        const value = settings?.bands?.[index];
+        return Number.isFinite(value) ? value : 0;
+    });
+    const active = settings?.active !== false;
+
+    if (window.go?.main?.App?.AudioSetEqualizer) {
+        window.go.main.App.AudioSetEqualizer({
+            active,
+            preamp: safePreamp,
+            bands: safeBands
+        }).catch((error) => {
+            if (!isEqualizerBackendWarningShown) {
+                isEqualizerBackendWarningShown = true;
+                console.warn('[AudioGraph] Failed to send equalizer settings to backend:', error);
+            }
+        });
+    }
+
     // 全キャッシュに適用するのは重いので、現在のグラフにのみ適用し、
     // 他のグラフはアクティブ化された時に適用する設計が理想だが、
     // 今回は簡易的に「現在のグラフ」のみ即時反映する
     if (!currentGraph) return;
 
     const context = currentGraph.context;
-    const preampValue = Math.pow(10, (settings.preamp || 0) / 20);
+    const preampValue = Math.pow(10, safePreamp / 20);
     currentGraph.nodes.preamp.gain.setValueAtTime(preampValue, context.currentTime);
 
     for (let i = 0; i < currentGraph.nodes.eqBands.length; i++) {
-        if (settings.bands && typeof settings.bands[i] === 'number') {
-            currentGraph.nodes.eqBands[i].gain.setValueAtTime(settings.bands[i], context.currentTime);
-        }
+        currentGraph.nodes.eqBands[i].gain.setValueAtTime(safeBands[i] ?? 0, context.currentTime);
     }
 }
 
