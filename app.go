@@ -27,6 +27,7 @@ type App struct {
 	mediaTitle   string
 	mediaArtist  string
 	mediaAlbum   string
+	mediaArtwork string
 }
 
 // NewApp creates a new App struct

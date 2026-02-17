@@ -37,6 +37,8 @@ export function AudioSeek(arg1:number):Promise<void>;
 
 export function AudioSetDevice(arg1:string):Promise<void>;
 
+export function AudioSetNowPlayingMetadata(arg1:Record<string, any>):Promise<void>;
+
 export function AudioSetVolume(arg1:number):Promise<void>;
 
 export function AudioStop():Promise<void>;

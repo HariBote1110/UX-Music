@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <MediaPlayer/MediaPlayer.h>
+#import <AppKit/AppKit.h>
 
 extern void ux_on_media_command(int command);
 
@@ -65,6 +66,29 @@ static NSString *ux_string_or_empty(const char *value) {
     return stringValue;
 }
 
+static MPMediaItemArtwork *ux_create_artwork(NSString *artworkPath) {
+    if (artworkPath.length == 0) {
+        return nil;
+    }
+
+    NSImage *image = [[NSImage alloc] initWithContentsOfFile:artworkPath];
+    if (!image) {
+        return nil;
+    }
+
+    if (@available(macOS 10.13.2, *)) {
+        NSSize imageSize = image.size;
+        if (imageSize.width <= 0 || imageSize.height <= 0) {
+            imageSize = NSMakeSize(512, 512);
+        }
+        return [[MPMediaItemArtwork alloc] initWithBoundsSize:imageSize requestHandler:^NSImage * _Nonnull(CGSize requestedSize) {
+            return image;
+        }];
+    }
+
+    return nil;
+}
+
 void ux_register_media_commands(void) {
     @autoreleasepool {
         if (gIsRegistered) {
@@ -95,11 +119,12 @@ void ux_register_media_commands(void) {
     }
 }
 
-void ux_set_now_playing(const char *title, const char *artist, const char *album, int isPlaying) {
+void ux_set_now_playing(const char *title, const char *artist, const char *album, const char *artworkPath, int isPlaying) {
     @autoreleasepool {
         NSString *titleValue = ux_string_or_empty(title);
         NSString *artistValue = ux_string_or_empty(artist);
         NSString *albumValue = ux_string_or_empty(album);
+        NSString *artworkPathValue = ux_string_or_empty(artworkPath);
         if (titleValue.length == 0) {
             titleValue = @"UX-Music";
         }
@@ -111,6 +136,10 @@ void ux_set_now_playing(const char *title, const char *artist, const char *album
         }
         if (albumValue.length > 0) {
             info[MPMediaItemPropertyAlbumTitle] = albumValue;
+        }
+        MPMediaItemArtwork *artwork = ux_create_artwork(artworkPathValue);
+        if (artwork) {
+            info[MPMediaItemPropertyArtwork] = artwork;
         }
 
         MPNowPlayingInfoCenter *center = [MPNowPlayingInfoCenter defaultCenter];

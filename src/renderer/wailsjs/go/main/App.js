@@ -62,6 +62,10 @@ export function AudioSetDevice(arg1) {
   return window['go']['main']['App']['AudioSetDevice'](arg1);
 }
 
+export function AudioSetNowPlayingMetadata(arg1) {
+  return window['go']['main']['App']['AudioSetNowPlayingMetadata'](arg1);
+}
+
 export function AudioSetVolume(arg1) {
   return window['go']['main']['App']['AudioSetVolume'](arg1);
 }

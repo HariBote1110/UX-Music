@@ -4,11 +4,11 @@ package main
 
 /*
 #cgo CFLAGS: -x objective-c
-#cgo LDFLAGS: -framework Foundation -framework MediaPlayer
+#cgo LDFLAGS: -framework Foundation -framework AppKit -framework MediaPlayer
 #include <stdlib.h>
 
 void ux_register_media_commands(void);
-void ux_set_now_playing(const char* title, const char* artist, const char* album, int isPlaying);
+void ux_set_now_playing(const char* title, const char* artist, const char* album, const char* artworkPath, int isPlaying);
 void ux_clear_now_playing(void);
 */
 import "C"
@@ -41,19 +41,21 @@ func registerOSMediaCommands(callback func(string)) error {
 	return nil
 }
 
-func setOSNowPlaying(title string, artist string, album string, playing bool) {
+func setOSNowPlaying(title string, artist string, album string, artworkPath string, playing bool) {
 	cTitle := C.CString(title)
 	cArtist := C.CString(artist)
 	cAlbum := C.CString(album)
+	cArtworkPath := C.CString(artworkPath)
 	defer C.free(unsafe.Pointer(cTitle))
 	defer C.free(unsafe.Pointer(cArtist))
 	defer C.free(unsafe.Pointer(cAlbum))
+	defer C.free(unsafe.Pointer(cArtworkPath))
 
 	isPlaying := C.int(0)
 	if playing {
 		isPlaying = 1
 	}
-	C.ux_set_now_playing(cTitle, cArtist, cAlbum, isPlaying)
+	C.ux_set_now_playing(cTitle, cArtist, cAlbum, cArtworkPath, isPlaying)
 }
 
 func clearOSNowPlaying() {

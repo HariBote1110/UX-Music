@@ -327,6 +327,54 @@ async function setMediaSessionMetadata(song) {
     navigator.mediaSession.metadata = new MediaMetadata({ title: song.title || 'Unknown', artist: song.artist || 'Unknown', album: song.album || '', artwork });
 }
 
+function resolveNowPlayingArtworkSource(song) {
+    const album = state.albums.get(song.albumKey);
+    let artworkSource = song.artwork || (album ? album.artwork : null);
+    if (typeof artworkSource === 'object' && artworkSource !== null) {
+        artworkSource = artworkSource.full || artworkSource.thumbnail || '';
+    }
+
+    if (typeof artworkSource !== 'string') return '';
+
+    let source = artworkSource.trim();
+    if (!source) return '';
+    if (source.startsWith('http://') || source.startsWith('https://') || source.startsWith('data:') || source.startsWith('blob:')) return '';
+    if (source.startsWith('./assets/')) return '';
+
+    if (source.startsWith('/safe-artwork/')) {
+        source = source.replace('/safe-artwork/', '');
+    } else if (source.startsWith('safe-artwork://')) {
+        source = source.replace('safe-artwork://', '');
+    }
+
+    try {
+        source = decodeURIComponent(source);
+    } catch (e) {
+        // keep raw source when decoding fails
+    }
+
+    return source.replace(/^[/\\]+/, '');
+}
+
+async function updateOSNowPlayingMetadata(song) {
+    if (!isWails) return;
+    if (!window.go?.main?.App?.AudioSetNowPlayingMetadata) return;
+    if (!song) return;
+
+    const payload = {
+        title: song.title || 'Unknown',
+        artist: song.artist || 'Unknown',
+        album: song.album || '',
+        artwork: resolveNowPlayingArtworkSource(song)
+    };
+
+    try {
+        await window.go.main.App.AudioSetNowPlayingMetadata(payload);
+    } catch (error) {
+        console.warn('[Player] Failed to update OS now playing metadata:', error);
+    }
+}
+
 export async function play(song) {
     await stop();
     if (!song) return;
@@ -350,6 +398,9 @@ export async function play(song) {
     }
 
     setMediaSessionMetadata(song).catch(() => { });
+    if (isWails) {
+        await updateOSNowPlayingMetadata(song);
+    }
 
     if (song.path) {
         currentSongType = 'local';

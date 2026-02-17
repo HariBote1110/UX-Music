@@ -160,3 +160,22 @@ func (a *App) AudioGetStatus() map[string]interface{} {
 		"paused":   a.audioPlayer.IsPaused(),
 	}
 }
+
+// AudioSetNowPlayingMetadata updates OS-level now playing metadata.
+func (a *App) AudioSetNowPlayingMetadata(metadata map[string]interface{}) error {
+	if metadata == nil {
+		return nil
+	}
+
+	title, _ := metadata["title"].(string)
+	artist, _ := metadata["artist"].(string)
+	album, _ := metadata["album"].(string)
+	artwork, _ := metadata["artwork"].(string)
+
+	playing := false
+	if a.audioPlayer != nil {
+		playing = a.audioPlayer.IsPlaying()
+	}
+	a.updateOSNowPlayingMetadata(title, artist, album, artwork, playing)
+	return nil
+}

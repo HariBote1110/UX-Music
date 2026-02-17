@@ -7,8 +7,8 @@ func registerOSMediaCommands(callback func(string)) error {
 	return nil
 }
 
-func setOSNowPlaying(title string, artist string, album string, playing bool) {
-	_, _, _, _ = title, artist, album, playing
+func setOSNowPlaying(title string, artist string, album string, artworkPath string, playing bool) {
+	_, _, _, _, _ = title, artist, album, artworkPath, playing
 }
 
 func clearOSNowPlaying() {}
