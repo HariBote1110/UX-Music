@@ -5,7 +5,7 @@ import { initEventListeners } from './js/core/init-listeners.js';
 import { initUI } from './js/ui/ui.js';
 import { initSettings } from './js/utils/init-settings.js';
 import { initNavigation, showView } from './js/core/navigation.js';
-import { initPlayer } from './js/features/player.js';
+import { initPlayer, playCurrent, pauseCurrent, togglePlayPause, stop as stopPlayback } from './js/features/player.js';
 import { updateAudioDevices, updatePlayCountDisplay, addSongsToLibrary } from './js/ui/ui-manager.js';
 import { restoreSavedSinkId } from './js/features/audio-graph.js';
 import { loadAllComponents } from './js/ui/component-loader.js';
@@ -87,6 +87,31 @@ async function initApp() {
         });
         // ▲▲▲ 修正完了 ▲▲▲
     }
+
+    electronAPI.on('os-media-command', (command) => {
+        switch (command) {
+            case 'play':
+                void playCurrent();
+                break;
+            case 'pause':
+                void pauseCurrent();
+                break;
+            case 'toggle':
+                void togglePlayPause();
+                break;
+            case 'next':
+                playNextSong();
+                break;
+            case 'previous':
+                playPrevSong();
+                break;
+            case 'stop':
+                void stopPlayback();
+                break;
+            default:
+                break;
+        }
+    });
 
     musicApi.onAppInfoResponse((info) => {
         const appVersionEl = document.getElementById('app-version');

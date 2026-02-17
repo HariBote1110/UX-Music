@@ -2,8 +2,16 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"ux-music-sidecar/pkg/audio"
 )
+
+func sanitizeFiniteFloat64(value float64) float64 {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0
+	}
+	return value
+}
 
 // AudioListDevices returns available audio output devices
 func (a *App) AudioListDevices() ([]audio.Device, error) {
@@ -34,7 +42,11 @@ func (a *App) AudioPlay(filePath string) error {
 	if a.audioPlayer == nil {
 		return fmt.Errorf("audio player not initialized")
 	}
-	return a.audioPlayer.Play(filePath)
+	if err := a.audioPlayer.Play(filePath); err != nil {
+		return err
+	}
+	a.updateOSNowPlayingByPath(filePath, true)
+	return nil
 }
 
 // AudioPause pauses playback
@@ -42,7 +54,11 @@ func (a *App) AudioPause() error {
 	if a.audioPlayer == nil {
 		return nil
 	}
-	return a.audioPlayer.Pause()
+	if err := a.audioPlayer.Pause(); err != nil {
+		return err
+	}
+	a.updateOSPlaybackState(false)
+	return nil
 }
 
 // AudioResume resumes playback
@@ -50,7 +66,11 @@ func (a *App) AudioResume() error {
 	if a.audioPlayer == nil {
 		return nil
 	}
-	return a.audioPlayer.Resume()
+	if err := a.audioPlayer.Resume(); err != nil {
+		return err
+	}
+	a.updateOSPlaybackState(true)
+	return nil
 }
 
 // AudioStop stops playback
@@ -58,7 +78,11 @@ func (a *App) AudioStop() error {
 	if a.audioPlayer == nil {
 		return nil
 	}
-	return a.audioPlayer.Stop()
+	if err := a.audioPlayer.Stop(); err != nil {
+		return err
+	}
+	a.clearOSNowPlayingState()
+	return nil
 }
 
 // AudioSeek seeks to a position in seconds
@@ -82,7 +106,7 @@ func (a *App) AudioGetPosition() float64 {
 	if a.audioPlayer == nil {
 		return 0
 	}
-	return a.audioPlayer.GetPosition()
+	return sanitizeFiniteFloat64(a.audioPlayer.GetPosition())
 }
 
 // AudioGetDuration returns the total duration in seconds
@@ -90,7 +114,7 @@ func (a *App) AudioGetDuration() float64 {
 	if a.audioPlayer == nil {
 		return 0
 	}
-	return a.audioPlayer.GetDuration()
+	return sanitizeFiniteFloat64(a.audioPlayer.GetDuration())
 }
 
 // AudioIsPlaying returns true if currently playing
@@ -116,4 +140,23 @@ func (a *App) AudioGetFrequencyData() []uint8 {
 	}
 	data := a.audioPlayer.GetFrequencyData()
 	return data
+}
+
+// AudioGetStatus returns playback status in one call for Wails polling.
+func (a *App) AudioGetStatus() map[string]interface{} {
+	if a.audioPlayer == nil {
+		return map[string]interface{}{
+			"position": 0.0,
+			"duration": 0.0,
+			"playing":  false,
+			"paused":   false,
+		}
+	}
+
+	return map[string]interface{}{
+		"position": sanitizeFiniteFloat64(a.audioPlayer.GetPosition()),
+		"duration": sanitizeFiniteFloat64(a.audioPlayer.GetDuration()),
+		"playing":  a.audioPlayer.IsPlaying(),
+		"paused":   a.audioPlayer.IsPaused(),
+	}
 }

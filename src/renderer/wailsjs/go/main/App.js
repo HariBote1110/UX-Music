@@ -26,6 +26,10 @@ export function AudioGetPosition() {
   return window['go']['main']['App']['AudioGetPosition']();
 }
 
+export function AudioGetStatus() {
+  return window['go']['main']['App']['AudioGetStatus']();
+}
+
 export function AudioIsPaused() {
   return window['go']['main']['App']['AudioIsPaused']();
 }

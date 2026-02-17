@@ -166,12 +166,30 @@ function startGoStatePolling() {
 
         goPollInFlight = true;
         try {
-            const [pos, dur, playing, paused] = await Promise.all([
-                window.go.main.App.AudioGetPosition(),
-                window.go.main.App.AudioGetDuration(),
-                window.go.main.App.AudioIsPlaying(),
-                window.go.main.App.AudioIsPaused()
-            ]);
+            let pos;
+            let dur;
+            let playing;
+            let paused;
+
+            if (typeof window.go.main.App.AudioGetStatus === 'function') {
+                const status = await window.go.main.App.AudioGetStatus();
+                pos = Number(status?.position);
+                dur = Number(status?.duration);
+                playing = Boolean(status?.playing);
+                paused = Boolean(status?.paused);
+            } else {
+                [pos, dur, playing, paused] = await Promise.all([
+                    window.go.main.App.AudioGetPosition(),
+                    window.go.main.App.AudioGetDuration(),
+                    window.go.main.App.AudioIsPlaying(),
+                    window.go.main.App.AudioIsPaused()
+                ]);
+            }
+
+            if (!Number.isFinite(pos)) pos = 0;
+            if (!Number.isFinite(dur)) dur = 0;
+            playing = Boolean(playing);
+            paused = Boolean(paused);
 
             const wasPlaying = goState.isPlaying;
             const prevPos = goState.currentTime;
@@ -253,22 +271,43 @@ export async function initPlayer(playerElement, callbacks, sinkId = null) {
         onNextSong: savedCallbacks.onNextSong,
         onPrevSong: savedCallbacks.onPrevSong
     });
+    updateMediaSessionHandlers();
 }
 
 function updateMediaSessionState(state) {
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = state;
 }
-function updateMediaSessionHandlers() {
-    if ('mediaSession' in navigator) {
-        try {
-            navigator.mediaSession.setActionHandler('play', () => togglePlayPause());
-            navigator.mediaSession.setActionHandler('pause', () => togglePlayPause());
-            navigator.mediaSession.setActionHandler('stop', () => stop());
-            navigator.mediaSession.setActionHandler('previoustrack', () => { if (savedCallbacks.onPrevSong) savedCallbacks.onPrevSong(); });
-            navigator.mediaSession.setActionHandler('nexttrack', () => { if (savedCallbacks.onNextSong) savedCallbacks.onNextSong(); });
-            navigator.mediaSession.setActionHandler('seekto', (details) => { if (details.seekTime !== undefined) seek(details.seekTime); });
-        } catch (e) { }
+
+function setMediaSessionAction(action, handler) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+        navigator.mediaSession.setActionHandler(action, handler);
+    } catch (e) {
+        // Some webviews do not support every media action.
     }
+}
+
+function updateMediaSessionHandlers() {
+    setMediaSessionAction('play', () => {
+        if (!isPlaying()) void playCurrent();
+    });
+    setMediaSessionAction('pause', () => {
+        if (isPlaying()) void pauseCurrent();
+    });
+    setMediaSessionAction('stop', () => {
+        void stop();
+    });
+    setMediaSessionAction(
+        'previoustrack',
+        typeof savedCallbacks.onPrevSong === 'function' ? () => savedCallbacks.onPrevSong() : null
+    );
+    setMediaSessionAction(
+        'nexttrack',
+        typeof savedCallbacks.onNextSong === 'function' ? () => savedCallbacks.onNextSong() : null
+    );
+    setMediaSessionAction('seekto', (details) => {
+        if (details && Number.isFinite(details.seekTime)) void seek(details.seekTime);
+    });
 }
 async function setMediaSessionMetadata(song) {
     if (!('mediaSession' in navigator)) return;

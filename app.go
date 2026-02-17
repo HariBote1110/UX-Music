@@ -23,6 +23,10 @@ type App struct {
 	lyricsSyncer *lyricssync.Syncer
 	mtpConnected bool
 	mtpMu        sync.Mutex
+	mediaStateMu sync.Mutex
+	mediaTitle   string
+	mediaArtist  string
+	mediaAlbum   string
 }
 
 // NewApp creates a new App struct
@@ -40,6 +44,8 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
+	a.initOSMediaControls()
+
 	// Initialize Audio Player
 	player, err := audio.NewPlayer()
 	if err != nil {
@@ -49,6 +55,7 @@ func (a *App) startup(ctx context.Context) {
 
 	if a.audioPlayer != nil {
 		a.audioPlayer.SetOnFinished(func() {
+			a.updateOSPlaybackState(false)
 			if a.ctx != nil {
 				wailsRuntime.EventsEmit(a.ctx, "audio-playback-finished")
 			}

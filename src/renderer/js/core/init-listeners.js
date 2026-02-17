@@ -226,12 +226,22 @@ export function initEventListeners() {
         electronAPI.send('show-general-context-menu');
     });
 
+    const refreshMarqueeOverflow = () => {
+        updateTextOverflowForSelector('.marquee-wrapper');
+    };
+
     let resizeTimer;
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-            updateTextOverflowForSelector('.marquee-wrapper');
-        }, 250);
+        resizeTimer = setTimeout(refreshMarqueeOverflow, 250);
+    });
+
+    // スリープ復帰やフォーカス復帰時にマルキー状態を再計算する
+    window.addEventListener('focus', refreshMarqueeOverflow);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            refreshMarqueeOverflow();
+        }
     });
 
     window.addEventListener('keydown', async (e) => {

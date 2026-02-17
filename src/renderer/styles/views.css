@@ -702,6 +702,26 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
 }
 
+lyrics-view.lyrics-mode-lrc p.active::before {
+    animation: lyrics-line-sweep var(--line-sweep-duration) cubic-bezier(0.22, 1, 0.36, 1) 1;
+}
+
+@keyframes lyrics-line-sweep {
+    0% {
+        transform: translateY(-50%) scaleX(0);
+        opacity: 0;
+    }
+
+    18% {
+        opacity: 0.52;
+    }
+
+    100% {
+        transform: translateY(-50%) scaleX(1);
+        opacity: 0;
+    }
+}
+
 #lyrics-view.lyrics-mode-txt p {
     position: relative;
     top: auto;

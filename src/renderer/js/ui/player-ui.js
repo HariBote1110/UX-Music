@@ -145,7 +145,7 @@ export function updateSeekUI(time) {
     updateLrcEditorControls(isPlaying(), time, duration);
 }
 
-export function initPlayerControls(initialPlayer, callbacks) {
+export function initPlayerControls(initialPlayer, _callbacks) {
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
 
     elements.progressBar.addEventListener('mousedown', () => {
@@ -191,12 +191,6 @@ export function initPlayerControls(initialPlayer, callbacks) {
 
     updateVolumeIcon();
 
-    if ('mediaSession' in navigator) {
-        navigator.mediaSession.setActionHandler('play', togglePlayPause);
-        navigator.mediaSession.setActionHandler('pause', togglePlayPause);
-        if (callbacks.onNextSong) navigator.mediaSession.setActionHandler('nexttrack', callbacks.onNextSong);
-        if (callbacks.onPrevSong) navigator.mediaSession.setActionHandler('previoustrack', callbacks.onPrevSong);
-    }
 }
 
 export function updatePlaybackStateUI(playing) {

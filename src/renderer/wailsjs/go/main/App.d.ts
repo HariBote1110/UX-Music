@@ -19,6 +19,8 @@ export function AudioGetFrequencyData():Promise<Array<number>>;
 
 export function AudioGetPosition():Promise<number>;
 
+export function AudioGetStatus():Promise<Record<string, any>>;
+
 export function AudioIsPaused():Promise<boolean>;
 
 export function AudioIsPlaying():Promise<boolean>;
