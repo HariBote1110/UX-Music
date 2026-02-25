@@ -2,6 +2,17 @@
 
 ## 2026年2月25日
 
+### YouTube機能有効化: Wails対応の連打導線を追加
+
+- **有効化処理を共通化**:
+    - `src/renderer/js/utils/debug-commands.js` に YouTube 有効化同意フローの共通関数を追加。
+    - 既存 `uxDebug.enableYouTubeFeatures()` も共通関数を呼ぶ構成へ変更。
+- **ライブラリ管理ボタン連打で有効化**:
+    - `src/renderer/js/core/init-listeners.js` で「ライブラリを管理」ボタンを 2.5 秒以内に 7 回連打した際、有効化同意ダイアログを表示するように実装。
+    - Wails 環境でも画面上の導線だけで有効化できるように改善。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8j` に更新。
+
 ### YouTubeダウンロード: 字幕同時取得と同期歌詞（LRC）自動生成
 
 - **字幕取得とLRC変換を追加**:

@@ -1,6 +1,49 @@
 const electronAPI = window.electronAPI;
 import { setVisualizerFpsLimit, toggleVisualizerEcoMode } from '../features/player.js';
 
+function revealYouTubeFeatureUI() {
+    document.querySelectorAll('[data-feature="youtube"], #add-youtube-btn, #add-youtube-playlist-btn').forEach((el) => {
+        el.classList.remove('hidden');
+    });
+}
+
+export async function enableYouTubeFeaturesWithConsent({ showAlert = true } = {}) {
+    const settings = await electronAPI.invoke('get-settings').catch(() => ({}));
+    if (settings?.enableYouTube) {
+        revealYouTubeFeatureUI();
+        if (showAlert) {
+            alert('YouTube機能はすでに有効です。');
+        }
+        return true;
+    }
+
+    const confirmationMessage = `
+        YouTube機能の有効化に関する注意事項：
+
+        この機能を使用すると、YouTube上のコンテンツをダウンロードまたはストリーミング再生できますが、これは技術的な実験を目的としたものです。
+
+        ・ダウンロードしたコンテンツは、私的利用の範囲を遵守してください。
+        ・著作権で保護されたコンテンツの不正なダウンロードや再配布は、法律で固く禁じられています。
+        ・この機能を使用したことによって生じるいかなる法的問題についても、開発者は一切の責任を負いません。
+
+        上記を理解し、自己の責任において機能を使用することに同意しますか？
+    `;
+
+    const confirmation = confirm(confirmationMessage);
+    if (!confirmation) {
+        console.log('[DEBUG] YouTube feature activation cancelled by user.');
+        return false;
+    }
+
+    console.log('[DEBUG] YouTube features ENABLED.');
+    electronAPI.send('save-settings', { enableYouTube: true });
+    revealYouTubeFeatureUI();
+    if (showAlert) {
+        alert('YouTube機能が有効になりました。');
+    }
+    return true;
+}
+
 export function initDebugCommands() {
     const uxDebug = {
         resetLibrary: () => {
@@ -30,28 +73,7 @@ export function initDebugCommands() {
             toggleVisualizerEcoMode(enabled);
         },
         enableYouTubeFeatures: () => {
-            const confirmationMessage = `
-                YouTube機能の有効化に関する注意事項：
-
-                この機能を使用すると、YouTube上のコンテンツをダウンロードまたはストリーミング再生できますが、これは技術的な実験を目的としたものです。
-
-                ・ダウンロードしたコンテンツは、私的利用の範囲を遵守してください。
-                ・著作権で保護されたコンテンツの不正なダウンロードや再配布は、法律で固く禁じられています。
-                ・この機能を使用したことによって生じるいかなる法的問題についても、開発者は一切の責任を負いません。
-
-                上記を理解し、自己の責任において機能を使用することに同意しますか？
-            `;
-            const confirmation = confirm(confirmationMessage);
-            if (confirmation) {
-                console.log('[DEBUG] YouTube features ENABLED.');
-                electronAPI.send('save-settings', { enableYouTube: true });
-                document.querySelectorAll('[data-feature="youtube"], #add-youtube-btn, #add-youtube-playlist-btn').forEach(el => {
-                    el.classList.remove('hidden');
-                });
-                alert('YouTube機能が有効になりました。');
-            } else {
-                console.log('[DEBUG] YouTube feature activation cancelled by user.');
-            }
+            void enableYouTubeFeaturesWithConsent({ showAlert: true });
         },
         help: () => {
             console.log(
@@ -62,6 +84,7 @@ export function initDebugCommands() {
                 '  uxDebug.setVisualizerFps(fps)       - ビジュアライザーのFPS上限を設定します。(0で制限解除)\n' +
                 '  uxDebug.toggleVisualizerEcoMode(bool) - ビジュアライザーのエコモードを切り替えます。(trueで有効(デフォルト), falseで無効)\n' +
                 '  uxDebug.enableYouTubeFeatures()         - YouTube関連の機能を有効化します。\n' +
+                '  (補足) 「ライブラリを管理」ボタン連打でも有効化できます。\n' +
                 '  uxDebug.help()                          - このヘルプメッセージを表示します。',
                 'font-weight: bold; font-size: 1.2em; color: #1DB954;',
                 'font-weight: normal; font-size: 1em; color: inherit;'

@@ -1,3 +1,14 @@
+# Task: YouTube機能有効化のWails対応（ライブラリ管理ボタン連打）
+
+## 概要
+既存の YouTube 機能有効化はデバッグコンソール経由（Electron 前提）だったため、Wails 実行環境でも利用できるように「ライブラリを管理」ボタン連打で有効化導線を提供する。
+
+## 完了条件
+- [x] `src/renderer/js/utils/debug-commands.js` の YouTube 有効化処理が共通関数化されていること。
+- [x] `src/renderer/js/core/init-listeners.js` で「ライブラリを管理」ボタン連打（7回/2.5秒）時に有効化処理を呼び出すこと。
+- [x] 既に有効な場合は重複有効化せず、UI表示だけ整合すること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-8j` に更新されていること。
+
 # Task: YouTube字幕の同時取得と同期歌詞化
 
 ## 概要

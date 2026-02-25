@@ -8,6 +8,7 @@ import { updateTextOverflowForSelector } from '../ui/utils.js';
 import { updateAudioDevices } from '../ui/ui-manager.js';
 import { updateSearchQuery } from '../ui/ui.js';
 import { musicApi } from './bridge.js';
+import { enableYouTubeFeaturesWithConsent } from '../utils/debug-commands.js';
 const electronAPI = window.electronAPI;
 
 export function initEventListeners() {
@@ -18,11 +19,35 @@ export function initEventListeners() {
 
     const libraryActionsBtn = document.getElementById('library-actions-btn');
     const libraryActionsPopup = document.getElementById('library-actions-popup');
+    const youtubeUnlockTapRequired = 7;
+    const youtubeUnlockWindowMs = 2500;
+    let libraryActionsTapCount = 0;
+    let libraryActionsTapTimer = null;
+    let youtubeUnlockInProgress = false;
 
     if (libraryActionsBtn) {
         libraryActionsBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             libraryActionsPopup.classList.toggle('hidden');
+
+            if (libraryActionsTapTimer) {
+                clearTimeout(libraryActionsTapTimer);
+            }
+            libraryActionsTapCount += 1;
+            libraryActionsTapTimer = setTimeout(() => {
+                libraryActionsTapCount = 0;
+            }, youtubeUnlockWindowMs);
+
+            if (libraryActionsTapCount < youtubeUnlockTapRequired || youtubeUnlockInProgress) {
+                return;
+            }
+
+            libraryActionsTapCount = 0;
+            youtubeUnlockInProgress = true;
+            void enableYouTubeFeaturesWithConsent({ showAlert: true })
+                .finally(() => {
+                    youtubeUnlockInProgress = false;
+                });
         });
     }
 
