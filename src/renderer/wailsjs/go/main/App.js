@@ -10,6 +10,10 @@ export function AddSongsToPlaylist(arg1) {
   return window['go']['main']['App']['AddSongsToPlaylist'](arg1);
 }
 
+export function AddYouTubeLink(arg1) {
+  return window['go']['main']['App']['AddYouTubeLink'](arg1);
+}
+
 export function AudioGetCurrentDevice() {
   return window['go']['main']['App']['AudioGetCurrentDevice']();
 }

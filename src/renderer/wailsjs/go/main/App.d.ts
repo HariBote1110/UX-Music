@@ -12,6 +12,8 @@ export function AddAlbumToPlaylist(arg1:Record<string, any>):Promise<Record<stri
 
 export function AddSongsToPlaylist(arg1:Record<string, any>):Promise<number>;
 
+export function AddYouTubeLink(arg1:string):Promise<Record<string, any>>;
+
 export function AudioGetCurrentDevice():Promise<string>;
 
 export function AudioGetDuration():Promise<number>;
