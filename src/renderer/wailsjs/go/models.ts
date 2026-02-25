@@ -186,16 +186,16 @@ export namespace lyricssync {
 }
 
 export namespace main {
-
+	
 	export class AudioEqualizerSettings {
 	    active: boolean;
 	    preamp: number;
 	    bands: number[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new AudioEqualizerSettings(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.active = source["active"];
@@ -481,3 +481,4 @@ export namespace scanner {
 	}
 
 }
+
