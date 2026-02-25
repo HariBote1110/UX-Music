@@ -2,6 +2,19 @@
 
 ## 2026年2月25日
 
+### YouTube字幕: 選択UI追加と詳細ログ強化
+
+- **字幕候補を事前取得して選択可能に**:
+    - `internal/youtube/youtube.go` の `GetYouTubeVideoInfo` に字幕候補（言語/ラベル/自動字幕/トラックID）を追加。
+    - `src/renderer/js/core/init-listeners.js` で YouTubeリンク入力後に字幕選択モーダルを表示し、`auto / none / 指定字幕` を選択可能にした。
+- **ダウンロード payload を拡張**:
+    - `src/renderer/js/core/env-setup.js` と `app_youtube.go` を更新し、`add-youtube-link` で `captionMode` / `captionLanguageCode` / `captionVssId` を受け渡し可能にした。
+- **デバッグログを追加**:
+    - フロント側: 字幕候補取得結果・選択結果・送信 payload をコンソール出力。
+    - バック側: 字幕候補列挙・選択モード・候補試行順・取得失敗理由・最終採用字幕をログ出力。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8l` に更新。
+
 ### YouTube有効化: confirm依存を廃止してWails互換化
 
 - **同意UIをモーダル化**:

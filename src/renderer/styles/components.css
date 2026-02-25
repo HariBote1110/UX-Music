@@ -417,6 +417,7 @@
 #modal p {
     color: var(--text-muted);
     font-size: 14px;
+    white-space: pre-line;
 }
 
 #modal-input {

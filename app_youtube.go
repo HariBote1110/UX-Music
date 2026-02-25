@@ -14,12 +14,85 @@ import (
 
 // GetYouTubeInfo calls the existing GetYouTubeVideoInfo logic
 func (a *App) GetYouTubeInfo(url string) (interface{}, error) {
-	return youtube.GetYouTubeVideoInfo(url)
+	trimmedURL := strings.TrimSpace(url)
+	fmt.Printf("[YouTube][App] GetYouTubeInfo url=%q\n", trimmedURL)
+	info, err := youtube.GetYouTubeVideoInfo(trimmedURL)
+	if err != nil {
+		fmt.Printf("[YouTube][App] GetYouTubeInfo failed: %v\n", err)
+		return nil, err
+	}
+	fmt.Printf("[YouTube][App] GetYouTubeInfo success title=%q captionTracks=%d\n", info.Title, len(info.CaptionTracks))
+	return info, nil
+}
+
+func extractStringFromMap(data map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := data[key]; ok {
+			if text, ok := value.(string); ok {
+				trimmed := strings.TrimSpace(text)
+				if trimmed != "" {
+					return trimmed
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func parseAddYouTubeLinkPayload(payload interface{}) (string, youtube.TranscriptPreference, error) {
+	preference := youtube.TranscriptPreference{Mode: "auto"}
+
+	switch value := payload.(type) {
+	case string:
+		url := strings.TrimSpace(value)
+		if url == "" {
+			return "", preference, fmt.Errorf("YouTubeのURLが空です")
+		}
+		return url, preference, nil
+	case map[string]interface{}:
+		url := extractStringFromMap(value, "url", "videoUrl", "sourceUrl")
+		if url == "" {
+			return "", preference, fmt.Errorf("YouTubeのURLが空です")
+		}
+
+		preference.Mode = strings.ToLower(extractStringFromMap(value, "captionMode", "mode"))
+		if preference.Mode == "" {
+			preference.Mode = "auto"
+		}
+		preference.LanguageCode = extractStringFromMap(value, "captionLanguageCode", "captionLanguage", "languageCode", "language")
+		preference.VssID = extractStringFromMap(value, "captionVssId", "captionVssID", "vssId", "vssID")
+
+		if captionRaw, ok := value["caption"].(map[string]interface{}); ok {
+			mode := strings.ToLower(extractStringFromMap(captionRaw, "mode"))
+			if mode != "" {
+				preference.Mode = mode
+			}
+			languageCode := extractStringFromMap(captionRaw, "languageCode", "language")
+			if languageCode != "" {
+				preference.LanguageCode = languageCode
+			}
+			vssID := extractStringFromMap(captionRaw, "vssId", "vssID")
+			if vssID != "" {
+				preference.VssID = vssID
+			}
+		}
+
+		return url, preference, nil
+	default:
+		return "", preference, fmt.Errorf("YouTubeリクエスト形式が不正です")
+	}
 }
 
 // AddYouTubeLink は YouTube 動画をダウンロードしてライブラリへ追加する。
-func (a *App) AddYouTubeLink(url string) (map[string]interface{}, error) {
-	trimmedURL := strings.TrimSpace(url)
+func (a *App) AddYouTubeLink(payload interface{}) (map[string]interface{}, error) {
+	trimmedURL, transcriptPreference, err := parseAddYouTubeLinkPayload(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("[YouTube][App] AddYouTubeLink url=%q captionMode=%s captionLanguage=%q captionVssId=%q\n",
+		trimmedURL, transcriptPreference.Mode, transcriptPreference.LanguageCode, transcriptPreference.VssID)
+
 	if trimmedURL == "" {
 		return nil, fmt.Errorf("YouTubeのURLが空です")
 	}
@@ -41,10 +114,13 @@ func (a *App) AddYouTubeLink(url string) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("ライブラリフォルダが未設定です")
 	}
 
-	result, err := youtube.DownloadYouTubeVideo(trimmedURL, libraryPath, audioOnly)
+	result, err := youtube.DownloadYouTubeVideo(trimmedURL, libraryPath, audioOnly, transcriptPreference)
 	if err != nil {
+		fmt.Printf("[YouTube][App] download failed: %v\n", err)
 		return nil, err
 	}
+	fmt.Printf("[YouTube][App] download completed path=%q title=%q subtitleLang=%q subtitleTrack=%q hasLyrics=%v\n",
+		result.Path, result.Title, result.Lang, result.CaptionTrackVssID, strings.TrimSpace(result.Lyrics) != "")
 
 	song := map[string]interface{}{
 		"id":        uuid.NewString(),
@@ -75,10 +151,14 @@ func (a *App) AddYouTubeLink(url string) (map[string]interface{}, error) {
 			if lang == "" {
 				lang = "auto"
 			}
-			subtitleMessage = fmt.Sprintf("字幕から同期歌詞を保存しました（言語: %s）。", lang)
+			subtitleMessage = fmt.Sprintf("字幕から同期歌詞を保存しました（言語: %s / track: %s）。", lang, firstNonEmpty(result.CaptionTrackVssID, "unknown"))
+			fmt.Printf("[YouTube][App] lyrics saved file=%q lang=%q track=%q\n", lrcName, lang, result.CaptionTrackVssID)
 		} else {
 			subtitleMessage = fmt.Sprintf("字幕は取得できましたが、同期歌詞の保存に失敗しました: %v", err)
+			fmt.Printf("[YouTube][App] lyrics save failed: %v\n", err)
 		}
+	} else {
+		fmt.Println("[YouTube][App] lyrics not generated")
 	}
 
 	wailsRuntime.EventsEmit(a.ctx, "scan-complete", []interface{}{savedSong})

@@ -1,3 +1,15 @@
+# Task: YouTube字幕の選択UI追加と詳細ログ強化
+
+## 概要
+YouTube ダウンロード時に「字幕がない」と誤判定された状況の切り分けを容易にするため、字幕候補の選択UIを追加し、選択・取得・変換の詳細ログをコンソールへ出力する。
+
+## 完了条件
+- [x] `GetYouTubeInfo` のレスポンスに字幕候補一覧（言語/種別/トラックID）が含まれること。
+- [x] `src/renderer/js/core/init-listeners.js` で YouTubeリンク追加時に字幕候補の選択モーダルを表示できること。
+- [x] `add-youtube-link` が字幕選択情報（mode/language/vssId）を payload として渡せること。
+- [x] `internal/youtube/youtube.go` で字幕選択情報を考慮し、候補評価・取得結果の詳細ログを出力すること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-8l` に更新されていること。
+
 # Task: YouTube有効化同意ダイアログのWails互換化
 
 ## 概要

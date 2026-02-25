@@ -19,7 +19,11 @@ window.electronAPI = window.electronAPI || {
             } else if (channel === 'save-settings') {
                 window.go.main.App.SaveSettings?.(args[0] || {});
             } else if (channel === 'add-youtube-link') {
-                const url = typeof args[0] === 'string' ? args[0].trim() : '';
+                const payload = args[0];
+                const url = typeof payload === 'string'
+                    ? payload.trim()
+                    : (typeof payload?.url === 'string' ? payload.url.trim() : '');
+                console.log('[YouTube][Wails-Mock] add-youtube-link payload:', payload);
                 if (!url) {
                     window.runtime?.EventsEmit?.('show-notification', 'YouTubeのURLが空です。');
                     return;
@@ -29,8 +33,11 @@ window.electronAPI = window.electronAPI || {
                     return;
                 }
                 window.runtime?.EventsEmit?.('show-notification', 'YouTube動画をダウンロードしています...');
-                window.go.main.App.AddYouTubeLink(url).catch((error) => {
+                window.go.main.App.AddYouTubeLink(payload).then((result) => {
+                    console.log('[YouTube][Wails-Mock] AddYouTubeLink completed:', result);
+                }).catch((error) => {
                     const message = error?.message || String(error);
+                    console.error('[YouTube][Wails-Mock] AddYouTubeLink failed:', message);
                     window.runtime?.EventsEmit?.('show-notification', `YouTube楽曲の処理に失敗しました: ${message}`);
                 });
             } else if (channel === 'set-library-path') {
@@ -255,7 +262,10 @@ window.electronAPI = window.electronAPI || {
                 },
                 'get-youtube-info': async (url) => {
                     if (window.go?.main?.App?.GetYouTubeInfo) {
-                        return await window.go.main.App.GetYouTubeInfo(url);
+                        console.log('[YouTube][Wails-Mock] GetYouTubeInfo request:', url);
+                        const info = await window.go.main.App.GetYouTubeInfo(url);
+                        console.log('[YouTube][Wails-Mock] GetYouTubeInfo response:', info);
+                        return info;
                     }
                     return null;
                 },

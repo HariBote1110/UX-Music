@@ -2,7 +2,7 @@ import { state, elements } from './state.js';
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from '../features/playback-manager.js';
 import { showView } from './navigation.js';
 import { togglePlayPause, seekToStart } from '../features/player.js';
-import { showModal } from '../ui/modal.js';
+import { showModal, showModalAdvanced } from '../ui/modal.js';
 import { handleQuizKeyPress } from '../features/quiz.js';
 import { updateTextOverflowForSelector } from '../ui/utils.js';
 import { updateAudioDevices } from '../ui/ui-manager.js';
@@ -10,6 +10,107 @@ import { updateSearchQuery } from '../ui/ui.js';
 import { musicApi } from './bridge.js';
 import { enableYouTubeFeaturesWithConsent } from '../utils/debug-commands.js';
 const electronAPI = window.electronAPI;
+const isWailsRuntime = () => window.go !== undefined || window.runtime !== undefined;
+
+function buildCaptionSelectionMessage(videoTitle, tracks) {
+    const lines = [
+        `動画: ${videoTitle || 'Unknown Title'}`,
+        '',
+        '使用する字幕を番号で選択してください。',
+        '0: 自動選択（推奨）',
+        '1: 字幕を使用しない',
+    ];
+
+    tracks.forEach((track, index) => {
+        const number = index + 2;
+        const lang = track?.languageCode || 'unknown';
+        const label = track?.label || 'Unknown';
+        const trackId = track?.vssId || 'unknown';
+        const kind = track?.isAuto ? 'auto' : 'manual';
+        lines.push(`${number}: [${lang}] ${label} (${kind}, ${trackId})`);
+    });
+
+    lines.push('');
+    lines.push('例: 0');
+    return lines.join('\n');
+}
+
+function promptYouTubeCaptionSelection(videoInfo) {
+    const tracks = Array.isArray(videoInfo?.captionTracks) ? videoInfo.captionTracks : [];
+    if (tracks.length === 0) {
+        return Promise.resolve({ captionMode: 'auto' });
+    }
+
+    return new Promise((resolve) => {
+        showModalAdvanced({
+            title: '字幕トラックを選択',
+            message: buildCaptionSelectionMessage(videoInfo?.title, tracks),
+            placeholder: '番号を入力（例: 0）',
+            requireInput: true,
+            okText: '決定',
+            cancelText: 'キャンセル',
+            onOk: (rawValue) => {
+                const value = Number.parseInt(String(rawValue).trim(), 10);
+                if (Number.isNaN(value) || value < 0 || value > tracks.length + 1) {
+                    console.warn('[YouTube][UI] 字幕選択入力が不正です。自動選択へフォールバックします:', rawValue);
+                    resolve({ captionMode: 'auto' });
+                    return;
+                }
+
+                if (value === 0) {
+                    resolve({ captionMode: 'auto' });
+                    return;
+                }
+                if (value === 1) {
+                    resolve({ captionMode: 'none' });
+                    return;
+                }
+
+                const selectedTrack = tracks[value - 2];
+                resolve({
+                    captionMode: 'language',
+                    captionLanguageCode: selectedTrack?.languageCode || '',
+                    captionVssId: selectedTrack?.vssId || '',
+                });
+            },
+            onCancel: () => {
+                console.log('[YouTube][UI] 字幕選択がキャンセルされました。');
+                resolve(null);
+            }
+        });
+    });
+}
+
+async function buildYouTubeAddPayload(url) {
+    const trimmedURL = typeof url === 'string' ? url.trim() : '';
+    if (!trimmedURL) {
+        return null;
+    }
+
+    if (!isWailsRuntime()) {
+        return trimmedURL;
+    }
+
+    let payload = { url: trimmedURL, captionMode: 'auto' };
+    try {
+        console.log('[YouTube][UI] 動画情報を取得します:', trimmedURL);
+        const info = await electronAPI.invoke('get-youtube-info', trimmedURL);
+        const tracks = Array.isArray(info?.captionTracks) ? info.captionTracks : [];
+        console.log('[YouTube][UI] 字幕候補数:', tracks.length, tracks);
+
+        if (tracks.length > 0) {
+            const selection = await promptYouTubeCaptionSelection(info);
+            if (!selection) {
+                return null;
+            }
+            payload = { ...payload, ...selection };
+        }
+    } catch (error) {
+        console.error('[YouTube][UI] 動画情報取得に失敗。自動選択で続行します:', error);
+    }
+
+    return payload;
+}
 
 export function initEventListeners() {
     elements.nextBtn.addEventListener('click', playNextSong);
@@ -73,7 +174,14 @@ export function initEventListeners() {
             showModal({
                 title: 'YouTubeのリンク',
                 placeholder: 'https://www.youtube.com/watch?v=...',
-                onOk: (url) => electronAPI.send('add-youtube-link', url)
+                onOk: async (url) => {
+                    const payload = await buildYouTubeAddPayload(url);
+                    if (!payload) {
+                        return;
+                    }
+                    console.log('[YouTube][UI] add-youtube-link payload:', payload);
+                    electronAPI.send('add-youtube-link', payload);
+                }
             });
         });
     }
