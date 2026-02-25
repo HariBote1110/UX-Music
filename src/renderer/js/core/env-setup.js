@@ -18,6 +18,21 @@ window.electronAPI = window.electronAPI || {
                 });
             } else if (channel === 'save-settings') {
                 window.go.main.App.SaveSettings?.(args[0] || {});
+            } else if (channel === 'add-youtube-link') {
+                const url = typeof args[0] === 'string' ? args[0].trim() : '';
+                if (!url) {
+                    window.runtime?.EventsEmit?.('show-notification', 'YouTubeのURLが空です。');
+                    return;
+                }
+                if (!window.go?.main?.App?.AddYouTubeLink) {
+                    window.runtime?.EventsEmit?.('show-notification', 'YouTubeダウンロード機能が利用できません。');
+                    return;
+                }
+                window.runtime?.EventsEmit?.('show-notification', 'YouTube動画をダウンロードしています...');
+                window.go.main.App.AddYouTubeLink(url).catch((error) => {
+                    const message = error?.message || String(error);
+                    window.runtime?.EventsEmit?.('show-notification', `YouTube楽曲の処理に失敗しました: ${message}`);
+                });
             } else if (channel === 'set-library-path') {
                 if (window.go?.main?.App?.SetLibraryPath) {
                     window.go.main.App.SetLibraryPath()

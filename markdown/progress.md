@@ -1,5 +1,20 @@
 # 開発進捗ログ (progress.md)
 
+## 2026年2月25日
+
+### YouTubeダウンロード: 字幕同時取得と同期歌詞（LRC）自動生成
+
+- **字幕取得とLRC変換を追加**:
+    - `internal/youtube/youtube.go` に字幕トラック優先ロジック（手動字幕優先、日本語/英語優先）を追加。
+    - 字幕セグメントを LRC 形式へ変換し、ダウンロード結果に `lyrics` / `lang` を含めるように変更。
+- **Wailsバックエンド導線を追加**:
+    - `app_youtube.go` に `AddYouTubeLink` を実装し、YouTubeダウンロード後にライブラリ保存と `scan-complete` イベント通知を実施。
+    - 字幕が取得できた場合は `Lyrics` ストアへ `.lrc` を保存し、既存の歌詞表示導線で再利用可能にした。
+- **フロント呼び出しを接続**:
+    - `src/renderer/js/core/env-setup.js` で `add-youtube-link` を Wails `AddYouTubeLink` に接続。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8i` に更新。
+
 ## 2026年2月17日
 
 ### Wailsバックエンド再生でイコライザーが効かない不具合を修正

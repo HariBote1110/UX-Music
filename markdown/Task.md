@@ -1,3 +1,15 @@
+# Task: YouTube字幕の同時取得と同期歌詞化
+
+## 概要
+YouTube ダウンロード時に字幕も取得し、同期歌詞（`.lrc`）として自動生成・保存する。生成された歌詞は既存の歌詞表示と LRC エディタでそのまま利用できることを目標とする。
+
+## 完了条件
+- [x] `internal/youtube/youtube.go` で字幕トラックの優先選択（手動字幕優先、日本語/英語優先）と LRC 変換が実装されていること。
+- [x] `app_youtube.go` に `AddYouTubeLink` が実装され、ダウンロード結果をライブラリ保存し、字幕がある場合 `.lrc` を保存すること。
+- [x] `src/renderer/js/core/env-setup.js` で `add-youtube-link` が Wails 側 `AddYouTubeLink` を呼び出すこと。
+- [x] 字幕がない動画でもダウンロード自体は成功し、ユーザー通知されること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-8i` に更新されていること。
+
 # Task: LRCエディタのタイムライン編集化と既存LRC再編集
 
 ## 概要
