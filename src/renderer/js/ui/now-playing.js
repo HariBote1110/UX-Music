@@ -1,9 +1,115 @@
 // src/renderer/js/ui/now-playing.js
 
 import { state, elements } from '../core/state.js';
-import { setEqualizerColorFromArtwork } from '../features/player.js';
+import { setEqualizerColorFromArtwork, getCurrentTime, isPlaying } from '../features/player.js';
 import { resolveArtworkPath, formatSongTitle, checkTextOverflow } from './utils.js';
 const electronAPI = window.electronAPI;
+
+const VIDEO_PREVIEW_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.ogv'];
+const VIDEO_SYNC_INTERVAL_MS = 250;
+const VIDEO_SYNC_TOLERANCE_SECONDS = 0.45;
+
+let sidebarPreviewVideo = null;
+let sidebarPreviewTimerId = null;
+
+function isWailsRuntime() {
+    return window.go !== undefined;
+}
+
+function clearSidebarPreviewVideo() {
+    if (sidebarPreviewTimerId !== null) {
+        clearInterval(sidebarPreviewTimerId);
+        sidebarPreviewTimerId = null;
+    }
+    if (sidebarPreviewVideo) {
+        sidebarPreviewVideo.pause();
+        sidebarPreviewVideo.removeAttribute('src');
+        sidebarPreviewVideo.load();
+        sidebarPreviewVideo.remove();
+        sidebarPreviewVideo = null;
+    }
+}
+
+function buildFileURL(path) {
+    if (typeof path !== 'string' || path.trim() === '') return '';
+    const normalisedPath = path.replace(/\\/g, '/');
+    const safePath = encodeURI(normalisedPath).replace(/#/g, '%23');
+    return `file://${safePath}`;
+}
+
+function isVideoPreviewSupported(path) {
+    if (typeof path !== 'string') return false;
+    const lowerPath = path.trim().toLowerCase();
+    return VIDEO_PREVIEW_EXTENSIONS.some(ext => lowerPath.endsWith(ext));
+}
+
+function syncSidebarPreviewVideo(video) {
+    if (!video) return;
+    const targetTime = getCurrentTime();
+
+    if (Number.isFinite(targetTime) && video.readyState >= 1 && Math.abs(video.currentTime - targetTime) > VIDEO_SYNC_TOLERANCE_SECONDS) {
+        try {
+            video.currentTime = Math.max(0, targetTime);
+        } catch (error) {
+            // Ignore sporadic seek errors during source warm-up.
+        }
+    }
+
+    if (isPlaying()) {
+        if (video.paused) {
+            const playPromise = video.play();
+            if (playPromise && typeof playPromise.catch === 'function') {
+                playPromise.catch(() => { });
+            }
+        }
+    } else if (!video.paused) {
+        video.pause();
+    }
+}
+
+function attachSidebarPreviewVideo(container, songPath, posterSrc) {
+    if (!container || !songPath) return false;
+    if (!isVideoPreviewSupported(songPath)) {
+        console.log('[NowPlaying][Video] 右サイドバー映像プレビュー対象外の拡張子です:', songPath);
+        return false;
+    }
+
+    const sourceURL = buildFileURL(songPath);
+    if (!sourceURL) {
+        console.warn('[NowPlaying][Video] 映像プレビュー用URLの生成に失敗しました。');
+        return false;
+    }
+
+    clearSidebarPreviewVideo();
+
+    const preview = document.createElement('video');
+    preview.muted = true;
+    preview.playsInline = true;
+    preview.autoplay = false;
+    preview.preload = 'auto';
+    preview.controls = false;
+    preview.disablePictureInPicture = true;
+    preview.src = sourceURL;
+    if (posterSrc) preview.poster = posterSrc;
+
+    preview.addEventListener('loadedmetadata', () => {
+        syncSidebarPreviewVideo(preview);
+    });
+
+    preview.addEventListener('error', () => {
+        console.warn('[NowPlaying][Video] 右サイドバー映像プレビューの読み込みに失敗しました:', songPath);
+    });
+
+    container.appendChild(preview);
+    sidebarPreviewVideo = preview;
+    sidebarPreviewTimerId = window.setInterval(() => {
+        syncSidebarPreviewVideo(preview);
+    }, VIDEO_SYNC_INTERVAL_MS);
+    syncSidebarPreviewVideo(preview);
+
+    console.log('[NowPlaying][Video] 右サイドバー映像プレビューを開始しました:', songPath);
+    return true;
+}
 
 function getYoutubeVideoId(url) {
     if (typeof url !== 'string') return null;
@@ -49,6 +155,8 @@ export function updateNowPlayingView(song) {
     } = elements;
 
     const localPlayer = document.getElementById('main-player');
+
+    clearSidebarPreviewVideo();
 
     if (localPlayer) {
         document.body.appendChild(localPlayer);
@@ -106,25 +214,36 @@ export function updateNowPlayingView(song) {
 
         const artworkCandidates = buildArtworkCandidates(artwork);
         let artworkIndex = 0;
+        let resolvedArtworkSrc = artworkCandidates[artworkIndex];
 
         img.onerror = () => {
-            const failedSrc = artworkCandidates[artworkIndex];
+            const failedSrc = resolvedArtworkSrc;
             artworkIndex += 1;
             if (artworkIndex < artworkCandidates.length) {
                 console.warn('[NowPlaying] Artwork load failed, fallback to next source:', failedSrc);
-                img.src = artworkCandidates[artworkIndex];
+                resolvedArtworkSrc = artworkCandidates[artworkIndex];
+                img.src = resolvedArtworkSrc;
                 return;
             }
             console.warn('[NowPlaying] Artwork load failed on all candidates:', artworkCandidates);
             img.onerror = null;
         };
-        img.src = artworkCandidates[artworkIndex];
+        img.src = resolvedArtworkSrc;
 
-        if (masterSong.hasVideo && localPlayer && nowPlayingArtworkContainer) {
+        if (masterSong.hasVideo && nowPlayingArtworkContainer) {
             nowPlayingArtworkContainer.classList.add('video-mode');
-            localPlayer.poster = img.src;
-            localPlayer.style.display = 'block';
-            nowPlayingArtworkContainer.appendChild(localPlayer);
+            if (isWailsRuntime()) {
+                const previewAttached = attachSidebarPreviewVideo(nowPlayingArtworkContainer, masterSong.path, resolvedArtworkSrc);
+                if (!previewAttached) {
+                    nowPlayingArtworkContainer.appendChild(img);
+                }
+            } else if (localPlayer) {
+                localPlayer.poster = resolvedArtworkSrc;
+                localPlayer.style.display = 'block';
+                nowPlayingArtworkContainer.appendChild(localPlayer);
+            } else {
+                nowPlayingArtworkContainer.appendChild(img);
+            }
         } else if (nowPlayingArtworkContainer) {
             nowPlayingArtworkContainer.classList.remove('video-mode');
             nowPlayingArtworkContainer.appendChild(img);
