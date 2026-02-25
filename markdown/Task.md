@@ -1,3 +1,14 @@
+# Task: Wailsビルド用のアイコン設定
+
+## 概要
+Wailsのビルド時に既存のアイコン `src/renderer/assets/ux-music-icon.png` を使用するように設定する。
+
+## 完了条件
+- [x] `src/renderer/assets/ux-music-icon.png` が `build/appicon.png` にコピーされていること。
+- [x] macOS用の `build/darwin/icon.png` にも同一のアイコンが配置されていること（Wailsの推奨構成）。
+- [x] `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-8p` に更新されていること。
+- [x] `markdown/requirement.md` のバージョンが `0.1.9-Beta-8p` に更新されていること。
+
 # Task: 右サイドバー映像プレビューのWails配信経路修正（file://禁止対応）
 
 ## 概要
