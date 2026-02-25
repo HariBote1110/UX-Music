@@ -1,5 +1,36 @@
 const electronAPI = window.electronAPI;
 import { setVisualizerFpsLimit, toggleVisualizerEcoMode } from '../features/player.js';
+import { showModalAdvanced } from '../ui/modal.js';
+
+const YOUTUBE_CONSENT_MESSAGE = `
+    YouTube機能の有効化に関する注意事項：
+
+    この機能を使用すると、YouTube上のコンテンツをダウンロードまたはストリーミング再生できますが、これは技術的な実験を目的としたものです。
+
+    ・ダウンロードしたコンテンツは、私的利用の範囲を遵守してください。
+    ・著作権で保護されたコンテンツの不正なダウンロードや再配布は、法律で固く禁じられています。
+    ・この機能を使用したことによって生じるいかなる法的問題についても、開発者は一切の責任を負いません。
+
+    上記を理解し、自己の責任において機能を使用することに同意しますか？
+`;
+
+function requestYouTubeConsent() {
+    if (window.go !== undefined) {
+        return new Promise((resolve) => {
+            showModalAdvanced({
+                title: 'YouTube機能の有効化',
+                message: YOUTUBE_CONSENT_MESSAGE.trim(),
+                placeholder: '',
+                requireInput: false,
+                okText: '同意して有効化',
+                cancelText: 'キャンセル',
+                onOk: () => resolve(true),
+                onCancel: () => resolve(false),
+            });
+        });
+    }
+    return Promise.resolve(confirm(YOUTUBE_CONSENT_MESSAGE));
+}
 
 function revealYouTubeFeatureUI() {
     document.querySelectorAll('[data-feature="youtube"], #add-youtube-btn, #add-youtube-playlist-btn').forEach((el) => {
@@ -17,19 +48,7 @@ export async function enableYouTubeFeaturesWithConsent({ showAlert = true } = {}
         return true;
     }
 
-    const confirmationMessage = `
-        YouTube機能の有効化に関する注意事項：
-
-        この機能を使用すると、YouTube上のコンテンツをダウンロードまたはストリーミング再生できますが、これは技術的な実験を目的としたものです。
-
-        ・ダウンロードしたコンテンツは、私的利用の範囲を遵守してください。
-        ・著作権で保護されたコンテンツの不正なダウンロードや再配布は、法律で固く禁じられています。
-        ・この機能を使用したことによって生じるいかなる法的問題についても、開発者は一切の責任を負いません。
-
-        上記を理解し、自己の責任において機能を使用することに同意しますか？
-    `;
-
-    const confirmation = confirm(confirmationMessage);
+    const confirmation = await requestYouTubeConsent();
     if (!confirmation) {
         console.log('[DEBUG] YouTube feature activation cancelled by user.');
         return false;

@@ -1,3 +1,14 @@
+# Task: YouTube有効化同意ダイアログのWails互換化
+
+## 概要
+YouTube機能の有効化時に `confirm()` が Wails 環境で期待どおり動作しないケースに対応するため、アプリ内モーダルで同意取得できるようにする。
+
+## 完了条件
+- [x] `src/renderer/js/ui/modal.js` が `onCancel` を扱えること。
+- [x] `src/renderer/js/utils/debug-commands.js` の YouTube同意処理が Wails 時にアプリ内モーダルを使うこと。
+- [x] 「ライブラリを管理」連打導線と `uxDebug.enableYouTubeFeatures()` の両方で同じ同意処理を共有すること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-8k` に更新されていること。
+
 # Task: YouTube機能有効化のWails対応（ライブラリ管理ボタン連打）
 
 ## 概要

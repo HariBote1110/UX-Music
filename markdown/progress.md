@@ -2,6 +2,16 @@
 
 ## 2026年2月25日
 
+### YouTube有効化: confirm依存を廃止してWails互換化
+
+- **同意UIをモーダル化**:
+    - `src/renderer/js/ui/modal.js` に `onCancel` を追加し、キャンセル時のコールバックを取得できるように拡張。
+    - `src/renderer/js/utils/debug-commands.js` で、Wails 環境時はアプリ内モーダルで同意確認を行うように変更。
+- **有効化失敗の解消**:
+    - `confirm()` が `false` 返却になって有効化できないケースでも、同意取得後に `enableYouTube` を保存して UI を表示できるよう改善。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8k` に更新。
+
 ### YouTube機能有効化: Wails対応の連打導線を追加
 
 - **有効化処理を共通化**:
