@@ -1,3 +1,15 @@
+# Task: YouTube字幕取得のXML互換修正（選択2で字幕なし誤判定）
+
+## 概要
+YouTube字幕トラックを明示選択（例: `2`）しても「字幕が見つからない」と表示される問題に対応するため、`timedtext format=3` を含む字幕XML形式へ対応し、選択済みトラックから同期歌詞を生成できるようにする。
+
+## 完了条件
+- [x] `internal/youtube/youtube.go` のトラック直取得パーサーが `xml-text`（`<text start dur>`）と `xml-timedtext-body`（`<p t d>`）の両方を扱えること。
+- [x] `u74OTPd6W5Q` のように `GetTranscript(lang)` が失敗しても、直取得字幕からLRC生成できること。
+- [x] 失敗時ログに字幕レスポンス種別・バイト数・短いスニペットが出力され、原因追跡できること。
+- [x] `internal/youtube/youtube_test.go` に字幕XML形式ごとの単体テストが追加されていること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-8m` に更新されていること。
+
 # Task: YouTube字幕の選択UI追加と詳細ログ強化
 
 ## 概要

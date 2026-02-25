@@ -58,3 +58,58 @@ func TestTranscriptToLRC(t *testing.T) {
 		t.Fatalf("second lyric line mismatch: %q", lrc)
 	}
 }
+
+func TestParseTranscriptXMLBodyLegacyText(t *testing.T) {
+	body := []byte(`<?xml version="1.0" encoding="utf-8"?>
+<transcript>
+  <text start="1.23" dur="1.5">Hello &amp; world</text>
+  <text start="3.00" dur="2.0">Line two</text>
+</transcript>`)
+
+	transcript, formatName, err := parseTranscriptXMLBody(body)
+	if err != nil {
+		t.Fatalf("parseTranscriptXMLBody should succeed: %v", err)
+	}
+	if formatName != "xml-text" {
+		t.Fatalf("unexpected format: %q", formatName)
+	}
+	if len(transcript) != 2 {
+		t.Fatalf("segment length mismatch: got=%d want=2", len(transcript))
+	}
+	if transcript[0].StartMs != 1230 {
+		t.Fatalf("unexpected first startMs: %d", transcript[0].StartMs)
+	}
+	if transcript[0].Text != "Hello & world" {
+		t.Fatalf("unexpected first text: %q", transcript[0].Text)
+	}
+}
+
+func TestParseTranscriptXMLBodyTimedTextFormat3(t *testing.T) {
+	body := []byte(`<?xml version="1.0" encoding="utf-8"?>
+<timedtext format="3">
+  <body>
+    <p t="22920" d="3100">I call your name</p>
+    <p t="26020" d="3120"><s>Can you</s><s>hear me?</s></p>
+  </body>
+</timedtext>`)
+
+	transcript, formatName, err := parseTranscriptXMLBody(body)
+	if err != nil {
+		t.Fatalf("parseTranscriptXMLBody should succeed: %v", err)
+	}
+	if formatName != "xml-timedtext-body" {
+		t.Fatalf("unexpected format: %q", formatName)
+	}
+	if len(transcript) != 2 {
+		t.Fatalf("segment length mismatch: got=%d want=2", len(transcript))
+	}
+	if transcript[0].StartMs != 22920 {
+		t.Fatalf("unexpected first startMs: %d", transcript[0].StartMs)
+	}
+	if transcript[0].Text != "I call your name" {
+		t.Fatalf("unexpected first text: %q", transcript[0].Text)
+	}
+	if transcript[1].Text != "Can you hear me?" {
+		t.Fatalf("unexpected second text: %q", transcript[1].Text)
+	}
+}

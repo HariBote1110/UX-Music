@@ -2,6 +2,19 @@
 
 ## 2026年2月25日
 
+### YouTube字幕: 明示選択時の「字幕なし」誤判定を修正
+
+- **原因特定**:
+    - 対象動画 `u74OTPd6W5Q` では字幕トラック自体は存在するが、字幕XMLが `timedtext format=3`（`<body><p t d>`）形式のため、従来の `<text start dur>` 専用パーサーでは空判定になっていた。
+    - 同時に `GetTranscript(\"en\")` は `status code: 400` となり、フォールバック経路でも歌詞生成できない状態だった。
+- **修正内容**:
+    - `internal/youtube/youtube.go` に `parseTranscriptXMLBody` を追加し、`xml-text` / `xml-timedtext-body` の両形式を解析。
+    - `loadTranscriptByTrack` にレスポンス種別ログ（status/content-type/bytes）と失敗時スニペットログを追加し、原因追跡を容易化。
+- **テスト追加**:
+    - `internal/youtube/youtube_test.go` に、旧形式XMLと `format=3` XMLのパース試験を追加。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8m` に更新。
+
 ### YouTube字幕: 選択UI追加と詳細ログ強化
 
 - **字幕候補を事前取得して選択可能に**:

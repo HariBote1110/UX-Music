@@ -215,6 +215,83 @@ type transcriptXML struct {
 		Dur   string `xml:"dur,attr"`
 		Text  string `xml:",chardata"`
 	} `xml:"text"`
+	Body struct {
+		Entries []struct {
+			Start string `xml:"t,attr"`
+			Dur   string `xml:"d,attr"`
+			Text  string `xml:",chardata"`
+			Span  []struct {
+				Text string `xml:",chardata"`
+			} `xml:"s"`
+		} `xml:"p"`
+	} `xml:"body"`
+}
+
+func appendTranscriptSegment(result youtube.VideoTranscript, startMs int, durationMs int, rawText string) youtube.VideoTranscript {
+	text := sanitiseTranscriptText(rawText)
+	if text == "" {
+		return result
+	}
+
+	return append(result, youtube.TranscriptSegment{
+		Text:       text,
+		StartMs:    startMs,
+		OffsetText: formatLRCFromMilliseconds(startMs),
+		Duration:   durationMs,
+	})
+}
+
+func parseTranscriptXMLBody(body []byte) (youtube.VideoTranscript, string, error) {
+	var parsed transcriptXML
+	if err := xml.Unmarshal(body, &parsed); err != nil {
+		return nil, "", err
+	}
+
+	result := make(youtube.VideoTranscript, 0, len(parsed.Entries)+len(parsed.Body.Entries))
+
+	for _, entry := range parsed.Entries {
+		startSeconds, err := strconv.ParseFloat(strings.TrimSpace(entry.Start), 64)
+		if err != nil {
+			continue
+		}
+		durationSeconds, _ := strconv.ParseFloat(strings.TrimSpace(entry.Dur), 64)
+		startMs := int(math.Round(startSeconds * 1000))
+		durationMs := int(math.Round(durationSeconds * 1000))
+		result = appendTranscriptSegment(result, startMs, durationMs, entry.Text)
+	}
+	if len(result) > 0 {
+		return result, "xml-text", nil
+	}
+
+	for _, entry := range parsed.Body.Entries {
+		startMilliseconds, err := strconv.ParseFloat(strings.TrimSpace(entry.Start), 64)
+		if err != nil {
+			continue
+		}
+		durationMilliseconds, _ := strconv.ParseFloat(strings.TrimSpace(entry.Dur), 64)
+		startMs := int(math.Round(startMilliseconds))
+		durationMs := int(math.Round(durationMilliseconds))
+
+		spanTexts := make([]string, 0, len(entry.Span))
+		for _, span := range entry.Span {
+			if strings.TrimSpace(span.Text) == "" {
+				continue
+			}
+			spanTexts = append(spanTexts, span.Text)
+		}
+
+		joinedSpan := strings.TrimSpace(strings.Join(spanTexts, " "))
+		if joinedSpan != "" {
+			result = appendTranscriptSegment(result, startMs, durationMs, joinedSpan)
+			continue
+		}
+		result = appendTranscriptSegment(result, startMs, durationMs, entry.Text)
+	}
+
+	if len(result) == 0 {
+		return nil, "", fmt.Errorf("no transcript entry in track response")
+	}
+	return result, "xml-timedtext-body", nil
 }
 
 func loadTranscriptByTrack(ctx context.Context, track youtube.CaptionTrack) (youtube.VideoTranscript, error) {
@@ -243,36 +320,22 @@ func loadTranscriptByTrack(ctx context.Context, track youtube.CaptionTrack) (you
 		return nil, err
 	}
 
-	var parsed transcriptXML
-	if err := xml.Unmarshal(body, &parsed); err != nil {
-		return nil, err
-	}
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	fmt.Printf("[YouTube][Transcript] direct track response lang=%q vssId=%q status=%d contentType=%q bytes=%d\n",
+		strings.TrimSpace(track.LanguageCode), strings.TrimSpace(track.VssID), resp.StatusCode, contentType, len(body))
 
-	result := make(youtube.VideoTranscript, 0, len(parsed.Entries))
-	for _, entry := range parsed.Entries {
-		startSeconds, err := strconv.ParseFloat(strings.TrimSpace(entry.Start), 64)
-		if err != nil {
-			continue
+	result, formatName, parseErr := parseTranscriptXMLBody(body)
+	if parseErr != nil {
+		snippet := strings.TrimSpace(string(body))
+		if len(snippet) > 160 {
+			snippet = snippet[:160]
 		}
-		durationSeconds, _ := strconv.ParseFloat(strings.TrimSpace(entry.Dur), 64)
-		startMs := int(math.Round(startSeconds * 1000))
-		durationMs := int(math.Round(durationSeconds * 1000))
-		text := sanitiseTranscriptText(entry.Text)
-		if text == "" {
-			continue
-		}
-
-		result = append(result, youtube.TranscriptSegment{
-			Text:       text,
-			StartMs:    startMs,
-			OffsetText: formatLRCFromMilliseconds(startMs),
-			Duration:   durationMs,
-		})
+		return nil, fmt.Errorf("caption parse failed (lang=%q vssId=%q): %w snippet=%q",
+			strings.TrimSpace(track.LanguageCode), strings.TrimSpace(track.VssID), parseErr, snippet)
 	}
 
-	if len(result) == 0 {
-		return nil, fmt.Errorf("no transcript entry in track response")
-	}
+	fmt.Printf("[YouTube][Transcript] direct track parsed format=%s lang=%q vssId=%q segments=%d\n",
+		formatName, strings.TrimSpace(track.LanguageCode), strings.TrimSpace(track.VssID), len(result))
 	return result, nil
 }
 
