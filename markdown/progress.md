@@ -2,6 +2,23 @@
 
 ## 2026年2月25日
 
+### Wails build後の m4a/mp4 再生失敗を修正（ffmpeg探索強化）
+
+- **不具合内容**:
+    - `wails dev` では再生可能だが、`wails build` 後の `.app` 起動時に `m4a/mp4` が再生失敗し、次曲へスキップされる状況が発生。
+- **原因**:
+    - `pkg/audio/player.go` の `ffmpeg/ffprobe` 解決が `exec.LookPath`（`PATH`）依存だったため、Finder 起動時などの限定PATH環境で外部コマンドを見失っていた。
+- **修正内容**:
+    - `pkg/audio/player.go` の `resolveCommandPath` を強化し、次の順で探索するよう変更。
+      - 明示設定された `config.FFmpegPath` / `config.FFprobePath`（実行可能判定付き）
+      - `PATH` (`exec.LookPath`)
+      - `.app` 実行ファイル基準の `../Resources/bin` と `../Resources`
+      - `/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, `/usr/bin`, `/bin`
+    - 解決結果を `sync.Map` でキャッシュし、再探索を抑制。
+    - 解決できない場合は `PATH` を含むエラーを返し、診断しやすくした。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8q` に更新。
+
 ### 右サイドバー映像: Wailsでの `file://` ブロックを修正
 
 - **不具合内容**:

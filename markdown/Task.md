@@ -1,3 +1,15 @@
+# Task: Wails build後の m4a/mp4 再生失敗を修正（ffmpeg探索強化）
+
+## 概要
+`wails dev` では再生できるが `wails build` 後のアプリで `m4a/mp4` が再生失敗して次曲へスキップされる問題に対応するため、`ffmpeg/ffprobe` コマンド解決を `PATH` 依存からフォールバック探索付きへ強化する。
+
+## 完了条件
+- [x] `pkg/audio/player.go` の `resolveCommandPath` が `PATH` だけでなく Homebrew 標準パスを探索すること。
+- [x] `.app` 実行時に `Contents/Resources/bin` および `Contents/Resources` 配下のコマンドも探索対象になること。
+- [x] 解決結果をキャッシュし、再生中に毎回探索しないこと。
+- [x] `ffmpeg/ffprobe` が解決できない場合、`PATH` を含む明示的なエラーメッセージが返ること。
+- [x] `src/renderer/js/core/bridge.js` と `markdown/requirement.md` のバージョンが `0.1.9-Beta-8q` に更新されていること。
+
 # Task: Wailsビルド用のアイコン設定
 
 ## 概要

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,6 +46,8 @@ const (
 )
 
 var equalizerFrequencies = [equalizerBandCount]float64{31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000}
+
+var resolvedCommandPaths sync.Map
 
 type biquadCoefficients struct {
 	b0 float64
@@ -1244,19 +1247,85 @@ func newFFmpegDecoder(filePath string) (*ffmpegDecoder, error) {
 	return d, nil
 }
 
+func isExecutablePath(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return false
+	}
+	info, err := os.Stat(trimmed)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	return info.Mode().Perm()&0o111 != 0
+}
+
+func commandBinaryName(name string) string {
+	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(name), ".exe") {
+		return name + ".exe"
+	}
+	return name
+}
+
+func buildCommandFallbackCandidates(name string) []string {
+	binaryName := commandBinaryName(name)
+	candidates := make([]string, 0, 8)
+
+	executablePath, err := os.Executable()
+	if err == nil {
+		executableDir := filepath.Dir(executablePath)
+		candidates = append(candidates,
+			filepath.Clean(filepath.Join(executableDir, "..", "Resources", "bin", binaryName)),
+			filepath.Clean(filepath.Join(executableDir, "..", "Resources", binaryName)),
+		)
+	}
+
+	candidates = append(candidates,
+		filepath.Join("/opt/homebrew/bin", binaryName),
+		filepath.Join("/usr/local/bin", binaryName),
+		filepath.Join("/opt/local/bin", binaryName),
+		filepath.Join("/usr/bin", binaryName),
+		filepath.Join("/bin", binaryName),
+	)
+
+	return candidates
+}
+
 func resolveCommandPath(name string) (string, error) {
-	if name == "ffmpeg" && config.FFmpegPath != "" {
+	if cachedPath, ok := resolvedCommandPaths.Load(name); ok {
+		if path, ok := cachedPath.(string); ok && isExecutablePath(path) {
+			return path, nil
+		}
+		resolvedCommandPaths.Delete(name)
+	}
+
+	if name == "ffmpeg" && isExecutablePath(config.FFmpegPath) {
+		resolvedCommandPaths.Store(name, config.FFmpegPath)
 		return config.FFmpegPath, nil
 	}
-	if name == "ffprobe" && config.FFprobePath != "" {
+	if name == "ffprobe" && isExecutablePath(config.FFprobePath) {
+		resolvedCommandPaths.Store(name, config.FFprobePath)
 		return config.FFprobePath, nil
 	}
 
 	path, err := exec.LookPath(name)
-	if err != nil {
-		return "", fmt.Errorf("%s not found in PATH", name)
+	if err == nil && isExecutablePath(path) {
+		resolvedCommandPaths.Store(name, path)
+		return path, nil
 	}
-	return path, nil
+
+	for _, candidate := range buildCommandFallbackCandidates(name) {
+		if !isExecutablePath(candidate) {
+			continue
+		}
+		resolvedCommandPaths.Store(name, candidate)
+		fmt.Printf("[Audio] command fallback resolved: %s -> %s\n", name, candidate)
+		return candidate, nil
+	}
+
+	return "", fmt.Errorf("%s が見つかりません (PATH=%q)", name, os.Getenv("PATH"))
 }
 
 func probeDurationSeconds(filePath string) (float64, bool) {
