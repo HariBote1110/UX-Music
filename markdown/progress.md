@@ -2,6 +2,17 @@
 
 ## 2026年2月25日
 
+### 右サイドバー映像: Wailsでの `file://` ブロックを修正
+
+- **不具合内容**:
+    - 右サイドバー映像プレビューが `Not allowed to load local resource: file://...` で失敗し、サムネイルのみ表示される状態だった。
+- **修正内容**:
+    - `src/renderer/js/ui/now-playing.js` の映像プレビューURL生成を修正し、Wails時は `/safe-media/...` を使用。
+    - Electron時は従来どおり `file://` を維持し、実行環境で経路を分岐。
+    - 読み込み失敗ログを強化し、`songPath` と `sourceURL` を同時出力するよう変更。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8o` に更新。
+
 ### 右サイドバー: 映像付きローカル曲の映像プレビュー対応
 
 - **Wails向け映像プレビューを追加**:

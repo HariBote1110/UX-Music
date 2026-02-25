@@ -30,9 +30,16 @@ function clearSidebarPreviewVideo() {
     }
 }
 
-function buildFileURL(path) {
+function buildVideoPreviewURL(path) {
     if (typeof path !== 'string' || path.trim() === '') return '';
     const normalisedPath = path.replace(/\\/g, '/');
+
+    if (isWailsRuntime()) {
+        const relativePath = normalisedPath.replace(/^[/\\]+/, '');
+        const safePath = encodeURI(relativePath).replace(/#/g, '%23');
+        return `/safe-media/${safePath}`;
+    }
+
     const safePath = encodeURI(normalisedPath).replace(/#/g, '%23');
     return `file://${safePath}`;
 }
@@ -74,7 +81,7 @@ function attachSidebarPreviewVideo(container, songPath, posterSrc) {
         return false;
     }
 
-    const sourceURL = buildFileURL(songPath);
+    const sourceURL = buildVideoPreviewURL(songPath);
     if (!sourceURL) {
         console.warn('[NowPlaying][Video] 映像プレビュー用URLの生成に失敗しました。');
         return false;
@@ -97,7 +104,7 @@ function attachSidebarPreviewVideo(container, songPath, posterSrc) {
     });
 
     preview.addEventListener('error', () => {
-        console.warn('[NowPlaying][Video] 右サイドバー映像プレビューの読み込みに失敗しました:', songPath);
+        console.warn('[NowPlaying][Video] 右サイドバー映像プレビューの読み込みに失敗しました:', { songPath, sourceURL });
     });
 
     container.appendChild(preview);

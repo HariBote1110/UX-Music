@@ -1,3 +1,14 @@
+# Task: 右サイドバー映像プレビューのWails配信経路修正（file://禁止対応）
+
+## 概要
+Wails環境で右サイドバー映像プレビューが `Not allowed to load local resource` になる問題に対応するため、映像プレビューの参照経路を `file://` から `/safe-media/` へ切り替える。
+
+## 完了条件
+- [x] `src/renderer/js/ui/now-playing.js` で Wails 実行時の映像プレビュー URL が `/safe-media/...` になること。
+- [x] 映像読み込み失敗ログに `songPath` と `sourceURL` が出力され、原因を追跡できること。
+- [x] Electron 実行時の既存挙動（`file://`）を維持すること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-8o` に更新されていること。
+
 # Task: 右サイドバーの映像プレビュー対応（映像付きローカル曲）
 
 ## 概要
