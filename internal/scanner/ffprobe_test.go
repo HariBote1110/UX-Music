@@ -1,6 +1,11 @@
 package scanner
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+)
 
 func TestParseLeadingInt(t *testing.T) {
 	tests := []struct {
@@ -57,5 +62,54 @@ func TestFirstNonEmptyTag(t *testing.T) {
 	got := firstNonEmptyTag(tags, "title", "\u00a9nam")
 	if got != "Sample Song" {
 		t.Fatalf("firstNonEmptyTag returned %q, want %q", got, "Sample Song")
+	}
+}
+
+func TestIsExecutablePath(t *testing.T) {
+	dir := t.TempDir()
+	execFile := filepath.Join(dir, "exec-bin")
+	nonExecFile := filepath.Join(dir, "plain-file")
+
+	if err := os.WriteFile(execFile, []byte("#!/bin/sh\necho ok\n"), 0755); err != nil {
+		t.Fatalf("failed to create executable file: %v", err)
+	}
+	if err := os.WriteFile(nonExecFile, []byte("plain"), 0644); err != nil {
+		t.Fatalf("failed to create non-executable file: %v", err)
+	}
+
+	if !isExecutablePath(execFile) {
+		t.Fatalf("isExecutablePath(%q) = false, want true", execFile)
+	}
+
+	if runtime.GOOS != "windows" && isExecutablePath(nonExecFile) {
+		t.Fatalf("isExecutablePath(%q) = true, want false", nonExecFile)
+	}
+
+	if isExecutablePath(dir) {
+		t.Fatalf("isExecutablePath(%q) = true, want false for directory", dir)
+	}
+}
+
+func TestBuildCommandFallbackCandidates(t *testing.T) {
+	binary := commandBinaryName("ffmpeg")
+	candidates := buildCommandFallbackCandidates("ffmpeg")
+
+	required := []string{
+		filepath.Join("/opt/homebrew/bin", binary),
+		filepath.Join("/usr/local/bin", binary),
+		filepath.Join("/usr/bin", binary),
+	}
+
+	for _, want := range required {
+		found := false
+		for _, got := range candidates {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("fallback candidates missing %q", want)
+		}
 	}
 }

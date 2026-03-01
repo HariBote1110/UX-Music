@@ -1240,3 +1240,27 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-7v` に更新。
+
+---
+
+## 2026年3月2日
+
+### FLACインポート時のジャケット未取得修正（Wails）
+
+- **課題**:
+    - GUI起動時の限定 `PATH` 環境で `internal/scanner` が `ffmpeg/ffprobe` を解決できず、FLAC取り込み時にジャケット抽出とメタデータ補完が失敗するケースがあった。
+- **対応**:
+    - `internal/scanner/ffprobe.go`:
+      - `resolveMediaCommandPath()` を強化し、以下の順で実行ファイルを探索するよう変更。
+        - `config.FFmpegPath` / `config.FFprobePath`
+        - `PATH`
+        - `.app/Contents/Resources/bin` と `.app/Contents/Resources`
+        - `/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`, `/usr/bin`, `/bin`
+      - 実行可能ファイル判定とキャッシュを追加し、無効パスの使い回しを防止。
+    - `internal/scanner/ffprobe_test.go`:
+      - 実行可能判定およびフォールバック候補生成の単体テストを追加。
+- **検証**:
+    - `go test ./internal/scanner`
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-8s` に更新。
