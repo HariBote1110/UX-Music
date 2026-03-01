@@ -3,6 +3,8 @@ package main
 import (
 	"reflect"
 	"testing"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 func TestHasNumericLoudnessValue(t *testing.T) {
@@ -45,5 +47,42 @@ func TestFilterPendingLoudnessPaths(t *testing.T) {
 
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("filterPendingLoudnessPaths() = %#v, want %#v", got, want)
+	}
+}
+
+func TestLoudnessPathCandidates(t *testing.T) {
+	pathNFD := "/Users/yuki/Music/バンド/曲.flac"
+	pathNFC := norm.NFC.String(pathNFD)
+
+	candidates := loudnessPathCandidates(pathNFD)
+	if len(candidates) == 0 {
+		t.Fatalf("loudnessPathCandidates returned empty")
+	}
+
+	hasNFD := false
+	hasNFC := false
+	for _, candidate := range candidates {
+		if candidate == pathNFD {
+			hasNFD = true
+		}
+		if candidate == pathNFC {
+			hasNFC = true
+		}
+	}
+
+	if !hasNFD || !hasNFC {
+		t.Fatalf("expected both NFD and NFC candidates, got %#v", candidates)
+	}
+}
+
+func TestHasStoredNumericLoudness(t *testing.T) {
+	pathNFD := "/Users/yuki/Music/バンド/曲.flac"
+	pathNFC := norm.NFC.String(pathNFD)
+
+	existing := map[string]interface{}{
+		pathNFC: float64(-9.5),
+	}
+	if !hasStoredNumericLoudness(existing, pathNFD) {
+		t.Fatalf("hasStoredNumericLoudness should match normalised key")
 	}
 }

@@ -1307,3 +1307,20 @@
     - `node --check src/renderer/js/core/ipc.js`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-8u` に更新。
+
+### loudness.json 検索不一致対策（パス正規化対応）
+
+- **課題**:
+    - `loudness.json` には値が保存されているが、曲パスの Unicode 正規化差分（NFC/NFD）により検索や参照で一致しないケースがあった。
+- **対応**:
+    - `app_normalize.go`:
+      - ラウドネス保存・参照のキー候補生成 `loudnessPathCandidates()` を追加（trim/clean/NFC/NFD）。
+      - `GetLoudnessValue()` を候補キー順のフォールバック参照に変更。
+      - `saveLoudnessValue()` を候補キーへ同時保存する実装に変更し、検索互換性を向上。
+      - 未解析判定 `filterPendingLoudnessPaths()` を候補キー対応に変更し、正規化差分による二重解析を抑止。
+    - `app_normalize_test.go`:
+      - 正規化候補生成および正規化差分をまたぐ既存値判定の単体テストを追加。
+- **検証**:
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-8v` に更新。

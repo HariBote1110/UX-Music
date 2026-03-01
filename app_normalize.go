@@ -12,6 +12,7 @@ import (
 	"ux-music-sidecar/pkg/normalize"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/text/unicode/norm"
 )
 
 func (a *App) NormalizeAnalyze(path string) normalize.AnalysisResult {
@@ -173,7 +174,12 @@ func (a *App) NormalizeStartJob(jobType string, files []interface{}, options int
 // GetLoudnessValue returns the saved loudness for a song
 func (a *App) GetLoudnessValue(path string) (interface{}, error) {
 	loudnessMap := loadLoudnessMap()
-	return loudnessMap[path], nil
+	for _, key := range loudnessPathCandidates(path) {
+		if value, ok := loudnessMap[key]; ok {
+			return value, nil
+		}
+	}
+	return nil, nil
 }
 
 func (a *App) GetAllLoudnessData() (map[string]interface{}, error) {
@@ -280,6 +286,40 @@ func hasNumericLoudnessValue(value interface{}) bool {
 	}
 }
 
+func loudnessPathCandidates(path string) []string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return nil
+	}
+
+	cleaned := filepath.Clean(trimmed)
+	nfc := norm.NFC.String(cleaned)
+	nfd := norm.NFD.String(cleaned)
+
+	candidates := make([]string, 0, 4)
+	seen := make(map[string]struct{}, 4)
+	for _, candidate := range []string{trimmed, cleaned, nfc, nfd} {
+		if candidate == "" {
+			continue
+		}
+		if _, exists := seen[candidate]; exists {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		candidates = append(candidates, candidate)
+	}
+	return candidates
+}
+
+func hasStoredNumericLoudness(existing map[string]interface{}, path string) bool {
+	for _, key := range loudnessPathCandidates(path) {
+		if hasNumericLoudnessValue(existing[key]) {
+			return true
+		}
+	}
+	return false
+}
+
 func filterPendingLoudnessPaths(paths []string, existing map[string]interface{}) []string {
 	if len(paths) == 0 {
 		return nil
@@ -296,7 +336,7 @@ func filterPendingLoudnessPaths(paths []string, existing map[string]interface{})
 			continue
 		}
 		seen[path] = struct{}{}
-		if hasNumericLoudnessValue(existing[path]) {
+		if hasStoredNumericLoudness(existing, path) {
 			continue
 		}
 		pending = append(pending, path)
@@ -358,7 +398,8 @@ func (a *App) queueLoudnessAnalysis(paths []string) {
 }
 
 func (a *App) saveLoudnessValue(path string, loudness float64) {
-	if path == "" {
+	candidates := loudnessPathCandidates(path)
+	if len(candidates) == 0 {
 		return
 	}
 
@@ -366,7 +407,9 @@ func (a *App) saveLoudnessValue(path string, loudness float64) {
 	defer a.loudnessMu.Unlock()
 
 	loudnessMap := loadLoudnessMap()
-	loudnessMap[path] = loudness
+	for _, key := range candidates {
+		loudnessMap[key] = loudness
+	}
 	if err := store.Instance.Save("loudness", loudnessMap); err != nil {
 		fmt.Printf("[Normalize] Failed to save loudness for %s: %v\n", path, err)
 	}
