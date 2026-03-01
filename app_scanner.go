@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -192,7 +193,65 @@ func importSongsToLibrary(songs []scanner.Song, libraryPath string) []scanner.So
 		imported = append(imported, song)
 	}
 
+	sortSongsForLibrary(imported)
 	return imported
+}
+
+func sortSongsForLibrary(songs []scanner.Song) {
+	sort.SliceStable(songs, func(i, j int) bool {
+		left := songs[i]
+		right := songs[j]
+
+		if cmp := compareSortText(firstNonEmpty(left.AlbumArtist, left.Artist, "Unknown Artist"), firstNonEmpty(right.AlbumArtist, right.Artist, "Unknown Artist")); cmp != 0 {
+			return cmp < 0
+		}
+		if cmp := compareSortText(firstNonEmpty(left.Album, "Unknown Album"), firstNonEmpty(right.Album, "Unknown Album")); cmp != 0 {
+			return cmp < 0
+		}
+		if cmp := compareSortOrdinal(left.DiscNumber, right.DiscNumber); cmp != 0 {
+			return cmp < 0
+		}
+		if cmp := compareSortOrdinal(left.TrackNumber, right.TrackNumber); cmp != 0 {
+			return cmp < 0
+		}
+		if cmp := compareSortText(firstNonEmpty(left.Title, filepath.Base(left.Path)), firstNonEmpty(right.Title, filepath.Base(right.Path))); cmp != 0 {
+			return cmp < 0
+		}
+		return compareSortText(left.Path, right.Path) < 0
+	})
+}
+
+func compareSortText(left, right string) int {
+	leftKey := strings.ToLower(strings.TrimSpace(left))
+	rightKey := strings.ToLower(strings.TrimSpace(right))
+	switch {
+	case leftKey < rightKey:
+		return -1
+	case leftKey > rightKey:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func compareSortOrdinal(left, right int) int {
+	leftKey := sortOrdinalValue(left)
+	rightKey := sortOrdinalValue(right)
+	switch {
+	case leftKey < rightKey:
+		return -1
+	case leftKey > rightKey:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func sortOrdinalValue(value int) int {
+	if value <= 0 {
+		return 1 << 30
+	}
+	return value
 }
 
 func sanitiseFileName(name string) string {

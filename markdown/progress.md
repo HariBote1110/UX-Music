@@ -1324,3 +1324,20 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-8v` に更新。
+
+### インポート時の曲順崩れを修正（並列スキャン順の確定化）
+
+- **課題**:
+    - 取り込み時のメタデータ解析が並列実行されるため、インポート直後の曲順が実行ごとに不安定で、アルバム内トラック順が崩れることがあった。
+- **対応**:
+    - `app_scanner.go`:
+      - `importSongsToLibrary()` の返却前に `sortSongsForLibrary()` を追加し、インポート配列を確定順へ整列。
+      - ソート基準を追加（`albumartist/artist` → `album` → `discNumber` → `trackNumber` → `title` → `path`）。
+      - `trackNumber` / `discNumber` が未設定（0以下）の場合は既知番号の後ろへ回すフォールバックを追加。
+    - `app_scanner_test.go`:
+      - ディスク番号・トラック番号の順序保証テストを追加。
+      - トラック番号未設定時のタイトル・パスフォールバック順テストを追加。
+- **検証**:
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-8w` に更新。
