@@ -1288,3 +1288,22 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-8t` に更新。
+
+### 未解析曲の再生前ラウドネス解析を強化
+
+- **課題**:
+    - 未解析曲の再生時に同一曲への解析要求が重複送信される場合があり、再生待機フローが不安定になることがあった。
+    - 解析結果イベントの値が欠落しているケースでログ整形が失敗する可能性があった。
+- **対応**:
+    - `src/renderer/js/features/playback-manager.js`:
+      - ラウドネス値の判定を数値パース付きに統一し、未解析判定を厳密化。
+      - 未解析時は再生前に必ず解析待ちへ遷移する処理を維持しつつ、同一パスの解析要求重複を抑止。
+      - 解析完了時に保留中パスを解放するための関数を追加。
+    - `src/renderer/js/core/ipc.js`:
+      - `loudness-analysis-result` 受信時に解析保留状態を解除。
+      - `filePath` / `loudness` の欠落時でも安全にログ出力できるようガードを追加。
+- **検証**:
+    - `node --check src/renderer/js/features/playback-manager.js`
+    - `node --check src/renderer/js/core/ipc.js`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-8u` に更新。

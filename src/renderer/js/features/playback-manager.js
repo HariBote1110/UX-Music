@@ -8,6 +8,25 @@ import { updateNowPlayingView } from '../ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 import { musicApi } from '../core/bridge.js';
 const electronAPI = window.electronAPI;
+const pendingLoudnessRequests = new Set();
+
+function parseLoudnessValue(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === 'string') {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+            return parsed;
+        }
+    }
+    return null;
+}
+
+export function markLoudnessAnalysisCompleted(path) {
+    if (typeof path !== 'string' || path.trim() === '') return;
+    pendingLoudnessRequests.delete(path);
+}
 
 function handleSkip() {
     if (state.analysedQueue.enabled && state.currentSongIndex > -1) {
@@ -94,12 +113,16 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
         electronAPI.send('request-bpm-analysis', songToPlayActual);
     }
 
-    if (songToPlayActual.type === 'local' && !forcePlay) {
-        const savedLoudness = await electronAPI.invoke('get-loudness-value', songToPlayActual.path);
-        if (typeof savedLoudness !== 'number') {
-            state.songWaitingForAnalysis = { index, sourceList: state.playbackQueue };
+    if (songToPlayActual.type === 'local' && !forcePlay && songToPlayActual.path) {
+        const savedLoudnessRaw = await electronAPI.invoke('get-loudness-value', songToPlayActual.path);
+        const savedLoudness = parseLoudnessValue(savedLoudnessRaw);
+        if (savedLoudness === null) {
+            state.songWaitingForAnalysis = { index, sourceList: state.playbackQueue, path: songToPlayActual.path };
             showNotification(`「${songToPlayActual.title}」の再生準備中です...`);
-            electronAPI.send('request-loudness-analysis', songToPlayActual.path);
+            if (!pendingLoudnessRequests.has(songToPlayActual.path)) {
+                pendingLoudnessRequests.add(songToPlayActual.path);
+                electronAPI.send('request-loudness-analysis', songToPlayActual.path);
+            }
             return;
         }
     }

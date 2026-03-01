@@ -1,4 +1,4 @@
-import { playSong } from '../features/playback-manager.js';
+import { playSong, markLoudnessAnalysisCompleted } from '../features/playback-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { state } from './state.js';
 import { showModal } from '../ui/modal.js';
@@ -81,24 +81,29 @@ export function initIPC(callbacks) {
     });
 
     electronAPI.on('loudness-analysis-result', (result) => {
-        const fileName = result.filePath.split(/[/\\]/).pop();
+        const filePath = typeof result?.filePath === 'string' ? result.filePath : '';
+        const fileName = filePath ? filePath.split(/[/\\]/).pop() : 'Unknown';
+        markLoudnessAnalysisCompleted(filePath);
+
         const waitingSong = state.songWaitingForAnalysis;
+        const loudness = Number(result?.loudness);
 
         if (result.success) {
-            console.log(`%c[ラウドネス解析完了]%c ${fileName} -> %c${result.loudness.toFixed(2)} LUFS`,
+            const loudnessText = Number.isFinite(loudness) ? loudness.toFixed(2) : 'N/A';
+            console.log(`%c[ラウドネス解析完了]%c ${fileName} -> %c${loudnessText} LUFS`,
                 'color: green; font-weight: bold;',
                 'color: inherit;',
                 'color: blue; font-weight: bold;'
             );
 
-            if (waitingSong && waitingSong.sourceList[waitingSong.index]?.path === result.filePath) {
+            if (waitingSong && waitingSong.sourceList[waitingSong.index]?.path === filePath) {
                 playSong(waitingSong.index, null, true);
             }
 
         } else {
             console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
 
-            if (waitingSong && waitingSong.sourceList[waitingSong.index]?.path === result.filePath) {
+            if (waitingSong && waitingSong.sourceList[waitingSong.index]?.path === filePath) {
                 showNotification(`「${fileName}」の解析に失敗したため、ノーマライズなしで再生します。`);
                 hideNotification(3000);
 
