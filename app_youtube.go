@@ -142,6 +142,7 @@ func (a *App) AddYouTubeLink(payload interface{}) (map[string]interface{}, error
 	if err != nil {
 		return nil, err
 	}
+	a.queueLoudnessAnalysis([]string{result.Path})
 
 	subtitleMessage := "字幕が見つからなかったため、同期歌詞は作成されませんでした。"
 	if strings.TrimSpace(result.Lyrics) != "" {

@@ -1264,3 +1264,27 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-8s` に更新。
+
+### ラウドネス解析の復活（Wails）
+
+- **課題**:
+    - Wails 取り込み経路でラウドネス解析が実質的に走らず、`loudness` ストアが更新されにくい状態だった。
+    - 並列解析時に `loudness` 保存が競合し、結果が取りこぼされる可能性があった。
+- **対応**:
+    - `app_normalize.go`:
+      - 取り込み曲パスを受けてバックグラウンドでラウドネス解析する `queueLoudnessAnalysis()` を追加。
+      - 既存 `loudness` 値がある曲はスキップするフィルタ処理を追加。
+      - 解析結果を `loudness-analysis-result` イベントとしてフロントへ通知する処理を追加。
+      - `saveLoudnessValue()` に排他制御（`loudnessMu`）を追加し、並列保存時の取りこぼしを防止。
+    - `app_scanner.go`:
+      - スキャン完了後に新規取り込み曲を対象としてラウドネス解析キューへ投入する処理を追加。
+    - `app_youtube.go`:
+      - YouTube 追加後の保存曲をラウドネス解析キューへ投入する処理を追加。
+    - `app.go`:
+      - `App` 構造体に `loudnessMu` を追加。
+    - `app_normalize_test.go`:
+      - 数値判定と解析対象フィルタの単体テストを追加。
+- **検証**:
+    - `go test ./...`
+- **バージョン情報の更新**:
+    - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-8t` に更新。

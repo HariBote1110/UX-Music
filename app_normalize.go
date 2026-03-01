@@ -271,10 +271,100 @@ func loadLoudnessMap() map[string]interface{} {
 	return map[string]interface{}{}
 }
 
+func hasNumericLoudnessValue(value interface{}) bool {
+	switch value.(type) {
+	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return true
+	default:
+		return false
+	}
+}
+
+func filterPendingLoudnessPaths(paths []string, existing map[string]interface{}) []string {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	pending := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, p := range paths {
+		path := strings.TrimSpace(p)
+		if path == "" {
+			continue
+		}
+		if _, duplicated := seen[path]; duplicated {
+			continue
+		}
+		seen[path] = struct{}{}
+		if hasNumericLoudnessValue(existing[path]) {
+			continue
+		}
+		pending = append(pending, path)
+	}
+	return pending
+}
+
+func (a *App) queueLoudnessAnalysis(paths []string) {
+	if a == nil || a.normalizer == nil {
+		return
+	}
+
+	existing := loadLoudnessMap()
+	pending := filterPendingLoudnessPaths(paths, existing)
+	if len(pending) == 0 {
+		return
+	}
+
+	go func(targets []string) {
+		concurrency := runtime.GOMAXPROCS(0) - 1
+		if concurrency < 1 {
+			concurrency = 1
+		}
+		if concurrency > 4 {
+			concurrency = 4
+		}
+
+		sem := make(chan struct{}, concurrency)
+		var wg sync.WaitGroup
+
+		for _, path := range targets {
+			filePath := path
+
+			wg.Add(1)
+			sem <- struct{}{}
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }()
+
+				result := a.normalizer.AnalyzeLoudness(filePath)
+				if result.Success {
+					a.saveLoudnessValue(filePath, result.Loudness)
+				}
+
+				if a.ctx != nil {
+					wailsRuntime.EventsEmit(a.ctx, "loudness-analysis-result", map[string]interface{}{
+						"success":  result.Success,
+						"loudness": result.Loudness,
+						"truePeak": result.TruePeak,
+						"error":    result.Error,
+						"filePath": filePath,
+					})
+				}
+			}()
+		}
+
+		wg.Wait()
+	}(pending)
+}
+
 func (a *App) saveLoudnessValue(path string, loudness float64) {
 	if path == "" {
 		return
 	}
+
+	a.loudnessMu.Lock()
+	defer a.loudnessMu.Unlock()
+
 	loudnessMap := loadLoudnessMap()
 	loudnessMap[path] = loudness
 	if err := store.Instance.Save("loudness", loudnessMap); err != nil {

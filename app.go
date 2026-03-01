@@ -19,6 +19,7 @@ type App struct {
 	ripper       *cdrip.Ripper
 	mtpManager   *mtp.Manager
 	normalizer   *normalize.Normalizer
+	loudnessMu   sync.Mutex
 	audioPlayer  *audio.Player
 	lyricsSyncer *lyricssync.Syncer
 	mtpConnected bool

@@ -75,6 +75,7 @@ func (a *App) ScanLibrary(paths []string) scanner.ScanResult {
 
 	_ = store.Instance.Save("library", existingSongs)
 	wailsRuntime.EventsEmit(a.ctx, "scan-complete", newSongs)
+	a.queueLoudnessAnalysis(extractSongPaths(newSongs))
 
 	go a.BuildFLACIndexes()
 
@@ -317,6 +318,16 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func extractSongPaths(songs []scanner.Song) []string {
+	paths := make([]string, 0, len(songs))
+	for _, song := range songs {
+		if strings.TrimSpace(song.Path) != "" {
+			paths = append(paths, song.Path)
+		}
+	}
+	return paths
 }
 
 // BuildFLACIndexes iterates through the library and pre-generates indexes for all FLAC files
