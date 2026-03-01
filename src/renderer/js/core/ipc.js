@@ -1,4 +1,4 @@
-import { playSong, playNextSong } from '../features/playback-manager.js';
+import { playSong } from '../features/playback-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { state } from './state.js';
 import { showModal } from '../ui/modal.js';
@@ -99,13 +99,11 @@ export function initIPC(callbacks) {
             console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
 
             if (waitingSong && waitingSong.sourceList[waitingSong.index]?.path === result.filePath) {
-                showNotification(`「${fileName}」は破損しているためスキップします。`);
+                showNotification(`「${fileName}」の解析に失敗したため、ノーマライズなしで再生します。`);
                 hideNotification(3000);
 
-                state.currentSongIndex = waitingSong.index;
                 state.songWaitingForAnalysis = null;
-
-                playNextSong();
+                playSong(waitingSong.index, null, true);
             }
         }
     });

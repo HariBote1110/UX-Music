@@ -1,5 +1,26 @@
 # 開発進捗ログ (progress.md)
 
+## 2026年2月27日
+
+### WAVシーク不能と未解析曲スキップを修正（Wails build互換）
+
+- **不具合内容**:
+    - WAVファイルでシーク操作が効かず、再生位置を移動できない状態だった。
+    - `wails build` 後のアプリで未解析曲を再生すると、ラウドネス解析失敗時に「破損」扱いで次曲へスキップされていた。
+- **原因**:
+    - `pkg/audio/player.go` の WAV 実装で、長さ計算に `PCMLen` が正しく反映されない初期化順と、PCM先頭基準ではない `Seek` が混在していた。
+    - `pkg/normalize/normalizer.go` の `ffmpeg` 解決が `PATH` 依存で、`wails build` の限定環境で解析が失敗しやすかった。
+    - 解析失敗時のフロント分岐が「再生フォールバック」ではなく「次曲スキップ」固定だった。
+- **修正内容**:
+    - `pkg/audio/player.go` の WAV デコーダ初期化で `FwdToPCM` 実行後に PCM 開始位置・PCMバイト長を保持し、`Seek` を PCM 基準へ修正。
+    - `Seek` 実行時に `PCMChunk` を再構築し、シーク後の読み出し継続を保証。
+    - `pkg/normalize/normalizer.go` のコマンド探索を強化し、`.app/Contents/Resources` と Homebrew 標準パスをフォールバック探索対象に追加。
+    - `src/renderer/js/core/ipc.js` で解析失敗時の挙動を「ノーマライズなし再生」へ変更し、曲スキップを回避。
+- **テスト追加**:
+    - `pkg/audio/player_wav_test.go` に WAV 長さ計算と WAV シーク位置の単体テストを追加。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8r` に更新。
+
 ## 2026年2月25日
 
 ### Wails build後の m4a/mp4 再生失敗を修正（ffmpeg探索強化）

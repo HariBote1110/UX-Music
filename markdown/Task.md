@@ -1,3 +1,15 @@
+# Task: WAVシーク不能と未解析曲スキップを修正（Wails build互換）
+
+## 概要
+WAVファイルでシークが効かない問題と、`wails build` 後に未解析曲を再生しようとすると解析失敗扱いで次曲へスキップされる問題を修正し、再生継続性を確保する。
+
+## 完了条件
+- [x] `pkg/audio/player.go` の WAV デコーダが PCM チャンク開始位置を保持し、`Seek` が PCM 基準で正しく動作すること。
+- [x] `pkg/audio/player_wav_test.go` に WAV 長さ計算と WAV シーク位置の単体テストが追加されていること。
+- [x] `pkg/normalize/normalizer.go` の `ffmpeg/ffprobe` 解決が `PATH` だけでなく `.app/Contents/Resources` と Homebrew 標準パスを探索すること。
+- [x] `src/renderer/js/core/ipc.js` でラウドネス解析失敗時に「スキップ」ではなく「ノーマライズなし再生」を行うこと。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-8r` に更新されていること。
+
 # Task: Wails build後の m4a/mp4 再生失敗を修正（ffmpeg探索強化）
 
 ## 概要

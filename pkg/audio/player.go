@@ -22,6 +22,7 @@ import (
 	"ux-music-sidecar/internal/config"
 
 	"github.com/go-audio/audio"
+	"github.com/go-audio/riff"
 	"github.com/go-audio/wav"
 	"github.com/gordonklaus/portaudio"
 	"github.com/hajimehoshi/go-mp3"
@@ -1090,11 +1091,15 @@ func (d *mp3Decoder) Close() error {
 // ============ WAV Decoder ============
 
 type wavDecoder struct {
+	reader        io.ReadSeeker
 	decoder       *wav.Decoder
 	sampleRate    int
 	channels      int
 	bitsPerSample int
 	length        int64
+	pcmDataStart  int64
+	pcmDataBytes  int64
+	bytesPerFrame int64
 	buffer        *audio.IntBuffer
 }
 
@@ -1110,6 +1115,15 @@ func newWAVDecoder(r io.ReadSeeker) (*wavDecoder, error) {
 		bytesPerSample = 2 // Default to 16-bit
 	}
 
+	if err := dec.FwdToPCM(); err != nil {
+		return nil, fmt.Errorf("failed to parse WAV PCM chunk: %w", err)
+	}
+
+	pcmStart, err := dec.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve WAV PCM start: %w", err)
+	}
+
 	pcmLen := dec.PCMLen()
 	bytesPerFrame := int64(bytesPerSample * format.NumChannels)
 	length := int64(0)
@@ -1118,11 +1132,15 @@ func newWAVDecoder(r io.ReadSeeker) (*wavDecoder, error) {
 	}
 
 	return &wavDecoder{
+		reader:        r,
 		decoder:       dec,
 		sampleRate:    int(format.SampleRate),
 		channels:      int(format.NumChannels),
 		bitsPerSample: int(dec.BitDepth),
 		length:        length,
+		pcmDataStart:  pcmStart,
+		pcmDataBytes:  int64(pcmLen),
+		bytesPerFrame: bytesPerFrame,
 		buffer:        &audio.IntBuffer{Data: make([]int, 4096)},
 	}, nil
 }
@@ -1194,18 +1212,40 @@ func (d *wavDecoder) Length() int64 {
 }
 
 func (d *wavDecoder) Seek(sample int64) error {
-	bytesPerSample := d.bitsPerSample / 8
-	if bytesPerSample == 0 {
-		bytesPerSample = 2 // Default to 16-bit
+	if d.bytesPerFrame <= 0 {
+		return errors.New("invalid WAV bytes per frame")
 	}
 
-	// Calculate byte offset from start of audio data
-	offset := sample * int64(d.channels) * int64(bytesPerSample)
+	if sample < 0 {
+		sample = 0
+	}
+	if sample > d.length {
+		sample = d.length
+	}
 
-	// Use the decoder's Seek method which handles seeking within PCM data
-	_, err := d.decoder.Seek(offset, io.SeekStart)
-	if err != nil {
+	// Convert target sample index into absolute position from PCM chunk start.
+	offset := sample * d.bytesPerFrame
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > d.pcmDataBytes {
+		offset = d.pcmDataBytes
+	}
+
+	targetPos := d.pcmDataStart + offset
+	if _, err := d.reader.Seek(targetPos, io.SeekStart); err != nil {
 		return fmt.Errorf("failed to seek WAV: %w", err)
+	}
+
+	remaining := d.pcmDataBytes - offset
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	d.decoder.PCMChunk = &riff.Chunk{
+		ID:   riff.DataFormatID,
+		Size: int(remaining),
+		R:    io.LimitReader(d.reader, remaining),
 	}
 
 	return nil
