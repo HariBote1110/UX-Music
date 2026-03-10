@@ -179,6 +179,26 @@
             <span id="total-duration">0:00</span>
         </div>
 
+        <div class="audio-info-container">
+            <button id="audio-info-btn" type="button" aria-label="音声情報">
+                i
+            </button>
+            <div id="audio-info-tooltip" class="audio-info-tooltip" role="tooltip">
+                <div class="audio-info-row">
+                    <span class="audio-info-label">サンプリングレート</span>
+                    <span id="audio-info-sample-rate" class="audio-info-value">-</span>
+                </div>
+                <div class="audio-info-row">
+                    <span class="audio-info-label">ビットレート</span>
+                    <span id="audio-info-bitrate" class="audio-info-value">-</span>
+                </div>
+                <div class="audio-info-row">
+                    <span class="audio-info-label">ファイル形式</span>
+                    <span id="audio-info-format" class="audio-info-value">-</span>
+                </div>
+            </div>
+        </div>
+
         <div class="volume-container">
             <button id="volume-icon-btn">
                 <img id="volume-icon" src="./assets/icons/bigger_sound.svg" alt="Volume">

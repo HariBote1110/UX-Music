@@ -22,6 +22,127 @@ let progressFrameId = null;
 let lastVolume = 0.5;
 let iconAnimationId = null;
 
+function getCurrentQueueSong() {
+    if (!Array.isArray(state.playbackQueue) || state.currentSongIndex < 0) {
+        return null;
+    }
+    return state.playbackQueue[state.currentSongIndex] || null;
+}
+
+function parsePositiveNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value > 0 ? value : null;
+    }
+    if (typeof value === 'string') {
+        const parsed = Number(value.trim());
+        if (Number.isFinite(parsed) && parsed > 0) {
+            return parsed;
+        }
+    }
+    return null;
+}
+
+function formatSampleRate(song) {
+    const sampleRate = parsePositiveNumber(song?.sampleRate ?? song?.sample_rate);
+    if (!sampleRate) return '-';
+
+    const kiloHertz = sampleRate / 1000;
+    const fixed = Number.isInteger(kiloHertz) ? kiloHertz.toString() : kiloHertz.toFixed(1).replace(/\.0$/, '');
+    return `${fixed} kHz`;
+}
+
+function parseBitrateToKbps(value) {
+    const numeric = parsePositiveNumber(value);
+    if (numeric) {
+        return numeric >= 1000 ? numeric / 1000 : numeric;
+    }
+
+    if (typeof value !== 'string') return null;
+    const text = value.trim().toLowerCase();
+    if (!text) return null;
+
+    const match = text.match(/([0-9]+(?:\.[0-9]+)?)\s*(kbps|kb\/s|k|mbps|mb\/s|m|bps)?/i);
+    if (!match) return null;
+
+    const amount = Number(match[1]);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+
+    const unit = (match[2] || '').toLowerCase();
+    if (unit.startsWith('m')) return amount * 1000;
+    if (unit === 'bps') return amount / 1000;
+    return amount;
+}
+
+function formatBitrate(song) {
+    const directCandidates = [
+        song?.bitrate,
+        song?.bitRate,
+        song?.bit_rate,
+        song?.bitrateKbps,
+        song?.bitrate_kbps
+    ];
+
+    for (const candidate of directCandidates) {
+        const kbps = parseBitrateToKbps(candidate);
+        if (kbps) {
+            return `${Math.round(kbps)} kbps`;
+        }
+    }
+
+    const duration = parsePositiveNumber(song?.duration);
+    const fileSize = parsePositiveNumber(song?.fileSize);
+    if (duration && fileSize) {
+        const estimatedKbps = (fileSize * 8) / duration / 1000;
+        if (Number.isFinite(estimatedKbps) && estimatedKbps > 0) {
+            return `~${Math.round(estimatedKbps)} kbps`;
+        }
+    }
+
+    return '-';
+}
+
+function formatAudioFormat(song) {
+    const candidates = [
+        song?.fileType,
+        song?.format,
+        song?.container,
+        song?.codec
+    ];
+
+    for (const candidate of candidates) {
+        if (typeof candidate !== 'string') continue;
+        const trimmed = candidate.trim();
+        if (!trimmed) continue;
+        return trimmed.replace(/^\./, '').toUpperCase();
+    }
+
+    const path = typeof song?.path === 'string' ? song.path : '';
+    const dotIndex = path.lastIndexOf('.');
+    if (dotIndex !== -1 && dotIndex < path.length - 1) {
+        return path.slice(dotIndex + 1).toUpperCase();
+    }
+    return '-';
+}
+
+function updateAudioInfoTooltip() {
+    const sampleRateEl = document.getElementById('audio-info-sample-rate');
+    const bitrateEl = document.getElementById('audio-info-bitrate');
+    const formatEl = document.getElementById('audio-info-format');
+    if (!sampleRateEl || !bitrateEl || !formatEl) return;
+
+    const song = getCurrentQueueSong();
+    if (!song) {
+        sampleRateEl.textContent = '-';
+        bitrateEl.textContent = '-';
+        formatEl.textContent = '-';
+        return;
+    }
+
+    sampleRateEl.textContent = formatSampleRate(song);
+    bitrateEl.textContent = formatBitrate(song);
+    formatEl.textContent = formatAudioFormat(song);
+}
+
 // SVGパス定義（座標を配列で管理）
 const PLAY_ICON = {
     part1: [[8, 5], [18, 12], [8, 12], [8, 5]],   // 三角形の上半分
@@ -189,7 +310,14 @@ export function initPlayerControls(initialPlayer, _callbacks) {
 
     document.getElementById('volume-icon-btn').addEventListener('click', toggleMute);
 
+    const audioInfoBtn = document.getElementById('audio-info-btn');
+    if (audioInfoBtn) {
+        audioInfoBtn.addEventListener('mouseenter', updateAudioInfoTooltip);
+        audioInfoBtn.addEventListener('focus', updateAudioInfoTooltip);
+    }
+
     updateVolumeIcon();
+    updateAudioInfoTooltip();
 
 }
 
@@ -245,6 +373,7 @@ export function updateMetadataUI() {
     elements.totalDurationEl.textContent = formatTime(duration);
     elements.progressBar.max = duration;
     updateLrcEditorControls(isPlaying(), getCurrentTime(), duration);
+    updateAudioInfoTooltip();
 }
 
 export function resetPlaybackUI() {
@@ -263,4 +392,6 @@ export function resetPlaybackUI() {
         cancelAnimationFrame(progressFrameId);
         progressFrameId = null;
     }
+
+    updateAudioInfoTooltip();
 }

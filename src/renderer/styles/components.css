@@ -260,6 +260,85 @@
     border-radius: 50%;
 }
 
+.audio-info-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    margin-right: 8px;
+}
+
+#audio-info-btn {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--text-muted);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+}
+
+#audio-info-btn:hover,
+#audio-info-btn:focus-visible {
+    border-color: var(--text-primary);
+    color: var(--text-primary);
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.audio-info-tooltip {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%) translateY(6px);
+    min-width: 240px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(18, 18, 20, 0.95);
+    color: var(--text-primary);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+    z-index: 1200;
+}
+
+.audio-info-container:hover .audio-info-tooltip,
+.audio-info-container:focus-within .audio-info-tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+.audio-info-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.audio-info-row+.audio-info-row {
+    margin-top: 4px;
+}
+
+.audio-info-label {
+    color: var(--text-muted);
+}
+
+.audio-info-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
 .volume-container {
     display: flex;
     align-items: center;

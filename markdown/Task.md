@@ -1,3 +1,15 @@
+# Task: 再生バーの音声情報ツールチップ追加
+
+## 概要
+再生バーのシークバーと音量コントロールの間に情報ボタンを追加し、マウスオーバーで再生中楽曲のサンプリングレート・ビットレート・ファイル形式を確認できるようにする。
+
+## 完了条件
+- [x] `src/renderer/index.html` に情報ボタンと音声情報ツールチップの要素が追加されていること。
+- [x] `src/renderer/styles/components.css` に情報ボタンとツールチップ表示のスタイルが追加されていること。
+- [x] `src/renderer/js/ui/player-ui.js` で再生中楽曲の `sampleRate` / `bitrate` / `fileType` を整形し、ホバー時に表示できること。
+- [x] `bitrate` が未保持の曲でも `fileSize` と `duration` から推定表示するフォールバックがあること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-8x` に更新されていること。
+
 # Task: WAVシーク不能と未解析曲スキップを修正（Wails build互換）
 
 ## 概要

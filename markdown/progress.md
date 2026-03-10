@@ -1,5 +1,19 @@
 # 開発進捗ログ (progress.md)
 
+## 2026年3月10日
+
+### 再生バー: 音声情報ツールチップを追加
+
+- **要望対応**:
+    - シークバーと音量コントロールの間に情報ボタンを追加し、マウスオーバーで音声メタ情報を表示できるようにした。
+- **実装内容**:
+    - `src/renderer/index.html` に情報ボタン（`audio-info-btn`）とツールチップ（`audio-info-tooltip`）を追加。
+    - `src/renderer/styles/components.css` に、情報ボタンのスタイルとホバー/フォーカス時に表示されるツールチップUIを追加。
+    - `src/renderer/js/ui/player-ui.js` に、再生中キューから `sampleRate` / `bitrate` / `fileType` を整形する処理を追加。
+    - `bitrate` が直接取得できない場合は `fileSize` と `duration` から推定（`~xxx kbps`）するフォールバックを実装。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8x` に更新。
+
 ## 2026年2月27日
 
 ### WAVシーク不能と未解析曲スキップを修正（Wails build互換）
