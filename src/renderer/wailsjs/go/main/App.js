@@ -294,6 +294,14 @@ export function SongSkipped(arg1) {
   return window['go']['main']['App']['SongSkipped'](arg1);
 }
 
+export function StartDeviceWatcher() {
+  return window['go']['main']['App']['StartDeviceWatcher']();
+}
+
+export function StopDeviceWatcher() {
+  return window['go']['main']['App']['StopDeviceWatcher']();
+}
+
 export function UpdatePlaylistSongOrder(arg1) {
   return window['go']['main']['App']['UpdatePlaylistSongOrder'](arg1);
 }

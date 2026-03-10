@@ -139,6 +139,7 @@
     display: grid;
     align-items: center;
     column-gap: 10px;
+    overflow: visible;
     grid-template-columns: var(--song-grid-columns, 40px 56px 5fr 4fr 4fr 40px 70px 60px);
 }
 
@@ -167,18 +168,27 @@
 
 .column-resizer {
     position: absolute;
-    top: 10%;
-    bottom: 10%;
-    right: -5px;
-    width: 10px;
+    top: 0;
+    bottom: 0;
+    right: -8px;
+    width: 16px;
     cursor: col-resize;
-    z-index: 10;
-    border-right: 1px solid transparent;
-    transition: border-color 0.2s;
+    z-index: 30;
 }
 
-.column-resizer:hover {
-    border-right: 1px solid var(--highlight-blue);
+.column-resizer::after {
+    content: '';
+    position: absolute;
+    top: 15%;
+    bottom: 15%;
+    right: 8px;
+    width: 1px;
+    background: transparent;
+    transition: background-color 0.15s;
+}
+
+.column-resizer:hover::after {
+    background-color: var(--highlight-blue);
 }
 
 #music-list-header .song-index,

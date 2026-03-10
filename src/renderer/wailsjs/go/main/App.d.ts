@@ -154,4 +154,8 @@ export function SongFinished(arg1:Record<string, any>):Promise<void>;
 
 export function SongSkipped(arg1:Record<string, any>):Promise<void>;
 
+export function StartDeviceWatcher():Promise<void>;
+
+export function StopDeviceWatcher():Promise<void>;
+
 export function UpdatePlaylistSongOrder(arg1:Record<string, any>):Promise<void>;
