@@ -26,6 +26,7 @@ type Song struct {
 	FileSize    int64       `json:"fileSize"`
 	FileType    string      `json:"fileType"`
 	SampleRate  int         `json:"sampleRate,omitempty"`
+	BitDepth    int         `json:"bitDepth,omitempty"`
 	Artwork     interface{} `json:"artwork,omitempty"`
 }
 
@@ -165,6 +166,9 @@ func parseFile(path string, info os.FileInfo, artworksDir string) Song {
 			}
 			if song.SampleRate == 0 && probe.SampleRate > 0 {
 				song.SampleRate = probe.SampleRate
+			}
+			if song.BitDepth == 0 && probe.BitDepth > 0 {
+				song.BitDepth = probe.BitDepth
 			}
 		}
 	}

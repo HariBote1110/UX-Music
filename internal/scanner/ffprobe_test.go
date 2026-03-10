@@ -113,3 +113,72 @@ func TestBuildCommandFallbackCandidates(t *testing.T) {
 		}
 	}
 }
+
+func TestParseBitDepthFromSampleFormat(t *testing.T) {
+	tests := []struct {
+		name         string
+		sampleFmt    string
+		wantBitDepth int
+	}{
+		{name: "signed 16-bit planar", sampleFmt: "s16p", wantBitDepth: 16},
+		{name: "signed 24-bit", sampleFmt: "s24", wantBitDepth: 24},
+		{name: "float planar", sampleFmt: "fltp", wantBitDepth: 32},
+		{name: "double", sampleFmt: "dbl", wantBitDepth: 64},
+		{name: "digit in name fallback", sampleFmt: "pcm_s20le", wantBitDepth: 20},
+		{name: "unknown", sampleFmt: "unknown", wantBitDepth: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseBitDepthFromSampleFormat(tt.sampleFmt)
+			if got != tt.wantBitDepth {
+				t.Fatalf("parseBitDepthFromSampleFormat(%q) = %d, want %d", tt.sampleFmt, got, tt.wantBitDepth)
+			}
+		})
+	}
+}
+
+func TestExtractBitDepthFromStream(t *testing.T) {
+	tests := []struct {
+		name   string
+		stream ffprobeStream
+		want   int
+	}{
+		{
+			name: "bits per sample is preferred",
+			stream: ffprobeStream{
+				BitsPerSample:    24,
+				BitsPerRawSample: "16",
+				SampleFormat:     "s16p",
+			},
+			want: 24,
+		},
+		{
+			name: "raw sample bits are used when bits per sample is missing",
+			stream: ffprobeStream{
+				BitsPerSample:    0,
+				BitsPerRawSample: "20",
+				SampleFormat:     "s16p",
+			},
+			want: 20,
+		},
+		{
+			name: "sample format fallback",
+			stream: ffprobeStream{
+				BitsPerSample:    0,
+				BitsPerRawSample: "",
+				SampleFormat:     "s32",
+			},
+			want: 32,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractBitDepthFromStream(tt.stream)
+			if got != tt.want {
+				t.Fatalf("extractBitDepthFromStream(...) = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

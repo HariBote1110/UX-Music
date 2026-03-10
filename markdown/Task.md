@@ -1,3 +1,16 @@
+# Task: 再生バー音声情報の表示項目をビット数へ変更
+
+## 概要
+再生バーの音声情報ツールチップについて、表示項目を「ビットレート」から「ビット数（ビット深度）」へ変更し、再生中楽曲のメタ情報として表示できるようにする。
+
+## 完了条件
+- [x] `src/renderer/index.html` の表示ラベルが「ビット数」に変更されていること。
+- [x] `src/renderer/js/ui/player-ui.js` が `bitrate` ではなく `bitDepth`（および関連フィールド）を表示すること。
+- [x] `internal/scanner/ffprobe.go` で `bits_per_sample` / `bits_per_raw_sample` / `sample_fmt` からビット深度を抽出できること。
+- [x] `internal/scanner/scanner.go` と `app_scanner.go` で `bitDepth` が楽曲データに保持・マージされること。
+- [x] `internal/scanner/ffprobe_test.go` にビット深度抽出の単体テストが追加されていること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-8y` に更新されていること。
+
 # Task: 再生バーの音声情報ツールチップ追加
 
 ## 概要

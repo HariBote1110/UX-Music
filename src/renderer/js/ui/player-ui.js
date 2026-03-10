@@ -51,50 +51,65 @@ function formatSampleRate(song) {
     return `${fixed} kHz`;
 }
 
-function parseBitrateToKbps(value) {
-    const numeric = parsePositiveNumber(value);
-    if (numeric) {
-        return numeric >= 1000 ? numeric / 1000 : numeric;
+function parseBitDepthFromSampleFormat(value) {
+    if (typeof value !== 'string') return null;
+    const sampleFormat = value.trim().toLowerCase();
+    if (!sampleFormat) return null;
+
+    const knownBitDepth = {
+        u8: 8,
+        u8p: 8,
+        s8: 8,
+        s8p: 8,
+        s16: 16,
+        s16p: 16,
+        s24: 24,
+        s24p: 24,
+        s32: 32,
+        s32p: 32,
+        flt: 32,
+        fltp: 32,
+        s64: 64,
+        s64p: 64,
+        dbl: 64,
+        dblp: 64
+    };
+    if (knownBitDepth[sampleFormat]) {
+        return knownBitDepth[sampleFormat];
     }
 
-    if (typeof value !== 'string') return null;
-    const text = value.trim().toLowerCase();
-    if (!text) return null;
-
-    const match = text.match(/([0-9]+(?:\.[0-9]+)?)\s*(kbps|kb\/s|k|mbps|mb\/s|m|bps)?/i);
+    const match = sampleFormat.match(/([0-9]{1,3})/);
     if (!match) return null;
-
-    const amount = Number(match[1]);
-    if (!Number.isFinite(amount) || amount <= 0) return null;
-
-    const unit = (match[2] || '').toLowerCase();
-    if (unit.startsWith('m')) return amount * 1000;
-    if (unit === 'bps') return amount / 1000;
-    return amount;
+    const parsed = Number(match[1]);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return parsed;
 }
 
-function formatBitrate(song) {
+function formatBitDepth(song) {
     const directCandidates = [
-        song?.bitrate,
-        song?.bitRate,
-        song?.bit_rate,
-        song?.bitrateKbps,
-        song?.bitrate_kbps
+        song?.bitDepth,
+        song?.bit_depth,
+        song?.bitsPerSample,
+        song?.bits_per_sample,
+        song?.bitsPerRawSample,
+        song?.bits_per_raw_sample
     ];
 
     for (const candidate of directCandidates) {
-        const kbps = parseBitrateToKbps(candidate);
-        if (kbps) {
-            return `${Math.round(kbps)} kbps`;
+        const bitDepth = parsePositiveNumber(candidate);
+        if (bitDepth) {
+            return `${Math.round(bitDepth)} bit`;
         }
     }
 
-    const duration = parsePositiveNumber(song?.duration);
-    const fileSize = parsePositiveNumber(song?.fileSize);
-    if (duration && fileSize) {
-        const estimatedKbps = (fileSize * 8) / duration / 1000;
-        if (Number.isFinite(estimatedKbps) && estimatedKbps > 0) {
-            return `~${Math.round(estimatedKbps)} kbps`;
+    const sampleFormatCandidates = [
+        song?.sampleFormat,
+        song?.sample_fmt
+    ];
+    for (const candidate of sampleFormatCandidates) {
+        const parsedBitDepth = parseBitDepthFromSampleFormat(candidate);
+        if (parsedBitDepth) {
+            return `${parsedBitDepth} bit`;
         }
     }
 
@@ -126,20 +141,20 @@ function formatAudioFormat(song) {
 
 function updateAudioInfoTooltip() {
     const sampleRateEl = document.getElementById('audio-info-sample-rate');
-    const bitrateEl = document.getElementById('audio-info-bitrate');
+    const bitDepthEl = document.getElementById('audio-info-bit-depth');
     const formatEl = document.getElementById('audio-info-format');
-    if (!sampleRateEl || !bitrateEl || !formatEl) return;
+    if (!sampleRateEl || !bitDepthEl || !formatEl) return;
 
     const song = getCurrentQueueSong();
     if (!song) {
         sampleRateEl.textContent = '-';
-        bitrateEl.textContent = '-';
+        bitDepthEl.textContent = '-';
         formatEl.textContent = '-';
         return;
     }
 
     sampleRateEl.textContent = formatSampleRate(song);
-    bitrateEl.textContent = formatBitrate(song);
+    bitDepthEl.textContent = formatBitDepth(song);
     formatEl.textContent = formatAudioFormat(song);
 }
 

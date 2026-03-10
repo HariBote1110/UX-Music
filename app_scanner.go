@@ -354,6 +354,7 @@ func mergeScannedSong(existing map[string]interface{}, scanned scanner.Song) {
 	updateInt("trackNumber", scanned.TrackNumber)
 	updateInt("discNumber", scanned.DiscNumber)
 	updateInt("sampleRate", scanned.SampleRate)
+	updateInt("bitDepth", scanned.BitDepth)
 	updateFloat("duration", scanned.Duration)
 
 	if scanned.FileSize > 0 {

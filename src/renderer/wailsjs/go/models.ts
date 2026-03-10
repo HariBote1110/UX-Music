@@ -420,6 +420,7 @@ export namespace scanner {
 	    fileSize: number;
 	    fileType: string;
 	    sampleRate?: number;
+	    bitDepth?: number;
 	    artwork?: any;
 	
 	    static createFrom(source: any = {}) {
@@ -442,6 +443,7 @@ export namespace scanner {
 	        this.fileSize = source["fileSize"];
 	        this.fileType = source["fileType"];
 	        this.sampleRate = source["sampleRate"];
+	        this.bitDepth = source["bitDepth"];
 	        this.artwork = source["artwork"];
 	    }
 	}

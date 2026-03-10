@@ -2,6 +2,22 @@
 
 ## 2026年3月10日
 
+### 再生バー音声情報: ビットレート表示をビット数表示へ変更
+
+- **要望対応**:
+    - 音声情報ツールチップの2項目目を「ビットレート」から「ビット数（ビット深度）」へ変更した。
+- **実装内容**:
+    - `src/renderer/index.html` のラベルとDOM IDを `audio-info-bit-depth` へ変更。
+    - `src/renderer/js/ui/player-ui.js` で `bitrate` 整形処理を削除し、`bitDepth` / `bitsPerSample` / `bitsPerRawSample` / `sample_fmt` を使ったビット深度表示へ変更。
+    - `internal/scanner/ffprobe.go` で `bits_per_sample` / `bits_per_raw_sample` / `sample_fmt` からビット深度を抽出し、`probedMetadata.BitDepth` に保持。
+    - `internal/scanner/scanner.go` と `app_scanner.go` に `bitDepth` の保持・マージ処理を追加。
+- **テスト追加**:
+    - `internal/scanner/ffprobe_test.go` に、`sample_fmt` と `ffprobeStream` からビット深度を抽出する単体テストを追加。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-8y` に更新。
+
+## 2026年3月10日
+
 ### 再生バー: 音声情報ツールチップを追加
 
 - **要望対応**:

@@ -15,10 +15,13 @@ import (
 )
 
 type ffprobeStream struct {
-	CodecType   string            `json:"codec_type"`
-	SampleRate  string            `json:"sample_rate"`
-	Disposition map[string]int    `json:"disposition"`
-	Tags        map[string]string `json:"tags"`
+	CodecType        string            `json:"codec_type"`
+	SampleRate       string            `json:"sample_rate"`
+	SampleFormat     string            `json:"sample_fmt"`
+	BitsPerSample    int               `json:"bits_per_sample"`
+	BitsPerRawSample string            `json:"bits_per_raw_sample"`
+	Disposition      map[string]int    `json:"disposition"`
+	Tags             map[string]string `json:"tags"`
 }
 
 type ffprobeFormat struct {
@@ -42,6 +45,7 @@ type probedMetadata struct {
 	DiscNumber  int
 	Duration    float64
 	SampleRate  int
+	BitDepth    int
 }
 
 var resolvedMediaCommandPaths sync.Map
@@ -186,15 +190,66 @@ func readMetadataWithFFprobe(path string) (probedMetadata, error) {
 		if stream.CodecType != "audio" {
 			continue
 		}
-		if stream.SampleRate != "" {
+		if md.SampleRate == 0 && stream.SampleRate != "" {
 			if sampleRate, parseErr := strconv.Atoi(strings.TrimSpace(stream.SampleRate)); parseErr == nil && sampleRate > 0 {
 				md.SampleRate = sampleRate
-				break
 			}
+		}
+		if md.BitDepth == 0 {
+			md.BitDepth = extractBitDepthFromStream(stream)
+		}
+		if md.SampleRate > 0 && md.BitDepth > 0 {
+			break
 		}
 	}
 
 	return md, nil
+}
+
+func extractBitDepthFromStream(stream ffprobeStream) int {
+	if stream.BitsPerSample > 0 {
+		return stream.BitsPerSample
+	}
+	if depth := parseLeadingInt(strings.TrimSpace(stream.BitsPerRawSample)); depth > 0 {
+		return depth
+	}
+	return parseBitDepthFromSampleFormat(stream.SampleFormat)
+}
+
+func parseBitDepthFromSampleFormat(sampleFormat string) int {
+	value := strings.ToLower(strings.TrimSpace(sampleFormat))
+	if value == "" {
+		return 0
+	}
+
+	switch value {
+	case "u8", "u8p", "s8", "s8p":
+		return 8
+	case "s16", "s16p":
+		return 16
+	case "s24", "s24p":
+		return 24
+	case "s32", "s32p", "flt", "fltp":
+		return 32
+	case "s64", "s64p", "dbl", "dblp":
+		return 64
+	}
+
+	var digits strings.Builder
+	for _, r := range value {
+		if unicode.IsDigit(r) {
+			digits.WriteRune(r)
+		}
+	}
+	if digits.Len() == 0 {
+		return 0
+	}
+
+	bitDepth, err := strconv.Atoi(digits.String())
+	if err != nil || bitDepth <= 0 {
+		return 0
+	}
+	return bitDepth
 }
 
 func extractArtworkWithFFmpeg(path string) ([]byte, error) {
