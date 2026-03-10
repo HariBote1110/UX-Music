@@ -1,5 +1,9 @@
 const STYLE_ID = 'dynamic-grid-styles';
 
+// モジュールレベルで「最後に設定したテンプレート文字列」を保持
+// これにより getComputedStyle (px変換) を使わずに済む
+let _currentTemplate = null;
+
 function getOrCreateStyleElement() {
     let styleEl = document.getElementById(STYLE_ID);
     if (!styleEl) {
@@ -15,6 +19,7 @@ function getOrCreateStyleElement() {
  * @param {string} newColumns - 新しいgrid-template-columnsの値
  */
 export function updateGridStyle(newColumns) {
+    _currentTemplate = newColumns; // fr値のままキャッシュ
     const styleEl = getOrCreateStyleElement();
     styleEl.textContent = `
         #music-list-header,
@@ -51,8 +56,7 @@ export function initColumnResizing(headerContainer) {
         let startX = 0;
         let targetStartWidth = 0;
         let nextStartWidth = 0;
-
-        let lastSetTemplate = null; // mousemoveで設定したfrベースの値を記憶
+        let dragTemplate = null; // ドラッグ中の現在テンプレート(fr値)
 
         const onMouseMove = (moveEvent) => {
             if (!isDragging) return;
@@ -61,34 +65,40 @@ export function initColumnResizing(headerContainer) {
             const newTargetWidth = targetStartWidth + deltaX;
             const newNextWidth = nextStartWidth - deltaX;
 
-            if (newTargetWidth < 40 || newNextWidth < 40) return; // 最小幅制限
+            if (newTargetWidth < 40 || newNextWidth < 40) return;
 
-            const currentTemplate = window.getComputedStyle(headerContainer).gridTemplateColumns.split(' ');
+            // getComputedStyle は使わず、モジュールキャッシュ(_currentTemplate)を使う
+            const templateStr = dragTemplate || _currentTemplate;
+            if (!templateStr) return;
 
-            const currentTargetStr = currentTemplate[index] || '';
-            const currentNextStr = currentTemplate[index + 1] || '';
-            const isFrTarget = currentTargetStr.endsWith('fr');
-            const isFrNext = currentNextStr.endsWith('fr');
+            const cols = templateStr.split(' ');
+            if (index >= cols.length - 1) return;
+
+            const targetStr = cols[index];
+            const nextStr = cols[index + 1];
+            const isFrTarget = targetStr.endsWith('fr');
+            const isFrNext = nextStr.endsWith('fr');
+
+            const newCols = [...cols];
 
             if (isFrTarget && isFrNext) {
-                // 両方 fr の場合は比率を保ちながら変更（レスポンシブ維持のためfrで保存）
-                const prevTargetFr = parseFloat(currentTargetStr);
-                const prevNextFr = parseFloat(currentNextStr);
+                // fr同士: 合計frを保ちながら比率を変更
+                const prevTargetFr = parseFloat(targetStr);
+                const prevNextFr = parseFloat(nextStr);
                 const combinedFr = prevTargetFr + prevNextFr;
                 const combinedWidth = targetStartWidth + nextStartWidth;
                 if (combinedWidth <= 0) return;
                 const newTargetFr = (newTargetWidth / combinedWidth) * combinedFr;
                 const newNextFr = (newNextWidth / combinedWidth) * combinedFr;
-                currentTemplate[index] = `${newTargetFr.toFixed(4)}fr`;
-                currentTemplate[index + 1] = `${newNextFr.toFixed(4)}fr`;
+                newCols[index] = `${newTargetFr.toFixed(4)}fr`;
+                newCols[index + 1] = `${newNextFr.toFixed(4)}fr`;
             } else {
-                // px の場合はそのまま px で更新
-                currentTemplate[index] = `${newTargetWidth}px`;
-                currentTemplate[index + 1] = `${newNextWidth}px`;
+                newCols[index] = `${newTargetWidth}px`;
+                newCols[index + 1] = `${newNextWidth}px`;
             }
 
-            lastSetTemplate = currentTemplate; // frベースの値を記憶
-            updateGridStyle(currentTemplate.join(' '));
+            dragTemplate = newCols.join(' ');
+            updateGridStyle(dragTemplate);
         };
 
         const onMouseUp = () => {
@@ -99,13 +109,14 @@ export function initColumnResizing(headerContainer) {
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
 
-            // getComputedStyle(px絶対値)ではなくmousemove中に計算したfr値を保存
-            if (lastSetTemplate) {
+            // fr値のままcolumn-configに保存（getComputedStyleは使用しない）
+            if (dragTemplate) {
+                const finalTemplateParts = dragTemplate.split(' ');
                 import('./column-config.js').then(mod => {
-                    mod.updateVisibleColumnWidths(lastSetTemplate);
+                    mod.updateVisibleColumnWidths(finalTemplateParts);
                 });
-                lastSetTemplate = null;
             }
+            dragTemplate = null;
         };
 
         resizer.addEventListener('mousedown', (e) => {
@@ -120,8 +131,8 @@ export function initColumnResizing(headerContainer) {
             startX = e.clientX;
             targetStartWidth = targetHeader.offsetWidth;
             nextStartWidth = nextHeader.offsetWidth;
+            dragTemplate = null; // リセット（_currentTemplateを使う）
 
-            // ドラッグ中のテキスト選択を防ぐ
             document.body.style.cursor = 'col-resize';
             document.body.style.userSelect = 'none';
 

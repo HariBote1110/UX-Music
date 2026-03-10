@@ -37,13 +37,16 @@ export function loadColumnConfig() {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
             const saved = JSON.parse(raw);
-            // saved から各列の visible / width を復元
             currentConfig = ALL_COLUMNS.map(col => {
                 const s = saved.find(c => c.key === col.key);
+                if (!s) return { ...col };
+                // 古いバグでpx絶対値が保存されていた場合はデフォルトfr値を使用
+                const savedWidth = s.width || col.width;
+                const isAbsolutePx = savedWidth.endsWith('px') && col.width.endsWith('fr');
                 return {
                     ...col,
-                    visible: s ? s.visible : col.visible,
-                    width: s ? s.width : col.width,
+                    visible: s.visible !== undefined ? s.visible : col.visible,
+                    width: isAbsolutePx ? col.width : savedWidth,
                 };
             });
             return currentConfig;
