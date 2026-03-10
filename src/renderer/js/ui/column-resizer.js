@@ -52,6 +52,8 @@ export function initColumnResizing(headerContainer) {
         let targetStartWidth = 0;
         let nextStartWidth = 0;
 
+        let lastSetTemplate = null; // mousemoveで設定したfrベースの値を記憶
+
         const onMouseMove = (moveEvent) => {
             if (!isDragging) return;
             const deltaX = moveEvent.clientX - startX;
@@ -69,7 +71,7 @@ export function initColumnResizing(headerContainer) {
             const isFrNext = currentNextStr.endsWith('fr');
 
             if (isFrTarget && isFrNext) {
-                // 両方 fr の場合は比率を保ちながら変更
+                // 両方 fr の場合は比率を保ちながら変更（レスポンシブ維持のためfrで保存）
                 const prevTargetFr = parseFloat(currentTargetStr);
                 const prevNextFr = parseFloat(currentNextStr);
                 const combinedFr = prevTargetFr + prevNextFr;
@@ -85,6 +87,7 @@ export function initColumnResizing(headerContainer) {
                 currentTemplate[index + 1] = `${newNextWidth}px`;
             }
 
+            lastSetTemplate = currentTemplate; // frベースの値を記憶
             updateGridStyle(currentTemplate.join(' '));
         };
 
@@ -96,11 +99,13 @@ export function initColumnResizing(headerContainer) {
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
 
-            // リサイズ完了時に幅を column-config に保存
-            const finalTemplate = window.getComputedStyle(headerContainer).gridTemplateColumns.split(' ');
-            import('./column-config.js').then(mod => {
-                mod.updateVisibleColumnWidths(finalTemplate);
-            });
+            // getComputedStyle(px絶対値)ではなくmousemove中に計算したfr値を保存
+            if (lastSetTemplate) {
+                import('./column-config.js').then(mod => {
+                    mod.updateVisibleColumnWidths(lastSetTemplate);
+                });
+                lastSetTemplate = null;
+            }
         };
 
         resizer.addEventListener('mousedown', (e) => {
