@@ -14,7 +14,7 @@ function getOrCreateStyleElement() {
  * 曲リスト全体のCSS Gridスタイルを動的に更新する
  * @param {string} newColumns - 新しいgrid-template-columnsの値
  */
-function updateGridStyle(newColumns) {
+export function updateGridStyle(newColumns) {
     const styleEl = getOrCreateStyleElement();
     styleEl.textContent = `
         #music-list-header,
@@ -33,15 +33,27 @@ function updateGridStyle(newColumns) {
 export function initColumnResizing(headerContainer) {
     if (!headerContainer) return;
 
+    // column-config から可視列情報を取得
+    let columnConfigModule = null;
+    try {
+        // 動的importの代わりにlazy参照
+        columnConfigModule = null; // will be loaded on first resize
+    } catch (e) { /* ignore */ }
+
     // 既存のリサイザーをクリア
     headerContainer.querySelectorAll('.column-resizer').forEach(el => el.remove());
-    
+
     const headers = Array.from(headerContainer.children);
 
     headers.forEach((header, index) => {
-        // リサイズ可能なのはタイトル、アーティスト、アルバムの右境界線
-        // インデックス 2, 3, 4 の要素にリサイザーを追加
-        if (index < 2 || index > 4) return;
+        // 最後の列にはリサイザーを追加しない
+        if (index >= headers.length - 1) return;
+
+        // リサイズ対象は fr 値を持つ列のみ（固定幅 px の列はスキップ）
+        const computedTemplate = window.getComputedStyle(headerContainer).gridTemplateColumns.split(' ');
+        // 固定幅の列はリサイズ不要だが、可視列に応じて動的に判断
+        // 最低限2列目以降でリサイズハンドルを設置
+        if (index < 1) return;
 
         const resizer = document.createElement('div');
         resizer.className = 'column-resizer';
@@ -59,36 +71,52 @@ export function initColumnResizing(headerContainer) {
 
             const targetStartWidth = targetHeader.offsetWidth;
             const nextStartWidth = nextHeader.offsetWidth;
-            
+
             const onMouseMove = (moveEvent) => {
                 const deltaX = moveEvent.clientX - startX;
-                
+
                 const newTargetWidth = targetStartWidth + deltaX;
                 const newNextWidth = nextStartWidth - deltaX;
 
-                if (newTargetWidth < 80 || newNextWidth < 80) return; // 最小幅制限
+                if (newTargetWidth < 80 || newNextWidth < 40) return; // 最小幅制限
 
                 const currentTemplate = window.getComputedStyle(headerContainer).gridTemplateColumns.split(' ');
-                
-                // 変更前の2つのfr値の合計を取得
-                const prevTargetFr = parseFloat(currentTemplate[index]);
-                const prevNextFr = parseFloat(currentTemplate[index + 1]);
-                const combinedFr = prevTargetFr + prevNextFr;
 
-                // 2つのセルの合計幅(px)を基準に新しい比率を計算
-                const combinedWidth = targetStartWidth + nextStartWidth;
-                const newTargetFr = (newTargetWidth / combinedWidth) * combinedFr;
-                const newNextFr = (newNextWidth / combinedWidth) * combinedFr;
-                
-                currentTemplate[index] = `${newTargetFr.toFixed(4)}fr`;
-                currentTemplate[index + 1] = `${newNextFr.toFixed(4)}fr`;
-                
+                // 変更前の2つの値の合計を取得
+                const prevTargetVal = parseFloat(currentTemplate[index]);
+                const prevNextVal = parseFloat(currentTemplate[index + 1]);
+
+                // px 値の場合はそのまま px で更新
+                const isPxTarget = currentTemplate[index].includes('px') || !currentTemplate[index].includes('fr');
+                const isPxNext = currentTemplate[index + 1].includes('px') || !currentTemplate[index + 1].includes('fr');
+
+                if (isPxTarget && isPxNext) {
+                    // 両方 px の場合
+                    currentTemplate[index] = `${newTargetWidth}px`;
+                    currentTemplate[index + 1] = `${newNextWidth}px`;
+                } else {
+                    // fr 値の場合は比率を計算
+                    const combinedFr = prevTargetVal + prevNextVal;
+                    const combinedWidth = targetStartWidth + nextStartWidth;
+                    const newTargetFr = (newTargetWidth / combinedWidth) * combinedFr;
+                    const newNextFr = (newNextWidth / combinedWidth) * combinedFr;
+
+                    currentTemplate[index] = `${newTargetFr.toFixed(4)}fr`;
+                    currentTemplate[index + 1] = `${newNextFr.toFixed(4)}fr`;
+                }
+
                 updateGridStyle(currentTemplate.join(' '));
             };
 
             const onMouseUp = () => {
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
+
+                // リサイズ完了時に幅を column-config に保存
+                const finalTemplate = window.getComputedStyle(headerContainer).gridTemplateColumns.split(' ');
+                import('./column-config.js').then(mod => {
+                    mod.updateVisibleColumnWidths(finalTemplate);
+                });
             };
 
             document.addEventListener('mousemove', onMouseMove);

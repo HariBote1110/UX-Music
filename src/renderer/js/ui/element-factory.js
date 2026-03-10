@@ -2,6 +2,7 @@
 import { formatTime, checkTextOverflow, resolveArtworkPath, formatSongTitle } from './utils.js';
 import { state } from '../core/state.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
+import { getVisibleColumns } from './column-config.js';
 
 export function createSongItem(song, index, songList, options = {}) {
     const { groupAlbumArt = false } = options;
@@ -36,23 +37,27 @@ export function createSongItem(song, index, songList, options = {}) {
         </svg>
     ` : '';
 
-    songItem.innerHTML = `
-        <div class="song-index">
+    // 可視列に基づいてHTMLを動的に構築
+    const columnHTMLMap = {
+        index: `<div class="song-index">
             <span class="song-number">${index + 1}</span>
             <div class="playing-indicator">
                 <div class="playing-indicator-bar"></div><div class="playing-indicator-bar"></div><div class="playing-indicator-bar"></div>
                 <div class="playing-indicator-bar"></div><div class="playing-indicator-bar"></div><div class="playing-indicator-bar"></div>
             </div>
             <img src="./assets/icons/static-visualizer.svg" class="static-visualizer-img" alt="Playing">
-        </div>
-        <div class="song-artwork-col">${artworkHTML}</div>
-        <div class="song-title"><div class="marquee-wrapper"><div class="marquee-content"><span>${formatSongTitle(song.title)}</span></div></div></div>
-        <div class="song-artist"><div class="marquee-wrapper"><div class="marquee-content"><span>${song.artist}</span></div></div></div>
-        <div class="song-album"><div class="marquee-wrapper"><div class="marquee-content"><span>${song.album}</span></div></div></div>
-        <div class="song-hires">${hiResIconHTML}</div>
-        <div class="song-duration"><span>${formatTime(song.duration || 0)}</span></div>
-        <div class="song-play-count">${(state.playCounts && state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>
-    `;
+        </div>`,
+        artwork: `<div class="song-artwork-col">${artworkHTML}</div>`,
+        title: `<div class="song-title"><div class="marquee-wrapper"><div class="marquee-content"><span>${formatSongTitle(song.title)}</span></div></div></div>`,
+        artist: `<div class="song-artist"><div class="marquee-wrapper"><div class="marquee-content"><span>${song.artist}</span></div></div></div>`,
+        album: `<div class="song-album"><div class="marquee-wrapper"><div class="marquee-content"><span>${song.album}</span></div></div></div>`,
+        hires: `<div class="song-hires">${hiResIconHTML}</div>`,
+        duration: `<div class="song-duration"><span>${formatTime(song.duration || 0)}</span></div>`,
+        playCount: `<div class="song-play-count">${(state.playCounts && state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>`,
+    };
+
+    const visibleCols = getVisibleColumns();
+    songItem.innerHTML = visibleCols.map(col => columnHTMLMap[col.key] || '').join('\n        ');
 
     const artworkCol = songItem.querySelector('.song-artwork-col');
     const artworkImg = songItem.querySelector('.artwork-small');

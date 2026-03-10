@@ -236,6 +236,14 @@ async function initApp() {
         console.error('Failed to update audio devices:', e);
     }
 
+    // デバイス接続/切断時にリストを自動更新 (Wails環境のみ)
+    if (window.runtime && typeof window.runtime.EventsOn === 'function') {
+        window.runtime.EventsOn('audio-devices-changed', () => {
+            console.log('[AudioDevices] Device change detected via Go watcher');
+            updateAudioDevices();
+        });
+    }
+
     console.log('[Renderer] Initializing IPC listeners...');
     initIPC({
         onFlacIndexProgress: (progress) => {

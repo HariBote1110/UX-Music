@@ -3,7 +3,12 @@ package main
 import (
 	"fmt"
 	"math"
+	"sort"
+	"strings"
+	"time"
 	"ux-music-sidecar/pkg/audio"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type AudioEqualizerSettings struct {
@@ -192,4 +197,59 @@ func (a *App) AudioSetNowPlayingMetadata(metadata map[string]interface{}) error 
 	}
 	a.updateOSNowPlayingMetadata(title, artist, album, artwork, playing)
 	return nil
+}
+
+// deviceFingerprint creates a comparable string from a device list.
+func deviceFingerprint(devices []audio.Device) string {
+	names := make([]string, len(devices))
+	for i, d := range devices {
+		names[i] = d.Name
+	}
+	sort.Strings(names)
+	return strings.Join(names, "\x00")
+}
+
+// StartDeviceWatcher begins polling for audio device changes.
+func (a *App) StartDeviceWatcher() {
+	if a.audioPlayer == nil || a.ctx == nil {
+		return
+	}
+	a.deviceWatcherStop = make(chan struct{})
+
+	go func() {
+		// Build initial fingerprint
+		var lastFingerprint string
+		if devices, err := a.audioPlayer.ListDevices(); err == nil {
+			lastFingerprint = deviceFingerprint(devices)
+		}
+
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-a.deviceWatcherStop:
+				return
+			case <-ticker.C:
+				devices, err := a.audioPlayer.ListDevices()
+				if err != nil {
+					continue
+				}
+				fp := deviceFingerprint(devices)
+				if fp != lastFingerprint {
+					lastFingerprint = fp
+					fmt.Println("[Audio] Device list changed, notifying frontend")
+					wailsRuntime.EventsEmit(a.ctx, "audio-devices-changed")
+				}
+			}
+		}
+	}()
+}
+
+// StopDeviceWatcher stops the device polling goroutine.
+func (a *App) StopDeviceWatcher() {
+	if a.deviceWatcherStop != nil {
+		close(a.deviceWatcherStop)
+		a.deviceWatcherStop = nil
+	}
 }

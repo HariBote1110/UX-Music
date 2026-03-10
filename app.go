@@ -15,20 +15,21 @@ import (
 
 // App struct
 type App struct {
-	ctx          context.Context
-	ripper       *cdrip.Ripper
-	mtpManager   *mtp.Manager
-	normalizer   *normalize.Normalizer
-	loudnessMu   sync.Mutex
-	audioPlayer  *audio.Player
-	lyricsSyncer *lyricssync.Syncer
-	mtpConnected bool
-	mtpMu        sync.Mutex
-	mediaStateMu sync.Mutex
-	mediaTitle   string
-	mediaArtist  string
-	mediaAlbum   string
-	mediaArtwork string
+	ctx               context.Context
+	ripper            *cdrip.Ripper
+	mtpManager        *mtp.Manager
+	normalizer        *normalize.Normalizer
+	loudnessMu        sync.Mutex
+	audioPlayer       *audio.Player
+	lyricsSyncer      *lyricssync.Syncer
+	mtpConnected      bool
+	mtpMu             sync.Mutex
+	mediaStateMu      sync.Mutex
+	mediaTitle        string
+	mediaArtist       string
+	mediaAlbum        string
+	mediaArtwork      string
+	deviceWatcherStop chan struct{}
 }
 
 // NewApp creates a new App struct
@@ -66,6 +67,9 @@ func (a *App) startup(ctx context.Context) {
 
 	// Start MTP device monitor
 	a.startMTPMonitor()
+
+	// Start audio device watcher (polls for Bluetooth/USB device changes)
+	a.StartDeviceWatcher()
 }
 
 // Ping returns a pong message

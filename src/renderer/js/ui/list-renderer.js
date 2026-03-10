@@ -8,22 +8,22 @@ import { createSongItem } from './element-factory.js';
 import { initColumnResizing } from './column-resizer.js';
 import { showContextMenu } from './utils.js';
 import { showModalAdvanced } from './modal.js';
+import { getVisibleColumns, getGridTemplate, showColumnContextMenu } from './column-config.js';
+import { updateGridStyle } from './column-resizer.js';
 const electronAPI = window.electronAPI;
 
 /**
- * 曲リストの共通ヘッダーHTMLを作成する
+ * 曲リストの共通ヘッダーHTMLを作成する（column-config に基づく動的生成）
  */
 export function createListHeader() {
+    const visibleCols = getVisibleColumns();
+    const headerCells = visibleCols.map(col => {
+        const content = col.label ? `<span>${col.label}</span>` : '';
+        return `<div class="${col.cssClass}">${content}</div>`;
+    }).join('\n            ');
     return `
         <div id="music-list-header">
-            <div class="song-index">#</div>
-            <div class="song-artwork-col"></div>
-            <div class="song-title"><span>タイトル</span></div>
-            <div class="song-artist"><span>アーティスト</span></div>
-            <div class="song-album"><span>アルバム</span></div>
-            <div class="song-hires">HR</div>
-            <div class="song-duration"><span>時間</span></div>
-            <div class="song-play-count"><span>回数</span></div>
+            ${headerCells}
         </div>
     `;
 }
@@ -237,8 +237,22 @@ export function setupSongListScroller(listElement, songList, options = {}) {
  * リストヘッダーの列サイズ変更機能を初期化する
  */
 export function initListHeaderResizing(viewWrapper) {
+    // 可視列に基づいた初期Gridスタイルを適用
+    updateGridStyle(getGridTemplate());
+
     const headerEl = viewWrapper.querySelector('#music-list-header');
     if (headerEl) {
         initColumnResizing(headerEl);
+
+        // ヘッダー右クリックで列の表示/非表示メニューを表示
+        headerEl.addEventListener('contextmenu', (e) => {
+            // 子要素のコンテキストメニューも捕捉
+            e.preventDefault();
+            e.stopPropagation();
+            showColumnContextMenu(e, () => {
+                // コールバック: ビューを再描画して列変更を反映
+                import('../ui/ui-manager.js').then(mod => mod.renderCurrentView());
+            });
+        });
     }
 }
