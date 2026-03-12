@@ -298,6 +298,9 @@ initApp()
     const OSCILLATE_TIME = 4.5;   // 振動フェーズ（秒）
     const RETURN_TIME = 0.8;   // 元の形に戻るフェーズ（秒）
 
+    let rafId = null;
+    let startTime = null;
+
     // buildPath関数は「amp」値を受け取る（sin値、-1〜+1）
     function buildPath1(amp) {
         const cy = 25 - 22 * amp;
