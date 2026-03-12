@@ -289,74 +289,11 @@
     height: 100%;
 }
 
-/* SVGパスのアニメーション初期設定 */
-#audio-info-btn svg path {
-    transition: stroke 0.2s;
-}
-
-/* ホバー時: カーブがキツく/ゆるくなるアニメーション */
-#audio-info-btn:hover svg path:nth-child(1) {
-    animation: wave-morph-1 1.2s ease-in-out infinite;
-}
-
-#audio-info-btn:hover svg path:nth-child(2) {
-    animation: wave-morph-2 1.2s ease-in-out infinite 0.3s;
-}
-
-#audio-info-btn:hover svg path:nth-child(3) {
-    animation: wave-morph-3 1.2s ease-in-out infinite 0.6s;
-}
-
-#audio-info-btn:hover svg path,
-#audio-info-btn:focus-visible svg path {
-    stroke: #fff;
-}
-
-/* top wave  (y=12): gentle ↔ sharp */
-@keyframes wave-morph-1 {
-
-    0%,
-    100% {
-        d: path("M 5 12 C 25 9, 45 9, 55 12 S 80 15, 95 12");
-    }
-
-    50% {
-        d: path("M 5 12 C 25 -2, 45 -2, 55 12 S 80 26, 95 12");
-    }
-}
-
-/* mid wave  (y=25): gentle ↔ sharp */
-@keyframes wave-morph-2 {
-
-    0%,
-    100% {
-        d: path("M 5 25 C 25 22, 45 22, 55 25 S 80 28, 95 25");
-    }
-
-    50% {
-        d: path("M 5 25 C 25 11, 45 11, 55 25 S 80 39, 95 25");
-    }
-}
-
-/* bottom wave (y=38): gentle ↔ sharp */
-@keyframes wave-morph-3 {
-
-    0%,
-    100% {
-        d: path("M 5 38 C 25 35, 45 35, 55 38 S 80 41, 95 38");
-    }
-
-    50% {
-        d: path("M 5 38 C 25 24, 45 24, 55 38 S 80 52, 95 38");
-    }
-}
-
 #audio-info-btn:hover,
 #audio-info-btn:focus-visible {
     border-color: var(--text-primary);
     color: var(--text-primary);
     background-color: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 0 6px rgba(255, 255, 255, 0.15);
 }
 
 .audio-info-tooltip {
