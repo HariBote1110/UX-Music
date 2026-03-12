@@ -207,14 +207,8 @@
     color: #D9A300;
 }
 
-/* 固定幅列の区切り線 */
-#music-list-header .song-duration,
-#music-list-header .song-play-count {
-    border-left: 1px solid var(--bg-light);
-    padding-left: 10px;
-    box-sizing: border-box;
-    height: 60%;
-}
+
+
 
 .song-item:hover {
     background-color: var(--bg-light);
