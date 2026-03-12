@@ -143,6 +143,7 @@ function updateAudioInfoTooltip() {
     const sampleRateEl = document.getElementById('audio-info-sample-rate');
     const bitDepthEl = document.getElementById('audio-info-bit-depth');
     const formatEl = document.getElementById('audio-info-format');
+    const audioInfoBtn = document.getElementById('audio-info-btn');
     if (!sampleRateEl || !bitDepthEl || !formatEl) return;
 
     const song = getCurrentQueueSong();
@@ -150,12 +151,20 @@ function updateAudioInfoTooltip() {
         sampleRateEl.textContent = '-';
         bitDepthEl.textContent = '-';
         formatEl.textContent = '-';
+        audioInfoBtn?.classList.remove('hi-res');
         return;
     }
 
     sampleRateEl.textContent = formatSampleRate(song);
     bitDepthEl.textContent = formatBitDepth(song);
     formatEl.textContent = formatAudioFormat(song);
+
+    // ハイレゾ判定: SR≥88200Hz または ビット深度>16bit
+    const sr = parsePositiveNumber(song?.sampleRate ?? song?.sample_rate) ?? 0;
+    const bitDepthStr = bitDepthEl.textContent; // e.g. "24 bit"
+    const bitDepth = parseInt(bitDepthStr, 10) || 0;
+    const isHiRes = sr >= 88200 || bitDepth > 16;
+    audioInfoBtn?.classList.toggle('hi-res', isHiRes);
 }
 
 // SVGパス定義（座標を配列で管理）

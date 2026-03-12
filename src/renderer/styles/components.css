@@ -297,6 +297,19 @@
 }
 
 
+/* ハイレゾ音源再生時 — 波形を金色に */
+#audio-info-btn.hi-res {
+    border-color: #C8A228;
+    color: #D4AF37;
+}
+
+#audio-info-btn.hi-res:hover,
+#audio-info-btn.hi-res:focus-visible {
+    border-color: #F0C93A;
+    color: #F0C93A;
+    background-color: rgba(212, 175, 55, 0.12);
+}
+
 
 .audio-info-tooltip {
     position: absolute;
