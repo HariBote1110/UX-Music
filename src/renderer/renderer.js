@@ -300,7 +300,7 @@ initApp()
 
     function buildPath1(t) {
         // 始点(10,15) 終点(90,35) 固定 — コントロールポイントのYのみ変化
-        const a = Math.sin(t * 8.4) * 11; // 振幅11、速め
+        const a = Math.sin(t * 8.4) * 22; // 振幅22: Y=5±22 → -17〜27（中心25を越えて逆相）
         const cy1 = 5 + a;
         const cy2 = 5 + a;
         const cy3 = 45 - a;
@@ -309,7 +309,7 @@ initApp()
 
     function buildPath2(t) {
         // 始点(10,25) 終点(90,25) 固定
-        const a = Math.sin(t * 5.7 + 0.4) * 13; // 振幅13、遅め
+        const a = Math.sin(t * 5.7 + 0.4) * 20; // 振幅20: Y=10±20 → -10〜30（中心25を越えて逆相）
         const cy1 = 10 + a;
         const cy2 = 15 + a;
         const cy3 = 38 - a;
@@ -318,7 +318,7 @@ initApp()
 
     function buildPath3(t) {
         // 始点(10,35) 終点(90,15) 固定
-        const a = Math.sin(t * 7.0 + 0.9) * 9; // 振幅9、中間
+        const a = Math.sin(t * 7.0 + 0.9) * 16; // 振幅16: Y=20±16 → 4〜36（中心25を越えて逆相）
         const cy1 = 20 + a;
         const cy2 = 20 + a;
         const cy3 = 30 - a;
