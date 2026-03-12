@@ -295,55 +295,63 @@ initApp()
         w3: 'M 10 35 C 20 20, 40 20, 50 25 S 80 30, 90 15',
     };
 
-    let rafId = null;
-    let startTime = null;
+    const OSCILLATE_TIME = 4.5;   // 振動フェーズ（秒）
+    const RETURN_TIME = 0.8;   // 元の形に戻るフェーズ（秒）
 
-    const ANIM_DURATION = 5.5;  // アニメーション総時間（秒）
-    const FADE_START = 4.0;  // フェードアウト開始タイミング（秒）
-
-    function buildPath1(t, scale) {
-        // 始点(10,15) 終点(90,35) 固定
-        const amp = Math.sin(t * 2.2) * scale; // 周波数2.2（ゆったり）
+    // buildPath関数は「amp」値を受け取る（sin値、-1〜+1）
+    function buildPath1(amp) {
         const cy = 25 - 22 * amp;
         const cy3 = 25 + 22 * amp;
         return `M 10 15 C 20 ${cy}, 40 ${cy}, 50 25 S 80 ${cy3}, 90 35`;
     }
-
-    function buildPath2(t, scale) {
-        // 始点(10,25) 終点(90,25) 固定
-        const amp = Math.sin(t * 1.5 + 0.4) * scale; // 周波数1.5（最もゆったり）
+    function buildPath2(amp) {
         const cy1 = 25 - 18 * amp;
         const cy2 = 25 - 14 * amp;
         const cy3 = 25 + 16 * amp;
         return `M 10 25 C 23 ${cy1}, 40 ${cy2}, 50 25 S 80 ${cy3}, 90 25`;
     }
-
-    function buildPath3(t, scale) {
-        // 始点(10,35) 終点(90,15) 固定
-        const amp = Math.sin(t * 1.8 + 0.9) * scale; // 周波数1.8
+    function buildPath3(amp) {
         const cy = 25 - 18 * amp;
         const cy3 = 25 + 12 * amp;
         return `M 10 35 C 20 ${cy}, 40 ${cy}, 50 25 S 80 ${cy3}, 90 15`;
     }
 
+    // 元のパス形状に対応するamp値（BASE パスから逆算）
+    // wave1: cy=5 → 25 - 22*amp = 5 → amp = 20/22
+    // wave2: cy1=10 → amp = 15/18
+    // wave3: cy=20 → amp = 5/18
+    const TARGET_AMP = { w1: 20 / 22, w2: 15 / 18, w3: 5 / 18 };
+
+    // easeOut（終わり付近でゆっくりになる）
+    function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+    let exitAmps = null; // 振動フェーズ終了時のamp値を保存
+
     function animate(timestamp) {
         if (!startTime) startTime = timestamp;
         const t = (timestamp - startTime) / 1000;
 
-        // 時間制限: 終わったら元に戻して停止
-        if (t >= ANIM_DURATION) {
-            stopAnimate();
-            return;
+        let a1, a2, a3;
+
+        if (t <= OSCILLATE_TIME) {
+            // ── 振動フェーズ ──
+            a1 = Math.sin(t * 2.2);
+            a2 = Math.sin(t * 1.5 + 0.4);
+            a3 = Math.sin(t * 1.8 + 0.9);
+            exitAmps = { a1, a2, a3 }; // 常に最新値を記録
+        } else {
+            // ── 帰還フェーズ: 終了時点のampから元の形へeaseOut補間 ──
+            const rt = t - OSCILLATE_TIME;
+            if (rt >= RETURN_TIME) { stopAnimate(); return; }
+            const p = easeOutCubic(rt / RETURN_TIME);
+            a1 = exitAmps.a1 + (TARGET_AMP.w1 - exitAmps.a1) * p;
+            a2 = exitAmps.a2 + (TARGET_AMP.w2 - exitAmps.a2) * p;
+            a3 = exitAmps.a3 + (TARGET_AMP.w3 - exitAmps.a3) * p;
         }
 
-        // フェードアウト係数 (FADE_START以降で 1→0)
-        const scale = t >= FADE_START
-            ? 1 - (t - FADE_START) / (ANIM_DURATION - FADE_START)
-            : 1;
-
-        wave1.setAttribute('d', buildPath1(t, scale));
-        wave2.setAttribute('d', buildPath2(t, scale));
-        wave3.setAttribute('d', buildPath3(t, scale));
+        wave1.setAttribute('d', buildPath1(a1));
+        wave2.setAttribute('d', buildPath2(a2));
+        wave3.setAttribute('d', buildPath3(a3));
 
         rafId = requestAnimationFrame(animate);
     }
