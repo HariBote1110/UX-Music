@@ -296,6 +296,95 @@
     background-color: rgba(255, 255, 255, 0.08);
 }
 
+/* ホバー時の波形アニメーション */
+#audio-info-btn:hover .wave-1,
+#audio-info-btn:focus-visible .wave-1 {
+    animation: wave-freq-1 0.75s ease-in-out infinite alternate;
+}
+
+#audio-info-btn:hover .wave-2,
+#audio-info-btn:focus-visible .wave-2 {
+    animation: wave-freq-2 1.1s ease-in-out infinite alternate;
+    animation-delay: 0.15s;
+}
+
+#audio-info-btn:hover .wave-3,
+#audio-info-btn:focus-visible .wave-3 {
+    animation: wave-freq-3 0.9s ease-in-out infinite alternate;
+    animation-delay: 0.3s;
+}
+
+/* 波1: 振幅大きめ・速め */
+@keyframes wave-freq-1 {
+    0% {
+        transform: translateY(0px) scaleY(1);
+    }
+
+    30% {
+        transform: translateY(-5px) scaleY(1.6);
+    }
+
+    60% {
+        transform: translateY(3px) scaleY(0.6);
+    }
+
+    100% {
+        transform: translateY(-3px) scaleY(1.3);
+    }
+}
+
+/* 波2: 振幅中程度・ゆっくり */
+@keyframes wave-freq-2 {
+    0% {
+        transform: translateY(0px) scaleY(1);
+    }
+
+    40% {
+        transform: translateY(4px) scaleY(0.5);
+    }
+
+    70% {
+        transform: translateY(-4px) scaleY(1.5);
+    }
+
+    100% {
+        transform: translateY(2px) scaleY(0.8);
+    }
+}
+
+/* 波3: 振幅小さめ・中間速度 */
+@keyframes wave-freq-3 {
+    0% {
+        transform: translateY(0px) scaleY(1);
+    }
+
+    35% {
+        transform: translateY(-3px) scaleY(1.4);
+    }
+
+    65% {
+        transform: translateY(5px) scaleY(0.7);
+    }
+
+    100% {
+        transform: translateY(-2px) scaleY(1.2);
+    }
+}
+
+/* transform-origin をSVGの中心ラインに合わせる */
+.waveform-icon .wave-1 {
+    transform-origin: 50px 25px;
+}
+
+.waveform-icon .wave-2 {
+    transform-origin: 50px 25px;
+}
+
+.waveform-icon .wave-3 {
+    transform-origin: 50px 25px;
+}
+
+
 .audio-info-tooltip {
     position: absolute;
     bottom: calc(100% + 10px);
