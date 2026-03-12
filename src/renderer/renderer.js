@@ -277,3 +277,77 @@ async function initApp() {
 initApp()
     .then(() => checkWails())
     .catch(err => console.error('App initialization failed:', err));
+
+// ─── 音声情報ボタン 波形ホバーアニメーション ───────────────────────────
+(function initWaveformAnimation() {
+    const btn = document.getElementById('audio-info-btn');
+    if (!btn) return;
+
+    const wave1 = btn.querySelector('.wave-1');
+    const wave2 = btn.querySelector('.wave-2');
+    const wave3 = btn.querySelector('.wave-3');
+    if (!wave1 || !wave2 || !wave3) return;
+
+    // 各波の元のパス（始点・終点は絶対に変えない）
+    const BASE = {
+        w1: 'M 10 15 C 20 5, 40 5, 50 25 S 80 45, 90 35',
+        w2: 'M 10 25 C 23 10, 40 15, 50 25 S 80 38, 90 25',
+        w3: 'M 10 35 C 20 20, 40 20, 50 25 S 80 30, 90 15',
+    };
+
+    let rafId = null;
+    let startTime = null;
+
+    function buildPath1(t) {
+        // 始点(10,15) 終点(90,35) 固定 — コントロールポイントのYのみ変化
+        const a = Math.sin(t * 8.4) * 11; // 振幅11、速め
+        const cy1 = 5 + a;
+        const cy2 = 5 + a;
+        const cy3 = 45 - a;
+        return `M 10 15 C 20 ${cy1}, 40 ${cy2}, 50 25 S 80 ${cy3}, 90 35`;
+    }
+
+    function buildPath2(t) {
+        // 始点(10,25) 終点(90,25) 固定
+        const a = Math.sin(t * 5.7 + 0.4) * 13; // 振幅13、遅め
+        const cy1 = 10 + a;
+        const cy2 = 15 + a;
+        const cy3 = 38 - a;
+        return `M 10 25 C 23 ${cy1}, 40 ${cy2}, 50 25 S 80 ${cy3}, 90 25`;
+    }
+
+    function buildPath3(t) {
+        // 始点(10,35) 終点(90,15) 固定
+        const a = Math.sin(t * 7.0 + 0.9) * 9; // 振幅9、中間
+        const cy1 = 20 + a;
+        const cy2 = 20 + a;
+        const cy3 = 30 - a;
+        return `M 10 35 C 20 ${cy1}, 40 ${cy2}, 50 25 S 80 ${cy3}, 90 15`;
+    }
+
+    function animate(timestamp) {
+        if (!startTime) startTime = timestamp;
+        const t = (timestamp - startTime) / 1000;
+
+        wave1.setAttribute('d', buildPath1(t));
+        wave2.setAttribute('d', buildPath2(t));
+        wave3.setAttribute('d', buildPath3(t));
+
+        rafId = requestAnimationFrame(animate);
+    }
+
+    function stopAnimate() {
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        startTime = null;
+        wave1.setAttribute('d', BASE.w1);
+        wave2.setAttribute('d', BASE.w2);
+        wave3.setAttribute('d', BASE.w3);
+    }
+
+    btn.addEventListener('mouseenter', () => {
+        if (!rafId) rafId = requestAnimationFrame(animate);
+    });
+    btn.addEventListener('mouseleave', stopAnimate);
+    btn.addEventListener('focus', () => { if (!rafId) rafId = requestAnimationFrame(animate); });
+    btn.addEventListener('blur', stopAnimate);
+})();
