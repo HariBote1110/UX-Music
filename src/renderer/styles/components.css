@@ -296,7 +296,7 @@
     background-color: rgba(255, 255, 255, 0.08);
 }
 
-/* ホバー時の波形アニメーション */
+/* ホバー時の波形アニメーション - 始点・終点固定、振幅（コントロールポイント）のみ変化 */
 #audio-info-btn:hover .wave-1,
 #audio-info-btn:focus-visible .wave-1 {
     animation: wave-freq-1 0.75s ease-in-out infinite alternate;
@@ -314,74 +314,49 @@
     animation-delay: 0.3s;
 }
 
-/* 波1: 振幅大きめ・速め */
+/* 波1: M 10 15 ... 90 35 を固定 */
 @keyframes wave-freq-1 {
     0% {
-        transform: translateY(0px) scaleY(1);
+        d: path("M 10 15 C 25 15, 40 20, 50 25 S 75 30, 90 35");
     }
 
-    30% {
-        transform: translateY(-5px) scaleY(1.6);
-    }
-
-    60% {
-        transform: translateY(3px) scaleY(0.6);
+    50% {
+        d: path("M 10 15 C 15 -5, 35 -5, 50 25 S 85 55, 90 35");
     }
 
     100% {
-        transform: translateY(-3px) scaleY(1.3);
+        d: path("M 10 15 C 20 5, 40 5, 50 25 S 80 45, 90 35");
     }
 }
 
-/* 波2: 振幅中程度・ゆっくり */
+/* 波2: M 10 25 ... 90 25 を固定 */
 @keyframes wave-freq-2 {
     0% {
-        transform: translateY(0px) scaleY(1);
+        d: path("M 10 25 C 25 25, 40 25, 50 25 S 75 25, 90 25");
     }
 
-    40% {
-        transform: translateY(4px) scaleY(0.5);
-    }
-
-    70% {
-        transform: translateY(-4px) scaleY(1.5);
+    50% {
+        d: path("M 10 25 C 20 5, 38 5, 50 25 S 82 45, 90 25");
     }
 
     100% {
-        transform: translateY(2px) scaleY(0.8);
+        d: path("M 10 25 C 23 10, 40 15, 50 25 S 80 38, 90 25");
     }
 }
 
-/* 波3: 振幅小さめ・中間速度 */
+/* 波3: M 10 35 ... 90 15 を固定 */
 @keyframes wave-freq-3 {
     0% {
-        transform: translateY(0px) scaleY(1);
+        d: path("M 10 35 C 25 30, 40 25, 50 25 S 75 20, 90 15");
     }
 
-    35% {
-        transform: translateY(-3px) scaleY(1.4);
-    }
-
-    65% {
-        transform: translateY(5px) scaleY(0.7);
+    50% {
+        d: path("M 10 35 C 15 15, 35 10, 50 25 S 85 40, 90 15");
     }
 
     100% {
-        transform: translateY(-2px) scaleY(1.2);
+        d: path("M 10 35 C 20 20, 40 20, 50 25 S 80 30, 90 15");
     }
-}
-
-/* transform-origin をSVGの中心ラインに合わせる */
-.waveform-icon .wave-1 {
-    transform-origin: 50px 25px;
-}
-
-.waveform-icon .wave-2 {
-    transform-origin: 50px 25px;
-}
-
-.waveform-icon .wave-3 {
-    transform-origin: 50px 25px;
 }
 
 
