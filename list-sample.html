@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Windows Style List View</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --border-color: #e5e7eb;
+            --hover-color: #f3f4f6;
+            --selected-color: #e5e7eb;
+            --header-bg: #f9fafb;
+        }
+
+        body {
+            background-color: #f0f2f5;
+            font-family: 'Segoe UI', Meiryo, sans-serif;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+        }
+
+        /* リストのコンテナ */
+        .list-container {
+            width: 90%;
+            max-width: 1000px;
+            height: 80vh;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ヘッダー部分 */
+        .list-header {
+            display: flex;
+            background: var(--header-bg);
+            border-bottom: 1px solid var(--border-color);
+            user-select: none;
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: #4b5563;
+        }
+
+        .header-cell {
+            padding: 10px 12px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            border-right: 1px solid var(--border-color);
+            min-width: 50px;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        /* サイズ変更用ハンドル */
+        .resizer {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 5px;
+            cursor: col-resize;
+            z-index: 10;
+        }
+
+        .resizer:hover {
+            background-color: #3b82f6;
+        }
+
+        /* リストの中身 */
+        .list-body {
+            flex: 1;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .list-row {
+            display: flex;
+            border-bottom: 1px solid #f3f4f6;
+            cursor: default;
+            font-size: 0.875rem;
+            color: #1f2937;
+        }
+
+        .list-row:hover {
+            background-color: var(--hover-color);
+        }
+
+        .list-row.selected {
+            background-color: var(--selected-color);
+        }
+
+        .list-cell {
+            padding: 8px 12px;
+            border-right: 1px solid transparent;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+        }
+
+        /* カスタム右クリックメニュー */
+        #context-menu {
+            position: fixed;
+            display: none;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            z-index: 1000;
+            padding: 4px;
+            min-width: 150px;
+        }
+
+        .menu-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .menu-item:hover {
+            background-color: #eff6ff;
+            color: #2563eb;
+        }
+
+        .menu-item.danger:hover {
+            background-color: #fef2f2;
+            color: #dc2626;
+        }
+
+        /* アイコン風の円 */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="list-container" id="main-container">
+        <!-- ヘッダー -->
+        <div class="list-header" id="list-header">
+            <div class="header-cell" style="width: 250px;">
+                名前
+                <div class="resizer"></div>
+            </div>
+            <div class="header-cell" style="width: 150px;">
+                種類
+                <div class="resizer"></div>
+            </div>
+            <div class="header-cell" style="width: 120px;">
+                サイズ
+                <div class="resizer"></div>
+            </div>
+            <div class="header-cell" style="flex: 1; border-right: none;">
+                更新日時
+                <div class="resizer"></div>
+            </div>
+        </div>
+
+        <!-- ボディ -->
+        <div class="list-body" id="list-body">
+            <!-- JavaScriptで動的に生成 -->
+        </div>
+    </div>
+
+    <!-- 右クリックメニュー -->
+    <div id="context-menu">
+        <div class="menu-item" onclick="handleAction('open')">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M9.5 3a.5.5 0 0 1 .5.5v11a.5.5 0 0 1-1 0v-11a.5.5 0 0 1 .5-.5zm-5 0a.5.5 0 0 1 .5.5v11a.5.5 0 0 1-1 0v-11a.5.5 0 0 1 .5-.5z"/></svg>
+            開く
+        </div>
+        <div class="menu-item" onclick="handleAction('copy')">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z"/></svg>
+            コピー
+        </div>
+        <hr class="my-1 border-gray-100">
+        <div class="menu-item danger" onclick="handleAction('delete')">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+            削除
+        </div>
+    </div>
+
+    <script>
+        // サンプルデータ
+        let items = [
+            { id: 1, name: "プロジェクト資料.docx", type: "Word 文書", size: "24 KB", date: "2024/05/20 14:30" },
+            { id: 2, name: "予算案_2024.xlsx", type: "Excel ワークシート", size: "156 KB", date: "2024/05/22 09:15" },
+            { id: 3, name: "背景画像.png", type: "PNG イメージ", size: "1.2 MB", date: "2024/05/18 18:45" },
+            { id: 4, name: "システムログ", type: "ファイル フォルダ", size: "-", date: "2024/05/21 11:20" },
+            { id: 5, name: "プレゼン.pptx", type: "PowerPoint プレゼンテーション", size: "5.4 MB", date: "2024/05/23 16:00" },
+            { id: 6, name: "README.txt", type: "テキスト ドキュメント", size: "2 KB", date: "2024/05/10 10:05" },
+        ];
+
+        let selectedId = null;
+        const listBody = document.getElementById('list-body');
+        const contextMenu = document.getElementById('context-menu');
+        const headerCells = document.querySelectorAll('.header-cell');
+
+        // リストの描画
+        function renderList() {
+            listBody.innerHTML = '';
+            items.forEach(item => {
+                const row = document.createElement('div');
+                row.className = `list-row ${selectedId === item.id ? 'selected' : ''}`;
+                row.dataset.id = item.id;
+
+                // セルの作成（ヘッダーの幅に合わせる）
+                row.innerHTML = `
+                    <div class="list-cell" style="width: ${headerCells[0].offsetWidth}px">${item.name}</div>
+                    <div class="list-cell" style="width: ${headerCells[1].offsetWidth}px">${item.type}</div>
+                    <div class="list-cell" style="width: ${headerCells[2].offsetWidth}px">${item.size}</div>
+                    <div class="list-cell" style="flex: 1">${item.date}</div>
+                `;
+
+                // 左クリックで選択
+                row.addEventListener('click', (e) => {
+                    selectedId = item.id;
+                    renderList();
+                });
+
+                // 右クリックでメニュー表示
+                row.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    selectedId = item.id;
+                    renderList();
+                    showContextMenu(e.pageX, e.pageY);
+                });
+
+                listBody.appendChild(row);
+            });
+        }
+
+        // 右クリックメニューの表示
+        function showContextMenu(x, y) {
+            contextMenu.style.display = 'block';
+            
+            // 画面端での見切れ防止
+            const menuWidth = contextMenu.offsetWidth;
+            const menuHeight = contextMenu.offsetHeight;
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+
+            if (x + menuWidth > windowWidth) x = windowWidth - menuWidth - 10;
+            if (y + menuHeight > windowHeight) y = windowHeight - menuHeight - 10;
+
+            contextMenu.style.left = `${x}px`;
+            contextMenu.style.top = `${y}px`;
+        }
+
+        // メニューアクションの処理
+        function handleAction(action) {
+            if (selectedId === null) return;
+
+            if (action === 'delete') {
+                items = items.filter(item => item.id !== selectedId);
+                selectedId = null;
+            } else {
+                console.log(`${action} executed for item ID: ${selectedId}`);
+            }
+            
+            contextMenu.style.display = 'none';
+            renderList();
+        }
+
+        // リサイズ機能の実装
+        function initResizers() {
+            headerCells.forEach((cell, index) => {
+                const resizer = cell.querySelector('.resizer');
+                if (!resizer) return;
+
+                resizer.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    const startX = e.pageX;
+                    const startWidth = cell.offsetWidth;
+
+                    const onMouseMove = (moveEvent) => {
+                        const currentWidth = startWidth + (moveEvent.pageX - startX);
+                        if (currentWidth > 50) { // 最小幅
+                            cell.style.width = `${currentWidth}px`;
+                            cell.style.flex = 'none'; // flex:1 を解除
+                            renderList(); // セルの幅を同期
+                        }
+                    };
+
+                    const onMouseUp = () => {
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                    };
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                });
+            });
+        }
+
+        // メニュー外クリックで閉じる
+        document.addEventListener('click', (e) => {
+            if (!contextMenu.contains(e.target)) {
+                contextMenu.style.display = 'none';
+            }
+        });
+
+        // 初期化
+        window.onload = () => {
+            renderList();
+            initResizers();
+        };
+    </script>
+</body>
+</html>
