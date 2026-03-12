@@ -298,27 +298,29 @@ initApp()
     let rafId = null;
     let startTime = null;
 
-    function buildPath1(t) {
+    const ANIM_DURATION = 5.5;  // アニメーション総時間（秒）
+    const FADE_START = 4.0;  // フェードアウト開始タイミング（秒）
+
+    function buildPath1(t, scale) {
         // 始点(10,15) 終点(90,35) 固定
-        // Y=25を軸に対称: sin=+1→山型, sin=0→フラット, sin=-1→谷型（逆相）
-        const amp = Math.sin(t * 8.4);
-        const cy = 25 - 22 * amp; // +1時→3(上), -1時→47(下)
-        const cy3 = 25 + 22 * amp; // +1時→47(下), -1時→3(上) ← 左右対称
+        const amp = Math.sin(t * 2.2) * scale; // 周波数2.2（ゆったり）
+        const cy = 25 - 22 * amp;
+        const cy3 = 25 + 22 * amp;
         return `M 10 15 C 20 ${cy}, 40 ${cy}, 50 25 S 80 ${cy3}, 90 35`;
     }
 
-    function buildPath2(t) {
+    function buildPath2(t, scale) {
         // 始点(10,25) 終点(90,25) 固定
-        const amp = Math.sin(t * 5.7 + 0.4);
-        const cy1 = 25 - 18 * amp; // +1時→7(上), -1時→43(下)
+        const amp = Math.sin(t * 1.5 + 0.4) * scale; // 周波数1.5（最もゆったり）
+        const cy1 = 25 - 18 * amp;
         const cy2 = 25 - 14 * amp;
-        const cy3 = 25 + 16 * amp; // cy1と逆方向で対称
+        const cy3 = 25 + 16 * amp;
         return `M 10 25 C 23 ${cy1}, 40 ${cy2}, 50 25 S 80 ${cy3}, 90 25`;
     }
 
-    function buildPath3(t) {
+    function buildPath3(t, scale) {
         // 始点(10,35) 終点(90,15) 固定
-        const amp = Math.sin(t * 7.0 + 0.9);
+        const amp = Math.sin(t * 1.8 + 0.9) * scale; // 周波数1.8
         const cy = 25 - 18 * amp;
         const cy3 = 25 + 12 * amp;
         return `M 10 35 C 20 ${cy}, 40 ${cy}, 50 25 S 80 ${cy3}, 90 15`;
@@ -328,9 +330,20 @@ initApp()
         if (!startTime) startTime = timestamp;
         const t = (timestamp - startTime) / 1000;
 
-        wave1.setAttribute('d', buildPath1(t));
-        wave2.setAttribute('d', buildPath2(t));
-        wave3.setAttribute('d', buildPath3(t));
+        // 時間制限: 終わったら元に戻して停止
+        if (t >= ANIM_DURATION) {
+            stopAnimate();
+            return;
+        }
+
+        // フェードアウト係数 (FADE_START以降で 1→0)
+        const scale = t >= FADE_START
+            ? 1 - (t - FADE_START) / (ANIM_DURATION - FADE_START)
+            : 1;
+
+        wave1.setAttribute('d', buildPath1(t, scale));
+        wave2.setAttribute('d', buildPath2(t, scale));
+        wave3.setAttribute('d', buildPath3(t, scale));
 
         rafId = requestAnimationFrame(animate);
     }
