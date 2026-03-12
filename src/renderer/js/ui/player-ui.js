@@ -159,11 +159,15 @@ function updateAudioInfoTooltip() {
     bitDepthEl.textContent = formatBitDepth(song);
     formatEl.textContent = formatAudioFormat(song);
 
-    // ハイレゾ判定: SR≥88200Hz または ビット深度>16bit
+    // ハイレゾ判定: ロスレスフォーマット かつ (SR≥88200Hz または ビット深度>16bit)
+    // MP3/MP4/AAC等は32bitと誤判定されることがあるため、フォーマットで除外
+    const HI_RES_FORMATS = new Set(['FLAC', 'WAV', 'DSD', 'DSF', 'DFF', 'ALAC', 'AIFF', 'AIF']);
+    const format = formatEl.textContent.toUpperCase();
+    const isLossless = HI_RES_FORMATS.has(format);
     const sr = parsePositiveNumber(song?.sampleRate ?? song?.sample_rate) ?? 0;
     const bitDepthStr = bitDepthEl.textContent; // e.g. "24 bit"
     const bitDepth = parseInt(bitDepthStr, 10) || 0;
-    const isHiRes = sr >= 88200 || bitDepth > 16;
+    const isHiRes = isLossless && (sr >= 88200 || bitDepth > 16);
     audioInfoBtn?.classList.toggle('hi-res', isHiRes);
 }
 
