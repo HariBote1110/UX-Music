@@ -34,6 +34,9 @@ export function updateGridStyle(newColumns) {
 
 /**
  * 指定されたヘッダー要素にリサイズ機能を追加する
+ * list-sample.html スタイルの確実な mousedown→move→up パターンを採用。
+ * isDragging フラグを廃止し、mousedown でリスナーを登録・mouseup で削除することで
+ * 「最初の数px動かないと反応しない」問題を解消。
  * @param {HTMLElement} headerContainer - #music-list-header要素
  */
 export function initColumnResizing(headerContainer) {
@@ -52,73 +55,6 @@ export function initColumnResizing(headerContainer) {
         resizer.className = 'column-resizer';
         header.appendChild(resizer);
 
-        let isDragging = false;
-        let startX = 0;
-        let targetStartWidth = 0;
-        let nextStartWidth = 0;
-        let dragTemplate = null; // ドラッグ中の現在テンプレート(fr値)
-
-        const onMouseMove = (moveEvent) => {
-            if (!isDragging) return;
-            const deltaX = moveEvent.clientX - startX;
-
-            const newTargetWidth = targetStartWidth + deltaX;
-            const newNextWidth = nextStartWidth - deltaX;
-
-            if (newTargetWidth < 40 || newNextWidth < 40) return;
-
-            // getComputedStyle は使わず、モジュールキャッシュ(_currentTemplate)を使う
-            const templateStr = dragTemplate || _currentTemplate;
-            if (!templateStr) return;
-
-            const cols = templateStr.split(' ');
-            if (index >= cols.length - 1) return;
-
-            const targetStr = cols[index];
-            const nextStr = cols[index + 1];
-            const isFrTarget = targetStr.endsWith('fr');
-            const isFrNext = nextStr.endsWith('fr');
-
-            const newCols = [...cols];
-
-            if (isFrTarget && isFrNext) {
-                // fr同士: 合計frを保ちながら比率を変更
-                const prevTargetFr = parseFloat(targetStr);
-                const prevNextFr = parseFloat(nextStr);
-                const combinedFr = prevTargetFr + prevNextFr;
-                const combinedWidth = targetStartWidth + nextStartWidth;
-                if (combinedWidth <= 0) return;
-                const newTargetFr = (newTargetWidth / combinedWidth) * combinedFr;
-                const newNextFr = (newNextWidth / combinedWidth) * combinedFr;
-                newCols[index] = `${newTargetFr.toFixed(4)}fr`;
-                newCols[index + 1] = `${newNextFr.toFixed(4)}fr`;
-            } else {
-                newCols[index] = `${newTargetWidth}px`;
-                newCols[index + 1] = `${newNextWidth}px`;
-            }
-
-            dragTemplate = newCols.join(' ');
-            updateGridStyle(dragTemplate);
-        };
-
-        const onMouseUp = () => {
-            if (!isDragging) return;
-            isDragging = false;
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-
-            // fr値のままcolumn-configに保存（getComputedStyleは使用しない）
-            if (dragTemplate) {
-                const finalTemplateParts = dragTemplate.split(' ');
-                import('./column-config.js').then(mod => {
-                    mod.updateVisibleColumnWidths(finalTemplateParts);
-                });
-            }
-            dragTemplate = null;
-        };
-
         resizer.addEventListener('mousedown', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -127,14 +63,72 @@ export function initColumnResizing(headerContainer) {
             const nextHeader = headers[index + 1];
             if (!targetHeader || !nextHeader) return;
 
-            isDragging = true;
-            startX = e.clientX;
-            targetStartWidth = targetHeader.offsetWidth;
-            nextStartWidth = nextHeader.offsetWidth;
-            dragTemplate = null; // リセット（_currentTemplateを使う）
+            // getBoundingClientRect() で実際の描画幅を正確に取得
+            const startX = e.clientX;
+            const targetStartWidth = targetHeader.getBoundingClientRect().width;
+            const nextStartWidth = nextHeader.getBoundingClientRect().width;
+
+            // ドラッグ開始時のテンプレートを確定して保持（_currentTemplate が途中で変わることを防ぐ）
+            let dragTemplate = _currentTemplate;
 
             document.body.style.cursor = 'col-resize';
             document.body.style.userSelect = 'none';
+
+            const onMouseMove = (moveEvent) => {
+                const deltaX = moveEvent.clientX - startX;
+
+                const newTargetWidth = targetStartWidth + deltaX;
+                const newNextWidth = nextStartWidth - deltaX;
+
+                if (newTargetWidth < 40 || newNextWidth < 40) return;
+
+                const templateStr = dragTemplate || _currentTemplate;
+                if (!templateStr) return;
+
+                const cols = templateStr.split(' ');
+                if (index >= cols.length - 1) return;
+
+                const targetStr = cols[index];
+                const nextStr = cols[index + 1];
+                const isFrTarget = targetStr.endsWith('fr');
+                const isFrNext = nextStr.endsWith('fr');
+
+                const newCols = [...cols];
+
+                if (isFrTarget && isFrNext) {
+                    // fr同士: 合計frを保ちながら比率を変更
+                    const prevTargetFr = parseFloat(targetStr);
+                    const prevNextFr = parseFloat(nextStr);
+                    const combinedFr = prevTargetFr + prevNextFr;
+                    const combinedWidth = targetStartWidth + nextStartWidth;
+                    if (combinedWidth <= 0) return;
+                    const newTargetFr = (newTargetWidth / combinedWidth) * combinedFr;
+                    const newNextFr = (newNextWidth / combinedWidth) * combinedFr;
+                    newCols[index] = `${newTargetFr.toFixed(4)}fr`;
+                    newCols[index + 1] = `${newNextFr.toFixed(4)}fr`;
+                } else {
+                    newCols[index] = `${newTargetWidth}px`;
+                    newCols[index + 1] = `${newNextWidth}px`;
+                }
+
+                dragTemplate = newCols.join(' ');
+                updateGridStyle(dragTemplate);
+            };
+
+            const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+
+                // fr値のままcolumn-configに保存（getComputedStyleは使用しない）
+                if (dragTemplate && dragTemplate !== _currentTemplate) {
+                    const finalTemplateParts = dragTemplate.split(' ');
+                    import('./column-config.js').then(mod => {
+                        mod.updateVisibleColumnWidths(finalTemplateParts);
+                    });
+                }
+            };
 
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
