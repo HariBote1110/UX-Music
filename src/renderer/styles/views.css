@@ -283,7 +283,6 @@
     align-items: center;
     justify-content: flex-start;
     gap: 8px;
-    border-left: 1px solid var(--bg-light);
     padding-left: 10px;
     box-sizing: border-box;
     height: 100%;
@@ -291,7 +290,6 @@
 
 .song-item .song-play-count {
     text-align: left;
-    border-left: 1px solid var(--bg-light);
     padding-left: 10px;
     box-sizing: border-box;
     height: 100%;
