@@ -186,11 +186,13 @@
     left: 50%;
     transform: translateX(-50%);
     width: 1px;
-    background: transparent;
+    /* 常時うっすら表示、ホバーで青く光る */
+    background: var(--bg-light);
     transition: background-color 0.15s;
 }
 
-.column-resizer:hover::after {
+.column-resizer:hover::after,
+.column-resizer.active::after {
     background-color: var(--highlight-blue);
 }
 
@@ -203,16 +205,6 @@
 #music-list-header .song-hires {
     font-size: 0.9em;
     color: #D9A300;
-}
-
-/* リサイズ可能列の区切り線（インタラクション可能エリアの視覚ガイド） */
-#music-list-header .song-title,
-#music-list-header .song-artist,
-#music-list-header .song-album {
-    border-left: 1px solid var(--bg-light);
-    padding-left: 10px;
-    box-sizing: border-box;
-    height: 60%;
 }
 
 /* 固定幅列の区切り線 */
