@@ -299,30 +299,29 @@ initApp()
     let startTime = null;
 
     function buildPath1(t) {
-        // 始点(10,15) 終点(90,35) 固定 — コントロールポイントのYのみ変化
-        const a = Math.sin(t * 8.4) * 22; // 振幅22: Y=5±22 → -17〜27（中心25を越えて逆相）
-        const cy1 = 5 + a;
-        const cy2 = 5 + a;
-        const cy3 = 45 - a;
-        return `M 10 15 C 20 ${cy1}, 40 ${cy2}, 50 25 S 80 ${cy3}, 90 35`;
+        // 始点(10,15) 終点(90,35) 固定
+        // Y=25を軸に対称: sin=+1→山型, sin=0→フラット, sin=-1→谷型（逆相）
+        const amp = Math.sin(t * 8.4);
+        const cy = 25 - 22 * amp; // +1時→3(上), -1時→47(下)
+        const cy3 = 25 + 22 * amp; // +1時→47(下), -1時→3(上) ← 左右対称
+        return `M 10 15 C 20 ${cy}, 40 ${cy}, 50 25 S 80 ${cy3}, 90 35`;
     }
 
     function buildPath2(t) {
         // 始点(10,25) 終点(90,25) 固定
-        const a = Math.sin(t * 5.7 + 0.4) * 20; // 振幅20: Y=10±20 → -10〜30（中心25を越えて逆相）
-        const cy1 = 10 + a;
-        const cy2 = 15 + a;
-        const cy3 = 38 - a;
+        const amp = Math.sin(t * 5.7 + 0.4);
+        const cy1 = 25 - 18 * amp; // +1時→7(上), -1時→43(下)
+        const cy2 = 25 - 14 * amp;
+        const cy3 = 25 + 16 * amp; // cy1と逆方向で対称
         return `M 10 25 C 23 ${cy1}, 40 ${cy2}, 50 25 S 80 ${cy3}, 90 25`;
     }
 
     function buildPath3(t) {
         // 始点(10,35) 終点(90,15) 固定
-        const a = Math.sin(t * 7.0 + 0.9) * 16; // 振幅16: Y=20±16 → 4〜36（中心25を越えて逆相）
-        const cy1 = 20 + a;
-        const cy2 = 20 + a;
-        const cy3 = 30 - a;
-        return `M 10 35 C 20 ${cy1}, 40 ${cy2}, 50 25 S 80 ${cy3}, 90 15`;
+        const amp = Math.sin(t * 7.0 + 0.9);
+        const cy = 25 - 18 * amp;
+        const cy3 = 25 + 12 * amp;
+        return `M 10 35 C 20 ${cy}, 40 ${cy}, 50 25 S 80 ${cy3}, 90 15`;
     }
 
     function animate(timestamp) {
