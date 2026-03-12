@@ -205,12 +205,23 @@
     color: #D9A300;
 }
 
+/* リサイズ可能列の区切り線（インタラクション可能エリアの視覚ガイド） */
+#music-list-header .song-title,
+#music-list-header .song-artist,
+#music-list-header .song-album {
+    border-left: 1px solid var(--bg-light);
+    padding-left: 10px;
+    box-sizing: border-box;
+    height: 60%;
+}
+
+/* 固定幅列の区切り線 */
 #music-list-header .song-duration,
 #music-list-header .song-play-count {
     border-left: 1px solid var(--bg-light);
     padding-left: 10px;
     box-sizing: border-box;
-    height: 50%;
+    height: 60%;
 }
 
 .song-item:hover {
