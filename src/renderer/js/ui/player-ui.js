@@ -362,11 +362,46 @@ export function initPlayerControls(initialPlayer, _callbacks) {
 
     updateVolumeIcon();
     updateAudioInfoTooltip();
+    initialiseShuffle();
+    initialiseLoop();
+}
+
+// ─── 共通ヘルパー ──────────────────────────────────────────────────────────
+
+/**
+ * strokeDashoffset アニメーション用の位置定義（参考 HTML と同式）。
+ *   posStandard : 通常表示位置（パス終端）
+ *   posExit     : 退出位置（SVG境界外）
+ *   posEnter    : 入場位置（SVG境界外）
+ *   dashOf(pos, len) : dashoffset 値を計算
+ */
+const POS_STANDARD = 100;
+const POS_EXIT     = 130;
+const POS_ENTER    = -30;
+const dashOf = (pos, len) => len - (pos / 100) * len;
+
+// ─── シャッフルボタン アニメーション ──────────────────────────────────────
+
+function initialiseShuffle() {
+    const btn = elements.shuffleBtn;
+    if (!btn) return;
+    const pathTop = btn.querySelector('.shuffle-path-top');
+    const pathBottom = btn.querySelector('.shuffle-path-bottom');
+    if (!pathTop || !pathBottom) return;
+    const topLen = pathTop.getTotalLength();
+    const bottomLen = pathBottom.getTotalLength();
+    pathTop.dataset.totalLength = topLen;
+    pathBottom.dataset.totalLength = bottomLen;
+    pathTop.style.strokeDasharray    = `${topLen} ${topLen * 3}`;
+    pathTop.style.strokeDashoffset   = '0';
+    pathBottom.style.strokeDasharray  = `${bottomLen} ${bottomLen * 3}`;
+    pathBottom.style.strokeDashoffset = '0';
 }
 
 /**
  * シャッフルボタン押下時のアニメーション。
- * SVGアイコン全体を 360° 回転させる。
+ * ストロークが交差パスに沿ってスライドし、矢印先端も同期して動く。
+ * 動き: 右退場（200ms）→ 左ワープ → 左から再入場（400ms / spring）
  */
 export async function runShuffleAnimation() {
     if (shuffleAnimationRunning) return;
@@ -375,16 +410,66 @@ export async function runShuffleAnimation() {
     const btn = elements.shuffleBtn;
     if (!btn) { shuffleAnimationRunning = false; return; }
 
-    const svgEl = btn.querySelector('svg');
-    if (!svgEl) { shuffleAnimationRunning = false; return; }
+    const pathTop    = btn.querySelector('.shuffle-path-top');
+    const pathBottom = btn.querySelector('.shuffle-path-bottom');
+    const headTop    = btn.querySelector('.shuffle-head-top');
+    const headBottom = btn.querySelector('.shuffle-head-bottom');
+    if (!pathTop || !pathBottom) { shuffleAnimationRunning = false; return; }
 
-    const anim = svgEl.animate(
-        [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
-        { duration: 450, easing: 'ease-in-out', fill: 'forwards' }
-    );
-    await anim.finished;
-    svgEl.style.transform = '';
-    anim.cancel();
+    const topLen    = parseFloat(pathTop.dataset.totalLength)    || pathTop.getTotalLength();
+    const bottomLen = parseFloat(pathBottom.dataset.totalLength) || pathBottom.getTotalLength();
+
+    const svgEl = btn.querySelector('svg');
+    const scale = svgEl ? svgEl.getBoundingClientRect().width / 24 : 22 / 24;
+    const headExitX  =  (POS_EXIT  - POS_STANDARD) / 100 * topLen * scale;
+    const headEnterX =  (POS_ENTER - POS_STANDARD) / 100 * topLen * scale;
+
+    const timingExit  = { duration: 200, easing: 'ease-in',                       fill: 'forwards' };
+    const timingEnter = { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' };
+
+    // 1. 右退出
+    const exitAnims = [
+        pathTop.animate(
+            [{ strokeDashoffset: dashOf(POS_STANDARD, topLen) },    { strokeDashoffset: dashOf(POS_EXIT, topLen) }],
+            timingExit
+        ),
+        pathBottom.animate(
+            [{ strokeDashoffset: dashOf(POS_STANDARD, bottomLen) }, { strokeDashoffset: dashOf(POS_EXIT, bottomLen) }],
+            timingExit
+        ),
+    ];
+    if (headTop)    exitAnims.push(headTop.animate(
+        [{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExit
+    ));
+    if (headBottom) exitAnims.push(headBottom.animate(
+        [{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExit
+    ));
+    await Promise.all(exitAnims.map(a => a.finished));
+
+    // 2+3. 左ワープ → 左から再入場
+    const enterAnims = [
+        pathTop.animate(
+            [{ strokeDashoffset: dashOf(POS_ENTER, topLen) },    { strokeDashoffset: dashOf(POS_STANDARD, topLen) }],
+            timingEnter
+        ),
+        pathBottom.animate(
+            [{ strokeDashoffset: dashOf(POS_ENTER, bottomLen) }, { strokeDashoffset: dashOf(POS_STANDARD, bottomLen) }],
+            timingEnter
+        ),
+    ];
+    if (headTop)    enterAnims.push(headTop.animate(
+        [{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter
+    ));
+    if (headBottom) enterAnims.push(headBottom.animate(
+        [{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter
+    ));
+    await Promise.all(enterAnims.map(a => a.finished));
+
+    pathTop.style.strokeDashoffset    = '0';
+    pathBottom.style.strokeDashoffset = '0';
+    if (headTop)    headTop.style.transform    = '';
+    if (headBottom) headBottom.style.transform = '';
+    [...exitAnims, ...enterAnims].forEach(a => a.cancel());
 
     shuffleAnimationRunning = false;
 }
@@ -393,9 +478,28 @@ export async function runShuffleAnimation() {
 
 let loopAnimationRunning = false;
 
+function initialiseLoop() {
+    const btn = elements.loopBtn;
+    if (!btn) return;
+    const pathTop = btn.querySelector('.loop-path-top');
+    const pathBottom = btn.querySelector('.loop-path-bottom');
+    if (!pathTop || !pathBottom) return;
+    const topLen = pathTop.getTotalLength();
+    const bottomLen = pathBottom.getTotalLength();
+    pathTop.dataset.totalLength = topLen;
+    pathBottom.dataset.totalLength = bottomLen;
+    pathTop.style.strokeDasharray    = `${topLen} ${topLen * 3}`;
+    pathTop.style.strokeDashoffset   = '0';
+    pathBottom.style.strokeDasharray  = `${bottomLen} ${bottomLen * 3}`;
+    pathBottom.style.strokeDashoffset = '0';
+}
+
 /**
  * ループボタン押下時のアニメーション。
- * SVGアイコン全体を 360° 回転させる。
+ * 上弧（左→右）と下弧（右→左）のストロークが各弧に沿って流れ、
+ * 円形に走るような動きを表現する。
+ *   - 上弧 + 右矢印: 右退場 → 左から再入場
+ *   - 下弧 + 左矢印: 左退場 → 右から再入場（translateX 符号が逆）
  */
 export async function runLoopAnimation() {
     if (loopAnimationRunning) return;
@@ -404,16 +508,71 @@ export async function runLoopAnimation() {
     const btn = elements.loopBtn;
     if (!btn) { loopAnimationRunning = false; return; }
 
-    const svgEl = btn.querySelector('svg');
-    if (!svgEl) { loopAnimationRunning = false; return; }
+    const pathTop    = btn.querySelector('.loop-path-top');
+    const pathBottom = btn.querySelector('.loop-path-bottom');
+    const headTop    = btn.querySelector('.loop-head-top');
+    const headBottom = btn.querySelector('.loop-head-bottom');
+    if (!pathTop || !pathBottom) { loopAnimationRunning = false; return; }
 
-    const anim = svgEl.animate(
-        [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
-        { duration: 450, easing: 'ease-in-out', fill: 'forwards' }
-    );
-    await anim.finished;
-    svgEl.style.transform = '';
-    anim.cancel();
+    const topLen    = parseFloat(pathTop.dataset.totalLength)    || pathTop.getTotalLength();
+    const bottomLen = parseFloat(pathBottom.dataset.totalLength) || pathBottom.getTotalLength();
+
+    const svgEl = btn.querySelector('svg');
+    const scale = svgEl ? svgEl.getBoundingClientRect().width / 24 : 22 / 24;
+
+    // 上弧（左→右）: 右退場・左入場
+    const topExitX  =  (POS_EXIT  - POS_STANDARD) / 100 * topLen    * scale;
+    const topEnterX =  (POS_ENTER - POS_STANDARD) / 100 * topLen    * scale;
+    // 下弧（右→左）: 左退場・右入場（符号が逆）
+    const botExitX  = -(POS_EXIT  - POS_STANDARD) / 100 * bottomLen * scale;
+    const botEnterX = -(POS_ENTER - POS_STANDARD) / 100 * bottomLen * scale;
+
+    const timingExit  = { duration: 200, easing: 'ease-in',                       fill: 'forwards' };
+    const timingEnter = { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' };
+
+    // 1. 退出（上: 右へ / 下: 左へ）
+    const exitAnims = [
+        pathTop.animate(
+            [{ strokeDashoffset: dashOf(POS_STANDARD, topLen) },    { strokeDashoffset: dashOf(POS_EXIT, topLen) }],
+            timingExit
+        ),
+        pathBottom.animate(
+            [{ strokeDashoffset: dashOf(POS_STANDARD, bottomLen) }, { strokeDashoffset: dashOf(POS_EXIT, bottomLen) }],
+            timingExit
+        ),
+    ];
+    if (headTop)    exitAnims.push(headTop.animate(
+        [{ transform: 'translateX(0px)' }, { transform: `translateX(${topExitX}px)` }], timingExit
+    ));
+    if (headBottom) exitAnims.push(headBottom.animate(
+        [{ transform: 'translateX(0px)' }, { transform: `translateX(${botExitX}px)` }], timingExit
+    ));
+    await Promise.all(exitAnims.map(a => a.finished));
+
+    // 2+3. ワープ → 再入場（上: 左から / 下: 右から）
+    const enterAnims = [
+        pathTop.animate(
+            [{ strokeDashoffset: dashOf(POS_ENTER, topLen) },    { strokeDashoffset: dashOf(POS_STANDARD, topLen) }],
+            timingEnter
+        ),
+        pathBottom.animate(
+            [{ strokeDashoffset: dashOf(POS_ENTER, bottomLen) }, { strokeDashoffset: dashOf(POS_STANDARD, bottomLen) }],
+            timingEnter
+        ),
+    ];
+    if (headTop)    enterAnims.push(headTop.animate(
+        [{ transform: `translateX(${topEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter
+    ));
+    if (headBottom) enterAnims.push(headBottom.animate(
+        [{ transform: `translateX(${botEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter
+    ));
+    await Promise.all(enterAnims.map(a => a.finished));
+
+    pathTop.style.strokeDashoffset    = '0';
+    pathBottom.style.strokeDashoffset = '0';
+    if (headTop)    headTop.style.transform    = '';
+    if (headBottom) headBottom.style.transform = '';
+    [...exitAnims, ...enterAnims].forEach(a => a.cancel());
 
     loopAnimationRunning = false;
 }

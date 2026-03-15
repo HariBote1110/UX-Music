@@ -199,10 +199,9 @@
 .loop-icon {
     width: 22px;
     height: 22px;
+    overflow: hidden;
     color: var(--text-secondary);
     transition: color 0.15s ease;
-    transform-box: fill-box;
-    transform-origin: center;
 }
 
 .playback-mode-btn:hover .shuffle-icon,
