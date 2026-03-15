@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M2 18 L7 18 C10 18 14 6 17 6 L22 6" />
-    <path d="M18 2 L22 6 L18 10" />
+    <path d="M19 3 L22 6 L19 9" />
     <path d="M2 6 L7 6 C10 6 14 18 17 18 L22 18" />
-    <path d="M18 14 L22 18 L18 22" />
+    <path d="M19 15 L22 18 L19 21" />
 </svg>
