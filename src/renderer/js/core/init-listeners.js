@@ -1,5 +1,6 @@
 import { state, elements } from './state.js';
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from '../features/playback-manager.js';
+import { runShuffleAnimation } from '../ui/player-ui.js';
 import { showView } from './navigation.js';
 import { togglePlayPause, seekToStart } from '../features/player.js';
 import { showModal, showModalAdvanced } from '../ui/modal.js';
@@ -115,7 +116,10 @@ async function buildYouTubeAddPayload(url) {
 export function initEventListeners() {
     elements.nextBtn.addEventListener('click', playNextSong);
     elements.prevBtn.addEventListener('click', playPrevSong);
-    elements.shuffleBtn.addEventListener('click', toggleShuffle);
+    elements.shuffleBtn.addEventListener('click', () => {
+        toggleShuffle();
+        runShuffleAnimation();
+    });
     elements.loopBtn.addEventListener('click', toggleLoopMode);
 
     const libraryActionsBtn = document.getElementById('library-actions-btn');

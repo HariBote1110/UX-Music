@@ -22,6 +22,7 @@ let progressFrameId = null;
 let lastVolume = 0.5;
 let iconAnimationId = null;
 let volumeSaveTimer = null;
+let shuffleAnimationRunning = false;
 
 function getCurrentQueueSong() {
     if (!Array.isArray(state.playbackQueue) || state.currentSongIndex < 0) {
@@ -361,7 +362,145 @@ export function initPlayerControls(initialPlayer, _callbacks) {
 
     updateVolumeIcon();
     updateAudioInfoTooltip();
+    initialiseShuffle();
+}
 
+/**
+ * シャッフルアイコンを初期化する。
+ * - 交差パス: 全長を dasharray に設定し、通常表示（dashoffset=0）に配置
+ * - 三角矢印: offset-path でパス上の終端位置（100%）に配置
+ */
+function initialiseShuffle() {
+    const btn = elements.shuffleBtn;
+    if (!btn) return;
+
+    const pathTop = btn.querySelector('.shuffle-path-top');
+    const pathBottom = btn.querySelector('.shuffle-path-bottom');
+    const headTop = btn.querySelector('.shuffle-head-top');
+    const headBottom = btn.querySelector('.shuffle-head-bottom');
+    if (!pathTop || !pathBottom) return;
+
+    const topLen = pathTop.getTotalLength();
+    const bottomLen = pathBottom.getTotalLength();
+    pathTop.dataset.totalLength = topLen;
+    pathBottom.dataset.totalLength = bottomLen;
+
+    // ストロークを全長表示で配置（dashoffset=0 = パス終端にストロークの端が来る）
+    pathTop.style.strokeDasharray = `${topLen} ${topLen * 3}`;
+    pathTop.style.strokeDashoffset = '0';
+    pathBottom.style.strokeDasharray = `${bottomLen} ${bottomLen * 3}`;
+    pathBottom.style.strokeDashoffset = '0';
+
+    // 矢印先端をパスの終端（100%）に配置
+    if (headTop) {
+        headTop.style.offsetPath = `path('${pathTop.getAttribute('d')}')`;
+        headTop.style.offsetRotate = 'auto';
+        headTop.style.offsetDistance = '100%';
+    }
+    if (headBottom) {
+        headBottom.style.offsetPath = `path('${pathBottom.getAttribute('d')}')`;
+        headBottom.style.offsetRotate = 'auto';
+        headBottom.style.offsetDistance = '100%';
+    }
+}
+
+/**
+ * シャッフルボタン押下時のアニメーション。
+ * 参考 HTML（shuffle_animation_image.html）と同様の実装:
+ *   - 交差パス: strokeDashoffset でスライド
+ *   - 三角矢印: offset-distance でパス上を移動
+ * 動き: 右退場（200ms）→ 左ワープ → 左から再入場（400ms / spring）
+ */
+export async function runShuffleAnimation() {
+    if (shuffleAnimationRunning) return;
+    shuffleAnimationRunning = true;
+
+    const btn = elements.shuffleBtn;
+    if (!btn) { shuffleAnimationRunning = false; return; }
+
+    const pathTop = btn.querySelector('.shuffle-path-top');
+    const pathBottom = btn.querySelector('.shuffle-path-bottom');
+    const headTop = btn.querySelector('.shuffle-head-top');
+    const headBottom = btn.querySelector('.shuffle-head-bottom');
+    if (!pathTop || !pathBottom) { shuffleAnimationRunning = false; return; }
+
+    const topLen = parseFloat(pathTop.dataset.totalLength) || pathTop.getTotalLength();
+    const bottomLen = parseFloat(pathBottom.dataset.totalLength) || pathBottom.getTotalLength();
+
+    // 位置定義（参考 HTML の posStandard / posExit / posEnter に相当）
+    const posStandard = 100;  // 通常: パス終端
+    const posExit = 130;      // 退出: パス終端を 30% 超えた位置（SVG 外へ）
+    const posEnter = -30;     // 入場: パス始端の 30% 手前（SVG 外から）
+
+    // dashoffset = arrowLen - (pos/100) * pathLen  （参考 HTML と同式）
+    const dashOf = (pos, len) => len - (pos / 100) * len;
+
+    const timingExit  = { duration: 200, easing: 'ease-in', fill: 'forwards' };
+    const timingEnter = { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' };
+
+    // 1. 右側へ高速退出（ストローク + 矢印先端 を同時に）
+    const exitAnims = [
+        pathTop.animate(
+            [{ strokeDashoffset: dashOf(posStandard, topLen) }, { strokeDashoffset: dashOf(posExit, topLen) }],
+            timingExit
+        ),
+        pathBottom.animate(
+            [{ strokeDashoffset: dashOf(posStandard, bottomLen) }, { strokeDashoffset: dashOf(posExit, bottomLen) }],
+            timingExit
+        ),
+    ];
+    if (headTop) exitAnims.push(
+        headTop.animate(
+            [{ offsetDistance: `${posStandard}%` }, { offsetDistance: `${posExit}%` }],
+            timingExit
+        )
+    );
+    if (headBottom) exitAnims.push(
+        headBottom.animate(
+            [{ offsetDistance: `${posStandard}%` }, { offsetDistance: `${posExit}%` }],
+            timingExit
+        )
+    );
+    await Promise.all(exitAnims.map(a => a.finished));
+
+    // 2. 左端へ瞬間ワープ
+    pathTop.style.strokeDashoffset = dashOf(posEnter, topLen);
+    pathBottom.style.strokeDashoffset = dashOf(posEnter, bottomLen);
+    if (headTop) headTop.style.offsetDistance = `${posEnter}%`;
+    if (headBottom) headBottom.style.offsetDistance = `${posEnter}%`;
+
+    // 3. 左側から軽快に再入場
+    const enterAnims = [
+        pathTop.animate(
+            [{ strokeDashoffset: dashOf(posEnter, topLen) }, { strokeDashoffset: dashOf(posStandard, topLen) }],
+            timingEnter
+        ),
+        pathBottom.animate(
+            [{ strokeDashoffset: dashOf(posEnter, bottomLen) }, { strokeDashoffset: dashOf(posStandard, bottomLen) }],
+            timingEnter
+        ),
+    ];
+    if (headTop) enterAnims.push(
+        headTop.animate(
+            [{ offsetDistance: `${posEnter}%` }, { offsetDistance: `${posStandard}%` }],
+            timingEnter
+        )
+    );
+    if (headBottom) enterAnims.push(
+        headBottom.animate(
+            [{ offsetDistance: `${posEnter}%` }, { offsetDistance: `${posStandard}%` }],
+            timingEnter
+        )
+    );
+    await Promise.all(enterAnims.map(a => a.finished));
+
+    // 状態を確定
+    pathTop.style.strokeDashoffset = String(dashOf(posStandard, topLen));
+    pathBottom.style.strokeDashoffset = String(dashOf(posStandard, bottomLen));
+    if (headTop) headTop.style.offsetDistance = `${posStandard}%`;
+    if (headBottom) headBottom.style.offsetDistance = `${posStandard}%`;
+
+    shuffleAnimationRunning = false;
 }
 
 export function updatePlaybackStateUI(playing) {
