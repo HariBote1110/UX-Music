@@ -237,53 +237,23 @@ function applyLyricsMotionByIndex(activeIndex, immediate = false) {
     const baseIndex = activeIndex >= 0 ? activeIndex : 0;
     const anchorY = container.clientHeight * LYRICS_MOTION_ANCHOR_RATIO;
     const lineHeight = getLineHeightPx(container);
-    const previousIndex = currentAnimatedLyricsIndex;
-
-    if (immediate || activeIndex < 0 || previousIndex < 0) {
-        lines.forEach((line, index) => {
-            const isActive = index === activeIndex;
-            const offset = index - baseIndex;
-            const distanceFromActive = Math.abs(offset);
-            const y = anchorY + offset * lineHeight;
-            const motionDelay = immediate ? 0 : distanceFromActive * LYRICS_MOTION_DELAY_STEP_MS;
-            const motionDuration = immediate ? 0 : LYRICS_MOTION_DURATION_MS;
-
-            line.classList.toggle('active', isActive);
-            line.style.setProperty('--line-motion-delay', `${motionDelay}ms`);
-            line.style.setProperty('--line-motion-duration', `${motionDuration}ms`);
-            line.style.transform = `translate3d(-50%, ${y.toFixed(3)}px, 0) scale(${isActive ? 1 : 0.9})`;
-            line.style.opacity = isActive ? '1' : '0.35';
-            line.style.filter = isActive ? 'blur(0px)' : 'blur(1.5px)';
-            line.style.zIndex = isActive ? '10' : '1';
-        });
-        currentAnimatedLyricsIndex = activeIndex;
-        return;
-    }
-
-    const direction = activeIndex > previousIndex ? 1 : -1;
-
-    const updateLine = (index) => {
-        const line = lines[index];
-        if (!line) return;
+    lines.forEach((line, index) => {
         const isActive = index === activeIndex;
         const offset = index - baseIndex;
         const distanceFromActive = Math.abs(offset);
         const y = anchorY + offset * lineHeight;
-        const motionDelay = distanceFromActive * LYRICS_MOTION_DELAY_STEP_MS;
+        const motionDelay = immediate ? 0 : distanceFromActive * LYRICS_MOTION_DELAY_STEP_MS;
+        const motionDuration = immediate ? 0 : LYRICS_MOTION_DURATION_MS;
 
         line.classList.toggle('active', isActive);
         line.style.setProperty('--line-motion-delay', `${motionDelay}ms`);
-        line.style.setProperty('--line-motion-duration', `${LYRICS_MOTION_DURATION_MS}ms`);
+        line.style.setProperty('--line-motion-duration', `${motionDuration}ms`);
         line.style.transform = `translate3d(-50%, ${y.toFixed(3)}px, 0) scale(${isActive ? 1 : 0.9})`;
         line.style.opacity = isActive ? '1' : '0.35';
         line.style.filter = isActive ? 'blur(0px)' : 'blur(1.5px)';
         line.style.zIndex = isActive ? '10' : '1';
-    };
+    });
 
-    for (let index = previousIndex; index !== activeIndex; index += direction) {
-        updateLine(index);
-    }
-    updateLine(activeIndex);
     currentAnimatedLyricsIndex = activeIndex;
 }
 
