@@ -237,9 +237,9 @@ function applyLyricsMotionByIndex(activeIndex, immediate = false) {
     const baseIndex = activeIndex >= 0 ? activeIndex : 0;
     const anchorY = container.clientHeight * LYRICS_MOTION_ANCHOR_RATIO;
     const lineHeight = getLineHeightPx(container);
-    currentAnimatedLyricsIndex = activeIndex;
+    const previousIndex = currentAnimatedLyricsIndex;
 
-    if (immediate || activeIndex < 0 || currentAnimatedLyricsIndex < 0) {
+    if (immediate || activeIndex < 0 || previousIndex < 0) {
         lines.forEach((line, index) => {
             const isActive = index === activeIndex;
             const offset = index - baseIndex;
@@ -260,7 +260,6 @@ function applyLyricsMotionByIndex(activeIndex, immediate = false) {
         return;
     }
 
-    const previousIndex = currentAnimatedLyricsIndex;
     const direction = activeIndex > previousIndex ? 1 : -1;
 
     const updateLine = (index) => {
