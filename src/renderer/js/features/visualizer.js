@@ -12,6 +12,7 @@ let lastFrameTime = 0;
 let visualizerObserver = null;
 let isVisualizerVisible = false;
 let isEcoModeEnabled = true;
+const GO_VISUALIZER_FETCH_INTERVAL_MS = 80;
 
 /**
  * ビジュアライザーの描画ループを開始する
@@ -124,10 +125,14 @@ export function setVisualizerFpsLimit(fps) {
 // Go用のデータキャッシュ
 let goDataCache = [];
 let isFetchingGoData = false;
+let lastGoFetchTime = 0;
 
-async function fetchGoData() {
+async function fetchGoData(timestamp = 0) {
     if (isFetchingGoData || !window.go) return;
+    if (timestamp > 0 && timestamp - lastGoFetchTime < GO_VISUALIZER_FETCH_INTERVAL_MS) return;
+
     isFetchingGoData = true;
+    lastGoFetchTime = timestamp || performance.now();
     try {
         const data = await window.go.main.App.AudioGetFrequencyData();
 
@@ -185,7 +190,7 @@ function draw(timestamp) {
     let sampleRate = 48000; // Default
 
     if (window.go) {
-        fetchGoData(); // 非同期でデータ更新
+        fetchGoData(timestamp); // 非同期でデータ更新
         if (goDataCache && goDataCache.length > 0) {
             sourceData = goDataCache;
             fftSize = goDataCache.length * 2; // FFT size is usually 2x result stats

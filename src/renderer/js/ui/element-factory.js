@@ -4,6 +4,25 @@ import { state } from '../core/state.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
 import { getVisibleColumns } from './column-config.js';
 
+const pendingMarqueeWrappers = new Set();
+let marqueeFlushFrameId = null;
+
+function scheduleMarqueeMeasurement(songItem) {
+    songItem.querySelectorAll('.marquee-wrapper').forEach((wrapper) => {
+        pendingMarqueeWrappers.add(wrapper);
+    });
+
+    if (marqueeFlushFrameId) {
+        return;
+    }
+
+    marqueeFlushFrameId = requestAnimationFrame(() => {
+        pendingMarqueeWrappers.forEach((wrapper) => checkTextOverflow(wrapper));
+        pendingMarqueeWrappers.clear();
+        marqueeFlushFrameId = null;
+    });
+}
+
 export function createSongItem(song, index, songList, options = {}) {
     const { groupAlbumArt = false } = options;
     const songIdentifier = song.id || song.path || '';
@@ -115,17 +134,16 @@ export function createSongItem(song, index, songList, options = {}) {
         }
     }
 
-    requestAnimationFrame(() => {
-        songItem.querySelectorAll('.marquee-wrapper').forEach(checkTextOverflow);
-    });
+    scheduleMarqueeMeasurement(songItem);
 
     return songItem;
 }
 
-export function createQueueItem(song, isPlaying) {
+export function createQueueItem(song, isPlaying, queueIndex) {
     const queueItem = document.createElement('div');
     queueItem.className = `queue-item ${isPlaying ? 'playing' : ''}`;
     queueItem.dataset.songPath = song.path;
+    queueItem.dataset.queueIndex = String(queueIndex);
     queueItem.draggable = true;
 
     const artworkHTML = state.isLightFlightMode ? '' : `<img src="./assets/default_artwork.png" class="artwork-small" alt="artwork">`;
@@ -156,7 +174,7 @@ export function createQueueItem(song, isPlaying) {
         }
 
         artworkImg.src = resolveArtworkPath(finalArtwork, true);
-        artworkImg.onload = () => window.artworkLoadTimes.push(performance.now());
+        artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
     }
 
     return queueItem;
@@ -194,7 +212,7 @@ export function createAlbumGridItem(key, album) {
         }
         artworkImg.dataset.src = resolveArtworkPath(artworkToUse, false);
 
-        artworkImg.onload = () => window.artworkLoadTimes.push(performance.now());
+        artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
     }
 
     return albumItem;
@@ -219,7 +237,7 @@ export function createArtistGridItem(artist) {
         const artworkImg = artistItem.querySelector('.artist-artwork');
         artworkImg.classList.add('lazy-load');
         artworkImg.dataset.src = resolveArtworkPath(artist.artwork, false);
-        artworkImg.onload = () => window.artworkLoadTimes.push(performance.now());
+        artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
     }
 
     return artistItem;

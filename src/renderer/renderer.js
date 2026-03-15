@@ -33,6 +33,13 @@ window.onunhandledrejection = function (event) {
 const electronAPI = window.electronAPI;
 
 window.artworkLoadTimes = [];
+window.recordArtworkLoadTime = (time) => {
+    window.artworkLoadTimes.push(time);
+    const MAX_ARTWORK_LOAD_SAMPLES = 200;
+    if (window.artworkLoadTimes.length > MAX_ARTWORK_LOAD_SAMPLES) {
+        window.artworkLoadTimes.splice(0, window.artworkLoadTimes.length - MAX_ARTWORK_LOAD_SAMPLES);
+    }
+};
 window.observeNewArtworks = (container) => observeNewImages(container || document);
 
 async function initApp() {

@@ -21,6 +21,7 @@ let progressUpdateInterval = null;
 let progressFrameId = null;
 let lastVolume = 0.5;
 let iconAnimationId = null;
+let volumeSaveTimer = null;
 
 function getCurrentQueueSong() {
     if (!Array.isArray(state.playbackQueue) || state.currentSongIndex < 0) {
@@ -324,16 +325,30 @@ export function initPlayerControls(initialPlayer, _callbacks) {
         }
     });
 
-    elements.volumeSlider.addEventListener('input', async () => {
+    elements.volumeSlider.addEventListener('input', () => {
         const volume = parseFloat(elements.volumeSlider.value);
         if (window.go) {
-            await window.go.main.App.AudioSetVolume(volume);
-            await window.go.main.App.SaveSettings({ volume: volume });
+            window.go.main.App.AudioSetVolume(volume).catch(() => { });
         } else {
             applyMasterVolume();
-            electronAPI.send('save-settings', { volume: volume });
         }
         updateVolumeIcon();
+    });
+
+    elements.volumeSlider.addEventListener('change', () => {
+        const volume = parseFloat(elements.volumeSlider.value);
+        if (volumeSaveTimer) {
+            clearTimeout(volumeSaveTimer);
+        }
+
+        volumeSaveTimer = setTimeout(() => {
+            if (window.go) {
+                window.go.main.App.SaveSettings({ volume: volume }).catch(() => { });
+            } else {
+                electronAPI.send('save-settings', { volume: volume });
+            }
+            volumeSaveTimer = null;
+        }, 120);
     });
 
     document.getElementById('volume-icon-btn').addEventListener('click', toggleMute);

@@ -10,6 +10,7 @@ import { loadLyricsForSong } from '../features/lyrics-manager.js';
 import { showNotification, hideNotification } from './notification.js';
 import { showContextMenu, formatBytes } from './utils.js';
 const electronAPI = window.electronAPI;
+let lastPlayingQueueIndex = -1;
 
 /**
  * 現在アクティブなビューの内容を再描画する
@@ -51,7 +52,7 @@ export function updatePlayingIndicators() {
         setVisualizerTarget(null);
     }
 
-    renderQueueView();
+    syncQueuePlayingState();
 }
 
 /**
@@ -74,20 +75,44 @@ export function updatePlayCountDisplay(songPath, count) {
 
 function renderQueueView() {
     elements.queueList.innerHTML = '';
+    lastPlayingQueueIndex = -1;
     if (state.playbackQueue.length === 0) {
         elements.queueList.innerHTML = '<p class="no-lyrics">再生キューは空です</p>';
         return;
     }
     state.playbackQueue.forEach((song, index) => {
         const isPlaying = index === state.currentSongIndex;
-        const queueItem = createQueueItem(song, isPlaying);
+        const queueItem = createQueueItem(song, isPlaying, index);
         queueItem.addEventListener('click', () => playSong(index));
         elements.queueList.appendChild(queueItem);
+        if (isPlaying) {
+            lastPlayingQueueIndex = index;
+        }
     });
 
     if (typeof window.observeNewArtworks === 'function') {
         window.observeNewArtworks(elements.queueList);
     }
+}
+
+function syncQueuePlayingState() {
+    const nextPlayingIndex = state.currentSongIndex;
+
+    if (lastPlayingQueueIndex === nextPlayingIndex) {
+        return;
+    }
+
+    if (lastPlayingQueueIndex >= 0) {
+        const previousItem = elements.queueList.querySelector(`[data-queue-index="${lastPlayingQueueIndex}"]`);
+        previousItem?.classList.remove('playing');
+    }
+
+    if (nextPlayingIndex >= 0) {
+        const nextItem = elements.queueList.querySelector(`[data-queue-index="${nextPlayingIndex}"]`);
+        nextItem?.classList.add('playing');
+    }
+
+    lastPlayingQueueIndex = nextPlayingIndex;
 }
 
 export function initUI() {
