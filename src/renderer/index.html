@@ -176,7 +176,16 @@
                 <img src="./assets/icons/next_skip.svg" alt="Next">
             </button>
             <button id="loop-btn" class="playback-mode-btn" title="リピート">
-                <img src="./assets/icons/repeat.svg" alt="Loop">
+                <svg class="loop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <!-- 上弧（左→右）: strokeDashoffset でスライド -->
+                    <path class="loop-path-top" d="M3 12 a5 5 0 0 1 5-5 H21" />
+                    <!-- 右側 V字矢印: translateX で同期（上弧と同じ方向） -->
+                    <path class="loop-head-top" d="M18 4 L21 7 L18 10" />
+                    <!-- 下弧（右→左）: strokeDashoffset でスライド（逆方向） -->
+                    <path class="loop-path-bottom" d="M21 12 a5 5 0 0 1-5 5 H3" />
+                    <!-- 左側 V字矢印: translateX で同期（下弧と同じ方向 = 左） -->
+                    <path class="loop-head-bottom" d="M6 14 L3 17 L6 20" />
+                </svg>
             </button>
         </div>
 

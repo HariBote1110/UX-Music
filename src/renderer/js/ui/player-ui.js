@@ -363,6 +363,7 @@ export function initPlayerControls(initialPlayer, _callbacks) {
     updateVolumeIcon();
     updateAudioInfoTooltip();
     initialiseShuffle();
+    initialiseLoop();
 }
 
 /**
@@ -487,6 +488,135 @@ export async function runShuffleAnimation() {
     [...exitAnims, ...enterAnims].forEach(a => a.cancel());
 
     shuffleAnimationRunning = false;
+}
+
+// ─── ループボタン アニメーション ───────────────────────────────────────────
+
+let loopAnimationRunning = false;
+
+/**
+ * ループアイコンを初期化する。
+ * 上弧・下弧それぞれの全長を計測し、strokeDasharray を設定する。
+ */
+function initialiseLoop() {
+    const btn = elements.loopBtn;
+    if (!btn) return;
+
+    const pathTop = btn.querySelector('.loop-path-top');
+    const pathBottom = btn.querySelector('.loop-path-bottom');
+    if (!pathTop || !pathBottom) return;
+
+    const topLen = pathTop.getTotalLength();
+    const bottomLen = pathBottom.getTotalLength();
+    pathTop.dataset.totalLength = topLen;
+    pathBottom.dataset.totalLength = bottomLen;
+
+    pathTop.style.strokeDasharray = `${topLen} ${topLen * 3}`;
+    pathTop.style.strokeDashoffset = '0';
+    pathBottom.style.strokeDasharray = `${bottomLen} ${bottomLen * 3}`;
+    pathBottom.style.strokeDashoffset = '0';
+}
+
+/**
+ * ループボタン押下時のアニメーション。
+ * シャッフルと同式だが、上弧（左→右）と下弧（右→左）で矢印の移動方向が逆になる。
+ *   - 上弧 + 右矢印: 右退場 → 左から再入場
+ *   - 下弧 + 左矢印: 左退場 → 右から再入場
+ */
+export async function runLoopAnimation() {
+    if (loopAnimationRunning) return;
+    loopAnimationRunning = true;
+
+    const btn = elements.loopBtn;
+    if (!btn) { loopAnimationRunning = false; return; }
+
+    const pathTop = btn.querySelector('.loop-path-top');
+    const pathBottom = btn.querySelector('.loop-path-bottom');
+    const headTop = btn.querySelector('.loop-head-top');
+    const headBottom = btn.querySelector('.loop-head-bottom');
+    if (!pathTop || !pathBottom) { loopAnimationRunning = false; return; }
+
+    const topLen = parseFloat(pathTop.dataset.totalLength) || pathTop.getTotalLength();
+    const bottomLen = parseFloat(pathBottom.dataset.totalLength) || pathBottom.getTotalLength();
+
+    const posStandard = 100;
+    const posExit     = 130;
+    const posEnter    = -30;
+
+    const dashOf = (pos, len) => len - (pos / 100) * len;
+
+    // SVGユニット → CSSピクセル変換係数
+    const svgEl = btn.querySelector('svg');
+    const scale = svgEl ? svgEl.getBoundingClientRect().width / 24 : 22 / 24;
+
+    // 上弧（左→右）: 右退場・左入場（シャッフルと同じ向き）
+    const topExitX  =  (posExit  - posStandard) / 100 * topLen    * scale; // ~+6px
+    const topEnterX =  (posEnter - posStandard) / 100 * topLen    * scale; // ~-24px
+    // 下弧（右→左）: 左退場・右入場（符号が逆）
+    const botExitX  = -(posExit  - posStandard) / 100 * bottomLen * scale; // ~-6px
+    const botEnterX = -(posEnter - posStandard) / 100 * bottomLen * scale; // ~+24px
+
+    const timingExit  = { duration: 200, easing: 'ease-in',                       fill: 'forwards' };
+    const timingEnter = { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' };
+
+    // 1. 退出（上: 右へ / 下: 左へ）
+    const exitAnims = [
+        pathTop.animate(
+            [{ strokeDashoffset: dashOf(posStandard, topLen) },    { strokeDashoffset: dashOf(posExit, topLen) }],
+            timingExit
+        ),
+        pathBottom.animate(
+            [{ strokeDashoffset: dashOf(posStandard, bottomLen) }, { strokeDashoffset: dashOf(posExit, bottomLen) }],
+            timingExit
+        ),
+    ];
+    if (headTop) exitAnims.push(
+        headTop.animate(
+            [{ transform: 'translateX(0px)' }, { transform: `translateX(${topExitX}px)` }],
+            timingExit
+        )
+    );
+    if (headBottom) exitAnims.push(
+        headBottom.animate(
+            [{ transform: 'translateX(0px)' }, { transform: `translateX(${botExitX}px)` }],
+            timingExit
+        )
+    );
+    await Promise.all(exitAnims.map(a => a.finished));
+
+    // 2 + 3. ワープ → 再入場（上: 左から / 下: 右から）
+    const enterAnims = [
+        pathTop.animate(
+            [{ strokeDashoffset: dashOf(posEnter, topLen) },    { strokeDashoffset: dashOf(posStandard, topLen) }],
+            timingEnter
+        ),
+        pathBottom.animate(
+            [{ strokeDashoffset: dashOf(posEnter, bottomLen) }, { strokeDashoffset: dashOf(posStandard, bottomLen) }],
+            timingEnter
+        ),
+    ];
+    if (headTop) enterAnims.push(
+        headTop.animate(
+            [{ transform: `translateX(${topEnterX}px)` }, { transform: 'translateX(0px)' }],
+            timingEnter
+        )
+    );
+    if (headBottom) enterAnims.push(
+        headBottom.animate(
+            [{ transform: `translateX(${botEnterX}px)` }, { transform: 'translateX(0px)' }],
+            timingEnter
+        )
+    );
+    await Promise.all(enterAnims.map(a => a.finished));
+
+    // 状態を確定
+    pathTop.style.strokeDashoffset = '0';
+    pathBottom.style.strokeDashoffset = '0';
+    if (headTop)    headTop.style.transform    = '';
+    if (headBottom) headBottom.style.transform = '';
+    [...exitAnims, ...enterAnims].forEach(a => a.cancel());
+
+    loopAnimationRunning = false;
 }
 
 export function updatePlaybackStateUI(playing) {

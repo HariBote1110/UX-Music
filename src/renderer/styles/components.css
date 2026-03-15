@@ -194,8 +194,9 @@
     height: 22px;
 }
 
-/* シャッフルボタン インラインSVG */
-.shuffle-icon {
+/* シャッフル・ループボタン インラインSVG */
+.shuffle-icon,
+.loop-icon {
     width: 22px;
     height: 22px;
     overflow: hidden;
@@ -203,11 +204,13 @@
     transition: color 0.15s ease;
 }
 
-.playback-mode-btn:hover .shuffle-icon {
+.playback-mode-btn:hover .shuffle-icon,
+.playback-mode-btn:hover .loop-icon {
     color: var(--text-primary);
 }
 
-.playback-mode-btn.active .shuffle-icon {
+.playback-mode-btn.active .shuffle-icon,
+.playback-mode-btn.active .loop-icon {
     color: var(--highlight-pink);
 }
 

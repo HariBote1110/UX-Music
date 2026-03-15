@@ -1,6 +1,6 @@
 import { state, elements } from './state.js';
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from '../features/playback-manager.js';
-import { runShuffleAnimation } from '../ui/player-ui.js';
+import { runShuffleAnimation, runLoopAnimation } from '../ui/player-ui.js';
 import { showView } from './navigation.js';
 import { togglePlayPause, seekToStart } from '../features/player.js';
 import { showModal, showModalAdvanced } from '../ui/modal.js';
@@ -120,7 +120,10 @@ export function initEventListeners() {
         toggleShuffle();
         runShuffleAnimation();
     });
-    elements.loopBtn.addEventListener('click', toggleLoopMode);
+    elements.loopBtn.addEventListener('click', () => {
+        toggleLoopMode();
+        runLoopAnimation();
+    });
 
     const libraryActionsBtn = document.getElementById('library-actions-btn');
     const libraryActionsPopup = document.getElementById('library-actions-popup');
