@@ -22,7 +22,6 @@ let progressFrameId = null;
 let lastVolume = 0.5;
 let iconAnimationId = null;
 let volumeSaveTimer = null;
-let shuffleAnimationRunning = false;
 
 function getCurrentQueueSong() {
     if (!Array.isArray(state.playbackQueue) || state.currentSongIndex < 0) {
@@ -362,62 +361,7 @@ export function initPlayerControls(initialPlayer, _callbacks) {
 
     updateVolumeIcon();
     updateAudioInfoTooltip();
-}
 
-/**
- * シャッフルボタン押下時のアニメーションを実行する。
- * SVG に overflow: hidden のクリップ領域を設け、
- * アイコン全体を <g> ごと translateX + opacity で動かす。
- *   1. 少し右へスライドしながらフェードアウト
- *   2. 左端へ瞬間ワープ
- *   3. 左端から滑り込んでフェードイン
- */
-export async function runShuffleAnimation() {
-    if (shuffleAnimationRunning) return;
-    shuffleAnimationRunning = true;
-
-    const btn = elements.shuffleBtn;
-    if (!btn) { shuffleAnimationRunning = false; return; }
-
-    const group = btn.querySelector('.shuffle-icon-group');
-    if (!group) { shuffleAnimationRunning = false; return; }
-
-    // SVG の実際のレンダリング幅を取得し、左端ワープ距離を決定
-    const svgEl = btn.querySelector('svg');
-    const svgWidth = svgEl ? svgEl.getBoundingClientRect().width : 22;
-    const enterFrom = -(svgWidth + 2); // SVG 幅 + 余白 2px 分だけ左へ
-
-    // 1. ほんのちょっと右へ動いてフェードアウト
-    const exitAnim = group.animate(
-        [
-            { transform: 'translateX(0px)', opacity: 1 },
-            { transform: 'translateX(5px)', opacity: 0 },
-        ],
-        { duration: 130, easing: 'ease-in', fill: 'forwards' }
-    );
-    await exitAnim.finished;
-    exitAnim.cancel();
-
-    // 2. 左端へ瞬間ワープ（アニメーションなし）
-    group.style.transform = `translateX(${enterFrom}px)`;
-    group.style.opacity = '0';
-
-    // 3. 左側から滑り込んでフェードイン
-    const enterAnim = group.animate(
-        [
-            { transform: `translateX(${enterFrom}px)`, opacity: 0 },
-            { transform: 'translateX(0px)', opacity: 1 },
-        ],
-        { duration: 340, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' }
-    );
-    await enterAnim.finished;
-    enterAnim.cancel();
-
-    // 状態を確定（アニメーション由来のスタイルをリセット）
-    group.style.transform = '';
-    group.style.opacity = '';
-
-    shuffleAnimationRunning = false;
 }
 
 export function updatePlaybackStateUI(playing) {
