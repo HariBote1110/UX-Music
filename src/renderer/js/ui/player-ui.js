@@ -409,13 +409,15 @@ export async function runShuffleAnimation() {
 
     const topLen = parseFloat(pathTop.dataset.totalLength) || pathTop.getTotalLength();
     const bottomLen = parseFloat(pathBottom.dataset.totalLength) || pathBottom.getTotalLength();
-    const padding = 4; // パス端からはみ出す余白（px）
+    const padding = 4; // パス端からはみ出す余白（SVGユニット）
 
-    // 矢印先端を一時的に非表示にして、パスと一緒に動かないようにする
-    if (arrowTop) arrowTop.style.opacity = '0';
-    if (arrowBottom) arrowBottom.style.opacity = '0';
+    // SVGユニット → CSSピクセル変換係数（viewBox幅=24 に対してレンダリング幅を取得）
+    const svgEl = btn.querySelector('svg');
+    const scale = svgEl ? svgEl.getBoundingClientRect().width / 24 : 22 / 24;
+    const topPx = (topLen + padding) * scale;
+    const bottomPx = (bottomLen + padding) * scale;
 
-    // 1. 右側へ高速退出
+    // 1. 右側へ高速退出（パス + 矢印先端を同時にスライド）
     const exitOpts = { duration: 180, easing: 'ease-in', fill: 'forwards' };
     const exitAnims = [
         pathTop.animate(
@@ -427,13 +429,27 @@ export async function runShuffleAnimation() {
             exitOpts
         ),
     ];
+    if (arrowTop) exitAnims.push(
+        arrowTop.animate(
+            [{ transform: 'translateX(0px)' }, { transform: `translateX(${topPx}px)` }],
+            exitOpts
+        )
+    );
+    if (arrowBottom) exitAnims.push(
+        arrowBottom.animate(
+            [{ transform: 'translateX(0px)' }, { transform: `translateX(${bottomPx}px)` }],
+            exitOpts
+        )
+    );
     await Promise.all(exitAnims.map(a => a.finished));
 
     // 2. 左端へ瞬間ワープ（アニメーションなし）
     pathTop.style.strokeDashoffset = `${topLen + padding}`;
     pathBottom.style.strokeDashoffset = `${bottomLen + padding}`;
+    if (arrowTop) arrowTop.style.transform = `translateX(${-topPx}px)`;
+    if (arrowBottom) arrowBottom.style.transform = `translateX(${-bottomPx}px)`;
 
-    // 3. 左側から軽快に再入場
+    // 3. 左側から軽快に再入場（パス + 矢印先端を同時にスライド）
     const enterOpts = { duration: 380, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' };
     const enterAnims = [
         pathTop.animate(
@@ -445,13 +461,25 @@ export async function runShuffleAnimation() {
             enterOpts
         ),
     ];
+    if (arrowTop) enterAnims.push(
+        arrowTop.animate(
+            [{ transform: `translateX(${-topPx}px)` }, { transform: 'translateX(0px)' }],
+            enterOpts
+        )
+    );
+    if (arrowBottom) enterAnims.push(
+        arrowBottom.animate(
+            [{ transform: `translateX(${-bottomPx}px)` }, { transform: 'translateX(0px)' }],
+            enterOpts
+        )
+    );
     await Promise.all(enterAnims.map(a => a.finished));
 
-    // 状態を確定し、矢印を復元
+    // 状態を確定
     pathTop.style.strokeDashoffset = '0';
     pathBottom.style.strokeDashoffset = '0';
-    if (arrowTop) arrowTop.style.opacity = '';
-    if (arrowBottom) arrowBottom.style.opacity = '';
+    if (arrowTop) arrowTop.style.transform = '';
+    if (arrowBottom) arrowBottom.style.transform = '';
 
     shuffleAnimationRunning = false;
 }
