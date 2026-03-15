@@ -46,6 +46,7 @@ export function clearMainContent() {
     disconnectVisualizerObserver();
     elements.mainContent.innerHTML = '';
     state.selectedSongIds.clear();
+    state.currentlyViewedSongIds = [];
 }
 
 /**
@@ -63,7 +64,7 @@ export function destroyTrackViewScroller() {
  */
 export function renderTrackView() {
     clearMainContent();
-    state.currentlyViewedSongs = state.library;
+    state.currentlyViewedSongIds = state.library.map((song) => song.id).filter(Boolean);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.id = 'track-view';

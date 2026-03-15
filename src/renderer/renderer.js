@@ -174,7 +174,7 @@ async function initApp() {
     musicApi.onForceReloadPlaylist(async (playlistName) => {
         if (state.currentDetailView.type === 'playlist' && state.currentDetailView.identifier === playlistName) {
             const updatedDetails = await musicApi.getPlaylistDetails(playlistName);
-            state.currentlyViewedSongs = updatedDetails.songs;
+            state.currentlyViewedSongIds = (updatedDetails.songs || []).map((song) => song.id).filter(Boolean);
             showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: updatedDetails });
         }
     });

@@ -9,6 +9,7 @@ import { showModal } from './modal.js';
 import { showNotification, hideNotification } from './notification.js';
 import { clearMainContent } from './view-renderer.js'; // clearMainContent は view-renderer からインポート
 import { musicApi } from '../core/bridge.js';
+import { getAlbumSongs, setCurrentViewSongs } from './ui-manager.js';
 // ▲▲▲ 追加 ▲▲▲
 
 /**
@@ -16,7 +17,7 @@ import { musicApi } from '../core/bridge.js';
  */
 export function renderAlbumView() {
     clearMainContent();
-    state.currentlyViewedSongs = [];
+    setCurrentViewSongs([]);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.innerHTML = '<h1>アルバム</h1>';
@@ -38,8 +39,9 @@ export function renderAlbumView() {
                     label: playlist.name,
                     action: async () => {
                         const albumToAdd = state.albums.get(key);
-                        if (albumToAdd && albumToAdd.songs) {
-                            const songPaths = albumToAdd.songs.map(s => s.path);
+                        const albumSongs = getAlbumSongs(albumToAdd);
+                        if (albumToAdd && albumSongs.length > 0) {
+                            const songPaths = albumSongs.map(s => s.path);
                             const result = await musicApi.addSongsToPlaylist({ songPaths, playlistName: playlist.name });
 
                             if (result.success && result.addedCount > 0) {
@@ -78,7 +80,7 @@ export function renderAlbumView() {
  */
 export function renderArtistView() {
     clearMainContent();
-    state.currentlyViewedSongs = [];
+    setCurrentViewSongs([]);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.innerHTML = '<h1>アーティスト</h1>';
@@ -104,7 +106,7 @@ export function renderArtistView() {
  */
 export async function renderSituationView() {
     clearMainContent();
-    state.currentlyViewedSongs = [];
+    setCurrentViewSongs([]);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.innerHTML = '<h1>For You</h1>';
@@ -148,7 +150,7 @@ export async function renderSituationView() {
  */
 export function renderPlaylistView() {
     clearMainContent();
-    state.currentlyViewedSongs = [];
+    setCurrentViewSongs([]);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.innerHTML = `<div class="view-header"><h1>プレイリスト</h1><button id="create-playlist-btn-main" class="header-button">+ 新規作成</button></div>`;

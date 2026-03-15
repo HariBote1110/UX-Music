@@ -6,6 +6,8 @@ export const PLAYBACK_MODES = {
 
 export const state = {
     library: [],
+    libraryById: new Map(),
+    libraryByPath: new Map(),
     albums: new Map(),
     artists: new Map(),
     playlists: [],
@@ -18,7 +20,7 @@ export const state = {
     songWaitingForAnalysis: null,
     currentLyrics: null,
     currentLyricsType: null,
-    currentlyViewedSongs: [],
+    currentlyViewedSongIds: [],
     currentDetailView: { type: null, identifier: null, data: null },
     activeListView: 'track-view',
     artworksDir: '',

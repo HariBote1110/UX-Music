@@ -118,7 +118,7 @@ export function initNavigation() {
 }
 
 export function showSituationPlaylistDetail(playlistDetails) {
-    state.currentlyViewedSongs = playlistDetails.songs;
+    state.currentlyViewedSongIds = (playlistDetails.songs || []).map((song) => song.id).filter(Boolean);
     showView('playlist-detail-view', { type: 'situation', identifier: playlistDetails.name, data: playlistDetails });
 }
 
@@ -129,7 +129,7 @@ export async function showPlaylist(playlistName) {
             console.error('[Navigation] Playlist details are null');
             return;
         }
-        state.currentlyViewedSongs = playlistDetails.songs || [];
+        state.currentlyViewedSongIds = (playlistDetails.songs || []).map((song) => song.id).filter(Boolean);
         showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: playlistDetails });
     } catch (error) {
         console.error(`[Navigation] Failed to show playlist: ${playlistName}`, error);
@@ -139,13 +139,13 @@ export async function showPlaylist(playlistName) {
 export function showAlbum(albumKey) {
     const album = state.albums.get(albumKey);
     if (!album) return;
-    state.currentlyViewedSongs = album.songs;
+    state.currentlyViewedSongIds = Array.from(album.songIds || []);
     showView('album-detail-view', { type: 'album', identifier: albumKey, data: album });
 }
 
 export function showArtist(artistName) {
     const artist = state.artists.get(artistName);
     if (!artist) return;
-    state.currentlyViewedSongs = artist.songs;
+    state.currentlyViewedSongIds = Array.from(artist.songIds || []);
     showView('artist-detail-view', { type: 'artist', identifier: artistName, data: artist });
 }

@@ -276,7 +276,7 @@ export function updateNowPlayingView(song) {
         img.crossOrigin = "Anonymous";
         img.onload = () => setEqualizerColorFromArtwork(img);
 
-        const masterSong = state.library.find(s => s.path === song.path) || song;
+        const masterSong = state.libraryByPath.get(song.path) || song;
         const album = state.albums.get(masterSong.albumKey);
 
         let artwork;

@@ -13,6 +13,7 @@ import {
 } from './list-renderer.js';
 import { clearMainContent } from './view-renderer.js';
 import { updateListSpacer } from './ui.js'; // 追加
+import { getAlbumSongs, getArtistSongs, setCurrentViewSongs } from './ui-manager.js';
 const electronAPI = window.electronAPI;
 
 // モジュールスコープでスクロール位置を記憶
@@ -23,17 +24,18 @@ let lastScrollPositions = {};
  */
 export function renderAlbumDetailView(album) {
     clearMainContent();
-    state.currentlyViewedSongs = album.songs;
+    const albumSongs = getAlbumSongs(album);
+    setCurrentViewSongs(albumSongs);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
-    const totalDuration = album.songs.reduce((sum, song) => sum + (song.duration || 0), 0);
+    const totalDuration = albumSongs.reduce((sum, song) => sum + (song.duration || 0), 0);
     viewWrapper.innerHTML = `
         <div class="detail-header">
             <img class="detail-art-img lazy-load">
             <div class="detail-info">
                 <h1>${album.title}</h1>
                 <p>${album.artist}</p>
-                <p>${album.songs.length} 曲, ${formatTime(totalDuration)}</p>
+                <p>${albumSongs.length} 曲, ${formatTime(totalDuration)}</p>
                 <div class="detail-actions"><button class="play-all-btn">▶ すべて再生</button></div>
             </div>
         </div>
@@ -46,7 +48,7 @@ export function renderAlbumDetailView(album) {
     viewWrapper.appendChild(listElement);
     elements.mainContent.appendChild(viewWrapper);
 
-    const scroller = setupSongListScroller(listElement, album.songs, {
+    const scroller = setupSongListScroller(listElement, albumSongs, {
         contextView: 'album'
     });
 
@@ -58,15 +60,15 @@ export function renderAlbumDetailView(album) {
     const artImg = viewWrapper.querySelector('.detail-art-img');
 
     let artworkToUse = album.artwork;
-    if (!artworkToUse && album.songs && album.songs.length > 0) {
-        const songWithArt = album.songs.find(s => s.artwork);
+    if (!artworkToUse && albumSongs.length > 0) {
+        const songWithArt = albumSongs.find(s => s.artwork);
         if (songWithArt) {
             artworkToUse = songWithArt.artwork;
         }
     }
     artImg.dataset.src = resolveArtworkPath(artworkToUse, false);
 
-    viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, album.songs));
+    viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, albumSongs));
 
     window.observeNewArtworks(viewWrapper);
     return scroller;
@@ -77,7 +79,8 @@ export function renderAlbumDetailView(album) {
  */
 export function renderArtistDetailView(artist) {
     clearMainContent();
-    state.currentlyViewedSongs = artist.songs;
+    const artistSongs = getArtistSongs(artist);
+    setCurrentViewSongs(artistSongs);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     const artistAlbums = [...state.albums.entries()].filter(([, album]) => album.artist === artist.name);
@@ -86,7 +89,7 @@ export function renderArtistDetailView(artist) {
             <img class="detail-art-img artist-detail-art-round lazy-load">
             <div class="detail-info">
                 <h1>${artist.name}</h1>
-                <p>${artistAlbums.length}枚のアルバム, ${artist.songs.length}曲</p>
+                <p>${artistAlbums.length}枚のアルバム, ${artistSongs.length}曲</p>
             </div>
         </div>
         <h2>アルバム</h2>
@@ -122,7 +125,7 @@ export function renderPlaylistDetailView(playlistDetails = {}) {
     const { name: playlistName = '不明なプレイリスト', songs = [], artworks = [] } = playlistDetails;
 
     clearMainContent();
-    state.currentlyViewedSongs = songs;
+    setCurrentViewSongs(songs);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     const totalDuration = songs.reduce((sum, song) => sum + (song.duration || 0), 0);

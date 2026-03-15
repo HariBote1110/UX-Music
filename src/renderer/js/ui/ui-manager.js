@@ -12,6 +12,51 @@ import { showContextMenu, formatBytes } from './utils.js';
 const electronAPI = window.electronAPI;
 let lastPlayingQueueIndex = -1;
 
+export function rebuildLibraryIndexes() {
+    state.libraryById = new Map();
+    state.libraryByPath = new Map();
+
+    state.library.forEach((song) => {
+        if (!song?.id && song?.path) {
+            song.id = song.path;
+        }
+        if (song?.id) {
+            state.libraryById.set(song.id, song);
+        }
+        if (song?.path) {
+            state.libraryByPath.set(song.path, song);
+        }
+    });
+}
+
+export function getSongById(songId) {
+    return state.libraryById.get(songId) || null;
+}
+
+export function getSongByPath(songPath) {
+    return state.libraryByPath.get(songPath) || null;
+}
+
+export function resolveSongsByIds(songIds = []) {
+    return songIds
+        .map((songId) => getSongById(songId))
+        .filter(Boolean);
+}
+
+export function getAlbumSongs(album) {
+    if (!album) return [];
+    return resolveSongsByIds(album.songIds || []);
+}
+
+export function getArtistSongs(artist) {
+    if (!artist) return [];
+    return resolveSongsByIds(artist.songIds || []);
+}
+
+export function setCurrentViewSongs(songs = []) {
+    state.currentlyViewedSongIds = songs.map((song) => song.id).filter(Boolean);
+}
+
 /**
  * 現在アクティブなビューの内容を再描画する
  */
@@ -217,40 +262,47 @@ function updateMtpDeviceView(payload) {
 export function addSongsToLibrary({ songs, albums }) {
     console.time('Renderer: Process Library Data');
     let migrationNeeded = false;
+    let fullRegroupNeeded = false;
 
     if (albums && Object.keys(albums).length === 0 && songs && songs.length > 0 && songs[0].artwork && typeof songs[0].artwork !== 'object') {
         migrationNeeded = true;
         state.albums.clear();
-    } else if (albums) {
-        state.albums = new Map(Object.entries(albums));
     }
 
     if (songs && songs.length > 0) {
-        state.library.forEach(existingSong => {
-            if (!existingSong.id && existingSong.path) {
-                existingSong.id = existingSong.path;
-            }
-        });
+        if (state.libraryByPath.size === 0 || state.libraryById.size === 0) {
+            rebuildLibraryIndexes();
+        }
 
-        const libraryMap = new Map();
-        state.library.forEach(song => libraryMap.set(song.path, song));
-
-        songs.forEach(newSong => {
+        songs.forEach((newSong) => {
             if (!newSong.id && newSong.path) {
                 newSong.id = newSong.path;
             }
-            if (libraryMap.has(newSong.path)) {
-                const existingSong = libraryMap.get(newSong.path);
+            const existingSong = state.libraryByPath.get(newSong.path);
+            if (existingSong) {
                 Object.assign(existingSong, newSong);
+                fullRegroupNeeded = true;
             } else {
                 state.library.push(newSong);
+                if (newSong.id) {
+                    state.libraryById.set(newSong.id, newSong);
+                }
+                if (newSong.path) {
+                    state.libraryByPath.set(newSong.path, newSong);
+                }
+                if (!migrationNeeded && !newSong.sourceURL) {
+                    upsertAlbumForSong(newSong);
+                    upsertArtistForSong(newSong);
+                }
             }
         });
     }
 
-    groupLibraryByAlbum(migrationNeeded);
-    groupLibraryByArtist();
-    if (migrationNeeded) {
+    if (migrationNeeded || fullRegroupNeeded) {
+        groupLibraryByAlbum(migrationNeeded);
+        groupLibraryByArtist();
+    }
+    if (migrationNeeded || (albums && Object.keys(albums).length > 0)) {
         const albumsToSave = Object.fromEntries(state.albums.entries());
         electronAPI.send('save-migrated-data', { songs: state.library, albums: albumsToSave });
     }
@@ -316,13 +368,13 @@ function groupLibraryByAlbum(isMigration = false) {
             tempAlbumGroups.set(groupKey, {
                 title: albumTitle,
                 artist: resolveRepresentativeArtist(albumTitle),
-                songs: [],
+                songIds: [],
                 artwork: null
             });
         }
 
         const albumGroup = tempAlbumGroups.get(groupKey);
-        albumGroup.songs.push(song);
+        albumGroup.songIds.push(song.id);
 
         if (albumTitle !== 'Unknown Album' && !albumGroup.artwork && song.artwork) {
             albumGroup.artwork = song.artwork;
@@ -335,7 +387,7 @@ function groupLibraryByAlbum(isMigration = false) {
     for (const [groupKey, albumData] of tempAlbumGroups.entries()) {
         const albumTitle = albumData.title;
         const albumKey = groupKey;
-        albumData.songs.forEach(song => {
+        resolveSongsByIds(albumData.songIds).forEach(song => {
             song.albumKey = albumKey;
         });
 
@@ -352,7 +404,7 @@ function groupLibraryByAlbum(isMigration = false) {
         state.albums.set(albumKey, {
             title: albumTitle,
             artist: albumData.artist,
-            songs: albumData.songs,
+            songIds: albumData.songIds,
             artwork: finalArtwork
         });
     }
@@ -364,6 +416,32 @@ function groupLibraryByAlbum(isMigration = false) {
     }
 }
 
+function upsertAlbumForSong(song) {
+    const albumTitle = normaliseTagText(song.album, 'Unknown Album');
+    const albumKey = albumTitle;
+    const existingAlbum = state.albums.get(albumKey);
+    const songIds = existingAlbum?.songIds ? [...existingAlbum.songIds] : [];
+
+    if (!songIds.includes(song.id)) {
+        songIds.push(song.id);
+    }
+
+    song.albumKey = albumKey;
+
+    const albumArtist = normaliseTagText(song.albumartist);
+    let artist = albumArtist || normaliseTagText(song.artist, 'Unknown Artist');
+    if (existingAlbum?.artist && existingAlbum.artist !== artist) {
+        artist = 'Various Artists';
+    }
+
+    state.albums.set(albumKey, {
+        title: albumTitle,
+        artist,
+        songIds,
+        artwork: existingAlbum?.artwork || song.artwork || null
+    });
+}
+
 function groupLibraryByArtist() {
     state.artists.clear();
     const tempArtistGroups = new Map();
@@ -373,17 +451,35 @@ function groupLibraryByArtist() {
         if (!tempArtistGroups.has(artistName)) {
             tempArtistGroups.set(artistName, []);
         }
-        tempArtistGroups.get(artistName).push(song);
+        tempArtistGroups.get(artistName).push(song.id);
     });
-    for (const [artistName, songs] of tempArtistGroups.entries()) {
-        const firstAlbumKey = songs[0]?.albumKey;
+    for (const [artistName, songIds] of tempArtistGroups.entries()) {
+        const firstSong = getSongById(songIds[0]);
+        const firstAlbumKey = firstSong?.albumKey;
         const representativeAlbum = state.albums.get(firstAlbumKey);
         state.artists.set(artistName, {
             name: artistName,
             artwork: representativeAlbum?.artwork || null,
-            songs: songs
+            songIds: songIds
         });
     }
+}
+
+function upsertArtistForSong(song) {
+    const artistName = song.albumartist || song.artist || 'Unknown Artist';
+    const existingArtist = state.artists.get(artistName);
+    const songIds = existingArtist?.songIds ? [...existingArtist.songIds] : [];
+
+    if (!songIds.includes(song.id)) {
+        songIds.push(song.id);
+    }
+
+    const representativeAlbum = state.albums.get(song.albumKey);
+    state.artists.set(artistName, {
+        name: artistName,
+        artwork: existingArtist?.artwork || representativeAlbum?.artwork || null,
+        songIds
+    });
 }
 
 export function regroupLibraryCollections() {

@@ -1,3 +1,17 @@
+# Task: パフォーマンス最適化の実施
+
+## 概要
+`markdown/optimise.md` の計画に基づき、再生中ホットパス、RAM 常駐構造、ライブラリ更新処理の最適化を実施する。
+
+## 完了条件
+- [x] `src/renderer/js/ui/player-ui.js` で音量変更の即時反映と設定保存が分離されていること。
+- [x] `src/renderer/js/features/visualizer.js` で Wails の周波数データ取得が毎フレーム実行されないこと。
+- [x] `src/renderer/js/features/lyrics-manager.js` で歌詞現在行探索が全走査依存ではなく改善されていること。
+- [x] `src/renderer/js/features/audio-graph.js` で AudioGraph キャッシュが無制限に増えないこと。
+- [x] `src/renderer/js/ui/ui-manager.js` / `src/renderer/js/ui/detail-renderer.js` / `src/renderer/js/core/navigation.js` などでアルバム・アーティストが `songIds` 中心に扱われること。
+- [x] `src/renderer/renderer.js` で `artworkLoadTimes` が固定長化されていること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-9a` に更新されていること。
+
 # Task: 再生バー音声情報の表示項目をビット数へ変更
 
 ## 概要

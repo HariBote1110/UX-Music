@@ -404,8 +404,8 @@ export function initEventListeners() {
             }
         } else if (modifierKey && e.key.toLowerCase() === 'a') {
             e.preventDefault();
-            if (state.currentlyViewedSongs && state.currentlyViewedSongs.length > 0) {
-                const allIds = new Set(state.currentlyViewedSongs.map(s => s.id));
+            if (state.currentlyViewedSongIds && state.currentlyViewedSongIds.length > 0) {
+                const allIds = new Set(state.currentlyViewedSongIds);
                 const allSelected = state.selectedSongIds.size === allIds.size;
 
                 if (allSelected) {

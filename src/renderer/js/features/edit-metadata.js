@@ -1,7 +1,7 @@
 // src/renderer/js/edit-metadata.js
 import { state } from '../core/state.js';
 import { resolveArtworkPath } from '../ui/utils.js';
-import { renderCurrentView } from '../ui/ui-manager.js';
+import { renderCurrentView, rebuildLibraryIndexes } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 const electronAPI = window.electronAPI;
 
@@ -165,6 +165,7 @@ async function handleSave() {
             if (index > -1) {
                 // 更新された曲オブジェクトで置き換える (メインプロセスから返された情報を使う)
                 state.library[index] = { ...state.library[index], ...result.updatedSong };
+                rebuildLibraryIndexes();
 
                 // state.albums も更新する必要がある
                 // 簡単のため、ライブラリ全体からアルバムとアーティストを再グループ化

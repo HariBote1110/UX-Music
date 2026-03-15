@@ -7,6 +7,7 @@ import { showNotification, hideNotification } from '../ui/notification.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 import { musicApi } from '../core/bridge.js';
+import { getSongById } from '../ui/ui-manager.js';
 const electronAPI = window.electronAPI;
 const pendingLoudnessRequests = new Set();
 
@@ -72,7 +73,7 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     state.songWaitingForAnalysis = null;
 
     if (sourceList) {
-        state.originalQueueSource = [...sourceList];
+        state.originalQueueSource = sourceList;
         if (state.isShuffled) {
             const songToStartWith = sourceList[index];
             let newShuffledQueue = sourceList.filter(s => s.id !== songToStartWith.id);
@@ -84,7 +85,7 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
             state.playbackQueue = newShuffledQueue;
             index = 0;
         } else {
-            state.playbackQueue = [...sourceList];
+            state.playbackQueue = sourceList;
         }
     }
 
@@ -102,7 +103,7 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     }
 
     if (songToPlayActual.type === 'local' && songToPlayActual.id) {
-        const librarySong = state.library.find(s => s.id === songToPlayActual.id);
+        const librarySong = getSongById(songToPlayActual.id);
         if (librarySong) {
             Object.assign(songToPlayActual, librarySong);
             state.playbackQueue[index] = songToPlayActual;
@@ -185,7 +186,7 @@ export function toggleShuffle() {
     const currentSong = state.playbackQueue[state.currentSongIndex];
 
     if (state.isShuffled) {
-        const newShuffledQueue = [...state.originalQueueSource];
+        const newShuffledQueue = Array.from(state.originalQueueSource || []);
 
         const currentIndexInOriginal = newShuffledQueue.findIndex(s => s.id === currentSong?.id);
         if (currentIndexInOriginal > -1) {
@@ -205,7 +206,7 @@ export function toggleShuffle() {
         state.currentSongIndex = currentSong ? 0 : -1;
 
     } else {
-        state.playbackQueue = [...state.originalQueueSource];
+        state.playbackQueue = state.originalQueueSource || [];
         state.currentSongIndex = currentSong ? state.playbackQueue.findIndex(s => s.id === currentSong.id) : -1;
     }
     updatePlayingIndicators();

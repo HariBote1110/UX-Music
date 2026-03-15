@@ -17,6 +17,8 @@ let currentAnimatedLyricsIndex = -1;
 let lyricsRelayoutFrame = null;
 let isLyricsMotionListenerBound = false;
 let lyricsContainerObserver = null;
+let lyricsLineElements = [];
+let lastResolvedLyricsIndex = -1;
 
 /**
  * 曲が再生されたときに歌詞を読み込んで表示するメイン関数
@@ -91,6 +93,8 @@ function parseLRC(lrcContent) {
 function clearLyrics() {
     stopLyricsRelayout();
     currentAnimatedLyricsIndex = -1;
+    lastResolvedLyricsIndex = -1;
+    lyricsLineElements = [];
     elements.lyricsView.innerHTML = '';
     elements.lyricsView.scrollTop = 0;
     elements.lyricsView.classList.remove('lyrics-mode-lrc', 'lyrics-mode-txt');
@@ -125,6 +129,7 @@ function renderLyrics(lyrics) {
             }
             elements.lyricsView.appendChild(p);
         });
+        lyricsLineElements = [];
         return;
     }
 
@@ -149,6 +154,9 @@ function renderLyrics(lyrics) {
         elements.lyricsView.appendChild(p);
         previousSourceLine = Number.isFinite(line.sourceLine) ? line.sourceLine : previousSourceLine;
     });
+
+    lyricsLineElements = Array.from(elements.lyricsView.querySelectorAll('p[data-index]'));
+    lastResolvedLyricsIndex = -1;
 
     ensureLyricsMotionListeners();
     applyLyricsMotionByIndex(-1, true);
@@ -220,7 +228,7 @@ function applyLyricsMotionByIndex(activeIndex, immediate = false) {
         return;
     }
 
-    const lines = Array.from(elements.lyricsView.querySelectorAll('p[data-index]'));
+    const lines = lyricsLineElements;
     if (lines.length === 0) {
         return;
     }
@@ -231,22 +239,99 @@ function applyLyricsMotionByIndex(activeIndex, immediate = false) {
     const lineHeight = getLineHeightPx(container);
     currentAnimatedLyricsIndex = activeIndex;
 
-    lines.forEach((line, index) => {
+    if (immediate || activeIndex < 0 || currentAnimatedLyricsIndex < 0) {
+        lines.forEach((line, index) => {
+            const isActive = index === activeIndex;
+            const offset = index - baseIndex;
+            const distanceFromActive = Math.abs(offset);
+            const y = anchorY + offset * lineHeight;
+            const motionDelay = immediate ? 0 : distanceFromActive * LYRICS_MOTION_DELAY_STEP_MS;
+            const motionDuration = immediate ? 0 : LYRICS_MOTION_DURATION_MS;
+
+            line.classList.toggle('active', isActive);
+            line.style.setProperty('--line-motion-delay', `${motionDelay}ms`);
+            line.style.setProperty('--line-motion-duration', `${motionDuration}ms`);
+            line.style.transform = `translate3d(-50%, ${y.toFixed(3)}px, 0) scale(${isActive ? 1 : 0.9})`;
+            line.style.opacity = isActive ? '1' : '0.35';
+            line.style.filter = isActive ? 'blur(0px)' : 'blur(1.5px)';
+            line.style.zIndex = isActive ? '10' : '1';
+        });
+        currentAnimatedLyricsIndex = activeIndex;
+        return;
+    }
+
+    const previousIndex = currentAnimatedLyricsIndex;
+    const direction = activeIndex > previousIndex ? 1 : -1;
+
+    const updateLine = (index) => {
+        const line = lines[index];
+        if (!line) return;
         const isActive = index === activeIndex;
         const offset = index - baseIndex;
         const distanceFromActive = Math.abs(offset);
         const y = anchorY + offset * lineHeight;
-        const motionDelay = immediate ? 0 : distanceFromActive * LYRICS_MOTION_DELAY_STEP_MS;
-        const motionDuration = immediate ? 0 : LYRICS_MOTION_DURATION_MS;
+        const motionDelay = distanceFromActive * LYRICS_MOTION_DELAY_STEP_MS;
 
         line.classList.toggle('active', isActive);
         line.style.setProperty('--line-motion-delay', `${motionDelay}ms`);
-        line.style.setProperty('--line-motion-duration', `${motionDuration}ms`);
+        line.style.setProperty('--line-motion-duration', `${LYRICS_MOTION_DURATION_MS}ms`);
         line.style.transform = `translate3d(-50%, ${y.toFixed(3)}px, 0) scale(${isActive ? 1 : 0.9})`;
         line.style.opacity = isActive ? '1' : '0.35';
         line.style.filter = isActive ? 'blur(0px)' : 'blur(1.5px)';
         line.style.zIndex = isActive ? '10' : '1';
-    });
+    };
+
+    for (let index = previousIndex; index !== activeIndex; index += direction) {
+        updateLine(index);
+    }
+    updateLine(activeIndex);
+    currentAnimatedLyricsIndex = activeIndex;
+}
+
+function findLyricsIndexForTime(currentTime) {
+    const lyrics = state.currentLyrics;
+    if (!Array.isArray(lyrics) || lyrics.length === 0) {
+        return -1;
+    }
+
+    const lastIndex = lyrics.length - 1;
+    if (currentTime < lyrics[0].time) {
+        return -1;
+    }
+    if (currentTime >= lyrics[lastIndex].time) {
+        return lastIndex;
+    }
+
+    if (lastResolvedLyricsIndex >= 0 && lastResolvedLyricsIndex < lyrics.length) {
+        const currentLine = lyrics[lastResolvedLyricsIndex];
+        const nextLine = lyrics[lastResolvedLyricsIndex + 1];
+        if (currentTime >= currentLine.time && (!nextLine || currentTime < nextLine.time)) {
+            return lastResolvedLyricsIndex;
+        }
+        if (nextLine && currentTime >= nextLine.time) {
+            let index = lastResolvedLyricsIndex + 1;
+            while (index < lastIndex && currentTime >= lyrics[index + 1].time) {
+                index += 1;
+            }
+            return index;
+        }
+    }
+
+    let low = 0;
+    let high = lastIndex;
+    let resolved = -1;
+
+    while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        if (lyrics[mid].time <= currentTime) {
+            resolved = mid;
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+
+    return resolved;
 }
 
 /**
@@ -295,18 +380,9 @@ export function updateSyncedLyrics(currentTime) {
         return;
     }
 
-    let currentIndex = -1;
-    for (let i = state.currentLyrics.length - 1; i >= 0; i--) {
-        if (currentTime >= state.currentLyrics[i].time) {
-            currentIndex = i;
-            break;
-        }
-    }
-
-    const activeLine = elements.lyricsView.querySelector('p.active');
-    const activeIndex = activeLine ? Number.parseInt(activeLine.dataset.index || '', 10) : -1;
-
-    if (currentIndex !== activeIndex) {
+    const currentIndex = findLyricsIndexForTime(currentTime);
+    if (currentIndex !== currentAnimatedLyricsIndex) {
+        lastResolvedLyricsIndex = currentIndex;
         applyLyricsMotionByIndex(currentIndex, false);
     }
 }

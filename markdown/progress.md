@@ -1,5 +1,26 @@
 # 開発進捗ログ (progress.md)
 
+## 2026年3月15日
+
+### パフォーマンス最適化を実施
+
+- **要望対応**:
+    - `markdown/optimise.md` の計画に基づき、再生中ホットパス、RAM 常駐構造、ライブラリ更新処理の最適化を進めた。
+- **実装内容**:
+    - `src/renderer/js/ui/player-ui.js` で音量スライダーの即時反映と設定保存を分離し、入力中の永続化連打を停止。
+    - `src/renderer/js/ui/ui-manager.js` と `src/renderer/js/ui/element-factory.js` で再生キューの差分更新、ライブラリ索引の導入、アルバム/アーティストの `songIds` 管理、追加曲の増分集計を実装。
+    - `src/renderer/js/features/visualizer.js` で Wails 周波数データ取得を固定間隔へ間引き。
+    - `src/renderer/js/features/lyrics-manager.js` で歌詞現在行探索を高速化し、行切替時の DOM 更新を局所化。
+    - `src/renderer/js/features/audio-graph.js` で AudioGraph キャッシュ数を制限し、不要な AudioContext を破棄するよう変更。
+    - `src/renderer/js/features/player.js` で Media Session アートワークを軽量なサムネイル中心へ変更し、大きな Data URL 保持を回避。
+    - `src/renderer/js/core/state.js`、`src/renderer/js/core/navigation.js`、`src/renderer/js/ui/detail-renderer.js`、`src/renderer/js/ui/grid-renderer.js` などを更新し、表示中曲管理を `currentlyViewedSongIds` 基準へ移行。
+    - `src/renderer/renderer.js` で `artworkLoadTimes` を固定長バッファ化。
+- **検証**:
+    - 変更したフロントエンド JavaScript 群に対して `node --check` を実行。
+    - `git diff --check` を実行し、空白系の差分不備がないことを確認。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-9a` に更新。
+
 ## 2026年3月10日
 
 ### 再生バー音声情報: ビットレート表示をビット数表示へ変更

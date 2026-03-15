@@ -315,14 +315,15 @@ async function setMediaSessionMetadata(song) {
     const artwork = [];
     const album = state.albums.get(song.albumKey);
     let artworkSource = song.artwork || (album ? album.artwork : null);
-    if (typeof artworkSource === 'object' && artworkSource !== null) artworkSource = artworkSource.full || artworkSource.thumbnail;
+    if (typeof artworkSource === 'object' && artworkSource !== null) artworkSource = artworkSource.thumbnail || artworkSource.full;
 
     if (typeof artworkSource === 'string' && artworkSource) {
         let src = artworkSource;
         if (!src.startsWith('http') && !src.startsWith('https') && !src.startsWith('data:') && !src.startsWith('blob:')) {
-            try { const dataUrl = await electronAPI.invoke('get-artwork-as-data-url', artworkSource); if (dataUrl) src = dataUrl; } catch (error) { }
+            const normalised = src.replace(/\\/g, '/').replace(/^safe-artwork:\/\//, '/safe-artwork/');
+            src = normalised.startsWith('/safe-artwork/') ? normalised : `/safe-artwork/${encodeURI(normalised).replace(/#/g, '%23')}`;
         }
-        ['96x96', '128x128', '256x256', '384x384', '512x512'].forEach(size => artwork.push({ src, sizes: size, type: 'image/png' }));
+        ['128x128', '256x256'].forEach(size => artwork.push({ src, sizes: size, type: 'image/png' }));
     }
     if (artwork.length === 0) artwork.push({ src: './assets/default_artwork.png', sizes: '512x512', type: 'image/png' });
     navigator.mediaSession.metadata = new MediaMetadata({ title: song.title || 'Unknown', artist: song.artist || 'Unknown', album: song.album || '', artwork });

@@ -6,6 +6,7 @@ const electronAPI = window.electronAPI;
 // ▼▼▼ 変更: グラフ（Context+Nodes）のキャッシュ管理 ▼▼▼
 const graphCache = new Map(); // key: sampleRate, value: GraphObject
 let currentGraph = null;      // 現在アクティブなグラフ
+const MAX_CACHED_GRAPHS = 1;
 
 // エクスポート用変数（外部からは常に最新のグラフのノードが見えるようにする）
 export let analyser = null;
@@ -57,8 +58,11 @@ export async function activateAudioGraph(rate) {
         console.log(`[AudioGraph] Creating new graph for ${rate}Hz...`);
         graph = await createGraph(rate);
         graphCache.set(rate, graph);
+        await trimGraphCache(rate);
     } else {
         console.log(`[AudioGraph] Resuming cached graph for ${rate}Hz. AudioContext state: ${graph.context.state}`);
+        graphCache.delete(rate);
+        graphCache.set(rate, graph);
     }
 
     currentGraph = graph;
@@ -105,6 +109,50 @@ export async function activateAudioGraph(rate) {
     // (EQ適用関数は個別に呼ぶ必要があるが、ここではゲインのみ即時適用)
 
     return currentGraph;
+}
+
+async function destroyGraph(graph) {
+    if (!graph) return;
+
+    try {
+        await stopDirectLink(graph);
+    } catch (e) { }
+
+    try {
+        graph.audioElement.pause();
+        graph.audioElement.removeAttribute('src');
+        graph.audioElement.load();
+    } catch (e) { }
+
+    try {
+        graph.nodes.gain.disconnect();
+    } catch (e) { }
+
+    try {
+        graph.nodes.analyser.disconnect();
+    } catch (e) { }
+
+    try {
+        graph.context.close();
+    } catch (e) { }
+}
+
+async function trimGraphCache(activeRate) {
+    while (graphCache.size > MAX_CACHED_GRAPHS) {
+        const oldestEntry = graphCache.entries().next().value;
+        if (!oldestEntry) break;
+
+        const [rate, graph] = oldestEntry;
+        if (rate === activeRate && graphCache.size === 1) {
+            break;
+        }
+
+        graphCache.delete(rate);
+        if (currentGraph === graph) {
+            currentGraph = null;
+        }
+        await destroyGraph(graph);
+    }
 }
 
 /**
@@ -220,12 +268,9 @@ export async function initAudioGraph(playerElement, sinkId) {
         // sinkIdが変更された場合、すべてのキャッシュをクリアして再作成を強制
         if (sinkIdChanged) {
             console.log('[AudioGraph] SinkId changed, clearing graph cache for recreation.');
-            // 現在のグラフを停止
-            if (currentGraph) {
-                electronAPI.send('direct-link-command', { action: 'stop' });
-                try {
-                    currentGraph.context.close();
-                } catch (e) { }
+            electronAPI.send('direct-link-command', { action: 'stop' });
+            for (const graph of graphCache.values()) {
+                await destroyGraph(graph);
             }
             // キャッシュをクリア
             graphCache.clear();

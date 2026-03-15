@@ -2,7 +2,7 @@ import { playSong, markLoudnessAnalysisCompleted } from '../features/playback-ma
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { state } from './state.js';
 import { showModal } from '../ui/modal.js';
-import { renderCurrentView, regroupLibraryCollections } from '../ui/ui-manager.js';
+import { renderCurrentView, regroupLibraryCollections, rebuildLibraryIndexes } from '../ui/ui-manager.js';
 import { showView } from './navigation.js';
 import { musicApi } from './bridge.js';
 // --- ▼▼▼ 新規追加 ▼▼▼ ---
@@ -126,6 +126,7 @@ export function initIPC(callbacks) {
     electronAPI.on('songs-deleted', (deletedSongPaths) => {
         const deletedPathsSet = new Set(deletedSongPaths);
         state.library = state.library.filter(song => !deletedPathsSet.has(song.path));
+        rebuildLibraryIndexes();
         state.selectedSongIds.clear();
         state.copiedSongIds = [];
         regroupLibraryCollections();

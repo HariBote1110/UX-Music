@@ -48,11 +48,10 @@ function handleSongItemClick(e, song, index, songList, songItem) {
 function deleteSongsFromLibrary(songs) {
     console.log('[DeleteSongs] context action invoked', songs);
 
-    const libraryById = new Map((state.library || []).map(song => [song.id, song]));
     const paths = (songs || [])
         .map((s) => {
             if (s?.path) return s.path;
-            const resolved = s?.id ? libraryById.get(s.id) : null;
+            const resolved = s?.id ? state.libraryById.get(s.id) : null;
             return resolved?.path || '';
         })
         .filter(Boolean);

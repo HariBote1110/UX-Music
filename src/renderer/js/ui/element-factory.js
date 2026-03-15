@@ -23,6 +23,16 @@ function scheduleMarqueeMeasurement(songItem) {
     });
 }
 
+function findArtworkFromSongIds(songIds = []) {
+    for (const songId of songIds) {
+        const song = state.libraryById.get(songId);
+        if (song?.artwork) {
+            return song.artwork;
+        }
+    }
+    return null;
+}
+
 export function createSongItem(song, index, songList, options = {}) {
     const { groupAlbumArt = false } = options;
     const songIdentifier = song.id || song.path || '';
@@ -122,9 +132,8 @@ export function createSongItem(song, index, songList, options = {}) {
                 } else if (album) {
                     if (album.artwork) {
                         artwork = album.artwork;
-                    } else if (album.songs && album.songs.length > 0) {
-                        const songWithArt = album.songs.find(s => s.artwork);
-                        if (songWithArt) artwork = songWithArt.artwork;
+                    } else {
+                        artwork = findArtworkFromSongIds(album.songIds);
                     }
                 }
             }
@@ -206,9 +215,8 @@ export function createAlbumGridItem(key, album) {
         artworkImg.classList.add('lazy-load');
 
         let artworkToUse = album.artwork;
-        if (!artworkToUse && album.songs && album.songs.length > 0) {
-            const songWithArt = album.songs.find(s => s.artwork);
-            if (songWithArt) artworkToUse = songWithArt.artwork;
+        if (!artworkToUse) {
+            artworkToUse = findArtworkFromSongIds(album?.songIds);
         }
         artworkImg.dataset.src = resolveArtworkPath(artworkToUse, false);
 
