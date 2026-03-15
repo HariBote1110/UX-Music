@@ -362,37 +362,15 @@ export function initPlayerControls(initialPlayer, _callbacks) {
 
     updateVolumeIcon();
     updateAudioInfoTooltip();
-    initialiseShuffle();
-}
-
-/**
- * シャッフルアイコンのストロークをアニメーション用に初期化する。
- * SVGパスの全長を計測し、dasharray/dashoffset を設定する。
- */
-function initialiseShuffle() {
-    const btn = elements.shuffleBtn;
-    if (!btn) return;
-
-    const pathTop = btn.querySelector('.shuffle-path-top');
-    const pathBottom = btn.querySelector('.shuffle-path-bottom');
-    if (!pathTop || !pathBottom) return;
-
-    const topLen = pathTop.getTotalLength();
-    const bottomLen = pathBottom.getTotalLength();
-
-    pathTop.dataset.totalLength = topLen;
-    pathBottom.dataset.totalLength = bottomLen;
-
-    pathTop.style.strokeDasharray = `${topLen} ${topLen * 3}`;
-    pathTop.style.strokeDashoffset = '0';
-    pathBottom.style.strokeDasharray = `${bottomLen} ${bottomLen * 3}`;
-    pathBottom.style.strokeDashoffset = '0';
 }
 
 /**
  * シャッフルボタン押下時のアニメーションを実行する。
- * 参考 HTML（shuffle_animation_image.html）と同様の
- * 「右に退場 → 左からワープ再入場」の動きを再現する。
+ * SVG に overflow: hidden のクリップ領域を設け、
+ * アイコン全体を <g> ごと translateX + opacity で動かす。
+ *   1. 少し右へスライドしながらフェードアウト
+ *   2. 左端へ瞬間ワープ
+ *   3. 左端から滑り込んでフェードイン
  */
 export async function runShuffleAnimation() {
     if (shuffleAnimationRunning) return;
@@ -401,85 +379,43 @@ export async function runShuffleAnimation() {
     const btn = elements.shuffleBtn;
     if (!btn) { shuffleAnimationRunning = false; return; }
 
-    const pathTop = btn.querySelector('.shuffle-path-top');
-    const pathBottom = btn.querySelector('.shuffle-path-bottom');
-    const arrowTop = btn.querySelector('.shuffle-arrow-top');
-    const arrowBottom = btn.querySelector('.shuffle-arrow-bottom');
-    if (!pathTop || !pathBottom) { shuffleAnimationRunning = false; return; }
+    const group = btn.querySelector('.shuffle-icon-group');
+    if (!group) { shuffleAnimationRunning = false; return; }
 
-    const topLen = parseFloat(pathTop.dataset.totalLength) || pathTop.getTotalLength();
-    const bottomLen = parseFloat(pathBottom.dataset.totalLength) || pathBottom.getTotalLength();
-    const padding = 4; // パス端からはみ出す余白（SVGユニット）
-
-    // SVGユニット → CSSピクセル変換係数（viewBox幅=24 に対してレンダリング幅を取得）
+    // SVG の実際のレンダリング幅を取得し、左端ワープ距離を決定
     const svgEl = btn.querySelector('svg');
-    const scale = svgEl ? svgEl.getBoundingClientRect().width / 24 : 22 / 24;
-    const topPx = (topLen + padding) * scale;
-    const bottomPx = (bottomLen + padding) * scale;
+    const svgWidth = svgEl ? svgEl.getBoundingClientRect().width : 22;
+    const enterFrom = -(svgWidth + 2); // SVG 幅 + 余白 2px 分だけ左へ
 
-    // 1. 右側へ高速退出（パス + 矢印先端を同時にスライド）
-    const exitOpts = { duration: 180, easing: 'ease-in', fill: 'forwards' };
-    const exitAnims = [
-        pathTop.animate(
-            [{ strokeDashoffset: '0' }, { strokeDashoffset: `${-(topLen + padding)}` }],
-            exitOpts
-        ),
-        pathBottom.animate(
-            [{ strokeDashoffset: '0' }, { strokeDashoffset: `${-(bottomLen + padding)}` }],
-            exitOpts
-        ),
-    ];
-    if (arrowTop) exitAnims.push(
-        arrowTop.animate(
-            [{ transform: 'translateX(0px)' }, { transform: `translateX(${topPx}px)` }],
-            exitOpts
-        )
+    // 1. ほんのちょっと右へ動いてフェードアウト
+    const exitAnim = group.animate(
+        [
+            { transform: 'translateX(0px)', opacity: 1 },
+            { transform: 'translateX(5px)', opacity: 0 },
+        ],
+        { duration: 130, easing: 'ease-in', fill: 'forwards' }
     );
-    if (arrowBottom) exitAnims.push(
-        arrowBottom.animate(
-            [{ transform: 'translateX(0px)' }, { transform: `translateX(${bottomPx}px)` }],
-            exitOpts
-        )
-    );
-    await Promise.all(exitAnims.map(a => a.finished));
+    await exitAnim.finished;
+    exitAnim.cancel();
 
     // 2. 左端へ瞬間ワープ（アニメーションなし）
-    pathTop.style.strokeDashoffset = `${topLen + padding}`;
-    pathBottom.style.strokeDashoffset = `${bottomLen + padding}`;
-    if (arrowTop) arrowTop.style.transform = `translateX(${-topPx}px)`;
-    if (arrowBottom) arrowBottom.style.transform = `translateX(${-bottomPx}px)`;
+    group.style.transform = `translateX(${enterFrom}px)`;
+    group.style.opacity = '0';
 
-    // 3. 左側から軽快に再入場（パス + 矢印先端を同時にスライド）
-    const enterOpts = { duration: 380, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' };
-    const enterAnims = [
-        pathTop.animate(
-            [{ strokeDashoffset: `${topLen + padding}` }, { strokeDashoffset: '0' }],
-            enterOpts
-        ),
-        pathBottom.animate(
-            [{ strokeDashoffset: `${bottomLen + padding}` }, { strokeDashoffset: '0' }],
-            enterOpts
-        ),
-    ];
-    if (arrowTop) enterAnims.push(
-        arrowTop.animate(
-            [{ transform: `translateX(${-topPx}px)` }, { transform: 'translateX(0px)' }],
-            enterOpts
-        )
+    // 3. 左側から滑り込んでフェードイン
+    const enterAnim = group.animate(
+        [
+            { transform: `translateX(${enterFrom}px)`, opacity: 0 },
+            { transform: 'translateX(0px)', opacity: 1 },
+        ],
+        { duration: 340, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' }
     );
-    if (arrowBottom) enterAnims.push(
-        arrowBottom.animate(
-            [{ transform: `translateX(${-bottomPx}px)` }, { transform: 'translateX(0px)' }],
-            enterOpts
-        )
-    );
-    await Promise.all(enterAnims.map(a => a.finished));
+    await enterAnim.finished;
+    enterAnim.cancel();
 
-    // 状態を確定
-    pathTop.style.strokeDashoffset = '0';
-    pathBottom.style.strokeDashoffset = '0';
-    if (arrowTop) arrowTop.style.transform = '';
-    if (arrowBottom) arrowBottom.style.transform = '';
+    // 状態を確定（アニメーション由来のスタイルをリセット）
+    group.style.transform = '';
+    group.style.opacity = '';
 
     shuffleAnimationRunning = false;
 }
