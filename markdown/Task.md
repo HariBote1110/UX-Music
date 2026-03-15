@@ -213,3 +213,13 @@ CoreML が使える macOS 環境を前提に、`TXT` 歌詞を自動で時刻同
 - [x] `whisper-cli` / モデル未配置時に配置先を含むエラーメッセージが返ること。
 - [x] `markdown/requirement.md` のバージョンを `0.1.9-Beta-7i` に更新すること。
 - [x] 単体テスト・結合テスト（擬似 `ffmpeg` / `whisper-cli`）を追加すること。
+# Task: コンソール向けパフォーマンスモニターを追加
+
+## 概要
+GUI を増やさず、5秒ごとの平均負荷をコンソールへ出力できる軽量なパフォーマンスモニターを追加する。
+
+## 完了条件
+- [x] Wails バックエンドから `RSS` / `CPU` / `Go heap` を取得できること。
+- [x] フロントエンドで 1 秒サンプリング、5 秒平均のコンソール出力が行われること。
+- [x] `RSS` / `CPU` / `GoHeap` / `JSHeap` / `FPS` / `DOM` ノード数 / キュー件数 / 歌詞行数が出力されること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-9d` に更新されていること。

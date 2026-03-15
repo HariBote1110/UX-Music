@@ -15,7 +15,7 @@ export const musicApi = {
     requestAppInfo: () => {
         if (isWails) {
             // Wails では別ルートでの実装が必要だが、一旦保留
-            return Promise.resolve({ version: '0.1.9-Beta-9c', platform: 'darwin' });
+            return Promise.resolve({ version: '0.1.9-Beta-9d', platform: 'darwin' });
         }
         return api && api.send(CHANNELS.SEND.REQUEST_APP_INFO);
     },
@@ -113,6 +113,12 @@ export const musicApi = {
             return window.go.main.App.GetSituationPlaylists();
         }
         return api && api.invoke('get-situation-playlists');
+    },
+    getPerformanceSnapshot: () => {
+        if (isWails) {
+            return window.go.main.App.GetPerformanceSnapshot?.();
+        }
+        return Promise.resolve(null);
     },
     createPlaylist: (name) => {
         if (isWails) {

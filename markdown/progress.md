@@ -2,6 +2,19 @@
 
 ## 2026年3月15日
 
+### コンソール向けパフォーマンスモニターを追加
+
+- **要望対応**:
+    - GUI ではなく、5秒ごとの平均負荷をコンソールに出力する軽量なパフォーマンスモニターを追加した。
+- **実装内容**:
+    - `app_perf.go` を追加し、Wails バックエンドから `RSS`、`CPU`、`Go heap`、`goroutine` 数などを取得できる `GetPerformanceSnapshot()` を実装。
+    - `src/renderer/js/utils/performance-monitor.js` を追加し、1秒ごとにサンプルを集め、5秒平均で `RSS`、`CPU`、`GoHeap`、`JSHeap`、`FPS`、`DOM` ノード数、キュー件数、歌詞行数をコンソールへ出力。
+    - `src/renderer/renderer.js` で起動時にモニターを開始するよう追加。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.js` のバージョンを `0.1.9-Beta-9d` に更新。
+
+## 2026年3月15日
+
 ### 同期歌詞の行位置が重なって残る不具合を修正
 
 - **不具合内容**:
