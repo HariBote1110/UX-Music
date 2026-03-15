@@ -84,6 +84,8 @@ export function GetLyrics(arg1:string):Promise<any>;
 
 export function GetMTPDevices():Promise<any>;
 
+export function GetPerformanceSnapshot():Promise<main.PerformanceSnapshot>;
+
 export function GetPlaylistDetails(arg1:string):Promise<any>;
 
 export function GetSettings():Promise<any>;

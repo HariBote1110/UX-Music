@@ -203,6 +203,32 @@ export namespace main {
 	        this.bands = source["bands"];
 	    }
 	}
+	export class PerformanceSnapshot {
+	    timestampUtc: string;
+	    processRssMb: number;
+	    processCpuPercent: number;
+	    goHeapAllocMb: number;
+	    goSysMb: number;
+	    goNumGoroutine: number;
+	    librarySongCount: number;
+	    performanceSourceOk: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PerformanceSnapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestampUtc = source["timestampUtc"];
+	        this.processRssMb = source["processRssMb"];
+	        this.processCpuPercent = source["processCpuPercent"];
+	        this.goHeapAllocMb = source["goHeapAllocMb"];
+	        this.goSysMb = source["goSysMb"];
+	        this.goNumGoroutine = source["goNumGoroutine"];
+	        this.librarySongCount = source["librarySongCount"];
+	        this.performanceSourceOk = source["performanceSourceOk"];
+	    }
+	}
 
 }
 

@@ -154,6 +154,10 @@ export function GetMTPDevices() {
   return window['go']['main']['App']['GetMTPDevices']();
 }
 
+export function GetPerformanceSnapshot() {
+  return window['go']['main']['App']['GetPerformanceSnapshot']();
+}
+
 export function GetPlaylistDetails(arg1) {
   return window['go']['main']['App']['GetPlaylistDetails'](arg1);
 }
