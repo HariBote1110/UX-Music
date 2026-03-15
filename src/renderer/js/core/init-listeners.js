@@ -8,6 +8,7 @@ import { updateTextOverflowForSelector } from '../ui/utils.js';
 import { updateAudioDevices } from '../ui/ui-manager.js';
 import { updateSearchQuery } from '../ui/ui.js';
 import { musicApi } from './bridge.js';
+import { runShuffleAnimation } from '../ui/player-ui.js';
 import { enableYouTubeFeaturesWithConsent } from '../utils/debug-commands.js';
 const electronAPI = window.electronAPI;
 const isWailsRuntime = () => window.go !== undefined || window.runtime !== undefined;
@@ -115,7 +116,10 @@ async function buildYouTubeAddPayload(url) {
 export function initEventListeners() {
     elements.nextBtn.addEventListener('click', playNextSong);
     elements.prevBtn.addEventListener('click', playPrevSong);
-    elements.shuffleBtn.addEventListener('click', toggleShuffle);
+    elements.shuffleBtn.addEventListener('click', () => {
+        toggleShuffle();
+        runShuffleAnimation();
+    });
     elements.loopBtn.addEventListener('click', toggleLoopMode);
 
     const libraryActionsBtn = document.getElementById('library-actions-btn');

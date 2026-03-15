@@ -194,6 +194,23 @@
     height: 22px;
 }
 
+/* シャッフルボタン インラインSVG */
+.shuffle-icon {
+    width: 22px;
+    height: 22px;
+    overflow: visible;
+    color: var(--text-secondary);
+    transition: color 0.15s ease;
+}
+
+.playback-mode-btn:hover .shuffle-icon {
+    color: var(--text-primary);
+}
+
+.playback-mode-btn.active .shuffle-icon {
+    color: var(--highlight-pink);
+}
+
 .playback-mode-btn.active {
     color: var(--highlight-pink);
 }

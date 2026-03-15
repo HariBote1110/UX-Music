@@ -22,6 +22,7 @@ let progressFrameId = null;
 let lastVolume = 0.5;
 let iconAnimationId = null;
 let volumeSaveTimer = null;
+let shuffleAnimationRunning = false;
 
 function getCurrentQueueSong() {
     if (!Array.isArray(state.playbackQueue) || state.currentSongIndex < 0) {
@@ -361,7 +362,98 @@ export function initPlayerControls(initialPlayer, _callbacks) {
 
     updateVolumeIcon();
     updateAudioInfoTooltip();
+    initialiseShuffle();
+}
 
+/**
+ * シャッフルアイコンのストロークをアニメーション用に初期化する。
+ * SVGパスの全長を計測し、dasharray/dashoffset を設定する。
+ */
+function initialiseShuffle() {
+    const btn = elements.shuffleBtn;
+    if (!btn) return;
+
+    const pathTop = btn.querySelector('.shuffle-path-top');
+    const pathBottom = btn.querySelector('.shuffle-path-bottom');
+    if (!pathTop || !pathBottom) return;
+
+    const topLen = pathTop.getTotalLength();
+    const bottomLen = pathBottom.getTotalLength();
+
+    pathTop.dataset.totalLength = topLen;
+    pathBottom.dataset.totalLength = bottomLen;
+
+    pathTop.style.strokeDasharray = `${topLen} ${topLen * 3}`;
+    pathTop.style.strokeDashoffset = '0';
+    pathBottom.style.strokeDasharray = `${bottomLen} ${bottomLen * 3}`;
+    pathBottom.style.strokeDashoffset = '0';
+}
+
+/**
+ * シャッフルボタン押下時のアニメーションを実行する。
+ * 参考 HTML（shuffle_animation_image.html）と同様の
+ * 「右に退場 → 左からワープ再入場」の動きを再現する。
+ */
+export async function runShuffleAnimation() {
+    if (shuffleAnimationRunning) return;
+    shuffleAnimationRunning = true;
+
+    const btn = elements.shuffleBtn;
+    if (!btn) { shuffleAnimationRunning = false; return; }
+
+    const pathTop = btn.querySelector('.shuffle-path-top');
+    const pathBottom = btn.querySelector('.shuffle-path-bottom');
+    const arrowTop = btn.querySelector('.shuffle-arrow-top');
+    const arrowBottom = btn.querySelector('.shuffle-arrow-bottom');
+    if (!pathTop || !pathBottom) { shuffleAnimationRunning = false; return; }
+
+    const topLen = parseFloat(pathTop.dataset.totalLength) || pathTop.getTotalLength();
+    const bottomLen = parseFloat(pathBottom.dataset.totalLength) || pathBottom.getTotalLength();
+    const padding = 4; // パス端からはみ出す余白（px）
+
+    // 矢印先端を一時的に非表示にして、パスと一緒に動かないようにする
+    if (arrowTop) arrowTop.style.opacity = '0';
+    if (arrowBottom) arrowBottom.style.opacity = '0';
+
+    // 1. 右側へ高速退出
+    const exitOpts = { duration: 180, easing: 'ease-in', fill: 'forwards' };
+    const exitAnims = [
+        pathTop.animate(
+            [{ strokeDashoffset: '0' }, { strokeDashoffset: `${-(topLen + padding)}` }],
+            exitOpts
+        ),
+        pathBottom.animate(
+            [{ strokeDashoffset: '0' }, { strokeDashoffset: `${-(bottomLen + padding)}` }],
+            exitOpts
+        ),
+    ];
+    await Promise.all(exitAnims.map(a => a.finished));
+
+    // 2. 左端へ瞬間ワープ（アニメーションなし）
+    pathTop.style.strokeDashoffset = `${topLen + padding}`;
+    pathBottom.style.strokeDashoffset = `${bottomLen + padding}`;
+
+    // 3. 左側から軽快に再入場
+    const enterOpts = { duration: 380, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' };
+    const enterAnims = [
+        pathTop.animate(
+            [{ strokeDashoffset: `${topLen + padding}` }, { strokeDashoffset: '0' }],
+            enterOpts
+        ),
+        pathBottom.animate(
+            [{ strokeDashoffset: `${bottomLen + padding}` }, { strokeDashoffset: '0' }],
+            enterOpts
+        ),
+    ];
+    await Promise.all(enterAnims.map(a => a.finished));
+
+    // 状態を確定し、矢印を復元
+    pathTop.style.strokeDashoffset = '0';
+    pathBottom.style.strokeDashoffset = '0';
+    if (arrowTop) arrowTop.style.opacity = '';
+    if (arrowBottom) arrowBottom.style.opacity = '';
+
+    shuffleAnimationRunning = false;
 }
 
 export function updatePlaybackStateUI(playing) {
