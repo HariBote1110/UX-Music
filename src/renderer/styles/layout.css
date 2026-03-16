@@ -104,32 +104,9 @@ body.resizing {
     border-left-color: transparent;
 }
 
-/* リサイザーが折り畳み状態のとき「›」展開ボタンとして表示 */
+/* 折り畳み状態でもリサイザーの見た目は変えない（クリックで展開） */
 .resizer-vertical.sidebar-collapsed {
-    width: 18px;
     cursor: pointer;
-    background: var(--bg-light);
-    border-left-color: var(--bg-light);
-    border-right-color: var(--bg-light);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.resizer-vertical.sidebar-collapsed::after {
-    content: '›';
-    color: var(--text-muted);
-    font-size: 14px;
-    line-height: 1;
-    pointer-events: none;
-}
-
-.resizer-vertical.sidebar-collapsed:hover {
-    background: var(--bg-hover);
-}
-
-.resizer-vertical.sidebar-collapsed:hover::after {
-    color: var(--text-primary);
 }
 
 .footer-artwork-container {
