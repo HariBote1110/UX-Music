@@ -492,7 +492,8 @@ export function initEventListeners() {
             const newWidth = window.innerWidth - e.clientX - (resizer.offsetWidth / 2);
 
             if (newWidth < SIDEBAR_SNAP_THRESHOLD) {
-                // 閾値を下回ったら折り畳んでドラッグ終了
+                // 閾値を下回ったら折り畳んでドラッグ終了（スナップアニメーションのためトランジション復元）
+                rightSidebar.style.transition = '';
                 collapseSidebar();
                 document.body.classList.remove('resizing');
                 document.removeEventListener('mousemove', onMouseMove);
@@ -506,6 +507,7 @@ export function initEventListeners() {
         };
 
         const onMouseUp = () => {
+            rightSidebar.style.transition = ''; // トランジション復元
             document.body.classList.remove('resizing');
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
@@ -521,6 +523,7 @@ export function initEventListeners() {
                 return;
             }
 
+            rightSidebar.style.transition = 'none'; // ドラッグ中はトランジション無効化
             document.body.classList.add('resizing');
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
