@@ -138,6 +138,12 @@ function renderQueueView() {
     if (typeof window.observeNewArtworks === 'function') {
         window.observeNewArtworks(elements.queueList);
     }
+
+    // 再生中アイテムをスクロールして表示
+    if (lastPlayingQueueIndex >= 0) {
+        const playingItem = elements.queueList.querySelector(`[data-queue-index="${lastPlayingQueueIndex}"]`);
+        playingItem?.scrollIntoView({ block: 'nearest' });
+    }
 }
 
 function syncQueuePlayingState() {
@@ -155,6 +161,7 @@ function syncQueuePlayingState() {
     if (nextPlayingIndex >= 0) {
         const nextItem = elements.queueList.querySelector(`[data-queue-index="${nextPlayingIndex}"]`);
         nextItem?.classList.add('playing');
+        nextItem?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
     lastPlayingQueueIndex = nextPlayingIndex;

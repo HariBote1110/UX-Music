@@ -1102,3 +1102,93 @@
     font-size: 13px;
     color: var(--text-secondary, #888);
 }
+/* ─── YouTube字幕選択ダイアログ ──────────────────────────────────── */
+.caption-selection-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.caption-selection-dialog {
+    background: var(--bg-light, #2a2a2e);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 24px;
+    max-width: 480px;
+    width: 90%;
+    max-height: 72vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+.caption-dialog-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary, #fff);
+}
+
+.caption-video-title {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-muted, #888);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.caption-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.caption-btn {
+    padding: 10px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary, #fff);
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+    transition: background 0.15s;
+}
+
+.caption-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.caption-btn--auto {
+    border-color: var(--highlight-blue, #5b8dee);
+    color: var(--highlight-blue, #5b8dee);
+}
+
+.caption-btn--auto:hover {
+    background: rgba(91, 141, 238, 0.15);
+}
+
+.caption-btn--none {
+    color: var(--text-secondary, #aaa);
+}
+
+.caption-btn--cancel {
+    margin-top: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted, #888);
+    text-align: center;
+    font-size: 13px;
+}
+
+.caption-btn--cancel:hover {
+    color: var(--text-secondary, #aaa);
+    background: transparent;
+}

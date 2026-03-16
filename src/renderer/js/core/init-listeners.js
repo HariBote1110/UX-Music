@@ -3,7 +3,7 @@ import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from '../fe
 import { runShuffleAnimation, runLoopAnimation } from '../ui/player-ui.js';
 import { showView } from './navigation.js';
 import { togglePlayPause, seekToStart } from '../features/player.js';
-import { showModal, showModalAdvanced } from '../ui/modal.js';
+import { showModal } from '../ui/modal.js';
 import { handleQuizKeyPress } from '../features/quiz.js';
 import { updateTextOverflowForSelector } from '../ui/utils.js';
 import { updateAudioDevices } from '../ui/ui-manager.js';
@@ -13,29 +13,6 @@ import { enableYouTubeFeaturesWithConsent } from '../utils/debug-commands.js';
 const electronAPI = window.electronAPI;
 const isWailsRuntime = () => window.go !== undefined || window.runtime !== undefined;
 
-function buildCaptionSelectionMessage(videoTitle, tracks) {
-    const lines = [
-        `動画: ${videoTitle || 'Unknown Title'}`,
-        '',
-        '使用する字幕を番号で選択してください。',
-        '0: 自動選択（推奨）',
-        '1: 字幕を使用しない',
-    ];
-
-    tracks.forEach((track, index) => {
-        const number = index + 2;
-        const lang = track?.languageCode || 'unknown';
-        const label = track?.label || 'Unknown';
-        const trackId = track?.vssId || 'unknown';
-        const kind = track?.isAuto ? 'auto' : 'manual';
-        lines.push(`${number}: [${lang}] ${label} (${kind}, ${trackId})`);
-    });
-
-    lines.push('');
-    lines.push('例: 0');
-    return lines.join('\n');
-}
-
 function promptYouTubeCaptionSelection(videoInfo) {
     const tracks = Array.isArray(videoInfo?.captionTracks) ? videoInfo.captionTracks : [];
     if (tracks.length === 0) {
@@ -43,40 +20,71 @@ function promptYouTubeCaptionSelection(videoInfo) {
     }
 
     return new Promise((resolve) => {
-        showModalAdvanced({
-            title: '字幕トラックを選択',
-            message: buildCaptionSelectionMessage(videoInfo?.title, tracks),
-            placeholder: '番号を入力（例: 0）',
-            requireInput: true,
-            okText: '決定',
-            cancelText: 'キャンセル',
-            onOk: (rawValue) => {
-                const value = Number.parseInt(String(rawValue).trim(), 10);
-                if (Number.isNaN(value) || value < 0 || value > tracks.length + 1) {
-                    console.warn('[YouTube][UI] 字幕選択入力が不正です。自動選択へフォールバックします:', rawValue);
-                    resolve({ captionMode: 'auto' });
-                    return;
-                }
+        const overlay = document.createElement('div');
+        overlay.className = 'caption-selection-overlay';
 
-                if (value === 0) {
-                    resolve({ captionMode: 'auto' });
-                    return;
-                }
-                if (value === 1) {
-                    resolve({ captionMode: 'none' });
-                    return;
-                }
+        const dialog = document.createElement('div');
+        dialog.className = 'caption-selection-dialog';
 
-                const selectedTrack = tracks[value - 2];
-                resolve({
-                    captionMode: 'language',
-                    captionLanguageCode: selectedTrack?.languageCode || '',
-                    captionVssId: selectedTrack?.vssId || '',
-                });
-            },
-            onCancel: () => {
+        const titleEl = document.createElement('h3');
+        titleEl.className = 'caption-dialog-title';
+        titleEl.textContent = '字幕トラックを選択';
+        dialog.appendChild(titleEl);
+
+        if (videoInfo?.title) {
+            const videoTitleEl = document.createElement('p');
+            videoTitleEl.className = 'caption-video-title';
+            videoTitleEl.textContent = videoInfo.title;
+            dialog.appendChild(videoTitleEl);
+        }
+
+        const buttonsEl = document.createElement('div');
+        buttonsEl.className = 'caption-buttons';
+
+        const closeWith = (result) => {
+            overlay.remove();
+            resolve(result);
+        };
+
+        const makeBtn = (label, modifierClass, onClick) => {
+            const btn = document.createElement('button');
+            btn.textContent = label;
+            btn.className = `caption-btn${modifierClass ? ' ' + modifierClass : ''}`;
+            btn.addEventListener('click', onClick);
+            buttonsEl.appendChild(btn);
+        };
+
+        makeBtn('🔤 自動選択（推奨）', 'caption-btn--auto', () => closeWith({ captionMode: 'auto' }));
+        makeBtn('🚫 字幕を使用しない', 'caption-btn--none', () => closeWith({ captionMode: 'none' }));
+
+        tracks.forEach(track => {
+            const lang = track?.languageCode || 'unknown';
+            const label = track?.label || 'Unknown';
+            const kind = track?.isAuto ? '自動生成' : '字幕';
+            makeBtn(`[${lang}] ${label}  (${kind})`, '', () => closeWith({
+                captionMode: 'language',
+                captionLanguageCode: track?.languageCode || '',
+                captionVssId: track?.vssId || '',
+            }));
+        });
+
+        dialog.appendChild(buttonsEl);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'キャンセル';
+        cancelBtn.className = 'caption-btn caption-btn--cancel';
+        cancelBtn.addEventListener('click', () => {
+            console.log('[YouTube][UI] 字幕選択がキャンセルされました。');
+            closeWith(null);
+        });
+        dialog.appendChild(cancelBtn);
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
                 console.log('[YouTube][UI] 字幕選択がキャンセルされました。');
-                resolve(null);
+                closeWith(null);
             }
         });
     });
@@ -456,6 +464,24 @@ export function initEventListeners() {
 
     const resizer = document.getElementById('resizer');
     const rightSidebar = document.querySelector('.right-sidebar');
+
+    const sidebarCollapseBtn = document.getElementById('sidebar-collapse-btn');
+    const footerArtworkContainer = document.getElementById('footer-artwork-container');
+
+    if (sidebarCollapseBtn && rightSidebar) {
+        sidebarCollapseBtn.addEventListener('click', () => {
+            const isCollapsed = rightSidebar.classList.toggle('collapsed');
+            sidebarCollapseBtn.textContent = isCollapsed ? '›' : '‹';
+            sidebarCollapseBtn.title = isCollapsed ? 'サイドバーを開く' : 'サイドバーを折り畳む';
+            sidebarCollapseBtn.setAttribute('aria-label', isCollapsed ? 'サイドバーを開く' : 'サイドバーを折り畳む');
+            if (footerArtworkContainer) {
+                footerArtworkContainer.classList.toggle('hidden', !isCollapsed);
+            }
+            if (resizer) {
+                resizer.classList.toggle('hidden', isCollapsed);
+            }
+        });
+    }
 
     if (resizer && rightSidebar) {
         const onMouseMove = (e) => {

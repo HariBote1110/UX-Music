@@ -151,6 +151,11 @@ function buildArtworkCandidates(artwork) {
     return candidates;
 }
 
+function updateFooterArtwork(src) {
+    const footerArtwork = document.getElementById('footer-artwork');
+    if (footerArtwork) footerArtwork.src = src;
+}
+
 export function updateNowPlayingView(song) {
     console.log('[Debug:NowPlaying] updateNowPlayingView 開始 - 曲:', song?.title);
 
@@ -180,6 +185,7 @@ export function updateNowPlayingView(song) {
         img.src = './assets/default_artwork.png';
         if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.appendChild(img);
         setEqualizerColorFromArtwork(img);
+        updateFooterArtwork('./assets/default_artwork.png');
 
     } else if (song.type === 'youtube') {
         console.log('[Debug:NowPlaying] YouTube モードで描画します。');
@@ -199,6 +205,7 @@ export function updateNowPlayingView(song) {
         artworkImage.crossOrigin = "Anonymous";
         artworkImage.onload = () => setEqualizerColorFromArtwork(artworkImage);
         artworkImage.src = song.artwork;
+        updateFooterArtwork(song.artwork || './assets/default_artwork.png');
 
     } else {
         console.log('[Debug:NowPlaying] ローカル曲として描画します。');
@@ -222,6 +229,7 @@ export function updateNowPlayingView(song) {
         const artworkCandidates = buildArtworkCandidates(artwork);
         let artworkIndex = 0;
         let resolvedArtworkSrc = artworkCandidates[artworkIndex];
+        updateFooterArtwork(resolvedArtworkSrc);
 
         img.onerror = () => {
             const failedSrc = resolvedArtworkSrc;
