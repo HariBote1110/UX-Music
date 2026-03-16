@@ -464,30 +464,44 @@ export function initEventListeners() {
 
     const resizer = document.getElementById('resizer');
     const rightSidebar = document.querySelector('.right-sidebar');
-
-    const sidebarCollapseBtn = document.getElementById('sidebar-collapse-btn');
     const footerArtworkContainer = document.getElementById('footer-artwork-container');
 
-    if (sidebarCollapseBtn && rightSidebar) {
-        sidebarCollapseBtn.addEventListener('click', () => {
-            const isCollapsed = rightSidebar.classList.toggle('collapsed');
-            sidebarCollapseBtn.textContent = isCollapsed ? '›' : '‹';
-            sidebarCollapseBtn.title = isCollapsed ? 'サイドバーを開く' : 'サイドバーを折り畳む';
-            sidebarCollapseBtn.setAttribute('aria-label', isCollapsed ? 'サイドバーを開く' : 'サイドバーを折り畳む');
-            if (footerArtworkContainer) {
-                footerArtworkContainer.classList.toggle('hidden', !isCollapsed);
-            }
-            if (resizer) {
-                resizer.classList.toggle('hidden', isCollapsed);
-            }
-        });
+    const SIDEBAR_SNAP_THRESHOLD = 150; // px — これ以下になったら折り畳み
+    const SIDEBAR_DEFAULT_WIDTH  = 300;
+    let savedSidebarWidth = SIDEBAR_DEFAULT_WIDTH;
+
+    function collapseSidebar() {
+        savedSidebarWidth = parseInt(rightSidebar.style.width, 10) || SIDEBAR_DEFAULT_WIDTH;
+        rightSidebar.classList.add('collapsed');
+        resizer.classList.add('sidebar-collapsed');
+        if (footerArtworkContainer) footerArtworkContainer.classList.remove('hidden');
+    }
+
+    function expandSidebar() {
+        rightSidebar.classList.remove('collapsed');
+        rightSidebar.style.width = `${savedSidebarWidth}px`;
+        resizer.classList.remove('sidebar-collapsed');
+        if (footerArtworkContainer) footerArtworkContainer.classList.add('hidden');
     }
 
     if (resizer && rightSidebar) {
+        let hasDragged = false;
+
         const onMouseMove = (e) => {
+            hasDragged = true;
             const newWidth = window.innerWidth - e.clientX - (resizer.offsetWidth / 2);
-            if (newWidth >= 240 && newWidth <= 600) {
-                rightSidebar.style.width = `${newWidth}px`;
+
+            if (newWidth < SIDEBAR_SNAP_THRESHOLD) {
+                // 閾値を下回ったら折り畳んでドラッグ終了
+                collapseSidebar();
+                document.body.classList.remove('resizing');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                return;
+            }
+
+            if (newWidth <= 600) {
+                rightSidebar.style.width = `${Math.max(newWidth, 160)}px`;
             }
         };
 
@@ -499,6 +513,14 @@ export function initEventListeners() {
 
         resizer.addEventListener('mousedown', (e) => {
             e.preventDefault();
+            hasDragged = false;
+
+            // 折り畳み済みのときはクリックで展開
+            if (rightSidebar.classList.contains('collapsed')) {
+                expandSidebar();
+                return;
+            }
+
             document.body.classList.add('resizing');
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
