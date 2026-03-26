@@ -7,8 +7,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
@@ -128,13 +131,24 @@ func wearFileHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
-
 	if _, err := os.Stat(filePath); err != nil {
 		http.NotFound(w, r)
 		return
 	}
 
-	http.ServeFile(w, r, filePath)
+	// Try to serve a Watch-optimised transcoded version (AAC 128 kbps m4a).
+	// Falls back to the original file if ffmpeg is unavailable or fails.
+	cachedPath, err := getOrTranscode(songID, filePath)
+	if err != nil {
+		fmt.Printf("[Wear] Transcode failed for %s: %v — serving original\n", songID, err)
+		http.ServeFile(w, r, filePath)
+		return
+	}
+
+	// Tell the client this is an m4a so it uses the right file extension.
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf(`attachment; filename="%s.m4a"`, songID))
+	http.ServeFile(w, r, cachedPath)
 }
 
 func wearArtworkHandler(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +158,6 @@ func wearArtworkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Artworks are stored as {uuid}.jpg in the Artworks directory
 	artworksDir := filepath.Join(config.GetUserDataPath(), "Artworks")
 	artworkPath := findArtworkByID(songID, artworksDir)
 	if artworkPath == "" {
@@ -159,6 +172,107 @@ func wearArtworkHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeFile(w, r, artworkPath)
+}
+
+// ─── Watch-optimised Transcoding ────────────────────────────────────────────
+
+// transcodeOnce guards in-progress transcodings so that concurrent requests
+// for the same song ID do not launch multiple ffmpeg processes.
+var transcodeOnce sync.Map // key: songID, value: *sync.Mutex
+
+// getOrTranscode returns the path to a Watch-optimised m4a for the given song.
+// On first call it transcodes via ffmpeg and caches the result.
+// On subsequent calls it returns the cached file immediately.
+// Falls back to original if ffmpeg is not found or transcoding fails.
+func getOrTranscode(songID, inputPath string) (string, error) {
+	// Locate ffmpeg — common paths on macOS + PATH fallback
+	ffmpegPath, err := locateFfmpeg()
+	if err != nil {
+		return "", fmt.Errorf("ffmpeg not found: %w", err)
+	}
+
+	cacheDir := filepath.Join(config.GetUserDataPath(), "WearCache")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return "", fmt.Errorf("create WearCache dir: %w", err)
+	}
+
+	cachedPath := filepath.Join(cacheDir, songID+".m4a")
+
+	// Fast path: cache hit
+	if _, err := os.Stat(cachedPath); err == nil {
+		return cachedPath, nil
+	}
+
+	// Serialise concurrent requests for the same song
+	mu, _ := transcodeOnce.LoadOrStore(songID, &sync.Mutex{})
+	lock := mu.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
+
+	// Re-check after acquiring the lock (another goroutine may have finished)
+	if _, err := os.Stat(cachedPath); err == nil {
+		return cachedPath, nil
+	}
+
+	// Transcode to a temp file, then atomically rename so a partial file
+	// is never mistaken for a complete one.
+	tmpPath := cachedPath + ".tmp"
+	_ = os.Remove(tmpPath) // clean up any stale temp
+
+	fmt.Printf("[Wear] Transcoding %s → m4a 128 kbps …\n", songID)
+	start := time.Now()
+
+	cmd := exec.Command(ffmpegPath,
+		"-i", inputPath,
+		"-c:a", "aac",      // AAC codec (native to watchOS)
+		"-b:a", "128k",     // 128 kbps — good balance for Watch speaker / earbuds
+		"-ar", "44100",     // 44.1 kHz sample rate
+		"-ac", "2",         // stereo
+		"-vn",              // strip video / embedded artwork (saves space)
+		"-map_metadata", "0", // preserve title/artist/album tags
+		"-y",               // overwrite output without asking
+		tmpPath,
+	)
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("ffmpeg exit: %w\n%s", err, string(out))
+	}
+
+	if err := os.Rename(tmpPath, cachedPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("rename tmp→cache: %w", err)
+	}
+
+	orig, _ := os.Stat(inputPath)
+	cached, _ := os.Stat(cachedPath)
+	origMB := float64(0)
+	cacheMB := float64(0)
+	if orig != nil {
+		origMB = float64(orig.Size()) / 1024 / 1024
+	}
+	if cached != nil {
+		cacheMB = float64(cached.Size()) / 1024 / 1024
+	}
+	fmt.Printf("[Wear] Transcoded %s in %.1fs  (%.1f MB → %.1f MB)\n",
+		songID, time.Since(start).Seconds(), origMB, cacheMB)
+
+	return cachedPath, nil
+}
+
+// locateFfmpeg finds the ffmpeg binary on macOS (Homebrew paths + PATH).
+func locateFfmpeg() (string, error) {
+	// Check well-known Homebrew locations first so we don't rely on PATH alone
+	for _, candidate := range []string{
+		"/opt/homebrew/bin/ffmpeg", // Apple Silicon
+		"/usr/local/bin/ffmpeg",    // Intel
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+	// Fall back to PATH lookup
+	return exec.LookPath("ffmpeg")
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
