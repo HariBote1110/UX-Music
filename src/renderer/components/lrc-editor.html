@@ -1,0 +1,89 @@
+<div class="lrc-editor-header">
+    <div class="lrc-editor-song-info">
+        <img id="lrc-editor-artwork" src="./assets/default_artwork.png" alt="Song Artwork">
+        <div>
+            <h2 id="lrc-editor-title">曲タイトル</h2>
+            <p id="lrc-editor-artist">アーティスト</p>
+        </div>
+    </div>
+    <div class="lrc-editor-actions">
+        <button id="lrc-editor-undo-btn" class="header-button" disabled>元に戻す</button>
+        <button id="lrc-editor-insert-interlude-btn" class="header-button">間奏挿入 ( I )</button>
+        <button id="lrc-editor-help-btn" class="header-button">？ ヘルプ</button>
+        <button id="lrc-editor-exit-btn" class="header-button">編集を終了</button>
+        <button id="lrc-editor-save-btn" class="header-button primary">LRCを保存</button>
+    </div>
+</div>
+
+<div class="lrc-editor-controls">
+    <button id="lrc-editor-play-pause-btn" class="play-btn">
+        <svg class="play-pause-icon" viewBox="0 0 24 24">
+            <path class="icon-part-1"></path>
+            <path class="icon-part-2"></path>
+        </svg>
+    </button>
+    <span id="lrc-editor-current-time">0:00</span>
+    <input type="range" id="lrc-editor-progress-bar" value="0" step="any">
+    <span id="lrc-editor-total-duration">0:00</span>
+    <select id="lrc-editor-language-select" class="auto-sync-language-select" title="自動同期の言語を選択">
+        <option value="auto-ja">日本語</option>
+        <option value="auto-en">English</option>
+        <option value="auto">自動検出</option>
+    </select>
+    <button id="lrc-editor-auto-sync-btn" class="header-button auto-sync-btn">自動同期解析</button>
+    <button id="lrc-editor-show-detected-btn" class="header-button detected-btn" disabled>検知テキスト表示</button>
+    <button id="lrc-editor-timestamp-btn" class="header-button timestamp-btn">選択行を現在位置へ ( T )</button>
+</div>
+
+<div class="lrc-editor-timeline-panel">
+    <div class="timeline-panel-header">
+        <h3>タイムライン編集</h3>
+        <p>中央ドラッグで移動、左右端ドラッグで長さを調整できます。</p>
+        <div class="timeline-zoom-controls">
+            <label for="lrc-editor-timeline-zoom">倍率</label>
+            <input type="range" id="lrc-editor-timeline-zoom" min="1" max="8" step="0.5" value="1">
+            <span id="lrc-editor-timeline-zoom-label">1.0x</span>
+        </div>
+    </div>
+
+    <div id="lrc-editor-timeline-scroll" class="timeline-scroll">
+        <div id="lrc-editor-timeline-ruler" class="timeline-ruler"></div>
+        <div id="lrc-editor-timeline-track" class="timeline-track">
+            <div id="lrc-editor-timeline-playhead" class="timeline-playhead"></div>
+            <div id="lrc-editor-timeline-clips" class="timeline-clips"></div>
+        </div>
+    </div>
+    <div id="lrc-editor-unassigned-lines" class="timeline-unassigned">
+        <p class="timeline-unassigned-placeholder">未配置の歌詞行はありません。</p>
+    </div>
+</div>
+
+<div id="lrc-editor-lyrics-area">
+    <p class="lyrics-line placeholder">ここに歌詞テキストを読み込むか、ペーストしてください...</p>
+</div>
+<textarea id="lrc-editor-textarea" class="hidden" placeholder="ここに歌詞を貼り付けてください..."></textarea>
+<button id="lrc-editor-load-text-btn" class="header-button hidden">テキストを読み込む</button>
+
+<div id="lrc-editor-help-popup" class="hidden help-popup">
+    <h4>同期歌詞エディタの使い方</h4>
+    <ol>
+        <li>曲を再生し、歌詞行を選択した状態で「選択行を現在位置へ ( T )」または <kbd>T</kbd> キーを押します。</li>
+        <li>タイムライン上に歌詞クリップが表示されます。中央ドラッグで移動、左右端ドラッグで伸縮できます。</li>
+        <li>倍率スライダーでルーラーの表示倍率を切り替え、細かい位置合わせができます。</li>
+        <li>タイムラインの空いている場所をクリックすると、その位置へシークできます。</li>
+        <li>青表示の行で再度 <kbd>T</kbd> を押すと、次行へ自動で進めながら打鍵できます。</li>
+        <li>必要に応じて <kbd>↑</kbd> / <kbd>↓</kbd> で選択行を移動できます。</li>
+        <li>間奏を追加したい場合は「間奏挿入 ( I )」で <code>[間奏]</code> 行を追加します。</li>
+        <li>未配置行がある場合は、下部の「未配置行」から選択して <kbd>T</kbd> で配置できます。</li>
+        <li>既存のLRCを開いた場合も同じUIで再編集できます。</li>
+        <li>完了後に「LRCを保存」で書き出します。</li>
+    </ol>
+    <button id="lrc-editor-help-close-btn">閉じる</button>
+</div>
+
+<div id="lrc-editor-detected-popup" class="hidden detected-popup">
+    <h4>検知テキスト (whisper)</h4>
+    <p id="lrc-editor-detected-meta" class="detected-meta">まだ解析結果がありません。</p>
+    <pre id="lrc-editor-detected-content" class="detected-content">(空)</pre>
+    <button id="lrc-editor-detected-close-btn">閉じる</button>
+</div>

@@ -1,0 +1,197 @@
+/* src/renderer/styles/edit-metadata.css */
+
+#edit-metadata-modal-overlay {
+    position: fixed; /* ページの通常レイアウトから切り離す */
+    inset: 0; /* top: 0; right: 0; bottom: 0; left: 0; と同じ */
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center; /* 水平中央揃え */
+    align-items: center; /* 垂直中央揃え */
+    z-index: 1050; /* 他の要素より手前に表示 */
+    padding: 20px; /* ウィンドウ端との余白 */
+    box-sizing: border-box;
+    overflow: auto; /* モーダルが画面より大きい場合にスクロールできるように */
+}
+
+#edit-metadata-modal-overlay.hidden {
+    display: none !important; /* !important で確実に非表示にする */
+}
+
+#edit-metadata-modal {
+    background-color: var(--bg-light);
+    padding: 25px;
+    border-radius: 8px;
+    width: 100%; /* オーバーレイの padding 内で最大幅を取る */
+    max-width: 650px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 40px); /* ビューポート高さからpadding分を引いた高さを上限に */
+    overflow: hidden; /* モーダル自体がはみ出さないように */
+}
+
+#edit-metadata-modal h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    text-align: center;
+    flex-shrink: 0; /* タイトルが縮まないように */
+}
+
+.edit-metadata-content {
+    display: flex;
+    gap: 25px;
+    margin-bottom: 25px;
+    overflow-y: auto; /* モーダル内のコンテンツがはみ出す場合にスクロール */
+    flex-grow: 1; /* 残りの高さを埋める */
+    min-height: 0; /* flexアイテム内でスクロールを有効にするため */
+    padding-right: 5px; /* スクロールバー分のスペース */
+}
+
+/* スクロールバーのスタイル（任意） */
+.edit-metadata-content::-webkit-scrollbar {
+    width: 8px;
+}
+.edit-metadata-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+.edit-metadata-content::-webkit-scrollbar-thumb {
+    background-color: var(--bg-dark);
+    border-radius: 4px;
+}
+.edit-metadata-content::-webkit-scrollbar-thumb:hover {
+    background-color: #555;
+}
+
+
+.edit-artwork-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 200px;
+    flex-shrink: 0;
+}
+
+#edit-artwork-preview {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 6px;
+    object-fit: cover;
+    background-color: var(--bg-dark);
+    margin-bottom: 10px;
+}
+
+.edit-artwork-section button {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#edit-artwork-change-btn {
+    background-color: var(--bg-medium);
+    border: 1px solid #555;
+    color: var(--text-primary);
+}
+#edit-artwork-change-btn:hover {
+    background-color: var(--bg-hover);
+}
+
+#edit-artwork-remove-btn {
+    background-color: transparent;
+    border: 1px solid #777;
+    color: var(--text-secondary);
+}
+#edit-artwork-remove-btn:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: #999;
+    color: var(--text-primary);
+}
+
+#edit-artwork-error {
+    font-size: 12px;
+    color: #ff6b6b; /* エラー色 */
+    margin-top: 5px;
+    width: 100%; /* エラーメッセージが折り返すように */
+    text-align: center;
+}
+#edit-artwork-error.hidden {
+    display: none; /* hiddenクラスで非表示 */
+}
+
+.edit-fields-section {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    flex-grow: 1;
+    min-width: 0; /* 幅が縮小できるように */
+}
+
+.edit-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.edit-field label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 5px;
+}
+
+.edit-field input[type="text"] {
+    padding: 10px;
+    background-color: var(--bg-dark);
+    border: 1px solid #444;
+    color: var(--text-primary);
+    border-radius: 4px;
+    font-size: 14px;
+}
+.edit-field input[type="text"]:focus {
+    outline: none;
+    border-color: var(--highlight-blue);
+    box-shadow: 0 0 0 2px rgba(31, 52, 83, 0.5);
+}
+
+.modal-buttons {
+    text-align: right;
+    margin-top: 15px;
+    flex-shrink: 0; /* ボタンが縮まないように */
+}
+.modal-buttons button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+#edit-metadata-cancel-btn {
+    background-color: transparent;
+    color: #fff;
+    margin-right: 10px;
+}
+#edit-metadata-cancel-btn:hover {
+    background-color: var(--bg-hover);
+}
+
+#edit-metadata-save-btn {
+    background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue));
+    color: var(--text-primary);
+    border: none;
+}
+#edit-metadata-save-btn:disabled { /* 保存中のスタイル */
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--bg-light);
+}
+
+#edit-metadata-save-btn:hover:not(:disabled) { /* 無効でない場合のみホバー効果 */
+    opacity: 0.9;
+}
+
+/* 汎用的な hidden クラス (念のため) */
+.hidden {
+    display: none !important;
+}

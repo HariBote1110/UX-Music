@@ -1,20 +1,40 @@
-import { state, elements } from '../state.js';
-import { showAlbum, showArtist, showPlaylist, showSituationPlaylistDetail } from '../navigation.js';
-import { playSong } from '../playback-manager.js';
-import { setVisualizerTarget, disconnectVisualizerObserver } from '../player.js';
-import { VirtualScroller } from '../virtual-scroller.js';
-import { createSongItem, createAlbumGridItem, createArtistGridItem, createPlaylistGridItem } from './element-factory.js';
-import { createPlaylistArtwork } from './playlist-artwork.js';
-import { showContextMenu, formatTime, resolveArtworkPath } from './utils.js';
-import { showModal } from '../modal.js';
-import { showNotification, hideNotification } from './notification.js';
-import { initColumnResizing } from './column-resizer.js';
-const { ipcRenderer } = require('electron');
+import { state, elements } from '../core/state.js';
+// ▼▼▼ 削除 (detail-renderer.js が担当) ▼▼▼
+// import { showAlbum, showArtist } from '../navigation.js';
+// import { playSong } from '../playback-manager.js';
+// import { createAlbumGridItem } from './element-factory.js';
+// import { createPlaylistArtwork } from './playlist-artwork.js';
+// import { formatTime, resolveArtworkPath } from './utils.js';
+// ▲▲▲ 削除 ▲▲▲
+import { setVisualizerTarget, disconnectVisualizerObserver } from '../features/player.js';
+import {
+    createListHeader,
+    setupSongListScroller,
+    initListHeaderResizing
+} from './list-renderer.js';
+import {
+    renderAlbumView,
+    renderArtistView,
+    renderSituationView,
+    renderPlaylistView
+} from './grid-renderer.js';
+// ▼▼▼ 追加 ▼▼▼
+import {
+    renderAlbumDetailView as renderAlbumDetail,
+    renderArtistDetailView as renderArtistDetail,
+    renderPlaylistDetailView as renderPlaylistDetail
+} from './detail-renderer.js';
+// ▲▲▲ 追加 ▲▲▲
+const electronAPI = window.electronAPI; // renderTrackView が使用
 
 let trackViewScroller = null;
 let detailViewScroller = null;
+// const lastScrollPositions = {}; // detail-renderer.js に移動
 
-function clearMainContent() {
+/**
+ * メインコンテンツをクリアし、スクローラーを破棄する
+ */
+export function clearMainContent() {
     if (trackViewScroller) {
         trackViewScroller.destroy();
         trackViewScroller = null;
@@ -25,8 +45,13 @@ function clearMainContent() {
     }
     disconnectVisualizerObserver();
     elements.mainContent.innerHTML = '';
+    state.selectedSongIds.clear();
+    state.currentlyViewedSongIds = [];
 }
 
+/**
+ * トラックビューのスクローラー（もしあれば）を破棄する
+ */
 export function destroyTrackViewScroller() {
     if (trackViewScroller) {
         trackViewScroller.destroy();
@@ -34,28 +59,16 @@ export function destroyTrackViewScroller() {
     }
 }
 
-function createListHeader() {
-    return `
-        <div id="music-list-header">
-            <div class="song-index">#</div>
-            <div class="song-artwork-col"></div>
-            <div class="song-title"><span>タイトル</span></div>
-            <div class="song-artist"><span>アーティスト</span></div>
-            <div class="song-album"><span>アルバム</span></div>
-            <div class="song-hires">HR</div>
-            <div class="song-duration"><span>時間</span></div>
-            <div class="song-play-count"><span>回数</span></div>
-        </div>
-    `;
-}
-
+/**
+ * 曲一覧（トラックビュー）を描画する
+ */
 export function renderTrackView() {
     clearMainContent();
+    state.currentlyViewedSongIds = state.library.map((song) => song.id).filter(Boolean);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.id = 'track-view';
     viewWrapper.innerHTML = `
-        <div class="search-bar"><input type="text" placeholder="絞り込み検索"></div>
         <h1>曲</h1>
         ${createListHeader()}
     `;
@@ -64,380 +77,55 @@ export function renderTrackView() {
     viewWrapper.appendChild(musicListContainer);
     elements.mainContent.appendChild(viewWrapper);
 
-    const renderItem = (song, index) => {
-        const songItem = createSongItem(song, index, ipcRenderer);
-        songItem.dataset.songPath = song.path;
-        
-        const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-        if (currentPlayingSong && currentPlayingSong.path === song.path) {
-            songItem.classList.add('playing');
-            setVisualizerTarget(songItem);
-        }
-
-        songItem.addEventListener('click', () => playSong(index, state.library));
-        songItem.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            ipcRenderer.send('show-song-context-menu-in-library', song);
-        });
-        window.observeNewArtworks(songItem);
-        return songItem;
-    };
-
     if (state.library.length === 0) {
         musicListContainer.innerHTML = '<div class="placeholder">音楽ファイルやフォルダをここにドラッグ＆ドロップしてください</div>';
         return;
     }
 
-    trackViewScroller = new VirtualScroller({
-        element: musicListContainer,
-        data: state.library,
-        itemHeight: 56,
-        renderItem: renderItem,
+    trackViewScroller = setupSongListScroller(musicListContainer, state.library, {
+        contextView: 'library'
     });
 
-    const headerEl = viewWrapper.querySelector('#music-list-header');
-    initColumnResizing(headerEl);
+    initListHeaderResizing(viewWrapper);
 }
 
-export function renderAlbumView() {
-    clearMainContent();
-    const viewWrapper = document.createElement('div');
-    viewWrapper.className = 'view-container';
-    viewWrapper.innerHTML = '<h1>アルバム</h1>';
-    const grid = document.createElement('div');
-    grid.id = 'album-grid';
-    if (state.albums.size === 0) {
-        grid.innerHTML = '<div class="placeholder">ライブラリにアルバムが見つかりません</div>';
-    } else {
-        for (const [key, album] of state.albums.entries()) {
-            const albumItem = createAlbumGridItem(key, album, ipcRenderer);
-            albumItem.addEventListener('click', () => showAlbum(key));
+// ▼▼▼ 削除 (detail-renderer.js へ移動) ▼▼▼
+// export function renderAlbumDetailView(album) { ... }
+// export function renderArtistDetailView(artist) { ... }
+// export function renderPlaylistDetailView(playlistDetails) { ... }
+// ▲▲▲ 削除 ▲▲▲
 
-            albumItem.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                const playlists = state.playlists || [];
-                const addToPlaylistSubmenu = playlists.map(playlist => ({
-                    label: playlist.name,
-                    action: async () => {
-                        const albumToAdd = state.albums.get(key);
-                        if (albumToAdd && albumToAdd.songs) {
-                            const songPaths = albumToAdd.songs.map(s => s.path);
-                            const result = await ipcRenderer.invoke('add-album-to-playlist', { songPaths, playlistName: playlist.name });
-
-                            if (result.success && result.addedCount > 0) {
-                                showNotification(`「${album.title}」の ${result.addedCount} 曲をプレイリスト「${playlist.name}」に追加しました。`);
-                                hideNotification(3000);
-                            } else if (result.success && result.addedCount === 0) {
-                                showNotification(`すべての曲が既にプレイリストに存在します。`);
-                                hideNotification(3000);
-                            } else {
-                                showNotification(`プレイリストへの追加に失敗しました。`, 3000);
-                            }
-                        }
-                    }
-                }));
-
-                const menuItems = [
-                    {
-                        label: 'プレイリストに追加',
-                        submenu: addToPlaylistSubmenu.length > 0 ? addToPlaylistSubmenu : [{ label: '（追加可能なプレイリスト無し）', enabled: false }]
-                    }
-                ];
-
-                showContextMenu(e.pageX, e.pageY, menuItems);
-            });
-
-            grid.appendChild(albumItem);
-        }
-    }
-    viewWrapper.appendChild(grid);
-    elements.mainContent.appendChild(viewWrapper);
-    window.observeNewArtworks(grid);
-}
-
-export function renderArtistView() {
-    clearMainContent();
-    const viewWrapper = document.createElement('div');
-    viewWrapper.className = 'view-container';
-    viewWrapper.innerHTML = '<h1>アーティスト</h1>';
-    const grid = document.createElement('div');
-    grid.id = 'artist-grid';
-    if (state.artists.size === 0) {
-        grid.innerHTML = '<div class="placeholder">ライブラリにアーティストが見つかりません</div>';
-    } else {
-        const sortedArtists = [...state.artists.values()].sort((a, b) => a.name.localeCompare(b.name));
-        sortedArtists.forEach(artist => {
-            const artistItem = createArtistGridItem(artist, ipcRenderer);
-            artistItem.addEventListener('click', () => showArtist(artist.name));
-            grid.appendChild(artistItem);
-        });
-    }
-    viewWrapper.appendChild(grid);
-    elements.mainContent.appendChild(viewWrapper);
-    window.observeNewArtworks(grid);
-}
-
-export async function renderSituationView() {
-    clearMainContent();
-    const viewWrapper = document.createElement('div');
-    viewWrapper.className = 'view-container';
-    viewWrapper.innerHTML = '<h1>For You</h1>';
-    const grid = document.createElement('div');
-    grid.id = 'playlist-grid';
-
-    const situationPlaylists = await ipcRenderer.invoke('get-situation-playlists');
-    const playlists = Object.values(situationPlaylists);
-
-    if (playlists.length === 0) {
-        grid.innerHTML = '<div class="placeholder">あなたのためのプレイリストはまだありません。</div>';
-    } else {
-        playlists.forEach(playlist => {
-            const artworks = playlist.songs
-                .map(song => (state.albums.get(song.albumKey) || song).artwork)
-                .filter(Boolean)
-                .slice(0, 4);
-            
-            const playlistItem = createPlaylistGridItem({ name: playlist.name, artworks }, ipcRenderer);
-            
-            playlistItem.addEventListener('click', () => {
-                const playlistDetails = {
-                    name: playlist.name,
-                    songs: playlist.songs,
-                    artworks: artworks
-                };
-                showSituationPlaylistDetail(playlistDetails);
-            });
-
-            grid.appendChild(playlistItem);
-        });
-    }
-
-    viewWrapper.appendChild(grid);
-    elements.mainContent.appendChild(viewWrapper);
-    window.observeNewArtworks(grid);
-}
-
-export function renderPlaylistView() {
-    clearMainContent();
-    const viewWrapper = document.createElement('div');
-    viewWrapper.className = 'view-container';
-    viewWrapper.innerHTML = `<div class="view-header"><h1>プレイリスト</h1><button id="create-playlist-btn-main" class="header-button">+ 新規作成</button></div>`;
-    const grid = document.createElement('div');
-    grid.id = 'playlist-grid';
-    if (!state.playlists || state.playlists.length === 0) {
-        grid.innerHTML = '<p>プレイリストはまだありません。「+ 新規作成」から作成できます。</p>';
-    } else {
-        state.playlists.forEach(playlist => {
-            const playlistItem = createPlaylistGridItem(playlist, ipcRenderer);
-            playlistItem.addEventListener('click', () => showPlaylist(playlist.name));
-            playlistItem.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                showContextMenu(e.pageX, e.pageY, [
-                    {
-                        label: '名前を変更',
-                        action: () => {
-                            showModal({
-                                title: 'プレイリスト名を変更',
-                                placeholder: '新しい名前',
-                                onOk: async (newName) => {
-                                    if (newName && newName.trim() !== '' && newName !== playlist.name) {
-                                       await ipcRenderer.invoke('rename-playlist', { oldName: playlist.name, newName });
-                                    }
-                                }
-                            });
-                        }
-                    },
-                    {
-                        label: '削除',
-                        action: async () => {
-                            const confirmed = confirm(`プレイリスト「${playlist.name}」を削除しますか？\nこの操作は元に戻せません。`);
-                            if (confirmed) {
-                                await ipcRenderer.invoke('delete-playlist', playlist.name);
-                            }
-                        }
-                    }
-                ]);
-            });
-            grid.appendChild(playlistItem);
-        });
-    }
-    viewWrapper.appendChild(grid);
-    elements.mainContent.appendChild(viewWrapper);
-    viewWrapper.querySelector('#create-playlist-btn-main').addEventListener('click', () => {
-        showModal({
-            title: '新規プレイリスト',
-            placeholder: 'プレイリスト名',
-            onOk: async (name) => {
-                await ipcRenderer.invoke('create-playlist', name);
-            }
-        });
-    });
-    window.observeNewArtworks(grid);
-}
-
+// ▼▼▼ 追加 (detail-renderer.js へのラッパー関数) ▼▼▼
+/**
+ * アルバム詳細ビューを描画し、スクローラーを管理する
+ * @param {object} album 
+ */
 export function renderAlbumDetailView(album) {
-    clearMainContent();
-    const viewWrapper = document.createElement('div');
-    viewWrapper.className = 'view-container';
-    const totalDuration = album.songs.reduce((sum, song) => sum + (song.duration || 0), 0);
-    viewWrapper.innerHTML = `
-        <div class="detail-header">
-            <img class="detail-art-img lazy-load">
-            <div class="detail-info">
-                <h1>${album.title}</h1>
-                <p>${album.artist}</p>
-                <p>${album.songs.length} 曲, ${formatTime(totalDuration)}</p>
-                <div class="detail-actions"><button class="play-all-btn">▶ すべて再生</button></div>
-            </div>
-        </div>
-        ${createListHeader()}
-    `;
-    const listElement = document.createElement('div');
-    listElement.id = 'a-detail-list';
-    listElement.className = 'music-list';
-
-    const renderItem = (song, index) => {
-        const songItem = createSongItem(song, index, ipcRenderer);
-        songItem.dataset.songPath = song.path;
-        const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-        if (currentPlayingSong && currentPlayingSong.path === song.path) {
-            songItem.classList.add('playing');
-        }
-        songItem.addEventListener('click', () => playSong(index, album.songs));
-        songItem.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            ipcRenderer.send('show-song-context-menu-in-library', song);
-        });
-        window.observeNewArtworks(songItem);
-        return songItem;
-    };
-
-    viewWrapper.appendChild(listElement);
-    elements.mainContent.appendChild(viewWrapper);
-
-    detailViewScroller = new VirtualScroller({
-        element: listElement,
-        data: album.songs,
-        itemHeight: 56,
-        renderItem: renderItem
-    });
-    
-    const headerEl = viewWrapper.querySelector('#music-list-header');
-    initColumnResizing(headerEl);
-    
-    const artImg = viewWrapper.querySelector('.detail-art-img');
-    artImg.dataset.src = resolveArtworkPath(album.artwork, false);
-    
-    viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, album.songs));
-    
-    const playingItem = listElement.querySelector('.song-item.playing');
-    if (playingItem) {
-        setVisualizerTarget(playingItem);
-    }
-    
-    window.observeNewArtworks(viewWrapper);
+    detailViewScroller = renderAlbumDetail(album);
 }
 
+/**
+ * アーティスト詳細ビューを描画し、スクローラーを管理する
+ * @param {object} artist 
+ */
 export function renderArtistDetailView(artist) {
-    clearMainContent();
-    const viewWrapper = document.createElement('div');
-    viewWrapper.className = 'view-container';
-    const artistAlbums = [...state.albums.values()].filter(album => album.artist === artist.name);
-    viewWrapper.innerHTML = `
-        <div class="detail-header">
-            <img class="detail-art-img artist-detail-art-round lazy-load">
-            <div class="detail-info">
-                <h1>${artist.name}</h1>
-                <p>${artistAlbums.length}枚のアルバム, ${artist.songs.length}曲</p>
-            </div>
-        </div>
-        <h2>アルバム</h2>
-    `;
-    const grid = document.createElement('div');
-    grid.className = 'album-grid';
-    if (artistAlbums.length === 0) {
-        grid.innerHTML = `<div class="placeholder">このアーティストのアルバムは見つかりません</div>`;
-    } else {
-        artistAlbums.forEach(album => {
-            const albumKey = `${album.title}---${album.artist}`;
-            const albumItem = createAlbumGridItem(albumKey, album, ipcRenderer);
-            albumItem.addEventListener('click', () => showAlbum(albumKey));
-            grid.appendChild(albumItem);
-        });
-    }
-    viewWrapper.appendChild(grid);
-    elements.mainContent.appendChild(viewWrapper);
-
-    const artImg = viewWrapper.querySelector('.detail-art-img');
-    artImg.dataset.src = resolveArtworkPath(artist.artwork, false);
-
-    window.observeNewArtworks(viewWrapper);
+    detailViewScroller = renderArtistDetail(artist); // スクロラが無くても null が返る
 }
 
+/**
+ * プレイリスト詳細ビューを描画し、スクローラーを管理する
+ * @param {object} playlistDetails 
+ */
 export function renderPlaylistDetailView(playlistDetails) {
-    const { name: playlistName, songs, artworks } = playlistDetails;
-
-    clearMainContent();
-    const viewWrapper = document.createElement('div');
-    viewWrapper.className = 'view-container';
-    const totalDuration = songs.reduce((sum, song) => sum + (song.duration || 0), 0);
-    viewWrapper.innerHTML = `
-        <div class="detail-header">
-            <div class="playlist-art-collage detail-art-img"></div>
-            <div class="detail-info">
-                <h1>${playlistName}</h1>
-                <p>${songs.length} 曲, ${formatTime(totalDuration)}</p>
-                <div class="detail-actions"><button class="play-all-btn">▶ すべて再生</button></div>
-            </div>
-        </div>
-        ${createListHeader()}
-    `;
-    const listElement = document.createElement('div');
-    listElement.id = 'p-detail-list';
-    listElement.className = 'music-list';
-    
-    const artworkContainer = viewWrapper.querySelector('.playlist-art-collage');
-    const resolver = (artwork) => resolveArtworkPath(artwork, true);
-    createPlaylistArtwork(artworkContainer, artworks, resolver);
-
-    viewWrapper.appendChild(listElement);
-    elements.mainContent.appendChild(viewWrapper);
-
-    const renderItem = (song, index) => {
-        const songItem = createSongItem(song, index, ipcRenderer);
-        songItem.dataset.songPath = song.path;
-        const currentPlayingSong = state.playbackQueue[state.currentSongIndex];
-        if (currentPlayingSong && currentPlayingSong.path === song.path) {
-            songItem.classList.add('playing');
-        }
-        songItem.addEventListener('click', () => playSong(index, songs));
-        songItem.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            ipcRenderer.send('show-playlist-song-context-menu', { playlistName, song });
-        });
-        window.observeNewArtworks(songItem);
-        return songItem;
-    };
-
-    detailViewScroller = new VirtualScroller({
-        element: listElement,
-        data: songs,
-        itemHeight: 56,
-        renderItem: renderItem
-    });
-    
-    const headerEl = viewWrapper.querySelector('#music-list-header');
-    initColumnResizing(headerEl);
-
-    viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, songs));
-    
-    const playingItem = listElement.querySelector('.song-item.playing');
-    if (playingItem) {
-        setVisualizerTarget(playingItem);
-    }
-    
-    window.observeNewArtworks(viewWrapper);
+    detailViewScroller = renderPlaylistDetail(playlistDetails);
 }
+// ▲▲▲ 追加 ▲▲▲
+
+
+// grid-renderer.js からインポートした関数を再エクスポート
+export {
+    renderAlbumView,
+    renderArtistView,
+    renderSituationView,
+    renderPlaylistView
+};

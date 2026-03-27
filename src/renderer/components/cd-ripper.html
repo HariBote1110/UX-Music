@@ -1,0 +1,347 @@
+<style>
+    /* CD Ripper View Specific Styles */
+    .cd-rip-container {
+        padding: 30px 30px calc(30px + var(--footer-height, 0px)) 30px;
+        color: #e0e0e0;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background-color: #121212; /* 全体の背景色 */
+        font-family: 'Segoe UI', sans-serif;
+    }
+
+    /* Header Section: Grid Layout */
+    .cd-rip-header {
+        display: grid;
+        grid-template-columns: 140px 1fr auto; /* 左:画像 中:情報 右:操作 */
+        gap: 24px;
+        margin-bottom: 30px;
+        align-items: end; /* 下揃え */
+    }
+
+    /* Artwork */
+    .cd-artwork-container {
+        width: 140px;
+        height: 140px;
+        background: #222;
+        border: 1px solid #333;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        border-radius: 4px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .cd-artwork-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    /* Album Info */
+    .cd-album-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding-bottom: 5px;
+    }
+
+    .cd-album-title {
+        margin: 0;
+        font-size: 2rem;
+        font-weight: 600;
+        color: #fff;
+        line-height: 1.2;
+    }
+
+    .cd-album-artist {
+        font-size: 1.1rem;
+        color: #b3b3b3;
+    }
+
+    .cd-status-message {
+        margin-top: 10px;
+        color: #1db954; /* アクセントカラー */
+        font-size: 0.9rem;
+    }
+
+    /* Controls Section */
+    .cd-controls-pane {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-end;
+        min-width: 250px;
+    }
+
+    .cd-settings-group {
+        background: #1e1e1e;
+        padding: 12px 16px;
+        border-radius: 6px;
+        border: 1px solid #333;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+    }
+
+    .cd-setting-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.85rem;
+        color: #aaa;
+    }
+
+    .cd-select {
+        background: #2a2a2a;
+        color: #fff;
+        border: 1px solid #444;
+        padding: 4px 8px;
+        border-radius: 4px;
+        outline: none;
+        font-size: 0.9rem;
+        width: 120px;
+    }
+
+    .cd-select:focus {
+        border-color: #1db954;
+    }
+
+    .cd-buttons-row {
+        display: flex;
+        gap: 10px;
+        width: 100%;
+    }
+
+    .action-button {
+        padding: 8px 16px;
+        border-radius: 4px;
+        border: 1px solid #444;
+        background: #2a2a2a;
+        color: #fff;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: background 0.2s;
+        flex: 1;
+        text-align: center;
+    }
+
+    .action-button:hover:not(:disabled) {
+        background: #3a3a3a;
+    }
+
+    .action-button.primary {
+        background: #1db954;
+        border-color: #1db954;
+        color: #000;
+        font-weight: bold;
+    }
+
+    .action-button.primary:hover:not(:disabled) {
+        background: #1ed760;
+    }
+
+    .action-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Track List Table */
+    .cd-tracks-list-container {
+        flex: 1;
+        overflow-y: auto;
+        background: #181818;
+        border: 1px solid #333;
+        border-radius: 6px;
+    }
+
+    .cd-track-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+    }
+
+    .cd-track-table th {
+        text-align: left;
+        padding: 12px 16px;
+        border-bottom: 1px solid #333;
+        color: #888;
+        font-weight: normal;
+        font-size: 0.85rem;
+        background: #1e1e1e;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    .cd-track-table td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #282828;
+        color: #ddd;
+    }
+
+    .cd-track-table tr:hover {
+        background-color: #252525;
+    }
+
+    .cd-track-input {
+        background: transparent;
+        border: none;
+        color: inherit;
+        width: 100%;
+        font-family: inherit;
+        font-size: inherit;
+        outline: none;
+        padding: 2px 0;
+        border-bottom: 1px solid transparent;
+    }
+
+    .cd-track-input:focus {
+        border-bottom: 1px solid #1db954;
+    }
+
+    /* Progress Area */
+    .cd-progress-area {
+        margin-top: 20px;
+        background: #1e1e1e;
+        padding: 15px;
+        border-radius: 6px;
+        border: 1px solid #333;
+    }
+
+    .cd-progress-bar-bg {
+        width: 100%;
+        height: 6px;
+        background: #333;
+        border-radius: 3px;
+        overflow: hidden;
+        margin-top: 8px;
+    }
+
+    .cd-progress-bar-fill {
+        height: 100%;
+        background: #1db954;
+        width: 0%;
+        transition: width 0.3s ease;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.8);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-content {
+        background: #222;
+        width: 600px;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        border: 1px solid #444;
+        padding: 24px;
+    }
+    
+    .hidden {
+        display: none !important;
+    }
+</style>
+
+<div class="cd-rip-container">
+    <div class="cd-rip-header">
+        <div class="cd-artwork-container">
+            <img id="cd-artwork-preview" src="assets/default_artwork.png" class="cd-artwork-img">
+        </div>
+
+        <div class="cd-album-info">
+            <h2 id="cd-album-title" class="cd-album-title">Unknown Album</h2>
+            <div id="cd-album-artist" class="cd-album-artist">Unknown Artist</div>
+            <div id="cd-status-message" class="cd-status-message">CDドライブを確認中...</div>
+        </div>
+
+        <div class="cd-controls-pane">
+            <div class="cd-settings-group">
+                <div class="cd-setting-row">
+                    <span>形式</span>
+                    <select id="cd-format-select" class="cd-select">
+                        <option value="flac">FLAC</option>
+                        <option value="alac" selected>ALAC (m4a)</option>
+                        <option value="wav">WAV</option>
+                        <option value="aac">AAC (m4a)</option>
+                        <option value="mp3">MP3</option>
+                    </select>
+                </div>
+                <div id="cd-bitrate-container" class="cd-setting-row" style="display: none;">
+                    <span>品質</span>
+                    <select id="cd-bitrate-select" class="cd-select">
+                        <option value="320k" selected>320 kbps</option>
+                        <option value="256k">256 kbps</option>
+                        <option value="192k">192 kbps</option>
+                        <option value="128k">128 kbps</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="cd-buttons-row">
+                <button id="cd-metadata-btn" class="action-button" disabled>検索</button>
+                <button id="cd-scan-btn" class="action-button">再読込</button>
+            </div>
+            <button id="cd-import-btn" class="action-button primary" style="width: 100%;" disabled>CDを取り込む</button>
+        </div>
+    </div>
+
+    <div class="cd-tracks-list-container">
+        <table class="cd-track-table">
+            <thead>
+                <tr>
+                    <th style="width: 50px;">#</th>
+                    <th>タイトル</th>
+                    <th>アーティスト</th>
+                    <th style="width: 80px; text-align: right;">時間</th>
+                    <th style="width: 100px; text-align: center;">状態</th>
+                </tr>
+            </thead>
+            <tbody id="cd-tracks-tbody">
+                </tbody>
+        </table>
+    </div>
+
+    <div id="cd-progress-area" class="cd-progress-area hidden">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9rem;">
+            <span id="cd-progress-text">準備中...</span>
+            <span id="cd-progress-percent">0%</span>
+        </div>
+        <div class="cd-progress-bar-bg">
+            <div id="cd-progress-bar" class="cd-progress-bar-fill"></div>
+        </div>
+    </div>
+
+    <div id="cd-metadata-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 style="margin: 0 0 20px 0; color: #fff;">アルバム情報を検索</h3>
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <input type="text" id="cd-search-input" placeholder="アーティスト名 / アルバム名" 
+                       style="flex: 1; padding: 10px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; outline: none;">
+                <button id="cd-search-submit-btn" class="action-button">検索</button>
+            </div>
+
+            <div style="flex: 1; overflow-y: auto; border: 1px solid #444; border-radius: 4px; background: #1a1a1a; margin-bottom: 15px; min-height: 200px;">
+                <ul id="cd-candidate-list" style="list-style: none; padding: 0; margin: 0;">
+                </ul>
+            </div>
+
+            <div style="text-align: right;">
+                <button id="cd-search-cancel-btn" class="action-button" style="width: auto; padding: 8px 24px;">キャンセル</button>
+            </div>
+        </div>
+    </div>
+</div>

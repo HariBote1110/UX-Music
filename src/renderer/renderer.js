@@ -1,406 +1,385 @@
-import { initUI, addSongsToLibrary, renderCurrentView, updateAudioDevices, updatePlayCountDisplay } from './js/ui-manager.js';
-import { initNavigation, showPlaylist, showView } from './js/navigation.js';
-import { initIPC } from './js/ipc.js';
-import { initModal, showModal } from './js/modal.js';
-import { initPlayer, togglePlayPause, applyMasterVolume, seekToStart, setVisualizerFpsLimit } from './js/player.js';
-import { state, elements, initElements } from './js/state.js';
-import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from './js/playback-manager.js';
-import { showNotification, hideNotification } from './js/ui/notification.js';
-import { initDebugCommands } from './js/debug-commands.js';
-import { updateTextOverflowForSelector } from './js/ui/utils.js';
-import { initLazyLoader, observeNewImages } from './js/lazy-loader.js';
-import { updateNowPlayingView } from './js/ui/now-playing.js';
-const { ipcRenderer } = require('electron');
-const path = require('path');
+// src/renderer/renderer.js
+import './js/core/env-setup.js';
+import { state, elements, initElements } from './js/core/state.js';
+import { initEventListeners } from './js/core/init-listeners.js';
+import { initUI } from './js/ui/ui.js';
+import { initSettings } from './js/utils/init-settings.js';
+import { initNavigation, showView } from './js/core/navigation.js';
+import { initPlayer, playCurrent, pauseCurrent, togglePlayPause, stop as stopPlayback } from './js/features/player.js';
+import { updateAudioDevices, updatePlayCountDisplay, addSongsToLibrary } from './js/ui/ui-manager.js';
+import { restoreSavedSinkId } from './js/features/audio-graph.js';
+import { loadAllComponents } from './js/ui/component-loader.js';
+import { initIPC } from './js/core/ipc.js';
+import { initModal } from './js/ui/modal.js';
+import { initDebugCommands } from './js/utils/debug-commands.js';
+import { initNormalizeView } from './js/features/normalize-view.js';
+import { initEqualizer } from './js/ui/equalizer.js';
+import { initQuiz } from './js/features/quiz.js';
+// ▼▼▼ 修正: playNextSong, playPrevSong を適切にインポート ▼▼▼
+import { playNextSong, playPrevSong } from './js/features/playback-manager.js';
+import { initLazyLoader, observeNewImages } from './js/utils/lazy-loader.js';
+import { startPerformanceMonitor } from './js/utils/performance-monitor.js';
+import { musicApi } from './js/core/bridge.js';
+import { checkWails } from './js/core/wails-check.js';
 
-performance.mark('renderer-script-start');
-
-const startTime = performance.now();
-const logPerf = (message) => {
-    console.log(`[PERF][Renderer] ${message} at ${(performance.now() - startTime).toFixed(2)}ms`);
+window.onerror = function (msg, url, line, col, error) {
+    console.error(`[Global Error] ${msg} at ${url}:${line}:${col}`, error);
+    return false;
 };
-logPerf("Script execution started.");
+
+window.onunhandledrejection = function (event) {
+    console.error('[Unhandled Rejection]', event.reason);
+};
+
+const electronAPI = window.electronAPI;
 
 window.artworkLoadTimes = [];
-
-window.observeNewArtworks = (container) => {
-    observeNewImages(container || document);
+window.recordArtworkLoadTime = (time) => {
+    window.artworkLoadTimes.push(time);
+    const MAX_ARTWORK_LOAD_SAMPLES = 200;
+    if (window.artworkLoadTimes.length > MAX_ARTWORK_LOAD_SAMPLES) {
+        window.artworkLoadTimes.splice(0, window.artworkLoadTimes.length - MAX_ARTWORK_LOAD_SAMPLES);
+    }
 };
+window.observeNewArtworks = (container) => observeNewImages(container || document);
 
-window.addEventListener('DOMContentLoaded', () => {
-    performance.mark('dom-content-loaded');
-    logPerf("'DOMContentLoaded' event fired. Initializing modules...");
+async function initApp() {
+    console.log('App initializing...');
 
-    initElements();
+    try {
+        await loadAllComponents();
+        console.log('Components loaded.');
+    } catch (e) {
+        console.error('Failed to load components:', e);
+    }
+
+    try {
+        initElements();
+    } catch (e) {
+        console.error('Failed to init elements:', e);
+    }
+
     initLazyLoader(elements.mainContent);
 
-    // --- アイドル状態検出 ---
-    let inactivityTimer;
-    const INACTIVITY_TIMEOUT_MS = 1 * 60 * 1000;
+    const safeInit = (fn, name) => {
+        try { fn(); } catch (e) { console.error(`Failed to init ${name}:`, e); }
+    };
 
-    function resetInactivityTimer() {
-        clearTimeout(inactivityTimer);
-        if (document.body.classList.contains('app-inactive')) {
-            console.log('[Performance] App is now ACTIVE.');
-        }
-        document.body.classList.remove('app-inactive');
+    safeInit(initUI, 'UI');
+    safeInit(initNavigation, 'Navigation');
+    safeInit(initEventListeners, 'EventListeners');
+    safeInit(initSettings, 'Settings');
+    safeInit(initModal, 'Modal');
+    safeInit(initDebugCommands, 'DebugCommands');
+    safeInit(initNormalizeView, 'NormalizeView');
+    safeInit(initQuiz, 'Quiz');
+    safeInit(initEqualizer, 'Equalizer');
+    safeInit(startPerformanceMonitor, 'PerformanceMonitor');
 
-        inactivityTimer = setTimeout(() => {
-            document.body.classList.add('app-inactive');
-            console.log(`[Performance] App entered INACTIVE mode after ${INACTIVITY_TIMEOUT_MS / 1000 / 60} minutes of inactivity.`);
-        }, INACTIVITY_TIMEOUT_MS);
-    }
-
-    ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(event => {
-        document.addEventListener(event, resetInactivityTimer, true);
-    });
-    resetInactivityTimer();
-
-    const MARQUEE_SELECTOR = '.marquee-wrapper';
-    
-    ipcRenderer.on('log-message', (event, { level, args }) => {
-        const style = 'color: cyan; font-weight: bold;';
-        console[level](`%c[Main]%c`, style, '', ...args);
-    });
-    
-    function initResizer() {
-        const resizer = document.getElementById('resizer');
-        const rightSidebar = document.querySelector('.right-sidebar');
-        if (!resizer || !rightSidebar) return;
-        let startX, startWidth;
-        const doDrag = (e) => {
-            const newWidth = startWidth - (e.clientX - startX);
-            const minWidth = 240;
-            const maxWidth = 600;
-            if (newWidth > minWidth && newWidth < maxWidth) {
-                rightSidebar.style.width = newWidth + 'px';
+    const mainPlayer = document.getElementById('main-player');
+    if (mainPlayer) {
+        // ▼▼▼ 修正: player.js のコールバックで playback-manager の関数を呼ぶように変更 ▼▼▼
+        // これにより、曲遷移時に state.currentSongIndex が正しく更新され、UIが同期されます。
+        await initPlayer(mainPlayer, {
+            onSongEnded: () => {
+                console.log('[Renderer] 曲が終了しました。次を再生します。');
+                playNextSong();
+            },
+            onNextSong: () => {
+                console.log('[Renderer] 次へボタンが押されました。');
+                playNextSong();
+            },
+            onPrevSong: () => {
+                console.log('[Renderer] 前へボタンが押されました。');
+                playPrevSong();
             }
-        };
-        const stopDrag = () => {
-            document.documentElement.removeEventListener('mousemove', doDrag, false);
-            document.documentElement.removeEventListener('mouseup', stopDrag, false);
-        };
-        resizer.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            startX = e.clientX;
-            startWidth = parseInt(document.defaultView.getComputedStyle(rightSidebar).width, 10);
-            document.documentElement.addEventListener('mousemove', doDrag, false);
-            document.documentElement.addEventListener('mouseup', stopDrag, false);
         });
+        // ▲▲▲ 修正完了 ▲▲▲
     }
 
-    logPerf("Initializing UI...");
-    initUI();
-    logPerf("Initializing Player...");
-    initPlayer(document.getElementById('main-player'), {
-        onSongEnded: playNextSong,
-        onNextSong: playNextSong,
-        onPrevSong: playPrevSong
+    electronAPI.on('os-media-command', (command) => {
+        switch (command) {
+            case 'play':
+                void playCurrent();
+                break;
+            case 'pause':
+                void pauseCurrent();
+                break;
+            case 'toggle':
+                void togglePlayPause();
+                break;
+            case 'next':
+                playNextSong();
+                break;
+            case 'previous':
+                playPrevSong();
+                break;
+            case 'stop':
+                void stopPlayback();
+                break;
+            default:
+                break;
+        }
     });
-    logPerf("Initializing Navigation...");
-    initNavigation();
-    logPerf("Initializing Modal...");
-    initModal();
-    logPerf("Initializing Debug Commands...");
-    initDebugCommands();
-    logPerf("Initializing IPC...");
-    initIPC(ipcRenderer, {
-        onLibraryLoaded: async (data) => {
-            logPerf("Received 'load-library' event from main process.");
-            performance.mark('library-loaded');
-            if (!state.artworksDir) {
-                state.artworksDir = await ipcRenderer.invoke('get-artworks-dir');
+
+    musicApi.onAppInfoResponse((info) => {
+        const appVersionEl = document.getElementById('app-version');
+        if (appVersionEl) appVersionEl.textContent = `v${info.version}`;
+    });
+
+    musicApi.onLoadLibrary(async (data) => {
+        if (!state.artworksDir) state.artworksDir = await musicApi.getArtworksDir();
+        addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
+
+        const initialView = state.activeViewId || 'track-view';
+        showView(initialView);
+
+        musicApi.requestPlaylistsWithArtwork();
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    });
+
+    electronAPI.on('settings-loaded', (settings) => {
+        if (typeof settings.volume === 'number') {
+            if (elements.volumeSlider) elements.volumeSlider.value = settings.volume;
+        }
+        state.visualizerMode = settings.visualizerMode || 'active';
+
+        // オーディオ出力デバイスの設定を復元
+        if (settings.audioOutputId) {
+            restoreSavedSinkId(settings.audioOutputId);
+        }
+
+        if (typeof settings.isShuffled === 'boolean') {
+            state.isShuffled = settings.isShuffled;
+            if (elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
+        }
+        if (typeof settings.groupAlbumArt === 'boolean') {
+            state.groupAlbumArt = settings.groupAlbumArt;
+            if (state.activeViewId === 'track-view') showView('track-view');
+        }
+        if (settings.enableYouTube) {
+            document.querySelectorAll('[data-feature="youtube"]').forEach(el => el.classList.remove('hidden'));
+        }
+    });
+
+    musicApi.onPlayCountsUpdated((counts) => {
+        state.playCounts = counts;
+        Object.keys(counts).forEach(songPath => updatePlayCountDisplay(songPath, counts[songPath].count));
+    });
+
+    musicApi.onPlaylistsUpdated((playlists) => {
+        state.playlists = playlists;
+        if (state.activeViewId === 'playlist-view') showView('playlist-view');
+    });
+
+    musicApi.onForceReloadPlaylist(async (playlistName) => {
+        if (state.currentDetailView.type === 'playlist' && state.currentDetailView.identifier === playlistName) {
+            const updatedDetails = await musicApi.getPlaylistDetails(playlistName);
+            state.currentlyViewedSongIds = (updatedDetails.songs || []).map((song) => song.id).filter(Boolean);
+            showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: updatedDetails });
+        }
+    });
+
+    // ▼▼▼ 追加: スキャン完了時にライブラリを更新 ▼▼▼
+    electronAPI.on('scan-complete', (newSongs) => {
+        console.log(`[Renderer] スキャン完了: ${newSongs?.length || 0}曲が追加されました`);
+        if (newSongs && newSongs.length > 0) {
+            addSongsToLibrary({ songs: newSongs, albums: {} });
+            // 通知を表示（ipc.js の showNotification をインポートできない場合は直接表示）
+            const notification = document.getElementById('notification');
+            if (notification) {
+                notification.textContent = `${newSongs.length}曲がライブラリに追加されました`;
+                notification.classList.add('visible');
+                setTimeout(() => notification.classList.remove('visible'), 3000);
             }
-            addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
-            showView('track-view');
-        },
-        onSettingsLoaded: (settings) => {
-            updateAudioDevices(settings.audioOutputId);
+        } else if (window.go) {
+            // In Wails mode, refresh from persisted library to recover from stale in-memory state.
+            musicApi.loadLibrary();
+        }
+    });
+    // ▲▲▲ 追加ここまで ▲▲▲
+
+    musicApi.requestAppInfo();
+    musicApi.requestInitialPlayCounts();
+
+    try {
+        const settings = await musicApi.getSettings();
+        if (settings) {
             if (typeof settings.volume === 'number') {
-                elements.volumeSlider.value = settings.volume;
-                applyMasterVolume();
-            }
-            state.visualizerMode = settings.visualizerMode || 'active';
-        },
-        onPlayCountsUpdated: (counts) => {
-            state.playCounts = counts;
-            for (const songPath in counts) {
-                if (counts.hasOwnProperty(songPath)) {
-                    updatePlayCountDisplay(songPath, counts[songPath].count);
+                if (elements.volumeSlider) {
+                    elements.volumeSlider.value = settings.volume;
+                    // UIの数値表示などの更新が必要ならここで行う
                 }
             }
-        },
-        onYoutubeLinkProcessed: (song) => {
-            showNotification(`「${song.title}」が追加されました。`);
-            hideNotification(3000);
-            addSongsToLibrary({ songs: [song] });
-        },
-        onPlaylistsUpdated: (playlists) => {
-            state.playlists = playlists;
-            if (state.activeViewId === 'playlist-view') {
-                renderCurrentView();
+            if (settings.audioOutputId) {
+                restoreSavedSinkId(settings.audioOutputId);
             }
-        },
-        onForceReloadPlaylist: (playlistName) => {
-            showPlaylist(playlistName);
-        },
-        onForceReloadLibrary: () => {
-             ipcRenderer.send('request-initial-library');
-        },
-        onShowLoading: (text) => {
-            showNotification(text || '処理中...');
-        },
-        onHideLoading: () => {
-            hideNotification(500);
-        },
-        onShowError: (message) => {
-            alert(message);
-        },
-        onScanProgress: (progress) => {
-            const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
-            showNotification(`ライブラリをインポート中... (${percentage}%)`);
-        },
-        onScanComplete: (songs) => {
-            addSongsToLibrary({ songs });
-            showNotification(`${songs.length}曲のインポートが完了しました。`);
-            hideNotification(3000);
-        },
-        onPlaylistImportProgress: (progress) => {
-            const text = `${progress.total}曲中 ${progress.current}曲目: ${progress.title}`;
-            showNotification(text);
-        },
-        onPlaylistImportFinished: () => {
-            showNotification('プレイリストのインポートが完了しました。');
-            hideNotification(3000);
-        }
-    });
-    logPerf("IPC initialized.");
-    
-    initResizer();
 
-    if (navigator.mediaDevices && typeof navigator.mediaDevices.ondevicechange !== 'undefined') {
-        navigator.mediaDevices.addEventListener('devicechange', () => updateAudioDevices());
-    }
-    
-    ipcRenderer.on('navigate-back', () => {
-        if (state.currentDetailView.type) {
-            showView(state.activeListView);
-        }
-    });
-
-    elements.nextBtn.addEventListener('click', playNextSong);
-    elements.prevBtn.addEventListener('click', playPrevSong);
-    elements.shuffleBtn.addEventListener('click', toggleShuffle);
-    elements.loopBtn.addEventListener('click', toggleLoopMode);
-
-    elements.addNetworkFolderBtn.addEventListener('click', () => {
-        showModal({
-            title: 'ネットワークフォルダのパス',
-            placeholder: '\\\\ServerName\\ShareName',
-            onOk: (path) => {
-                ipcRenderer.send('start-scan-paths', [path]);
+            if (typeof settings.groupAlbumArt === 'boolean') {
+                state.groupAlbumArt = settings.groupAlbumArt;
             }
-        });
-    });
-
-    elements.addYoutubeBtn.addEventListener('click', () => {
-        showModal({
-            title: 'YouTubeのリンク',
-            placeholder: 'https://www.youtube.com/watch?v=...',
-            onOk: (url) => ipcRenderer.send('add-youtube-link', url)
-        });
-    });
-    elements.addYoutubePlaylistBtn.addEventListener('click', () => {
-        showModal({
-            title: 'YouTubeプレイリストのリンク',
-            placeholder: 'https://www.youtube.com/playlist?list=...',
-            onOk: (url) => ipcRenderer.send('import-youtube-playlist', url)
-        });
-    });
-
-    elements.setLibraryBtn.addEventListener('click', () => ipcRenderer.send('set-library-path'));
-    elements.dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.add('drag-over'); });
-    elements.dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); elements.dropZone.classList.remove('drag-over'); });
-    elements.dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        elements.dropZone.classList.remove('drag-over');
-        const allPaths = Array.from(e.dataTransfer.files).map(f => f.path);
-        if (allPaths.length === 0) return;
-        const lyricsExtensions = ['.lrc', '.txt'];
-        const lyricsPaths = allPaths.filter(p => lyricsExtensions.includes(path.extname(p).toLowerCase()));
-        const musicPaths = allPaths.filter(p => !lyricsExtensions.includes(path.extname(p).toLowerCase()));
-        if (musicPaths.length > 0) {
-            showNotification('インポート準備中...');
-            ipcRenderer.send('start-scan-paths', musicPaths);
+            if (typeof settings.isShuffled === 'boolean') {
+                state.isShuffled = settings.isShuffled;
+                if (elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
+            }
         }
-        if (lyricsPaths.length > 0) {
-            ipcRenderer.send('handle-lyrics-drop', lyricsPaths);
-        }
-    });
 
-    const youtubeQualityGroup = document.getElementById('youtube-quality-group');
-
-    function updateQualityGroupState() {
-        const selectedMode = document.querySelector('input[name="youtube-mode"]:checked').value;
-        if (selectedMode === 'stream') {
-            youtubeQualityGroup.classList.add('disabled');
-            elements.youtubeQualityRadios.forEach(radio => radio.disabled = true);
+        if (window.go || settings.libraryPath) {
+            musicApi.loadLibrary();
         } else {
-            youtubeQualityGroup.classList.remove('disabled');
-            elements.youtubeQualityRadios.forEach(radio => radio.disabled = false);
+            const loadingOverlay = document.getElementById('loading-overlay');
+            if (loadingOverlay) loadingOverlay.classList.add('hidden');
         }
+    } catch (e) {
+        console.error('Failed to load settings or library:', e);
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
     }
 
-    elements.openSettingsBtn.addEventListener('click', async () => {
-        const settings = await ipcRenderer.invoke('get-settings');
-        
-        const currentYoutubeMode = settings.youtubePlaybackMode || 'download';
-        document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`).checked = true;
-        
-        const currentQuality = settings.youtubeDownloadQuality || 'full';
-        document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`).checked = true;
-        updateQualityGroupState();
-        
-        const currentImportMode = settings.importMode || 'balanced';
-        document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`).checked = true;
-        
-        const currentVisualizerMode = settings.visualizerMode || 'active';
-        document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
+    electronAPI.send('app-ready');
 
-        // ▼▼▼ ここからが修正箇所です ▼▼▼
-        const easterEggsEnabled = settings.enableEasterEggs !== false; // デフォルトはtrue
-        document.querySelector('input[name="enable-easter-eggs"]').checked = easterEggsEnabled;
-        // ▲▲▲ ここまでが修正箇所です ▲▲▲
-        
-        elements.settingsModalOverlay.classList.remove('hidden');
-    });
-
-    elements.youtubeModeRadios.forEach(radio => {
-        radio.addEventListener('change', updateQualityGroupState);
-    });
-
-    elements.settingsOkBtn.addEventListener('click', () => {
-        const selectedYoutubeMode = document.querySelector('input[name="youtube-mode"]:checked').value;
-        const selectedQuality = document.querySelector('input[name="youtube-quality"]:checked').value;
-        const selectedImportMode = document.querySelector('input[name="import-mode"]:checked').value;
-        const selectedVisualizerMode = document.querySelector('input[name="visualizer-mode"]:checked').value;
-        // ▼▼▼ この行を新しく追加 ▼▼▼
-        const enableEasterEggs = document.querySelector('input[name="enable-easter-eggs"]').checked;
-
-        ipcRenderer.send('save-settings', {
-            youtubePlaybackMode: selectedYoutubeMode,
-            youtubeDownloadQuality: selectedQuality,
-            importMode: selectedImportMode,
-            visualizerMode: selectedVisualizerMode,
-            enableEasterEggs: enableEasterEggs, // enableEasterEggsプロパティを追加
-        });
-        
-        state.visualizerMode = selectedVisualizerMode;
-        
-        elements.settingsModalOverlay.classList.add('hidden');
-    });
-    
-    let userPreferredVisualizerMode = 'active';
-
-    elements.lightFlightModeBtn.addEventListener('click', () => {
-        state.isLightFlightMode = !state.isLightFlightMode;
-        document.body.classList.toggle('light-flight-mode', state.isLightFlightMode);
-        elements.lightFlightModeBtn.classList.toggle('active', state.isLightFlightMode);
-
-        if (state.isLightFlightMode) {
-            userPreferredVisualizerMode = state.visualizerMode;
-            state.visualizerMode = 'static';
-            state.userPreferredVisualizerFps = state.visualizerFpsLimit;
-            setVisualizerFpsLimit(30);
-            showNotification('✈️ Light FlightモードがONになりました。');
-        } else {
-            state.visualizerMode = userPreferredVisualizerMode;
-            setVisualizerFpsLimit(state.userPreferredVisualizerFps);
-            showNotification('✈️ Light FlightモードがOFFになりました。');
-        }
-        hideNotification(2000);
-        
-        renderCurrentView();
-        updateNowPlayingView(state.playbackQueue[state.currentSongIndex]);
-    });
-    
-    elements.deviceSelectButton.addEventListener('click', (e) => {
-        e.stopPropagation();
+    try {
         updateAudioDevices();
-        elements.devicePopup.classList.toggle('active');
-    });
-
-    window.addEventListener('click', () => {
-        if (elements.devicePopup.classList.contains('active')) {
-            elements.devicePopup.classList.remove('active');
-        }
-    });
-    
-    let resizeTimer;
-    window.addEventListener('resize', () => {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-            updateTextOverflowForSelector('.marquee-wrapper');
-        }, 250);
-    });
-
-    window.addEventListener('keydown', (e) => {
-        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-        
-        if (e.code === 'Space') {
-            e.preventDefault();
-            togglePlayPause();
-        } else if (e.code === 'Digit0') {
-            e.preventDefault();
-            seekToStart();
-        }
-    });
-
-    ipcRenderer.on('app-info-response', (event, info) => {
-        console.log(
-            `%c[UX Music] Version: ${info.version} | OS: ${info.platform} ${info.arch} (Release: ${info.release})`,
-            'color: #1DB954; font-weight: bold; font-size: 1.1em;'
-        );
-        const versionSpan = document.getElementById('app-version');
-        if (versionSpan) {
-            versionSpan.textContent = `v${info.version}`;
-        }
-    });
-    ipcRenderer.send('request-app-info');
-    
-    logPerf("All initializations and event listeners set up.");
-});
-
-window.addEventListener('load', () => {
-    performance.mark('window-load');
-    logPerf("'window.onload' event fired. All resources are fully loaded.");
-});
-
-ipcRenderer.on('measure-performance', () => {
-    console.log("--- RENDERER PERFORMANCE ANALYSIS ---");
-    const measure = (name, start, end) => {
-        try {
-            const measurement = performance.measure(name, start, end);
-            console.log(`[PERF] ${name}: ${measurement.duration.toFixed(2)}ms`);
-        } catch (e) {
-            console.warn(`[PERF] Could not measure '${name}'. Mark '${start}' or '${end}' not found.`);
-        }
-    };
-    measure('Script Start to DOMContentLoaded', 'renderer-script-start', 'dom-content-loaded');
-    measure('DOMContentLoaded to Initial Render End', 'dom-content-loaded', 'initial-render-end');
-    if (window.artworkLoadTimes && window.artworkLoadTimes.length > 0) {
-        const firstLoad = Math.min(...window.artworkLoadTimes);
-        const lastLoad = Math.max(...window.artworkLoadTimes);
-        const initialRenderEndMark = performance.getEntriesByName('initial-render-end')[0];
-        if (initialRenderEndMark) {
-            const initialRenderEndTime = initialRenderEndMark.startTime;
-            console.log(`[PERF] Time to First Artwork Loaded: ${(firstLoad - initialRenderEndTime).toFixed(2)}ms`);
-            console.log(`[PERF] Time to Last Artwork Loaded: ${(lastLoad - initialRenderEndTime).toFixed(2)}ms`);
-            console.log(`[PERF] Total Artwork Loading Span: ${(lastLoad - firstLoad).toFixed(2)}ms`);
-        }
+    } catch (e) {
+        console.error('Failed to update audio devices:', e);
     }
-    measure('Initial Render End to Window Load', 'initial-render-end', 'window-load');
-    measure('Full Renderer Process Time', 'renderer-script-start', 'window-load');
-    console.log("-------------------------------------");
-});
+
+    // デバイス接続/切断時にリストを自動更新 (Wails環境のみ)
+    if (window.runtime && typeof window.runtime.EventsOn === 'function') {
+        window.runtime.EventsOn('audio-devices-changed', () => {
+            console.log('[AudioDevices] Device change detected via Go watcher');
+            updateAudioDevices();
+        });
+    }
+
+    console.log('[Renderer] Initializing IPC listeners...');
+    initIPC({
+        onFlacIndexProgress: (progress) => {
+            const container = document.getElementById('flac-index-progress-container');
+            const bar = document.getElementById('flac-index-progress-bar');
+            const status = document.getElementById('flac-index-status');
+            if (container && bar && status) {
+                container.classList.remove('hidden');
+                const percent = (progress.current / progress.total) * 100;
+                bar.style.width = `${percent}%`;
+                status.textContent = `解析中: ${progress.current} / ${progress.total} (${progress.path})`;
+            }
+        },
+        onFlacIndexComplete: (total) => {
+            const status = document.getElementById('flac-index-status');
+            if (status) {
+                status.textContent = `完了: ${total}個のファイルを解析しました。`;
+                status.style.color = '#28a745';
+            }
+            setTimeout(() => {
+                const container = document.getElementById('flac-index-progress-container');
+                if (container) container.classList.add('hidden');
+            }, 5000);
+        }
+    });
+}
+
+// 冗長で property 名が間違っていた古いヘルパー関数を削除
+// 今後は playback-manager.js 内のロジックが使用されます。
+
+initApp()
+    .then(() => checkWails())
+    .catch(err => console.error('App initialization failed:', err));
+
+// ─── 音声情報ボタン 波形ホバーアニメーション ───────────────────────────
+(function initWaveformAnimation() {
+    const btn = document.getElementById('audio-info-btn');
+    if (!btn) return;
+
+    const wave1 = btn.querySelector('.wave-1');
+    const wave2 = btn.querySelector('.wave-2');
+    const wave3 = btn.querySelector('.wave-3');
+    if (!wave1 || !wave2 || !wave3) return;
+
+    // 各波の元のパス（始点・終点は絶対に変えない）
+    const BASE = {
+        w1: 'M 10 15 C 20 5, 40 5, 50 25 S 80 45, 90 35',
+        w2: 'M 10 25 C 23 10, 40 15, 50 25 S 80 38, 90 25',
+        w3: 'M 10 35 C 20 20, 40 20, 50 25 S 80 30, 90 15',
+    };
+
+    const OSCILLATE_TIME = 4.5;   // 振動フェーズ（秒）
+    const RETURN_TIME = 0.8;   // 元の形に戻るフェーズ（秒）
+
+    let rafId = null;
+    let startTime = null;
+
+    // buildPath関数は「amp」値を受け取る（sin値、-1〜+1）
+    function buildPath1(amp) {
+        const cy = 25 - 22 * amp;
+        const cy3 = 25 + 22 * amp;
+        return `M 10 15 C 20 ${cy}, 40 ${cy}, 50 25 S 80 ${cy3}, 90 35`;
+    }
+    function buildPath2(amp) {
+        const cy1 = 25 - 18 * amp;
+        const cy2 = 25 - 14 * amp;
+        const cy3 = 25 + 16 * amp;
+        return `M 10 25 C 23 ${cy1}, 40 ${cy2}, 50 25 S 80 ${cy3}, 90 25`;
+    }
+    function buildPath3(amp) {
+        const cy = 25 - 18 * amp;
+        const cy3 = 25 + 12 * amp;
+        return `M 10 35 C 20 ${cy}, 40 ${cy}, 50 25 S 80 ${cy3}, 90 15`;
+    }
+
+    // 元のパス形状に対応するamp値（BASE パスから逆算）
+    // wave1: cy=5 → 25 - 22*amp = 5 → amp = 20/22
+    // wave2: cy1=10 → amp = 15/18
+    // wave3: cy=20 → amp = 5/18
+    const TARGET_AMP = { w1: 20 / 22, w2: 15 / 18, w3: 5 / 18 };
+
+    // easeOut（終わり付近でゆっくりになる）
+    function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+    let exitAmps = null; // 振動フェーズ終了時のamp値を保存
+
+    function animate(timestamp) {
+        if (!startTime) startTime = timestamp;
+        const t = (timestamp - startTime) / 1000;
+
+        let a1, a2, a3;
+
+        if (t <= OSCILLATE_TIME) {
+            // ── 振動フェーズ ──
+            a1 = Math.sin(t * 2.2);
+            a2 = Math.sin(t * 1.5 + 0.4);
+            a3 = Math.sin(t * 1.8 + 0.9);
+            exitAmps = { a1, a2, a3 }; // 常に最新値を記録
+        } else {
+            // ── 帰還フェーズ: 終了時点のampから元の形へeaseOut補間 ──
+            const rt = t - OSCILLATE_TIME;
+            if (rt >= RETURN_TIME) { stopAnimate(); return; }
+            const p = easeOutCubic(rt / RETURN_TIME);
+            a1 = exitAmps.a1 + (TARGET_AMP.w1 - exitAmps.a1) * p;
+            a2 = exitAmps.a2 + (TARGET_AMP.w2 - exitAmps.a2) * p;
+            a3 = exitAmps.a3 + (TARGET_AMP.w3 - exitAmps.a3) * p;
+        }
+
+        wave1.setAttribute('d', buildPath1(a1));
+        wave2.setAttribute('d', buildPath2(a2));
+        wave3.setAttribute('d', buildPath3(a3));
+
+        rafId = requestAnimationFrame(animate);
+    }
+
+    function stopAnimate() {
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        startTime = null;
+        wave1.setAttribute('d', BASE.w1);
+        wave2.setAttribute('d', BASE.w2);
+        wave3.setAttribute('d', BASE.w3);
+    }
+
+    btn.addEventListener('mouseenter', () => {
+        if (!rafId) rafId = requestAnimationFrame(animate);
+    });
+    btn.addEventListener('mouseleave', stopAnimate);
+    btn.addEventListener('focus', () => { if (!rafId) rafId = requestAnimationFrame(animate); });
+    btn.addEventListener('blur', stopAnimate);
+})();

@@ -1,0 +1,115 @@
+const electronAPI = window.electronAPI;
+import { setVisualizerFpsLimit, toggleVisualizerEcoMode } from '../features/player.js';
+import { showModalAdvanced } from '../ui/modal.js';
+
+const YOUTUBE_CONSENT_MESSAGE = `
+    YouTube機能の有効化に関する注意事項：
+
+    この機能を使用すると、YouTube上のコンテンツをダウンロードまたはストリーミング再生できますが、これは技術的な実験を目的としたものです。
+
+    ・ダウンロードしたコンテンツは、私的利用の範囲を遵守してください。
+    ・著作権で保護されたコンテンツの不正なダウンロードや再配布は、法律で固く禁じられています。
+    ・この機能を使用したことによって生じるいかなる法的問題についても、開発者は一切の責任を負いません。
+
+    上記を理解し、自己の責任において機能を使用することに同意しますか？
+`;
+
+function requestYouTubeConsent() {
+    if (window.go !== undefined) {
+        return new Promise((resolve) => {
+            showModalAdvanced({
+                title: 'YouTube機能の有効化',
+                message: YOUTUBE_CONSENT_MESSAGE.trim(),
+                placeholder: '',
+                requireInput: false,
+                okText: '同意して有効化',
+                cancelText: 'キャンセル',
+                onOk: () => resolve(true),
+                onCancel: () => resolve(false),
+            });
+        });
+    }
+    return Promise.resolve(confirm(YOUTUBE_CONSENT_MESSAGE));
+}
+
+function revealYouTubeFeatureUI() {
+    document.querySelectorAll('[data-feature="youtube"], #add-youtube-btn, #add-youtube-playlist-btn').forEach((el) => {
+        el.classList.remove('hidden');
+    });
+}
+
+export async function enableYouTubeFeaturesWithConsent({ showAlert = true } = {}) {
+    const settings = await electronAPI.invoke('get-settings').catch(() => ({}));
+    if (settings?.enableYouTube) {
+        revealYouTubeFeatureUI();
+        if (showAlert) {
+            alert('YouTube機能はすでに有効です。');
+        }
+        return true;
+    }
+
+    const confirmation = await requestYouTubeConsent();
+    if (!confirmation) {
+        console.log('[DEBUG] YouTube feature activation cancelled by user.');
+        return false;
+    }
+
+    console.log('[DEBUG] YouTube features ENABLED.');
+    electronAPI.send('save-settings', { enableYouTube: true });
+    revealYouTubeFeatureUI();
+    if (showAlert) {
+        alert('YouTube機能が有効になりました。');
+    }
+    return true;
+}
+
+export function initDebugCommands() {
+    const uxDebug = {
+        resetLibrary: () => {
+            const confirmation = confirm('本当にライブラリをリセットしますか？...');
+            if (confirmation) {
+                electronAPI.send('debug-reset-library');
+            }
+        },
+        rollbackMigration: () => {
+            const confirmation = confirm('本当にマイグレーションをロールバックしますか？...');
+            if (confirmation) {
+                electronAPI.send('debug-rollback-migration');
+            }
+        },
+        setVisualizerFps: (fps) => {
+            if (typeof fps !== 'number') {
+                console.error('[DEBUG] Please provide a number...');
+                return;
+            }
+            setVisualizerFpsLimit(fps);
+        },
+        toggleVisualizerEcoMode: (enabled) => {
+            if (typeof enabled !== 'boolean') {
+                console.error('[DEBUG] Please provide a boolean value (true or false).');
+                return;
+            }
+            toggleVisualizerEcoMode(enabled);
+        },
+        enableYouTubeFeatures: () => {
+            void enableYouTubeFeaturesWithConsent({ showAlert: true });
+        },
+        help: () => {
+            console.log(
+                '%cUX Music デバッグコマンド一覧:\n' +
+                '%c' +
+                '  uxDebug.resetLibrary()                - 全てのライブラリデータを削除します。\n' +
+                '  uxDebug.rollbackMigration()         - データ構造のマイグレーションを元に戻します。\n' +
+                '  uxDebug.setVisualizerFps(fps)       - ビジュアライザーのFPS上限を設定します。(0で制限解除)\n' +
+                '  uxDebug.toggleVisualizerEcoMode(bool) - ビジュアライザーのエコモードを切り替えます。(trueで有効(デフォルト), falseで無効)\n' +
+                '  uxDebug.enableYouTubeFeatures()         - YouTube関連の機能を有効化します。\n' +
+                '  (補足) 「ライブラリを管理」ボタン連打でも有効化できます。\n' +
+                '  uxDebug.help()                          - このヘルプメッセージを表示します。',
+                'font-weight: bold; font-size: 1.2em; color: #1DB954;',
+                'font-weight: normal; font-size: 1em; color: inherit;'
+            );
+        }
+    };
+    window.uxDebug = uxDebug;
+    console.log('%c[DEBUG] デバッグインターフェイスが読み込まれました。コマンド一覧は `uxDebug.help()` を実行してください。', 'color: orange;');
+}

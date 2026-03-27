@@ -1,0 +1,155 @@
+/* uxmusic/src/renderer/styles/layout.css */
+/* 全体的なレイアウト構造 */
+.container {
+    display: flex;
+    flex-grow: 1;
+    /* タイトルバーを除いた画面全体の高さを確保し、リストを最下部まで伸ばす */
+    height: calc(100vh - 32px);
+    overflow: hidden;
+    position: relative;
+
+    /* 画面下部（85%〜100%の位置）にかけてフェードアウトさせるマスク */
+    -webkit-mask-image: linear-gradient(to bottom, black 95%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+}
+
+body.resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+.title-bar {
+    height: 32px;
+    background-color: var(--bg-light);
+    width: 100%;
+    -webkit-app-region: drag;
+    flex-shrink: 0;
+}
+
+.main-column {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.main-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    /* 最後までスクロールした際に、コントロールバーの上にコンテンツが出るように大きな余白を設定 */
+    padding-bottom: 0px;
+}
+
+.main-content .view-container {
+    padding: 10px;
+    box-sizing: border-box;
+    padding-bottom: 0px;
+}
+
+.main-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.main-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.main-content::-webkit-scrollbar-thumb {
+    background-color: var(--bg-light);
+    border-radius: 4px;
+}
+
+.main-content::-webkit-scrollbar-thumb:hover {
+    background-color: #555;
+}
+
+
+.sidebar {
+    background-color: #1a1a1c;
+    /* 少しだけ暗いトーンで区別しつつ馴染ませる */
+    padding: 20px;
+    /* スペーサーで制御するため、固定の余白は削除。動的な余白を追加 */
+    padding-bottom: var(--footer-height, 0px);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+}
+
+.left-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+}
+
+.right-sidebar {
+    width: 300px;
+    min-width: 240px;
+    max-width: 600px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--bg-light);
+    padding: 24px;
+    /* スペーサーで制御するため、固定の余白は削除 */
+    padding-bottom: 0px;
+}
+
+/* コントロールバーを画面下部に浮遊（絶対配置）させる */
+.playback-bar {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 8px 24px;
+    box-sizing: border-box;
+
+    border-top: none;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+
+    background-color: rgba(20, 20, 22, 0.15);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+
+    height: auto;
+    min-height: 40px;
+
+    width: auto;
+    max-width: 1600px;
+    margin: 0 auto;
+
+    flex-shrink: 0;
+
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+
+    z-index: 1000;
+
+}
+
+
+.resizer-vertical {
+    width: 5px;
+    cursor: col-resize;
+    background-color: var(--bg-darkest);
+    flex-shrink: 0;
+    border-left: 1px solid var(--bg-light);
+    border-right: 1px solid var(--bg-light);
+    transition: background-color 0.2s;
+}
+
+.resizer-vertical:hover {
+    background: linear-gradient(180deg, var(--highlight-pink), var(--highlight-blue));
+}
+
+#main-player {
+    display: none;
+}
+
+.hidden {
+    display: none !important;
+}

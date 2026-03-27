@@ -1,0 +1,984 @@
+/* ボタン、スライダー、モーダルなどの再利用可能な部品 */
+.nav-link {
+    display: block;
+    padding: 10px 12px;
+    color: var(--text-secondary);
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+.nav-link:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-light);
+}
+
+.nav-link.active {
+    color: var(--text-primary);
+    background-color: var(--bg-light);
+}
+
+/* サイドバーのセクション（デバイス等） */
+.sidebar-section {
+    margin-top: 16px;
+    border-top: 1px solid var(--bg-light);
+    padding-top: 12px;
+}
+
+.sidebar-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin: 0 0 8px 12px;
+}
+
+.device-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.device-link .device-icon {
+    font-size: 16px;
+}
+
+.sidebar-actions {
+    margin-top: auto;
+    position: relative;
+}
+
+.sidebar-action-button {
+    width: 100%;
+    padding: 10px;
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    text-align: left;
+    margin-top: 8px;
+}
+
+.sidebar-action-button:hover {
+    background-color: var(--bg-hover);
+}
+
+#light-flight-mode-btn.active {
+    color: var(--highlight-pink);
+    background-color: var(--bg-hover);
+}
+
+#library-actions-container {
+    position: relative;
+}
+
+#library-actions-popup {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    background-color: var(--bg-light);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+    padding: 8px;
+    z-index: 100;
+}
+
+.popup-action-button {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    text-align: left;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.popup-action-button:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.playback-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-grow: 0;
+    flex-basis: 300px;
+    gap: 16px;
+}
+
+.playback-controls button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 0;
+    /* imgの上下の余白を消す */
+    padding: 0;
+    /* 余白をリセット */
+}
+
+.playback-controls button:hover {
+    transform: scale(1.1);
+}
+
+/* 通常のコントロールボタン (進む、戻る) */
+.control-btn img,
+.playback-mode-btn img {
+    width: 24px;
+    height: 24px;
+    filter: invert(82%) sepia(8%) saturate(0%) hue-rotate(143deg) brightness(91%) contrast(89%);
+}
+
+.control-btn:hover img,
+.playback-mode-btn:hover img {
+    filter: invert(100%) sepia(100%) saturate(0%) hue-rotate(288deg) brightness(102%) contrast(102%);
+}
+
+.playback-controls .play-btn {
+    width: 40px;
+    height: 40px;
+    background-color: var(--text-primary);
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.playback-controls .play-btn:hover {
+    transform: scale(1.05);
+}
+
+.play-btn .play-pause-icon {
+    width: 24px;
+    height: 24px;
+    fill: var(--bg-dark);
+}
+
+.play-btn .play-pause-icon path {
+    transition: d 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* デフォルト状態（再生アイコン） */
+.play-btn .icon-part-1 {
+    d: path("M 8 5 L 18 12 L 8 12 L 8 5 Z");
+}
+
+.play-btn .icon-part-2 {
+    d: path("M 8 19 L 18 12 L 8 12 L 8 19 Z");
+}
+
+/* 再生中状態（一時停止アイコン） */
+.play-btn.playing .icon-part-1 {
+    d: path("M 6 5 L 10 5 L 10 19 L 6 19 Z");
+}
+
+.play-btn.playing .icon-part-2 {
+    d: path("M 14 5 L 18 5 L 18 19 L 14 19 Z");
+}
+
+
+/* モード切替ボタン (シャッフル、リピート) */
+.playback-mode-btn {
+    position: relative;
+}
+
+.playback-mode-btn img {
+    width: 22px;
+    height: 22px;
+}
+
+.playback-mode-btn.active {
+    color: var(--highlight-pink);
+}
+
+.playback-mode-btn.active img {
+    filter: invert(48%) sepia(21%) saturate(1475%) hue-rotate(312deg) brightness(90%) contrast(86%);
+}
+
+.playback-mode-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;
+    height: 5px;
+    background: var(--highlight-pink);
+    border-radius: 50%;
+}
+
+.playback-mode-btn#loop-btn.loop-one::after {
+    content: '1';
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+    font-size: 10px;
+    font-weight: bold;
+    text-align: center;
+    color: var(--bg-dark);
+    background: var(--highlight-pink);
+    border-radius: 50%;
+}
+
+.progress-container {
+    flex-grow: 1;
+    margin: 0 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+#progress-bar {
+    flex-grow: 1;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    background: #4d4d4d;
+    outline: none;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+#progress-bar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: #fff;
+    border-radius: 50%;
+}
+
+.volume-container {
+    display: flex;
+    align-items: center;
+    width: 180px;
+}
+
+#volume-icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px;
+    margin-right: 10px;
+    line-height: 0;
+}
+
+#volume-icon {
+    width: 24px;
+    height: 24px;
+    filter: invert(82%) sepia(8%) saturate(0%) hue-rotate(143deg) brightness(91%) contrast(89%);
+    transition: filter 0.2s;
+}
+
+#volume-icon-btn:hover #volume-icon {
+    filter: invert(100%) sepia(100%) saturate(0%) hue-rotate(288deg) brightness(102%) contrast(102%);
+}
+
+#volume-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    background: #4d4d4d;
+    outline: none;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+#volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: #fff;
+    border-radius: 50%;
+}
+
+.device-container {
+    position: relative;
+    margin-left: 20px;
+}
+
+#device-select-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 5px;
+    line-height: 0;
+}
+
+#device-select-button img {
+    width: 24px;
+    height: 24px;
+    color: var(--text-secondary);
+    /* SVGのcurrentColorに影響 */
+    filter: invert(82%) sepia(8%) saturate(0%) hue-rotate(143deg) brightness(91%) contrast(89%);
+}
+
+#device-select-button:hover img {
+    filter: invert(100%) sepia(100%) saturate(0%) hue-rotate(288deg) brightness(102%) contrast(102%);
+}
+
+.device-popup {
+    position: absolute;
+    bottom: calc(100% + 15px);
+    right: 0;
+    background-color: var(--bg-light);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    padding: 8px;
+    z-index: 1100;
+    width: 250px;
+    visibility: hidden;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.2s ease-out;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.device-popup.active {
+    visibility: visible;
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.device-popup-item {
+    padding: 10px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.device-popup-item:hover {
+    background-color: var(--bg-hover);
+}
+
+.device-popup-item.active {
+    color: var(--highlight-pink);
+    font-weight: bold;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+#modal-overlay,
+#settings-modal-overlay,
+#loading-overlay,
+#devices-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+#modal-overlay.hidden,
+#settings-modal-overlay.hidden,
+#loading-overlay.hidden,
+#devices-modal-overlay.hidden {
+    display: none;
+}
+
+#modal,
+#settings-modal {
+    background-color: var(--bg-light);
+    padding: 25px;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    max-height: 85vh;
+}
+
+#modal h3,
+#settings-modal h2 {
+    margin-top: 0;
+}
+
+#modal p {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+#modal-input {
+    width: 100%;
+    padding: 10px;
+    box-sizing: border-box;
+    background-color: var(--bg-dark);
+    border: 1px solid #535353;
+    color: #fff;
+    border-radius: 4px;
+    margin-top: 10px;
+    margin-bottom: 20px;
+}
+
+.modal-buttons {
+    text-align: right;
+}
+
+.modal-buttons button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+#modal-cancel-btn {
+    background-color: transparent;
+    color: #fff;
+}
+
+#modal-cancel-btn:hover {
+    background-color: var(--bg-hover);
+}
+
+#modal-ok-btn,
+#settings-ok-btn,
+#devices-ok-btn {
+    background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue));
+    color: var(--text-primary);
+    margin-left: 10px;
+    border: none;
+}
+
+#modal-ok-btn:hover,
+#settings-ok-btn:hover,
+#devices-ok-btn:hover {
+    opacity: 0.9;
+}
+
+#settings-modal .settings-content {
+    overflow-y: auto;
+    flex-grow: 1;
+    padding-right: 10px;
+    margin-right: -10px;
+}
+
+#settings-modal .settings-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+#settings-modal .settings-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#settings-modal .settings-content::-webkit-scrollbar-thumb {
+    background-color: var(--bg-dark);
+    border-radius: 4px;
+}
+
+#settings-modal .settings-content::-webkit-scrollbar-thumb:hover {
+    background-color: #555;
+}
+
+#settings-modal .setting-group {
+    background-color: var(--bg-dark);
+    border-radius: 8px;
+    margin-top: 20px;
+    overflow: hidden;
+    transition: opacity 0.3s;
+}
+
+#settings-modal .setting-group.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+#settings-modal .setting-item {
+    padding: 15px;
+}
+
+#settings-modal .setting-item h4 {
+    margin: 0 0 4px 0;
+}
+
+#settings-modal .setting-item .setting-description {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0 0 15px 0;
+}
+
+#settings-modal .radio-group label {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    border-top: 1px solid var(--bg-light);
+}
+
+#settings-modal .setting-group .radio-group label:first-child {
+    border-top: none;
+}
+
+#settings-modal .radio-group label:hover {
+    background-color: #3a3a3a;
+}
+
+#settings-modal .radio-group input {
+    margin-right: 15px;
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: transparent;
+    width: 1.15em;
+    height: 1.15em;
+    border: 2px solid var(--text-secondary);
+    border-radius: 50%;
+    transform: translateY(-0.075em);
+    display: grid;
+    place-content: center;
+}
+
+#settings-modal .radio-group input::before {
+    content: "";
+    width: 0.65em;
+    height: 0.65em;
+    border-radius: 50%;
+    transform: scale(0);
+    transition: 120ms transform ease-in-out;
+    background: linear-gradient(45deg, var(--highlight-pink), var(--highlight-blue));
+}
+
+#settings-modal .radio-group input:checked::before {
+    transform: scale(1);
+}
+
+#settings-modal .radio-group input:checked {
+    border-color: var(--highlight-pink);
+}
+
+#settings-modal .radio-group small {
+    color: #b3b3b3;
+    display: block;
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+#settings-modal .modal-buttons {
+    margin-top: 30px;
+    flex-shrink: 0;
+}
+
+
+#loading-overlay {
+    background-color: rgba(0, 0, 0, 0.8);
+    flex-direction: column;
+    z-index: 2000;
+    color: #fff;
+}
+
+.spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top: 4px solid #fff;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.loading-text {
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+#notification-toast {
+    position: fixed;
+    bottom: 110px;
+    right: 20px;
+    background-color: var(--bg-light);
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    z-index: 3000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s, transform 0.3s;
+    transform: translateY(20px);
+}
+
+#notification-toast.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+#notification-toast.hidden {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(20px);
+}
+
+.context-menu {
+    position: fixed;
+    z-index: 10000;
+    background-color: var(--bg-light);
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    padding: 5px 0;
+    min-width: 150px;
+}
+
+.context-menu-item {
+    padding: 10px 15px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    position: relative;
+}
+
+.context-menu-item:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.context-menu-item.disabled {
+    color: #666;
+    cursor: default;
+    background-color: transparent;
+}
+
+.context-menu-item.has-submenu::after {
+    content: '▶';
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%) scaleX(0.7);
+    color: var(--text-secondary);
+}
+
+.context-menu-submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: -5px;
+    /* 親メニューのpadding分を調整 */
+    background-color: var(--bg-light);
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    padding: 5px 0;
+    min-width: 150px;
+}
+
+.context-menu-item:hover>.context-menu-submenu {
+    display: block;
+}
+
+#app-version {
+    font-size: 0.7em;
+    color: var(--text-muted);
+    font-weight: normal;
+    margin-left: 8px;
+}
+
+.song-item:hover .marquee-wrapper.is-overflowing .marquee-content {
+    animation: marquee 10s linear infinite;
+}
+
+.app-inactive .song-item:hover .marquee-wrapper.is-overflowing .marquee-content {
+    animation-play-state: paused;
+}
+
+
+.song-item:hover .marquee-wrapper.is-overflowing .marquee-content>span:first-child {
+    padding-right: 40px;
+}
+
+@keyframes marquee {
+    from {
+        transform: translateX(0);
+    }
+
+    to {
+        transform: translateX(-50%);
+    }
+}
+
+.settings-button {
+    background-color: var(--bg-darkest);
+    color: var(--text-secondary);
+    border: 1px solid var(--bg-light);
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.settings-button:hover {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+}
+
+#devices-modal {
+    background-color: var(--bg-light);
+    padding: 25px;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    max-height: 85vh;
+}
+
+#devices-modal h2,
+#devices-modal p {
+    flex-shrink: 0;
+}
+
+#devices-modal p {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-bottom: 20px;
+}
+
+.checkbox-group-vertical {
+    overflow-y: auto;
+    border-top: 1px solid var(--bg-dark);
+    border-bottom: 1px solid var(--bg-dark);
+    padding: 10px 0;
+}
+
+.checkbox-group-vertical label {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.checkbox-group-vertical label:hover {
+    background-color: var(--bg-hover);
+}
+
+.checkbox-group-vertical input[type="checkbox"] {
+    margin-right: 15px;
+    width: 18px;
+    height: 18px;
+}
+
+#modal-overlay,
+#settings-modal-overlay,
+#loading-overlay,
+#devices-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 5vh;
+    box-sizing: border-box;
+    z-index: 1000;
+}
+
+#settings-modal .setting-child-item {
+    margin-top: 10px;
+    padding-left: 20px;
+}
+
+#settings-modal .setting-child-item label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 5px;
+}
+
+#settings-modal .setting-child-item input[type="range"] {
+    width: 100%;
+}
+
+/* --- グラフィックEQのスタイル (設定モーダル内) --- */
+#graphic-eq-container {
+    padding-top: 15px;
+}
+
+.graphic-eq-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+#graphic-eq-preset-select {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    border: 1px solid var(--bg-medium);
+    border-radius: 4px;
+    padding: 5px 8px;
+}
+
+#graphic-eq-reset-btn {
+    background: none;
+    border: 1px solid var(--bg-light);
+    color: var(--text-secondary);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+#graphic-eq-reset-btn:hover {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+}
+
+#graphic-eq-canvas {
+    width: 100%;
+    height: 180px;
+    background-color: var(--bg-darkest);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* Placeholder for artwork in Light Flight mode */
+.placeholder-artwork {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    background-color: var(--bg-medium);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.placeholder-artwork::before {
+    content: '🎵';
+    font-size: 48px;
+    color: var(--bg-light);
+    opacity: 0.5;
+}
+
+/* For artist view (round) */
+.artist-artwork.placeholder-artwork {
+    border-radius: 50%;
+}
+
+/* 未転送曲検出セクション */
+.sync-section {
+    padding: 16px;
+    background: var(--bg-tertiary, #222);
+    border-bottom: 1px solid var(--border-color, #333);
+}
+
+.sync-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.sync-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.primary-button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent-color, #7289da);
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+}
+
+.primary-button:hover {
+    background: var(--accent-color-hover, #5b6eae);
+}
+
+.primary-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.sync-status {
+    font-size: 13px;
+    color: var(--text-secondary, #888);
+    min-height: 20px;
+}
+
+.untransferred-list {
+    max-height: 200px;
+    overflow-y: auto;
+    margin: 12px 0;
+    border-radius: 6px;
+    background: var(--bg-secondary, #1a1a1a);
+}
+
+.untransferred-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color, #333);
+    font-size: 13px;
+}
+
+.untransferred-item:last-child {
+    border-bottom: none;
+}
+
+.untransferred-item .song-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.untransferred-item .song-artist {
+    color: var(--text-secondary, #888);
+    font-size: 12px;
+}
+
+.sync-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.sync-actions span {
+    font-size: 13px;
+    color: var(--text-secondary, #888);
+}

@@ -1,37 +1,115 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file: safe-artwork:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file: safe-artwork:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
     <title>UX Music</title>
     <link rel="stylesheet" href="./styles/base.css">
     <link rel="stylesheet" href="./styles/layout.css">
     <link rel="stylesheet" href="./styles/components.css">
     <link rel="stylesheet" href="./styles/views.css">
+    <link rel="stylesheet" href="./styles/quiz-view.css">
+    <link rel="stylesheet" href="./styles/normalize-view.css">
+    <link rel="stylesheet" href="./styles/equalizer.css">
+    <link rel="stylesheet" href="./styles/edit-metadata.css">
+    <link rel="stylesheet" href="./styles/lrc-editor.css">
+    <link rel="stylesheet" href="./styles/mtp-browser.css">
 </head>
+
 <body>
     <div class="title-bar"></div>
     <div class="container">
         <div class="sidebar left-sidebar">
-                <p>UX Music <span id="app-version"></span></p>
+            <p>UX Music <span id="app-version"></span></p>
+            <div class="search-box-container" style="padding: 0 20px 15px 20px;">
+                <input type="search" id="search-input" placeholder="検索..."
+                    style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; outline: none;">
+            </div>
             <div class="nav-links">
                 <a href="#" class="nav-link active" data-view="track-view">曲</a>
                 <a href="#" class="nav-link" data-view="album-view">アルバム</a>
                 <a href="#" class="nav-link" data-view="situation-view">For You</a>
                 <a href="#" class="nav-link" data-view="playlist-view">プレイリスト</a>
                 <a href="#" class="nav-link" data-view="artist-view">アーティスト</a>
+                <a href="#" id="quiz-view-btn" class="nav-link hidden" data-view="quiz-view">クイズ</a>
+            </div>
+            <!-- デバイスセクション -->
+            <div id="devices-section" class="sidebar-section hidden">
+                <p class="sidebar-section-title">デバイス</p>
+                <div id="devices-list">
+                    <a href="#" id="mtp-device-nav-link" class="nav-link device-link" data-view="mtp-browser-view">
+                        <span class="device-icon">📱</span>
+                        <span id="mtp-device-nav-name">MTPデバイス</span>
+                    </a>
+                </div>
             </div>
             <div class="sidebar-actions">
-                <button id="add-network-folder-btn">+ ネットワークフォルダを追加</button>
-                <button id="add-youtube-btn">+ YouTubeリンクを追加</button>
-                <button id="add-youtube-playlist-btn">+ YouTubeプレイリストを追加</button>
-                <button id="set-library-btn">ライブラリ場所設定</button>
-                <button id="light-flight-mode-btn">✈️ Light Flightモード</button>
-                <button id="open-settings-btn">設定</button>
+                <div id="library-actions-container">
+                    <button id="library-actions-btn" class="sidebar-action-button">
+                        <span>+</span> ライブラリを管理
+                    </button>
+                    <div id="library-actions-popup" class="hidden">
+                        <button id="add-network-folder-btn" class="popup-action-button">ネットワークフォルダを追加</button>
+                        <button id="add-youtube-btn" class="popup-action-button hidden"
+                            data-feature="youtube">YouTubeリンクを追加</button>
+                        <button id="add-youtube-playlist-btn" class="popup-action-button hidden"
+                            data-feature="youtube">YouTubeプレイリストを追加</button>
+                        <button id="set-library-btn" class="popup-action-button">ライブラリ場所設定</button>
+                        <div class="popup-divider"></div>
+                        <button id="normalize-view-btn" class="popup-action-button">音量をノーマライズ</button>
+                        <button id="cd-rip-view-btn" class="popup-action-button">CDからインポート (Beta)</button>
+                    </div>
+                </div>
+                <button id="light-flight-mode-btn" class="sidebar-action-button">✈️ Light Flightモード</button>
+                <button id="open-settings-btn" class="sidebar-action-button">設定</button>
             </div>
         </div>
-        <main class="main-content" id="main-content">
+
+        <div class="main-column">
+            <main class="main-content" id="main-content">
             </main>
+
+            <div id="lrc-editor-view" class="view-container hidden"></div>
+            <div id="normalize-view" class="view-container hidden"></div>
+            <div id="quiz-view" class="view-container hidden"></div>
+            <div id="mtp-transfer-view" class="view-container hidden"></div>
+            <div id="cd-rip-view" class="view-container hidden"></div>
+
+            <!-- MTPストレージブラウザ -->
+            <div id="mtp-browser-view" class="view-container hidden">
+                <!-- デバイス情報ヘッダー -->
+                <div class="mtp-device-header">
+                    <div class="mtp-device-header-icon">📱</div>
+                    <div class="mtp-device-header-info">
+                        <h2 id="mtp-header-device-name">デバイス</h2>
+                        <p id="mtp-header-storage-info">ストレージ情報</p>
+                    </div>
+                    <div id="mtp-header-storage-bar" class="mtp-header-storage-bar">
+                        <div id="mtp-header-storage-used"></div>
+                    </div>
+                </div>
+
+                <!-- ツールバー -->
+                <div class="mtp-browser-toolbar">
+                    <button id="mtp-browser-back-btn" disabled title="戻る">←</button>
+                    <button id="mtp-browser-forward-btn" disabled title="進む">→</button>
+                    <div id="mtp-browser-breadcrumb" class="breadcrumb">
+                        <span class="breadcrumb-item">📱 デバイス</span>
+                    </div>
+                    <button id="mtp-browser-refresh-btn" title="更新">🔄</button>
+                    <button id="mtp-browser-close-btn" title="閉じる">✕</button>
+                </div>
+
+                <!-- ファイルリスト -->
+                <div id="mtp-browser-content" class="mtp-file-list">
+                    <p class="mtp-empty">ストレージを選択してください</p>
+                </div>
+            </div>
+
+        </div>
+
         <div id="resizer" class="resizer-vertical"></div>
         <div class="sidebar right-sidebar">
             <div id="now-playing-container">
@@ -44,16 +122,17 @@
                             <span>曲を選択してください</span>
                         </div>
                     </h2>
-                    <p id="now-playing-artist" class="marquee-wrapper">
+                    <div id="now-playing-artist" class="marquee-wrapper">
                         <div class="marquee-content">
                             <span></span>
                         </div>
-                    </p>
+                    </div>
                     <div id="hub-link-container"></div>
                 </div>
                 <div class="sidebar-tabs">
                     <button class="sidebar-tab-btn active" data-tab="lyrics-container">歌詞</button>
                     <button class="sidebar-tab-btn" data-tab="queue-container">再生キュー</button>
+                    <button class="sidebar-tab-btn" data-tab="equalizer-container">EQ</button>
                 </div>
                 <div id="lyrics-container" class="sidebar-tab-content active">
                     <div id="lyrics-view">
@@ -65,32 +144,88 @@
                         <p class="no-lyrics">再生キューは空です</p>
                     </div>
                 </div>
+                <div id="equalizer-container" class="sidebar-tab-content">
+                    <div id="equalizer-view"></div>
+                </div>
             </div>
         </div>
     </div>
+
     <footer class="playback-bar">
+        <div id="footer-artwork-container" class="footer-artwork-container hidden">
+            <img id="footer-artwork" src="./assets/default_artwork.png" alt="Now Playing">
+        </div>
         <div class="playback-controls">
             <button id="shuffle-btn" class="playback-mode-btn" title="シャッフル">
-                <img src="./assets/icons/random.svg" alt="Shuffle">
+                <svg class="shuffle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <!-- 交差する2本のパス（strokeDashoffset でスライド） -->
+                    <path class="shuffle-path-top" d="M 2 18 L 7 18 C 10 18 14 6 17 6 L 22 6" />
+                    <!-- V字の矢印先端（translateX で同期スライド） -->
+                    <path class="shuffle-head-top" d="M 19 3 L 22 6 L 19 9" />
+                    <path class="shuffle-path-bottom" d="M 2 6 L 7 6 C 10 6 14 18 17 18 L 22 18" />
+                    <path class="shuffle-head-bottom" d="M 19 15 L 22 18 L 19 21" />
+                </svg>
             </button>
             <button id="prev-btn" class="control-btn">
                 <img src="./assets/icons/rewind_skip.svg" alt="Previous">
             </button>
             <button id="play-pause-btn" class="play-btn">
-                <img src="./assets/icons/play.svg" alt="Play">
+                <svg class="play-pause-icon" viewBox="0 0 24 24">
+                    <path class="icon-part-1" d="M 8 5 L 18 12 L 8 12 L 8 5 Z"></path>
+                    <path class="icon-part-2" d="M 8 19 L 18 12 L 8 12 L 8 19 Z"></path>
+                </svg>
             </button>
             <button id="next-btn" class="control-btn">
                 <img src="./assets/icons/next_skip.svg" alt="Next">
             </button>
             <button id="loop-btn" class="playback-mode-btn" title="リピート">
-                <img src="./assets/icons/repeat.svg" alt="Loop">
+                <svg class="loop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <!-- 上弧（左→右）: strokeDashoffset でスライド -->
+                    <path class="loop-path-top" d="M3 12 a5 5 0 0 1 5-5 H21" />
+                    <!-- 右側 V字矢印: translateX で同期（上弧と同じ方向） -->
+                    <path class="loop-head-top" d="M18 4 L21 7 L18 10" />
+                    <!-- 下弧（右→左）: strokeDashoffset でスライド（逆方向） -->
+                    <path class="loop-path-bottom" d="M21 12 a5 5 0 0 1-5 5 H3" />
+                    <!-- 左側 V字矢印: translateX で同期（下弧と同じ方向 = 左） -->
+                    <path class="loop-head-bottom" d="M6 14 L3 17 L6 20" />
+                </svg>
             </button>
         </div>
+
         <div class="progress-container">
             <span id="current-time">0:00</span>
-            <input type="range" id="progress-bar" value="0" step="1">
+            <input type="range" id="progress-bar" value="0" step="any">
             <span id="total-duration">0:00</span>
         </div>
+
+        <div class="audio-info-container">
+            <button id="audio-info-btn" type="button" aria-label="音声情報">
+                <svg class="waveform-icon" width="100" height="50" viewBox="0 0 100 50"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <path class="wave-1" d="M 10 15 C 20 5, 40 5, 50 25 S 80 45, 90 35" stroke="currentColor"
+                        stroke-width="2" fill="none" />
+                    <path class="wave-2" d="M 10 25 C 23 10, 40 15, 50 25 S 80 38, 90 25" stroke="currentColor"
+                        stroke-width="2" fill="none" />
+                    <path class="wave-3" d="M 10 35 C 20 20, 40 20, 50 25 S 80 30, 90 15" stroke="currentColor"
+                        stroke-width="2" fill="none" />
+                </svg>
+            </button>
+            <div id="audio-info-tooltip" class="audio-info-tooltip" role="tooltip">
+                <div class="audio-info-row">
+                    <span class="audio-info-label">サンプリングレート</span>
+                    <span id="audio-info-sample-rate" class="audio-info-value">-</span>
+                </div>
+                <div class="audio-info-row">
+                    <span class="audio-info-label">ビット数</span>
+                    <span id="audio-info-bit-depth" class="audio-info-value">-</span>
+                </div>
+                <div class="audio-info-row">
+                    <span class="audio-info-label">ファイル形式</span>
+                    <span id="audio-info-format" class="audio-info-value">-</span>
+                </div>
+            </div>
+        </div>
+
         <div class="volume-container">
             <button id="volume-icon-btn">
                 <img id="volume-icon" src="./assets/icons/bigger_sound.svg" alt="Volume">
@@ -102,9 +237,28 @@
                 <img src="./assets/icons/airplay.svg" alt="Devices">
             </button>
             <div id="device-popup" class="device-popup">
+            </div>
+
+            <button id="mtp-device-button" class="hidden" title="MTPデバイス">
+                <span>📱</span>
+            </button>
+            <div id="mtp-device-popup" class="device-popup">
+                <div class="mtp-device-info">
+                    <h4 id="mtp-device-name">デバイス名</h4>
+                    <div class="mtp-storage-bar">
+                        <div id="mtp-storage-used"></div>
+                    </div>
+                    <small id="mtp-storage-label">空き容量 (使用/合計)</small>
                 </div>
+                <div class="mtp-device-actions">
+                    <button id="mtp-browse-storage-btn">📂 ストレージを参照</button>
+                    <button id="mtp-transfer-queue-btn">キューを転送</button>
+                    <button id="mtp-eject-btn">デバイスを取り外す</button>
+                </div>
+            </div>
         </div>
     </footer>
+
     <div id="modal-overlay" class="hidden">
         <div id="modal">
             <h3>ネットワークフォルダのパス</h3>
@@ -116,135 +270,248 @@
             </div>
         </div>
     </div>
-    <div id="loading-overlay" class="hidden">
-        <div class="spinner"></div>
-        <p class="loading-text">ライブラリをスキャン中...</p>
-    </div>
-
-<div id="settings-modal-overlay" class="hidden">
-    <div id="settings-modal">
-        <h2>設定</h2>
-        
-        <div class="settings-content">
-            <div class="setting-group">
-                <div class="setting-item">
-                    <h4>インポートモード</h4>
-                    <p class="setting-description">楽曲のインポート時のCPU使用率を選択します。</p>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="import-mode" value="balanced">
-                            <div>
-                                <strong>バランスモード (推奨)</strong>
-                                <small>他の作業への影響を抑えつつ、効率的にインポートします。</small>
+    <div id="settings-modal-overlay" class="hidden">
+        <div id="settings-modal">
+            <h2 id="settings-title">設定</h2>
+            <div class="settings-content">
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>オーディオデバイス</h4>
+                        <p class="setting-description">再生に使用するオーディオデバイスの表示/非表示を管理します。</p>
+                        <button id="manage-devices-btn" class="settings-button">表示するデバイスを管理...</button>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>グラフィックイコライザー</h4>
+                        <p class="setting-description">各周波数帯のゲインを細かく調整します。</p>
+                        <div id="graphic-eq-container"></div>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>インポートモード</h4>
+                        <p class="setting-description">楽曲のインポート時のCPU使用率を選択します。</p>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="import-mode" value="balanced">
+                                <div>
+                                    <strong>バランスモード (推奨)</strong>
+                                    <small>他の作業への影響を抑えつつ、効率的にインポートします。</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="radio" name="import-mode" value="performance">
+                                <div>
+                                    <strong>パフォーマンスモード</strong>
+                                    <small>CPUを最大限活用して最速でインポートします。PCが重くなる場合があります。</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>CDリッピングモード (Beta)</h4>
+                        <p class="setting-description">CD読み取りの精度と速度のバランスを設定します。</p>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="cd-rip-mode" value="paranoia" checked>
+                                <div>
+                                    <strong>高品質 (推奨)</strong>
+                                    <small>読み取りエラーを徹底的に訂正します。時間はかかりますが最も正確です。</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="radio" name="cd-rip-mode" value="burst">
+                                <div>
+                                    <strong>高速 (バースト)</strong>
+                                    <small>エラー訂正を省略して高速に読み取ります。傷の少ないディスクにおすすめです。</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>ビジュアライザーモード</h4>
+                        <p class="setting-description">再生中の曲のインジケーターのアニメーションを選択します。</p>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="visualizer-mode" value="active">
+                                <div>
+                                    <strong>アクティブ (推奨)</strong>
+                                    <small>音声をリアルタイムで解析して描画します。CPUを少し使用します。</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="radio" name="visualizer-mode" value="static">
+                                <div>
+                                    <strong>スタティック (軽量)</strong>
+                                    <small>シンプルなアニメーションを繰り返します。CPU負荷を軽減します。</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-group hidden" data-feature="youtube">
+                    <div class="setting-item">
+                        <h4>YouTube再生モード</h4>
+                        <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="youtube-mode" value="download">
+                                <div>
+                                    <strong>ダウンロードモード (推奨)</strong>
+                                    <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="radio" name="youtube-mode" value="stream">
+                                <div>
+                                    <strong>ストリーミングモード</strong>
+                                    <small>すぐに再生できますが、再生先の変更はできず、音と映像が同期されます。</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-group hidden" data-feature="youtube" id="youtube-quality-group">
+                    <div class="setting-item">
+                        <h4>ダウンロード品質</h4>
+                        <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="youtube-quality" value="full">
+                                <div>
+                                    <strong>最高品質</strong>
+                                    <small>映像と音声をダウンロードします。(MP4)</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="radio" name="youtube-quality" value="audio_only">
+                                <div>
+                                    <strong>音声のみ (省データ)</strong>
+                                    <small>音声のみをダウンロードし、通信量と保存容量を節約します。(M4A)</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>その他</h4>
+                        <div class="checkbox-group">
+                            <label>
+                                <input type="checkbox" name="group-album-art">
+                                <div>
+                                    <strong>アルバムアートをグループ化して表示</strong>
+                                    <small>同じアルバムの曲が続く場合、アートワークをまとめて表示を簡略化します。</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="checkbox" name="enable-analysed-queue">
+                                <div>
+                                    <strong>Analysed Queueを有効にする</strong>
+                                    <small>再生傾向を分析し、スキップされがちな曲をキューに入りにくくします。</small>
+                                </div>
+                            </label>
+                            <div id="analysed-queue-options" class="setting-child-item hidden">
+                                <label for="analysed-queue-decay-slider">スコアの有効期間: <span
+                                        id="analysed-queue-decay-value">7日</span></label>
+                                <input type="range" id="analysed-queue-decay-slider" min="0" max="4" value="2" step="1">
                             </div>
-                        </label>
-                        <label>
-                            <input type="radio" name="import-mode" value="performance">
-                            <div>
-                                <strong>パフォーマンスモード</strong>
-                                <small>CPUを最大限活用して最速でインポートします。PCが重くなる場合があります。</small>
+                            <label>
+                                <input type="checkbox" name="enable-easter-eggs">
+                                <div>
+                                    <strong>イースターエッグを有効にする</strong>
+                                    <small>特別なプレイリストなど、隠し機能をお楽しみいただけます。</small>
+                                </div>
+                            </label>
+                            <div class="setting-child-item">
+                                <strong>高度な設定</strong>
+                                <p class="setting-description">FLACファイルのシークを高速化するためのインデックスを一括構築します。</p>
+                                <button id="build-flac-indexes-btn" class="settings-button">FLACシークインデックスを構築</button>
+                                <div id="flac-index-progress-container" class="hidden" style="margin-top: 10px;">
+                                    <div class="progress-bar-bg"
+                                        style="width: 100%; height: 8px; background: #333; border-radius: 4px; overflow: hidden;">
+                                        <div id="flac-index-progress-bar"
+                                            style="width: 0%; height: 100%; background: #007bff; transition: width 0.3s;">
+                                        </div>
+                                    </div>
+                                    <small id="flac-index-status"
+                                        style="display: block; margin-top: 5px; color: #aaa;">準備中...</small>
+                                </div>
                             </div>
-                        </label>
+                        </div>
                     </div>
                 </div>
             </div>
-            
-            <div class="setting-group">
-                <div class="setting-item">
-                    <h4>ビジュアライザーモード</h4>
-                    <p class="setting-description">再生中の曲のインジケーターのアニメーションを選択します。</p>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="visualizer-mode" value="active">
-                            <div>
-                                <strong>アクティブ (推奨)</strong>
-                                <small>音声をリアルタイムで解析して描画します。CPUを少し使用します。</small>
-                            </div>
-                        </label>
-                        <label>
-                            <input type="radio" name="visualizer-mode" value="static">
-                            <div>
-                                <strong>スタティック (軽量)</strong>
-                                <small>シンプルなアニメーションを繰り返します。CPU負荷を軽減します。</small>
-                            </div>
-                        </label>
-                    </div>
-                </div>
+            <div class="modal-buttons">
+                <button id="settings-ok-btn">OK</button>
             </div>
-            
-            <div class="setting-group">
-                <div class="setting-item">
-                    <h4>YouTube再生モード</h4>
-                    <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="youtube-mode" value="download">
-                            <div>
-                                <strong>ダウンロードモード (推奨)</strong>
-                                <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
-                            </div>
-                        </label>
-                        <label>
-                            <input type="radio" name="youtube-mode" value="stream">
-                            <div>
-                                <strong>ストリーミングモード</strong>
-                                <small>すぐに再生できますが、再生先の変更はできず、音と映像が同期されます。</small>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="setting-group" id="youtube-quality-group">
-                <div class="setting-item">
-                    <h4>ダウンロード品質</h4>
-                    <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="youtube-quality" value="full">
-                            <div>
-                                <strong>最高品質</strong>
-                                <small>映像と音声をダウンロードします。(MP4)</small>
-                            </div>
-                        </label>
-                        <label>
-                            <input type="radio" name="youtube-quality" value="audio_only">
-                            <div>
-                                <strong>音声のみ (省データ)</strong>
-                                <small>音声のみをダウンロードし、通信量と保存容量を節約します。(M4A)</small>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="setting-group">
-                <div class="setting-item">
-                    <h4>その他</h4>
-                    <div class="checkbox-group">
-                        <label>
-                            <input type="checkbox" name="enable-easter-eggs">
-                            <div>
-                                <strong>イースターエッグを有効にする</strong>
-                                <small>特別なプレイリストなど、隠し機能をお楽しみいただけます。</small>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-            </div>
-            </div>
-        <div class="modal-buttons">
-            <button id="settings-ok-btn">OK</button>
         </div>
     </div>
-</div>
-
+    <div id="devices-modal-overlay" class="hidden">
+        <div id="devices-modal">
+            <h2>表示するオーディオデバイス</h2>
+            <p>再生先デバイスの一覧に表示するものを選択してください。</p>
+            <div id="devices-list" class="checkbox-group-vertical">
+            </div>
+            <div class="modal-buttons">
+                <button id="devices-ok-btn">OK</button>
+            </div>
+        </div>
+    </div>
+    <div id="loading-overlay" class="hidden">
+        <div class="spinner"></div>
+        <p class="loading-text">処理中...</p>
+    </div>
     <div id="notification-toast" class="hidden">
         <p id="notification-text"></p>
     </div>
-    
+
+    <div id="edit-metadata-modal-overlay" class="hidden">
+        <div id="edit-metadata-modal">
+            <h2>楽曲情報を編集</h2>
+            <div class="edit-metadata-content">
+                <div class="edit-artwork-section">
+                    <img id="edit-artwork-preview" src="./assets/default_artwork.png" alt="Artwork Preview">
+                    <input type="file" id="edit-artwork-input" accept="image/png, image/jpeg, image/webp"
+                        style="display: none;">
+                    <button id="edit-artwork-change-btn">アートワークを変更...</button>
+                    <button id="edit-artwork-remove-btn">アートワークを削除</button>
+                    <p id="edit-artwork-error" class="error-message hidden"></p>
+                </div>
+                <div class="edit-fields-section">
+                    <div class="edit-field">
+                        <label for="edit-title">タイトル:</label>
+                        <input type="text" id="edit-title">
+                    </div>
+                    <div class="edit-field">
+                        <label for="edit-artist">アーティスト:</label>
+                        <input type="text" id="edit-artist">
+                    </div>
+                    <div class="edit-field">
+                        <label for="edit-album">アルバム:</label>
+                        <input type="text" id="edit-album">
+                    </div>
+                    <div class="edit-field">
+                        <label for="edit-genre">ジャンル:</label>
+                        <input type="text" id="edit-genre">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button id="edit-metadata-cancel-btn">キャンセル</button>
+                <button id="edit-metadata-save-btn">保存</button>
+            </div>
+        </div>
+    </div>
+
     <video id="main-player" playsinline></video>
     <script type="module" src="./renderer.js" defer></script>
 
 </body>
+
 </html>

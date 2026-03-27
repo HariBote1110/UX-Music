@@ -1,4 +1,4 @@
-import { elements } from '../state.js';
+import { elements } from '../core/state.js';
 
 let notificationTimeout;
 

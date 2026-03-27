@@ -3,7 +3,19 @@
 .container {
     display: flex;
     flex-grow: 1;
-    height: calc(100% - 122px);
+    /* タイトルバーを除いた画面全体の高さを確保し、リストを最下部まで伸ばす */
+    height: calc(100vh - 32px);
+    overflow: hidden;
+    position: relative;
+
+    /* 画面下部（85%〜100%の位置）にかけてフェードアウトさせるマスク */
+    -webkit-mask-image: linear-gradient(to bottom, black 95%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+}
+
+body.resizing {
+    cursor: col-resize;
+    user-select: none;
 }
 
 .title-bar {
@@ -11,17 +23,32 @@
     background-color: var(--bg-light);
     width: 100%;
     -webkit-app-region: drag;
+    --wails-draggable: drag;
     flex-shrink: 0;
+}
+
+.main-column {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
 }
 
 .main-content {
     flex-grow: 1;
-    padding: 20px;
     overflow-y: auto;
-    min-width: 0; /* flexアイテムの縮小問題を解決 */
+    display: flex;
+    flex-direction: column;
+    /* 最後までスクロールした際に、コントロールバーの上にコンテンツが出るように大きな余白を設定 */
+    padding-bottom: 0px;
 }
 
-/* メインコンテンツのスクロールバーをスタイリング */
+.main-content .view-container {
+    padding: 10px;
+    box-sizing: border-box;
+    padding-bottom: 0px;
+}
+
 .main-content::-webkit-scrollbar {
     width: 8px;
 }
@@ -41,8 +68,11 @@
 
 
 .sidebar {
-    background-color: var(--bg-darkest);
+    background-color: #1a1a1c;
+    /* 少しだけ暗いトーンで区別しつつ馴染ませる */
     padding: 20px;
+    /* スペーサーで制御するため、固定の余白は削除。動的な余白を追加 */
+    padding-bottom: var(--footer-height, 0px);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -60,21 +90,77 @@
     flex-shrink: 0;
     border-left: 1px solid var(--bg-light);
     padding: 24px;
+    /* スペーサーで制御するため、固定の余白は削除 */
+    padding-bottom: 0px;
+    transition: width 0.25s ease, min-width 0.25s ease, padding 0.25s ease, border-color 0.25s ease;
+    overflow: hidden;
 }
 
+.right-sidebar.collapsed {
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    overflow: hidden;
+    border-left-color: transparent;
+}
+
+/* 折り畳み状態でもリサイザーの見た目は変えない（クリックで展開） */
+.resizer-vertical.sidebar-collapsed {
+    cursor: pointer;
+}
+
+.footer-artwork-container {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+
+.footer-artwork-container img {
+    width: 40px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+/* コントロールバーを画面下部に浮遊（絶対配置）させる */
 .playback-bar {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+
     display: flex;
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 20px;
+
+    padding: 8px 24px;
     box-sizing: border-box;
-    border-top: 1px solid var(--bg-light);
-    background-color: var(--bg-medium);
-    height: 90px;
-    width: 100%;
+
+    border-top: none;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+
+    background-color: rgba(20, 20, 22, 0.15);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+
+    height: auto;
+    min-height: 40px;
+
+    width: auto;
+    /* max-width を削除してフルスクリーンでも伸びるように */
+    margin: 0 auto;
+
     flex-shrink: 0;
+
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+
+    z-index: 1000;
+
 }
+
 
 .resizer-vertical {
     width: 5px;
@@ -85,11 +171,11 @@
     border-right: 1px solid var(--bg-light);
     transition: background-color 0.2s;
 }
+
 .resizer-vertical:hover {
     background: linear-gradient(180deg, var(--highlight-pink), var(--highlight-blue));
 }
 
-/* 起動時にプレーヤー要素がUIを崩さないようにデフォルトで非表示にする */
 #main-player {
     display: none;
 }
