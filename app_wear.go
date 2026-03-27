@@ -224,13 +224,14 @@ func getOrTranscode(songID, inputPath string) (string, error) {
 
 	cmd := exec.Command(ffmpegPath,
 		"-i", inputPath,
-		"-c:a", "aac",      // AAC codec (native to watchOS)
-		"-b:a", "128k",     // 128 kbps — good balance for Watch speaker / earbuds
-		"-ar", "44100",     // 44.1 kHz sample rate
-		"-ac", "2",         // stereo
-		"-vn",              // strip video / embedded artwork (saves space)
+		"-c:a", "aac",        // AAC codec (native to watchOS)
+		"-b:a", "128k",       // 128 kbps — good balance for Watch speaker / earbuds
+		"-ar", "44100",       // 44.1 kHz sample rate
+		"-ac", "2",           // stereo
+		"-vn",                // strip video / embedded artwork (saves space)
 		"-map_metadata", "0", // preserve title/artist/album tags
-		"-y",               // overwrite output without asking
+		"-f", "mp4",          // explicit container format (temp file has .tmp extension)
+		"-y",                 // overwrite output without asking
 		tmpPath,
 	)
 
