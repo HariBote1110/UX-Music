@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/song.dart';
-import '../services/api_client.dart';
 import '../services/download_manager.dart';
 import 'library_provider.dart';
 
@@ -14,17 +13,14 @@ final downloadManagerProvider = Provider<DownloadManager>((ref) {
 /// Tracks download progress: songID → progress (0.0 to 1.0), or null if not downloading.
 final downloadProgressProvider =
     StateNotifierProvider<DownloadProgressNotifier, Map<String, double>>(
-  (ref) => DownloadProgressNotifier(
-    ref.read(apiClientProvider),
-    ref.read(downloadManagerProvider),
-  ),
+  // Pass Ref directly so the notifier always reads the latest ApiClient
+  (ref) => DownloadProgressNotifier(ref),
 );
 
 class DownloadProgressNotifier extends StateNotifier<Map<String, double>> {
-  DownloadProgressNotifier(this._client, this._manager) : super({});
+  DownloadProgressNotifier(this._ref) : super({});
 
-  final ApiClient _client;
-  final DownloadManager _manager;
+  final Ref _ref;
 
   bool isDownloading(String songId) => state.containsKey(songId);
 
@@ -32,8 +28,11 @@ class DownloadProgressNotifier extends StateNotifier<Map<String, double>> {
     if (state.containsKey(song.id)) return; // already downloading
     state = {...state, song.id: 0.0};
 
+    final client = _ref.read(apiClientProvider);
+    final manager = _ref.read(downloadManagerProvider);
+
     try {
-      await _client.downloadFile(
+      await client.downloadFile(
         song.id,
         onProgress: (received, total) {
           if (total > 0) {
@@ -41,7 +40,7 @@ class DownloadProgressNotifier extends StateNotifier<Map<String, double>> {
           }
         },
       );
-      await _manager.register(song);
+      await manager.register(song);
     } finally {
       state = Map.from(state)..remove(song.id);
     }

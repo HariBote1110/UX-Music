@@ -15,6 +15,7 @@ abstract class ServerConfig with _$ServerConfig {
   factory ServerConfig.fromJson(Map<String, dynamic> json) =>
       _$ServerConfigFromJson(json);
 
-  String get baseUrl => 'http://$host:$port';
+  String get baseUrl =>
+      host.isNotEmpty ? 'http://$host:$port' : 'http://localhost:$port';
   bool get isConfigured => host.isNotEmpty;
 }

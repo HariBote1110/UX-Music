@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/song.dart';
 import '../providers/download_provider.dart';
 import '../providers/library_provider.dart';
 import '../providers/playback_provider.dart';
@@ -21,13 +22,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   void initState() {
     super.initState();
     // Fetch library on first load
-    Future.microtask(() => ref.read(libraryProvider.notifier).refresh());
+    Future.microtask(() {
+      ref.read(libraryProvider.notifier).refresh();
+      ref.read(loudnessMapProvider.notifier).refresh();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final libraryState = ref.watch(libraryProvider);
-    final downloads = ref.watch(downloadProgressProvider);
+    final downloadProgress = ref.watch(downloadProgressProvider);
     final downloadManager = ref.watch(downloadManagerProvider);
     final client = ref.watch(apiClientProvider);
     final player = ref.read(musicPlayerProvider);
@@ -69,8 +73,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   children: [
                     const Icon(Icons.wifi_off, size: 48, color: Colors.grey),
                     const SizedBox(height: 12),
-                    Text('Failed to load library',
-                        style: TextStyle(color: Colors.grey[400])),
+                    Text(
+                      'Failed to load library',
+                      style: TextStyle(color: Colors.grey[400]),
+                    ),
                     const SizedBox(height: 8),
                     OutlinedButton(
                       onPressed: () =>
@@ -106,12 +112,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   itemBuilder: (context, index) {
                     final song = filtered[index];
                     final isDownloaded = downloadManager.isDownloaded(song.id);
-                    final progress = downloads[song.id];
+                    final progress = downloadProgress[song.id];
 
                     return SongTile(
                       song: song,
                       artworkUrl: client.artworkUrl(song.id),
-                      trailing: _buildTrailingWidget(
+                      trailing: _buildTrailing(
                         isDownloaded: isDownloaded,
                         progress: progress,
                         onDownload: () => ref
@@ -119,7 +125,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                             .download(song),
                       ),
                       onTap: isDownloaded
-                          ? () => _playLocal(player, downloadManager, song, filtered)
+                          ? () => _playLocal(
+                                player, downloadManager, song, filtered)
                           : null,
                     );
                   },
@@ -132,7 +139,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
   }
 
-  Widget _buildTrailingWidget({
+  Widget _buildTrailing({
     required bool isDownloaded,
     required double? progress,
     required VoidCallback onDownload,
@@ -160,12 +167,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   void _playLocal(
     dynamic player,
     DownloadManager dm,
-    dynamic song,
-    List<dynamic> allSongs,
+    Song song,
+    List<Song> allSongs,
   ) {
-    // Build a queue of downloaded songs and play the selected one
-    final downloadedSongs = allSongs.where((s) => dm.isDownloaded(s.id)).toList();
-    // Create a copy with local path for playback
+    final downloadedSongs =
+        allSongs.where((s) => dm.isDownloaded(s.id)).toList();
     final localSong = song.copyWith(path: dm.localPath(song.id));
     final localQueue = downloadedSongs
         .map((s) => s.copyWith(path: dm.localPath(s.id)))

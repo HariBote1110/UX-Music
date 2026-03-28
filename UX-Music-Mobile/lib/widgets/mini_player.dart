@@ -11,59 +11,64 @@ class MiniPlayer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.read(musicPlayerProvider);
-    final song = player.currentSong;
-    if (song == null) return const SizedBox.shrink();
 
-    return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const NowPlayingScreen()),
-      ),
-      child: Container(
-        height: 64,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHigh,
-          border: Border(
-            top: BorderSide(color: Colors.grey[800]!, width: 0.5),
+    // Rebuild whenever playback state changes (covers song changes too)
+    return StreamBuilder<PlayerState>(
+      stream: player.playerStateStream,
+      builder: (context, _) {
+        final song = player.currentSong;
+        if (song == null) return const SizedBox.shrink();
+
+        final playing = player.player.playing;
+
+        return GestureDetector(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const NowPlayingScreen()),
           ),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            Icon(Icons.music_note, color: Colors.grey[400]),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    song.displayTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  Text(
-                    song.displayArtist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-                  ),
-                ],
+          child: Container(
+            height: 64,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHigh,
+              border: Border(
+                top: BorderSide(color: Colors.grey[800]!, width: 0.5),
               ),
             ),
-            StreamBuilder<PlayerState>(
-              stream: player.player.playerStateStream,
-              builder: (context, snap) {
-                final playing = snap.data?.playing ?? false;
-                return IconButton(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Icon(Icons.music_note, color: Colors.grey[400]),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        song.displayTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      Text(
+                        song.displayArtist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.grey[400]),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
                   icon: Icon(playing ? Icons.pause : Icons.play_arrow),
                   onPressed: () => player.togglePlayPause(),
-                );
-              },
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
