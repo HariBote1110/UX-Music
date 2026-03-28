@@ -33,7 +33,7 @@ class NowPlayingScreen extends ConsumerWidget {
           children: [
             const Spacer(),
             // Artwork
-            ArtworkImage(url: client.artworkUrl(song.id), size: 280),
+            ArtworkImage(url: client.artworkUrl(song.artworkId), size: 280),
             const SizedBox(height: 32),
             // Title / Artist
             Text(

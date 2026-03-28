@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -110,13 +111,18 @@ func wearSongsHandler(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			continue
 		}
-		clean := make(map[string]interface{}, len(song))
+		clean := make(map[string]interface{}, len(song)+1)
 		for k, v := range song {
 			if k == "artwork" {
 				continue
 			}
 			clean[k] = v
 		}
+		// Compute artwork ID (SHA256 hash of "albumArtist---album") so that
+		// mobile clients can construct a valid /wear/artwork/{artworkId} URL.
+		albumArtist, _ := song["albumartist"].(string)
+		album, _ := song["album"].(string)
+		clean["artworkId"] = computeArtworkID(albumArtist, album)
 		stripped = append(stripped, clean)
 	}
 
@@ -162,14 +168,26 @@ func wearFileHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func wearArtworkHandler(w http.ResponseWriter, r *http.Request) {
-	songID := strings.TrimPrefix(r.URL.Path, "/wear/artwork/")
-	if songID == "" {
-		http.Error(w, "missing song ID", http.StatusBadRequest)
+	// Accept either /wear/artwork/{artworkId} (hash) or
+	// a query param ?id={artworkId} for clients that cannot encode slashes.
+	artworkID := r.URL.Query().Get("id")
+	if artworkID == "" {
+		artworkID = strings.TrimPrefix(r.URL.Path, "/wear/artwork/")
+	}
+	if artworkID == "" {
+		http.Error(w, "missing artwork ID", http.StatusBadRequest)
 		return
 	}
 
 	artworksDir := filepath.Join(config.GetUserDataPath(), "Artworks")
-	artworkPath := findArtworkByID(songID, artworksDir)
+
+	// Security: artworkID must be a plain hex string (no path separators).
+	if strings.ContainsAny(artworkID, "/\\") {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	artworkPath := findArtworkByID(artworkID, artworksDir)
 	if artworkPath == "" {
 		http.NotFound(w, r)
 		return
@@ -432,6 +450,14 @@ func findSongPathByID(id string) string {
 		}
 	}
 	return ""
+}
+
+// computeArtworkID returns the hex SHA256 hash used as the artwork filename.
+// It mirrors the naming convention used by internal/scanner/artwork.go.
+func computeArtworkID(albumArtist, album string) string {
+	key := fmt.Sprintf("%s---%s", albumArtist, album)
+	h := sha256.Sum256([]byte(key))
+	return fmt.Sprintf("%x", h)
 }
 
 // findArtworkByID looks for {id}.jpg, {id}.png, or {id}.webp in artworksDir.

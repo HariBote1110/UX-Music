@@ -23,6 +23,9 @@ abstract class Song with _$Song {
     @Default('') String fileType,
     int? sampleRate,
     int? bitDepth,
+    // SHA256 hash of "albumArtist---album" — used to construct artwork URLs.
+    // Added by the /wear/songs endpoint; null on older server versions.
+    @JsonKey(name: 'artworkId') @Default('') String artworkId,
   }) = _Song;
 
   const Song._();

@@ -22,6 +22,7 @@ _Song _$SongFromJson(Map<String, dynamic> json) => _Song(
   fileType: json['fileType'] as String? ?? '',
   sampleRate: (json['sampleRate'] as num?)?.toInt(),
   bitDepth: (json['bitDepth'] as num?)?.toInt(),
+  artworkId: json['artworkId'] as String? ?? '',
 );
 
 Map<String, dynamic> _$SongToJson(_Song instance) => <String, dynamic>{
@@ -40,4 +41,5 @@ Map<String, dynamic> _$SongToJson(_Song instance) => <String, dynamic>{
   'fileType': instance.fileType,
   'sampleRate': instance.sampleRate,
   'bitDepth': instance.bitDepth,
+  'artworkId': instance.artworkId,
 };

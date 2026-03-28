@@ -54,9 +54,12 @@ class ApiClient {
     return res.data['ok'] == true;
   }
 
-  /// Build the artwork URL for a given song ID.
-  String artworkUrl(String songId) =>
-      '${_dio.options.baseUrl}/wear/artwork/$songId';
+  /// Build the artwork URL for a given artwork hash ID.
+  /// Pass [Song.artworkId] — the SHA256 hash returned by the server.
+  String artworkUrl(String artworkId) {
+    if (artworkId.isEmpty) return '';
+    return '${_dio.options.baseUrl}/wear/artwork/$artworkId';
+  }
 
   /// Download a song file to the app's documents directory.
   /// Returns the local file path. Reports progress via [onProgress].
