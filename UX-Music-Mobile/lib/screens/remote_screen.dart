@@ -59,7 +59,7 @@ class _RemoteScreenState extends ConsumerState<RemoteScreen> {
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(
+      navigationBar: const CupertinoNavigationBar(transitionBetweenRoutes: false,
         middle: Text('Remote Control'),
         backgroundColor: Color(0xFF1C1C1E),
       ),

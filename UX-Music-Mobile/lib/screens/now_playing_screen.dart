@@ -18,14 +18,14 @@ class NowPlayingScreen extends ConsumerWidget {
 
     if (song == null) {
       return const CupertinoPageScaffold(
-        navigationBar: CupertinoNavigationBar(),
+        navigationBar: CupertinoNavigationBar(transitionBetweenRoutes: false,),
         child: Center(child: Text('No song playing')),
       );
     }
 
     return CupertinoPageScaffold(
       // Transparent nav bar so the back button floats over the content
-      navigationBar: const CupertinoNavigationBar(
+      navigationBar: const CupertinoNavigationBar(transitionBetweenRoutes: false,
         backgroundColor: Colors.transparent,
         border: null,
       ),

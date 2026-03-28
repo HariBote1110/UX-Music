@@ -86,7 +86,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       onTap: _dismissKeyboard,
       behavior: HitTestBehavior.translucent,
       child: CupertinoPageScaffold(
-        navigationBar: const CupertinoNavigationBar(
+        navigationBar: const CupertinoNavigationBar(transitionBetweenRoutes: false,
           middle: Text('Settings'),
           // Fully opaque — prevents content bleeding through when scrolled up
           backgroundColor: Color(0xFF1C1C1E),

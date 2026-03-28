@@ -30,7 +30,7 @@ class _LocalLibraryScreenState extends ConsumerState<LocalLibraryScreen> {
 
     if (songs.isEmpty) {
       return CupertinoPageScaffold(
-        navigationBar: const CupertinoNavigationBar(
+        navigationBar: const CupertinoNavigationBar(transitionBetweenRoutes: false,
           middle: Text('Library'),
           backgroundColor: Color(0xFF1C1C1E),
         ),
@@ -58,7 +58,7 @@ class _LocalLibraryScreenState extends ConsumerState<LocalLibraryScreen> {
     final albums = Album.fromSongs(songs);
 
     return CupertinoPageScaffold(
-      navigationBar: CupertinoNavigationBar(
+      navigationBar: CupertinoNavigationBar(transitionBetweenRoutes: false,
         middle: Text('Library (${songs.length})'),
         backgroundColor: const Color(0xFF1C1C1E),
         trailing: SizedBox(

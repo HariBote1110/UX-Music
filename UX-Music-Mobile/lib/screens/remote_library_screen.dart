@@ -39,7 +39,7 @@ class _RemoteLibraryScreenState extends ConsumerState<RemoteLibraryScreen> {
     final libraryState = ref.watch(libraryProvider);
 
     return CupertinoPageScaffold(
-      navigationBar: CupertinoNavigationBar(
+      navigationBar: CupertinoNavigationBar(transitionBetweenRoutes: false,
         middle: const Text('Remote Library'),
         backgroundColor: const Color(0xFF1C1C1E),
         trailing: Row(
