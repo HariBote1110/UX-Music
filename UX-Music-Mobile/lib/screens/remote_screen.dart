@@ -61,7 +61,7 @@ class _RemoteScreenState extends ConsumerState<RemoteScreen> {
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(
         middle: Text('Remote Control'),
-        backgroundColor: Color(0xCC1C1C1E),
+        backgroundColor: Color(0xFF1C1C1E),
       ),
       child: _error != null && _state == null
           ? Center(

@@ -32,7 +32,7 @@ class _LocalLibraryScreenState extends ConsumerState<LocalLibraryScreen> {
       return CupertinoPageScaffold(
         navigationBar: const CupertinoNavigationBar(
           middle: Text('Library'),
-          backgroundColor: Color(0xCC1C1C1E),
+          backgroundColor: Color(0xFF1C1C1E),
         ),
         child: Center(
           child: Column(
@@ -60,7 +60,7 @@ class _LocalLibraryScreenState extends ConsumerState<LocalLibraryScreen> {
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: Text('Library (${songs.length})'),
-        backgroundColor: const Color(0xCC1C1C1E),
+        backgroundColor: const Color(0xFF1C1C1E),
         trailing: SizedBox(
           width: 88,
           child: CupertinoSlidingSegmentedControl<_ViewMode>(

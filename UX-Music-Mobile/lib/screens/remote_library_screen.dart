@@ -41,7 +41,7 @@ class _RemoteLibraryScreenState extends ConsumerState<RemoteLibraryScreen> {
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: const Text('Remote Library'),
-        backgroundColor: const Color(0xCC1C1C1E),
+        backgroundColor: const Color(0xFF1C1C1E),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
