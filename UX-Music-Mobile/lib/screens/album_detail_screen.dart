@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,11 +24,20 @@ class AlbumDetailScreen extends ConsumerWidget {
     final player = ref.read(musicPlayerProvider);
 
     return Scaffold(
+      backgroundColor: Colors.black,
       body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
         slivers: [
           SliverAppBar(
             expandedHeight: 280,
             pinned: true,
+            backgroundColor: const Color(0xFF1C1C1E),
+            // Use the Cupertino back button style
+            leading: CupertinoButton(
+              padding: const EdgeInsets.only(left: 8),
+              child: const Icon(CupertinoIcons.back, size: 28),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
             flexibleSpace: FlexibleSpaceBar(
               title: Text(
                 album.displayName,
@@ -68,12 +78,18 @@ class AlbumDetailScreen extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       album.displayArtist,
-                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                      style: const TextStyle(
+                        color: CupertinoColors.systemGrey,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
                   Text(
                     '${album.songs.length} songs',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    style: const TextStyle(
+                      color: CupertinoColors.systemGrey2,
+                      fontSize: 13,
+                    ),
                   ),
                 ],
               ),
@@ -98,7 +114,8 @@ class AlbumDetailScreen extends ConsumerWidget {
                         .download(song),
                   ),
                   onTap: isDownloaded
-                      ? () => _playLocal(player, downloadManager, song, album.songs)
+                      ? () =>
+                          _playLocal(player, downloadManager, song, album.songs)
                       : null,
                 );
               },
@@ -117,22 +134,24 @@ class AlbumDetailScreen extends ConsumerWidget {
     required VoidCallback onDownload,
   }) {
     if (isDownloaded) {
-      return const Icon(Icons.check_circle, color: Colors.green, size: 20);
-    }
-    if (progress != null) {
-      return SizedBox(
-        width: 20,
-        height: 20,
-        child: CircularProgressIndicator(
-          value: progress > 0 ? progress : null,
-          strokeWidth: 2,
-        ),
+      return const Icon(
+        CupertinoIcons.checkmark_circle_fill,
+        color: CupertinoColors.systemGreen,
+        size: 20,
       );
     }
-    return IconButton(
-      icon: const Icon(Icons.download),
-      iconSize: 20,
+    if (progress != null) {
+      return const SizedBox(
+        width: 20,
+        height: 20,
+        child: CupertinoActivityIndicator(radius: 10),
+      );
+    }
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: const Size(32, 32),
       onPressed: onDownload,
+      child: const Icon(CupertinoIcons.arrow_down_circle, size: 22),
     );
   }
 

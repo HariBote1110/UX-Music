@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/album.dart';
@@ -17,7 +17,8 @@ class RemoteLibraryScreen extends ConsumerStatefulWidget {
   const RemoteLibraryScreen({super.key});
 
   @override
-  ConsumerState<RemoteLibraryScreen> createState() => _RemoteLibraryScreenState();
+  ConsumerState<RemoteLibraryScreen> createState() =>
+      _RemoteLibraryScreenState();
 }
 
 class _RemoteLibraryScreenState extends ConsumerState<RemoteLibraryScreen> {
@@ -37,58 +38,56 @@ class _RemoteLibraryScreenState extends ConsumerState<RemoteLibraryScreen> {
   Widget build(BuildContext context) {
     final libraryState = ref.watch(libraryProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Remote Library'),
-        actions: [
-          // Album / Songs toggle
-          SegmentedButton<_ViewMode>(
-            style: ButtonStyle(
-              padding: WidgetStateProperty.all(
-                const EdgeInsets.symmetric(horizontal: 6),
+    return CupertinoPageScaffold(
+      navigationBar: CupertinoNavigationBar(
+        middle: const Text('Remote Library'),
+        backgroundColor: const Color(0xCC1C1C1E),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 84,
+              child: CupertinoSlidingSegmentedControl<_ViewMode>(
+                groupValue: _viewMode,
+                children: const {
+                  _ViewMode.albums: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 5),
+                    child: Icon(CupertinoIcons.square_grid_2x2, size: 15),
+                  ),
+                  _ViewMode.songs: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 5),
+                    child: Icon(CupertinoIcons.list_bullet, size: 15),
+                  ),
+                },
+                onValueChanged: (v) => setState(() => _viewMode = v!),
               ),
-              visualDensity: VisualDensity.compact,
             ),
-            segments: const [
-              ButtonSegment(
-                value: _ViewMode.albums,
-                icon: Icon(Icons.grid_view, size: 18),
-              ),
-              ButtonSegment(
-                value: _ViewMode.songs,
-                icon: Icon(Icons.list, size: 18),
-              ),
-            ],
-            selected: {_viewMode},
-            onSelectionChanged: (s) => setState(() => _viewMode = s.first),
-          ),
-          const SizedBox(width: 4),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              ref.read(libraryProvider.notifier).refresh();
-              ref.read(loudnessMapProvider.notifier).refresh();
-            },
-          ),
-        ],
+            CupertinoButton(
+              padding: const EdgeInsets.only(left: 4),
+              minimumSize: Size.zero,
+              onPressed: () {
+                ref.read(libraryProvider.notifier).refresh();
+                ref.read(loudnessMapProvider.notifier).refresh();
+              },
+              child: const Icon(CupertinoIcons.refresh, size: 19),
+            ),
+          ],
+        ),
       ),
-      body: Column(
+      child: Column(
         children: [
+          // Search bar
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search…',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
+            child: CupertinoSearchTextField(
+              placeholder: 'Search…',
               onChanged: (v) => setState(() => _query = v.toLowerCase()),
             ),
           ),
           Expanded(
             child: libraryState.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () =>
+                  const Center(child: CupertinoActivityIndicator(radius: 14)),
               error: (e, _) => _ErrorView(
                 onRetry: () => ref.read(libraryProvider.notifier).refresh(),
               ),
@@ -133,6 +132,7 @@ class _AlbumsGrid extends ConsumerWidget {
 
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+      physics: const BouncingScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         mainAxisSpacing: 12,
@@ -142,7 +142,10 @@ class _AlbumsGrid extends ConsumerWidget {
       itemCount: albums.length,
       itemBuilder: (context, index) {
         final album = albums[index];
-        return _AlbumCard(album: album, artworkUrl: client.artworkUrl(album.artworkId));
+        return _AlbumCard(
+          album: album,
+          artworkUrl: client.artworkUrl(album.artworkId),
+        );
       },
     );
   }
@@ -158,7 +161,7 @@ class _AlbumCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => AlbumDetailScreen(album: album)),
+        CupertinoPageRoute(builder: (_) => AlbumDetailScreen(album: album)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -182,7 +185,7 @@ class _AlbumCard extends StatelessWidget {
             album.displayArtist,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+            style: const TextStyle(fontSize: 12, color: CupertinoColors.systemGrey),
           ),
         ],
       ),
@@ -206,6 +209,7 @@ class _SongsList extends ConsumerWidget {
 
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 100),
+      physics: const BouncingScrollPhysics(),
       itemCount: songs.length,
       itemBuilder: (context, index) {
         final song = songs[index];
@@ -218,9 +222,8 @@ class _SongsList extends ConsumerWidget {
           trailing: _trailing(
             isDownloaded: isDownloaded,
             progress: progress,
-            onDownload: () => ref
-                .read(downloadProgressProvider.notifier)
-                .download(song),
+            onDownload: () =>
+                ref.read(downloadProgressProvider.notifier).download(song),
           ),
           onTap: isDownloaded
               ? () => _playLocal(player, downloadManager, song, songs)
@@ -236,22 +239,26 @@ class _SongsList extends ConsumerWidget {
     required VoidCallback onDownload,
   }) {
     if (isDownloaded) {
-      return const Icon(Icons.check_circle, color: Colors.green, size: 20);
+      return const Icon(
+        CupertinoIcons.checkmark_circle_fill,
+        color: CupertinoColors.systemGreen,
+        size: 20,
+      );
     }
     if (progress != null) {
       return SizedBox(
         width: 20,
         height: 20,
-        child: CircularProgressIndicator(
-          value: progress > 0 ? progress : null,
-          strokeWidth: 2,
+        child: CupertinoActivityIndicator(
+          radius: progress > 0 ? 10 : 10,
         ),
       );
     }
-    return IconButton(
-      icon: const Icon(Icons.download),
-      iconSize: 20,
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: const Size(32, 32),
       onPressed: onDownload,
+      child: const Icon(CupertinoIcons.arrow_down_circle, size: 22),
     );
   }
 
@@ -281,12 +288,21 @@ class _ErrorView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.wifi_off, size: 48, color: Colors.grey),
+          const Icon(
+            CupertinoIcons.wifi_slash,
+            size: 48,
+            color: CupertinoColors.systemGrey,
+          ),
           const SizedBox(height: 12),
-          Text('Failed to load library',
-              style: TextStyle(color: Colors.grey[400])),
+          const Text(
+            'Failed to load library',
+            style: TextStyle(color: CupertinoColors.systemGrey),
+          ),
           const SizedBox(height: 8),
-          OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
+          CupertinoButton(
+            onPressed: onRetry,
+            child: const Text('Retry'),
+          ),
         ],
       ),
     );
@@ -302,7 +318,7 @@ class _EmptyView extends StatelessWidget {
     return Center(
       child: Text(
         noServer ? 'No songs on server' : 'No matching songs',
-        style: TextStyle(color: Colors.grey[400]),
+        style: const TextStyle(color: CupertinoColors.systemGrey),
       ),
     );
   }

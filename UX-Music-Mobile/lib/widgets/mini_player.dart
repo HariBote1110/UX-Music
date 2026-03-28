@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
@@ -23,20 +24,20 @@ class MiniPlayer extends ConsumerWidget {
 
         return GestureDetector(
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const NowPlayingScreen()),
+            CupertinoPageRoute(builder: (_) => const NowPlayingScreen()),
           ),
           child: Container(
             height: 64,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHigh,
+              color: const Color(0xFF1C1C1E),
               border: Border(
-                top: BorderSide(color: Colors.grey[800]!, width: 0.5),
+                top: BorderSide(color: Colors.white.withValues(alpha: 0.10), width: 0.5),
               ),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                Icon(Icons.music_note, color: Colors.grey[400]),
+                Icon(CupertinoIcons.music_note, color: Colors.grey[400], size: 20),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -47,22 +48,31 @@ class MiniPlayer extends ConsumerWidget {
                         song.displayTitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style:
-                            const TextStyle(fontWeight: FontWeight.w500),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                        ),
                       ),
                       Text(
                         song.displayArtist,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey[400]),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: CupertinoColors.systemGrey,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                IconButton(
-                  icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(36, 36),
                   onPressed: () => player.togglePlayPause(),
+                  child: Icon(
+                    playing ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                    size: 22,
+                  ),
                 ),
               ],
             ),

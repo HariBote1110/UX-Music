@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/library_provider.dart';
@@ -16,6 +18,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _portController;
   String? _pingResult;
   bool _testing = false;
+  bool _saved = false;
+  Timer? _savedTimer;
 
   @override
   void initState() {
@@ -29,6 +33,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void dispose() {
     _hostController.dispose();
     _portController.dispose();
+    _savedTimer?.cancel();
     super.dispose();
   }
 
@@ -38,9 +43,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           port: int.tryParse(_portController.text) ?? 8765,
         );
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Settings saved')),
-      );
+      setState(() => _saved = true);
+      _savedTimer?.cancel();
+      _savedTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _saved = false);
+      });
     }
   }
 
@@ -52,77 +59,110 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final client = ref.read(apiClientProvider);
       final hostname = await client.ping();
-      setState(() => _pingResult = 'Connected to $hostname');
+      if (mounted) setState(() => _pingResult = 'Connected to $hostname');
     } catch (e) {
-      setState(() => _pingResult = 'Connection failed: $e');
+      if (mounted) setState(() => _pingResult = 'Connection failed: $e');
     } finally {
-      setState(() => _testing = false);
+      if (mounted) setState(() => _testing = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text('Settings'),
+        backgroundColor: Color(0xCC1C1C1E),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+        physics: const BouncingScrollPhysics(),
         children: [
+          // ── Server section ──
           const Text(
-            'Server',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            'SERVER',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: CupertinoColors.systemGrey,
+              letterSpacing: 0.5,
+            ),
           ),
-          const SizedBox(height: 12),
-          TextField(
+          const SizedBox(height: 8),
+          // Host field
+          CupertinoTextField(
             controller: _hostController,
-            decoration: const InputDecoration(
-              labelText: 'Host (IP address)',
-              hintText: '192.168.1.100',
-              border: OutlineInputBorder(),
+            placeholder: '192.168.1.100',
+            prefix: const Padding(
+              padding: EdgeInsets.only(left: 12),
+              child: Text(
+                'Host',
+                style: TextStyle(color: CupertinoColors.systemGrey),
+              ),
             ),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
             keyboardType: TextInputType.url,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _portController,
-            decoration: const InputDecoration(
-              labelText: 'Port',
-              hintText: '8765',
-              border: OutlineInputBorder(),
+            autocorrect: false,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(10),
             ),
+          ),
+          const SizedBox(height: 8),
+          // Port field
+          CupertinoTextField(
+            controller: _portController,
+            placeholder: '8765',
+            prefix: const Padding(
+              padding: EdgeInsets.only(left: 12),
+              child: Text(
+                'Port',
+                style: TextStyle(color: CupertinoColors.systemGrey),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
             keyboardType: TextInputType.number,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
           const SizedBox(height: 16),
+          // Buttons row
           Row(
             children: [
               Expanded(
-                child: FilledButton(
+                child: CupertinoButton.filled(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  borderRadius: BorderRadius.circular(10),
                   onPressed: _save,
-                  child: const Text('Save'),
+                  child: Text(_saved ? 'Saved ✓' : 'Save'),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
-                child: OutlinedButton(
+                child: CupertinoButton(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  borderRadius: BorderRadius.circular(10),
+                  color: const Color(0xFF2C2C2E),
                   onPressed: _testing ? null : _testConnection,
                   child: _testing
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Test Connection'),
+                      ? const CupertinoActivityIndicator()
+                      : const Text('Test'),
                 ),
               ),
             ],
           ),
+          // Ping result
           if (_pingResult != null) ...[
             const SizedBox(height: 12),
             Text(
               _pingResult!,
               style: TextStyle(
+                fontSize: 13,
                 color: _pingResult!.startsWith('Connected')
-                    ? Colors.green
-                    : Colors.red,
+                    ? CupertinoColors.systemGreen
+                    : CupertinoColors.systemRed,
               ),
             ),
           ],

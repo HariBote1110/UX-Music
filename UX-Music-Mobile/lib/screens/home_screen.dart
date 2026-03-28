@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../widgets/glass_nav_bar.dart';
@@ -26,23 +27,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const _navItems = [
     GlassNavBarItem(
-      icon: Icons.library_music_outlined,
-      activeIcon: Icons.library_music,
+      icon: CupertinoIcons.music_albums,
+      activeIcon: CupertinoIcons.music_albums_fill,
       label: 'Library',
     ),
     GlassNavBarItem(
-      icon: Icons.wifi_outlined,
-      activeIcon: Icons.wifi,
+      icon: CupertinoIcons.wifi,
+      activeIcon: CupertinoIcons.wifi,
       label: 'Remote',
     ),
     GlassNavBarItem(
-      icon: Icons.desktop_mac_outlined,
-      activeIcon: Icons.desktop_mac,
+      icon: CupertinoIcons.tv,
+      activeIcon: CupertinoIcons.tv_fill,
       label: 'Control',
     ),
     GlassNavBarItem(
-      icon: Icons.settings_outlined,
-      activeIcon: Icons.settings,
+      icon: CupertinoIcons.settings,
+      activeIcon: CupertinoIcons.settings_solid,
       label: 'Settings',
     ),
   ];
@@ -50,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       // Allow content to render behind the floating glass nav bar
       extendBody: true,
       body: Stack(

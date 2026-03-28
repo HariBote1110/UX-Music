@@ -11,6 +11,8 @@ class UxMusicApp extends StatelessWidget {
     return MaterialApp(
       title: 'UX Music',
       theme: appTheme,
+      // Bouncing physics on every scrollable widget
+      scrollBehavior: const BouncingScrollBehaviour(),
       home: const HomeScreen(),
       debugShowCheckedModeBanner: false,
     );

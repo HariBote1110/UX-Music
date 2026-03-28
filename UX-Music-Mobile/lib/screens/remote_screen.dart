@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -34,7 +35,12 @@ class _RemoteScreenState extends ConsumerState<RemoteScreen> {
     try {
       final client = ref.read(apiClientProvider);
       final state = await client.fetchState();
-      if (mounted) setState(() { _state = state; _error = null; });
+      if (mounted) {
+        setState(() {
+          _state = state;
+          _error = null;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
@@ -46,27 +52,32 @@ class _RemoteScreenState extends ConsumerState<RemoteScreen> {
       await client.sendCommand(action, value: value);
       await _poll();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Command failed: $e')),
-        );
-      }
+      if (mounted) setState(() => _error = 'Command failed: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Remote Control')),
-      body: _error != null && _state == null
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text('Remote Control'),
+        backgroundColor: Color(0xCC1C1C1E),
+      ),
+      child: _error != null && _state == null
           ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.wifi_off, size: 48, color: Colors.grey),
+                  const Icon(
+                    CupertinoIcons.wifi_slash,
+                    size: 52,
+                    color: CupertinoColors.systemGrey,
+                  ),
                   const SizedBox(height: 12),
-                  Text('Desktop unreachable',
-                      style: TextStyle(color: Colors.grey[400])),
+                  const Text(
+                    'Desktop unreachable',
+                    style: TextStyle(color: CupertinoColors.systemGrey),
+                  ),
                 ],
               ),
             )
@@ -81,95 +92,140 @@ class _RemoteScreenState extends ConsumerState<RemoteScreen> {
     final title = _state?['title'] as String? ?? '';
     final artist = _state?['artist'] as String? ?? '';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Column(
-        children: [
-          const Spacer(),
-          // Connection indicator
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.circle,
-                size: 8,
-                color: _error == null ? Colors.green : Colors.orange,
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          children: [
+            const Spacer(),
+            // Connection status dot
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _error == null
+                        ? CupertinoColors.systemGreen
+                        : CupertinoColors.systemOrange,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _error == null ? 'Connected' : 'Reconnecting…',
+                  style: const TextStyle(
+                    color: CupertinoColors.systemGrey,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            // Desktop icon
+            const Icon(
+              Icons.desktop_mac,
+              size: 52,
+              color: CupertinoColors.systemGrey2,
+            ),
+            const SizedBox(height: 16),
+            // Track info
+            Text(
+              title.isEmpty ? 'No track' : title,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              artist,
+              style: const TextStyle(
+                fontSize: 16,
+                color: CupertinoColors.systemGrey,
               ),
-              const SizedBox(width: 8),
-              Text(
-                _error == null ? 'Connected' : 'Reconnecting…',
-                style: TextStyle(color: Colors.grey[400], fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            // Seek bar
+            if (duration > 0) ...[
+              CupertinoSlider(
+                value: position.clamp(0, duration),
+                max: duration,
+                onChanged: (v) => _send('seek', value: v),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _fmt(position),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: CupertinoColors.systemGrey,
+                      ),
+                    ),
+                    Text(
+                      _fmt(duration),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: CupertinoColors.systemGrey,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
-          ),
-          const SizedBox(height: 32),
-          // Track info
-          Icon(Icons.desktop_mac, size: 48, color: Colors.grey[600]),
-          const SizedBox(height: 16),
-          Text(
-            title.isEmpty ? 'No track' : title,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            artist,
-            style: TextStyle(fontSize: 16, color: Colors.grey[400]),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          // Seek bar
-          if (duration > 0) ...[
-            Slider(
-              value: position.clamp(0, duration),
-              max: duration,
-              onChanged: (v) => _send('seek', value: v),
+            const SizedBox(height: 16),
+            // Playback controls
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  child: const Icon(CupertinoIcons.backward_end_fill, size: 38),
+                  onPressed: () => _send('prev'),
+                ),
+                const SizedBox(width: 24),
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  child: Icon(
+                    playing
+                        ? CupertinoIcons.pause_circle_fill
+                        : CupertinoIcons.play_circle_fill,
+                    size: 72,
+                  ),
+                  onPressed: () => _send('toggle'),
+                ),
+                const SizedBox(width: 24),
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  child: const Icon(CupertinoIcons.forward_end_fill, size: 38),
+                  onPressed: () => _send('next'),
+                ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(_fmt(position),
-                      style: TextStyle(fontSize: 12, color: Colors.grey[400])),
-                  Text(_fmt(duration),
-                      style: TextStyle(fontSize: 12, color: Colors.grey[400])),
-                ],
+            // Error message (non-fatal)
+            if (_error != null && _state != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(
+                    color: CupertinoColors.systemRed,
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ),
-            ),
+            const Spacer(),
           ],
-          const SizedBox(height: 16),
-          // Controls
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                iconSize: 36,
-                icon: const Icon(Icons.skip_previous),
-                onPressed: () => _send('prev'),
-              ),
-              const SizedBox(width: 24),
-              IconButton(
-                iconSize: 64,
-                icon: Icon(playing
-                    ? Icons.pause_circle_filled
-                    : Icons.play_circle_filled),
-                onPressed: () => _send('toggle'),
-              ),
-              const SizedBox(width: 24),
-              IconButton(
-                iconSize: 36,
-                icon: const Icon(Icons.skip_next),
-                onPressed: () => _send('next'),
-              ),
-            ],
-          ),
-          const Spacer(),
-        ],
+        ),
       ),
     );
   }

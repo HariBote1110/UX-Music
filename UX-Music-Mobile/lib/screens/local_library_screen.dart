@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -28,19 +29,26 @@ class _LocalLibraryScreenState extends ConsumerState<LocalLibraryScreen> {
     final songs = dm.downloadedSongs.values.toList();
 
     if (songs.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Library')),
-        body: Center(
+      return CupertinoPageScaffold(
+        navigationBar: const CupertinoNavigationBar(
+          middle: Text('Library'),
+          backgroundColor: Color(0xCC1C1C1E),
+        ),
+        child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.library_music, size: 64, color: Colors.grey[700]),
+              Icon(CupertinoIcons.music_albums, size: 64, color: Colors.grey[700]),
               const SizedBox(height: 16),
-              Text('No downloaded songs',
-                  style: TextStyle(color: Colors.grey[400], fontSize: 16)),
+              Text(
+                'No downloaded songs',
+                style: TextStyle(color: Colors.grey[400], fontSize: 16),
+              ),
               const SizedBox(height: 8),
-              Text('Download songs from Remote Library',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              Text(
+                'Download songs from Remote Library',
+                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              ),
             ],
           ),
         ),
@@ -49,36 +57,32 @@ class _LocalLibraryScreenState extends ConsumerState<LocalLibraryScreen> {
 
     final albums = Album.fromSongs(songs);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Library (${songs.length})'),
-        actions: [
-          SegmentedButton<_ViewMode>(
-            style: ButtonStyle(
-              padding: WidgetStateProperty.all(
-                const EdgeInsets.symmetric(horizontal: 6),
+    return CupertinoPageScaffold(
+      navigationBar: CupertinoNavigationBar(
+        middle: Text('Library (${songs.length})'),
+        backgroundColor: const Color(0xCC1C1C1E),
+        trailing: SizedBox(
+          width: 88,
+          child: CupertinoSlidingSegmentedControl<_ViewMode>(
+            groupValue: _viewMode,
+            children: const {
+              _ViewMode.albums: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6),
+                child: Icon(CupertinoIcons.square_grid_2x2, size: 15),
               ),
-              visualDensity: VisualDensity.compact,
-            ),
-            segments: const [
-              ButtonSegment(
-                value: _ViewMode.albums,
-                icon: Icon(Icons.grid_view, size: 18),
+              _ViewMode.songs: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6),
+                child: Icon(CupertinoIcons.list_bullet, size: 15),
               ),
-              ButtonSegment(
-                value: _ViewMode.songs,
-                icon: Icon(Icons.list, size: 18),
-              ),
-            ],
-            selected: {_viewMode},
-            onSelectionChanged: (s) => setState(() => _viewMode = s.first),
+            },
+            onValueChanged: (v) => setState(() => _viewMode = v!),
           ),
-          const SizedBox(width: 8),
-        ],
+        ),
       ),
-      body: _viewMode == _ViewMode.albums
+      child: _viewMode == _ViewMode.albums
           ? GridView.builder(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+              physics: const BouncingScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 mainAxisSpacing: 12,
@@ -106,6 +110,7 @@ class _LocalLibraryScreenState extends ConsumerState<LocalLibraryScreen> {
             )
           : ListView.builder(
               padding: const EdgeInsets.only(bottom: 100),
+              physics: const BouncingScrollPhysics(),
               itemCount: songs.length,
               itemBuilder: (context, index) {
                 final song = songs[index];
@@ -115,8 +120,8 @@ class _LocalLibraryScreenState extends ConsumerState<LocalLibraryScreen> {
                   background: Container(
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: 20),
-                    color: Colors.red,
-                    child: const Icon(Icons.delete, color: Colors.white),
+                    color: CupertinoColors.destructiveRed,
+                    child: const Icon(CupertinoIcons.trash, color: Colors.white),
                   ),
                   onDismissed: (_) => dm.remove(song.id),
                   child: SongTile(
@@ -168,14 +173,13 @@ class _LocalAlbumCard extends StatelessWidget {
             album.displayName,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style:
-                const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
           ),
           Text(
             '${album.displayArtist} · ${album.songs.length} songs',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+            style: const TextStyle(fontSize: 12, color: CupertinoColors.systemGrey),
           ),
         ],
       ),
