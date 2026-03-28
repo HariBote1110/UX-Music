@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -15,6 +16,8 @@ import (
 
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const wearServerPort = "8765"
@@ -22,17 +25,23 @@ const wearServerPort = "8765"
 // WearServer holds the HTTP server for the /wear/ endpoints.
 type WearServer struct {
 	server *http.Server
+	app    *App
 }
 
 // StartWearServer starts the LAN HTTP server that serves the /wear/ API.
-// It binds to 0.0.0.0:8765 so that iPhone and Apple Watch on the same
-// network can reach the UX Music library.
-func StartWearServer(ctx context.Context) *WearServer {
+// It binds to 0.0.0.0:8765 so that iPhone, Apple Watch, and mobile
+// companion apps on the same network can reach the UX Music library.
+func StartWearServer(ctx context.Context, app *App) *WearServer {
+	ws := &WearServer{app: app}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/wear/ping", wearPingHandler)
 	mux.HandleFunc("/wear/songs", wearSongsHandler)
 	mux.HandleFunc("/wear/file/", wearFileHandler)
 	mux.HandleFunc("/wear/artwork/", wearArtworkHandler)
+	mux.HandleFunc("/wear/loudness", ws.wearLoudnessHandler)
+	mux.HandleFunc("/wear/state", ws.wearStateHandler)
+	mux.HandleFunc("/wear/command", ws.wearCommandHandler)
 
 	srv := &http.Server{
 		Addr:    "0.0.0.0:" + wearServerPort,
@@ -51,7 +60,8 @@ func StartWearServer(ctx context.Context) *WearServer {
 		_ = srv.Close()
 	}()
 
-	return &WearServer{server: srv}
+	ws.server = srv
+	return ws
 }
 
 // GetWearServerAddress returns the LAN address of this machine for display in the UI.
@@ -172,6 +182,128 @@ func wearArtworkHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeFile(w, r, artworkPath)
+}
+
+// ─── Mobile Companion Handlers ──────────────────────────────────────────────
+
+// wearLoudnessHandler returns a map of songID → LUFS loudness value.
+// Mobile clients use this to apply volume normalisation during local playback.
+func (ws *WearServer) wearLoudnessHandler(w http.ResponseWriter, r *http.Request) {
+	loudnessMap := loadLoudnessMap()
+	if len(loudnessMap) == 0 {
+		writeJSON(w, map[string]interface{}{})
+		return
+	}
+
+	// Build a path→songID lookup from the library
+	pathToID := buildPathToIDMap()
+
+	// Re-key the loudness map from file paths to song IDs
+	result := make(map[string]interface{}, len(loudnessMap))
+	for path, lufs := range loudnessMap {
+		if songID, ok := pathToID[path]; ok {
+			result[songID] = lufs
+		}
+	}
+
+	writeJSON(w, result)
+}
+
+// wearStateHandler returns the current desktop playback state.
+func (ws *WearServer) wearStateHandler(w http.ResponseWriter, r *http.Request) {
+	status := ws.app.AudioGetStatus()
+
+	// Include current track metadata from OS media state
+	ws.app.mediaStateMu.Lock()
+	status["title"] = ws.app.mediaTitle
+	status["artist"] = ws.app.mediaArtist
+	status["album"] = ws.app.mediaAlbum
+	ws.app.mediaStateMu.Unlock()
+
+	writeJSON(w, status)
+}
+
+// wearCommandHandler accepts remote playback commands from mobile clients.
+// Supported actions: toggle, play, pause, stop, next, prev, seek.
+func (ws *WearServer) wearCommandHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1024))
+	if err != nil {
+		http.Error(w, "read body failed", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var cmd struct {
+		Action string  `json:"action"`
+		Value  float64 `json:"value,omitempty"`
+	}
+	if err := json.Unmarshal(body, &cmd); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	var cmdErr error
+	switch cmd.Action {
+	case "toggle":
+		if ws.app.AudioIsPlaying() {
+			cmdErr = ws.app.AudioPause()
+		} else {
+			cmdErr = ws.app.AudioResume()
+		}
+	case "play":
+		cmdErr = ws.app.AudioResume()
+	case "pause":
+		cmdErr = ws.app.AudioPause()
+	case "stop":
+		cmdErr = ws.app.AudioStop()
+	case "seek":
+		cmdErr = ws.app.AudioSeek(cmd.Value)
+	case "next", "prev":
+		// Queue management lives in the Wails frontend; delegate via event
+		if ws.app.ctx != nil {
+			wailsRuntime.EventsEmit(ws.app.ctx, "remote-command", cmd.Action)
+		}
+	default:
+		http.Error(w, "unknown action", http.StatusBadRequest)
+		return
+	}
+
+	if cmdErr != nil {
+		writeJSON(w, map[string]interface{}{"ok": false, "error": cmdErr.Error()})
+		return
+	}
+	writeJSON(w, map[string]interface{}{"ok": true})
+}
+
+// buildPathToIDMap creates a reverse lookup from file path to song ID
+// by scanning the library store.
+func buildPathToIDMap() map[string]string {
+	raw, err := store.Instance.Load("library")
+	if err != nil || raw == nil {
+		return nil
+	}
+	library, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	m := make(map[string]string, len(library))
+	for _, item := range library {
+		song, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		id, _ := song["id"].(string)
+		path, _ := song["path"].(string)
+		if id != "" && path != "" {
+			m[path] = id
+		}
+	}
+	return m
 }
 
 // ─── Watch-optimised Transcoding ────────────────────────────────────────────
@@ -325,7 +457,8 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

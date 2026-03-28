@@ -48,8 +48,8 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// Start the LAN HTTP server for Apple Watch / iPhone companion
-	StartWearServer(ctx)
+	// Start the LAN HTTP server for Apple Watch / iPhone / Mobile companion
+	StartWearServer(ctx, a)
 	fmt.Printf("[Wear] Server address: %s\n", GetWearServerAddress())
 
 	a.initOSMediaControls()
