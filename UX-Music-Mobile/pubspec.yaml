@@ -1,0 +1,49 @@
+name: ux_music_mobile
+description: "UX Music mobile companion — browse, download, and play music from your desktop library."
+publish_to: 'none'
+
+version: 0.1.0-Alpha-1a+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # HTTP client
+  dio: ^5.8.0
+
+  # Audio playback
+  just_audio: ^0.10.5
+  audio_service: ^0.18.17
+
+  # JSON serialisation
+  freezed_annotation: ^3.0.0
+  json_annotation: ^4.9.0
+
+  # Local storage
+  shared_preferences: ^2.5.3
+  path_provider: ^2.1.5
+
+  # Image caching
+  cached_network_image: ^3.4.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+  # Code generation
+  build_runner: ^2.4.15
+  freezed: ^3.0.6
+  json_serializable: ^6.9.5
+
+flutter:
+  uses-material-design: true

@@ -315,7 +315,9 @@ function registerIpcHandlers() {
                 // --- コールバック関数 ---
                 onError: (err) => {
                     console.error('[MTP Transfer] 転送エラー:', err);
-                    // TODO: UIにエラー通知
+                    if (mainWindow) {
+                        mainWindow.webContents.send('show-notification', `転送エラー: ${err.message || err}`);
+                    }
                 },
                 onPreprocess: (data) => {
                     console.log(`[MTP Transfer] 前処理中: ${data.name}`);
@@ -336,8 +338,8 @@ function registerIpcHandlers() {
                     console.log('[MTP Transfer] 転送完了');
                     if (mainWindow) {
                         mainWindow.setProgressBar(-1); // プログレスバーを非表示（-1で解除）
+                        mainWindow.webContents.send('show-notification', 'MTP転送が完了しました');
                     }
-                    // TODO: UIに完了通知
                 },
             });
 

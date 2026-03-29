@@ -193,6 +193,21 @@ function removeContextMenu() {
 }
 
 /**
+ * HTMLエスケープを行う
+ * @param {string} str - エスケープする文字列
+ * @returns {string} - エスケープされた文字列
+ */
+export function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+/**
  * バイト数を適切な単位 (B, KB, MB, GB, TB) に変換する
  * @param {number} bytes - バイト数
  * @param {number} [decimals=2] - 小数点以下の桁数

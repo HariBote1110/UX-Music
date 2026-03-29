@@ -14,6 +14,11 @@ import (
 	"sync"
 )
 
+var (
+	meanRe = regexp.MustCompile(`mean_volume:\s*(-?\d+\.\d+)\s*dB`)
+	maxRe  = regexp.MustCompile(`max_volume:\s*(-?\d+\.\d+)\s*dB`)
+)
+
 // Normalizer manages normalization tasks
 type Normalizer struct {
 	FFmpegPath  string
@@ -127,8 +132,6 @@ func (n *Normalizer) AnalyzeLoudness(filePath string) AnalysisResult {
 	}
 
 	output := stderr.String()
-	meanRe := regexp.MustCompile(`mean_volume:\s*(-?\d+\.\d+)\s*dB`)
-	maxRe := regexp.MustCompile(`max_volume:\s*(-?\d+\.\d+)\s*dB`)
 
 	meanMatch := meanRe.FindStringSubmatch(output)
 	maxMatch := maxRe.FindStringSubmatch(output)
