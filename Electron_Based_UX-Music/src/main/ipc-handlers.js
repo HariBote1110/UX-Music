@@ -322,7 +322,9 @@ function registerIpcHandlers() {
                 onPreprocess: (data) => {
                     console.log(`[MTP Transfer] 前処理中: ${data.name}`);
                     if (mainWindow) {
-                        mainWindow.webContents.send('show-notification', `${data.name} を準備中...`);
+                        const idx = sources.findIndex(src => src.endsWith(data.name));
+                        const current = idx !== -1 ? idx + 1 : 1;
+                        mainWindow.webContents.send('show-notification', `ファイル ${current}/${sources.length}: ${data.name} を準備中...`);
                     }
                 },
                 onProgress: (data) => {
