@@ -10,10 +10,11 @@ import (
 	"ux-music-sidecar/internal/config"
 )
 
+var invalidCharsRe = regexp.MustCompile(`[<>:"/\\|?*]`)
+
 // SanitizeFileName converts invalid characters to underscores
 func SanitizeFileName(name string) string {
-	re := regexp.MustCompile(`[<>:"/\\|?*]`)
-	return re.ReplaceAllString(name, "_")
+	return invalidCharsRe.ReplaceAllString(name, "_")
 }
 
 func GetLyricsDir() string {

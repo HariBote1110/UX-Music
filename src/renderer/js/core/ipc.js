@@ -3,10 +3,12 @@ import { showNotification, hideNotification } from '../ui/notification.js';
 import { state } from './state.js';
 import { showModal } from '../ui/modal.js';
 import { renderCurrentView, regroupLibraryCollections, rebuildLibraryIndexes } from '../ui/ui-manager.js';
+import { escapeHtml } from '../ui/utils.js';
 import { showView } from './navigation.js';
 import { musicApi } from './bridge.js';
 // --- ▼▼▼ 新規追加 ▼▼▼ ---
 import { showEditMetadataModal } from '../features/edit-metadata.js'; // あとで作成するファイル
+import { escapeHtml } from '../ui/utils.js';
 // --- ▲▲▲ ここまで ▲▲▲ ---
 
 const startTime = performance.now();
@@ -275,8 +277,8 @@ export function initIPC(callbacks) {
                                 const title = song.title || song.path.split('/').pop();
                                 const reason = song._reason || '理由不明';
                                 item.innerHTML = `
-                                    <span class="transfer-item-title">${title}</span>
-                                    <span class="transfer-item-reason">${reason}</span>
+                                    <span class="transfer-item-title">${escapeHtml(title)}</span>
+                                    <span class="transfer-item-reason">${escapeHtml(reason)}</span>
                                 `;
                                 item.dataset.path = song.path;
                                 sourceList.appendChild(item);
@@ -296,8 +298,8 @@ export function initIPC(callbacks) {
                             item.className = 'transfer-item';
                             const sizeKB = Math.round((file.size || 0) / 1024);
                             item.innerHTML = `
-                                <span class="transfer-item-title">${file.name}</span>
-                                <span class="transfer-item-reason">正規化: "${file.normalizedName}" (${sizeKB} KB)</span>
+                                    <span class="transfer-item-title">${escapeHtml(file.name)}</span>
+                                    <span class="transfer-item-reason">正規化: "${escapeHtml(file.normalizedName)}" (${sizeKB} KB)</span>
                             `;
                             deviceList.appendChild(item);
                         });
