@@ -40,6 +40,21 @@ export function resolveArtworkPath(artwork, isThumbnail = false) {
 }
 
 /**
+ * HTML文字列のエスケープ処理
+ * @param {string} str - エスケープする文字列
+ * @returns {string} - エスケープされた文字列
+ */
+export function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+/**
  * 要素内のテキストがはみ出しているかをチェックし、アニメーション用の設定を行う
  * @param {HTMLElement} wrapper - .marquee-wrapper 要素
  */
@@ -190,6 +205,21 @@ function removeContextMenu() {
         const existingSubMenus = document.querySelectorAll('.context-menu-submenu');
         existingSubMenus.forEach(submenu => submenu.remove());
     }
+}
+
+/**
+ * HTMLエスケープを行う
+ * @param {string} str - エスケープする文字列
+ * @returns {string} - エスケープされた文字列
+ */
+export function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 /**
