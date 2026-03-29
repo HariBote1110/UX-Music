@@ -12,6 +12,12 @@ import (
 
 // FFmpegPath and FFprobePath are now in config package
 
+var (
+	meanVolumeRe = regexp.MustCompile(`mean_volume:\s*(-?\d+\.\d+)\s*dB`)
+	peakRe       = regexp.MustCompile(`Peak level dB:\s*(-?\d+\.\d+)`)
+	rmsRe        = regexp.MustCompile(`RMS level dB:\s*(-?\d+\.\d+)`)
+)
+
 type AnalysisResult struct {
 	Path     string   `json:"path"`
 	Loudness *float64 `json:"loudness,omitempty"`
@@ -49,8 +55,7 @@ func analyzeLoudness(path string) (float64, error) {
 	}
 
 	output := stderr.String()
-	re := regexp.MustCompile(`mean_volume:\s*(-?\d+\.\d+)\s*dB`)
-	matches := re.FindStringSubmatch(output)
+	matches := meanVolumeRe.FindStringSubmatch(output)
 	if len(matches) > 1 {
 		val, err := strconv.ParseFloat(matches[1], 64)
 		if err != nil {
@@ -71,8 +76,6 @@ func analyzeEnergy(path string) (int, error) {
 	}
 
 	output := stderr.String()
-	peakRe := regexp.MustCompile(`Peak level dB:\s*(-?\d+\.\d+)`)
-	rmsRe := regexp.MustCompile(`RMS level dB:\s*(-?\d+\.\d+)`)
 
 	peakMatches := peakRe.FindStringSubmatch(output)
 	rmsMatches := rmsRe.FindStringSubmatch(output)

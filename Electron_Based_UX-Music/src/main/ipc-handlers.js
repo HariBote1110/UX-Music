@@ -315,14 +315,14 @@ function registerIpcHandlers() {
                 // --- コールバック関数 ---
                 onError: (err) => {
                     console.error('[MTP Transfer] 転送エラー:', err);
-                    if (event && event.sender && !event.sender.isDestroyed()) {
-                        event.sender.send('show-notification', `転送エラー: ${err.message || err}`);
+                    if (mainWindow) {
+                        mainWindow.webContents.send('show-notification', `転送エラー: ${err.message || err}`);
                     }
                 },
                 onPreprocess: (data) => {
                     console.log(`[MTP Transfer] 前処理中: ${data.name}`);
-                    if (event && event.sender && !event.sender.isDestroyed()) {
-                        event.sender.send('show-notification', `準備中: ${data.name}`);
+                    if (mainWindow) {
+                        mainWindow.webContents.send('show-notification', `準備中: ${data.name}`);
                     }
                 },
                 onProgress: (data) => {
@@ -338,9 +338,7 @@ function registerIpcHandlers() {
                     console.log('[MTP Transfer] 転送完了');
                     if (mainWindow) {
                         mainWindow.setProgressBar(-1); // プログレスバーを非表示（-1で解除）
-                    }
-                    if (event && event.sender && !event.sender.isDestroyed()) {
-                        event.sender.send('show-notification', '転送が完了しました。');
+                        mainWindow.webContents.send('show-notification', 'MTP転送が完了しました');
                     }
                 },
             });
@@ -411,6 +409,9 @@ function registerIpcHandlers() {
                     },
                     onPreprocess: (data) => {
                         console.log(`[MTP Transfer] 前処理中: ${data.name}`);
+                        if (mainWindow) {
+                            mainWindow.webContents.send('show-notification', `準備中: ${data.name}`);
+                        }
                     },
                     onProgress: (data) => {
                         const filePercent = data.totalBytes > 0 ? Math.round(data.bytesTransferred * 100 / data.totalBytes) : 0;
@@ -517,8 +518,8 @@ function registerIpcHandlers() {
                 },
                 onPreprocess: (data) => {
                     console.log(`[MTP Download] 前処理中: ${data.name}`);
-                    if (event && event.sender && !event.sender.isDestroyed()) {
-                        event.sender.send('show-notification', `準備中: ${data.name}`);
+                    if (mainWindow) {
+                        mainWindow.webContents.send('show-notification', `ダウンロード準備中: ${data.name}`);
                     }
                 },
                 onProgress: (data) => {

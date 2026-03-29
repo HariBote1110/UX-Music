@@ -1,5 +1,7 @@
 // src/renderer/js/cd-ripper.js
 
+import { escapeHtml } from '../ui/utils.js';
+
 const electronAPI = window.electronAPI;
 
 let currentTracks = [];
@@ -218,11 +220,11 @@ function renderTracks(tracks) {
     if (!tbody) return;
     tbody.innerHTML = tracks.map(track => `
         <tr style="border-bottom: 1px solid #333;">
-            <td style="padding: 8px;">${track.number}</td>
-            <td style="padding: 8px;"><input type="text" class="cd-track-input" data-id="${track.number}" data-field="title" value="${track.title}" style="background: transparent; border: none; color: white; width: 100%; border-bottom: 1px solid #555;"></td>
-            <td style="padding: 8px;"><input type="text" class="cd-track-input" data-id="${track.number}" data-field="artist" value="${track.artist}" style="background: transparent; border: none; color: white; width: 100%; border-bottom: 1px solid #555;"></td>
-            <td style="padding: 8px;">${track.duration || getDurationStr(track.sectors)}</td>
-            <td style="padding: 8px;" id="status-cell-${track.number}">待機中</td>
+            <td style="padding: 8px;">${escapeHtml(track.number)}</td>
+            <td style="padding: 8px;"><input type="text" class="cd-track-input" data-id="${escapeHtml(track.number)}" data-field="title" value="${escapeHtml(track.title)}" style="background: transparent; border: none; color: white; width: 100%; border-bottom: 1px solid #555;"></td>
+            <td style="padding: 8px;"><input type="text" class="cd-track-input" data-id="${escapeHtml(track.number)}" data-field="artist" value="${escapeHtml(track.artist)}" style="background: transparent; border: none; color: white; width: 100%; border-bottom: 1px solid #555;"></td>
+            <td style="padding: 8px;">${escapeHtml(track.duration || getDurationStr(track.sectors))}</td>
+            <td style="padding: 8px;" id="status-cell-${escapeHtml(track.number)}">待機中</td>
         </tr>
     `).join('');
     tbody.querySelectorAll('.cd-track-input').forEach(input => {
