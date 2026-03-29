@@ -1,5 +1,6 @@
 // src/renderer/js/cd-ripper.js
 
+import { escapeHtml } from '../ui/utils.js';
 const electronAPI = window.electronAPI;
 
 let currentTracks = [];
@@ -169,9 +170,9 @@ function renderCandidateList(releases) {
         li.onmouseover = () => li.style.background = '#444';
         li.onmouseout = () => li.style.background = 'transparent';
 
-        const artist = release['artist-credit']?.[0]?.name || 'Unknown';
-        const title = release.title;
-        const date = release.date || '----';
+        const artist = escapeHtml(release['artist-credit']?.[0]?.name || 'Unknown');
+        const title = escapeHtml(release.title);
+        const date = escapeHtml(release.date || '----');
 
         li.innerHTML = `<div><div style="font-weight: bold; color: white;">${title}</div><div style="font-size: 0.9em; color: #ccc;">${artist}</div></div><div style="font-size: 0.9em; color: #aaa; text-align: right;"><div>${date}</div></div>`;
         li.onclick = () => applyMetadata(release.id);
