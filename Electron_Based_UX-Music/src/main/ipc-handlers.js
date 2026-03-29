@@ -319,7 +319,9 @@ function registerIpcHandlers() {
                 },
                 onPreprocess: (data) => {
                     console.log(`[MTP Transfer] 前処理中: ${data.name}`);
-                    // TODO: UIに進捗表示 (例: 'ファイル 1/10: test.mp3 を準備中...')
+                    if (mainWindow) {
+                        mainWindow.webContents.send('show-notification', `準備中: ${data.name}`);
+                    }
                 },
                 onProgress: (data) => {
                     const percent = Math.round(data.bytesTransferred * 100 / data.totalBytes);
@@ -405,6 +407,9 @@ function registerIpcHandlers() {
                     },
                     onPreprocess: (data) => {
                         console.log(`[MTP Transfer] 前処理中: ${data.name}`);
+                        if (mainWindow) {
+                            mainWindow.webContents.send('show-notification', `準備中: ${data.name}`);
+                        }
                     },
                     onProgress: (data) => {
                         const filePercent = data.totalBytes > 0 ? Math.round(data.bytesTransferred * 100 / data.totalBytes) : 0;
@@ -508,6 +513,9 @@ function registerIpcHandlers() {
                 },
                 onPreprocess: (data) => {
                     console.log(`[MTP Download] 前処理中: ${data.name}`);
+                    if (mainWindow) {
+                        mainWindow.webContents.send('show-notification', `ダウンロード準備中: ${data.name}`);
+                    }
                 },
                 onProgress: (data) => {
                     const percent = Math.round(data.bytesTransferred * 100 / data.totalBytes);
