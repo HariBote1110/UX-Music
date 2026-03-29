@@ -299,3 +299,17 @@ export async function setEqualizerColorFromArtwork(imageElement) {
     }
 }
 // ▲▲▲ 追加 ▲▲▲
+/**
+ * HTML文字列をエスケープする
+ * @param {string} str - エスケープする文字列
+ * @returns {string} - エスケープされた文字列
+ */
+export function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
