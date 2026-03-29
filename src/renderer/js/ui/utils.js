@@ -212,6 +212,22 @@ export function formatBytes(bytes, decimals = 2) {
 }
 
 
+/**
+ * HTMLエスケープ
+ * @param {string} str
+ * @returns {string}
+ */
+export function escapeHtml(str) {
+    if (typeof str !== 'string') str = String(str || '');
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 // ▼▼▼ 追加 (player.js から移動) ▼▼▼
 /**
  * 画像要素から主要な2色を抽出する

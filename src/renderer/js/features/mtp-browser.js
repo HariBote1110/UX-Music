@@ -3,7 +3,7 @@
 
 import { state, elements } from '../core/state.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
-import { formatBytes, showContextMenu } from '../ui/utils.js';
+import { formatBytes, showContextMenu, escapeHtml } from '../ui/utils.js';
 const electronAPI = window.electronAPI;
 
 // 状態管理
@@ -440,19 +440,6 @@ export function stopMtpBrowser() {
         selectedItems: new Set(),
         isLoading: false
     };
-}
-
-/**
- * HTMLエスケープ
- */
-function escapeHtml(str) {
-    if (!str) return '';
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
 }
 
 /**
