@@ -241,6 +241,21 @@ export function formatBytes(bytes, decimals = 2) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
+/**
+ * 文字列をHTMLエスケープしてXSSを防ぐ
+ * @param {string|number} str - エスケープする文字列
+ * @returns {string} - エスケープされた文字列
+ */
+export function escapeHtml(str) {
+    if (!str && str !== 0) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 
 // ▼▼▼ 追加 (player.js から移動) ▼▼▼
 /**
