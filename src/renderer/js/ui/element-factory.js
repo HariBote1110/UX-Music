@@ -1,5 +1,5 @@
 // src/renderer/js/ui/element-factory.js
-import { formatTime, checkTextOverflow, resolveArtworkPath, formatSongTitle } from './utils.js';
+import { formatTime, checkTextOverflow, resolveArtworkPath, formatSongTitle, escapeHtml } from './utils.js';
 import { state } from '../core/state.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
 import { getVisibleColumns } from './column-config.js';
@@ -77,9 +77,9 @@ export function createSongItem(song, index, songList, options = {}) {
             <img src="./assets/icons/static-visualizer.svg" class="static-visualizer-img" alt="Playing">
         </div>`,
         artwork: `<div class="song-artwork-col">${artworkHTML}</div>`,
-        title: `<div class="song-title"><div class="marquee-wrapper"><div class="marquee-content"><span>${formatSongTitle(song.title)}</span></div></div></div>`,
-        artist: `<div class="song-artist"><div class="marquee-wrapper"><div class="marquee-content"><span>${song.artist}</span></div></div></div>`,
-        album: `<div class="song-album"><div class="marquee-wrapper"><div class="marquee-content"><span>${song.album}</span></div></div></div>`,
+        title: `<div class="song-title"><div class="marquee-wrapper"><div class="marquee-content"><span>${escapeHtml(formatSongTitle(song.title))}</span></div></div></div>`,
+        artist: `<div class="song-artist"><div class="marquee-wrapper"><div class="marquee-content"><span>${escapeHtml(song.artist)}</span></div></div></div>`,
+        album: `<div class="song-album"><div class="marquee-wrapper"><div class="marquee-content"><span>${escapeHtml(song.album)}</span></div></div></div>`,
         hires: `<div class="song-hires">${hiResIconHTML}</div>`,
         duration: `<div class="song-duration"><span>${formatTime(song.duration || 0)}</span></div>`,
         playCount: `<div class="song-play-count">${(state.playCounts && state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>`,
@@ -162,12 +162,12 @@ export function createQueueItem(song, isPlaying, queueIndex) {
         <div class="queue-item-info">
             <div class="queue-item-title marquee-wrapper">
                 <div class="marquee-content">
-                    <span>${formatSongTitle(song.title)}</span>
+                    <span>${escapeHtml(formatSongTitle(song.title))}</span>
                 </div>
             </div>
             <div class="queue-item-artist marquee-wrapper">
                 <div class="marquee-content">
-                    <span>${song.artist}</span>
+                    <span>${escapeHtml(song.artist)}</span>
                 </div>
             </div>
         </div>
@@ -194,18 +194,18 @@ export function createAlbumGridItem(key, album) {
     const albumItem = document.createElement('div');
     albumItem.className = 'album-grid-item';
 
-    const artworkHTML = state.isLightFlightMode ? '<div class="album-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="album-artwork lazy-load" alt="${album.title}">`;
+    const artworkHTML = state.isLightFlightMode ? '<div class="album-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="album-artwork lazy-load" alt="${escapeHtml(album.title)}">`;
 
     albumItem.innerHTML = `
         ${artworkHTML}
         <div class="album-title marquee-wrapper">
             <div class="marquee-content">
-                <span>${album.title || 'Unknown Album'}</span>
+                <span>${escapeHtml(album.title || 'Unknown Album')}</span>
             </div>
         </div>
         <div class="album-artist marquee-wrapper">
             <div class="marquee-content">
-                <span>${album.artist || 'Unknown Artist'}</span>
+                <span>${escapeHtml(album.artist || 'Unknown Artist')}</span>
             </div>
         </div>
     `;
@@ -230,13 +230,13 @@ export function createArtistGridItem(artist) {
     const artistItem = document.createElement('div');
     artistItem.className = 'artist-grid-item';
 
-    const artworkHTML = state.isLightFlightMode ? '<div class="artist-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="artist-artwork lazy-load" alt="${artist.name}">`;
+    const artworkHTML = state.isLightFlightMode ? '<div class="artist-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="artist-artwork lazy-load" alt="${escapeHtml(artist.name)}">`;
 
     artistItem.innerHTML = `
         ${artworkHTML}
         <div class="artist-name marquee-wrapper">
             <div class="marquee-content">
-                <span>${artist.name}</span>
+                <span>${escapeHtml(artist.name)}</span>
             </div>
         </div>
     `;
@@ -261,7 +261,7 @@ export function createPlaylistGridItem(playlist) {
         ${artworkHTML}
         <div class="playlist-title marquee-wrapper">
             <div class="marquee-content">
-                <span>${playlist.name}</span>
+                <span>${escapeHtml(playlist.name)}</span>
             </div>
         </div>
     `;

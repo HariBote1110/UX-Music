@@ -40,6 +40,22 @@ export function resolveArtworkPath(artwork, isThumbnail = false) {
 }
 
 /**
+ * HTML文字列をエスケープしてXSSを防ぐ
+ * @param {string|number} str - エスケープする文字列
+ * @returns {string} - エスケープされた文字列
+ */
+export function escapeHtml(str) {
+    if (typeof str !== 'string') str = String(str || '');
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+/**
  * 要素内のテキストがはみ出しているかをチェックし、アニメーション用の設定を行う
  * @param {HTMLElement} wrapper - .marquee-wrapper 要素
  */
@@ -192,20 +208,6 @@ function removeContextMenu() {
     }
 }
 
-/**
- * HTMLエスケープを行う
- * @param {string} str - エスケープする文字列
- * @returns {string} - エスケープされた文字列
- */
-export function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
 
 /**
  * バイト数を適切な単位 (B, KB, MB, GB, TB) に変換する
@@ -225,6 +227,8 @@ export function formatBytes(bytes, decimals = 2) {
 
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
+
+
 
 
 // ▼▼▼ 追加 (player.js から移動) ▼▼▼

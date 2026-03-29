@@ -8,6 +8,7 @@ import { showView } from './navigation.js';
 import { musicApi } from './bridge.js';
 // --- ▼▼▼ 新規追加 ▼▼▼ ---
 import { showEditMetadataModal } from '../features/edit-metadata.js'; // あとで作成するファイル
+import { escapeHtml } from '../ui/utils.js';
 // --- ▲▲▲ ここまで ▲▲▲ ---
 
 const startTime = performance.now();
