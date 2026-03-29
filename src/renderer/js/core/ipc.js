@@ -3,6 +3,7 @@ import { showNotification, hideNotification } from '../ui/notification.js';
 import { state } from './state.js';
 import { showModal } from '../ui/modal.js';
 import { renderCurrentView, regroupLibraryCollections, rebuildLibraryIndexes } from '../ui/ui-manager.js';
+import { escapeHtml } from '../ui/utils.js';
 import { showView } from './navigation.js';
 import { musicApi } from './bridge.js';
 // --- ▼▼▼ 新規追加 ▼▼▼ ---
@@ -297,8 +298,8 @@ export function initIPC(callbacks) {
                             item.className = 'transfer-item';
                             const sizeKB = Math.round((file.size || 0) / 1024);
                             item.innerHTML = `
-                                <span class="transfer-item-title">${escapeHtml(file.name)}</span>
-                                <span class="transfer-item-reason">正規化: "${escapeHtml(file.normalizedName)}" (${sizeKB} KB)</span>
+                                    <span class="transfer-item-title">${escapeHtml(file.name)}</span>
+                                    <span class="transfer-item-reason">正規化: "${escapeHtml(file.normalizedName)}" (${sizeKB} KB)</span>
                             `;
                             deviceList.appendChild(item);
                         });
