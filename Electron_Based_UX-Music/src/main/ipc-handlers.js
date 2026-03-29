@@ -512,6 +512,9 @@ function registerIpcHandlers() {
 
                 onError: (err) => {
                     console.error('[MTP Download] 転送エラー:', err);
+                    if (event && event.sender && !event.sender.isDestroyed()) {
+                        event.sender.send('show-notification', `ダウンロードエラー: ${err.message || err}`);
+                    }
                 },
                 onPreprocess: (data) => {
                     console.log(`[MTP Download] 前処理中: ${data.name}`);
@@ -530,6 +533,9 @@ function registerIpcHandlers() {
                     console.log('[MTP Download] ダウンロード完了');
                     if (mainWindow) {
                         mainWindow.setProgressBar(-1);
+                    }
+                    if (event && event.sender && !event.sender.isDestroyed()) {
+                        event.sender.send('show-notification', 'ダウンロードが完了しました。');
                     }
                 },
             });
