@@ -322,7 +322,7 @@ function registerIpcHandlers() {
                 onPreprocess: (data) => {
                     console.log(`[MTP Transfer] 前処理中: ${data.name}`);
                     if (mainWindow) {
-                        mainWindow.webContents.send('show-notification', `${data.name} を準備中...`);
+                        mainWindow.webContents.send('show-notification', `準備中: ${data.name}`);
                     }
                 },
                 onProgress: (data) => {
@@ -409,6 +409,9 @@ function registerIpcHandlers() {
                     },
                     onPreprocess: (data) => {
                         console.log(`[MTP Transfer] 前処理中: ${data.name}`);
+                        if (mainWindow) {
+                            mainWindow.webContents.send('show-notification', `準備中: ${data.name}`);
+                        }
                     },
                     onProgress: (data) => {
                         const filePercent = data.totalBytes > 0 ? Math.round(data.bytesTransferred * 100 / data.totalBytes) : 0;
@@ -512,6 +515,9 @@ function registerIpcHandlers() {
                 },
                 onPreprocess: (data) => {
                     console.log(`[MTP Download] 前処理中: ${data.name}`);
+                    if (mainWindow) {
+                        mainWindow.webContents.send('show-notification', `ダウンロード準備中: ${data.name}`);
+                    }
                 },
                 onProgress: (data) => {
                     const percent = Math.round(data.bytesTransferred * 100 / data.totalBytes);

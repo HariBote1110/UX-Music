@@ -170,6 +170,10 @@ export function GetSituationPlaylists() {
   return window['go']['main']['App']['GetSituationPlaylists']();
 }
 
+export function GetWearAddress() {
+  return window['go']['main']['App']['GetWearAddress']();
+}
+
 export function GetYouTubeInfo(arg1) {
   return window['go']['main']['App']['GetYouTubeInfo'](arg1);
 }
