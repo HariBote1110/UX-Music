@@ -1,11 +1,4 @@
 import { state, elements } from '../core/state.js';
-// ▼▼▼ 削除 (detail-renderer.js が担当) ▼▼▼
-// import { showAlbum, showArtist } from '../navigation.js';
-// import { playSong } from '../playback-manager.js';
-// import { createAlbumGridItem } from './element-factory.js';
-// import { createPlaylistArtwork } from './playlist-artwork.js';
-// import { formatTime, resolveArtworkPath } from './utils.js';
-// ▲▲▲ 削除 ▲▲▲
 import { setVisualizerTarget, disconnectVisualizerObserver } from '../features/player.js';
 import {
     createListHeader,
@@ -89,12 +82,6 @@ export function renderTrackView() {
     initListHeaderResizing(viewWrapper);
 }
 
-// ▼▼▼ 削除 (detail-renderer.js へ移動) ▼▼▼
-// export function renderAlbumDetailView(album) { ... }
-// export function renderArtistDetailView(artist) { ... }
-// export function renderPlaylistDetailView(playlistDetails) { ... }
-// ▲▲▲ 削除 ▲▲▲
-
 // ▼▼▼ 追加 (detail-renderer.js へのラッパー関数) ▼▼▼
 /**
  * アルバム詳細ビューを描画し、スクローラーを管理する
@@ -120,7 +107,6 @@ export function renderPlaylistDetailView(playlistDetails) {
     detailViewScroller = renderPlaylistDetail(playlistDetails);
 }
 // ▲▲▲ 追加 ▲▲▲
-
 
 // grid-renderer.js からインポートした関数を再エクスポート
 export {

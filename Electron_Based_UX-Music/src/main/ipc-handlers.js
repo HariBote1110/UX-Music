@@ -322,10 +322,7 @@ function registerIpcHandlers() {
                 onPreprocess: (data) => {
                     console.log(`[MTP Transfer] 前処理中: ${data.name}`);
                     if (mainWindow) {
-                        // `sources` arrays and data properties determine index
-                        const idx = sources.findIndex(src => src.endsWith(data.name));
-                        const current = idx !== -1 ? idx + 1 : 1;
-                        mainWindow.webContents.send('show-notification', `ファイル ${current}/${sources.length}: ${data.name} を準備中...`);
+                        mainWindow.webContents.send('show-notification', `準備中: ${data.name}`);
                     }
                 },
                 onProgress: (data) => {
@@ -412,6 +409,9 @@ function registerIpcHandlers() {
                     },
                     onPreprocess: (data) => {
                         console.log(`[MTP Transfer] 前処理中: ${data.name}`);
+                        if (mainWindow) {
+                            mainWindow.webContents.send('show-notification', `準備中: ${data.name}`);
+                        }
                     },
                     onProgress: (data) => {
                         const filePercent = data.totalBytes > 0 ? Math.round(data.bytesTransferred * 100 / data.totalBytes) : 0;
@@ -512,9 +512,15 @@ function registerIpcHandlers() {
 
                 onError: (err) => {
                     console.error('[MTP Download] 転送エラー:', err);
+                    if (event && event.sender && !event.sender.isDestroyed()) {
+                        event.sender.send('show-notification', `ダウンロードエラー: ${err.message || err}`);
+                    }
                 },
                 onPreprocess: (data) => {
                     console.log(`[MTP Download] 前処理中: ${data.name}`);
+                    if (mainWindow) {
+                        mainWindow.webContents.send('show-notification', `ダウンロード準備中: ${data.name}`);
+                    }
                 },
                 onProgress: (data) => {
                     const percent = Math.round(data.bytesTransferred * 100 / data.totalBytes);
@@ -527,6 +533,9 @@ function registerIpcHandlers() {
                     console.log('[MTP Download] ダウンロード完了');
                     if (mainWindow) {
                         mainWindow.setProgressBar(-1);
+                    }
+                    if (event && event.sender && !event.sender.isDestroyed()) {
+                        event.sender.send('show-notification', 'ダウンロードが完了しました。');
                     }
                 },
             });
