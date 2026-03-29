@@ -315,11 +315,18 @@ function registerIpcHandlers() {
                 // --- コールバック関数 ---
                 onError: (err) => {
                     console.error('[MTP Transfer] 転送エラー:', err);
-                    // TODO: UIにエラー通知
+                    if (mainWindow) {
+                        mainWindow.webContents.send('show-notification', `転送エラー: ${err.message || err}`);
+                    }
                 },
                 onPreprocess: (data) => {
                     console.log(`[MTP Transfer] 前処理中: ${data.name}`);
-                    // TODO: UIに進捗表示 (例: 'ファイル 1/10: test.mp3 を準備中...')
+                    if (mainWindow) {
+                        // `sources` arrays and data properties determine index
+                        const idx = sources.findIndex(src => src.endsWith(data.name));
+                        const current = idx !== -1 ? idx + 1 : 1;
+                        mainWindow.webContents.send('show-notification', `ファイル ${current}/${sources.length}: ${data.name} を準備中...`);
+                    }
                 },
                 onProgress: (data) => {
                     const percent = Math.round(data.bytesTransferred * 100 / data.totalBytes);
@@ -334,8 +341,8 @@ function registerIpcHandlers() {
                     console.log('[MTP Transfer] 転送完了');
                     if (mainWindow) {
                         mainWindow.setProgressBar(-1); // プログレスバーを非表示（-1で解除）
+                        mainWindow.webContents.send('show-notification', 'MTP転送が完了しました');
                     }
-                    // TODO: UIに完了通知
                 },
             });
 
