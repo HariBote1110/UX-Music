@@ -194,7 +194,7 @@ export function createAlbumGridItem(key, album) {
     const albumItem = document.createElement('div');
     albumItem.className = 'album-grid-item';
 
-    const artworkHTML = state.isLightFlightMode ? '<div class="album-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="album-artwork lazy-load" alt="${album.title}">`;
+    const artworkHTML = state.isLightFlightMode ? '<div class="album-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="album-artwork lazy-load" alt="${escapeHtml(album.title)}">`;
 
     albumItem.innerHTML = `
         ${artworkHTML}
@@ -230,7 +230,7 @@ export function createArtistGridItem(artist) {
     const artistItem = document.createElement('div');
     artistItem.className = 'artist-grid-item';
 
-    const artworkHTML = state.isLightFlightMode ? '<div class="artist-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="artist-artwork lazy-load" alt="${artist.name}">`;
+    const artworkHTML = state.isLightFlightMode ? '<div class="artist-artwork placeholder-artwork"></div>' : `<img src="./assets/default_artwork.png" class="artist-artwork lazy-load" alt="${escapeHtml(artist.name)}">`;
 
     artistItem.innerHTML = `
         ${artworkHTML}
