@@ -40,12 +40,12 @@ export function resolveArtworkPath(artwork, isThumbnail = false) {
 }
 
 /**
- * 文字列を安全にHTMLエスケープする
+ * HTML文字列のエスケープ処理
  * @param {string} str - エスケープする文字列
  * @returns {string} - エスケープされた文字列
  */
 export function escapeHtml(str) {
-    if (!str) return '';
+    if (str === null || str === undefined) return '';
     return String(str)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -208,6 +208,21 @@ function removeContextMenu() {
 }
 
 /**
+ * HTMLエスケープを行う
+ * @param {string} str - エスケープする文字列
+ * @returns {string} - エスケープされた文字列
+ */
+export function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+/**
  * バイト数を適切な単位 (B, KB, MB, GB, TB) に変換する
  * @param {number} bytes - バイト数
  * @param {number} [decimals=2] - 小数点以下の桁数
@@ -224,6 +239,21 @@ export function formatBytes(bytes, decimals = 2) {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
 
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+/**
+ * 文字列をHTMLエスケープしてXSSを防ぐ
+ * @param {string|number} str - エスケープする文字列
+ * @returns {string} - エスケープされた文字列
+ */
+export function escapeHtml(str) {
+    if (!str && str !== 0) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 
@@ -314,3 +344,17 @@ export async function setEqualizerColorFromArtwork(imageElement) {
     }
 }
 // ▲▲▲ 追加 ▲▲▲
+/**
+ * HTML文字列をエスケープする
+ * @param {string} str - エスケープする文字列
+ * @returns {string} - エスケープされた文字列
+ */
+export function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
