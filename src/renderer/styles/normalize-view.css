@@ -189,7 +189,7 @@
 .normalize-table-container tbody tr:last-child td {
     border-bottom: none;
 }
-.normalize-table-container .status-analyzed { color: #4CAF50; }
+.normalize-table-container .status-analysed { color: #4CAF50; }
 .normalize-table-container .status-done { color: #2196F3; }
 .normalize-table-container .status-error { color: #F44336; }
 

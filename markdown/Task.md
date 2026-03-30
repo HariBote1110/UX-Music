@@ -1,3 +1,14 @@
+# Task: UI用語の英式綴り（British English）統一
+
+## 概要
+アプリケーションUI全体で米式綴り（American English）を排し、英式綴り（British English）に統一する。特に「音量ノーマライズ」機能のステータス表示などを対象とする。
+
+## 完了条件
+- [x] `src/renderer/js/features/normalize-view.js` 内のステータス文字列が `analysed` に変更されていること。
+- [x] `src/renderer/styles/normalize-view.css` のステータスマッチング用セレクタが `.status-analysed` に修正されていること。
+- [x] `markdown/requirement.md` 内の用語が英式に統一されていること。
+- [x] `src/renderer/js/core/bridge.js` および `markdown/requirement.md` のバージョンが `0.1.9-Beta-9e` に更新されていること。
+
 # Task: パフォーマンス最適化の実施
 
 ## 概要

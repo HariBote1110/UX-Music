@@ -52,7 +52,6 @@ function updateFileList() {
         return;
     }
 
-    let canAnalyze = false;
     let canApply = true;
     let selectedCount = 0;
     let hasUnanalyzedSelected = false;
@@ -73,7 +72,7 @@ function updateFileList() {
         if (file.selected) {
             selectedCount++;
             if (file.status === 'pending') hasUnanalyzedSelected = true;
-            if (file.status !== 'analyzed') canApply = false;
+            if (file.status !== 'analysed' && file.status !== 'done') canApply = false;
         }
     }
 
@@ -123,7 +122,7 @@ async function addFiles(filePaths, preAnalyzedData = {}) {
             id,
             path: filePath,
             name: fileName,
-            status: typeof existingLoudness === 'number' ? 'analyzed' : 'pending',
+            status: typeof existingLoudness === 'number' ? 'analysed' : 'pending',
             currentLufs: typeof existingLoudness === 'number' ? existingLoudness : null,
             truePeak: null,
             targetLufs: targetLufs,
@@ -234,7 +233,7 @@ export function initNormalizeView() {
     });
 
     document.getElementById('normalize-apply-btn').addEventListener('click', () => {
-        const filesToNormalize = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analyzed');
+        const filesToNormalize = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analysed');
         if (filesToNormalize.length === 0) return;
 
         const containsMp3 = filesToNormalize.some(f => getExtname(f.path).toLowerCase() === '.mp3');
@@ -313,15 +312,15 @@ export function initNormalizeView() {
             if (result.success) {
                 file.currentLufs = result.loudness;
                 file.truePeak = result.truePeak;
-                file.status = 'analyzed';
+                file.status = 'analysed';
             } else {
                 file.status = 'error';
                 console.error(`Analysis Error for ${file.name}:`, result.error);
             }
-            if (currentJob !== 'analyze') {
+            if (currentJob !== 'analyse') {
                 totalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'pending').length;
                 processedCount = 0;
-                currentJob = 'analyze';
+                currentJob = 'analyse';
             }
         } else if (type === 'normalize-result') {
             if (result.success) {
@@ -335,7 +334,7 @@ export function initNormalizeView() {
             }
 
             if (currentJob !== 'normalize') {
-                totalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analyzed').length;
+                totalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analysed').length;
                 processedCount = 0;
                 currentJob = 'normalize';
             }
@@ -343,7 +342,7 @@ export function initNormalizeView() {
 
         processedCount++;
         updateFileList();
-        updateProgress(processedCount, totalCount, currentJob === 'analyze' ? '解析中' : '適用中');
+        updateProgress(processedCount, totalCount, currentJob === 'analyse' ? '解析中' : '適用中');
         electronAPI.send('normalize-worker-finished-file');
     });
 }
