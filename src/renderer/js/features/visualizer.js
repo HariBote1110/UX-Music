@@ -122,8 +122,13 @@ export function setVisualizerFpsLimit(fps) {
 /**
  * ビジュアライザーの描画関数 (requestAnimationFrameでループ)
  */
-// Go用のデータキャッシュ
-let goDataCache = [];
+// Go path: double-buffer decoded frequency data (no per-fetch Uint8Array allocation)
+let goFreqBufA = null;
+let goFreqBufB = null;
+let goFreqWriteToA = true;
+/** @type {Uint8Array | null} */
+let goPublishedFreq = null;
+let goPublishedFreqLen = 0;
 let isFetchingGoData = false;
 let lastGoFetchTime = 0;
 
@@ -137,21 +142,32 @@ async function fetchGoData(timestamp = 0) {
         const data = await window.go.main.App.AudioGetFrequencyData();
 
         if (data) {
-            let arrayData = null;
             if (typeof data === 'string') {
-                // Base64 decode
                 const binaryString = atob(data);
                 const len = binaryString.length;
-                arrayData = new Uint8Array(len);
-                for (let i = 0; i < len; i++) {
-                    arrayData[i] = binaryString.charCodeAt(i);
+                if (len > 0) {
+                    let target = goFreqWriteToA ? goFreqBufA : goFreqBufB;
+                    if (!target || target.length < len) {
+                        target = new Uint8Array(len);
+                        if (goFreqWriteToA) {
+                            goFreqBufA = target;
+                        } else {
+                            goFreqBufB = target;
+                        }
+                    }
+                    for (let i = 0; i < len; i++) {
+                        target[i] = binaryString.charCodeAt(i);
+                    }
+                    goPublishedFreq = target;
+                    goPublishedFreqLen = len;
+                    goFreqWriteToA = !goFreqWriteToA;
                 }
-            } else if (Array.isArray(data) || data instanceof Uint8Array) {
-                arrayData = data;
-            }
-
-            if (arrayData && arrayData.length > 0) {
-                goDataCache = arrayData;
+            } else if (data instanceof Uint8Array && data.length > 0) {
+                goPublishedFreq = data;
+                goPublishedFreqLen = data.length;
+            } else if (Array.isArray(data) && data.length > 0) {
+                goPublishedFreq = new Uint8Array(data);
+                goPublishedFreqLen = goPublishedFreq.length;
             }
         }
     } catch (e) {
@@ -191,9 +207,9 @@ function draw(timestamp) {
 
     if (window.go) {
         fetchGoData(timestamp); // 非同期でデータ更新
-        if (goDataCache && goDataCache.length > 0) {
-            sourceData = goDataCache;
-            fftSize = goDataCache.length * 2; // FFT size is usually 2x result stats
+        if (goPublishedFreq && goPublishedFreqLen > 0) {
+            sourceData = goPublishedFreq.subarray(0, goPublishedFreqLen);
+            fftSize = goPublishedFreqLen * 2; // FFT size is usually 2x result stats
             // Go側のサンプルレートが不明だが、ここでは44100か48000と仮定
             // bin幅の計算に影響する
             sampleRate = 44100;

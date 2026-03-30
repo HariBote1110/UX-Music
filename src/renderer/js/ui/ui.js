@@ -23,9 +23,18 @@ export function updateListSpacer() {
     }
 }
 
+let listSpacerResizeRaf = null;
+function scheduleListSpacerUpdate() {
+    if (listSpacerResizeRaf != null) return;
+    listSpacerResizeRaf = requestAnimationFrame(() => {
+        listSpacerResizeRaf = null;
+        updateListSpacer();
+    });
+}
+
 export function initUI() {
-    // ウィンドウリサイズ時にスペーサーの高さを再計算
-    window.addEventListener('resize', updateListSpacer);
+    // ウィンドウリサイズ時にスペーサーの高さを再計算（1 フレームに 1 回まで）
+    window.addEventListener('resize', scheduleListSpacerUpdate);
 
     // 初回実行（レンダリング完了を見越して少し遅延させる）
     setTimeout(updateListSpacer, 100);

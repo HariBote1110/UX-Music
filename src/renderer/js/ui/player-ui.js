@@ -22,6 +22,8 @@ let progressFrameId = null;
 let lastVolume = 0.5;
 let iconAnimationId = null;
 let volumeSaveTimer = null;
+/** @type {number | null} */
+let volumeApplyRaf = null;
 let shuffleAnimationRunning = false;
 
 function getCurrentQueueSong() {
@@ -284,6 +286,7 @@ function updateProgressBarLoop() {
     if (elements.progressBar) {
         elements.progressBar.value = currentTime;
     }
+    updateUiTime(currentTime, duration);
 
     updateLrcEditorControls(true, currentTime, duration);
     progressFrameId = requestAnimationFrame(updateProgressBarLoop);
@@ -327,17 +330,28 @@ export function initPlayerControls(initialPlayer, _callbacks) {
     });
 
     elements.volumeSlider.addEventListener('input', () => {
-        const volume = parseFloat(elements.volumeSlider.value);
+        updateVolumeIcon();
         if (window.go) {
-            window.go.main.App.AudioSetVolume(volume).catch(() => { });
+            if (volumeApplyRaf != null) cancelAnimationFrame(volumeApplyRaf);
+            volumeApplyRaf = requestAnimationFrame(() => {
+                volumeApplyRaf = null;
+                const volume = parseFloat(elements.volumeSlider.value);
+                window.go.main.App.AudioSetVolume(volume).catch(() => { });
+            });
         } else {
             applyMasterVolume();
         }
-        updateVolumeIcon();
     });
 
     elements.volumeSlider.addEventListener('change', () => {
+        if (volumeApplyRaf != null) {
+            cancelAnimationFrame(volumeApplyRaf);
+            volumeApplyRaf = null;
+        }
         const volume = parseFloat(elements.volumeSlider.value);
+        if (window.go) {
+            window.go.main.App.AudioSetVolume(volume).catch(() => { });
+        }
         if (volumeSaveTimer) {
             clearTimeout(volumeSaveTimer);
         }
@@ -595,10 +609,10 @@ export function updatePlaybackStateUI(playing) {
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
         updateLrcEditorControls(true, currentTime, duration);
 
-        if (progressUpdateInterval) clearInterval(progressUpdateInterval);
-        progressUpdateInterval = setInterval(() => {
-            if (!isSeeking) updateUiTime(getCurrentTime(), getDuration());
-        }, 1000);
+        if (progressUpdateInterval) {
+            clearInterval(progressUpdateInterval);
+            progressUpdateInterval = null;
+        }
 
         // 二重起動防止
         if (!progressFrameId) {

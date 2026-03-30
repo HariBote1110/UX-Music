@@ -33,14 +33,32 @@ window.onunhandledrejection = function (event) {
 
 const electronAPI = window.electronAPI;
 
-window.artworkLoadTimes = [];
+const MAX_ARTWORK_LOAD_SAMPLES = 200;
+const artworkLoadRing = new Float64Array(MAX_ARTWORK_LOAD_SAMPLES);
+let artworkLoadWrite = 0;
+let artworkLoadFull = false;
+
 window.recordArtworkLoadTime = (time) => {
-    window.artworkLoadTimes.push(time);
-    const MAX_ARTWORK_LOAD_SAMPLES = 200;
-    if (window.artworkLoadTimes.length > MAX_ARTWORK_LOAD_SAMPLES) {
-        window.artworkLoadTimes.splice(0, window.artworkLoadTimes.length - MAX_ARTWORK_LOAD_SAMPLES);
+    artworkLoadRing[artworkLoadWrite] = time;
+    artworkLoadWrite = (artworkLoadWrite + 1) % MAX_ARTWORK_LOAD_SAMPLES;
+    if (artworkLoadWrite === 0) {
+        artworkLoadFull = true;
     }
 };
+
+Object.defineProperty(window, 'artworkLoadTimes', {
+    enumerable: true,
+    configurable: true,
+    get() {
+        const n = artworkLoadFull ? MAX_ARTWORK_LOAD_SAMPLES : artworkLoadWrite;
+        const out = new Array(n);
+        const start = artworkLoadFull ? artworkLoadWrite : 0;
+        for (let i = 0; i < n; i++) {
+            out[i] = artworkLoadRing[(start + i) % MAX_ARTWORK_LOAD_SAMPLES];
+        }
+        return out;
+    }
+});
 window.observeNewArtworks = (container) => observeNewImages(container || document);
 
 async function initApp() {

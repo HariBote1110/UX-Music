@@ -116,6 +116,7 @@ type Player struct {
 	fftWindow   []float64      // Hanning window
 	fftLocalBuf []float64      // Local buffer for collecting samples
 	fftChan     chan []float64 // Channel for async FFT processing
+	fftMonoPool sync.Pool      // Reusable mono sample slices (avoids alloc in processAudio)
 
 	// Equaliser
 	eqSettingsMu sync.RWMutex
@@ -173,7 +174,13 @@ func (p *Player) initFFT(size int) {
 	p.fftResult = make([]uint8, size/2)
 	p.fftWindow = make([]float64, size)
 	p.fftLocalBuf = make([]float64, 0, size) // Local buffer for batch collection
-	p.fftChan = make(chan []float64, 4)      // Buffered channel for async FFT
+	p.fftChan = make(chan []float64, 4) // Buffered channel for async FFT
+	p.fftMonoPool = sync.Pool{
+		New: func() interface{} {
+			// Max mono samples per callback: FramesPerBuffer (4096) at mono
+			return make([]float64, 4096)
+		},
+	}
 
 	// Start FFT processor goroutine
 	go p.fftProcessor()
@@ -191,17 +198,22 @@ func (p *Player) initFFT(size int) {
 // fftProcessor processes FFT data asynchronously
 func (p *Player) fftProcessor() {
 	var samples []float64
+	var fftWork []float64
 	for input := range p.fftChan {
+		full := input[:cap(input)]
 		samples = append(samples, input...)
+		p.fftMonoPool.Put(full)
 
 		// Process when we have enough samples
 		for len(samples) >= p.fftSize {
-			// Extract exactly fftSize samples
-			fftInput := make([]float64, p.fftSize)
-			copy(fftInput, samples[:p.fftSize])
+			if cap(fftWork) < p.fftSize {
+				fftWork = make([]float64, p.fftSize)
+			}
+			fftWork = fftWork[:p.fftSize]
+			copy(fftWork, samples[:p.fftSize])
 			samples = samples[p.fftSize:]
 
-			p.calculateFFT(fftInput)
+			p.calculateFFT(fftWork)
 		}
 	}
 }
@@ -660,17 +672,26 @@ func (p *Player) processAudio(out []float32) {
 			p.position.Add(int64(samplesToRead / channels))
 		}
 
-		// Send samples for FFT (every nth callback to reduce overhead)
-		if p.fftChan != nil && samplesToRead >= 512 {
-			// Create FFT samples from left channel
-			fftSamples := make([]float64, samplesToRead/channels)
-			for i := 0; i < samplesToRead && i/channels < len(fftSamples); i += channels {
-				idx := (readPos + int64(i)) % ringBufSize
-				fftSamples[i/channels] = float64(ringBuf[idx])
-			}
-			select {
-			case p.fftChan <- fftSamples:
-			default:
+		// Send samples for FFT (reuse pooled slice — no allocation in real-time callback)
+		if p.fftChan != nil && samplesToRead >= 512 && channels > 0 {
+			nMono := samplesToRead / channels
+			if nMono > 0 {
+				bufAny := p.fftMonoPool.Get()
+				buf, ok := bufAny.([]float64)
+				if ok && cap(buf) >= nMono {
+					fftSamples := buf[:nMono]
+					for i := 0; i < samplesToRead && i/channels < nMono; i += channels {
+						idx := (readPos + int64(i)) % ringBufSize
+						fftSamples[i/channels] = float64(ringBuf[idx])
+					}
+					select {
+					case p.fftChan <- fftSamples:
+					default:
+						p.fftMonoPool.Put(buf)
+					}
+				} else if ok {
+					p.fftMonoPool.Put(buf)
+				}
 			}
 		}
 	}

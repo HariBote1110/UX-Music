@@ -3,6 +3,7 @@ package scanner
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +80,15 @@ func ScanLibrary(paths []string, artworksDir string) ScanResult {
 }
 
 func walkDirectory(root string, wg *sync.WaitGroup, songsChan chan<- Song, artworksDir string) {
+	workers := runtime.NumCPU()
+	if workers < 4 {
+		workers = 4
+	}
+	if workers > 32 {
+		workers = 32
+	}
+	sem := make(chan struct{}, workers)
+
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -90,8 +100,10 @@ func walkDirectory(root string, wg *sync.WaitGroup, songsChan chan<- Song, artwo
 		ext := strings.ToLower(filepath.Ext(path))
 		if supportedExtensions[ext] {
 			wg.Add(1)
+			sem <- struct{}{}
 			go func(filePath string, info os.FileInfo) {
 				defer wg.Done()
+				defer func() { <-sem }()
 				song := parseFile(filePath, info, artworksDir)
 				songsChan <- song
 			}(path, nil)

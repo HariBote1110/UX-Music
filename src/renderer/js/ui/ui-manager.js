@@ -11,6 +11,8 @@ import { showNotification, hideNotification } from './notification.js';
 import { showContextMenu, formatBytes } from './utils.js';
 const electronAPI = window.electronAPI;
 let lastPlayingQueueIndex = -1;
+/** @type {HTMLElement | null} */
+let cachedMainPlayingItem = null;
 
 export function rebuildLibraryIndexes() {
     state.libraryById = new Map();
@@ -74,8 +76,10 @@ export function updatePlayingIndicators() {
     const playingIdentifier = currentPlayingSong?.id || currentPlayingSong?.path;
     console.log(`[Debug:UI] updatePlayingIndicators 実行 - SongID: ${playingIdentifier}`);
 
-    const oldPlayingItems = document.querySelectorAll('.main-content .song-item.playing');
-    oldPlayingItems.forEach(item => item.classList.remove('playing'));
+    if (cachedMainPlayingItem) {
+        cachedMainPlayingItem.classList.remove('playing');
+        cachedMainPlayingItem = null;
+    }
 
     if (currentPlayingSong && playingIdentifier) {
         try {
@@ -86,6 +90,7 @@ export function updatePlayingIndicators() {
             if (newPlayingItem) {
                 console.log('[Debug:UI] 該当する song-item を発見しました。ハイライトを適用します。');
                 newPlayingItem.classList.add('playing');
+                cachedMainPlayingItem = newPlayingItem;
                 setVisualizerTarget(newPlayingItem);
             } else {
                 console.warn(`[Debug:UI] セレクター "${selector}" に一致する要素が見つかりませんでした。`);
@@ -125,15 +130,16 @@ function renderQueueView() {
         elements.queueList.innerHTML = '<p class="no-lyrics">再生キューは空です</p>';
         return;
     }
+    const frag = document.createDocumentFragment();
     state.playbackQueue.forEach((song, index) => {
         const isPlaying = index === state.currentSongIndex;
         const queueItem = createQueueItem(song, isPlaying, index);
-        queueItem.addEventListener('click', () => playSong(index));
-        elements.queueList.appendChild(queueItem);
+        frag.appendChild(queueItem);
         if (isPlaying) {
             lastPlayingQueueIndex = index;
         }
     });
+    elements.queueList.appendChild(frag);
 
     if (typeof window.observeNewArtworks === 'function') {
         window.observeNewArtworks(elements.queueList);
@@ -168,6 +174,18 @@ function syncQueuePlayingState() {
 }
 
 export function initUI() {
+    if (elements.queueList) {
+        elements.queueList.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-queue-index]');
+            if (!item || !elements.queueList.contains(item)) return;
+            const raw = item.getAttribute('data-queue-index');
+            if (raw == null) return;
+            const idx = parseInt(raw, 10);
+            if (!Number.isFinite(idx)) return;
+            playSong(idx);
+        });
+    }
+
     elements.sidebarTabs.forEach(tab => {
         tab.addEventListener('click', () => {
             elements.sidebarTabs.forEach(t => t.classList.remove('active'));

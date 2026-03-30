@@ -237,7 +237,7 @@ function startGoStatePolling() {
         } finally {
             goPollInFlight = false;
         }
-    }, 200);
+    }, 500);
 }
 
 export async function initPlayer(playerElement, callbacks, sinkId = null) {

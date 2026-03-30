@@ -10,7 +10,8 @@ import (
 )
 
 type Store struct {
-	mu sync.Mutex
+	mu  sync.Mutex
+	mem map[string]interface{} // in-memory cache for Load; invalidated on Save
 }
 
 var Instance = &Store{}
@@ -22,6 +23,12 @@ func (s *Store) GetPath(name string) string {
 func (s *Store) Load(name string) (interface{}, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if s.mem != nil {
+		if data, ok := s.mem[name]; ok {
+			return data, nil
+		}
+	}
 
 	path := s.GetPath(name)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -41,6 +48,10 @@ func (s *Store) Load(name string) (interface{}, error) {
 	if err := json.Unmarshal(bytes, &data); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal json: %w", err)
 	}
+	if s.mem == nil {
+		s.mem = make(map[string]interface{})
+	}
+	s.mem[name] = data
 	return data, nil
 }
 
@@ -56,6 +67,9 @@ func (s *Store) Save(name string, data interface{}) error {
 
 	if err := os.WriteFile(path, bytes, 0644); err != nil {
 		return fmt.Errorf("failed to write store file: %w", err)
+	}
+	if s.mem != nil {
+		delete(s.mem, name)
 	}
 	return nil
 }
