@@ -44,7 +44,8 @@ let goState = {
     isPlaying: false,
     isPaused: false
 };
-let pollingInterval = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let goPollTimeoutId = null;
 let goPollInFlight = false;
 let lastSeekAtMs = 0;
 
@@ -157,13 +158,36 @@ function attachPlayerListeners(player) {
     };
 }
 
-// Goバックエンドの状態をポーリングする関数
-function startGoStatePolling() {
-    if (pollingInterval) clearInterval(pollingInterval);
+/** Lyrics panel open: tighter IPC so sync + seek UI stay responsive. */
+function goPollDelayMs() {
+    try {
+        const lyricsEl = document.getElementById('lyrics-container');
+        if (lyricsEl?.classList.contains('active')) {
+            return 500;
+        }
+    } catch {
+        /* ignore */
+    }
+    return 1000;
+}
 
-    pollingInterval = setInterval(async () => {
-        if (goPollInFlight) return;
-        if (!window.go || !window.go.main || !window.go.main.App) return;
+// Goバックエンドの状態をポーリングする関数（歌詞非表示時は間隔を延ばして IPC を削減）
+function startGoStatePolling() {
+    if (goPollTimeoutId != null) {
+        clearTimeout(goPollTimeoutId);
+        goPollTimeoutId = null;
+    }
+
+    const tick = async () => {
+        goPollTimeoutId = null;
+        if (!window.go || !window.go.main || !window.go.main.App) {
+            goPollTimeoutId = setTimeout(tick, goPollDelayMs());
+            return;
+        }
+        if (goPollInFlight) {
+            goPollTimeoutId = setTimeout(tick, goPollDelayMs());
+            return;
+        }
 
         goPollInFlight = true;
         try {
@@ -237,7 +261,11 @@ function startGoStatePolling() {
         } finally {
             goPollInFlight = false;
         }
-    }, 500);
+
+        goPollTimeoutId = setTimeout(tick, goPollDelayMs());
+    };
+
+    goPollTimeoutId = setTimeout(tick, goPollDelayMs());
 }
 
 export async function initPlayer(playerElement, callbacks, sinkId = null) {

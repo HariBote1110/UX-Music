@@ -20,6 +20,13 @@ const GO_VISUALIZER_FETCH_INTERVAL_MS = 80;
 export function startVisualizerLoop() {
     lastHeights.fill(4);
 
+    if (window.go && goFetchIntervalId == null) {
+        goFetchIntervalId = setInterval(() => {
+            void fetchGoData();
+        }, GO_VISUALIZER_FETCH_INTERVAL_MS);
+        void fetchGoData();
+    }
+
     if (!visualizerFrameId && isPlaying()) {
         visualizerFrameId = requestAnimationFrame(draw);
     }
@@ -29,6 +36,10 @@ export function startVisualizerLoop() {
  * ビジュアライザーの描画ループを停止する
  */
 export function stopVisualizerLoop() {
+    if (goFetchIntervalId != null) {
+        clearInterval(goFetchIntervalId);
+        goFetchIntervalId = null;
+    }
     if (visualizerFrameId) {
         cancelAnimationFrame(visualizerFrameId);
         visualizerFrameId = null;
@@ -130,14 +141,15 @@ let goFreqWriteToA = true;
 let goPublishedFreq = null;
 let goPublishedFreqLen = 0;
 let isFetchingGoData = false;
-let lastGoFetchTime = 0;
+/** @type {ReturnType<typeof setInterval> | null} */
+let goFetchIntervalId = null;
 
-async function fetchGoData(timestamp = 0) {
+async function fetchGoData() {
     if (isFetchingGoData || !window.go) return;
-    if (timestamp > 0 && timestamp - lastGoFetchTime < GO_VISUALIZER_FETCH_INTERVAL_MS) return;
+    if (state.isLightFlightMode || state.visualizerMode === 'static') return;
+    if (isEcoModeEnabled && !isVisualizerVisible) return;
 
     isFetchingGoData = true;
-    lastGoFetchTime = timestamp || performance.now();
     try {
         const data = await window.go.main.App.AudioGetFrequencyData();
 
@@ -206,7 +218,6 @@ function draw(timestamp) {
     let sampleRate = 48000; // Default
 
     if (window.go) {
-        fetchGoData(timestamp); // 非同期でデータ更新
         if (goPublishedFreq && goPublishedFreqLen > 0) {
             sourceData = goPublishedFreq.subarray(0, goPublishedFreqLen);
             fftSize = goPublishedFreqLen * 2; // FFT size is usually 2x result stats

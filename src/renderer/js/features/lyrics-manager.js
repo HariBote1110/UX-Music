@@ -187,13 +187,19 @@ function scheduleLyricsRelayout(immediate = true) {
     });
 }
 
+let lyricsResizeThrottleRaf = null;
+
 function ensureLyricsMotionListeners() {
     if (!isLyricsMotionListenerBound) {
         window.addEventListener('resize', () => {
             if (!elements.lyricsView?.classList.contains('lyrics-mode-lrc')) {
                 return;
             }
-            scheduleLyricsRelayout(true);
+            if (lyricsResizeThrottleRaf != null) return;
+            lyricsResizeThrottleRaf = requestAnimationFrame(() => {
+                lyricsResizeThrottleRaf = null;
+                scheduleLyricsRelayout(true);
+            });
         });
         isLyricsMotionListenerBound = true;
     }
@@ -248,10 +254,7 @@ function applyLyricsMotionByIndex(activeIndex, immediate = false) {
         line.classList.toggle('active', isActive);
         line.style.setProperty('--line-motion-delay', `${motionDelay}ms`);
         line.style.setProperty('--line-motion-duration', `${motionDuration}ms`);
-        line.style.transform = `translate3d(-50%, ${y.toFixed(3)}px, 0) scale(${isActive ? 1 : 0.9})`;
-        line.style.opacity = isActive ? '1' : '0.35';
-        line.style.filter = isActive ? 'blur(0px)' : 'blur(1.5px)';
-        line.style.zIndex = isActive ? '10' : '1';
+        line.style.setProperty('--lyrics-line-y', `${y.toFixed(3)}px`);
     });
 
     currentAnimatedLyricsIndex = activeIndex;
@@ -260,14 +263,17 @@ function applyLyricsMotionByIndex(activeIndex, immediate = false) {
 function findLyricsIndexForTime(currentTime) {
     const lyrics = state.currentLyrics;
     if (!Array.isArray(lyrics) || lyrics.length === 0) {
+        lastResolvedLyricsIndex = -1;
         return -1;
     }
 
     const lastIndex = lyrics.length - 1;
     if (currentTime < lyrics[0].time) {
+        lastResolvedLyricsIndex = -1;
         return -1;
     }
     if (currentTime >= lyrics[lastIndex].time) {
+        lastResolvedLyricsIndex = lastIndex;
         return lastIndex;
     }
 
@@ -282,6 +288,7 @@ function findLyricsIndexForTime(currentTime) {
             while (index < lastIndex && currentTime >= lyrics[index + 1].time) {
                 index += 1;
             }
+            lastResolvedLyricsIndex = index;
             return index;
         }
     }
@@ -300,6 +307,7 @@ function findLyricsIndexForTime(currentTime) {
         }
     }
 
+    lastResolvedLyricsIndex = resolved;
     return resolved;
 }
 
@@ -351,7 +359,6 @@ export function updateSyncedLyrics(currentTime) {
 
     const currentIndex = findLyricsIndexForTime(currentTime);
     if (currentIndex !== currentAnimatedLyricsIndex) {
-        lastResolvedLyricsIndex = currentIndex;
         applyLyricsMotionByIndex(currentIndex, false);
     }
 }
