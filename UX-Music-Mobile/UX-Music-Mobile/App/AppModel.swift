@@ -29,12 +29,29 @@ final class AppModel {
 
     let downloadManager: DownloadManager
     let player: MusicPlayerService
+    let playlistStore: PlaylistStore
+    let favouriteSongStore: FavouriteSongStore
 
-    init() {
+    /// Locally persisted playlists (order matches `playlistStore`).
+    private(set) var playlists: [Playlist] = []
+    /// Mirror of `favouriteSongStore.orderedIds` so `@Observable` invalidates views when favourites change.
+    private(set) var favouriteSongIds: [String] = []
+
+    init(playlistStore: PlaylistStore? = nil) {
         serverConfig = Self.loadSettings()
         downloadManager = DownloadManager()
+        self.playlistStore = playlistStore ?? PlaylistStore()
+        favouriteSongStore = FavouriteSongStore()
+        favouriteSongIds = favouriteSongStore.orderedIds
         player = MusicPlayerService()
         player.targetLoudness = AppConstants.defaultTargetLoudness
+        player.loadArtworkImage = { [weak self] song in
+            guard let self else { return nil }
+            let s = self.artworkURL(for: song.artworkId)
+            guard !s.isEmpty, let url = URL(string: s) else { return nil }
+            return await NowPlayingArtworkImageLoader.uiImage(from: url)
+        }
+        refreshPlaylists()
     }
 
     private static func loadSettings() -> ServerConfig {
@@ -145,5 +162,86 @@ final class AppModel {
         } catch {
             // Optional: list rows still use remote artwork when reachable.
         }
+    }
+
+    // MARK: - Playlists (local)
+
+    func refreshPlaylists() {
+        playlists = playlistStore.orderedPlaylists()
+    }
+
+    func createPlaylist(name: String) throws {
+        _ = try playlistStore.createPlaylist(name: name)
+        refreshPlaylists()
+    }
+
+    func deletePlaylist(id: String) throws {
+        try playlistStore.deletePlaylist(id: id)
+        refreshPlaylists()
+    }
+
+    func renamePlaylist(id: String, newName: String) throws {
+        try playlistStore.renamePlaylist(id: id, newName: newName)
+        refreshPlaylists()
+    }
+
+    func addSongsToPlaylist(playlistId: String, songIds: [String]) throws {
+        try playlistStore.addSongIds(to: playlistId, songIds: songIds)
+        refreshPlaylists()
+    }
+
+    func removeSongsFromPlaylist(playlistId: String, songIds: [String]) throws {
+        try playlistStore.removeSongIds(from: playlistId, songIds: songIds)
+        refreshPlaylists()
+    }
+
+    func movePlaylists(fromOffsets: IndexSet, toOffset: Int) throws {
+        var ids = playlists.map(\.id)
+        ids.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        try playlistStore.setPlaylistOrder(ids: ids)
+        refreshPlaylists()
+    }
+
+    func moveSongs(inPlaylistId playlistId: String, fromOffsets: IndexSet, toOffset: Int) throws {
+        guard let pl = playlistStore.playlist(id: playlistId) else { throw PlaylistStoreError.notFound }
+        var ids = pl.songIds
+        ids.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        try playlistStore.setSongOrder(playlistId: playlistId, orderedIds: ids)
+        refreshPlaylists()
+    }
+
+    /// Maps `playlist.songIds` to downloaded `Song`s; missing IDs are skipped (removed tracks).
+    func resolvedSongs(for playlist: Playlist) -> [Song] {
+        playlist.songIds.compactMap { downloadManager.downloadedSongs[$0] }
+    }
+
+    func artworkIdForPlaylist(_ playlist: Playlist) -> String {
+        for sid in playlist.songIds {
+            if let s = downloadManager.downloadedSongs[sid], !s.artworkId.isEmpty {
+                return s.artworkId
+            }
+        }
+        return ""
+    }
+
+    // MARK: - Favourites (local)
+
+    func isFavouriteSong(songId: String) -> Bool {
+        favouriteSongIds.contains(songId)
+    }
+
+    func toggleFavourite(songId: String) {
+        favouriteSongStore.toggle(songId: songId)
+        favouriteSongIds = favouriteSongStore.orderedIds
+    }
+
+    func removeFavourite(songId: String) {
+        favouriteSongStore.remove(songId: songId)
+        favouriteSongIds = favouriteSongStore.orderedIds
+    }
+
+    /// Favourite ids mapped to downloaded `Song`s (missing downloads are omitted).
+    func favouriteSongsForPlayback() -> [Song] {
+        favouriteSongIds.compactMap { downloadManager.downloadedSongs[$0] }
     }
 }

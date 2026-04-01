@@ -17,5 +17,9 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>QR code scanning is used to connect to UX Music on your desktop.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 </dict>
 </plist>

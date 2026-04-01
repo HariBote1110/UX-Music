@@ -87,7 +87,11 @@ private extension View {
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         if #available(iOS 26.1, *) {
-            self.tabViewBottomAccessory(isEnabled: isEnabled, content: content)
+            self.tabViewBottomAccessory {
+                if isEnabled {
+                    content()
+                }
+            }
         } else {
             self.safeAreaInset(edge: .bottom, spacing: 0) {
                 if isEnabled {

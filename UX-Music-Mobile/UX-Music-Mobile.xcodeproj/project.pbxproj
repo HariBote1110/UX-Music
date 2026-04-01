@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		01A1A1A10101A1A10101A1A1 /* AppConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A20101A1A10101A1A1 /* AppConstants.swift */; };
 		F1F1F1F00101F1F10101F1F1 /* ArtworkPaletteExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F1F1F10101F1F10101F1F1 /* ArtworkPaletteExtractor.swift */; };
+		B2B2B2B20101B2B20101B2B2 /* PlaybackControlState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B2B2B30101B2B30101B2B3 /* PlaybackControlState.swift */; };
+		N1N1N1N10101N1N10101N1N1 /* NowPlayingArtworkImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */; };
 		01A1A1A30101A1A10101A1A1 /* ServerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A40101A1A10101A1A1 /* ServerConfig.swift */; };
 		01A1A1A50101A1A10101A1A1 /* Song.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A60101A1A10101A1A1 /* Song.swift */; };
 		01A1A1A70101A1A10101A1A1 /* Album.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A80101A1A10101A1A1 /* Album.swift */; };
@@ -28,6 +30,13 @@
 		01A1A1C50101A1A10101A1A1 /* HomeRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1C60101A1A10101A1A1 /* HomeRootView.swift */; };
 		01A1A1C70101A1A10101A1A1 /* UXMusicMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1C80101A1A10101A1A1 /* UXMusicMobileApp.swift */; };
 		E2E2E2E30101E2E10101E2E1 /* PairingQRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E2E2E20101E2E10101E2E1 /* PairingQRScannerView.swift */; };
+		F3A3A3A30101F3A30101F3A3 /* Playlist.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A3A3A80101F3A80101F3A8 /* Playlist.swift */; };
+		F3A3A3A40101F3A40101F3A4 /* PlaylistStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A3A3A90101F3A90101F3A9 /* PlaylistStore.swift */; };
+		F4B4B4B10101F4B10101F4B1 /* FavouriteSongStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B4B4B20101F4B20101F4B2 /* FavouriteSongStore.swift */; };
+		F3A3A3A50101F3A50101F3A5 /* PlaylistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A3A3AA0101F3AA0101F3AA /* PlaylistDetailView.swift */; };
+		F3A3A3A60101F3A60101F3A6 /* PlaylistStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A3A3AB0101F3AB0101F3AB /* PlaylistStoreTests.swift */; };
+		F3A3A3A70101F3A70101F3A7 /* AppModelPlaylistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A3A3AC0101F3AC0101F3AC /* AppModelPlaylistTests.swift */; };
+		B2B2B2B40101B2B40101B2B4 /* PlaybackControlStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B2B2B50101B2B50101B2B5 /* PlaybackControlStateTests.swift */; };
 		b077f2c8570b4c62ad6c8c75 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7db2069e8eb64b7382361146 /* Assets.xcassets */; };
 		b1b1b1B10101B1B10101B1B1 /* ServerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */; };
 		b1b1b1B30101B1B10101B1B1 /* SongDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B40101B1B10101B1B1 /* SongDecodingTests.swift */; };
@@ -49,6 +58,8 @@
 /* Begin PBXFileReference section */
 		01A1A1A20101A1A10101A1A1 /* AppConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConstants.swift; sourceTree = "<group>"; };
 		F1F1F1F10101F1F10101F1F1 /* ArtworkPaletteExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkPaletteExtractor.swift; sourceTree = "<group>"; };
+		B2B2B2B30101B2B30101B2B3 /* PlaybackControlState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackControlState.swift; sourceTree = "<group>"; };
+		N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingArtworkImageLoader.swift; sourceTree = "<group>"; };
 		01A1A1A40101A1A10101A1A1 /* ServerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfig.swift; sourceTree = "<group>"; };
 		01A1A1A60101A1A10101A1A1 /* Song.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Song.swift; sourceTree = "<group>"; };
 		01A1A1A80101A1A10101A1A1 /* Album.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Album.swift; sourceTree = "<group>"; };
@@ -69,6 +80,13 @@
 		01A1A1C80101A1A10101A1A1 /* UXMusicMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXMusicMobileApp.swift; sourceTree = "<group>"; };
 		E2E2E2E10101E2E10101E2E1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		E2E2E2E20101E2E10101E2E1 /* PairingQRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingQRScannerView.swift; sourceTree = "<group>"; };
+		F3A3A3A80101F3A80101F3A8 /* Playlist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Playlist.swift; sourceTree = "<group>"; };
+		F3A3A3A90101F3A90101F3A9 /* PlaylistStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistStore.swift; sourceTree = "<group>"; };
+		F4B4B4B20101F4B20101F4B2 /* FavouriteSongStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavouriteSongStore.swift; sourceTree = "<group>"; };
+		F3A3A3AA0101F3AA0101F3AA /* PlaylistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistDetailView.swift; sourceTree = "<group>"; };
+		F3A3A3AB0101F3AB0101F3AB /* PlaylistStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistStoreTests.swift; sourceTree = "<group>"; };
+		F3A3A3AC0101F3AC0101F3AC /* AppModelPlaylistTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelPlaylistTests.swift; sourceTree = "<group>"; };
+		B2B2B2B50101B2B50101B2B5 /* PlaybackControlStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackControlStateTests.swift; sourceTree = "<group>"; };
 		7db2069e8eb64b7382361146 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		a69b6b50c77c42d5883861b6 /* UX-Music-Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfigTests.swift; sourceTree = "<group>"; };
@@ -120,6 +138,9 @@
 				b1b1b1B60101B1B10101B1B1 /* AlbumTests.swift */,
 				b1b1b1B80101B1B10101B1B1 /* WearAPIClientTests.swift */,
 				c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */,
+				F3A3A3AB0101F3AB0101F3AB /* PlaylistStoreTests.swift */,
+				F3A3A3AC0101F3AC0101F3AC /* AppModelPlaylistTests.swift */,
+				B2B2B2B50101B2B50101B2B5 /* PlaybackControlStateTests.swift */,
 			);
 			path = "UX-Music-MobileTests";
 			sourceTree = "<group>";
@@ -129,6 +150,8 @@
 			children = (
 				01A1A1A20101A1A10101A1A1 /* AppConstants.swift */,
 				F1F1F1F10101F1F10101F1F1 /* ArtworkPaletteExtractor.swift */,
+				B2B2B2B30101B2B30101B2B3 /* PlaybackControlState.swift */,
+				N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -139,6 +162,7 @@
 				01A1A1A40101A1A10101A1A1 /* ServerConfig.swift */,
 				01A1A1A60101A1A10101A1A1 /* Song.swift */,
 				01A1A1A80101A1A10101A1A1 /* Album.swift */,
+				F3A3A3A80101F3A80101F3A8 /* Playlist.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -149,6 +173,8 @@
 				01A1A1AA0101A1A10101A1A1 /* WearAPIClient.swift */,
 				01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */,
 				01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */,
+				F3A3A3A90101F3A90101F3A9 /* PlaylistStore.swift */,
+				F4B4B4B20101F4B20101F4B2 /* FavouriteSongStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -171,6 +197,7 @@
 				01A1A1BA0101A1A10101A1A1 /* LocalLibraryScreen.swift */,
 				01A1A1BC0101A1A10101A1A1 /* RemoteLibraryScreen.swift */,
 				01A1A1BE0101A1A10101A1A1 /* AlbumDetailView.swift */,
+				F3A3A3AA0101F3AA0101F3AA /* PlaylistDetailView.swift */,
 				01A1A1C00101A1A10101A1A1 /* RemoteControlScreen.swift */,
 				01A1A1C20101A1A10101A1A1 /* SettingsScreen.swift */,
 				01A1A1C40101A1A10101A1A1 /* NowPlayingView.swift */,
@@ -295,6 +322,9 @@
 				b1b1b1B50101B1B10101B1B1 /* AlbumTests.swift in Sources */,
 				b1b1b1B70101B1B10101B1B1 /* WearAPIClientTests.swift in Sources */,
 				c2c2c2C20101C2C10101C2C1 /* AppModelDownloadTests.swift in Sources */,
+				F3A3A3A60101F3A60101F3A6 /* PlaylistStoreTests.swift in Sources */,
+				F3A3A3A70101F3A70101F3A7 /* AppModelPlaylistTests.swift in Sources */,
+				B2B2B2B40101B2B40101B2B4 /* PlaybackControlStateTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -304,12 +334,17 @@
 			files = (
 				01A1A1A10101A1A10101A1A1 /* AppConstants.swift in Sources */,
 				F1F1F1F00101F1F10101F1F1 /* ArtworkPaletteExtractor.swift in Sources */,
+				B2B2B2B20101B2B20101B2B2 /* PlaybackControlState.swift in Sources */,
+				N1N1N1N10101N1N10101N1N1 /* NowPlayingArtworkImageLoader.swift in Sources */,
 				01A1A1A30101A1A10101A1A1 /* ServerConfig.swift in Sources */,
 				01A1A1A50101A1A10101A1A1 /* Song.swift in Sources */,
 				01A1A1A70101A1A10101A1A1 /* Album.swift in Sources */,
+				F3A3A3A30101F3A30101F3A3 /* Playlist.swift in Sources */,
 				01A1A1A90101A1A10101A1A1 /* WearAPIClient.swift in Sources */,
 				01A1A1AB0101A1A10101A1A1 /* DownloadManager.swift in Sources */,
 				01A1A1AD0101A1A10101A1A1 /* MusicPlayerService.swift in Sources */,
+				F3A3A3A40101F3A40101F3A4 /* PlaylistStore.swift in Sources */,
+				F4B4B4B10101F4B10101F4B1 /* FavouriteSongStore.swift in Sources */,
 				01A1A1AF0101A1A10101A1A1 /* AppModel.swift in Sources */,
 				01A1A1B10101A1A10101A1A1 /* ArtworkImageView.swift in Sources */,
 				01A1A1B30101A1A10101A1A1 /* SongRowView.swift in Sources */,
@@ -317,6 +352,7 @@
 				01A1A1B90101A1A10101A1A1 /* LocalLibraryScreen.swift in Sources */,
 				01A1A1BB0101A1A10101A1A1 /* RemoteLibraryScreen.swift in Sources */,
 				01A1A1BD0101A1A10101A1A1 /* AlbumDetailView.swift in Sources */,
+				F3A3A3A50101F3A50101F3A5 /* PlaylistDetailView.swift in Sources */,
 				01A1A1BF0101A1A10101A1A1 /* RemoteControlScreen.swift in Sources */,
 				01A1A1C10101A1A10101A1A1 /* SettingsScreen.swift in Sources */,
 				01A1A1C30101A1A10101A1A1 /* NowPlayingView.swift in Sources */,
@@ -353,7 +389,6 @@
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "UX Music Mobile uses the local network to connect to your desktop music library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -543,7 +578,6 @@
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "UX Music Mobile uses the local network to connect to your desktop music library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

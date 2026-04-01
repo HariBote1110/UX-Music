@@ -2,21 +2,119 @@ import SwiftUI
 
 private let nowPlayingFallbackAccent = Color(red: 0.45, green: 0.82, blue: 1.0)
 
+private enum NowPlayingPage: Equatable {
+    case main
+    case queue
+    case favourites
+    case playbackSettings
+}
+
+private enum StripDragAxis {
+    case horizontal
+    case vertical
+}
+
+private let nowPlayingPanelSpring = Animation.spring(response: 0.52, dampingFraction: 0.78, blendDuration: 0.12)
+
+private func stripBaseX(page: NowPlayingPage, width w: CGFloat) -> CGFloat {
+    switch page {
+    case .main: return -w
+    case .favourites: return 0
+    case .queue: return -2 * w
+    case .playbackSettings: return -w
+    }
+}
+
+/// Rubber-band slightly past [-2w, 0] for a softer feel while dragging.
+private func displayStripOffset(page: NowPlayingPage, horizontalDrag: CGFloat, width w: CGFloat) -> CGFloat {
+    guard w > 1 else { return 0 }
+    guard page != .playbackSettings else { return -w }
+    let base = stripBaseX(page: page, width: w)
+    var raw = base + horizontalDrag
+    let minX = -2 * w
+    let maxX: CGFloat = 0
+    if raw < minX {
+        let over = raw - minX
+        raw = minX + over * 0.35
+    } else if raw > maxX {
+        let over = raw - maxX
+        raw = maxX + over * 0.45
+    }
+    return raw
+}
+
+/// `ToolbarItem` can propose a short height; large frames get clipped and `Circle()` looks truncated.
+private struct NowPlayingNavIconButton<Content: View>: View {
+    let action: () -> Void
+    let accessibilityLabel: String
+    @ViewBuilder var label: () -> Content
+
+    private let diameter: CGFloat = 34
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                label()
+            }
+            .frame(width: diameter, height: diameter)
+            .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize(horizontal: true, vertical: true)
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
 struct NowPlayingView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @State private var page: NowPlayingPage = .main
+    @State private var horizontalDrag: CGFloat = 0
+    @State private var lockedDragAxis: StripDragAxis?
 
     var body: some View {
         NavigationStack {
-            Group {
-                if let song = model.player.currentSong {
-                    NowPlayingPlayingShell(
-                        song: song,
-                        artworkURLString: model.artworkURL(for: song.artworkId)
+            GeometryReader { geo in
+                let w = geo.size.width
+                let h = geo.size.height
+                ZStack(alignment: .top) {
+                    HStack(spacing: 0) {
+                        NowPlayingFavouritesPanel(page: $page)
+                            .frame(width: w, height: h)
+                        Group {
+                            if let song = model.player.currentSong {
+                                NowPlayingPlayingShell(
+                                    song: song,
+                                    artworkURLString: model.artworkURL(for: song.artworkId)
+                                )
+                            } else {
+                                NowPlayingEmptyChrome()
+                            }
+                        }
+                        .frame(width: w, height: h)
+                        NowPlayingQueuePanel(page: $page)
+                            .frame(width: w, height: h)
+                    }
+                    .frame(width: 3 * w, height: h, alignment: .leading)
+                    .offset(
+                        x: displayStripOffset(page: page, horizontalDrag: horizontalDrag, width: w)
+                            + (page == .playbackSettings ? -3 * w : 0)
                     )
-                } else {
-                    NowPlayingEmptyChrome()
+                    .frame(width: w, height: h, alignment: .leading)
+                    .clipped()
+                    .allowsHitTesting(page != .playbackSettings)
+                    .gesture(stripDragGesture(width: w, height: h))
+
+                    if page == .playbackSettings {
+                        NowPlayingPlaybackSettingsPanel(page: $page)
+                            .frame(width: w, height: h)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .zIndex(1)
+                    }
                 }
+                .frame(width: w, height: h)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black)
@@ -25,21 +123,177 @@ struct NowPlayingView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .frame(width: 40, height: 40)
-                            .background(.ultraThinMaterial, in: Circle())
+                    if page == .main {
+                        NowPlayingNavIconButton(action: { dismiss() }, accessibilityLabel: "Close") {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                    } else {
+                        NowPlayingNavIconButton(action: {
+                            withAnimation(nowPlayingPanelSpring) {
+                                page = .main
+                                horizontalDrag = 0
+                            }
+                        }, accessibilityLabel: "Back to player") {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Close")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if page == .main, let song = model.player.currentSong {
+                        NowPlayingNavIconButton(action: {
+                            model.toggleFavourite(songId: song.id)
+                        }, accessibilityLabel: "Favourite") {
+                            Image(systemName: model.isFavouriteSong(songId: song.id) ? "heart.fill" : "heart")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(model.isFavouriteSong(songId: song.id) ? Color.pink : Color.white.opacity(0.85))
+                        }
+                    }
                 }
             }
         }
         .preferredColorScheme(.dark)
+        .interactiveDismissDisabled(page == .favourites || page == .queue)
+        .onAppear {
+            horizontalDrag = 0
+            lockedDragAxis = nil
+        }
+    }
+
+    private func setHorizontalDragLive(_ value: CGFloat) {
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            horizontalDrag = value
+        }
+    }
+
+    private func stripDragGesture(width w: CGFloat, height h: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .local)
+            .onChanged { value in
+                guard page != .playbackSettings, w > 1, h > 1 else { return }
+                let tx = value.translation.width
+                let ty = value.translation.height
+                let startY = value.startLocation.y
+
+                if lockedDragAxis == nil {
+                    let dist = hypot(tx, ty)
+                    guard dist > 10 else { return }
+                    switch page {
+                    case .main:
+                        // Artwork + title/metadata sit below the top half; only reserve the bottom band
+                        // (transport + scrubber) for vertical-only drags so pull-down dismiss still wins there.
+                        let horizontalStripFriendlyTopFraction: CGFloat = 0.82
+                        if abs(tx) >= abs(ty) {
+                            lockedDragAxis = startY < h * horizontalStripFriendlyTopFraction ? .horizontal : .vertical
+                        } else {
+                            lockedDragAxis = .vertical
+                        }
+                    case .favourites, .queue:
+                        // Horizontal strip only: vertical motion is for list scrolling / no sheet actions.
+                        guard abs(tx) >= abs(ty) else { return }
+                        lockedDragAxis = .horizontal
+                    case .playbackSettings:
+                        break
+                    }
+                }
+
+                guard lockedDragAxis == .horizontal else { return }
+                setHorizontalDragLive(tx)
+            }
+            .onEnded { value in
+                handleStripDragEnded(translation: value.translation, width: w, height: h)
+            }
+    }
+
+    private func handleStripDragEnded(translation: CGSize, width w: CGFloat, height h: CGFloat) {
+        let tx = translation.width
+        let ty = translation.height
+        let axis = lockedDragAxis
+        lockedDragAxis = nil
+
+        guard page != .playbackSettings else {
+            withAnimation(nowPlayingPanelSpring) {
+                horizontalDrag = 0
+            }
+            return
+        }
+
+        guard let axis else {
+            withAnimation(nowPlayingPanelSpring) {
+                horizontalDrag = 0
+            }
+            return
+        }
+
+        if axis == .vertical {
+            if page == .main {
+                // Content scrolls down (finger moves up) → settings; content scrolls up (finger moves down) → album / dismiss.
+                if ty < -52 {
+                    withAnimation(nowPlayingPanelSpring) {
+                        page = .playbackSettings
+                        horizontalDrag = 0
+                    }
+                    return
+                }
+                if ty > 68 {
+                    dismiss()
+                    return
+                }
+            }
+            withAnimation(nowPlayingPanelSpring) {
+                horizontalDrag = 0
+            }
+            return
+        }
+
+        let thresholdTowardsSide: CGFloat = w * 0.14
+        let thresholdBackToMain: CGFloat = w * 0.12
+        switch page {
+        case .main:
+            if tx < -thresholdTowardsSide {
+                withAnimation(nowPlayingPanelSpring) {
+                    page = .queue
+                    horizontalDrag = 0
+                }
+            } else if tx > thresholdTowardsSide {
+                withAnimation(nowPlayingPanelSpring) {
+                    page = .favourites
+                    horizontalDrag = 0
+                }
+            } else {
+                withAnimation(nowPlayingPanelSpring) {
+                    horizontalDrag = 0
+                }
+            }
+        case .queue:
+            if tx > thresholdBackToMain {
+                withAnimation(nowPlayingPanelSpring) {
+                    page = .main
+                    horizontalDrag = 0
+                }
+            } else {
+                withAnimation(nowPlayingPanelSpring) {
+                    horizontalDrag = 0
+                }
+            }
+        case .favourites:
+            if tx < -thresholdBackToMain {
+                withAnimation(nowPlayingPanelSpring) {
+                    page = .main
+                    horizontalDrag = 0
+                }
+            } else {
+                withAnimation(nowPlayingPanelSpring) {
+                    horizontalDrag = 0
+                }
+            }
+        case .playbackSettings:
+            break
+        }
     }
 }
 
@@ -92,6 +346,8 @@ private struct NowPlayingPlayingShell: View {
                     }
                 }
                 .padding(.horizontal, 28)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
 
                 Spacer(minLength: 24)
 
@@ -370,4 +626,215 @@ private struct NowPlayingArtworkBlock: View {
                 .foregroundStyle(.white.opacity(0.22))
         }
     }
+}
+
+// MARK: - Swipe side panels (queue / favourites / settings mock)
+
+private struct NowPlayingQueuePanel: View {
+    @Binding var page: NowPlayingPage
+    @Environment(AppModel.self) private var model
+
+    private var queue: [Song] {
+        model.player.playbackQueue
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Up next")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
+            List {
+                if queue.isEmpty {
+                    Text("The queue is empty.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(queue.indices), id: \.self) { idx in
+                        let song = queue[idx]
+                        Button {
+                            Task {
+                                await model.player.playQueueItem(at: idx)
+                                withAnimation(nowPlayingPanelSpring) {
+                                    page = .main
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                if idx == model.player.currentQueueIndex {
+                                    Image(systemName: "waveform")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(nowPlayingFallbackAccent)
+                                        .frame(width: 22)
+                                } else {
+                                    Text("\(idx + 1)")
+                                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(.tertiary)
+                                        .frame(width: 22)
+                                }
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(song.displayTitle)
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    Text(song.displayArtist)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+        .overlay(alignment: .bottom) {
+            swipeHint("Swipe right for player")
+                .padding(.bottom, 12)
+        }
+    }
+}
+
+private struct NowPlayingFavouritesPanel: View {
+    @Binding var page: NowPlayingPage
+    @Environment(AppModel.self) private var model
+
+    private var songs: [Song] {
+        model.favouriteSongsForPlayback()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Favourites")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
+            List {
+                if songs.isEmpty {
+                    Text("No favourites yet. Tap the heart on the player while a track is playing.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(songs) { song in
+                        Button {
+                            let list = model.favouriteSongsForPlayback()
+                            Task {
+                                await model.player.play(song, newQueue: list)
+                                withAnimation(nowPlayingPanelSpring) {
+                                    page = .main
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                ArtworkImageView(
+                                    urlString: model.artworkURL(for: song.artworkId),
+                                    cornerRadius: 6,
+                                    size: 44
+                                )
+                                .frame(width: 44, height: 44)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(song.displayTitle)
+                                        .font(.body.weight(.semibold))
+                                    Text(song.displayArtist)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                model.removeFavourite(songId: song.id)
+                            } label: {
+                                Label("Remove", systemImage: "heart.slash")
+                            }
+                        }
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+        .overlay(alignment: .bottom) {
+            swipeHint("Swipe left for player")
+                .padding(.bottom, 12)
+        }
+    }
+}
+
+private struct NowPlayingPlaybackSettingsPanel: View {
+    @Binding var page: NowPlayingPage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Playback")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
+            List {
+                Section {
+                    Toggle("Enable equaliser", isOn: .constant(false))
+                        .disabled(true)
+                    HStack {
+                        Text("Preset")
+                        Spacer()
+                        Text("Flat (mock)")
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Equaliser")
+                }
+
+                Section {
+                    Toggle("Crossfade", isOn: .constant(false))
+                        .disabled(true)
+                    Toggle("Normalise loudness (mock)", isOn: .constant(true))
+                        .disabled(true)
+                } header: {
+                    Text("Other")
+                }
+
+                Section {
+                    Text("More audio options will appear here in a future update.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+        .overlay(alignment: .bottom) {
+            swipeHint("Swipe down for player")
+                .padding(.bottom, 12)
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 40)
+                .onEnded { value in
+                    let t = value.translation
+                    guard t.height > 48, abs(t.height) > abs(t.width) else { return }
+                    withAnimation(nowPlayingPanelSpring) {
+                        page = .main
+                    }
+                }
+        )
+    }
+}
+
+private func swipeHint(_ text: String) -> some View {
+    Text(text)
+        .font(.caption2)
+        .foregroundStyle(.tertiary)
 }
