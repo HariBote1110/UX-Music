@@ -41,15 +41,35 @@ final class MusicServerClient {
 
     /// Downloads the audio file for the given song and returns a local URL.
     func downloadFile(songID: String, progressHandler: ((Double) -> Void)? = nil) async throws -> URL {
-        let url = baseURL.appendingPathComponent("wear/file/\(songID)")
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: true) else {
+            throw ClientError.unexpectedStatus
+        }
+        var path = components.path
+        if path.hasSuffix("/") {
+            path.removeLast()
+        }
+        components.path = path + "/wear/file"
+        components.queryItems = [URLQueryItem(name: "id", value: songID)]
+        guard let url = components.url else {
+            throw ClientError.unexpectedStatus
+        }
         let (localURL, _) = try await session.download(from: url)
         return localURL
     }
 
     // MARK: - Artwork
 
-    func artworkURL(songID: String) -> URL {
-        baseURL.appendingPathComponent("wear/artwork/\(songID)")
+    func artworkURL(artworkID: String) -> URL {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: true) else {
+            return baseURL
+        }
+        var path = components.path
+        if path.hasSuffix("/") {
+            path.removeLast()
+        }
+        components.path = path + "/wear/artwork/"
+        components.queryItems = [URLQueryItem(name: "id", value: artworkID)]
+        return components.url ?? baseURL
     }
 }
 

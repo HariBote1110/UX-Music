@@ -174,6 +174,14 @@ export function GetWearAddress() {
   return window['go']['main']['App']['GetWearAddress']();
 }
 
+export function GetWearPairingQRDataURL() {
+  return window['go']['main']['App']['GetWearPairingQRDataURL']();
+}
+
+export function GetWearPairingURL() {
+  return window['go']['main']['App']['GetWearPairingURL']();
+}
+
 export function GetYouTubeInfo(arg1) {
   return window['go']['main']['App']['GetYouTubeInfo'](arg1);
 }

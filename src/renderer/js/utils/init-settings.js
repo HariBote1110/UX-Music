@@ -11,6 +11,35 @@ const electronAPI = window.electronAPI;
 const decaySliderValues = [1, 3, 7, 14, 30];
 const decaySliderLabels = ['1日', '3日', '7日', '2週間', '1ヶ月'];
 
+async function refreshWearPairingQR() {
+    const group = document.getElementById('wear-mobile-pairing-group');
+    const wrap = document.getElementById('wear-pairing-qr-wrap');
+    const img = document.getElementById('wear-pairing-qr');
+    const urlEl = document.getElementById('wear-pairing-url');
+    const errEl = document.getElementById('wear-pairing-qr-error');
+    if (!group || !wrap || !img || !errEl) return;
+    errEl.classList.add('hidden');
+    errEl.textContent = '';
+    if (!window.go?.main?.App?.GetWearPairingQRDataURL) {
+        group.classList.add('hidden');
+        return;
+    }
+    group.classList.remove('hidden');
+    try {
+        const dataUrl = await window.go.main.App.GetWearPairingQRDataURL();
+        img.src = dataUrl;
+        wrap.classList.remove('hidden');
+        if (urlEl && window.go.main.App.GetWearPairingURL) {
+            urlEl.textContent = await window.go.main.App.GetWearPairingURL();
+        }
+    } catch (e) {
+        wrap.classList.add('hidden');
+        const msg = e?.message || String(e);
+        errEl.textContent = 'QR の生成に失敗しました: ' + msg;
+        errEl.classList.remove('hidden');
+    }
+}
+
 export function initSettings() {
     // Initialise playback settings from storage
     initPlaybackSettings();
@@ -57,6 +86,7 @@ export function initSettings() {
         document.querySelector('input[name="enable-easter-eggs"]').checked = settings.enableEasterEggs !== false;
 
         elements.settingsModalOverlay.classList.remove('hidden');
+        void refreshWearPairingQR();
 
         const settingsTitle = document.getElementById('settings-title');
         if (settingsTitle && !settingsTitle.dataset.listenerAttached) {

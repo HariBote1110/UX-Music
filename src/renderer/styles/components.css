@@ -515,6 +515,31 @@
     display: none;
 }
 
+.wear-pairing-qr-wrap {
+    margin: 12px 0;
+    text-align: center;
+}
+
+.wear-pairing-qr-wrap img {
+    border-radius: 8px;
+    background: #fff;
+    padding: 8px;
+}
+
+.wear-pairing-url {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    word-break: break-all;
+    color: #aaa;
+    margin-top: 8px;
+}
+
+.wear-pairing-error {
+    color: #f87171;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
 #modal,
 #settings-modal {
     background-color: var(--bg-light);

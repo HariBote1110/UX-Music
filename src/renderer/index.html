@@ -281,6 +281,18 @@
                         <button id="manage-devices-btn" class="settings-button">表示するデバイスを管理...</button>
                     </div>
                 </div>
+                <div class="setting-group" id="wear-mobile-pairing-group">
+                    <div class="setting-item">
+                        <h4>モバイルアプリ連携（QR）</h4>
+                        <p class="setting-description">iPhone の UX Music アプリで Settings の「Pair with QR code」を選び、この QR
+                            を読み取ります。デスクトップと iPhone を同じ Wi‑Fi に接続してください。</p>
+                        <div id="wear-pairing-qr-wrap" class="wear-pairing-qr-wrap hidden">
+                            <img id="wear-pairing-qr" alt="モバイル連携用 QR コード" width="220" height="220">
+                        </div>
+                        <p id="wear-pairing-url" class="wear-pairing-url" aria-live="polite"></p>
+                        <p id="wear-pairing-qr-error" class="wear-pairing-error hidden" role="alert"></p>
+                    </div>
+                </div>
                 <div class="setting-group">
                     <div class="setting-item">
                         <h4>グラフィックイコライザー</h4>
