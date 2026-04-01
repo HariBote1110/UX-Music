@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,10 +20,13 @@ import (
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 
+	"github.com/skip2/go-qrcode"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const wearServerPort = "8765"
+
+const wearPairingURLScheme = "uxmusic"
 
 // WearServer holds the HTTP server for the /wear/ endpoints.
 type WearServer struct {
@@ -37,7 +42,9 @@ func StartWearServer(ctx context.Context, app *App) *WearServer {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/wear/ping", wearPingHandler)
+	mux.HandleFunc("/wear/mobile", wearMobileMetaHandler)
 	mux.HandleFunc("/wear/songs", wearSongsHandler)
+	mux.HandleFunc("/wear/file", wearFileHandler)
 	mux.HandleFunc("/wear/file/", wearFileHandler)
 	mux.HandleFunc("/wear/artwork/", wearArtworkHandler)
 	mux.HandleFunc("/wear/loudness", ws.wearLoudnessHandler)
@@ -85,9 +92,26 @@ func GetWearServerAddress() string {
 
 func wearPingHandler(w http.ResponseWriter, r *http.Request) {
 	hostname, _ := os.Hostname()
-	writeJSON(w, map[string]string{
+	// wearApi 2: mobile-oriented additions (original file source, /wear/mobile, etc.). Watch clients may ignore extra keys.
+	writeJSON(w, map[string]interface{}{
 		"version":  "0.1.0",
 		"hostname": hostname,
+		"wearApi":  2,
+	})
+}
+
+// wearMobileMetaHandler documents endpoints for phone companion apps (full-quality audio, cached artwork on device, etc.).
+func wearMobileMetaHandler(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]interface{}{
+		"role":     "ux-music-companion",
+		"wearApi":  2,
+		"songs":    "/wear/songs",
+		"file":     "/wear/file?id={songId}",
+		"fileHint": "Add &source=original for library file without Watch transcoding (AAC 128k m4a). Omit for watch-optimised cache.",
+		"artwork":  "/wear/artwork/?id={artworkId}",
+		"loudness": "/wear/loudness",
+		"state":    "/wear/state",
+		"command":  "/wear/command (POST JSON)",
 	})
 }
 
@@ -118,11 +142,10 @@ func wearSongsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			clean[k] = v
 		}
-		// Compute artwork ID (SHA256 hash of "albumArtist---album") so that
-		// mobile clients can construct a valid /wear/artwork/{artworkId} URL.
-		albumArtist, _ := song["albumartist"].(string)
-		album, _ := song["album"].(string)
-		clean["artworkId"] = computeArtworkID(albumArtist, album)
+		// Artwork files on disk are named from internal/scanner/artwork.go (hash of
+		// tag-derived keys with artist fallbacks). The library JSON may normalise
+		// album fields differently, so prefer the hash embedded in song["artwork"].full.
+		clean["artworkId"] = artworkIDForWearSong(song)
 		stripped = append(stripped, clean)
 	}
 
@@ -130,11 +153,19 @@ func wearSongsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func wearFileHandler(w http.ResponseWriter, r *http.Request) {
-	songID := strings.TrimPrefix(r.URL.Path, "/wear/file/")
+	songID := strings.TrimSpace(r.URL.Query().Get("id"))
+	if songID == "" {
+		songID = strings.TrimPrefix(r.URL.Path, "/wear/file/")
+		songID = strings.TrimPrefix(songID, "/")
+		if decoded, err := url.PathUnescape(songID); err == nil {
+			songID = decoded
+		}
+	}
 	if songID == "" {
 		http.Error(w, "missing song ID", http.StatusBadRequest)
 		return
 	}
+	fmt.Printf("[Wear] GET /wear/file id=%q from %s\n", songID, r.RemoteAddr)
 
 	filePath := findSongPathByID(songID)
 	if filePath == "" {
@@ -152,6 +183,17 @@ func wearFileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Phone / full-quality: skip Watch transcoding (original bitrate and container).
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("source")), "original") {
+		safeName := filepath.Base(filePath)
+		if safeName == "" || safeName == "." {
+			safeName = "track"
+		}
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, safeName))
+		http.ServeFile(w, r, filePath)
+		return
+	}
+
 	// Try to serve a Watch-optimised transcoded version (AAC 128 kbps m4a).
 	// Falls back to the original file if ffmpeg is unavailable or fails.
 	cachedPath, err := getOrTranscode(songID, filePath)
@@ -161,9 +203,14 @@ func wearFileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Tell the client this is an m4a so it uses the right file extension.
-	w.Header().Set("Content-Disposition",
-		fmt.Sprintf(`attachment; filename="%s.m4a"`, songID))
+	// Tell the client this is an m4a; basename only (songID may be a full path in legacy libraries).
+	safeName := filepath.Base(filePath)
+	if safeName == "" || safeName == "." {
+		safeName = "track.m4a"
+	} else if !strings.HasSuffix(strings.ToLower(safeName), ".m4a") {
+		safeName += ".m4a"
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, safeName))
 	http.ServeFile(w, r, cachedPath)
 }
 
@@ -346,7 +393,9 @@ func getOrTranscode(songID, inputPath string) (string, error) {
 		return "", fmt.Errorf("create WearCache dir: %w", err)
 	}
 
-	cachedPath := filepath.Join(cacheDir, songID+".m4a")
+	// songID may contain slashes (path-shaped legacy keys); never use it as a path segment.
+	cacheStem := fmt.Sprintf("%x", sha256.Sum256([]byte(songID)))
+	cachedPath := filepath.Join(cacheDir, cacheStem+".m4a")
 
 	// Fast path: cache hit
 	if _, err := os.Stat(cachedPath); err == nil {
@@ -429,7 +478,7 @@ func locateFfmpeg() (string, error) {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 // findSongPathByID scans the library JSON store and returns the file path for
-// the song with the given UUID.
+// the song with the given id (UUID or legacy path-shaped key).
 func findSongPathByID(id string) string {
 	raw, err := store.Instance.Load("library")
 	if err != nil || raw == nil {
@@ -439,17 +488,104 @@ func findSongPathByID(id string) string {
 	if !ok {
 		return ""
 	}
-	for _, item := range library {
-		song, ok := item.(map[string]interface{})
-		if !ok {
-			continue
+	tryMatch := func(candidate string) string {
+		for _, item := range library {
+			song, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			sid, _ := song["id"].(string)
+			if sid == candidate {
+				path, _ := song["path"].(string)
+				return path
+			}
+			// Rare: id field duplicated as path
+			spath, _ := song["path"].(string)
+			if spath != "" && spath == candidate {
+				return spath
+			}
 		}
-		if song["id"] == id {
-			path, _ := song["path"].(string)
-			return path
+		return ""
+	}
+	if p := tryMatch(id); p != "" {
+		return p
+	}
+	// Old clients put path-like ids in the URL path; a leading "/" was lost after "/wear/file/".
+	if !strings.HasPrefix(id, "/") {
+		if p := tryMatch("/" + id); p != "" {
+			return p
 		}
 	}
 	return ""
+}
+
+// artworkIDForWearSong returns the hex filename stem served by /wear/artwork/{id}.
+func artworkIDForWearSong(song map[string]interface{}) string {
+	if id := artworkIDFromStoredArtwork(song["artwork"]); id != "" {
+		return id
+	}
+	return computeArtworkIDForWearFallback(song)
+}
+
+func artworkIDFromStoredArtwork(v interface{}) string {
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	full, ok := m["full"].(string)
+	if !ok {
+		return ""
+	}
+	return hashStemFromArtworkFilename(full)
+}
+
+func hashStemFromArtworkFilename(full string) string {
+	full = strings.TrimSpace(full)
+	if full == "" {
+		return ""
+	}
+	full = strings.ReplaceAll(full, `\`, `/`)
+	base := filepath.Base(full)
+	ext := strings.ToLower(filepath.Ext(base))
+	switch ext {
+	case ".webp", ".jpg", ".jpeg", ".png":
+	default:
+		return ""
+	}
+	stem := strings.TrimSuffix(base, ext)
+	if len(stem) != 64 {
+		return ""
+	}
+	for i := 0; i < len(stem); i++ {
+		c := stem[i]
+		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') {
+			continue
+		}
+		return ""
+	}
+	return stem
+}
+
+// computeArtworkIDForWearFallback mirrors internal/scanner/artwork.go tag fallbacks
+// when no artwork object is present (e.g. never extracted).
+func computeArtworkIDForWearFallback(song map[string]interface{}) string {
+	albumArtist, _ := song["albumartist"].(string)
+	artist, _ := song["artist"].(string)
+	album, _ := song["album"].(string)
+	path, _ := song["path"].(string)
+
+	aa := strings.TrimSpace(albumArtist)
+	if aa == "" {
+		aa = strings.TrimSpace(artist)
+	}
+	if aa == "" {
+		aa = "Unknown Artist"
+	}
+	al := strings.TrimSpace(album)
+	if al == "" {
+		al = filepath.Base(path)
+	}
+	return computeArtworkID(aa, al)
 }
 
 // computeArtworkID returns the hex SHA256 hash used as the artwork filename.
@@ -493,9 +629,41 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func wearPairingURLFromParts(host, port string) string {
+	q := url.Values{}
+	q.Set("host", host)
+	q.Set("port", port)
+	return wearPairingURLScheme + "://pair?" + q.Encode()
+}
+
+// BuildWearPairingURL returns a mobile deep link for QR pairing (uxmusic://pair?host=…&port=…).
+func BuildWearPairingURL() string {
+	addr := GetWearServerAddress()
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return wearPairingURLFromParts(strings.TrimSpace(addr), wearServerPort)
+	}
+	return wearPairingURLFromParts(host, port)
+}
+
 // ─── Wails-exposed methods ──────────────────────────────────────────────────
 
 // GetWearAddress returns the LAN address shown to the user in Settings.
 func (a *App) GetWearAddress() string {
 	return GetWearServerAddress()
+}
+
+// GetWearPairingURL returns the uxmusic:// URL encoded in the mobile pairing QR code.
+func (a *App) GetWearPairingURL() string {
+	return BuildWearPairingURL()
+}
+
+// GetWearPairingQRDataURL returns a data:image/png;base64,… URL for the pairing QR code.
+func (a *App) GetWearPairingQRDataURL() (string, error) {
+	payload := BuildWearPairingURL()
+	png, err := qrcode.Encode(payload, qrcode.Medium, 256)
+	if err != nil {
+		return "", err
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png), nil
 }

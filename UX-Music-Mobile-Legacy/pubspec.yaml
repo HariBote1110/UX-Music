@@ -1,5 +1,5 @@
-name: ux_music_mobile
-description: "UX Music mobile companion — browse, download, and play music from your desktop library."
+name: ux_music_mobile_legacy
+description: "Archived Flutter companion (legacy). Use the Swift/SwiftUI UX-Music-Mobile target for active iOS development."
 publish_to: 'none'
 
 version: 0.1.0-Alpha-1a+1
