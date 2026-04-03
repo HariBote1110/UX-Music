@@ -66,4 +66,53 @@ final class AppModelDownloadTests: XCTestCase {
         XCTAssertNotNil(dm.localArtworkFileURLIfPresent(artworkId: aid))
         try? FileManager.default.removeItem(at: dest)
     }
+
+    func testSniffFlacHeader() {
+        let d = Data("fLaC".utf8) + Data(repeating: 0, count: 20)
+        XCTAssertEqual(DownloadedTrackFormatSniffer.sniff(d), "flac")
+    }
+
+    func testSniffMp3ID3() {
+        let d = Data("ID3".utf8) + Data(repeating: 0, count: 20)
+        XCTAssertEqual(DownloadedTrackFormatSniffer.sniff(d), "mp3")
+    }
+
+    func testSniffIsoBMFF() {
+        var d = Data(repeating: 0, count: 4)
+        d.append(Data("ftyp".utf8))
+        d.append(Data(repeating: 0, count: 8))
+        XCTAssertEqual(DownloadedTrackFormatSniffer.sniff(d), "m4a")
+    }
+
+    func testPreferredExtensionFallsBackToLibraryPath() {
+        let empty = Data()
+        let ext = DownloadedTrackFormatSniffer.preferredExtension(
+            header: empty,
+            libraryPath: "/Music/Album/track.flac",
+            fileType: ""
+        )
+        XCTAssertEqual(ext, "flac")
+    }
+
+    func testFinalizeDownloadRenamesByMagicBytes() throws {
+        let dm = DownloadManager()
+        let id = "unit-fin-\(UUID().uuidString)"
+        let song = Song(
+            id: id,
+            path: "/lib/x.m4a",
+            title: "T",
+            artist: "A",
+            album: "Al",
+            albumArtist: "",
+            artworkId: ""
+        )
+        let temp = dm.temporaryDownloadURL(songId: id)
+        let body = Data("fLaC".utf8) + Data(repeating: 0, count: 40)
+        try body.write(to: temp, options: .atomic)
+        try dm.finalizeDownloadedPart(at: temp, song: song)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: temp.path))
+        let onDisk = dm.localPathString(songId: id)
+        XCTAssertTrue(onDisk.hasSuffix(".flac"), onDisk)
+        try? FileManager.default.removeItem(atPath: onDisk)
+    }
 }

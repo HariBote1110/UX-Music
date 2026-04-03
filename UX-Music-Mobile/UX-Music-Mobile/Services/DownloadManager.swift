@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-/// Tracks downloaded song metadata and local `.m4a` paths (same role as Flutter `DownloadManager`).
+/// Tracks downloaded song metadata and flat files under `DownloadedTracks/` (same role as Flutter `DownloadManager`).
 @MainActor
 final class DownloadManager {
     private(set) var downloadedSongs: [String: Song] = [:]
@@ -18,7 +18,33 @@ final class DownloadManager {
         loadMeta()
     }
 
-    /// Flat file under `Documents/DownloadedTracks/` — never embed `songId` path segments (library ids can be full file paths).
+    /// Temp path for `URLSession` while downloading (not a `stem.*` track file — see `finalizeDownloadedPart`).
+    func temporaryDownloadURL(songId: String) -> URL {
+        tracksDirectory.appendingPathComponent("incomplete_\(Self.storedStem(for: songId)).tmp")
+    }
+
+    /// After a successful HTTP download into `temporaryDownloadURL`, sniff bytes and move to `stem.<ext>`.
+    func finalizeDownloadedPart(at tempURL: URL, song: Song) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: tempURL.path) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let head = try Self.readFileHead(url: tempURL, maxBytes: 64)
+        let ext = DownloadedTrackFormatSniffer.preferredExtension(
+            header: head,
+            libraryPath: song.path,
+            fileType: song.fileType
+        )
+        let stem = Self.storedStem(for: song.id)
+        removeFinalisedTrackFiles(forStem: stem)
+        let dest = tracksDirectory.appendingPathComponent("\(stem).\(ext)")
+        if fm.fileExists(atPath: dest.path) {
+            try fm.removeItem(at: dest)
+        }
+        try fm.moveItem(at: tempURL, to: dest)
+    }
+
+    /// Hypothetical `.m4a` path when no resolved file exists (legacy callers / tests).
     func localFileURL(songId: String) -> URL {
         tracksDirectory.appendingPathComponent(Self.storedFileName(for: songId))
     }
@@ -91,10 +117,9 @@ final class DownloadManager {
         else { return }
 
         let fm = FileManager.default
-        let trackBasenames = Set(
+        let trackNames =
             (try? fm.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil))?
                 .map(\.lastPathComponent) ?? []
-        )
         let docM4aBasenames = Set(
             (try? fm.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil))?
                 .filter { $0.pathExtension.lowercased() == "m4a" }
@@ -102,8 +127,8 @@ final class DownloadManager {
         )
 
         for song in list {
-            let modernName = Self.storedFileName(for: song.id)
-            if trackBasenames.contains(modernName) {
+            let stem = Self.storedStem(for: song.id)
+            if Self.trackListContainsStem(trackNames, stem: stem) {
                 downloadedSongs[song.id] = song
                 continue
             }
@@ -120,10 +145,40 @@ final class DownloadManager {
         }
     }
 
+    /// Legacy on-disk name `sha256(songId).m4a` (actual file may use another extension after sniffing).
     private static func storedFileName(for songId: String) -> String {
+        "\(storedStem(for: songId)).m4a"
+    }
+
+    private static func storedStem(for songId: String) -> String {
         let digest = SHA256.hash(data: Data(songId.utf8))
-        let hex = digest.map { String(format: "%02x", $0) }.joined()
-        return "\(hex).m4a"
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func readFileHead(url: URL, maxBytes: Int) throws -> Data {
+        let h = try FileHandle(forReadingFrom: url)
+        defer { try? h.close() }
+        return (try h.read(upToCount: maxBytes)) ?? Data()
+    }
+
+    private func removeFinalisedTrackFiles(forStem stem: String) {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil) else { return }
+        for f in files {
+            let name = f.lastPathComponent
+            if name.hasPrefix("incomplete_") { continue }
+            let base = f.deletingPathExtension().lastPathComponent
+            if base == stem {
+                try? FileManager.default.removeItem(at: f)
+            }
+        }
+    }
+
+    private static func trackListContainsStem(_ names: [String], stem: String) -> Bool {
+        names.contains { name in
+            guard !name.hasPrefix("incomplete_") else { return false }
+            let base = (name as NSString).deletingPathExtension
+            return base == stem
+        }
     }
 
     /// UUID-style keys used to live in `Documents/<id>.m4a` before path-shaped ids existed.
@@ -140,9 +195,15 @@ final class DownloadManager {
     }
 
     private func resolvedExistingFileURL(songId: String) -> URL? {
-        let modern = localFileURL(songId: songId)
-        if FileManager.default.fileExists(atPath: modern.path) {
-            return modern
+        let stem = Self.storedStem(for: songId)
+        guard let files = try? FileManager.default.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil) else { return nil }
+        let matches = files.filter { f in
+            let name = f.lastPathComponent
+            if name.hasPrefix("incomplete_") { return false }
+            return f.deletingPathExtension().lastPathComponent == stem
+        }
+        if let u = matches.sorted(by: { $0.path < $1.path }).first {
+            return u
         }
         if let leg = legacyFlatFileURL(songId: songId), FileManager.default.fileExists(atPath: leg.path) {
             return leg

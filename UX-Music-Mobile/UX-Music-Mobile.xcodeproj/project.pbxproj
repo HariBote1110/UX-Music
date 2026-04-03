@@ -13,6 +13,7 @@
 		01A1A1A70101A1A10101A1A1 /* Album.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A80101A1A10101A1A1 /* Album.swift */; };
 		01A1A1A90101A1A10101A1A1 /* WearAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AA0101A1A10101A1A1 /* WearAPIClient.swift */; };
 		01A1A1AB0101A1A10101A1A1 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */; };
+		D0D0D0D10101D0D10101D0D1 /* DownloadedTrackFormatSniffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */; };
 		01A1A1AD0101A1A10101A1A1 /* MusicPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */; };
 		01A1A1AF0101A1A10101A1A1 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1B00101A1A10101A1A1 /* AppModel.swift */; };
 		01A1A1B10101A1A10101A1A1 /* ArtworkImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1B20101A1A10101A1A1 /* ArtworkImageView.swift */; };
@@ -43,11 +44,6 @@
 		b1b1b1B50101B1B10101B1B1 /* AlbumTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B60101B1B10101B1B1 /* AlbumTests.swift */; };
 		b1b1b1B70101B1B10101B1B1 /* WearAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B80101B1B10101B1B1 /* WearAPIClientTests.swift */; };
 		c2c2c2C20101C2C10101C2C1 /* AppModelDownloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */; };
-		E1E1E1E10101E1E10101E1E1 /* EqualiserPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E1E1E20101E1E20101E1E2 /* EqualiserPreset.swift */; };
-		E1E1E1E30101E1E30101E1E3 /* EqualiserPresetCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E1E1E40101E1E40101E1E4 /* EqualiserPresetCatalog.swift */; };
-		E1E1E1E50101E1E50101E1E5 /* EqualiserSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E1E1E60101E1E60101E1E6 /* EqualiserSettingsStore.swift */; };
-		E1E1E1E70101E1E70101E1E7 /* EqualiserSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E1E1E80101E1E80101E1E8 /* EqualiserSettingsView.swift */; };
-		E1E1E1E90101E1E90101E1E9 /* EqualiserPresetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E1E1EA0101E1EA0101E1EA /* EqualiserPresetTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,6 +63,7 @@
 		01A1A1A80101A1A10101A1A1 /* Album.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Album.swift; sourceTree = "<group>"; };
 		01A1A1AA0101A1A10101A1A1 /* WearAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearAPIClient.swift; sourceTree = "<group>"; };
 		01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+		D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadedTrackFormatSniffer.swift; sourceTree = "<group>"; };
 		01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerService.swift; sourceTree = "<group>"; };
 		01A1A1B00101A1A10101A1A1 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		01A1A1B20101A1A10101A1A1 /* ArtworkImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkImageView.swift; sourceTree = "<group>"; };
@@ -100,11 +97,6 @@
 		b1b1b1B80101B1B10101B1B1 /* WearAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearAPIClientTests.swift; sourceTree = "<group>"; };
 		b1b1b1BA0101B1B10101B1B1 /* UX-Music-MobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "UX-Music-MobileTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelDownloadTests.swift; sourceTree = "<group>"; };
-		E1E1E1E20101E1E20101E1E2 /* EqualiserPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EqualiserPreset.swift; sourceTree = "<group>"; };
-		E1E1E1E40101E1E40101E1E4 /* EqualiserPresetCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EqualiserPresetCatalog.swift; sourceTree = "<group>"; };
-		E1E1E1E60101E1E60101E1E6 /* EqualiserSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EqualiserSettingsStore.swift; sourceTree = "<group>"; };
-		E1E1E1E80101E1E80101E1E8 /* EqualiserSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EqualiserSettingsView.swift; sourceTree = "<group>"; };
-		E1E1E1EA0101E1EA0101E1EA /* EqualiserPresetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EqualiserPresetTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -151,7 +143,6 @@
 				F3A3A3AB0101F3AB0101F3AB /* PlaylistStoreTests.swift */,
 				F3A3A3AC0101F3AC0101F3AC /* AppModelPlaylistTests.swift */,
 				B2B2B2B50101B2B50101B2B5 /* PlaybackControlStateTests.swift */,
-				E1E1E1EA0101E1EA0101E1EA /* EqualiserPresetTests.swift */,
 			);
 			path = "UX-Music-MobileTests";
 			sourceTree = "<group>";
@@ -174,8 +165,6 @@
 				01A1A1A60101A1A10101A1A1 /* Song.swift */,
 				01A1A1A80101A1A10101A1A1 /* Album.swift */,
 				F3A3A3A80101F3A80101F3A8 /* Playlist.swift */,
-				E1E1E1E20101E1E20101E1E2 /* EqualiserPreset.swift */,
-				E1E1E1E40101E1E40101E1E4 /* EqualiserPresetCatalog.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -185,8 +174,8 @@
 			children = (
 				01A1A1AA0101A1A10101A1A1 /* WearAPIClient.swift */,
 				01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */,
+				D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */,
 				01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */,
-				E1E1E1E60101E1E60101E1E6 /* EqualiserSettingsStore.swift */,
 				F3A3A3A90101F3A90101F3A9 /* PlaylistStore.swift */,
 				F4B4B4B20101F4B20101F4B2 /* FavouriteSongStore.swift */,
 			);
@@ -216,7 +205,6 @@
 				01A1A1C40101A1A10101A1A1 /* NowPlayingView.swift */,
 				01A1A1C60101A1A10101A1A1 /* HomeRootView.swift */,
 				E2E2E2E20101E2E10101E2E1 /* PairingQRScannerView.swift */,
-				E1E1E1E80101E1E80101E1E8 /* EqualiserSettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -339,7 +327,6 @@
 				F3A3A3A60101F3A60101F3A6 /* PlaylistStoreTests.swift in Sources */,
 				F3A3A3A70101F3A70101F3A7 /* AppModelPlaylistTests.swift in Sources */,
 				B2B2B2B40101B2B40101B2B4 /* PlaybackControlStateTests.swift in Sources */,
-				E1E1E1E90101E1E90101E1E9 /* EqualiserPresetTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -357,11 +344,8 @@
 				F3A3A3A30101F3A30101F3A3 /* Playlist.swift in Sources */,
 				01A1A1A90101A1A10101A1A1 /* WearAPIClient.swift in Sources */,
 				01A1A1AB0101A1A10101A1A1 /* DownloadManager.swift in Sources */,
+				D0D0D0D10101D0D10101D0D1 /* DownloadedTrackFormatSniffer.swift in Sources */,
 				01A1A1AD0101A1A10101A1A1 /* MusicPlayerService.swift in Sources */,
-				E1E1E1E10101E1E10101E1E1 /* EqualiserPreset.swift in Sources */,
-				E1E1E1E30101E1E30101E1E3 /* EqualiserPresetCatalog.swift in Sources */,
-				E1E1E1E50101E1E50101E1E5 /* EqualiserSettingsStore.swift in Sources */,
-				E1E1E1E70101E1E70101E1E7 /* EqualiserSettingsView.swift in Sources */,
 				F3A3A3A40101F3A40101F3A4 /* PlaylistStore.swift in Sources */,
 				F4B4B4B10101F4B10101F4B1 /* FavouriteSongStore.swift in Sources */,
 				01A1A1AF0101A1A10101A1A1 /* AppModel.swift in Sources */,

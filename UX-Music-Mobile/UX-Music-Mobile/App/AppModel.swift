@@ -155,20 +155,22 @@ final class AppModel {
         guard downloadProgress[song.id] == nil else { return }
         downloadError = nil
         downloadProgress[song.id] = 0
-        let dest = downloadManager.localFileURL(songId: song.id)
+        let tempDest = downloadManager.temporaryDownloadURL(songId: song.id)
         do {
-            try await client().downloadFile(songId: song.id, to: dest, preferOriginalAudio: true) { received, total in
+            try await client().downloadFile(songId: song.id, to: tempDest, preferOriginalAudio: true) { received, total in
                 Task { @MainActor in
                     if total > 0 {
                         self.downloadProgress[song.id] = Double(received) / Double(total)
                     }
                 }
             }
+            try downloadManager.finalizeDownloadedPart(at: tempDest, song: song)
             downloadManager.register(song)
             await cacheArtworkAfterDownloadIfNeeded(for: song)
             touchDownloadLibrary()
         } catch {
             downloadError = error.localizedDescription
+            try? FileManager.default.removeItem(at: tempDest)
         }
         downloadProgress.removeValue(forKey: song.id)
     }
