@@ -32,6 +32,8 @@ final class AppModel {
 
     let downloadManager: DownloadManager
     let player: MusicPlayerService
+    /// Graphic EQ presets / custom curve (persists to `UserDefaults`).
+    let equaliserSettings: EqualiserSettingsStore
     let playlistStore: PlaylistStore
     let favouriteSongStore: FavouriteSongStore
 
@@ -46,7 +48,12 @@ final class AppModel {
         self.playlistStore = playlistStore ?? PlaylistStore()
         favouriteSongStore = FavouriteSongStore()
         favouriteSongIds = favouriteSongStore.orderedIds
+        equaliserSettings = EqualiserSettingsStore()
         player = MusicPlayerService()
+        player.equaliserCurveProvider = { [equaliserSettings] in equaliserSettings.effectiveCurve() }
+        equaliserSettings.onApplyRequested = { [weak self] in
+            self?.player.refreshEqualiser()
+        }
         player.targetLoudness = AppConstants.defaultTargetLoudness
         player.loadArtworkImage = { [weak self] song in
             guard let self else { return nil }

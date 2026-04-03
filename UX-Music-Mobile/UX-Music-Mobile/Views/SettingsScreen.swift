@@ -48,6 +48,16 @@ struct SettingsScreen: View {
                 }
 
                 Section {
+                    NavigationLink {
+                        EqualiserSettingsView(equaliserSettings: model.equaliserSettings)
+                    } label: {
+                        Text("Equaliser")
+                    }
+                } header: {
+                    Text("PLAYBACK")
+                }
+
+                Section {
                     HStack(spacing: 10) {
                         Button(savedFlash ? "Saved ✓" : "Save") {
                             save()
