@@ -149,6 +149,8 @@ func wearSongsHandler(w http.ResponseWriter, r *http.Request) {
 		stripped = append(stripped, clean)
 	}
 
+	ensureWearTrackOrder(stripped)
+
 	writeJSON(w, stripped)
 }
 
