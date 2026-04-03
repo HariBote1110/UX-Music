@@ -82,4 +82,23 @@ final class WearAPIClientTests: XCTestCase {
         XCTAssertEqual(u.path, "/wear/file")
         XCTAssertTrue(u.query?.contains("id=") == true)
     }
+
+    func testDecodeWearLyricsPayload() throws {
+        let json = Data(#"{"found":true,"type":"lrc","content":"[00:01.00]Hi"}"#.utf8)
+        let p = try JSONDecoder().decode(WearLyricsPayload.self, from: json)
+        XCTAssertTrue(p.found)
+        XCTAssertEqual(p.type, "lrc")
+        XCTAssertEqual(p.content, "[00:01.00]Hi")
+    }
+
+    func testDecodeWearDesktopPlaylists() throws {
+        let json = Data(
+            #"[{"name":"Mix","songIds":["a","b"],"pathsNotInLibrary":["/gone.flac"]}]"#.utf8
+        )
+        let rows = try JSONDecoder().decode([WearDesktopPlaylist].self, from: json)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].name, "Mix")
+        XCTAssertEqual(rows[0].songIds, ["a", "b"])
+        XCTAssertEqual(rows[0].pathsNotInLibrary, ["/gone.flac"])
+    }
 }

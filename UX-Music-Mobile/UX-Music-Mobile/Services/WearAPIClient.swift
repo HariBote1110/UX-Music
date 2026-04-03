@@ -36,6 +36,20 @@ enum WearDownloadError: LocalizedError {
     }
 }
 
+/// JSON from `GET /wear/lyrics?id=…`.
+struct WearLyricsPayload: Codable, Equatable, Sendable {
+    var found: Bool
+    var type: String?
+    var content: String?
+}
+
+/// One desktop playlist row from `GET /wear/playlists`.
+struct WearDesktopPlaylist: Codable, Equatable, Sendable {
+    var name: String
+    var songIds: [String]
+    var pathsNotInLibrary: [String]?
+}
+
 /// HTTP client for the UX Music Wear LAN API (port 8765 by default).
 struct WearAPIClient: Sendable {
     private let baseURLString: String
@@ -83,6 +97,36 @@ struct WearAPIClient: Sendable {
             else if let num = v as? NSNumber { out[k] = num.doubleValue }
         }
         return out
+    }
+
+    func fetchLyrics(songId: String) async throws -> WearLyricsPayload {
+        guard var components = URLComponents(string: baseURLString) else {
+            throw URLError(.badURL)
+        }
+        components.path = "/wear/lyrics"
+        components.queryItems = [URLQueryItem(name: "id", value: songId)]
+        guard let source = components.url else {
+            throw URLError(.badURL)
+        }
+        let (data, response) = try await session.data(from: source)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200 ... 299).contains(http.statusCode) else {
+            throw WearDownloadError.httpStatus(http.statusCode)
+        }
+        return try JSONDecoder().decode(WearLyricsPayload.self, from: data)
+    }
+
+    func fetchDesktopPlaylists() async throws -> [WearDesktopPlaylist] {
+        let (data, response) = try await session.data(from: try url(path: "/wear/playlists"))
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200 ... 299).contains(http.statusCode) else {
+            throw WearDownloadError.httpStatus(http.statusCode)
+        }
+        return try JSONDecoder().decode([WearDesktopPlaylist].self, from: data)
     }
 
     func fetchState() async throws -> [String: Any] {

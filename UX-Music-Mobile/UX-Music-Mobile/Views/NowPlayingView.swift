@@ -303,8 +303,10 @@ private struct NowPlayingPlayingShell: View {
     let song: Song
     let artworkURLString: String
 
+    @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var palette: ArtworkPlaybackPalette?
+    @State private var lyricsPlainText: String?
 
     private var accent: Color {
         palette?.accentColor ?? nowPlayingFallbackAccent
@@ -349,6 +351,19 @@ private struct NowPlayingPlayingShell: View {
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
 
+                if let lyrics = lyricsPlainText, !lyrics.isEmpty {
+                    ScrollView {
+                        Text(lyrics)
+                            .font(.system(size: 13, weight: .regular, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.55))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                    .frame(maxHeight: 120)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                }
+
                 Spacer(minLength: 24)
 
                 NowPlayingProgressSection(accent: accent)
@@ -368,6 +383,9 @@ private struct NowPlayingPlayingShell: View {
                 return
             }
             palette = await ArtworkPaletteExtractor.palette(forArtworkURL: url)
+        }
+        .task(id: song.id) {
+            lyricsPlainText = model.localLyricsPlainText(for: song.id)
         }
     }
 }

@@ -15,6 +15,7 @@ struct LocalLibraryScreen: View {
     @State private var path = NavigationPath()
     @State private var showNewPlaylistAlert = false
     @State private var newPlaylistName = ""
+    @State private var showDesktopPlaylistImport = false
 
     private var downloaded: [Song] {
         model.sortedDownloadedSongsForLibrary
@@ -68,6 +69,14 @@ struct LocalLibraryScreen: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     if viewMode == .playlists {
                         HStack {
+                            if model.serverConfig.isConfigured {
+                                Button {
+                                    showDesktopPlaylistImport = true
+                                } label: {
+                                    Image(systemName: "arrow.down.doc")
+                                }
+                                .accessibilityLabel("Import playlists from desktop")
+                            }
                             EditButton()
                             Button {
                                 newPlaylistName = ""
@@ -79,6 +88,10 @@ struct LocalLibraryScreen: View {
                         }
                     }
                 }
+            }
+            .sheet(isPresented: $showDesktopPlaylistImport) {
+                DesktopPlaylistImportView(isPresented: $showDesktopPlaylistImport)
+                    .environment(model)
             }
             .navigationDestination(for: LibraryRoute.self) { route in
                 switch route {

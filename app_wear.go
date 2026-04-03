@@ -44,6 +44,8 @@ func StartWearServer(ctx context.Context, app *App) *WearServer {
 	mux.HandleFunc("/wear/ping", wearPingHandler)
 	mux.HandleFunc("/wear/mobile", wearMobileMetaHandler)
 	mux.HandleFunc("/wear/songs", wearSongsHandler)
+	mux.HandleFunc("/wear/lyrics", wearLyricsHandler)
+	mux.HandleFunc("/wear/playlists", wearPlaylistsHandler)
 	mux.HandleFunc("/wear/file", wearFileHandler)
 	mux.HandleFunc("/wear/file/", wearFileHandler)
 	mux.HandleFunc("/wear/artwork/", wearArtworkHandler)
@@ -110,6 +112,8 @@ func wearMobileMetaHandler(w http.ResponseWriter, r *http.Request) {
 		"fileHint": "Add &source=original for library file without Watch transcoding (AAC 128k m4a). Omit for watch-optimised cache.",
 		"artwork":  "/wear/artwork/?id={artworkId}",
 		"loudness": "/wear/loudness",
+		"lyrics":   "/wear/lyrics?id={songId}",
+		"playlists": "/wear/playlists",
 		"state":    "/wear/state",
 		"command":  "/wear/command (POST JSON)",
 	})

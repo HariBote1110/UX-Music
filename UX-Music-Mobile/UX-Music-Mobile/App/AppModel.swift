@@ -8,6 +8,34 @@ enum LibraryLoadState: Equatable {
     case failed(String)
 }
 
+enum DesktopPlaylistMissingPolicy: String, CaseIterable, Identifiable, Sendable {
+    /// Keep desktop order; drop tracks that are not stored locally.
+    case omitMissingDownloads
+    /// Download each missing track from the desktop, then build the full playlist (failed downloads are skipped).
+    case downloadMissingTracks
+
+    var id: String { rawValue }
+}
+
+struct DesktopPlaylistImportOutcome: Equatable, Sendable {
+    var playlistsCreated: Int
+    var playlistsSkippedEmpty: Int
+    var desktopPathsMissingFromLibrary: Int
+    var tracksOmittedNotDownloaded: Int
+    var failedTrackDownloads: Int
+}
+
+enum DesktopPlaylistImportError: LocalizedError {
+    case serverNotConfigured
+
+    var errorDescription: String? {
+        switch self {
+        case .serverNotConfigured:
+            return "設定でデスクトップとペアリングしてください。"
+        }
+    }
+}
+
 /// Central app state (Riverpod providers folded into one `@Observable` model).
 @MainActor
 @Observable
@@ -31,6 +59,7 @@ final class AppModel {
     private(set) var downloadLibraryRevision: Int = 0
 
     let downloadManager: DownloadManager
+    let lyricsFileStore: LyricsFileStore
     let player: MusicPlayerService
     let playlistStore: PlaylistStore
     let favouriteSongStore: FavouriteSongStore
@@ -40,9 +69,10 @@ final class AppModel {
     /// Mirror of `favouriteSongStore.orderedIds` so `@Observable` invalidates views when favourites change.
     private(set) var favouriteSongIds: [String] = []
 
-    init(playlistStore: PlaylistStore? = nil) {
+    init(playlistStore: PlaylistStore? = nil, lyricsFileStore: LyricsFileStore? = nil) {
         serverConfig = Self.loadSettings()
         downloadManager = DownloadManager()
+        self.lyricsFileStore = lyricsFileStore ?? LyricsFileStore()
         self.playlistStore = playlistStore ?? PlaylistStore()
         favouriteSongStore = FavouriteSongStore()
         favouriteSongIds = favouriteSongStore.orderedIds
@@ -73,6 +103,7 @@ final class AppModel {
     }
 
     func removeDownloadedSong(songId: String) {
+        lyricsFileStore.remove(for: songId)
         downloadManager.remove(songId: songId)
         touchDownloadLibrary()
     }
@@ -167,6 +198,7 @@ final class AppModel {
             try downloadManager.finalizeDownloadedPart(at: tempDest, song: song)
             downloadManager.register(song)
             await cacheArtworkAfterDownloadIfNeeded(for: song)
+            await fetchAndStoreLyricsIfAvailable(for: song)
             touchDownloadLibrary()
         } catch {
             downloadError = error.localizedDescription
@@ -196,6 +228,102 @@ final class AppModel {
             try await client().downloadArtwork(artworkId: song.artworkId, to: dest)
         } catch {
             // Optional: list rows still use remote artwork when reachable.
+        }
+    }
+
+    /// Plain lyrics text if a file was saved for this track (after download or manual sync).
+    func localLyricsPlainText(for songId: String) -> String? {
+        lyricsFileStore.plainTextIfPresent(for: songId)
+    }
+
+    private func fetchAndStoreLyricsIfAvailable(for song: Song) async {
+        do {
+            let payload = try await client().fetchLyrics(songId: song.id)
+            guard payload.found else { return }
+            guard let type = payload.type else { return }
+            guard let content = payload.content?.trimmingCharacters(in: .whitespacesAndNewlines), !content.isEmpty else { return }
+            try lyricsFileStore.saveLyrics(content, wearType: type, songId: song.id)
+        } catch {
+            // Lyrics are optional; do not surface as download errors.
+        }
+    }
+
+    /// Fetches playlist metadata from the desktop (no local changes).
+    func fetchDesktopPlaylistsPreview() async throws -> [WearDesktopPlaylist] {
+        guard serverConfig.isConfigured else { throw DesktopPlaylistImportError.serverNotConfigured }
+        return try await client().fetchDesktopPlaylists()
+    }
+
+    /// Imports desktop playlists from `GET /wear/playlists`. Requires a configured server.
+    func importDesktopPlaylists(missingPolicy: DesktopPlaylistMissingPolicy) async throws -> DesktopPlaylistImportOutcome {
+        guard serverConfig.isConfigured else { throw DesktopPlaylistImportError.serverNotConfigured }
+        var outcome = DesktopPlaylistImportOutcome(
+            playlistsCreated: 0,
+            playlistsSkippedEmpty: 0,
+            desktopPathsMissingFromLibrary: 0,
+            tracksOmittedNotDownloaded: 0,
+            failedTrackDownloads: 0
+        )
+        let rows = try await client().fetchDesktopPlaylists()
+        let remoteSongs = try await client().fetchSongs()
+        var remoteById: [String: Song] = [:]
+        for s in remoteSongs { remoteById[s.id] = s }
+
+        for row in rows {
+            outcome.desktopPathsMissingFromLibrary += row.pathsNotInLibrary?.count ?? 0
+            var idsOrdered = row.songIds
+
+            switch missingPolicy {
+            case .omitMissingDownloads:
+                let before = idsOrdered.count
+                idsOrdered = idsOrdered.filter { downloadManager.isDownloaded(songId: $0) }
+                outcome.tracksOmittedNotDownloaded += before - idsOrdered.count
+            case .downloadMissingTracks:
+                for sid in row.songIds where !downloadManager.isDownloaded(songId: sid) {
+                    guard let song = remoteById[sid] else {
+                        outcome.failedTrackDownloads += 1
+                        continue
+                    }
+                    await downloadSong(song)
+                    if !downloadManager.isDownloaded(songId: sid) {
+                        outcome.failedTrackDownloads += 1
+                    }
+                }
+                let before = idsOrdered.count
+                idsOrdered = idsOrdered.filter { downloadManager.isDownloaded(songId: $0) }
+                outcome.tracksOmittedNotDownloaded += before - idsOrdered.count
+            }
+
+            guard !idsOrdered.isEmpty else {
+                outcome.playlistsSkippedEmpty += 1
+                continue
+            }
+            let name = uniquePlaylistName(desired: row.name)
+            let pl = try playlistStore.createPlaylist(name: name)
+            try playlistStore.addSongIds(to: pl.id, songIds: idsOrdered)
+            outcome.playlistsCreated += 1
+        }
+        refreshPlaylists()
+        return outcome
+    }
+
+    private func uniquePlaylistName(desired: String) -> String {
+        let trimmed = desired.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = trimmed.isEmpty ? "Desktop playlist" : trimmed
+        var n = 0
+        while true {
+            let candidate: String
+            if n == 0 {
+                candidate = base
+            } else if n == 1 {
+                candidate = "\(base) (Desktop)"
+            } else {
+                candidate = "\(base) (Desktop) \(n)"
+            }
+            let lower = candidate.lowercased()
+            let clash = playlistStore.orderedPlaylists().contains { $0.name.lowercased() == lower }
+            if !clash { return candidate }
+            n += 1
         }
     }
 
