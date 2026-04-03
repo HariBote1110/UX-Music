@@ -34,6 +34,19 @@ final class AppModelDownloadTests: XCTestCase {
         model.downloadManager.remove(songId: id2)
     }
 
+    /// Ensures library UI can subscribe to `AppModel` for download mutations (not only `downloadProgress`).
+    func testRemoveDownloadedSongBumpsDownloadLibraryRevision() throws {
+        let model = AppModel()
+        let id = "unit-test-rev-\(UUID().uuidString)"
+        let s = Song(id: id, path: "/p", title: "T", artist: "Ar", album: "Al", albumArtist: "AA", artworkId: "")
+        let url = model.downloadManager.localFileURL(songId: id)
+        try Data().write(to: url)
+        model.downloadManager.register(s)
+        let revisionBeforeRemove = model.downloadLibraryRevision
+        model.removeDownloadedSong(songId: id)
+        XCTAssertEqual(model.downloadLibraryRevision, revisionBeforeRemove + 1)
+    }
+
     func testPathLikeSongIdUsesFlatStoragePath() {
         let dm = DownloadManager()
         let pathLikeId = "/Users/me/EmoCosine/HYPER LOVE/002 のコピー.m4a"

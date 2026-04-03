@@ -17,7 +17,7 @@ struct LocalLibraryScreen: View {
     @State private var newPlaylistName = ""
 
     private var downloaded: [Song] {
-        model.downloadManager.downloadedSongs.values.sorted { $0.displayTitle < $1.displayTitle }
+        model.sortedDownloadedSongsForLibrary
     }
 
     private var navigationTitleText: String {
@@ -219,7 +219,7 @@ struct LocalLibraryScreen: View {
                 .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
-                        model.downloadManager.remove(songId: song.id)
+                        model.removeDownloadedSong(songId: song.id)
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
@@ -232,7 +232,7 @@ struct LocalLibraryScreen: View {
     }
 
     private func playLocal(song: Song, in list: [Song]) {
-        let downloaded = list.filter { model.downloadManager.isDownloaded(songId: $0.id) }
+        let downloaded = list.filter { model.isSongDownloaded(songId: $0.id) }
         let localSong = song.withPath(model.downloadManager.localPathString(songId: song.id))
         let queue = downloaded.map { $0.withPath(model.downloadManager.localPathString(songId: $0.id)) }
         Task {

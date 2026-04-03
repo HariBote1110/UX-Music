@@ -27,6 +27,9 @@ final class AppModel {
     /// Last failure from `downloadSong` / `downloadAlbum` (shown on Remote Library).
     var downloadError: String?
 
+    /// Bumped when local download metadata changes so `@Observable` invalidates library views that do not read `downloadProgress`.
+    private(set) var downloadLibraryRevision: Int = 0
+
     let downloadManager: DownloadManager
     let player: MusicPlayerService
     let playlistStore: PlaylistStore
@@ -52,6 +55,34 @@ final class AppModel {
             return await NowPlayingArtworkImageLoader.uiImage(from: url)
         }
         refreshPlaylists()
+    }
+
+    private func touchDownloadLibrary() {
+        downloadLibraryRevision &+= 1
+    }
+
+    /// Sorted local tracks; reads `downloadLibraryRevision` so Observation refreshes Albums/Songs grids after downloads.
+    var sortedDownloadedSongsForLibrary: [Song] {
+        _ = downloadLibraryRevision
+        return downloadManager.downloadedSongs.values.sorted { $0.displayTitle < $1.displayTitle }
+    }
+
+    func isSongDownloaded(songId: String) -> Bool {
+        _ = downloadLibraryRevision
+        return downloadManager.isDownloaded(songId: songId)
+    }
+
+    func removeDownloadedSong(songId: String) {
+        downloadManager.remove(songId: songId)
+        touchDownloadLibrary()
+    }
+
+    /// Downloaded songs not already in the playlist (for “Add songs”); observes `downloadLibraryRevision`.
+    func downloadedSongsEligibleForPlaylist(excludingPlaylistSongIds songIds: Set<String>) -> [Song] {
+        _ = downloadLibraryRevision
+        return downloadManager.downloadedSongs.values
+            .filter { !songIds.contains($0.id) }
+            .sorted { $0.displayTitle.localizedCaseInsensitiveCompare($1.displayTitle) == .orderedAscending }
     }
 
     private static func loadSettings() -> ServerConfig {
@@ -135,6 +166,7 @@ final class AppModel {
             }
             downloadManager.register(song)
             await cacheArtworkAfterDownloadIfNeeded(for: song)
+            touchDownloadLibrary()
         } catch {
             downloadError = error.localizedDescription
         }
@@ -150,7 +182,8 @@ final class AppModel {
     }
 
     func albumHasTracksToDownload(_ album: Album) -> Bool {
-        album.songs.contains { !downloadManager.isDownloaded(songId: $0.id) }
+        _ = downloadLibraryRevision
+        return album.songs.contains { !downloadManager.isDownloaded(songId: $0.id) }
     }
 
     private func cacheArtworkAfterDownloadIfNeeded(for song: Song) async {
@@ -212,10 +245,12 @@ final class AppModel {
 
     /// Maps `playlist.songIds` to downloaded `Song`s; missing IDs are skipped (removed tracks).
     func resolvedSongs(for playlist: Playlist) -> [Song] {
-        playlist.songIds.compactMap { downloadManager.downloadedSongs[$0] }
+        _ = downloadLibraryRevision
+        return playlist.songIds.compactMap { downloadManager.downloadedSongs[$0] }
     }
 
     func artworkIdForPlaylist(_ playlist: Playlist) -> String {
+        _ = downloadLibraryRevision
         for sid in playlist.songIds {
             if let s = downloadManager.downloadedSongs[sid], !s.artworkId.isEmpty {
                 return s.artworkId
@@ -242,6 +277,7 @@ final class AppModel {
 
     /// Favourite ids mapped to downloaded `Song`s (missing downloads are omitted).
     func favouriteSongsForPlayback() -> [Song] {
-        favouriteSongIds.compactMap { downloadManager.downloadedSongs[$0] }
+        _ = downloadLibraryRevision
+        return favouriteSongIds.compactMap { downloadManager.downloadedSongs[$0] }
     }
 }

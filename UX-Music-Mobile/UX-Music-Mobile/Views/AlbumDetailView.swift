@@ -25,7 +25,7 @@ struct AlbumDetailView: View {
                         song: song,
                         artworkURL: model.artworkURL(for: song.artworkId),
                         showTrackNumber: true,
-                        onTap: model.downloadManager.isDownloaded(songId: song.id)
+                        onTap: model.isSongDownloaded(songId: song.id)
                             ? { play(song) }
                             : nil,
                         trailing: {
@@ -85,7 +85,7 @@ struct AlbumDetailView: View {
 
     @ViewBuilder
     private func trailing(for song: Song) -> some View {
-        if model.downloadManager.isDownloaded(songId: song.id) {
+        if model.isSongDownloaded(songId: song.id) {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .font(.system(size: 20))
@@ -104,7 +104,7 @@ struct AlbumDetailView: View {
     }
 
     private func play(_ song: Song) {
-        let downloaded = album.songs.filter { model.downloadManager.isDownloaded(songId: $0.id) }
+        let downloaded = album.songs.filter { model.isSongDownloaded(songId: $0.id) }
         let localSong = song.withPath(model.downloadManager.localPathString(songId: song.id))
         let queue = downloaded.map { $0.withPath(model.downloadManager.localPathString(songId: $0.id)) }
         Task {

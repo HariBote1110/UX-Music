@@ -94,7 +94,7 @@ struct PlaylistDetailView: View {
     }
 
     private func play(_ song: Song) {
-        let downloaded = songs.filter { model.downloadManager.isDownloaded(songId: $0.id) }
+        let downloaded = songs.filter { model.isSongDownloaded(songId: $0.id) }
         let localSong = song.withPath(model.downloadManager.localPathString(songId: song.id))
         let queue = downloaded.map { $0.withPath(model.downloadManager.localPathString(songId: $0.id)) }
         Task {
@@ -116,9 +116,7 @@ private struct AddSongsToPlaylistSheet: View {
 
     private var candidates: [Song] {
         let inPlaylist = Set(playlist?.songIds ?? [])
-        return model.downloadManager.downloadedSongs.values
-            .filter { !inPlaylist.contains($0.id) }
-            .sorted { $0.displayTitle.localizedCaseInsensitiveCompare($1.displayTitle) == .orderedAscending }
+        return model.downloadedSongsEligibleForPlaylist(excludingPlaylistSongIds: inPlaylist)
     }
 
     var body: some View {
