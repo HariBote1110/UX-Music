@@ -73,6 +73,7 @@ struct NowPlayingView: View {
     @State private var page: NowPlayingPage = .main
     @State private var horizontalDrag: CGFloat = 0
     @State private var lockedDragAxis: StripDragAxis?
+    @State private var showLyricsScreen = false
 
     var body: some View {
         NavigationStack {
@@ -144,12 +145,25 @@ struct NowPlayingView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     if page == .main, let song = model.player.currentSong {
-                        NowPlayingNavIconButton(action: {
-                            model.toggleFavourite(songId: song.id)
-                        }, accessibilityLabel: "Favourite") {
-                            Image(systemName: model.isFavouriteSong(songId: song.id) ? "heart.fill" : "heart")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(model.isFavouriteSong(songId: song.id) ? Color.pink : Color.white.opacity(0.85))
+                        HStack(spacing: 10) {
+                            NowPlayingNavIconButton(action: {
+                                showLyricsScreen = true
+                            }, accessibilityLabel: "歌詞を表示") {
+                                Image(systemName: "text.alignleft")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(
+                                        model.hasLocalLyricsFile(for: song.id)
+                                            ? Color.white.opacity(0.9)
+                                            : Color.white.opacity(0.38)
+                                    )
+                            }
+                            NowPlayingNavIconButton(action: {
+                                model.toggleFavourite(songId: song.id)
+                            }, accessibilityLabel: "Favourite") {
+                                Image(systemName: model.isFavouriteSong(songId: song.id) ? "heart.fill" : "heart")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(model.isFavouriteSong(songId: song.id) ? Color.pink : Color.white.opacity(0.85))
+                            }
                         }
                     }
                 }
@@ -157,6 +171,12 @@ struct NowPlayingView: View {
         }
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(page == .favourites || page == .queue)
+        .fullScreenCover(isPresented: $showLyricsScreen) {
+            if let song = model.player.currentSong {
+                NowPlayingLyricsScreen(song: song, isPresented: $showLyricsScreen)
+                    .environment(model)
+            }
+        }
         .onAppear {
             horizontalDrag = 0
             lockedDragAxis = nil
@@ -303,10 +323,8 @@ private struct NowPlayingPlayingShell: View {
     let song: Song
     let artworkURLString: String
 
-    @Environment(AppModel.self) private var model
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var palette: ArtworkPlaybackPalette?
-    @State private var lyricsPlainText: String?
 
     private var accent: Color {
         palette?.accentColor ?? nowPlayingFallbackAccent
@@ -351,19 +369,6 @@ private struct NowPlayingPlayingShell: View {
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
 
-                if let lyrics = lyricsPlainText, !lyrics.isEmpty {
-                    ScrollView {
-                        Text(lyrics)
-                            .font(.system(size: 13, weight: .regular, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.55))
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                    }
-                    .frame(maxHeight: 120)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                }
-
                 Spacer(minLength: 24)
 
                 NowPlayingProgressSection(accent: accent)
@@ -383,9 +388,6 @@ private struct NowPlayingPlayingShell: View {
                 return
             }
             palette = await ArtworkPaletteExtractor.palette(forArtworkURL: url)
-        }
-        .task(id: song.id) {
-            lyricsPlainText = model.localLyricsPlainText(for: song.id)
         }
     }
 }

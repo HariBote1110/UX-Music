@@ -42,6 +42,12 @@ final class LyricsFileStore {
         resolvedLyricsURL(stem: Self.stem(for: songId)) != nil
     }
 
+    /// `true` when `DownloadedLyrics/<stem>.lrc` exists (synced timing should be applied).
+    func hasLRCFile(for songId: String) -> Bool {
+        let u = lyricsDirectory.appendingPathComponent("\(Self.stem(for: songId)).lrc", isDirectory: false)
+        return fileManager.fileExists(atPath: u.path)
+    }
+
     private func resolvedLyricsURL(stem: String) -> URL? {
         for ext in ["lrc", "txt"] {
             let u = lyricsDirectory.appendingPathComponent("\(stem).\(ext)", isDirectory: false)

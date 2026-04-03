@@ -8,6 +8,7 @@ struct SettingsScreen: View {
     @State private var testing = false
     @State private var savedFlash = false
     @State private var showQRScanner = false
+    @State private var showDesktopPlaylistImport = false
     @FocusState private var focusedField: Field?
 
     private enum Field {
@@ -48,13 +49,17 @@ struct SettingsScreen: View {
                 }
 
                 Section {
-                    NavigationLink {
-                        EqualiserSettingsView(equaliserSettings: model.equaliserSettings)
-                    } label: {
-                        Text("Equaliser")
+                    Button("デスクトップのプレイリストを取り込む") {
+                        showDesktopPlaylistImport = true
+                    }
+                    .disabled(!model.serverConfig.isConfigured)
+                    if !model.serverConfig.isConfigured {
+                        Text("ホスト名を入力して保存すると、デスクトップのプレイリストをこの端末にコピーできます。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text("PLAYBACK")
+                    Text("PLAYLISTS")
                 }
 
                 Section {
@@ -128,6 +133,10 @@ struct SettingsScreen: View {
                         }
                     }
                 }
+            }
+            .sheet(isPresented: $showDesktopPlaylistImport) {
+                DesktopPlaylistImportView(isPresented: $showDesktopPlaylistImport)
+                    .environment(model)
             }
         }
     }

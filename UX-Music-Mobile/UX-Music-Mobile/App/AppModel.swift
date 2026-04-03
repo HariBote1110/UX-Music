@@ -25,6 +25,12 @@ struct DesktopPlaylistImportOutcome: Equatable, Sendable {
     var failedTrackDownloads: Int
 }
 
+/// How to render on-device lyrics in the dedicated lyrics screen.
+enum LocalLyricsDisplayMode: Equatable {
+    case plain(String)
+    case synced([LRCParser.TimedLine])
+}
+
 enum DesktopPlaylistImportError: LocalizedError {
     case serverNotConfigured
 
@@ -234,6 +240,21 @@ final class AppModel {
     /// Plain lyrics text if a file was saved for this track (after download or manual sync).
     func localLyricsPlainText(for songId: String) -> String? {
         lyricsFileStore.plainTextIfPresent(for: songId)
+    }
+
+    /// Lyrics for the full-screen viewer: LRC files use timed sync; `.txt` stays plain scrolling text.
+    func localLyricsDisplay(for songId: String) -> LocalLyricsDisplayMode? {
+        guard let raw = lyricsFileStore.plainTextIfPresent(for: songId) else { return nil }
+        if lyricsFileStore.hasLRCFile(for: songId) {
+            let timed = LRCParser.parseTimedLines(raw)
+            if !timed.isEmpty { return .synced(timed) }
+        }
+        return .plain(raw)
+    }
+
+    /// Whether the user can open the lyrics screen (saved file exists).
+    func hasLocalLyricsFile(for songId: String) -> Bool {
+        lyricsFileStore.hasLyrics(for: songId)
     }
 
     private func fetchAndStoreLyricsIfAvailable(for song: Song) async {

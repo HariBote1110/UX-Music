@@ -135,45 +135,76 @@ struct LocalLibraryScreen: View {
     private var playlistContent: some View {
         List {
             if model.playlists.isEmpty {
-                Text("No playlists yet. Tap + to create one.")
-                    .foregroundStyle(.secondary)
+                VStack(spacing: 18) {
+                    Text("まだプレイリストがありません。+ で新規作成するか、デスクトップから取り込めます。")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    if model.serverConfig.isConfigured {
+                        Button {
+                            showDesktopPlaylistImport = true
+                        } label: {
+                            Label("デスクトップのプレイリストを取り込む", systemImage: "arrow.down.doc")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Text("設定でデスクトップに接続すると、ここからプレイリストを取り込めます。")
+                            .font(.footnote)
+                            .foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 28)
+                .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
             } else {
-                ForEach(model.playlists) { pl in
-                    NavigationLink(value: LibraryRoute.playlist(pl.id)) {
-                        HStack(spacing: 12) {
-                            ArtworkImageView(
-                                urlString: model.artworkURL(for: model.artworkIdForPlaylist(pl)),
-                                cornerRadius: 6,
-                                size: 44
-                            )
-                            .frame(width: 44, height: 44)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(pl.name)
-                                    .font(.body.weight(.semibold))
-                                Text("\(pl.songIds.count) songs")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
+                Section {
+                    ForEach(model.playlists) { pl in
+                        NavigationLink(value: LibraryRoute.playlist(pl.id)) {
+                            HStack(spacing: 12) {
+                                ArtworkImageView(
+                                    urlString: model.artworkURL(for: model.artworkIdForPlaylist(pl)),
+                                    cornerRadius: 6,
+                                    size: 44
+                                )
+                                .frame(width: 44, height: 44)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(pl.name)
+                                        .font(.body.weight(.semibold))
+                                    Text("\(pl.songIds.count) songs")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                try? model.deletePlaylist(id: pl.id)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                try? model.deletePlaylist(id: pl.id)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
                             }
                         }
                     }
-                    .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            try? model.deletePlaylist(id: pl.id)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
+                    .onMove { source, destination in
+                        try? model.movePlaylists(fromOffsets: source, toOffset: destination)
                     }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            try? model.deletePlaylist(id: pl.id)
+                } footer: {
+                    if model.serverConfig.isConfigured {
+                        Button {
+                            showDesktopPlaylistImport = true
                         } label: {
-                            Label("Delete", systemImage: "trash")
+                            Label("デスクトップからプレイリストを追加", systemImage: "arrow.down.doc")
                         }
+                        .font(.subheadline)
                     }
-                }
-                .onMove { source, destination in
-                    try? model.movePlaylists(fromOffsets: source, toOffset: destination)
                 }
             }
         }

@@ -9,6 +9,7 @@ struct RemoteLibraryScreen: View {
     @State private var viewMode: RemoteViewMode = .albums
     @State private var query = ""
     @State private var path = NavigationPath()
+    @State private var showDesktopPlaylistImport = false
     /// Avoid refetching on every `NavigationStack` pop; reset when this screen is recreated (e.g. changing tabs).
     @State private var didScheduleRemoteLoad = false
 
@@ -34,16 +35,30 @@ struct RemoteLibraryScreen: View {
                     .frame(maxWidth: 220)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task {
-                            await model.refreshLibrary()
-                            await model.refreshLoudnessOnly()
+                    HStack(spacing: 16) {
+                        if model.serverConfig.isConfigured {
+                            Button {
+                                showDesktopPlaylistImport = true
+                            } label: {
+                                Image(systemName: "arrow.down.doc")
+                            }
+                            .accessibilityLabel("デスクトップのプレイリストを取り込む")
                         }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
+                        Button {
+                            Task {
+                                await model.refreshLibrary()
+                                await model.refreshLoudnessOnly()
+                            }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .accessibilityLabel("Refresh library")
                     }
-                    .accessibilityLabel("Refresh library")
                 }
+            }
+            .sheet(isPresented: $showDesktopPlaylistImport) {
+                DesktopPlaylistImportView(isPresented: $showDesktopPlaylistImport)
+                    .environment(model)
             }
             .navigationDestination(for: Album.self) { album in
                 AlbumDetailView(album: album)
