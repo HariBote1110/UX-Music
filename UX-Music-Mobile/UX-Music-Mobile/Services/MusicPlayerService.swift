@@ -257,22 +257,50 @@ final class MusicPlayerService {
         updateNowPlayingCentre()
     }
 
+    /// Polls until `AVPlayerItem` leaves `.unknown` or `timeout` passes (avoids `play()` while Fig is still
+    /// preparing the item — a common cause of stuck 0:00 even when `AVAudioSession` is fine).
+    private func waitForPlayerItemToLeaveUnknown(_ item: AVPlayerItem, timeoutSeconds: Double = 20) async {
+        let tick: UInt64 = 50_000_000
+        let maxTicks = UInt64(max(timeoutSeconds, 0.2) * 1_000_000_000 / Double(tick))
+        var ticks: UInt64 = 0
+        while item.status == .unknown, ticks < maxTicks {
+            try? await Task.sleep(nanoseconds: tick)
+            ticks += 1
+        }
+    }
+
     private func loadAndPlay(_ song: Song) async {
         await preparePlaybackSessionIfNeeded()
         await Task.yield()
-        let url = URL(fileURLWithPath: song.path)
+
+        let path = song.path
+        guard FileManager.default.fileExists(atPath: path) else {
+            #if DEBUG
+            NSLog("UXMusic: missing local file at %@", path)
+            #endif
+            return
+        }
+
+        let url = URL(fileURLWithPath: path)
         let asset = AVURLAsset(
             url: url,
             options: [AVURLAssetPreferPreciseDurationAndTimingKey: false]
         )
 
-        // Heavy format probe / decoder setup runs in the asset loader; each `await` suspends without blocking the UI thread.
         var loadedDuration: Double = 0
+        var reportedPlayable = false
         do {
-            _ = try await asset.load(.isPlayable)
+            reportedPlayable = try await asset.load(.isPlayable)
         } catch {
-            // Decoder may still succeed once the item is attached.
+            #if DEBUG
+            NSLog("UXMusic: asset.load(isPlayable) error: %@", String(describing: error))
+            #endif
         }
+        #if DEBUG
+        if !reportedPlayable {
+            NSLog("UXMusic: asset reports isPlayable=false (playback may still work): %@", path)
+        }
+        #endif
         do {
             let d = try await asset.load(.duration)
             if d.seconds.isFinite, d.seconds > 0 {
@@ -286,6 +314,30 @@ final class MusicPlayerService {
         let item = AVPlayerItem(asset: asset)
         player.replaceCurrentItem(with: item)
         applyLoudnessGain()
+
+        await waitForPlayerItemToLeaveUnknown(item)
+
+        switch item.status {
+        case .failed:
+            #if DEBUG
+            NSLog("UXMusic: AVPlayerItem failed: %@", item.error?.localizedDescription ?? "(nil)")
+            if let log = item.errorLog() {
+                for ev in log.events.prefix(8) {
+                    NSLog("UXMusic: errorLog %@", ev.errorComment ?? "(no comment)")
+                }
+            }
+            #endif
+            return
+        case .unknown:
+            #if DEBUG
+            NSLog("UXMusic: AVPlayerItem still .unknown after wait — trying play() anyway")
+            #endif
+        case .readyToPlay:
+            break
+        @unknown default:
+            break
+        }
+
         if loadedDuration == 0 {
             Task { [weak self] in
                 guard let self else { return }
