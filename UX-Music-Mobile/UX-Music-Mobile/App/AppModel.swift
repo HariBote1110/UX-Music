@@ -221,9 +221,22 @@ final class AppModel {
         }
     }
 
+    /// Downloads every track in `songs` in list order (sequential), skipping already local files.
+    func downloadPlaylistSongs(_ songs: [Song]) async {
+        for song in songs {
+            guard !downloadManager.isDownloaded(songId: song.id) else { continue }
+            await downloadSong(song)
+        }
+    }
+
     func albumHasTracksToDownload(_ album: Album) -> Bool {
         _ = downloadLibraryRevision
         return album.songs.contains { !downloadManager.isDownloaded(songId: $0.id) }
+    }
+
+    func playlistSongsContainUndownloaded(_ songs: [Song]) -> Bool {
+        _ = downloadLibraryRevision
+        return songs.contains { !downloadManager.isDownloaded(songId: $0.id) }
     }
 
     private func cacheArtworkAfterDownloadIfNeeded(for song: Song) async {

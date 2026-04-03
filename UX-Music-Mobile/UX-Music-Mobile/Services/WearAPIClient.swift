@@ -44,7 +44,7 @@ struct WearLyricsPayload: Codable, Equatable, Sendable {
 }
 
 /// One desktop playlist row from `GET /wear/playlists`.
-struct WearDesktopPlaylist: Codable, Equatable, Sendable {
+struct WearDesktopPlaylist: Codable, Equatable, Hashable, Sendable {
     var name: String
     var songIds: [String]
     var pathsNotInLibrary: [String]?

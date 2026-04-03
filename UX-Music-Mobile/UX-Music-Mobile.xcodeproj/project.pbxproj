@@ -41,6 +41,7 @@
 		E6E6E6E70101E6E70101E6E7 /* DesktopPlaylistImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E6E6E60101E6E60101E6E6 /* DesktopPlaylistImportView.swift */; };
 		P2P2P2P30101P2P30101P2P3 /* LRCParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = P2P2P2P20101P2P20101P2P2 /* LRCParser.swift */; };
 		P3P3P3P40101P3P40101P3P4 /* NowPlayingLyricsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = P3P3P3P30101P3P30101P3P3 /* NowPlayingLyricsScreen.swift */; };
+		Q1Q1Q1Q20101Q1Q20101Q1Q2 /* RemotePlaylistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q1Q1Q1Q10101Q1Q10101Q1Q1 /* RemotePlaylistDetailView.swift */; };
 		N1N1N1N10101N1N10101N1N1 /* NowPlayingArtworkImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */; };
 		b077f2c8570b4c62ad6c8c75 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7db2069e8eb64b7382361146 /* Assets.xcassets */; };
 		b1b1b1B10101B1B10101B1B1 /* ServerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */; };
@@ -99,6 +100,7 @@
 		E6E6E6E60101E6E60101E6E6 /* DesktopPlaylistImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPlaylistImportView.swift; sourceTree = "<group>"; };
 		P2P2P2P20101P2P20101P2P2 /* LRCParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LRCParser.swift; sourceTree = "<group>"; };
 		P3P3P3P30101P3P30101P3P3 /* NowPlayingLyricsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingLyricsScreen.swift; sourceTree = "<group>"; };
+		Q1Q1Q1Q10101Q1Q10101Q1Q1 /* RemotePlaylistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePlaylistDetailView.swift; sourceTree = "<group>"; };
 		N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingArtworkImageLoader.swift; sourceTree = "<group>"; };
 		a69b6b50c77c42d5883861b6 /* UX-Music-Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfigTests.swift; sourceTree = "<group>"; };
@@ -223,6 +225,7 @@
 				E2E2E2E20101E2E10101E2E1 /* PairingQRScannerView.swift */,
 				E6E6E6E60101E6E60101E6E6 /* DesktopPlaylistImportView.swift */,
 				P3P3P3P30101P3P30101P3P3 /* NowPlayingLyricsScreen.swift */,
+				Q1Q1Q1Q10101Q1Q10101Q1Q1 /* RemotePlaylistDetailView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -386,6 +389,7 @@
 				E2E2E2E30101E2E10101E2E1 /* PairingQRScannerView.swift in Sources */,
 				E6E6E6E70101E6E70101E6E7 /* DesktopPlaylistImportView.swift in Sources */,
 				P3P3P3P40101P3P40101P3P4 /* NowPlayingLyricsScreen.swift in Sources */,
+				Q1Q1Q1Q20101Q1Q20101Q1Q2 /* RemotePlaylistDetailView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

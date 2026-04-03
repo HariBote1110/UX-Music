@@ -1,7 +1,12 @@
 import SwiftUI
 
 private enum RemoteViewMode: String, CaseIterable {
-    case albums, songs
+    case albums, playlists, songs
+}
+
+private enum RemoteLibraryNav: Hashable {
+    case album(Album)
+    case playlist(WearDesktopPlaylist)
 }
 
 struct RemoteLibraryScreen: View {
@@ -10,6 +15,9 @@ struct RemoteLibraryScreen: View {
     @State private var query = ""
     @State private var path = NavigationPath()
     @State private var showDesktopPlaylistImport = false
+    @State private var remotePlaylistRows: [WearDesktopPlaylist] = []
+    @State private var remotePlaylistsError: String?
+    @State private var isLoadingRemotePlaylists = false
     /// Avoid refetching on every `NavigationStack` pop; reset when this screen is recreated (e.g. changing tabs).
     @State private var didScheduleRemoteLoad = false
 
@@ -29,10 +37,11 @@ struct RemoteLibraryScreen: View {
                 ToolbarItem(placement: .principal) {
                     Picker("View", selection: $viewMode) {
                         Text("Albums").tag(RemoteViewMode.albums)
+                        Text("Playlists").tag(RemoteViewMode.playlists)
                         Text("Songs").tag(RemoteViewMode.songs)
                     }
                     .pickerStyle(.segmented)
-                    .frame(maxWidth: 220)
+                    .frame(maxWidth: 320)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 16) {
@@ -48,6 +57,9 @@ struct RemoteLibraryScreen: View {
                             Task {
                                 await model.refreshLibrary()
                                 await model.refreshLoudnessOnly()
+                                if viewMode == .playlists {
+                                    await loadRemotePlaylists()
+                                }
                             }
                         } label: {
                             Image(systemName: "arrow.clockwise")
@@ -60,8 +72,22 @@ struct RemoteLibraryScreen: View {
                 DesktopPlaylistImportView(isPresented: $showDesktopPlaylistImport)
                     .environment(model)
             }
-            .navigationDestination(for: Album.self) { album in
-                AlbumDetailView(album: album)
+            .navigationDestination(for: RemoteLibraryNav.self) { route in
+                switch route {
+                case .album(let album):
+                    AlbumDetailView(album: album)
+                case .playlist(let pl):
+                    RemotePlaylistDetailView(playlist: pl)
+                }
+            }
+            .task(id: viewMode) {
+                guard viewMode == .playlists else { return }
+                guard case .loaded = model.libraryState else { return }
+                await loadRemotePlaylists()
+            }
+            .onChange(of: model.libraryState) { _, newState in
+                guard viewMode == .playlists, case .loaded = newState else { return }
+                Task { await loadRemotePlaylists() }
             }
             // `onAppear` is reliable when the Remote tab is mounted lazily; `.task` on `NavigationStack`
             // can fail to run or cancel in a way that leaves `libraryState` stuck.
@@ -124,7 +150,9 @@ struct RemoteLibraryScreen: View {
                     .padding(10)
                     .background(Color.orange.opacity(0.15))
                 }
-                if filtered.isEmpty {
+                if viewMode == .playlists {
+                    remotePlaylistsPane(librarySongs: songs)
+                } else if filtered.isEmpty {
                     Text(songs.isEmpty ? "No songs on server" : "No matching songs")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -161,13 +189,149 @@ struct RemoteLibraryScreen: View {
         }
     }
 
+    private func loadRemotePlaylists() async {
+        guard model.serverConfig.isConfigured else {
+            await MainActor.run {
+                remotePlaylistRows = []
+                remotePlaylistsError = nil
+                isLoadingRemotePlaylists = false
+            }
+            return
+        }
+        await MainActor.run {
+            isLoadingRemotePlaylists = true
+            remotePlaylistsError = nil
+        }
+        do {
+            let rows = try await model.fetchDesktopPlaylistsPreview()
+            await MainActor.run {
+                remotePlaylistRows = rows
+                isLoadingRemotePlaylists = false
+            }
+        } catch {
+            await MainActor.run {
+                remotePlaylistsError = error.localizedDescription
+                isLoadingRemotePlaylists = false
+            }
+        }
+    }
+
+    private func resolveSongs(for playlist: WearDesktopPlaylist, library: [Song]) -> [Song] {
+        var byId: [String: Song] = [:]
+        for s in library { byId[s.id] = s }
+        return playlist.songIds.compactMap { byId[$0] }
+    }
+
+    private func filterPlaylists(_ rows: [WearDesktopPlaylist]) -> [WearDesktopPlaylist] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return rows }
+        return rows.filter { $0.name.lowercased().contains(q) }
+    }
+
+    @ViewBuilder
+    private func remotePlaylistsPane(librarySongs: [Song]) -> some View {
+        if !model.serverConfig.isConfigured {
+            Text("設定でデスクトップに接続すると、プレイリストを表示してダウンロードできます。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if isLoadingRemotePlaylists, remotePlaylistRows.isEmpty, remotePlaylistsError == nil {
+            ProgressView("プレイリストを読み込み中…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let err = remotePlaylistsError {
+            VStack(spacing: 12) {
+                Text("プレイリストを取得できませんでした")
+                    .font(.body.weight(.semibold))
+                Text(err)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("再試行") {
+                    Task { await loadRemotePlaylists() }
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            let filteredRows = filterPlaylists(remotePlaylistRows)
+            if filteredRows.isEmpty {
+                Text(query.isEmpty ? "デスクトップにプレイリストがありません" : "一致するプレイリストがありません")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                remotePlaylistsGrid(rows: filteredRows, librarySongs: librarySongs)
+            }
+        }
+    }
+
+    private func remotePlaylistsGrid(rows: [WearDesktopPlaylist], librarySongs: [Song]) -> some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, pl in
+                    let songsInPl = resolveSongs(for: pl, library: librarySongs)
+                    let art = songsInPl.first { !$0.artworkId.isEmpty }?.artworkId ?? ""
+                    let count = songsInPl.count
+                    Button {
+                        path.append(RemoteLibraryNav.playlist(pl))
+                    } label: {
+                        VStack(alignment: .leading, spacing: 7) {
+                            GeometryReader { geo in
+                                let side = geo.size.width
+                                ZStack {
+                                    if art.isEmpty {
+                                        Color(white: 0.14)
+                                        Image(systemName: "music.note.list")
+                                            .font(.system(size: side * 0.28, weight: .light))
+                                            .foregroundStyle(.white.opacity(0.25))
+                                    } else {
+                                        ArtworkImageView(
+                                            urlString: model.artworkURL(for: art),
+                                            cornerRadius: 10,
+                                            size: side
+                                        )
+                                    }
+                                }
+                                .frame(width: side, height: side)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                            .aspectRatio(1, contentMode: .fit)
+                            Text(pl.name)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(2)
+                                .foregroundStyle(.primary)
+                                .multilineTextAlignment(.leading)
+                            Text("\(count) songs")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        if model.playlistSongsContainUndownloaded(songsInPl) {
+                            Button {
+                                Task { await model.downloadPlaylistSongs(songsInPl) }
+                            } label: {
+                                Label("プレイリストをダウンロード", systemImage: "arrow.down.circle")
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+        }
+    }
+
     private func remoteAlbumsGrid(songs: [Song]) -> some View {
         let albums = Album.fromSongs(songs)
         return ScrollView {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(albums) { album in
                     Button {
-                        path.append(album)
+                        path.append(RemoteLibraryNav.album(album))
                     } label: {
                         VStack(alignment: .leading, spacing: 7) {
                             GeometryReader { geo in
