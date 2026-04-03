@@ -68,9 +68,10 @@ final class MusicPlayerService {
         addAudioInterruptionObserver()
     }
 
-    /// Configures and activates the shared session on the main actor. Apple documents that mutating
-    /// `AVAudioSession` from a background queue yields undefined behaviour (often `setCategory` /
-    /// `setActive` failures and stuck `AVPlayer` at 0:00 — e.g. `SessionCore` “Failed to set properties”).
+    /// Configures and activates the shared session on the main actor. Mutating `AVAudioSession` from a
+    /// background queue is unsupported; some OS builds also return `paramErr` (OSStatus **-50**) for
+    /// invalid **category + mode + options** combinations — e.g. `.allowBluetoothA2DP` / `.allowAirPlay`
+    /// with a mode the system rejects — which surfaces as `SessionCore` “Failed to set properties”.
     private func preparePlaybackSessionIfNeeded() async {
         if playbackSessionPrepared { return }
         if let sessionActivationTask {
@@ -79,24 +80,78 @@ final class MusicPlayerService {
         }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            let session = AVAudioSession.sharedInstance()
-            do {
-                try session.setCategory(
-                    .playback,
-                    mode: .default,
-                    options: [.allowBluetoothA2DP, .allowAirPlay]
-                )
-                try session.setActive(true, options: [])
+            if self.activateSharedAudioSessionForPlayback() {
                 self.playbackSessionPrepared = true
-            } catch {
-                #if DEBUG
-                NSLog("UXMusic: AVAudioSession setup failed: \(error)")
-                #endif
             }
         }
         sessionActivationTask = task
         await task.value
         sessionActivationTask = nil
+    }
+
+    /// Returns whether the shared session was configured and activated.
+    private func activateSharedAudioSessionForPlayback() -> Bool {
+        let session = AVAudioSession.sharedInstance()
+
+        struct Attempt {
+            let mode: AVAudioSession.Mode
+            let options: AVAudioSession.CategoryOptions
+        }
+        // Prefer minimal options first; add routing flags only if needed.
+        let attempts: [Attempt] = [
+            Attempt(mode: .default, options: []),
+            Attempt(mode: .moviePlayback, options: []),
+            Attempt(mode: .default, options: [.allowBluetoothA2DP]),
+            Attempt(mode: .moviePlayback, options: [.allowBluetoothA2DP]),
+            Attempt(mode: .default, options: [.allowAirPlay]),
+            Attempt(mode: .default, options: [.allowBluetoothA2DP, .allowAirPlay]),
+            Attempt(mode: .moviePlayback, options: [.allowBluetoothA2DP, .allowAirPlay]),
+        ]
+
+        for pass in 0..<2 {
+            if pass == 1 {
+                // Second pass: reset session when the first pass failed entirely (e.g. stale activation).
+                try? session.setActive(false)
+            }
+            for attempt in attempts {
+                do {
+                    try session.setCategory(.playback, mode: attempt.mode, options: attempt.options)
+                    try session.setActive(true)
+                    #if DEBUG
+                    NSLog(
+                        "UXMusic: AVAudioSession OK pass=%d mode=%@ options=0x%x",
+                        pass,
+                        attempt.mode.rawValue,
+                        attempt.options.rawValue
+                    )
+                    #endif
+                    return true
+                } catch {
+                    #if DEBUG
+                    NSLog(
+                        "UXMusic: AVAudioSession attempt failed pass=%d mode=%@ options=0x%x error=%@",
+                        pass,
+                        attempt.mode.rawValue,
+                        attempt.options.rawValue,
+                        String(describing: error)
+                    )
+                    #endif
+                }
+            }
+            do {
+                try session.setCategory(.playback, options: [])
+                try session.setActive(true)
+                #if DEBUG
+                NSLog("UXMusic: AVAudioSession OK pass=%d via setCategory(.playback, options: [])", pass)
+                #endif
+                return true
+            } catch {
+                #if DEBUG
+                NSLog("UXMusic: AVAudioSession fallback failed pass=%d: %@", pass, String(describing: error))
+                #endif
+            }
+        }
+        return false
     }
 
     private func addTimeObserver() {
