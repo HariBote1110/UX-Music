@@ -32,8 +32,6 @@ final class AppModel {
 
     let downloadManager: DownloadManager
     let player: MusicPlayerService
-    /// Graphic EQ presets / custom curve (persists to `UserDefaults`).
-    let equaliserSettings: EqualiserSettingsStore
     let playlistStore: PlaylistStore
     let favouriteSongStore: FavouriteSongStore
 
@@ -48,12 +46,7 @@ final class AppModel {
         self.playlistStore = playlistStore ?? PlaylistStore()
         favouriteSongStore = FavouriteSongStore()
         favouriteSongIds = favouriteSongStore.orderedIds
-        equaliserSettings = EqualiserSettingsStore()
         player = MusicPlayerService()
-        player.equaliserCurveProvider = { [equaliserSettings] in equaliserSettings.effectiveCurve() }
-        equaliserSettings.onApplyRequested = { [weak self] in
-            self?.player.refreshEqualiser()
-        }
         player.targetLoudness = AppConstants.defaultTargetLoudness
         player.loadArtworkImage = { [weak self] song in
             guard let self else { return nil }
@@ -68,10 +61,10 @@ final class AppModel {
         downloadLibraryRevision &+= 1
     }
 
-    /// Sorted local tracks; reads `downloadLibraryRevision` so Observation refreshes Albums/Songs grids after downloads.
+    /// Local tracks in album / disc / track order (not global title sort — avoids scrambled queues and grids).
     var sortedDownloadedSongsForLibrary: [Song] {
         _ = downloadLibraryRevision
-        return downloadManager.downloadedSongs.values.sorted { $0.displayTitle < $1.displayTitle }
+        return downloadManager.downloadedSongs.values.sorted(by: Song.libraryFlatDisplayOrderAscending)
     }
 
     func isSongDownloaded(songId: String) -> Bool {
@@ -89,7 +82,7 @@ final class AppModel {
         _ = downloadLibraryRevision
         return downloadManager.downloadedSongs.values
             .filter { !songIds.contains($0.id) }
-            .sorted { $0.displayTitle.localizedCaseInsensitiveCompare($1.displayTitle) == .orderedAscending }
+            .sorted(by: Song.libraryFlatDisplayOrderAscending)
     }
 
     private static func loadSettings() -> ServerConfig {

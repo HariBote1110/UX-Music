@@ -4,32 +4,22 @@ import MediaPlayer
 import Observation
 import UIKit
 
-/// Local playback with optional loudness normalisation and 10-band graphic EQ (`AVAudioEngine` + `AVAudioUnitEQ`).
+/// Local playback with optional loudness normalisation (same idea as Flutter `MusicPlayerService`).
 @MainActor
 @Observable
 final class MusicPlayerService {
-    private let engine = AVAudioEngine()
-    private let playerNode = AVAudioPlayerNode()
-    private let eqUnit = AVAudioUnitEQ(numberOfBands: EqualiserConstants.bandCount)
+    private let player = AVPlayer()
 
     private var queue: [Song] = []
     private var currentIndex: Int = -1
-
-    private var audioFile: AVAudioFile?
-    private var connectionFormat: AVAudioFormat?
-    private var graphInstalled = false
-    /// File frame index where the currently scheduled segment begins (seek / position).
-    private var segmentStartFileFrame: AVAudioFramePosition = 0
-
-    private var positionTimer: Timer?
-    private var interruptionObserver: NSObjectProtocol?
-
-    private var routeGeneration: UInt64 = 0
 
     /// Current playback queue (local files), in play order.
     var playbackQueue: [Song] { queue }
     /// Index of the current track in `playbackQueue`, or `-1` when idle.
     var currentQueueIndex: Int { currentIndex }
+    private var timeObserver: Any?
+    private var endObserver: NSObjectProtocol?
+    private var timeControlStatusObservation: NSKeyValueObservation?
 
     private(set) var currentSong: Song?
     private(set) var isPlaying = false
@@ -41,14 +31,14 @@ final class MusicPlayerService {
     var normaliseEnabled = true
     var masterVolume: Float = 1
 
-    /// Read on each `applyEqualiserCurve()` / `refreshEqualiser()`.
-    var equaliserCurveProvider: () -> EqualiserCurve = { .disabled }
-
     /// When set (by `AppModel`), jacket art is shown in Now Playing, Dynamic Island, and Control Centre.
     var loadArtworkImage: (@MainActor (Song) async -> UIImage?)?
 
+    /// Audio session activation is deferred until playback starts to keep app launch light.
     private var playbackSessionPrepared = false
+    /// In-flight activation so concurrent `play` / `toggle` callers share one `setActive` path.
     private var sessionActivationTask: Task<Void, Never>?
+    private var interruptionObserver: NSObjectProtocol?
 
     private var lastPublishedNowPlayingSongId: String?
     private var artworkLoadedForSongId: String?
@@ -56,141 +46,72 @@ final class MusicPlayerService {
     private var nowPlayingArtworkImage: UIImage?
 
     init() {
-        prepareEqualiserStaticBands()
-        addAudioInterruptionObserver()
+        // Local files: avoid extra “wait for buffer” stall on first `play()` (still fine for on-disk media).
+        player.automaticallyWaitsToMinimizeStalling = false
+        addTimeObserver()
+        timeControlStatusObservation = player.observe(\.timeControlStatus, options: [.new, .initial]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                self?.syncIsPlayingFromPlayer()
+            }
+        }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: nil,
+            queue: .main
+        ) { [weak self] n in
+            guard let self else { return }
+            if (n.object as? AVPlayerItem) === self.player.currentItem {
+                Task { @MainActor in await self.advanceAfterEnd() }
+            }
+        }
         installRemoteCommandHandlers()
+        addAudioInterruptionObserver()
     }
 
-    private func prepareEqualiserStaticBands() {
-        let freqs = EqualiserConstants.centreFrequenciesHz
-        guard eqUnit.bands.count == freqs.count else { return }
-        for (i, band) in eqUnit.bands.enumerated() {
-            band.frequency = freqs[i]
-            if i == 0 {
-                band.filterType = .lowShelf
-            } else if i == EqualiserConstants.bandCount - 1 {
-                band.filterType = .highShelf
-            } else {
-                band.filterType = .parametric
-                band.bandwidth = 1
-            }
-            band.bypass = false
-            band.gain = 0
-        }
-    }
-
-    private func ensureGraphInstalled() {
-        guard !graphInstalled else { return }
-        engine.attach(playerNode)
-        engine.attach(eqUnit)
-        graphInstalled = true
-    }
-
-    private func connectGraph(for file: AVAudioFile) throws {
-        let fmt = file.processingFormat
-        if let connectionFormat, connectionFormat.isEqual(fmt) { return }
-        if connectionFormat != nil {
-            engine.disconnectNodeOutput(playerNode)
-            engine.disconnectNodeOutput(eqUnit)
-        }
-        engine.connect(playerNode, to: eqUnit, format: fmt)
-        engine.connect(eqUnit, to: engine.mainMixerNode, format: fmt)
-        connectionFormat = fmt
-    }
-
-    private func ensureEngineRunning(with file: AVAudioFile) throws {
-        ensureGraphInstalled()
-        try connectGraph(for: file)
-        applyEqualiserCurve()
-        applyLoudnessGain()
-        if !engine.isRunning {
-            try engine.start()
-        }
-    }
-
-    func refreshEqualiser() {
-        applyEqualiserCurve()
-    }
-
-    private func applyEqualiserCurve() {
-        let curve = equaliserCurveProvider()
-        guard eqUnit.bands.count == EqualiserConstants.bandCount else { return }
-        if !curve.isEnabled {
-            eqUnit.auAudioUnit.shouldBypassEffect = true
-            eqUnit.globalGain = 0
-            for band in eqUnit.bands {
-                band.gain = 0
-            }
-            return
-        }
-        eqUnit.auAudioUnit.shouldBypassEffect = false
-        eqUnit.globalGain = curve.preampDb
-        for (i, band) in eqUnit.bands.enumerated() {
-            band.bypass = false
-            band.gain = curve.bandGainsDb[i]
-        }
-    }
-
-    private func startPositionTimer() {
-        positionTimer?.invalidate()
-        let t = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tickPosition() }
-        }
-        RunLoop.main.add(t, forMode: .common)
-        positionTimer = t
-    }
-
-    private func stopPositionTimer() {
-        positionTimer?.invalidate()
-        positionTimer = nil
-    }
-
-    private func tickPosition() {
-        guard playerNode.isPlaying, audioFile != nil else { return }
-        guard let nodeTime = playerNode.lastRenderTime,
-              let pt = playerNode.playerTime(forNodeTime: nodeTime) else { return }
-        let sr = pt.sampleRate
-        guard sr > 0 else { return }
-        let st = pt.sampleTime
-        guard st >= 0 else { return }
-        let elapsedFrames = Double(segmentStartFileFrame) + Double(st)
-        let pos = elapsedFrames / sr
-        let dur = durationSeconds
-        positionSeconds = min(max(0, pos), dur > 0 ? dur : pos)
-        updateNowPlayingCentre()
-        syncIsPlayingFromNode()
-    }
-
-    private func syncIsPlayingFromNode() {
-        let next = playerNode.isPlaying
-        guard next != isPlaying else { return }
-        isPlaying = next
-    }
-
+    /// Configures and activates the shared session on the main actor. Apple documents that mutating
+    /// `AVAudioSession` from a background queue yields undefined behaviour (often `setCategory` /
+    /// `setActive` failures and stuck `AVPlayer` at 0:00 — e.g. `SessionCore` “Failed to set properties”).
     private func preparePlaybackSessionIfNeeded() async {
         if playbackSessionPrepared { return }
         if let sessionActivationTask {
             await sessionActivationTask.value
             return
         }
-        let task = Task<Void, Never> {
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let session = AVAudioSession.sharedInstance()
-                    try? session.setCategory(
-                        .playback,
-                        mode: .default,
-                        options: [.allowBluetoothA2DP, .allowAirPlay]
-                    )
-                    try? session.setActive(true)
-                    continuation.resume()
-                }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let session = AVAudioSession.sharedInstance()
+            do {
+                try session.setCategory(
+                    .playback,
+                    mode: .default,
+                    options: [.allowBluetoothA2DP, .allowAirPlay]
+                )
+                try session.setActive(true, options: [])
+                self.playbackSessionPrepared = true
+            } catch {
+                #if DEBUG
+                NSLog("UXMusic: AVAudioSession setup failed: \(error)")
+                #endif
             }
         }
         sessionActivationTask = task
         await task.value
         sessionActivationTask = nil
-        playbackSessionPrepared = true
+    }
+
+    private func addTimeObserver() {
+        let interval = CMTime(seconds: 0.25, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] t in
+            guard let self else { return }
+            Task { @MainActor in
+                self.positionSeconds = t.seconds.isFinite ? t.seconds : 0
+                if let d = self.player.currentItem?.duration.seconds, d.isFinite, d > 0 {
+                    self.durationSeconds = d
+                }
+                self.syncIsPlayingFromPlayer()
+                self.updateNowPlayingCentre()
+            }
+        }
     }
 
     func play(_ song: Song, newQueue: [Song]?) async {
@@ -212,12 +133,19 @@ final class MusicPlayerService {
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.preparePlaybackSessionIfNeeded()
-            if self.playerNode.isPlaying {
-                self.playerNode.pause()
-            } else {
-                self.playerNode.play()
+            switch self.player.timeControlStatus {
+            case .playing, .waitingToPlayAtSpecifiedRate:
+                self.player.pause()
+            case .paused:
+                self.player.play()
+            @unknown default:
+                if self.player.rate > 0.01 {
+                    self.player.pause()
+                } else {
+                    self.player.play()
+                }
             }
-            self.syncIsPlayingFromNode()
+            self.syncIsPlayingFromPlayer()
             self.updateNowPlayingCentre()
         }
     }
@@ -242,6 +170,7 @@ final class MusicPlayerService {
         }
     }
 
+    /// Jumps to a track already present in the queue and starts playback.
     func playQueueItem(at index: Int) async {
         guard index >= 0, index < queue.count else { return }
         currentIndex = index
@@ -251,37 +180,21 @@ final class MusicPlayerService {
     }
 
     func seek(to seconds: Double) async {
-        guard let file = audioFile else { return }
-        let sr = file.fileFormat.sampleRate
-        guard sr > 0 else { return }
-        let target = AVAudioFramePosition(seconds * sr)
-        let maxStart = max(0, file.length - 1)
-        segmentStartFileFrame = min(max(0, target), maxStart)
-        positionSeconds = min(max(0, seconds), durationSeconds > 0 ? durationSeconds : seconds)
-        playerNode.stop()
-        applyEqualiserCurve()
-        applyLoudnessGain()
-        scheduleRemaining(of: file)
-        playerNode.play()
-        syncIsPlayingFromNode()
+        let t = CMTime(seconds: seconds, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        await player.seek(to: t)
+        positionSeconds = seconds
         updateNowPlayingCentre()
     }
 
     func stop() {
-        routeGeneration += 1
-        playerNode.stop()
-        if engine.isRunning {
-            engine.stop()
-        }
-        stopPositionTimer()
-        audioFile = nil
+        player.pause()
+        player.replaceCurrentItem(with: nil)
         currentSong = nil
         currentIndex = -1
         queue = []
         isPlaying = false
         positionSeconds = 0
         durationSeconds = 0
-        segmentStartFileFrame = 0
         lastPublishedNowPlayingSongId = nil
         artworkLoadedForSongId = nil
         artworkInFlightForSongId = nil
@@ -290,57 +203,58 @@ final class MusicPlayerService {
     }
 
     private func loadAndPlay(_ song: Song) async {
-        routeGeneration += 1
-        let token = routeGeneration
-
         await preparePlaybackSessionIfNeeded()
-        guard token == routeGeneration else { return }
         await Task.yield()
-        guard token == routeGeneration else { return }
-
         let url = URL(fileURLWithPath: song.path)
-        let file: AVAudioFile
+        let asset = AVURLAsset(
+            url: url,
+            options: [AVURLAssetPreferPreciseDurationAndTimingKey: false]
+        )
+
+        // Heavy format probe / decoder setup runs in the asset loader; each `await` suspends without blocking the UI thread.
+        var loadedDuration: Double = 0
         do {
-            file = try AVAudioFile(forReading: url)
+            _ = try await asset.load(.isPlayable)
         } catch {
-            durationSeconds = 0
-            return
+            // Decoder may still succeed once the item is attached.
         }
-        guard token == routeGeneration else { return }
-
-        audioFile = file
-        segmentStartFileFrame = 0
-
-        let sr = file.fileFormat.sampleRate
-        let len = file.length
-        durationSeconds = sr > 0 ? Double(len) / sr : 0
-
         do {
-            try ensureEngineRunning(with: file)
+            let d = try await asset.load(.duration)
+            if d.seconds.isFinite, d.seconds > 0 {
+                loadedDuration = d.seconds
+            }
         } catch {
-            return
+            // Duration may appear later via the periodic observer.
         }
-        guard token == routeGeneration else { return }
+        durationSeconds = loadedDuration
 
-        playerNode.stop()
-        applyEqualiserCurve()
+        let item = AVPlayerItem(asset: asset)
+        player.replaceCurrentItem(with: item)
         applyLoudnessGain()
-        scheduleRemaining(of: file)
-        playerNode.play()
-        startPositionTimer()
-        syncIsPlayingFromNode()
+        if loadedDuration == 0 {
+            Task { [weak self] in
+                guard let self else { return }
+                if let d = try? await asset.load(.duration), d.seconds.isFinite, d.seconds > 0 {
+                    await MainActor.run {
+                        self.durationSeconds = d.seconds
+                        self.updateNowPlayingCentre()
+                    }
+                }
+            }
+        }
+        await Task.yield()
+        player.play()
+        syncIsPlayingFromPlayer()
         updateNowPlayingCentre()
     }
 
-    private func scheduleRemaining(of file: AVAudioFile) {
-        let start = segmentStartFileFrame
-        let total = file.length
-        guard start < total else { return }
-        let remaining = total - start
-        let count = AVAudioFrameCount(remaining)
-        playerNode.scheduleSegment(file, startingFrame: start, frameCount: count, at: nil) { [weak self] in
-            Task { @MainActor in await self?.advanceAfterEnd() }
-        }
+    private func syncIsPlayingFromPlayer() {
+        let next = PlaybackControlState.showsPauseButton(
+            timeControlStatus: player.timeControlStatus,
+            rate: player.rate
+        )
+        guard next != isPlaying else { return }
+        isPlaying = next
     }
 
     private func advanceAfterEnd() async {
@@ -350,17 +264,17 @@ final class MusicPlayerService {
 
     private func applyLoudnessGain() {
         guard normaliseEnabled, let id = currentSong?.id else {
-            engine.mainMixerNode.outputVolume = masterVolume
+            player.volume = masterVolume
             return
         }
         guard let lufs = loudnessMap[id] else {
-            engine.mainMixerNode.outputVolume = masterVolume
+            player.volume = masterVolume
             return
         }
         let gainDb = targetLoudness - lufs
         let linear = pow(10, gainDb / 20)
         let clamped = min(max(linear, 0), 4)
-        engine.mainMixerNode.outputVolume = masterVolume * Float(clamped)
+        player.volume = masterVolume * Float(clamped)
     }
 
     func refreshVolumeForCurrentSong() {
@@ -376,8 +290,8 @@ final class MusicPlayerService {
             guard let self else { return .commandFailed }
             Task { @MainActor in
                 await self.preparePlaybackSessionIfNeeded()
-                self.playerNode.play()
-                self.syncIsPlayingFromNode()
+                self.player.play()
+                self.syncIsPlayingFromPlayer()
                 self.updateNowPlayingCentre()
             }
             return .success
@@ -386,8 +300,8 @@ final class MusicPlayerService {
         c.pauseCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
             Task { @MainActor in
-                self.playerNode.pause()
-                self.syncIsPlayingFromNode()
+                self.player.pause()
+                self.syncIsPlayingFromPlayer()
                 self.updateNowPlayingCentre()
             }
             return .success
@@ -467,7 +381,7 @@ final class MusicPlayerService {
         info[MPMediaItemPropertyAlbumTitle] = song.displayAlbum
         info[MPMediaItemPropertyPlaybackDuration] = durationForInfo
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, positionSeconds)
-        info[MPNowPlayingInfoPropertyPlaybackRate] = playerNode.isPlaying ? 1.0 : 0.0
+        info[MPNowPlayingInfoPropertyPlaybackRate] = Double(player.rate)
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
 
         if info[MPMediaItemPropertyArtwork] == nil,
@@ -536,15 +450,15 @@ final class MusicPlayerService {
             Task { @MainActor in
                 switch type {
                 case .began:
-                    self.playerNode.pause()
-                    self.syncIsPlayingFromNode()
+                    self.player.pause()
+                    self.syncIsPlayingFromPlayer()
                 case .ended:
                     if let optRaw = info[AVAudioSessionInterruptionOptionKey] as? UInt {
                         let opts = AVAudioSession.InterruptionOptions(rawValue: optRaw)
                         if opts.contains(.shouldResume) {
                             try? AVAudioSession.sharedInstance().setActive(true)
-                            self.playerNode.play()
-                            self.syncIsPlayingFromNode()
+                            self.player.play()
+                            self.syncIsPlayingFromPlayer()
                         }
                     }
                 @unknown default:

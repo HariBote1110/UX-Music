@@ -33,4 +33,21 @@ final class AlbumTests: XCTestCase {
         XCTAssertEqual(albums.count, 1)
         XCTAssertEqual(albums[0].displayArtist, "Various Artists")
     }
+
+    /// When disc/track tags are missing (0), order must not be arbitrary — use title.
+    func testFromSongsSortsByTitleWhenDiscAndTrackAreZero() {
+        let zebra = Song(id: "z", path: "", title: "Zebra", artist: "A", album: "LP", albumArtist: "A", trackNumber: 0, discNumber: 0, artworkId: "")
+        let alpha = Song(id: "a", path: "", title: "Alpha", artist: "A", album: "LP", albumArtist: "A", trackNumber: 0, discNumber: 0, artworkId: "")
+        let albums = Album.fromSongs([zebra, alpha])
+        XCTAssertEqual(albums.count, 1)
+        XCTAssertEqual(albums[0].songs.map(\Song.id), ["a", "z"])
+    }
+
+    func testLibraryFlatDisplayOrderAscending() {
+        let b2 = Song(id: "b2", path: "", title: "T2", artist: "A", album: "B", albumArtist: "", trackNumber: 2, discNumber: 1, artworkId: "")
+        let b1 = Song(id: "b1", path: "", title: "T1", artist: "A", album: "B", albumArtist: "", trackNumber: 1, discNumber: 1, artworkId: "")
+        let a1 = Song(id: "a1", path: "", title: "Z", artist: "A", album: "A", albumArtist: "", trackNumber: 1, discNumber: 1, artworkId: "")
+        let sorted = [b2, a1, b1].sorted(by: Song.libraryFlatDisplayOrderAscending)
+        XCTAssertEqual(sorted.map(\Song.id), ["a1", "b1", "b2"])
+    }
 }

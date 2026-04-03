@@ -105,6 +105,23 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
     var displayArtist: String { artist.isEmpty ? "Unknown Artist" : artist }
     var displayAlbum: String { album.isEmpty ? "Unknown Album" : album }
 
+    /// Album bucket matching `Album.fromSongs` (trimmed title, `Unknown Album` when empty).
+    var groupingAlbumTitle: String {
+        let t = album.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? "Unknown Album" : t
+    }
+
+    /// Flat local-library order: album name, then disc, track, then title when tags tie or are missing.
+    static func libraryFlatDisplayOrderAscending(_ a: Song, _ b: Song) -> Bool {
+        let albumCmp = a.groupingAlbumTitle.localizedCaseInsensitiveCompare(b.groupingAlbumTitle)
+        if albumCmp != .orderedSame {
+            return albumCmp == .orderedAscending
+        }
+        if a.discNumber != b.discNumber { return a.discNumber < b.discNumber }
+        if a.trackNumber != b.trackNumber { return a.trackNumber < b.trackNumber }
+        return a.displayTitle.localizedCaseInsensitiveCompare(b.displayTitle) == .orderedAscending
+    }
+
     var formattedDuration: String {
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60

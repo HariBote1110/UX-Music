@@ -17,14 +17,9 @@ struct Album: Equatable, Hashable, Identifiable, Sendable {
     var displayArtist: String { artistName.isEmpty ? "Unknown Artist" : artistName }
 
     static func fromSongs(_ songs: [Song]) -> [Album] {
-        func normalisedAlbum(_ song: Song) -> String {
-            let t = song.album.trimmingCharacters(in: .whitespacesAndNewlines)
-            return t.isEmpty ? "Unknown Album" : t
-        }
-
         var groups: [String: [Song]] = [:]
         for song in songs {
-            let key = normalisedAlbum(song)
+            let key = song.groupingAlbumTitle
             groups[key, default: []].append(song)
         }
 
@@ -73,7 +68,8 @@ struct Album: Equatable, Hashable, Identifiable, Sendable {
         for i in albums.indices {
             albums[i].songs.sort {
                 if $0.discNumber != $1.discNumber { return $0.discNumber < $1.discNumber }
-                return $0.trackNumber < $1.trackNumber
+                if $0.trackNumber != $1.trackNumber { return $0.trackNumber < $1.trackNumber }
+                return $0.displayTitle.localizedCaseInsensitiveCompare($1.displayTitle) == .orderedAscending
             }
         }
         return albums
