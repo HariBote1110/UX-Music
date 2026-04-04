@@ -10,6 +10,4 @@ enum AppConstants {
     static let playlistsPersistenceKey = "local_playlists_v1"
     /// Ordered favourite song ids (downloaded tracks only when resolving for UI).
     static let favouriteSongIdsKey = "favourite_song_ids_v1"
-    /// `EqualiserSettingsStore` persistence (enabled flag, preset id, custom bands).
-    static let equaliserSettingsKey = "equaliser_settings_v1"
 }
