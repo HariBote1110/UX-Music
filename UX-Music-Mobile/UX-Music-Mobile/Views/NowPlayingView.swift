@@ -792,7 +792,17 @@ private struct NowPlayingFavouritesPanel: View {
 }
 
 private struct NowPlayingPlaybackSettingsPanel: View {
+    @Environment(AppModel.self) private var model
     @Binding var page: NowPlayingPage
+
+    private static func equaliserBandLabel(for index: Int) -> String {
+        let hz = GraphicEqualiserConfiguration.centreFrequenciesHz[index]
+        if hz >= 1000 {
+            let k = hz / 1000
+            return k.rounded() == k ? "\(Int(k))k" : String(format: "%.1fk", k)
+        }
+        return "\(Int(hz))"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -804,13 +814,61 @@ private struct NowPlayingPlaybackSettingsPanel: View {
                 .padding(.bottom, 8)
             List {
                 Section {
-                    Toggle("Enable equaliser", isOn: .constant(false))
-                        .disabled(true)
+                    Toggle(
+                        "Enable equaliser",
+                        isOn: Binding(
+                            get: { model.player.equaliserEnabled },
+                            set: { model.player.setEqualiserEnabled($0) }
+                        )
+                    )
+                    Menu {
+                        ForEach(GraphicEqualiserConfiguration.presetNamesOrdered, id: \.self) { name in
+                            Button(name) {
+                                model.player.applyEqualiserPreset(named: name)
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Text("Preset")
+                            Spacer()
+                            Text(model.player.equaliserPresetDisplayName)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     HStack {
-                        Text("Preset")
-                        Spacer()
-                        Text("Flat (mock)")
+                        Text("Preamp")
+                        Slider(
+                            value: Binding(
+                                get: { Double(model.player.equaliserPreampDecibels) },
+                                set: { model.player.setEqualiserPreampDecibels(Float($0)) }
+                            ),
+                            in: -24 ... 24
+                        )
+                        .disabled(!model.player.equaliserEnabled)
+                        Text("\(Int(model.player.equaliserPreampDecibels)) dB")
+                            .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
+                            .frame(minWidth: 44, alignment: .trailing)
+                    }
+                    ForEach(0 ..< GraphicEqualiserConfiguration.bandCount, id: \.self) { index in
+                        HStack(spacing: 10) {
+                            Text(Self.equaliserBandLabel(for: index))
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 40, alignment: .leading)
+                            Slider(
+                                value: Binding(
+                                    get: { Double(model.player.equaliserBandDecibels[index]) },
+                                    set: { model.player.setEqualiserBand(index: index, decibels: Float($0)) }
+                                ),
+                                in: -24 ... 24
+                            )
+                            .disabled(!model.player.equaliserEnabled)
+                            Text("\(Int(model.player.equaliserBandDecibels[index]))")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(minWidth: 32, alignment: .trailing)
+                        }
                     }
                 } header: {
                     Text("Equaliser")

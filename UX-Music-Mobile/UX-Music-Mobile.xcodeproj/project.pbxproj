@@ -15,6 +15,7 @@
 		01A1A1AB0101A1A10101A1A1 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */; };
 		D0D0D0D10101D0D10101D0D1 /* DownloadedTrackFormatSniffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */; };
 		01A1A1AD0101A1A10101A1A1 /* MusicPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */; };
+		F5F5F5F50101F5F50101F5F5 /* GraphicEqualiserConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F5F5F40101F5F40101F5F4 /* GraphicEqualiserConfiguration.swift */; };
 		01A1A1AF0101A1A10101A1A1 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1B00101A1A10101A1A1 /* AppModel.swift */; };
 		01A1A1B10101A1A10101A1A1 /* ArtworkImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1B20101A1A10101A1A1 /* ArtworkImageView.swift */; };
 		01A1A1B30101A1A10101A1A1 /* SongRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1B40101A1A10101A1A1 /* SongRowView.swift */; };
@@ -51,6 +52,7 @@
 		c2c2c2C20101C2C10101C2C1 /* AppModelDownloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */; };
 		D7D7D7D70101D7D70101D7D7 /* LyricsFileStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7D7D7D50101D7D50101D7D5 /* LyricsFileStoreTests.swift */; };
 		P4P4P4P50101P4P50101P4P5 /* LRCParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P4P4P4P40101P4P40101P4P4 /* LRCParserTests.swift */; };
+		F5F5F5F70101F5F70101F5F7 /* GraphicEqualiserConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F5F5F60101F5F60101F5F6 /* GraphicEqualiserConfigurationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -72,6 +74,7 @@
 		01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadedTrackFormatSniffer.swift; sourceTree = "<group>"; };
 		01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerService.swift; sourceTree = "<group>"; };
+		F5F5F5F40101F5F40101F5F4 /* GraphicEqualiserConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphicEqualiserConfiguration.swift; sourceTree = "<group>"; };
 		01A1A1B00101A1A10101A1A1 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		01A1A1B20101A1A10101A1A1 /* ArtworkImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkImageView.swift; sourceTree = "<group>"; };
 		01A1A1B40101A1A10101A1A1 /* SongRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongRowView.swift; sourceTree = "<group>"; };
@@ -111,6 +114,7 @@
 		c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelDownloadTests.swift; sourceTree = "<group>"; };
 		D7D7D7D50101D7D50101D7D5 /* LyricsFileStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsFileStoreTests.swift; sourceTree = "<group>"; };
 		P4P4P4P40101P4P40101P4P4 /* LRCParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LRCParserTests.swift; sourceTree = "<group>"; };
+		F5F5F5F60101F5F60101F5F6 /* GraphicEqualiserConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphicEqualiserConfigurationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -159,6 +163,7 @@
 				B2B2B2B50101B2B50101B2B5 /* PlaybackControlStateTests.swift */,
 				D7D7D7D50101D7D50101D7D5 /* LyricsFileStoreTests.swift */,
 				P4P4P4P40101P4P40101P4P4 /* LRCParserTests.swift */,
+				F5F5F5F60101F5F60101F5F6 /* GraphicEqualiserConfigurationTests.swift */,
 			);
 			path = "UX-Music-MobileTests";
 			sourceTree = "<group>";
@@ -193,6 +198,7 @@
 				01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */,
 				D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */,
 				01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */,
+				F5F5F5F40101F5F40101F5F4 /* GraphicEqualiserConfiguration.swift */,
 				F3A3A3A90101F3A90101F3A9 /* PlaylistStore.swift */,
 				F4B4B4B20101F4B20101F4B2 /* FavouriteSongStore.swift */,
 				E5E5E5E50101E5E50101E5E5 /* LyricsFileStore.swift */,
@@ -350,6 +356,7 @@
 				B2B2B2B40101B2B40101B2B4 /* PlaybackControlStateTests.swift in Sources */,
 				D7D7D7D70101D7D70101D7D7 /* LyricsFileStoreTests.swift in Sources */,
 				P4P4P4P50101P4P50101P4P5 /* LRCParserTests.swift in Sources */,
+				F5F5F5F70101F5F70101F5F7 /* GraphicEqualiserConfigurationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -370,6 +377,7 @@
 				01A1A1AB0101A1A10101A1A1 /* DownloadManager.swift in Sources */,
 				D0D0D0D10101D0D10101D0D1 /* DownloadedTrackFormatSniffer.swift in Sources */,
 				01A1A1AD0101A1A10101A1A1 /* MusicPlayerService.swift in Sources */,
+				F5F5F5F50101F5F50101F5F5 /* GraphicEqualiserConfiguration.swift in Sources */,
 				F3A3A3A40101F3A40101F3A4 /* PlaylistStore.swift in Sources */,
 				F4B4B4B10101F4B10101F4B1 /* FavouriteSongStore.swift in Sources */,
 				E5E5E5E60101E5E60101E5E6 /* LyricsFileStore.swift in Sources */,
