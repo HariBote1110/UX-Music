@@ -22,6 +22,7 @@ final class MusicPlayerService {
 
     private var positionTimer: Timer?
     private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
 
     private(set) var currentSong: Song?
     private(set) var isPlaying = false
@@ -68,13 +69,37 @@ final class MusicPlayerService {
     private var lastWireFormat: AVAudioFormat?
     private var nodesAttached = false
 
+    /// Bumped whenever we `stop()` the player node for a reason other than natural buffer completion.
+    /// Completion handlers from superseded schedules must not call `advanceAfterEnd()` (avoids queue storms after route changes).
+    private var playbackCompletionGeneration: UInt64 = 0
+
     init() {
         configureEqualiserBandsStatically()
         pushEqualiserToAudioUnit()
         loadEqualiserStateFromUserDefaults()
         startPositionTimer()
         addAudioInterruptionObserver()
+        addAudioRouteChangeObserver()
         installRemoteCommandHandlers()
+    }
+
+    /// Invalidates pending `scheduleFile` / `scheduleSegment` completion callbacks before the next `playerNode.stop()`.
+    private func bumpPlaybackCompletionGeneration() {
+        playbackCompletionGeneration &+= 1
+    }
+
+    private func makeScheduleCompletionHandler() -> AVAudioNodeCompletionHandler {
+        let generationWhenScheduled = playbackCompletionGeneration
+        return { [weak self] in
+            Task { @MainActor in
+                await self?.handleScheduledBufferCompletion(generationWhenScheduled: generationWhenScheduled)
+            }
+        }
+    }
+
+    private func handleScheduledBufferCompletion(generationWhenScheduled: UInt64) async {
+        guard generationWhenScheduled == playbackCompletionGeneration else { return }
+        await advanceAfterEnd()
     }
 
     // MARK: - Equaliser API
@@ -400,16 +425,13 @@ final class MusicPlayerService {
         let remaining = AVAudioFrameCount(max(0, length - start))
 
         let wasPlaying = playerNode.isPlaying
+        bumpPlaybackCompletionGeneration()
         playerNode.stop()
         frozenPositionWhilePaused = nil
         scheduledSegmentStartFrame = start
         positionSeconds = Double(start) / sr
 
-        let completion: AVAudioNodeCompletionHandler = { [weak self] in
-            Task { @MainActor in
-                await self?.advanceAfterEnd()
-            }
-        }
+        let completion = makeScheduleCompletionHandler()
 
         if remaining > 0 {
             playerNode.scheduleSegment(file, startingFrame: start, frameCount: remaining, at: nil, completionHandler: completion)
@@ -425,6 +447,7 @@ final class MusicPlayerService {
     }
 
     func stop() {
+        bumpPlaybackCompletionGeneration()
         playerNode.stop()
         engine.stop()
         currentAudioFile = nil
@@ -481,16 +504,13 @@ final class MusicPlayerService {
         let sr = file.processingFormat.sampleRate
         durationSeconds = sr > 0 ? Double(file.length) / sr : 0
 
+        bumpPlaybackCompletionGeneration()
         playerNode.stop()
         scheduledSegmentStartFrame = 0
         frozenPositionWhilePaused = nil
         positionSeconds = 0
 
-        let completion: AVAudioNodeCompletionHandler = { [weak self] in
-            Task { @MainActor in
-                await self?.advanceAfterEnd()
-            }
-        }
+        let completion = makeScheduleCompletionHandler()
 
         playerNode.scheduleFile(file, at: nil, completionHandler: completion)
 
@@ -562,6 +582,95 @@ final class MusicPlayerService {
     private func advanceAfterEnd() async {
         guard queue.count > 1 else { return }
         await next()
+    }
+
+    // MARK: - Output route changes (Control Centre, Bluetooth, AirPlay, …)
+
+    private func addAudioRouteChangeObserver() {
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard
+                let self,
+                let info = notification.userInfo,
+                let reasonRaw = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRaw)
+            else { return }
+
+            Task { @MainActor in
+                await self.handleRouteChange(reason: reason)
+            }
+        }
+    }
+
+    private func handleRouteChange(reason: AVAudioSession.RouteChangeReason) async {
+        switch reason {
+        case .newDeviceAvailable, .oldDeviceUnavailable, .routeConfigurationChange, .categoryChange, .override:
+            break
+        default:
+            return
+        }
+
+        try? AVAudioSession.sharedInstance().setActive(true)
+
+        guard currentAudioFile != nil, currentSong != nil else { return }
+
+        if playerNode.isPlaying {
+            await rescheduleCurrentTrackAfterRouteChange(shouldPlay: true)
+        } else if frozenPositionWhilePaused != nil {
+            await rescheduleCurrentTrackAfterRouteChange(shouldPlay: false)
+        } else {
+            ensureEngineRunning()
+        }
+    }
+
+    /// Re-builds the scheduled buffer from the current timeline position so playback survives `AVAudioEngine` / route resets.
+    private func rescheduleCurrentTrackAfterRouteChange(shouldPlay: Bool) async {
+        guard let file = currentAudioFile else { return }
+        let sr = file.processingFormat.sampleRate
+        guard sr > 0 else { return }
+
+        let rawT = currentTimelineSeconds()
+        let clampedT: Double = if durationSeconds > 0 {
+            min(max(0, rawT), durationSeconds)
+        } else {
+            max(0, rawT)
+        }
+
+        let length = file.length
+        let frame = AVAudioFramePosition(clampedT * sr)
+        let start = min(max(0, frame), max(length - 1, 0))
+        let remaining = AVAudioFrameCount(max(0, length - start))
+        guard remaining > 0 else { return }
+
+        bumpPlaybackCompletionGeneration()
+        playerNode.stop()
+        frozenPositionWhilePaused = nil
+        scheduledSegmentStartFrame = start
+        positionSeconds = Double(start) / sr
+
+        let completion = makeScheduleCompletionHandler()
+        playerNode.scheduleSegment(file, startingFrame: start, frameCount: remaining, at: nil, completionHandler: completion)
+
+        applyLoudnessGain()
+        pushEqualiserToAudioUnit()
+
+        do {
+            try ensureEngineRunningThrowing()
+            if shouldPlay {
+                playerNode.play()
+            } else {
+                frozenPositionWhilePaused = Double(start) / sr
+            }
+        } catch {
+            #if DEBUG
+            NSLog("UXMusic: route-change reschedule failed: %@", String(describing: error))
+            #endif
+        }
+        syncIsPlayingFromNode()
+        updateNowPlayingCentre()
     }
 
     private func applyLoudnessGain() {
