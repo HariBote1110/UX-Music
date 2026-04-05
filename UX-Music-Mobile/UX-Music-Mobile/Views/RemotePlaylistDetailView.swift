@@ -51,6 +51,7 @@ struct RemotePlaylistDetailView: View {
                     ForEach(resolvedSongs) { song in
                         SongRowView(
                             song: song,
+                            artworkId: song.artworkId,
                             artworkURL: model.artworkURL(for: song.artworkId),
                             showTrackNumber: false,
                             onTap: model.isSongDownloaded(songId: song.id)
@@ -91,18 +92,11 @@ struct RemotePlaylistDetailView: View {
             if artworkId.isEmpty {
                 playlistPlaceholderArtwork
             } else {
-                AsyncImage(url: URL(string: model.artworkURL(for: artworkId))) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        Color(white: 0.12)
-                    }
-                }
-                .frame(height: 280)
-                .clipped()
+                WearCachedHeroArtworkView(
+                    artworkId: artworkId,
+                    urlString: model.artworkURL(for: artworkId),
+                    height: 280
+                )
             }
             LinearGradient(
                 colors: [.clear, .black.opacity(0.85)],

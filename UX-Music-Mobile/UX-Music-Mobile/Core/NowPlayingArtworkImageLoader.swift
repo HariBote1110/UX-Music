@@ -16,6 +16,9 @@ enum NowPlayingArtworkImageLoader {
             guard let http = response as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else {
                 return nil
             }
+            if let remoteId = WearAPIClient.artworkId(fromArtworkEndpointURL: url) {
+                try? RemoteArtworkPreviewCache.shared.store(data: data, artworkId: remoteId)
+            }
             return await Task.detached(priority: .utility) {
                 UIImage(data: data)
             }.value

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private let nowPlayingFallbackAccent = Color(red: 0.45, green: 0.82, blue: 1.0)
 
@@ -88,6 +89,7 @@ struct NowPlayingView: View {
                             if let song = model.player.currentSong {
                                 NowPlayingPlayingShell(
                                     song: song,
+                                    artworkId: song.artworkId,
                                     artworkURLString: model.artworkURL(for: song.artworkId)
                                 )
                             } else {
@@ -321,6 +323,7 @@ struct NowPlayingView: View {
 
 private struct NowPlayingPlayingShell: View {
     let song: Song
+    let artworkId: String
     let artworkURLString: String
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -338,7 +341,7 @@ private struct NowPlayingPlayingShell: View {
             VStack(spacing: 0) {
                 Spacer(minLength: horizontalSizeClass == .regular ? 40 : 16)
 
-                NowPlayingArtworkBlock(urlString: artworkURLString, accent: accent)
+                NowPlayingArtworkBlock(artworkId: artworkId, urlString: artworkURLString, accent: accent)
                     .padding(.horizontal, 28)
 
                 Spacer(minLength: 28)
@@ -583,8 +586,13 @@ private struct NowPlayingAmbientBackground: View {
 // MARK: - Artwork
 
 private struct NowPlayingArtworkBlock: View {
+    let artworkId: String
     let urlString: String
     let accent: Color
+
+    @State private var loaded: UIImage?
+
+    private var taskIdentity: String { "\(artworkId)\u{1E}\(urlString)\u{1E}np" }
 
     var body: some View {
         Color.clear
@@ -601,33 +609,27 @@ private struct NowPlayingArtworkBlock: View {
             }
             .shadow(color: .black.opacity(0.55), radius: 32, y: 18)
             .shadow(color: accent.opacity(0.15), radius: 40, y: 12)
+            .task(id: taskIdentity) {
+                loaded = nil
+                guard !urlString.isEmpty else { return }
+                loaded = await WearRemoteArtworkImageLoader.loadUIImage(artworkId: artworkId, urlString: urlString)
+            }
     }
 
     @ViewBuilder
     private var artworkFill: some View {
         if urlString.isEmpty {
             placeholder
-        } else if let u = URL(string: urlString) {
-            AsyncImage(url: u) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                case .failure:
-                    placeholder
-                case .empty:
-                    ZStack {
-                        placeholder
-                        ProgressView()
-                            .tint(.white.opacity(0.6))
-                    }
-                @unknown default:
-                    placeholder
-                }
-            }
+        } else if let img = loaded {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
         } else {
-            placeholder
+            ZStack {
+                placeholder
+                ProgressView()
+                    .tint(.white.opacity(0.6))
+            }
         }
     }
 
@@ -753,6 +755,7 @@ private struct NowPlayingFavouritesPanel: View {
                         } label: {
                             HStack(spacing: 12) {
                                 ArtworkImageView(
+                                    artworkId: song.artworkId,
                                     urlString: model.artworkURL(for: song.artworkId),
                                     cornerRadius: 6,
                                     size: 44

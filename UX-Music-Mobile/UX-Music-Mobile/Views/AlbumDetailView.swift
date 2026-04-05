@@ -23,6 +23,7 @@ struct AlbumDetailView: View {
                 ForEach(album.songs) { song in
                     SongRowView(
                         song: song,
+                        artworkId: song.artworkId,
                         artworkURL: model.artworkURL(for: song.artworkId),
                         showTrackNumber: true,
                         onTap: model.isSongDownloaded(songId: song.id)
@@ -51,18 +52,11 @@ struct AlbumDetailView: View {
                 Color(white: 0.12)
                     .frame(height: 280)
             } else {
-                AsyncImage(url: URL(string: model.artworkURL(for: album.artworkId))) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        Color(white: 0.12)
-                    }
-                }
-                .frame(height: 280)
-                .clipped()
+                WearCachedHeroArtworkView(
+                    artworkId: album.artworkId,
+                    urlString: model.artworkURL(for: album.artworkId),
+                    height: 280
+                )
             }
             LinearGradient(
                 colors: [.clear, .black.opacity(0.85)],

@@ -145,6 +145,9 @@ final class AppModel {
         if let local = downloadManager.localArtworkFileURLIfPresent(artworkId: artworkId) {
             return local.absoluteString
         }
+        if let preview = RemoteArtworkPreviewCache.shared.fileURLIfPresent(artworkId: artworkId) {
+            return preview.absoluteString
+        }
         return client().artworkURL(artworkId: artworkId)
     }
 

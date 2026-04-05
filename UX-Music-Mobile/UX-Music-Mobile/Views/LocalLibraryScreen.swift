@@ -163,6 +163,7 @@ struct LocalLibraryScreen: View {
                         NavigationLink(value: LibraryRoute.playlist(pl.id)) {
                             HStack(spacing: 12) {
                                 ArtworkImageView(
+                                    artworkId: model.artworkIdForPlaylist(pl),
                                     urlString: model.artworkURL(for: model.artworkIdForPlaylist(pl)),
                                     cornerRadius: 6,
                                     size: 44
@@ -224,6 +225,7 @@ struct LocalLibraryScreen: View {
                             GeometryReader { geo in
                                 let side = geo.size.width
                                 ArtworkImageView(
+                                    artworkId: album.artworkId,
                                     urlString: model.artworkURL(for: album.artworkId),
                                     cornerRadius: 10,
                                     size: side
@@ -255,6 +257,7 @@ struct LocalLibraryScreen: View {
             ForEach(songs) { song in
                 SongRowView(
                     song: song,
+                    artworkId: song.artworkId,
                     artworkURL: model.artworkURL(for: song.artworkId),
                     onTap: {
                         playLocal(song: song, in: songs)

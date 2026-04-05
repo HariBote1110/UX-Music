@@ -30,6 +30,7 @@ struct PlaylistDetailView: View {
                     ForEach(songs) { song in
                         SongRowView(
                             song: song,
+                            artworkId: song.artworkId,
                             artworkURL: model.artworkURL(for: song.artworkId),
                             onTap: {
                                 play(song)
@@ -135,6 +136,7 @@ private struct AddSongsToPlaylistSheet: View {
                         } label: {
                             SongRowView(
                                 song: song,
+                                artworkId: song.artworkId,
                                 artworkURL: model.artworkURL(for: song.artworkId),
                                 onTap: nil,
                                 trailing: { EmptyView() }

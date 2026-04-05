@@ -75,6 +75,13 @@ struct WearAPIClient: Sendable {
         return "\(baseURLString)/wear/artwork/?id=\(encoded)"
     }
 
+    /// Decodes the `id` query value from a Wear LAN artwork URL (`/wear/artwork/?id=…`).
+    static func artworkId(fromArtworkEndpointURL url: URL) -> String? {
+        guard let c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        guard c.path.contains("/wear/artwork") else { return nil }
+        return c.queryItems?.first { $0.name == "id" }?.value
+    }
+
     /// Health check. Returns the server hostname on success.
     func ping() async throws -> String {
         let (data, _) = try await session.data(from: try url(path: "/wear/ping"))

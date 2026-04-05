@@ -55,6 +55,12 @@ final class WearAPIClientTests: XCTestCase {
         XCTAssertEqual(client.artworkURL(artworkId: ""), "")
     }
 
+    func testArtworkIdFromArtworkEndpointURL_decodesQuery() throws {
+        let client = WearAPIClient(baseURLString: "http://192.168.0.2:8765")
+        let u = try XCTUnwrap(URL(string: client.artworkURL(artworkId: "path/with/slash")))
+        XCTAssertEqual(WearAPIClient.artworkId(fromArtworkEndpointURL: u), "path/with/slash")
+    }
+
     /// Mobile default: original library file via `source=original` (Wear API 2+).
     func testWearFileDownloadURLIncludesOriginalSource() throws {
         guard var c = URLComponents(string: "http://192.168.0.5:8765") else {

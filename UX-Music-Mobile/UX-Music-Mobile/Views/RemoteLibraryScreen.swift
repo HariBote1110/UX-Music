@@ -287,6 +287,7 @@ struct RemoteLibraryScreen: View {
                                             .foregroundStyle(.white.opacity(0.25))
                                     } else {
                                         ArtworkImageView(
+                                            artworkId: art,
                                             urlString: model.artworkURL(for: art),
                                             cornerRadius: 10,
                                             size: side
@@ -337,6 +338,7 @@ struct RemoteLibraryScreen: View {
                             GeometryReader { geo in
                                 let side = geo.size.width
                                 ArtworkImageView(
+                                    artworkId: album.artworkId,
                                     urlString: model.artworkURL(for: album.artworkId),
                                     cornerRadius: 10,
                                     size: side
@@ -377,6 +379,7 @@ struct RemoteLibraryScreen: View {
                 ForEach(songs) { song in
                     SongRowView(
                         song: song,
+                        artworkId: song.artworkId,
                         artworkURL: model.artworkURL(for: song.artworkId),
                         onTap: model.isSongDownloaded(songId: song.id)
                             ? { playDownloaded(song, in: songs) }

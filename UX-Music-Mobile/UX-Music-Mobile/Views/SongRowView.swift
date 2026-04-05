@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SongRowView<Trailing: View>: View {
     let song: Song
+    let artworkId: String
     let artworkURL: String
     var showTrackNumber: Bool = false
     var onTap: (() -> Void)? = nil
@@ -9,12 +10,14 @@ struct SongRowView<Trailing: View>: View {
 
     init(
         song: Song,
+        artworkId: String,
         artworkURL: String,
         showTrackNumber: Bool = false,
         onTap: (() -> Void)? = nil,
         @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }
     ) {
         self.song = song
+        self.artworkId = artworkId
         self.artworkURL = artworkURL
         self.showTrackNumber = showTrackNumber
         self.onTap = onTap
@@ -39,7 +42,7 @@ struct SongRowView<Trailing: View>: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 28, alignment: .center)
             } else {
-                ArtworkImageView(urlString: artworkURL, size: 48)
+                ArtworkImageView(artworkId: artworkId, urlString: artworkURL, size: 48)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.displayTitle)
