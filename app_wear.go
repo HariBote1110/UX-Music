@@ -28,9 +28,6 @@ const wearServerPort = "8765"
 
 const wearPairingURLScheme = "uxmusic"
 
-// wearDefaultArtworkEmbedPath is the path inside `//go:embed all:src/renderer` (see main.go).
-const wearDefaultArtworkEmbedPath = "src/renderer/assets/default_artwork.png"
-
 // WearServer holds the HTTP server for the /wear/ endpoints.
 type WearServer struct {
 	server *http.Server
@@ -113,7 +110,7 @@ func wearMobileMetaHandler(w http.ResponseWriter, r *http.Request) {
 		"songs":    "/wear/songs",
 		"file":     "/wear/file?id={songId}",
 		"fileHint": "Add &source=original for library file without Watch transcoding (AAC 128k m4a). Omit for watch-optimised cache.",
-		"artwork":  "/wear/artwork/?id={artworkId} (missing files → embedded default_artwork.png)",
+		"artwork":  "/wear/artwork/?id={artworkId}",
 		"loudness": "/wear/loudness",
 		"lyrics":   "/wear/lyrics?id={songId}",
 		"playlists": "/wear/playlists",
@@ -223,20 +220,6 @@ func wearFileHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, cachedPath)
 }
 
-// serveWearDefaultArtwork streams the same default jacket as the desktop renderer (`default_artwork.png`)
-// so Wear clients receive 200 + PNG when no extracted artwork file exists on disk.
-func serveWearDefaultArtwork(w http.ResponseWriter) {
-	data, err := assets.ReadFile(wearDefaultArtworkEmbedPath)
-	if err != nil {
-		http.Error(w, "default artwork unavailable", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
-}
-
 func wearArtworkHandler(w http.ResponseWriter, r *http.Request) {
 	// Accept either /wear/artwork/{artworkId} (hash) or
 	// a query param ?id={artworkId} for clients that cannot encode slashes.
@@ -259,7 +242,7 @@ func wearArtworkHandler(w http.ResponseWriter, r *http.Request) {
 
 	artworkPath := findArtworkByID(artworkID, artworksDir)
 	if artworkPath == "" {
-		serveWearDefaultArtwork(w)
+		http.NotFound(w, r)
 		return
 	}
 

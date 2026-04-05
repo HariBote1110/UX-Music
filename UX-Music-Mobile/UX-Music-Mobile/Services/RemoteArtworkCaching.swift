@@ -51,6 +51,23 @@ enum WearRemoteArtworkImageLoader {
     }
 }
 
+/// In-memory: Wear returned 404 for this `artworkId`, so skip repeat HTTP and use bundled default.
+private actor WearRemoteArtworkMissCache {
+    static let shared = WearRemoteArtworkMissCache()
+
+    private var ids: Set<String> = []
+
+    func contains(_ artworkId: String) -> Bool {
+        guard !artworkId.isEmpty else { return false }
+        return ids.contains(artworkId)
+    }
+
+    func recordMissing(_ artworkId: String) {
+        guard !artworkId.isEmpty else { return }
+        ids.insert(artworkId)
+    }
+}
+
 private func wearRemoteArtworkLoadDirect(
     artworkId: String,
     urlString: String,
@@ -58,13 +75,16 @@ private func wearRemoteArtworkLoadDirect(
 ) async -> UIImage? {
     if !artworkId.isEmpty, let cached = cache.fileURLIfPresent(artworkId: artworkId) {
         return await Task.detached(priority: .utility) {
-            UIImage(contentsOfFile: cached.path)
+            UIImage(contentsOfFile: cached.path) ?? WearDefaultArtwork.uiImage()
         }.value
+    }
+    if !artworkId.isEmpty, await WearRemoteArtworkMissCache.shared.contains(artworkId) {
+        return WearDefaultArtwork.uiImage()
     }
     guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
     if url.isFileURL {
         return await Task.detached(priority: .utility) {
-            UIImage(contentsOfFile: url.path)
+            UIImage(contentsOfFile: url.path) ?? WearDefaultArtwork.uiImage()
         }.value
     }
     guard url.scheme == "http" || url.scheme == "https" else { return nil }
@@ -72,18 +92,28 @@ private func wearRemoteArtworkLoadDirect(
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
         let (data, response) = try await WearLANURLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else {
-            return nil
+        guard let http = response as? HTTPURLResponse else {
+            return WearDefaultArtwork.uiImage()
         }
-        let persistId = !artworkId.isEmpty ? artworkId : WearAPIClient.artworkId(fromArtworkEndpointURL: url)
-        if let persistId {
-            try? cache.store(data: data, artworkId: persistId)
+        let resolvedId = !artworkId.isEmpty ? artworkId : WearAPIClient.artworkId(fromArtworkEndpointURL: url)
+        if http.statusCode == 404 {
+            if let resolvedId {
+                await WearRemoteArtworkMissCache.shared.recordMissing(resolvedId)
+            }
+            return WearDefaultArtwork.uiImage()
         }
-        return await Task.detached(priority: .utility) {
+        guard (200 ... 299).contains(http.statusCode) else {
+            return WearDefaultArtwork.uiImage()
+        }
+        if let resolvedId {
+            try? cache.store(data: data, artworkId: resolvedId)
+        }
+        let decoded = await Task.detached(priority: .utility) {
             UIImage(data: data)
         }.value
+        return decoded ?? WearDefaultArtwork.uiImage()
     } catch {
-        return nil
+        return WearDefaultArtwork.uiImage()
     }
 }
 
