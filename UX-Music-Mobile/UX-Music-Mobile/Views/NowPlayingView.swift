@@ -853,8 +853,16 @@ private struct NowPlayingPlaybackSettingsPanel: View {
                 Section {
                     Toggle("Crossfade", isOn: .constant(false))
                         .disabled(true)
-                    Toggle("Normalise loudness (mock)", isOn: .constant(true))
-                        .disabled(true)
+                    Toggle(
+                        "Normalise loudness",
+                        isOn: Binding(
+                            get: { model.player.normaliseEnabled },
+                            set: {
+                                model.player.normaliseEnabled = $0
+                                model.player.refreshVolumeForCurrentSong()
+                            }
+                        )
+                    )
                 } header: {
                     Text("Other")
                 }
