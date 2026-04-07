@@ -1077,9 +1077,12 @@ private struct EQAdjustmentSheet: View {
         VStack(spacing: 6) {
             RepeatButton(
                 action: {
-                    model.player.setEqualiserBand(index: index, decibels: min(24, db + Self.stepDb))
+                    let current = model.player.equaliserBandDecibels[index]
+                    model.player.setEqualiserBand(index: index, decibels: min(24, current + Self.stepDb))
                 },
-                disabled: db >= 24 || !enabled
+                isDisabled: {
+                    model.player.equaliserBandDecibels[index] >= 24 || !model.player.equaliserEnabled
+                }
             ) {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .semibold))
@@ -1105,9 +1108,12 @@ private struct EQAdjustmentSheet: View {
 
             RepeatButton(
                 action: {
-                    model.player.setEqualiserBand(index: index, decibels: max(-24, db - Self.stepDb))
+                    let current = model.player.equaliserBandDecibels[index]
+                    model.player.setEqualiserBand(index: index, decibels: max(-24, current - Self.stepDb))
                 },
-                disabled: db <= -24 || !enabled
+                isDisabled: {
+                    model.player.equaliserBandDecibels[index] <= -24 || !model.player.equaliserEnabled
+                }
             ) {
                 Image(systemName: "minus")
                     .font(.system(size: 12, weight: .semibold))
@@ -1125,11 +1131,12 @@ private struct EQAdjustmentSheet: View {
 
 // MARK: - Repeat Button
 
-/// ボタンを長押しすると一定間隔でアクションを繰り返す汎用コントロール。
-/// 押下直後に1回実行 → 0.4秒後に高速繰り返し開始。
+/// 押下直後に1回実行 → 0.4秒後に 0.08秒間隔で高速繰り返し。
+/// - `action` / `isDisabled` はクロージャで毎回評価するため、
+///   ビュー再構築前の古い値をキャプチャしてしまう stale closure 問題を回避。
 private struct RepeatButton<Label: View>: View {
     let action: () -> Void
-    let disabled: Bool
+    let isDisabled: () -> Bool
     @ViewBuilder let label: () -> Label
 
     @State private var holdTimer: Timer?
@@ -1137,25 +1144,31 @@ private struct RepeatButton<Label: View>: View {
     var body: some View {
         label()
             .contentShape(Rectangle())
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        guard holdTimer == nil, !disabled else { return }
+            // onLongPressGesture の pressing: は押下開始/終了を確実に検知する
+            .onLongPressGesture(
+                minimumDuration: 60, // perform は事実上発火させない
+                pressing: { isPressing in
+                    if isPressing {
+                        guard !isDisabled() else { return }
                         action()
-                        // 0.4 秒後に高速連続入力を開始
+                        // 0.4 秒後に高速繰り返し開始
                         holdTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { _ in
-                            holdTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { _ in
-                                guard !disabled else { return }
+                            holdTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { timer in
+                                guard !isDisabled() else {
+                                    timer.invalidate()
+                                    return
+                                }
                                 action()
                             }
                         }
-                    }
-                    .onEnded { _ in
+                    } else {
                         holdTimer?.invalidate()
                         holdTimer = nil
                     }
+                },
+                perform: {}
             )
-            .opacity(disabled ? 0.35 : 1.0)
+            .opacity(isDisabled() ? 0.35 : 1.0)
     }
 }
 
