@@ -798,15 +798,6 @@ private struct NowPlayingPlaybackSettingsPanel: View {
     @Environment(AppModel.self) private var model
     @Binding var page: NowPlayingPage
 
-    private static func equaliserBandLabel(for index: Int) -> String {
-        let hz = GraphicEqualiserConfiguration.centreFrequenciesHz[index]
-        if hz >= 1000 {
-            let k = hz / 1000
-            return k.rounded() == k ? "\(Int(k))k" : String(format: "%.1fk", k)
-        }
-        return "\(Int(hz))"
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Playback")
@@ -853,26 +844,8 @@ private struct NowPlayingPlaybackSettingsPanel: View {
                             .foregroundStyle(.secondary)
                             .frame(minWidth: 44, alignment: .trailing)
                     }
-                    ForEach(0 ..< GraphicEqualiserConfiguration.bandCount, id: \.self) { index in
-                        HStack(spacing: 10) {
-                            Text(Self.equaliserBandLabel(for: index))
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 40, alignment: .leading)
-                            Slider(
-                                value: Binding(
-                                    get: { Double(model.player.equaliserBandDecibels[index]) },
-                                    set: { model.player.setEqualiserBand(index: index, decibels: Float($0)) }
-                                ),
-                                in: -24 ... 24
-                            )
-                            .disabled(!model.player.equaliserEnabled)
-                            Text("\(Int(model.player.equaliserBandDecibels[index]))")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                                .frame(minWidth: 32, alignment: .trailing)
-                        }
-                    }
+                    GraphicEQView()
+                        .listRowInsets(.init(top: 8, leading: 10, bottom: 8, trailing: 10))
                 } header: {
                     Text("Equaliser")
                 }
@@ -913,6 +886,87 @@ private struct NowPlayingPlaybackSettingsPanel: View {
         )
     }
 }
+
+// MARK: - Graphic EQ
+
+private struct GraphicEQView: View {
+    @Environment(AppModel.self) private var model
+
+    private static let trackLength: CGFloat = 140
+    private static let columnWidth: CGFloat = 28
+    private static let scaleWidth: CGFloat = 26
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            // dB scale column (empty top row + scale + empty bottom row for alignment)
+            VStack(spacing: 2) {
+                Color.clear.frame(height: 12) // aligns with dB value label row
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("+24")
+                    Spacer()
+                    Text("0")
+                    Spacer()
+                    Text("-24")
+                }
+                .font(.system(size: 9).monospacedDigit())
+                .foregroundStyle(.tertiary)
+                .frame(width: Self.scaleWidth, height: Self.trackLength)
+                Color.clear.frame(height: 14) // aligns with frequency label row
+            }
+            .padding(.trailing, 4)
+
+            // Band columns
+            HStack(alignment: .top, spacing: 2) {
+                ForEach(0 ..< GraphicEqualiserConfiguration.bandCount, id: \.self) { i in
+                    bandColumn(index: i)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func bandColumn(index: Int) -> some View {
+        let db = model.player.equaliserBandDecibels[index]
+        let dbInt = Int(db)
+        VStack(spacing: 2) {
+            Text(dbInt >= 0 ? "+\(dbInt)" : "\(dbInt)")
+                .font(.system(size: 9).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: Self.columnWidth, height: 12)
+
+            Slider(
+                value: Binding(
+                    get: { Double(model.player.equaliserBandDecibels[index]) },
+                    set: { model.player.setEqualiserBand(index: index, decibels: Float($0)) }
+                ),
+                in: -24 ... 24
+            )
+            .frame(width: Self.trackLength)
+            .rotationEffect(.degrees(-90))
+            .frame(width: Self.columnWidth, height: Self.trackLength)
+            .disabled(!model.player.equaliserEnabled)
+
+            Text(Self.frequencyLabel(index: index))
+                .font(.system(size: 9).weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: Self.columnWidth, height: 14)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+    }
+
+    private static func frequencyLabel(index: Int) -> String {
+        let hz = GraphicEqualiserConfiguration.centreFrequenciesHz[index]
+        if hz >= 1000 {
+            let k = hz / 1000
+            return k.rounded() == k ? "\(Int(k))k" : String(format: "%.1fk", k)
+        }
+        return "\(Int(hz))"
+    }
+}
+
+// MARK: -
 
 private func swipeHint(_ text: String) -> some View {
     Text(text)
