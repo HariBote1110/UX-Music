@@ -895,34 +895,92 @@ private struct GraphicEQView: View {
     private static let trackLength: CGFloat = 140
     private static let columnWidth: CGFloat = 28
     private static let scaleWidth: CGFloat = 26
+    /// Y offset to the top of the slider track within the ZStack coordinate space.
+    /// = dB value label height (12) + VStack spacing (2)
+    private static let trackTopY: CGFloat = 14
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            // dB scale column (empty top row + scale + empty bottom row for alignment)
-            VStack(spacing: 2) {
-                Color.clear.frame(height: 12) // aligns with dB value label row
-                VStack(alignment: .trailing, spacing: 0) {
-                    Text("+24")
-                    Spacer()
-                    Text("0")
-                    Spacer()
-                    Text("-24")
+        ZStack(alignment: .topLeading) {
+            // Slider columns + dB scale
+            HStack(alignment: .top, spacing: 0) {
+                VStack(spacing: 2) {
+                    Color.clear.frame(height: 12)
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text("+24")
+                        Spacer()
+                        Text("0")
+                        Spacer()
+                        Text("-24")
+                    }
+                    .font(.system(size: 9).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .frame(width: Self.scaleWidth, height: Self.trackLength)
+                    Color.clear.frame(height: 14)
                 }
-                .font(.system(size: 9).monospacedDigit())
-                .foregroundStyle(.tertiary)
-                .frame(width: Self.scaleWidth, height: Self.trackLength)
-                Color.clear.frame(height: 14) // aligns with frequency label row
-            }
-            .padding(.trailing, 4)
+                .padding(.trailing, 4)
 
-            // Band columns
-            HStack(alignment: .top, spacing: 2) {
-                ForEach(0 ..< GraphicEqualiserConfiguration.bandCount, id: \.self) { i in
-                    bandColumn(index: i)
+                HStack(alignment: .top, spacing: 2) {
+                    ForEach(0 ..< GraphicEqualiserConfiguration.bandCount, id: \.self) { i in
+                        bandColumn(index: i)
+                    }
                 }
             }
+
+            // Frequency-response curve overlay
+            Canvas { context, _ in
+                drawCurve(in: context)
+            }
+            .allowsHitTesting(false)
         }
         .padding(.vertical, 4)
+    }
+
+    private func drawCurve(in context: GraphicsContext) {
+        let count = GraphicEqualiserConfiguration.bandCount
+        let xOffset: CGFloat = Self.scaleWidth + 4   // scale width + trailing padding
+        let bandStep: CGFloat = Self.columnWidth + 2  // column + inter-band spacing
+        let zeroDby = Self.trackTopY + Self.trackLength * 0.5
+
+        func bandPoint(_ i: Int) -> CGPoint {
+            let db = Double(model.player.equaliserBandDecibels[i])
+            let x = xOffset + CGFloat(i) * bandStep + Self.columnWidth / 2
+            let y = Self.trackTopY + (1.0 - (db + 24.0) / 48.0) * Self.trackLength
+            return CGPoint(x: x, y: y)
+        }
+
+        let points = (0 ..< count).map { bandPoint($0) }
+
+        // 0 dB reference line
+        let refLineX0 = xOffset
+        let refLineX1 = xOffset + CGFloat(count - 1) * bandStep + Self.columnWidth
+        var refLine = Path()
+        refLine.move(to: CGPoint(x: refLineX0, y: zeroDby))
+        refLine.addLine(to: CGPoint(x: refLineX1, y: zeroDby))
+        context.stroke(refLine, with: .color(.white.opacity(0.18)), lineWidth: 0.5)
+
+        // Fill between polyline and 0 dB baseline
+        var fill = Path()
+        fill.move(to: CGPoint(x: points[0].x, y: zeroDby))
+        fill.addLine(to: points[0])
+        for i in 1 ..< count { fill.addLine(to: points[i]) }
+        fill.addLine(to: CGPoint(x: points[count - 1].x, y: zeroDby))
+        fill.closeSubpath()
+        context.fill(fill, with: .color(.white.opacity(0.07)))
+
+        // Polyline
+        var line = Path()
+        line.move(to: points[0])
+        for i in 1 ..< count { line.addLine(to: points[i]) }
+        context.stroke(line, with: .color(.white.opacity(0.65)), lineWidth: 1.5)
+
+        // Band dots
+        for pt in points {
+            let r: CGFloat = 2.5
+            context.fill(
+                Path(ellipseIn: CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)),
+                with: .color(.white.opacity(0.9))
+            )
+        }
     }
 
     @ViewBuilder
