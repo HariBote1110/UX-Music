@@ -921,24 +921,34 @@ private struct EQCurveCanvas: View {
         let zeroDby = dbY(0)
         let pts = decibels.indices.map { CGPoint(x: bandX($0), y: dbY(Double(decibels[$0]))) }
 
-        // dB scale labels
+        // Horizontal grid lines every 6 dB (0 dB is more prominent)
+        let gridDbs = stride(from: -24.0, through: 24.0, by: 6.0)
+        for db in gridDbs {
+            let y = dbY(db)
+            var grid = Path()
+            grid.move(to: CGPoint(x: leftInset, y: y))
+            grid.addLine(to: CGPoint(x: size.width, y: y))
+            let isZero = db == 0
+            context.stroke(
+                grid,
+                with: .color(.white.opacity(isZero ? 0.28 : 0.10)),
+                lineWidth: isZero ? 0.75 : 0.5
+            )
+        }
+
+        // dB scale labels every 6 dB
         if showLabels {
-            for (label, db) in [("+24", 24.0), ("0", 0.0), ("-24", -24.0)] {
+            for db in gridDbs {
+                let label = db > 0 ? "+\(Int(db))" : "\(Int(db))"
                 context.draw(
                     Text(label)
                         .font(.system(size: 8).monospacedDigit())
-                        .foregroundStyle(Color.white.opacity(0.35)),
+                        .foregroundStyle(Color.white.opacity(db == 0 ? 0.5 : 0.3)),
                     at: CGPoint(x: leftInset - 4, y: dbY(db)),
                     anchor: .trailing
                 )
             }
         }
-
-        // 0 dB reference line
-        var refLine = Path()
-        refLine.move(to: CGPoint(x: leftInset, y: zeroDby))
-        refLine.addLine(to: CGPoint(x: size.width, y: zeroDby))
-        context.stroke(refLine, with: .color(.white.opacity(0.18)), lineWidth: 0.5)
 
         // Fill between polyline and 0 dB baseline
         var fill = Path()
@@ -999,7 +1009,7 @@ private struct GraphicEQView: View {
     var body: some View {
         Button { showAdjustment = true } label: {
             EQCurveCanvas(decibels: model.player.equaliserBandDecibels)
-                .frame(height: 180)
+                .frame(height: 360)
                 .overlay(alignment: .topTrailing) {
                     Image(systemName: "slider.horizontal.3")
                         .font(.caption2)
@@ -1027,7 +1037,7 @@ private struct EQAdjustmentSheet: View {
             VStack(spacing: 0) {
                 // Live mini graph
                 EQCurveCanvas(decibels: model.player.equaliserBandDecibels, showLabels: false)
-                    .frame(height: 96)
+                    .frame(height: 192)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
 
