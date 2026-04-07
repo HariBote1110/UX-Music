@@ -887,140 +887,227 @@ private struct NowPlayingPlaybackSettingsPanel: View {
     }
 }
 
-// MARK: - Graphic EQ
+// MARK: - EQ Curve Canvas
 
-private struct GraphicEQView: View {
-    @Environment(AppModel.self) private var model
-
-    private static let trackLength: CGFloat = 140
-    private static let columnWidth: CGFloat = 28
-    private static let scaleWidth: CGFloat = 26
-    /// Y offset to the top of the slider track within the ZStack coordinate space.
-    /// = dB value label height (12) + VStack spacing (2)
-    private static let trackTopY: CGFloat = 14
+/// Pure display of the 10-band EQ frequency response as a polyline.
+/// Positions are computed from the actual canvas size, so there is no fixed-offset drift.
+private struct EQCurveCanvas: View {
+    let decibels: [Float]
+    var showLabels: Bool = true
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            // Slider columns + dB scale
-            HStack(alignment: .top, spacing: 0) {
-                VStack(spacing: 2) {
-                    Color.clear.frame(height: 12)
-                    VStack(alignment: .trailing, spacing: 0) {
-                        Text("+24")
-                        Spacer()
-                        Text("0")
-                        Spacer()
-                        Text("-24")
-                    }
-                    .font(.system(size: 9).monospacedDigit())
-                    .foregroundStyle(.tertiary)
-                    .frame(width: Self.scaleWidth, height: Self.trackLength)
-                    Color.clear.frame(height: 14)
-                }
-                .padding(.trailing, 4)
-
-                HStack(alignment: .top, spacing: 2) {
-                    ForEach(0 ..< GraphicEqualiserConfiguration.bandCount, id: \.self) { i in
-                        bandColumn(index: i)
-                    }
-                }
-            }
-
-            // Frequency-response curve overlay
-            Canvas { context, _ in
-                drawCurve(in: context)
-            }
-            .allowsHitTesting(false)
+        Canvas { context, size in
+            drawCurve(context: context, size: size)
         }
-        .padding(.vertical, 4)
     }
 
-    private func drawCurve(in context: GraphicsContext) {
-        let count = GraphicEqualiserConfiguration.bandCount
-        let xOffset: CGFloat = Self.scaleWidth + 4   // scale width + trailing padding
-        let bandStep: CGFloat = Self.columnWidth + 2  // column + inter-band spacing
-        let zeroDby = Self.trackTopY + Self.trackLength * 0.5
+    private func drawCurve(context: GraphicsContext, size: CGSize) {
+        let count = decibels.count
+        guard count > 1 else { return }
 
-        func bandPoint(_ i: Int) -> CGPoint {
-            let db = Double(model.player.equaliserBandDecibels[i])
-            let x = xOffset + CGFloat(i) * bandStep + Self.columnWidth / 2
-            let y = Self.trackTopY + (1.0 - (db + 24.0) / 48.0) * Self.trackLength
-            return CGPoint(x: x, y: y)
+        let leftInset: CGFloat = showLabels ? 28 : 4
+        let topInset: CGFloat = 4
+        let bottomInset: CGFloat = showLabels ? 18 : 4
+        let plotW = size.width - leftInset
+        let plotH = size.height - topInset - bottomInset
+
+        func bandX(_ i: Int) -> CGFloat {
+            leftInset + CGFloat(i) / CGFloat(count - 1) * plotW
+        }
+        func dbY(_ db: Double) -> CGFloat {
+            topInset + (1.0 - (db + 24.0) / 48.0) * plotH
         }
 
-        let points = (0 ..< count).map { bandPoint($0) }
+        let zeroDby = dbY(0)
+        let pts = decibels.indices.map { CGPoint(x: bandX($0), y: dbY(Double(decibels[$0]))) }
+
+        // dB scale labels
+        if showLabels {
+            for (label, db) in [("+24", 24.0), ("0", 0.0), ("-24", -24.0)] {
+                context.draw(
+                    Text(label)
+                        .font(.system(size: 8).monospacedDigit())
+                        .foregroundStyle(Color.white.opacity(0.35)),
+                    at: CGPoint(x: leftInset - 4, y: dbY(db)),
+                    anchor: .trailing
+                )
+            }
+        }
 
         // 0 dB reference line
-        let refLineX0 = xOffset
-        let refLineX1 = xOffset + CGFloat(count - 1) * bandStep + Self.columnWidth
         var refLine = Path()
-        refLine.move(to: CGPoint(x: refLineX0, y: zeroDby))
-        refLine.addLine(to: CGPoint(x: refLineX1, y: zeroDby))
+        refLine.move(to: CGPoint(x: leftInset, y: zeroDby))
+        refLine.addLine(to: CGPoint(x: size.width, y: zeroDby))
         context.stroke(refLine, with: .color(.white.opacity(0.18)), lineWidth: 0.5)
 
         // Fill between polyline and 0 dB baseline
         var fill = Path()
-        fill.move(to: CGPoint(x: points[0].x, y: zeroDby))
-        fill.addLine(to: points[0])
-        for i in 1 ..< count { fill.addLine(to: points[i]) }
-        fill.addLine(to: CGPoint(x: points[count - 1].x, y: zeroDby))
+        fill.move(to: CGPoint(x: pts[0].x, y: zeroDby))
+        fill.addLine(to: pts[0])
+        for i in 1 ..< count { fill.addLine(to: pts[i]) }
+        fill.addLine(to: CGPoint(x: pts[count - 1].x, y: zeroDby))
         fill.closeSubpath()
         context.fill(fill, with: .color(.white.opacity(0.07)))
 
         // Polyline
         var line = Path()
-        line.move(to: points[0])
-        for i in 1 ..< count { line.addLine(to: points[i]) }
-        context.stroke(line, with: .color(.white.opacity(0.65)), lineWidth: 1.5)
+        line.move(to: pts[0])
+        for i in 1 ..< count { line.addLine(to: pts[i]) }
+        context.stroke(line, with: .color(.white.opacity(0.7)), lineWidth: 1.5)
 
         // Band dots
-        for pt in points {
+        for pt in pts {
             let r: CGFloat = 2.5
             context.fill(
                 Path(ellipseIn: CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)),
                 with: .color(.white.opacity(0.9))
             )
         }
-    }
 
-    @ViewBuilder
-    private func bandColumn(index: Int) -> some View {
-        let db = model.player.equaliserBandDecibels[index]
-        let dbInt = Int(db)
-        VStack(spacing: 2) {
-            Text(dbInt >= 0 ? "+\(dbInt)" : "\(dbInt)")
-                .font(.system(size: 9).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: Self.columnWidth, height: 12)
-
-            Slider(
-                value: Binding(
-                    get: { Double(model.player.equaliserBandDecibels[index]) },
-                    set: { model.player.setEqualiserBand(index: index, decibels: Float($0)) }
-                ),
-                in: -24 ... 24
-            )
-            .frame(width: Self.trackLength)
-            .rotationEffect(.degrees(-90))
-            .frame(width: Self.columnWidth, height: Self.trackLength)
-            .disabled(!model.player.equaliserEnabled)
-
-            Text(Self.frequencyLabel(index: index))
-                .font(.system(size: 9).weight(.medium))
-                .foregroundStyle(.secondary)
-                .frame(width: Self.columnWidth, height: 14)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+        // Frequency labels
+        if showLabels {
+            let labelY = size.height - bottomInset + 4
+            for i in 0 ..< count {
+                context.draw(
+                    Text(EQCurveCanvas.freqLabel(i))
+                        .font(.system(size: 8).weight(.medium))
+                        .foregroundStyle(Color.white.opacity(0.4)),
+                    at: CGPoint(x: bandX(i), y: labelY),
+                    anchor: .top
+                )
+            }
         }
     }
 
-    private static func frequencyLabel(index: Int) -> String {
+    static func freqLabel(_ index: Int) -> String {
         let hz = GraphicEqualiserConfiguration.centreFrequenciesHz[index]
         if hz >= 1000 {
             let k = hz / 1000
             return k.rounded() == k ? "\(Int(k))k" : String(format: "%.1fk", k)
         }
         return "\(Int(hz))"
+    }
+}
+
+// MARK: - Graphic EQ
+
+/// Read-only graph row. Tap to open the band-adjustment sheet.
+private struct GraphicEQView: View {
+    @Environment(AppModel.self) private var model
+    @State private var showAdjustment = false
+
+    var body: some View {
+        Button { showAdjustment = true } label: {
+            EQCurveCanvas(decibels: model.player.equaliserBandDecibels)
+                .frame(height: 120)
+                .overlay(alignment: .topTrailing) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(6)
+                }
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showAdjustment) {
+            EQAdjustmentSheet()
+        }
+    }
+}
+
+// MARK: - EQ Adjustment Sheet
+
+private struct EQAdjustmentSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+
+    private static let stepDb: Float = 1
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Live mini graph
+                EQCurveCanvas(decibels: model.player.equaliserBandDecibels, showLabels: false)
+                    .frame(height: 64)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+
+                Divider()
+
+                // Band +/− controls
+                HStack(spacing: 0) {
+                    ForEach(0 ..< GraphicEqualiserConfiguration.bandCount, id: \.self) { i in
+                        bandControl(index: i)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 20)
+
+                Spacer()
+            }
+            .navigationTitle("Equaliser")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Flat") { model.player.resetEqualiserToFlat() }
+                        .foregroundStyle(.secondary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func bandControl(index: Int) -> some View {
+        let db = model.player.equaliserBandDecibels[index]
+        let dbInt = Int(db)
+        let enabled = model.player.equaliserEnabled
+
+        VStack(spacing: 6) {
+            Button {
+                model.player.setEqualiserBand(index: index, decibels: min(24, db + Self.stepDb))
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 32)
+                    .background(
+                        Color.accentColor.opacity(db >= 24 || !enabled ? 0.05 : 0.15),
+                        in: RoundedRectangle(cornerRadius: 6)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(db >= 24 || !enabled)
+
+            Text(dbInt >= 0 ? "+\(dbInt)" : "\(dbInt)")
+                .font(.system(size: 11).monospacedDigit().weight(.medium))
+                .foregroundStyle(dbInt == 0 ? .secondary : .primary)
+                .frame(height: 16)
+
+            Text(EQCurveCanvas.freqLabel(index))
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(height: 12)
+
+            Button {
+                model.player.setEqualiserBand(index: index, decibels: max(-24, db - Self.stepDb))
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 32)
+                    .background(
+                        Color.accentColor.opacity(db <= -24 || !enabled ? 0.05 : 0.15),
+                        in: RoundedRectangle(cornerRadius: 6)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(db <= -24 || !enabled)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
