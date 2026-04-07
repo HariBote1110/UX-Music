@@ -999,7 +999,7 @@ private struct GraphicEQView: View {
     var body: some View {
         Button { showAdjustment = true } label: {
             EQCurveCanvas(decibels: model.player.equaliserBandDecibels)
-                .frame(height: 120)
+                .frame(height: 180)
                 .overlay(alignment: .topTrailing) {
                     Image(systemName: "slider.horizontal.3")
                         .font(.caption2)
@@ -1027,7 +1027,7 @@ private struct EQAdjustmentSheet: View {
             VStack(spacing: 0) {
                 // Live mini graph
                 EQCurveCanvas(decibels: model.player.equaliserBandDecibels, showLabels: false)
-                    .frame(height: 64)
+                    .frame(height: 96)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
 
