@@ -1,6 +1,6 @@
 //go:build !darwin
 
-package main
+package server
 
 func registerOSMediaCommands(callback func(string)) error {
 	_ = callback
