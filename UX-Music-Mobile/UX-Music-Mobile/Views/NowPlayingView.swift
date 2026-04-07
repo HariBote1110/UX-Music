@@ -942,8 +942,8 @@ private struct EQCurveCanvas: View {
                 let label = db > 0 ? "+\(Int(db))" : "\(Int(db))"
                 context.draw(
                     Text(label)
-                        .font(.system(size: 8).monospacedDigit())
-                        .foregroundStyle(Color.white.opacity(db == 0 ? 0.5 : 0.3)),
+                        .font(.system(size: 9, weight: db == 0 ? .semibold : .regular).monospacedDigit())
+                        .foregroundStyle(Color.white.opacity(db == 0 ? 0.75 : 0.45)),
                     at: CGPoint(x: leftInset - 4, y: dbY(db)),
                     anchor: .trailing
                 )
@@ -1036,7 +1036,7 @@ private struct EQAdjustmentSheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Live mini graph
-                EQCurveCanvas(decibels: model.player.equaliserBandDecibels, showLabels: false)
+                EQCurveCanvas(decibels: model.player.equaliserBandDecibels)
                     .frame(height: 192)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -1075,9 +1075,12 @@ private struct EQAdjustmentSheet: View {
         let enabled = model.player.equaliserEnabled
 
         VStack(spacing: 6) {
-            Button {
-                model.player.setEqualiserBand(index: index, decibels: min(24, db + Self.stepDb))
-            } label: {
+            RepeatButton(
+                action: {
+                    model.player.setEqualiserBand(index: index, decibels: min(24, db + Self.stepDb))
+                },
+                disabled: db >= 24 || !enabled
+            ) {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .semibold))
                     .frame(maxWidth: .infinity)
@@ -1087,8 +1090,6 @@ private struct EQAdjustmentSheet: View {
                         in: RoundedRectangle(cornerRadius: 6)
                     )
             }
-            .buttonStyle(.plain)
-            .disabled(db >= 24 || !enabled)
 
             Text(dbInt >= 0 ? "+\(dbInt)" : "\(dbInt)")
                 .font(.system(size: 11).monospacedDigit().weight(.medium))
@@ -1102,9 +1103,12 @@ private struct EQAdjustmentSheet: View {
                 .minimumScaleFactor(0.7)
                 .frame(height: 12)
 
-            Button {
-                model.player.setEqualiserBand(index: index, decibels: max(-24, db - Self.stepDb))
-            } label: {
+            RepeatButton(
+                action: {
+                    model.player.setEqualiserBand(index: index, decibels: max(-24, db - Self.stepDb))
+                },
+                disabled: db <= -24 || !enabled
+            ) {
                 Image(systemName: "minus")
                     .font(.system(size: 12, weight: .semibold))
                     .frame(maxWidth: .infinity)
@@ -1114,10 +1118,44 @@ private struct EQAdjustmentSheet: View {
                         in: RoundedRectangle(cornerRadius: 6)
                     )
             }
-            .buttonStyle(.plain)
-            .disabled(db <= -24 || !enabled)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Repeat Button
+
+/// ボタンを長押しすると一定間隔でアクションを繰り返す汎用コントロール。
+/// 押下直後に1回実行 → 0.4秒後に高速繰り返し開始。
+private struct RepeatButton<Label: View>: View {
+    let action: () -> Void
+    let disabled: Bool
+    @ViewBuilder let label: () -> Label
+
+    @State private var holdTimer: Timer?
+
+    var body: some View {
+        label()
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        guard holdTimer == nil, !disabled else { return }
+                        action()
+                        // 0.4 秒後に高速連続入力を開始
+                        holdTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { _ in
+                            holdTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { _ in
+                                guard !disabled else { return }
+                                action()
+                            }
+                        }
+                    }
+                    .onEnded { _ in
+                        holdTimer?.invalidate()
+                        holdTimer = nil
+                    }
+            )
+            .opacity(disabled ? 0.35 : 1.0)
     }
 }
 
