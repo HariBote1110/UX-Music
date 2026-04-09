@@ -603,7 +603,11 @@ final class MusicPlayerService {
         } else {
             max(0, resumeT)
         }
-        seek(to: bounded, resumeAfterSeek: true)
+        // When the schedule was fully consumed by natural playback end (not an explicit pause),
+        // `bounded` lands at or near `durationSeconds`. Re-seeking there would schedule 0 frames
+        // and produce silence. Restart from the beginning instead.
+        let nearEnd = durationSeconds > 0 && bounded >= durationSeconds - 0.5
+        seek(to: nearEnd ? 0 : bounded, resumeAfterSeek: true)
     }
 
     private func remoteResumeAfterPlayCommand() -> MPRemoteCommandHandlerStatus {
@@ -613,15 +617,22 @@ final class MusicPlayerService {
                 guard let self else { return }
                 await self.loadAndPlay(song)
             }
-            return .commandFailed
+            // Playback will start asynchronously — tell the system the command was accepted.
+            return .success
         }
         resumeLocalPlaybackAfterPause()
         return isPlaying ? .success : .commandFailed
     }
 
     private func advanceAfterEnd() async {
-        guard queue.count > 1 else { return }
-        await next()
+        if queue.count > 1 {
+            await next()
+        } else {
+            // Single-track queue: song finished naturally. Sync state immediately so Now Playing
+            // reflects the paused/stopped state even when the background timer is throttled by iOS.
+            syncIsPlayingFromNode()
+            updateNowPlayingCentre()
+        }
     }
 
     // MARK: - Output route changes (Control Centre, Bluetooth, AirPlay, …)
