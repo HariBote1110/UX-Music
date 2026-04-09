@@ -4,23 +4,18 @@
 
 ## 進行中の問題
 
--   **[バグ] UX Music Mobile：アプリは一時停止なのに OS 側は再生中／リモート再生が無音**
-    -   **概要**: アプリ UI では一時停止しているのに、ロック画面・コントロールセンター・Dynamic Island など OS の Now Playing は「再生中」のままになる。OS 側の再生ボタンを押しても「再生中」表示のまま変わらず、**音は鳴らない**（実再生と OS 表示が両方ずれる）。
-    -   **想定環境**: `UX-Music-Mobile`（SwiftUI）、ローカル `AVAudioEngine` + `AVAudioPlayerNode`、`MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` でロック画面連携。
-    -   **試したが解消しなかった対策**（参考・履歴）:
-        1. `MPNowPlayingInfoCenter.playbackState` と `MPNowPlayingInfoPropertyPlaybackRate` を `isPlaying` と揃える、`updateNowPlayingCentre()` 先頭で `syncIsPlayingFromNode()`。
-        2. リモートの `play` / `pause` / `toggle` を `DispatchQueue.main.sync` 経由で同期し、`.success` を返す前に Now Playing を更新。
-        3. 一時停止からの再開で `play()` が効かない場合に `seek` でバッファを張り直してから再生（`resumeAfterSeek`）。
-        4. `UIApplication.shared.beginReceivingRemoteControlEvents()` を起動時に呼び出し。
-    -   **未調査・次に疑うとよい点**:
-        -   別プロセス／別セッション（CarPlay、他アプリ、Siri）との Now Playing の取り合い。
-        -   iOS バージョン固有の `MPNowPlayingInfoCenter` と `AVAudioSession` の組み合わせ（バックグラウンド時のタイマー `tickPlaybackPosition` の頻度・停止）。
-        -   `AVAudioPlayerNode` の `isPlaying` と実際のオーディオ出力・スケジュール残量の不一致（曲終端後の単一曲キューなど）。
-        -   実機ログ（`MPRemoteCommand` のスレッド、`nowPlayingInfo` 更新の直前直後）での再現手順の固定化。
-    -   **関連コード（目安）**: `UX-Music-Mobile/UX-Music-Mobile/Services/MusicPlayerService.swift`（Now Playing 更新、リモートコマンド）、`UXMusicMobileApp.swift`（`beginReceivingRemoteControlEvents`）。
+（現在なし）
 
 
 ## 解決済みの問題
+
+-   **[バグ] UX Music Mobile：アプリは一時停止なのに OS 側は再生中／リモート再生が無音**
+    -   **原因**（3点が連鎖）:
+        1. `advanceAfterEnd()` が単一曲キューで `guard queue.count > 1 else { return }` により即返却していたため、バックグラウンドでタイマーが止まると Now Playing が「再生中」で固着した。
+        2. 曲が自然終了後（schedule 消費済）にリモート再生を押すと `resumeLocalPlaybackAfterPause()` が曲末尾にシークし、残フレーム 0 で無音になっていた。
+        3. `remoteResumeAfterPlayCommand()` の `currentAudioFile == nil` パスが `.commandFailed` を返すため、非同期で始まる再生の状態が OS 側に伝わっていなかった。
+    -   **修正**: `advanceAfterEnd()` で単一曲終了時も `syncIsPlayingFromNode` / `updateNowPlayingCentre` を呼ぶ。末尾 0.5 秒以内ならゼロから再生。非同期 `loadAndPlay` 開始時は `.success` を返す。
+    -   **対応コミット**: `54734d7`
 
 -   **[重大] De-node-integration 移行後の表示・再生不具合**
     -   **概要**: セキュリティ強化のための `contextIsolation: true` 移行後、レンダラープロセスで IPC 通信が正常に行われず、楽曲リストが空になる、再生が開始されないなどの問題が発生していた。
