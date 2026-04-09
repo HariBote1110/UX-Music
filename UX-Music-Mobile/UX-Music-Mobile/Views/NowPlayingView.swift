@@ -82,79 +82,89 @@ struct NowPlayingView: View {
     @State private var ambientPalette: ArtworkPlaybackPalette?
 
     var body: some View {
-        // NavigationStack is intentionally absent: its own system background overrides any
-        // custom background we apply, creating solid-black bands in the safe-area regions at
-        // the top and bottom of the screen. Instead we use a plain GeometryReader with
-        // .ignoresSafeArea() so geo.size covers the full device screen, and render the toolbar
-        // buttons as a floating overlay positioned using geo.safeAreaInsets.
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            // Height available for content below the floating toolbar and above the home indicator.
-            let topInset    = geo.safeAreaInsets.top + 52   // status-bar + toolbar button area
-            let bottomInset = geo.safeAreaInsets.bottom
+        // Structure:
+        //   ZStack
+        //   ├─ NowPlayingAmbientBackground  (.ignoresSafeArea(.all))
+        //   │    Covers the FULL device screen including the status-bar and home-indicator
+        //   │    regions.  This is the definitive fix for the solid-black safe-area bands:
+        //   │    the ambient gradient lives *outside* every .clipped() panel, so nothing
+        //   │    blocks it from reaching the screen edges.
+        //   └─ GeometryReader  (normal — respects safe areas)
+        //        geo.size = content area (status-bar and home-indicator already excluded).
+        //        Toolbar buttons are placed at padding(.top, 8) from the content-area origin,
+        //        which is already below the status-bar / Dynamic Island.
+        //        Panel content receives `toolbarClearance` so VStack spacers clear the buttons.
+        ZStack {
+            // ── Full-screen ambient background ─────────────────────────────────────
+            NowPlayingAmbientBackground(palette: ambientPalette)
+                .ignoresSafeArea(.all)
+                .animation(.easeInOut(duration: 0.5), value: ambientPalette)
 
-            ZStack(alignment: .top) {
-                // ── Ambient background (fills the full device screen) ──────────────────
-                NowPlayingAmbientBackground(palette: ambientPalette)
-                    .animation(.easeInOut(duration: 0.5), value: ambientPalette)
+            // ── Content (safe-area-aware) ──────────────────────────────────────────
+            GeometryReader { geo in
+                let w = geo.size.width
+                let h = geo.size.height
+                // Extra vertical clearance needed inside the content area so that panel
+                // content is not obscured by the floating toolbar row (button ø34 + margins).
+                let toolbarClearance: CGFloat = 52
 
-                // ── Horizontal panel strip ─────────────────────────────────────────────
-                HStack(spacing: 0) {
-                    NowPlayingQueuePanel(page: $page, topInset: topInset)
-                        .frame(width: w, height: h)
-                    Group {
-                        if let song = model.player.currentSong {
-                            NowPlayingPlayingShell(
-                                song: song,
-                                artworkId: song.artworkId,
-                                artworkURLString: model.artworkURL(for: song.artworkId),
-                                palette: $ambientPalette,
-                                topInset: topInset,
-                                bottomInset: bottomInset
-                            )
-                        } else {
-                            NowPlayingEmptyChrome()
+                ZStack(alignment: .top) {
+                    // ── Horizontal panel strip ──────────────────────────────────────
+                    HStack(spacing: 0) {
+                        NowPlayingQueuePanel(page: $page, topInset: toolbarClearance)
+                            .frame(width: w, height: h)
+                        Group {
+                            if let song = model.player.currentSong {
+                                NowPlayingPlayingShell(
+                                    song: song,
+                                    artworkId: song.artworkId,
+                                    artworkURLString: model.artworkURL(for: song.artworkId),
+                                    palette: $ambientPalette,
+                                    topInset: toolbarClearance,
+                                    bottomInset: 0
+                                )
+                            } else {
+                                NowPlayingEmptyChrome()
+                            }
                         }
+                        .frame(width: w, height: h)
+                        NowPlayingFavouritesPanel(page: $page, topInset: toolbarClearance)
+                            .frame(width: w, height: h)
                     }
-                    .frame(width: w, height: h)
-                    NowPlayingFavouritesPanel(page: $page, topInset: topInset)
-                        .frame(width: w, height: h)
-                }
-                .frame(width: 3 * w, height: h, alignment: .leading)
-                .offset(
-                    x: displayStripOffset(page: page, horizontalDrag: horizontalDrag, width: w)
-                        + (page == .playbackSettings ? -3 * w : 0)
-                )
-                .frame(width: w, height: h, alignment: .leading)
-                .clipped()
-                .allowsHitTesting(page != .playbackSettings)
-                .gesture(stripDragGesture(width: w, height: h))
+                    .frame(width: 3 * w, height: h, alignment: .leading)
+                    .offset(
+                        x: displayStripOffset(page: page, horizontalDrag: horizontalDrag, width: w)
+                            + (page == .playbackSettings ? -3 * w : 0)
+                    )
+                    .frame(width: w, height: h, alignment: .leading)
+                    .clipped()
+                    .allowsHitTesting(page != .playbackSettings)
+                    .gesture(stripDragGesture(width: w, height: h))
 
-                // ── Playback-settings overlay ──────────────────────────────────────────
-                if page == .playbackSettings {
-                    NowPlayingPlaybackSettingsPanel(page: $page, topInset: topInset)
-                        .frame(width: w, height: h)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .zIndex(1)
-                }
+                    // ── Playback-settings overlay ───────────────────────────────────
+                    if page == .playbackSettings {
+                        NowPlayingPlaybackSettingsPanel(page: $page, topInset: toolbarClearance)
+                            .frame(width: w, height: h)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .zIndex(1)
+                    }
 
-                // ── Floating toolbar (replaces NavigationStack toolbar) ─────────────────
-                HStack(alignment: .center) {
-                    leadingNavButton
-                    Spacer()
-                    trailingNavButtons
+                    // ── Floating toolbar ────────────────────────────────────────────
+                    // y=0 inside this GeometryReader is already below the status bar /
+                    // Dynamic Island because the GeometryReader respects safe areas.
+                    HStack(alignment: .center) {
+                        leadingNavButton
+                        Spacer()
+                        trailingNavButtons
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .allowsHitTesting(page != .playbackSettings)
+                    .zIndex(2)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, geo.safeAreaInsets.top + 8)
-                .allowsHitTesting(page != .playbackSettings)
-                .zIndex(2)
+                .frame(width: w, height: h)
             }
-            .frame(width: w, height: h)
         }
-        // Expand the GeometryReader to the full device screen including safe areas.
-        // geo.size will be the true device dimensions; geo.safeAreaInsets carries the insets.
-        .ignoresSafeArea()
         .preferredColorScheme(.dark)
         .interactiveDismissDisabled(page == .favourites || page == .queue || page == .playbackSettings)
         .fullScreenCover(isPresented: $showLyricsScreen) {
@@ -377,8 +387,9 @@ private struct NowPlayingPlayingShell: View {
 
     var body: some View {
         ZStack {
-            NowPlayingAmbientBackground(palette: palette)
-                .animation(.easeInOut(duration: 0.5), value: palette)
+            // The ambient background for the full screen is rendered at the NowPlayingView
+            // level (outside every .clipped() panel) and therefore covers the safe-area
+            // regions as well.  No separate background is needed inside this ZStack.
 
             VStack(spacing: 0) {
                 Spacer(minLength: topInset + (horizontalSizeClass == .regular ? 40 : 16))
@@ -542,7 +553,7 @@ private struct NowPlayingTransportSection: View {
 private struct NowPlayingEmptyChrome: View {
     var body: some View {
         ZStack {
-            NowPlayingAmbientBackground(palette: nil)
+            // Background is handled by the outer NowPlayingAmbientBackground in NowPlayingView.
             VStack(spacing: 16) {
                 Image(systemName: "waveform")
                     .font(.system(size: 48, weight: .light))
