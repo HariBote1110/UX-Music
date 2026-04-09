@@ -82,113 +82,80 @@ struct NowPlayingView: View {
     @State private var ambientPalette: ArtworkPlaybackPalette?
 
     var body: some View {
-        NavigationStack {
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
-                ZStack(alignment: .top) {
-                    HStack(spacing: 0) {
-                        NowPlayingQueuePanel(page: $page)
-                            .frame(width: w, height: h)
-                        Group {
-                            if let song = model.player.currentSong {
-                                NowPlayingPlayingShell(
-                                    song: song,
-                                    artworkId: song.artworkId,
-                                    artworkURLString: model.artworkURL(for: song.artworkId),
-                                    palette: $ambientPalette
-                                )
-                            } else {
-                                NowPlayingEmptyChrome()
-                            }
-                        }
-                        .frame(width: w, height: h)
-                        NowPlayingFavouritesPanel(page: $page)
-                            .frame(width: w, height: h)
-                    }
-                    .frame(width: 3 * w, height: h, alignment: .leading)
-                    .offset(
-                        x: displayStripOffset(page: page, horizontalDrag: horizontalDrag, width: w)
-                            + (page == .playbackSettings ? -3 * w : 0)
-                    )
-                    .frame(width: w, height: h, alignment: .leading)
-                    .clipped()
-                    .allowsHitTesting(page != .playbackSettings)
-                    .gesture(stripDragGesture(width: w, height: h))
+        // NavigationStack is intentionally absent: its own system background overrides any
+        // custom background we apply, creating solid-black bands in the safe-area regions at
+        // the top and bottom of the screen. Instead we use a plain GeometryReader with
+        // .ignoresSafeArea() so geo.size covers the full device screen, and render the toolbar
+        // buttons as a floating overlay positioned using geo.safeAreaInsets.
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            // Height available for content below the floating toolbar and above the home indicator.
+            let topInset    = geo.safeAreaInsets.top + 52   // status-bar + toolbar button area
+            let bottomInset = geo.safeAreaInsets.bottom
 
-                    if page == .playbackSettings {
-                        NowPlayingPlaybackSettingsPanel(page: $page)
-                            .frame(width: w, height: h)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                            .zIndex(1)
+            ZStack(alignment: .top) {
+                // ── Ambient background (fills the full device screen) ──────────────────
+                NowPlayingAmbientBackground(palette: ambientPalette)
+                    .animation(.easeInOut(duration: 0.5), value: ambientPalette)
+
+                // ── Horizontal panel strip ─────────────────────────────────────────────
+                HStack(spacing: 0) {
+                    NowPlayingQueuePanel(page: $page, topInset: topInset)
+                        .frame(width: w, height: h)
+                    Group {
+                        if let song = model.player.currentSong {
+                            NowPlayingPlayingShell(
+                                song: song,
+                                artworkId: song.artworkId,
+                                artworkURLString: model.artworkURL(for: song.artworkId),
+                                palette: $ambientPalette,
+                                topInset: topInset,
+                                bottomInset: bottomInset
+                            )
+                        } else {
+                            NowPlayingEmptyChrome()
+                        }
                     }
+                    .frame(width: w, height: h)
+                    NowPlayingFavouritesPanel(page: $page, topInset: topInset)
+                        .frame(width: w, height: h)
                 }
-                .frame(width: w, height: h)
+                .frame(width: 3 * w, height: h, alignment: .leading)
+                .offset(
+                    x: displayStripOffset(page: page, horizontalDrag: horizontalDrag, width: w)
+                        + (page == .playbackSettings ? -3 * w : 0)
+                )
+                .frame(width: w, height: h, alignment: .leading)
+                .clipped()
+                .allowsHitTesting(page != .playbackSettings)
+                .gesture(stripDragGesture(width: w, height: h))
+
+                // ── Playback-settings overlay ──────────────────────────────────────────
+                if page == .playbackSettings {
+                    NowPlayingPlaybackSettingsPanel(page: $page, topInset: topInset)
+                        .frame(width: w, height: h)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(1)
+                }
+
+                // ── Floating toolbar (replaces NavigationStack toolbar) ─────────────────
+                HStack(alignment: .center) {
+                    leadingNavButton
+                    Spacer()
+                    trailingNavButtons
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, geo.safeAreaInsets.top + 8)
+                .allowsHitTesting(page != .playbackSettings)
+                .zIndex(2)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if page == .main {
-                        NowPlayingNavIconButton(action: { dismiss() }, accessibilityLabel: "Close") {
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.85))
-                        }
-                    } else {
-                        NowPlayingNavIconButton(action: {
-                            withAnimation(nowPlayingPanelSpring) {
-                                page = .main
-                                horizontalDrag = 0
-                            }
-                        }, accessibilityLabel: "Back to player") {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.85))
-                        }
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if page == .main, let song = model.player.currentSong {
-                        HStack(spacing: 10) {
-                            NowPlayingNavIconButton(action: {
-                                showLyricsScreen = true
-                            }, accessibilityLabel: "歌詞を表示") {
-                                Image(systemName: "text.alignleft")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(
-                                        model.hasLocalLyricsFile(for: song.id)
-                                            ? Color.white.opacity(0.9)
-                                            : Color.white.opacity(0.38)
-                                    )
-                            }
-                            NowPlayingNavIconButton(action: {
-                                model.toggleFavourite(songId: song.id)
-                            }, accessibilityLabel: "Favourite") {
-                                Image(systemName: model.isFavouriteSong(songId: song.id) ? "heart.fill" : "heart")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(model.isFavouriteSong(songId: song.id) ? Color.pink : Color.white.opacity(0.85))
-                            }
-                        }
-                    }
-                }
-            }
+            .frame(width: w, height: h)
         }
-        // Apply the ambient gradient *outside* the NavigationStack so that it bypasses the
-        // .clipped() strip panel and can extend into the safe areas (navigation bar / home
-        // indicator regions).  Without this, .clipped() confines the gradient to the content
-        // area and the top/bottom safe-area bands show solid black.
-        .background(
-            NowPlayingAmbientBackground(palette: ambientPalette)
-                .ignoresSafeArea(.all)
-                .animation(.easeInOut(duration: 0.5), value: ambientPalette)
-        )
+        // Expand the GeometryReader to the full device screen including safe areas.
+        // geo.size will be the true device dimensions; geo.safeAreaInsets carries the insets.
+        .ignoresSafeArea()
         .preferredColorScheme(.dark)
-        // Playback settings (EQ) sits on top of the sheet; allow swipe-down to return to the player only.
-        // If interactive dismiss stays enabled here, the same gesture closes the whole now-playing sheet.
         .interactiveDismissDisabled(page == .favourites || page == .queue || page == .playbackSettings)
         .fullScreenCover(isPresented: $showLyricsScreen) {
             if let song = model.player.currentSong {
@@ -202,6 +169,54 @@ struct NowPlayingView: View {
         }
         .onChange(of: model.player.currentSong) { _, newSong in
             if newSong == nil { ambientPalette = nil }
+        }
+    }
+
+    // MARK: Floating toolbar buttons
+
+    @ViewBuilder private var leadingNavButton: some View {
+        if page == .main {
+            NowPlayingNavIconButton(action: { dismiss() }, accessibilityLabel: "Close") {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+        } else {
+            NowPlayingNavIconButton(action: {
+                withAnimation(nowPlayingPanelSpring) {
+                    page = .main
+                    horizontalDrag = 0
+                }
+            }, accessibilityLabel: "Back to player") {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+        }
+    }
+
+    @ViewBuilder private var trailingNavButtons: some View {
+        if page == .main, let song = model.player.currentSong {
+            HStack(spacing: 10) {
+                NowPlayingNavIconButton(action: {
+                    showLyricsScreen = true
+                }, accessibilityLabel: "歌詞を表示") {
+                    Image(systemName: "text.alignleft")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(
+                            model.hasLocalLyricsFile(for: song.id)
+                                ? Color.white.opacity(0.9)
+                                : Color.white.opacity(0.38)
+                        )
+                }
+                NowPlayingNavIconButton(action: {
+                    model.toggleFavourite(songId: song.id)
+                }, accessibilityLabel: "Favourite") {
+                    Image(systemName: model.isFavouriteSong(songId: song.id) ? "heart.fill" : "heart")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(model.isFavouriteSong(songId: song.id) ? Color.pink : Color.white.opacity(0.85))
+                }
+            }
         }
     }
 
@@ -346,9 +361,13 @@ private struct NowPlayingPlayingShell: View {
     let artworkId: String
     let artworkURLString: String
     /// Two-way binding so the parent `NowPlayingView` can mirror the palette to
-    /// its own full-screen background layer (which is applied *outside*
-    /// NavigationStack, bypassing the .clipped() strip and covering safe areas).
+    /// its own full-screen ambient background layer.
     @Binding var palette: ArtworkPlaybackPalette?
+    /// Combined inset for the floating toolbar + status-bar region (passed from parent
+    /// GeometryReader so content is not obscured by the overlay buttons).
+    var topInset: CGFloat = 0
+    /// Home-indicator safe-area inset (passed from parent GeometryReader).
+    var bottomInset: CGFloat = 0
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -362,7 +381,7 @@ private struct NowPlayingPlayingShell: View {
                 .animation(.easeInOut(duration: 0.5), value: palette)
 
             VStack(spacing: 0) {
-                Spacer(minLength: horizontalSizeClass == .regular ? 40 : 16)
+                Spacer(minLength: topInset + (horizontalSizeClass == .regular ? 40 : 16))
 
                 NowPlayingArtworkBlock(artworkId: artworkId, urlString: artworkURLString, accent: accent)
                     .padding(.horizontal, 28)
@@ -405,7 +424,7 @@ private struct NowPlayingPlayingShell: View {
                 NowPlayingTransportSection(accent: accent)
                     .padding(.bottom, 8)
 
-                Spacer(minLength: horizontalSizeClass == .regular ? 48 : 24)
+                Spacer(minLength: bottomInset + (horizontalSizeClass == .regular ? 48 : 24))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -680,6 +699,7 @@ private struct NowPlayingArtworkBlock: View {
 private struct NowPlayingQueuePanel: View {
     @Binding var page: NowPlayingPage
     @Environment(AppModel.self) private var model
+    var topInset: CGFloat = 0
 
     private var queue: [Song] {
         model.player.playbackQueue
@@ -691,7 +711,7 @@ private struct NowPlayingQueuePanel: View {
                 .font(.title2.weight(.bold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 20)
-                .padding(.top, 4)
+                .padding(.top, topInset + 4)
                 .padding(.bottom, 8)
             List {
                 if queue.isEmpty {
@@ -750,6 +770,7 @@ private struct NowPlayingQueuePanel: View {
 private struct NowPlayingFavouritesPanel: View {
     @Binding var page: NowPlayingPage
     @Environment(AppModel.self) private var model
+    var topInset: CGFloat = 0
 
     private var songs: [Song] {
         model.favouriteSongsForPlayback()
@@ -761,7 +782,7 @@ private struct NowPlayingFavouritesPanel: View {
                 .font(.title2.weight(.bold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 20)
-                .padding(.top, 4)
+                .padding(.top, topInset + 4)
                 .padding(.bottom, 8)
             List {
                 if songs.isEmpty {
@@ -822,6 +843,7 @@ private struct NowPlayingFavouritesPanel: View {
 private struct NowPlayingPlaybackSettingsPanel: View {
     @Environment(AppModel.self) private var model
     @Binding var page: NowPlayingPage
+    var topInset: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -829,7 +851,7 @@ private struct NowPlayingPlaybackSettingsPanel: View {
                 .font(.title2.weight(.bold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 20)
-                .padding(.top, 4)
+                .padding(.top, topInset + 4)
                 .padding(.bottom, 8)
             List {
                 Section {
