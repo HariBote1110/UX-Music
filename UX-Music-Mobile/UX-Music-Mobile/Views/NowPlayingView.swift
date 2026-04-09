@@ -20,8 +20,8 @@ private let nowPlayingPanelSpring = Animation.spring(response: 0.52, dampingFrac
 private func stripBaseX(page: NowPlayingPage, width w: CGFloat) -> CGFloat {
     switch page {
     case .main: return -w
-    case .favourites: return 0
-    case .queue: return -2 * w
+    case .queue: return 0
+    case .favourites: return -2 * w
     case .playbackSettings: return -w
     }
 }
@@ -83,7 +83,7 @@ struct NowPlayingView: View {
                 let h = geo.size.height
                 ZStack(alignment: .top) {
                     HStack(spacing: 0) {
-                        NowPlayingFavouritesPanel(page: $page)
+                        NowPlayingQueuePanel(page: $page)
                             .frame(width: w, height: h)
                         Group {
                             if let song = model.player.currentSong {
@@ -97,7 +97,7 @@ struct NowPlayingView: View {
                             }
                         }
                         .frame(width: w, height: h)
-                        NowPlayingQueuePanel(page: $page)
+                        NowPlayingFavouritesPanel(page: $page)
                             .frame(width: w, height: h)
                     }
                     .frame(width: 3 * w, height: h, alignment: .leading)
@@ -172,7 +172,9 @@ struct NowPlayingView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .interactiveDismissDisabled(page == .favourites || page == .queue)
+        // Playback settings (EQ) sits on top of the sheet; allow swipe-down to return to the player only.
+        // If interactive dismiss stays enabled here, the same gesture closes the whole now-playing sheet.
+        .interactiveDismissDisabled(page == .favourites || page == .queue || page == .playbackSettings)
         .fullScreenCover(isPresented: $showLyricsScreen) {
             if let song = model.player.currentSong {
                 NowPlayingLyricsScreen(song: song, isPresented: $showLyricsScreen)
@@ -278,12 +280,12 @@ struct NowPlayingView: View {
         case .main:
             if tx < -thresholdTowardsSide {
                 withAnimation(nowPlayingPanelSpring) {
-                    page = .queue
+                    page = .favourites
                     horizontalDrag = 0
                 }
             } else if tx > thresholdTowardsSide {
                 withAnimation(nowPlayingPanelSpring) {
-                    page = .favourites
+                    page = .queue
                     horizontalDrag = 0
                 }
             } else {
@@ -292,7 +294,7 @@ struct NowPlayingView: View {
                 }
             }
         case .queue:
-            if tx > thresholdBackToMain {
+            if tx < -thresholdBackToMain {
                 withAnimation(nowPlayingPanelSpring) {
                     page = .main
                     horizontalDrag = 0
@@ -303,7 +305,7 @@ struct NowPlayingView: View {
                 }
             }
         case .favourites:
-            if tx < -thresholdBackToMain {
+            if tx > thresholdBackToMain {
                 withAnimation(nowPlayingPanelSpring) {
                     page = .main
                     horizontalDrag = 0
@@ -421,7 +423,7 @@ private struct NowPlayingProgressSection: View {
                         scrubValue = model.player.positionSeconds
                     } else {
                         isScrubbing = false
-                        Task { await model.player.seek(to: scrubValue) }
+                        Task { model.player.seek(to: scrubValue) }
                     }
                 }
             )
@@ -650,7 +652,7 @@ private struct NowPlayingArtworkBlock: View {
     }
 }
 
-// MARK: - Swipe side panels (queue / favourites / settings mock)
+// MARK: - Swipe side panels (queue left, favourites right, settings overlay)
 
 private struct NowPlayingQueuePanel: View {
     @Binding var page: NowPlayingPage
@@ -716,7 +718,7 @@ private struct NowPlayingQueuePanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
         .overlay(alignment: .bottom) {
-            swipeHint("Swipe right for player")
+            swipeHint("Swipe left for player")
                 .padding(.bottom, 12)
         }
     }
@@ -788,7 +790,7 @@ private struct NowPlayingFavouritesPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
         .overlay(alignment: .bottom) {
-            swipeHint("Swipe left for player")
+            swipeHint("Swipe right for player")
                 .padding(.bottom, 12)
         }
     }

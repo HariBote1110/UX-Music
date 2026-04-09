@@ -4,7 +4,20 @@
 
 ## 進行中の問題
 
-（現在なし）
+-   **[バグ] UX Music Mobile：アプリは一時停止なのに OS 側は再生中／リモート再生が無音**
+    -   **概要**: アプリ UI では一時停止しているのに、ロック画面・コントロールセンター・Dynamic Island など OS の Now Playing は「再生中」のままになる。OS 側の再生ボタンを押しても「再生中」表示のまま変わらず、**音は鳴らない**（実再生と OS 表示が両方ずれる）。
+    -   **想定環境**: `UX-Music-Mobile`（SwiftUI）、ローカル `AVAudioEngine` + `AVAudioPlayerNode`、`MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` でロック画面連携。
+    -   **試したが解消しなかった対策**（参考・履歴）:
+        1. `MPNowPlayingInfoCenter.playbackState` と `MPNowPlayingInfoPropertyPlaybackRate` を `isPlaying` と揃える、`updateNowPlayingCentre()` 先頭で `syncIsPlayingFromNode()`。
+        2. リモートの `play` / `pause` / `toggle` を `DispatchQueue.main.sync` 経由で同期し、`.success` を返す前に Now Playing を更新。
+        3. 一時停止からの再開で `play()` が効かない場合に `seek` でバッファを張り直してから再生（`resumeAfterSeek`）。
+        4. `UIApplication.shared.beginReceivingRemoteControlEvents()` を起動時に呼び出し。
+    -   **未調査・次に疑うとよい点**:
+        -   別プロセス／別セッション（CarPlay、他アプリ、Siri）との Now Playing の取り合い。
+        -   iOS バージョン固有の `MPNowPlayingInfoCenter` と `AVAudioSession` の組み合わせ（バックグラウンド時のタイマー `tickPlaybackPosition` の頻度・停止）。
+        -   `AVAudioPlayerNode` の `isPlaying` と実際のオーディオ出力・スケジュール残量の不一致（曲終端後の単一曲キューなど）。
+        -   実機ログ（`MPRemoteCommand` のスレッド、`nowPlayingInfo` 更新の直前直後）での再現手順の固定化。
+    -   **関連コード（目安）**: `UX-Music-Mobile/UX-Music-Mobile/Services/MusicPlayerService.swift`（Now Playing 更新、リモートコマンド）、`UXMusicMobileApp.swift`（`beginReceivingRemoteControlEvents`）。
 
 
 ## 解決済みの問題

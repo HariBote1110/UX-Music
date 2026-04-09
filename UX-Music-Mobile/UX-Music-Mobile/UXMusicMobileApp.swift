@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 @main
 struct UXMusicMobileApp: App {
@@ -9,6 +10,9 @@ struct UXMusicMobileApp: App {
             HomeRootView()
                 .environment(model)
                 .preferredColorScheme(.dark)
+                .onAppear {
+                    UIApplication.shared.beginReceivingRemoteControlEvents()
+                }
                 .onOpenURL { url in
                     _ = model.applyPairingURL(url)
                 }

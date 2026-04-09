@@ -53,8 +53,7 @@ final class MusicPlayerService {
 
     /// Audio session activation is deferred until playback starts to keep app launch light.
     private var playbackSessionPrepared = false
-    /// In-flight activation so concurrent `play` / `toggle` callers share one `setActive` path.
-    private var sessionActivationTask: Task<Void, Never>?
+    private let sessionActivationLock = NSLock()
 
     private var lastPublishedNowPlayingSongId: String?
     private var artworkLoadedForSongId: String?
@@ -227,20 +226,29 @@ final class MusicPlayerService {
     /// invalid **category + mode + options** combinations — e.g. `.allowBluetoothA2DP` / `.allowAirPlay`
     /// with a mode the system rejects — which surfaces as `SessionCore` “Failed to set properties”.
     private func preparePlaybackSessionIfNeeded() async {
-        if playbackSessionPrepared { return }
-        if let sessionActivationTask {
-            await sessionActivationTask.value
-            return
+        activateSessionIfNeededSync()
+    }
+
+    /// Thread-safe, synchronous session activation (remote commands and `seek` run on an arbitrary queue).
+    private func activateSessionIfNeededSync() {
+        sessionActivationLock.lock()
+        defer { sessionActivationLock.unlock() }
+        guard !playbackSessionPrepared else { return }
+        if activateSharedAudioSessionForPlayback() {
+            playbackSessionPrepared = true
         }
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            if self.activateSharedAudioSessionForPlayback() {
-                self.playbackSessionPrepared = true
-            }
+    }
+
+    /// Runs `body` on the main actor and returns only after it finishes (avoids `.success` before Now Playing updates).
+    nonisolated private func dispatchToMainSync(_ body: @MainActor () -> MPRemoteCommandHandlerStatus) -> MPRemoteCommandHandlerStatus {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated { body() }
         }
-        sessionActivationTask = task
-        await task.value
-        sessionActivationTask = nil
+        var result = MPRemoteCommandHandlerStatus.commandFailed
+        DispatchQueue.main.sync {
+            result = MainActor.assumeIsolated { body() }
+        }
+        return result
     }
 
     /// Returns whether the shared session was configured and activated.
@@ -370,14 +378,12 @@ final class MusicPlayerService {
     func togglePlayPause() {
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.preparePlaybackSessionIfNeeded()
+            self.activateSessionIfNeededSync()
             if self.playerNode.isPlaying {
                 self.frozenPositionWhilePaused = self.currentTimelineSeconds()
                 self.playerNode.pause()
             } else if self.currentAudioFile != nil {
-                self.frozenPositionWhilePaused = nil
-                self.ensureEngineRunning()
-                self.playerNode.play()
+                self.resumeLocalPlaybackAfterPause()
             } else if let song = self.currentSong {
                 await self.loadAndPlay(song)
             }
@@ -397,7 +403,7 @@ final class MusicPlayerService {
     func previous() async {
         guard !queue.isEmpty else { return }
         if positionSeconds > 3 {
-            await seek(to: 0)
+            seek(to: 0)
         } else {
             currentIndex = (currentIndex - 1 + queue.count) % queue.count
             let s = queue[currentIndex]
@@ -415,7 +421,8 @@ final class MusicPlayerService {
         await loadAndPlay(s)
     }
 
-    func seek(to seconds: Double) async {
+    /// - Parameter resumeAfterSeek: When `nil`, keeps playing iff the node was already playing (scrub-while-paused stays paused).
+    func seek(to seconds: Double, resumeAfterSeek: Bool? = nil) {
         guard let file = currentAudioFile else { return }
         let sr = file.processingFormat.sampleRate
         guard sr > 0 else { return }
@@ -424,7 +431,7 @@ final class MusicPlayerService {
         let start = min(max(0, frame), max(length - 1, 0))
         let remaining = AVAudioFrameCount(max(0, length - start))
 
-        let wasPlaying = playerNode.isPlaying
+        let shouldResume = resumeAfterSeek ?? playerNode.isPlaying
         bumpPlaybackCompletionGeneration()
         playerNode.stop()
         frozenPositionWhilePaused = nil
@@ -436,7 +443,7 @@ final class MusicPlayerService {
         if remaining > 0 {
             playerNode.scheduleSegment(file, startingFrame: start, frameCount: remaining, at: nil, completionHandler: completion)
         }
-        if wasPlaying {
+        if shouldResume {
             ensureEngineRunning()
             playerNode.play()
         } else {
@@ -579,6 +586,39 @@ final class MusicPlayerService {
         isPlaying = next
     }
 
+    /// After `pause()`, resumes if buffers still exist; otherwise re-seeks and plays (e.g. schedule exhausted).
+    private func resumeLocalPlaybackAfterPause() {
+        guard currentAudioFile != nil, currentSong != nil else { return }
+        let resumeT = frozenPositionWhilePaused ?? currentTimelineSeconds()
+        frozenPositionWhilePaused = nil
+        ensureEngineRunning()
+        playerNode.play()
+        syncIsPlayingFromNode()
+        if isPlaying {
+            updateNowPlayingCentre()
+            return
+        }
+        let bounded: Double = if durationSeconds > 0 {
+            min(max(0, resumeT), durationSeconds)
+        } else {
+            max(0, resumeT)
+        }
+        seek(to: bounded, resumeAfterSeek: true)
+    }
+
+    private func remoteResumeAfterPlayCommand() -> MPRemoteCommandHandlerStatus {
+        guard let song = currentSong else { return .commandFailed }
+        if currentAudioFile == nil {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.loadAndPlay(song)
+            }
+            return .commandFailed
+        }
+        resumeLocalPlaybackAfterPause()
+        return isPlaying ? .success : .commandFailed
+    }
+
     private func advanceAfterEnd() async {
         guard queue.count > 1 else { return }
         await next()
@@ -698,62 +738,106 @@ final class MusicPlayerService {
 
         c.playCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            Task { @MainActor in
-                await self.preparePlaybackSessionIfNeeded()
-                self.frozenPositionWhilePaused = nil
-                self.ensureEngineRunning()
-                self.playerNode.play()
-                self.syncIsPlayingFromNode()
-                self.updateNowPlayingCentre()
+            return self.dispatchToMainSync { [weak self] in
+                guard let self else { return .commandFailed }
+                self.activateSessionIfNeededSync()
+                return self.remoteResumeAfterPlayCommand()
             }
-            return .success
         }
 
         c.pauseCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            Task { @MainActor in
+            return self.dispatchToMainSync { [weak self] in
+                guard let self else { return .commandFailed }
+                self.activateSessionIfNeededSync()
+                guard self.currentSong != nil else { return .commandFailed }
                 self.frozenPositionWhilePaused = self.currentTimelineSeconds()
                 self.playerNode.pause()
                 self.syncIsPlayingFromNode()
                 self.updateNowPlayingCentre()
+                return .success
             }
-            return .success
         }
 
         c.togglePlayPauseCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            Task { @MainActor in
-                self.togglePlayPause()
+            return self.dispatchToMainSync { [weak self] in
+                guard let self else { return .commandFailed }
+                self.activateSessionIfNeededSync()
+                guard self.currentSong != nil else { return .commandFailed }
+                if self.playerNode.isPlaying {
+                    self.frozenPositionWhilePaused = self.currentTimelineSeconds()
+                    self.playerNode.pause()
+                    self.syncIsPlayingFromNode()
+                    self.updateNowPlayingCentre()
+                    return .success
+                }
+                if self.currentAudioFile != nil {
+                    return self.remoteResumeAfterPlayCommand()
+                }
+                if let song = self.currentSong {
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        await self.loadAndPlay(song)
+                    }
+                }
+                return .commandFailed
             }
-            return .success
         }
 
         c.nextTrackCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            Task { @MainActor in
+            if Thread.isMainThread {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    await self.next()
+                }
+                return .success
+            }
+            let sem = DispatchSemaphore(value: 0)
+            Task { @MainActor [weak self] in
+                defer { sem.signal() }
+                guard let self else { return }
                 await self.next()
             }
+            sem.wait()
             return .success
         }
 
         c.previousTrackCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            Task { @MainActor in
+            if Thread.isMainThread {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    await self.previous()
+                }
+                return .success
+            }
+            let sem = DispatchSemaphore(value: 0)
+            Task { @MainActor [weak self] in
+                defer { sem.signal() }
+                guard let self else { return }
                 await self.previous()
             }
+            sem.wait()
             return .success
         }
 
         c.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let self, let ev = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            Task { @MainActor in
-                await self.seek(to: ev.positionTime)
+            return self.dispatchToMainSync { [weak self] in
+                guard let self else { return .commandFailed }
+                self.activateSessionIfNeededSync()
+                guard self.currentSong != nil else { return .commandFailed }
+                self.seek(to: ev.positionTime, resumeAfterSeek: nil)
+                return .success
             }
-            return .success
         }
     }
 
     private func updateNowPlayingCentre() {
+        syncIsPlayingFromNode()
+
         let c = MPRemoteCommandCenter.shared()
         let active = currentSong != nil
         c.playCommand.isEnabled = active
@@ -763,12 +847,15 @@ final class MusicPlayerService {
         c.previousTrackCommand.isEnabled = active && queue.count > 1
         c.changePlaybackPositionCommand.isEnabled = active
 
+        let nowPlaying = MPNowPlayingInfoCenter.default()
+
         guard let song = currentSong else {
             lastPublishedNowPlayingSongId = nil
             artworkLoadedForSongId = nil
             artworkInFlightForSongId = nil
             nowPlayingArtworkImage = nil
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            nowPlaying.playbackState = .stopped
+            nowPlaying.nowPlayingInfo = nil
             return
         }
 
@@ -780,7 +867,7 @@ final class MusicPlayerService {
             nowPlayingArtworkImage = nil
         }
 
-        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        var info = nowPlaying.nowPlayingInfo ?? [:]
         if songChanged {
             info.removeValue(forKey: MPMediaItemPropertyArtwork)
         }
@@ -794,7 +881,8 @@ final class MusicPlayerService {
         info[MPMediaItemPropertyAlbumTitle] = song.displayAlbum
         info[MPMediaItemPropertyPlaybackDuration] = durationForInfo
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, positionSeconds)
-        info[MPNowPlayingInfoPropertyPlaybackRate] = playerNode.isPlaying ? 1.0 : 0.0
+        // Keep rate and `playbackState` aligned with `isPlaying` (not a stale `playerNode.isPlaying` read).
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
 
         if info[MPMediaItemPropertyArtwork] == nil,
@@ -803,7 +891,8 @@ final class MusicPlayerService {
             info[MPMediaItemPropertyArtwork] = makeMediaArtwork(from: img)
         }
 
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        nowPlaying.nowPlayingInfo = info
+        nowPlaying.playbackState = isPlaying ? .playing : .paused
 
         if loadArtworkImage != nil,
            artworkLoadedForSongId != song.id,
