@@ -37,7 +37,10 @@ struct HomeRootView: View {
         .uxMusicTabMiniPlayer(isEnabled: showMiniPlayerAccessory) {
             miniPlayerStack
         }
-        .sheet(
+        // fullScreenCover instead of sheet: the Now Playing screen is a full-screen
+        // experience (like Apple Music). A sheet leaves system-injected top/bottom
+        // margins that appear as solid-black bands against the ambient gradient.
+        .fullScreenCover(
             isPresented: Binding(
                 get: { model.isNowPlayingSheetPresented },
                 set: { model.isNowPlayingSheetPresented = $0 }
