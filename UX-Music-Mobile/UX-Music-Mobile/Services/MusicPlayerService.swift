@@ -341,7 +341,8 @@ final class MusicPlayerService {
         } else {
             positionSeconds = max(0, nextPos)
         }
-        syncIsPlayingFromNode()
+        // Do NOT call syncIsPlayingFromNode() here: the timer must not override the
+        // intentional isPlaying state set by explicit play/pause actions.
         updateNowPlayingCentre()
     }
 
@@ -847,7 +848,10 @@ final class MusicPlayerService {
     }
 
     private func updateNowPlayingCentre() {
-        syncIsPlayingFromNode()
+        // Do NOT call syncIsPlayingFromNode() here: callers are responsible for setting
+        // isPlaying correctly before invoking this function. Re-reading playerNode.isPlaying
+        // at this point risks overwriting the intended state with a transiently stale value
+        // (e.g. immediately after playerNode.pause() before the engine pipeline drains).
 
         let c = MPRemoteCommandCenter.shared()
         let active = currentSong != nil
