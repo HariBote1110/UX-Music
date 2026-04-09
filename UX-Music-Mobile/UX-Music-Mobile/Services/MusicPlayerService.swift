@@ -383,6 +383,9 @@ final class MusicPlayerService {
             if self.playerNode.isPlaying {
                 self.frozenPositionWhilePaused = self.currentTimelineSeconds()
                 self.playerNode.pause()
+                self.engine.stop()  // Stop the engine so iOS audio session goes idle;
+                // otherwise iOS may override playbackState=.paused with .playing
+                // because it sees the running AVAudioEngine as "active audio".
             } else if self.currentAudioFile != nil {
                 self.resumeLocalPlaybackAfterPause()
             } else if let song = self.currentSong {
@@ -709,17 +712,19 @@ final class MusicPlayerService {
         applyLoudnessGain()
         pushEqualiserToAudioUnit()
 
-        do {
-            try ensureEngineRunningThrowing()
-            if shouldPlay {
+        if shouldPlay {
+            do {
+                try ensureEngineRunningThrowing()
                 playerNode.play()
-            } else {
-                frozenPositionWhilePaused = Double(start) / sr
+            } catch {
+                #if DEBUG
+                NSLog("UXMusic: route-change reschedule failed: %@", String(describing: error))
+                #endif
             }
-        } catch {
-            #if DEBUG
-            NSLog("UXMusic: route-change reschedule failed: %@", String(describing: error))
-            #endif
+        } else {
+            // Keep the engine stopped while intentionally paused — starting it here would make iOS
+            // see an active audio session and potentially override playbackState=.paused with .playing.
+            frozenPositionWhilePaused = Double(start) / sr
         }
         syncIsPlayingFromNode()
         updateNowPlayingCentre()
@@ -765,6 +770,7 @@ final class MusicPlayerService {
                 guard self.currentSong != nil else { return .commandFailed }
                 self.frozenPositionWhilePaused = self.currentTimelineSeconds()
                 self.playerNode.pause()
+                self.engine.stop()
                 self.syncIsPlayingFromNode()
                 self.updateNowPlayingCentre()
                 return .success
@@ -780,6 +786,7 @@ final class MusicPlayerService {
                 if self.playerNode.isPlaying {
                     self.frozenPositionWhilePaused = self.currentTimelineSeconds()
                     self.playerNode.pause()
+                    self.engine.stop()
                     self.syncIsPlayingFromNode()
                     self.updateNowPlayingCentre()
                     return .success
@@ -969,6 +976,7 @@ final class MusicPlayerService {
                 case .began:
                     self.frozenPositionWhilePaused = self.currentTimelineSeconds()
                     self.playerNode.pause()
+                    self.engine.stop()
                     self.syncIsPlayingFromNode()
                 case .ended:
                     if let optRaw = info[AVAudioSessionInterruptionOptionKey] as? UInt {
