@@ -75,6 +75,11 @@ struct NowPlayingView: View {
     @State private var horizontalDrag: CGFloat = 0
     @State private var lockedDragAxis: StripDragAxis?
     @State private var showLyricsScreen = false
+    /// Palette extracted from the current track's artwork.
+    /// Kept at this level so the ambient background can be applied *outside* the
+    /// NavigationStack (bypassing the .clipped() strip panel) and therefore
+    /// extend into the safe-area regions at the top and bottom of the screen.
+    @State private var ambientPalette: ArtworkPlaybackPalette?
 
     var body: some View {
         NavigationStack {
@@ -90,7 +95,8 @@ struct NowPlayingView: View {
                                 NowPlayingPlayingShell(
                                     song: song,
                                     artworkId: song.artworkId,
-                                    artworkURLString: model.artworkURL(for: song.artworkId)
+                                    artworkURLString: model.artworkURL(for: song.artworkId),
+                                    palette: $ambientPalette
                                 )
                             } else {
                                 NowPlayingEmptyChrome()
@@ -171,11 +177,15 @@ struct NowPlayingView: View {
                 }
             }
         }
-        // Extend pure black into all safe areas (navigation bar + home indicator).
-        // NowPlayingAmbientBackground already has .ignoresSafeArea(), but .clipped() on the
-        // horizontal strip panel prevents it from drawing past the content-area boundary.
-        // Applying the background here ensures the sheet has no "dark-grey gap" at top or bottom.
-        .background(Color.black.ignoresSafeArea(.all))
+        // Apply the ambient gradient *outside* the NavigationStack so that it bypasses the
+        // .clipped() strip panel and can extend into the safe areas (navigation bar / home
+        // indicator regions).  Without this, .clipped() confines the gradient to the content
+        // area and the top/bottom safe-area bands show solid black.
+        .background(
+            NowPlayingAmbientBackground(palette: ambientPalette)
+                .ignoresSafeArea(.all)
+                .animation(.easeInOut(duration: 0.5), value: ambientPalette)
+        )
         .preferredColorScheme(.dark)
         // Playback settings (EQ) sits on top of the sheet; allow swipe-down to return to the player only.
         // If interactive dismiss stays enabled here, the same gesture closes the whole now-playing sheet.
@@ -189,6 +199,9 @@ struct NowPlayingView: View {
         .onAppear {
             horizontalDrag = 0
             lockedDragAxis = nil
+        }
+        .onChange(of: model.player.currentSong) { _, newSong in
+            if newSong == nil { ambientPalette = nil }
         }
     }
 
@@ -332,9 +345,12 @@ private struct NowPlayingPlayingShell: View {
     let song: Song
     let artworkId: String
     let artworkURLString: String
+    /// Two-way binding so the parent `NowPlayingView` can mirror the palette to
+    /// its own full-screen background layer (which is applied *outside*
+    /// NavigationStack, bypassing the .clipped() strip and covering safe areas).
+    @Binding var palette: ArtworkPlaybackPalette?
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var palette: ArtworkPlaybackPalette?
 
     private var accent: Color {
         palette?.accentColor ?? nowPlayingFallbackAccent
@@ -392,6 +408,7 @@ private struct NowPlayingPlayingShell: View {
                 Spacer(minLength: horizontalSizeClass == .regular ? 48 : 24)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: artworkURLString) {
             guard let url = URL(string: artworkURLString), !artworkURLString.isEmpty else {
                 palette = nil
@@ -522,6 +539,7 @@ private struct NowPlayingEmptyChrome: View {
             }
             .padding(32)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
