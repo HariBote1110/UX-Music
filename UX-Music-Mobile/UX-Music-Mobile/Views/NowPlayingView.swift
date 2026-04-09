@@ -171,6 +171,11 @@ struct NowPlayingView: View {
                 }
             }
         }
+        // Extend pure black into all safe areas (navigation bar + home indicator).
+        // NowPlayingAmbientBackground already has .ignoresSafeArea(), but .clipped() on the
+        // horizontal strip panel prevents it from drawing past the content-area boundary.
+        // Applying the background here ensures the sheet has no "dark-grey gap" at top or bottom.
+        .background(Color.black.ignoresSafeArea(.all))
         .preferredColorScheme(.dark)
         // Playback settings (EQ) sits on top of the sheet; allow swipe-down to return to the player only.
         // If interactive dismiss stays enabled here, the same gesture closes the whole now-playing sheet.
