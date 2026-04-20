@@ -1,4 +1,6 @@
 // src/renderer/js/normalize-view.js
+import { showNotification, hideNotification } from '../ui/notification.js';
+
 const electronAPI = window.electronAPI;
 
 // モジュールスコープで変数を宣言（グローバルリーク防止）
@@ -351,14 +353,20 @@ export function initNormalizeView() {
                 return { ...f, gain };
             });
 
+            const jobFiles = filesWithGain.map((f) => ({
+                id: f.id,
+                path: f.path,
+                gain: Number(f.gain),
+            }));
+
             const backup = outputSettings.mode === 'overwrite' ? document.getElementById('backup-toggle').checked : false;
             electronAPI.send('start-normalize-job', {
                 jobType: 'normalize',
-                files: filesWithGain,
+                files: jobFiles,
                 options: {
                     backup,
-                    output: outputSettings,
-                    basePath: commonBasePath
+                    output: { mode: outputSettings.mode, path: outputSettings.path || '' },
+                    basePath: commonBasePath || '',
                 }
             });
             updateProgress(0, filesToNormalize.length, '適用中');
@@ -369,39 +377,67 @@ export function initNormalizeView() {
     let totalCount = 0;
     let currentJob = '';
 
-    electronAPI.on('normalize-worker-result', ({ type, id, result }) => {
-        const file = normalizeFiles.get(id);
-        if (!file) return;
+    electronAPI.on('normalize-worker-result', (...evArgs) => {
+        const row = evArgs.length && typeof evArgs[0] === 'object' && evArgs[0] !== null ? evArgs[0] : {};
+        let type = row.type;
+        let id = row.id;
+        let result = row.result;
+        if (type === undefined && evArgs.length >= 3) {
+            type = evArgs[0];
+            id = evArgs[1];
+            result = evArgs[2];
+        }
+        if (typeof result === 'string') {
+            try {
+                result = JSON.parse(result);
+            } catch {
+                /* leave as string */
+            }
+        }
+
+        let file = id ? normalizeFiles.get(id) : undefined;
+        const rowPath = typeof row.path === 'string' ? row.path : '';
+        if (!file && rowPath) {
+            for (const f of normalizeFiles.values()) {
+                if (f.path === rowPath) {
+                    file = f;
+                    break;
+                }
+            }
+        }
+        if (!file) {
+            console.warn('[Normalize] result for unknown id/path:', id, rowPath, type);
+            return;
+        }
 
         if (type === 'analysis-result') {
-            if (result.success) {
-                file.currentLufs = result.loudness;
-                file.truePeak = result.truePeak;
-                file.status = 'analysed';
-            } else {
-                file.status = 'error';
-                console.error(`Analysis Error for ${file.name}:`, result.error);
-            }
             if (currentJob !== 'analyse') {
                 totalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'pending').length;
                 processedCount = 0;
                 currentJob = 'analyse';
             }
+            if (result && result.success) {
+                file.currentLufs = result.loudness;
+                file.truePeak = result.truePeak;
+                file.status = 'analysed';
+            } else {
+                file.status = 'error';
+                console.error(`Analysis Error for ${file.name}:`, result && result.error);
+            }
         } else if (type === 'normalize-result') {
-            if (result.success) {
+            if (currentJob !== 'normalize') {
+                totalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analysed').length;
+                processedCount = 0;
+                currentJob = 'normalize';
+            }
+            if (result && result.success) {
                 file.status = 'done';
                 if (result.outputPath) {
                     file.name = getBasename(result.outputPath);
                 }
             } else {
                 file.status = 'error';
-                if (result.error) console.error(`Normalize Error for ${file.name}:`, result.error);
-            }
-
-            if (currentJob !== 'normalize') {
-                totalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analysed').length;
-                processedCount = 0;
-                currentJob = 'normalize';
+                if (result && result.error) console.error(`Normalize Error for ${file.name}:`, result.error);
             }
         }
 
@@ -409,5 +445,18 @@ export function initNormalizeView() {
         updateFileList();
         updateProgress(processedCount, totalCount, currentJob === 'analyse' ? '解析中' : '適用中');
         electronAPI.send('normalize-worker-finished-file');
+    });
+
+    electronAPI.on('normalize-job-finished', (...evArgs) => {
+        const info = evArgs.length && typeof evArgs[0] === 'object' && evArgs[0] !== null ? evArgs[0] : {};
+        const scheduled = typeof info.scheduled === 'number' ? info.scheduled : undefined;
+        if (scheduled === 0 && info.jobType === 'normalize') {
+            showNotification('適用ジョブをサーバーが受け取れませんでした。ターミナルの [Normalize] ログを確認するか、ファイルを入れ直してください。');
+            hideNotification(6000);
+        }
+        const progressContainer = document.getElementById('normalize-progress-container');
+        if (progressContainer) {
+            progressContainer.classList.add('hidden');
+        }
     });
 }

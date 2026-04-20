@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -94,6 +95,16 @@ func boolField(m map[string]interface{}, key string) (bool, bool) {
 	return b, ok
 }
 
+func idStringFromMap(m map[string]interface{}) string {
+	if s, ok := stringField(m, "id"); ok {
+		return strings.TrimSpace(s)
+	}
+	if f, ok := float64Field(m, "id"); ok {
+		return strings.TrimSpace(fmt.Sprintf("%.0f", f))
+	}
+	return ""
+}
+
 func normaliseJobFromPayload(f interface{}, parsed normalizeStartOptions) (normalize.NormalizeJob, bool) {
 	m, ok := coerceJSONMap(f)
 	if !ok {
@@ -103,10 +114,7 @@ func normaliseJobFromPayload(f interface{}, parsed normalizeStartOptions) (norma
 	if !ok {
 		return normalize.NormalizeJob{}, false
 	}
-	id := ""
-	if s, ok := stringField(m, "id"); ok {
-		id = strings.TrimSpace(s)
-	}
+	id := idStringFromMap(m)
 	gain, _ := float64Field(m, "gain")
 
 	backup := parsed.Backup

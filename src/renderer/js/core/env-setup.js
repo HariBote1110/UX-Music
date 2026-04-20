@@ -70,7 +70,17 @@ window.electronAPI = window.electronAPI || {
                 window.go.main.App.CDStartRip?.(args[0]);
             } else if (channel === 'start-normalize-job') {
                 const data = args[0] || {};
-                window.go.main.App.NormalizeStartJob?.(data.jobType, data.files || [], data.options || {});
+                const fn = window.go?.main?.App?.NormalizeStartJob ?? window.go?.server?.App?.NormalizeStartJob;
+                if (typeof fn !== 'function') {
+                    console.error('[Wails] NormalizeStartJob is not bound on go.main.App or go.server.App');
+                    return;
+                }
+                const pending = fn(data.jobType, data.files || [], data.options || {});
+                if (pending && typeof pending.then === 'function') {
+                    pending
+                        .then(() => console.debug('[Normalize] NormalizeStartJob acknowledged'))
+                        .catch((err) => console.error('[Normalize] NormalizeStartJob failed:', err));
+                }
             } else if (channel === 'request-loudness-analysis') {
                 const filePath = args[0];
                 if (window.go?.main?.App?.NormalizeAnalyze && filePath) {
@@ -392,12 +402,13 @@ window.electronAPI = window.electronAPI || {
                 },
                 // --- Normalize ---
                 'start-normalize-job': async (data) => {
-                    // data: { jobType, files, options }
-                    if (window.go?.main?.App?.NormalizeStartJob) {
-                        // NormalizeStartJob(jobType string, files []interface{}, options OutputSettings)
-                        // data.jobType, data.files, data.options
-                        return await window.go.main.App.NormalizeStartJob(data.jobType, data.files, data.options);
+                    ensureWailsGoMainAppBridge();
+                    const fn = window.go?.main?.App?.NormalizeStartJob ?? window.go?.server?.App?.NormalizeStartJob;
+                    if (typeof fn === 'function') {
+                        return await fn(data.jobType, data.files || [], data.options || {});
                     }
+                    console.error('[Wails] NormalizeStartJob is not bound (invoke)');
+                    return null;
                 }
             };
 
