@@ -20,6 +20,19 @@
         </div>
         <div class="normalize-settings">
             <div class="setting-item">
+                <label for="normalize-name-col-slider">ファイル名列の最小幅:</label>
+                <input type="range" id="normalize-name-col-slider" min="80" max="360" value="160" step="4">
+                <span id="normalize-name-col-value">160 px</span>
+            </div>
+            <div class="setting-item">
+                <label>
+                    <input type="checkbox" id="normalize-wrap-names">
+                    <span>長いファイル名を折り返して表示する</span>
+                </label>
+            </div>
+        </div>
+        <div class="normalize-settings">
+            <div class="setting-item">
                 <label>保存先:</label>
                 <div class="radio-group-horizontal">
                     <label><input type="radio" name="output-mode" value="overwrite" checked> 上書き</label>

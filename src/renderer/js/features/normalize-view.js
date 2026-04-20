@@ -1,6 +1,4 @@
 // src/renderer/js/normalize-view.js
-import { state, elements } from '../core/state.js';
-import { showView } from '../core/navigation.js';
 const electronAPI = window.electronAPI;
 
 // モジュールスコープで変数を宣言（グローバルリーク防止）
@@ -10,6 +8,49 @@ const outputSettings = {
     mode: 'overwrite', // 'overwrite' or 'folder'
     path: null
 };
+
+const LS_NORMALIZE_NAME_MIN = 'ux-music-normalize-name-min-px';
+const LS_NORMALIZE_WRAP = 'ux-music-normalize-wrap-names';
+
+function clampNormalizeNameMin(px) {
+    const n = parseInt(String(px), 10);
+    if (Number.isNaN(n)) return 160;
+    return Math.max(80, Math.min(420, n));
+}
+
+function applyNormaliseTableLayoutPrefs() {
+    const root = document.getElementById('normalize-view');
+    const slider = document.getElementById('normalize-name-col-slider');
+    if (!root) return;
+    const minPx = slider ? clampNormalizeNameMin(slider.value) : 160;
+    root.style.setProperty('--normalize-name-column-min', `${minPx}px`);
+    const wrapCb = document.getElementById('normalize-wrap-names');
+    const wrap = Boolean(wrapCb?.checked);
+    root.classList.toggle('normalize-wrap-filenames', wrap);
+}
+
+function restoreNormaliseTableLayoutControls() {
+    const slider = document.getElementById('normalize-name-col-slider');
+    const valueLabel = document.getElementById('normalize-name-col-value');
+    const wrapCb = document.getElementById('normalize-wrap-names');
+    if (slider) {
+        try {
+            const raw = localStorage.getItem(LS_NORMALIZE_NAME_MIN);
+            if (raw != null && raw !== '') {
+                slider.value = String(clampNormalizeNameMin(raw));
+            }
+        } catch { /* ignore */ }
+    }
+    if (valueLabel && slider) {
+        valueLabel.textContent = `${clampNormalizeNameMin(slider.value)} px`;
+    }
+    if (wrapCb) {
+        try {
+            wrapCb.checked = localStorage.getItem(LS_NORMALIZE_WRAP) === '1';
+        } catch { /* ignore */ }
+    }
+    applyNormaliseTableLayoutPrefs();
+}
 
 function getBasename(path) {
     return path.split(/[\\/]/).pop();
@@ -153,6 +194,8 @@ function updateProgress(processed, total, label) {
 }
 
 export function initNormalizeView() {
+    restoreNormaliseTableLayoutControls();
+
     const dropZone = document.getElementById('normalize-drop-zone');
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('drag-over'); });
     dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('drag-over'); });
@@ -199,6 +242,28 @@ export function initNormalizeView() {
         }
         if (normalizeFiles.size > 0) updateFileList();
     });
+
+    const nameColSlider = document.getElementById('normalize-name-col-slider');
+    const nameColValue = document.getElementById('normalize-name-col-value');
+    const wrapNames = document.getElementById('normalize-wrap-names');
+    if (nameColSlider && nameColValue) {
+        nameColSlider.addEventListener('input', () => {
+            const v = clampNormalizeNameMin(nameColSlider.value);
+            nameColValue.textContent = `${v} px`;
+            try {
+                localStorage.setItem(LS_NORMALIZE_NAME_MIN, String(v));
+            } catch { /* ignore */ }
+            applyNormaliseTableLayoutPrefs();
+        });
+    }
+    if (wrapNames) {
+        wrapNames.addEventListener('change', () => {
+            try {
+                localStorage.setItem(LS_NORMALIZE_WRAP, wrapNames.checked ? '1' : '0');
+            } catch { /* ignore */ }
+            applyNormaliseTableLayoutPrefs();
+        });
+    }
 
     const outputFolderContainer = document.getElementById('output-folder-container');
     const backupContainer = document.getElementById('backup-container');

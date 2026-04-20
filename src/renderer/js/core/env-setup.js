@@ -1,10 +1,29 @@
 // src/renderer/js/env-setup.js
 // Wails などの非 Electron 環境でも動作するように、window.electronAPI を安全化する
+
+// Wails は Go のパッケージ名で `window.go.<package>.App` を公開する（例: `server.App` → go.server）。
+// レガシーコードは `go.main.App` を参照する。`go.main.App` が無い、または Normalize 等が欠けている場合は server を補完する。
+function ensureWailsGoMainAppBridge() {
+    if (typeof window === 'undefined' || !window.go?.server?.App) return;
+    const serverApp = window.go.server.App;
+    if (typeof serverApp?.NormalizeStartJob !== 'function') return;
+
+    if (!window.go.main) {
+        window.go.main = window.go.server;
+        return;
+    }
+    if (!window.go.main.App || typeof window.go.main.App.NormalizeStartJob !== 'function') {
+        window.go.main.App = serverApp;
+    }
+}
+ensureWailsGoMainAppBridge();
+
 const isWailsEnvironment = () => window.go !== undefined || window.runtime !== undefined;
 
 window.electronAPI = window.electronAPI || {
     send: (channel, ...args) => {
         if (isWailsEnvironment()) {
+            ensureWailsGoMainAppBridge();
             console.log(`[Wails-Mock] send: ${channel}`, args);
             if (channel === 'request-initial-library') {
                 window.go.main.App.RequestInitialLibrary?.();
@@ -96,6 +115,9 @@ window.electronAPI = window.electronAPI || {
         }
     },
     invoke: async (channel, ...args) => {
+        if (isWailsEnvironment()) {
+            ensureWailsGoMainAppBridge();
+        }
         if (isWailsEnvironment() && window.go && window.go.main && window.go.main.App) {
             console.log(`[Wails-Mock] invoke: ${channel}`, args);
 

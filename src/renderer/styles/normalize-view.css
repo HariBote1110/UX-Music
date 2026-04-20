@@ -2,6 +2,7 @@
 /* ノーマライズ画面のスタイル */
 
 #normalize-view {
+    --normalize-name-column-min: 160px;
     padding: 0 20px calc(20px + var(--footer-height, 0px)) 20px;
     box-sizing: border-box;
     display: flex;
@@ -170,7 +171,7 @@
 .normalize-table-container table {
     width: 100%;
     border-collapse: collapse;
-    table-layout: fixed;
+    table-layout: auto;
 }
 .normalize-table-container th, .normalize-table-container td {
     padding: 12px 15px;
@@ -201,15 +202,26 @@
     padding-right: 10px;
 }
 
-.normalize-table-container th:nth-child(2) {
-    width: auto;
+.normalize-table-container th:nth-child(2),
+.normalize-table-container td:nth-child(2) {
+    min-width: var(--normalize-name-column-min, 160px);
+    max-width: min(55vw, 720px);
 }
 .normalize-table-container th:nth-child(3),
 .normalize-table-container th:nth-child(4),
 .normalize-table-container th:nth-child(5) {
     width: 120px;
+    min-width: 100px;
 }
 
+#normalize-view.normalize-wrap-filenames .normalize-table-container td:nth-child(2) {
+    white-space: normal;
+    word-break: break-word;
+    overflow: visible;
+    text-overflow: clip;
+    -webkit-mask-image: none;
+    mask-image: none;
+}
 
 .normalize-table-container input[type="checkbox"] {
     width: 18px;
@@ -218,6 +230,6 @@
 }
 
 .normalize-table-container td:nth-child(2) {
-    -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
-    mask-image: linear-gradient(to right, black 90%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, black 92%, transparent 100%);
+    mask-image: linear-gradient(to right, black 92%, transparent 100%);
 }

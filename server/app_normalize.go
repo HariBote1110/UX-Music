@@ -92,35 +92,11 @@ func (a *App) NormalizeStartJob(jobType string, files []interface{}, options int
 	parsedOptions := parseNormalizeStartOptions(options)
 	var jobs []normalize.NormalizeJob
 	for _, f := range files {
-		fMap, ok := f.(map[string]interface{})
+		job, ok := normaliseJobFromPayload(f, parsedOptions)
 		if !ok {
 			continue
 		}
-		id, _ := fMap["id"].(string)
-		path, _ := fMap["path"].(string)
-		gain, _ := fMap["gain"].(float64)
-		if path == "" {
-			continue
-		}
-
-		backup := parsedOptions.Backup
-		if jobBackup, ok := fMap["backup"].(bool); ok {
-			backup = jobBackup
-		}
-
-		basePath := parsedOptions.BasePath
-		if jobBasePath, ok := fMap["basePath"].(string); ok && jobBasePath != "" {
-			basePath = jobBasePath
-		}
-
-		jobs = append(jobs, normalize.NormalizeJob{
-			ID:       id,
-			FilePath: path,
-			Gain:     gain,
-			Backup:   backup,
-			Output:   parsedOptions.Output,
-			BasePath: basePath,
-		})
+		jobs = append(jobs, job)
 	}
 
 	if len(jobs) == 0 {

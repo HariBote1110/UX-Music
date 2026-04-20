@@ -21,6 +21,7 @@ import { initLazyLoader, observeNewImages } from './js/utils/lazy-loader.js';
 import { startPerformanceMonitor } from './js/utils/performance-monitor.js';
 import { musicApi } from './js/core/bridge.js';
 import { checkWails } from './js/core/wails-check.js';
+import { applyTitleListMinWidthPref } from './js/ui/text-layout-prefs.js';
 
 window.onerror = function (msg, url, line, col, error) {
     console.error(`[Global Error] ${msg} at ${url}:${line}:${col}`, error);
@@ -76,6 +77,8 @@ async function initApp() {
     } catch (e) {
         console.error('Failed to init elements:', e);
     }
+
+    applyTitleListMinWidthPref();
 
     initLazyLoader(elements.mainContent);
 

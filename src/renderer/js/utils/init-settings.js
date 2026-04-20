@@ -6,6 +6,12 @@ import { updateNowPlayingView } from '../ui/now-playing.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { initPlaybackSettings } from '../features/playback-manager.js';
 import { musicApi } from '../core/bridge.js';
+import {
+    applyTitleListMinWidthPref,
+    formatTitleListMinWidthLabel,
+    getTitleListMinWidthPx,
+    persistTitleListMinWidthPx,
+} from '../ui/text-layout-prefs.js';
 const electronAPI = window.electronAPI;
 
 const decaySliderValues = [1, 3, 7, 14, 30];
@@ -71,6 +77,14 @@ export function initSettings() {
 
         document.querySelector('input[name="group-album-art"]').checked = settings.groupAlbumArt === true;
 
+        const titleListSlider = document.getElementById('title-list-min-width-slider');
+        const titleListValueLabel = document.getElementById('title-list-min-width-value');
+        if (titleListSlider && titleListValueLabel) {
+            const tw = getTitleListMinWidthPx();
+            titleListSlider.value = String(tw);
+            titleListValueLabel.textContent = formatTitleListMinWidthLabel(tw);
+        }
+
         const analysedQueueEnabled = settings.analysedQueue?.enabled === true;
         const analysedQueueCheckbox = document.querySelector('input[name="enable-analysed-queue"]');
         analysedQueueCheckbox.checked = analysedQueueEnabled;
@@ -120,6 +134,19 @@ export function initSettings() {
         document.getElementById('analysed-queue-decay-value').textContent = decaySliderLabels[e.target.value];
     });
 
+    const titleListSlider = document.getElementById('title-list-min-width-slider');
+    const titleListValueLabel = document.getElementById('title-list-min-width-value');
+    if (titleListSlider && titleListValueLabel) {
+        titleListSlider.addEventListener('input', () => {
+            const px = parseInt(titleListSlider.value, 10) || 0;
+            titleListValueLabel.textContent = formatTitleListMinWidthLabel(px);
+            document.documentElement.style.setProperty(
+                '--song-title-list-min-px',
+                px > 0 ? `${px}px` : '0px'
+            );
+        });
+    }
+
     elements.settingsOkBtn.addEventListener('click', () => {
         const decaySliderValue = document.getElementById('analysed-queue-decay-slider').value;
         const settingsToSave = {
@@ -140,6 +167,12 @@ export function initSettings() {
         };
 
         electronAPI.send('save-settings', settingsToSave);
+
+        if (titleListSlider) {
+            persistTitleListMinWidthPx(parseInt(titleListSlider.value, 10) || 0);
+        } else {
+            applyTitleListMinWidthPref();
+        }
 
         state.visualizerMode = settingsToSave.visualizerMode;
         if (state.groupAlbumArt !== settingsToSave.groupAlbumArt) {
