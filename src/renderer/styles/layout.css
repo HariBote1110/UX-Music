@@ -158,7 +158,17 @@ body.resizing {
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 
     z-index: 1000;
+    /* 背面を透過させ、下のメイン列（ノーマライズの適用ボタン等）へクリックを届ける */
+    pointer-events: none;
+}
 
+.playback-bar .footer-artwork-container,
+.playback-bar .playback-controls,
+.playback-bar .progress-container,
+.playback-bar .audio-info-container,
+.playback-bar .volume-container,
+.playback-bar .device-container {
+    pointer-events: auto;
 }
 
 

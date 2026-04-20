@@ -20,6 +20,13 @@ function clampNormalizeNameMin(px) {
     return Math.max(80, Math.min(420, n));
 }
 
+function payloadSucceeded(result) {
+    if (!result || typeof result !== 'object') return false;
+    if (result.success === true) return true;
+    if (result.Success === true) return true;
+    return false;
+}
+
 function applyNormaliseTableLayoutPrefs() {
     const root = document.getElementById('normalize-view');
     const slider = document.getElementById('normalize-name-col-slider');
@@ -437,13 +444,13 @@ export function initNormalizeView() {
                 processedCount = 0;
                 currentJob = 'analyse';
             }
-            if (result && result.success) {
+            if (payloadSucceeded(result)) {
                 file.currentLufs = result.loudness;
                 file.truePeak = result.truePeak;
                 file.status = 'analysed';
             } else {
                 file.status = 'error';
-                console.error(`Analysis Error for ${file.name}:`, result && result.error);
+                console.error(`Analysis Error for ${file.name}:`, result && (result.error || result.Error));
             }
         } else if (type === 'normalize-result') {
             if (currentJob !== 'normalize') {
@@ -451,14 +458,15 @@ export function initNormalizeView() {
                 processedCount = 0;
                 currentJob = 'normalize';
             }
-            if (result && result.success) {
+            if (payloadSucceeded(result)) {
                 file.status = 'done';
                 if (result.outputPath) {
                     file.name = getBasename(result.outputPath);
                 }
             } else {
                 file.status = 'error';
-                if (result && result.error) console.error(`Normalize Error for ${file.name}:`, result.error);
+                const errMsg = (result && (result.error || result.Error)) || '';
+                if (errMsg) console.error(`Normalize Error for ${file.name}:`, errMsg);
             }
         }
 

@@ -15,6 +15,7 @@ import { stopLrcEditing } from '../features/lrc-editor.js';
 import { startCDRipView, stopCDRipView } from '../features/cd-ripper.js';
 import { initMtpBrowser, stopMtpBrowser } from '../features/mtp-browser.js';
 import { musicApi } from './bridge.js';
+import { updateListSpacer } from '../ui/ui.js';
 // ▲▲▲ 追加 ▲▲▲
 
 /**
@@ -78,6 +79,7 @@ export function showView(viewId, options = {}) {
             quizView.classList.remove('hidden');
         } else if (viewId === 'normalize-view') {
             elements.normalizeView.classList.remove('hidden');
+            updateListSpacer();
         } else if (viewId === 'lrc-editor-view' && lrcEditorView) {
             lrcEditorView.classList.remove('hidden');
             // ▼▼▼ 追加 ▼▼▼
