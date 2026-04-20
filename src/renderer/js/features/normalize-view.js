@@ -144,8 +144,16 @@ function updateFileList() {
 
     document.getElementById('normalize-analyze-btn').disabled = !hasUnanalyzedSelected;
 
-    const applyButtonDisabled = !(selectedCount > 0 && canApply && (outputSettings.mode === 'overwrite' || (outputSettings.mode === 'folder' && outputSettings.path)));
-    document.getElementById('normalize-apply-btn').disabled = applyButtonDisabled;
+    // 出力先未選択で disabled にすると、ブラウザはクリックを発火しないためユーザーに何も起きないように見える。
+    // フォルダ出力の検証は適用ボタンのクリック内で行う。
+    const applyButtonDisabled = !(selectedCount > 0 && canApply);
+    const applyBtn = document.getElementById('normalize-apply-btn');
+    applyBtn.disabled = applyButtonDisabled;
+    if (outputSettings.mode === 'folder' && !outputSettings.path) {
+        applyBtn.title = '別フォルダへ書き出す場合は「フォルダを選択」で出力先を指定してから押してください。';
+    } else {
+        applyBtn.title = '';
+    }
 }
 
 async function addFiles(filePaths, preAnalyzedData = {}) {
@@ -301,7 +309,20 @@ export function initNormalizeView() {
 
     document.getElementById('normalize-apply-btn').addEventListener('click', () => {
         const filesToNormalize = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analysed');
-        if (filesToNormalize.length === 0) return;
+        if (filesToNormalize.length === 0) {
+            showNotification('適用できるのは「解析済み」でチェックが入っている行だけです。');
+            hideNotification(5000);
+            return;
+        }
+
+        if (outputSettings.mode === 'folder') {
+            const outPath = typeof outputSettings.path === 'string' ? outputSettings.path.trim() : '';
+            if (!outPath) {
+                showNotification('「別のフォルダ」で書き出す場合は、先に「フォルダを選択」で出力先を指定してください。');
+                hideNotification(6000);
+                return;
+            }
+        }
 
         const containsMp3 = filesToNormalize.some(f => getExtname(f.path).toLowerCase() === '.mp3');
         const losslessFormats = ['.wav', '.flac'];
