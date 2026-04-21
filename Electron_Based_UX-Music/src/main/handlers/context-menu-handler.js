@@ -24,7 +24,9 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
                     const message = songs.length > 1 ?
                         `${songs.length}曲をプレイリスト「${name}」に追加しました。` :
                         `「${firstSong.title}」をプレイリスト「${name}」に追加しました。`;
+                    if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
                     window.webContents.send('show-notification', message);
+                    }
                 }
                 sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
             }
@@ -35,7 +37,9 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
             if (window) {
+                if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
                 window.webContents.send('request-new-playlist-with-songs', songs);
+                }
             }
         }
     }, { type: 'separator' });
@@ -48,7 +52,9 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
             if (window && songs.length === 1) {
+                if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
                 window.webContents.send('show-edit-metadata-modal', songs[0]);
+                }
             }
         }
     });
@@ -61,7 +67,9 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
             if (window && mtpDevice) {
+                if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
                 window.webContents.send('request-mtp-transfer', songs);
+                }
             }
         }
     });
@@ -125,7 +133,9 @@ function createGeneralContextMenu(webContents) {
         label: '戻る',
         accelerator: 'CmdOrCtrl+[',
         click: () => {
+            if (webContents && !webContents.isDestroyed()) {
             webContents.send('navigate-back');
+            }
         }
     }));
 
@@ -162,13 +172,15 @@ function registerContextMenuHandlers(stores, sendToAllWindows) {
                  const message = songs.length > 1 ?
                     `${songs.length}曲を新規プレイリスト「${playlistName}」に追加しました。` :
                     `「${songs[0].title}」を新規プレイリスト「${playlistName}」に追加しました。`;
+                if (event.sender && !event.sender.isDestroyed()) {
                 event.sender.send('show-notification', message);
+                }
                 sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
             } else {
-                 event.sender.send('show-error', `プレイリスト「${playlistName}」への曲の追加に失敗しました: ${addResult.message}`);
+                 if (event.sender && !event.sender.isDestroyed()) { event.sender.send('show-error', `プレイリスト「${playlistName}」への曲の追加に失敗しました: ${addResult.message}`); }
             }
         } else {
-            event.sender.send('show-error', `新規プレイリスト「${playlistName}」の作成に失敗しました: ${createResult.message}`);
+            if (event.sender && !event.sender.isDestroyed()) { event.sender.send('show-error', `新規プレイリスト「${playlistName}」の作成に失敗しました: ${createResult.message}`); }
         }
     });
 }

@@ -20,7 +20,7 @@ function initialize() {
         // すべてのウィンドウのDevToolsにログを送信する
         BrowserWindow.getAllWindows().forEach(win => {
             if (win && !win.isDestroyed() && win.webContents && !win.webContents.isCrashed()) {
-                win.webContents.send('log-message', { level, args });
+                if (win.webContents && !win.webContents.isDestroyed()) { win.webContents.send('log-message', { level, args }); }
             }
         });
     };

@@ -136,7 +136,9 @@ function registerYouTubeHandlers(stores, managers) {
         let playlist;
         try {
             if (!ytpl.validateID(playlistUrl)) {
+                if (window && !window.isDestroyed()) {
                 window.send('show-error', '無効なYouTubeプレイリストのURLです。');
+                }
                 return;
             }
             playlist = await ytpl(playlistUrl, { limit: Infinity });
@@ -153,7 +155,9 @@ function registerYouTubeHandlers(stores, managers) {
         for (let i = 0; i < total; i++) {
             const item = playlist.items[i];
             try {
+                if (window && !window.isDestroyed()) {
                 window.send('playlist-import-progress', { current: i + 1, total: total, title: item.title });
+                }
                 const videoInfo = await ytdl.getInfo(item.url);
                 const newSong = await processYouTubeVideo(videoInfo, item.url);
                 
@@ -167,7 +171,9 @@ function registerYouTubeHandlers(stores, managers) {
                 continue;
             }
         }
+        if (window && !window.isDestroyed()) {
         window.send('playlist-import-finished');
+        }
     });
 
     ipcMain.on('add-youtube-link', async (event, url) => {
@@ -179,7 +185,9 @@ function registerYouTubeHandlers(stores, managers) {
             
             const settings = settingsStore.load();
             if ((settings.youtubePlaybackMode || 'download') === 'download') {
+                if (window && !window.isDestroyed()) {
                 window.send('show-loading', 'YouTube動画をダウンロード中...');
+                }
             }
 
             const info = await ytdl.getInfo(url);
@@ -191,9 +199,13 @@ function registerYouTubeHandlers(stores, managers) {
             }
         } catch (error) {
             console.error('YouTube処理エラー:', error.message);
+            if (window && !window.isDestroyed()) {
             window.send('show-error', `YouTube楽曲の処理に失敗しました: ${error.message}`);
+            }
         } finally {
+            if (window && !window.isDestroyed()) {
             window.send('hide-loading');
+        }
         }
     });
 }

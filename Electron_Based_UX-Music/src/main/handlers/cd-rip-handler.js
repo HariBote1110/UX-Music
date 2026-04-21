@@ -218,7 +218,9 @@ async function ripAndConvert(track, outputDir, event, options, tempArtworkPath) 
     
     try {
         // 1. cdparanoiaでWAVとして吸い出し
+        if (event.sender && !event.sender.isDestroyed()) {
         event.sender.send('rip-progress', { status: 'ripping', track: number, percent: 0 });
+        }
         await new Promise((resolve, reject) => {
             const ripArgs = ['-w', String(number), tempWav];
             const ripper = spawn(CDPARANOIA_PATH, ripArgs);
@@ -229,7 +231,9 @@ async function ripAndConvert(track, outputDir, event, options, tempArtworkPath) 
                         const stats = fs.statSync(tempWav);
                         let percent = (stats.size / estimatedSizeBytes) * 100;
                         if (percent > 99) percent = 99;
+                        if (event.sender && !event.sender.isDestroyed()) {
                         event.sender.send('rip-progress', { status: 'ripping', track: number, percent: percent.toFixed(1) });
+                        }
                     } catch (e) {}
                 }
             }, 500);
@@ -237,7 +241,7 @@ async function ripAndConvert(track, outputDir, event, options, tempArtworkPath) 
             ripper.on('close', (code) => {
                 clearInterval(progressInterval);
                 if (code === 0) {
-                    event.sender.send('rip-progress', { status: 'ripping', track: number, percent: 100 });
+                    if (event.sender && !event.sender.isDestroyed()) { event.sender.send('rip-progress', { status: 'ripping', track: number, percent: 100 }); }
                     resolve();
                 } else { reject(new Error(`Ripping failed with code ${code}`)); }
             });
@@ -246,7 +250,9 @@ async function ripAndConvert(track, outputDir, event, options, tempArtworkPath) 
         if (!fs.existsSync(tempWav)) throw new Error('Ripped wav file not found');
 
         // 2. ffmpegで変換 & メタデータ付与 & アートワーク埋め込み
+        if (event.sender && !event.sender.isDestroyed()) {
         event.sender.send('rip-progress', { status: 'encoding', track: number });
+        }
 
         await new Promise((resolve, reject) => {
             let command = ffmpeg(tempWav);
@@ -408,7 +414,9 @@ function registerCDRipHandlers(stores) {
         for (const track of tracksToRip) {
             try {
                 await ripAndConvert(track, outputDir, event, ripOptions, tempArtworkPath);
+                if (event.sender && !event.sender.isDestroyed()) {
                 event.sender.send('rip-progress', { status: 'completed', track: track.number });
+                }
             } catch (err) {
                 console.error(err);
                 event.sender.send('rip-progress', { status: 'error', track: track.number, error: err.message });
@@ -420,7 +428,9 @@ function registerCDRipHandlers(stores) {
             fs.unlinkSync(tempArtworkPath);
         }
 
+        if (event.sender && !event.sender.isDestroyed()) {
         event.sender.send('rip-complete', { count: tracksToRip.length });
+        }
         setTimeout(() => { shell.openPath(outputDir); }, 500);
     });
 }

@@ -68,7 +68,7 @@ function registerImportHandlers(stores) {
         console.time('Main: Total Import Process');
 
         const finishScan = (result) => {
-            event.sender?.send('scan-complete', result);
+            if(event.sender && !event.sender.isDestroyed()) event.sender.send('scan-complete', result);
             console.timeEnd('Main: Total Import Process');
         };
 
@@ -159,7 +159,7 @@ function registerImportHandlers(stores) {
 
         const totalSteps = songsToProcess.length;
         let completedSteps = 0;
-        const sendProgress = () => event.sender?.send('scan-progress', { current: completedSteps, total: totalSteps });
+        const sendProgress = () => { if(event.sender && !event.sender.isDestroyed()) event.sender.send('scan-progress', { current: completedSteps, total: totalSteps }); };
         sendProgress();
 
         const importMode = settings.importMode || 'balanced';
