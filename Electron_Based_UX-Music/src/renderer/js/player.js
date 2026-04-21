@@ -235,6 +235,7 @@ async function playLocal(song) {
     } catch (error) {
         if (error.name !== 'AbortError') {
             console.error(`Playback failed:`, error);
+            ipcRenderer.send('song-skipped', { song, currentTime: 0 });
             savedCallbacks.onSongEnded();
         }
     }
