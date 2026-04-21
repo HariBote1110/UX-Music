@@ -318,14 +318,16 @@ func (p *Player) GetCurrentDevice() string {
 
 // Play starts playback of an audio file
 func (p *Player) Play(filePath string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	// Stop current playback and decoder goroutine
 	if p.decoderStop != nil {
 		close(p.decoderStop)
 		<-p.decoderDone
+		p.decoderStop = nil
+		p.decoderDone = nil
 	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.stream != nil {
 		p.stream.Stop()
 		p.stream.Close()
@@ -482,9 +484,9 @@ func (p *Player) decoderLoop() {
 		p.mu.RLock()
 		decoder := p.decoder
 		channels := p.channels
-		p.mu.RUnlock()
 
 		if decoder == nil {
+			p.mu.RUnlock()
 			return
 		}
 
@@ -505,6 +507,7 @@ func (p *Player) decoderLoop() {
 			p.ringWritePos.Store((writePos + int64(samples)) % int64(p.ringBufSize))
 			p.ringAvailable.Add(int64(samples))
 		}
+		p.mu.RUnlock()
 
 		if err == io.EOF || n == 0 {
 			// Wait for buffer to drain, then signal end

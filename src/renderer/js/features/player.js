@@ -499,7 +499,7 @@ async function playLocal(song) {
     }
 
     const normalizedPath = song.path.replace(/\\/g, '/');
-    const safePath = encodeURI(normalizedPath).replace(/#/g, '%23');
+    const safePath = normalizedPath.split('/').map(encodeURIComponent).join('/');
     localPlayer.src = `file://${safePath}`;
 
     try {
