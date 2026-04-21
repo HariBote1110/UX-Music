@@ -124,16 +124,21 @@ async function destroyGraph(graph) {
         graph.audioElement.load();
     } catch (e) { }
 
-    try {
-        graph.nodes.gain.disconnect();
-    } catch (e) { }
+    // すべてのノードを明示的に切断してからコンテキストを閉じる
+    try { graph.nodes.source?.disconnect(); } catch (e) { }
+    try { graph.nodes.preamp?.disconnect(); } catch (e) { }
+    if (Array.isArray(graph.nodes.eqBands)) {
+        for (const band of graph.nodes.eqBands) {
+            try { band.disconnect(); } catch (e) { }
+        }
+    }
+    try { graph.nodes.analyser?.disconnect(); } catch (e) { }
+    try { graph.nodes.gain?.disconnect(); } catch (e) { }
 
     try {
-        graph.nodes.analyser.disconnect();
-    } catch (e) { }
-
-    try {
-        graph.context.close();
+        if (graph.context.state !== 'closed') {
+            await graph.context.close();
+        }
     } catch (e) { }
 }
 

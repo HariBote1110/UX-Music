@@ -10,6 +10,9 @@ const LYRICS_MOTION_DURATION_MS = 800;
 const LYRICS_MOTION_LINE_HEIGHT_RATIO = 0.13;
 const LYRICS_MOTION_LINE_HEIGHT_MIN_PX = 58;
 const LYRICS_MOTION_LINE_HEIGHT_MAX_PX = 96;
+// 再生中の差分更新で精密な Y 座標を計算するライン数（アクティブ行の前後）
+// immediate=true のフルレイアウト時はすべての行を更新する
+const LYRICS_MOTION_UPDATE_WINDOW = 35;
 
 let currentContextMenuSong = null;
 let currentContextMenuType = null;
@@ -243,13 +246,20 @@ function applyLyricsMotionByIndex(activeIndex, immediate = false) {
     const baseIndex = activeIndex >= 0 ? activeIndex : 0;
     const anchorY = container.clientHeight * LYRICS_MOTION_ANCHOR_RATIO;
     const lineHeight = getLineHeightPx(container);
+    const motionDuration = immediate ? 0 : LYRICS_MOTION_DURATION_MS;
     lines.forEach((line, index) => {
-        const isActive = index === activeIndex;
         const offset = index - baseIndex;
         const distanceFromActive = Math.abs(offset);
+
+        // 画面外の遠い行は再生中の差分更新をスキップしてDOM書き込みを削減
+        // immediate=true（曲ロード時・リサイズ時）はすべて更新する
+        if (!immediate && distanceFromActive > LYRICS_MOTION_UPDATE_WINDOW) {
+            return;
+        }
+
+        const isActive = index === activeIndex;
         const y = anchorY + offset * lineHeight;
         const motionDelay = immediate ? 0 : distanceFromActive * LYRICS_MOTION_DELAY_STEP_MS;
-        const motionDuration = immediate ? 0 : LYRICS_MOTION_DURATION_MS;
 
         line.classList.toggle('active', isActive);
         line.style.setProperty('--line-motion-delay', `${motionDelay}ms`);
