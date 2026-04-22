@@ -493,6 +493,7 @@
 }
 
 #modal-overlay,
+#lyrics-translation-modal-overlay,
 #settings-modal-overlay,
 #loading-overlay,
 #devices-modal-overlay {
@@ -509,6 +510,7 @@
 }
 
 #modal-overlay.hidden,
+#lyrics-translation-modal-overlay.hidden,
 #settings-modal-overlay.hidden,
 #loading-overlay.hidden,
 #devices-modal-overlay.hidden {
@@ -541,6 +543,7 @@
 }
 
 #modal,
+#lyrics-translation-modal,
 #settings-modal {
     background-color: var(--bg-light);
     padding: 25px;
@@ -554,11 +557,41 @@
 }
 
 #modal h3,
+#lyrics-translation-modal h3,
 #settings-modal h2 {
     margin-top: 0;
 }
 
-#modal p {
+#lyrics-translation-modal {
+    max-width: 560px;
+}
+
+#lyrics-translation-paste {
+    width: 100%;
+    min-height: 200px;
+    padding: 10px;
+    box-sizing: border-box;
+    background-color: var(--bg-dark);
+    border: 1px solid #535353;
+    color: #fff;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.45;
+    resize: vertical;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.lyrics-translation-hint {
+    min-height: 1.2em;
+    color: #f59e0b;
+    font-size: 12px;
+    margin: 0 0 8px 0;
+}
+
+#modal p,
+#lyrics-translation-modal p {
     color: var(--text-muted);
     font-size: 14px;
     white-space: pre-line;
@@ -588,16 +621,19 @@
     font-weight: bold;
 }
 
-#modal-cancel-btn {
+#modal-cancel-btn,
+#lyrics-translation-cancel-btn {
     background-color: transparent;
     color: #fff;
 }
 
-#modal-cancel-btn:hover {
+#modal-cancel-btn:hover,
+#lyrics-translation-cancel-btn:hover {
     background-color: var(--bg-hover);
 }
 
 #modal-ok-btn,
+#lyrics-translation-save-btn,
 #settings-ok-btn,
 #devices-ok-btn {
     background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue));
@@ -607,6 +643,7 @@
 }
 
 #modal-ok-btn:hover,
+#lyrics-translation-save-btn:hover,
 #settings-ok-btn:hover,
 #devices-ok-btn:hover {
     opacity: 0.9;
@@ -936,6 +973,7 @@
 }
 
 #modal-overlay,
+#lyrics-translation-modal-overlay,
 #settings-modal-overlay,
 #loading-overlay,
 #devices-modal-overlay {

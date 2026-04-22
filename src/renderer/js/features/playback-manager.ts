@@ -121,7 +121,7 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
         const savedLoudness = parseLoudnessValue(savedLoudnessRaw);
         if (savedLoudness === null) {
             state.songWaitingForAnalysis = { index, sourceList: state.playbackQueue, path: songToPlayActual.path };
-            showNotification(`「${songToPlayActual.title}」の再生準備中です...`);
+            showNotification(`「${songToPlayActual.title}」の再生準備中です...`, false);
             if (!pendingLoudnessRequests.has(songToPlayActual.path)) {
                 pendingLoudnessRequests.add(songToPlayActual.path);
                 electronAPI.send('request-loudness-analysis', songToPlayActual.path);

@@ -270,6 +270,18 @@
             </div>
         </div>
     </div>
+    <div id="lyrics-translation-modal-overlay" class="hidden" aria-hidden="true">
+        <div id="lyrics-translation-modal">
+            <h3>和訳の貼り付け</h3>
+            <p>LLM の返答（番号付き 1. 2. … 推奨）を貼り付け、保存で歌詞ディレクトリに反映します。英語の<strong>空行（間奏）</strong>は番号をずらさないよう 1 行そろえてください。アプリ側では和訳は<strong>表示・保存とも出しません</strong>（タイムスタンプのみ、または空行）。</p>
+            <textarea id="lyrics-translation-paste" rows="12" placeholder="1. こんにちは&#10;2. 世界"></textarea>
+            <p id="lyrics-translation-paste-hint" class="lyrics-translation-hint"></p>
+            <div class="modal-buttons">
+                <button type="button" id="lyrics-translation-cancel-btn">キャンセル</button>
+                <button type="button" id="lyrics-translation-save-btn">保存して再読み込み</button>
+            </div>
+        </div>
+    </div>
     <div id="settings-modal-overlay" class="hidden">
         <div id="settings-modal">
             <h2 id="settings-title">設定</h2>

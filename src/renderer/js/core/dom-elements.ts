@@ -42,6 +42,11 @@ export function initElements() {
     elements.modalInput = document.getElementById('modal-input');
     elements.modalOkBtn = document.getElementById('modal-ok-btn');
     elements.modalCancelBtn = document.getElementById('modal-cancel-btn');
+    elements.lyricsTranslationModalOverlay = document.getElementById('lyrics-translation-modal-overlay');
+    elements.lyricsTranslationPaste = document.getElementById('lyrics-translation-paste');
+    elements.lyricsTranslationPasteHint = document.getElementById('lyrics-translation-paste-hint');
+    elements.lyricsTranslationSaveBtn = document.getElementById('lyrics-translation-save-btn');
+    elements.lyricsTranslationCancelBtn = document.getElementById('lyrics-translation-cancel-btn');
     elements.loadingOverlay = document.getElementById('loading-overlay');
 
     // Settings
