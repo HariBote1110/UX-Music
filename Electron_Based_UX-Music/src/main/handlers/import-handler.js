@@ -68,7 +68,9 @@ function registerImportHandlers(stores) {
         console.time('Main: Total Import Process');
 
         const finishScan = (result) => {
-            if(event.sender && !event.sender.isDestroyed()) event.sender.send('scan-complete', result);
+            if (event.sender && !event.sender.isDestroyed()) {
+                event.sender.send('scan-complete', result);
+            }
             console.timeEnd('Main: Total Import Process');
         };
 

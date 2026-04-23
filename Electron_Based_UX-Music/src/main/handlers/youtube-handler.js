@@ -144,7 +144,9 @@ function registerYouTubeHandlers(stores, managers) {
             playlist = await ytpl(playlistUrl, { limit: Infinity });
         } catch(error) {
             console.error('Playlist import error (ytpl failed):', error);
-            window.send('show-error', 'プレイリスト情報の取得に失敗しました。非公開または削除された動画が含まれている可能性があります。');
+            if (window && !window.isDestroyed()) {
+                window.send('show-error', 'プレイリスト情報の取得に失敗しました。非公開または削除された動画が含まれている可能性があります。');
+            }
             return;
         }
 
@@ -162,7 +164,7 @@ function registerYouTubeHandlers(stores, managers) {
                 const newSong = await processYouTubeVideo(videoInfo, item.url);
                 
                 const addedSongs = addSongsToLibraryAndSave([newSong]);
-                if (addedSongs.length > 0) {
+                if (addedSongs.length > 0 && window && !window.isDestroyed()) {
                     window.send('youtube-link-processed', addedSongs[0]);
                 }
                 playlistManager.addSongToPlaylist(playlistTitle, newSong);
@@ -194,7 +196,7 @@ function registerYouTubeHandlers(stores, managers) {
             const newSong = await processYouTubeVideo(info, url);
 
             const addedSongs = addSongsToLibraryAndSave([newSong]);
-            if (addedSongs.length > 0) {
+            if (addedSongs.length > 0 && window && !window.isDestroyed()) {
                 window.send('youtube-link-processed', addedSongs[0]);
             }
         } catch (error) {
