@@ -317,10 +317,8 @@ function registerIpcHandlers() {
                 // --- コールバック関数 ---
                 onError: (err) => {
                     console.error('[MTP Transfer] 転送エラー:', err);
-                    if (mainWindow) {
-                        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
                         mainWindow.webContents.send('show-notification', `転送エラー: ${err.message || err}`);
-                        }
                     }
                 },
                 onPreprocess: (data) => {
@@ -342,10 +340,10 @@ function registerIpcHandlers() {
                 },
                 onCompleted: () => {
                     console.log('[MTP Transfer] 転送完了');
-                    if (mainWindow) {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
                         mainWindow.setProgressBar(-1); // プログレスバーを非表示（-1で解除）
-                        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-                        mainWindow.webContents.send('show-notification', 'MTP転送が完了しました');
+                        if (mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                            mainWindow.webContents.send('show-notification', 'MTP転送が完了しました');
                         }
                     }
                 },
@@ -417,10 +415,8 @@ function registerIpcHandlers() {
                     },
                     onPreprocess: (data) => {
                         console.log(`[MTP Transfer] 前処理中: ${data.name}`);
-                        if (mainWindow) {
-                            if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
                             mainWindow.webContents.send('show-notification', `準備中: ${data.name}`);
-                            }
                         }
                     },
                     onProgress: (data) => {

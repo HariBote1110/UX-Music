@@ -20,13 +20,11 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
             click: () => {
                 const result = playlistManager.addSongsToPlaylist(name, songs);
                 const window = BrowserWindow.getAllWindows()[0];
-                if (window) {
+                if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
                     const message = songs.length > 1 ?
                         `${songs.length}曲をプレイリスト「${name}」に追加しました。` :
                         `「${firstSong.title}」をプレイリスト「${name}」に追加しました。`;
-                    if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
                     window.webContents.send('show-notification', message);
-                    }
                 }
                 sendToAllWindows('playlists-updated', getPlaylistsWithArtwork());
             }
@@ -36,10 +34,8 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
         label: '+ 新規プレイリスト',
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
-            if (window) {
-                if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
+            if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
                 window.webContents.send('request-new-playlist-with-songs', songs);
-                }
             }
         }
     }, { type: 'separator' });
@@ -51,10 +47,8 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
         enabled: songs.length === 1,
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
-            if (window && songs.length === 1) {
-                if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
+            if (window && songs.length === 1 && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
                 window.webContents.send('show-edit-metadata-modal', songs[0]);
-                }
             }
         }
     });
@@ -66,10 +60,8 @@ function createUnifiedSongMenu(songs, context, sendToAllWindows) {
         enabled: !!mtpDevice,
         click: () => {
             const window = BrowserWindow.getAllWindows()[0];
-            if (window && mtpDevice) {
-                if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
+            if (window && mtpDevice && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
                 window.webContents.send('request-mtp-transfer', songs);
-                }
             }
         }
     });

@@ -419,7 +419,9 @@ function registerCDRipHandlers(stores) {
                 }
             } catch (err) {
                 console.error(err);
-                event.sender.send('rip-progress', { status: 'error', track: track.number, error: err.message });
+                if (event.sender && !event.sender.isDestroyed()) {
+                    event.sender.send('rip-progress', { status: 'error', track: track.number, error: err.message });
+                }
             }
         }
         
