@@ -478,13 +478,16 @@ func (p *Player) Play(filePath string) error {
 // decoderLoop runs in background and fills the ring buffer
 func (p *Player) decoderLoop() {
 	defer close(p.decoderDone)
+	// Capture stop channel at goroutine start so we can check it even after
+	// shutdownDecoderGoroutine() nils p.decoderStop.
+	stopCh := p.decoderStop
 
 	// Temporary buffer for reading from decoder
 	readBuf := make([]byte, 8192)
 
 	for {
 		select {
-		case <-p.decoderStop:
+		case <-stopCh:
 			return
 		default:
 		}
@@ -527,9 +530,15 @@ func (p *Player) decoderLoop() {
 		p.mu.RUnlock()
 
 		if err == io.EOF || n == 0 {
-			// Wait for buffer to drain, then signal end
+			// Wait for buffer to drain, then signal end.
+			// Also check stopCh so Stop() is not blocked here for up to 2 seconds.
 			for p.ringAvailable.Load() > 0 && p.playing.Load() {
-				time.Sleep(10 * time.Millisecond)
+				select {
+				case <-stopCh:
+					return
+				default:
+					time.Sleep(10 * time.Millisecond)
+				}
 			}
 
 			p.playing.Store(false)

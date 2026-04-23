@@ -424,22 +424,20 @@ export async function play(song) {
     }
 
     try {
-        const settings = await loadRendererSettings();
-        const TARGET_LOUDNESS =
-            typeof settings.targetLoudness === 'number' && Number.isFinite(settings.targetLoudness)
-                ? settings.targetLoudness
-                : -18.0;
-        const savedLoudness = await electronAPI.invoke('get-loudness-value', filePath);
-        let newBaseGain = 1.0;
-        if (typeof savedLoudness === 'number' && Number.isFinite(savedLoudness)) {
-            const gainDb = TARGET_LOUDNESS - savedLoudness;
-            newBaseGain = Math.pow(10, gainDb / 20);
-        }
-
-        if (isWails) {
-            // Go側でボリューム制御を行う（baseGain * masterVolume）
-            // TODO: BaseGainとMasterVolumeを統合
-        } else {
+        // In Wails mode, loudness normalisation is not applied on the JS side,
+        // so skip the two IPC round-trips that fetch settings and loudness value.
+        if (!isWails) {
+            const settings = await loadRendererSettings();
+            const TARGET_LOUDNESS =
+                typeof settings.targetLoudness === 'number' && Number.isFinite(settings.targetLoudness)
+                    ? settings.targetLoudness
+                    : -18.0;
+            const savedLoudness = await electronAPI.invoke('get-loudness-value', filePath);
+            let newBaseGain = 1.0;
+            if (typeof savedLoudness === 'number' && Number.isFinite(savedLoudness)) {
+                const gainDb = TARGET_LOUDNESS - savedLoudness;
+                newBaseGain = Math.pow(10, gainDb / 20);
+            }
             setBaseGain(newBaseGain);
         }
 
@@ -476,7 +474,7 @@ export async function stop() {
     }
     stopVisualizerLoop();
     resetPlaybackUI();
-    electronAPI.send('playback-stopped');
+    if (!isWails) electronAPI.send('playback-stopped');
     updateMediaSessionState('none');
 }
 
