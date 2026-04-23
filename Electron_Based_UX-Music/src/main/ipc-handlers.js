@@ -80,7 +80,7 @@ function registerIpcHandlers() {
     const sendToAllWindows = (channel, ...args) => {
         BrowserWindow.getAllWindows().forEach(win => {
             if (win && !win.isDestroyed()) {
-                win.webContents.send(channel, ...args);
+                if (win.webContents && !win.webContents.isDestroyed()) { win.webContents.send(channel, ...args); }
             }
         });
     };
@@ -114,7 +114,9 @@ function registerIpcHandlers() {
                 ffprobePath: require('ffprobe-static').path.replace('app.asar', 'app.asar.unpacked')
             });
             worker.on('message', (message) => {
+                if (event.sender && !event.sender.isDestroyed()) {
                 event.sender.send('normalize-worker-result', message);
+                }
             });
             normalizeWorkerPool.push(worker);
         }
@@ -315,13 +317,13 @@ function registerIpcHandlers() {
                 // --- コールバック関数 ---
                 onError: (err) => {
                     console.error('[MTP Transfer] 転送エラー:', err);
-                    if (mainWindow) {
+                    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
                         mainWindow.webContents.send('show-notification', `転送エラー: ${err.message || err}`);
                     }
                 },
                 onPreprocess: (data) => {
                     console.log(`[MTP Transfer] 前処理中: ${data.name}`);
-                    if (mainWindow) {
+                    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
                         const idx = sources.findIndex(src => src.endsWith(data.name));
                         const current = idx !== -1 ? idx + 1 : 1;
                         mainWindow.webContents.send('show-notification', `ファイル ${current}/${sources.length}: ${data.name} を準備中...`);
@@ -338,9 +340,11 @@ function registerIpcHandlers() {
                 },
                 onCompleted: () => {
                     console.log('[MTP Transfer] 転送完了');
-                    if (mainWindow) {
+                    if (mainWindow && !mainWindow.isDestroyed()) {
                         mainWindow.setProgressBar(-1); // プログレスバーを非表示（-1で解除）
-                        mainWindow.webContents.send('show-notification', 'MTP転送が完了しました');
+                        if (mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+                            mainWindow.webContents.send('show-notification', 'MTP転送が完了しました');
+                        }
                     }
                 },
             });
@@ -411,7 +415,7 @@ function registerIpcHandlers() {
                     },
                     onPreprocess: (data) => {
                         console.log(`[MTP Transfer] 前処理中: ${data.name}`);
-                        if (mainWindow) {
+                        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
                             mainWindow.webContents.send('show-notification', `準備中: ${data.name}`);
                         }
                     },
@@ -521,7 +525,7 @@ function registerIpcHandlers() {
                 onPreprocess: (data) => {
                     console.log(`[MTP Download] 前処理中: ${data.name}`);
                     if (mainWindow) {
-                        mainWindow.webContents.send('show-notification', `ダウンロード準備中: ${data.name}`);
+                        if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) { mainWindow.webContents.send('show-notification', `ダウンロード準備中: ${data.name}`); }
                     }
                 },
                 onProgress: (data) => {
