@@ -1,3 +1,7 @@
+// @ts-nocheck
+/** 同期歌詞エディタの HTML（旧 components/lrc-editor.html、ルート #lrc-editor-view を含む） */
+export function getLrcEditorHtml() {
+    return `<div id="lrc-editor-view" class="lrc-editor-root lrc-view-inner" tabindex="-1">
 <div class="lrc-editor-header">
     <div class="lrc-editor-song-info">
         <img id="lrc-editor-artwork" src="./assets/default_artwork.png" alt="Song Artwork">
@@ -7,16 +11,16 @@
         </div>
     </div>
     <div class="lrc-editor-actions">
-        <button id="lrc-editor-undo-btn" class="header-button" disabled>元に戻す</button>
-        <button id="lrc-editor-insert-interlude-btn" class="header-button">間奏挿入 ( I )</button>
-        <button id="lrc-editor-help-btn" class="header-button">？ ヘルプ</button>
-        <button id="lrc-editor-exit-btn" class="header-button">編集を終了</button>
-        <button id="lrc-editor-save-btn" class="header-button primary">LRCを保存</button>
+        <button id="lrc-editor-undo-btn" class="header-button" type="button" disabled>元に戻す</button>
+        <button id="lrc-editor-insert-interlude-btn" class="header-button" type="button">間奏挿入 ( I )</button>
+        <button id="lrc-editor-help-btn" class="header-button" type="button">？ ヘルプ</button>
+        <button id="lrc-editor-exit-btn" class="header-button" type="button">編集を終了</button>
+        <button id="lrc-editor-save-btn" class="header-button primary" type="button">LRCを保存</button>
     </div>
 </div>
 
 <div class="lrc-editor-controls">
-    <button id="lrc-editor-play-pause-btn" class="play-btn">
+    <button id="lrc-editor-play-pause-btn" type="button" class="play-btn">
         <svg class="play-pause-icon" viewBox="0 0 24 24">
             <path class="icon-part-1"></path>
             <path class="icon-part-2"></path>
@@ -30,9 +34,9 @@
         <option value="auto-en">English</option>
         <option value="auto">自動検出</option>
     </select>
-    <button id="lrc-editor-auto-sync-btn" class="header-button auto-sync-btn">自動同期解析</button>
-    <button id="lrc-editor-show-detected-btn" class="header-button detected-btn" disabled>検知テキスト表示</button>
-    <button id="lrc-editor-timestamp-btn" class="header-button timestamp-btn">選択行を現在位置へ ( T )</button>
+    <button id="lrc-editor-auto-sync-btn" class="header-button auto-sync-btn" type="button">自動同期解析</button>
+    <button id="lrc-editor-show-detected-btn" class="header-button detected-btn" type="button" disabled>検知テキスト表示</button>
+    <button id="lrc-editor-timestamp-btn" class="header-button timestamp-btn" type="button">選択行を現在位置へ ( T )</button>
 </div>
 
 <div class="lrc-editor-timeline-panel">
@@ -62,7 +66,7 @@
     <p class="lyrics-line placeholder">ここに歌詞テキストを読み込むか、ペーストしてください...</p>
 </div>
 <textarea id="lrc-editor-textarea" class="hidden" placeholder="ここに歌詞を貼り付けてください..."></textarea>
-<button id="lrc-editor-load-text-btn" class="header-button hidden">テキストを読み込む</button>
+<button id="lrc-editor-load-text-btn" class="header-button hidden" type="button">テキストを読み込む</button>
 
 <div id="lrc-editor-help-popup" class="hidden help-popup">
     <h4>同期歌詞エディタの使い方</h4>
@@ -78,12 +82,14 @@
         <li>既存のLRCを開いた場合も同じUIで再編集できます。</li>
         <li>完了後に「LRCを保存」で書き出します。</li>
     </ol>
-    <button id="lrc-editor-help-close-btn">閉じる</button>
+    <button id="lrc-editor-help-close-btn" type="button">閉じる</button>
 </div>
 
 <div id="lrc-editor-detected-popup" class="hidden detected-popup">
     <h4>検知テキスト (whisper)</h4>
     <p id="lrc-editor-detected-meta" class="detected-meta">まだ解析結果がありません。</p>
     <pre id="lrc-editor-detected-content" class="detected-content">(空)</pre>
-    <button id="lrc-editor-detected-close-btn">閉じる</button>
+    <button id="lrc-editor-detected-close-btn" type="button">閉じる</button>
 </div>
+</div>`;
+}

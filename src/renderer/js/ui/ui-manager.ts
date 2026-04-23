@@ -55,7 +55,7 @@ let cachedMainPlayingItem = null;
  */
 export function renderCurrentView() {
     console.log(`[Debug:UI] renderCurrentView 実行 - ViewId: ${state.activeViewId}`);
-    showView(state.activeViewId, state.currentDetailView);
+    void showView(state.activeViewId, state.currentDetailView);
     renderQueueView();
 }
 
@@ -215,8 +215,7 @@ export function initQueueSidebarMtpHandlers() {
     });
 
     elements.mtpTransferQueueBtn.addEventListener('click', () => {
-        elements.mainContent.classList.add('hidden');
-        elements.mtpTransferView.classList.remove('hidden');
+        void showView('mtp-transfer-view');
         elements.mtpDevicePopup.classList.remove('active');
     });
 
@@ -233,7 +232,7 @@ export function initQueueSidebarMtpHandlers() {
             }
 
             // ナビゲーションを使用してMTPブラウザビューを表示
-            showView('mtp-browser-view', {
+            void showView('mtp-browser-view', {
                 storageId: state.mtpStorages[0].id,
                 initialPath: '/'
             });
@@ -251,7 +250,8 @@ function updateMtpDeviceView(payload) {
 
         elements.mtpDeviceButton.classList.remove('hidden');
         elements.mtpDeviceName.textContent = device.name || 'MTP Device';
-        elements.mtpTransferDeviceName.textContent = device.name || 'MTP Device';
+        const mtpTransferNameEl = document.getElementById('mtp-transfer-device-name');
+        if (mtpTransferNameEl) mtpTransferNameEl.textContent = device.name || 'MTP Device';
 
         if (storages && storages.length > 0) {
             const storage = storages[0];
@@ -271,9 +271,8 @@ function updateMtpDeviceView(payload) {
         elements.mtpDeviceButton.classList.add('hidden');
         elements.mtpDevicePopup.classList.remove('active');
 
-        if (!elements.mtpTransferView.classList.contains('hidden')) {
-            elements.mtpTransferView.classList.add('hidden');
-            elements.mainContent.classList.remove('hidden');
+        if (state.activeViewId === 'mtp-transfer-view') {
+            void showView(state.activeListView || 'track-view');
             showNotification('MTPデバイスが切断されました。', 'error');
             hideNotification(3000);
         }

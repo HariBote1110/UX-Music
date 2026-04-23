@@ -59,27 +59,18 @@ export function initUI() {
             const storageId = state.mtpStorages[0].id;
             console.log('[MTP Transfer] storageId:', storageId);
 
-            // 転送画面を閉じてMTPブラウザビューを表示
-            const mtpTransferView = document.getElementById('mtp-transfer-view');
-            if (mtpTransferView) {
-                mtpTransferView.classList.add('hidden');
-            }
-
-            // navigation.jsからshowViewをインポートできないため、直接遷移処理
-            import('../core/navigation.js').then(({ showView }) => {
+            void import('../core/navigation.js').then(({ showView }) =>
                 showView('mtp-browser-view', {
                     storageId: storageId,
                     initialPath: '/'
-                });
-            });
+                })
+            );
         }
 
-        // 「閉じる」ボタン
         if (target.id === 'mtp-transfer-close-btn') {
-            const mtpTransferView = document.getElementById('mtp-transfer-view');
-            const mainContent = document.getElementById('main-content');
-            if (mtpTransferView) mtpTransferView.classList.add('hidden');
-            if (mainContent) mainContent.classList.remove('hidden');
+            void import('../core/navigation.js').then(({ showView }) => {
+                showView(state.activeListView || 'track-view');
+            });
         }
 
         // 「>>」転送ボタン or 「すべて転送」ボタン

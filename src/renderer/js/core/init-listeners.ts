@@ -119,7 +119,7 @@ export function initEventListeners() {
     if (normalizeBtn) {
         normalizeBtn.addEventListener('click', () => {
             if (libraryActionsPopup) libraryActionsPopup.classList.add('hidden');
-            showView('normalize-view');
+            void showView('normalize-view');
         });
     }
 
@@ -127,7 +127,7 @@ export function initEventListeners() {
     if (cdRipBtn) {
         cdRipBtn.addEventListener('click', () => {
             if (libraryActionsPopup) libraryActionsPopup.classList.add('hidden');
-            showView('cd-rip-view');
+            void showView('cd-rip-view');
         });
     }
 
@@ -353,7 +353,7 @@ export function initEventListeners() {
 
     electronAPI.on('navigate-back', () => {
         if (state.currentDetailView.type) {
-            showView(state.activeListView);
+            void showView(state.activeListView);
         }
     });
 

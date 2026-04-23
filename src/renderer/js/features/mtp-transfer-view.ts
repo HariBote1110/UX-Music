@@ -1,33 +1,34 @@
-<div class="view-header">
+// @ts-nocheck
+/** MTP 転送画面の HTML（旧 components/mtp-transfer.html） */
+export function getMtpTransferViewHtml() {
+    return `<div class="view-header">
     <h1>デバイスへ転送</h1>
     <div class="header-actions">
         <span id="mtp-transfer-device-name">デバイス名</span>
-        <button id="mtp-transfer-browse-btn" class="header-button">📂 ディレクトリを見る</button>
-        <button id="mtp-transfer-close-btn" class="header-button">閉じる</button>
+        <button id="mtp-transfer-browse-btn" type="button" class="header-button">📂 ディレクトリを見る</button>
+        <button id="mtp-transfer-close-btn" type="button" class="header-button">閉じる</button>
     </div>
 </div>
 
-<!-- 未転送曲検出セクション -->
 <div class="sync-section">
     <div class="sync-header">
         <h3>📋 未転送曲を検出</h3>
-        <button id="mtp-detect-untransferred-btn" class="primary-button">
+        <button id="mtp-detect-untransferred-btn" type="button" class="primary-button">
             🔍 スキャン開始
         </button>
     </div>
     <div id="mtp-sync-status" class="sync-status"></div>
     <div id="mtp-untransferred-list" class="untransferred-list hidden">
-        <!-- 未転送曲リストがここに表示される -->
     </div>
     <div id="mtp-sync-actions" class="sync-actions hidden">
-        <button id="mtp-transfer-all-btn" class="primary-button">
+        <button id="mtp-transfer-all-btn" type="button" class="primary-button">
             📤 すべて転送
         </button>
         <span id="mtp-untransferred-count"></span>
     </div>
 </div>
 
-<div class="transfer-content-wrapper">
+<div class="transfer-content-wrapper mtp-transfer-inner">
     <div class="transfer-pane source-pane">
         <h3>ライブラリ</h3>
         <div id="mtp-transfer-source-list" class="transfer-list-container">
@@ -36,7 +37,7 @@
     </div>
 
     <div class="transfer-actions">
-        <button id="mtp-transfer-start-btn" title="選択した項目を転送">
+        <button id="mtp-transfer-start-btn" type="button" title="選択した項目を転送">
             &gt;&gt;
         </button>
     </div>
@@ -51,4 +52,12 @@
 <div id="mtp-transfer-progress-container" class="transfer-progress-container hidden">
     <p id="mtp-transfer-progress-label">転送中...</p>
     <progress id="mtp-transfer-progress-bar" value="0" max="100"></progress>
-</div>
+</div>`;
+}
+
+/**
+ * @param {HTMLElement} container
+ */
+export function renderMtpTransferView(container) {
+    container.innerHTML = `<div id="mtp-transfer-view" class="mtp-transfer-view-inner">${getMtpTransferViewHtml()}</div>`;
+}

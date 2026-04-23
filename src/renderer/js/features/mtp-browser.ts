@@ -7,6 +7,44 @@ import { showNotification, hideNotification } from '../ui/notification.js';
 import { formatBytes, showContextMenu, escapeHtml } from '../ui/utils.js';
 const electronAPI = window.electronAPI;
 
+export function getMtpBrowserViewHtml() {
+    return `<!-- デバイス情報ヘッダー -->
+                <div class="mtp-device-header">
+                    <div class="mtp-device-header-icon">📱</div>
+                    <div class="mtp-device-header-info">
+                        <h2 id="mtp-header-device-name">デバイス</h2>
+                        <p id="mtp-header-storage-info">ストレージ情報</p>
+                    </div>
+                    <div id="mtp-header-storage-bar" class="mtp-header-storage-bar">
+                        <div id="mtp-header-storage-used"></div>
+                    </div>
+                </div>
+
+                <div class="mtp-browser-toolbar">
+                    <button id="mtp-browser-back-btn" type="button" disabled title="戻る">←</button>
+                    <button id="mtp-browser-forward-btn" type="button" disabled title="進む">→</button>
+                    <div id="mtp-browser-breadcrumb" class="breadcrumb">
+                        <span class="breadcrumb-item">📱 デバイス</span>
+                    </div>
+                    <button id="mtp-browser-refresh-btn" type="button" title="更新">🔄</button>
+                    <button id="mtp-browser-close-btn" type="button" title="閉じる">✕</button>
+                </div>
+
+                <div id="mtp-browser-content" class="mtp-file-list">
+                    <p class="mtp-empty">ストレージを選択してください</p>
+                </div>`;
+}
+
+/**
+ * @param {HTMLElement} container
+ * @param {{ storageId?: number, initialPath?: string }} [options]
+ */
+export async function renderMtpBrowserView(container, options = {}) {
+    const { storageId, initialPath = '/' } = options;
+    container.innerHTML = `<div id="mtp-browser-view" class="mtp-browser-view-inner">${getMtpBrowserViewHtml()}</div>`;
+    await initMtpBrowser(storageId, initialPath);
+}
+
 // 状態管理
 let browserState = {
     currentStorageId: null,
@@ -425,8 +463,9 @@ function updateSelectionUI() {
  * ブラウザを閉じる
  */
 function closeBrowser() {
-    browserElements.view.classList.add('hidden');
-    document.getElementById('main-content').classList.remove('hidden');
+    void import('../core/navigation.js').then(async ({ showView }) => {
+        await showView(state.activeListView || 'track-view');
+    });
 }
 
 /**

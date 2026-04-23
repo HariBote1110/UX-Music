@@ -9,13 +9,10 @@ import { initNavigation, showView } from './js/core/navigation.js';
 import { initPlayer, playCurrent, pauseCurrent, togglePlayPause, stop as stopPlayback } from './js/features/player.js';
 import { updateAudioDevices, updatePlayCountDisplay, addSongsToLibrary } from './js/ui/ui-manager.js';
 import { restoreSavedSinkId } from './js/features/audio-graph.js';
-import { loadAllComponents } from './js/ui/component-loader.js';
 import { initIPC } from './js/core/ipc.js';
 import { initModal } from './js/ui/modal.js';
 import { initDebugCommands } from './js/utils/debug-commands.js';
-import { initNormalizeView } from './js/features/normalize-view.js';
 import { initEqualizer } from './js/ui/equalizer.js';
-import { initQuiz } from './js/features/quiz.js';
 // ▼▼▼ 修正: playNextSong, playPrevSong を適切にインポート ▼▼▼
 import { playNextSong, playPrevSong } from './js/features/playback-manager.js';
 import { initLazyLoader, observeNewImages } from './js/utils/lazy-loader.js';
@@ -66,13 +63,6 @@ async function initApp() {
     console.log('App initializing...');
 
     try {
-        await loadAllComponents();
-        console.log('Components loaded.');
-    } catch (e) {
-        console.error('Failed to load components:', e);
-    }
-
-    try {
         initElements();
     } catch (e) {
         console.error('Failed to init elements:', e);
@@ -90,8 +80,6 @@ async function initApp() {
     safeInit(initSettings, 'Settings');
     safeInit(initModal, 'Modal');
     safeInit(initDebugCommands, 'DebugCommands');
-    safeInit(initNormalizeView, 'NormalizeView');
-    safeInit(initQuiz, 'Quiz');
     safeInit(initEqualizer, 'Equalizer');
     safeInit(startPerformanceMonitor, 'PerformanceMonitor');
 
@@ -151,7 +139,7 @@ async function initApp() {
         addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
 
         const initialView = state.activeViewId || 'track-view';
-        showView(initialView);
+        void showView(initialView);
 
         musicApi.requestPlaylistsWithArtwork();
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -175,7 +163,7 @@ async function initApp() {
         }
         if (typeof settings.groupAlbumArt === 'boolean') {
             state.groupAlbumArt = settings.groupAlbumArt;
-            if (state.activeViewId === 'track-view') showView('track-view');
+            if (state.activeViewId === 'track-view') void showView('track-view');
         }
         if (settings.enableYouTube) {
             document.querySelectorAll('[data-feature="youtube"]').forEach(el => el.classList.remove('hidden'));
@@ -189,14 +177,14 @@ async function initApp() {
 
     musicApi.onPlaylistsUpdated((playlists) => {
         state.playlists = playlists;
-        if (state.activeViewId === 'playlist-view') showView('playlist-view');
+        if (state.activeViewId === 'playlist-view') void showView('playlist-view');
     });
 
     musicApi.onForceReloadPlaylist(async (playlistName) => {
         if (state.currentDetailView.type === 'playlist' && state.currentDetailView.identifier === playlistName) {
             const updatedDetails = await musicApi.getPlaylistDetails(playlistName);
             state.currentlyViewedSongIds = (updatedDetails.songs || []).map((song) => song.id).filter(Boolean);
-            showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: updatedDetails });
+            void showView('playlist-detail-view', { type: 'playlist', identifier: playlistName, data: updatedDetails });
         }
     });
 

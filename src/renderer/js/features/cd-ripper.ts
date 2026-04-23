@@ -9,6 +9,105 @@ const electronAPI = window.electronAPI;
 let currentTracks = [];
 let isRipping = false;
 
+/** CD 取り込み画面の HTML（旧 components/cd-ripper.html の本体） */
+export function getCdRipViewHtml() {
+    return `<div class="cd-rip-container">
+    <div class="cd-rip-header">
+        <div class="cd-artwork-container">
+            <img id="cd-artwork-preview" src="./assets/default_artwork.png" class="cd-artwork-img" alt="Album art">
+        </div>
+
+        <div class="cd-album-info">
+            <h2 id="cd-album-title" class="cd-album-title">Unknown Album</h2>
+            <div id="cd-album-artist" class="cd-album-artist">Unknown Artist</div>
+            <div id="cd-status-message" class="cd-status-message">CDドライブを確認中...</div>
+        </div>
+
+        <div class="cd-controls-pane">
+            <div class="cd-settings-group">
+                <div class="cd-setting-row">
+                    <span>形式</span>
+                    <select id="cd-format-select" class="cd-select">
+                        <option value="flac">FLAC</option>
+                        <option value="alac" selected>ALAC (m4a)</option>
+                        <option value="wav">WAV</option>
+                        <option value="aac">AAC (m4a)</option>
+                        <option value="mp3">MP3</option>
+                    </select>
+                </div>
+                <div id="cd-bitrate-container" class="cd-setting-row" style="display: none;">
+                    <span>品質</span>
+                    <select id="cd-bitrate-select" class="cd-select">
+                        <option value="320k" selected>320 kbps</option>
+                        <option value="256k">256 kbps</option>
+                        <option value="192k">192 kbps</option>
+                        <option value="128k">128 kbps</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="cd-buttons-row">
+                <button id="cd-metadata-btn" type="button" class="action-button" disabled>検索</button>
+                <button id="cd-scan-btn" type="button" class="action-button">再読込</button>
+            </div>
+            <button id="cd-import-btn" type="button" class="action-button primary" style="width: 100%;" disabled>CDを取り込む</button>
+        </div>
+    </div>
+
+    <div class="cd-tracks-list-container">
+        <table class="cd-track-table">
+            <thead>
+                <tr>
+                    <th style="width: 50px;">#</th>
+                    <th>タイトル</th>
+                    <th>アーティスト</th>
+                    <th style="width: 80px; text-align: right;">時間</th>
+                    <th style="width: 100px; text-align: center;">状態</th>
+                </tr>
+            </thead>
+            <tbody id="cd-tracks-tbody">
+            </tbody>
+        </table>
+    </div>
+
+    <div id="cd-progress-area" class="cd-progress-area hidden">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9rem;">
+            <span id="cd-progress-text">準備中...</span>
+            <span id="cd-progress-percent">0%</span>
+        </div>
+        <div class="cd-progress-bar-bg">
+            <div id="cd-progress-bar" class="cd-progress-bar-fill"></div>
+        </div>
+    </div>
+
+    <div id="cd-metadata-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h3 style="margin: 0 0 20px 0; color: #fff;">アルバム情報を検索</h3>
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <input type="text" id="cd-search-input" placeholder="アーティスト名 / アルバム名"
+                       style="flex: 1; padding: 10px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; outline: none;">
+                <button id="cd-search-submit-btn" type="button" class="action-button">検索</button>
+            </div>
+            <div style="flex: 1; overflow-y: auto; border: 1px solid #444; border-radius: 4px; background: #1a1a1a; margin-bottom: 15px; min-height: 200px;">
+                <ul id="cd-candidate-list" style="list-style: none; padding: 0; margin: 0;">
+                </ul>
+            </div>
+            <div style="text-align: right;">
+                <button id="cd-search-cancel-btn" type="button" class="action-button" style="width: auto; padding: 8px 24px;">キャンセル</button>
+            </div>
+        </div>
+    </div>
+</div>`;
+}
+
+/**
+ * @param {HTMLElement} container
+ */
+export async function renderCdRipView(container) {
+    container.innerHTML = `<div id="cd-rip-view" class="cd-rip-view-inner">${getCdRipViewHtml()}</div>`;
+    await startCDRipView();
+}
+
 export async function startCDRipView() {
     const scanBtn = document.getElementById('cd-scan-btn');
     const importBtn = document.getElementById('cd-import-btn');

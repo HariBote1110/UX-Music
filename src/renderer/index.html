@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="./styles/edit-metadata.css">
     <link rel="stylesheet" href="./styles/lrc-editor.css">
     <link rel="stylesheet" href="./styles/mtp-browser.css">
+    <link rel="stylesheet" href="./styles/cd-ripper.css">
 </head>
 
 <body>
@@ -70,44 +71,6 @@
         <div class="main-column">
             <main class="main-content" id="main-content">
             </main>
-
-            <div id="lrc-editor-view" class="view-container hidden"></div>
-            <div id="normalize-view" class="view-container hidden"></div>
-            <div id="quiz-view" class="view-container hidden"></div>
-            <div id="mtp-transfer-view" class="view-container hidden"></div>
-            <div id="cd-rip-view" class="view-container hidden"></div>
-
-            <!-- MTPストレージブラウザ -->
-            <div id="mtp-browser-view" class="view-container hidden">
-                <!-- デバイス情報ヘッダー -->
-                <div class="mtp-device-header">
-                    <div class="mtp-device-header-icon">📱</div>
-                    <div class="mtp-device-header-info">
-                        <h2 id="mtp-header-device-name">デバイス</h2>
-                        <p id="mtp-header-storage-info">ストレージ情報</p>
-                    </div>
-                    <div id="mtp-header-storage-bar" class="mtp-header-storage-bar">
-                        <div id="mtp-header-storage-used"></div>
-                    </div>
-                </div>
-
-                <!-- ツールバー -->
-                <div class="mtp-browser-toolbar">
-                    <button id="mtp-browser-back-btn" disabled title="戻る">←</button>
-                    <button id="mtp-browser-forward-btn" disabled title="進む">→</button>
-                    <div id="mtp-browser-breadcrumb" class="breadcrumb">
-                        <span class="breadcrumb-item">📱 デバイス</span>
-                    </div>
-                    <button id="mtp-browser-refresh-btn" title="更新">🔄</button>
-                    <button id="mtp-browser-close-btn" title="閉じる">✕</button>
-                </div>
-
-                <!-- ファイルリスト -->
-                <div id="mtp-browser-content" class="mtp-file-list">
-                    <p class="mtp-empty">ストレージを選択してください</p>
-                </div>
-            </div>
-
         </div>
 
         <div id="resizer" class="resizer-vertical"></div>

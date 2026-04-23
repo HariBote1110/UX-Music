@@ -65,16 +65,7 @@ export function initElements() {
     elements.hubLinkContainer = document.getElementById('hub-link-container');
     elements.dropZone = document.body;
 
-    // Normalize View Elements
-    elements.normalizeView = document.getElementById('normalize-view');
     elements.normalizeViewBtn = document.getElementById('normalize-view-btn');
-    elements.normalizeDropZone = document.getElementById('normalize-drop-zone');
-    elements.normalizeFileList = document.getElementById('normalize-file-list');
-    elements.normalizeAnalyzeBtn = document.getElementById('normalize-analyze-btn');
-    elements.normalizeApplyBtn = document.getElementById('normalize-apply-btn');
-    elements.normalizeProgressBar = document.getElementById('normalize-progress-bar');
-    elements.normalizeProgressLabel = document.getElementById('normalize-progress-label');
-    elements.normalizeProgressContainer = document.getElementById('normalize-progress-container');
 
     // Equalizer elements
     elements.equalizerContainer = document.getElementById('equalizer-container');
@@ -89,20 +80,4 @@ export function initElements() {
     elements.mtpTransferQueueBtn = document.getElementById('mtp-transfer-queue-btn');
     elements.mtpEjectBtn = document.getElementById('mtp-eject-btn');
     elements.mtpBrowseStorageBtn = document.getElementById('mtp-browse-storage-btn');
-
-    // MTP Transfer View
-    elements.mtpTransferView = document.getElementById('mtp-transfer-view');
-    elements.mtpTransferCloseBtn = document.getElementById('mtp-transfer-close-btn');
-    elements.mtpTransferDeviceName = document.getElementById('mtp-transfer-device-name');
-    elements.mtpTransferSourceList = document.getElementById('mtp-transfer-source-list');
-    elements.mtpTransferDeviceList = document.getElementById('mtp-transfer-device-list');
-    elements.mtpTransferStartBtn = document.getElementById('mtp-transfer-start-btn');
-    elements.mtpTransferProgressContainer = document.getElementById('mtp-transfer-progress-container');
-    elements.mtpTransferProgressLabel = document.getElementById('mtp-transfer-progress-label');
-    elements.mtpTransferProgressBar = document.getElementById('mtp-transfer-progress-bar');
-    elements.mtpTransferBrowseBtn = document.getElementById('mtp-transfer-browse-btn');
-
-    // Other Views
-    elements.lrcEditorView = document.getElementById('lrc-editor-view');
-    elements.quizView = document.getElementById('quiz-view');
 }

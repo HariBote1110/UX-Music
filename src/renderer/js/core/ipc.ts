@@ -247,17 +247,13 @@ export function initIPC(callbacks) {
                 return;
             }
 
-            const mainContent = document.getElementById('main-content');
-            const mtpTransferView = document.getElementById('mtp-transfer-view');
+            const { showView } = await import('./navigation.js');
+            await showView('mtp-transfer-view');
 
-            if (mainContent && mtpTransferView) {
-                mainContent.classList.add('hidden');
-                mtpTransferView.classList.remove('hidden');
+            showNotification('未転送の曲を確認中...');
+            mtpOperationInProgress = true;
 
-                showNotification('未転送の曲を確認中...');
-                mtpOperationInProgress = true;
-
-                try {
+            try {
                     const storageId = state.mtpStorages[0].id;
                     const result = await electronAPI.invoke('mtp-get-untransferred-songs', {
                         storageId,
@@ -311,9 +307,8 @@ export function initIPC(callbacks) {
                     hideNotification();
                     showNotification('未転送曲の確認に失敗しました');
                     hideNotification(3000);
-                } finally {
-                    mtpOperationInProgress = false;
-                }
+            } finally {
+                mtpOperationInProgress = false;
             }
         });
     }

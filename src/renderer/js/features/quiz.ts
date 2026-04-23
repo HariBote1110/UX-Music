@@ -25,6 +25,134 @@ const quizState = {
 const SNIPPET_DURATION = 10000;
 const CHOICES_COUNT = 4;
 
+let quizVolumeListenerLinked = false;
+
+function linkQuizVolumeOnce() {
+    if (quizVolumeListenerLinked) return;
+    quizVolumeListenerLinked = true;
+    elements.volumeSlider.addEventListener('input', () => {
+        if (quizState.quizAudio) {
+            quizState.quizAudio.volume = elements.volumeSlider.value;
+        }
+    });
+}
+
+export function getQuizViewHtml() {
+    return `<div id="quiz-view" class="quiz-view-wrapper">
+<div id="quiz-start-screen">
+    <h1>イントロクイズ</h1>
+    <p>曲の冒頭を聴いて、曲名を当ててください。</p>
+    <div class="quiz-options">
+        <strong>問題数:</strong>
+        <label><input type="radio" name="quiz-length" value="10" checked> 10問</label>
+        <label><input type="radio" name="quiz-length" value="20"> 20問</label>
+        <label><input type="radio" name="quiz-length" value="30"> 30問</label>
+    </div>
+    <div class="quiz-options">
+        <strong>難易度:</strong>
+        <label><input type="radio" name="quiz-difficulty" value="easy"> かんたん</label>
+        <label><input type="radio" name="quiz-difficulty" value="normal" checked> ふつう</label>
+        <label><input type="radio" name="quiz-difficulty" value="hard"> むずかしい</label>
+    </div>
+    <button id="quiz-start-btn" type="button" class="header-button">クイズを開始</button>
+</div>
+<div id="quiz-game-screen" class="hidden">
+    <div class="quiz-header">
+        <h2>第<span id="quiz-question-number">1</span>問 / <span id="quiz-total-questions">10</span>問</h2>
+        <p id="quiz-timer">0.000s</p>
+    </div>
+    <div class="quiz-player">
+        <p>下のボタンを押すか、Spaceキーで再生</p>
+        <button id="quiz-play-btn" type="button" class="play-btn">
+            <img src="./assets/icons/play.svg" alt="Play Snippet">
+        </button>
+    </div>
+    <div id="quiz-answers" class="quiz-grid"></div>
+    <div id="quiz-result" class="hidden">
+        <p id="quiz-result-message"></p>
+        <div class="quiz-result-details">
+            <img id="quiz-correct-artwork" src="./assets/default_artwork.png" alt="Correct Answer Artwork">
+            <div id="quiz-correct-info">
+                <h3 id="quiz-correct-title"></h3>
+                <p id="quiz-correct-artist"></p>
+            </div>
+        </div>
+        <button id="quiz-next-btn" type="button" class="header-button">次の問題へ</button>
+    </div>
+</div>
+<div id="quiz-final-screen" class="hidden">
+    <h1>結果発表</h1>
+    <div class="quiz-final-stats">
+        <p>正解数: <span id="quiz-final-score">0</span> / <span id="quiz-final-total">10</span></p>
+        <p>平均回答時間: <span id="quiz-final-avg-time">0.000</span>s</p>
+    </div>
+    <div class="quiz-ranking">
+        <h3>ハイスコアランキング</h3>
+        <ol id="quiz-ranking-list"></ol>
+    </div>
+    <button id="quiz-retry-btn" type="button" class="header-button">もう一度挑戦</button>
+</div>
+</div>`;
+}
+
+function cacheQuizElements() {
+    quizElements = {
+        startScreen: document.getElementById('quiz-start-screen'),
+        gameScreen: document.getElementById('quiz-game-screen'),
+        finalScreen: document.getElementById('quiz-final-screen'),
+        startBtn: document.getElementById('quiz-start-btn'),
+        questionNumber: document.getElementById('quiz-question-number'),
+        totalQuestions: document.getElementById('quiz-total-questions'),
+        timer: document.getElementById('quiz-timer'),
+        playBtn: document.getElementById('quiz-play-btn'),
+        answers: document.getElementById('quiz-answers'),
+        result: document.getElementById('quiz-result'),
+        resultMessage: document.getElementById('quiz-result-message'),
+        correctArtwork: document.getElementById('quiz-correct-artwork'),
+        correctTitle: document.getElementById('quiz-correct-title'),
+        correctArtist: document.getElementById('quiz-correct-artist'),
+        nextBtn: document.getElementById('quiz-next-btn'),
+        retryBtn: document.getElementById('quiz-retry-btn'),
+        finalScore: document.getElementById('quiz-final-score'),
+        finalTotal: document.getElementById('quiz-final-total'),
+        finalAvgTime: document.getElementById('quiz-final-avg-time'),
+        rankingList: document.getElementById('quiz-ranking-list'),
+    };
+}
+
+/**
+ * @param {HTMLElement} container
+ * @param {{ signal?: AbortSignal }} [options]
+ */
+export function renderQuizView(container, options = {}) {
+    const { signal } = options;
+    container.innerHTML = getQuizViewHtml();
+    cacheQuizElements();
+    linkQuizVolumeOnce();
+
+    if (!quizElements.startBtn) return;
+
+    if (signal) {
+        quizElements.startBtn.addEventListener('click', startQuiz, { signal });
+        quizElements.playBtn.addEventListener('click', playSnippet, { signal });
+        quizElements.nextBtn.addEventListener('click', nextQuestion, { signal });
+        quizElements.retryBtn.addEventListener('click', () => {
+            quizElements.finalScreen.classList.add('hidden');
+            quizElements.startScreen.classList.remove('hidden');
+            quizState.isFinalScreenShowing = false;
+        }, { signal });
+    } else {
+        quizElements.startBtn.addEventListener('click', startQuiz);
+        quizElements.playBtn.addEventListener('click', playSnippet);
+        quizElements.nextBtn.addEventListener('click', nextQuestion);
+        quizElements.retryBtn.addEventListener('click', () => {
+            quizElements.finalScreen.classList.add('hidden');
+            quizElements.startScreen.classList.remove('hidden');
+            quizState.isFinalScreenShowing = false;
+        });
+    }
+}
+
 function getQuizSongs() {
     const allSongs = state.library.filter(song => song.type === 'local' && song.duration > 15);
     const uniqueSongsMap = new Map();
@@ -232,46 +360,6 @@ function startQuiz() {
     generateQuestion();
 }
 
-export function initQuiz() {
-    quizElements = {
-        startScreen: document.getElementById('quiz-start-screen'),
-        gameScreen: document.getElementById('quiz-game-screen'),
-        finalScreen: document.getElementById('quiz-final-screen'),
-        startBtn: document.getElementById('quiz-start-btn'),
-        questionNumber: document.getElementById('quiz-question-number'),
-        totalQuestions: document.getElementById('quiz-total-questions'),
-        timer: document.getElementById('quiz-timer'),
-        playBtn: document.getElementById('quiz-play-btn'),
-        answers: document.getElementById('quiz-answers'),
-        result: document.getElementById('quiz-result'),
-        resultMessage: document.getElementById('quiz-result-message'),
-        correctArtwork: document.getElementById('quiz-correct-artwork'),
-        correctTitle: document.getElementById('quiz-correct-title'),
-        correctArtist: document.getElementById('quiz-correct-artist'),
-        nextBtn: document.getElementById('quiz-next-btn'),
-        retryBtn: document.getElementById('quiz-retry-btn'),
-        finalScore: document.getElementById('quiz-final-score'),
-        finalTotal: document.getElementById('quiz-final-total'),
-        finalAvgTime: document.getElementById('quiz-final-avg-time'),
-        rankingList: document.getElementById('quiz-ranking-list'),
-    };
-
-    quizElements.startBtn.addEventListener('click', startQuiz);
-    quizElements.playBtn.addEventListener('click', playSnippet);
-    quizElements.nextBtn.addEventListener('click', nextQuestion);
-    quizElements.retryBtn.addEventListener('click', () => {
-        quizElements.finalScreen.classList.add('hidden');
-        quizElements.startScreen.classList.remove('hidden');
-        quizState.isFinalScreenShowing = false;
-    });
-
-    elements.volumeSlider.addEventListener('input', () => {
-        if (quizState.quizAudio) {
-            quizState.quizAudio.volume = elements.volumeSlider.value;
-        }
-    });
-}
-
 export function handleQuizKeyPress(e) {
     if (e.code === 'Space') {
         e.preventDefault();
@@ -280,7 +368,7 @@ export function handleQuizKeyPress(e) {
         }
         if (quizState.isResultShowing) {
             nextQuestion();
-        } else if (!quizElements.playBtn.disabled) {
+        } else if (quizElements.playBtn && !quizElements.playBtn.disabled) {
             playSnippet();
         }
     }

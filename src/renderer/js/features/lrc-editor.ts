@@ -3,8 +3,8 @@
 
 import { state } from '../core/state.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
-import { showView } from '../core/navigation.js';
 import { resolveArtworkPath, formatSongTitle } from '../ui/utils.js';
+import { getLrcEditorHtml } from './lrc-editor-markup.js';
 import { togglePlayPause, seek, getCurrentTime, getDuration, isPlaying } from './player.js';
 
 const electronAPI = window.electronAPI;
@@ -223,8 +223,6 @@ function ensureEditorElements() {
     hideNotification(3000);
     return false;
 }
-
-let isEditorInitialized = false;
 
 function saveHistory() {
     const snapshot = createHistorySnapshot();
@@ -782,61 +780,60 @@ function insertInterludeLine() {
     updateUndoRedoButtons();
 }
 
-function initLrcEditorListeners() {
+function setupLrcEditorListeners(signal) {
     if (!ensureEditorElements()) return false;
 
-    if (!isEditorInitialized) {
-        editorElements.exitBtn.addEventListener('click', () => {
-            showView(state.activeListView);
+    const opts = signal ? { signal } : undefined;
+
+    editorElements.exitBtn.addEventListener('click', () => {
+        void import('../core/navigation.js').then(async ({ showView }) => {
+            await showView(state.activeListView);
         });
+    }, opts);
 
-        editorElements.helpBtn.addEventListener('click', () => {
-            editorElements.helpPopup.classList.remove('hidden');
-        });
+    editorElements.helpBtn.addEventListener('click', () => {
+        editorElements.helpPopup.classList.remove('hidden');
+    }, opts);
 
-        editorElements.helpCloseBtn.addEventListener('click', () => {
-            editorElements.helpPopup.classList.add('hidden');
-        });
+    editorElements.helpCloseBtn.addEventListener('click', () => {
+        editorElements.helpPopup.classList.add('hidden');
+    }, opts);
 
-        editorElements.showDetectedBtn.addEventListener('click', openDetectedPopup);
-        editorElements.detectedCloseBtn.addEventListener('click', closeDetectedPopup);
+    editorElements.showDetectedBtn.addEventListener('click', openDetectedPopup, opts);
+    editorElements.detectedCloseBtn.addEventListener('click', closeDetectedPopup, opts);
 
-        editorElements.loadTextBtn.addEventListener('click', loadTextFromTextarea);
-        editorElements.playPauseBtn.addEventListener('click', togglePlayPause);
+    editorElements.loadTextBtn.addEventListener('click', loadTextFromTextarea, opts);
+    editorElements.playPauseBtn.addEventListener('click', togglePlayPause, opts);
 
-        editorElements.progressBar.addEventListener('mousedown', () => {
-            editorIsSeeking = true;
-        });
+    editorElements.progressBar.addEventListener('mousedown', () => {
+        editorIsSeeking = true;
+    }, opts);
 
-        editorElements.progressBar.addEventListener('mouseup', () => {
-            if (editorIsSeeking) {
-                seek(Number.parseFloat(editorElements.progressBar.value));
-                editorIsSeeking = false;
-            }
-        });
+    editorElements.progressBar.addEventListener('mouseup', () => {
+        if (editorIsSeeking) {
+            seek(Number.parseFloat(editorElements.progressBar.value));
+            editorIsSeeking = false;
+        }
+    }, opts);
 
-        editorElements.progressBar.addEventListener('input', () => {
-            if (editorIsSeeking) {
-                const seekTime = Number.parseFloat(editorElements.progressBar.value);
-                editorElements.currentTime.textContent = formatEditorTime(seekTime);
-                updateTimelinePlayhead(seekTime);
-            }
-        });
+    editorElements.progressBar.addEventListener('input', () => {
+        if (editorIsSeeking) {
+            const seekTime = Number.parseFloat(editorElements.progressBar.value);
+            editorElements.currentTime.textContent = formatEditorTime(seekTime);
+            updateTimelinePlayhead(seekTime);
+        }
+    }, opts);
 
-        editorElements.timelineTrack.addEventListener('click', handleTimelineTrackClick);
-        editorElements.timelineZoomRange.addEventListener('input', handleTimelineZoomInput);
+    editorElements.timelineTrack.addEventListener('click', handleTimelineTrackClick, opts);
+    editorElements.timelineZoomRange.addEventListener('input', handleTimelineZoomInput, opts);
 
-        editorElements.timestampBtn.addEventListener('click', addTimestamp);
-        editorElements.autoSyncBtn.addEventListener('click', runAutoSync);
-        editorElements.saveBtn.addEventListener('click', handleSaveLrc);
-        editorElements.undoBtn.addEventListener('click', undo);
-        editorElements.insertInterludeBtn.addEventListener('click', insertInterludeLine);
+    editorElements.timestampBtn.addEventListener('click', addTimestamp, opts);
+    editorElements.autoSyncBtn.addEventListener('click', runAutoSync, opts);
+    editorElements.saveBtn.addEventListener('click', handleSaveLrc, opts);
+    editorElements.undoBtn.addEventListener('click', undo, opts);
+    editorElements.insertInterludeBtn.addEventListener('click', insertInterludeLine, opts);
 
-        isEditorInitialized = true;
-    }
-
-    editorElements.view.removeEventListener('keydown', handleEditorKeyDown);
-    editorElements.view.addEventListener('keydown', handleEditorKeyDown);
+    editorElements.view.addEventListener('keydown', handleEditorKeyDown, opts);
 
     setAutoSyncButtonState(false);
     updateTimelineZoomDisplay();
@@ -844,9 +841,15 @@ function initLrcEditorListeners() {
     return true;
 }
 
-export async function startLrcEditor(song) {
+/**
+ * @param {HTMLElement} container
+ * @param {object} song
+ * @param {{ signal?: AbortSignal }} [options]
+ */
+export async function renderLrcEditor(container, song, options = {}) {
     if (!song) return;
-    console.log('[LRC Editor] Starting editor for:', song.title);
+    const { signal } = options;
+    console.log('[LRC Editor] Rendering editor for:', song.title);
 
     currentEditorSong = song;
     lyricsLines = [];
@@ -862,9 +865,9 @@ export async function startLrcEditor(song) {
     redoStack = [];
     clearTimelineDragState();
 
-    if (!initLrcEditorListeners()) return;
+    container.innerHTML = getLrcEditorHtml();
 
-    showView('lrc-editor-view');
+    if (!setupLrcEditorListeners(signal)) return;
 
     const album = state.albums.get(song.albumKey);
     const artwork = song.artwork || (album ? album.artwork : null);
@@ -910,6 +913,12 @@ export async function startLrcEditor(song) {
     updateDetectedPreviewUI();
     setAutoSyncButtonState(false);
     updateUndoRedoButtons();
+}
+
+export async function startLrcEditor(song) {
+    if (!song) return;
+    const { showView } = await import('../core/navigation.js');
+    await showView('lrc-editor-view', { track: song });
 }
 
 function parseAndDisplayLyrics(textContent, type = 'txt') {
@@ -1330,7 +1339,9 @@ async function handleSaveLrc() {
         if (result.success) {
             showNotification(`同期歌詞ファイル「${lrcFileName}」を保存しました。`);
             hideNotification(3000);
-            showView(state.activeListView);
+            void import('../core/navigation.js').then(async ({ showView }) => {
+                await showView(state.activeListView);
+            });
         } else {
             showNotification(`エラー: ${result.message || 'LRCファイルの保存に失敗しました。'}`);
             hideNotification(5000);
@@ -1355,7 +1366,8 @@ export function stopLrcEditing() {
 }
 
 export function updateLrcEditorControls(playing, currentTime, duration) {
-    if (!editorElements.view || editorElements.view.classList.contains('hidden')) return;
+    if (!editorElements.view || !editorElements.view.isConnected) return;
+    if (state.activeViewId !== 'lrc-editor-view') return;
 
     editorElements.playPauseBtn.classList.toggle('playing', playing);
 

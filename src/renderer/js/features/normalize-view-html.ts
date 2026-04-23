@@ -1,4 +1,14 @@
-<div class="view-header">
+/** ノーマライズ画面の必須要素 ID（テスト・契約用） */
+export const NORMALIZE_VIEW_REQUIRED_ELEMENT_IDS = [
+    'normalize-drop-zone', 'normalize-file-list', 'normalize-analyze-btn', 'normalize-apply-btn',
+    'target-lufs-slider', 'normalize-select-all', 'normalize-progress-container', 'normalize-progress-bar',
+];
+
+/**
+ * ノーマライズ画面の HTML（旧 components/normalize.html 相当）
+ */
+export function getNormalizeViewHtml() {
+    return `<div class="view-header">
     <h1>音量をノーマライズ</h1>
 </div>
 <div class="normalize-content-wrapper">
@@ -6,9 +16,9 @@
         <div id="normalize-drop-zone">
             <p>ここにファイルやフォルダをドラッグ＆ドロップ</p>
             <div class="normalize-buttons-primary">
-                <button id="normalize-add-files-btn">ファイルを追加</button>
-                <button id="normalize-add-folder-btn">フォルダを追加</button>
-                <button id="normalize-load-library-btn">ライブラリから読み込む</button>
+                <button id="normalize-add-files-btn" type="button">ファイルを追加</button>
+                <button id="normalize-add-folder-btn" type="button">フォルダを追加</button>
+                <button id="normalize-load-library-btn" type="button">ライブラリから読み込む</button>
             </div>
         </div>
         <div class="normalize-settings">
@@ -27,7 +37,7 @@
                 </div>
             </div>
             <div class="setting-item hidden" id="output-folder-container">
-                <button id="select-output-folder-btn">フォルダを選択...</button>
+                <button id="select-output-folder-btn" type="button">フォルダを選択...</button>
                 <p id="output-folder-path">選択されていません</p>
             </div>
             <div class="setting-item" id="backup-container">
@@ -38,8 +48,8 @@
             </div>
         </div>
         <div class="normalize-actions">
-            <button id="normalize-analyze-btn" disabled>解析</button>
-            <button id="normalize-apply-btn" disabled>ノーマライズを適用</button>
+            <button id="normalize-analyze-btn" type="button" disabled>解析</button>
+            <button id="normalize-apply-btn" type="button" disabled>ノーマライズを適用</button>
         </div>
         <div id="normalize-progress-container" class="hidden">
             <p id="normalize-progress-label">処理中...</p>
@@ -63,4 +73,5 @@
             </table>
         </div>
     </div>
-</div>
+</div>`;
+}

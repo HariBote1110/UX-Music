@@ -1,16 +1,21 @@
 // @ts-nocheck
-// src/renderer/js/normalize-view.js
-import { state, elements } from '../core/state.js';
-import { showView } from '../core/navigation.js';
+// src/renderer/js/features/normalize-view.ts — mainContent 描画用
+import { getNormalizeViewHtml } from './normalize-view-html.js';
+
 const electronAPI = window.electronAPI;
 
-// モジュールスコープで変数を宣言（グローバルリーク防止）
 const normalizeFiles = new Map();
 let commonBasePath = null;
 const outputSettings = {
-    mode: 'overwrite', // 'overwrite' or 'folder'
+    mode: 'overwrite',
     path: null
 };
+
+let jobProcessedCount = 0;
+let jobTotalCount = 0;
+let currentJob = '';
+
+let normalizeIpcHandlerRegistered = false;
 
 function getBasename(path) {
     return path.split(/[\\/]/).pop();
@@ -43,11 +48,15 @@ function findCommonBasePath(filePaths) {
 function updateFileList() {
     const tbody = document.getElementById('normalize-file-list');
     const selectAllCheckbox = document.getElementById('normalize-select-all');
+    if (!tbody || !selectAllCheckbox) return;
+
     tbody.innerHTML = '';
 
     if (normalizeFiles.size === 0) {
-        document.getElementById('normalize-analyze-btn').disabled = true;
-        document.getElementById('normalize-apply-btn').disabled = true;
+        const analyseBtn = document.getElementById('normalize-analyze-btn');
+        const applyBtn = document.getElementById('normalize-apply-btn');
+        if (analyseBtn) analyseBtn.disabled = true;
+        if (applyBtn) applyBtn.disabled = true;
         selectAllCheckbox.checked = false;
         selectAllCheckbox.indeterminate = false;
         return;
@@ -55,7 +64,7 @@ function updateFileList() {
 
     let canApply = true;
     let selectedCount = 0;
-    let hasUnanalyzedSelected = false;
+    let hasUnanalysedSelected = false;
 
     for (const [id, file] of normalizeFiles.entries()) {
         const row = document.createElement('tr');
@@ -72,12 +81,11 @@ function updateFileList() {
 
         if (file.selected) {
             selectedCount++;
-            if (file.status === 'pending') hasUnanalyzedSelected = true;
+            if (file.status === 'pending') hasUnanalysedSelected = true;
             if (file.status !== 'analysed' && file.status !== 'done') canApply = false;
         }
     }
 
-    // Add event listeners to new checkboxes
     tbody.querySelectorAll('.normalize-select-item').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
             const fileId = e.target.dataset.id;
@@ -100,25 +108,25 @@ function updateFileList() {
         selectAllCheckbox.indeterminate = true;
     }
 
-    document.getElementById('normalize-analyze-btn').disabled = !hasUnanalyzedSelected;
+    const analyseEl = document.getElementById('normalize-analyze-btn');
+    if (analyseEl) analyseEl.disabled = !hasUnanalysedSelected;
 
     const applyButtonDisabled = !(selectedCount > 0 && canApply && (outputSettings.mode === 'overwrite' || (outputSettings.mode === 'folder' && outputSettings.path)));
-    document.getElementById('normalize-apply-btn').disabled = applyButtonDisabled;
+    const applyEl = document.getElementById('normalize-apply-btn');
+    if (applyEl) applyEl.disabled = applyButtonDisabled;
 }
 
-async function addFiles(filePaths, preAnalyzedData = {}) {
-    const targetLufs = parseFloat(document.getElementById('target-lufs-slider').value);
+async function addFiles(filePaths, preAnalysedData = {}) {
+    const slider = document.getElementById('target-lufs-slider');
+    const targetLufs = parseFloat(slider ? slider.value : '-18');
     for (const filePath of filePaths) {
-        // ▼▼▼ 修正: macOSの隠しファイル・リソースフォーク(._)を除外 ▼▼▼
         const fileName = getBasename(filePath);
         if (fileName.startsWith('._') || fileName === '.DS_Store') {
             continue;
         }
-        // ▲▲▲ 修正ここまで ▲▲▲
 
         const id = self.crypto.randomUUID();
-        const existingEntry = preAnalyzedData[filePath];
-        // Support both legacy float64 and current {loudness, truePeak} formats
+        const existingEntry = preAnalysedData[filePath];
         const existingLoudness = typeof existingEntry === 'number'
             ? existingEntry
             : (existingEntry && typeof existingEntry.loudness === 'number' ? existingEntry.loudness : null);
@@ -149,6 +157,8 @@ function updateProgress(processed, total, label) {
     const progressLabel = document.getElementById('normalize-progress-label');
     const progressContainer = document.getElementById('normalize-progress-container');
 
+    if (!progressBar || !progressLabel || !progressContainer) return;
+
     if (processed >= total) {
         progressContainer.classList.add('hidden');
         return;
@@ -160,36 +170,112 @@ function updateProgress(processed, total, label) {
     progressLabel.textContent = `${label} (${processed} / ${total})...`;
 }
 
-export function initNormalizeView() {
-    const dropZone = document.getElementById('normalize-drop-zone');
-    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('drag-over'); });
-    dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('drag-over'); });
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        dropZone.classList.remove('drag-over');
-        const files = Array.from(e.dataTransfer.files).map(f => f.path);
-        addFiles(files);
-    });
+function registerNormalizeIpcHandlerOnce() {
+    if (normalizeIpcHandlerRegistered) return;
+    normalizeIpcHandlerRegistered = true;
 
-    document.getElementById('normalize-add-files-btn').addEventListener('click', async () => {
+    electronAPI.on('normalize-worker-result', ({ type, id, result }) => {
+        const file = normalizeFiles.get(id);
+        if (!file) return;
+
+        if (type === 'analysis-result') {
+            if (result.success) {
+                file.currentLufs = result.loudness;
+                file.truePeak = result.truePeak;
+                file.status = 'analysed';
+            } else {
+                file.status = 'error';
+                console.error(`Analysis Error for ${file.name}:`, result.error);
+            }
+            if (currentJob !== 'analyze') {
+                jobTotalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'pending').length;
+                jobProcessedCount = 0;
+                currentJob = 'analyze';
+            }
+        } else if (type === 'normalize-result') {
+            if (result.success) {
+                file.status = 'done';
+                if (result.outputPath) {
+                    file.name = getBasename(result.outputPath);
+                }
+            } else {
+                file.status = 'error';
+                if (result.error) console.error(`Normalize Error for ${file.name}:`, result.error);
+            }
+
+            if (currentJob !== 'normalize') {
+                jobTotalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analysed').length;
+                jobProcessedCount = 0;
+                currentJob = 'normalize';
+            }
+        }
+
+        jobProcessedCount++;
+        updateFileList();
+        updateProgress(jobProcessedCount, jobTotalCount, currentJob === 'analyze' ? '解析中' : '適用中');
+        electronAPI.send('normalize-worker-finished-file');
+    });
+}
+
+/**
+ * ノーマライズビューを mainContent に描画する
+ * @param {HTMLElement} container
+ * @param {{ signal?: AbortSignal }} [options]
+ */
+export function renderNormalizeView(container, options = {}) {
+    const { signal } = options;
+    registerNormalizeIpcHandlerOnce();
+
+    container.innerHTML = `<div class="normalize-view-inner" id="normalize-view">${getNormalizeViewHtml()}</div>`;
+
+    const dropZone = document.getElementById('normalize-drop-zone');
+    if (!dropZone) return;
+
+    if (signal) {
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('drag-over'); }, { signal });
+        dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('drag-over'); }, { signal });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('drag-over');
+            const files = Array.from(e.dataTransfer.files).map(f => f.path);
+            addFiles(files);
+        }, { signal });
+    } else {
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('drag-over'); });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('drag-over');
+            const files = Array.from(e.dataTransfer.files).map(f => f.path);
+            addFiles(files);
+        });
+    }
+
+    const bind = (id, event, fn) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (signal) el.addEventListener(event, fn, { signal });
+        else el.addEventListener(event, fn);
+    };
+
+    bind('normalize-add-files-btn', 'click', async () => {
         const filePaths = await electronAPI.invoke('select-files-for-normalize');
         if (filePaths.length > 0) addFiles(filePaths);
     });
-
-    document.getElementById('normalize-add-folder-btn').addEventListener('click', async () => {
+    bind('normalize-add-folder-btn', 'click', async () => {
         const filePaths = await electronAPI.invoke('select-folder-for-normalize');
         if (filePaths.length > 0) addFiles(filePaths);
     });
-
-    document.getElementById('normalize-load-library-btn').addEventListener('click', async () => {
+    bind('normalize-load-library-btn', 'click', async () => {
         const library = await electronAPI.invoke('get-library-for-normalize');
         const loudnessData = await electronAPI.invoke('get-all-loudness-data');
         const filePaths = library.map(song => song.path);
         addFiles(filePaths, loudnessData);
     });
 
-    document.getElementById('normalize-select-all').addEventListener('change', (e) => {
+    bind('normalize-select-all', 'change', (e) => {
         const isChecked = e.target.checked;
         for (const file of normalizeFiles.values()) {
             file.selected = isChecked;
@@ -199,19 +285,23 @@ export function initNormalizeView() {
 
     const lufsSlider = document.getElementById('target-lufs-slider');
     const lufsValue = document.getElementById('target-lufs-value');
-    lufsSlider.addEventListener('input', () => {
-        const newLufs = parseFloat(lufsSlider.value);
-        lufsValue.textContent = `${newLufs.toFixed(1)} LUFS`;
-        for (const file of normalizeFiles.values()) {
-            file.targetLufs = newLufs;
-        }
-        if (normalizeFiles.size > 0) updateFileList();
-    });
+    if (lufsSlider && lufsValue) {
+        const onInput = () => {
+            const newLufs = parseFloat(lufsSlider.value);
+            lufsValue.textContent = `${newLufs.toFixed(1)} LUFS`;
+            for (const file of normalizeFiles.values()) {
+                file.targetLufs = newLufs;
+            }
+            if (normalizeFiles.size > 0) updateFileList();
+        };
+        if (signal) lufsSlider.addEventListener('input', onInput, { signal });
+        else lufsSlider.addEventListener('input', onInput);
+    }
 
     const outputFolderContainer = document.getElementById('output-folder-container');
     const backupContainer = document.getElementById('backup-container');
     document.querySelectorAll('input[name="output-mode"]').forEach(radio => {
-        radio.addEventListener('change', (e) => {
+        const onMode = (e) => {
             outputSettings.mode = e.target.value;
             if (e.target.value === 'folder') {
                 outputFolderContainer.classList.remove('hidden');
@@ -220,33 +310,37 @@ export function initNormalizeView() {
                 outputFolderContainer.classList.add('hidden');
                 backupContainer.classList.remove('hidden');
             }
-            updateFileList(); // Update button states
-        });
+            updateFileList();
+        };
+        if (signal) radio.addEventListener('change', onMode, { signal });
+        else radio.addEventListener('change', onMode);
     });
 
-    document.getElementById('select-output-folder-btn').addEventListener('click', async () => {
+    bind('select-output-folder-btn', 'click', async () => {
         const selectedPath = await electronAPI.invoke('select-normalize-output-folder');
         if (selectedPath) {
             outputSettings.path = selectedPath;
-            document.getElementById('output-folder-path').textContent = selectedPath;
+            const pathEl = document.getElementById('output-folder-path');
+            if (pathEl) pathEl.textContent = selectedPath;
             updateFileList();
         }
     });
 
-    document.getElementById('normalize-analyze-btn').addEventListener('click', () => {
-        const filesToAnalyze = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'pending');
-        if (filesToAnalyze.length === 0) return;
-        electronAPI.send('start-normalize-job', { jobType: 'analyze', files: filesToAnalyze });
-        updateProgress(0, filesToAnalyze.length, '解析中');
+    bind('normalize-analyze-btn', 'click', () => {
+        const filesToAnalyse = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'pending');
+        if (filesToAnalyse.length === 0) return;
+        electronAPI.send('start-normalize-job', { jobType: 'analyze', files: filesToAnalyse });
+        updateProgress(0, filesToAnalyse.length, '解析中');
     });
 
-    document.getElementById('normalize-apply-btn').addEventListener('click', () => {
-        const filesToNormalize = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analysed');
-        if (filesToNormalize.length === 0) return;
+    bind('normalize-apply-btn', 'click', () => {
+        const filesToNormalise = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analysed');
+        if (filesToNormalise.length === 0) return;
 
-        const containsMp3 = filesToNormalize.some(f => getExtname(f.path).toLowerCase() === '.mp3');
+        const lufsSliderEl = document.getElementById('target-lufs-slider');
+        const containsMp3 = filesToNormalise.some(f => getExtname(f.path).toLowerCase() === '.mp3');
         const losslessFormats = ['.wav', '.flac'];
-        const clippingFiles = filesToNormalize.filter(f => {
+        const clippingFiles = filesToNormalise.filter(f => {
             const ext = getExtname(f.path).toLowerCase();
             if (losslessFormats.includes(ext) && typeof f.truePeak === 'number' && typeof f.currentLufs === 'number') {
                 const gain = f.targetLufs - f.currentLufs;
@@ -280,21 +374,23 @@ export function initNormalizeView() {
         }
 
         if (confirmed) {
-            const targetLufs = parseFloat(lufsSlider.value);
-            const filesWithGain = filesToNormalize.map(f => {
+            const targetLufs = parseFloat(lufsSliderEl ? lufsSliderEl.value : '-18');
+            const filesWithGain = filesToNormalise.map(f => {
                 let gain = targetLufs - f.currentLufs;
                 const ext = getExtname(f.path).toLowerCase();
 
                 if (preventClipping && losslessFormats.includes(ext) && typeof f.truePeak === 'number') {
                     const newPeak = f.truePeak + gain;
                     if (newPeak > 0) {
-                        gain -= newPeak; // クリッピング分だけゲインを下げる
+                        gain -= newPeak;
                     }
                 }
                 return { ...f, gain };
             });
 
-            const backup = outputSettings.mode === 'overwrite' ? document.getElementById('backup-toggle').checked : false;
+            const backup = outputSettings.mode === 'overwrite'
+                ? (document.getElementById('backup-toggle') && document.getElementById('backup-toggle').checked)
+                : false;
             electronAPI.send('start-normalize-job', {
                 jobType: 'normalize',
                 files: filesWithGain,
@@ -304,53 +400,7 @@ export function initNormalizeView() {
                     basePath: commonBasePath
                 }
             });
-            updateProgress(0, filesToNormalize.length, '適用中');
+            updateProgress(0, filesToNormalise.length, '適用中');
         }
-    });
-
-    let processedCount = 0;
-    let totalCount = 0;
-    let currentJob = '';
-
-    electronAPI.on('normalize-worker-result', ({ type, id, result }) => {
-        const file = normalizeFiles.get(id);
-        if (!file) return;
-
-        if (type === 'analysis-result') {
-            if (result.success) {
-                file.currentLufs = result.loudness;
-                file.truePeak = result.truePeak;
-                file.status = 'analysed';
-            } else {
-                file.status = 'error';
-                console.error(`Analysis Error for ${file.name}:`, result.error);
-            }
-            if (currentJob !== 'analyse') {
-                totalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'pending').length;
-                processedCount = 0;
-                currentJob = 'analyse';
-            }
-        } else if (type === 'normalize-result') {
-            if (result.success) {
-                file.status = 'done';
-                if (result.outputPath) {
-                    file.name = getBasename(result.outputPath);
-                }
-            } else {
-                file.status = 'error';
-                if (result.error) console.error(`Normalize Error for ${file.name}:`, result.error);
-            }
-
-            if (currentJob !== 'normalize') {
-                totalCount = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analysed').length;
-                processedCount = 0;
-                currentJob = 'normalize';
-            }
-        }
-
-        processedCount++;
-        updateFileList();
-        updateProgress(processedCount, totalCount, currentJob === 'analyse' ? '解析中' : '適用中');
-        electronAPI.send('normalize-worker-finished-file');
     });
 }
