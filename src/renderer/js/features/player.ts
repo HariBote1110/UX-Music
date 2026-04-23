@@ -112,7 +112,7 @@ export async function setAudioOutput(deviceId) {
     console.log('[Player] setAudioOutput called with deviceId:', deviceId);
     if (isWails) {
         await getWailsApp()?.AudioSetDevice?.(deviceId);
-        await getWailsApp()?.SaveSettings?.({ audioOutputId: deviceId });
+        musicApi.saveSettings({ audioOutputId: deviceId });
     } else {
         await setAudioOutputDevice(deviceId, localPlayer);
     }
@@ -276,6 +276,7 @@ function startGoStatePolling() {
 export async function initPlayer(playerElement, callbacks, sinkId = null) {
     savedCallbacks = { ...callbacks };
     isWails = typeof window.go !== 'undefined';
+    // Wails: output routing is via Go/PortAudio; `sinkId` is ignored (Web Audio is Electron-only).
 
     if (isWails) {
         console.log('[Player] Initializing in Wails mode (Go Backend)');
@@ -411,9 +412,10 @@ async function updateOSNowPlayingMetadata(song) {
 }
 
 /**
+ * @param {number} [gainLinear=1.0] — Wails: linear gain from playback-manager (loudness). Electron: ignored; Web Audio `setBaseGain` applies.
  * @returns {Promise<boolean>} true if output playback actually started (Wails: AudioPlay resolved).
  */
-export async function play(song) {
+export async function play(song, gainLinear = 1.0) {
     await stop();
     if (!song) return false;
 
@@ -424,8 +426,7 @@ export async function play(song) {
     }
 
     try {
-        // In Wails mode, loudness normalisation is not applied on the JS side,
-        // so skip the two IPC round-trips that fetch settings and loudness value.
+        // In Wails mode, loudness is applied in Go via `gainLinear`; keep Electron path below.
         if (!isWails) {
             const settings = await loadRendererSettings();
             const TARGET_LOUDNESS =
@@ -451,7 +452,7 @@ export async function play(song) {
         }
 
         currentSongType = 'local';
-        await playLocal({ ...song, path: filePath });
+        await playLocal({ ...song, path: filePath }, gainLinear);
         return true;
     } catch (err) {
         console.error('[Player] play failed:', err);
@@ -478,15 +479,16 @@ export async function stop() {
     updateMediaSessionState('none');
 }
 
-async function playLocal(song) {
+async function playLocal(song, gainLinear = 1.0) {
     if (isWails) {
         const path = typeof song.path === 'string' ? song.path.trim() : '';
         if (!path) {
             console.warn('[Player] playLocal(Wails): empty path');
             return;
         }
+        const g = Number.isFinite(gainLinear) && gainLinear > 0 ? gainLinear : 1.0;
         console.log(`[Player] Playing with Go Backend: ${path}`);
-        await WailsApp.AudioPlay(path);
+        await WailsApp.AudioPlay(path, g);
         const slider = elements.volumeSlider;
         const rawVol = slider && typeof slider.value === 'string' ? parseFloat(slider.value) : 1;
         const volume = Number.isFinite(rawVol) ? Math.min(1, Math.max(0, rawVol)) : 1;

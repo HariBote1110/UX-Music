@@ -22,11 +22,16 @@ export function getWailsApp() {
   return window.go?.server?.App ?? window.go?.main?.App;
 }
 
+/** True when Wails Go bindings are available (not pure Electron). */
+export function isWailsMode() {
+  return getWailsApp() != null;
+}
+
 export const musicApi = {
   // --- One-way (Send) ---
   requestAppInfo: () => {
     if (getWailsApp()) {
-      return Promise.resolve({ version: '0.1.9-Beta-9e', platform: 'darwin' });
+      return Promise.resolve({ version: '0.1.9-Beta-10a', platform: 'darwin' });
     }
     return api && api.send(CHANNELS.SEND.REQUEST_APP_INFO);
   },

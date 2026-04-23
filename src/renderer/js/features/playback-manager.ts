@@ -7,7 +7,7 @@ import { updatePlayingIndicators, renderQueueView } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
-import { musicApi } from '../core/bridge.js';
+import { musicApi, isWailsMode } from '../core/bridge.js';
 import { getSongById } from '../core/library-model.js';
 const electronAPI = window.electronAPI;
 const pendingLoudnessRequests = new Set();
@@ -127,6 +127,7 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
         electronAPI.send('request-bpm-analysis', songToPlayActual);
     }
 
+    let gainLinear = 1.0;
     if (songToPlayActual.type === 'local' && !forcePlay && songToPlayActual.path) {
         const savedLoudnessRaw = await electronAPI.invoke('get-loudness-value', songToPlayActual.path);
         const savedLoudness = parseLoudnessValue(savedLoudnessRaw);
@@ -139,6 +140,15 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
             }
             renderQueueView();
             return;
+        }
+        if (isWailsMode()) {
+            const settings = await musicApi.getSettings();
+            const targetLoudness =
+                typeof settings?.targetLoudness === 'number' && Number.isFinite(settings.targetLoudness)
+                    ? settings.targetLoudness
+                    : -18.0;
+            const gainDb = targetLoudness - savedLoudness;
+            gainLinear = Math.pow(10, gainDb / 20);
         }
     }
 
@@ -156,7 +166,7 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
     updatePlayingIndicators();
     renderQueueView();
 
-    const started = await playSongInPlayer(songToPlayActual);
+    const started = await playSongInPlayer(songToPlayActual, gainLinear);
     if (!started) {
         state.currentSongIndex = prevIdx;
         if (prevSong) {
@@ -197,7 +207,9 @@ export function playNextSong() {
             state.currentSongIndex = -1;
             updatePlayingIndicators();
             renderQueueView();
-            electronAPI.send('playback-stopped');
+            if (!isWailsMode()) {
+                electronAPI.send('playback-stopped');
+            }
             return;
         }
     }

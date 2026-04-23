@@ -2,7 +2,7 @@
 // src/renderer/js/audio-graph.js
 
 import { elements } from '../core/state.js';
-import { getWailsApp } from '../core/bridge.js';
+import { getWailsApp, musicApi, isWailsMode } from '../core/bridge.js';
 const electronAPI = window.electronAPI;
 
 // ▼▼▼ 変更: グラフ（Context+Nodes）のキャッシュ管理 ▼▼▼
@@ -247,6 +247,9 @@ async function createGraph(rate) {
 }
 
 export async function initAudioGraph(playerElement, sinkId) {
+    if (isWailsMode()) {
+        return;
+    }
     // 初回初期化またはデバイス変更
     console.log('[AudioGraph] initAudioGraph called with sinkId:', sinkId);
 
@@ -263,7 +266,7 @@ export async function initAudioGraph(playerElement, sinkId) {
     // sinkIdが渡された場合のみ設定を保存（nullや未定義の場合は保存しない）
     if (sinkId) {
         savedSinkId = sinkId;
-        electronAPI.send('save-settings', { audioOutputId: sinkId });
+        musicApi.saveSettings({ audioOutputId: sinkId });
     }
 
     if (sinkId === 'ux-direct-link') {
@@ -305,6 +308,9 @@ export async function initAudioGraph(playerElement, sinkId) {
  * 保存されたSinkIDを設定する（起動時の設定復元用）
  */
 export function restoreSavedSinkId(sinkId) {
+    if (isWailsMode()) {
+        return;
+    }
     if (sinkId && sinkId !== 'default') {
         savedSinkId = sinkId;
         console.log('[AudioGraph] Restored saved sinkId:', sinkId);
@@ -316,6 +322,9 @@ export function restoreSavedSinkId(sinkId) {
 }
 
 export async function setAudioOutput(deviceId, playerElement) {
+    if (isWailsMode()) {
+        return;
+    }
     console.log('[AudioGraph] setAudioOutput called:', {
         deviceId,
         hasPlayerElement: !!playerElement,
