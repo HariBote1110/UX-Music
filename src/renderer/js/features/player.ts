@@ -32,6 +32,7 @@ import {
     dataArray
 } from './audio-graph.js';
 import { musicApi, getWailsApp } from '../core/bridge.js';
+import * as WailsApp from '../../wailsjs/go/server/App.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
 const electronAPI = window.electronAPI;
@@ -409,45 +410,64 @@ async function updateOSNowPlayingMetadata(song) {
     }
 }
 
+/**
+ * @returns {Promise<boolean>} true if output playback actually started (Wails: AudioPlay resolved).
+ */
 export async function play(song) {
     await stop();
-    if (!song) return;
+    if (!song) return false;
 
-    const settings = await loadRendererSettings();
-    const TARGET_LOUDNESS =
-        typeof settings.targetLoudness === 'number' && Number.isFinite(settings.targetLoudness)
-            ? settings.targetLoudness
-            : -18.0;
-    const savedLoudness = await electronAPI.invoke('get-loudness-value', song.path);
-    let newBaseGain = 1.0;
-    if (typeof savedLoudness === 'number' && Number.isFinite(savedLoudness)) {
-        const gainDb = TARGET_LOUDNESS - savedLoudness;
-        newBaseGain = Math.pow(10, gainDb / 20);
+    const filePath = typeof song.path === 'string' ? song.path.trim() : '';
+    if (!filePath) {
+        console.warn('[Player] play() skipped: no file path on song', song?.title);
+        return false;
     }
 
-    if (isWails) {
-        // Go側でボリューム制御を行う（baseGain * masterVolume）
-        // 現状の簡易実装ではAPIがないため、後でAudioPlayer側でBaseGain対応が必要かも
-        // とりあえずVolume設定だけ呼んでおく（UIのSlider値は反映されないので注意）
-        // TODO: BaseGainとMasterVolumeを統合
-    } else {
-        setBaseGain(newBaseGain);
-    }
+    try {
+        const settings = await loadRendererSettings();
+        const TARGET_LOUDNESS =
+            typeof settings.targetLoudness === 'number' && Number.isFinite(settings.targetLoudness)
+                ? settings.targetLoudness
+                : -18.0;
+        const savedLoudness = await electronAPI.invoke('get-loudness-value', filePath);
+        let newBaseGain = 1.0;
+        if (typeof savedLoudness === 'number' && Number.isFinite(savedLoudness)) {
+            const gainDb = TARGET_LOUDNESS - savedLoudness;
+            newBaseGain = Math.pow(10, gainDb / 20);
+        }
 
-    setMediaSessionMetadata(song).catch(() => { });
-    if (isWails) {
-        await updateOSNowPlayingMetadata(song);
-    }
+        if (isWails) {
+            // Go側でボリューム制御を行う（baseGain * masterVolume）
+            // TODO: BaseGainとMasterVolumeを統合
+        } else {
+            setBaseGain(newBaseGain);
+        }
 
-    if (song.path) {
+        setMediaSessionMetadata(song).catch(() => { });
+        if (isWails) {
+            try {
+                await updateOSNowPlayingMetadata(song);
+            } catch (err) {
+                console.warn('[Player] updateOSNowPlayingMetadata failed:', err);
+            }
+        }
+
         currentSongType = 'local';
-        await playLocal(song);
+        await playLocal({ ...song, path: filePath });
+        return true;
+    } catch (err) {
+        console.error('[Player] play failed:', err);
+        return false;
     }
 }
 
 export async function stop() {
     if (isWails) {
-        await getWailsApp()?.AudioStop?.();
+        try {
+            await WailsApp.AudioStop();
+        } catch (err) {
+            console.warn('[Player] AudioStop:', err);
+        }
         goState.isPlaying = false;
         goState.isPaused = false;
         goState.currentTime = 0;
@@ -462,20 +482,21 @@ export async function stop() {
 
 async function playLocal(song) {
     if (isWails) {
-        console.log(`[Player] Playing with Go Backend: ${song.path}`);
-        try {
-            await getWailsApp()?.AudioPlay?.(song.path);
-            // Volume適用（初期値）
-            const volume = parseFloat(elements.volumeSlider.value);
-            await getWailsApp()?.AudioSetVolume?.(volume);
-
-            updatePlayingIndicators();
-            updatePlaybackStateUI(true);
-            updateMediaSessionState('playing');
-        } catch (e) {
-            console.error('[Player] Go AudioPlay failed:', e);
-            savedCallbacks.onSongEnded(); // エラー時は次の曲へ
+        const path = typeof song.path === 'string' ? song.path.trim() : '';
+        if (!path) {
+            console.warn('[Player] playLocal(Wails): empty path');
+            return;
         }
+        console.log(`[Player] Playing with Go Backend: ${path}`);
+        await WailsApp.AudioPlay(path);
+        const slider = elements.volumeSlider;
+        const rawVol = slider && typeof slider.value === 'string' ? parseFloat(slider.value) : 1;
+        const volume = Number.isFinite(rawVol) ? Math.min(1, Math.max(0, rawVol)) : 1;
+        await WailsApp.AudioSetVolume(volume);
+
+        updatePlayingIndicators();
+        updatePlaybackStateUI(true);
+        updateMediaSessionState('playing');
         return;
     }
 

@@ -21,6 +21,11 @@ import { loadNormalizedSettings } from '../core/settings-helpers.js';
 
 const electronAPI = window.electronAPI;
 
+/** For `[attr="..."]` selectors — not {@link CSS.escape} (that targets identifiers and breaks UUIDs starting with a digit). */
+function cssQuotedAttrValue(value) {
+    return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 /**
  * Stops playback and switches the audio output device, then updates the device popup selection.
  */
@@ -69,8 +74,7 @@ export function updatePlayingIndicators() {
 
     if (currentPlayingSong && playingIdentifier) {
         try {
-            const safeId = CSS.escape(playingIdentifier);
-            const selector = `.main-content .song-item[data-song-id="${safeId}"]`;
+            const selector = `.main-content .song-item[data-song-id="${cssQuotedAttrValue(playingIdentifier)}"]`;
             const newPlayingItem = document.querySelector(selector);
 
             if (newPlayingItem) {
@@ -96,8 +100,7 @@ export function updatePlayingIndicators() {
  */
 export function updatePlayCountDisplay(songPath, count) {
     try {
-        const safePath = CSS.escape(songPath);
-        const songItem = document.querySelector(`.main-content .song-item[data-song-path="${safePath}"]`);
+        const songItem = document.querySelector(`.main-content .song-item[data-song-path="${cssQuotedAttrValue(songPath)}"]`);
         if (songItem) {
             const countElement = songItem.querySelector('.song-play-count');
             if (countElement) {
@@ -109,7 +112,7 @@ export function updatePlayCountDisplay(songPath, count) {
     }
 }
 
-function renderQueueView() {
+export function renderQueueView() {
     elements.queueList.innerHTML = '';
     lastPlayingQueueIndex = -1;
     if (state.playbackQueue.length === 0) {
@@ -159,7 +162,11 @@ function syncQueuePlayingState() {
     lastPlayingQueueIndex = nextPlayingIndex;
 }
 
-export function initUI() {
+/**
+ * サイドバー（歌詞・再生キュー・EQ）、キュー行クリック、MTP デバイス UI。
+ * `renderer` は `ui.ts` の initUI を入口にしているため、そこから必ず一度呼び出すこと。
+ */
+export function initQueueSidebarMtpHandlers() {
     if (elements.queueList) {
         elements.queueList.addEventListener('click', (e) => {
             const item = e.target.closest('[data-queue-index]');
@@ -233,6 +240,9 @@ export function initUI() {
         });
     };
 }
+
+/** @deprecated 代わりに {@link initQueueSidebarMtpHandlers} を使用（`ui.ts` から呼び出し） */
+export const initUI = initQueueSidebarMtpHandlers;
 
 function updateMtpDeviceView(payload) {
     if (payload && payload.device) {

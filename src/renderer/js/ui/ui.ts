@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { state, elements } from '../core/state.js';
+import { initQueueSidebarMtpHandlers } from './ui-manager.js';
 import { setupSongListScroller, createListHeader, initListHeaderResizing } from './list-renderer.js';
 import { resolveArtworkPath, formatSongTitle, checkTextOverflow } from './utils.js';
 import { setEqualizerColorFromArtwork } from '../features/player.js';
@@ -165,6 +166,8 @@ export function initUI() {
             });
         }
     });
+
+    initQueueSidebarMtpHandlers();
 }
 
 let currentSearchQuery = '';

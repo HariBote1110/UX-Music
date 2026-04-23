@@ -3,7 +3,7 @@
 
 import { state, elements, PLAYBACK_MODES } from '../core/state.js';
 import { play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
-import { updatePlayingIndicators, renderCurrentView } from '../ui/ui-manager.js';
+import { updatePlayingIndicators, renderQueueView } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
@@ -11,6 +11,9 @@ import { musicApi } from '../core/bridge.js';
 import { getSongById } from '../core/library-model.js';
 const electronAPI = window.electronAPI;
 const pendingLoudnessRequests = new Set();
+
+/** Overlapping playSong calls (queue clicks, skip spam) must not interleave awaits; last enqueued run still wins after prior runs finish. */
+let playSongChain = Promise.resolve();
 
 function parseLoudnessValue(value) {
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -62,7 +65,15 @@ export async function initPlaybackSettings() {
     }
 }
 
-export async function playSong(index, sourceList = null, forcePlay = false) {
+export function playSong(index, sourceList = null, forcePlay = false) {
+    const run = playSongChain.then(() => runPlaySongWork(index, sourceList, forcePlay));
+    playSongChain = run.catch((err) => {
+        console.warn('[Playback] playSong failed:', err);
+    });
+    return run;
+}
+
+async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
     const targetQueue = sourceList || state.playbackQueue;
     const songToPlay = targetQueue[index];
 
@@ -126,6 +137,7 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
                 pendingLoudnessRequests.add(songToPlayActual.path);
                 electronAPI.send('request-loudness-analysis', songToPlayActual.path);
             }
+            renderQueueView();
             return;
         }
     }
@@ -133,14 +145,35 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
     hideNotification();
     loadLyricsForSong(songToPlayActual);
 
-    musicApi.playbackStarted(songToPlayActual);
+    const prevIdx = state.currentSongIndex;
+    const prevSong =
+        prevIdx >= 0 && prevIdx < state.playbackQueue.length ? state.playbackQueue[prevIdx] : null;
+
     state.currentSongIndex = index;
 
     console.log('[Debug:Playback] UI更新関数(updateNowPlayingView, updatePlayingIndicators)を呼び出します。');
     updateNowPlayingView(songToPlayActual);
     updatePlayingIndicators();
+    renderQueueView();
 
-    await playSongInPlayer(songToPlayActual);
+    const started = await playSongInPlayer(songToPlayActual);
+    if (!started) {
+        state.currentSongIndex = prevIdx;
+        if (prevSong) {
+            loadLyricsForSong(prevSong);
+            updateNowPlayingView(prevSong);
+        } else {
+            loadLyricsForSong(null);
+            updateNowPlayingView(null);
+        }
+        updatePlayingIndicators();
+        renderQueueView();
+        showNotification('再生を開始できませんでした。');
+        hideNotification(4000);
+        return;
+    }
+
+    musicApi.playbackStarted(songToPlayActual);
 }
 
 export function playNextSong() {
@@ -163,6 +196,7 @@ export function playNextSong() {
             loadLyricsForSong(null);
             state.currentSongIndex = -1;
             updatePlayingIndicators();
+            renderQueueView();
             electronAPI.send('playback-stopped');
             return;
         }
@@ -212,6 +246,7 @@ export function toggleShuffle() {
         state.currentSongIndex = currentSong ? state.playbackQueue.findIndex(s => s.id === currentSong.id) : -1;
     }
     updatePlayingIndicators();
+    renderQueueView();
 }
 
 export function toggleLoopMode() {

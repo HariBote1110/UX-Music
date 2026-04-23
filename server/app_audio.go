@@ -54,6 +54,7 @@ func (a *App) AudioPlay(filePath string) error {
 		return fmt.Errorf("audio player not initialized")
 	}
 	if err := a.audioPlayer.Play(filePath); err != nil {
+		fmt.Printf("[Audio] Play failed (%s): %v\n", filePath, err)
 		return err
 	}
 	a.updateOSNowPlayingByPath(filePath, true)

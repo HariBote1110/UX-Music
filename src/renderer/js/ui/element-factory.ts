@@ -155,7 +155,8 @@ export function createQueueItem(song, isPlaying, queueIndex) {
     queueItem.className = `queue-item ${isPlaying ? 'playing' : ''}`;
     queueItem.dataset.songPath = song.path;
     queueItem.dataset.queueIndex = String(queueIndex);
-    queueItem.draggable = true;
+    // Reorder DnD is not implemented; draggable breaks reliable click-to-play in WKWebView/Wails.
+    queueItem.draggable = false;
 
     const artworkHTML = state.isLightFlightMode ? '' : `<img src="${DEFAULT_ARTWORK_URL}" class="artwork-small" alt="artwork">`;
 

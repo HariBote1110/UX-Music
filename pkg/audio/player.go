@@ -103,6 +103,8 @@ type Player struct {
 	ringAvailable atomic.Int64  // Number of samples available
 	decoderStop   chan struct{} // Signal to stop decoder goroutine
 	decoderDone   chan struct{} // Signal that decoder has stopped
+	// Serialises decoder teardown so concurrent Play/Stop cannot double-close decoderStop.
+	decoderLifecycleMu sync.Mutex
 
 	// Audio buffer (pre-allocated to avoid allocation in callback)
 	audioBuf     []byte
@@ -227,8 +229,29 @@ func (p *Player) getVolume() float64 {
 	return math.Float64frombits(p.volume.Load())
 }
 
+// shutdownDecoderGoroutine closes decoderStop once and waits until decoderLoop exits.
+// Must be used for every path that stops the decoder (Play, Stop, Close) so rapid
+// skip / overlapping IPC cannot trigger close-of-closed-channel or use-after-teardown on the decoder.
+func (p *Player) shutdownDecoderGoroutine() {
+	p.decoderLifecycleMu.Lock()
+	defer p.decoderLifecycleMu.Unlock()
+
+	if p.decoderStop == nil {
+		return
+	}
+	close(p.decoderStop)
+	done := p.decoderDone
+	p.decoderStop = nil
+	p.decoderDone = nil
+	if done != nil {
+		<-done
+	}
+}
+
 // Close terminates the player
 func (p *Player) Close() error {
+	p.shutdownDecoderGoroutine()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -318,13 +341,7 @@ func (p *Player) GetCurrentDevice() string {
 
 // Play starts playback of an audio file
 func (p *Player) Play(filePath string) error {
-	// Stop current playback and decoder goroutine
-	if p.decoderStop != nil {
-		close(p.decoderStop)
-		<-p.decoderDone
-		p.decoderStop = nil
-		p.decoderDone = nil
-	}
+	p.shutdownDecoderGoroutine()
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -730,13 +747,7 @@ func (p *Player) Resume() error {
 
 // Stop stops playback
 func (p *Player) Stop() error {
-	// Stop decoder goroutine first
-	if p.decoderStop != nil {
-		close(p.decoderStop)
-		<-p.decoderDone
-		p.decoderStop = nil
-		p.decoderDone = nil
-	}
+	p.shutdownDecoderGoroutine()
 
 	p.mu.Lock()
 	if p.stream != nil {
