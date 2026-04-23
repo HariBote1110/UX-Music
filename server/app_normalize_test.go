@@ -34,6 +34,9 @@ func TestHasNumericLoudnessValue(t *testing.T) {
 		{name: "int", value: int(-10), want: true},
 		{name: "string", value: "-12.3", want: false},
 		{name: "nil", value: nil, want: false},
+		{name: "map with loudness", value: map[string]interface{}{"loudness": float64(-14.0), "truePeak": float64(-1.2)}, want: true},
+		{name: "map without loudness", value: map[string]interface{}{"truePeak": float64(-1.2)}, want: false},
+		{name: "empty map", value: map[string]interface{}{}, want: false},
 	}
 
 	for _, tt := range tests {
@@ -68,7 +71,7 @@ func TestFilterPendingLoudnessPaths(t *testing.T) {
 }
 
 func TestLoudnessPathCandidates(t *testing.T) {
-	pathNFD := "/Users/yuki/Music/バンド/曲.flac"
+	pathNFD := "/Users/yuki/Music/バンド/曲.flac"
 	pathNFC := norm.NFC.String(pathNFD)
 
 	candidates := loudnessPathCandidates(pathNFD)
@@ -93,13 +96,51 @@ func TestLoudnessPathCandidates(t *testing.T) {
 }
 
 func TestHasStoredNumericLoudness(t *testing.T) {
-	pathNFD := "/Users/yuki/Music/バンド/曲.flac"
+	pathNFD := "/Users/yuki/Music/バンド/曲.flac"
 	pathNFC := norm.NFC.String(pathNFD)
 
-	existing := map[string]interface{}{
-		pathNFC: float64(-9.5),
-	}
-	if !hasStoredNumericLoudness(existing, pathNFD) {
-		t.Fatalf("hasStoredNumericLoudness should match normalised key")
-	}
+	t.Run("legacy float64 format", func(t *testing.T) {
+		existing := map[string]interface{}{
+			pathNFC: float64(-9.5),
+		}
+		if !hasStoredNumericLoudness(existing, pathNFD) {
+			t.Fatalf("hasStoredNumericLoudness should match normalised key")
+		}
+	})
+
+	t.Run("current map format", func(t *testing.T) {
+		existing := map[string]interface{}{
+			pathNFC: map[string]interface{}{"loudness": float64(-9.5), "truePeak": float64(-1.0)},
+		}
+		if !hasStoredNumericLoudness(existing, pathNFD) {
+			t.Fatalf("hasStoredNumericLoudness should match normalised key in map format")
+		}
+	})
+}
+
+func TestExtractLoudnessEntry(t *testing.T) {
+	t.Run("legacy float64", func(t *testing.T) {
+		l, tp, hasTp, ok := extractLoudnessEntry(float64(-14.0))
+		if !ok || l != -14.0 || hasTp || tp != 0 {
+			t.Fatalf("unexpected: ok=%v l=%v tp=%v hasTp=%v", ok, l, tp, hasTp)
+		}
+	})
+	t.Run("map with truePeak", func(t *testing.T) {
+		l, tp, hasTp, ok := extractLoudnessEntry(map[string]interface{}{"loudness": float64(-14.0), "truePeak": float64(-1.2)})
+		if !ok || l != -14.0 || !hasTp || tp != -1.2 {
+			t.Fatalf("unexpected: ok=%v l=%v tp=%v hasTp=%v", ok, l, tp, hasTp)
+		}
+	})
+	t.Run("map without loudness key", func(t *testing.T) {
+		_, _, _, ok := extractLoudnessEntry(map[string]interface{}{"truePeak": float64(-1.2)})
+		if ok {
+			t.Fatal("expected ok=false when loudness key missing")
+		}
+	})
+	t.Run("nil", func(t *testing.T) {
+		_, _, _, ok := extractLoudnessEntry(nil)
+		if ok {
+			t.Fatal("expected ok=false for nil")
+		}
+	})
 }

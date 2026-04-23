@@ -19,7 +19,7 @@ import (
 func (a *App) NormalizeAnalyze(path string) normalize.AnalysisResult {
 	result := a.normalizer.AnalyzeLoudness(path)
 	if result.Success {
-		a.saveLoudnessValue(path, result.Loudness)
+		a.saveLoudnessEntry(path, result.Loudness, result.TruePeak)
 	}
 	return result
 }
@@ -164,7 +164,7 @@ func (a *App) NormalizeStartJob(jobType string, files []interface{}, options int
 				if jobType == "analyze" {
 					analyzeResult := a.normalizer.AnalyzeLoudness(j.FilePath)
 					if analyzeResult.Success {
-						a.saveLoudnessValue(j.FilePath, analyzeResult.Loudness)
+						a.saveLoudnessEntry(j.FilePath, analyzeResult.Loudness, analyzeResult.TruePeak)
 					}
 					res = analyzeResult
 				} else if jobType == "normalize" {
@@ -189,17 +189,41 @@ func (a *App) NormalizeStartJob(jobType string, files []interface{}, options int
 	}()
 }
 
-// GetLoudnessValue returns the saved loudness for a song
+// extractLoudnessEntry parses a stored value which may be either a plain float64
+// (legacy format) or a map {"loudness": float64, "truePeak": float64} (current format).
+func extractLoudnessEntry(value interface{}) (loudness float64, truePeak float64, hasTruePeak bool, ok bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, 0, false, true
+	case map[string]interface{}:
+		l, lOk := v["loudness"].(float64)
+		if !lOk {
+			return 0, 0, false, false
+		}
+		tp, tpOk := v["truePeak"].(float64)
+		return l, tp, tpOk, true
+	}
+	return 0, 0, false, false
+}
+
+// GetLoudnessValue returns the saved loudness for a song as a plain number.
+// Kept as number for backward compatibility with the playback pipeline.
 func (a *App) GetLoudnessValue(path string) (interface{}, error) {
 	loudnessMap := loadLoudnessMap()
 	for _, key := range loudnessPathCandidates(path) {
 		if value, ok := loudnessMap[key]; ok {
-			return value, nil
+			loudness, _, _, valid := extractLoudnessEntry(value)
+			if valid {
+				return loudness, nil
+			}
 		}
 	}
 	return nil, nil
 }
 
+// GetAllLoudnessData returns all stored loudness data.
+// Each value is a map {"loudness": float64, "truePeak": float64} when available,
+// or a plain float64 for legacy entries that have no truePeak stored yet.
 func (a *App) GetAllLoudnessData() (map[string]interface{}, error) {
 	return loadLoudnessMap(), nil
 }
@@ -299,9 +323,13 @@ func hasNumericLoudnessValue(value interface{}) bool {
 	switch value.(type) {
 	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		return true
-	default:
-		return false
 	}
+	// Accept the current map format {"loudness": float64, ...}
+	if m, ok := value.(map[string]interface{}); ok {
+		_, lOk := m["loudness"].(float64)
+		return lOk
+	}
+	return false
 }
 
 func loudnessPathCandidates(path string) []string {
@@ -396,7 +424,7 @@ func (a *App) queueLoudnessAnalysis(paths []string) {
 
 				result := a.normalizer.AnalyzeLoudness(filePath)
 				if result.Success {
-					a.saveLoudnessValue(filePath, result.Loudness)
+					a.saveLoudnessEntry(filePath, result.Loudness, result.TruePeak)
 				}
 
 				if a.ctx != nil {
@@ -415,7 +443,7 @@ func (a *App) queueLoudnessAnalysis(paths []string) {
 	}(pending)
 }
 
-func (a *App) saveLoudnessValue(path string, loudness float64) {
+func (a *App) saveLoudnessEntry(path string, loudness float64, truePeak float64) {
 	candidates := loudnessPathCandidates(path)
 	if len(candidates) == 0 {
 		return
@@ -425,8 +453,9 @@ func (a *App) saveLoudnessValue(path string, loudness float64) {
 	defer a.loudnessMu.Unlock()
 
 	loudnessMap := loadLoudnessMap()
+	entry := map[string]interface{}{"loudness": loudness, "truePeak": truePeak}
 	for _, key := range candidates {
-		loudnessMap[key] = loudness
+		loudnessMap[key] = entry
 	}
 	if err := store.Instance.Save("loudness", loudnessMap); err != nil {
 		fmt.Printf("[Normalize] Failed to save loudness for %s: %v\n", path, err)

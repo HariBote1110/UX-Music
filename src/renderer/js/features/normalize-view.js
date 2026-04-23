@@ -238,15 +238,22 @@ async function addFiles(filePaths, preAnalyzedData = {}) {
         // ▲▲▲ 修正ここまで ▲▲▲
 
         const id = self.crypto.randomUUID();
-        const existingLoudness = preAnalyzedData[filePath];
+        const existingEntry = preAnalyzedData[filePath];
+        // Support both legacy float64 and current {loudness, truePeak} formats
+        const existingLoudness = typeof existingEntry === 'number'
+            ? existingEntry
+            : (existingEntry && typeof existingEntry.loudness === 'number' ? existingEntry.loudness : null);
+        const existingTruePeak = existingEntry && typeof existingEntry.truePeak === 'number'
+            ? existingEntry.truePeak
+            : null;
 
         normalizeFiles.set(id, {
             id,
             path: filePath,
             name: fileName,
-            status: typeof existingLoudness === 'number' ? 'analysed' : 'pending',
-            currentLufs: typeof existingLoudness === 'number' ? existingLoudness : null,
-            truePeak: null,
+            status: existingLoudness !== null ? 'analysed' : 'pending',
+            currentLufs: existingLoudness,
+            truePeak: existingTruePeak,
             targetLufs: targetLufs,
             selected: true,
         });

@@ -4,7 +4,28 @@
 
 ## 進行中の問題
 
-（現在なし）
+### [バグ] Desktop 再生周りのエッジケース（3件）
+
+調査日: 2026-04-21  
+対象: `Electron_Based_UX-Music/src/renderer/js/`
+
+#### バグ1: mouseup がシークバー外で発火しない (`player-ui.js:97`)
+
+- **現象**: シークバーをドラッグ中にカーソルを要素外でマウスを離すと、`isSeeking` フラグが `true` のままスタックする。シーク値が適用されず、再生も再開されない。
+- **原因**: `mouseup` イベントが `progressBar` 要素のみに登録されており、要素外での解放を補足できない。
+- **修正方針**: `document` レベルに `mouseup` リスナーを登録する。
+
+#### バグ2: キャッシュグラフ再アクティブ時に EQ が適用されない (`audio-graph.js:201`)
+
+- **現象**: サンプリングレートの異なる曲（例: 48kHz → 44.1kHz）に切り替えると、以前キャッシュされたグラフが再利用されるが、その際に EQ 設定が適用されない。
+- **原因**: `applyEqualizerSettings()` は呼び出し時の `currentGraph` にのみ即時反映する設計で、`activateAudioGraph()` での再アクティブ化時に EQ の再適用が行われていない。
+- **修正方針**: `activateAudioGraph()` 内でグラフを resume した後に EQ 設定を再適用する。
+
+#### バグ3: `play()` 失敗時に skip 統計が送信されない (`player.js:236`)
+
+- **現象**: `playLocal()` 内で `audioElement.play()` が AbortError 以外で失敗した場合、`onSongEnded()` を直接呼び出して次曲へ進む。この経路では `ipcRenderer.send('song-skipped', ...)` が呼ばれず、ラウドネス解析キューの統計がずれる。
+- **原因**: エラー時のフォールバックパスが `handleSkip()` を通らない。
+- **修正方針**: エラー時に `ipcRenderer.send('playback-error', song)` を送るか、`handleSkip` 相当の処理を追加する。
 
 
 ## 解決済みの問題

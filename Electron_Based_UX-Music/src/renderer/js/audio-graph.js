@@ -13,8 +13,9 @@ let currentGraph = null;      // 現在アクティブなグラフ
 export let analyser = null;
 export let dataArray = null;
 
-let baseGain = 1.0; 
-let isDirectLinkEnabled = false; 
+let baseGain = 1.0;
+let isDirectLinkEnabled = false;
+let lastEqualizerSettings = null;
 const PIPE_NAME = os.platform() === 'win32' ? '\\\\.\\pipe\\ux_audio_router_pipe' : '/tmp/ux_audio_router.sock';
 
 /**
@@ -84,8 +85,8 @@ export async function activateAudioGraph(rate) {
     }
 
     // 音量・EQ設定を適用
-    applyMasterVolume(); 
-    // (EQ適用関数は個別に呼ぶ必要があるが、ここではゲインのみ即時適用)
+    applyMasterVolume();
+    if (lastEqualizerSettings) applyEqualizerSettings(lastEqualizerSettings);
 
     return currentGraph;
 }
@@ -199,9 +200,7 @@ export function applyMasterVolume() {
 }
 
 export function applyEqualizerSettings(settings) {
-    // 全キャッシュに適用するのは重いので、現在のグラフにのみ適用し、
-    // 他のグラフはアクティブ化された時に適用する設計が理想だが、
-    // 今回は簡易的に「現在のグラフ」のみ即時反映する
+    lastEqualizerSettings = settings;
     if (!currentGraph) return;
     
     const context = currentGraph.context;

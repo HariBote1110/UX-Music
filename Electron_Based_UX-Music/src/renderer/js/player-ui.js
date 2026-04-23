@@ -90,20 +90,20 @@ export function initPlayerControls(initialPlayer, callbacks) {
 
     elements.progressBar.addEventListener('mousedown', () => {
         isSeeking = true;
-        wasPlayingBeforeSeek = isPlaying(); 
-        if (wasPlayingBeforeSeek) pauseCurrent(); // 汎用関数を使用
+        wasPlayingBeforeSeek = isPlaying();
+        if (wasPlayingBeforeSeek) pauseCurrent();
     });
 
-    elements.progressBar.addEventListener('mouseup', () => {
+    // mouseup はドキュメントレベルで捕捉する（バー外でマウスを離した場合もシークを確定させるため）
+    document.addEventListener('mouseup', () => {
         if (isSeeking) {
             const seekTime = parseFloat(elements.progressBar.value);
-            seek(seekTime); 
+            seek(seekTime);
             isSeeking = false;
             if (wasPlayingBeforeSeek) {
-                playCurrent(); // 汎用関数を使用
+                playCurrent();
                 wasPlayingBeforeSeek = false;
             }
-            // ループは onplaying イベントから自動で再開されます
         }
     });
 
