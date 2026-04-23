@@ -18,7 +18,7 @@ const EV = {
 };
 
 export const musicApi = {
-    requestAppInfo: () => Promise.resolve({ version: '0.1.9-Beta-9g', platform: typeof navigator !== 'undefined' ? navigator.platform : 'unknown' }),
+    requestAppInfo: () => Promise.resolve({ version: '0.1.9-Beta-9h', platform: typeof navigator !== 'undefined' ? navigator.platform : 'unknown' }),
     appReady: () => {},
     loadLibrary: () => getApp()?.LoadLibrary?.(),
     requestPlaylistsWithArtwork: () => getApp()?.RequestPlaylistsWithArtwork?.(),

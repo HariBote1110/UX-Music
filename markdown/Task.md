@@ -1,3 +1,14 @@
+# Task: Gitコンフリクトの解消とバージョン更新
+
+## 概要
+gitのコンフリクト（手動で残されたマーカーを含む）を解消し、プロジェクトのバージョンを `0.1.9-Beta-9h` に更新する。
+
+## 完了条件
+- [x] `Electron_Based_UX-Music/src/main/ipc-handlers.js` のコンフリクトマーカーが解消されていること。
+- [x] `markdown/requirement.md` のバージョンが `0.1.9-Beta-9h` に更新されていること。
+- [x] `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-9h` に更新されていること。
+- [x] プロジェクト全体からコンフリクトマーカーが消えていること（検証済み）。
+
 # Task: Wails 移行の未動作・ギャップ機能の探索とドキュメント化
 
 ## 概要
