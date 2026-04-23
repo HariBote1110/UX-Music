@@ -1,8 +1,8 @@
 // src/renderer/js/cd-ripper.js
 
 import { escapeHtml } from '../ui/utils.js';
-
-const electronAPI = window.electronAPI;
+import * as cdAPI from '../core/api/cd.js';
+import { eventsOn, eventsOff } from '../core/api/runtime-events.js';
 
 let currentTracks = [];
 let isRipping = false;
@@ -32,13 +32,13 @@ export async function startCDRipView() {
     // 初回スキャン
     await scanCD();
 
-    electronAPI.on('rip-progress', onProgress);
-    electronAPI.on('rip-complete', onComplete);
+    eventsOn('rip-progress', onProgress);
+    eventsOn('rip-complete', onComplete);
 }
 
 export function stopCDRipView() {
-    electronAPI.removeAllListeners('rip-progress');
-    electronAPI.removeAllListeners('rip-complete');
+    eventsOff('rip-progress');
+    eventsOff('rip-complete');
     currentTracks = [];
 }
 
@@ -72,7 +72,7 @@ async function scanCD() {
     if (metadataBtn) metadataBtn.disabled = true;
 
     try {
-        const result = await electronAPI.invoke('cd-scan');
+        const result = await cdAPI.cdScan();
         if (!result.success) {
             if (statusMsg) statusMsg.textContent = `エラー: ${result.message}`;
             return;
@@ -91,7 +91,7 @@ async function scanCD() {
 
         // 自動メタデータ検索
         try {
-            const searchResult = await electronAPI.invoke('cd-search-toc', currentTracks);
+            const searchResult = await cdAPI.cdSearchToc(currentTracks);
             if (searchResult.success && searchResult.releases && searchResult.releases.length > 0) {
                 const releases = searchResult.releases;
                 if (releases.length === 1) {
@@ -130,7 +130,7 @@ async function openMetadataSearch() {
     const list = document.getElementById('cd-candidate-list');
     list.innerHTML = '<li style="padding: 10px; color: #aaa;">自動検索中...</li>';
     try {
-        const result = await electronAPI.invoke('cd-search-toc', currentTracks);
+        const result = await cdAPI.cdSearchToc(currentTracks);
         if (result.success && result.releases.length > 0) {
             renderCandidateList(result.releases);
         } else {
@@ -147,7 +147,7 @@ async function executeTextSearch() {
     if (!query) return;
     list.innerHTML = '<li style="padding: 10px; color: #aaa;">検索中...</li>';
     try {
-        const result = await electronAPI.invoke('cd-search-text', query);
+        const result = await cdAPI.cdSearchText(query);
         if (result.success && result.releases.length > 0) {
             renderCandidateList(result.releases);
         } else {
@@ -185,7 +185,7 @@ async function applyMetadata(releaseId) {
     const list = document.getElementById('cd-candidate-list');
     if (list) list.innerHTML = '<li style="padding: 10px; color: #aaa;">詳細情報を取得中...</li>';
     try {
-        const result = await electronAPI.invoke('cd-apply-metadata', { tracks: currentTracks, releaseId: releaseId });
+        const result = await cdAPI.cdApplyMetadata({ tracks: currentTracks, releaseId: releaseId });
         if (result.success) {
             currentTracks = result.tracks;
             renderTracks(currentTracks);
@@ -267,7 +267,7 @@ function startImport() {
     if (progressArea) progressArea.classList.remove('hidden');
 
     // 設定とアートワーク情報を送信
-    electronAPI.send('cd-start-rip', {
+    cdAPI.cdStartRip({
         tracksToRip: currentTracks,
         options: {
             format: format, // flac, wav, alac, aac, mp3

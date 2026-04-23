@@ -3,7 +3,7 @@
 import { state, elements } from '../core/state.js';
 import { setEqualizerColorFromArtwork, getCurrentTime, isPlaying } from '../features/player.js';
 import { resolveArtworkPath, formatSongTitle, checkTextOverflow } from './utils.js';
-const electronAPI = window.electronAPI;
+import { openExternalURL } from '../core/api/shell.js';
 
 const VIDEO_PREVIEW_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.ogv'];
 const VIDEO_SYNC_INTERVAL_MS = 250;
@@ -269,7 +269,7 @@ export function updateNowPlayingView(song) {
         const hubButton = document.createElement('button');
         hubButton.className = 'hub-link-button-small';
         hubButton.textContent = '🔗 公式リンクを開く';
-        hubButton.addEventListener('click', () => electronAPI.send('open-external-link', song.hubUrl));
+        hubButton.addEventListener('click', () => openExternalURL(song.hubUrl));
         hubLinkContainer.appendChild(hubButton);
     }
 

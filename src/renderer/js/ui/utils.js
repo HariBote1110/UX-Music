@@ -1,4 +1,3 @@
-const electronAPI = window.electronAPI;
 import { state } from '../core/state.js';
 // ▲▲▲ 追加 ▲▲▲
 

@@ -2,7 +2,7 @@ import { state, elements } from '../core/state.js';
 import { showContextMenu } from '../ui/utils.js';
 import { startLrcEditor } from './lrc-editor.js';
 
-const electronAPI = window.electronAPI;
+import { fetchLyricsForSong } from '../core/api/lyrics.js';
 
 const LYRICS_MOTION_ANCHOR_RATIO = 0.35;
 const LYRICS_MOTION_DELAY_STEP_MS = 40;
@@ -30,7 +30,7 @@ export async function loadLyricsForSong(song) {
     state.currentLyricsType = null;
     if (!song) return;
 
-    const result = await electronAPI.invoke('get-lyrics', song);
+    const result = await fetchLyricsForSong(song);
     if (!result) {
         displayNoLyrics();
         setupLyricsContextMenu(song, null);

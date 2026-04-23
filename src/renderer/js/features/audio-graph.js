@@ -1,7 +1,7 @@
 // src/renderer/js/audio-graph.js
 
 import { elements } from '../core/state.js';
-const electronAPI = window.electronAPI;
+import { musicApi } from '../core/bridge.js';
 
 // ▼▼▼ 変更: グラフ（Context+Nodes）のキャッシュ管理 ▼▼▼
 const graphCache = new Map(); // key: sampleRate, value: GraphObject
@@ -256,19 +256,18 @@ export async function initAudioGraph(playerElement, sinkId) {
     // sinkIdが渡された場合のみ設定を保存（nullや未定義の場合は保存しない）
     if (sinkId) {
         savedSinkId = sinkId;
-        electronAPI.send('save-settings', { audioOutputId: sinkId });
+        musicApi.saveSettings({ audioOutputId: sinkId });
     }
 
     if (sinkId === 'ux-direct-link') {
         isDirectLinkEnabled = true;
-        if (currentGraph) electronAPI.send('direct-link-command', { action: 'start', sampleRate: currentGraph.sampleRate });
+        // Electron 専用 direct-link は Wails では未使用
     } else {
         isDirectLinkEnabled = false;
 
         // sinkIdが変更された場合、すべてのキャッシュをクリアして再作成を強制
         if (sinkIdChanged) {
             console.log('[AudioGraph] SinkId changed, clearing graph cache for recreation.');
-            electronAPI.send('direct-link-command', { action: 'stop' });
             for (const graph of graphCache.values()) {
                 await destroyGraph(graph);
             }
@@ -277,7 +276,6 @@ export async function initAudioGraph(playerElement, sinkId) {
             currentGraph = null;
         } else if (currentGraph) {
             // sinkId変更なしの場合は既存の接続を維持
-            electronAPI.send('direct-link-command', { action: 'stop' });
             try {
                 currentGraph.nodes.gain.connect(currentGraph.context.destination);
                 // setSinkIdを試行（サポートされている場合）

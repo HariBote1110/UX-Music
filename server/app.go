@@ -64,6 +64,7 @@ func (a *App) Startup(ctx context.Context) {
 	if a.audioPlayer != nil {
 		a.audioPlayer.SetOnFinished(func() {
 			a.updateOSPlaybackState(false)
+			a.pushDiscordPresence(false)
 			if a.ctx != nil {
 				wailsRuntime.EventsEmit(a.ctx, "audio-playback-finished")
 			}

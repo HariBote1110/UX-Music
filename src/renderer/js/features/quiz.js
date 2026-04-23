@@ -1,7 +1,7 @@
 // src/renderer/js/quiz.js
 import { state, elements } from '../core/state.js';
 import { resolveArtworkPath } from '../ui/utils.js';
-const electronAPI = window.electronAPI;
+import { saveQuizScore as persistQuizScore, getQuizScores as loadQuizScores } from '../core/api/quiz.js';
 
 let quizElements = {};
 
@@ -195,9 +195,9 @@ async function showFinalScreen() {
         avgTime: finalAvgTime,
         date: new Date().toISOString()
     };
-    await electronAPI.invoke('save-quiz-score', scoreData);
+    await persistQuizScore(scoreData);
 
-    const scores = await electronAPI.invoke('get-quiz-scores');
+    const scores = await loadQuizScores();
     quizElements.rankingList.innerHTML = '';
     scores.slice(0, 5).forEach(s => {
         const li = document.createElement('li');

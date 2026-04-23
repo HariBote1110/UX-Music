@@ -18,7 +18,6 @@ import {
     renderPlaylistDetailView as renderPlaylistDetail
 } from './detail-renderer.js';
 // ▲▲▲ 追加 ▲▲▲
-const electronAPI = window.electronAPI; // renderTrackView が使用
 
 let trackViewScroller = null;
 let detailViewScroller = null;

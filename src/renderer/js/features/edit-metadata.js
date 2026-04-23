@@ -3,7 +3,8 @@ import { state } from '../core/state.js';
 import { resolveArtworkPath } from '../ui/utils.js';
 import { renderCurrentView, rebuildLibraryIndexes } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
-const electronAPI = window.electronAPI;
+import { editMetadata } from '../core/api/metadata.js';
+import { requestInitialLibrary } from '../core/api/library.js';
 
 let currentEditingSong = null;
 let newArtworkBuffer = null; // 新しいアートワークのバイナリデータ
@@ -154,12 +155,12 @@ async function handleSave() {
     elements.saveBtn.textContent = '保存中...';
 
     try {
-        const result = await electronAPI.invoke('edit-metadata', {
+        const result = await editMetadata({
             filePath: currentEditingSong.path,
             newTags: newTags
         });
 
-        if (result.success && result.updatedSong) {
+        if (result && result.success && result.updatedSong) {
             // state.library の情報を更新
             const index = state.library.findIndex(s => s.id === currentEditingSong.id);
             if (index > -1) {
@@ -169,7 +170,7 @@ async function handleSave() {
 
                 // state.albums も更新する必要がある
                 // 簡単のため、ライブラリ全体からアルバムとアーティストを再グループ化
-                electronAPI.send('request-initial-library'); // ライブラリ再読み込みを要求
+                requestInitialLibrary(); // ライブラリ再読み込みを要求
             }
 
             hideEditMetadataModal();
@@ -177,7 +178,7 @@ async function handleSave() {
             hideNotification(3000);
             renderCurrentView(); // UIを再描画して変更を反映
         } else {
-            showNotification(`エラー: ${result.message || 'メタデータの保存に失敗しました。'}`);
+            showNotification(`エラー: ${result?.message || 'メタデータの保存に失敗しました（Wails では未実装の可能性があります）。'}`);
             hideNotification(5000);
         }
     } catch (error) {

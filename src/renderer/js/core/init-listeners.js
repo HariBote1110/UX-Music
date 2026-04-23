@@ -10,7 +10,10 @@ import { updateAudioDevices } from '../ui/ui-manager.js';
 import { updateSearchQuery } from '../ui/ui.js';
 import { musicApi } from './bridge.js';
 import { enableYouTubeFeaturesWithConsent } from '../utils/debug-commands.js';
-const electronAPI = window.electronAPI;
+import * as youtubeAPI from './api/youtube.js';
+import * as libraryAPI from './api/library.js';
+import * as playlistAPI from './api/playlist.js';
+import { eventsOn } from './api/runtime-events.js';
 const isWailsRuntime = () => window.go !== undefined || window.runtime !== undefined;
 
 function promptYouTubeCaptionSelection(videoInfo) {
@@ -103,7 +106,7 @@ async function buildYouTubeAddPayload(url) {
     let payload = { url: trimmedURL, captionMode: 'auto' };
     try {
         console.log('[YouTube][UI] 動画情報を取得します:', trimmedURL);
-        const info = await electronAPI.invoke('get-youtube-info', trimmedURL);
+        const info = await youtubeAPI.getYouTubeInfo(trimmedURL);
         const tracks = Array.isArray(info?.captionTracks) ? info.captionTracks : [];
         console.log('[YouTube][UI] 字幕候補数:', tracks.length, tracks);
 
@@ -175,7 +178,7 @@ export function initEventListeners() {
                 title: 'ネットワークフォルダのパス',
                 placeholder: '\\\\ServerName\\ShareName',
                 onOk: (path) => {
-                    // electronAPI.send('start-scan-paths', [path]);
+                    // ネットワークパスは musicApi.startScanPaths で処理
                     musicApi.startScanPaths([path]);
                 }
             });
@@ -195,7 +198,7 @@ export function initEventListeners() {
                         return;
                     }
                     console.log('[YouTube][UI] add-youtube-link payload:', payload);
-                    electronAPI.send('add-youtube-link', payload);
+                    void youtubeAPI.addYouTubeLink(payload);
                 }
             });
         });
@@ -208,7 +211,9 @@ export function initEventListeners() {
             showModal({
                 title: 'YouTubeプレイリストのリンク',
                 placeholder: 'https://www.youtube.com/playlist?list=...',
-                onOk: (url) => electronAPI.send('import-youtube-playlist', url)
+                onOk: (url) => {
+                    void youtubeAPI.importYouTubePlaylist({ url: url.trim() });
+                }
             });
         });
     }
@@ -217,7 +222,7 @@ export function initEventListeners() {
     if (setLibraryBtn) {
         setLibraryBtn.addEventListener('click', () => {
             if (libraryActionsPopup) libraryActionsPopup.classList.add('hidden');
-            electronAPI.send('set-library-path');
+            void libraryAPI.setLibraryPath();
         });
     }
 
@@ -371,7 +376,7 @@ export function initEventListeners() {
         }
 
         e.preventDefault();
-        electronAPI.send('show-general-context-menu');
+        // Wails: ネイティブコンテキストメニューは未実装（将来 HTML メニューへ）
     });
 
     const refreshMarqueeOverflow = () => {
@@ -448,7 +453,16 @@ export function initEventListeners() {
             e.preventDefault();
             if (state.copiedSongIds.length > 0 && (state.currentDetailView.type === 'playlist' || state.currentDetailView.type === 'situation')) {
                 const playlistName = state.currentDetailView.identifier;
-                electronAPI.invoke('add-songs-to-playlist', { playlistName, songIds: state.copiedSongIds });
+                const songs = state.copiedSongIds
+                    .map((id) => state.libraryById.get(id))
+                    .filter(Boolean)
+                    .map((s) => ({
+                        path: s.path,
+                        duration: Number(s.duration) || 0,
+                        artist: typeof s.artist === 'string' ? s.artist : '',
+                        title: typeof s.title === 'string' ? s.title : '',
+                    }));
+                void playlistAPI.addSongsToPlaylist({ playlistName, songs });
             }
         } else if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedSongIds.size > 0) {
             e.preventDefault();
@@ -456,7 +470,7 @@ export function initEventListeners() {
         }
     });
 
-    electronAPI.on('navigate-back', () => {
+    eventsOn('navigate-back', () => {
         if (state.currentDetailView.type) {
             showView(state.activeListView);
         }

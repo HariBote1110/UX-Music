@@ -95,6 +95,51 @@ func extractAndSaveArtwork(songPath string, artworksDir string) (interface{}, er
 	}, nil
 }
 
+// PersistArtworkBytes writes image bytes into artworksDir using the same WebP naming as extractAndSaveArtwork.
+func PersistArtworkBytes(artworksDir, albumArtist, albumTitle string, imageData []byte) (map[string]string, error) {
+	if len(imageData) == 0 {
+		return nil, fmt.Errorf("empty image data")
+	}
+	if strings.TrimSpace(artworksDir) == "" {
+		return nil, fmt.Errorf("artworksDir is empty")
+	}
+	aa := strings.TrimSpace(albumArtist)
+	if aa == "" {
+		aa = "Unknown Artist"
+	}
+	at := strings.TrimSpace(albumTitle)
+	if at == "" {
+		at = "Unknown Album"
+	}
+	uniqueKey := fmt.Sprintf("%s---%s", aa, at)
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(uniqueKey)))
+	fullFileName := hash + ".webp"
+	thumbFileName := hash + "_thumb.webp"
+	fullPath := filepath.Join(artworksDir, fullFileName)
+	thumbPath := filepath.Join(artworksDir, "thumbnails", thumbFileName)
+
+	if _, err := os.Stat(fullPath); err == nil {
+		return map[string]string{
+			"full":      fullFileName,
+			"thumbnail": thumbFileName,
+		}, nil
+	}
+
+	if err := os.MkdirAll(filepath.Join(artworksDir, "thumbnails"), 0755); err != nil {
+		return nil, err
+	}
+	if err := convertToWebP(imageData, fullPath, 0); err != nil {
+		return nil, fmt.Errorf("failed to convert full artwork: %w", err)
+	}
+	if err := convertToWebP(imageData, thumbPath, 200); err != nil {
+		fmt.Printf("[Artwork] Warning: failed to create thumbnail: %v\n", err)
+	}
+	return map[string]string{
+		"full":      fullFileName,
+		"thumbnail": thumbFileName,
+	}, nil
+}
+
 func convertToWebP(data []byte, outputPath string, width int) error {
 	ffmpegPath, err := resolveMediaCommandPath("ffmpeg")
 	if err != nil {

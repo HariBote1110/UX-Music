@@ -31,7 +31,7 @@ import {
     dataArray
 } from './audio-graph.js';
 import { musicApi } from '../core/bridge.js';
-const electronAPI = window.electronAPI;
+import { normalizeAPI } from '../core/api/normalize.js';
 
 let localPlayer; // Web用（Go環境ではnullまたは未使用）
 let currentSongType = 'local';
@@ -409,9 +409,9 @@ export async function play(song) {
     await stop();
     if (!song) return;
 
-    const settings = await electronAPI.invoke('get-settings');
+    const settings = await musicApi.getSettings();
     const TARGET_LOUDNESS = settings?.targetLoudness ?? -18.0;
-    const savedLoudness = await electronAPI.invoke('get-loudness-value', song.path);
+    const savedLoudness = await normalizeAPI.getLoudnessValue(song.path);
     let newBaseGain = 1.0;
     if (typeof savedLoudness === 'number' && Number.isFinite(savedLoudness)) {
         const gainDb = TARGET_LOUDNESS - savedLoudness;
@@ -419,10 +419,11 @@ export async function play(song) {
     }
 
     if (isWails) {
-        // Go側でボリューム制御を行う（baseGain * masterVolume）
-        // 現状の簡易実装ではAPIがないため、後でAudioPlayer側でBaseGain対応が必要かも
-        // とりあえずVolume設定だけ呼んでおく（UIのSlider値は反映されないので注意）
-        // TODO: BaseGainとMasterVolumeを統合
+        try {
+            await window.go.main.App.AudioSetNormalisationGain(newBaseGain);
+        } catch (e) {
+            console.warn('[Player] AudioSetNormalisationGain failed:', e);
+        }
     } else {
         setBaseGain(newBaseGain);
     }
@@ -441,6 +442,7 @@ export async function play(song) {
 export async function stop() {
     if (isWails) {
         await window.go.main.App.AudioStop();
+        window.go.main.App.AudioSetNormalisationGain(1.0).catch(() => { });
         goState.isPlaying = false;
         goState.isPaused = false;
         goState.currentTime = 0;
@@ -449,7 +451,6 @@ export async function stop() {
     }
     stopVisualizerLoop();
     resetPlaybackUI();
-    electronAPI.send('playback-stopped');
     updateMediaSessionState('none');
 }
 

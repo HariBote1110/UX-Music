@@ -39,6 +39,7 @@ export const musicApi = {
     },
     saveSettings: (settings) => getApp()?.SaveSettings?.(settings),
     addSongsToPlaylist: (data) => getApp()?.AddSongsToPlaylist?.(data),
+    addAlbumToPlaylist: (data) => getApp()?.AddAlbumToPlaylist?.(data),
     getArtworksDir: () => {
         const app = getApp();
         if (!app?.GetArtworksDir) return Promise.resolve('');

@@ -15,8 +15,10 @@ import (
 )
 
 var (
-	meanRe = regexp.MustCompile(`mean_volume:\s*(-?\d+\.\d+)\s*dB`)
-	maxRe  = regexp.MustCompile(`max_volume:\s*(-?\d+\.\d+)\s*dB`)
+	// (?:\.\d+)? で小数点以下を省略可にし、ffmpeg が整数値 (例: "mean_volume: -23 dB") を
+	// 出力した場合もマッチできるようにする
+	meanRe = regexp.MustCompile(`mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB`)
+	maxRe  = regexp.MustCompile(`max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB`)
 )
 
 // Normalizer manages normalization tasks
@@ -114,6 +116,11 @@ func (n *Normalizer) resolveCommandPath(name string) (string, error) {
 	}
 
 	return "", fmt.Errorf("%s が見つかりません (PATH=%q)", name, os.Getenv("PATH"))
+}
+
+// FFmpegExecutable returns a resolved ffmpeg binary path (same resolution as analysis jobs).
+func (n *Normalizer) FFmpegExecutable() (string, error) {
+	return n.resolveCommandPath("ffmpeg")
 }
 
 // AnalyzeLoudness runs volumedetect filter

@@ -7,10 +7,11 @@ import { VirtualScroller } from './virtual-scroller.js';
 import { createSongItem } from './element-factory.js';
 import { initColumnResizing } from './column-resizer.js';
 import { showContextMenu } from './utils.js';
+import { showNotification, hideNotification } from './notification.js';
+import { addSongsToPlaylist } from '../core/api/playlist.js';
 import { showModalAdvanced } from './modal.js';
 import { getVisibleColumns, getGridTemplate, showColumnContextMenu } from './column-config.js';
 import { updateGridStyle } from './column-resizer.js';
-const electronAPI = window.electronAPI;
 
 /**
  * 曲リストの共通ヘッダーHTMLを作成する（column-config に基づく動的生成）
@@ -181,9 +182,31 @@ export function setupSongListScroller(listElement, songList, options = {}) {
                 if (state.playlists && state.playlists.length > 0) {
                     const playlistSubmenu = state.playlists.map(playlist => ({
                         label: playlist.name,
-                        action: () => {
-                            // TODO: プレイリストに曲を追加する処理
-                            console.log(`Adding songs to playlist: ${playlist.name}`, songsForMenu);
+                        action: async () => {
+                            const songs = songsForMenu.map((s) => ({
+                                path: s.path,
+                                duration: Number(s.duration) || 0,
+                                artist: typeof s.artist === 'string' ? s.artist : '',
+                                title: typeof s.title === 'string' ? s.title : '',
+                            }));
+                            try {
+                                const added = await addSongsToPlaylist({
+                                    playlistName: playlist.name,
+                                    songs,
+                                });
+                                const n = typeof added === 'number' ? added : 0;
+                                if (n > 0) {
+                                    showNotification(`${n} 曲をプレイリスト「${playlist.name}」に追加しました。`);
+                                    hideNotification(3000);
+                                } else {
+                                    showNotification('すべての曲が既にプレイリストに存在するか、追加できませんでした。');
+                                    hideNotification(4000);
+                                }
+                            } catch (err) {
+                                console.error('[list-renderer] addSongsToPlaylist', err);
+                                showNotification('プレイリストへの追加に失敗しました。');
+                                hideNotification(4000);
+                            }
                         }
                     }));
                     menuItems.push({
@@ -193,12 +216,6 @@ export function setupSongListScroller(listElement, songList, options = {}) {
                 }
 
                 showContextMenu(e.pageX, e.pageY, menuItems);
-            } else {
-                // Electron 環境: メインプロセスにメニュー表示を委譲
-                electronAPI.send('show-song-context-menu', {
-                    songs: songsForMenu,
-                    context: { view: contextView, playlistName }
-                });
             }
         });
 

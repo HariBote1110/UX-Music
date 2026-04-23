@@ -13,7 +13,7 @@ import {
 } from '../features/player.js';
 import { applyMasterVolume } from '../features/audio-graph.js';
 import { formatTime } from './utils.js';
-const electronAPI = window.electronAPI;
+import { musicApi } from '../core/bridge.js';
 
 let isSeeking = false;
 let wasPlayingBeforeSeek = false;
@@ -360,7 +360,7 @@ export function initPlayerControls(initialPlayer, _callbacks) {
             if (window.go) {
                 window.go.main.App.SaveSettings({ volume: volume }).catch(() => { });
             } else {
-                electronAPI.send('save-settings', { volume: volume });
+                musicApi.saveSettings({ volume: volume });
             }
             volumeSaveTimer = null;
         }, 120);

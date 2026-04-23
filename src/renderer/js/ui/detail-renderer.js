@@ -14,7 +14,6 @@ import {
 import { clearMainContent } from './view-renderer.js';
 import { updateListSpacer } from './ui.js'; // 追加
 import { getAlbumSongs, getArtistSongs, setCurrentViewSongs } from './ui-manager.js';
-const electronAPI = window.electronAPI;
 
 // モジュールスコープでスクロール位置を記憶
 let lastScrollPositions = {};
@@ -100,7 +99,7 @@ export function renderArtistDetailView(artist) {
         grid.innerHTML = `<div class="placeholder">このアーティストのアルバムは見つかりません</div>`;
     } else {
         artistAlbums.forEach(([albumKey, album]) => {
-            const albumItem = createAlbumGridItem(albumKey, album, electronAPI);
+            const albumItem = createAlbumGridItem(albumKey, album);
             albumItem.addEventListener('click', () => showAlbum(albumKey));
             grid.appendChild(albumItem);
         });

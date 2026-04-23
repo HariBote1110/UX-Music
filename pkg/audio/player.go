@@ -94,6 +94,8 @@ type Player struct {
 	sampleRate   int
 	channels     int
 	volume       atomic.Uint64 // stored as float64 bits
+	// normalisationGain is a linear multiplier applied with volume (1.0 = unity).
+	normalisationGain atomic.Uint64
 
 	// Ring buffer for pre-decoded audio data
 	ringBuf       []float32     // Pre-decoded float32 samples
@@ -147,6 +149,7 @@ func NewPlayer() (*Player, error) {
 
 	p := &Player{}
 	p.setVolume(1.0)
+	p.setNormalisationGain(1.0)
 
 	// Initialize FFT
 	p.initFFT(2048)
@@ -225,6 +228,26 @@ func (p *Player) setVolume(v float64) {
 
 func (p *Player) getVolume() float64 {
 	return math.Float64frombits(p.volume.Load())
+}
+
+func (p *Player) setNormalisationGain(v float64) {
+	if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		v = 1.0
+	}
+	const maxNormGain = 64.0
+	if v > maxNormGain {
+		v = maxNormGain
+	}
+	p.normalisationGain.Store(math.Float64bits(v))
+}
+
+func (p *Player) getNormalisationGain() float64 {
+	return math.Float64frombits(p.normalisationGain.Load())
+}
+
+// SetNormalisationGain applies loudness normalisation as a linear gain (1.0 = unity).
+func (p *Player) SetNormalisationGain(v float64) {
+	p.setNormalisationGain(v)
 }
 
 // Close terminates the player
@@ -606,6 +629,7 @@ func (p *Player) processAudio(out []float32) {
 	playing := p.playing.Load()
 	paused := p.paused.Load()
 	volume := p.getVolume()
+	normGain := p.getNormalisationGain()
 
 	if !playing || paused {
 		// Fill with silence
@@ -648,7 +672,7 @@ func (p *Player) processAudio(out []float32) {
 			}
 		}
 
-		outputSample *= volume
+		outputSample *= volume * normGain
 		if outputSample > 1 {
 			outputSample = 1
 		} else if outputSample < -1 {
@@ -792,6 +816,11 @@ func (p *Player) SetVolume(volume float64) {
 		volume = 1
 	}
 	p.setVolume(volume)
+}
+
+// GetNormalisationGain returns the current linear normalisation multiplier.
+func (p *Player) GetNormalisationGain() float64 {
+	return p.getNormalisationGain()
 }
 
 // SetEqualizer updates equaliser settings used by real-time audio callback.

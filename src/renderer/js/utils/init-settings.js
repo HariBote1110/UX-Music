@@ -12,7 +12,6 @@ import {
     getTitleListMinWidthPx,
     persistTitleListMinWidthPx,
 } from '../ui/text-layout-prefs.js';
-const electronAPI = window.electronAPI;
 
 const decaySliderValues = [1, 3, 7, 14, 30];
 const decaySliderLabels = ['1日', '3日', '7日', '2週間', '1ヶ月'];
@@ -54,7 +53,7 @@ export function initSettings() {
     let settingsClickTimer;
 
     elements.openSettingsBtn.addEventListener('click', async () => {
-        const settings = await electronAPI.invoke('get-settings');
+        const settings = await musicApi.getSettings();
 
         renderGraphicEQ();
 
@@ -166,7 +165,7 @@ export function initSettings() {
             playbackMode: state.playbackMode
         };
 
-        electronAPI.send('save-settings', settingsToSave);
+        musicApi.saveSettings(settingsToSave);
 
         if (titleListSlider) {
             persistTitleListMinWidthPx(parseInt(titleListSlider.value, 10) || 0);
@@ -208,7 +207,7 @@ export function initSettings() {
     document.getElementById('manage-devices-btn').addEventListener('click', async () => {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioDevices = devices.filter(d => d.kind === 'audiooutput');
-        const settings = await electronAPI.invoke('get-settings');
+        const settings = await musicApi.getSettings();
         const hiddenDevices = settings.hiddenDeviceIds || [];
 
         const listEl = document.getElementById('devices-list');
@@ -226,7 +225,7 @@ export function initSettings() {
 
     document.getElementById('devices-ok-btn').addEventListener('click', () => {
         const hiddenDeviceIds = Array.from(document.querySelectorAll('#devices-list input:not(:checked)')).map(cb => cb.dataset.deviceId);
-        electronAPI.send('save-settings', { hiddenDeviceIds });
+        musicApi.saveSettings({ hiddenDeviceIds });
         document.getElementById('devices-modal-overlay').classList.add('hidden');
         updateAudioDevices();
     });

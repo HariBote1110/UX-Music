@@ -7,8 +7,8 @@ import { showNotification, hideNotification } from '../ui/notification.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 import { musicApi } from '../core/bridge.js';
+import { normalizeAPI } from '../core/api/normalize.js';
 import { getSongById } from '../ui/ui-manager.js';
-const electronAPI = window.electronAPI;
 const pendingLoudnessRequests = new Set();
 
 function parseLoudnessValue(value) {
@@ -110,19 +110,15 @@ export async function playSong(index, sourceList = null, forcePlay = false) {
         }
     }
 
-    if (songToPlayActual.type === 'local' && (songToPlayActual.bpm === undefined || songToPlayActual.bpm === null)) {
-        electronAPI.send('request-bpm-analysis', songToPlayActual);
-    }
-
     if (songToPlayActual.type === 'local' && !forcePlay && songToPlayActual.path) {
-        const savedLoudnessRaw = await electronAPI.invoke('get-loudness-value', songToPlayActual.path);
+        const savedLoudnessRaw = await normalizeAPI.getLoudnessValue(songToPlayActual.path);
         const savedLoudness = parseLoudnessValue(savedLoudnessRaw);
         if (savedLoudness === null) {
             state.songWaitingForAnalysis = { index, sourceList: state.playbackQueue, path: songToPlayActual.path };
             showNotification(`「${songToPlayActual.title}」の再生準備中です...`);
             if (!pendingLoudnessRequests.has(songToPlayActual.path)) {
                 pendingLoudnessRequests.add(songToPlayActual.path);
-                electronAPI.send('request-loudness-analysis', songToPlayActual.path);
+                normalizeAPI.requestLoudnessAnalysis(songToPlayActual.path);
             }
             return;
         }
@@ -161,7 +157,6 @@ export function playNextSong() {
             loadLyricsForSong(null);
             state.currentSongIndex = -1;
             updatePlayingIndicators();
-            electronAPI.send('playback-stopped');
             return;
         }
     }

@@ -9,7 +9,8 @@ import { updateNowPlayingView } from './now-playing.js';
 import { loadLyricsForSong } from '../features/lyrics-manager.js';
 import { showNotification, hideNotification } from './notification.js';
 import { showContextMenu, formatBytes } from './utils.js';
-const electronAPI = window.electronAPI;
+import { eventsOn } from '../core/api/runtime-events.js';
+import { musicApi } from '../core/bridge.js';
 let lastPlayingQueueIndex = -1;
 /** @type {HTMLElement | null} */
 let cachedMainPlayingItem = null;
@@ -210,13 +211,13 @@ export function initUI() {
         }
     });
 
-    electronAPI.on('mtp-device-connected', (payload) => {
+    eventsOn('mtp-device-connected', (payload) => {
         console.log('[MTP-LOG] mtp-device-connected 受信:', payload);
         // payload: { device: { name, ... }, storages: [...] }
         updateMtpDeviceView(payload);
     });
 
-    electronAPI.on('mtp-device-disconnected', () => {
+    eventsOn('mtp-device-disconnected', () => {
         console.log('[MTP-LOG] mtp-device-disconnected 受信');
         updateMtpDeviceView(null);
     });
@@ -329,7 +330,7 @@ export function addSongsToLibrary({ songs, albums }) {
     }
     if (migrationNeeded || (albums && Object.keys(albums).length > 0)) {
         const albumsToSave = Object.fromEntries(state.albums.entries());
-        electronAPI.send('save-migrated-data', { songs: state.library, albums: albumsToSave });
+        // Electron 移行用 save-migrated-data は Wails では不要（ライブラリは Go 側が永続化）
     }
     renderCurrentView();
     console.timeEnd('Renderer: Process Library Data');
@@ -517,7 +518,7 @@ export async function updateAudioDevices() {
         console.log('[AudioDevices] enumerating devices...');
 
         if (window.go) {
-            const settings = await electronAPI.invoke('get-settings');
+            const settings = await musicApi.getSettings();
             const activeDeviceId = settings.audioOutputId || 'default';
             elements.devicePopup.innerHTML = '';
 
@@ -570,7 +571,7 @@ export async function updateAudioDevices() {
         }
 
         console.log('[AudioDevices] all devices found:', devices.map(d => ({ kind: d.kind, label: d.label, id: d.deviceId })));
-        const settings = await electronAPI.invoke('get-settings');
+        const settings = await musicApi.getSettings();
         const hiddenDevices = settings.hiddenDeviceIds || [];
 
         const audioDevices = devices.filter(device =>
@@ -670,7 +671,7 @@ export async function updateAudioDevices() {
                             action: () => {
                                 const deviceIdToHide = item.dataset.deviceId;
                                 const updatedHiddenDevices = [...hiddenDevices, deviceIdToHide];
-                                electronAPI.send('save-settings', { hiddenDeviceIds: updatedHiddenDevices });
+                                musicApi.saveSettings({ hiddenDeviceIds: updatedHiddenDevices });
                                 updateAudioDevices();
                             }
                         }

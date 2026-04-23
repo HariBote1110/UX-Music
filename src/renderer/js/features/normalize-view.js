@@ -1,7 +1,6 @@
-// src/renderer/js/normalize-view.js
+// src/renderer/js/features/normalize-view.js
 import { showNotification, hideNotification } from '../ui/notification.js';
-
-const electronAPI = window.electronAPI;
+import { normalizeAPI } from '../core/api/normalize.js';
 
 // モジュールスコープで変数を宣言（グローバルリーク防止）
 const normalizeFiles = new Map();
@@ -25,6 +24,71 @@ function payloadSucceeded(result) {
     if (result.success === true) return true;
     if (result.Success === true) return true;
     return false;
+}
+
+/**
+ * Wails の WebView では window.confirm() がサイレントに false を返すことがある。
+ * カスタム HTML モーダルで確認ダイアログを表示し、Promise<boolean> を返す。
+ */
+function wailsConfirm(message) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = [
+            'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.6)',
+            'z-index:9999', 'display:flex', 'align-items:center', 'justify-content:center',
+        ].join(';');
+
+        const box = document.createElement('div');
+        box.style.cssText = [
+            'background:#1e1e2e', 'color:#cdd6f4', 'padding:28px 32px',
+            'border-radius:10px', 'max-width:440px', 'width:90%',
+            'box-shadow:0 8px 32px rgba(0,0,0,.6)', 'font-size:14px', 'line-height:1.6',
+        ].join(';');
+
+        const msgEl = document.createElement('p');
+        msgEl.style.cssText = 'margin:0 0 20px 0; white-space:pre-wrap;';
+        msgEl.textContent = message;
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex; gap:10px; justify-content:flex-end;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'キャンセル';
+        cancelBtn.style.cssText = [
+            'padding:8px 20px', 'border-radius:6px', 'border:1px solid #555',
+            'background:transparent', 'color:#cdd6f4', 'cursor:pointer', 'font-size:14px',
+        ].join(';');
+
+        const okBtn = document.createElement('button');
+        okBtn.textContent = 'OK';
+        okBtn.style.cssText = [
+            'padding:8px 20px', 'border-radius:6px', 'border:none',
+            'background:#89b4fa', 'color:#1e1e2e', 'cursor:pointer',
+            'font-size:14px', 'font-weight:bold',
+        ].join(';');
+
+        const close = (result) => {
+            document.body.removeChild(overlay);
+            resolve(result);
+        };
+        cancelBtn.onclick = () => close(false);
+        okBtn.onclick = () => close(true);
+
+        // ESC キーでキャンセル
+        const onKey = (e) => {
+            if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); close(false); }
+            if (e.key === 'Enter') { document.removeEventListener('keydown', onKey); close(true); }
+        };
+        document.addEventListener('keydown', onKey);
+
+        btnRow.appendChild(cancelBtn);
+        btnRow.appendChild(okBtn);
+        box.appendChild(msgEl);
+        box.appendChild(btnRow);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        okBtn.focus();
+    });
 }
 
 function applyNormaliseTableLayoutPrefs() {
@@ -225,18 +289,18 @@ export function initNormalizeView() {
     });
 
     document.getElementById('normalize-add-files-btn').addEventListener('click', async () => {
-        const filePaths = await electronAPI.invoke('select-files-for-normalize');
+        const filePaths = await normalizeAPI.selectFiles();
         if (filePaths.length > 0) addFiles(filePaths);
     });
 
     document.getElementById('normalize-add-folder-btn').addEventListener('click', async () => {
-        const filePaths = await electronAPI.invoke('select-folder-for-normalize');
+        const filePaths = await normalizeAPI.selectFolder();
         if (filePaths.length > 0) addFiles(filePaths);
     });
 
     document.getElementById('normalize-load-library-btn').addEventListener('click', async () => {
-        const library = await electronAPI.invoke('get-library-for-normalize');
-        const loudnessData = await electronAPI.invoke('get-all-loudness-data');
+        const library = await normalizeAPI.getLibrary();
+        const loudnessData = await normalizeAPI.getAllLoudness();
         const filePaths = library.map(song => song.path);
         addFiles(filePaths, loudnessData);
     });
@@ -299,7 +363,7 @@ export function initNormalizeView() {
     });
 
     document.getElementById('select-output-folder-btn').addEventListener('click', async () => {
-        const selectedPath = await electronAPI.invoke('select-normalize-output-folder');
+        const selectedPath = await normalizeAPI.selectOutputFolder();
         if (selectedPath) {
             outputSettings.path = selectedPath;
             document.getElementById('output-folder-path').textContent = selectedPath;
@@ -310,11 +374,12 @@ export function initNormalizeView() {
     document.getElementById('normalize-analyze-btn').addEventListener('click', () => {
         const filesToAnalyze = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'pending');
         if (filesToAnalyze.length === 0) return;
-        electronAPI.send('start-normalize-job', { jobType: 'analyze', files: filesToAnalyze });
+        normalizeAPI.startJob('analyze', filesToAnalyze, {});
         updateProgress(0, filesToAnalyze.length, '解析中');
     });
 
-    document.getElementById('normalize-apply-btn').addEventListener('click', () => {
+    document.getElementById('normalize-apply-btn').addEventListener('click', async () => {
+        console.log('[Normalize][Apply] click fired');
         const filesToNormalize = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analysed');
         if (filesToNormalize.length === 0) {
             showNotification('適用できるのは「解析済み」でチェックが入っている行だけです。');
@@ -346,7 +411,9 @@ export function initNormalizeView() {
         let preventClipping = false;
 
         if (clippingFiles.length > 0) {
-            confirmed = confirm(
+            // window.confirm() は Wails WebView でサイレントに false を返すことがあるため
+            // カスタムモーダルを使用する
+            confirmed = await wailsConfirm(
                 `警告: ${clippingFiles.length}個のWAV/FLACファイルで音割れ（クリッピング）が発生する可能性があります。\n\n` +
                 'これらのファイルの音量をクリッピングしない最大限の音量に自動で調整しますか？\n\n' +
                 '「OK」を押すと自動調整して続行します。\n' +
@@ -358,7 +425,7 @@ export function initNormalizeView() {
         }
 
         if (confirmed && containsMp3 && outputSettings.mode === 'overwrite') {
-            confirmed = confirm(
+            confirmed = await wailsConfirm(
                 '警告: リストにMP3ファイルが含まれています。\n\n' +
                 'MP3の音量調整は再エンコードを伴うため、音質がわずかに劣化する可能性があります。\n' +
                 'この操作は元に戻せません（バックアップ作成時を除く）。\n\n' +
@@ -387,15 +454,12 @@ export function initNormalizeView() {
                 gain: Number(f.gain),
             }));
 
+            console.log('[Normalize][Apply] sending job, files:', jobFiles.length, 'mode:', outputSettings.mode);
             const backup = outputSettings.mode === 'overwrite' ? document.getElementById('backup-toggle').checked : false;
-            electronAPI.send('start-normalize-job', {
-                jobType: 'normalize',
-                files: jobFiles,
-                options: {
-                    backup,
-                    output: { mode: outputSettings.mode, path: outputSettings.path || '' },
-                    basePath: commonBasePath || '',
-                }
+            normalizeAPI.startJob('normalize', jobFiles, {
+                backup,
+                output: { mode: outputSettings.mode, path: outputSettings.path || '' },
+                basePath: commonBasePath || '',
             });
             updateProgress(0, filesToNormalize.length, '適用中');
         }
@@ -405,7 +469,11 @@ export function initNormalizeView() {
     let totalCount = 0;
     let currentJob = '';
 
-    electronAPI.on('normalize-worker-result', (...evArgs) => {
+    // 既存リスナーを解除してから再登録（initNormalizeView が複数回呼ばれても積み上がらない）
+    if (initNormalizeView._unsubWorker) initNormalizeView._unsubWorker();
+    if (initNormalizeView._unsubFinished) initNormalizeView._unsubFinished();
+
+    initNormalizeView._unsubWorker = normalizeAPI.onWorkerResult((...evArgs) => {
         const row = evArgs.length && typeof evArgs[0] === 'object' && evArgs[0] !== null ? evArgs[0] : {};
         let type = row.type;
         let id = row.id;
@@ -473,10 +541,9 @@ export function initNormalizeView() {
         processedCount++;
         updateFileList();
         updateProgress(processedCount, totalCount, currentJob === 'analyse' ? '解析中' : '適用中');
-        electronAPI.send('normalize-worker-finished-file');
     });
 
-    electronAPI.on('normalize-job-finished', (...evArgs) => {
+    initNormalizeView._unsubFinished = normalizeAPI.onJobFinished((...evArgs) => {
         const info = evArgs.length && typeof evArgs[0] === 'object' && evArgs[0] !== null ? evArgs[0] : {};
         const scheduled = typeof info.scheduled === 'number' ? info.scheduled : undefined;
         if (scheduled === 0 && info.jobType === 'normalize') {

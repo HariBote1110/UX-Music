@@ -27,7 +27,7 @@ export function renderAlbumView() {
         grid.innerHTML = '<div class="placeholder">ライブラリにアルバムが見つかりません</div>';
     } else {
         for (const [key, album] of state.albums.entries()) {
-            const albumItem = createAlbumGridItem(key, album, electronAPI);
+            const albumItem = createAlbumGridItem(key, album);
             albumItem.addEventListener('click', () => showAlbum(key));
 
             albumItem.addEventListener('contextmenu', (e) => {
@@ -42,7 +42,7 @@ export function renderAlbumView() {
                         const albumSongs = getAlbumSongs(albumToAdd);
                         if (albumToAdd && albumSongs.length > 0) {
                             const songPaths = albumSongs.map(s => s.path);
-                            const result = await musicApi.addSongsToPlaylist({ songPaths, playlistName: playlist.name });
+                            const result = (await musicApi.addAlbumToPlaylist({ songPaths, playlistName: playlist.name })) ?? {};
 
                             if (result.success && result.addedCount > 0) {
                                 showNotification(`「${album.title}」の ${result.addedCount} 曲をプレイリスト「${playlist.name}」に追加しました。`);
@@ -91,7 +91,7 @@ export function renderArtistView() {
     } else {
         const sortedArtists = [...state.artists.values()].sort((a, b) => a.name.localeCompare(b.name));
         sortedArtists.forEach(artist => {
-            const artistItem = createArtistGridItem(artist, electronAPI);
+            const artistItem = createArtistGridItem(artist);
             artistItem.addEventListener('click', () => showArtist(artist.name));
             grid.appendChild(artistItem);
         });
@@ -125,7 +125,7 @@ export async function renderSituationView() {
                 .filter(Boolean)
                 .slice(0, 4);
 
-            const playlistItem = createPlaylistGridItem({ name: playlist.name, artworks }, electronAPI);
+            const playlistItem = createPlaylistGridItem({ name: playlist.name, artworks });
 
             playlistItem.addEventListener('click', () => {
                 const playlistDetails = {
@@ -160,7 +160,7 @@ export function renderPlaylistView() {
         grid.innerHTML = '<p>プレイリストはまだありません。「+ 新規作成」から作成できます。</p>';
     } else {
         state.playlists.forEach(playlist => {
-            const playlistItem = createPlaylistGridItem(playlist, electronAPI);
+            const playlistItem = createPlaylistGridItem(playlist);
             playlistItem.addEventListener('click', () => showPlaylist(playlist.name));
             playlistItem.addEventListener('contextmenu', (e) => {
                 e.preventDefault();

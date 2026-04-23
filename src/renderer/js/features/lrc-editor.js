@@ -5,8 +5,7 @@ import { showNotification, hideNotification } from '../ui/notification.js';
 import { showView } from '../core/navigation.js';
 import { resolveArtworkPath, formatSongTitle } from '../ui/utils.js';
 import { togglePlayPause, seek, getCurrentTime, getDuration, isPlaying } from './player.js';
-
-const electronAPI = window.electronAPI;
+import { fetchLyricsForSong, lyricsAutoSync, saveLrcFile } from '../core/api/lyrics.js';
 
 const INTERLUDE_LABEL = '[間奏]';
 const TIMELINE_MIN_DURATION_SEC = 30;
@@ -876,7 +875,7 @@ export async function startLrcEditor(song) {
     editorElements.loadTextBtn.classList.add('hidden');
 
     try {
-        const lyricsContent = await electronAPI.invoke('get-lyrics', song);
+        const lyricsContent = await fetchLyricsForSong(song);
         if (lyricsContent && (lyricsContent.type === 'txt' || lyricsContent.type === 'lrc')) {
             parseAndDisplayLyrics(lyricsContent.content, lyricsContent.type);
         } else {
@@ -1103,7 +1102,7 @@ async function runAutoSync() {
             profile: 'fast',
         };
 
-        const result = await electronAPI.invoke('lyrics-auto-sync', payload);
+        const result = await lyricsAutoSync(payload);
         if (!result || result.success !== true) {
             applyDetectedPreview(result);
             showNotification(`自動同期に失敗しました: ${result?.error || '不明なエラー'}`);
@@ -1321,7 +1320,7 @@ async function handleSaveLrc() {
     editorElements.saveBtn.textContent = '保存中...';
 
     try {
-        const result = await electronAPI.invoke('save-lrc-file', {
+        const result = await saveLrcFile({
             fileName: lrcFileName,
             content: lrcContent,
         });

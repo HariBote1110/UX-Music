@@ -1,5 +1,5 @@
-const electronAPI = window.electronAPI;
 import { setVisualizerFpsLimit, toggleVisualizerEcoMode } from '../features/player.js';
+import { musicApi } from '../core/bridge.js';
 import { showModalAdvanced } from '../ui/modal.js';
 
 const YOUTUBE_CONSENT_MESSAGE = `
@@ -39,7 +39,7 @@ function revealYouTubeFeatureUI() {
 }
 
 export async function enableYouTubeFeaturesWithConsent({ showAlert = true } = {}) {
-    const settings = await electronAPI.invoke('get-settings').catch(() => ({}));
+    const settings = await musicApi.getSettings().catch(() => ({}));
     if (settings?.enableYouTube) {
         revealYouTubeFeatureUI();
         if (showAlert) {
@@ -55,7 +55,7 @@ export async function enableYouTubeFeaturesWithConsent({ showAlert = true } = {}
     }
 
     console.log('[DEBUG] YouTube features ENABLED.');
-    electronAPI.send('save-settings', { enableYouTube: true });
+    musicApi.saveSettings({ enableYouTube: true });
     revealYouTubeFeatureUI();
     if (showAlert) {
         alert('YouTube機能が有効になりました。');
@@ -68,13 +68,13 @@ export function initDebugCommands() {
         resetLibrary: () => {
             const confirmation = confirm('本当にライブラリをリセットしますか？...');
             if (confirmation) {
-                electronAPI.send('debug-reset-library');
+                console.warn('[DEBUG] debug-reset-library は Wails では未実装です');
             }
         },
         rollbackMigration: () => {
             const confirmation = confirm('本当にマイグレーションをロールバックしますか？...');
             if (confirmation) {
-                electronAPI.send('debug-rollback-migration');
+                console.warn('[DEBUG] debug-rollback-migration は Wails では未実装です');
             }
         },
         setVisualizerFps: (fps) => {

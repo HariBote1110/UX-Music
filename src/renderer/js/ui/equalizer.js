@@ -1,7 +1,7 @@
 // src/renderer/js/ui/equalizer.js
 import { state, elements } from '../core/state.js';
 import { applyEqualizerSettings } from '../features/audio-graph.js';
-const electronAPI = window.electronAPI;
+import { musicApi } from '../core/bridge.js';
 
 // ... (frequencies, presets, saveSettings, applyPreset, applyCurrentSettings は変更なし) ...
 const frequencies = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
@@ -15,7 +15,7 @@ const presets = {
     'Vocal': [-2, -1, 0, 3, 4, 2, 1, 0, -1, -2]
 };
 function saveSettings() {
-    electronAPI.send('save-settings', { equalizer: state.equalizerSettings });
+    musicApi.saveSettings({ equalizer: state.equalizerSettings });
 }
 function applyPreset(presetName) {
     const bands = presets[presetName];

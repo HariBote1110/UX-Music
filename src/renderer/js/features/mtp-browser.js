@@ -4,7 +4,7 @@
 import { state, elements } from '../core/state.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { formatBytes, showContextMenu, escapeHtml } from '../ui/utils.js';
-const electronAPI = window.electronAPI;
+import * as mtpAPI from '../core/api/mtp.js';
 
 // 状態管理
 let browserState = {
@@ -117,7 +117,7 @@ export async function browseDirectory(storageId, fullPath, addToHistory = true) 
     clearSelection();
 
     try {
-        const result = await electronAPI.invoke('mtp-browse-directory', {
+        const result = await mtpAPI.mtpBrowseDirectory({
             storageId: storageId,
             fullPath: fullPath
         });
@@ -510,14 +510,14 @@ async function downloadSelected() {
     if (browserState.selectedItems.size === 0) return;
 
     // ダウンロード先を選択
-    const destination = await electronAPI.invoke('mtp-select-download-folder');
+    const destination = await mtpAPI.mtpSelectDownloadFolder();
     if (!destination) return;
 
     const sources = Array.from(browserState.selectedItems);
     showNotification(`${sources.length}件のダウンロードを開始します...`);
 
     try {
-        const result = await electronAPI.invoke('mtp-download-files', {
+        const result = await mtpAPI.mtpDownloadFiles({
             storageId: browserState.currentStorageId,
             sources: sources,
             destination: destination
@@ -555,7 +555,7 @@ async function deleteSelected() {
     showNotification(`${count}件を削除中...`);
 
     try {
-        const result = await electronAPI.invoke('mtp-delete-files', {
+        const result = await mtpAPI.mtpDeleteFiles({
             storageId: browserState.currentStorageId,
             files: files
         });

@@ -1,5 +1,5 @@
 // src/renderer/renderer.js
-import './js/core/env-setup.js';
+import './js/core/wails-init.js';
 import { state, elements, initElements } from './js/core/state.js';
 import { initEventListeners } from './js/core/init-listeners.js';
 import { initUI } from './js/ui/ui.js';
@@ -22,6 +22,7 @@ import { startPerformanceMonitor } from './js/utils/performance-monitor.js';
 import { musicApi } from './js/core/bridge.js';
 import { checkWails } from './js/core/wails-check.js';
 import { applyTitleListMinWidthPref } from './js/ui/text-layout-prefs.js';
+import { eventsOn } from './js/core/api/runtime-events.js';
 
 window.onerror = function (msg, url, line, col, error) {
     console.error(`[Global Error] ${msg} at ${url}:${line}:${col}`, error);
@@ -31,8 +32,6 @@ window.onerror = function (msg, url, line, col, error) {
 window.onunhandledrejection = function (event) {
     console.error('[Unhandled Rejection]', event.reason);
 };
-
-const electronAPI = window.electronAPI;
 
 const MAX_ARTWORK_LOAD_SAMPLES = 200;
 const artworkLoadRing = new Float64Array(MAX_ARTWORK_LOAD_SAMPLES);
@@ -118,7 +117,7 @@ async function initApp() {
         // ▲▲▲ 修正完了 ▲▲▲
     }
 
-    electronAPI.on('os-media-command', (command) => {
+    eventsOn('os-media-command', (command) => {
         switch (command) {
             case 'play':
                 void playCurrent();
@@ -160,7 +159,7 @@ async function initApp() {
         if (loadingOverlay) loadingOverlay.classList.add('hidden');
     });
 
-    electronAPI.on('settings-loaded', (settings) => {
+    eventsOn('settings-loaded', (settings) => {
         if (typeof settings.volume === 'number') {
             if (elements.volumeSlider) elements.volumeSlider.value = settings.volume;
         }
@@ -203,7 +202,7 @@ async function initApp() {
     });
 
     // ▼▼▼ 追加: スキャン完了時にライブラリを更新 ▼▼▼
-    electronAPI.on('scan-complete', (newSongs) => {
+    eventsOn('scan-complete', (newSongs) => {
         console.log(`[Renderer] スキャン完了: ${newSongs?.length || 0}曲が追加されました`);
         if (newSongs && newSongs.length > 0) {
             addSongsToLibrary({ songs: newSongs, albums: {} });
@@ -257,8 +256,6 @@ async function initApp() {
         const loadingOverlay = document.getElementById('loading-overlay');
         if (loadingOverlay) loadingOverlay.classList.add('hidden');
     }
-
-    electronAPI.send('app-ready');
 
     try {
         updateAudioDevices();

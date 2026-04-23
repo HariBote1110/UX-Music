@@ -6,6 +6,11 @@ import { renderCurrentView, regroupLibraryCollections, rebuildLibraryIndexes } f
 import { escapeHtml } from '../ui/utils.js';
 import { showView } from './navigation.js';
 import { musicApi } from './bridge.js';
+import { eventsOn } from './api/runtime-events.js';
+import * as libraryAPI from './api/library.js';
+import * as playlistAPI from './api/playlist.js';
+import * as mtpAPI from './api/mtp.js';
+import { requestInitialSettings } from './api/settings.js';
 // --- ▼▼▼ 新規追加 ▼▼▼ ---
 import { showEditMetadataModal } from '../features/edit-metadata.js'; // あとで作成するファイル
 // --- ▲▲▲ ここまで ▲▲▲ ---
@@ -16,72 +21,72 @@ const logPerf = (message) => {
 };
 logPerf("ipc.js script execution started.");
 
-const electronAPI = window.electronAPI;
 let mtpOperationInProgress = false;
 
 export function initIPC(callbacks) {
     console.log('[IPC] initIPC called');
     logPerf("initIPC called.");
 
-    electronAPI.on('app-info-response', (info) => {
+    eventsOn('app-info-response', (info) => {
         callbacks.onAppInfoResponse?.(info);
     });
-    electronAPI.on('load-library', (data) => {
+    eventsOn('load-library', (data) => {
         logPerf("Received 'load-library' from main.");
         console.log(`[Debug] Received initial library with ${data.songs ? data.songs.length : 0} songs.`);
         callbacks.onLibraryLoaded?.(data);
     });
-    electronAPI.on('settings-loaded', (settings) => {
+    eventsOn('settings-loaded', (settings) => {
         logPerf("Received 'settings-loaded' from main.");
         console.log('[Debug] Settings loaded.');
         callbacks.onSettingsLoaded?.(settings);
     });
-    electronAPI.on('play-counts-updated', (counts) => {
+    eventsOn('play-counts-updated', (counts) => {
         callbacks.onPlayCountsUpdated?.(counts);
     });
-    electronAPI.on('youtube-link-processed', (newSong) => {
+    eventsOn('youtube-link-processed', (newSong) => {
         callbacks.onYoutubeLinkProcessed?.(newSong);
     });
-    electronAPI.on('playlists-updated', (playlists) => {
+    eventsOn('playlists-updated', (playlists) => {
         callbacks.onPlaylistsUpdated?.(playlists);
     });
-    electronAPI.on('force-reload-playlist', (playlistName) => {
+    eventsOn('force-reload-playlist', (playlistName) => {
         callbacks.onForceReloadPlaylist?.(playlistName);
     });
-    electronAPI.on('force-reload-library', () => {
+    eventsOn('force-reload-library', () => {
         callbacks.onForceReloadLibrary?.();
     });
-    electronAPI.on('show-loading', (text) => { // YouTube用
+    eventsOn('show-loading', (text) => { // YouTube用
         callbacks.onShowLoading?.(text);
     });
-    electronAPI.on('hide-loading', () => { // YouTube用
+    eventsOn('hide-loading', () => { // YouTube用
         callbacks.onHideLoading?.();
     });
-    electronAPI.on('show-error', (message) => {
+    eventsOn('show-error', (message) => {
         callbacks.onShowError?.(message);
     });
-    electronAPI.on('playlist-import-progress', (progress) => { // YouTube用
+    eventsOn('playlist-import-progress', (progress) => { // YouTube用
         callbacks.onPlaylistImportProgress?.(progress);
     });
-    electronAPI.on('playlist-import-finished', () => { // YouTube用
+    eventsOn('playlist-import-finished', () => { // YouTube用
         callbacks.onPlaylistImportFinished?.();
     });
 
-    electronAPI.on('scan-progress', (progress) => {
+    eventsOn('scan-progress', (progress) => {
         callbacks.onScanProgress?.(progress);
     });
 
-    electronAPI.on('scan-complete', (newSongs) => {
+    eventsOn('scan-complete', (newSongs) => {
         callbacks.onScanComplete?.(newSongs);
     });
-    electronAPI.on('flac-index-progress', (progress) => {
+    eventsOn('flac-index-progress', (progress) => {
         callbacks.onFlacIndexProgress?.(progress);
     });
-    electronAPI.on('flac-index-complete', (total) => {
+    eventsOn('flac-index-complete', (total) => {
         callbacks.onFlacIndexComplete?.(total);
     });
 
-    electronAPI.on('loudness-analysis-result', (result) => {
+    window.addEventListener('loudness-analysis-result', (e) => {
+        const result = e.detail ?? {};
         const filePath = typeof result?.filePath === 'string' ? result.filePath : '';
         const fileName = filePath ? filePath.split(/[/\\]/).pop() : 'Unknown';
         markLoudnessAnalysisCompleted(filePath);
@@ -114,17 +119,17 @@ export function initIPC(callbacks) {
         }
     });
 
-    electronAPI.on('lyrics-added-notification', (count) => {
+    eventsOn('lyrics-added-notification', (count) => {
         showNotification(`${count}個の歌詞ファイルが追加されました。`);
         hideNotification(3000);
     });
 
-    electronAPI.on('show-notification', (message) => {
+    eventsOn('show-notification', (message) => {
         showNotification(message);
         hideNotification(3000);
     });
 
-    electronAPI.on('songs-deleted', (deletedSongPaths) => {
+    eventsOn('songs-deleted', (deletedSongPaths) => {
         const deletedPathsSet = new Set(deletedSongPaths);
         state.library = state.library.filter(song => !deletedPathsSet.has(song.path));
         rebuildLibraryIndexes();
@@ -136,19 +141,19 @@ export function initIPC(callbacks) {
         hideNotification(3000);
     });
 
-    electronAPI.on('request-new-playlist-with-songs', (songs) => {
+    eventsOn('request-new-playlist-with-songs', (songs) => {
         showModal({
             title: '新規プレイリスト作成',
             placeholder: 'プレイリスト名を入力',
             onOk: (playlistName) => {
                 if (playlistName && playlistName.trim() !== '') {
-                    electronAPI.send('create-new-playlist-with-songs', { playlistName, songs });
+                    void playlistAPI.createPlaylistWithSongs({ playlistName: playlistName.trim(), songs });
                 }
             }
         });
     });
 
-    electronAPI.on('show-edit-metadata-modal', (song) => {
+    eventsOn('show-edit-metadata-modal', (song) => {
         showEditMetadataModal(song);
     });
 
@@ -164,13 +169,13 @@ export function initIPC(callbacks) {
     }
 
     console.log('[IPC] Registering mtp-device-connected listener');
-    electronAPI.on('mtp-device-connected', (payload) => {
+    eventsOn('mtp-device-connected', (payload) => {
         handleMtpConnected(payload);
         showNotification(`Walkman (${payload.device?.name}) が接続されました。`);
         hideNotification(3000);
     });
 
-    electronAPI.on('mtp-device-disconnected', () => {
+    eventsOn('mtp-device-disconnected', () => {
         console.log('🔌 MTP デバイス切断');
         state.mtpDevice = null;
         state.mtpStorages = null;
@@ -180,7 +185,7 @@ export function initIPC(callbacks) {
         updateDevicesSidebar(null);
     });
 
-    electronAPI.on('request-mtp-transfer', async (songs) => {
+    eventsOn('request-mtp-transfer', async (songs) => {
         logPerf("Received 'request-mtp-transfer' from main.");
 
         if (!state.mtpStorages || state.mtpStorages.length === 0) {
@@ -198,7 +203,7 @@ export function initIPC(callbacks) {
         showNotification(message);
 
         try {
-            const result = await electronAPI.invoke('mtp-upload-files', { storageId, sources, destination });
+            const result = await mtpAPI.mtpUploadFiles({ storageId, sources, destination });
 
             if (result.error) {
                 showNotification(`転送に失敗しました: ${result.error}`);
@@ -212,12 +217,12 @@ export function initIPC(callbacks) {
     });
 
     logPerf("Requesting initial data from main process...");
-    electronAPI.send('request-initial-library');
+    libraryAPI.requestInitialLibrary();
     musicApi.requestInitialPlayCounts();
-    electronAPI.send('request-initial-settings');
+    requestInitialSettings();
 
     // MTP初期状態の取得
-    electronAPI.invoke('mtp-get-status').then(status => {
+    mtpAPI.mtpGetStatus().then(status => {
         if (status) {
             console.log('[IPC] Initial MTP Status found:', status);
             handleMtpConnected(status);
@@ -257,7 +262,7 @@ export function initIPC(callbacks) {
 
                 try {
                     const storageId = state.mtpStorages[0].id;
-                    const result = await electronAPI.invoke('mtp-get-untransferred-songs', {
+                    const result = await mtpAPI.mtpGetUntransferredSongs({
                         storageId,
                         librarySongs: state.library
                     });
