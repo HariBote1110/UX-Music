@@ -155,11 +155,10 @@ function registerYouTubeHandlers(stores, managers) {
         playlistManager.createPlaylist(playlistTitle);
         
         for (let i = 0; i < total; i++) {
+            if (!window || window.isDestroyed()) break;
             const item = playlist.items[i];
             try {
-                if (window && !window.isDestroyed()) {
                 window.send('playlist-import-progress', { current: i + 1, total: total, title: item.title });
-                }
                 const videoInfo = await ytdl.getInfo(item.url);
                 const newSong = await processYouTubeVideo(videoInfo, item.url);
                 
