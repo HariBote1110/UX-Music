@@ -49,11 +49,11 @@ func (a *App) AudioGetCurrentDevice() string {
 }
 
 // AudioPlay starts playback of an audio file
-func (a *App) AudioPlay(filePath string) error {
+func (a *App) AudioPlay(filePath string, gainLinear float64) error {
 	if a.audioPlayer == nil {
 		return fmt.Errorf("audio player not initialized")
 	}
-	if err := a.audioPlayer.Play(filePath); err != nil {
+	if err := a.audioPlayer.Play(filePath, gainLinear); err != nil {
 		fmt.Printf("[Audio] Play failed (%s): %v\n", filePath, err)
 		return err
 	}

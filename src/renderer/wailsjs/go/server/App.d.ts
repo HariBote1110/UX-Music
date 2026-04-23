@@ -32,7 +32,7 @@ export function AudioListDevices():Promise<Array<audio.Device>>;
 
 export function AudioPause():Promise<void>;
 
-export function AudioPlay(arg1:string):Promise<void>;
+export function AudioPlay(arg1:string,arg2:number):Promise<void>;
 
 export function AudioResume():Promise<void>;
 

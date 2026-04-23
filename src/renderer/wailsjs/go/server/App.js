@@ -50,8 +50,8 @@ export function AudioPause() {
   return window['go']['server']['App']['AudioPause']();
 }
 
-export function AudioPlay(arg1) {
-  return window['go']['server']['App']['AudioPlay'](arg1);
+export function AudioPlay(arg1, arg2) {
+  return window['go']['server']['App']['AudioPlay'](arg1, arg2);
 }
 
 export function AudioResume() {

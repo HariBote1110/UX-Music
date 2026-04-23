@@ -94,6 +94,7 @@ type Player struct {
 	sampleRate   int
 	channels     int
 	volume       atomic.Uint64 // stored as float64 bits
+	baseGain     atomic.Uint64 // stored as float64 bits, default 1.0 (e.g. Wails loudness)
 
 	// Ring buffer for pre-decoded audio data
 	ringBuf       []float32     // Pre-decoded float32 samples
@@ -149,6 +150,7 @@ func NewPlayer() (*Player, error) {
 
 	p := &Player{}
 	p.setVolume(1.0)
+	p.baseGain.Store(math.Float64bits(1.0))
 
 	// Initialize FFT
 	p.initFFT(2048)
@@ -309,22 +311,51 @@ func (p *Player) ListDevices() ([]Device, error) {
 	return result, nil
 }
 
-// SetDevice sets the output device by ID
+// SetDevice sets the output device by ID. If playing, the stream is reopened and position restored.
 func (p *Player) SetDevice(deviceID string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	var idx int
 	if _, err := fmt.Sscanf(deviceID, "%d", &idx); err != nil {
 		return fmt.Errorf("invalid device ID: %s", deviceID)
 	}
-
+	p.mu.Lock()
 	if idx < 0 || idx >= len(p.devices) {
+		p.mu.Unlock()
 		return fmt.Errorf("device ID out of range: %d", idx)
 	}
-
 	p.currentDevice = p.devices[idx]
-	fmt.Printf("[Audio] Device set to: %s\n", p.currentDevice.Name)
+	deviceName := p.currentDevice.Name
+	p.mu.Unlock()
+
+	fmt.Printf("[Audio] Device set to: %s\n", deviceName)
+
+	if !p.IsPlaying() {
+		return nil
+	}
+	currentPos := p.GetPosition()
+
+	p.mu.Lock()
+	if p.stream != nil {
+		_ = p.stream.Stop()
+		_ = p.stream.Close()
+		p.stream = nil
+	}
+	p.mu.Unlock()
+
+	p.ringAvailable.Store(0)
+	p.ringReadPos.Store(0)
+	p.ringWritePos.Store(0)
+
+	p.mu.Lock()
+	err := p.reopenStream()
+	p.mu.Unlock()
+	if err != nil {
+		return fmt.Errorf("failed to reopen stream on new device: %w", err)
+	}
+	if err := p.Seek(currentPos); err != nil {
+		fmt.Printf("[Audio] Warning: failed to seek after device change: %v\n", err)
+	} else {
+		fmt.Printf("[Audio] Device switched and playback resumed at %.2fs\n", currentPos)
+	}
 	return nil
 }
 
@@ -339,9 +370,12 @@ func (p *Player) GetCurrentDevice() string {
 	return ""
 }
 
-// Play starts playback of an audio file
-func (p *Player) Play(filePath string) error {
+// Play starts playback of an audio file. gainLinear scales samples after volume (1.0 = unity).
+func (p *Player) Play(filePath string, gainLinear float64) error {
 	p.shutdownDecoderGoroutine()
+
+	gainLinear = sanitizePlaybackGainLinear(gainLinear)
+	p.baseGain.Store(math.Float64bits(gainLinear))
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -432,34 +466,10 @@ func (p *Player) Play(filePath string) error {
 	}
 	p.rebuildEqualizerConfig(p.sampleRate)
 
-	// Select device
-	device := p.currentDevice
-	if device == nil {
-		device, _ = portaudio.DefaultOutputDevice()
-	}
-	if device == nil {
-		return errors.New("no output device available")
-	}
-
-	// Create stream parameters
-	params := portaudio.StreamParameters{
-		Output: portaudio.StreamDeviceParameters{
-			Device:   device,
-			Channels: min(p.channels, device.MaxOutputChannels),
-			Latency:  device.DefaultLowOutputLatency,
-		},
-		SampleRate:      float64(p.sampleRate),
-		FramesPerBuffer: 4096,
-	}
-
-	// Create callback stream
-	stream, err := portaudio.OpenStream(params, func(out []float32) {
-		p.processAudio(out)
-	})
+	stream, err := p.newOutputStream()
 	if err != nil {
-		return fmt.Errorf("failed to open stream: %w", err)
+		return err
 	}
-
 	p.stream = stream
 	p.playing.Store(true)
 	p.paused.Store(false)
@@ -471,7 +481,66 @@ func (p *Player) Play(filePath string) error {
 		return fmt.Errorf("failed to start stream: %w", err)
 	}
 
-	fmt.Printf("[Audio] Playing: %s on %s (SR: %d, CH: %d)\n", filePath, device.Name, p.sampleRate, p.channels)
+	outDev := p.resolvedOutputDevice()
+	outName := "unknown"
+	if outDev != nil {
+		outName = outDev.Name
+	}
+	fmt.Printf("[Audio] Playing: %s on %s (SR: %d, CH: %d)\n", filePath, outName, p.sampleRate, p.channels)
+	return nil
+}
+
+// resolvedOutputDevice returns the device used for output (current or system default).
+func (p *Player) resolvedOutputDevice() *portaudio.DeviceInfo {
+	device := p.currentDevice
+	if device == nil {
+		device, _ = portaudio.DefaultOutputDevice()
+	}
+	return device
+}
+
+// newOutputStream opens a PortAudio output stream; caller must hold p.mu, assign p.stream, then Start and wire decoder.
+func (p *Player) newOutputStream() (*portaudio.Stream, error) {
+	if p.sampleRate == 0 {
+		return nil, errors.New("newOutputStream: sample rate not set")
+	}
+	device := p.resolvedOutputDevice()
+	if device == nil {
+		return nil, errors.New("no output device available")
+	}
+	params := portaudio.StreamParameters{
+		Output: portaudio.StreamDeviceParameters{
+			Device:   device,
+			Channels: min(p.channels, device.MaxOutputChannels),
+			Latency:  device.DefaultLowOutputLatency,
+		},
+		SampleRate:      float64(p.sampleRate),
+		FramesPerBuffer: 4096,
+	}
+	stream, err := portaudio.OpenStream(params, func(out []float32) {
+		p.processAudio(out)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to open stream: %w", err)
+	}
+	return stream, nil
+}
+
+// reopenStream opens and starts a new output stream; decoder and Play state are unchanged. Caller must hold p.mu.
+func (p *Player) reopenStream() error {
+	if p.decoder == nil {
+		return errors.New("reopenStream: no active decoder")
+	}
+	stream, err := p.newOutputStream()
+	if err != nil {
+		return err
+	}
+	p.stream = stream
+	if err := stream.Start(); err != nil {
+		_ = stream.Close()
+		p.stream = nil
+		return fmt.Errorf("failed to start stream: %w", err)
+	}
 	return nil
 }
 
@@ -635,6 +704,7 @@ func (p *Player) processAudio(out []float32) {
 	playing := p.playing.Load()
 	paused := p.paused.Load()
 	volume := p.getVolume()
+	baseGainLinear := math.Float64frombits(p.baseGain.Load())
 
 	if !playing || paused {
 		// Fill with silence
@@ -677,7 +747,7 @@ func (p *Player) processAudio(out []float32) {
 			}
 		}
 
-		outputSample *= volume
+		outputSample *= volume * baseGainLinear
 		if outputSample > 1 {
 			outputSample = 1
 		} else if outputSample < -1 {
