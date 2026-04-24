@@ -10,8 +10,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,6 +24,8 @@ type Ripper struct {
 	UserDataPath   string
 }
 
+var resolvedBinaryPaths sync.Map
+
 // NewRipper creates a new Ripper instance
 func NewRipper(cdParanoiaPath, ffmpegPath, userDataPath string) *Ripper {
 	return &Ripper{
@@ -31,16 +35,89 @@ func NewRipper(cdParanoiaPath, ffmpegPath, userDataPath string) *Ripper {
 	}
 }
 
+func isExecutable(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return false
+	}
+	info, err := os.Stat(trimmed)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	return info.Mode().Perm()&0o111 != 0
+}
+
+func resolveBinaryPath(name, explicitPath string) (string, error) {
+	if cached, ok := resolvedBinaryPaths.Load(name); ok {
+		if path, ok := cached.(string); ok && isExecutable(path) {
+			return path, nil
+		}
+		resolvedBinaryPaths.Delete(name)
+	}
+
+	if isExecutable(explicitPath) {
+		resolvedBinaryPaths.Store(name, explicitPath)
+		return explicitPath, nil
+	}
+
+	if path, err := exec.LookPath(name); err == nil && isExecutable(path) {
+		resolvedBinaryPaths.Store(name, path)
+		return path, nil
+	}
+
+	binaryName := name
+	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(name), ".exe") {
+		binaryName = name + ".exe"
+	}
+
+	var candidates []string
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		candidates = append(candidates,
+			// production: UX-Music.app/Contents/Resources/bin/
+			filepath.Clean(filepath.Join(execDir, "..", "Resources", "bin", binaryName)),
+			filepath.Clean(filepath.Join(execDir, "..", "Resources", binaryName)),
+			// wails dev: project root bin/macos/
+			filepath.Clean(filepath.Join(execDir, "bin", "macos", binaryName)),
+			filepath.Clean(filepath.Join(execDir, "..", "bin", "macos", binaryName)),
+			filepath.Clean(filepath.Join(execDir, "..", "..", "bin", "macos", binaryName)),
+		)
+	}
+	candidates = append(candidates,
+		filepath.Join("/opt/homebrew/bin", binaryName),
+		filepath.Join("/usr/local/bin", binaryName),
+		filepath.Join("/opt/local/bin", binaryName),
+		filepath.Join("/usr/bin", binaryName),
+		filepath.Join("/bin", binaryName),
+	)
+
+	for _, candidate := range candidates {
+		if isExecutable(candidate) {
+			resolvedBinaryPaths.Store(name, candidate)
+			fmt.Printf("[CDRip] binary resolved: %s -> %s\n", name, candidate)
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("%s が見つかりません (PATH=%q)", name, os.Getenv("PATH"))
+}
+
 // GetTrackList scans the CD for tracks
 func (r *Ripper) GetTrackList() ([]Track, error) {
-	cmd := exec.Command(r.CDParanoiaPath, "-Q")
+	cdparanoiaPath, err := resolveBinaryPath("cdparanoia", r.CDParanoiaPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to run cdparanoia: %w", err)
+	}
+
+	cmd := exec.Command(cdparanoiaPath, "-Q")
 	var out bytes.Buffer
-	// cdparanoia outputs to stderr usually
 	cmd.Stderr = &out
-	cmd.Stdout = &out // Capture both just in case
+	cmd.Stdout = &out
 
 	if err := cmd.Run(); err != nil {
-		// It might return non-zero if no CD is found
 		return nil, fmt.Errorf("failed to run cdparanoia: %w", err)
 	}
 
@@ -141,8 +218,12 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 	finalPath := filepath.Join(artistDir, filename)
 
 	// 1. Rip to WAV
+	cdparanoiaPath, err := resolveBinaryPath("cdparanoia", r.CDParanoiaPath)
+	if err != nil {
+		return fmt.Errorf("cdparanoia not found: %w", err)
+	}
 	fmt.Printf("[Ripper] Running cdparanoia for track %d\n", track.Number)
-	ripCmd := exec.Command(r.CDParanoiaPath, "-w", strconv.Itoa(track.Number), tempWav)
+	ripCmd := exec.Command(cdparanoiaPath, "-w", strconv.Itoa(track.Number), tempWav)
 	if output, err := ripCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("cdparanoia failed: %w. Output: %s", err, string(output))
 	}
@@ -184,7 +265,11 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 
 	args = append(args, "-y", finalPath)
 
-	encCmd := exec.Command(r.FFmpegPath, args...)
+	ffmpegPath, err := resolveBinaryPath("ffmpeg", r.FFmpegPath)
+	if err != nil {
+		return fmt.Errorf("ffmpeg not found: %w", err)
+	}
+	encCmd := exec.Command(ffmpegPath, args...)
 	if output, err := encCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("ffmpeg failed: %s: %w", string(output), err)
 	}
