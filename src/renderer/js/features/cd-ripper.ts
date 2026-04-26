@@ -232,7 +232,7 @@ async function openMetadataSearch() {
     list.innerHTML = '<li style="padding: 10px; color: #aaa;">自動検索中...</li>';
     try {
         const result = await electronAPI.invoke('cd-search-toc', currentTracks);
-        if (result.success && result.releases.length > 0) {
+        if (result.success && result.releases?.length > 0) {
             renderCandidateList(result.releases);
         } else {
             list.innerHTML = '<li style="padding: 10px; color: #aaa;">自動検索で見つかりませんでした。キーワードで検索してください。</li>';
@@ -249,7 +249,7 @@ async function executeTextSearch() {
     list.innerHTML = '<li style="padding: 10px; color: #aaa;">検索中...</li>';
     try {
         const result = await electronAPI.invoke('cd-search-text', query);
-        if (result.success && result.releases.length > 0) {
+        if (result.success && result.releases?.length > 0) {
             renderCandidateList(result.releases);
         } else {
             list.innerHTML = '<li style="padding: 10px; color: #aaa;">見つかりませんでした。</li>';

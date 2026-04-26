@@ -227,7 +227,7 @@ func ApplyMetadata(tracks []Track, releaseID string) (*ReleaseInfo, error) {
 }
 
 func convertReleases(mbs []mbRelease) []ReleaseInfo {
-	var result []ReleaseInfo
+	result := make([]ReleaseInfo, 0, len(mbs))
 	for _, r := range mbs {
 		artist := "Unknown"
 		if len(r.ArtistCredit) > 0 {
