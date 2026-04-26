@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { playSong, markLoudnessAnalysisCompleted } from '../features/playback-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { state } from './state.js';
@@ -30,7 +29,8 @@ export function initIPC(callbacks) {
     });
     electronAPI.on('load-library', (data) => {
         logPerf("Received 'load-library' from main.");
-        console.log(`[Debug] Received initial library with ${data.songs ? data.songs.length : 0} songs.`);
+        const d = data as Record<string, unknown>;
+        console.log(`[Debug] Received initial library with ${d.songs ? (d.songs as unknown[]).length : 0} songs.`);
         callbacks.onLibraryLoaded?.(data);
     });
     electronAPI.on('settings-loaded', (settings) => {
@@ -89,7 +89,8 @@ export function initIPC(callbacks) {
         callbacks.onFlacIndexComplete?.(total);
     });
 
-    electronAPI.on('loudness-analysis-result', (result) => {
+    electronAPI.on('loudness-analysis-result', (rawResult) => {
+        const result = rawResult as Record<string, unknown>;
         const filePath = typeof result?.filePath === 'string' ? result.filePath : '';
         const fileName = filePath ? filePath.split(/[/\\]/).pop() : 'Unknown';
         markLoudnessAnalysisCompleted(filePath);
@@ -110,7 +111,7 @@ export function initIPC(callbacks) {
             }
 
         } else {
-            console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error}`);
+            console.error(`[ラウドネス解析失敗] ${fileName}: ${result.error as string}`);
 
             if (waitingSong && waitingSong.sourceList[waitingSong.index]?.path === filePath) {
                 showNotification(`「${fileName}」の解析に失敗したため、ノーマライズなしで再生します。`);
@@ -123,25 +124,22 @@ export function initIPC(callbacks) {
     });
 
     electronAPI.on('lyrics-added-notification', (count) => {
-        showNotification(`${count}個の歌詞ファイルが追加されました。`);
-        hideNotification(3000);
+        showNotification(`${count}個の歌詞ファイルが追加されました。`, 3000);
     });
 
     electronAPI.on('show-notification', (message) => {
-        showNotification(message);
-        hideNotification(3000);
+        showNotification(String(message), 3000);
     });
 
     electronAPI.on('songs-deleted', (deletedSongPaths) => {
-        const deletedPathsSet = new Set(deletedSongPaths);
+        const deletedPathsSet = new Set(deletedSongPaths as string[]);
         state.library = state.library.filter(song => !deletedPathsSet.has(song.path));
         rebuildLibraryIndexes();
         state.selectedSongIds.clear();
         state.copiedSongIds = [];
         regroupLibraryCollections();
         renderCurrentView();
-        showNotification(`${deletedSongPaths.length}曲がライブラリから削除されました。`);
-        hideNotification(3000);
+        showNotification(`${(deletedSongPaths as string[]).length}曲がライブラリから削除されました。`, 3000);
     });
 
     electronAPI.on('request-new-playlist-with-songs', (songs) => {
@@ -160,22 +158,22 @@ export function initIPC(callbacks) {
         showEditMetadataModal(song);
     });
 
-    function handleMtpConnected(payload) {
+    function handleMtpConnected(payload: Record<string, unknown>) {
         console.log('🎉 [IPC] handleMtpConnected:', payload);
         const deviceInfo = payload.device;
         const storageInfo = payload.storages;
 
         state.mtpDevice = deviceInfo;
-        state.mtpStorages = storageInfo;
+        state.mtpStorages = storageInfo as unknown[];
 
         updateDevicesSidebar(deviceInfo);
     }
 
     console.log('[IPC] Registering mtp-device-connected listener');
     electronAPI.on('mtp-device-connected', (payload) => {
-        handleMtpConnected(payload);
-        showNotification(`Walkman (${payload.device?.name}) が接続されました。`);
-        hideNotification(3000);
+        const p = payload as Record<string, unknown>;
+        handleMtpConnected(p);
+        showNotification(`Walkman (${(p.device as Record<string, unknown>)?.name}) が接続されました。`, 3000);
     });
 
     electronAPI.on('mtp-device-disconnected', () => {
@@ -183,40 +181,38 @@ export function initIPC(callbacks) {
         state.mtpDevice = null;
         state.mtpStorages = null;
 
-        showNotification('Walkmanが切断されました。');
-        hideNotification(3000);
+        showNotification('Walkmanが切断されました。', 3000);
         updateDevicesSidebar(null);
     });
 
-    electronAPI.on('request-mtp-transfer', async (songs) => {
+    electronAPI.on('request-mtp-transfer', async (rawSongs) => {
+        const songs = rawSongs as Array<Record<string, unknown>>;
         logPerf("Received 'request-mtp-transfer' from main.");
 
         if (!state.mtpStorages || state.mtpStorages.length === 0) {
-            showNotification('Walkmanのストレージ情報が見つかりません。');
-            hideNotification(3000);
+            showNotification('Walkmanのストレージ情報が見つかりません。', 3000);
             return;
         }
 
-        const storageId = state.mtpStorages[0].id;
+        const storageId = (state.mtpStorages[0] as Record<string, unknown>).id;
         const destination = '/Music/';
         const sources = songs.map(s => s.path);
 
         const songCount = songs.length;
         const message = songCount > 1 ? `${songCount}曲の転送を開始します...` : `「${songs[0].title}」の転送を開始します...`;
-        showNotification(message);
+        showNotification(message, false);
 
         try {
-            const result = await electronAPI.invoke('mtp-upload-files', { storageId, sources, destination });
+            const result = await electronAPI.invoke('mtp-upload-files', { storageId, sources, destination }) as Record<string, unknown>;
 
             if (result.error) {
-                showNotification(`転送に失敗しました: ${result.error}`);
+                showNotification(`転送に失敗しました: ${result.error}`, 4000);
             } else {
-                showNotification(songCount > 1 ? `${songCount}曲の転送が完了しました。` : `「${songs[0].title}」の転送が完了しました。`);
+                showNotification(songCount > 1 ? `${songCount}曲の転送が完了しました。` : `「${songs[0].title}」の転送が完了しました。`, 4000);
             }
         } catch (err) {
-            showNotification(`転送実行中にエラーが発生しました: ${err.message}`);
+            showNotification(`転送実行中にエラーが発生しました: ${(err as Error).message}`, 4000);
         }
-        hideNotification(4000);
     });
 
     logPerf("Requesting initial data from main process...");
@@ -228,7 +224,7 @@ export function initIPC(callbacks) {
     electronAPI.invoke('mtp-get-status').then(status => {
         if (status) {
             console.log('[IPC] Initial MTP Status found:', status);
-            handleMtpConnected(status);
+            handleMtpConnected(status as Record<string, unknown>);
         } else {
             console.log('[IPC] No MTP device connected initially');
         }
@@ -260,15 +256,15 @@ export function initIPC(callbacks) {
             mtpOperationInProgress = true;
 
             try {
-                    const storageId = state.mtpStorages[0].id;
+                    const storageId = (state.mtpStorages[0] as Record<string, unknown>).id;
                     const result = await electronAPI.invoke('mtp-get-untransferred-songs', {
                         storageId,
                         librarySongs: state.library
-                    });
+                    }) as Record<string, unknown>;
                     hideNotification();
 
-                    const untransferredSongs = result?.untransferredSongs || [];
-                    const deviceFilesList = result?.deviceFilesList || [];
+                    const untransferredSongs = (result?.untransferredSongs as Array<Record<string, unknown>>) || [];
+                    const deviceFilesList = (result?.deviceFilesList as unknown[]) || [];
 
                     const sourceList = document.getElementById('mtp-transfer-source-list');
                     if (sourceList) {
@@ -277,16 +273,16 @@ export function initIPC(callbacks) {
                             untransferredSongs.forEach(song => {
                                 const item = document.createElement('div');
                                 item.className = 'transfer-item';
-                                const title = song.title || song.path.split('/').pop();
-                                const reason = song._reason || '理由不明';
+                                const title = String(song.title || (song.path as string).split('/').pop());
+                                const reason = String(song._reason || '理由不明');
                                 item.innerHTML = `
                                     <span class="transfer-item-title">${escapeHtml(title)}</span>
                                     <span class="transfer-item-reason">${escapeHtml(reason)}</span>
                                 `;
-                                item.dataset.path = song.path;
+                                item.dataset.path = song.path as string;
                                 sourceList.appendChild(item);
                             });
-                            state.pendingTransferSongs = untransferredSongs;
+                            state.pendingTransferSongs = untransferredSongs as import('../../types/domain.js').Song[];
                         } else {
                             sourceList.innerHTML = '<p>すべての曲が転送済みです 🎉</p>';
                             state.pendingTransferSongs = [];
@@ -297,12 +293,13 @@ export function initIPC(callbacks) {
                     if (deviceList) {
                         deviceList.innerHTML = `<p>デバイス上のファイル: ${deviceFilesList.length}件</p>`;
                         deviceFilesList.forEach(file => {
+                            const f = file as Record<string, unknown>;
                             const item = document.createElement('div');
                             item.className = 'transfer-item';
-                            const sizeKB = Math.round((file.size || 0) / 1024);
+                            const sizeKB = Math.round(((f.size as number) || 0) / 1024);
                             item.innerHTML = `
-                                    <span class="transfer-item-title">${escapeHtml(file.name)}</span>
-                                    <span class="transfer-item-reason">正規化: "${escapeHtml(file.normalizedName)}" (${sizeKB} KB)</span>
+                                    <span class="transfer-item-title">${escapeHtml(f.name as string)}</span>
+                                    <span class="transfer-item-reason">正規化: "${escapeHtml(f.normalizedName as string)}" (${sizeKB} KB)</span>
                             `;
                             deviceList.appendChild(item);
                         });

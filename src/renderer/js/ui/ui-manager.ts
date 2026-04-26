@@ -1,7 +1,7 @@
-// @ts-nocheck
 // uxmusic/src/renderer/js/ui-manager.js
 
 import { state, elements } from '../core/state.js';
+import type { Song } from '../../types/domain.js';
 import { playSong } from '../features/playback-manager.js';
 import { createQueueItem } from './element-factory.js';
 import { showView } from '../core/navigation.js';
@@ -233,7 +233,7 @@ export function initQueueSidebarMtpHandlers() {
 
             // ナビゲーションを使用してMTPブラウザビューを表示
             void showView('mtp-browser-view', {
-                storageId: state.mtpStorages[0].id,
+                storageId: (state.mtpStorages[0] as Record<string, unknown>).id,
                 initialPath: '/'
             });
         });
@@ -273,13 +273,12 @@ function updateMtpDeviceView(payload) {
 
         if (state.activeViewId === 'mtp-transfer-view') {
             void showView(state.activeListView || 'track-view');
-            showNotification('MTPデバイスが切断されました。', 'error');
-            hideNotification(3000);
+            showNotification('MTPデバイスが切断されました。', 3000);
         }
     }
 }
 
-export function addSongsToLibrary({ songs, albums, skipRender = false }: { songs: unknown[]; albums: Record<string, unknown>; skipRender?: boolean }) {
+export function addSongsToLibrary({ songs, albums, skipRender = false }: { songs: Song[]; albums: Record<string, unknown>; skipRender?: boolean }) {
     console.time('Renderer: Process Library Data');
     let migrationNeeded = false;
     let fullRegroupNeeded = false;
@@ -411,12 +410,13 @@ export async function updateAudioDevices() {
             // WebKit 等では kind が正しく取得できない場合や制限されている場合がある
         }
 
-        const directLinkDevice = {
+        type ExtendedDevice = MediaDeviceInfo | { deviceId: string; label: string; isVirtual: true };
+        const directLinkDevice: ExtendedDevice = {
             deviceId: 'ux-direct-link',
             label: 'UX Audio Router (Direct)',
             isVirtual: true
         };
-        const displayDevices = [directLinkDevice, ...audioDevices];
+        const displayDevices: ExtendedDevice[] = [directLinkDevice, ...audioDevices];
 
         // デバイスが見つからない場合のヘルパー
         if (audioDevices.length === 0 && window.go) {
@@ -452,7 +452,7 @@ export async function updateAudioDevices() {
                     await setAudioOutput(device.deviceId);
                     updateAudioDevices();
                 } catch (err) {
-                    if (err.name !== 'NotAllowedError') console.error('selectAudioOutput error:', err);
+                    if ((err as Error).name !== 'NotAllowedError') console.error('selectAudioOutput error:', err);
                 }
             });
             elements.devicePopup.appendChild(selectItem);
@@ -462,7 +462,7 @@ export async function updateAudioDevices() {
             const item = document.createElement('div');
             item.className = 'device-popup-item';
 
-            if (device.isVirtual) {
+            if ('isVirtual' in device && device.isVirtual) {
                 item.style.fontWeight = 'bold';
                 item.style.color = '#7289da';
             }
@@ -478,7 +478,7 @@ export async function updateAudioDevices() {
                 await applyOutputDeviceChange(item, item.dataset.deviceId);
             });
 
-            if (!device.isVirtual) {
+            if (!('isVirtual' in device)) {
                 item.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
                     e.stopPropagation();

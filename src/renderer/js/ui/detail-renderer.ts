@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/ui/detail-renderer.js
 
 import { state, elements } from '../core/state.js';
@@ -58,7 +57,7 @@ export function renderAlbumDetailView(album) {
 
     initListHeaderResizing(viewWrapper);
 
-    const artImg = viewWrapper.querySelector('.detail-art-img');
+    const artImg = viewWrapper.querySelector('.detail-art-img') as HTMLImageElement | null;
 
     let artworkToUse = album.artwork;
     if (!artworkToUse && albumSongs.length > 0) {
@@ -67,9 +66,9 @@ export function renderAlbumDetailView(album) {
             artworkToUse = songWithArt.artwork;
         }
     }
-    artImg.dataset.src = resolveArtworkPath(artworkToUse, false);
+    if (artImg) artImg.dataset.src = resolveArtworkPath(artworkToUse, false);
 
-    viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, albumSongs));
+    viewWrapper.querySelector('.play-all-btn')?.addEventListener('click', () => playSong(0, albumSongs));
 
     window.observeNewArtworks(viewWrapper);
     return scroller;
@@ -84,7 +83,7 @@ export function renderArtistDetailView(artist) {
     setCurrentViewSongs(artistSongs);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
-    const artistAlbums = [...state.albums.entries()].filter(([, album]) => album.artist === artist.name);
+    const artistAlbums = [...state.albums.entries()].filter(([, album]) => (album as Record<string, unknown>).artist === (artist as Record<string, unknown>).name);
     viewWrapper.innerHTML = `
         <div class="detail-header">
             <img class="detail-art-img artist-detail-art-round lazy-load">
@@ -101,7 +100,7 @@ export function renderArtistDetailView(artist) {
         grid.innerHTML = `<div class="placeholder">このアーティストのアルバムは見つかりません</div>`;
     } else {
         artistAlbums.forEach(([albumKey, album]) => {
-            const albumItem = createAlbumGridItem(albumKey, album, electronAPI);
+            const albumItem = createAlbumGridItem(albumKey, album);
             albumItem.addEventListener('click', () => showAlbum(albumKey));
             grid.appendChild(albumItem);
         });
@@ -112,8 +111,8 @@ export function renderArtistDetailView(artist) {
     // スペーサーを更新
     updateListSpacer();
 
-    const artImg = viewWrapper.querySelector('.detail-art-img');
-    artImg.dataset.src = resolveArtworkPath(artist.artwork, false);
+    const artImg = viewWrapper.querySelector('.detail-art-img') as HTMLImageElement | null;
+    if (artImg) artImg.dataset.src = resolveArtworkPath((artist as Record<string, unknown>).artwork, false);
 
     window.observeNewArtworks(viewWrapper);
     return null;
@@ -122,14 +121,14 @@ export function renderArtistDetailView(artist) {
 /**
  * プレイリスト詳細ビューを描画する
  */
-export function renderPlaylistDetailView(playlistDetails = {}) {
-    const { name: playlistName = '不明なプレイリスト', songs = [], artworks = [] } = playlistDetails;
+export function renderPlaylistDetailView(playlistDetails: Record<string, unknown> = {}) {
+    const { name: playlistName = '不明なプレイリスト', songs = [], artworks = [] } = playlistDetails as { name?: string; songs?: unknown[]; artworks?: unknown[] };
 
     clearMainContent();
     setCurrentViewSongs(songs);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
-    const totalDuration = songs.reduce((sum, song) => sum + (song.duration || 0), 0);
+    const totalDuration = (songs as Record<string, unknown>[]).reduce((sum, song) => sum + ((song.duration as number) || 0), 0);
     viewWrapper.innerHTML = `
         <div class="detail-header">
             <div class="playlist-art-collage detail-art-img"></div>

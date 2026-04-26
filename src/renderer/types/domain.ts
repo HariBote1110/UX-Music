@@ -91,6 +91,7 @@ export interface DetailViewState {
   type: string | null;
   identifier: string | null;
   data: unknown;
+  [key: string]: unknown;
 }
 
 export type PlaybackMode = 'normal' | 'loop-all' | 'loop-one';

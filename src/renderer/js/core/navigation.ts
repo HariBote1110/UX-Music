@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { state, elements } from './state.js';
 import {
     renderTrackView,
@@ -120,8 +119,8 @@ export async function showView(viewId, options: Record<string, unknown> = {}) {
         state.currentDetailView = { type: null, identifier: null, data: null };
     } else if (!isOverlayNav) {
         state.currentDetailView = {
-            type: options.type,
-            identifier: options.identifier,
+            type: options.type as string | null,
+            identifier: options.identifier as string | null,
             data: options.data,
         };
         const correspondingListViewLink = document.querySelector(`.nav-link[data-view="${options.type}-view"]`);
@@ -185,13 +184,13 @@ export async function showPlaylist(playlistName) {
 export function showAlbum(albumKey) {
     const album = state.albums.get(albumKey);
     if (!album) return;
-    state.currentlyViewedSongIds = Array.from(album.songIds || []);
+    state.currentlyViewedSongIds = Array.from((album as Record<string, unknown>).songIds as Iterable<string> || []);
     void showView('album-detail-view', { type: 'album', identifier: albumKey, data: album });
 }
 
 export function showArtist(artistName) {
     const artist = state.artists.get(artistName);
     if (!artist) return;
-    state.currentlyViewedSongIds = Array.from(artist.songIds || []);
+    state.currentlyViewedSongIds = Array.from((artist as Record<string, unknown>).songIds as Iterable<string> || []);
     void showView('artist-detail-view', { type: 'artist', identifier: artistName, data: artist });
 }
