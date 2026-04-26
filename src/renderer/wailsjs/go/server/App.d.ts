@@ -150,6 +150,8 @@ export function SaveSettings(arg1:any):Promise<void>;
 
 export function ScanLibrary(arg1:Array<string>):Promise<scanner.ScanResult>;
 
+export function SelectAndChangeAlbumArtwork(arg1:string):Promise<void>;
+
 export function SelectFilesForNormalize():Promise<Array<string>>;
 
 export function SelectFolderForNormalize():Promise<Array<string>>;

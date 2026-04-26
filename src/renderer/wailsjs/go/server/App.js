@@ -286,6 +286,10 @@ export function ScanLibrary(arg1) {
   return window['go']['server']['App']['ScanLibrary'](arg1);
 }
 
+export function SelectAndChangeAlbumArtwork(arg1) {
+  return window['go']['server']['App']['SelectAndChangeAlbumArtwork'](arg1);
+}
+
 export function SelectFilesForNormalize() {
   return window['go']['server']['App']['SelectFilesForNormalize']();
 }
