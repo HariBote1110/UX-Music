@@ -322,7 +322,6 @@ export function setupArtworkContextMenu() {
 
     const openMenu = (event: MouseEvent) => {
         event.preventDefault();
-        event.stopPropagation();
         showContextMenu(event.pageX, event.pageY, [
             {
                 label: 'フルスクリーンで表示',

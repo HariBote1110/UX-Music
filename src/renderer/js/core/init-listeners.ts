@@ -259,6 +259,8 @@ export function initEventListeners() {
 
     window.addEventListener('contextmenu', (e) => {
         if (e.target.closest('.song-item') ||
+            e.target.closest('#now-playing-artwork-container') ||
+            e.target.closest('#footer-artwork-container') ||
             e.target.closest('input') ||
             e.target.closest('button') ||
             e.target.closest('a')) {
