@@ -134,12 +134,10 @@ export async function startCDRipView() {
     await scanCD();
 
     electronAPI.on('rip-progress', onProgress);
-    electronAPI.on('rip-complete', onComplete);
 }
 
 export function stopCDRipView() {
     electronAPI.removeAllListeners('rip-progress');
-    electronAPI.removeAllListeners('rip-complete');
     currentTracks = [];
 }
 
@@ -346,7 +344,7 @@ function getDurationStr(sectors) {
     return `${min}:${String(sec).padStart(2, '0')}`;
 }
 
-function startImport() {
+async function startImport() {
     if (isRipping || currentTracks.length === 0) return;
 
     isRipping = true;
@@ -354,11 +352,11 @@ function startImport() {
     const scanBtn = document.getElementById('cd-scan-btn');
     const metadataBtn = document.getElementById('cd-metadata-btn');
     const progressArea = document.getElementById('cd-progress-area');
+    const progressText = document.getElementById('cd-progress-text');
+    const progressBar = document.getElementById('cd-progress-bar');
 
-    // 設定値の取得
     const format = document.getElementById('cd-format-select').value;
     const bitrate = document.getElementById('cd-bitrate-select').value;
-    // アートワークURLの取得 (img要素からsrcを取得)
     const artworkImg = document.getElementById('cd-artwork-preview');
     const artworkUrl = (artworkImg && !artworkImg.src.includes('default_artwork')) ? artworkImg.src : null;
 
@@ -367,15 +365,32 @@ function startImport() {
     if (metadataBtn) metadataBtn.disabled = true;
     if (progressArea) progressArea.classList.remove('hidden');
 
-    // 設定とアートワーク情報を送信
-    electronAPI.send('cd-start-rip', {
-        tracksToRip: currentTracks,
-        options: {
-            format: format, // flac, wav, alac, aac, mp3
-            bitrate: bitrate, // 320k, 256k...
-            artworkUrl: artworkUrl
-        }
-    });
+    try {
+        const result = await electronAPI.invoke('cd-start-rip', {
+            tracksToRip: currentTracks,
+            options: { format, bitrate, artworkUrl }
+        });
+
+        isRipping = false;
+        if (importBtn) importBtn.disabled = false;
+        if (scanBtn) scanBtn.disabled = false;
+        if (metadataBtn) metadataBtn.disabled = false;
+        if (progressText) progressText.textContent = 'インポート完了！ライブラリに追加しました。';
+        if (progressBar) progressBar.style.width = '100%';
+
+        setTimeout(() => {
+            alert(`${result?.count ?? currentTracks.length} 曲のインポートが完了しました。`);
+            if (progressArea) progressArea.classList.add('hidden');
+            if (progressBar) progressBar.style.width = '0%';
+        }, 1000);
+    } catch (e) {
+        isRipping = false;
+        if (importBtn) importBtn.disabled = false;
+        if (scanBtn) scanBtn.disabled = false;
+        if (metadataBtn) metadataBtn.disabled = false;
+        alert(`取り込みに失敗しました: ${e.message}`);
+        if (progressArea) progressArea.classList.add('hidden');
+    }
 }
 
 function onProgress(data) {
@@ -407,28 +422,4 @@ function onProgress(data) {
         }
         console.error(`Track ${track} error:`, error);
     }
-}
-
-function onComplete(data) {
-    if (!data) return;
-    isRipping = false;
-
-    const importBtn = document.getElementById('cd-import-btn');
-    const scanBtn = document.getElementById('cd-scan-btn');
-    const metadataBtn = document.getElementById('cd-metadata-btn');
-    const progressText = document.getElementById('cd-progress-text');
-    const progressBar = document.getElementById('cd-progress-bar');
-    const progressArea = document.getElementById('cd-progress-area');
-
-    if (importBtn) importBtn.disabled = false;
-    if (scanBtn) scanBtn.disabled = false;
-    if (metadataBtn) metadataBtn.disabled = false;
-    if (progressText) progressText.textContent = 'インポート完了！';
-    if (progressBar) progressBar.style.width = '100%';
-
-    setTimeout(() => {
-        alert(`${data.count} 曲のインポートが完了しました。`);
-        if (progressArea) progressArea.classList.add('hidden');
-        if (progressBar) progressBar.style.width = '0%';
-    }, 1000);
 }

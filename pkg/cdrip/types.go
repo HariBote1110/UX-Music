@@ -30,6 +30,6 @@ type RipOptions struct {
 type RipProgress struct {
 	TrackNumber int     `json:"trackNumber"`
 	Status      string  `json:"status"` // ripping, encoding, completed, error
-	Percent     float64 `json:"percent,omitempty"`
+	Percent     float64 `json:"percent"`
 	Error       string  `json:"error,omitempty"`
 }

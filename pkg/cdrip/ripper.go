@@ -105,6 +105,11 @@ func resolveBinaryPath(name, explicitPath string) (string, error) {
 	return "", fmt.Errorf("%s が見つかりません (PATH=%q)", name, os.Getenv("PATH"))
 }
 
+// OutputDir returns the directory where ripped files are saved.
+func (r *Ripper) OutputDir(libraryPath string) string {
+	return filepath.Join(libraryPath, "CD Rips")
+}
+
 // GetTrackList scans the CD for tracks
 func (r *Ripper) GetTrackList() ([]Track, error) {
 	cdparanoiaPath, err := resolveBinaryPath("cdparanoia", r.CDParanoiaPath)
