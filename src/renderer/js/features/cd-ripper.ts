@@ -381,7 +381,7 @@ function startImport() {
 function onProgress(data) {
     // preload.js は event を除いて args のみを渡すので、data が最初の引数
     if (!data) return;
-    const { status, track, percent, error } = data;
+    const { status, trackNumber: track, percent, error } = data;
 
     const statusCell = document.getElementById(`status-cell-${track}`);
     const progressText = document.getElementById('cd-progress-text');
