@@ -7,7 +7,7 @@ import { initUI } from './js/ui/ui.js';
 import { initSettings } from './js/utils/init-settings.js';
 import { initNavigation, showView } from './js/core/navigation.js';
 import { initPlayer, playCurrent, pauseCurrent, togglePlayPause, stop as stopPlayback } from './js/features/player.js';
-import { updateAudioDevices, updatePlayCountDisplay, addSongsToLibrary } from './js/ui/ui-manager.js';
+import { updateAudioDevices, updatePlayCountDisplay, addSongsToLibrary, renderCurrentView } from './js/ui/ui-manager.js';
 import { restoreSavedSinkId } from './js/features/audio-graph.js';
 import { initIPC } from './js/core/ipc.js';
 import { initModal } from './js/ui/modal.js';
@@ -206,6 +206,22 @@ async function initApp() {
         }
     });
     // ▲▲▲ 追加ここまで ▲▲▲
+
+    // アートワーク差し替え完了: 対象アルバムのアートワークをメモリ上で更新してビューを再描画
+    electronAPI.on('artwork-changed', (payload: { albumKey: string; artwork: { full: string; thumbnail: string } }) => {
+        const { albumKey, artwork } = payload;
+        const album = state.albums.get(albumKey);
+        if (album) {
+            album.artwork = artwork;
+            // 同アルバムに属する曲のアートワークも更新
+            state.library.forEach(song => {
+                if (song.albumKey === albumKey) {
+                    song.artwork = artwork;
+                }
+            });
+        }
+        renderCurrentView();
+    });
 
     // CDリップ完了: アルバムグループ化を行いつつビュー再描画はしない（CD取り込み画面をリセットしない）
     electronAPI.on('cd-rip-complete', (newSongs: unknown[]) => {

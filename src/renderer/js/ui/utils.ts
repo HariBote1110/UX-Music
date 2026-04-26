@@ -132,82 +132,145 @@ export function formatSongTitle(title) {
 }
 
 
-/**
- * 指定した位置にコンテキストメニューを表示する
- * @param {number} x - X座標
- * @param {number} y - Y座標
- * @param {Array<object>} items - メニューアイテムの配列
- */
-export function showContextMenu(x, y, items) {
-    removeContextMenu();
+type ContextMenuItem = {
+    label?: string;
+    type?: 'separator';
+    action?: () => void;
+    enabled?: boolean;
+    submenu?: ContextMenuItem[];
+};
+
+let activeMenuCleanup: (() => void) | null = null;
+
+export function removeContextMenu() {
+    const existingMenu = document.querySelector('.context-menu');
+    if (existingMenu) {
+        existingMenu.remove();
+    }
+    if (activeMenuCleanup) {
+        activeMenuCleanup();
+        activeMenuCleanup = null;
+    }
+}
+
+function buildMenuElement(items: ContextMenuItem[], isSubmenu = false): HTMLElement {
     const menu = document.createElement('div');
-    menu.className = 'context-menu';
-    menu.style.left = `${x}px`;
-    menu.style.top = `${y}px`;
+    menu.className = isSubmenu ? 'context-menu context-menu--submenu' : 'context-menu';
 
     items.forEach(item => {
+        if (item.type === 'separator') {
+            const sep = document.createElement('div');
+            sep.className = 'context-menu-separator';
+            menu.appendChild(sep);
+            return;
+        }
+
         const menuItem = document.createElement('div');
         menuItem.className = 'context-menu-item';
-        menuItem.textContent = item.label;
+        if (item.enabled === false) {
+            menuItem.classList.add('disabled');
+        }
+
+        const label = document.createElement('span');
+        label.className = 'context-menu-item__label';
+        label.textContent = item.label ?? '';
+        menuItem.appendChild(label);
 
         if (item.submenu) {
             menuItem.classList.add('has-submenu');
-            const submenu = document.createElement('div');
-            submenu.className = 'context-menu-submenu';
-            item.submenu.forEach(subItem => {
-                const subMenuItem = document.createElement('div');
-                subMenuItem.className = 'context-menu-item';
-                subMenuItem.textContent = subItem.label;
-                if (subItem.enabled === false) {
-                    subMenuItem.classList.add('disabled');
-                } else {
-                    subMenuItem.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        if (subItem.action) {
-                            subItem.action();
-                        }
-                        removeContextMenu();
-                    });
-                }
-                submenu.appendChild(subMenuItem);
-            });
+            const arrow = document.createElement('span');
+            arrow.className = 'context-menu-item__arrow';
+            arrow.textContent = '›';
+            menuItem.appendChild(arrow);
+
+            const submenu = buildMenuElement(item.submenu, true);
+            submenu.style.display = 'none';
             menuItem.appendChild(submenu);
-        } else if (item.action) {
-            menuItem.addEventListener('click', () => {
-                item.action();
+
+            menuItem.addEventListener('mouseenter', () => {
+                // サブメニューを一時的に表示してサイズを測定
+                submenu.style.visibility = 'hidden';
+                submenu.style.display = 'block';
+                const parentRect = menuItem.getBoundingClientRect();
+                const submenuRect = submenu.getBoundingClientRect();
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
+
+                // 右端に収まらなければ左開き
+                if (parentRect.right + submenuRect.width > vw - 8) {
+                    submenu.style.left = 'auto';
+                    submenu.style.right = '100%';
+                } else {
+                    submenu.style.left = '100%';
+                    submenu.style.right = 'auto';
+                }
+                // 下端に収まらなければ上方向にずらす
+                const overflowY = parentRect.top + submenuRect.height - vh + 8;
+                submenu.style.top = overflowY > 0 ? `-${overflowY}px` : '0';
+
+                submenu.style.visibility = '';
+            });
+            menuItem.addEventListener('mouseleave', () => {
+                submenu.style.display = 'none';
+            });
+
+        } else if (item.action && item.enabled !== false) {
+            menuItem.addEventListener('click', (e) => {
+                e.stopPropagation();
                 removeContextMenu();
+                item.action!();
             });
         }
 
         menu.appendChild(menuItem);
     });
 
-    document.body.appendChild(menu);
-
-    // クリックでメニューを閉じる（次のフレームで登録して、現在のクリックイベントを無視）
-    setTimeout(() => {
-        const closeHandler = (e) => {
-            // コンテキストメニュー内のクリックは無視
-            if (menu.contains(e.target)) return;
-            removeContextMenu();
-            document.removeEventListener('click', closeHandler);
-            document.removeEventListener('contextmenu', closeHandler);
-        };
-        document.addEventListener('click', closeHandler);
-        document.addEventListener('contextmenu', closeHandler);
-    }, 0);
+    return menu;
 }
 
-/**
- * 表示されているコンテキストメニューを削除する
- */
-function removeContextMenu() {
-    const existingMenu = document.querySelector('.context-menu');
-    if (existingMenu) {
-        existingMenu.remove();
-        const existingSubMenus = document.querySelectorAll('.context-menu-submenu');
-        existingSubMenus.forEach(submenu => submenu.remove());
-    }
+export function showContextMenu(x: number, y: number, items: ContextMenuItem[]) {
+    removeContextMenu();
+
+    const menu = buildMenuElement(items);
+    // 一時的に非表示でDOMに追加してサイズを計測
+    menu.style.visibility = 'hidden';
+    document.body.appendChild(menu);
+
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const clampedX = Math.min(x, vw - rect.width - 8);
+    const clampedY = Math.min(y, vh - rect.height - 8);
+
+    menu.style.left = `${Math.max(8, clampedX)}px`;
+    menu.style.top = `${Math.max(8, clampedY)}px`;
+    menu.style.visibility = '';
+
+    const onKeydown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') removeContextMenu();
+    };
+    const onScroll = () => removeContextMenu();
+    const onPointerDown = (e: PointerEvent) => {
+        if (!menu.contains(e.target as Node)) removeContextMenu();
+    };
+    const onContextMenu = (e: MouseEvent) => {
+        if (!menu.contains(e.target as Node)) removeContextMenu();
+    };
+
+    // 現フレームのイベントが終わってから登録（開いた右クリック自体で即閉じないように）
+    requestAnimationFrame(() => {
+        document.addEventListener('keydown', onKeydown);
+        document.addEventListener('pointerdown', onPointerDown, { capture: true });
+        document.addEventListener('contextmenu', onContextMenu);
+        document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    });
+
+    activeMenuCleanup = () => {
+        document.removeEventListener('keydown', onKeydown);
+        document.removeEventListener('pointerdown', onPointerDown, { capture: true });
+        document.removeEventListener('contextmenu', onContextMenu);
+        document.removeEventListener('scroll', onScroll, { capture: true });
+    };
 }
 
 

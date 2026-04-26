@@ -62,6 +62,20 @@ export function renderAlbumView() {
                     {
                         label: 'プレイリストに追加',
                         submenu: addToPlaylistSubmenu.length > 0 ? addToPlaylistSubmenu : [{ label: '（追加可能なプレイリスト無し）', enabled: false }]
+                    },
+                    { type: 'separator' },
+                    {
+                        label: 'アートワークを変更...',
+                        action: async () => {
+                            if (typeof window.go !== 'undefined') {
+                                try {
+                                    await window.go.server.App.SelectAndChangeAlbumArtwork(key);
+                                } catch (err) {
+                                    showNotification(`アートワークの変更に失敗しました: ${err}`);
+                                    hideNotification(4000);
+                                }
+                            }
+                        }
                     }
                 ];
 

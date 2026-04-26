@@ -76,6 +76,9 @@ export function initIPC(callbacks) {
     electronAPI.on('scan-complete', (newSongs) => {
         callbacks.onScanComplete?.(newSongs);
     });
+    electronAPI.on('artwork-changed', (payload) => {
+        callbacks.onArtworkChanged?.(payload);
+    });
     electronAPI.on('flac-index-progress', (progress) => {
         callbacks.onFlacIndexProgress?.(progress);
     });
