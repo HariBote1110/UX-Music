@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/scanner"
 	"ux-music-sidecar/internal/store"
@@ -108,9 +109,21 @@ func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 			}
 			continue
 		}
+		newSongs = append(newSongs, song)
+	}
+
+	// 並列スキャンによる不定順をディスク番号→トラック番号順に正規化してから永続化する
+	sort.Slice(newSongs, func(i, j int) bool {
+		di, dj := newSongs[i].DiscNumber, newSongs[j].DiscNumber
+		if di != dj {
+			return di < dj
+		}
+		return newSongs[i].TrackNumber < newSongs[j].TrackNumber
+	})
+
+	for _, song := range newSongs {
 		existingPathIndex[song.Path] = len(existingSongs)
 		existingSongs = append(existingSongs, song)
-		newSongs = append(newSongs, song)
 	}
 
 	_ = store.Instance.Save("library", existingSongs)
