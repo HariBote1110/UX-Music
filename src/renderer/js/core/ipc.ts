@@ -79,6 +79,9 @@ export function initIPC(callbacks) {
     electronAPI.on('artwork-changed', (payload) => {
         callbacks.onArtworkChanged?.(payload);
     });
+    electronAPI.on('album-order-saved', (payload) => {
+        callbacks.onAlbumOrderSaved?.(payload);
+    });
     electronAPI.on('flac-index-progress', (progress) => {
         callbacks.onFlacIndexProgress?.(progress);
     });

@@ -207,6 +207,16 @@ async function initApp() {
     });
     // ▲▲▲ 追加ここまで ▲▲▲
 
+    // 曲順保存完了: 対象アルバムの曲に customOrder を反映してビューを再描画
+    electronAPI.on('album-order-saved', (payload: { albumKey: string; orderedSongIds: string[] }) => {
+        const { orderedSongIds } = payload;
+        orderedSongIds.forEach((id, i) => {
+            const song = state.libraryById?.get(id) ?? state.library.find(s => s.id === id);
+            if (song) song.customOrder = i + 1;
+        });
+        renderCurrentView();
+    });
+
     // アートワーク差し替え完了: 対象アルバムのアートワークをメモリ上で更新してビューを再描画
     electronAPI.on('artwork-changed', (payload: { albumKey: string; artwork: { full: string; thumbnail: string } }) => {
         const { albumKey, artwork } = payload;

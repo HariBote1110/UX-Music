@@ -11,6 +11,7 @@ import { showNotification, hideNotification } from './notification.js';
 import { clearMainContent } from './view-renderer.js'; // clearMainContent は view-renderer からインポート
 import { musicApi } from '../core/bridge.js';
 import { getAlbumSongs, setCurrentViewSongs } from '../core/library-model.js';
+import { openAlbumOrderEditor } from './album-order-editor.js';
 // ▲▲▲ 追加 ▲▲▲
 
 /**
@@ -64,6 +65,10 @@ export function renderAlbumView() {
                         submenu: addToPlaylistSubmenu.length > 0 ? addToPlaylistSubmenu : [{ label: '（追加可能なプレイリスト無し）', enabled: false }]
                     },
                     { type: 'separator' },
+                    {
+                        label: '曲順を編集...',
+                        action: () => openAlbumOrderEditor(key, album)
+                    },
                     {
                         label: 'アートワークを変更...',
                         action: async () => {

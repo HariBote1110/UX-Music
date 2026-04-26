@@ -274,6 +274,10 @@ export function RequestPlaylistsWithArtwork() {
   return window['go']['server']['App']['RequestPlaylistsWithArtwork']();
 }
 
+export function SaveAlbumSongOrder(arg1, arg2) {
+  return window['go']['server']['App']['SaveAlbumSongOrder'](arg1, arg2);
+}
+
 export function SaveLrcFile(arg1, arg2) {
   return window['go']['server']['App']['SaveLrcFile'](arg1, arg2);
 }

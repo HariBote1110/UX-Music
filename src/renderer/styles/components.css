@@ -1284,3 +1284,157 @@
     color: var(--text-secondary, #aaa);
     background: transparent;
 }
+
+/* ── アルバム曲順エディター ──────────────────────────────── */
+.album-order-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20000;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    animation: context-menu-in 0.15s ease-out;
+}
+
+.album-order-modal {
+    background: var(--bg-medium);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    width: min(560px, 90vw);
+    height: min(600px, 85vh);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.album-order-modal__header {
+    padding: 20px 24px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    flex-shrink: 0;
+}
+
+.album-order-modal__title {
+    margin: 0 0 4px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.album-order-modal__subtitle {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.album-order-modal__list {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.album-order-modal__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 14px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    flex-shrink: 0;
+}
+
+.album-order-modal__btn {
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    border: none;
+    transition: opacity 0.1s;
+}
+
+.album-order-modal__btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.album-order-modal__btn--secondary {
+    background: var(--bg-light);
+    color: var(--text-secondary);
+}
+
+.album-order-modal__btn--secondary:hover:not(:disabled) {
+    color: var(--text-primary);
+}
+
+.album-order-modal__btn--primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.album-order-modal__btn--primary:hover:not(:disabled) {
+    opacity: 0.85;
+}
+
+/* 仮想スクローラー内の各行 */
+.album-order-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    box-sizing: border-box;
+}
+
+.album-order-row:hover {
+    background: var(--bg-light);
+}
+
+.album-order-row__input {
+    width: 52px;
+    flex-shrink: 0;
+    padding: 4px 6px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    font-size: 13px;
+    text-align: center;
+    -moz-appearance: textfield;
+}
+
+.album-order-row__input::-webkit-inner-spin-button,
+.album-order-row__input::-webkit-outer-spin-button {
+    opacity: 1;
+}
+
+.album-order-row__input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.album-order-row__info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.album-order-row__title {
+    font-size: 13px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.album-order-row__meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

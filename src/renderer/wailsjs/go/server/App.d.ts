@@ -144,6 +144,8 @@ export function RequestInitialLibrary():Promise<void>;
 
 export function RequestPlaylistsWithArtwork():Promise<void>;
 
+export function SaveAlbumSongOrder(arg1:string,arg2:Array<string>):Promise<void>;
+
 export function SaveLrcFile(arg1:string,arg2:string):Promise<void>;
 
 export function SaveSettings(arg1:any):Promise<void>;

@@ -38,7 +38,12 @@ export function resolveSongsByIds(songIds = []) {
 
 export function getAlbumSongs(album) {
     if (!album) return [];
-    return resolveSongsByIds(album.songIds || []).sort((a, b) => {
+    const songs = resolveSongsByIds(album.songIds || []);
+    const hasCustomOrder = songs.some(s => (s.customOrder ?? 0) > 0);
+    if (hasCustomOrder) {
+        return songs.sort((a, b) => (a.customOrder ?? 9999) - (b.customOrder ?? 9999));
+    }
+    return songs.sort((a, b) => {
         const disc = (a.discNumber || 0) - (b.discNumber || 0);
         if (disc !== 0) return disc;
         return (a.trackNumber || 0) - (b.trackNumber || 0);
