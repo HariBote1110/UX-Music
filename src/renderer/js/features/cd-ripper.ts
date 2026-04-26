@@ -92,8 +92,26 @@ export function getCdRipViewHtml() {
                 <ul id="cd-candidate-list" style="list-style: none; padding: 0; margin: 0;">
                 </ul>
             </div>
-            <div style="text-align: right;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <button id="cd-ai-metadata-btn" type="button" class="action-button" style="width: auto; padding: 8px 16px; background: #2a4a7a;">🤖 AIで生成</button>
                 <button id="cd-search-cancel-btn" type="button" class="action-button" style="width: auto; padding: 8px 24px;">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="cd-ai-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 560px;">
+            <h3 style="margin: 0 0 16px 0; color: #fff;">🤖 AIでメタデータを生成</h3>
+            <p style="color: #aaa; font-size: 0.9em; margin: 0 0 12px 0;">ジャケット画像とともに以下のプロンプトを任意のAI（ChatGPT・Claude等）に送り、返答のJSONをペーストしてください。</p>
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <button id="cd-ai-copy-prompt-btn" type="button" class="action-button" style="width: auto; padding: 8px 14px;">プロンプトをコピー</button>
+                <span id="cd-ai-copy-status" style="color: #4caf50; font-size: 0.85em; align-self: center;"></span>
+            </div>
+            <textarea id="cd-ai-json-input" placeholder='AIの返答JSONをここにペースト...' rows="10"
+                style="width: 100%; box-sizing: border-box; padding: 10px; border-radius: 4px; border: 1px solid #555; background: #1a1a1a; color: white; font-family: monospace; font-size: 0.85em; resize: vertical; outline: none;"></textarea>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px;">
+                <button id="cd-ai-cancel-btn" type="button" class="action-button" style="width: auto; padding: 8px 24px;">キャンセル</button>
+                <button id="cd-ai-apply-btn" type="button" class="action-button primary" style="width: auto; padding: 8px 24px;">適用</button>
             </div>
         </div>
     </div>
@@ -129,6 +147,10 @@ export async function startCDRipView() {
     document.getElementById('cd-search-input').onkeydown = (e) => {
         if (e.key === 'Enter') executeTextSearch();
     };
+    document.getElementById('cd-ai-metadata-btn').onclick = openAiModal;
+    document.getElementById('cd-ai-cancel-btn').onclick = closeAiModal;
+    document.getElementById('cd-ai-copy-prompt-btn').onclick = copyAiPrompt;
+    document.getElementById('cd-ai-apply-btn').onclick = applyAiJson;
 
     // 初回スキャン
     await scanCD();
@@ -422,4 +444,112 @@ function onProgress(data) {
         }
         console.error(`Track ${track} error:`, error);
     }
+}
+
+// ─── AI メタデータ生成 ────────────────────────────────────────────────────────
+
+function buildAiPrompt(): string {
+    const trackCount = currentTracks.length;
+    const schema = JSON.stringify({
+        artist: 'アーティスト名',
+        album: 'アルバム名',
+        year: 2024,
+        tracks: Array.from({ length: trackCount || 1 }, (_, i) => ({
+            number: i + 1,
+            title: '曲名',
+            artist: 'アーティスト名（アルバムアーティストと同じ場合も明記）'
+        }))
+    }, null, 2);
+
+    return `あなたはCDのメタデータ抽出の専門家です。
+添付した画像（CDジャケット・帯・ブックレット等）から以下のJSONスキーマに従いメタデータを抽出してください。
+
+ルール:
+- tracksは必ず${trackCount}件にしてください
+- 不明な値は空文字にしてください（nullや省略は不可）
+- コードブロックなし・JSONのみを返してください
+- 日本語の情報があれば日本語を優先してください
+
+スキーマ:
+${schema}`;
+}
+
+function openAiModal() {
+    const modal = document.getElementById('cd-ai-modal');
+    const textarea = document.getElementById('cd-ai-json-input') as HTMLTextAreaElement;
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    textarea.value = '';
+    const status = document.getElementById('cd-ai-copy-status');
+    if (status) status.textContent = '';
+}
+
+function closeAiModal() {
+    const modal = document.getElementById('cd-ai-modal');
+    modal.style.display = 'none';
+    modal.classList.add('hidden');
+}
+
+async function copyAiPrompt() {
+    const prompt = buildAiPrompt();
+    try {
+        await navigator.clipboard.writeText(prompt);
+        const status = document.getElementById('cd-ai-copy-status');
+        if (status) {
+            status.textContent = 'コピーしました！';
+            setTimeout(() => { status.textContent = ''; }, 2500);
+        }
+    } catch {
+        alert('クリップボードへのコピーに失敗しました。');
+    }
+}
+
+function applyAiJson() {
+    const textarea = document.getElementById('cd-ai-json-input') as HTMLTextAreaElement;
+    const raw = textarea.value.trim();
+    if (!raw) {
+        alert('JSONをペーストしてください。');
+        return;
+    }
+
+    let parsed: { artist?: string; album?: string; year?: number; tracks?: { number: number; title: string; artist: string }[] };
+    try {
+        // コードブロック除去
+        const cleaned = raw.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/,'').trim();
+        parsed = JSON.parse(cleaned);
+    } catch {
+        alert('JSONの解析に失敗しました。AIの返答をそのままペーストしてください。');
+        return;
+    }
+
+    if (!parsed.tracks || !Array.isArray(parsed.tracks)) {
+        alert('tracks フィールドが見つかりません。');
+        return;
+    }
+
+    // currentTracks に反映
+    parsed.tracks.forEach(t => {
+        const target = currentTracks.find(c => c.number === t.number);
+        if (target) {
+            if (t.title) target.title = t.title;
+            if (t.artist) target.artist = t.artist;
+            if (parsed.album) target.album = parsed.album;
+        }
+    });
+
+    renderTracks(currentTracks);
+
+    if (parsed.album) {
+        const albumTitle = document.getElementById('cd-album-title');
+        if (albumTitle) albumTitle.textContent = parsed.album;
+    }
+    if (parsed.artist) {
+        const albumArtist = document.getElementById('cd-album-artist');
+        if (albumArtist) albumArtist.textContent = parsed.artist;
+    }
+    const statusMsg = document.getElementById('cd-status-message');
+    if (statusMsg) statusMsg.textContent = 'AIメタデータを適用しました。';
+
+    closeAiModal();
+    closeMetadataModal();
 }

@@ -227,8 +227,13 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 	if err != nil {
 		return fmt.Errorf("cdparanoia not found: %w", err)
 	}
-	fmt.Printf("[Ripper] Running cdparanoia for track %d\n", track.Number)
-	ripCmd := exec.Command(cdparanoiaPath, "-w", strconv.Itoa(track.Number), tempWav)
+	fmt.Printf("[Ripper] Running cdparanoia for track %d (mode: %s)\n", track.Number, options.Mode)
+	cdArgs := []string{"-w"}
+	if options.Mode == "burst" {
+		cdArgs = append(cdArgs, "-Z") // disable all error correction
+	}
+	cdArgs = append(cdArgs, strconv.Itoa(track.Number), tempWav)
+	ripCmd := exec.Command(cdparanoiaPath, cdArgs...)
 
 	// ファイルサイズを監視してリッピング進捗を推定する
 	// CD音声セクタ: 2352 bytes/sector、WAVヘッダ: 44 bytes

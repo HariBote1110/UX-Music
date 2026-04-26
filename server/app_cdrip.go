@@ -43,6 +43,16 @@ func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 	var options cdrip.RipOptions
 	json.Unmarshal(optionsJSON, &options)
 
+	// 設定から cdRipMode を取得してバーストモードを反映
+	if options.Mode == "" {
+		settings := loadSettingsMap()
+		if mode, _ := settings["cdRipMode"].(string); mode == "burst" {
+			options.Mode = "burst"
+		} else {
+			options.Mode = "paranoia"
+		}
+	}
+
 	// 設定からライブラリパスを取得（未設定ならフォルダ選択ダイアログ）
 	libraryPath, err := a.getOrPromptLibraryPath()
 	if err != nil || libraryPath == "" {

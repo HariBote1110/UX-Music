@@ -24,6 +24,7 @@ type RipOptions struct {
 	Format     string `json:"format"`     // flac, wav, mp3, aac, alac
 	Bitrate    string `json:"bitrate"`    // e.g., "320k"
 	ArtworkURL string `json:"artworkUrl"` // URL to embed as artwork
+	Mode       string `json:"mode"`       // "paranoia" (default) or "burst"
 }
 
 // RipProgress represents the progress of ripping a track
