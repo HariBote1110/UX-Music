@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { elements } from '../core/state.js';
 
 const DEFAULT_TOAST_MS = 4000;

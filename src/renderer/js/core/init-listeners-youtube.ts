@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * YouTube caption selection UI and add-to-library payload building.
  */
@@ -97,8 +96,8 @@ export async function buildYouTubeAddPayload(url) {
     let payload = { url: trimmedURL, captionMode: 'auto' };
     try {
         console.log('[YouTube][UI] 動画情報を取得します:', trimmedURL);
-        const info = await electronAPI.invoke('get-youtube-info', trimmedURL);
-        const tracks = Array.isArray(info?.captionTracks) ? info.captionTracks : [];
+        const info = await electronAPI.invoke('get-youtube-info', trimmedURL) as Record<string, unknown> | null;
+        const tracks = Array.isArray(info?.captionTracks) ? (info.captionTracks as unknown[]) : [];
         console.log('[YouTube][UI] 字幕候補数:', tracks.length, tracks);
 
         if (tracks.length > 0) {
@@ -106,7 +105,7 @@ export async function buildYouTubeAddPayload(url) {
             if (!selection) {
                 return null;
             }
-            payload = { ...payload, ...selection };
+            payload = { ...payload, ...(selection as Record<string, unknown>) };
         }
     } catch (error) {
         console.error('[YouTube][UI] 動画情報取得に失敗。自動選択で続行します:', error);

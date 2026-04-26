@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/wails-check.js
 import { getWailsApp } from './bridge.js';
 

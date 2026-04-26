@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { elements } from '../core/state.js'; // ★★★ 修正箇所 ★★★
 
 let onOkCallback = null;

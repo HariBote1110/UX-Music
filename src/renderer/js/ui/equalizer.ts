@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/ui/equalizer.js
 import { state, elements } from '../core/state.js';
 import { applyEqualizerSettings } from '../features/audio-graph.js';
@@ -28,8 +27,8 @@ function applyPreset(presetName) {
     applyCurrentSettings();
     renderEqualizer();
     renderGraphicEQ();
-    const sidebarSelect = document.getElementById('eq-preset-select');
-    const graphicEqSelect = document.getElementById('graphic-eq-preset-select');
+    const sidebarSelect = document.getElementById('eq-preset-select') as HTMLSelectElement | null;
+    const graphicEqSelect = document.getElementById('graphic-eq-preset-select') as HTMLSelectElement | null;
     if (sidebarSelect) sidebarSelect.value = presetName;
     if (graphicEqSelect) graphicEqSelect.value = presetName;
     saveSettings();
@@ -57,17 +56,17 @@ export function renderEqualizer() {
 
     if (!view.innerHTML && document.getElementById('eq-toggle') === null) return;
 
-    const toggle = document.getElementById('eq-toggle');
+    const toggle = document.getElementById('eq-toggle') as HTMLInputElement | null;
     if (toggle) toggle.checked = active;
 
-    const bassSlider = document.getElementById('eq-bass-slider');
-    if (bassSlider) bassSlider.value = bass;
+    const bassSlider = document.getElementById('eq-bass-slider') as HTMLInputElement | null;
+    if (bassSlider) bassSlider.value = String(bass);
 
-    const midSlider = document.getElementById('eq-mid-slider');
-    if (midSlider) midSlider.value = mid;
+    const midSlider = document.getElementById('eq-mid-slider') as HTMLInputElement | null;
+    if (midSlider) midSlider.value = String(mid);
 
-    const trebleSlider = document.getElementById('eq-treble-slider');
-    if (trebleSlider) trebleSlider.value = treble;
+    const trebleSlider = document.getElementById('eq-treble-slider') as HTMLInputElement | null;
+    if (trebleSlider) trebleSlider.value = String(treble);
 
     const controlsWrapper = document.getElementById('eq-controls-wrapper');
     if (controlsWrapper) {
@@ -96,7 +95,7 @@ export function renderGraphicEQ() {
         <canvas id="graphic-eq-canvas"></canvas>
     `;
 
-    const canvas = document.getElementById('graphic-eq-canvas');
+    const canvas = document.getElementById('graphic-eq-canvas') as HTMLCanvasElement | null;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -124,7 +123,7 @@ export function renderGraphicEQ() {
         }
         frequencies.forEach(f => {
             const x = freqToX(f); ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasHeight); ctx.stroke();
-            const label = f < 1000 ? f : `${f / 1000}k`; ctx.fillText(label, x + 5, canvasHeight - 5);
+            const label = f < 1000 ? String(f) : `${f / 1000}k`; ctx.fillText(label, x + 5, canvasHeight - 5);
         });
         const points = frequencies.map((freq, i) => ({ x: freqToX(freq), y: dbToY(state.equalizerSettings.bands[i]) }));
         ctx.strokeStyle = 'var(--highlight-pink)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, points[0].y);
@@ -147,13 +146,14 @@ export function renderGraphicEQ() {
         state.equalizerSettings.bands[draggingPoint] = db;
         state.equalizerSettings.bass = 0; state.equalizerSettings.mid = 0; state.equalizerSettings.treble = 0;
         applyCurrentSettings(); renderEqualizer();
-        document.getElementById('eq-preset-select').value = 'Custom'; document.getElementById('graphic-eq-preset-select').value = 'Custom';
+        (document.getElementById('eq-preset-select') as HTMLSelectElement).value = 'Custom';
+        (document.getElementById('graphic-eq-preset-select') as HTMLSelectElement).value = 'Custom';
         draw();
     });
     const onMouseUpOrLeave = () => { if (draggingPoint !== -1) { draggingPoint = -1; draw(); saveSettings(); } };
     canvas.addEventListener('mouseup', onMouseUpOrLeave); canvas.addEventListener('mouseleave', onMouseUpOrLeave);
-    document.getElementById('graphic-eq-preset-select').addEventListener('change', (e) => applyPreset(e.target.value));
-    document.getElementById('graphic-eq-reset-btn').addEventListener('click', () => applyPreset('Flat'));
+    (document.getElementById('graphic-eq-preset-select') as HTMLSelectElement).addEventListener('change', (e) => applyPreset((e.target as HTMLSelectElement).value));
+    document.getElementById('graphic-eq-reset-btn')!.addEventListener('click', () => applyPreset('Flat'));
     requestAnimationFrame(draw);
 }
 
@@ -189,22 +189,31 @@ export function initEqualizer() {
         </div>
     `;
 
-    const toggle = document.getElementById('eq-toggle');
+    const toggle = document.getElementById('eq-toggle') as HTMLInputElement | null;
     if (toggle) toggle.addEventListener('change', (e) => {
-        state.equalizerSettings.active = e.target.checked; applyCurrentSettings(); renderEqualizer(); saveSettings();
+        state.equalizerSettings.active = (e.target as HTMLInputElement).checked; applyCurrentSettings(); renderEqualizer(); saveSettings();
     });
-    const presetSelect = document.getElementById('eq-preset-select');
-    if (presetSelect) presetSelect.addEventListener('change', (e) => { if (e.target.value !== 'Custom') applyPreset(e.target.value); });
+    const presetSelect = document.getElementById('eq-preset-select') as HTMLSelectElement | null;
+    if (presetSelect) presetSelect.addEventListener('change', (e) => {
+        const v = (e.target as HTMLSelectElement).value;
+        if (v !== 'Custom') applyPreset(v);
+    });
 
     ['bass', 'mid', 'treble'].forEach(type => {
-        const slider = document.getElementById(`eq-${type}-slider`);
+        const slider = document.getElementById(`eq-${type}-slider`) as HTMLInputElement | null;
         if (slider) {
             slider.addEventListener('input', (e) => {
-                state.equalizerSettings[type] = parseFloat(e.target.value); applyCurrentSettings();
-                const ps = document.getElementById('eq-preset-select'); if (ps) ps.value = 'Custom';
+                state.equalizerSettings[type as 'bass' | 'mid' | 'treble'] = parseFloat((e.target as HTMLInputElement).value);
+                applyCurrentSettings();
+                const ps = document.getElementById('eq-preset-select') as HTMLSelectElement | null;
+                if (ps) ps.value = 'Custom';
             });
             slider.addEventListener('change', saveSettings);
-            slider.addEventListener('dblclick', (e) => { e.target.value = 0; state.equalizerSettings[type] = 0; applyCurrentSettings(); saveSettings(); });
+            slider.addEventListener('dblclick', (e) => {
+                (e.target as HTMLInputElement).value = '0';
+                state.equalizerSettings[type as 'bass' | 'mid' | 'treble'] = 0;
+                applyCurrentSettings(); saveSettings();
+            });
         }
     });
 
