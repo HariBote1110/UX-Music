@@ -59,6 +59,7 @@ export interface AppState {
     gainNode: GainNode | null;
     analyser: AnalyserNode | null;
     dataArray: Uint8Array | null;
+    pendingTransferSongs: Song[];
 }
 
 export const state: AppState = {
@@ -116,4 +117,5 @@ export const state: AppState = {
     gainNode: null,
     analyser: null,
     dataArray: null,
+    pendingTransferSongs: [],
 };

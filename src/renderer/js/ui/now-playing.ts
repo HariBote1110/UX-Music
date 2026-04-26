@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/ui/now-playing.js
 
 import { state, elements } from '../core/state.js';
@@ -155,8 +154,8 @@ function buildArtworkCandidates(artwork) {
     return candidates;
 }
 
-function updateFooterArtwork(src) {
-    const footerArtwork = document.getElementById('footer-artwork');
+function updateFooterArtwork(src: string) {
+    const footerArtwork = document.getElementById('footer-artwork') as HTMLImageElement | null;
     if (footerArtwork) footerArtwork.src = src;
 }
 
@@ -220,8 +219,8 @@ export function updateNowPlayingView(song) {
             setEqualizerColorFromArtwork(img);
         };
 
-        const masterSong = state.libraryByPath.get(song.path) || song;
-        const album = state.albums.get(masterSong.albumKey);
+        const masterSong = state.libraryByPath.get(song.path as string) || song;
+        const album = state.albums.get(masterSong.albumKey as string) as Record<string, unknown> | undefined;
 
         let artwork;
         if (masterSong.album === 'Unknown Album' || (album && album.title === 'Unknown Album')) {
@@ -257,7 +256,7 @@ export function updateNowPlayingView(song) {
                     nowPlayingArtworkContainer.appendChild(img);
                 }
             } else if (localPlayer) {
-                localPlayer.poster = resolvedArtworkSrc;
+                (localPlayer as HTMLVideoElement).poster = resolvedArtworkSrc;
                 localPlayer.style.display = 'block';
                 nowPlayingArtworkContainer.appendChild(localPlayer);
             } else {

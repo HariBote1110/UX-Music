@@ -1,10 +1,7 @@
-// @ts-nocheck
 import { state, elements } from '../core/state.js';
 import { initQueueSidebarMtpHandlers } from './ui-manager.js';
 import { setupSongListScroller, createListHeader, initListHeaderResizing } from './list-renderer.js';
-import { resolveArtworkPath, formatSongTitle, checkTextOverflow } from './utils.js';
-import { setEqualizerColorFromArtwork } from '../features/player.js';
-import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
+export { updateNowPlayingView } from './now-playing.js';
 const electronAPI = window.electronAPI;
 
 /**
@@ -49,7 +46,7 @@ export function initUI() {
 
     // --- MTP転送画面のボタン用イベントハンドラ（動的コンポーネント対応） ---
     document.addEventListener('click', (e) => {
-        const target = e.target.closest('button');
+        const target = (e.target as Element).closest('button');
         if (!target) return;
 
         // 「ディレクトリを見る」ボタン
@@ -61,7 +58,7 @@ export function initUI() {
                 return;
             }
 
-            const storageId = state.mtpStorages[0].id;
+            const storageId = (state.mtpStorages[0] as Record<string, unknown>).id;
             console.log('[MTP Transfer] storageId:', storageId);
 
             void import('../core/navigation.js').then(({ showView }) =>
@@ -84,23 +81,21 @@ export function initUI() {
 
             if (!state.mtpStorages || state.mtpStorages.length === 0) {
                 console.warn('[MTP Transfer] ストレージ情報がありません');
-                import('./notification.js').then(({ showNotification, hideNotification }) => {
-                    showNotification('Walkmanのストレージ情報が見つかりません。');
-                    hideNotification(3000);
+                import('./notification.js').then(({ showNotification }) => {
+                    showNotification('Walkmanのストレージ情報が見つかりません。', 3000);
                 });
                 return;
             }
 
             if (!state.pendingTransferSongs || state.pendingTransferSongs.length === 0) {
                 console.warn('[MTP Transfer] 転送する曲がありません');
-                import('./notification.js').then(({ showNotification, hideNotification }) => {
-                    showNotification('転送する曲がありません。');
-                    hideNotification(3000);
+                import('./notification.js').then(({ showNotification }) => {
+                    showNotification('転送する曲がありません。', 3000);
                 });
                 return;
             }
 
-            const storageId = state.mtpStorages[0].id;
+            const storageId = (state.mtpStorages[0] as Record<string, unknown>).id;
             const songCount = state.pendingTransferSongs.length;
 
             console.log(`[MTP Transfer] ${songCount}曲を転送開始...`);
@@ -121,11 +116,11 @@ export function initUI() {
 
             console.log(`[MTP Transfer] ${groupedSongs.size}個のディレクトリに分けて転送`);
 
-            import('./notification.js').then(async ({ showNotification, hideNotification }) => {
-                showNotification(`${songCount}曲の転送を開始します...`);
+            import('./notification.js').then(async ({ showNotification }) => {
+                showNotification(`${songCount}曲の転送を開始します...`, false);
 
                 // 転送リストを作成（ソースパスと転送先パスのペア）
-                const transferList = [];
+                const transferList: { source: string; destination: string }[] = [];
                 for (const [destination, sources] of groupedSongs) {
                     for (const sourcePath of sources) {
                         transferList.push({ source: sourcePath, destination });
@@ -137,28 +132,26 @@ export function initUI() {
                     const result = await electronAPI.invoke('mtp-upload-files-with-structure', {
                         storageId,
                         transferList
-                    });
+                    }) as Record<string, unknown>;
 
                     if (result.error) {
                         console.error('[MTP Transfer] 転送に失敗しました:', result.error);
-                        showNotification(`転送に失敗しました: ${result.error}`);
+                        showNotification(`転送に失敗しました: ${result.error}`, 4000);
                     } else {
-                        const successCount = result.successCount || songCount;
-                        const errorCount = result.errorCount || 0;
+                        const successCount = (result.successCount as number) || songCount;
+                        const errorCount = (result.errorCount as number) || 0;
 
                         if (errorCount === 0) {
-                            showNotification(`${successCount}曲の転送が完了しました。`);
+                            showNotification(`${successCount}曲の転送が完了しました。`, 4000);
                             state.pendingTransferSongs = [];
                         } else {
-                            showNotification(`転送完了: ${successCount}曲成功, ${errorCount}曲失敗`);
+                            showNotification(`転送完了: ${successCount}曲成功, ${errorCount}曲失敗`, 4000);
                         }
                     }
                 } catch (err) {
                     console.error('[MTP Transfer] 転送エラー:', err);
-                    showNotification(`転送中にエラーが発生しました: ${err.message}`);
+                    showNotification(`転送中にエラーが発生しました: ${(err as Error).message}`, 4000);
                 }
-
-                hideNotification(4000);
             });
         }
     });
@@ -203,149 +196,6 @@ function switchToTrackView() {
         const trackLink = document.querySelector('.nav-link[data-view="track-view"]');
         if (trackLink) trackLink.classList.add('active');
     }
-}
-
-function getYoutubeVideoId(url) {
-    if (typeof url !== 'string') return null;
-    const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/;
-    const match = url.match(regExp);
-    return match ? match[1] : null;
-}
-
-function buildArtworkCandidates(artwork) {
-    const candidates = [];
-    const appendUnique = (value) => {
-        if (typeof value !== 'string' || value.trim() === '') return;
-        if (!candidates.includes(value)) {
-            candidates.push(value);
-        }
-    };
-
-    if (artwork && typeof artwork === 'object' && artwork.full && artwork.thumbnail) {
-        appendUnique(resolveArtworkPath(artwork, false));
-        appendUnique(resolveArtworkPath(artwork, true));
-    } else {
-        appendUnique(resolveArtworkPath(artwork, false));
-
-        // Legacy artwork filename fallback: try thumbnail naming convention if available.
-        if (typeof artwork === 'string' && /\.webp$/i.test(artwork) && !/_thumb\.webp$/i.test(artwork)) {
-            const thumbFallback = artwork.replace(/\.webp$/i, '_thumb.webp');
-            appendUnique(resolveArtworkPath(thumbFallback, false));
-        }
-    }
-
-    appendUnique(DEFAULT_ARTWORK_URL);
-    return candidates;
-}
-
-export function updateNowPlayingView(song) {
-    const {
-        nowPlayingArtworkContainer,
-        nowPlayingTitle,
-        nowPlayingArtist,
-        hubLinkContainer
-    } = elements;
-
-    const localPlayer = document.getElementById('main-player');
-
-    if (localPlayer) {
-        document.body.appendChild(localPlayer);
-        localPlayer.style.display = 'none';
-    }
-
-    nowPlayingArtworkContainer.innerHTML = '';
-    hubLinkContainer.innerHTML = '';
-    nowPlayingArtworkContainer.classList.remove('video-mode');
-
-    if (!song) {
-        const img = document.createElement('img');
-        img.src = DEFAULT_ARTWORK_URL;
-        nowPlayingArtworkContainer.appendChild(img);
-        setEqualizerColorFromArtwork(img);
-
-    } else if (song.type === 'youtube') {
-        nowPlayingArtworkContainer.classList.add('video-mode');
-        const videoId = getYoutubeVideoId(song.sourceURL || song.path);
-        if (videoId) {
-            const iframe = document.createElement('iframe');
-            iframe.width = '100%';
-            iframe.height = '100%';
-            iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&fs=0&iv_load_policy=3&modestbranding=1&origin=${window.location.protocol}//${window.location.host}`;
-            iframe.setAttribute('frameborder', '0');
-            iframe.setAttribute('allow', 'autoplay; encrypted-media');
-            nowPlayingArtworkContainer.appendChild(iframe);
-        }
-
-        const artworkImage = new Image();
-        artworkImage.crossOrigin = "Anonymous";
-        artworkImage.onload = () => setEqualizerColorFromArtwork(artworkImage);
-        artworkImage.src = song.artwork;
-
-    } else {
-        const img = document.createElement('img');
-        img.crossOrigin = "Anonymous";
-        img.onload = () => setEqualizerColorFromArtwork(img);
-
-        const masterSong = state.libraryByPath.get(song.path) || song;
-        const album = state.albums.get(masterSong.albumKey);
-
-        let artwork;
-        if (masterSong.album === 'Unknown Album' || (album && album.title === 'Unknown Album')) {
-            artwork = null;
-        } else {
-            artwork = masterSong.artwork || (album ? album.artwork : null);
-        }
-
-        const artworkCandidates = buildArtworkCandidates(artwork);
-        let artworkIndex = 0;
-
-        img.onerror = () => {
-            const failedSrc = artworkCandidates[artworkIndex];
-            artworkIndex += 1;
-            if (artworkIndex < artworkCandidates.length) {
-                console.warn('[NowPlaying] Artwork load failed, fallback to next source:', failedSrc);
-                img.src = artworkCandidates[artworkIndex];
-                return;
-            }
-            console.warn('[NowPlaying] Artwork load failed on all candidates:', artworkCandidates);
-            img.onerror = null;
-        };
-        img.src = artworkCandidates[artworkIndex];
-
-        if (masterSong.hasVideo && localPlayer) {
-            nowPlayingArtworkContainer.classList.add('video-mode');
-            localPlayer.poster = img.src;
-            localPlayer.style.display = 'block';
-            nowPlayingArtworkContainer.appendChild(localPlayer);
-        } else {
-            nowPlayingArtworkContainer.classList.remove('video-mode');
-            nowPlayingArtworkContainer.appendChild(img);
-        }
-    }
-
-    if (song && song.hubUrl) {
-        const hubButton = document.createElement('button');
-        hubButton.className = 'hub-link-button-small';
-        hubButton.textContent = '🔗 公式リンクを開く';
-        hubButton.addEventListener('click', () => electronAPI.send('open-external-link', song.hubUrl));
-        hubLinkContainer.appendChild(hubButton);
-    }
-
-    const titleEl = nowPlayingTitle.querySelector('.marquee-content span') || nowPlayingTitle;
-    if (titleEl) {
-        titleEl.textContent = song ? formatSongTitle(song.title) : '曲を選択してください';
-    }
-
-    const artistEl = nowPlayingArtist.querySelector('.marquee-content span') || nowPlayingArtist;
-    if (artistEl) {
-        artistEl.textContent = song ? song.artist : '';
-    }
-
-    // 曲更新時にマルキーを再計算して、旧複製テキストの残留を防ぐ
-    requestAnimationFrame(() => {
-        checkTextOverflow(nowPlayingTitle);
-        checkTextOverflow(nowPlayingArtist);
-    });
 }
 
 export function renderTrackView() {

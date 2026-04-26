@@ -1,4 +1,3 @@
-// @ts-nocheck
 const electronAPI = window.electronAPI;
 import { state } from '../core/state.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
