@@ -68,7 +68,7 @@ func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 		}
 	}()
 
-	err = a.ripper.StartRip(tracks, options, libraryPath, progressChan)
+	outputPaths, err := a.ripper.StartRip(tracks, options, libraryPath, progressChan)
 	close(progressChan)
 
 	if err != nil {
@@ -76,12 +76,11 @@ func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 		return nil, err
 	}
 
-	fmt.Println("[Wails] Rip completed — scanning into library")
+	fmt.Printf("[Wails] Rip completed — %d files created\n", len(outputPaths))
 
-	// リップしたファイルをライブラリにスキャン・統合する
-	outputDir := a.ripper.OutputDir(libraryPath)
+	// 今回リップしたファイルのみをスキャンして重複を防ぐ
 	artworksDir := config.GetUserDataPath() + "/Artworks"
-	scanResult := scanner.ScanLibrary([]string{outputDir}, artworksDir)
+	scanResult := scanner.ScanLibrary(outputPaths, artworksDir)
 
 	existingRaw, _ := store.Instance.Load("library")
 	existingSongs := []interface{}{}
@@ -103,6 +102,7 @@ func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 			continue
 		}
 		if idx, exists := existingPathIndex[song.Path]; exists {
+			// 既存エントリを上書き更新（再リップ時はメタデータを最新に）
 			if existingMap, ok := existingSongs[idx].(map[string]interface{}); ok {
 				mergeScannedSong(existingMap, song)
 			}
@@ -115,12 +115,13 @@ func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 
 	_ = store.Instance.Save("library", existingSongs)
 
-	// フロントエンドに新着曲を通知してライブラリ表示を更新
-	wailsRuntime.EventsEmit(a.ctx, "scan-complete", newSongs)
-	a.queueLoudnessAnalysis(extractSongPaths(newSongs))
+	// cd-rip-complete イベントで通知（scan-complete と区別してビュー再描画を回避）
+	wailsRuntime.EventsEmit(a.ctx, "cd-rip-complete", newSongs)
+	a.queueLoudnessAnalysis(outputPaths)
 
+	outputDir := a.ripper.OutputDir(libraryPath)
 	return map[string]interface{}{
-		"count":     len(tracks),
+		"count":     len(outputPaths),
 		"outputDir": outputDir,
 	}, nil
 }

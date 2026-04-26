@@ -152,12 +152,12 @@ func parseTrackList(output string) []Track {
 	return tracks
 }
 
-// StartRip Rips selected tracks
+// StartRip rips selected tracks and returns the output file paths.
 // progressChan is used to report progress. It can be nil.
-func (r *Ripper) StartRip(tracks []Track, options RipOptions, libraryPath string, progressChan chan<- RipProgress) error {
+func (r *Ripper) StartRip(tracks []Track, options RipOptions, libraryPath string, progressChan chan<- RipProgress) ([]string, error) {
 	outputDir := filepath.Join(libraryPath, "CD Rips")
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Download artwork if needed
@@ -166,38 +166,40 @@ func (r *Ripper) StartRip(tracks []Track, options RipOptions, libraryPath string
 		artworkPath = filepath.Join(r.UserDataPath, fmt.Sprintf("temp_artwork_%d.jpg", time.Now().UnixNano()))
 		if err := downloadFile(options.ArtworkURL, artworkPath); err != nil {
 			fmt.Printf("Failed to download artwork: %v\n", err)
-			artworkPath = "" // Continue without artwork
+			artworkPath = ""
 		} else {
 			defer os.Remove(artworkPath)
 		}
 	}
 
+	var outputPaths []string
 	for _, track := range tracks {
 		fmt.Printf("[Ripper] Starting track %d\n", track.Number)
 		if progressChan != nil {
 			progressChan <- RipProgress{TrackNumber: track.Number, Status: "ripping", Percent: 0}
 		}
 
-		err := r.ripAndConvert(track, outputDir, options, artworkPath, progressChan)
+		outPath, err := r.ripAndConvert(track, outputDir, options, artworkPath, progressChan)
 
 		if err != nil {
 			fmt.Printf("[Ripper] Error processing track %d: %v\n", track.Number, err)
 			if progressChan != nil {
 				progressChan <- RipProgress{TrackNumber: track.Number, Status: "error", Error: err.Error()}
 			}
-			return err
+			return outputPaths, err
 		}
 
-		fmt.Printf("[Ripper] Completed track %d\n", track.Number)
+		outputPaths = append(outputPaths, outPath)
+		fmt.Printf("[Ripper] Completed track %d -> %s\n", track.Number, outPath)
 		if progressChan != nil {
 			progressChan <- RipProgress{TrackNumber: track.Number, Status: "completed", Percent: 100}
 		}
 	}
 
-	return nil
+	return outputPaths, nil
 }
 
-func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions, artworkPath string, progressChan chan<- RipProgress) error {
+func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions, artworkPath string, progressChan chan<- RipProgress) (string, error) {
 	safeTitle := sanitize(track.Title)
 	safeArtist := sanitize(track.Artist)
 
@@ -205,7 +207,7 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 
 	artistDir := filepath.Join(outputDir, safeArtist)
 	if err := os.MkdirAll(artistDir, 0755); err != nil {
-		return err
+		return "", err
 	}
 
 	// Extension map
@@ -225,7 +227,7 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 	// 1. Rip to WAV
 	cdparanoiaPath, err := resolveBinaryPath("cdparanoia", r.CDParanoiaPath)
 	if err != nil {
-		return fmt.Errorf("cdparanoia not found: %w", err)
+		return "", fmt.Errorf("cdparanoia not found: %w", err)
 	}
 	fmt.Printf("[Ripper] Running cdparanoia for track %d (mode: %s)\n", track.Number, options.Mode)
 	cdArgs := []string{"-w"}
@@ -267,7 +269,7 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 
 	if ripErr != nil {
 		os.Remove(tempWav)
-		return fmt.Errorf("cdparanoia failed: %w. Output: %s", ripErr, string(ripOutput))
+		return "", fmt.Errorf("cdparanoia failed: %w. Output: %s", ripErr, string(ripOutput))
 	}
 	defer os.Remove(tempWav)
 
@@ -313,14 +315,14 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 
 	ffmpegPath, err := resolveBinaryPath("ffmpeg", r.FFmpegPath)
 	if err != nil {
-		return fmt.Errorf("ffmpeg not found: %w", err)
+		return "", fmt.Errorf("ffmpeg not found: %w", err)
 	}
 	encCmd := exec.Command(ffmpegPath, args...)
 	if output, err := encCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("ffmpeg failed: %s: %w", string(output), err)
+		return "", fmt.Errorf("ffmpeg failed: %s: %w", string(output), err)
 	}
 
-	return nil
+	return finalPath, nil
 }
 
 func downloadFile(url, dest string) error {

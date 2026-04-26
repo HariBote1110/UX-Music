@@ -207,6 +207,22 @@ async function initApp() {
     });
     // ▲▲▲ 追加ここまで ▲▲▲
 
+    // CDリップ完了: ビュー再描画なしでライブラリのみ更新
+    electronAPI.on('cd-rip-complete', (newSongs: unknown[]) => {
+        console.log(`[Renderer] CDリップ完了: ${newSongs?.length || 0}曲追加`);
+        if (newSongs && newSongs.length > 0) {
+            // renderCurrentView を呼ばずにメモリ上のライブラリだけ更新（CD取り込み画面をリセットしない）
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            newSongs.forEach((song: any) => {
+                if (!song.id && song.path) song.id = song.path;
+                if (!state.libraryByPath.has(song.path)) {
+                    state.library.push(song);
+                    state.libraryByPath.set(song.path, song);
+                }
+            });
+        }
+    });
+
     musicApi.requestAppInfo();
     musicApi.requestInitialPlayCounts();
 
