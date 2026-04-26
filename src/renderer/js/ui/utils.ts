@@ -357,9 +357,6 @@ export async function setEqualizerColorFromArtwork(imageElement) {
     const setDefaultColors = () => {
         document.documentElement.style.setProperty('--eq-color-1', 'var(--highlight-pink)');
         document.documentElement.style.setProperty('--eq-color-2', 'var(--highlight-blue)');
-        void import('../features/fullscreen-bridge.js').then(({ notifyFullscreenColours }) => {
-            notifyFullscreenColours('#ff5d77', '#3b82f6');
-        });
     };
 
     if (imageElement && imageElement.src && !imageElement.src.endsWith('default_artwork.png')) {
@@ -369,9 +366,6 @@ export async function setEqualizerColorFromArtwork(imageElement) {
         if (colors) {
             document.documentElement.style.setProperty('--eq-color-1', colors[0]);
             document.documentElement.style.setProperty('--eq-color-2', colors[1]);
-            void import('../features/fullscreen-bridge.js').then(({ notifyFullscreenColours }) => {
-                notifyFullscreenColours(colors[0], colors[1]);
-            });
         } else {
             setDefaultColors();
         }

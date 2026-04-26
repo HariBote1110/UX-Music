@@ -5,7 +5,7 @@ import { state, elements } from '../core/state.js';
 import { setEqualizerColorFromArtwork, getCurrentTime, isPlaying } from '../features/player.js';
 import { resolveArtworkPath, formatSongTitle, checkTextOverflow } from './utils.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
-import { openFullscreenWindow, notifyFullscreenSongChange } from '../features/fullscreen-bridge.js';
+import { openFullscreenView, notifyFullscreenSongChange } from '../features/fullscreen-view.js';
 import { showContextMenu } from './utils.js';
 const electronAPI = window.electronAPI;
 
@@ -301,15 +301,9 @@ export function updateNowPlayingView(song) {
         checkTextOverflow(nowPlayingArtist);
     });
 
-    // フルスクリーンウィンドウへ曲情報を通知する
+    // フルスクリーンオーバーレイへ曲変更を通知する
     if (song) {
-        const artworkImg = nowPlayingArtworkContainer?.querySelector('img');
-        const artworkSrc = artworkImg?.src || DEFAULT_ARTWORK_URL;
-        notifyFullscreenSongChange(
-            formatSongTitle(song.title) || '',
-            song.artist || '',
-            artworkSrc,
-        );
+        notifyFullscreenSongChange();
     }
 }
 
@@ -325,7 +319,7 @@ export function setupArtworkContextMenu() {
         showContextMenu(event.pageX, event.pageY, [
             {
                 label: 'フルスクリーンで表示',
-                action: () => openFullscreenWindow(),
+                action: () => openFullscreenView(),
             },
         ]);
     };

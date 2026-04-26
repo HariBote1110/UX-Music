@@ -42,7 +42,7 @@ export function initUI() {
     // 初回実行（レンダリング完了を見越して少し遅延させる）
     setTimeout(updateListSpacer, 100);
 
-    // フルスクリーンウィンドウ起動用の右クリックメニューを設定する
+    // フルスクリーンオーバーレイ起動用の右クリックメニューを設定する
     void import('./now-playing.js').then(({ setupArtworkContextMenu }) => {
         setupArtworkContextMenu();
     });
