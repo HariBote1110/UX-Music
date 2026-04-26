@@ -54,11 +54,51 @@ export function destroyTrackViewScroller() {
 }
 
 /**
+ * 曲ビュー用に state.library をアルバム単位でグループ化してソートした配列を返す。
+ * - アルバムの出現順はライブラリ内の初登場インデックスで決まる（追加順を維持）
+ * - アルバム内はカスタム順 → ディスク番号 → トラック番号の優先度でソート
+ */
+function buildSortedTrackList() {
+    // アルバムの初登場インデックスを収集
+    const albumFirstIndex = new Map();
+    state.library.forEach((song, i) => {
+        const key = song.albumKey || '';
+        if (!albumFirstIndex.has(key)) albumFirstIndex.set(key, i);
+    });
+
+    // albumKey ごとにグループ化
+    const groups = new Map();
+    state.library.forEach(song => {
+        const key = song.albumKey || '';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(song);
+    });
+
+    // 各グループ内をソート
+    for (const songs of groups.values()) {
+        const hasCustomOrder = songs.some(s => (s.customOrder ?? 0) > 0);
+        if (hasCustomOrder) {
+            songs.sort((a, b) => (a.customOrder ?? 9999) - (b.customOrder ?? 9999));
+        } else {
+            songs.sort((a, b) => {
+                const disc = (a.discNumber || 0) - (b.discNumber || 0);
+                if (disc !== 0) return disc;
+                return (a.trackNumber || 0) - (b.trackNumber || 0);
+            });
+        }
+    }
+
+    // アルバムを初登場順に並べて連結
+    return [...albumFirstIndex.keys()]
+        .sort((a, b) => albumFirstIndex.get(a) - albumFirstIndex.get(b))
+        .flatMap(key => groups.get(key) ?? []);
+}
+
+/**
  * 曲一覧（トラックビュー）を描画する
  */
 export function renderTrackView() {
     clearMainContent();
-    state.currentlyViewedSongIds = state.library.map((song) => song.id).filter(Boolean);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     viewWrapper.id = 'track-view';
@@ -76,7 +116,10 @@ export function renderTrackView() {
         return;
     }
 
-    trackViewScroller = setupSongListScroller(musicListContainer, state.library, {
+    const sortedSongs = buildSortedTrackList();
+    state.currentlyViewedSongIds = sortedSongs.map(s => s.id).filter(Boolean);
+
+    trackViewScroller = setupSongListScroller(musicListContainer, sortedSongs, {
         contextView: 'library'
     });
 

@@ -131,7 +131,7 @@ export function setupSongListScroller(listElement, songList, options = {}) {
      */
     const renderItem = (song, index) => {
         const songItem = createSongItem(song, index, songList, {
-            groupAlbumArt: state.groupAlbumArt || state.isLightFlightMode
+            groupAlbumArt: true
         });
 
         // 選択状態の復元

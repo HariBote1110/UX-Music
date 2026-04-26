@@ -36,7 +36,7 @@ function findArtworkFromSongIds(songIds = []) {
 }
 
 export function createSongItem(song, index, songList, options = {}) {
-    const { groupAlbumArt = false } = options;
+    const { groupAlbumArt = true } = options;
     const songIdentifier = song.id || song.path || '';
     const songItem = document.createElement('div');
     songItem.className = 'song-item';

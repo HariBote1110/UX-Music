@@ -71,7 +71,7 @@ export function initSettings() {
         const currentVisualizerMode = settings.visualizerMode || 'active';
         document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
 
-        document.querySelector('input[name="group-album-art"]').checked = settings.groupAlbumArt === true;
+        // groupAlbumArt は常に有効のため設定項目から除外
 
         const analysedQueueEnabled = settings.analysedQueue?.enabled === true;
         const analysedQueueCheckbox = document.querySelector('input[name="enable-analysed-queue"]');
@@ -130,7 +130,7 @@ export function initSettings() {
             importMode: document.querySelector('input[name="import-mode"]:checked').value,
             cdRipMode: document.querySelector('input[name="cd-rip-mode"]:checked').value,
             visualizerMode: document.querySelector('input[name="visualizer-mode"]:checked').value,
-            groupAlbumArt: document.querySelector('input[name="group-album-art"]').checked,
+
             analysedQueue: {
                 enabled: document.querySelector('input[name="enable-analysed-queue"]').checked,
                 decayDays: decaySliderValues[decaySliderValue]
@@ -144,10 +144,6 @@ export function initSettings() {
         electronAPI.send('save-settings', settingsToSave);
 
         state.visualizerMode = settingsToSave.visualizerMode;
-        if (state.groupAlbumArt !== settingsToSave.groupAlbumArt) {
-            state.groupAlbumArt = settingsToSave.groupAlbumArt;
-            renderCurrentView();
-        }
         state.analysedQueue = settingsToSave.analysedQueue;
 
         elements.settingsModalOverlay.classList.add('hidden');
