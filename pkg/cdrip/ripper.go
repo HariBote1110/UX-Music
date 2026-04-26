@@ -178,26 +178,26 @@ func (r *Ripper) StartRip(tracks []Track, options RipOptions, libraryPath string
 			progressChan <- RipProgress{TrackNumber: track.Number, Status: "ripping", Percent: 0}
 		}
 
-		err := r.ripAndConvert(track, outputDir, options, artworkPath)
+		err := r.ripAndConvert(track, outputDir, options, artworkPath, progressChan)
 
 		if err != nil {
 			fmt.Printf("[Ripper] Error processing track %d: %v\n", track.Number, err)
 			if progressChan != nil {
 				progressChan <- RipProgress{TrackNumber: track.Number, Status: "error", Error: err.Error()}
 			}
-			return err // Or continue? Abort for now.
+			return err
 		}
 
 		fmt.Printf("[Ripper] Completed track %d\n", track.Number)
 		if progressChan != nil {
-			progressChan <- RipProgress{TrackNumber: track.Number, Status: "completed"}
+			progressChan <- RipProgress{TrackNumber: track.Number, Status: "completed", Percent: 100}
 		}
 	}
 
 	return nil
 }
 
-func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions, artworkPath string) error {
+func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions, artworkPath string, progressChan chan<- RipProgress) error {
 	safeTitle := sanitize(track.Title)
 	safeArtist := sanitize(track.Artist)
 
@@ -229,10 +229,46 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 	}
 	fmt.Printf("[Ripper] Running cdparanoia for track %d\n", track.Number)
 	ripCmd := exec.Command(cdparanoiaPath, "-w", strconv.Itoa(track.Number), tempWav)
-	if output, err := ripCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("cdparanoia failed: %w. Output: %s", err, string(output))
+
+	// ファイルサイズを監視してリッピング進捗を推定する
+	// CD音声セクタ: 2352 bytes/sector、WAVヘッダ: 44 bytes
+	expectedBytes := int64(track.Sectors)*2352 + 44
+	ripDone := make(chan struct{})
+	if progressChan != nil && expectedBytes > 44 {
+		go func() {
+			ticker := time.NewTicker(400 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ripDone:
+					return
+				case <-ticker.C:
+					info, err := os.Stat(tempWav)
+					if err != nil {
+						continue
+					}
+					pct := float64(info.Size()) / float64(expectedBytes) * 95 // 95%上限（エンコード分を残す）
+					if pct > 95 {
+						pct = 95
+					}
+					progressChan <- RipProgress{TrackNumber: track.Number, Status: "ripping", Percent: pct}
+				}
+			}
+		}()
+	}
+
+	ripOutput, ripErr := ripCmd.CombinedOutput()
+	close(ripDone)
+
+	if ripErr != nil {
+		os.Remove(tempWav)
+		return fmt.Errorf("cdparanoia failed: %w. Output: %s", ripErr, string(ripOutput))
 	}
 	defer os.Remove(tempWav)
+
+	if progressChan != nil {
+		progressChan <- RipProgress{TrackNumber: track.Number, Status: "encoding", Percent: 95}
+	}
 
 	// 2. Encode
 	fmt.Printf("[Ripper] Encoding track %d to %s\n", track.Number, finalPath)
