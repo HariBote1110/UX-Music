@@ -13,8 +13,9 @@ let isRipping = false;
 export function getCdRipViewHtml() {
     return `<div class="cd-rip-container">
     <div class="cd-rip-header">
-        <div class="cd-artwork-container">
+        <div class="cd-artwork-container" id="cd-artwork-container" title="クリックしてジャケット画像を変更">
             <img id="cd-artwork-preview" src="./assets/default_artwork.png" class="cd-artwork-img" alt="Album art">
+            <input type="file" id="cd-artwork-file-input" accept="image/*" style="display: none;">
         </div>
 
         <div class="cd-album-info">
@@ -28,8 +29,8 @@ export function getCdRipViewHtml() {
                 <div class="cd-setting-row">
                     <span>形式</span>
                     <select id="cd-format-select" class="cd-select">
-                        <option value="flac">FLAC</option>
-                        <option value="alac" selected>ALAC (m4a)</option>
+                        <option value="flac" selected>FLAC</option>
+                        <option value="alac">ALAC (m4a)</option>
                         <option value="wav">WAV</option>
                         <option value="aac">AAC (m4a)</option>
                         <option value="mp3">MP3</option>
@@ -160,8 +161,18 @@ export async function startCDRipView() {
     if (metadataBtn) metadataBtn.onclick = openMetadataSearch;
 
     if (formatSelect) {
-        formatSelect.onchange = toggleBitrateSelect;
-        toggleBitrateSelect(); // 初期状態セット
+        // 保存済みの形式を復元
+        try {
+            const settings: any = await electronAPI.invoke('get-settings');
+            const saved = settings?.cdRipFormat;
+            if (saved) (formatSelect as HTMLSelectElement).value = saved;
+        } catch (_) {}
+
+        formatSelect.onchange = () => {
+            toggleBitrateSelect();
+            electronAPI.send('save-settings', { cdRipFormat: (formatSelect as HTMLSelectElement).value });
+        };
+        toggleBitrateSelect();
     }
 
     // モーダルイベント
@@ -175,6 +186,26 @@ export async function startCDRipView() {
     document.getElementById('cd-ai-copy-prompt-btn').onclick = copyAiPrompt;
     document.getElementById('cd-ai-apply-btn').onclick = applyAiJson;
     document.getElementById('cd-manual-apply-btn').onclick = applyManualFields;
+
+    // アートワーク画像選択
+    const artworkContainer = document.getElementById('cd-artwork-container');
+    const artworkFileInput = document.getElementById('cd-artwork-file-input') as HTMLInputElement;
+    if (artworkContainer && artworkFileInput) {
+        artworkContainer.onclick = () => artworkFileInput.click();
+        artworkFileInput.onchange = () => {
+            const file = artworkFileInput.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const dataUrl = e.target?.result as string;
+                const preview = document.getElementById('cd-artwork-preview') as HTMLImageElement;
+                if (preview) preview.src = dataUrl;
+                // 全トラックにアートワークを設定
+                currentTracks.forEach((t: any) => { t.artwork = dataUrl; });
+            };
+            reader.readAsDataURL(file);
+        };
+    }
 
     // 初回スキャン
     await scanCD();
@@ -410,8 +441,10 @@ async function startImport() {
 
     const format = document.getElementById('cd-format-select').value;
     const bitrate = document.getElementById('cd-bitrate-select').value;
-    const artworkImg = document.getElementById('cd-artwork-preview');
-    const artworkUrl = (artworkImg && !artworkImg.src.includes('default_artwork')) ? artworkImg.src : null;
+    const artworkImg = document.getElementById('cd-artwork-preview') as HTMLImageElement;
+    const artworkSrc = (artworkImg && !artworkImg.src.includes('default_artwork')) ? artworkImg.src : null;
+    const artworkData = artworkSrc?.startsWith('data:') ? artworkSrc : null;
+    const artworkUrl = (!artworkData && artworkSrc) ? artworkSrc : null;
 
     if (importBtn) importBtn.disabled = true;
     if (scanBtn) scanBtn.disabled = true;
@@ -421,7 +454,7 @@ async function startImport() {
     try {
         const result = await electronAPI.invoke('cd-start-rip', {
             tracksToRip: currentTracks,
-            options: { format, bitrate, artworkUrl }
+            options: { format, bitrate, artworkUrl, artworkData }
         });
 
         isRipping = false;
@@ -456,9 +489,10 @@ function onProgress(data) {
     const progressBar = document.getElementById('cd-progress-bar');
 
     if (status === 'ripping') {
+        const pct = Math.floor(percent ?? 0);
         if (statusCell) statusCell.textContent = '吸出し中...';
-        if (progressText) progressText.textContent = `Track ${track} を吸出し中... (${percent}%)`;
-        if (progressBar) progressBar.style.width = `${percent}%`;
+        if (progressText) progressText.textContent = `Track ${track} を吸出し中... (${pct}%)`;
+        if (progressBar) progressBar.style.width = `${pct}%`;
     } else if (status === 'encoding') {
         if (statusCell) statusCell.textContent = '変換中...';
         if (progressText) progressText.textContent = `Track ${track} を変換中...`;

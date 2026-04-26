@@ -30,6 +30,20 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
+    position: relative;
+}
+
+.cd-artwork-container:hover::after {
+    content: '画像を変更';
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.8rem;
 }
 
 .cd-artwork-img {
@@ -223,20 +237,29 @@
     transition: width 0.3s ease;
 }
 
-#cd-metadata-modal.modal-overlay {
-    position: absolute;
+#cd-metadata-modal.modal-overlay,
+#cd-ai-modal.modal-overlay {
+    position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0,0,0,0.8);
-    z-index: 1000;
+    z-index: 9000;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-#cd-metadata-modal .modal-content {
+#cd-metadata-modal.modal-overlay.hidden,
+#cd-ai-modal.modal-overlay.hidden {
+    display: none;
+}
+
+#cd-metadata-modal .modal-content,
+#cd-ai-modal .modal-content {
     background: #222;
     width: 600px;
-    max-height: 80vh;
+    max-width: 90vw;
+    max-height: 85vh;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     border-radius: 8px;
@@ -244,3 +267,4 @@
     border: 1px solid #444;
     padding: 24px;
 }
+

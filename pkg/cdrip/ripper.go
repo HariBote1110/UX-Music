@@ -3,6 +3,7 @@ package cdrip
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -160,9 +161,18 @@ func (r *Ripper) StartRip(tracks []Track, options RipOptions, libraryPath string
 		return nil, err
 	}
 
-	// Download artwork if needed
+	// Prepare artwork file from URL or base64 data
 	var artworkPath string
-	if options.ArtworkURL != "" {
+	if options.ArtworkData != "" {
+		// data:image/jpeg;base64,<data>
+		artworkPath = filepath.Join(r.UserDataPath, fmt.Sprintf("temp_artwork_%d.jpg", time.Now().UnixNano()))
+		if err := saveDataURL(options.ArtworkData, artworkPath); err != nil {
+			fmt.Printf("Failed to save artwork data: %v\n", err)
+			artworkPath = ""
+		} else {
+			defer os.Remove(artworkPath)
+		}
+	} else if options.ArtworkURL != "" {
 		artworkPath = filepath.Join(r.UserDataPath, fmt.Sprintf("temp_artwork_%d.jpg", time.Now().UnixNano()))
 		if err := downloadFile(options.ArtworkURL, artworkPath); err != nil {
 			fmt.Printf("Failed to download artwork: %v\n", err)
@@ -282,6 +292,17 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 	var args []string
 	args = append(args, "-i", tempWav)
 
+	// Artwork input (must come before output options)
+	hasArtwork := artworkPath != "" && options.Format != "wav"
+	if hasArtwork {
+		args = append(args, "-i", artworkPath)
+	}
+
+	// Stream mapping
+	if hasArtwork {
+		args = append(args, "-map", "0:a", "-map", "1:0")
+	}
+
 	// Codec configuration
 	switch options.Format {
 	case "flac":
@@ -298,6 +319,10 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 		args = append(args, "-c:a", "aac", "-b:a", "320k") // default
 	}
 
+	if hasArtwork {
+		args = append(args, "-c:v", "copy", "-disposition:v", "attached_pic")
+	}
+
 	// Metadata
 	args = append(args,
 		"-metadata", "title="+track.Title,
@@ -305,11 +330,6 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 		"-metadata", "album="+track.Album,
 		"-metadata", fmt.Sprintf("track=%d", track.Number),
 	)
-
-	// Artwork
-	if artworkPath != "" && options.Format != "wav" {
-		args = append(args, "-i", artworkPath, "-map", "0:0", "-map", "1:0", "-c:v", "copy", "-disposition:v", "attached_pic")
-	}
 
 	args = append(args, "-y", finalPath)
 
@@ -323,6 +343,19 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 	}
 
 	return finalPath, nil
+}
+
+func saveDataURL(dataURL, dest string) error {
+	// Strip "data:image/...;base64," prefix
+	comma := strings.Index(dataURL, ",")
+	if comma < 0 {
+		return fmt.Errorf("invalid data URL")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(dataURL[comma+1:])
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dest, decoded, 0644)
 }
 
 func downloadFile(url, dest string) error {
