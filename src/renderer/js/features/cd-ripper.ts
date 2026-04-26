@@ -82,19 +82,36 @@ export function getCdRipViewHtml() {
 
     <div id="cd-metadata-modal" class="modal-overlay hidden">
         <div class="modal-content">
-            <h3 style="margin: 0 0 20px 0; color: #fff;">アルバム情報を検索</h3>
-            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                <input type="text" id="cd-search-input" placeholder="アーティスト名 / アルバム名"
-                       style="flex: 1; padding: 10px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; outline: none;">
-                <button id="cd-search-submit-btn" type="button" class="action-button">検索</button>
+            <h3 style="margin: 0 0 16px 0; color: #fff;">アルバム情報を設定</h3>
+
+            <div style="background: #222; border: 1px solid #444; border-radius: 6px; padding: 12px; margin-bottom: 14px;">
+                <p style="color: #aaa; font-size: 0.8em; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em;">手入力</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                    <input type="text" id="cd-manual-album" placeholder="アルバム名"
+                           style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; outline: none;">
+                    <input type="text" id="cd-manual-artist" placeholder="アーティスト名"
+                           style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; outline: none;">
+                </div>
+                <input type="number" id="cd-manual-year" placeholder="年 (例: 2024)" min="1900" max="2099"
+                       style="width: 100%; box-sizing: border-box; padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; outline: none; margin-bottom: 8px;">
+                <button id="cd-manual-apply-btn" type="button" class="action-button" style="width: 100%; padding: 7px;">適用</button>
             </div>
-            <div style="flex: 1; overflow-y: auto; border: 1px solid #444; border-radius: 4px; background: #1a1a1a; margin-bottom: 15px; min-height: 200px;">
-                <ul id="cd-candidate-list" style="list-style: none; padding: 0; margin: 0;">
-                </ul>
+
+            <div style="border-top: 1px solid #333; padding-top: 14px;">
+                <p style="color: #aaa; font-size: 0.8em; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em;">MusicBrainz 検索</p>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <input type="text" id="cd-search-input" placeholder="アーティスト名 / アルバム名"
+                           style="flex: 1; padding: 8px 10px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; outline: none;">
+                    <button id="cd-search-submit-btn" type="button" class="action-button">検索</button>
+                </div>
+                <div style="overflow-y: auto; border: 1px solid #444; border-radius: 4px; background: #1a1a1a; margin-bottom: 12px; min-height: 120px; max-height: 200px;">
+                    <ul id="cd-candidate-list" style="list-style: none; padding: 0; margin: 0;"></ul>
+                </div>
             </div>
+
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <button id="cd-ai-metadata-btn" type="button" class="action-button" style="width: auto; padding: 8px 16px; background: #2a4a7a;">🤖 AIで生成</button>
-                <button id="cd-search-cancel-btn" type="button" class="action-button" style="width: auto; padding: 8px 24px;">キャンセル</button>
+                <button id="cd-search-cancel-btn" type="button" class="action-button" style="width: auto; padding: 8px 24px;">閉じる</button>
             </div>
         </div>
     </div>
@@ -107,9 +124,15 @@ export function getCdRipViewHtml() {
                 <button id="cd-ai-copy-prompt-btn" type="button" class="action-button" style="width: auto; padding: 8px 14px;">プロンプトをコピー</button>
                 <span id="cd-ai-copy-status" style="color: #4caf50; font-size: 0.85em; align-self: center;"></span>
             </div>
-            <textarea id="cd-ai-json-input" placeholder='AIの返答JSONをここにペースト...' rows="10"
-                style="width: 100%; box-sizing: border-box; padding: 10px; border-radius: 4px; border: 1px solid #555; background: #1a1a1a; color: white; font-family: monospace; font-size: 0.85em; resize: vertical; outline: none;"></textarea>
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px;">
+            <textarea id="cd-ai-json-input" placeholder='AIの返答JSONをここにペースト...' rows="8"
+                style="width: 100%; box-sizing: border-box; padding: 10px; border-radius: 4px; border: 1px solid #555; background: #1a1a1a; color: white; font-family: monospace; font-size: 0.85em; resize: vertical; outline: none; margin-bottom: 12px;"></textarea>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+                <input type="text" id="cd-ai-album-override" placeholder="アルバム名（空欄=AI任せ）"
+                       style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; outline: none;">
+                <input type="text" id="cd-ai-artist-override" placeholder="アーティスト名（空欄=AI任せ）"
+                       style="padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; outline: none;">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
                 <button id="cd-ai-cancel-btn" type="button" class="action-button" style="width: auto; padding: 8px 24px;">キャンセル</button>
                 <button id="cd-ai-apply-btn" type="button" class="action-button primary" style="width: auto; padding: 8px 24px;">適用</button>
             </div>
@@ -151,6 +174,7 @@ export async function startCDRipView() {
     document.getElementById('cd-ai-cancel-btn').onclick = closeAiModal;
     document.getElementById('cd-ai-copy-prompt-btn').onclick = copyAiPrompt;
     document.getElementById('cd-ai-apply-btn').onclick = applyAiJson;
+    document.getElementById('cd-manual-apply-btn').onclick = applyManualFields;
 
     // 初回スキャン
     await scanCD();
@@ -239,11 +263,18 @@ async function scanCD() {
 // ▼▼▼ メタデータ検索機能 (変更なし) ▼▼▼
 function showMetadataModal() {
     const modal = document.getElementById('cd-metadata-modal');
-    const input = document.getElementById('cd-search-input');
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
-    input.value = '';
-    input.focus();
+
+    // 手入力フィールドを現在の値で初期化
+    const firstTrack = currentTracks[0];
+    (document.getElementById('cd-manual-album') as HTMLInputElement).value = firstTrack?.album ?? '';
+    (document.getElementById('cd-manual-artist') as HTMLInputElement).value = firstTrack?.artist ?? '';
+    (document.getElementById('cd-manual-year') as HTMLInputElement).value = '';
+
+    const searchInput = document.getElementById('cd-search-input') as HTMLInputElement;
+    searchInput.value = '';
+    searchInput.focus();
 }
 
 async function openMetadataSearch() {
@@ -446,6 +477,33 @@ function onProgress(data) {
     }
 }
 
+// ─── 手入力 適用 ──────────────────────────────────────────────────────────────
+
+function applyManualFields() {
+    const album  = (document.getElementById('cd-manual-album') as HTMLInputElement).value.trim();
+    const artist = (document.getElementById('cd-manual-artist') as HTMLInputElement).value.trim();
+    const yearVal = (document.getElementById('cd-manual-year') as HTMLInputElement).value.trim();
+
+    if (!album && !artist) {
+        alert('アルバム名またはアーティスト名を入力してください。');
+        return;
+    }
+
+    currentTracks.forEach(t => {
+        if (album)  t.album  = album;
+        if (artist) t.artist = artist;
+    });
+    renderTracks(currentTracks);
+
+    if (album)  { const el = document.getElementById('cd-album-title');  if (el) el.textContent = album; }
+    if (artist) { const el = document.getElementById('cd-album-artist'); if (el) el.textContent = artist; }
+
+    const statusMsg = document.getElementById('cd-status-message');
+    if (statusMsg) statusMsg.textContent = '手入力のメタデータを適用しました。';
+
+    closeMetadataModal();
+}
+
 // ─── AI メタデータ生成 ────────────────────────────────────────────────────────
 
 function buildAiPrompt(): string {
@@ -527,26 +585,26 @@ function applyAiJson() {
         return;
     }
 
+    // オーバーライドフィールドが入力されていればそちらを優先
+    const albumOverride  = (document.getElementById('cd-ai-album-override') as HTMLInputElement).value.trim();
+    const artistOverride = (document.getElementById('cd-ai-artist-override') as HTMLInputElement).value.trim();
+    const finalAlbum  = albumOverride  || parsed.album  || '';
+    const finalArtist = artistOverride || parsed.artist || '';
+
     // currentTracks に反映
     parsed.tracks.forEach(t => {
         const target = currentTracks.find(c => c.number === t.number);
         if (target) {
-            if (t.title) target.title = t.title;
-            if (t.artist) target.artist = t.artist;
-            if (parsed.album) target.album = parsed.album;
+            if (t.title)    target.title  = t.title;
+            if (t.artist)   target.artist = artistOverride || t.artist;
+            if (finalAlbum) target.album  = finalAlbum;
         }
     });
 
     renderTracks(currentTracks);
 
-    if (parsed.album) {
-        const albumTitle = document.getElementById('cd-album-title');
-        if (albumTitle) albumTitle.textContent = parsed.album;
-    }
-    if (parsed.artist) {
-        const albumArtist = document.getElementById('cd-album-artist');
-        if (albumArtist) albumArtist.textContent = parsed.artist;
-    }
+    if (finalAlbum)  { const el = document.getElementById('cd-album-title');  if (el) el.textContent = finalAlbum; }
+    if (finalArtist) { const el = document.getElementById('cd-album-artist'); if (el) el.textContent = finalArtist; }
     const statusMsg = document.getElementById('cd-status-message');
     if (statusMsg) statusMsg.textContent = 'AIメタデータを適用しました。';
 
