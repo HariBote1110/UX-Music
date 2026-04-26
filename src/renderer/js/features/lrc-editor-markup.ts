@@ -1,4 +1,3 @@
-// @ts-nocheck
 /** 同期歌詞エディタの HTML（旧 components/lrc-editor.html、ルート #lrc-editor-view を含む） */
 export function getLrcEditorHtml() {
     return `<div id="lrc-editor-view" class="lrc-editor-root lrc-view-inner" tabindex="-1">

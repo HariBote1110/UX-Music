@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { state, elements } from '../core/state.js';
 import { setVisualizerTarget, disconnectVisualizerObserver } from '../features/player.js';
 import {

@@ -155,7 +155,7 @@ export function initIPC(callbacks) {
     });
 
     electronAPI.on('show-edit-metadata-modal', (song) => {
-        showEditMetadataModal(song);
+        showEditMetadataModal(song as Record<string, unknown>);
     });
 
     function handleMtpConnected(payload: Record<string, unknown>) {

@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/edit-metadata.js
 import { state } from '../core/state.js';
 import { resolveArtworkPath } from '../ui/utils.js';
@@ -8,29 +7,28 @@ import { showNotification, hideNotification } from '../ui/notification.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 const electronAPI = window.electronAPI;
 
-let currentEditingSong = null;
-let newArtworkBuffer = null; // 新しいアートワークのバイナリデータ
-let removeArtwork = false; // アートワーク削除フラグ
+let currentEditingSong: Record<string, unknown> | null = null;
+let newArtworkBuffer: unknown = null;
+let removeArtwork = false;
 
-// モーダル要素への参照
 const elements = {
     overlay: document.getElementById('edit-metadata-modal-overlay'),
     modal: document.getElementById('edit-metadata-modal'),
-    artworkPreview: document.getElementById('edit-artwork-preview'),
-    artworkInput: document.getElementById('edit-artwork-input'),
+    artworkPreview: document.getElementById('edit-artwork-preview') as HTMLImageElement | null,
+    artworkInput: document.getElementById('edit-artwork-input') as HTMLInputElement | null,
     changeArtworkBtn: document.getElementById('edit-artwork-change-btn'),
     removeArtworkBtn: document.getElementById('edit-artwork-remove-btn'),
     artworkError: document.getElementById('edit-artwork-error'),
-    titleInput: document.getElementById('edit-title'),
-    artistInput: document.getElementById('edit-artist'),
-    albumInput: document.getElementById('edit-album'),
-    genreInput: document.getElementById('edit-genre'),
+    titleInput: document.getElementById('edit-title') as HTMLInputElement | null,
+    artistInput: document.getElementById('edit-artist') as HTMLInputElement | null,
+    albumInput: document.getElementById('edit-album') as HTMLInputElement | null,
+    genreInput: document.getElementById('edit-genre') as HTMLInputElement | null,
     cancelBtn: document.getElementById('edit-metadata-cancel-btn'),
-    saveBtn: document.getElementById('edit-metadata-save-btn'),
+    saveBtn: document.getElementById('edit-metadata-save-btn') as HTMLButtonElement | null,
 };
 
 // イベントリスナーの初期化（一度だけ実行）
-function initEditMetadataListeners() {
+function initEditMetadataListeners(): void {
     elements.cancelBtn.addEventListener('click', hideEditMetadataModal);
     elements.saveBtn.addEventListener('click', handleSave);
     elements.changeArtworkBtn.addEventListener('click', () => elements.artworkInput.click());
@@ -41,16 +39,12 @@ function initEditMetadataListeners() {
             hideEditMetadataModal();
         }
     });
-    // リスナーが設定されたことを示すフラグ
-    initEditMetadataListeners.initialized = true;
+    initEditMetadataListeners._initialized = true;
 }
+initEditMetadataListeners._initialized = false;
 
-/**
- * メタデータ編集モーダルを表示する
- * @param {object} song - 編集対象の曲オブジェクト
- */
-export function showEditMetadataModal(song) {
-    if (!initEditMetadataListeners.initialized) {
+export function showEditMetadataModal(song: Record<string, unknown>) {
+    if (!initEditMetadataListeners._initialized) {
         initEditMetadataListeners();
     }
 
@@ -60,16 +54,14 @@ export function showEditMetadataModal(song) {
     elements.artworkError.classList.add('hidden');
     elements.artworkInput.value = ''; // ファイル選択をリセット
 
-    // 現在の情報をフォームに設定
-    elements.titleInput.value = song.title || '';
-    elements.artistInput.value = song.artist || '';
-    elements.albumInput.value = song.album || '';
-    elements.genreInput.value = song.genre || '';
+    if (elements.titleInput) elements.titleInput.value = (song.title as string) || '';
+    if (elements.artistInput) elements.artistInput.value = (song.artist as string) || '';
+    if (elements.albumInput) elements.albumInput.value = (song.album as string) || '';
+    if (elements.genreInput) elements.genreInput.value = (song.genre as string) || '';
 
-    // アートワークプレビューを設定
-    const album = state.albums.get(song.albumKey);
+    const album = state.albums.get(song.albumKey as string) as Record<string, unknown> | undefined;
     const artwork = song.artwork || (album ? album.artwork : null);
-    elements.artworkPreview.src = resolveArtworkPath(artwork, false);
+    if (elements.artworkPreview) elements.artworkPreview.src = resolveArtworkPath(artwork, false);
 
     elements.overlay.classList.remove('hidden');
 }
@@ -83,8 +75,8 @@ function hideEditMetadataModal() {
     newArtworkBuffer = null;
     removeArtwork = false;
     // エラーメッセージなどをクリア
-    elements.artworkError.classList.add('hidden');
-    elements.artworkPreview.src = DEFAULT_ARTWORK_URL; // デフォルト画像に戻す
+    elements.artworkError?.classList.add('hidden');
+    if (elements.artworkPreview) elements.artworkPreview.src = DEFAULT_ARTWORK_URL;
 }
 
 /**
@@ -104,17 +96,18 @@ async function handleArtworkChange(event) {
         newArtworkBuffer = null;
         removeArtwork = false;
         // プレビューを元の画像に戻す（もし曲に元々アートワークがあれば）
-        const album = state.albums.get(currentEditingSong.albumKey);
-        const artwork = currentEditingSong.artwork || (album ? album.artwork : null);
-        elements.artworkPreview.src = resolveArtworkPath(artwork, false);
+        const album2 = state.albums.get(currentEditingSong.albumKey as string) as Record<string, unknown> | undefined;
+        const artwork2 = currentEditingSong.artwork || (album2 ? album2.artwork : null);
+        if (elements.artworkPreview) elements.artworkPreview.src = resolveArtworkPath(artwork2, false);
         return;
     }
 
     // FileReaderでファイルを読み込み、プレビュー表示とバッファ保持
     const reader = new FileReader();
     reader.onload = (e) => {
-        elements.artworkPreview.src = e.target.result; // プレビュー更新
-        newArtworkBuffer = Buffer.from(e.target.result.split(',')[1], 'base64'); // Base64部分をBufferに
+        const resultStr = e.target!.result as string;
+        if (elements.artworkPreview) elements.artworkPreview.src = resultStr;
+        newArtworkBuffer = Buffer.from(resultStr.split(',')[1], 'base64');
         removeArtwork = false; // 新しい画像が選択されたら削除フラグは解除
     };
     reader.onerror = (e) => {
@@ -129,11 +122,11 @@ async function handleArtworkChange(event) {
  * アートワーク削除ボタンが押されたときの処理
  */
 function handleRemoveArtwork() {
-    elements.artworkPreview.src = DEFAULT_ARTWORK_URL;
+    if (elements.artworkPreview) elements.artworkPreview.src = DEFAULT_ARTWORK_URL;
     newArtworkBuffer = null;
     removeArtwork = true;
-    elements.artworkInput.value = ''; // ファイル選択をリセット
-    elements.artworkError.classList.add('hidden');
+    if (elements.artworkInput) elements.artworkInput.value = '';
+    elements.artworkError?.classList.add('hidden');
 }
 
 /**
@@ -144,52 +137,43 @@ async function handleSave() {
 
     // 新しいタグ情報を収集
     const newTags = {
-        title: elements.titleInput.value.trim(),
-        artist: elements.artistInput.value.trim(),
-        album: elements.albumInput.value.trim(),
-        genre: elements.genreInput.value.trim(),
+        title: elements.titleInput?.value.trim(),
+        artist: elements.artistInput?.value.trim(),
+        album: elements.albumInput?.value.trim(),
+        genre: elements.genreInput?.value.trim(),
         // アートワーク情報を含める (削除または新しいバッファ)
         image: removeArtwork ? null : (newArtworkBuffer ? { mime: 'image/png', type: { id: 3, name: 'front cover' }, description: 'Cover', imageBuffer: newArtworkBuffer } : undefined), // undefinedなら変更なし
     };
 
     // 保存ボタンを一時的に無効化など（任意）
-    elements.saveBtn.disabled = true;
-    elements.saveBtn.textContent = '保存中...';
+    if (elements.saveBtn) { elements.saveBtn.disabled = true; elements.saveBtn.textContent = '保存中...'; }
 
     try {
         const result = await electronAPI.invoke('edit-metadata', {
             filePath: currentEditingSong.path,
             newTags: newTags
-        });
+        }) as Record<string, unknown>;
 
         if (result.success && result.updatedSong) {
-            // state.library の情報を更新
-            const index = state.library.findIndex(s => s.id === currentEditingSong.id);
+            const updatedSong = result.updatedSong as Record<string, unknown>;
+            const index = state.library.findIndex(s => s.id === currentEditingSong!.id);
             if (index > -1) {
-                // 更新された曲オブジェクトで置き換える (メインプロセスから返された情報を使う)
-                state.library[index] = { ...state.library[index], ...result.updatedSong };
+                state.library[index] = { ...state.library[index], ...updatedSong };
                 rebuildLibraryIndexes();
-
-                // state.albums も更新する必要がある
-                // 簡単のため、ライブラリ全体からアルバムとアーティストを再グループ化
-                electronAPI.send('request-initial-library'); // ライブラリ再読み込みを要求
+                electronAPI.send('request-initial-library');
             }
 
             hideEditMetadataModal();
-            showNotification(`「${result.updatedSong.title}」の情報が更新されました。`);
-            hideNotification(3000);
-            renderCurrentView(); // UIを再描画して変更を反映
+            showNotification(`「${updatedSong.title}」の情報が更新されました。`, 3000);
+            renderCurrentView();
         } else {
-            showNotification(`エラー: ${result.message || 'メタデータの保存に失敗しました。'}`);
-            hideNotification(5000);
+            showNotification(`エラー: ${(result.message as string) || 'メタデータの保存に失敗しました。'}`, 5000);
         }
     } catch (error) {
         console.error('メタデータ保存IPCエラー:', error);
         showNotification('エラー: メタデータの保存中に問題が発生しました。');
         hideNotification(5000);
     } finally {
-        // 保存ボタンの状態を元に戻す
-        elements.saveBtn.disabled = false;
-        elements.saveBtn.textContent = '保存';
+        if (elements.saveBtn) { elements.saveBtn.disabled = false; elements.saveBtn.textContent = '保存'; }
     }
 }

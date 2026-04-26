@@ -1,4 +1,3 @@
-// @ts-nocheck
 /** MTP 転送画面の HTML（旧 components/mtp-transfer.html） */
 export function getMtpTransferViewHtml() {
     return `<div class="view-header">

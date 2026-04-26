@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { VirtualScroller } from './virtual-scroller.js';
 import { formatTime } from './utils.js';
 import { getAlbumSongs } from '../core/library-model.js';
@@ -85,7 +84,8 @@ export function openAlbumOrderEditor(albumKey: string, album: Record<string, unk
         data: [...workingSongs],
         itemHeight: ITEM_HEIGHT,
         buffer: 8,
-        renderItem: (song: Record<string, unknown>, _index: number) => {
+        renderItem: (rawSong: unknown, _index: number) => {
+            const song = rawSong as Record<string, unknown>;
             const row = document.createElement('div');
             row.className = 'album-order-row';
 
