@@ -211,7 +211,14 @@ async function initApp() {
     electronAPI.on('cd-rip-complete', (newSongs: unknown[]) => {
         console.log(`[Renderer] CDリップ完了: ${newSongs?.length || 0}曲追加`);
         if (newSongs && newSongs.length > 0) {
-            addSongsToLibrary({ songs: newSongs, albums: {}, skipRender: true });
+            // ディスク番号→トラック番号順で追加
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const sorted = [...newSongs].sort((a: any, b: any) => {
+                const disc = (a.discNumber || 0) - (b.discNumber || 0);
+                if (disc !== 0) return disc;
+                return (a.trackNumber || 0) - (b.trackNumber || 0);
+            });
+            addSongsToLibrary({ songs: sorted, albums: {}, skipRender: true });
         }
     });
 
