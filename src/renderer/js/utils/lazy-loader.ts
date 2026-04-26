@@ -1,4 +1,3 @@
-// @ts-nocheck
 let observer;
 
 const LAZY_LOAD_OFFSET = '200px'; // 画面に入る200px手前から読み込みを開始
@@ -21,7 +20,7 @@ export function initLazyLoader(root) {
     observer = new IntersectionObserver((entries, self) => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
-                const img = entry.target;
+                const img = entry.target as HTMLImageElement;
                 const src = img.dataset.src;
                 if (src) {
                     img.src = src;

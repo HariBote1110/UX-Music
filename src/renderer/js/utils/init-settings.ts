@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { state, elements } from '../core/state.js';
 import { renderGraphicEQ } from '../ui/equalizer.js';
 import { renderCurrentView, updateAudioDevices } from '../ui/ui-manager.js';
@@ -29,14 +28,14 @@ async function refreshWearPairingQR() {
     group.classList.remove('hidden');
     try {
         const dataUrl = await getWailsApp().GetWearPairingQRDataURL();
-        img.src = dataUrl;
+        (img as HTMLImageElement).src = dataUrl;
         wrap.classList.remove('hidden');
         if (urlEl && getWailsApp()?.GetWearPairingURL) {
             urlEl.textContent = await getWailsApp().GetWearPairingURL();
         }
     } catch (e) {
         wrap.classList.add('hidden');
-        const msg = e?.message || String(e);
+        const msg = (e as Error)?.message || String(e);
         errEl.textContent = 'QR の生成に失敗しました: ' + msg;
         errEl.classList.remove('hidden');
     }
@@ -55,37 +54,37 @@ export function initSettings() {
         renderGraphicEQ();
 
         const currentYoutubeMode = settings.youtubePlaybackMode || 'download';
-        document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`).checked = true;
+        (document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`) as HTMLInputElement).checked = true;
 
         const currentQuality = settings.youtubeDownloadQuality || 'full';
-        document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`).checked = true;
+        (document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`) as HTMLInputElement).checked = true;
 
         updateQualityGroupState();
 
         const currentImportMode = settings.importMode || 'balanced';
-        document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`).checked = true;
+        (document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`) as HTMLInputElement).checked = true;
 
         const currentCdRipMode = settings.cdRipMode || 'paranoia';
-        document.querySelector(`input[name="cd-rip-mode"][value="${currentCdRipMode}"]`).checked = true;
+        (document.querySelector(`input[name="cd-rip-mode"][value="${currentCdRipMode}"]`) as HTMLInputElement).checked = true;
 
         const currentVisualizerMode = settings.visualizerMode || 'active';
-        document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`).checked = true;
+        (document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`) as HTMLInputElement).checked = true;
 
         // groupAlbumArt は常に有効のため設定項目から除外
 
         const analysedQueueEnabled = settings.analysedQueue?.enabled === true;
-        const analysedQueueCheckbox = document.querySelector('input[name="enable-analysed-queue"]');
+        const analysedQueueCheckbox = document.querySelector('input[name="enable-analysed-queue"]') as HTMLInputElement;
         analysedQueueCheckbox.checked = analysedQueueEnabled;
         document.getElementById('analysed-queue-options').classList.toggle('hidden', !analysedQueueEnabled);
 
         const currentDecayDays = settings.analysedQueue?.decayDays || 7;
-        const decaySlider = document.getElementById('analysed-queue-decay-slider');
+        const decaySlider = document.getElementById('analysed-queue-decay-slider') as HTMLInputElement;
         const decayValueLabel = document.getElementById('analysed-queue-decay-value');
         const sliderIndex = decaySliderValues.indexOf(currentDecayDays);
-        decaySlider.value = sliderIndex > -1 ? sliderIndex : 2;
-        decayValueLabel.textContent = decaySliderLabels[decaySlider.value];
+        decaySlider.value = String(sliderIndex > -1 ? sliderIndex : 2);
+        if (decayValueLabel) decayValueLabel.textContent = decaySliderLabels[parseInt(decaySlider.value)];
 
-        document.querySelector('input[name="enable-easter-eggs"]').checked = settings.enableEasterEggs !== false;
+        (document.querySelector('input[name="enable-easter-eggs"]') as HTMLInputElement).checked = settings.enableEasterEggs !== false;
 
         elements.settingsModalOverlay.classList.remove('hidden');
         void refreshWearPairingQR();
@@ -114,28 +113,29 @@ export function initSettings() {
         radio.addEventListener('change', updateQualityGroupState);
     });
 
-    document.querySelector('input[name="enable-analysed-queue"]').addEventListener('change', (e) => {
-        document.getElementById('analysed-queue-options').classList.toggle('hidden', !e.target.checked);
+    (document.querySelector('input[name="enable-analysed-queue"]') as HTMLInputElement).addEventListener('change', (e) => {
+        document.getElementById('analysed-queue-options')!.classList.toggle('hidden', !(e.target as HTMLInputElement).checked);
     });
 
-    document.getElementById('analysed-queue-decay-slider').addEventListener('input', (e) => {
-        document.getElementById('analysed-queue-decay-value').textContent = decaySliderLabels[e.target.value];
+    document.getElementById('analysed-queue-decay-slider')!.addEventListener('input', (e) => {
+        const val = parseInt((e.target as HTMLInputElement).value);
+        document.getElementById('analysed-queue-decay-value')!.textContent = decaySliderLabels[val];
     });
 
     elements.settingsOkBtn.addEventListener('click', () => {
-        const decaySliderValue = document.getElementById('analysed-queue-decay-slider').value;
+        const decaySliderValue = parseInt((document.getElementById('analysed-queue-decay-slider') as HTMLInputElement).value);
         const settingsToSave = {
-            youtubePlaybackMode: document.querySelector('input[name="youtube-mode"]:checked').value,
-            youtubeDownloadQuality: document.querySelector('input[name="youtube-quality"]:checked').value,
-            importMode: document.querySelector('input[name="import-mode"]:checked').value,
-            cdRipMode: document.querySelector('input[name="cd-rip-mode"]:checked').value,
-            visualizerMode: document.querySelector('input[name="visualizer-mode"]:checked').value,
+            youtubePlaybackMode: (document.querySelector('input[name="youtube-mode"]:checked') as HTMLInputElement).value,
+            youtubeDownloadQuality: (document.querySelector('input[name="youtube-quality"]:checked') as HTMLInputElement).value,
+            importMode: (document.querySelector('input[name="import-mode"]:checked') as HTMLInputElement).value,
+            cdRipMode: (document.querySelector('input[name="cd-rip-mode"]:checked') as HTMLInputElement).value,
+            visualizerMode: (document.querySelector('input[name="visualizer-mode"]:checked') as HTMLInputElement).value,
 
             analysedQueue: {
-                enabled: document.querySelector('input[name="enable-analysed-queue"]').checked,
+                enabled: (document.querySelector('input[name="enable-analysed-queue"]') as HTMLInputElement).checked,
                 decayDays: decaySliderValues[decaySliderValue]
             },
-            enableEasterEggs: document.querySelector('input[name="enable-easter-eggs"]').checked,
+            enableEasterEggs: (document.querySelector('input[name="enable-easter-eggs"]') as HTMLInputElement).checked,
             // Maintain current playback state during settings save
             isShuffled: state.isShuffled,
             playbackMode: state.playbackMode
@@ -169,13 +169,13 @@ export function initSettings() {
     });
 
     document.getElementById('devices-ok-btn').addEventListener('click', () => {
-        const hiddenDeviceIds = Array.from(document.querySelectorAll('#devices-list input:not(:checked)')).map(cb => cb.dataset.deviceId);
+        const hiddenDeviceIds = Array.from(document.querySelectorAll('#devices-list input:not(:checked)')).map(cb => (cb as HTMLInputElement).dataset.deviceId);
         electronAPI.send('save-settings', { hiddenDeviceIds });
         document.getElementById('devices-modal-overlay').classList.add('hidden');
         updateAudioDevices();
     });
 
-    const buildFlacBtn = document.getElementById('build-flac-indexes-btn');
+    const buildFlacBtn = document.getElementById('build-flac-indexes-btn') as HTMLButtonElement | null;
     if (buildFlacBtn) {
         buildFlacBtn.addEventListener('click', () => {
             buildFlacBtn.disabled = true;
@@ -186,13 +186,13 @@ export function initSettings() {
 }
 
 function updateQualityGroupState() {
-    const youtubeMode = document.querySelector('input[name="youtube-mode"]:checked')?.value;
+    const youtubeMode = (document.querySelector('input[name="youtube-mode"]:checked') as HTMLInputElement | null)?.value;
     const qualityGroup = document.getElementById('youtube-quality-group');
     if (youtubeMode === 'stream') {
-        qualityGroup.classList.add('disabled');
-        document.querySelectorAll('input[name="youtube-quality"]').forEach(radio => radio.disabled = true);
+        qualityGroup?.classList.add('disabled');
+        document.querySelectorAll<HTMLInputElement>('input[name="youtube-quality"]').forEach(radio => radio.disabled = true);
     } else {
-        qualityGroup.classList.remove('disabled');
-        document.querySelectorAll('input[name="youtube-quality"]').forEach(radio => radio.disabled = false);
+        qualityGroup?.classList.remove('disabled');
+        document.querySelectorAll<HTMLInputElement>('input[name="youtube-quality"]').forEach(radio => radio.disabled = false);
     }
 }

@@ -1,6 +1,11 @@
-// @ts-nocheck
 import { state } from '../core/state.js';
 import { musicApi } from '../core/bridge.js';
+
+declare global {
+    interface Performance {
+        memory?: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number };
+    }
+}
 
 const SAMPLE_INTERVAL_MS = 1000;
 const REPORT_INTERVAL_MS = 5000;

@@ -2,15 +2,9 @@ import { elements } from '../core/state.js';
 
 const DEFAULT_TOAST_MS = 4000;
 
-let notificationTimeout;
+let notificationTimeout: ReturnType<typeof setTimeout> | null = null;
 
-/**
- * トースト表示。呼び出し後に `hideNotification` しなくても既定時間で非表示にする（重複表示は前の予約を上書き）。
- * @param {string} message
- * @param {number|boolean} [autoHide] - 数: 非表示までの ms。`false` では非表示予約を付けない（`hideNotification` まで出し続け）。
- *   文字列（例: 旧来の 'error'）は無視し、既定 ms の自動非表示を行う。
- */
-export function showNotification(message, autoHide) {
+export function showNotification(message: string, autoHide: number | boolean = DEFAULT_TOAST_MS) {
     if (notificationTimeout) {
         clearTimeout(notificationTimeout);
         notificationTimeout = null;

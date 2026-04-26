@@ -1,4 +1,3 @@
-// @ts-nocheck
 // uxmusic/src/renderer/js/ui/playlist-artwork.js
 
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
