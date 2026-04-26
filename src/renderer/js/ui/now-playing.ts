@@ -5,6 +5,7 @@ import { state, elements } from '../core/state.js';
 import { setEqualizerColorFromArtwork, getCurrentTime, isPlaying } from '../features/player.js';
 import { resolveArtworkPath, formatSongTitle, checkTextOverflow } from './utils.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
+import { openFullscreenWindow, notifyFullscreenSongChange } from '../features/fullscreen-bridge.js';
 const electronAPI = window.electronAPI;
 
 const VIDEO_PREVIEW_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.ogv'];
@@ -298,4 +299,35 @@ export function updateNowPlayingView(song) {
         checkTextOverflow(nowPlayingTitle);
         checkTextOverflow(nowPlayingArtist);
     });
+
+    // フルスクリーンウィンドウへ曲情報を通知する
+    if (song) {
+        const artworkImg = nowPlayingArtworkContainer?.querySelector('img');
+        const artworkSrc = artworkImg?.src || DEFAULT_ARTWORK_URL;
+        notifyFullscreenSongChange(
+            formatSongTitle(song.title) || '',
+            song.artist || '',
+            artworkSrc,
+        );
+    }
+}
+
+/**
+ * 右クリックで右サイドバーのジャケットからフルスクリーンウィンドウを開くコンテキストメニューを設定する
+ */
+export function setupArtworkContextMenu() {
+    const artworkContainer = document.getElementById('now-playing-artwork-container');
+    const footerArtwork = document.getElementById('footer-artwork');
+
+    const openMenu = (event: MouseEvent) => {
+        event.preventDefault();
+        openFullscreenWindow();
+    };
+
+    if (artworkContainer) {
+        artworkContainer.addEventListener('contextmenu', openMenu);
+    }
+    if (footerArtwork) {
+        footerArtwork.addEventListener('contextmenu', openMenu);
+    }
 }

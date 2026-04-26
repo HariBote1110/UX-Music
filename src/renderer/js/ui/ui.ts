@@ -42,6 +42,11 @@ export function initUI() {
     // 初回実行（レンダリング完了を見越して少し遅延させる）
     setTimeout(updateListSpacer, 100);
 
+    // フルスクリーンウィンドウ起動用の右クリックメニューを設定する
+    void import('./now-playing.js').then(({ setupArtworkContextMenu }) => {
+        setupArtworkContextMenu();
+    });
+
     // --- MTP転送画面のボタン用イベントハンドラ（動的コンポーネント対応） ---
     document.addEventListener('click', (e) => {
         const target = e.target.closest('button');

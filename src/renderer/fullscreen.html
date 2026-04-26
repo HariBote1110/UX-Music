@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UX Music — Now Playing</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --highlight-pink: #ff5d77;
+            --highlight-blue: #3b82f6;
+            --primary-gradient: linear-gradient(135deg, var(--highlight-pink), var(--highlight-blue));
+            --bg-colour-1: #172554;
+            --bg-colour-2: #1e1b4b;
+            --text-primary: #ffffff;
+            --text-secondary: #a1a1aa;
+            --hover-bg: rgba(255, 255, 255, 0.08);
+        }
+
+        body {
+            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+            color: var(--text-primary);
+            background: linear-gradient(135deg, var(--bg-colour-1), var(--bg-colour-2));
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            position: relative;
+            transition: background 1.2s ease;
+        }
+
+        /* 背景ブラー装飾 */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: inherit;
+            filter: blur(0);
+            z-index: 0;
+        }
+
+        /* --- レイアウト --- */
+        .left-panel {
+            flex: 4;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            z-index: 2;
+        }
+
+        .right-panel {
+            flex: 6;
+            display: flex;
+            flex-direction: column;
+            padding: 60px 80px;
+            z-index: 2;
+            overflow: hidden;
+        }
+
+        /* --- アートワーク --- */
+        .artwork-wrapper {
+            width: 100%;
+            max-width: 420px;
+            aspect-ratio: 1 / 1;
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55);
+            margin-bottom: 40px;
+            background: #222;
+            flex-shrink: 0;
+        }
+
+        .artwork-wrapper img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.4s ease;
+        }
+
+        .artwork-wrapper img:hover {
+            transform: scale(1.03);
+        }
+
+        /* --- トラック情報 --- */
+        .track-info {
+            text-align: center;
+            width: 100%;
+            max-width: 420px;
+            margin-bottom: 36px;
+        }
+
+        .track-title {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            letter-spacing: 0.02em;
+        }
+
+        .track-artist {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* --- シークバー --- */
+        .playback-controls {
+            width: 100%;
+            max-width: 420px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 36px;
+        }
+
+        .progress-bar-container {
+            position: relative;
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .progress-bar-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 0%;
+            background: var(--text-primary);
+            border-radius: 3px;
+            pointer-events: none;
+            transition: background 1.2s ease;
+        }
+
+        .progress-bar-thumb {
+            position: absolute;
+            top: 50%;
+            left: 0%;
+            transform: translate(-50%, -50%) scale(0);
+            width: 13px;
+            height: 13px;
+            background-color: var(--text-primary);
+            border-radius: 50%;
+            transition: transform 0.15s;
+            pointer-events: none;
+        }
+
+        .progress-bar-container:hover .progress-bar-thumb {
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        .time-indicators {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* --- 操作ボタン群 --- */
+        .button-group {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 28px;
+        }
+
+        .btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.18s;
+            padding: 0;
+        }
+
+        .btn:hover {
+            color: var(--text-primary);
+            transform: scale(1.1);
+        }
+
+        .btn svg {
+            fill: currentColor;
+            width: 26px;
+            height: 26px;
+        }
+
+        .btn-play {
+            width: 68px;
+            height: 68px;
+            border-radius: 50%;
+            background-color: var(--text-primary);
+            color: #111;
+            transition: transform 0.18s, background-color 1.2s ease;
+        }
+
+        .btn-play:hover {
+            transform: scale(1.06);
+        }
+
+        .btn-play svg {
+            width: 34px;
+            height: 34px;
+        }
+
+        .btn-play .icon-pause {
+            display: none;
+        }
+
+        .btn-play.playing .icon-play {
+            display: none;
+        }
+
+        .btn-play.playing .icon-pause {
+            display: block;
+        }
+
+        /* --- 右パネル: タブ --- */
+        .tab-navigation {
+            display: flex;
+            gap: 36px;
+            margin-bottom: 36px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.7rem;
+            font-weight: 700;
+            cursor: pointer;
+            padding-bottom: 10px;
+            transition: color 0.25s;
+            position: relative;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .tab-btn.active {
+            color: var(--text-primary);
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: var(--primary-gradient);
+            border-radius: 4px 4px 0 0;
+        }
+
+        /* --- 歌詞ビュー --- */
+        .view-container {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .view-container.hidden {
+            display: none;
+        }
+
+        /* LRCモード: 絶対配置レイアウト */
+        #lyrics-view {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #lyrics-view.lyrics-mode-lrc p {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            font-size: 2.4rem;
+            font-weight: 700;
+            line-height: 1.45;
+            color: var(--text-secondary);
+            opacity: 0.5;
+            cursor: pointer;
+            transition: opacity 0.3s, color 0.3s;
+            transform: translateY(var(--lyrics-line-y, 0px));
+            transition-duration: var(--line-motion-duration, 0ms);
+            transition-delay: var(--line-motion-delay, 0ms);
+            transition-property: transform, opacity, color, font-size;
+        }
+
+        #lyrics-view.lyrics-mode-lrc p.active {
+            opacity: 1;
+            color: var(--text-primary);
+            font-size: 2.6rem;
+            text-shadow: 0 0 24px rgba(255, 255, 255, 0.18);
+        }
+
+        /* TXTモード: スクロール */
+        #lyrics-view.lyrics-mode-txt {
+            overflow-y: auto;
+            scrollbar-width: none;
+        }
+
+        #lyrics-view.lyrics-mode-txt::-webkit-scrollbar {
+            display: none;
+        }
+
+        #lyrics-view.lyrics-mode-txt p {
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            padding: 4px 0;
+        }
+
+        #lyrics-view.lyrics-mode-txt p.line-break {
+            margin-top: 12px;
+        }
+
+        /* 二言語表示 */
+        .lyrics-line--bilingual {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .lyrics-line-primary {
+            font-size: 1em;
+        }
+
+        .lyrics-line-translation {
+            font-size: 0.72em;
+            color: var(--text-secondary);
+            opacity: 0.75;
+        }
+
+        /* 歌詞なし */
+        .no-lyrics {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            line-height: 1.8;
+            padding-top: 20px;
+        }
+
+        /* 閉じるボタン */
+        .close-btn {
+            position: fixed;
+            top: 20px;
+            right: 24px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.08);
+            border: none;
+            color: var(--text-secondary);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.18);
+            color: var(--text-primary);
+        }
+
+        .close-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+    </style>
+</head>
+
+<body>
+
+    <button class="close-btn" id="close-btn" title="閉じる" aria-label="閉じる">
+        <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+    </button>
+
+    <!-- 左側：プレイヤーコントロールパネル -->
+    <div class="left-panel">
+        <div class="artwork-wrapper">
+            <img id="fs-artwork" src="./assets/default_artwork.png" alt="Album Artwork">
+        </div>
+
+        <div class="track-info">
+            <div class="track-title" id="fs-title">曲を選択してください</div>
+            <div class="track-artist" id="fs-artist"></div>
+        </div>
+
+        <div class="playback-controls">
+            <div class="progress-bar-container" id="fs-progress-container">
+                <div class="progress-bar-fill" id="fs-progress-fill"></div>
+                <div class="progress-bar-thumb" id="fs-progress-thumb"></div>
+            </div>
+            <div class="time-indicators">
+                <span id="fs-current-time">0:00</span>
+                <span id="fs-duration">0:00</span>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button class="btn" id="fs-shuffle-btn" aria-label="シャッフル">
+                <svg viewBox="0 0 24 24">
+                    <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
+                </svg>
+            </button>
+            <button class="btn" id="fs-prev-btn" aria-label="前の曲へ">
+                <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+            </button>
+            <button class="btn btn-play" id="fs-play-btn" aria-label="再生・一時停止">
+                <svg class="icon-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                <svg class="icon-pause" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </button>
+            <button class="btn" id="fs-next-btn" aria-label="次の曲へ">
+                <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+            </button>
+            <button class="btn" id="fs-loop-btn" aria-label="リピート">
+                <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- 右側：タブ切り替え -->
+    <div class="right-panel">
+        <div class="tab-navigation">
+            <button class="tab-btn active" data-target="lyrics-view" id="tab-lyrics">歌詞</button>
+        </div>
+
+        <div class="view-container" id="lyrics-view-container">
+            <div id="lyrics-view"></div>
+        </div>
+    </div>
+
+    <script type="module" src="./js/features/fullscreen-player.js"></script>
+</body>
+
+</html>

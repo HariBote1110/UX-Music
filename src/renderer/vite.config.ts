@@ -44,7 +44,10 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     rollupOptions: {
-      input: resolve(__dirname, 'index.html'),
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        fullscreen: resolve(__dirname, 'fullscreen.html'),
+      },
     },
   },
   server: {

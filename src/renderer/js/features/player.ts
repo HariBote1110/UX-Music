@@ -3,6 +3,10 @@
 
 import { elements, state } from '../core/state.js';
 import { updateSyncedLyrics } from './lyrics-manager.js';
+import {
+    notifyFullscreenTimeUpdate,
+    notifyFullscreenPlayState,
+} from './fullscreen-bridge.js';
 import { updatePlayingIndicators } from '../ui/ui-manager.js';
 import { updateLrcEditorControls } from './lrc-editor.js';
 import { setEqualizerColorFromArtwork } from '../ui/utils.js';
@@ -141,6 +145,7 @@ function attachPlayerListeners(player) {
     };
     player.ontimeupdate = () => {
         updateSyncedLyrics(player.currentTime);
+        notifyFullscreenTimeUpdate(player.currentTime, player.duration ?? 0);
     };
     player.onloadedmetadata = () => {
         updateMetadataUI();
@@ -153,12 +158,14 @@ function attachPlayerListeners(player) {
         updatePlayingIndicators();
         startVisualizerLoop();
         updateMediaSessionState('playing');
+        notifyFullscreenPlayState(true);
     };
 
     player.onpause = () => {
         updatePlaybackStateUI(false);
         stopVisualizerLoop();
         updateMediaSessionState('paused');
+        notifyFullscreenPlayState(false);
     };
 }
 

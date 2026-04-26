@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { state, elements } from '../core/state.js';
+import { notifyFullscreenLyrics } from './fullscreen-bridge.js';
 import { showContextMenu } from '../ui/utils.js';
 import { showNotification } from '../ui/notification.js';
 import { startLrcEditor } from './lrc-editor.js';
@@ -57,6 +58,7 @@ export async function loadLyricsForSong(song) {
     if (!result) {
         displayNoLyrics();
         setupLyricsContextMenu(song, null);
+        notifyFullscreenLyrics(null, null);
         return;
     }
 
@@ -81,10 +83,12 @@ export async function loadLyricsForSong(song) {
             state.currentLyrics = parsedLyrics;
             cachedTranslationPromptLines = parsedLyrics.map(l => l.text);
             renderLyrics(parsedLyrics);
+            notifyFullscreenLyrics(parsedLyrics, 'lrc');
         } else {
             console.error('[Lyrics Debug] LRCの解析後、データが空になりました。');
             state.currentLyricsType = null;
             displayNoLyrics();
+            notifyFullscreenLyrics(null, null);
         }
     } else if (result.type === 'txt') {
         const trans = typeof result.translationContent === 'string' ? result.translationContent.trim() : '';
@@ -93,9 +97,11 @@ export async function loadLyricsForSong(song) {
             cachedTranslationPromptLines = merged.map(l => l.text);
             state.currentLyrics = null;
             renderLyrics(merged);
+            notifyFullscreenLyrics(merged, 'txt');
         } else {
             cachedTranslationPromptLines = result.content.split('\n');
             renderLyrics(result.content);
+            notifyFullscreenLyrics(result.content, 'txt');
         }
     }
 
