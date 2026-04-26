@@ -279,7 +279,7 @@ function updateMtpDeviceView(payload) {
     }
 }
 
-export function addSongsToLibrary({ songs, albums }) {
+export function addSongsToLibrary({ songs, albums, skipRender = false }: { songs: unknown[]; albums: Record<string, unknown>; skipRender?: boolean }) {
     console.time('Renderer: Process Library Data');
     let migrationNeeded = false;
     let fullRegroupNeeded = false;
@@ -326,7 +326,7 @@ export function addSongsToLibrary({ songs, albums }) {
         const albumsToSave = Object.fromEntries(state.albums.entries());
         electronAPI.send('save-migrated-data', { songs: state.library, albums: albumsToSave });
     }
-    renderCurrentView();
+    if (!skipRender) renderCurrentView();
     console.timeEnd('Renderer: Process Library Data');
 }
 
