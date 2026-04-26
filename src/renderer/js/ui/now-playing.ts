@@ -6,6 +6,7 @@ import { setEqualizerColorFromArtwork, getCurrentTime, isPlaying } from '../feat
 import { resolveArtworkPath, formatSongTitle, checkTextOverflow } from './utils.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { openFullscreenWindow, notifyFullscreenSongChange } from '../features/fullscreen-bridge.js';
+import { showContextMenu } from './utils.js';
 const electronAPI = window.electronAPI;
 
 const VIDEO_PREVIEW_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.ogv'];
@@ -321,7 +322,13 @@ export function setupArtworkContextMenu() {
 
     const openMenu = (event: MouseEvent) => {
         event.preventDefault();
-        openFullscreenWindow();
+        event.stopPropagation();
+        showContextMenu(event.pageX, event.pageY, [
+            {
+                label: 'フルスクリーンで表示',
+                action: () => openFullscreenWindow(),
+            },
+        ]);
     };
 
     if (artworkContainer) {

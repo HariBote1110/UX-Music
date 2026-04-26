@@ -197,10 +197,18 @@
             transform: scale(1.1);
         }
 
+        .btn img,
         .btn svg {
-            fill: currentColor;
             width: 26px;
             height: 26px;
+            fill: currentColor;
+            filter: invert(1) brightness(0.65);
+            transition: filter 0.18s;
+        }
+
+        .btn:hover img,
+        .btn:hover svg {
+            filter: invert(1) brightness(1);
         }
 
         .btn-play {
@@ -216,9 +224,14 @@
             transform: scale(1.06);
         }
 
-        .btn-play svg {
+        .btn-play img {
             width: 34px;
             height: 34px;
+            filter: invert(0) brightness(0);
+        }
+
+        .btn-play:hover img {
+            filter: invert(0) brightness(0);
         }
 
         .btn-play .icon-pause {
@@ -424,22 +437,20 @@
 
         <div class="button-group">
             <button class="btn" id="fs-shuffle-btn" aria-label="シャッフル">
-                <svg viewBox="0 0 24 24">
-                    <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
-                </svg>
+                <img src="./assets/icons/random.svg" alt="シャッフル">
             </button>
             <button class="btn" id="fs-prev-btn" aria-label="前の曲へ">
-                <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+                <img src="./assets/icons/rewind_skip.svg" alt="前の曲">
             </button>
             <button class="btn btn-play" id="fs-play-btn" aria-label="再生・一時停止">
-                <svg class="icon-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                <svg class="icon-pause" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                <img class="icon-play" src="./assets/icons/play.svg" alt="再生">
+                <img class="icon-pause" src="./assets/icons/pause.svg" alt="一時停止">
             </button>
             <button class="btn" id="fs-next-btn" aria-label="次の曲へ">
-                <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                <img src="./assets/icons/next_skip.svg" alt="次の曲">
             </button>
             <button class="btn" id="fs-loop-btn" aria-label="リピート">
-                <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+                <img src="./assets/icons/repeat.svg" alt="リピート">
             </button>
         </div>
     </div>
