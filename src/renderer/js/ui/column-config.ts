@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/ui/column-config.js
 // リスト列の表示/非表示と幅を管理するモジュール
 

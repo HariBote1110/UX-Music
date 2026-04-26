@@ -1,8 +1,22 @@
-// @ts-nocheck
 // uxmusic/src/renderer/js/virtual-scroller.js
 
 export class VirtualScroller {
-    constructor({ element, data, renderItem, itemHeight, buffer = 10 }) {
+    container: HTMLElement;
+    data: unknown[];
+    renderItem: (item: unknown, index: number) => HTMLElement;
+    itemHeight: number;
+    buffer: number;
+    sizer: HTMLElement;
+    renderedItems: Map<number, HTMLElement>;
+    scrollTimeout: number | null = null;
+
+    constructor({ element, data, renderItem, itemHeight, buffer = 10 }: {
+        element: HTMLElement;
+        data: unknown[];
+        renderItem: (item: unknown, index: number) => HTMLElement;
+        itemHeight: number;
+        buffer?: number;
+    }) {
         if (!element || !data || !renderItem || !itemHeight) {
             throw new Error("VirtualScroller: Missing required constructor options.");
         }

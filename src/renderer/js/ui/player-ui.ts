@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/player-ui.js
 
 import { elements, state } from '../core/state.js';
@@ -251,7 +250,7 @@ function updateUiTime(current, duration) {
 
 function updateVolumeIcon() {
     const volume = parseFloat(elements.volumeSlider.value);
-    const volumeIcon = document.getElementById('volume-icon');
+    const volumeIcon = document.getElementById('volume-icon') as HTMLImageElement | null;
     if (!volumeIcon) return;
     if (volume === 0) volumeIcon.src = './assets/icons/mute.svg';
     else if (volume < 0.5) volumeIcon.src = './assets/icons/small_sound.svg';

@@ -1,4 +1,3 @@
-// @ts-nocheck
 const STYLE_ID = 'dynamic-grid-styles';
 
 // モジュールレベルで「最後に設定したテンプレート文字列」を保持
@@ -46,7 +45,7 @@ export function initColumnResizing(headerContainer) {
     // 既存のリサイザーをクリア
     headerContainer.querySelectorAll('.column-resizer').forEach(el => el.remove());
 
-    const headers = Array.from(headerContainer.children);
+    const headers = Array.from(headerContainer.children) as HTMLElement[];
 
     headers.forEach((header, index) => {
         // 最後の列にはリサイザーを追加しない
