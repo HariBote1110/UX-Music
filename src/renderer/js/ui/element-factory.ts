@@ -158,10 +158,8 @@ export function createQueueItem(song, isPlaying, queueIndex) {
     // Reorder DnD is not implemented; draggable breaks reliable click-to-play in WKWebView/Wails.
     queueItem.draggable = false;
 
-    const artworkHTML = state.isLightFlightMode ? '' : `<img src="${DEFAULT_ARTWORK_URL}" class="artwork-small" alt="artwork">`;
-
     queueItem.innerHTML = `
-        ${artworkHTML}
+        <img src="${DEFAULT_ARTWORK_URL}" class="artwork-small" alt="artwork">
         <div class="queue-item-info">
             <div class="queue-item-title marquee-wrapper">
                 <div class="marquee-content">
@@ -176,18 +174,14 @@ export function createQueueItem(song, isPlaying, queueIndex) {
         </div>
     `;
 
-    if (!state.isLightFlightMode) {
-        const artworkImg = queueItem.querySelector('.artwork-small');
-        const album = state.albums.get(song.albumKey);
-
-        let finalArtwork = song.artwork;
-        if (!finalArtwork && song.album !== 'Unknown Album') {
-            finalArtwork = album ? album.artwork : null;
-        }
-
-        artworkImg.src = resolveArtworkPath(finalArtwork, true);
-        artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
+    const artworkImg = queueItem.querySelector('.artwork-small');
+    const album = state.albums.get(song.albumKey);
+    let finalArtwork = song.artwork;
+    if (!finalArtwork && song.album !== 'Unknown Album') {
+        finalArtwork = album ? album.artwork : null;
     }
+    artworkImg.src = resolveArtworkPath(finalArtwork, true);
+    artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
 
     return queueItem;
 }
@@ -197,10 +191,8 @@ export function createAlbumGridItem(key, album) {
     const albumItem = document.createElement('div');
     albumItem.className = 'album-grid-item';
 
-    const artworkHTML = state.isLightFlightMode ? '<div class="album-artwork placeholder-artwork"></div>' : `<img src="${DEFAULT_ARTWORK_URL}" class="album-artwork lazy-load" alt="${escapeHtml(album.title)}">`;
-
     albumItem.innerHTML = `
-        ${artworkHTML}
+        <img src="${DEFAULT_ARTWORK_URL}" class="album-artwork lazy-load" alt="${escapeHtml(album.title)}">
         <div class="album-title marquee-wrapper">
             <div class="marquee-content">
                 <span>${escapeHtml(album.title || 'Unknown Album')}</span>
@@ -213,18 +205,13 @@ export function createAlbumGridItem(key, album) {
         </div>
     `;
 
-    if (!state.isLightFlightMode) {
-        const artworkImg = albumItem.querySelector('.album-artwork');
-        artworkImg.classList.add('lazy-load');
-
-        let artworkToUse = album.artwork;
-        if (!artworkToUse) {
-            artworkToUse = findArtworkFromSongIds(album?.songIds);
-        }
-        artworkImg.dataset.src = resolveArtworkPath(artworkToUse, false);
-
-        artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
+    const artworkImg = albumItem.querySelector('.album-artwork');
+    let artworkToUse = album.artwork;
+    if (!artworkToUse) {
+        artworkToUse = findArtworkFromSongIds(album?.songIds);
     }
+    artworkImg.dataset.src = resolveArtworkPath(artworkToUse, false);
+    artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
 
     return albumItem;
 }
@@ -233,10 +220,8 @@ export function createArtistGridItem(artist) {
     const artistItem = document.createElement('div');
     artistItem.className = 'artist-grid-item';
 
-    const artworkHTML = state.isLightFlightMode ? '<div class="artist-artwork placeholder-artwork"></div>' : `<img src="${DEFAULT_ARTWORK_URL}" class="artist-artwork lazy-load" alt="${escapeHtml(artist.name)}">`;
-
     artistItem.innerHTML = `
-        ${artworkHTML}
+        <img src="${DEFAULT_ARTWORK_URL}" class="artist-artwork lazy-load" alt="${escapeHtml(artist.name)}">
         <div class="artist-name marquee-wrapper">
             <div class="marquee-content">
                 <span>${escapeHtml(artist.name)}</span>
@@ -244,12 +229,9 @@ export function createArtistGridItem(artist) {
         </div>
     `;
 
-    if (!state.isLightFlightMode) {
-        const artworkImg = artistItem.querySelector('.artist-artwork');
-        artworkImg.classList.add('lazy-load');
-        artworkImg.dataset.src = resolveArtworkPath(artist.artwork, false);
-        artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
-    }
+    const artworkImg = artistItem.querySelector('.artist-artwork');
+    artworkImg.dataset.src = resolveArtworkPath(artist.artwork, false);
+    artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
 
     return artistItem;
 }
@@ -258,10 +240,8 @@ export function createPlaylistGridItem(playlist) {
     const playlistItem = document.createElement('div');
     playlistItem.className = 'playlist-grid-item';
 
-    const artworkHTML = state.isLightFlightMode ? '<div class="playlist-artwork-container placeholder-artwork"></div>' : `<div class="playlist-artwork-container"></div>`;
-
     playlistItem.innerHTML = `
-        ${artworkHTML}
+        <div class="playlist-artwork-container"></div>
         <div class="playlist-title marquee-wrapper">
             <div class="marquee-content">
                 <span>${escapeHtml(playlist.name)}</span>
@@ -269,11 +249,9 @@ export function createPlaylistGridItem(playlist) {
         </div>
     `;
 
-    if (!state.isLightFlightMode) {
-        const artworkContainer = playlistItem.querySelector('.playlist-artwork-container');
-        const resolver = (artwork) => resolveArtworkPath(artwork, false);
-        createPlaylistArtwork(artworkContainer, playlist.artworks, resolver);
-    }
+    const artworkContainer = playlistItem.querySelector('.playlist-artwork-container');
+    const resolver = (artwork) => resolveArtworkPath(artwork, false);
+    createPlaylistArtwork(artworkContainer, playlist.artworks, resolver);
 
     return playlistItem;
 }

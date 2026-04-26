@@ -55,8 +55,6 @@ export function initElements() {
     elements.settingsOkBtn = document.getElementById('settings-ok-btn');
     elements.notificationToast = document.getElementById('notification-toast');
     elements.notificationText = document.getElementById('notification-text');
-    elements.lightFlightModeBtn = document.getElementById('light-flight-mode-btn');
-
     // Sidebar
     elements.lyricsView = document.getElementById('lyrics-view');
     elements.sidebarTabs = document.querySelectorAll('.sidebar-tab-btn');

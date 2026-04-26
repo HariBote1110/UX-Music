@@ -149,27 +149,6 @@ export function initSettings() {
         elements.settingsModalOverlay.classList.add('hidden');
     });
 
-    let userPreferredVisualizerMode = 'active';
-
-    elements.lightFlightModeBtn.addEventListener('click', () => {
-        state.isLightFlightMode = !state.isLightFlightMode;
-        document.body.classList.toggle('light-flight-mode', state.isLightFlightMode);
-        elements.lightFlightModeBtn.classList.toggle('active', state.isLightFlightMode);
-
-        if (state.isLightFlightMode) {
-            userPreferredVisualizerMode = state.visualizerMode;
-            state.visualizerMode = 'static';
-            state.userPreferredVisualizerFps = state.visualizerFpsLimit;
-            setVisualizerFpsLimit(30);
-        } else {
-            state.visualizerMode = userPreferredVisualizerMode;
-            setVisualizerFpsLimit(state.userPreferredVisualizerFps);
-        }
-
-        renderCurrentView();
-        updateNowPlayingView(state.playbackQueue[state.currentSongIndex]);
-    });
-
     document.getElementById('manage-devices-btn').addEventListener('click', async () => {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioDevices = devices.filter(d => d.kind === 'audiooutput');

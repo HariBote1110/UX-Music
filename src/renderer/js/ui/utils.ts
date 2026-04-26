@@ -11,9 +11,6 @@ import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
  * @returns {string} - The URL or path to the artwork image.
  */
 export function resolveArtworkPath(artwork, isThumbnail = false) {
-    // Light Flight Mode が有効な場合は、アートワークの読み込みを完全に停止する
-    if (state.isLightFlightMode) return DEFAULT_ARTWORK_URL;
-
     if (!artwork) return DEFAULT_ARTWORK_URL;
 
     // Handle external URLs (http, data URIs)
@@ -361,12 +358,6 @@ export async function setEqualizerColorFromArtwork(imageElement) {
         document.documentElement.style.setProperty('--eq-color-1', 'var(--highlight-pink)');
         document.documentElement.style.setProperty('--eq-color-2', 'var(--highlight-blue)');
     };
-
-    // ライトフライトモードでは色を変更しない
-    if (state.isLightFlightMode) {
-        setDefaultColors();
-        return;
-    }
 
     if (imageElement && imageElement.src && !imageElement.src.endsWith('default_artwork.png')) {
         // CORS対応

@@ -65,10 +65,6 @@
     background-color: var(--bg-hover);
 }
 
-#light-flight-mode-btn.active {
-    color: var(--highlight-pink);
-    background-color: var(--bg-hover);
-}
 
 #library-actions-container {
     position: relative;

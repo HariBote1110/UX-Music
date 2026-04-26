@@ -374,14 +374,6 @@
     opacity: 1;
 }
 
-body.light-flight-mode .song-item.playing.indicator-ready .playing-indicator {
-    display: none;
-}
-
-body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img {
-    display: block;
-}
-
 /* --- グリッド表示のスタイル --- */
 #album-grid,
 #playlist-grid,
@@ -928,16 +920,6 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     /* クリックなどの操作を無効化 */
 }
 
-/* --- Light Flight Mode --- */
-/* 詳細ビューのヘッダーアートワークは非表示 */
-body.light-flight-mode .detail-art-img {
-    display: none;
-}
-
-/* ビジュアライザーの色を変更 */
-body.light-flight-mode .playing-indicator-bar {
-    background: var(--text-secondary);
-}
 
 /* リストのスクロールバー末尾（下部）を再生バーの高さ分押し上げる */
 #music-list::-webkit-scrollbar-button:vertical:end:increment,

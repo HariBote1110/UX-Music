@@ -148,7 +148,7 @@ let goFetchIntervalId = null;
 
 async function fetchGoData() {
     if (isFetchingGoData || !getWailsApp()) return;
-    if (state.isLightFlightMode || state.visualizerMode === 'static') return;
+    if (state.visualizerMode === 'static') return;
     if (isEcoModeEnabled && !isVisualizerVisible) return;
 
     isFetchingGoData = true;
@@ -206,7 +206,7 @@ function draw(timestamp) {
     }
 
     if (isEcoModeEnabled && !isVisualizerVisible) return;
-    if (state.isLightFlightMode || state.visualizerMode === 'static') return;
+    if (state.visualizerMode === 'static') return;
 
     if (state.visualizerFpsLimit > 0) {
         const frameInterval = 1000 / state.visualizerFpsLimit;

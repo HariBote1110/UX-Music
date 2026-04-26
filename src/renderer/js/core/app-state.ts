@@ -32,11 +32,9 @@ export interface AppState {
     preferredDeviceId: string | null;
     activeViewId: string;
     visualizerMode: string;
-    isLightFlightMode: boolean;
     userPreferredVisualizerFps: number;
     selectedSongIds: Set<string>;
     copiedSongIds: string[];
-    groupAlbumArt: boolean;
     analysedQueue: { enabled: boolean; decayDays: number };
     equalizerSettings: {
         active: boolean;
@@ -88,11 +86,9 @@ export const state: AppState = {
     preferredDeviceId: null,
     activeViewId: 'track-view',
     visualizerMode: 'active',
-    isLightFlightMode: false,
     userPreferredVisualizerFps: 0,
     selectedSongIds: new Set(),
     copiedSongIds: [],
-    groupAlbumArt: false,
     analysedQueue: {
         enabled: false,
         decayDays: 7,
