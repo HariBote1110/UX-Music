@@ -1,6 +1,6 @@
 // フルスクリーンオーバーレイ — 既存ウィンドウ内に全画面表示する
 
-import { state, elements } from '../core/state.js';
+import { state, elements, PLAYBACK_MODES } from '../core/state.js';
 import { getCurrentTime, getDuration, isPlaying, togglePlayPause, seek } from './player.js';
 import { playNextSong, playPrevSong } from './playback-manager.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
@@ -17,6 +17,8 @@ let artworkEl: HTMLImageElement | null = null;
 let titleEl: HTMLElement | null = null;
 let artistEl: HTMLElement | null = null;
 
+let shuffleBtn: HTMLElement | null = null;
+let loopBtn: HTMLElement | null = null;
 let tickerId: ReturnType<typeof setInterval> | null = null;
 let isSeeking = false;
 let seekRatio = 0;
@@ -82,6 +84,7 @@ function startTicker() {
         const dur = getDuration();
         if (!isSeeking) updateProgress(time, dur);
         syncPlayState(isPlaying());
+        syncButtonStates();
         syncLyricsToTime(time);
     }, 200);
 }
@@ -100,9 +103,22 @@ function syncAll() {
     syncLyrics();
     syncColours();
     syncPlayState(isPlaying());
+    syncButtonStates();
     const time = getCurrentTime();
     const dur = getDuration();
     updateProgress(time, dur);
+}
+
+function syncButtonStates() {
+    if (shuffleBtn) {
+        shuffleBtn.classList.toggle('active', state.isShuffled);
+    }
+    if (loopBtn) {
+        const isActive = state.playbackMode !== PLAYBACK_MODES.NORMAL;
+        const isLoopOne = state.playbackMode === PLAYBACK_MODES.LOOP_ONE;
+        loopBtn.classList.toggle('active', isActive);
+        loopBtn.classList.toggle('loop-one', isLoopOne);
+    }
 }
 
 function syncSongInfo() {
@@ -331,8 +347,9 @@ function buildOverlay(): HTMLElement {
                     <img src="./assets/icons/rewind_skip.svg" alt="前の曲">
                 </button>
                 <button class="fs-btn fs-play-btn" id="fs-play-btn" aria-label="再生・一時停止">
-                    <img class="fs-icon-play" src="./assets/icons/play.svg" alt="再生">
-                    <img class="fs-icon-pause" src="./assets/icons/pause.svg" alt="一時停止">
+                    <svg class="play-pause-icon" viewBox="0 0 24 24">
+                        <path class="icon-part-1"/><path class="icon-part-2"/>
+                    </svg>
                 </button>
                 <button class="fs-btn" id="fs-next-btn" aria-label="次の曲">
                     <img src="./assets/icons/next_skip.svg" alt="次の曲">
@@ -362,6 +379,8 @@ function buildOverlay(): HTMLElement {
     currentTimeEl = el.querySelector('#fs-current-time');
     durationEl    = el.querySelector('#fs-duration');
     playBtn       = el.querySelector('#fs-play-btn');
+    shuffleBtn    = el.querySelector('#fs-shuffle-btn');
+    loopBtn       = el.querySelector('#fs-loop-btn');
     lyricsEl      = el.querySelector('#fs-lyrics');
 
     // 閉じるボタン

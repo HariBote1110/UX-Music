@@ -1642,14 +1642,64 @@
     transform: scale(1.06);
     background: #fff;
 }
-.fs-play-btn img {
+/* SVG モーフィングアイコン */
+.fs-play-btn .play-pause-icon {
     width: 32px;
     height: 32px;
-    filter: invert(0) brightness(0);
+    fill: #111;
 }
-.fs-icon-pause { display: none; }
-.fs-play-btn.playing .fs-icon-play { display: none; }
-.fs-play-btn.playing .fs-icon-pause { display: block; }
+.fs-play-btn .play-pause-icon path {
+    transition: d 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.fs-play-btn .icon-part-1 {
+    d: path("M 8 5 L 18 12 L 8 12 L 8 5 Z");
+}
+.fs-play-btn .icon-part-2 {
+    d: path("M 8 19 L 18 12 L 8 12 L 8 19 Z");
+}
+.fs-play-btn.playing .icon-part-1 {
+    d: path("M 6 5 L 10 5 L 10 19 L 6 19 Z");
+}
+.fs-play-btn.playing .icon-part-2 {
+    d: path("M 14 5 L 18 5 L 18 19 L 14 19 Z");
+}
+
+/* シャッフル・ループ アクティブ状態 */
+#fs-shuffle-btn,
+#fs-loop-btn {
+    position: relative;
+}
+#fs-shuffle-btn.active img,
+#fs-loop-btn.active img {
+    filter: invert(48%) sepia(21%) saturate(1475%) hue-rotate(312deg) brightness(90%) contrast(86%);
+    opacity: 1;
+}
+#fs-shuffle-btn.active::after,
+#fs-loop-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;
+    height: 5px;
+    background: var(--highlight-pink);
+    border-radius: 50%;
+}
+#fs-loop-btn.loop-one::after {
+    content: '1';
+    bottom: -10px;
+    width: 14px;
+    height: 14px;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--highlight-pink);
+    background: transparent;
+    border-radius: 0;
+}
 
 /* 右パネル タブ */
 .fs-tab-nav {
