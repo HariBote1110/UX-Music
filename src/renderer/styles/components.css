@@ -757,6 +757,117 @@
     flex-shrink: 0;
 }
 
+#settings-modal .licence-details > summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#settings-modal .licence-details > summary::before {
+    content: '▶';
+    font-size: 9px;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+#settings-modal .licence-details[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+#settings-modal .licence-scroll {
+    margin-top: 12px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+#settings-modal .licence-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+#settings-modal .licence-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#settings-modal .licence-scroll::-webkit-scrollbar-thumb {
+    background: var(--bg-light);
+    border-radius: 2px;
+}
+
+#settings-modal .licence-section {
+    margin-bottom: 16px;
+}
+
+#settings-modal .licence-section h5 {
+    margin: 0 0 8px 0;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+#settings-modal .licence-list {
+    margin: 0;
+    padding: 0;
+}
+
+#settings-modal .licence-entry {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 5px 0;
+    border-top: 1px solid var(--bg-light);
+    font-size: 12px;
+}
+
+#settings-modal .licence-list .licence-entry:first-child {
+    border-top: none;
+}
+
+#settings-modal .licence-entry dt {
+    flex: 1;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+#settings-modal .licence-entry dd {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+#settings-modal .licence-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    background-color: rgba(99, 179, 237, 0.15);
+    color: #63b3ed;
+    border: 1px solid rgba(99, 179, 237, 0.3);
+    white-space: nowrap;
+}
+
+#settings-modal .licence-badge--proprietary {
+    background-color: rgba(246, 173, 85, 0.15);
+    color: #f6ad55;
+    border-color: rgba(246, 173, 85, 0.3);
+}
+
 
 #loading-overlay {
     background-color: rgba(0, 0, 0, 0.8);
@@ -1492,7 +1603,8 @@
 
 /* レイアウト */
 .fs-left {
-    flex: 4;
+    flex: 4 4 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -1705,12 +1817,26 @@
     flex-shrink: 0;
 }
 .fs-tab-label {
+    background: none;
+    border: none;
+    cursor: pointer;
     font-size: 1.6rem;
     font-weight: 700;
-    padding-bottom: 10px;
+    padding: 0 0 10px 0;
     display: inline-block;
-    border-bottom: 4px solid transparent;
-    border-image: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue)) 1;
+    color: rgba(255, 255, 255, 0.4);
+    border-bottom: 3px solid transparent;
+    transition: color 0.18s ease;
+}
+.fs-tab-label + .fs-tab-label {
+    margin-left: 28px;
+}
+.fs-tab-label.active {
+    color: #fff;
+    border-bottom-color: #fff;
+}
+.fs-tab-label:hover:not(.active) {
+    color: rgba(255, 255, 255, 0.75);
 }
 
 /* 歌詞コンテナ */
@@ -1720,6 +1846,62 @@
     position: relative;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%);
     mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%);
+}
+
+/* キューコンテナ */
+.fs-queue-container {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
+}
+.fs-queue-inner {
+    height: 100%;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 8px 0;
+}
+.fs-queue-inner::-webkit-scrollbar { display: none; }
+.fs-queue-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 4px;
+    border-radius: 8px;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.15s ease, background 0.15s ease;
+}
+.fs-queue-item:hover {
+    opacity: 0.85;
+    background: rgba(255, 255, 255, 0.07);
+}
+.fs-queue-item.active {
+    opacity: 1;
+}
+.fs-queue-item.active .fs-queue-title {
+    color: #fff;
+    font-weight: 700;
+}
+.fs-queue-info {
+    flex: 1;
+    min-width: 0;
+}
+.fs-queue-title {
+    font-size: 1rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.fs-queue-artist {
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.5);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
 }
 
 /* LRCモード */

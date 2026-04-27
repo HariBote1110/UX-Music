@@ -2,7 +2,7 @@
 
 import { state, elements, PLAYBACK_MODES } from '../core/state.js';
 import { getCurrentTime, getDuration, isPlaying, togglePlayPause, seek } from './player.js';
-import { playNextSong, playPrevSong } from './playback-manager.js';
+import { playNextSong, playPrevSong, playSong } from './playback-manager.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { animateIconPaths } from '../ui/player-ui.js';
 
@@ -21,6 +21,10 @@ let artistEl: HTMLElement | null = null;
 let shuffleBtn: HTMLElement | null = null;
 let loopBtn: HTMLElement | null = null;
 let fsPlayPart1: SVGPathElement | null = null;
+let queueEl: HTMLElement | null = null;
+let lyricsContainer: HTMLElement | null = null;
+let queueContainer: HTMLElement | null = null;
+let activeTab: 'lyrics' | 'queue' = 'lyrics';
 let fsPlayPart2: SVGPathElement | null = null;
 let fsShuffleAnimRunning = false;
 let fsLoopAnimRunning = false;
@@ -65,6 +69,7 @@ export function notifyFullscreenSongChange() {
     syncSongInfo();
     syncLyrics();
     syncColours();
+    if (activeTab === 'queue') renderQueue();
 }
 
 /** 歌詞が変わったときに呼ぶ */
@@ -125,6 +130,52 @@ function syncButtonStates() {
         const isLoopOne = state.playbackMode === PLAYBACK_MODES.LOOP_ONE;
         loopBtn.classList.toggle('active', isActive);
         loopBtn.classList.toggle('loop-one', isLoopOne);
+    }
+}
+
+function switchTab(tab: 'lyrics' | 'queue', root: HTMLElement) {
+    activeTab = tab;
+    root.querySelectorAll('.fs-tab-label').forEach((t) => {
+        (t as HTMLElement).classList.toggle('active', (t as HTMLElement).dataset.tab === tab);
+    });
+    lyricsContainer?.classList.toggle('hidden', tab !== 'lyrics');
+    queueContainer?.classList.toggle('hidden', tab !== 'queue');
+    if (tab === 'queue') renderQueue();
+}
+
+function renderQueue() {
+    if (!queueEl) return;
+    const queue = state.playbackQueue;
+    const current = state.currentSongIndex;
+    queueEl.innerHTML = '';
+
+    queue.forEach((song, i) => {
+        const item = document.createElement('div');
+        item.className = 'fs-queue-item' + (i === current ? ' active' : '');
+
+        const info = document.createElement('div');
+        info.className = 'fs-queue-info';
+
+        const title = document.createElement('div');
+        title.className = 'fs-queue-title';
+        title.textContent = song.title || '不明なタイトル';
+
+        const artist = document.createElement('div');
+        artist.className = 'fs-queue-artist';
+        artist.textContent = song.artist || '';
+
+        info.appendChild(title);
+        info.appendChild(artist);
+        item.appendChild(info);
+
+        item.addEventListener('click', () => playSong(i, null, true));
+        queueEl!.appendChild(item);
+    });
+
+    // 現在の曲を中央付近にスクロール
+    const activeItem = queueEl.querySelector('.fs-queue-item.active') as HTMLElement | null;
+    if (activeItem) {
+        activeItem.scrollIntoView({ block: 'center', behavior: 'instant' });
     }
 }
 
@@ -500,10 +551,14 @@ function buildOverlay(): HTMLElement {
 
         <div class="fs-right">
             <div class="fs-tab-nav">
-                <span class="fs-tab-label">歌詞</span>
+                <button class="fs-tab-label active" data-tab="lyrics">歌詞</button>
+                <button class="fs-tab-label" data-tab="queue">キュー</button>
             </div>
-            <div class="fs-lyrics-container">
+            <div class="fs-lyrics-container" id="fs-lyrics-container">
                 <div class="fs-lyrics-inner" id="fs-lyrics"></div>
+            </div>
+            <div class="fs-queue-container hidden" id="fs-queue-container">
+                <div class="fs-queue-inner" id="fs-queue"></div>
             </div>
         </div>
     `;
@@ -519,11 +574,22 @@ function buildOverlay(): HTMLElement {
     playBtn       = el.querySelector('#fs-play-btn');
     shuffleBtn    = el.querySelector('#fs-shuffle-btn');
     loopBtn       = el.querySelector('#fs-loop-btn');
-    lyricsEl      = el.querySelector('#fs-lyrics');
-    fsPlayPart1   = el.querySelector('#fs-play-btn .icon-part-1');
-    fsPlayPart2   = el.querySelector('#fs-play-btn .icon-part-2');
+    lyricsEl       = el.querySelector('#fs-lyrics');
+    queueEl        = el.querySelector('#fs-queue');
+    lyricsContainer = el.querySelector('#fs-lyrics-container');
+    queueContainer  = el.querySelector('#fs-queue-container');
+    fsPlayPart1    = el.querySelector('#fs-play-btn .icon-part-1');
+    fsPlayPart2    = el.querySelector('#fs-play-btn .icon-part-2');
 
     initialiseFsShuffleLoop();
+
+    // タブ切り替え
+    el.querySelectorAll('.fs-tab-label').forEach((tab) => {
+        tab.addEventListener('click', () => {
+            const t = (tab as HTMLElement).dataset.tab as 'lyrics' | 'queue';
+            switchTab(t, el);
+        });
+    });
 
     // 閉じるボタン
     el.querySelector('#fs-close-btn').addEventListener('click', () => closeFullscreenView());
