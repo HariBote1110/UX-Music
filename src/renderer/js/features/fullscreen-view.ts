@@ -348,7 +348,13 @@ function buildOverlay(): HTMLElement {
                 </button>
                 <button class="fs-btn fs-play-btn" id="fs-play-btn" aria-label="再生・一時停止">
                     <svg class="play-pause-icon" viewBox="0 0 24 24">
-                        <path class="icon-part-1"/><path class="icon-part-2"/>
+                        <g class="icon-play-group">
+                            <path d="M 8 5 L 19 12 L 8 19 Z"/>
+                        </g>
+                        <g class="icon-pause-group">
+                            <rect x="5" y="4" width="4.5" height="16" rx="1"/>
+                            <rect x="14.5" y="4" width="4.5" height="16" rx="1"/>
+                        </g>
                     </svg>
                 </button>
                 <button class="fs-btn" id="fs-next-btn" aria-label="次の曲">

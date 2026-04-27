@@ -1630,6 +1630,7 @@
     width: 26px;
     height: 26px;
     filter: invert(1);
+    transition: filter 0.18s ease;
 }
 .fs-play-btn {
     width: 64px;
@@ -1642,26 +1643,25 @@
     transform: scale(1.06);
     background: #fff;
 }
-/* SVG モーフィングアイコン */
+/* 再生/一時停止 クロスフェード */
 .fs-play-btn .play-pause-icon {
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
     fill: #111;
+    position: relative;
 }
-.fs-play-btn .play-pause-icon path {
-    transition: d 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+.fs-play-btn .icon-play-group,
+.fs-play-btn .icon-pause-group {
+    transition: opacity 0.22s ease;
 }
-.fs-play-btn .icon-part-1 {
-    d: path("M 8 5 L 18 12 L 8 12 L 8 5 Z");
+.fs-play-btn .icon-pause-group {
+    opacity: 0;
 }
-.fs-play-btn .icon-part-2 {
-    d: path("M 8 19 L 18 12 L 8 12 L 8 19 Z");
+.fs-play-btn.playing .icon-play-group {
+    opacity: 0;
 }
-.fs-play-btn.playing .icon-part-1 {
-    d: path("M 6 5 L 10 5 L 10 19 L 6 19 Z");
-}
-.fs-play-btn.playing .icon-part-2 {
-    d: path("M 14 5 L 18 5 L 18 19 L 14 19 Z");
+.fs-play-btn.playing .icon-pause-group {
+    opacity: 1;
 }
 
 /* シャッフル・ループ アクティブ状態 */
