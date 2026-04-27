@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/features/normalize-view.ts — mainContent 描画用
 import { getNormalizeViewHtml } from './normalize-view-html.js';
 
@@ -53,12 +52,12 @@ function updateFileList() {
     tbody.innerHTML = '';
 
     if (normalizeFiles.size === 0) {
-        const analyseBtn = document.getElementById('normalize-analyze-btn');
-        const applyBtn = document.getElementById('normalize-apply-btn');
+        const analyseBtn = document.getElementById('normalize-analyze-btn') as HTMLButtonElement | null;
+        const applyBtn = document.getElementById('normalize-apply-btn') as HTMLButtonElement | null;
         if (analyseBtn) analyseBtn.disabled = true;
         if (applyBtn) applyBtn.disabled = true;
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
+        (selectAllCheckbox as HTMLInputElement).checked = false;
+        (selectAllCheckbox as HTMLInputElement).indeterminate = false;
         return;
     }
 
@@ -88,36 +87,37 @@ function updateFileList() {
 
     tbody.querySelectorAll('.normalize-select-item').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
-            const fileId = e.target.dataset.id;
+            const target = e.target as HTMLInputElement | null;
+            const fileId = target?.dataset.id;
             const file = normalizeFiles.get(fileId);
             if (file) {
-                file.selected = e.target.checked;
+                file.selected = target?.checked;
                 updateFileList();
             }
         });
     });
 
     if (selectedCount === 0) {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
+        (selectAllCheckbox as HTMLInputElement).checked = false;
+        (selectAllCheckbox as HTMLInputElement).indeterminate = false;
     } else if (selectedCount === normalizeFiles.size) {
-        selectAllCheckbox.checked = true;
-        selectAllCheckbox.indeterminate = false;
+        (selectAllCheckbox as HTMLInputElement).checked = true;
+        (selectAllCheckbox as HTMLInputElement).indeterminate = false;
     } else {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = true;
+        (selectAllCheckbox as HTMLInputElement).checked = false;
+        (selectAllCheckbox as HTMLInputElement).indeterminate = true;
     }
 
-    const analyseEl = document.getElementById('normalize-analyze-btn');
+    const analyseEl = document.getElementById('normalize-analyze-btn') as HTMLButtonElement | null;
     if (analyseEl) analyseEl.disabled = !hasUnanalysedSelected;
 
     const applyButtonDisabled = !(selectedCount > 0 && canApply && (outputSettings.mode === 'overwrite' || (outputSettings.mode === 'folder' && outputSettings.path)));
-    const applyEl = document.getElementById('normalize-apply-btn');
+    const applyEl = document.getElementById('normalize-apply-btn') as HTMLButtonElement | null;
     if (applyEl) applyEl.disabled = applyButtonDisabled;
 }
 
 async function addFiles(filePaths, preAnalysedData = {}) {
-    const slider = document.getElementById('target-lufs-slider');
+    const slider = document.getElementById('target-lufs-slider') as HTMLInputElement | null;
     const targetLufs = parseFloat(slider ? slider.value : '-18');
     for (const filePath of filePaths) {
         const fileName = getBasename(filePath);
@@ -153,7 +153,7 @@ async function addFiles(filePaths, preAnalysedData = {}) {
 }
 
 function updateProgress(processed, total, label) {
-    const progressBar = document.getElementById('normalize-progress-bar');
+    const progressBar = document.getElementById('normalize-progress-bar') as HTMLProgressElement | null;
     const progressLabel = document.getElementById('normalize-progress-label');
     const progressContainer = document.getElementById('normalize-progress-container');
 
@@ -174,7 +174,8 @@ function registerNormalizeIpcHandlerOnce() {
     if (normalizeIpcHandlerRegistered) return;
     normalizeIpcHandlerRegistered = true;
 
-    electronAPI.on('normalize-worker-result', ({ type, id, result }) => {
+    electronAPI.on('normalize-worker-result', ((...args: unknown[]) => {
+        const { type, id, result } = args[0] as { type: string; id: string; result: any };
         const file = normalizeFiles.get(id);
         if (!file) return;
 
@@ -214,7 +215,7 @@ function registerNormalizeIpcHandlerOnce() {
         updateFileList();
         updateProgress(jobProcessedCount, jobTotalCount, currentJob === 'analyze' ? '解析中' : '適用中');
         electronAPI.send('normalize-worker-finished-file');
-    });
+    }) as (...args: unknown[]) => void);
 }
 
 /**
@@ -222,7 +223,7 @@ function registerNormalizeIpcHandlerOnce() {
  * @param {HTMLElement} container
  * @param {{ signal?: AbortSignal }} [options]
  */
-export function renderNormalizeView(container, options = {}) {
+export function renderNormalizeView(container: HTMLElement, options: { signal?: AbortSignal } = {}) {
     const { signal } = options;
     registerNormalizeIpcHandlerOnce();
 
@@ -238,7 +239,7 @@ export function renderNormalizeView(container, options = {}) {
             e.preventDefault();
             e.stopPropagation();
             dropZone.classList.remove('drag-over');
-            const files = Array.from(e.dataTransfer.files).map(f => f.path);
+            const files = Array.from((e as DragEvent).dataTransfer!.files).map(f => (f as any).path as string);
             addFiles(files);
         }, { signal });
     } else {
@@ -248,7 +249,7 @@ export function renderNormalizeView(container, options = {}) {
             e.preventDefault();
             e.stopPropagation();
             dropZone.classList.remove('drag-over');
-            const files = Array.from(e.dataTransfer.files).map(f => f.path);
+            const files = Array.from((e as DragEvent).dataTransfer!.files).map(f => (f as any).path as string);
             addFiles(files);
         });
     }
@@ -261,29 +262,29 @@ export function renderNormalizeView(container, options = {}) {
     };
 
     bind('normalize-add-files-btn', 'click', async () => {
-        const filePaths = await electronAPI.invoke('select-files-for-normalize');
+        const filePaths = await electronAPI.invoke('select-files-for-normalize') as string[];
         if (filePaths.length > 0) addFiles(filePaths);
     });
     bind('normalize-add-folder-btn', 'click', async () => {
-        const filePaths = await electronAPI.invoke('select-folder-for-normalize');
+        const filePaths = await electronAPI.invoke('select-folder-for-normalize') as string[];
         if (filePaths.length > 0) addFiles(filePaths);
     });
     bind('normalize-load-library-btn', 'click', async () => {
-        const library = await electronAPI.invoke('get-library-for-normalize');
+        const library = await electronAPI.invoke('get-library-for-normalize') as any[];
         const loudnessData = await electronAPI.invoke('get-all-loudness-data');
-        const filePaths = library.map(song => song.path);
+        const filePaths = library.map((song: any) => song.path);
         addFiles(filePaths, loudnessData);
     });
 
-    bind('normalize-select-all', 'change', (e) => {
-        const isChecked = e.target.checked;
+    bind('normalize-select-all', 'change', (e: Event) => {
+        const isChecked = (e.target as HTMLInputElement).checked;
         for (const file of normalizeFiles.values()) {
             file.selected = isChecked;
         }
         updateFileList();
     });
 
-    const lufsSlider = document.getElementById('target-lufs-slider');
+    const lufsSlider = document.getElementById('target-lufs-slider') as HTMLInputElement | null;
     const lufsValue = document.getElementById('target-lufs-value');
     if (lufsSlider && lufsValue) {
         const onInput = () => {
@@ -301,14 +302,15 @@ export function renderNormalizeView(container, options = {}) {
     const outputFolderContainer = document.getElementById('output-folder-container');
     const backupContainer = document.getElementById('backup-container');
     document.querySelectorAll('input[name="output-mode"]').forEach(radio => {
-        const onMode = (e) => {
-            outputSettings.mode = e.target.value;
-            if (e.target.value === 'folder') {
-                outputFolderContainer.classList.remove('hidden');
-                backupContainer.classList.add('hidden');
+        const onMode = (e: Event) => {
+            const val = (e.target as HTMLInputElement).value;
+            outputSettings.mode = val;
+            if (val === 'folder') {
+                outputFolderContainer?.classList.remove('hidden');
+                backupContainer?.classList.add('hidden');
             } else {
-                outputFolderContainer.classList.add('hidden');
-                backupContainer.classList.remove('hidden');
+                outputFolderContainer?.classList.add('hidden');
+                backupContainer?.classList.remove('hidden');
             }
             updateFileList();
         };
@@ -317,7 +319,7 @@ export function renderNormalizeView(container, options = {}) {
     });
 
     bind('select-output-folder-btn', 'click', async () => {
-        const selectedPath = await electronAPI.invoke('select-normalize-output-folder');
+        const selectedPath = await electronAPI.invoke('select-normalize-output-folder') as string | null;
         if (selectedPath) {
             outputSettings.path = selectedPath;
             const pathEl = document.getElementById('output-folder-path');
@@ -337,7 +339,7 @@ export function renderNormalizeView(container, options = {}) {
         const filesToNormalise = [...normalizeFiles.values()].filter(f => f.selected && f.status === 'analysed');
         if (filesToNormalise.length === 0) return;
 
-        const lufsSliderEl = document.getElementById('target-lufs-slider');
+        const lufsSliderEl = document.getElementById('target-lufs-slider') as HTMLInputElement | null;
         const containsMp3 = filesToNormalise.some(f => getExtname(f.path).toLowerCase() === '.mp3');
         const losslessFormats = ['.wav', '.flac'];
         const clippingFiles = filesToNormalise.filter(f => {
@@ -388,8 +390,9 @@ export function renderNormalizeView(container, options = {}) {
                 return { ...f, gain };
             });
 
+            const backupToggle = document.getElementById('backup-toggle') as HTMLInputElement | null;
             const backup = outputSettings.mode === 'overwrite'
-                ? (document.getElementById('backup-toggle') && document.getElementById('backup-toggle').checked)
+                ? (backupToggle ? backupToggle.checked : false)
                 : false;
             electronAPI.send('start-normalize-job', {
                 jobType: 'normalize',

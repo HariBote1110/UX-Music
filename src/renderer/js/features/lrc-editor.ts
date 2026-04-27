@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/features/lrc-editor.js
 
 import { state } from '../core/state.js';
@@ -170,7 +169,8 @@ let redoStack = [];
 let timelineDragState = null;
 let timelineZoom = TIMELINE_ZOOM_DEFAULT;
 
-let editorElements = {};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let editorElements: Record<string, any> = {};
 
 function refreshEditorElements() {
     editorElements = {
@@ -846,7 +846,7 @@ function setupLrcEditorListeners(signal) {
  * @param {object} song
  * @param {{ signal?: AbortSignal }} [options]
  */
-export async function renderLrcEditor(container, song, options = {}) {
+export async function renderLrcEditor(container, song, options: { signal?: AbortSignal } = {}) {
     if (!song) return;
     const { signal } = options;
     console.log('[LRC Editor] Rendering editor for:', song.title);
@@ -880,9 +880,9 @@ export async function renderLrcEditor(container, song, options = {}) {
     editorElements.loadTextBtn.classList.add('hidden');
 
     try {
-        const lyricsContent = await electronAPI.invoke('get-lyrics', song);
+        const lyricsContent = await electronAPI.invoke('get-lyrics', song) as Record<string, unknown>;
         if (lyricsContent && (lyricsContent.type === 'txt' || lyricsContent.type === 'lrc')) {
-            parseAndDisplayLyrics(lyricsContent.content, lyricsContent.type);
+            parseAndDisplayLyrics(lyricsContent.content as string, lyricsContent.type as string);
         } else {
             editorElements.lyricsArea.innerHTML = '<p class="lyrics-line placeholder">歌詞テキストが見つかりません。下に貼り付けて読み込んでください。</p>';
             editorElements.textarea.value = '';
@@ -1113,17 +1113,17 @@ async function runAutoSync() {
             profile: 'fast',
         };
 
-        const result = await electronAPI.invoke('lyrics-auto-sync', payload);
+        const result = await electronAPI.invoke('lyrics-auto-sync', payload) as Record<string, unknown>;
         if (!result || result.success !== true) {
             applyDetectedPreview(result);
-            showNotification(`自動同期に失敗しました: ${result?.error || '不明なエラー'}`);
+            showNotification(`自動同期に失敗しました: ${(result as Record<string, unknown>)?.error || '不明なエラー'}`);
             hideNotification(5000);
             return;
         }
 
         applyDetectedPreview(result);
 
-        const alignedLines = Array.isArray(result.lines) ? result.lines : [];
+        const alignedLines = Array.isArray(result.lines) ? result.lines as Record<string, unknown>[] : [];
         if (alignedLines.length === 0) {
             showNotification('自動同期結果が空でした。');
             hideNotification(3500);
@@ -1132,9 +1132,10 @@ async function runAutoSync() {
 
         for (const aligned of alignedLines) {
             if (!Number.isInteger(aligned?.index)) continue;
-            if (aligned.index < 0 || aligned.index >= lyricsLines.length) continue;
+            const alignedIndex = aligned.index as number;
+            if (alignedIndex < 0 || alignedIndex >= lyricsLines.length) continue;
             if (typeof aligned.timestamp !== 'number' || Number.isNaN(aligned.timestamp)) continue;
-            lyricsLines[aligned.index].timestamp = normaliseTimestamp(aligned.timestamp);
+            lyricsLines[alignedIndex].timestamp = normaliseTimestamp(aligned.timestamp as number);
         }
 
         saveHistory();
@@ -1150,7 +1151,7 @@ async function runAutoSync() {
         lastTimestampedLineIndex = -1;
         updateUndoRedoButtons();
 
-        const matchedCount = typeof result.matchedCount === 'number' ? result.matchedCount : 0;
+        const matchedCount = typeof result.matchedCount === 'number' ? result.matchedCount as number : 0;
         const detectedCount = latestDetectedSegments.length;
         showNotification(`自動同期が完了しました（一致: ${matchedCount}行 / 検知: ${detectedCount}件）`);
         hideNotification(3500);
@@ -1159,7 +1160,7 @@ async function runAutoSync() {
         latestDetectedSegments = [];
         latestDetectedBy = '';
         updateDetectedPreviewUI();
-        showNotification(`自動同期の実行中にエラーが発生しました: ${error?.message || String(error)}`);
+        showNotification(`自動同期の実行中にエラーが発生しました: ${(error as Error)?.message || String(error)}`);
         hideNotification(5000);
     } finally {
         isAutoSyncRunning = false;
@@ -1167,7 +1168,7 @@ async function runAutoSync() {
     }
 }
 
-function setActiveLine(index, isManual = false, options = {}) {
+function setActiveLine(index, isManual = false, options: { scrollLyric?: boolean; scrollTimeline?: boolean } = {}) {
     const {
         scrollLyric = true,
         scrollTimeline = true,
@@ -1334,7 +1335,7 @@ async function handleSaveLrc() {
         const result = await electronAPI.invoke('save-lrc-file', {
             fileName: lrcFileName,
             content: lrcContent,
-        });
+        }) as Record<string, unknown>;
 
         if (result.success) {
             showNotification(`同期歌詞ファイル「${lrcFileName}」を保存しました。`);

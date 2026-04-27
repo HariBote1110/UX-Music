@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Library indexing and album/artist grouping — pure state mutations on `state`.
  */
@@ -36,23 +35,29 @@ export function resolveSongsByIds(songIds = []) {
         .filter(Boolean);
 }
 
-export function getAlbumSongs(album) {
+export function getAlbumSongs(album: Record<string, unknown>) {
     if (!album) return [];
-    const songs = resolveSongsByIds(album.songIds || []);
-    const hasCustomOrder = songs.some(s => (s.customOrder ?? 0) > 0);
+    const songs = resolveSongsByIds((album.songIds as string[]) || []);
+    const hasCustomOrder = songs.some(s => ((s as Record<string, unknown>).customOrder as number ?? 0) > 0);
     if (hasCustomOrder) {
-        return songs.sort((a, b) => (a.customOrder ?? 9999) - (b.customOrder ?? 9999));
+        return songs.sort((a, b) => {
+            const aOrder = (a as Record<string, unknown>).customOrder as number ?? 9999;
+            const bOrder = (b as Record<string, unknown>).customOrder as number ?? 9999;
+            return aOrder - bOrder;
+        });
     }
     return songs.sort((a, b) => {
-        const disc = (a.discNumber || 0) - (b.discNumber || 0);
+        const ar = a as Record<string, unknown>;
+        const br = b as Record<string, unknown>;
+        const disc = ((ar.discNumber as number) || 0) - ((br.discNumber as number) || 0);
         if (disc !== 0) return disc;
-        return (a.trackNumber || 0) - (b.trackNumber || 0);
+        return ((ar.trackNumber as number) || 0) - ((br.trackNumber as number) || 0);
     });
 }
 
-export function getArtistSongs(artist) {
+export function getArtistSongs(artist: Record<string, unknown>) {
     if (!artist) return [];
-    return resolveSongsByIds(artist.songIds || []);
+    return resolveSongsByIds((artist.songIds as string[]) || []);
 }
 
 export function setCurrentViewSongs(songs = []) {
@@ -169,7 +174,7 @@ export function upsertAlbumForSong(song) {
     const albumTitle = normaliseTagText(song.album, 'Unknown Album');
     const albumKey = albumTitle;
     const existingAlbum = state.albums.get(albumKey);
-    const songIds = existingAlbum?.songIds ? [...existingAlbum.songIds] : [];
+    const songIds: string[] = existingAlbum?.songIds ? [...(existingAlbum.songIds as string[])] : [];
 
     if (!songIds.includes(song.id)) {
         songIds.push(song.id);
@@ -203,9 +208,9 @@ export function groupLibraryByArtist() {
         tempArtistGroups.get(artistName).push(song.id);
     });
     for (const [artistName, songIds] of tempArtistGroups.entries()) {
-        const firstSong = getSongById(songIds[0]);
-        const firstAlbumKey = firstSong?.albumKey;
-        const representativeAlbum = state.albums.get(firstAlbumKey);
+        const firstSong = getSongById(songIds[0] as string);
+        const firstAlbumKey = firstSong?.albumKey as string | undefined;
+        const representativeAlbum = firstAlbumKey ? state.albums.get(firstAlbumKey) : undefined;
         state.artists.set(artistName, {
             name: artistName,
             artwork: representativeAlbum?.artwork || null,
@@ -217,13 +222,13 @@ export function groupLibraryByArtist() {
 export function upsertArtistForSong(song) {
     const artistName = song.albumartist || song.artist || 'Unknown Artist';
     const existingArtist = state.artists.get(artistName);
-    const songIds = existingArtist?.songIds ? [...existingArtist.songIds] : [];
+    const songIds: string[] = existingArtist?.songIds ? [...(existingArtist.songIds as string[])] : [];
 
     if (!songIds.includes(song.id)) {
         songIds.push(song.id);
     }
 
-    const representativeAlbum = state.albums.get(song.albumKey);
+    const representativeAlbum = song.albumKey ? state.albums.get(song.albumKey as string) : undefined;
     state.artists.set(artistName, {
         name: artistName,
         artwork: existingArtist?.artwork || representativeAlbum?.artwork || null,

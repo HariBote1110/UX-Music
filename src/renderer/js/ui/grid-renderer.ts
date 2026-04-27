@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/ui/grid-renderer.js
 
 import { state } from '../core/state.js';
@@ -29,22 +28,22 @@ export function renderAlbumView() {
         grid.innerHTML = '<div class="placeholder">ライブラリにアルバムが見つかりません</div>';
     } else {
         for (const [key, album] of state.albums.entries()) {
-            const albumItem = createAlbumGridItem(key, album, electronAPI);
+            const albumItem = createAlbumGridItem(key, album);
             albumItem.addEventListener('click', () => showAlbum(key));
 
             albumItem.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
 
-                const playlists = state.playlists || [];
+                const playlists = (state.playlists || []) as Record<string, unknown>[];
                 const addToPlaylistSubmenu = playlists.map(playlist => ({
-                    label: playlist.name,
+                    label: playlist.name as string,
                     action: async () => {
                         const albumToAdd = state.albums.get(key);
                         const albumSongs = getAlbumSongs(albumToAdd);
                         if (albumToAdd && albumSongs.length > 0) {
                             const songPaths = albumSongs.map(s => s.path);
-                            const result = await musicApi.addSongsToPlaylist({ songPaths, playlistName: playlist.name });
+                            const result = await musicApi.addSongsToPlaylist({ songPaths, playlistName: playlist.name as string });
 
                             if (result.success && result.addedCount > 0) {
                                 showNotification(`「${album.title}」の ${result.addedCount} 曲をプレイリスト「${playlist.name}」に追加しました。`);
@@ -64,7 +63,7 @@ export function renderAlbumView() {
                         label: 'プレイリストに追加',
                         submenu: addToPlaylistSubmenu.length > 0 ? addToPlaylistSubmenu : [{ label: '（追加可能なプレイリスト無し）', enabled: false }]
                     },
-                    { type: 'separator' },
+                    { type: 'separator' as const },
                     {
                         label: '曲順を編集...',
                         action: () => openAlbumOrderEditor(key, album)
@@ -109,10 +108,10 @@ export function renderArtistView() {
     if (state.artists.size === 0) {
         grid.innerHTML = '<div class="placeholder">ライブラリにアーティストが見つかりません</div>';
     } else {
-        const sortedArtists = [...state.artists.values()].sort((a, b) => a.name.localeCompare(b.name));
+        const sortedArtists = [...state.artists.values()].sort((a, b) => (a.name as string).localeCompare(b.name as string));
         sortedArtists.forEach(artist => {
-            const artistItem = createArtistGridItem(artist, electronAPI);
-            artistItem.addEventListener('click', () => showArtist(artist.name));
+            const artistItem = createArtistGridItem(artist);
+            artistItem.addEventListener('click', () => showArtist(artist.name as string));
             grid.appendChild(artistItem);
         });
     }
@@ -139,18 +138,20 @@ export async function renderSituationView() {
     if (playlists.length === 0) {
         grid.innerHTML = '<div class="placeholder">あなたのためのプレイリストはまだありません。</div>';
     } else {
-        playlists.forEach(playlist => {
-            const artworks = (playlist.songs || [])
-                .map(song => (state.albums.get(song.albumKey) || song).artwork)
+        playlists.forEach(rawPlaylist => {
+            const playlist = rawPlaylist as Record<string, unknown>;
+            const songs = (playlist.songs as Record<string, unknown>[] | undefined) || [];
+            const artworks = songs
+                .map(song => (state.albums.get(song.albumKey as string) || song).artwork)
                 .filter(Boolean)
                 .slice(0, 4);
 
-            const playlistItem = createPlaylistGridItem({ name: playlist.name, artworks }, electronAPI);
+            const playlistItem = createPlaylistGridItem({ name: playlist.name, artworks });
 
             playlistItem.addEventListener('click', () => {
                 const playlistDetails = {
                     name: playlist.name,
-                    songs: playlist.songs || [],
+                    songs: songs,
                     artworks: artworks
                 };
                 showSituationPlaylistDetail(playlistDetails);
@@ -179,9 +180,9 @@ export function renderPlaylistView() {
     if (!state.playlists || state.playlists.length === 0) {
         grid.innerHTML = '<p>プレイリストはまだありません。「+ 新規作成」から作成できます。</p>';
     } else {
-        state.playlists.forEach(playlist => {
-            const playlistItem = createPlaylistGridItem(playlist, electronAPI);
-            playlistItem.addEventListener('click', () => showPlaylist(playlist.name));
+        (state.playlists as Record<string, unknown>[]).forEach(playlist => {
+            const playlistItem = createPlaylistGridItem(playlist);
+            playlistItem.addEventListener('click', () => showPlaylist(playlist.name as string));
             playlistItem.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -194,7 +195,7 @@ export function renderPlaylistView() {
                                 placeholder: '新しい名前',
                                 onOk: async (newName) => {
                                     if (newName && newName.trim() !== '' && newName !== playlist.name) {
-                                        await musicApi.renamePlaylist({ oldName: playlist.name, newName });
+                                        await musicApi.renamePlaylist({ oldName: playlist.name as string, newName });
                                     }
                                 }
                             });
@@ -205,7 +206,7 @@ export function renderPlaylistView() {
                         action: async () => {
                             const confirmed = confirm(`プレイリスト「${playlist.name}」を削除しますか？\nこの操作は元に戻せません。`);
                             if (confirmed) {
-                                await musicApi.deletePlaylist(playlist.name);
+                                await musicApi.deletePlaylist(playlist.name as string);
                             }
                         }
                     }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/mtp-browser.js
 // MTPストレージブラウザ - Finder風ファイルブラウザ
 
@@ -39,7 +38,7 @@ export function getMtpBrowserViewHtml() {
  * @param {HTMLElement} container
  * @param {{ storageId?: number, initialPath?: string }} [options]
  */
-export async function renderMtpBrowserView(container, options = {}) {
+export async function renderMtpBrowserView(container, options: { storageId?: number; initialPath?: string } = {}) {
     const { storageId, initialPath = '/' } = options;
     container.innerHTML = `<div id="mtp-browser-view" class="mtp-browser-view-inner">${getMtpBrowserViewHtml()}</div>`;
     await initMtpBrowser(storageId, initialPath);
@@ -56,7 +55,7 @@ let browserState = {
 };
 
 // DOM要素キャッシュ
-let browserElements = {};
+let browserElements: Record<string, HTMLElement | null> = {};
 
 /**
  * MTPブラウザを初期化
@@ -68,7 +67,7 @@ export async function initMtpBrowser(storageId, initialPath = '/') {
 
     // storageIdがundefinedの場合、state.mtpStoragesから取得
     if (!storageId && state.mtpStorages && state.mtpStorages.length > 0) {
-        storageId = state.mtpStorages[0].id;
+        storageId = (state.mtpStorages[0] as Record<string, unknown>).id as number;
         console.log(`[MTP Browser] storageIdをstateから取得: ${storageId}`);
     }
 
@@ -159,7 +158,7 @@ export async function browseDirectory(storageId, fullPath, addToHistory = true) 
         const result = await electronAPI.invoke('mtp-browse-directory', {
             storageId: storageId,
             fullPath: fullPath
-        });
+        }) as Record<string, unknown>;
 
         if (result.error) {
             browserElements.content.innerHTML = `<p class="mtp-error">❌ エラー: ${result.error}</p>`;
@@ -178,7 +177,7 @@ export async function browseDirectory(storageId, fullPath, addToHistory = true) 
         }
 
         // ファイルリストを描画
-        renderFileList(result.data || []);
+        renderFileList((result.data as Record<string, unknown>[]) || []);
 
         // パンくずリストを更新
         updateBreadcrumb(fullPath);
@@ -188,7 +187,7 @@ export async function browseDirectory(storageId, fullPath, addToHistory = true) 
 
     } catch (err) {
         console.error('[MTP Browser] エラー:', err);
-        browserElements.content.innerHTML = `<p class="mtp-error">❌ エラー: ${err.message}</p>`;
+        browserElements.content.innerHTML = `<p class="mtp-error">❌ エラー: ${(err as Error).message}</p>`;
     } finally {
         browserState.isLoading = false;
     }
@@ -198,7 +197,7 @@ export async function browseDirectory(storageId, fullPath, addToHistory = true) 
  * ファイルリストを描画
  * @param {Array} files - ファイルリスト
  */
-function renderFileList(files) {
+function renderFileList(files: Record<string, unknown>[]) {
     if (!files || files.length === 0) {
         browserElements.content.innerHTML = '<p class="mtp-empty">📁 空のフォルダです</p>';
         return;
@@ -208,13 +207,13 @@ function renderFileList(files) {
     const sorted = [...files].sort((a, b) => {
         if (a.isFolder && !b.isFolder) return -1;
         if (!a.isFolder && b.isFolder) return 1;
-        return (a.name || '').localeCompare(b.name || '');
+        return ((a.name as string) || '').localeCompare((b.name as string) || '');
     });
 
     const listHtml = sorted.map(item => {
         const icon = getFileIcon(item);
         const sizeStr = item.isFolder ? '' : formatBytes(item.size || 0);
-        const typeStr = item.isFolder ? 'フォルダ' : getFileType(item.name);
+        const typeStr = item.isFolder ? 'フォルダ' : getFileType(item.name as string);
         const fullPath = item.path || item.fullPath || `${browserState.currentPath}${browserState.currentPath.endsWith('/') ? '' : '/'}${item.name}`;
 
         return `
@@ -237,15 +236,16 @@ function renderFileList(files) {
     browserElements.content.innerHTML = listHtml + spacerHtml;
 
     // ファイルアイテムにイベントを追加
-    browserElements.content.querySelectorAll('.mtp-file-item').forEach(item => {
+    (browserElements.content as HTMLElement).querySelectorAll<HTMLElement>('.mtp-file-item').forEach(item => {
         // クリック: 選択
         item.addEventListener('click', (e) => {
             e.stopPropagation();
+            const me = e as MouseEvent;
 
-            if (e.metaKey || e.ctrlKey) {
+            if (me.metaKey || me.ctrlKey) {
                 // Cmd/Ctrl + クリック: 複数選択
                 toggleSelection(item);
-            } else if (e.shiftKey) {
+            } else if (me.shiftKey) {
                 // Shift + クリック: 範囲選択
                 rangeSelect(item);
             } else {
@@ -269,13 +269,14 @@ function renderFileList(files) {
         item.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            const me = e as MouseEvent;
 
             // まだ選択されていなければ選択する
             if (!browserState.selectedItems.has(item.dataset.path)) {
                 selectOnly(item);
             }
 
-            showMtpContextMenu(e.pageX, e.pageY);
+            showMtpContextMenu(me.pageX, me.pageY);
         });
     });
 }
@@ -316,7 +317,7 @@ function getFileType(name) {
  * パンくずリストを更新
  */
 function updateBreadcrumb(fullPath) {
-    const deviceName = state.mtpDevice?.name || 'デバイス';
+    const deviceName = (state.mtpDevice as Record<string, unknown>)?.name as string || 'デバイス';
     const parts = fullPath.split('/').filter(p => p);
 
     let html = `<span class="breadcrumb-item clickable" data-path="/">📱 ${escapeHtml(deviceName)}</span>`;
@@ -332,9 +333,9 @@ function updateBreadcrumb(fullPath) {
     browserElements.breadcrumb.innerHTML = html;
 
     // クリック可能なパンくずにイベントを追加
-    browserElements.breadcrumb.querySelectorAll('.breadcrumb-item.clickable').forEach(item => {
+    (browserElements.breadcrumb as HTMLElement).querySelectorAll('.breadcrumb-item.clickable').forEach(item => {
         item.addEventListener('click', () => {
-            const path = item.dataset.path;
+            const path = (item as HTMLElement).dataset.path;
             browseDirectory(browserState.currentStorageId, path);
         });
     });
@@ -344,8 +345,8 @@ function updateBreadcrumb(fullPath) {
  * ナビゲーションボタンを更新
  */
 function updateNavigationButtons() {
-    browserElements.backBtn.disabled = browserState.historyIndex <= 0;
-    browserElements.forwardBtn.disabled = browserState.historyIndex >= browserState.history.length - 1;
+    (browserElements.backBtn as HTMLButtonElement).disabled = browserState.historyIndex <= 0;
+    (browserElements.forwardBtn as HTMLButtonElement).disabled = browserState.historyIndex >= browserState.history.length - 1;
 }
 
 /**
@@ -408,7 +409,7 @@ function selectOnly(item) {
  * 範囲選択
  */
 function rangeSelect(item) {
-    const items = Array.from(browserElements.content.querySelectorAll('.mtp-file-item'));
+    const items = Array.from((browserElements.content as HTMLElement).querySelectorAll<HTMLElement>('.mtp-file-item'));
     const clickedIndex = items.indexOf(item);
 
     if (clickedIndex === -1) return;
@@ -491,19 +492,21 @@ function updateDeviceHeader() {
 
     // デバイス名
     if (browserElements.headerDeviceName) {
-        browserElements.headerDeviceName.textContent = device?.name || 'MTPデバイス';
+        browserElements.headerDeviceName.textContent = (device as Record<string, unknown>)?.name as string || 'MTPデバイス';
     }
 
     // ストレージ情報
     if (storages && storages.length > 0) {
-        const storage = storages[0];
-        const used = storage.total - storage.free;
-        const usedPercent = ((used / storage.total) * 100).toFixed(1);
+        const storage = storages[0] as Record<string, unknown>;
+        const total = storage.total as number;
+        const free = storage.free as number;
+        const used = total - free;
+        const usedPercent = ((used / total) * 100).toFixed(1);
 
         // ストレージ情報テキスト
         if (browserElements.headerStorageInfo) {
             browserElements.headerStorageInfo.textContent =
-                `${formatBytes(storage.free)} 空き / ${formatBytes(storage.total)} (${usedPercent}% 使用中)`;
+                `${formatBytes(free)} 空き / ${formatBytes(total)} (${usedPercent}% 使用中)`;
         }
 
         // ストレージバー
@@ -561,7 +564,7 @@ async function downloadSelected() {
             storageId: browserState.currentStorageId,
             sources: sources,
             destination: destination
-        });
+        }) as Record<string, unknown>;
 
         if (result.error) {
             showNotification(`ダウンロードエラー: ${result.error}`);
@@ -571,7 +574,7 @@ async function downloadSelected() {
         hideNotification(3000);
 
     } catch (err) {
-        showNotification(`エラー: ${err.message}`);
+        showNotification(`エラー: ${(err as Error).message}`);
         hideNotification(3000);
     }
 }
@@ -598,7 +601,7 @@ async function deleteSelected() {
         const result = await electronAPI.invoke('mtp-delete-files', {
             storageId: browserState.currentStorageId,
             files: files
-        });
+        }) as Record<string, unknown>;
 
         if (result.error) {
             showNotification(`削除エラー: ${result.error}`);
@@ -610,7 +613,7 @@ async function deleteSelected() {
         hideNotification(3000);
 
     } catch (err) {
-        showNotification(`エラー: ${err.message}`);
+        showNotification(`エラー: ${(err as Error).message}`);
         hideNotification(3000);
     }
 }

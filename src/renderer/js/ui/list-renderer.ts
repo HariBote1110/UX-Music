@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/ui/list-renderer.js
 
 import { state, elements } from '../core/state.js';
@@ -118,7 +117,7 @@ function deleteSongsFromLibrary(songs) {
 /**
  * VirtualScroller をセットアップし、曲リストを描画する
  */
-export function setupSongListScroller(listElement, songList, options = {}) {
+export function setupSongListScroller(listElement, songList, options: { contextView?: string; playlistName?: string | null; initialScrollTop?: number; saveScrollPosition?: (top: number) => void } = {}) {
     const {
         contextView = 'library',
         playlistName = null,
@@ -182,14 +181,14 @@ export function setupSongListScroller(listElement, songList, options = {}) {
 
                 // プレイリストがある場合のみサブメニューを追加
                 if (state.playlists && state.playlists.length > 0) {
-                    const playlistSubmenu = state.playlists.map(playlist => ({
-                        label: playlist.name,
+                    const playlistSubmenu = (state.playlists as Record<string, unknown>[]).map(playlist => ({
+                        label: playlist.name as string,
                         action: () => {
                             // TODO: プレイリストに曲を追加する処理
                             console.log(`Adding songs to playlist: ${playlist.name}`, songsForMenu);
                         }
                     }));
-                    menuItems.push({
+                    (menuItems as unknown[]).push({
                         label: 'プレイリストに追加',
                         submenu: playlistSubmenu
                     });

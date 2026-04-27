@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/visualizer.js
 
 import { elements, state } from '../core/state.js';
@@ -124,10 +123,10 @@ export function disconnectVisualizerObserver() {
 export function setVisualizerFpsLimit(fps) {
     const newFps = parseInt(fps, 10);
     if (isNaN(newFps) || newFps <= 0) {
-        state.visualizerFpsLimit = 0;
+        state.userPreferredVisualizerFps = 0;
         console.log('[Visualizer] FPS limit removed.');
     } else {
-        state.visualizerFpsLimit = newFps;
+        state.userPreferredVisualizerFps = newFps;
         console.log(`[Visualizer] FPS limit set to ${newFps} FPS.`);
     }
 }
@@ -208,8 +207,8 @@ function draw(timestamp) {
     if (isEcoModeEnabled && !isVisualizerVisible) return;
     if (state.visualizerMode === 'static') return;
 
-    if (state.visualizerFpsLimit > 0) {
-        const frameInterval = 1000 / state.visualizerFpsLimit;
+    if (state.userPreferredVisualizerFps > 0) {
+        const frameInterval = 1000 / state.userPreferredVisualizerFps;
         const elapsed = timestamp - lastFrameTime;
         if (elapsed < frameInterval) return;
         lastFrameTime = timestamp - (elapsed % frameInterval);

@@ -1,9 +1,9 @@
-// @ts-nocheck
 import { state, elements } from '../core/state.js';
 import { showContextMenu } from '../ui/utils.js';
 import { showNotification } from '../ui/notification.js';
 import { startLrcEditor } from './lrc-editor.js';
 import { ClipboardSetText } from '../../wailsjs/runtime/runtime.js';
+import type { LrcLine } from './lyrics-translation.js';
 import {
     buildJaLrcFileContent,
     buildJaTxtFileContent,
@@ -53,7 +53,7 @@ export async function loadLyricsForSong(song) {
     state.currentLyricsType = null;
     if (!song) return;
 
-    const result = await electronAPI.invoke('get-lyrics', song);
+    const result = await electronAPI.invoke('get-lyrics', song) as Record<string, unknown> | null;
     if (!result) {
         displayNoLyrics();
         setupLyricsContextMenu(song, null);
@@ -61,19 +61,25 @@ export async function loadLyricsForSong(song) {
     }
 
     console.log('[Lyrics Debug] 歌詞ファイルが見つかりました:', result);
-    state.currentLyricsType = result.type;
-    cachedLyricsFileBase = typeof result.lyricsFileBase === 'string' && result.lyricsFileBase.trim()
-        ? result.lyricsFileBase.trim()
+    const resultType = result.type as string | undefined;
+    const resultContent = result.content as string | undefined;
+    const resultLyricsFileBase = result.lyricsFileBase as string | undefined;
+    const resultTranslationContent = result.translationContent as string | undefined;
+    const resultTranslationFormat = result.translationFormat as string | undefined;
+
+    state.currentLyricsType = resultType || null;
+    cachedLyricsFileBase = resultLyricsFileBase?.trim()
+        ? resultLyricsFileBase.trim()
         : deriveLyricsFileBase(song);
 
-    if (result.type === 'lrc') {
-        let parsedLyrics = parseLRC(result.content);
-        const trans = typeof result.translationContent === 'string' ? result.translationContent.trim() : '';
+    if (resultType === 'lrc') {
+        let parsedLyrics = parseLRC(resultContent || '');
+        const trans = resultTranslationContent?.trim() || '';
         if (trans) {
-            if (result.translationFormat === 'lrc') {
-                parsedLyrics = mergeLrcWithJaLrc(parsedLyrics, parseLRC(result.translationContent));
+            if (resultTranslationFormat === 'lrc') {
+                parsedLyrics = mergeLrcWithJaLrc(parsedLyrics, parseLRC(trans));
             } else {
-                parsedLyrics = mergeLrcWithJaTxt(parsedLyrics, result.translationContent);
+                parsedLyrics = mergeLrcWithJaTxt(parsedLyrics, trans);
             }
         }
         console.log('[Lyrics Debug] LRC解析結果:', parsedLyrics);
@@ -86,16 +92,16 @@ export async function loadLyricsForSong(song) {
             state.currentLyricsType = null;
             displayNoLyrics();
         }
-    } else if (result.type === 'txt') {
-        const trans = typeof result.translationContent === 'string' ? result.translationContent.trim() : '';
+    } else if (resultType === 'txt') {
+        const trans = resultTranslationContent?.trim() || '';
         if (trans) {
-            const merged = mergePlainTxtWithJa(result.content, result.translationContent);
+            const merged = mergePlainTxtWithJa(resultContent || '', trans);
             cachedTranslationPromptLines = merged.map(l => l.text);
             state.currentLyrics = null;
             renderLyrics(merged);
         } else {
-            cachedTranslationPromptLines = result.content.split('\n');
-            renderLyrics(result.content);
+            cachedTranslationPromptLines = (resultContent || '').split('\n');
+            renderLyrics(resultContent || '');
         }
     }
 
@@ -570,10 +576,11 @@ async function onSavePastedTranslation() {
     const n = getExpectedTranslationLineCount();
     const parsed = parseNumberedLinesFromPastedText(text, n);
     if (!parsed.ok) {
+        const reason = (parsed as { ok: false; reason: string }).reason;
         if (elements.lyricsTranslationPasteHint) {
-            elements.lyricsTranslationPasteHint.textContent = parsed.reason;
+            elements.lyricsTranslationPasteHint.textContent = reason;
         } else {
-            showNotification(parsed.reason);
+            showNotification(reason);
         }
         return;
     }
@@ -586,7 +593,7 @@ async function onSavePastedTranslation() {
     let content;
     if (currentContextMenuType === 'lrc' && state.currentLyrics) {
         fileName = `${fileBase}.ja.lrc`;
-        content = buildJaLrcFileContent(state.currentLyrics, parsed.lines);
+        content = buildJaLrcFileContent(state.currentLyrics as LrcLine[], parsed.lines);
     } else if (currentContextMenuType === 'txt') {
         fileName = `${fileBase}.ja.txt`;
         content = buildJaTxtFileContent(parsed.lines, cachedTranslationPromptLines);
@@ -594,7 +601,7 @@ async function onSavePastedTranslation() {
         showNotification('歌詞の種類を判定できません');
         return;
     }
-    const res = await electronAPI.invoke('save-lrc-file', { fileName, content });
+    const res = await electronAPI.invoke('save-lrc-file', { fileName, content }) as Record<string, unknown> | null;
     if (res && res.success) {
         showNotification('和訳を保存し、再読み込みしました');
         closeTranslationPasteModal();
@@ -602,6 +609,6 @@ async function onSavePastedTranslation() {
             await loadLyricsForSong(currentContextMenuSong);
         }
     } else {
-        showNotification((res && res.message) || '和訳の保存に失敗しました');
+        showNotification(String((res && res.message) || '和訳の保存に失敗しました'));
     }
 }

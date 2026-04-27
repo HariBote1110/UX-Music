@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/audio-graph.js
 
 import { elements } from '../core/state.js';
@@ -98,7 +97,7 @@ export async function activateAudioGraph(rate) {
                     await currentGraph.context.setSinkId(savedSinkId);
                     console.log('[AudioGraph] setSinkId succeeded, new sinkId:', currentGraph.context.sinkId);
                 } catch (e) {
-                    console.error('[AudioGraph] setSinkId FAILED:', e.name, e.message);
+                    console.error('[AudioGraph] setSinkId FAILED:', (e as Error).name, (e as Error).message);
                 }
             }
         } catch (e) {
@@ -166,11 +165,11 @@ async function trimGraphCache(activeRate) {
  * 新規グラフを作成する
  */
 async function createGraph(rate) {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
 
     // AudioContext作成オプション（sinkIdサポートは限定的）
-    const contextOptions = {
-        latencyHint: 'playback',
+    const contextOptions: AudioContextOptions & { sinkId?: string } = {
+        latencyHint: 'playback' as AudioContextLatencyCategory,
         sampleRate: rate
     };
 
@@ -184,7 +183,7 @@ async function createGraph(rate) {
     console.log('[AudioGraph] AudioContext created:', {
         sampleRate: context.sampleRate,
         state: context.state,
-        sinkId: context.sinkId,
+        sinkId: (context as unknown as { sinkId?: string }).sinkId,
         requestedSinkId: savedSinkId
     });
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/cd-ripper.js
 
 import { escapeHtml } from '../ui/utils.js';
@@ -214,18 +213,18 @@ export async function startCDRipView() {
 }
 
 export function stopCDRipView() {
-    electronAPI.removeAllListeners('rip-progress');
+    (electronAPI as unknown as { removeAllListeners: (ch: string) => void }).removeAllListeners('rip-progress');
     currentTracks = [];
 }
 
 function toggleBitrateSelect() {
-    const format = document.getElementById('cd-format-select').value;
-    const bitrateContainer = document.getElementById('cd-bitrate-container');
+    const format = (document.getElementById('cd-format-select') as HTMLInputElement | null)?.value;
+    const bitrateContainer = document.getElementById('cd-bitrate-container') as HTMLElement | null;
     // 非可逆圧縮形式のみビットレート選択を表示
     if (format === 'aac' || format === 'mp3') {
-        bitrateContainer.style.display = 'flex';
+        if (bitrateContainer) bitrateContainer.style.display = 'flex';
     } else {
-        bitrateContainer.style.display = 'none';
+        if (bitrateContainer) bitrateContainer.style.display = 'none';
     }
 }
 
@@ -241,19 +240,19 @@ async function scanCD() {
     // リセット
     if (albumTitle) albumTitle.textContent = 'Unknown Album';
     if (albumArtist) albumArtist.textContent = 'Unknown Artist';
-    if (artworkImg) artworkImg.src = DEFAULT_ARTWORK_URL;
+    if (artworkImg) (artworkImg as HTMLImageElement).src = DEFAULT_ARTWORK_URL;
 
     if (statusMsg) statusMsg.textContent = 'ドライブをスキャン中...';
-    if (importBtn) importBtn.disabled = true;
-    if (metadataBtn) metadataBtn.disabled = true;
+    if (importBtn) (importBtn as HTMLButtonElement).disabled = true;
+    if (metadataBtn) (metadataBtn as HTMLButtonElement).disabled = true;
 
     try {
-        const result = await electronAPI.invoke('cd-scan');
+        const result = await electronAPI.invoke('cd-scan') as Record<string, unknown>;
         if (!result.success) {
             if (statusMsg) statusMsg.textContent = `エラー: ${result.message}`;
             return;
         }
-        currentTracks = result.tracks;
+        currentTracks = result.tracks as typeof currentTracks;
         if (currentTracks.length === 0) {
             if (statusMsg) statusMsg.textContent = 'CDが見つかりません。';
             return;
@@ -262,14 +261,15 @@ async function scanCD() {
         if (statusMsg) statusMsg.textContent = `${currentTracks.length} トラック検出。メタデータを検索中...`;
         renderTracks(currentTracks);
 
-        if (importBtn) importBtn.disabled = false;
-        if (metadataBtn) metadataBtn.disabled = false;
+        if (importBtn) (importBtn as HTMLButtonElement).disabled = false;
+        if (metadataBtn) (metadataBtn as HTMLButtonElement).disabled = false;
 
         // 自動メタデータ検索
         try {
-            const searchResult = await electronAPI.invoke('cd-search-toc', currentTracks);
-            if (searchResult.success && searchResult.releases && searchResult.releases.length > 0) {
-                const releases = searchResult.releases;
+            const searchResult = await electronAPI.invoke('cd-search-toc', currentTracks) as Record<string, unknown>;
+            const searchReleases = searchResult.releases as Record<string, unknown>[] | undefined;
+            if (searchResult.success && searchReleases && searchReleases.length > 0) {
+                const releases = searchReleases;
                 if (releases.length === 1) {
                     if (statusMsg) statusMsg.textContent = 'メタデータが見つかりました。適用中...';
                     await applyMetadata(releases[0].id);
@@ -313,31 +313,33 @@ async function openMetadataSearch() {
     const list = document.getElementById('cd-candidate-list');
     list.innerHTML = '<li style="padding: 10px; color: #aaa;">自動検索中...</li>';
     try {
-        const result = await electronAPI.invoke('cd-search-toc', currentTracks);
-        if (result.success && result.releases?.length > 0) {
-            renderCandidateList(result.releases);
+        const result = await electronAPI.invoke('cd-search-toc', currentTracks) as Record<string, unknown>;
+        const tocReleases = result.releases as Record<string, unknown>[] | undefined;
+        if (result.success && tocReleases?.length) {
+            renderCandidateList(tocReleases);
         } else {
             list.innerHTML = '<li style="padding: 10px; color: #aaa;">自動検索で見つかりませんでした。キーワードで検索してください。</li>';
         }
     } catch (e) {
-        list.innerHTML = `<li style="padding: 10px; color: red;">エラー: ${e.message}</li>`;
+        list.innerHTML = `<li style="padding: 10px; color: red;">エラー: ${(e as Error).message}</li>`;
     }
 }
 
 async function executeTextSearch() {
-    const query = document.getElementById('cd-search-input').value;
+    const query = (document.getElementById('cd-search-input') as HTMLInputElement | null)?.value ?? '';
     const list = document.getElementById('cd-candidate-list');
     if (!query) return;
     list.innerHTML = '<li style="padding: 10px; color: #aaa;">検索中...</li>';
     try {
-        const result = await electronAPI.invoke('cd-search-text', query);
-        if (result.success && result.releases?.length > 0) {
-            renderCandidateList(result.releases);
+        const result = await electronAPI.invoke('cd-search-text', query) as Record<string, unknown>;
+        const textReleases = result.releases as Record<string, unknown>[] | undefined;
+        if (result.success && textReleases?.length) {
+            renderCandidateList(textReleases);
         } else {
             list.innerHTML = '<li style="padding: 10px; color: #aaa;">見つかりませんでした。</li>';
         }
     } catch (e) {
-        list.innerHTML = `<li style="padding: 10px; color: red;">エラー: ${e.message}</li>`;
+        list.innerHTML = `<li style="padding: 10px; color: red;">エラー: ${(e as Error).message}</li>`;
     }
 }
 
@@ -368,25 +370,25 @@ async function applyMetadata(releaseId) {
     const list = document.getElementById('cd-candidate-list');
     if (list) list.innerHTML = '<li style="padding: 10px; color: #aaa;">詳細情報を取得中...</li>';
     try {
-        const result = await electronAPI.invoke('cd-apply-metadata', { tracks: currentTracks, releaseId: releaseId });
+        const result = await electronAPI.invoke('cd-apply-metadata', { tracks: currentTracks, releaseId: releaseId }) as Record<string, unknown>;
         if (result.success) {
-            currentTracks = result.tracks;
+            currentTracks = result.tracks as typeof currentTracks;
             renderTracks(currentTracks);
-            document.getElementById('cd-album-title').textContent = result.album;
-            document.getElementById('cd-album-artist').textContent = result.artist;
+            document.getElementById('cd-album-title').textContent = result.album as string;
+            document.getElementById('cd-album-artist').textContent = result.artist as string;
             document.getElementById('cd-status-message').textContent = 'メタデータを適用しました。';
 
-            const artworkImg = document.getElementById('cd-artwork-preview');
+            const artworkImg = document.getElementById('cd-artwork-preview') as HTMLImageElement | null;
             if (artworkImg) {
-                artworkImg.src = result.artwork ? result.artwork : DEFAULT_ARTWORK_URL;
+                artworkImg.src = (result.artwork as string | null) ? (result.artwork as string) : DEFAULT_ARTWORK_URL;
             }
             closeMetadataModal();
         } else {
-            alert('情報の適用に失敗しました: ' + result.message);
+            alert('情報の適用に失敗しました: ' + (result as Record<string, unknown>).message);
             closeMetadataModal();
         }
     } catch (e) {
-        alert('エラーが発生しました: ' + e.message);
+        alert('エラーが発生しました: ' + (e as Error).message);
     }
 }
 
@@ -412,10 +414,11 @@ function renderTracks(tracks) {
     `).join('');
     tbody.querySelectorAll('.cd-track-input').forEach(input => {
         input.addEventListener('change', (e) => {
-            const id = parseInt(e.target.dataset.id);
-            const field = e.target.dataset.field;
+            const target = e.target as HTMLInputElement;
+            const id = parseInt(target.dataset.id);
+            const field = target.dataset.field;
             const track = currentTracks.find(t => t.number === id);
-            if (track) track[field] = e.target.value;
+            if (track) track[field] = target.value;
         });
     });
 }
@@ -432,15 +435,15 @@ async function startImport() {
     if (isRipping || currentTracks.length === 0) return;
 
     isRipping = true;
-    const importBtn = document.getElementById('cd-import-btn');
-    const scanBtn = document.getElementById('cd-scan-btn');
-    const metadataBtn = document.getElementById('cd-metadata-btn');
+    const importBtn = document.getElementById('cd-import-btn') as HTMLButtonElement | null;
+    const scanBtn = document.getElementById('cd-scan-btn') as HTMLButtonElement | null;
+    const metadataBtn = document.getElementById('cd-metadata-btn') as HTMLButtonElement | null;
     const progressArea = document.getElementById('cd-progress-area');
     const progressText = document.getElementById('cd-progress-text');
     const progressBar = document.getElementById('cd-progress-bar');
 
-    const format = document.getElementById('cd-format-select').value;
-    const bitrate = document.getElementById('cd-bitrate-select').value;
+    const format = (document.getElementById('cd-format-select') as HTMLSelectElement).value;
+    const bitrate = (document.getElementById('cd-bitrate-select') as HTMLSelectElement).value;
     const artworkImg = document.getElementById('cd-artwork-preview') as HTMLImageElement;
     const artworkSrc = (artworkImg && !artworkImg.src.includes('default_artwork')) ? artworkImg.src : null;
     const artworkData = artworkSrc?.startsWith('data:') ? artworkSrc : null;
@@ -455,7 +458,7 @@ async function startImport() {
         const result = await electronAPI.invoke('cd-start-rip', {
             tracksToRip: currentTracks,
             options: { format, bitrate, artworkUrl, artworkData }
-        });
+        }) as Record<string, unknown>;
 
         isRipping = false;
         if (importBtn) importBtn.disabled = false;
@@ -474,7 +477,7 @@ async function startImport() {
         if (importBtn) importBtn.disabled = false;
         if (scanBtn) scanBtn.disabled = false;
         if (metadataBtn) metadataBtn.disabled = false;
-        alert(`取り込みに失敗しました: ${e.message}`);
+        alert(`取り込みに失敗しました: ${(e as Error).message}`);
         if (progressArea) progressArea.classList.add('hidden');
     }
 }

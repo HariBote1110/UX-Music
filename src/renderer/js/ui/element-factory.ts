@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/ui/element-factory.js
 import { formatTime, checkTextOverflow, resolveArtworkPath, formatSongTitle, escapeHtml } from './utils.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
@@ -35,7 +34,7 @@ function findArtworkFromSongIds(songIds = []) {
     return null;
 }
 
-export function createSongItem(song, index, songList, options = {}) {
+export function createSongItem(song, index, songList, options: { groupAlbumArt?: boolean } = {}) {
     const { groupAlbumArt = true } = options;
     const songIdentifier = song.id || song.path || '';
     const songItem = document.createElement('div');
@@ -90,8 +89,8 @@ export function createSongItem(song, index, songList, options = {}) {
     const visibleCols = getVisibleColumns();
     songItem.innerHTML = visibleCols.map(col => columnHTMLMap[col.key] || '').join('\n        ');
 
-    const artworkCol = songItem.querySelector('.song-artwork-col');
-    const artworkImg = songItem.querySelector('.artwork-small');
+    const artworkCol = songItem.querySelector('.song-artwork-col') as HTMLElement | null;
+    const artworkImg = songItem.querySelector('.artwork-small') as HTMLImageElement | null;
 
     if (isGrouped) {
         if (artworkImg) artworkImg.style.visibility = 'hidden';
@@ -135,7 +134,7 @@ export function createSongItem(song, index, songList, options = {}) {
                     if (album.artwork) {
                         artwork = album.artwork;
                     } else {
-                        artwork = findArtworkFromSongIds(album.songIds);
+                        artwork = findArtworkFromSongIds(album.songIds as string[]);
                     }
                 }
             }
@@ -174,14 +173,16 @@ export function createQueueItem(song, isPlaying, queueIndex) {
         </div>
     `;
 
-    const artworkImg = queueItem.querySelector('.artwork-small');
+    const artworkImg = queueItem.querySelector('.artwork-small') as HTMLImageElement | null;
     const album = state.albums.get(song.albumKey);
     let finalArtwork = song.artwork;
     if (!finalArtwork && song.album !== 'Unknown Album') {
         finalArtwork = album ? album.artwork : null;
     }
-    artworkImg.src = resolveArtworkPath(finalArtwork, true);
-    artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
+    if (artworkImg) {
+        artworkImg.src = resolveArtworkPath(finalArtwork, true);
+        artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
+    }
 
     return queueItem;
 }
@@ -205,13 +206,15 @@ export function createAlbumGridItem(key, album) {
         </div>
     `;
 
-    const artworkImg = albumItem.querySelector('.album-artwork');
+    const artworkImg = albumItem.querySelector('.album-artwork') as HTMLImageElement | null;
     let artworkToUse = album.artwork;
     if (!artworkToUse) {
-        artworkToUse = findArtworkFromSongIds(album?.songIds);
+        artworkToUse = findArtworkFromSongIds(album?.songIds as string[]);
     }
-    artworkImg.dataset.src = resolveArtworkPath(artworkToUse, false);
-    artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
+    if (artworkImg) {
+        artworkImg.dataset.src = resolveArtworkPath(artworkToUse, false);
+        artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
+    }
 
     return albumItem;
 }
@@ -229,9 +232,11 @@ export function createArtistGridItem(artist) {
         </div>
     `;
 
-    const artworkImg = artistItem.querySelector('.artist-artwork');
-    artworkImg.dataset.src = resolveArtworkPath(artist.artwork, false);
-    artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
+    const artworkImg = artistItem.querySelector('.artist-artwork') as HTMLImageElement | null;
+    if (artworkImg) {
+        artworkImg.dataset.src = resolveArtworkPath(artist.artwork, false);
+        artworkImg.onload = () => window.recordArtworkLoadTime?.(performance.now());
+    }
 
     return artistItem;
 }

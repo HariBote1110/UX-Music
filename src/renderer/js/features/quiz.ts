@@ -1,10 +1,9 @@
-// @ts-nocheck
 // src/renderer/js/quiz.js
 import { state, elements } from '../core/state.js';
 import { resolveArtworkPath } from '../ui/utils.js';
 const electronAPI = window.electronAPI;
 
-let quizElements = {};
+let quizElements: Record<string, any> = {};
 
 const quizState = {
     totalQuestions: 10,
@@ -124,7 +123,7 @@ function cacheQuizElements() {
  * @param {HTMLElement} container
  * @param {{ signal?: AbortSignal }} [options]
  */
-export function renderQuizView(container, options = {}) {
+export function renderQuizView(container, options: { signal?: AbortSignal } = {}) {
     const { signal } = options;
     container.innerHTML = getQuizViewHtml();
     cacheQuizElements();
@@ -227,7 +226,7 @@ function generateQuestion() {
 function playSnippet() {
     if (quizState.isPlayingSnippet || !quizState.correctAnswer) return;
 
-    const mainPlayer = document.getElementById('main-player');
+    const mainPlayer = document.getElementById('main-player') as HTMLMediaElement | null;
     if (mainPlayer && !mainPlayer.paused) {
         mainPlayer.pause();
     }
@@ -326,7 +325,7 @@ async function showFinalScreen() {
     };
     await electronAPI.invoke('save-quiz-score', scoreData);
 
-    const scores = await electronAPI.invoke('get-quiz-scores');
+    const scores = await electronAPI.invoke('get-quiz-scores') as any[];
     quizElements.rankingList.innerHTML = '';
     scores.slice(0, 5).forEach(s => {
         const li = document.createElement('li');
@@ -344,8 +343,8 @@ function nextQuestion() {
 }
 
 function startQuiz() {
-    quizState.totalQuestions = parseInt(document.querySelector('input[name="quiz-length"]:checked').value);
-    quizState.difficulty = document.querySelector('input[name="quiz-difficulty"]:checked').value;
+    quizState.totalQuestions = parseInt((document.querySelector('input[name="quiz-length"]:checked') as HTMLInputElement).value);
+    quizState.difficulty = (document.querySelector('input[name="quiz-difficulty"]:checked') as HTMLInputElement).value;
     quizState.currentQuestionIndex = -1;
     quizState.score = 0;
     quizState.answerTimes = [];

@@ -10,8 +10,8 @@ export interface AppState {
     library: Song[];
     libraryById: Map<string, Song>;
     libraryByPath: Map<string, Song>;
-    albums: Map<string, unknown>;
-    artists: Map<string, unknown>;
+    albums: Map<string, Record<string, unknown>>;
+    artists: Map<string, Record<string, unknown>>;
     playlists: unknown[];
     playCounts: PlayCountsMap;
     currentSongIndex: number;

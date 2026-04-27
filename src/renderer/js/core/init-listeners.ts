@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { state, elements } from './state.js';
 import { playNextSong, playPrevSong, toggleShuffle, toggleLoopMode } from '../features/playback-manager.js';
 import { runShuffleAnimation, runLoopAnimation } from '../ui/player-ui.js';
@@ -135,7 +134,7 @@ export function initEventListeners() {
     const searchInput = document.getElementById('search-input');
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
-            updateSearchQuery(e.target.value);
+            updateSearchQuery((e.target as HTMLInputElement).value);
         });
     }
 
@@ -216,8 +215,8 @@ export function initEventListeners() {
             // In Wails, use OnFileDrop callback path list to avoid duplicate handling.
             if (hasWailsFileDrop) return;
 
-            const allPaths = Array.from(e.dataTransfer.files || [])
-                .map(f => f.path)
+            const allPaths = Array.from(e.dataTransfer?.files || [])
+                .map(f => (f as unknown as { path: string }).path)
                 .filter(Boolean);
             processDroppedPaths(allPaths);
         });
@@ -252,18 +251,19 @@ export function initEventListeners() {
         if (elements.devicePopup && elements.devicePopup.classList.contains('active')) {
             elements.devicePopup.classList.remove('active');
         }
-        if (libraryActionsPopup && !libraryActionsPopup.classList.contains('hidden') && !libraryActionsPopup.contains(e.target) && e.target !== libraryActionsBtn) {
+        if (libraryActionsPopup && !libraryActionsPopup.classList.contains('hidden') && !libraryActionsPopup.contains(e.target as Node) && e.target !== libraryActionsBtn) {
             libraryActionsPopup.classList.add('hidden');
         }
     });
 
     window.addEventListener('contextmenu', (e) => {
-        if (e.target.closest('.song-item') ||
-            e.target.closest('#now-playing-artwork-container') ||
-            e.target.closest('#footer-artwork-container') ||
-            e.target.closest('input') ||
-            e.target.closest('button') ||
-            e.target.closest('a')) {
+        const target = e.target as Element | null;
+        if (target?.closest('.song-item') ||
+            target?.closest('#now-playing-artwork-container') ||
+            target?.closest('#footer-artwork-container') ||
+            target?.closest('input') ||
+            target?.closest('button') ||
+            target?.closest('a')) {
             return;
         }
 
@@ -360,7 +360,7 @@ export function initEventListeners() {
     });
 
     const resizer = document.getElementById('resizer');
-    const rightSidebar = document.querySelector('.right-sidebar');
+    const rightSidebar = document.querySelector('.right-sidebar') as HTMLElement | null;
     const footerArtworkContainer = document.getElementById('footer-artwork-container');
 
     const SIDEBAR_SNAP_THRESHOLD = 150; // px — これ以下になったら折り畳み

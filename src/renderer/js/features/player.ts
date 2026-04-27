@@ -1,4 +1,3 @@
-// @ts-nocheck
 // src/renderer/js/player.js
 
 import { elements, state } from '../core/state.js';
@@ -82,7 +81,7 @@ export async function playCurrent() {
         try {
             await localPlayer.play();
         } catch (e) {
-            if (e.name !== 'AbortError') console.error("Playback failed:", e);
+            if ((e as Error).name !== 'AbortError') console.error("Playback failed:", e);
         }
     }
 }
@@ -255,8 +254,8 @@ function startGoStatePolling() {
             }
 
             // duration更新（ロード完了検知など）
-            if (dur > 0 && Math.abs(state.currentDuration - dur) > 0.5) {
-                state.currentDuration = dur; // state.jsの更新はしていないが、UI更新用
+            if (dur > 0 && Math.abs((state as any).currentDuration - dur) > 0.5) {
+                (state as any).currentDuration = dur; // state.jsの更新はしていないが、UI更新用
                 updateMetadataUI();
                 updateMediaSessionHandlers();
             }
@@ -533,7 +532,7 @@ async function playLocal(song, gainLinear = 1.0) {
     try {
         await localPlayer.play();
     } catch (error) {
-        if (error.name !== 'AbortError') {
+        if ((error as Error).name !== 'AbortError') {
             console.error(`Playback failed for ${song.title}:`, error, 'Path:', localPlayer.src);
             savedCallbacks.onSongEnded();
         }

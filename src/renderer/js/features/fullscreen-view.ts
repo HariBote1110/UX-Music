@@ -1,4 +1,3 @@
-// @ts-nocheck
 // フルスクリーンオーバーレイ — 既存ウィンドウ内に全画面表示する
 
 import { state, elements } from '../core/state.js';
@@ -108,7 +107,7 @@ function syncAll() {
 }
 
 function syncSongInfo() {
-    const song = state.currentSong ?? state.playbackQueue?.[state.currentSongIndex];
+    const song = state.playbackQueue?.[state.currentSongIndex];
     if (!song) return;
 
     if (titleEl) titleEl.textContent = song.title || '不明なタイトル';
@@ -383,7 +382,7 @@ function buildOverlay(): HTMLElement {
     });
 
     // シークバー
-    const bar = el.querySelector('#fs-progress-bar');
+    const bar = el.querySelector('#fs-progress-bar') as HTMLElement;
     bar.addEventListener('mousedown', (e: MouseEvent) => {
         isSeeking = true;
         doSeek(e, bar);

@@ -86,8 +86,8 @@ const VIEW_HANDLERS: Record<string, ViewHandler> = {
     },
     'mtp-browser-view': async (opts) => {
         await renderMtpBrowserView(elements.mainContent, {
-            storageId: opts.storageId,
-            initialPath: opts.initialPath || '/',
+            storageId: opts.storageId as number,
+            initialPath: (opts.initialPath as string) || '/',
         });
     },
     'mtp-transfer-view': () => {
