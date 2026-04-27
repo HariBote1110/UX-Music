@@ -230,11 +230,23 @@ func (a *App) StartDeviceWatcher() {
 	a.deviceWatcherStop = make(chan struct{})
 
 	go func() {
+		// liveDefaultName returns the live OS default output name. On
+		// darwin we go through CoreAudio because PortAudio caches its
+		// DefaultOutputDevice() lookup at Pa_Initialize() time and never
+		// observes runtime changes. On other platforms we fall back to
+		// the PortAudio-reported default from ListDevices().
+		liveDefaultName := func(devices []audio.Device) string {
+			if name := audio.SystemDefaultOutputName(); name != "" {
+				return name
+			}
+			return defaultDeviceName(devices)
+		}
+
 		var lastListFP string
 		var lastDefaultName string
 		if devices, err := a.audioPlayer.ListDevices(); err == nil {
 			lastListFP = deviceListFingerprint(devices)
-			lastDefaultName = defaultDeviceName(devices)
+			lastDefaultName = liveDefaultName(devices)
 		}
 
 		ticker := time.NewTicker(3 * time.Second)
@@ -255,7 +267,7 @@ func (a *App) StartDeviceWatcher() {
 					fmt.Println("[Audio] Device list changed, notifying frontend")
 					wailsRuntime.EventsEmit(a.ctx, "audio-devices-changed")
 				}
-				currentDefault := defaultDeviceName(devices)
+				currentDefault := liveDefaultName(devices)
 				if currentDefault != lastDefaultName {
 					lastDefaultName = currentDefault
 					fmt.Printf("[Audio] Default device changed to: %s\n", currentDefault)

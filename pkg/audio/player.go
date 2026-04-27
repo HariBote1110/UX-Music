@@ -296,14 +296,19 @@ func (p *Player) ListDevices() ([]Device, error) {
 		return nil, err
 	}
 
-	defaultDevice, _ := portaudio.DefaultOutputDevice()
+	defaultName := SystemDefaultOutputName()
+	if defaultName == "" {
+		if dd, err := portaudio.DefaultOutputDevice(); err == nil && dd != nil {
+			defaultName = dd.Name
+		}
+	}
 
 	var result []Device
 	for i, d := range p.devices {
 		result = append(result, Device{
 			ID:          fmt.Sprintf("%d", i),
 			Name:        d.Name,
-			IsDefault:   defaultDevice != nil && d.Name == defaultDevice.Name,
+			IsDefault:   defaultName != "" && d.Name == defaultName,
 			MaxChannels: d.MaxOutputChannels,
 		})
 	}
@@ -313,7 +318,39 @@ func (p *Player) ListDevices() ([]Device, error) {
 
 // SetDevice sets the output device by ID. If playing, the stream is reopened and position restored.
 // Pass "default" to switch to the current system default output device.
+//
+// PortAudio caches device information at Pa_Initialize() time, so the system
+// default may change without portaudio reflecting it. To pick up the live
+// default we stop any active stream, then Terminate+Initialize PortAudio so
+// that DefaultOutputDevice() and Devices() return fresh data.
 func (p *Player) SetDevice(deviceID string) error {
+	wasPlaying := p.IsPlaying()
+	var resumePos float64
+	if wasPlaying {
+		resumePos = p.GetPosition()
+		p.mu.Lock()
+		if p.stream != nil {
+			_ = p.stream.Stop()
+			_ = p.stream.Close()
+			p.stream = nil
+		}
+		p.mu.Unlock()
+	}
+
+	if deviceID == "default" {
+		// Force PortAudio to rescan host APIs and devices so that the
+		// reported default reflects the current system setting.
+		_ = portaudio.Terminate()
+		if err := portaudio.Initialize(); err != nil {
+			return fmt.Errorf("failed to reinitialise PortAudio: %w", err)
+		}
+		// Previous DeviceInfo pointers are now invalid.
+		p.mu.Lock()
+		p.currentDevice = nil
+		p.devices = nil
+		p.mu.Unlock()
+	}
+
 	if err := p.refreshDevices(); err != nil {
 		return fmt.Errorf("failed to refresh devices: %w", err)
 	}
@@ -350,18 +387,10 @@ func (p *Player) SetDevice(deviceID string) error {
 
 	fmt.Printf("[Audio] Device set to: %s\n", deviceName)
 
-	if !p.IsPlaying() {
+	if !wasPlaying {
 		return nil
 	}
-	currentPos := p.GetPosition()
-
-	p.mu.Lock()
-	if p.stream != nil {
-		_ = p.stream.Stop()
-		_ = p.stream.Close()
-		p.stream = nil
-	}
-	p.mu.Unlock()
+	currentPos := resumePos
 
 	p.ringAvailable.Store(0)
 	p.ringReadPos.Store(0)
