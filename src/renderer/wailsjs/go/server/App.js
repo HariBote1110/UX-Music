@@ -70,6 +70,10 @@ export function AudioSetEqualizer(arg1) {
   return window['go']['server']['App']['AudioSetEqualizer'](arg1);
 }
 
+export function AudioSetNormalisationGain(arg1) {
+  return window['go']['server']['App']['AudioSetNormalisationGain'](arg1);
+}
+
 export function AudioSetNowPlayingMetadata(arg1) {
   return window['go']['server']['App']['AudioSetNowPlayingMetadata'](arg1);
 }
@@ -300,6 +304,10 @@ export function SelectFilesForNormalize() {
 
 export function SelectFolderForNormalize() {
   return window['go']['server']['App']['SelectFolderForNormalize']();
+}
+
+export function SelectMTPDownloadFolder() {
+  return window['go']['server']['App']['SelectMTPDownloadFolder']();
 }
 
 export function SelectNormalizeOutputFolder() {

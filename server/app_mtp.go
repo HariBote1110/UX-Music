@@ -109,6 +109,12 @@ func (a *App) MTPDeleteFile(opts mtp.DeleteOptions) error {
 	return a.mtpManager.DeleteFile(opts)
 }
 
+func (a *App) SelectMTPDownloadFolder() (string, error) {
+	return wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "ダウンロード先フォルダを選択",
+	})
+}
+
 func (a *App) MTPMakeDirectory(opts mtp.MakeDirOptions) error {
 	return a.mtpManager.MakeDirectory(opts)
 }
