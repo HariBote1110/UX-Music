@@ -446,6 +446,11 @@ func sanitizeFilename(name string) string {
 	return result
 }
 
+// SanitiseForFilename exports filename rules for playlist names and paths.
+func SanitiseForFilename(name string) string {
+	return sanitizeFilename(name)
+}
+
 // GetYouTubeVideoInfo fetches video information without downloading
 func GetYouTubeVideoInfo(url string) (*YouTubeVideoInfo, error) {
 	client := youtube.Client{}

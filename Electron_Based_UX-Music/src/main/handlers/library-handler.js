@@ -44,7 +44,9 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
             loudnessData[filePath] = result.loudness;
             loudnessStore.save(loudnessData);
         }
+        if (event.sender && !event.sender.isDestroyed()) {
         event.sender.send('loudness-analysis-result', result);
+        }
     });
 
     ipcMain.handle('get-loudness-value', (event, songPath) => (loudnessStore.load() || {})[songPath] || null);
@@ -52,7 +54,7 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
     ipcMain.on('request-initial-library', (event) => {
         const songs = libraryStore.load() || [];
         const albums = albumsStore.load() || {};
-        event.sender?.send('load-library', { songs, albums });
+        if(event.sender && !event.sender.isDestroyed()) event.sender.send('load-library', { songs, albums });
         
         // ▼▼▼ 追加: ライブラリ読み込み後にSRマイグレーションをチェック ▼▼▼
         checkAndMigrateSampleRates(songs, sendToAllWindows);
@@ -76,7 +78,7 @@ function registerLibraryHandlers(stores, sendToAllWindows) {
                 });
             }
             console.log('[DEBUG] Library has been reset completely.');
-            event.sender?.send('force-reload-library');
+            if(event.sender && !event.sender.isDestroyed()) event.sender.send('force-reload-library');
         } catch (error) {
             console.error('[DEBUG] Failed to reset library:', error);
         }

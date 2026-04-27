@@ -58,6 +58,7 @@ func (a *App) AudioPlay(filePath string, gainLinear float64) error {
 		return err
 	}
 	a.updateOSNowPlayingByPath(filePath, true)
+	a.pushDiscordPresence(true)
 	return nil
 }
 
@@ -70,6 +71,7 @@ func (a *App) AudioPause() error {
 		return err
 	}
 	a.updateOSPlaybackState(false)
+	a.pushDiscordPresence(false)
 	return nil
 }
 
@@ -82,6 +84,7 @@ func (a *App) AudioResume() error {
 		return err
 	}
 	a.updateOSPlaybackState(true)
+	a.pushDiscordPresence(true)
 	return nil
 }
 
@@ -94,6 +97,7 @@ func (a *App) AudioStop() error {
 		return err
 	}
 	a.clearOSNowPlayingState()
+	a.pushDiscordPresence(false)
 	return nil
 }
 
@@ -111,6 +115,14 @@ func (a *App) AudioSetVolume(volume float64) {
 		return
 	}
 	a.audioPlayer.SetVolume(volume)
+}
+
+// AudioSetNormalisationGain sets loudness normalisation linear gain (1.0 = unity).
+func (a *App) AudioSetNormalisationGain(gain float64) {
+	if a.audioPlayer == nil {
+		return
+	}
+	a.audioPlayer.SetNormalisationGain(sanitizeFiniteFloat64(gain))
 }
 
 // AudioSetEqualizer updates equaliser settings for backend playback.
@@ -197,6 +209,7 @@ func (a *App) AudioSetNowPlayingMetadata(metadata map[string]interface{}) error 
 		playing = a.audioPlayer.IsPlaying()
 	}
 	a.updateOSNowPlayingMetadata(title, artist, album, artwork, playing)
+	a.pushDiscordPresence(playing)
 	return nil
 }
 

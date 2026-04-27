@@ -31,7 +31,7 @@ async function setDevice(deviceInstance) {
     if (mainWindow && !mainWindow.isDestroyed()) {
       // --- ▼▼▼ 修正 ▼▼▼ ---
       console.log('[MTP-LOG] レンダラープロセスへ "mtp-device-disconnected" を送信します。');
-      mainWindow.webContents.send('mtp-device-disconnected');
+      if (mainWindow.webContents && !mainWindow.webContents.isDestroyed()) { mainWindow.webContents.send('mtp-device-disconnected'); }
       // --- ▲▲▲ 修正 ▲▲▲ ---
     }
     return;
@@ -97,7 +97,7 @@ async function setDevice(deviceInstance) {
     if (mainWindow && !mainWindow.isDestroyed()) {
       // --- ▼▼▼ 修正 ▼▼▼ ---
       console.log('[MTP-LOG] レンダラープロセスへ "mtp-device-connected" (接続完了) を送信します。', payload);
-      mainWindow.webContents.send('mtp-device-connected', payload);
+      if (mainWindow.webContents && !mainWindow.webContents.isDestroyed()) { mainWindow.webContents.send('mtp-device-connected', payload); }
       // --- ▲▲▲ 修正 ▲▲▲ ---
     } else {
       console.warn('[MTP-LOG] デバイス初期化完了。しかし mainWindow が未設定のため通知できません。');
@@ -109,7 +109,7 @@ async function setDevice(deviceInstance) {
     if (mainWindow && !mainWindow.isDestroyed()) {
       // --- ▼▼▼ 修正 ▼▼▼ ---
       // エラーが発生したことも通知（切断扱い）
-      mainWindow.webContents.send('mtp-device-disconnected');
+      if (mainWindow.webContents && !mainWindow.webContents.isDestroyed()) { mainWindow.webContents.send('mtp-device-disconnected'); }
       // --- ▲▲▲ 修正 ▲▲▲ ---
     }
   }

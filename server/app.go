@@ -64,6 +64,7 @@ func (a *App) Startup(ctx context.Context) {
 	if a.audioPlayer != nil {
 		a.audioPlayer.SetOnFinished(func() {
 			a.updateOSPlaybackState(false)
+			a.pushDiscordPresence(false)
 			if a.ctx != nil {
 				wailsRuntime.EventsEmit(a.ctx, "audio-playback-finished")
 			}
@@ -81,3 +82,7 @@ func (a *App) Startup(ctx context.Context) {
 func (a *App) Ping() string {
 	return "pong"
 }
+
+// pushDiscordPresence updates Discord Rich Presence state.
+// TODO: implement with internal/discord package.
+func (a *App) pushDiscordPresence(_ bool) {}

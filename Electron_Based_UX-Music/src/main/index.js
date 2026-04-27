@@ -73,7 +73,9 @@ function createWindow() {
     }
 
     console.timeEnd("Main: Full App Startup");
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
     mainWindow.webContents.send('measure-performance');
+    }
   });
 
   logPerf("Starting to load file...");
@@ -82,7 +84,7 @@ function createWindow() {
 
   mainWindow.on('app-command', (e, cmd) => {
     if (cmd === 'browser-backward') {
-      mainWindow.webContents.send('navigate-back');
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) { mainWindow.webContents.send('navigate-back'); }
     }
   });
 

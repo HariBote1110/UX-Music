@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -88,43 +89,56 @@ func normalizeResultEventType(jobType string) string {
 	}
 }
 
+func rehydrateNormalizeFiles(files []interface{}) []interface{} {
+	if len(files) == 0 {
+		return files
+	}
+	b, err := json.Marshal(files)
+	if err != nil {
+		return files
+	}
+	var out []interface{}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return files
+	}
+	return out
+}
+
+func rehydrateNormalizeOptions(options interface{}) interface{} {
+	if options == nil {
+		return options
+	}
+	b, err := json.Marshal(options)
+	if err != nil {
+		return options
+	}
+	var out interface{}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return options
+	}
+	return out
+}
+
 func (a *App) NormalizeStartJob(jobType string, files []interface{}, options interface{}) {
+	files = rehydrateNormalizeFiles(files)
+	options = rehydrateNormalizeOptions(options)
 	parsedOptions := parseNormalizeStartOptions(options)
 	var jobs []normalize.NormalizeJob
 	for _, f := range files {
-		fMap, ok := f.(map[string]interface{})
+		job, ok := normaliseJobFromPayload(f, parsedOptions)
 		if !ok {
 			continue
 		}
-		id, _ := fMap["id"].(string)
-		path, _ := fMap["path"].(string)
-		gain, _ := fMap["gain"].(float64)
-		if path == "" {
-			continue
-		}
-
-		backup := parsedOptions.Backup
-		if jobBackup, ok := fMap["backup"].(bool); ok {
-			backup = jobBackup
-		}
-
-		basePath := parsedOptions.BasePath
-		if jobBasePath, ok := fMap["basePath"].(string); ok && jobBasePath != "" {
-			basePath = jobBasePath
-		}
-
-		jobs = append(jobs, normalize.NormalizeJob{
-			ID:       id,
-			FilePath: path,
-			Gain:     gain,
-			Backup:   backup,
-			Output:   parsedOptions.Output,
-			BasePath: basePath,
-		})
+		jobs = append(jobs, job)
 	}
 
 	if len(jobs) == 0 {
-		wailsRuntime.EventsEmit(a.ctx, "normalize-job-finished")
+		fmt.Printf("[Normalize] NormalizeStartJob: no runnable jobs (jobType=%s, incomingFiles=%d)\n", jobType, len(files))
+		wailsRuntime.EventsEmit(a.ctx, "normalize-job-finished", map[string]interface{}{
+			"jobType":       jobType,
+			"scheduled":     0,
+			"incomingFiles": len(files),
+		})
 		return
 	}
 
@@ -162,12 +176,16 @@ func (a *App) NormalizeStartJob(jobType string, files []interface{}, options int
 				wailsRuntime.EventsEmit(a.ctx, "normalize-worker-result", map[string]interface{}{
 					"type":   eventType,
 					"id":     j.ID,
+					"path":   j.FilePath,
 					"result": res,
 				})
 			}(job)
 		}
 		wg.Wait()
-		wailsRuntime.EventsEmit(a.ctx, "normalize-job-finished")
+		wailsRuntime.EventsEmit(a.ctx, "normalize-job-finished", map[string]interface{}{
+			"jobType":   jobType,
+			"scheduled": len(jobs),
+		})
 	}()
 }
 

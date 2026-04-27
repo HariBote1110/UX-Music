@@ -944,6 +944,23 @@ func (p *Player) SetVolume(volume float64) {
 	p.setVolume(volume)
 }
 
+// SetNormalisationGain applies loudness normalisation as a linear gain (1.0 = unity).
+func (p *Player) SetNormalisationGain(v float64) {
+	if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		v = 1.0
+	}
+	const maxNormGain = 64.0
+	if v > maxNormGain {
+		v = maxNormGain
+	}
+	p.baseGain.Store(math.Float64bits(v))
+}
+
+// GetNormalisationGain returns the current linear normalisation multiplier.
+func (p *Player) GetNormalisationGain() float64 {
+	return math.Float64frombits(p.baseGain.Load())
+}
+
 // SetEqualizer updates equaliser settings used by real-time audio callback.
 func (p *Player) SetEqualizer(active bool, preampDB float64, bands []float64) {
 	nextSettings := equalizerSettings{

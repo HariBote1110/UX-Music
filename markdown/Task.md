@@ -1,3 +1,24 @@
+# Task: Gitコンフリクトの解消とバージョン更新
+
+## 概要
+gitのコンフリクト（手動で残されたマーカーを含む）を解消し、プロジェクトのバージョンを `0.1.9-Beta-9h` に更新する。
+
+## 完了条件
+- [x] `Electron_Based_UX-Music/src/main/ipc-handlers.js` のコンフリクトマーカーが解消されていること。
+- [x] `markdown/requirement.md` のバージョンが `0.1.9-Beta-9h` に更新されていること。
+- [x] `src/renderer/js/core/bridge.js` のバージョンが `0.1.9-Beta-9h` に更新されていること。
+- [x] プロジェクト全体からコンフリクトマーカーが消えていること（検証済み）。
+
+# Task: Wails 移行の未動作・ギャップ機能の探索とドキュメント化
+
+## 概要
+Electron 版では動作していた、または実装済みであったが、Wails 版では現在動作しない、あるいはモック・TODO となっている機能を隅々まで探索し、その内容をまとめる。
+
+## 完了条件
+- [x] `src/renderer/` 内のフロントエンドおよび `internal/` , `server/` 内のバックエンド実装を調査し、不一致・未実装機能（Discord RPC連携漏れ、プレイリスト実装など）をリストアップすること。
+- [x] 調査結果を `markdown/wails-migration-gaps.md` にまとめること。
+- [x] バージョンが `0.1.9-Beta-9g` に更新されること。
+
 # Task: UI用語の英式綴り（British English）統一
 
 ## 概要

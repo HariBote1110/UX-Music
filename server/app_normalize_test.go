@@ -7,6 +7,23 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
+func TestRehydrateNormalizeFilesPreservesPaths(t *testing.T) {
+	in := []interface{}{
+		map[string]interface{}{"id": "a", "path": "/Music/x.flac", "gain": float64(-1)},
+	}
+	out := rehydrateNormalizeFiles(in)
+	if len(out) != 1 {
+		t.Fatalf("len = %d", len(out))
+	}
+	m, ok := out[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("element type %T", out[0])
+	}
+	if m["path"] != "/Music/x.flac" {
+		t.Fatalf("path = %v", m["path"])
+	}
+}
+
 func TestHasNumericLoudnessValue(t *testing.T) {
 	tests := []struct {
 		name  string
