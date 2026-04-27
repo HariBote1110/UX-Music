@@ -343,8 +343,13 @@ func (p *Player) SetDevice(deviceID string) error {
 		// reported default reflects the current system setting.
 		_ = portaudio.Terminate()
 		if err := portaudio.Initialize(); err != nil {
-			p.mu.Unlock()
-			return fmt.Errorf("failed to reinitialise PortAudio: %w", err)
+			// リカバリ: 一度だけ再試行して PA を使用可能な状態に戻す。
+			// 失敗したままだと以降の再生操作がすべてクラッシュするため。
+			if recovErr := portaudio.Initialize(); recovErr != nil {
+				p.mu.Unlock()
+				return fmt.Errorf("PortAudio reinitialisation failed (%w); recovery also failed: %v", err, recovErr)
+			}
+			// リカバリ成功: デバイスキャッシュをクリアして続行する
 		}
 		// Previous DeviceInfo pointers are now invalid.
 		p.currentDevice = nil

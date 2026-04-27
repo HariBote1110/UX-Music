@@ -227,6 +227,9 @@ export function renderNormalizeView(container: HTMLElement, options: { signal?: 
     const { signal } = options;
     registerNormalizeIpcHandlerOnce();
 
+    // 再表示時に前回の状態をリセットする
+    normalizeFiles.clear();
+
     container.innerHTML = `<div class="normalize-view-inner" id="normalize-view">${getNormalizeViewHtml()}</div>`;
 
     const dropZone = document.getElementById('normalize-drop-zone');
@@ -406,4 +409,7 @@ export function renderNormalizeView(container: HTMLElement, options: { signal?: 
             updateProgress(0, filesToNormalise.length, '適用中');
         }
     });
+
+    // 既存データがあれば初期表示に反映する
+    updateFileList();
 }

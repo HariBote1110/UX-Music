@@ -22,7 +22,13 @@ const electronAPI = window.electronAPI;
 
 /** For `[attr="..."]` selectors — not {@link CSS.escape} (that targets identifiers and breaks UUIDs starting with a digit). */
 function cssQuotedAttrValue(value) {
-    return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return String(value)
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\a ')
+        .replace(/\r/g, '\\d ')
+        .replace(/\f/g, '\\c ')
+        .replace(/\0/g, '\\0 ');
 }
 
 /**
