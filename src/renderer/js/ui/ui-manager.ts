@@ -348,10 +348,22 @@ export async function updateAudioDevices() {
                     return;
                 }
 
+                // システムデフォルト追従エントリ
+                const defaultItem = document.createElement('div');
+                defaultItem.className = 'device-popup-item';
+                defaultItem.textContent = 'システムデフォルト';
+                defaultItem.dataset.deviceId = 'default';
+                if (activeDeviceId === 'default') defaultItem.classList.add('active');
+                defaultItem.style.borderBottom = '1px solid #334';
+                defaultItem.addEventListener('click', async () => {
+                    await applyOutputDeviceChange(defaultItem, 'default');
+                });
+                elements.devicePopup.appendChild(defaultItem);
+
                 goDevices.forEach(d => {
                     const item = document.createElement('div');
                     item.className = 'device-popup-item';
-                    item.textContent = d.name;
+                    item.textContent = d.isDefault ? `${d.name} ★` : d.name;
                     item.dataset.deviceId = d.id;
                     if (d.id === activeDeviceId) item.classList.add('active');
 
