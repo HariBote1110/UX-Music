@@ -6,7 +6,7 @@ import { initEventListeners } from './js/core/init-listeners.js';
 import { initUI } from './js/ui/ui.js';
 import { initSettings } from './js/utils/init-settings.js';
 import { initNavigation, showView } from './js/core/navigation.js';
-import { initPlayer, playCurrent, pauseCurrent, togglePlayPause, stop as stopPlayback } from './js/features/player.js';
+import { initPlayer, playCurrent, pauseCurrent, togglePlayPause, stop as stopPlayback, setAudioOutput } from './js/features/player.js';
 import { updateAudioDevices, updatePlayCountDisplay, addSongsToLibrary, renderCurrentView } from './js/ui/ui-manager.js';
 import { restoreSavedSinkId } from './js/features/audio-graph.js';
 import { initIPC } from './js/core/ipc.js';
@@ -296,7 +296,23 @@ async function initApp() {
     // デバイス接続/切断時にリストを自動更新 (Wails環境のみ)
     if (window.runtime && typeof window.runtime.EventsOn === 'function') {
         window.runtime.EventsOn('audio-devices-changed', () => {
-            console.log('[AudioDevices] Device change detected via Go watcher');
+            console.log('[AudioDevices] Device list change detected via Go watcher');
+            updateAudioDevices();
+        });
+
+        // システムデフォルト出力が変更されたとき、ユーザーがデフォルト使用中なら追従する
+        window.runtime.EventsOn('audio-default-device-changed', async () => {
+            console.log('[AudioDevices] System default output changed');
+            try {
+                const currentSettings = await musicApi.getSettings();
+                const savedId = currentSettings?.audioOutputId;
+                if (!savedId || savedId === 'default') {
+                    console.log('[AudioDevices] User is on system default; switching to new default output.');
+                    await setAudioOutput('default');
+                }
+            } catch (e) {
+                console.warn('[AudioDevices] Failed to switch to new default output:', e);
+            }
             updateAudioDevices();
         });
     }

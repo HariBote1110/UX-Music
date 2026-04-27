@@ -312,11 +312,33 @@ func (p *Player) ListDevices() ([]Device, error) {
 }
 
 // SetDevice sets the output device by ID. If playing, the stream is reopened and position restored.
+// Pass "default" to switch to the current system default output device.
 func (p *Player) SetDevice(deviceID string) error {
+	if err := p.refreshDevices(); err != nil {
+		return fmt.Errorf("failed to refresh devices: %w", err)
+	}
+
 	var idx int
-	if _, err := fmt.Sscanf(deviceID, "%d", &idx); err != nil {
+	if deviceID == "default" {
+		defaultDev, err := portaudio.DefaultOutputDevice()
+		if err != nil || defaultDev == nil {
+			return fmt.Errorf("no default output device available")
+		}
+		found := false
+		for i, d := range p.devices {
+			if d.Name == defaultDev.Name {
+				idx = i
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("default device not found in device list")
+		}
+	} else if _, err := fmt.Sscanf(deviceID, "%d", &idx); err != nil {
 		return fmt.Errorf("invalid device ID: %s", deviceID)
 	}
+
 	p.mu.Lock()
 	if idx < 0 || idx >= len(p.devices) {
 		p.mu.Unlock()

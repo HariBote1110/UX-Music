@@ -200,8 +200,8 @@ func (a *App) AudioSetNowPlayingMetadata(metadata map[string]interface{}) error 
 	return nil
 }
 
-// deviceFingerprint creates a comparable string from a device list.
-func deviceFingerprint(devices []audio.Device) string {
+// deviceListFingerprint creates a comparable string from device names only (detects add/remove).
+func deviceListFingerprint(devices []audio.Device) string {
 	names := make([]string, len(devices))
 	for i, d := range devices {
 		names[i] = d.Name
@@ -210,7 +210,19 @@ func deviceFingerprint(devices []audio.Device) string {
 	return strings.Join(names, "\x00")
 }
 
+// defaultDeviceName returns the name of the device currently flagged as default, or empty string.
+func defaultDeviceName(devices []audio.Device) string {
+	for _, d := range devices {
+		if d.IsDefault {
+			return d.Name
+		}
+	}
+	return ""
+}
+
 // StartDeviceWatcher begins polling for audio device changes.
+// Emits "audio-devices-changed" when the device list changes (add/remove).
+// Emits "audio-default-device-changed" when the system default output changes.
 func (a *App) StartDeviceWatcher() {
 	if a.audioPlayer == nil || a.ctx == nil {
 		return
@@ -218,10 +230,11 @@ func (a *App) StartDeviceWatcher() {
 	a.deviceWatcherStop = make(chan struct{})
 
 	go func() {
-		// Build initial fingerprint
-		var lastFingerprint string
+		var lastListFP string
+		var lastDefaultName string
 		if devices, err := a.audioPlayer.ListDevices(); err == nil {
-			lastFingerprint = deviceFingerprint(devices)
+			lastListFP = deviceListFingerprint(devices)
+			lastDefaultName = defaultDeviceName(devices)
 		}
 
 		ticker := time.NewTicker(3 * time.Second)
@@ -236,11 +249,17 @@ func (a *App) StartDeviceWatcher() {
 				if err != nil {
 					continue
 				}
-				fp := deviceFingerprint(devices)
-				if fp != lastFingerprint {
-					lastFingerprint = fp
+				listFP := deviceListFingerprint(devices)
+				if listFP != lastListFP {
+					lastListFP = listFP
 					fmt.Println("[Audio] Device list changed, notifying frontend")
 					wailsRuntime.EventsEmit(a.ctx, "audio-devices-changed")
+				}
+				currentDefault := defaultDeviceName(devices)
+				if currentDefault != lastDefaultName {
+					lastDefaultName = currentDefault
+					fmt.Printf("[Audio] Default device changed to: %s\n", currentDefault)
+					wailsRuntime.EventsEmit(a.ctx, "audio-default-device-changed")
 				}
 			}
 		}
