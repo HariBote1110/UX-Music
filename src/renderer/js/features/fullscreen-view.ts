@@ -37,6 +37,8 @@ let lyricsLineElements: HTMLElement[] = [];
 let currentLyricsType: string | null = null;
 let currentAnimatedIndex = -1;
 let lastResolvedIndex = -1;
+let cachedLrcHeights: number[] | null = null;
+let lyricsResizeObserver: ResizeObserver | null = null;
 
 const ANCHOR_RATIO = 0.35;
 const INTER_BLOCK_GAP = 16;
@@ -55,12 +57,19 @@ export function openFullscreenView() {
     overlayEl.classList.add('fs-open');
     startTicker();
     document.addEventListener('keydown', handleKeydown);
+
+    if (lyricsContainer && !lyricsResizeObserver) {
+        lyricsResizeObserver = new ResizeObserver(() => { cachedLrcHeights = null; });
+        lyricsResizeObserver.observe(lyricsContainer);
+    }
 }
 
 export function closeFullscreenView() {
     overlayEl?.classList.remove('fs-open');
     stopTicker();
     document.removeEventListener('keydown', handleKeydown);
+    lyricsResizeObserver?.disconnect();
+    lyricsResizeObserver = null;
 }
 
 /** 曲が変わったときに呼ぶ */
@@ -72,11 +81,11 @@ export function notifyFullscreenSongChange() {
     if (activeTab === 'queue') renderQueue();
 }
 
-/** 歌詞が変わったときに呼ぶ */
-export function notifyFullscreenLyricsChange() {
+// lyrics-manager からの循環依存を避けるため CustomEvent で受信する
+window.addEventListener('fullscreen:lyrics-change', () => {
     if (!isOpen()) return;
     syncLyrics();
-}
+});
 
 // ---- 内部ユーティリティ ----
 
@@ -236,6 +245,7 @@ function syncLyrics() {
     lyricsEl.innerHTML = '';
     lyricsEl.className = 'fs-lyrics-inner';
     lyricsLineElements = [];
+    cachedLrcHeights = null;
     currentLyricsType = state.currentLyricsType;
     currentAnimatedIndex = -1;
     lastResolvedIndex = -1;
@@ -349,10 +359,13 @@ function applyLyricsMotion(activeIndex: number, immediate = false) {
 
     lines.forEach((line, i) => line.classList.toggle('active', i === activeIndex));
 
-    const heights = lines.map(el => {
-        const h = el.getBoundingClientRect().height;
-        return h > 0 ? h : 1;
-    });
+    if (!cachedLrcHeights || cachedLrcHeights.length !== lines.length) {
+        cachedLrcHeights = lines.map(el => {
+            const h = el.getBoundingClientRect().height;
+            return h > 0 ? h : 1;
+        });
+    }
+    const heights = cachedLrcHeights;
 
     const n = heights.length;
     const tops = new Array(n);

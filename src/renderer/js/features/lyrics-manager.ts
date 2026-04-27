@@ -2,7 +2,6 @@ import { state, elements } from '../core/state.js';
 import { showContextMenu } from '../ui/utils.js';
 import { showNotification } from '../ui/notification.js';
 import { startLrcEditor } from './lrc-editor.js';
-import { notifyFullscreenLyricsChange } from './fullscreen-view.js';
 import { ClipboardSetText } from '../../wailsjs/runtime/runtime.js';
 import type { LrcLine } from './lyrics-translation.js';
 import {
@@ -43,6 +42,7 @@ let lyricsContainerObserver = null;
 let lyricsViewResizeObserver = null;
 let lyricsLineElements = [];
 let lastResolvedLyricsIndex = -1;
+let cachedLrcHeights: number[] | null = null;
 
 /**
  * 曲が再生されたときに歌詞を読み込んで表示するメイン関数
@@ -107,7 +107,7 @@ export async function loadLyricsForSong(song) {
     }
 
     setupLyricsContextMenu(song, state.currentLyricsType);
-    notifyFullscreenLyricsChange();
+    window.dispatchEvent(new CustomEvent('fullscreen:lyrics-change'));
 }
 
 function isLrcLineArray(lyrics) {
@@ -122,6 +122,7 @@ function clearLyrics() {
     currentAnimatedLyricsIndex = -1;
     lastResolvedLyricsIndex = -1;
     lyricsLineElements = [];
+    cachedLrcHeights = null;
     elements.lyricsView.innerHTML = '';
     elements.lyricsView.scrollTop = 0;
     elements.lyricsView.classList.remove('lyrics-mode-lrc', 'lyrics-mode-txt', 'lyrics-mode-bilingual');
@@ -247,13 +248,18 @@ function renderLyrics(lyrics) {
 }
 
 /**
- * 各 LRC 行 p の可視高（折り返し・和訳行を含む）を測定する
+ * 各 LRC 行 p の可視高（折り返し・和訳行を含む）を測定する。
+ * 結果は cachedLrcHeights にキャッシュし、リサイズ時にのみ再計測する。
  */
 function measureLrcBlockHeights(lineElements) {
-    return lineElements.map(el => {
+    if (cachedLrcHeights && cachedLrcHeights.length === lineElements.length) {
+        return cachedLrcHeights;
+    }
+    cachedLrcHeights = lineElements.map(el => {
         const h = el.getBoundingClientRect().height;
         return Number.isFinite(h) && h > 0 ? h : 1;
     });
+    return cachedLrcHeights;
 }
 
 /**
@@ -338,6 +344,7 @@ function ensureLyricsMotionListeners() {
             if (!elements.lyricsView.classList.contains('lyrics-mode-lrc')) {
                 return;
             }
+            cachedLrcHeights = null;
             scheduleLyricsRelayout(true);
         });
         lyricsViewResizeObserver.observe(elements.lyricsView);

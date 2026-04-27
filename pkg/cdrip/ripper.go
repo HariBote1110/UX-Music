@@ -251,8 +251,11 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 	// CD音声セクタ: 2352 bytes/sector、WAVヘッダ: 44 bytes
 	expectedBytes := int64(track.Sectors)*2352 + 44
 	ripDone := make(chan struct{})
+	var progressWg sync.WaitGroup
 	if progressChan != nil && expectedBytes > 44 {
+		progressWg.Add(1)
 		go func() {
+			defer progressWg.Done()
 			ticker := time.NewTicker(400 * time.Millisecond)
 			defer ticker.Stop()
 			for {
@@ -276,6 +279,7 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 
 	ripOutput, ripErr := ripCmd.CombinedOutput()
 	close(ripDone)
+	progressWg.Wait() // goroutine が完全に終了してから progressChan への送信を終える
 
 	if ripErr != nil {
 		os.Remove(tempWav)
