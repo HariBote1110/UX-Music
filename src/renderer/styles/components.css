@@ -1670,6 +1670,8 @@
     flex: 1;
     overflow: hidden;
     position: relative;
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 70%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 0%, black 70%, transparent 100%);
 }
 
 /* LRCモード */
@@ -1734,14 +1736,3 @@
     padding-top: 20px;
 }
 
-/* フェードマスク */
-.fs-lyrics-container::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 100px;
-    background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.65));
-    pointer-events: none;
-}
