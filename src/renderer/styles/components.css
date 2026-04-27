@@ -1643,31 +1643,29 @@
     transform: scale(1.06);
     background: #fff;
 }
-/* 再生/一時停止 クロスフェード */
+/* 再生/一時停止 モーフィング */
 .fs-play-btn .play-pause-icon {
     width: 30px;
     height: 30px;
     fill: #111;
     position: relative;
 }
-.fs-play-btn .icon-play-group,
-.fs-play-btn .icon-pause-group {
-    transition: opacity 0.22s ease;
-}
-.fs-play-btn .icon-pause-group {
-    opacity: 0;
-}
-.fs-play-btn.playing .icon-play-group {
-    opacity: 0;
-}
-.fs-play-btn.playing .icon-pause-group {
-    opacity: 1;
-}
 
 /* シャッフル・ループ アクティブ状態 */
 #fs-shuffle-btn,
 #fs-loop-btn {
     position: relative;
+}
+.fs-svg-btn {
+    width: 26px;
+    height: 26px;
+    color: white;
+    transition: color 0.18s ease;
+    overflow: visible;
+}
+#fs-shuffle-btn.active .fs-svg-btn,
+#fs-loop-btn.active .fs-svg-btn {
+    color: var(--highlight-pink);
 }
 #fs-shuffle-btn.active img,
 #fs-loop-btn.active img {
@@ -1720,8 +1718,8 @@
     flex: 1;
     overflow: hidden;
     position: relative;
-    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 70%, transparent 100%);
-    mask-image: linear-gradient(to bottom, black 0%, black 70%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%);
 }
 
 /* LRCモード */
@@ -1734,20 +1732,21 @@
 .fs-lyrics-inner.fs-lrc p {
     position: absolute;
     left: 0;
-    width: 100%;
+    width: calc(100% / 1.091);
     font-size: 2.2rem;
     font-weight: 700;
     line-height: 1.45;
     color: rgba(255, 255, 255, 0.45);
     cursor: default;
-    transform: translateY(var(--fs-line-y, 0px));
-    transition-property: transform, opacity, color, font-size;
+    transform: translateY(var(--fs-line-y, 0px)) scale(1);
+    transform-origin: left center;
+    transition-property: transform, opacity, color;
     transition-duration: var(--fs-line-dur, 0ms);
     transition-delay: var(--fs-line-delay, 0ms);
 }
 .fs-lyrics-inner.fs-lrc p.active {
     color: #fff;
-    font-size: 2.4rem;
+    transform: translateY(var(--fs-line-y, 0px)) scale(1.091);
     text-shadow: 0 0 24px rgba(255, 255, 255, 0.15);
 }
 

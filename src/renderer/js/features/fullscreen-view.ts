@@ -4,6 +4,7 @@ import { state, elements, PLAYBACK_MODES } from '../core/state.js';
 import { getCurrentTime, getDuration, isPlaying, togglePlayPause, seek } from './player.js';
 import { playNextSong, playPrevSong } from './playback-manager.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
+import { animateIconPaths } from '../ui/player-ui.js';
 
 // ---- 内部状態 ----
 let overlayEl: HTMLElement | null = null;
@@ -19,6 +20,11 @@ let artistEl: HTMLElement | null = null;
 
 let shuffleBtn: HTMLElement | null = null;
 let loopBtn: HTMLElement | null = null;
+let fsPlayPart1: SVGPathElement | null = null;
+let fsPlayPart2: SVGPathElement | null = null;
+let fsShuffleAnimRunning = false;
+let fsLoopAnimRunning = false;
+let lastSyncedPlayState: boolean | null = null;
 let tickerId: ReturnType<typeof setInterval> | null = null;
 let isSeeking = false;
 let seekRatio = 0;
@@ -40,6 +46,7 @@ export function openFullscreenView() {
         overlayEl = buildOverlay();
         document.body.appendChild(overlayEl);
     }
+    lastSyncedPlayState = null;
     syncAll();
     overlayEl.classList.add('fs-open');
     startTicker();
@@ -148,6 +155,10 @@ function syncColours() {
 function syncPlayState(playing: boolean) {
     if (!playBtn) return;
     playBtn.classList.toggle('playing', playing);
+    if (playing !== lastSyncedPlayState) {
+        lastSyncedPlayState = playing;
+        animateIconPaths(fsPlayPart1, fsPlayPart2, playing);
+    }
 }
 
 // ---- 進捗バー ----
@@ -309,6 +320,122 @@ function applyLyricsMotion(activeIndex: number, immediate = false) {
     currentAnimatedIndex = activeIndex;
 }
 
+// ---- シャッフル・ループ ボタン アニメーション ----
+
+const FS_POS_STANDARD = 100;
+const FS_POS_EXIT     = 130;
+const FS_POS_ENTER    = -30;
+const fsDashOf = (pos: number, len: number) => len - (pos / 100) * len;
+
+function initialiseFsShuffleLoop() {
+    const initPaths = (btn: HTMLElement | null, topClass: string, botClass: string) => {
+        if (!btn) return;
+        const pathTop = btn.querySelector(topClass) as SVGGeometryElement | null;
+        const pathBot = btn.querySelector(botClass) as SVGGeometryElement | null;
+        if (!pathTop || !pathBot) return;
+        const tLen = pathTop.getTotalLength();
+        const bLen = pathBot.getTotalLength();
+        (pathTop as SVGPathElement & { dataset: DOMStringMap }).dataset.totalLength = String(tLen);
+        (pathBot as SVGPathElement & { dataset: DOMStringMap }).dataset.totalLength = String(bLen);
+        pathTop.style.strokeDasharray  = `${tLen} ${tLen * 3}`;
+        pathTop.style.strokeDashoffset = '0';
+        pathBot.style.strokeDasharray  = `${bLen} ${bLen * 3}`;
+        pathBot.style.strokeDashoffset = '0';
+    };
+    initPaths(shuffleBtn, '.shuffle-path-top', '.shuffle-path-bottom');
+    initPaths(loopBtn,    '.loop-path-top',    '.loop-path-bottom');
+}
+
+async function runFsShuffleAnimation() {
+    if (fsShuffleAnimRunning || !shuffleBtn) return;
+    fsShuffleAnimRunning = true;
+
+    const pathTop    = shuffleBtn.querySelector('.shuffle-path-top') as SVGGeometryElement | null;
+    const pathBottom = shuffleBtn.querySelector('.shuffle-path-bottom') as SVGGeometryElement | null;
+    const headTop    = shuffleBtn.querySelector('.shuffle-head-top') as SVGElement | null;
+    const headBottom = shuffleBtn.querySelector('.shuffle-head-bottom') as SVGElement | null;
+    if (!pathTop || !pathBottom) { fsShuffleAnimRunning = false; return; }
+
+    const topLen    = parseFloat((pathTop as SVGPathElement & { dataset: DOMStringMap }).dataset.totalLength)    || pathTop.getTotalLength();
+    const bottomLen = parseFloat((pathBottom as SVGPathElement & { dataset: DOMStringMap }).dataset.totalLength) || pathBottom.getTotalLength();
+    const svgEl = shuffleBtn.querySelector('svg');
+    const scale = svgEl ? svgEl.getBoundingClientRect().width / 24 : 22 / 24;
+    const headExitX  = (FS_POS_EXIT  - FS_POS_STANDARD) / 100 * topLen * scale;
+    const headEnterX = (FS_POS_ENTER - FS_POS_STANDARD) / 100 * topLen * scale;
+
+    const timingExit  = { duration: 200, easing: 'ease-in',                       fill: 'forwards' as FillMode };
+    const timingEnter = { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' as FillMode };
+
+    const exitAnims: Animation[] = [
+        pathTop.animate([{ strokeDashoffset: fsDashOf(FS_POS_STANDARD, topLen) },    { strokeDashoffset: fsDashOf(FS_POS_EXIT, topLen) }],    timingExit),
+        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_EXIT, bottomLen) }], timingExit),
+    ];
+    if (headTop)    exitAnims.push(headTop.animate([{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExit));
+    if (headBottom) exitAnims.push(headBottom.animate([{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExit));
+    await Promise.all(exitAnims.map(a => a.finished));
+
+    const enterAnims: Animation[] = [
+        pathTop.animate([{ strokeDashoffset: fsDashOf(FS_POS_ENTER, topLen) },    { strokeDashoffset: fsDashOf(FS_POS_STANDARD, topLen) }],    timingEnter),
+        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_ENTER, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }], timingEnter),
+    ];
+    if (headTop)    enterAnims.push(headTop.animate([{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter));
+    if (headBottom) enterAnims.push(headBottom.animate([{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter));
+    await Promise.all(enterAnims.map(a => a.finished));
+
+    pathTop.style.strokeDashoffset    = '0';
+    pathBottom.style.strokeDashoffset = '0';
+    if (headTop)    (headTop as unknown as HTMLElement).style.transform    = '';
+    if (headBottom) (headBottom as unknown as HTMLElement).style.transform = '';
+    [...exitAnims, ...enterAnims].forEach(a => a.cancel());
+    fsShuffleAnimRunning = false;
+}
+
+async function runFsLoopAnimation() {
+    if (fsLoopAnimRunning || !loopBtn) return;
+    fsLoopAnimRunning = true;
+
+    const pathTop    = loopBtn.querySelector('.loop-path-top') as SVGGeometryElement | null;
+    const pathBottom = loopBtn.querySelector('.loop-path-bottom') as SVGGeometryElement | null;
+    const headTop    = loopBtn.querySelector('.loop-head-top') as SVGElement | null;
+    const headBottom = loopBtn.querySelector('.loop-head-bottom') as SVGElement | null;
+    if (!pathTop || !pathBottom) { fsLoopAnimRunning = false; return; }
+
+    const topLen    = parseFloat((pathTop as SVGPathElement & { dataset: DOMStringMap }).dataset.totalLength)    || pathTop.getTotalLength();
+    const bottomLen = parseFloat((pathBottom as SVGPathElement & { dataset: DOMStringMap }).dataset.totalLength) || pathBottom.getTotalLength();
+    const svgEl = loopBtn.querySelector('svg');
+    const scale = svgEl ? svgEl.getBoundingClientRect().width / 24 : 22 / 24;
+    const topExitX  =  (FS_POS_EXIT  - FS_POS_STANDARD) / 100 * topLen    * scale;
+    const topEnterX =  (FS_POS_ENTER - FS_POS_STANDARD) / 100 * topLen    * scale;
+    const botExitX  = -(FS_POS_EXIT  - FS_POS_STANDARD) / 100 * bottomLen * scale;
+    const botEnterX = -(FS_POS_ENTER - FS_POS_STANDARD) / 100 * bottomLen * scale;
+
+    const timingExit  = { duration: 200, easing: 'ease-in',                       fill: 'forwards' as FillMode };
+    const timingEnter = { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' as FillMode };
+
+    const exitAnims: Animation[] = [
+        pathTop.animate([{ strokeDashoffset: fsDashOf(FS_POS_STANDARD, topLen) },    { strokeDashoffset: fsDashOf(FS_POS_EXIT, topLen) }],    timingExit),
+        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_EXIT, bottomLen) }], timingExit),
+    ];
+    if (headTop)    exitAnims.push(headTop.animate([{ transform: 'translateX(0px)' }, { transform: `translateX(${topExitX}px)` }], timingExit));
+    if (headBottom) exitAnims.push(headBottom.animate([{ transform: 'translateX(0px)' }, { transform: `translateX(${botExitX}px)` }], timingExit));
+    await Promise.all(exitAnims.map(a => a.finished));
+
+    const enterAnims: Animation[] = [
+        pathTop.animate([{ strokeDashoffset: fsDashOf(FS_POS_ENTER, topLen) },    { strokeDashoffset: fsDashOf(FS_POS_STANDARD, topLen) }],    timingEnter),
+        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_ENTER, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }], timingEnter),
+    ];
+    if (headTop)    enterAnims.push(headTop.animate([{ transform: `translateX(${topEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter));
+    if (headBottom) enterAnims.push(headBottom.animate([{ transform: `translateX(${botEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter));
+    await Promise.all(enterAnims.map(a => a.finished));
+
+    pathTop.style.strokeDashoffset    = '0';
+    pathBottom.style.strokeDashoffset = '0';
+    if (headTop)    (headTop as unknown as HTMLElement).style.transform    = '';
+    if (headBottom) (headBottom as unknown as HTMLElement).style.transform = '';
+    [...exitAnims, ...enterAnims].forEach(a => a.cancel());
+    fsLoopAnimRunning = false;
+}
+
 // ---- オーバーレイDOM構築 ----
 
 function buildOverlay(): HTMLElement {
@@ -341,27 +468,32 @@ function buildOverlay(): HTMLElement {
             </div>
             <div class="fs-controls">
                 <button class="fs-btn" id="fs-shuffle-btn" aria-label="シャッフル">
-                    <img src="./assets/icons/random.svg" alt="シャッフル">
+                    <svg class="shuffle-icon fs-svg-btn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path class="shuffle-path-top" d="M 2 18 L 7 18 C 10 18 14 6 17 6 L 22 6" />
+                        <path class="shuffle-head-top" d="M 19 3 L 22 6 L 19 9" />
+                        <path class="shuffle-path-bottom" d="M 2 6 L 7 6 C 10 6 14 18 17 18 L 22 18" />
+                        <path class="shuffle-head-bottom" d="M 19 15 L 22 18 L 19 21" />
+                    </svg>
                 </button>
                 <button class="fs-btn" id="fs-prev-btn" aria-label="前の曲">
                     <img src="./assets/icons/rewind_skip.svg" alt="前の曲">
                 </button>
                 <button class="fs-btn fs-play-btn" id="fs-play-btn" aria-label="再生・一時停止">
                     <svg class="play-pause-icon" viewBox="0 0 24 24">
-                        <g class="icon-play-group">
-                            <path d="M 8 5 L 19 12 L 8 19 Z"/>
-                        </g>
-                        <g class="icon-pause-group">
-                            <rect x="5" y="4" width="4.5" height="16" rx="1"/>
-                            <rect x="14.5" y="4" width="4.5" height="16" rx="1"/>
-                        </g>
+                        <path class="icon-part-1" d="M 8 5 L 18 12 L 8 12 L 8 5 Z"></path>
+                        <path class="icon-part-2" d="M 8 19 L 18 12 L 8 12 L 8 19 Z"></path>
                     </svg>
                 </button>
                 <button class="fs-btn" id="fs-next-btn" aria-label="次の曲">
                     <img src="./assets/icons/next_skip.svg" alt="次の曲">
                 </button>
                 <button class="fs-btn" id="fs-loop-btn" aria-label="リピート">
-                    <img src="./assets/icons/repeat.svg" alt="リピート">
+                    <svg class="loop-icon fs-svg-btn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path class="loop-path-top" d="M3 12 a5 5 0 0 1 5-5 H21" />
+                        <path class="loop-head-top" d="M18 4 L21 7 L18 10" />
+                        <path class="loop-path-bottom" d="M21 12 a5 5 0 0 1-5 5 H3" />
+                        <path class="loop-head-bottom" d="M6 14 L3 17 L6 20" />
+                    </svg>
                 </button>
             </div>
         </div>
@@ -388,6 +520,10 @@ function buildOverlay(): HTMLElement {
     shuffleBtn    = el.querySelector('#fs-shuffle-btn');
     loopBtn       = el.querySelector('#fs-loop-btn');
     lyricsEl      = el.querySelector('#fs-lyrics');
+    fsPlayPart1   = el.querySelector('#fs-play-btn .icon-part-1');
+    fsPlayPart2   = el.querySelector('#fs-play-btn .icon-part-2');
+
+    initialiseFsShuffleLoop();
 
     // 閉じるボタン
     el.querySelector('#fs-close-btn').addEventListener('click', () => closeFullscreenView());
@@ -397,12 +533,14 @@ function buildOverlay(): HTMLElement {
     el.querySelector('#fs-prev-btn').addEventListener('click', () => playPrevSong());
     el.querySelector('#fs-next-btn').addEventListener('click', () => playNextSong());
 
-    // シャッフル・ループは既存ボタンにフォワード
+    // シャッフル・ループは既存ボタンにフォワード＋アニメーション実行
     el.querySelector('#fs-shuffle-btn').addEventListener('click', () => {
         document.getElementById('shuffle-btn')?.click();
+        void runFsShuffleAnimation();
     });
     el.querySelector('#fs-loop-btn').addEventListener('click', () => {
         document.getElementById('loop-btn')?.click();
+        void runFsLoopAnimation();
     });
 
     // シークバー

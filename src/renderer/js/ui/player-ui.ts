@@ -205,7 +205,7 @@ function easeOutCubic(t) {
 }
 
 // SVGパスをアニメーションで変更
-function animateIconPaths(iconPart1, iconPart2, toPlaying, duration = 250) {
+export function animateIconPaths(iconPart1, iconPart2, toPlaying, duration = 250) {
     if (iconAnimationId) {
         cancelAnimationFrame(iconAnimationId);
     }
