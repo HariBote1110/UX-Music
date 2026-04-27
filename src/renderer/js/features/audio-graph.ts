@@ -18,6 +18,7 @@ let isDirectLinkEnabled = false;
 let savedSinkId = 'default'; // 保存されたオーディオ出力デバイスID
 const EQ_BAND_COUNT = 10;
 let isEqualizerBackendWarningShown = false;
+let deviceChangeListenerAdded = false;
 
 /**
  * グラフオブジェクトの構造
@@ -245,12 +246,41 @@ async function createGraph(rate) {
     };
 }
 
+/**
+ * システムのデフォルト出力デバイス変更を検知して AudioContext に再適用するリスナーを登録する。
+ * 一度だけ登録される。Wails 環境では Go 側が管理するため不要。
+ */
+function setupDeviceChangeListener() {
+    if (deviceChangeListenerAdded || isWailsMode()) return;
+    if (!navigator.mediaDevices?.addEventListener) return;
+
+    deviceChangeListenerAdded = true;
+    navigator.mediaDevices.addEventListener('devicechange', async () => {
+        // ユーザーが明示的にデバイスを選択している場合は追従しない
+        if (savedSinkId !== 'default') return;
+        if (!currentGraph) return;
+
+        console.log('[AudioGraph] Device change detected; re-applying system default output.');
+        if (typeof (currentGraph.context as unknown as { setSinkId?: (id: string) => Promise<void> }).setSinkId === 'function') {
+            try {
+                await (currentGraph.context as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId('');
+                console.log('[AudioGraph] System default output re-applied successfully.');
+            } catch (e) {
+                console.warn('[AudioGraph] Failed to re-apply system default output:', e);
+            }
+        }
+    });
+    console.log('[AudioGraph] devicechange listener registered for system default tracking.');
+}
+
 export async function initAudioGraph(playerElement, sinkId) {
     if (isWailsMode()) {
         return;
     }
     // 初回初期化またはデバイス変更
     console.log('[AudioGraph] initAudioGraph called with sinkId:', sinkId);
+
+    setupDeviceChangeListener();
 
     // 空文字のsinkIdは無視（権限がない場合にブラウザが空文字を返す）
     if (sinkId === '') {
