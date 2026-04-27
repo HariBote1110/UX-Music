@@ -17,7 +17,7 @@ import (
 	"ux-music-sidecar/server"
 )
 
-//go:embed all:src/renderer
+//go:embed all:src/renderer/dist
 var assets embed.FS
 
 func main() {
@@ -39,7 +39,7 @@ func main() {
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				path := r.URL.Path
 				if strings.HasPrefix(path, "/safe-artwork/") {
-					// safe-artwork:// を /safe-artwork/path として受け取る
+					// safe-artwork:// を /safe-artwork/path として受け取る（server 抽出前の同一実装）
 					filename := strings.TrimPrefix(path, "/safe-artwork/")
 					userDataPath := config.GetUserDataPath()
 					artworksDir := filepath.Join(userDataPath, "Artworks")
@@ -51,7 +51,6 @@ func main() {
 						return
 					}
 
-					// http.ServeFile を使用してメモリ効率を高める（ストリーミング配信）
 					http.ServeFile(w, r, fullPath)
 					return
 				} else if strings.HasPrefix(path, "/safe-media/") {

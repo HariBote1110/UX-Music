@@ -65,10 +65,6 @@
     background-color: var(--bg-hover);
 }
 
-#light-flight-mode-btn.active {
-    color: var(--highlight-pink);
-    background-color: var(--bg-hover);
-}
 
 #library-actions-container {
     position: relative;
@@ -493,6 +489,7 @@
 }
 
 #modal-overlay,
+#lyrics-translation-modal-overlay,
 #settings-modal-overlay,
 #loading-overlay,
 #devices-modal-overlay {
@@ -509,6 +506,7 @@
 }
 
 #modal-overlay.hidden,
+#lyrics-translation-modal-overlay.hidden,
 #settings-modal-overlay.hidden,
 #loading-overlay.hidden,
 #devices-modal-overlay.hidden {
@@ -541,6 +539,7 @@
 }
 
 #modal,
+#lyrics-translation-modal,
 #settings-modal {
     background-color: var(--bg-light);
     padding: 25px;
@@ -554,11 +553,41 @@
 }
 
 #modal h3,
+#lyrics-translation-modal h3,
 #settings-modal h2 {
     margin-top: 0;
 }
 
-#modal p {
+#lyrics-translation-modal {
+    max-width: 560px;
+}
+
+#lyrics-translation-paste {
+    width: 100%;
+    min-height: 200px;
+    padding: 10px;
+    box-sizing: border-box;
+    background-color: var(--bg-dark);
+    border: 1px solid #535353;
+    color: #fff;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.45;
+    resize: vertical;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.lyrics-translation-hint {
+    min-height: 1.2em;
+    color: #f59e0b;
+    font-size: 12px;
+    margin: 0 0 8px 0;
+}
+
+#modal p,
+#lyrics-translation-modal p {
     color: var(--text-muted);
     font-size: 14px;
     white-space: pre-line;
@@ -588,16 +617,19 @@
     font-weight: bold;
 }
 
-#modal-cancel-btn {
+#modal-cancel-btn,
+#lyrics-translation-cancel-btn {
     background-color: transparent;
     color: #fff;
 }
 
-#modal-cancel-btn:hover {
+#modal-cancel-btn:hover,
+#lyrics-translation-cancel-btn:hover {
     background-color: var(--bg-hover);
 }
 
 #modal-ok-btn,
+#lyrics-translation-save-btn,
 #settings-ok-btn,
 #devices-ok-btn {
     background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue));
@@ -607,6 +639,7 @@
 }
 
 #modal-ok-btn:hover,
+#lyrics-translation-save-btn:hover,
 #settings-ok-btn:hover,
 #devices-ok-btn:hover {
     opacity: 0.9;
@@ -724,6 +757,117 @@
     flex-shrink: 0;
 }
 
+#settings-modal .licence-details > summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#settings-modal .licence-details > summary::before {
+    content: '▶';
+    font-size: 9px;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+#settings-modal .licence-details[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+#settings-modal .licence-scroll {
+    margin-top: 12px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+#settings-modal .licence-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+#settings-modal .licence-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#settings-modal .licence-scroll::-webkit-scrollbar-thumb {
+    background: var(--bg-light);
+    border-radius: 2px;
+}
+
+#settings-modal .licence-section {
+    margin-bottom: 16px;
+}
+
+#settings-modal .licence-section h5 {
+    margin: 0 0 8px 0;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+#settings-modal .licence-list {
+    margin: 0;
+    padding: 0;
+}
+
+#settings-modal .licence-entry {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 5px 0;
+    border-top: 1px solid var(--bg-light);
+    font-size: 12px;
+}
+
+#settings-modal .licence-list .licence-entry:first-child {
+    border-top: none;
+}
+
+#settings-modal .licence-entry dt {
+    flex: 1;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+#settings-modal .licence-entry dd {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+#settings-modal .licence-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    background-color: rgba(99, 179, 237, 0.15);
+    color: #63b3ed;
+    border: 1px solid rgba(99, 179, 237, 0.3);
+    white-space: nowrap;
+}
+
+#settings-modal .licence-badge--proprietary {
+    background-color: rgba(246, 173, 85, 0.15);
+    color: #f6ad55;
+    border-color: rgba(246, 173, 85, 0.3);
+}
+
 
 #loading-overlay {
     background-color: rgba(0, 0, 0, 0.8);
@@ -788,56 +932,85 @@
 .context-menu {
     position: fixed;
     z-index: 10000;
-    background-color: var(--bg-light);
-    border-radius: 4px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-    padding: 5px 0;
-    min-width: 150px;
+    background-color: rgba(44, 44, 46, 0.96);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    box-shadow:
+        0 4px 6px rgba(0, 0, 0, 0.3),
+        0 12px 32px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    padding: 4px 0;
+    min-width: 180px;
+    animation: context-menu-in 0.1s ease-out;
+    transform-origin: top left;
+    user-select: none;
+}
+
+@keyframes context-menu-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.context-menu--submenu {
+    position: absolute;
+    top: 0;
+    left: 100%;
 }
 
 .context-menu-item {
-    padding: 10px 15px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 14px;
-    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px;
+    color: var(--text-primary);
+    cursor: default;
+    font-size: 13px;
+    border-radius: 4px;
+    margin: 0 4px;
+    gap: 20px;
+    transition: background-color 0.07s ease;
 }
 
-.context-menu-item:hover {
-    background-color: var(--bg-hover);
-    color: var(--text-primary);
+.context-menu-item:hover:not(.disabled) {
+    background-color: var(--accent, #007aff);
+    color: #fff;
+}
+
+.context-menu-item:hover:not(.disabled) .context-menu-item__arrow {
+    color: rgba(255, 255, 255, 0.7);
 }
 
 .context-menu-item.disabled {
-    color: #666;
+    color: var(--text-muted);
     cursor: default;
-    background-color: transparent;
 }
 
-.context-menu-item.has-submenu::after {
-    content: '▶';
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%) scaleX(0.7);
+.context-menu-item__label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.context-menu-item__arrow {
+    font-size: 16px;
+    line-height: 1;
     color: var(--text-secondary);
+    flex-shrink: 0;
 }
 
-.context-menu-submenu {
-    display: none;
-    position: absolute;
-    left: 100%;
-    top: -5px;
-    /* 親メニューのpadding分を調整 */
-    background-color: var(--bg-light);
-    border-radius: 4px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-    padding: 5px 0;
-    min-width: 150px;
-}
-
-.context-menu-item:hover>.context-menu-submenu {
-    display: block;
+.context-menu-separator {
+    height: 1px;
+    background-color: rgba(255, 255, 255, 0.1);
+    margin: 4px 0;
 }
 
 #app-version {
@@ -936,6 +1109,7 @@
 }
 
 #modal-overlay,
+#lyrics-translation-modal-overlay,
 #settings-modal-overlay,
 #loading-overlay,
 #devices-modal-overlay {
@@ -1217,3 +1391,579 @@
     color: var(--text-secondary, #aaa);
     background: transparent;
 }
+
+/* ── アルバム曲順エディター ──────────────────────────────── */
+.album-order-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20000;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    animation: context-menu-in 0.15s ease-out;
+}
+
+.album-order-modal {
+    background: var(--bg-medium);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    width: min(560px, 90vw);
+    height: min(600px, 85vh);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.album-order-modal__header {
+    padding: 20px 24px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    flex-shrink: 0;
+}
+
+.album-order-modal__title {
+    margin: 0 0 4px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.album-order-modal__subtitle {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.album-order-modal__list {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.album-order-modal__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 14px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    flex-shrink: 0;
+}
+
+.album-order-modal__btn {
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    border: none;
+    transition: opacity 0.1s;
+}
+
+.album-order-modal__btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.album-order-modal__btn--secondary {
+    background: var(--bg-light);
+    color: var(--text-secondary);
+}
+
+.album-order-modal__btn--secondary:hover:not(:disabled) {
+    color: var(--text-primary);
+}
+
+.album-order-modal__btn--primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.album-order-modal__btn--primary:hover:not(:disabled) {
+    opacity: 0.85;
+}
+
+/* 仮想スクローラー内の各行 */
+.album-order-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    box-sizing: border-box;
+}
+
+.album-order-row:hover {
+    background: var(--bg-light);
+}
+
+.album-order-row__input {
+    width: 52px;
+    flex-shrink: 0;
+    padding: 4px 6px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    font-size: 13px;
+    text-align: center;
+    -moz-appearance: textfield;
+}
+
+.album-order-row__input::-webkit-inner-spin-button,
+.album-order-row__input::-webkit-outer-spin-button {
+    opacity: 1;
+}
+
+.album-order-row__input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.album-order-row__info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.album-order-row__title {
+    font-size: 13px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.album-order-row__meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ============================================================
+   フルスクリーンオーバーレイ
+   ============================================================ */
+
+.fs-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--fs-bg-1, var(--highlight-pink)) 30%, #0e0e1a),
+        color-mix(in srgb, var(--fs-bg-2, var(--highlight-blue)) 30%, #0e0e1a)
+    );
+    display: flex;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease, background 1.2s ease;
+    font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+    color: var(--text-primary);
+    overflow: hidden;
+}
+
+.fs-overlay.fs-open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* 閉じるボタン */
+.fs-close-btn {
+    position: absolute;
+    top: 18px;
+    right: 22px;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, color 0.2s;
+}
+.fs-close-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+.fs-close-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+/* レイアウト */
+.fs-left {
+    flex: 4 4 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    gap: 0;
+}
+
+.fs-right {
+    flex: 6;
+    display: flex;
+    flex-direction: column;
+    padding: 56px 72px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* アートワーク */
+.fs-artwork-wrapper {
+    width: 100%;
+    max-width: 400px;
+    aspect-ratio: 1 / 1;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 28px 56px rgba(0, 0, 0, 0.55);
+    margin-bottom: 36px;
+    background: #222;
+    flex-shrink: 0;
+}
+.fs-artwork-wrapper img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.4s ease;
+}
+.fs-artwork-wrapper img:hover {
+    transform: scale(1.03);
+}
+
+/* トラック情報 */
+.fs-track-info {
+    text-align: center;
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 28px;
+}
+.fs-title {
+    font-size: 1.85rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 8px;
+    letter-spacing: 0.02em;
+}
+.fs-artist {
+    font-size: 1.1rem;
+    color: rgba(255, 255, 255, 0.65);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* シークバー */
+.fs-progress-area {
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 28px;
+}
+.fs-progress-bar {
+    position: relative;
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    cursor: pointer;
+    margin-bottom: 8px;
+}
+.fs-progress-fill {
+    position: absolute;
+    inset: 0;
+    right: auto;
+    width: 0%;
+    background: #fff;
+    border-radius: 3px;
+    pointer-events: none;
+}
+.fs-progress-thumb {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    transform: translate(-50%, -50%) scale(0);
+    width: 13px;
+    height: 13px;
+    background: #fff;
+    border-radius: 50%;
+    pointer-events: none;
+    transition: transform 0.15s;
+}
+.fs-progress-bar:hover .fs-progress-thumb {
+    transform: translate(-50%, -50%) scale(1);
+}
+.fs-time-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.6);
+    font-variant-numeric: tabular-nums;
+}
+
+/* コントロールボタン */
+.fs-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+}
+.fs-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.18s, opacity 0.18s;
+    padding: 0;
+    opacity: 0.65;
+}
+.fs-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+.fs-btn img {
+    width: 26px;
+    height: 26px;
+    filter: invert(1);
+    transition: filter 0.18s ease;
+}
+.fs-play-btn {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.95);
+    opacity: 1;
+}
+.fs-play-btn:hover {
+    transform: scale(1.06);
+    background: #fff;
+}
+/* 再生/一時停止 モーフィング */
+.fs-play-btn .play-pause-icon {
+    width: 30px;
+    height: 30px;
+    fill: #111;
+    position: relative;
+}
+
+/* シャッフル・ループ アクティブ状態 */
+#fs-shuffle-btn,
+#fs-loop-btn {
+    position: relative;
+}
+.fs-svg-btn {
+    width: 26px;
+    height: 26px;
+    color: white;
+    transition: color 0.18s ease;
+    overflow: visible;
+}
+#fs-shuffle-btn.active .fs-svg-btn,
+#fs-loop-btn.active .fs-svg-btn {
+    color: var(--highlight-pink);
+}
+#fs-shuffle-btn.active img,
+#fs-loop-btn.active img {
+    filter: invert(48%) sepia(21%) saturate(1475%) hue-rotate(312deg) brightness(90%) contrast(86%);
+    opacity: 1;
+}
+#fs-shuffle-btn.active::after,
+#fs-loop-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;
+    height: 5px;
+    background: var(--highlight-pink);
+    border-radius: 50%;
+}
+#fs-loop-btn.loop-one::after {
+    content: '1';
+    bottom: -10px;
+    width: 14px;
+    height: 14px;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--highlight-pink);
+    background: transparent;
+    border-radius: 0;
+}
+
+/* 右パネル タブ */
+.fs-tab-nav {
+    margin-bottom: 28px;
+    flex-shrink: 0;
+}
+.fs-tab-label {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.6rem;
+    font-weight: 700;
+    padding: 0 0 10px 0;
+    display: inline-block;
+    color: rgba(255, 255, 255, 0.4);
+    border-bottom: 3px solid transparent;
+    transition: color 0.18s ease;
+}
+.fs-tab-label + .fs-tab-label {
+    margin-left: 28px;
+}
+.fs-tab-label.active {
+    color: #fff;
+    border-bottom-color: #fff;
+}
+.fs-tab-label:hover:not(.active) {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+/* 歌詞コンテナ */
+.fs-lyrics-container {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%);
+}
+
+/* キューコンテナ */
+.fs-queue-container {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%);
+}
+.fs-queue-inner {
+    height: 100%;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 8px 0;
+}
+.fs-queue-inner::-webkit-scrollbar { display: none; }
+.fs-queue-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 4px;
+    border-radius: 8px;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.15s ease, background 0.15s ease;
+}
+.fs-queue-item:hover {
+    opacity: 0.85;
+    background: rgba(255, 255, 255, 0.07);
+}
+.fs-queue-item.active {
+    opacity: 1;
+}
+.fs-queue-item.active .fs-queue-title {
+    color: #fff;
+    font-weight: 700;
+}
+.fs-queue-info {
+    flex: 1;
+    min-width: 0;
+}
+.fs-queue-title {
+    font-size: 1rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.fs-queue-artist {
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.5);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+
+/* LRCモード */
+.fs-lyrics-inner.fs-lrc {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+.fs-lyrics-inner.fs-lrc p {
+    position: absolute;
+    left: 0;
+    width: calc(100% / 1.091);
+    font-size: 2.2rem;
+    font-weight: 700;
+    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.45);
+    cursor: default;
+    transform: translateY(var(--fs-line-y, 0px)) scale(1);
+    transform-origin: left center;
+    transition-property: transform, opacity, color;
+    transition-duration: var(--fs-line-dur, 0ms);
+    transition-delay: var(--fs-line-delay, 0ms);
+}
+.fs-lyrics-inner.fs-lrc p.active {
+    color: #fff;
+    transform: translateY(var(--fs-line-y, 0px)) scale(1.091);
+    text-shadow: 0 0 24px rgba(255, 255, 255, 0.15);
+}
+
+/* TXTモード */
+.fs-lyrics-inner.fs-txt {
+    overflow-y: auto;
+    scrollbar-width: none;
+    height: 100%;
+}
+.fs-lyrics-inner.fs-txt::-webkit-scrollbar { display: none; }
+.fs-lyrics-inner.fs-txt p {
+    font-size: 1.85rem;
+    font-weight: 700;
+    line-height: 1.65;
+    color: rgba(255, 255, 255, 0.55);
+}
+.fs-lyrics-inner.fs-txt p.fs-line-break {
+    margin-top: 10px;
+}
+
+/* バイリンガル */
+.fs-line-bilingual {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.fs-line-translation {
+    font-size: 0.7em;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* 歌詞なし */
+.fs-no-lyrics {
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 1rem;
+    padding-top: 20px;
+}
+

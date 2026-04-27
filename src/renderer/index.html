@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file: safe-artwork:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* http://localhost:* http://wails.localhost:* ws://127.0.0.1:* ws://localhost:* ws://wails.localhost:* wss://127.0.0.1:* wss://localhost:* wss://wails.localhost:*; img-src 'self' data: https: file: safe-artwork:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
     <title>UX Music</title>
     <link rel="stylesheet" href="./styles/base.css">
     <link rel="stylesheet" href="./styles/layout.css">
@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="./styles/edit-metadata.css">
     <link rel="stylesheet" href="./styles/lrc-editor.css">
     <link rel="stylesheet" href="./styles/mtp-browser.css">
+    <link rel="stylesheet" href="./styles/cd-ripper.css">
 </head>
 
 <body>
@@ -62,7 +63,6 @@
                         <button id="cd-rip-view-btn" class="popup-action-button">CDからインポート (Beta)</button>
                     </div>
                 </div>
-                <button id="light-flight-mode-btn" class="sidebar-action-button">✈️ Light Flightモード</button>
                 <button id="open-settings-btn" class="sidebar-action-button">設定</button>
             </div>
         </div>
@@ -70,44 +70,6 @@
         <div class="main-column">
             <main class="main-content" id="main-content">
             </main>
-
-            <div id="lrc-editor-view" class="view-container hidden"></div>
-            <div id="normalize-view" class="view-container hidden"></div>
-            <div id="quiz-view" class="view-container hidden"></div>
-            <div id="mtp-transfer-view" class="view-container hidden"></div>
-            <div id="cd-rip-view" class="view-container hidden"></div>
-
-            <!-- MTPストレージブラウザ -->
-            <div id="mtp-browser-view" class="view-container hidden">
-                <!-- デバイス情報ヘッダー -->
-                <div class="mtp-device-header">
-                    <div class="mtp-device-header-icon">📱</div>
-                    <div class="mtp-device-header-info">
-                        <h2 id="mtp-header-device-name">デバイス</h2>
-                        <p id="mtp-header-storage-info">ストレージ情報</p>
-                    </div>
-                    <div id="mtp-header-storage-bar" class="mtp-header-storage-bar">
-                        <div id="mtp-header-storage-used"></div>
-                    </div>
-                </div>
-
-                <!-- ツールバー -->
-                <div class="mtp-browser-toolbar">
-                    <button id="mtp-browser-back-btn" disabled title="戻る">←</button>
-                    <button id="mtp-browser-forward-btn" disabled title="進む">→</button>
-                    <div id="mtp-browser-breadcrumb" class="breadcrumb">
-                        <span class="breadcrumb-item">📱 デバイス</span>
-                    </div>
-                    <button id="mtp-browser-refresh-btn" title="更新">🔄</button>
-                    <button id="mtp-browser-close-btn" title="閉じる">✕</button>
-                </div>
-
-                <!-- ファイルリスト -->
-                <div id="mtp-browser-content" class="mtp-file-list">
-                    <p class="mtp-empty">ストレージを選択してください</p>
-                </div>
-            </div>
-
         </div>
 
         <div id="resizer" class="resizer-vertical"></div>
@@ -270,6 +232,18 @@
             </div>
         </div>
     </div>
+    <div id="lyrics-translation-modal-overlay" class="hidden" aria-hidden="true">
+        <div id="lyrics-translation-modal">
+            <h3>和訳の貼り付け</h3>
+            <p>LLM の返答（番号付き 1. 2. … 推奨）を貼り付け、保存で歌詞ディレクトリに反映します。英語の<strong>空行（間奏）</strong>は番号をずらさないよう 1 行そろえてください。アプリ側では和訳は<strong>表示・保存とも出しません</strong>（タイムスタンプのみ、または空行）。</p>
+            <textarea id="lyrics-translation-paste" rows="12" placeholder="1. こんにちは&#10;2. 世界"></textarea>
+            <p id="lyrics-translation-paste-hint" class="lyrics-translation-hint"></p>
+            <div class="modal-buttons">
+                <button type="button" id="lyrics-translation-cancel-btn">キャンセル</button>
+                <button type="button" id="lyrics-translation-save-btn">保存して再読み込み</button>
+            </div>
+        </div>
+    </div>
     <div id="settings-modal-overlay" class="hidden">
         <div id="settings-modal">
             <h2 id="settings-title">設定</h2>
@@ -414,19 +388,7 @@
                     <div class="setting-item">
                         <h4>その他</h4>
                         <div class="checkbox-group">
-                            <div class="setting-child-item">
-                                <label for="title-list-min-width-slider">曲一覧のタイトル列の最小幅: <span
-                                        id="title-list-min-width-value">0 px（自動）</span></label>
-                                <input type="range" id="title-list-min-width-slider" min="0" max="280" value="0" step="4">
-                                <p class="setting-description">ウィンドウが狭いときに曲名が他の列に押しつぶされる場合、タイトル列の幅の下限を上げて調整できます。</p>
-                            </div>
-                            <label>
-                                <input type="checkbox" name="group-album-art">
-                                <div>
-                                    <strong>アルバムアートをグループ化して表示</strong>
-                                    <small>同じアルバムの曲が続く場合、アートワークをまとめて表示を簡略化します。</small>
-                                </div>
-                            </label>
+                            <!-- アルバムアートグループ化は常に有効のため設定項目を削除 -->
                             <label>
                                 <input type="checkbox" name="enable-analysed-queue">
                                 <div>
@@ -462,6 +424,110 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <details class="licence-details">
+                            <summary>ライセンス情報</summary>
+                            <div class="licence-scroll">
+                                <section class="licence-section">
+                                    <h5>バンドルバイナリ</h5>
+                                    <dl class="licence-list">
+                                        <div class="licence-entry">
+                                            <dt>cdparanoia</dt>
+                                            <dd><span class="licence-badge">GPL-2.0</span> Monty Montgomery &amp; the Xiph.Org Foundation</dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>XLD (X Lossless Decoder)</dt>
+                                            <dd><span class="licence-badge licence-badge--proprietary">Freeware</span> tmkk</dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>FFmpeg / FFprobe</dt>
+                                            <dd><span class="licence-badge">LGPL-2.1+</span> The FFmpeg Project</dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>libusb</dt>
+                                            <dd><span class="licence-badge">LGPL-2.1+</span> libusb contributors</dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>libkalam (MTP)</dt>
+                                            <dd><span class="licence-badge">MIT</span> UX Music Project</dd>
+                                        </div>
+                                    </dl>
+                                </section>
+                                <section class="licence-section">
+                                    <h5>Goライブラリ</h5>
+                                    <dl class="licence-list">
+                                        <div class="licence-entry">
+                                            <dt>github.com/dhowden/tag</dt>
+                                            <dd><span class="licence-badge">BSD-2-Clause</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>github.com/ebitengine/purego</dt>
+                                            <dd><span class="licence-badge">Apache-2.0</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>github.com/go-audio/audio · riff · wav</dt>
+                                            <dd><span class="licence-badge">MIT</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>github.com/google/uuid</dt>
+                                            <dd><span class="licence-badge">BSD-3-Clause</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>github.com/gordonklaus/portaudio</dt>
+                                            <dd><span class="licence-badge">MIT</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>github.com/hajimehoshi/go-mp3</dt>
+                                            <dd><span class="licence-badge">Apache-2.0</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>github.com/hugolgst/rich-go</dt>
+                                            <dd><span class="licence-badge">MIT</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>github.com/kkdai/youtube/v2</dt>
+                                            <dd><span class="licence-badge">MIT</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>github.com/mewkiz/flac</dt>
+                                            <dd><span class="licence-badge">0BSD</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>github.com/mjibson/go-dsp</dt>
+                                            <dd><span class="licence-badge">MIT</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>github.com/skip2/go-qrcode</dt>
+                                            <dd><span class="licence-badge">MIT</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>github.com/wailsapp/wails/v2</dt>
+                                            <dd><span class="licence-badge">MIT</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>golang.org/x/text</dt>
+                                            <dd><span class="licence-badge">BSD-3-Clause</span></dd>
+                                        </div>
+                                    </dl>
+                                </section>
+                                <section class="licence-section">
+                                    <h5>フロントエンド</h5>
+                                    <dl class="licence-list">
+                                        <div class="licence-entry">
+                                            <dt>Vite</dt>
+                                            <dd><span class="licence-badge">MIT</span></dd>
+                                        </div>
+                                        <div class="licence-entry">
+                                            <dt>TypeScript</dt>
+                                            <dd><span class="licence-badge">Apache-2.0</span> Microsoft</dd>
+                                        </div>
+                                    </dl>
+                                </section>
+                            </div>
+                        </details>
                     </div>
                 </div>
             </div>
@@ -528,7 +594,7 @@
     </div>
 
     <video id="main-player" playsinline></video>
-    <script type="module" src="./renderer.js" defer></script>
+    <script type="module" src="/renderer.ts"></script>
 
 </body>
 

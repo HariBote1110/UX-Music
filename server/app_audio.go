@@ -49,11 +49,12 @@ func (a *App) AudioGetCurrentDevice() string {
 }
 
 // AudioPlay starts playback of an audio file
-func (a *App) AudioPlay(filePath string) error {
+func (a *App) AudioPlay(filePath string, gainLinear float64) error {
 	if a.audioPlayer == nil {
 		return fmt.Errorf("audio player not initialized")
 	}
-	if err := a.audioPlayer.Play(filePath); err != nil {
+	if err := a.audioPlayer.Play(filePath, gainLinear); err != nil {
+		fmt.Printf("[Audio] Play failed (%s): %v\n", filePath, err)
 		return err
 	}
 	a.updateOSNowPlayingByPath(filePath, true)
@@ -212,8 +213,8 @@ func (a *App) AudioSetNowPlayingMetadata(metadata map[string]interface{}) error 
 	return nil
 }
 
-// deviceFingerprint creates a comparable string from a device list.
-func deviceFingerprint(devices []audio.Device) string {
+// deviceListFingerprint creates a comparable string from device names only (detects add/remove).
+func deviceListFingerprint(devices []audio.Device) string {
 	names := make([]string, len(devices))
 	for i, d := range devices {
 		names[i] = d.Name
@@ -222,7 +223,19 @@ func deviceFingerprint(devices []audio.Device) string {
 	return strings.Join(names, "\x00")
 }
 
+// defaultDeviceName returns the name of the device currently flagged as default, or empty string.
+func defaultDeviceName(devices []audio.Device) string {
+	for _, d := range devices {
+		if d.IsDefault {
+			return d.Name
+		}
+	}
+	return ""
+}
+
 // StartDeviceWatcher begins polling for audio device changes.
+// Emits "audio-devices-changed" when the device list changes (add/remove).
+// Emits "audio-default-device-changed" when the system default output changes.
 func (a *App) StartDeviceWatcher() {
 	if a.audioPlayer == nil || a.ctx == nil {
 		return
@@ -230,10 +243,23 @@ func (a *App) StartDeviceWatcher() {
 	a.deviceWatcherStop = make(chan struct{})
 
 	go func() {
-		// Build initial fingerprint
-		var lastFingerprint string
+		// liveDefaultName returns the live OS default output name. On
+		// darwin we go through CoreAudio because PortAudio caches its
+		// DefaultOutputDevice() lookup at Pa_Initialize() time and never
+		// observes runtime changes. On other platforms we fall back to
+		// the PortAudio-reported default from ListDevices().
+		liveDefaultName := func(devices []audio.Device) string {
+			if name := audio.SystemDefaultOutputName(); name != "" {
+				return name
+			}
+			return defaultDeviceName(devices)
+		}
+
+		var lastListFP string
+		var lastDefaultName string
 		if devices, err := a.audioPlayer.ListDevices(); err == nil {
-			lastFingerprint = deviceFingerprint(devices)
+			lastListFP = deviceListFingerprint(devices)
+			lastDefaultName = liveDefaultName(devices)
 		}
 
 		ticker := time.NewTicker(3 * time.Second)
@@ -248,11 +274,17 @@ func (a *App) StartDeviceWatcher() {
 				if err != nil {
 					continue
 				}
-				fp := deviceFingerprint(devices)
-				if fp != lastFingerprint {
-					lastFingerprint = fp
+				listFP := deviceListFingerprint(devices)
+				if listFP != lastListFP {
+					lastListFP = listFP
 					fmt.Println("[Audio] Device list changed, notifying frontend")
 					wailsRuntime.EventsEmit(a.ctx, "audio-devices-changed")
+				}
+				currentDefault := liveDefaultName(devices)
+				if currentDefault != lastDefaultName {
+					lastDefaultName = currentDefault
+					fmt.Printf("[Audio] Default device changed to: %s\n", currentDefault)
+					wailsRuntime.EventsEmit(a.ctx, "audio-default-device-changed")
 				}
 			}
 		}

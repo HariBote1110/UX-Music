@@ -94,8 +94,7 @@ type Player struct {
 	sampleRate   int
 	channels     int
 	volume       atomic.Uint64 // stored as float64 bits
-	// normalisationGain is a linear multiplier applied with volume (1.0 = unity).
-	normalisationGain atomic.Uint64
+	baseGain     atomic.Uint64 // stored as float64 bits, default 1.0 (e.g. Wails loudness)
 
 	// Ring buffer for pre-decoded audio data
 	ringBuf       []float32     // Pre-decoded float32 samples
@@ -105,6 +104,8 @@ type Player struct {
 	ringAvailable atomic.Int64  // Number of samples available
 	decoderStop   chan struct{} // Signal to stop decoder goroutine
 	decoderDone   chan struct{} // Signal that decoder has stopped
+	// Serialises decoder teardown so concurrent Play/Stop cannot double-close decoderStop.
+	decoderLifecycleMu sync.Mutex
 
 	// Audio buffer (pre-allocated to avoid allocation in callback)
 	audioBuf     []byte
@@ -149,7 +150,7 @@ func NewPlayer() (*Player, error) {
 
 	p := &Player{}
 	p.setVolume(1.0)
-	p.setNormalisationGain(1.0)
+	p.baseGain.Store(math.Float64bits(1.0))
 
 	// Initialize FFT
 	p.initFFT(2048)
@@ -230,28 +231,29 @@ func (p *Player) getVolume() float64 {
 	return math.Float64frombits(p.volume.Load())
 }
 
-func (p *Player) setNormalisationGain(v float64) {
-	if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
-		v = 1.0
-	}
-	const maxNormGain = 64.0
-	if v > maxNormGain {
-		v = maxNormGain
-	}
-	p.normalisationGain.Store(math.Float64bits(v))
-}
+// shutdownDecoderGoroutine closes decoderStop once and waits until decoderLoop exits.
+// Must be used for every path that stops the decoder (Play, Stop, Close) so rapid
+// skip / overlapping IPC cannot trigger close-of-closed-channel or use-after-teardown on the decoder.
+func (p *Player) shutdownDecoderGoroutine() {
+	p.decoderLifecycleMu.Lock()
+	defer p.decoderLifecycleMu.Unlock()
 
-func (p *Player) getNormalisationGain() float64 {
-	return math.Float64frombits(p.normalisationGain.Load())
-}
-
-// SetNormalisationGain applies loudness normalisation as a linear gain (1.0 = unity).
-func (p *Player) SetNormalisationGain(v float64) {
-	p.setNormalisationGain(v)
+	if p.decoderStop == nil {
+		return
+	}
+	close(p.decoderStop)
+	done := p.decoderDone
+	p.decoderStop = nil
+	p.decoderDone = nil
+	if done != nil {
+		<-done
+	}
 }
 
 // Close terminates the player
 func (p *Player) Close() error {
+	p.shutdownDecoderGoroutine()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -294,14 +296,19 @@ func (p *Player) ListDevices() ([]Device, error) {
 		return nil, err
 	}
 
-	defaultDevice, _ := portaudio.DefaultOutputDevice()
+	defaultName := SystemDefaultOutputName()
+	if defaultName == "" {
+		if dd, err := portaudio.DefaultOutputDevice(); err == nil && dd != nil {
+			defaultName = dd.Name
+		}
+	}
 
 	var result []Device
 	for i, d := range p.devices {
 		result = append(result, Device{
 			ID:          fmt.Sprintf("%d", i),
 			Name:        d.Name,
-			IsDefault:   defaultDevice != nil && d.Name == defaultDevice.Name,
+			IsDefault:   defaultName != "" && d.Name == defaultName,
 			MaxChannels: d.MaxOutputChannels,
 		})
 	}
@@ -309,22 +316,103 @@ func (p *Player) ListDevices() ([]Device, error) {
 	return result, nil
 }
 
-// SetDevice sets the output device by ID
+// SetDevice sets the output device by ID. If playing, the stream is reopened and position restored.
+// Pass "default" to switch to the current system default output device.
+//
+// PortAudio caches device information at Pa_Initialize() time, so the system
+// default may change without portaudio reflecting it. To pick up the live
+// default we stop any active stream, then Terminate+Initialize PortAudio so
+// that DefaultOutputDevice() and Devices() return fresh data.
 func (p *Player) SetDevice(deviceID string) error {
+	wasPlaying := p.IsPlaying()
+	var resumePos float64
+	if wasPlaying {
+		resumePos = p.GetPosition()
+	}
+
+	// ストリーム停止から PA 再初期化・デバイスキャッシュクリアまでを単一ロックで保護する。
+	// アンロック区間があると他ゴルーチンが終了済みの PA へアクセスできてしまうため。
 	p.mu.Lock()
-	defer p.mu.Unlock()
+	if p.stream != nil {
+		_ = p.stream.Stop()
+		_ = p.stream.Close()
+		p.stream = nil
+	}
+	if deviceID == "default" {
+		// Force PortAudio to rescan host APIs and devices so that the
+		// reported default reflects the current system setting.
+		_ = portaudio.Terminate()
+		if err := portaudio.Initialize(); err != nil {
+			// リカバリ: 一度だけ再試行して PA を使用可能な状態に戻す。
+			// 失敗したままだと以降の再生操作がすべてクラッシュするため。
+			if recovErr := portaudio.Initialize(); recovErr != nil {
+				p.mu.Unlock()
+				return fmt.Errorf("PortAudio reinitialisation failed (%w); recovery also failed: %v", err, recovErr)
+			}
+			// リカバリ成功: デバイスキャッシュをクリアして続行する
+		}
+		// Previous DeviceInfo pointers are now invalid.
+		p.currentDevice = nil
+		p.devices = nil
+	}
+	p.mu.Unlock()
+
+	if err := p.refreshDevices(); err != nil {
+		return fmt.Errorf("failed to refresh devices: %w", err)
+	}
 
 	var idx int
-	if _, err := fmt.Sscanf(deviceID, "%d", &idx); err != nil {
+	if deviceID == "default" {
+		defaultDev, err := portaudio.DefaultOutputDevice()
+		if err != nil || defaultDev == nil {
+			return fmt.Errorf("no default output device available")
+		}
+		found := false
+		for i, d := range p.devices {
+			if d.Name == defaultDev.Name {
+				idx = i
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("default device not found in device list")
+		}
+	} else if _, err := fmt.Sscanf(deviceID, "%d", &idx); err != nil {
 		return fmt.Errorf("invalid device ID: %s", deviceID)
 	}
 
+	p.mu.Lock()
 	if idx < 0 || idx >= len(p.devices) {
+		p.mu.Unlock()
 		return fmt.Errorf("device ID out of range: %d", idx)
 	}
-
 	p.currentDevice = p.devices[idx]
-	fmt.Printf("[Audio] Device set to: %s\n", p.currentDevice.Name)
+	deviceName := p.currentDevice.Name
+	p.mu.Unlock()
+
+	fmt.Printf("[Audio] Device set to: %s\n", deviceName)
+
+	if !wasPlaying {
+		return nil
+	}
+	currentPos := resumePos
+
+	p.ringAvailable.Store(0)
+	p.ringReadPos.Store(0)
+	p.ringWritePos.Store(0)
+
+	p.mu.Lock()
+	err := p.reopenStream()
+	p.mu.Unlock()
+	if err != nil {
+		return fmt.Errorf("failed to reopen stream on new device: %w", err)
+	}
+	if err := p.Seek(currentPos); err != nil {
+		fmt.Printf("[Audio] Warning: failed to seek after device change: %v\n", err)
+	} else {
+		fmt.Printf("[Audio] Device switched and playback resumed at %.2fs\n", currentPos)
+	}
 	return nil
 }
 
@@ -339,16 +427,15 @@ func (p *Player) GetCurrentDevice() string {
 	return ""
 }
 
-// Play starts playback of an audio file
-func (p *Player) Play(filePath string) error {
+// Play starts playback of an audio file. gainLinear scales samples after volume (1.0 = unity).
+func (p *Player) Play(filePath string, gainLinear float64) error {
+	p.shutdownDecoderGoroutine()
+
+	gainLinear = sanitizePlaybackGainLinear(gainLinear)
+	p.baseGain.Store(math.Float64bits(gainLinear))
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
-
-	// Stop current playback and decoder goroutine
-	if p.decoderStop != nil {
-		close(p.decoderStop)
-		<-p.decoderDone
-	}
 	if p.stream != nil {
 		p.stream.Stop()
 		p.stream.Close()
@@ -436,34 +523,10 @@ func (p *Player) Play(filePath string) error {
 	}
 	p.rebuildEqualizerConfig(p.sampleRate)
 
-	// Select device
-	device := p.currentDevice
-	if device == nil {
-		device, _ = portaudio.DefaultOutputDevice()
-	}
-	if device == nil {
-		return errors.New("no output device available")
-	}
-
-	// Create stream parameters
-	params := portaudio.StreamParameters{
-		Output: portaudio.StreamDeviceParameters{
-			Device:   device,
-			Channels: min(p.channels, device.MaxOutputChannels),
-			Latency:  device.DefaultLowOutputLatency,
-		},
-		SampleRate:      float64(p.sampleRate),
-		FramesPerBuffer: 4096,
-	}
-
-	// Create callback stream
-	stream, err := portaudio.OpenStream(params, func(out []float32) {
-		p.processAudio(out)
-	})
+	stream, err := p.newOutputStream()
 	if err != nil {
-		return fmt.Errorf("failed to open stream: %w", err)
+		return err
 	}
-
 	p.stream = stream
 	p.playing.Store(true)
 	p.paused.Store(false)
@@ -475,20 +538,82 @@ func (p *Player) Play(filePath string) error {
 		return fmt.Errorf("failed to start stream: %w", err)
 	}
 
-	fmt.Printf("[Audio] Playing: %s on %s (SR: %d, CH: %d)\n", filePath, device.Name, p.sampleRate, p.channels)
+	outDev := p.resolvedOutputDevice()
+	outName := "unknown"
+	if outDev != nil {
+		outName = outDev.Name
+	}
+	fmt.Printf("[Audio] Playing: %s on %s (SR: %d, CH: %d)\n", filePath, outName, p.sampleRate, p.channels)
+	return nil
+}
+
+// resolvedOutputDevice returns the device used for output (current or system default).
+func (p *Player) resolvedOutputDevice() *portaudio.DeviceInfo {
+	device := p.currentDevice
+	if device == nil {
+		device, _ = portaudio.DefaultOutputDevice()
+	}
+	return device
+}
+
+// newOutputStream opens a PortAudio output stream; caller must hold p.mu, assign p.stream, then Start and wire decoder.
+func (p *Player) newOutputStream() (*portaudio.Stream, error) {
+	if p.sampleRate == 0 {
+		return nil, errors.New("newOutputStream: sample rate not set")
+	}
+	device := p.resolvedOutputDevice()
+	if device == nil {
+		return nil, errors.New("no output device available")
+	}
+	params := portaudio.StreamParameters{
+		Output: portaudio.StreamDeviceParameters{
+			Device:   device,
+			Channels: min(p.channels, device.MaxOutputChannels),
+			Latency:  device.DefaultLowOutputLatency,
+		},
+		SampleRate:      float64(p.sampleRate),
+		FramesPerBuffer: 4096,
+	}
+	stream, err := portaudio.OpenStream(params, func(out []float32) {
+		p.processAudio(out)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to open stream: %w", err)
+	}
+	return stream, nil
+}
+
+// reopenStream opens and starts a new output stream; decoder and Play state are unchanged. Caller must hold p.mu.
+func (p *Player) reopenStream() error {
+	if p.decoder == nil {
+		return errors.New("reopenStream: no active decoder")
+	}
+	stream, err := p.newOutputStream()
+	if err != nil {
+		return err
+	}
+	p.stream = stream
+	if err := stream.Start(); err != nil {
+		_ = stream.Close()
+		p.stream = nil
+		return fmt.Errorf("failed to start stream: %w", err)
+	}
 	return nil
 }
 
 // decoderLoop runs in background and fills the ring buffer
 func (p *Player) decoderLoop() {
 	defer close(p.decoderDone)
+	// Capture stop channel at goroutine start so we can check it even after
+	// shutdownDecoderGoroutine() nils p.decoderStop.
+	stopCh := p.decoderStop
 
 	// Temporary buffer for reading from decoder
 	readBuf := make([]byte, 8192)
 
 	for {
 		select {
-		case <-p.decoderStop:
+		case <-stopCh:
 			return
 		default:
 		}
@@ -505,9 +630,9 @@ func (p *Player) decoderLoop() {
 		p.mu.RLock()
 		decoder := p.decoder
 		channels := p.channels
-		p.mu.RUnlock()
 
 		if decoder == nil {
+			p.mu.RUnlock()
 			return
 		}
 
@@ -528,11 +653,18 @@ func (p *Player) decoderLoop() {
 			p.ringWritePos.Store((writePos + int64(samples)) % int64(p.ringBufSize))
 			p.ringAvailable.Add(int64(samples))
 		}
+		p.mu.RUnlock()
 
 		if err == io.EOF || n == 0 {
-			// Wait for buffer to drain, then signal end
+			// Wait for buffer to drain, then signal end.
+			// Also check stopCh so Stop() is not blocked here for up to 2 seconds.
 			for p.ringAvailable.Load() > 0 && p.playing.Load() {
-				time.Sleep(10 * time.Millisecond)
+				select {
+				case <-stopCh:
+					return
+				default:
+					time.Sleep(10 * time.Millisecond)
+				}
 			}
 
 			p.playing.Store(false)
@@ -629,7 +761,7 @@ func (p *Player) processAudio(out []float32) {
 	playing := p.playing.Load()
 	paused := p.paused.Load()
 	volume := p.getVolume()
-	normGain := p.getNormalisationGain()
+	baseGainLinear := math.Float64frombits(p.baseGain.Load())
 
 	if !playing || paused {
 		// Fill with silence
@@ -672,7 +804,7 @@ func (p *Player) processAudio(out []float32) {
 			}
 		}
 
-		outputSample *= volume * normGain
+		outputSample *= volume * baseGainLinear
 		if outputSample > 1 {
 			outputSample = 1
 		} else if outputSample < -1 {
@@ -751,13 +883,7 @@ func (p *Player) Resume() error {
 
 // Stop stops playback
 func (p *Player) Stop() error {
-	// Stop decoder goroutine first
-	if p.decoderStop != nil {
-		close(p.decoderStop)
-		<-p.decoderDone
-		p.decoderStop = nil
-		p.decoderDone = nil
-	}
+	p.shutdownDecoderGoroutine()
 
 	p.mu.Lock()
 	if p.stream != nil {
@@ -818,9 +944,21 @@ func (p *Player) SetVolume(volume float64) {
 	p.setVolume(volume)
 }
 
+// SetNormalisationGain applies loudness normalisation as a linear gain (1.0 = unity).
+func (p *Player) SetNormalisationGain(v float64) {
+	if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		v = 1.0
+	}
+	const maxNormGain = 64.0
+	if v > maxNormGain {
+		v = maxNormGain
+	}
+	p.baseGain.Store(math.Float64bits(v))
+}
+
 // GetNormalisationGain returns the current linear normalisation multiplier.
 func (p *Player) GetNormalisationGain() float64 {
-	return p.getNormalisationGain()
+	return math.Float64frombits(p.baseGain.Load())
 }
 
 // SetEqualizer updates equaliser settings used by real-time audio callback.

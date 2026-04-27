@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"ux-music-sidecar/internal/playlist"
 	"ux-music-sidecar/internal/store"
 
@@ -82,4 +83,51 @@ func (a *App) DeleteSongs(paths []string, deleteFiles bool) ([]string, error) {
 	a.RequestPlaylistsWithArtwork()
 	fmt.Printf("[Wails] DeleteSongs completed: deleted=%d\n", len(deletedPaths))
 	return deletedPaths, nil
+}
+
+// SaveAlbumSongOrder persists a custom play order for an album.
+// orderedSongIds is the desired sequence of song IDs (index 0 = first).
+// Each matching song gets a customOrder field (1-based) written to library.json.
+func (a *App) SaveAlbumSongOrder(albumKey string, orderedSongIds []string) error {
+	if len(orderedSongIds) == 0 {
+		return nil
+	}
+
+	// Build position lookup: songId → 1-based order
+	orderMap := make(map[string]int, len(orderedSongIds))
+	for i, id := range orderedSongIds {
+		orderMap[id] = i + 1
+	}
+
+	raw, _ := store.Instance.Load("library")
+	arr, ok := raw.([]interface{})
+	if !ok {
+		return errors.New("library store format is invalid")
+	}
+
+	normKey := strings.ToLower(strings.TrimSpace(albumKey))
+	for _, item := range arr {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		album, _ := m["album"].(string)
+		if strings.ToLower(strings.TrimSpace(album)) != normKey {
+			continue
+		}
+		id, _ := m["id"].(string)
+		if pos, found := orderMap[id]; found {
+			m["customOrder"] = pos
+		}
+	}
+
+	if err := store.Instance.Save("library", arr); err != nil {
+		return fmt.Errorf("failed to save library: %w", err)
+	}
+
+	wailsRuntime.EventsEmit(a.ctx, "album-order-saved", map[string]interface{}{
+		"albumKey":       albumKey,
+		"orderedSongIds": orderedSongIds,
+	})
+	return nil
 }

@@ -3,6 +3,7 @@ package cdrip
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,8 +11,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,6 +25,8 @@ type Ripper struct {
 	UserDataPath   string
 }
 
+var resolvedBinaryPaths sync.Map
+
 // NewRipper creates a new Ripper instance
 func NewRipper(cdParanoiaPath, ffmpegPath, userDataPath string) *Ripper {
 	return &Ripper{
@@ -31,16 +36,94 @@ func NewRipper(cdParanoiaPath, ffmpegPath, userDataPath string) *Ripper {
 	}
 }
 
+func isExecutable(path string) bool {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return false
+	}
+	info, err := os.Stat(trimmed)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	return info.Mode().Perm()&0o111 != 0
+}
+
+func resolveBinaryPath(name, explicitPath string) (string, error) {
+	if cached, ok := resolvedBinaryPaths.Load(name); ok {
+		if path, ok := cached.(string); ok && isExecutable(path) {
+			return path, nil
+		}
+		resolvedBinaryPaths.Delete(name)
+	}
+
+	if isExecutable(explicitPath) {
+		resolvedBinaryPaths.Store(name, explicitPath)
+		return explicitPath, nil
+	}
+
+	if path, err := exec.LookPath(name); err == nil && isExecutable(path) {
+		resolvedBinaryPaths.Store(name, path)
+		return path, nil
+	}
+
+	binaryName := name
+	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(name), ".exe") {
+		binaryName = name + ".exe"
+	}
+
+	var candidates []string
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		candidates = append(candidates,
+			// production: UX-Music.app/Contents/Resources/bin/
+			filepath.Clean(filepath.Join(execDir, "..", "Resources", "bin", binaryName)),
+			filepath.Clean(filepath.Join(execDir, "..", "Resources", binaryName)),
+			// wails dev: project root bin/macos/
+			filepath.Clean(filepath.Join(execDir, "bin", "macos", binaryName)),
+			filepath.Clean(filepath.Join(execDir, "..", "bin", "macos", binaryName)),
+			filepath.Clean(filepath.Join(execDir, "..", "..", "bin", "macos", binaryName)),
+		)
+	}
+	candidates = append(candidates,
+		filepath.Join("/opt/homebrew/bin", binaryName),
+		filepath.Join("/usr/local/bin", binaryName),
+		filepath.Join("/opt/local/bin", binaryName),
+		filepath.Join("/usr/bin", binaryName),
+		filepath.Join("/bin", binaryName),
+	)
+
+	for _, candidate := range candidates {
+		if isExecutable(candidate) {
+			resolvedBinaryPaths.Store(name, candidate)
+			fmt.Printf("[CDRip] binary resolved: %s -> %s\n", name, candidate)
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("%s が見つかりません (PATH=%q)", name, os.Getenv("PATH"))
+}
+
+// OutputDir returns the directory where ripped files are saved.
+func (r *Ripper) OutputDir(libraryPath string) string {
+	return filepath.Join(libraryPath, "CD Rips")
+}
+
 // GetTrackList scans the CD for tracks
 func (r *Ripper) GetTrackList() ([]Track, error) {
-	cmd := exec.Command(r.CDParanoiaPath, "-Q")
+	cdparanoiaPath, err := resolveBinaryPath("cdparanoia", r.CDParanoiaPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to run cdparanoia: %w", err)
+	}
+
+	cmd := exec.Command(cdparanoiaPath, "-Q")
 	var out bytes.Buffer
-	// cdparanoia outputs to stderr usually
 	cmd.Stderr = &out
-	cmd.Stdout = &out // Capture both just in case
+	cmd.Stdout = &out
 
 	if err := cmd.Run(); err != nil {
-		// It might return non-zero if no CD is found
 		return nil, fmt.Errorf("failed to run cdparanoia: %w", err)
 	}
 
@@ -70,52 +153,63 @@ func parseTrackList(output string) []Track {
 	return tracks
 }
 
-// StartRip Rips selected tracks
+// StartRip rips selected tracks and returns the output file paths.
 // progressChan is used to report progress. It can be nil.
-func (r *Ripper) StartRip(tracks []Track, options RipOptions, libraryPath string, progressChan chan<- RipProgress) error {
+func (r *Ripper) StartRip(tracks []Track, options RipOptions, libraryPath string, progressChan chan<- RipProgress) ([]string, error) {
 	outputDir := filepath.Join(libraryPath, "CD Rips")
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return err
+		return nil, err
 	}
 
-	// Download artwork if needed
+	// Prepare artwork file from URL or base64 data
 	var artworkPath string
-	if options.ArtworkURL != "" {
+	if options.ArtworkData != "" {
+		// data:image/jpeg;base64,<data>
+		artworkPath = filepath.Join(r.UserDataPath, fmt.Sprintf("temp_artwork_%d.jpg", time.Now().UnixNano()))
+		if err := saveDataURL(options.ArtworkData, artworkPath); err != nil {
+			fmt.Printf("Failed to save artwork data: %v\n", err)
+			artworkPath = ""
+		} else {
+			defer os.Remove(artworkPath)
+		}
+	} else if options.ArtworkURL != "" {
 		artworkPath = filepath.Join(r.UserDataPath, fmt.Sprintf("temp_artwork_%d.jpg", time.Now().UnixNano()))
 		if err := downloadFile(options.ArtworkURL, artworkPath); err != nil {
 			fmt.Printf("Failed to download artwork: %v\n", err)
-			artworkPath = "" // Continue without artwork
+			artworkPath = ""
 		} else {
 			defer os.Remove(artworkPath)
 		}
 	}
 
+	var outputPaths []string
 	for _, track := range tracks {
 		fmt.Printf("[Ripper] Starting track %d\n", track.Number)
 		if progressChan != nil {
 			progressChan <- RipProgress{TrackNumber: track.Number, Status: "ripping", Percent: 0}
 		}
 
-		err := r.ripAndConvert(track, outputDir, options, artworkPath)
+		outPath, err := r.ripAndConvert(track, outputDir, options, artworkPath, progressChan)
 
 		if err != nil {
 			fmt.Printf("[Ripper] Error processing track %d: %v\n", track.Number, err)
 			if progressChan != nil {
 				progressChan <- RipProgress{TrackNumber: track.Number, Status: "error", Error: err.Error()}
 			}
-			return err // Or continue? Abort for now.
+			return outputPaths, err
 		}
 
-		fmt.Printf("[Ripper] Completed track %d\n", track.Number)
+		outputPaths = append(outputPaths, outPath)
+		fmt.Printf("[Ripper] Completed track %d -> %s\n", track.Number, outPath)
 		if progressChan != nil {
-			progressChan <- RipProgress{TrackNumber: track.Number, Status: "completed"}
+			progressChan <- RipProgress{TrackNumber: track.Number, Status: "completed", Percent: 100}
 		}
 	}
 
-	return nil
+	return outputPaths, nil
 }
 
-func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions, artworkPath string) error {
+func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions, artworkPath string, progressChan chan<- RipProgress) (string, error) {
 	safeTitle := sanitize(track.Title)
 	safeArtist := sanitize(track.Artist)
 
@@ -123,7 +217,7 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 
 	artistDir := filepath.Join(outputDir, safeArtist)
 	if err := os.MkdirAll(artistDir, 0755); err != nil {
-		return err
+		return "", err
 	}
 
 	// Extension map
@@ -141,17 +235,77 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 	finalPath := filepath.Join(artistDir, filename)
 
 	// 1. Rip to WAV
-	fmt.Printf("[Ripper] Running cdparanoia for track %d\n", track.Number)
-	ripCmd := exec.Command(r.CDParanoiaPath, "-w", strconv.Itoa(track.Number), tempWav)
-	if output, err := ripCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("cdparanoia failed: %w. Output: %s", err, string(output))
+	cdparanoiaPath, err := resolveBinaryPath("cdparanoia", r.CDParanoiaPath)
+	if err != nil {
+		return "", fmt.Errorf("cdparanoia not found: %w", err)
+	}
+	fmt.Printf("[Ripper] Running cdparanoia for track %d (mode: %s)\n", track.Number, options.Mode)
+	cdArgs := []string{"-w"}
+	if options.Mode == "burst" {
+		cdArgs = append(cdArgs, "-Z") // disable all error correction
+	}
+	cdArgs = append(cdArgs, strconv.Itoa(track.Number), tempWav)
+	ripCmd := exec.Command(cdparanoiaPath, cdArgs...)
+
+	// ファイルサイズを監視してリッピング進捗を推定する
+	// CD音声セクタ: 2352 bytes/sector、WAVヘッダ: 44 bytes
+	expectedBytes := int64(track.Sectors)*2352 + 44
+	ripDone := make(chan struct{})
+	var progressWg sync.WaitGroup
+	if progressChan != nil && expectedBytes > 44 {
+		progressWg.Add(1)
+		go func() {
+			defer progressWg.Done()
+			ticker := time.NewTicker(400 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ripDone:
+					return
+				case <-ticker.C:
+					info, err := os.Stat(tempWav)
+					if err != nil {
+						continue
+					}
+					pct := float64(info.Size()) / float64(expectedBytes) * 95 // 95%上限（エンコード分を残す）
+					if pct > 95 {
+						pct = 95
+					}
+					progressChan <- RipProgress{TrackNumber: track.Number, Status: "ripping", Percent: pct}
+				}
+			}
+		}()
+	}
+
+	ripOutput, ripErr := ripCmd.CombinedOutput()
+	close(ripDone)
+	progressWg.Wait() // goroutine が完全に終了してから progressChan への送信を終える
+
+	if ripErr != nil {
+		os.Remove(tempWav)
+		return "", fmt.Errorf("cdparanoia failed: %w. Output: %s", ripErr, string(ripOutput))
 	}
 	defer os.Remove(tempWav)
+
+	if progressChan != nil {
+		progressChan <- RipProgress{TrackNumber: track.Number, Status: "encoding", Percent: 95}
+	}
 
 	// 2. Encode
 	fmt.Printf("[Ripper] Encoding track %d to %s\n", track.Number, finalPath)
 	var args []string
 	args = append(args, "-i", tempWav)
+
+	// Artwork input (must come before output options)
+	hasArtwork := artworkPath != "" && options.Format != "wav"
+	if hasArtwork {
+		args = append(args, "-i", artworkPath)
+	}
+
+	// Stream mapping
+	if hasArtwork {
+		args = append(args, "-map", "0:a", "-map", "1:0")
+	}
 
 	// Codec configuration
 	switch options.Format {
@@ -169,6 +323,10 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 		args = append(args, "-c:a", "aac", "-b:a", "320k") // default
 	}
 
+	if hasArtwork {
+		args = append(args, "-c:v", "copy", "-disposition:v", "attached_pic")
+	}
+
 	// Metadata
 	args = append(args,
 		"-metadata", "title="+track.Title,
@@ -177,19 +335,31 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 		"-metadata", fmt.Sprintf("track=%d", track.Number),
 	)
 
-	// Artwork
-	if artworkPath != "" && options.Format != "wav" {
-		args = append(args, "-i", artworkPath, "-map", "0:0", "-map", "1:0", "-c:v", "copy", "-disposition:v", "attached_pic")
-	}
-
 	args = append(args, "-y", finalPath)
 
-	encCmd := exec.Command(r.FFmpegPath, args...)
+	ffmpegPath, err := resolveBinaryPath("ffmpeg", r.FFmpegPath)
+	if err != nil {
+		return "", fmt.Errorf("ffmpeg not found: %w", err)
+	}
+	encCmd := exec.Command(ffmpegPath, args...)
 	if output, err := encCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("ffmpeg failed: %s: %w", string(output), err)
+		return "", fmt.Errorf("ffmpeg failed: %s: %w", string(output), err)
 	}
 
-	return nil
+	return finalPath, nil
+}
+
+func saveDataURL(dataURL, dest string) error {
+	// Strip "data:image/...;base64," prefix
+	comma := strings.Index(dataURL, ",")
+	if comma < 0 {
+		return fmt.Errorf("invalid data URL")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(dataURL[comma+1:])
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dest, decoded, 0644)
 }
 
 func downloadFile(url, dest string) error {

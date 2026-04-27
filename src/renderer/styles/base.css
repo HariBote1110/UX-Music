@@ -19,6 +19,8 @@
     /* 鮮やかなピンク */
     --highlight-blue: #3b82f6;
     /* 清潔感のあるブルー */
+    --accent: #0a84ff;
+    /* macOS システムブルー */
 }
 
 body,

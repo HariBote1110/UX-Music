@@ -1,0 +1,66 @@
+import type * as AppNS from './wailsjs/go/server/App.js';
+
+export {};
+
+type WailsAppBindings = {
+  [K in keyof typeof AppNS]: AppNS[K];
+} & {
+  /** Optional in some generated bindings; present at runtime when MTP is linked. */
+  MTPGetStatus?: () => Promise<unknown>;
+};
+
+interface ElectronAPI {
+  send: (channel: string, ...args: unknown[]) => void | Promise<unknown>;
+  on: (channel: string, callback: (...args: unknown[]) => void) => void;
+  invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
+  removeAllListeners: () => void;
+  CHANNELS: {
+    SEND: Record<string, string>;
+    INVOKE: Record<string, string>;
+    ON: Record<string, string>;
+  };
+}
+
+/** Subset of Wails browser runtime used by the renderer. */
+interface WailsRuntime {
+  EventsEmit: (event: string, ...data: unknown[]) => void;
+  EventsOn: (event: string, callback: (...data: unknown[]) => void) => () => void;
+  EventsOff?: (event: string, ...additionalEventNames: string[]) => void;
+  LogPrint?: (message: string) => void;
+  LogDebug?: (message: string) => void;
+  LogError?: (message: string) => void;
+  /** Present when file-drop bridge is registered (Wails v2). */
+  OnFileDrop?: (
+    callback: (x: number, y: number, paths: string[]) => void,
+    useDropTarget?: boolean
+  ) => void;
+}
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI;
+    /**
+     * Wails binds `server.App` for this project (`package server`).
+     * `main` is kept optional for older snippets / tooling.
+     */
+    go?: {
+      server?: {
+        App: WailsAppBindings;
+      };
+      main?: {
+        App: WailsAppBindings;
+      };
+    };
+    runtime?: WailsRuntime;
+    recordArtworkLoadTime?: (time: number) => void;
+    artworkLoadTimes?: number[];
+    observeNewArtworks?: (container?: ParentNode | Document) => void;
+    /** Debug console helpers (`uxDebug.help()` etc.), attached by `debug-commands.ts`. */
+    uxDebug?: Record<string, unknown>;
+  }
+
+  interface MediaDevices {
+    /** Chromium: native audio output picker (may be undefined in WebKit). */
+    selectAudioOutput?: () => Promise<MediaDeviceInfo>;
+  }
+}

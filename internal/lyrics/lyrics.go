@@ -34,7 +34,7 @@ func FindLyrics(targetName string) (map[string]string, error) {
 	if _, err := os.Stat(lrcPath); err == nil {
 		content, err := os.ReadFile(lrcPath)
 		if err == nil {
-			return map[string]string{"type": "lrc", "content": string(content)}, nil
+			return attachJaTranslation(lyricsDir, sanitizedBase, "lrc", string(content))
 		}
 	}
 
@@ -43,18 +43,60 @@ func FindLyrics(targetName string) (map[string]string, error) {
 	if _, err := os.Stat(txtPath); err == nil {
 		content, err := os.ReadFile(txtPath)
 		if err == nil {
-			return map[string]string{"type": "txt", "content": string(content)}, nil
+			return attachJaTranslation(lyricsDir, sanitizedBase, "txt", string(content))
 		}
 	}
 
 	return nil, nil // Not found
 }
 
+// attachJaTranslation adds optional {base}.ja.lrc (preferred) or {base}.ja.txt when present.
+func attachJaTranslation(lyricsDir, sanitizedBase, mainType, mainContent string) (map[string]string, error) {
+	res := map[string]string{
+		"type":            mainType,
+		"content":         mainContent,
+		"lyricsFileBase": sanitizedBase,
+	}
+	jaLrc := filepath.Join(lyricsDir, sanitizedBase+".ja.lrc")
+	if st, err := os.Stat(jaLrc); err == nil && !st.IsDir() {
+		if b, err := os.ReadFile(jaLrc); err == nil {
+			if strings.TrimSpace(string(b)) != "" {
+				res["translationContent"] = string(b)
+				res["translationFormat"] = "lrc"
+			}
+			return res, nil
+		}
+	}
+	jaTxt := filepath.Join(lyricsDir, sanitizedBase+".ja.txt")
+	if st, err := os.Stat(jaTxt); err == nil && !st.IsDir() {
+		if b, err := os.ReadFile(jaTxt); err == nil {
+			if strings.TrimSpace(string(b)) != "" {
+				res["translationContent"] = string(b)
+				res["translationFormat"] = "txt"
+			}
+		}
+	}
+	return res, nil
+}
+
+func allowedUserLyricsFileName(name string) bool {
+	lower := strings.ToLower(filepath.Base(name))
+	if strings.HasSuffix(lower, ".ja.txt") {
+		return true
+	}
+	// Includes standard .lrc and bilingual .ja.lrc (suffix .lrc).
+	if strings.HasSuffix(lower, ".lrc") {
+		return true
+	}
+	return false
+}
+
+// SaveLrcFile writes a file under the user Lyrics directory. Allowed names: *.lrc, *.ja.lrc, *.ja.txt
 func SaveLrcFile(fileName string, content string) error {
 	lyricsDir := GetLyricsDir()
 
-	if !strings.HasSuffix(strings.ToLower(fileName), ".lrc") {
-		return fmt.Errorf("file extension must be .lrc")
+	if !allowedUserLyricsFileName(fileName) {
+		return fmt.Errorf("file name must end with .lrc, .ja.lrc, or .ja.txt")
 	}
 
 	safeName := SanitizeFileName(fileName)

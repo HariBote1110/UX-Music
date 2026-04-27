@@ -378,14 +378,6 @@
     opacity: 1;
 }
 
-body.light-flight-mode .song-item.playing.indicator-ready .playing-indicator {
-    display: none;
-}
-
-body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img {
-    display: block;
-}
-
 /* --- グリッド表示のスタイル --- */
 #album-grid,
 #playlist-grid,
@@ -691,10 +683,12 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     max-width: 100%;
     text-align: inherit;
     margin: 0;
+    /* 可変行高（折返し＋和訳）— JS が実測して配置する。min-height 固定を避ける */
+    min-height: 0;
     font-weight: 600;
     opacity: 0.42;
     transform: translate3d(-50%, var(--lyrics-line-y), 0) scale(var(--lyrics-line-scale));
-    transform-origin: center center;
+    transform-origin: top center;
     filter: none;
     color: rgba(255, 255, 255, 0.62);
     z-index: 1;
@@ -715,6 +709,28 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     background: none;
     box-shadow: none;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
+}
+
+#lyrics-view.lyrics-mode-bilingual .lyrics-line-primary {
+    display: block;
+    font-weight: 600;
+}
+
+#lyrics-view.lyrics-mode-bilingual .lyrics-line-translation {
+    display: block;
+    font-size: 0.82em;
+    font-weight: 400;
+    margin-top: 0.4em;
+    color: rgba(255, 255, 255, 0.58);
+    line-height: 1.4;
+}
+
+#lyrics-view.lyrics-mode-lrc.lyrics-mode-bilingual p.active .lyrics-line-translation {
+    color: rgba(255, 255, 255, 0.78);
+}
+
+#lyrics-view.lyrics-mode-txt.lyrics-mode-bilingual p .lyrics-line-translation {
+    color: rgba(255, 255, 255, 0.52);
 }
 
 #lyrics-view.lyrics-mode-lrc p.active::before {
@@ -908,16 +924,6 @@ body.light-flight-mode .song-item.playing.indicator-ready .static-visualizer-img
     /* クリックなどの操作を無効化 */
 }
 
-/* --- Light Flight Mode --- */
-/* 詳細ビューのヘッダーアートワークは非表示 */
-body.light-flight-mode .detail-art-img {
-    display: none;
-}
-
-/* ビジュアライザーの色を変更 */
-body.light-flight-mode .playing-indicator-bar {
-    background: var(--text-secondary);
-}
 
 /* リストのスクロールバー末尾（下部）を再生バーの高さ分押し上げる */
 #music-list::-webkit-scrollbar-button:vertical:end:increment,

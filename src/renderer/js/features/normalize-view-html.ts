@@ -1,0 +1,90 @@
+/** ノーマライズ画面の必須要素 ID（テスト・契約用） */
+export const NORMALIZE_VIEW_REQUIRED_ELEMENT_IDS = [
+    'normalize-drop-zone', 'normalize-file-list', 'normalize-analyze-btn', 'normalize-apply-btn',
+    'target-lufs-slider', 'normalize-select-all', 'normalize-progress-container', 'normalize-progress-bar',
+];
+
+/**
+ * ノーマライズ画面の HTML（旧 components/normalize.html 相当）
+ */
+export function getNormalizeViewHtml() {
+    return `<div class="view-header">
+    <h1>音量をノーマライズ</h1>
+</div>
+<div class="normalize-content-wrapper">
+    <div id="normalize-controls">
+        <div id="normalize-drop-zone">
+            <p>ここにファイルやフォルダをドラッグ＆ドロップ</p>
+            <div class="normalize-buttons-primary">
+                <button id="normalize-add-files-btn" type="button">ファイルを追加</button>
+                <button id="normalize-add-folder-btn" type="button">フォルダを追加</button>
+                <button id="normalize-load-library-btn" type="button">ライブラリから読み込む</button>
+            </div>
+        </div>
+        <div class="normalize-settings">
+            <div class="setting-item">
+                <label for="target-lufs-slider">ターゲット音量:</label>
+                <input type="range" id="target-lufs-slider" min="-24" max="-6" value="-18" step="0.5">
+                <span id="target-lufs-value">-18.0 LUFS</span>
+            </div>
+        </div>
+        <div class="normalize-settings">
+            <div class="setting-item">
+                <label for="normalize-name-col-slider">ファイル名列の最小幅:</label>
+                <input type="range" id="normalize-name-col-slider" min="80" max="360" value="160" step="4">
+                <span id="normalize-name-col-value">160 px</span>
+            </div>
+            <div class="setting-item">
+                <label>
+                    <input type="checkbox" id="normalize-wrap-names">
+                    <span>長いファイル名を折り返して表示する</span>
+                </label>
+            </div>
+        </div>
+        <div class="normalize-settings">
+            <div class="setting-item">
+                <label>保存先:</label>
+                <div class="radio-group-horizontal">
+                    <label><input type="radio" name="output-mode" value="overwrite" checked> 上書き</label>
+                    <label><input type="radio" name="output-mode" value="folder"> 別のフォルダ</label>
+                </div>
+            </div>
+            <div class="setting-item hidden" id="output-folder-container">
+                <button id="select-output-folder-btn" type="button">フォルダを選択...</button>
+                <p id="output-folder-path">選択されていません</p>
+            </div>
+            <div class="setting-item" id="backup-container">
+                <label>
+                    <input type="checkbox" id="backup-toggle" checked>
+                    <span>元ファイルのバックアップを作成する (.bak)</span>
+                </label>
+            </div>
+        </div>
+        <div class="normalize-actions">
+            <button id="normalize-analyze-btn" type="button" disabled>解析</button>
+            <button id="normalize-apply-btn" type="button" disabled>ノーマライズを適用</button>
+        </div>
+        <div id="normalize-progress-container" class="hidden">
+            <p id="normalize-progress-label">処理中...</p>
+            <progress id="normalize-progress-bar" value="0" max="100"></progress>
+        </div>
+    </div>
+    <div id="normalize-file-container">
+        <div class="normalize-table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="normalize-select-all"></th>
+                        <th>ファイル名</th>
+                        <th>現在の音量</th>
+                        <th>調整値</th>
+                        <th>ステータス</th>
+                    </tr>
+                </thead>
+                <tbody id="normalize-file-list">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>`;
+}

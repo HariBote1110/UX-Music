@@ -1,0 +1,230 @@
+// src/renderer/js/ui/grid-renderer.js
+
+import { state } from '../core/state.js';
+import { showAlbum, showArtist, showPlaylist, showSituationPlaylistDetail } from '../core/navigation.js';
+import { createAlbumGridItem, createArtistGridItem, createPlaylistGridItem } from './element-factory.js';
+import { createPlaylistArtwork } from './playlist-artwork.js';
+import { showContextMenu, resolveArtworkPath } from './utils.js';
+import { showModal } from './modal.js';
+import { showNotification, hideNotification } from './notification.js';
+import { clearMainContent } from './view-renderer.js'; // clearMainContent は view-renderer からインポート
+import { musicApi } from '../core/bridge.js';
+import { getAlbumSongs, setCurrentViewSongs } from '../core/library-model.js';
+import { openAlbumOrderEditor } from './album-order-editor.js';
+// ▲▲▲ 追加 ▲▲▲
+
+/**
+ * アルバム一覧ビューを描画する
+ */
+export function renderAlbumView() {
+    clearMainContent();
+    setCurrentViewSongs([]);
+    const viewWrapper = document.createElement('div');
+    viewWrapper.className = 'view-container';
+    viewWrapper.innerHTML = '<h1>アルバム</h1>';
+    const grid = document.createElement('div');
+    grid.id = 'album-grid';
+    if (state.albums.size === 0) {
+        grid.innerHTML = '<div class="placeholder">ライブラリにアルバムが見つかりません</div>';
+    } else {
+        for (const [key, album] of state.albums.entries()) {
+            const albumItem = createAlbumGridItem(key, album);
+            albumItem.addEventListener('click', () => showAlbum(key));
+
+            albumItem.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const playlists = (state.playlists || []) as Record<string, unknown>[];
+                const addToPlaylistSubmenu = playlists.map(playlist => ({
+                    label: playlist.name as string,
+                    action: async () => {
+                        const albumToAdd = state.albums.get(key);
+                        const albumSongs = getAlbumSongs(albumToAdd);
+                        if (albumToAdd && albumSongs.length > 0) {
+                            const songPaths = albumSongs.map(s => s.path);
+                            const result = await musicApi.addSongsToPlaylist({ songPaths, playlistName: playlist.name as string });
+
+                            if (result.success && result.addedCount > 0) {
+                                showNotification(`「${album.title}」の ${result.addedCount} 曲をプレイリスト「${playlist.name}」に追加しました。`);
+                                hideNotification(3000);
+                            } else if (result.success && result.addedCount === 0) {
+                                showNotification(`すべての曲が既にプレイリストに存在します。`);
+                                hideNotification(3000);
+                            } else {
+                                showNotification(`プレイリストへの追加に失敗しました。`, 3000);
+                            }
+                        }
+                    }
+                }));
+
+                const menuItems = [
+                    {
+                        label: 'プレイリストに追加',
+                        submenu: addToPlaylistSubmenu.length > 0 ? addToPlaylistSubmenu : [{ label: '（追加可能なプレイリスト無し）', enabled: false }]
+                    },
+                    { type: 'separator' as const },
+                    {
+                        label: '曲順を編集...',
+                        action: () => openAlbumOrderEditor(key, album)
+                    },
+                    {
+                        label: 'アートワークを変更...',
+                        action: async () => {
+                            if (typeof window.go !== 'undefined') {
+                                try {
+                                    await window.go.server.App.SelectAndChangeAlbumArtwork(key);
+                                } catch (err) {
+                                    showNotification(`アートワークの変更に失敗しました: ${err}`);
+                                    hideNotification(4000);
+                                }
+                            }
+                        }
+                    }
+                ];
+
+                showContextMenu(e.pageX, e.pageY, menuItems);
+            });
+
+            grid.appendChild(albumItem);
+        }
+    }
+    viewWrapper.appendChild(grid);
+    document.getElementById('main-content').appendChild(viewWrapper); // elements.mainContent の代わり
+    window.observeNewArtworks(grid);
+}
+
+/**
+ * アーティスト一覧ビューを描画する
+ */
+export function renderArtistView() {
+    clearMainContent();
+    setCurrentViewSongs([]);
+    const viewWrapper = document.createElement('div');
+    viewWrapper.className = 'view-container';
+    viewWrapper.innerHTML = '<h1>アーティスト</h1>';
+    const grid = document.createElement('div');
+    grid.id = 'artist-grid';
+    if (state.artists.size === 0) {
+        grid.innerHTML = '<div class="placeholder">ライブラリにアーティストが見つかりません</div>';
+    } else {
+        const sortedArtists = [...state.artists.values()].sort((a, b) => (a.name as string).localeCompare(b.name as string));
+        sortedArtists.forEach(artist => {
+            const artistItem = createArtistGridItem(artist);
+            artistItem.addEventListener('click', () => showArtist(artist.name as string));
+            grid.appendChild(artistItem);
+        });
+    }
+    viewWrapper.appendChild(grid);
+    document.getElementById('main-content').appendChild(viewWrapper);
+    window.observeNewArtworks(grid);
+}
+
+/**
+ * "For You" (シチュエーション別) ビューを描画する
+ */
+export async function renderSituationView() {
+    clearMainContent();
+    setCurrentViewSongs([]);
+    const viewWrapper = document.createElement('div');
+    viewWrapper.className = 'view-container';
+    viewWrapper.innerHTML = '<h1>For You</h1>';
+    const grid = document.createElement('div');
+    grid.id = 'playlist-grid'; // 'playlist-grid' を再利用
+
+    const situationPlaylists = await musicApi.getSituationPlaylists();
+    const playlists = Object.values(situationPlaylists);
+
+    if (playlists.length === 0) {
+        grid.innerHTML = '<div class="placeholder">あなたのためのプレイリストはまだありません。</div>';
+    } else {
+        playlists.forEach(rawPlaylist => {
+            const playlist = rawPlaylist as Record<string, unknown>;
+            const songs = (playlist.songs as Record<string, unknown>[] | undefined) || [];
+            const artworks = songs
+                .map(song => (state.albums.get(song.albumKey as string) || song).artwork)
+                .filter(Boolean)
+                .slice(0, 4);
+
+            const playlistItem = createPlaylistGridItem({ name: playlist.name, artworks });
+
+            playlistItem.addEventListener('click', () => {
+                const playlistDetails = {
+                    name: playlist.name,
+                    songs: songs,
+                    artworks: artworks
+                };
+                showSituationPlaylistDetail(playlistDetails);
+            });
+
+            grid.appendChild(playlistItem);
+        });
+    }
+
+    viewWrapper.appendChild(grid);
+    document.getElementById('main-content').appendChild(viewWrapper);
+    window.observeNewArtworks(grid);
+}
+
+/**
+ * プレイリスト一覧ビューを描画する
+ */
+export function renderPlaylistView() {
+    clearMainContent();
+    setCurrentViewSongs([]);
+    const viewWrapper = document.createElement('div');
+    viewWrapper.className = 'view-container';
+    viewWrapper.innerHTML = `<div class="view-header"><h1>プレイリスト</h1><button id="create-playlist-btn-main" class="header-button">+ 新規作成</button></div>`;
+    const grid = document.createElement('div');
+    grid.id = 'playlist-grid';
+    if (!state.playlists || state.playlists.length === 0) {
+        grid.innerHTML = '<p>プレイリストはまだありません。「+ 新規作成」から作成できます。</p>';
+    } else {
+        (state.playlists as Record<string, unknown>[]).forEach(playlist => {
+            const playlistItem = createPlaylistGridItem(playlist);
+            playlistItem.addEventListener('click', () => showPlaylist(playlist.name as string));
+            playlistItem.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showContextMenu(e.pageX, e.pageY, [
+                    {
+                        label: '名前を変更',
+                        action: () => {
+                            showModal({
+                                title: 'プレイリスト名を変更',
+                                placeholder: '新しい名前',
+                                onOk: async (newName) => {
+                                    if (newName && newName.trim() !== '' && newName !== playlist.name) {
+                                        await musicApi.renamePlaylist({ oldName: playlist.name as string, newName });
+                                    }
+                                }
+                            });
+                        }
+                    },
+                    {
+                        label: '削除',
+                        action: async () => {
+                            const confirmed = confirm(`プレイリスト「${playlist.name}」を削除しますか？\nこの操作は元に戻せません。`);
+                            if (confirmed) {
+                                await musicApi.deletePlaylist(playlist.name as string);
+                            }
+                        }
+                    }
+                ]);
+            });
+            grid.appendChild(playlistItem);
+        });
+    }
+    viewWrapper.appendChild(grid);
+    document.getElementById('main-content').appendChild(viewWrapper);
+    viewWrapper.querySelector('#create-playlist-btn-main').addEventListener('click', () => {
+        showModal({
+            title: '新規プレイリスト',
+            placeholder: 'プレイリスト名',
+            onOk: async (name) => {
+                await musicApi.createPlaylist(name);
+            }
+        });
+    });
+    window.observeNewArtworks(grid);
+}
