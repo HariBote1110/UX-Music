@@ -2,6 +2,7 @@ import { state, elements } from '../core/state.js';
 import { showContextMenu } from '../ui/utils.js';
 import { showNotification } from '../ui/notification.js';
 import { startLrcEditor } from './lrc-editor.js';
+import { notifyFullscreenLyricsChange } from './fullscreen-view.js';
 import { ClipboardSetText } from '../../wailsjs/runtime/runtime.js';
 import type { LrcLine } from './lyrics-translation.js';
 import {
@@ -106,6 +107,7 @@ export async function loadLyricsForSong(song) {
     }
 
     setupLyricsContextMenu(song, state.currentLyricsType);
+    notifyFullscreenLyricsChange();
 }
 
 function isLrcLineArray(lyrics) {

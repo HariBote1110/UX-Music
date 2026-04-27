@@ -83,7 +83,6 @@ function startTicker() {
         if (!isSeeking) updateProgress(time, dur);
         syncPlayState(isPlaying());
         syncLyricsToTime(time);
-        syncColours();
     }, 200);
 }
 
