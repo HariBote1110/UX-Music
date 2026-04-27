@@ -328,28 +328,29 @@ func (p *Player) SetDevice(deviceID string) error {
 	var resumePos float64
 	if wasPlaying {
 		resumePos = p.GetPosition()
-		p.mu.Lock()
-		if p.stream != nil {
-			_ = p.stream.Stop()
-			_ = p.stream.Close()
-			p.stream = nil
-		}
-		p.mu.Unlock()
 	}
 
+	// ストリーム停止から PA 再初期化・デバイスキャッシュクリアまでを単一ロックで保護する。
+	// アンロック区間があると他ゴルーチンが終了済みの PA へアクセスできてしまうため。
+	p.mu.Lock()
+	if p.stream != nil {
+		_ = p.stream.Stop()
+		_ = p.stream.Close()
+		p.stream = nil
+	}
 	if deviceID == "default" {
 		// Force PortAudio to rescan host APIs and devices so that the
 		// reported default reflects the current system setting.
 		_ = portaudio.Terminate()
 		if err := portaudio.Initialize(); err != nil {
+			p.mu.Unlock()
 			return fmt.Errorf("failed to reinitialise PortAudio: %w", err)
 		}
 		// Previous DeviceInfo pointers are now invalid.
-		p.mu.Lock()
 		p.currentDevice = nil
 		p.devices = nil
-		p.mu.Unlock()
 	}
+	p.mu.Unlock()
 
 	if err := p.refreshDevices(); err != nil {
 		return fmt.Errorf("failed to refresh devices: %w", err)

@@ -5,9 +5,8 @@ import type { Song } from '../../types/domain.js';
 import { playSong } from '../features/playback-manager.js';
 import { createQueueItem } from './element-factory.js';
 import { showView } from '../core/navigation.js';
-import { setAudioOutput, setVisualizerTarget, stop as stopPlayer } from '../features/player.js';
-import { updateNowPlayingView } from './now-playing.js';
-import { loadLyricsForSong } from '../features/lyrics-manager.js';
+import { setAudioOutput, setVisualizerTarget } from '../features/player.js';
+import { getWailsApp, isWailsMode } from '../core/bridge.js';
 import { showNotification, hideNotification } from './notification.js';
 import { showContextMenu, formatBytes } from './utils.js';
 import {
@@ -33,11 +32,6 @@ async function applyOutputDeviceChange(selectedItem: HTMLElement, newDeviceId: s
     if (newDeviceId == null || newDeviceId === '') {
         return;
     }
-    await stopPlayer();
-    state.currentSongIndex = -1;
-    updateNowPlayingView(null);
-    loadLyricsForSong(null);
-    updatePlayingIndicators();
     await setAudioOutput(newDeviceId);
     elements.devicePopup.querySelectorAll('.device-popup-item').forEach((i) => {
         i.classList.remove('active');
@@ -335,12 +329,13 @@ export async function updateAudioDevices() {
 
         const settings = await loadNormalizedSettings();
 
-        if (window.go?.server?.App?.AudioListDevices) {
+        const wailsApp = getWailsApp();
+        if (wailsApp?.AudioListDevices) {
             const activeDeviceId = (settings.audioOutputId as string | undefined) || 'default';
             elements.devicePopup.innerHTML = '';
 
             try {
-                const goDevices = await window.go.server.App.AudioListDevices();
+                const goDevices = await wailsApp.AudioListDevices();
                 console.log('[AudioDevices] Go devices:', goDevices);
 
                 if (!Array.isArray(goDevices)) {
@@ -394,7 +389,7 @@ export async function updateAudioDevices() {
         // 権限がない場合 deviceId と label が空文字になる
         // Wails環境では getUserMedia で権限を取得してから再度 enumerateDevices を呼ぶ必要がある
         const hasEmptyDeviceIds = devices.some(d => d.kind === 'audiooutput' && d.deviceId === '');
-        if (hasEmptyDeviceIds && window.go && md.getUserMedia) {
+        if (hasEmptyDeviceIds && isWailsMode() && md.getUserMedia) {
             console.log('[AudioDevices] Detected devices with empty IDs, requesting media permission...');
             try {
                 const stream = await md.getUserMedia({ audio: true });
@@ -431,7 +426,7 @@ export async function updateAudioDevices() {
         const displayDevices: ExtendedDevice[] = [directLinkDevice, ...audioDevices];
 
         // デバイスが見つからない場合のヘルパー
-        if (audioDevices.length === 0 && window.go) {
+        if (audioDevices.length === 0 && isWailsMode()) {
             const permissionItem = document.createElement('div');
             permissionItem.className = 'device-popup-item permission-prompt';
             permissionItem.textContent = '🔊 デバイス一覧を更新（アクセス許可）';
