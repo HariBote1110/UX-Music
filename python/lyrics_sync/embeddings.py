@@ -68,7 +68,7 @@ def load_model():
         from sentence_transformers import SentenceTransformer
 
         name = "intfloat/multilingual-e5-small"
-        return SentenceTransformer(name, local_files_only=True)
+        return SentenceTransformer(name)
     except Exception:
         return _FallbackModel()
 

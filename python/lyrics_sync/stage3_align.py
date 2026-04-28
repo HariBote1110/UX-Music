@@ -28,6 +28,26 @@ def _char_bigram_precision(query: str, passage: str, n: int = 2) -> float:
     return len(q_ng & p_ng) / len(q_ng)
 
 
+def _char_lcs_ratio(query: str, passage: str) -> float:
+    """文字列の最長共通部分列比率。短い歌詞行の近似一致に効く。"""
+    q = query.strip()
+    p = passage.strip()
+    if not q or not p:
+        return 0.0
+    n = len(q)
+    m = len(p)
+    prev = [0] * (m + 1)
+    for qc in q:
+        cur = [0]
+        for j, pc in enumerate(p, start=1):
+            if qc == pc:
+                cur.append(prev[j - 1] + 1)
+            else:
+                cur.append(max(cur[-1], prev[j]))
+        prev = cur
+    return prev[-1] / max(1, n)
+
+
 def _flatten_words(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     flat: list[dict[str, Any]] = []
     for si, seg in enumerate(segments):
@@ -60,13 +80,20 @@ def _monotone_greedy_ranges(
         best_s = -2.0
         li = lines[i].strip()
         w_emb = float(os.environ.get("UX_MUSIC_SYNC_MONOTONE_EMBED_WEIGHT", "0.52"))
+        backtrack = int(os.environ.get("UX_MUSIC_SYNC_MONOTONE_BACKTRACK_SEGMENTS", "6"))
         w_emb = max(0.0, min(1.0, w_emb))
         w_bg = 1.0 - w_emb
-        for k in range(j, m):
+        start_k = max(0, j - max(0, backtrack))
+        for k in range(start_k, m):
             c = cosine_metrics(line_embs[i], seg_embs[k])
-            g = _char_bigram_precision(li, seg_texts[k]) if k < len(seg_texts) else 0.0
+            if k < len(seg_texts):
+                bigram = _char_bigram_precision(li, seg_texts[k])
+                lcs = _char_lcs_ratio(li, seg_texts[k])
+                g = max(bigram, lcs)
+            else:
+                g = 0.0
             # ASR と歌詞の字面一致はコサインだけより先行語誤認に強い。
-            # ``UX_MUSIC_SYNC_MONOTONE_EMBED_WEIGHT`` で埋め込み寄り／字面寄りを調整し、手動参照との MAE を詰める。
+            # 文字の共通部分も拾って、繰り返しフレーズの早い出現を落としにくくする。
             s = w_emb * float(c) + w_bg * float(g)
             if s > best_s:
                 best_s = s
@@ -200,6 +227,83 @@ def _repair_large_jump_snap(
         best_start = candidates[0][0]
         cur_row["timestamp"] = float(best_start)
         cur_row["confidence"] = min(float(cur_row.get("confidence", 0.55)), 0.72)
+
+
+def _repair_flat_match_runs(rows: list[dict[str, Any]]) -> None:
+    """同じ時刻に張り付いた match 連鎖を、前後のアンカー間でほどく。
+
+    何行も同一タイムスタンプに固まると、再生側では 1 行目以外が全部同じ場所で
+    点灯してしまう。大ジャンプ修復では拾えないため、連続する match の平坦な塊を
+    線形に開く。
+    """
+    flat_eps = float(os.environ.get("UX_MUSIC_SYNC_FLAT_MATCH_EPS_SECONDS", "0.75"))
+    min_run = int(os.environ.get("UX_MUSIC_SYNC_FLAT_MATCH_MIN_RUN", "3"))
+    step = float(os.environ.get("UX_MUSIC_SYNC_INTERPOLATE_STEP_SECONDS", "2.5"))
+
+    def _is_valid(i: int) -> bool:
+        return rows[i].get("source") != "interlude" and float(rows[i].get("timestamp", -1)) >= 0
+
+    def _find_prev_anchor(start: int) -> int | None:
+        for i in range(start - 1, -1, -1):
+            if _is_valid(i):
+                return i
+        return None
+
+    def _find_next_anchor(start: int) -> int | None:
+        for i in range(start, len(rows)):
+            if _is_valid(i):
+                return i
+        return None
+
+    i = 0
+    n = len(rows)
+    while i < n:
+        if rows[i].get("source") != "match" or float(rows[i].get("timestamp", -1)) < 0:
+            i += 1
+            continue
+
+        j = i + 1
+        base = float(rows[i].get("timestamp", -1))
+        while j < n and rows[j].get("source") == "match" and float(rows[j].get("timestamp", -1)) >= 0:
+            if abs(float(rows[j].get("timestamp", -1)) - base) > flat_eps:
+                break
+            j += 1
+
+        run_len = j - i
+        if run_len < min_run:
+            i += 1
+            continue
+
+        left_idx = _find_prev_anchor(i)
+        right_idx = _find_next_anchor(j)
+        if left_idx is not None and right_idx is not None:
+            left_t = float(rows[left_idx].get("timestamp", 0.0))
+            right_t = float(rows[right_idx].get("timestamp", left_t))
+            if right_t > left_t + 1e-6:
+                span = right_t - left_t
+                for rank, idx in enumerate(range(i, j), start=1):
+                    rows[idx]["timestamp"] = left_t + span * (rank / (run_len + 1))
+                    rows[idx]["confidence"] = min(float(rows[idx].get("confidence", 0.55)), 0.72)
+                i = j
+                continue
+
+        if left_idx is not None:
+            left_t = float(rows[left_idx].get("timestamp", 0.0))
+            for rank, idx in enumerate(range(i, j), start=1):
+                rows[idx]["timestamp"] = left_t + step * rank
+                rows[idx]["confidence"] = min(float(rows[idx].get("confidence", 0.55)), 0.72)
+            i = j
+            continue
+
+        if right_idx is not None:
+            right_t = float(rows[right_idx].get("timestamp", 0.0))
+            for rank, idx in enumerate(reversed(range(i, j)), start=1):
+                rows[idx]["timestamp"] = max(0.0, right_t - step * rank)
+                rows[idx]["confidence"] = min(float(rows[idx].get("confidence", 0.55)), 0.72)
+            i = j
+            continue
+
+        i = j
 
 
 def align(
