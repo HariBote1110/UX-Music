@@ -3,6 +3,7 @@ package lyricssync
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,6 +51,7 @@ func (s *Syncer) Sync(req Request) Result {
 	req = sanitiseRequest(req)
 
 	if err := validateRequest(req); err != nil {
+		log.Printf("[LyricsAutoSync] request invalid: %v", err)
 		return Result{Success: false, Error: err.Error()}
 	}
 
@@ -57,6 +59,7 @@ func (s *Syncer) Sync(req Request) Result {
 
 	argv, sidecarEnv, err := resolveSidecarArgvEnv(&req)
 	if err != nil {
+		log.Printf("[LyricsAutoSync] resolve sidecar: %v", err)
 		return failSync(fmt.Errorf("lyrics sync sidecar: %w", err))
 	}
 
@@ -71,12 +74,14 @@ func (s *Syncer) Sync(req Request) Result {
 
 	res, err := RunSidecar(ctx, req, argv, sidecarEnv, onProgress, nil)
 	if err != nil {
+		log.Printf("[LyricsAutoSync] RunSidecar error: %v", err)
 		if ctx.Err() == context.DeadlineExceeded {
 			return failSync(fmt.Errorf("自動同期がタイムアウトしました（%s）", timeout))
 		}
 		return failSync(err)
 	}
 	if !res.Success && strings.TrimSpace(res.Error) != "" {
+		log.Printf("[LyricsAutoSync] sidecar failure: matchedCount=%d error=%s", res.MatchedCount, strings.TrimSpace(res.Error))
 		return res
 	}
 	return res
