@@ -3,7 +3,9 @@ package lyricssync
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -53,6 +55,54 @@ func TestRunSidecarRejectsBadArgv(t *testing.T) {
 	_, err := RunSidecar(context.Background(), Request{}, []string{}, nil, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Fatalf("expected empty argv error: %v", err)
+	}
+}
+
+func TestRunSidecarDummySwift(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("swift sidecar is macOS only")
+	}
+
+	repoRoot := findRepoRoot(t)
+	swiftPkg := filepath.Join(repoRoot, "swift", "lyrics-sync")
+	if _, err := os.Stat(filepath.Join(swiftPkg, "Package.swift")); err != nil {
+		t.Skip("swift/lyrics-sync missing")
+	}
+	swiftExe, err := exec.LookPath("swift")
+	if err != nil {
+		t.Skipf("swift not found: %v", err)
+	}
+
+	argv := []string{
+		swiftExe,
+		"run",
+		"--package-path",
+		swiftPkg,
+		"lyrics-sync-swift",
+		"--request",
+		"-",
+	}
+	env := []string{
+		"UX_MUSIC_MODEL_CACHE=/tmp",
+		"UX_MUSIC_HF_DOWNLOAD=none",
+		"UX_MUSIC_LYRICS_SYNC_DUMMY=1",
+	}
+	req := Request{
+		SongPath: "/dev/null",
+		Lines:    []string{"hello"},
+		Language: "auto",
+		Profile:  "fast",
+	}
+
+	got, err := RunSidecar(context.Background(), req, argv, env, nil, nil)
+	if err != nil {
+		t.Fatalf("RunSidecar swift: %v", err)
+	}
+	if !got.Success {
+		t.Fatalf("expected success, got %+v", got)
+	}
+	if got.DetectedBy == "" {
+		t.Fatal("expected detectedBy")
 	}
 }
 

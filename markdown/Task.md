@@ -254,6 +254,8 @@ Node.js および Electron に依存していたバックエンド処理（CDリ
 - [x] `swift/lyrics-sync/` に `Request` / `Result` JSON 契約を受ける Swift CLI スケルトンが存在すること。
 - [x] 既存の `App.AutoSyncLyrics` / `lyrics-auto-sync` / `lyrics-sync-progress` 契約が維持されること。
 - [x] Go テストで sidecar 選択ロジックが検証され、Swift CLI が少なくともビルド可能であること。
+- [x] `swift/lyrics-sync/` が `WhisperKit` を用いた ASR セグメント抽出と、歌詞行への簡易単調整列・補間を返せること。
+- [x] `auto` 実行時に Swift sidecar の起動系失敗を Python sidecar へフォールバックできること。
 # Task: コンソール向けパフォーマンスモニターを追加
 
 ## 概要

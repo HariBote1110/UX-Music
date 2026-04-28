@@ -36,7 +36,7 @@ func resolveSidecarSpec(req *Request) (sidecarSpec, error) {
 	}
 
 	preference := normaliseSidecarRuntimePreference(os.Getenv(envLyricsRuntime))
-	if shouldUseSwiftRuntime(runtime.GOOS, preference, swiftSidecarConfigured()) {
+	if shouldUseSwiftRuntime(runtime.GOOS, preference, swiftSidecarAvailable()) {
 		return resolveSwiftSidecarSpec(req)
 	}
 	if preference == sidecarRuntimeSwift {
@@ -69,9 +69,18 @@ func shouldUseSwiftRuntime(goos string, preference string, swiftConfigured bool)
 	}
 }
 
-func swiftSidecarConfigured() bool {
-	_, ok := configuredSwiftSidecarBinary()
-	return ok
+func swiftSidecarAvailable() bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	if _, ok := configuredSwiftSidecarBinary(); ok {
+		return true
+	}
+	if _, err := DevelopmentSwiftPkgRoot(); err != nil {
+		return false
+	}
+	_, err := exec.LookPath("swift")
+	return err == nil
 }
 
 func configuredSwiftSidecarBinary() (string, bool) {

@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-9i)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-9j)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -88,6 +88,7 @@ YouTube URL から楽曲をライブラリに追加する際、字幕を同時�
 - **処理フロー**:
   - `ffmpeg` で音源を 16kHz / mono WAV へ抽出
   - macOS 既定では `Swift sidecar` が `WhisperKit` / CoreML を用いて音声認識とタイムスタンプ抽出を行う
+  - 現段階では Swift 側でセグメント時刻をもとに**簡易単調整列 + 補間**まで行い、`LRC` 編集へ返す
   - ボーカル分離・埋め込み整列・音素整列は Swift へ段階移行し、未移植段階では Python sidecar を fallback として使用可能にする
   - Go 側は sidecar の種別を意識せず、stdin/stdout JSON と `lyrics-sync-progress` の中継だけを担当する
   - TXT 行と認識セグメントの単調整列、空白/間奏行補間、時刻単調性補正は sidecar 内で完結する
@@ -97,7 +98,7 @@ YouTube URL から楽曲をライブラリに追加する際、字幕を同時�
 - **保存方針**: 自動保存は行わず、結果はプレビュー反映のみ。最終保存は「LRCを保存」操作時に確定。
 - **ランタイム選択**:
   - `UX_MUSIC_LYRICS_SYNC_RUNTIME=swift|python|auto`
-  - `auto` は安全側で Python fallback を維持しつつ、Swift sidecar の配備後に段階的に既定化する。
+  - `auto` は macOS で Swift sidecar を優先し、起動系失敗時のみ Python fallback へ戻す。
 
 ### For You 機能 (自動プレイリスト)
 - **ムード解析(Mood Analyser)**: BPM、タイトルキーワード、Energy（音量の起伏）、ジャンルを組み合わせた高度なルールエンジン。

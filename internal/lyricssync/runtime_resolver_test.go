@@ -1,6 +1,9 @@
 package lyricssync
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestNormaliseSidecarRuntimePreference(t *testing.T) {
 	cases := map[string]string{
@@ -27,8 +30,8 @@ func TestShouldUseSwiftRuntime(t *testing.T) {
 		want            bool
 	}{
 		{name: "darwin explicit swift", goos: "darwin", preference: "swift", swiftConfigured: false, want: true},
-		{name: "darwin auto with binary", goos: "darwin", preference: "auto", swiftConfigured: true, want: true},
-		{name: "darwin auto without binary", goos: "darwin", preference: "auto", swiftConfigured: false, want: false},
+		{name: "darwin auto with swift available", goos: "darwin", preference: "auto", swiftConfigured: true, want: true},
+		{name: "darwin auto without swift available", goos: "darwin", preference: "auto", swiftConfigured: false, want: false},
 		{name: "linux explicit swift", goos: "linux", preference: "swift", swiftConfigured: true, want: false},
 		{name: "python explicit", goos: "darwin", preference: "python", swiftConfigured: true, want: false},
 	}
@@ -38,5 +41,20 @@ func TestShouldUseSwiftRuntime(t *testing.T) {
 				t.Fatalf("got=%v want=%v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestShouldAutoFallbackToPython(t *testing.T) {
+	if !shouldAutoFallbackToPython(sidecarSpec{runtimeName: sidecarRuntimeSwift}, sidecarRuntimeAuto, nil) {
+		t.Fatal("auto + swift ではフォールバック可の想定です")
+	}
+	if shouldAutoFallbackToPython(sidecarSpec{runtimeName: sidecarRuntimeSwift}, sidecarRuntimeSwift, nil) {
+		t.Fatal("runtime=swift 明示時はフォールバックしません")
+	}
+	if shouldAutoFallbackToPython(sidecarSpec{runtimeName: sidecarRuntimePython}, sidecarRuntimeAuto, nil) {
+		t.Fatal("Python 実行時はフォールバック不要です")
+	}
+	if shouldAutoFallbackToPython(sidecarSpec{runtimeName: sidecarRuntimeSwift}, sidecarRuntimeAuto, context.DeadlineExceeded) {
+		t.Fatal("タイムアウト時はフォールバックしません")
 	}
 }

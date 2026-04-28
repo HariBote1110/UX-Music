@@ -56,8 +56,8 @@ func (s *Syncer) Sync(req Request) Result {
 	}
 
 	audioDuration, _ := probeAudioDuration(req.SongPath)
-
-	argv, sidecarEnv, err := resolveSidecarArgvEnv(&req)
+	preference := normaliseSidecarRuntimePreference(os.Getenv(envLyricsRuntime))
+	spec, err := resolveSidecarSpec(&req)
 	if err != nil {
 		log.Printf("[LyricsAutoSync] resolve sidecar: %v", err)
 		return failSync(fmt.Errorf("lyrics sync sidecar: %w", err))
@@ -72,11 +72,24 @@ func (s *Syncer) Sync(req Request) Result {
 		onProgress = p
 	}
 
-	res, err := RunSidecar(ctx, req, argv, sidecarEnv, onProgress, nil)
+	res, err := RunSidecar(ctx, req, spec.argv, spec.env, onProgress, nil)
 	if err != nil {
 		log.Printf("[LyricsAutoSync] RunSidecar error: %v", err)
 		if ctx.Err() == context.DeadlineExceeded {
 			return failSync(fmt.Errorf("自動同期がタイムアウトしました（%s）", timeout))
+		}
+		if shouldAutoFallbackToPython(spec, preference, ctx.Err()) {
+			log.Printf("[LyricsAutoSync] Swift sidecar から Python sidecar へフォールバックします")
+			pythonSpec, pyErr := resolvePythonSidecarSpec(&req)
+			if pyErr != nil {
+				log.Printf("[LyricsAutoSync] resolve python fallback: %v", pyErr)
+				return failSync(err)
+			}
+			res, err = RunSidecar(ctx, req, pythonSpec.argv, pythonSpec.env, onProgress, nil)
+			if err == nil {
+				return res
+			}
+			log.Printf("[LyricsAutoSync] python fallback failed: %v", err)
 		}
 		return failSync(err)
 	}
@@ -85,6 +98,10 @@ func (s *Syncer) Sync(req Request) Result {
 		return res
 	}
 	return res
+}
+
+func shouldAutoFallbackToPython(spec sidecarSpec, preference string, ctxErr error) bool {
+	return preference == sidecarRuntimeAuto && spec.runtimeName == sidecarRuntimeSwift && ctxErr != context.DeadlineExceeded
 }
 
 func sanitiseRequest(req Request) Request {

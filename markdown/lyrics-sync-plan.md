@@ -70,9 +70,9 @@
 - 入出力: Python sidecar と同じく stdin/stdout/stderr JSON 契約を厳守する。
 - 役割:
   - `WhisperKit` / CoreML を使った ASR
-  - 埋め込み整列の CoreML 移植
-  - 将来的なボーカル分離の Swift 実装受け皿
-- この段階では CLI スケルトンと起動導線を先に整え、アルゴリズム本体は段階移行とする。
+  - 現段階ではセグメント時刻からの**簡易単調整列 + 補間**
+  - 将来的な埋め込み整列 / 音素整列 / ボーカル分離の Swift 実装受け皿
+- 現在は `WhisperKit` でセグメント抽出を行い、Swift 内で歌詞行へのヒューリスティック整列を返す。高精度な埋め込み整列は次段で移植する。
 
 ### Python ランタイム同梱管理
 
@@ -118,8 +118,8 @@
 | **P1** | Go 側に runtime resolver を追加し、Swift / Python sidecar の選択層を導入 | Go 単体テスト |
 | **P2** | Swift sidecar スケルトン（`Request` 受領 → ダミー `Result` 返却） | `swift build` / ダミー実行 |
 | **P3** | Python sidecar を現行フォールバックとして維持しつつ、macOS で opt-in 実行可能にする | sidecar I/O 結合 |
-| **P4** | Swift Stage2 ASR（WhisperKit / CoreML）へ移行 | 既知音源で timestamp 比較 |
-| **P5** | Swift Stage3 アライナ（埋め込み + 音素整列）へ移行 | テーブル駆動テスト |
+| **P4** | Swift Stage2 ASR（WhisperKit / CoreML）と簡易単調整列を実装 | 既知音源で timestamp 比較 |
+| **P5** | Swift Stage3 アライナ（埋め込み + 音素整列）へ置換 | テーブル駆動テスト |
 | **P6** | Swift 側の進捗イベントとモデル管理を統合 | UI / 結合 |
 | **P7** | ボーカル分離を Swift / CoreML 実装またはネイティブ連携へ移行 | 短音源 fixture |
 | **P8** | macOS を Swift 既定、Python を fallback に切替 | 回帰 |
