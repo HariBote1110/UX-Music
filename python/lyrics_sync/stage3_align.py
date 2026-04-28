@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections import Counter
 from typing import Any
 
 import numpy as np
@@ -72,6 +73,8 @@ def _monotone_greedy_ranges(
     line_embs: np.ndarray,
     seg_embs: np.ndarray,
     seg_texts: list[str],
+    seg_starts: list[float] | None = None,
+    repeat_counts: dict[str, int] | None = None,
     seg_bigrams: list[frozenset[str]] | None = None,
 ) -> list[tuple[int, int]]:
     """Each non-interlude line maps to one segment index range [a,b]; monotone increasing."""
@@ -83,6 +86,10 @@ def _monotone_greedy_ranges(
     max_windows = int(os.environ.get("UX_MUSIC_SYNC_MONOTONE_MAX_WINDOWS", "3"))
     refine_topk = int(os.environ.get("UX_MUSIC_SYNC_MONOTONE_REFINEMENT_TOPK", "4"))
     fallback_min = float(os.environ.get("UX_MUSIC_SYNC_MONOTONE_FALLBACK_MIN_SCORE", "0.22"))
+    repeat_expected_step = float(os.environ.get("UX_MUSIC_SYNC_REPEAT_EXPECTED_STEP_SECONDS", "3.6"))
+    repeat_time_weight = float(os.environ.get("UX_MUSIC_SYNC_REPEAT_TIME_WEIGHT", "0.035"))
+    repeat_step_tolerance = float(os.environ.get("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "1.2"))
+    prev_start: float | None = None
     for i in range(n):
         if phoneme.is_interlude(lines[i]):
             continue
@@ -133,6 +140,21 @@ def _monotone_greedy_ranges(
                 # ASR と歌詞の字面一致はコサインだけより先行語誤認に強い。
                 # 文字の共通部分も拾って、繰り返しフレーズの早い出現を落としにくくする。
                 s = w_emb * float(c) + w_bg * float(g)
+                if (
+                    seg_starts is not None
+                    and k < len(seg_starts)
+                    and prev_start is not None
+                    and repeat_counts is not None
+                    and repeat_counts.get(li, 0) > 1
+                ):
+                    start_ts = float(seg_starts[k])
+                    gap = start_ts - prev_start
+                    if gap >= 0:
+                        time_gap = abs(gap - repeat_expected_step)
+                    else:
+                        time_gap = abs(gap) + repeat_expected_step
+                    excess = max(0.0, time_gap - repeat_step_tolerance)
+                    s -= repeat_time_weight * excess
                 if s > best_score:
                     best_score = s
                     best_idx = k
@@ -155,6 +177,8 @@ def _monotone_greedy_ranges(
                 break
             search_lo = search_hi
             search_hi = min(m, search_hi + max(1, lookahead))
+        if seg_starts is not None and overall_best_k < len(seg_starts):
+            prev_start = float(seg_starts[overall_best_k])
         out[i] = (overall_best_k, overall_best_k)
         j = overall_best_k + 1
     return out
@@ -387,10 +411,12 @@ def align(
     segments: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     seg_texts = [str(s.get("text", "")).strip() for s in segments]
+    seg_starts = [float(s.get("start", -1e9)) for s in segments]
+    repeat_counts = Counter(str(line).strip() for line in lines if not phoneme.is_interlude(line))
     seg_bigrams = [_char_bigram_set(t) for t in seg_texts]
     line_embs = embed_queries(lines)
     seg_embs = embed_passages(seg_texts)
-    ranges = _monotone_greedy_ranges(lines, line_embs, seg_embs, seg_texts, seg_bigrams)
+    ranges = _monotone_greedy_ranges(lines, line_embs, seg_embs, seg_texts, seg_starts, repeat_counts, seg_bigrams)
 
     words_by_segment: dict[int, list[dict[str, Any]]] = {}
     for si, seg in enumerate(segments):

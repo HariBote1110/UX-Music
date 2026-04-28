@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 from lyrics_sync import stage3_align
 
 
@@ -39,3 +41,26 @@ def test_enforce_monotone_progress_raises_backwards_rows():
     assert rows[1]["confidence"] <= 0.72
     assert rows[2]["timestamp"] == 82.52
     assert rows[2]["confidence"] <= 0.72
+
+
+def test_monotone_ranges_prefers_closer_repeat_candidate(monkeypatch):
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_TIME_WEIGHT", "0.5")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "0.0")
+    lines = ["repeat me", "repeat me"]
+    line_embs = np.zeros((2, 2), dtype=float)
+    seg_embs = np.zeros((3, 2), dtype=float)
+    seg_texts = ["repeat me", "repeat me", "repeat me"]
+    seg_starts = [10.0, 14.0, 30.0]
+    repeat_counts = {"repeat me": 2}
+
+    ranges = stage3_align._monotone_greedy_ranges(
+        lines,
+        line_embs,
+        seg_embs,
+        seg_texts,
+        seg_starts,
+        repeat_counts,
+    )
+
+    assert ranges[0] == (0, 0)
+    assert ranges[1] == (1, 1)
