@@ -13,13 +13,13 @@ import (
 )
 
 const (
-	envPythonPath        = "PYTHONPATH"
-	envModelCache        = "UX_MUSIC_MODEL_CACHE"
-	envHF_DOWNLOAD       = "UX_MUSIC_HF_DOWNLOAD"
-	hfDownloadNone       = "none"
-	hfDownloadAllow      = "allow"
-	settingsConsentKey   = "lyricsSyncModelConsent"
-	defaultWhisperModel  = "medium"
+	envPythonPath       = "PYTHONPATH"
+	envModelCache       = "UX_MUSIC_MODEL_CACHE"
+	envHF_DOWNLOAD      = "UX_MUSIC_HF_DOWNLOAD"
+	hfDownloadNone      = "none"
+	hfDownloadAllow     = "allow"
+	settingsConsentKey  = "lyricsSyncModelConsent"
+	defaultWhisperModel = "medium"
 )
 
 // Syncer runs the lyrics sync Python pipeline (stdin JSON Request → stdout JSON Result).
@@ -180,6 +180,12 @@ func resolveSidecarArgvEnv(req *Request) ([]string, []string, error) {
 		fmt.Sprintf("%s=%s", envModelCache, modelCache),
 		fmt.Sprintf("%s=%s", envHF_DOWNLOAD, download),
 	)
+	if p := strings.TrimSpace(config.FFmpegPath); p != "" {
+		env = append(env, "UX_MUSIC_FFMPEG="+p)
+	}
+	if p := strings.TrimSpace(config.FFprobePath); p != "" {
+		env = append(env, "UX_MUSIC_FFPROBE="+p)
+	}
 
 	if strings.TrimSpace(req.WhisperModel) == "" {
 		req.WhisperModel = defaultWhisperModel
