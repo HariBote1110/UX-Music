@@ -134,9 +134,18 @@ def run_demucs_vocals(wav_path: str, work_dir: str, emit) -> str:
 def separate_vocals(song_path: str, emit) -> tuple[str, str]:
     emit("separate_prep", 2.0)
     work = tempfile.mkdtemp(prefix="uxmusic-demucs-")
-    src_wav = str(Path(work) / "prep.wav")
-    ffmpeg_to_wav16_mono(song_path, src_wav)
-    emit("separate_prep", 14.0)
-    vocals_path = run_demucs_vocals(src_wav, work, emit)
+    try:
+        vocals_path = run_demucs_vocals(song_path, work, emit)
+    except Exception as direct_err:
+        src_wav = str(Path(work) / "prep.wav")
+        ffmpeg_to_wav16_mono(song_path, src_wav)
+        emit("separate_prep", 14.0)
+        try:
+            vocals_path = run_demucs_vocals(src_wav, work, emit)
+        except Exception as fallback_err:
+            raise RuntimeError(
+                "Demucs への直接入力と ffmpeg フォールバックの両方が失敗しました。"
+                f" 直接入力エラー: {direct_err}"
+            ) from fallback_err
     emit("separate", 62.0)
     return vocals_path, work

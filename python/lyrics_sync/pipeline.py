@@ -52,6 +52,7 @@ def run_pipeline(req: dict[str, Any], emit: EmitFn | None = None) -> dict[str, A
     song_path = (req.get("songPath") or "").strip()
     lines = req.get("lines") or []
     whisper_model = (req.get("whisperModel") or os.environ.get("UX_MUSIC_WHISPER_MODEL") or "medium").strip()
+    language = (req.get("language") or "auto").strip()
 
     if not song_path or not lines:
         return {"success": False, "error": "invalid payload"}
@@ -64,7 +65,7 @@ def run_pipeline(req: dict[str, Any], emit: EmitFn | None = None) -> dict[str, A
         vocals_path, work_dir = stage1_separate.separate_vocals(song_path, sink)
         try:
             sink("asr_start", 63.0)
-            segments = stage2_asr.run_asr(vocals_path, whisper_model, sink)
+            segments = stage2_asr.run_asr(vocals_path, whisper_model, sink, language=language)
             sink("align_start", 97.0)
             aligned, detected = stage3_align.align(lines, segments)
             sink("done", 100.0)

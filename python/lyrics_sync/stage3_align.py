@@ -11,6 +11,14 @@ from . import phoneme
 from .embeddings import cosine_metrics, embed_passages, embed_queries
 
 
+def _char_bigram_set(text: str, n: int = 2) -> frozenset[str]:
+    """文字バイグラムの集合を前計算して、候補比較のたびに再生成しない。"""
+    s = text.strip()
+    if len(s) < n:
+        return frozenset()
+    return frozenset(s[i : i + n] for i in range(len(s) - n + 1))
+
+
 def _char_bigram_precision(query: str, passage: str, n: int = 2) -> float:
     """歌詞行と ASR セグメント文字列の surface 類似度（共有バイグラム ÷ 歌詞側バイグラム数）。
 
@@ -64,12 +72,16 @@ def _monotone_greedy_ranges(
     line_embs: np.ndarray,
     seg_embs: np.ndarray,
     seg_texts: list[str],
+    seg_bigrams: list[frozenset[str]] | None = None,
 ) -> list[tuple[int, int]]:
     """Each non-interlude line maps to one segment index range [a,b]; monotone increasing."""
     n = len(lines)
     m = len(seg_embs)
     out: list[tuple[int, int]] = [(-1, -1)] * n
     j = 0
+    lookahead = int(os.environ.get("UX_MUSIC_SYNC_MONOTONE_LOOKAHEAD_SEGMENTS", "14"))
+    refine_topk = int(os.environ.get("UX_MUSIC_SYNC_MONOTONE_REFINEMENT_TOPK", "4"))
+    fallback_min = float(os.environ.get("UX_MUSIC_SYNC_MONOTONE_FALLBACK_MIN_SCORE", "0.22"))
     for i in range(n):
         if phoneme.is_interlude(lines[i]):
             continue
@@ -79,25 +91,57 @@ def _monotone_greedy_ranges(
         best_k = j
         best_s = -2.0
         li = lines[i].strip()
+        li_bigrams = _char_bigram_set(li)
         w_emb = float(os.environ.get("UX_MUSIC_SYNC_MONOTONE_EMBED_WEIGHT", "0.52"))
         backtrack = int(os.environ.get("UX_MUSIC_SYNC_MONOTONE_BACKTRACK_SEGMENTS", "6"))
         w_emb = max(0.0, min(1.0, w_emb))
         w_bg = 1.0 - w_emb
         start_k = max(0, j - max(0, backtrack))
-        for k in range(start_k, m):
-            c = cosine_metrics(line_embs[i], seg_embs[k])
-            if k < len(seg_texts):
-                bigram = _char_bigram_precision(li, seg_texts[k])
-                lcs = _char_lcs_ratio(li, seg_texts[k])
-                g = max(bigram, lcs)
-            else:
-                g = 0.0
-            # ASR と歌詞の字面一致はコサインだけより先行語誤認に強い。
-            # 文字の共通部分も拾って、繰り返しフレーズの早い出現を落としにくくする。
-            s = w_emb * float(c) + w_bg * float(g)
-            if s > best_s:
-                best_s = s
-                best_k = k
+        local_end = min(m, j + max(0, lookahead))
+
+        def _score_window(lo: int, hi: int) -> tuple[int, float]:
+            best_idx = lo
+            best_score = -2.0
+            if lo >= hi:
+                return best_idx, best_score
+            top: list[tuple[float, int, float]] = []
+            for k in range(lo, hi):
+                c = cosine_metrics(line_embs[i], seg_embs[k])
+                if seg_bigrams is not None and k < len(seg_bigrams):
+                    bigram = len(li_bigrams & seg_bigrams[k]) / max(1, len(li_bigrams))
+                elif k < len(seg_texts):
+                    bigram = _char_bigram_precision(li, seg_texts[k])
+                else:
+                    bigram = 0.0
+                cheap = w_emb * float(c) + w_bg * float(bigram)
+                if len(top) < max(1, refine_topk):
+                    top.append((cheap, k, bigram))
+                    top.sort(key=lambda z: z[0], reverse=True)
+                elif cheap > top[-1][0]:
+                    top[-1] = (cheap, k, bigram)
+                    top.sort(key=lambda z: z[0], reverse=True)
+
+            for _, k, bigram in top:
+                c = cosine_metrics(line_embs[i], seg_embs[k])
+                if k < len(seg_texts):
+                    lcs = _char_lcs_ratio(li, seg_texts[k])
+                    g = max(bigram, lcs)
+                else:
+                    g = bigram
+                # ASR と歌詞の字面一致はコサインだけより先行語誤認に強い。
+                # 文字の共通部分も拾って、繰り返しフレーズの早い出現を落としにくくする。
+                s = w_emb * float(c) + w_bg * float(g)
+                if s > best_score:
+                    best_score = s
+                    best_idx = k
+            return best_idx, best_score
+
+        # まず近傍だけを見る。ここで十分なスコアが出る場合は、残りの全走査を避ける。
+        best_k, best_s = _score_window(start_k, local_end)
+        if best_s < fallback_min and local_end < m:
+            fb_k, fb_s = _score_window(local_end, m)
+            if fb_s > best_s:
+                best_k, best_s = fb_k, fb_s
         out[i] = (best_k, best_k)
         j = best_k + 1
     return out
@@ -311,11 +355,19 @@ def align(
     segments: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     seg_texts = [str(s.get("text", "")).strip() for s in segments]
+    seg_bigrams = [_char_bigram_set(t) for t in seg_texts]
     line_embs = embed_queries(lines)
     seg_embs = embed_passages(seg_texts)
-    ranges = _monotone_greedy_ranges(lines, line_embs, seg_embs, seg_texts)
+    ranges = _monotone_greedy_ranges(lines, line_embs, seg_embs, seg_texts, seg_bigrams)
 
-    flat = _flatten_words(segments)
+    words_by_segment: dict[int, list[dict[str, Any]]] = {}
+    for si, seg in enumerate(segments):
+        for w in seg.get("words") or []:
+            ww = dict(w)
+            ww["segment_index"] = si
+            words_by_segment.setdefault(si, []).append(ww)
+    line_phonemes: dict[str, list[str]] = {}
+    word_phonemes: dict[str, list[str]] = {}
     out_lines: list[dict[str, Any]] = []
     matched = 0
 
@@ -333,7 +385,7 @@ def align(
             continue
 
         a, b = ranges[idx] if idx < len(ranges) else (-1, -1)
-        if a < 0 or not flat:
+        if a < 0 or not words_by_segment:
             out_lines.append(
                 {
                     "index": idx,
@@ -345,7 +397,9 @@ def align(
             )
             continue
 
-        ws = [w for w in flat if a <= int(w.get("segment_index", -1)) <= b]
+        ws: list[dict[str, Any]] = []
+        for si in range(a, b + 1):
+            ws.extend(words_by_segment.get(si, ()))
         if not ws:
             seg = segments[a] if 0 <= a < len(segments) else None
             st = float(seg.get("start", 0.0)) if seg else 0.0
@@ -361,15 +415,22 @@ def align(
             matched += 1
             continue
 
-        lg = phoneme.line_lang(text)
-        line_p, _ = phoneme.phoneme_tokens(text)
+        if text in line_phonemes:
+            line_p = line_phonemes[text]
+        else:
+            _line_lang, line_p = phoneme.phoneme_tokens(text)
+            line_phonemes[text] = line_p
 
         scored: list[tuple[float, dict[str, Any]]] = []
         for w in ws:
             tok = str(w.get("word", w.get("text", ""))).strip()
             if not tok:
                 continue
-            _, wp = phoneme.phoneme_tokens(tok if lg == "ja" else tok)
+            if tok in word_phonemes:
+                wp = word_phonemes[tok]
+            else:
+                _word_lang, wp = phoneme.phoneme_tokens(tok)
+                word_phonemes[tok] = wp
             if not line_p or not wp:
                 overlap = 0.0
             else:

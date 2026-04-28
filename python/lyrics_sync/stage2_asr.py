@@ -17,10 +17,18 @@ def _apply_cache_env() -> None:
     os.environ.setdefault("XDG_CACHE_HOME", base)
 
 
+def _whisper_language(language: str | None) -> str | None:
+    clean = (language or "").strip()
+    if not clean or clean.lower() == "auto":
+        return None
+    return clean
+
+
 def run_asr(
     vocals_wav: str,
     whisper_model: str,
     emit,
+    language: str | None = None,
 ) -> list[dict[str, Any]]:
     _apply_cache_env()
 
@@ -50,7 +58,7 @@ def run_asr(
         vocals_wav,
         beam_size=5,
         word_timestamps=True,
-        language=None,
+        language=_whisper_language(language),
         task="transcribe",
     )
 

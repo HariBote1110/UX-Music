@@ -62,6 +62,9 @@ class _FallbackModel:
         return out if convert_to_numpy else out.tolist()
 
 
+_FALLBACK_MODEL = _FallbackModel()
+
+
 @lru_cache(maxsize=1)
 def load_model():
     try:
@@ -70,22 +73,57 @@ def load_model():
         name = "intfloat/multilingual-e5-small"
         return SentenceTransformer(name)
     except Exception:
-        return _FallbackModel()
+        return _FALLBACK_MODEL
+
+
+def _dedupe_inputs(inputs: list[str]) -> tuple[list[str], list[int]]:
+    unique: list[str] = []
+    positions: dict[str, int] = {}
+    indices: list[int] = []
+    for text in inputs:
+        idx = positions.get(text)
+        if idx is None:
+            idx = len(unique)
+            positions[text] = idx
+            unique.append(text)
+        indices.append(idx)
+    return unique, indices
 
 
 def _encode(texts: list[str], *, prefix: str) -> np.ndarray:
     global _FORCE_FALLBACK
 
     inputs = [f"{prefix}: " + (t or "").strip() for t in texts]
+    if not inputs:
+        return np.zeros((0, 0), dtype=np.float32)
+    unique_inputs, indices = _dedupe_inputs(inputs)
     if _FORCE_FALLBACK:
-        return _FallbackModel().encode(inputs, convert_to_numpy=True, show_progress_bar=False, normalize_embeddings=False)
+        encoded = _FALLBACK_MODEL.encode(
+            unique_inputs,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+        )
+        return encoded[indices]
 
     m = load_model()
     try:
-        return m.encode(inputs, convert_to_numpy=True, show_progress_bar=False, normalize_embeddings=False)
+        encoded = m.encode(
+            unique_inputs,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+        )
+        return encoded[indices]
     except Exception:
         _FORCE_FALLBACK = True
-        return _FallbackModel().encode(inputs, convert_to_numpy=True, show_progress_bar=False, normalize_embeddings=False)
+        encoded = _FALLBACK_MODEL.encode(
+            unique_inputs,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+        )
+        return encoded[indices]
 
 
 def embed_passages(texts: list[str]) -> np.ndarray:
@@ -97,7 +135,4 @@ def embed_queries(texts: list[str]) -> np.ndarray:
 
 
 def cosine_metrics(a: np.ndarray, b: np.ndarray) -> float:
-    denom = (np.linalg.norm(a) * np.linalg.norm(b))
-    if denom <= 1e-12:
-        return -1.0
-    return float(np.dot(a, b) / denom)
+    return float(np.dot(a, b))
