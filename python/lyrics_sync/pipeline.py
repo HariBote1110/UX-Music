@@ -64,7 +64,7 @@ def run_pipeline(req: dict[str, Any], emit: EmitFn | None = None) -> dict[str, A
         vocals_path, work_dir = stage1_separate.separate_vocals(song_path, sink)
         try:
             sink("asr_start", 63.0)
-            segments = stage2_asr.run_asr(vocals_path, whisper_model, sink)
+            segments = stage2_asr.run_asr(vocals_path, whisper_model, sink, lyric_lines=lines)
             sink("align_start", 97.0)
             aligned, detected = stage3_align.align(lines, segments)
             sink("done", 100.0)
