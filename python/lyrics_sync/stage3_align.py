@@ -167,19 +167,21 @@ def _repair_large_jump_snap(
     max_gap = float(os.environ.get("UX_MUSIC_SYNC_MAX_LINE_GAP_SECONDS", "42"))
     min_bg = float(os.environ.get("UX_MUSIC_SYNC_REPAIR_JUMP_MIN_BIGRAM", "0.22"))
 
-    for idx in range(len(rows) - 1):
-        prev_row = rows[idx]
-        cur_row = rows[idx + 1]
-        if prev_row.get("source") == "interlude" or cur_row.get("source") == "interlude":
-            continue
-        if cur_row.get("source") != "match":
-            continue
+    match_indices = [
+        idx
+        for idx, row in enumerate(rows)
+        if row.get("source") == "match" and float(row.get("timestamp", -1)) >= 0
+    ]
+
+    for prev_idx, cur_idx in zip(match_indices, match_indices[1:]):
+        prev_row = rows[prev_idx]
+        cur_row = rows[cur_idx]
         ta = float(prev_row.get("timestamp", -1))
         tb = float(cur_row.get("timestamp", -1))
         if ta < 0 or tb - ta <= max_gap:
             continue
 
-        lyric_next = lines[idx + 1].strip()
+        lyric_next = lines[cur_idx].strip()
         candidates: list[tuple[float, float]] = []
         for seg, tx in zip(segments, seg_texts):
             st = float(seg.get("start", -1e9))
@@ -296,8 +298,8 @@ def align(
             }
         )
 
-    _interpolate_rows(out_lines)
     _repair_large_jump_snap(out_lines, lines, segments, seg_texts)
+    _interpolate_rows(out_lines)
 
     detected = [
         {"start": s.get("start"), "end": s.get("end"), "text": s.get("text", "")}

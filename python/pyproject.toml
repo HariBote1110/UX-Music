@@ -1,6 +1,6 @@
 [project]
 name = "lyrics-sync-sidecar"
-version = "2.0.0"
+version = "2.0.1"
 description = "UX-Music lyrics auto-sync pipeline (Demucs → faster-whisper → alignment)"
 requires-python = ">=3.10,<3.13"
 
