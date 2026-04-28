@@ -429,7 +429,16 @@
                 <div class="setting-group">
                     <div class="setting-item">
                         <h4>歌詞自動同期モデル</h4>
-                        <p class="setting-description">Demucs・Whisper・埋め込みモデルを初回のみダウンロードしてキャッシュします。</p>
+                        <p class="setting-description">Demucs・Whisper・埋め込みモデルを初回のみダウンロードしてキャッシュします（合計およそ2GB前後）。</p>
+                        <div class="checkbox-group" style="margin-bottom:10px;">
+                            <label>
+                                <input type="checkbox" id="lyrics-sync-model-consent" name="lyrics-sync-model-consent">
+                                <div>
+                                    <strong>モデルのネットワークからのダウンロードを許可する</strong>
+                                    <small>オンにしないと自動同期は音声モデルを取得できず、処理は失敗する場合があります。オフ時はモデルキャッシュのみ削除されます。</small>
+                                </div>
+                            </label>
+                        </div>
                         <p id="lyrics-sync-cache-info" class="setting-description">—</p>
                         <button type="button" id="lyrics-sync-cache-clear-btn" class="settings-button">同期モデルキャッシュを削除</button>
                     </div>

@@ -5,6 +5,7 @@ import { showNotification, hideNotification } from '../ui/notification.js';
 import { resolveArtworkPath, formatSongTitle } from '../ui/utils.js';
 import { getLrcEditorHtml } from './lrc-editor-markup.js';
 import { togglePlayPause, seek, getCurrentTime, getDuration, isPlaying } from './player.js';
+import { getWailsApp, isWailsMode } from '../core/bridge.js';
 
 const electronAPI = window.electronAPI;
 
@@ -162,8 +163,6 @@ let editorIsSeeking = false;
 let lastTimestampedLineIndex = -1;
 let autoAdvanceArmed = false;
 let isAutoSyncRunning = false;
-/** True after first lyrics-sync consent prompt this session (avoids duplicate confirms). */
-let lyricsSyncConsentPromptedThisSession = false;
 let lyricsSyncProgressListenerAttached = false;
 let latestDetectedSegments = [];
 let latestDetectedBy = '';
@@ -1022,29 +1021,45 @@ function attachLyricsSyncProgressListener() {
     });
 }
 
+/** Returns whether the user permits model downloads (dialogs + persisted settings via Wails). */
 async function ensureLyricsSyncModelConsentBeforeSync() {
-    const app = window.go?.server?.App as
+    if (!isWailsMode()) {
+        return true;
+    }
+
+    const app = getWailsApp() as
         | {
               GetLyricsSyncResourceStatus?: () => Promise<Record<string, unknown>>;
               SetLyricsSyncModelConsent?: (approved: boolean) => Promise<void>;
           }
         | undefined;
-    if (!app?.GetLyricsSyncResourceStatus) return true;
+
+    if (!app?.GetLyricsSyncResourceStatus || !app.SetLyricsSyncModelConsent) {
+        showNotification('歌詞モデルの許可状態を確認できません。設定の「モデルのネットワークからのダウンロードを許可する」をオンにしてください。');
+        hideNotification(5000);
+        return false;
+    }
 
     try {
         const st = await app.GetLyricsSyncResourceStatus();
-        if (st?.modelConsent === true) return true;
-        if (lyricsSyncConsentPromptedThisSession) return true;
-        lyricsSyncConsentPromptedThisSession = true;
+        const hasConsent = st?.modelConsent === true;
+
+        if (hasConsent) {
+            return true;
+        }
+
         const ok = window.confirm(
-            '歌詞の自動同期では初回に音声モデル（合計およそ2GB前後）がダウンロードされることがあります。ネットワーク経由のダウンロードに同意しますか？'
+            '歌詞の自動同期では初回に音声モデル（合計およそ2GB前後）がダウンロードされることがあります。続行するとダウンロードに同意したものとして保存されます。よろしいですか？'
         );
-        if (ok && typeof app.SetLyricsSyncModelConsent === 'function') {
+        if (ok) {
             await app.SetLyricsSyncModelConsent(true);
         }
         return ok;
-    } catch {
-        return true;
+    } catch (e) {
+        console.warn('[LRC Editor] Lyrics sync consent check failed:', e);
+        showNotification('モデル許可の確認に失敗しました。設定画面から許可してください。');
+        hideNotification(5000);
+        return false;
     }
 }
 
@@ -1160,11 +1175,13 @@ async function runAutoSync() {
     setAutoSyncButtonState(true);
 
     try {
-        const payload = {
+        const payload: Record<string, unknown> = {
             songPath: currentEditorSong.path,
             lines: lyricsLines.map(line => line.text || ''),
             language: editorElements.languageSelect ? editorElements.languageSelect.value : 'auto',
             profile: 'fast',
+            /** Backend also reads settings; this flags explicit user intent after consent. */
+            allowModelDownload: true,
         };
 
         const result = await electronAPI.invoke('lyrics-auto-sync', payload) as Record<string, unknown>;

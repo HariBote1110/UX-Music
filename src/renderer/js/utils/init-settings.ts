@@ -31,20 +31,24 @@ function formatBytesJp(bytes: number): string {
 
 async function refreshLyricsSyncCacheInfo() {
     const el = document.getElementById('lyrics-sync-cache-info');
+    const consentCb = document.getElementById('lyrics-sync-model-consent') as HTMLInputElement | null;
     const app = getWailsApp();
     if (!el) {
         return;
     }
     if (!app?.GetLyricsSyncResourceStatus) {
         el.textContent = '（歌詞同期モデル情報は Wails バックエンドでのみ利用できます）';
+        if (consentCb) consentCb.disabled = true;
         return;
     }
+    if (consentCb) consentCb.disabled = false;
     try {
         const st = await app.GetLyricsSyncResourceStatus();
         const bytes = Number((st as { cacheBytes?: number }).cacheBytes ?? 0);
         const path = String((st as { cachePath?: string }).cachePath ?? '');
         const consent = Boolean((st as { modelConsent?: boolean }).modelConsent);
         el.textContent = `モデルキャッシュ: ${formatBytesJp(bytes)}（ダウンロード同意: ${consent ? '済' : '未'}）／${path}`;
+        if (consentCb) consentCb.checked = consent;
     } catch {
         el.textContent = '同期モデル情報の取得に失敗しました。';
     }
@@ -124,6 +128,25 @@ export function initSettings() {
 
         (document.querySelector('input[name="enable-easter-eggs"]') as HTMLInputElement).checked = settings.enableEasterEggs !== false;
 
+        const lyricsConsentCb = document.getElementById('lyrics-sync-model-consent') as HTMLInputElement | null;
+        if (lyricsConsentCb) {
+            let consentVal = Boolean((settings as { lyricsSyncModelConsent?: boolean }).lyricsSyncModelConsent);
+            const wailsApp = getWailsApp();
+            if (wailsApp?.GetLyricsSyncResourceStatus) {
+                try {
+                    const st = await wailsApp.GetLyricsSyncResourceStatus();
+                    const mc = (st as { modelConsent?: boolean }).modelConsent;
+                    if (typeof mc === 'boolean') {
+                        consentVal = mc;
+                    }
+                } catch {
+                    /* leave consentVal from stored settings */
+                }
+            }
+            lyricsConsentCb.checked = consentVal;
+            lyricsConsentCb.disabled = !wailsApp?.GetLyricsSyncResourceStatus;
+        }
+
         elements.settingsModalOverlay.classList.remove('hidden');
         void refreshWearPairingQR();
         void refreshLyricsSyncCacheInfo();
@@ -163,6 +186,8 @@ export function initSettings() {
 
     elements.settingsOkBtn.addEventListener('click', () => {
         const decaySliderValue = parseInt((document.getElementById('analysed-queue-decay-slider') as HTMLInputElement).value);
+        const lyricsModelConsentCb = document.getElementById('lyrics-sync-model-consent') as HTMLInputElement | null;
+
         const settingsToSave = {
             youtubePlaybackMode: (document.querySelector('input[name="youtube-mode"]:checked') as HTMLInputElement).value,
             youtubeDownloadQuality: (document.querySelector('input[name="youtube-quality"]:checked') as HTMLInputElement).value,
@@ -175,12 +200,18 @@ export function initSettings() {
                 decayDays: decaySliderValues[decaySliderValue]
             },
             enableEasterEggs: (document.querySelector('input[name="enable-easter-eggs"]') as HTMLInputElement).checked,
+            lyricsSyncModelConsent: lyricsModelConsentCb?.checked === true,
             // Maintain current playback state during settings save
             isShuffled: state.isShuffled,
             playbackMode: state.playbackMode
         };
 
         electronAPI.send('save-settings', settingsToSave);
+
+        const wails = getWailsApp();
+        if (wails?.SetLyricsSyncModelConsent) {
+            void wails.SetLyricsSyncModelConsent(settingsToSave.lyricsSyncModelConsent).catch(() => {});
+        }
 
         state.visualizerMode = settingsToSave.visualizerMode;
         state.analysedQueue = settingsToSave.analysedQueue;
