@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any
 
 
@@ -27,7 +28,16 @@ def run_asr(
     if dl == "none":
         os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
-    from faster_whisper import WhisperModel
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError as exc:
+        exe = sys.executable
+        raise RuntimeError(
+            "Python パッケージ「faster-whisper」が見つかりません。"
+            f" 現在使用中のインタープリタ ({exe}) に依存関係を入れてください。"
+            " 例: cd リポジトリの python && uv venv && uv pip install -e ."
+            "（Python 3.10〜3.12 を推奨。pyproject.toml の requires-python を参照）"
+        ) from exc
 
     emit("asr_loading", 64.0)
     device = os.environ.get("UX_MUSIC_WHISPER_DEVICE", "cpu")
