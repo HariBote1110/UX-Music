@@ -4,7 +4,22 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import TextIO
+from contextlib import contextmanager
+from typing import Generator, TextIO
+
+
+@contextmanager
+def isolate_pipeline_stdout() -> Generator[None, None, None]:
+    """
+    Libraries sometimes print download banners to stdout (e.g. pyopenjtalk dictionaries).
+    Go expects a single JSON object on stdout — forward pipeline-phase stdout to stderr.
+    """
+    saved = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        yield
+    finally:
+        sys.stdout = saved
 
 
 def emit_progress(stage: str, percent: float, sink: TextIO | None = None) -> None:

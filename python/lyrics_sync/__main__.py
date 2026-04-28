@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 
-from .cli import emit_progress, write_result_stdout
+from .cli import emit_progress, isolate_pipeline_stdout, write_result_stdout
 from .pipeline import run_pipeline
 
 
@@ -32,7 +32,8 @@ def main() -> None:
     def emit(stage: str, pct: float) -> None:
         emit_progress(stage, pct)
 
-    result = run_pipeline(req, emit=emit)
+    with isolate_pipeline_stdout():
+        result = run_pipeline(req, emit=emit)
     write_result_stdout(result)
 
 
