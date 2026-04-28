@@ -129,6 +129,8 @@ export namespace lyricssync {
 	    lines: string[];
 	    language: string;
 	    profile: string;
+	    allowModelDownload?: boolean;
+	    whisperModel?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Request(source);
@@ -140,6 +142,8 @@ export namespace lyricssync {
 	        this.lines = source["lines"];
 	        this.language = source["language"];
 	        this.profile = source["profile"];
+	        this.allowModelDownload = source["allowModelDownload"];
+	        this.whisperModel = source["whisperModel"];
 	    }
 	}
 	export class Result {

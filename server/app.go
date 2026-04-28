@@ -48,6 +48,8 @@ func NewApp() *App {
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 
+	a.bindLyricsSyncProgressEmitter()
+
 	// Start the LAN HTTP server for Apple Watch / iPhone / Mobile companion
 	StartWearServer(ctx, a)
 	fmt.Printf("[Wear] Server address: %s\n", GetWearServerAddress())
@@ -81,6 +83,22 @@ func (a *App) Startup(ctx context.Context) {
 // Ping returns a pong message
 func (a *App) Ping() string {
 	return "pong"
+}
+
+// bindLyricsSyncProgressEmitter wires stderr-derived progress events to the frontend.
+func (a *App) bindLyricsSyncProgressEmitter() {
+	if a.lyricsSyncer == nil {
+		return
+	}
+	a.lyricsSyncer.SetProgressHandler(func(stage string, percent float64) {
+		if a.ctx == nil {
+			return
+		}
+		wailsRuntime.EventsEmit(a.ctx, "lyrics-sync-progress", map[string]interface{}{
+			"stage":   stage,
+			"percent": percent,
+		})
+	})
 }
 
 // pushDiscordPresence updates Discord Rich Presence state.

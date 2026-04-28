@@ -12,6 +12,44 @@ const electronAPI = window.electronAPI;
 const decaySliderValues = [1, 3, 7, 14, 30];
 const decaySliderLabels = ['1日', '3日', '7日', '2週間', '1ヶ月'];
 
+function formatBytesJp(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes < 0) {
+        return '不明';
+    }
+    if (bytes < 1024) {
+        return `${Math.round(bytes)} B`;
+    }
+    const units = ['KB', 'MB', 'GB'];
+    let u = -1;
+    let n = bytes;
+    do {
+        n /= 1024;
+        u += 1;
+    } while (n >= 1024 && u < units.length - 1);
+    return `${n.toFixed(1)} ${units[u]}`;
+}
+
+async function refreshLyricsSyncCacheInfo() {
+    const el = document.getElementById('lyrics-sync-cache-info');
+    const app = getWailsApp();
+    if (!el) {
+        return;
+    }
+    if (!app?.GetLyricsSyncResourceStatus) {
+        el.textContent = '（歌詞同期モデル情報は Wails バックエンドでのみ利用できます）';
+        return;
+    }
+    try {
+        const st = await app.GetLyricsSyncResourceStatus();
+        const bytes = Number((st as { cacheBytes?: number }).cacheBytes ?? 0);
+        const path = String((st as { cachePath?: string }).cachePath ?? '');
+        const consent = Boolean((st as { modelConsent?: boolean }).modelConsent);
+        el.textContent = `モデルキャッシュ: ${formatBytesJp(bytes)}（ダウンロード同意: ${consent ? '済' : '未'}）／${path}`;
+    } catch {
+        el.textContent = '同期モデル情報の取得に失敗しました。';
+    }
+}
+
 async function refreshWearPairingQR() {
     const group = document.getElementById('wear-mobile-pairing-group');
     const wrap = document.getElementById('wear-pairing-qr-wrap');
@@ -88,6 +126,7 @@ export function initSettings() {
 
         elements.settingsModalOverlay.classList.remove('hidden');
         void refreshWearPairingQR();
+        void refreshLyricsSyncCacheInfo();
 
         const settingsTitle = document.getElementById('settings-title');
         if (settingsTitle && !settingsTitle.dataset.listenerAttached) {
@@ -182,6 +221,31 @@ export function initSettings() {
             buildFlacBtn.textContent = '構築中...';
             musicApi.buildFLACIndexes();
         });
+    }
+
+    const clearLyricsBtn = document.getElementById('lyrics-sync-cache-clear-btn');
+    if (clearLyricsBtn && !clearLyricsBtn.dataset.listenerAttached) {
+        clearLyricsBtn.addEventListener('click', async () => {
+            const app = getWailsApp();
+            if (!app?.ClearLyricsSyncModelCache) {
+                showNotification('この環境ではキャッシュ削除を実行できません。');
+                hideNotification(4000);
+                return;
+            }
+            if (!window.confirm('歌詞同期用のダウンロード済みモデルを削除します。よろしいですか？')) {
+                return;
+            }
+            try {
+                await app.ClearLyricsSyncModelCache();
+                showNotification('同期モデルキャッシュを削除しました。');
+                hideNotification(3000);
+                await refreshLyricsSyncCacheInfo();
+            } catch (e) {
+                showNotification(`削除に失敗しました: ${(e as Error)?.message || String(e)}`);
+                hideNotification(5000);
+            }
+        });
+        clearLyricsBtn.dataset.listenerAttached = 'true';
     }
 }
 

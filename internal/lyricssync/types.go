@@ -1,10 +1,13 @@
 package lyricssync
 
 type Request struct {
-	SongPath string   `json:"songPath"`
+	SongPath string `json:"songPath"`
 	Lines    []string `json:"lines"`
-	Language string   `json:"language"` // "auto-ja"
-	Profile  string   `json:"profile"`  // "fast"
+	Language string `json:"language"` // "auto", "ja", "en"
+	Profile  string `json:"profile"`  // legacy; forwarded to Python
+
+	AllowModelDownload bool   `json:"allowModelDownload,omitempty"`
+	WhisperModel       string `json:"whisperModel,omitempty"` // "small" | "medium" | "large-v3-turbo"; default medium in Python
 }
 
 type AlignedLine struct {

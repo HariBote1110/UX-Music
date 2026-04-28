@@ -230,21 +230,18 @@ Node.js および Electron に依存していたバックエンド処理（CDリ
 - [x] `src/sidecars` および `src/main` の削除
 - [x] `package.json` からのエレクトロン依存削除
 
-# Task: CoreML 前提 TXT 自動歌詞同期
+# Task: Python sidecar 自動歌詞同期（v2）
 
 ## 概要
-CoreML が使える macOS 環境を前提に、`TXT` 歌詞を自動で時刻同期し、`LRC` 作成を支援する機能を追加する。
-同期解析は `whisper.cpp` の CoreML 実行を利用し、結果は LRC エディタにプレビュー反映する。
+`markdown/lyrics-sync-plan.md` に従い、`TXT` 歌詞と音源から `LRC` 編集を支援する。**Python sidecar** が Demucs → faster-whisper → 埋め込み＋音素アラインメントを担当し、Go は stdin/stdout JSON と `lyrics-sync-progress` の中継のみとする。ユーザー表示歌詞は入力歌詞のみ（ASR はタイミング用）。
 
 ## 完了条件
-- [x] `internal/lyricssync` パッケージを追加し、同期解析の実行パイプライン（ffmpeg抽出 / whisper実行 / 単調整列 / 補完 / 単調性補正）を実装。
-- [x] `App.AutoSyncLyrics` を公開し、Wails から呼び出せること。
-- [x] `env-setup.js` に `lyrics-auto-sync` invoke ルートを追加すること。
-- [x] `lrc-editor` へ「自動同期解析」ボタンを追加し、実行中状態・完了通知・失敗通知を実装すること。
-- [x] 自動同期結果は保存せず、既存の「LRCを保存」操作でのみファイル保存されること。
-- [x] `whisper-cli` / モデル未配置時に配置先を含むエラーメッセージが返ること。
-- [x] `markdown/requirement.md` のバージョンを `0.1.9-Beta-7i` に更新すること。
-- [x] 単体テスト・結合テスト（擬似 `ffmpeg` / `whisper-cli`）を追加すること。
+- [x] `internal/lyricssync/types.go` の `Request` / `Result` JSON 契約と `App.AutoSyncLyrics` を維持すること。
+- [x] `python/lyrics_sync` パイプライン（上記 sidecar）および `python -m lyrics_sync --request` エントリを実装すること。
+- [x] `lyrics-auto-sync` invoke ルートおよび LRC エディタの自動同期動線は既存のまま利用できること。
+- [x] `lyrics-sync-progress` イベントでステージ・進捗を配信し、LRC エディタで実行中に表示できること。
+- [x] モデル初回ダウンロードの同意フローおよび設定画面でのキャッシュ容量確認・削除が可能であること。
+- [x] Go 側および Python ダミーモードでのテストが存在すること（`UX_MUSIC_LYRICS_SYNC_DUMMY` 等）。
 # Task: コンソール向けパフォーマンスモニターを追加
 
 ## 概要

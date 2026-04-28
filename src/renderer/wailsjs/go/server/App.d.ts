@@ -64,6 +64,8 @@ export function CDSearchText(arg1:string):Promise<Array<cdrip.ReleaseInfo>>;
 
 export function CDStartRip(arg1:Record<string, any>):Promise<any>;
 
+export function ClearLyricsSyncModelCache():Promise<void>;
+
 export function CreatePlaylist(arg1:string):Promise<void>;
 
 export function DeletePlaylist(arg1:string):Promise<void>;
@@ -83,6 +85,8 @@ export function GetLibraryForNormalize():Promise<Array<any>>;
 export function GetLoudnessValue(arg1:string):Promise<any>;
 
 export function GetLyrics(arg1:string):Promise<any>;
+
+export function GetLyricsSyncResourceStatus():Promise<Record<string, any>>;
 
 export function GetMTPDevices():Promise<any>;
 
@@ -165,6 +169,8 @@ export function SelectMTPDownloadFolder():Promise<string>;
 export function SelectNormalizeOutputFolder():Promise<string>;
 
 export function SetLibraryPath():Promise<string>;
+
+export function SetLyricsSyncModelConsent(arg1:boolean):Promise<void>;
 
 export function SongFinished(arg1:Record<string, any>):Promise<void>;
 

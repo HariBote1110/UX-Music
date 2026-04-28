@@ -52,9 +52,9 @@ func TestDeviceFingerprint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := deviceFingerprint(tt.devices)
+			got := deviceListFingerprint(tt.devices)
 			if got != tt.want {
-				t.Errorf("deviceFingerprint() = %v, want %v", got, tt.want)
+				t.Errorf("deviceListFingerprint() = %v, want %v", got, tt.want)
 			}
 		})
 	}

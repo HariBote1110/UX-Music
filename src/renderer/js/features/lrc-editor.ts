@@ -162,6 +162,9 @@ let editorIsSeeking = false;
 let lastTimestampedLineIndex = -1;
 let autoAdvanceArmed = false;
 let isAutoSyncRunning = false;
+/** True after first lyrics-sync consent prompt this session (avoids duplicate confirms). */
+let lyricsSyncConsentPromptedThisSession = false;
+let lyricsSyncProgressListenerAttached = false;
 let latestDetectedSegments = [];
 let latestDetectedBy = '';
 let historyStack = [];
@@ -1002,6 +1005,49 @@ function loadTextFromTextarea() {
     updateUndoRedoButtons();
 }
 
+function attachLyricsSyncProgressListener() {
+    if (lyricsSyncProgressListenerAttached || typeof window.runtime?.EventsOn !== 'function') {
+        return;
+    }
+    lyricsSyncProgressListenerAttached = true;
+    window.runtime.EventsOn('lyrics-sync-progress', (payload: unknown) => {
+        if (!isAutoSyncRunning || !editorElements.autoSyncBtn) return;
+        const rec =
+            typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>) : {};
+        const stage = typeof rec.stage === 'string' ? rec.stage : '';
+        const pctNum = typeof rec.percent === 'number' ? Math.round(rec.percent) : '';
+        editorElements.autoSyncBtn.textContent = stage
+            ? `解析中… ${stage} ${pctNum}%`
+            : `解析中… ${pctNum}%`;
+    });
+}
+
+async function ensureLyricsSyncModelConsentBeforeSync() {
+    const app = window.go?.server?.App as
+        | {
+              GetLyricsSyncResourceStatus?: () => Promise<Record<string, unknown>>;
+              SetLyricsSyncModelConsent?: (approved: boolean) => Promise<void>;
+          }
+        | undefined;
+    if (!app?.GetLyricsSyncResourceStatus) return true;
+
+    try {
+        const st = await app.GetLyricsSyncResourceStatus();
+        if (st?.modelConsent === true) return true;
+        if (lyricsSyncConsentPromptedThisSession) return true;
+        lyricsSyncConsentPromptedThisSession = true;
+        const ok = window.confirm(
+            '歌詞の自動同期では初回に音声モデル（合計およそ2GB前後）がダウンロードされることがあります。ネットワーク経由のダウンロードに同意しますか？'
+        );
+        if (ok && typeof app.SetLyricsSyncModelConsent === 'function') {
+            await app.SetLyricsSyncModelConsent(true);
+        }
+        return ok;
+    } catch {
+        return true;
+    }
+}
+
 function setAutoSyncButtonState(running) {
     if (!editorElements.autoSyncBtn) return;
 
@@ -1094,6 +1140,14 @@ async function runAutoSync() {
     const hasAnyContent = lyricsLines.some(line => (line.text || '').trim() !== '');
     if (!hasAnyContent) {
         showNotification('同期対象の歌詞行がありません。');
+        hideNotification(2500);
+        return;
+    }
+
+    attachLyricsSyncProgressListener();
+    const consentOk = await ensureLyricsSyncModelConsentBeforeSync();
+    if (!consentOk) {
+        showNotification('キャンセルしました。');
         hideNotification(2500);
         return;
     }

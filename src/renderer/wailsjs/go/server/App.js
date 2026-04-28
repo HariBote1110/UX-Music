@@ -114,6 +114,10 @@ export function CDStartRip(arg1) {
   return window['go']['server']['App']['CDStartRip'](arg1);
 }
 
+export function ClearLyricsSyncModelCache() {
+  return window['go']['server']['App']['ClearLyricsSyncModelCache']();
+}
+
 export function CreatePlaylist(arg1) {
   return window['go']['server']['App']['CreatePlaylist'](arg1);
 }
@@ -152,6 +156,10 @@ export function GetLoudnessValue(arg1) {
 
 export function GetLyrics(arg1) {
   return window['go']['server']['App']['GetLyrics'](arg1);
+}
+
+export function GetLyricsSyncResourceStatus() {
+  return window['go']['server']['App']['GetLyricsSyncResourceStatus']();
 }
 
 export function GetMTPDevices() {
@@ -316,6 +324,10 @@ export function SelectNormalizeOutputFolder() {
 
 export function SetLibraryPath() {
   return window['go']['server']['App']['SetLibraryPath']();
+}
+
+export function SetLyricsSyncModelConsent(arg1) {
+  return window['go']['server']['App']['SetLyricsSyncModelConsent'](arg1);
 }
 
 export function SongFinished(arg1) {
