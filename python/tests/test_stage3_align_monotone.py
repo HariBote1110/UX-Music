@@ -1,97 +1,74 @@
-"""Unit tests for segment↔line greedy matching (instrumental-gap robustness)."""
+"""Unit tests for `_monotone_greedy_ranges` / `_pick_start_word`（埋め込みは行列で差し替え）。"""
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from lyrics_sync import stage3_align
 
 
-def test_segment_word_bonus_prefers_dense_words_over_long_sparse():
-    seg_dense = {
-        "start": 0.0,
-        "end": 4.0,
-        "text": "a b c d e",
-        "words": [{"word": "a"}, {"word": "b"}, {"word": "c"}, {"word": "d"}, {"word": "e"}],
-    }
-    seg_sparse = {
-        "start": 0.0,
-        "end": 15.0,
-        "text": "hum",
-        "words": [{"word": "hum"}],
-    }
-    assert stage3_align._segment_word_bonus(seg_dense) > stage3_align._segment_word_bonus(seg_sparse)
-
-
-def test_empty_words_segment_gets_low_bonus():
-    seg = {"start": 0.0, "end": 8.0, "text": "", "words": []}
-    assert stage3_align._segment_word_bonus(seg) < 0.25
-
-
-def test_monotone_prefers_later_segment_on_tie():
-    """When two segments have equal adjusted score, pick the later one in time."""
+def test_monotone_first_segment_wins_on_embedding_tie():
+    """同類似度だと先に見つかったセグメントを採用する（> のため後勝ちにならない）。"""
     lines = ["one", "two"]
-    dim = 8
+    dim = 6
     line_embs = np.zeros((2, dim))
     line_embs[0, 0] = 1.0
     line_embs[1, 1] = 1.0
     m = 4
     seg_embs = np.zeros((m, dim))
     seg_embs[0, 0] = 1.0
-    # Line "two" could match seg1 or seg3 equally on raw cosine; should pick seg3 (later start).
     seg_embs[1, 1] = 1.0
     seg_embs[3, 1] = 1.0
-    segments = [
-        {"start": 0.0, "end": 1.0, "text": "x", "words": [{"word": "x"}]},
-        {"start": 1.0, "end": 2.0, "text": "a", "words": [{"word": "a"}]},
-        {"start": 2.0, "end": 3.0, "text": "b", "words": [{"word": "b"}]},
-        {"start": 10.0, "end": 11.0, "text": "a", "words": [{"word": "a"}]},
-    ]
-    ranges = stage3_align._monotone_greedy_ranges(lines, line_embs, seg_embs, segments)
-    assert ranges[0][0] == 0
-    assert ranges[1][0] == 3
+    ranges = stage3_align._monotone_greedy_ranges(lines, line_embs, seg_embs)
+    assert ranges[0] == (0, 0)
+    assert ranges[1][0] == 1
 
 
-def test_weak_match_jumps_after_long_instrumental_zone():
-    """After a long vocal block, a weak embedding match retries from later audio."""
+def test_interlude_skips_row_and_does_not_advance_pointer_for_next_line():
+    """間奏行は範囲 (-1,-1) のまま。次の歌詞行は直前の非間奏の j から探索が続く。"""
     lines = ["verse", "[間奏]", "chorus"]
-    dim = 12
+    dim = 4
     line_embs = np.zeros((3, dim))
     line_embs[0, 0] = 1.0
-    line_embs[2, 1] = 1.0
-    m = 20
+    line_embs[2, 2] = 1.0
+    m = 5
     seg_embs = np.zeros((m, dim))
-    # First line matches seg 0
     seg_embs[0, 0] = 1.0
-    # Instrumental-like middle: same dim1 component as chorus but weak via word_bonus
-    for k in range(1, 15):
-        seg_embs[k, 1] = 0.95
-    # True chorus match (slightly better than junk when bonus applied)
-    seg_embs[16, 1] = 1.0
-    segments = []
-    for k in range(m):
-        if 1 <= k <= 14:
-            words = [{"word": "hum"}] if k % 2 == 0 else [{"word": "la"}]
-            dur = 3.0
-            st = float(k * 2.0)
-            segments.append(
-                {
-                    "start": st,
-                    "end": st + dur,
-                    "text": "xxx",
-                    "words": words,
-                }
-            )
-        else:
-            st = float(k * 2.0)
-            segments.append(
-                {
-                    "start": st,
-                    "end": st + 1.2,
-                    "text": "chorus text here",
-                    "words": [{"word": "c"}, {"word": "h"}, {"word": "o"}],
-                }
-            )
-    ranges = stage3_align._monotone_greedy_ranges(lines, line_embs, seg_embs, segments)
-    assert ranges[0][0] == 0
-    assert ranges[2][0] >= 15, f"expected jump past instrumental tail, got {ranges[2]}"
+    seg_embs[1, 1] = 0.5
+    seg_embs[2, 1] = 0.5
+    seg_embs[4, 2] = 1.0
+    ranges = stage3_align._monotone_greedy_ranges(lines, line_embs, seg_embs)
+    assert ranges[0] == (0, 0)
+    assert ranges[1] == (-1, -1)
+    assert ranges[2][0] == 4
+
+
+def test_pick_start_word_falls_back_to_best_scoring_early_word(monkeypatch):
+    """閾値未満のみのとき時刻順先頭から最大スコア語へフォールバック（g2p/NLTK に依存しない）。"""
+
+    def stub_tokens(t: str):
+        tok = str(t).strip()
+        if tok == "zzz":
+            return ("en", ["p1"])
+        if tok == "yyy":
+            return ("en", ["p2"])
+        return ("en", [])
+
+    monkeypatch.setattr(stage3_align.phoneme, "phoneme_tokens", stub_tokens)
+
+    line_prefix = ["p1", "p9", "p9"]
+    ws = [
+        {"word": "zzz", "start": 0.1, "end": 0.2},
+        {"word": "yyy", "start": 0.3, "end": 0.4},
+    ]
+    picked, score = stage3_align._pick_start_word("stub line", "en", line_prefix, ws)
+    assert float(picked.get("start", -1.0)) == pytest.approx(0.1)
+    assert score >= 0.17
+
+
+def test_pick_start_word_empty_ws_returns_empty():
+    picked, score = stage3_align._pick_start_word("hello", "en", ["h"], [])
+    assert picked == {}
+    assert score == 0.0
+
