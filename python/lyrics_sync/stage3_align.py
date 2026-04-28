@@ -2,12 +2,30 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import numpy as np
 
 from . import phoneme
 from .embeddings import cosine_metrics, embed_passages, embed_queries
+
+
+def _char_bigram_precision(query: str, passage: str, n: int = 2) -> float:
+    """歌詞行と ASR セグメント文字列の surface 類似度（共有バイグラム ÷ 歌詞側バイグラム数）。
+
+    「眺め」対「まだ」のように埋め込みが紛れる近音ミスでも、末尾の同一フレーズで
+    スコアが立ち、単語単位の音素比較より失敗しにくい。
+    """
+    q = query.strip()
+    p = passage.strip()
+    if not q or len(q) < n:
+        return 0.0
+    q_ng = {q[i : i + n] for i in range(len(q) - n + 1)}
+    p_ng = {p[i : i + n] for i in range(max(0, len(p) - n + 1))}
+    if not q_ng:
+        return 0.0
+    return len(q_ng & p_ng) / len(q_ng)
 
 
 def _flatten_words(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -25,6 +43,7 @@ def _monotone_greedy_ranges(
     lines: list[str],
     line_embs: np.ndarray,
     seg_embs: np.ndarray,
+    seg_texts: list[str],
 ) -> list[tuple[int, int]]:
     """Each non-interlude line maps to one segment index range [a,b]; monotone increasing."""
     n = len(lines)
@@ -39,8 +58,16 @@ def _monotone_greedy_ranges(
             continue
         best_k = j
         best_s = -2.0
+        li = lines[i].strip()
+        w_emb = float(os.environ.get("UX_MUSIC_SYNC_MONOTONE_EMBED_WEIGHT", "0.52"))
+        w_emb = max(0.0, min(1.0, w_emb))
+        w_bg = 1.0 - w_emb
         for k in range(j, m):
-            s = cosine_metrics(line_embs[i], seg_embs[k])
+            c = cosine_metrics(line_embs[i], seg_embs[k])
+            g = _char_bigram_precision(li, seg_texts[k]) if k < len(seg_texts) else 0.0
+            # ASR と歌詞の字面一致はコサインだけより先行語誤認に強い。
+            # ``UX_MUSIC_SYNC_MONOTONE_EMBED_WEIGHT`` で埋め込み寄り／字面寄りを調整し、手動参照との MAE を詰める。
+            s = w_emb * float(c) + w_bg * float(g)
             if s > best_s:
                 best_s = s
                 best_k = k
@@ -50,34 +77,127 @@ def _monotone_greedy_ranges(
 
 
 def _interpolate_rows(rows: list[dict[str, Any]]) -> None:
+    """時刻未確定の行へタイムスタンプを割り当てる。
+
+    以前は同一アンカー間の複数行すべてに ``(prev+next)/2`` を入れており、再生では
+    隣接する前行が異常に長くハイライトされることがあった（    見かけ上「数分そのまま」）。
+    アンカー間は線形分割し、先頭・末尾は一定ステップで追記する。
+    """
     n = len(rows)
-    for idx, row in enumerate(rows):
-        if row.get("source") == "interlude":
+    step = float(os.environ.get("UX_MUSIC_SYNC_INTERPOLATE_STEP_SECONDS", "2.5"))
+
+    def _is_anchor(i: int) -> bool:
+        if rows[i].get("source") == "interlude":
+            return False
+        return float(rows[i].get("timestamp", -1.0)) >= 0
+
+    anchor_indices = [i for i in range(n) if _is_anchor(i)]
+
+    def _fill_between(lo: int, hi: int, t_lo: float, t_hi: float) -> None:
+        span = float(t_hi) - float(t_lo)
+        if span <= 0:
+            span = 1e-3
+        gap = [
+            i
+            for i in range(lo + 1, hi)
+            if rows[i].get("source") != "interlude"
+            and float(rows[i].get("timestamp", -1)) < 0
+        ]
+        g = len(gap)
+        if g == 0:
+            return
+        for rank, idx in enumerate(gap, start=1):
+            rows[idx]["timestamp"] = float(t_lo) + span * (rank / (g + 1))
+            rows[idx]["source"] = "interpolated"
+            rows[idx]["confidence"] = min(float(rows[idx].get("confidence", 0.2)), 0.35)
+
+    if not anchor_indices:
+        tick = 0
+        for idx in range(n):
+            if rows[idx].get("source") == "interlude":
+                continue
+            rows[idx]["timestamp"] = step * tick
+            tick += 1
+            rows[idx]["source"] = "interpolated"
+            rows[idx]["confidence"] = min(float(rows[idx].get("confidence", 0.2)), 0.35)
+        return
+
+    fa = anchor_indices[0]
+    la = anchor_indices[-1]
+
+    count_before = 0
+    for idx in range(fa - 1, -1, -1):
+        if rows[idx].get("source") == "interlude":
             continue
-        if float(row.get("timestamp", -1.0)) >= 0:
+        if float(rows[idx].get("timestamp", -1)) >= 0:
             continue
-        prev_t = None
-        for j in range(idx - 1, -1, -1):
-            tv = rows[j].get("timestamp")
-            if tv is not None and float(tv) >= 0:
-                prev_t = float(tv)
-                break
-        next_t = None
-        for j in range(idx + 1, n):
-            tv = rows[j].get("timestamp")
-            if tv is not None and float(tv) >= 0:
-                next_t = float(tv)
-                break
-        if prev_t is not None and next_t is not None:
-            row["timestamp"] = (prev_t + next_t) / 2.0
-        elif prev_t is not None:
-            row["timestamp"] = prev_t + 0.4
-        elif next_t is not None:
-            row["timestamp"] = max(0.0, next_t - 0.4)
-        else:
-            row["timestamp"] = 0.0
-        row["source"] = "interpolated"
-        row["confidence"] = min(float(row.get("confidence", 0.2)), 0.35)
+        count_before += 1
+        rows[idx]["timestamp"] = max(0.0, float(rows[fa].get("timestamp", 0.0)) - step * count_before)
+        rows[idx]["source"] = "interpolated"
+        rows[idx]["confidence"] = min(float(rows[idx].get("confidence", 0.2)), 0.35)
+
+    for gx in range(len(anchor_indices) - 1):
+        lo = anchor_indices[gx]
+        hi = anchor_indices[gx + 1]
+        _fill_between(lo, hi, float(rows[lo]["timestamp"]), float(rows[hi]["timestamp"]))
+
+    count_after = 0
+    for idx in range(la + 1, n):
+        if rows[idx].get("source") == "interlude":
+            continue
+        if float(rows[idx].get("timestamp", -1)) >= 0:
+            continue
+        count_after += 1
+        rows[idx]["timestamp"] = float(rows[la]["timestamp"]) + step * count_after
+        rows[idx]["source"] = "interpolated"
+        rows[idx]["confidence"] = min(float(rows[idx].get("confidence", 0.2)), 0.35)
+
+
+def _repair_large_jump_snap(
+    rows: list[dict[str, Any]],
+    lines: list[str],
+    segments: list[dict[str, Any]],
+    seg_texts: list[str],
+) -> None:
+    """連続するマッチ行の時刻差が異常に大きいとき、間に挟まれた Whisper セグメントへ歌詞行を取り直す。
+
+    単調整列が後続コーラスへ飛んだだけマッチしているケースで、ギャップ内のより早い
+    セグメント（_surface が歌詞と一致）へタイムスタンプを寄せる。
+    """
+    max_gap = float(os.environ.get("UX_MUSIC_SYNC_MAX_LINE_GAP_SECONDS", "42"))
+    min_bg = float(os.environ.get("UX_MUSIC_SYNC_REPAIR_JUMP_MIN_BIGRAM", "0.22"))
+
+    for idx in range(len(rows) - 1):
+        prev_row = rows[idx]
+        cur_row = rows[idx + 1]
+        if prev_row.get("source") == "interlude" or cur_row.get("source") == "interlude":
+            continue
+        if cur_row.get("source") != "match":
+            continue
+        ta = float(prev_row.get("timestamp", -1))
+        tb = float(cur_row.get("timestamp", -1))
+        if ta < 0 or tb - ta <= max_gap:
+            continue
+
+        lyric_next = lines[idx + 1].strip()
+        candidates: list[tuple[float, float]] = []
+        for seg, tx in zip(segments, seg_texts):
+            st = float(seg.get("start", -1e9))
+            if st <= ta + 0.05:
+                continue
+            if st >= tb - 0.05:
+                continue
+            sc = _char_bigram_precision(lyric_next, tx)
+            if sc < min_bg:
+                continue
+            candidates.append((st, sc))
+
+        if not candidates:
+            continue
+        candidates.sort(key=lambda z: (z[0], -z[1]))
+        best_start = candidates[0][0]
+        cur_row["timestamp"] = float(best_start)
+        cur_row["confidence"] = min(float(cur_row.get("confidence", 0.55)), 0.72)
 
 
 def align(
@@ -87,7 +207,7 @@ def align(
     seg_texts = [str(s.get("text", "")).strip() for s in segments]
     line_embs = embed_queries(lines)
     seg_embs = embed_passages(seg_texts)
-    ranges = _monotone_greedy_ranges(lines, line_embs, seg_embs)
+    ranges = _monotone_greedy_ranges(lines, line_embs, seg_embs, seg_texts)
 
     flat = _flatten_words(segments)
     out_lines: list[dict[str, Any]] = []
@@ -153,10 +273,19 @@ def align(
         scored.sort(key=lambda z: z[0], reverse=True)
 
         picked = ws[0] if not scored else scored[0][1]
-        start_ts = float(picked.get("start", ws[0].get("start", 0.0)))
+        seg_body = seg_texts[a] if 0 <= a < len(seg_texts) else ""
+        surface_agree = _char_bigram_precision(text.strip(), seg_body)
+        # 「眺め」／「まだ」のように語頭だけズレて単語オーバーラップが潰れるときは、
+        # Whisper のセグメント冒頭時刻をそのまま使う。
+        if surface_agree >= 0.28 and a < len(segments):
+            start_ts = float(segments[a].get("start", picked.get("start", 0.0)))
+        else:
+            start_ts = float(picked.get("start", ws[0].get("start", 0.0)))
 
         matched += 1
-        confidence = float(0.55 + 0.35 * max(0.0, scored[0][0]) if scored else 0.55)
+        word_ov = max(0.0, scored[0][0]) if scored else 0.0
+        confidence = float(0.55 + 0.35 * max(word_ov, surface_agree))
+
         out_lines.append(
             {
                 "index": idx,
@@ -168,6 +297,8 @@ def align(
         )
 
     _interpolate_rows(out_lines)
+    _repair_large_jump_snap(out_lines, lines, segments, seg_texts)
+
     detected = [
         {"start": s.get("start"), "end": s.get("end"), "text": s.get("text", "")}
         for s in segments

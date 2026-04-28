@@ -19,6 +19,13 @@ describe('parseLRC', () => {
         expect(r[0].time).toBe(1);
         expect(r[1].time).toBe(2);
     });
+
+    it('forces strictly increasing times when tags duplicate', () => {
+        const r = parseLRC('[01:00.00]A\n[01:00.00]B\n[01:00.00]C');
+        expect(r[0].time).toBe(60);
+        expect(r[1].time).toBeGreaterThan(r[0].time);
+        expect(r[2].time).toBeGreaterThan(r[1].time);
+    });
 });
 
 describe('mergeLrcWithJaLrc', () => {
