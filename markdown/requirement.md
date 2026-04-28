@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-9h)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-9i)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -79,42 +79,25 @@ YouTube URL から楽曲をライブラリに追加する際、字幕を同時�
 - **未配置行の管理**: まだ時刻がない歌詞行を一覧表示し、対象行を選択して即時に時刻付けできる。
 - **既存LRC編集**: 既存 `.lrc` の読み込み・再編集に対応。LRCメタタグ（`[ar:]` など）を保持したまま保存可能。
 
-### [新規] TXT自動同期解析 (CoreML)
+### [新規] TXT自動同期解析 (Swift + CoreML / Python fallback)
 `TXT` 歌詞から、再生中楽曲に対する `LRC` タイムスタンプを自動生成する機能。
-- **対象環境**: CoreML が利用可能な macOS。
-- **推論エンジン**: `whisper.cpp`（CoreML 利用前提）。
+- **対象環境**: macOS では `Swift sidecar` を優先し、非 macOS または移行途上では `Python sidecar` を利用。
+- **推論エンジン**:
+  - macOS 既定: `WhisperKit` + CoreML
+  - fallback: `faster-whisper` を含む Python パイプライン
 - **処理フロー**:
-  - `ffmpeg` で音源を 16kHz / mono WAV へ抽出（通常音声）
-  - MLボーカル抽出（優先順）:
-    - `UXMUSIC_LYRICS_SYNC_VOCAL_SEPARATOR` で指定した外部抽出器（引数: `<input> <output>`）
-    - `demucs`（`--name mdx_extra --jobs 1 --device mps|cpu --two-stems=vocals`）の自動検出（`PATH` → `/opt/homebrew/bin/demucs` → `/usr/local/bin/demucs`）
-    - `UXMUSIC_LYRICS_SYNC_DEMUCS` 指定時はそのパスを優先
-    - `UXMUSIC_LYRICS_SYNC_DEMUCS_MODEL` 指定時は demucs モデル名を上書き
-    - `UXMUSIC_LYRICS_SYNC_DEMUCS_DEVICE` で使用デバイスを指定可能（例: `mps,cpu`）。未指定時は Apple Silicon で `mps` 優先、失敗時 `cpu` へ自動フォールバック
-    - `*_q` モデル指定時に `diffq` 未導入エラーが出た場合は、自動で非量子化モデルへフォールバック
-  - 同時にボーカル重視フィルタ（`highpass=70Hz` + `lowpass=4500Hz` + ダイナミクス補正 + ノイズ低減）を適用した音声も生成
-  - 候補比較は `vocal-ml` → `vocal-focus` → `plain` の順で実施し、最良候補を採用
-  - タイムアウトは段階ごとに分離し、ML抽出失敗時でも後続の `whisper` 候補解析を継続
-  - 候補解析タイムアウトは音声長ベースで自動調整（長尺曲での `context deadline exceeded` を低減）
-  - `whisper-cli` でセグメント（開始時刻・テキスト）を取得
-  - 先頭セグメントが `0.00` 始まりで異常に長い場合は、テキスト長ベースの補正で先頭無音をトリムして開始時刻を補正
-  - 一次整列は歌詞行のみを対象とし、空白/間奏行はいったん除外
-  - TXT 行とセグメントを単調制約付きで整列
-  - 空白/間奏行は、歌詞行と同区間にある場合に補間重みを極小化し、歌詞行の時刻を優先
-  - 空白/間奏行のみの区間では、空白時刻を右アンカー寄せで補間し、直前歌詞の表示時間を確保
-  - 未一致行を補間し、時刻単調性を補正（空白・間奏行は重みを下げ、歌詞行を優先）
-  - 先頭が空白/間奏行の場合は 0 秒アンカーを維持し、前奏区間を潰さない
-  - ボーカル重視解析の一致率が低い場合は通常音声解析へ自動フォールバックし、最良候補を採用
+  - `ffmpeg` で音源を 16kHz / mono WAV へ抽出
+  - macOS 既定では `Swift sidecar` が `WhisperKit` / CoreML を用いて音声認識とタイムスタンプ抽出を行う
+  - ボーカル分離・埋め込み整列・音素整列は Swift へ段階移行し、未移植段階では Python sidecar を fallback として使用可能にする
+  - Go 側は sidecar の種別を意識せず、stdin/stdout JSON と `lyrics-sync-progress` の中継だけを担当する
+  - TXT 行と認識セグメントの単調整列、空白/間奏行補間、時刻単調性補正は sidecar 内で完結する
 - **UI導線**: LRCエディタ内の「自動同期解析」ボタン。
 - **多言語対応**: 言語セレクタ（日本語 / English / 自動検出）により、Whisper に対して明示的な言語ヒントを送信。英語歌詞でも高精度な認識が可能。
-- **検証支援UI**: LRCエディタ内の「検知テキスト表示」から、whisper が検知したセグメント（開始/終了時刻・テキスト）を確認可能。
+- **検証支援UI**: LRCエディタ内の「検知テキスト表示」から、sidecar が検知したセグメント（開始/終了時刻・テキスト）を確認可能。
 - **保存方針**: 自動保存は行わず、結果はプレビュー反映のみ。最終保存は「LRCを保存」操作時に確定。
-- **モデル配置ルール**:
-  - `UXMUSIC_LYRICS_SYNC_CLI` / `UXMUSIC_LYRICS_SYNC_MODEL` があれば優先
-  - 既定配置先: `~/Library/Application Support/ux-music/LyricsSync/`
-    - `bin/whisper-cli`
-    - `models/ggml-base.bin`
-    - `models/ggml-base-encoder.mlmodelc`
+- **ランタイム選択**:
+  - `UX_MUSIC_LYRICS_SYNC_RUNTIME=swift|python|auto`
+  - `auto` は安全側で Python fallback を維持しつつ、Swift sidecar の配備後に段階的に既定化する。
 
 ### For You 機能 (自動プレイリスト)
 - **ムード解析(Mood Analyser)**: BPM、タイトルキーワード、Energy（音量の起伏）、ジャンルを組み合わせた高度なルールエンジン。

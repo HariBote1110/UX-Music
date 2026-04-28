@@ -10,9 +10,9 @@
 - **ボーカル分離 → ASR → アラインメント** の三段パイプライン。
 - アラインメントは **音素 DP ＋多言語文埋め込みベクトル** の併用で、サビ繰り返しや誤認識に強くする。
 - 対応言語は **日本語＋英語**。
-- 重い処理は **Python sidecar** に分離。Go 側は薄いプロキシに留める。
-- **クロスプラットフォーム前提**で Python 同梱管理（macOS / Windows）。
-- 将来的に macOS 専用版を **Swift + CoreML** で書き直すことを構造的に許容する（後述）。
+- 重い処理は sidecar に分離し、**macOS は Swift + CoreML を既定**、**Windows は Python sidecar を既定**とする。Go 側は薄いプロキシに留める。
+- **クロスプラットフォーム前提**で `Request` / `Result` JSON 契約を固定し、実装言語差分を sidecar 内へ閉じ込める。
+- Python 実装は移行期間と非 macOS 向けフォールバックとして維持し、macOS では段階的に **Swift + CoreML** へ寄せる。
 
 ## 2. 既存資産の処遇
 
@@ -36,16 +36,24 @@
 
 ```
 [Wails Go]
-  server/app_lyrics.go: AutoSyncLyrics(req) ─┐
-                                              ↓ JSON over stdin
-                              [Python sidecar: lyrics_sync]
-                                  ├─ stage1_separate.py  (Demucs v4 htdemucs)
-                                  ├─ stage2_asr.py       (faster-whisper, word ts)
-                                  └─ stage3_align.py     (phoneme DP + sentence-embedding)
-                                              ↓ JSON
-                              [Go] プロセス監視・タイムアウト・進捗イベント中継のみ
-                                              ↓
-                                          [Result]
+  server/app_lyrics.go: AutoSyncLyrics(req)
+      └─ internal/lyricssync runtime resolver
+            ├─ macOS + Swift runtime available
+            │     ↓ JSON over stdin
+            │   [Swift sidecar: lyrics-sync-swift]
+            │     ├─ WhisperKit / CoreML ASR
+            │     ├─ CoreML embedding alignment
+            │     └─ vocal separation migration target
+            └─ fallback
+                  ↓ JSON over stdin
+                [Python sidecar: lyrics_sync]
+                  ├─ stage1_separate.py
+                  ├─ stage2_asr.py
+                  └─ stage3_align.py
+                              ↓ JSON
+                    [Go] プロセス監視・タイムアウト・進捗イベント中継のみ
+                              ↓
+                          [Result]
 ```
 
 ### Python sidecar
@@ -55,12 +63,24 @@
 - 入出力: stdin から `Request` JSON、stdout に `Result` JSON、stderr に進捗 `{stage, percent}` を 1 行 1 イベントで出力
 - 依存: `demucs`, `faster-whisper`, `sentence-transformers`, `pyopenjtalk`（日本語音素化）, `g2p-en`（英語音素化）
 
+### Swift sidecar
+
+- 配置: `ux-music-sidecar/swift/lyrics-sync/`
+- エントリ: `lyrics-sync-swift --request -`
+- 入出力: Python sidecar と同じく stdin/stdout/stderr JSON 契約を厳守する。
+- 役割:
+  - `WhisperKit` / CoreML を使った ASR
+  - 埋め込み整列の CoreML 移植
+  - 将来的なボーカル分離の Swift 実装受け皿
+- この段階では CLI スケルトンと起動導線を先に整え、アルゴリズム本体は段階移行とする。
+
 ### Python ランタイム同梱管理
 
 - ビルド時に `uv` で各 OS 向けに仮想環境を作成し、配布物に同梱する。
 - 初回起動時に `~/Library/Application Support/UX-Music/python-venv`（macOS）/ `%APPDATA%\UX-Music\python-venv`（Windows）へ展開。
 - ユーザー環境の `python3` には依存しない。
 - これにより Windows 版でも同じパイプラインがそのまま動作する。
+- macOS では Swift runtime が有効な場合、この同梱 Python はフォールバック用途に限定する。
 
 ### 初回モデルダウンロード（オンライン）
 
@@ -95,19 +115,17 @@
 | Phase | 内容 | テスト起点 |
 |---|---|---|
 | **P0** | `markdown/lyrics-sync-plan.md` 確定、旧 `internal/lyricssync/` を `archive/old-lyricssync` に退避コミット後、main から削除。`markdown/Task.md` 旧セクション置換 | 旧テスト削除 |
-| **P1** | Python sidecar スケルトン（`Request` 受領 → ダミー `Result` 返却）。Go から spawn・stdin/stdout・タイムアウト・stderr 進捗中継 | sidecar I/O 単体テスト（Go・Python 双方） |
-| **P2** | Stage1 ボーカル分離（Demucs htdemucs） | `test_separate.py`（短音源 fixture） |
-| **P3** | Stage2 ASR（faster-whisper `medium` 既定）、word-level timestamp JSON | `test_asr.py` |
-| **P4** | Stage3 アライナを音素 DP のみで実装。行レベル時刻を出す | テーブル駆動: 既知の Whisper JSON ＋歌詞 → 期待 `AlignedLine` |
-| **P5** | 埋め込みベクトルによる行アラインメント追加、サビ反復対応 | サビ繰り返し曲で精度比較 |
-| **P6** | 進捗イベント `lyrics-sync-progress` の Go→JS 配信、`lrc-editor.ts` ボタンに進捗表示 | 結合 |
-| **P7** | モデル初回 DL 同意ダイアログ・キャッシュ管理・容量表示 | UI |
-| **P8** | Windows ビルドで同等動作を検証（uv 同梱、モデルキャッシュパス、ffmpeg 同梱） | クロスプラットフォーム回帰 |
-| **P9** | 旧実装テスト削除確定、版を `PhaseVer+1-a` に繰り上げ | regression |
+| **P1** | Go 側に runtime resolver を追加し、Swift / Python sidecar の選択層を導入 | Go 単体テスト |
+| **P2** | Swift sidecar スケルトン（`Request` 受領 → ダミー `Result` 返却） | `swift build` / ダミー実行 |
+| **P3** | Python sidecar を現行フォールバックとして維持しつつ、macOS で opt-in 実行可能にする | sidecar I/O 結合 |
+| **P4** | Swift Stage2 ASR（WhisperKit / CoreML）へ移行 | 既知音源で timestamp 比較 |
+| **P5** | Swift Stage3 アライナ（埋め込み + 音素整列）へ移行 | テーブル駆動テスト |
+| **P6** | Swift 側の進捗イベントとモデル管理を統合 | UI / 結合 |
+| **P7** | ボーカル分離を Swift / CoreML 実装またはネイティブ連携へ移行 | 短音源 fixture |
+| **P8** | macOS を Swift 既定、Python を fallback に切替 | 回帰 |
+| **P9** | Windows / fallback 導線と版管理を整理 | regression |
 
-## 6. 将来計画: macOS 専用 Swift + CoreML 版
-
-Python sidecar 版で機能と精度が安定したのち、macOS 環境向けに **Swift + CoreML** で書き直すことを将来計画として明記しておく。
+## 6. macOS 既定実装: Swift + CoreML
 
 ### 動機
 
@@ -117,7 +135,7 @@ Python sidecar 版で機能と精度が安定したのち、macOS 環境向け�
 
 ### 想定構成
 
-- `ux-music-sidecar/swift/lyrics_sync/`（新規）に Swift CLI を配置。
+- `ux-music-sidecar/swift/lyrics-sync/`（新規）に Swift CLI を配置。
 - ボーカル分離: Demucs を `coremltools` で `.mlpackage` 化し読み込み。
 - ASR: [WhisperKit](https://github.com/argmaxinc/WhisperKit)（CoreML 最適化済み・word timestamp 対応）。
 - 埋め込み: multilingual-e5-small を CoreML 化。
@@ -126,8 +144,8 @@ Python sidecar 版で機能と精度が安定したのち、macOS 環境向け�
 ### 切替方針
 
 - `Request` / `Result` JSON 契約は Python 版と完全互換に保つ。
-- Go 側 `AutoSyncLyrics` がプラットフォームと設定を見て Python sidecar / Swift sidecar を切り替えるだけにする。
-- Windows 版は引き続き Python sidecar、macOS 版は Swift sidecar が既定、という配置を可能にする。
+- Go 側 `AutoSyncLyrics` はプラットフォームと設定を見て Python sidecar / Swift sidecar を切り替えるだけにする。
+- Windows 版は引き続き Python sidecar、macOS 版は Swift sidecar を既定目標とする。
 
 この前提があるため、Python 版の段階でも sidecar I/O 仕様（JSON 入出力・進捗 stderr）は将来の Swift 実装でそのまま再現できる単純さを保つこと。
 
@@ -136,4 +154,4 @@ Python sidecar 版で機能と精度が安定したのち、macOS 環境向け�
 - 旧 `internal/lyricssync/` は main 上で削除して良い（退避ブランチを残す）。
 - Whisper 既定モデルは **`medium`**。
 - Python ランタイムは **同梱管理**。Windows でも同じパイプラインを動かすことを優先する。
-- macOS 専用 **Swift + CoreML 版**は将来計画として保持する。
+- macOS 側は **Swift + CoreML** への移行を継続し、Python sidecar は fallback として扱う。

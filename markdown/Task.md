@@ -242,6 +242,18 @@ Node.js および Electron に依存していたバックエンド処理（CDリ
 - [x] `lyrics-sync-progress` イベントでステージ・進捗を配信し、LRC エディタで実行中に表示できること。
 - [x] モデル初回ダウンロードの同意フローおよび設定画面でのキャッシュ容量確認・削除が可能であること。
 - [x] Go 側および Python ダミーモードでのテストが存在すること（`UX_MUSIC_LYRICS_SYNC_DUMMY` 等）。
+
+# Task: macOS 向け自動歌詞同期の Swift / CoreML 最適化
+
+## 概要
+`markdown/lyrics-sync-plan.md` に従い、自動歌詞同期の macOS 実行系を **Python 中心**から **Swift + CoreML 中心**へ段階移行する。`Request` / `Result` JSON 契約と UI 導線は維持しつつ、Go 側に sidecar 選択層を導入し、macOS では Swift 実装を差し込める状態にする。
+
+## 完了条件
+- [x] `markdown/features.md` / `markdown/requirement.md` / `markdown/lyrics-sync-plan.md` が、macOS 既定を `Swift + CoreML`、非 macOS を `Python fallback` として記述していること。
+- [x] `internal/lyricssync` が Python 固定ではなく、ランタイム設定に応じて Swift / Python sidecar を選択できること。
+- [x] `swift/lyrics-sync/` に `Request` / `Result` JSON 契約を受ける Swift CLI スケルトンが存在すること。
+- [x] 既存の `App.AutoSyncLyrics` / `lyrics-auto-sync` / `lyrics-sync-progress` 契約が維持されること。
+- [x] Go テストで sidecar 選択ロジックが検証され、Swift CLI が少なくともビルド可能であること。
 # Task: コンソール向けパフォーマンスモニターを追加
 
 ## 概要

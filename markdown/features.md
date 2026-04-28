@@ -15,7 +15,7 @@ UX Music が現在提供している、または計画中の主な機能です�
 * **アートワーク表示**: 埋め込みアートワークの抽出と表示（`safe-artwork://` プロトコルによる安全な表示）。
 * **ラウドネス解析**: EBU R128 に基づくラウドネス値の解析（再生時の音量平準化のため）。
 * **歌詞表示/編集**: `.lrc` 同期歌詞の表示に加え、LRCエディタでタイムライン編集（中央移動・左右端リサイズ・ルーラー倍率変更）と既存LRC再編集に対応。
-* **TXT自動同期解析 (CoreML)**: LRCエディタから、TXT歌詞をCoreML対応Whisperで自動時刻同期（MLボーカル抽出 `demucs` / カスタム抽出器対応、Apple Silicon では `mps` 優先で抽出し失敗時 `cpu` フォールバック、検知テキスト表示でセグメント確認可能）。
+* **TXT自動同期解析 (Swift + CoreML / Python fallback)**: LRCエディタから、TXT歌詞を自動時刻同期。macOS では `Swift sidecar` が `WhisperKit` / CoreML を優先利用し、`Demucs` / 埋め込み整列も段階的に Swift 移植する。Windows など非 macOS 環境では既存 `Python sidecar` をフォールバックとして利用し、JSON 契約と UI 導線は共通化する。
 * **右サイドバー映像プレビュー**: `mp4` など映像付きローカル楽曲は、右サイドバーのジャケット領域を `16:9` で映像表示（Wailsでは `/safe-media/` 経由のミュート映像プレビューを再生状態へ同期）。
 * **Discord RPC**: 現在再生中の曲を Discord のステータスに表示。
 

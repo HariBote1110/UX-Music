@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 )
 
@@ -17,6 +15,8 @@ const (
 	envPythonPath       = "PYTHONPATH"
 	envModelCache       = "UX_MUSIC_MODEL_CACHE"
 	envHF_DOWNLOAD      = "UX_MUSIC_HF_DOWNLOAD"
+	envLyricsRuntime    = "UX_MUSIC_LYRICS_SYNC_RUNTIME"
+	envSwiftSidecarBin  = "UX_MUSIC_LYRICS_SYNC_SWIFT_BIN"
 	hfDownloadNone      = "none"
 	hfDownloadAllow     = "allow"
 	settingsConsentKey  = "lyricsSyncModelConsent"
@@ -162,60 +162,6 @@ func computeSidecarTimeout(durationSeconds float64) time.Duration {
 		return maxDur
 	}
 	return computed
-}
-
-func resolveSidecarArgvEnv(req *Request) ([]string, []string, error) {
-	pythonPkg, err := DevelopmentPythonPkgRoot()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	pythonExe, err := ResolveLyricsSidecarPythonExe(pythonPkg)
-	if err != nil {
-		return nil, nil, err
-	}
-	if !lyricsDummyModeEnabledInEnv() {
-		if err := verifyLyricsSidecarPython(pythonExe); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	argv, err := ResolvePythonArgv(pythonExe)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	consent := req.AllowModelDownload
-	if !consent {
-		consent = loadModelConsentFromStore()
-	}
-
-	download := hfDownloadNone
-	if consent {
-		download = hfDownloadAllow
-	}
-
-	modelCache := filepath.Join(config.GetUserDataPath(), "lyrics-sync-models")
-	_ = os.MkdirAll(modelCache, 0755)
-
-	env := os.Environ()
-	env = append(env,
-		fmt.Sprintf("%s=%s", envPythonPath, pythonPkg),
-		fmt.Sprintf("%s=%s", envModelCache, modelCache),
-		fmt.Sprintf("%s=%s", envHF_DOWNLOAD, download),
-	)
-	if p := strings.TrimSpace(config.FFmpegPath); p != "" {
-		env = append(env, "UX_MUSIC_FFMPEG="+p)
-	}
-	if p := strings.TrimSpace(config.FFprobePath); p != "" {
-		env = append(env, "UX_MUSIC_FFPROBE="+p)
-	}
-
-	if strings.TrimSpace(req.WhisperModel) == "" {
-		req.WhisperModel = defaultWhisperModel
-	}
-
-	return argv, env, nil
 }
 
 func loadModelConsentFromStore() bool {
