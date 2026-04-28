@@ -286,6 +286,25 @@ def _repair_large_jump_snap(
         cur_row["confidence"] = min(float(cur_row.get("confidence", 0.55)), 0.72)
 
 
+def _enforce_monotone_progress(rows: list[dict[str, Any]]) -> None:
+    """match 行が前行より大きく巻き戻るのを防ぐ。"""
+    min_step = float(os.environ.get("UX_MUSIC_SYNC_MONOTONE_CLAMP_STEP_SECONDS", "2.0"))
+    tolerance = float(os.environ.get("UX_MUSIC_SYNC_MONOTONE_CLAMP_TOLERANCE_SECONDS", "0.25"))
+
+    last_ts = None
+    for row in rows:
+        if row.get("source") == "interlude":
+            continue
+        ts = float(row.get("timestamp", -1))
+        if ts < 0:
+            continue
+        if last_ts is not None and ts + tolerance < last_ts:
+            ts = last_ts + min_step
+            row["timestamp"] = ts
+            row["confidence"] = min(float(row.get("confidence", 0.55)), 0.72)
+        last_ts = ts
+
+
 def _repair_flat_match_runs(rows: list[dict[str, Any]]) -> None:
     """同じ時刻に張り付いた match 連鎖を、前後のアンカー間でほどく。
 
@@ -477,6 +496,7 @@ def align(
         )
 
     _repair_large_jump_snap(out_lines, lines, segments, seg_texts)
+    _enforce_monotone_progress(out_lines)
     _interpolate_rows(out_lines)
 
     detected = [

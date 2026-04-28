@@ -24,3 +24,18 @@ def test_repair_large_jump_snap_targets_next_matched_line():
 
     assert rows[3]["timestamp"] == 24.0
     assert rows[3]["confidence"] <= 0.72
+
+
+def test_enforce_monotone_progress_raises_backwards_rows():
+    rows = [
+        {"timestamp": 78.52, "source": "match", "confidence": 0.8},
+        {"timestamp": 67.22, "source": "match", "confidence": 0.8},
+        {"timestamp": 71.5, "source": "match", "confidence": 0.8},
+    ]
+
+    stage3_align._enforce_monotone_progress(rows)
+
+    assert rows[1]["timestamp"] == 80.52
+    assert rows[1]["confidence"] <= 0.72
+    assert rows[2]["timestamp"] == 82.52
+    assert rows[2]["confidence"] <= 0.72
