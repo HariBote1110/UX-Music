@@ -57,8 +57,19 @@ def test_run_asr_uses_explicit_language_only_when_not_auto(monkeypatch):
 
     stage2_asr.run_asr("/tmp/vocals.wav", "tiny", lambda *_: None, language="auto")
     stage2_asr.run_asr("/tmp/vocals.wav", "tiny", lambda *_: None, language="ja")
+    stage2_asr.run_asr("/tmp/vocals.wav", "tiny", lambda *_: None, language="auto-ja")
+    stage2_asr.run_asr("/tmp/vocals.wav", "tiny", lambda *_: None, language="auto-en")
 
-    assert captured == [None, "ja"]
+    assert captured == [None, "ja", "ja", "en"]
+
+
+def test_whisper_language_normalises_auto_prefixed_values():
+    from lyrics_sync import stage2_asr
+
+    assert stage2_asr._whisper_language("auto") is None
+    assert stage2_asr._whisper_language("auto-ja") == "ja"
+    assert stage2_asr._whisper_language("auto-en") == "en"
+    assert stage2_asr._whisper_language(" ja ") == "ja"
 
 
 def test_pipeline_passes_request_language_to_asr(monkeypatch):

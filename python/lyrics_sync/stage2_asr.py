@@ -21,6 +21,10 @@ def _whisper_language(language: str | None) -> str | None:
     clean = (language or "").strip()
     if not clean or clean.lower() == "auto":
         return None
+    if clean.lower().startswith("auto-"):
+        clean = clean.split("-", 1)[1].strip()
+        if not clean:
+            return None
     return clean
 
 

@@ -92,14 +92,28 @@ func sanitiseRequest(req Request) Request {
 	if strings.TrimSpace(req.Profile) == "" {
 		req.Profile = "fast"
 	}
-	if strings.TrimSpace(req.Language) == "" {
-		req.Language = "auto"
-	}
+	req.Language = normaliseLanguageHint(req.Language)
 
 	sanitisedLines := make([]string, len(req.Lines))
 	copy(sanitisedLines, req.Lines)
 	req.Lines = sanitisedLines
 	return req
+}
+
+func normaliseLanguageHint(language string) string {
+	clean := strings.ToLower(strings.TrimSpace(language))
+	switch clean {
+	case "", "auto":
+		return "auto"
+	case "auto-ja":
+		return "ja"
+	case "auto-en":
+		return "en"
+	case "ja", "en":
+		return clean
+	default:
+		return clean
+	}
 }
 
 func validateRequest(req Request) error {
