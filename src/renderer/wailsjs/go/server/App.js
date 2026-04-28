@@ -70,6 +70,10 @@ export function AudioSetEqualizer(arg1) {
   return window['go']['server']['App']['AudioSetEqualizer'](arg1);
 }
 
+export function AudioSetNormalisationGain(arg1) {
+  return window['go']['server']['App']['AudioSetNormalisationGain'](arg1);
+}
+
 export function AudioSetNowPlayingMetadata(arg1) {
   return window['go']['server']['App']['AudioSetNowPlayingMetadata'](arg1);
 }

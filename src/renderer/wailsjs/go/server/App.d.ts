@@ -42,6 +42,8 @@ export function AudioSetDevice(arg1:string):Promise<void>;
 
 export function AudioSetEqualizer(arg1:server.AudioEqualizerSettings):Promise<void>;
 
+export function AudioSetNormalisationGain(arg1:number):Promise<void>;
+
 export function AudioSetNowPlayingMetadata(arg1:Record<string, any>):Promise<void>;
 
 export function AudioSetVolume(arg1:number):Promise<void>;
