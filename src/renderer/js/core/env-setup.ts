@@ -378,6 +378,9 @@ window.electronAPI = window.electronAPI || {
                 'mtp-make-directory': async (data) => {
                     return await app.MTPMakeDirectory?.(data);
                 },
+                'mtp-select-download-folder': async () => {
+                    return await app.MTPSelectDownloadFolder?.();
+                },
                 'mtp-dispose': async () => {
                     return await app.MTPDispose?.();
                 },
