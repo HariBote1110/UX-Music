@@ -28,6 +28,27 @@ def test_repair_large_jump_snap_targets_next_matched_line():
     assert rows[3]["confidence"] <= 0.72
 
 
+def test_repair_isolated_gap_tail_snaps_previous_row():
+    rows = [
+        {"timestamp": 10.0, "source": "match", "confidence": 0.8},
+        {"timestamp": 20.0, "source": "match", "confidence": 0.8},
+        {"timestamp": 70.0, "source": "match", "confidence": 0.8},
+    ]
+    lines = ["anchor", "tail line", "next line"]
+    segments = [
+        {"start": 10.0, "text": "anchor"},
+        {"start": 40.0, "text": "tail line"},
+        {"start": 60.0, "text": "tail line"},
+        {"start": 70.0, "text": "next line"},
+    ]
+    seg_texts = [str(seg.get("text", "")) for seg in segments]
+
+    stage3_align._repair_isolated_gap_tail(rows, lines, segments, seg_texts)
+
+    assert rows[1]["timestamp"] == 60.0
+    assert rows[1]["confidence"] <= 0.72
+
+
 def test_enforce_monotone_progress_raises_backwards_rows():
     rows = [
         {"timestamp": 78.52, "source": "match", "confidence": 0.8},
@@ -52,6 +73,54 @@ def test_monotone_ranges_prefers_closer_repeat_candidate(monkeypatch):
     seg_texts = ["repeat me", "repeat me", "repeat me"]
     seg_starts = [10.0, 14.0, 30.0]
     repeat_counts = {"repeat me": 2}
+
+    ranges = stage3_align._monotone_greedy_ranges(
+        lines,
+        line_embs,
+        seg_embs,
+        seg_texts,
+        seg_starts,
+        repeat_counts,
+    )
+
+    assert ranges[0] == (0, 0)
+    assert ranges[1] == (1, 1)
+
+
+def test_monotone_ranges_allows_small_repeat_rewind(monkeypatch):
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_TIME_WEIGHT", "0.5")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "0.0")
+    monkeypatch.setenv("UX_MUSIC_REPEAT_REWIND_LIMIT_SECONDS", "18.0")
+    lines = ["anchor", "repeat me", "repeat me"]
+    line_embs = np.zeros((3, 2), dtype=float)
+    seg_embs = np.zeros((3, 2), dtype=float)
+    seg_texts = ["repeat me", "anchor", "repeat me"]
+    seg_starts = [10.0, 14.0, 30.0]
+    repeat_counts = {"repeat me": 2, "anchor": 1}
+
+    ranges = stage3_align._monotone_greedy_ranges(
+        lines,
+        line_embs,
+        seg_embs,
+        seg_texts,
+        seg_starts,
+        repeat_counts,
+    )
+
+    assert ranges[0] == (1, 1)
+    assert ranges[1] == (0, 0)
+
+
+def test_monotone_ranges_keeps_earlier_repeat_over_exact_late_match(monkeypatch):
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_TIME_WEIGHT", "0.5")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "0.0")
+    monkeypatch.setenv("UX_MUSIC_REPEAT_REWIND_LIMIT_SECONDS", "18.0")
+    lines = ["anchor", "たとえあしたが見えず不可能だって", "たとえあしたが見えず不可能だって"]
+    line_embs = np.zeros((3, 2), dtype=float)
+    seg_embs = np.zeros((3, 2), dtype=float)
+    seg_texts = ["anchor", "たとえあしたが見えず不可能だって", "たとえあしたが見えず不可能だって"]
+    seg_starts = [64.6, 67.2, 160.94]
+    repeat_counts = {"anchor": 1, "たとえあしたが見えず不可能だって": 2}
 
     ranges = stage3_align._monotone_greedy_ranges(
         lines,

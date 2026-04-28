@@ -57,6 +57,25 @@ def _char_lcs_ratio(query: str, passage: str) -> float:
     return prev[-1] / max(1, n)
 
 
+def _repeat_time_excess(
+    gap: float,
+    repeat_expected_step: float,
+    repeat_step_tolerance: float,
+    repeat_rewind_limit: float,
+) -> float:
+    """繰り返し行に対する時間ペナルティを計算する。
+
+    連続したサビでは、前のアンカーより少し前に戻って別の出現箇所へ再アンカーする
+    ことがある。そこまでを一律に罰すると、前半サビが後半サビへ吸われやすくなるため、
+    小さな巻き戻りは許容し、大きすぎる巻き戻りだけを減点する。
+    """
+    if gap >= 0:
+        time_gap = abs(gap - repeat_expected_step)
+        return max(0.0, time_gap - repeat_step_tolerance)
+    rewind = abs(gap)
+    return max(0.0, rewind - repeat_rewind_limit)
+
+
 def _flatten_words(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     flat: list[dict[str, Any]] = []
     for si, seg in enumerate(segments):
@@ -89,6 +108,8 @@ def _monotone_greedy_ranges(
     repeat_expected_step = float(os.environ.get("UX_MUSIC_SYNC_REPEAT_EXPECTED_STEP_SECONDS", "3.6"))
     repeat_time_weight = float(os.environ.get("UX_MUSIC_SYNC_REPEAT_TIME_WEIGHT", "0.035"))
     repeat_step_tolerance = float(os.environ.get("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "1.2"))
+    repeat_rewind_limit = float(os.environ.get("UX_MUSIC_REPEAT_REWIND_LIMIT_SECONDS", "18.0"))
+    repeat_prune_weight = repeat_time_weight * 0.5
     prev_start: float | None = None
     for i in range(n):
         if phoneme.is_interlude(lines[i]):
@@ -113,6 +134,26 @@ def _monotone_greedy_ranges(
             best_score = -2.0
             if lo >= hi:
                 return best_idx, best_score
+            repeated_line = (
+                seg_starts is not None
+                and prev_start is not None
+                and repeat_counts is not None
+                and repeat_counts.get(li, 0) > 1
+            )
+            candidate_topk = max(1, refine_topk + (4 if repeated_line else 0))
+
+            def _repeat_prune_penalty(k: int) -> float:
+                if not repeated_line or k >= len(seg_starts or ()):  # type: ignore[arg-type]
+                    return 0.0
+                start_ts = float(seg_starts[k])  # type: ignore[index]
+                gap = start_ts - float(prev_start)
+                return repeat_prune_weight * _repeat_time_excess(
+                    gap,
+                    repeat_expected_step,
+                    repeat_step_tolerance,
+                    repeat_rewind_limit,
+                )
+
             top: list[tuple[float, int, float]] = []
             for k in range(lo, hi):
                 c = cosine_metrics(line_embs[i], seg_embs[k])
@@ -122,8 +163,8 @@ def _monotone_greedy_ranges(
                     bigram = _char_bigram_precision(li, seg_texts[k])
                 else:
                     bigram = 0.0
-                cheap = w_emb * float(c) + w_bg * float(bigram)
-                if len(top) < max(1, refine_topk):
+                cheap = w_emb * float(c) + w_bg * float(bigram) - _repeat_prune_penalty(k)
+                if len(top) < candidate_topk:
                     top.append((cheap, k, bigram))
                     top.sort(key=lambda z: z[0], reverse=True)
                 elif cheap > top[-1][0]:
@@ -149,11 +190,12 @@ def _monotone_greedy_ranges(
                 ):
                     start_ts = float(seg_starts[k])
                     gap = start_ts - prev_start
-                    if gap >= 0:
-                        time_gap = abs(gap - repeat_expected_step)
-                    else:
-                        time_gap = abs(gap) + repeat_expected_step
-                    excess = max(0.0, time_gap - repeat_step_tolerance)
+                    excess = _repeat_time_excess(
+                        gap,
+                        repeat_expected_step,
+                        repeat_step_tolerance,
+                        repeat_rewind_limit,
+                    )
                     s -= repeat_time_weight * excess
                 if s > best_score:
                     best_score = s
@@ -308,6 +350,52 @@ def _repair_large_jump_snap(
         best_start = candidates[0][0]
         cur_row["timestamp"] = float(best_start)
         cur_row["confidence"] = min(float(cur_row.get("confidence", 0.55)), 0.72)
+
+
+def _repair_isolated_gap_tail(
+    rows: list[dict[str, Any]],
+    lines: list[str],
+    segments: list[dict[str, Any]],
+    seg_texts: list[str],
+) -> None:
+    """大きな飛びの直前で取り残された 1 行を、後続ブロック側へ寄せ直す。
+
+    大ジャンプ修復は「後ろの行」を前へ寄せるが、実運用ではその逆に「前の 1 行だけ」が
+    早すぎて、次のまとまりへ繋がる直前に孤立することがある。そこを局所的に戻す。
+    """
+    gap_threshold = float(os.environ.get("UX_MUSIC_SYNC_ISOLATED_GAP_SECONDS", "30"))
+    min_bg = float(os.environ.get("UX_MUSIC_SYNC_REPAIR_JUMP_MIN_BIGRAM", "0.22"))
+
+    match_indices = [
+        idx
+        for idx, row in enumerate(rows)
+        if row.get("source") == "match" and float(row.get("timestamp", -1)) >= 0
+    ]
+
+    for prev_idx, cur_idx in zip(match_indices, match_indices[1:]):
+        ta = float(rows[prev_idx].get("timestamp", -1))
+        tb = float(rows[cur_idx].get("timestamp", -1))
+        if ta < 0 or tb - ta <= gap_threshold:
+            continue
+
+        lyric_prev = lines[prev_idx].strip()
+        candidates: list[tuple[float, float]] = []
+        for seg, tx in zip(segments, seg_texts):
+            st = float(seg.get("start", -1e9))
+            if st <= ta + 0.05 or st >= tb - 0.05:
+                continue
+            sc = _char_bigram_precision(lyric_prev, tx)
+            if sc < min_bg:
+                continue
+            candidates.append((st, sc))
+
+        if not candidates:
+            continue
+
+        candidates.sort(key=lambda z: (z[0], z[1]))
+        best_start = candidates[-1][0]
+        rows[prev_idx]["timestamp"] = float(best_start)
+        rows[prev_idx]["confidence"] = min(float(rows[prev_idx].get("confidence", 0.55)), 0.72)
 
 
 def _enforce_monotone_progress(rows: list[dict[str, Any]]) -> None:
@@ -522,6 +610,7 @@ def align(
         )
 
     _repair_large_jump_snap(out_lines, lines, segments, seg_texts)
+    _repair_isolated_gap_tail(out_lines, lines, segments, seg_texts)
     _enforce_monotone_progress(out_lines)
     _interpolate_rows(out_lines)
 
