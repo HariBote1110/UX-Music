@@ -121,6 +121,14 @@ def _monotone_greedy_ranges(
         best_s = -2.0
         li = lines[i].strip()
         li_bigrams = _char_bigram_set(li)
+        repeated_line = repeat_counts is not None and repeat_counts.get(li, 0) > 1
+        next_repeat = False
+        for j2 in range(i + 1, n):
+            if phoneme.is_interlude(lines[j2]):
+                continue
+            next_repeat = repeat_counts is not None and repeat_counts.get(lines[j2].strip(), 0) > 1
+            break
+        repeated_block_tail = repeated_line and not next_repeat
         w_emb = float(os.environ.get("UX_MUSIC_SYNC_MONOTONE_EMBED_WEIGHT", "0.52"))
         backtrack = int(os.environ.get("UX_MUSIC_SYNC_MONOTONE_BACKTRACK_SEGMENTS", "6"))
         w_emb = max(0.0, min(1.0, w_emb))
@@ -134,16 +142,11 @@ def _monotone_greedy_ranges(
             best_score = -2.0
             if lo >= hi:
                 return best_idx, best_score
-            repeated_line = (
-                seg_starts is not None
-                and prev_start is not None
-                and repeat_counts is not None
-                and repeat_counts.get(li, 0) > 1
-            )
-            candidate_topk = max(1, refine_topk + (4 if repeated_line else 0))
+            repeated_line_with_time = seg_starts is not None and prev_start is not None and repeated_block_tail
+            candidate_topk = max(1, refine_topk + (4 if repeated_block_tail else 0))
 
             def _repeat_prune_penalty(k: int) -> float:
-                if not repeated_line or k >= len(seg_starts or ()):  # type: ignore[arg-type]
+                if not repeated_line_with_time or k >= len(seg_starts or ()):  # type: ignore[arg-type]
                     return 0.0
                 start_ts = float(seg_starts[k])  # type: ignore[index]
                 gap = start_ts - float(prev_start)
@@ -398,6 +401,60 @@ def _repair_isolated_gap_tail(
         rows[prev_idx]["confidence"] = min(float(rows[prev_idx].get("confidence", 0.55)), 0.72)
 
 
+def _repair_repeated_block_tail_extension(
+    rows: list[dict[str, Any]],
+    lines: list[str],
+) -> None:
+    """繰り返しブロックの末尾だけ、圧縮されすぎたぶんを少し伸ばす。"""
+    tail_extension = float(os.environ.get("UX_MUSIC_SYNC_REPEAT_TAIL_EXTENSION_SECONDS", "10.0"))
+    max_prev_gap = float(os.environ.get("UX_MUSIC_SYNC_REPEAT_TAIL_MAX_PREV_GAP_SECONDS", "2.75"))
+    min_next_gap = float(os.environ.get("UX_MUSIC_SYNC_REPEAT_TAIL_MIN_NEXT_GAP_SECONDS", "20.0"))
+    counts = Counter(str(line).strip() for line in lines if not phoneme.is_interlude(line))
+
+    def _is_valid(i: int) -> bool:
+        return rows[i].get("source") != "interlude" and float(rows[i].get("timestamp", -1)) >= 0
+
+    for idx, row in enumerate(rows):
+        if row.get("source") != "match" or float(row.get("timestamp", -1)) < 0:
+            continue
+
+        text = str(lines[idx]).strip()
+        if counts.get(text, 0) <= 1:
+            continue
+
+        next_idx = None
+        for j in range(idx + 1, len(rows)):
+            if _is_valid(j):
+                next_idx = j
+                break
+        if next_idx is not None and counts.get(str(lines[next_idx]).strip(), 0) > 1:
+            continue
+
+        prev_idx = None
+        for j in range(idx - 1, -1, -1):
+            if _is_valid(j):
+                prev_idx = j
+                break
+        if prev_idx is None:
+            continue
+
+        prev_ts = float(rows[prev_idx].get("timestamp", -1))
+        cur_ts = float(row.get("timestamp", -1))
+        if prev_ts < 0 or cur_ts < 0:
+            continue
+        if cur_ts - prev_ts > max_prev_gap:
+            continue
+        if next_idx is not None:
+            next_ts = float(rows[next_idx].get("timestamp", -1))
+            if next_ts >= 0 and next_ts - cur_ts < min_next_gap:
+                continue
+
+        target_ts = prev_ts + tail_extension
+        if target_ts > cur_ts:
+            row["timestamp"] = target_ts
+            row["confidence"] = min(float(row.get("confidence", 0.55)), 0.72)
+
+
 def _enforce_monotone_progress(rows: list[dict[str, Any]]) -> None:
     """match 行が前行より大きく巻き戻るのを防ぐ。"""
     min_step = float(os.environ.get("UX_MUSIC_SYNC_MONOTONE_CLAMP_STEP_SECONDS", "2.0"))
@@ -611,6 +668,7 @@ def align(
 
     _repair_large_jump_snap(out_lines, lines, segments, seg_texts)
     _repair_isolated_gap_tail(out_lines, lines, segments, seg_texts)
+    _repair_repeated_block_tail_extension(out_lines, lines)
     _enforce_monotone_progress(out_lines)
     _interpolate_rows(out_lines)
 

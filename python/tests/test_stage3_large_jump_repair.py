@@ -133,3 +133,109 @@ def test_monotone_ranges_keeps_earlier_repeat_over_exact_late_match(monkeypatch)
 
     assert ranges[0] == (0, 0)
     assert ranges[1] == (1, 1)
+
+
+def test_monotone_ranges_keeps_first_window_for_repeated_line(monkeypatch):
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_LOOKAHEAD_SEGMENTS", "2")
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_MAX_WINDOWS", "2")
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_BACKTRACK_SEGMENTS", "0")
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_REFINEMENT_TOPK", "1")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_TIME_WEIGHT", "0.0")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "0.0")
+    monkeypatch.setenv("UX_MUSIC_REPEAT_REWIND_LIMIT_SECONDS", "18.0")
+
+    lines = ["anchor", "repeat me"]
+    seg_texts = ["anchor", "repeat x", "filler", "repeat me"]
+    seg_starts = [10.0, 12.0, 16.0, 20.0]
+    repeat_counts = {"anchor": 1, "repeat me": 2}
+    line_embs = np.zeros((2, 2), dtype=float)
+    seg_embs = np.zeros((4, 2), dtype=float)
+
+    ranges = stage3_align._monotone_greedy_ranges(
+        lines,
+        line_embs,
+        seg_embs,
+        seg_texts,
+        seg_starts,
+        repeat_counts,
+    )
+
+    assert ranges[0] == (0, 0)
+    assert ranges[1] == (1, 1)
+
+
+def test_monotone_ranges_stops_rescanning_when_repeat_gap_is_large(monkeypatch):
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_LOOKAHEAD_SEGMENTS", "2")
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_MAX_WINDOWS", "2")
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_BACKTRACK_SEGMENTS", "0")
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_REFINEMENT_TOPK", "1")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_TIME_WEIGHT", "0.0")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "0.0")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_RESCAN_MAX_GAP_SECONDS", "3.0")
+
+    lines = ["anchor", "repeat me"]
+    seg_texts = ["anchor", "repeat x", "filler", "repeat me"]
+    seg_starts = [10.0, 15.0, 18.0, 25.0]
+    repeat_counts = {"anchor": 1, "repeat me": 2}
+    line_embs = np.zeros((2, 2), dtype=float)
+    seg_embs = np.zeros((4, 2), dtype=float)
+
+    ranges = stage3_align._monotone_greedy_ranges(
+        lines,
+        line_embs,
+        seg_embs,
+        seg_texts,
+        seg_starts,
+        repeat_counts,
+    )
+
+    assert ranges[0] == (0, 0)
+    assert ranges[1] == (1, 1)
+
+
+def test_monotone_ranges_does_not_rescan_middle_repeat_line(monkeypatch):
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_LOOKAHEAD_SEGMENTS", "2")
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_MAX_WINDOWS", "2")
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_BACKTRACK_SEGMENTS", "0")
+    monkeypatch.setenv("UX_MUSIC_SYNC_MONOTONE_REFINEMENT_TOPK", "1")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_TIME_WEIGHT", "0.0")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "0.0")
+
+    lines = ["anchor", "repeat me", "repeat me"]
+    seg_texts = ["anchor", "repeat x", "filler", "repeat me"]
+    seg_starts = [10.0, 12.0, 16.0, 20.0]
+    repeat_counts = {"anchor": 1, "repeat me": 2}
+    line_embs = np.zeros((3, 2), dtype=float)
+    seg_embs = np.zeros((4, 2), dtype=float)
+
+    ranges = stage3_align._monotone_greedy_ranges(
+        lines,
+        line_embs,
+        seg_embs,
+        seg_texts,
+        seg_starts,
+        repeat_counts,
+    )
+
+    assert ranges[0] == (0, 0)
+    assert ranges[1] == (1, 1)
+    assert ranges[2] == (3, 3)
+
+
+def test_repair_repeated_block_tail_extension_extends_only_tail(monkeypatch):
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_TAIL_EXTENSION_SECONDS", "10.0")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_TAIL_MAX_PREV_GAP_SECONDS", "2.75")
+    monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_TAIL_MIN_NEXT_GAP_SECONDS", "20.0")
+
+    rows = [
+        {"timestamp": 10.0, "source": "match", "confidence": 0.8},
+        {"timestamp": 12.0, "source": "match", "confidence": 0.8},
+        {"timestamp": 14.0, "source": "match", "confidence": 0.8},
+    ]
+    lines = ["anchor", "repeat me", "repeat me"]
+
+    stage3_align._repair_repeated_block_tail_extension(rows, lines)
+
+    assert rows[1]["timestamp"] == 12.0
+    assert rows[2]["timestamp"] == 22.0
+    assert rows[2]["confidence"] <= 0.72
