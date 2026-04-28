@@ -73,6 +73,10 @@
   - 現段階ではセグメント時刻からの**簡易単調整列 + 補間**
   - 将来的な埋め込み整列 / 音素整列 / ボーカル分離の Swift 実装受け皿
 - 現在は `WhisperKit` でセグメント抽出を行い、Swift 内で歌詞行へのヒューリスティック整列を返す。高精度な埋め込み整列は次段で移植する。
+- 資源効率方針:
+  - `profile=fast` では既定モデルを軽量側（`base`）へ寄せ、worker 数も 1 に抑える
+  - `profile=balanced` は `small` + worker 2、`profile=accurate` は `medium` + worker 2 を基準にする
+  - 開発時は `.build/debug/lyrics-sync-swift` / `.build/release/lyrics-sync-swift` があれば `swift run` より優先して再利用し、起動コストを抑える
 
 ### Python ランタイム同梱管理
 

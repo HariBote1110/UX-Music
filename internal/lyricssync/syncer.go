@@ -2,6 +2,7 @@ package lyricssync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -78,16 +79,25 @@ func (s *Syncer) Sync(req Request) Result {
 		if ctx.Err() == context.DeadlineExceeded {
 			return failSync(fmt.Errorf("自動同期がタイムアウトしました（%s）", timeout))
 		}
-		if shouldAutoFallbackToPython(spec, preference, ctx.Err()) {
+		if shouldAutoFallbackToPython(spec, preference, err) {
 			log.Printf("[LyricsAutoSync] Swift sidecar から Python sidecar へフォールバックします")
 			pythonSpec, pyErr := resolvePythonSidecarSpec(&req)
 			if pyErr != nil {
 				log.Printf("[LyricsAutoSync] resolve python fallback: %v", pyErr)
 				return failSync(err)
 			}
-			res, err = RunSidecar(ctx, req, pythonSpec.argv, pythonSpec.env, onProgress, nil)
+			fallbackCtx, fallbackCancel, ok := deriveFallbackContext(ctx, timeout)
+			if !ok {
+				log.Printf("[LyricsAutoSync] Python フォールバックに必要な残り時間が不足しています")
+				return failSync(err)
+			}
+			defer fallbackCancel()
+			res, err = RunSidecar(fallbackCtx, req, pythonSpec.argv, pythonSpec.env, onProgress, nil)
 			if err == nil {
 				return res
+			}
+			if fallbackCtx.Err() == context.DeadlineExceeded {
+				return failSync(fmt.Errorf("自動同期がタイムアウトしました（%s）", timeout))
 			}
 			log.Printf("[LyricsAutoSync] python fallback failed: %v", err)
 		}
@@ -100,8 +110,35 @@ func (s *Syncer) Sync(req Request) Result {
 	return res
 }
 
-func shouldAutoFallbackToPython(spec sidecarSpec, preference string, ctxErr error) bool {
-	return preference == sidecarRuntimeAuto && spec.runtimeName == sidecarRuntimeSwift && ctxErr != context.DeadlineExceeded
+func shouldAutoFallbackToPython(spec sidecarSpec, preference string, err error) bool {
+	if preference != sidecarRuntimeAuto || spec.runtimeName != sidecarRuntimeSwift {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return false
+	}
+	switch classifySidecarFailure(err) {
+	case sidecarFailureStart, sidecarFailureEmptyStdout, sidecarFailureDecode:
+		return true
+	default:
+		return false
+	}
+}
+
+func deriveFallbackContext(parent context.Context, totalTimeout time.Duration) (context.Context, context.CancelFunc, bool) {
+	deadline, ok := parent.Deadline()
+	if !ok {
+		ctx, cancel := context.WithTimeout(parent, totalTimeout)
+		return ctx, cancel, true
+	}
+
+	remaining := time.Until(deadline)
+	const minFallbackWindow = 2 * time.Minute
+	if remaining < minFallbackWindow {
+		return nil, nil, false
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	return ctx, cancel, true
 }
 
 func sanitiseRequest(req Request) Request {

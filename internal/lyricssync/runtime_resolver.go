@@ -86,13 +86,32 @@ func swiftSidecarAvailable() bool {
 func configuredSwiftSidecarBinary() (string, bool) {
 	bin := strings.TrimSpace(os.Getenv(envSwiftSidecarBin))
 	if bin == "" {
-		return "", false
+		return developmentSwiftBuiltBinary()
 	}
 	fi, err := os.Stat(bin)
 	if err != nil || fi.IsDir() {
-		return "", false
+		return developmentSwiftBuiltBinary()
 	}
 	return filepath.Clean(bin), true
+}
+
+func developmentSwiftBuiltBinary() (string, bool) {
+	pkgRoot, err := DevelopmentSwiftPkgRoot()
+	if err != nil {
+		return "", false
+	}
+	candidates := []string{
+		filepath.Join(pkgRoot, ".build", "release", "lyrics-sync-swift"),
+		filepath.Join(pkgRoot, ".build", "debug", "lyrics-sync-swift"),
+	}
+	for _, candidate := range candidates {
+		fi, err := os.Stat(candidate)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		return filepath.Clean(candidate), true
+	}
+	return "", false
 }
 
 func resolveSwiftSidecarSpec(req *Request) (sidecarSpec, error) {

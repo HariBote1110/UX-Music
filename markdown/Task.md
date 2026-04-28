@@ -256,6 +256,7 @@ Node.js および Electron に依存していたバックエンド処理（CDリ
 - [x] Go テストで sidecar 選択ロジックが検証され、Swift CLI が少なくともビルド可能であること。
 - [x] `swift/lyrics-sync/` が `WhisperKit` を用いた ASR セグメント抽出と、歌詞行への簡易単調整列・補間を返せること。
 - [x] `auto` 実行時に Swift sidecar の起動系失敗を Python sidecar へフォールバックできること。
+- [x] `profile=fast` 既定時に、Swift sidecar が Python 時代より軽いモデル・worker 数で動作すること。
 # Task: コンソール向けパフォーマンスモニターを追加
 
 ## 概要

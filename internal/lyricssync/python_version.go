@@ -5,7 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 )
+
+var pythonVersionCheckCache sync.Map
 
 func lyricsDummyModeEnabledInEnv() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("UX_MUSIC_LYRICS_SYNC_DUMMY")))
@@ -15,6 +18,13 @@ func lyricsDummyModeEnabledInEnv() bool {
 // verifyLyricsSidecarPython fails if exe is not CPython 3.10–3.12 inclusive
 // (matches python/pyproject.toml requires-python upper bound below 3.13).
 func verifyLyricsSidecarPython(exe string) error {
+	if cached, ok := pythonVersionCheckCache.Load(exe); ok {
+		if cached == nil {
+			return nil
+		}
+		return cached.(error)
+	}
+
 	cmd := exec.Command(exe, "-c", `
 import sys
 vi = sys.version_info[:2]
@@ -22,6 +32,7 @@ raise SystemExit(0 if (3, 10) <= vi <= (3, 12) else 1)
 `)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
+		pythonVersionCheckCache.Store(exe, nil)
 		return nil
 	}
 	txt := strings.TrimSpace(string(out))
@@ -33,7 +44,8 @@ raise SystemExit(0 if (3, 10) <= vi <= (3, 12) else 1)
 		hint,
 	)
 	if txt != "" {
-		return fmt.Errorf("%w\ninterpreter出力: %s", msg, txt)
+		msg = fmt.Errorf("%w\ninterpreter出力: %s", msg, txt)
 	}
+	pythonVersionCheckCache.Store(exe, msg)
 	return msg
 }

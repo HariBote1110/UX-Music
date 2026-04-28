@@ -2,7 +2,9 @@ package lyricssync
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 )
 
 func TestNormaliseSidecarRuntimePreference(t *testing.T) {
@@ -45,16 +47,73 @@ func TestShouldUseSwiftRuntime(t *testing.T) {
 }
 
 func TestShouldAutoFallbackToPython(t *testing.T) {
-	if !shouldAutoFallbackToPython(sidecarSpec{runtimeName: sidecarRuntimeSwift}, sidecarRuntimeAuto, nil) {
-		t.Fatal("auto + swift ではフォールバック可の想定です")
+	if !shouldAutoFallbackToPython(
+		sidecarSpec{runtimeName: sidecarRuntimeSwift},
+		sidecarRuntimeAuto,
+		&sidecarError{kind: sidecarFailureStart, err: fmt.Errorf("binary missing")},
+	) {
+		t.Fatal("起動失敗はフォールバック可の想定です")
 	}
-	if shouldAutoFallbackToPython(sidecarSpec{runtimeName: sidecarRuntimeSwift}, sidecarRuntimeSwift, nil) {
+	if shouldAutoFallbackToPython(
+		sidecarSpec{runtimeName: sidecarRuntimeSwift},
+		sidecarRuntimeSwift,
+		&sidecarError{kind: sidecarFailureStart, err: nil},
+	) {
 		t.Fatal("runtime=swift 明示時はフォールバックしません")
 	}
-	if shouldAutoFallbackToPython(sidecarSpec{runtimeName: sidecarRuntimePython}, sidecarRuntimeAuto, nil) {
+	if shouldAutoFallbackToPython(
+		sidecarSpec{runtimeName: sidecarRuntimePython},
+		sidecarRuntimeAuto,
+		&sidecarError{kind: sidecarFailureStart, err: nil},
+	) {
 		t.Fatal("Python 実行時はフォールバック不要です")
 	}
-	if shouldAutoFallbackToPython(sidecarSpec{runtimeName: sidecarRuntimeSwift}, sidecarRuntimeAuto, context.DeadlineExceeded) {
+	if shouldAutoFallbackToPython(
+		sidecarSpec{runtimeName: sidecarRuntimeSwift},
+		sidecarRuntimeAuto,
+		&sidecarError{kind: sidecarFailureWait, err: context.DeadlineExceeded},
+	) {
 		t.Fatal("タイムアウト時はフォールバックしません")
+	}
+	if shouldAutoFallbackToPython(
+		sidecarSpec{runtimeName: sidecarRuntimeSwift},
+		sidecarRuntimeAuto,
+		&sidecarError{kind: sidecarFailureWait, err: nil},
+	) {
+		t.Fatal("業務エラー相当の wait 失敗ではフォールバックしません")
+	}
+	if !shouldAutoFallbackToPython(
+		sidecarSpec{runtimeName: sidecarRuntimeSwift},
+		sidecarRuntimeAuto,
+		&sidecarError{kind: sidecarFailureDecode, err: fmt.Errorf("bad json")},
+	) {
+		t.Fatal("JSON decode 失敗はフォールバック可の想定です")
+	}
+}
+
+func TestDeriveFallbackContext(t *testing.T) {
+	parent, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	ctx, childCancel, ok := deriveFallbackContext(parent, 10*time.Minute)
+	if !ok {
+		t.Fatal("十分な残り時間がある場合はフォールバック可能の想定です")
+	}
+	defer childCancel()
+
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("deadline を継承する想定です")
+	}
+	parentDeadline, _ := parent.Deadline()
+	if !deadline.Equal(parentDeadline) {
+		t.Fatalf("fallback deadline mismatch: got=%v want=%v", deadline, parentDeadline)
+	}
+
+	shortParent, shortCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shortCancel()
+
+	if ctx, cancel, ok := deriveFallbackContext(shortParent, 10*time.Minute); ok || ctx != nil || cancel != nil {
+		t.Fatal("残り時間が少ない場合はフォールバックしません")
 	}
 }

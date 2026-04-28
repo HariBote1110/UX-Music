@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,16 +18,48 @@ import (
 // ProgressSink receives stderr JSON progress lines: {"stage":"","percent":0-100}.
 type ProgressSink func(stage string, percent float64)
 
+type sidecarFailureKind string
+
+const (
+	sidecarFailureUnknown     sidecarFailureKind = "unknown"
+	sidecarFailureInvalidArgv sidecarFailureKind = "invalid_argv"
+	sidecarFailureMarshal     sidecarFailureKind = "marshal"
+	sidecarFailureStderrPipe  sidecarFailureKind = "stderr_pipe"
+	sidecarFailureStart       sidecarFailureKind = "start"
+	sidecarFailureEmptyStdout sidecarFailureKind = "empty_stdout"
+	sidecarFailureDecode      sidecarFailureKind = "decode"
+	sidecarFailureWait        sidecarFailureKind = "wait"
+)
+
+type sidecarError struct {
+	kind sidecarFailureKind
+	err  error
+}
+
+func (e *sidecarError) Error() string {
+	if e == nil || e.err == nil {
+		return ""
+	}
+	return e.err.Error()
+}
+
+func (e *sidecarError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
 // RunSidecar spawns Python `python -m lyrics_sync --request -`, sends req as stdin JSON, parses stdout JSON as Result.
 // stderr lines that are JSON objects with keys "stage" and "percent" are forwarded to onProgress (optional).
 func RunSidecar(ctx context.Context, req Request, argv []string, env []string, onProgress ProgressSink, stdout io.Writer) (Result, error) {
 	if len(argv) == 0 {
-		return Result{}, fmt.Errorf("lyrics sync argv is empty")
+		return Result{}, &sidecarError{kind: sidecarFailureInvalidArgv, err: fmt.Errorf("lyrics sync argv is empty")}
 	}
 
 	payload, err := json.Marshal(req)
 	if err != nil {
-		return Result{}, fmt.Errorf("marshal request: %w", err)
+		return Result{}, &sidecarError{kind: sidecarFailureMarshal, err: fmt.Errorf("marshal request: %w", err)}
 	}
 
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
@@ -42,11 +75,11 @@ func RunSidecar(ctx context.Context, req Request, argv []string, env []string, o
 
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
-		return Result{}, fmt.Errorf("stderr pipe: %w", err)
+		return Result{}, &sidecarError{kind: sidecarFailureStderrPipe, err: fmt.Errorf("stderr pipe: %w", err)}
 	}
 
 	if err := cmd.Start(); err != nil {
-		return Result{}, fmt.Errorf("start lyrics_sync: %w", err)
+		return Result{}, &sidecarError{kind: sidecarFailureStart, err: fmt.Errorf("start lyrics_sync: %w", err)}
 	}
 
 	if onProgress != nil {
@@ -63,23 +96,31 @@ func RunSidecar(ctx context.Context, req Request, argv []string, env []string, o
 	raw := strings.TrimSpace(outBuf.String())
 	if raw == "" {
 		if waitErr != nil {
-			return Result{}, fmt.Errorf("sidecar exited with empty stdout: %w", waitErr)
+			return Result{}, &sidecarError{kind: sidecarFailureEmptyStdout, err: fmt.Errorf("sidecar exited with empty stdout: %w", waitErr)}
 		}
-		return Result{}, fmt.Errorf("sidecar returned empty stdout")
+		return Result{}, &sidecarError{kind: sidecarFailureEmptyStdout, err: fmt.Errorf("sidecar returned empty stdout")}
 	}
 
 	var parsed Result
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		return Result{}, fmt.Errorf("decode result json: %w (stdout=%q stderr_err=%v)", err, truncate(raw, 200), waitErr)
+		return Result{}, &sidecarError{kind: sidecarFailureDecode, err: fmt.Errorf("decode result json: %w (stdout=%q stderr_err=%v)", err, truncate(raw, 200), waitErr)}
 	}
 
 	if waitErr != nil && !parsed.Success {
 		return parsed, nil
 	}
 	if waitErr != nil {
-		return parsed, fmt.Errorf("sidecar: %w", waitErr)
+		return parsed, &sidecarError{kind: sidecarFailureWait, err: fmt.Errorf("sidecar: %w", waitErr)}
 	}
 	return parsed, nil
+}
+
+func classifySidecarFailure(err error) sidecarFailureKind {
+	var sidecarErr *sidecarError
+	if errors.As(err, &sidecarErr) {
+		return sidecarErr.kind
+	}
+	return sidecarFailureUnknown
 }
 
 func drainProgress(stderr io.ReadCloser, onProgress ProgressSink) {

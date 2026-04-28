@@ -1,5 +1,6 @@
 import Foundation
 import WhisperKit
+import CoreML
 
 struct WhisperKitBootstrapPlan {
     let selectedModel: String
@@ -7,15 +8,33 @@ struct WhisperKitBootstrapPlan {
     let languageHint: String?
     let profile: String?
     let modelCacheDirectory: String?
+    let concurrentWorkerCount: Int
+    let usePrefillCache: Bool
+    let computeOptions: ModelComputeOptions
 
     init(request: Request, configuration: RuntimeConfiguration) {
         let requestedModel = request.whisperModel?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        self.selectedModel = Self.resolveModelName(requestedModel)
+        let cleanProfile = request.profile?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        self.profile = cleanProfile
+        self.selectedModel = Self.resolveModelName(
+            requestedModel,
+            preferred: configuration.preferredModelName,
+            profile: cleanProfile
+        )
         self.allowModelDownload = (request.allowModelDownload ?? false) || configuration.allowModelDownloadFromEnvironment
         self.languageHint = Self.resolveLanguageHint(request.language)
-        self.profile = request.profile?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.modelCacheDirectory = configuration.modelCacheDirectory
+        self.concurrentWorkerCount = configuration.concurrentWorkerCount ?? Self.resolveWorkerCount(profile: cleanProfile)
+        self.usePrefillCache = configuration.usePrefillCache
+        self.computeOptions = ModelComputeOptions(
+            melCompute: configuration.melComputeUnits,
+            audioEncoderCompute: configuration.audioEncoderComputeUnits,
+            textDecoderCompute: configuration.textDecoderComputeUnits,
+            prefillCompute: configuration.prefillComputeUnits
+        )
     }
 
     private static func resolveLanguageHint(_ raw: String?) -> String? {
@@ -37,15 +56,36 @@ struct WhisperKitBootstrapPlan {
         }
     }
 
-    private static func resolveModelName(_ raw: String?) -> String {
+    private static func resolveModelName(_ raw: String?, preferred: String?, profile: String?) -> String {
         guard let raw, !raw.isEmpty else {
-            return "medium"
+            if let preferred, !preferred.isEmpty {
+                return preferred
+            }
+            switch profile {
+            case "accurate", "quality":
+                return "medium"
+            case "balanced":
+                return "small"
+            default:
+                return "base"
+            }
         }
         switch raw {
         case "large-v3-turbo":
             return "large-v3"
         default:
             return raw
+        }
+    }
+
+    private static func resolveWorkerCount(profile: String?) -> Int {
+        switch profile {
+        case "accurate", "quality":
+            return 2
+        case "balanced":
+            return 2
+        default:
+            return 1
         }
     }
 }
@@ -109,6 +149,7 @@ struct WhisperKitPipeline: LyricsSyncPipeline {
         let config = WhisperKitConfig(
             model: plan.selectedModel,
             modelFolder: plan.modelCacheDirectory,
+            computeOptions: plan.computeOptions,
             verbose: false,
             prewarm: false,
             load: true,
@@ -124,9 +165,12 @@ struct WhisperKitPipeline: LyricsSyncPipeline {
             task: .transcribe,
             language: plan.languageHint,
             usePrefillPrompt: true,
+            usePrefillCache: plan.usePrefillCache,
             detectLanguage: plan.languageHint == nil,
             withoutTimestamps: false,
-            wordTimestamps: true
+            wordTimestamps: true,
+            concurrentWorkerCount: plan.concurrentWorkerCount,
+            chunkingStrategy: .vad
         )
     }
 
