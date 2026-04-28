@@ -79,7 +79,8 @@ def _monotone_greedy_ranges(
     m = len(seg_embs)
     out: list[tuple[int, int]] = [(-1, -1)] * n
     j = 0
-    lookahead = int(os.environ.get("UX_MUSIC_SYNC_MONOTONE_LOOKAHEAD_SEGMENTS", "14"))
+    lookahead = int(os.environ.get("UX_MUSIC_SYNC_MONOTONE_LOOKAHEAD_SEGMENTS", "32"))
+    max_windows = int(os.environ.get("UX_MUSIC_SYNC_MONOTONE_MAX_WINDOWS", "3"))
     refine_topk = int(os.environ.get("UX_MUSIC_SYNC_MONOTONE_REFINEMENT_TOPK", "4"))
     fallback_min = float(os.environ.get("UX_MUSIC_SYNC_MONOTONE_FALLBACK_MIN_SCORE", "0.22"))
     for i in range(n):
@@ -97,7 +98,8 @@ def _monotone_greedy_ranges(
         w_emb = max(0.0, min(1.0, w_emb))
         w_bg = 1.0 - w_emb
         start_k = max(0, j - max(0, backtrack))
-        local_end = min(m, j + max(0, lookahead))
+        search_lo = start_k
+        search_hi = min(m, j + max(0, lookahead))
 
         def _score_window(lo: int, hi: int) -> tuple[int, float]:
             best_idx = lo
@@ -136,14 +138,25 @@ def _monotone_greedy_ranges(
                     best_idx = k
             return best_idx, best_score
 
-        # まず近傍だけを見る。ここで十分なスコアが出る場合は、残りの全走査を避ける。
-        best_k, best_s = _score_window(start_k, local_end)
-        if best_s < fallback_min and local_end < m:
-            fb_k, fb_s = _score_window(local_end, m)
-            if fb_s > best_s:
-                best_k, best_s = fb_k, fb_s
-        out[i] = (best_k, best_k)
-        j = best_k + 1
+        # 近い窓から順に見て、十分なスコアが出た時点で止める。
+        # 遠い繰り返しへ吸われるのを抑えつつ、必要なら少し先まで広げる。
+        overall_best_k = j
+        overall_best_s = -2.0
+        windows = 0
+        while search_lo < m and windows < max(1, max_windows):
+            best_k, best_s = _score_window(search_lo, min(search_hi, m))
+            if best_s > overall_best_s:
+                overall_best_s = best_s
+                overall_best_k = best_k
+            windows += 1
+            if best_s >= fallback_min:
+                break
+            if search_hi >= m:
+                break
+            search_lo = search_hi
+            search_hi = min(m, search_hi + max(1, lookahead))
+        out[i] = (overall_best_k, overall_best_k)
+        j = overall_best_k + 1
     return out
 
 
