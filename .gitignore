@@ -14,3 +14,7 @@ build/bin/UX-Music.app/Contents/MacOS/UX-Music
 /src/sidecars/mtp/node_modules
 /src/sidecars/mtp/node_modules
 /src/sidecars/mtp/node_modules
+# python/lyrics_sync ソースは追跡する — 仮想環境とメタデータのみ除外
+/python/.venv/
+/python/*.egg-info/
+/IGNORE
