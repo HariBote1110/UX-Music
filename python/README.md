@@ -1,21 +1,26 @@
 # Lyrics sync sidecar (`lyrics_sync`)
 
-Install (development):
+## いちばん簡単なローカルセットアップ（推奨）
 
-Wails が起動する `python3` は **依存関係を入れた仮想環境** に向けるか、`PYTHONPATH` と同じ環境へ `pip install` 済みにしてください。**システムの `python3` のまま**だと `No module named 'faster_whisper'` になります。
+リポジトリルートで一度だけ:
 
 ```bash
-cd python
-# Python 3.10〜3.12 を推奨（pyproject.toml の requires-python と合わせる）
-uv venv --python 3.12 && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-uv pip install -e '.[dev]'
-# アプリ側で UX_MUSIC_PYTHON=/path/to/python のようにこの venv の python を指定
+make lyrics-sync-python
+# または: ./scripts/setup-lyrics-sync-python.sh
 ```
 
-**Windows**: set `PYTHONPATH` to this `python` directory when invoking `python -m lyrics_sync --request`; set `HF_HOME`/`UX_MUSIC_MODEL_CACHE` user-data paths as emitted by the Go host. FFmpeg and Demucs prerequisites match PyTorch CUDA/CPU installs documented upstream.
+`uv` があれば自動で使い、なければ `python3 -m venv` にフォールバックします。  
+完了後に `wails dev` をやり直せば、Go 側が **`python/.venv` を自動検出**して使います（環境変数の手当ては基本不要です）。
 
-Smoke check without ML downloads:
+- 上書きしたいときだけ `UX_MUSIC_PYTHON` をセット
+- Python バージョンは **3.10〜3.12**（`pyproject.toml` の `requires-python` に合わせる）
+
+## Smoke check（GPU なし・ダミー）
 
 ```bash
 UX_MUSIC_LYRICS_SYNC_DUMMY=1 PYTHONPATH=python python3 -m lyrics_sync --request <<<'{"songPath":"/dev/null","lines":["hello"]}'
 ```
+
+## Windows
+
+バンドル済み `python` と同じ階層に `.venv\Scripts\python.exe` を置けば、macOS/Linux と同様に自動検出されます。`HF_HOME` / `UX_MUSIC_MODEL_CACHE` は Go ホストが設定します。

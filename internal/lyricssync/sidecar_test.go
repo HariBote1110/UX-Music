@@ -9,14 +9,15 @@ import (
 )
 
 func TestRunSidecarDummyPython(t *testing.T) {
-	py, err := FindDevelopmentPythonExe()
-	if err != nil {
-		t.Skip("python3 not on PATH")
-	}
 	repoRoot := findRepoRoot(t)
 	pythonPkg := filepath.Join(repoRoot, "python")
 	if _, err := os.Stat(filepath.Join(pythonPkg, "lyrics_sync")); err != nil {
 		t.Skip("python/lyrics_sync missing")
+	}
+
+	py, err := ResolveLyricsSidecarPythonExe(pythonPkg)
+	if err != nil {
+		t.Skipf("python interpreter not resolved: %v", err)
 	}
 
 	argv := []string{py, "-m", "lyrics_sync", "--request", "-"}

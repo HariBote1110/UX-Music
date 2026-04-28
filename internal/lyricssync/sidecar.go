@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -117,14 +118,46 @@ func ResolvePythonArgv(pythonExe string) ([]string, error) {
 	return []string{pythonExe, "-m", "lyrics_sync", "--request", "-"}, nil
 }
 
-// FindDevelopmentPythonExe prefers UX_MUSIC_PYTHON, else python3 on PATH.
-func FindDevelopmentPythonExe() (string, error) {
+// ResolveLyricsSidecarPythonExe picks the interpreter to run `-m lyrics_sync`.
+//
+// Preference order:
+//  1. UX_MUSIC_PYTHON (explicit override)
+//  2. python/.venv  (bundled-dev venv beside package root — no manual export needed)
+//  3. python3 on PATH
+func ResolveLyricsSidecarPythonExe(pythonPkgRoot string) (string, error) {
 	if p := strings.TrimSpace(os.Getenv("UX_MUSIC_PYTHON")); p != "" {
 		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-			return p, nil
+			return filepath.Clean(p), nil
 		}
 	}
+	if venvPy, ok := venvInterpreterPath(pythonPkgRoot); ok {
+		return venvPy, nil
+	}
 	return exec.LookPath("python3")
+}
+
+func venvInterpreterPath(pkgRoot string) (string, bool) {
+	var candidates []string
+	if runtime.GOOS == "windows" {
+		candidates = []string{
+			filepath.Join(pkgRoot, ".venv", "Scripts", "python.exe"),
+		}
+	} else {
+		candidates = []string{
+			filepath.Join(pkgRoot, ".venv", "bin", "python3"),
+			filepath.Join(pkgRoot, ".venv", "bin", "python"),
+		}
+	}
+	for _, c := range candidates {
+		fi, err := os.Stat(c)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		if fi.Mode().IsRegular() || fi.Mode()&os.ModeSymlink != 0 {
+			return filepath.Clean(c), true
+		}
+	}
+	return "", false
 }
 
 // DevelopmentPythonPkgRoot searches for the repository `python/` directory next to cwd or UX_MUSIC_PYTHON_PKG_PARENT.

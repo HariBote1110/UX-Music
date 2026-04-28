@@ -156,7 +156,7 @@ func resolveSidecarArgvEnv(req *Request) ([]string, []string, error) {
 		return nil, nil, err
 	}
 
-	pythonExe, err := FindDevelopmentPythonExe()
+	pythonExe, err := ResolveLyricsSidecarPythonExe(pythonPkg)
 	if err != nil {
 		return nil, nil, err
 	}
