@@ -160,6 +160,11 @@ func resolveSidecarArgvEnv(req *Request) ([]string, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if !lyricsDummyModeEnabledInEnv() {
+		if err := verifyLyricsSidecarPython(pythonExe); err != nil {
+			return nil, nil, err
+		}
+	}
 
 	argv, err := ResolvePythonArgv(pythonExe)
 	if err != nil {
