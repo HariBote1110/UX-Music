@@ -6,6 +6,7 @@ import { updatePlayingIndicators, renderQueueView } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
+import { resolveLocalPlaybackGain } from './playback-gain.js';
 import { musicApi, isWailsMode } from '../core/bridge.js';
 import { getSongById } from '../core/library-model.js';
 const electronAPI = window.electronAPI;
@@ -13,19 +14,6 @@ const pendingLoudnessRequests = new Set();
 
 /** Overlapping playSong calls (queue clicks, skip spam) must not interleave awaits; last enqueued run still wins after prior runs finish. */
 let playSongChain = Promise.resolve();
-
-function parseLoudnessValue(value) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-        return value;
-    }
-    if (typeof value === 'string') {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) {
-            return parsed;
-        }
-    }
-    return null;
-}
 
 export function markLoudnessAnalysisCompleted(path) {
     if (typeof path !== 'string' || path.trim() === '') return;
@@ -127,10 +115,17 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
     }
 
     let gainLinear = 1.0;
-    if (songToPlayActual.type === 'local' && !forcePlay && songToPlayActual.path) {
+    if (songToPlayActual.type === 'local' && songToPlayActual.path) {
         const savedLoudnessRaw = await electronAPI.invoke('get-loudness-value', songToPlayActual.path);
-        const savedLoudness = parseLoudnessValue(savedLoudnessRaw);
-        if (savedLoudness === null) {
+        const settings = isWailsMode() ? await musicApi.getSettings() : null;
+        const resolved = resolveLocalPlaybackGain({
+            savedLoudnessRaw,
+            targetLoudness: typeof settings?.targetLoudness === 'number' ? settings.targetLoudness : -18.0,
+            forcePlay
+        });
+        gainLinear = resolved.gainLinear;
+
+        if (resolved.shouldWaitForAnalysis) {
             state.songWaitingForAnalysis = { index, sourceList: state.playbackQueue, path: songToPlayActual.path };
             showNotification(`「${songToPlayActual.title}」の再生準備中です...`, false);
             if (!pendingLoudnessRequests.has(songToPlayActual.path)) {
@@ -139,15 +134,6 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
             }
             renderQueueView();
             return;
-        }
-        if (isWailsMode()) {
-            const settings = await musicApi.getSettings();
-            const targetLoudness =
-                typeof settings?.targetLoudness === 'number' && Number.isFinite(settings.targetLoudness)
-                    ? settings.targetLoudness
-                    : -18.0;
-            const gainDb = targetLoudness - savedLoudness;
-            gainLinear = Math.pow(10, gainDb / 20);
         }
     }
 
