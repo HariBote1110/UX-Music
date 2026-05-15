@@ -46,9 +46,17 @@ const (
 	equalizerShelfSlope = 1.0
 )
 
+const longPauseStreamRefreshAfter = 30 * time.Minute
+
 var equalizerFrequencies = [equalizerBandCount]float64{31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000}
 
 var resolvedCommandPaths sync.Map
+
+type audioStream interface {
+	Start() error
+	Stop() error
+	Close() error
+}
 
 type biquadCoefficients struct {
 	b0 float64
@@ -79,16 +87,18 @@ type equalizerSettings struct {
 
 // Player handles audio playback using PortAudio
 type Player struct {
-	mu            sync.RWMutex
-	stream        *portaudio.Stream
-	devices       []*portaudio.DeviceInfo
-	currentDevice *portaudio.DeviceInfo
-	decoder       Decoder
-	file          *os.File
+	mu               sync.RWMutex
+	stream           audioStream
+	devices          []*portaudio.DeviceInfo
+	currentDevice    *portaudio.DeviceInfo
+	decoder          Decoder
+	file             *os.File
+	openOutputStream func() (audioStream, error)
 
 	// Playback state (atomic for lock-free access in callback)
 	playing      atomic.Bool
 	paused       atomic.Bool
+	pausedSince  atomic.Int64
 	position     atomic.Int64 // samples played
 	totalSamples int64
 	sampleRate   int
@@ -178,7 +188,7 @@ func (p *Player) initFFT(size int) {
 	p.fftResult = make([]uint8, size/2)
 	p.fftWindow = make([]float64, size)
 	p.fftLocalBuf = make([]float64, 0, size) // Local buffer for batch collection
-	p.fftChan = make(chan []float64, 4) // Buffered channel for async FFT
+	p.fftChan = make(chan []float64, 4)      // Buffered channel for async FFT
 	p.fftMonoPool = sync.Pool{
 		New: func() interface{} {
 			// Max mono samples per callback: FramesPerBuffer (4096) at mono
@@ -557,7 +567,14 @@ func (p *Player) resolvedOutputDevice() *portaudio.DeviceInfo {
 }
 
 // newOutputStream opens a PortAudio output stream; caller must hold p.mu, assign p.stream, then Start and wire decoder.
-func (p *Player) newOutputStream() (*portaudio.Stream, error) {
+func (p *Player) newOutputStream() (audioStream, error) {
+	if p.openOutputStream != nil {
+		return p.openOutputStream()
+	}
+	return p.newPortAudioOutputStream()
+}
+
+func (p *Player) newPortAudioOutputStream() (*portaudio.Stream, error) {
 	if p.sampleRate == 0 {
 		return nil, errors.New("newOutputStream: sample rate not set")
 	}
@@ -587,6 +604,11 @@ func (p *Player) newOutputStream() (*portaudio.Stream, error) {
 func (p *Player) reopenStream() error {
 	if p.decoder == nil {
 		return errors.New("reopenStream: no active decoder")
+	}
+	if p.stream != nil {
+		_ = p.stream.Stop()
+		_ = p.stream.Close()
+		p.stream = nil
 	}
 	stream, err := p.newOutputStream()
 	if err != nil {
@@ -864,21 +886,42 @@ func (p *Player) Pause() error {
 	}
 
 	p.paused.Store(true)
+	p.pausedSince.Store(time.Now().UnixNano())
 	return nil
 }
 
 // Resume resumes playback
 func (p *Player) Resume() error {
-	p.mu.RLock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	stream := p.stream
-	p.mu.RUnlock()
 
 	if stream == nil {
 		return nil
 	}
 
+	if p.shouldRefreshStreamAfterPause() {
+		if err := p.reopenStream(); err != nil {
+			return err
+		}
+	} else if err := stream.Start(); err != nil && !errors.Is(err, portaudio.StreamIsNotStopped) {
+		if reopenErr := p.reopenStream(); reopenErr != nil {
+			return fmt.Errorf("failed to resume stream (%w); reopen also failed: %v", err, reopenErr)
+		}
+	}
+
 	p.paused.Store(false)
+	p.pausedSince.Store(0)
 	return nil
+}
+
+func (p *Player) shouldRefreshStreamAfterPause() bool {
+	pausedSince := p.pausedSince.Load()
+	if pausedSince <= 0 {
+		return false
+	}
+	return time.Since(time.Unix(0, pausedSince)) >= longPauseStreamRefreshAfter
 }
 
 // Stop stops playback
@@ -895,6 +938,7 @@ func (p *Player) Stop() error {
 
 	p.playing.Store(false)
 	p.paused.Store(false)
+	p.pausedSince.Store(0)
 	p.position.Store(0)
 	p.ringAvailable.Store(0)
 	p.ringReadPos.Store(0)

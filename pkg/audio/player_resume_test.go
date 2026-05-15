@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"io"
 	"testing"
 	"time"
 )
@@ -26,6 +27,15 @@ func (s *fakeAudioStream) Close() error {
 	return nil
 }
 
+type fakeDecoder struct{}
+
+func (d fakeDecoder) Read(_ []byte) (int, error) { return 0, io.EOF }
+func (d fakeDecoder) SampleRate() int            { return 44100 }
+func (d fakeDecoder) Channels() int              { return 2 }
+func (d fakeDecoder) Length() int64              { return 44100 }
+func (d fakeDecoder) Seek(_ int64) error         { return nil }
+func (d fakeDecoder) Close() error               { return nil }
+
 func TestResumeRestartsPausedOutputStream(t *testing.T) {
 	stream := &fakeAudioStream{}
 	player := &Player{stream: stream}
@@ -48,7 +58,8 @@ func TestResumeReopensStreamAfterLongPause(t *testing.T) {
 	oldStream := &fakeAudioStream{}
 	newStream := &fakeAudioStream{}
 	player := &Player{
-		stream: oldStream,
+		stream:  oldStream,
+		decoder: fakeDecoder{},
 		openOutputStream: func() (audioStream, error) {
 			return newStream, nil
 		},
