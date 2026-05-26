@@ -300,6 +300,20 @@ export function updateNowPlayingView(song) {
         checkTextOverflow(nowPlayingArtist);
     });
 
+    // MusicCenter テーマ用: フッターの曲名インライン表示を更新
+    const mcFooterTitleText = document.getElementById('mc-footer-title-text') as HTMLElement | null;
+    if (mcFooterTitleText) {
+        if (song) {
+            // 曲名 / アーティスト / アルバム の形式（空フィールドは省略）
+            const parts = [song.title, song.artist, song.album]
+                .map((s: string | undefined) => (s ?? '').trim())
+                .filter(Boolean);
+            mcFooterTitleText.textContent = parts.join(' / ');
+        } else {
+            mcFooterTitleText.textContent = '';
+        }
+    }
+
     // フルスクリーンオーバーレイへ曲変更を通知する
     if (song) {
         notifyFullscreenSongChange();

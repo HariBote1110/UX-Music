@@ -25,8 +25,9 @@ body.mc-theme .playback-bar {
     left: auto;
     right: auto;
 
-    /* フラットなツールバー */
-    height: 40px;
+    /* フラットなツールバー（progress strip 2行目を含む最小高さ） */
+    min-height: 40px;
+    height: auto;
     margin: 0;
     padding: 0 16px;
 
@@ -128,23 +129,75 @@ body.mc-theme #resizer {
     padding: 0 !important;
 }
 
-/* ── 再生バー内: アートワークサムネイルを非表示 ──────────────────── */
+/* ── 再生バー内要素の並び順 (order) を明示 ──────────────────────── */
 
-body.mc-theme #footer-artwork-container {
-    display: none !important;
-}
-
-/* ── コントロールボタンをコンパクトに・左寄せ ────────────────────── */
-
+/* 1: 再生コントロール (shuffle / prev / play / next / loop) */
 body.mc-theme .playback-controls {
+    order: 1;
     flex-basis: auto;
-    justify-content: flex-start;   /* 参考 HTML と同様に左端から配置 */
+    justify-content: flex-start;
     gap: 12px;
 }
 
-/* 右側コントロール群（オーディオ情報〜デバイス）を右端に押し出す */
+/* 2: アートワークサムネイル（参考 HTML の小サムネイルに相当） */
+body.mc-theme #footer-artwork-container {
+    order: 2;
+    display: flex !important;        /* .hidden クラスや既存 none を上書き */
+    align-items: center;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    overflow: hidden;
+    margin: 0 4px;
+    border: 1px solid var(--bg-light);
+}
+
+body.mc-theme #footer-artwork {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+}
+
+/* 3: 曲名 / アーティスト / アルバム インライン表示 */
+body.mc-theme .mc-footer-info {
+    order: 3;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 480px;
+    overflow: hidden;
+}
+
+/* 未再生（テキスト空）のときは幅ゼロにして存在感を消す */
+body.mc-theme .mc-footer-info:has(.mc-footer-title:empty) {
+    display: none;
+}
+
+body.mc-theme .mc-footer-title {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 10-12: 右側グループ（audio-info を auto margin で右端に押し出す） */
 body.mc-theme .audio-info-container {
+    order: 10;
     margin-left: auto;
+}
+
+body.mc-theme .volume-container {
+    order: 11;
+}
+
+body.mc-theme .device-container {
+    order: 12;
+}
+
+/* --- デフォルトテーマでは MC 専用要素を非表示 --- */
+.mc-footer-info {
+    display: none;
 }
 
 /* 音量コンテナをコンパクトに */
