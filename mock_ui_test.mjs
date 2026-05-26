@@ -33,18 +33,25 @@ if (headerMatch && asideMatch) {
     assert(false, 'Header or Aside tags not found');
 }
 
-// 2. プレイリストビューとアルバムビューに、ソート用のテーブルヘッダ領域が存在するか
+// 2. テーブル（ソートヘッダ）が左右の余白を持たずに広がる構造になっているか
 const playlistViewMatch = html.match(/<div id="view-playlists-container"[^>]*>([\s\S]*?)<div id="playlists-grid"/i);
 const albumViewMatch = html.match(/<div id="view-albums-container"[^>]*>([\s\S]*?)<div id="albums-grid"/i);
 
 assert(
-    playlistViewMatch && playlistViewMatch[1].includes('class="w-full text-left text-xs border-collapse'),
-    'Playlist view must contain a sort header table structure'
+    playlistViewMatch && !playlistViewMatch[0].includes('px-8') && playlistViewMatch[1].includes('class="w-full text-left text-xs border-collapse'),
+    'Playlist view container should NOT have px-8 padding, and must contain the sort header table'
 );
 
 assert(
-    albumViewMatch && albumViewMatch[1].includes('class="w-full text-left text-xs border-collapse'),
-    'Album view must contain a sort header table structure'
+    albumViewMatch && !albumViewMatch[0].includes('px-8') && albumViewMatch[1].includes('class="w-full text-left text-xs border-collapse'),
+    'Album view container should NOT have px-8 padding, and must contain the sort header table'
+);
+
+// 3. タイトルと件数・新規作成ボタンの縦並び/配置構造
+const mainHeaderMatch = html.match(/<div id="view-title-area"[^>]*>([\s\S]*?)<\/div>/i);
+assert(
+    html.includes('id="view-title-area"'),
+    'Should have a designated view-title-area for vertical layout of title and count'
 );
 
 console.log('All tests passed!');

@@ -265,12 +265,19 @@
     <main class="flex-1 bg-[#1a1a1a] flex flex-col overflow-hidden relative">
       
       <!-- メインヘッダー（検索、件数、画面切替など共通ヘッダー） -->
-      <div class="px-8 pt-6 pb-4 flex justify-between items-end shrink-0 border-b border-[#2a2a2a]">
-        <div class="flex items-baseline space-x-4">
+      <div class="px-8 pt-6 pb-4 flex justify-between items-end shrink-0">
+        <div id="view-title-area" class="flex flex-col">
           <!-- 表示中のタイトル -->
-          <h1 id="view-title" class="text-3xl font-bold text-white tracking-wide">曲</h1>
-          <!-- 件数表示 -->
-          <div id="view-count" class="text-xs text-gray-400">721 曲</div>
+          <h1 id="view-title" class="text-3xl font-bold text-white tracking-wide mb-1">曲</h1>
+          <!-- 件数とアクションボタンのコンテナ -->
+          <div class="flex items-center space-x-3 text-xs text-gray-400">
+            <span id="view-count">721 曲</span>
+            <!-- 追加アクション (プレイリスト用: 新規作成) -->
+            <button id="btn-create-playlist" class="hidden text-gray-400 hover:text-white border border-[#3e3e3e] rounded px-2 py-0.5 transition flex items-center space-x-1 bg-[#1a1a1a]">
+              <i class="fa-solid fa-plus text-[10px]"></i>
+              <span>新規作成...</span>
+            </button>
+          </div>
         </div>
 
         <!-- 右側アクション・検索 -->
@@ -324,45 +331,45 @@
       </div>
 
       <!-- ==================== VIEW 2: プレイリストグリッド ==================== -->
-      <div id="view-playlists-container" class="flex-1 overflow-auto px-8 pb-8 view-section hidden">
+      <div id="view-playlists-container" class="flex-1 overflow-auto pb-8 view-section hidden">
         <table class="w-full text-left text-xs border-collapse table-border-cols mb-4">
           <thead>
-            <tr class="bg-[#1a1a1a] text-gray-400 border-b-2 border-[#2a2a2a] sticky top-0 z-10">
-              <th class="p-2 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
-              <th class="p-2 w-1/3 min-w-[200px] cursor-pointer hover:text-white">タイトル <i class="fa-solid fa-caret-down ml-1 text-[10px] text-[#f3af00]"></i></th>
+            <tr class="bg-[#1a1a1a] text-gray-400 border-t border-b border-[#2a2a2a] sticky top-0 z-10">
+              <th class="p-2 pl-8 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
+              <th class="p-2 w-1/3 min-w-[200px] cursor-pointer hover:text-white relative border-b-2 border-[#f3af00]">タイトル <i class="fa-solid fa-caret-down ml-1 text-[10px] text-[#f3af00]"></i></th>
               <th class="p-2 w-12 text-center text-[#f3af00] font-bold text-[9px]">HR</th>
               <th class="p-2 w-1/5 min-w-[120px] cursor-pointer hover:text-white">アーティスト</th>
               <th class="p-2 w-1/4 min-w-[150px] cursor-pointer hover:text-white">アルバム</th>
               <th class="p-2 w-20 text-right pr-4">曲の長さ</th>
               <th class="p-2 w-16 text-center">リリース年</th>
               <th class="p-2 w-16 text-right pr-4">再生回数</th>
-              <th class="p-2 w-24">ジャンル</th>
+              <th class="p-2 pr-8 w-24">ジャンル</th>
             </tr>
           </thead>
         </table>
-        <div id="playlists-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
+        <div id="playlists-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 px-8">
           <!-- プレイリストはJSから動的出力されます -->
         </div>
       </div>
 
       <!-- ==================== VIEW 3: アルバムグリッド ==================== -->
-      <div id="view-albums-container" class="flex-1 overflow-auto px-8 pb-8 view-section hidden">
+      <div id="view-albums-container" class="flex-1 overflow-auto pb-8 view-section hidden">
         <table class="w-full text-left text-xs border-collapse table-border-cols mb-4">
           <thead>
-            <tr class="bg-[#121212] text-gray-400 border-b border-[#333333] sticky top-0 z-10">
-              <th class="p-2 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
-              <th class="p-2 w-1/3 min-w-[200px] cursor-pointer hover:text-white">タイトル <i class="fa-solid fa-caret-down ml-1 text-[10px] text-[#f3af00]"></i></th>
+            <tr class="bg-[#1a1a1a] text-gray-400 border-t border-b border-[#2a2a2a] sticky top-0 z-10">
+              <th class="p-2 pl-8 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
+              <th class="p-2 w-1/3 min-w-[200px] cursor-pointer hover:text-white relative border-b-2 border-[#f3af00]">タイトル <i class="fa-solid fa-caret-down ml-1 text-[10px] text-[#f3af00]"></i></th>
               <th class="p-2 w-12 text-center text-[#f3af00] font-bold text-[9px]">HR</th>
               <th class="p-2 w-1/5 min-w-[120px] cursor-pointer hover:text-white">アーティスト</th>
               <th class="p-2 w-1/4 min-w-[150px] cursor-pointer hover:text-white">アルバム</th>
               <th class="p-2 w-20 text-right pr-4">曲の長さ</th>
               <th class="p-2 w-16 text-center">リリース年</th>
               <th class="p-2 w-16 text-right pr-4">再生回数</th>
-              <th class="p-2 w-24">ジャンル</th>
+              <th class="p-2 pr-8 w-24">ジャンル</th>
             </tr>
           </thead>
         </table>
-        <div id="albums-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
+        <div id="albums-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 px-8">
           <!-- アルバムはJSから動的出力されます -->
         </div>
       </div>
@@ -628,7 +635,7 @@
         tr.dataset.songId = song.id;
 
         tr.innerHTML = `
-          <td class="p-2 text-center text-gray-500">
+          <td class="p-2 pl-8 text-center text-gray-500">
             <i class="fa-solid fa-circle-info hover:text-white transition"></i>
           </td>
           <td class="p-2 font-medium ellipsis">
@@ -642,7 +649,7 @@
           <td class="p-2 text-right pr-4 font-mono">${song.duration}</td>
           <td class="p-2 text-center text-gray-500 font-mono">${song.year || ''}</td>
           <td class="p-2 text-right pr-4 font-mono text-gray-400">${song.plays}</td>
-          <td class="p-2 text-gray-400 ellipsis">${song.genre}</td>
+          <td class="p-2 pr-8 text-gray-400 ellipsis">${song.genre}</td>
         `;
 
         // クリックで選択
