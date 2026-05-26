@@ -62,18 +62,37 @@
   <!-- 1. 最上部コントロール＆プレイヤーバー -->
   <header class="bg-[#121212] border-b border-[#000000] h-14 flex items-center justify-between px-4 shrink-0 z-10">
     <!-- 左側: アプリロゴと基本操作 -->
-    <div class="flex items-center space-x-4">
+    <div class="flex items-center space-x-3">
       <!-- アプリアイコン風マーク（黄色い音符丸） -->
-      <div class="w-6 h-6 rounded-full bg-[#f3af00] flex items-center justify-center text-black text-xs font-bold shadow-md">
+      <div class="w-6 h-6 rounded-full bg-[#f3af00] flex items-center justify-center text-black text-xs font-bold shadow-md mr-1">
         <i class="fa-solid fa-music text-[10px]"></i>
       </div>
       <!-- メニューボタン -->
-      <button class="text-gray-400 hover:text-white transition">
+      <button class="text-gray-400 hover:text-white transition mr-3">
         <i class="fa-solid fa-bars text-lg"></i>
       </button>
 
+      <!-- 再生系コントロール（ヘッダー内） -->
+      <div class="flex items-center space-x-3 ml-2">
+        <button id="btn-shuffle" class="text-gray-500 hover:text-white transition text-sm" title="シャッフル">
+          <i class="fa-solid fa-shuffle"></i>
+        </button>
+        <button id="btn-prev" class="text-white hover:text-[#f3af00] transition text-lg" title="前へ">
+          <i class="fa-solid fa-backward-step"></i>
+        </button>
+        <button id="btn-play" class="w-7 h-7 rounded-full bg-transparent border border-white text-white hover:border-[#f3af00] hover:text-[#f3af00] transition flex items-center justify-center text-xs" title="再生/一時停止">
+          <i id="play-icon" class="fa-solid fa-play ml-[1px]"></i>
+        </button>
+        <button id="btn-next" class="text-white hover:text-[#f3af00] transition text-lg" title="次へ">
+          <i class="fa-solid fa-forward-step"></i>
+        </button>
+        <button id="btn-repeat" class="text-gray-500 hover:text-white transition text-sm" title="リピート">
+          <i class="fa-solid fa-repeat"></i>
+        </button>
+      </div>
+
       <!-- 再生中の簡易曲名表示 -->
-      <div class="hidden md:flex flex-col ml-6 text-xs max-w-xs">
+      <div class="hidden md:flex flex-col ml-4 text-[10px] max-w-xs leading-tight">
         <span id="current-title" class="text-white font-medium ellipsis">未再生</span>
         <span id="current-artist" class="text-gray-400 ellipsis">選択された曲はありません</span>
       </div>
@@ -136,30 +155,6 @@
     <!-- 左サイドバー -->
     <aside class="w-56 bg-[#343434] flex flex-col justify-between shrink-0 border-r border-[#222222] text-xs">
       <div class="py-3 overflow-y-auto flex-1">
-        
-        <!-- 再生系コントロール（サイドバー上部） -->
-        <div class="flex items-center justify-center space-x-4 mb-4 pb-4 border-b border-[#444444] pt-2">
-          <!-- シャッフル -->
-          <button id="btn-shuffle" class="text-gray-500 hover:text-[#f3af00] transition text-sm" title="シャッフル">
-            <i class="fa-solid fa-shuffle"></i>
-          </button>
-          <!-- 戻る -->
-          <button id="btn-prev" class="text-gray-300 hover:text-[#f3af00] transition text-lg" title="前へ">
-            <i class="fa-solid fa-backward-step"></i>
-          </button>
-          <!-- 再生/一時停止 -->
-          <button id="btn-play" class="text-gray-300 hover:text-[#f3af00] transition text-xl" title="再生/一時停止">
-            <i id="play-icon" class="fa-solid fa-play"></i>
-          </button>
-          <!-- 進む -->
-          <button id="btn-next" class="text-gray-300 hover:text-[#f3af00] transition text-lg" title="次へ">
-            <i class="fa-solid fa-forward-step"></i>
-          </button>
-          <!-- リピート -->
-          <button id="btn-repeat" class="text-gray-500 hover:text-[#f3af00] transition text-sm" title="リピート">
-            <i class="fa-solid fa-repeat"></i>
-          </button>
-        </div>
 
         <!-- 機器転送・管理 -->
         <div class="mb-4">
@@ -265,7 +260,7 @@
     <main class="flex-1 bg-[#1a1a1a] flex flex-col overflow-hidden relative">
       
       <!-- メインヘッダー（検索、件数、画面切替など共通ヘッダー） -->
-      <div class="px-8 pt-6 pb-4 flex justify-between items-end shrink-0">
+      <div class="px-5 pt-6 pb-4 flex justify-between items-end shrink-0">
         <div id="view-title-area" class="flex flex-col">
           <!-- 表示中のタイトル -->
           <h1 id="view-title" class="text-3xl font-bold text-white tracking-wide mb-1">曲</h1>
@@ -307,12 +302,12 @@
       </div>
 
       <!-- ==================== VIEW 1: 曲リストテーブル ==================== -->
-      <div id="view-songs-container" class="flex-1 overflow-auto px-8 pb-8 view-section">
+      <div id="view-songs-container" class="flex-1 overflow-auto pb-8 view-section">
         <table class="w-full text-left text-xs border-collapse table-border-cols">
           <thead>
-            <tr class="bg-[#1a1a1a] text-gray-400 border-b-2 border-[#2a2a2a] sticky top-0 z-10">
-              <th class="p-2 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
-              <th class="p-2 w-1/3 min-w-[200px] cursor-pointer hover:text-white hover:bg-[#2a2a2a] relative">
+            <tr class="bg-[#1a1a1a] text-gray-400 border-t border-b border-[#2a2a2a] sticky top-0 z-10">
+              <th class="p-2 pl-5 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
+              <th class="p-2 w-1/3 min-w-[200px] cursor-pointer hover:text-white hover:bg-[#2a2a2a] relative border-b-2 border-[#f3af00]">
                 タイトル <i class="fa-solid fa-caret-down ml-1 text-[10px] text-[#f3af00]"></i>
               </th>
               <th class="p-2 w-12 text-center text-[#f3af00] font-bold text-[9px]">HR</th>
@@ -321,7 +316,7 @@
               <th class="p-2 w-20 text-right pr-4">曲の長さ</th>
               <th class="p-2 w-16 text-center">リリース年</th>
               <th class="p-2 w-16 text-right pr-4">再生回数</th>
-              <th class="p-2 w-24">ジャンル</th>
+              <th class="p-2 pr-5 w-24">ジャンル</th>
             </tr>
           </thead>
           <tbody id="songs-tbody" class="divide-y divide-[#222222] bg-[#1a1a1a]">
@@ -335,7 +330,7 @@
         <table class="w-full text-left text-xs border-collapse table-border-cols mb-4">
           <thead>
             <tr class="bg-[#1a1a1a] text-gray-400 border-t border-b border-[#2a2a2a] sticky top-0 z-10">
-              <th class="p-2 pl-8 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
+              <th class="p-2 pl-5 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
               <th class="p-2 w-1/3 min-w-[200px] cursor-pointer hover:text-white relative border-b-2 border-[#f3af00]">タイトル <i class="fa-solid fa-caret-down ml-1 text-[10px] text-[#f3af00]"></i></th>
               <th class="p-2 w-12 text-center text-[#f3af00] font-bold text-[9px]">HR</th>
               <th class="p-2 w-1/5 min-w-[120px] cursor-pointer hover:text-white">アーティスト</th>
@@ -347,7 +342,7 @@
             </tr>
           </thead>
         </table>
-        <div id="playlists-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 px-8">
+        <div id="playlists-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 px-5">
           <!-- プレイリストはJSから動的出力されます -->
         </div>
       </div>
@@ -357,7 +352,7 @@
         <table class="w-full text-left text-xs border-collapse table-border-cols mb-4">
           <thead>
             <tr class="bg-[#1a1a1a] text-gray-400 border-t border-b border-[#2a2a2a] sticky top-0 z-10">
-              <th class="p-2 pl-8 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
+              <th class="p-2 pl-5 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
               <th class="p-2 w-1/3 min-w-[200px] cursor-pointer hover:text-white relative border-b-2 border-[#f3af00]">タイトル <i class="fa-solid fa-caret-down ml-1 text-[10px] text-[#f3af00]"></i></th>
               <th class="p-2 w-12 text-center text-[#f3af00] font-bold text-[9px]">HR</th>
               <th class="p-2 w-1/5 min-w-[120px] cursor-pointer hover:text-white">アーティスト</th>
@@ -369,7 +364,7 @@
             </tr>
           </thead>
         </table>
-        <div id="albums-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 px-8">
+        <div id="albums-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 px-5">
           <!-- アルバムはJSから動的出力されます -->
         </div>
       </div>
@@ -635,7 +630,7 @@
         tr.dataset.songId = song.id;
 
         tr.innerHTML = `
-          <td class="p-2 pl-8 text-center text-gray-500">
+          <td class="p-2 pl-5 text-center text-gray-500">
             <i class="fa-solid fa-circle-info hover:text-white transition"></i>
           </td>
           <td class="p-2 font-medium ellipsis">
@@ -649,7 +644,7 @@
           <td class="p-2 text-right pr-4 font-mono">${song.duration}</td>
           <td class="p-2 text-center text-gray-500 font-mono">${song.year || ''}</td>
           <td class="p-2 text-right pr-4 font-mono text-gray-400">${song.plays}</td>
-          <td class="p-2 pr-8 text-gray-400 ellipsis">${song.genre}</td>
+          <td class="p-2 pr-5 text-gray-400 ellipsis">${song.genre}</td>
         `;
 
         // クリックで選択
