@@ -229,14 +229,8 @@ func (a *App) GetAllLoudnessData() (map[string]interface{}, error) {
 }
 
 func (a *App) GetLibraryForNormalize() ([]interface{}, error) {
-	data, _ := store.Instance.Load("library")
-	if data == nil {
-		return []interface{}{}, nil
-	}
-	if songs, ok := data.([]interface{}); ok {
-		return songs, nil
-	}
-	return []interface{}{}, nil
+	songs, _ := store.Instance.LoadSlice("library")
+	return songs, nil
 }
 
 func (a *App) SelectFilesForNormalize() ([]string, error) {
@@ -312,11 +306,8 @@ func (a *App) SelectFolderForNormalize() ([]string, error) {
 }
 
 func loadLoudnessMap() map[string]interface{} {
-	data, _ := store.Instance.Load("loudness")
-	if loudnessMap, ok := data.(map[string]interface{}); ok {
-		return loudnessMap
-	}
-	return map[string]interface{}{}
+	m, _ := store.Instance.LoadMap("loudness")
+	return m
 }
 
 func hasNumericLoudnessValue(value interface{}) bool {

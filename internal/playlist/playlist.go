@@ -88,14 +88,12 @@ func GetAllPlaylists() ([]string, error) {
 		}
 	}
 
-	orderData, _ := store.Instance.Load(PlaylistOrderFileName)
+	orderData, _ := store.Instance.LoadMap(PlaylistOrderFileName)
 	var savedOrder []string
-	if orderMap, ok := orderData.(map[string]interface{}); ok {
-		if orderList, ok := orderMap["order"].([]interface{}); ok {
-			for _, item := range orderList {
-				if s, ok := item.(string); ok {
-					savedOrder = append(savedOrder, s)
-				}
+	if orderList, ok := orderData["order"].([]interface{}); ok {
+		for _, item := range orderList {
+			if s, ok := item.(string); ok {
+				savedOrder = append(savedOrder, s)
 			}
 		}
 	}

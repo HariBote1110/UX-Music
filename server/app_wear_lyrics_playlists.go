@@ -137,12 +137,8 @@ func wearPlaylistPathToSongID(pathToID map[string]string, playlistPath string) (
 
 // wearLibrarySongByID returns the raw library map for a song id (or path-shaped legacy id).
 func wearLibrarySongByID(id string) (map[string]interface{}, bool) {
-	raw, err := store.Instance.Load("library")
-	if err != nil || raw == nil {
-		return nil, false
-	}
-	library, ok := raw.([]interface{})
-	if !ok {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil || len(library) == 0 {
 		return nil, false
 	}
 	try := func(candidate string) (map[string]interface{}, bool) {

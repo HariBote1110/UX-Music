@@ -219,12 +219,8 @@ func computeSidecarTimeout(durationSeconds float64) time.Duration {
 }
 
 func loadModelConsentFromStore() bool {
-	raw, err := store.Instance.Load("settings")
-	if err != nil || raw == nil {
-		return false
-	}
-	m, ok := raw.(map[string]interface{})
-	if !ok {
+	m, err := store.Instance.LoadMap("settings")
+	if err != nil {
 		return false
 	}
 	v, ok := m[settingsConsentKey]

@@ -28,14 +28,12 @@ func (a *App) DeleteSongs(paths []string, deleteFiles bool) ([]string, error) {
 		return []string{}, nil
 	}
 
-	raw, _ := store.Instance.Load("library")
-	if raw == nil {
-		return []string{}, nil
-	}
-
-	library, ok := raw.([]interface{})
-	if !ok {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
 		return nil, errors.New("library store format is invalid")
+	}
+	if len(library) == 0 {
+		return []string{}, nil
 	}
 
 	updated := make([]interface{}, 0, len(library))
@@ -99,9 +97,8 @@ func (a *App) SaveAlbumSongOrder(albumKey string, orderedSongIds []string) error
 		orderMap[id] = i + 1
 	}
 
-	raw, _ := store.Instance.Load("library")
-	arr, ok := raw.([]interface{})
-	if !ok {
+	arr, err := store.Instance.LoadSlice("library")
+	if err != nil {
 		return errors.New("library store format is invalid")
 	}
 

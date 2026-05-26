@@ -43,17 +43,12 @@ func (a *App) ScanLibrary(paths []string) scanner.ScanResult {
 	scanResult.Count = len(importedSongs)
 
 	// Merge newly scanned songs into persisted library (dedupe by path).
-	existingRaw, _ := store.Instance.Load("library")
-	existingSongs := []interface{}{}
+	existingSongs, _ := store.Instance.LoadSlice("library")
 	existingPathIndex := map[string]int{}
-
-	if arr, ok := existingRaw.([]interface{}); ok {
-		existingSongs = arr
-		for i, item := range arr {
-			if m, ok := item.(map[string]interface{}); ok {
-				if p, ok := m["path"].(string); ok && p != "" {
-					existingPathIndex[p] = i
-				}
+	for i, item := range existingSongs {
+		if m, ok := item.(map[string]interface{}); ok {
+			if p, ok := m["path"].(string); ok && p != "" {
+				existingPathIndex[p] = i
 			}
 		}
 	}
@@ -86,11 +81,8 @@ func (a *App) ScanLibrary(paths []string) scanner.ScanResult {
 }
 
 func loadSettingsMap() map[string]interface{} {
-	settingsRaw, _ := store.Instance.Load("settings")
-	if settings, ok := settingsRaw.(map[string]interface{}); ok {
-		return settings
-	}
-	return map[string]interface{}{}
+	settings, _ := store.Instance.LoadMap("settings")
+	return settings
 }
 
 func (a *App) getOrPromptLibraryPath() (string, error) {
@@ -393,12 +385,11 @@ func extractSongPaths(songs []scanner.Song) []string {
 // BuildFLACIndexes iterates through the library and pre-generates indexes for all FLAC files
 func (a *App) BuildFLACIndexes() {
 	fmt.Println("[Wails] BuildFLACIndexes started")
-	data, _ := store.Instance.Load("library")
-	if data == nil {
+	songs, _ := store.Instance.LoadSlice("library")
+	if len(songs) == 0 {
 		return
 	}
 
-	songs := data.([]interface{})
 	var flacPaths []string
 	for _, s := range songs {
 		song := s.(map[string]interface{})

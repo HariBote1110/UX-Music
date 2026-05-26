@@ -120,15 +120,9 @@ func wearMobileMetaHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func wearSongsHandler(w http.ResponseWriter, r *http.Request) {
-	raw, err := store.Instance.Load("library")
-	if err != nil || raw == nil {
-		writeJSON(w, []interface{}{})
-		return
-	}
-
 	// Strip artwork blobs before sending to save bandwidth
-	library, ok := raw.([]interface{})
-	if !ok {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil || len(library) == 0 {
 		writeJSON(w, []interface{}{})
 		return
 	}
@@ -354,12 +348,8 @@ func (ws *WearServer) wearCommandHandler(w http.ResponseWriter, r *http.Request)
 // buildPathToIDMap creates a reverse lookup from file path to song ID
 // by scanning the library store.
 func buildPathToIDMap() map[string]string {
-	raw, err := store.Instance.Load("library")
-	if err != nil || raw == nil {
-		return nil
-	}
-	library, ok := raw.([]interface{})
-	if !ok {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil || len(library) == 0 {
 		return nil
 	}
 	m := make(map[string]string, len(library))
@@ -486,12 +476,8 @@ func locateFfmpeg() (string, error) {
 // findSongPathByID scans the library JSON store and returns the file path for
 // the song with the given id (UUID or legacy path-shaped key).
 func findSongPathByID(id string) string {
-	raw, err := store.Instance.Load("library")
-	if err != nil || raw == nil {
-		return ""
-	}
-	library, ok := raw.([]interface{})
-	if !ok {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil || len(library) == 0 {
 		return ""
 	}
 	tryMatch := func(candidate string) string {

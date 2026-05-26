@@ -34,12 +34,9 @@ func (a *App) GetLyricsSyncResourceStatus() map[string]interface{} {
 	}
 
 	consent := false
-	raw, err := store.Instance.Load("settings")
-	if err == nil && raw != nil {
-		if m, ok := raw.(map[string]interface{}); ok {
-			if v, ok := m["lyricsSyncModelConsent"].(bool); ok {
-				consent = v
-			}
+	if m, err := store.Instance.LoadMap("settings"); err == nil {
+		if v, ok := m["lyricsSyncModelConsent"].(bool); ok {
+			consent = v
 		}
 	}
 
@@ -53,15 +50,9 @@ func (a *App) GetLyricsSyncResourceStatus() map[string]interface{} {
 
 // SetLyricsSyncModelConsent persists whether the user allows automatic model downloads for lyrics sync.
 func (a *App) SetLyricsSyncModelConsent(approved bool) error {
-	currentRaw, err := store.Instance.Load("settings")
+	base, err := store.Instance.LoadMap("settings")
 	if err != nil {
 		return err
-	}
-	base := map[string]interface{}{}
-	if existing, ok := currentRaw.(map[string]interface{}); ok {
-		for k, v := range existing {
-			base[k] = v
-		}
 	}
 	base["lyricsSyncModelConsent"] = approved
 	return store.Instance.Save("settings", base)

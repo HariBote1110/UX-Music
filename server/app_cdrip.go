@@ -97,16 +97,12 @@ func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 	artworksDir := config.GetUserDataPath() + "/Artworks"
 	scanResult := scanner.ScanLibrary(outputPaths, artworksDir)
 
-	existingRaw, _ := store.Instance.Load("library")
-	existingSongs := []interface{}{}
+	existingSongs, _ := store.Instance.LoadSlice("library")
 	existingPathIndex := map[string]int{}
-	if arr, ok := existingRaw.([]interface{}); ok {
-		existingSongs = arr
-		for i, item := range arr {
-			if m, ok := item.(map[string]interface{}); ok {
-				if p, ok := m["path"].(string); ok && p != "" {
-					existingPathIndex[p] = i
-				}
+	for i, item := range existingSongs {
+		if m, ok := item.(map[string]interface{}); ok {
+			if p, ok := m["path"].(string); ok && p != "" {
+				existingPathIndex[p] = i
 			}
 		}
 	}
