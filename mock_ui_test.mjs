@@ -11,9 +11,7 @@ const html = fs.readFileSync('MusicCenterhommagesample.html', 'utf8');
 
 console.log('Running UI Structure Tests...');
 
-// 1. 再生コントロールがサイドバー領域（またはトップバー以外）に移動しているか
-// 現状のHTMLでは、トップヘッダー <header> の中に id="btn-play" などがある。
-// 修正後は <aside> の中、あるいはそれに準ずるサイドバーのトップ領域に配置されるべき。
+// 1. 再生コントロール（btn-play等）がasideではなくheaderに存在するか
 const headerMatch = html.match(/<header[^>]*>([\s\S]*?)<\/header>/i);
 const asideMatch = html.match(/<aside[^>]*>([\s\S]*?)<\/aside>/i);
 
@@ -22,12 +20,12 @@ if (headerMatch && asideMatch) {
     const asideContent = asideMatch[1];
 
     assert(
-        !headerContent.includes('id="btn-play"'),
-        'Playback controls (btn-play) should NOT be in the top header'
+        headerContent.includes('id="btn-play"') && headerContent.includes('id="btn-next"'),
+        'Play controls must be placed inside the header, not in the sidebar'
     );
     assert(
-        asideContent.includes('id="btn-play"'),
-        'Playback controls (btn-play) should be in the sidebar (aside)'
+        !asideContent.includes('id="btn-play"'),
+        'Play controls must NOT be in the sidebar'
     );
 } else {
     assert(false, 'Header or Aside tags not found');
