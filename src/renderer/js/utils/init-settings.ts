@@ -7,7 +7,18 @@ import { showNotification, hideNotification } from '../ui/notification.js';
 import { initPlaybackSettings } from '../features/playback-manager.js';
 import { musicApi, getWailsApp } from '../core/bridge.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
+import { updateListSpacer } from '../ui/ui.js';
 const electronAPI = window.electronAPI;
+
+/**
+ * 指定したテーマを body クラスに適用する。
+ * 現状サポートするテーマ: 'default' | 'music-center'
+ */
+export function applyUiTheme(theme: string): void {
+    document.body.classList.toggle('mc-theme', theme === 'music-center');
+    // 再生バーの位置が変わるためスペーサーを再計算する
+    requestAnimationFrame(() => updateListSpacer());
+}
 
 const decaySliderValues = [1, 3, 7, 14, 30];
 const decaySliderLabels = ['1日', '3日', '7日', '2週間', '1ヶ月'];
@@ -87,6 +98,11 @@ export function initSettings() {
     // Initialise playback settings from storage
     initPlaybackSettings();
 
+    // 起動時にユーザーが選択したUIテーマを復元する
+    void loadRendererSettings().then(settings => {
+        applyUiTheme(settings.uiTheme || 'default');
+    });
+
     let settingsClickCount = 0;
     let settingsClickTimer;
 
@@ -127,6 +143,9 @@ export function initSettings() {
         if (decayValueLabel) decayValueLabel.textContent = decaySliderLabels[parseInt(decaySlider.value)];
 
         (document.querySelector('input[name="enable-easter-eggs"]') as HTMLInputElement).checked = settings.enableEasterEggs !== false;
+
+        const currentUiTheme = settings.uiTheme || 'default';
+        (document.querySelector(`input[name="ui-theme"][value="${currentUiTheme}"]`) as HTMLInputElement).checked = true;
 
         const lyricsConsentCb = document.getElementById('lyrics-sync-model-consent') as HTMLInputElement | null;
         if (lyricsConsentCb) {
@@ -201,6 +220,7 @@ export function initSettings() {
             },
             enableEasterEggs: (document.querySelector('input[name="enable-easter-eggs"]') as HTMLInputElement).checked,
             lyricsSyncModelConsent: lyricsModelConsentCb?.checked === true,
+            uiTheme: (document.querySelector('input[name="ui-theme"]:checked') as HTMLInputElement).value,
             // Maintain current playback state during settings save
             isShuffled: state.isShuffled,
             playbackMode: state.playbackMode
@@ -215,6 +235,8 @@ export function initSettings() {
 
         state.visualizerMode = settingsToSave.visualizerMode;
         state.analysedQueue = settingsToSave.analysedQueue;
+
+        applyUiTheme(settingsToSave.uiTheme);
 
         elements.settingsModalOverlay.classList.add('hidden');
     });
