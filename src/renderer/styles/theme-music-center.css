@@ -139,11 +139,67 @@ body.mc-theme .volume-container {
     width: 140px;
 }
 
+/* ── サイドバー: 参考 HTML に合わせてミッドグレー背景に ─────────── */
+
+body.mc-theme .left-sidebar {
+    background-color: #343434;
+    border-right: 1px solid #222222;
+    padding: 12px 0;          /* 左右 padding は nav-link 側で管理 */
+}
+
+/* 左サイドバー内の heading（"UX Music vX.X.X"）を小さく統一 */
+body.mc-theme .left-sidebar > p {
+    padding: 0 16px 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+/* 検索ボックスコンテナの padding を nav-link と統一 */
+body.mc-theme .left-sidebar .search-box-container {
+    padding: 0 12px 10px !important;
+}
+
+/* セクションタイトル（"デバイス" など）のスタイルを参考 HTML に合わせる */
+body.mc-theme .sidebar-section-title {
+    padding: 4px 16px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+/* nav-link の上下 padding を広げて参考の py-2 に近づける */
+body.mc-theme .nav-link {
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
+body.mc-theme .nav-link:hover {
+    background-color: #2e2e2e;
+    color: var(--text-primary);
+}
+
 /* ── 角丸の除去 ─────────────────────────────────────────────── */
 
-/* 再生ボタン */
+/* 再生ボタン: 白アウトラインのサークル（MusicCenter スタイル） */
 body.mc-theme .play-btn {
-    border-radius: 2px;
+    border-radius: 50%;                      /* アウトライン円に戻す */
+    background-color: transparent;
+    border: 1.5px solid var(--text-primary);
+}
+
+body.mc-theme .play-btn:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    transform: none;
+}
+
+/* SVG アイコン色: 白 */
+body.mc-theme .play-btn .play-pause-icon {
+    fill: var(--text-primary);
 }
 
 /* オーディオ情報ボタン */
