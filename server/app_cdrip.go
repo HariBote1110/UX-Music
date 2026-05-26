@@ -34,6 +34,20 @@ func (a *App) CDApplyMetadata(args map[string]interface{}) (*cdrip.ReleaseInfo, 
 	return cdrip.ApplyMetadata(tracks, releaseID)
 }
 
+func (a *App) CDSearchVocaDB(query string) ([]cdrip.ReleaseInfo, error) {
+	return cdrip.SearchVocaDBByText(query)
+}
+
+func (a *App) CDApplyVocaDBMetadata(args map[string]interface{}) (*cdrip.ReleaseInfo, error) {
+	tracksJSON, _ := json.Marshal(args["tracks"])
+	var tracks []cdrip.Track
+	json.Unmarshal(tracksJSON, &tracks)
+
+	releaseID, _ := args["releaseId"].(string)
+
+	return cdrip.ApplyVocaDBMetadata(tracks, releaseID)
+}
+
 func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 	fmt.Println("[Wails] CDStartRip called")
 	tracksJSON, _ := json.Marshal(args["tracksToRip"])
