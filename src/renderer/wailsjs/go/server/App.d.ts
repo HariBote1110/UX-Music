@@ -58,13 +58,13 @@ export function CDApplyMetadata(arg1:Record<string, any>):Promise<cdrip.ReleaseI
 
 export function CDApplyVocaDBMetadata(arg1:Record<string, any>):Promise<cdrip.ReleaseInfo>;
 
-export function CDSearchVocaDB(arg1:string):Promise<Array<cdrip.ReleaseInfo>>;
-
 export function CDScan():Promise<Array<cdrip.Track>>;
 
 export function CDSearchTOC(arg1:Array<cdrip.Track>):Promise<Array<cdrip.ReleaseInfo>>;
 
 export function CDSearchText(arg1:string):Promise<Array<cdrip.ReleaseInfo>>;
+
+export function CDSearchVocaDB(arg1:string):Promise<Array<cdrip.ReleaseInfo>>;
 
 export function CDStartRip(arg1:Record<string, any>):Promise<any>;
 

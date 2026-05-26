@@ -102,10 +102,6 @@ export function CDApplyVocaDBMetadata(arg1) {
   return window['go']['server']['App']['CDApplyVocaDBMetadata'](arg1);
 }
 
-export function CDSearchVocaDB(arg1) {
-  return window['go']['server']['App']['CDSearchVocaDB'](arg1);
-}
-
 export function CDScan() {
   return window['go']['server']['App']['CDScan']();
 }
@@ -116,6 +112,10 @@ export function CDSearchTOC(arg1) {
 
 export function CDSearchText(arg1) {
   return window['go']['server']['App']['CDSearchText'](arg1);
+}
+
+export function CDSearchVocaDB(arg1) {
+  return window['go']['server']['App']['CDSearchVocaDB'](arg1);
 }
 
 export function CDStartRip(arg1) {
