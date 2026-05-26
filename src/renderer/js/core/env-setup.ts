@@ -329,6 +329,34 @@ window.electronAPI = window.electronAPI || {
                     }
                     return { success: false, message: 'CDApplyMetadata not available' };
                 },
+                'cd-search-vocadb': async (query) => {
+                    if (app?.CDSearchVocaDB) {
+                        try {
+                            const releases = await app.CDSearchVocaDB(query);
+                            return { success: true, releases: releases };
+                        } catch (e) {
+                            return { success: false, message: e || 'Unknown error' };
+                        }
+                    }
+                    return { success: false, message: 'CDSearchVocaDB not available' };
+                },
+                'cd-apply-vocadb-metadata': async (data) => {
+                    if (app?.CDApplyVocaDBMetadata) {
+                        try {
+                            const info = await app.CDApplyVocaDBMetadata(data);
+                            return {
+                                success: true,
+                                tracks: info.tracks,
+                                album: info.title,
+                                artist: info.artist,
+                                artwork: info.artwork
+                            };
+                        } catch (e) {
+                            return { success: false, message: e || 'Unknown error' };
+                        }
+                    }
+                    return { success: false, message: 'CDApplyVocaDBMetadata not available' };
+                },
                 'cd-start-rip': async (data) => {
                     // This is usually called via send, but if invoked:
                     if (app?.CDStartRip) {

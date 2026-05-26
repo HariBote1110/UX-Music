@@ -109,6 +109,23 @@ export function getCdRipViewHtml() {
                 </div>
             </div>
 
+            <div style="border-top: 1px solid #333; padding-top: 14px;">
+                <p style="color: #aaa; font-size: 0.8em; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.05em;">
+                    VocaDB 検索
+                    <span style="font-size: 0.85em; color: #888; margin-left: 6px; text-transform: none;">(ボカロ・UTAU・CeVIO 専用)</span>
+                </p>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <input type="text" id="cd-vocadb-search-input" placeholder="アーティスト名 / アルバム名"
+                           style="flex: 1; padding: 8px 10px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; outline: none;">
+                    <button id="cd-vocadb-search-btn" type="button" class="action-button">検索</button>
+                </div>
+                <div style="overflow-y: auto; border: 1px solid #444; border-radius: 4px; background: #1a1a1a; margin-bottom: 12px; min-height: 80px; max-height: 200px;">
+                    <ul id="cd-vocadb-candidate-list" style="list-style: none; padding: 0; margin: 0;">
+                        <li style="padding: 10px; color: #666; font-size: 0.9em;">キーワードを入力して検索してください</li>
+                    </ul>
+                </div>
+            </div>
+
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <button id="cd-ai-metadata-btn" type="button" class="action-button" style="width: auto; padding: 8px 16px; background: #2a4a7a;">🤖 AIで生成</button>
                 <button id="cd-search-cancel-btn" type="button" class="action-button" style="width: auto; padding: 8px 24px;">閉じる</button>
@@ -179,6 +196,10 @@ export async function startCDRipView() {
     document.getElementById('cd-search-cancel-btn').onclick = closeMetadataModal;
     document.getElementById('cd-search-input').onkeydown = (e) => {
         if (e.key === 'Enter') executeTextSearch();
+    };
+    document.getElementById('cd-vocadb-search-btn').onclick = executeVocaDBSearch;
+    document.getElementById('cd-vocadb-search-input').onkeydown = (e) => {
+        if ((e as KeyboardEvent).key === 'Enter') executeVocaDBSearch();
     };
     document.getElementById('cd-ai-metadata-btn').onclick = openAiModal;
     document.getElementById('cd-ai-cancel-btn').onclick = closeAiModal;
@@ -340,6 +361,85 @@ async function executeTextSearch() {
         }
     } catch (e) {
         list.innerHTML = `<li style="padding: 10px; color: red;">エラー: ${(e as Error).message}</li>`;
+    }
+}
+
+async function executeVocaDBSearch() {
+    const query = (document.getElementById('cd-vocadb-search-input') as HTMLInputElement | null)?.value ?? '';
+    const list = document.getElementById('cd-vocadb-candidate-list');
+    if (!query.trim()) return;
+    list.innerHTML = '<li style="padding: 10px; color: #aaa;">検索中...</li>';
+    try {
+        const result = await electronAPI.invoke('cd-search-vocadb', query) as Record<string, unknown>;
+        const releases = result.releases as Record<string, unknown>[] | undefined;
+        if (result.success && releases?.length) {
+            renderVocaDBCandidateList(releases);
+        } else {
+            list.innerHTML = '<li style="padding: 10px; color: #aaa;">見つかりませんでした。</li>';
+        }
+    } catch (e) {
+        list.innerHTML = `<li style="padding: 10px; color: red;">エラー: ${(e as Error).message}</li>`;
+    }
+}
+
+function renderVocaDBCandidateList(releases) {
+    const list = document.getElementById('cd-vocadb-candidate-list');
+    list.innerHTML = '';
+    releases.forEach(release => {
+        const li = document.createElement('li');
+        li.style.padding = '10px';
+        li.style.borderBottom = '1px solid #444';
+        li.style.cursor = 'pointer';
+        li.style.display = 'flex';
+        li.style.justifyContent = 'space-between';
+        li.style.alignItems = 'center';
+        li.style.gap = '10px';
+        li.onmouseover = () => li.style.background = '#444';
+        li.onmouseout = () => li.style.background = 'transparent';
+
+        const title = escapeHtml(release.title as string ?? '');
+        const artist = escapeHtml(release.artist as string ?? '');
+
+        // アートワークのサムネイル（ある場合）
+        const artworkHtml = release.artwork
+            ? `<img src="${escapeHtml(release.artwork as string)}" alt="" style="width: 40px; height: 40px; object-fit: cover; border-radius: 3px; flex-shrink: 0;">`
+            : `<div style="width: 40px; height: 40px; background: #333; border-radius: 3px; flex-shrink: 0;"></div>`;
+
+        li.innerHTML = `
+            ${artworkHtml}
+            <div style="flex: 1; min-width: 0;">
+                <div style="font-weight: bold; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${title}</div>
+                <div style="font-size: 0.85em; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${artist}</div>
+            </div>
+            <div style="font-size: 0.75em; color: #4a9eff; flex-shrink: 0;">VocaDB</div>
+        `;
+        li.onclick = () => applyVocaDBMetadata(release.id as string);
+        list.appendChild(li);
+    });
+}
+
+async function applyVocaDBMetadata(releaseId: string) {
+    const list = document.getElementById('cd-vocadb-candidate-list');
+    if (list) list.innerHTML = '<li style="padding: 10px; color: #aaa;">詳細情報を取得中...</li>';
+    try {
+        const result = await electronAPI.invoke('cd-apply-vocadb-metadata', { tracks: currentTracks, releaseId }) as Record<string, unknown>;
+        if (result.success) {
+            currentTracks = result.tracks as typeof currentTracks;
+            renderTracks(currentTracks);
+            document.getElementById('cd-album-title').textContent = result.album as string;
+            document.getElementById('cd-album-artist').textContent = result.artist as string;
+            document.getElementById('cd-status-message').textContent = 'VocaDB のメタデータを適用しました。';
+
+            const artworkImg = document.getElementById('cd-artwork-preview') as HTMLImageElement | null;
+            if (artworkImg) {
+                artworkImg.src = (result.artwork as string | null) ? (result.artwork as string) : DEFAULT_ARTWORK_URL;
+            }
+            closeMetadataModal();
+        } else {
+            alert('VocaDB 情報の適用に失敗しました: ' + result.message);
+        }
+    } catch (e) {
+        alert('エラーが発生しました: ' + (e as Error).message);
     }
 }
 
