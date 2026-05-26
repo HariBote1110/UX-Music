@@ -1,27 +1,36 @@
 /* ============================================================
    Theme: MusicCenter
-   <body class="mc-theme"> で有効化する
+   <body class="mc-theme"> で有効化する。
+   Sony MusicCenter for PC 風のシャープなツールバーレイアウト。
    ============================================================ */
 
-/* ── 再生バーをウィンドウ上部に移動 ──────────────────────────────── */
+/* ── タイトルバー: 最小高さにして再生バーと視覚的に連続させる ──────── */
 
 body.mc-theme .title-bar {
     order: 1;
+    height: 8px;          /* ドラッグ領域として残しつつ視覚的に最小化 */
+    flex-shrink: 0;
+    background-color: var(--bg-darkest);
+    border-bottom: none;
 }
+
+/* ── 再生バー: 上部ツールバーに変換 ──────────────────────────────── */
 
 body.mc-theme .playback-bar {
     order: 2;
 
-    /* 浮遊（absolute）→ 通常のフロー要素に変換 */
+    /* 浮遊（absolute）→ 通常フロー要素に変換 */
     position: static;
     bottom: auto;
     left: auto;
     right: auto;
 
+    /* フラットなツールバー */
+    height: 44px;
     margin: 0;
-    padding: 4px 16px 0;
+    padding: 0 16px;
 
-    /* 角丸・影・ぼかしを除去してフラットなツールバーに */
+    /* 角丸・影・ぼかしを除去 */
     border-radius: 0;
     border: none;
     border-bottom: 1px solid var(--bg-light);
@@ -30,63 +39,110 @@ body.mc-theme .playback-bar {
     -webkit-backdrop-filter: none;
     background-color: var(--bg-darkest);
 
-    /* フレックス折り返しを有効にしてプログレスバーを下段に落とす */
+    /* 縦方向に中央揃え */
+    align-items: center;
+
+    /* フレックス折り返しを有効にしてプログレスバーを下段へ */
     flex-wrap: wrap;
     min-height: unset;
 
-    /* pointer-events は全子要素でも有効にする */
+    /* 全要素クリック可能 */
     pointer-events: auto;
-
     z-index: auto;
 }
 
-/* 再生バー内の全インタラクティブ要素を通常クリック可能に */
 body.mc-theme .playback-bar * {
     pointer-events: auto;
 }
 
-body.mc-theme .container {
-    order: 3;
-    /* calc() の高さ指定を解除してフレックスで自動調整 */
-    height: auto;
-    flex: 1 1 0;
-    /* コンテンツ末尾のグラデーションマスクを除去（再生バーが上なので不要） */
-    -webkit-mask-image: none;
-    mask-image: none;
-}
+/* ── プログレスバー: 全幅の 3px ストリップに ──────────────────────── */
 
-/* プログレスコンテナを折り返しで全幅の下段ストリップにする */
+/* 折り返して下段に配置 */
 body.mc-theme .progress-container {
     order: 99;
-    width: 100%;
     flex-basis: 100%;
+    width: 100%;
+    height: 3px;
     margin: 0;
-    padding: 3px 0 0;
-    gap: 4px;
-    font-size: 11px;
+    padding: 0;
+    gap: 0;
+    align-items: stretch;
+    overflow: visible;
 }
 
-/* プログレスバー本体: 細く四角く */
+/* 時刻ラベルを非表示 */
+body.mc-theme .progress-container > span {
+    display: none;
+}
+
+/* バー本体: 3px の細いストリップ */
 body.mc-theme #progress-bar {
     height: 3px;
+    flex: 1;
+    margin: 0;
+    padding: 0;
     border-radius: 0;
+    background: var(--bg-light);
+    cursor: pointer;
 }
 
 body.mc-theme #progress-bar::-webkit-slider-thumb {
     width: 8px;
     height: 8px;
     border-radius: 0;
+    /* 通常時は非表示にして細いストリップだけ見せる */
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+/* ホバー時のみつまみを表示 */
+body.mc-theme .progress-container:hover #progress-bar::-webkit-slider-thumb {
+    opacity: 1;
+}
+
+/* ── コンテナ ────────────────────────────────────────────────── */
+
+body.mc-theme .container {
+    order: 3;
+    height: auto;
+    flex: 1 1 0;
+    /* 末尾のグラデーションマスクを除去（再生バーが上部にある場合は不要） */
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+/* ── 右サイドバーとリサイザーを非表示 ────────────────────────────── */
+
+body.mc-theme .right-sidebar,
+body.mc-theme #resizer {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+}
+
+/* ── 再生バー内: アートワークサムネイルを非表示 ──────────────────── */
+
+body.mc-theme #footer-artwork-container {
+    display: none !important;
+}
+
+/* ── コントロールボタンをコンパクトに ──────────────────────────── */
+
+body.mc-theme .playback-controls {
+    flex-basis: auto;
+    gap: 12px;
+}
+
+/* 音量コンテナをコンパクトに */
+body.mc-theme .volume-container {
+    width: 140px;
 }
 
 /* ── 角丸の除去 ─────────────────────────────────────────────── */
 
-/* 再生ボタン（ほぼ正方形に） */
+/* 再生ボタン */
 body.mc-theme .play-btn {
-    border-radius: 2px;
-}
-
-/* アートワークサムネイル */
-body.mc-theme .footer-artwork-container img {
     border-radius: 2px;
 }
 
@@ -109,7 +165,8 @@ body.mc-theme #volume-slider::-webkit-slider-thumb {
     border-radius: 0;
 }
 
-/* ナビリンク（サイドバー） */
+/* ── サイドバー ─────────────────────────────────────────────── */
+
 body.mc-theme .nav-link {
     border-radius: 0;
 }
@@ -117,14 +174,16 @@ body.mc-theme .nav-link {
 body.mc-theme .nav-link.active {
     border-radius: 0;
     border-left: 2px solid var(--highlight-pink);
+    background-color: var(--bg-medium);
+    color: var(--text-primary);
 }
 
-/* サイドバーアクションボタン */
 body.mc-theme .sidebar-action-button {
     border-radius: 0;
 }
 
-/* ライブラリアクションポップアップ */
+/* ── ポップアップ・ドロップダウン ──────────────────────────────── */
+
 body.mc-theme #library-actions-popup {
     border-radius: 0;
 }
@@ -133,12 +192,16 @@ body.mc-theme .popup-action-button {
     border-radius: 0;
 }
 
-/* 設定ボタン（モーダル内） */
-body.mc-theme .settings-button {
+body.mc-theme .device-popup {
     border-radius: 0;
 }
 
-/* モーダルコンテナ */
+body.mc-theme .device-popup-item {
+    border-radius: 0;
+}
+
+/* ── モーダル ───────────────────────────────────────────────── */
+
 body.mc-theme #modal,
 body.mc-theme #lyrics-translation-modal,
 body.mc-theme #settings-modal,
@@ -148,27 +211,25 @@ body.mc-theme .caption-selection-dialog {
     border-radius: 0;
 }
 
-/* 設定グループ */
 body.mc-theme #settings-modal .setting-group {
     border-radius: 0;
 }
 
-body.mc-theme #settings-modal .album-order-modal__btn {
-    border-radius: 0;
-}
-
-/* モーダルボタン */
 body.mc-theme .modal-buttons button,
 body.mc-theme .album-order-modal__btn {
     border-radius: 0;
 }
 
-/* 字幕選択ダイアログのボタン */
 body.mc-theme .caption-btn {
     border-radius: 0;
 }
 
-/* コンテキストメニュー */
+body.mc-theme .settings-button {
+    border-radius: 0;
+}
+
+/* ── コンテキストメニュー ──────────────────────────────────────── */
+
 body.mc-theme .context-menu {
     border-radius: 0 !important;
 }
@@ -177,37 +238,21 @@ body.mc-theme .context-menu-item {
     border-radius: 0;
 }
 
-/* デバイスポップアップ */
-body.mc-theme .device-popup {
-    border-radius: 0;
-}
+/* ── その他 UI 要素 ─────────────────────────────────────────── */
 
-body.mc-theme .device-popup-item {
-    border-radius: 0;
-}
-
-/* 通知トースト */
 body.mc-theme #notification-toast {
     border-radius: 0;
 }
 
-/* 検索ボックス */
 body.mc-theme #search-input {
     border-radius: 0;
 }
 
-/* モーダル入力欄 */
 body.mc-theme #modal-input,
 body.mc-theme #lyrics-translation-paste {
     border-radius: 0;
 }
 
-/* スクロールバーつまみ */
 body.mc-theme .main-content::-webkit-scrollbar-thumb {
     border-radius: 0;
-}
-
-/* シャッフル・ループのアクティブインジケータードット（丸のまま保持） */
-body.mc-theme .playback-mode-btn.active::after {
-    /* border-radius: 50% は components.css で設定済み → 上書きしない */
 }
