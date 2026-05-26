@@ -106,6 +106,20 @@ func resolveBinaryPath(name, explicitPath string) (string, error) {
 	return "", fmt.Errorf("%s が見つかりません (PATH=%q)", name, os.Getenv("PATH"))
 }
 
+// resolveCDParanoiaPath は cdparanoia を解決し、見つからない場合は
+// libcdio-paranoia が提供する cd-paranoia（ハイフンあり）へフォールバックする。
+func resolveCDParanoiaPath(explicitPath string) (string, error) {
+	if path, err := resolveBinaryPath("cdparanoia", explicitPath); err == nil {
+		return path, nil
+	}
+	// Homebrew の libcdio-paranoia は "cd-paranoia" というバイナリ名で提供される
+	if path, err := resolveBinaryPath("cd-paranoia", ""); err == nil {
+		fmt.Println("[CDRip] cdparanoia not found — falling back to cd-paranoia (libcdio-paranoia)")
+		return path, nil
+	}
+	return "", fmt.Errorf("cdparanoia または cd-paranoia が見つかりません。`brew install libcdio-paranoia` でインストールしてください")
+}
+
 // OutputDir returns the directory where ripped files are saved.
 func (r *Ripper) OutputDir(libraryPath string) string {
 	return filepath.Join(libraryPath, "CD Rips")
@@ -113,7 +127,7 @@ func (r *Ripper) OutputDir(libraryPath string) string {
 
 // GetTrackList scans the CD for tracks
 func (r *Ripper) GetTrackList() ([]Track, error) {
-	cdparanoiaPath, err := resolveBinaryPath("cdparanoia", r.CDParanoiaPath)
+	cdparanoiaPath, err := resolveCDParanoiaPath(r.CDParanoiaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run cdparanoia: %w", err)
 	}
@@ -235,7 +249,7 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 	finalPath := filepath.Join(artistDir, filename)
 
 	// 1. Rip to WAV
-	cdparanoiaPath, err := resolveBinaryPath("cdparanoia", r.CDParanoiaPath)
+	cdparanoiaPath, err := resolveCDParanoiaPath(r.CDParanoiaPath)
 	if err != nil {
 		return "", fmt.Errorf("cdparanoia not found: %w", err)
 	}
