@@ -1,3 +1,21 @@
+## 2026-05-27 — fix: ノーマライズ適用が反応しないバグの修正
+
+### 実施内容
+- 症状: 解析後、エラー行を外して「ノーマライズを適用」をクリックしてもボタンは押せるが何も起きない
+- 原因: 過去コミット e121036 で導入した「id 不一致時に path で照合」フォールバックと、ペイロード narrow 化が、TS 移行 (92d7544) でリグレッション
+- 純関数 `findNormalizeFileForResult` / `toJobFilePayload` を `normalize-lookup.ts` に新設 (8 ケースの vitest)
+- `normalize-view.ts` の handler と apply 送信箇所を置換
+
+### 選定理由・判断の根拠
+- Wails の JSON ブリッジで id 型がゆらぎ `Map.get(id)` が undefined を返すと、handler 冒頭の `if (!file) return` で結果が黙って捨てられていた
+- backend (`app_normalize.go`) は既に `path` をイベントに乗せているので、renderer 側で活用するだけで復旧
+- 同じ理由で送信時も renderer の余分なフィールド (currentLufs, selected 等) を載せず `{id, path, gain}` に絞り、ブリッジ越しの型強制リスクを下げた
+
+### 残課題・次のステップ
+- G2 (GetSituationPlaylists 分割), R3 (querySelector キャッシュ), R5+G6 (デッドコード) に着手
+
+---
+
 ## 2026-05-27 — リファクタリング R2: runAutoSync の責務分離
 
 ### 実施内容
