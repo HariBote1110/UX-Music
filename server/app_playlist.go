@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 	"ux-music-sidecar/internal/playlist"
@@ -236,82 +235,25 @@ func (a *App) GetSituationPlaylists() (interface{}, error) {
 		return result, nil
 	}
 
-	recentSongs := make([]interface{}, 0)
-	maxRecent := 20
-	if len(songs) < maxRecent {
-		maxRecent = len(songs)
-	}
-	for i := len(songs) - 1; i >= len(songs)-maxRecent && i >= 0; i-- {
-		recentSongs = append(recentSongs, songs[i])
-	}
-	if len(recentSongs) > 0 {
+	if recent := pickRecentlyAdded(songs, situationPlaylistMaxItems); len(recent) > 0 {
 		result["recently_added"] = map[string]interface{}{
 			"name":  "最近追加した曲",
-			"songs": recentSongs,
+			"songs": recent,
 		}
 	}
 
-	countsMap, _ := store.Instance.LoadMap("playcounts")
-	if len(countsMap) > 0 {
-		type songWithCount struct {
-			song  interface{}
-			count int
-		}
-		var songsWithCounts []songWithCount
-
-		for _, s := range songs {
-			song := s.(map[string]interface{})
-			path, ok := song["path"].(string)
-			if !ok {
-				continue
-			}
-			if countData, exists := countsMap[path]; exists {
-				countMap := countData.(map[string]interface{})
-				if count, ok := countMap["count"].(float64); ok && count > 0 {
-					songsWithCounts = append(songsWithCounts, songWithCount{song: s, count: int(count)})
-				}
-			}
-		}
-
-		sort.Slice(songsWithCounts, func(i, j int) bool {
-			return songsWithCounts[i].count > songsWithCounts[j].count
-		})
-
-		mostPlayedSongs := make([]interface{}, 0)
-		maxPlayed := 20
-		if len(songsWithCounts) < maxPlayed {
-			maxPlayed = len(songsWithCounts)
-		}
-		for i := 0; i < maxPlayed; i++ {
-			mostPlayedSongs = append(mostPlayedSongs, songsWithCounts[i].song)
-		}
-
-		if len(mostPlayedSongs) > 0 {
-			result["most_played"] = map[string]interface{}{
-				"name":  "よく聴く曲",
-				"songs": mostPlayedSongs,
-			}
+	counts, _ := store.Instance.LoadMap("playcounts")
+	if mostPlayed := pickMostPlayed(songs, counts, situationPlaylistMaxItems); len(mostPlayed) > 0 {
+		result["most_played"] = map[string]interface{}{
+			"name":  "よく聴く曲",
+			"songs": mostPlayed,
 		}
 	}
 
-	if len(songs) >= 5 {
-		randomSongs := make([]interface{}, 0)
-		maxRandom := 20
-		if len(songs) < maxRandom {
-			maxRandom = len(songs)
-		}
-		step := len(songs) / maxRandom
-		if step < 1 {
-			step = 1
-		}
-		for i := 0; i < len(songs) && len(randomSongs) < maxRandom; i += step {
-			randomSongs = append(randomSongs, songs[i])
-		}
-		if len(randomSongs) > 0 {
-			result["random_pick"] = map[string]interface{}{
-				"name":  "ランダムピック",
-				"songs": randomSongs,
-			}
+	if random := pickRandomPick(songs, situationPlaylistMaxItems); len(random) > 0 {
+		result["random_pick"] = map[string]interface{}{
+			"name":  "ランダムピック",
+			"songs": random,
 		}
 	}
 
