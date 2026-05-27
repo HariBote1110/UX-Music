@@ -1,3 +1,25 @@
+## 2026-05-27 — リファクタリング R2: runAutoSync の責務分離
+
+### 実施内容
+- スキャン結果のうち R1 (`setupLrcEditorListeners`) はエージェントの計測誤り（実際は 60 行・13 リスナー）と判明し、スキップ
+- R2 (`runAutoSync` 117 行) から純関数 2 つを抽出
+  - `validateAutoSyncPrereqs`: 4 種の事前検証
+  - `applyAlignedTimestamps`: 整列タイムスタンプの正規化＋代入
+- 新モジュール `src/renderer/js/features/lrc-auto-sync.ts` に切り出し
+- TDD: 11 ケースの vitest を Red → Green → 本体置換、tsc も通過
+- 本体は 117 → 103 行 (-14 行) かつ、検証ロジックがテスト可能に
+
+### 選定理由・判断の根拠
+- lrc-editor.ts はグローバル変数 28 個と DOM 直操作の塊で全体を一気にテスト化するのは非現実的
+- 「DOM/グローバルに触らない純ロジック」だけを切り出してテスト網を張る方針が現実解
+- R1 は本来「26 個並列」と報告されていたが実コードを精査して虚偽と判明、 CLAUDE.md「premature abstraction を避ける」方針に従い不要と判断
+
+### 残課題・次のステップ
+- 後続候補: G2 (GetSituationPlaylists 96 行の分割), R3 (querySelector キャッシュ), R5 (デッドコード削除)
+- lrc-editor.ts には他にも純粋ロジック (payload 構築, result パース) が残るので将来的に同パターンで切り出し可能
+
+---
+
 ## 2026-05-27 — リファクタリング G1: store ヘルパー導入
 
 ### 実施内容
