@@ -1,6 +1,8 @@
 // src/renderer/js/features/normalize-view.ts — mainContent 描画用
 import { getNormalizeViewHtml } from './normalize-view-html.js';
 
+import { findNormalizeFileForResult, toJobFilePayload } from './normalize-lookup.js';
+
 const electronAPI = window.electronAPI;
 
 const normalizeFiles = new Map();
@@ -175,9 +177,13 @@ function registerNormalizeIpcHandlerOnce() {
     normalizeIpcHandlerRegistered = true;
 
     electronAPI.on('normalize-worker-result', ((...args: unknown[]) => {
-        const { type, id, result } = args[0] as { type: string; id: string; result: any };
-        const file = normalizeFiles.get(id);
-        if (!file) return;
+        const row = (args[0] ?? {}) as { type?: string; id?: string; path?: string; result?: any };
+        const { type, id, path, result } = row;
+        const file = findNormalizeFileForResult(normalizeFiles, { id, path });
+        if (!file) {
+            console.warn('[Normalize] result for unknown id/path:', id, path, type);
+            return;
+        }
 
         if (type === 'analysis-result') {
             if (result.success) {
@@ -397,13 +403,14 @@ export function renderNormalizeView(container: HTMLElement, options: { signal?: 
             const backup = outputSettings.mode === 'overwrite'
                 ? (backupToggle ? backupToggle.checked : false)
                 : false;
+            const jobFiles = filesWithGain.map(toJobFilePayload);
             electronAPI.send('start-normalize-job', {
                 jobType: 'normalize',
-                files: filesWithGain,
+                files: jobFiles,
                 options: {
                     backup,
-                    output: outputSettings,
-                    basePath: commonBasePath
+                    output: { mode: outputSettings.mode, path: outputSettings.path || '' },
+                    basePath: commonBasePath || ''
                 }
             });
             updateProgress(0, filesToNormalise.length, '適用中');

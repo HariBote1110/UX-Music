@@ -51,6 +51,7 @@ export function toJobFilePayload(file: {
     id: string;
     path: string;
     gain?: number;
+    [k: string]: unknown;
 }): JobFilePayload {
     const gain = Number(file.gain);
     return {
