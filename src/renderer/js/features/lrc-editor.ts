@@ -4,6 +4,7 @@ import { state } from '../core/state.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { resolveArtworkPath, formatSongTitle } from '../ui/utils.js';
 import { getLrcEditorHtml } from './lrc-editor-markup.js';
+import { applyAlignedTimestamps, validateAutoSyncPrereqs } from './lrc-auto-sync.js';
 import { togglePlayPause, seek, getCurrentTime, getDuration, isPlaying } from './player.js';
 import { getWailsApp, isWailsMode } from '../core/bridge.js';
 
@@ -1159,21 +1160,9 @@ function applyDetectedPreview(result) {
 async function runAutoSync() {
     if (isAutoSyncRunning) return;
 
-    if (!currentEditorSong || !currentEditorSong.path) {
-        showNotification('同期対象の曲情報が見つかりません。');
-        hideNotification(2500);
-        return;
-    }
-
-    if (lyricsLines.length === 0) {
-        showNotification('先に歌詞テキストを読み込んでください。');
-        hideNotification(2500);
-        return;
-    }
-
-    const hasAnyContent = lyricsLines.some(line => (line.text || '').trim() !== '');
-    if (!hasAnyContent) {
-        showNotification('同期対象の歌詞行がありません。');
+    const prereq = validateAutoSyncPrereqs({ currentEditorSong, lyricsLines });
+    if (!prereq.ok) {
+        showNotification(prereq.message!);
         hideNotification(2500);
         return;
     }
@@ -1228,13 +1217,10 @@ async function runAutoSync() {
             return;
         }
 
-        for (const aligned of alignedLines) {
-            if (!Number.isInteger(aligned?.index)) continue;
-            const alignedIndex = aligned.index as number;
-            if (alignedIndex < 0 || alignedIndex >= lyricsLines.length) continue;
-            if (typeof aligned.timestamp !== 'number' || Number.isNaN(aligned.timestamp)) continue;
-            lyricsLines[alignedIndex].timestamp = normaliseTimestamp(aligned.timestamp as number);
-        }
+        applyAlignedTimestamps(
+            lyricsLines,
+            alignedLines as unknown as { index: number; timestamp: number }[],
+        );
 
         saveHistory();
         redrawLyricsArea();

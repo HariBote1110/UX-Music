@@ -13,7 +13,7 @@ export interface AlignedTimestamp {
 
 export interface AutoSyncPrereqContext {
     currentEditorSong: { path?: string } | null;
-    lyricsLines: ReadonlyArray<{ text: string }>;
+    lyricsLines: ReadonlyArray<{ text: string; [k: string]: unknown }>;
 }
 
 export interface AutoSyncPrereqResult {
