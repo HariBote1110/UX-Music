@@ -1,3 +1,25 @@
+## 2026-05-27 — リファクタリング G2 / R3 / R5+G6 の判定
+
+### 実施内容
+- **G2 完了**: `GetSituationPlaylists` (86 行) を 30 行に短縮
+  - `pickRecentlyAdded` / `pickMostPlayed` / `pickRandomPick` を `situation_playlists.go` に切り出し
+  - TDD で 8 ケースのテスト (`situation_playlists_test.go`)
+  - go test ./... 全パス
+- **R3 / R5 / G6 スキップ**: 実コードを精査した結果、Explore エージェントの誤検出だった
+  - R3 (querySelector キャッシュ): 対象は呼び出し頻度が低い、または getElementById で O(1)
+  - R5 (mtp-browser.ts コメントアウト): 実際にはコメントアウトされたコードブロックなし
+  - G6 (wearPairingURLFromParts インライン化): 2 箇所利用＋専用テスト有り。インライン化は逆効果
+
+### 選定理由・判断の根拠
+- G2 は本物の責務分離: 3 つの異なるセクション (最近追加・よく聴く・ランダム) を 1 関数に詰め込んでいたため、用途別の純関数化で単体テストが書け、本体側の見通しが圧倒的に改善
+- 偽陽性の 3 つは「Don't add features, refactor, or introduce abstractions beyond what the task requires」(CLAUDE.md) の原則に従って積極的にスキップ。「やらないこと」も判断
+- スキャン結果は実コードでの再検証必須という教訓
+
+### 残課題・次のステップ
+- 今回着手したスキャン候補は全て決着。新規スキャンを行うかは別途判断
+
+---
+
 ## 2026-05-27 — fix: ノーマライズ適用が反応しないバグの修正
 
 ### 実施内容
