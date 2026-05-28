@@ -1,12 +1,13 @@
 // uxmusic/src/renderer/js/playback-manager.js
 
 import { state, elements, PLAYBACK_MODES } from '../core/state.js';
-import { play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
+import { getCurrentTime, getDuration, play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
 import { updatePlayingIndicators, renderQueueView } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 import { resolveLocalPlaybackGain } from './playback-gain.js';
+import { buildSkipEvent } from './playback-skip.js';
 import { musicApi, isWailsMode } from '../core/bridge.js';
 import { getSongById } from '../core/library-model.js';
 const electronAPI = window.electronAPI;
@@ -21,12 +22,15 @@ export function markLoudnessAnalysisCompleted(path) {
 }
 
 function handleSkip() {
-    if (state.analysedQueue.enabled && state.currentSongIndex > -1) {
-        const skippedSong = state.playbackQueue[state.currentSongIndex];
-        const player = document.getElementById('main-player') as HTMLMediaElement | null;
-        if (skippedSong && player && player.currentTime > 0 && player.duration > 0) {
-            musicApi.songSkipped({ song: skippedSong, currentTime: player.currentTime });
-        }
+    const event = buildSkipEvent({
+        analysedQueueEnabled: state.analysedQueue.enabled,
+        currentSongIndex: state.currentSongIndex,
+        skippedSong: state.playbackQueue[state.currentSongIndex],
+        currentTime: getCurrentTime(),
+        duration: getDuration(),
+    });
+    if (event) {
+        musicApi.songSkipped(event);
     }
 }
 
