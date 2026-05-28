@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildSkipEvent } from './playback-skip.js';
 import { resolveLocalPlaybackGain } from './playback-gain.js';
 
 describe('resolveLocalPlaybackGain', () => {
@@ -33,5 +34,18 @@ describe('resolveLocalPlaybackGain', () => {
 
         expect(result.shouldWaitForAnalysis).toBe(false);
         expect(result.gainLinear).toBe(1);
+    });
+});
+
+describe('buildSkipEvent', () => {
+    it('builds skip payload from backend playback time without requiring a media element', () => {
+        const song = { id: 'song-1', title: 'Skip Me', duration: 200 };
+        expect(buildSkipEvent({
+            analysedQueueEnabled: true,
+            currentSongIndex: 0,
+            skippedSong: song,
+            currentTime: 12.5,
+            duration: 200,
+        })).toEqual({ song, currentTime: 12.5 });
     });
 });
