@@ -57,9 +57,10 @@ func (a *App) GetArtworkAsDataURL(filename string) (string, error) {
 		return "", nil
 	}
 
-	userDataPath := config.GetUserDataPath()
-	artworksDir := filepath.Join(userDataPath, "Artworks")
-	fullPath := filepath.Join(artworksDir, filename)
+	fullPath := resolveNowPlayingArtworkPath(filename)
+	if fullPath == "" {
+		return "", nil
+	}
 
 	data, err := os.ReadFile(fullPath)
 	if err != nil {

@@ -82,6 +82,10 @@ func resolveNowPlayingArtworkPath(raw string) string {
 	return cleanFullPath
 }
 
+func ResolveArtworkPath(raw string) string {
+	return resolveNowPlayingArtworkPath(raw)
+}
+
 func (a *App) updateOSNowPlayingByPath(filePath string, playing bool) {
 	a.mediaStateMu.Lock()
 	title := strings.TrimSpace(a.mediaTitle)

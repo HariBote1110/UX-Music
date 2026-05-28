@@ -2,11 +2,8 @@ package main
 
 import (
 	"embed"
-	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -35,43 +32,8 @@ func main() {
 		Width:  1024,
 		Height: 768,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
-			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				path := r.URL.Path
-				if strings.HasPrefix(path, "/safe-artwork/") {
-					// safe-artwork:// を /safe-artwork/path として受け取る（server 抽出前の同一実装）
-					filename := strings.TrimPrefix(path, "/safe-artwork/")
-					userDataPath := config.GetUserDataPath()
-					artworksDir := filepath.Join(userDataPath, "Artworks")
-					fullPath := filepath.Join(artworksDir, filename)
-
-					// セキュリティチェック: artworksDir 外のファイルへのアクセスを禁止
-					if !strings.HasPrefix(fullPath, artworksDir) {
-						http.Error(w, "Forbidden", http.StatusForbidden)
-						return
-					}
-
-					http.ServeFile(w, r, fullPath)
-					return
-				} else if strings.HasPrefix(path, "/safe-media/") {
-					// Wails 環境での音楽再生用
-					relPath := strings.TrimPrefix(path, "/safe-media/")
-					// filepath.Clean で // などを正規化し、OSに依存しないスラッシュにする
-					// ただし Mac の絶対パスを維持するため、先頭に / を付ける
-					fullPath := "/" + filepath.Clean(relPath)
-
-					if _, err := os.Stat(fullPath); err != nil {
-						fmt.Printf("[Wails] Media file not found: %s (error: %v)\n", fullPath, err)
-						http.NotFound(w, r)
-						return
-					}
-
-					// fmt.Printf("[Wails] Serving media: %s\n", fullPath) // 頻度が高いので必要時のみ有効化
-					http.ServeFile(w, r, fullPath)
-					return
-				}
-				http.NotFound(w, r)
-			}),
+			Assets:  assets,
+			Handler: newAssetHandler(),
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.Startup,
@@ -82,7 +44,7 @@ func main() {
 			OpenInspectorOnStartup: true,
 		},
 		DragAndDrop: &options.DragAndDrop{
-			EnableFileDrop:   true,
+			EnableFileDrop:     true,
 			DisableWebViewDrop: true,
 		},
 		Mac: &mac.Options{
