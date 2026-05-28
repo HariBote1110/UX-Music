@@ -3,6 +3,7 @@ package lyricssync
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -57,6 +58,18 @@ func TestResolveSidecarSpecDoesNotForceMediumForFastProfile(t *testing.T) {
 	if req.WhisperModel != "" {
 		t.Fatalf("profile=fast should let sidecars choose a light model, got forced whisperModel=%q", req.WhisperModel)
 	}
+}
+
+func TestSwiftSidecarBinaryCandidatesIncludeAppResources(t *testing.T) {
+	exe := filepath.Join("/Applications", "UX-Music.app", "Contents", "MacOS", "UX-Music")
+	got := swiftSidecarBinaryCandidates(exe)
+	want := filepath.Join("/Applications", "UX-Music.app", "Contents", "Resources", "bin", "lyrics-sync-swift")
+	for _, candidate := range got {
+		if candidate == want {
+			return
+		}
+	}
+	t.Fatalf("resource sidecar candidate missing: got=%v want %q", got, want)
 }
 
 func TestShouldAutoFallbackToPython(t *testing.T) {
