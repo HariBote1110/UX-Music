@@ -31,10 +31,6 @@ func resolveSidecarArgvEnv(req *Request) ([]string, []string, error) {
 }
 
 func resolveSidecarSpec(req *Request) (sidecarSpec, error) {
-	if strings.TrimSpace(req.WhisperModel) == "" {
-		req.WhisperModel = defaultWhisperModel
-	}
-
 	preference := normaliseSidecarRuntimePreference(os.Getenv(envLyricsRuntime))
 	if shouldUseSwiftRuntime(runtime.GOOS, preference, swiftSidecarAvailable()) {
 		return resolveSwiftSidecarSpec(req)
