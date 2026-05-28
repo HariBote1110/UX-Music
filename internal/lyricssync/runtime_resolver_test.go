@@ -46,6 +46,19 @@ func TestShouldUseSwiftRuntime(t *testing.T) {
 	}
 }
 
+func TestResolveSidecarSpecDoesNotForceMediumForFastProfile(t *testing.T) {
+	t.Setenv(envLyricsRuntime, sidecarRuntimePython)
+	t.Setenv("UX_MUSIC_LYRICS_SYNC_DUMMY", "1")
+
+	req := Request{Lines: []string{"hello"}, Profile: "fast"}
+	if _, err := resolveSidecarSpec(&req); err != nil {
+		t.Fatal(err)
+	}
+	if req.WhisperModel != "" {
+		t.Fatalf("profile=fast should let sidecars choose a light model, got forced whisperModel=%q", req.WhisperModel)
+	}
+}
+
 func TestShouldAutoFallbackToPython(t *testing.T) {
 	if !shouldAutoFallbackToPython(
 		sidecarSpec{runtimeName: sidecarRuntimeSwift},
