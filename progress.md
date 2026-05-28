@@ -1,3 +1,24 @@
+## 2026-05-28 — レビュー指摘順のセキュリティ・再生修正
+
+### 実施内容
+- Wear API に認証トークンを導入し、LAN 上の未認証アクセスを拒否
+- `/safe-media/` をライブラリ登録済み曲だけに制限し、`/safe-artwork/` と data URL アートワーク読み込みを安全な解決関数へ統一
+- プレイリスト名の traversal を拒否
+- ノーマライズ表示のHTMLエスケープを追加
+- `profile=fast` で Swift sidecar の軽量モデル選択を尊重
+- Wails build で `lyrics-sync-swift` を `.app/Contents/Resources/bin` に同梱
+- Wails 再生位置でスキップ統計を記録
+- AudioGraph 切替時に EQ 設定を再適用
+- `/safe-media/` URL の予約文字を segment ごとにエンコード
+
+### 検証
+- `go test ./...`
+- `npm test -- --run`
+- `npm run typecheck`
+- `swift build -c release --package-path swift/lyrics-sync`
+
+---
+
 ## 2026-05-27 — リファクタリング G2 / R3 / R5+G6 の判定
 
 ### 実施内容

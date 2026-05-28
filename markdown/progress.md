@@ -1,5 +1,38 @@
 # 開発進捗ログ (progress.md)
 
+## 2026年5月28日
+
+### レビュー指摘順にセキュリティ・再生系不具合を修正
+
+- **不具合内容**:
+    - Wear API が LAN に認証なしで公開され、曲一覧・音源取得・再生操作へアクセス可能だった。
+    - Wails の `/safe-media/` がライブラリ登録外のローカルファイルも配信し得る状態だった。
+    - `/safe-artwork/` と `GetArtworkAsDataURL()` にアートワーク保存領域外を参照する余地があった。
+    - プレイリスト名にパス区切りや `..` を含めると、`Playlists` ディレクトリ外を操作し得た。
+    - ノーマライズ画面でファイル名を `innerHTML` へ直接差し込んでいた。
+    - `profile=fast` の自動歌詞同期でも Go 側が `medium` を強制し、Swift 側の軽量モデル選択が効いていなかった。
+    - Wails ビルド成果物に Swift sidecar を同梱する導線がなく、配布後に Swift runtime を優先できない可能性があった。
+    - Wails バックエンド再生ではスキップ統計が `<audio>` 要素依存で記録されなかった。
+    - AudioGraph 切替時に保存済み EQ が新しい graph へ再適用されなかった。
+    - 右サイドバー映像プレビューの `/safe-media/` URL が `?` や `%` を含むパスで壊れ得た。
+- **修正内容**:
+    - Wear ペアリング URL に認証トークンを含め、実データ・操作 API は token / `X-UX-Music-Token` / Bearer 認証を必須化。
+    - Wails AssetHandler を `asset_handler.go` に分離し、`/safe-media/` はライブラリ登録済みパスのみ許可。
+    - アートワーク解決を `ResolveArtworkPath()` に統一し、traversal を拒否。
+    - プレイリスト名の検証を `internal/playlist` に集約し、パス区切り・空白・`.` / `..` を拒否。
+    - ノーマライズ表示向けの `escapeHtmlText()` を追加。
+    - Go 側の `medium` 強制を削除し、未指定モデルは sidecar の profile 選択に委譲。
+    - `Makefile build` で `swift build -c release --package-path swift/lyrics-sync` を実行し、`lyrics-sync-swift` を `.app/Contents/Resources/bin` へコピー。
+    - Wails/Electron共通の `buildSkipEvent()` を追加し、`getCurrentTime()` / `getDuration()` からスキップ統計を記録。
+    - `applyEqualizerToGraph()` を追加し、AudioGraph 切替時にも最後の EQ 設定を再適用。
+    - `/safe-media/` URL 生成を path segment ごとの `encodeURIComponent` に変更。
+- **テスト追加**:
+    - Go: Wear 認証、AssetHandler の safe-media/safe-artwork、アートワーク data URL traversal、プレイリスト名検証、Swift sidecar 同梱候補、`profile=fast` モデル選択。
+    - Vitest: ノーマライズHTMLエスケープ、Wailsスキップ統計、EQ graph 適用、safe-media URL エンコード。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-11a` に更新。
+    - `src/renderer/package.json` のバージョンを `1.0.0-Beta-8a` に更新。
+
 ## 2026年5月15日
 
 ### 長時間一時停止後に再生再開できない不具合を調査・修正
