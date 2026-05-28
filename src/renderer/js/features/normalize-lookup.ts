@@ -12,6 +12,14 @@ export interface NormalizeFileLike {
     path: string;
 }
 
+export function escapeHtmlText(value: unknown): string {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 /**
  * Looks up the renderer-side file entry that an incoming normalize-worker-result
  * refers to. Falls back to matching by file path when the id does not appear in

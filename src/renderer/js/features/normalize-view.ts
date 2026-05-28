@@ -1,7 +1,7 @@
 // src/renderer/js/features/normalize-view.ts — mainContent 描画用
 import { getNormalizeViewHtml } from './normalize-view-html.js';
 
-import { findNormalizeFileForResult, toJobFilePayload } from './normalize-lookup.js';
+import { escapeHtmlText, findNormalizeFileForResult, toJobFilePayload } from './normalize-lookup.js';
 
 const electronAPI = window.electronAPI;
 
@@ -70,13 +70,16 @@ function updateFileList() {
     for (const [id, file] of normalizeFiles.entries()) {
         const row = document.createElement('tr');
         const diff = typeof file.currentLufs === 'number' ? (file.targetLufs - file.currentLufs).toFixed(2) : '-';
+        const safeName = escapeHtmlText(file.name);
+        const safeStatus = escapeHtmlText(file.status);
+        const statusClass = `status-${String(file.status ?? '').replace(/[^a-z0-9_-]/gi, '')}`;
 
         row.innerHTML = `
             <td><input type="checkbox" class="normalize-select-item" data-id="${id}" ${file.selected ? 'checked' : ''}></td>
-            <td>${file.name}</td>
+            <td>${safeName}</td>
             <td>${typeof file.currentLufs === 'number' ? file.currentLufs.toFixed(2) + ' LUFS' : '-'}</td>
             <td>${diff} dB</td>
-            <td class="status-${file.status}">${file.status}</td>
+            <td class="${statusClass}">${safeStatus}</td>
         `;
         tbody.appendChild(row);
 
