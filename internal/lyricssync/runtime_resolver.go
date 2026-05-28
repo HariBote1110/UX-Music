@@ -82,13 +82,43 @@ func swiftSidecarAvailable() bool {
 func configuredSwiftSidecarBinary() (string, bool) {
 	bin := strings.TrimSpace(os.Getenv(envSwiftSidecarBin))
 	if bin == "" {
+		if packagedBin, ok := packagedSwiftBuiltBinary(); ok {
+			return packagedBin, true
+		}
 		return developmentSwiftBuiltBinary()
 	}
 	fi, err := os.Stat(bin)
 	if err != nil || fi.IsDir() {
+		if packagedBin, ok := packagedSwiftBuiltBinary(); ok {
+			return packagedBin, true
+		}
 		return developmentSwiftBuiltBinary()
 	}
 	return filepath.Clean(bin), true
+}
+
+func packagedSwiftBuiltBinary() (string, bool) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", false
+	}
+	for _, candidate := range swiftSidecarBinaryCandidates(exe) {
+		fi, err := os.Stat(candidate)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		return filepath.Clean(candidate), true
+	}
+	return "", false
+}
+
+func swiftSidecarBinaryCandidates(executablePath string) []string {
+	exeDir := filepath.Dir(executablePath)
+	resourcesDir := filepath.Clean(filepath.Join(exeDir, "..", "Resources"))
+	return []string{
+		filepath.Join(resourcesDir, "bin", "lyrics-sync-swift"),
+		filepath.Join(resourcesDir, "lyrics-sync-swift"),
+	}
 }
 
 func developmentSwiftBuiltBinary() (string, bool) {
