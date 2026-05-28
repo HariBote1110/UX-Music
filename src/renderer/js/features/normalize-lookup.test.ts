@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findNormalizeFileForResult, toJobFilePayload } from './normalize-lookup.js';
+import { escapeHtmlText, findNormalizeFileForResult, toJobFilePayload } from './normalize-lookup.js';
 
 describe('findNormalizeFileForResult', () => {
     const buildMap = () => {
@@ -68,5 +68,11 @@ describe('toJobFilePayload', () => {
     it('defaults gain to 0 when undefined', () => {
         const got = toJobFilePayload({ id: 'x', path: '/x.flac', gain: undefined as unknown as number });
         expect(got.gain).toBe(0);
+    });
+});
+
+describe('escapeHtmlText', () => {
+    it('escapes file names before they are inserted through innerHTML', () => {
+        expect(escapeHtmlText('<img src=x onerror=alert(1)>&"')).toBe('&lt;img src=x onerror=alert(1)&gt;&amp;&quot;');
     });
 });
