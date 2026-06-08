@@ -3,10 +3,12 @@ import {
     formatSyncPeerEndpoint,
     formatSyncPullResultSummary,
     formatSyncPushResultSummary,
+    formatSyncTransferProgressSummary,
     mergeSyncPeersWithDevices,
     normaliseSyncDevices,
     normaliseSyncPairingConfirm,
     normaliseSyncPullResult,
+    normaliseSyncTransferProgress,
     normaliseSyncPushResult,
     normaliseSyncPairingStart,
     normaliseSyncPeers,
@@ -319,6 +321,71 @@ describe('normaliseSyncPushResult', () => {
 
     it('rejects malformed push responses without a remote device id', () => {
         expect(normaliseSyncPushResult({ transferred: 1 })).toBeNull();
+    });
+});
+
+describe('normaliseSyncTransferProgress', () => {
+    it('keeps the active file, counters, byte totals, speed, and encoding mode', () => {
+        expect(normaliseSyncTransferProgress({
+            direction: 'push',
+            stage: 'uploading',
+            trackId: 'local-track-1',
+            title: 'Local Song',
+            fileName: 'local.mp3',
+            current: 1,
+            total: 3,
+            bytesDone: 1_572_864,
+            bytesTotal: 3_145_728,
+            bytesPerSecond: 1_572_864,
+            encodingMode: 'mp3_320',
+        })).toEqual({
+            direction: 'push',
+            stage: 'uploading',
+            trackId: 'local-track-1',
+            title: 'Local Song',
+            fileName: 'local.mp3',
+            current: 1,
+            total: 3,
+            bytesDone: 1_572_864,
+            bytesTotal: 3_145_728,
+            bytesPerSecond: 1_572_864,
+            encodingMode: 'mp3_320',
+        });
+    });
+
+    it('rejects malformed progress without a direction or stage', () => {
+        expect(normaliseSyncTransferProgress({ fileName: 'song.flac' })).toBeNull();
+    });
+});
+
+describe('formatSyncTransferProgressSummary', () => {
+    it('shows the active file and transfer speed', () => {
+        const progress = normaliseSyncTransferProgress({
+            direction: 'push',
+            stage: 'uploading',
+            fileName: 'local.mp3',
+            current: 1,
+            total: 3,
+            bytesDone: 1_572_864,
+            bytesTotal: 3_145_728,
+            bytesPerSecond: 1_572_864,
+            encodingMode: 'mp3_320',
+        });
+
+        expect(progress && formatSyncTransferProgressSummary(progress)).toBe('転送中: local.mp3 (1 / 3) - 1.5 MB/s - MP3 320kbps');
+    });
+
+    it('uses the conversion label before upload starts', () => {
+        const progress = normaliseSyncTransferProgress({
+            direction: 'push',
+            stage: 'transcoding',
+            fileName: 'local.flac',
+            current: 1,
+            total: 1,
+            encodingMode: 'mp3_320',
+        });
+
+        expect(progress && formatSyncTransferProgressSummary(progress)).toBe('変換中: local.flac (1 / 1) - MP3 320kbps');
     });
 });
 

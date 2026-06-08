@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -240,6 +241,155 @@ func TestPushSyncLibraryAssetsUploadsLocalTrackToRemotePeer(t *testing.T) {
 	}
 	if observedSourceDeviceID != "dev_local_mac" || observedTrackID != "local-track-1" || observedBytes != "local-audio" {
 		t.Fatalf("unexpected upload source=%q track=%q bytes=%q", observedSourceDeviceID, observedTrackID, observedBytes)
+	}
+}
+
+func TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey:   "dev_local_mac",
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "local.flac")
+	if err := os.WriteFile(audioPath, []byte("flac-audio"), 0o644); err != nil {
+		t.Fatalf("seed audio: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{
+			"id":       "local-track-1",
+			"path":     audioPath,
+			"title":    "Local Song",
+			"artist":   "Artist",
+			"album":    "Album",
+			"fileType": ".flac",
+		},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+
+	originalTranscode := syncTranscodeToMP3
+	syncTranscodeToMP3 = func(_ context.Context, inputPath, outputPath string) error {
+		if inputPath != audioPath {
+			t.Fatalf("unexpected transcode input %q", inputPath)
+		}
+		return os.WriteFile(outputPath, []byte("mp3-320-audio"), 0o644)
+	}
+	t.Cleanup(func() { syncTranscodeToMP3 = originalTranscode })
+
+	var observedFileName string
+	var observedFileType string
+	var observedEncoding string
+	var observedBitrate float64
+	var observedBytes string
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
+		case "/sync/library/import":
+			if err := r.ParseMultipartForm(32 << 20); err != nil {
+				t.Fatalf("parse multipart: %v", err)
+			}
+			var req syncLibraryImportRequest
+			if err := json.Unmarshal([]byte(r.FormValue("metadata")), &req); err != nil {
+				t.Fatalf("decode metadata: %v", err)
+			}
+			observedFileType, _ = req.Track["fileType"].(string)
+			observedEncoding, _ = req.Track["syncTransferEncoding"].(string)
+			observedBitrate, _ = req.Track["audioBitrateKbps"].(float64)
+			file, header, err := r.FormFile("file")
+			if err != nil {
+				t.Fatalf("read file part: %v", err)
+			}
+			defer file.Close()
+			observedFileName = header.Filename
+			payload, err := io.ReadAll(file)
+			if err != nil {
+				t.Fatalf("read payload: %v", err)
+			}
+			observedBytes = string(payload)
+			writeJSON(w, syncLibraryImportResponse{Imported: true, Path: `C:\SyncLibrary\local.mp3`})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	result, err := NewApp().PushSyncLibraryAssetsWithOptions(remote.URL, 0, SyncTransferOptions{
+		EncodingMode: syncTransferEncodingMP3320,
+	})
+	if err != nil {
+		t.Fatalf("PushSyncLibraryAssetsWithOptions: %v", err)
+	}
+	if result.Transferred != 1 || observedFileName != "local.mp3" || observedBytes != "mp3-320-audio" {
+		t.Fatalf("unexpected push result=%#v filename=%q bytes=%q", result, observedFileName, observedBytes)
+	}
+	if observedFileType != ".mp3" || observedEncoding != syncTransferEncodingMP3320 || observedBitrate != 320 {
+		t.Fatalf("unexpected metadata fileType=%q encoding=%q bitrate=%v", observedFileType, observedEncoding, observedBitrate)
+	}
+}
+
+func TestPushSyncLibraryAssetsEmitsTransferProgressWithFileAndSpeed(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey:   "dev_local_mac",
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "local.flac")
+	if err := os.WriteFile(audioPath, bytes.Repeat([]byte("a"), 64*1024), 0o644); err != nil {
+		t.Fatalf("seed audio: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{"id": "local-track-1", "path": audioPath, "title": "Local Song", "fileType": ".flac"},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+
+	var progressEvents []SyncTransferProgress
+	originalSink := syncTransferProgressSink
+	syncTransferProgressSink = func(_ context.Context, progress SyncTransferProgress) {
+		progressEvents = append(progressEvents, progress)
+	}
+	t.Cleanup(func() { syncTransferProgressSink = originalSink })
+
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
+		case "/sync/library/import":
+			if _, err := io.Copy(io.Discard, r.Body); err != nil {
+				t.Fatalf("read request: %v", err)
+			}
+			writeJSON(w, syncLibraryImportResponse{Imported: true, Path: `C:\SyncLibrary\local.flac`})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	if _, err := NewApp().PushSyncLibraryAssetsWithOptions(remote.URL, 1, SyncTransferOptions{}); err != nil {
+		t.Fatalf("PushSyncLibraryAssetsWithOptions: %v", err)
+	}
+
+	var uploading *SyncTransferProgress
+	for i := range progressEvents {
+		if progressEvents[i].Stage == syncTransferStageUploading {
+			uploading = &progressEvents[i]
+		}
+	}
+	if uploading == nil {
+		t.Fatalf("expected uploading progress event, got %#v", progressEvents)
+	}
+	if uploading.Direction != syncTransferDirectionPush || uploading.FileName != "local.flac" || uploading.Current != 1 || uploading.Total != 1 {
+		t.Fatalf("unexpected uploading progress: %#v", uploading)
+	}
+	if uploading.BytesDone <= 0 || uploading.BytesTotal <= 0 || uploading.BytesPerSecond <= 0 {
+		t.Fatalf("expected byte counters and transfer speed: %#v", uploading)
 	}
 }
 
