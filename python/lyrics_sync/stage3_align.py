@@ -458,6 +458,7 @@ def _repair_repeated_block_tail_extension(
 def _repair_forward_drift_to_skipped_segments(
     rows: list[dict[str, Any]],
     segments: list[dict[str, Any]],
+    lines: list[str] | None = None,
 ) -> None:
     """遠い繰り返しへ飛んだ行を、時系列上で飛ばされた ASR セグメントへ戻す。
 
@@ -484,10 +485,22 @@ def _repair_forward_drift_to_skipped_segments(
             if row.get("source") != "interlude" and float(row.get("timestamp", -1.0)) >= 0
         ]
 
-    def _apply(row_start: int, candidates: list[float]) -> None:
+    def _surface_score(row_idx: int, segment_text: str) -> float:
+        if lines is None or row_idx >= len(lines):
+            return 1.0
+        lyric = str(lines[row_idx]).strip()
+        if not lyric:
+            return 0.0
+        if any("a" <= ch.lower() <= "z" for ch in lyric):
+            return _char_bigram_precision(lyric.lower(), segment_text.lower())
+        return max(_char_bigram_precision(lyric, segment_text), _char_lcs_ratio(lyric, segment_text))
+
+    def _apply(row_start: int, candidates: list[tuple[float, str]]) -> None:
         if not candidates:
             return
+        min_surface = float(os.environ.get("UX_MUSIC_SYNC_FORWARD_DRIFT_MIN_SURFACE", "0.18"))
         assigned = 0
+        candidate_cursor = 0
         for idx in range(row_start, len(rows)):
             if assigned >= len(candidates) or assigned >= max_rows:
                 break
@@ -495,8 +508,23 @@ def _repair_forward_drift_to_skipped_segments(
                 continue
             if float(rows[idx].get("timestamp", -1.0)) < 0:
                 continue
-            rows[idx]["timestamp"] = candidates[assigned]
+
+            if lines is None:
+                chosen = assigned
+            else:
+                search_hi = min(len(candidates), candidate_cursor + 4)
+                scored = [
+                    (_surface_score(idx, candidates[pos][1]), pos)
+                    for pos in range(candidate_cursor, search_hi)
+                ]
+                scored.sort(key=lambda item: item[0], reverse=True)
+                if not scored or scored[0][0] < min_surface:
+                    break
+                chosen = scored[0][1]
+
+            rows[idx]["timestamp"] = candidates[chosen][0]
             rows[idx]["confidence"] = min(float(rows[idx].get("confidence", 0.55)), 0.72)
+            candidate_cursor = chosen
             assigned += 1
 
     valid = _valid_row_indices()
@@ -507,7 +535,11 @@ def _repair_forward_drift_to_skipped_segments(
     first_ts = float(rows[first_idx].get("timestamp", -1.0))
     first_segment = segment_starts[0]
     if first_ts - first_segment > gap_threshold:
-        early = [st for st in segment_starts if st < first_ts - 0.05]
+        early = [
+            (float(seg.get("start", -1.0)), str(seg.get("text", "")))
+            for seg in segments
+            if 0 <= float(seg.get("start", -1.0)) < first_ts - 0.05
+        ]
         _apply(first_idx, early)
         valid = _valid_row_indices()
 
@@ -517,9 +549,10 @@ def _repair_forward_drift_to_skipped_segments(
         if prev_ts < 0 or cur_ts - prev_ts <= gap_threshold:
             continue
         skipped = [
-            st
-            for st in segment_starts
-            if st > prev_ts + 0.05 and st < cur_ts - 0.05
+            (float(seg.get("start", -1.0)), str(seg.get("text", "")))
+            for seg in segments
+            if float(seg.get("start", -1.0)) > prev_ts + 0.05
+            and float(seg.get("start", -1.0)) < cur_ts - 0.05
         ]
         _apply(cur_idx, skipped)
 
@@ -738,7 +771,7 @@ def align(
     _repair_large_jump_snap(out_lines, lines, segments, seg_texts)
     _repair_isolated_gap_tail(out_lines, lines, segments, seg_texts)
     _repair_repeated_block_tail_extension(out_lines, lines)
-    _repair_forward_drift_to_skipped_segments(out_lines, segments)
+    _repair_forward_drift_to_skipped_segments(out_lines, segments, lines)
     _enforce_monotone_progress(out_lines)
     _repair_repeated_block_tail_extension(out_lines, lines)
     _interpolate_rows(out_lines)
