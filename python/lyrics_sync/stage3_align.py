@@ -771,7 +771,7 @@ def align(
     _repair_large_jump_snap(out_lines, lines, segments, seg_texts)
     _repair_isolated_gap_tail(out_lines, lines, segments, seg_texts)
     _repair_repeated_block_tail_extension(out_lines, lines)
-    _repair_forward_drift_to_skipped_segments(out_lines, segments, lines)
+    _repair_forward_drift_to_skipped_segments(out_lines, segments)
     _enforce_monotone_progress(out_lines)
     _repair_repeated_block_tail_extension(out_lines, lines)
     _interpolate_rows(out_lines)
