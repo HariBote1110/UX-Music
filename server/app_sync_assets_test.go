@@ -165,7 +165,7 @@ func TestResetSyncTestDataKeepsPairingSettingsAndClearsManagedMusicState(t *test
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", BaseURL: "http://192.168.0.226:8765"}},
-		"libraryPath":            filepath.Join(t.TempDir(), "old-library"),
+		"libraryPath":             filepath.Join(t.TempDir(), "old-library"),
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}

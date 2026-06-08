@@ -1,3 +1,18 @@
+# Task: UX Sync Phase 5.2 - 音源pullとSSH検証CLI
+
+## 概要
+Windows 側を検証専用ノードとして SSH から扱いやすくし、GUI / WebView2 起動に頼らず UX Sync のテストデータ初期化と Mac mini からの音源pullを実行できるようにする。音源転送の MVP として、親側の既存ライブラリ原本を同期専用 HTTP API で返し、子側はアプリ管理下の `SyncLibrary` に保存して `library.json` へ取り込む。
+
+## 完了条件
+- [x] `/sync/library/snapshot` が同期トークンを要求し、アートワーク blob を除いた曲一覧を返すテストがあること。
+- [x] `/sync/assets/{trackId}/file` が同期トークンを要求し、登録済み曲IDの原本ファイルだけを返すテストがあること。
+- [x] `PullSyncLibraryAssets(baseURL, limit)` が保存済み同期トークンで親から曲一覧と音源を取得し、子側 `SyncLibrary` 配下へ保存して `library.json` に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込むこと。
+- [x] `--sync-reset-test-data` が `syncAuthTokens` / `syncKnownPeers` / `syncDeviceId` を温存しつつ、検証用のライブラリ・再生回数・解析・同期イベント・アートワーク・キャッシュ・プレイリストを初期化すること。
+- [x] `--sync-pull-one` / `--sync-pull` で SSH 経由でも GUI を起動せず音源pullを実行できること。
+- [ ] Windows 側バイナリを更新し、`mainpc` から `--sync-reset-test-data` と `--sync-pull-one http://192.168.0.226:8765` の実通信検証が成功すること。
+- [x] `go test ./server -run 'TestSyncLibrarySnapshot|TestSyncAssetFile|TestPullSyncLibraryAssets|TestResetSyncTestData' -count=1` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-18a` に更新されていること。
+
 # Task: UX Sync Phase 5.1 - Windows側発見fallback
 
 ## 概要

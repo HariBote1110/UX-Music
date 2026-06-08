@@ -115,7 +115,9 @@ func registerSyncRoutes(mux *http.ServeMux, _ *App) {
 	mux.HandleFunc("/sync/identity", syncIdentityHandler)
 	mux.HandleFunc("/sync/pairing/start", syncPairingStartHandler)
 	mux.HandleFunc("/sync/pairing/confirm", syncPairingConfirmHandler)
+	mux.HandleFunc("/sync/library/snapshot", syncLibrarySnapshotHandler)
 	mux.HandleFunc("/sync/library/events", syncLibraryEventsHandler)
+	mux.HandleFunc("/sync/assets/", syncAssetFileHandler)
 	mux.HandleFunc("/sync/discover", syncDiscoverHandler)
 }
 

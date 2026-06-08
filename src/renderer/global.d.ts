@@ -11,6 +11,7 @@ type WailsAppBindings = {
   DiscoverSyncDevices?: (timeoutMs: number) => Promise<unknown>;
   StartSyncPairing?: (baseUrl: string) => Promise<unknown>;
   ConfirmSyncPairing?: (baseUrl: string, sessionId: string, code: string, expectedRemoteDeviceId: string) => Promise<unknown>;
+  PullSyncLibraryAssets?: (baseUrl: string, limit: number) => Promise<unknown>;
 };
 
 interface ElectronAPI {

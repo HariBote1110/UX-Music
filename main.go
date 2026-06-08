@@ -23,6 +23,14 @@ func main() {
 	userDataPath := filepath.Join(configDir, "ux-music")
 	config.SetUserDataPath(userDataPath)
 
+	if handled, err := server.RunSyncCLI(os.Args[1:]); handled {
+		if err != nil {
+			println("Error:", err.Error())
+			os.Exit(1)
+		}
+		return
+	}
+
 	// Create an instance of the app structure
 	app := server.NewApp()
 

@@ -430,6 +430,28 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - Windows mDNS browse 自体が空になる根本原因の完全解消。
 - ペア済み端末一覧から既知 peer を削除する UI。
 
+### Phase 2.9: 音源pull MVP と SSH 検証 CLI（実装中: 2026-06-08）
+
+目的:
+
+- Windows 側を検証専用ノードとして扱い、GUI / WebView2 を起動せず SSH から初期化と音源転送を検証できるようにする。
+- 圧縮アセット生成の前段として、親側の既存ライブラリ原本を同期専用 HTTP API で取得し、子側の管理ライブラリへ取り込む縦串を作る。
+
+実装済み:
+
+- `/sync/library/snapshot` が同期トークンを要求し、アートワーク blob を除いた曲一覧を返す。
+- `/sync/assets/{trackId}/file` が同期トークンを要求し、登録済み曲IDの原本ファイルを返す。
+- `PullSyncLibraryAssets(baseURL, limit)` が親の `identity`、`library/snapshot`、`assets/{trackId}/file` を呼び、子側 `SyncLibrary` 配下へ音源を保存して `library.json` へ取り込む。
+- 取り込んだ曲には `syncSourceDeviceId` と `syncSourceTrackId` を保存し、再実行時に同じ親・同じ曲の二重取り込みを避ける。
+- `--sync-reset-test-data` で、`syncDeviceId` / `syncAuthTokens` / `syncKnownPeers` を温存したまま検証用ライブラリ、再生回数、解析、同期イベント、アートワーク、キャッシュ、プレイリストを初期化する。
+- `--sync-pull-one` / `--sync-pull` で、SSH 経由でも Wails GUI を起動せず音源pullを実行できる。
+
+未実装:
+
+- 親側での portable 圧縮アセット生成と再利用。
+- UI からの同期開始・進捗表示。
+- 容量制限、保存ポリシー、失敗時の再試行キュー。
+
 テスト:
 
 - 同じ一時鍵交換結果から同じ6桁コードが生成される。

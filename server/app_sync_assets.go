@@ -1,0 +1,414 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"ux-music-sidecar/internal/config"
+	"ux-music-sidecar/internal/store"
+
+	"github.com/google/uuid"
+)
+
+const syncManagedLibraryDirName = "SyncLibrary"
+
+type syncLibrarySnapshotResponse struct {
+	DeviceID    string                   `json:"deviceId"`
+	DisplayName string                   `json:"displayName"`
+	Count       int                      `json:"count"`
+	Tracks      []map[string]interface{} `json:"tracks"`
+	GeneratedAt string                   `json:"generatedAt"`
+}
+
+type SyncPullResult struct {
+	RemoteDeviceID    string   `json:"remoteDeviceId"`
+	RemoteDisplayName string   `json:"remoteDisplayName"`
+	Downloaded        int      `json:"downloaded"`
+	Skipped           int      `json:"skipped"`
+	Failed            int      `json:"failed"`
+	ImportedPaths     []string `json:"importedPaths"`
+	Errors            []string `json:"errors,omitempty"`
+}
+
+type SyncResetResult struct {
+	UserDataPath string   `json:"userDataPath"`
+	Removed      []string `json:"removed"`
+	RemovedCount int      `json:"removedCount"`
+	LibraryPath  string   `json:"libraryPath"`
+}
+
+func syncLibrarySnapshotHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		http.Error(w, "library store format is invalid", http.StatusInternalServerError)
+		return
+	}
+	tracks := make([]map[string]interface{}, 0, len(library))
+	for _, item := range library {
+		song, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		clean := make(map[string]interface{}, len(song))
+		for key, value := range song {
+			if key == "artwork" {
+				continue
+			}
+			clean[key] = value
+		}
+		tracks = append(tracks, clean)
+	}
+	writeJSON(w, syncLibrarySnapshotResponse{
+		DeviceID:    ensureSyncDeviceID(),
+		DisplayName: syncDisplayName(),
+		Count:       len(tracks),
+		Tracks:      tracks,
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+func syncAssetFileHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	trackID := strings.TrimPrefix(r.URL.Path, "/sync/assets/")
+	trackID = strings.TrimSuffix(trackID, "/file")
+	trackID = strings.Trim(trackID, "/")
+	if decoded, err := url.PathUnescape(trackID); err == nil {
+		trackID = decoded
+	}
+	if trackID == "" || strings.ContainsAny(trackID, `/\`) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	filePath := findSongPathByID(trackID)
+	if filePath == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if !filepath.IsAbs(filePath) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if _, err := os.Stat(filePath); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	safeName := filepath.Base(filePath)
+	if safeName == "" || safeName == "." {
+		safeName = "track"
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, safeName))
+	http.ServeFile(w, r, filePath)
+}
+
+func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, error) {
+	ctx := context.Background()
+	if a != nil && a.ctx != nil {
+		ctx = a.ctx
+	}
+	baseURL, err := normaliseSyncBaseURL(baseURL)
+	if err != nil {
+		return SyncPullResult{}, err
+	}
+	identity, err := fetchSyncIdentity(ctx, baseURL)
+	if err != nil {
+		return SyncPullResult{}, err
+	}
+	token, err := loadSyncAuthTokenForDevice(identity.DeviceID)
+	if err != nil {
+		return SyncPullResult{}, err
+	}
+	snapshot, err := fetchSyncLibrarySnapshot(ctx, baseURL, token)
+	if err != nil {
+		return SyncPullResult{}, err
+	}
+	result := SyncPullResult{
+		RemoteDeviceID:    identity.DeviceID,
+		RemoteDisplayName: syncIdentityDisplayName(identity),
+	}
+	for _, track := range snapshot.Tracks {
+		if limit > 0 && result.Downloaded >= limit {
+			break
+		}
+		trackID := syncTrackID(track)
+		if trackID == "" {
+			result.Failed++
+			result.Errors = append(result.Errors, "track id is missing")
+			continue
+		}
+		if syncImportedTrackExists(identity.DeviceID, trackID) {
+			result.Skipped++
+			continue
+		}
+		importedPath, err := downloadSyncTrackAsset(ctx, baseURL, token, identity, track)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", trackID, err))
+			continue
+		}
+		result.Downloaded++
+		result.ImportedPaths = append(result.ImportedPaths, importedPath)
+	}
+	return result, nil
+}
+
+func fetchSyncLibrarySnapshot(ctx context.Context, baseURL, token string) (syncLibrarySnapshotResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/sync/library/snapshot", nil)
+	if err != nil {
+		return syncLibrarySnapshotResponse{}, err
+	}
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	resp, err := syncHTTPClient().Do(req)
+	if err != nil {
+		return syncLibrarySnapshotResponse{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return syncLibrarySnapshotResponse{}, fmt.Errorf("sync library snapshot request failed: %s", resp.Status)
+	}
+	var snapshot syncLibrarySnapshotResponse
+	if err := json.NewDecoder(resp.Body).Decode(&snapshot); err != nil {
+		return syncLibrarySnapshotResponse{}, err
+	}
+	return snapshot, nil
+}
+
+func downloadSyncTrackAsset(ctx context.Context, baseURL, token string, identity syncIdentityResponse, track map[string]interface{}) (string, error) {
+	trackID := syncTrackID(track)
+	endpoint := baseURL + "/sync/assets/" + url.PathEscape(trackID) + "/file"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	resp, err := syncAssetHTTPClient().Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("sync asset request failed: %s", resp.Status)
+	}
+	destPath := syncManagedTrackDestination(identity, track, syncResponseFileName(resp, track))
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return "", err
+	}
+	tmpPath := destPath + ".tmp"
+	out, err := os.Create(tmpPath)
+	if err != nil {
+		return "", err
+	}
+	_, copyErr := io.Copy(out, resp.Body)
+	closeErr := out.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return "", copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return "", closeErr
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", err
+	}
+	if err := upsertSyncImportedTrack(identity, track, destPath); err != nil {
+		return "", err
+	}
+	return destPath, nil
+}
+
+func syncAssetHTTPClient() *http.Client {
+	return &http.Client{Timeout: 10 * time.Minute}
+}
+
+func syncManagedTrackDestination(identity syncIdentityResponse, track map[string]interface{}, fileName string) string {
+	if strings.TrimSpace(fileName) == "" || fileName == "." {
+		fileName = syncTrackID(track)
+	}
+	if ext := strings.TrimSpace(syncTrackString(track, "fileType")); ext != "" && filepath.Ext(fileName) == "" {
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
+		fileName += ext
+	}
+	deviceDir := sanitiseFileName(firstNonEmpty(identity.DisplayName, identity.DeviceID, "Remote Device"))
+	artistDir := sanitiseFileName(firstNonEmpty(syncTrackString(track, "albumartist"), syncTrackString(track, "artist"), "Unknown Artist"))
+	albumDir := sanitiseFileName(firstNonEmpty(syncTrackString(track, "album"), "Unknown Album"))
+	return filepath.Join(config.GetUserDataPath(), syncManagedLibraryDirName, deviceDir, artistDir, albumDir, sanitiseFileName(fileName))
+}
+
+func syncResponseFileName(resp *http.Response, track map[string]interface{}) string {
+	if resp != nil {
+		if _, params, err := mime.ParseMediaType(resp.Header.Get("Content-Disposition")); err == nil {
+			if filename := strings.TrimSpace(params["filename"]); filename != "" {
+				return filepath.Base(filename)
+			}
+		}
+	}
+	if path := syncTrackString(track, "path"); path != "" {
+		return filepath.Base(path)
+	}
+	return syncTrackID(track)
+}
+
+func upsertSyncImportedTrack(identity syncIdentityResponse, track map[string]interface{}, destPath string) error {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return err
+	}
+	trackID := syncTrackID(track)
+	now := time.Now().UTC().Format(time.RFC3339)
+	next := make(map[string]interface{}, len(track)+6)
+	for key, value := range track {
+		if key == "artwork" {
+			continue
+		}
+		next[key] = value
+	}
+	next["id"] = uuid.NewString()
+	next["path"] = destPath
+	next["syncSourceDeviceId"] = identity.DeviceID
+	next["syncSourceTrackId"] = trackID
+	next["syncImportedAt"] = now
+	if info, err := os.Stat(destPath); err == nil {
+		next["fileSize"] = info.Size()
+	}
+	for i, item := range library {
+		existing, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if existing["syncSourceDeviceId"] == identity.DeviceID && existing["syncSourceTrackId"] == trackID {
+			if id, _ := existing["id"].(string); strings.TrimSpace(id) != "" {
+				next["id"] = id
+			}
+			library[i] = next
+			return store.Instance.Save("library", library)
+		}
+	}
+	library = append(library, next)
+	return store.Instance.Save("library", library)
+}
+
+func syncImportedTrackExists(deviceID, trackID string) bool {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return false
+	}
+	for _, item := range library {
+		existing, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if existing["syncSourceDeviceId"] == deviceID && existing["syncSourceTrackId"] == trackID {
+			if path, _ := existing["path"].(string); strings.TrimSpace(path) != "" {
+				if _, err := os.Stat(path); err == nil {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func syncTrackID(track map[string]interface{}) string {
+	return firstNonEmpty(syncTrackString(track, "id"), syncTrackString(track, "trackId"))
+}
+
+func syncTrackString(track map[string]interface{}, key string) string {
+	if track == nil {
+		return ""
+	}
+	switch value := track[key].(type) {
+	case string:
+		return strings.TrimSpace(value)
+	case fmt.Stringer:
+		return strings.TrimSpace(value.String())
+	case float64:
+		return strconv.FormatInt(int64(value), 10)
+	case int:
+		return strconv.Itoa(value)
+	default:
+		return ""
+	}
+}
+
+func loadSyncAuthTokenForDevice(deviceID string) (string, error) {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return "", fmt.Errorf("missing sync device id")
+	}
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		return "", err
+	}
+	rawTokens, _ := settings[syncAuthTokensSettingsKey].(map[string]interface{})
+	token, _ := rawTokens[deviceID].(string)
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", fmt.Errorf("sync peer is not paired: %s", deviceID)
+	}
+	return token, nil
+}
+
+func ResetSyncTestData() (SyncResetResult, error) {
+	userDataPath := config.GetUserDataPath()
+	if strings.TrimSpace(userDataPath) == "" {
+		return SyncResetResult{}, fmt.Errorf("user data path is not configured")
+	}
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		settings = map[string]interface{}{}
+	}
+	preserved := map[string]interface{}{}
+	for _, key := range []string{syncDeviceIDSettingsKey, syncAuthTokensSettingsKey, syncKnownPeersSettingsKey} {
+		if value, ok := settings[key]; ok {
+			preserved[key] = value
+		}
+	}
+	libraryPath := filepath.Join(userDataPath, syncManagedLibraryDirName)
+	preserved["libraryPath"] = libraryPath
+
+	result := SyncResetResult{UserDataPath: userDataPath, LibraryPath: libraryPath}
+	for _, name := range []string{"library", "playcounts", "loudness", "analysed-queue", syncPlayEventsStoreName, "playlist-order"} {
+		path := store.Instance.GetPath(name)
+		if err := os.Remove(path); err == nil {
+			result.Removed = append(result.Removed, path)
+		} else if err != nil && !os.IsNotExist(err) {
+			return result, err
+		}
+	}
+	for _, dir := range []string{"Artworks", "WearCache", syncManagedLibraryDirName, "Playlists"} {
+		path := filepath.Join(userDataPath, dir)
+		if err := os.RemoveAll(path); err != nil {
+			return result, err
+		}
+		result.Removed = append(result.Removed, path)
+	}
+	if err := os.MkdirAll(libraryPath, 0o755); err != nil {
+		return result, err
+	}
+	store.Instance = &store.Store{}
+	if err := store.Instance.Save("settings", preserved); err != nil {
+		return result, err
+	}
+	result.RemovedCount = len(result.Removed)
+	return result, nil
+}

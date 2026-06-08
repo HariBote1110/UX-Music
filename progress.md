@@ -1,3 +1,23 @@
+## 2026-06-08 — UX Sync Phase 5.2 音源pullとSSH検証CLI
+
+### 実施内容
+- Windows 側を検証専用ノードとして扱うため、GUI / WebView2 を起動しない `--sync-reset-test-data`、`--sync-pull-one`、`--sync-pull` の CLI 入口を追加した
+- `/sync/library/snapshot` を追加し、同期トークン認証済み端末へアートワーク blob を除いた曲一覧を返すようにした
+- `/sync/assets/{trackId}/file` を追加し、同期トークン認証済み端末へ登録済み曲IDの原本ファイルを返すようにした
+- `PullSyncLibraryAssets(baseURL, limit)` を追加し、保存済み `syncAuthTokens` を使って親から曲一覧と音源を取得し、子側 `SyncLibrary` 配下へ保存して `library.json` へ取り込むようにした
+- 取り込んだ曲には `syncSourceDeviceId` / `syncSourceTrackId` / `syncImportedAt` を付与し、同じ親・同じ曲の再取り込みを避けるようにした
+- `ResetSyncTestData` は `syncDeviceId` / `syncAuthTokens` / `syncKnownPeers` を温存し、検証用ライブラリ・再生回数・解析・同期イベント・アートワーク・キャッシュ・プレイリストを初期化し、`libraryPath` を `SyncLibrary` へ向け直す
+- Wails binding と renderer bridge に `PullSyncLibraryAssets(baseURL, limit)` を追加した
+- `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を音源pull MVP の実装内容へ同期
+- `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-18a`、`src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-15a` に更新
+
+### 検証
+- `go test ./server -run 'TestSyncLibrarySnapshot|TestSyncAssetFile|TestPullSyncLibraryAssets|TestResetSyncTestData' -count=1`
+
+### 判断
+- 圧縮アセット生成は未実装だが、親 Mac mini の既存原本を子 Windows の管理ライブラリへ pull する縦串はローカルテストで通った。
+- 次に Windows バイナリを更新し、`mainpc` から `--sync-reset-test-data` と `--sync-pull-one http://192.168.0.226:8765` の実通信検証を行う。
+
 ## 2026-06-08 — UX Sync Phase 5.1 Windows側発見fallback
 
 ### 実施内容

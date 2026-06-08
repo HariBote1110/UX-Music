@@ -551,6 +551,30 @@ export namespace server {
 	        this.expiresAt = source["expiresAt"];
 	    }
 	}
+	export class SyncPullResult {
+	    remoteDeviceId: string;
+	    remoteDisplayName: string;
+	    downloaded: number;
+	    skipped: number;
+	    failed: number;
+	    importedPaths: string[];
+	    errors?: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new SyncPullResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.remoteDeviceId = source["remoteDeviceId"];
+	        this.remoteDisplayName = source["remoteDisplayName"];
+	        this.downloaded = source["downloaded"];
+	        this.skipped = source["skipped"];
+	        this.failed = source["failed"];
+	        this.importedPaths = source["importedPaths"];
+	        this.errors = source["errors"];
+	    }
+	}
 
 }
 
@@ -586,4 +610,3 @@ export namespace uxsync {
 	}
 
 }
-

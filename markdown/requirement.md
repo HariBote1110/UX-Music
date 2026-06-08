@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-17b)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-18a)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -77,6 +77,13 @@ Windows 側で mDNS discovery が空になる環境でも、ペアリング済�
 - **広告名正規化**: mDNS instance / TXT `displayName` に使う表示名から `.local` suffix を除去し、`YukinoMac-mini.local` ではなく `YukinoMac-mini` として広告する。
 - **既知peer保存**: inbound pairing の confirm 成功時、相手 `deviceId`、表示名、実通信元 IP から `http://{remote-ip}:8765` を既知 peer として `settings.syncKnownPeers` に保存する。
 - **発見fallback**: `DiscoverSyncDevices(timeoutMs)` と `/sync/discover` は mDNS 結果に `syncKnownPeers` をマージし、mDNS browse が不安定でもペアリング済み端末を候補に出す。
+
+### [新規] UX Sync 音源pull MVP / SSH検証CLI
+ペア済み端末から、GUI を経由せず最小の音源転送を検証できる。
+- **ライブラリスナップショット**: `/sync/library/snapshot` は同期トークンを要求し、アートワーク blob を除いた曲一覧を返す。
+- **原本音源取得**: `/sync/assets/{trackId}/file` は同期トークンを要求し、登録済み曲IDに対応するローカル原本ファイルだけを返す。任意パス指定は受け付けない。
+- **子側pull取り込み**: `PullSyncLibraryAssets(baseURL, limit)` は保存済み `syncAuthTokens` を使って親へ接続し、受信音源を子側ユーザーデータ配下の `SyncLibrary` に保存し、`library.json` へ `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込む。
+- **SSH検証CLI**: `--sync-reset-test-data` はペアリング情報を温存して検証用ライブラリ状態を初期化し、`--sync-pull-one` / `--sync-pull` は WebView2 を起動せず SSH から音源pullを実行する。
 
 ### [更新] YouTubeダウンロード
 YouTube URL から楽曲をライブラリに追加する際、字幕を同時取得して同期歌詞（LRC）を生成する機能。
