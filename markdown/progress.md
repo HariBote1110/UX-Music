@@ -2,6 +2,52 @@
 
 ## 2026年6月8日
 
+### UX Sync Phase 1 ペアリングと再生イベントプッシュ基盤
+
+- **要望対応**:
+    - Mac mini を親、mainpc / 持ち運び端末を子とする同期に向けて、6桁コード確認ペアリングと、子側で加算された再生カウントを親へプッシュする基盤を実装した。
+    - たまにしか接続されない端末でも、同じ再生イベントを再送して安全に同期できるようにした。
+- **実装内容**:
+    - `internal/uxsync` を追加し、`PlayEvent` の重複排除、同時再生の別イベント採用、再生回数集計、アウトボックス ACK pruning、6桁ペアリングコード生成を実装。
+    - `/sync/identity`、`/sync/pairing/start`、`/sync/pairing/confirm`、`/sync/library/events` を既存 LAN HTTP サーバーへ追加。
+    - Wear 認証と Sync 認証を `lanAuthMiddleware` で分離。
+    - Sync 認証は `X-UX-Music-Sync-Token` / Bearer / `syncToken` を受け付ける。
+    - `sync-play-events` をイベントログとして保存し、同じ `eventId` の再送で再生回数が二重加算されないようにした。
+    - `Store.Save` がユーザーデータディレクトリを自動作成するようにした。
+- **検証**:
+    - `go test ./internal/uxsync`
+    - `go test ./server -run 'TestSyncPairing|TestSyncAuth|TestLanAuth|TestSyncLibraryEvents' -count=1`
+    - `go test ./internal/store ./server ./internal/uxsync`
+    - `go test ./...`
+    - SSH 接続した `mainpc` から `192.168.0.226:9876` の検証用サーバーへ、ペアリング開始、6桁コード confirm、認証付き `/sync/library/events` push、同一イベント再送を実行。
+    - 実通信検証では `firstAccepted=1`、`secondAccepted=1`、`ackSequence=1` を確認し、保存された `sync-play-events` は `evt_mainpc_0001` 1件のみであることを確認。
+- **仕様同期とバージョン更新**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-13a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-10a` に更新。
+- **残課題**:
+    - `mainpc` から `192.168.1.182` へは到達できなかったが、`192.168.0.226` では到達できた。複数NIC環境で `GetWearServerAddress()` が最適なLANアドレスを選ぶ改善が必要。
+    - mDNS / Bonjour、自動発見、UI、圧縮アセット、WebSocket 再生移行は後続フェーズに残す。
+
+### UX Music Sync 実装計画を文書化
+
+- **要望対応**:
+    - 同一 LAN 上で、6桁コード確認ペアリング、母艦 Mac mini と持ち運び MacBook Air の役割分担、音源・再生履歴・再生状態の同期を実装するための計画をまとめた。
+- **作成内容**:
+    - `markdown/ux-music-sync-plan.md` を追加。
+    - `Library Host` / `Portable Client` / `Playback Target` / `Controller` の役割モデルを定義。
+    - mDNS / Bonjour による発見、6桁コード確認、長期端末鍵保存、認証済み HTTP / WebSocket 通信の流れを整理。
+    - 再生回数を数値同期ではなく `Play Event` のマージで扱う方針を明記。
+    - `Portable Client` の再生カウントを `Library Host` へプッシュするアウトボックス、親側取り込み確認、たまに接続される端末向けの再送設計を追記。
+    - Mac mini と MacBook Air で同じ曲を同時に再生した場合は別イベントとして両方を採用し、同じイベントの再送だけを重複排除する方針を明記。
+    - ロスレス原本は `Library Host` に置き、`Portable Client` は圧縮アセットと選択キャッシュを持つ設計を明記。
+    - 再生移行、キャッシュ方針、競合解決、フェーズ別テスト観点、MVP完了条件を整理。
+- **仕様同期**:
+    - `markdown/roadmap.md`、`markdown/features.md`、`markdown/requirement.md` に UX Sync 計画への参照を追加。
+- **判断**:
+    - 今回はドキュメント作成のみのため、実装コードとテストは追加していない。
+    - 実装に入る際は、フェーズごとに `markdown/Task.md` を更新し、テストを先に追加する。
+
 ### TXT専用歌詞同期の音源候補選択と実ライブラリ検証
 
 - **要望対応**:

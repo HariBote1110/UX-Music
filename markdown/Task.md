@@ -1,3 +1,18 @@
+# Task: UX Sync Phase 1 - ペアリングと再生イベントプッシュ基盤
+
+## 概要
+同一 LAN 上の PC 間同期に向けて、6桁コード確認ペアリング、同期専用トークン認証、子側再生イベントの親側プッシュ、同じイベント再送時の冪等マージを実装する。MacBook Air / mainpc のようにたまにしか接続されない端末を想定し、既存 `playcounts` へ直接加算せず、`sync-play-events` のイベントログを同期の Single Source of Truth とする。
+
+## 完了条件
+- [x] `internal/uxsync` に `PlayEvent`、イベント重複排除、同時再生の別イベント採用、再生回数集計、アウトボックス ACK pruning の純粋ロジックがあること。
+- [x] 6桁のペアリングコード生成と期限付きペアリングセッションのテストがあること。
+- [x] `/sync/pairing/start` と `/sync/pairing/confirm` が6桁コード確認フローを提供し、同期専用トークンを発行できること。
+- [x] `/sync/library/events` が同期専用トークンを要求し、子側再生イベントを `sync-play-events` へ冪等保存できること。
+- [x] Wear 認証と Sync 認証が別 middleware として分離されていること。
+- [x] `mainpc` から SSH 経由で、ペアリング開始、confirm、認証付きイベント push、同一イベント再送の実通信検証を行うこと。
+- [x] `go test ./...` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-13a` に更新されていること。
+
 # Task: TXT専用歌詞同期の音源候補選択と実ライブラリ検証
 
 ## 概要

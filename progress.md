@@ -1,3 +1,38 @@
+## 2026-06-08 — UX Sync Phase 1 ペアリングと再生イベントプッシュ基盤
+
+### 実施内容
+- `internal/uxsync` を追加し、`PlayEvent` の重複排除、同時再生の別イベント採用、再生回数集計、アウトボックス ACK pruning、6桁ペアリングコード生成を実装
+- `/sync/identity`、`/sync/pairing/start`、`/sync/pairing/confirm`、`/sync/library/events` を既存 LAN HTTP サーバーへ追加
+- Wear 認証と Sync 認証を `lanAuthMiddleware` で分離し、Sync は `X-UX-Music-Sync-Token` / Bearer / `syncToken` を受け付けるようにした
+- `sync-play-events` をイベントログとして保存し、同じ `eventId` の再送で再生回数が二重加算されない構造にした
+- `Store.Save` がユーザーデータディレクトリを自動作成するようにし、一時サーバーや初回起動時の保存失敗を防いだ
+- `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を実装内容へ同期
+- `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-13a`、`src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-10a` に更新
+
+### 検証
+- `go test ./internal/uxsync`
+- `go test ./server -run 'TestSyncPairing|TestSyncAuth|TestLanAuth|TestSyncLibraryEvents' -count=1`
+- `go test ./internal/store ./server ./internal/uxsync`
+- `go test ./...`
+- `mainpc` へ SSH 接続し、`192.168.0.226:9876` の検証用サーバーに対してペアリング開始、6桁コード confirm、認証付き `/sync/library/events` push、同一イベント再送を実行
+- 実通信検証では `firstAccepted=1`、`secondAccepted=1`、`ackSequence=1` を確認し、保存された `sync-play-events` は `evt_mainpc_0001` 1件のみであることを確認
+
+### 判断
+- `mainpc` から `192.168.1.182` へは到達できなかったが、同じネットワーク上の `192.168.0.226` では到達できた。既存 `GetWearServerAddress()` は最初に見つかった非 loopback IPv4 を返すため、複数NIC環境では表示アドレス選択の改善が後続課題。
+- mDNS / Bonjour、自動発見、UI、圧縮アセット、WebSocket 再生移行は後続フェーズに残す。
+
+## 2026-06-08 — UX Music Sync 実装計画を文書化
+
+### 実施内容
+- `markdown/ux-music-sync-plan.md` を追加し、同一 LAN 上の UX Music 端末同期の実装計画を整理
+- 6桁コード確認つきペアリング、`Library Host` / `Portable Client` の役割、HTTP / WebSocket の使い分け、再生イベント同期、圧縮音源キャッシュ、再生移行を計画に落とし込んだ
+- `Portable Client` の再生カウントを親へプッシュするアウトボックス、たまに接続される端末向けの再送・取り込み確認、同時再生時のカウント重複排除方針を追記
+- `markdown/roadmap.md`、`markdown/features.md`、`markdown/requirement.md` に UX Sync 計画への参照を追加
+
+### 判断
+- 今回は設計ドキュメント作成のみのため、実装コードとテストは追加していない
+- 実装着手時はフェーズごとに `markdown/Task.md` へ完了条件を追加し、テスト先行で進める
+
 ## 2026-06-08 — TXT専用歌詞同期の音源候補選択と実ライブラリ検証
 
 ### 実施内容
