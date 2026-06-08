@@ -62,7 +62,8 @@ macOSから直接WalkmanなどのMTPデバイスへ音楽を高速転送する�
 ### [新規] UX Sync Phase 4
 設定画面の UX Sync 自動発見一覧から、発見済み端末と6桁コード確認ペアリングできる UI。
 - **ペアリング開始**: peer カードの「接続」から Wails の `StartSyncPairing(baseURL)` を呼び、リモート `/sync/identity` と `/sync/pairing/start` の結果としてリモート端末名、端末ID、一時セッションID、6桁コードを表示する。
-- **ペアリング確定**: 表示した6桁コードを確認して「確定」を押すと `ConfirmSyncPairing(baseURL, sessionID, code)` を呼び、リモート `/sync/pairing/confirm` が返した同期トークンをローカル設定のリモート `deviceId` 宛に保存する。
+- **ペアリング確定**: 表示した6桁コードを確認して「確定」を押すと `ConfirmSyncPairing(baseURL, sessionID, code, expectedRemoteDeviceID)` を呼び、リモート `/sync/pairing/confirm` が返した同期トークンをローカル設定のリモート `deviceId` 宛に保存する。
+- **端末一致確認**: 確定時に再取得したリモート `deviceId` が、開始時に表示した `remoteDeviceId` と一致しない場合はトークンを保存しない。
 - **到達URL選択**: UI は `reachableBaseUrl` を優先し、未取得時は `host` / `hosts` と `port` からペアリング用 URL を構成する。URL が構成できない peer は接続ボタンを無効にする。
 
 ### [更新] YouTubeダウンロード

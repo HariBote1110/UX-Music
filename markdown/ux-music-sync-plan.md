@@ -380,9 +380,10 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 
 実装済み:
 
-- Wails 向け `StartSyncPairing(baseURL)` と `ConfirmSyncPairing(baseURL, sessionID, code)`。
+- Wails 向け `StartSyncPairing(baseURL)` と `ConfirmSyncPairing(baseURL, sessionID, code, expectedRemoteDeviceID)`。
 - `StartSyncPairing` でリモート `/sync/identity` と `/sync/pairing/start` を呼び、ローカル `deviceId`、リモート端末情報、一時セッション、6桁コードを UI に返す処理。
 - `ConfirmSyncPairing` でリモート `/sync/pairing/confirm` を呼び、リモートが発行した同期トークンをローカル設定のリモート `deviceId` 宛に保存する処理。
+- 確定時に再取得したリモート `deviceId` が開始時の `remoteDeviceId` と異なる場合は、トークン保存を拒否する処理。
 - peer カード上の「接続」→6桁コード表示→「確定」→ペアリング済み表示。
 - `reachableBaseUrl` を優先し、未取得時は `host` / `hosts` と `port` からペアリングURLを構成する renderer 側の導線。
 
