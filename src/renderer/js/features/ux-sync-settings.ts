@@ -24,9 +24,24 @@ export interface SyncPairingConfirm {
     tokenSaved: boolean;
 }
 
+export interface SyncPullResult {
+    remoteDeviceId: string;
+    remoteDisplayName: string;
+    downloaded: number;
+    skipped: number;
+    failed: number;
+    importedPaths: string[];
+    errors: string[];
+}
+
 export interface SyncSettingsEntryState {
     visible: boolean;
     canOpen: boolean;
+    status: string;
+}
+
+export interface SyncPullActionState {
+    canPull: boolean;
     status: string;
 }
 
@@ -107,6 +122,36 @@ export function normaliseSyncPairingConfirm(raw: unknown): SyncPairingConfirm | 
     return confirm;
 }
 
+export function normaliseSyncPullResult(raw: unknown): SyncPullResult | null {
+    if (!raw || typeof raw !== 'object') {
+        return null;
+    }
+    const record = raw as Record<string, unknown>;
+    const result: SyncPullResult = {
+        remoteDeviceId: readString(record.remoteDeviceId),
+        remoteDisplayName: readString(record.remoteDisplayName),
+        downloaded: readCount(record.downloaded),
+        skipped: readCount(record.skipped),
+        failed: readCount(record.failed),
+        importedPaths: readStringArray(record.importedPaths),
+        errors: readStringArray(record.errors),
+    };
+    if (!result.remoteDeviceId) {
+        return null;
+    }
+    return result;
+}
+
+export function syncPullActionState(hasPullBinding: boolean, selectedBaseUrl: string): SyncPullActionState {
+    if (!hasPullBinding) {
+        return { canPull: false, status: 'この環境では音源取得を利用できません' };
+    }
+    if (!selectedBaseUrl) {
+        return { canPull: false, status: '同期元端末を選択してください' };
+    }
+    return { canPull: true, status: '待機中' };
+}
+
 function normaliseSyncPeer(raw: unknown): SyncPeer | null {
     if (!raw || typeof raw !== 'object') {
         return null;
@@ -139,6 +184,10 @@ function readString(value: unknown): string {
 
 function readNumber(value: unknown): number | undefined {
     return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function readCount(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
 
 function readStringArray(value: unknown): string[] {
