@@ -91,6 +91,35 @@ func TestSyncAssetFileServesOriginalFileByTrackID(t *testing.T) {
 	}
 }
 
+func TestSyncAssetArtworkServesArtworkByTrackID(t *testing.T) {
+	newTempSyncStore(t)
+	token := ensureSyncAuthTokenForDevice("portable-client")
+	artworksDir := filepath.Join(config.GetUserDataPath(), "Artworks")
+	if err := os.MkdirAll(artworksDir, 0o755); err != nil {
+		t.Fatalf("create artworks dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(artworksDir, "cover.webp"), []byte("cover-bytes"), 0o644); err != nil {
+		t.Fatalf("seed artwork: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{"id": "track-1", "path": filepath.Join(t.TempDir(), "source.flac"), "artwork": map[string]interface{}{"full": "cover.webp"}},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/sync/assets/track-1/artwork", nil)
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	rec := httptest.NewRecorder()
+	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != "cover-bytes" {
+		t.Fatalf("unexpected artwork body %q", got)
+	}
+}
+
 func TestSyncLibraryImportRequiresTokenAndImportsUploadedTrack(t *testing.T) {
 	newTempSyncStore(t)
 	token := ensureSyncAuthTokenForDevice("dev_mac_mini")
