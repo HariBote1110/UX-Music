@@ -262,6 +262,29 @@ def test_repair_forward_drift_uses_skipped_segments_after_large_jump(monkeypatch
     assert rows[2]["confidence"] <= 0.72
 
 
+def test_repair_forward_drift_handles_mid_sized_repeated_chorus_jump():
+    rows = [
+        {"timestamp": 156.4, "source": "match", "confidence": 0.8},
+        {"timestamp": 195.74, "source": "match", "confidence": 0.8},
+        {"timestamp": 203.54, "source": "match", "confidence": 0.8},
+        {"timestamp": 233.52, "source": "match", "confidence": 0.8},
+    ]
+    segments = [
+        {"start": 156.4, "text": "anchor"},
+        {"start": 163.0, "text": "early repeated chorus line"},
+        {"start": 170.92, "text": "next early line"},
+        {"start": 177.22, "text": "next early line two"},
+        {"start": 195.74, "text": "late repeat"},
+    ]
+
+    stage3_align._repair_forward_drift_to_skipped_segments(rows, segments)
+
+    assert rows[1]["timestamp"] == 163.0
+    assert rows[2]["timestamp"] == 170.92
+    assert rows[3]["timestamp"] == 177.22
+    assert rows[3]["confidence"] <= 0.72
+
+
 def test_repair_forward_drift_starts_from_early_segments(monkeypatch):
     monkeypatch.setenv("UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS", "30.0")
     rows = [
