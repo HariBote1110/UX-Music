@@ -44,23 +44,9 @@ type WearServer struct {
 func StartWearServer(ctx context.Context, app *App) *WearServer {
 	ws := &WearServer{app: app}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/wear/ping", wearPingHandler)
-	mux.HandleFunc("/wear/mobile", wearMobileMetaHandler)
-	mux.HandleFunc("/wear/songs", wearSongsHandler)
-	mux.HandleFunc("/wear/lyrics", wearLyricsHandler)
-	mux.HandleFunc("/wear/playlists", wearPlaylistsHandler)
-	mux.HandleFunc("/wear/file", wearFileHandler)
-	mux.HandleFunc("/wear/file/", wearFileHandler)
-	mux.HandleFunc("/wear/artwork/", wearArtworkHandler)
-	mux.HandleFunc("/wear/loudness", ws.wearLoudnessHandler)
-	mux.HandleFunc("/wear/state", ws.wearStateHandler)
-	mux.HandleFunc("/wear/command", ws.wearCommandHandler)
-	registerSyncRoutes(mux, app)
-
 	srv := &http.Server{
 		Addr:    "0.0.0.0:" + wearServerPort,
-		Handler: corsMiddleware(lanAuthMiddleware(mux)),
+		Handler: NewLANHTTPHandler(app),
 	}
 
 	go func() {
@@ -77,6 +63,28 @@ func StartWearServer(ctx context.Context, app *App) *WearServer {
 
 	ws.server = srv
 	return ws
+}
+
+func NewLANHTTPHandler(app *App) http.Handler {
+	ws := &WearServer{app: app}
+	mux := http.NewServeMux()
+	registerWearRoutes(mux, ws)
+	registerSyncRoutes(mux, app)
+	return corsMiddleware(lanAuthMiddleware(mux))
+}
+
+func registerWearRoutes(mux *http.ServeMux, ws *WearServer) {
+	mux.HandleFunc("/wear/ping", wearPingHandler)
+	mux.HandleFunc("/wear/mobile", wearMobileMetaHandler)
+	mux.HandleFunc("/wear/songs", wearSongsHandler)
+	mux.HandleFunc("/wear/lyrics", wearLyricsHandler)
+	mux.HandleFunc("/wear/playlists", wearPlaylistsHandler)
+	mux.HandleFunc("/wear/file", wearFileHandler)
+	mux.HandleFunc("/wear/file/", wearFileHandler)
+	mux.HandleFunc("/wear/artwork/", wearArtworkHandler)
+	mux.HandleFunc("/wear/loudness", ws.wearLoudnessHandler)
+	mux.HandleFunc("/wear/state", ws.wearStateHandler)
+	mux.HandleFunc("/wear/command", ws.wearCommandHandler)
 }
 
 // GetWearServerAddress returns the LAN address of this machine for display in the UI.
