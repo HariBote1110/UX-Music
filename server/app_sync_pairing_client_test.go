@@ -89,7 +89,7 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 	}))
 	defer remote.Close()
 
-	confirmed, err := (&App{}).ConfirmSyncPairing(remote.URL, "sess_remote_1", "123456")
+	confirmed, err := (&App{}).ConfirmSyncPairing(remote.URL, "sess_remote_1", "123456", "dev_remote_pc")
 	if err != nil {
 		t.Fatalf("confirm sync pairing: %v", err)
 	}
@@ -104,5 +104,41 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 	rawTokens, _ := settings[syncAuthTokensSettingsKey].(map[string]interface{})
 	if rawTokens["dev_remote_pc"] != "tok_remote_for_local" {
 		t.Fatalf("expected token to be stored for remote device, got %#v", rawTokens)
+	}
+}
+
+func TestConfirmSyncPairingRejectsChangedRemoteDevice(t *testing.T) {
+	newTempSyncStore(t)
+
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, map[string]interface{}{
+				"deviceId":    "dev_other_pc",
+				"displayName": "Unexpected PC",
+			})
+		case "/sync/pairing/confirm":
+			writeJSON(w, syncPairingConfirmResponse{
+				DeviceID: "dev_local_mac",
+				Token:    "tok_remote_for_local",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	_, err := (&App{}).ConfirmSyncPairing(remote.URL, "sess_remote_1", "123456", "dev_remote_pc")
+	if err == nil {
+		t.Fatal("expected changed remote device to be rejected")
+	}
+
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	rawTokens, _ := settings[syncAuthTokensSettingsKey].(map[string]interface{})
+	if len(rawTokens) != 0 {
+		t.Fatalf("expected no token to be stored, got %#v", rawTokens)
 	}
 }
