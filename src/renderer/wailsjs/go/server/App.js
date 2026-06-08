@@ -298,6 +298,10 @@ export function PullSyncLibraryAssets(arg1, arg2) {
   return window['go']['server']['App']['PullSyncLibraryAssets'](arg1, arg2);
 }
 
+export function PushSyncLibraryAssets(arg1, arg2) {
+  return window['go']['server']['App']['PushSyncLibraryAssets'](arg1, arg2);
+}
+
 export function RenamePlaylist(arg1) {
   return window['go']['server']['App']['RenamePlaylist'](arg1);
 }

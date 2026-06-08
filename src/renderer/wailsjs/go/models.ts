@@ -597,6 +597,30 @@ export namespace server {
 	        this.errors = source["errors"];
 	    }
 	}
+	export class SyncPushResult {
+	    remoteDeviceId: string;
+	    remoteDisplayName: string;
+	    transferred: number;
+	    skipped: number;
+	    failed: number;
+	    importedPaths: string[];
+	    errors?: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new SyncPushResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.remoteDeviceId = source["remoteDeviceId"];
+	        this.remoteDisplayName = source["remoteDisplayName"];
+	        this.transferred = source["transferred"];
+	        this.skipped = source["skipped"];
+	        this.failed = source["failed"];
+	        this.importedPaths = source["importedPaths"];
+	        this.errors = source["errors"];
+	    }
+	}
 
 }
 export namespace uxsync {

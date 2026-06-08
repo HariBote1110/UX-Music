@@ -449,6 +449,9 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - GUI の音源pull完了後に、取得数・既存数・失敗数と保存先パスを表示する。
 - `ListSyncDevices()` が保存済み `syncAuthTokens` と `syncKnownPeers` から、同期トークンを返さずペア済み端末一覧を返す。
 - UX Sync 専用設定画面は discovery 結果とペア済み端末一覧をマージし、画面を閉じた後や mDNS が空の状態でも同期元候補を復元する。
+- `/sync/library/import` が同期トークン必須の multipart 受信口として、ペア済み端末から送られた音源とメタデータを `SyncLibrary` へ取り込む。
+- `PushSyncLibraryAssets(baseURL, limit)` により、ローカルライブラリの音源をペア済み相手端末へ転送できる。
+- UX Sync 専用設定画面の `同期` タブから `1曲転送` / `全曲転送` を実行し、転送数・既存数・失敗数と受信側保存先を確認できる。
 
 未実装:
 

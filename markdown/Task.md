@@ -1,3 +1,18 @@
+# Task: UX Sync Phase 5.4 - 音源push転送
+
+## 概要
+UX Sync の音源同期を「相手から取得」だけでなく「こちらから相手へ転送」できるようにする。ペア済み端末へ認証付き multipart で音源とメタデータを送信し、受信側は `SyncLibrary` へ保存して `library.json` に同期元情報付きで取り込む。
+
+## 完了条件
+- [x] `/sync/library/import` が同期トークンを要求し、アップロードされた音源を `SyncLibrary` へ取り込むテストがあること。
+- [x] `PushSyncLibraryAssets(baseURL, limit)` が保存済み同期トークンでペア済み端末へローカル音源を転送するテストがあること。
+- [x] renderer に転送結果の正規化、操作可否、結果サマリのテストがあること。
+- [x] UX Sync 専用設定画面の `同期` タブに `1曲転送` / `全曲転送` があり、選択中の相手端末へ転送できること。
+- [x] 転送完了後に、転送数・既存数・失敗数と受信側保存先パスを画面へ表示すること。
+- [x] `PushSyncLibraryAssets` binding が無い環境、または相手端末未選択の状態では転送ボタンが無効になること。
+- [x] `npm test -- --run js/features/ux-sync-settings.test.ts`、`npm run typecheck`、`go test ./server -run 'TestSyncLibraryImport|TestPushSyncLibraryAssets' -count=1` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-20a` に更新されていること。
+
 # Task: UX Sync Phase 5.3.1 - ペア済み端末復元と同期操作修正
 
 ## 概要

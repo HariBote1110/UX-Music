@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -40,11 +41,33 @@ type SyncPullResult struct {
 	Errors            []string `json:"errors,omitempty"`
 }
 
+type SyncPushResult struct {
+	RemoteDeviceID    string   `json:"remoteDeviceId"`
+	RemoteDisplayName string   `json:"remoteDisplayName"`
+	Transferred       int      `json:"transferred"`
+	Skipped           int      `json:"skipped"`
+	Failed            int      `json:"failed"`
+	ImportedPaths     []string `json:"importedPaths"`
+	Errors            []string `json:"errors,omitempty"`
+}
+
 type SyncResetResult struct {
 	UserDataPath string   `json:"userDataPath"`
 	Removed      []string `json:"removed"`
 	RemovedCount int      `json:"removedCount"`
 	LibraryPath  string   `json:"libraryPath"`
+}
+
+type syncLibraryImportRequest struct {
+	SourceDeviceID    string                 `json:"sourceDeviceId"`
+	SourceDisplayName string                 `json:"sourceDisplayName"`
+	Track             map[string]interface{} `json:"track"`
+}
+
+type syncLibraryImportResponse struct {
+	Imported bool   `json:"imported"`
+	Skipped  bool   `json:"skipped"`
+	Path     string `json:"path,omitempty"`
 }
 
 func syncLibrarySnapshotHandler(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +140,45 @@ func syncAssetFileHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filePath)
 }
 
+func syncLibraryImportHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		http.Error(w, "invalid multipart payload", http.StatusBadRequest)
+		return
+	}
+	var payload syncLibraryImportRequest
+	if err := json.Unmarshal([]byte(r.FormValue("metadata")), &payload); err != nil {
+		http.Error(w, "invalid metadata", http.StatusBadRequest)
+		return
+	}
+	payload.SourceDeviceID = strings.TrimSpace(payload.SourceDeviceID)
+	payload.SourceDisplayName = normaliseSyncDisplayName(payload.SourceDisplayName)
+	trackID := syncTrackID(payload.Track)
+	if payload.SourceDeviceID == "" || trackID == "" {
+		http.Error(w, "missing source device or track id", http.StatusBadRequest)
+		return
+	}
+	if syncImportedTrackExists(payload.SourceDeviceID, trackID) {
+		writeJSON(w, syncLibraryImportResponse{Skipped: true})
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	path, err := importSyncUploadedTrack(payload, header, file)
+	if err != nil {
+		http.Error(w, "failed to import uploaded track", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, syncLibraryImportResponse{Imported: true, Path: path})
+}
+
 func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, error) {
 	ctx := context.Background()
 	if a != nil && a.ctx != nil {
@@ -164,6 +226,70 @@ func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, 
 		}
 		result.Downloaded++
 		result.ImportedPaths = append(result.ImportedPaths, importedPath)
+	}
+	return result, nil
+}
+
+func (a *App) PushSyncLibraryAssets(baseURL string, limit int) (SyncPushResult, error) {
+	ctx := context.Background()
+	if a != nil && a.ctx != nil {
+		ctx = a.ctx
+	}
+	baseURL, err := normaliseSyncBaseURL(baseURL)
+	if err != nil {
+		return SyncPushResult{}, err
+	}
+	identity, err := fetchSyncIdentity(ctx, baseURL)
+	if err != nil {
+		return SyncPushResult{}, err
+	}
+	token, err := loadSyncAuthTokenForDevice(identity.DeviceID)
+	if err != nil {
+		return SyncPushResult{}, err
+	}
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return SyncPushResult{}, err
+	}
+	source := syncIdentityResponse{DeviceID: ensureSyncDeviceID(), DisplayName: syncDisplayName()}
+	result := SyncPushResult{
+		RemoteDeviceID:    identity.DeviceID,
+		RemoteDisplayName: syncIdentityDisplayName(identity),
+	}
+	for _, item := range library {
+		if limit > 0 && result.Transferred >= limit {
+			break
+		}
+		track, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		trackID := syncTrackID(track)
+		if trackID == "" {
+			result.Failed++
+			result.Errors = append(result.Errors, "track id is missing")
+			continue
+		}
+		if syncTrackString(track, "syncSourceDeviceId") == identity.DeviceID {
+			result.Skipped++
+			continue
+		}
+		response, err := uploadSyncTrackAsset(ctx, baseURL, token, source, track)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", trackID, err))
+			continue
+		}
+		if response.Skipped {
+			result.Skipped++
+			continue
+		}
+		if response.Imported {
+			result.Transferred++
+			if response.Path != "" {
+				result.ImportedPaths = append(result.ImportedPaths, response.Path)
+			}
+		}
 	}
 	return result, nil
 }
@@ -232,6 +358,125 @@ func downloadSyncTrackAsset(ctx context.Context, baseURL, token string, identity
 		return "", err
 	}
 	return destPath, nil
+}
+
+func importSyncUploadedTrack(payload syncLibraryImportRequest, header *multipart.FileHeader, file io.Reader) (string, error) {
+	fileName := "track"
+	if header != nil {
+		fileName = filepath.Base(header.Filename)
+	}
+	identity := syncIdentityResponse{
+		DeviceID:    payload.SourceDeviceID,
+		DisplayName: payload.SourceDisplayName,
+	}
+	destPath := syncManagedTrackDestination(identity, payload.Track, fileName)
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return "", err
+	}
+	tmpPath := destPath + ".tmp"
+	out, err := os.Create(tmpPath)
+	if err != nil {
+		return "", err
+	}
+	_, copyErr := io.Copy(out, file)
+	closeErr := out.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return "", copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return "", closeErr
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", err
+	}
+	if err := upsertSyncImportedTrack(identity, payload.Track, destPath); err != nil {
+		return "", err
+	}
+	return destPath, nil
+}
+
+func uploadSyncTrackAsset(ctx context.Context, baseURL, token string, source syncIdentityResponse, track map[string]interface{}) (syncLibraryImportResponse, error) {
+	filePath := syncTrackString(track, "path")
+	if filePath == "" {
+		return syncLibraryImportResponse{}, fmt.Errorf("track file path is missing")
+	}
+	if !filepath.IsAbs(filePath) {
+		return syncLibraryImportResponse{}, fmt.Errorf("track file path is not absolute")
+	}
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return syncLibraryImportResponse{}, err
+	}
+	if fileInfo.IsDir() {
+		return syncLibraryImportResponse{}, fmt.Errorf("track file path is a directory")
+	}
+
+	reader, writer := io.Pipe()
+	multipartWriter := multipart.NewWriter(writer)
+	go func() {
+		var writeErr error
+		defer func() {
+			if closeErr := multipartWriter.Close(); writeErr == nil {
+				writeErr = closeErr
+			}
+			if writeErr != nil {
+				_ = writer.CloseWithError(writeErr)
+			} else {
+				_ = writer.Close()
+			}
+		}()
+		metadata, err := multipartWriter.CreateFormField("metadata")
+		if err != nil {
+			writeErr = err
+			return
+		}
+		if err := json.NewEncoder(metadata).Encode(syncLibraryImportRequest{
+			SourceDeviceID:    source.DeviceID,
+			SourceDisplayName: syncIdentityDisplayName(source),
+			Track:             sanitiseSyncTrackForTransfer(track),
+		}); err != nil {
+			writeErr = err
+			return
+		}
+		part, err := multipartWriter.CreateFormFile("file", filepath.Base(filePath))
+		if err != nil {
+			writeErr = err
+			return
+		}
+		file, err := os.Open(filePath)
+		if err != nil {
+			writeErr = err
+			return
+		}
+		defer file.Close()
+		if _, err := io.Copy(part, file); err != nil {
+			writeErr = err
+			return
+		}
+	}()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/sync/library/import", reader)
+	if err != nil {
+		return syncLibraryImportResponse{}, err
+	}
+	req.Header.Set("Content-Type", multipartWriter.FormDataContentType())
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	resp, err := syncAssetHTTPClient().Do(req)
+	if err != nil {
+		return syncLibraryImportResponse{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return syncLibraryImportResponse{}, fmt.Errorf("sync library import request failed: %s", resp.Status)
+	}
+	var result syncLibraryImportResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return syncLibraryImportResponse{}, err
+	}
+	return result, nil
 }
 
 func syncAssetHTTPClient() *http.Client {
@@ -348,6 +593,17 @@ func syncTrackString(track map[string]interface{}, key string) string {
 	default:
 		return ""
 	}
+}
+
+func sanitiseSyncTrackForTransfer(track map[string]interface{}) map[string]interface{} {
+	clean := make(map[string]interface{}, len(track))
+	for key, value := range track {
+		if key == "artwork" {
+			continue
+		}
+		clean[key] = value
+	}
+	return clean
 }
 
 func loadSyncAuthTokenForDevice(deviceID string) (string, error) {

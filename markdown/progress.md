@@ -2,6 +2,27 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.4 音源push転送
+
+- **要望対応**:
+    - UX Sync で相手から取得するだけでなく、こちらから相手へ音源を転送できるようにした。
+- **実装内容**:
+    - `/sync/library/import` を追加し、同期トークン認証済みの multipart アップロードを `SyncLibrary` へ取り込めるようにした。
+    - 受信側はアップロードされたメタデータから `syncSourceDeviceId` / `syncSourceTrackId` を保存し、同じ同期元・同じ曲の重複転送を skip するようにした。
+    - `PushSyncLibraryAssets(baseURL, limit)` を追加し、保存済み同期トークンでローカルライブラリの音源をペア済み端末へ転送できるようにした。
+    - UX Sync 専用設定画面の `同期` タブに `1曲転送` / `全曲転送` を追加し、転送結果を転送数・既存数・失敗数と受信側保存先として表示するようにした。
+    - renderer と Wails binding に `PushSyncLibraryAssets` を追加した。
+- **検証**:
+    - `go test ./server -run 'TestSyncLibraryImport|TestPushSyncLibraryAssets' -count=1`
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - `npm run typecheck`
+- **仕様同期**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-20a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-17a` に更新。
+- **判断**:
+    - Mac mini 側から Windows 側へ能動的に音源を送り込めるため、発見・ペアリング後の同期操作が pull / push の両方向に揃った。
+
 ### UX Sync Phase 5.3.1 ペア済み端末復元と同期操作修正
 
 - **要望対応**:

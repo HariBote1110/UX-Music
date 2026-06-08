@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-19b)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-20a)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -86,6 +86,7 @@ Windows 側で mDNS discovery が空になる環境でも、ペアリング済�
 - **SSH検証CLI**: `--sync-reset-test-data` はペアリング情報を温存して検証用ライブラリ状態を初期化し、`--sync-pull-one` / `--sync-pull` は WebView2 を起動せず SSH から音源pullを実行する。
 - **GUI操作**: UX Sync 専用設定画面の `同期` タブから同期元 peer を選択し、`1曲取得` または `全曲取得` を実行できる。実行結果は取得数・既存数・失敗数と保存先パスとして表示する。
 - **ペア済み端末復元**: `ListSyncDevices()` は保存済み `syncAuthTokens` と `syncKnownPeers` から同期トークンを返さずにペア済み端末一覧を返す。UX Sync 専用設定画面は mDNS discovery が空でもこの一覧を端末表示と同期元候補へマージし、画面を閉じた後もペアリング済み状態を維持する。
+- **push転送**: `/sync/library/import` は同期トークンを要求し、ペア済み端末から multipart で届いた音源とメタデータを `SyncLibrary` へ保存する。`PushSyncLibraryAssets(baseURL, limit)` はローカルライブラリの音源を相手端末へ転送し、UX Sync 専用設定画面の `同期` タブから `1曲転送` / `全曲転送` を実行できる。
 
 ### [更新] YouTubeダウンロード
 YouTube URL から楽曲をライブラリに追加する際、字幕を同時取得して同期歌詞（LRC）を生成する機能。

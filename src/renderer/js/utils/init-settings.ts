@@ -10,6 +10,7 @@ import { loadRendererSettings } from '../core/settings-helpers.js';
 import { updateListSpacer } from '../ui/ui.js';
 import {
     formatSyncPullResultSummary,
+    formatSyncPushResultSummary,
     formatSyncPeerEndpoint,
     formatSyncPeerRoles,
     mergeSyncPeersWithDevices,
@@ -17,9 +18,11 @@ import {
     normaliseSyncPairingConfirm,
     normaliseSyncPairingStart,
     normaliseSyncPullResult,
+    normaliseSyncPushResult,
     normaliseSyncPeers,
     syncPeerConnectionLabel,
     syncPullActionState,
+    syncPushActionState,
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
     type SyncDevice,
@@ -240,12 +243,18 @@ function selectedUxSyncTransferBaseUrl(): string {
 function updateUxSyncTransferActions(preserveStatus = false): void {
     const pullOneBtn = document.getElementById('ux-sync-pull-one-btn') as HTMLButtonElement | null;
     const pullAllBtn = document.getElementById('ux-sync-pull-all-btn') as HTMLButtonElement | null;
+    const pushOneBtn = document.getElementById('ux-sync-push-one-btn') as HTMLButtonElement | null;
+    const pushAllBtn = document.getElementById('ux-sync-push-all-btn') as HTMLButtonElement | null;
     const statusEl = document.getElementById('ux-sync-transfer-status');
-    const state = syncPullActionState(Boolean(getWailsApp()?.PullSyncLibraryAssets), selectedUxSyncTransferBaseUrl());
-    if (pullOneBtn) pullOneBtn.disabled = !state.canPull;
-    if (pullAllBtn) pullAllBtn.disabled = !state.canPull;
-    if (statusEl && !preserveStatus && statusEl.textContent !== '取得中...') {
-        statusEl.textContent = state.status;
+    const baseUrl = selectedUxSyncTransferBaseUrl();
+    const pullState = syncPullActionState(Boolean(getWailsApp()?.PullSyncLibraryAssets), baseUrl);
+    const pushState = syncPushActionState(Boolean(getWailsApp()?.PushSyncLibraryAssets), baseUrl);
+    if (pullOneBtn) pullOneBtn.disabled = !pullState.canPull;
+    if (pullAllBtn) pullAllBtn.disabled = !pullState.canPull;
+    if (pushOneBtn) pushOneBtn.disabled = !pushState.canPush;
+    if (pushAllBtn) pushAllBtn.disabled = !pushState.canPush;
+    if (statusEl && !preserveStatus && statusEl.textContent !== '取得中...' && statusEl.textContent !== '転送中...') {
+        statusEl.textContent = pullState.canPull || pushState.canPush ? '待機中' : pullState.status;
     }
 }
 
@@ -253,6 +262,8 @@ async function runUxSyncPull(limit: number): Promise<void> {
     const baseUrl = selectedUxSyncTransferBaseUrl();
     const pullOneBtn = document.getElementById('ux-sync-pull-one-btn') as HTMLButtonElement | null;
     const pullAllBtn = document.getElementById('ux-sync-pull-all-btn') as HTMLButtonElement | null;
+    const pushOneBtn = document.getElementById('ux-sync-push-one-btn') as HTMLButtonElement | null;
+    const pushAllBtn = document.getElementById('ux-sync-push-all-btn') as HTMLButtonElement | null;
     const statusEl = document.getElementById('ux-sync-transfer-status');
     const logEl = document.getElementById('ux-sync-transfer-log');
     const state = syncPullActionState(Boolean(getWailsApp()?.PullSyncLibraryAssets), baseUrl);
@@ -263,6 +274,8 @@ async function runUxSyncPull(limit: number): Promise<void> {
 
     if (pullOneBtn) pullOneBtn.disabled = true;
     if (pullAllBtn) pullAllBtn.disabled = true;
+    if (pushOneBtn) pushOneBtn.disabled = true;
+    if (pushAllBtn) pushAllBtn.disabled = true;
     if (statusEl) statusEl.textContent = '取得中...';
     if (logEl) logEl.textContent = '';
 
@@ -283,6 +296,45 @@ async function runUxSyncPull(limit: number): Promise<void> {
         }
     } catch (e) {
         if (statusEl) statusEl.textContent = `取得に失敗しました: ${(e as Error)?.message || String(e)}`;
+    } finally {
+        updateUxSyncTransferActions(true);
+    }
+}
+
+async function runUxSyncPush(limit: number): Promise<void> {
+    const baseUrl = selectedUxSyncTransferBaseUrl();
+    const pullOneBtn = document.getElementById('ux-sync-pull-one-btn') as HTMLButtonElement | null;
+    const pullAllBtn = document.getElementById('ux-sync-pull-all-btn') as HTMLButtonElement | null;
+    const pushOneBtn = document.getElementById('ux-sync-push-one-btn') as HTMLButtonElement | null;
+    const pushAllBtn = document.getElementById('ux-sync-push-all-btn') as HTMLButtonElement | null;
+    const statusEl = document.getElementById('ux-sync-transfer-status');
+    const logEl = document.getElementById('ux-sync-transfer-log');
+    const state = syncPushActionState(Boolean(getWailsApp()?.PushSyncLibraryAssets), baseUrl);
+    if (!state.canPush) {
+        if (statusEl) statusEl.textContent = state.status;
+        return;
+    }
+
+    if (pullOneBtn) pullOneBtn.disabled = true;
+    if (pullAllBtn) pullAllBtn.disabled = true;
+    if (pushOneBtn) pushOneBtn.disabled = true;
+    if (pushAllBtn) pushAllBtn.disabled = true;
+    if (statusEl) statusEl.textContent = '転送中...';
+    if (logEl) logEl.textContent = '';
+
+    try {
+        const result = normaliseSyncPushResult(await musicApi.pushSyncLibraryAssets(baseUrl, limit));
+        if (!result) {
+            throw new Error('音源転送応答が不正です。');
+        }
+        if (statusEl) statusEl.textContent = formatSyncPushResultSummary(result);
+        if (logEl) {
+            const latestPath = result.importedPaths[0] || '';
+            const errors = result.errors.length > 0 ? `\n${result.errors.join('\n')}` : '';
+            logEl.textContent = latestPath ? `${latestPath}${errors}` : errors;
+        }
+    } catch (e) {
+        if (statusEl) statusEl.textContent = `転送に失敗しました: ${(e as Error)?.message || String(e)}`;
     } finally {
         updateUxSyncTransferActions(true);
     }
@@ -660,6 +712,22 @@ export function initSettings() {
             void runUxSyncPull(0);
         });
         syncPullAllBtn.dataset.listenerAttached = 'true';
+    }
+
+    const syncPushOneBtn = document.getElementById('ux-sync-push-one-btn');
+    if (syncPushOneBtn && !syncPushOneBtn.dataset.listenerAttached) {
+        syncPushOneBtn.addEventListener('click', () => {
+            void runUxSyncPush(1);
+        });
+        syncPushOneBtn.dataset.listenerAttached = 'true';
+    }
+
+    const syncPushAllBtn = document.getElementById('ux-sync-push-all-btn');
+    if (syncPushAllBtn && !syncPushAllBtn.dataset.listenerAttached) {
+        syncPushAllBtn.addEventListener('click', () => {
+            void runUxSyncPush(0);
+        });
+        syncPushAllBtn.dataset.listenerAttached = 'true';
     }
 
     const clearLyricsBtn = document.getElementById('lyrics-sync-cache-clear-btn');

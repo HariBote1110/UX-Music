@@ -43,6 +43,16 @@ export interface SyncPullResult {
     errors: string[];
 }
 
+export interface SyncPushResult {
+    remoteDeviceId: string;
+    remoteDisplayName: string;
+    transferred: number;
+    skipped: number;
+    failed: number;
+    importedPaths: string[];
+    errors: string[];
+}
+
 export interface SyncSettingsEntryState {
     visible: boolean;
     canOpen: boolean;
@@ -51,6 +61,11 @@ export interface SyncSettingsEntryState {
 
 export interface SyncPullActionState {
     canPull: boolean;
+    status: string;
+}
+
+export interface SyncPushActionState {
+    canPush: boolean;
     status: string;
 }
 
@@ -206,6 +221,26 @@ export function normaliseSyncPullResult(raw: unknown): SyncPullResult | null {
     return result;
 }
 
+export function normaliseSyncPushResult(raw: unknown): SyncPushResult | null {
+    if (!raw || typeof raw !== 'object') {
+        return null;
+    }
+    const record = raw as Record<string, unknown>;
+    const result: SyncPushResult = {
+        remoteDeviceId: readString(record.remoteDeviceId),
+        remoteDisplayName: readString(record.remoteDisplayName),
+        transferred: readCount(record.transferred),
+        skipped: readCount(record.skipped),
+        failed: readCount(record.failed),
+        importedPaths: readStringArray(record.importedPaths),
+        errors: readStringArray(record.errors),
+    };
+    if (!result.remoteDeviceId) {
+        return null;
+    }
+    return result;
+}
+
 export function syncPullActionState(hasPullBinding: boolean, selectedBaseUrl: string): SyncPullActionState {
     if (!hasPullBinding) {
         return { canPull: false, status: 'この環境では音源取得を利用できません' };
@@ -216,9 +251,24 @@ export function syncPullActionState(hasPullBinding: boolean, selectedBaseUrl: st
     return { canPull: true, status: '待機中' };
 }
 
+export function syncPushActionState(hasPushBinding: boolean, selectedBaseUrl: string): SyncPushActionState {
+    if (!hasPushBinding) {
+        return { canPush: false, status: 'この環境では音源転送を利用できません' };
+    }
+    if (!selectedBaseUrl) {
+        return { canPush: false, status: '転送先端末を選択してください' };
+    }
+    return { canPush: true, status: '待機中' };
+}
+
 export function formatSyncPullResultSummary(result: SyncPullResult): string {
     const name = result.remoteDisplayName || result.remoteDeviceId;
     return `${name}: 取得 ${result.downloaded}曲 / 既存 ${result.skipped}曲 / 失敗 ${result.failed}曲`;
+}
+
+export function formatSyncPushResultSummary(result: SyncPushResult): string {
+    const name = result.remoteDisplayName || result.remoteDeviceId;
+    return `${name}: 転送 ${result.transferred}曲 / 既存 ${result.skipped}曲 / 失敗 ${result.failed}曲`;
 }
 
 function normaliseSyncPeer(raw: unknown): SyncPeer | null {

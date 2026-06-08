@@ -157,6 +157,8 @@ export function Ping():Promise<string>;
 
 export function PullSyncLibraryAssets(arg1:string,arg2:number):Promise<server.SyncPullResult>;
 
+export function PushSyncLibraryAssets(arg1:string,arg2:number):Promise<server.SyncPushResult>;
+
 export function RenamePlaylist(arg1:Record<string, any>):Promise<void>;
 
 export function RequestInitialLibrary():Promise<void>;
