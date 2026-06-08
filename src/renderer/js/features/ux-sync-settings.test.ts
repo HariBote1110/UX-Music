@@ -4,6 +4,7 @@ import {
     normaliseSyncPairingConfirm,
     normaliseSyncPairingStart,
     normaliseSyncPeers,
+    syncSettingsEntryState,
     syncPeerPairingBaseUrl,
 } from './ux-sync-settings.js';
 
@@ -134,6 +135,24 @@ describe('normaliseSyncPairingConfirm', () => {
             remoteDeviceId: 'dev_remote',
             remoteDisplayName: 'mainPC',
             tokenSaved: true,
+        });
+    });
+});
+
+describe('syncSettingsEntryState', () => {
+    it('shows the dedicated sync settings entry when Wails sync bindings are available', () => {
+        expect(syncSettingsEntryState(true)).toEqual({
+            visible: true,
+            canOpen: true,
+            status: '利用可能',
+        });
+    });
+
+    it('hides the entry outside the Wails sync runtime', () => {
+        expect(syncSettingsEntryState(false)).toEqual({
+            visible: false,
+            canOpen: false,
+            status: 'この環境では利用できません',
         });
     });
 });
