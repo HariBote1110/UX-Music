@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"ux-music-sidecar/internal/config"
@@ -38,7 +40,7 @@ const syncTransferStageSkipped = "skipped"
 const syncTransferStageFailed = "failed"
 
 var syncTransferProgressSink = emitSyncTransferProgress
-var syncTranscodeToMP3 = transcodeSyncTrackToMP3
+var syncOpenMP3Stream = openSyncMP3Stream
 
 type syncLibrarySnapshotResponse struct {
 	DeviceID    string                   `json:"deviceId"`
@@ -550,13 +552,15 @@ func (a *App) uploadSyncTrackAsset(ctx context.Context, baseURL, token string, s
 	if err != nil {
 		return syncLibraryImportResponse{}, err
 	}
-	defer prepared.cleanup()
 
 	reader, writer := io.Pipe()
 	multipartWriter := multipart.NewWriter(writer)
 	go func() {
 		var writeErr error
 		defer func() {
+			if cleanupErr := prepared.cleanup(); writeErr == nil {
+				writeErr = cleanupErr
+			}
 			if closeErr := multipartWriter.Close(); writeErr == nil {
 				writeErr = closeErr
 			}
@@ -584,13 +588,7 @@ func (a *App) uploadSyncTrackAsset(ctx context.Context, baseURL, token string, s
 			writeErr = err
 			return
 		}
-		file, err := os.Open(prepared.path)
-		if err != nil {
-			writeErr = err
-			return
-		}
-		defer file.Close()
-		progress := newSyncProgressReader(file, prepared.size, func(done, totalBytes int64, bytesPerSecond float64) {
+		progress := newSyncProgressReader(prepared.reader, prepared.size, func(done, totalBytes int64, bytesPerSecond float64) {
 			a.emitSyncTransferProgress(SyncTransferProgress{
 				Direction:      syncTransferDirectionPush,
 				Stage:          syncTransferStageUploading,
@@ -633,12 +631,12 @@ func (a *App) uploadSyncTrackAsset(ctx context.Context, baseURL, token string, s
 }
 
 type syncPreparedTransferTrack struct {
-	path         string
+	reader       io.ReadCloser
 	fileName     string
 	size         int64
 	track        map[string]interface{}
 	encodingMode string
-	cleanup      func()
+	cleanup      func() error
 }
 
 func prepareSyncTrackForTransfer(ctx context.Context, track map[string]interface{}, options SyncTransferOptions, notify func(stage string, fileName string)) (syncPreparedTransferTrack, error) {
@@ -653,63 +651,83 @@ func prepareSyncTrackForTransfer(ctx context.Context, track map[string]interface
 	}
 	preparedTrack := sanitiseSyncTrackForTransfer(track)
 	if mode != syncTransferEncodingMP3320 || strings.EqualFold(filepath.Ext(sourcePath), ".mp3") {
+		file, err := os.Open(sourcePath)
+		if err != nil {
+			return syncPreparedTransferTrack{}, err
+		}
+		var cleanupOnce sync.Once
 		return syncPreparedTransferTrack{
-			path:         sourcePath,
+			reader:       file,
 			fileName:     filepath.Base(sourcePath),
 			size:         sourceInfo.Size(),
 			track:        preparedTrack,
 			encodingMode: mode,
-			cleanup:      func() {},
+			cleanup: func() error {
+				var cleanupErr error
+				cleanupOnce.Do(func() {
+					cleanupErr = file.Close()
+				})
+				return cleanupErr
+			},
 		}, nil
 	}
 
-	output, err := os.CreateTemp("", "ux-sync-*.mp3")
-	if err != nil {
-		return syncPreparedTransferTrack{}, err
-	}
-	outputPath := output.Name()
-	if err := output.Close(); err != nil {
-		_ = os.Remove(outputPath)
-		return syncPreparedTransferTrack{}, err
-	}
-	_ = os.Remove(outputPath)
 	fileName := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath)) + ".mp3"
 	if notify != nil {
 		notify(syncTransferStageTranscoding, filepath.Base(sourcePath))
 	}
-	if err := syncTranscodeToMP3(ctx, sourcePath, outputPath); err != nil {
-		_ = os.Remove(outputPath)
-		return syncPreparedTransferTrack{}, err
-	}
-	outputInfo, err := os.Stat(outputPath)
+	reader, wait, err := syncOpenMP3Stream(ctx, sourcePath)
 	if err != nil {
-		_ = os.Remove(outputPath)
 		return syncPreparedTransferTrack{}, err
 	}
 	preparedTrack["fileType"] = ".mp3"
 	preparedTrack["syncTransferEncoding"] = syncTransferEncodingMP3320
 	preparedTrack["audioBitrateKbps"] = 320
+	var cleanupOnce sync.Once
 	return syncPreparedTransferTrack{
-		path:         outputPath,
+		reader:       reader,
 		fileName:     fileName,
-		size:         outputInfo.Size(),
+		size:         -1,
 		track:        preparedTrack,
 		encodingMode: syncTransferEncodingMP3320,
-		cleanup:      func() { _ = os.Remove(outputPath) },
+		cleanup: func() error {
+			var cleanupErr error
+			cleanupOnce.Do(func() {
+				closeErr := reader.Close()
+				waitErr := wait()
+				if waitErr != nil {
+					cleanupErr = waitErr
+					return
+				}
+				cleanupErr = closeErr
+			})
+			return cleanupErr
+		},
 	}, nil
 }
 
-func transcodeSyncTrackToMP3(ctx context.Context, inputPath, outputPath string) error {
+func openSyncMP3Stream(ctx context.Context, inputPath string) (io.ReadCloser, func() error, error) {
 	ffmpegPath, err := locateFfmpeg()
 	if err != nil {
-		return fmt.Errorf("ffmpeg not found: %w", err)
+		return nil, nil, fmt.Errorf("ffmpeg not found: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, ffmpegPath, "-y", "-i", inputPath, "-vn", "-codec:a", "libmp3lame", "-b:a", "320k", outputPath)
-	output, err := cmd.CombinedOutput()
+	cmd := exec.CommandContext(ctx, ffmpegPath, "-i", inputPath, "-vn", "-codec:a", "libmp3lame", "-b:a", "320k", "-f", "mp3", "pipe:1")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("ffmpeg mp3 encode failed: %w: %s", err, strings.TrimSpace(string(output)))
+		return nil, nil, err
 	}
-	return nil
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
+	}
+	wait := func() error {
+		if err := cmd.Wait(); err != nil {
+			return fmt.Errorf("ffmpeg mp3 stream failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+		}
+		return nil
+	}
+	return stdout, wait, nil
 }
 
 type syncProgressReader struct {

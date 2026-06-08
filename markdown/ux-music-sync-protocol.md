@@ -54,7 +54,7 @@ server は identity 応答に `negotiation` を含める。
 - `library.asset-file.v1`: 曲ID指定の音源取得
 - `library.import.v1`: multipart 音源push取り込み
 - `library.transfer-progress.v1`: Wails UI / local client 向け転送進捗イベント
-- `library.transcode.mp3-320.v1`: 送信前に MP3 320kbps へ変換して転送するオプション
+- `library.transcode.mp3-320.v1`: MP3 320kbps へ変換しながら転送するオプション
 
 ## 公開エンドポイント
 | Method | Path | Auth | Capability |
@@ -72,7 +72,7 @@ server は identity 応答に `negotiation` を含める。
 push 転送のローカル呼び出しは `encodingMode` を指定できる。
 
 - `original`: 原本ファイルをそのまま送る。
-- `mp3_320`: MP3以外の音源を送信前に MP3 320kbps へ変換し、`syncTransferEncoding: "mp3_320"` と `audioBitrateKbps: 320` を metadata に付けて送る。
+- `mp3_320`: MP3以外の音源を MP3 320kbps へストリーミング変換しながら送信し、`syncTransferEncoding: "mp3_320"` と `audioBitrateKbps: 320` を metadata に付けて送る。
 
 `mp3_320` は保存容量と転送時間を優先する portable client 向けのモードである。変換失敗時はその曲を failed として扱い、勝手に原本へフォールバックしない。
 

@@ -457,7 +457,7 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - `/sync/schema` が endpoint / message / capability / 拡張規則を含む機械可読スキーマを返す。
 - mDNS TXT に `schemaVersion` と `capabilities` を追加し、発見段階でも軽量に機能差を確認できるようにする。
 - `ux-sync-transfer-progress` event により、pull / push 中のファイル名、件数、転送量、転送速度、変換モードを UI に表示できる。
-- `PushSyncLibraryAssetsWithOptions(baseURL, limit, { encodingMode: "mp3_320" })` により、FLAC などのロスレス音源を送信前に MP3 320kbps へ変換してから転送できる。
+- `PushSyncLibraryAssetsWithOptions(baseURL, limit, { encodingMode: "mp3_320" })` により、FLAC などのロスレス音源を MP3 320kbps へ変換しながら転送できる。
 - UX Sync 専用設定画面の `同期` タブから、原本転送または MP3 320kbps 転送を選択できる。
 - 詳細仕様は `markdown/ux-music-sync-protocol.md` を参照する。
 

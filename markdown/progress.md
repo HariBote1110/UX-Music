@@ -2,6 +2,20 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.6.1 MP3転送のストリーミング化
+
+- **要望対応**:
+    - MP3 320kbps 転送が「1曲丸ごと変換してから送る」ため遅く感じる問題に対応した。
+- **実装内容**:
+    - MP3 320kbps 転送時に一時MP3ファイルを作り切る処理を廃止し、`ffmpeg -f mp3 pipe:1` の stdout を multipart upload の file part へ直接流すようにした。
+    - `prepareSyncTrackForTransfer` を転送用 `io.ReadCloser` を返す構造に変更し、原本転送はローカルファイル reader、MP3転送は ffmpeg stdout reader を使うようにした。
+    - ffmpeg の終了待ちと reader close を一度だけ行う cleanup を追加し、変換失敗は該当曲の failed として扱うようにした。
+- **検証**:
+    - `go test ./server -run 'TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320|TestPushSyncLibraryAssetsWithOptionsStreamsMP3EncodingIntoUpload|TestPushSyncLibraryAssetsEmitsTransferProgressWithFileAndSpeed' -count=1`
+- **仕様同期**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-22b` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-19b` に更新。
+
 ### UX Sync Phase 5.6 転送進捗表示とMP3 320kbps転送
 
 - **要望対応**:

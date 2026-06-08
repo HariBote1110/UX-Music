@@ -31,7 +31,7 @@ export const musicApi = {
   // --- One-way (Send) ---
   requestAppInfo: () => {
     if (getWailsApp()) {
-      return Promise.resolve({ version: '0.1.9-Beta-22a', platform: 'darwin' });
+      return Promise.resolve({ version: '0.1.9-Beta-22b', platform: 'darwin' });
     }
     return api && api.send(CHANNELS.SEND.REQUEST_APP_INFO);
   },

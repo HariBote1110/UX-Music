@@ -5,6 +5,7 @@ UX Sync の音源転送中に、現在処理しているファイル名、件数
 
 ## 完了条件
 - [x] `PushSyncLibraryAssetsWithOptions(baseURL, limit, { encodingMode: "mp3_320" })` が MP3 320kbps 変換後のファイルと metadata を送るテストがあること。
+- [x] MP3 320kbps 転送は一時ファイル生成完了を待たず、エンコード出力を multipart upload へストリーミングするテストがあること。
 - [x] push 転送中に `ux-sync-transfer-progress` event としてファイル名、件数、byte数、速度を通知するテストがあること。
 - [x] renderer に転送進捗 payload の正規化と、速度・変換モードを含む表示文言のテストがあること。
 - [x] UX Sync 専用設定画面の `同期` タブから、原本転送と MP3 320kbps 転送を選べること。
