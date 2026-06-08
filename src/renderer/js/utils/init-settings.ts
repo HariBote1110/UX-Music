@@ -8,6 +8,7 @@ import { initPlaybackSettings } from '../features/playback-manager.js';
 import { musicApi, getWailsApp } from '../core/bridge.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
 import { updateListSpacer } from '../ui/ui.js';
+import { formatSyncPeerEndpoint, formatSyncPeerRoles, normaliseSyncPeers, type SyncPeer } from '../features/ux-sync-settings.js';
 const electronAPI = window.electronAPI;
 
 /**
@@ -94,6 +95,71 @@ async function refreshWearPairingQR() {
     }
 }
 
+async function refreshUxSyncPeers() {
+    const group = document.getElementById('ux-sync-discovery-group');
+    const btn = document.getElementById('ux-sync-discover-btn') as HTMLButtonElement | null;
+    const statusEl = document.getElementById('ux-sync-discovery-status');
+    const listEl = document.getElementById('ux-sync-peer-list');
+    if (!group || !btn || !statusEl || !listEl) return;
+
+    if (!getWailsApp()?.DiscoverSyncDevices) {
+        group.classList.add('hidden');
+        return;
+    }
+
+    group.classList.remove('hidden');
+    btn.disabled = true;
+    btn.textContent = '探索中...';
+    statusEl.textContent = 'LAN内のUX Musicを探索しています。';
+    listEl.innerHTML = '';
+
+    try {
+        const peers = normaliseSyncPeers(await musicApi.discoverSyncDevices(2500));
+        renderUxSyncPeers(listEl, peers);
+        statusEl.textContent = peers.length > 0
+            ? `${peers.length}台の同期端末を検出しました。`
+            : '同期端末は見つかりませんでした。';
+    } catch (e) {
+        const msg = (e as Error)?.message || String(e);
+        statusEl.textContent = `探索に失敗しました: ${msg}`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '同期端末を探す';
+    }
+}
+
+function renderUxSyncPeers(listEl: HTMLElement, peers: SyncPeer[]) {
+    listEl.innerHTML = '';
+    for (const peer of peers) {
+        const item = document.createElement('div');
+        item.className = 'ux-sync-peer-item';
+
+        const name = document.createElement('div');
+        name.className = 'ux-sync-peer-name';
+        const title = document.createElement('span');
+        title.textContent = peer.displayName;
+        const stateLabel = document.createElement('span');
+        stateLabel.className = 'ux-sync-peer-state';
+        stateLabel.textContent = peer.reachableBaseUrl ? '接続候補' : '未確認';
+        name.append(title, stateLabel);
+
+        const endpoint = document.createElement('div');
+        endpoint.className = 'ux-sync-peer-meta';
+        endpoint.textContent = formatSyncPeerEndpoint(peer);
+
+        const roles = document.createElement('div');
+        roles.className = 'ux-sync-peer-meta';
+        roles.textContent = formatSyncPeerRoles(peer);
+
+        const hosts = document.createElement('div');
+        hosts.className = 'ux-sync-peer-meta';
+        hosts.textContent = peer.hosts.length > 0 ? peer.hosts.join(' / ') : '候補アドレスなし';
+
+        item.append(name, endpoint, roles, hosts);
+        listEl.appendChild(item);
+    }
+}
+
 export function initSettings() {
     // Initialise playback settings from storage
     initPlaybackSettings();
@@ -168,6 +234,7 @@ export function initSettings() {
 
         elements.settingsModalOverlay.classList.remove('hidden');
         void refreshWearPairingQR();
+        void refreshUxSyncPeers();
         void refreshLyricsSyncCacheInfo();
 
         const settingsTitle = document.getElementById('settings-title');
@@ -274,6 +341,14 @@ export function initSettings() {
             buildFlacBtn.textContent = '構築中...';
             musicApi.buildFLACIndexes();
         });
+    }
+
+    const syncDiscoverBtn = document.getElementById('ux-sync-discover-btn');
+    if (syncDiscoverBtn && !syncDiscoverBtn.dataset.listenerAttached) {
+        syncDiscoverBtn.addEventListener('click', () => {
+            void refreshUxSyncPeers();
+        });
+        syncDiscoverBtn.dataset.listenerAttached = 'true';
     }
 
     const clearLyricsBtn = document.getElementById('lyrics-sync-cache-clear-btn');

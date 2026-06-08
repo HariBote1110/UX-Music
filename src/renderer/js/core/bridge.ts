@@ -180,6 +180,13 @@ export const musicApi = {
     }
     return api && api.send('build-flac-indexes');
   },
+  discoverSyncDevices: (timeoutMs = 2500) => {
+    const app = getWailsApp();
+    if (app?.DiscoverSyncDevices) {
+      return app.DiscoverSyncDevices(timeoutMs);
+    }
+    return Promise.resolve([]);
+  },
 
   // --- Event Listeners (On) ---
   onAppInfoResponse: (callback: (info: { version?: string; platform?: string }) => void) =>

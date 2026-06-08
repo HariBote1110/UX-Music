@@ -538,6 +538,40 @@
     margin-top: 8px;
 }
 
+.ux-sync-peer-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.ux-sync-peer-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--bg-light);
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.ux-sync-peer-name {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-weight: 700;
+}
+
+.ux-sync-peer-state {
+    flex: 0 0 auto;
+    color: var(--highlight-blue);
+    font-size: 12px;
+}
+
+.ux-sync-peer-meta {
+    margin-top: 5px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
 #modal,
 #lyrics-translation-modal,
 #settings-modal {
@@ -1058,6 +1092,11 @@
 .settings-button:hover {
     background-color: var(--bg-light);
     color: var(--text-primary);
+}
+
+.settings-button:disabled {
+    cursor: progress;
+    opacity: 0.65;
 }
 
 #devices-modal {
@@ -1966,4 +2005,3 @@
     font-size: 1rem;
     padding-top: 20px;
 }
-
