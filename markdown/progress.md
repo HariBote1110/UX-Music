@@ -2,6 +2,23 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.9 空き容量安全停止
+
+- **要望対応**:
+    - システムに数GBの空きが無ければ同期を停止するオプションを追加した。
+- **実装内容**:
+    - `settings.syncMinFreeSpaceGB` を追加し、`0` または未設定なら無効、正の値なら GB 単位の最低空き容量として扱う。
+    - `AutoSyncPairedDevices()` は同期開始前に `config.GetUserDataPath()` のあるボリュームの空き容量を確認し、閾値未満なら peer へ接続せず `paused` 状態で停止する。
+    - `PullSyncLibraryAssets()` と `/sync/library/import` も同じ空き容量安全停止を通し、受信側ストレージを増やす同期操作を止められるようにした。
+    - UX Sync 専用設定画面の `保存` タブを有効化し、最低空き容量を GB 単位で保存できる UI を追加した。
+- **検証**:
+    - `go test ./server -run 'TestAutoSyncPairedDevicesStopsWhenFreeSpaceIsBelowSafetyLimit|TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer' -count=1`
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+- **仕様同期**:
+    - `library.storage-safety.v1` capability を追加。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-25a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-22a` に更新。
+
 ### UX Sync Phase 5.8 ジャケットの自動補完同期
 
 - **要望対応**:

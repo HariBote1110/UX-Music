@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/internal/uxsync"
 
@@ -16,18 +17,25 @@ import (
 )
 
 type SyncAutoResult struct {
-	CheckedDevices   int      `json:"checkedDevices"`
-	SyncedDevices    int      `json:"syncedDevices"`
-	FailedDevices    int      `json:"failedDevices"`
-	PushedPlayEvents int      `json:"pushedPlayEvents"`
-	SyncedArtwork    int      `json:"syncedArtwork"`
-	Errors           []string `json:"errors,omitempty"`
+	CheckedDevices    int      `json:"checkedDevices"`
+	SyncedDevices     int      `json:"syncedDevices"`
+	FailedDevices     int      `json:"failedDevices"`
+	PushedPlayEvents  int      `json:"pushedPlayEvents"`
+	SyncedArtwork     int      `json:"syncedArtwork"`
+	Paused            bool     `json:"paused"`
+	PauseReason       string   `json:"pauseReason,omitempty"`
+	FreeSpaceBytes    uint64   `json:"freeSpaceBytes,omitempty"`
+	MinFreeSpaceBytes uint64   `json:"minFreeSpaceBytes,omitempty"`
+	Errors            []string `json:"errors,omitempty"`
 }
 
 func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 	ctx := context.Background()
 	if a != nil && a.ctx != nil {
 		ctx = a.ctx
+	}
+	if result, ok, err := syncFreeSpacePauseResult(); err != nil || ok {
+		return result, err
 	}
 	devices, err := a.ListSyncDevices()
 	if err != nil {
@@ -94,6 +102,76 @@ func (a *App) startSyncAutoLoop() {
 			timer.Reset(60 * time.Second)
 		}
 	}()
+}
+
+func syncFreeSpacePauseResult() (SyncAutoResult, bool, error) {
+	minBytes := syncMinFreeSpaceBytes()
+	if minBytes == 0 {
+		return SyncAutoResult{}, false, nil
+	}
+	freeBytes, err := syncAvailableFreeSpaceBytes(config.GetUserDataPath())
+	if err != nil {
+		return SyncAutoResult{}, false, err
+	}
+	if freeBytes >= minBytes {
+		return SyncAutoResult{}, false, nil
+	}
+	return SyncAutoResult{
+		Paused:            true,
+		PauseReason:       "free-space-below-limit",
+		FreeSpaceBytes:    freeBytes,
+		MinFreeSpaceBytes: minBytes,
+		Errors:            []string{"sync paused because free space is below the configured safety limit"},
+	}, true, nil
+}
+
+func ensureSyncFreeSpaceAvailable() error {
+	minBytes := syncMinFreeSpaceBytes()
+	if minBytes == 0 {
+		return nil
+	}
+	freeBytes, err := syncAvailableFreeSpaceBytes(config.GetUserDataPath())
+	if err != nil {
+		return err
+	}
+	if freeBytes < minBytes {
+		return fmt.Errorf("sync paused because free space is below safety limit: free=%d min=%d", freeBytes, minBytes)
+	}
+	return nil
+}
+
+func syncMinFreeSpaceBytes() uint64 {
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		return 0
+	}
+	gb := syncSettingFloat64(settings[syncMinFreeSpaceGBSettingsKey])
+	if gb <= 0 {
+		return 0
+	}
+	return uint64(gb * 1024 * 1024 * 1024)
+}
+
+func syncSettingFloat64(raw interface{}) float64 {
+	switch value := raw.(type) {
+	case float64:
+		return value
+	case float32:
+		return float64(value)
+	case int:
+		return float64(value)
+	case int64:
+		return float64(value)
+	case json.Number:
+		n, _ := value.Float64()
+		return n
+	case string:
+		var parsed float64
+		if _, err := fmt.Sscanf(strings.TrimSpace(value), "%f", &parsed); err == nil {
+			return parsed
+		}
+	}
+	return 0
 }
 
 func recordLocalSyncPlayEvent(song map[string]interface{}, countedAt time.Time) error {

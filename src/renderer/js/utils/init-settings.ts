@@ -12,10 +12,12 @@ import {
     formatSyncPullResultSummary,
     formatSyncPushResultSummary,
     formatSyncPeerEndpoint,
+    formatSyncFreeSpaceSafetyStatus,
     formatSyncPeerRoles,
     formatSyncTransferProgressSummary,
     mergeSyncPeersWithDevices,
     normaliseSyncDevices,
+    normaliseSyncMinFreeSpaceGB,
     normaliseSyncPairingConfirm,
     normaliseSyncPairingStart,
     normaliseSyncPullResult,
@@ -189,6 +191,7 @@ function openUxSyncSettings() {
     overlay.classList.remove('hidden');
     switchUxSyncSettingsTab('devices');
     void refreshUxSyncPeers();
+    void refreshUxSyncStorageSettings();
 }
 
 function closeUxSyncSettings() {
@@ -206,6 +209,37 @@ function switchUxSyncSettingsTab(tabName: string): void {
     });
     if (tabName === 'sync') {
         refreshUxSyncTransferPeers();
+    }
+    if (tabName === 'storage') {
+        void refreshUxSyncStorageSettings();
+    }
+}
+
+async function refreshUxSyncStorageSettings(): Promise<void> {
+    const input = document.getElementById('ux-sync-min-free-space-gb-input') as HTMLInputElement | null;
+    const status = document.getElementById('ux-sync-storage-status');
+    if (!input || !status) return;
+    try {
+        const settings = await loadRendererSettings();
+        const value = normaliseSyncMinFreeSpaceGB((settings as { syncMinFreeSpaceGB?: unknown }).syncMinFreeSpaceGB ?? 5);
+        input.value = String(value);
+        status.textContent = formatSyncFreeSpaceSafetyStatus(value);
+    } catch (e) {
+        status.textContent = `設定の読み込みに失敗しました: ${(e as Error)?.message || String(e)}`;
+    }
+}
+
+async function saveUxSyncStorageSettings(): Promise<void> {
+    const input = document.getElementById('ux-sync-min-free-space-gb-input') as HTMLInputElement | null;
+    const status = document.getElementById('ux-sync-storage-status');
+    if (!input || !status) return;
+    const value = normaliseSyncMinFreeSpaceGB(input.value);
+    input.value = String(value);
+    try {
+        await musicApi.saveSettings({ syncMinFreeSpaceGB: value });
+        status.textContent = formatSyncFreeSpaceSafetyStatus(value);
+    } catch (e) {
+        status.textContent = `設定の保存に失敗しました: ${(e as Error)?.message || String(e)}`;
     }
 }
 
@@ -789,6 +823,25 @@ export function initSettings() {
             void runUxSyncPush(0);
         });
         syncPushAllBtn.dataset.listenerAttached = 'true';
+    }
+
+    const syncMinFreeSpaceInput = document.getElementById('ux-sync-min-free-space-gb-input') as HTMLInputElement | null;
+    if (syncMinFreeSpaceInput && !syncMinFreeSpaceInput.dataset.listenerAttached) {
+        syncMinFreeSpaceInput.addEventListener('input', () => {
+            const status = document.getElementById('ux-sync-storage-status');
+            if (status) {
+                status.textContent = formatSyncFreeSpaceSafetyStatus(normaliseSyncMinFreeSpaceGB(syncMinFreeSpaceInput.value));
+            }
+        });
+        syncMinFreeSpaceInput.dataset.listenerAttached = 'true';
+    }
+
+    const syncStorageSaveBtn = document.getElementById('ux-sync-storage-save-btn');
+    if (syncStorageSaveBtn && !syncStorageSaveBtn.dataset.listenerAttached) {
+        syncStorageSaveBtn.addEventListener('click', () => {
+            void saveUxSyncStorageSettings();
+        });
+        syncStorageSaveBtn.dataset.listenerAttached = 'true';
     }
 
     const clearLyricsBtn = document.getElementById('lyrics-sync-cache-clear-btn');

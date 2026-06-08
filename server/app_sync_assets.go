@@ -205,6 +205,10 @@ func syncLibraryImportHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if err := ensureSyncFreeSpaceAvailable(); err != nil {
+		http.Error(w, err.Error(), http.StatusInsufficientStorage)
+		return
+	}
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
 		http.Error(w, "invalid multipart payload", http.StatusBadRequest)
 		return
@@ -250,6 +254,9 @@ func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, 
 	ctx := context.Background()
 	if a != nil && a.ctx != nil {
 		ctx = a.ctx
+	}
+	if err := ensureSyncFreeSpaceAvailable(); err != nil {
+		return SyncPullResult{}, err
 	}
 	baseURL, err := normaliseSyncBaseURL(baseURL)
 	if err != nil {

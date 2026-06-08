@@ -24,6 +24,7 @@ var syncProtocolCapabilities = []string{
 	"library.asset-file.v1",
 	"library.artwork.v1",
 	"library.import.v1",
+	"library.storage-safety.v1",
 	"library.transfer-progress.v1",
 	"library.transcode.mp3-320.v1",
 	"library.auto-sync.v1",
@@ -110,8 +111,8 @@ func buildSyncProtocolSchemaDocument() syncProtocolSchemaDocument {
 				Optional: []string{"trackId", "title", "fileName", "bytesDone", "bytesTotal", "bytesPerSecond", "updatedAt", "extensions"},
 			},
 			"SyncAutoResult": {
-				Required: []string{"checkedDevices", "syncedDevices", "failedDevices", "pushedPlayEvents", "syncedArtwork"},
-				Optional: []string{"errors", "extensions"},
+				Required: []string{"checkedDevices", "syncedDevices", "failedDevices", "pushedPlayEvents", "syncedArtwork", "paused"},
+				Optional: []string{"pauseReason", "freeSpaceBytes", "minFreeSpaceBytes", "errors", "extensions"},
 			},
 			"SyncPlayEvents": {
 				Required: []string{"deviceId", "playEvents"},

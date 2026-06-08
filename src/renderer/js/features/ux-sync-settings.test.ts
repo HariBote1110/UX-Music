@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
     formatSyncPeerEndpoint,
+    formatSyncFreeSpaceSafetyStatus,
     formatSyncPullResultSummary,
     formatSyncPushResultSummary,
     formatSyncTransferProgressSummary,
     mergeSyncPeersWithDevices,
     normaliseSyncDevices,
+    normaliseSyncMinFreeSpaceGB,
     normaliseSyncPairingConfirm,
     normaliseSyncPullResult,
     normaliseSyncTransferProgress,
@@ -18,6 +20,25 @@ import {
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
 } from './ux-sync-settings.js';
+
+describe('normaliseSyncMinFreeSpaceGB', () => {
+    it('keeps a positive GB threshold with one decimal place', () => {
+        expect(normaliseSyncMinFreeSpaceGB('5.04')).toBe(5);
+        expect(normaliseSyncMinFreeSpaceGB(5.06)).toBe(5.1);
+    });
+
+    it('treats empty or negative values as disabled', () => {
+        expect(normaliseSyncMinFreeSpaceGB('')).toBe(0);
+        expect(normaliseSyncMinFreeSpaceGB(-1)).toBe(0);
+    });
+});
+
+describe('formatSyncFreeSpaceSafetyStatus', () => {
+    it('explains whether the free space safety stop is enabled', () => {
+        expect(formatSyncFreeSpaceSafetyStatus(5)).toBe('空き容量が 5 GB 未満の場合は同期を停止します。');
+        expect(formatSyncFreeSpaceSafetyStatus(0)).toBe('空き容量による同期停止は無効です。');
+    });
+});
 
 describe('normaliseSyncPeers', () => {
     it('keeps reachable URL and all host candidates for discovered peers', () => {

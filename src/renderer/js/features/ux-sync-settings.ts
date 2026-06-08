@@ -84,6 +84,21 @@ export interface SyncPushActionState {
     status: string;
 }
 
+export function normaliseSyncMinFreeSpaceGB(raw: unknown): number {
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(value) || value <= 0) {
+        return 0;
+    }
+    return Math.min(1024, Math.round(value * 10) / 10);
+}
+
+export function formatSyncFreeSpaceSafetyStatus(minFreeSpaceGB: number): string {
+    const value = normaliseSyncMinFreeSpaceGB(minFreeSpaceGB);
+    return value > 0
+        ? `空き容量が ${value} GB 未満の場合は同期を停止します。`
+        : '空き容量による同期停止は無効です。';
+}
+
 export function syncSettingsEntryState(hasSyncBindings: boolean): SyncSettingsEntryState {
     return hasSyncBindings
         ? { visible: true, canOpen: true, status: '利用可能' }

@@ -26,6 +26,7 @@ const syncPlayEventsStoreName = "sync-play-events"
 const syncAuthTokensSettingsKey = "syncAuthTokens"
 const syncDeviceIDSettingsKey = "syncDeviceId"
 const syncKnownPeersSettingsKey = "syncKnownPeers"
+const syncMinFreeSpaceGBSettingsKey = "syncMinFreeSpaceGB"
 const syncPairingTTL = 2 * time.Minute
 
 var syncPairingSessions = struct {

@@ -1,3 +1,14 @@
+# Task: UX Sync Phase 5.9 - 空き容量安全停止
+
+## 概要
+UX Sync の自動同期や音源取得・受信で、保存先ボリュームの空き容量がユーザー指定の最低容量を下回る場合に同期を停止する。母艦と持ち運び端末で容量差が大きい前提のため、容量事故を防ぐ安全弁として扱う。
+
+## 完了条件
+- [x] `settings.syncMinFreeSpaceGB` が正の値の場合、`AutoSyncPairedDevices()` が peer 接続前に空き容量を確認し、閾値未満なら `paused` で停止するテストがあること。
+- [x] `PullSyncLibraryAssets()` と `/sync/library/import` が同じ空き容量安全停止を通ること。
+- [x] UX Sync 専用設定画面の `保存` タブから最低空き容量を GB 単位で保存できること。
+- [x] protocol capability に `library.storage-safety.v1` が追加されていること。
+
 # Task: UX Sync Phase 5.8 - ジャケットの自動補完同期
 
 ## 概要

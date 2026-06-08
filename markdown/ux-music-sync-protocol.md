@@ -54,6 +54,7 @@ server は identity 応答に `negotiation` を含める。
 - `library.asset-file.v1`: 曲ID指定の音源取得
 - `library.artwork.v1`: 曲ID指定のジャケット画像取得
 - `library.import.v1`: multipart 音源push取り込み
+- `library.storage-safety.v1`: 保存先空き容量が設定閾値未満の場合に同期を停止する
 - `library.transfer-progress.v1`: Wails UI / local client 向け転送進捗イベント
 - `library.transcode.mp3-320.v1`: MP3 320kbps へ変換しながら転送するオプション
 - `library.auto-sync.v1`: 接続可能なペア済み端末へ軽量な同期ジョブを定期実行する
@@ -110,6 +111,13 @@ UI には `ux-sync-transfer-progress` event として次の情報を流す。
 
 ## 自動同期
 `library.auto-sync.v1` は、ペア済み端末の既知URLへ接続できた時に、手動ボタンなしで軽量同期を試す capability である。現時点ではローカル再生回数の `PlayEvent` を `/sync/library/events` へpushし、既に同期済みの曲で欠けているジャケットを `/sync/assets/{trackId}/artwork` から補完する。音源本体の自動転送は容量ポリシーとアセット単位の同期設定を追加してから扱う。
+
+## 空き容量安全停止
+`library.storage-safety.v1` は、受信側がローカル保存先ボリュームの空き容量を確認し、`settings.syncMinFreeSpaceGB` を下回る場合に同期を停止できることを示す。`syncMinFreeSpaceGB` が `0` または未設定の場合は無効である。
+
+- `AutoSyncPairedDevices()` は peer 接続前に確認し、停止時は `SyncAutoResult.paused=true` と `pauseReason="free-space-below-limit"` を返す。
+- `PullSyncLibraryAssets()` と `/sync/library/import` は、音源やジャケットの受信前に同じ判定を行う。
+- `freeSpaceBytes` と `minFreeSpaceBytes` は診断用の数値であり、古い client は未知フィールドとして無視してよい。
 
 ## mDNS TXT
 mDNS TXT は軽量な事前情報として扱い、最終判断は `/sync/identity` で行う。

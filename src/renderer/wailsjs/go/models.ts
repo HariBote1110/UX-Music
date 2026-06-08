@@ -517,6 +517,10 @@ export namespace server {
 	    failedDevices: number;
 	    pushedPlayEvents: number;
 	    syncedArtwork: number;
+	    paused: boolean;
+	    pauseReason?: string;
+	    freeSpaceBytes?: number;
+	    minFreeSpaceBytes?: number;
 	    errors?: string[];
 
 	    static createFrom(source: any = {}) {
@@ -530,6 +534,10 @@ export namespace server {
 	        this.failedDevices = source["failedDevices"];
 	        this.pushedPlayEvents = source["pushedPlayEvents"];
 	        this.syncedArtwork = source["syncedArtwork"];
+	        this.paused = source["paused"];
+	        this.pauseReason = source["pauseReason"];
+	        this.freeSpaceBytes = source["freeSpaceBytes"];
+	        this.minFreeSpaceBytes = source["minFreeSpaceBytes"];
 	        this.errors = source["errors"];
 	    }
 	}

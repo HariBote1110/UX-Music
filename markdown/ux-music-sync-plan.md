@@ -464,6 +464,8 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - `/sync/assets/{trackId}/artwork` により、保存済みジャケットを同期トークン付きの個別 asset として取得できる。
 - `AutoSyncPairedDevices()` は、既に取り込み済みの同期曲で欠けているジャケットを接続可能なペア済み端末から自動補完できる。
 - multipart import / push は任意の `artwork` part を扱い、受信側の `Artworks` と `library.json` に安全なファイル名として保存できる。
+- `settings.syncMinFreeSpaceGB` により、保存先ボリュームの空き容量が指定GB未満の場合に自動同期、音源取得、音源受信を停止できる。
+- UX Sync 専用設定画面の `保存` タブから最低空き容量を設定できる。
 - 詳細仕様は `markdown/ux-music-sync-protocol.md` を参照する。
 
 未実装:
@@ -471,7 +473,7 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - 親側での portable 圧縮アセット生成と再利用。
 - 変換済み portable 圧縮アセットの永続キャッシュと再利用。
 - 音源本体の自動転送に対する容量ポリシーと端末別同期設定。
-- 容量制限、保存ポリシー、失敗時の再試行キュー。
+- 容量不足時の自動削除ポリシーと失敗時の再試行キュー。
 
 テスト:
 
