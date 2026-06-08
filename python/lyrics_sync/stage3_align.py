@@ -465,7 +465,7 @@ def _repair_forward_drift_to_skipped_segments(
     正しいことがある。高スコアな後半フレーズへ吸われたときは、間に残っている
     セグメントを順番に使う方が破綻が小さい。
     """
-    gap_threshold = float(os.environ.get("UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS", "75.0"))
+    gap_threshold = float(os.environ.get("UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS", "18.0"))
     max_rows = int(os.environ.get("UX_MUSIC_SYNC_FORWARD_DRIFT_MAX_ROWS", "32"))
     segment_starts = sorted(
         {
