@@ -48,6 +48,7 @@ IGNORE/アムネシア/
 - **単調マッチ**：埋め込みコサインと文字バイグラムの合成重み **`UX_MUSIC_SYNC_MONOTONE_EMBED_WEIGHT`**（既定 `0.52`、残りはバイグラム）
 - **補間ステップ**：**`UX_MUSIC_SYNC_INTERPOLATE_STEP_SECONDS`**（既定 `2.5`）
 - **大ジャンプ修復**：**`UX_MUSIC_SYNC_MAX_LINE_GAP_SECONDS`**（既定 `42`）、**`UX_MUSIC_SYNC_REPAIR_JUMP_MIN_BIGRAM`**（既定 `0.22`）
+- **未来ドリフト修復**：**`UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS`**（既定 `75.0`）、**`UX_MUSIC_SYNC_FORWARD_DRIFT_MAX_ROWS`**（既定 `32`）。後半の繰り返しフレーズへ大きく吸われた場合、飛ばされたASRセグメントへ時系列順で戻す。
 
 ---
 
@@ -83,6 +84,13 @@ IGNORE/アムネシア/
 | `UX_MUSIC_SYNC_MANUAL_TOLERANCE_SECONDS` | `0.5` | 手動 LRC は Bluetooth 調整などで **±500ms 程度のブレ**を前提に、`timing_mae_after_tolerance_seconds` を解釈する |
 | `UX_MUSIC_SYNC_REPORT_TOP_N` | `15` | 行別ずれ表に出す **上位 N 行**（`\|Δ\|` 降順） |
 | `UX_MUSIC_SYNC_REPORT_JSON` | 空 | パスを指定すると `{ metrics, buckets, per_line, env_snapshot }` を JSON で保存 |
+
+### 3.3.1 Stage3 未来ドリフト修復
+
+| 変数 | 既定 | 意味 |
+|:---|:---|:---|
+| `UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS` | `75.0` | この秒数を超えて未来の候補へ飛んだとき、間にあるASRセグメントへ戻す |
+| `UX_MUSIC_SYNC_FORWARD_DRIFT_MAX_ROWS` | `32` | 1回の未来ドリフト修復で時系列セグメントへ戻す最大行数 |
 
 ### 3.4 アサート（任意）
 
@@ -152,6 +160,7 @@ UX_MUSIC_IGNORE_INTEGRATION=1 \
 | `符号付Δ` が **大量に正**（予測が遅い） | Whisper セグメントや単調整列が **楽曲後ろへドリフト**している可能性。埋め込み／バイグラム比 **`UX_MUSIC_SYNC_MONOTONE_EMBED_WEIGHT`**、またはジャンプ修復 **`UX_MUSIC_SYNC_MAX_LINE_GAP_SECONDS`** を検討 |
 | **ごく一部の行だけ** `\|Δ\|` が巨大 | **同一フレーズの繰り返し**で別セグメントへ結合されている可能性。修復やバイグラム比率の調整・将来的には重複行の特別扱いなど |
 | `match` は高いが MAE が悪い | **時刻はセグメント／語レベルで付いているが、参照との絶対位置がずれている**。モデルサイズや Demucs／音声との関係を別タスクで切り分ける |
+| 全行が後半へ大きく吸われる | `UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS` を確認する。改善しても数十秒残る場合は、曲全体一括整列ではなくチャンク化・複数候補保持が必要 |
 
 ---
 

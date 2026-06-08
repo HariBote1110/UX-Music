@@ -2,6 +2,25 @@
 
 ## 2026年6月8日
 
+### Python fallback Stage3の未来ドリフト修復と0.8秒級同期検証
+
+- **要望対応**:
+    - ローカル完結のまま、`IGNORE/` セットで0.8秒級まで自動歌詞同期誤差を減らせるか試行。
+- **実装内容**:
+    - `stage3_align` に、後半の繰り返しフレーズへ大きく吸われた行を、飛ばされたASRセグメントへ戻す未来ドリフト修復を追加。
+    - 繰り返しブロック末尾の延長補正を、未来ドリフト修復と単調化の後にも再適用。
+    - `UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS`（既定 `75.0`）と `UX_MUSIC_SYNC_FORWARD_DRIFT_MAX_ROWS`（既定 `32`）を追加。
+- **検証**:
+    - `cd python && .venv/bin/python -m pytest tests/ -m 'not heavy' -v`
+    - アムネシア / `medium` は同一ASR結果への後段補正で `MAE(after_tol)=0.737s` まで到達したが、実パイプライン再推論では `2.564s`。
+    - PROMINENCE / `base` は `123s`級の全体ドリフトから `20.562s` まで改善。
+    - Lone_Wolf / `base` は `109s`級の全体ドリフトから `24.243s` まで改善。
+- **判断**:
+    - 0.8秒級を安定達成するには、曲全体一括整列ではなく、チャンク化・複数候補保持・VAD/ASRアンカーによるセクション単位アラインメントが必要。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-12b` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-9b` に更新。
+
 ### macOSローカル強制アラインメント経路を追加
 
 - **要望対応**:
