@@ -21,8 +21,14 @@ func TestSyncMDNSAdvertiseInfo_usesHostIdentity(t *testing.T) {
 	if values["displayName"] != "Mac mini" {
 		t.Fatalf("unexpected displayName TXT: %#v", values)
 	}
-	if values["protocolVersion"] != "0.1" {
+	if values["protocolVersion"] != syncProtocolVersion {
 		t.Fatalf("unexpected protocolVersion TXT: %#v", values)
+	}
+	if values["schemaVersion"] != syncSchemaVersion {
+		t.Fatalf("unexpected schemaVersion TXT: %#v", values)
+	}
+	if !containsCSVToken(values["capabilities"], "library.import.v1") {
+		t.Fatalf("capabilities TXT should include import support: %#v", values)
 	}
 	if values["roles"] != "LibraryHost,PlaybackTarget,Controller" {
 		t.Fatalf("unexpected roles TXT: %#v", values)
