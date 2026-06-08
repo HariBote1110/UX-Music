@@ -97,3 +97,82 @@ def test_pipeline_passes_request_language_to_asr(monkeypatch):
 
     assert result["success"] is True
     assert seen["language"] == "en"
+
+
+def test_pipeline_can_choose_full_audio_when_alignment_quality_is_better(monkeypatch):
+    from lyrics_sync import pipeline, stage1_separate, stage2_asr, stage3_align
+
+    asr_inputs: list[str] = []
+
+    monkeypatch.setenv("UX_MUSIC_LYRICS_SYNC_AUDIO_SOURCES", "both")
+    monkeypatch.setattr(stage1_separate, "separate_vocals", lambda song_path, emit: ("/tmp/vocals.wav", "/tmp/work"))
+
+    def fake_run_asr(audio_path, whisper_model, emit, language=None):
+        asr_inputs.append(audio_path)
+        label = "full" if audio_path == "/music/song.flac" else "vocals"
+        return [{"start": 0.0, "end": 2.0, "text": label, "words": []}]
+
+    def fake_align(lines, segments):
+        label = segments[0]["text"]
+        if label == "full":
+            return (
+                [
+                    {"index": 0, "text": lines[0], "timestamp": 0.0, "confidence": 0.92, "source": "match"},
+                    {"index": 1, "text": lines[1], "timestamp": 1.1, "confidence": 0.88, "source": "match"},
+                ],
+                [{"start": 0.0, "end": 2.0, "text": "full"}],
+            )
+        return (
+            [
+                {"index": 0, "text": lines[0], "timestamp": 0.0, "confidence": 0.22, "source": "match"},
+                {"index": 1, "text": lines[1], "timestamp": 18.0, "confidence": 0.20, "source": "interpolated"},
+            ],
+            [{"start": 0.0, "end": 2.0, "text": "vocals"}],
+        )
+
+    monkeypatch.setattr(stage2_asr, "run_asr", fake_run_asr)
+    monkeypatch.setattr(stage3_align, "align", fake_align)
+
+    result = pipeline.run_pipeline(
+        {"songPath": "/music/song.flac", "lines": ["hello", "world"], "whisperModel": "tiny"},
+        emit=lambda *_: None,
+    )
+
+    assert result["success"] is True
+    assert set(asr_inputs) == {"/tmp/vocals.wav", "/music/song.flac"}
+    assert result["detectedBy"] == "sidecar-v2-full-audio"
+    assert result["detectedSegments"][0]["text"] == "full"
+
+
+def test_pipeline_full_audio_mode_skips_vocal_separation(monkeypatch):
+    from lyrics_sync import pipeline, stage1_separate, stage2_asr, stage3_align
+
+    monkeypatch.setenv("UX_MUSIC_LYRICS_SYNC_AUDIO_SOURCES", "full")
+
+    def fail_separate(song_path, emit):
+        raise AssertionError("full audio mode should not separate vocals")
+
+    monkeypatch.setattr(stage1_separate, "separate_vocals", fail_separate)
+    monkeypatch.setattr(
+        stage2_asr,
+        "run_asr",
+        lambda audio_path, whisper_model, emit, language=None: [
+            {"start": 0.0, "end": 1.0, "text": audio_path, "words": []}
+        ],
+    )
+    monkeypatch.setattr(
+        stage3_align,
+        "align",
+        lambda lines, segments: (
+            [{"index": 0, "text": lines[0], "timestamp": 0.0, "confidence": 0.8, "source": "match"}],
+            [{"start": 0.0, "end": 1.0, "text": "detected"}],
+        ),
+    )
+
+    result = pipeline.run_pipeline(
+        {"songPath": "/music/song.flac", "lines": ["hello"], "whisperModel": "tiny"},
+        emit=lambda *_: None,
+    )
+
+    assert result["success"] is True
+    assert result["detectedBy"] == "sidecar-v2-full-audio"
