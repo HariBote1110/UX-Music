@@ -94,6 +94,9 @@ func (s *Store) Save(name string, data interface{}) error {
 	defer s.mu.Unlock()
 
 	path := s.GetPath(name)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("failed to create store directory: %w", err)
+	}
 	bytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal json: %w", err)
