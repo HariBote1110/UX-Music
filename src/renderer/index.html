@@ -598,12 +598,12 @@
                 <button id="ux-sync-settings-close-btn" type="button" class="settings-button secondary" aria-label="UX Sync設定を閉じる">閉じる</button>
             </div>
             <div class="ux-sync-settings-tabs" role="tablist" aria-label="UX Sync設定">
-                <button type="button" class="ux-sync-settings-tab active" role="tab" aria-selected="true">端末</button>
-                <button type="button" class="ux-sync-settings-tab" role="tab" aria-selected="false" disabled>同期</button>
+                <button type="button" class="ux-sync-settings-tab active" role="tab" aria-selected="true" data-ux-sync-tab="devices">端末</button>
+                <button type="button" class="ux-sync-settings-tab" role="tab" aria-selected="false" data-ux-sync-tab="sync">同期</button>
                 <button type="button" class="ux-sync-settings-tab" role="tab" aria-selected="false" disabled>保存</button>
             </div>
             <div class="ux-sync-settings-content">
-                <section class="ux-sync-settings-panel" aria-labelledby="ux-sync-devices-heading">
+                <section class="ux-sync-settings-panel" data-ux-sync-panel="devices" aria-labelledby="ux-sync-devices-heading">
                     <div class="ux-sync-settings-toolbar">
                         <div>
                             <h3 id="ux-sync-devices-heading">同期端末</h3>
@@ -612,6 +612,25 @@
                         <button id="ux-sync-discover-btn" type="button" class="settings-button">同期端末を探す</button>
                     </div>
                     <div id="ux-sync-peer-list" class="ux-sync-peer-list" aria-live="polite"></div>
+                </section>
+                <section class="ux-sync-settings-panel hidden" data-ux-sync-panel="sync" aria-labelledby="ux-sync-transfer-heading">
+                    <div class="ux-sync-settings-toolbar">
+                        <div>
+                            <h3 id="ux-sync-transfer-heading">音源取得</h3>
+                            <p id="ux-sync-transfer-status" aria-live="polite">同期元端末を選択してください</p>
+                        </div>
+                    </div>
+                    <div class="ux-sync-transfer-controls">
+                        <label for="ux-sync-transfer-peer-select">同期元</label>
+                        <select id="ux-sync-transfer-peer-select" class="ux-sync-transfer-select">
+                            <option value="">未選択</option>
+                        </select>
+                        <div class="ux-sync-transfer-actions">
+                            <button id="ux-sync-pull-one-btn" type="button" class="settings-button">1曲取得</button>
+                            <button id="ux-sync-pull-all-btn" type="button" class="settings-button">全曲取得</button>
+                        </div>
+                    </div>
+                    <div id="ux-sync-transfer-log" class="ux-sync-transfer-log" aria-live="polite"></div>
                 </section>
             </div>
         </div>

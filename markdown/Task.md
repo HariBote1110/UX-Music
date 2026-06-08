@@ -1,3 +1,17 @@
+# Task: UX Sync Phase 5.3 - 音源pull GUI
+
+## 概要
+SSH CLI で通した Mac mini から Windows への音源pullを、UX Sync 専用設定画面の `同期` タブから実行できるようにする。発見済み / 既知 peer の到達URLを同期元として選択し、1曲取得または全曲取得を GUI から開始して結果を確認できるようにする。
+
+## 完了条件
+- [x] renderer に音源pull結果の正規化、操作可否、結果サマリのテストがあること。
+- [x] UX Sync 専用設定画面の `同期` タブが有効で、同期元 peer を選択できること。
+- [x] `1曲取得` が `PullSyncLibraryAssets(baseURL, 1)` を呼び、`全曲取得` が `PullSyncLibraryAssets(baseURL, 0)` を呼ぶこと。
+- [x] 音源pull完了後に、取得数・既存数・失敗数と保存先パスを画面へ表示すること。
+- [x] `PullSyncLibraryAssets` binding が無い環境、または同期元未選択の状態では取得ボタンが無効になること。
+- [x] `npm test -- --run js/features/ux-sync-settings.test.ts` と `npm run typecheck` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-19a` に更新されていること。
+
 # Task: UX Sync Phase 5.2 - 音源pullとSSH検証CLI
 
 ## 概要

@@ -152,6 +152,11 @@ export function syncPullActionState(hasPullBinding: boolean, selectedBaseUrl: st
     return { canPull: true, status: '待機中' };
 }
 
+export function formatSyncPullResultSummary(result: SyncPullResult): string {
+    const name = result.remoteDisplayName || result.remoteDeviceId;
+    return `${name}: 取得 ${result.downloaded}曲 / 既存 ${result.skipped}曲 / 失敗 ${result.failed}曲`;
+}
+
 function normaliseSyncPeer(raw: unknown): SyncPeer | null {
     if (!raw || typeof raw !== 'object') {
         return null;

@@ -445,11 +445,13 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - 取り込んだ曲には `syncSourceDeviceId` と `syncSourceTrackId` を保存し、再実行時に同じ親・同じ曲の二重取り込みを避ける。
 - `--sync-reset-test-data` で、`syncDeviceId` / `syncAuthTokens` / `syncKnownPeers` を温存したまま検証用ライブラリ、再生回数、解析、同期イベント、アートワーク、キャッシュ、プレイリストを初期化する。
 - `--sync-pull-one` / `--sync-pull` で、SSH 経由でも Wails GUI を起動せず音源pullを実行できる。
+- UX Sync 専用設定画面の `同期` タブから同期元 peer を選択し、`1曲取得` または `全曲取得` を実行できる。
+- GUI の音源pull完了後に、取得数・既存数・失敗数と保存先パスを表示する。
 
 未実装:
 
 - 親側での portable 圧縮アセット生成と再利用。
-- UI からの同期開始・進捗表示。
+- 詳細な同期進捗表示。
 - 容量制限、保存ポリシー、失敗時の再試行キュー。
 
 テスト:

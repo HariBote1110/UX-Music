@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-18a)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-19a)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -84,6 +84,7 @@ Windows 側で mDNS discovery が空になる環境でも、ペアリング済�
 - **原本音源取得**: `/sync/assets/{trackId}/file` は同期トークンを要求し、登録済み曲IDに対応するローカル原本ファイルだけを返す。任意パス指定は受け付けない。
 - **子側pull取り込み**: `PullSyncLibraryAssets(baseURL, limit)` は保存済み `syncAuthTokens` を使って親へ接続し、受信音源を子側ユーザーデータ配下の `SyncLibrary` に保存し、`library.json` へ `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込む。
 - **SSH検証CLI**: `--sync-reset-test-data` はペアリング情報を温存して検証用ライブラリ状態を初期化し、`--sync-pull-one` / `--sync-pull` は WebView2 を起動せず SSH から音源pullを実行する。
+- **GUI操作**: UX Sync 専用設定画面の `同期` タブから同期元 peer を選択し、`1曲取得` または `全曲取得` を実行できる。実行結果は取得数・既存数・失敗数と保存先パスとして表示する。
 
 ### [更新] YouTubeダウンロード
 YouTube URL から楽曲をライブラリに追加する際、字幕を同時取得して同期歌詞（LRC）を生成する機能。

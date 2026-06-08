@@ -9,17 +9,22 @@ import { musicApi, getWailsApp } from '../core/bridge.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
 import { updateListSpacer } from '../ui/ui.js';
 import {
+    formatSyncPullResultSummary,
     formatSyncPeerEndpoint,
     formatSyncPeerRoles,
     normaliseSyncPairingConfirm,
     normaliseSyncPairingStart,
+    normaliseSyncPullResult,
     normaliseSyncPeers,
+    syncPullActionState,
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
     type SyncPairingStart,
     type SyncPeer,
 } from '../features/ux-sync-settings.js';
 const electronAPI = window.electronAPI;
+
+let uxSyncPeers: SyncPeer[] = [];
 
 /**
  * 指定したテーマを body クラスに適用する。
@@ -123,7 +128,9 @@ async function refreshUxSyncPeers() {
 
     try {
         const peers = normaliseSyncPeers(await musicApi.discoverSyncDevices(2500));
+        uxSyncPeers = peers;
         renderUxSyncPeers(listEl, peers);
+        refreshUxSyncTransferPeers();
         statusEl.textContent = peers.length > 0
             ? `${peers.length}台の同期端末を検出しました。`
             : '同期端末は見つかりませんでした。';
@@ -152,11 +159,112 @@ function openUxSyncSettings() {
     const overlay = document.getElementById('ux-sync-settings-modal-overlay');
     if (!overlay) return;
     overlay.classList.remove('hidden');
+    switchUxSyncSettingsTab('devices');
     void refreshUxSyncPeers();
 }
 
 function closeUxSyncSettings() {
     document.getElementById('ux-sync-settings-modal-overlay')?.classList.add('hidden');
+}
+
+function switchUxSyncSettingsTab(tabName: string): void {
+    document.querySelectorAll<HTMLButtonElement>('.ux-sync-settings-tab[data-ux-sync-tab]').forEach(tab => {
+        const active = tab.dataset.uxSyncTab === tabName;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    document.querySelectorAll<HTMLElement>('.ux-sync-settings-panel[data-ux-sync-panel]').forEach(panel => {
+        panel.classList.toggle('hidden', panel.dataset.uxSyncPanel !== tabName);
+    });
+    if (tabName === 'sync') {
+        refreshUxSyncTransferPeers();
+    }
+}
+
+function refreshUxSyncTransferPeers(): void {
+    const select = document.getElementById('ux-sync-transfer-peer-select') as HTMLSelectElement | null;
+    if (!select) return;
+    const previous = select.value;
+    select.innerHTML = '';
+
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = uxSyncPeers.length > 0 ? '同期元を選択' : '検出済み端末なし';
+    select.appendChild(empty);
+
+    for (const peer of uxSyncPeers) {
+        const baseUrl = syncPeerPairingBaseUrl(peer);
+        if (!baseUrl) {
+            continue;
+        }
+        const option = document.createElement('option');
+        option.value = baseUrl;
+        option.textContent = `${peer.displayName} - ${baseUrl}`;
+        select.appendChild(option);
+    }
+
+    if (previous && Array.from(select.options).some(option => option.value === previous)) {
+        select.value = previous;
+    } else if (select.options.length === 2) {
+        select.selectedIndex = 1;
+    }
+    updateUxSyncTransferActions();
+}
+
+function selectedUxSyncTransferBaseUrl(): string {
+    const select = document.getElementById('ux-sync-transfer-peer-select') as HTMLSelectElement | null;
+    return select?.value || '';
+}
+
+function updateUxSyncTransferActions(preserveStatus = false): void {
+    const pullOneBtn = document.getElementById('ux-sync-pull-one-btn') as HTMLButtonElement | null;
+    const pullAllBtn = document.getElementById('ux-sync-pull-all-btn') as HTMLButtonElement | null;
+    const statusEl = document.getElementById('ux-sync-transfer-status');
+    const state = syncPullActionState(Boolean(getWailsApp()?.PullSyncLibraryAssets), selectedUxSyncTransferBaseUrl());
+    if (pullOneBtn) pullOneBtn.disabled = !state.canPull;
+    if (pullAllBtn) pullAllBtn.disabled = !state.canPull;
+    if (statusEl && !preserveStatus && statusEl.textContent !== '取得中...') {
+        statusEl.textContent = state.status;
+    }
+}
+
+async function runUxSyncPull(limit: number): Promise<void> {
+    const baseUrl = selectedUxSyncTransferBaseUrl();
+    const pullOneBtn = document.getElementById('ux-sync-pull-one-btn') as HTMLButtonElement | null;
+    const pullAllBtn = document.getElementById('ux-sync-pull-all-btn') as HTMLButtonElement | null;
+    const statusEl = document.getElementById('ux-sync-transfer-status');
+    const logEl = document.getElementById('ux-sync-transfer-log');
+    const state = syncPullActionState(Boolean(getWailsApp()?.PullSyncLibraryAssets), baseUrl);
+    if (!state.canPull) {
+        if (statusEl) statusEl.textContent = state.status;
+        return;
+    }
+
+    if (pullOneBtn) pullOneBtn.disabled = true;
+    if (pullAllBtn) pullAllBtn.disabled = true;
+    if (statusEl) statusEl.textContent = '取得中...';
+    if (logEl) logEl.textContent = '';
+
+    try {
+        const result = normaliseSyncPullResult(await musicApi.pullSyncLibraryAssets(baseUrl, limit));
+        if (!result) {
+            throw new Error('音源取得応答が不正です。');
+        }
+        if (statusEl) statusEl.textContent = formatSyncPullResultSummary(result);
+        if (logEl) {
+            const latestPath = result.importedPaths[0] || '';
+            const errors = result.errors.length > 0 ? `\n${result.errors.join('\n')}` : '';
+            logEl.textContent = latestPath ? `${latestPath}${errors}` : errors;
+        }
+        if (result.downloaded > 0) {
+            await musicApi.loadLibrary();
+            await renderCurrentView();
+        }
+    } catch (e) {
+        if (statusEl) statusEl.textContent = `取得に失敗しました: ${(e as Error)?.message || String(e)}`;
+    } finally {
+        updateUxSyncTransferActions(true);
+    }
 }
 
 function renderUxSyncPeers(listEl: HTMLElement, peers: SyncPeer[]) {
@@ -494,6 +602,40 @@ export function initSettings() {
     if (syncSettingsCloseBtn && !syncSettingsCloseBtn.dataset.listenerAttached) {
         syncSettingsCloseBtn.addEventListener('click', closeUxSyncSettings);
         syncSettingsCloseBtn.dataset.listenerAttached = 'true';
+    }
+
+    document.querySelectorAll<HTMLButtonElement>('.ux-sync-settings-tab[data-ux-sync-tab]').forEach(tab => {
+        if (tab.dataset.listenerAttached) return;
+        tab.addEventListener('click', () => {
+            if (tab.dataset.uxSyncTab) {
+                switchUxSyncSettingsTab(tab.dataset.uxSyncTab);
+            }
+        });
+        tab.dataset.listenerAttached = 'true';
+    });
+
+    const syncTransferSelect = document.getElementById('ux-sync-transfer-peer-select');
+    if (syncTransferSelect && !syncTransferSelect.dataset.listenerAttached) {
+        syncTransferSelect.addEventListener('change', () => {
+            updateUxSyncTransferActions();
+        });
+        syncTransferSelect.dataset.listenerAttached = 'true';
+    }
+
+    const syncPullOneBtn = document.getElementById('ux-sync-pull-one-btn');
+    if (syncPullOneBtn && !syncPullOneBtn.dataset.listenerAttached) {
+        syncPullOneBtn.addEventListener('click', () => {
+            void runUxSyncPull(1);
+        });
+        syncPullOneBtn.dataset.listenerAttached = 'true';
+    }
+
+    const syncPullAllBtn = document.getElementById('ux-sync-pull-all-btn');
+    if (syncPullAllBtn && !syncPullAllBtn.dataset.listenerAttached) {
+        syncPullAllBtn.addEventListener('click', () => {
+            void runUxSyncPull(0);
+        });
+        syncPullAllBtn.dataset.listenerAttached = 'true';
     }
 
     const clearLyricsBtn = document.getElementById('lyrics-sync-cache-clear-btn');

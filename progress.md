@@ -1,3 +1,23 @@
+## 2026-06-08 — UX Sync Phase 5.3 音源pull GUI
+
+### 実施内容
+- UX Sync 専用設定画面の `同期` タブを有効化した
+- 発見済み / 既知 peer の到達URLを同期元セレクトへ反映するようにした
+- `1曲取得` ボタンから `PullSyncLibraryAssets(baseURL, 1)`、`全曲取得` ボタンから `PullSyncLibraryAssets(baseURL, 0)` を呼ぶようにした
+- 音源pull結果を `downloaded` / `skipped` / `failed` と保存先パスとして表示するようにした
+- `PullSyncLibraryAssets` binding が無い環境、または同期元未選択時は取得ボタンを無効化するようにした
+- renderer に `normaliseSyncPullResult`、`syncPullActionState`、`formatSyncPullResultSummary` のテストを追加した
+- `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を音源pull GUI の実装内容へ同期
+- `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-19a`、`src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-16a` に更新
+
+### 検証
+- `npm test -- --run js/features/ux-sync-settings.test.ts`
+- `npm run typecheck`
+
+### 判断
+- SSH CLI で通した親から子への音源pullを、UX Sync 専用設定画面から操作できる第一段階に到達した。
+- destructive な検証用初期化は誤操作リスクが高いため、GUI には出さず CLI 専用に残した。
+
 ## 2026-06-08 — UX Sync Phase 5.2 音源pullとSSH検証CLI
 
 ### 実施内容
