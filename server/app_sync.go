@@ -170,7 +170,7 @@ func (a *App) StartSyncPairing(baseURL string) (SyncPairingStartResult, error) {
 	}, nil
 }
 
-func (a *App) ConfirmSyncPairing(baseURL, sessionID, code string) (SyncPairingConfirmResult, error) {
+func (a *App) ConfirmSyncPairing(baseURL, sessionID, code, expectedRemoteDeviceID string) (SyncPairingConfirmResult, error) {
 	ctx := context.Background()
 	if a.ctx != nil {
 		ctx = a.ctx
@@ -182,6 +182,9 @@ func (a *App) ConfirmSyncPairing(baseURL, sessionID, code string) (SyncPairingCo
 	identity, err := fetchSyncIdentity(ctx, baseURL)
 	if err != nil {
 		return SyncPairingConfirmResult{}, err
+	}
+	if expectedRemoteDeviceID = strings.TrimSpace(expectedRemoteDeviceID); expectedRemoteDeviceID != "" && identity.DeviceID != expectedRemoteDeviceID {
+		return SyncPairingConfirmResult{}, fmt.Errorf("sync peer changed during pairing")
 	}
 	var confirmed syncPairingConfirmResponse
 	if err := postSyncJSON(ctx, baseURL+"/sync/pairing/confirm", syncPairingConfirmRequest{

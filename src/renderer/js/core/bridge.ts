@@ -194,10 +194,10 @@ export const musicApi = {
     }
     return Promise.reject(new Error('UX Sync ペアリングはこの環境では利用できません。'));
   },
-  confirmSyncPairing: (baseUrl: string, sessionId: string, code: string) => {
+  confirmSyncPairing: (baseUrl: string, sessionId: string, code: string, expectedRemoteDeviceId: string) => {
     const app = getWailsApp();
     if (app?.ConfirmSyncPairing) {
-      return app.ConfirmSyncPairing(baseUrl, sessionId, code);
+      return app.ConfirmSyncPairing(baseUrl, sessionId, code, expectedRemoteDeviceId);
     }
     return Promise.reject(new Error('UX Sync ペアリングはこの環境では利用できません。'));
   },

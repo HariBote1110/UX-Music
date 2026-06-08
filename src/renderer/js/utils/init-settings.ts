@@ -242,7 +242,7 @@ function renderUxSyncPairingConfirm(actions: HTMLElement, peer: SyncPeer, starte
         status.textContent = 'ペアリングを確定しています。';
         try {
             const confirmed = normaliseSyncPairingConfirm(
-                await musicApi.confirmSyncPairing(started.baseUrl, started.sessionId, started.code)
+                await musicApi.confirmSyncPairing(started.baseUrl, started.sessionId, started.code, started.remoteDeviceId)
             );
             if (!confirmed?.tokenSaved) {
                 throw new Error('トークン保存に失敗しました。');
