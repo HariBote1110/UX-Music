@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
     formatSyncPeerEndpoint,
     formatSyncPullResultSummary,
+    mergeSyncPeersWithDevices,
+    normaliseSyncDevices,
     normaliseSyncPairingConfirm,
     normaliseSyncPullResult,
     normaliseSyncPairingStart,
     normaliseSyncPeers,
+    syncPeerConnectionLabel,
     syncPullActionState,
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
@@ -40,6 +43,79 @@ describe('normaliseSyncPeers', () => {
 
     it('filters invalid peers without a device id or display name', () => {
         expect(normaliseSyncPeers([{ host: '192.168.0.2', port: 8765 }])).toEqual([]);
+    });
+});
+
+describe('normaliseSyncDevices', () => {
+    it('keeps paired devices without leaking their auth tokens', () => {
+        expect(normaliseSyncDevices([
+            {
+                deviceId: 'dev_mac_mini',
+                displayName: 'YukinoMac-mini',
+                baseUrl: 'http://192.168.0.226:8765',
+                paired: true,
+                token: 'secret-token',
+            },
+        ])).toEqual([
+            {
+                deviceId: 'dev_mac_mini',
+                displayName: 'YukinoMac-mini',
+                baseUrl: 'http://192.168.0.226:8765',
+                paired: true,
+            },
+        ]);
+    });
+});
+
+describe('mergeSyncPeersWithDevices', () => {
+    it('marks discovered peers as paired when a saved device exists', () => {
+        const peers = mergeSyncPeersWithDevices(
+            normaliseSyncPeers([
+                {
+                    deviceId: 'dev_mac_mini',
+                    displayName: 'YukinoMac-mini',
+                    hosts: ['192.168.0.226'],
+                    port: 8765,
+                    reachableBaseUrl: 'http://192.168.0.226:8765',
+                },
+            ]),
+            normaliseSyncDevices([
+                {
+                    deviceId: 'dev_mac_mini',
+                    displayName: 'YukinoMac-mini',
+                    baseUrl: 'http://192.168.0.226:8765',
+                    paired: true,
+                },
+            ])
+        );
+
+        expect(peers[0].paired).toBe(true);
+        expect(syncPeerConnectionLabel(peers[0])).toBe('ペアリング済み');
+    });
+
+    it('keeps paired known devices as sync candidates when discovery returns nothing', () => {
+        const peers = mergeSyncPeersWithDevices([], normaliseSyncDevices([
+            {
+                deviceId: 'dev_mac_mini',
+                displayName: 'YukinoMac-mini',
+                baseUrl: 'http://192.168.0.226:8765',
+                paired: true,
+            },
+        ]));
+
+        expect(peers).toEqual([
+            {
+                deviceId: 'dev_mac_mini',
+                displayName: 'YukinoMac-mini',
+                host: '192.168.0.226',
+                hosts: ['192.168.0.226'],
+                port: 8765,
+                roles: [],
+                reachableBaseUrl: 'http://192.168.0.226:8765',
+                paired: true,
+            },
+        ]);
+        expect(syncPeerPairingBaseUrl(peers[0])).toBe('http://192.168.0.226:8765');
     });
 });
 

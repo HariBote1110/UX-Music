@@ -107,6 +107,55 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 	}
 }
 
+func TestListSyncDevicesReturnsPairedKnownPeerWithoutToken(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote_for_local"},
+		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{
+			DeviceID:    "dev_remote_pc",
+			DisplayName: "mainPC",
+			BaseURL:     "http://192.168.0.52:8765",
+			LastSeenAt:  "2026-06-08T12:00:00Z",
+		}},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+
+	devices, err := (&App{}).ListSyncDevices()
+	if err != nil {
+		t.Fatalf("list sync devices: %v", err)
+	}
+	if len(devices) != 1 {
+		t.Fatalf("expected one sync device, got %#v", devices)
+	}
+	if devices[0].DeviceID != "dev_remote_pc" || devices[0].DisplayName != "mainPC" || devices[0].BaseURL != "http://192.168.0.52:8765" {
+		t.Fatalf("unexpected sync device identity: %#v", devices[0])
+	}
+	if !devices[0].Paired {
+		t.Fatalf("expected device to be marked paired: %#v", devices[0])
+	}
+}
+
+func TestListSyncDevicesKeepsTokenOnlyDeviceAsPaired(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote_for_local"},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+
+	devices, err := (&App{}).ListSyncDevices()
+	if err != nil {
+		t.Fatalf("list sync devices: %v", err)
+	}
+	if len(devices) != 1 {
+		t.Fatalf("expected one sync device, got %#v", devices)
+	}
+	if devices[0].DeviceID != "dev_remote_pc" || devices[0].DisplayName != "dev_remote_pc" || devices[0].BaseURL != "" || !devices[0].Paired {
+		t.Fatalf("unexpected token-only sync device: %#v", devices[0])
+	}
+}
+
 func TestConfirmSyncPairingRejectsChangedRemoteDevice(t *testing.T) {
 	newTempSyncStore(t)
 
