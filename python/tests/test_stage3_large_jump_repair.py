@@ -285,6 +285,30 @@ def test_repair_forward_drift_handles_mid_sized_repeated_chorus_jump():
     assert rows[3]["confidence"] <= 0.72
 
 
+def test_repair_forward_drift_stops_when_skipped_segment_text_does_not_match_line():
+    rows = [
+        {"timestamp": 156.4, "source": "match", "confidence": 0.8},
+        {"timestamp": 195.74, "source": "match", "confidence": 0.8},
+        {"timestamp": 203.54, "source": "match", "confidence": 0.8},
+    ]
+    lines = [
+        "anchor",
+        "紅の朝焼けが 焦りの心を宥めてゆく",
+        "It never change…",
+    ]
+    segments = [
+        {"start": 156.4, "text": "anchor"},
+        {"start": 163.0, "text": "くれないの 当て焼けた 当てりの心を流れてゆく"},
+        {"start": 170.92, "text": "少しずつで生きて 明日ですね"},
+        {"start": 195.74, "text": "late repeat"},
+    ]
+
+    stage3_align._repair_forward_drift_to_skipped_segments(rows, segments, lines)
+
+    assert rows[1]["timestamp"] == 163.0
+    assert rows[2]["timestamp"] == 203.54
+
+
 def test_repair_forward_drift_starts_from_early_segments(monkeypatch):
     monkeypatch.setenv("UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS", "30.0")
     rows = [
