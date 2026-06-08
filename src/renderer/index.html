@@ -272,13 +272,12 @@
                         <p id="wear-pairing-qr-error" class="wear-pairing-error hidden" role="alert"></p>
                     </div>
                 </div>
-                <div class="setting-group" id="ux-sync-discovery-group">
+                <div class="setting-group" id="ux-sync-settings-entry-group">
                     <div class="setting-item">
                         <h4>UX Sync</h4>
-                        <p class="setting-description">同じ LAN 上の UX Music を自動検出します。</p>
-                        <button id="ux-sync-discover-btn" type="button" class="settings-button">同期端末を探す</button>
-                        <p id="ux-sync-discovery-status" class="setting-description" aria-live="polite">未探索</p>
-                        <div id="ux-sync-peer-list" class="ux-sync-peer-list" aria-live="polite"></div>
+                        <p class="setting-description">端末検出、ペアリング、同期状態を専用画面で管理します。</p>
+                        <button id="ux-sync-settings-open-btn" type="button" class="settings-button">UX Sync設定を開く</button>
+                        <p id="ux-sync-settings-entry-status" class="setting-description" aria-live="polite">確認中</p>
                     </div>
                 </div>
                 <div class="setting-group">
@@ -586,6 +585,34 @@
             </div>
             <div class="modal-buttons">
                 <button id="settings-ok-btn">OK</button>
+            </div>
+        </div>
+    </div>
+    <div id="ux-sync-settings-modal-overlay" class="hidden">
+        <div id="ux-sync-settings-modal">
+            <div class="ux-sync-settings-header">
+                <div>
+                    <h2>UX Sync</h2>
+                    <p>LAN内端末の検出とペアリング</p>
+                </div>
+                <button id="ux-sync-settings-close-btn" type="button" class="settings-button secondary" aria-label="UX Sync設定を閉じる">閉じる</button>
+            </div>
+            <div class="ux-sync-settings-tabs" role="tablist" aria-label="UX Sync設定">
+                <button type="button" class="ux-sync-settings-tab active" role="tab" aria-selected="true">端末</button>
+                <button type="button" class="ux-sync-settings-tab" role="tab" aria-selected="false" disabled>同期</button>
+                <button type="button" class="ux-sync-settings-tab" role="tab" aria-selected="false" disabled>保存</button>
+            </div>
+            <div class="ux-sync-settings-content">
+                <section class="ux-sync-settings-panel" aria-labelledby="ux-sync-devices-heading">
+                    <div class="ux-sync-settings-toolbar">
+                        <div>
+                            <h3 id="ux-sync-devices-heading">同期端末</h3>
+                            <p id="ux-sync-discovery-status" aria-live="polite">未探索</p>
+                        </div>
+                        <button id="ux-sync-discover-btn" type="button" class="settings-button">同期端末を探す</button>
+                    </div>
+                    <div id="ux-sync-peer-list" class="ux-sync-peer-list" aria-live="polite"></div>
+                </section>
             </div>
         </div>
     </div>

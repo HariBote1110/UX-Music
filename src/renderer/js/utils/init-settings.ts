@@ -14,6 +14,7 @@ import {
     normaliseSyncPairingConfirm,
     normaliseSyncPairingStart,
     normaliseSyncPeers,
+    syncSettingsEntryState,
     syncPeerPairingBaseUrl,
     type SyncPairingStart,
     type SyncPeer,
@@ -105,18 +106,16 @@ async function refreshWearPairingQR() {
 }
 
 async function refreshUxSyncPeers() {
-    const group = document.getElementById('ux-sync-discovery-group');
     const btn = document.getElementById('ux-sync-discover-btn') as HTMLButtonElement | null;
     const statusEl = document.getElementById('ux-sync-discovery-status');
     const listEl = document.getElementById('ux-sync-peer-list');
-    if (!group || !btn || !statusEl || !listEl) return;
+    if (!btn || !statusEl || !listEl) return;
 
     if (!getWailsApp()?.DiscoverSyncDevices) {
-        group.classList.add('hidden');
+        statusEl.textContent = 'この環境ではUX Syncを利用できません。';
         return;
     }
 
-    group.classList.remove('hidden');
     btn.disabled = true;
     btn.textContent = '探索中...';
     statusEl.textContent = 'LAN内のUX Musicを探索しています。';
@@ -135,6 +134,29 @@ async function refreshUxSyncPeers() {
         btn.disabled = false;
         btn.textContent = '同期端末を探す';
     }
+}
+
+function updateUxSyncSettingsEntry() {
+    const group = document.getElementById('ux-sync-settings-entry-group');
+    const openBtn = document.getElementById('ux-sync-settings-open-btn') as HTMLButtonElement | null;
+    const statusEl = document.getElementById('ux-sync-settings-entry-status');
+    if (!group || !openBtn || !statusEl) return;
+
+    const entry = syncSettingsEntryState(Boolean(getWailsApp()?.DiscoverSyncDevices));
+    group.classList.toggle('hidden', !entry.visible);
+    openBtn.disabled = !entry.canOpen;
+    statusEl.textContent = entry.status;
+}
+
+function openUxSyncSettings() {
+    const overlay = document.getElementById('ux-sync-settings-modal-overlay');
+    if (!overlay) return;
+    overlay.classList.remove('hidden');
+    void refreshUxSyncPeers();
+}
+
+function closeUxSyncSettings() {
+    document.getElementById('ux-sync-settings-modal-overlay')?.classList.add('hidden');
 }
 
 function renderUxSyncPeers(listEl: HTMLElement, peers: SyncPeer[]) {
@@ -345,7 +367,7 @@ export function initSettings() {
 
         elements.settingsModalOverlay.classList.remove('hidden');
         void refreshWearPairingQR();
-        void refreshUxSyncPeers();
+        updateUxSyncSettingsEntry();
         void refreshLyricsSyncCacheInfo();
 
         const settingsTitle = document.getElementById('settings-title');
@@ -460,6 +482,18 @@ export function initSettings() {
             void refreshUxSyncPeers();
         });
         syncDiscoverBtn.dataset.listenerAttached = 'true';
+    }
+
+    const syncSettingsOpenBtn = document.getElementById('ux-sync-settings-open-btn');
+    if (syncSettingsOpenBtn && !syncSettingsOpenBtn.dataset.listenerAttached) {
+        syncSettingsOpenBtn.addEventListener('click', openUxSyncSettings);
+        syncSettingsOpenBtn.dataset.listenerAttached = 'true';
+    }
+
+    const syncSettingsCloseBtn = document.getElementById('ux-sync-settings-close-btn');
+    if (syncSettingsCloseBtn && !syncSettingsCloseBtn.dataset.listenerAttached) {
+        syncSettingsCloseBtn.addEventListener('click', closeUxSyncSettings);
+        syncSettingsCloseBtn.dataset.listenerAttached = 'true';
     }
 
     const clearLyricsBtn = document.getElementById('lyrics-sync-cache-clear-btn');

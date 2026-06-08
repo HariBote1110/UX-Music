@@ -24,6 +24,18 @@ export interface SyncPairingConfirm {
     tokenSaved: boolean;
 }
 
+export interface SyncSettingsEntryState {
+    visible: boolean;
+    canOpen: boolean;
+    status: string;
+}
+
+export function syncSettingsEntryState(hasSyncBindings: boolean): SyncSettingsEntryState {
+    return hasSyncBindings
+        ? { visible: true, canOpen: true, status: '利用可能' }
+        : { visible: false, canOpen: false, status: 'この環境では利用できません' };
+}
+
 export function normaliseSyncPeers(rawPeers: unknown): SyncPeer[] {
     if (!Array.isArray(rawPeers)) {
         return [];

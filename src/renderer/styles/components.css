@@ -492,6 +492,7 @@
 #lyrics-translation-modal-overlay,
 #settings-modal-overlay,
 #loading-overlay,
+#ux-sync-settings-modal-overlay,
 #devices-modal-overlay {
     position: fixed;
     top: 0;
@@ -509,6 +510,7 @@
 #lyrics-translation-modal-overlay.hidden,
 #settings-modal-overlay.hidden,
 #loading-overlay.hidden,
+#ux-sync-settings-modal-overlay.hidden,
 #devices-modal-overlay.hidden {
     display: none;
 }
@@ -620,6 +622,7 @@
 
 #modal,
 #lyrics-translation-modal,
+#ux-sync-settings-modal,
 #settings-modal {
     background-color: var(--bg-light);
     padding: 25px;
@@ -634,6 +637,7 @@
 
 #modal h3,
 #lyrics-translation-modal h3,
+#ux-sync-settings-modal h2,
 #settings-modal h2 {
     margin-top: 0;
 }
@@ -835,6 +839,86 @@
 #settings-modal .modal-buttons {
     margin-top: 30px;
     flex-shrink: 0;
+}
+
+#ux-sync-settings-modal {
+    max-width: 760px;
+    min-height: 520px;
+}
+
+.ux-sync-settings-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.ux-sync-settings-header h2 {
+    margin: 0 0 4px 0;
+}
+
+.ux-sync-settings-header p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.ux-sync-settings-tabs {
+    display: flex;
+    gap: 6px;
+    border-bottom: 1px solid var(--bg-dark);
+    margin-bottom: 16px;
+}
+
+.ux-sync-settings-tab {
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font: inherit;
+    padding: 10px 12px;
+}
+
+.ux-sync-settings-tab.active {
+    border-bottom-color: var(--highlight-blue);
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.ux-sync-settings-tab:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+.ux-sync-settings-content {
+    overflow-y: auto;
+    padding-right: 8px;
+}
+
+.ux-sync-settings-panel {
+    background-color: var(--bg-dark);
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.ux-sync-settings-toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.ux-sync-settings-toolbar h3 {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+}
+
+.ux-sync-settings-toolbar p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
 }
 
 #settings-modal .licence-details > summary {
