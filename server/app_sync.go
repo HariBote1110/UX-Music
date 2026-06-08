@@ -225,7 +225,7 @@ func normaliseSyncBaseURL(raw string) (string, error) {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return "", fmt.Errorf("unsupported sync peer URL scheme")
 	}
-	parsed.Path = strings.TrimRight(parsed.EscapedPath(), "/")
+	parsed.Path = ""
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
 	return strings.TrimRight(parsed.String(), "/"), nil
