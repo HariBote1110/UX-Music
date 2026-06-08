@@ -68,6 +68,7 @@ IGNORE/アムネシア/
 |:---|:---|:---|
 | `UX_MUSIC_IGNORE_TEST_WHISPER_MODEL` | （実装依存、`base` 想定） | 結合試験でのモデル名 |
 | `UX_MUSIC_LYRICS_SYNC_DUMMY` | 未設定 | `1` のときダミーパイプライン（結合検証には不向き） |
+| `UX_MUSIC_LYRICS_SYNC_AUDIO_SOURCES` | `both` | Python fallback の音源候補。`full` は元音源を直接ASR、`vocals` はDemucs後ASR、`both` は両方をTXT行へ整列して参照LRCなしの品質スコアで選ぶ。 |
 
 ### 3.2.1 macOS Swift 強制アラインメント
 
@@ -143,6 +144,15 @@ UX_MUSIC_IGNORE_INTEGRATION=1 \
 2. 同じ結合コマンドを再実行する。
 3. `UX_MUSIC_SYNC_REPORT_JSON` で **変更前／変更後**をファイルに保存し、`metrics` と `per_line` を diff する。
 4. 回帰が出たらノブを戻すか、別ノブと組み合わせる（組み合わせは **記録が取れた状態**でのみ）。
+
+### 4.3.1 実ライブラリTXTベンチ
+
+`/Users/yuki/doc/uxmusic` と `/Users/yuki/Library/Application Support/UX-Music/Lyrics` を使う場合も、**実装入力に同期済みLRCの時刻を渡さない**。LRCは以下の2用途に限定する。
+
+1. 時刻タグを捨て、TXT相当の歌詞行を作る。
+2. 出力後に参照時刻としてメトリクスを計算する。
+
+2026-06-08 の5曲full音源ベンチ（`base`）では、アムネシアのみ `MAE(after_tol)=0.734s` で0.8秒級に到達し、PROMINENCE / Lone Wolf / main heroine / Twilight は大きく未達だった。`speech align` は `/opt/homebrew/bin/speech` で実行可能だったが、アムネシアのボーカル抽出音声+簡易行復元では `3.395s` で採用見送り。
 
 ### 4.4 報告するときに書くべき項目（ユーザー向けサマリー）
 

@@ -2,6 +2,34 @@
 
 ## 2026年6月8日
 
+### TXT専用歌詞同期の音源候補選択と実ライブラリ検証
+
+- **要望対応**:
+    - 同期済みLRCを実装入力に使わず、時刻なしTXT歌詞だけがある曲をローカルで同期しやすくしたい。
+    - バックエンドAPI課金を避け、Macローカルでfull音源・ボーカル分離・`speech align` を含めて試行したい。
+- **実装内容**:
+    - Python fallback に `UX_MUSIC_LYRICS_SYNC_AUDIO_SOURCES=full|vocals|both` を追加。
+    - `full` ではDemucsを通らず元音源を直接 faster-whisper へ渡す。
+    - `both` では元音源候補とボーカル候補をそれぞれTXT行へ整列し、参照LRCを使わない品質スコアで候補を選択する。
+    - 候補結果に `audioSource` / `alignmentQualityScore` / `candidateScores` を追加し、検証時にどの経路が選ばれたか追跡可能にした。
+- **検証**:
+    - `python/.venv/bin/python -m pytest python/tests -m 'not heavy' -q` → `30 passed, 1 deselected`
+    - `/Users/yuki/doc/uxmusic` 5曲ベンチ（LRCから時刻を捨てたTXT相当入力、LRC時刻は答え合わせのみ、`base` / `full`）:
+        - アムネシア: `MAE(after_tol)=0.734s`、0.8秒級に到達。
+        - PROMINENCE: `81.670s`、反復ブロックとASR欠落で未達。
+        - Lone Wolf: `58.186s`、未達。
+        - main heroine: `93.846s`、未達。
+        - Twilight: `28.689s`、未達。
+    - PROMINENCE / `vocals` / `base`: `auto=23.731s`, `ja=69.775s`, `auto-ja=28.219s`。fullより改善するが0.8秒級には未達。
+    - `speech align` は `/opt/homebrew/bin/speech` を検出し、アムネシアのボーカル抽出音声で実行できたが、簡易行復元では `MAE(after_tol)=3.395s` で採用見送り。
+- **判断**:
+    - TXTだけの実運用制約では、既存LRCを参照する経路は使わず、参照LRCはベンチ専用に限定。
+    - アムネシアはfull音源ASRで0.8秒級に届くが、5曲全体では安定しない。
+    - PROMINENCE系の破綻は、曲全体一括ASRセグメントからの後段整列では限界があり、セクション分割・複数候補DP・歌詞反復ブロックの構造推定が次の本命。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-12c` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-9c` に更新。
+
 ### Python fallback Stage3の未来ドリフト修復と0.8秒級同期検証
 
 - **要望対応**:

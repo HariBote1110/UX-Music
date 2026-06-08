@@ -1,3 +1,16 @@
+# Task: TXT専用歌詞同期の音源候補選択と実ライブラリ検証
+
+## 概要
+同期済みLRCを実装入力に使わず、時刻なしTXT歌詞だけを音源へ合わせる用途に寄せて、Python fallbackで元音源ASR / ボーカル分離ASRの候補を試し、参照LRCなしの品質スコアで候補選択できるようにする。`/Users/yuki/doc/uxmusic` と `/Users/yuki/Library/Application Support/UX-Music/Lyrics` の実データは、LRCから時刻を捨てたTXT相当入力と参照時刻によるベンチマークにのみ使う。
+
+## 完了条件
+- [x] Python fallback が `UX_MUSIC_LYRICS_SYNC_AUDIO_SOURCES=full|vocals|both` を解釈できること。
+- [x] `full` ではDemucsを通らず元音源をASRへ渡せること。
+- [x] `both` では元音源候補とボーカル候補を評価し、参照LRCを使わない品質スコアで返却候補を選べること。
+- [x] `python/tests -m "not heavy"` が通ること。
+- [x] `/Users/yuki/doc/uxmusic` の5曲で、LRC時刻を答え合わせ専用にしたTXT入力ベンチを実施し、0.8秒級に届いた曲と届かなかった曲を記録すること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-12c` に更新されていること。
+
 # Task: Python fallback Stage3の未来ドリフト修復と0.8秒級同期の検証
 
 ## 概要

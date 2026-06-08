@@ -1,3 +1,31 @@
+## 2026-06-08 — TXT専用歌詞同期の音源候補選択と実ライブラリ検証
+
+### 実施内容
+- Python fallback に `UX_MUSIC_LYRICS_SYNC_AUDIO_SOURCES=full|vocals|both` を追加
+- `full` ではDemucsを通さず元音源を直接 faster-whisper へ渡すようにした
+- `both` では元音源候補とボーカル候補をそれぞれTXT行へ整列し、参照LRCを使わない品質スコアで候補選択するようにした
+- 結果JSONへ `audioSource` / `alignmentQualityScore` / `candidateScores` を追加
+
+### 検証
+- `python/.venv/bin/python -m pytest python/tests -m 'not heavy' -q` → `30 passed, 1 deselected`
+- `/Users/yuki/doc/uxmusic` 5曲ベンチ（LRC時刻は答え合わせのみ、入力は時刻なしTXT相当、`base` / `full`）:
+  - アムネシア: `MAE(after_tol)=0.734s`
+  - PROMINENCE: `81.670s`
+  - Lone Wolf: `58.186s`
+  - main heroine: `93.846s`
+  - Twilight: `28.689s`
+- PROMINENCE / `vocals` / `base`: `auto=23.731s`, `ja=69.775s`, `auto-ja=28.219s`
+- `/opt/homebrew/bin/speech align` は実行可能だったが、アムネシアのボーカル抽出音声+簡易行復元では `MAE(after_tol)=3.395s`
+
+### 判断
+- アムネシアはfull音源ASRで0.8秒級に到達した
+- PROMINENCE / Synthion系は反復ブロックとASR欠落が大きく、現行の曲全体一括ASR→後段整列では0.8秒級に届かない
+- 次の本命は、セクション分割・複数候補DP・歌詞反復ブロックの構造推定
+
+### 仕様同期
+- `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-12c` に更新
+- `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-9c` に更新
+
 ## 2026-06-08 — Python fallback Stage3の未来ドリフト修復と0.8秒級同期検証
 
 ### 実施内容

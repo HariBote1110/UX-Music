@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-12b)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-12c)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -98,6 +98,8 @@ YouTube URL から楽曲をライブラリに追加する際、字幕を同時�
   - `Qwen3 Forced Aligner` が利用できる環境では `speech align <audio> --text <lyrics>` を呼び、単語時刻を元歌詞行へ戻して `LRC` 編集へ返す
   - aligner が無い、または `UX_MUSIC_LYRICS_SYNC_ALIGNER=off` の場合は、`Swift sidecar` が `WhisperKit` / CoreML を用いて音声認識とタイムスタンプ抽出を行う
   - Python fallback では `ffmpeg` / Demucs / faster-whisper / Stage3 アラインメントの既存パイプラインを使う
+  - Python fallback では `UX_MUSIC_LYRICS_SYNC_AUDIO_SOURCES=full|vocals|both` により、元音源ASR・ボーカル分離ASR・両候補評価を切り替えられる
+  - `both` では各候補をTXT歌詞へ整列し、match率・信頼度・時刻単調性・過大ギャップから参照LRCを使わず品質スコアを算出して候補を選ぶ
   - Python fallback の Stage3 では、後半の繰り返しフレーズへ大きく吸われた場合に、飛ばされたASRセグメントへ時系列順で戻す未来ドリフト修復を行う
   - Python fallback の Stage3 では、繰り返しブロック末尾が圧縮された場合に、単調化後も末尾延長補正を再適用する
   - `profile=fast` では軽量モデルと低 worker 数を使い、Python 時代よりメモリと起動コストを抑える
