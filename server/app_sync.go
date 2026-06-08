@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
@@ -85,10 +86,10 @@ func syncIdentityHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func syncDiscoverHandler(w http.ResponseWriter, r *http.Request) {
-	timeout := 2 * time.Second
+	timeout := syncDiscoveryTimeout(0)
 	if raw := strings.TrimSpace(r.URL.Query().Get("timeoutMs")); raw != "" {
-		if ms, err := strconv.Atoi(raw); err == nil && ms > 0 && ms <= 10000 {
-			timeout = time.Duration(ms) * time.Millisecond
+		if ms, err := strconv.Atoi(raw); err == nil {
+			timeout = syncDiscoveryTimeout(ms)
 		}
 	}
 	peers, err := uxsync.DiscoverMDNS(r.Context(), timeout)
@@ -97,6 +98,24 @@ func syncDiscoverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, peers)
+}
+
+func (a *App) DiscoverSyncDevices(timeoutMs int) ([]uxsync.MDNSPeer, error) {
+	ctx := context.Background()
+	if a.ctx != nil {
+		ctx = a.ctx
+	}
+	return uxsync.DiscoverMDNS(ctx, syncDiscoveryTimeout(timeoutMs))
+}
+
+func syncDiscoveryTimeout(timeoutMs int) time.Duration {
+	if timeoutMs <= 0 {
+		return 2 * time.Second
+	}
+	if timeoutMs > 10000 {
+		return 10 * time.Second
+	}
+	return time.Duration(timeoutMs) * time.Millisecond
 }
 
 func syncPairingStartHandler(w http.ResponseWriter, r *http.Request) {
