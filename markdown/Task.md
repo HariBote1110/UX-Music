@@ -1,3 +1,16 @@
+# Task: UX Sync Phase 5 - 専用設定画面
+
+## 概要
+通常の設定モーダルに混在していた UX Sync の探索・ペアリング UI を、UX Sync 専用設定画面へ切り出す。通常設定には入口だけを置き、専用画面側に端末検出、peer 一覧、6桁コード確認ペアリングを集約する。
+
+## 完了条件
+- [x] renderer に UX Sync 専用設定入口の表示条件テストがあること。
+- [x] 通常設定には `UX Sync設定を開く` の入口だけが表示されること。
+- [x] Wails sync binding が無い環境では通常設定の UX Sync 入口が非表示になること。
+- [x] UX Sync 専用設定画面に端末タブ、探索ボタン、探索状態、peer 一覧、既存のペアリング導線があること。
+- [x] `npm test -- --run js/features/ux-sync-settings.test.ts` と `npm run typecheck` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-17a` に更新されていること。
+
 # Task: UX Sync Phase 4 - ペアリングUI
 
 ## 概要

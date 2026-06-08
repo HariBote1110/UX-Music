@@ -1,3 +1,21 @@
+## 2026-06-08 — UX Sync Phase 5 専用設定画面
+
+### 実施内容
+- 通常設定モーダルに混在していた UX Sync の探索・ペアリング UI を、UX Sync 専用設定画面へ切り出した
+- 通常設定には `UX Sync設定を開く` の入口だけを表示するようにした
+- Wails sync binding が無い renderer 単体環境では UX Sync 入口を非表示にする状態判定を追加
+- UX Sync 専用設定画面の `端末` タブに探索ボタン、探索状態、peer 一覧、6桁コード確認ペアリング導線を集約した
+- 後続の同期状態・保存ポリシー設定を載せるため、`同期` と `保存` のタブ枠を追加した
+- `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を UX Sync 専用設定画面の実装内容へ同期
+- `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-17a`、`src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-14a` に更新
+
+### 検証
+- `npm test -- --run js/features/ux-sync-settings.test.ts`
+- `npm run typecheck`
+
+### 判断
+- UX Sync は通常設定の一項目ではなく、専用画面で端末・同期・保存を管理していく形へ移行した。
+
 ## 2026-06-08 — UX Sync Phase 4 ペアリングUI
 
 ### 実施内容
