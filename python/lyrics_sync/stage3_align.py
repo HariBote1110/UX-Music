@@ -455,6 +455,75 @@ def _repair_repeated_block_tail_extension(
             row["confidence"] = min(float(row.get("confidence", 0.55)), 0.72)
 
 
+def _repair_forward_drift_to_skipped_segments(
+    rows: list[dict[str, Any]],
+    segments: list[dict[str, Any]],
+) -> None:
+    """遠い繰り返しへ飛んだ行を、時系列上で飛ばされた ASR セグメントへ戻す。
+
+    ASR が歌詞とかなり違う文字列を出した場合でも、セグメント時刻そのものは概ね
+    正しいことがある。高スコアな後半フレーズへ吸われたときは、間に残っている
+    セグメントを順番に使う方が破綻が小さい。
+    """
+    gap_threshold = float(os.environ.get("UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS", "75.0"))
+    max_rows = int(os.environ.get("UX_MUSIC_SYNC_FORWARD_DRIFT_MAX_ROWS", "32"))
+    segment_starts = sorted(
+        {
+            float(seg.get("start", -1.0))
+            for seg in segments
+            if float(seg.get("start", -1.0)) >= 0
+        }
+    )
+    if not segment_starts:
+        return
+
+    def _valid_row_indices() -> list[int]:
+        return [
+            idx
+            for idx, row in enumerate(rows)
+            if row.get("source") != "interlude" and float(row.get("timestamp", -1.0)) >= 0
+        ]
+
+    def _apply(row_start: int, candidates: list[float]) -> None:
+        if not candidates:
+            return
+        assigned = 0
+        for idx in range(row_start, len(rows)):
+            if assigned >= len(candidates) or assigned >= max_rows:
+                break
+            if rows[idx].get("source") == "interlude":
+                continue
+            if float(rows[idx].get("timestamp", -1.0)) < 0:
+                continue
+            rows[idx]["timestamp"] = candidates[assigned]
+            rows[idx]["confidence"] = min(float(rows[idx].get("confidence", 0.55)), 0.72)
+            assigned += 1
+
+    valid = _valid_row_indices()
+    if not valid:
+        return
+
+    first_idx = valid[0]
+    first_ts = float(rows[first_idx].get("timestamp", -1.0))
+    first_segment = segment_starts[0]
+    if first_ts - first_segment > gap_threshold:
+        early = [st for st in segment_starts if st < first_ts - 0.05]
+        _apply(first_idx, early)
+        valid = _valid_row_indices()
+
+    for prev_idx, cur_idx in zip(valid, valid[1:]):
+        prev_ts = float(rows[prev_idx].get("timestamp", -1.0))
+        cur_ts = float(rows[cur_idx].get("timestamp", -1.0))
+        if prev_ts < 0 or cur_ts - prev_ts <= gap_threshold:
+            continue
+        skipped = [
+            st
+            for st in segment_starts
+            if st > prev_ts + 0.05 and st < cur_ts - 0.05
+        ]
+        _apply(cur_idx, skipped)
+
+
 def _enforce_monotone_progress(rows: list[dict[str, Any]]) -> None:
     """match 行が前行より大きく巻き戻るのを防ぐ。"""
     min_step = float(os.environ.get("UX_MUSIC_SYNC_MONOTONE_CLAMP_STEP_SECONDS", "2.0"))
@@ -669,7 +738,9 @@ def align(
     _repair_large_jump_snap(out_lines, lines, segments, seg_texts)
     _repair_isolated_gap_tail(out_lines, lines, segments, seg_texts)
     _repair_repeated_block_tail_extension(out_lines, lines)
+    _repair_forward_drift_to_skipped_segments(out_lines, segments)
     _enforce_monotone_progress(out_lines)
+    _repair_repeated_block_tail_extension(out_lines, lines)
     _interpolate_rows(out_lines)
 
     detected = [
