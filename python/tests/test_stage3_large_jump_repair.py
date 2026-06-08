@@ -302,7 +302,8 @@ def test_repair_forward_drift_default_ignores_mid_sized_jump():
     assert rows[1]["timestamp"] == 195.74
 
 
-def test_repair_forward_drift_stops_when_skipped_segment_text_does_not_match_line():
+def test_repair_forward_drift_stops_when_skipped_segment_text_does_not_match_line(monkeypatch):
+    monkeypatch.setenv("UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS", "18.0")
     rows = [
         {"timestamp": 156.4, "source": "match", "confidence": 0.8},
         {"timestamp": 195.74, "source": "match", "confidence": 0.8},
