@@ -238,4 +238,44 @@ def test_repair_repeated_block_tail_extension_extends_only_tail(monkeypatch):
 
     assert rows[1]["timestamp"] == 12.0
     assert rows[2]["timestamp"] == 22.0
+
+
+def test_repair_forward_drift_uses_skipped_segments_after_large_jump(monkeypatch):
+    monkeypatch.setenv("UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS", "30.0")
+    rows = [
+        {"timestamp": 20.0, "source": "match", "confidence": 0.8},
+        {"timestamp": 140.0, "source": "match", "confidence": 0.8},
+        {"timestamp": 142.0, "source": "match", "confidence": 0.8},
+    ]
+    segments = [
+        {"start": 20.0, "text": "anchor"},
+        {"start": 44.0, "text": "skipped one"},
+        {"start": 52.0, "text": "skipped two"},
+        {"start": 140.0, "text": "late repeat"},
+    ]
+
+    stage3_align._repair_forward_drift_to_skipped_segments(rows, segments)
+
+    assert rows[1]["timestamp"] == 44.0
+    assert rows[1]["confidence"] <= 0.72
+    assert rows[2]["timestamp"] == 52.0
     assert rows[2]["confidence"] <= 0.72
+
+
+def test_repair_forward_drift_starts_from_early_segments(monkeypatch):
+    monkeypatch.setenv("UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS", "30.0")
+    rows = [
+        {"timestamp": 110.0, "source": "match", "confidence": 0.8},
+        {"timestamp": 112.0, "source": "match", "confidence": 0.8},
+    ]
+    segments = [
+        {"start": 24.0, "text": "early one"},
+        {"start": 31.0, "text": "early two"},
+        {"start": 110.0, "text": "late repeat"},
+    ]
+
+    stage3_align._repair_forward_drift_to_skipped_segments(rows, segments)
+
+    assert rows[0]["timestamp"] == 24.0
+    assert rows[1]["timestamp"] == 31.0
+    assert rows[1]["confidence"] <= 0.72
