@@ -97,7 +97,7 @@ func syncDiscoverHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to discover sync peers", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, peers)
+	writeJSON(w, uxsync.ResolveReachablePeers(peers, nil))
 }
 
 func (a *App) DiscoverSyncDevices(timeoutMs int) ([]uxsync.MDNSPeer, error) {
@@ -105,7 +105,11 @@ func (a *App) DiscoverSyncDevices(timeoutMs int) ([]uxsync.MDNSPeer, error) {
 	if a.ctx != nil {
 		ctx = a.ctx
 	}
-	return uxsync.DiscoverMDNS(ctx, syncDiscoveryTimeout(timeoutMs))
+	peers, err := uxsync.DiscoverMDNS(ctx, syncDiscoveryTimeout(timeoutMs))
+	if err != nil {
+		return nil, err
+	}
+	return uxsync.ResolveReachablePeers(peers, nil), nil
 }
 
 func syncDiscoveryTimeout(timeoutMs int) time.Duration {

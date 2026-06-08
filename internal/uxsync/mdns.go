@@ -2,6 +2,7 @@ package uxsync
 
 import (
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -26,14 +27,15 @@ type MDNSServiceEntry struct {
 }
 
 type MDNSPeer struct {
-	DeviceID        string   `json:"deviceId"`
-	DisplayName     string   `json:"displayName"`
-	Host            string   `json:"host"`
-	Hosts           []string `json:"hosts"`
-	Port            int      `json:"port"`
-	HostName        string   `json:"hostName"`
-	ProtocolVersion string   `json:"protocolVersion"`
-	Roles           []string `json:"roles"`
+	DeviceID         string   `json:"deviceId"`
+	DisplayName      string   `json:"displayName"`
+	Host             string   `json:"host"`
+	Hosts            []string `json:"hosts"`
+	Port             int      `json:"port"`
+	HostName         string   `json:"hostName"`
+	ProtocolVersion  string   `json:"protocolVersion"`
+	Roles            []string `json:"roles"`
+	ReachableBaseURL string   `json:"reachableBaseUrl,omitempty"`
 }
 
 func BuildMDNSText(info MDNSAdvertiseInfo) []string {
@@ -189,4 +191,28 @@ func (p MDNSPeer) BaseURL() string {
 		host = "[" + host + "]"
 	}
 	return "http://" + host + ":" + strconv.Itoa(p.Port)
+}
+
+func (p MDNSPeer) CandidateBaseURLs() []string {
+	hosts := appendUnique([]string{}, p.Host)
+	hosts = appendUnique(hosts, p.Hosts...)
+	urls := make([]string, 0, len(hosts))
+	for _, host := range hosts {
+		if host == "" || p.Port <= 0 {
+			continue
+		}
+		urls = appendUnique(urls, baseURLForHostPort(host, p.Port))
+	}
+	return urls
+}
+
+func baseURLForHostPort(host string, port int) string {
+	host = strings.TrimSpace(host)
+	if parsed, err := url.Parse("http://" + host); err == nil && parsed.Hostname() != "" && parsed.Port() != "" {
+		return "http://" + parsed.Host
+	}
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]"
+	}
+	return "http://" + host + ":" + strconv.Itoa(port)
 }
