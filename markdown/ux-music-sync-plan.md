@@ -364,12 +364,12 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - `DiscoverSyncDevices(timeoutMs)` による Wails 向け発見メソッド。
 - `deviceId`、`displayName`、`protocolVersion`、`roles` を TXT レコードとして公開。
 - 複数 NIC 環境で同一 `deviceId` の複数アドレス候補を `hosts` に保持。
+- 発見 peer の `hosts` 候補へ `/sync/identity` を順番に probe し、到達可能な `reachableBaseUrl` を自動選択。
 - macOS `dns-sd` と Go の `DiscoverMDNS` による実広告検証。
 
 未実装:
 
 - UI 上での自動発見一覧表示。
-- 発見 peer の到達可能アドレスを順に試す接続ヘルスチェック。
 - mDNS で発見した peer からペアリング UI へ遷移する導線。
 
 テスト:

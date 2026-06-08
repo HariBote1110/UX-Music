@@ -11,8 +11,10 @@
 - [x] 複数 NIC で同じ deviceId の広告が複数アドレスを返す場合、`hosts` に全候補を保持すること。
 - [x] macOS の `dns-sd -B _uxmusic-sync._tcp local` で広告を確認すること。
 - [x] Go の `uxsync.DiscoverMDNS` で広告を発見し、`hosts` に `192.168.0.226` など複数アドレス候補が含まれることを確認すること。
+- [x] 発見 peer の `hosts` 候補へ `/sync/identity` を順番に probe し、到達可能な `reachableBaseUrl` を自動選択できること。
+- [x] 末端側は IP 手入力や OS の `dns-sd` などを使わず、アプリ側の mDNS 探索と自動 probe だけで接続候補を得られること。
 - [x] `go test ./internal/uxsync ./server` が通ること。
-- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-14a` に更新されていること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-14b` に更新されていること。
 
 # Task: UX Sync Phase 1 - ペアリングと再生イベントプッシュ基盤
 

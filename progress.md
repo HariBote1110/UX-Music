@@ -7,19 +7,23 @@
 - Wails 向けに `DiscoverSyncDevices(timeoutMs)` を追加
 - `/sync/identity` に `deviceId` / `displayName` / `roles` を含めるよう更新
 - 複数NIC環境で同じ `deviceId` が複数アドレスを返す場合、`hosts` に全候補を保持するようにした
+- `hosts` 候補へ `/sync/identity` を順番に probe し、到達可能な `reachableBaseUrl` を自動選択するようにした
+- 末端側が IP 手入力や OS の `dns-sd` 操作をしなくても、アプリ側の mDNS 探索と自動 probe で接続候補を得られる方針にした
 - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を mDNS 実装内容へ同期
-- `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-14a`、`src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-11a` に更新
+- `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-14b`、`src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-11b` に更新
 
 ### 検証
 - `go test ./internal/uxsync`
 - `go test ./internal/uxsync ./server`
 - 検証用サーバーを `0.0.0.0:9876` で起動し、macOS `dns-sd -B _uxmusic-sync._tcp local` で `UX Music mDNS Test` の広告を確認
 - Go の `uxsync.DiscoverMDNS` で広告を発見し、`hosts` に `192.168.1.182`、`192.168.0.226`、`192.168.1.48`、Tailscale / IPv6 候補が含まれることを確認
+- Go の `ResolveReachablePeers` で `reachableBaseUrl` が自動設定されることを確認
+- SSH 接続した `mainpc` から `http://192.168.0.226:9876/sync/identity` が応答することを確認
 - `mainpc` には `dns-sd` が無かったため、Windows 側での mDNS browse は未実施
 
 ### 判断
-- mDNS 自動発見の基盤は実装済み。UI 上の一覧表示、到達可能アドレスの接続ヘルスチェック、発見 peer からペアリングへ進む導線は後続フェーズに残す。
-- 複数NIC環境では代表 `host` が `mainpc` から到達不能なアドレスになる可能性があるため、後続の接続処理では `hosts` を順に試す必要がある。
+- mDNS 自動発見と到達可能URLの自動選択基盤は実装済み。UI 上の一覧表示と、発見 peer からペアリングへ進む導線は後続フェーズに残す。
+- 複数NIC環境では代表 `host` が `mainpc` から到達不能なアドレスになる可能性があるため、後続のペアリングUIでは `reachableBaseUrl` を優先して使う。
 
 ## 2026-06-08 — UX Sync Phase 1 ペアリングと再生イベントプッシュ基盤
 
