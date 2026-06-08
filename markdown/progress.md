@@ -16,13 +16,25 @@
     - Wails binding と renderer bridge に `PullSyncLibraryAssets(baseURL, limit)` を追加した。
 - **検証**:
     - `go test ./server -run 'TestSyncLibrarySnapshot|TestSyncAssetFile|TestPullSyncLibraryAssets|TestResetSyncTestData' -count=1`
+    - Mac 側 `go test ./...`
+    - Mac 側 `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - Mac 側 `npm run typecheck`
+    - Mac 側 `wails build -clean -nopackage`
+    - Mac 側で新ビルドを `open /Users/yuki/GitHub/UX-Music/build/bin/UX-Music` から起動し、`/sync/identity` が `YukinoMac-mini` を返すことを確認。
+    - Mac 側 `/sync/library/snapshot` が Windows 側保存済み同期トークンで `200` を返し、812曲のスナップショットを返すことを確認。
+    - Windows 側 `go test ./server -run TestSyncLibrarySnapshot^|TestSyncAssetFile^|TestPullSyncLibraryAssets^|TestResetSyncTestData -count=1`
+    - Windows 側 `npm run typecheck`
+    - Windows 側 `wails build -clean -nopackage`
+    - Windows 側 `C:\Users\gzabu\UX-Music-sync-test\build\bin\UX-Music.exe --sync-reset-test-data`
+    - Windows 側 `C:\Users\gzabu\UX-Music-sync-test\build\bin\UX-Music.exe --sync-pull-one http://192.168.0.226:8765`
+    - Windows 側 `SyncLibrary` に Mac mini 由来の FLAC 2曲が保存され、`library.json` の `syncSourceDeviceId` / `syncSourceTrackId` とファイルサイズを確認。
 - **仕様同期**:
     - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
     - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-18a` に更新。
     - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-15a` に更新。
 - **判断**:
-    - 圧縮アセット生成は未実装だが、親 Mac mini の既存原本を子 Windows の管理ライブラリへ pull する縦串はローカルテストで通った。
-    - 次に Windows バイナリを更新し、`mainpc` から `--sync-reset-test-data` と `--sync-pull-one http://192.168.0.226:8765` の実通信検証を行う。
+    - 圧縮アセット生成は未実装だが、親 Mac mini の既存原本を子 Windows の管理ライブラリへ pull する縦串は、ローカルテストと `mainpc` への実通信検証の両方で通った。
+    - `--sync-pull-one` は既存取り込み済み曲を skip し、次の未取得曲を1曲 download する挙動として動作した。
 
 ### UX Sync Phase 5.1 Windows側発見fallback
 

@@ -9,7 +9,7 @@ Windows 側を検証専用ノードとして SSH から扱いやすくし、GUI 
 - [x] `PullSyncLibraryAssets(baseURL, limit)` が保存済み同期トークンで親から曲一覧と音源を取得し、子側 `SyncLibrary` 配下へ保存して `library.json` に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込むこと。
 - [x] `--sync-reset-test-data` が `syncAuthTokens` / `syncKnownPeers` / `syncDeviceId` を温存しつつ、検証用のライブラリ・再生回数・解析・同期イベント・アートワーク・キャッシュ・プレイリストを初期化すること。
 - [x] `--sync-pull-one` / `--sync-pull` で SSH 経由でも GUI を起動せず音源pullを実行できること。
-- [ ] Windows 側バイナリを更新し、`mainpc` から `--sync-reset-test-data` と `--sync-pull-one http://192.168.0.226:8765` の実通信検証が成功すること。
+- [x] Windows 側バイナリを更新し、`mainpc` から `--sync-reset-test-data` と `--sync-pull-one http://192.168.0.226:8765` の実通信検証が成功すること。
 - [x] `go test ./server -run 'TestSyncLibrarySnapshot|TestSyncAssetFile|TestPullSyncLibraryAssets|TestResetSyncTestData' -count=1` が通ること。
 - [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-18a` に更新されていること。
 
