@@ -1,3 +1,19 @@
+# Task: UX Sync Phase 2 - mDNS 自動発見基盤
+
+## 概要
+同一 LAN 上の UX Music 端末を自動発見できるよう、`_uxmusic-sync._tcp.local.` の mDNS / Bonjour 広告と探索を実装する。複数 NIC 環境では代表アドレスだけに依存せず、発見した peer に複数の到達候補アドレスを保持する。
+
+## 完了条件
+- [x] `internal/uxsync` に mDNS サービス種別、TXT レコード生成、発見 peer 正規化のテストがあること。
+- [x] `github.com/grandcat/zeroconf` を使い、UX Sync mDNS 広告と探索を実装していること。
+- [x] LAN HTTP サーバー起動時に `_uxmusic-sync._tcp.local.` を広告すること。
+- [x] Wails から呼べる `DiscoverSyncDevices(timeoutMs)` があり、ローカルUIから mDNS 探索を実行できること。
+- [x] 複数 NIC で同じ deviceId の広告が複数アドレスを返す場合、`hosts` に全候補を保持すること。
+- [x] macOS の `dns-sd -B _uxmusic-sync._tcp local` で広告を確認すること。
+- [x] Go の `uxsync.DiscoverMDNS` で広告を発見し、`hosts` に `192.168.0.226` など複数アドレス候補が含まれることを確認すること。
+- [x] `go test ./internal/uxsync ./server` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-14a` に更新されていること。
+
 # Task: UX Sync Phase 1 - ペアリングと再生イベントプッシュ基盤
 
 ## 概要

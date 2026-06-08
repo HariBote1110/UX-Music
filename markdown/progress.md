@@ -2,6 +2,30 @@
 
 ## 2026年6月8日
 
+### UX Sync Phase 2 mDNS 自動発見基盤
+
+- **要望対応**:
+    - 同一 LAN 上の UX Music 端末を、手入力ではなく mDNS / Bonjour で自動発見できるようにした。
+- **実装内容**:
+    - `internal/uxsync` に mDNS サービス定義、TXT レコード生成、発見 peer 正規化、複数アドレス保持を追加。
+    - `github.com/grandcat/zeroconf` を導入し、`_uxmusic-sync._tcp.local.` の広告と探索を実装。
+    - LAN HTTP サーバー起動時に UX Sync mDNS 広告を開始し、停止時に shutdown するようにした。
+    - Wails 向けに `DiscoverSyncDevices(timeoutMs)` を追加。
+    - `/sync/identity` に `deviceId` / `displayName` / `roles` を含めるよう更新。
+    - 複数NIC環境で同じ `deviceId` が複数アドレスを返す場合、`hosts` に全候補を保持するようにした。
+- **検証**:
+    - `go test ./internal/uxsync`
+    - `go test ./internal/uxsync ./server`
+    - 検証用サーバーを `0.0.0.0:9876` で起動し、macOS `dns-sd -B _uxmusic-sync._tcp local` で `UX Music mDNS Test` の広告を確認。
+    - Go の `uxsync.DiscoverMDNS` で広告を発見し、`hosts` に `192.168.1.182`、`192.168.0.226`、`192.168.1.48`、Tailscale / IPv6 候補が含まれることを確認。
+    - `mainpc` には `dns-sd` が無かったため、Windows 側での mDNS browse は未実施。
+- **仕様同期とバージョン更新**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-14a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-11a` に更新。
+- **残課題**:
+    - UI 上の自動発見一覧表示、到達可能アドレスの接続ヘルスチェック、発見 peer からペアリングへ進む導線は後続フェーズに残す。
+
 ### UX Sync Phase 1 ペアリングと再生イベントプッシュ基盤
 
 - **要望対応**:

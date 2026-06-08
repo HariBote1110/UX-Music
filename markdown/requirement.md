@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-13a)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-14a)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -44,6 +44,12 @@ macOSから直接WalkmanなどのMTPデバイスへ音楽を高速転送する�
 - **認証分離**: `/wear/*` と `/sync/*` は同じ LAN HTTP サーバー上に載せるが、Wear 認証トークンと Sync 認証トークンは別 middleware で扱う。
 - **再生イベント同期**: `Portable Client` から `Library Host` へ `/sync/library/events` で `PlayEvent` をバッチ送信できる。同じ `eventId` の再送は冪等に無視し、同じ曲を複数端末で同時再生した場合は別イベントとして両方を採用する。
 - **イベントログ基盤**: 既存 `playcounts` へ直接加算せず、`sync-play-events` のイベントログを保存し、再生回数はイベント集計から算出できるようにする。
+
+### [新規] UX Sync Phase 2
+同一 LAN 上の UX Music 端末を自動発見するための mDNS / Bonjour 基盤。
+- **サービス広告**: LAN HTTP サーバー起動時に `_uxmusic-sync._tcp.local.` を広告し、端末ID、表示名、プロトコル版、役割を TXT レコードに含める。
+- **サービス探索**: `DiscoverSyncDevices(timeoutMs)` から mDNS 探索を実行し、発見した peer を `deviceId`、`displayName`、`host`、`hosts`、`port`、`roles` として返す。
+- **複数NIC対応**: Mac mini のように複数の LAN / Wi-Fi / Tailscale アドレスを持つ環境では、代表 `host` だけでなく `hosts` に全候補を保持し、到達可能なアドレス選択を後続処理で行えるようにする。
 
 ### [更新] YouTubeダウンロード
 YouTube URL から楽曲をライブラリに追加する際、字幕を同時取得して同期歌詞（LRC）を生成する機能。
@@ -140,4 +146,4 @@ YouTube URL から楽曲をライブラリに追加する際、字幕を同時�
 - **メタデータ編集機能 (Tags Editor)**: メイン画面からのID3タグ編集。
 - **MP4サムネイル自動生成**: 動画ファイルからのアートワーク抽出。
 - **歌詞自動取得**: オンラインサービス連携。
-- **UX Sync 後続**: ライブラリ差分同期、プレイリスト同期、`Library Host` から `Portable Client` への圧縮音源キャッシュ、WebSocket による再生移行を実装する。LAN 外通信は初期スコープ外とし、実装計画は `markdown/ux-music-sync-plan.md` を信頼できる参照にする。
+- **UX Sync 後続**: ペアリングUI、ライブラリ差分同期、プレイリスト同期、`Library Host` から `Portable Client` への圧縮音源キャッシュ、WebSocket による再生移行を実装する。LAN 外通信は初期スコープ外とし、実装計画は `markdown/ux-music-sync-plan.md` を信頼できる参照にする。

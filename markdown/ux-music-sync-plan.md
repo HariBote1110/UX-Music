@@ -349,9 +349,28 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 
 未実装:
 
-- mDNS / Bonjour による自動発見。
 - UI 上のペアリング開始・コード確認・端末解除。
 - 実鍵交換に基づく6桁コード導出。
+
+### Phase 2.5: mDNS / Bonjour 自動発見（実装済み: 2026-06-08）
+
+目的:
+
+- 同一 LAN 上の UX Music 端末を `_uxmusic-sync._tcp.local.` で自動発見できるようにする。
+
+実装済み:
+
+- `github.com/grandcat/zeroconf` による mDNS 広告。
+- `DiscoverSyncDevices(timeoutMs)` による Wails 向け発見メソッド。
+- `deviceId`、`displayName`、`protocolVersion`、`roles` を TXT レコードとして公開。
+- 複数 NIC 環境で同一 `deviceId` の複数アドレス候補を `hosts` に保持。
+- macOS `dns-sd` と Go の `DiscoverMDNS` による実広告検証。
+
+未実装:
+
+- UI 上での自動発見一覧表示。
+- 発見 peer の到達可能アドレスを順に試す接続ヘルスチェック。
+- mDNS で発見した peer からペアリング UI へ遷移する導線。
 
 テスト:
 
