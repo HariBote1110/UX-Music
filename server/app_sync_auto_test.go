@@ -213,3 +213,31 @@ func TestAutoSyncPairedDevicesDownloadsMissingArtworkForImportedTrack(t *testing
 		t.Fatalf("unexpected artwork bytes %q", string(bytes))
 	}
 }
+
+func TestAutoSyncPairedDevicesStopsWhenFreeSpaceIsBelowSafetyLimit(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey:       "dev_portable",
+		syncMinFreeSpaceGBSettingsKey: 5.0,
+		syncAuthTokensSettingsKey:     map[string]interface{}{"dev_host": "tok_host"},
+		syncKnownPeersSettingsKey:     []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: "http://127.0.0.1:1"}},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	originalFreeSpace := syncAvailableFreeSpaceBytes
+	syncAvailableFreeSpaceBytes = func(string) (uint64, error) {
+		return 2 * 1024 * 1024 * 1024, nil
+	}
+	t.Cleanup(func() { syncAvailableFreeSpaceBytes = originalFreeSpace })
+
+	result, err := NewApp().AutoSyncPairedDevices()
+	if err != nil {
+		t.Fatalf("AutoSyncPairedDevices: %v", err)
+	}
+	if !result.Paused || result.CheckedDevices != 0 {
+		t.Fatalf("expected auto sync to pause before peer access, got %#v", result)
+	}
+	if result.MinFreeSpaceBytes != 5*1024*1024*1024 || result.FreeSpaceBytes != 2*1024*1024*1024 {
+		t.Fatalf("unexpected free space counters: %#v", result)
+	}
+}
