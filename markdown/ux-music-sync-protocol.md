@@ -52,6 +52,7 @@ server は identity 応答に `negotiation` を含める。
 - `library.events.v1`: 再生イベントpush
 - `library.snapshot.v1`: ライブラリスナップショット取得
 - `library.asset-file.v1`: 曲ID指定の音源取得
+- `library.artwork.v1`: 曲ID指定のジャケット画像取得
 - `library.import.v1`: multipart 音源push取り込み
 - `library.transfer-progress.v1`: Wails UI / local client 向け転送進捗イベント
 - `library.transcode.mp3-320.v1`: MP3 320kbps へ変換しながら転送するオプション
@@ -66,8 +67,16 @@ server は identity 応答に `negotiation` を含める。
 | POST | `/sync/pairing/confirm` | public | `pairing.code.v1` |
 | GET | `/sync/library/snapshot` | sync-token | `library.snapshot.v1` |
 | GET | `/sync/assets/{trackId}/file` | sync-token | `library.asset-file.v1` |
+| GET | `/sync/assets/{trackId}/artwork` | sync-token | `library.artwork.v1` |
 | POST | `/sync/library/import` | sync-token | `library.import.v1` |
 | POST | `/sync/library/events` | sync-token | `library.events.v1` |
+
+## ジャケット同期
+`library.artwork.v1` は、ジャケット画像を track metadata の巨大 blob として混ぜず、同期トークン付きの個別 asset として扱う。
+
+- `/sync/library/snapshot` はローカル `artwork` を直接返さず、取得可能な場合だけ `syncArtwork` 参照を返す。
+- `/sync/assets/{trackId}/artwork` は、ライブラリ登録済み曲の保存済みジャケットを返す。
+- `/sync/library/import` の multipart payload は任意の `artwork` part を受け取れる。受信側は `Artworks` 配下へ保存し、`library.json` には安全なファイル名だけを `artwork.full` として保存する。
 
 ## 転送オプション
 push 転送のローカル呼び出しは `encodingMode` を指定できる。
@@ -100,7 +109,7 @@ UI には `ux-sync-transfer-progress` event として次の情報を流す。
 `stage` は `preparing`、`transcoding`、`downloading`、`uploading`、`done`、`skipped`、`failed` を使う。
 
 ## 自動同期
-`library.auto-sync.v1` は、ペア済み端末の既知URLへ接続できた時に、手動ボタンなしで軽量同期を試す capability である。現時点ではローカル再生回数の `PlayEvent` を `/sync/library/events` へpushする。音源本体やジャケット画像の自動転送は、容量ポリシーとアセット単位の同期設定を追加してから別 capability として扱う。
+`library.auto-sync.v1` は、ペア済み端末の既知URLへ接続できた時に、手動ボタンなしで軽量同期を試す capability である。現時点ではローカル再生回数の `PlayEvent` を `/sync/library/events` へpushし、既に同期済みの曲で欠けているジャケットを `/sync/assets/{trackId}/artwork` から補完する。音源本体の自動転送は容量ポリシーとアセット単位の同期設定を追加してから扱う。
 
 ## mDNS TXT
 mDNS TXT は軽量な事前情報として扱い、最終判断は `/sync/identity` で行う。

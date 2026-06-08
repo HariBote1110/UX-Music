@@ -132,6 +132,9 @@ func syncLibrarySnapshotHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			clean[key] = value
 		}
+		if artwork := syncArtworkDescriptor(song); len(artwork) > 0 {
+			clean["syncArtwork"] = artwork
+		}
 		tracks = append(tracks, clean)
 	}
 	writeJSON(w, syncLibrarySnapshotResponse{
@@ -148,11 +151,14 @@ func syncAssetFileHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	trackID := strings.TrimPrefix(r.URL.Path, "/sync/assets/")
-	trackID = strings.TrimSuffix(trackID, "/file")
-	trackID = strings.Trim(trackID, "/")
-	if decoded, err := url.PathUnescape(trackID); err == nil {
-		trackID = decoded
+	trackID, assetKind := parseSyncAssetPath(r.URL.Path)
+	if assetKind == "artwork" {
+		syncAssetArtworkHandler(w, r, trackID)
+		return
+	}
+	if assetKind != "file" {
+		http.NotFound(w, r)
+		return
 	}
 	if trackID == "" || strings.ContainsAny(trackID, `/\`) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -177,6 +183,21 @@ func syncAssetFileHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, safeName))
 	http.ServeFile(w, r, filePath)
+}
+
+func syncAssetArtworkHandler(w http.ResponseWriter, r *http.Request, trackID string) {
+	if trackID == "" || strings.ContainsAny(trackID, `/\`) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	artworkPath := findSyncArtworkPathByTrackID(trackID)
+	if artworkPath == "" {
+		http.NotFound(w, r)
+		return
+	}
+	safeName := filepath.Base(artworkPath)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, safeName))
+	http.ServeFile(w, r, artworkPath)
 }
 
 func syncLibraryImportHandler(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +231,14 @@ func syncLibraryImportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	path, err := importSyncUploadedTrack(payload, header, file)
+	var artworkFile multipart.File
+	var artworkHeader *multipart.FileHeader
+	if candidate, candidateHeader, err := r.FormFile("artwork"); err == nil {
+		artworkFile = candidate
+		artworkHeader = candidateHeader
+		defer artworkFile.Close()
+	}
+	path, err := importSyncUploadedTrack(payload, header, file, artworkHeader, artworkFile)
 	if err != nil {
 		http.Error(w, "failed to import uploaded track", http.StatusInternalServerError)
 		return
@@ -471,7 +499,7 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 	return destPath, nil
 }
 
-func importSyncUploadedTrack(payload syncLibraryImportRequest, header *multipart.FileHeader, file io.Reader) (string, error) {
+func importSyncUploadedTrack(payload syncLibraryImportRequest, header *multipart.FileHeader, file io.Reader, artworkHeader *multipart.FileHeader, artwork io.Reader) (string, error) {
 	fileName := "track"
 	if header != nil {
 		fileName = filepath.Base(header.Filename)
@@ -502,6 +530,15 @@ func importSyncUploadedTrack(payload syncLibraryImportRequest, header *multipart
 	if err := os.Rename(tmpPath, destPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return "", err
+	}
+	if artwork != nil {
+		savedArtwork, err := importSyncUploadedArtwork(payload, artworkHeader, artwork)
+		if err != nil {
+			return "", err
+		}
+		if len(savedArtwork) > 0 {
+			payload.Track["artwork"] = savedArtwork
+		}
 	}
 	if err := upsertSyncImportedTrack(identity, payload.Track, destPath); err != nil {
 		return "", err
@@ -582,6 +619,23 @@ func (a *App) uploadSyncTrackAsset(ctx context.Context, baseURL, token string, s
 		}); err != nil {
 			writeErr = err
 			return
+		}
+		if artworkPath := syncArtworkPathFromTrack(track); artworkPath != "" {
+			artwork, err := os.Open(artworkPath)
+			if err != nil {
+				writeErr = err
+				return
+			}
+			defer artwork.Close()
+			part, err := multipartWriter.CreateFormFile("artwork", filepath.Base(artworkPath))
+			if err != nil {
+				writeErr = err
+				return
+			}
+			if _, err := io.Copy(part, artwork); err != nil {
+				writeErr = err
+				return
+			}
 		}
 		part, err := multipartWriter.CreateFormFile("file", prepared.fileName)
 		if err != nil {
@@ -845,6 +899,9 @@ func upsertSyncImportedTrack(identity syncIdentityResponse, track map[string]int
 		}
 		next[key] = value
 	}
+	if artwork := sanitiseSyncArtworkValue(track["artwork"]); len(artwork) > 0 {
+		next["artwork"] = artwork
+	}
 	next["id"] = uuid.NewString()
 	next["path"] = destPath
 	next["syncSourceDeviceId"] = identity.DeviceID
@@ -868,6 +925,246 @@ func upsertSyncImportedTrack(identity syncIdentityResponse, track map[string]int
 	}
 	library = append(library, next)
 	return store.Instance.Save("library", library)
+}
+
+func syncMissingArtworkFromPeer(ctx context.Context, baseURL, token, deviceID string) (int, error) {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return 0, err
+	}
+	changed := 0
+	for _, item := range library {
+		track, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if syncTrackString(track, "syncSourceDeviceId") != deviceID {
+			continue
+		}
+		if len(sanitiseSyncArtworkValue(track["artwork"])) > 0 {
+			continue
+		}
+		sourceTrackID := syncTrackString(track, "syncSourceTrackId")
+		if sourceTrackID == "" {
+			continue
+		}
+		artwork, err := downloadSyncArtworkAsset(ctx, baseURL, token, deviceID, sourceTrackID)
+		if err == errSyncArtworkNotFound {
+			continue
+		}
+		if err != nil {
+			return changed, err
+		}
+		if len(artwork) == 0 {
+			continue
+		}
+		track["artwork"] = artwork
+		changed++
+	}
+	if changed == 0 {
+		return 0, nil
+	}
+	if err := store.Instance.Save("library", library); err != nil {
+		return 0, err
+	}
+	return changed, nil
+}
+
+var errSyncArtworkNotFound = fmt.Errorf("sync artwork not found")
+
+func downloadSyncArtworkAsset(ctx context.Context, baseURL, token, deviceID, trackID string) (map[string]string, error) {
+	endpoint := strings.TrimRight(baseURL, "/") + "/sync/assets/" + url.PathEscape(trackID) + "/artwork"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	resp, err := syncAssetHTTPClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, errSyncArtworkNotFound
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("sync artwork request failed: %s", resp.Status)
+	}
+	fileName := syncResponseFileName(resp, map[string]interface{}{"id": trackID})
+	destPath := syncArtworkDestination(deviceID, trackID, fileName)
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return nil, err
+	}
+	tmpPath := destPath + ".tmp"
+	out, err := os.Create(tmpPath)
+	if err != nil {
+		return nil, err
+	}
+	_, copyErr := io.Copy(out, resp.Body)
+	closeErr := out.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return nil, copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return nil, closeErr
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return nil, err
+	}
+	return map[string]string{"full": filepath.Base(destPath)}, nil
+}
+
+func importSyncUploadedArtwork(payload syncLibraryImportRequest, header *multipart.FileHeader, artwork io.Reader) (map[string]string, error) {
+	trackID := syncTrackID(payload.Track)
+	if trackID == "" {
+		return nil, nil
+	}
+	fileName := "artwork.webp"
+	if header != nil && strings.TrimSpace(header.Filename) != "" {
+		fileName = filepath.Base(header.Filename)
+	}
+	destPath := syncArtworkDestination(payload.SourceDeviceID, trackID, fileName)
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return nil, err
+	}
+	tmpPath := destPath + ".tmp"
+	out, err := os.Create(tmpPath)
+	if err != nil {
+		return nil, err
+	}
+	_, copyErr := io.Copy(out, artwork)
+	closeErr := out.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return nil, copyErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpPath)
+		return nil, closeErr
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return nil, err
+	}
+	return map[string]string{"full": filepath.Base(destPath)}, nil
+}
+
+func syncArtworkDestination(deviceID, trackID, fileName string) string {
+	ext := strings.ToLower(filepath.Ext(fileName))
+	switch ext {
+	case ".webp", ".jpg", ".jpeg", ".png":
+	default:
+		ext = ".webp"
+	}
+	name := sanitiseFileName(firstNonEmpty(deviceID, "device") + "-" + firstNonEmpty(trackID, "track") + ext)
+	return filepath.Join(config.GetUserDataPath(), "Artworks", name)
+}
+
+func parseSyncAssetPath(rawPath string) (string, string) {
+	rest := strings.TrimPrefix(rawPath, "/sync/assets/")
+	parts := strings.Split(strings.Trim(rest, "/"), "/")
+	if len(parts) != 2 {
+		return "", ""
+	}
+	trackID := parts[0]
+	if decoded, err := url.PathUnescape(trackID); err == nil {
+		trackID = decoded
+	}
+	return trackID, parts[1]
+}
+
+func findSyncArtworkPathByTrackID(trackID string) string {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return ""
+	}
+	for _, item := range library {
+		track, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if syncTrackID(track) != trackID && syncTrackString(track, "path") != trackID {
+			continue
+		}
+		if path := syncArtworkPathFromTrack(track); path != "" {
+			return path
+		}
+	}
+	return ""
+}
+
+func syncArtworkPathFromTrack(track map[string]interface{}) string {
+	artwork := sanitiseSyncArtworkValue(track["artwork"])
+	fullName := artwork["full"]
+	if fullName == "" {
+		return ""
+	}
+	path := filepath.Join(config.GetUserDataPath(), "Artworks", fullName)
+	cleanPath := filepath.Clean(path)
+	artworksDir := filepath.Clean(filepath.Join(config.GetUserDataPath(), "Artworks"))
+	if cleanPath != artworksDir && !strings.HasPrefix(cleanPath, artworksDir+string(filepath.Separator)) {
+		return ""
+	}
+	if _, err := os.Stat(cleanPath); err != nil {
+		return ""
+	}
+	return cleanPath
+}
+
+func syncArtworkDescriptor(track map[string]interface{}) map[string]interface{} {
+	artwork := sanitiseSyncArtworkValue(track["artwork"])
+	if len(artwork) == 0 {
+		return nil
+	}
+	descriptor := map[string]interface{}{
+		"available": true,
+		"endpoint":  "/sync/assets/" + url.PathEscape(syncTrackID(track)) + "/artwork",
+	}
+	for key, value := range artwork {
+		descriptor[key] = value
+	}
+	return descriptor
+}
+
+func sanitiseSyncArtworkValue(raw interface{}) map[string]string {
+	source, ok := raw.(map[string]interface{})
+	if !ok {
+		if typed, ok := raw.(map[string]string); ok {
+			source = make(map[string]interface{}, len(typed))
+			for key, value := range typed {
+				source[key] = value
+			}
+		}
+	}
+	if source == nil {
+		return nil
+	}
+	clean := map[string]string{}
+	for _, key := range []string{"full", "thumbnail"} {
+		value, _ := source[key].(string)
+		name := sanitiseSyncArtworkFileName(value)
+		if name != "" {
+			clean[key] = name
+		}
+	}
+	return clean
+}
+
+func sanitiseSyncArtworkFileName(raw string) string {
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, `\`, `/`))
+	if raw == "" || strings.Contains(raw, "/") {
+		return ""
+	}
+	ext := strings.ToLower(filepath.Ext(raw))
+	switch ext {
+	case ".webp", ".jpg", ".jpeg", ".png":
+		return filepath.Base(raw)
+	default:
+		return ""
+	}
 }
 
 func syncImportedTrackExists(deviceID, trackID string) bool {

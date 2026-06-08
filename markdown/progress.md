@@ -2,6 +2,22 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.8 ジャケットの自動補完同期
+
+- **要望対応**:
+    - 接続できたら手動操作なしで同期される対象に、再生回数だけでなくジャケット画像も含めたい要望に対応した。
+- **実装内容**:
+    - `/sync/assets/{trackId}/artwork` を追加し、同期トークン付きでライブラリ登録済み曲の保存済みジャケットを取得できるようにした。
+    - `/sync/library/snapshot` は巨大な `artwork` blob を直接載せず、`syncArtwork` 参照だけを返すようにした。
+    - multipart import / push で任意の `artwork` part を扱い、受信側の `Artworks` 配下へ保存して `library.json` の `artwork.full` に反映できるようにした。
+    - `AutoSyncPairedDevices()` がペア済み端末へ接続できた時、既に取り込み済みの同期曲でジャケットが欠けているものを自動補完するようにした。
+- **検証**:
+    - `go test ./server -run 'TestAutoSyncPairedDevicesDownloadsMissingArtworkForImportedTrack|TestSyncAssetArtworkServesArtworkByTrackID' -count=1`
+- **仕様同期**:
+    - `library.artwork.v1` capability を追加。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-24a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-21a` に更新。
+
 ### UX Sync Phase 5.7 再生回数の自動同期
 
 - **要望対応**:

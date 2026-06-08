@@ -1,3 +1,15 @@
+# Task: UX Sync Phase 5.8 - ジャケットの自動補完同期
+
+## 概要
+UX Sync を「接続できたら同期」に寄せる対象として、再生回数に続きジャケット画像を扱う。音源本体を勝手に大量転送せず、既に同期済みの曲で欠けているジャケットを、ペア済み端末へ接続できた時に軽量補完する。
+
+## 完了条件
+- [x] `/sync/assets/{trackId}/artwork` が同期トークン付きで保存済みジャケットを返すテストがあること。
+- [x] `AutoSyncPairedDevices()` がペア済み端末から同期済み曲の不足ジャケットを取得し、`Artworks` と `library.json` に反映するテストがあること。
+- [x] `/sync/library/snapshot` は巨大な `artwork` blob を直接載せず、`syncArtwork` 参照だけを返すこと。
+- [x] multipart import / push で任意の `artwork` part を扱い、受信側の `artwork.full` に安全なファイル名を保存できること。
+- [x] protocol capability に `library.artwork.v1` が追加されていること。
+
 # Task: UX Sync Phase 5.7 - 再生回数の自動同期
 
 ## 概要

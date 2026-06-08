@@ -516,6 +516,7 @@ export namespace server {
 	    syncedDevices: number;
 	    failedDevices: number;
 	    pushedPlayEvents: number;
+	    syncedArtwork: number;
 	    errors?: string[];
 
 	    static createFrom(source: any = {}) {
@@ -528,6 +529,7 @@ export namespace server {
 	        this.syncedDevices = source["syncedDevices"];
 	        this.failedDevices = source["failedDevices"];
 	        this.pushedPlayEvents = source["pushedPlayEvents"];
+	        this.syncedArtwork = source["syncedArtwork"];
 	        this.errors = source["errors"];
 	    }
 	}

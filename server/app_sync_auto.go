@@ -20,6 +20,7 @@ type SyncAutoResult struct {
 	SyncedDevices    int      `json:"syncedDevices"`
 	FailedDevices    int      `json:"failedDevices"`
 	PushedPlayEvents int      `json:"pushedPlayEvents"`
+	SyncedArtwork    int      `json:"syncedArtwork"`
 	Errors           []string `json:"errors,omitempty"`
 }
 
@@ -65,6 +66,13 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 			}
 			result.PushedPlayEvents += accepted
 		}
+		artworkCount, err := syncMissingArtworkFromPeer(ctx, device.BaseURL, token, identity.DeviceID)
+		if err != nil {
+			result.FailedDevices++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", identity.DeviceID, err))
+			continue
+		}
+		result.SyncedArtwork += artworkCount
 		result.SyncedDevices++
 	}
 	return result, nil
