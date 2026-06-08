@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     formatSyncPeerEndpoint,
+    formatSyncPullResultSummary,
     normaliseSyncPairingConfirm,
     normaliseSyncPullResult,
     normaliseSyncPairingStart,
@@ -209,5 +210,31 @@ describe('syncPullActionState', () => {
             canPull: false,
             status: 'この環境では音源取得を利用できません',
         });
+    });
+});
+
+describe('formatSyncPullResultSummary', () => {
+    it('summarises downloaded, skipped, and failed counters', () => {
+        expect(formatSyncPullResultSummary({
+            remoteDeviceId: 'dev_mac_mini',
+            remoteDisplayName: 'YukinoMac-mini',
+            downloaded: 2,
+            skipped: 1,
+            failed: 0,
+            importedPaths: [],
+            errors: [],
+        })).toBe('YukinoMac-mini: 取得 2曲 / 既存 1曲 / 失敗 0曲');
+    });
+
+    it('falls back to the remote device id when the display name is missing', () => {
+        expect(formatSyncPullResultSummary({
+            remoteDeviceId: 'dev_mac_mini',
+            remoteDisplayName: '',
+            downloaded: 0,
+            skipped: 3,
+            failed: 1,
+            importedPaths: [],
+            errors: ['network error'],
+        })).toBe('dev_mac_mini: 取得 0曲 / 既存 3曲 / 失敗 1曲');
     });
 });
