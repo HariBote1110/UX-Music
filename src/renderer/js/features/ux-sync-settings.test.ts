@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatSyncPeerEndpoint, normaliseSyncPeers } from './ux-sync-settings.js';
+import {
+    formatSyncPeerEndpoint,
+    normaliseSyncPairingConfirm,
+    normaliseSyncPairingStart,
+    normaliseSyncPeers,
+    syncPeerPairingBaseUrl,
+} from './ux-sync-settings.js';
 
 describe('normaliseSyncPeers', () => {
     it('keeps reachable URL and all host candidates for discovered peers', () => {
@@ -55,5 +61,79 @@ describe('formatSyncPeerEndpoint', () => {
             port: 8765,
             roles: [],
         })).toBe('http://192.168.1.182:8765');
+    });
+});
+
+describe('syncPeerPairingBaseUrl', () => {
+    it('uses the probed reachable URL for pairing', () => {
+        expect(syncPeerPairingBaseUrl({
+            deviceId: 'dev',
+            displayName: 'mainPC',
+            reachableBaseUrl: 'http://mainPC.local:8765',
+            host: '192.168.1.182',
+            hosts: ['192.168.1.182'],
+            port: 8765,
+            roles: [],
+        })).toBe('http://mainPC.local:8765');
+    });
+
+    it('falls back to the formatted host endpoint when probing has not selected one', () => {
+        expect(syncPeerPairingBaseUrl({
+            deviceId: 'dev',
+            displayName: 'mainPC',
+            host: '192.168.0.52',
+            hosts: [],
+            port: 8765,
+            roles: [],
+        })).toBe('http://192.168.0.52:8765');
+    });
+
+    it('returns an empty string when the peer cannot be addressed', () => {
+        expect(syncPeerPairingBaseUrl({
+            deviceId: 'dev',
+            displayName: 'mainPC',
+            hosts: [],
+            roles: [],
+        })).toBe('');
+    });
+});
+
+describe('normaliseSyncPairingStart', () => {
+    it('keeps the session and six digit code returned by the backend', () => {
+        expect(normaliseSyncPairingStart({
+            baseUrl: 'http://mainPC.local:8765',
+            sessionId: 'sess_remote_1',
+            localDeviceId: 'dev_local',
+            remoteDeviceId: 'dev_remote',
+            remoteDisplayName: 'mainPC',
+            code: '123456',
+            expiresAt: '2026-06-08T12:02:00Z',
+        })).toEqual({
+            baseUrl: 'http://mainPC.local:8765',
+            sessionId: 'sess_remote_1',
+            localDeviceId: 'dev_local',
+            remoteDeviceId: 'dev_remote',
+            remoteDisplayName: 'mainPC',
+            code: '123456',
+            expiresAt: '2026-06-08T12:02:00Z',
+        });
+    });
+
+    it('rejects malformed pairing start responses', () => {
+        expect(normaliseSyncPairingStart({ sessionId: 'sess_remote_1', code: '123456' })).toBeNull();
+    });
+});
+
+describe('normaliseSyncPairingConfirm', () => {
+    it('keeps the remote device identity and saved state', () => {
+        expect(normaliseSyncPairingConfirm({
+            remoteDeviceId: 'dev_remote',
+            remoteDisplayName: 'mainPC',
+            tokenSaved: true,
+        })).toEqual({
+            remoteDeviceId: 'dev_remote',
+            remoteDisplayName: 'mainPC',
+            tokenSaved: true,
+        });
     });
 });
