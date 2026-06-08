@@ -5,8 +5,10 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +19,7 @@ import (
 
 const syncPlayEventsStoreName = "sync-play-events"
 const syncAuthTokensSettingsKey = "syncAuthTokens"
+const syncDeviceIDSettingsKey = "syncDeviceId"
 const syncPairingTTL = 2 * time.Minute
 
 var syncPairingSessions = struct {
@@ -62,6 +65,7 @@ func registerSyncRoutes(mux *http.ServeMux, _ *App) {
 	mux.HandleFunc("/sync/pairing/start", syncPairingStartHandler)
 	mux.HandleFunc("/sync/pairing/confirm", syncPairingConfirmHandler)
 	mux.HandleFunc("/sync/library/events", syncLibraryEventsHandler)
+	mux.HandleFunc("/sync/discover", syncDiscoverHandler)
 }
 
 func syncIdentityHandler(w http.ResponseWriter, r *http.Request) {
@@ -69,11 +73,30 @@ func syncIdentityHandler(w http.ResponseWriter, r *http.Request) {
 	if h, err := os.Hostname(); err == nil && strings.TrimSpace(h) != "" {
 		hostname = strings.TrimSpace(h)
 	}
+	info := syncMDNSAdvertiseInfo(ensureSyncDeviceID(), hostname)
 	writeJSON(w, map[string]interface{}{
 		"role":            "ux-music-sync",
+		"deviceId":        info.DeviceID,
 		"hostname":        hostname,
+		"displayName":     info.DisplayName,
 		"protocolVersion": "0.1",
+		"roles":           info.Roles,
 	})
+}
+
+func syncDiscoverHandler(w http.ResponseWriter, r *http.Request) {
+	timeout := 2 * time.Second
+	if raw := strings.TrimSpace(r.URL.Query().Get("timeoutMs")); raw != "" {
+		if ms, err := strconv.Atoi(raw); err == nil && ms > 0 && ms <= 10000 {
+			timeout = time.Duration(ms) * time.Millisecond
+		}
+	}
+	peers, err := uxsync.DiscoverMDNS(r.Context(), timeout)
+	if err != nil {
+		http.Error(w, "failed to discover sync peers", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, peers)
 }
 
 func syncPairingStartHandler(w http.ResponseWriter, r *http.Request) {
@@ -319,4 +342,66 @@ func randomBytes(size int) []byte {
 
 func randomHex(size int) string {
 	return hex.EncodeToString(randomBytes(size))
+}
+
+func (ws *WearServer) startSyncMDNS() {
+	info := syncMDNSAdvertiseInfo(ensureSyncDeviceID(), syncDisplayName())
+	advertisement, err := uxsync.AdvertiseMDNS(info, parseWearServerPort())
+	if err != nil {
+		fmt.Printf("[Sync] mDNS advertise failed: %v\n", err)
+		return
+	}
+	ws.syncInfo = info
+	ws.syncMDNS = advertisement
+	fmt.Printf("[Sync] mDNS advertising %s on %s.%s:%s\n", info.DisplayName, uxsync.MDNSServiceType, uxsync.MDNSDomain, wearServerPort)
+}
+
+func syncMDNSAdvertiseInfo(deviceID, displayName string) uxsync.MDNSAdvertiseInfo {
+	return uxsync.MDNSAdvertiseInfo{
+		DeviceID:        strings.TrimSpace(deviceID),
+		DisplayName:     strings.TrimSpace(displayName),
+		ProtocolVersion: "0.1",
+		Roles:           []string{"LibraryHost", "PlaybackTarget", "Controller"},
+	}
+}
+
+func ensureSyncDeviceID() string {
+	settings, err := store.Instance.LoadMap("settings")
+	if err == nil {
+		if deviceID, ok := settings[syncDeviceIDSettingsKey].(string); ok && strings.TrimSpace(deviceID) != "" {
+			return strings.TrimSpace(deviceID)
+		}
+	}
+	if settings == nil {
+		settings = map[string]interface{}{}
+	}
+	deviceID := "dev_" + randomHex(16)
+	settings[syncDeviceIDSettingsKey] = deviceID
+	if err := store.Instance.Save("settings", settings); err != nil {
+		fmt.Printf("[Sync] Failed to save device id: %v\n", err)
+	}
+	return deviceID
+}
+
+func syncDisplayName() string {
+	if hostname, err := os.Hostname(); err == nil && strings.TrimSpace(hostname) != "" {
+		return strings.TrimSpace(hostname)
+	}
+	return "UX Music"
+}
+
+func parseWearServerPort() int {
+	port, err := strconv.Atoi(wearServerPort)
+	if err != nil {
+		return 8765
+	}
+	return port
+}
+
+func splitSyncMDNSText(item string) (string, string) {
+	key, value, ok := strings.Cut(item, "=")
+	if !ok {
+		return strings.TrimSpace(item), ""
+	}
+	return strings.TrimSpace(key), strings.TrimSpace(value)
 }

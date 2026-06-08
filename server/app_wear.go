@@ -22,6 +22,7 @@ import (
 
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
+	"ux-music-sidecar/internal/uxsync"
 
 	"github.com/skip2/go-qrcode"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -34,8 +35,10 @@ const wearAuthTokenSettingsKey = "wearAuthToken"
 
 // WearServer holds the HTTP server for the /wear/ endpoints.
 type WearServer struct {
-	server *http.Server
-	app    *App
+	server   *http.Server
+	app      *App
+	syncMDNS *uxsync.MDNSAdvertisement
+	syncInfo uxsync.MDNSAdvertiseInfo
 }
 
 // StartWearServer starts the LAN HTTP server that serves the /wear/ API.
@@ -58,10 +61,14 @@ func StartWearServer(ctx context.Context, app *App) *WearServer {
 
 	go func() {
 		<-ctx.Done()
+		if ws.syncMDNS != nil {
+			ws.syncMDNS.Shutdown()
+		}
 		_ = srv.Close()
 	}()
 
 	ws.server = srv
+	ws.startSyncMDNS()
 	return ws
 }
 
