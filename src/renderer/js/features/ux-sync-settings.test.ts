@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
     formatSyncPeerEndpoint,
     normaliseSyncPairingConfirm,
+    normaliseSyncPullResult,
     normaliseSyncPairingStart,
     normaliseSyncPeers,
+    syncPullActionState,
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
 } from './ux-sync-settings.js';
@@ -153,6 +155,59 @@ describe('syncSettingsEntryState', () => {
             visible: false,
             canOpen: false,
             status: 'この環境では利用できません',
+        });
+    });
+});
+
+describe('normaliseSyncPullResult', () => {
+    it('keeps pull counters, imported paths, and errors from the backend', () => {
+        expect(normaliseSyncPullResult({
+            remoteDeviceId: 'dev_mac_mini',
+            remoteDisplayName: 'YukinoMac-mini',
+            downloaded: 2,
+            skipped: 1,
+            failed: 0,
+            importedPaths: [
+                'C:\\Users\\gzabu\\AppData\\Roaming\\ux-music\\SyncLibrary\\song.flac',
+            ],
+            errors: [],
+        })).toEqual({
+            remoteDeviceId: 'dev_mac_mini',
+            remoteDisplayName: 'YukinoMac-mini',
+            downloaded: 2,
+            skipped: 1,
+            failed: 0,
+            importedPaths: [
+                'C:\\Users\\gzabu\\AppData\\Roaming\\ux-music\\SyncLibrary\\song.flac',
+            ],
+            errors: [],
+        });
+    });
+
+    it('rejects malformed pull responses without a remote device id', () => {
+        expect(normaliseSyncPullResult({ downloaded: 1 })).toBeNull();
+    });
+});
+
+describe('syncPullActionState', () => {
+    it('enables pull actions when the binding and selected endpoint are available', () => {
+        expect(syncPullActionState(true, 'http://192.168.0.226:8765')).toEqual({
+            canPull: true,
+            status: '待機中',
+        });
+    });
+
+    it('disables pull actions when no peer endpoint is selected', () => {
+        expect(syncPullActionState(true, '')).toEqual({
+            canPull: false,
+            status: '同期元端末を選択してください',
+        });
+    });
+
+    it('disables pull actions when the Wails binding is missing', () => {
+        expect(syncPullActionState(false, 'http://192.168.0.226:8765')).toEqual({
+            canPull: false,
+            status: 'この環境では音源取得を利用できません',
         });
     });
 });
