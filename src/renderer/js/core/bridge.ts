@@ -31,7 +31,7 @@ export const musicApi = {
   // --- One-way (Send) ---
   requestAppInfo: () => {
     if (getWailsApp()) {
-      return Promise.resolve({ version: '0.1.9-Beta-19a', platform: 'darwin' });
+      return Promise.resolve({ version: '0.1.9-Beta-19b', platform: 'darwin' });
     }
     return api && api.send(CHANNELS.SEND.REQUEST_APP_INFO);
   },
@@ -184,6 +184,13 @@ export const musicApi = {
     const app = getWailsApp();
     if (app?.DiscoverSyncDevices) {
       return app.DiscoverSyncDevices(timeoutMs);
+    }
+    return Promise.resolve([]);
+  },
+  listSyncDevices: () => {
+    const app = getWailsApp();
+    if (app?.ListSyncDevices) {
+      return app.ListSyncDevices();
     }
     return Promise.resolve([]);
   },

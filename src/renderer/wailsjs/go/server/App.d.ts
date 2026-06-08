@@ -119,6 +119,8 @@ export function HandleLyricsDrop(arg1:Array<string>):Promise<void>;
 
 export function IncrementPlayCount(arg1:Record<string, any>):Promise<void>;
 
+export function ListSyncDevices():Promise<Array<server.SyncDeviceRecord>>;
+
 export function LoadLibrary():Promise<void>;
 
 export function LoadPlayCounts():Promise<void>;

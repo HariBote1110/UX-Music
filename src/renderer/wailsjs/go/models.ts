@@ -511,6 +511,28 @@ export namespace server {
 	        this.performanceSourceOk = source["performanceSourceOk"];
 	    }
 	}
+	export class SyncDeviceRecord {
+	    deviceId: string;
+	    displayName: string;
+	    baseUrl?: string;
+	    roles?: string[];
+	    paired: boolean;
+	    lastSeenAt?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new SyncDeviceRecord(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.deviceId = source["deviceId"];
+	        this.displayName = source["displayName"];
+	        this.baseUrl = source["baseUrl"];
+	        this.roles = source["roles"];
+	        this.paired = source["paired"];
+	        this.lastSeenAt = source["lastSeenAt"];
+	    }
+	}
 	export class SyncPairingConfirmResult {
 	    remoteDeviceId: string;
 	    remoteDisplayName: string;
@@ -577,7 +599,6 @@ export namespace server {
 	}
 
 }
-
 export namespace uxsync {
 	
 	export class MDNSPeer {

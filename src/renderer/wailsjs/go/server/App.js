@@ -222,6 +222,10 @@ export function IncrementPlayCount(arg1) {
   return window['go']['server']['App']['IncrementPlayCount'](arg1);
 }
 
+export function ListSyncDevices() {
+  return window['go']['server']['App']['ListSyncDevices']();
+}
+
 export function LoadLibrary() {
   return window['go']['server']['App']['LoadLibrary']();
 }

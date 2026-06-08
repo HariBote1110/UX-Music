@@ -6,6 +6,15 @@ export interface SyncPeer {
     port?: number;
     roles: string[];
     reachableBaseUrl?: string;
+    paired?: boolean;
+}
+
+export interface SyncDevice {
+    deviceId: string;
+    displayName: string;
+    baseUrl?: string;
+    roles?: string[];
+    paired: boolean;
 }
 
 export interface SyncPairingStart {
@@ -58,6 +67,61 @@ export function normaliseSyncPeers(rawPeers: unknown): SyncPeer[] {
     return rawPeers
         .map(normaliseSyncPeer)
         .filter((peer): peer is SyncPeer => peer != null);
+}
+
+export function normaliseSyncDevices(rawDevices: unknown): SyncDevice[] {
+    if (!Array.isArray(rawDevices)) {
+        return [];
+    }
+    return rawDevices
+        .map(normaliseSyncDevice)
+        .filter((device): device is SyncDevice => device != null);
+}
+
+export function mergeSyncPeersWithDevices(peers: SyncPeer[], devices: SyncDevice[]): SyncPeer[] {
+    const deviceById = new Map(devices.map(device => [device.deviceId, device]));
+    const merged = peers.map(peer => {
+        const device = deviceById.get(peer.deviceId);
+        if (!device) {
+            return peer;
+        }
+        const endpoint = parseSyncBaseUrl(device.baseUrl || '');
+        return {
+            ...peer,
+            displayName: device.displayName || peer.displayName,
+            roles: peer.roles.length > 0 ? peer.roles : device.roles ?? [],
+            reachableBaseUrl: peer.reachableBaseUrl || device.baseUrl,
+            host: peer.host || endpoint?.host,
+            hosts: mergeHosts(peer.hosts, endpoint?.host),
+            port: peer.port ?? endpoint?.port,
+            paired: device.paired || peer.paired,
+        };
+    });
+    const existingIds = new Set(merged.map(peer => peer.deviceId));
+    for (const device of devices) {
+        if (existingIds.has(device.deviceId)) {
+            continue;
+        }
+        const endpoint = parseSyncBaseUrl(device.baseUrl || '');
+        merged.push({
+            deviceId: device.deviceId,
+            displayName: device.displayName || device.deviceId,
+            host: endpoint?.host,
+            hosts: endpoint?.host ? [endpoint.host] : [],
+            port: endpoint?.port,
+            roles: device.roles ?? [],
+            reachableBaseUrl: device.baseUrl,
+            paired: device.paired,
+        });
+    }
+    return merged;
+}
+
+export function syncPeerConnectionLabel(peer: SyncPeer): string {
+    if (peer.paired) {
+        return 'ペアリング済み';
+    }
+    return peer.reachableBaseUrl ? '接続候補' : '未確認';
 }
 
 export function formatSyncPeerEndpoint(peer: SyncPeer): string {
@@ -180,6 +244,27 @@ function normaliseSyncPeer(raw: unknown): SyncPeer | null {
         port: readNumber(record.port),
         roles: readStringArray(record.roles),
         reachableBaseUrl: readString(record.reachableBaseUrl),
+        ...(record.paired === true ? { paired: true } : {}),
+    };
+}
+
+function normaliseSyncDevice(raw: unknown): SyncDevice | null {
+    if (!raw || typeof raw !== 'object') {
+        return null;
+    }
+    const record = raw as Record<string, unknown>;
+    const deviceId = readString(record.deviceId);
+    const displayName = readString(record.displayName) || deviceId;
+    if (!deviceId || !displayName) {
+        return null;
+    }
+    const roles = readStringArray(record.roles);
+    return {
+        deviceId,
+        displayName,
+        baseUrl: readString(record.baseUrl),
+        paired: record.paired === true,
+        ...(roles.length > 0 ? { roles } : {}),
     };
 }
 
@@ -206,4 +291,28 @@ function readStringArray(value: unknown): string[] {
 
 function formatHost(host: string): string {
     return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+}
+
+function parseSyncBaseUrl(baseUrl: string): { host: string; port?: number } | null {
+    if (!baseUrl) {
+        return null;
+    }
+    try {
+        const parsed = new URL(baseUrl);
+        const port = parsed.port ? Number.parseInt(parsed.port, 10) : undefined;
+        return {
+            host: parsed.hostname,
+            port: Number.isFinite(port) ? port : undefined,
+        };
+    } catch {
+        return null;
+    }
+}
+
+function mergeHosts(hosts: string[], extra?: string): string[] {
+    const merged = [...hosts];
+    if (extra && !merged.includes(extra)) {
+        merged.push(extra);
+    }
+    return merged;
 }

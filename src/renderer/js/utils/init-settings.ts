@@ -12,19 +12,24 @@ import {
     formatSyncPullResultSummary,
     formatSyncPeerEndpoint,
     formatSyncPeerRoles,
+    mergeSyncPeersWithDevices,
+    normaliseSyncDevices,
     normaliseSyncPairingConfirm,
     normaliseSyncPairingStart,
     normaliseSyncPullResult,
     normaliseSyncPeers,
+    syncPeerConnectionLabel,
     syncPullActionState,
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
+    type SyncDevice,
     type SyncPairingStart,
     type SyncPeer,
 } from '../features/ux-sync-settings.js';
 const electronAPI = window.electronAPI;
 
 let uxSyncPeers: SyncPeer[] = [];
+let uxSyncDevices: SyncDevice[] = [];
 
 /**
  * 指定したテーマを body クラスに適用する。
@@ -116,7 +121,7 @@ async function refreshUxSyncPeers() {
     const listEl = document.getElementById('ux-sync-peer-list');
     if (!btn || !statusEl || !listEl) return;
 
-    if (!getWailsApp()?.DiscoverSyncDevices) {
+    if (!getWailsApp()?.DiscoverSyncDevices && !getWailsApp()?.ListSyncDevices) {
         statusEl.textContent = 'この環境ではUX Syncを利用できません。';
         return;
     }
@@ -127,12 +132,17 @@ async function refreshUxSyncPeers() {
     listEl.innerHTML = '';
 
     try {
-        const peers = normaliseSyncPeers(await musicApi.discoverSyncDevices(2500));
+        const [rawPeers, devices] = await Promise.all([
+            getWailsApp()?.DiscoverSyncDevices ? musicApi.discoverSyncDevices(2500) : Promise.resolve([]),
+            loadUxSyncDevices(),
+        ]);
+        uxSyncDevices = devices;
+        const peers = mergeSyncPeersWithDevices(normaliseSyncPeers(rawPeers), devices);
         uxSyncPeers = peers;
         renderUxSyncPeers(listEl, peers);
         refreshUxSyncTransferPeers();
         statusEl.textContent = peers.length > 0
-            ? `${peers.length}台の同期端末を検出しました。`
+            ? `${peers.length}台の同期端末を表示しています。`
             : '同期端末は見つかりませんでした。';
     } catch (e) {
         const msg = (e as Error)?.message || String(e);
@@ -143,13 +153,24 @@ async function refreshUxSyncPeers() {
     }
 }
 
+async function loadUxSyncDevices(): Promise<SyncDevice[]> {
+    if (!getWailsApp()?.ListSyncDevices) {
+        return [];
+    }
+    try {
+        return normaliseSyncDevices(await musicApi.listSyncDevices());
+    } catch {
+        return [];
+    }
+}
+
 function updateUxSyncSettingsEntry() {
     const group = document.getElementById('ux-sync-settings-entry-group');
     const openBtn = document.getElementById('ux-sync-settings-open-btn') as HTMLButtonElement | null;
     const statusEl = document.getElementById('ux-sync-settings-entry-status');
     if (!group || !openBtn || !statusEl) return;
 
-    const entry = syncSettingsEntryState(Boolean(getWailsApp()?.DiscoverSyncDevices));
+    const entry = syncSettingsEntryState(Boolean(getWailsApp()?.DiscoverSyncDevices || getWailsApp()?.ListSyncDevices));
     group.classList.toggle('hidden', !entry.visible);
     openBtn.disabled = !entry.canOpen;
     statusEl.textContent = entry.status;
@@ -189,7 +210,7 @@ function refreshUxSyncTransferPeers(): void {
 
     const empty = document.createElement('option');
     empty.value = '';
-    empty.textContent = uxSyncPeers.length > 0 ? '同期元を選択' : '検出済み端末なし';
+    empty.textContent = uxSyncPeers.length > 0 || uxSyncDevices.length > 0 ? '同期元を選択' : '検出済み端末なし';
     select.appendChild(empty);
 
     for (const peer of uxSyncPeers) {
@@ -199,7 +220,7 @@ function refreshUxSyncTransferPeers(): void {
         }
         const option = document.createElement('option');
         option.value = baseUrl;
-        option.textContent = `${peer.displayName} - ${baseUrl}`;
+        option.textContent = `${peer.displayName}${peer.paired ? ' (ペアリング済み)' : ''} - ${baseUrl}`;
         select.appendChild(option);
     }
 
@@ -279,7 +300,7 @@ function renderUxSyncPeers(listEl: HTMLElement, peers: SyncPeer[]) {
         title.textContent = peer.displayName;
         const stateLabel = document.createElement('span');
         stateLabel.className = 'ux-sync-peer-state';
-        stateLabel.textContent = peer.reachableBaseUrl ? '接続候補' : '未確認';
+        stateLabel.textContent = syncPeerConnectionLabel(peer);
         name.append(title, stateLabel);
 
         const endpoint = document.createElement('div');
@@ -316,10 +337,12 @@ function renderUxSyncPairingStart(actions: HTMLElement, peer: SyncPeer): void {
     const connectBtn = document.createElement('button');
     connectBtn.type = 'button';
     connectBtn.className = 'settings-button ux-sync-connect-btn';
-    connectBtn.textContent = '接続';
-    connectBtn.disabled = !baseUrl;
+    connectBtn.textContent = peer.paired ? '接続済み' : '接続';
+    connectBtn.disabled = peer.paired || !baseUrl;
 
-    if (!baseUrl) {
+    if (peer.paired) {
+        status.textContent = 'この端末とはペアリング済みです。';
+    } else if (!baseUrl) {
         status.textContent = '到達URL未確認';
     }
 
@@ -382,6 +405,7 @@ function renderUxSyncPairingConfirm(actions: HTMLElement, peer: SyncPeer, starte
             done.className = 'ux-sync-pairing-status ux-sync-pairing-done';
             done.textContent = `${confirmed.remoteDisplayName || started.remoteDisplayName || peer.displayName} とペアリングしました。`;
             actions.appendChild(done);
+            void refreshUxSyncPeers();
         } catch (e) {
             confirmBtn.disabled = false;
             cancelBtn.disabled = false;

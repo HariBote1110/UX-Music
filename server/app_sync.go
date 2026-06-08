@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -95,6 +96,15 @@ type SyncPairingConfirmResult struct {
 	RemoteDeviceID    string `json:"remoteDeviceId"`
 	RemoteDisplayName string `json:"remoteDisplayName"`
 	TokenSaved        bool   `json:"tokenSaved"`
+}
+
+type SyncDeviceRecord struct {
+	DeviceID    string   `json:"deviceId"`
+	DisplayName string   `json:"displayName"`
+	BaseURL     string   `json:"baseUrl,omitempty"`
+	Roles       []string `json:"roles,omitempty"`
+	Paired      bool     `json:"paired"`
+	LastSeenAt  string   `json:"lastSeenAt,omitempty"`
 }
 
 type syncPairingSessionDetail struct {
@@ -233,6 +243,55 @@ func (a *App) ConfirmSyncPairing(baseURL, sessionID, code, expectedRemoteDeviceI
 		RemoteDisplayName: syncIdentityDisplayName(identity),
 		TokenSaved:        true,
 	}, nil
+}
+
+func (a *App) ListSyncDevices() ([]SyncDeviceRecord, error) {
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		return []SyncDeviceRecord{}, nil
+	}
+
+	recordsByID := map[string]SyncDeviceRecord{}
+	for _, known := range decodeSyncKnownPeerRecords(settings[syncKnownPeersSettingsKey]) {
+		deviceID := strings.TrimSpace(known.DeviceID)
+		if deviceID == "" {
+			continue
+		}
+		displayName := normaliseSyncDisplayName(known.DisplayName)
+		if displayName == "" || displayName == "UX Music" {
+			displayName = deviceID
+		}
+		recordsByID[deviceID] = SyncDeviceRecord{
+			DeviceID:    deviceID,
+			DisplayName: displayName,
+			BaseURL:     strings.TrimRight(strings.TrimSpace(known.BaseURL), "/"),
+			Roles:       known.Roles,
+			Paired:      false,
+			LastSeenAt:  strings.TrimSpace(known.LastSeenAt),
+		}
+	}
+
+	for _, deviceID := range syncAuthTokenDeviceIDs(settings[syncAuthTokensSettingsKey]) {
+		record := recordsByID[deviceID]
+		record.DeviceID = deviceID
+		if strings.TrimSpace(record.DisplayName) == "" {
+			record.DisplayName = deviceID
+		}
+		record.Paired = true
+		recordsByID[deviceID] = record
+	}
+
+	records := make([]SyncDeviceRecord, 0, len(recordsByID))
+	for _, record := range recordsByID {
+		records = append(records, record)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].DisplayName == records[j].DisplayName {
+			return records[i].DeviceID < records[j].DeviceID
+		}
+		return records[i].DisplayName < records[j].DisplayName
+	})
+	return records, nil
 }
 
 func syncDiscoveryTimeout(timeoutMs int) time.Duration {
@@ -505,6 +564,22 @@ func decodeSyncKnownPeerRecords(raw interface{}) []syncKnownPeerRecord {
 		return nil
 	}
 	return records
+}
+
+func syncAuthTokenDeviceIDs(raw interface{}) []string {
+	rawTokens, _ := raw.(map[string]interface{})
+	ids := make([]string, 0, len(rawTokens))
+	for deviceID, token := range rawTokens {
+		if strings.TrimSpace(deviceID) == "" {
+			continue
+		}
+		if strings.TrimSpace(fmt.Sprint(token)) == "" {
+			continue
+		}
+		ids = append(ids, strings.TrimSpace(deviceID))
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 func syncKnownPeerRecordToMDNSPeer(record syncKnownPeerRecord) (uxsync.MDNSPeer, bool) {

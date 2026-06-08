@@ -430,7 +430,7 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - Windows mDNS browse 自体が空になる根本原因の完全解消。
 - ペア済み端末一覧から既知 peer を削除する UI。
 
-### Phase 2.9: 音源pull MVP と SSH 検証 CLI（実装中: 2026-06-08）
+### Phase 2.9: 音源pull MVP と SSH 検証 CLI（実装済み: 2026-06-08）
 
 目的:
 
@@ -447,6 +447,8 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - `--sync-pull-one` / `--sync-pull` で、SSH 経由でも Wails GUI を起動せず音源pullを実行できる。
 - UX Sync 専用設定画面の `同期` タブから同期元 peer を選択し、`1曲取得` または `全曲取得` を実行できる。
 - GUI の音源pull完了後に、取得数・既存数・失敗数と保存先パスを表示する。
+- `ListSyncDevices()` が保存済み `syncAuthTokens` と `syncKnownPeers` から、同期トークンを返さずペア済み端末一覧を返す。
+- UX Sync 専用設定画面は discovery 結果とペア済み端末一覧をマージし、画面を閉じた後や mDNS が空の状態でも同期元候補を復元する。
 
 未実装:
 

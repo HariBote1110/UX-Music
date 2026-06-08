@@ -1,3 +1,17 @@
+# Task: UX Sync Phase 5.3.1 - ペア済み端末復元と同期操作修正
+
+## 概要
+UX Sync 専用設定画面を閉じてもペアリング済み端末の接続状態が失われず、`同期` タブから保存済みペア端末を同期元として選択して音源pullを実行できるようにする。
+
+## 完了条件
+- [x] 保存済み `syncAuthTokens` / `syncKnownPeers` から、同期トークンを漏らさずペア済み端末一覧を返すテストがあること。
+- [x] renderer にペア済み端末一覧の正規化、発見 peer とのマージ、ペアリング済み表示のテストがあること。
+- [x] `ListSyncDevices()` が Wails binding と bridge から呼べること。
+- [x] UX Sync 専用設定画面を開き直しても、保存済みペア端末が `端末` タブと `同期` タブに復元されること。
+- [x] ペアリング確定後に端末一覧と同期元セレクトが更新され、到達URLを持つペア済み端末では取得ボタンが有効になること。
+- [x] `npm test -- --run js/features/ux-sync-settings.test.ts`、`npm run typecheck`、`go test ./server -run 'TestListSyncDevices' -count=1` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-19b` に更新されていること。
+
 # Task: UX Sync Phase 5.3 - 音源pull GUI
 
 ## 概要

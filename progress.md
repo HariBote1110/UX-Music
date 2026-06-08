@@ -1,3 +1,22 @@
+## 2026-06-09 — UX Sync Phase 5.3.1 ペア済み端末復元と同期操作修正
+
+### 実施内容
+- `ListSyncDevices()` を追加し、保存済み `syncAuthTokens` と `syncKnownPeers` から同期トークンを返さずペア済み端末一覧を取得できるようにした
+- UX Sync 専用設定画面で mDNS discovery 結果とペア済み端末一覧をマージし、画面を閉じた後もペアリング済み状態と同期元候補を復元するようにした
+- ペアリング確定後に端末一覧と同期元セレクトを更新し、到達URLを持つペア済み端末では `1曲取得` / `全曲取得` を押せるようにした
+- ペア済み peer は `ペアリング済み` と表示し、再ペアリング用の接続ボタンを `接続済み` として無効化するようにした
+- renderer と Wails binding に `ListSyncDevices` を追加した
+- `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` をペア済み端末復元の仕様へ同期
+- `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-19b`、`src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-16b` に更新
+
+### 検証
+- `go test ./server -run 'TestListSyncDevices' -count=1`
+- `npm test -- --run js/features/ux-sync-settings.test.ts`
+- `npm run typecheck`
+
+### 判断
+- ペアリング情報が一時的なUI状態だけに閉じていた問題を解消し、たまに接続される端末でも保存済みペア情報から同期操作へ戻れる状態になった。
+
 ## 2026-06-08 — UX Sync Phase 5.3 音源pull GUI
 
 ### 実施内容
