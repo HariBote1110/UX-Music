@@ -578,7 +578,7 @@ func (ws *WearServer) startSyncMDNS() {
 func syncMDNSAdvertiseInfo(deviceID, displayName string) uxsync.MDNSAdvertiseInfo {
 	return uxsync.MDNSAdvertiseInfo{
 		DeviceID:        strings.TrimSpace(deviceID),
-		DisplayName:     strings.TrimSpace(displayName),
+		DisplayName:     normaliseSyncDisplayName(displayName),
 		ProtocolVersion: "0.1",
 		Roles:           []string{"LibraryHost", "PlaybackTarget", "Controller"},
 	}
@@ -604,9 +604,22 @@ func ensureSyncDeviceID() string {
 
 func syncDisplayName() string {
 	if hostname, err := os.Hostname(); err == nil && strings.TrimSpace(hostname) != "" {
-		return strings.TrimSpace(hostname)
+		return normaliseSyncDisplayName(hostname)
 	}
 	return "UX Music"
+}
+
+func normaliseSyncDisplayName(raw string) string {
+	name := strings.TrimSpace(raw)
+	name = strings.TrimSuffix(name, ".")
+	if strings.HasSuffix(strings.ToLower(name), ".local") {
+		name = strings.TrimSuffix(name[:len(name)-len(".local")], ".")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "UX Music"
+	}
+	return name
 }
 
 func parseWearServerPort() int {
