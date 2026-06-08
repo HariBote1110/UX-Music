@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -8,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -61,6 +63,30 @@ type syncPairingConfirmResponse struct {
 	Token    string `json:"token"`
 }
 
+type syncIdentityResponse struct {
+	DeviceID        string   `json:"deviceId"`
+	DisplayName     string   `json:"displayName"`
+	Hostname        string   `json:"hostname"`
+	ProtocolVersion string   `json:"protocolVersion"`
+	Roles           []string `json:"roles"`
+}
+
+type SyncPairingStartResult struct {
+	BaseURL           string `json:"baseUrl"`
+	SessionID         string `json:"sessionId"`
+	LocalDeviceID     string `json:"localDeviceId"`
+	RemoteDeviceID    string `json:"remoteDeviceId"`
+	RemoteDisplayName string `json:"remoteDisplayName"`
+	Code              string `json:"code"`
+	ExpiresAt         string `json:"expiresAt"`
+}
+
+type SyncPairingConfirmResult struct {
+	RemoteDeviceID    string `json:"remoteDeviceId"`
+	RemoteDisplayName string `json:"remoteDisplayName"`
+	TokenSaved        bool   `json:"tokenSaved"`
+}
+
 func registerSyncRoutes(mux *http.ServeMux, _ *App) {
 	mux.HandleFunc("/sync/identity", syncIdentityHandler)
 	mux.HandleFunc("/sync/pairing/start", syncPairingStartHandler)
@@ -112,6 +138,71 @@ func (a *App) DiscoverSyncDevices(timeoutMs int) ([]uxsync.MDNSPeer, error) {
 	return uxsync.ResolveReachablePeers(peers, nil), nil
 }
 
+func (a *App) StartSyncPairing(baseURL string) (SyncPairingStartResult, error) {
+	ctx := context.Background()
+	if a.ctx != nil {
+		ctx = a.ctx
+	}
+	baseURL, err := normaliseSyncBaseURL(baseURL)
+	if err != nil {
+		return SyncPairingStartResult{}, err
+	}
+	identity, err := fetchSyncIdentity(ctx, baseURL)
+	if err != nil {
+		return SyncPairingStartResult{}, err
+	}
+	localDeviceID := ensureSyncDeviceID()
+	var started syncPairingStartResponse
+	if err := postSyncJSON(ctx, baseURL+"/sync/pairing/start", syncPairingStartRequest{DeviceID: localDeviceID}, &started); err != nil {
+		return SyncPairingStartResult{}, err
+	}
+	if strings.TrimSpace(started.SessionID) == "" || strings.TrimSpace(started.Code) == "" {
+		return SyncPairingStartResult{}, fmt.Errorf("invalid pairing start response")
+	}
+	return SyncPairingStartResult{
+		BaseURL:           baseURL,
+		SessionID:         strings.TrimSpace(started.SessionID),
+		LocalDeviceID:     localDeviceID,
+		RemoteDeviceID:    identity.DeviceID,
+		RemoteDisplayName: syncIdentityDisplayName(identity),
+		Code:              strings.TrimSpace(started.Code),
+		ExpiresAt:         strings.TrimSpace(started.ExpiresAt),
+	}, nil
+}
+
+func (a *App) ConfirmSyncPairing(baseURL, sessionID, code string) (SyncPairingConfirmResult, error) {
+	ctx := context.Background()
+	if a.ctx != nil {
+		ctx = a.ctx
+	}
+	baseURL, err := normaliseSyncBaseURL(baseURL)
+	if err != nil {
+		return SyncPairingConfirmResult{}, err
+	}
+	identity, err := fetchSyncIdentity(ctx, baseURL)
+	if err != nil {
+		return SyncPairingConfirmResult{}, err
+	}
+	var confirmed syncPairingConfirmResponse
+	if err := postSyncJSON(ctx, baseURL+"/sync/pairing/confirm", syncPairingConfirmRequest{
+		SessionID: strings.TrimSpace(sessionID),
+		Code:      strings.TrimSpace(code),
+	}, &confirmed); err != nil {
+		return SyncPairingConfirmResult{}, err
+	}
+	if strings.TrimSpace(confirmed.Token) == "" {
+		return SyncPairingConfirmResult{}, fmt.Errorf("pairing confirm response did not include a token")
+	}
+	if err := saveSyncAuthTokenForDevice(identity.DeviceID, confirmed.Token); err != nil {
+		return SyncPairingConfirmResult{}, err
+	}
+	return SyncPairingConfirmResult{
+		RemoteDeviceID:    identity.DeviceID,
+		RemoteDisplayName: syncIdentityDisplayName(identity),
+		TokenSaved:        true,
+	}, nil
+}
+
 func syncDiscoveryTimeout(timeoutMs int) time.Duration {
 	if timeoutMs <= 0 {
 		return 2 * time.Second
@@ -120,6 +211,88 @@ func syncDiscoveryTimeout(timeoutMs int) time.Duration {
 		return 10 * time.Second
 	}
 	return time.Duration(timeoutMs) * time.Millisecond
+}
+
+func normaliseSyncBaseURL(raw string) (string, error) {
+	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
+	if raw == "" {
+		return "", fmt.Errorf("missing sync peer URL")
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return "", fmt.Errorf("invalid sync peer URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("unsupported sync peer URL scheme")
+	}
+	parsed.Path = strings.TrimRight(parsed.EscapedPath(), "/")
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func fetchSyncIdentity(ctx context.Context, baseURL string) (syncIdentityResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/sync/identity", nil)
+	if err != nil {
+		return syncIdentityResponse{}, err
+	}
+	resp, err := syncHTTPClient().Do(req)
+	if err != nil {
+		return syncIdentityResponse{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return syncIdentityResponse{}, fmt.Errorf("sync identity request failed: %s", resp.Status)
+	}
+	var identity syncIdentityResponse
+	if err := json.NewDecoder(resp.Body).Decode(&identity); err != nil {
+		return syncIdentityResponse{}, err
+	}
+	identity.DeviceID = strings.TrimSpace(identity.DeviceID)
+	identity.DisplayName = strings.TrimSpace(identity.DisplayName)
+	identity.Hostname = strings.TrimSpace(identity.Hostname)
+	if identity.DeviceID == "" {
+		return syncIdentityResponse{}, fmt.Errorf("sync identity response did not include a device id")
+	}
+	return identity, nil
+}
+
+func postSyncJSON(ctx context.Context, endpoint string, payload interface{}, target interface{}) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := syncHTTPClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("sync request failed: %s", resp.Status)
+	}
+	if target == nil {
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func syncHTTPClient() *http.Client {
+	return &http.Client{Timeout: 5 * time.Second}
+}
+
+func syncIdentityDisplayName(identity syncIdentityResponse) string {
+	if identity.DisplayName != "" {
+		return identity.DisplayName
+	}
+	if identity.Hostname != "" {
+		return identity.Hostname
+	}
+	return identity.DeviceID
 }
 
 func syncPairingStartHandler(w http.ResponseWriter, r *http.Request) {
@@ -347,12 +520,32 @@ func ensureSyncAuthTokenForDevice(deviceID string) string {
 		return strings.TrimSpace(token)
 	}
 	token := generateWearAuthToken()
-	rawTokens[deviceID] = token
-	settings[syncAuthTokensSettingsKey] = rawTokens
-	if err := store.Instance.Save("settings", settings); err != nil {
+	if err := saveSyncAuthTokenForDevice(deviceID, token); err != nil {
 		return token
 	}
 	return token
+}
+
+func saveSyncAuthTokenForDevice(deviceID, token string) error {
+	deviceID = strings.TrimSpace(deviceID)
+	token = strings.TrimSpace(token)
+	if deviceID == "" {
+		return fmt.Errorf("missing sync device id")
+	}
+	if token == "" {
+		return fmt.Errorf("missing sync auth token")
+	}
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		settings = map[string]interface{}{}
+	}
+	rawTokens, _ := settings[syncAuthTokensSettingsKey].(map[string]interface{})
+	if rawTokens == nil {
+		rawTokens = map[string]interface{}{}
+	}
+	rawTokens[deviceID] = token
+	settings[syncAuthTokensSettingsKey] = rawTokens
+	return store.Instance.Save("settings", settings)
 }
 
 func randomBytes(size int) []byte {

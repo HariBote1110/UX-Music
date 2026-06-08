@@ -8,7 +8,16 @@ import { initPlaybackSettings } from '../features/playback-manager.js';
 import { musicApi, getWailsApp } from '../core/bridge.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
 import { updateListSpacer } from '../ui/ui.js';
-import { formatSyncPeerEndpoint, formatSyncPeerRoles, normaliseSyncPeers, type SyncPeer } from '../features/ux-sync-settings.js';
+import {
+    formatSyncPeerEndpoint,
+    formatSyncPeerRoles,
+    normaliseSyncPairingConfirm,
+    normaliseSyncPairingStart,
+    normaliseSyncPeers,
+    syncPeerPairingBaseUrl,
+    type SyncPairingStart,
+    type SyncPeer,
+} from '../features/ux-sync-settings.js';
 const electronAPI = window.electronAPI;
 
 /**
@@ -155,9 +164,111 @@ function renderUxSyncPeers(listEl: HTMLElement, peers: SyncPeer[]) {
         hosts.className = 'ux-sync-peer-meta';
         hosts.textContent = peer.hosts.length > 0 ? peer.hosts.join(' / ') : '候補アドレスなし';
 
-        item.append(name, endpoint, roles, hosts);
+        item.append(name, endpoint, roles, hosts, renderUxSyncPairingActions(peer));
         listEl.appendChild(item);
     }
+}
+
+function renderUxSyncPairingActions(peer: SyncPeer): HTMLElement {
+    const actions = document.createElement('div');
+    actions.className = 'ux-sync-pairing-actions';
+    renderUxSyncPairingStart(actions, peer);
+    return actions;
+}
+
+function renderUxSyncPairingStart(actions: HTMLElement, peer: SyncPeer): void {
+    actions.innerHTML = '';
+    const baseUrl = syncPeerPairingBaseUrl(peer);
+    const status = document.createElement('p');
+    status.className = 'ux-sync-pairing-status';
+    status.setAttribute('aria-live', 'polite');
+
+    const connectBtn = document.createElement('button');
+    connectBtn.type = 'button';
+    connectBtn.className = 'settings-button ux-sync-connect-btn';
+    connectBtn.textContent = '接続';
+    connectBtn.disabled = !baseUrl;
+
+    if (!baseUrl) {
+        status.textContent = '到達URL未確認';
+    }
+
+    connectBtn.addEventListener('click', async () => {
+        connectBtn.disabled = true;
+        connectBtn.textContent = '開始中...';
+        status.textContent = '6桁コードを取得しています。';
+        try {
+            const started = normaliseSyncPairingStart(await musicApi.startSyncPairing(baseUrl));
+            if (!started) {
+                throw new Error('ペアリング開始応答が不正です。');
+            }
+            renderUxSyncPairingConfirm(actions, peer, started);
+        } catch (e) {
+            connectBtn.disabled = false;
+            connectBtn.textContent = '接続';
+            status.textContent = `接続開始に失敗しました: ${(e as Error)?.message || String(e)}`;
+        }
+    });
+
+    actions.append(connectBtn, status);
+}
+
+function renderUxSyncPairingConfirm(actions: HTMLElement, peer: SyncPeer, started: SyncPairingStart): void {
+    actions.innerHTML = '';
+
+    const code = document.createElement('div');
+    code.className = 'ux-sync-pairing-code';
+    code.textContent = started.code;
+
+    const status = document.createElement('p');
+    status.className = 'ux-sync-pairing-status';
+    status.setAttribute('aria-live', 'polite');
+    status.textContent = `${started.remoteDisplayName || peer.displayName} のコードを確認してください。`;
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'settings-button ux-sync-confirm-btn';
+    confirmBtn.textContent = '確定';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'settings-button secondary ux-sync-cancel-btn';
+    cancelBtn.textContent = 'キャンセル';
+
+    confirmBtn.addEventListener('click', async () => {
+        confirmBtn.disabled = true;
+        cancelBtn.disabled = true;
+        confirmBtn.textContent = '確定中...';
+        status.textContent = 'ペアリングを確定しています。';
+        try {
+            const confirmed = normaliseSyncPairingConfirm(
+                await musicApi.confirmSyncPairing(started.baseUrl, started.sessionId, started.code)
+            );
+            if (!confirmed?.tokenSaved) {
+                throw new Error('トークン保存に失敗しました。');
+            }
+            actions.innerHTML = '';
+            const done = document.createElement('p');
+            done.className = 'ux-sync-pairing-status ux-sync-pairing-done';
+            done.textContent = `${confirmed.remoteDisplayName || started.remoteDisplayName || peer.displayName} とペアリングしました。`;
+            actions.appendChild(done);
+        } catch (e) {
+            confirmBtn.disabled = false;
+            cancelBtn.disabled = false;
+            confirmBtn.textContent = '確定';
+            status.textContent = `ペアリングに失敗しました: ${(e as Error)?.message || String(e)}`;
+        }
+    });
+
+    cancelBtn.addEventListener('click', () => {
+        renderUxSyncPairingStart(actions, peer);
+    });
+
+    const buttonRow = document.createElement('div');
+    buttonRow.className = 'ux-sync-pairing-button-row';
+    buttonRow.append(confirmBtn, cancelBtn);
+
+    actions.append(code, status, buttonRow);
 }
 
 export function initSettings() {

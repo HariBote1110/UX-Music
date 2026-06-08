@@ -572,6 +572,52 @@
     overflow-wrap: anywhere;
 }
 
+.ux-sync-pairing-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.ux-sync-pairing-status {
+    flex: 1 1 180px;
+    min-width: 0;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.ux-sync-pairing-code {
+    min-width: 8ch;
+    padding: 6px 10px;
+    border: 1px solid var(--highlight-blue);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: monospace;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-align: center;
+}
+
+.ux-sync-pairing-button-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.ux-sync-connect-btn,
+.ux-sync-confirm-btn,
+.ux-sync-cancel-btn {
+    min-width: 76px;
+}
+
+.ux-sync-pairing-done {
+    color: var(--highlight-blue);
+}
+
 #modal,
 #lyrics-translation-modal,
 #settings-modal {

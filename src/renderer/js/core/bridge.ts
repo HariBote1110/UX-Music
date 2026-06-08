@@ -187,6 +187,20 @@ export const musicApi = {
     }
     return Promise.resolve([]);
   },
+  startSyncPairing: (baseUrl: string) => {
+    const app = getWailsApp();
+    if (app?.StartSyncPairing) {
+      return app.StartSyncPairing(baseUrl);
+    }
+    return Promise.reject(new Error('UX Sync ペアリングはこの環境では利用できません。'));
+  },
+  confirmSyncPairing: (baseUrl: string, sessionId: string, code: string) => {
+    const app = getWailsApp();
+    if (app?.ConfirmSyncPairing) {
+      return app.ConfirmSyncPairing(baseUrl, sessionId, code);
+    }
+    return Promise.reject(new Error('UX Sync ペアリングはこの環境では利用できません。'));
+  },
 
   // --- Event Listeners (On) ---
   onAppInfoResponse: (callback: (info: { version?: string; platform?: string }) => void) =>
