@@ -3,6 +3,8 @@ package server
 import (
 	"testing"
 	"time"
+
+	"ux-music-sidecar/internal/uxsync"
 )
 
 func TestSyncDiscoveryTimeout_clampsUserInput(t *testing.T) {

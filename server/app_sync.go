@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,6 +24,7 @@ import (
 const syncPlayEventsStoreName = "sync-play-events"
 const syncAuthTokensSettingsKey = "syncAuthTokens"
 const syncDeviceIDSettingsKey = "syncDeviceId"
+const syncKnownPeersSettingsKey = "syncKnownPeers"
 const syncPairingTTL = 2 * time.Minute
 
 var syncPairingSessions = struct {
@@ -30,6 +32,13 @@ var syncPairingSessions = struct {
 	sessions map[string]uxsync.PairingSession
 }{
 	sessions: map[string]uxsync.PairingSession{},
+}
+
+var syncPairingDetails = struct {
+	mu       sync.Mutex
+	sessions map[string]syncPairingSessionDetail
+}{
+	sessions: map[string]syncPairingSessionDetail{},
 }
 
 type syncLibraryEventsRequest struct {
@@ -43,7 +52,8 @@ type syncLibraryEventsResponse struct {
 }
 
 type syncPairingStartRequest struct {
-	DeviceID string `json:"deviceId"`
+	DeviceID    string `json:"deviceId"`
+	DisplayName string `json:"displayName"`
 }
 
 type syncPairingStartResponse struct {
@@ -87,6 +97,20 @@ type SyncPairingConfirmResult struct {
 	TokenSaved        bool   `json:"tokenSaved"`
 }
 
+type syncPairingSessionDetail struct {
+	DeviceID    string
+	DisplayName string
+	BaseURL     string
+}
+
+type syncKnownPeerRecord struct {
+	DeviceID    string   `json:"deviceId"`
+	DisplayName string   `json:"displayName"`
+	BaseURL     string   `json:"baseUrl"`
+	Roles       []string `json:"roles,omitempty"`
+	LastSeenAt  string   `json:"lastSeenAt"`
+}
+
 func registerSyncRoutes(mux *http.ServeMux, _ *App) {
 	mux.HandleFunc("/sync/identity", syncIdentityHandler)
 	mux.HandleFunc("/sync/pairing/start", syncPairingStartHandler)
@@ -123,7 +147,7 @@ func syncDiscoverHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to discover sync peers", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, uxsync.ResolveReachablePeers(peers, nil))
+	writeJSON(w, uxsync.ResolveReachablePeers(mergeSyncKnownPeers(peers, loadSyncKnownPeers()), nil))
 }
 
 func (a *App) DiscoverSyncDevices(timeoutMs int) ([]uxsync.MDNSPeer, error) {
@@ -135,7 +159,7 @@ func (a *App) DiscoverSyncDevices(timeoutMs int) ([]uxsync.MDNSPeer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return uxsync.ResolveReachablePeers(peers, nil), nil
+	return uxsync.ResolveReachablePeers(mergeSyncKnownPeers(peers, loadSyncKnownPeers()), nil), nil
 }
 
 func (a *App) StartSyncPairing(baseURL string) (SyncPairingStartResult, error) {
@@ -153,7 +177,10 @@ func (a *App) StartSyncPairing(baseURL string) (SyncPairingStartResult, error) {
 	}
 	localDeviceID := ensureSyncDeviceID()
 	var started syncPairingStartResponse
-	if err := postSyncJSON(ctx, baseURL+"/sync/pairing/start", syncPairingStartRequest{DeviceID: localDeviceID}, &started); err != nil {
+	if err := postSyncJSON(ctx, baseURL+"/sync/pairing/start", syncPairingStartRequest{
+		DeviceID:    localDeviceID,
+		DisplayName: syncDisplayName(),
+	}, &started); err != nil {
 		return SyncPairingStartResult{}, err
 	}
 	if strings.TrimSpace(started.SessionID) == "" || strings.TrimSpace(started.Code) == "" {
@@ -319,6 +346,14 @@ func syncPairingStartHandler(w http.ResponseWriter, r *http.Request) {
 	syncPairingSessions.sessions[sessionID] = session
 	syncPairingSessions.mu.Unlock()
 
+	syncPairingDetails.mu.Lock()
+	syncPairingDetails.sessions[sessionID] = syncPairingSessionDetail{
+		DeviceID:    session.DeviceID,
+		DisplayName: normaliseSyncDisplayName(req.DisplayName),
+		BaseURL:     syncRemoteBaseURL(r),
+	}
+	syncPairingDetails.mu.Unlock()
+
 	writeJSON(w, syncPairingStartResponse{
 		SessionID: sessionID,
 		DeviceID:  session.DeviceID,
@@ -340,6 +375,7 @@ func syncPairingConfirmHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID := strings.TrimSpace(req.SessionID)
 	code := strings.TrimSpace(req.Code)
 
+	var detail syncPairingSessionDetail
 	syncPairingSessions.mu.Lock()
 	session, ok := syncPairingSessions.sessions[sessionID]
 	if ok && (session.IsExpired(time.Now().UTC()) || session.Code != code) {
@@ -350,16 +386,162 @@ func syncPairingConfirmHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	syncPairingSessions.mu.Unlock()
 
+	syncPairingDetails.mu.Lock()
+	if ok {
+		detail = syncPairingDetails.sessions[sessionID]
+	}
+	delete(syncPairingDetails.sessions, sessionID)
+	syncPairingDetails.mu.Unlock()
+
 	if !ok {
 		http.Error(w, "invalid pairing code", http.StatusUnauthorized)
 		return
 	}
 
 	token := ensureSyncAuthTokenForDevice(session.DeviceID)
+	detail.DeviceID = session.DeviceID
+	if detail.DisplayName == "" || detail.DisplayName == "UX Music" {
+		detail.DisplayName = session.DeviceID
+	}
+	if detail.BaseURL != "" {
+		_ = rememberSyncKnownPeer(syncKnownPeerRecord{
+			DeviceID:    detail.DeviceID,
+			DisplayName: detail.DisplayName,
+			BaseURL:     detail.BaseURL,
+			LastSeenAt:  time.Now().UTC().Format(time.RFC3339),
+		})
+	}
 	writeJSON(w, syncPairingConfirmResponse{
 		DeviceID: session.DeviceID,
 		Token:    token,
 	})
+}
+
+func mergeSyncKnownPeers(discovered, known []uxsync.MDNSPeer) []uxsync.MDNSPeer {
+	return uxsyncMergePeersWithoutProbe(discovered, known)
+}
+
+func uxsyncMergePeersWithoutProbe(primary, fallback []uxsync.MDNSPeer) []uxsync.MDNSPeer {
+	merged := make([]uxsync.MDNSPeer, 0, len(primary)+len(fallback))
+	indexByKey := map[string]int{}
+	for _, peer := range append(primary, fallback...) {
+		key := syncPeerMergeKey(peer)
+		if existingIndex, ok := indexByKey[key]; ok {
+			merged[existingIndex] = uxsync.MergeMDNSPeers(merged[existingIndex], peer)
+			continue
+		}
+		indexByKey[key] = len(merged)
+		merged = append(merged, peer)
+	}
+	return merged
+}
+
+func syncPeerMergeKey(peer uxsync.MDNSPeer) string {
+	if strings.TrimSpace(peer.DeviceID) != "" {
+		return "device:" + strings.TrimSpace(peer.DeviceID)
+	}
+	return "host:" + strings.TrimSpace(peer.Host) + ":" + strings.TrimSpace(peer.HostName)
+}
+
+func rememberSyncKnownPeer(peer syncKnownPeerRecord) error {
+	peer.DeviceID = strings.TrimSpace(peer.DeviceID)
+	peer.DisplayName = normaliseSyncDisplayName(peer.DisplayName)
+	peer.BaseURL = strings.TrimRight(strings.TrimSpace(peer.BaseURL), "/")
+	if peer.DeviceID == "" || peer.BaseURL == "" {
+		return nil
+	}
+	if peer.LastSeenAt == "" {
+		peer.LastSeenAt = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		settings = map[string]interface{}{}
+	}
+	records := decodeSyncKnownPeerRecords(settings[syncKnownPeersSettingsKey])
+	updated := false
+	for i := range records {
+		if records[i].DeviceID == peer.DeviceID {
+			records[i] = peer
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		records = append(records, peer)
+	}
+	settings[syncKnownPeersSettingsKey] = records
+	return store.Instance.Save("settings", settings)
+}
+
+func loadSyncKnownPeers() []uxsync.MDNSPeer {
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		return nil
+	}
+	records := decodeSyncKnownPeerRecords(settings[syncKnownPeersSettingsKey])
+	peers := make([]uxsync.MDNSPeer, 0, len(records))
+	for _, record := range records {
+		peer, ok := syncKnownPeerRecordToMDNSPeer(record)
+		if ok {
+			peers = append(peers, peer)
+		}
+	}
+	return peers
+}
+
+func decodeSyncKnownPeerRecords(raw interface{}) []syncKnownPeerRecord {
+	if raw == nil {
+		return nil
+	}
+	bytes, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var records []syncKnownPeerRecord
+	if err := json.Unmarshal(bytes, &records); err != nil {
+		return nil
+	}
+	return records
+}
+
+func syncKnownPeerRecordToMDNSPeer(record syncKnownPeerRecord) (uxsync.MDNSPeer, bool) {
+	baseURL := strings.TrimRight(strings.TrimSpace(record.BaseURL), "/")
+	parsed, err := url.Parse(baseURL)
+	if err != nil || parsed.Hostname() == "" {
+		return uxsync.MDNSPeer{}, false
+	}
+	port := parseWearServerPort()
+	if parsed.Port() != "" {
+		if parsedPort, err := strconv.Atoi(parsed.Port()); err == nil {
+			port = parsedPort
+		}
+	}
+	host := parsed.Hostname()
+	return uxsync.MDNSPeer{
+		DeviceID:        strings.TrimSpace(record.DeviceID),
+		DisplayName:     normaliseSyncDisplayName(record.DisplayName),
+		Host:            host,
+		Hosts:           []string{host},
+		Port:            port,
+		HostName:        host,
+		ProtocolVersion: "0.1",
+		Roles:           record.Roles,
+	}, true
+}
+
+func syncRemoteBaseURL(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		host = strings.TrimSpace(r.RemoteAddr)
+	}
+	if host == "" {
+		return ""
+	}
+	return "http://" + net.JoinHostPort(host, wearServerPort)
 }
 
 func syncLibraryEventsHandler(w http.ResponseWriter, r *http.Request) {
