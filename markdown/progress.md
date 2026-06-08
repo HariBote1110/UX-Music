@@ -2,6 +2,28 @@
 
 ## 2026年6月8日
 
+### UX Sync Phase 4 ペアリングUI
+
+- **要望対応**:
+    - UI上で発見できた Windows 側 peer に対して、設定画面からそのままペアリング開始・確定できる導線を追加した。
+- **実装内容**:
+    - Wails 向けに `StartSyncPairing(baseURL)` と `ConfirmSyncPairing(baseURL, sessionID, code)` を追加。
+    - `StartSyncPairing` はリモート `/sync/identity` で端末情報を取得し、ローカル `deviceId` を使って `/sync/pairing/start` を呼ぶ。
+    - `ConfirmSyncPairing` はリモート `/sync/pairing/confirm` が返したトークンを、リモート `deviceId` 宛の同期トークンとしてローカル設定へ保存する。
+    - 設定画面の UX Sync peer カードに「接続」ボタンを追加し、6桁コード表示、確定、キャンセル、ペアリング済み表示まで進めるようにした。
+    - `reachableBaseUrl` を優先し、未取得時は `host` / `hosts` と `port` からペアリング用 URL を構成する renderer ロジックを追加。
+- **検証**:
+    - `go test ./server -run 'TestStartSyncPairing|TestConfirmSyncPairing|TestSyncPairing' -count=1`
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - `npm run typecheck`
+- **仕様同期**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-16a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-13a` に更新。
+- **残課題**:
+    - ペア済み端末一覧と解除 UI は未実装。
+    - 現状の6桁コードはリモート API 応答として開始側に返るため、Bluetooth 数値確認のように双方が独立表示する方式への強化は後続で扱う。
+
 ### UX Sync Phase 3.1 macOS mDNS fallback
 
 - **要望対応**:

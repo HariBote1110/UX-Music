@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-15b)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-16a)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -58,6 +58,12 @@ macOSから直接WalkmanなどのMTPデバイスへ音楽を高速転送する�
 - **探索導線**: 設定モーダルの UX Sync セクションから「同期端末を探す」を実行し、Wails の `DiscoverSyncDevices(timeoutMs)` を呼び出す。
 - **到達候補表示**: 発見した peer ごとに表示名、`reachableBaseUrl` 優先の接続候補、役割、複数 NIC の候補アドレスを表示する。
 - **環境フォールバック**: Wails binding が無い renderer 単体開発環境では UX Sync セクションを非表示にし、通常の設定画面を壊さない。
+
+### [新規] UX Sync Phase 4
+設定画面の UX Sync 自動発見一覧から、発見済み端末と6桁コード確認ペアリングできる UI。
+- **ペアリング開始**: peer カードの「接続」から Wails の `StartSyncPairing(baseURL)` を呼び、リモート `/sync/identity` と `/sync/pairing/start` の結果としてリモート端末名、端末ID、一時セッションID、6桁コードを表示する。
+- **ペアリング確定**: 表示した6桁コードを確認して「確定」を押すと `ConfirmSyncPairing(baseURL, sessionID, code)` を呼び、リモート `/sync/pairing/confirm` が返した同期トークンをローカル設定のリモート `deviceId` 宛に保存する。
+- **到達URL選択**: UI は `reachableBaseUrl` を優先し、未取得時は `host` / `hosts` と `port` からペアリング用 URL を構成する。URL が構成できない peer は接続ボタンを無効にする。
 
 ### [更新] YouTubeダウンロード
 YouTube URL から楽曲をライブラリに追加する際、字幕を同時取得して同期歌詞（LRC）を生成する機能。
@@ -154,4 +160,4 @@ YouTube URL から楽曲をライブラリに追加する際、字幕を同時�
 - **メタデータ編集機能 (Tags Editor)**: メイン画面からのID3タグ編集。
 - **MP4サムネイル自動生成**: 動画ファイルからのアートワーク抽出。
 - **歌詞自動取得**: オンラインサービス連携。
-- **UX Sync 後続**: 発見 peer から6桁コード確認ペアリングへ進む UI、ペア済み端末管理、ライブラリ差分同期、プレイリスト同期、`Library Host` から `Portable Client` への圧縮音源キャッシュ、WebSocket による再生移行を実装する。LAN 外通信は初期スコープ外とし、実装計画は `markdown/ux-music-sync-plan.md` を信頼できる参照にする。
+- **UX Sync 後続**: ペア済み端末管理、ライブラリ差分同期、プレイリスト同期、`Library Host` から `Portable Client` への圧縮音源キャッシュ、WebSocket による再生移行を実装する。LAN 外通信は初期スコープ外とし、実装計画は `markdown/ux-music-sync-plan.md` を信頼できる参照にする。

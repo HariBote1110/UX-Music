@@ -1,3 +1,23 @@
+## 2026-06-08 — UX Sync Phase 4 ペアリングUI
+
+### 実施内容
+- Wails 向けに `StartSyncPairing(baseURL)` と `ConfirmSyncPairing(baseURL, sessionID, code)` を追加
+- `StartSyncPairing` はリモート `/sync/identity` で端末情報を取得し、ローカル `deviceId` を使って `/sync/pairing/start` を呼ぶ
+- `ConfirmSyncPairing` はリモート `/sync/pairing/confirm` が返したトークンを、リモート `deviceId` 宛の同期トークンとしてローカル設定へ保存する
+- 設定画面の UX Sync peer カードに「接続」ボタンを追加し、6桁コード表示、確定、キャンセル、ペアリング済み表示まで進めるようにした
+- `reachableBaseUrl` を優先し、未取得時は `host` / `hosts` と `port` からペアリング用 URL を構成する renderer ロジックを追加
+- `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を UX Sync ペアリング UI の実装内容へ同期
+- `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-16a`、`src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-13a` に更新
+
+### 検証
+- `go test ./server -run 'TestStartSyncPairing|TestConfirmSyncPairing|TestSyncPairing' -count=1`
+- `npm test -- --run js/features/ux-sync-settings.test.ts`
+- `npm run typecheck`
+
+### 判断
+- UI 上で検出済み peer からペアリング開始・確定まで進める状態になった。
+- ペア済み端末一覧と解除 UI、双方独立表示型の数値確認は後続フェーズに残す。
+
 ## 2026-06-08 — UX Sync Phase 3.1 macOS mDNS fallback
 
 ### 実施内容

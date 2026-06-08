@@ -1,3 +1,17 @@
+# Task: UX Sync Phase 4 - ペアリングUI
+
+## 概要
+設定画面の UX Sync 自動発見一覧から、発見済み端末へ6桁コード確認ペアリングを開始・確定できるようにする。Wails からリモート端末の `/sync/identity`、`/sync/pairing/start`、`/sync/pairing/confirm` を呼び、確定時にリモート端末が発行した同期トークンをローカル設定へ保存する。
+
+## 完了条件
+- [x] Wails 向けに `StartSyncPairing(baseURL)` と `ConfirmSyncPairing(baseURL, sessionID, code)` があること。
+- [x] `StartSyncPairing` がローカル `deviceId` を使ってリモート `/sync/pairing/start` を呼び、リモート端末名・端末ID・6桁コードを返すこと。
+- [x] `ConfirmSyncPairing` がリモート `/sync/pairing/confirm` のトークンを、リモート `deviceId` 宛の同期トークンとして保存すること。
+- [x] renderer にペアリング開始・確定応答の正規化と、到達可能URL選択のテストがあること。
+- [x] 設定画面の UX Sync peer カードから「接続」→6桁コード表示→「確定」まで進めること。
+- [x] `go test ./server -run 'TestStartSyncPairing|TestConfirmSyncPairing|TestSyncPairing' -count=1`、`npm test -- --run js/features/ux-sync-settings.test.ts`、`npm run typecheck` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-16a` に更新されていること。
+
 # Task: UX Sync Phase 3.1 - macOS mDNS fallback
 
 ## 概要

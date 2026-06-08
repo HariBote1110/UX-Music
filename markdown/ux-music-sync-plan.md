@@ -349,7 +349,7 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 
 未実装:
 
-- UI 上のペアリング開始・コード確認・端末解除。
+- ペア済み端末解除。
 - 実鍵交換に基づく6桁コード導出。
 
 ### Phase 2.5: mDNS / Bonjour 自動発見（実装済み: 2026-06-08）
@@ -372,9 +372,24 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - 設定画面の UX Sync セクションから `DiscoverSyncDevices(timeoutMs)` を呼び出す自動発見一覧 UI。
 - 発見 peer の `reachableBaseUrl`、役割、複数 NIC の候補 `hosts` を表示する renderer 側の整形処理。
 
+### Phase 2.6: 発見 peer からのペアリング UI（実装済み: 2026-06-08）
+
+目的:
+
+- 設定画面の自動発見一覧から、到達可能な UX Music peer と6桁コード確認ペアリングできるようにする。
+
+実装済み:
+
+- Wails 向け `StartSyncPairing(baseURL)` と `ConfirmSyncPairing(baseURL, sessionID, code)`。
+- `StartSyncPairing` でリモート `/sync/identity` と `/sync/pairing/start` を呼び、ローカル `deviceId`、リモート端末情報、一時セッション、6桁コードを UI に返す処理。
+- `ConfirmSyncPairing` でリモート `/sync/pairing/confirm` を呼び、リモートが発行した同期トークンをローカル設定のリモート `deviceId` 宛に保存する処理。
+- peer カード上の「接続」→6桁コード表示→「確定」→ペアリング済み表示。
+- `reachableBaseUrl` を優先し、未取得時は `host` / `hosts` と `port` からペアリングURLを構成する renderer 側の導線。
+
 未実装:
 
-- mDNS で発見した peer からペアリング UI へ遷移する導線。
+- ペア済み端末の一覧管理と解除 UI。
+- 現状の6桁コードはリモート API 応答として開始側に返るため、Bluetooth 数値確認のように双方が独立表示する方式への強化。
 
 テスト:
 
