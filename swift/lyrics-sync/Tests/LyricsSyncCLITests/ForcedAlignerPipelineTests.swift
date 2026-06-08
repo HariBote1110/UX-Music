@@ -3,8 +3,9 @@ import Testing
 
 @Test func speechAlignerTextOutputIsParsedIntoWordTimings() throws {
     let output = """
+    Loading audio: sample.wav
     [0.24 - 0.48] Hello
-    [0.48 - 0.72] world
+    [0.48s - 0.72s] world
     [1.20 - 1.44] again
     """
 

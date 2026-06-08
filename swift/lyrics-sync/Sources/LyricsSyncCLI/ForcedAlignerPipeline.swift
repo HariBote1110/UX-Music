@@ -6,7 +6,7 @@ struct ForcedAlignerWordTiming: Equatable {
     let text: String
 
     static func parseSpeechCLIOutput(_ output: String) throws -> [ForcedAlignerWordTiming] {
-        let pattern = #"^\s*\[\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*\]\s*(.*?)\s*$"#
+        let pattern = #"^\s*\[\s*([0-9]+(?:\.[0-9]+)?)s?\s*-\s*([0-9]+(?:\.[0-9]+)?)s?\s*\]\s*(.*?)\s*$"#
         let regex = try NSRegularExpression(pattern: pattern)
         var words: [ForcedAlignerWordTiming] = []
 
