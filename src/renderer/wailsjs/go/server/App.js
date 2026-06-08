@@ -126,8 +126,8 @@ export function ClearLyricsSyncModelCache() {
   return window['go']['server']['App']['ClearLyricsSyncModelCache']();
 }
 
-export function ConfirmSyncPairing(arg1, arg2, arg3) {
-  return window['go']['server']['App']['ConfirmSyncPairing'](arg1, arg2, arg3);
+export function ConfirmSyncPairing(arg1, arg2, arg3, arg4) {
+  return window['go']['server']['App']['ConfirmSyncPairing'](arg1, arg2, arg3, arg4);
 }
 
 export function CreatePlaylist(arg1) {

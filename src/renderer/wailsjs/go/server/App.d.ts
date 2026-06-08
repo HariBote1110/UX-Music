@@ -71,7 +71,7 @@ export function CDStartRip(arg1:Record<string, any>):Promise<any>;
 
 export function ClearLyricsSyncModelCache():Promise<void>;
 
-export function ConfirmSyncPairing(arg1:string,arg2:string,arg3:string):Promise<server.SyncPairingConfirmResult>;
+export function ConfirmSyncPairing(arg1:string,arg2:string,arg3:string,arg4:string):Promise<server.SyncPairingConfirmResult>;
 
 export function CreatePlaylist(arg1:string):Promise<void>;
 
