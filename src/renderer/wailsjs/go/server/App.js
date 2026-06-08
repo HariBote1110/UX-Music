@@ -126,6 +126,10 @@ export function ClearLyricsSyncModelCache() {
   return window['go']['server']['App']['ClearLyricsSyncModelCache']();
 }
 
+export function ConfirmSyncPairing(arg1, arg2, arg3) {
+  return window['go']['server']['App']['ConfirmSyncPairing'](arg1, arg2, arg3);
+}
+
 export function CreatePlaylist(arg1) {
   return window['go']['server']['App']['CreatePlaylist'](arg1);
 }
@@ -136,6 +140,10 @@ export function DeletePlaylist(arg1) {
 
 export function DeleteSongs(arg1, arg2) {
   return window['go']['server']['App']['DeleteSongs'](arg1, arg2);
+}
+
+export function DiscoverSyncDevices(arg1) {
+  return window['go']['server']['App']['DiscoverSyncDevices'](arg1);
 }
 
 export function GetAllLoudnessData() {
@@ -348,6 +356,10 @@ export function SongSkipped(arg1) {
 
 export function StartDeviceWatcher() {
   return window['go']['server']['App']['StartDeviceWatcher']();
+}
+
+export function StartSyncPairing(arg1) {
+  return window['go']['server']['App']['StartSyncPairing'](arg1);
 }
 
 export function StopDeviceWatcher() {

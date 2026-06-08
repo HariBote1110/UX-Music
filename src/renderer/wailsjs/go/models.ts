@@ -511,6 +511,79 @@ export namespace server {
 	        this.performanceSourceOk = source["performanceSourceOk"];
 	    }
 	}
+	export class SyncPairingConfirmResult {
+	    remoteDeviceId: string;
+	    remoteDisplayName: string;
+	    tokenSaved: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncPairingConfirmResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.remoteDeviceId = source["remoteDeviceId"];
+	        this.remoteDisplayName = source["remoteDisplayName"];
+	        this.tokenSaved = source["tokenSaved"];
+	    }
+	}
+	export class SyncPairingStartResult {
+	    baseUrl: string;
+	    sessionId: string;
+	    localDeviceId: string;
+	    remoteDeviceId: string;
+	    remoteDisplayName: string;
+	    code: string;
+	    expiresAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncPairingStartResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.baseUrl = source["baseUrl"];
+	        this.sessionId = source["sessionId"];
+	        this.localDeviceId = source["localDeviceId"];
+	        this.remoteDeviceId = source["remoteDeviceId"];
+	        this.remoteDisplayName = source["remoteDisplayName"];
+	        this.code = source["code"];
+	        this.expiresAt = source["expiresAt"];
+	    }
+	}
+
+}
+
+export namespace uxsync {
+	
+	export class MDNSPeer {
+	    deviceId: string;
+	    displayName: string;
+	    host: string;
+	    hosts: string[];
+	    port: number;
+	    hostName: string;
+	    protocolVersion: string;
+	    roles: string[];
+	    reachableBaseUrl?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MDNSPeer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.deviceId = source["deviceId"];
+	        this.displayName = source["displayName"];
+	        this.host = source["host"];
+	        this.hosts = source["hosts"];
+	        this.port = source["port"];
+	        this.hostName = source["hostName"];
+	        this.protocolVersion = source["protocolVersion"];
+	        this.roles = source["roles"];
+	        this.reachableBaseUrl = source["reachableBaseUrl"];
+	    }
+	}
 
 }
 
