@@ -23,6 +23,8 @@ var syncProtocolCapabilities = []string{
 	"library.snapshot.v1",
 	"library.asset-file.v1",
 	"library.import.v1",
+	"library.transfer-progress.v1",
+	"library.transcode.mp3-320.v1",
 }
 
 type syncProtocolNegotiation struct {
@@ -99,7 +101,11 @@ func buildSyncProtocolSchemaDocument() syncProtocolSchemaDocument {
 			},
 			"SyncLibraryImport": {
 				Required: []string{"sourceDeviceId", "track", "file"},
-				Optional: []string{"sourceDisplayName", "extensions"},
+				Optional: []string{"sourceDisplayName", "syncTransferEncoding", "audioBitrateKbps", "extensions"},
+			},
+			"SyncTransferProgress": {
+				Required: []string{"direction", "stage", "current", "total", "encodingMode"},
+				Optional: []string{"trackId", "title", "fileName", "bytesDone", "bytesTotal", "bytesPerSecond", "updatedAt", "extensions"},
 			},
 			"SyncPlayEvents": {
 				Required: []string{"deviceId", "playEvents"},
@@ -113,7 +119,7 @@ func buildSyncProtocolSchemaDocument() syncProtocolSchemaDocument {
 			{Method: http.MethodPost, Path: "/sync/pairing/confirm", Auth: "public", Capability: "pairing.code.v1", RequestType: "SyncPairingConfirmRequest", ResponseType: "SyncPairingConfirmResponse"},
 			{Method: http.MethodGet, Path: "/sync/library/snapshot", Auth: "sync-token", Capability: "library.snapshot.v1", ResponseType: "SyncLibrarySnapshot"},
 			{Method: http.MethodGet, Path: "/sync/assets/{trackId}/file", Auth: "sync-token", Capability: "library.asset-file.v1", ResponseType: "binary"},
-			{Method: http.MethodPost, Path: "/sync/library/import", Auth: "sync-token", Capability: "library.import.v1", RequestType: "multipart", ResponseType: "SyncLibraryImportResponse"},
+			{Method: http.MethodPost, Path: "/sync/library/import", Auth: "sync-token", Capability: "library.import.v1", RequestType: "multipart", ResponseType: "SyncLibraryImportResponse", Notes: []string{"client may send original audio or mp3_320 when library.transcode.mp3-320.v1 is supported"}},
 			{Method: http.MethodPost, Path: "/sync/library/events", Auth: "sync-token", Capability: "library.events.v1", RequestType: "SyncPlayEvents", ResponseType: "SyncPlayEventsAck"},
 		},
 	}

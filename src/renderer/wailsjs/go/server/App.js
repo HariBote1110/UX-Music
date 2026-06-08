@@ -302,6 +302,10 @@ export function PushSyncLibraryAssets(arg1, arg2) {
   return window['go']['server']['App']['PushSyncLibraryAssets'](arg1, arg2);
 }
 
+export function PushSyncLibraryAssetsWithOptions(arg1, arg2, arg3) {
+  return window['go']['server']['App']['PushSyncLibraryAssetsWithOptions'](arg1, arg2, arg3);
+}
+
 export function RenamePlaylist(arg1) {
   return window['go']['server']['App']['RenamePlaylist'](arg1);
 }

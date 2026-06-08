@@ -13,13 +13,16 @@ import {
     formatSyncPushResultSummary,
     formatSyncPeerEndpoint,
     formatSyncPeerRoles,
+    formatSyncTransferProgressSummary,
     mergeSyncPeersWithDevices,
     normaliseSyncDevices,
     normaliseSyncPairingConfirm,
     normaliseSyncPairingStart,
     normaliseSyncPullResult,
     normaliseSyncPushResult,
+    normaliseSyncTransferProgress,
     normaliseSyncPeers,
+    syncTransferEncodingOptions,
     syncPeerConnectionLabel,
     syncPullActionState,
     syncPushActionState,
@@ -33,6 +36,7 @@ const electronAPI = window.electronAPI;
 
 let uxSyncPeers: SyncPeer[] = [];
 let uxSyncDevices: SyncDevice[] = [];
+let uxSyncTransferProgressUnsubscribe: (() => void) | null = null;
 
 /**
  * 指定したテーマを body クラスに適用する。
@@ -258,6 +262,47 @@ function updateUxSyncTransferActions(preserveStatus = false): void {
     }
 }
 
+function selectedUxSyncEncodingMode(): string {
+    const select = document.getElementById('ux-sync-transfer-encoding-select') as HTMLSelectElement | null;
+    return select?.value || 'original';
+}
+
+function bindUxSyncTransferProgress(): void {
+    if (uxSyncTransferProgressUnsubscribe || !window.runtime?.EventsOn) {
+        return;
+    }
+    uxSyncTransferProgressUnsubscribe = window.runtime.EventsOn('ux-sync-transfer-progress', (payload: unknown) => {
+        const progress = normaliseSyncTransferProgress(payload);
+        if (!progress) {
+            return;
+        }
+        const statusEl = document.getElementById('ux-sync-transfer-status');
+        const logEl = document.getElementById('ux-sync-transfer-log');
+        const summary = formatSyncTransferProgressSummary(progress);
+        if (statusEl) {
+            statusEl.textContent = summary;
+        }
+        if (logEl) {
+            const percent = progress.bytesTotal > 0
+                ? `\n${Math.min(100, Math.round((progress.bytesDone / progress.bytesTotal) * 100))}% (${formatSyncTransferBytes(progress.bytesDone)} / ${formatSyncTransferBytes(progress.bytesTotal)})`
+                : '';
+            logEl.textContent = `${summary}${percent}`;
+        }
+    });
+}
+
+function formatSyncTransferBytes(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+        return '0 B';
+    }
+    const mib = bytes / 1024 / 1024;
+    if (mib >= 1) {
+        return `${(Math.round(mib * 10) / 10).toFixed(1)} MB`;
+    }
+    const kib = bytes / 1024;
+    return `${(Math.round(kib * 10) / 10).toFixed(1)} KB`;
+}
+
 async function runUxSyncPull(limit: number): Promise<void> {
     const baseUrl = selectedUxSyncTransferBaseUrl();
     const pullOneBtn = document.getElementById('ux-sync-pull-one-btn') as HTMLButtonElement | null;
@@ -278,6 +323,7 @@ async function runUxSyncPull(limit: number): Promise<void> {
     if (pushAllBtn) pushAllBtn.disabled = true;
     if (statusEl) statusEl.textContent = '取得中...';
     if (logEl) logEl.textContent = '';
+    bindUxSyncTransferProgress();
 
     try {
         const result = normaliseSyncPullResult(await musicApi.pullSyncLibraryAssets(baseUrl, limit));
@@ -321,9 +367,12 @@ async function runUxSyncPush(limit: number): Promise<void> {
     if (pushAllBtn) pushAllBtn.disabled = true;
     if (statusEl) statusEl.textContent = '転送中...';
     if (logEl) logEl.textContent = '';
+    bindUxSyncTransferProgress();
 
     try {
-        const result = normaliseSyncPushResult(await musicApi.pushSyncLibraryAssets(baseUrl, limit));
+        const result = normaliseSyncPushResult(await musicApi.pushSyncLibraryAssets(baseUrl, limit, {
+            encodingMode: selectedUxSyncEncodingMode(),
+        }));
         if (!result) {
             throw new Error('音源転送応答が不正です。');
         }
@@ -696,6 +745,18 @@ export function initSettings() {
             updateUxSyncTransferActions();
         });
         syncTransferSelect.dataset.listenerAttached = 'true';
+    }
+
+    const syncTransferEncodingSelect = document.getElementById('ux-sync-transfer-encoding-select') as HTMLSelectElement | null;
+    if (syncTransferEncodingSelect && !syncTransferEncodingSelect.dataset.optionsInitialised) {
+        syncTransferEncodingSelect.innerHTML = '';
+        for (const option of syncTransferEncodingOptions()) {
+            const el = document.createElement('option');
+            el.value = option.value;
+            el.textContent = option.label;
+            syncTransferEncodingSelect.appendChild(el);
+        }
+        syncTransferEncodingSelect.dataset.optionsInitialised = 'true';
     }
 
     const syncPullOneBtn = document.getElementById('ux-sync-pull-one-btn');

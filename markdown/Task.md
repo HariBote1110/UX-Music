@@ -1,3 +1,15 @@
+# Task: UX Sync Phase 5.6 - 転送進捗表示とMP3 320kbps転送
+
+## 概要
+UX Sync の音源転送中に、現在処理しているファイル名、件数、転送量、転送速度を UI へ表示する。加えて、FLAC などのロスレス音源を portable client へ送る際に MP3 320kbps へ変換してから push 転送できるようにする。
+
+## 完了条件
+- [x] `PushSyncLibraryAssetsWithOptions(baseURL, limit, { encodingMode: "mp3_320" })` が MP3 320kbps 変換後のファイルと metadata を送るテストがあること。
+- [x] push 転送中に `ux-sync-transfer-progress` event としてファイル名、件数、byte数、速度を通知するテストがあること。
+- [x] renderer に転送進捗 payload の正規化と、速度・変換モードを含む表示文言のテストがあること。
+- [x] UX Sync 専用設定画面の `同期` タブから、原本転送と MP3 320kbps 転送を選べること。
+- [x] `markdown/ux-music-sync-protocol.md` に `library.transfer-progress.v1` と `library.transcode.mp3-320.v1` が記載されていること。
+
 # Task: UX Sync Phase 5.5 - プロトコルスキーマとバージョンネゴシエーション
 
 ## 概要

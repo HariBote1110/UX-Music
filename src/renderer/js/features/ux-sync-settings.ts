@@ -49,8 +49,23 @@ export interface SyncPushResult {
     transferred: number;
     skipped: number;
     failed: number;
+    encodingMode: string;
     importedPaths: string[];
     errors: string[];
+}
+
+export interface SyncTransferProgress {
+    direction: string;
+    stage: string;
+    trackId: string;
+    title: string;
+    fileName: string;
+    current: number;
+    total: number;
+    bytesDone: number;
+    bytesTotal: number;
+    bytesPerSecond: number;
+    encodingMode: string;
 }
 
 export interface SyncSettingsEntryState {
@@ -232,6 +247,7 @@ export function normaliseSyncPushResult(raw: unknown): SyncPushResult | null {
         transferred: readCount(record.transferred),
         skipped: readCount(record.skipped),
         failed: readCount(record.failed),
+        encodingMode: readString(record.encodingMode) || 'original',
         importedPaths: readStringArray(record.importedPaths),
         errors: readStringArray(record.errors),
     };
@@ -239,6 +255,30 @@ export function normaliseSyncPushResult(raw: unknown): SyncPushResult | null {
         return null;
     }
     return result;
+}
+
+export function normaliseSyncTransferProgress(raw: unknown): SyncTransferProgress | null {
+    if (!raw || typeof raw !== 'object') {
+        return null;
+    }
+    const record = raw as Record<string, unknown>;
+    const progress: SyncTransferProgress = {
+        direction: readString(record.direction),
+        stage: readString(record.stage),
+        trackId: readString(record.trackId),
+        title: readString(record.title),
+        fileName: readString(record.fileName),
+        current: readCount(record.current),
+        total: readCount(record.total),
+        bytesDone: readCount(record.bytesDone),
+        bytesTotal: readCount(record.bytesTotal),
+        bytesPerSecond: readFiniteNumber(record.bytesPerSecond),
+        encodingMode: readString(record.encodingMode) || 'original',
+    };
+    if (!progress.direction || !progress.stage) {
+        return null;
+    }
+    return progress;
 }
 
 export function syncPullActionState(hasPullBinding: boolean, selectedBaseUrl: string): SyncPullActionState {
@@ -269,6 +309,22 @@ export function formatSyncPullResultSummary(result: SyncPullResult): string {
 export function formatSyncPushResultSummary(result: SyncPushResult): string {
     const name = result.remoteDisplayName || result.remoteDeviceId;
     return `${name}: 転送 ${result.transferred}曲 / 既存 ${result.skipped}曲 / 失敗 ${result.failed}曲`;
+}
+
+export function formatSyncTransferProgressSummary(progress: SyncTransferProgress): string {
+    const label = syncTransferStageLabel(progress);
+    const file = progress.fileName || progress.title || progress.trackId || '音源';
+    const counters = progress.total > 0 ? ` (${progress.current} / ${progress.total})` : '';
+    const speed = progress.bytesPerSecond > 0 ? ` - ${formatBytesPerSecond(progress.bytesPerSecond)}` : '';
+    const encoding = progress.encodingMode === 'mp3_320' ? ' - MP3 320kbps' : '';
+    return `${label}: ${file}${counters}${speed}${encoding}`;
+}
+
+export function syncTransferEncodingOptions(): Array<{ value: string; label: string }> {
+    return [
+        { value: 'original', label: '原本のまま' },
+        { value: 'mp3_320', label: 'MP3 320kbps' },
+    ];
 }
 
 function normaliseSyncPeer(raw: unknown): SyncPeer | null {
@@ -330,6 +386,10 @@ function readCount(value: unknown): number {
     return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
 
+function readFiniteNumber(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 function readStringArray(value: unknown): string[] {
     if (!Array.isArray(value)) {
         return [];
@@ -365,4 +425,36 @@ function mergeHosts(hosts: string[], extra?: string): string[] {
         merged.push(extra);
     }
     return merged;
+}
+
+function syncTransferStageLabel(progress: SyncTransferProgress): string {
+    switch (progress.stage) {
+    case 'transcoding':
+        return '変換中';
+    case 'downloading':
+        return '取得中';
+    case 'uploading':
+        return '転送中';
+    case 'done':
+        return '完了';
+    case 'skipped':
+        return '既存';
+    case 'failed':
+        return '失敗';
+    default:
+        return progress.direction === 'pull' ? '取得準備中' : '転送準備中';
+    }
+}
+
+function formatBytesPerSecond(bytesPerSecond: number): string {
+    const mib = bytesPerSecond / 1024 / 1024;
+    if (mib >= 1) {
+        return `${formatOneDecimal(mib)} MB/s`;
+    }
+    const kib = bytesPerSecond / 1024;
+    return `${formatOneDecimal(kib)} KB/s`;
+}
+
+function formatOneDecimal(value: number): string {
+    return (Math.round(value * 10) / 10).toFixed(1);
 }

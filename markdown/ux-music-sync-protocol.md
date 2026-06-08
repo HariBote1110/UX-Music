@@ -53,6 +53,8 @@ server は identity 応答に `negotiation` を含める。
 - `library.snapshot.v1`: ライブラリスナップショット取得
 - `library.asset-file.v1`: 曲ID指定の音源取得
 - `library.import.v1`: multipart 音源push取り込み
+- `library.transfer-progress.v1`: Wails UI / local client 向け転送進捗イベント
+- `library.transcode.mp3-320.v1`: 送信前に MP3 320kbps へ変換して転送するオプション
 
 ## 公開エンドポイント
 | Method | Path | Auth | Capability |
@@ -65,6 +67,36 @@ server は identity 応答に `negotiation` を含める。
 | GET | `/sync/assets/{trackId}/file` | sync-token | `library.asset-file.v1` |
 | POST | `/sync/library/import` | sync-token | `library.import.v1` |
 | POST | `/sync/library/events` | sync-token | `library.events.v1` |
+
+## 転送オプション
+push 転送のローカル呼び出しは `encodingMode` を指定できる。
+
+- `original`: 原本ファイルをそのまま送る。
+- `mp3_320`: MP3以外の音源を送信前に MP3 320kbps へ変換し、`syncTransferEncoding: "mp3_320"` と `audioBitrateKbps: 320` を metadata に付けて送る。
+
+`mp3_320` は保存容量と転送時間を優先する portable client 向けのモードである。変換失敗時はその曲を failed として扱い、勝手に原本へフォールバックしない。
+
+## 転送進捗
+UI には `ux-sync-transfer-progress` event として次の情報を流す。
+
+```json
+{
+  "direction": "push",
+  "stage": "uploading",
+  "trackId": "track-1",
+  "title": "Song",
+  "fileName": "song.mp3",
+  "current": 1,
+  "total": 12,
+  "bytesDone": 1572864,
+  "bytesTotal": 3145728,
+  "bytesPerSecond": 1572864,
+  "encodingMode": "mp3_320",
+  "updatedAt": "2026-06-09T05:56:00Z"
+}
+```
+
+`stage` は `preparing`、`transcoding`、`downloading`、`uploading`、`done`、`skipped`、`failed` を使う。
 
 ## mDNS TXT
 mDNS TXT は軽量な事前情報として扱い、最終判断は `/sync/identity` で行う。

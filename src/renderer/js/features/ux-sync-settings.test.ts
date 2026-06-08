@@ -312,6 +312,7 @@ describe('normaliseSyncPushResult', () => {
             transferred: 2,
             skipped: 1,
             failed: 0,
+            encodingMode: 'original',
             importedPaths: [
                 'C:\\Users\\gzabu\\AppData\\Roaming\\ux-music\\SyncLibrary\\song.flac',
             ],
@@ -446,6 +447,7 @@ describe('formatSyncPushResultSummary', () => {
             transferred: 2,
             skipped: 1,
             failed: 0,
+            encodingMode: 'original',
             importedPaths: [],
             errors: [],
         })).toBe('mainPC: 転送 2曲 / 既存 1曲 / 失敗 0曲');

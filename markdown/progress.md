@@ -2,6 +2,25 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.6 転送進捗表示とMP3 320kbps転送
+
+- **要望対応**:
+    - 音源転送中に、現在送っているファイル名と転送速度が分かるようにした。
+    - FLAC など重いロスレス音源を、送信時に MP3 320kbps へ変換してから転送できるようにした。
+- **実装内容**:
+    - `ux-sync-transfer-progress` Wails event を追加し、push / pull の転送中に `direction`、`stage`、`fileName`、件数、byte数、`bytesPerSecond`、`encodingMode` をUIへ通知するようにした。
+    - `PushSyncLibraryAssetsWithOptions(baseURL, limit, options)` を追加し、既存 `PushSyncLibraryAssets(baseURL, limit)` は原本転送の互換APIとして維持した。
+    - `encodingMode: "mp3_320"` 指定時、MP3以外の音源を `ffmpeg` / `libmp3lame` / `320k` で一時変換し、multipart import には `.mp3` と `syncTransferEncoding: "mp3_320"` を付けて送るようにした。
+    - UX Sync 設定画面の同期タブに転送音質セレクトを追加し、転送中はファイル名、件数、転送速度、転送量を表示するようにした。
+    - protocol capability に `library.transfer-progress.v1` と `library.transcode.mp3-320.v1` を追加した。
+- **検証**:
+    - `go test ./server -run 'TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320|TestPushSyncLibraryAssetsEmitsTransferProgressWithFileAndSpeed' -count=1`
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+- **仕様同期**:
+    - `markdown/ux-music-sync-protocol.md`、`markdown/ux-music-sync-plan.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/Task.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-22a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-19a` に更新。
+
 ### UX Sync Phase 5.5 プロトコルスキーマとバージョンネゴシエーション
 
 - **要望対応**:

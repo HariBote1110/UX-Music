@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,9 +20,25 @@ import (
 	"ux-music-sidecar/internal/store"
 
 	"github.com/google/uuid"
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const syncManagedLibraryDirName = "SyncLibrary"
+const syncTransferProgressEventName = "ux-sync-transfer-progress"
+const syncTransferEncodingOriginal = "original"
+const syncTransferEncodingMP3320 = "mp3_320"
+const syncTransferDirectionPull = "pull"
+const syncTransferDirectionPush = "push"
+const syncTransferStagePreparing = "preparing"
+const syncTransferStageTranscoding = "transcoding"
+const syncTransferStageDownloading = "downloading"
+const syncTransferStageUploading = "uploading"
+const syncTransferStageDone = "done"
+const syncTransferStageSkipped = "skipped"
+const syncTransferStageFailed = "failed"
+
+var syncTransferProgressSink = emitSyncTransferProgress
+var syncTranscodeToMP3 = transcodeSyncTrackToMP3
 
 type syncLibrarySnapshotResponse struct {
 	DeviceID    string                   `json:"deviceId"`
@@ -47,8 +64,28 @@ type SyncPushResult struct {
 	Transferred       int      `json:"transferred"`
 	Skipped           int      `json:"skipped"`
 	Failed            int      `json:"failed"`
+	EncodingMode      string   `json:"encodingMode"`
 	ImportedPaths     []string `json:"importedPaths"`
 	Errors            []string `json:"errors,omitempty"`
+}
+
+type SyncTransferOptions struct {
+	EncodingMode string `json:"encodingMode"`
+}
+
+type SyncTransferProgress struct {
+	Direction      string  `json:"direction"`
+	Stage          string  `json:"stage"`
+	TrackID        string  `json:"trackId,omitempty"`
+	Title          string  `json:"title,omitempty"`
+	FileName       string  `json:"fileName,omitempty"`
+	Current        int     `json:"current"`
+	Total          int     `json:"total"`
+	BytesDone      int64   `json:"bytesDone"`
+	BytesTotal     int64   `json:"bytesTotal"`
+	BytesPerSecond float64 `json:"bytesPerSecond"`
+	EncodingMode   string  `json:"encodingMode"`
+	UpdatedAt      string  `json:"updatedAt"`
 }
 
 type SyncResetResult struct {
@@ -218,7 +255,7 @@ func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, 
 			result.Skipped++
 			continue
 		}
-		importedPath, err := downloadSyncTrackAsset(ctx, baseURL, token, identity, track)
+		importedPath, err := downloadSyncTrackAsset(ctx, a, baseURL, token, identity, track, result.Downloaded+result.Failed+result.Skipped+1, len(snapshot.Tracks))
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", trackID, err))
@@ -231,6 +268,10 @@ func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, 
 }
 
 func (a *App) PushSyncLibraryAssets(baseURL string, limit int) (SyncPushResult, error) {
+	return a.PushSyncLibraryAssetsWithOptions(baseURL, limit, SyncTransferOptions{})
+}
+
+func (a *App) PushSyncLibraryAssetsWithOptions(baseURL string, limit int, options SyncTransferOptions) (SyncPushResult, error) {
 	ctx := context.Background()
 	if a != nil && a.ctx != nil {
 		ctx = a.ctx
@@ -255,7 +296,9 @@ func (a *App) PushSyncLibraryAssets(baseURL string, limit int) (SyncPushResult, 
 	result := SyncPushResult{
 		RemoteDeviceID:    identity.DeviceID,
 		RemoteDisplayName: syncIdentityDisplayName(identity),
+		EncodingMode:      normaliseSyncTransferEncodingMode(options.EncodingMode),
 	}
+	total := syncTransferCandidateCount(library, limit)
 	for _, item := range library {
 		if limit > 0 && result.Transferred >= limit {
 			break
@@ -270,18 +313,49 @@ func (a *App) PushSyncLibraryAssets(baseURL string, limit int) (SyncPushResult, 
 			result.Errors = append(result.Errors, "track id is missing")
 			continue
 		}
+		current := result.Transferred + result.Failed + result.Skipped + 1
 		if syncTrackString(track, "syncSourceDeviceId") == identity.DeviceID {
 			result.Skipped++
+			a.emitSyncTransferProgress(SyncTransferProgress{
+				Direction:    syncTransferDirectionPush,
+				Stage:        syncTransferStageSkipped,
+				TrackID:      trackID,
+				Title:        syncTrackString(track, "title"),
+				FileName:     filepath.Base(syncTrackString(track, "path")),
+				Current:      current,
+				Total:        total,
+				EncodingMode: result.EncodingMode,
+			})
 			continue
 		}
-		response, err := uploadSyncTrackAsset(ctx, baseURL, token, source, track)
+		response, err := a.uploadSyncTrackAsset(ctx, baseURL, token, source, track, options, current, total)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", trackID, err))
+			a.emitSyncTransferProgress(SyncTransferProgress{
+				Direction:    syncTransferDirectionPush,
+				Stage:        syncTransferStageFailed,
+				TrackID:      trackID,
+				Title:        syncTrackString(track, "title"),
+				FileName:     filepath.Base(syncTrackString(track, "path")),
+				Current:      current,
+				Total:        total,
+				EncodingMode: result.EncodingMode,
+			})
 			continue
 		}
 		if response.Skipped {
 			result.Skipped++
+			a.emitSyncTransferProgress(SyncTransferProgress{
+				Direction:    syncTransferDirectionPush,
+				Stage:        syncTransferStageSkipped,
+				TrackID:      trackID,
+				Title:        syncTrackString(track, "title"),
+				FileName:     filepath.Base(syncTrackString(track, "path")),
+				Current:      current,
+				Total:        total,
+				EncodingMode: result.EncodingMode,
+			})
 			continue
 		}
 		if response.Imported {
@@ -289,6 +363,16 @@ func (a *App) PushSyncLibraryAssets(baseURL string, limit int) (SyncPushResult, 
 			if response.Path != "" {
 				result.ImportedPaths = append(result.ImportedPaths, response.Path)
 			}
+			a.emitSyncTransferProgress(SyncTransferProgress{
+				Direction:    syncTransferDirectionPush,
+				Stage:        syncTransferStageDone,
+				TrackID:      trackID,
+				Title:        syncTrackString(track, "title"),
+				FileName:     filepath.Base(syncTrackString(track, "path")),
+				Current:      current,
+				Total:        total,
+				EncodingMode: result.EncodingMode,
+			})
 		}
 	}
 	return result, nil
@@ -315,7 +399,7 @@ func fetchSyncLibrarySnapshot(ctx context.Context, baseURL, token string) (syncL
 	return snapshot, nil
 }
 
-func downloadSyncTrackAsset(ctx context.Context, baseURL, token string, identity syncIdentityResponse, track map[string]interface{}) (string, error) {
+func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string, identity syncIdentityResponse, track map[string]interface{}, current, total int) (string, error) {
 	trackID := syncTrackID(track)
 	endpoint := baseURL + "/sync/assets/" + url.PathEscape(trackID) + "/file"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -340,7 +424,22 @@ func downloadSyncTrackAsset(ctx context.Context, baseURL, token string, identity
 	if err != nil {
 		return "", err
 	}
-	_, copyErr := io.Copy(out, resp.Body)
+	progress := newSyncProgressReader(resp.Body, resp.ContentLength, func(done, totalBytes int64, bytesPerSecond float64) {
+		app.emitSyncTransferProgress(SyncTransferProgress{
+			Direction:      syncTransferDirectionPull,
+			Stage:          syncTransferStageDownloading,
+			TrackID:        trackID,
+			Title:          syncTrackString(track, "title"),
+			FileName:       filepath.Base(destPath),
+			Current:        current,
+			Total:          total,
+			BytesDone:      done,
+			BytesTotal:     totalBytes,
+			BytesPerSecond: bytesPerSecond,
+			EncodingMode:   syncTransferEncodingOriginal,
+		})
+	})
+	_, copyErr := io.Copy(out, progress)
 	closeErr := out.Close()
 	if copyErr != nil {
 		_ = os.Remove(tmpPath)
@@ -357,6 +456,16 @@ func downloadSyncTrackAsset(ctx context.Context, baseURL, token string, identity
 	if err := upsertSyncImportedTrack(identity, track, destPath); err != nil {
 		return "", err
 	}
+	app.emitSyncTransferProgress(SyncTransferProgress{
+		Direction:    syncTransferDirectionPull,
+		Stage:        syncTransferStageDone,
+		TrackID:      trackID,
+		Title:        syncTrackString(track, "title"),
+		FileName:     filepath.Base(destPath),
+		Current:      current,
+		Total:        total,
+		EncodingMode: syncTransferEncodingOriginal,
+	})
 	return destPath, nil
 }
 
@@ -398,7 +507,7 @@ func importSyncUploadedTrack(payload syncLibraryImportRequest, header *multipart
 	return destPath, nil
 }
 
-func uploadSyncTrackAsset(ctx context.Context, baseURL, token string, source syncIdentityResponse, track map[string]interface{}) (syncLibraryImportResponse, error) {
+func (a *App) uploadSyncTrackAsset(ctx context.Context, baseURL, token string, source syncIdentityResponse, track map[string]interface{}, options SyncTransferOptions, current, total int) (syncLibraryImportResponse, error) {
 	filePath := syncTrackString(track, "path")
 	if filePath == "" {
 		return syncLibraryImportResponse{}, fmt.Errorf("track file path is missing")
@@ -413,6 +522,35 @@ func uploadSyncTrackAsset(ctx context.Context, baseURL, token string, source syn
 	if fileInfo.IsDir() {
 		return syncLibraryImportResponse{}, fmt.Errorf("track file path is a directory")
 	}
+	a.emitSyncTransferProgress(SyncTransferProgress{
+		Direction:    syncTransferDirectionPush,
+		Stage:        syncTransferStagePreparing,
+		TrackID:      syncTrackID(track),
+		Title:        syncTrackString(track, "title"),
+		FileName:     filepath.Base(filePath),
+		Current:      current,
+		Total:        total,
+		BytesTotal:   fileInfo.Size(),
+		EncodingMode: normaliseSyncTransferEncodingMode(options.EncodingMode),
+	})
+
+	prepared, err := prepareSyncTrackForTransfer(ctx, track, options, func(stage string, preparedFileName string) {
+		a.emitSyncTransferProgress(SyncTransferProgress{
+			Direction:    syncTransferDirectionPush,
+			Stage:        stage,
+			TrackID:      syncTrackID(track),
+			Title:        syncTrackString(track, "title"),
+			FileName:     firstNonEmpty(preparedFileName, filepath.Base(filePath)),
+			Current:      current,
+			Total:        total,
+			BytesTotal:   fileInfo.Size(),
+			EncodingMode: normaliseSyncTransferEncodingMode(options.EncodingMode),
+		})
+	})
+	if err != nil {
+		return syncLibraryImportResponse{}, err
+	}
+	defer prepared.cleanup()
 
 	reader, writer := io.Pipe()
 	multipartWriter := multipart.NewWriter(writer)
@@ -436,23 +574,38 @@ func uploadSyncTrackAsset(ctx context.Context, baseURL, token string, source syn
 		if err := json.NewEncoder(metadata).Encode(syncLibraryImportRequest{
 			SourceDeviceID:    source.DeviceID,
 			SourceDisplayName: syncIdentityDisplayName(source),
-			Track:             sanitiseSyncTrackForTransfer(track),
+			Track:             sanitiseSyncTrackForTransfer(prepared.track),
 		}); err != nil {
 			writeErr = err
 			return
 		}
-		part, err := multipartWriter.CreateFormFile("file", filepath.Base(filePath))
+		part, err := multipartWriter.CreateFormFile("file", prepared.fileName)
 		if err != nil {
 			writeErr = err
 			return
 		}
-		file, err := os.Open(filePath)
+		file, err := os.Open(prepared.path)
 		if err != nil {
 			writeErr = err
 			return
 		}
 		defer file.Close()
-		if _, err := io.Copy(part, file); err != nil {
+		progress := newSyncProgressReader(file, prepared.size, func(done, totalBytes int64, bytesPerSecond float64) {
+			a.emitSyncTransferProgress(SyncTransferProgress{
+				Direction:      syncTransferDirectionPush,
+				Stage:          syncTransferStageUploading,
+				TrackID:        syncTrackID(track),
+				Title:          syncTrackString(track, "title"),
+				FileName:       prepared.fileName,
+				Current:        current,
+				Total:          total,
+				BytesDone:      done,
+				BytesTotal:     totalBytes,
+				BytesPerSecond: bytesPerSecond,
+				EncodingMode:   prepared.encodingMode,
+			})
+		})
+		if _, err := io.Copy(part, progress); err != nil {
 			writeErr = err
 			return
 		}
@@ -477,6 +630,153 @@ func uploadSyncTrackAsset(ctx context.Context, baseURL, token string, source syn
 		return syncLibraryImportResponse{}, err
 	}
 	return result, nil
+}
+
+type syncPreparedTransferTrack struct {
+	path         string
+	fileName     string
+	size         int64
+	track        map[string]interface{}
+	encodingMode string
+	cleanup      func()
+}
+
+func prepareSyncTrackForTransfer(ctx context.Context, track map[string]interface{}, options SyncTransferOptions, notify func(stage string, fileName string)) (syncPreparedTransferTrack, error) {
+	mode := normaliseSyncTransferEncodingMode(options.EncodingMode)
+	sourcePath := syncTrackString(track, "path")
+	if sourcePath == "" {
+		return syncPreparedTransferTrack{}, fmt.Errorf("track file path is missing")
+	}
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return syncPreparedTransferTrack{}, err
+	}
+	preparedTrack := sanitiseSyncTrackForTransfer(track)
+	if mode != syncTransferEncodingMP3320 || strings.EqualFold(filepath.Ext(sourcePath), ".mp3") {
+		return syncPreparedTransferTrack{
+			path:         sourcePath,
+			fileName:     filepath.Base(sourcePath),
+			size:         sourceInfo.Size(),
+			track:        preparedTrack,
+			encodingMode: mode,
+			cleanup:      func() {},
+		}, nil
+	}
+
+	output, err := os.CreateTemp("", "ux-sync-*.mp3")
+	if err != nil {
+		return syncPreparedTransferTrack{}, err
+	}
+	outputPath := output.Name()
+	if err := output.Close(); err != nil {
+		_ = os.Remove(outputPath)
+		return syncPreparedTransferTrack{}, err
+	}
+	_ = os.Remove(outputPath)
+	fileName := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath)) + ".mp3"
+	if notify != nil {
+		notify(syncTransferStageTranscoding, filepath.Base(sourcePath))
+	}
+	if err := syncTranscodeToMP3(ctx, sourcePath, outputPath); err != nil {
+		_ = os.Remove(outputPath)
+		return syncPreparedTransferTrack{}, err
+	}
+	outputInfo, err := os.Stat(outputPath)
+	if err != nil {
+		_ = os.Remove(outputPath)
+		return syncPreparedTransferTrack{}, err
+	}
+	preparedTrack["fileType"] = ".mp3"
+	preparedTrack["syncTransferEncoding"] = syncTransferEncodingMP3320
+	preparedTrack["audioBitrateKbps"] = 320
+	return syncPreparedTransferTrack{
+		path:         outputPath,
+		fileName:     fileName,
+		size:         outputInfo.Size(),
+		track:        preparedTrack,
+		encodingMode: syncTransferEncodingMP3320,
+		cleanup:      func() { _ = os.Remove(outputPath) },
+	}, nil
+}
+
+func transcodeSyncTrackToMP3(ctx context.Context, inputPath, outputPath string) error {
+	ffmpegPath, err := locateFfmpeg()
+	if err != nil {
+		return fmt.Errorf("ffmpeg not found: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, ffmpegPath, "-y", "-i", inputPath, "-vn", "-codec:a", "libmp3lame", "-b:a", "320k", outputPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ffmpeg mp3 encode failed: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+type syncProgressReader struct {
+	reader    io.Reader
+	total     int64
+	done      int64
+	startedAt time.Time
+	onRead    func(done, total int64, bytesPerSecond float64)
+}
+
+func newSyncProgressReader(reader io.Reader, total int64, onRead func(done, total int64, bytesPerSecond float64)) *syncProgressReader {
+	return &syncProgressReader{
+		reader:    reader,
+		total:     total,
+		startedAt: time.Now(),
+		onRead:    onRead,
+	}
+}
+
+func (r *syncProgressReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 {
+		r.done += int64(n)
+		elapsed := time.Since(r.startedAt).Seconds()
+		bytesPerSecond := float64(r.done)
+		if elapsed > 0 {
+			bytesPerSecond = float64(r.done) / elapsed
+		}
+		if r.onRead != nil {
+			r.onRead(r.done, r.total, bytesPerSecond)
+		}
+	}
+	return n, err
+}
+
+func (a *App) emitSyncTransferProgress(progress SyncTransferProgress) {
+	progress.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	syncTransferProgressSink(appContext(a), progress)
+}
+
+func emitSyncTransferProgress(ctx context.Context, progress SyncTransferProgress) {
+	if ctx != nil {
+		wailsRuntime.EventsEmit(ctx, syncTransferProgressEventName, progress)
+	}
+}
+
+func appContext(a *App) context.Context {
+	if a == nil {
+		return nil
+	}
+	return a.ctx
+}
+
+func normaliseSyncTransferEncodingMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case syncTransferEncodingMP3320:
+		return syncTransferEncodingMP3320
+	default:
+		return syncTransferEncodingOriginal
+	}
+}
+
+func syncTransferCandidateCount(library []interface{}, limit int) int {
+	if limit > 0 && limit < len(library) {
+		return limit
+	}
+	return len(library)
 }
 
 func syncAssetHTTPClient() *http.Client {

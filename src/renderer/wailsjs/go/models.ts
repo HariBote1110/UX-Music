@@ -603,6 +603,7 @@ export namespace server {
 	    transferred: number;
 	    skipped: number;
 	    failed: number;
+	    encodingMode: string;
 	    importedPaths: string[];
 	    errors?: string[];
 
@@ -617,8 +618,21 @@ export namespace server {
 	        this.transferred = source["transferred"];
 	        this.skipped = source["skipped"];
 	        this.failed = source["failed"];
+	        this.encodingMode = source["encodingMode"];
 	        this.importedPaths = source["importedPaths"];
 	        this.errors = source["errors"];
+	    }
+	}
+	export class SyncTransferOptions {
+	    encodingMode: string;
+
+	    static createFrom(source: any = {}) {
+	        return new SyncTransferOptions(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.encodingMode = source["encodingMode"];
 	    }
 	}
 
