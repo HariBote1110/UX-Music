@@ -10,7 +10,8 @@ UX Sync の HTTP / mDNS プロトコルに、機械可読なスキーマ公開�
 - [x] mDNS TXT に `schemaVersion` と `capabilities` が含まれること。
 - [x] `markdown/ux-music-sync-protocol.md` にプロトコルスキーマと拡張規則が記載されていること。
 - [x] `go test ./server -run 'TestSyncIdentityIncludesSchema|TestFetchSyncIdentitySendsProtocol|TestFetchSyncIdentityRejectsIncompatibleProtocolMajor|TestSyncSchemaEndpoint|TestSyncMDNSAdvertiseInfo' -count=1` と `go test ./internal/uxsync -count=1` が通ること。
-- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-21a` に更新されていること。
+- [x] Windows 向け Wails build が MTP build tag 衝突で失敗しないこと。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-21b` に更新されていること。
 
 # Task: UX Sync Phase 5.4 - 音源push転送
 

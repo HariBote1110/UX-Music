@@ -13,13 +13,14 @@
     - `/sync/schema` を追加し、endpoint / message / capability / 拡張規則を含む機械可読スキーマを返すようにした。
     - mDNS TXT に `schemaVersion` と `capabilities` を追加した。
     - `markdown/ux-music-sync-protocol.md` を追加し、未知フィールド・未知 capability・`extensions` の扱いを含む将来互換方針を明文化した。
+    - Windows ビルドで macOS 向け MTP 実装と Windows stub が衝突しないよう、MTP 実装に build tag を追加し Windows stub を整理した。
 - **検証**:
     - `go test ./server -run 'TestSyncIdentityIncludesSchema|TestFetchSyncIdentitySendsProtocol|TestFetchSyncIdentityRejectsIncompatibleProtocolMajor|TestSyncSchemaEndpoint|TestSyncMDNSAdvertiseInfo' -count=1`
     - `go test ./internal/uxsync -count=1`
 - **仕様同期**:
     - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
-    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-21a` に更新。
-    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-18a` に更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-21b` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-18b` に更新。
 - **判断**:
     - 多少のバージョン差は unknown field / capability を無視して進め、major 不一致は同期操作前に止める方針を実装した。
     - 今後 token と `sourceDeviceId` の対応検証を強める場合は、新しい capability と schema version で段階導入する。
