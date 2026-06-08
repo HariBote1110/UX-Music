@@ -5,12 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
@@ -270,14 +274,14 @@ func TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320(t *testing.T
 		t.Fatalf("seed library: %v", err)
 	}
 
-	originalTranscode := syncTranscodeToMP3
-	syncTranscodeToMP3 = func(_ context.Context, inputPath, outputPath string) error {
+	originalOpen := syncOpenMP3Stream
+	syncOpenMP3Stream = func(_ context.Context, inputPath string) (io.ReadCloser, func() error, error) {
 		if inputPath != audioPath {
 			t.Fatalf("unexpected transcode input %q", inputPath)
 		}
-		return os.WriteFile(outputPath, []byte("mp3-320-audio"), 0o644)
+		return io.NopCloser(strings.NewReader("mp3-320-audio")), func() error { return nil }, nil
 	}
-	t.Cleanup(func() { syncTranscodeToMP3 = originalTranscode })
+	t.Cleanup(func() { syncOpenMP3Stream = originalOpen })
 
 	var observedFileName string
 	var observedFileType string
@@ -328,6 +332,133 @@ func TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320(t *testing.T
 	}
 	if observedFileType != ".mp3" || observedEncoding != syncTransferEncodingMP3320 || observedBitrate != 320 {
 		t.Fatalf("unexpected metadata fileType=%q encoding=%q bitrate=%v", observedFileType, observedEncoding, observedBitrate)
+	}
+}
+
+func TestPushSyncLibraryAssetsWithOptionsStreamsMP3EncodingIntoUpload(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey:   "dev_local_mac",
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "local.flac")
+	if err := os.WriteFile(audioPath, []byte("flac-audio"), 0o644); err != nil {
+		t.Fatalf("seed audio: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{
+			"id":       "local-track-1",
+			"path":     audioPath,
+			"title":    "Local Song",
+			"fileType": ".flac",
+		},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+
+	encoderCanFinish := make(chan struct{})
+	uploadSawFirstBytes := make(chan struct{})
+	var finishEncoderOnce sync.Once
+	finishEncoder := func() { finishEncoderOnce.Do(func() { close(encoderCanFinish) }) }
+	var encoderFinishedMu sync.Mutex
+	encoderFinished := false
+	originalOpen := syncOpenMP3Stream
+	syncOpenMP3Stream = func(_ context.Context, inputPath string) (io.ReadCloser, func() error, error) {
+		if inputPath != audioPath {
+			t.Fatalf("unexpected transcode input %q", inputPath)
+		}
+		reader, writer := io.Pipe()
+		go func() {
+			_, _ = writer.Write([]byte("mp3-"))
+			<-encoderCanFinish
+			_, _ = writer.Write([]byte("stream"))
+			encoderFinishedMu.Lock()
+			encoderFinished = true
+			encoderFinishedMu.Unlock()
+			_ = writer.Close()
+		}()
+		return reader, func() error { return nil }, nil
+	}
+	t.Cleanup(func() {
+		finishEncoder()
+		syncOpenMP3Stream = originalOpen
+	})
+
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
+		case "/sync/library/import":
+			_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if err != nil {
+				t.Fatalf("parse content type: %v", err)
+			}
+			multipartReader := multipart.NewReader(r.Body, params["boundary"])
+			for {
+				part, err := multipartReader.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatalf("next part: %v", err)
+				}
+				if part.FormName() != "file" {
+					_, _ = io.Copy(io.Discard, part)
+					continue
+				}
+				buf := make([]byte, 4)
+				if _, err := io.ReadFull(part, buf); err != nil {
+					t.Fatalf("read first upload bytes: %v", err)
+				}
+				if string(buf) != "mp3-" {
+					t.Fatalf("unexpected first upload bytes %q", string(buf))
+				}
+				encoderFinishedMu.Lock()
+				finishedBeforeFirstBytes := encoderFinished
+				encoderFinishedMu.Unlock()
+				if finishedBeforeFirstBytes {
+					t.Fatalf("expected upload to start before mp3 encoder finished")
+				}
+				close(uploadSawFirstBytes)
+				finishEncoder()
+				rest, err := io.ReadAll(part)
+				if err != nil {
+					t.Fatalf("read remaining upload: %v", err)
+				}
+				if string(rest) != "stream" {
+					t.Fatalf("unexpected remaining upload bytes %q", string(rest))
+				}
+			}
+			writeJSON(w, syncLibraryImportResponse{Imported: true, Path: `C:\SyncLibrary\local.mp3`})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := NewApp().PushSyncLibraryAssetsWithOptions(remote.URL, 1, SyncTransferOptions{
+			EncodingMode: syncTransferEncodingMP3320,
+		})
+		done <- err
+	}()
+
+	select {
+	case <-uploadSawFirstBytes:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("upload did not receive mp3 bytes while encoder stream was still open")
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("PushSyncLibraryAssetsWithOptions: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("push did not finish after encoder stream completed")
 	}
 }
 
