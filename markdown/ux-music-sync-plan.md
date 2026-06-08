@@ -411,6 +411,25 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - 同期アウトボックス、最終同期時刻、競合状態の表示。
 - `Library Host` / `Portable Client` の保存ポリシー設定。
 
+### Phase 2.8: Windows 側発見 fallback（実装済み: 2026-06-08）
+
+目的:
+
+- Mac 側から Windows peer は見えるが、Windows 側の mDNS discovery が空になって Mac mini を見つけられない非対称状態を補正する。
+
+実装済み:
+
+- mDNS 広告に使う表示名から `.local` suffix を除去し、`YukinoMac-mini.local` ではなく `YukinoMac-mini` として広告する。
+- inbound pairing confirm 成功時に、相手 `deviceId`、表示名、実通信元 IP から既知 peer を `settings.syncKnownPeers` へ保存する。
+- `DiscoverSyncDevices(timeoutMs)` と `/sync/discover` が mDNS 結果と既知 peer をマージする。
+- Mac 側 `dns-sd -B _uxmusic-sync._tcp local` で `YukinoMac-mini` が複数 interface に広告されることを確認した。
+- `mainPC` から `http://192.168.0.226:8765/sync/identity` が応答することを確認した。
+
+未実装:
+
+- Windows mDNS browse 自体が空になる根本原因の完全解消。
+- ペア済み端末一覧から既知 peer を削除する UI。
+
 テスト:
 
 - 同じ一時鍵交換結果から同じ6桁コードが生成される。

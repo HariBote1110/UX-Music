@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-17a)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-17b)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -71,6 +71,12 @@ UX Sync の探索・ペアリング・同期状態を扱う専用設定画面。
 - **専用入口**: 通常の設定モーダルには `UX Sync設定を開く` の入口だけを置き、Wails sync binding が無い環境では入口ごと非表示にする。
 - **端末画面**: UX Sync 専用設定画面の `端末` タブに、探索ボタン、探索状態、発見 peer 一覧、既存の6桁コード確認ペアリング導線を集約する。
 - **拡張余地**: `同期` と `保存` のタブ枠を用意し、後続のアウトボックス状態、差分同期、圧縮キャッシュ設定を同じ画面へ追加できる構造にする。
+
+### [更新] UX Sync Windows側発見fallback
+Windows 側で mDNS discovery が空になる環境でも、ペアリング済み Mac mini を見失わないための補正。
+- **広告名正規化**: mDNS instance / TXT `displayName` に使う表示名から `.local` suffix を除去し、`YukinoMac-mini.local` ではなく `YukinoMac-mini` として広告する。
+- **既知peer保存**: inbound pairing の confirm 成功時、相手 `deviceId`、表示名、実通信元 IP から `http://{remote-ip}:8765` を既知 peer として `settings.syncKnownPeers` に保存する。
+- **発見fallback**: `DiscoverSyncDevices(timeoutMs)` と `/sync/discover` は mDNS 結果に `syncKnownPeers` をマージし、mDNS browse が不安定でもペアリング済み端末を候補に出す。
 
 ### [更新] YouTubeダウンロード
 YouTube URL から楽曲をライブラリに追加する際、字幕を同時取得して同期歌詞（LRC）を生成する機能。

@@ -1,3 +1,18 @@
+# Task: UX Sync Phase 5.1 - Windows側発見fallback
+
+## 概要
+Windows 側で mDNS discovery が空になり、Mac mini が見えないケースを補正する。Mac 側広告名から `.local` suffix を除去し、さらに mDNS が取れない環境でも、ペアリング時に実通信してきた相手の IP を既知 peer として保存し、発見一覧へ混ぜる。
+
+## 完了条件
+- [x] mDNS 広告に使う表示名から `.local` suffix を除去するテストがあること。
+- [x] inbound pairing の `/sync/pairing/start` で受け取った相手 `deviceId` / `displayName` / remote address を、confirm 成功後に既知 peer として保存するテストがあること。
+- [x] `DiscoverSyncDevices(timeoutMs)` と `/sync/discover` が mDNS 結果と既知 peer をマージすること。
+- [x] Mac 側 `dns-sd -B _uxmusic-sync._tcp local` で `YukinoMac-mini` が広告されること。
+- [x] `mainPC` から `http://192.168.0.226:8765/sync/identity` が応答すること。
+- [x] Windows ビルド用に CGO / gcc / pkg-config / portaudio header を整え、`wails build -clean -nopackage` が成功すること。
+- [x] `go test ./...`、`npm test -- --run js/features/ux-sync-settings.test.ts`、`npm run typecheck` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-17b` に更新されていること。
+
 # Task: UX Sync Phase 5 - 専用設定画面
 
 ## 概要

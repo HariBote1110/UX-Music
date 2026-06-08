@@ -2,6 +2,30 @@
 
 ## 2026年6月8日
 
+### UX Sync Phase 5.1 Windows側発見fallback
+
+- **要望対応**:
+    - Mac 側から Windows peer は見えるが、Windows 側の mDNS discovery が空になって Mac mini を見つけられない非対称状態を調査した。
+- **実装内容**:
+    - `mainPC` から `http://192.168.0.226:8765/sync/identity` が応答することを確認し、HTTP 到達性ではなく discovery の問題だと切り分けた。
+    - mDNS 広告に使う表示名から `.local` suffix を除去し、`YukinoMac-mini.local` ではなく `YukinoMac-mini` として広告するようにした。
+    - inbound pairing confirm 成功時に、相手 `deviceId`、表示名、実通信元 IP から既知 peer を `settings.syncKnownPeers` へ保存するようにした。
+    - `DiscoverSyncDevices(timeoutMs)` と `/sync/discover` が mDNS 結果と既知 peer をマージするようにした。
+    - mainpc 側のビルド環境に `gcc` / `pkg-config` / portaudio header と `.pc` を用意し、Windows バイナリを再ビルドできる状態にした。
+- **検証**:
+    - Mac 側 `dns-sd -B _uxmusic-sync._tcp local` で `YukinoMac-mini` が複数 interface に広告されることを確認。
+    - `mainPC` から `http://192.168.0.226:8765/sync/identity` が応答することを確認。
+    - Windows 側 `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - Windows 側 `npm run typecheck`
+    - Windows 側 `go test ./server -run "TestSyncPairingConfirmStoresKnownPeer|TestMergeSyncKnownPeers|TestSyncMDNSAdvertiseInfo|TestNormaliseSyncDisplayName" -count=1`
+    - Windows 側 `wails build -clean -nopackage`
+    - Mac 側 `go test ./...`
+    - Mac 側 `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - Mac 側 `npm run typecheck`
+- **判断**:
+    - Windows の mDNS browse 自体は SSH 上の Go smoke で空のままだが、ペアリング済み端末は既知 peer fallback で発見一覧へ補完できる構造になった。
+    - SSH 経由で Windows GUI を起動すると WebView2 が `Invalid window handle` で落ちるため、更新済み `C:\Users\gzabu\UX-Music-sync-test\build\bin\UX-Music.exe` は Windows のデスクトップ側から起動して確認する。
+
 ### UX Sync Phase 5 専用設定画面
 
 - **要望対応**:
