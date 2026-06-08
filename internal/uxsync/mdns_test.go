@@ -30,7 +30,7 @@ func TestNormaliseMDNSPeer_prefersIPv4AndParsesRoles(t *testing.T) {
 		Instance: "UX Music on Mac mini",
 		HostName: "mac-mini.local.",
 		Port:     8765,
-		AddrIPv4: []string{"192.168.0.226"},
+		AddrIPv4: []string{"192.168.0.226", "192.168.0.227"},
 		AddrIPv6: []string{"fe80::1"},
 		Text: []string{
 			"deviceId=dev_mac_mini",
@@ -49,8 +49,35 @@ func TestNormaliseMDNSPeer_prefersIPv4AndParsesRoles(t *testing.T) {
 	if peer.Host != "192.168.0.226" || peer.Port != 8765 {
 		t.Fatalf("unexpected endpoint: %#v", peer)
 	}
+	if len(peer.Hosts) != 2 || peer.Hosts[0] != "192.168.0.226" || peer.Hosts[1] != "192.168.0.227" {
+		t.Fatalf("unexpected hosts: %#v", peer.Hosts)
+	}
 	if len(peer.Roles) != 2 || peer.Roles[0] != "LibraryHost" || peer.Roles[1] != "PlaybackTarget" {
 		t.Fatalf("unexpected roles: %#v", peer.Roles)
+	}
+}
+
+func TestMergeMDNSPeers_keepsAddressesFromMultipleInterfaces(t *testing.T) {
+	first := MDNSPeer{
+		DeviceID: "dev_mac_mini",
+		Host:     "192.168.1.182",
+		Hosts:    []string{"192.168.1.182"},
+		Port:     9876,
+	}
+	second := MDNSPeer{
+		DeviceID: "dev_mac_mini",
+		Host:     "192.168.0.226",
+		Hosts:    []string{"192.168.0.226"},
+		Port:     9876,
+	}
+
+	merged := MergeMDNSPeers(first, second)
+
+	if len(merged.Hosts) != 2 {
+		t.Fatalf("expected both addresses, got %#v", merged.Hosts)
+	}
+	if merged.Host != "192.168.1.182" {
+		t.Fatalf("expected first host to remain representative, got %q", merged.Host)
 	}
 }
 
