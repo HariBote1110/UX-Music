@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
     formatSyncPeerEndpoint,
     formatSyncPullResultSummary,
+    formatSyncPushResultSummary,
     mergeSyncPeersWithDevices,
     normaliseSyncDevices,
     normaliseSyncPairingConfirm,
     normaliseSyncPullResult,
+    normaliseSyncPushResult,
     normaliseSyncPairingStart,
     normaliseSyncPeers,
     syncPeerConnectionLabel,
     syncPullActionState,
+    syncPushActionState,
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
 } from './ux-sync-settings.js';
@@ -289,6 +292,59 @@ describe('syncPullActionState', () => {
     });
 });
 
+describe('normaliseSyncPushResult', () => {
+    it('keeps push counters, imported paths, and errors from the backend', () => {
+        expect(normaliseSyncPushResult({
+            remoteDeviceId: 'dev_mainpc',
+            remoteDisplayName: 'mainPC',
+            transferred: 2,
+            skipped: 1,
+            failed: 0,
+            importedPaths: [
+                'C:\\Users\\gzabu\\AppData\\Roaming\\ux-music\\SyncLibrary\\song.flac',
+            ],
+            errors: [],
+        })).toEqual({
+            remoteDeviceId: 'dev_mainpc',
+            remoteDisplayName: 'mainPC',
+            transferred: 2,
+            skipped: 1,
+            failed: 0,
+            importedPaths: [
+                'C:\\Users\\gzabu\\AppData\\Roaming\\ux-music\\SyncLibrary\\song.flac',
+            ],
+            errors: [],
+        });
+    });
+
+    it('rejects malformed push responses without a remote device id', () => {
+        expect(normaliseSyncPushResult({ transferred: 1 })).toBeNull();
+    });
+});
+
+describe('syncPushActionState', () => {
+    it('enables push actions when the binding and selected endpoint are available', () => {
+        expect(syncPushActionState(true, 'http://192.168.0.52:8765')).toEqual({
+            canPush: true,
+            status: '待機中',
+        });
+    });
+
+    it('disables push actions when no peer endpoint is selected', () => {
+        expect(syncPushActionState(true, '')).toEqual({
+            canPush: false,
+            status: '転送先端末を選択してください',
+        });
+    });
+
+    it('disables push actions when the Wails binding is missing', () => {
+        expect(syncPushActionState(false, 'http://192.168.0.52:8765')).toEqual({
+            canPush: false,
+            status: 'この環境では音源転送を利用できません',
+        });
+    });
+});
+
 describe('formatSyncPullResultSummary', () => {
     it('summarises downloaded, skipped, and failed counters', () => {
         expect(formatSyncPullResultSummary({
@@ -312,5 +368,19 @@ describe('formatSyncPullResultSummary', () => {
             importedPaths: [],
             errors: ['network error'],
         })).toBe('dev_mac_mini: 取得 0曲 / 既存 3曲 / 失敗 1曲');
+    });
+});
+
+describe('formatSyncPushResultSummary', () => {
+    it('summarises transferred, skipped, and failed counters', () => {
+        expect(formatSyncPushResultSummary({
+            remoteDeviceId: 'dev_mainpc',
+            remoteDisplayName: 'mainPC',
+            transferred: 2,
+            skipped: 1,
+            failed: 0,
+            importedPaths: [],
+            errors: [],
+        })).toBe('mainPC: 転送 2曲 / 既存 1曲 / 失敗 0曲');
     });
 });
