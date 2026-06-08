@@ -95,6 +95,19 @@ func TestLoadMap_WrongTypeReturnsError(t *testing.T) {
 	}
 }
 
+func TestSave_CreatesMissingUserDataDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "missing", "ux-music")
+	config.Instance.SetUserDataPath(dir)
+	s := &Store{}
+
+	if err := s.Save("settings", map[string]interface{}{"ok": true}); err != nil {
+		t.Fatalf("save with missing directory: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "settings.json")); err != nil {
+		t.Fatalf("expected settings file to be written: %v", err)
+	}
+}
+
 func keys(m map[string]interface{}) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
