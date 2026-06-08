@@ -367,9 +367,13 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - 発見 peer の `hosts` 候補へ `/sync/identity` を順番に probe し、到達可能な `reachableBaseUrl` を自動選択。
 - macOS `dns-sd` と Go の `DiscoverMDNS` による実広告検証。
 
+実装済み:
+
+- 設定画面の UX Sync セクションから `DiscoverSyncDevices(timeoutMs)` を呼び出す自動発見一覧 UI。
+- 発見 peer の `reachableBaseUrl`、役割、複数 NIC の候補 `hosts` を表示する renderer 側の整形処理。
+
 未実装:
 
-- UI 上での自動発見一覧表示。
 - mDNS で発見した peer からペアリング UI へ遷移する導線。
 
 テスト:

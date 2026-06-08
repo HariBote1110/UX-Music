@@ -1,3 +1,16 @@
+# Task: UX Sync Phase 3 - 自動発見UI
+
+## 概要
+設定画面から同一 LAN 上の UX Music 端末を探索し、複数 NIC 環境でも到達可能 URL と候補アドレスを確認できる UI を追加する。Wails binding が無い renderer 単体開発環境では UX Sync セクションを非表示にし、末端側の特別な操作なしで自動発見の結果を見られるようにする。
+
+## 完了条件
+- [x] renderer に発見 peer の正規化と接続候補表示のテストがあること。
+- [x] 設定画面に UX Sync セクションと「同期端末を探す」ボタンがあること。
+- [x] `DiscoverSyncDevices(timeoutMs)` の結果から `reachableBaseUrl`、役割、複数 `hosts` 候補を表示できること。
+- [x] Wails binding が無い環境では UX Sync セクションが非表示になり、通常の設定画面を壊さないこと。
+- [x] `npm test -- --run js/features/ux-sync-settings.test.ts` と `npm run typecheck` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-15a` に更新されていること。
+
 # Task: UX Sync Phase 2 - mDNS 自動発見基盤
 
 ## 概要

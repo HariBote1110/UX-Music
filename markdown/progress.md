@@ -2,6 +2,29 @@
 
 ## 2026年6月8日
 
+### UX Sync Phase 3 自動発見UI
+
+- **要望対応**:
+    - 設定画面から LAN 内の UX Music 端末を探索し、外出先や renderer 単体開発環境でも通常 UI を壊さず確認できるようにした。
+- **実装内容**:
+    - renderer に `ux-sync-settings` の peer 正規化・接続候補表示ロジックを追加。
+    - 設定画面に UX Sync セクションと「同期端末を探す」ボタンを追加。
+    - Wails の `DiscoverSyncDevices(timeoutMs)` から得た `reachableBaseUrl`、役割、複数 NIC の候補 `hosts` を一覧表示するようにした。
+    - Wails binding が無い renderer 単体開発環境では UX Sync セクションを非表示にし、通常の設定画面を壊さないようにした。
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を UX Sync 自動発見 UI の実装内容へ同期。
+- **検証**:
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - `npm test -- --run`
+    - `npm run typecheck`
+    - `go test ./...`
+    - `git diff --check`
+- **仕様同期**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-15a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-12a` に更新。
+- **判断**:
+    - UI 側の自動発見一覧表示は実装済み。
+    - 発見 peer から6桁コード確認ペアリングへ進む導線と、ペア済み端末管理 UI は後続フェーズに残す。
+
 ### UX Sync Phase 2 mDNS 自動発見基盤
 
 - **要望対応**:

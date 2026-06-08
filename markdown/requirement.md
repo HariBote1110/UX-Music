@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-14b)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-15a)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -51,6 +51,12 @@ macOSから直接WalkmanなどのMTPデバイスへ音楽を高速転送する�
 - **サービス探索**: `DiscoverSyncDevices(timeoutMs)` から mDNS 探索を実行し、発見した peer を `deviceId`、`displayName`、`host`、`hosts`、`port`、`roles` として返す。
 - **複数NIC対応**: Mac mini のように複数の LAN / Wi-Fi / Tailscale アドレスを持つ環境では、代表 `host` だけでなく `hosts` に全候補を保持する。
 - **自動到達性確認**: 発見した `hosts` 候補へ `/sync/identity` を順番に probe し、最初に応答した URL を `reachableBaseUrl` として返す。末端側は IP 手入力や OS の `dns-sd` 操作を行わず、アプリ側の mDNS 探索と自動 probe で接続候補を得る。
+
+### [新規] UX Sync Phase 3
+設定画面から UX Sync の自動発見結果を確認する UI。
+- **探索導線**: 設定モーダルの UX Sync セクションから「同期端末を探す」を実行し、Wails の `DiscoverSyncDevices(timeoutMs)` を呼び出す。
+- **到達候補表示**: 発見した peer ごとに表示名、`reachableBaseUrl` 優先の接続候補、役割、複数 NIC の候補アドレスを表示する。
+- **環境フォールバック**: Wails binding が無い renderer 単体開発環境では UX Sync セクションを非表示にし、通常の設定画面を壊さない。
 
 ### [更新] YouTubeダウンロード
 YouTube URL から楽曲をライブラリに追加する際、字幕を同時取得して同期歌詞（LRC）を生成する機能。
@@ -147,4 +153,4 @@ YouTube URL から楽曲をライブラリに追加する際、字幕を同時�
 - **メタデータ編集機能 (Tags Editor)**: メイン画面からのID3タグ編集。
 - **MP4サムネイル自動生成**: 動画ファイルからのアートワーク抽出。
 - **歌詞自動取得**: オンラインサービス連携。
-- **UX Sync 後続**: ペアリングUI、ライブラリ差分同期、プレイリスト同期、`Library Host` から `Portable Client` への圧縮音源キャッシュ、WebSocket による再生移行を実装する。LAN 外通信は初期スコープ外とし、実装計画は `markdown/ux-music-sync-plan.md` を信頼できる参照にする。
+- **UX Sync 後続**: 発見 peer から6桁コード確認ペアリングへ進む UI、ペア済み端末管理、ライブラリ差分同期、プレイリスト同期、`Library Host` から `Portable Client` への圧縮音源キャッシュ、WebSocket による再生移行を実装する。LAN 外通信は初期スコープ外とし、実装計画は `markdown/ux-music-sync-plan.md` を信頼できる参照にする。
