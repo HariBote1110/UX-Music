@@ -56,6 +56,7 @@ func StartWearServer(ctx context.Context, app *App) *WearServer {
 	mux.HandleFunc("/wear/loudness", ws.wearLoudnessHandler)
 	mux.HandleFunc("/wear/state", ws.wearStateHandler)
 	mux.HandleFunc("/wear/command", ws.wearCommandHandler)
+	registerSyncRoutes(mux, app)
 
 	srv := &http.Server{
 		Addr:    "0.0.0.0:" + wearServerPort,
