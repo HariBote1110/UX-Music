@@ -67,7 +67,11 @@ func DiscoverMDNS(ctx context.Context, timeout time.Duration) ([]MDNSPeer, error
 			if key == "" {
 				key = peer.Host + ":" + entry.HostName
 			}
-			peers[key] = peer
+			if existing, ok := peers[key]; ok {
+				peers[key] = MergeMDNSPeers(existing, peer)
+			} else {
+				peers[key] = peer
+			}
 		case <-ctx.Done():
 			out := make([]MDNSPeer, 0, len(peers))
 			for _, peer := range peers {

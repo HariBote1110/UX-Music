@@ -29,6 +29,7 @@ type MDNSPeer struct {
 	DeviceID        string   `json:"deviceId"`
 	DisplayName     string   `json:"displayName"`
 	Host            string   `json:"host"`
+	Hosts           []string `json:"hosts"`
 	Port            int      `json:"port"`
 	HostName        string   `json:"hostName"`
 	ProtocolVersion string   `json:"protocolVersion"`
@@ -66,11 +67,40 @@ func NormaliseMDNSPeer(entry MDNSServiceEntry) MDNSPeer {
 		DeviceID:        strings.TrimSpace(text["deviceId"]),
 		DisplayName:     displayName,
 		Host:            preferredMDNSHost(entry),
+		Hosts:           mdnsHosts(entry),
 		Port:            entry.Port,
 		HostName:        strings.TrimSuffix(strings.TrimSpace(entry.HostName), "."),
 		ProtocolVersion: strings.TrimSpace(text["protocolVersion"]),
 		Roles:           parseRoles(text["roles"]),
 	}
+}
+
+func MergeMDNSPeers(existing, incoming MDNSPeer) MDNSPeer {
+	merged := existing
+	if merged.DeviceID == "" {
+		merged.DeviceID = incoming.DeviceID
+	}
+	if merged.DisplayName == "" {
+		merged.DisplayName = incoming.DisplayName
+	}
+	if merged.Host == "" {
+		merged.Host = incoming.Host
+	}
+	if merged.Port == 0 {
+		merged.Port = incoming.Port
+	}
+	if merged.HostName == "" {
+		merged.HostName = incoming.HostName
+	}
+	if merged.ProtocolVersion == "" {
+		merged.ProtocolVersion = incoming.ProtocolVersion
+	}
+	merged.Hosts = appendUnique(merged.Hosts, incoming.Hosts...)
+	if incoming.Host != "" {
+		merged.Hosts = appendUnique(merged.Hosts, incoming.Host)
+	}
+	merged.Roles = appendUnique(merged.Roles, incoming.Roles...)
+	return merged
 }
 
 func splitMDNSText(item string) (string, string) {
@@ -82,17 +112,32 @@ func splitMDNSText(item string) (string, string) {
 }
 
 func preferredMDNSHost(entry MDNSServiceEntry) string {
-	for _, host := range entry.AddrIPv4 {
+	for _, host := range mdnsHosts(entry) {
 		if ip := net.ParseIP(strings.TrimSpace(host)); ip != nil && ip.To4() != nil {
 			return ip.String()
 		}
 	}
-	for _, host := range entry.AddrIPv6 {
+	for _, host := range mdnsHosts(entry) {
 		if ip := net.ParseIP(strings.TrimSpace(host)); ip != nil {
 			return ip.String()
 		}
 	}
 	return strings.TrimSuffix(strings.TrimSpace(entry.HostName), ".")
+}
+
+func mdnsHosts(entry MDNSServiceEntry) []string {
+	hosts := make([]string, 0, len(entry.AddrIPv4)+len(entry.AddrIPv6))
+	for _, host := range entry.AddrIPv4 {
+		if ip := net.ParseIP(strings.TrimSpace(host)); ip != nil {
+			hosts = appendUnique(hosts, ip.String())
+		}
+	}
+	for _, host := range entry.AddrIPv6 {
+		if ip := net.ParseIP(strings.TrimSpace(host)); ip != nil {
+			hosts = appendUnique(hosts, ip.String())
+		}
+	}
+	return hosts
 }
 
 func parseRoles(value string) []string {
@@ -116,6 +161,26 @@ func cleanRoles(roles []string) []string {
 		}
 	}
 	return clean
+}
+
+func appendUnique(values []string, additions ...string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values)+len(additions))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" && !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	for _, value := range additions {
+		value = strings.TrimSpace(value)
+		if value != "" && !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func (p MDNSPeer) BaseURL() string {

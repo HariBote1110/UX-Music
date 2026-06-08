@@ -49,7 +49,7 @@ func TestNormaliseMDNSPeer_prefersIPv4AndParsesRoles(t *testing.T) {
 	if peer.Host != "192.168.0.226" || peer.Port != 8765 {
 		t.Fatalf("unexpected endpoint: %#v", peer)
 	}
-	if len(peer.Hosts) != 2 || peer.Hosts[0] != "192.168.0.226" || peer.Hosts[1] != "192.168.0.227" {
+	if len(peer.Hosts) != 3 || peer.Hosts[0] != "192.168.0.226" || peer.Hosts[1] != "192.168.0.227" || peer.Hosts[2] != "fe80::1" {
 		t.Fatalf("unexpected hosts: %#v", peer.Hosts)
 	}
 	if len(peer.Roles) != 2 || peer.Roles[0] != "LibraryHost" || peer.Roles[1] != "PlaybackTarget" {
