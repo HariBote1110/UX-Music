@@ -633,6 +633,8 @@ export namespace uxsync {
 	    port: number;
 	    hostName: string;
 	    protocolVersion: string;
+	    schemaVersion?: string;
+	    capabilities?: string[];
 	    roles: string[];
 	    reachableBaseUrl?: string;
 	
@@ -649,6 +651,8 @@ export namespace uxsync {
 	        this.port = source["port"];
 	        this.hostName = source["hostName"];
 	        this.protocolVersion = source["protocolVersion"];
+	        this.schemaVersion = source["schemaVersion"];
+	        this.capabilities = source["capabilities"];
 	        this.roles = source["roles"];
 	        this.reachableBaseUrl = source["reachableBaseUrl"];
 	    }

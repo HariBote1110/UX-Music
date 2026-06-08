@@ -1,3 +1,17 @@
+# Task: UX Sync Phase 5.5 - プロトコルスキーマとバージョンネゴシエーション
+
+## 概要
+UX Sync の HTTP / mDNS プロトコルに、機械可読なスキーマ公開、capability 宣言、バージョン自己申告、互換性ネゴシエーションを追加する。将来フィールドが増えても未知フィールドを無視し、多少のバージョン差があっても capability ベースで安全に接続判断できる構造へ寄せる。
+
+## 完了条件
+- [x] `/sync/identity` が `protocolVersion`、`minCompatibleProtocolVersion`、`schemaVersion`、`capabilities`、`negotiation` を返すテストがあること。
+- [x] `fetchSyncIdentity` が自分の protocol/schema/capabilities をヘッダで申告し、非互換 major の peer を拒否するテストがあること。
+- [x] `/sync/schema` が拡張規則、message、endpoint、capability を含む機械可読スキーマを返すテストがあること。
+- [x] mDNS TXT に `schemaVersion` と `capabilities` が含まれること。
+- [x] `markdown/ux-music-sync-protocol.md` にプロトコルスキーマと拡張規則が記載されていること。
+- [x] `go test ./server -run 'TestSyncIdentityIncludesSchema|TestFetchSyncIdentitySendsProtocol|TestFetchSyncIdentityRejectsIncompatibleProtocolMajor|TestSyncSchemaEndpoint|TestSyncMDNSAdvertiseInfo' -count=1` と `go test ./internal/uxsync -count=1` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-21a` に更新されていること。
+
 # Task: UX Sync Phase 5.4 - 音源push転送
 
 ## 概要

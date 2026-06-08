@@ -75,11 +75,17 @@ type syncPairingConfirmResponse struct {
 }
 
 type syncIdentityResponse struct {
-	DeviceID        string   `json:"deviceId"`
-	DisplayName     string   `json:"displayName"`
-	Hostname        string   `json:"hostname"`
-	ProtocolVersion string   `json:"protocolVersion"`
-	Roles           []string `json:"roles"`
+	Role                         string                  `json:"role,omitempty"`
+	DeviceID                     string                  `json:"deviceId"`
+	DisplayName                  string                  `json:"displayName"`
+	Hostname                     string                  `json:"hostname"`
+	ProtocolVersion              string                  `json:"protocolVersion"`
+	MinCompatibleProtocolVersion string                  `json:"minCompatibleProtocolVersion,omitempty"`
+	SchemaVersion                string                  `json:"schemaVersion,omitempty"`
+	Capabilities                 []string                `json:"capabilities,omitempty"`
+	Roles                        []string                `json:"roles"`
+	Negotiation                  syncProtocolNegotiation `json:"negotiation,omitempty"`
+	Extensions                   map[string]interface{}  `json:"extensions,omitempty"`
 }
 
 type SyncPairingStartResult struct {
@@ -123,6 +129,7 @@ type syncKnownPeerRecord struct {
 
 func registerSyncRoutes(mux *http.ServeMux, _ *App) {
 	mux.HandleFunc("/sync/identity", syncIdentityHandler)
+	mux.HandleFunc("/sync/schema", syncSchemaHandler)
 	mux.HandleFunc("/sync/pairing/start", syncPairingStartHandler)
 	mux.HandleFunc("/sync/pairing/confirm", syncPairingConfirmHandler)
 	mux.HandleFunc("/sync/library/import", syncLibraryImportHandler)
@@ -138,13 +145,18 @@ func syncIdentityHandler(w http.ResponseWriter, r *http.Request) {
 		hostname = strings.TrimSpace(h)
 	}
 	info := syncMDNSAdvertiseInfo(ensureSyncDeviceID(), hostname)
-	writeJSON(w, map[string]interface{}{
-		"role":            "ux-music-sync",
-		"deviceId":        info.DeviceID,
-		"hostname":        hostname,
-		"displayName":     info.DisplayName,
-		"protocolVersion": "0.1",
-		"roles":           info.Roles,
+	writeJSON(w, syncIdentityResponse{
+		Role:                         syncProtocolName,
+		DeviceID:                     info.DeviceID,
+		Hostname:                     hostname,
+		DisplayName:                  info.DisplayName,
+		ProtocolVersion:              syncProtocolVersion,
+		MinCompatibleProtocolVersion: syncMinCompatibleProtocolVersion,
+		SchemaVersion:                syncSchemaVersion,
+		Capabilities:                 syncCapabilities(),
+		Roles:                        info.Roles,
+		Negotiation:                  syncNegotiationFromRequest(r),
+		Extensions:                   map[string]interface{}{},
 	})
 }
 
@@ -328,6 +340,9 @@ func fetchSyncIdentity(ctx context.Context, baseURL string) (syncIdentityRespons
 	if err != nil {
 		return syncIdentityResponse{}, err
 	}
+	req.Header.Set(syncProtocolVersionHeader, syncProtocolVersion)
+	req.Header.Set(syncSchemaVersionHeader, syncSchemaVersion)
+	req.Header.Set(syncCapabilitiesHeader, syncCapabilitiesCSV())
 	resp, err := syncHTTPClient().Do(req)
 	if err != nil {
 		return syncIdentityResponse{}, err
@@ -343,8 +358,12 @@ func fetchSyncIdentity(ctx context.Context, baseURL string) (syncIdentityRespons
 	identity.DeviceID = strings.TrimSpace(identity.DeviceID)
 	identity.DisplayName = strings.TrimSpace(identity.DisplayName)
 	identity.Hostname = strings.TrimSpace(identity.Hostname)
+	identity.ProtocolVersion = strings.TrimSpace(identity.ProtocolVersion)
 	if identity.DeviceID == "" {
 		return syncIdentityResponse{}, fmt.Errorf("sync identity response did not include a device id")
+	}
+	if !syncProtocolVersionsCompatible(identity.ProtocolVersion, syncProtocolVersion) {
+		return syncIdentityResponse{}, fmt.Errorf("sync peer protocol is not compatible: remote=%s local=%s", identity.ProtocolVersion, syncProtocolVersion)
 	}
 	return identity, nil
 }
@@ -603,7 +622,9 @@ func syncKnownPeerRecordToMDNSPeer(record syncKnownPeerRecord) (uxsync.MDNSPeer,
 		Hosts:           []string{host},
 		Port:            port,
 		HostName:        host,
-		ProtocolVersion: "0.1",
+		ProtocolVersion: syncProtocolVersion,
+		SchemaVersion:   syncSchemaVersion,
+		Capabilities:    syncCapabilities(),
 		Roles:           record.Roles,
 	}, true
 }
@@ -735,7 +756,7 @@ func syncAuthMiddleware(next http.Handler) http.Handler {
 }
 
 func isSyncPublicEndpoint(path string) bool {
-	return path == "/sync/identity" || path == "/sync/pairing/start" || path == "/sync/pairing/confirm"
+	return path == "/sync/identity" || path == "/sync/schema" || path == "/sync/pairing/start" || path == "/sync/pairing/confirm"
 }
 
 func syncRequestHasValidToken(r *http.Request) bool {
@@ -839,7 +860,9 @@ func syncMDNSAdvertiseInfo(deviceID, displayName string) uxsync.MDNSAdvertiseInf
 	return uxsync.MDNSAdvertiseInfo{
 		DeviceID:        strings.TrimSpace(deviceID),
 		DisplayName:     normaliseSyncDisplayName(displayName),
-		ProtocolVersion: "0.1",
+		ProtocolVersion: syncProtocolVersion,
+		SchemaVersion:   syncSchemaVersion,
+		Capabilities:    syncCapabilities(),
 		Roles:           []string{"LibraryHost", "PlaybackTarget", "Controller"},
 	}
 }

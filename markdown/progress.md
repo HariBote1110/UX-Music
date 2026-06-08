@@ -2,6 +2,28 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.5 プロトコルスキーマとバージョンネゴシエーション
+
+- **要望対応**:
+    - UX Sync のプロトコルを将来のバージョン違いに強くするため、スキーマ定義と capability / version negotiation を追加した。
+- **実装内容**:
+    - UX Sync protocol 定数として `ux-music-sync` / `0.2` / `2026-06-09` / capability 一覧を追加した。
+    - `/sync/identity` が `protocolVersion`、`minCompatibleProtocolVersion`、`schemaVersion`、`capabilities`、`negotiation` を返すようにした。
+    - `fetchSyncIdentity` が自分の protocol/schema/capabilities をヘッダで申告し、非互換 major の peer を同期操作前に拒否するようにした。
+    - `/sync/schema` を追加し、endpoint / message / capability / 拡張規則を含む機械可読スキーマを返すようにした。
+    - mDNS TXT に `schemaVersion` と `capabilities` を追加した。
+    - `markdown/ux-music-sync-protocol.md` を追加し、未知フィールド・未知 capability・`extensions` の扱いを含む将来互換方針を明文化した。
+- **検証**:
+    - `go test ./server -run 'TestSyncIdentityIncludesSchema|TestFetchSyncIdentitySendsProtocol|TestFetchSyncIdentityRejectsIncompatibleProtocolMajor|TestSyncSchemaEndpoint|TestSyncMDNSAdvertiseInfo' -count=1`
+    - `go test ./internal/uxsync -count=1`
+- **仕様同期**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-21a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-18a` に更新。
+- **判断**:
+    - 多少のバージョン差は unknown field / capability を無視して進め、major 不一致は同期操作前に止める方針を実装した。
+    - 今後 token と `sourceDeviceId` の対応検証を強める場合は、新しい capability と schema version で段階導入する。
+
 ### UX Sync Phase 5.4 音源push転送
 
 - **要望対応**:

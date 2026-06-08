@@ -452,6 +452,11 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - `/sync/library/import` が同期トークン必須の multipart 受信口として、ペア済み端末から送られた音源とメタデータを `SyncLibrary` へ取り込む。
 - `PushSyncLibraryAssets(baseURL, limit)` により、ローカルライブラリの音源をペア済み相手端末へ転送できる。
 - UX Sync 専用設定画面の `同期` タブから `1曲転送` / `全曲転送` を実行し、転送数・既存数・失敗数と受信側保存先を確認できる。
+- `/sync/identity` が `protocolVersion`、`minCompatibleProtocolVersion`、`schemaVersion`、`capabilities`、`negotiation` を返す。
+- client は `/sync/identity` へ `X-UX-Music-Sync-Protocol-Version`、`X-UX-Music-Sync-Schema-Version`、`X-UX-Music-Sync-Capabilities` を送り、自分の対応状況を申告する。
+- `/sync/schema` が endpoint / message / capability / 拡張規則を含む機械可読スキーマを返す。
+- mDNS TXT に `schemaVersion` と `capabilities` を追加し、発見段階でも軽量に機能差を確認できるようにする。
+- 詳細仕様は `markdown/ux-music-sync-protocol.md` を参照する。
 
 未実装:
 

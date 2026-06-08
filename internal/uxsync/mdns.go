@@ -14,6 +14,8 @@ type MDNSAdvertiseInfo struct {
 	DeviceID        string
 	DisplayName     string
 	ProtocolVersion string
+	SchemaVersion   string
+	Capabilities    []string
 	Roles           []string
 }
 
@@ -34,6 +36,8 @@ type MDNSPeer struct {
 	Port             int      `json:"port"`
 	HostName         string   `json:"hostName"`
 	ProtocolVersion  string   `json:"protocolVersion"`
+	SchemaVersion    string   `json:"schemaVersion,omitempty"`
+	Capabilities     []string `json:"capabilities,omitempty"`
 	Roles            []string `json:"roles"`
 	ReachableBaseURL string   `json:"reachableBaseUrl,omitempty"`
 }
@@ -43,10 +47,13 @@ func BuildMDNSText(info MDNSAdvertiseInfo) []string {
 	if protocolVersion == "" {
 		protocolVersion = "0.1"
 	}
+	schemaVersion := strings.TrimSpace(info.SchemaVersion)
 	return []string{
 		"deviceId=" + strings.TrimSpace(info.DeviceID),
 		"displayName=" + strings.TrimSpace(info.DisplayName),
 		"protocolVersion=" + protocolVersion,
+		"schemaVersion=" + schemaVersion,
+		"capabilities=" + strings.Join(cleanRoles(info.Capabilities), ","),
 		"roles=" + strings.Join(cleanRoles(info.Roles), ","),
 	}
 }
@@ -73,6 +80,8 @@ func NormaliseMDNSPeer(entry MDNSServiceEntry) MDNSPeer {
 		Port:            entry.Port,
 		HostName:        strings.TrimSuffix(strings.TrimSpace(entry.HostName), "."),
 		ProtocolVersion: strings.TrimSpace(text["protocolVersion"]),
+		SchemaVersion:   strings.TrimSpace(text["schemaVersion"]),
+		Capabilities:    parseRoles(text["capabilities"]),
 		Roles:           parseRoles(text["roles"]),
 	}
 }
@@ -97,10 +106,14 @@ func MergeMDNSPeers(existing, incoming MDNSPeer) MDNSPeer {
 	if merged.ProtocolVersion == "" {
 		merged.ProtocolVersion = incoming.ProtocolVersion
 	}
+	if merged.SchemaVersion == "" {
+		merged.SchemaVersion = incoming.SchemaVersion
+	}
 	merged.Hosts = appendUnique(merged.Hosts, incoming.Hosts...)
 	if incoming.Host != "" {
 		merged.Hosts = appendUnique(merged.Hosts, incoming.Host)
 	}
+	merged.Capabilities = appendUnique(merged.Capabilities, incoming.Capabilities...)
 	merged.Roles = appendUnique(merged.Roles, incoming.Roles...)
 	return merged
 }

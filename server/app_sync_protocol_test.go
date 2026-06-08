@@ -75,6 +75,23 @@ func TestFetchSyncIdentitySendsProtocolNegotiationHeaders(t *testing.T) {
 	}
 }
 
+func TestFetchSyncIdentityRejectsIncompatibleProtocolMajor(t *testing.T) {
+	newTempSyncStore(t)
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, syncIdentityResponse{
+			DeviceID:        "dev_future",
+			DisplayName:     "Future Device",
+			ProtocolVersion: "1.0",
+			SchemaVersion:   "2099-01-01",
+		})
+	}))
+	defer remote.Close()
+
+	if _, err := fetchSyncIdentity(context.Background(), remote.URL); err == nil {
+		t.Fatal("expected incompatible protocol major to be rejected")
+	}
+}
+
 func TestSyncSchemaEndpointReturnsExtensibleContract(t *testing.T) {
 	newTempSyncStore(t)
 	req := httptest.NewRequest(http.MethodGet, "/sync/schema", nil)
@@ -102,4 +119,3 @@ func TestSyncSchemaEndpointReturnsExtensibleContract(t *testing.T) {
 		t.Fatalf("schema should describe endpoints and messages: %#v", schema)
 	}
 }
-
