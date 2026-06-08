@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-15a)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-15b)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -51,6 +51,7 @@ macOSから直接WalkmanなどのMTPデバイスへ音楽を高速転送する�
 - **サービス探索**: `DiscoverSyncDevices(timeoutMs)` から mDNS 探索を実行し、発見した peer を `deviceId`、`displayName`、`host`、`hosts`、`port`、`roles` として返す。
 - **複数NIC対応**: Mac mini のように複数の LAN / Wi-Fi / Tailscale アドレスを持つ環境では、代表 `host` だけでなく `hosts` に全候補を保持する。
 - **自動到達性確認**: 発見した `hosts` 候補へ `/sync/identity` を順番に probe し、最初に応答した URL を `reachableBaseUrl` として返す。末端側は IP 手入力や OS の `dns-sd` 操作を行わず、アプリ側の mDNS 探索と自動 probe で接続候補を得る。
+- **macOS Bonjour fallback**: macOS では Go の `zeroconf` discovery と OS 標準の `dns-sd -B/-L` 結果をマージし、複数 NIC / VLAN 環境で一部 peer を取りこぼす場合も同じ `MDNSPeer` 形式へ正規化する。
 
 ### [新規] UX Sync Phase 3
 設定画面から UX Sync の自動発見結果を確認する UI。

@@ -2,6 +2,26 @@
 
 ## 2026年6月8日
 
+### UX Sync Phase 3.1 macOS mDNS fallback
+
+- **要望対応**:
+    - VLAN / 複数 NIC 環境で、OS の Bonjour では Windows 側 `mainPC` が見えるのにアプリ側 discovery が `mainPC` を取りこぼす状態を半自動テストで再現した。
+- **実装内容**:
+    - macOS では `zeroconf` discovery と OS 標準の `dns-sd -B/-L` の結果をマージするようにした。
+    - `dns-sd` 出力を `MDNSPeer` へ正規化し、既存の `ResolveReachablePeers` で `reachableBaseUrl` を選べるようにした。
+    - `markdown/Task.md` と `markdown/requirement.md` を macOS mDNS fallback の実装内容へ同期。
+- **検証**:
+    - `dns-sd -B _uxmusic-sync._tcp local` で `mainPC` を確認。
+    - `dns-sd -L mainPC _uxmusic-sync._tcp local` で `mainPC.local.:8765` と TXT レコードを確認。
+    - 半自動 Go smoke で `DiscoverMDNS` → `ResolveReachablePeers` が Mac 自身と `mainPC` / `reachableBaseUrl=http://mainPC.local:8765` を返すことを確認。
+    - `go test ./internal/uxsync`
+    - `go test ./...`
+- **仕様同期**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-15b` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-12b` に更新。
+- **判断**:
+    - UI 側が `DiscoverSyncDevices(timeoutMs)` を呼べば、今回の fallback を通って Windows 側 `mainPC` を検出できる状態になった。
+
 ### UX Sync Phase 3 自動発見UI
 
 - **要望対応**:

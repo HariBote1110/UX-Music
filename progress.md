@@ -1,3 +1,22 @@
+## 2026-06-08 — UX Sync Phase 3.1 macOS mDNS fallback
+
+### 実施内容
+- 半自動テストで `dns-sd` では `mainPC` が見える一方、Go の `grandcat/zeroconf` discovery が `mainPC` を取りこぼすことを確認
+- macOS では `zeroconf` discovery と OS 標準の `dns-sd -B/-L` の結果をマージするようにした
+- `dns-sd` 出力を `MDNSPeer` へ正規化し、既存の `ResolveReachablePeers` で `reachableBaseUrl` を選べるようにした
+- `markdown/Task.md` と `markdown/requirement.md` を macOS mDNS fallback の実装内容へ同期
+- `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-15b`、`src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-12b` に更新
+
+### 検証
+- `dns-sd -B _uxmusic-sync._tcp local` で `mainPC` を確認
+- `dns-sd -L mainPC _uxmusic-sync._tcp local` で `mainPC.local.:8765` と TXT レコードを確認
+- 半自動 Go smoke で `DiscoverMDNS` → `ResolveReachablePeers` が Mac 自身と `mainPC` / `reachableBaseUrl=http://mainPC.local:8765` を返すことを確認
+- `go test ./internal/uxsync`
+- `go test ./...`
+
+### 判断
+- UI 側が `DiscoverSyncDevices(timeoutMs)` を呼べば、今回の fallback を通って Windows 側 `mainPC` を検出できる状態になった。
+
 ## 2026-06-08 — UX Sync Phase 3 自動発見UI
 
 ### 実施内容

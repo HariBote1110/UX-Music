@@ -81,6 +81,32 @@ func TestMergeMDNSPeers_keepsAddressesFromMultipleInterfaces(t *testing.T) {
 	}
 }
 
+func TestMergeMDNSPeerLists_addsFallbackPeers(t *testing.T) {
+	primary := []MDNSPeer{{
+		DeviceID:    "dev_mac",
+		DisplayName: "Mac mini",
+		Host:        "192.168.1.182",
+		Hosts:       []string{"192.168.1.182"},
+		Port:        8765,
+	}}
+	fallback := []MDNSPeer{{
+		DeviceID:    "dev_windows",
+		DisplayName: "mainPC",
+		Host:        "mainPC.local",
+		Hosts:       []string{"mainPC.local"},
+		Port:        8765,
+	}}
+
+	merged := mergeMDNSPeerLists(primary, fallback)
+
+	if len(merged) != 2 {
+		t.Fatalf("expected primary and fallback peers, got %#v", merged)
+	}
+	if merged[1].DeviceID != "dev_windows" {
+		t.Fatalf("expected fallback peer to be preserved, got %#v", merged)
+	}
+}
+
 func TestMDNSServiceConstants(t *testing.T) {
 	if MDNSServiceType != "_uxmusic-sync._tcp" {
 		t.Fatalf("unexpected service type: %q", MDNSServiceType)

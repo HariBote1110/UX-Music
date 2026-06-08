@@ -77,9 +77,43 @@ func DiscoverMDNS(ctx context.Context, timeout time.Duration) ([]MDNSPeer, error
 			for _, peer := range peers {
 				out = append(out, peer)
 			}
+			if fallbackPeers, err := discoverMDNSFallback(timeout); err == nil && len(fallbackPeers) > 0 {
+				out = mergeMDNSPeerLists(out, fallbackPeers)
+			}
 			return out, nil
 		}
 	}
+}
+
+func mergeMDNSPeerLists(primary, fallback []MDNSPeer) []MDNSPeer {
+	merged := make([]MDNSPeer, 0, len(primary)+len(fallback))
+	indexByKey := map[string]int{}
+	for _, peer := range primary {
+		key := mdnsPeerMergeKey(peer)
+		if existingIndex, ok := indexByKey[key]; ok {
+			merged[existingIndex] = MergeMDNSPeers(merged[existingIndex], peer)
+			continue
+		}
+		indexByKey[key] = len(merged)
+		merged = append(merged, peer)
+	}
+	for _, peer := range fallback {
+		key := mdnsPeerMergeKey(peer)
+		if existingIndex, ok := indexByKey[key]; ok {
+			merged[existingIndex] = MergeMDNSPeers(merged[existingIndex], peer)
+			continue
+		}
+		indexByKey[key] = len(merged)
+		merged = append(merged, peer)
+	}
+	return merged
+}
+
+func mdnsPeerMergeKey(peer MDNSPeer) string {
+	if peer.DeviceID != "" {
+		return "device:" + peer.DeviceID
+	}
+	return "host:" + peer.Host + ":" + peer.HostName
 }
 
 func serviceEntryFromZeroconf(entry *zeroconf.ServiceEntry) MDNSServiceEntry {

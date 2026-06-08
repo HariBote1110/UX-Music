@@ -1,3 +1,16 @@
+# Task: UX Sync Phase 3.1 - macOS mDNS fallback
+
+## 概要
+複数 VLAN / 複数 NIC の Mac で、OS の `dns-sd` では Windows 側 `mainPC` の `_uxmusic-sync._tcp.local` が見える一方、Go の `grandcat/zeroconf` discovery が一部 peer を取りこぼすケースを補正する。macOS では `zeroconf` の結果と `dns-sd -B/-L` の結果をマージし、既存 UI が同じ `DiscoverSyncDevices(timeoutMs)` から peer を得られるようにする。
+
+## 完了条件
+- [x] `dns-sd -B` の browse 出力から UX Sync instance を抽出するテストがあること。
+- [x] `dns-sd -L` の resolve 出力から `deviceId`、`displayName`、`hostName`、`port`、`roles` を持つ `MDNSPeer` を復元するテストがあること。
+- [x] macOS では `zeroconf` discovery と `dns-sd` fallback の結果をマージすること。
+- [x] 半自動テストで `mainPC` が `reachableBaseUrl=http://mainPC.local:8765` として発見できること。
+- [x] `go test ./internal/uxsync` と `go test ./...` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-15b` に更新されていること。
+
 # Task: UX Sync Phase 3 - 自動発見UI
 
 ## 概要
