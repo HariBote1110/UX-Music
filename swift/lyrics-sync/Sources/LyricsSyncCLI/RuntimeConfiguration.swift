@@ -13,6 +13,12 @@ enum ChunkingPolicy {
     case vad
 }
 
+enum ForcedAlignerPolicy {
+    case automatic
+    case enabled
+    case disabled
+}
+
 struct RuntimeConfiguration {
     let useDummyPipeline: Bool
     let modelCacheDirectory: String?
@@ -32,6 +38,9 @@ struct RuntimeConfiguration {
     let textDecoderComputeUnits: MLComputeUnits
     let prefillComputeUnits: MLComputeUnits
     let melComputeUnits: MLComputeUnits
+    let forcedAlignerPolicy: ForcedAlignerPolicy
+    let forcedAlignerBinary: String?
+    let forcedAlignerModel: String?
 
     static func fromEnvironment(_ environment: [String: String] = ProcessInfo.processInfo.environment) -> RuntimeConfiguration {
         RuntimeConfiguration(
@@ -52,7 +61,10 @@ struct RuntimeConfiguration {
             audioEncoderComputeUnits: computeUnits(from: environment["UX_MUSIC_LYRICS_SYNC_SWIFT_AUDIO_COMPUTE"]) ?? defaultAudioEncoderComputeUnits(),
             textDecoderComputeUnits: computeUnits(from: environment["UX_MUSIC_LYRICS_SYNC_SWIFT_TEXT_COMPUTE"]) ?? .cpuAndNeuralEngine,
             prefillComputeUnits: computeUnits(from: environment["UX_MUSIC_LYRICS_SYNC_SWIFT_PREFILL_COMPUTE"]) ?? .cpuOnly,
-            melComputeUnits: computeUnits(from: environment["UX_MUSIC_LYRICS_SYNC_SWIFT_MEL_COMPUTE"]) ?? .cpuAndGPU
+            melComputeUnits: computeUnits(from: environment["UX_MUSIC_LYRICS_SYNC_SWIFT_MEL_COMPUTE"]) ?? .cpuAndGPU,
+            forcedAlignerPolicy: forcedAlignerPolicy(from: environment["UX_MUSIC_LYRICS_SYNC_ALIGNER"]),
+            forcedAlignerBinary: sanitise(environment["UX_MUSIC_LYRICS_SYNC_ALIGNER_BIN"]),
+            forcedAlignerModel: sanitise(environment["UX_MUSIC_LYRICS_SYNC_ALIGNER_MODEL"])
         )
     }
 
@@ -100,6 +112,20 @@ struct RuntimeConfiguration {
         case "vad":
             return .vad
         case "none", "off", "disabled":
+            return .disabled
+        default:
+            return .automatic
+        }
+    }
+
+    private static func forcedAlignerPolicy(from raw: String?) -> ForcedAlignerPolicy {
+        guard let clean = sanitise(raw)?.lowercased() else {
+            return .automatic
+        }
+        switch clean {
+        case "1", "true", "yes", "on", "qwen3", "forced", "aligner":
+            return .enabled
+        case "0", "false", "no", "off", "disabled", "whisperkit":
             return .disabled
         default:
             return .automatic
