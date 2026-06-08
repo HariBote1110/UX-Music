@@ -21,5 +21,10 @@ let package = Package(
             ],
             path: "Sources/LyricsSyncCLI"
         ),
+        .testTarget(
+            name: "LyricsSyncCLITests",
+            dependencies: ["LyricsSyncCLI"],
+            path: "Tests/LyricsSyncCLITests"
+        ),
     ]
 )
