@@ -25,6 +25,7 @@ var syncProtocolCapabilities = []string{
 	"library.import.v1",
 	"library.transfer-progress.v1",
 	"library.transcode.mp3-320.v1",
+	"library.auto-sync.v1",
 }
 
 type syncProtocolNegotiation struct {
@@ -106,6 +107,10 @@ func buildSyncProtocolSchemaDocument() syncProtocolSchemaDocument {
 			"SyncTransferProgress": {
 				Required: []string{"direction", "stage", "current", "total", "encodingMode"},
 				Optional: []string{"trackId", "title", "fileName", "bytesDone", "bytesTotal", "bytesPerSecond", "updatedAt", "extensions"},
+			},
+			"SyncAutoResult": {
+				Required: []string{"checkedDevices", "syncedDevices", "failedDevices", "pushedPlayEvents"},
+				Optional: []string{"errors", "extensions"},
 			},
 			"SyncPlayEvents": {
 				Required: []string{"deviceId", "playEvents"},

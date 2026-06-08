@@ -669,6 +669,10 @@ func syncLibraryEventsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to save sync play events", http.StatusInternalServerError)
 		return
 	}
+	if err := applyIncomingSyncPlayEventsToPlayCounts(syncNewPlayEvents(existing, req.PlayEvents)); err != nil {
+		http.Error(w, "failed to apply sync play counts", http.StatusInternalServerError)
+		return
+	}
 
 	writeJSON(w, syncLibraryEventsResponse{
 		Accepted: len(req.PlayEvents),

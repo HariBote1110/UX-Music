@@ -2,6 +2,23 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.7 再生回数の自動同期
+
+- **要望対応**:
+    - 手動で push するのではなく、接続できたら同期される形へ寄せるため、まず再生回数イベントを自動同期する基盤を追加した。
+- **実装内容**:
+    - `IncrementPlayCount` が既存 `playcounts` 更新に加えて、ローカル端末の `sync-play-events` へ `PlayEvent` を記録するようにした。
+    - `syncSourceTrackId` を持つ子側取り込み曲では、親側の曲IDを `PlayEvent.trackId` に使い、親へ戻した時に同じ曲として集計できるようにした。
+    - `/sync/library/events` で受信した新規イベントを `playcounts` へ冪等に反映し、同じ `eventId` の再送では二重加算しないようにした。
+    - `AutoSyncPairedDevices()` を追加し、保存済みペア端末の到達URLへローカル再生イベントを同期トークン付きでpushできるようにした。
+    - アプリ起動後は軽量な自動同期ループで、到達可能なペア済み端末へ再生イベント同期を定期的に試行する。
+- **検証**:
+    - `go test ./server -run 'TestIncrementPlayCountRecordsLocalSyncPlayEvent|TestSyncLibraryEventsAppliesIncomingPlayCountsIdempotently|TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer' -count=1`
+- **仕様同期**:
+    - `library.auto-sync.v1` capability を追加。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-23a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-20a` に更新。
+
 ### UX Sync Phase 5.6.1 MP3転送のストリーミング化
 
 - **要望対応**:

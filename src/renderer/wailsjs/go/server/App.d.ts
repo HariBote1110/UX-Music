@@ -53,6 +53,8 @@ export function AudioStop():Promise<void>;
 
 export function AutoSyncLyrics(arg1:lyricssync.Request):Promise<lyricssync.Result>;
 
+export function AutoSyncPairedDevices():Promise<server.SyncAutoResult>;
+
 export function BuildFLACIndexes():Promise<void>;
 
 export function CDApplyMetadata(arg1:Record<string, any>):Promise<cdrip.ReleaseInfo>;

@@ -1,3 +1,15 @@
+# Task: UX Sync Phase 5.7 - 再生回数の自動同期
+
+## 概要
+UX Sync を手動push中心から、ペア済み端末へ接続できた時に同期される形へ寄せる。第一段階として、ローカル再生回数を `PlayEvent` として保存し、到達可能なペア済み端末へ自動pushし、受信側は既存 `playcounts` へ冪等に反映する。
+
+## 完了条件
+- [x] `IncrementPlayCount` がローカル `sync-play-events` に再生イベントを記録するテストがあること。
+- [x] `/sync/library/events` が受信イベントを `playcounts` へ反映し、同じイベント再送では二重加算しないテストがあること。
+- [x] `AutoSyncPairedDevices()` が保存済みペア端末へローカル再生イベントを同期トークン付きでpushするテストがあること。
+- [x] アプリ起動後に軽量な自動同期ループが開始されること。
+- [x] protocol capability に `library.auto-sync.v1` が追加されていること。
+
 # Task: UX Sync Phase 5.6 - 転送進捗表示とMP3 320kbps転送
 
 ## 概要

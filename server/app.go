@@ -78,6 +78,8 @@ func (a *App) Startup(ctx context.Context) {
 
 	// Start audio device watcher (polls for Bluetooth/USB device changes)
 	a.StartDeviceWatcher()
+
+	a.startSyncAutoLoop()
 }
 
 // Ping returns a pong message

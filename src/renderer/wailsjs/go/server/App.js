@@ -90,6 +90,10 @@ export function AutoSyncLyrics(arg1) {
   return window['go']['server']['App']['AutoSyncLyrics'](arg1);
 }
 
+export function AutoSyncPairedDevices() {
+  return window['go']['server']['App']['AutoSyncPairedDevices']();
+}
+
 export function BuildFLACIndexes() {
   return window['go']['server']['App']['BuildFLACIndexes']();
 }

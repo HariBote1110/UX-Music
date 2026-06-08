@@ -63,7 +63,8 @@ func (a *App) IncrementPlayCount(song map[string]interface{}) {
 
 	countsMap, _ := store.Instance.LoadMap("playcounts")
 
-	isoNow := time.Now().Format(time.RFC3339)
+	now := time.Now()
+	isoNow := now.Format(time.RFC3339)
 
 	var existingData map[string]interface{}
 	if data, exists := countsMap[path]; exists {
@@ -90,8 +91,11 @@ func (a *App) IncrementPlayCount(song map[string]interface{}) {
 
 	countsMap[path] = existingData
 	store.Instance.Save("playcounts", countsMap)
+	_ = recordLocalSyncPlayEvent(song, now.UTC())
 
-	wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", countsMap)
+	if a.ctx != nil {
+		wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", countsMap)
+	}
 }
 
 // SongFinished handles the end of a song, updating analysis score

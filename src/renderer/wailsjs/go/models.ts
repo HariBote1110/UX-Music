@@ -511,6 +511,26 @@ export namespace server {
 	        this.performanceSourceOk = source["performanceSourceOk"];
 	    }
 	}
+	export class SyncAutoResult {
+	    checkedDevices: number;
+	    syncedDevices: number;
+	    failedDevices: number;
+	    pushedPlayEvents: number;
+	    errors?: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new SyncAutoResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.checkedDevices = source["checkedDevices"];
+	        this.syncedDevices = source["syncedDevices"];
+	        this.failedDevices = source["failedDevices"];
+	        this.pushedPlayEvents = source["pushedPlayEvents"];
+	        this.errors = source["errors"];
+	    }
+	}
 	export class SyncDeviceRecord {
 	    deviceId: string;
 	    displayName: string;

@@ -55,6 +55,7 @@ server は identity 応答に `negotiation` を含める。
 - `library.import.v1`: multipart 音源push取り込み
 - `library.transfer-progress.v1`: Wails UI / local client 向け転送進捗イベント
 - `library.transcode.mp3-320.v1`: MP3 320kbps へ変換しながら転送するオプション
+- `library.auto-sync.v1`: 接続可能なペア済み端末へ軽量な同期ジョブを定期実行する
 
 ## 公開エンドポイント
 | Method | Path | Auth | Capability |
@@ -97,6 +98,9 @@ UI には `ux-sync-transfer-progress` event として次の情報を流す。
 ```
 
 `stage` は `preparing`、`transcoding`、`downloading`、`uploading`、`done`、`skipped`、`failed` を使う。
+
+## 自動同期
+`library.auto-sync.v1` は、ペア済み端末の既知URLへ接続できた時に、手動ボタンなしで軽量同期を試す capability である。現時点ではローカル再生回数の `PlayEvent` を `/sync/library/events` へpushする。音源本体やジャケット画像の自動転送は、容量ポリシーとアセット単位の同期設定を追加してから別 capability として扱う。
 
 ## mDNS TXT
 mDNS TXT は軽量な事前情報として扱い、最終判断は `/sync/identity` で行う。
