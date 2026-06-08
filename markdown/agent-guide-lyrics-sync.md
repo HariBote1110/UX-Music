@@ -68,6 +68,14 @@ IGNORE/アムネシア/
 | `UX_MUSIC_IGNORE_TEST_WHISPER_MODEL` | （実装依存、`base` 想定） | 結合試験でのモデル名 |
 | `UX_MUSIC_LYRICS_SYNC_DUMMY` | 未設定 | `1` のときダミーパイプライン（結合検証には不向き） |
 
+### 3.2.1 macOS Swift 強制アラインメント
+
+| 変数 | 既定 | 意味 |
+|:---|:---|:---|
+| `UX_MUSIC_LYRICS_SYNC_ALIGNER` | `auto` | `auto` は `speech` CLI が見つかれば Qwen3 Forced Aligner を優先し、失敗時は WhisperKit へ戻す。`qwen3` は強制、`off` は無効。 |
+| `UX_MUSIC_LYRICS_SYNC_ALIGNER_BIN` | 空 | `speech` 互換 CLI の絶対パス。 |
+| `UX_MUSIC_LYRICS_SYNC_ALIGNER_MODEL` | 空 | `speech align --aligner-model` に渡すモデル名。 |
+
 ### 3.3 手動参照との比較（許容・メトリクス）
 
 | 変数 | 既定 | 意味 |

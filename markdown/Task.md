@@ -1,3 +1,15 @@
+# Task: macOSローカル強制アラインメントによる自動歌詞同期
+
+## 概要
+バックエンドAPI課金を避け、macOSローカル環境で既存歌詞を音源へ高精度に同期できるよう、Swift sidecar に Qwen3 Forced Aligner / `speech` CLI 優先経路を追加する。
+
+## 完了条件
+- [x] Swift sidecar が `speech align` 互換 CLI を検出できる場合、WhisperKit ASR より先に既存歌詞の強制アラインメントを実行すること。
+- [x] `speech align` の単語タイムスタンプ出力を元の歌詞行へ戻し、`AlignedLine` として既存 JSON 契約で返せること。
+- [x] `auto` では aligner 失敗時に WhisperKit へフォールバックし、`UX_MUSIC_LYRICS_SYNC_ALIGNER=qwen3|off` で明示制御できること。
+- [x] 純粋ロジックの Swift テストが追加され、`swift test --package-path swift/lyrics-sync` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-12a` に更新されていること。
+
 # Task: Gitコンフリクトの解消とバージョン更新
 
 ## 概要

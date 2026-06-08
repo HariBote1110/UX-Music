@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-11a)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-12a)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -90,12 +90,14 @@ YouTube URL から楽曲をライブラリに追加する際、字幕を同時�
 `TXT` 歌詞から、再生中楽曲に対する `LRC` タイムスタンプを自動生成する機能。
 - **対象環境**: macOS では `Swift sidecar` を優先し、非 macOS または移行途上では `Python sidecar` を利用。
 - **推論エンジン**:
-  - macOS 既定: `WhisperKit` + CoreML
+  - macOS 既定: ローカルの `Qwen3 Forced Aligner` / `speech` CLI が利用できる場合は、既存歌詞を直接強制アラインメントする
+  - macOS fallback: `WhisperKit` + CoreML
   - fallback: `faster-whisper` を含む Python パイプライン
 - **処理フロー**:
-  - `ffmpeg` で音源を 16kHz / mono WAV へ抽出
-  - macOS 既定では `Swift sidecar` が `WhisperKit` / CoreML を用いて音声認識とタイムスタンプ抽出を行う
-  - 現段階では Swift 側でセグメント時刻をもとに**簡易単調整列 + 補間**まで行い、`LRC` 編集へ返す
+  - 既存歌詞がある場合は、素の Whisper の word timestamp ではなく、ローカル強制アラインメントを優先する
+  - `Qwen3 Forced Aligner` が利用できる環境では `speech align <audio> --text <lyrics>` を呼び、単語時刻を元歌詞行へ戻して `LRC` 編集へ返す
+  - aligner が無い、または `UX_MUSIC_LYRICS_SYNC_ALIGNER=off` の場合は、`Swift sidecar` が `WhisperKit` / CoreML を用いて音声認識とタイムスタンプ抽出を行う
+  - Python fallback では `ffmpeg` / Demucs / faster-whisper / Stage3 アラインメントの既存パイプラインを使う
   - `profile=fast` では軽量モデルと低 worker 数を使い、Python 時代よりメモリと起動コストを抑える
   - ボーカル分離・埋め込み整列・音素整列は Swift へ段階移行し、未移植段階では Python sidecar を fallback として使用可能にする
   - Go 側は sidecar の種別を意識せず、stdin/stdout JSON と `lyrics-sync-progress` の中継だけを担当する
@@ -107,6 +109,12 @@ YouTube URL から楽曲をライブラリに追加する際、字幕を同時�
 - **ランタイム選択**:
   - `UX_MUSIC_LYRICS_SYNC_RUNTIME=swift|python|auto`
   - `auto` は macOS で Swift sidecar を優先し、起動系失敗時のみ Python fallback へ戻す。
+  - `UX_MUSIC_LYRICS_SYNC_ALIGNER=auto|qwen3|off`
+    - `auto`: `speech` CLI が見つかれば Qwen3 Forced Aligner を優先し、失敗時は WhisperKit へフォールバック。
+    - `qwen3`: Qwen3 Forced Aligner を明示使用し、CLI が無い場合はエラー。
+    - `off`: 既存の WhisperKit 経路を使う。
+  - `UX_MUSIC_LYRICS_SYNC_ALIGNER_BIN` で `speech` 互換 CLI のパスを明示可能。
+  - `UX_MUSIC_LYRICS_SYNC_ALIGNER_MODEL` で aligner モデルを指定可能。
   - `UX_MUSIC_LYRICS_SYNC_SWIFT_WORKERS` / `UX_MUSIC_LYRICS_SYNC_SWIFT_MODEL` で負荷と精度を調整可能にする。
   - `wails build` では `lyrics-sync-swift` を `.app/Contents/Resources/bin` に同梱し、配布後も Swift runtime を優先できるようにする。
 

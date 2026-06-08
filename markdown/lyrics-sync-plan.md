@@ -7,6 +7,7 @@
 ### 設計の核
 
 - **ASR が認識した文字列はタイミング抽出専用**として扱い、表示文字列には**ユーザー入力歌詞のみ**を使う。これにより誤字混入を構造的に排除する。
+- 既存歌詞がある macOS 環境では、素の Whisper の word timestamp ではなく **Qwen3 Forced Aligner / CoreML 対応 CLI** による強制アラインメントを最優先する。
 - **ボーカル分離 → ASR → アラインメント** の三段パイプライン。
 - アラインメントは **音素 DP ＋多言語文埋め込みベクトル** の併用で、サビ繰り返しや誤認識に強くする。
 - 対応言語は **日本語＋英語**。
@@ -69,10 +70,11 @@
 - エントリ: `lyrics-sync-swift --request -`
 - 入出力: Python sidecar と同じく stdin/stdout/stderr JSON 契約を厳守する。
 - 役割:
+  - `Qwen3 Forced Aligner` / `speech` CLI が利用可能な場合、既存歌詞を音声へ直接アラインし、WhisperKit ASR を経由しない
   - `WhisperKit` / CoreML を使った ASR
   - 現段階ではセグメント時刻からの**簡易単調整列 + 補間**
   - 将来的な埋め込み整列 / 音素整列 / ボーカル分離の Swift 実装受け皿
-- 現在は `WhisperKit` でセグメント抽出を行い、Swift 内で歌詞行へのヒューリスティック整列を返す。高精度な埋め込み整列は次段で移植する。
+- 現在は `speech align` が使える場合に強制アラインメント出力を元歌詞行へ戻し、使えない場合は `WhisperKit` でセグメント抽出を行って Swift 内で歌詞行へのヒューリスティック整列を返す。高精度な埋め込み整列は次段で移植する。
 - 資源効率方針:
   - `profile=fast` では既定モデルを軽量側（`base`）へ寄せ、worker 数も 1 に抑える
   - `profile=balanced` は `small` + worker 2、`profile=accurate` は `medium` + worker 2 を基準にする
@@ -150,6 +152,7 @@
 - `Request` / `Result` JSON 契約は Python 版と完全互換に保つ。
 - Go 側 `AutoSyncLyrics` はプラットフォームと設定を見て Python sidecar / Swift sidecar を切り替えるだけにする。
 - Windows 版は引き続き Python sidecar、macOS 版は Swift sidecar を既定目標とする。
+- Swift sidecar 内では `UX_MUSIC_LYRICS_SYNC_ALIGNER=auto|qwen3|off` を解釈し、`auto` では `speech` CLI が見つかる場合だけ Qwen3 Forced Aligner を優先する。
 
 この前提があるため、Python 版の段階でも sidecar I/O 仕様（JSON 入出力・進捗 stderr）は将来の Swift 実装でそのまま再現できる単純さを保つこと。
 

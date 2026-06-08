@@ -1,3 +1,23 @@
+## 2026-06-08 — macOSローカル強制アラインメント経路を追加
+
+### 実施内容
+- Swift sidecar に `Qwen3 Forced Aligner` / `speech align` 互換 CLI を優先する経路を追加
+- `speech align` の単語タイムスタンプ出力を解析し、元のTXT歌詞行へ戻すマッパを実装
+- `UX_MUSIC_LYRICS_SYNC_ALIGNER=auto|qwen3|off`、`UX_MUSIC_LYRICS_SYNC_ALIGNER_BIN`、`UX_MUSIC_LYRICS_SYNC_ALIGNER_MODEL` を追加
+- `auto` ではローカルalignerが利用可能な場合に優先し、失敗時は既存WhisperKit経路へフォールバック
+- Swift純粋ロジックのテストを追加
+
+### 検証
+- `swift test --package-path swift/lyrics-sync`
+- `go test ./internal/lyricssync`
+- `go test ./...`
+- `npm run typecheck`（`src/renderer`）
+- `npm test`（`src/renderer`）
+
+### 仕様同期
+- `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-12a` に更新
+- `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-9a` に更新
+
 ## 2026-05-28 — レビュー指摘順のセキュリティ・再生修正
 
 ### 実施内容

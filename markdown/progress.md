@@ -1,5 +1,29 @@
 # 開発進捗ログ (progress.md)
 
+## 2026年6月8日
+
+### macOSローカル強制アラインメント経路を追加
+
+- **要望対応**:
+    - バックエンドAPI課金を避け、Mac上で完結する自動歌詞同期を優先したい。
+    - 素の Whisper の word timestamp より、既存歌詞を音声に直接合わせる強制アラインメントを使いたい。
+- **実装内容**:
+    - Swift sidecar に `Qwen3 Forced Aligner` / `speech align` 互換 CLI を優先するパイプラインを追加。
+    - `speech align` の `[start - end] word` 出力をパースし、単語時刻を元のTXT歌詞行へ戻す `ForcedAlignerLineMapper` を追加。
+    - `UX_MUSIC_LYRICS_SYNC_ALIGNER=auto|qwen3|off`、`UX_MUSIC_LYRICS_SYNC_ALIGNER_BIN`、`UX_MUSIC_LYRICS_SYNC_ALIGNER_MODEL` を追加。
+    - `auto` では `speech` CLI が利用可能なときだけ強制アラインメントを優先し、失敗時は既存 WhisperKit 経路へフォールバック。
+- **テスト追加**:
+    - `swift/lyrics-sync/Tests/LyricsSyncCLITests/ForcedAlignerPipelineTests.swift` に、aligner出力パースと単語時刻から歌詞行への復元テストを追加。
+- **検証**:
+    - `swift test --package-path swift/lyrics-sync`
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+    - `npm run typecheck`（`src/renderer`）
+    - `npm test`（`src/renderer`）
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-12a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-9a` に更新。
+
 ## 2026年5月28日
 
 ### レビュー指摘順にセキュリティ・再生系不具合を修正
