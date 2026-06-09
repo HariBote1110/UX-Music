@@ -17,6 +17,29 @@ func RunSyncCLI(args []string) (bool, error) {
 			return true, err
 		}
 		return true, writeSyncCLIJSON(result)
+	case "--sync-pair":
+		if len(args) < 2 {
+			return true, fmt.Errorf("--sync-pair requires a peer base URL")
+		}
+		app := NewApp()
+		started, err := app.StartSyncPairing(args[1])
+		if err != nil {
+			return true, err
+		}
+		confirmed, err := app.ConfirmSyncPairing(started.BaseURL, started.SessionID, started.Code, started.RemoteDeviceID)
+		if err != nil {
+			return true, err
+		}
+		return true, writeSyncCLIJSON(map[string]interface{}{
+			"started":   started,
+			"confirmed": confirmed,
+		})
+	case "--sync-auto-once":
+		result, err := NewApp().AutoSyncPairedDevices()
+		if err != nil {
+			return true, err
+		}
+		return true, writeSyncCLIJSON(result)
 	case "--sync-pull":
 		if len(args) < 2 {
 			return true, fmt.Errorf("--sync-pull requires a peer base URL")

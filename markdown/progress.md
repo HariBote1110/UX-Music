@@ -2,6 +2,26 @@
 
 ## 2026年6月9日
 
+### UX Sync Crescent向けSSH自動同期CLI
+
+- **課題**:
+    - HariBote（Crescent）を検証用 Windows ノードとして使うため、GUI を起動せず SSH からペアリングと自動同期ワンショットを実行したい。
+    - 既存 CLI は初期化と音源 pull のみで、ペアリング後に既知 peer の到達URLを確実に残す導線が不足していた。
+- **対応**:
+    - `server/app_sync_cli_test.go`:
+      - `--sync-pair <baseURL>` が6桁コード確認フローを通して同期トークンと既知 peer を保存するテストを追加。
+      - `--sync-auto-once` が保存済みペア端末へ `AutoSyncPairedDevices()` を一回実行するテストを追加。
+    - `server/app_sync_cli.go`:
+      - SSH 検証向けに `--sync-pair` と `--sync-auto-once` を追加。
+    - `server/app_sync.go`:
+      - ペアリング確定時に、リモート端末の `baseURL` / 表示名 / 役割を既知 peer として保存するように変更。
+- **検証**:
+    - `go test ./server -run 'TestRunSyncCLI|TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice' -count=1`
+    - `go test ./server -run 'Test.*Sync.*' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-23a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-26a` に更新。
+
 ### UX Sync Phase 5.9 空き容量安全停止
 
 - **要望対応**:

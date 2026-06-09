@@ -252,6 +252,13 @@ func (a *App) ConfirmSyncPairing(baseURL, sessionID, code, expectedRemoteDeviceI
 	if err := saveSyncAuthTokenForDevice(identity.DeviceID, confirmed.Token); err != nil {
 		return SyncPairingConfirmResult{}, err
 	}
+	_ = rememberSyncKnownPeer(syncKnownPeerRecord{
+		DeviceID:    identity.DeviceID,
+		DisplayName: syncIdentityDisplayName(identity),
+		BaseURL:     baseURL,
+		Roles:       identity.Roles,
+		LastSeenAt:  time.Now().UTC().Format(time.RFC3339),
+	})
 	return SyncPairingConfirmResult{
 		RemoteDeviceID:    identity.DeviceID,
 		RemoteDisplayName: syncIdentityDisplayName(identity),
