@@ -18,6 +18,20 @@
 - Crescent の `SyncLibrary`（約30GB の旧テスト音源）と転送バンドルを削除。空き 124.5GB。
 - 再テスト用に `C:\Users\HariBote\uxtest`（クローン＋synctest.exe＋serve.bat）は残置。
 
+## 2026-06-09 — UX Sync 統一ライブラリビュー
+
+### 実施内容
+- `sync-remote-catalog` ストアを追加し、LibraryHost peer の `/sync/library/snapshot` metadata をキャッシュできるようにした。
+- `GetUnifiedLibrary()` を追加し、local 曲には `syncAvailability="local"`、未取得 remote 曲には `syncAvailability="remote"` と取得元 peer 情報を付けて返すようにした。
+- local/remote および複数 peer 間の重複は `syncSongMatchKey` で dedup し、local 曲を優先するようにした。
+- `LoadLibrary()` が統一ライブラリビューを emit するようにした。
+- renderer で remote 曲に `DL可能` バッジを表示し、プレースホルダ artwork を使い、再生アクション対象外として扱うようにした。
+- 新機能扱いとして `src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-27a`、`markdown/requirement.md` を `0.1.9-Beta-30a` に更新した。
+
+### 検証
+- `go test ./server -run 'TestGetUnifiedLibrary|TestRefreshSyncRemoteCatalog' -count=1`
+- `npm test --prefix src/renderer -- --run js/ui/sync-availability.test.ts`
+
 ## 2026-06-09 — UX Sync イベント受信後の再生回数ライブ通知
 
 ### 実施内容

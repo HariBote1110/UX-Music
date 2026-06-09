@@ -69,6 +69,11 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
     const songToPlay = targetQueue[index];
 
     console.log(`[Debug:Playback] playSong 開始 - index: ${index}, 曲名: ${songToPlay?.title}`);
+    if (!canStartPlayback(songToPlay)) {
+        showNotification('この曲はDL可能です。再生は後続フェーズで対応します。');
+        hideNotification(4000);
+        return;
+    }
 
     if (sourceList) {
         handleSkip();
@@ -173,6 +178,10 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
     }
 
     musicApi.playbackStarted(songToPlayActual);
+}
+
+export function canStartPlayback(song) {
+    return song?.syncAvailability !== 'remote';
 }
 
 export function playNextSong() {

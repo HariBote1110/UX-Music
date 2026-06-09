@@ -14,10 +14,25 @@ import (
 // LoadLibrary loads the library and emits an event
 func (a *App) LoadLibrary() {
 	fmt.Println("[Wails] LoadLibrary current")
-	songs, _ := store.Instance.LoadSlice("library")
+	data, err := a.GetUnifiedLibrary()
+	if err != nil {
+		data = map[string]interface{}{
+			"songs":  []interface{}{},
+			"albums": make(map[string]interface{}),
+		}
+	}
+	wailsRuntime.EventsEmit(a.ctx, "load-library", data)
+}
 
-	// Ensure all songs have stable ids for UI selection/highlight logic.
+func (a *App) GetUnifiedLibrary() (map[string]interface{}, error) {
+	songs, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return nil, err
+	}
+
 	migrated := false
+	localMatchKeys := map[string]bool{}
+	unified := make([]interface{}, 0, len(songs))
 	for _, item := range songs {
 		songMap, ok := item.(map[string]interface{})
 		if !ok {
@@ -29,16 +44,24 @@ func (a *App) LoadLibrary() {
 			songMap["id"] = uuid.NewString()
 			migrated = true
 		}
+		localSong := cloneSyncMap(songMap)
+		localSong["syncAvailability"] = "local"
+		if key := syncSongMatchKey(localSong); key != "" {
+			localMatchKeys[key] = true
+		}
+		unified = append(unified, localSong)
 	}
 	if migrated {
 		_ = store.Instance.Save("library", songs)
 	}
 
-	data := map[string]interface{}{
-		"songs":  songs,
+	remoteSongs := syncUnifiedRemoteSongs(localMatchKeys)
+	unified = append(unified, remoteSongs...)
+
+	return map[string]interface{}{
+		"songs":  unified,
 		"albums": make(map[string]interface{}),
-	}
-	wailsRuntime.EventsEmit(a.ctx, "load-library", data)
+	}, nil
 }
 
 // RequestInitialLibrary is a helper for initial load

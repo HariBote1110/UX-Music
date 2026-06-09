@@ -2,6 +2,22 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.14 統一ライブラリビュー
+
+- **課題**:
+    - pull 済みの曲だけが `library.json` に載るため、LibraryHost peer に存在する未取得曲がクライアントの一覧に見えなかった。
+- **実装内容**:
+    - `sync-remote-catalog` ストアを追加し、LibraryHost peer の `/sync/library/snapshot` metadata をキャッシュできるようにした。
+    - `GetUnifiedLibrary()` を追加し、local 曲に `syncAvailability="local"`、remote 曲に `syncAvailability="remote"`、`syncSourceDeviceId`、`syncSourcePeerName`、`syncSourceTrackId` を付けて返すようにした。
+    - local/remote および複数 peer の重複は `syncSongMatchKey` で dedup し、local 曲を優先するようにした。
+    - renderer で remote 曲に `DL可能` バッジを表示し、アートワークはプレースホルダを使い、再生アクション対象外にした。
+- **検証**:
+    - `go test ./server -run 'TestGetUnifiedLibrary|TestRefreshSyncRemoteCatalog' -count=1`
+    - `npm test --prefix src/renderer -- --run js/ui/sync-availability.test.ts`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-27a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-30a` に更新。
+
 ### UX Sync Phase 5.13.1 再生回数ライブ通知
 
 - **課題**:

@@ -38,8 +38,8 @@ export function createSongItem(song, index, songList, options: { groupAlbumArt?:
     const { groupAlbumArt = true } = options;
     const songIdentifier = song.id || song.path || '';
     const songItem = document.createElement('div');
-    songItem.className = 'song-item';
-    songItem.dataset.songPath = song.path;
+    songItem.className = `song-item${song.syncAvailability === 'remote' ? ' remote-song' : ''}`;
+    songItem.dataset.songPath = song.path || '';
     songItem.dataset.songId = songIdentifier;
 
     let showArt = true;
@@ -78,7 +78,7 @@ export function createSongItem(song, index, songList, options: { groupAlbumArt?:
             <img src="./assets/icons/static-visualizer.svg" class="static-visualizer-img" alt="Playing">
         </div>`,
         artwork: `<div class="song-artwork-col">${artworkHTML}</div>`,
-        title: `<div class="song-title"><div class="marquee-wrapper"><div class="marquee-content"><span>${escapeHtml(formatSongTitle(song.title))}</span></div></div></div>`,
+        title: `<div class="song-title"><div class="marquee-wrapper"><div class="marquee-content"><span>${escapeHtml(formatSongTitle(song.title))}</span></div></div>${remoteAvailabilityBadgeHTML(song)}</div>`,
         artist: `<div class="song-artist"><div class="marquee-wrapper"><div class="marquee-content"><span>${escapeHtml(song.artist)}</span></div></div></div>`,
         album: `<div class="song-album"><div class="marquee-wrapper"><div class="marquee-content"><span>${escapeHtml(song.album)}</span></div></div></div>`,
         hires: `<div class="song-hires">${hiResIconHTML}</div>`,
@@ -126,8 +126,8 @@ export function createSongItem(song, index, songList, options: { groupAlbumArt?:
         if (showArt) {
             const album = state.albums.get(song.albumKey);
 
-            let artwork = null;
-            if (song.album !== 'Unknown Album') {
+            let artwork = resolveSongArtworkForList(song);
+            if (!artwork && song.album !== 'Unknown Album') {
                 if (song.artwork) {
                     artwork = song.artwork;
                 } else if (album) {
@@ -140,13 +140,29 @@ export function createSongItem(song, index, songList, options: { groupAlbumArt?:
             }
 
             artworkImg.classList.add('lazy-load');
-            artworkImg.dataset.src = resolveArtworkPath(artwork, true);
+            artworkImg.dataset.src = song.syncAvailability === 'remote' ? DEFAULT_ARTWORK_URL : resolveArtworkPath(artwork, true);
         }
     }
 
     scheduleMarqueeMeasurement(songItem);
 
     return songItem;
+}
+
+export function remoteAvailabilityBadgeText(song) {
+    return song?.syncAvailability === 'remote' ? 'DL可能' : '';
+}
+
+function remoteAvailabilityBadgeHTML(song) {
+    const text = remoteAvailabilityBadgeText(song);
+    return text ? `<span class="sync-availability-badge">${escapeHtml(text)}</span>` : '';
+}
+
+export function resolveSongArtworkForList(song) {
+    if (song?.syncAvailability === 'remote') {
+        return DEFAULT_ARTWORK_URL;
+    }
+    return song?.artwork || null;
 }
 
 export function createQueueItem(song, isPlaying, queueIndex) {

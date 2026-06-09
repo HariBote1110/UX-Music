@@ -82,6 +82,13 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 			result.PushedPlayEvents += accepted
 		}
 		if syncPeerSupportsLibraryAutoPull(identity) {
+			_ = refreshSingleSyncRemoteCatalog(ctx, SyncDeviceRecord{
+				DeviceID:    identity.DeviceID,
+				DisplayName: identity.DisplayName,
+				BaseURL:     device.BaseURL,
+				Roles:       identity.Roles,
+				Paired:      true,
+			}, token)
 			pullResult, err := a.PullSyncLibraryAssets(device.BaseURL, 0)
 			if err != nil {
 				result.FailedDevices++

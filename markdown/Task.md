@@ -1,3 +1,17 @@
+# Task: UX Sync Phase 5.14 - 統一ライブラリビュー
+
+## 概要
+UX Sync の Phase 2 として、音源がローカルに無い LibraryHost peer の曲もライブラリ一覧へ表示し、`DL可能` として区別できるようにする。リモート曲は `library.json` へ混ぜず、`sync-remote-catalog` に保存した snapshot metadata とローカルライブラリを表示時に統合する。
+
+## 完了条件
+- [x] `GetUnifiedLibrary()` がローカル曲へ `syncAvailability="local"` を付けるテストがあること。
+- [x] `sync-remote-catalog` の未保有曲が `syncAvailability="remote"` と取得元 peer 情報付きで統一ビューへ追加されること。
+- [x] `syncSongMatchKey` が一致する local/remote は local 優先で1件に dedup されること。
+- [x] 複数 peer の同一 remote 曲は matchKey で1件に集約されること。
+- [x] `refreshSyncRemoteCatalog` が LibraryHost の `/sync/library/snapshot` を保存し、取得失敗時は既存キャッシュを温存すること。
+- [x] renderer が remote 曲に `DL可能` バッジを表示し、プレースホルダ artwork を使うこと。
+- [x] remote 曲は再生アクション対象外として扱われること。
+
 # Task: UX Sync Phase 5.12 - push転送メタデータ・ジャケット・再生回数
 
 ## 概要
