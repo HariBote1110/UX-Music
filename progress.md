@@ -1,3 +1,20 @@
+## 2026-06-09 — UX Sync 再生回数同期ズレの診断と実装計画策定（codex へ委譲）
+
+### 実施内容
+- 既存 UX Sync 実装を読み、再生回数同期が概念からズレている根本原因を特定した。
+  - #1 曲のクロスマシン同一性が存在しない: 曲 id が `uuid.NewString()` でマシンごとに別。受信側 `applyIncomingSyncPlayEventsToPlayCounts` は trackID→path 索引でしか突合できず、sync で pull した曲のみ一致。両機が同曲を別々に保有すると同期されず、幽霊 playcounts エントリも蓄積する。
+  - #2 再生回数の真実の源が二重化: `playcounts`（直接 ++）と `syncPlayEvents` ログが再突合されず恒久ドリフトする。
+- バックグラウンド自動同期ループ（`startSyncAutoLoop`、起動10秒後＋60秒毎）は既存で概念どおり動作していることを確認した。
+- 実装計画 `markdown/sync-playcount-convergence-plan.md` を作成・コミットし、agmsg で codex に実装を委譲した。
+
+### 選定理由・判断の根拠
+- 曲同一性キーは「メタデータキー優先」を採用（ユーザー確認済み）。content hash より実装が軽く副作用が小さい。全曲ハッシュ計算の負荷を避けられる。
+- スコープは #1+#2 をまとめて実施（ユーザー確認済み）。#1 だけでは表示用 count の二重ソース問題が残るため。
+- 再生回数は `base + logCount` の射影とし、移行で `base = max(0, currentCount - existingLogCount)` とすることで既存値を失わず二重計上も防ぐ。
+
+### 残課題・次のステップ
+- codex の実装完了待ち。doc 末尾のテスト8項目を Red から先に進める方針。
+
 ## 2026-06-09 — UX Sync Phase 5.5 プロトコルスキーマとバージョンネゴシエーション
 
 ### 実施内容
