@@ -19,6 +19,8 @@ import {
     syncPeerConnectionLabel,
     syncPullActionState,
     syncPushActionState,
+    syncCachePolicyOptions,
+    normaliseSyncCachePolicy,
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
 } from './ux-sync-settings.js';
@@ -91,6 +93,24 @@ describe('formatSyncFreeSpaceSafetyStatus', () => {
     it('explains whether the free space safety stop is enabled', () => {
         expect(formatSyncFreeSpaceSafetyStatus(5)).toBe('空き容量が 5 GB 未満の場合は同期を停止します。');
         expect(formatSyncFreeSpaceSafetyStatus(0)).toBe('空き容量による同期停止は無効です。');
+    });
+});
+
+describe('normaliseSyncCachePolicy', () => {
+    it('keeps selective and defaults unknown values to mirror', () => {
+        expect(normaliseSyncCachePolicy('selective')).toBe('selective');
+        expect(normaliseSyncCachePolicy('mirror')).toBe('mirror');
+        expect(normaliseSyncCachePolicy('')).toBe('mirror');
+        expect(normaliseSyncCachePolicy('future')).toBe('mirror');
+    });
+});
+
+describe('syncCachePolicyOptions', () => {
+    it('offers mirror and selective cache policies for the storage tab', () => {
+        expect(syncCachePolicyOptions()).toEqual([
+            { value: 'mirror', label: '全曲ミラー' },
+            { value: 'selective', label: '最近再生＋キュー先読み' },
+        ]);
     });
 });
 
