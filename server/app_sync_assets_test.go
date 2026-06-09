@@ -435,8 +435,18 @@ func TestSyncLibraryImportAppliesUploadedArtworkAndPlayCount(t *testing.T) {
 	}
 	imported := library[0].(map[string]interface{})
 	artworkMap, _ := imported["artwork"].(map[string]interface{})
-	if artworkMap["full"] == "" {
+	if artworkMap["full"] == "" || artworkMap["thumbnail"] == "" {
 		t.Fatalf("expected imported artwork reference, got %#v", imported)
+	}
+	for _, key := range []string{"full", "thumbnail"} {
+		name, _ := artworkMap[key].(string)
+		path := filepath.Join(config.GetUserDataPath(), "Artworks", name)
+		if key == "thumbnail" {
+			path = filepath.Join(config.GetUserDataPath(), "Artworks", "thumbnails", name)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected %s artwork file %q: %v", key, path, err)
+		}
 	}
 	importedPath, _ := imported["path"].(string)
 	counts, err := store.Instance.LoadMap("playcounts")
