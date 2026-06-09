@@ -3,17 +3,22 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/internal/uxsync"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/text/unicode/norm"
 )
 
 type SyncAutoResult struct {
@@ -216,6 +221,7 @@ func recordLocalSyncPlayEvent(song map[string]interface{}, countedAt time.Time) 
 	event := uxsync.PlayEvent{
 		EventID:          fmt.Sprintf("evt_%s_%d", sanitiseSyncEventIDPart(deviceID), sequence),
 		TrackID:          trackID,
+		MatchKey:         syncSongMatchKey(song),
 		DeviceID:         deviceID,
 		DeviceSequence:   sequence,
 		PlayedAt:         countedAt,
@@ -258,26 +264,7 @@ func applyIncomingSyncPlayEventsToPlayCounts(events []uxsync.PlayEvent) error {
 	if len(events) == 0 {
 		return nil
 	}
-	pathByTrackID := syncLibraryPathByTrackID()
-	counts, err := store.Instance.LoadMap("playcounts")
-	if err != nil {
-		counts = map[string]interface{}{}
-	}
-	for trackID, playCount := range uxsync.PlayCountsByTrack(events) {
-		if playCount.Count <= 0 {
-			continue
-		}
-		key := firstNonEmpty(pathByTrackID[trackID], trackID)
-		entry := normalisePlayCountEntry(counts[key])
-		entry["count"] = entry["count"].(float64) + float64(playCount.Count)
-		history := entry["history"].([]interface{})
-		for _, item := range playCount.History {
-			history = append(history, item)
-		}
-		entry["history"] = trimPlayCountHistory(history)
-		counts[key] = entry
-	}
-	return store.Instance.Save("playcounts", counts)
+	return recalculateAllSyncPlayCounts()
 }
 
 func syncNewPlayEvents(existing, incoming []uxsync.PlayEvent) []uxsync.PlayEvent {
@@ -354,6 +341,156 @@ func syncLibraryPathByTrackID() map[string]string {
 	return paths
 }
 
+func syncLibraryPathByMatchKey() map[string]string {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return map[string]string{}
+	}
+	paths := map[string]string{}
+	for _, item := range library {
+		song, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		path := syncTrackString(song, "path")
+		key := syncSongMatchKey(song)
+		if path != "" && key != "" {
+			paths[key] = path
+		}
+	}
+	return paths
+}
+
+func syncSongMatchKey(song map[string]interface{}) string {
+	artist := normaliseSyncSongMatchText(syncTrackString(song, "artist"))
+	album := normaliseSyncSongMatchText(syncTrackString(song, "album"))
+	title := normaliseSyncSongMatchText(syncTrackString(song, "title"))
+	duration := syncSongMatchDurationSeconds(song["duration"])
+	if artist == "" && album == "" && title == "" {
+		title = normaliseSyncSongMatchText(filepath.Base(syncTrackString(song, "path")))
+	}
+	plain := fmt.Sprintf("%s|%s|%s|%d", artist, album, title, duration)
+	sum := sha1.Sum([]byte(plain))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func normaliseSyncSongMatchText(value string) string {
+	value = norm.NFKC.String(value)
+	value = strings.ToLower(value)
+	fields := strings.FieldsFunc(strings.TrimSpace(value), unicode.IsSpace)
+	return strings.Join(fields, " ")
+}
+
+func syncSongMatchDurationSeconds(raw interface{}) int {
+	return int(math.Round(syncSettingFloat64(raw)))
+}
+
+func recalculateAllSyncPlayCounts() error {
+	if err := ensureSyncPlayCountBaseMigrated(); err != nil {
+		return err
+	}
+	base, err := store.Instance.LoadMap(syncPlayCountBaseStoreName)
+	if err != nil {
+		base = map[string]interface{}{}
+	}
+	events, err := loadSyncPlayEvents()
+	if err != nil {
+		return err
+	}
+	logCounts := syncPlayCountsByResolvedPath(events)
+	counts := map[string]interface{}{}
+	for path, raw := range base {
+		entry := clonePlayCountEntry(raw)
+		counts[path] = entry
+	}
+	for path, playCount := range logCounts {
+		entry := normalisePlayCountEntry(counts[path])
+		baseCount, _ := entry["count"].(float64)
+		entry["count"] = baseCount + float64(playCount.Count)
+		history := entry["history"].([]interface{})
+		for _, item := range playCount.History {
+			history = append(history, item)
+		}
+		entry["history"] = trimPlayCountHistory(history)
+		counts[path] = entry
+	}
+	return store.Instance.Save("playcounts", counts)
+}
+
+func ensureSyncPlayCountBaseMigrated() error {
+	migration, err := store.Instance.LoadMap(syncPlayCountBaseMigrationStoreName)
+	if err == nil {
+		if migrated, _ := migration["migrated"].(bool); migrated {
+			return nil
+		}
+	}
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		counts = map[string]interface{}{}
+	}
+	events, err := loadSyncPlayEvents()
+	if err != nil {
+		return err
+	}
+	logCounts := syncPlayCountsByResolvedPath(events)
+	base := map[string]interface{}{}
+	for path, raw := range counts {
+		entry := clonePlayCountEntry(raw)
+		current, _ := entry["count"].(float64)
+		if playCount, ok := logCounts[path]; ok {
+			current -= float64(playCount.Count)
+		}
+		if current < 0 {
+			current = 0
+		}
+		entry["count"] = current
+		base[path] = entry
+	}
+	if err := store.Instance.Save(syncPlayCountBaseStoreName, base); err != nil {
+		return err
+	}
+	return store.Instance.Save(syncPlayCountBaseMigrationStoreName, map[string]interface{}{
+		"migrated": true,
+	})
+}
+
+func syncPlayCountsByResolvedPath(events []uxsync.PlayEvent) map[string]uxsync.PlayCount {
+	pathByMatchKey := syncLibraryPathByMatchKey()
+	pathByTrackID := syncLibraryPathByTrackID()
+	counts := map[string]uxsync.PlayCount{}
+	for _, event := range uxsync.MergePlayEvents(nil, events) {
+		if !syncIsCountedPlay(event) {
+			continue
+		}
+		path := ""
+		if key := strings.TrimSpace(event.MatchKey); key != "" {
+			path = pathByMatchKey[key]
+		}
+		if path == "" {
+			path = pathByTrackID[strings.TrimSpace(event.TrackID)]
+		}
+		if path == "" {
+			continue
+		}
+		count := counts[path]
+		count.Count++
+		count.History = append(count.History, syncPlayEventHistoryTime(event).Format(time.RFC3339))
+		counts[path] = count
+	}
+	return counts
+}
+
+func syncIsCountedPlay(event uxsync.PlayEvent) bool {
+	return event.Completed || event.DurationPlayedMs >= 30000
+}
+
+func syncPlayEventHistoryTime(event uxsync.PlayEvent) time.Time {
+	if !event.CountedAt.IsZero() {
+		return event.CountedAt
+	}
+	return event.PlayedAt
+}
+
 func normalisePlayCountEntry(raw interface{}) map[string]interface{} {
 	entry, _ := raw.(map[string]interface{})
 	if entry == nil {
@@ -369,6 +506,20 @@ func normalisePlayCountEntry(raw interface{}) map[string]interface{} {
 		entry["history"] = []interface{}{}
 	}
 	return entry
+}
+
+func clonePlayCountEntry(raw interface{}) map[string]interface{} {
+	entry := normalisePlayCountEntry(raw)
+	clone := map[string]interface{}{}
+	for key, value := range entry {
+		clone[key] = value
+	}
+	if history, ok := entry["history"].([]interface{}); ok {
+		copied := make([]interface{}, len(history))
+		copy(copied, history)
+		clone["history"] = copied
+	}
+	return clone
 }
 
 func trimPlayCountHistory(history []interface{}) []interface{} {

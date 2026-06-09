@@ -23,6 +23,8 @@ import (
 )
 
 const syncPlayEventsStoreName = "sync-play-events"
+const syncPlayCountBaseStoreName = "playcounts-base"
+const syncPlayCountBaseMigrationStoreName = "playcounts-base-migration"
 const syncAuthTokensSettingsKey = "syncAuthTokens"
 const syncDeviceIDSettingsKey = "syncDeviceId"
 const syncKnownPeersSettingsKey = "syncKnownPeers"

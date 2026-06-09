@@ -11,6 +11,7 @@ const minimumCountedPlayDurationMs int64 = 30000
 type PlayEvent struct {
 	EventID           string    `json:"eventId"`
 	TrackID           string    `json:"trackId"`
+	MatchKey          string    `json:"matchKey,omitempty"`
 	DeviceID          string    `json:"deviceId"`
 	PlaybackSessionID string    `json:"playbackSessionId,omitempty"`
 	DeviceSequence    int64     `json:"deviceSequence"`

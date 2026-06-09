@@ -61,37 +61,16 @@ func (a *App) IncrementPlayCount(song map[string]interface{}) {
 		return
 	}
 
-	countsMap, _ := store.Instance.LoadMap("playcounts")
-
 	now := time.Now()
-	isoNow := now.Format(time.RFC3339)
-
-	var existingData map[string]interface{}
-	if data, exists := countsMap[path]; exists {
-		existingData = data.(map[string]interface{})
-	} else {
-		existingData = map[string]interface{}{
-			"count":         0.0,
-			"totalDuration": 0.0,
-			"history":       []interface{}{},
-		}
-	}
-
-	existingData["count"] = existingData["count"].(float64) + 1
-	if duration, ok := song["duration"].(float64); ok {
-		existingData["totalDuration"] = existingData["totalDuration"].(float64) + duration
-	}
-
-	history := existingData["history"].([]interface{})
-	history = append(history, isoNow)
-	if len(history) > 100 {
-		history = history[1:]
-	}
-	existingData["history"] = history
-
-	countsMap[path] = existingData
-	store.Instance.Save("playcounts", countsMap)
+	_ = ensureSyncPlayCountBaseMigrated()
 	_ = recordLocalSyncPlayEvent(song, now.UTC())
+	_ = recalculateAllSyncPlayCounts()
+	countsMap, _ := store.Instance.LoadMap("playcounts")
+	if _, exists := countsMap[path]; !exists {
+		entry := normalisePlayCountEntry(nil)
+		countsMap[path] = entry
+		_ = store.Instance.Save("playcounts", countsMap)
+	}
 
 	if a.ctx != nil {
 		wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", countsMap)

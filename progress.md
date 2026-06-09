@@ -1,3 +1,16 @@
+## 2026-06-09 — UX Sync 再生回数収束の実装
+
+### 実施内容
+- `syncSongMatchKey` を追加し、曲同一性を `artist|album|title|durationSec` の正規化メタデータから SHA-1 hex で判定するようにした。
+- `uxsync.PlayEvent` に `matchKey` を追加し、ローカル再生イベント記録時に設定するようにした。
+- 受信した再生イベントは `matchKey -> path` を優先し、旧イベントは `trackID -> path` でフォールバックするようにした。
+- 一致するローカル曲がないイベントは `sync-play-events` に保持しつつ、`playcounts` には幽霊エントリを作らないようにした。
+- `playcounts-base` を導入し、一度きりの移行で既存 count から既存ログ件数を差し引いた base を保存したうえで、`playcounts = base + logCount` として再計算するようにした。
+- 新機能扱いとして `src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-26a`、`markdown/requirement.md` を `0.1.9-Beta-29a` に更新した。
+
+### 検証
+- `go test ./server -run 'TestSyncSongMatchKey|TestIncrementPlayCountRecordsLocalSyncPlayEvent|TestSyncLibraryEventsAppliesIncomingPlayCountsByMetadataWithoutPulledTrack|TestSyncLibraryEventsSkipsUnmatchedPlayCountsWithoutGhostEntry|TestIncrementPlayCountMigratesExistingCountsToBaseBeforeProjection|TestSyncPlayCountsConvergeAcrossBidirectionalMetadataMatchedEvents|TestSyncLibraryEventsFallsBackToTrackIDForLegacyEventsWithoutMatchKey|TestSyncLibraryEventsAppliesIncomingPlayCountsIdempotently' -count=1`
+
 ## 2026-06-09 — UX Sync 再生回数同期ズレの診断と実装計画策定（codex へ委譲）
 
 ### 実施内容

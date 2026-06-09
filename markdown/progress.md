@@ -2,6 +2,23 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.13 再生回数収束
+
+- **課題**:
+    - 同じ曲でも端末ごとに曲 ID が異なるため、sync 経由で pull していない曲同士の再生回数が同期されない。
+    - `playcounts` と `sync-play-events` が二重ソースになり、再送・途中失敗・リセット時に恒久的なズレが残り得る。
+- **実装内容**:
+    - `syncSongMatchKey` を追加し、NFKC・小文字化・trim・空白圧縮・duration 秒丸めで正規化したメタデータキーを SHA-1 hex 化するようにした。
+    - `uxsync.PlayEvent` に `matchKey` を追加し、ローカル再生イベントへ保存するようにした。
+    - 受信イベントは `matchKey` 優先、旧イベントは `trackID` フォールバックでローカル path に解決するようにした。
+    - 解決できないイベントはログには残し、`playcounts` へ幽霊エントリを作らないようにした。
+    - `playcounts-base` と一度きり移行を追加し、表示用 `playcounts` を `base + logCount` の射影として再計算するようにした。
+- **検証**:
+    - `go test ./server -run 'TestSyncSongMatchKey|TestIncrementPlayCountRecordsLocalSyncPlayEvent|TestSyncLibraryEventsAppliesIncomingPlayCountsByMetadataWithoutPulledTrack|TestSyncLibraryEventsSkipsUnmatchedPlayCountsWithoutGhostEntry|TestIncrementPlayCountMigratesExistingCountsToBaseBeforeProjection|TestSyncPlayCountsConvergeAcrossBidirectionalMetadataMatchedEvents|TestSyncLibraryEventsFallsBackToTrackIDForLegacyEventsWithoutMatchKey|TestSyncLibraryEventsAppliesIncomingPlayCountsIdempotently' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-26a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-29a` に更新。
+
 ### UX Sync Phase 5.12 push転送メタデータ・ジャケット・再生回数
 
 - **課題**:
