@@ -7,11 +7,50 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/internal/uxsync"
 )
+
+func TestSyncSongMatchKeyNormalisesMetadataAndDuration(t *testing.T) {
+	left := syncSongMatchKey(map[string]interface{}{
+		"title":    "  Ｓｏｎｇ   Title ",
+		"artist":   "ＡＲＴＩＳＴ",
+		"album":    " Album ",
+		"duration": 179.6,
+	})
+	right := syncSongMatchKey(map[string]interface{}{
+		"title":    "song title",
+		"artist":   "artist",
+		"album":    "album",
+		"duration": 180.4,
+	})
+
+	if left == "" || left != right {
+		t.Fatalf("expected equivalent metadata to produce the same key, left=%q right=%q", left, right)
+	}
+}
+
+func TestSyncSongMatchKeyDistinguishesDifferentSongs(t *testing.T) {
+	first := syncSongMatchKey(map[string]interface{}{
+		"title":    "Song A",
+		"artist":   "Artist",
+		"album":    "Album",
+		"duration": 180.0,
+	})
+	second := syncSongMatchKey(map[string]interface{}{
+		"title":    "Song B",
+		"artist":   "Artist",
+		"album":    "Album",
+		"duration": 180.0,
+	})
+
+	if first == "" || second == "" || first == second {
+		t.Fatalf("expected different songs to produce different keys, first=%q second=%q", first, second)
+	}
+}
 
 func TestIncrementPlayCountRecordsLocalSyncPlayEvent(t *testing.T) {
 	newTempSyncStore(t)
@@ -40,6 +79,9 @@ func TestIncrementPlayCountRecordsLocalSyncPlayEvent(t *testing.T) {
 	}
 	if events[0].DeviceSequence != 1 || events[0].EventID == "" {
 		t.Fatalf("expected stable event identity: %#v", events[0])
+	}
+	if events[0].MatchKey == "" {
+		t.Fatalf("expected local sync event to include match key: %#v", events[0])
 	}
 }
 
@@ -77,6 +119,179 @@ func TestSyncLibraryEventsAppliesIncomingPlayCountsIdempotently(t *testing.T) {
 	entry, _ := counts[songPath].(map[string]interface{})
 	if entry == nil || entry["count"] != float64(1) {
 		t.Fatalf("expected incoming event to increment playcount once, got %#v", counts)
+	}
+}
+
+func TestSyncLibraryEventsAppliesIncomingPlayCountsByMetadataWithoutPulledTrack(t *testing.T) {
+	newTempSyncStore(t)
+	songPath := filepath.Join(t.TempDir(), "local.flac")
+	song := map[string]interface{}{
+		"id":       "local-track",
+		"path":     songPath,
+		"title":    "Same Song",
+		"artist":   "Same Artist",
+		"album":    "Same Album",
+		"duration": 181.0,
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{song}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+
+	postSyncLibraryEvents(t, syncEventsPayload(t, "dev_other", []uxsync.PlayEvent{{
+		EventID:          "evt_other_1",
+		TrackID:          "remote-random-id",
+		DeviceID:         "dev_other",
+		DeviceSequence:   1,
+		MatchKey:         syncSongMatchKey(song),
+		PlayedAt:         time.Date(2026, 6, 9, 6, 20, 0, 0, time.UTC),
+		CountedAt:        time.Date(2026, 6, 9, 6, 23, 0, 0, time.UTC),
+		DurationPlayedMs: 181000,
+		Completed:        true,
+	}}))
+
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		t.Fatalf("load playcounts: %v", err)
+	}
+	entry, _ := counts[songPath].(map[string]interface{})
+	if entry == nil || entry["count"] != float64(1) {
+		t.Fatalf("expected metadata matched event to apply to local path, got %#v", counts)
+	}
+	if _, ok := counts["remote-random-id"]; ok {
+		t.Fatalf("expected no remote track ghost entry, got %#v", counts)
+	}
+}
+
+func TestSyncLibraryEventsSkipsUnmatchedPlayCountsWithoutGhostEntry(t *testing.T) {
+	newTempSyncStore(t)
+
+	postSyncLibraryEvents(t, syncEventsPayload(t, "dev_other", []uxsync.PlayEvent{{
+		EventID:          "evt_other_ghost",
+		TrackID:          "remote-missing-id",
+		DeviceID:         "dev_other",
+		DeviceSequence:   1,
+		MatchKey:         syncSongMatchKey(map[string]interface{}{"title": "Missing", "artist": "Nobody", "duration": 90.0}),
+		PlayedAt:         time.Date(2026, 6, 9, 7, 0, 0, 0, time.UTC),
+		CountedAt:        time.Date(2026, 6, 9, 7, 2, 0, 0, time.UTC),
+		DurationPlayedMs: 90000,
+		Completed:        true,
+	}}))
+
+	events := readStoredSyncPlayEvents(t)
+	if len(events) != 1 {
+		t.Fatalf("expected unmatched event to remain in log, got %#v", events)
+	}
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		t.Fatalf("load playcounts: %v", err)
+	}
+	if len(counts) != 0 {
+		t.Fatalf("expected unmatched event not to create playcount entries, got %#v", counts)
+	}
+}
+
+func TestIncrementPlayCountMigratesExistingCountsToBaseBeforeProjection(t *testing.T) {
+	newTempSyncStore(t)
+	songPath := filepath.Join(t.TempDir(), "legacy.flac")
+	song := map[string]interface{}{
+		"id":       "legacy-track",
+		"path":     songPath,
+		"title":    "Legacy Song",
+		"artist":   "Artist",
+		"album":    "Album",
+		"duration": 200.0,
+	}
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey: "dev_local",
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{song}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+	if err := store.Instance.Save("playcounts", map[string]interface{}{
+		songPath: map[string]interface{}{"count": 5.0, "history": []interface{}{"legacy-a", "legacy-b"}},
+	}); err != nil {
+		t.Fatalf("seed playcounts: %v", err)
+	}
+	if err := store.Instance.Save(syncPlayEventsStoreName, []uxsync.PlayEvent{
+		countedEvent("evt_existing_1", "dev_other", "legacy-track", syncSongMatchKey(song), 1),
+		countedEvent("evt_existing_2", "dev_other", "legacy-track", syncSongMatchKey(song), 2),
+	}); err != nil {
+		t.Fatalf("seed sync events: %v", err)
+	}
+
+	NewApp().IncrementPlayCount(song)
+
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		t.Fatalf("load playcounts: %v", err)
+	}
+	entry, _ := counts[songPath].(map[string]interface{})
+	if entry == nil || entry["count"] != float64(6) {
+		t.Fatalf("expected migrated count 5 plus one new event, got %#v", counts)
+	}
+	base, err := store.Instance.LoadMap(syncPlayCountBaseStoreName)
+	if err != nil {
+		t.Fatalf("load playcount base: %v", err)
+	}
+	baseEntry, _ := base[songPath].(map[string]interface{})
+	if baseEntry == nil || baseEntry["count"] != float64(3) {
+		t.Fatalf("expected base to subtract existing log count, got %#v", base)
+	}
+}
+
+func TestSyncPlayCountsConvergeAcrossBidirectionalMetadataMatchedEvents(t *testing.T) {
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	pathA := filepath.Join(dirA, "same-a.flac")
+	pathB := filepath.Join(dirB, "same-b.flac")
+	songA := map[string]interface{}{"id": "machine-a-id", "path": pathA, "title": "Converge", "artist": "Artist", "album": "Album", "duration": 210.0}
+	songB := map[string]interface{}{"id": "machine-b-id", "path": pathB, "title": "converge", "artist": "artist", "album": "album", "duration": 210.0}
+
+	setSyncTestStore(t, dirA)
+	seedSyncDeviceAndLibrary(t, "dev_a", songA)
+	NewApp().IncrementPlayCount(songA)
+	eventsA := readStoredSyncPlayEvents(t)
+
+	setSyncTestStore(t, dirB)
+	seedSyncDeviceAndLibrary(t, "dev_b", songB)
+	NewApp().IncrementPlayCount(songB)
+	postSyncLibraryEvents(t, syncEventsPayload(t, "dev_a", eventsA))
+	eventsB := readStoredSyncPlayEvents(t)
+	countB := loadPlayCountForPath(t, pathB)
+
+	setSyncTestStore(t, dirA)
+	postSyncLibraryEvents(t, syncEventsPayload(t, "dev_b", eventsB))
+	countA := loadPlayCountForPath(t, pathA)
+
+	if countA != 2 || countB != 2 {
+		t.Fatalf("expected both machines to converge to 2 plays, got A=%v B=%v", countA, countB)
+	}
+}
+
+func TestSyncLibraryEventsFallsBackToTrackIDForLegacyEventsWithoutMatchKey(t *testing.T) {
+	newTempSyncStore(t)
+	songPath := filepath.Join(t.TempDir(), "legacy-event.flac")
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{"id": "host-track-legacy", "path": songPath, "title": "Legacy Event"},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+
+	postSyncLibraryEvents(t, syncEventsPayload(t, "dev_old", []uxsync.PlayEvent{{
+		EventID:          "evt_old_1",
+		TrackID:          "host-track-legacy",
+		DeviceID:         "dev_old",
+		DeviceSequence:   1,
+		PlayedAt:         time.Date(2026, 6, 9, 8, 0, 0, 0, time.UTC),
+		CountedAt:        time.Date(2026, 6, 9, 8, 3, 0, 0, time.UTC),
+		DurationPlayedMs: 180000,
+		Completed:        true,
+	}}))
+
+	if count := loadPlayCountForPath(t, songPath); count != 1 {
+		t.Fatalf("expected legacy event to apply by track id fallback, got %v", count)
 	}
 }
 
@@ -138,6 +353,60 @@ func TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer(t *testing.T)
 	if observedToken != "tok_host" || len(observedEvents) != 1 || observedEvents[0].EventID != "evt_portable_1" {
 		t.Fatalf("unexpected pushed token/events token=%q events=%#v", observedToken, observedEvents)
 	}
+}
+
+func syncEventsPayload(t *testing.T, deviceID string, events []uxsync.PlayEvent) []byte {
+	t.Helper()
+	bytes, err := json.Marshal(syncLibraryEventsRequest{DeviceID: deviceID, PlayEvents: events})
+	if err != nil {
+		t.Fatalf("marshal sync events payload: %v", err)
+	}
+	return bytes
+}
+
+func countedEvent(eventID, deviceID, trackID, matchKey string, sequence int64) uxsync.PlayEvent {
+	playedAt := time.Date(2026, 6, 9, 9, int(sequence), 0, 0, time.UTC)
+	return uxsync.PlayEvent{
+		EventID:          eventID,
+		TrackID:          trackID,
+		DeviceID:         deviceID,
+		DeviceSequence:   sequence,
+		MatchKey:         matchKey,
+		PlayedAt:         playedAt,
+		CountedAt:        playedAt.Add(3 * time.Minute),
+		DurationPlayedMs: 180000,
+		Completed:        true,
+	}
+}
+
+func setSyncTestStore(t *testing.T, dir string) {
+	t.Helper()
+	config.Instance.SetUserDataPath(dir)
+	store.Instance = &store.Store{}
+}
+
+func seedSyncDeviceAndLibrary(t *testing.T, deviceID string, song map[string]interface{}) {
+	t.Helper()
+	if err := store.Instance.Save("settings", map[string]interface{}{syncDeviceIDSettingsKey: deviceID}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{song}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+}
+
+func loadPlayCountForPath(t *testing.T, path string) float64 {
+	t.Helper()
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		t.Fatalf("load playcounts: %v", err)
+	}
+	entry, _ := counts[path].(map[string]interface{})
+	if entry == nil {
+		t.Fatalf("missing playcount for %s in %#v", path, counts)
+	}
+	count, _ := entry["count"].(float64)
+	return count
 }
 
 func TestAutoSyncPairedDevicesDownloadsMissingArtworkForImportedTrack(t *testing.T) {
