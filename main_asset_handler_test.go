@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
@@ -54,6 +55,29 @@ func TestAssetHandlerServesRegisteredSafeMediaWithReservedCharacters(t *testing.
 	}
 	if rec.Body.String() != "video" {
 		t.Fatalf("body=%q", rec.Body.String())
+	}
+}
+
+func TestDecodeSafeMediaPathKeepsWindowsDriveAbsolute(t *testing.T) {
+	path, ok := decodeSafeMediaPath("C:%5CUsers%5Cyuki%5CMusic%5Csong.mp4")
+	if !ok {
+		t.Fatal("Windows drive path should decode as an absolute safe media path")
+	}
+	if runtime.GOOS != "windows" && path != "C:/Users/yuki/Music/song.mp4" {
+		t.Fatalf("path=%q should preserve the Windows drive without adding a leading separator", path)
+	}
+	if runtime.GOOS == "windows" && !filepath.IsAbs(path) {
+		t.Fatalf("path=%q should be absolute on Windows", path)
+	}
+}
+
+func TestDecodeSafeMediaPathKeepsPosixAbsolutePath(t *testing.T) {
+	path, ok := decodeSafeMediaPath("%2FUsers%2Fyuki%2FMusic%2Fsong.mp4")
+	if !ok {
+		t.Fatal("POSIX path should decode as an absolute safe media path")
+	}
+	if path != filepath.Clean("/Users/yuki/Music/song.mp4") {
+		t.Fatalf("path=%q should preserve the POSIX absolute path", path)
 	}
 }
 
