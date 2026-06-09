@@ -9,6 +9,7 @@ import { musicApi, getWailsApp } from '../core/bridge.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
 import { updateListSpacer } from '../ui/ui.js';
 import {
+    formatSyncAutoResultNotification,
     formatSyncPullResultSummary,
     formatSyncPushResultSummary,
     formatSyncPeerEndpoint,
@@ -18,6 +19,7 @@ import {
     mergeSyncPeersWithDevices,
     normaliseSyncDevices,
     normaliseSyncMinFreeSpaceGB,
+    normaliseSyncAutoResult,
     normaliseSyncPairingConfirm,
     normaliseSyncPairingStart,
     normaliseSyncPullResult,
@@ -39,6 +41,7 @@ const electronAPI = window.electronAPI;
 let uxSyncPeers: SyncPeer[] = [];
 let uxSyncDevices: SyncDevice[] = [];
 let uxSyncTransferProgressUnsubscribe: (() => void) | null = null;
+let uxSyncAutoResultUnsubscribe: (() => void) | null = null;
 
 /**
  * 指定したテーマを body クラスに適用する。
@@ -321,6 +324,22 @@ function bindUxSyncTransferProgress(): void {
                 ? `\n${Math.min(100, Math.round((progress.bytesDone / progress.bytesTotal) * 100))}% (${formatSyncTransferBytes(progress.bytesDone)} / ${formatSyncTransferBytes(progress.bytesTotal)})`
                 : '';
             logEl.textContent = `${summary}${percent}`;
+        }
+    });
+}
+
+function bindUxSyncAutoResultToast(): void {
+    if (uxSyncAutoResultUnsubscribe || !window.runtime?.EventsOn) {
+        return;
+    }
+    uxSyncAutoResultUnsubscribe = window.runtime.EventsOn('ux-sync-auto-result', (payload: unknown) => {
+        const result = normaliseSyncAutoResult(payload);
+        if (!result) {
+            return;
+        }
+        const message = formatSyncAutoResultNotification(result);
+        if (message) {
+            showNotification(message, 5000);
         }
     });
 }
@@ -742,6 +761,8 @@ export function initSettings() {
             musicApi.buildFLACIndexes();
         });
     }
+
+    bindUxSyncAutoResultToast();
 
     const syncDiscoverBtn = document.getElementById('ux-sync-discover-btn');
     if (syncDiscoverBtn && !syncDiscoverBtn.dataset.listenerAttached) {

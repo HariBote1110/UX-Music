@@ -84,6 +84,18 @@ export interface SyncPushActionState {
     status: string;
 }
 
+export interface SyncAutoResult {
+    checkedDevices: number;
+    syncedDevices: number;
+    failedDevices: number;
+    pushedPlayEvents: number;
+    syncedArtwork: number;
+    pulledTracks: number;
+    skippedTracks: number;
+    paused: boolean;
+    pauseReason: string;
+}
+
 export function normaliseSyncMinFreeSpaceGB(raw: unknown): number {
     const value = typeof raw === 'number' ? raw : Number(raw);
     if (!Number.isFinite(value) || value <= 0) {
@@ -121,6 +133,24 @@ export function normaliseSyncDevices(rawDevices: unknown): SyncDevice[] {
     return rawDevices
         .map(normaliseSyncDevice)
         .filter((device): device is SyncDevice => device != null);
+}
+
+export function normaliseSyncAutoResult(raw: unknown): SyncAutoResult | null {
+    if (!raw || typeof raw !== 'object') {
+        return null;
+    }
+    const record = raw as Record<string, unknown>;
+    return {
+        checkedDevices: readCount(record.checkedDevices),
+        syncedDevices: readCount(record.syncedDevices),
+        failedDevices: readCount(record.failedDevices),
+        pushedPlayEvents: readCount(record.pushedPlayEvents),
+        syncedArtwork: readCount(record.syncedArtwork),
+        pulledTracks: readCount(record.pulledTracks),
+        skippedTracks: readCount(record.skippedTracks),
+        paused: record.paused === true,
+        pauseReason: readString(record.pauseReason),
+    };
 }
 
 export function mergeSyncPeersWithDevices(peers: SyncPeer[], devices: SyncDevice[]): SyncPeer[] {
@@ -324,6 +354,29 @@ export function formatSyncPullResultSummary(result: SyncPullResult): string {
 export function formatSyncPushResultSummary(result: SyncPushResult): string {
     const name = result.remoteDisplayName || result.remoteDeviceId;
     return `${name}: 転送 ${result.transferred}曲 / 既存 ${result.skipped}曲 / 失敗 ${result.failed}曲`;
+}
+
+export function formatSyncAutoResultNotification(result: SyncAutoResult): string {
+    if (result.paused) {
+        return result.pauseReason === 'free-space-below-limit'
+            ? 'UX Sync: 空き容量が少ないため同期を停止しました。'
+            : 'UX Sync: 自動同期を停止しました。';
+    }
+    if (result.checkedDevices <= 0) {
+        return '';
+    }
+    const parts = [
+        result.pulledTracks > 0 ? `取得 ${result.pulledTracks}曲` : '',
+        result.skippedTracks > 0 ? `既存 ${result.skippedTracks}曲` : '',
+        result.pushedPlayEvents > 0 ? `再生回数 ${result.pushedPlayEvents}件` : '',
+        result.syncedArtwork > 0 ? `ジャケット ${result.syncedArtwork}件` : '',
+    ].filter(Boolean);
+    if (parts.length === 0) {
+        return result.syncedDevices > 0
+            ? 'UX Sync: 接続できたため同期を確認しました。'
+            : 'UX Sync: 接続を確認しましたが同期できませんでした。';
+    }
+    return `UX Sync: 接続できたため同期しました（${parts.join(' / ')}）`;
 }
 
 export function formatSyncTransferProgressSummary(progress: SyncTransferProgress): string {

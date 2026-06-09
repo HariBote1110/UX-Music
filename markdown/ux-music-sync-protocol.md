@@ -110,7 +110,7 @@ UI には `ux-sync-transfer-progress` event として次の情報を流す。
 `stage` は `preparing`、`transcoding`、`downloading`、`uploading`、`done`、`skipped`、`failed` を使う。
 
 ## 自動同期
-`library.auto-sync.v1` は、ペア済み端末の既知URLへ接続できた時に、手動ボタンなしで軽量同期を試す capability である。現時点ではローカル再生回数の `PlayEvent` を `/sync/library/events` へpushし、既に同期済みの曲で欠けているジャケットを `/sync/assets/{trackId}/artwork` から補完する。音源本体の自動転送は容量ポリシーとアセット単位の同期設定を追加してから扱う。
+`library.auto-sync.v1` は、ペア済み端末の既知URLへ接続できた時に、手動ボタンなしで同期を試す capability である。ローカル再生回数の `PlayEvent` を `/sync/library/events` へpushし、`LibraryHost` 役割を持つ peer からは `/sync/library/snapshot` と `/sync/assets/{trackId}/file` を使って未取得曲だけを自動取得する。既に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込み済みかつ実ファイルが存在する曲は skip として扱い、二重転送しない。既に同期済みの曲で欠けているジャケットは `/sync/assets/{trackId}/artwork` から補完する。
 
 ## 空き容量安全停止
 `library.storage-safety.v1` は、受信側がローカル保存先ボリュームの空き容量を確認し、`settings.syncMinFreeSpaceGB` を下回る場合に同期を停止できることを示す。`syncMinFreeSpaceGB` が `0` または未設定の場合は無効である。

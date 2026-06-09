@@ -22,6 +22,8 @@ type SyncAutoResult struct {
 	FailedDevices     int      `json:"failedDevices"`
 	PushedPlayEvents  int      `json:"pushedPlayEvents"`
 	SyncedArtwork     int      `json:"syncedArtwork"`
+	PulledTracks      int      `json:"pulledTracks"`
+	SkippedTracks     int      `json:"skippedTracks"`
 	Paused            bool     `json:"paused"`
 	PauseReason       string   `json:"pauseReason,omitempty"`
 	FreeSpaceBytes    uint64   `json:"freeSpaceBytes,omitempty"`
@@ -74,6 +76,19 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 			}
 			result.PushedPlayEvents += accepted
 		}
+		if syncPeerSupportsLibraryAutoPull(identity) {
+			pullResult, err := a.PullSyncLibraryAssets(device.BaseURL, 0)
+			if err != nil {
+				result.FailedDevices++
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", identity.DeviceID, err))
+				continue
+			}
+			result.PulledTracks += pullResult.Downloaded
+			result.SkippedTracks += pullResult.Skipped
+			if pullResult.Failed > 0 {
+				result.Errors = append(result.Errors, pullResult.Errors...)
+			}
+		}
 		artworkCount, err := syncMissingArtworkFromPeer(ctx, device.BaseURL, token, identity.DeviceID)
 		if err != nil {
 			result.FailedDevices++
@@ -84,6 +99,15 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 		result.SyncedDevices++
 	}
 	return result, nil
+}
+
+func syncPeerSupportsLibraryAutoPull(identity syncIdentityResponse) bool {
+	for _, role := range identity.Roles {
+		if strings.EqualFold(strings.TrimSpace(role), "LibraryHost") {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *App) startSyncAutoLoop() {

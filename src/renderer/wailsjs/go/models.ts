@@ -517,6 +517,8 @@ export namespace server {
 	    failedDevices: number;
 	    pushedPlayEvents: number;
 	    syncedArtwork: number;
+	    pulledTracks: number;
+	    skippedTracks: number;
 	    paused: boolean;
 	    pauseReason?: string;
 	    freeSpaceBytes?: number;
@@ -534,6 +536,8 @@ export namespace server {
 	        this.failedDevices = source["failedDevices"];
 	        this.pushedPlayEvents = source["pushedPlayEvents"];
 	        this.syncedArtwork = source["syncedArtwork"];
+	        this.pulledTracks = source["pulledTracks"];
+	        this.skippedTracks = source["skippedTracks"];
 	        this.paused = source["paused"];
 	        this.pauseReason = source["pauseReason"];
 	        this.freeSpaceBytes = source["freeSpaceBytes"];

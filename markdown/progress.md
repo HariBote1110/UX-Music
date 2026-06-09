@@ -2,6 +2,23 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.11 自動音源差分同期と接続トースト
+
+- **要望対応**:
+    - Walkman 転送で使っている「未転送だけ扱う」考え方を UX Sync の自動同期にも寄せたい。
+    - 接続できたため自動同期したことを右下トーストで分かるようにしたい。
+- **実装内容**:
+    - `AutoSyncPairedDevices()` が `LibraryHost` 役割を持つペア済み端末に対して `PullSyncLibraryAssets()` を実行し、未取得曲だけを自動取得するようにした。
+    - 既に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込み済みかつ実ファイルが存在する曲は skip とし、`pulledTracks` / `skippedTracks` として自動同期結果に集約する。
+    - `LibraryHost` ではない peer からは音源本体を自動取得しない。
+    - renderer が `ux-sync-auto-result` を購読し、接続できたため同期したこと、取得数、既存数、再生回数、ジャケット数を右下トーストに表示する。
+- **検証**:
+    - `go test ./server -run 'TestAutoSyncPairedDevicesPullsOnlyMissingTracksFromLibraryHost|TestAutoSyncPairedDevicesDoesNotPullTracksFromNonLibraryHost|TestAutoSyncPairedDevicesDownloadsMissingArtworkForImportedTrack|TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer' -count=1`
+    - `npm test --prefix src/renderer -- --run js/features/ux-sync-settings.test.ts`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-24a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-27a` に更新。
+
 ### UX Sync Crescent向けSSH自動同期CLI
 
 - **課題**:
