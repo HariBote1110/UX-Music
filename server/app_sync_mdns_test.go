@@ -27,8 +27,13 @@ func TestSyncMDNSAdvertiseInfo_usesHostIdentity(t *testing.T) {
 	if values["schemaVersion"] != syncSchemaVersion {
 		t.Fatalf("unexpected schemaVersion TXT: %#v", values)
 	}
-	if !containsCSVToken(values["capabilities"], "library.import.v1") {
-		t.Fatalf("capabilities TXT should include import support: %#v", values)
+	if _, exists := values["capabilities"]; exists {
+		t.Fatalf("capabilities should be resolved via /sync/identity, not mDNS TXT: %#v", values)
+	}
+	for _, item := range text {
+		if len([]byte(item)) > 255 {
+			t.Fatalf("mDNS TXT item exceeds 255 bytes: len=%d item=%q", len([]byte(item)), item)
+		}
 	}
 	if values["roles"] != "LibraryHost,PlaybackTarget,Controller" {
 		t.Fatalf("unexpected roles TXT: %#v", values)
