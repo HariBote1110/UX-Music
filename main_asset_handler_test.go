@@ -79,6 +79,32 @@ func TestAssetHandlerRejectsSafeArtworkTraversal(t *testing.T) {
 	}
 }
 
+func TestAssetHandlerServesSafeArtworkWithEscapedSpace(t *testing.T) {
+	tmpDir := t.TempDir()
+	config.SetUserDataPath(tmpDir)
+	store.Instance = &store.Store{}
+
+	artworksDir := filepath.Join(tmpDir, "Artworks")
+	if err := os.MkdirAll(artworksDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	artworkPath := filepath.Join(artworksDir, "foo bar.jpg")
+	if err := os.WriteFile(artworkPath, []byte("image"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/safe-artwork/foo%20bar.jpg", nil)
+	rec := httptest.NewRecorder()
+	newAssetHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d want=%d body=%q", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if rec.Body.String() != "image" {
+		t.Fatalf("body=%q", rec.Body.String())
+	}
+}
+
 func escapePathForTest(path string) string {
 	return stringsTrimLeadingSlashForTest(url.PathEscape(path))
 }

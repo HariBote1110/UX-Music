@@ -1,6 +1,7 @@
 package uxsync
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -103,5 +104,11 @@ func TestPruneAcknowledgedOutbox_keepsOnlyUnacknowledgedEvents(t *testing.T) {
 	}
 	if remaining[0].EventID != "evt_other_0001" {
 		t.Fatalf("unexpected remaining event: %#v", remaining[0])
+	}
+}
+
+func TestFormatInt64HandlesMinInt64(t *testing.T) {
+	if got := formatInt64(math.MinInt64); got != "-9223372036854775808" {
+		t.Fatalf("formatInt64(MinInt64)=%q", got)
 	}
 }
