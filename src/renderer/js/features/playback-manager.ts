@@ -180,6 +180,7 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
     }
 
     musicApi.playbackStarted(songToPlayActual);
+    prefetchUpcomingRemoteTracks(index);
 }
 
 export function canStartPlayback(song) {
@@ -227,6 +228,30 @@ export async function resolveRemotePlaybackDownload(song, dependencies: any = {}
         notifyError(message);
         return null;
     }
+}
+
+export function remoteQueuePrefetchRefs(queue, currentIndex, limit = 3) {
+    if (!Array.isArray(queue) || limit <= 0) {
+        return [];
+    }
+    return queue
+        .slice(currentIndex + 1)
+        .filter(song => song?.syncAvailability === 'remote' && song.syncSourceDeviceId && song.syncSourceTrackId)
+        .slice(0, limit)
+        .map(song => ({
+            sourceDeviceId: String(song.syncSourceDeviceId),
+            sourceTrackId: String(song.syncSourceTrackId),
+        }));
+}
+
+function prefetchUpcomingRemoteTracks(currentIndex) {
+    const refs = remoteQueuePrefetchRefs(state.playbackQueue, currentIndex, 3);
+    if (refs.length === 0 || !musicApi.prefetchSyncTracks) {
+        return;
+    }
+    void musicApi.prefetchSyncTracks(refs).catch((error) => {
+        console.warn('[UX Sync] remote prefetch failed:', error);
+    });
 }
 
 export function playNextSong() {

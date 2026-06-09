@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"ux-music-sidecar/internal/store"
@@ -172,7 +173,8 @@ func syncCacheTestServer(t *testing.T, assetRequests map[string]int) *httptest.S
 				return
 			}
 			assetRequests[r.URL.Path]++
-			w.Header().Set("Content-Disposition", `attachment; filename="`+filepath.Base(r.URL.Path)+`.flac"`)
+			trackID := strings.TrimPrefix(strings.TrimSuffix(r.URL.Path, "/file"), "/sync/assets/")
+			w.Header().Set("Content-Disposition", `attachment; filename="`+trackID+`.flac"`)
 			_, _ = w.Write([]byte("remote-audio"))
 		default:
 			http.NotFound(w, r)

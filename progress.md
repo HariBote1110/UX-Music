@@ -18,6 +18,20 @@
 - Crescent の `SyncLibrary`（約30GB の旧テスト音源）と転送バンドルを削除。空き 124.5GB。
 - 再テスト用に `C:\Users\HariBote\uxtest`（クローン＋synctest.exe＋serve.bat）は残置。
 
+## 2026-06-09 — UX Sync スマートキャッシュと容量ポリシー
+
+### 実施内容
+- `syncCachePolicy` を追加し、既定の `mirror` では現行どおり全曲 pull、`selective` では最近再生 remote 曲とキュー先読みだけを取得するようにした。
+- `recentRemoteSyncTrackRefs` と `PrefetchSyncTracks` を追加し、playcounts history と remote catalog から取得対象を決定できるようにした。
+- selective かつ空き容量閾値未満の場合、最終アクセスが最も古い同期取得音源をファイルと `library.json` から削除する LRU 処理を追加した。
+- renderer に cache policy の正規化と保存タブ向け選択肢、キュー先読み refs 生成と `PrefetchSyncTracks` bridge 呼び出しを追加した。
+- 新機能扱いとして `src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-29a`、`markdown/requirement.md` を `0.1.9-Beta-32a` に更新した。
+
+### 検証
+- `go test ./server -run 'TestAutoSyncPairedDevicesSelective|TestAutoSyncPairedDevicesMirrorPolicy|TestRecentRemoteSyncTrackRefs|TestPrefetchSyncTracks|TestSelectiveCachePrunes|TestMirrorCachePolicyDoesNotPrune|TestDownloadSyncTrack' -count=1`
+- `npm test --prefix src/renderer -- --run js/features/ux-sync-settings.test.ts js/features/playback-manager.test.ts`
+- `npm run typecheck --prefix src/renderer`
+
 ## 2026-06-09 — UX Sync シームレスDL再生
 
 ### 実施内容

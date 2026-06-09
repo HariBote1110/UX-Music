@@ -107,3 +107,17 @@ describe('resolveRemotePlaybackDownload', () => {
         expect(resolved).toBeNull();
     });
 });
+
+describe('remoteQueuePrefetchRefs', () => {
+    it('builds refs for upcoming remote queue items only', async () => {
+        const { remoteQueuePrefetchRefs } = await import('./playback-manager.js');
+        expect(remoteQueuePrefetchRefs([
+            { syncAvailability: 'local', path: '/Music/current.flac' },
+            { syncAvailability: 'remote', syncSourceDeviceId: 'dev_host', syncSourceTrackId: 'remote-1' },
+            { syncAvailability: 'local', path: '/Music/local.flac' },
+            { syncAvailability: 'remote', syncSourceDeviceId: 'dev_host', syncSourceTrackId: 'remote-2' },
+        ], 0, 1)).toEqual([
+            { sourceDeviceId: 'dev_host', sourceTrackId: 'remote-1' },
+        ]);
+    });
+});

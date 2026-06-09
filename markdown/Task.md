@@ -1,3 +1,17 @@
+# Task: UX Sync Phase 5.16 - スマートキャッシュと容量ポリシー
+
+## 概要
+統一ライブラリビューとシームレスDL再生を前提に、端末ごとのキャッシュ方針を `mirror` / `selective` で切り替える。`mirror` は現行どおり全曲 pull、`selective` は最近再生とキュー先読みだけを取得対象にし、空き容量が閾値を下回る場合は同期取得音源を LRU で削除する。
+
+## 完了条件
+- [x] `syncCachePolicy="selective"` では AutoSync が全曲 pull せず、最近再生 remote 曲のみ取得すること。
+- [x] `syncCachePolicy` 未設定または `mirror` では現行どおり全曲 pull すること。
+- [x] playcounts history から最近再生 remote 曲を抽出するテストがあること。
+- [x] `PrefetchSyncTracks` が指定された remote 曲だけを取得すること。
+- [x] selective かつ空き容量閾値未満では、最終アクセスが最も古い同期取得音源をファイルと `library.json` から削除すること。
+- [x] mirror では空き容量閾値未満でも LRU 削除を行わないこと。
+- [x] renderer に `mirror` / `selective` の保存タブ向け選択肢と正規化があること。
+
 # Task: UX Sync Phase 5.15 - シームレスDL再生
 
 ## 概要

@@ -3,9 +3,12 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
+	"sort"
 	"strings"
 	"time"
 
+	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 )
 
@@ -66,6 +69,212 @@ func (a *App) DownloadSyncTrack(sourceDeviceID, sourceTrackID string) (SyncPullR
 		Downloaded:        1,
 		ImportedPaths:     []string{importedPath},
 	}, nil
+}
+
+type SyncTrackRef struct {
+	SourceDeviceID string `json:"sourceDeviceId"`
+	SourceTrackID  string `json:"sourceTrackId"`
+}
+
+func (a *App) PrefetchSyncTracks(refs []SyncTrackRef) (SyncPullResult, error) {
+	result := SyncPullResult{}
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		deviceID := strings.TrimSpace(ref.SourceDeviceID)
+		trackID := strings.TrimSpace(ref.SourceTrackID)
+		if deviceID == "" || trackID == "" {
+			continue
+		}
+		key := deviceID + "\x00" + trackID
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		pulled, err := a.DownloadSyncTrack(deviceID, trackID)
+		if result.RemoteDeviceID == "" {
+			result.RemoteDeviceID = pulled.RemoteDeviceID
+			result.RemoteDisplayName = pulled.RemoteDisplayName
+		}
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s:%s: %v", deviceID, trackID, err))
+			continue
+		}
+		result.Downloaded += pulled.Downloaded
+		result.Skipped += pulled.Skipped
+		result.ImportedPaths = append(result.ImportedPaths, pulled.ImportedPaths...)
+	}
+	return result, nil
+}
+
+func syncCachePolicy() string {
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		return "mirror"
+	}
+	policy := strings.TrimSpace(syncCatalogString(settings, syncCachePolicySettingsKey))
+	if policy == "selective" {
+		return "selective"
+	}
+	return "mirror"
+}
+
+func recentRemoteSyncTrackRefs(limit int) []SyncTrackRef {
+	candidates := recentRemoteSyncCandidates()
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].LastAccess.After(candidates[j].LastAccess)
+	})
+	if limit > 0 && len(candidates) > limit {
+		candidates = candidates[:limit]
+	}
+	refs := make([]SyncTrackRef, 0, len(candidates))
+	for _, candidate := range candidates {
+		if syncImportedTrackExists(candidate.SourceDeviceID, candidate.SourceTrackID) {
+			continue
+		}
+		refs = append(refs, SyncTrackRef{SourceDeviceID: candidate.SourceDeviceID, SourceTrackID: candidate.SourceTrackID})
+	}
+	return refs
+}
+
+func pruneSelectiveSyncCacheIfNeeded() (int, error) {
+	if syncCachePolicy() != "selective" {
+		return 0, nil
+	}
+	minBytes := syncMinFreeSpaceBytes()
+	if minBytes == 0 {
+		return 0, nil
+	}
+	freeBytes, err := syncAvailableFreeSpaceBytes(config.GetUserDataPath())
+	if err != nil {
+		return 0, err
+	}
+	if freeBytes >= minBytes {
+		return 0, nil
+	}
+	return pruneOldestSyncImportedTrack()
+}
+
+type syncRemoteCandidate struct {
+	SourceDeviceID string
+	SourceTrackID  string
+	Path           string
+	LastAccess     time.Time
+}
+
+func recentRemoteSyncCandidates() []syncRemoteCandidate {
+	catalog, err := store.Instance.LoadMap(syncRemoteCatalogStoreName)
+	if err != nil {
+		return nil
+	}
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		counts = map[string]interface{}{}
+	}
+	var candidates []syncRemoteCandidate
+	for peerID, raw := range catalog {
+		entry, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		identity := syncIdentityResponse{DeviceID: peerID, DisplayName: syncCatalogString(entry, "displayName")}
+		tracks, ok := entry["tracks"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, item := range tracks {
+			track, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			trackID := syncTrackID(track)
+			if trackID == "" {
+				continue
+			}
+			path := syncManagedTrackDestination(identity, track, syncRemoteTrackFileName(track))
+			lastAccess := syncPlayCountLastAccess(counts[path])
+			if lastAccess.IsZero() {
+				continue
+			}
+			candidates = append(candidates, syncRemoteCandidate{
+				SourceDeviceID: peerID,
+				SourceTrackID:  trackID,
+				Path:           path,
+				LastAccess:     lastAccess,
+			})
+		}
+	}
+	return candidates
+}
+
+func pruneOldestSyncImportedTrack() (int, error) {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return 0, err
+	}
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		counts = map[string]interface{}{}
+	}
+	oldestIndex := -1
+	oldestAccess := time.Time{}
+	oldestPath := ""
+	for i, item := range library {
+		song, ok := item.(map[string]interface{})
+		if !ok || strings.TrimSpace(syncTrackString(song, "syncSourceDeviceId")) == "" {
+			continue
+		}
+		path := syncTrackString(song, "path")
+		if path == "" {
+			continue
+		}
+		access := syncPlayCountLastAccess(counts[path])
+		if access.IsZero() {
+			access = time.Time{}
+		}
+		if oldestIndex < 0 || access.Before(oldestAccess) {
+			oldestIndex = i
+			oldestAccess = access
+			oldestPath = path
+		}
+	}
+	if oldestIndex < 0 {
+		return 0, nil
+	}
+	if strings.TrimSpace(oldestPath) != "" {
+		if err := os.Remove(oldestPath); err != nil && !os.IsNotExist(err) {
+			return 0, err
+		}
+	}
+	library = append(library[:oldestIndex], library[oldestIndex+1:]...)
+	if err := store.Instance.Save("library", library); err != nil {
+		return 0, err
+	}
+	return 1, nil
+}
+
+func syncPlayCountLastAccess(raw interface{}) time.Time {
+	entry := normalisePlayCountEntry(raw)
+	history, _ := entry["history"].([]interface{})
+	for i := len(history) - 1; i >= 0; i-- {
+		value, _ := history[i].(string)
+		if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value)); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+func syncRemoteTrackFileName(track map[string]interface{}) string {
+	if path := syncTrackString(track, "path"); path != "" {
+		return path[strings.LastIndex(path, "/")+1:]
+	}
+	trackID := syncTrackID(track)
+	ext := syncTrackString(track, "fileType")
+	if ext != "" && !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	return trackID + ext
 }
 
 func syncRemoteCatalogTrack(sourceDeviceID, sourceTrackID string) (map[string]interface{}, map[string]interface{}, error) {

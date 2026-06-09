@@ -2,6 +2,23 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.16 スマートキャッシュと容量ポリシー
+
+- **課題**:
+    - 接続時の自動 pull が全曲ミラー前提で、持ち運び端末向けの選択的キャッシュや容量不足時の整理ができなかった。
+- **実装内容**:
+    - `syncCachePolicy` を追加し、既定 `mirror` では現行どおり全曲 pull、`selective` では最近再生 remote 曲とキュー先読みだけを取得するようにした。
+    - `recentRemoteSyncTrackRefs` と `PrefetchSyncTracks` を追加し、playcounts history と remote catalog から先読み対象を決定できるようにした。
+    - selective かつ空き容量閾値未満では、最終アクセスが最も古い同期取得音源をファイルと `library.json` から削除する LRU 処理を追加した。
+    - renderer に cache policy の正規化・選択肢、キュー先読み refs 生成、`PrefetchSyncTracks` bridge 呼び出しを追加した。
+- **検証**:
+    - `go test ./server -run 'TestAutoSyncPairedDevicesSelective|TestAutoSyncPairedDevicesMirrorPolicy|TestRecentRemoteSyncTrackRefs|TestPrefetchSyncTracks|TestSelectiveCachePrunes|TestMirrorCachePolicyDoesNotPrune|TestDownloadSyncTrack' -count=1`
+    - `npm test --prefix src/renderer -- --run js/features/ux-sync-settings.test.ts js/features/playback-manager.test.ts`
+    - `npm run typecheck --prefix src/renderer`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-29a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-32a` に更新。
+
 ### UX Sync Phase 5.15 シームレスDL再生
 
 - **課題**:

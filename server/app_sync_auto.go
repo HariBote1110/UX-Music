@@ -41,8 +41,15 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 	if a != nil && a.ctx != nil {
 		ctx = a.ctx
 	}
-	if result, ok, err := syncFreeSpacePauseResult(); err != nil || ok {
-		return result, err
+	cachePolicy := syncCachePolicy()
+	if cachePolicy == "selective" {
+		if _, err := pruneSelectiveSyncCacheIfNeeded(); err != nil {
+			return SyncAutoResult{}, err
+		}
+	} else {
+		if result, ok, err := syncFreeSpacePauseResult(); err != nil || ok {
+			return result, err
+		}
 	}
 	devices, err := a.ListSyncDevices()
 	if err != nil {
@@ -89,16 +96,30 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 				Roles:       identity.Roles,
 				Paired:      true,
 			}, token)
-			pullResult, err := a.PullSyncLibraryAssets(device.BaseURL, 0)
-			if err != nil {
-				result.FailedDevices++
-				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", identity.DeviceID, err))
-				continue
-			}
-			result.PulledTracks += pullResult.Downloaded
-			result.SkippedTracks += pullResult.Skipped
-			if pullResult.Failed > 0 {
-				result.Errors = append(result.Errors, pullResult.Errors...)
+			if cachePolicy == "selective" {
+				pullResult, err := a.PrefetchSyncTracks(recentRemoteSyncTrackRefs(1))
+				if err != nil {
+					result.FailedDevices++
+					result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", identity.DeviceID, err))
+					continue
+				}
+				result.PulledTracks += pullResult.Downloaded
+				result.SkippedTracks += pullResult.Skipped
+				if pullResult.Failed > 0 {
+					result.Errors = append(result.Errors, pullResult.Errors...)
+				}
+			} else {
+				pullResult, err := a.PullSyncLibraryAssets(device.BaseURL, 0)
+				if err != nil {
+					result.FailedDevices++
+					result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", identity.DeviceID, err))
+					continue
+				}
+				result.PulledTracks += pullResult.Downloaded
+				result.SkippedTracks += pullResult.Skipped
+				if pullResult.Failed > 0 {
+					result.Errors = append(result.Errors, pullResult.Errors...)
+				}
 			}
 		}
 		artworkCount, err := syncMissingArtworkFromPeer(ctx, device.BaseURL, token, identity.DeviceID)

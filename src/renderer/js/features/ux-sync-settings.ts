@@ -111,6 +111,17 @@ export function formatSyncFreeSpaceSafetyStatus(minFreeSpaceGB: number): string 
         : '空き容量による同期停止は無効です。';
 }
 
+export function normaliseSyncCachePolicy(raw: unknown): 'mirror' | 'selective' {
+    return raw === 'selective' ? 'selective' : 'mirror';
+}
+
+export function syncCachePolicyOptions(): Array<{ value: 'mirror' | 'selective'; label: string }> {
+    return [
+        { value: 'mirror', label: '全曲ミラー' },
+        { value: 'selective', label: '最近再生＋キュー先読み' },
+    ];
+}
+
 export function syncSettingsEntryState(hasSyncBindings: boolean): SyncSettingsEntryState {
     return hasSyncBindings
         ? { visible: true, canOpen: true, status: '利用可能' }

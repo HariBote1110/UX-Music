@@ -32,6 +32,7 @@ const syncAuthTokensSettingsKey = "syncAuthTokens"
 const syncDeviceIDSettingsKey = "syncDeviceId"
 const syncKnownPeersSettingsKey = "syncKnownPeers"
 const syncMinFreeSpaceGBSettingsKey = "syncMinFreeSpaceGB"
+const syncCachePolicySettingsKey = "syncCachePolicy"
 const syncPairingTTL = 2 * time.Minute
 
 var syncPairingSessions = struct {
