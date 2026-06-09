@@ -277,6 +277,178 @@ func TestPushSyncLibraryAssetsUploadsLocalTrackToRemotePeer(t *testing.T) {
 	}
 }
 
+func TestPushSyncLibraryAssetsIncludesMetadataArtworkAndPlayCount(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey:   "dev_local_mac",
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "local.flac")
+	if err := os.WriteFile(audioPath, []byte("local-audio"), 0o644); err != nil {
+		t.Fatalf("seed audio: %v", err)
+	}
+	artworksDir := filepath.Join(config.GetUserDataPath(), "Artworks")
+	if err := os.MkdirAll(artworksDir, 0o755); err != nil {
+		t.Fatalf("create artworks dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(artworksDir, "local-cover.webp"), []byte("cover-bytes"), 0o644); err != nil {
+		t.Fatalf("seed artwork: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{
+			"id":          "local-track-1",
+			"path":        audioPath,
+			"title":       "Local Song",
+			"artist":      "Artist",
+			"album":       "Album",
+			"albumartist": "Album Artist",
+			"trackNumber": 7,
+			"discNumber":  1,
+			"genre":       "Rock",
+			"year":        2026,
+			"fileType":    ".flac",
+			"artwork":     map[string]interface{}{"full": "local-cover.webp"},
+		},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+	if err := store.Instance.Save("playcounts", map[string]interface{}{
+		audioPath: map[string]interface{}{
+			"count":   4,
+			"history": []interface{}{"2026-06-09T10:00:00Z"},
+		},
+	}); err != nil {
+		t.Fatalf("seed playcounts: %v", err)
+	}
+
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
+		case "/sync/library/import":
+			if err := r.ParseMultipartForm(32 << 20); err != nil {
+				t.Fatalf("parse multipart: %v", err)
+			}
+			var req syncLibraryImportRequest
+			if err := json.Unmarshal([]byte(r.FormValue("metadata")), &req); err != nil {
+				t.Fatalf("decode metadata: %v", err)
+			}
+			if req.Track["title"] != "Local Song" || req.Track["artist"] != "Artist" || req.Track["album"] != "Album" || req.Track["albumartist"] != "Album Artist" {
+				t.Fatalf("metadata was not preserved: %#v", req.Track)
+			}
+			if req.Track["trackNumber"] != float64(7) || req.Track["discNumber"] != float64(1) || req.Track["genre"] != "Rock" || req.Track["year"] != float64(2026) {
+				t.Fatalf("numeric metadata was not preserved: %#v", req.Track)
+			}
+			playCount, _ := req.Track["syncPlayCount"].(map[string]interface{})
+			if playCount["count"] != float64(4) {
+				t.Fatalf("expected playcount metadata, got %#v", req.Track)
+			}
+			artwork, _, err := r.FormFile("artwork")
+			if err != nil {
+				t.Fatalf("expected artwork part: %v", err)
+			}
+			defer artwork.Close()
+			artworkBytes, err := io.ReadAll(artwork)
+			if err != nil {
+				t.Fatalf("read artwork: %v", err)
+			}
+			if string(artworkBytes) != "cover-bytes" {
+				t.Fatalf("unexpected artwork bytes %q", string(artworkBytes))
+			}
+			writeJSON(w, syncLibraryImportResponse{Imported: true, Path: `C:\SyncLibrary\local.flac`})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	result, err := NewApp().PushSyncLibraryAssets(remote.URL, 0)
+	if err != nil {
+		t.Fatalf("PushSyncLibraryAssets: %v", err)
+	}
+	if result.Transferred != 1 || result.Failed != 0 {
+		t.Fatalf("unexpected push result: %#v", result)
+	}
+}
+
+func TestSyncLibraryImportAppliesUploadedArtworkAndPlayCount(t *testing.T) {
+	newTempSyncStore(t)
+	token := ensureSyncAuthTokenForDevice("dev_mac_mini")
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	metadata, err := writer.CreateFormField("metadata")
+	if err != nil {
+		t.Fatalf("create metadata field: %v", err)
+	}
+	if err := json.NewEncoder(metadata).Encode(syncLibraryImportRequest{
+		SourceDeviceID:    "dev_mac_mini",
+		SourceDisplayName: "YukinoMac-mini",
+		Track: map[string]interface{}{
+			"id":          "track-1",
+			"title":       "Song",
+			"artist":      "Artist",
+			"album":       "Album",
+			"albumartist": "Artist",
+			"fileType":    ".flac",
+			"syncPlayCount": map[string]interface{}{
+				"count":   3,
+				"history": []interface{}{"2026-06-09T10:00:00Z"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	artwork, err := writer.CreateFormFile("artwork", "cover.webp")
+	if err != nil {
+		t.Fatalf("create artwork part: %v", err)
+	}
+	if _, err := artwork.Write([]byte("cover-bytes")); err != nil {
+		t.Fatalf("write artwork: %v", err)
+	}
+	file, err := writer.CreateFormFile("file", "song.flac")
+	if err != nil {
+		t.Fatalf("create file part: %v", err)
+	}
+	if _, err := file.Write([]byte("uploaded-audio")); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/sync/library/import", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	rec := httptest.NewRecorder()
+	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		t.Fatalf("load library: %v", err)
+	}
+	imported := library[0].(map[string]interface{})
+	artworkMap, _ := imported["artwork"].(map[string]interface{})
+	if artworkMap["full"] == "" {
+		t.Fatalf("expected imported artwork reference, got %#v", imported)
+	}
+	importedPath, _ := imported["path"].(string)
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		t.Fatalf("load playcounts: %v", err)
+	}
+	entry, _ := counts[importedPath].(map[string]interface{})
+	if entry["count"] != float64(3) {
+		t.Fatalf("expected imported playcount under imported path, got %#v", counts)
+	}
+}
+
 func TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
