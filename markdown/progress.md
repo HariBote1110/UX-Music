@@ -18,6 +18,10 @@
 - **検証**:
     - `go test ./server -run 'TestRunSyncCLI|TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice' -count=1`
     - `go test ./server -run 'Test.*Sync.*' -count=1`
+    - Crescent (`HariBote@192.168.0.120`) に Go / MSYS2 / Wails CLI を構築し、`wails build -clean -nopackage` で `C:\Users\HariBote\UX-Music-sync-test\UX-Music\build\bin\UX-Music.exe` を作成。
+    - Crescent で `libportaudio.dll` を `build\bin` に同梱し、PATH なしで CLI が起動できることを確認。
+    - Crescent から `http://192.168.0.226:8765` の Mac mini へ `--sync-reset-test-data`、`--sync-pair`、`--sync-auto-once` を実行し、`checkedDevices=1` / `syncedDevices=1` を確認。
+    - Crescent から `--sync-pull-one` で Mac mini の音源を1曲取得し、その後 `--sync-auto-once` で `syncedArtwork=1` を確認。
 - **バージョン情報の更新**:
     - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-23a` に更新。
     - `markdown/requirement.md` を `0.1.9-Beta-26a` に更新。

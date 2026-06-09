@@ -6,7 +6,7 @@ HariBote（便宜上 Crescent）を検証用 Windows ノードとして使い、
 ## 完了条件
 - [x] `--sync-pair <baseURL>` が6桁コード確認フローを使ってペアリングし、同期トークンと既知 peer の到達URLを保存するテストがあること。
 - [x] `--sync-auto-once` が保存済みペア端末に対して `AutoSyncPairedDevices()` を一回実行し、SSH から JSON 結果を確認できるテストがあること。
-- [ ] Crescent 上で Windows バイナリをビルドし、Mac mini とのペアリングと自動同期ワンショットを実通信で検証できること。
+- [x] Crescent 上で Windows バイナリをビルドし、Mac mini とのペアリングと自動同期ワンショットを実通信で検証できること。
 
 # Task: UX Sync Phase 5.9 - 空き容量安全停止
 
