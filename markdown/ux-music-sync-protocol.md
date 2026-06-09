@@ -129,13 +129,12 @@ UI には `ux-sync-transfer-progress` event として次の情報を流す。
 - `freeSpaceBytes` と `minFreeSpaceBytes` は診断用の数値であり、古い client は未知フィールドとして無視してよい。
 
 ## mDNS TXT
-mDNS TXT は軽量な事前情報として扱い、最終判断は `/sync/identity` で行う。
+mDNS TXT は軽量な事前情報として扱い、最終判断は `/sync/identity` で行う。DNS TXT の1文字列は255バイト上限があるため、capability 一覧は載せず、到達確認時の `/sync/identity` response から取得する。
 
 - `deviceId`
 - `displayName`
 - `protocolVersion`
 - `schemaVersion`
-- `capabilities`
 - `roles`
 
 ## 注意

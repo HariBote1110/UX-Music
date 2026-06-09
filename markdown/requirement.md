@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-33a)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-33b)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -91,7 +91,7 @@ Windows 側で mDNS discovery が空になる環境でも、ペアリング済�
 - **再生回数の自動同期**: ローカル再生回数の加算時に `PlayEvent` を `sync-play-events` へ記録し、接続可能なペア済み端末へ定期的に `/sync/library/events` でpushする。受信側は新規イベントだけを既存 `playcounts` へ反映し、同じイベントの再送では二重加算しない。
 - **ジャケットの自動補完同期**: `/sync/assets/{trackId}/artwork` は同期トークン付きで保存済みジャケットを返す。`AutoSyncPairedDevices()` は接続可能なペア済み端末に対し、既に取り込み済みの同期曲で欠けているジャケットを自動取得し、`Artworks` と `Artworks/thumbnails`、`library.json` の `artwork.full` / `artwork.thumbnail` に反映する。
 - **空き容量安全停止と保存形式**: `settings.syncMinFreeSpaceGB` が正の値の場合、UX Sync は保存先ボリュームの空き容量が指定GB未満の時に自動同期、音源取得、音源受信を停止する。UX Sync 専用設定画面の `保存` タブから最低空き容量と pull 側の優先フォーマット（原本 / MP3 320kbps）を変更できる。
-- **プロトコルスキーマ**: `/sync/schema` は `protocolVersion`、`schemaVersion`、capability、endpoint、message、拡張規則を含む機械可読スキーマを返す。`/sync/identity` は client が送る `X-UX-Music-Sync-Protocol-Version` / `X-UX-Music-Sync-Schema-Version` / `X-UX-Music-Sync-Capabilities` を元に negotiation 結果を返し、非互換 major の peer は同期操作前に拒否する。仕様は `markdown/ux-music-sync-protocol.md` を参照する。
+- **プロトコルスキーマ**: `/sync/schema` は `protocolVersion`、`schemaVersion`、capability、endpoint、message、拡張規則を含む機械可読スキーマを返す。`/sync/identity` は client が送る `X-UX-Music-Sync-Protocol-Version` / `X-UX-Music-Sync-Schema-Version` / `X-UX-Music-Sync-Capabilities` を元に negotiation 結果を返し、非互換 major の peer は同期操作前に拒否する。mDNS TXT は軽量ヒントに限定し、capability は `/sync/identity` から取得する。仕様は `markdown/ux-music-sync-protocol.md` を参照する。
 
 ### [更新] YouTubeダウンロード
 YouTube URL から楽曲をライブラリに追加する際、字幕を同時取得して同期歌詞（LRC）を生成する機能。

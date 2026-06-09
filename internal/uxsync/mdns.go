@@ -53,7 +53,6 @@ func BuildMDNSText(info MDNSAdvertiseInfo) []string {
 		"displayName=" + strings.TrimSpace(info.DisplayName),
 		"protocolVersion=" + protocolVersion,
 		"schemaVersion=" + schemaVersion,
-		"capabilities=" + strings.Join(cleanRoles(info.Capabilities), ","),
 		"roles=" + strings.Join(cleanRoles(info.Roles), ","),
 	}
 }

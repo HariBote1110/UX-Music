@@ -1,3 +1,17 @@
+## 2026-06-10 — mDNS TXT 255バイト制限の緊急修正
+
+### 実施内容
+- mDNS TXT の `capabilities=` が full capability set で 255 バイトを超え、zeroconf の広告送信を失敗させる問題を修正した。
+- `BuildMDNSText` から `capabilities` 行を外し、TXT は `deviceId` / `displayName` / `protocolVersion` / `schemaVersion` / `roles` の軽量ヒントだけにした。
+- capability は従来どおり reachableBaseUrl probe 後の `/sync/identity` から取得する方針を `markdown/ux-music-sync-protocol.md` に明記した。
+- 不具合修正扱いとして `src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-30b`、`markdown/requirement.md` を `0.1.9-Beta-33b` に更新した。
+
+### 検証
+- `go test ./internal/uxsync ./server -run 'TestBuildMDNSText|TestSyncMDNSAdvertiseInfo_usesHostIdentity' -count=1`
+- `go test ./... -count=1`
+- `npm test --prefix src/renderer`
+- `npm run typecheck --prefix src/renderer`
+
 ## 2026-06-10 — UX Sync ポータブル MP3 キャッシュ
 
 ### 実施内容

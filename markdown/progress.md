@@ -2,6 +2,22 @@
 
 ## 2026年6月10日
 
+### mDNS TXT 255バイト制限の緊急修正
+
+- **課題**:
+    - mDNS TXT の `capabilities=` が full capability set で 255 バイトを超え、zeroconf の広告送信が失敗して UX Sync の相互発見が効かなくなっていた。
+- **実装内容**:
+    - `BuildMDNSText` から `capabilities` 行を外し、mDNS TXT を `deviceId` / `displayName` / `protocolVersion` / `schemaVersion` / `roles` の軽量ヒントに限定した。
+    - capability は reachableBaseUrl probe 後の `/sync/identity` response から取得する方針を protocol 文書へ明記した。
+- **検証**:
+    - `go test ./internal/uxsync ./server -run 'TestBuildMDNSText|TestSyncMDNSAdvertiseInfo_usesHostIdentity' -count=1`
+    - `go test ./... -count=1`
+    - `npm test --prefix src/renderer`
+    - `npm run typecheck --prefix src/renderer`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-30b` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-33b` に更新。
+
 ### UX Sync ポータブル MP3 キャッシュ
 
 - **課題**:
