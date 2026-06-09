@@ -214,6 +214,122 @@ func TestAutoSyncPairedDevicesDownloadsMissingArtworkForImportedTrack(t *testing
 	}
 }
 
+func TestAutoSyncPairedDevicesPullsOnlyMissingTracksFromLibraryHost(t *testing.T) {
+	newTempSyncStore(t)
+	dir := t.TempDir()
+	existingPath := filepath.Join(dir, "existing.flac")
+	if err := os.WriteFile(existingPath, []byte("already-here"), 0o644); err != nil {
+		t.Fatalf("seed existing file: %v", err)
+	}
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey:   "dev_portable",
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{
+			"id":                 "local-existing-id",
+			"path":               existingPath,
+			"title":              "Existing",
+			"syncSourceDeviceId": "dev_host",
+			"syncSourceTrackId":  "remote-existing",
+		},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+
+	assetRequests := map[string]int{}
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini", ProtocolVersion: syncProtocolVersion, Roles: []string{"LibraryHost"}})
+		case "/sync/library/snapshot":
+			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			writeJSON(w, syncLibrarySnapshotResponse{
+				Count: 2,
+				Tracks: []map[string]interface{}{
+					{"id": "remote-existing", "path": "/Music/existing.flac", "title": "Existing", "artist": "Artist", "album": "Album"},
+					{"id": "remote-new", "path": "/Music/new.flac", "title": "New", "artist": "Artist", "album": "Album"},
+				},
+			})
+		case "/sync/assets/remote-new/file":
+			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			assetRequests[r.URL.Path]++
+			w.Header().Set("Content-Disposition", `attachment; filename="new.flac"`)
+			_, _ = w.Write([]byte("new-audio"))
+		case "/sync/assets/remote-existing/file":
+			assetRequests[r.URL.Path]++
+			http.Error(w, "existing track should have been skipped", http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey:   "dev_portable",
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: remote.URL, Roles: []string{"LibraryHost"}}},
+	}); err != nil {
+		t.Fatalf("seed known peer: %v", err)
+	}
+
+	result, err := NewApp().AutoSyncPairedDevices()
+	if err != nil {
+		t.Fatalf("AutoSyncPairedDevices: %v", err)
+	}
+	if result.PulledTracks != 1 || result.SkippedTracks != 1 || result.FailedDevices != 0 {
+		t.Fatalf("unexpected auto pull counters: %#v", result)
+	}
+	if assetRequests["/sync/assets/remote-existing/file"] != 0 || assetRequests["/sync/assets/remote-new/file"] != 1 {
+		t.Fatalf("unexpected asset requests: %#v", assetRequests)
+	}
+}
+
+func TestAutoSyncPairedDevicesDoesNotPullTracksFromNonLibraryHost(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey:   "dev_portable",
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_peer": "tok_peer"},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	snapshotRequests := 0
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{DeviceID: "dev_peer", DisplayName: "Controller", ProtocolVersion: syncProtocolVersion, Roles: []string{"Controller"}})
+		case "/sync/library/snapshot":
+			snapshotRequests++
+			http.Error(w, "non LibraryHost should not be pulled", http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey:   "dev_portable",
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_peer": "tok_peer"},
+		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_peer", DisplayName: "Controller", BaseURL: remote.URL, Roles: []string{"Controller"}}},
+	}); err != nil {
+		t.Fatalf("seed known peer: %v", err)
+	}
+
+	result, err := NewApp().AutoSyncPairedDevices()
+	if err != nil {
+		t.Fatalf("AutoSyncPairedDevices: %v", err)
+	}
+	if result.PulledTracks != 0 || result.SkippedTracks != 0 || snapshotRequests != 0 {
+		t.Fatalf("expected no auto pull from non LibraryHost, result=%#v snapshots=%d", result, snapshotRequests)
+	}
+}
+
 func TestAutoSyncPairedDevicesStopsWhenFreeSpaceIsBelowSafetyLimit(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{

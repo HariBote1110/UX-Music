@@ -1,3 +1,13 @@
+# Task: UX Sync Phase 5.11 - 自動音源差分同期と接続トースト
+
+## 概要
+UX Sync をさらに「接続できたら自然に同期される」挙動へ近づける。Walkman 転送で使っている未転送判定の考え方を流用し、Library Host から音源本体を自動取得する際も、既に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込み済みかつ実ファイルが存在する曲は転送しない。また、自動同期が走ったことを右下トーストで分かるようにする。
+
+## 完了条件
+- [ ] `AutoSyncPairedDevices()` が `LibraryHost` のペア済み端末から未取得曲だけを pull し、既存曲は skip として数えるテストがあること。
+- [ ] `LibraryHost` ではない peer からは音源本体の自動 pull を行わないこと。
+- [ ] renderer が `ux-sync-auto-result` を受け取り、接続できたため同期したこと、取得数、既存数、再生回数、ジャケット数を右下トーストに表示できること。
+
 # Task: UX Sync Phase 5.10 - Crescent向けSSH自動同期CLI
 
 ## 概要

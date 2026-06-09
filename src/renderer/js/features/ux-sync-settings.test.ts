@@ -4,10 +4,12 @@ import {
     formatSyncFreeSpaceSafetyStatus,
     formatSyncPullResultSummary,
     formatSyncPushResultSummary,
+    formatSyncAutoResultNotification,
     formatSyncTransferProgressSummary,
     mergeSyncPeersWithDevices,
     normaliseSyncDevices,
     normaliseSyncMinFreeSpaceGB,
+    normaliseSyncAutoResult,
     normaliseSyncPairingConfirm,
     normaliseSyncPullResult,
     normaliseSyncTransferProgress,
@@ -20,6 +22,58 @@ import {
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
 } from './ux-sync-settings.js';
+
+describe('normaliseSyncAutoResult', () => {
+    it('keeps automatic sync counters from the backend', () => {
+        expect(normaliseSyncAutoResult({
+            checkedDevices: 1,
+            syncedDevices: 1,
+            failedDevices: 0,
+            pushedPlayEvents: 3,
+            syncedArtwork: 1,
+            pulledTracks: 2,
+            skippedTracks: 5,
+            paused: false,
+        })).toEqual({
+            checkedDevices: 1,
+            syncedDevices: 1,
+            failedDevices: 0,
+            pushedPlayEvents: 3,
+            syncedArtwork: 1,
+            pulledTracks: 2,
+            skippedTracks: 5,
+            paused: false,
+            pauseReason: '',
+        });
+    });
+});
+
+describe('formatSyncAutoResultNotification', () => {
+    it('explains that sync ran because a paired device was reachable', () => {
+        const result = normaliseSyncAutoResult({
+            checkedDevices: 1,
+            syncedDevices: 1,
+            failedDevices: 0,
+            pushedPlayEvents: 3,
+            syncedArtwork: 1,
+            pulledTracks: 2,
+            skippedTracks: 5,
+            paused: false,
+        });
+
+        expect(result && formatSyncAutoResultNotification(result)).toBe('UX Sync: 接続できたため同期しました（取得 2曲 / 既存 5曲 / 再生回数 3件 / ジャケット 1件）');
+    });
+
+    it('does not show a toast when no paired device was checked', () => {
+        const result = normaliseSyncAutoResult({ checkedDevices: 0, syncedDevices: 0 });
+        expect(result && formatSyncAutoResultNotification(result)).toBe('');
+    });
+
+    it('shows a pause reason when free space safety stops sync', () => {
+        const result = normaliseSyncAutoResult({ paused: true, pauseReason: 'free-space-below-limit' });
+        expect(result && formatSyncAutoResultNotification(result)).toBe('UX Sync: 空き容量が少ないため同期を停止しました。');
+    });
+});
 
 describe('normaliseSyncMinFreeSpaceGB', () => {
     it('keeps a positive GB threshold with one decimal place', () => {
