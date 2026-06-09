@@ -25,6 +25,8 @@ import {
     normaliseSyncPreferredFormat,
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
+    manualSyncPeerBaseUrl,
+    startManualSyncPairing,
 } from './ux-sync-settings.js';
 
 describe('normaliseSyncAutoResult', () => {
@@ -295,6 +297,63 @@ describe('syncPeerPairingBaseUrl', () => {
             hosts: [],
             roles: [],
         })).toBe('');
+    });
+});
+
+describe('manualSyncPeerBaseUrl', () => {
+    it('uses the default UX Sync port for a bare IPv4 address', () => {
+        expect(manualSyncPeerBaseUrl('192.168.0.143')).toBe('http://192.168.0.143:8765');
+    });
+
+    it('uses the supplied port for a bare host', () => {
+        expect(manualSyncPeerBaseUrl('192.168.0.143', '9000')).toBe('http://192.168.0.143:9000');
+    });
+
+    it('preserves host:port input and ignores the separate port field', () => {
+        expect(manualSyncPeerBaseUrl('192.168.0.143:8765', '9000')).toBe('http://192.168.0.143:8765');
+    });
+
+    it('preserves full URLs and removes trailing slashes', () => {
+        expect(manualSyncPeerBaseUrl('http://host:8765/')).toBe('http://host:8765');
+    });
+
+    it('returns null for empty or unsafe input', () => {
+        expect(manualSyncPeerBaseUrl('')).toBeNull();
+        expect(manualSyncPeerBaseUrl('   ')).toBeNull();
+        expect(manualSyncPeerBaseUrl('host\nname')).toBeNull();
+    });
+});
+
+describe('startManualSyncPairing', () => {
+    it('starts pairing with the base URL built from manual input', async () => {
+        const calls: string[] = [];
+        const result = await startManualSyncPairing('192.168.0.143', '', async baseUrl => {
+            calls.push(baseUrl);
+            return {
+                baseUrl,
+                sessionId: 'sess_manual',
+                localDeviceId: 'dev_local',
+                remoteDeviceId: 'dev_remote',
+                remoteDisplayName: 'Manual peer',
+                code: '123456',
+                expiresAt: '2026-06-10T00:00:00Z',
+            };
+        });
+
+        expect(calls).toEqual(['http://192.168.0.143:8765']);
+        expect(result?.peer.reachableBaseUrl).toBe('http://192.168.0.143:8765');
+        expect(result?.started?.code).toBe('123456');
+    });
+
+    it('does not call pairing when manual input is empty', async () => {
+        let called = false;
+        const result = await startManualSyncPairing('', '', async () => {
+            called = true;
+            throw new Error('should not be called');
+        });
+
+        expect(result).toBeNull();
+        expect(called).toBe(false);
     });
 });
 
