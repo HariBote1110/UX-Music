@@ -5,7 +5,7 @@ UX Sync の push 転送で FLAC などの音源本体だけが届き、曲メタ
 
 ## 完了条件
 - [x] push 転送の multipart metadata にタイトル、アーティスト、アルバム、アルバムアーティスト、トラック番号などの表示メタデータが含まれるテストがあること。
-- [x] push 転送時に `Artworks` 管理済みジャケット、または音源埋め込みジャケットを artwork part として同梱し、受信側 `library.json` に `artwork.full` が保存されるテストがあること。
+- [x] push 転送時に `Artworks` 管理済みジャケット、または音源埋め込みジャケットを artwork part として同梱し、受信側 `library.json` に `artwork.full` / `artwork.thumbnail` が保存されるテストがあること。
 - [x] push 転送時にローカル再生回数を metadata に同梱し、受信側 `playcounts` に取り込み先パスで反映するテストがあること。
 
 # Task: UX Sync Phase 5.11 - 自動音源差分同期と接続トースト

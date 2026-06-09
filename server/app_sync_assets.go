@@ -1068,31 +1068,7 @@ func downloadSyncArtworkAsset(ctx context.Context, baseURL, token, deviceID, tra
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("sync artwork request failed: %s", resp.Status)
 	}
-	fileName := syncResponseFileName(resp, map[string]interface{}{"id": trackID})
-	destPath := syncArtworkDestination(deviceID, trackID, fileName)
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-		return nil, err
-	}
-	tmpPath := destPath + ".tmp"
-	out, err := os.Create(tmpPath)
-	if err != nil {
-		return nil, err
-	}
-	_, copyErr := io.Copy(out, resp.Body)
-	closeErr := out.Close()
-	if copyErr != nil {
-		_ = os.Remove(tmpPath)
-		return nil, copyErr
-	}
-	if closeErr != nil {
-		_ = os.Remove(tmpPath)
-		return nil, closeErr
-	}
-	if err := os.Rename(tmpPath, destPath); err != nil {
-		_ = os.Remove(tmpPath)
-		return nil, err
-	}
-	return map[string]string{"full": filepath.Base(destPath)}, nil
+	return saveSyncArtworkAsset(deviceID, trackID, syncResponseFileName(resp, map[string]interface{}{"id": trackID}), resp.Body)
 }
 
 func importSyncUploadedArtwork(payload syncLibraryImportRequest, header *multipart.FileHeader, artwork io.Reader) (map[string]string, error) {
@@ -1104,30 +1080,29 @@ func importSyncUploadedArtwork(payload syncLibraryImportRequest, header *multipa
 	if header != nil && strings.TrimSpace(header.Filename) != "" {
 		fileName = filepath.Base(header.Filename)
 	}
-	destPath := syncArtworkDestination(payload.SourceDeviceID, trackID, fileName)
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-		return nil, err
-	}
-	tmpPath := destPath + ".tmp"
-	out, err := os.Create(tmpPath)
+	return saveSyncArtworkAsset(payload.SourceDeviceID, trackID, fileName, artwork)
+}
+
+func saveSyncArtworkAsset(deviceID, trackID, fileName string, artwork io.Reader) (map[string]string, error) {
+	destPath := syncArtworkDestination(deviceID, trackID, fileName)
+	thumbnailPath := syncArtworkThumbnailDestination(destPath)
+	data, err := io.ReadAll(artwork)
 	if err != nil {
 		return nil, err
 	}
-	_, copyErr := io.Copy(out, artwork)
-	closeErr := out.Close()
-	if copyErr != nil {
-		_ = os.Remove(tmpPath)
-		return nil, copyErr
+	if len(data) == 0 {
+		return nil, nil
 	}
-	if closeErr != nil {
-		_ = os.Remove(tmpPath)
-		return nil, closeErr
-	}
-	if err := os.Rename(tmpPath, destPath); err != nil {
-		_ = os.Remove(tmpPath)
+	if err := writeSyncArtworkFile(destPath, data); err != nil {
 		return nil, err
 	}
-	return map[string]string{"full": filepath.Base(destPath)}, nil
+	if err := writeSyncArtworkFile(thumbnailPath, data); err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		"full":      filepath.Base(destPath),
+		"thumbnail": filepath.Base(thumbnailPath),
+	}, nil
 }
 
 func syncArtworkDestination(deviceID, trackID, fileName string) string {
@@ -1139,6 +1114,32 @@ func syncArtworkDestination(deviceID, trackID, fileName string) string {
 	}
 	name := sanitiseFileName(firstNonEmpty(deviceID, "device") + "-" + firstNonEmpty(trackID, "track") + ext)
 	return filepath.Join(config.GetUserDataPath(), "Artworks", name)
+}
+
+func syncArtworkThumbnailDestination(fullPath string) string {
+	base := filepath.Base(fullPath)
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	if ext == "" {
+		ext = ".webp"
+	}
+	return filepath.Join(filepath.Dir(fullPath), "thumbnails", stem+"_thumb"+ext)
+}
+
+func writeSyncArtworkFile(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
 }
 
 func parseSyncAssetPath(rawPath string) (string, string) {

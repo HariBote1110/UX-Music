@@ -77,7 +77,7 @@ server は identity 応答に `negotiation` を含める。
 
 - `/sync/library/snapshot` はローカル `artwork` を直接返さず、取得可能な場合だけ `syncArtwork` 参照を返す。
 - `/sync/assets/{trackId}/artwork` は、ライブラリ登録済み曲の保存済みジャケットを返す。
-- `/sync/library/import` の multipart payload は任意の `artwork` part を受け取れる。受信側は `Artworks` 配下へ保存し、`library.json` には安全なファイル名だけを `artwork.full` として保存する。
+- `/sync/library/import` の multipart payload は任意の `artwork` part を受け取れる。受信側は `Artworks` と `Artworks/thumbnails` 配下へ保存し、`library.json` には安全なファイル名だけを `artwork.full` / `artwork.thumbnail` として保存する。
 
 ## 転送オプション
 push 転送のローカル呼び出しは `encodingMode` を指定できる。
@@ -92,7 +92,7 @@ push 転送のローカル呼び出しは `encodingMode` を指定できる。
 
 送信側に再生回数がある場合、`track.syncPlayCount` に `count` と任意の `history` を入れる。受信側は音源を保存した実パスをキーに `playcounts` へ反映し、`syncPlayCount` 自体は `library.json` へ残さない。
 
-ジャケットは可能な限り multipart `artwork` part として同梱する。送信側の `Artworks` 管理済みファイルを優先し、受信側は `Artworks` 配下へ保存して `track.artwork.full` を更新する。受信側は payload のメタデータが不足している場合、保存済み音源を再スキャンしてタグと埋め込みジャケットを補完してから `library.json` へ反映する。
+ジャケットは可能な限り multipart `artwork` part として同梱する。送信側の `Artworks` 管理済みファイルを優先し、受信側は `Artworks` と `Artworks/thumbnails` 配下へ保存して `track.artwork.full` / `track.artwork.thumbnail` を更新する。受信側は payload のメタデータが不足している場合、保存済み音源を再スキャンしてタグと埋め込みジャケットを補完してから `library.json` へ反映する。
 
 ## 転送進捗
 UI には `ux-sync-transfer-progress` event として次の情報を流す。
