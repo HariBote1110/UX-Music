@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -163,5 +164,82 @@ func TestRefreshSyncRemoteCatalogStoresSnapshotAndPreservesExistingOnFailure(t *
 	tracks, _ := stale["tracks"].([]interface{})
 	if len(tracks) != 1 {
 		t.Fatalf("expected failed peer catalog to be preserved, got %#v", catalog)
+	}
+}
+
+func TestDownloadSyncTrackImportsRemoteCatalogTrack(t *testing.T) {
+	newTempSyncStore(t)
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/assets/remote-track-1/file":
+			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Disposition", `attachment; filename="remote.flac"`)
+			_, _ = w.Write([]byte("remote-audio"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey:   "dev_portable",
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: remote.URL, Roles: []string{"LibraryHost"}}},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	if err := store.Instance.Save(syncRemoteCatalogStoreName, map[string]interface{}{
+		"dev_host": map[string]interface{}{
+			"displayName": "Mac mini",
+			"baseUrl":     remote.URL,
+			"tracks": []interface{}{
+				map[string]interface{}{"id": "remote-track-1", "title": "Remote", "artist": "Artist", "album": "Album", "duration": 180.0},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed remote catalog: %v", err)
+	}
+
+	result, err := NewApp().DownloadSyncTrack("dev_host", "remote-track-1")
+	if err != nil {
+		t.Fatalf("DownloadSyncTrack: %v", err)
+	}
+	if result.Downloaded != 1 || len(result.ImportedPaths) != 1 {
+		t.Fatalf("expected one downloaded path, got %#v", result)
+	}
+	if _, err := os.Stat(result.ImportedPaths[0]); err != nil {
+		t.Fatalf("expected downloaded file: %v", err)
+	}
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		t.Fatalf("load library: %v", err)
+	}
+	if len(library) != 1 {
+		t.Fatalf("expected imported library entry, got %#v", library)
+	}
+	imported, _ := library[0].(map[string]interface{})
+	if imported["syncSourceDeviceId"] != "dev_host" || imported["syncSourceTrackId"] != "remote-track-1" {
+		t.Fatalf("expected imported sync source metadata, got %#v", imported)
+	}
+}
+
+func TestDownloadSyncTrackFailsWithoutReachablePeerOrToken(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save(syncRemoteCatalogStoreName, map[string]interface{}{
+		"dev_host": map[string]interface{}{
+			"displayName": "Mac mini",
+			"baseUrl":     "http://127.0.0.1:1",
+			"tracks": []interface{}{
+				map[string]interface{}{"id": "remote-track-1", "title": "Remote"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("seed remote catalog: %v", err)
+	}
+
+	if _, err := NewApp().DownloadSyncTrack("dev_host", "remote-track-1"); err == nil {
+		t.Fatal("expected missing token or peer to fail")
 	}
 }

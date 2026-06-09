@@ -1,6 +1,27 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { buildSkipEvent } from './playback-skip.js';
 import { resolveLocalPlaybackGain } from './playback-gain.js';
+
+beforeAll(() => {
+    globalThis.window = {
+        electronAPI: {
+            CHANNELS: { SEND: {}, ON: {} },
+            send: () => {},
+            invoke: () => Promise.resolve(null),
+            on: () => {},
+        },
+        addEventListener: () => {},
+        removeEventListener: () => {},
+    } as any;
+    globalThis.Audio = class {
+        pause() {}
+        play() { return Promise.resolve(); }
+    } as any;
+    globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => {
+        callback(0);
+        return 0;
+    };
+});
 
 describe('resolveLocalPlaybackGain', () => {
     it('computes Wails playback gain even when forcePlay is enabled', () => {
@@ -47,5 +68,38 @@ describe('buildSkipEvent', () => {
             currentTime: 12.5,
             duration: 200,
         })).toEqual({ song, currentTime: 12.5 });
+    });
+});
+
+describe('resolveRemotePlaybackDownload', () => {
+    it('downloads a remote song and resolves the matching local song', async () => {
+        const { resolveRemotePlaybackDownload } = await import('./playback-manager.js');
+        const remoteSong = { id: 'remote-1', syncAvailability: 'remote', syncSourceDeviceId: 'dev_host', syncSourceTrackId: 'track-1' };
+        const calls: string[] = [];
+        const resolved = await resolveRemotePlaybackDownload(remoteSong, {
+            downloadSyncTrack: async (deviceId, trackId) => {
+                calls.push(`${deviceId}:${trackId}`);
+                return { importedPaths: ['/Music/local.flac'] };
+            },
+            refreshLibrary: async () => {},
+            findLocalSong: () => ({ id: 'local-1', syncAvailability: 'local', path: '/Music/local.flac' }),
+        });
+
+        expect(calls).toEqual(['dev_host:track-1']);
+        expect(resolved).toEqual({ id: 'local-1', syncAvailability: 'local', path: '/Music/local.flac' });
+    });
+
+    it('returns null when the remote download fails', async () => {
+        const { resolveRemotePlaybackDownload } = await import('./playback-manager.js');
+        const resolved = await resolveRemotePlaybackDownload({ syncAvailability: 'remote', syncSourceDeviceId: 'dev_host', syncSourceTrackId: 'track-1' }, {
+            downloadSyncTrack: async () => { throw new Error('peer offline'); },
+            refreshLibrary: async () => {},
+            findLocalSong: () => ({ path: '/Music/local.flac' }),
+            notifyError: (message) => {
+                expect(message).toContain('peer offline');
+            },
+        });
+
+        expect(resolved).toBeNull();
     });
 });
