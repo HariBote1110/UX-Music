@@ -2,6 +2,22 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.12 push転送メタデータ・ジャケット・再生回数
+
+- **課題**:
+    - FLAC を push 転送した際、音源本体だけが届き、表示メタデータ、ジャケット、再生回数が転送先に反映されないケースがあった。
+- **実装内容**:
+    - push 転送の multipart `metadata.track` に、既存ライブラリ上の表示メタデータを保持するテストを追加。
+    - push 転送時、ローカル `playcounts` の対象曲エントリを `syncPlayCount` として metadata に同梱するようにした。
+    - `/sync/library/import` 受信側で `syncPlayCount` を取り込み先パスの `playcounts` に反映し、`library.json` には転送用フィールドを残さないようにした。
+    - 受信側で保存済み音源を再スキャンし、payload が薄い場合もタグ情報と埋め込みジャケットを補完できるようにした。
+    - artwork part が届いた場合は従来通り `Artworks` 配下へ保存し、`library.json` の `artwork.full` に反映する。
+- **検証**:
+    - `go test ./server -run 'TestPushSyncLibraryAssetsIncludesMetadataArtworkAndPlayCount|TestSyncLibraryImportAppliesUploadedArtworkAndPlayCount|TestPushSyncLibraryAssetsUploadsLocalTrackToRemotePeer|TestSyncLibraryImportRequiresTokenAndImportsUploadedTrack' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-25a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-28a` に更新。
+
 ### UX Sync Phase 5.11 自動音源差分同期と接続トースト
 
 - **要望対応**:

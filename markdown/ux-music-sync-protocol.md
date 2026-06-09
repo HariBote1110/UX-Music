@@ -87,6 +87,13 @@ push 転送のローカル呼び出しは `encodingMode` を指定できる。
 
 `mp3_320` は保存容量と転送時間を優先する portable client 向けのモードである。変換失敗時はその曲を failed として扱い、勝手に原本へフォールバックしない。
 
+## push転送メタデータ
+`POST /sync/library/import` の multipart `metadata` は、表示に必要な曲メタデータを `track` に含める。`title`、`artist`、`album`、`albumartist`、`trackNumber`、`discNumber`、`genre`、`year` などの既知フィールドは未知フィールドと同じく保持する。
+
+送信側に再生回数がある場合、`track.syncPlayCount` に `count` と任意の `history` を入れる。受信側は音源を保存した実パスをキーに `playcounts` へ反映し、`syncPlayCount` 自体は `library.json` へ残さない。
+
+ジャケットは可能な限り multipart `artwork` part として同梱する。送信側の `Artworks` 管理済みファイルを優先し、受信側は `Artworks` 配下へ保存して `track.artwork.full` を更新する。受信側は payload のメタデータが不足している場合、保存済み音源を再スキャンしてタグと埋め込みジャケットを補完してから `library.json` へ反映する。
+
 ## 転送進捗
 UI には `ux-sync-transfer-progress` event として次の情報を流す。
 

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"ux-music-sidecar/internal/config"
+	"ux-music-sidecar/internal/scanner"
 	"ux-music-sidecar/internal/store"
 
 	"github.com/google/uuid"
@@ -538,6 +539,7 @@ func importSyncUploadedTrack(payload syncLibraryImportRequest, header *multipart
 		_ = os.Remove(tmpPath)
 		return "", err
 	}
+	enrichSyncImportedTrackMetadata(payload.Track, destPath)
 	if artwork != nil {
 		savedArtwork, err := importSyncUploadedArtwork(payload, artworkHeader, artwork)
 		if err != nil {
@@ -550,7 +552,74 @@ func importSyncUploadedTrack(payload syncLibraryImportRequest, header *multipart
 	if err := upsertSyncImportedTrack(identity, payload.Track, destPath); err != nil {
 		return "", err
 	}
+	if err := applySyncImportedPlayCount(payload.Track, destPath); err != nil {
+		return "", err
+	}
 	return destPath, nil
+}
+
+func enrichSyncImportedTrackMetadata(track map[string]interface{}, destPath string) {
+	if track == nil || strings.TrimSpace(destPath) == "" {
+		return
+	}
+	artworksDir := filepath.Join(config.GetUserDataPath(), "Artworks")
+	result := scanner.ScanLibrary([]string{destPath}, artworksDir)
+	if len(result.Songs) == 0 {
+		return
+	}
+	scanned := result.Songs[0]
+	fillMissingSyncTrackValue(track, "title", scanned.Title)
+	fillMissingSyncTrackValue(track, "artist", scanned.Artist)
+	fillMissingSyncTrackValue(track, "album", scanned.Album)
+	fillMissingSyncTrackValue(track, "albumartist", scanned.AlbumArtist)
+	fillMissingSyncTrackValue(track, "genre", scanned.Genre)
+	fillMissingSyncTrackValue(track, "year", scanned.Year)
+	fillMissingSyncTrackValue(track, "trackNumber", scanned.TrackNumber)
+	fillMissingSyncTrackValue(track, "discNumber", scanned.DiscNumber)
+	fillMissingSyncTrackValue(track, "duration", scanned.Duration)
+	fillMissingSyncTrackValue(track, "sampleRate", scanned.SampleRate)
+	if len(sanitiseSyncArtworkValue(track["artwork"])) == 0 && scanned.Artwork != nil {
+		track["artwork"] = scanned.Artwork
+	}
+}
+
+func fillMissingSyncTrackValue(track map[string]interface{}, key string, value interface{}) {
+	if track == nil || value == nil {
+		return
+	}
+	if existing, ok := track[key]; ok {
+		switch v := existing.(type) {
+		case string:
+			if strings.TrimSpace(v) != "" {
+				return
+			}
+		case float64:
+			if v != 0 {
+				return
+			}
+		case int:
+			if v != 0 {
+				return
+			}
+		default:
+			return
+		}
+	}
+	switch v := value.(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return
+		}
+	case int:
+		if v == 0 {
+			return
+		}
+	case float64:
+		if v == 0 {
+			return
+		}
+	}
+	track[key] = value
 }
 
 func (a *App) uploadSyncTrackAsset(ctx context.Context, baseURL, token string, source syncIdentityResponse, track map[string]interface{}, options SyncTransferOptions, current, total int) (syncLibraryImportResponse, error) {
@@ -619,10 +688,12 @@ func (a *App) uploadSyncTrackAsset(ctx context.Context, baseURL, token string, s
 			writeErr = err
 			return
 		}
+		transferTrack := sanitiseSyncTrackForTransfer(prepared.track)
+		attachSyncPlayCountForTransfer(transferTrack, track)
 		if err := json.NewEncoder(metadata).Encode(syncLibraryImportRequest{
 			SourceDeviceID:    source.DeviceID,
 			SourceDisplayName: syncIdentityDisplayName(source),
-			Track:             sanitiseSyncTrackForTransfer(prepared.track),
+			Track:             transferTrack,
 		}); err != nil {
 			writeErr = err
 			return
@@ -901,7 +972,7 @@ func upsertSyncImportedTrack(identity syncIdentityResponse, track map[string]int
 	now := time.Now().UTC().Format(time.RFC3339)
 	next := make(map[string]interface{}, len(track)+6)
 	for key, value := range track {
-		if key == "artwork" {
+		if key == "artwork" || key == "syncPlayCount" {
 			continue
 		}
 		next[key] = value
@@ -1226,6 +1297,62 @@ func sanitiseSyncTrackForTransfer(track map[string]interface{}) map[string]inter
 		clean[key] = value
 	}
 	return clean
+}
+
+func attachSyncPlayCountForTransfer(target, source map[string]interface{}) {
+	if target == nil || source == nil {
+		return
+	}
+	path := syncTrackString(source, "path")
+	if path == "" {
+		return
+	}
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		return
+	}
+	entry := normaliseSyncPlayCountForTransfer(counts[path])
+	if len(entry) == 0 {
+		return
+	}
+	target["syncPlayCount"] = entry
+}
+
+func normaliseSyncPlayCountForTransfer(raw interface{}) map[string]interface{} {
+	entry, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	count := syncSettingFloat64(entry["count"])
+	if count <= 0 {
+		return nil
+	}
+	clean := map[string]interface{}{"count": count}
+	if history, ok := entry["history"].([]interface{}); ok && len(history) > 0 {
+		clean["history"] = append([]interface{}{}, history...)
+	}
+	return clean
+}
+
+func applySyncImportedPlayCount(track map[string]interface{}, destPath string) error {
+	if strings.TrimSpace(destPath) == "" {
+		return nil
+	}
+	playCount := normaliseSyncPlayCountForTransfer(track["syncPlayCount"])
+	if len(playCount) == 0 {
+		return nil
+	}
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		counts = map[string]interface{}{}
+	}
+	entry := normalisePlayCountEntry(counts[destPath])
+	entry["count"] = playCount["count"]
+	if history, ok := playCount["history"].([]interface{}); ok {
+		entry["history"] = trimPlayCountHistory(history)
+	}
+	counts[destPath] = entry
+	return store.Instance.Save("playcounts", counts)
 }
 
 func loadSyncAuthTokenForDevice(deviceID string) (string, error) {
