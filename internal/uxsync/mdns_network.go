@@ -58,7 +58,11 @@ func DiscoverMDNS(ctx context.Context, timeout time.Duration) ([]MDNSPeer, error
 	peers := map[string]MDNSPeer{}
 	for {
 		select {
-		case entry := <-entries:
+		case entry, ok := <-entries:
+			if !ok {
+				entries = nil
+				continue
+			}
 			if entry == nil {
 				continue
 			}

@@ -870,10 +870,11 @@ func saveSyncAuthTokenForDevice(deviceID, token string) error {
 
 func randomBytes(size int) []byte {
 	b := make([]byte, size)
-	if _, err := rand.Read(b); err == nil {
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("crypto/rand is unavailable: %v", err))
+	} else {
 		return b
 	}
-	return []byte(time.Now().UTC().Format(time.RFC3339Nano))
 }
 
 func randomHex(size int) string {

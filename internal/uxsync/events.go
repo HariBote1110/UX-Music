@@ -2,6 +2,7 @@ package uxsync
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -136,23 +137,5 @@ func eventHistoryTime(event PlayEvent) time.Time {
 }
 
 func formatInt64(value int64) string {
-	if value == 0 {
-		return "0"
-	}
-	negative := value < 0
-	if negative {
-		value = -value
-	}
-	var digits [20]byte
-	i := len(digits)
-	for value > 0 {
-		i--
-		digits[i] = byte('0' + value%10)
-		value /= 10
-	}
-	if negative {
-		i--
-		digits[i] = '-'
-	}
-	return string(digits[i:])
+	return strconv.FormatInt(value, 10)
 }

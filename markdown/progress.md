@@ -2,6 +2,26 @@
 
 ## 2026年6月9日
 
+### Gemini Code Assist レビュー指摘の実害修正
+
+- **課題**:
+    - `randomBytes` が `crypto/rand.Read` 失敗時に時刻文字列へフォールバックし、ペアリング secret の推測可能性があった。
+    - `DiscoverMDNS` が entries channel close を検知せず、closed channel から nil を受け続ける可能性があった。
+    - `/safe-artwork/` handler が escaped path を `ResolveArtworkPath` へ渡し、空白入りファイル名の解決を壊し得た。
+    - `formatInt64` の自作変換が `math.MinInt64` でオーバーフローしていた。
+- **実装内容**:
+    - `crypto/rand` 失敗時のフォールバックを廃止し、panic で停止するようにした。
+    - `DiscoverMDNS` の `entries` 受信で `ok` を確認し、close 後は `entries=nil` として select 対象から外すようにした。
+    - `/safe-artwork/` は unescaped の `r.URL.Path` から prefix を外して artwork resolver へ渡すようにした。
+    - `formatInt64` を `strconv.FormatInt(value, 10)` に置き換えた。
+- **検証**:
+    - `go test . -run 'TestAssetHandlerServesSafeArtworkWithEscapedSpace|TestAssetHandlerRejectsSafeArtworkTraversal|TestAssetHandlerServesRegisteredSafeMediaWithReservedCharacters' -count=1`
+    - `go test ./internal/uxsync -run 'TestFormatInt64HandlesMinInt64|TestPruneAcknowledgedOutbox' -count=1`
+    - `go test ./server -run 'TestSyncLibraryEvents|TestSyncIdentity|TestStartSyncPairing' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-29b` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-32b` に更新。
+
 ### UX Sync Phase 5.16 スマートキャッシュと容量ポリシー
 
 - **課題**:

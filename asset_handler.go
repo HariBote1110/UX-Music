@@ -16,7 +16,7 @@ func newAssetHandler() http.Handler {
 		path := r.URL.Path
 		escapedPath := r.URL.EscapedPath()
 		if strings.HasPrefix(path, "/safe-artwork/") {
-			filename := strings.TrimPrefix(escapedPath, "/safe-artwork/")
+			filename := strings.TrimPrefix(path, "/safe-artwork/")
 			fullPath := server.ResolveArtworkPath(filename)
 			if fullPath == "" {
 				http.Error(w, "Forbidden", http.StatusForbidden)

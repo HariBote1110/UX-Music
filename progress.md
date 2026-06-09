@@ -18,6 +18,20 @@
 - Crescent の `SyncLibrary`（約30GB の旧テスト音源）と転送バンドルを削除。空き 124.5GB。
 - 再テスト用に `C:\Users\HariBote\uxtest`（クローン＋synctest.exe＋serve.bat）は残置。
 
+## 2026-06-09 — Gemini Code Assist レビュー指摘の実害修正
+
+### 実施内容
+- `randomBytes` で `crypto/rand.Read` 失敗時に時刻文字列へフォールバックしていた処理を廃止し、乱数源が利用できない場合は panic するようにした。
+- `DiscoverMDNS` で entries channel close 時に nil を受け続けないよう、`ok` を確認して close 後は select 対象から外すようにした。
+- `/safe-artwork/` handler が unescaped path から prefix を外すようにし、空白入り artwork 名を安全に解決できるようにした。
+- `formatInt64` の自作変換を `strconv.FormatInt` に置き換え、`math.MinInt64` でも正しく扱えるようにした。
+- 不具合修正扱いとして `src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-29b`、`markdown/requirement.md` を `0.1.9-Beta-32b` に更新した。
+
+### 検証
+- `go test . -run 'TestAssetHandlerServesSafeArtworkWithEscapedSpace|TestAssetHandlerRejectsSafeArtworkTraversal|TestAssetHandlerServesRegisteredSafeMediaWithReservedCharacters' -count=1`
+- `go test ./internal/uxsync -run 'TestFormatInt64HandlesMinInt64|TestPruneAcknowledgedOutbox' -count=1`
+- `go test ./server -run 'TestSyncLibraryEvents|TestSyncIdentity|TestStartSyncPairing' -count=1`
+
 ## 2026-06-09 — UX Sync スマートキャッシュと容量ポリシー
 
 ### 実施内容
