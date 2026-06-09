@@ -74,7 +74,7 @@ func TestSyncLibraryEventsRejectsInvalidMethod(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/sync/library/events", nil)
 	rec := httptest.NewRecorder()
 
-	syncLibraryEventsHandler(rec, req)
+	(&App{}).syncLibraryEventsHandler(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected status %d, got %d", http.StatusMethodNotAllowed, rec.Code)
@@ -142,7 +142,7 @@ func postSyncLibraryEvents(t *testing.T, payload []byte) syncLibraryEventsRespon
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	syncLibraryEventsHandler(rec, req)
+	(&App{}).syncLibraryEventsHandler(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())

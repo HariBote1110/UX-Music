@@ -655,11 +655,6 @@ func syncRemoteBaseURL(r *http.Request) string {
 	return "http://" + net.JoinHostPort(host, wearServerPort)
 }
 
-func syncLibraryEventsHandler(w http.ResponseWriter, r *http.Request) {
-	var app *App
-	app.syncLibraryEventsHandler(w, r)
-}
-
 func (a *App) syncLibraryEventsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
