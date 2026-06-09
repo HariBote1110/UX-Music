@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -77,6 +78,61 @@ func TestSyncLibraryEventsRejectsInvalidMethod(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected status %d, got %d", http.StatusMethodNotAllowed, rec.Code)
+	}
+}
+
+func TestSyncLibraryEventsEmitsUpdatedPlayCountsAfterApplyingEvents(t *testing.T) {
+	newTempSyncStore(t)
+	songPath := filepath.Join(t.TempDir(), "host.flac")
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{"id": "host-track-1", "path": songPath, "title": "Host Song"},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+	payload := []byte(`{
+		"deviceId": "dev_portable",
+		"playEvents": [
+			{
+				"eventId": "evt_portable_emit_1",
+				"trackId": "host-track-1",
+				"deviceId": "dev_portable",
+				"deviceSequence": 1,
+				"playedAt": "2026-06-09T07:20:00Z",
+				"countedAt": "2026-06-09T07:23:00Z",
+				"durationPlayedMs": 180000,
+				"completed": true
+			}
+		]
+	}`)
+	var emitted []struct {
+		name string
+		data interface{}
+	}
+	app := &App{
+		ctx: context.Background(),
+		playCountsEmitter: func(_ context.Context, name string, data interface{}) {
+			emitted = append(emitted, struct {
+				name string
+				data interface{}
+			}{name: name, data: data})
+		},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/sync/library/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	app.syncLibraryEventsHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(emitted) != 1 || emitted[0].name != "play-counts-updated" {
+		t.Fatalf("expected one play-counts-updated emit, got %#v", emitted)
+	}
+	counts, _ := emitted[0].data.(map[string]interface{})
+	entry, _ := counts[songPath].(map[string]interface{})
+	if entry == nil || entry["count"] != float64(1) {
+		t.Fatalf("expected emitted playcounts to include applied count, got %#v", emitted[0].data)
 	}
 }
 
