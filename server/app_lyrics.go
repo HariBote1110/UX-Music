@@ -30,6 +30,7 @@ func (a *App) HandleLyricsDrop(paths []string) error {
 func (a *App) AutoSyncLyrics(req lyricssync.Request) (lyricssync.Result, error) {
 	if a.lyricsSyncer == nil {
 		a.lyricsSyncer = lyricssync.NewSyncer()
+		a.bindLyricsSyncProgressEmitter()
 	}
 	return a.lyricsSyncer.Sync(req), nil
 }

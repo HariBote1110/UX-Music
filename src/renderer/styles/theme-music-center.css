@@ -1,0 +1,382 @@
+/* ============================================================
+   Theme: MusicCenter
+   <body class="mc-theme"> で有効化する。
+   Sony MusicCenter for PC 風のシャープなツールバーレイアウト。
+   ============================================================ */
+
+/* ── タイトルバー: 最小高さにして再生バーと視覚的に連続させる ──────── */
+
+body.mc-theme .title-bar {
+    order: 1;
+    height: 28px;         /* macOS 信号機ボタン（~20px）を収容するための最小高さ */
+    flex-shrink: 0;
+    background-color: var(--bg-darkest);
+    border-bottom: none;
+}
+
+/* ── 再生バー: 上部ツールバーに変換 ──────────────────────────────── */
+
+body.mc-theme .playback-bar {
+    order: 2;
+
+    /* 浮遊（absolute）→ 通常フロー要素に変換 */
+    position: static;
+    bottom: auto;
+    left: auto;
+    right: auto;
+
+    /* フラットなツールバー（progress strip 2行目を含む最小高さ） */
+    min-height: 40px;
+    height: auto;
+    margin: 0;
+    padding: 0 16px;
+
+    /* 角丸・影・ぼかしを除去 */
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--bg-light);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: var(--bg-darkest);
+
+    /* 縦方向に中央揃え */
+    align-items: center;
+
+    /* フレックス折り返しを有効にしてプログレスバーを下段へ */
+    flex-wrap: wrap;
+    min-height: unset;
+
+    /* 全要素クリック可能 */
+    pointer-events: auto;
+    z-index: auto;
+}
+
+body.mc-theme .playback-bar * {
+    pointer-events: auto;
+}
+
+/* ── プログレスバー: 時刻表示付き帯 ──────────────────────────────── */
+
+/* 折り返して下段に配置。時刻も表示できるよう 16px の高さを確保 */
+body.mc-theme .progress-container {
+    order: 99;
+    flex-basis: 100%;
+    width: 100%;
+    height: 16px;
+    margin: 0;
+    padding: 0 16px;
+    box-sizing: border-box;
+    gap: 8px;
+    align-items: center;
+    overflow: visible;
+}
+
+/* 時刻ラベルを小さく表示（参考 HTML の右端 00:00/00:00 に相当） */
+body.mc-theme .progress-container > span {
+    display: block;
+    font-size: 10px;
+    font-family: 'SF Mono', 'Menlo', 'Segoe UI Mono', monospace;
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+/* バー本体: 3px の細いストリップ */
+body.mc-theme #progress-bar {
+    height: 3px;
+    flex: 1;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    background: var(--bg-light);
+    cursor: pointer;
+}
+
+body.mc-theme #progress-bar::-webkit-slider-thumb {
+    width: 8px;
+    height: 8px;
+    border-radius: 0;
+    /* 通常時は非表示にして細いストリップだけ見せる */
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+/* ホバー時のみつまみを表示 */
+body.mc-theme .progress-container:hover #progress-bar::-webkit-slider-thumb {
+    opacity: 1;
+}
+
+/* ── コンテナ ────────────────────────────────────────────────── */
+
+body.mc-theme .container {
+    order: 3;
+    height: auto;
+    flex: 1 1 0;
+    /* 末尾のグラデーションマスクを除去（再生バーが上部にある場合は不要） */
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+/* ── 右サイドバーとリサイザーを非表示 ────────────────────────────── */
+
+body.mc-theme .right-sidebar,
+body.mc-theme #resizer {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+}
+
+/* ── 再生バー内要素の並び順 (order) を明示 ──────────────────────── */
+
+/* 1: 再生コントロール (shuffle / prev / play / next / loop) */
+body.mc-theme .playback-controls {
+    order: 1;
+    flex-basis: auto;
+    justify-content: flex-start;
+    gap: 12px;
+}
+
+/* 2: アートワークサムネイル（参考 HTML の小サムネイルに相当） */
+body.mc-theme #footer-artwork-container {
+    order: 2;
+    display: flex !important;        /* .hidden クラスや既存 none を上書き */
+    align-items: center;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    overflow: hidden;
+    margin: 0 4px;
+    border: 1px solid var(--bg-light);
+}
+
+body.mc-theme #footer-artwork {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+}
+
+/* 3: 曲名 / アーティスト / アルバム インライン表示 */
+body.mc-theme .mc-footer-info {
+    order: 3;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 480px;
+    overflow: hidden;
+}
+
+/* 未再生（テキスト空）のときは幅ゼロにして存在感を消す */
+body.mc-theme .mc-footer-info:has(.mc-footer-title:empty) {
+    display: none;
+}
+
+body.mc-theme .mc-footer-title {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 10-12: 右側グループ（audio-info を auto margin で右端に押し出す） */
+body.mc-theme .audio-info-container {
+    order: 10;
+    margin-left: auto;
+}
+
+body.mc-theme .volume-container {
+    order: 11;
+}
+
+body.mc-theme .device-container {
+    order: 12;
+}
+
+/* --- デフォルトテーマでは MC 専用要素を非表示 --- */
+.mc-footer-info {
+    display: none;
+}
+
+/* 音量コンテナをコンパクトに */
+body.mc-theme .volume-container {
+    width: 120px;
+}
+
+/* ── サイドバー: 参考 HTML に合わせてミッドグレー背景に ─────────── */
+
+body.mc-theme .left-sidebar {
+    background-color: #343434;
+    border-right: 1px solid #222222;
+    padding: 12px 0;          /* 左右 padding は nav-link 側で管理 */
+}
+
+/* 左サイドバー内の heading（"UX Music vX.X.X"）を小さく統一 */
+body.mc-theme .left-sidebar > p {
+    padding: 0 16px 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+/* 検索ボックスコンテナの padding を nav-link と統一 */
+body.mc-theme .left-sidebar .search-box-container {
+    padding: 0 12px 10px !important;
+}
+
+/* セクションタイトル（"デバイス" など）のスタイルを参考 HTML に合わせる */
+body.mc-theme .sidebar-section-title {
+    padding: 4px 16px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+/* nav-link の上下 padding を広げて参考の py-2 に近づける */
+body.mc-theme .nav-link {
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-secondary);
+    border-radius: 0;
+}
+
+body.mc-theme .nav-link:hover {
+    background-color: #2e2e2e;
+    color: var(--text-primary);
+}
+
+/* ── 角丸の除去 ─────────────────────────────────────────────── */
+
+/* 再生ボタン: 参考 HTML の w-7 h-7 に合わせてコンパクトな白アウトライン円 */
+body.mc-theme .play-btn {
+    border-radius: 50%;                      /* アウトライン円 */
+    background-color: transparent;
+    border: 1.5px solid var(--text-primary);
+    width: 28px;
+    height: 28px;
+}
+
+body.mc-theme .play-btn:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    transform: none;
+    border-color: var(--highlight-pink);
+}
+
+/* SVG アイコン色・サイズ: 参考 HTML に合わせて縮小 */
+body.mc-theme .play-btn .play-pause-icon {
+    fill: var(--text-primary);
+    width: 14px;
+    height: 14px;
+}
+
+/* オーディオ情報ボタン */
+body.mc-theme #audio-info-btn {
+    border-radius: 0;
+}
+
+/* オーディオ情報ツールチップ */
+body.mc-theme .audio-info-tooltip {
+    border-radius: 0;
+}
+
+/* 音量スライダーつまみ */
+body.mc-theme #volume-slider {
+    border-radius: 0;
+}
+
+body.mc-theme #volume-slider::-webkit-slider-thumb {
+    border-radius: 0;
+}
+
+/* ── サイドバー ─────────────────────────────────────────────── */
+
+body.mc-theme .nav-link.active {
+    border-radius: 0;
+    border-left: 2px solid var(--highlight-pink);
+    background-color: var(--bg-medium);
+    color: var(--text-primary);
+}
+
+body.mc-theme .sidebar-action-button {
+    border-radius: 0;
+}
+
+/* ── ポップアップ・ドロップダウン ──────────────────────────────── */
+
+body.mc-theme #library-actions-popup {
+    border-radius: 0;
+}
+
+body.mc-theme .popup-action-button {
+    border-radius: 0;
+}
+
+body.mc-theme .device-popup {
+    border-radius: 0;
+}
+
+body.mc-theme .device-popup-item {
+    border-radius: 0;
+}
+
+/* ── モーダル ───────────────────────────────────────────────── */
+
+body.mc-theme #modal,
+body.mc-theme #lyrics-translation-modal,
+body.mc-theme #settings-modal,
+body.mc-theme #devices-modal,
+body.mc-theme .album-order-modal,
+body.mc-theme .caption-selection-dialog {
+    border-radius: 0;
+}
+
+body.mc-theme #settings-modal .setting-group {
+    border-radius: 0;
+}
+
+body.mc-theme .modal-buttons button,
+body.mc-theme .album-order-modal__btn {
+    border-radius: 0;
+}
+
+body.mc-theme .caption-btn {
+    border-radius: 0;
+}
+
+body.mc-theme .settings-button {
+    border-radius: 0;
+}
+
+/* ── コンテキストメニュー ──────────────────────────────────────── */
+
+body.mc-theme .context-menu {
+    border-radius: 0 !important;
+}
+
+body.mc-theme .context-menu-item {
+    border-radius: 0;
+}
+
+/* ── その他 UI 要素 ─────────────────────────────────────────── */
+
+body.mc-theme #notification-toast {
+    border-radius: 0;
+}
+
+body.mc-theme #search-input {
+    border-radius: 0;
+}
+
+body.mc-theme #modal-input,
+body.mc-theme #lyrics-translation-paste {
+    border-radius: 0;
+}
+
+body.mc-theme .main-content::-webkit-scrollbar-thumb {
+    border-radius: 0;
+}

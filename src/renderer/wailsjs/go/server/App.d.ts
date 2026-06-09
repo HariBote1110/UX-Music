@@ -4,6 +4,7 @@ import {audio} from '../models';
 import {server} from '../models';
 import {lyricssync} from '../models';
 import {cdrip} from '../models';
+import {uxsync} from '../models';
 import {mtp} from '../models';
 import {normalize} from '../models';
 import {scanner} from '../models';
@@ -52,9 +53,13 @@ export function AudioStop():Promise<void>;
 
 export function AutoSyncLyrics(arg1:lyricssync.Request):Promise<lyricssync.Result>;
 
+export function AutoSyncPairedDevices():Promise<server.SyncAutoResult>;
+
 export function BuildFLACIndexes():Promise<void>;
 
 export function CDApplyMetadata(arg1:Record<string, any>):Promise<cdrip.ReleaseInfo>;
+
+export function CDApplyVocaDBMetadata(arg1:Record<string, any>):Promise<cdrip.ReleaseInfo>;
 
 export function CDScan():Promise<Array<cdrip.Track>>;
 
@@ -62,13 +67,21 @@ export function CDSearchTOC(arg1:Array<cdrip.Track>):Promise<Array<cdrip.Release
 
 export function CDSearchText(arg1:string):Promise<Array<cdrip.ReleaseInfo>>;
 
+export function CDSearchVocaDB(arg1:string):Promise<Array<cdrip.ReleaseInfo>>;
+
 export function CDStartRip(arg1:Record<string, any>):Promise<any>;
+
+export function ClearLyricsSyncModelCache():Promise<void>;
+
+export function ConfirmSyncPairing(arg1:string,arg2:string,arg3:string,arg4:string):Promise<server.SyncPairingConfirmResult>;
 
 export function CreatePlaylist(arg1:string):Promise<void>;
 
 export function DeletePlaylist(arg1:string):Promise<void>;
 
 export function DeleteSongs(arg1:Array<string>,arg2:boolean):Promise<Array<string>>;
+
+export function DiscoverSyncDevices(arg1:number):Promise<Array<uxsync.MDNSPeer>>;
 
 export function GetAllLoudnessData():Promise<Record<string, any>>;
 
@@ -83,6 +96,8 @@ export function GetLibraryForNormalize():Promise<Array<any>>;
 export function GetLoudnessValue(arg1:string):Promise<any>;
 
 export function GetLyrics(arg1:string):Promise<any>;
+
+export function GetLyricsSyncResourceStatus():Promise<Record<string, any>>;
 
 export function GetMTPDevices():Promise<any>;
 
@@ -105,6 +120,8 @@ export function GetYouTubeInfo(arg1:string):Promise<any>;
 export function HandleLyricsDrop(arg1:Array<string>):Promise<void>;
 
 export function IncrementPlayCount(arg1:Record<string, any>):Promise<void>;
+
+export function ListSyncDevices():Promise<Array<server.SyncDeviceRecord>>;
 
 export function LoadLibrary():Promise<void>;
 
@@ -140,6 +157,12 @@ export function NormalizeStartJob(arg1:string,arg2:Array<any>,arg3:any):Promise<
 
 export function Ping():Promise<string>;
 
+export function PullSyncLibraryAssets(arg1:string,arg2:number):Promise<server.SyncPullResult>;
+
+export function PushSyncLibraryAssets(arg1:string,arg2:number):Promise<server.SyncPushResult>;
+
+export function PushSyncLibraryAssetsWithOptions(arg1:string,arg2:number,arg3:server.SyncTransferOptions):Promise<server.SyncPushResult>;
+
 export function RenamePlaylist(arg1:Record<string, any>):Promise<void>;
 
 export function RequestInitialLibrary():Promise<void>;
@@ -160,15 +183,21 @@ export function SelectFilesForNormalize():Promise<Array<string>>;
 
 export function SelectFolderForNormalize():Promise<Array<string>>;
 
+export function SelectMTPDownloadFolder():Promise<string>;
+
 export function SelectNormalizeOutputFolder():Promise<string>;
 
 export function SetLibraryPath():Promise<string>;
+
+export function SetLyricsSyncModelConsent(arg1:boolean):Promise<void>;
 
 export function SongFinished(arg1:Record<string, any>):Promise<void>;
 
 export function SongSkipped(arg1:Record<string, any>):Promise<void>;
 
 export function StartDeviceWatcher():Promise<void>;
+
+export function StartSyncPairing(arg1:string):Promise<server.SyncPairingStartResult>;
 
 export function StopDeviceWatcher():Promise<void>;
 

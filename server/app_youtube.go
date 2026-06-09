@@ -190,14 +190,9 @@ func upsertLibrarySong(song map[string]interface{}) (bool, map[string]interface{
 		return false, nil, fmt.Errorf("保存対象の楽曲パスが空です")
 	}
 
-	rawLibrary, err := store.Instance.Load("library")
+	library, err := store.Instance.LoadSlice("library")
 	if err != nil {
 		return false, nil, err
-	}
-
-	library := make([]interface{}, 0)
-	if existing, ok := rawLibrary.([]interface{}); ok {
-		library = existing
 	}
 
 	for idx, item := range library {

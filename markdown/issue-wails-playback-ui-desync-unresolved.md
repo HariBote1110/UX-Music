@@ -1,6 +1,6 @@
 # Wails 再生：表示と実出力の不一致・途中停止（未解決）
 
-**状態:** 未解決（2026-04-23 時点）  
+**状態:** 一部解消（2026-05-15: 長時間一時停止後の再開不能を修正。表示と実出力の不一致全般は継続監視）
 **環境:** `wails dev`、macOS、Go バックエンド（`pkg/audio` + PortAudio）
 
 ## 事象（ユーザー報告の要約）
@@ -52,6 +52,13 @@
 - フロント: `src/renderer/js/features/playback-manager.ts`、`src/renderer/js/features/player.ts`、`src/renderer/js/ui/ui-manager.ts`、`src/renderer/js/ui/element-factory.ts`
 - Go: `server/app_audio.go`、`pkg/audio/player.go`
 - 過去の再生バグ整理: `markdown/Issue-PlaybackBugs.md`（別件の修正履歴）
+
+## 2026-05-15 追記: 長時間一時停止後に同じ曲を再開できない問題
+
+- **事象**: 一時停止して数時間放置したあと、再生ボタンでは同じ曲を再開できない。他の曲をクリックすると再生できる。
+- **原因**: Wails バックエンドの `Resume()` は `paused` フラグを戻すだけで、PortAudio の出力ストリームを再起動・再作成していなかった。長時間アイドルやスリープ復帰で OS 側のストリームが停止・無効化されると、UI は再開扱いでも実出力が復旧しない。
+- **修正**: `pkg/audio/player.go` で `Resume()` 時にストリームの `Start()` を再実行し、30分以上の一時停止後はストリームを閉じて開き直す。短時間の再開では既に開始済みを表す `portaudio.StreamIsNotStopped` を正常扱いにする。
+- **テスト**: `pkg/audio/player_resume_test.go` に、短時間再開で既存ストリームを開始するテストと、長時間一時停止後に古いストリームを閉じて新しいストリームを開始するテストを追加。
 
 ---
 

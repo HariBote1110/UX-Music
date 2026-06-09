@@ -34,6 +34,20 @@ func (a *App) CDApplyMetadata(args map[string]interface{}) (*cdrip.ReleaseInfo, 
 	return cdrip.ApplyMetadata(tracks, releaseID)
 }
 
+func (a *App) CDSearchVocaDB(query string) ([]cdrip.ReleaseInfo, error) {
+	return cdrip.SearchVocaDBByText(query)
+}
+
+func (a *App) CDApplyVocaDBMetadata(args map[string]interface{}) (*cdrip.ReleaseInfo, error) {
+	tracksJSON, _ := json.Marshal(args["tracks"])
+	var tracks []cdrip.Track
+	json.Unmarshal(tracksJSON, &tracks)
+
+	releaseID, _ := args["releaseId"].(string)
+
+	return cdrip.ApplyVocaDBMetadata(tracks, releaseID)
+}
+
 func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 	fmt.Println("[Wails] CDStartRip called")
 	tracksJSON, _ := json.Marshal(args["tracksToRip"])
@@ -83,16 +97,12 @@ func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 	artworksDir := config.GetUserDataPath() + "/Artworks"
 	scanResult := scanner.ScanLibrary(outputPaths, artworksDir)
 
-	existingRaw, _ := store.Instance.Load("library")
-	existingSongs := []interface{}{}
+	existingSongs, _ := store.Instance.LoadSlice("library")
 	existingPathIndex := map[string]int{}
-	if arr, ok := existingRaw.([]interface{}); ok {
-		existingSongs = arr
-		for i, item := range arr {
-			if m, ok := item.(map[string]interface{}); ok {
-				if p, ok := m["path"].(string); ok && p != "" {
-					existingPathIndex[p] = i
-				}
+	for i, item := range existingSongs {
+		if m, ok := item.(map[string]interface{}); ok {
+			if p, ok := m["path"].(string); ok && p != "" {
+				existingPathIndex[p] = i
 			}
 		}
 	}

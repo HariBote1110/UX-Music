@@ -90,12 +90,20 @@ export function AutoSyncLyrics(arg1) {
   return window['go']['server']['App']['AutoSyncLyrics'](arg1);
 }
 
+export function AutoSyncPairedDevices() {
+  return window['go']['server']['App']['AutoSyncPairedDevices']();
+}
+
 export function BuildFLACIndexes() {
   return window['go']['server']['App']['BuildFLACIndexes']();
 }
 
 export function CDApplyMetadata(arg1) {
   return window['go']['server']['App']['CDApplyMetadata'](arg1);
+}
+
+export function CDApplyVocaDBMetadata(arg1) {
+  return window['go']['server']['App']['CDApplyVocaDBMetadata'](arg1);
 }
 
 export function CDScan() {
@@ -110,8 +118,20 @@ export function CDSearchText(arg1) {
   return window['go']['server']['App']['CDSearchText'](arg1);
 }
 
+export function CDSearchVocaDB(arg1) {
+  return window['go']['server']['App']['CDSearchVocaDB'](arg1);
+}
+
 export function CDStartRip(arg1) {
   return window['go']['server']['App']['CDStartRip'](arg1);
+}
+
+export function ClearLyricsSyncModelCache() {
+  return window['go']['server']['App']['ClearLyricsSyncModelCache']();
+}
+
+export function ConfirmSyncPairing(arg1, arg2, arg3, arg4) {
+  return window['go']['server']['App']['ConfirmSyncPairing'](arg1, arg2, arg3, arg4);
 }
 
 export function CreatePlaylist(arg1) {
@@ -124,6 +144,10 @@ export function DeletePlaylist(arg1) {
 
 export function DeleteSongs(arg1, arg2) {
   return window['go']['server']['App']['DeleteSongs'](arg1, arg2);
+}
+
+export function DiscoverSyncDevices(arg1) {
+  return window['go']['server']['App']['DiscoverSyncDevices'](arg1);
 }
 
 export function GetAllLoudnessData() {
@@ -152,6 +176,10 @@ export function GetLoudnessValue(arg1) {
 
 export function GetLyrics(arg1) {
   return window['go']['server']['App']['GetLyrics'](arg1);
+}
+
+export function GetLyricsSyncResourceStatus() {
+  return window['go']['server']['App']['GetLyricsSyncResourceStatus']();
 }
 
 export function GetMTPDevices() {
@@ -196,6 +224,10 @@ export function HandleLyricsDrop(arg1) {
 
 export function IncrementPlayCount(arg1) {
   return window['go']['server']['App']['IncrementPlayCount'](arg1);
+}
+
+export function ListSyncDevices() {
+  return window['go']['server']['App']['ListSyncDevices']();
 }
 
 export function LoadLibrary() {
@@ -266,6 +298,18 @@ export function Ping() {
   return window['go']['server']['App']['Ping']();
 }
 
+export function PullSyncLibraryAssets(arg1, arg2) {
+  return window['go']['server']['App']['PullSyncLibraryAssets'](arg1, arg2);
+}
+
+export function PushSyncLibraryAssets(arg1, arg2) {
+  return window['go']['server']['App']['PushSyncLibraryAssets'](arg1, arg2);
+}
+
+export function PushSyncLibraryAssetsWithOptions(arg1, arg2, arg3) {
+  return window['go']['server']['App']['PushSyncLibraryAssetsWithOptions'](arg1, arg2, arg3);
+}
+
 export function RenamePlaylist(arg1) {
   return window['go']['server']['App']['RenamePlaylist'](arg1);
 }
@@ -306,12 +350,20 @@ export function SelectFolderForNormalize() {
   return window['go']['server']['App']['SelectFolderForNormalize']();
 }
 
+export function SelectMTPDownloadFolder() {
+  return window['go']['server']['App']['SelectMTPDownloadFolder']();
+}
+
 export function SelectNormalizeOutputFolder() {
   return window['go']['server']['App']['SelectNormalizeOutputFolder']();
 }
 
 export function SetLibraryPath() {
   return window['go']['server']['App']['SetLibraryPath']();
+}
+
+export function SetLyricsSyncModelConsent(arg1) {
+  return window['go']['server']['App']['SetLyricsSyncModelConsent'](arg1);
 }
 
 export function SongFinished(arg1) {
@@ -324,6 +376,10 @@ export function SongSkipped(arg1) {
 
 export function StartDeviceWatcher() {
   return window['go']['server']['App']['StartDeviceWatcher']();
+}
+
+export function StartSyncPairing(arg1) {
+  return window['go']['server']['App']['StartSyncPairing'](arg1);
 }
 
 export function StopDeviceWatcher() {

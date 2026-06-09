@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Music Center for PC</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts & Font Awesome for authentic icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    body {
+      font-family: 'Segoe UI', 'Noto Sans JP', sans-serif;
+      background-color: #121212;
+      color: #e0e0e0;
+      user-select: none;
+      overflow: hidden;
+    }
+    /* 細かいUIのスクロールバー調整 */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #181818;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #3a3a3a;
+      border: 2px solid #181818;
+      border-radius: 5px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4f4f4f;
+    }
+    /* テーブルヘッダーとカラム枠の再現 */
+    .table-border-cols td, .table-border-cols th {
+      border-right: 1px solid #2d2d2d;
+    }
+    .table-border-cols td:last-child, .table-border-cols th:last-child {
+      border-right: none;
+    }
+    /* 再生中の行ハイライト */
+    .row-selected {
+      background-color: #1a365d !important; /* 深い青 */
+      color: #ffffff;
+    }
+    .row-hover:hover {
+      background-color: #2a2a2a;
+    }
+    /* テキスト省略 */
+    .ellipsis {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
+</head>
+<body class="h-screen flex flex-col text-sm select-none">
+
+  <!-- 1. 最上部コントロール＆プレイヤーバー -->
+  <header class="bg-[#121212] border-b border-[#000000] h-14 flex items-center justify-between px-4 shrink-0 z-10">
+    <!-- 左側: アプリロゴと基本操作 -->
+    <div class="flex items-center space-x-3">
+      <!-- アプリアイコン風マーク（黄色い音符丸） -->
+      <div class="w-6 h-6 rounded-full bg-[#f3af00] flex items-center justify-center text-black text-xs font-bold shadow-md mr-1">
+        <i class="fa-solid fa-music text-[10px]"></i>
+      </div>
+      <!-- メニューボタン -->
+      <button class="text-gray-400 hover:text-white transition mr-3">
+        <i class="fa-solid fa-bars text-lg"></i>
+      </button>
+
+      <!-- 再生系コントロール（ヘッダー内） -->
+      <div class="flex items-center space-x-3 ml-2">
+        <button id="btn-shuffle" class="text-gray-500 hover:text-white transition text-sm" title="シャッフル">
+          <i class="fa-solid fa-shuffle"></i>
+        </button>
+        <button id="btn-prev" class="text-white hover:text-[#f3af00] transition text-lg" title="前へ">
+          <i class="fa-solid fa-backward-step"></i>
+        </button>
+        <button id="btn-play" class="w-7 h-7 rounded-full bg-transparent border border-white text-white hover:border-[#f3af00] hover:text-[#f3af00] transition flex items-center justify-center text-xs" title="再生/一時停止">
+          <i id="play-icon" class="fa-solid fa-play ml-[1px]"></i>
+        </button>
+        <button id="btn-next" class="text-white hover:text-[#f3af00] transition text-lg" title="次へ">
+          <i class="fa-solid fa-forward-step"></i>
+        </button>
+        <button id="btn-repeat" class="text-gray-500 hover:text-white transition text-sm" title="リピート">
+          <i class="fa-solid fa-repeat"></i>
+        </button>
+      </div>
+
+      <!-- 再生中の簡易曲名表示 -->
+      <div class="hidden md:flex flex-col ml-4 text-[10px] max-w-xs leading-tight">
+        <span id="current-title" class="text-white font-medium ellipsis">未再生</span>
+        <span id="current-artist" class="text-gray-400 ellipsis">選択された曲はありません</span>
+      </div>
+    </div>
+
+    <!-- 中央: タイトル -->
+    <div class="absolute left-1/2 transform -translate-x-1/2 hidden lg:block text-xs text-gray-400 font-semibold tracking-wide">
+      Music Center for PC
+    </div>
+
+    <!-- 右側: オーディオ設定・音量・再生時間・ウィンドウ操作 -->
+    <div class="flex items-center space-x-4">
+      <!-- DSEE HX -->
+      <div class="text-[9px] font-bold border border-gray-600 px-1 text-gray-400 rounded hover:border-[#f3af00] hover:text-[#f3af00] cursor-pointer transition">
+        DSEE HX
+      </div>
+      <!-- イコライザーアイコン -->
+      <button class="text-gray-400 hover:text-white text-xs" title="イコライザー">
+        <i class="fa-solid fa-sliders"></i>
+      </button>
+      <!-- ミニプレイヤーモード -->
+      <button class="text-gray-400 hover:text-white text-xs" title="ミニプレーヤーモード">
+        <i class="fa-solid fa-window-restore"></i>
+      </button>
+      <!-- スピーカー・音量コントロール -->
+      <div class="flex items-center space-x-1 group relative">
+        <button id="btn-mute" class="text-gray-400 hover:text-white text-xs">
+          <i id="volume-icon" class="fa-solid fa-volume-high"></i>
+        </button>
+        <input id="volume-slider" type="range" min="0" max="100" value="80" class="w-16 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-[#f3af00]">
+      </div>
+
+      <!-- 再生リストボタン -->
+      <button class="text-gray-400 hover:text-white text-xs" title="再生リスト">
+        <i class="fa-solid fa-list-ul"></i>
+      </button>
+
+      <!-- 再生時間メーター -->
+      <div class="text-[11px] text-gray-400 font-mono tracking-wider">
+        <span id="time-current">00:00</span>/<span id="time-total">00:00</span>
+      </div>
+
+      <!-- ウィンドウコントロール（モック） -->
+      <div class="flex items-center space-x-3 border-l border-[#3a3a3a] pl-4 text-gray-500 text-sm ml-2">
+        <button class="hover:text-white"><i class="fa-solid fa-minus"></i></button>
+        <button class="hover:text-white"><i class="fa-regular fa-square"></i></button>
+        <button class="hover:text-white text-red-500 hover:bg-red-900 px-1 rounded"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 1.5. 再生プログレスバー (ヘッダー直下、さりげなく配置) -->
+  <div class="w-full bg-[#2d2d2d] h-[3px] relative cursor-pointer" id="progress-container">
+    <div id="progress-bar" class="bg-[#f3af00] h-full w-0 transition-all duration-300"></div>
+  </div>
+
+  <!-- 2. メインコンテンツ（サイドバー + メインビュー） -->
+  <div class="flex flex-1 overflow-hidden">
+    
+    <!-- 左サイドバー -->
+    <aside class="w-56 bg-[#343434] flex flex-col justify-between shrink-0 border-r border-[#222222] text-xs">
+      <div class="py-3 overflow-y-auto flex-1">
+
+        <!-- 機器転送・管理 -->
+        <div class="mb-4">
+          <div class="px-4 py-1 text-gray-500 font-semibold tracking-wider text-[10px]">機器転送・管理</div>
+          <a href="#" class="flex items-center justify-between px-4 py-2 text-gray-300 hover:bg-[#2e2e2e] transition group">
+            <span class="flex items-center space-x-2">
+              <i class="fa-solid fa-tablet-screen-button text-gray-400 group-hover:text-white"></i>
+              <span>機器へ転送</span>
+            </span>
+            <span class="w-4 h-4 rounded-full bg-[#f3af00] text-black flex items-center justify-center text-[10px] font-bold">
+              <i class="fa-solid fa-chevron-right scale-75"></i>
+            </span>
+          </a>
+        </div>
+
+        <!-- マイライブラリー -->
+        <div class="mb-4">
+          <div class="px-4 py-1 text-gray-500 font-semibold tracking-wider text-[10px]">マイライブラリー</div>
+          <ul class="space-y-[2px]">
+            <li>
+              <a href="#" class="sidebar-item flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-[#2e2e2e] transition" data-target="recent">
+                <i class="fa-solid fa-clock-rotate-left w-4 text-center text-gray-400"></i>
+                <span>最近追加した曲</span>
+              </a>
+            </li>
+            <li>
+              <a href="#" id="menu-songs" class="sidebar-item flex items-center space-x-2 px-4 py-2 text-white bg-[#2e2e2e] font-medium transition border-l-2 border-[#f3af00]" data-target="songs">
+                <i class="fa-solid fa-music w-4 text-center text-[#f3af00]"></i>
+                <span>曲</span>
+              </a>
+            </li>
+            <li>
+              <a href="#" id="menu-albums" class="sidebar-item flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-[#2e2e2e] transition" data-target="albums">
+                <i class="fa-solid fa-compact-disc w-4 text-center text-gray-400"></i>
+                <span>アルバム</span>
+              </a>
+            </li>
+            <li>
+              <a href="#" class="sidebar-item flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-[#2e2e2e] transition" data-target="artists">
+                <i class="fa-solid fa-user w-4 text-center text-gray-400"></i>
+                <span>アーティスト</span>
+              </a>
+            </li>
+            <li>
+              <a href="#" class="sidebar-item flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-[#2e2e2e] transition" data-target="frequent">
+                <i class="fa-regular fa-star w-4 text-center text-gray-400"></i>
+                <span>よく聴く曲</span>
+              </a>
+            </li>
+            <li>
+              <a href="#" class="sidebar-item flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-[#2e2e2e] transition" data-target="history">
+                <i class="fa-solid fa-history w-4 text-center text-gray-400"></i>
+                <span>最近再生した曲</span>
+              </a>
+            </li>
+            <li>
+              <a href="#" id="menu-playlists" class="sidebar-item flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-[#2e2e2e] transition" data-target="playlists">
+                <i class="fa-solid fa-list-ol w-4 text-center text-gray-400"></i>
+                <span>プレイリスト</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <!-- 取り込み -->
+        <div class="mb-4">
+          <div class="px-4 py-1 text-gray-500 font-semibold tracking-wider text-[10px]">取り込み</div>
+          <a href="#" class="flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-[#2e2e2e] transition">
+            <i class="fa-solid fa-circle-dot text-gray-400"></i>
+            <span>CD</span>
+          </a>
+        </div>
+
+        <!-- サービス -->
+        <div>
+          <div class="px-4 py-1 text-gray-500 font-semibold tracking-wider text-[10px]">サービス</div>
+          <ul class="space-y-[2px]">
+            <li>
+              <a href="#" class="flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-[#2e2e2e] transition">
+                <span class="w-4 text-center font-bold text-[#f3af00] text-[10px]">mora</span>
+                <span>mora 音楽ダウンロード</span>
+              </a>
+            </li>
+            <li>
+              <a href="#" class="flex items-center space-x-2 px-4 py-2 text-gray-300 hover:bg-[#2e2e2e] transition">
+                <i class="fa-solid fa-basket-shopping text-gray-400"></i>
+                <span>購入した曲</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+
+      </div>
+
+      <!-- 左下端の小さく細いフッター風 -->
+      <div class="p-3 border-t border-[#2d2d2d] text-gray-500 flex justify-between items-center text-[10px]">
+        <span>Ver 2.7.0</span>
+        <i class="fa-solid fa-circle-question hover:text-white cursor-pointer"></i>
+      </div>
+    </aside>
+
+    <!-- メイン表示エリア -->
+    <main class="flex-1 bg-[#1a1a1a] flex flex-col overflow-hidden relative">
+      
+      <!-- メインヘッダー（検索、件数、画面切替など共通ヘッダー） -->
+      <div class="px-5 pt-6 pb-4 flex justify-between items-end shrink-0">
+        <div id="view-title-area" class="flex flex-col">
+          <!-- 表示中のタイトル -->
+          <h1 id="view-title" class="text-3xl font-bold text-white tracking-wide mb-1">曲</h1>
+          <!-- 件数とアクションボタンのコンテナ -->
+          <div class="flex items-center space-x-3 text-xs text-gray-400">
+            <span id="view-count">721 曲</span>
+            <!-- 追加アクション (プレイリスト用: 新規作成) -->
+            <button id="btn-create-playlist" class="hidden text-gray-400 hover:text-white border border-[#3e3e3e] rounded px-2 py-0.5 transition flex items-center space-x-1 bg-[#1a1a1a]">
+              <i class="fa-solid fa-plus text-[10px]"></i>
+              <span>新規作成...</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 右側アクション・検索 -->
+        <div class="flex items-center space-x-4">
+          <!-- 追加アクション (プレイリスト用: 新規作成) -->
+          <button id="btn-create-playlist" class="hidden items-center space-x-1 border border-gray-600 rounded-full px-4 py-1 text-xs hover:border-[#f3af00] hover:text-[#f3af00] transition text-gray-300">
+            <i class="fa-solid fa-plus text-[10px]"></i>
+            <span>新規作成...</span>
+          </button>
+
+          <!-- グリッド / リスト 表示切替 -->
+          <div id="view-switchers" class="hidden flex items-center space-x-2 mr-2 border-r border-gray-700 pr-4">
+            <button id="switch-grid" class="text-[#f3af00] hover:text-white pb-1 border-b-2 border-[#f3af00] px-1 text-sm">
+              <i class="fa-solid fa-border-all"></i>
+            </button>
+            <button id="switch-list" class="text-gray-500 hover:text-white pb-1 px-1 text-sm">
+              <i class="fa-solid fa-list"></i>
+            </button>
+          </div>
+
+          <!-- 絞り込み検索窓 -->
+          <div class="relative w-64 ml-4">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-gray-400"></i>
+            <input type="text" id="search-input" placeholder="絞り込み検索" class="w-full bg-[#121212] border border-[#3e3e3e] focus:border-[#f3af00] focus:outline-none rounded-full py-1.5 pl-8 pr-3 text-xs text-white placeholder-gray-500">
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== VIEW 1: 曲リストテーブル ==================== -->
+      <div id="view-songs-container" class="flex-1 overflow-auto pb-8 view-section">
+        <table class="w-full text-left text-xs border-collapse table-border-cols">
+          <thead>
+            <tr class="bg-[#1a1a1a] text-gray-400 border-t border-b border-[#2a2a2a] sticky top-0 z-10">
+              <th class="p-2 pl-5 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
+              <th class="p-2 w-1/3 min-w-[200px] cursor-pointer hover:text-white hover:bg-[#2a2a2a] relative border-b-2 border-[#f3af00]">
+                タイトル <i class="fa-solid fa-caret-down ml-1 text-[10px] text-[#f3af00]"></i>
+              </th>
+              <th class="p-2 w-12 text-center text-[#f3af00] font-bold text-[9px]">HR</th>
+              <th class="p-2 w-1/5 min-w-[120px] cursor-pointer hover:text-white">アーティスト</th>
+              <th class="p-2 w-1/4 min-w-[150px] cursor-pointer hover:text-white">アルバム</th>
+              <th class="p-2 w-20 text-right pr-4">曲の長さ</th>
+              <th class="p-2 w-16 text-center">リリース年</th>
+              <th class="p-2 w-16 text-right pr-4">再生回数</th>
+              <th class="p-2 pr-5 w-24">ジャンル</th>
+            </tr>
+          </thead>
+          <tbody id="songs-tbody" class="divide-y divide-[#222222] bg-[#1a1a1a]">
+            <!-- 曲リストはJSから動的出力されます -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ==================== VIEW 2: プレイリストグリッド ==================== -->
+      <div id="view-playlists-container" class="flex-1 overflow-auto pb-8 view-section hidden">
+        <table class="w-full text-left text-xs border-collapse table-border-cols mb-4">
+          <thead>
+            <tr class="bg-[#1a1a1a] text-gray-400 border-t border-b border-[#2a2a2a] sticky top-0 z-10">
+              <th class="p-2 pl-5 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
+              <th class="p-2 w-1/3 min-w-[200px] cursor-pointer hover:text-white relative border-b-2 border-[#f3af00]">タイトル <i class="fa-solid fa-caret-down ml-1 text-[10px] text-[#f3af00]"></i></th>
+              <th class="p-2 w-12 text-center text-[#f3af00] font-bold text-[9px]">HR</th>
+              <th class="p-2 w-1/5 min-w-[120px] cursor-pointer hover:text-white">アーティスト</th>
+              <th class="p-2 w-1/4 min-w-[150px] cursor-pointer hover:text-white">アルバム</th>
+              <th class="p-2 w-20 text-right pr-4">曲の長さ</th>
+              <th class="p-2 w-16 text-center">リリース年</th>
+              <th class="p-2 w-16 text-right pr-4">再生回数</th>
+              <th class="p-2 pr-8 w-24">ジャンル</th>
+            </tr>
+          </thead>
+        </table>
+        <div id="playlists-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 px-5">
+          <!-- プレイリストはJSから動的出力されます -->
+        </div>
+      </div>
+
+      <!-- ==================== VIEW 3: アルバムグリッド ==================== -->
+      <div id="view-albums-container" class="flex-1 overflow-auto pb-8 view-section hidden">
+        <table class="w-full text-left text-xs border-collapse table-border-cols mb-4">
+          <thead>
+            <tr class="bg-[#1a1a1a] text-gray-400 border-t border-b border-[#2a2a2a] sticky top-0 z-10">
+              <th class="p-2 pl-5 w-8 text-center"><i class="fa-solid fa-circle-info text-[10px]"></i></th>
+              <th class="p-2 w-1/3 min-w-[200px] cursor-pointer hover:text-white relative border-b-2 border-[#f3af00]">タイトル <i class="fa-solid fa-caret-down ml-1 text-[10px] text-[#f3af00]"></i></th>
+              <th class="p-2 w-12 text-center text-[#f3af00] font-bold text-[9px]">HR</th>
+              <th class="p-2 w-1/5 min-w-[120px] cursor-pointer hover:text-white">アーティスト</th>
+              <th class="p-2 w-1/4 min-w-[150px] cursor-pointer hover:text-white">アルバム</th>
+              <th class="p-2 w-20 text-right pr-4">曲の長さ</th>
+              <th class="p-2 w-16 text-center">リリース年</th>
+              <th class="p-2 w-16 text-right pr-4">再生回数</th>
+              <th class="p-2 pr-8 w-24">ジャンル</th>
+            </tr>
+          </thead>
+        </table>
+        <div id="albums-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 px-5">
+          <!-- アルバムはJSから動的出力されます -->
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- トースト通知 (簡易通知ダイアログ、alertの代わり) -->
+  <div id="toast" class="fixed bottom-6 right-6 bg-[#2d2d2d] border-l-4 border-[#f3af00] text-white px-4 py-3 rounded shadow-lg text-xs transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none z-50">
+    メッセージ
+  </div>
+
+  <!-- JavaScript制御 -->
+  <script>
+    // --- データ定義 ---
+
+    // 1. 曲リスト
+    const songsData = [
+      { id: 1, title: "ワンルーム・ディスコ [Remastered]", artist: "Perfume", album: "Perfume The Best \"P Cubed\"", duration: "05:06", year: "2019", plays: 2, genre: "クラブ ダンス", hr: true },
+      { id: 2, title: "ワンルーム・ディスコ", artist: "Perfume", album: "⊿", duration: "05:09", year: "2009", plays: 3, genre: "クラブ ダンス", hr: false },
+      { id: 3, title: "災い", artist: "森まもる", album: "喫茶ステラと死神の蝶 オ...", duration: "01:29", year: "2020", plays: 2, genre: "アニメ映画/TV音楽", hr: false },
+      { id: 4, title: "ワイワイでいいワイ 〜おまえワ...", artist: "GReeeeN", album: "歌うたいが歌うたいに来...", duration: "02:45", year: "2012", plays: 3, genre: "J-ポップ", hr: false },
+      { id: 5, title: "ロンリーユニバース", artist: "", album: "", duration: "03:40", year: "", plays: 16, genre: "", hr: false },
+      { id: 6, title: "ロゼ", artist: "くりたにか & 琴葉 ...", album: "あらかると #1", duration: "02:21", year: "2023", plays: 40, genre: "ポップ ボーカル", hr: false },
+      { id: 7, title: "練乳☆Shot!ストレート", artist: "いとーじ feat. 琴葉 ...", album: "otogiuta", duration: "00:47", year: "2023", plays: 0, genre: "ポップ ボーカル", hr: false },
+      { id: 8, title: "レミニス", artist: "結月そら", album: "Reminisphere", duration: "06:11", year: "2012", plays: 13, genre: "J-ポップ", hr: false },
+      { id: 9, title: "レトロ・ボディ", artist: "わかばマークおじさん", album: "Kotonohanize show!", duration: "03:43", year: "2023", plays: 2, genre: "ポップ ボーカル", hr: false },
+      { id: 10, title: "レグレゲ", artist: "GReeeeN", album: "あっ、ども。はじめまして。", duration: "03:10", year: "2007", plays: 4, genre: "J-ポップ", hr: false },
+      { id: 11, title: "レーザービーム [Remastered]", artist: "Perfume", album: "Perfume The Best \"P Cubed\"", duration: "03:31", year: "2019", plays: 1, genre: "ポップ エレクトロニカ", hr: true },
+      { id: 12, title: "レーザービーム (Album-mix)", artist: "Perfume", album: "JPN", duration: "03:10", year: "2011", plays: 2, genre: "クラブ ダンス", hr: false },
+      { id: 13, title: "ルーキーズ", artist: "GReeeeN", album: "キセキ", duration: "03:55", year: "2008", plays: 5, genre: "J-ポップ", hr: false },
+      { id: 14, title: "流星群", artist: "琴葉 茜・葵", album: "歌うVOICEROID", duration: "05:12", year: "", plays: 27, genre: "", hr: false },
+      { id: 15, title: "リニアモーターガール [Remastered]", artist: "Perfume", album: "Perfume The Best \"P Cubed\"", duration: "04:06", year: "2019", plays: 0, genre: "クラブ ダンス", hr: false },
+      { id: 16, title: "リトルファイター", artist: "鎖那", album: "(un)sentimental spica", duration: "03:41", year: "2016", plays: 110, genre: "J-ポップ", hr: false }
+    ];
+
+    // 2. プレイリスト
+    const playlistsData = [
+      { id: 1, name: "tesx", songs: 2, duration: "07:18", collageColors: ["#ff7eb9", "#ff1493", "#ff69b4", "#db7093"] },
+      { id: 2, name: "test", songs: 11, duration: "44:26", collageColors: ["#a1c4fd", "#c2e9fb", "#d4fc79", "#96e6a1"] },
+      { id: 3, name: "mn", songs: 251, duration: "17:56:09", collageColors: ["#f093fb", "#f5576c", "#4facfe", "#00f2fe"] },
+      { id: 4, name: "GReeeeN", songs: 9, duration: "38:10", collageColors: ["#43e97b", "#38f9d7", "#fa709a", "#fee140"] },
+      { id: 5, name: "琴葉", songs: 177, duration: "11:27:42", collageColors: ["#ff0844", "#ffb199", "#f12711", "#f5af19"] },
+      { id: 6, name: "Electric", songs: 58, duration: "4:28:32", collageColors: ["#130cb7", "#52e5e7", "#30cfd0", "#330867"] },
+      { id: 7, name: "Reflesh", songs: 5, duration: "19:55", collageColors: ["#00c6ff", "#0072ff", "#fbc2eb", "#a6c1ee"] },
+      { id: 8, name: "nearly all", songs: 236, duration: "16:44:10", collageColors: ["#f5f7fa", "#c3cfe2", "#e6e9f0", "#eef1f6"] },
+      { id: 9, name: "ALL", songs: 557, duration: "39:00:14", collageColors: ["#243b55", "#141e30", "#3a7bd5", "#3a6073"] },
+      { id: 10, name: "Reminisphere +α", songs: 11, duration: "51:07", collageColors: ["#89f7fe", "#66a6ff", "#fdfcfb", "#e2d1c3"] },
+      { id: 11, name: "ply", songs: 32, duration: "2:24:23", collageColors: ["#d299c2", "#fef9d7", "#f5f7fa", "#c3cfe2"] },
+      { id: 12, name: "t", songs: 32, duration: "2:28:53", collageColors: ["#fbc2eb", "#a6c1ee", "#fdcbf1", "#e3ffe7"] },
+      { id: 13, name: "s13", songs: 174, duration: "12:22:19", collageColors: ["#6a11cb", "#2575fc", "#ff0844", "#ffb199"] },
+      { id: 14, name: "playlist", songs: 78, duration: "5:43:41", collageColors: ["#92fe9d", "#00c9ff", "#e0c3fc", "#8ec5fc"] }
+    ];
+
+    // 3. アルバム
+    const albumsData = [
+      { id: 1, name: "Alter", artist: "琴葉姉妹", color: "#e89cc4" },
+      { id: 2, name: "Decade", artist: "Dixie Flatline", color: "#6a5acd" },
+      { id: 3, name: "Hand in Hand", artist: "livetune feat. 初音ミク", color: "#40e0d0" },
+      { id: 4, name: "Lack of You", artist: "marok", color: "#4682b4" },
+      { id: 5, name: "Lovenautica", artist: "Unknown Artist", color: "#f4a460" },
+      { id: 6, name: "SOS", artist: "ナナツカゼ", color: "#20b2aa" },
+      { id: 7, name: "spend u E.P.", artist: "dooon", color: "#d87093" },
+      { id: 8, name: "The Structures", artist: "The Structures feat. 琴葉 茜・葵", color: "#778899" },
+      { id: 9, name: "ViViD WAVE", artist: "八王子P", color: "#8a2be2" },
+      { id: 10, name: "Wordrobes", artist: "どぅーん, marok, Rin, temura, Keina...", color: "#5f9ea0" },
+      { id: 11, name: "梅に鶯 (feat. 琴葉 茜・葵)", artist: "r-906", color: "#b22222" },
+      { id: 12, name: "サクラサク (feat. 琴葉 茜・葵)", artist: "Keina", color: "#ffb6c1" },
+      { id: 13, name: "シェルター", artist: "Porter Robinson & Madeon", color: "#4169e1" },
+      { id: 14, name: "自己同一性", artist: "nagitagari", color: "#483d8b" },
+      { id: 15, name: "Binary Star", artist: "琴葉 茜・葵", color: "#2e8b57" }
+    ];
+
+    // --- 各種ステート ---
+    let activeView = 'songs'; // 'songs' | 'playlists' | 'albums'
+    let searchQuery = '';
+    let selectedSongId = null;
+    let playingSong = null;
+    let isPlaying = false;
+    let playTimer = null;
+    let currentSeconds = 0;
+    let totalSeconds = 0;
+    let isMuted = false;
+    let previousVolume = 80;
+
+    // --- DOM取得 ---
+    const viewTitle = document.getElementById('view-title');
+    const viewCount = document.getElementById('view-count');
+    const searchInput = document.getElementById('search-input');
+    const sidebarItems = document.querySelectorAll('.sidebar-item');
+    
+    // 表示エリア
+    const containerSongs = document.getElementById('view-songs-container');
+    const containerPlaylists = document.getElementById('view-playlists-container');
+    const containerAlbums = document.getElementById('view-albums-container');
+    
+    // 注入先
+    const songsTbody = document.getElementById('songs-tbody');
+    const playlistsGrid = document.getElementById('playlists-grid');
+    const albumsGrid = document.getElementById('albums-grid');
+    
+    // 再生プレイヤーコンポーネント
+    const btnPlay = document.getElementById('btn-play');
+    const playIcon = document.getElementById('play-icon');
+    const currentTitleText = document.getElementById('current-title');
+    const currentArtistText = document.getElementById('current-artist');
+    const timeCurrent = document.getElementById('time-current');
+    const timeTotal = document.getElementById('time-total');
+    const progressBar = document.getElementById('progress-bar');
+    const progressContainer = document.getElementById('progress-container');
+    const volumeSlider = document.getElementById('volume-slider');
+    const volumeIcon = document.getElementById('volume-icon');
+    const btnMute = document.getElementById('btn-mute');
+    const btnShuffle = document.getElementById('btn-shuffle');
+    const btnRepeat = document.getElementById('btn-repeat');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+    
+    const btnCreatePlaylist = document.getElementById('btn-create-playlist');
+    const viewSwitchers = document.getElementById('view-switchers');
+
+    // --- 関数定義 ---
+
+    // トースト通知の表示
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.innerText = message;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+      
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+      }, 3000);
+    }
+
+    // 再生時間表示用のフォーマッタ (00:00形式)
+    function formatTime(secs) {
+      const m = Math.floor(secs / 60).toString().padStart(2, '0');
+      const s = Math.floor(secs % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    // 再生時間の時間(秒)から「mm:ss」を「秒」に変換
+    function parseDuration(durationStr) {
+      if (!durationStr) return 0;
+      const parts = durationStr.split(':');
+      if (parts.length === 2) {
+        return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+      } else if (parts.length === 3) {
+        return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(parts[2], 10);
+      }
+      return 180; // default fallback
+    }
+
+    // シミュレートされた再生ロジック
+    function startPlayback() {
+      if (!playingSong) return;
+      
+      clearInterval(playTimer);
+      isPlaying = true;
+      playIcon.className = "fa-solid fa-pause ml-0";
+      btnPlay.classList.add('bg-[#f3af00]', 'text-black');
+      btnPlay.classList.remove('text-[#f3af00]');
+      
+      playTimer = setInterval(() => {
+        currentSeconds++;
+        if (currentSeconds >= totalSeconds) {
+          // 曲が終了したら次へ
+          currentSeconds = 0;
+          playNextSong();
+        }
+        updatePlayerUI();
+      }, 1000);
+    }
+
+    function pausePlayback() {
+      isPlaying = false;
+      clearInterval(playTimer);
+      playIcon.className = "fa-solid fa-play ml-[1px]";
+      btnPlay.classList.remove('bg-[#f3af00]', 'text-black');
+      btnPlay.classList.add('text-[#f3af00]');
+    }
+
+    function selectAndPlaySong(song) {
+      playingSong = song;
+      selectedSongId = song.id;
+      currentSeconds = 0;
+      totalSeconds = parseDuration(song.duration);
+      
+      currentTitleText.innerText = song.title;
+      currentArtistText.innerText = song.artist || "不明なアーティスト";
+      
+      renderSongs(); // 選択行ハイライトの更新
+      startPlayback();
+      updatePlayerUI();
+      showToast(`「${song.title}」を再生します`);
+    }
+
+    function updatePlayerUI() {
+      timeCurrent.innerText = formatTime(currentSeconds);
+      timeTotal.innerText = playingSong ? playingSong.duration : "00:00";
+      
+      if (totalSeconds > 0) {
+        const percent = (currentSeconds / totalSeconds) * 100;
+        progressBar.style.width = `${percent}%`;
+      } else {
+        progressBar.style.width = '0%';
+      }
+    }
+
+    function playNextSong() {
+      if (!playingSong) return;
+      const currentIndex = songsData.findIndex(s => s.id === playingSong.id);
+      let nextIndex = currentIndex + 1;
+      if (nextIndex >= songsData.length) {
+        nextIndex = 0; // ループ
+      }
+      selectAndPlaySong(songsData[nextIndex]);
+    }
+
+    function playPrevSong() {
+      if (!playingSong) return;
+      const currentIndex = songsData.findIndex(s => s.id === playingSong.id);
+      let prevIndex = currentIndex - 1;
+      if (prevIndex < 0) {
+        prevIndex = songsData.length - 1;
+      }
+      selectAndPlaySong(songsData[prevIndex]);
+    }
+
+    // --- レンダリングロジック ---
+
+    // 1. 曲リストレンダリング
+    function renderSongs() {
+      songsTbody.innerHTML = '';
+      
+      const filtered = songsData.filter(s => {
+        const query = searchQuery.toLowerCase();
+        return (
+          s.title.toLowerCase().includes(query) ||
+          s.artist.toLowerCase().includes(query) ||
+          s.album.toLowerCase().includes(query) ||
+          s.genre.toLowerCase().includes(query)
+        );
+      });
+
+      if (filtered.length === 0) {
+        songsTbody.innerHTML = `
+          <tr>
+            <td colspan="9" class="p-8 text-center text-gray-500">
+              一致する曲が見つかりません。
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      filtered.forEach((song, idx) => {
+        const tr = document.createElement('tr');
+        const isSelected = selectedSongId === song.id;
+        tr.className = `border-b border-[#222222] cursor-pointer text-xs row-hover transition-colors ${isSelected ? 'row-selected' : 'bg-[#181818] text-gray-300'}`;
+        tr.dataset.songId = song.id;
+
+        tr.innerHTML = `
+          <td class="p-2 pl-5 text-center text-gray-500">
+            <i class="fa-solid fa-circle-info hover:text-white transition"></i>
+          </td>
+          <td class="p-2 font-medium ellipsis">
+            ${song.title}
+          </td>
+          <td class="p-2 text-center">
+            ${song.hr ? '<span class="px-[3px] py-[1px] border border-[#f3af00] text-[#f3af00] text-[8px] font-black rounded tracking-tighter">HR</span>' : ''}
+          </td>
+          <td class="p-2 ellipsis text-gray-400 ${isSelected ? 'text-blue-200' : ''}">${song.artist || ''}</td>
+          <td class="p-2 ellipsis text-gray-400 ${isSelected ? 'text-blue-200' : ''}">${song.album || ''}</td>
+          <td class="p-2 text-right pr-4 font-mono">${song.duration}</td>
+          <td class="p-2 text-center text-gray-500 font-mono">${song.year || ''}</td>
+          <td class="p-2 text-right pr-4 font-mono text-gray-400">${song.plays}</td>
+          <td class="p-2 pr-5 text-gray-400 ellipsis">${song.genre}</td>
+        `;
+
+        // クリックで選択
+        tr.addEventListener('click', () => {
+          selectedSongId = song.id;
+          renderSongs();
+        });
+
+        // ダブルクリックで再生
+        tr.addEventListener('dblclick', () => {
+          selectAndPlaySong(song);
+        });
+
+        songsTbody.appendChild(tr);
+      });
+    }
+
+    // 2. プレイリストレンダリング
+    function renderPlaylists() {
+      playlistsGrid.innerHTML = '';
+      
+      const filtered = playlistsData.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      if (filtered.length === 0) {
+        playlistsGrid.innerHTML = `
+          <div class="col-span-full py-12 text-center text-gray-500">
+            プレイリストが見つかりません
+          </div>
+        `;
+        return;
+      }
+
+      filtered.forEach(p => {
+        const card = document.createElement('div');
+        card.className = "group cursor-pointer hover:bg-[#222222] p-2 rounded transition duration-200";
+        
+        // 4色のコラージュジャケットプレースホルダー
+        const [c1, c2, c3, c4] = p.collageColors;
+        
+        card.innerHTML = `
+          <!-- コラージュカバー -->
+          <div class="aspect-square w-full rounded overflow-hidden grid grid-cols-2 gap-[1px] bg-[#121212] relative shadow-md">
+            <div style="background: linear-gradient(135deg, ${c1}, ${c2})" class="w-full h-full flex items-center justify-center text-white font-bold opacity-80 group-hover:opacity-100 transition">
+              <span class="text-[10px] scale-75 uppercase opacity-30">${p.name[0]}</span>
+            </div>
+            <div style="background: linear-gradient(135deg, ${c2}, ${c3})" class="w-full h-full flex items-center justify-center text-white font-bold opacity-80 group-hover:opacity-100 transition"></div>
+            <div style="background: linear-gradient(135deg, ${c3}, ${c4})" class="w-full h-full flex items-center justify-center text-white font-bold opacity-80 group-hover:opacity-100 transition"></div>
+            <div style="background: linear-gradient(135deg, ${c4}, ${c1})" class="w-full h-full flex items-center justify-center text-white font-bold opacity-80 group-hover:opacity-100 transition flex-col">
+              <i class="fa-solid fa-play text-white text-[12px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 absolute inset-0 m-auto bg-black bg-opacity-60 w-10 h-10 rounded-full flex items-center justify-center"></i>
+            </div>
+          </div>
+          <!-- タイトル・曲数情報 -->
+          <div class="mt-2">
+            <div class="text-white font-medium ellipsis text-xs" title="${p.name}">${p.name}</div>
+            <div class="text-gray-500 text-[11px] mt-0.5">${p.songs} 曲, ${p.duration}</div>
+          </div>
+        `;
+
+        card.addEventListener('click', () => {
+          showToast(`プレイリスト 「${p.name}」 を開きます（シミュレーション）`);
+        });
+
+        playlistsGrid.appendChild(card);
+      });
+    }
+
+    // 3. アルバムレンダリング
+    function renderAlbums() {
+      albumsGrid.innerHTML = '';
+      
+      const filtered = albumsData.filter(a => {
+        return (
+          a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          a.artist.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      });
+
+      if (filtered.length === 0) {
+        albumsGrid.innerHTML = `
+          <div class="col-span-full py-12 text-center text-gray-500">
+            アルバムが見つかりません
+          </div>
+        `;
+        return;
+      }
+
+      // 最初のアルバムは「未設定」風グレーアートワークプレースホルダー
+      filtered.forEach((a, idx) => {
+        const card = document.createElement('div');
+        card.className = "group cursor-pointer hover:bg-[#222222] p-2 rounded transition duration-200";
+
+        let artworkHTML = '';
+        if (idx === 0) {
+          // 画像3の1枚目のデフォルト音符アイコンのアートワーク
+          artworkHTML = `
+            <div class="aspect-square w-full rounded bg-[#2e2e2e] flex items-center justify-center text-gray-500 relative shadow-md">
+              <i class="fa-solid fa-music text-5xl"></i>
+              <i class="fa-solid fa-play text-white text-[12px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 absolute inset-0 m-auto bg-black bg-opacity-60 w-10 h-10 rounded-full flex items-center justify-center"></i>
+            </div>
+          `;
+        } else {
+          artworkHTML = `
+            <div style="background: linear-gradient(135deg, ${a.color}, #121212)" class="aspect-square w-full rounded flex items-center justify-center relative overflow-hidden shadow-md">
+              <!-- スタイリッシュな幾何学模様風に仕立てる -->
+              <div class="absolute inset-0 opacity-10 border-[6px] border-white m-3 rounded-full"></div>
+              <div class="absolute bottom-2 right-2 text-white opacity-25 text-[10px] uppercase font-bold tracking-widest">${a.name.slice(0, 3)}</div>
+              <i class="fa-solid fa-circle-dot text-white opacity-20 text-3xl"></i>
+              <i class="fa-solid fa-play text-white text-[12px] opacity-0 group-hover:opacity-100 transition-opacity duration-300 absolute inset-0 m-auto bg-black bg-opacity-60 w-10 h-10 rounded-full flex items-center justify-center"></i>
+            </div>
+          `;
+        }
+
+        card.innerHTML = `
+          ${artworkHTML}
+          <!-- アルバム情報 -->
+          <div class="mt-2">
+            <div class="text-white font-medium ellipsis text-xs" title="${a.name}">${a.name}</div>
+            <div class="text-gray-500 text-[11px] mt-0.5 ellipsis" title="${a.artist}">${a.artist}</div>
+          </div>
+        `;
+
+        card.addEventListener('click', () => {
+          showToast(`アルバム 「${a.name}」 を開きます（シミュレーション）`);
+        });
+
+        albumsGrid.appendChild(card);
+      });
+    }
+
+    // --- ビュー表示切り替え制御 ---
+    function switchView(target) {
+      activeView = target;
+      
+      // コンテナ表示制御
+      containerSongs.classList.add('hidden');
+      containerPlaylists.classList.add('hidden');
+      containerAlbums.classList.add('hidden');
+      
+      btnCreatePlaylist.classList.add('hidden');
+      viewSwitchers.classList.add('hidden');
+
+      // サイドバーのハイライト全削除
+      sidebarItems.forEach(item => {
+        item.classList.remove('bg-[#2e2e2e]', 'text-white', 'font-medium', 'border-l-2', 'border-[#f3af00]');
+        item.classList.add('text-gray-300');
+        // アイコンの色をグレーに戻す
+        const icon = item.querySelector('i');
+        if (icon) icon.className = icon.className.replace('text-[#f3af00]', 'text-gray-400');
+      });
+
+      // アクティブ項目の設定
+      let activeItem = Array.from(sidebarItems).find(item => item.getAttribute('data-target') === target);
+      if (activeItem) {
+        activeItem.classList.add('bg-[#2e2e2e]', 'text-white', 'font-medium', 'border-l-2', 'border-[#f3af00]');
+        activeItem.classList.remove('text-gray-300');
+        const icon = activeItem.querySelector('i');
+        if (icon) icon.className = icon.className.replace('text-gray-400', 'text-[#f3af00]');
+      }
+
+      // 表示切り替えとタイトル・件数
+      if (target === 'songs') {
+        containerSongs.classList.remove('hidden');
+        viewTitle.innerText = "曲";
+        viewCount.innerText = `${songsData.length} 曲`;
+        renderSongs();
+      } else if (target === 'playlists') {
+        containerPlaylists.classList.remove('hidden');
+        btnCreatePlaylist.classList.remove('hidden');
+        btnCreatePlaylist.classList.add('flex');
+        viewSwitchers.classList.remove('hidden');
+        viewTitle.innerText = "プレイリスト";
+        viewCount.innerText = `${playlistsData.length} プレイリスト`;
+        renderPlaylists();
+      } else if (target === 'albums') {
+        containerAlbums.classList.remove('hidden');
+        viewSwitchers.classList.remove('hidden');
+        viewTitle.innerText = "アルバム";
+        viewCount.innerText = `${albumsData.length} アルバム`;
+        renderAlbums();
+      } else {
+        // その他モックメニュー
+        containerSongs.classList.remove('hidden');
+        viewTitle.innerText = activeItem ? activeItem.querySelector('span').innerText : "ライブラリ";
+        viewCount.innerText = "0 件";
+        songsTbody.innerHTML = `
+          <tr>
+            <td colspan="9" class="p-12 text-center text-gray-500">
+              このビューはモックアップです。サイドバーの「曲」「アルバム」「プレイリスト」をクリックしてください。
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    // --- イベントリスナー設定 ---
+
+    // 検索窓入力
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = e.target.value;
+      if (activeView === 'songs') renderSongs();
+      else if (activeView === 'playlists') renderPlaylists();
+      else if (activeView === 'albums') renderAlbums();
+    });
+
+    // サイドバーメニュークリック
+    sidebarItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        const target = item.getAttribute('data-target');
+        switchView(target);
+      });
+    });
+
+    // 再生・一時停止トグル
+    btnPlay.addEventListener('click', () => {
+      if (!playingSong) {
+        // まだ曲が選ばれていないときは最初の曲を選択して再生
+        selectAndPlaySong(songsData[0]);
+        return;
+      }
+      if (isPlaying) {
+        pausePlayback();
+      } else {
+        startPlayback();
+      }
+    });
+
+    // 前の曲・次の曲
+    btnNext.addEventListener('click', playNextSong);
+    btnPrev.addEventListener('click', playPrevSong);
+
+    // シャッフル & リピート (トグルのビジュアルのみ)
+    btnShuffle.addEventListener('click', () => {
+      btnShuffle.classList.toggle('text-gray-500');
+      btnShuffle.classList.toggle('text-[#f3af00]');
+      showToast(btnShuffle.classList.contains('text-[#f3af00]') ? "シャッフル再生: ON" : "シャッフル再生: OFF");
+    });
+
+    btnRepeat.addEventListener('click', () => {
+      btnRepeat.classList.toggle('text-gray-500');
+      btnRepeat.classList.toggle('text-[#f3af00]');
+      showToast(btnRepeat.classList.contains('text-[#f3af00]') ? "リピート再生: ON" : "リピート再生: OFF");
+    });
+
+    // 音量スライダー
+    volumeSlider.addEventListener('input', (e) => {
+      const val = e.target.value;
+      if (val == 0) {
+        volumeIcon.className = "fa-solid fa-volume-xmark";
+        isMuted = true;
+      } else if (val < 40) {
+        volumeIcon.className = "fa-solid fa-volume-low";
+        isMuted = false;
+      } else {
+        volumeIcon.className = "fa-solid fa-volume-high";
+        isMuted = false;
+      }
+    });
+
+    // ミュートボタン
+    btnMute.addEventListener('click', () => {
+      if (isMuted) {
+        volumeSlider.value = previousVolume;
+        isMuted = false;
+        volumeIcon.className = previousVolume < 40 ? "fa-solid fa-volume-low" : "fa-solid fa-volume-high";
+      } else {
+        previousVolume = volumeSlider.value;
+        volumeSlider.value = 0;
+        isMuted = true;
+        volumeIcon.className = "fa-solid fa-volume-xmark";
+      }
+    });
+
+    // プログレスバーのシーククリック
+    progressContainer.addEventListener('click', (e) => {
+      if (!playingSong) return;
+      const rect = progressContainer.getBoundingClientRect();
+      const clickPosition = (e.clientX - rect.left) / rect.width;
+      currentSeconds = Math.floor(clickPosition * totalSeconds);
+      updatePlayerUI();
+    });
+
+    // プレイリスト新規作成ボタン (ダミーアクション)
+    btnCreatePlaylist.addEventListener('click', () => {
+      const newName = prompt("新しいプレイリスト名を入力してください:", "マイプレイリスト");
+      if (newName) {
+        playlistsData.push({
+          id: playlistsData.length + 1,
+          name: newName,
+          songs: 0,
+          duration: "00:00",
+          collageColors: ["#e0c3fc", "#8ec5fc", "#fbc2eb", "#a6c1ee"]
+        });
+        renderPlaylists();
+        viewCount.innerText = `${playlistsData.length} プレイリスト`;
+        showToast(`プレイリスト「${newName}」を作成しました`);
+      }
+    });
+
+    // --- 初期表示処理 ---
+    window.onload = function() {
+      switchView('songs');
+    };
+  </script>
+</body>
+</html>

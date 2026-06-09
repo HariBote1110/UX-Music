@@ -74,6 +74,19 @@ func writeM3U8(path string, entries []PlaylistEntry) error {
 	return os.WriteFile(path, []byte(sb.String()), 0644)
 }
 
+func playlistFilePath(name string) (string, error) {
+	cleanName := strings.TrimSpace(name)
+	if cleanName == "" {
+		return "", fmt.Errorf("empty name")
+	}
+	if cleanName == "." || cleanName == ".." ||
+		strings.ContainsAny(cleanName, `/\`) ||
+		filepath.Base(cleanName) != cleanName {
+		return "", fmt.Errorf("invalid playlist name")
+	}
+	return filepath.Join(GetPlaylistsDir(), cleanName+".m3u8"), nil
+}
+
 func GetAllPlaylists() ([]string, error) {
 	dir := GetPlaylistsDir()
 	files, err := os.ReadDir(dir)
@@ -88,14 +101,12 @@ func GetAllPlaylists() ([]string, error) {
 		}
 	}
 
-	orderData, _ := store.Instance.Load(PlaylistOrderFileName)
+	orderData, _ := store.Instance.LoadMap(PlaylistOrderFileName)
 	var savedOrder []string
-	if orderMap, ok := orderData.(map[string]interface{}); ok {
-		if orderList, ok := orderMap["order"].([]interface{}); ok {
-			for _, item := range orderList {
-				if s, ok := item.(string); ok {
-					savedOrder = append(savedOrder, s)
-				}
+	if orderList, ok := orderData["order"].([]interface{}); ok {
+		for _, item := range orderList {
+			if s, ok := item.(string); ok {
+				savedOrder = append(savedOrder, s)
 			}
 		}
 	}
@@ -125,10 +136,10 @@ func GetAllPlaylists() ([]string, error) {
 }
 
 func CreatePlaylist(name string) error {
-	if name == "" {
-		return fmt.Errorf("empty name")
+	path, err := playlistFilePath(name)
+	if err != nil {
+		return err
 	}
-	path := filepath.Join(GetPlaylistsDir(), name+".m3u8")
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("playlist already exists")
 	}
@@ -137,12 +148,18 @@ func CreatePlaylist(name string) error {
 }
 
 func DeletePlaylist(name string) error {
-	path := filepath.Join(GetPlaylistsDir(), name+".m3u8")
+	path, err := playlistFilePath(name)
+	if err != nil {
+		return err
+	}
 	return os.Remove(path)
 }
 
 func GetPlaylistSongs(name string) ([]string, error) {
-	path := filepath.Join(GetPlaylistsDir(), name+".m3u8")
+	path, err := playlistFilePath(name)
+	if err != nil {
+		return nil, err
+	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -164,7 +181,10 @@ type SongToAdd struct {
 }
 
 func AddSongsToPlaylist(name string, songs []SongToAdd) (int, error) {
-	path := filepath.Join(GetPlaylistsDir(), name+".m3u8")
+	path, err := playlistFilePath(name)
+	if err != nil {
+		return 0, err
+	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
@@ -196,7 +216,10 @@ func AddSongsToPlaylist(name string, songs []SongToAdd) (int, error) {
 }
 
 func RemoveSongsFromPlaylist(name string, pathsToRemove []string) error {
-	path := filepath.Join(GetPlaylistsDir(), name+".m3u8")
+	path, err := playlistFilePath(name)
+	if err != nil {
+		return err
+	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -219,7 +242,10 @@ func RemoveSongsFromPlaylist(name string, pathsToRemove []string) error {
 }
 
 func UpdatePlaylistOrder(name string, newPaths []string) error {
-	path := filepath.Join(GetPlaylistsDir(), name+".m3u8")
+	path, err := playlistFilePath(name)
+	if err != nil {
+		return err
+	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -242,8 +268,14 @@ func UpdatePlaylistOrder(name string, newPaths []string) error {
 }
 
 func RenamePlaylist(oldName, newName string) error {
-	oldPath := filepath.Join(GetPlaylistsDir(), oldName+".m3u8")
-	newPath := filepath.Join(GetPlaylistsDir(), newName+".m3u8")
+	oldPath, err := playlistFilePath(oldName)
+	if err != nil {
+		return err
+	}
+	newPath, err := playlistFilePath(newName)
+	if err != nil {
+		return err
+	}
 
 	if _, err := os.Stat(newPath); err == nil {
 		return fmt.Errorf("destination playlist already exists")

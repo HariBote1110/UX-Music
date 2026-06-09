@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +22,7 @@ import (
 
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
+	"ux-music-sidecar/internal/uxsync"
 
 	"github.com/skip2/go-qrcode"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -27,11 +31,14 @@ import (
 const wearServerPort = "8765"
 
 const wearPairingURLScheme = "uxmusic"
+const wearAuthTokenSettingsKey = "wearAuthToken"
 
 // WearServer holds the HTTP server for the /wear/ endpoints.
 type WearServer struct {
-	server *http.Server
-	app    *App
+	server   *http.Server
+	app      *App
+	syncMDNS *uxsync.MDNSAdvertisement
+	syncInfo uxsync.MDNSAdvertiseInfo
 }
 
 // StartWearServer starts the LAN HTTP server that serves the /wear/ API.
@@ -40,22 +47,9 @@ type WearServer struct {
 func StartWearServer(ctx context.Context, app *App) *WearServer {
 	ws := &WearServer{app: app}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/wear/ping", wearPingHandler)
-	mux.HandleFunc("/wear/mobile", wearMobileMetaHandler)
-	mux.HandleFunc("/wear/songs", wearSongsHandler)
-	mux.HandleFunc("/wear/lyrics", wearLyricsHandler)
-	mux.HandleFunc("/wear/playlists", wearPlaylistsHandler)
-	mux.HandleFunc("/wear/file", wearFileHandler)
-	mux.HandleFunc("/wear/file/", wearFileHandler)
-	mux.HandleFunc("/wear/artwork/", wearArtworkHandler)
-	mux.HandleFunc("/wear/loudness", ws.wearLoudnessHandler)
-	mux.HandleFunc("/wear/state", ws.wearStateHandler)
-	mux.HandleFunc("/wear/command", ws.wearCommandHandler)
-
 	srv := &http.Server{
 		Addr:    "0.0.0.0:" + wearServerPort,
-		Handler: corsMiddleware(mux),
+		Handler: NewLANHTTPHandler(app),
 	}
 
 	go func() {
@@ -67,11 +61,37 @@ func StartWearServer(ctx context.Context, app *App) *WearServer {
 
 	go func() {
 		<-ctx.Done()
+		if ws.syncMDNS != nil {
+			ws.syncMDNS.Shutdown()
+		}
 		_ = srv.Close()
 	}()
 
 	ws.server = srv
+	ws.startSyncMDNS()
 	return ws
+}
+
+func NewLANHTTPHandler(app *App) http.Handler {
+	ws := &WearServer{app: app}
+	mux := http.NewServeMux()
+	registerWearRoutes(mux, ws)
+	registerSyncRoutes(mux, app)
+	return corsMiddleware(lanAuthMiddleware(mux))
+}
+
+func registerWearRoutes(mux *http.ServeMux, ws *WearServer) {
+	mux.HandleFunc("/wear/ping", wearPingHandler)
+	mux.HandleFunc("/wear/mobile", wearMobileMetaHandler)
+	mux.HandleFunc("/wear/songs", wearSongsHandler)
+	mux.HandleFunc("/wear/lyrics", wearLyricsHandler)
+	mux.HandleFunc("/wear/playlists", wearPlaylistsHandler)
+	mux.HandleFunc("/wear/file", wearFileHandler)
+	mux.HandleFunc("/wear/file/", wearFileHandler)
+	mux.HandleFunc("/wear/artwork/", wearArtworkHandler)
+	mux.HandleFunc("/wear/loudness", ws.wearLoudnessHandler)
+	mux.HandleFunc("/wear/state", ws.wearStateHandler)
+	mux.HandleFunc("/wear/command", ws.wearCommandHandler)
 }
 
 // GetWearServerAddress returns the LAN address of this machine for display in the UI.
@@ -105,30 +125,24 @@ func wearPingHandler(w http.ResponseWriter, r *http.Request) {
 // wearMobileMetaHandler documents endpoints for phone companion apps (full-quality audio, cached artwork on device, etc.).
 func wearMobileMetaHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{
-		"role":     "ux-music-companion",
-		"wearApi":  2,
-		"songs":    "/wear/songs",
-		"file":     "/wear/file?id={songId}",
-		"fileHint": "Add &source=original for library file without Watch transcoding (AAC 128k m4a). Omit for watch-optimised cache.",
-		"artwork":  "/wear/artwork/?id={artworkId}",
-		"loudness": "/wear/loudness",
-		"lyrics":   "/wear/lyrics?id={songId}",
+		"role":      "ux-music-companion",
+		"wearApi":   2,
+		"songs":     "/wear/songs",
+		"file":      "/wear/file?id={songId}",
+		"fileHint":  "Add &source=original for library file without Watch transcoding (AAC 128k m4a). Omit for watch-optimised cache.",
+		"artwork":   "/wear/artwork/?id={artworkId}",
+		"loudness":  "/wear/loudness",
+		"lyrics":    "/wear/lyrics?id={songId}",
 		"playlists": "/wear/playlists",
-		"state":    "/wear/state",
-		"command":  "/wear/command (POST JSON)",
+		"state":     "/wear/state",
+		"command":   "/wear/command (POST JSON)",
 	})
 }
 
 func wearSongsHandler(w http.ResponseWriter, r *http.Request) {
-	raw, err := store.Instance.Load("library")
-	if err != nil || raw == nil {
-		writeJSON(w, []interface{}{})
-		return
-	}
-
 	// Strip artwork blobs before sending to save bandwidth
-	library, ok := raw.([]interface{})
-	if !ok {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil || len(library) == 0 {
 		writeJSON(w, []interface{}{})
 		return
 	}
@@ -354,12 +368,8 @@ func (ws *WearServer) wearCommandHandler(w http.ResponseWriter, r *http.Request)
 // buildPathToIDMap creates a reverse lookup from file path to song ID
 // by scanning the library store.
 func buildPathToIDMap() map[string]string {
-	raw, err := store.Instance.Load("library")
-	if err != nil || raw == nil {
-		return nil
-	}
-	library, ok := raw.([]interface{})
-	if !ok {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil || len(library) == 0 {
 		return nil
 	}
 	m := make(map[string]string, len(library))
@@ -429,14 +439,14 @@ func getOrTranscode(songID, inputPath string) (string, error) {
 
 	cmd := exec.Command(ffmpegPath,
 		"-i", inputPath,
-		"-c:a", "aac",        // AAC codec (native to watchOS)
-		"-b:a", "128k",       // 128 kbps — good balance for Watch speaker / earbuds
-		"-ar", "44100",       // 44.1 kHz sample rate
-		"-ac", "2",           // stereo
+		"-c:a", "aac", // AAC codec (native to watchOS)
+		"-b:a", "128k", // 128 kbps — good balance for Watch speaker / earbuds
+		"-ar", "44100", // 44.1 kHz sample rate
+		"-ac", "2", // stereo
 		"-vn",                // strip video / embedded artwork (saves space)
 		"-map_metadata", "0", // preserve title/artist/album tags
-		"-f", "mp4",          // explicit container format (temp file has .tmp extension)
-		"-y",                 // overwrite output without asking
+		"-f", "mp4", // explicit container format (temp file has .tmp extension)
+		"-y", // overwrite output without asking
 		tmpPath,
 	)
 
@@ -486,12 +496,8 @@ func locateFfmpeg() (string, error) {
 // findSongPathByID scans the library JSON store and returns the file path for
 // the song with the given id (UUID or legacy path-shaped key).
 func findSongPathByID(id string) string {
-	raw, err := store.Instance.Load("library")
-	if err != nil || raw == nil {
-		return ""
-	}
-	library, ok := raw.([]interface{})
-	if !ok {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil || len(library) == 0 {
 		return ""
 	}
 	tryMatch := func(candidate string) string {
@@ -626,7 +632,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-UX-Music-Sync-Token, X-UX-Music-Token")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -639,7 +645,77 @@ func wearPairingURLFromParts(host, port string) string {
 	q := url.Values{}
 	q.Set("host", host)
 	q.Set("port", port)
+	q.Set("token", ensureWearAuthToken())
 	return wearPairingURLScheme + "://pair?" + q.Encode()
+}
+
+func wearAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isWearPublicEndpoint(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !wearRequestHasValidToken(r, ensureWearAuthToken()) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isWearPublicEndpoint(path string) bool {
+	return path == "/wear/ping" || path == "/wear/mobile"
+}
+
+func wearRequestHasValidToken(r *http.Request, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		return false
+	}
+	candidates := []string{
+		r.URL.Query().Get("token"),
+		r.Header.Get("X-UX-Music-Token"),
+	}
+	if auth := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+		candidates = append(candidates, strings.TrimSpace(auth[len("bearer "):]))
+	}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if len(candidate) != len(expected) {
+			continue
+		}
+		if subtle.ConstantTimeCompare([]byte(candidate), []byte(expected)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+func ensureWearAuthToken() string {
+	settings, err := store.Instance.LoadMap("settings")
+	if err == nil {
+		if token, ok := settings[wearAuthTokenSettingsKey].(string); ok && strings.TrimSpace(token) != "" {
+			return strings.TrimSpace(token)
+		}
+	}
+	token := generateWearAuthToken()
+	if settings == nil {
+		settings = map[string]interface{}{}
+	}
+	settings[wearAuthTokenSettingsKey] = token
+	if err := store.Instance.Save("settings", settings); err != nil {
+		fmt.Printf("[Wear] Failed to save auth token: %v\n", err)
+	}
+	return token
+}
+
+func generateWearAuthToken() string {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		return hex.EncodeToString(b[:])
+	}
+	fallback := sha256.Sum256([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
+	return hex.EncodeToString(fallback[:])
 }
 
 // BuildWearPairingURL returns a mobile deep link for QR pairing (uxmusic://pair?host=…&port=…).

@@ -13,10 +13,17 @@ export function updateListSpacer() {
     if (playbackBar) {
         const barRect = playbackBar.getBoundingClientRect();
         if (barRect.height > 0) {
-            // ビューポート下端から再生バー上端までの実距離をそのまま使用する。
-            const overlapHeight = window.innerHeight - barRect.top;
-            const spacerHeight = Math.max(0, Math.ceil(overlapHeight + 8));
-            document.documentElement.style.setProperty('--footer-height', `${spacerHeight}px`);
+            // 再生バーがビューポートの下半分にある（通常の浮遊配置）場合のみ
+            // ビューポート下端からの重なり量をスペーサーに反映する。
+            // MusicCenter テーマ時は上部ツールバーになるため重なりは発生しない。
+            const isAtBottom = barRect.top > window.innerHeight / 2;
+            if (isAtBottom) {
+                const overlapHeight = window.innerHeight - barRect.top;
+                const spacerHeight = Math.max(0, Math.ceil(overlapHeight + 8));
+                document.documentElement.style.setProperty('--footer-height', `${spacerHeight}px`);
+            } else {
+                document.documentElement.style.removeProperty('--footer-height');
+            }
         }
     } else {
         document.documentElement.style.removeProperty('--footer-height');

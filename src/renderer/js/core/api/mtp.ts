@@ -1,71 +1,60 @@
 // src/renderer/js/core/api/mtp.ts
-/**
- * MTP 操作のための API ブリッジ
- * Electron 互換の invoke インターフェースを介して Wails バックエンドを呼び出す
- */
+// MTP操作のWailsバインドラッパー
 
-const electronAPI = (window as any).electronAPI;
+import { getWailsApp } from '../bridge.js';
 
-/**
- * MTP デバイスを初期化
- */
-export async function mtpInitialize() {
-    return await electronAPI.invoke('mtp-initialize');
+export async function mtpBrowseDirectory(opts: { storageId: number; fullPath: string }): Promise<Record<string, unknown>> {
+    const app = getWailsApp();
+    if (!app) return { error: 'Wails not available' };
+    try {
+        const result = await app.MTPWalk({
+            storageId: opts.storageId,
+            fullPath: opts.fullPath,
+            recursive: false,
+            skipDisallowedFiles: true,
+            skipHiddenFiles: false,
+        });
+        return (result as Record<string, unknown>) ?? {};
+    } catch (err) {
+        return { error: (err as Error).message };
+    }
 }
 
-/**
- * デバイス情報を取得
- */
-export async function mtpFetchDeviceInfo() {
-    return await electronAPI.invoke('mtp-fetch-device-info');
+export async function mtpSelectDownloadFolder(): Promise<string | null> {
+    const app = getWailsApp();
+    if (!app) return null;
+    try {
+        return await app.SelectMTPDownloadFolder() as string | null;
+    } catch {
+        return null;
+    }
 }
 
-/**
- * ディレクトリをブラウズ
- * @param {object} data { storageId, fullPath }
- */
-export async function mtpBrowseDirectory(data: { storageId: number; fullPath: string }) {
-    return await electronAPI.invoke('mtp-browse-directory', data);
+export async function mtpDownloadFiles(opts: { storageId: number; sources: string[]; destination: string }): Promise<Record<string, unknown>> {
+    const app = getWailsApp();
+    if (!app) return { error: 'Wails not available' };
+    try {
+        await app.MTPDownloadFiles({
+            storageId: opts.storageId,
+            sources: opts.sources,
+            destination: opts.destination,
+        });
+        return {};
+    } catch (err) {
+        return { error: (err as Error).message };
+    }
 }
 
-/**
- * ファイルをアップロード
- */
-export async function mtpUploadFiles(data: any) {
-    return await electronAPI.invoke('mtp-upload-files', data);
-}
-
-/**
- * ファイルをダウンロード
- */
-export async function mtpDownloadFiles(data: any) {
-    return await electronAPI.invoke('mtp-download-files', data);
-}
-
-/**
- * ファイルを削除
- */
-export async function mtpDeleteFiles(data: any) {
-    return await electronAPI.invoke('mtp-delete-files', data);
-}
-
-/**
- * フォルダを作成
- */
-export async function mtpMakeDirectory(data: any) {
-    return await electronAPI.invoke('mtp-make-directory', data);
-}
-
-/**
- * ダウンロード先フォルダを選択
- */
-export async function mtpSelectDownloadFolder() {
-    return await electronAPI.invoke('mtp-select-download-folder');
-}
-
-/**
- * MTP 接続を終了
- */
-export async function mtpDispose() {
-    return await electronAPI.invoke('mtp-dispose');
+export async function mtpDeleteFiles(opts: { storageId: number; files: string[] }): Promise<Record<string, unknown>> {
+    const app = getWailsApp();
+    if (!app) return { error: 'Wails not available' };
+    try {
+        await app.MTPDeleteFile({
+            storageId: opts.storageId,
+            files: opts.files,
+        });
+        return {};
+    } catch (err) {
+        return { error: (err as Error).message };
+    }
 }

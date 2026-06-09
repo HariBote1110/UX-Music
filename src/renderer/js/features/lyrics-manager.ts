@@ -31,6 +31,8 @@ const LYRICS_MOTION_DELAY_STEP_MS = 40;
 const LYRICS_MOTION_DURATION_MS = 800;
 /** 同期歌詞ブロック間（次の p の手前）— 可変行高・折返し・和訳行で重なりを防ぐ */
 const LYRICS_LRC_INTER_BLOCK_GAP_PX = 16;
+/** LRC 時刻と再生クロックの浮動小数差を吸収し、境界で前行が残り続けるのを防ぐ（秒） */
+const LYRICS_TIME_EPSILON_SEC = 0.002;
 
 let currentContextMenuSong = null;
 let currentContextMenuType = null;
@@ -394,12 +396,13 @@ function findLyricsIndexForTime(currentTime) {
         return -1;
     }
 
+    const eps = LYRICS_TIME_EPSILON_SEC;
     const lastIndex = lyrics.length - 1;
-    if (currentTime < lyrics[0].time) {
+    if (currentTime + eps < lyrics[0].time) {
         lastResolvedLyricsIndex = -1;
         return -1;
     }
-    if (currentTime >= lyrics[lastIndex].time) {
+    if (currentTime + eps >= lyrics[lastIndex].time) {
         lastResolvedLyricsIndex = lastIndex;
         return lastIndex;
     }
@@ -407,12 +410,12 @@ function findLyricsIndexForTime(currentTime) {
     if (lastResolvedLyricsIndex >= 0 && lastResolvedLyricsIndex < lyrics.length) {
         const currentLine = lyrics[lastResolvedLyricsIndex];
         const nextLine = lyrics[lastResolvedLyricsIndex + 1];
-        if (currentTime >= currentLine.time && (!nextLine || currentTime < nextLine.time)) {
+        if (currentTime + eps >= currentLine.time && (!nextLine || currentTime + eps < nextLine.time)) {
             return lastResolvedLyricsIndex;
         }
-        if (nextLine && currentTime >= nextLine.time) {
+        if (nextLine && currentTime + eps >= nextLine.time) {
             let index = lastResolvedLyricsIndex + 1;
-            while (index < lastIndex && currentTime >= lyrics[index + 1].time) {
+            while (index < lastIndex && currentTime + eps >= lyrics[index + 1].time) {
                 index += 1;
             }
             lastResolvedLyricsIndex = index;
@@ -426,7 +429,7 @@ function findLyricsIndexForTime(currentTime) {
 
     while (low <= high) {
         const mid = Math.floor((low + high) / 2);
-        if (lyrics[mid].time <= currentTime) {
+        if (lyrics[mid].time <= currentTime + eps) {
             resolved = mid;
             low = mid + 1;
         } else {

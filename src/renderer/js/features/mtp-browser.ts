@@ -50,7 +50,7 @@ let browserState = {
     currentPath: '/',
     history: [],
     historyIndex: -1,
-    selectedItems: new Set(),
+    selectedItems: new Set<string>(),
     isLoading: false
 };
 
@@ -98,7 +98,7 @@ export async function initMtpBrowser(storageId, initialPath = '/') {
         currentPath: initialPath,
         history: [initialPath],
         historyIndex: 0,
-        selectedItems: new Set(),
+        selectedItems: new Set<string>(),
         isLoading: false
     };
 
@@ -478,7 +478,7 @@ export function stopMtpBrowser() {
         currentPath: '/',
         history: [],
         historyIndex: -1,
-        selectedItems: new Set(),
+        selectedItems: new Set<string>(),
         isLoading: false
     };
 }

@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="./styles/lrc-editor.css">
     <link rel="stylesheet" href="./styles/mtp-browser.css">
     <link rel="stylesheet" href="./styles/cd-ripper.css">
+    <link rel="stylesheet" href="./styles/theme-music-center.css">
 </head>
 
 <body>
@@ -116,6 +117,10 @@
     <footer class="playback-bar">
         <div id="footer-artwork-container" class="footer-artwork-container hidden">
             <img id="footer-artwork" src="./assets/default_artwork.png" alt="Now Playing">
+        </div>
+        <!-- MusicCenter テーマ用: コントロール右に曲名・アーティスト・アルバムをインライン表示 -->
+        <div id="mc-footer-info" class="mc-footer-info">
+            <span id="mc-footer-title-text" class="mc-footer-title"></span>
         </div>
         <div class="playback-controls">
             <button id="shuffle-btn" class="playback-mode-btn" title="シャッフル">
@@ -267,6 +272,14 @@
                         <p id="wear-pairing-qr-error" class="wear-pairing-error hidden" role="alert"></p>
                     </div>
                 </div>
+                <div class="setting-group" id="ux-sync-settings-entry-group">
+                    <div class="setting-item">
+                        <h4>UX Sync</h4>
+                        <p class="setting-description">端末検出、ペアリング、同期状態を専用画面で管理します。</p>
+                        <button id="ux-sync-settings-open-btn" type="button" class="settings-button">UX Sync設定を開く</button>
+                        <p id="ux-sync-settings-entry-status" class="setting-description" aria-live="polite">確認中</p>
+                    </div>
+                </div>
                 <div class="setting-group">
                     <div class="setting-item">
                         <h4>グラフィックイコライザー</h4>
@@ -313,6 +326,28 @@
                                 <div>
                                     <strong>高速 (バースト)</strong>
                                     <small>エラー訂正を省略して高速に読み取ります。傷の少ないディスクにおすすめです。</small>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <div class="setting-item">
+                        <h4>UIテーマ</h4>
+                        <p class="setting-description">アプリ全体の外観スタイルを選択します。変更は OK を押すと即座に反映されます。</p>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="ui-theme" value="default" checked>
+                                <div>
+                                    <strong>デフォルト</strong>
+                                    <small>丸みのあるモダンなデザイン。再生バーは画面下部に浮遊表示されます。</small>
+                                </div>
+                            </label>
+                            <label>
+                                <input type="radio" name="ui-theme" value="music-center">
+                                <div>
+                                    <strong>MusicCenter</strong>
+                                    <small>Sony MusicCenter for PC 風のシャープなデザイン。再生バーが画面上部のツールバーに移動します。</small>
                                 </div>
                             </label>
                         </div>
@@ -428,6 +463,23 @@
                 </div>
                 <div class="setting-group">
                     <div class="setting-item">
+                        <h4>歌詞自動同期モデル</h4>
+                        <p class="setting-description">Demucs・Whisper・埋め込みモデルを初回のみダウンロードしてキャッシュします（合計およそ2GB前後）。</p>
+                        <div class="checkbox-group" style="margin-bottom:10px;">
+                            <label>
+                                <input type="checkbox" id="lyrics-sync-model-consent" name="lyrics-sync-model-consent">
+                                <div>
+                                    <strong>モデルのネットワークからのダウンロードを許可する</strong>
+                                    <small>オンにしないと自動同期は音声モデルを取得できず、処理は失敗する場合があります。オフ時はモデルキャッシュのみ削除されます。</small>
+                                </div>
+                            </label>
+                        </div>
+                        <p id="lyrics-sync-cache-info" class="setting-description">—</p>
+                        <button type="button" id="lyrics-sync-cache-clear-btn" class="settings-button">同期モデルキャッシュを削除</button>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <div class="setting-item">
                         <details class="licence-details">
                             <summary>ライセンス情報</summary>
                             <div class="licence-scroll">
@@ -533,6 +585,75 @@
             </div>
             <div class="modal-buttons">
                 <button id="settings-ok-btn">OK</button>
+            </div>
+        </div>
+    </div>
+    <div id="ux-sync-settings-modal-overlay" class="hidden">
+        <div id="ux-sync-settings-modal">
+            <div class="ux-sync-settings-header">
+                <div>
+                    <h2>UX Sync</h2>
+                    <p>LAN内端末の検出とペアリング</p>
+                </div>
+                <button id="ux-sync-settings-close-btn" type="button" class="settings-button secondary" aria-label="UX Sync設定を閉じる">閉じる</button>
+            </div>
+            <div class="ux-sync-settings-tabs" role="tablist" aria-label="UX Sync設定">
+                <button type="button" class="ux-sync-settings-tab active" role="tab" aria-selected="true" data-ux-sync-tab="devices">端末</button>
+                <button type="button" class="ux-sync-settings-tab" role="tab" aria-selected="false" data-ux-sync-tab="sync">同期</button>
+                <button type="button" class="ux-sync-settings-tab" role="tab" aria-selected="false" data-ux-sync-tab="storage">保存</button>
+            </div>
+            <div class="ux-sync-settings-content">
+                <section class="ux-sync-settings-panel" data-ux-sync-panel="devices" aria-labelledby="ux-sync-devices-heading">
+                    <div class="ux-sync-settings-toolbar">
+                        <div>
+                            <h3 id="ux-sync-devices-heading">同期端末</h3>
+                            <p id="ux-sync-discovery-status" aria-live="polite">未探索</p>
+                        </div>
+                        <button id="ux-sync-discover-btn" type="button" class="settings-button">同期端末を探す</button>
+                    </div>
+                    <div id="ux-sync-peer-list" class="ux-sync-peer-list" aria-live="polite"></div>
+                </section>
+                <section class="ux-sync-settings-panel hidden" data-ux-sync-panel="sync" aria-labelledby="ux-sync-transfer-heading">
+                    <div class="ux-sync-settings-toolbar">
+                        <div>
+                            <h3 id="ux-sync-transfer-heading">音源同期</h3>
+                            <p id="ux-sync-transfer-status" aria-live="polite">同期元端末を選択してください</p>
+                        </div>
+                    </div>
+                    <div class="ux-sync-transfer-controls">
+                        <label for="ux-sync-transfer-peer-select">相手端末</label>
+                        <select id="ux-sync-transfer-peer-select" class="ux-sync-transfer-select">
+                            <option value="">未選択</option>
+                        </select>
+                        <label for="ux-sync-transfer-encoding-select">転送音質</label>
+                        <select id="ux-sync-transfer-encoding-select" class="ux-sync-transfer-select">
+                            <option value="original">原本のまま</option>
+                            <option value="mp3_320">MP3 320kbps</option>
+                        </select>
+                        <div class="ux-sync-transfer-actions">
+                            <button id="ux-sync-pull-one-btn" type="button" class="settings-button">1曲取得</button>
+                            <button id="ux-sync-pull-all-btn" type="button" class="settings-button">全曲取得</button>
+                            <button id="ux-sync-push-one-btn" type="button" class="settings-button">1曲転送</button>
+                            <button id="ux-sync-push-all-btn" type="button" class="settings-button">全曲転送</button>
+                        </div>
+                    </div>
+                    <div id="ux-sync-transfer-log" class="ux-sync-transfer-log" aria-live="polite"></div>
+                </section>
+                <section class="ux-sync-settings-panel hidden" data-ux-sync-panel="storage" aria-labelledby="ux-sync-storage-heading">
+                    <div class="ux-sync-settings-toolbar">
+                        <div>
+                            <h3 id="ux-sync-storage-heading">保存安全設定</h3>
+                            <p id="ux-sync-storage-status" aria-live="polite">未読み込み</p>
+                        </div>
+                    </div>
+                    <div class="ux-sync-transfer-controls">
+                        <label for="ux-sync-min-free-space-gb-input">最低空き容量</label>
+                        <input id="ux-sync-min-free-space-gb-input" class="ux-sync-transfer-select" type="number" min="0" max="1024" step="0.5" inputmode="decimal" value="5">
+                        <div class="ux-sync-transfer-actions">
+                            <button id="ux-sync-storage-save-btn" type="button" class="settings-button">保存</button>
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
     </div>

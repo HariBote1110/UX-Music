@@ -129,6 +129,8 @@ export namespace lyricssync {
 	    lines: string[];
 	    language: string;
 	    profile: string;
+	    allowModelDownload?: boolean;
+	    whisperModel?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Request(source);
@@ -140,6 +142,8 @@ export namespace lyricssync {
 	        this.lines = source["lines"];
 	        this.language = source["language"];
 	        this.profile = source["profile"];
+	        this.allowModelDownload = source["allowModelDownload"];
+	        this.whisperModel = source["whisperModel"];
 	    }
 	}
 	export class Result {
@@ -507,6 +511,199 @@ export namespace server {
 	        this.performanceSourceOk = source["performanceSourceOk"];
 	    }
 	}
+	export class SyncAutoResult {
+	    checkedDevices: number;
+	    syncedDevices: number;
+	    failedDevices: number;
+	    pushedPlayEvents: number;
+	    syncedArtwork: number;
+	    pulledTracks: number;
+	    skippedTracks: number;
+	    paused: boolean;
+	    pauseReason?: string;
+	    freeSpaceBytes?: number;
+	    minFreeSpaceBytes?: number;
+	    errors?: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new SyncAutoResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.checkedDevices = source["checkedDevices"];
+	        this.syncedDevices = source["syncedDevices"];
+	        this.failedDevices = source["failedDevices"];
+	        this.pushedPlayEvents = source["pushedPlayEvents"];
+	        this.syncedArtwork = source["syncedArtwork"];
+	        this.pulledTracks = source["pulledTracks"];
+	        this.skippedTracks = source["skippedTracks"];
+	        this.paused = source["paused"];
+	        this.pauseReason = source["pauseReason"];
+	        this.freeSpaceBytes = source["freeSpaceBytes"];
+	        this.minFreeSpaceBytes = source["minFreeSpaceBytes"];
+	        this.errors = source["errors"];
+	    }
+	}
+	export class SyncDeviceRecord {
+	    deviceId: string;
+	    displayName: string;
+	    baseUrl?: string;
+	    roles?: string[];
+	    paired: boolean;
+	    lastSeenAt?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new SyncDeviceRecord(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.deviceId = source["deviceId"];
+	        this.displayName = source["displayName"];
+	        this.baseUrl = source["baseUrl"];
+	        this.roles = source["roles"];
+	        this.paired = source["paired"];
+	        this.lastSeenAt = source["lastSeenAt"];
+	    }
+	}
+	export class SyncPairingConfirmResult {
+	    remoteDeviceId: string;
+	    remoteDisplayName: string;
+	    tokenSaved: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncPairingConfirmResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.remoteDeviceId = source["remoteDeviceId"];
+	        this.remoteDisplayName = source["remoteDisplayName"];
+	        this.tokenSaved = source["tokenSaved"];
+	    }
+	}
+	export class SyncPairingStartResult {
+	    baseUrl: string;
+	    sessionId: string;
+	    localDeviceId: string;
+	    remoteDeviceId: string;
+	    remoteDisplayName: string;
+	    code: string;
+	    expiresAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncPairingStartResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.baseUrl = source["baseUrl"];
+	        this.sessionId = source["sessionId"];
+	        this.localDeviceId = source["localDeviceId"];
+	        this.remoteDeviceId = source["remoteDeviceId"];
+	        this.remoteDisplayName = source["remoteDisplayName"];
+	        this.code = source["code"];
+	        this.expiresAt = source["expiresAt"];
+	    }
+	}
+	export class SyncPullResult {
+	    remoteDeviceId: string;
+	    remoteDisplayName: string;
+	    downloaded: number;
+	    skipped: number;
+	    failed: number;
+	    importedPaths: string[];
+	    errors?: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new SyncPullResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.remoteDeviceId = source["remoteDeviceId"];
+	        this.remoteDisplayName = source["remoteDisplayName"];
+	        this.downloaded = source["downloaded"];
+	        this.skipped = source["skipped"];
+	        this.failed = source["failed"];
+	        this.importedPaths = source["importedPaths"];
+	        this.errors = source["errors"];
+	    }
+	}
+	export class SyncPushResult {
+	    remoteDeviceId: string;
+	    remoteDisplayName: string;
+	    transferred: number;
+	    skipped: number;
+	    failed: number;
+	    encodingMode: string;
+	    importedPaths: string[];
+	    errors?: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new SyncPushResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.remoteDeviceId = source["remoteDeviceId"];
+	        this.remoteDisplayName = source["remoteDisplayName"];
+	        this.transferred = source["transferred"];
+	        this.skipped = source["skipped"];
+	        this.failed = source["failed"];
+	        this.encodingMode = source["encodingMode"];
+	        this.importedPaths = source["importedPaths"];
+	        this.errors = source["errors"];
+	    }
+	}
+	export class SyncTransferOptions {
+	    encodingMode: string;
+
+	    static createFrom(source: any = {}) {
+	        return new SyncTransferOptions(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.encodingMode = source["encodingMode"];
+	    }
+	}
 
 }
+export namespace uxsync {
+	
+	export class MDNSPeer {
+	    deviceId: string;
+	    displayName: string;
+	    host: string;
+	    hosts: string[];
+	    port: number;
+	    hostName: string;
+	    protocolVersion: string;
+	    schemaVersion?: string;
+	    capabilities?: string[];
+	    roles: string[];
+	    reachableBaseUrl?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MDNSPeer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.deviceId = source["deviceId"];
+	        this.displayName = source["displayName"];
+	        this.host = source["host"];
+	        this.hosts = source["hosts"];
+	        this.port = source["port"];
+	        this.hostName = source["hostName"];
+	        this.protocolVersion = source["protocolVersion"];
+	        this.schemaVersion = source["schemaVersion"];
+	        this.capabilities = source["capabilities"];
+	        this.roles = source["roles"];
+	        this.reachableBaseUrl = source["reachableBaseUrl"];
+	    }
+	}
 
+}

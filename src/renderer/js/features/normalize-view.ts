@@ -1,6 +1,8 @@
 // src/renderer/js/features/normalize-view.ts — mainContent 描画用
 import { getNormalizeViewHtml } from './normalize-view-html.js';
 
+import { escapeHtmlText, findNormalizeFileForResult, toJobFilePayload } from './normalize-lookup.js';
+
 const electronAPI = window.electronAPI;
 
 const normalizeFiles = new Map();
@@ -68,13 +70,16 @@ function updateFileList() {
     for (const [id, file] of normalizeFiles.entries()) {
         const row = document.createElement('tr');
         const diff = typeof file.currentLufs === 'number' ? (file.targetLufs - file.currentLufs).toFixed(2) : '-';
+        const safeName = escapeHtmlText(file.name);
+        const safeStatus = escapeHtmlText(file.status);
+        const statusClass = `status-${String(file.status ?? '').replace(/[^a-z0-9_-]/gi, '')}`;
 
         row.innerHTML = `
             <td><input type="checkbox" class="normalize-select-item" data-id="${id}" ${file.selected ? 'checked' : ''}></td>
-            <td>${file.name}</td>
+            <td>${safeName}</td>
             <td>${typeof file.currentLufs === 'number' ? file.currentLufs.toFixed(2) + ' LUFS' : '-'}</td>
             <td>${diff} dB</td>
-            <td class="status-${file.status}">${file.status}</td>
+            <td class="${statusClass}">${safeStatus}</td>
         `;
         tbody.appendChild(row);
 
@@ -175,9 +180,13 @@ function registerNormalizeIpcHandlerOnce() {
     normalizeIpcHandlerRegistered = true;
 
     electronAPI.on('normalize-worker-result', ((...args: unknown[]) => {
-        const { type, id, result } = args[0] as { type: string; id: string; result: any };
-        const file = normalizeFiles.get(id);
-        if (!file) return;
+        const row = (args[0] ?? {}) as { type?: string; id?: string; path?: string; result?: any };
+        const { type, id, path, result } = row;
+        const file = findNormalizeFileForResult(normalizeFiles, { id, path });
+        if (!file) {
+            console.warn('[Normalize] result for unknown id/path:', id, path, type);
+            return;
+        }
 
         if (type === 'analysis-result') {
             if (result.success) {
@@ -397,13 +406,14 @@ export function renderNormalizeView(container: HTMLElement, options: { signal?: 
             const backup = outputSettings.mode === 'overwrite'
                 ? (backupToggle ? backupToggle.checked : false)
                 : false;
+            const jobFiles = filesWithGain.map(toJobFilePayload);
             electronAPI.send('start-normalize-job', {
                 jobType: 'normalize',
-                files: filesWithGain,
+                files: jobFiles,
                 options: {
                     backup,
-                    output: outputSettings,
-                    basePath: commonBasePath
+                    output: { mode: outputSettings.mode, path: outputSettings.path || '' },
+                    basePath: commonBasePath || ''
                 }
             });
             updateProgress(0, filesToNormalise.length, '適用中');

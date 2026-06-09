@@ -1,5 +1,8 @@
 **/xcuserdata/
 
+__pycache__/
+*.py[cod]
+
 /node_modules
 /dist
 .DS_Store
@@ -11,3 +14,9 @@ build/bin/UX-Music.app/Contents/MacOS/UX-Music
 /src/sidecars/mtp/node_modules
 /src/sidecars/mtp/node_modules
 /src/sidecars/mtp/node_modules
+
+/IGNORE/
+python/.venv/
+*.egg-info/
+.pytest_cache/
+python/.pytest_cache/

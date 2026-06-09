@@ -12,14 +12,7 @@ import (
 
 // GetSettings loads settings from settings.json
 func (a *App) GetSettings() (interface{}, error) {
-	settings, err := store.Instance.Load("settings")
-	if err != nil {
-		return nil, err
-	}
-	if settings == nil {
-		return make(map[string]interface{}), nil
-	}
-	return settings, nil
+	return store.Instance.LoadMap("settings")
 }
 
 // SaveSettings saves the application settings
@@ -30,14 +23,9 @@ func (a *App) SaveSettings(settings interface{}) error {
 		return store.Instance.Save("settings", settings)
 	}
 
-	currentRaw, err := store.Instance.Load("settings")
+	current, err := store.Instance.LoadMap("settings")
 	if err != nil {
 		return err
-	}
-
-	current := map[string]interface{}{}
-	if existing, ok := currentRaw.(map[string]interface{}); ok {
-		current = existing
 	}
 
 	merged := mergeSettings(current, incoming)
@@ -69,9 +57,10 @@ func (a *App) GetArtworkAsDataURL(filename string) (string, error) {
 		return "", nil
 	}
 
-	userDataPath := config.GetUserDataPath()
-	artworksDir := filepath.Join(userDataPath, "Artworks")
-	fullPath := filepath.Join(artworksDir, filename)
+	fullPath := resolveNowPlayingArtworkPath(filename)
+	if fullPath == "" {
+		return "", nil
+	}
 
 	data, err := os.ReadFile(fullPath)
 	if err != nil {

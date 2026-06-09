@@ -55,11 +55,48 @@ func (s *Store) Load(name string) (interface{}, error) {
 	return data, nil
 }
 
+// LoadSlice loads `name` and returns its contents as []interface{}.
+// Missing or empty stores yield a non-nil empty slice; type mismatches return an error.
+func (s *Store) LoadSlice(name string) ([]interface{}, error) {
+	raw, err := s.Load(name)
+	if err != nil {
+		return nil, err
+	}
+	if raw == nil {
+		return []interface{}{}, nil
+	}
+	arr, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("store %q: expected []interface{}, got %T", name, raw)
+	}
+	return arr, nil
+}
+
+// LoadMap loads `name` and returns its contents as map[string]interface{}.
+// Missing or empty stores yield a non-nil empty map; type mismatches return an error.
+func (s *Store) LoadMap(name string) (map[string]interface{}, error) {
+	raw, err := s.Load(name)
+	if err != nil {
+		return nil, err
+	}
+	if raw == nil {
+		return map[string]interface{}{}, nil
+	}
+	m, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("store %q: expected map[string]interface{}, got %T", name, raw)
+	}
+	return m, nil
+}
+
 func (s *Store) Save(name string, data interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	path := s.GetPath(name)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("failed to create store directory: %w", err)
+	}
 	bytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal json: %w", err)

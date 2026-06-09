@@ -1,0 +1,29 @@
+[project]
+name = "lyrics-sync-sidecar"
+version = "2.0.1"
+description = "UX-Music lyrics auto-sync pipeline (Demucs → faster-whisper → alignment)"
+requires-python = ">=3.10,<3.13"
+
+dependencies = [
+  "numpy>=1.26",
+  "torch>=2.2,<3",
+  "torchaudio>=2.2,<3",
+  "demucs>=4.0",
+  "faster-whisper>=1.1",
+  "sentence-transformers>=3.0,<4",
+  "transformers>=4.40,<5",
+  "pyopenjtalk>=0.3",
+  "g2p-en>=2.1,<3",
+  "soundfile>=0.12,<1",
+  "scikit-learn>=1.4,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+markers = [
+  "heavy: neural models and long audio",
+]

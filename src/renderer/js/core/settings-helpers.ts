@@ -26,6 +26,7 @@ export interface RendererSettingsRead {
     analysedQueue?: { enabled?: boolean; decayDays?: number };
     enableEasterEggs?: boolean;
     enableYouTube?: boolean;
+    uiTheme?: string;
 }
 
 /**

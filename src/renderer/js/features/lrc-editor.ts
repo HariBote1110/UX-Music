@@ -4,9 +4,28 @@ import { state } from '../core/state.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { resolveArtworkPath, formatSongTitle } from '../ui/utils.js';
 import { getLrcEditorHtml } from './lrc-editor-markup.js';
+import { applyAlignedTimestamps, validateAutoSyncPrereqs } from './lrc-auto-sync.js';
 import { togglePlayPause, seek, getCurrentTime, getDuration, isPlaying } from './player.js';
+import { getWailsApp, isWailsMode } from '../core/bridge.js';
 
 const electronAPI = window.electronAPI;
+
+/** DevTools コンソール用（Toast より残る）。 */
+const LOG_LYRICS_AUTO_SYNC = '[LyricsAutoSync]';
+
+function summarisePayloadForConsole(payload: Record<string, unknown>): Record<string, unknown> {
+    const lines = payload.lines;
+    const linePreview = Array.isArray(lines)
+        ? { lineCount: lines.length, head: lines.slice(0, 3) }
+        : lines;
+    return {
+        songPath: payload.songPath,
+        language: payload.language,
+        profile: payload.profile,
+        allowModelDownload: payload.allowModelDownload,
+        lines: linePreview,
+    };
+}
 
 const INTERLUDE_LABEL = '[間奏]';
 const TIMELINE_MIN_DURATION_SEC = 30;
@@ -162,6 +181,7 @@ let editorIsSeeking = false;
 let lastTimestampedLineIndex = -1;
 let autoAdvanceArmed = false;
 let isAutoSyncRunning = false;
+let lyricsSyncProgressListenerAttached = false;
 let latestDetectedSegments = [];
 let latestDetectedBy = '';
 let historyStack = [];
@@ -1002,6 +1022,67 @@ function loadTextFromTextarea() {
     updateUndoRedoButtons();
 }
 
+function attachLyricsSyncProgressListener() {
+    if (lyricsSyncProgressListenerAttached || typeof window.runtime?.EventsOn !== 'function') {
+        return;
+    }
+    lyricsSyncProgressListenerAttached = true;
+    window.runtime.EventsOn('lyrics-sync-progress', (payload: unknown) => {
+        if (!isAutoSyncRunning || !editorElements.autoSyncBtn) return;
+        const rec =
+            typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>) : {};
+        const stage = typeof rec.stage === 'string' ? rec.stage : '';
+        const pctRaw = rec.percent;
+        const pctNum = typeof pctRaw === 'number' ? Math.round(pctRaw) : '';
+        console.info(LOG_LYRICS_AUTO_SYNC, 'progress', { stage, percent: pctRaw });
+        editorElements.autoSyncBtn.textContent = stage
+            ? `解析中… ${stage} ${pctNum}%`
+            : `解析中… ${pctNum}%`;
+    });
+}
+
+/** Returns whether the user permits model downloads (dialogs + persisted settings via Wails). */
+async function ensureLyricsSyncModelConsentBeforeSync() {
+    if (!isWailsMode()) {
+        return true;
+    }
+
+    const app = getWailsApp() as
+        | {
+              GetLyricsSyncResourceStatus?: () => Promise<Record<string, unknown>>;
+              SetLyricsSyncModelConsent?: (approved: boolean) => Promise<void>;
+          }
+        | undefined;
+
+    if (!app?.GetLyricsSyncResourceStatus || !app.SetLyricsSyncModelConsent) {
+        showNotification('歌詞モデルの許可状態を確認できません。設定の「モデルのネットワークからのダウンロードを許可する」をオンにしてください。');
+        hideNotification(5000);
+        return false;
+    }
+
+    try {
+        const st = await app.GetLyricsSyncResourceStatus();
+        const hasConsent = st?.modelConsent === true;
+
+        if (hasConsent) {
+            return true;
+        }
+
+        const ok = window.confirm(
+            '歌詞の自動同期では初回に音声モデル（合計およそ2GB前後）がダウンロードされることがあります。続行するとダウンロードに同意したものとして保存されます。よろしいですか？'
+        );
+        if (ok) {
+            await app.SetLyricsSyncModelConsent(true);
+        }
+        return ok;
+    } catch (e) {
+        console.warn('[LRC Editor] Lyrics sync consent check failed:', e);
+        showNotification('モデル許可の確認に失敗しました。設定画面から許可してください。');
+        hideNotification(5000);
+        return false;
+    }
+}
+
 function setAutoSyncButtonState(running) {
     if (!editorElements.autoSyncBtn) return;
 
@@ -1079,21 +1160,17 @@ function applyDetectedPreview(result) {
 async function runAutoSync() {
     if (isAutoSyncRunning) return;
 
-    if (!currentEditorSong || !currentEditorSong.path) {
-        showNotification('同期対象の曲情報が見つかりません。');
+    const prereq = validateAutoSyncPrereqs({ currentEditorSong, lyricsLines });
+    if (!prereq.ok) {
+        showNotification(prereq.message!);
         hideNotification(2500);
         return;
     }
 
-    if (lyricsLines.length === 0) {
-        showNotification('先に歌詞テキストを読み込んでください。');
-        hideNotification(2500);
-        return;
-    }
-
-    const hasAnyContent = lyricsLines.some(line => (line.text || '').trim() !== '');
-    if (!hasAnyContent) {
-        showNotification('同期対象の歌詞行がありません。');
+    attachLyricsSyncProgressListener();
+    const consentOk = await ensureLyricsSyncModelConsentBeforeSync();
+    if (!consentOk) {
+        showNotification('キャンセルしました。');
         hideNotification(2500);
         return;
     }
@@ -1106,17 +1183,26 @@ async function runAutoSync() {
     setAutoSyncButtonState(true);
 
     try {
-        const payload = {
+        const payload: Record<string, unknown> = {
             songPath: currentEditorSong.path,
             lines: lyricsLines.map(line => line.text || ''),
             language: editorElements.languageSelect ? editorElements.languageSelect.value : 'auto',
             profile: 'fast',
+            /** Backend also reads settings; this flags explicit user intent after consent. */
+            allowModelDownload: true,
         };
 
+        console.info(LOG_LYRICS_AUTO_SYNC, 'invoke', summarisePayloadForConsole(payload));
+
         const result = await electronAPI.invoke('lyrics-auto-sync', payload) as Record<string, unknown>;
+
         if (!result || result.success !== true) {
+            const errRaw = result && typeof result === 'object' ? (result as Record<string, unknown>).error : undefined;
+            const errText = typeof errRaw === 'string' ? errRaw : '不明なエラー';
+            console.error(LOG_LYRICS_AUTO_SYNC, 'failed (backend Result)', JSON.stringify(result, null, 2));
+            console.error(LOG_LYRICS_AUTO_SYNC, 'error message:', errText);
             applyDetectedPreview(result);
-            showNotification(`自動同期に失敗しました: ${(result as Record<string, unknown>)?.error || '不明なエラー'}`);
+            showNotification(`自動同期に失敗しました: ${errText}`);
             hideNotification(5000);
             return;
         }
@@ -1125,18 +1211,16 @@ async function runAutoSync() {
 
         const alignedLines = Array.isArray(result.lines) ? result.lines as Record<string, unknown>[] : [];
         if (alignedLines.length === 0) {
+            console.warn(LOG_LYRICS_AUTO_SYNC, 'success=true but zero aligned lines — full Result:', JSON.stringify(result, null, 2));
             showNotification('自動同期結果が空でした。');
             hideNotification(3500);
             return;
         }
 
-        for (const aligned of alignedLines) {
-            if (!Number.isInteger(aligned?.index)) continue;
-            const alignedIndex = aligned.index as number;
-            if (alignedIndex < 0 || alignedIndex >= lyricsLines.length) continue;
-            if (typeof aligned.timestamp !== 'number' || Number.isNaN(aligned.timestamp)) continue;
-            lyricsLines[alignedIndex].timestamp = normaliseTimestamp(aligned.timestamp as number);
-        }
+        applyAlignedTimestamps(
+            lyricsLines,
+            alignedLines as unknown as { index: number; timestamp: number }[],
+        );
 
         saveHistory();
         redrawLyricsArea();
@@ -1153,10 +1237,19 @@ async function runAutoSync() {
 
         const matchedCount = typeof result.matchedCount === 'number' ? result.matchedCount as number : 0;
         const detectedCount = latestDetectedSegments.length;
+        console.info(LOG_LYRICS_AUTO_SYNC, 'success', {
+            matchedCount,
+            detectedSegmentCount: detectedCount,
+            detectedBy: typeof result.detectedBy === 'string' ? result.detectedBy : undefined,
+            alignedLineCount: alignedLines.length,
+        });
         showNotification(`自動同期が完了しました（一致: ${matchedCount}行 / 検知: ${detectedCount}件）`);
         hideNotification(3500);
     } catch (error) {
-        console.error('[LRC Editor] Auto sync failed:', error);
+        console.error(LOG_LYRICS_AUTO_SYNC, 'invoke threw:', error);
+        if (error instanceof Error && error.stack) {
+            console.error(LOG_LYRICS_AUTO_SYNC, 'stack:', error.stack);
+        }
         latestDetectedSegments = [];
         latestDetectedBy = '';
         updateDetectedPreviewUI();

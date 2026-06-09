@@ -46,17 +46,11 @@ func (a *App) getLibrarySongCount() int {
 		return 0
 	}
 
-	songs, err := store.Instance.Load("library")
+	songs, err := store.Instance.LoadSlice("library")
 	if err != nil {
 		return 0
 	}
-
-	songList, ok := songs.([]interface{})
-	if !ok {
-		return 0
-	}
-
-	return len(songList)
+	return len(songs)
 }
 
 func readCurrentProcessUsage() (float64, float64, bool) {

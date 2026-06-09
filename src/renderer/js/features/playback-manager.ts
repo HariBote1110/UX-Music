@@ -1,31 +1,20 @@
 // uxmusic/src/renderer/js/playback-manager.js
 
 import { state, elements, PLAYBACK_MODES } from '../core/state.js';
-import { play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
+import { getCurrentTime, getDuration, play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
 import { updatePlayingIndicators, renderQueueView } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
+import { resolveLocalPlaybackGain } from './playback-gain.js';
+import { buildSkipEvent } from './playback-skip.js';
 import { musicApi, isWailsMode } from '../core/bridge.js';
-import { getSongById } from '../core/library-model.js';
+import { getSongById, getSongByPath } from '../core/library-model.js';
 const electronAPI = window.electronAPI;
 const pendingLoudnessRequests = new Set();
 
 /** Overlapping playSong calls (queue clicks, skip spam) must not interleave awaits; last enqueued run still wins after prior runs finish. */
 let playSongChain = Promise.resolve();
-
-function parseLoudnessValue(value) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-        return value;
-    }
-    if (typeof value === 'string') {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) {
-            return parsed;
-        }
-    }
-    return null;
-}
 
 export function markLoudnessAnalysisCompleted(path) {
     if (typeof path !== 'string' || path.trim() === '') return;
@@ -33,12 +22,15 @@ export function markLoudnessAnalysisCompleted(path) {
 }
 
 function handleSkip() {
-    if (state.analysedQueue.enabled && state.currentSongIndex > -1) {
-        const skippedSong = state.playbackQueue[state.currentSongIndex];
-        const player = document.getElementById('main-player') as HTMLMediaElement | null;
-        if (skippedSong && player && player.currentTime > 0 && player.duration > 0) {
-            musicApi.songSkipped({ song: skippedSong, currentTime: player.currentTime });
-        }
+    const event = buildSkipEvent({
+        analysedQueueEnabled: state.analysedQueue.enabled,
+        currentSongIndex: state.currentSongIndex,
+        skippedSong: state.playbackQueue[state.currentSongIndex],
+        currentTime: getCurrentTime(),
+        duration: getDuration(),
+    });
+    if (event) {
+        musicApi.songSkipped(event);
     }
 }
 
@@ -77,6 +69,13 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
     const songToPlay = targetQueue[index];
 
     console.log(`[Debug:Playback] playSong 開始 - index: ${index}, 曲名: ${songToPlay?.title}`);
+    if (!canStartPlayback(songToPlay)) {
+        const localSong = await resolveRemotePlaybackDownload(songToPlay);
+        if (!localSong) {
+            return;
+        }
+        targetQueue[index] = localSong;
+    }
 
     if (sourceList) {
         handleSkip();
@@ -127,10 +126,17 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
     }
 
     let gainLinear = 1.0;
-    if (songToPlayActual.type === 'local' && !forcePlay && songToPlayActual.path) {
+    if (songToPlayActual.type === 'local' && songToPlayActual.path) {
         const savedLoudnessRaw = await electronAPI.invoke('get-loudness-value', songToPlayActual.path);
-        const savedLoudness = parseLoudnessValue(savedLoudnessRaw);
-        if (savedLoudness === null) {
+        const settings = isWailsMode() ? await musicApi.getSettings() : null;
+        const resolved = resolveLocalPlaybackGain({
+            savedLoudnessRaw,
+            targetLoudness: typeof settings?.targetLoudness === 'number' ? settings.targetLoudness : -18.0,
+            forcePlay
+        });
+        gainLinear = resolved.gainLinear;
+
+        if (resolved.shouldWaitForAnalysis) {
             state.songWaitingForAnalysis = { index, sourceList: state.playbackQueue, path: songToPlayActual.path };
             showNotification(`「${songToPlayActual.title}」の再生準備中です...`, false);
             if (!pendingLoudnessRequests.has(songToPlayActual.path)) {
@@ -139,15 +145,6 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
             }
             renderQueueView();
             return;
-        }
-        if (isWailsMode()) {
-            const settings = await musicApi.getSettings();
-            const targetLoudness =
-                typeof settings?.targetLoudness === 'number' && Number.isFinite(settings.targetLoudness)
-                    ? settings.targetLoudness
-                    : -18.0;
-            const gainDb = targetLoudness - savedLoudness;
-            gainLinear = Math.pow(10, gainDb / 20);
         }
     }
 
@@ -183,6 +180,78 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
     }
 
     musicApi.playbackStarted(songToPlayActual);
+    prefetchUpcomingRemoteTracks(index);
+}
+
+export function canStartPlayback(song) {
+    return song?.syncAvailability !== 'remote';
+}
+
+export async function resolveRemotePlaybackDownload(song, dependencies: any = {}) {
+    if (song?.syncAvailability !== 'remote') {
+        return song || null;
+    }
+    const sourceDeviceId = String(song.syncSourceDeviceId || '').trim();
+    const sourceTrackId = String(song.syncSourceTrackId || '').trim();
+    if (!sourceDeviceId || !sourceTrackId) {
+        dependencies.notifyError?.('UX Sync: 取得元の曲情報が不足しています。');
+        return null;
+    }
+    const downloadSyncTrack = dependencies.downloadSyncTrack || musicApi.downloadSyncTrack;
+    const refreshLibrary = dependencies.refreshLibrary || musicApi.loadLibrary;
+    const findLocalSong = dependencies.findLocalSong || ((result) => {
+        const importedPath = result?.importedPaths?.[0];
+        if (!importedPath) return null;
+        return getSongByPath(importedPath) || { ...song, path: importedPath, syncAvailability: 'local', type: 'local' };
+    });
+    const notifyError = dependencies.notifyError || ((message) => {
+        showNotification(`UX Sync: ${message}`);
+        hideNotification(5000);
+    });
+    const notifyProgress = dependencies.notifyProgress || ((message) => {
+        showNotification(message, false);
+    });
+    const clearProgress = dependencies.clearProgress || hideNotification;
+    try {
+        notifyProgress(`「${song.title || 'Remote track'}」を取得しています...`);
+        const result = await downloadSyncTrack(sourceDeviceId, sourceTrackId);
+        await refreshLibrary();
+        const localSong = findLocalSong(result, song);
+        if (!localSong) {
+            notifyError('取得した曲をライブラリで見つけられませんでした。');
+            return null;
+        }
+        clearProgress();
+        return { ...localSong, syncAvailability: 'local' };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error || '音源取得に失敗しました。');
+        notifyError(message);
+        return null;
+    }
+}
+
+export function remoteQueuePrefetchRefs(queue, currentIndex, limit = 3) {
+    if (!Array.isArray(queue) || limit <= 0) {
+        return [];
+    }
+    return queue
+        .slice(currentIndex + 1)
+        .filter(song => song?.syncAvailability === 'remote' && song.syncSourceDeviceId && song.syncSourceTrackId)
+        .slice(0, limit)
+        .map(song => ({
+            sourceDeviceId: String(song.syncSourceDeviceId),
+            sourceTrackId: String(song.syncSourceTrackId),
+        }));
+}
+
+function prefetchUpcomingRemoteTracks(currentIndex) {
+    const refs = remoteQueuePrefetchRefs(state.playbackQueue, currentIndex, 3);
+    if (refs.length === 0 || !musicApi.prefetchSyncTracks) {
+        return;
+    }
+    void musicApi.prefetchSyncTracks(refs).catch((error) => {
+        console.warn('[UX Sync] remote prefetch failed:', error);
+    });
 }
 
 export function playNextSong() {

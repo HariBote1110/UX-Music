@@ -36,7 +36,17 @@ export function parseLRC(lrcContent: string): LrcLine[] {
         }
     });
 
-    return lyrics.sort((a, b) => (a.time - b.time) || (a.sourceLine ?? 0) - (b.sourceLine ?? 0));
+    lyrics.sort((a, b) => (a.time - b.time) || (a.sourceLine ?? 0) - (b.sourceLine ?? 0));
+
+    /** 同一タイムスタンプの連続行は二分探索が末尾だけ選ぶため、微増で単調にする */
+    for (let i = 1; i < lyrics.length; i += 1) {
+        const prevT = lyrics[i - 1].time;
+        if (lyrics[i].time <= prevT) {
+            lyrics[i].time = prevT + 1e-4;
+        }
+    }
+
+    return lyrics;
 }
 
 function timeKey(time: number): number {

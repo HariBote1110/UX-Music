@@ -64,9 +64,8 @@ func (a *App) SelectAndChangeAlbumArtwork(albumKey string) error {
 	}
 
 	// Update every matching song in the persisted library
-	raw, _ := store.Instance.Load("library")
-	arr, ok := raw.([]interface{})
-	if !ok {
+	arr, err := store.Instance.LoadSlice("library")
+	if err != nil {
 		return fmt.Errorf("library format invalid")
 	}
 

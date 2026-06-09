@@ -1,3 +1,332 @@
+# Task: UX Sync Phase 5.16 - スマートキャッシュと容量ポリシー
+
+## 概要
+統一ライブラリビューとシームレスDL再生を前提に、端末ごとのキャッシュ方針を `mirror` / `selective` で切り替える。`mirror` は現行どおり全曲 pull、`selective` は最近再生とキュー先読みだけを取得対象にし、空き容量が閾値を下回る場合は同期取得音源を LRU で削除する。
+
+## 完了条件
+- [x] `syncCachePolicy="selective"` では AutoSync が全曲 pull せず、最近再生 remote 曲のみ取得すること。
+- [x] `syncCachePolicy` 未設定または `mirror` では現行どおり全曲 pull すること。
+- [x] playcounts history から最近再生 remote 曲を抽出するテストがあること。
+- [x] `PrefetchSyncTracks` が指定された remote 曲だけを取得すること。
+- [x] selective かつ空き容量閾値未満では、最終アクセスが最も古い同期取得音源をファイルと `library.json` から削除すること。
+- [x] mirror では空き容量閾値未満でも LRU 削除を行わないこと。
+- [x] renderer に `mirror` / `selective` の保存タブ向け選択肢と正規化があること。
+
+# Task: UX Sync Phase 5.15 - シームレスDL再生
+
+## 概要
+統一ライブラリビューで `DL可能` と表示される remote 曲について、再生操作時に取得元 peer から対象曲だけを最優先でダウンロードし、取得完了後に自動再生へ遷移する。
+
+## 完了条件
+- [x] `DownloadSyncTrack(sourceDeviceId, sourceTrackId)` が `sync-remote-catalog` の該当曲を取得元 peer からダウンロードし、`SyncLibrary` へ import して local path を返すテストがあること。
+- [x] 取得元 peer 未到達または token 不足ではエラーを返し、勝手な代替取得をしないこと。
+- [x] renderer が remote 曲の再生時に `DownloadSyncTrack` を呼び、完了後に統一ライブラリを再取得して local 曲として再生へ進めること。
+- [x] DL 失敗時はエラー通知を出し、再生に入らないこと。
+
+# Task: UX Sync Phase 5.14 - 統一ライブラリビュー
+
+## 概要
+UX Sync の Phase 2 として、音源がローカルに無い LibraryHost peer の曲もライブラリ一覧へ表示し、`DL可能` として区別できるようにする。リモート曲は `library.json` へ混ぜず、`sync-remote-catalog` に保存した snapshot metadata とローカルライブラリを表示時に統合する。
+
+## 完了条件
+- [x] `GetUnifiedLibrary()` がローカル曲へ `syncAvailability="local"` を付けるテストがあること。
+- [x] `sync-remote-catalog` の未保有曲が `syncAvailability="remote"` と取得元 peer 情報付きで統一ビューへ追加されること。
+- [x] `syncSongMatchKey` が一致する local/remote は local 優先で1件に dedup されること。
+- [x] 複数 peer の同一 remote 曲は matchKey で1件に集約されること。
+- [x] `refreshSyncRemoteCatalog` が LibraryHost の `/sync/library/snapshot` を保存し、取得失敗時は既存キャッシュを温存すること。
+- [x] renderer が remote 曲に `DL可能` バッジを表示し、プレースホルダ artwork を使うこと。
+- [x] remote 曲は再生アクション対象外として扱われること。
+
+# Task: UX Sync Phase 5.12 - push転送メタデータ・ジャケット・再生回数
+
+## 概要
+UX Sync の push 転送で FLAC などの音源本体だけが届き、曲メタデータ、ジャケット、再生回数が転送先に反映されない問題を修正する。音源本体の multipart import と同時に、ライブラリ表示に必要な曲情報、可能なジャケット、既存再生回数を相手側へ渡す。
+
+## 完了条件
+- [x] push 転送の multipart metadata にタイトル、アーティスト、アルバム、アルバムアーティスト、トラック番号などの表示メタデータが含まれるテストがあること。
+- [x] push 転送時に `Artworks` 管理済みジャケット、または音源埋め込みジャケットを artwork part として同梱し、受信側 `library.json` に `artwork.full` / `artwork.thumbnail` が保存されるテストがあること。
+- [x] push 転送時にローカル再生回数を metadata に同梱し、受信側 `playcounts` に取り込み先パスで反映するテストがあること。
+
+# Task: UX Sync Phase 5.11 - 自動音源差分同期と接続トースト
+
+## 概要
+UX Sync をさらに「接続できたら自然に同期される」挙動へ近づける。Walkman 転送で使っている未転送判定の考え方を流用し、Library Host から音源本体を自動取得する際も、既に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込み済みかつ実ファイルが存在する曲は転送しない。また、自動同期が走ったことを右下トーストで分かるようにする。
+
+## 完了条件
+- [x] `AutoSyncPairedDevices()` が `LibraryHost` のペア済み端末から未取得曲だけを pull し、既存曲は skip として数えるテストがあること。
+- [x] `LibraryHost` ではない peer からは音源本体の自動 pull を行わないこと。
+- [x] renderer が `ux-sync-auto-result` を受け取り、接続できたため同期したこと、取得数、既存数、再生回数、ジャケット数を右下トーストに表示できること。
+
+# Task: UX Sync Phase 5.10 - Crescent向けSSH自動同期CLI
+
+## 概要
+HariBote（便宜上 Crescent）を検証用 Windows ノードとして使い、SSH から GUI を起動せずにペアリングと接続時自動同期を実行できる導線を追加する。Crescent は普段手元で操作しない検証ノードとして扱うため、初期化、ペアリング、自動同期ワンショットを CLI で完結できることを重視する。
+
+## 完了条件
+- [x] `--sync-pair <baseURL>` が6桁コード確認フローを使ってペアリングし、同期トークンと既知 peer の到達URLを保存するテストがあること。
+- [x] `--sync-auto-once` が保存済みペア端末に対して `AutoSyncPairedDevices()` を一回実行し、SSH から JSON 結果を確認できるテストがあること。
+- [x] Crescent 上で Windows バイナリをビルドし、Mac mini とのペアリングと自動同期ワンショットを実通信で検証できること。
+
+# Task: UX Sync Phase 5.9 - 空き容量安全停止
+
+## 概要
+UX Sync の自動同期や音源取得・受信で、保存先ボリュームの空き容量がユーザー指定の最低容量を下回る場合に同期を停止する。母艦と持ち運び端末で容量差が大きい前提のため、容量事故を防ぐ安全弁として扱う。
+
+## 完了条件
+- [x] `settings.syncMinFreeSpaceGB` が正の値の場合、`AutoSyncPairedDevices()` が peer 接続前に空き容量を確認し、閾値未満なら `paused` で停止するテストがあること。
+- [x] `PullSyncLibraryAssets()` と `/sync/library/import` が同じ空き容量安全停止を通ること。
+- [x] UX Sync 専用設定画面の `保存` タブから最低空き容量を GB 単位で保存できること。
+- [x] protocol capability に `library.storage-safety.v1` が追加されていること。
+
+# Task: UX Sync Phase 5.8 - ジャケットの自動補完同期
+
+## 概要
+UX Sync を「接続できたら同期」に寄せる対象として、再生回数に続きジャケット画像を扱う。音源本体を勝手に大量転送せず、既に同期済みの曲で欠けているジャケットを、ペア済み端末へ接続できた時に軽量補完する。
+
+## 完了条件
+- [x] `/sync/assets/{trackId}/artwork` が同期トークン付きで保存済みジャケットを返すテストがあること。
+- [x] `AutoSyncPairedDevices()` がペア済み端末から同期済み曲の不足ジャケットを取得し、`Artworks` と `library.json` に反映するテストがあること。
+- [x] `/sync/library/snapshot` は巨大な `artwork` blob を直接載せず、`syncArtwork` 参照だけを返すこと。
+- [x] multipart import / push で任意の `artwork` part を扱い、受信側の `artwork.full` に安全なファイル名を保存できること。
+- [x] protocol capability に `library.artwork.v1` が追加されていること。
+
+# Task: UX Sync Phase 5.7 - 再生回数の自動同期
+
+## 概要
+UX Sync を手動push中心から、ペア済み端末へ接続できた時に同期される形へ寄せる。第一段階として、ローカル再生回数を `PlayEvent` として保存し、到達可能なペア済み端末へ自動pushし、受信側は既存 `playcounts` へ冪等に反映する。
+
+## 完了条件
+- [x] `IncrementPlayCount` がローカル `sync-play-events` に再生イベントを記録するテストがあること。
+- [x] `/sync/library/events` が受信イベントを `playcounts` へ反映し、同じイベント再送では二重加算しないテストがあること。
+- [x] `AutoSyncPairedDevices()` が保存済みペア端末へローカル再生イベントを同期トークン付きでpushするテストがあること。
+- [x] アプリ起動後に軽量な自動同期ループが開始されること。
+- [x] protocol capability に `library.auto-sync.v1` が追加されていること。
+
+# Task: UX Sync Phase 5.6 - 転送進捗表示とMP3 320kbps転送
+
+## 概要
+UX Sync の音源転送中に、現在処理しているファイル名、件数、転送量、転送速度を UI へ表示する。加えて、FLAC などのロスレス音源を portable client へ送る際に MP3 320kbps へ変換してから push 転送できるようにする。
+
+## 完了条件
+- [x] `PushSyncLibraryAssetsWithOptions(baseURL, limit, { encodingMode: "mp3_320" })` が MP3 320kbps 変換後のファイルと metadata を送るテストがあること。
+- [x] MP3 320kbps 転送は一時ファイル生成完了を待たず、エンコード出力を multipart upload へストリーミングするテストがあること。
+- [x] push 転送中に `ux-sync-transfer-progress` event としてファイル名、件数、byte数、速度を通知するテストがあること。
+- [x] renderer に転送進捗 payload の正規化と、速度・変換モードを含む表示文言のテストがあること。
+- [x] UX Sync 専用設定画面の `同期` タブから、原本転送と MP3 320kbps 転送を選べること。
+- [x] `markdown/ux-music-sync-protocol.md` に `library.transfer-progress.v1` と `library.transcode.mp3-320.v1` が記載されていること。
+
+# Task: UX Sync Phase 5.5 - プロトコルスキーマとバージョンネゴシエーション
+
+## 概要
+UX Sync の HTTP / mDNS プロトコルに、機械可読なスキーマ公開、capability 宣言、バージョン自己申告、互換性ネゴシエーションを追加する。将来フィールドが増えても未知フィールドを無視し、多少のバージョン差があっても capability ベースで安全に接続判断できる構造へ寄せる。
+
+## 完了条件
+- [x] `/sync/identity` が `protocolVersion`、`minCompatibleProtocolVersion`、`schemaVersion`、`capabilities`、`negotiation` を返すテストがあること。
+- [x] `fetchSyncIdentity` が自分の protocol/schema/capabilities をヘッダで申告し、非互換 major の peer を拒否するテストがあること。
+- [x] `/sync/schema` が拡張規則、message、endpoint、capability を含む機械可読スキーマを返すテストがあること。
+- [x] mDNS TXT に `schemaVersion` と `capabilities` が含まれること。
+- [x] `markdown/ux-music-sync-protocol.md` にプロトコルスキーマと拡張規則が記載されていること。
+- [x] `go test ./server -run 'TestSyncIdentityIncludesSchema|TestFetchSyncIdentitySendsProtocol|TestFetchSyncIdentityRejectsIncompatibleProtocolMajor|TestSyncSchemaEndpoint|TestSyncMDNSAdvertiseInfo' -count=1` と `go test ./internal/uxsync -count=1` が通ること。
+- [x] Windows 向け Wails build が MTP build tag 衝突で失敗しないこと。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-21b` に更新されていること。
+
+# Task: UX Sync Phase 5.4 - 音源push転送
+
+## 概要
+UX Sync の音源同期を「相手から取得」だけでなく「こちらから相手へ転送」できるようにする。ペア済み端末へ認証付き multipart で音源とメタデータを送信し、受信側は `SyncLibrary` へ保存して `library.json` に同期元情報付きで取り込む。
+
+## 完了条件
+- [x] `/sync/library/import` が同期トークンを要求し、アップロードされた音源を `SyncLibrary` へ取り込むテストがあること。
+- [x] `PushSyncLibraryAssets(baseURL, limit)` が保存済み同期トークンでペア済み端末へローカル音源を転送するテストがあること。
+- [x] renderer に転送結果の正規化、操作可否、結果サマリのテストがあること。
+- [x] UX Sync 専用設定画面の `同期` タブに `1曲転送` / `全曲転送` があり、選択中の相手端末へ転送できること。
+- [x] 転送完了後に、転送数・既存数・失敗数と受信側保存先パスを画面へ表示すること。
+- [x] `PushSyncLibraryAssets` binding が無い環境、または相手端末未選択の状態では転送ボタンが無効になること。
+- [x] `npm test -- --run js/features/ux-sync-settings.test.ts`、`npm run typecheck`、`go test ./server -run 'TestSyncLibraryImport|TestPushSyncLibraryAssets' -count=1` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-20a` に更新されていること。
+
+# Task: UX Sync Phase 5.3.1 - ペア済み端末復元と同期操作修正
+
+## 概要
+UX Sync 専用設定画面を閉じてもペアリング済み端末の接続状態が失われず、`同期` タブから保存済みペア端末を同期元として選択して音源pullを実行できるようにする。
+
+## 完了条件
+- [x] 保存済み `syncAuthTokens` / `syncKnownPeers` から、同期トークンを漏らさずペア済み端末一覧を返すテストがあること。
+- [x] renderer にペア済み端末一覧の正規化、発見 peer とのマージ、ペアリング済み表示のテストがあること。
+- [x] `ListSyncDevices()` が Wails binding と bridge から呼べること。
+- [x] UX Sync 専用設定画面を開き直しても、保存済みペア端末が `端末` タブと `同期` タブに復元されること。
+- [x] ペアリング確定後に端末一覧と同期元セレクトが更新され、到達URLを持つペア済み端末では取得ボタンが有効になること。
+- [x] `npm test -- --run js/features/ux-sync-settings.test.ts`、`npm run typecheck`、`go test ./server -run 'TestListSyncDevices' -count=1` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-19b` に更新されていること。
+
+# Task: UX Sync Phase 5.3 - 音源pull GUI
+
+## 概要
+SSH CLI で通した Mac mini から Windows への音源pullを、UX Sync 専用設定画面の `同期` タブから実行できるようにする。発見済み / 既知 peer の到達URLを同期元として選択し、1曲取得または全曲取得を GUI から開始して結果を確認できるようにする。
+
+## 完了条件
+- [x] renderer に音源pull結果の正規化、操作可否、結果サマリのテストがあること。
+- [x] UX Sync 専用設定画面の `同期` タブが有効で、同期元 peer を選択できること。
+- [x] `1曲取得` が `PullSyncLibraryAssets(baseURL, 1)` を呼び、`全曲取得` が `PullSyncLibraryAssets(baseURL, 0)` を呼ぶこと。
+- [x] 音源pull完了後に、取得数・既存数・失敗数と保存先パスを画面へ表示すること。
+- [x] `PullSyncLibraryAssets` binding が無い環境、または同期元未選択の状態では取得ボタンが無効になること。
+- [x] `npm test -- --run js/features/ux-sync-settings.test.ts` と `npm run typecheck` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-19a` に更新されていること。
+
+# Task: UX Sync Phase 5.2 - 音源pullとSSH検証CLI
+
+## 概要
+Windows 側を検証専用ノードとして SSH から扱いやすくし、GUI / WebView2 起動に頼らず UX Sync のテストデータ初期化と Mac mini からの音源pullを実行できるようにする。音源転送の MVP として、親側の既存ライブラリ原本を同期専用 HTTP API で返し、子側はアプリ管理下の `SyncLibrary` に保存して `library.json` へ取り込む。
+
+## 完了条件
+- [x] `/sync/library/snapshot` が同期トークンを要求し、アートワーク blob を除いた曲一覧を返すテストがあること。
+- [x] `/sync/assets/{trackId}/file` が同期トークンを要求し、登録済み曲IDの原本ファイルだけを返すテストがあること。
+- [x] `PullSyncLibraryAssets(baseURL, limit)` が保存済み同期トークンで親から曲一覧と音源を取得し、子側 `SyncLibrary` 配下へ保存して `library.json` に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込むこと。
+- [x] `--sync-reset-test-data` が `syncAuthTokens` / `syncKnownPeers` / `syncDeviceId` を温存しつつ、検証用のライブラリ・再生回数・解析・同期イベント・アートワーク・キャッシュ・プレイリストを初期化すること。
+- [x] `--sync-pull-one` / `--sync-pull` で SSH 経由でも GUI を起動せず音源pullを実行できること。
+- [x] Windows 側バイナリを更新し、`mainpc` から `--sync-reset-test-data` と `--sync-pull-one http://192.168.0.226:8765` の実通信検証が成功すること。
+- [x] `go test ./server -run 'TestSyncLibrarySnapshot|TestSyncAssetFile|TestPullSyncLibraryAssets|TestResetSyncTestData' -count=1` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-18a` に更新されていること。
+
+# Task: UX Sync Phase 5.1 - Windows側発見fallback
+
+## 概要
+Windows 側で mDNS discovery が空になり、Mac mini が見えないケースを補正する。Mac 側広告名から `.local` suffix を除去し、さらに mDNS が取れない環境でも、ペアリング時に実通信してきた相手の IP を既知 peer として保存し、発見一覧へ混ぜる。
+
+## 完了条件
+- [x] mDNS 広告に使う表示名から `.local` suffix を除去するテストがあること。
+- [x] inbound pairing の `/sync/pairing/start` で受け取った相手 `deviceId` / `displayName` / remote address を、confirm 成功後に既知 peer として保存するテストがあること。
+- [x] `DiscoverSyncDevices(timeoutMs)` と `/sync/discover` が mDNS 結果と既知 peer をマージすること。
+- [x] Mac 側 `dns-sd -B _uxmusic-sync._tcp local` で `YukinoMac-mini` が広告されること。
+- [x] `mainPC` から `http://192.168.0.226:8765/sync/identity` が応答すること。
+- [x] Windows ビルド用に CGO / gcc / pkg-config / portaudio header を整え、`wails build -clean -nopackage` が成功すること。
+- [x] `go test ./...`、`npm test -- --run js/features/ux-sync-settings.test.ts`、`npm run typecheck` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-17b` に更新されていること。
+
+# Task: UX Sync Phase 5 - 専用設定画面
+
+## 概要
+通常の設定モーダルに混在していた UX Sync の探索・ペアリング UI を、UX Sync 専用設定画面へ切り出す。通常設定には入口だけを置き、専用画面側に端末検出、peer 一覧、6桁コード確認ペアリングを集約する。
+
+## 完了条件
+- [x] renderer に UX Sync 専用設定入口の表示条件テストがあること。
+- [x] 通常設定には `UX Sync設定を開く` の入口だけが表示されること。
+- [x] Wails sync binding が無い環境では通常設定の UX Sync 入口が非表示になること。
+- [x] UX Sync 専用設定画面に端末タブ、探索ボタン、探索状態、peer 一覧、既存のペアリング導線があること。
+- [x] `npm test -- --run js/features/ux-sync-settings.test.ts` と `npm run typecheck` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-17a` に更新されていること。
+
+# Task: UX Sync Phase 4 - ペアリングUI
+
+## 概要
+設定画面の UX Sync 自動発見一覧から、発見済み端末へ6桁コード確認ペアリングを開始・確定できるようにする。Wails からリモート端末の `/sync/identity`、`/sync/pairing/start`、`/sync/pairing/confirm` を呼び、確定時にリモート端末が発行した同期トークンをローカル設定へ保存する。
+
+## 完了条件
+- [x] Wails 向けに `StartSyncPairing(baseURL)` と `ConfirmSyncPairing(baseURL, sessionID, code, expectedRemoteDeviceID)` があること。
+- [x] `StartSyncPairing` がローカル `deviceId` を使ってリモート `/sync/pairing/start` を呼び、リモート端末名・端末ID・6桁コードを返すこと。
+- [x] `ConfirmSyncPairing` がリモート `/sync/pairing/confirm` のトークンを、リモート `deviceId` 宛の同期トークンとして保存すること。
+- [x] `ConfirmSyncPairing` が開始時のリモート `deviceId` と確定時のリモート `deviceId` の不一致を拒否すること。
+- [x] renderer にペアリング開始・確定応答の正規化と、到達可能URL選択のテストがあること。
+- [x] 設定画面の UX Sync peer カードから「接続」→6桁コード表示→「確定」まで進めること。
+- [x] `go test ./server -run 'TestStartSyncPairing|TestConfirmSyncPairing|TestSyncPairing' -count=1`、`npm test -- --run js/features/ux-sync-settings.test.ts`、`npm run typecheck` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-16a` に更新されていること。
+
+# Task: UX Sync Phase 3.1 - macOS mDNS fallback
+
+## 概要
+複数 VLAN / 複数 NIC の Mac で、OS の `dns-sd` では Windows 側 `mainPC` の `_uxmusic-sync._tcp.local` が見える一方、Go の `grandcat/zeroconf` discovery が一部 peer を取りこぼすケースを補正する。macOS では `zeroconf` の結果と `dns-sd -B/-L` の結果をマージし、既存 UI が同じ `DiscoverSyncDevices(timeoutMs)` から peer を得られるようにする。
+
+## 完了条件
+- [x] `dns-sd -B` の browse 出力から UX Sync instance を抽出するテストがあること。
+- [x] `dns-sd -L` の resolve 出力から `deviceId`、`displayName`、`hostName`、`port`、`roles` を持つ `MDNSPeer` を復元するテストがあること。
+- [x] macOS では `zeroconf` discovery と `dns-sd` fallback の結果をマージすること。
+- [x] 半自動テストで `mainPC` が `reachableBaseUrl=http://mainPC.local:8765` として発見できること。
+- [x] `go test ./internal/uxsync` と `go test ./...` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-15b` に更新されていること。
+
+# Task: UX Sync Phase 3 - 自動発見UI
+
+## 概要
+設定画面から同一 LAN 上の UX Music 端末を探索し、複数 NIC 環境でも到達可能 URL と候補アドレスを確認できる UI を追加する。Wails binding が無い renderer 単体開発環境では UX Sync セクションを非表示にし、末端側の特別な操作なしで自動発見の結果を見られるようにする。
+
+## 完了条件
+- [x] renderer に発見 peer の正規化と接続候補表示のテストがあること。
+- [x] 設定画面に UX Sync セクションと「同期端末を探す」ボタンがあること。
+- [x] `DiscoverSyncDevices(timeoutMs)` の結果から `reachableBaseUrl`、役割、複数 `hosts` 候補を表示できること。
+- [x] Wails binding が無い環境では UX Sync セクションが非表示になり、通常の設定画面を壊さないこと。
+- [x] `npm test -- --run js/features/ux-sync-settings.test.ts` と `npm run typecheck` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-15a` に更新されていること。
+
+# Task: UX Sync Phase 2 - mDNS 自動発見基盤
+
+## 概要
+同一 LAN 上の UX Music 端末を自動発見できるよう、`_uxmusic-sync._tcp.local.` の mDNS / Bonjour 広告と探索を実装する。複数 NIC 環境では代表アドレスだけに依存せず、発見した peer に複数の到達候補アドレスを保持する。
+
+## 完了条件
+- [x] `internal/uxsync` に mDNS サービス種別、TXT レコード生成、発見 peer 正規化のテストがあること。
+- [x] `github.com/grandcat/zeroconf` を使い、UX Sync mDNS 広告と探索を実装していること。
+- [x] LAN HTTP サーバー起動時に `_uxmusic-sync._tcp.local.` を広告すること。
+- [x] Wails から呼べる `DiscoverSyncDevices(timeoutMs)` があり、ローカルUIから mDNS 探索を実行できること。
+- [x] 複数 NIC で同じ deviceId の広告が複数アドレスを返す場合、`hosts` に全候補を保持すること。
+- [x] macOS の `dns-sd -B _uxmusic-sync._tcp local` で広告を確認すること。
+- [x] Go の `uxsync.DiscoverMDNS` で広告を発見し、`hosts` に `192.168.0.226` など複数アドレス候補が含まれることを確認すること。
+- [x] 発見 peer の `hosts` 候補へ `/sync/identity` を順番に probe し、到達可能な `reachableBaseUrl` を自動選択できること。
+- [x] 末端側は IP 手入力や OS の `dns-sd` などを使わず、アプリ側の mDNS 探索と自動 probe だけで接続候補を得られること。
+- [x] `go test ./internal/uxsync ./server` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-14b` に更新されていること。
+
+# Task: UX Sync Phase 1 - ペアリングと再生イベントプッシュ基盤
+
+## 概要
+同一 LAN 上の PC 間同期に向けて、6桁コード確認ペアリング、同期専用トークン認証、子側再生イベントの親側プッシュ、同じイベント再送時の冪等マージを実装する。MacBook Air / mainpc のようにたまにしか接続されない端末を想定し、既存 `playcounts` へ直接加算せず、`sync-play-events` のイベントログを同期の Single Source of Truth とする。
+
+## 完了条件
+- [x] `internal/uxsync` に `PlayEvent`、イベント重複排除、同時再生の別イベント採用、再生回数集計、アウトボックス ACK pruning の純粋ロジックがあること。
+- [x] 6桁のペアリングコード生成と期限付きペアリングセッションのテストがあること。
+- [x] `/sync/pairing/start` と `/sync/pairing/confirm` が6桁コード確認フローを提供し、同期専用トークンを発行できること。
+- [x] `/sync/library/events` が同期専用トークンを要求し、子側再生イベントを `sync-play-events` へ冪等保存できること。
+- [x] Wear 認証と Sync 認証が別 middleware として分離されていること。
+- [x] `mainpc` から SSH 経由で、ペアリング開始、confirm、認証付きイベント push、同一イベント再送の実通信検証を行うこと。
+- [x] `go test ./...` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-13a` に更新されていること。
+
+# Task: TXT専用歌詞同期の音源候補選択と実ライブラリ検証
+
+## 概要
+同期済みLRCを実装入力に使わず、時刻なしTXT歌詞だけを音源へ合わせる用途に寄せて、Python fallbackで元音源ASR / ボーカル分離ASRの候補を試し、参照LRCなしの品質スコアで候補選択できるようにする。`/Users/yuki/doc/uxmusic` と `/Users/yuki/Library/Application Support/UX-Music/Lyrics` の実データは、LRCから時刻を捨てたTXT相当入力と参照時刻によるベンチマークにのみ使う。
+
+## 完了条件
+- [x] Python fallback が `UX_MUSIC_LYRICS_SYNC_AUDIO_SOURCES=full|vocals|both` を解釈できること。
+- [x] `full` ではDemucsを通らず元音源をASRへ渡せること。
+- [x] `both` では元音源候補とボーカル候補を評価し、参照LRCを使わない品質スコアで返却候補を選べること。
+- [x] `python/tests -m "not heavy"` が通ること。
+- [x] `/Users/yuki/doc/uxmusic` の5曲で、LRC時刻を答え合わせ専用にしたTXT入力ベンチを実施し、0.8秒級に届いた曲と届かなかった曲を記録すること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-12c` に更新されていること。
+
+# Task: Python fallback Stage3の未来ドリフト修復と0.8秒級同期の検証
+
+## 概要
+ローカル完結の自動歌詞同期について、`IGNORE/` の参照セットで0.8秒級まで誤差を減らせるか試行し、Python fallback Stage3で後半の繰り返しフレーズへ吸われる未来ドリフトを修復する。
+
+## 完了条件
+- [x] Stage3が大きく未来へ飛んだ場合、時系列上で飛ばされたASRセグメントへ戻す修復テストが追加されていること。
+- [x] Stage3がASRセグメントを使った未来ドリフト修復を実装していること。
+- [x] 繰り返しブロック末尾の延長補正が単調化後にも再適用されること。
+- [x] `IGNORE/` のアムネシア・PROMINENCE・Lone_Wolfで実測し、0.8秒級に届いた条件と届かなかった条件を記録していること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-12b` に更新されていること。
+
+# Task: macOSローカル強制アラインメントによる自動歌詞同期
+
+## 概要
+バックエンドAPI課金を避け、macOSローカル環境で既存歌詞を音源へ高精度に同期できるよう、Swift sidecar に Qwen3 Forced Aligner / `speech` CLI 優先経路を追加する。
+
+## 完了条件
+- [x] Swift sidecar が `speech align` 互換 CLI を検出できる場合、WhisperKit ASR より先に既存歌詞の強制アラインメントを実行すること。
+- [x] `speech align` の単語タイムスタンプ出力を元の歌詞行へ戻し、`AlignedLine` として既存 JSON 契約で返せること。
+- [x] `auto` では aligner 失敗時に WhisperKit へフォールバックし、`UX_MUSIC_LYRICS_SYNC_ALIGNER=qwen3|off` で明示制御できること。
+- [x] 純粋ロジックの Swift テストが追加され、`swift test --package-path swift/lyrics-sync` が通ること。
+- [x] `markdown/requirement.md` と `src/renderer/js/core/bridge.ts` のバージョンが `0.1.9-Beta-12a` に更新されていること。
+
 # Task: Gitコンフリクトの解消とバージョン更新
 
 ## 概要
@@ -230,21 +559,33 @@ Node.js および Electron に依存していたバックエンド処理（CDリ
 - [x] `src/sidecars` および `src/main` の削除
 - [x] `package.json` からのエレクトロン依存削除
 
-# Task: CoreML 前提 TXT 自動歌詞同期
+# Task: Python sidecar 自動歌詞同期（v2）
 
 ## 概要
-CoreML が使える macOS 環境を前提に、`TXT` 歌詞を自動で時刻同期し、`LRC` 作成を支援する機能を追加する。
-同期解析は `whisper.cpp` の CoreML 実行を利用し、結果は LRC エディタにプレビュー反映する。
+`markdown/lyrics-sync-plan.md` に従い、`TXT` 歌詞と音源から `LRC` 編集を支援する。**Python sidecar** が Demucs → faster-whisper → 埋め込み＋音素アラインメントを担当し、Go は stdin/stdout JSON と `lyrics-sync-progress` の中継のみとする。ユーザー表示歌詞は入力歌詞のみ（ASR はタイミング用）。
 
 ## 完了条件
-- [x] `internal/lyricssync` パッケージを追加し、同期解析の実行パイプライン（ffmpeg抽出 / whisper実行 / 単調整列 / 補完 / 単調性補正）を実装。
-- [x] `App.AutoSyncLyrics` を公開し、Wails から呼び出せること。
-- [x] `env-setup.js` に `lyrics-auto-sync` invoke ルートを追加すること。
-- [x] `lrc-editor` へ「自動同期解析」ボタンを追加し、実行中状態・完了通知・失敗通知を実装すること。
-- [x] 自動同期結果は保存せず、既存の「LRCを保存」操作でのみファイル保存されること。
-- [x] `whisper-cli` / モデル未配置時に配置先を含むエラーメッセージが返ること。
-- [x] `markdown/requirement.md` のバージョンを `0.1.9-Beta-7i` に更新すること。
-- [x] 単体テスト・結合テスト（擬似 `ffmpeg` / `whisper-cli`）を追加すること。
+- [x] `internal/lyricssync/types.go` の `Request` / `Result` JSON 契約と `App.AutoSyncLyrics` を維持すること。
+- [x] `python/lyrics_sync` パイプライン（上記 sidecar）および `python -m lyrics_sync --request` エントリを実装すること。
+- [x] `lyrics-auto-sync` invoke ルートおよび LRC エディタの自動同期動線は既存のまま利用できること。
+- [x] `lyrics-sync-progress` イベントでステージ・進捗を配信し、LRC エディタで実行中に表示できること。
+- [x] モデル初回ダウンロードの同意フローおよび設定画面でのキャッシュ容量確認・削除が可能であること。
+- [x] Go 側および Python ダミーモードでのテストが存在すること（`UX_MUSIC_LYRICS_SYNC_DUMMY` 等）。
+
+# Task: macOS 向け自動歌詞同期の Swift / CoreML 最適化
+
+## 概要
+`markdown/lyrics-sync-plan.md` に従い、自動歌詞同期の macOS 実行系を **Python 中心**から **Swift + CoreML 中心**へ段階移行する。`Request` / `Result` JSON 契約と UI 導線は維持しつつ、Go 側に sidecar 選択層を導入し、macOS では Swift 実装を差し込める状態にする。
+
+## 完了条件
+- [x] `markdown/features.md` / `markdown/requirement.md` / `markdown/lyrics-sync-plan.md` が、macOS 既定を `Swift + CoreML`、非 macOS を `Python fallback` として記述していること。
+- [x] `internal/lyricssync` が Python 固定ではなく、ランタイム設定に応じて Swift / Python sidecar を選択できること。
+- [x] `swift/lyrics-sync/` に `Request` / `Result` JSON 契約を受ける Swift CLI スケルトンが存在すること。
+- [x] 既存の `App.AutoSyncLyrics` / `lyrics-auto-sync` / `lyrics-sync-progress` 契約が維持されること。
+- [x] Go テストで sidecar 選択ロジックが検証され、Swift CLI が少なくともビルド可能であること。
+- [x] `swift/lyrics-sync/` が `WhisperKit` を用いた ASR セグメント抽出と、歌詞行への簡易単調整列・補間を返せること。
+- [x] `auto` 実行時に Swift sidecar の起動系失敗を Python sidecar へフォールバックできること。
+- [x] `profile=fast` 既定時に、Swift sidecar が Python 時代より軽いモデル・worker 数で動作すること。
 # Task: コンソール向けパフォーマンスモニターを追加
 
 ## 概要

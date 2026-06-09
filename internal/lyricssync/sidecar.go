@@ -1,0 +1,227 @@
+package lyricssync
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+)
+
+// ProgressSink receives stderr JSON progress lines: {"stage":"","percent":0-100}.
+type ProgressSink func(stage string, percent float64)
+
+type sidecarFailureKind string
+
+const (
+	sidecarFailureUnknown     sidecarFailureKind = "unknown"
+	sidecarFailureInvalidArgv sidecarFailureKind = "invalid_argv"
+	sidecarFailureMarshal     sidecarFailureKind = "marshal"
+	sidecarFailureStderrPipe  sidecarFailureKind = "stderr_pipe"
+	sidecarFailureStart       sidecarFailureKind = "start"
+	sidecarFailureEmptyStdout sidecarFailureKind = "empty_stdout"
+	sidecarFailureDecode      sidecarFailureKind = "decode"
+	sidecarFailureWait        sidecarFailureKind = "wait"
+)
+
+type sidecarError struct {
+	kind sidecarFailureKind
+	err  error
+}
+
+func (e *sidecarError) Error() string {
+	if e == nil || e.err == nil {
+		return ""
+	}
+	return e.err.Error()
+}
+
+func (e *sidecarError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+// RunSidecar spawns Python `python -m lyrics_sync --request -`, sends req as stdin JSON, parses stdout JSON as Result.
+// stderr lines that are JSON objects with keys "stage" and "percent" are forwarded to onProgress (optional).
+func RunSidecar(ctx context.Context, req Request, argv []string, env []string, onProgress ProgressSink, stdout io.Writer) (Result, error) {
+	if len(argv) == 0 {
+		return Result{}, &sidecarError{kind: sidecarFailureInvalidArgv, err: fmt.Errorf("lyrics sync argv is empty")}
+	}
+
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return Result{}, &sidecarError{kind: sidecarFailureMarshal, err: fmt.Errorf("marshal request: %w", err)}
+	}
+
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Stdin = bytes.NewReader(payload)
+	cmd.Env = env
+
+	var outBuf strings.Builder
+	if stdout != nil {
+		cmd.Stdout = io.MultiWriter(&outBuf, stdout)
+	} else {
+		cmd.Stdout = &outBuf
+	}
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return Result{}, &sidecarError{kind: sidecarFailureStderrPipe, err: fmt.Errorf("stderr pipe: %w", err)}
+	}
+
+	if err := cmd.Start(); err != nil {
+		return Result{}, &sidecarError{kind: sidecarFailureStart, err: fmt.Errorf("start lyrics_sync: %w", err)}
+	}
+
+	if onProgress != nil {
+		go drainProgress(stderrPipe, onProgress)
+	} else {
+		go func() {
+			_, _ = io.Copy(io.Discard, stderrPipe)
+			_ = stderrPipe.Close()
+		}()
+	}
+
+	waitErr := cmd.Wait()
+
+	raw := strings.TrimSpace(outBuf.String())
+	if raw == "" {
+		if waitErr != nil {
+			return Result{}, &sidecarError{kind: sidecarFailureEmptyStdout, err: fmt.Errorf("sidecar exited with empty stdout: %w", waitErr)}
+		}
+		return Result{}, &sidecarError{kind: sidecarFailureEmptyStdout, err: fmt.Errorf("sidecar returned empty stdout")}
+	}
+
+	var parsed Result
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return Result{}, &sidecarError{kind: sidecarFailureDecode, err: fmt.Errorf("decode result json: %w (stdout=%q stderr_err=%v)", err, truncate(raw, 200), waitErr)}
+	}
+
+	if waitErr != nil && !parsed.Success {
+		return parsed, nil
+	}
+	if waitErr != nil {
+		return parsed, &sidecarError{kind: sidecarFailureWait, err: fmt.Errorf("sidecar: %w", waitErr)}
+	}
+	return parsed, nil
+}
+
+func classifySidecarFailure(err error) sidecarFailureKind {
+	var sidecarErr *sidecarError
+	if errors.As(err, &sidecarErr) {
+		return sidecarErr.kind
+	}
+	return sidecarFailureUnknown
+}
+
+func drainProgress(stderr io.ReadCloser, onProgress ProgressSink) {
+	sc := bufio.NewScanner(stderr)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var ev struct {
+			Stage   string  `json:"stage"`
+			Percent float64 `json:"percent"`
+		}
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			continue
+		}
+		if onProgress != nil {
+			onProgress(ev.Stage, ev.Percent)
+		}
+	}
+	_ = stderr.Close()
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}
+
+// ResolvePythonArgv returns exec path slices for `[pythonExe, "-m", "lyrics_sync", "--request", "-"]` when PYTHONPATH contains the lyrics_sync parent.
+func ResolvePythonArgv(pythonExe string) ([]string, error) {
+	if strings.TrimSpace(pythonExe) == "" {
+		return nil, fmt.Errorf("python exe is blank")
+	}
+	return []string{pythonExe, "-m", "lyrics_sync", "--request", "-"}, nil
+}
+
+// ResolveLyricsSidecarPythonExe picks the interpreter to run `-m lyrics_sync`.
+//
+// Preference order:
+//  1. UX_MUSIC_PYTHON (explicit override)
+//  2. python/.venv  (bundled-dev venv beside package root — no manual export needed)
+//  3. python3 on PATH
+func ResolveLyricsSidecarPythonExe(pythonPkgRoot string) (string, error) {
+	if p := strings.TrimSpace(os.Getenv("UX_MUSIC_PYTHON")); p != "" {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			return filepath.Clean(p), nil
+		}
+	}
+	if venvPy, ok := venvInterpreterPath(pythonPkgRoot); ok {
+		return venvPy, nil
+	}
+	return exec.LookPath("python3")
+}
+
+func venvInterpreterPath(pkgRoot string) (string, bool) {
+	var candidates []string
+	if runtime.GOOS == "windows" {
+		candidates = []string{
+			filepath.Join(pkgRoot, ".venv", "Scripts", "python.exe"),
+		}
+	} else {
+		candidates = []string{
+			filepath.Join(pkgRoot, ".venv", "bin", "python3"),
+			filepath.Join(pkgRoot, ".venv", "bin", "python"),
+		}
+	}
+	for _, c := range candidates {
+		fi, err := os.Stat(c)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		if fi.Mode().IsRegular() || fi.Mode()&os.ModeSymlink != 0 {
+			return filepath.Clean(c), true
+		}
+	}
+	return "", false
+}
+
+// DevelopmentPythonPkgRoot searches for the repository `python/` directory next to cwd or UX_MUSIC_PYTHON_PKG_PARENT.
+func DevelopmentPythonPkgRoot() (string, error) {
+	if p := strings.TrimSpace(os.Getenv("UX_MUSIC_PYTHON_PKG_PARENT")); p != "" {
+		pp := filepath.Join(p, "python")
+		if st, err := os.Stat(filepath.Join(pp, "lyrics_sync")); err == nil && st.IsDir() {
+			return pp, nil
+		}
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for dir := wd; ; dir = filepath.Dir(dir) {
+		candidate := filepath.Join(dir, "python")
+		if st, err := os.Stat(filepath.Join(candidate, "lyrics_sync")); err == nil && st.IsDir() {
+			return candidate, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+	return "", fmt.Errorf("python/lyrics_sync not found under cwd ancestors")
+}

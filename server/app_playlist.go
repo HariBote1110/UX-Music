@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 	"ux-music-sidecar/internal/playlist"
@@ -15,38 +14,54 @@ import (
 // LoadLibrary loads the library and emits an event
 func (a *App) LoadLibrary() {
 	fmt.Println("[Wails] LoadLibrary current")
-	songs, _ := store.Instance.Load("library")
-
-	if songs == nil {
-		songs = []interface{}{}
-	}
-
-	// Ensure all songs have stable ids for UI selection/highlight logic.
-	if arr, ok := songs.([]interface{}); ok {
-		migrated := false
-		for _, item := range arr {
-			songMap, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			id, _ := songMap["id"].(string)
-			path, _ := songMap["path"].(string)
-			if strings.TrimSpace(id) == "" && strings.TrimSpace(path) != "" {
-				songMap["id"] = uuid.NewString()
-				migrated = true
-			}
+	data, err := a.GetUnifiedLibrary()
+	if err != nil {
+		data = map[string]interface{}{
+			"songs":  []interface{}{},
+			"albums": make(map[string]interface{}),
 		}
-		if migrated {
-			_ = store.Instance.Save("library", arr)
-		}
-		songs = arr
-	}
-
-	data := map[string]interface{}{
-		"songs":  songs,
-		"albums": make(map[string]interface{}),
 	}
 	wailsRuntime.EventsEmit(a.ctx, "load-library", data)
+}
+
+func (a *App) GetUnifiedLibrary() (map[string]interface{}, error) {
+	songs, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return nil, err
+	}
+
+	migrated := false
+	localMatchKeys := map[string]bool{}
+	unified := make([]interface{}, 0, len(songs))
+	for _, item := range songs {
+		songMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		id, _ := songMap["id"].(string)
+		path, _ := songMap["path"].(string)
+		if strings.TrimSpace(id) == "" && strings.TrimSpace(path) != "" {
+			songMap["id"] = uuid.NewString()
+			migrated = true
+		}
+		localSong := cloneSyncMap(songMap)
+		localSong["syncAvailability"] = "local"
+		if key := syncSongMatchKey(localSong); key != "" {
+			localMatchKeys[key] = true
+		}
+		unified = append(unified, localSong)
+	}
+	if migrated {
+		_ = store.Instance.Save("library", songs)
+	}
+
+	remoteSongs := syncUnifiedRemoteSongs(localMatchKeys)
+	unified = append(unified, remoteSongs...)
+
+	return map[string]interface{}{
+		"songs":  unified,
+		"albums": make(map[string]interface{}),
+	}, nil
 }
 
 // RequestInitialLibrary is a helper for initial load
@@ -57,10 +72,7 @@ func (a *App) RequestInitialLibrary() {
 // LoadPlayCounts loads play counts and emits an event
 func (a *App) LoadPlayCounts() {
 	fmt.Println("[Wails] LoadPlayCounts called")
-	counts, _ := store.Instance.Load("playcounts")
-	if counts == nil {
-		counts = make(map[string]interface{})
-	}
+	counts, _ := store.Instance.LoadMap("playcounts")
 	wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", counts)
 }
 
@@ -72,43 +84,20 @@ func (a *App) IncrementPlayCount(song map[string]interface{}) {
 		return
 	}
 
-	counts, _ := store.Instance.Load("playcounts")
-	var countsMap map[string]interface{}
-	if counts == nil {
-		countsMap = make(map[string]interface{})
-	} else {
-		countsMap = counts.(map[string]interface{})
+	now := time.Now()
+	_ = ensureSyncPlayCountBaseMigrated()
+	_ = recordLocalSyncPlayEvent(song, now.UTC())
+	_ = recalculateAllSyncPlayCounts()
+	countsMap, _ := store.Instance.LoadMap("playcounts")
+	if _, exists := countsMap[path]; !exists {
+		entry := normalisePlayCountEntry(nil)
+		countsMap[path] = entry
+		_ = store.Instance.Save("playcounts", countsMap)
 	}
 
-	isoNow := time.Now().Format(time.RFC3339)
-
-	var existingData map[string]interface{}
-	if data, exists := countsMap[path]; exists {
-		existingData = data.(map[string]interface{})
-	} else {
-		existingData = map[string]interface{}{
-			"count":         0.0,
-			"totalDuration": 0.0,
-			"history":       []interface{}{},
-		}
+	if a.ctx != nil {
+		wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", countsMap)
 	}
-
-	existingData["count"] = existingData["count"].(float64) + 1
-	if duration, ok := song["duration"].(float64); ok {
-		existingData["totalDuration"] = existingData["totalDuration"].(float64) + duration
-	}
-
-	history := existingData["history"].([]interface{})
-	history = append(history, isoNow)
-	if len(history) > 100 {
-		history = history[1:]
-	}
-	existingData["history"] = history
-
-	countsMap[path] = existingData
-	store.Instance.Save("playcounts", countsMap)
-
-	wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", countsMap)
 }
 
 // SongFinished handles the end of a song, updating analysis score
@@ -119,12 +108,10 @@ func (a *App) SongFinished(song map[string]interface{}) {
 		return
 	}
 
-	data, _ := store.Instance.Load("analysed-queue")
-	if data == nil {
+	analysedData, _ := store.Instance.LoadMap("analysed-queue")
+	if len(analysedData) == 0 {
 		return
 	}
-
-	analysedData := data.(map[string]interface{})
 	if songData, exists := analysedData[id]; exists {
 		sMap := songData.(map[string]interface{})
 		score := sMap["score"].(float64)
@@ -158,13 +145,7 @@ func (a *App) SongSkipped(data map[string]interface{}) {
 	}
 
 	if scoreIncrement > 0 {
-		dislikeData, _ := store.Instance.Load("analysed-queue")
-		var dislikeMap map[string]interface{}
-		if dislikeData == nil {
-			dislikeMap = make(map[string]interface{})
-		} else {
-			dislikeMap = dislikeData.(map[string]interface{})
-		}
+		dislikeMap, _ := store.Instance.LoadMap("analysed-queue")
 
 		var currentData map[string]interface{}
 		if d, exists := dislikeMap[id]; exists {
@@ -189,11 +170,7 @@ func (a *App) RequestPlaylistsWithArtwork() {
 		return
 	}
 
-	library, _ := store.Instance.Load("library")
-	var librarySongs []interface{}
-	if library != nil {
-		librarySongs = library.([]interface{})
-	}
+	librarySongs, _ := store.Instance.LoadSlice("library")
 
 	pathToArtwork := make(map[string]string)
 	for _, s := range librarySongs {
@@ -237,11 +214,7 @@ func (a *App) GetPlaylistDetails(name string) (interface{}, error) {
 		return nil, err
 	}
 
-	library, _ := store.Instance.Load("library")
-	var librarySongs []interface{}
-	if library != nil {
-		librarySongs = library.([]interface{})
-	}
+	librarySongs, _ := store.Instance.LoadSlice("library")
 
 	playlistSongs := make([]interface{}, 0)
 	for _, p := range paths {
@@ -263,95 +236,30 @@ func (a *App) GetPlaylistDetails(name string) (interface{}, error) {
 // GetSituationPlaylists returns generated playlists for "For You"
 func (a *App) GetSituationPlaylists() (interface{}, error) {
 	result := make(map[string]interface{})
-	library, _ := store.Instance.Load("library")
-	if library == nil {
-		return result, nil
-	}
-
-	songs := library.([]interface{})
+	songs, _ := store.Instance.LoadSlice("library")
 	if len(songs) == 0 {
 		return result, nil
 	}
 
-	recentSongs := make([]interface{}, 0)
-	maxRecent := 20
-	if len(songs) < maxRecent {
-		maxRecent = len(songs)
-	}
-	for i := len(songs) - 1; i >= len(songs)-maxRecent && i >= 0; i-- {
-		recentSongs = append(recentSongs, songs[i])
-	}
-	if len(recentSongs) > 0 {
+	if recent := pickRecentlyAdded(songs, situationPlaylistMaxItems); len(recent) > 0 {
 		result["recently_added"] = map[string]interface{}{
 			"name":  "最近追加した曲",
-			"songs": recentSongs,
+			"songs": recent,
 		}
 	}
 
-	playCounts, _ := store.Instance.Load("playcounts")
-	if playCounts != nil {
-		countsMap := playCounts.(map[string]interface{})
-		if len(countsMap) > 0 {
-			type songWithCount struct {
-				song  interface{}
-				count int
-			}
-			var songsWithCounts []songWithCount
-
-			for _, s := range songs {
-				song := s.(map[string]interface{})
-				path, ok := song["path"].(string)
-				if !ok {
-					continue
-				}
-				if countData, exists := countsMap[path]; exists {
-					countMap := countData.(map[string]interface{})
-					if count, ok := countMap["count"].(float64); ok && count > 0 {
-						songsWithCounts = append(songsWithCounts, songWithCount{song: s, count: int(count)})
-					}
-				}
-			}
-
-			sort.Slice(songsWithCounts, func(i, j int) bool {
-				return songsWithCounts[i].count > songsWithCounts[j].count
-			})
-
-			mostPlayedSongs := make([]interface{}, 0)
-			maxPlayed := 20
-			if len(songsWithCounts) < maxPlayed {
-				maxPlayed = len(songsWithCounts)
-			}
-			for i := 0; i < maxPlayed; i++ {
-				mostPlayedSongs = append(mostPlayedSongs, songsWithCounts[i].song)
-			}
-
-			if len(mostPlayedSongs) > 0 {
-				result["most_played"] = map[string]interface{}{
-					"name":  "よく聴く曲",
-					"songs": mostPlayedSongs,
-				}
-			}
+	counts, _ := store.Instance.LoadMap("playcounts")
+	if mostPlayed := pickMostPlayed(songs, counts, situationPlaylistMaxItems); len(mostPlayed) > 0 {
+		result["most_played"] = map[string]interface{}{
+			"name":  "よく聴く曲",
+			"songs": mostPlayed,
 		}
 	}
 
-	if len(songs) >= 5 {
-		randomSongs := make([]interface{}, 0)
-		maxRandom := 20
-		if len(songs) < maxRandom {
-			maxRandom = len(songs)
-		}
-		step := len(songs) / maxRandom
-		if step < 1 {
-			step = 1
-		}
-		for i := 0; i < len(songs) && len(randomSongs) < maxRandom; i += step {
-			randomSongs = append(randomSongs, songs[i])
-		}
-		if len(randomSongs) > 0 {
-			result["random_pick"] = map[string]interface{}{
-				"name":  "ランダムピック",
-				"songs": randomSongs,
-			}
+	if random := pickRandomPick(songs, situationPlaylistMaxItems); len(random) > 0 {
+		result["random_pick"] = map[string]interface{}{
+			"name":  "ランダムピック",
+			"songs": random,
 		}
 	}
 
@@ -418,11 +326,7 @@ func (a *App) AddAlbumToPlaylist(data map[string]interface{}) (map[string]interf
 	playlistName := data["playlistName"].(string)
 	songPaths := data["songPaths"].([]interface{})
 
-	library, _ := store.Instance.Load("library")
-	var librarySongs []interface{}
-	if library != nil {
-		librarySongs = library.([]interface{})
-	}
+	librarySongs, _ := store.Instance.LoadSlice("library")
 
 	var songsToAdd []playlist.SongToAdd
 	for _, p := range songPaths {

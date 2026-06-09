@@ -6,6 +6,7 @@ import { resolveArtworkPath, formatSongTitle, checkTextOverflow } from './utils.
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { openFullscreenView, notifyFullscreenSongChange } from '../features/fullscreen-view.js';
 import { showContextMenu } from './utils.js';
+import { buildSafeMediaPathURL } from './media-url.js';
 const electronAPI = window.electronAPI;
 
 const VIDEO_PREVIEW_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.ogv'];
@@ -38,9 +39,7 @@ function buildVideoPreviewURL(path) {
     const normalisedPath = path.replace(/\\/g, '/');
 
     if (isWailsRuntime()) {
-        const relativePath = normalisedPath.replace(/^[/\\]+/, '');
-        const safePath = encodeURI(relativePath).replace(/#/g, '%23');
-        return `/safe-media/${safePath}`;
+        return buildSafeMediaPathURL(normalisedPath);
     }
 
     const safePath = encodeURI(normalisedPath).replace(/#/g, '%23');
@@ -299,6 +298,20 @@ export function updateNowPlayingView(song) {
         checkTextOverflow(nowPlayingTitle);
         checkTextOverflow(nowPlayingArtist);
     });
+
+    // MusicCenter テーマ用: フッターの曲名インライン表示を更新
+    const mcFooterTitleText = document.getElementById('mc-footer-title-text') as HTMLElement | null;
+    if (mcFooterTitleText) {
+        if (song) {
+            // 曲名 / アーティスト / アルバム の形式（空フィールドは省略）
+            const parts = [song.title, song.artist, song.album]
+                .map((s: string | undefined) => (s ?? '').trim())
+                .filter(Boolean);
+            mcFooterTitleText.textContent = parts.join(' / ');
+        } else {
+            mcFooterTitleText.textContent = '';
+        }
+    }
 
     // フルスクリーンオーバーレイへ曲変更を通知する
     if (song) {

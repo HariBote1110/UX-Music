@@ -1,5 +1,692 @@
 # 開発進捗ログ (progress.md)
 
+## 2026年6月9日
+
+### safe-media Windows絶対パス復元の修正
+
+- **課題**:
+    - `/safe-media/` のデコード処理が Windows ドライブレター付き絶対パスを `/C:/...` のように変換し、Windows では `filepath.IsAbs` が失敗して再生が Forbidden になり得た。
+- **実装内容**:
+    - `decodeSafeMediaPath` で Windows ドライブレター、既存の先頭スラッシュ、相対パスを分けて候補パスを作るようにした。
+    - Windows ドライブレター付きパスは先頭 separator を追加せず、安全な絶対パスとして扱うようにした。
+- **検証**:
+    - `go test . -run 'TestDecodeSafeMediaPathKeepsWindowsDriveAbsolute|TestDecodeSafeMediaPathKeepsPosixAbsolutePath|TestAssetHandlerServesRegisteredSafeMediaWithReservedCharacters' -count=1`
+    - `go test ./... -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-29c` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-32c` に更新。
+
+### Gemini Code Assist レビュー指摘の実害修正
+
+- **課題**:
+    - `randomBytes` が `crypto/rand.Read` 失敗時に時刻文字列へフォールバックし、ペアリング secret の推測可能性があった。
+    - `DiscoverMDNS` が entries channel close を検知せず、closed channel から nil を受け続ける可能性があった。
+    - `/safe-artwork/` handler が escaped path を `ResolveArtworkPath` へ渡し、空白入りファイル名の解決を壊し得た。
+    - `formatInt64` の自作変換が `math.MinInt64` でオーバーフローしていた。
+- **実装内容**:
+    - `crypto/rand` 失敗時のフォールバックを廃止し、panic で停止するようにした。
+    - `DiscoverMDNS` の `entries` 受信で `ok` を確認し、close 後は `entries=nil` として select 対象から外すようにした。
+    - `/safe-artwork/` は unescaped の `r.URL.Path` から prefix を外して artwork resolver へ渡すようにした。
+    - `formatInt64` を `strconv.FormatInt(value, 10)` に置き換えた。
+- **検証**:
+    - `go test . -run 'TestAssetHandlerServesSafeArtworkWithEscapedSpace|TestAssetHandlerRejectsSafeArtworkTraversal|TestAssetHandlerServesRegisteredSafeMediaWithReservedCharacters' -count=1`
+    - `go test ./internal/uxsync -run 'TestFormatInt64HandlesMinInt64|TestPruneAcknowledgedOutbox' -count=1`
+    - `go test ./server -run 'TestSyncLibraryEvents|TestSyncIdentity|TestStartSyncPairing' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-29b` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-32b` に更新。
+
+### UX Sync Phase 5.16 スマートキャッシュと容量ポリシー
+
+- **課題**:
+    - 接続時の自動 pull が全曲ミラー前提で、持ち運び端末向けの選択的キャッシュや容量不足時の整理ができなかった。
+- **実装内容**:
+    - `syncCachePolicy` を追加し、既定 `mirror` では現行どおり全曲 pull、`selective` では最近再生 remote 曲とキュー先読みだけを取得するようにした。
+    - `recentRemoteSyncTrackRefs` と `PrefetchSyncTracks` を追加し、playcounts history と remote catalog から先読み対象を決定できるようにした。
+    - selective かつ空き容量閾値未満では、最終アクセスが最も古い同期取得音源をファイルと `library.json` から削除する LRU 処理を追加した。
+    - renderer に cache policy の正規化・選択肢、キュー先読み refs 生成、`PrefetchSyncTracks` bridge 呼び出しを追加した。
+- **検証**:
+    - `go test ./server -run 'TestAutoSyncPairedDevicesSelective|TestAutoSyncPairedDevicesMirrorPolicy|TestRecentRemoteSyncTrackRefs|TestPrefetchSyncTracks|TestSelectiveCachePrunes|TestMirrorCachePolicyDoesNotPrune|TestDownloadSyncTrack' -count=1`
+    - `npm test --prefix src/renderer -- --run js/features/ux-sync-settings.test.ts js/features/playback-manager.test.ts`
+    - `npm run typecheck --prefix src/renderer`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-29a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-32a` に更新。
+
+### UX Sync Phase 5.15 シームレスDL再生
+
+- **課題**:
+    - 統一ライブラリビューで `DL可能` と表示される remote 曲は一覧には見えるが、再生操作ではまだ取得・再生できなかった。
+- **実装内容**:
+    - `DownloadSyncTrack(sourceDeviceId, sourceTrackId)` を追加し、`sync-remote-catalog` の該当 track と既知 peer/token を使って対象曲だけを取得し、`SyncLibrary` へ import できるようにした。
+    - renderer の remote 曲再生フローを、単曲DL、統一ライブラリ再取得、local 曲として再生へ遷移する流れに変更した。
+    - peer 未到達や token 不足などの DL 失敗時はエラー通知を出し、再生へ入らないようにした。
+- **検証**:
+    - `go test ./server -run 'TestDownloadSyncTrack' -count=1`
+    - `npm test --prefix src/renderer -- --run js/features/playback-manager.test.ts`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-28a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-31a` に更新。
+
+### UX Sync Phase 5.14 統一ライブラリビュー
+
+- **課題**:
+    - pull 済みの曲だけが `library.json` に載るため、LibraryHost peer に存在する未取得曲がクライアントの一覧に見えなかった。
+- **実装内容**:
+    - `sync-remote-catalog` ストアを追加し、LibraryHost peer の `/sync/library/snapshot` metadata をキャッシュできるようにした。
+    - `GetUnifiedLibrary()` を追加し、local 曲に `syncAvailability="local"`、remote 曲に `syncAvailability="remote"`、`syncSourceDeviceId`、`syncSourcePeerName`、`syncSourceTrackId` を付けて返すようにした。
+    - local/remote および複数 peer の重複は `syncSongMatchKey` で dedup し、local 曲を優先するようにした。
+    - renderer で remote 曲に `DL可能` バッジを表示し、アートワークはプレースホルダを使い、再生アクション対象外にした。
+- **検証**:
+    - `go test ./server -run 'TestGetUnifiedLibrary|TestRefreshSyncRemoteCatalog' -count=1`
+    - `npm test --prefix src/renderer -- --run js/ui/sync-availability.test.ts`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-27a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-30a` に更新。
+
+### UX Sync Phase 5.13.1 再生回数ライブ通知
+
+- **課題**:
+    - `/sync/library/events` で peer から再生イベントを受信して `playcounts` を再計算しても、Wails UI へ `play-counts-updated` が emit されず、画面表示がライブ更新されなかった。
+- **実装内容**:
+    - `registerSyncRoutes` が `App` を保持し、同期イベントハンドラから `App.ctx` を参照できるようにした。
+    - `/sync/library/events` の適用成功後に最新 `playcounts` を読み込み、`play-counts-updated` として frontend へ emit するようにした。
+    - テスト容易性のため `playCountsEmitter` を差し替え可能にし、ctx なしの既存直呼び経路では nil-safe に何もしないようにした。
+- **検証**:
+    - `go test ./server -run 'TestSyncLibraryEventsEmitsUpdatedPlayCountsAfterApplyingEvents|TestSyncLibraryEventsRejectsInvalidMethod|TestSyncLibraryEventsPushStoresChildPlayEventsAndReturnsAcks' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-26b` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-29b` に更新。
+
+### UX Sync Phase 5.13 再生回数収束
+
+- **課題**:
+    - 同じ曲でも端末ごとに曲 ID が異なるため、sync 経由で pull していない曲同士の再生回数が同期されない。
+    - `playcounts` と `sync-play-events` が二重ソースになり、再送・途中失敗・リセット時に恒久的なズレが残り得る。
+- **実装内容**:
+    - `syncSongMatchKey` を追加し、NFKC・小文字化・trim・空白圧縮・duration 秒丸めで正規化したメタデータキーを SHA-1 hex 化するようにした。
+    - `uxsync.PlayEvent` に `matchKey` を追加し、ローカル再生イベントへ保存するようにした。
+    - 受信イベントは `matchKey` 優先、旧イベントは `trackID` フォールバックでローカル path に解決するようにした。
+    - 解決できないイベントはログには残し、`playcounts` へ幽霊エントリを作らないようにした。
+    - `playcounts-base` と一度きり移行を追加し、表示用 `playcounts` を `base + logCount` の射影として再計算するようにした。
+- **検証**:
+    - `go test ./server -run 'TestSyncSongMatchKey|TestIncrementPlayCountRecordsLocalSyncPlayEvent|TestSyncLibraryEventsAppliesIncomingPlayCountsByMetadataWithoutPulledTrack|TestSyncLibraryEventsSkipsUnmatchedPlayCountsWithoutGhostEntry|TestIncrementPlayCountMigratesExistingCountsToBaseBeforeProjection|TestSyncPlayCountsConvergeAcrossBidirectionalMetadataMatchedEvents|TestSyncLibraryEventsFallsBackToTrackIDForLegacyEventsWithoutMatchKey|TestSyncLibraryEventsAppliesIncomingPlayCountsIdempotently' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-26a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-29a` に更新。
+
+### UX Sync Phase 5.12 push転送メタデータ・ジャケット・再生回数
+
+- **課題**:
+    - FLAC を push 転送した際、音源本体だけが届き、表示メタデータ、ジャケット、再生回数が転送先に反映されないケースがあった。
+- **実装内容**:
+    - push 転送の multipart `metadata.track` に、既存ライブラリ上の表示メタデータを保持するテストを追加。
+    - push 転送時、ローカル `playcounts` の対象曲エントリを `syncPlayCount` として metadata に同梱するようにした。
+    - `/sync/library/import` 受信側で `syncPlayCount` を取り込み先パスの `playcounts` に反映し、`library.json` には転送用フィールドを残さないようにした。
+    - 受信側で保存済み音源を再スキャンし、payload が薄い場合もタグ情報と埋め込みジャケットを補完できるようにした。
+    - artwork part が届いた場合は `Artworks` と `Artworks/thumbnails` 配下へ保存し、`library.json` の `artwork.full` / `artwork.thumbnail` に反映する。
+- **検証**:
+    - `go test ./server -run 'TestPushSyncLibraryAssetsIncludesMetadataArtworkAndPlayCount|TestSyncLibraryImportAppliesUploadedArtworkAndPlayCount|TestPushSyncLibraryAssetsUploadsLocalTrackToRemotePeer|TestSyncLibraryImportRequiresTokenAndImportsUploadedTrack' -count=1`
+    - `go test ./server -run 'TestSyncLibraryImportAppliesUploadedArtworkAndPlayCount|TestPushSyncLibraryAssetsIncludesMetadataArtworkAndPlayCount|TestSyncAssetArtworkServesArtworkByTrackID' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-25b` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-28b` に更新。
+
+### UX Sync Phase 5.11 自動音源差分同期と接続トースト
+
+- **要望対応**:
+    - Walkman 転送で使っている「未転送だけ扱う」考え方を UX Sync の自動同期にも寄せたい。
+    - 接続できたため自動同期したことを右下トーストで分かるようにしたい。
+- **実装内容**:
+    - `AutoSyncPairedDevices()` が `LibraryHost` 役割を持つペア済み端末に対して `PullSyncLibraryAssets()` を実行し、未取得曲だけを自動取得するようにした。
+    - 既に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込み済みかつ実ファイルが存在する曲は skip とし、`pulledTracks` / `skippedTracks` として自動同期結果に集約する。
+    - `LibraryHost` ではない peer からは音源本体を自動取得しない。
+    - renderer が `ux-sync-auto-result` を購読し、接続できたため同期したこと、取得数、既存数、再生回数、ジャケット数を右下トーストに表示する。
+- **検証**:
+    - `go test ./server -run 'TestAutoSyncPairedDevicesPullsOnlyMissingTracksFromLibraryHost|TestAutoSyncPairedDevicesDoesNotPullTracksFromNonLibraryHost|TestAutoSyncPairedDevicesDownloadsMissingArtworkForImportedTrack|TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer' -count=1`
+    - `npm test --prefix src/renderer -- --run js/features/ux-sync-settings.test.ts`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-24a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-27a` に更新。
+
+### UX Sync Crescent向けSSH自動同期CLI
+
+- **課題**:
+    - HariBote（Crescent）を検証用 Windows ノードとして使うため、GUI を起動せず SSH からペアリングと自動同期ワンショットを実行したい。
+    - 既存 CLI は初期化と音源 pull のみで、ペアリング後に既知 peer の到達URLを確実に残す導線が不足していた。
+- **対応**:
+    - `server/app_sync_cli_test.go`:
+      - `--sync-pair <baseURL>` が6桁コード確認フローを通して同期トークンと既知 peer を保存するテストを追加。
+      - `--sync-auto-once` が保存済みペア端末へ `AutoSyncPairedDevices()` を一回実行するテストを追加。
+    - `server/app_sync_cli.go`:
+      - SSH 検証向けに `--sync-pair` と `--sync-auto-once` を追加。
+    - `server/app_sync.go`:
+      - ペアリング確定時に、リモート端末の `baseURL` / 表示名 / 役割を既知 peer として保存するように変更。
+- **検証**:
+    - `go test ./server -run 'TestRunSyncCLI|TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice' -count=1`
+    - `go test ./server -run 'Test.*Sync.*' -count=1`
+    - Crescent (`HariBote@192.168.0.120`) に Go / MSYS2 / Wails CLI を構築し、`wails build -clean -nopackage` で `C:\Users\HariBote\UX-Music-sync-test\UX-Music\build\bin\UX-Music.exe` を作成。
+    - Crescent で `libportaudio.dll` を `build\bin` に同梱し、PATH なしで CLI が起動できることを確認。
+    - Crescent から `http://192.168.0.226:8765` の Mac mini へ `--sync-reset-test-data`、`--sync-pair`、`--sync-auto-once` を実行し、`checkedDevices=1` / `syncedDevices=1` を確認。
+    - Crescent から `--sync-pull-one` で Mac mini の音源を1曲取得し、その後 `--sync-auto-once` で `syncedArtwork=1` を確認。
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-23a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-26a` に更新。
+
+### UX Sync Phase 5.9 空き容量安全停止
+
+- **要望対応**:
+    - システムに数GBの空きが無ければ同期を停止するオプションを追加した。
+- **実装内容**:
+    - `settings.syncMinFreeSpaceGB` を追加し、`0` または未設定なら無効、正の値なら GB 単位の最低空き容量として扱う。
+    - `AutoSyncPairedDevices()` は同期開始前に `config.GetUserDataPath()` のあるボリュームの空き容量を確認し、閾値未満なら peer へ接続せず `paused` 状態で停止する。
+    - `PullSyncLibraryAssets()` と `/sync/library/import` も同じ空き容量安全停止を通し、受信側ストレージを増やす同期操作を止められるようにした。
+    - UX Sync 専用設定画面の `保存` タブを有効化し、最低空き容量を GB 単位で保存できる UI を追加した。
+- **検証**:
+    - `go test ./server -run 'TestAutoSyncPairedDevicesStopsWhenFreeSpaceIsBelowSafetyLimit|TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer' -count=1`
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+- **仕様同期**:
+    - `library.storage-safety.v1` capability を追加。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-25a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-22a` に更新。
+
+### UX Sync Phase 5.8 ジャケットの自動補完同期
+
+- **要望対応**:
+    - 接続できたら手動操作なしで同期される対象に、再生回数だけでなくジャケット画像も含めたい要望に対応した。
+- **実装内容**:
+    - `/sync/assets/{trackId}/artwork` を追加し、同期トークン付きでライブラリ登録済み曲の保存済みジャケットを取得できるようにした。
+    - `/sync/library/snapshot` は巨大な `artwork` blob を直接載せず、`syncArtwork` 参照だけを返すようにした。
+    - multipart import / push で任意の `artwork` part を扱い、受信側の `Artworks` 配下へ保存して `library.json` の `artwork.full` に反映できるようにした。
+    - `AutoSyncPairedDevices()` がペア済み端末へ接続できた時、既に取り込み済みの同期曲でジャケットが欠けているものを自動補完するようにした。
+- **検証**:
+    - `go test ./server -run 'TestAutoSyncPairedDevicesDownloadsMissingArtworkForImportedTrack|TestSyncAssetArtworkServesArtworkByTrackID' -count=1`
+- **仕様同期**:
+    - `library.artwork.v1` capability を追加。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-24a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-21a` に更新。
+
+### UX Sync Phase 5.7 再生回数の自動同期
+
+- **要望対応**:
+    - 手動で push するのではなく、接続できたら同期される形へ寄せるため、まず再生回数イベントを自動同期する基盤を追加した。
+- **実装内容**:
+    - `IncrementPlayCount` が既存 `playcounts` 更新に加えて、ローカル端末の `sync-play-events` へ `PlayEvent` を記録するようにした。
+    - `syncSourceTrackId` を持つ子側取り込み曲では、親側の曲IDを `PlayEvent.trackId` に使い、親へ戻した時に同じ曲として集計できるようにした。
+    - `/sync/library/events` で受信した新規イベントを `playcounts` へ冪等に反映し、同じ `eventId` の再送では二重加算しないようにした。
+    - `AutoSyncPairedDevices()` を追加し、保存済みペア端末の到達URLへローカル再生イベントを同期トークン付きでpushできるようにした。
+    - アプリ起動後は軽量な自動同期ループで、到達可能なペア済み端末へ再生イベント同期を定期的に試行する。
+- **検証**:
+    - `go test ./server -run 'TestIncrementPlayCountRecordsLocalSyncPlayEvent|TestSyncLibraryEventsAppliesIncomingPlayCountsIdempotently|TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer' -count=1`
+- **仕様同期**:
+    - `library.auto-sync.v1` capability を追加。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-23a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-20a` に更新。
+
+### UX Sync Phase 5.6.1 MP3転送のストリーミング化
+
+- **要望対応**:
+    - MP3 320kbps 転送が「1曲丸ごと変換してから送る」ため遅く感じる問題に対応した。
+- **実装内容**:
+    - MP3 320kbps 転送時に一時MP3ファイルを作り切る処理を廃止し、`ffmpeg -f mp3 pipe:1` の stdout を multipart upload の file part へ直接流すようにした。
+    - `prepareSyncTrackForTransfer` を転送用 `io.ReadCloser` を返す構造に変更し、原本転送はローカルファイル reader、MP3転送は ffmpeg stdout reader を使うようにした。
+    - ffmpeg の終了待ちと reader close を一度だけ行う cleanup を追加し、変換失敗は該当曲の failed として扱うようにした。
+- **検証**:
+    - `go test ./server -run 'TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320|TestPushSyncLibraryAssetsWithOptionsStreamsMP3EncodingIntoUpload|TestPushSyncLibraryAssetsEmitsTransferProgressWithFileAndSpeed' -count=1`
+- **仕様同期**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-22b` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-19b` に更新。
+
+### UX Sync Phase 5.6 転送進捗表示とMP3 320kbps転送
+
+- **要望対応**:
+    - 音源転送中に、現在送っているファイル名と転送速度が分かるようにした。
+    - FLAC など重いロスレス音源を、送信時に MP3 320kbps へ変換してから転送できるようにした。
+- **実装内容**:
+    - `ux-sync-transfer-progress` Wails event を追加し、push / pull の転送中に `direction`、`stage`、`fileName`、件数、byte数、`bytesPerSecond`、`encodingMode` をUIへ通知するようにした。
+    - `PushSyncLibraryAssetsWithOptions(baseURL, limit, options)` を追加し、既存 `PushSyncLibraryAssets(baseURL, limit)` は原本転送の互換APIとして維持した。
+    - `encodingMode: "mp3_320"` 指定時、MP3以外の音源を `ffmpeg` / `libmp3lame` / `320k` で一時変換し、multipart import には `.mp3` と `syncTransferEncoding: "mp3_320"` を付けて送るようにした。
+    - UX Sync 設定画面の同期タブに転送音質セレクトを追加し、転送中はファイル名、件数、転送速度、転送量を表示するようにした。
+    - protocol capability に `library.transfer-progress.v1` と `library.transcode.mp3-320.v1` を追加した。
+- **検証**:
+    - `go test ./server -run 'TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320|TestPushSyncLibraryAssetsEmitsTransferProgressWithFileAndSpeed' -count=1`
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+- **仕様同期**:
+    - `markdown/ux-music-sync-protocol.md`、`markdown/ux-music-sync-plan.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/Task.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-22a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-19a` に更新。
+
+### UX Sync Phase 5.5 プロトコルスキーマとバージョンネゴシエーション
+
+- **要望対応**:
+    - UX Sync のプロトコルを将来のバージョン違いに強くするため、スキーマ定義と capability / version negotiation を追加した。
+- **実装内容**:
+    - UX Sync protocol 定数として `ux-music-sync` / `0.2` / `2026-06-09` / capability 一覧を追加した。
+    - `/sync/identity` が `protocolVersion`、`minCompatibleProtocolVersion`、`schemaVersion`、`capabilities`、`negotiation` を返すようにした。
+    - `fetchSyncIdentity` が自分の protocol/schema/capabilities をヘッダで申告し、非互換 major の peer を同期操作前に拒否するようにした。
+    - `/sync/schema` を追加し、endpoint / message / capability / 拡張規則を含む機械可読スキーマを返すようにした。
+    - mDNS TXT に `schemaVersion` と `capabilities` を追加した。
+    - `markdown/ux-music-sync-protocol.md` を追加し、未知フィールド・未知 capability・`extensions` の扱いを含む将来互換方針を明文化した。
+    - Windows ビルドで macOS 向け MTP 実装と Windows stub が衝突しないよう、MTP 実装に build tag を追加し Windows stub を整理した。
+- **検証**:
+    - `go test ./server -run 'TestSyncIdentityIncludesSchema|TestFetchSyncIdentitySendsProtocol|TestFetchSyncIdentityRejectsIncompatibleProtocolMajor|TestSyncSchemaEndpoint|TestSyncMDNSAdvertiseInfo' -count=1`
+    - `go test ./internal/uxsync -count=1`
+- **仕様同期**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-21b` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-18b` に更新。
+- **判断**:
+    - 多少のバージョン差は unknown field / capability を無視して進め、major 不一致は同期操作前に止める方針を実装した。
+    - 今後 token と `sourceDeviceId` の対応検証を強める場合は、新しい capability と schema version で段階導入する。
+
+### UX Sync Phase 5.4 音源push転送
+
+- **要望対応**:
+    - UX Sync で相手から取得するだけでなく、こちらから相手へ音源を転送できるようにした。
+- **実装内容**:
+    - `/sync/library/import` を追加し、同期トークン認証済みの multipart アップロードを `SyncLibrary` へ取り込めるようにした。
+    - 受信側はアップロードされたメタデータから `syncSourceDeviceId` / `syncSourceTrackId` を保存し、同じ同期元・同じ曲の重複転送を skip するようにした。
+    - `PushSyncLibraryAssets(baseURL, limit)` を追加し、保存済み同期トークンでローカルライブラリの音源をペア済み端末へ転送できるようにした。
+    - UX Sync 専用設定画面の `同期` タブに `1曲転送` / `全曲転送` を追加し、転送結果を転送数・既存数・失敗数と受信側保存先として表示するようにした。
+    - renderer と Wails binding に `PushSyncLibraryAssets` を追加した。
+- **検証**:
+    - `go test ./server -run 'TestSyncLibraryImport|TestPushSyncLibraryAssets' -count=1`
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - `npm run typecheck`
+- **仕様同期**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-20a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-17a` に更新。
+- **判断**:
+    - Mac mini 側から Windows 側へ能動的に音源を送り込めるため、発見・ペアリング後の同期操作が pull / push の両方向に揃った。
+
+### UX Sync Phase 5.3.1 ペア済み端末復元と同期操作修正
+
+- **要望対応**:
+    - UX Sync 専用設定画面を閉じるとペアリング済み表示が消え、同期ボタンも使えない状態を修正した。
+- **実装内容**:
+    - `ListSyncDevices()` を追加し、保存済み `syncAuthTokens` と `syncKnownPeers` から同期トークンを返さずペア済み端末一覧を取得できるようにした。
+    - UX Sync 専用設定画面で mDNS discovery 結果とペア済み端末一覧をマージし、画面を閉じた後もペアリング済み状態と同期元候補を復元するようにした。
+    - ペアリング確定後に端末一覧と同期元セレクトを更新し、到達URLを持つペア済み端末では `1曲取得` / `全曲取得` を押せるようにした。
+    - ペア済み peer は `ペアリング済み` と表示し、再ペアリング用の接続ボタンを `接続済み` として無効化するようにした。
+    - renderer と Wails binding に `ListSyncDevices` を追加した。
+- **検証**:
+    - `go test ./server -run 'TestListSyncDevices' -count=1`
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - `npm run typecheck`
+- **仕様同期**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-19b` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-16b` に更新。
+- **判断**:
+    - ペアリング情報が一時的なUI状態だけに閉じていた問題を解消し、たまに接続される端末でも保存済みペア情報から同期操作へ戻れる状態になった。
+
+## 2026年6月8日
+
+### UX Sync Phase 5.3 音源pull GUI
+
+- **要望対応**:
+    - SSH CLI で通した Mac mini からの音源pullを、UX Sync 専用設定画面から扱えるようにした。
+- **実装内容**:
+    - UX Sync 専用設定画面の `同期` タブを有効化した。
+    - 発見済み / 既知 peer の到達URLを同期元セレクトへ反映するようにした。
+    - `1曲取得` ボタンから `PullSyncLibraryAssets(baseURL, 1)`、`全曲取得` ボタンから `PullSyncLibraryAssets(baseURL, 0)` を呼ぶようにした。
+    - 音源pull結果を `downloaded` / `skipped` / `failed` と保存先パスとして表示するようにした。
+    - `PullSyncLibraryAssets` binding が無い環境、または同期元未選択時は取得ボタンを無効化するようにした。
+    - renderer に `normaliseSyncPullResult`、`syncPullActionState`、`formatSyncPullResultSummary` のテストを追加した。
+- **検証**:
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - `npm run typecheck`
+- **仕様同期**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-19a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-16a` に更新。
+- **判断**:
+    - SSH CLI で通した親から子への音源pullを、UX Sync 専用設定画面から操作できる第一段階に到達した。
+    - destructive な検証用初期化は誤操作リスクが高いため、GUI には出さず CLI 専用に残した。
+
+### UX Sync Phase 5.2 音源pullとSSH検証CLI
+
+- **要望対応**:
+    - Windows 側をテスト専用ノードとして使いやすくし、SSH から初期化と音源pullを行えるようにした。
+- **実装内容**:
+    - GUI / WebView2 を起動しない `--sync-reset-test-data`、`--sync-pull-one`、`--sync-pull` の CLI 入口を追加した。
+    - `/sync/library/snapshot` を追加し、同期トークン認証済み端末へアートワーク blob を除いた曲一覧を返すようにした。
+    - `/sync/assets/{trackId}/file` を追加し、同期トークン認証済み端末へ登録済み曲IDの原本ファイルを返すようにした。
+    - `PullSyncLibraryAssets(baseURL, limit)` を追加し、保存済み `syncAuthTokens` を使って親から曲一覧と音源を取得し、子側 `SyncLibrary` 配下へ保存して `library.json` へ取り込むようにした。
+    - 取り込んだ曲には `syncSourceDeviceId` / `syncSourceTrackId` / `syncImportedAt` を付与し、同じ親・同じ曲の再取り込みを避けるようにした。
+    - `ResetSyncTestData` は `syncDeviceId` / `syncAuthTokens` / `syncKnownPeers` を温存し、検証用ライブラリ・再生回数・解析・同期イベント・アートワーク・キャッシュ・プレイリストを初期化し、`libraryPath` を `SyncLibrary` へ向け直す。
+    - Wails binding と renderer bridge に `PullSyncLibraryAssets(baseURL, limit)` を追加した。
+- **検証**:
+    - `go test ./server -run 'TestSyncLibrarySnapshot|TestSyncAssetFile|TestPullSyncLibraryAssets|TestResetSyncTestData' -count=1`
+    - Mac 側 `go test ./...`
+    - Mac 側 `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - Mac 側 `npm run typecheck`
+    - Mac 側 `wails build -clean -nopackage`
+    - Mac 側で新ビルドを `open /Users/yuki/GitHub/UX-Music/build/bin/UX-Music` から起動し、`/sync/identity` が `YukinoMac-mini` を返すことを確認。
+    - Mac 側 `/sync/library/snapshot` が Windows 側保存済み同期トークンで `200` を返し、812曲のスナップショットを返すことを確認。
+    - Windows 側 `go test ./server -run TestSyncLibrarySnapshot^|TestSyncAssetFile^|TestPullSyncLibraryAssets^|TestResetSyncTestData -count=1`
+    - Windows 側 `npm run typecheck`
+    - Windows 側 `wails build -clean -nopackage`
+    - Windows 側 `C:\Users\gzabu\UX-Music-sync-test\build\bin\UX-Music.exe --sync-reset-test-data`
+    - Windows 側 `C:\Users\gzabu\UX-Music-sync-test\build\bin\UX-Music.exe --sync-pull-one http://192.168.0.226:8765`
+    - Windows 側 `SyncLibrary` に Mac mini 由来の FLAC 2曲が保存され、`library.json` の `syncSourceDeviceId` / `syncSourceTrackId` とファイルサイズを確認。
+- **仕様同期**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-18a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-15a` に更新。
+- **判断**:
+    - 圧縮アセット生成は未実装だが、親 Mac mini の既存原本を子 Windows の管理ライブラリへ pull する縦串は、ローカルテストと `mainpc` への実通信検証の両方で通った。
+    - `--sync-pull-one` は既存取り込み済み曲を skip し、次の未取得曲を1曲 download する挙動として動作した。
+
+### UX Sync Phase 5.1 Windows側発見fallback
+
+- **要望対応**:
+    - Mac 側から Windows peer は見えるが、Windows 側の mDNS discovery が空になって Mac mini を見つけられない非対称状態を調査した。
+- **実装内容**:
+    - `mainPC` から `http://192.168.0.226:8765/sync/identity` が応答することを確認し、HTTP 到達性ではなく discovery の問題だと切り分けた。
+    - mDNS 広告に使う表示名から `.local` suffix を除去し、`YukinoMac-mini.local` ではなく `YukinoMac-mini` として広告するようにした。
+    - inbound pairing confirm 成功時に、相手 `deviceId`、表示名、実通信元 IP から既知 peer を `settings.syncKnownPeers` へ保存するようにした。
+    - `DiscoverSyncDevices(timeoutMs)` と `/sync/discover` が mDNS 結果と既知 peer をマージするようにした。
+    - mainpc 側のビルド環境に `gcc` / `pkg-config` / portaudio header と `.pc` を用意し、Windows バイナリを再ビルドできる状態にした。
+    - 既に古いバイナリでペアリング済みだった Windows 設定へ、Mac mini の `syncKnownPeers` を一度だけ補完した。
+- **検証**:
+    - Mac 側 `dns-sd -B _uxmusic-sync._tcp local` で `YukinoMac-mini` が複数 interface に広告されることを確認。
+    - `mainPC` から `http://192.168.0.226:8765/sync/identity` が応答することを確認。
+    - Windows 側 `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - Windows 側 `npm run typecheck`
+    - Windows 側 `go test ./server -run "TestSyncPairingConfirmStoresKnownPeer|TestMergeSyncKnownPeers|TestSyncMDNSAdvertiseInfo|TestNormaliseSyncDisplayName" -count=1`
+    - Windows 側 `wails build -clean -nopackage`
+    - Windows 側 `settings.json` に `syncKnownPeers` として `YukinoMac-mini` / `http://192.168.0.226:8765` が保存されたことを確認。
+    - Mac 側 `go test ./...`
+    - Mac 側 `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - Mac 側 `npm run typecheck`
+- **判断**:
+    - Windows の mDNS browse 自体は SSH 上の Go smoke で空のままだが、ペアリング済み端末は既知 peer fallback で発見一覧へ補完できる構造になった。
+    - SSH 経由で Windows GUI を起動すると WebView2 が `Invalid window handle` で落ちるため、更新済み `C:\Users\gzabu\UX-Music-sync-test\build\bin\UX-Music.exe` は Windows のデスクトップ側から起動して確認する。
+
+### UX Sync Phase 5 専用設定画面
+
+- **要望対応**:
+    - Sync を通常設定の一項目ではなく、専用の設定画面として扱えるようにした。
+- **実装内容**:
+    - 通常設定モーダルに混在していた UX Sync の探索・ペアリング UI を、UX Sync 専用設定画面へ切り出した。
+    - 通常設定には `UX Sync設定を開く` の入口だけを表示するようにした。
+    - Wails sync binding が無い renderer 単体環境では UX Sync 入口を非表示にする状態判定を追加した。
+    - UX Sync 専用設定画面の `端末` タブに探索ボタン、探索状態、peer 一覧、6桁コード確認ペアリング導線を集約した。
+    - 後続の同期状態・保存ポリシー設定を載せるため、`同期` と `保存` のタブ枠を追加した。
+- **検証**:
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - `npm run typecheck`
+- **仕様同期**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-17a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-14a` に更新。
+- **判断**:
+    - UX Sync は通常設定の一項目ではなく、専用画面で端末・同期・保存を管理していく形へ移行した。
+
+### UX Sync Phase 4 ペアリングUI
+
+- **要望対応**:
+    - UI上で発見できた Windows 側 peer に対して、設定画面からそのままペアリング開始・確定できる導線を追加した。
+- **実装内容**:
+    - Wails 向けに `StartSyncPairing(baseURL)` と `ConfirmSyncPairing(baseURL, sessionID, code, expectedRemoteDeviceID)` を追加。
+    - `StartSyncPairing` はリモート `/sync/identity` で端末情報を取得し、ローカル `deviceId` を使って `/sync/pairing/start` を呼ぶ。
+    - `ConfirmSyncPairing` はリモート `/sync/pairing/confirm` が返したトークンを、リモート `deviceId` 宛の同期トークンとしてローカル設定へ保存する。
+    - ペアリング開始時の `remoteDeviceId` と確定時に再取得した `deviceId` が異なる場合は、トークンを保存せず失敗させる。
+    - 設定画面の UX Sync peer カードに「接続」ボタンを追加し、6桁コード表示、確定、キャンセル、ペアリング済み表示まで進めるようにした。
+    - `reachableBaseUrl` を優先し、未取得時は `host` / `hosts` と `port` からペアリング用 URL を構成する renderer ロジックを追加。
+- **検証**:
+    - `go test ./server -run 'TestStartSyncPairing|TestConfirmSyncPairing|TestSyncPairing' -count=1`
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - `npm run typecheck`
+- **仕様同期**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-16a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-13a` に更新。
+- **残課題**:
+    - ペア済み端末一覧と解除 UI は未実装。
+    - 現状の6桁コードはリモート API 応答として開始側に返るため、Bluetooth 数値確認のように双方が独立表示する方式への強化は後続で扱う。
+
+### UX Sync Phase 3.1 macOS mDNS fallback
+
+- **要望対応**:
+    - VLAN / 複数 NIC 環境で、OS の Bonjour では Windows 側 `mainPC` が見えるのにアプリ側 discovery が `mainPC` を取りこぼす状態を半自動テストで再現した。
+- **実装内容**:
+    - macOS では `zeroconf` discovery と OS 標準の `dns-sd -B/-L` の結果をマージするようにした。
+    - `dns-sd` 出力を `MDNSPeer` へ正規化し、既存の `ResolveReachablePeers` で `reachableBaseUrl` を選べるようにした。
+    - `markdown/Task.md` と `markdown/requirement.md` を macOS mDNS fallback の実装内容へ同期。
+- **検証**:
+    - `dns-sd -B _uxmusic-sync._tcp local` で `mainPC` を確認。
+    - `dns-sd -L mainPC _uxmusic-sync._tcp local` で `mainPC.local.:8765` と TXT レコードを確認。
+    - 半自動 Go smoke で `DiscoverMDNS` → `ResolveReachablePeers` が Mac 自身と `mainPC` / `reachableBaseUrl=http://mainPC.local:8765` を返すことを確認。
+    - `go test ./internal/uxsync`
+    - `go test ./...`
+- **仕様同期**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-15b` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-12b` に更新。
+- **判断**:
+    - UI 側が `DiscoverSyncDevices(timeoutMs)` を呼べば、今回の fallback を通って Windows 側 `mainPC` を検出できる状態になった。
+
+### UX Sync Phase 3 自動発見UI
+
+- **要望対応**:
+    - 設定画面から LAN 内の UX Music 端末を探索し、外出先や renderer 単体開発環境でも通常 UI を壊さず確認できるようにした。
+- **実装内容**:
+    - renderer に `ux-sync-settings` の peer 正規化・接続候補表示ロジックを追加。
+    - 設定画面に UX Sync セクションと「同期端末を探す」ボタンを追加。
+    - Wails の `DiscoverSyncDevices(timeoutMs)` から得た `reachableBaseUrl`、役割、複数 NIC の候補 `hosts` を一覧表示するようにした。
+    - Wails binding が無い renderer 単体開発環境では UX Sync セクションを非表示にし、通常の設定画面を壊さないようにした。
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を UX Sync 自動発見 UI の実装内容へ同期。
+- **検証**:
+    - `npm test -- --run js/features/ux-sync-settings.test.ts`
+    - `npm test -- --run`
+    - `npm run typecheck`
+    - `go test ./...`
+    - `git diff --check`
+- **仕様同期**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-15a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-12a` に更新。
+- **判断**:
+    - UI 側の自動発見一覧表示は実装済み。
+    - 発見 peer から6桁コード確認ペアリングへ進む導線と、ペア済み端末管理 UI は後続フェーズに残す。
+
+### UX Sync Phase 2 mDNS 自動発見基盤
+
+- **要望対応**:
+    - 同一 LAN 上の UX Music 端末を、手入力ではなく mDNS / Bonjour で自動発見できるようにした。
+- **実装内容**:
+    - `internal/uxsync` に mDNS サービス定義、TXT レコード生成、発見 peer 正規化、複数アドレス保持を追加。
+    - `github.com/grandcat/zeroconf` を導入し、`_uxmusic-sync._tcp.local.` の広告と探索を実装。
+    - LAN HTTP サーバー起動時に UX Sync mDNS 広告を開始し、停止時に shutdown するようにした。
+    - Wails 向けに `DiscoverSyncDevices(timeoutMs)` を追加。
+    - `/sync/identity` に `deviceId` / `displayName` / `roles` を含めるよう更新。
+    - 複数NIC環境で同じ `deviceId` が複数アドレスを返す場合、`hosts` に全候補を保持するようにした。
+    - `hosts` 候補へ `/sync/identity` を順番に probe し、到達可能な `reachableBaseUrl` を自動選択するようにした。
+    - 末端側が IP 手入力や OS の `dns-sd` 操作をしなくても、アプリ側の mDNS 探索と自動 probe で接続候補を得られる方針にした。
+- **検証**:
+    - `go test ./internal/uxsync`
+    - `go test ./internal/uxsync ./server`
+    - 検証用サーバーを `0.0.0.0:9876` で起動し、macOS `dns-sd -B _uxmusic-sync._tcp local` で `UX Music mDNS Test` の広告を確認。
+    - Go の `uxsync.DiscoverMDNS` で広告を発見し、`hosts` に `192.168.1.182`、`192.168.0.226`、`192.168.1.48`、Tailscale / IPv6 候補が含まれることを確認。
+    - Go の `ResolveReachablePeers` で `reachableBaseUrl` が自動設定されることを確認。
+    - SSH 接続した `mainpc` から `http://192.168.0.226:9876/sync/identity` が応答することを確認。
+    - `mainpc` には `dns-sd` が無かったため、Windows 側での mDNS browse は未実施。
+- **仕様同期とバージョン更新**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-14b` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-11b` に更新。
+- **残課題**:
+    - UI 上の自動発見一覧表示と、発見 peer からペアリングへ進む導線は後続フェーズに残す。
+
+### UX Sync Phase 1 ペアリングと再生イベントプッシュ基盤
+
+- **要望対応**:
+    - Mac mini を親、mainpc / 持ち運び端末を子とする同期に向けて、6桁コード確認ペアリングと、子側で加算された再生カウントを親へプッシュする基盤を実装した。
+    - たまにしか接続されない端末でも、同じ再生イベントを再送して安全に同期できるようにした。
+- **実装内容**:
+    - `internal/uxsync` を追加し、`PlayEvent` の重複排除、同時再生の別イベント採用、再生回数集計、アウトボックス ACK pruning、6桁ペアリングコード生成を実装。
+    - `/sync/identity`、`/sync/pairing/start`、`/sync/pairing/confirm`、`/sync/library/events` を既存 LAN HTTP サーバーへ追加。
+    - Wear 認証と Sync 認証を `lanAuthMiddleware` で分離。
+    - Sync 認証は `X-UX-Music-Sync-Token` / Bearer / `syncToken` を受け付ける。
+    - `sync-play-events` をイベントログとして保存し、同じ `eventId` の再送で再生回数が二重加算されないようにした。
+    - `Store.Save` がユーザーデータディレクトリを自動作成するようにした。
+- **検証**:
+    - `go test ./internal/uxsync`
+    - `go test ./server -run 'TestSyncPairing|TestSyncAuth|TestLanAuth|TestSyncLibraryEvents' -count=1`
+    - `go test ./internal/store ./server ./internal/uxsync`
+    - `go test ./...`
+    - SSH 接続した `mainpc` から `192.168.0.226:9876` の検証用サーバーへ、ペアリング開始、6桁コード confirm、認証付き `/sync/library/events` push、同一イベント再送を実行。
+    - 実通信検証では `firstAccepted=1`、`secondAccepted=1`、`ackSequence=1` を確認し、保存された `sync-play-events` は `evt_mainpc_0001` 1件のみであることを確認。
+- **仕様同期とバージョン更新**:
+    - `markdown/Task.md`、`markdown/requirement.md`、`markdown/features.md`、`markdown/roadmap.md`、`markdown/ux-music-sync-plan.md` を更新。
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-13a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-10a` に更新。
+- **残課題**:
+    - `mainpc` から `192.168.1.182` へは到達できなかったが、`192.168.0.226` では到達できた。複数NIC環境で `GetWearServerAddress()` が最適なLANアドレスを選ぶ改善が必要。
+    - mDNS / Bonjour、自動発見、UI、圧縮アセット、WebSocket 再生移行は後続フェーズに残す。
+
+### UX Music Sync 実装計画を文書化
+
+- **要望対応**:
+    - 同一 LAN 上で、6桁コード確認ペアリング、母艦 Mac mini と持ち運び MacBook Air の役割分担、音源・再生履歴・再生状態の同期を実装するための計画をまとめた。
+- **作成内容**:
+    - `markdown/ux-music-sync-plan.md` を追加。
+    - `Library Host` / `Portable Client` / `Playback Target` / `Controller` の役割モデルを定義。
+    - mDNS / Bonjour による発見、6桁コード確認、長期端末鍵保存、認証済み HTTP / WebSocket 通信の流れを整理。
+    - 再生回数を数値同期ではなく `Play Event` のマージで扱う方針を明記。
+    - `Portable Client` の再生カウントを `Library Host` へプッシュするアウトボックス、親側取り込み確認、たまに接続される端末向けの再送設計を追記。
+    - Mac mini と MacBook Air で同じ曲を同時に再生した場合は別イベントとして両方を採用し、同じイベントの再送だけを重複排除する方針を明記。
+    - ロスレス原本は `Library Host` に置き、`Portable Client` は圧縮アセットと選択キャッシュを持つ設計を明記。
+    - 再生移行、キャッシュ方針、競合解決、フェーズ別テスト観点、MVP完了条件を整理。
+- **仕様同期**:
+    - `markdown/roadmap.md`、`markdown/features.md`、`markdown/requirement.md` に UX Sync 計画への参照を追加。
+- **判断**:
+    - 今回はドキュメント作成のみのため、実装コードとテストは追加していない。
+    - 実装に入る際は、フェーズごとに `markdown/Task.md` を更新し、テストを先に追加する。
+
+### TXT専用歌詞同期の音源候補選択と実ライブラリ検証
+
+- **要望対応**:
+    - 同期済みLRCを実装入力に使わず、時刻なしTXT歌詞だけがある曲をローカルで同期しやすくしたい。
+    - バックエンドAPI課金を避け、Macローカルでfull音源・ボーカル分離・`speech align` を含めて試行したい。
+- **実装内容**:
+    - Python fallback に `UX_MUSIC_LYRICS_SYNC_AUDIO_SOURCES=full|vocals|both` を追加。
+    - `full` ではDemucsを通らず元音源を直接 faster-whisper へ渡す。
+    - `both` では元音源候補とボーカル候補をそれぞれTXT行へ整列し、参照LRCを使わない品質スコアで候補を選択する。
+    - 候補結果に `audioSource` / `alignmentQualityScore` / `candidateScores` を追加し、検証時にどの経路が選ばれたか追跡可能にした。
+- **検証**:
+    - `python/.venv/bin/python -m pytest python/tests -m 'not heavy' -q` → `30 passed, 1 deselected`
+    - `/Users/yuki/doc/uxmusic` 5曲ベンチ（LRCから時刻を捨てたTXT相当入力、LRC時刻は答え合わせのみ、`base` / `full`）:
+        - アムネシア: `MAE(after_tol)=0.734s`、0.8秒級に到達。
+        - PROMINENCE: `81.670s`、反復ブロックとASR欠落で未達。
+        - Lone Wolf: `58.186s`、未達。
+        - main heroine: `93.846s`、未達。
+        - Twilight: `28.689s`、未達。
+    - PROMINENCE / `vocals` / `base`: `auto=23.731s`, `ja=69.775s`, `auto-ja=28.219s`。fullより改善するが0.8秒級には未達。
+    - `speech align` は `/opt/homebrew/bin/speech` を検出し、アムネシアのボーカル抽出音声で実行できたが、簡易行復元では `MAE(after_tol)=3.395s` で採用見送り。
+- **判断**:
+    - TXTだけの実運用制約では、既存LRCを参照する経路は使わず、参照LRCはベンチ専用に限定。
+    - アムネシアはfull音源ASRで0.8秒級に届くが、5曲全体では安定しない。
+    - PROMINENCE系の破綻は、曲全体一括ASRセグメントからの後段整列では限界があり、セクション分割・複数候補DP・歌詞反復ブロックの構造推定が次の本命。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-12c` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-9c` に更新。
+
+### Python fallback Stage3の未来ドリフト修復と0.8秒級同期検証
+
+- **要望対応**:
+    - ローカル完結のまま、`IGNORE/` セットで0.8秒級まで自動歌詞同期誤差を減らせるか試行。
+- **実装内容**:
+    - `stage3_align` に、後半の繰り返しフレーズへ大きく吸われた行を、飛ばされたASRセグメントへ戻す未来ドリフト修復を追加。
+    - 繰り返しブロック末尾の延長補正を、未来ドリフト修復と単調化の後にも再適用。
+    - `UX_MUSIC_SYNC_FORWARD_DRIFT_GAP_SECONDS`（既定 `75.0`）と `UX_MUSIC_SYNC_FORWARD_DRIFT_MAX_ROWS`（既定 `32`）を追加。
+- **検証**:
+    - `cd python && .venv/bin/python -m pytest tests/ -m 'not heavy' -v`
+    - アムネシア / `medium` は同一ASR結果への後段補正で `MAE(after_tol)=0.737s` まで到達したが、実パイプライン再推論では `2.564s`。
+    - PROMINENCE / `base` は `123s`級の全体ドリフトから `20.562s` まで改善。
+    - Lone_Wolf / `base` は `109s`級の全体ドリフトから `24.243s` まで改善。
+- **判断**:
+    - 0.8秒級を安定達成するには、曲全体一括整列ではなく、チャンク化・複数候補保持・VAD/ASRアンカーによるセクション単位アラインメントが必要。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-12b` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-9b` に更新。
+
+### macOSローカル強制アラインメント経路を追加
+
+- **要望対応**:
+    - バックエンドAPI課金を避け、Mac上で完結する自動歌詞同期を優先したい。
+    - 素の Whisper の word timestamp より、既存歌詞を音声に直接合わせる強制アラインメントを使いたい。
+- **実装内容**:
+    - Swift sidecar に `Qwen3 Forced Aligner` / `speech align` 互換 CLI を優先するパイプラインを追加。
+    - `speech align` の `[start - end] word` 出力をパースし、単語時刻を元のTXT歌詞行へ戻す `ForcedAlignerLineMapper` を追加。
+    - `UX_MUSIC_LYRICS_SYNC_ALIGNER=auto|qwen3|off`、`UX_MUSIC_LYRICS_SYNC_ALIGNER_BIN`、`UX_MUSIC_LYRICS_SYNC_ALIGNER_MODEL` を追加。
+    - `auto` では `speech` CLI が利用可能なときだけ強制アラインメントを優先し、失敗時は既存 WhisperKit 経路へフォールバック。
+- **テスト追加**:
+    - `swift/lyrics-sync/Tests/LyricsSyncCLITests/ForcedAlignerPipelineTests.swift` に、aligner出力パースと単語時刻から歌詞行への復元テストを追加。
+- **検証**:
+    - `swift test --package-path swift/lyrics-sync`
+    - `go test ./internal/lyricssync`
+    - `go test ./...`
+    - `npm run typecheck`（`src/renderer`）
+    - `npm test`（`src/renderer`）
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-12a` に更新。
+    - `src/renderer/package.json` / `src/renderer/package-lock.json` のバージョンを `1.0.0-Beta-9a` に更新。
+
+## 2026年5月28日
+
+### レビュー指摘順にセキュリティ・再生系不具合を修正
+
+- **不具合内容**:
+    - Wear API が LAN に認証なしで公開され、曲一覧・音源取得・再生操作へアクセス可能だった。
+    - Wails の `/safe-media/` がライブラリ登録外のローカルファイルも配信し得る状態だった。
+    - `/safe-artwork/` と `GetArtworkAsDataURL()` にアートワーク保存領域外を参照する余地があった。
+    - プレイリスト名にパス区切りや `..` を含めると、`Playlists` ディレクトリ外を操作し得た。
+    - ノーマライズ画面でファイル名を `innerHTML` へ直接差し込んでいた。
+    - `profile=fast` の自動歌詞同期でも Go 側が `medium` を強制し、Swift 側の軽量モデル選択が効いていなかった。
+    - Wails ビルド成果物に Swift sidecar を同梱する導線がなく、配布後に Swift runtime を優先できない可能性があった。
+    - Wails バックエンド再生ではスキップ統計が `<audio>` 要素依存で記録されなかった。
+    - AudioGraph 切替時に保存済み EQ が新しい graph へ再適用されなかった。
+    - 右サイドバー映像プレビューの `/safe-media/` URL が `?` や `%` を含むパスで壊れ得た。
+- **修正内容**:
+    - Wear ペアリング URL に認証トークンを含め、実データ・操作 API は token / `X-UX-Music-Token` / Bearer 認証を必須化。
+    - Wails AssetHandler を `asset_handler.go` に分離し、`/safe-media/` はライブラリ登録済みパスのみ許可。
+    - アートワーク解決を `ResolveArtworkPath()` に統一し、traversal を拒否。
+    - プレイリスト名の検証を `internal/playlist` に集約し、パス区切り・空白・`.` / `..` を拒否。
+    - ノーマライズ表示向けの `escapeHtmlText()` を追加。
+    - Go 側の `medium` 強制を削除し、未指定モデルは sidecar の profile 選択に委譲。
+    - `Makefile build` で `swift build -c release --package-path swift/lyrics-sync` を実行し、`lyrics-sync-swift` を `.app/Contents/Resources/bin` へコピー。
+    - Wails/Electron共通の `buildSkipEvent()` を追加し、`getCurrentTime()` / `getDuration()` からスキップ統計を記録。
+    - `applyEqualizerToGraph()` を追加し、AudioGraph 切替時にも最後の EQ 設定を再適用。
+    - `/safe-media/` URL 生成を path segment ごとの `encodeURIComponent` に変更。
+- **テスト追加**:
+    - Go: Wear 認証、AssetHandler の safe-media/safe-artwork、アートワーク data URL traversal、プレイリスト名検証、Swift sidecar 同梱候補、`profile=fast` モデル選択。
+    - Vitest: ノーマライズHTMLエスケープ、Wailsスキップ統計、EQ graph 適用、safe-media URL エンコード。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-11a` に更新。
+    - `src/renderer/package.json` のバージョンを `1.0.0-Beta-8a` に更新。
+
+## 2026年5月15日
+
+### 長時間一時停止後に再生再開できない不具合を調査・修正
+
+- **不具合内容**:
+    - Wails バックエンド再生で、一時停止して数時間放置したあと、同じ曲の再生再開ができない状態になっていた。
+    - 他の曲をクリックすると再生できるため、曲データではなく出力ストリームの復旧経路が疑わしい状態だった。
+- **原因**:
+    - `pkg/audio/player.go` の `Resume()` が `paused` フラグを戻すだけで、PortAudio ストリームの `Start()` 再実行や開き直しを行っていなかった。
+    - 長時間アイドルやスリープ復帰で OS 側のストリームが停止・無効化された場合、UI は再開扱いでも実音声が戻らない可能性があった。
+- **修正内容**:
+    - 出力ストリームを `audioStream` インターフェース化し、再開処理を単体テスト可能にした。
+    - 短時間の `Resume()` では既存ストリームの `Start()` を再実行し、既に開始済みの場合は正常扱いにした。
+    - 30分以上一時停止していた場合は PortAudio ストリームを停止・クローズして開き直すようにした。
+- **テスト追加**:
+    - `pkg/audio/player_resume_test.go` に、既存ストリーム再起動と長時間停止後のストリーム再作成を検証するテストを追加。
+- **仕様同期とバージョン更新**:
+    - `markdown/requirement.md` / `src/renderer/js/core/bridge.ts` のバージョンを `0.1.9-Beta-10b` に更新。
+    - `src/renderer/package.json` のバージョンを `1.0.0-Beta-6f` に更新。
+
 ## 2026年3月15日
 
 ### コンソール向けパフォーマンスモニターを追加
@@ -1431,3 +2118,24 @@
     - `go test ./...`
 - **バージョン情報の更新**:
     - `src/renderer/js/core/bridge.js` と `requirement.md` のバージョンを `0.1.9-Beta-8w` に更新。
+
+## 2026年5月26日
+
+### モックUI (MusicCenterhommagesample.html) の手直し
+
+- **要望対応**:
+    - 「Music Center for PC」に近いUIモードを作成中だが、まだ相違があるため手直し。
+    - 既存のアプリモードのコード（`src/` 配下）には触れずにモックHTMLのみ修正。
+- **実装内容**:
+    - トップヘッダー領域にあった再生コントロール（戻る、再生、進む など）を削除し、サイドバー（`aside`）の上部へ移動。
+    - プレイリストおよびアルバムのグリッドビュー領域において、アイテムグリッドの上にソート用のテーブルヘッダ（「タイトル」「アーティスト」等）を追加。
+    - 全体的な背景色を少し暗く（`#121212` 等）調整し、より実物のUIに近づけた。
+    - **追加調整**: Pythonスクリプトによる画像色分析とPuppeteerによるレンダリング確認を行い、メイン背景色（`#1a1a1a`）とサイドバー背景色（`#343434`）のコントラストを忠実に再現。
+    - タイトルの太字化、検索窓のアイコン左寄せ、ヘッダのレイアウト（件数表示の横並び化など）を本物の画面レイアウトに修正。
+    - **構造的レイアウトの修正**: 「だいぶ違う」という印象の主な原因であった配置構造を見直し。メインタイトルと件数表示を「縦並び」にし、ソートヘッダ（テーブルの列名部分）が左右の余白を持たずにメイン領域の端から端まで広がるようにHTMLの階層構造とパディングを修正。
+    - **再調整（ユーザー指摘）**: サイドバー上部に配置してしまった再生コントロール（戻る、再生、進むなど）を、本来のUI通り「トップヘッダー内の左側（アプリロゴの横）」へ配置し直しました。また、サイドバーとメイン領域（曲リスト等）の間の隙間が広すぎたため、パディングを `px-8` から `px-5` へ縮小し、よりタイトなレイアウトに改善しました。
+- **テスト・品質担保**:
+    - `mock_ui_test.mjs` を作成し、再生コントロールの位置やテーブルヘッダの存在を検証する簡易UI構造テストを実装し、Red -> Green を確認。
+    - 修正にあわせてテスト仕様も更新（再生コントロールがヘッダー内に存在することを検証するように変更）。
+- **バージョン情報の更新**:
+    - モック修正のためバージョン更新は保留。

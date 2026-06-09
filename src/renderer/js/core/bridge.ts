@@ -31,7 +31,7 @@ export const musicApi = {
   // --- One-way (Send) ---
   requestAppInfo: () => {
     if (getWailsApp()) {
-      return Promise.resolve({ version: '0.1.9-Beta-10a', platform: 'darwin' });
+      return Promise.resolve({ version: '0.1.9-Beta-32c', platform: 'darwin' });
     }
     return api && api.send(CHANNELS.SEND.REQUEST_APP_INFO);
   },
@@ -179,6 +179,67 @@ export const musicApi = {
       return app.BuildFLACIndexes();
     }
     return api && api.send('build-flac-indexes');
+  },
+  discoverSyncDevices: (timeoutMs = 2500) => {
+    const app = getWailsApp();
+    if (app?.DiscoverSyncDevices) {
+      return app.DiscoverSyncDevices(timeoutMs);
+    }
+    return Promise.resolve([]);
+  },
+  listSyncDevices: () => {
+    const app = getWailsApp();
+    if (app?.ListSyncDevices) {
+      return app.ListSyncDevices();
+    }
+    return Promise.resolve([]);
+  },
+  startSyncPairing: (baseUrl: string) => {
+    const app = getWailsApp();
+    if (app?.StartSyncPairing) {
+      return app.StartSyncPairing(baseUrl);
+    }
+    return Promise.reject(new Error('UX Sync ペアリングはこの環境では利用できません。'));
+  },
+  confirmSyncPairing: (baseUrl: string, sessionId: string, code: string, expectedRemoteDeviceId: string) => {
+    const app = getWailsApp();
+    if (app?.ConfirmSyncPairing) {
+      return app.ConfirmSyncPairing(baseUrl, sessionId, code, expectedRemoteDeviceId);
+    }
+    return Promise.reject(new Error('UX Sync ペアリングはこの環境では利用できません。'));
+  },
+  pullSyncLibraryAssets: (baseUrl: string, limit = 0) => {
+    const app = getWailsApp();
+    if (app?.PullSyncLibraryAssets) {
+      return app.PullSyncLibraryAssets(baseUrl, limit);
+    }
+    return Promise.reject(new Error('UX Sync 音源転送はこの環境では利用できません。'));
+  },
+  downloadSyncTrack: (sourceDeviceId: string, sourceTrackId: string) => {
+    const app = getWailsApp();
+    const syncApp = app as any;
+    if (syncApp?.DownloadSyncTrack) {
+      return syncApp.DownloadSyncTrack(sourceDeviceId, sourceTrackId);
+    }
+    return Promise.reject(new Error('UX Sync 音源転送はこの環境では利用できません。'));
+  },
+  prefetchSyncTracks: (refs: Array<{ sourceDeviceId: string; sourceTrackId: string }>) => {
+    const app = getWailsApp();
+    const syncApp = app as any;
+    if (syncApp?.PrefetchSyncTracks) {
+      return syncApp.PrefetchSyncTracks(refs);
+    }
+    return Promise.reject(new Error('UX Sync 先読み取得はこの環境では利用できません。'));
+  },
+  pushSyncLibraryAssets: (baseUrl: string, limit = 0, options: { encodingMode?: string } = {}) => {
+    const app = getWailsApp();
+    if (app?.PushSyncLibraryAssetsWithOptions) {
+      return app.PushSyncLibraryAssetsWithOptions(baseUrl, limit, options);
+    }
+    if (app?.PushSyncLibraryAssets) {
+      return app.PushSyncLibraryAssets(baseUrl, limit);
+    }
+    return Promise.reject(new Error('UX Sync 音源転送はこの環境では利用できません。'));
   },
 
   // --- Event Listeners (On) ---

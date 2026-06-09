@@ -2,6 +2,7 @@
 
 import { elements } from '../core/state.js';
 import { getWailsApp, musicApi, isWailsMode } from '../core/bridge.js';
+import { applyEqualizerToGraph } from './equalizer-graph.js';
 const electronAPI = window.electronAPI;
 
 // ▼▼▼ 変更: グラフ（Context+Nodes）のキャッシュ管理 ▼▼▼
@@ -19,6 +20,7 @@ let savedSinkId = 'default'; // 保存されたオーディオ出力デバイス
 const EQ_BAND_COUNT = 10;
 let isEqualizerBackendWarningShown = false;
 let deviceChangeListenerAdded = false;
+let lastEqualizerSettings = null;
 
 /**
  * グラフオブジェクトの構造
@@ -108,7 +110,9 @@ export async function activateAudioGraph(rate) {
 
     // 音量・EQ設定を適用
     applyMasterVolume();
-    // (EQ適用関数は個別に呼ぶ必要があるが、ここではゲインのみ即時適用)
+    if (lastEqualizerSettings) {
+        applyEqualizerToGraph(currentGraph, lastEqualizerSettings);
+    }
 
     return currentGraph;
 }
@@ -389,6 +393,10 @@ export function applyEqualizerSettings(settings) {
         return Number.isFinite(value) ? value : 0;
     });
     const active = settings?.active !== false;
+    lastEqualizerSettings = {
+        preamp: safePreamp,
+        bands: safeBands,
+    };
 
     const wails = getWailsApp();
     if (wails?.AudioSetEqualizer) {
@@ -409,13 +417,7 @@ export function applyEqualizerSettings(settings) {
     // 今回は簡易的に「現在のグラフ」のみ即時反映する
     if (!currentGraph) return;
 
-    const context = currentGraph.context;
-    const preampValue = Math.pow(10, safePreamp / 20);
-    currentGraph.nodes.preamp.gain.setValueAtTime(preampValue, context.currentTime);
-
-    for (let i = 0; i < currentGraph.nodes.eqBands.length; i++) {
-        currentGraph.nodes.eqBands[i].gain.setValueAtTime(safeBands[i] ?? 0, context.currentTime);
-    }
+    applyEqualizerToGraph(currentGraph, lastEqualizerSettings);
 }
 
 // --- Direct Link Functions ---
