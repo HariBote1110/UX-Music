@@ -240,6 +240,47 @@ export function syncPeerPairingBaseUrl(peer: SyncPeer): string {
     return endpoint === '未確認' ? '' : endpoint;
 }
 
+export function manualSyncPeerBaseUrl(host: string, port?: string): string | null {
+    const rawHost = readString(host);
+    const rawPort = readString(port);
+    if (!rawHost || containsControlCharacter(rawHost) || containsControlCharacter(rawPort)) {
+        return null;
+    }
+    if (/^https?:\/\//i.test(rawHost)) {
+        try {
+            return trimTrailingSlash(new URL(rawHost).toString());
+        } catch {
+            return null;
+        }
+    }
+    const hostHasPort = rawHost.includes(':') && !isBareIPv6Literal(rawHost);
+    const formattedHost = hostHasPort ? rawHost : formatHost(rawHost);
+    const formattedPort = hostHasPort ? '' : normaliseManualSyncPort(rawPort);
+    if (!hostHasPort && !formattedPort) {
+        return null;
+    }
+    return `http://${formattedHost}${hostHasPort ? '' : `:${formattedPort}`}`;
+}
+
+export async function startManualSyncPairing(
+    host: string,
+    port: string | undefined,
+    startPairing: (baseUrl: string) => Promise<unknown>
+): Promise<{ peer: SyncPeer; started: SyncPairingStart } | null> {
+    const baseUrl = manualSyncPeerBaseUrl(host, port);
+    if (!baseUrl) {
+        return null;
+    }
+    const started = normaliseSyncPairingStart(await startPairing(baseUrl));
+    if (!started) {
+        throw new Error('ペアリング開始応答が不正です。');
+    }
+    return {
+        peer: manualSyncPeer(baseUrl, host),
+        started,
+    };
+}
+
 export function formatSyncPeerRoles(peer: SyncPeer): string {
     if (peer.roles.length === 0) {
         return '役割未取得';
@@ -491,6 +532,61 @@ function readStringArray(value: unknown): string[] {
 
 function formatHost(host: string): string {
     return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+}
+
+function manualSyncPeer(baseUrl: string, rawHost: string): SyncPeer {
+    let host = readString(rawHost);
+    try {
+        host = new URL(baseUrl).hostname || host;
+    } catch {
+        // Keep the manual input as a readable fallback.
+    }
+    return {
+        deviceId: `manual:${baseUrl}`,
+        displayName: readString(rawHost) || baseUrl,
+        host,
+        hosts: host ? [host] : [],
+        port: manualSyncPeerPort(baseUrl),
+        roles: [],
+        reachableBaseUrl: baseUrl,
+        paired: false,
+    };
+}
+
+function manualSyncPeerPort(baseUrl: string): number | undefined {
+    try {
+        const parsed = new URL(baseUrl);
+        const port = parsed.port ? Number.parseInt(parsed.port, 10) : 8765;
+        return Number.isFinite(port) ? port : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function normaliseManualSyncPort(port: string): string | null {
+    if (!port) {
+        return '8765';
+    }
+    if (!/^\d+$/.test(port)) {
+        return null;
+    }
+    const value = Number(port);
+    if (!Number.isInteger(value) || value <= 0 || value > 65535) {
+        return null;
+    }
+    return String(value);
+}
+
+function trimTrailingSlash(value: string): string {
+    return value.replace(/\/+$/, '');
+}
+
+function containsControlCharacter(value: string): boolean {
+    return /[\u0000-\u001F\u007F]/.test(value);
+}
+
+function isBareIPv6Literal(value: string): boolean {
+    return value.includes(':') && !value.startsWith('[') && value.split(':').length > 2 && !value.includes(']');
 }
 
 function parseSyncBaseUrl(baseUrl: string): { host: string; port?: number } | null {

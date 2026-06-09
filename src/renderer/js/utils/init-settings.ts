@@ -27,6 +27,7 @@ import {
     normaliseSyncTransferProgress,
     normaliseSyncPeers,
     normaliseSyncPreferredFormat,
+    startManualSyncPairing,
     syncPreferredFormatOptions,
     syncTransferEncodingOptions,
     syncPeerConnectionLabel,
@@ -201,6 +202,34 @@ function openUxSyncSettings() {
 
 function closeUxSyncSettings() {
     document.getElementById('ux-sync-settings-modal-overlay')?.classList.add('hidden');
+}
+
+async function runManualUxSyncPairing(): Promise<void> {
+    const hostInput = document.getElementById('ux-sync-manual-host-input') as HTMLInputElement | null;
+    const portInput = document.getElementById('ux-sync-manual-port-input') as HTMLInputElement | null;
+    const button = document.getElementById('ux-sync-manual-connect-btn') as HTMLButtonElement | null;
+    const status = document.getElementById('ux-sync-manual-status');
+    const actions = document.getElementById('ux-sync-manual-pairing-actions');
+    if (!hostInput || !button || !status || !actions) return;
+
+    button.disabled = true;
+    button.textContent = '接続中...';
+    status.textContent = '手動入力した端末へ接続しています。';
+    actions.innerHTML = '';
+    try {
+        const result = await startManualSyncPairing(hostInput.value, portInput?.value, baseUrl => musicApi.startSyncPairing(baseUrl));
+        if (!result) {
+            status.textContent = 'IP またはホスト名を入力してください。';
+            return;
+        }
+        status.textContent = `${result.peer.reachableBaseUrl} から6桁コードを取得しました。`;
+        renderUxSyncPairingConfirm(actions, result.peer, result.started);
+    } catch (e) {
+        status.textContent = `手動接続に失敗しました: ${(e as Error)?.message || String(e)}`;
+    } finally {
+        button.disabled = false;
+        button.textContent = '接続';
+    }
 }
 
 function switchUxSyncSettingsTab(tabName: string): void {
@@ -781,6 +810,14 @@ export function initSettings() {
             void refreshUxSyncPeers();
         });
         syncDiscoverBtn.dataset.listenerAttached = 'true';
+    }
+
+    const syncManualConnectBtn = document.getElementById('ux-sync-manual-connect-btn');
+    if (syncManualConnectBtn && !syncManualConnectBtn.dataset.listenerAttached) {
+        syncManualConnectBtn.addEventListener('click', () => {
+            void runManualUxSyncPairing();
+        });
+        syncManualConnectBtn.dataset.listenerAttached = 'true';
     }
 
     const syncSettingsOpenBtn = document.getElementById('ux-sync-settings-open-btn');

@@ -1,3 +1,16 @@
+# Task: UX Sync Phase 5.18 - 手動ペアリング導線
+
+## 概要
+mDNS が使えないネットワークでも、UX Sync 専用設定の `端末` タブへ IP / ホスト名と任意ポートを入力して、既存の6桁コード確認ペアリングを開始できるようにする。
+
+## 完了条件
+- [x] `manualSyncPeerBaseUrl('192.168.0.143')` が `http://192.168.0.143:8765` を返すこと。
+- [x] `manualSyncPeerBaseUrl('192.168.0.143', '9000')` が `http://192.168.0.143:9000` を返すこと。
+- [x] `manualSyncPeerBaseUrl('192.168.0.143:8765')` が port 欄を無視して `http://192.168.0.143:8765` を返すこと。
+- [x] `manualSyncPeerBaseUrl('http://host:8765/')` が末尾スラッシュを除去して URL を尊重すること。
+- [x] 空入力や制御文字入り入力では `null` を返し、ペアリング開始を呼ばないこと。
+- [x] 手動入力から組み立てた baseURL で既存の `startSyncPairing` 経路へ流せること。
+
 # Task: UX Sync Phase 5.17 - ポータブル MP3 キャッシュ
 
 ## 概要

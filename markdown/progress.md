@@ -2,6 +2,22 @@
 
 ## 2026年6月10日
 
+### UX Sync 手動ペアリング導線
+
+- **課題**:
+    - mDNS が使えない／不安定な環境では、発見一覧からペアリングを開始できず、直接到達できる peer とも接続できなかった。
+- **実装内容**:
+    - UX Sync 専用設定画面の `端末` タブへ IP / ホスト名と任意ポートの手動入力欄を追加した。
+    - `manualSyncPeerBaseUrl` と `startManualSyncPairing` を追加し、手動入力から baseURL を組み立てて既存の6桁コード確認ペアリングフローへ流せるようにした。
+- **検証**:
+    - `npm test --prefix src/renderer -- --run js/features/ux-sync-settings.test.ts`
+    - `go test ./... -count=1`
+    - `npm test --prefix src/renderer`
+    - `npm run typecheck --prefix src/renderer`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-31a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-34a` に更新。
+
 ### mDNS TXT 255バイト制限の緊急修正
 
 - **課題**:

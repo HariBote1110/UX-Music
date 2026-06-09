@@ -611,6 +611,17 @@
                         </div>
                         <button id="ux-sync-discover-btn" type="button" class="settings-button">同期端末を探す</button>
                     </div>
+                    <div class="ux-sync-transfer-controls">
+                        <label for="ux-sync-manual-host-input">IP / ホスト</label>
+                        <input id="ux-sync-manual-host-input" class="ux-sync-transfer-select" type="text" inputmode="url" autocomplete="off" placeholder="192.168.0.143">
+                        <label for="ux-sync-manual-port-input">ポート</label>
+                        <input id="ux-sync-manual-port-input" class="ux-sync-transfer-select" type="number" min="1" max="65535" inputmode="numeric" placeholder="8765">
+                        <div class="ux-sync-transfer-actions">
+                            <button id="ux-sync-manual-connect-btn" type="button" class="settings-button">接続</button>
+                        </div>
+                    </div>
+                    <p id="ux-sync-manual-status" class="ux-sync-pairing-status" aria-live="polite"></p>
+                    <div id="ux-sync-manual-pairing-actions" class="ux-sync-pairing-actions"></div>
                     <div id="ux-sync-peer-list" class="ux-sync-peer-list" aria-live="polite"></div>
                 </section>
                 <section class="ux-sync-settings-panel hidden" data-ux-sync-panel="sync" aria-labelledby="ux-sync-transfer-heading">
