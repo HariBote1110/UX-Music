@@ -1,3 +1,13 @@
+# Task: UX Sync Phase 5.10 - Crescent向けSSH自動同期CLI
+
+## 概要
+HariBote（便宜上 Crescent）を検証用 Windows ノードとして使い、SSH から GUI を起動せずにペアリングと接続時自動同期を実行できる導線を追加する。Crescent は普段手元で操作しない検証ノードとして扱うため、初期化、ペアリング、自動同期ワンショットを CLI で完結できることを重視する。
+
+## 完了条件
+- [ ] `--sync-pair <baseURL>` が6桁コード確認フローを使ってペアリングし、同期トークンと既知 peer の到達URLを保存するテストがあること。
+- [ ] `--sync-auto-once` が保存済みペア端末に対して `AutoSyncPairedDevices()` を一回実行し、SSH から JSON 結果を確認できるテストがあること。
+- [ ] Crescent 上で Windows バイナリをビルドし、Mac mini とのペアリングと自動同期ワンショットを実通信で検証できること。
+
 # Task: UX Sync Phase 5.9 - 空き容量安全停止
 
 ## 概要
