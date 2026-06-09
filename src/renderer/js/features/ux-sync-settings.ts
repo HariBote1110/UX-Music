@@ -115,10 +115,21 @@ export function normaliseSyncCachePolicy(raw: unknown): 'mirror' | 'selective' {
     return raw === 'selective' ? 'selective' : 'mirror';
 }
 
+export function normaliseSyncPreferredFormat(raw: unknown): 'original' | 'mp3_320' {
+    return raw === 'mp3_320' ? 'mp3_320' : 'original';
+}
+
 export function syncCachePolicyOptions(): Array<{ value: 'mirror' | 'selective'; label: string }> {
     return [
         { value: 'mirror', label: '全曲ミラー' },
         { value: 'selective', label: '最近再生＋キュー先読み' },
+    ];
+}
+
+export function syncPreferredFormatOptions(): Array<{ value: 'original' | 'mp3_320'; label: string }> {
+    return [
+        { value: 'original', label: '原本' },
+        { value: 'mp3_320', label: 'MP3 320kbps' },
     ];
 }
 

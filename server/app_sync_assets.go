@@ -39,6 +39,7 @@ const syncTransferStageUploading = "uploading"
 const syncTransferStageDone = "done"
 const syncTransferStageSkipped = "skipped"
 const syncTransferStageFailed = "failed"
+const syncTranscodeMP3320Capability = "library.transcode.mp3-320.v1"
 
 var syncTransferProgressSink = emitSyncTransferProgress
 var syncOpenMP3Stream = openSyncMP3Stream
@@ -176,6 +177,28 @@ func syncAssetFileHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := os.Stat(filePath); err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	if normaliseSyncTransferEncodingMode(r.URL.Query().Get("encoding")) == syncTransferEncodingMP3320 && !syncFilePathIsMP3(filePath) {
+		stream, wait, err := syncOpenMP3Stream(r.Context(), filePath)
+		if err != nil {
+			http.Error(w, "failed to transcode asset", http.StatusInternalServerError)
+			return
+		}
+		defer stream.Close()
+		safeName := syncMP3TransferFileName(filePath)
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, safeName))
+		w.Header().Set("Content-Type", "audio/mpeg")
+		w.Header().Set("X-UX-Music-Sync-Transfer-Encoding", syncTransferEncodingMP3320)
+		w.Header().Set("X-UX-Music-Sync-Audio-Bitrate", "320")
+		if _, err := io.Copy(w, stream); err != nil {
+			return
+		}
+		if wait != nil {
+			if err := wait(); err != nil {
+				return
+			}
+		}
 		return
 	}
 	safeName := filepath.Base(filePath)
@@ -439,7 +462,11 @@ func fetchSyncLibrarySnapshot(ctx context.Context, baseURL, token string) (syncL
 
 func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string, identity syncIdentityResponse, track map[string]interface{}, current, total int) (string, error) {
 	trackID := syncTrackID(track)
+	encodingMode := syncPreferredFormatForIdentity(identity)
 	endpoint := baseURL + "/sync/assets/" + url.PathEscape(trackID) + "/file"
+	if encodingMode == syncTransferEncodingMP3320 {
+		endpoint += "?encoding=mp3_320"
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", err
@@ -453,7 +480,12 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("sync asset request failed: %s", resp.Status)
 	}
-	destPath := syncManagedTrackDestination(identity, track, syncResponseFileName(resp, track))
+	responseEncoding := syncResponseTransferEncoding(resp)
+	fileName := syncResponseFileName(resp, track)
+	if encodingMode == syncTransferEncodingMP3320 && responseEncoding == syncTransferEncodingMP3320 {
+		fileName = syncMP3TransferFileName(fileName)
+	}
+	destPath := syncManagedTrackDestination(identity, track, fileName)
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return "", err
 	}
@@ -474,7 +506,7 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 			BytesDone:      done,
 			BytesTotal:     totalBytes,
 			BytesPerSecond: bytesPerSecond,
-			EncodingMode:   syncTransferEncodingOriginal,
+			EncodingMode:   responseEncoding,
 		})
 	})
 	_, copyErr := io.Copy(out, progress)
@@ -491,7 +523,13 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 		_ = os.Remove(tmpPath)
 		return "", err
 	}
-	if err := upsertSyncImportedTrack(identity, track, destPath); err != nil {
+	importTrack := cloneSyncTrackMap(track)
+	if responseEncoding == syncTransferEncodingMP3320 {
+		importTrack["fileType"] = ".mp3"
+		importTrack["syncTransferEncoding"] = syncTransferEncodingMP3320
+		importTrack["audioBitrateKbps"] = 320
+	}
+	if err := upsertSyncImportedTrack(identity, importTrack, destPath); err != nil {
 		return "", err
 	}
 	app.emitSyncTransferProgress(SyncTransferProgress{
@@ -502,7 +540,7 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 		FileName:     filepath.Base(destPath),
 		Current:      current,
 		Total:        total,
-		EncodingMode: syncTransferEncodingOriginal,
+		EncodingMode: responseEncoding,
 	})
 	return destPath, nil
 }
@@ -920,6 +958,65 @@ func normaliseSyncTransferEncodingMode(raw string) string {
 	default:
 		return syncTransferEncodingOriginal
 	}
+}
+
+func syncPreferredFormat() string {
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		return syncTransferEncodingOriginal
+	}
+	return normaliseSyncTransferEncodingMode(syncCatalogString(settings, syncPreferredFormatSettingsKey))
+}
+
+func syncPreferredFormatForIdentity(identity syncIdentityResponse) string {
+	preferred := syncPreferredFormat()
+	if preferred != syncTransferEncodingMP3320 {
+		return syncTransferEncodingOriginal
+	}
+	if !syncIdentityHasCapability(identity, syncTranscodeMP3320Capability) {
+		return syncTransferEncodingOriginal
+	}
+	return syncTransferEncodingMP3320
+}
+
+func syncIdentityHasCapability(identity syncIdentityResponse, capability string) bool {
+	for _, item := range identity.Capabilities {
+		if strings.TrimSpace(item) == capability {
+			return true
+		}
+	}
+	return false
+}
+
+func syncResponseTransferEncoding(resp *http.Response) string {
+	if resp == nil {
+		return syncTransferEncodingOriginal
+	}
+	return normaliseSyncTransferEncodingMode(resp.Header.Get("X-UX-Music-Sync-Transfer-Encoding"))
+}
+
+func syncFilePathIsMP3(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".mp3")
+}
+
+func syncMP3TransferFileName(path string) string {
+	base := filepath.Base(path)
+	if base == "" || base == "." {
+		return "track.mp3"
+	}
+	ext := filepath.Ext(base)
+	if ext == "" {
+		return base + ".mp3"
+	}
+	return strings.TrimSuffix(base, ext) + ".mp3"
+}
+
+func cloneSyncTrackMap(track map[string]interface{}) map[string]interface{} {
+	clone := make(map[string]interface{}, len(track))
+	for key, value := range track {
+		clone[key] = value
+	}
+	return clone
 }
 
 func syncTransferCandidateCount(library []interface{}, limit int) int {

@@ -26,6 +26,8 @@ import {
     normaliseSyncPushResult,
     normaliseSyncTransferProgress,
     normaliseSyncPeers,
+    normaliseSyncPreferredFormat,
+    syncPreferredFormatOptions,
     syncTransferEncodingOptions,
     syncPeerConnectionLabel,
     syncPullActionState,
@@ -220,12 +222,16 @@ function switchUxSyncSettingsTab(tabName: string): void {
 
 async function refreshUxSyncStorageSettings(): Promise<void> {
     const input = document.getElementById('ux-sync-min-free-space-gb-input') as HTMLInputElement | null;
+    const preferredFormatSelect = document.getElementById('ux-sync-preferred-format-select') as HTMLSelectElement | null;
     const status = document.getElementById('ux-sync-storage-status');
     if (!input || !status) return;
     try {
         const settings = await loadRendererSettings();
         const value = normaliseSyncMinFreeSpaceGB((settings as { syncMinFreeSpaceGB?: unknown }).syncMinFreeSpaceGB ?? 5);
         input.value = String(value);
+        if (preferredFormatSelect) {
+            preferredFormatSelect.value = normaliseSyncPreferredFormat((settings as { syncPreferredFormat?: unknown }).syncPreferredFormat);
+        }
         status.textContent = formatSyncFreeSpaceSafetyStatus(value);
     } catch (e) {
         status.textContent = `設定の読み込みに失敗しました: ${(e as Error)?.message || String(e)}`;
@@ -234,12 +240,17 @@ async function refreshUxSyncStorageSettings(): Promise<void> {
 
 async function saveUxSyncStorageSettings(): Promise<void> {
     const input = document.getElementById('ux-sync-min-free-space-gb-input') as HTMLInputElement | null;
+    const preferredFormatSelect = document.getElementById('ux-sync-preferred-format-select') as HTMLSelectElement | null;
     const status = document.getElementById('ux-sync-storage-status');
     if (!input || !status) return;
     const value = normaliseSyncMinFreeSpaceGB(input.value);
+    const preferredFormat = normaliseSyncPreferredFormat(preferredFormatSelect?.value);
     input.value = String(value);
+    if (preferredFormatSelect) {
+        preferredFormatSelect.value = preferredFormat;
+    }
     try {
-        await musicApi.saveSettings({ syncMinFreeSpaceGB: value });
+        await musicApi.saveSettings({ syncMinFreeSpaceGB: value, syncPreferredFormat: preferredFormat });
         status.textContent = formatSyncFreeSpaceSafetyStatus(value);
     } catch (e) {
         status.textContent = `設定の保存に失敗しました: ${(e as Error)?.message || String(e)}`;
@@ -812,6 +823,18 @@ export function initSettings() {
             syncTransferEncodingSelect.appendChild(el);
         }
         syncTransferEncodingSelect.dataset.optionsInitialised = 'true';
+    }
+
+    const syncPreferredFormatSelect = document.getElementById('ux-sync-preferred-format-select') as HTMLSelectElement | null;
+    if (syncPreferredFormatSelect && !syncPreferredFormatSelect.dataset.optionsInitialised) {
+        syncPreferredFormatSelect.innerHTML = '';
+        for (const option of syncPreferredFormatOptions()) {
+            const el = document.createElement('option');
+            el.value = option.value;
+            el.textContent = option.label;
+            syncPreferredFormatSelect.appendChild(el);
+        }
+        syncPreferredFormatSelect.dataset.optionsInitialised = 'true';
     }
 
     const syncPullOneBtn = document.getElementById('ux-sync-pull-one-btn');

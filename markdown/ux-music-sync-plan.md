@@ -470,13 +470,13 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - 統一ライブラリビューでは local 曲を `syncAvailability=local`、remote 曲を `syncAvailability=remote` として返し、remote 曲は `DL可能` 表示とプレースホルダ artwork の対象にする。
 - `DownloadSyncTrack(sourceDeviceId, sourceTrackId)` により、統一ライブラリビュー上の remote 曲を取得元 peer から単曲ダウンロードし、完了後に local path で再生へ遷移できる。
 - `syncCachePolicy` により `mirror`（全曲 pull）/ `selective`（最近再生＋キュー先読み）を選択でき、selective では空き容量閾値未満時に同期取得音源を LRU 削除できる。
+- `syncPreferredFormat` により pull 側の取得形式を `original` / `mp3_320` から選択でき、対応 peer では `/sync/assets/{trackId}/file?encoding=mp3_320` により MP3 320kbps の portable cache を取得できる。
 - 詳細仕様は `markdown/ux-music-sync-protocol.md` を参照する。
 
 未実装:
 
 - 親側での portable 圧縮アセット生成と再利用。
 - 変換済み portable 圧縮アセットの永続キャッシュと再利用。
-- 音源本体の自動転送に対する容量ポリシーと端末別同期設定。
 - 容量不足時の自動削除ポリシーと失敗時の再試行キュー。
 
 テスト:

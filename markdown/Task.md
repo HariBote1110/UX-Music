@@ -1,3 +1,17 @@
+# Task: UX Sync Phase 5.17 - ポータブル MP3 キャッシュ
+
+## 概要
+MacBook Air など容量制約のある portable client で、pull / タップDL / prefetch / selective 自動同期が原本ではなく MP3 320kbps を取得できるようにする。端末ごとの `syncPreferredFormat` は `original` 既定、`mp3_320` 選択時は capability を持つ peer にだけ `encoding=mp3_320` を要求し、非対応 peer では原本へフォールバックする。
+
+## 完了条件
+- [x] `/sync/assets/{trackId}/file?encoding=mp3_320` が非 MP3 音源を MP3 320kbps ストリームとして返すテストがあること。
+- [x] 元が MP3 の場合は再変換せず原本を返すこと。
+- [x] 変換失敗時に原本フォールバックせずエラーにすること。
+- [x] `syncPreferredFormat="mp3_320"` かつ peer が `library.transcode.mp3-320.v1` を持つ場合、pull 側が `encoding=mp3_320` を要求し、取り込み曲に `syncTransferEncoding` / `audioBitrateKbps` を付けること。
+- [x] capability 不足または `syncPreferredFormat="original"` では現行どおり原本取得すること。
+- [x] `syncSongMatchKey` が fileType / transfer encoding に依存せず、FLAC と MP3 320kbps で同じ曲として収束できること。
+- [x] renderer に `syncPreferredFormat` の保存タブ向け選択肢と正規化があること。
+
 # Task: UX Sync Phase 5.16 - スマートキャッシュと容量ポリシー
 
 ## 概要

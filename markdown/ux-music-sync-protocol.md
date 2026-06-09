@@ -80,10 +80,12 @@ server は identity 応答に `negotiation` を含める。
 - `/sync/library/import` の multipart payload は任意の `artwork` part を受け取れる。受信側は `Artworks` と `Artworks/thumbnails` 配下へ保存し、`library.json` には安全なファイル名だけを `artwork.full` / `artwork.thumbnail` として保存する。
 
 ## 転送オプション
-push 転送のローカル呼び出しは `encodingMode` を指定できる。
+push 転送のローカル呼び出しは `encodingMode` を指定できる。pull 側は端末設定 `syncPreferredFormat` で希望フォーマットを指定できる。
 
 - `original`: 原本ファイルをそのまま送る。
 - `mp3_320`: MP3以外の音源を MP3 320kbps へストリーミング変換しながら送信し、`syncTransferEncoding: "mp3_320"` と `audioBitrateKbps: 320` を metadata に付けて送る。
+
+`GET /sync/assets/{trackId}/file?encoding=mp3_320` は、peer が `library.transcode.mp3-320.v1` を広告している場合に使う。元が非 MP3 の曲は `Content-Type: audio/mpeg`、`X-UX-Music-Sync-Transfer-Encoding: mp3_320`、`X-UX-Music-Sync-Audio-Bitrate: 320`、`.mp3` ファイル名で返す。元が MP3 の曲は再変換せず原本を返す。capability が無い peer には query を付けず原本取得へフォールバックする。
 
 `mp3_320` は保存容量と転送時間を優先する portable client 向けのモードである。変換失敗時はその曲を failed として扱い、勝手に原本へフォールバックしない。
 
@@ -117,7 +119,7 @@ UI には `ux-sync-transfer-progress` event として次の情報を流す。
 `stage` は `preparing`、`transcoding`、`downloading`、`uploading`、`done`、`skipped`、`failed` を使う。
 
 ## 自動同期
-`library.auto-sync.v1` は、ペア済み端末の既知URLへ接続できた時に、手動ボタンなしで同期を試す capability である。ローカル再生回数の `PlayEvent` を `/sync/library/events` へpushし、`LibraryHost` 役割を持つ peer からは `/sync/library/snapshot` と `/sync/assets/{trackId}/file` を使って未取得曲だけを自動取得する。既に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込み済みかつ実ファイルが存在する曲は skip として扱い、二重転送しない。既に同期済みの曲で欠けているジャケットは `/sync/assets/{trackId}/artwork` から補完する。
+`library.auto-sync.v1` は、ペア済み端末の既知URLへ接続できた時に、手動ボタンなしで同期を試す capability である。ローカル再生回数の `PlayEvent` を `/sync/library/events` へpushし、`LibraryHost` 役割を持つ peer からは `/sync/library/snapshot` と `/sync/assets/{trackId}/file` を使って未取得曲だけを自動取得する。端末設定 `syncPreferredFormat="mp3_320"` かつ peer が `library.transcode.mp3-320.v1` を持つ場合は、auto sync / tap DL / prefetch の全取得で `encoding=mp3_320` を要求する。既に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込み済みかつ実ファイルが存在する曲は skip として扱い、二重転送しない。既に同期済みの曲で欠けているジャケットは `/sync/assets/{trackId}/artwork` から補完する。
 
 ## 空き容量安全停止
 `library.storage-safety.v1` は、受信側がローカル保存先ボリュームの空き容量を確認し、`settings.syncMinFreeSpaceGB` を下回る場合に同期を停止できることを示す。`syncMinFreeSpaceGB` が `0` または未設定の場合は無効である。

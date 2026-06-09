@@ -1,3 +1,20 @@
+## 2026-06-10 — UX Sync ポータブル MP3 キャッシュ
+
+### 実施内容
+- `/sync/assets/{trackId}/file?encoding=mp3_320` を追加し、元が非 MP3 の曲は `syncOpenMP3Stream` で MP3 320kbps としてストリーミング配信するようにした。
+- 元が MP3 の曲は再変換せず原本配信し、変換失敗時は原本へフォールバックせずエラーにするようにした。
+- `syncPreferredFormat` 設定を追加し、`mp3_320` かつ peer が `library.transcode.mp3-320.v1` を広告する場合だけ pull / tap DL / prefetch / selective 自動同期の取得 URL に `encoding=mp3_320` を付けるようにした。
+- pull 取込曲へ `syncTransferEncoding: "mp3_320"` と `audioBitrateKbps: 320` を保存し、保存名も `.mp3` にするようにした。
+- UX Sync 設定の `保存` タブに優先フォーマット選択（原本 / MP3 320kbps）を追加した。
+- 新機能扱いとして `src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-30a`、`markdown/requirement.md` を `0.1.9-Beta-33a` に更新した。
+
+### 検証
+- `go test ./server -run 'TestSyncAssetFileServesMP3320EncodingWhenRequested|TestSyncAssetFileKeepsOriginalMP3WhenMP3320Requested|TestSyncAssetFileServesOriginalFileByTrackID|TestSyncAssetFileFailsMP3320EncodingWithoutOriginalFallback|TestPullSyncLibraryAssetsRequestsPreferredMP3320WhenPeerSupportsIt|TestPullSyncLibraryAssetsFallsBackToOriginalWhenPeerLacksMP3320Capability|TestPullSyncLibraryAssetsKeepsOriginalWhenPreferredFormatIsOriginal|TestSyncSongMatchKeyIgnoresTransferredFormat' -count=1`
+- `npm test --prefix src/renderer -- --run js/features/ux-sync-settings.test.ts`
+- `go test ./... -count=1`
+- `npm test --prefix src/renderer`
+- `npm run typecheck --prefix src/renderer`
+
 ## 2026-06-09 — safe-media Windows絶対パス復元の修正
 
 ### 実施内容
