@@ -2,6 +2,20 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.13.1 再生回数ライブ通知
+
+- **課題**:
+    - `/sync/library/events` で peer から再生イベントを受信して `playcounts` を再計算しても、Wails UI へ `play-counts-updated` が emit されず、画面表示がライブ更新されなかった。
+- **実装内容**:
+    - `registerSyncRoutes` が `App` を保持し、同期イベントハンドラから `App.ctx` を参照できるようにした。
+    - `/sync/library/events` の適用成功後に最新 `playcounts` を読み込み、`play-counts-updated` として frontend へ emit するようにした。
+    - テスト容易性のため `playCountsEmitter` を差し替え可能にし、ctx なしの既存直呼び経路では nil-safe に何もしないようにした。
+- **検証**:
+    - `go test ./server -run 'TestSyncLibraryEventsEmitsUpdatedPlayCountsAfterApplyingEvents|TestSyncLibraryEventsRejectsInvalidMethod|TestSyncLibraryEventsPushStoresChildPlayEventsAndReturnsAcks' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-26b` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-29b` に更新。
+
 ### UX Sync Phase 5.13 再生回数収束
 
 - **課題**:

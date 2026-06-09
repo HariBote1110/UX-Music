@@ -17,6 +17,7 @@ import (
 // App struct
 type App struct {
 	ctx               context.Context
+	playCountsEmitter func(context.Context, string, interface{})
 	ripper            *cdrip.Ripper
 	mtpManager        *mtp.Manager
 	normalizer        *normalize.Normalizer
@@ -36,6 +37,9 @@ type App struct {
 // NewApp creates a new App struct
 func NewApp() *App {
 	return &App{
+		playCountsEmitter: func(ctx context.Context, name string, data interface{}) {
+			wailsRuntime.EventsEmit(ctx, name, data)
+		},
 		ripper:       cdrip.NewRipper("", config.FFmpegPath, config.GetUserDataPath()),
 		mtpManager:   mtp.NewManager(),
 		normalizer:   normalize.NewNormalizer(config.FFmpegPath, config.FFprobePath),

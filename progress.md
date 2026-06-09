@@ -1,3 +1,14 @@
+## 2026-06-09 — UX Sync イベント受信後の再生回数ライブ通知
+
+### 実施内容
+- `/sync/library/events` 受信後、再生回数イベントを `playcounts` に再計算・適用できたタイミングで、最新 `playcounts` を `play-counts-updated` として Wails frontend へ emit するようにした。
+- `registerSyncRoutes` が `App` を保持し、同期イベントハンドラから `App.ctx` と差し替え可能な `playCountsEmitter` を参照できるようにした。
+- 既存の ctx なし直呼びテスト/CLI 用経路は nil-safe のまま維持した。
+- 小修正扱いとして `src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-26b`、`markdown/requirement.md` を `0.1.9-Beta-29b` に更新した。
+
+### 検証
+- `go test ./server -run 'TestSyncLibraryEventsEmitsUpdatedPlayCountsAfterApplyingEvents|TestSyncLibraryEventsRejectsInvalidMethod|TestSyncLibraryEventsPushStoresChildPlayEventsAndReturnsAcks' -count=1`
+
 ## 2026-06-09 — UX Sync 再生回数収束の実装
 
 ### 実施内容

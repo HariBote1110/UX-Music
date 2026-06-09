@@ -20,6 +20,8 @@ import (
 
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/internal/uxsync"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const syncPlayEventsStoreName = "sync-play-events"
@@ -130,14 +132,14 @@ type syncKnownPeerRecord struct {
 	LastSeenAt  string   `json:"lastSeenAt"`
 }
 
-func registerSyncRoutes(mux *http.ServeMux, _ *App) {
+func registerSyncRoutes(mux *http.ServeMux, app *App) {
 	mux.HandleFunc("/sync/identity", syncIdentityHandler)
 	mux.HandleFunc("/sync/schema", syncSchemaHandler)
 	mux.HandleFunc("/sync/pairing/start", syncPairingStartHandler)
 	mux.HandleFunc("/sync/pairing/confirm", syncPairingConfirmHandler)
 	mux.HandleFunc("/sync/library/import", syncLibraryImportHandler)
 	mux.HandleFunc("/sync/library/snapshot", syncLibrarySnapshotHandler)
-	mux.HandleFunc("/sync/library/events", syncLibraryEventsHandler)
+	mux.HandleFunc("/sync/library/events", app.syncLibraryEventsHandler)
 	mux.HandleFunc("/sync/assets/", syncAssetFileHandler)
 	mux.HandleFunc("/sync/discover", syncDiscoverHandler)
 }
@@ -654,6 +656,11 @@ func syncRemoteBaseURL(r *http.Request) string {
 }
 
 func syncLibraryEventsHandler(w http.ResponseWriter, r *http.Request) {
+	var app *App
+	app.syncLibraryEventsHandler(w, r)
+}
+
+func (a *App) syncLibraryEventsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
@@ -683,6 +690,7 @@ func syncLibraryEventsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to apply sync play counts", http.StatusInternalServerError)
 		return
 	}
+	a.emitPlayCountsUpdated()
 
 	writeJSON(w, syncLibraryEventsResponse{
 		Accepted: len(req.PlayEvents),
@@ -692,6 +700,23 @@ func syncLibraryEventsHandler(w http.ResponseWriter, r *http.Request) {
 			AckedEventIDs:     eventIDs(req.PlayEvents),
 		},
 	})
+}
+
+func (a *App) emitPlayCountsUpdated() {
+	if a == nil || a.ctx == nil {
+		return
+	}
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		return
+	}
+	emitter := a.playCountsEmitter
+	if emitter == nil {
+		emitter = func(ctx context.Context, name string, data interface{}) {
+			wailsRuntime.EventsEmit(ctx, name, data)
+		}
+	}
+	emitter(a.ctx, "play-counts-updated", counts)
 }
 
 func loadSyncPlayEvents() ([]uxsync.PlayEvent, error) {
