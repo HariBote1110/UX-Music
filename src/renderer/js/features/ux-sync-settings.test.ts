@@ -21,6 +21,8 @@ import {
     syncPushActionState,
     syncCachePolicyOptions,
     normaliseSyncCachePolicy,
+    syncPreferredFormatOptions,
+    normaliseSyncPreferredFormat,
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
 } from './ux-sync-settings.js';
@@ -110,6 +112,24 @@ describe('syncCachePolicyOptions', () => {
         expect(syncCachePolicyOptions()).toEqual([
             { value: 'mirror', label: '全曲ミラー' },
             { value: 'selective', label: '最近再生＋キュー先読み' },
+        ]);
+    });
+});
+
+describe('normaliseSyncPreferredFormat', () => {
+    it('keeps mp3_320 and defaults unknown values to original', () => {
+        expect(normaliseSyncPreferredFormat('mp3_320')).toBe('mp3_320');
+        expect(normaliseSyncPreferredFormat('original')).toBe('original');
+        expect(normaliseSyncPreferredFormat('')).toBe('original');
+        expect(normaliseSyncPreferredFormat('future')).toBe('original');
+    });
+});
+
+describe('syncPreferredFormatOptions', () => {
+    it('offers original and MP3 320kbps for the storage tab', () => {
+        expect(syncPreferredFormatOptions()).toEqual([
+            { value: 'original', label: '原本' },
+            { value: 'mp3_320', label: 'MP3 320kbps' },
         ]);
     });
 });

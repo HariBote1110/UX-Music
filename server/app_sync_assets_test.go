@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -19,6 +20,8 @@ import (
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 )
+
+var errTestSyncTranscodeFailed = errors.New("test sync transcode failed")
 
 func TestSyncLibrarySnapshotRequiresTokenAndReturnsLibraryTracks(t *testing.T) {
 	newTempSyncStore(t)
@@ -88,6 +91,120 @@ func TestSyncAssetFileServesOriginalFileByTrackID(t *testing.T) {
 	}
 	if got := rec.Body.String(); got != "audio-bytes" {
 		t.Fatalf("unexpected file body %q", got)
+	}
+}
+
+func TestSyncAssetFileServesMP3320EncodingWhenRequested(t *testing.T) {
+	newTempSyncStore(t)
+	token := ensureSyncAuthTokenForDevice("portable-client")
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "source.flac")
+	if err := os.WriteFile(audioPath, []byte("flac-bytes"), 0o644); err != nil {
+		t.Fatalf("seed audio: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{"id": "track-1", "path": audioPath, "fileType": ".flac"},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+	var observedInput string
+	originalOpen := syncOpenMP3Stream
+	syncOpenMP3Stream = func(_ context.Context, inputPath string) (io.ReadCloser, func() error, error) {
+		observedInput = inputPath
+		return io.NopCloser(strings.NewReader("mp3-320-bytes")), func() error { return nil }, nil
+	}
+	t.Cleanup(func() { syncOpenMP3Stream = originalOpen })
+
+	req := httptest.NewRequest(http.MethodGet, "/sync/assets/track-1/file?encoding=mp3_320", nil)
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	rec := httptest.NewRecorder()
+	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+	if observedInput != audioPath {
+		t.Fatalf("expected mp3 stream to open %q, got %q", audioPath, observedInput)
+	}
+	if rec.Header().Get("Content-Type") != "audio/mpeg" {
+		t.Fatalf("expected audio/mpeg content type, got %q", rec.Header().Get("Content-Type"))
+	}
+	if rec.Header().Get("X-UX-Music-Sync-Transfer-Encoding") != syncTransferEncodingMP3320 || rec.Header().Get("X-UX-Music-Sync-Audio-Bitrate") != "320" {
+		t.Fatalf("missing mp3 transfer headers: %#v", rec.Header())
+	}
+	if disposition := rec.Header().Get("Content-Disposition"); !strings.Contains(disposition, `filename="source.mp3"`) {
+		t.Fatalf("expected mp3 filename in disposition, got %q", disposition)
+	}
+	if got := rec.Body.String(); got != "mp3-320-bytes" {
+		t.Fatalf("unexpected mp3 body %q", got)
+	}
+}
+
+func TestSyncAssetFileKeepsOriginalMP3WhenMP3320Requested(t *testing.T) {
+	newTempSyncStore(t)
+	token := ensureSyncAuthTokenForDevice("portable-client")
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "source.mp3")
+	if err := os.WriteFile(audioPath, []byte("original-mp3"), 0o644); err != nil {
+		t.Fatalf("seed audio: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{"id": "track-1", "path": audioPath, "fileType": ".mp3"},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+	originalOpen := syncOpenMP3Stream
+	syncOpenMP3Stream = func(_ context.Context, _ string) (io.ReadCloser, func() error, error) {
+		t.Fatal("mp3 source should not be transcoded again")
+		return nil, nil, nil
+	}
+	t.Cleanup(func() { syncOpenMP3Stream = originalOpen })
+
+	req := httptest.NewRequest(http.MethodGet, "/sync/assets/track-1/file?encoding=mp3_320", nil)
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	rec := httptest.NewRecorder()
+	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != "original-mp3" {
+		t.Fatalf("unexpected body %q", rec.Body.String())
+	}
+	if rec.Header().Get("X-UX-Music-Sync-Transfer-Encoding") != "" {
+		t.Fatalf("original mp3 response should not mark transcode headers: %#v", rec.Header())
+	}
+}
+
+func TestSyncAssetFileFailsMP3320EncodingWithoutOriginalFallback(t *testing.T) {
+	newTempSyncStore(t)
+	token := ensureSyncAuthTokenForDevice("portable-client")
+	dir := t.TempDir()
+	audioPath := filepath.Join(dir, "source.flac")
+	if err := os.WriteFile(audioPath, []byte("flac-bytes"), 0o644); err != nil {
+		t.Fatalf("seed audio: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{"id": "track-1", "path": audioPath, "fileType": ".flac"},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+	originalOpen := syncOpenMP3Stream
+	syncOpenMP3Stream = func(_ context.Context, _ string) (io.ReadCloser, func() error, error) {
+		return nil, nil, errTestSyncTranscodeFailed
+	}
+	t.Cleanup(func() { syncOpenMP3Stream = originalOpen })
+
+	req := httptest.NewRequest(http.MethodGet, "/sync/assets/track-1/file?encoding=mp3_320", nil)
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	rec := httptest.NewRecorder()
+	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
+
+	if rec.Code < 500 || rec.Code >= 600 {
+		t.Fatalf("expected transcode failure status, got %d body=%q", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "flac-bytes") {
+		t.Fatalf("transcode failure should not fall back to original bytes")
 	}
 }
 
@@ -808,6 +925,150 @@ func TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary(t *testing.
 	}
 	if string(bytes) != "remote-audio" {
 		t.Fatalf("unexpected imported bytes %q", string(bytes))
+	}
+}
+
+func TestPullSyncLibraryAssetsRequestsPreferredMP3320WhenPeerSupportsIt(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncAuthTokensSettingsKey:      map[string]interface{}{"dev_host": "tok_host"},
+		syncPreferredFormatSettingsKey: syncTransferEncodingMP3320,
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+
+	var observedAssetQuery string
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{
+				DeviceID:     "dev_host",
+				DisplayName:  "Mac mini",
+				Capabilities: []string{"library.transcode.mp3-320.v1"},
+			})
+		case "/sync/library/snapshot":
+			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			writeJSON(w, syncLibrarySnapshotResponse{
+				Count: 1,
+				Tracks: []map[string]interface{}{
+					{
+						"id":          "remote-track-1",
+						"path":        "/Volumes/Music/source.flac",
+						"title":       "Song",
+						"artist":      "Artist",
+						"album":       "Album",
+						"albumartist": "Artist",
+						"fileType":    ".flac",
+					},
+				},
+			})
+		case "/sync/assets/remote-track-1/file":
+			observedAssetQuery = r.URL.RawQuery
+			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Disposition", `attachment; filename="source.mp3"`)
+			w.Header().Set("X-UX-Music-Sync-Transfer-Encoding", syncTransferEncodingMP3320)
+			w.Header().Set("X-UX-Music-Sync-Audio-Bitrate", "320")
+			_, _ = w.Write([]byte("remote-mp3"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	result, err := NewApp().PullSyncLibraryAssets(remote.URL, 0)
+	if err != nil {
+		t.Fatalf("PullSyncLibraryAssets: %v", err)
+	}
+	if result.Downloaded != 1 || observedAssetQuery != "encoding=mp3_320" {
+		t.Fatalf("unexpected pull result=%#v query=%q", result, observedAssetQuery)
+	}
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		t.Fatalf("load library: %v", err)
+	}
+	imported := library[0].(map[string]interface{})
+	importedPath := imported["path"].(string)
+	if filepath.Ext(importedPath) != ".mp3" {
+		t.Fatalf("expected mp3 destination, got %q", importedPath)
+	}
+	if imported["syncTransferEncoding"] != syncTransferEncodingMP3320 || imported["audioBitrateKbps"] != float64(320) {
+		t.Fatalf("missing mp3 transfer metadata: %#v", imported)
+	}
+}
+
+func TestPullSyncLibraryAssetsFallsBackToOriginalWhenPeerLacksMP3320Capability(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncAuthTokensSettingsKey:      map[string]interface{}{"dev_host": "tok_host"},
+		syncPreferredFormatSettingsKey: syncTransferEncodingMP3320,
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+
+	var observedAssetQuery string
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini"})
+		case "/sync/library/snapshot":
+			writeJSON(w, syncLibrarySnapshotResponse{Count: 1, Tracks: []map[string]interface{}{{"id": "remote-track-1", "path": "/Volumes/Music/source.flac", "title": "Song"}}})
+		case "/sync/assets/remote-track-1/file":
+			observedAssetQuery = r.URL.RawQuery
+			w.Header().Set("Content-Disposition", `attachment; filename="source.flac"`)
+			_, _ = w.Write([]byte("remote-flac"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	result, err := NewApp().PullSyncLibraryAssets(remote.URL, 0)
+	if err != nil {
+		t.Fatalf("PullSyncLibraryAssets: %v", err)
+	}
+	if result.Downloaded != 1 || observedAssetQuery != "" {
+		t.Fatalf("expected original fallback, result=%#v query=%q", result, observedAssetQuery)
+	}
+}
+
+func TestPullSyncLibraryAssetsKeepsOriginalWhenPreferredFormatIsOriginal(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncAuthTokensSettingsKey:      map[string]interface{}{"dev_host": "tok_host"},
+		syncPreferredFormatSettingsKey: syncTransferEncodingOriginal,
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+
+	var observedAssetQuery string
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini", Capabilities: []string{"library.transcode.mp3-320.v1"}})
+		case "/sync/library/snapshot":
+			writeJSON(w, syncLibrarySnapshotResponse{Count: 1, Tracks: []map[string]interface{}{{"id": "remote-track-1", "path": "/Volumes/Music/source.flac", "title": "Song"}}})
+		case "/sync/assets/remote-track-1/file":
+			observedAssetQuery = r.URL.RawQuery
+			w.Header().Set("Content-Disposition", `attachment; filename="source.flac"`)
+			_, _ = w.Write([]byte("remote-flac"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	result, err := NewApp().PullSyncLibraryAssets(remote.URL, 0)
+	if err != nil {
+		t.Fatalf("PullSyncLibraryAssets: %v", err)
+	}
+	if result.Downloaded != 1 || observedAssetQuery != "" {
+		t.Fatalf("expected original request, result=%#v query=%q", result, observedAssetQuery)
 	}
 }
 

@@ -52,6 +52,29 @@ func TestSyncSongMatchKeyDistinguishesDifferentSongs(t *testing.T) {
 	}
 }
 
+func TestSyncSongMatchKeyIgnoresTransferredFormat(t *testing.T) {
+	flac := syncSongMatchKey(map[string]interface{}{
+		"title":    "Portable",
+		"artist":   "Artist",
+		"album":    "Album",
+		"duration": 240.0,
+		"fileType": ".flac",
+	})
+	mp3 := syncSongMatchKey(map[string]interface{}{
+		"title":                "portable",
+		"artist":               "artist",
+		"album":                "album",
+		"duration":             240.0,
+		"fileType":             ".mp3",
+		"syncTransferEncoding": syncTransferEncodingMP3320,
+		"audioBitrateKbps":     320,
+	})
+
+	if flac == "" || flac != mp3 {
+		t.Fatalf("expected format-independent match keys, flac=%q mp3=%q", flac, mp3)
+	}
+}
+
 func TestIncrementPlayCountRecordsLocalSyncPlayEvent(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
