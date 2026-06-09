@@ -119,6 +119,12 @@ func (a *App) MTPMakeDirectory(opts mtp.MakeDirOptions) error {
 	return a.mtpManager.MakeDirectory(opts)
 }
 
+func (a *App) MTPSelectDownloadFolder() (string, error) {
+	return wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "ダウンロード先フォルダを選択",
+	})
+}
+
 func (a *App) MTPDispose() error {
 	return a.mtpManager.Dispose()
 }
