@@ -76,13 +76,25 @@ func decodeSafeMediaPath(raw string) (string, bool) {
 		return "", false
 	}
 	decoded = strings.ReplaceAll(decoded, "\\", "/")
-	decoded = strings.TrimLeft(decoded, "/")
 	if decoded == "" {
 		return "", false
 	}
-	candidate := filepath.Clean(string(filepath.Separator) + decoded)
+	var candidate string
+	if filepath.VolumeName(decoded) != "" || strings.HasPrefix(decoded, "/") || hasWindowsDriveLetterPath(decoded) {
+		candidate = filepath.Clean(decoded)
+	} else {
+		candidate = filepath.Clean(string(filepath.Separator) + decoded)
+	}
 	if candidate == string(filepath.Separator) || strings.Contains(candidate, "\x00") {
 		return "", false
 	}
-	return candidate, filepath.IsAbs(candidate)
+	return candidate, filepath.IsAbs(candidate) || hasWindowsDriveLetterPath(filepath.ToSlash(candidate))
+}
+
+func hasWindowsDriveLetterPath(path string) bool {
+	if len(path) < 3 || path[1] != ':' || path[2] != '/' {
+		return false
+	}
+	drive := path[0]
+	return (drive >= 'A' && drive <= 'Z') || (drive >= 'a' && drive <= 'z')
 }

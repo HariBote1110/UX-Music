@@ -1,3 +1,14 @@
+## 2026-06-09 — safe-media Windows絶対パス復元の修正
+
+### 実施内容
+- `/safe-media/` のデコード処理が Windows ドライブレター付き絶対パスを `/C:/...` のように変換し、Windows で `filepath.IsAbs` が失敗して Forbidden になり得る問題を修正した。
+- `decodeSafeMediaPath` で Windows ドライブレター、既存の先頭スラッシュ、相対パスを分けて候補パスを作るようにした。
+- 不具合修正扱いとして `src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-29c`、`markdown/requirement.md` を `0.1.9-Beta-32c` に更新した。
+
+### 検証
+- `go test . -run 'TestDecodeSafeMediaPathKeepsWindowsDriveAbsolute|TestDecodeSafeMediaPathKeepsPosixAbsolutePath|TestAssetHandlerServesRegisteredSafeMediaWithReservedCharacters' -count=1`
+- `go test ./... -count=1`
+
 ## 2026-06-09 — UX Sync 再生回数収束の実機検証（Crescent / Windows）
 
 ### 実施内容

@@ -2,6 +2,20 @@
 
 ## 2026年6月9日
 
+### safe-media Windows絶対パス復元の修正
+
+- **課題**:
+    - `/safe-media/` のデコード処理が Windows ドライブレター付き絶対パスを `/C:/...` のように変換し、Windows では `filepath.IsAbs` が失敗して再生が Forbidden になり得た。
+- **実装内容**:
+    - `decodeSafeMediaPath` で Windows ドライブレター、既存の先頭スラッシュ、相対パスを分けて候補パスを作るようにした。
+    - Windows ドライブレター付きパスは先頭 separator を追加せず、安全な絶対パスとして扱うようにした。
+- **検証**:
+    - `go test . -run 'TestDecodeSafeMediaPathKeepsWindowsDriveAbsolute|TestDecodeSafeMediaPathKeepsPosixAbsolutePath|TestAssetHandlerServesRegisteredSafeMediaWithReservedCharacters' -count=1`
+    - `go test ./... -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-29c` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-32c` に更新。
+
 ### Gemini Code Assist レビュー指摘の実害修正
 
 - **課題**:
