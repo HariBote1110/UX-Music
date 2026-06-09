@@ -2,6 +2,21 @@
 
 ## 2026年6月9日
 
+### UX Sync Phase 5.15 シームレスDL再生
+
+- **課題**:
+    - 統一ライブラリビューで `DL可能` と表示される remote 曲は一覧には見えるが、再生操作ではまだ取得・再生できなかった。
+- **実装内容**:
+    - `DownloadSyncTrack(sourceDeviceId, sourceTrackId)` を追加し、`sync-remote-catalog` の該当 track と既知 peer/token を使って対象曲だけを取得し、`SyncLibrary` へ import できるようにした。
+    - renderer の remote 曲再生フローを、単曲DL、統一ライブラリ再取得、local 曲として再生へ遷移する流れに変更した。
+    - peer 未到達や token 不足などの DL 失敗時はエラー通知を出し、再生へ入らないようにした。
+- **検証**:
+    - `go test ./server -run 'TestDownloadSyncTrack' -count=1`
+    - `npm test --prefix src/renderer -- --run js/features/playback-manager.test.ts`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-28a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-31a` に更新。
+
 ### UX Sync Phase 5.14 統一ライブラリビュー
 
 - **課題**:

@@ -9,7 +9,7 @@ import { loadLyricsForSong } from './lyrics-manager.js';
 import { resolveLocalPlaybackGain } from './playback-gain.js';
 import { buildSkipEvent } from './playback-skip.js';
 import { musicApi, isWailsMode } from '../core/bridge.js';
-import { getSongById } from '../core/library-model.js';
+import { getSongById, getSongByPath } from '../core/library-model.js';
 const electronAPI = window.electronAPI;
 const pendingLoudnessRequests = new Set();
 
@@ -70,9 +70,11 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
 
     console.log(`[Debug:Playback] playSong 開始 - index: ${index}, 曲名: ${songToPlay?.title}`);
     if (!canStartPlayback(songToPlay)) {
-        showNotification('この曲はDL可能です。再生は後続フェーズで対応します。');
-        hideNotification(4000);
-        return;
+        const localSong = await resolveRemotePlaybackDownload(songToPlay);
+        if (!localSong) {
+            return;
+        }
+        targetQueue[index] = localSong;
     }
 
     if (sourceList) {
@@ -182,6 +184,49 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
 
 export function canStartPlayback(song) {
     return song?.syncAvailability !== 'remote';
+}
+
+export async function resolveRemotePlaybackDownload(song, dependencies: any = {}) {
+    if (song?.syncAvailability !== 'remote') {
+        return song || null;
+    }
+    const sourceDeviceId = String(song.syncSourceDeviceId || '').trim();
+    const sourceTrackId = String(song.syncSourceTrackId || '').trim();
+    if (!sourceDeviceId || !sourceTrackId) {
+        dependencies.notifyError?.('UX Sync: 取得元の曲情報が不足しています。');
+        return null;
+    }
+    const downloadSyncTrack = dependencies.downloadSyncTrack || musicApi.downloadSyncTrack;
+    const refreshLibrary = dependencies.refreshLibrary || musicApi.loadLibrary;
+    const findLocalSong = dependencies.findLocalSong || ((result) => {
+        const importedPath = result?.importedPaths?.[0];
+        if (!importedPath) return null;
+        return getSongByPath(importedPath) || { ...song, path: importedPath, syncAvailability: 'local', type: 'local' };
+    });
+    const notifyError = dependencies.notifyError || ((message) => {
+        showNotification(`UX Sync: ${message}`);
+        hideNotification(5000);
+    });
+    const notifyProgress = dependencies.notifyProgress || ((message) => {
+        showNotification(message, false);
+    });
+    const clearProgress = dependencies.clearProgress || hideNotification;
+    try {
+        notifyProgress(`「${song.title || 'Remote track'}」を取得しています...`);
+        const result = await downloadSyncTrack(sourceDeviceId, sourceTrackId);
+        await refreshLibrary();
+        const localSong = findLocalSong(result, song);
+        if (!localSong) {
+            notifyError('取得した曲をライブラリで見つけられませんでした。');
+            return null;
+        }
+        clearProgress();
+        return { ...localSong, syncAvailability: 'local' };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error || '音源取得に失敗しました。');
+        notifyError(message);
+        return null;
+    }
 }
 
 export function playNextSong() {

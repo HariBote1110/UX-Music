@@ -1,3 +1,14 @@
+# Task: UX Sync Phase 5.15 - シームレスDL再生
+
+## 概要
+統一ライブラリビューで `DL可能` と表示される remote 曲について、再生操作時に取得元 peer から対象曲だけを最優先でダウンロードし、取得完了後に自動再生へ遷移する。
+
+## 完了条件
+- [x] `DownloadSyncTrack(sourceDeviceId, sourceTrackId)` が `sync-remote-catalog` の該当曲を取得元 peer からダウンロードし、`SyncLibrary` へ import して local path を返すテストがあること。
+- [x] 取得元 peer 未到達または token 不足ではエラーを返し、勝手な代替取得をしないこと。
+- [x] renderer が remote 曲の再生時に `DownloadSyncTrack` を呼び、完了後に統一ライブラリを再取得して local 曲として再生へ進めること。
+- [x] DL 失敗時はエラー通知を出し、再生に入らないこと。
+
 # Task: UX Sync Phase 5.14 - 統一ライブラリビュー
 
 ## 概要

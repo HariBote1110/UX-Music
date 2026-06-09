@@ -18,6 +18,18 @@
 - Crescent の `SyncLibrary`（約30GB の旧テスト音源）と転送バンドルを削除。空き 124.5GB。
 - 再テスト用に `C:\Users\HariBote\uxtest`（クローン＋synctest.exe＋serve.bat）は残置。
 
+## 2026-06-09 — UX Sync シームレスDL再生
+
+### 実施内容
+- `DownloadSyncTrack(sourceDeviceId, sourceTrackId)` を追加し、`sync-remote-catalog` の track metadata と既知 peer/token から対象曲だけを取得して `SyncLibrary` へ import できるようにした。
+- renderer の remote 曲再生フローを、`DownloadSyncTrack` 呼び出し、統一ライブラリ再取得、local 曲として再生へ遷移する流れに変更した。
+- DL 失敗時はエラー通知を出し、再生に入らないようにした。
+- 新機能扱いとして `src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-28a`、`markdown/requirement.md` を `0.1.9-Beta-31a` に更新した。
+
+### 検証
+- `go test ./server -run 'TestDownloadSyncTrack' -count=1`
+- `npm test --prefix src/renderer -- --run js/features/playback-manager.test.ts`
+
 ## 2026-06-09 — UX Sync 統一ライブラリビュー
 
 ### 実施内容

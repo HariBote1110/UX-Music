@@ -31,7 +31,7 @@ export const musicApi = {
   // --- One-way (Send) ---
   requestAppInfo: () => {
     if (getWailsApp()) {
-      return Promise.resolve({ version: '0.1.9-Beta-25a', platform: 'darwin' });
+      return Promise.resolve({ version: '0.1.9-Beta-31a', platform: 'darwin' });
     }
     return api && api.send(CHANNELS.SEND.REQUEST_APP_INFO);
   },
@@ -212,6 +212,14 @@ export const musicApi = {
     const app = getWailsApp();
     if (app?.PullSyncLibraryAssets) {
       return app.PullSyncLibraryAssets(baseUrl, limit);
+    }
+    return Promise.reject(new Error('UX Sync 音源転送はこの環境では利用できません。'));
+  },
+  downloadSyncTrack: (sourceDeviceId: string, sourceTrackId: string) => {
+    const app = getWailsApp();
+    const syncApp = app as any;
+    if (syncApp?.DownloadSyncTrack) {
+      return syncApp.DownloadSyncTrack(sourceDeviceId, sourceTrackId);
     }
     return Promise.reject(new Error('UX Sync 音源転送はこの環境では利用できません。'));
   },

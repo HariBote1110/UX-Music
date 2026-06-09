@@ -468,6 +468,7 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - UX Sync 専用設定画面の `保存` タブから最低空き容量を設定できる。
 - `sync-remote-catalog` に LibraryHost peer の snapshot metadata を保存し、`LoadLibrary()` / `GetUnifiedLibrary()` が local 曲と未取得 remote 曲を表示時に統合できる。
 - 統一ライブラリビューでは local 曲を `syncAvailability=local`、remote 曲を `syncAvailability=remote` として返し、remote 曲は `DL可能` 表示とプレースホルダ artwork の対象にする。
+- `DownloadSyncTrack(sourceDeviceId, sourceTrackId)` により、統一ライブラリビュー上の remote 曲を取得元 peer から単曲ダウンロードし、完了後に local path で再生へ遷移できる。
 - 詳細仕様は `markdown/ux-music-sync-protocol.md` を参照する。
 
 未実装:

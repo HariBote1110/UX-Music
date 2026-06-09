@@ -83,6 +83,8 @@ describe('resolveRemotePlaybackDownload', () => {
             },
             refreshLibrary: async () => {},
             findLocalSong: () => ({ id: 'local-1', syncAvailability: 'local', path: '/Music/local.flac' }),
+            notifyProgress: () => {},
+            clearProgress: () => {},
         });
 
         expect(calls).toEqual(['dev_host:track-1']);
@@ -95,6 +97,8 @@ describe('resolveRemotePlaybackDownload', () => {
             downloadSyncTrack: async () => { throw new Error('peer offline'); },
             refreshLibrary: async () => {},
             findLocalSong: () => ({ path: '/Music/local.flac' }),
+            notifyProgress: () => {},
+            clearProgress: () => {},
             notifyError: (message) => {
                 expect(message).toContain('peer offline');
             },
