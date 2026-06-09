@@ -1,3 +1,23 @@
+## 2026-06-09 — UX Sync 再生回数収束の実機検証（Crescent / Windows）
+
+### 実施内容
+- ヘッドレス検証用に `cmd/synctest`（renderer 資産を embed しない最小 main）と `--sync-serve` CLI を追加した。
+- Crescent（Windows10, Go/mingw/git あり, データ使い捨て可）に git bundle 経由でブランチを転送し、`go build ./cmd/synctest` でネイティブビルドした。
+- mingw ランタイム DLL を PATH に通し、`Win32_Process.Create` で SSH セッションから切り離して `--sync-serve` を常駐起動した（OpenSSH はセッション終了で子プロセスを道連れに kill するため）。
+- 実 Windows バイナリ＋実ストアに対し `127.0.0.1:8765/sync/library/events` へ再生イベントを POST して検証した。
+  - Test1 メタデータ一致（未pull曲・trackId はローカルに無い）→ ローカル曲へ反映 count=1。
+  - Test2 同一 eventID 再送 → 冪等（count 据え置き）。
+  - Test3 別 eventID・同曲 → count 2。
+  - Test4 非一致 matchKey → playcounts に幽霊エントリ無し。ただし sync-play-events ログには3件全部保持。
+
+### 判断
+- Mac → Crescent:8765 の inbound は Windows Firewall で遮断（SSH:22 は可）。従来テストは Crescent がクライアント=outbound だったため顕在化しなかった。受信ロジック検証に LAN ホップは不要なため Crescent ローカルから検証した。
+- Phase 1.5 のライブ emit は GUI 無しのヘッドレスでは観測不可（a.ctx nil で skip）。stub 単体テストで担保済み。
+
+### 後片付け
+- Crescent の `SyncLibrary`（約30GB の旧テスト音源）と転送バンドルを削除。空き 124.5GB。
+- 再テスト用に `C:\Users\HariBote\uxtest`（クローン＋synctest.exe＋serve.bat）は残置。
+
 ## 2026-06-09 — UX Sync イベント受信後の再生回数ライブ通知
 
 ### 実施内容
