@@ -61,8 +61,9 @@ type syncLibraryEventsResponse struct {
 }
 
 type syncPairingStartRequest struct {
-	DeviceID    string `json:"deviceId"`
-	DisplayName string `json:"displayName"`
+	DeviceID         string `json:"deviceId"`
+	DisplayName      string `json:"displayName"`
+	InitiatorBaseURL string `json:"initiatorBaseUrl,omitempty"`
 }
 
 type syncPairingStartResponse struct {
@@ -73,8 +74,11 @@ type syncPairingStartResponse struct {
 }
 
 type syncPairingConfirmRequest struct {
-	SessionID string `json:"sessionId"`
-	Code      string `json:"code"`
+	SessionID            string `json:"sessionId"`
+	Code                 string `json:"code"`
+	InitiatorDeviceID    string `json:"initiatorDeviceId,omitempty"`
+	InitiatorDisplayName string `json:"initiatorDisplayName,omitempty"`
+	InitiatorBaseURL     string `json:"initiatorBaseUrl,omitempty"`
 }
 
 type syncPairingConfirmResponse struct {
@@ -211,8 +215,9 @@ func (a *App) StartSyncPairing(baseURL string) (SyncPairingStartResult, error) {
 	localDeviceID := ensureSyncDeviceID()
 	var started syncPairingStartResponse
 	if err := postSyncJSON(ctx, baseURL+"/sync/pairing/start", syncPairingStartRequest{
-		DeviceID:    localDeviceID,
-		DisplayName: syncDisplayName(),
+		DeviceID:         localDeviceID,
+		DisplayName:      syncDisplayName(),
+		InitiatorBaseURL: syncLocalBaseURL(),
 	}, &started); err != nil {
 		return SyncPairingStartResult{}, err
 	}
@@ -247,9 +252,13 @@ func (a *App) ConfirmSyncPairing(baseURL, sessionID, code, expectedRemoteDeviceI
 		return SyncPairingConfirmResult{}, fmt.Errorf("sync peer changed during pairing")
 	}
 	var confirmed syncPairingConfirmResponse
+	localDeviceID := ensureSyncDeviceID()
 	if err := postSyncJSON(ctx, baseURL+"/sync/pairing/confirm", syncPairingConfirmRequest{
-		SessionID: strings.TrimSpace(sessionID),
-		Code:      strings.TrimSpace(code),
+		SessionID:            strings.TrimSpace(sessionID),
+		Code:                 strings.TrimSpace(code),
+		InitiatorDeviceID:    localDeviceID,
+		InitiatorDisplayName: syncDisplayName(),
+		InitiatorBaseURL:     syncLocalBaseURL(),
 	}, &confirmed); err != nil {
 		return SyncPairingConfirmResult{}, err
 	}
@@ -442,11 +451,16 @@ func syncPairingStartHandler(w http.ResponseWriter, r *http.Request) {
 	syncPairingSessions.sessions[sessionID] = session
 	syncPairingSessions.mu.Unlock()
 
+	baseURL := syncRemoteBaseURL(r)
+	if advertisedBaseURL, err := normaliseSyncBaseURL(req.InitiatorBaseURL); err == nil {
+		baseURL = advertisedBaseURL
+	}
+
 	syncPairingDetails.mu.Lock()
 	syncPairingDetails.sessions[sessionID] = syncPairingSessionDetail{
 		DeviceID:    session.DeviceID,
 		DisplayName: normaliseSyncDisplayName(req.DisplayName),
-		BaseURL:     syncRemoteBaseURL(r),
+		BaseURL:     baseURL,
 	}
 	syncPairingDetails.mu.Unlock()
 
@@ -496,6 +510,12 @@ func syncPairingConfirmHandler(w http.ResponseWriter, r *http.Request) {
 
 	token := ensureSyncAuthTokenForDevice(session.DeviceID)
 	detail.DeviceID = session.DeviceID
+	if displayName := normaliseSyncDisplayName(req.InitiatorDisplayName); strings.TrimSpace(req.InitiatorDisplayName) != "" {
+		detail.DisplayName = displayName
+	}
+	if baseURL, err := normaliseSyncBaseURL(req.InitiatorBaseURL); err == nil {
+		detail.BaseURL = baseURL
+	}
 	if detail.DisplayName == "" || detail.DisplayName == "UX Music" {
 		detail.DisplayName = session.DeviceID
 	}
@@ -656,6 +676,14 @@ func syncRemoteBaseURL(r *http.Request) string {
 		return ""
 	}
 	return "http://" + net.JoinHostPort(host, wearServerPort)
+}
+
+func syncLocalBaseURL() string {
+	address := strings.TrimSpace(GetWearServerAddress())
+	if address == "" {
+		address = "localhost:" + wearServerPort
+	}
+	return "http://" + address
 }
 
 func (a *App) syncLibraryEventsHandler(w http.ResponseWriter, r *http.Request) {
