@@ -250,7 +250,11 @@ func syncLibraryImportHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing source device or track id", http.StatusBadRequest)
 		return
 	}
-	if syncImportedTrackExists(payload.SourceDeviceID, trackID) {
+	if importedPath := syncImportedTrackPath(payload.SourceDeviceID, trackID); importedPath != "" {
+		if err := applySyncImportedPlayCount(payload.Track, importedPath); err != nil {
+			http.Error(w, "failed to update imported track playcount", http.StatusInternalServerError)
+			return
+		}
 		writeJSON(w, syncLibraryImportResponse{Skipped: true})
 		return
 	}
