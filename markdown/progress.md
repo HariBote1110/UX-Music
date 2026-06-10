@@ -2,6 +2,25 @@
 
 ## 2026年6月10日
 
+### UX Sync 実環境バグ修正（相互ペアリング・重複表示・ジャケット取得）
+
+- **課題**:
+    - 手動ペアリング確定後、開始側の `baseUrl` が受信側へ保存されず、片方向だけ既知 peer が残る状態になり得た。
+    - 統一ライブラリの再読み込みで remote 曲を表示した後、同一曲をローカル取得しても renderer の path ベース merge が stale remote 曲を残していた。
+    - タップDL / pull 取得では音源のみ保存され、remote catalog の `syncArtwork` 情報に対応する実ジャケットファイルが取得されていなかった。
+- **実装内容**:
+    - `/sync/pairing/start` / `/sync/pairing/confirm` の payload に開始側 identity と到達可能 `baseUrl` を追加し、受信側 known peer 保存時は payload の `baseUrl` を優先するようにした。旧 payload でも従来どおり 200 応答できる互換性は維持した。
+    - renderer のライブラリ反映処理を `mergeSongsIntoLibrary` に切り出し、同一曲 match key では local 曲を優先して stale remote 曲を置換し、インデックスを再構築するようにした。
+    - `downloadSyncTrackAsset` で音源保存後・library upsert 前に `/sync/assets/{trackId}/artwork` を取得し、成功時は `artwork` 参照を保存するようにした。ジャケット取得失敗や未検出は音源取得を失敗扱いにしない。
+    - `syncMissingArtworkFromPeer` は track 単位の artwork 取得エラーで全体を中断せず、後続 track の補完を続行するようにした。
+- **検証**:
+    - `go test ./server -run 'TestSyncPairingConfirmStoresInitiatorKnownPeerFromPayload|TestStartSyncPairingCallsRemotePeerWithLocalDeviceID|TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice|TestSyncPairingStartAndConfirmIssuesToken' -count=1`
+    - `npm test --prefix src/renderer -- --run js/core/library-model.test.ts js/ui/sync-availability.test.ts js/features/playback-manager.test.ts`
+    - `go test ./server -run 'TestDownloadSyncTrackImportsRemoteCatalogTrack|TestSyncMissingArtworkFromPeerContinuesAfterTrackError|TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-31b` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-34b` に更新。
+
 ### UX Sync 手動ペアリング導線
 
 - **課題**:
