@@ -135,7 +135,7 @@ func scheduleImmediatePlaybackSync(a *App) {
 			immediatePlaybackSyncState.pending = false
 			immediatePlaybackSyncState.Unlock()
 
-			if _, err := a.AutoSyncPairedDevices(); err != nil {
+			if _, err := a.flushSyncPlayEventsToReachablePeers(); err != nil {
 				fmt.Printf("[Wails] immediate playback sync failed: %v\n", err)
 			}
 		}

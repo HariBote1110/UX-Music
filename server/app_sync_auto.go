@@ -134,6 +134,54 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 	return result, nil
 }
 
+func (a *App) flushSyncPlayEventsToReachablePeers() (SyncAutoResult, error) {
+	ctx := context.Background()
+	if a != nil && a.ctx != nil {
+		ctx = a.ctx
+	}
+	devices, err := a.ListSyncDevices()
+	if err != nil {
+		return SyncAutoResult{}, err
+	}
+	localDeviceID := ensureSyncDeviceID()
+	events, err := loadSyncPlayEvents()
+	if err != nil {
+		return SyncAutoResult{}, err
+	}
+	localEvents := filterSyncPlayEventsByDevice(events, localDeviceID)
+	result := SyncAutoResult{}
+	if len(localEvents) == 0 {
+		return result, nil
+	}
+	for _, device := range devices {
+		if !device.Paired || strings.TrimSpace(device.BaseURL) == "" {
+			continue
+		}
+		result.CheckedDevices++
+		identity, err := fetchSyncIdentity(ctx, device.BaseURL)
+		if err != nil {
+			result.FailedDevices++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", device.DeviceID, err))
+			continue
+		}
+		token, err := loadSyncAuthTokenForDevice(identity.DeviceID)
+		if err != nil {
+			result.FailedDevices++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", identity.DeviceID, err))
+			continue
+		}
+		accepted, err := pushSyncPlayEvents(ctx, device.BaseURL, token, localDeviceID, localEvents)
+		if err != nil {
+			result.FailedDevices++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", identity.DeviceID, err))
+			continue
+		}
+		result.PushedPlayEvents += accepted
+		result.SyncedDevices++
+	}
+	return result, nil
+}
+
 func syncPeerSupportsLibraryAutoPull(identity syncIdentityResponse) bool {
 	for _, role := range identity.Roles {
 		if strings.EqualFold(strings.TrimSpace(role), "LibraryHost") {

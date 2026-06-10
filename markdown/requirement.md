@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-36a)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-36b)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -89,7 +89,7 @@ Windows 側で mDNS discovery が空になる環境でも、ペアリング済�
 - **ペア済み端末復元**: `ListSyncDevices()` は保存済み `syncAuthTokens` と `syncKnownPeers` から同期トークンを返さずにペア済み端末一覧を返す。UX Sync 専用設定画面は mDNS discovery が空でもこの一覧を端末表示と同期元候補へマージし、画面を閉じた後もペアリング済み状態を維持する。
 - **push転送**: `/sync/library/import` は同期トークンを要求し、ペア済み端末から multipart で届いた音源とメタデータを `SyncLibrary` へ保存する。`PushSyncLibraryAssets(baseURL, limit)` はローカルライブラリの音源を相手端末へ転送し、UX Sync 専用設定画面の `同期` タブから `1曲転送` / `全曲転送` を実行できる。
 - **転送進捗と圧縮転送**: UX Sync 専用設定画面は転送中のファイル名、件数、転送量、転送速度を表示する。`PushSyncLibraryAssetsWithOptions(baseURL, limit, { encodingMode: "mp3_320" })` により、FLAC などの重い音源を MP3 320kbps へ変換しながら転送できる。
-- **再生回数の自動同期**: ローカル再生回数の加算時に `PlayEvent` を `sync-play-events` へ記録し、接続可能なペア済み端末へ即時バックグラウンド同期と定期同期で `/sync/library/events` をpushする。受信側は新規イベントだけを既存 `playcounts` へ反映し、同じイベントの再送では二重加算しない。
+- **再生回数の自動同期**: ローカル再生回数の加算時に `PlayEvent` を `sync-play-events` へ記録し、接続可能なペア済み端末へ即時バックグラウンド同期と定期同期で `/sync/library/events` をpushする。即時同期は再生イベント送信だけに限定し、音源取得やジャケット補完は定期 AutoSync に任せる。受信側は新規イベントだけを既存 `playcounts` へ反映し、同じイベントの再送では二重加算しない。
 - **ジャケットの自動補完同期**: `/sync/assets/{trackId}/artwork` は同期トークン付きで保存済みジャケットを返す。`AutoSyncPairedDevices()` は接続可能なペア済み端末に対し、既に取り込み済みの同期曲で欠けているジャケットを自動取得し、`Artworks` と `Artworks/thumbnails`、`library.json` の `artwork.full` / `artwork.thumbnail` に反映する。
 - **空き容量安全停止と保存形式**: `settings.syncMinFreeSpaceGB` が正の値の場合、UX Sync は保存先ボリュームの空き容量が指定GB未満の時に自動同期、音源取得、音源受信を停止する。UX Sync 専用設定画面の `保存` タブから最低空き容量と pull 側の優先フォーマット（原本 / MP3 320kbps）を変更できる。
 - **プロトコルスキーマ**: `/sync/schema` は `protocolVersion`、`schemaVersion`、capability、endpoint、message、拡張規則を含む機械可読スキーマを返す。`/sync/identity` は client が送る `X-UX-Music-Sync-Protocol-Version` / `X-UX-Music-Sync-Schema-Version` / `X-UX-Music-Sync-Capabilities` を元に negotiation 結果を返し、非互換 major の peer は同期操作前に拒否する。mDNS TXT は軽量ヒントに限定し、capability は `/sync/identity` から取得する。仕様は `markdown/ux-music-sync-protocol.md` を参照する。
