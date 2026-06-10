@@ -80,6 +80,62 @@ func TestSyncLibrarySnapshotRequiresTokenAndReturnsLibraryTracks(t *testing.T) {
 	}
 }
 
+func TestSyncLibrarySnapshotDeduplicatesRepeatedLibraryPaths(t *testing.T) {
+	newTempSyncStore(t)
+	token := ensureSyncAuthTokenForDevice("portable-client")
+	songPath := filepath.Join(t.TempDir(), "duplicated.mp3")
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{
+			"id":                  "track-1",
+			"path":                songPath,
+			"title":               "Duplicated",
+			"artist":              "Artist",
+			"syncSourceDeviceId":  "host-device",
+			"syncSourceTrackId":   "source-track-1",
+			"syncTransferEncoding": "mp3_320",
+		},
+		{
+			"id":                  "track-2",
+			"path":                songPath,
+			"title":               "Duplicated",
+			"artist":              "Artist",
+			"syncSourceDeviceId":  "host-device",
+			"syncSourceTrackId":   "source-track-2",
+			"syncTransferEncoding": "mp3_320",
+		},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+	if err := store.Instance.Save("playcounts", map[string]interface{}{
+		songPath: map[string]interface{}{"count": 7},
+	}); err != nil {
+		t.Fatalf("seed playcounts: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/sync/library/snapshot", nil)
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	rec := httptest.NewRecorder()
+	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+	var response syncLibrarySnapshotResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Count != 1 || len(response.Tracks) != 1 {
+		t.Fatalf("snapshot should deduplicate repeated paths, got count=%d tracks=%#v", response.Count, response.Tracks)
+	}
+	if response.Tracks[0]["id"] != "track-1" {
+		t.Fatalf("snapshot should keep the first library entry as representative, got %#v", response.Tracks[0])
+	}
+	playCount, _ := response.Tracks[0]["syncPlayCount"].(map[string]interface{})
+	if playCount["count"] != float64(7) {
+		t.Fatalf("snapshot should keep playcount metadata on representative track, got %#v", response.Tracks[0])
+	}
+}
+
 func TestSyncAssetFileServesOriginalFileByTrackID(t *testing.T) {
 	newTempSyncStore(t)
 	token := ensureSyncAuthTokenForDevice("portable-client")
