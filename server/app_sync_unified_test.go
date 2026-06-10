@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 )
 
@@ -178,6 +179,13 @@ func TestDownloadSyncTrackImportsRemoteCatalogTrack(t *testing.T) {
 			}
 			w.Header().Set("Content-Disposition", `attachment; filename="remote.flac"`)
 			_, _ = w.Write([]byte("remote-audio"))
+		case "/sync/assets/remote-track-1/artwork":
+			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Disposition", `attachment; filename="cover.webp"`)
+			_, _ = w.Write([]byte("remote-artwork"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -222,6 +230,19 @@ func TestDownloadSyncTrackImportsRemoteCatalogTrack(t *testing.T) {
 	imported, _ := library[0].(map[string]interface{})
 	if imported["syncSourceDeviceId"] != "dev_host" || imported["syncSourceTrackId"] != "remote-track-1" {
 		t.Fatalf("expected imported sync source metadata, got %#v", imported)
+	}
+	artwork, _ := imported["artwork"].(map[string]string)
+	if artwork["full"] == "" || artwork["thumbnail"] == "" {
+		t.Fatalf("expected imported artwork reference, got %#v", imported)
+	}
+	for key, name := range artwork {
+		path := filepath.Join(config.GetUserDataPath(), "Artworks", name)
+		if key == "thumbnail" {
+			path = filepath.Join(config.GetUserDataPath(), "Artworks", "thumbnails", name)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected artwork file %q: %v", path, err)
+		}
 	}
 }
 

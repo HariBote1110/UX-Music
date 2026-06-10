@@ -928,6 +928,54 @@ func TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary(t *testing.
 	}
 }
 
+func TestSyncMissingArtworkFromPeerContinuesAfterTrackError(t *testing.T) {
+	newTempSyncStore(t)
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{"id": "local-1", "path": filepath.Join(t.TempDir(), "one.flac"), "syncSourceDeviceId": "dev_host", "syncSourceTrackId": "track-1"},
+		{"id": "local-2", "path": filepath.Join(t.TempDir(), "two.flac"), "syncSourceDeviceId": "dev_host", "syncSourceTrackId": "track-2"},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/sync/assets/track-1/artwork":
+			http.Error(w, "temporary artwork failure", http.StatusInternalServerError)
+		case "/sync/assets/track-2/artwork":
+			w.Header().Set("Content-Disposition", `attachment; filename="cover.webp"`)
+			_, _ = w.Write([]byte("cover-bytes"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	changed, err := syncMissingArtworkFromPeer(context.Background(), remote.URL, "tok_host", "dev_host")
+	if err != nil {
+		t.Fatalf("syncMissingArtworkFromPeer should continue after per-track error: %v", err)
+	}
+	if changed != 1 {
+		t.Fatalf("expected one artwork update, got %d", changed)
+	}
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		t.Fatalf("load library: %v", err)
+	}
+	first := library[0].(map[string]interface{})
+	second := library[1].(map[string]interface{})
+	if _, exists := first["artwork"]; exists {
+		t.Fatalf("failed track should not receive artwork: %#v", first)
+	}
+	artwork, _ := second["artwork"].(map[string]interface{})
+	if artwork["full"] == "" || artwork["thumbnail"] == "" {
+		t.Fatalf("expected second track artwork, got %#v", second)
+	}
+}
+
 func TestPullSyncLibraryAssetsRequestsPreferredMP3320WhenPeerSupportsIt(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
