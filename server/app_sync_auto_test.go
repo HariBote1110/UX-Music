@@ -264,6 +264,53 @@ func TestIncrementPlayCountMigratesExistingCountsToBaseBeforeProjection(t *testi
 	}
 }
 
+func TestIncrementPlayCountKeepsImportedSyncPlayCountBase(t *testing.T) {
+	newTempSyncStore(t)
+	songPath := filepath.Join(t.TempDir(), "synced.flac")
+	song := map[string]interface{}{
+		"id":                "local-imported-id",
+		"syncSourceTrackId": "host-track-1",
+		"path":              songPath,
+		"title":             "Synced Song",
+		"artist":            "Artist",
+		"album":             "Album",
+		"duration":          200.0,
+	}
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey: "dev_air",
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{song}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+	if err := store.Instance.Save(syncPlayCountBaseStoreName, map[string]interface{}{}); err != nil {
+		t.Fatalf("seed empty base: %v", err)
+	}
+	if err := store.Instance.Save(syncPlayCountBaseMigrationStoreName, map[string]interface{}{"migrated": true}); err != nil {
+		t.Fatalf("seed migrated marker: %v", err)
+	}
+	if err := applySyncImportedPlayCount(map[string]interface{}{
+		"syncPlayCount": map[string]interface{}{"count": 12},
+	}, songPath); err != nil {
+		t.Fatalf("apply sync playcount: %v", err)
+	}
+
+	NewApp().IncrementPlayCount(song)
+
+	if count := loadPlayCountForPath(t, songPath); count != 13 {
+		t.Fatalf("expected imported sync count 12 plus one Air play, got %v", count)
+	}
+	base, err := store.Instance.LoadMap(syncPlayCountBaseStoreName)
+	if err != nil {
+		t.Fatalf("load playcount base: %v", err)
+	}
+	baseEntry, _ := base[songPath].(map[string]interface{})
+	if baseEntry == nil || baseEntry["count"] != float64(12) {
+		t.Fatalf("expected imported sync count to be kept as base, got %#v", base)
+	}
+}
+
 func TestSyncPlayCountsConvergeAcrossBidirectionalMetadataMatchedEvents(t *testing.T) {
 	dirA := t.TempDir()
 	dirB := t.TempDir()
