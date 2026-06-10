@@ -1,7 +1,7 @@
 {
   "name": "ux-music-renderer",
   "private": true,
-  "version": "1.0.0-Beta-31b",
+  "version": "1.0.0-Beta-31c",
   "type": "module",
   "scripts": {
     "dev": "vite",

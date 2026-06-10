@@ -1,3 +1,20 @@
+## 2026-06-10 — UX Sync mini逆輸入汚染の再発防止と掃除
+
+### 実施内容
+- Mac mini 実機で `library.json` が 5715 曲まで増え、内訳が原本 `/Users/yuki/doc/uxmusic` 812 曲 + `SyncLibrary` 由来 4903 曲になっていることを確認した。
+- 原因は mini が Air / 過去 peer を `LibraryHost` とみなし、自分の原本曲と同じ matchKey の曲を `SyncLibrary` へ逆輸入していたこと。
+- 再発防止として、`PullSyncLibraryAssets` が remote snapshot の曲を処理する前に、ローカル原本（`syncSourceDeviceId` を持たない曲）の `syncSongMatchKey` と一致する remote 曲を skip するようにした。
+- mini の UX-Music / 残存 ffmpeg を停止したうえで、`library.json` から `SyncLibrary` 由来の 4903 件を削除し、同期コピー側に付いた再生回数 14 エントリを対応する原本 path へ合算した。
+- `~/Library/Application Support/ux-music/SyncLibrary`（約 41GB）を削除し、空き容量を約 69GiB まで回復した。
+- 掃除前に JSON 一式を `~/uxmusic-databackup-before-clean-20260610-104303/` へ保存した。
+- 不具合修正扱いとして `src/renderer/package.json` / `src/renderer/package-lock.json` を `1.0.0-Beta-31c`、`markdown/requirement.md` を `0.1.9-Beta-34c` に更新した。
+
+### 検証
+- `go test ./server -run 'TestPullSyncLibraryAssetsSkipsRemoteTrackWhenLocalMatchExists|TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary|TestPullSyncLibraryAssetsRequestsPreferredMP3320WhenPeerSupportsIt' -count=1`
+- `go test ./server -count=1`
+- `npm test --prefix src/renderer -- --run`
+- `npm run typecheck --prefix src/renderer`
+
 ## 2026-06-10 — UX Sync 手動ペアリング導線
 
 ### 実施内容
