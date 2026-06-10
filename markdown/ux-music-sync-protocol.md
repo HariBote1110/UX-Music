@@ -124,7 +124,7 @@ UI には `ux-sync-transfer-progress` event として次の情報を流す。
 `stage` は `preparing`、`transcoding`、`downloading`、`uploading`、`done`、`skipped`、`failed` を使う。
 
 ## 自動同期
-`library.auto-sync.v1` は、ペア済み端末の既知URLへ接続できた時に、手動ボタンなしで同期を試す capability である。ローカル再生回数の `PlayEvent` を `/sync/library/events` へpushし、再生回数の加算直後にも UI をブロックしないバックグラウンド即時同期を試す。即時同期は `/sync/library/events` だけを使う軽量 flush とし、`LibraryHost` 役割を持つ peer からの `/sync/library/snapshot` と `/sync/assets/{trackId}/file` による未取得曲取得は定期 AutoSync で行う。端末設定 `syncPreferredFormat="mp3_320"` かつ peer が `library.transcode.mp3-320.v1` を持つ場合は、auto sync / tap DL / prefetch の全取得で `encoding=mp3_320` を要求する。既に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込み済みかつ実ファイルが存在する曲は skip として扱い、二重転送しない。既に同期済みの曲で欠けているジャケットは `/sync/assets/{trackId}/artwork` から補完する。
+`library.auto-sync.v1` は、ペア済み端末の既知URLへ接続できた時に、手動ボタンなしで同期を試す capability である。ローカル再生回数の `PlayEvent` を `/sync/library/events` へpushし、再生回数の加算直後にも UI をブロックしないバックグラウンド即時同期を試す。即時同期は `/sync/library/events` だけを使う軽量 flush とし、`LibraryHost` 役割を持つ peer からの `/sync/library/snapshot` は定期 AutoSync で取得する。AutoSync は snapshot 内の `track.syncPlayCount` を同一曲へ全件反映し、音源取得とは独立して基準再生回数を収束させる。`/sync/assets/{trackId}/file` による未取得曲取得は定期 AutoSync の後続処理で行う。端末設定 `syncPreferredFormat="mp3_320"` かつ peer が `library.transcode.mp3-320.v1` を持つ場合は、auto sync / tap DL / prefetch の全取得で `encoding=mp3_320` を要求する。既に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込み済みかつ実ファイルが存在する曲は skip として扱い、二重転送しない。既に同期済みの曲で欠けているジャケットは `/sync/assets/{trackId}/artwork` から補完する。
 
 ## 空き容量安全停止
 `library.storage-safety.v1` は、受信側がローカル保存先ボリュームの空き容量を確認し、`settings.syncMinFreeSpaceGB` を下回る場合に同期を停止できることを示す。`syncMinFreeSpaceGB` が `0` または未設定の場合は無効である。

@@ -2,6 +2,21 @@
 
 ## 2026年6月10日
 
+### UX Sync 再生回数の全件メタデータ同期
+
+- **課題**:
+    - リアルタイム再生イベントは届いていても、端末ごとの `playcounts-base` がズレていると、Air / mini 間で基準再生回数がずれたままになっていた。
+- **実装内容**:
+    - `AutoSyncPairedDevices()` が `LibraryHost` peer の snapshot を取得した時に、`track.syncPlayCount` をローカル同一曲へ全件反映するようにした。
+    - 突合は `syncSourceDeviceId` / `syncSourceTrackId` を優先し、未取得またはローカル同一曲では `syncSongMatchKey` で反映するようにした。
+    - 反映時は音源やジャケットを取得せず、ローカルより低い `syncPlayCount` では基準値を下げないようにした。
+- **検証**:
+    - `go test ./server -run 'TestAutoSyncPairedDevicesAppliesRemotePlayCountSnapshotWithoutAssetPull|TestPullSyncLibraryAssetsUpdatesPlayCountWhenImportedTrackAlreadyExists|TestIncrementPlayCountKeepsImportedSyncPlayCountBase' -count=1`
+    - `go test ./server -run 'TestIncrementPlayCountImmediateSyncSkipsHeavyLibraryWork|TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer|TestSyncPlayCountsConvergeAcrossBidirectionalMetadataMatchedEvents' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-34a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-37a` に更新。
+
 ### UX Sync 再生時即時同期
 
 - **課題**:

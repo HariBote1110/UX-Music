@@ -89,6 +89,11 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 			result.PushedPlayEvents += accepted
 		}
 		if syncPeerSupportsLibraryAutoPull(identity) {
+			if _, err := syncPlayCountMetadataFromPeer(ctx, device.BaseURL, token, identity); err != nil {
+				result.FailedDevices++
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", identity.DeviceID, err))
+				continue
+			}
 			_ = refreshSingleSyncRemoteCatalog(ctx, SyncDeviceRecord{
 				DeviceID:    identity.DeviceID,
 				DisplayName: identity.DisplayName,
@@ -132,6 +137,64 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 		result.SyncedDevices++
 	}
 	return result, nil
+}
+
+func syncPlayCountMetadataFromPeer(ctx context.Context, baseURL, token string, identity syncIdentityResponse) (int, error) {
+	snapshot, err := fetchSyncLibrarySnapshot(ctx, baseURL, token)
+	if err != nil {
+		return 0, err
+	}
+	return applySyncPlayCountSnapshot(identity.DeviceID, snapshot.Tracks)
+}
+
+func applySyncPlayCountSnapshot(remoteDeviceID string, tracks []map[string]interface{}) (int, error) {
+	pathBySource := syncLibraryPathBySource(remoteDeviceID)
+	pathByMatchKey := syncLibraryPathByMatchKey()
+	updated := 0
+	for _, track := range tracks {
+		playCount := normaliseSyncPlayCountForTransfer(track["syncPlayCount"])
+		if len(playCount) == 0 {
+			continue
+		}
+		path := ""
+		if trackID := syncTrackID(track); trackID != "" {
+			path = pathBySource[trackID]
+		}
+		if path == "" {
+			path = pathByMatchKey[syncSongMatchKey(track)]
+		}
+		if path == "" {
+			continue
+		}
+		if err := applySyncImportedPlayCount(track, path); err != nil {
+			return updated, err
+		}
+		updated++
+	}
+	return updated, nil
+}
+
+func syncLibraryPathBySource(deviceID string) map[string]string {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return map[string]string{}
+	}
+	paths := map[string]string{}
+	for _, item := range library {
+		song, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if syncTrackString(song, "syncSourceDeviceId") != deviceID {
+			continue
+		}
+		sourceTrackID := syncTrackString(song, "syncSourceTrackId")
+		path := syncTrackString(song, "path")
+		if sourceTrackID != "" && path != "" {
+			paths[sourceTrackID] = path
+		}
+	}
+	return paths
 }
 
 func (a *App) flushSyncPlayEventsToReachablePeers() (SyncAutoResult, error) {

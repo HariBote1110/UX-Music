@@ -1495,9 +1495,13 @@ func applySyncImportedPlayCount(track map[string]interface{}, destPath string) e
 		counts = map[string]interface{}{}
 	}
 	entry := normalisePlayCountEntry(counts[destPath])
-	entry["count"] = playCount["count"]
-	if history, ok := playCount["history"].([]interface{}); ok {
-		entry["history"] = trimPlayCountHistory(history)
+	incomingCount := syncSettingFloat64(playCount["count"])
+	currentCount := syncSettingFloat64(entry["count"])
+	if incomingCount >= currentCount {
+		entry["count"] = incomingCount
+		if history, ok := playCount["history"].([]interface{}); ok {
+			entry["history"] = trimPlayCountHistory(history)
+		}
 	}
 	counts[destPath] = entry
 	if err := store.Instance.Save("playcounts", counts); err != nil {
