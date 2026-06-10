@@ -137,6 +137,7 @@ func syncLibrarySnapshotHandler(w http.ResponseWriter, r *http.Request) {
 		if artwork := syncArtworkDescriptor(song); len(artwork) > 0 {
 			clean["syncArtwork"] = artwork
 		}
+		attachSyncPlayCountForTransfer(clean, song)
 		tracks = append(tracks, clean)
 	}
 	writeJSON(w, syncLibrarySnapshotResponse{
@@ -316,7 +317,12 @@ func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, 
 			result.Errors = append(result.Errors, "track id is missing")
 			continue
 		}
-		if syncImportedTrackExists(identity.DeviceID, trackID) {
+		if importedPath := syncImportedTrackPath(identity.DeviceID, trackID); importedPath != "" {
+			if err := applySyncImportedPlayCount(track, importedPath); err != nil {
+				result.Failed++
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", trackID, err))
+				continue
+			}
 			result.Skipped++
 			continue
 		}
@@ -541,6 +547,9 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 		importTrack["artwork"] = artwork
 	}
 	if err := upsertSyncImportedTrack(identity, importTrack, destPath); err != nil {
+		return "", err
+	}
+	if err := applySyncImportedPlayCount(importTrack, destPath); err != nil {
 		return "", err
 	}
 	app.emitSyncTransferProgress(SyncTransferProgress{
@@ -1377,9 +1386,13 @@ func sanitiseSyncArtworkFileName(raw string) string {
 }
 
 func syncImportedTrackExists(deviceID, trackID string) bool {
+	return syncImportedTrackPath(deviceID, trackID) != ""
+}
+
+func syncImportedTrackPath(deviceID, trackID string) string {
 	library, err := store.Instance.LoadSlice("library")
 	if err != nil {
-		return false
+		return ""
 	}
 	for _, item := range library {
 		existing, ok := item.(map[string]interface{})
@@ -1389,12 +1402,12 @@ func syncImportedTrackExists(deviceID, trackID string) bool {
 		if existing["syncSourceDeviceId"] == deviceID && existing["syncSourceTrackId"] == trackID {
 			if path, _ := existing["path"].(string); strings.TrimSpace(path) != "" {
 				if _, err := os.Stat(path); err == nil {
-					return true
+					return path
 				}
 			}
 		}
 	}
-	return false
+	return ""
 }
 
 func syncTrackID(track map[string]interface{}) string {

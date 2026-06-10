@@ -2,6 +2,22 @@
 
 ## 2026年6月10日
 
+### UX Sync 再生回数メタデータ先行同期
+
+- **課題**:
+    - ジャケットは remote catalog / pull 経由で取得できていたが、再生回数は音源 push 時の metadata に偏っており、Air 側では既存曲や未取得 remote 曲の再生回数が mini 側と大きくズレていた。
+- **実装内容**:
+    - `/sync/library/snapshot` の各 track に、送信側 `playcounts` から正規化した `syncPlayCount` を同梱するようにした。
+    - `PullSyncLibraryAssets()` は既に取得済みの同期曲を再ダウンロードせず、snapshot の `syncPlayCount` だけを実保存パスの `playcounts` へ反映するようにした。
+    - pull で新規取得した曲にも import 後に `syncPlayCount` を反映し、`library.json` には転送用フィールドを残さないようにした。
+    - renderer の再生回数表示は local path の `playCounts` を優先し、未取得 remote 曲では `song.syncPlayCount.count` を fallback として表示するようにした。
+- **検証**:
+    - `go test ./server -run 'TestSyncLibrarySnapshotRequiresTokenAndReturnsLibraryTracks|TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary|TestPullSyncLibraryAssetsUpdatesPlayCountWhenImportedTrackAlreadyExists' -count=1`
+    - `npm test --prefix src/renderer -- --run js/ui/sync-availability.test.ts`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-32a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-35a` に更新。
+
 ### UX Sync 実環境バグ修正（相互ペアリング・重複表示・ジャケット取得）
 
 - **課題**:

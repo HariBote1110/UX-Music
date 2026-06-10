@@ -89,6 +89,11 @@ push 転送のローカル呼び出しは `encodingMode` を指定できる。pu
 
 `mp3_320` は保存容量と転送時間を優先する portable client 向けのモードである。変換失敗時はその曲を failed として扱い、勝手に原本へフォールバックしない。
 
+## snapshot転送メタデータ
+`GET /sync/library/snapshot` の各 `track` は、表示と後続 pull に必要な軽量メタデータを含める。巨大な `artwork` blob は含めず、ジャケットは `syncArtwork` descriptor と `/sync/assets/{trackId}/artwork` で扱う。
+
+送信側に再生回数がある場合、`track.syncPlayCount` に `count` と任意の `history` を入れる。受信側は remote catalog 表示ではこの値を使い、pull 取得済みの曲では音源を再取得せず実保存パスの `playcounts` へ反映してよい。`syncPlayCount` 自体は `library.json` へ残さない。
+
 ## push転送メタデータ
 `POST /sync/library/import` の multipart `metadata` は、表示に必要な曲メタデータを `track` に含める。`title`、`artist`、`album`、`albumartist`、`trackNumber`、`discNumber`、`genre`、`year` などの既知フィールドは未知フィールドと同じく保持する。
 
