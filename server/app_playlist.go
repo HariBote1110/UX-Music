@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"sync"
 	"strings"
 	"time"
 	"ux-music-sidecar/internal/playlist"
@@ -10,6 +11,12 @@ import (
 	"github.com/google/uuid"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+var immediatePlaybackSyncState struct {
+	sync.Mutex
+	running bool
+	pending bool
+}
 
 // LoadLibrary loads the library and emits an event
 func (a *App) LoadLibrary() {
@@ -98,6 +105,62 @@ func (a *App) IncrementPlayCount(song map[string]interface{}) {
 	if a.ctx != nil {
 		wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", countsMap)
 	}
+	scheduleImmediatePlaybackSync(a)
+}
+
+func scheduleImmediatePlaybackSync(a *App) {
+	if a == nil {
+		return
+	}
+	if !hasImmediatePlaybackSyncPeer() {
+		return
+	}
+	immediatePlaybackSyncState.Lock()
+	immediatePlaybackSyncState.pending = true
+	if immediatePlaybackSyncState.running {
+		immediatePlaybackSyncState.Unlock()
+		return
+	}
+	immediatePlaybackSyncState.running = true
+	immediatePlaybackSyncState.Unlock()
+
+	go func() {
+		for {
+			immediatePlaybackSyncState.Lock()
+			if !immediatePlaybackSyncState.pending {
+				immediatePlaybackSyncState.running = false
+				immediatePlaybackSyncState.Unlock()
+				return
+			}
+			immediatePlaybackSyncState.pending = false
+			immediatePlaybackSyncState.Unlock()
+
+			if _, err := a.AutoSyncPairedDevices(); err != nil {
+				fmt.Printf("[Wails] immediate playback sync failed: %v\n", err)
+			}
+		}
+	}()
+}
+
+func hasImmediatePlaybackSyncPeer() bool {
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		return false
+	}
+	rawTokens, _ := settings[syncAuthTokensSettingsKey].(map[string]interface{})
+	if len(rawTokens) == 0 {
+		return false
+	}
+	for _, peer := range decodeSyncKnownPeerRecords(settings[syncKnownPeersSettingsKey]) {
+		deviceID := strings.TrimSpace(peer.DeviceID)
+		if deviceID == "" || strings.TrimSpace(peer.BaseURL) == "" {
+			continue
+		}
+		if token, _ := rawTokens[deviceID].(string); strings.TrimSpace(token) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // SongFinished handles the end of a song, updating analysis score

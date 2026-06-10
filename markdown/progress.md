@@ -2,6 +2,20 @@
 
 ## 2026年6月10日
 
+### UX Sync 再生時即時同期
+
+- **課題**:
+    - 通信可能な状態でも、再生回数は定期 AutoSync まで peer へ届かず、Air / mini 間で「再生した直後の反映」が遅れていた。
+- **実装内容**:
+    - `IncrementPlayCount()` で `PlayEvent` を保存し `playcounts` を更新した直後に、`AutoSyncPairedDevices()` をバックグラウンドで即時スケジュールするようにした。
+    - 連続再生で同期ジョブが重なり続けないよう、実行中の追加要求は pending として畳み、完了後にもう一度同期を試すようにした。
+- **検証**:
+    - `go test ./server -run 'TestIncrementPlayCountTriggersImmediateSyncWhenPeerReachable|TestIncrementPlayCountRecordsLocalSyncPlayEvent|TestIncrementPlayCountKeepsImportedSyncPlayCountBase' -count=1`
+    - `go test ./server -run 'TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer|TestSyncPlayCountsConvergeAcrossBidirectionalMetadataMatchedEvents' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-33a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-36a` に更新。
+
 ### UX Sync 再生回数メタデータ先行同期
 
 - **課題**:
