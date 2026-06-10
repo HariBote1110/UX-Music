@@ -1524,9 +1524,13 @@ func applySyncImportedPlayCountBase(playCount map[string]interface{}, destPath s
 	}
 	entry := normalisePlayCountEntry(base[destPath])
 	incomingCount := syncSettingFloat64(playCount["count"])
+	targetBaseCount := incomingCount - float64(syncLocalProjectedPlayCount(destPath))
+	if targetBaseCount < 0 {
+		targetBaseCount = 0
+	}
 	currentCount := syncSettingFloat64(entry["count"])
-	if incomingCount > currentCount {
-		entry["count"] = incomingCount
+	if targetBaseCount != currentCount {
+		entry["count"] = targetBaseCount
 	}
 	if history, ok := playCount["history"].([]interface{}); ok && len(history) > 0 {
 		entry["history"] = trimPlayCountHistory(history)
@@ -1536,6 +1540,17 @@ func applySyncImportedPlayCountBase(playCount map[string]interface{}, destPath s
 		return err
 	}
 	return recalculateAllSyncPlayCounts()
+}
+
+func syncLocalProjectedPlayCount(path string) int {
+	events, err := loadSyncPlayEvents()
+	if err != nil {
+		return 0
+	}
+	if playCount, ok := syncPlayCountsByResolvedPath(events)[path]; ok {
+		return playCount.Count
+	}
+	return 0
 }
 
 func loadSyncAuthTokenForDevice(deviceID string) (string, error) {
