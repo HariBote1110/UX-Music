@@ -329,6 +329,73 @@ func TestSyncLibraryImportRequiresTokenAndImportsUploadedTrack(t *testing.T) {
 	}
 }
 
+func TestSyncLibraryImportUpdatesPlayCountWhenTrackAlreadyExists(t *testing.T) {
+	newTempSyncStore(t)
+	token := ensureSyncAuthTokenForDevice("dev_mac_mini")
+	existingPath := filepath.Join(t.TempDir(), "already-imported.flac")
+	if err := os.WriteFile(existingPath, []byte("existing-audio"), 0o644); err != nil {
+		t.Fatalf("write existing file: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{
+			"id":                 "imported-track",
+			"path":               existingPath,
+			"title":              "Song",
+			"syncSourceDeviceId": "dev_mac_mini",
+			"syncSourceTrackId":  "track-1",
+		},
+	}); err != nil {
+		t.Fatalf("save library: %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	metadata, err := writer.CreateFormField("metadata")
+	if err != nil {
+		t.Fatalf("create metadata field: %v", err)
+	}
+	if err := json.NewEncoder(metadata).Encode(syncLibraryImportRequest{
+		SourceDeviceID:    "dev_mac_mini",
+		SourceDisplayName: "YukinoMac-mini",
+		Track: map[string]interface{}{
+			"id":    "track-1",
+			"title": "Song",
+			"syncPlayCount": map[string]interface{}{
+				"count": 24,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/sync/library/import", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	rec := httptest.NewRecorder()
+	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+	var response syncLibraryImportResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !response.Skipped || response.Imported {
+		t.Fatalf("expected skipped duplicate import, got %#v", response)
+	}
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		t.Fatalf("load playcounts: %v", err)
+	}
+	entry, _ := counts[existingPath].(map[string]interface{})
+	if entry["count"] != float64(24) {
+		t.Fatalf("expected existing imported track playcount to update, got %#v", counts)
+	}
+}
+
 func TestPushSyncLibraryAssetsUploadsLocalTrackToRemotePeer(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
