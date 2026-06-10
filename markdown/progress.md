@@ -7,19 +7,22 @@
 - **課題**:
     - ジャケットは remote catalog / pull 経由で取得できていたが、再生回数は音源 push 時の metadata に偏っており、Air 側では既存曲や未取得 remote 曲の再生回数が mini 側と大きくズレていた。
     - 既に import 済みの曲へ push が再送された場合、音源重複は skipped になるが `syncPlayCount` も破棄されていた。
+    - Air 側で再生した瞬間、`playcounts-base` に入っていない同期済み再生回数が `base + sync-play-events` の再計算で消え、Air 側ローカル回数だけに戻って見えていた。
 - **実装内容**:
     - `/sync/library/snapshot` の各 track に、送信側 `playcounts` から正規化した `syncPlayCount` を同梱するようにした。
     - `PullSyncLibraryAssets()` は既に取得済みの同期曲を再ダウンロードせず、snapshot の `syncPlayCount` だけを実保存パスの `playcounts` へ反映するようにした。
     - pull で新規取得した曲にも import 後に `syncPlayCount` を反映し、`library.json` には転送用フィールドを残さないようにした。
     - `/sync/library/import` の重複 skipped 経路でも、既存保存パスへ `syncPlayCount` だけを反映するようにした。
+    - `playcounts-base` migration 済みの環境では、受信した `syncPlayCount` を `playcounts-base` にも反映し、その後の再生時再計算で同期済み回数が消えないようにした。
     - renderer の再生回数表示は local path の `playCounts` を優先し、未取得 remote 曲では `song.syncPlayCount.count` を fallback として表示するようにした。
 - **検証**:
     - `go test ./server -run 'TestSyncLibrarySnapshotRequiresTokenAndReturnsLibraryTracks|TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary|TestPullSyncLibraryAssetsUpdatesPlayCountWhenImportedTrackAlreadyExists' -count=1`
     - `go test ./server -run TestSyncLibraryImportUpdatesPlayCountWhenTrackAlreadyExists -count=1`
+    - `go test ./server -run TestIncrementPlayCountKeepsImportedSyncPlayCountBase -count=1`
     - `npm test --prefix src/renderer -- --run js/ui/sync-availability.test.ts`
 - **バージョン情報の更新**:
-    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-32b` に更新。
-    - `markdown/requirement.md` を `0.1.9-Beta-35b` に更新。
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-32c` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-35c` に更新。
 
 ### UX Sync 実環境バグ修正（相互ペアリング・重複表示・ジャケット取得）
 

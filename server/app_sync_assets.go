@@ -1500,7 +1500,38 @@ func applySyncImportedPlayCount(track map[string]interface{}, destPath string) e
 		entry["history"] = trimPlayCountHistory(history)
 	}
 	counts[destPath] = entry
-	return store.Instance.Save("playcounts", counts)
+	if err := store.Instance.Save("playcounts", counts); err != nil {
+		return err
+	}
+	return applySyncImportedPlayCountBase(playCount, destPath)
+}
+
+func applySyncImportedPlayCountBase(playCount map[string]interface{}, destPath string) error {
+	migration, err := store.Instance.LoadMap(syncPlayCountBaseMigrationStoreName)
+	if err != nil {
+		return nil
+	}
+	if migrated, _ := migration["migrated"].(bool); !migrated {
+		return nil
+	}
+	base, err := store.Instance.LoadMap(syncPlayCountBaseStoreName)
+	if err != nil {
+		base = map[string]interface{}{}
+	}
+	entry := normalisePlayCountEntry(base[destPath])
+	incomingCount := syncSettingFloat64(playCount["count"])
+	currentCount := syncSettingFloat64(entry["count"])
+	if incomingCount > currentCount {
+		entry["count"] = incomingCount
+	}
+	if history, ok := playCount["history"].([]interface{}); ok && len(history) > 0 {
+		entry["history"] = trimPlayCountHistory(history)
+	}
+	base[destPath] = entry
+	if err := store.Instance.Save(syncPlayCountBaseStoreName, base); err != nil {
+		return err
+	}
+	return recalculateAllSyncPlayCounts()
 }
 
 func loadSyncAuthTokenForDevice(deviceID string) (string, error) {
