@@ -108,6 +108,64 @@ func TestIncrementPlayCountRecordsLocalSyncPlayEvent(t *testing.T) {
 	}
 }
 
+func TestIncrementPlayCountTriggersImmediateSyncWhenPeerReachable(t *testing.T) {
+	newTempSyncStore(t)
+	songPath := filepath.Join(t.TempDir(), "portable.flac")
+	if err := os.WriteFile(songPath, []byte("audio"), 0o644); err != nil {
+		t.Fatalf("write audio: %v", err)
+	}
+	song := map[string]interface{}{
+		"id":                "local-imported-id",
+		"syncSourceTrackId": "host-track-1",
+		"path":              songPath,
+		"title":             "Portable Song",
+		"artist":            "Artist",
+		"album":             "Album",
+		"duration":          180.0,
+	}
+	received := make(chan []uxsync.PlayEvent, 1)
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini", ProtocolVersion: syncProtocolVersion})
+		case "/sync/library/events":
+			var req syncLibraryEventsRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode events: %v", err)
+			}
+			received <- req.PlayEvents
+			writeJSON(w, syncLibraryEventsResponse{
+				Accepted: len(req.PlayEvents),
+				Ack:     uxsync.EventAck{DeviceID: req.DeviceID, MaxDeviceSequence: 1, AckedEventIDs: eventIDs(req.PlayEvents)},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncDeviceIDSettingsKey:   "dev_air",
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: remote.URL}},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{song}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+
+	NewApp().IncrementPlayCount(song)
+
+	select {
+	case events := <-received:
+		if len(events) != 1 || events[0].DeviceID != "dev_air" || events[0].TrackID != "host-track-1" {
+			t.Fatalf("unexpected immediate sync events: %#v", events)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("expected playback to trigger immediate sync")
+	}
+}
+
 func TestSyncLibraryEventsAppliesIncomingPlayCountsIdempotently(t *testing.T) {
 	newTempSyncStore(t)
 	songPath := filepath.Join(t.TempDir(), "host.flac")
