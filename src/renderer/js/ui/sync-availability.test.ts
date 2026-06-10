@@ -29,6 +29,14 @@ describe('remoteAvailabilityBadgeText', () => {
     });
 });
 
+describe('songPlayCountValue', () => {
+    it('uses remote syncPlayCount metadata when no local path count exists', async () => {
+        const { songPlayCountValue } = await import('./element-factory.js');
+        expect(songPlayCountValue({ syncAvailability: 'remote', syncPlayCount: { count: 42 } }, {})).toBe(42);
+        expect(songPlayCountValue({ path: '/music/local.flac', syncPlayCount: { count: 42 } }, { '/music/local.flac': { count: 7 } })).toBe(7);
+    });
+});
+
 describe('resolveSongArtworkForList', () => {
     it('uses placeholder artwork for remote songs', async () => {
         const { DEFAULT_ARTWORK_URL } = await import('../constants/default-artwork.js');

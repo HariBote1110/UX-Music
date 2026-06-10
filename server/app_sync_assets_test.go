@@ -26,10 +26,11 @@ var errTestSyncTranscodeFailed = errors.New("test sync transcode failed")
 func TestSyncLibrarySnapshotRequiresTokenAndReturnsLibraryTracks(t *testing.T) {
 	newTempSyncStore(t)
 	token := ensureSyncAuthTokenForDevice("portable-client")
+	songPath := filepath.Join(t.TempDir(), "song.flac")
 	if err := store.Instance.Save("library", []map[string]interface{}{
 		{
 			"id":     "track-1",
-			"path":   filepath.Join(t.TempDir(), "song.flac"),
+			"path":   songPath,
 			"title":  "Song",
 			"artist": "Artist",
 			"artwork": map[string]interface{}{
@@ -38,6 +39,14 @@ func TestSyncLibrarySnapshotRequiresTokenAndReturnsLibraryTracks(t *testing.T) {
 		},
 	}); err != nil {
 		t.Fatalf("seed library: %v", err)
+	}
+	if err := store.Instance.Save("playcounts", map[string]interface{}{
+		songPath: map[string]interface{}{
+			"count":   12,
+			"history": []interface{}{"2026-06-10T01:00:00Z"},
+		},
+	}); err != nil {
+		t.Fatalf("seed playcounts: %v", err)
 	}
 
 	handler := NewLANHTTPHandler(NewApp())
@@ -64,6 +73,10 @@ func TestSyncLibrarySnapshotRequiresTokenAndReturnsLibraryTracks(t *testing.T) {
 	}
 	if _, exists := response.Tracks[0]["artwork"]; exists {
 		t.Fatalf("snapshot should omit artwork blobs: %#v", response.Tracks[0])
+	}
+	playCount, _ := response.Tracks[0]["syncPlayCount"].(map[string]interface{})
+	if playCount["count"] != float64(12) {
+		t.Fatalf("snapshot should include playcount metadata, got %#v", response.Tracks[0])
 	}
 }
 
@@ -880,6 +893,10 @@ func TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary(t *testing.
 						"album":       "Album",
 						"albumartist": "Artist",
 						"fileType":    ".flac",
+						"syncPlayCount": map[string]interface{}{
+							"count":   7,
+							"history": []interface{}{"2026-06-10T01:00:00Z"},
+						},
 					},
 				},
 			})
@@ -925,6 +942,93 @@ func TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary(t *testing.
 	}
 	if string(bytes) != "remote-audio" {
 		t.Fatalf("unexpected imported bytes %q", string(bytes))
+	}
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		t.Fatalf("load playcounts: %v", err)
+	}
+	entry, _ := counts[importedPath].(map[string]interface{})
+	if entry["count"] != float64(7) {
+		t.Fatalf("expected imported playcount at %q, got %#v", importedPath, counts)
+	}
+}
+
+func TestPullSyncLibraryAssetsUpdatesPlayCountWhenImportedTrackAlreadyExists(t *testing.T) {
+	newTempSyncStore(t)
+	importedPath := filepath.Join(t.TempDir(), "song.flac")
+	if err := os.WriteFile(importedPath, []byte("existing-audio"), 0o644); err != nil {
+		t.Fatalf("seed existing audio: %v", err)
+	}
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{
+			"id":                 "imported-local",
+			"path":               importedPath,
+			"title":              "Song",
+			"artist":             "Artist",
+			"album":              "Album",
+			"duration":           123.4,
+			"syncSourceDeviceId": "dev_host",
+			"syncSourceTrackId":  "remote-track-1",
+		},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+
+	assetRequests := 0
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini"})
+		case "/sync/library/snapshot":
+			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			writeJSON(w, syncLibrarySnapshotResponse{
+				Count: 1,
+				Tracks: []map[string]interface{}{{
+					"id":       "remote-track-1",
+					"title":    "Song",
+					"artist":   "Artist",
+					"album":    "Album",
+					"duration": 123.4,
+					"syncPlayCount": map[string]interface{}{
+						"count":   42,
+						"history": []interface{}{"2026-06-10T02:00:00Z"},
+					},
+				}},
+			})
+		case "/sync/assets/remote-track-1/file":
+			assetRequests++
+			http.Error(w, "already imported track should be skipped", http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	result, err := NewApp().PullSyncLibraryAssets(remote.URL, 0)
+	if err != nil {
+		t.Fatalf("PullSyncLibraryAssets: %v", err)
+	}
+	if result.Downloaded != 0 || result.Skipped != 1 || result.Failed != 0 {
+		t.Fatalf("expected imported track to be skipped, got %#v", result)
+	}
+	if assetRequests != 0 {
+		t.Fatalf("expected no asset request, got %d", assetRequests)
+	}
+	counts, err := store.Instance.LoadMap("playcounts")
+	if err != nil {
+		t.Fatalf("load playcounts: %v", err)
+	}
+	entry, _ := counts[importedPath].(map[string]interface{})
+	if entry["count"] != float64(42) {
+		t.Fatalf("expected existing imported track playcount to update, got %#v", counts)
 	}
 }
 
