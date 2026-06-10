@@ -302,6 +302,10 @@ func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, 
 		RemoteDeviceID:    identity.DeviceID,
 		RemoteDisplayName: syncIdentityDisplayName(identity),
 	}
+	localMatchKeys, err := syncLocalLibraryMatchKeys()
+	if err != nil {
+		return SyncPullResult{}, err
+	}
 	for _, track := range snapshot.Tracks {
 		if limit > 0 && result.Downloaded >= limit {
 			break
@@ -313,6 +317,10 @@ func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, 
 			continue
 		}
 		if syncImportedTrackExists(identity.DeviceID, trackID) {
+			result.Skipped++
+			continue
+		}
+		if key := syncSongMatchKey(track); key != "" && localMatchKeys[key] {
 			result.Skipped++
 			continue
 		}
@@ -1027,6 +1035,28 @@ func syncTransferCandidateCount(library []interface{}, limit int) int {
 		return limit
 	}
 	return len(library)
+}
+
+func syncLocalLibraryMatchKeys() (map[string]bool, error) {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return nil, err
+	}
+	keys := map[string]bool{}
+	for _, item := range library {
+		track, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(syncTrackString(track, "syncSourceDeviceId")) != "" {
+			continue
+		}
+		key := syncSongMatchKey(track)
+		if key != "" {
+			keys[key] = true
+		}
+	}
+	return keys, nil
 }
 
 func syncAssetHTTPClient() *http.Client {
