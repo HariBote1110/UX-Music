@@ -654,6 +654,66 @@ func TestAutoSyncPairedDevicesAppliesRemotePlayCountSnapshotWithoutAssetPull(t *
 	}
 }
 
+func TestApplySyncPlayCountSnapshotSubtractsLocalEventProjectionFromBase(t *testing.T) {
+	newTempSyncStore(t)
+	localPath := filepath.Join(t.TempDir(), "same-song.flac")
+	localSong := map[string]interface{}{
+		"id":       "local-track",
+		"path":     localPath,
+		"title":    "Same Song",
+		"artist":   "Artist",
+		"album":    "Album",
+		"duration": 180.0,
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{localSong}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+	if err := store.Instance.Save(syncPlayCountBaseStoreName, map[string]interface{}{
+		localPath: map[string]interface{}{"count": 102.0},
+	}); err != nil {
+		t.Fatalf("seed inflated base: %v", err)
+	}
+	if err := store.Instance.Save(syncPlayCountBaseMigrationStoreName, map[string]interface{}{"migrated": true}); err != nil {
+		t.Fatalf("seed base migration: %v", err)
+	}
+	matchKey := syncSongMatchKey(localSong)
+	if err := store.Instance.Save(syncPlayEventsStoreName, []uxsync.PlayEvent{
+		countedEvent("evt_air_1", "dev_air", "local-track", matchKey, 1),
+		countedEvent("evt_air_2", "dev_air", "local-track", matchKey, 2),
+		countedEvent("evt_mini_1", "dev_host", "remote-track", matchKey, 1),
+	}); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+
+	updated, err := applySyncPlayCountSnapshot("dev_host", []map[string]interface{}{{
+		"id":       "remote-track",
+		"title":    "same song",
+		"artist":   "artist",
+		"album":    "album",
+		"duration": 180.0,
+		"syncPlayCount": map[string]interface{}{
+			"count": 102,
+		},
+	}})
+	if err != nil {
+		t.Fatalf("apply snapshot: %v", err)
+	}
+	if updated != 1 {
+		t.Fatalf("expected one snapshot playcount update, got %d", updated)
+	}
+	base, err := store.Instance.LoadMap(syncPlayCountBaseStoreName)
+	if err != nil {
+		t.Fatalf("load base: %v", err)
+	}
+	baseEntry, _ := base[localPath].(map[string]interface{})
+	if baseEntry == nil || baseEntry["count"] != float64(99) {
+		t.Fatalf("expected base to store peer total minus local event projection, got %#v", base)
+	}
+	if count := loadPlayCountForPath(t, localPath); count != 102 {
+		t.Fatalf("expected final playcount to match peer total without double counting, got %v", count)
+	}
+}
+
 func syncEventsPayload(t *testing.T, deviceID string, events []uxsync.PlayEvent) []byte {
 	t.Helper()
 	bytes, err := json.Marshal(syncLibraryEventsRequest{DeviceID: deviceID, PlayEvents: events})
