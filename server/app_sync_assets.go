@@ -122,10 +122,17 @@ func syncLibrarySnapshotHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tracks := make([]map[string]interface{}, 0, len(library))
+	seenTracks := map[string]bool{}
 	for _, item := range library {
 		song, ok := item.(map[string]interface{})
 		if !ok {
 			continue
+		}
+		if key := syncSnapshotDedupeKey(song); key != "" {
+			if seenTracks[key] {
+				continue
+			}
+			seenTracks[key] = true
 		}
 		clean := make(map[string]interface{}, len(song))
 		for key, value := range song {
@@ -147,6 +154,19 @@ func syncLibrarySnapshotHandler(w http.ResponseWriter, r *http.Request) {
 		Tracks:      tracks,
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func syncSnapshotDedupeKey(song map[string]interface{}) string {
+	path := strings.TrimSpace(syncTrackString(song, "path"))
+	if path != "" {
+		return "path:" + filepath.Clean(path)
+	}
+	sourceDeviceID := strings.TrimSpace(syncTrackString(song, "syncSourceDeviceId"))
+	sourceTrackID := strings.TrimSpace(syncTrackString(song, "syncSourceTrackId"))
+	if sourceDeviceID != "" && sourceTrackID != "" {
+		return "source:" + sourceDeviceID + ":" + sourceTrackID
+	}
+	return ""
 }
 
 func syncAssetFileHandler(w http.ResponseWriter, r *http.Request) {

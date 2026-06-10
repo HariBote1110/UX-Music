@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-37b)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-37c)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -81,7 +81,7 @@ Windows 側で mDNS discovery が空になる環境でも、ペアリング済�
 
 ### [新規] UX Sync 音源pull MVP / SSH検証CLI
 ペア済み端末から、GUI を経由せず最小の音源転送を検証できる。
-- **ライブラリスナップショット**: `/sync/library/snapshot` は同期トークンを要求し、アートワーク blob を除いた曲一覧を返す。送信側に再生回数がある曲は `syncPlayCount` を含め、音源未取得の remote 曲でも再生回数を表示できる。
+- **ライブラリスナップショット**: `/sync/library/snapshot` は同期トークンを要求し、アートワーク blob を除いた曲一覧を返す。送信側に再生回数がある曲は `syncPlayCount` を含め、音源未取得の remote 曲でも再生回数を表示できる。同じ実ファイルパスを指す重複 library 行は代表1件だけを返し、過去の重複 import 残骸で同期曲数や既存曲トーストが膨らまないようにする。
 - **音源取得**: `/sync/assets/{trackId}/file` は同期トークンを要求し、登録済み曲IDに対応するローカル原本ファイルだけを返す。`encoding=mp3_320` かつ peer が `library.transcode.mp3-320.v1` を持つ場合は、元が非 MP3 の曲を MP3 320kbps としてストリーミング配信できる。任意パス指定は受け付けない。
 - **子側pull取り込み**: `PullSyncLibraryAssets(baseURL, limit)` は保存済み `syncAuthTokens` を使って親へ接続し、受信音源を子側ユーザーデータ配下の `SyncLibrary` に保存し、`library.json` へ `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込む。受信した `syncPlayCount` は実保存パスの `playcounts` と再計算用の `playcounts-base` に反映し、既に取得済みの曲は音源を再取得せず再生回数だけ更新する。`settings.syncPreferredFormat="mp3_320"` の端末は対応 peer から MP3 320kbps を取得し、非対応 peer では原本取得へフォールバックする。
 - **SSH検証CLI**: `--sync-reset-test-data` はペアリング情報を温存して検証用ライブラリ状態を初期化し、`--sync-pull-one` / `--sync-pull` は WebView2 を起動せず SSH から音源pullを実行する。

@@ -2,6 +2,19 @@
 
 ## 2026年6月10日
 
+### UX Sync snapshot重複曲数の補正
+
+- **課題**:
+    - Air 側に過去の重複 import で同じ実ファイルパスを指す library 行が複数残っていると、mini 側の自動同期トーストで既存曲数が実ライブラリより大きく表示されていた。
+- **実装内容**:
+    - `/sync/library/snapshot` 生成時に同じ `path` の track を代表1件へ重複排除し、`count` も重複排除後の件数を返すようにした。
+    - `path` が空の特殊ケースでは `syncSourceDeviceId` / `syncSourceTrackId` を重複排除キーとして使い、同期元IDが同じ曲を重複して公開しないようにした。
+- **検証**:
+    - `go test ./server -run TestSyncLibrarySnapshotDeduplicatesRepeatedLibraryPaths -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-34c` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-37c` に更新。
+
 ### UX Sync 再生回数の全件メタデータ同期
 
 - **課題**:

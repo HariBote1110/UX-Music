@@ -86,21 +86,21 @@ func TestSyncLibrarySnapshotDeduplicatesRepeatedLibraryPaths(t *testing.T) {
 	songPath := filepath.Join(t.TempDir(), "duplicated.mp3")
 	if err := store.Instance.Save("library", []map[string]interface{}{
 		{
-			"id":                  "track-1",
-			"path":                songPath,
-			"title":               "Duplicated",
-			"artist":              "Artist",
-			"syncSourceDeviceId":  "host-device",
-			"syncSourceTrackId":   "source-track-1",
+			"id":                   "track-1",
+			"path":                 songPath,
+			"title":                "Duplicated",
+			"artist":               "Artist",
+			"syncSourceDeviceId":   "host-device",
+			"syncSourceTrackId":    "source-track-1",
 			"syncTransferEncoding": "mp3_320",
 		},
 		{
-			"id":                  "track-2",
-			"path":                songPath,
-			"title":               "Duplicated",
-			"artist":              "Artist",
-			"syncSourceDeviceId":  "host-device",
-			"syncSourceTrackId":   "source-track-2",
+			"id":                   "track-2",
+			"path":                 songPath,
+			"title":                "Duplicated",
+			"artist":               "Artist",
+			"syncSourceDeviceId":   "host-device",
+			"syncSourceTrackId":    "source-track-2",
 			"syncTransferEncoding": "mp3_320",
 		},
 	}); err != nil {
