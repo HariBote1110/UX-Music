@@ -231,11 +231,12 @@ func TestDownloadSyncTrackImportsRemoteCatalogTrack(t *testing.T) {
 	if imported["syncSourceDeviceId"] != "dev_host" || imported["syncSourceTrackId"] != "remote-track-1" {
 		t.Fatalf("expected imported sync source metadata, got %#v", imported)
 	}
-	artwork, _ := imported["artwork"].(map[string]string)
+	artwork, _ := imported["artwork"].(map[string]interface{})
 	if artwork["full"] == "" || artwork["thumbnail"] == "" {
 		t.Fatalf("expected imported artwork reference, got %#v", imported)
 	}
-	for key, name := range artwork {
+	for key, rawName := range artwork {
+		name, _ := rawName.(string)
 		path := filepath.Join(config.GetUserDataPath(), "Artworks", name)
 		if key == "thumbnail" {
 			path = filepath.Join(config.GetUserDataPath(), "Artworks", "thumbnails", name)

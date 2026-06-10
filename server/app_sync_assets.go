@@ -529,6 +529,9 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 		importTrack["syncTransferEncoding"] = syncTransferEncodingMP3320
 		importTrack["audioBitrateKbps"] = 320
 	}
+	if artwork, err := downloadSyncArtworkAsset(ctx, baseURL, token, identity.DeviceID, trackID); err == nil && len(artwork) > 0 {
+		importTrack["artwork"] = artwork
+	}
 	if err := upsertSyncImportedTrack(identity, importTrack, destPath); err != nil {
 		return "", err
 	}
@@ -1128,7 +1131,7 @@ func syncMissingArtworkFromPeer(ctx context.Context, baseURL, token, deviceID st
 			continue
 		}
 		if err != nil {
-			return changed, err
+			continue
 		}
 		if len(artwork) == 0 {
 			continue
