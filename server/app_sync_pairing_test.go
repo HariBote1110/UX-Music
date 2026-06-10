@@ -91,6 +91,48 @@ func TestSyncPairingConfirmStoresKnownPeerFromInboundRequest(t *testing.T) {
 	}
 }
 
+func TestSyncPairingConfirmStoresInitiatorKnownPeerFromPayload(t *testing.T) {
+	newTempSyncStore(t)
+	startReq := httptest.NewRequest(http.MethodPost, "/sync/pairing/start", bytes.NewReader([]byte(`{
+		"deviceId":"dev_air",
+		"displayName":"MacBook Air",
+		"initiatorBaseUrl":"http://192.168.0.143:8765"
+	}`)))
+	startRec := httptest.NewRecorder()
+
+	syncPairingStartHandler(startRec, startReq)
+
+	if startRec.Code != http.StatusOK {
+		t.Fatalf("unexpected start status %d: %s", startRec.Code, startRec.Body.String())
+	}
+	var started syncPairingStartResponse
+	if err := json.Unmarshal(startRec.Body.Bytes(), &started); err != nil {
+		t.Fatalf("decode start response: %v", err)
+	}
+
+	confirmPayload, _ := json.Marshal(syncPairingConfirmRequest{
+		SessionID:        started.SessionID,
+		Code:             started.Code,
+		InitiatorBaseURL: "http://192.168.0.144:8765",
+	})
+	confirmReq := httptest.NewRequest(http.MethodPost, "/sync/pairing/confirm", bytes.NewReader(confirmPayload))
+	confirmRec := httptest.NewRecorder()
+
+	syncPairingConfirmHandler(confirmRec, confirmReq)
+
+	if confirmRec.Code != http.StatusOK {
+		t.Fatalf("unexpected confirm status %d: %s", confirmRec.Code, confirmRec.Body.String())
+	}
+	peers := loadSyncKnownPeers()
+	if len(peers) != 1 {
+		t.Fatalf("expected one known peer, got %#v", peers)
+	}
+	peer := peers[0]
+	if peer.DeviceID != "dev_air" || peer.DisplayName != "MacBook Air" || peer.Host != "192.168.0.144" || peer.Port != 8765 {
+		t.Fatalf("expected initiator known peer from confirm payload, got %#v", peer)
+	}
+}
+
 func TestSyncAuthMiddlewareRequiresTokenForLibraryEvents(t *testing.T) {
 	newTempSyncStore(t)
 	token := ensureSyncAuthTokenForDevice("macbook-air")

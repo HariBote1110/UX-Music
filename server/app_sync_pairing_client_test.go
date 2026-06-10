@@ -15,7 +15,7 @@ func TestStartSyncPairingCallsRemotePeerWithLocalDeviceID(t *testing.T) {
 		t.Fatalf("seed settings: %v", err)
 	}
 
-	var observedDeviceID string
+	var observedStart syncPairingStartRequest
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sync/identity":
@@ -29,7 +29,7 @@ func TestStartSyncPairingCallsRemotePeerWithLocalDeviceID(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				t.Fatalf("decode start request: %v", err)
 			}
-			observedDeviceID = req.DeviceID
+			observedStart = req
 			writeJSON(w, syncPairingStartResponse{
 				SessionID: "sess_remote_1",
 				DeviceID:  req.DeviceID,
@@ -47,8 +47,11 @@ func TestStartSyncPairingCallsRemotePeerWithLocalDeviceID(t *testing.T) {
 		t.Fatalf("start sync pairing: %v", err)
 	}
 
-	if observedDeviceID != "dev_local_mac" {
-		t.Fatalf("expected local device id in remote request, got %q", observedDeviceID)
+	if observedStart.DeviceID != "dev_local_mac" {
+		t.Fatalf("expected local device id in remote request, got %#v", observedStart)
+	}
+	if observedStart.DisplayName == "" || observedStart.InitiatorBaseURL == "" {
+		t.Fatalf("expected local display name and baseURL in start request, got %#v", observedStart)
 	}
 	if started.BaseURL != remote.URL || started.RemoteDeviceID != "dev_remote_pc" || started.RemoteDisplayName != "mainPC" {
 		t.Fatalf("unexpected remote identity in response: %#v", started)
@@ -64,6 +67,7 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 		t.Fatalf("seed settings: %v", err)
 	}
 
+	var observedConfirm syncPairingConfirmRequest
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sync/identity":
@@ -76,6 +80,7 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				t.Fatalf("decode confirm request: %v", err)
 			}
+			observedConfirm = req
 			if req.SessionID != "sess_remote_1" || req.Code != "123456" {
 				t.Fatalf("unexpected confirm request: %#v", req)
 			}
@@ -95,6 +100,9 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 	}
 	if confirmed.RemoteDeviceID != "dev_remote_pc" || confirmed.RemoteDisplayName != "mainPC" || !confirmed.TokenSaved {
 		t.Fatalf("unexpected confirm response: %#v", confirmed)
+	}
+	if observedConfirm.InitiatorDeviceID != "dev_local_mac" || observedConfirm.InitiatorDisplayName == "" || observedConfirm.InitiatorBaseURL == "" {
+		t.Fatalf("expected local initiator fields in confirm request, got %#v", observedConfirm)
 	}
 
 	settings, err := store.Instance.LoadMap("settings")
