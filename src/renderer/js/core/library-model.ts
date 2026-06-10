@@ -3,6 +3,7 @@
  */
 
 import { state } from './state.js';
+import type { Song } from '../../types/domain.js';
 
 export function rebuildLibraryIndexes() {
     state.libraryById = new Map();
@@ -19,6 +20,94 @@ export function rebuildLibraryIndexes() {
             state.libraryByPath.set(song.path, song);
         }
     });
+}
+
+export function mergeSongsIntoLibrary(songs: Song[] = []) {
+    if (!Array.isArray(songs) || songs.length === 0) {
+        return false;
+    }
+
+    if (state.libraryByPath.size === 0 || state.libraryById.size === 0) {
+        rebuildLibraryIndexes();
+    }
+
+    let changed = false;
+    for (const newSong of songs) {
+        if (!newSong.id && newSong.path) {
+            newSong.id = newSong.path;
+        }
+
+        const existingSong = findExistingLibrarySong(newSong);
+        if (existingSong) {
+            Object.assign(existingSong, newSong);
+            if (newSong.syncAvailability === 'local') {
+                delete existingSong.syncSourceDeviceId;
+                delete existingSong.syncSourcePeerName;
+                delete existingSong.syncSourceTrackId;
+            }
+            changed = true;
+            continue;
+        }
+
+        state.library.push(newSong);
+        changed = true;
+    }
+
+    rebuildLibraryIndexes();
+    return changed;
+}
+
+function findExistingLibrarySong(newSong: Song) {
+    if (newSong.path) {
+        const byPath = state.libraryByPath.get(newSong.path);
+        if (byPath) {
+            return byPath;
+        }
+    }
+
+    const newKey = librarySongMatchKey(newSong);
+    if (!newKey) {
+        return null;
+    }
+    return state.library.find(existingSong => librarySongMatchKey(existingSong) === newKey) || null;
+}
+
+function librarySongMatchKey(song: Song) {
+    const explicitKey = normaliseSongText(song.syncMatchKey);
+    if (explicitKey) {
+        return `sync:${explicitKey}`;
+    }
+
+    let title = normaliseSongText(song.title);
+    const artist = normaliseSongText(song.artist);
+    const album = normaliseSongText(song.album);
+    if (!artist && !album && !title) {
+        title = normaliseSongText(songFileBaseName(song.path));
+    }
+    if (!artist && !album && !title) {
+        return '';
+    }
+    return `meta:${artist}|${album}|${title}|${songDurationSeconds(song.duration)}`;
+}
+
+function normaliseSongText(value: unknown) {
+    if (typeof value !== 'string') {
+        return '';
+    }
+    return value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function songDurationSeconds(value: unknown) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.round(numeric) : 0;
+}
+
+function songFileBaseName(path: unknown) {
+    if (typeof path !== 'string') {
+        return '';
+    }
+    const normalisedPath = path.replace(/\\/g, '/');
+    return normalisedPath.split('/').pop() || '';
 }
 
 export function getSongById(songId) {
