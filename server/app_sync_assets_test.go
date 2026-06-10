@@ -928,6 +928,87 @@ func TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary(t *testing.
 	}
 }
 
+func TestPullSyncLibraryAssetsSkipsRemoteTrackWhenLocalMatchExists(t *testing.T) {
+	newTempSyncStore(t)
+	localPath := filepath.Join(t.TempDir(), "local.flac")
+	if err := os.WriteFile(localPath, []byte("local-audio"), 0o644); err != nil {
+		t.Fatalf("seed local audio: %v", err)
+	}
+	if err := store.Instance.Save("settings", map[string]interface{}{
+		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+	}); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+	if err := store.Instance.Save("library", []map[string]interface{}{
+		{
+			"id":       "local-track-1",
+			"path":     localPath,
+			"title":    "Song",
+			"artist":   "Artist",
+			"album":    "Album",
+			"duration": 123.4,
+			"fileType": ".flac",
+		},
+	}); err != nil {
+		t.Fatalf("seed library: %v", err)
+	}
+
+	assetRequests := 0
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/sync/identity":
+			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "MacBook Air"})
+		case "/sync/library/snapshot":
+			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			writeJSON(w, syncLibrarySnapshotResponse{
+				Count: 1,
+				Tracks: []map[string]interface{}{
+					{
+						"id":       "remote-track-1",
+						"path":     "/Users/yuki/Music/remote.mp3",
+						"title":    "Song",
+						"artist":   "Artist",
+						"album":    "Album",
+						"duration": 123.4,
+						"fileType": ".mp3",
+					},
+				},
+			})
+		case "/sync/assets/remote-track-1/file":
+			assetRequests++
+			http.Error(w, "should not download duplicate local match", http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	result, err := NewApp().PullSyncLibraryAssets(remote.URL, 0)
+	if err != nil {
+		t.Fatalf("PullSyncLibraryAssets: %v", err)
+	}
+	if result.Downloaded != 0 || result.Skipped != 1 || result.Failed != 0 {
+		t.Fatalf("expected duplicate local match to be skipped, got %#v", result)
+	}
+	if assetRequests != 0 {
+		t.Fatalf("expected no asset download for duplicate local match, got %d", assetRequests)
+	}
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		t.Fatalf("load library: %v", err)
+	}
+	if len(library) != 1 {
+		t.Fatalf("expected local library to remain one track, got %#v", library)
+	}
+	remaining := library[0].(map[string]interface{})
+	if remaining["id"] != "local-track-1" || remaining["path"] != localPath {
+		t.Fatalf("unexpected local track after duplicate skip: %#v", remaining)
+	}
+}
+
 func TestSyncMissingArtworkFromPeerContinuesAfterTrackError(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("library", []map[string]interface{}{
