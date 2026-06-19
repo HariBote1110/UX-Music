@@ -14,6 +14,10 @@ export function AddYouTubeLink(arg1) {
   return window['go']['server']['App']['AddYouTubeLink'](arg1);
 }
 
+export function AnalyseLibraryAudioEmbeddings() {
+  return window['go']['server']['App']['AnalyseLibraryAudioEmbeddings']();
+}
+
 export function AudioGetCurrentDevice() {
   return window['go']['server']['App']['AudioGetCurrentDevice']();
 }
@@ -168,6 +172,10 @@ export function GetArtworkAsDataURL(arg1) {
 
 export function GetArtworksDir() {
   return window['go']['server']['App']['GetArtworksDir']();
+}
+
+export function GetAudioEmbedStatus() {
+  return window['go']['server']['App']['GetAudioEmbedStatus']();
 }
 
 export function GetLibraryForNormalize() {
@@ -356,6 +364,10 @@ export function SaveSettings(arg1) {
 
 export function ScanLibrary(arg1) {
   return window['go']['server']['App']['ScanLibrary'](arg1);
+}
+
+export function SearchTracksByMood(arg1, arg2) {
+  return window['go']['server']['App']['SearchTracksByMood'](arg1, arg2);
 }
 
 export function SelectAndChangeAlbumArtwork(arg1) {

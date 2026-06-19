@@ -5,6 +5,7 @@ import { setVisualizerFpsLimit } from '../features/player.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { initPlaybackSettings } from '../features/playback-manager.js';
+import { initAiEmbedSettings } from '../features/ai-embed-settings.js';
 import { musicApi, getWailsApp } from '../core/bridge.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
 import { updateListSpacer } from '../ui/ui.js';
@@ -622,6 +623,7 @@ function renderUxSyncPairingConfirm(actions: HTMLElement, peer: SyncPeer, starte
 export function initSettings() {
     // Initialise playback settings from storage
     initPlaybackSettings();
+    initAiEmbedSettings();
 
     // 起動時にユーザーが選択したUIテーマを復元する
     void loadRendererSettings().then(settings => {

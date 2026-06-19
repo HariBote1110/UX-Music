@@ -260,6 +260,41 @@
                         <button id="manage-devices-btn" class="settings-button">表示するデバイスを管理...</button>
                     </div>
                 </div>
+                <div class="setting-group" id="ai-audio-embed-group">
+                    <div class="setting-item">
+                        <h4>AI 音声解析 (Beta)</h4>
+                        <p class="setting-description">
+                            ライブラリの曲を CLAP で解析して、テキストでムード検索できるようにします (例: 「夜ドライブ」「切ない」)。
+                            初回はモデルロード ~5秒、1曲あたり ~2秒。Mac のみ。
+                        </p>
+                        <p id="ai-audio-embed-status" class="setting-description" aria-live="polite">確認中…</p>
+                        <button id="ai-audio-embed-analyse-btn" type="button" class="settings-button">ライブラリを解析</button>
+                        <div id="ai-audio-embed-progress-wrap" class="hidden" style="margin-top: 8px;">
+                            <div id="ai-audio-embed-progress-bar"
+                                style="height: 8px; background: #2a2a2a; border-radius: 4px; overflow: hidden;">
+                                <div id="ai-audio-embed-progress-fill"
+                                    style="height: 100%; width: 0%; background: #4a9eff; transition: width 0.2s;">
+                                </div>
+                            </div>
+                            <p id="ai-audio-embed-progress-text" class="setting-description"
+                                style="margin-top: 4px;"></p>
+                        </div>
+
+                        <div style="margin-top: 16px;">
+                            <p class="setting-description">ムードで検索:</p>
+                            <div style="display: flex; gap: 8px; margin-top: 4px;">
+                                <input type="text" id="ai-audio-embed-search-input"
+                                    placeholder="例: 夜ドライブ / 切ない J-POP"
+                                    style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; outline: none;">
+                                <button id="ai-audio-embed-search-btn" type="button"
+                                    class="settings-button">検索</button>
+                            </div>
+                            <ul id="ai-audio-embed-search-results"
+                                style="list-style: none; padding: 0; margin-top: 8px; max-height: 280px; overflow-y: auto;">
+                            </ul>
+                        </div>
+                    </div>
+                </div>
                 <div class="setting-group" id="wear-mobile-pairing-group">
                     <div class="setting-item">
                         <h4>モバイルアプリ連携（QR）</h4>

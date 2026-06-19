@@ -469,6 +469,58 @@ export namespace scanner {
 
 export namespace server {
 	
+	export class AudioEmbedAnalyseResponse {
+	    considered: number;
+	    skipped: number;
+	    analysed: number;
+	    failed: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AudioEmbedAnalyseResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.considered = source["considered"];
+	        this.skipped = source["skipped"];
+	        this.analysed = source["analysed"];
+	        this.failed = source["failed"];
+	        this.error = source["error"];
+	    }
+	}
+	export class AudioEmbedSearchHit {
+	    trackId: string;
+	    path: string;
+	    score: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AudioEmbedSearchHit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.trackId = source["trackId"];
+	        this.path = source["path"];
+	        this.score = source["score"];
+	    }
+	}
+	export class AudioEmbedStatus {
+	    stored: number;
+	    version: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AudioEmbedStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stored = source["stored"];
+	        this.version = source["version"];
+	        this.error = source["error"];
+	    }
+	}
 	export class AudioEqualizerSettings {
 	    active: boolean;
 	    preamp: number;
