@@ -70,41 +70,21 @@ Apple Music / Spotify の「アーティスト特集」「ムードプレイリ�
 
 ## 5. データモデル
 
-### 5.1 新規テーブル (案)
+### 5.1 ストレージ方針
 
-```sql
--- 音声埋め込み
-CREATE TABLE track_audio_embeddings (
-  track_id TEXT PRIMARY KEY,
-  clap_vector BLOB NOT NULL,          -- 512次元 float32
-  bpm REAL,
-  music_key TEXT,
-  energy REAL,
-  analysed_at INTEGER NOT NULL,
-  analyser_version TEXT NOT NULL
-);
+本プロジェクトには SQLite が導入されていないため、既存の `internal/store/` (JSON ファイル KV) と同様の **依存ゼロのファイルベース** 方式を採用する。SQLite 化は将来 sqlite-vec などを導入するときに改めて検討する。
 
--- VocaDB 等の外部メタデータ
-CREATE TABLE track_external_metadata (
-  track_id TEXT PRIMARY KEY,
-  vocadb_song_id INTEGER,
-  vocadb_artist_ids TEXT,             -- JSON array
-  source_tags TEXT,                   -- JSON
-  fetched_at INTEGER
-);
+#### 音声埋め込み (`internal/audioembed.Store`)
+- `<userdata>/audio_embeddings_index.json` — `{dim, entries: {track_id: {row, version, analysed_at_unix}}}`
+- `<userdata>/audio_embeddings.bin` — 512×float32 を行ごとに連結 (1 行 = 2KB)。row R はバイトオフセット `R * 2048`
+- 再解析時は **新しい行を末尾に追加**し index を貼り替え (旧行は dead space、将来 compaction で回収)
+- BPM/key/energy は Phase 2 以降で別ファイル (`audio_features.json` 等) として並行追加
 
--- 生成された特集
-CREATE TABLE generated_features (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  description TEXT NOT NULL,
-  query TEXT NOT NULL,                -- 元の指示
-  track_ids TEXT NOT NULL,            -- JSON ordered array
-  track_comments TEXT,                -- JSON {track_id: comment}
-  model_id TEXT NOT NULL,             -- "gemma-e2b-q4" 等
-  created_at INTEGER NOT NULL
-);
-```
+#### VocaDB 等の外部メタデータ (Phase 2)
+- `<userdata>/external_metadata.json` — `{track_id: {vocadb_song_id, vocadb_artist_ids, source_tags, fetched_at}}`
+
+#### 生成された特集 (Phase 3)
+- `<userdata>/generated_features.json` — 特集オブジェクトの配列または map
 
 ## 6. 段階的実装計画 (フェーズ分割)
 
