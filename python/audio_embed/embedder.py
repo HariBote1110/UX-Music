@@ -1,10 +1,13 @@
 """Core audio-embedding logic.
 
-In dummy mode (`UX_MUSIC_AUDIO_EMBED_DUMMY=1`), deterministic random vectors
-are returned without loading any model — used for fast tests and the initial
-Go-side wiring before CLAP is plugged in.
+Two backends:
+  * dummy  — `UX_MUSIC_AUDIO_EMBED_DUMMY=1`: path-derived deterministic vectors,
+             no model load. Used for fast tests and Go-side wiring.
+  * clap   — laion-clap `music_audioset_epoch_15_esc_90.14.pt` (HTSAT-tiny +
+             feature fusion). Lazy-loaded on first request.
 
-The real CLAP path will be added in the next TDD step.
+Each sidecar invocation is a separate process, so the model is loaded at most
+once per invocation. Callers should therefore batch via {songPaths: [...]}.
 """
 
 from __future__ import annotations
@@ -16,9 +19,12 @@ from typing import Callable, List, Optional
 
 EMBED_DIM = 512
 DUMMY_VERSION = "audio-embed-v0-dummy"
-REAL_VERSION_PLACEHOLDER = "audio-embed-v0-clap"
+CLAP_VERSION = "audio-embed-v0-clap-music-audioset-htsat-tiny"
 
 ProgressFn = Callable[[str, float], None]
+
+# Lazy singletons. None until first real-mode request loads them.
+_clap_model = None  # type: ignore[var-annotated]
 
 
 def _is_dummy() -> bool:
@@ -26,12 +32,7 @@ def _is_dummy() -> bool:
 
 
 def _dummy_vector(song_path: str) -> List[float]:
-    """Path-derived, reproducible 512-dim vector.
-
-    Using SHA-256 of the path as the RNG seed gives us:
-      - same path → same vector (stable across runs)
-      - different paths → different vectors (separable in tests)
-    """
+    """Path-derived, reproducible 512-dim vector for tests."""
     digest = hashlib.sha256(song_path.encode("utf-8")).digest()
     seed = int.from_bytes(digest[:8], "big", signed=False)
     rng = random.Random(seed)
@@ -39,7 +40,6 @@ def _dummy_vector(song_path: str) -> List[float]:
 
 
 def _normalise_request(req: dict) -> List[str]:
-    """Accept either {songPath} or {songPaths: [...]}. Empty → error upstream."""
     if "songPaths" in req:
         paths = req.get("songPaths")
         if not isinstance(paths, list) or not paths:
@@ -51,6 +51,45 @@ def _normalise_request(req: dict) -> List[str]:
             raise ValueError("songPath must be a non-empty string")
         return [path]
     raise ValueError("request must contain songPath or songPaths")
+
+
+def _load_clap():
+    """Load the CLAP model on first use. Heavy: ~5s after checkpoint download."""
+    global _clap_model
+    if _clap_model is not None:
+        return _clap_model
+    import laion_clap  # imported lazily to keep dummy mode dependency-free
+
+    model = laion_clap.CLAP_Module(enable_fusion=True, amodel="HTSAT-tiny")
+    model.load_ckpt(model_id=3)  # music_audioset_epoch_15_esc_90.14.pt
+    _clap_model = model
+    return model
+
+
+def _clap_embed_batch(paths: List[str], emit: Optional[ProgressFn]) -> List[List[float]]:
+    if emit is not None:
+        emit("loading-model", 0.0)
+    model = _load_clap()
+    if emit is not None:
+        emit("encoding-audio", 10.0)
+    # laion-clap reads files itself (librosa under the hood) and returns
+    # np.ndarray of shape (N, 512).
+    vectors = model.get_audio_embedding_from_filelist(x=paths, use_tensor=False)
+    if emit is not None:
+        emit("encoding-audio", 100.0)
+    return [[float(x) for x in row] for row in vectors]
+
+
+def _dummy_embed_batch(paths: List[str], emit: Optional[ProgressFn]) -> List[List[float]]:
+    out: List[List[float]] = []
+    total = len(paths)
+    for idx, path in enumerate(paths):
+        if emit is not None:
+            emit("dummy-embed", (idx / max(total, 1)) * 100.0)
+        out.append(_dummy_vector(path))
+    if emit is not None:
+        emit("dummy-embed", 100.0)
+    return out
 
 
 def embed_request(req: dict, emit: Optional[ProgressFn] = None) -> dict:
@@ -67,23 +106,20 @@ def embed_request(req: dict, emit: Optional[ProgressFn] = None) -> dict:
         return {"success": False, "error": str(exc)}
 
     dummy = _is_dummy()
-    version = DUMMY_VERSION if dummy else REAL_VERSION_PLACEHOLDER
+    try:
+        if dummy:
+            vectors = _dummy_embed_batch(paths, emit)
+            version = DUMMY_VERSION
+        else:
+            vectors = _clap_embed_batch(paths, emit)
+            version = CLAP_VERSION
+    except FileNotFoundError as exc:
+        return {"success": False, "error": f"audio not found: {exc}"}
+    except Exception as exc:  # noqa: BLE001 — surface any model/runtime error to Go
+        return {"success": False, "error": f"{type(exc).__name__}: {exc}"}
 
-    if not dummy:
-        return {
-            "success": False,
-            "error": "real CLAP backend not yet implemented; set UX_MUSIC_AUDIO_EMBED_DUMMY=1",
-        }
-
-    total = len(paths)
-    embeddings: List[dict] = []
-    for idx, path in enumerate(paths):
-        if emit is not None:
-            emit("dummy-embed", (idx / max(total, 1)) * 100.0)
-        embeddings.append(
-            {"songPath": path, "vector": _dummy_vector(path), "dim": EMBED_DIM}
-        )
-    if emit is not None:
-        emit("dummy-embed", 100.0)
-
+    embeddings = [
+        {"songPath": path, "vector": vec, "dim": EMBED_DIM}
+        for path, vec in zip(paths, vectors)
+    ]
     return {"success": True, "version": version, "embeddings": embeddings}
