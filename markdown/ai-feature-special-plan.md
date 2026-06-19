@@ -17,7 +17,7 @@ Apple Music / Spotify の「アーティスト特集」「ムードプレイリ�
 - ライブラリ内全曲の音声埋め込み生成 (CLAP)
 - VocaDB によるメタデータ補完
 - アーティスト特集 / ムード特集の生成 UI
-- ローカル LLM (Gemma 系 E2B) による紹介文生成
+- ローカル LLM (**Gemma 4 E2B**, MLX-LM) による紹介文生成
 - 特集の保存・再生・編集
 
 ### 含まないもの (将来検討)
@@ -52,7 +52,7 @@ Apple Music / Spotify の「アーティスト特集」「ムードプレイリ�
   ② 類似曲拡張: CLAP 埋め込みでコサイン類似度 top-N
   ③ 曲順最適化: BPM/energy で盛り上がりカーブ設計
   ④ コンテキスト構築: Wikipedia / VocaDB 抜粋 + ①②③ をプロンプトに整形
-  ⑤ Gemma E2B 推論: タイトル + 紹介文 + 曲順物語 + 各曲コメント
+  ⑤ Gemma 4 E2B 推論: タイトル + 紹介文 + 曲順物語 + 各曲コメント
   ↓
   特集オブジェクト (JSON) として保存 → UI 表示
 ```
@@ -64,7 +64,8 @@ Apple Music / Spotify の「アーティスト特集」「ムードプレイリ�
 | 音声埋め込み | **LAION-CLAP** | テキスト⇔音声を同一空間に埋め込める。「夜ドライブ系」のようなテキストクエリで類似検索が可能 |
 | 音声特徴量 | **Essentia** (or librosa) | BPM/key/energy 抽出の定番。軽量・実績豊富 |
 | メタデータソース | **VocaDB / UtaiteDB / TouhouDB API** + Wikipedia | ユーザーが同人/VocaDB圏を聴くため必須。Wikipedia は事実性担保の RAG ソース |
-| LLM | **Gemma 系 E2B (MatFormer)** | 日本語会話品質が実用域。Mac mini M4 32GB で快適動作。iPhone Air でも動作する将来性 |
+| LLM (推論) | **Gemma 4 E2B GGUF** via `llama-server` (llama.cpp) | 推論は llama.cpp の HTTP サーバを別プロセス起動し Go から叩く。Ollama より高速・配布性も良い。Gemma 4 E2B GGUF 配布元: `unsloth/gemma-4-E2B-it-GGUF` / `google/gemma-4-E2B-it-qat-q4_0-gguf` |
+| LLM (将来 LoRA 学習) | MLX-LM | Phase 5 で蒸留 SFT/DPO する場合のみ。Mac mini M4 32GB が主戦場 |
 | LLM 実行 | **MLX-LM** | Apple Silicon ネイティブ最適化。学習 (LoRA) と推論で同一エコシステム |
 | ベクトル DB | **SQLite + sqlite-vec** | 既存 DB に統合可能。専用 DB を立てない |
 
@@ -115,10 +116,12 @@ Apple Music / Spotify の「アーティスト特集」「ムードプレイリ�
 
 **完了基準**: 主要アーティストおよび VocaDB 圏アーティストの 80% 以上で外部メタデータが取得できる。
 
-### Phase 3: Gemma E2B プロトタイプ (素のモデルで特集生成)
-**目的**: ファインチューンなしの素の Gemma E2B が、構造化コンテキストを与えられた状態でどの程度の品質を出せるかを定量評価する。**ここでの評価結果が、後続の蒸留/RL 着手判断の根拠になる**。
+### Phase 3: Gemma 4 E2B プロトタイプ (素のモデルで特集生成)
+**目的**: ファインチューンなしの素の Gemma 4 E2B が、構造化コンテキストを与えられた状態でどの程度の品質を出せるかを定量評価する。**ここでの評価結果が、後続の蒸留/RL 着手判断の根拠になる**。
 
-- [ ] MLX-LM での Gemma E2B 推論セットアップ
+- [ ] llama.cpp `llama-server` 同梱と Gemma 4 E2B GGUF (Q4_K_M) ダウンロードのスクリプト化
+- [ ] Go から `llama-server` をライフサイクル管理 (起動・終了・ヘルスチェック)
+- [ ] HTTP `/completion` クライアントを Go 側に実装 (Ollama 互換にしておく)
 - [ ] Go ↔ MLX 間の橋渡し (子プロセス or HTTP)
 - [ ] プロンプトテンプレート設計 (アーティスト特集用 / ムード特集用)
 - [ ] 特集生成 API: 入力 (指示文) → 出力 (特集 JSON)
@@ -147,7 +150,7 @@ Phase 3 の評価結果に応じて分岐:
 ### Phase 5 (条件付き): 蒸留 SFT
 Phase 4 で「文体改善が必要」と判定された場合のみ実施。
 
-- [ ] 教師モデル選定 (Gemma 大型 / Qwen2.5-72B / Claude API 少量混成)
+- [ ] 教師モデル選定 (Gemma 4 31B / Qwen2.5-72B / Claude API 少量混成)
 - [ ] 蒸留データ生成パイプライン
   - 入力: アーティスト名 + Wikipedia 抜粋 + 代表曲リスト
   - 出力: タイトル案 3 / 紹介文 200 字 / 曲コメント / 気分タグ
@@ -168,10 +171,15 @@ Phase 4 で「文体改善が必要」と判定された場合のみ実施。
 
 | マシン | 役割 |
 |---|---|
-| **Mac mini M4 32GB** | LoRA 学習、推論ベンチ、評価ループ。本案件の主戦場 |
+| **Mac mini M4 32GB** | LoRA 学習 (MLX-LM)、推論ベンチ、評価ループ。本案件の主戦場 |
 | **RTX 3070 Ti** | torch 系での予備実験、データ生成バッチ |
 | **Colab (GCP クレジット)** | A100 が必要な大型教師での蒸留データ生成のみ。クレジット温存 |
-| **ユーザーの Mac (本番)** | CLAP + Gemma E2B 推論のみ |
+| **ユーザーの Mac (本番)** | CLAP 解析 (Python サイドカー) + Gemma 4 E2B 推論 (`llama-server` 別プロセス) |
+
+### スタック選択の根拠 (2026-06-19 時点)
+- **当初想定**: MLX-LM/mlx-vlm で `mlx-community/gemma-4-e2b-it-4bit` を直接ロード
+- **実測の問題**: Gemma 4 E2B (multimodal Any-to-Any) は `language_model.model.layers.*.self_attn.{k_norm,k_proj,v_proj}` 等のレイヤーが mlx-vlm 0.6.3 の Gemma 4 実装と一致せず weights ロードに失敗 (`140 parameters not in model`)
+- **判断**: MLX 側のバグ修正を待つよりも、llama.cpp が既に Gemma 4 系を安定サポートしているため runtime はそちらに切替。MLX は将来の LoRA 学習用に温存 (`[gemma-special]` extras は残置)
 
 ## 8. リスクと対策
 
@@ -179,7 +187,7 @@ Phase 4 で「文体改善が必要」と判定された場合のみ実施。
 |---|---|
 | CLAP の Go 連携が煩雑 | Python サイドカーサービスを別プロセスで起動し、HTTP/Unix socket で通信。既存 Wails 構成を汚さない |
 | VocaDB API レート制限 | アグレッシブにキャッシュ、初回フル解析は夜間バッチ想定 |
-| Gemma E2B 推論レイテンシ | 特集生成は非同期、生成中はプログレス表示。ストリーミングで体感改善 |
+| Gemma 4 E2B 推論レイテンシ | 特集生成は非同期、生成中はプログレス表示。ストリーミングで体感改善 |
 | ライブラリ巨大ユーザーの初回解析時間 | バックグラウンド処理、進捗可視化、中断再開対応 |
 | 教師 LLM のハルシネーション転写 (Phase 5) | Wikipedia 原文必須、評価セットで検証してから学習 |
 | RL 着手の誘惑 | **明示的に Phase 5 まで RL なし**。SFT → DPO で頭打ちになるまで RL は封印 |
@@ -189,8 +197,8 @@ Phase 4 で「文体改善が必要」と判定された場合のみ実施。
 評価セットは Phase 3 着手前に作る。後付けは絶対にしない (バイアス混入)。
 
 - アーティスト特集 30 件
-  - メジャー J-POP 20 (Gemma が素で知っているはずの帯)
-  - VocaDB / 同人 10 (Gemma が知らないが、メタデータで救うべき帯)
+  - メジャー J-POP 20 (Gemma 4 E2B が素で知っているはずの帯)
+  - VocaDB / 同人 10 (Gemma 4 E2B が知らないが、メタデータで救うべき帯)
 - ムード特集 20 件
   - 明示的 (「夜ドライブ」「切ない」「疾走感」) 10
   - 抽象的 (「初夏の午後」「終電前」) 10
@@ -201,7 +209,7 @@ Phase 4 で「文体改善が必要」と判定された場合のみ実施。
 
 1. **今すぐ**: Phase 1 (CLAP 基盤) — 単体で体験価値が出る、後段の土台
 2. Phase 2 (メタデータ) — Phase 3 の事実性確保の前提
-3. Phase 3 (素の Gemma E2B) — ここでまず評価。多くの場合 Phase 4 で十分
+3. Phase 3 (素の Gemma 4 E2B) — ここでまず評価。多くの場合 Phase 4 で十分。品質不足時は E4B-4bit に昇格
 4. Phase 4: 評価結果次第で分岐
 5. Phase 5 (蒸留) は「文体改善が必要」と判定されたときだけ
 6. RL は Phase 5 が頭打ちになるまで封印
