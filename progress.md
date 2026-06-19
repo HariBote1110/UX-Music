@@ -1,3 +1,51 @@
+## 2026-06-19 — Phase 3 (Gemma 4 E2B): エンドツーエンドのムード特集生成が動作
+
+### 実施内容
+- LLM 推論スタックを **MLX-LM から llama.cpp (llama-server)** に切替。理由は
+  `mlx-community/gemma-4-e2b-it-4bit` が mlx-vlm 0.6.3 の Gemma 4 実装と weights
+  が一致せず "140 parameters not in model" でロード失敗したため。MLX は将来の
+  LoRA 学習用に温存 (pyproject `[gemma-special]` 残置)。
+- Gemma 4 E2B QAT GGUF (`google/gemma-4-E2B-it-qat-q4_0-gguf`, 3.1GB) を
+  `~/.cache/ux-music/models/` に DL し、llama-server で **44.7 tok/s の日本語生成** を確認。
+- `internal/llamasrv/` 新設: HTTP クライアント (`/completion` + Gemma chat
+  テンプレート) + 子プロセス管理 (Start 90s timeout / SIGTERM→SIGKILL escalation)。
+  ユニットテスト 11/11 PASS。
+- `internal/special/` 新設: 候補曲を**インデックス参照** ([1] [2] ...) で
+  Gemma に渡し、JSON 出力を強制。範囲外/重複は drop。
+  ユニットテスト 5/5 PASS。
+- Wails App: `GenerateMoodSpecial(mood, topK)` を新設。CLAP 候補抽出 →
+  library JSON から title/artist/album を join → llama-server 遅延起動 → 特集 JSON 生成。
+- `main.go` に `OnShutdown` を配線し、アプリ終了時に llama-server を確実に停止。
+- 設定 UI に「Gemma 4 E2B で特集化」ボタン追加。検索 → 結果リスト → 特集ボタン
+  → 生成結果 (タイトル/紹介文/曲順/コメント) のフローが完成。
+
+### 選定理由・判断の根拠
+- **llama.cpp 採用の根拠**: Ollama より高速かつ単一バイナリで配布性が良く、
+  既に Gemma 4 を安定サポート。MLX のバグ修正待ちは Phase 3 完了をブロック
+  するため切替を即決した。
+- **`/completion` + 手動 Gemma テンプレート**: llama-server 9700 の
+  `/v1/chat/completions` は `--jinja` の有無に関わらず Gemma 4 で空 content を
+  返す不具合 (300 tokens 生成されているのに content 長 0)。`/completion` は
+  英日双方で正常動作するため、Go 側もこちらで固定。
+- **インデックス参照プロンプト**: Gemma に long path を出力させるとハルシ
+  ネーション (typo, 存在しないファイル) のリスクが高い。`[1] タイトル / アーティスト`
+  形式にして番号で参照させ、Go 側で番号→TrackID マップ。範囲外はサイレントに
+  drop することで誤参照に対して堅牢。
+- **遅延起動 vs 常駐**: 初回起動は 10〜20s 待ちだが、特集生成は数秒〜10秒で
+  完了する短い操作。常駐させると 1.8GB を恒常占有するため、必要な時だけ
+  起動する設計を採用。
+
+### 残課題・次のステップ
+- 実際にライブラリで CLAP 解析 → 検索 → 特集生成のフルパス E2E 動作確認
+  (実曲データで Gemma の品質を 50 件評価セットで定量化)。
+- Phase 2 (VocaDB / Wikipedia メタデータ補完) — 同人圏のアーティスト情報を
+  プロンプトに混ぜないと「未知アーティスト」で Gemma がフリーズ気味になる可能性。
+- Phase 4 (評価結果次第): 文体が単調なら蒸留 SFT、選曲がブレるなら CLAP 側
+  ロジック改善 (LLM 責任ではない)。
+- 配布時: llama.cpp バイナリの `build/bin/` 同梱と GGUF DL UI 化。
+
+---
+
 ## 2026-06-19 — Phase 1 完了: CLAP 埋め込み基盤 + 検索 API
 
 ### 実施内容
