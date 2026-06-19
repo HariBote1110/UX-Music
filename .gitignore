@@ -21,3 +21,5 @@ python/.venv/
 .pytest_cache/
 python/.pytest_cache/
 /swift
+.claude/
+.codex/
