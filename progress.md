@@ -1,3 +1,34 @@
+## 2026-06-19 — Phase 1 完了: CLAP 埋め込み基盤 + 検索 API
+
+### 実施内容
+- Python サイドカー (`python/audio_embed/`) を新設。ダミーモード骨組み → 実 CLAP (laion-clap `music_audioset_epoch_15_esc_90.14.pt`, HTSAT-tiny + fusion) を遅延ロードして 512次元 float32 を返す実装まで完了。
+- `python/audio_embed/embedder.py` にテキスト埋め込みパスを追加（同一モデルの text encoder）。Request に `text`/`texts` を受け、`textEmbeddings` を返却。
+- Go 側 `internal/audioembed/` を新設し、以下を実装。
+  - `store.go`: JSON index + 連結 float32 バイナリの 2 ファイル構成で永続化。再解析は末尾 append + index 貼り替え（旧行は dead space）。
+  - `sidecar.go`: Python サイドカー呼び出し (stdin/stdout JSON、stderr 進捗パース)、venv 自動解決。
+  - `analyser.go`: バッチ + 増分。`Needs(version)` で skip 判定、進捗コールバック。
+  - `search.go`: コサイン類似度ランキング、テキストクエリの埋め込み→ストア線形検索。
+- Wails 公開 API (`server/app_audio_embed.go`) を追加。
+  - `AnalyseLibraryAudioEmbeddings()` — ライブラリ全曲を解析（Wails event `audio-embed-progress` で進捗通知）。
+  - `SearchTracksByMood(query, topK)` — テキストで類似曲ランキング。
+  - `GetAudioEmbedStatus()` — 保存件数と version 取得。
+- TDD でユニットテスト 21 件 (audioembed パッケージ単独) + 既存全 Go テスト PASS、Python ダミー/実 CLAP 両方の smoke PASS。
+
+### 選定理由・判断の根拠
+- **SQLite ではなくファイル 2 個構成**: 本プロジェクトに SQLite は未導入で、依存追加を Phase 1 のスコープに入れたくなかった。10 万曲でも約 200MB、線形検索ミリ秒級で当面十分。将来 sqlite-vec/FAISS に差し替える際もインターフェース変更は最小。
+- **CLAP テキスト埋め込みを同一サイドカーに同居**: 別プロセス立てるとモデルロードが二重化する（5s×2）。Request に text フィールドを追加するだけでよいので 1 プロセスに集約。
+- **AnalyseSongs に SidecarRunner abstraction**: production は RunSidecar クロージャ、テストは stub。サイドカー実行を含まない高速な単体テストが可能になった。
+- **version 文字列での差分検出**: モデル/前処理の改善ごとに `CurrentAudioEmbedVersion` をバンプすれば全曲が自動的に再解析対象になる。タイムスタンプベースより堅牢。
+- **同期実行 (await) + Wails event 進捗**: Phase 1 では非同期キャンセル機構を入れず、フロントから await で十分。Phase 2 以降の必要性次第で再考。
+
+### 残課題・次のステップ
+- Phase 1 残り: Wails 経由で実際にライブラリを解析して動作確認（実曲を CLAP に通すフルパス E2E）。
+- Phase 2: VocaDB / Wikipedia メタデータ補完（事実性 RAG の前提）。
+- Phase 3: Gemma E2B プロトタイプ着手前に、評価セット 50 件を作成。
+- ストア圧縮: 再解析で生まれる dead row の compaction を別タスク化。
+
+---
+
 ## 2026-06-19 — AI 特集機能 計画策定とブランチ作成
 
 ### 実施内容

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/yuki/.agents/skills/agmsg/scripts/session-start.sh' 'claude-code' '/Users/yuki/GitHub/UX-Music'"
+          }
+        ]
+      }
+    ]
+  }
+}

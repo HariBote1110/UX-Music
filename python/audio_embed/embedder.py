@@ -39,7 +39,7 @@ def _dummy_vector(song_path: str) -> List[float]:
     return [rng.uniform(-1.0, 1.0) for _ in range(EMBED_DIM)]
 
 
-def _normalise_request(req: dict) -> List[str]:
+def _normalise_audio_request(req: dict) -> List[str]:
     if "songPaths" in req:
         paths = req.get("songPaths")
         if not isinstance(paths, list) or not paths:
@@ -50,7 +50,21 @@ def _normalise_request(req: dict) -> List[str]:
         if not isinstance(path, str) or not path:
             raise ValueError("songPath must be a non-empty string")
         return [path]
-    raise ValueError("request must contain songPath or songPaths")
+    return []
+
+
+def _normalise_text_request(req: dict) -> List[str]:
+    if "texts" in req:
+        texts = req.get("texts")
+        if not isinstance(texts, list) or not texts:
+            raise ValueError("texts must be a non-empty list")
+        return [str(t) for t in texts]
+    if "text" in req:
+        text = req.get("text")
+        if not isinstance(text, str) or not text:
+            raise ValueError("text must be a non-empty string")
+        return [text]
+    return []
 
 
 def _load_clap():
@@ -80,46 +94,71 @@ def _clap_embed_batch(paths: List[str], emit: Optional[ProgressFn]) -> List[List
     return [[float(x) for x in row] for row in vectors]
 
 
-def _dummy_embed_batch(paths: List[str], emit: Optional[ProgressFn]) -> List[List[float]]:
-    out: List[List[float]] = []
-    total = len(paths)
-    for idx, path in enumerate(paths):
-        if emit is not None:
-            emit("dummy-embed", (idx / max(total, 1)) * 100.0)
-        out.append(_dummy_vector(path))
+def _clap_embed_texts(texts: List[str], emit: Optional[ProgressFn]) -> List[List[float]]:
     if emit is not None:
-        emit("dummy-embed", 100.0)
+        emit("loading-model", 0.0)
+    model = _load_clap()
+    if emit is not None:
+        emit("encoding-text", 10.0)
+    vectors = model.get_text_embedding(texts, use_tensor=False)
+    if emit is not None:
+        emit("encoding-text", 100.0)
+    return [[float(x) for x in row] for row in vectors]
+
+
+def _dummy_embed_batch(items: List[str], emit: Optional[ProgressFn], stage: str = "dummy-embed") -> List[List[float]]:
+    out: List[List[float]] = []
+    total = len(items)
+    for idx, item in enumerate(items):
+        if emit is not None:
+            emit(stage, (idx / max(total, 1)) * 100.0)
+        out.append(_dummy_vector(item))
+    if emit is not None:
+        emit(stage, 100.0)
     return out
 
 
 def embed_request(req: dict, emit: Optional[ProgressFn] = None) -> dict:
     """Process an embedding request and return the result dict.
 
-    Result shape (success):
-      {"success": True, "version": "...", "embeddings": [
-          {"songPath": "...", "vector": [...512 floats...], "dim": 512}, ...
-      ]}
+    Audio mode (input: songPath / songPaths) → {"embeddings": [...]}
+    Text mode  (input: text / texts)         → {"textEmbeddings": [...]}
     """
     try:
-        paths = _normalise_request(req)
+        paths = _normalise_audio_request(req)
+        texts = _normalise_text_request(req)
     except ValueError as exc:
         return {"success": False, "error": str(exc)}
 
+    if not paths and not texts:
+        return {"success": False, "error": "request must contain songPath(s) or text(s)"}
+
     dummy = _is_dummy()
+    version = DUMMY_VERSION if dummy else CLAP_VERSION
+
     try:
-        if dummy:
-            vectors = _dummy_embed_batch(paths, emit)
-            version = DUMMY_VERSION
-        else:
-            vectors = _clap_embed_batch(paths, emit)
-            version = CLAP_VERSION
+        audio_vecs = (
+            _dummy_embed_batch(paths, emit, "dummy-audio") if dummy
+            else _clap_embed_batch(paths, emit)
+        ) if paths else []
+        text_vecs = (
+            _dummy_embed_batch(texts, emit, "dummy-text") if dummy
+            else _clap_embed_texts(texts, emit)
+        ) if texts else []
     except FileNotFoundError as exc:
         return {"success": False, "error": f"audio not found: {exc}"}
-    except Exception as exc:  # noqa: BLE001 — surface any model/runtime error to Go
+    except Exception as exc:  # noqa: BLE001 — surface model/runtime error to Go
         return {"success": False, "error": f"{type(exc).__name__}: {exc}"}
 
-    embeddings = [
-        {"songPath": path, "vector": vec, "dim": EMBED_DIM}
-        for path, vec in zip(paths, vectors)
-    ]
-    return {"success": True, "version": version, "embeddings": embeddings}
+    result: dict = {"success": True, "version": version}
+    if paths:
+        result["embeddings"] = [
+            {"songPath": path, "vector": vec, "dim": EMBED_DIM}
+            for path, vec in zip(paths, audio_vecs)
+        ]
+    if texts:
+        result["textEmbeddings"] = [
+            {"text": text, "vector": vec, "dim": EMBED_DIM}
+            for text, vec in zip(texts, text_vecs)
+        ]
+    return result

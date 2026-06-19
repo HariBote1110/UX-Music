@@ -15,27 +15,37 @@ import (
 )
 
 // Request is the JSON payload sent to `python -m audio_embed --request -`.
-// Either SongPath or SongPaths must be set; SongPaths takes precedence when both
-// are present.
+// Audio mode: set SongPath or SongPaths. Text mode: set Text or Texts.
+// Both modes may be sent in one request; the result populates the
+// corresponding fields.
 type Request struct {
 	SongPath  string   `json:"songPath,omitempty"`
 	SongPaths []string `json:"songPaths,omitempty"`
+	Text      string   `json:"text,omitempty"`
+	Texts     []string `json:"texts,omitempty"`
 }
 
 // SidecarEmbedding is one item in the sidecar Result.Embeddings slice.
-// (Distinct from the disk-store Embedding which carries Version/AnalysedAt.)
 type SidecarEmbedding struct {
 	SongPath string    `json:"songPath"`
 	Vector   []float32 `json:"vector"`
 	Dim      int       `json:"dim"`
 }
 
+// SidecarTextEmbedding is one item in Result.TextEmbeddings.
+type SidecarTextEmbedding struct {
+	Text   string    `json:"text"`
+	Vector []float32 `json:"vector"`
+	Dim    int       `json:"dim"`
+}
+
 // Result is the JSON result returned on the sidecar's stdout.
 type Result struct {
-	Success    bool               `json:"success"`
-	Version    string             `json:"version,omitempty"`
-	Embeddings []SidecarEmbedding `json:"embeddings,omitempty"`
-	Error      string             `json:"error,omitempty"`
+	Success        bool                   `json:"success"`
+	Version        string                 `json:"version,omitempty"`
+	Embeddings     []SidecarEmbedding     `json:"embeddings,omitempty"`
+	TextEmbeddings []SidecarTextEmbedding `json:"textEmbeddings,omitempty"`
+	Error          string                 `json:"error,omitempty"`
 }
 
 // ProgressSink receives stderr JSON progress lines: {"stage":"","percent":0-100}.
