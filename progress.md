@@ -1,3 +1,25 @@
+## 2026-06-19 — AI 特集機能 計画策定とブランチ作成
+
+### 実施内容
+- AI による「アーティスト特集」「ムード特集」機能（Apple Music/Spotify 風）のオンデバイス実装計画を策定し、`markdown/ai-feature-special-plan.md` に保存した。
+- 既存 `lyrics-sync-test` 上の Wear/Mobile リファクタを 1 コミットにまとめてクローズし、新ブランチ `ai-feature-special` を作成した。
+- Phase 1 (CLAP 埋め込み基盤) のサブタスクを TaskCreate で 8 件登録した。
+
+### 選定理由・判断の根拠
+- **モデル**: Gemma 系 E2B (MatFormer) を採用。日本語会話品質が実用域で、Mac mini M4 32GB および将来の iPhone Air にも展開可能。SLM 自作は GPU コスト的に非現実的なため却下。
+- **役割分担**: 「音楽的判断は CLAP 埋め込み + メタデータ、LLM は言語化のみ」。LLM に選曲をさせないことでハルシネーション (存在しない曲名等) を構造的に回避する。
+- **音声埋め込み**: LAION-CLAP を採用。テキスト⇔音声を同一空間に埋めるため「夜ドライブ系」のようなテキストクエリで類似検索が可能になり、Phase 1 単体でも体験価値が出る。
+- **学習戦略**: いきなり蒸留/RL に踏み込まず、まず素の Gemma E2B + RAG + プロンプト設計で評価。文体問題が残った場合のみ Mac mini M4 上で MLX-LM LoRA SFT。RL は最後まで封印 (報酬設計の難しさと小規模 RL の不安定性を考慮)。
+- **データソース**: VocaDB/UtaiteDB/TouhouDB API + Wikipedia。ユーザーが同人/VocaDB 圏を聴くため、メジャー側だけのカバレッジでは不十分。
+- **Python サイドカー方式**: 既存 `python/lyrics_sync` と同パターン。Wails の Go 本体を汚さず、venv 自動検出機構も流用できる。
+
+### 残課題・次のステップ
+- Phase 1 Step 1: CLAP モデル選定 (laion_clap の `music_audioset_epoch_15_esc_90.14.pt` 等) と Mac での動作確認。
+- TDD で `python/audio_embed/` の骨組みをダミーモード対応で先に作る。
+- `track_audio_embeddings` テーブルのマイグレーションテストを書く。
+
+---
+
 ## 2026-06-15 — 不足テスト調査
 
 ### 実施内容
