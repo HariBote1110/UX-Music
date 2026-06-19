@@ -22,6 +22,16 @@ dependencies = [
 dev = [
   "pytest>=8.0",
 ]
+# Phase 1 of markdown/ai-feature-special-plan.md: CLAP-based audio embeddings.
+# Installed on demand: `python/.venv/bin/pip install -e ".[audio-embed]"`.
+audio-embed = [
+  "laion-clap>=1.1.6",
+  "librosa>=0.10,<1",
+  "torchvision>=0.17,<1",
+]
+
+[tool.setuptools]
+packages = ["lyrics_sync", "audio_embed"]
 
 [tool.pytest.ini_options]
 markers = [
