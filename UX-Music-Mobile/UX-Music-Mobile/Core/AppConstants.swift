@@ -4,6 +4,7 @@ enum AppConstants {
     static let defaultServerPort = 8765
     static let defaultTargetLoudness: Double = -18
     static let wearPathPrefix = "/wear"
+    static let syncMDNSServiceType = "_uxmusic-sync._tcp."
     static let downloadedSongsMetaKey = "downloaded_songs_meta"
     static let serverConfigKey = "server_config"
     /// JSON envelope for user-created playlists (local device).

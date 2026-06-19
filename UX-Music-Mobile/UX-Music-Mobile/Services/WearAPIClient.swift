@@ -3,24 +3,45 @@ import Foundation
 
 // MARK: - LAN session (bypass system HTTP proxy / iCloud Private Relay for RFC1918)
 
+enum WearLANProxyKeys {
+    static let httpEnable = kCFNetworkProxiesHTTPEnable as String
+    static let httpsEnable = "HTTPSEnable"
+    static let socksEnable = "SOCKSEnable"
+    static let proxyAutoConfigEnable = kCFNetworkProxiesProxyAutoConfigEnable as String
+}
+
 /// Dedicated session so `http://192.168.x.x:8765` is not sent through relay (`502 … unreachable through proxy`).
 enum WearLANURLSession {
-    static let shared: URLSession = {
-        let config = URLSessionConfiguration.default
+    static let shared = URLSession(configuration: makeConfiguration())
+
+    static func makeConfiguration(
+        requestTimeout: TimeInterval = 10,
+        resourceTimeout: TimeInterval = 45
+    ) -> URLSessionConfiguration {
+        let config = URLSessionConfiguration.ephemeral
         config.applyWearLANProxyBypass()
-        config.timeoutIntervalForRequest = 60
-        config.timeoutIntervalForResource = 300
-        config.urlCache = .shared
-        config.requestCachePolicy = .useProtocolCachePolicy
-        return URLSession(configuration: config)
-    }()
+        config.timeoutIntervalForRequest = requestTimeout
+        config.timeoutIntervalForResource = resourceTimeout
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        config.allowsCellularAccess = false
+        config.allowsExpensiveNetworkAccess = false
+        config.waitsForConnectivity = false
+        #if os(iOS)
+        config.multipathServiceType = .none
+        #endif
+        return config
+    }
 }
 
 private extension URLSessionConfiguration {
-    /// iOS exposes only a subset of `CFNetwork` proxy keys; Wear uses plain `http://` to the desktop.
+    /// Wear uses plain `http://` to the desktop and must never be routed through a system relay.
     func applyWearLANProxyBypass() {
         connectionProxyDictionary = [
-            kCFNetworkProxiesHTTPEnable as String: 0,
+            WearLANProxyKeys.httpEnable: 0,
+            WearLANProxyKeys.httpsEnable: 0,
+            WearLANProxyKeys.socksEnable: 0,
+            WearLANProxyKeys.proxyAutoConfigEnable: 0,
         ]
     }
 }
@@ -218,9 +239,7 @@ private final class ProgressDownloadSession: NSObject, URLSessionDownloadDelegat
     static let shared = ProgressDownloadSession()
 
     private lazy var session: URLSession = {
-        let c = URLSessionConfiguration.default
-        c.applyWearLANProxyBypass()
-        c.timeoutIntervalForRequest = 30
+        let c = WearLANURLSession.makeConfiguration(requestTimeout: 30, resourceTimeout: 300)
         return URLSession(configuration: c, delegate: self, delegateQueue: nil)
     }()
 

@@ -1,43 +1,23 @@
-# 実装計画: Walkman Cross UI 差し替え
+# Implementation Plan: Wear API の mDNS 自動発見
 
 ## 方針
-十字ナビゲーションの「状態モデル」と「レイアウト計算」は純ロジックとして切り出し、
-テストで仕様を固定する（TDD）。その後、SwiftUI 画面を状態モデルへ接続し、各ペインを
-`AppModel` の実データへ配線する。
+Desktop 側は既に Wear API と UX Sync API を同じ `:8765` で公開し、`_uxmusic-sync._tcp.local.` を広告している。Mobile 側ではこの広告を Wear API profile の発見にも使い、既存の `ServerConfig` と `WearAPIClient` をそのまま活かす。
 
-モックの `MusicNavigation.swift` / `CrossPlayerLayout.swift` のうち、実 UI で実際に使う
-ロジックのみを `Core/CrossPlayerNavigation.swift` に移植する（ハードコードの
-`MusicPanePresentation` / `MusicMockVisualStyle` は移植しない＝実データで置換するため）。
-
-## Red — 失敗するテストを書く
-`CrossPlayerNavigationTests.swift` に以下を定義する。
-- `MusicNavigationState` の初期状態・十字移動・反対方向での復帰・無効方向の維持。
-- `MusicPane` の `title` / `description` 文言。
-- `MusicSwipeResolver` の方向判定（しきい値・軸支配・対角抑制）と `filteredDragOffset`。
-- `CrossPlayerLayout` の `minimumRequiredWidth`・`directionButtonWidth==0`・`cardWidth`・
-  ペイン原点（十字）・`offset`（ドラッグ追従／画面外配置）・`topContentInset`・
-  `horizontalPadding`・ライブラリメニュー寸法。
-
-## Green — テストを通す
-`Core/CrossPlayerNavigation.swift` に純ロジックを最小実装する。
-`MusicPane`(player/queue/favourites/library/settings)、`MusicDirection`、`MusicNavigationState`、
-`MusicSwipeResolver`、`PaneOrigin`、`PaneOffset`、`CrossPlayerLayout`。
-
-## UI 配線（SwiftUI）
-`HomeRootView.swift` を十字 UI ルートに書き換える（既存ファイルなので pbxproj 変更不要）。
-- `ZStack`：最背面に `sceneBackground`（再生画面はアルバムグラデ、他は暗色）。
-- `MusicPane.allCases` を `CrossPlayerLayout.offset(...)` で連続キャンバス配置し、全画面 `DragGesture` で遷移。
-- 各ペインを実データへ配線（Task.md の受け入れ条件参照）。
-- メニュー系ペインでは bottom toolbar に再生中表示（現在曲・再生/次へ）。
-- 歌詞表示は既存 `NowPlayingLyricsScreen` を流用。
-
-既存の `NowPlayingView.swift` / `MiniPlayerView.swift` はファイルとして残置するが、ルートからは参照しない
-（`NowPlayingLyricsScreen` 等の共有部品は引き続き利用）。
-
-## Refactor
-- ペイン部品を小さな `private` ビューに分割し、`@Observable` の更新範囲を局所化する。
-- テストとビルド（`xcodebuild` / iPhone シミュレータ）の成功を維持する。
+## 実装ステップ
+1. TXT / role / host / port の純ロジックを `WearDiscoveryPeer` として切り出し、単体テストで固定する。
+2. `NetServiceBrowser` で `_uxmusic-sync._tcp.` を探索し、解決済み `NetService` から TXT record と host / port を得る。
+3. Settings 画面に発見済み peer の一覧と再検索ボタンを追加する。
+4. peer 選択時に `ServerConfig` へ保存し、既存 `/wear/*` 導線がそのまま使えるようにする。
+5. `Info.plist` / build settings に `NSBonjourServices` と local network usage description を揃える。
+6. Wear API の `URLSession` を LAN 専用設定にし、system proxy / iCloud relay / cellular fallback を無効化する。
+7. Settings 表示時の mDNS listener は維持しつつ scan indicator timeout を設け、到達不能時の LAN HTTP timeout も短くする。
+8. 発見した peer の複数 IPv4 候補を保持し、Settings の `Test` では手動入力 host から順に候補を試して、最初に成功した host を `ServerConfig` に保存する。
 
 ## 検証
-- 単体テスト: `xcodebuild -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone 17' test`
-- 実機表示: iPhone 17 シミュレータでビルド・起動し、十字スワイプと各ペインの実データ表示を確認。
+- `WearDiscoveryPeerTests` で TXT 正規化と Wear API 候補判定を確認する。
+- `WearDiscoveryPeerTests` で複数 IPv4 候補の保持と接続候補の重複排除を確認する。
+- `WearDiscoveryPeerTests` で scan timeout 後に探索中表示だけが消え、mDNS listener は維持されることを確認する。
+- `WearAPIClientTests` で LAN 専用 `URLSessionConfiguration` が proxy と cellular fallback を使わないことを確認する。
+- `WearAPIClientTests` で通常の Wear API LAN HTTP timeout が短時間に制限されることを確認する。
+- `UX_MUSIC_REAL_DEVICE_DISCOVERY_TEST` を付けた実機 XCTest で、同一LAN上の UX Sync mDNS peer を発見できることを確認する。
+- `UX-Music-Mobile` scheme の iPhone simulator test を実行する。

@@ -9,6 +9,8 @@ struct SettingsScreen: View {
     @State private var savedFlash = false
     @State private var showQRScanner = false
     @State private var showDesktopPlaylistImport = false
+    @State private var selectedDiscoveryPeer: WearDiscoveryPeer?
+    @StateObject private var discovery = WearDiscoveryService()
     @FocusState private var focusedField: Field?
 
     private enum Field {
@@ -46,6 +48,43 @@ struct SettingsScreen: View {
                     }
                 } header: {
                     Text("PAIRING")
+                }
+
+                Section {
+                    if discovery.isBrowsing {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Searching for UX Music on this network...")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if discovery.peers.isEmpty {
+                        Text("No desktop found yet. Keep UX Music open on the same Wi-Fi network.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(discovery.peers) { peer in
+                            Button {
+                                selectDiscoveredPeer(peer)
+                            } label: {
+                                discoveredPeerRow(peer)
+                            }
+                        }
+                    }
+
+                    Button("Search again") {
+                        discovery.start()
+                    }
+
+                    if let message = discovery.errorMessage {
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("DISCOVERY")
                 }
 
                 Section {
@@ -96,6 +135,10 @@ struct SettingsScreen: View {
             .onAppear {
                 hostText = model.serverConfig.host
                 portText = String(model.serverConfig.port)
+                discovery.start()
+            }
+            .onDisappear {
+                discovery.stop()
             }
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -143,6 +186,7 @@ struct SettingsScreen: View {
 
     private func save() {
         focusedField = nil
+        selectedDiscoveryPeer = nil
         let port = Int(portText) ?? AppConstants.defaultServerPort
         model.serverConfig = ServerConfig(host: hostText.trimmingCharacters(in: .whitespacesAndNewlines), port: port)
         savedFlash = true
@@ -152,23 +196,101 @@ struct SettingsScreen: View {
         }
     }
 
+    private func selectDiscoveredPeer(_ peer: WearDiscoveryPeer) {
+        focusedField = nil
+        selectedDiscoveryPeer = peer
+        hostText = peer.host
+        portText = String(peer.port)
+        model.serverConfig = peer.serverConfig
+        savedFlash = true
+        pingResult = "Selected \(peer.displayName)"
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await MainActor.run { savedFlash = false }
+        }
+    }
+
+    private func discoveredPeerRow(_ peer: WearDiscoveryPeer) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(peer.displayName)
+                    .font(.body)
+                Text(peer.endpointDescription)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if !peer.protocolVersion.isEmpty {
+                    Text("UX Sync \(peer.protocolVersion)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if model.serverConfig == peer.serverConfig {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
     private func testConnection() async {
         focusedField = nil
         testing = true
         pingResult = nil
         defer { testing = false }
-        do {
-            let host = hostText.trimmingCharacters(in: .whitespacesAndNewlines)
-            let port = Int(portText) ?? AppConstants.defaultServerPort
-            let client = WearAPIClient(baseURLString: ServerConfig(host: host, port: port).baseURLString)
-            let name = try await client.ping()
-            await MainActor.run {
-                pingResult = name.isEmpty ? "Connected" : "Connected to \(name)"
-            }
-        } catch {
-            await MainActor.run {
-                pingResult = "Connection failed: \(error.localizedDescription)"
+        let candidates = connectionTestCandidates()
+        var failures: [String] = []
+        for candidate in candidates {
+            do {
+                let client = WearAPIClient(baseURLString: candidate.baseURLString)
+                let name = try await client.ping()
+                await MainActor.run {
+                    hostText = candidate.host
+                    portText = String(candidate.port)
+                    model.serverConfig = candidate
+                    pingResult = name.isEmpty
+                        ? "Connected to \(candidate.host)"
+                        : "Connected to \(name) via \(candidate.host)"
+                }
+                return
+            } catch {
+                failures.append("\(candidate.host): \(error.localizedDescription)")
             }
         }
+
+        await MainActor.run {
+            pingResult = "Connection failed: \(failures.first ?? "No endpoint available")"
+        }
+    }
+
+    private func connectionTestCandidates() -> [ServerConfig] {
+        let host = hostText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let port = Int(portText) ?? AppConstants.defaultServerPort
+        let manual = ServerConfig(host: host, port: port)
+        guard let peer = selectedDiscoveryPeer, peer.port == port else {
+            return [manual]
+        }
+        let candidateHosts = WearConnectionCandidates.hosts(manualHost: host, discoveredHosts: peer.connectionHosts)
+        return candidateHosts.map { ServerConfig(host: $0, port: port) }
+    }
+}
+
+enum WearConnectionCandidates {
+    static func hosts(manualHost: String, discoveredHosts: [String]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for rawHost in [manualHost] + discoveredHosts {
+            let host = rawHost.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !host.isEmpty else { continue }
+            let key = host.lowercased()
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            out.append(host)
+        }
+        return out
     }
 }

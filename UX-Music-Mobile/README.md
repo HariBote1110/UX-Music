@@ -4,6 +4,15 @@ Native **Swift + SwiftUI** companion for the desktop UX Music Wear LAN API (defa
 
 The previous Flutter implementation is archived as [`UX-Music-Mobile-Legacy`](../UX-Music-Mobile-Legacy).
 
+### Discovery
+
+UX Music Mobile can discover desktop UX Music instances from the UX Sync mDNS service:
+
+- **Service:** `_uxmusic-sync._tcp.local.`
+- **Profile:** Wear API is treated as the lightweight mobile/wearable profile of UX Sync.
+- **Selection:** Settings lists discovered `LibraryHost` / `WearHost` peers and saves the selected host/port to the existing Wear API configuration.
+- **Transport:** Wear LAN requests use a dedicated direct session so local `192.168.x.x:8765` traffic is not sent through system proxy, iCloud relay, or cellular fallback.
+
 ### Wear API (phone-oriented)
 
 - **`GET /wear/ping`** — includes `wearApi` (integer, `2` on current desktop). Older clients may ignore extra keys.
@@ -27,6 +36,19 @@ xcodebuild -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPh
 ```
 
 Adjust the simulator name to one installed on your Mac (`xcrun simctl list devices available`).
+
+### Real-device discovery probe
+
+Run this only when a desktop UX Music instance is open on the same Wi-Fi network. The test is skipped during normal test runs and enabled with a Swift flag:
+
+```bash
+xcodebuild -project UX-Music-Mobile.xcodeproj \
+  -scheme UX-Music-Mobile \
+  -destination 'platform=iOS,id=<device-id>' \
+  'OTHER_SWIFT_FLAGS=$(inherited) -DUX_MUSIC_REAL_DEVICE_DISCOVERY_TEST' \
+  -only-testing:UX-Music-MobileTests/WearDiscoveryPeerTests/testRealDeviceDiscoversUXSyncMDNSPeer \
+  test
+```
 
 ## Parity with Flutter (Legacy)
 

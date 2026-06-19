@@ -1,31 +1,24 @@
-# タスク: Mobile UI を Walkman Cross UI に差し替え
+# タスク: Wear API の mDNS 自動発見
 
 ## 目的
-UX-Music-Mobile（ネイティブ SwiftUI iOS アプリ）の従来の `TabView` ベース UI を、
-`HariBotes-playground/Music-Mock` の「Walkman Cross UI」（十字スワイプ操作）に差し替える。
-モックは見た目のみのハードコード実装だったため、本タスクでは各ペインを `AppModel` の
-実データ・実再生へ完全配線する。
+UX-Music-Mobile が手動 host / port 入力や QR ペアリングだけに頼らず、Desktop 側の `_uxmusic-sync._tcp.local.` mDNS 広告から Wear API 対応 peer を自動発見できるようにする。
 
-## 画面構成（中央=再生を起点とした十字）
-- 中央: 再生画面（Now Playing）
-- 左: 再生キュー
-- 右: お気に入りの曲
-- 上: ライブラリ（アルバム / プレイリスト / 全曲）
-- 下: 設定（イコライザー + サーバー設定 / ペアリング / Remote ライブラリ / Remote コントロールを集約）
+Wear API は廃止せず、UX Sync Protocol の lightweight mobile / wearable profile として扱う。Mobile App は発見した peer を既存の `ServerConfig` に変換し、従来どおり `/wear/*` で Remote Library / Remote Control / playlist import を利用する。
 
 ## 受け入れ条件
-- 初期表示は中央の再生画面である。
-- 画面全体のスワイプ操作で対応する画面へ遷移する（独立した方向ボタンは設けない）。
-- 外側の画面から反対方向へスワイプすると再生画面へ戻る。外側で対応しない方向へスワイプしても現在の画面を維持する。
-- 中央=再生画面はアルバムアートに沿った青緑系グラデーション背景とし、下部セーフエリアまで途切れない。
-- メニュー系画面の下部には、現在再生中の曲（ジャケット・曲名・アーティスト・再生/次へ）を暗色のネイティブ bottom toolbar で表示する。
-- 各ペインはモックのハードコード値ではなく、`AppModel` の実データを表示・操作する。
-  - 再生画面: `player.currentSong` のジャケット・曲情報・進捗・トランスポート・お気に入り・歌詞表示。
-  - キュー: `player.playbackQueue` の実キュー。タップで `playQueueItem(at:)`。
-  - お気に入り: `favouriteSongsForPlayback()`。タップで再生、スワイプで解除。
-  - ライブラリ: ダウンロード済みのアルバム / プレイリスト / 全曲。詳細は既存の `AlbumDetailView` / `PlaylistDetailView` を流用。
-  - 設定: イコライザー（既存 `MusicPlayerService` の EQ API）、サーバー設定・QR ペアリング・プレイリスト取り込み（既存 `SettingsScreen` 相当）、Remote ライブラリ（`RemoteLibraryScreen`）、Remote コントロール（`RemoteControlScreen`）。
+- `_uxmusic-sync._tcp.local.` の TXT から `deviceId` / `displayName` / `protocolVersion` / `schemaVersion` / `roles` を読めること。
+- `LibraryHost` または `WearHost` role を持つ peer を Wear API 候補として扱い、互換性のため role が欠けた `_uxmusic-sync._tcp.local.` 広告も候補に含めること。
+- 発見した peer の host / port を `ServerConfig` に変換できること。
+- `NetService.addresses` から数値IPv4が得られる場合は、`.local` host名ではなく数値IPv4を `ServerConfig` に保存すること。
+- `NetService.addresses` に複数の数値IPv4が含まれる場合は候補を保持し、Settings の接続テストでは手動入力値を先頭にしつつ、到達できる候補へフォールバックして成功した host を保存すること。
+- Wear API の LAN HTTP 通信は system proxy / iCloud relay / cellular fallback を使わず、発見した同一LAN IPへ直接接続すること。
+- Settings 表示時の mDNS listener は画面表示中維持しつつ、探索中表示だけは短時間で消えること。
+- 通常の Wear API LAN HTTP 通信は到達不能な Desktop に対して長時間ハングせず、短時間で失敗扱いにできること。
+- 実機で明示的に有効化した診断 XCTest から、同一LAN上の `_uxmusic-sync._tcp.local.` peer を発見できること。
+- Settings 画面に発見済み Desktop 一覧が表示され、選択すると既存の host / port 設定へ保存されること。
+- iOS の local network / Bonjour 許可に必要な `NSBonjourServices` が設定されていること。
 
 ## 非目標
-- 既存サービス層（`MusicPlayerService` / `WearAPIClient` / `DownloadManager` 等）の振る舞いは変更しない。
-- 既存の機能を削減しない（モックに無い機能は設定ペインに集約して残す）。
+- `/sync/*` の6桁コードペアリングや sync token 保存。
+- `/sync/library/snapshot` による選択同期。
+- Mobile 側で HTTP server を立てること。

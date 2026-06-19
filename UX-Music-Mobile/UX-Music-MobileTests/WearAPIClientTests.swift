@@ -37,6 +37,23 @@ final class WearAPIClientTests: XCTestCase {
         return URLSession(configuration: config)
     }
 
+    func testWearLANConfigurationBypassesSystemProxyAndCellularFallback() throws {
+        let config = WearLANURLSession.makeConfiguration()
+        let proxies = try XCTUnwrap(config.connectionProxyDictionary)
+
+        XCTAssertEqual(proxies[WearLANProxyKeys.httpEnable] as? Int, 0)
+        XCTAssertEqual(proxies[WearLANProxyKeys.httpsEnable] as? Int, 0)
+        XCTAssertEqual(proxies[WearLANProxyKeys.socksEnable] as? Int, 0)
+        XCTAssertEqual(proxies[WearLANProxyKeys.proxyAutoConfigEnable] as? Int, 0)
+        XCTAssertFalse(config.allowsCellularAccess)
+        XCTAssertFalse(config.allowsExpensiveNetworkAccess)
+        XCTAssertFalse(config.waitsForConnectivity)
+        XCTAssertNil(config.urlCache)
+        XCTAssertEqual(config.requestCachePolicy, .reloadIgnoringLocalAndRemoteCacheData)
+        XCTAssertEqual(config.timeoutIntervalForRequest, 10)
+        XCTAssertEqual(config.timeoutIntervalForResource, 45)
+    }
+
     func testPingParsesHostname() async throws {
         MockURLProtocol.handler = { req in
             XCTAssertTrue(req.url?.path.contains("wear/ping") ?? false)

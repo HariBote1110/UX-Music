@@ -142,5 +142,17 @@ mDNS TXT は軽量な事前情報として扱い、最終判断は `/sync/identi
 - `schemaVersion`
 - `roles`
 
+## Wear API profile
+Wear API (`/wear/*`) は、UX Sync Protocol の lightweight mobile / wearable profile として扱う。既存の iOS / Wear companion は `/sync/*` のペアリングや選択同期を必須にせず、同じ `_uxmusic-sync._tcp.local.` mDNS 広告から Desktop を発見し、同じ `:8765` の `/wear/ping` と `/wear/mobile` で Wear API 対応を確認してよい。
+
+Wear API profile は次の用途を持つ。
+
+- 手動 host / port 入力なしの LAN 自動発見。
+- phone / wearable 向けの軽量ライブラリ取得（`/wear/songs`）。
+- 選択した曲やアルバムの端末内保存（`/wear/file?id=...&source=original`）。
+- ジャケット、歌詞、プレイリスト、リモートコントロールの既存 companion 機能。
+
+Mobile client は `_uxmusic-sync._tcp.local.` の TXT から `displayName`、`roles`、`protocolVersion` を表示用に使い、`LibraryHost` または将来の `WearHost` role を持つ peer を Wear API 候補として扱う。互換性のため、同 service type で `roles` が欠けている広告も候補に含めてよい。最終的な接続確認は `/wear/ping` で行い、より詳細な endpoint 情報は `/wear/mobile` から取得する。iOS client は同一LAN IPへの `http://...:8765` 通信を system proxy、iCloud relay、cellular fallback に流さず、発見した peer へ直接接続する。
+
 ## 注意
 現時点の Sync token 認証は「保存済み token のいずれかに一致するか」を見る。将来は `sourceDeviceId` と token の対応関係まで検証する capability を追加する。

@@ -1,3 +1,102 @@
+## 2026-06-15 — 不足テスト調査
+
+### 実施内容
+- `markdown/` と `UX-Music-Mobile/markdown/` の仕様を読み、現在の差分が Mobile の Wear API mDNS 自動発見へ寄っていることを確認した。
+- 未コミット差分とテスト一覧を照合し、`WearDiscoveryService` / `SettingsScreen` / `WearAPIClient` の新規・変更仕様に対するテストの穴を洗い出した。
+- 既存の大きな未テスト領域として、renderer 画面層、SwiftUI 画面統合、`internal/analyzer` / `internal/config` / `internal/discord` / `pkg/mtp` などを確認した。
+
+### 検証
+- `npm test -- --run`: 13 files / 115 tests passed。
+- `go test ./...`: passed。
+- `go test ./... -cover`: 初回に `TestRunSidecarDummySwift` が Swift sidecar の empty stdout で一度失敗したが、同テスト単体再実行と通常 `go test ./...` は通過。
+- XcodeBuildMCP `test_sim`: 71 passed, 0 failed, 1 skipped（実機 mDNS 診断のみフラグ未指定で skip）。
+
+### 不足テスト候補
+- Mobile mDNS: `schemaVersion` の明示アサート、`WearHost` role 許容、空 host / port 0 の拒否、`txtDictionary` / `hostStrings(from:)` の境界テスト。
+- Mobile Settings: 接続テストが手動 host 失敗後に discovery の次候補へフォールバックし、成功 host を保存する統合テスト。
+- Mobile UI: `HomeRootView` の TabView 化、mini player accessory、Settings discovery 表示の回帰テスト。
+- 既存広範囲: renderer の `cd-ripper` / `lrc-editor` / `player` / `audio-graph` / UI renderer 系、Go の未テスト package、Swift lyrics-sync の CLI / runtime 周辺。
+
+---
+
+## 2026-06-13 — Mobile Wear API 接続候補のフォールバック
+
+### 実施内容
+- 実機で mDNS 発見後に `Connection failed` になる症状に対し、Mac mini が複数の IPv4 interface を広告している場合に到達不能な候補だけを保存してしまう可能性を切り分けた。
+- UX-Music-Mobile の `WearDiscoveryPeer` が `NetService.addresses` 由来の複数 IPv4 と Bonjour host名を重複排除した `connectionHosts` として保持するようにした。
+- Settings の `Test` は手動入力 host を先頭にしつつ、選択済み discovery peer の候補を順に `/wear/ping` へ試し、成功した host / port を `ServerConfig` と入力欄へ保存するようにした。
+
+### 検証
+- Red: `WearDiscoveryPeerTests.testFromTXTKeepsAllIPv4ConnectionCandidatesBeforeBonjourHostname` は `connectionHosts` 未実装で失敗。
+- Green: `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'id=573CA9F8-DBEB-4E26-A632-5C429B642B6E' -only-testing:UX-Music-MobileTests/WearDiscoveryPeerTests/testFromTXTKeepsAllIPv4ConnectionCandidatesBeforeBonjourHostname -only-testing:UX-Music-MobileTests/WearDiscoveryPeerTests/testConnectionCandidatesKeepManualHostFirstAndDeduplicateDiscoveredHosts test`: succeeded.
+- XcodeBuildMCP `test_sim`（Wear discovery / LAN session 限定）: 11 passed, 0 failed, 1 skipped.
+- XcodeBuildMCP `test_sim`（全体）: 71 passed, 0 failed, 1 skipped.
+- 実機 build: `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'platform=iOS,id=00008150-001A55A63C07801C' build`: succeeded.
+
+## 2026-06-13 — Mobile mDNS listener 維持と探索表示 timeout の分離
+
+### 実施内容
+- UX-Music-Mobile の Settings mDNS scan timeout が `NetServiceBrowser` 自体を止めていたため、遅れて届く Bonjour 発見・解決を取りこぼし得る状態になっていた。
+- timeout 後は `isBrowsing` の探索中表示だけを閉じ、`isDiscoveryActive` と underlying listener は Settings 表示中維持するように変更した。
+- `Search again` は listener を stop/start せず、既存 listener のまま探索中表示の scan window を再開するようにした。
+
+### 検証
+- Red: `WearDiscoveryPeerTests.testDiscoveryKeepsListenerActiveAfterScanTimeout` は `isDiscoveryActive` 未実装で失敗。
+- Green: `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'id=573CA9F8-DBEB-4E26-A632-5C429B642B6E' -only-testing:UX-Music-MobileTests/WearDiscoveryPeerTests/testDiscoveryHidesSearchingIndicatorAfterScanTimeout -only-testing:UX-Music-MobileTests/WearDiscoveryPeerTests/testDiscoveryKeepsListenerActiveAfterScanTimeout test`: succeeded.
+- `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'id=573CA9F8-DBEB-4E26-A632-5C429B642B6E' -only-testing:UX-Music-MobileTests/WearDiscoveryPeerTests/testDiscoveryHidesSearchingIndicatorAfterScanTimeout -only-testing:UX-Music-MobileTests/WearDiscoveryPeerTests/testDiscoveryKeepsListenerActiveAfterScanTimeout -only-testing:UX-Music-MobileTests/WearAPIClientTests/testWearLANConfigurationBypassesSystemProxyAndCellularFallback test`: succeeded.
+- 実機 build: `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'platform=iOS,id=00008150-001A55A63C07801C' build`: succeeded.
+
+## 2026-06-13 — Mobile Settings のネットワーク待ち対策
+
+### 実施内容
+- UX-Music-Mobile の Settings 表示時に始まる mDNS 探索へ scan indicator timeout を追加し、探索中表示が残り続けないようにした。
+- Wear API の通常 LAN HTTP セッションを request timeout 10秒 / resource timeout 45秒へ短縮し、到達不能な Desktop への通信が長時間 UI 体験を塞がないようにした。
+- 音源ダウンロード専用セッションは request timeout 30秒 / resource timeout 300秒を明示し、大容量転送の猶予は維持した。
+
+### 検証
+- Red: `WearDiscoveryPeerTests.testDiscoveryStopsBrowsingAfterScanTimeout` は `start(scanTimeout:)` 未実装で失敗。
+- Green: `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'id=573CA9F8-DBEB-4E26-A632-5C429B642B6E' -only-testing:UX-Music-MobileTests/WearDiscoveryPeerTests/testDiscoveryStopsBrowsingAfterScanTimeout test`: succeeded.
+- Red: `WearAPIClientTests.testWearLANConfigurationBypassesSystemProxyAndCellularFallback` は timeout 期待値追加後に失敗。
+- Green: `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'id=573CA9F8-DBEB-4E26-A632-5C429B642B6E' -only-testing:UX-Music-MobileTests/WearAPIClientTests/testWearLANConfigurationBypassesSystemProxyAndCellularFallback -only-testing:UX-Music-MobileTests/WearDiscoveryPeerTests/testDiscoveryStopsBrowsingAfterScanTimeout test`: succeeded.
+- 実機 build: `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'platform=iOS,id=00008150-001A55A63C07801C' build`: succeeded.
+- 実機 mDNS XCTest の再実行は `YkiPhoneAir` への Launch/CoreDevice worker materialize 待ちで 280秒後に手動中断した。テスト本体の timeout には入っておらず、アプリ側ではなく Xcode / CoreDevice 側の停止として記録する。
+
+## 2026-06-13 — Mobile Wear API mDNS自動発見
+
+### 実施内容
+- Wear API (`/wear/*`) を UX Sync Protocol の lightweight mobile / wearable profile として扱う方針を `markdown/ux-music-sync-protocol.md` に追記した。
+- UX-Music-Mobile に `_uxmusic-sync._tcp.local.` を探索する `WearDiscoveryService` と、TXT / role / host / port を正規化する `WearDiscoveryPeer` を追加した。
+- Settings 画面に発見済み Desktop の一覧と再検索ボタンを追加し、選択した peer を既存の `ServerConfig` に保存できるようにした。
+- iOS の Bonjour 探索許可として `NSBonjourServices` に `_uxmusic-sync._tcp` を追加した。
+- Mobile 側の `markdown/Task.md` / `markdown/Implementation_Plan.md` / `progress.md` を Wear API mDNS 自動発見の内容へ更新した。
+- 実機で `.local` host 保存後に Remote Library が `Unreachable` になる可能性を避けるため、`NetService.addresses` から得た数値IPv4を Bonjour host名より優先して `ServerConfig` へ保存するようにした。
+- 実機で `192.168.x.x:8765` が `mask.icloud.com` 経由の proxy fallback へ流れて 502 になる現象を避けるため、Wear API の LAN 通信用 `URLSession` を ephemeral / proxy無効 / cellular fallback無効 / cache無効の専用設定へ変更した。
+- ビルド済み app bundle に local network usage description と Bonjour service が入ることをテストで固定した。
+- 明示フラグ付きの実機診断 XCTest を追加し、同一LAN上の `_uxmusic-sync._tcp.local.` peer を `WearDiscoveryService` 経由で発見できるか確認できるようにした。
+- 診断過程で、直接の `NetServiceBrowser` probe は iPhone 実機から `YukinoMac-mini` を発見できた一方、`WearDiscoveryService` 経由では timeout していたため、発見後の `NetService.resolve` を browser callback 内で開始するよう修正した。
+
+### 検証
+- `WearDiscoveryPeerTests`
+- XcodeBuildMCP `test_sim`: 64 tests passed, 0 failed, 0 skipped.
+- `swiftc -typecheck UX-Music-Mobile/UX-Music-Mobile/Services/WearDiscoveryService.swift UX-Music-Mobile/UX-Music-Mobile/Models/ServerConfig.swift UX-Music-Mobile/UX-Music-Mobile/Core/AppConstants.swift`
+- `swiftc -typecheck UX-Music-Mobile/UX-Music-Mobile/Services/WearAPIClient.swift UX-Music-Mobile/UX-Music-Mobile/Models/Song.swift UX-Music-Mobile/UX-Music-Mobile/Models/Album.swift UX-Music-Mobile/UX-Music-Mobile/Core/AppConstants.swift`
+- `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'generic/platform=iOS Simulator' -only-testing:UX-Music-MobileTests/WearAPIClientTests/testWearLANConfigurationBypassesSystemProxyAndCellularFallback build-for-testing`: succeeded.
+- `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'id=573CA9F8-DBEB-4E26-A632-5C429B642B6E' test`: succeeded.
+- `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'id=573CA9F8-DBEB-4E26-A632-5C429B642B6E' -only-testing:UX-Music-MobileTests/WearDiscoveryPeerTests test`: succeeded.
+- `xcodebuild -project UX-Music-Mobile/UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination 'platform=iOS,id=00008150-001A55A63C07801C' 'OTHER_SWIFT_FLAGS=$(inherited) -DUX_MUSIC_REAL_DEVICE_DISCOVERY_TEST' -only-testing:UX-Music-MobileTests/WearDiscoveryPeerTests/testRealDeviceDiscoversUXSyncMDNSPeer test`: succeeded on `YkiPhoneAir`。修正前は 10秒 timeout で失敗していたが、`WearDiscoveryService` 経由で `_uxmusic-sync._tcp.local.` peer を発見できることを確認した。
+
+## 2026-06-13 — Mobile App UI改変のロールバック
+
+### 実施内容
+- `UX-Music-Mobile` 配下だけを、Walkman Cross UI 導入前の Mobile App 変更履歴上一つ前である `d7ccc43` 相当へ復元した。
+- `HomeRootView.swift` を従来のタブ型ルートへ戻し、十字スワイプUI用に追加された `CrossPlayerNavigation.swift` と `CrossPlayerNavigationTests.swift` を削除した。
+- Mobile App 用に追加されていた Walkman Cross UI の Task / Implementation Plan / Walk Through / progress 文書も、UI導入前の状態へ戻した。
+- ルート側に既に存在していた `.gitignore`、`go.mod`、`go.sum`、Wails 生成物などの未コミット差分には触れていない。
+
+### 検証
+- XcodeBuildMCP: `UX-Music-Mobile` scheme を iPhone 17 Simulator で `test_sim` 実行。
+- 結果: 60 tests passed, 0 failed, 0 skipped。
+
 ## 2026-06-10 — UX Sync mini逆輸入汚染の再発防止と掃除
 
 ### 実施内容
