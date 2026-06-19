@@ -5,6 +5,7 @@ import {audio} from '../models';
 import {lyricssync} from '../models';
 import {cdrip} from '../models';
 import {uxsync} from '../models';
+import {special} from '../models';
 import {mtp} from '../models';
 import {normalize} from '../models';
 import {scanner} from '../models';
@@ -86,6 +87,8 @@ export function DeleteSongs(arg1:Array<string>,arg2:boolean):Promise<Array<strin
 export function DiscoverSyncDevices(arg1:number):Promise<Array<uxsync.MDNSPeer>>;
 
 export function DownloadSyncTrack(arg1:string,arg2:string):Promise<server.SyncPullResult>;
+
+export function GenerateMoodSpecial(arg1:string,arg2:number):Promise<special.Feature>;
 
 export function GetAllLoudnessData():Promise<Record<string, any>>;
 
@@ -216,5 +219,7 @@ export function StartDeviceWatcher():Promise<void>;
 export function StartSyncPairing(arg1:string):Promise<server.SyncPairingStartResult>;
 
 export function StopDeviceWatcher():Promise<void>;
+
+export function StopGemmaServer():Promise<void>;
 
 export function UpdatePlaylistSongOrder(arg1:Record<string, any>):Promise<void>;

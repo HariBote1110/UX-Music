@@ -738,6 +738,29 @@ export namespace server {
 
 }
 
+export namespace special {
+	
+	export class Feature {
+	    title: string;
+	    description: string;
+	    orderedTrackIds: string[];
+	    perTrackComments: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new Feature(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.description = source["description"];
+	        this.orderedTrackIds = source["orderedTrackIds"];
+	        this.perTrackComments = source["perTrackComments"];
+	    }
+	}
+
+}
+
 export namespace uxsync {
 	
 	export class MDNSPeer {

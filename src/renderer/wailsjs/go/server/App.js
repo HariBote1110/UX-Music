@@ -158,6 +158,10 @@ export function DownloadSyncTrack(arg1, arg2) {
   return window['go']['server']['App']['DownloadSyncTrack'](arg1, arg2);
 }
 
+export function GenerateMoodSpecial(arg1, arg2) {
+  return window['go']['server']['App']['GenerateMoodSpecial'](arg1, arg2);
+}
+
 export function GetAllLoudnessData() {
   return window['go']['server']['App']['GetAllLoudnessData']();
 }
@@ -416,6 +420,10 @@ export function StartSyncPairing(arg1) {
 
 export function StopDeviceWatcher() {
   return window['go']['server']['App']['StopDeviceWatcher']();
+}
+
+export function StopGemmaServer() {
+  return window['go']['server']['App']['StopGemmaServer']();
 }
 
 export function UpdatePlaylistSongOrder(arg1) {

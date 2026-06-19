@@ -5,6 +5,7 @@
 //   GetAudioEmbedStatus()                       → { stored, version, error? }
 //   AnalyseLibraryAudioEmbeddings()             → { considered, skipped, analysed, failed, error? }
 //   SearchTracksByMood(query, topK)             → [{ trackId, path, score }, ...]
+//   GenerateMoodSpecial(mood, topK)             → { title, description, orderedTrackIds, perTrackComments }
 //   event "audio-embed-progress"                → { done, total }
 
 import { getWailsApp } from '../core/bridge.js';
@@ -30,8 +31,17 @@ interface SearchHit {
     score: number;
 }
 
+interface SpecialFeature {
+    title: string;
+    description: string;
+    orderedTrackIds: string[];
+    perTrackComments: Record<string, string>;
+}
+
 let analyseInFlight = false;
 let progressUnsubscribe: (() => void) | null = null;
+let specialInFlight = false;
+let lastQuery: string = '';
 
 function $<T extends HTMLElement>(id: string): T | null {
     return document.getElementById(id) as T | null;
@@ -155,10 +165,12 @@ async function onSearchClick(): Promise<void> {
         return;
     }
     list.innerHTML = '<li style="padding: 6px; color: #999;">検索中…</li>';
+    hideSpecialResult();
     try {
         const hits: SearchHit[] = await app.SearchTracksByMood(query, 20);
         if (!hits.length) {
             list.innerHTML = '<li style="padding: 6px; color: #999;">該当曲なし (まずライブラリ解析が必要かも)</li>';
+            $('ai-special-actions')?.classList.add('hidden');
             return;
         }
         list.innerHTML = hits
@@ -170,8 +182,82 @@ async function onSearchClick(): Promise<void> {
                 </li>`;
             })
             .join('');
+        lastQuery = query;
+        $('ai-special-actions')?.classList.remove('hidden');
+        setSpecialStatus('');
     } catch (e) {
         list.innerHTML = `<li style="padding: 6px; color: #f66;">検索失敗: ${escapeHtml((e as Error)?.message ?? String(e))}</li>`;
+        $('ai-special-actions')?.classList.add('hidden');
+    }
+}
+
+function setSpecialStatus(msg: string): void {
+    const el = $('ai-special-status');
+    if (el) el.textContent = msg;
+}
+
+function hideSpecialResult(): void {
+    $('ai-special-result')?.classList.add('hidden');
+}
+
+function renderSpecial(feat: SpecialFeature): void {
+    const titleEl = $('ai-special-title');
+    const descEl = $('ai-special-description');
+    const listEl = $('ai-special-tracks') as HTMLOListElement | null;
+    const wrap = $('ai-special-result');
+    if (!titleEl || !descEl || !listEl || !wrap) return;
+
+    titleEl.textContent = feat.title || '(無題)';
+    descEl.textContent = feat.description || '';
+
+    const items = (feat.orderedTrackIds || []).map(id => {
+        const name = (id.split('/').pop() ?? id);
+        const comment = feat.perTrackComments?.[id] ?? '';
+        return `<li style="margin: 6px 0; line-height: 1.5;">
+            <div style="color: #eee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(id)}">${escapeHtml(name)}</div>
+            ${comment ? `<div style="color: #999; font-size: 11px; margin-top: 2px;">${escapeHtml(comment)}</div>` : ''}
+        </li>`;
+    });
+    listEl.innerHTML = items.length > 0 ? items.join('') : '<li style="color: #999;">曲が選ばれませんでした</li>';
+    wrap.classList.remove('hidden');
+}
+
+async function onSpecialClick(): Promise<void> {
+    if (specialInFlight) return;
+    if (!lastQuery) {
+        showNotification('先にムード検索を実行してください。');
+        hideNotification(2500);
+        return;
+    }
+    const app = getWailsApp();
+    if (!app?.GenerateMoodSpecial) {
+        showNotification('Wails ビルドが必要です。');
+        hideNotification(4000);
+        return;
+    }
+    const btn = $<HTMLButtonElement>('ai-special-generate-btn');
+    specialInFlight = true;
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '生成中…';
+    }
+    setSpecialStatus('初回はモデル読み込みで 10〜20 秒、生成自体は数秒〜10秒 (Gemma 4 E2B)。');
+    hideSpecialResult();
+    try {
+        const feat: SpecialFeature = await app.GenerateMoodSpecial(lastQuery, 20);
+        renderSpecial(feat);
+        setSpecialStatus(`生成完了 — ${feat.orderedTrackIds?.length ?? 0} 曲`);
+    } catch (e) {
+        const msg = (e as Error)?.message ?? String(e);
+        setSpecialStatus(`生成失敗: ${msg}`);
+        showNotification(`特集生成失敗: ${msg}`);
+        hideNotification(8000);
+    } finally {
+        specialInFlight = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Gemma 4 E2B で特集化';
+        }
     }
 }
 
@@ -196,6 +282,11 @@ export function initAiEmbedSettings(): void {
             }
         });
         searchInput.dataset.listenerAttached = 'true';
+    }
+    const specialBtn = $<HTMLButtonElement>('ai-special-generate-btn');
+    if (specialBtn && !specialBtn.dataset.listenerAttached) {
+        specialBtn.addEventListener('click', () => void onSpecialClick());
+        specialBtn.dataset.listenerAttached = 'true';
     }
     void refreshStatus();
 }
