@@ -5,6 +5,12 @@ import { getCurrentTime, getDuration, isPlaying, togglePlayPause, seek } from '.
 import { playNextSong, playPrevSong, playSong } from './playback-manager.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { animateIconPaths } from '../ui/player-ui.js';
+import { isInterludeText } from './lyrics-translation.js';
+
+/** 間奏（[間奏] などのマーカーや空行）は文字を消し、行高だけ残す。 */
+function fsDisplayText(text: string | undefined): string {
+    return isInterludeText(text) ? ' ' : (text ?? '');
+}
 
 // ---- 内部状態 ----
 let overlayEl: HTMLElement | null = null;
@@ -269,14 +275,14 @@ function syncLyrics() {
                 p.classList.add('fs-line-bilingual');
                 const pri = document.createElement('span');
                 pri.className = 'fs-line-primary';
-                pri.textContent = line.text;
+                pri.textContent = fsDisplayText(line.text);
                 p.appendChild(pri);
                 const tr = document.createElement('span');
                 tr.className = 'fs-line-translation';
                 tr.textContent = line.translation;
                 p.appendChild(tr);
             } else {
-                p.textContent = line.text;
+                p.textContent = fsDisplayText(line.text);
             }
             lyricsEl.appendChild(p);
         });
@@ -297,14 +303,14 @@ function syncLyrics() {
                 p.classList.add('fs-line-bilingual');
                 const pri = document.createElement('span');
                 pri.className = 'fs-line-primary';
-                pri.textContent = line.text;
+                pri.textContent = fsDisplayText(line.text);
                 p.appendChild(pri);
                 const tr = document.createElement('span');
                 tr.className = 'fs-line-translation';
                 tr.textContent = line.translation;
                 p.appendChild(tr);
             } else {
-                p.textContent = typeof line === 'string' ? line : (line.text ?? '');
+                p.textContent = fsDisplayText(typeof line === 'string' ? line : (line.text ?? ''));
             }
             lyricsEl.appendChild(p);
         });
