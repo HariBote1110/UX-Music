@@ -79,6 +79,34 @@ describe('formatSyncAutoResultNotification', () => {
         const result = normaliseSyncAutoResult({ paused: true, pauseReason: 'free-space-below-limit' });
         expect(result && formatSyncAutoResultNotification(result)).toBe('UX Sync: 空き容量が少ないため同期を停止しました。');
     });
+
+    it('stays silent when only already-present tracks were skipped (no new data)', () => {
+        const result = normaliseSyncAutoResult({
+            checkedDevices: 1,
+            syncedDevices: 1,
+            pulledTracks: 0,
+            pushedPlayEvents: 0,
+            syncedArtwork: 0,
+            skippedTracks: 12,
+            paused: false,
+        });
+        expect(result && formatSyncAutoResultNotification(result)).toBe('');
+    });
+
+    it('stays silent when a device was merely confirmed with nothing to do', () => {
+        const result = normaliseSyncAutoResult({ checkedDevices: 1, syncedDevices: 1 });
+        expect(result && formatSyncAutoResultNotification(result)).toBe('');
+    });
+
+    it('still notifies when new data actually moved, including skipped count', () => {
+        const result = normaliseSyncAutoResult({
+            checkedDevices: 1,
+            syncedDevices: 1,
+            pulledTracks: 2,
+            skippedTracks: 5,
+        });
+        expect(result && formatSyncAutoResultNotification(result)).toBe('UX Sync: 接続できたため同期しました（取得 2曲 / 既存 5曲）');
+    });
 });
 
 describe('normaliseSyncMinFreeSpaceGB', () => {
