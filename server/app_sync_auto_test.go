@@ -985,3 +985,26 @@ func TestAutoSyncPairedDevicesStopsWhenFreeSpaceIsBelowSafetyLimit(t *testing.T)
 		t.Fatalf("unexpected free space counters: %#v", result)
 	}
 }
+
+func TestSyncAutoResultIsNotable(t *testing.T) {
+	cases := []struct {
+		name   string
+		result SyncAutoResult
+		want   bool
+	}{
+		{"接続確認のみは通知しない", SyncAutoResult{CheckedDevices: 1, SyncedDevices: 1}, false},
+		{"既存曲のスキップのみは通知しない", SyncAutoResult{CheckedDevices: 1, SyncedDevices: 1, SkippedTracks: 12}, false},
+		{"新規取得は通知する", SyncAutoResult{CheckedDevices: 1, PulledTracks: 1}, true},
+		{"再生回数の送信は通知する", SyncAutoResult{CheckedDevices: 1, PushedPlayEvents: 3}, true},
+		{"ジャケット同期は通知する", SyncAutoResult{CheckedDevices: 1, SyncedArtwork: 2}, true},
+		{"一時停止は通知する", SyncAutoResult{Paused: true, PauseReason: "free-space-below-limit"}, true},
+		{"失敗は通知する", SyncAutoResult{CheckedDevices: 1, FailedDevices: 1, Errors: []string{"boom"}}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := syncAutoResultIsNotable(tc.result); got != tc.want {
+				t.Fatalf("syncAutoResultIsNotable(%+v) = %v, want %v", tc.result, got, tc.want)
+			}
+		})
+	}
+}

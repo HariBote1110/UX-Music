@@ -264,12 +264,27 @@ func (a *App) startSyncAutoLoop() {
 		for {
 			<-timer.C
 			result, err := a.AutoSyncPairedDevices()
-			if a.ctx != nil && (err != nil || result.CheckedDevices > 0) {
+			// 新規データ・一時停止・失敗があったときだけ通知する。既存曲のスキップや
+			// 単なる接続確認では emit しない（毎分のトースト乱発を防ぐ）。
+			if a.ctx != nil && (err != nil || syncAutoResultIsNotable(result)) {
 				wailsRuntime.EventsEmit(a.ctx, "ux-sync-auto-result", result)
 			}
 			timer.Reset(60 * time.Second)
 		}
 	}()
+}
+
+// syncAutoResultIsNotable reports whether an automatic sync cycle produced
+// something the user should be told about: new data moved, a pause, or a
+// failure. Routine cycles that only confirm connectivity or skip
+// already-present tracks return false so no toast is emitted.
+func syncAutoResultIsNotable(result SyncAutoResult) bool {
+	return result.Paused ||
+		result.FailedDevices > 0 ||
+		len(result.Errors) > 0 ||
+		result.PulledTracks > 0 ||
+		result.PushedPlayEvents > 0 ||
+		result.SyncedArtwork > 0
 }
 
 func syncFreeSpacePauseResult() (SyncAutoResult, bool, error) {

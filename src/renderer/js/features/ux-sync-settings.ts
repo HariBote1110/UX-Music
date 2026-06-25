@@ -428,17 +428,20 @@ export function formatSyncAutoResultNotification(result: SyncAutoResult): string
     if (result.checkedDevices <= 0) {
         return '';
     }
+    // 実際に新しいデータが動いたときだけ通知する。既存曲のスキップや単なる接続確認は
+    // 毎分の自動同期ごとにトーストが乱発される原因になるため、無音にする。
+    const hasNewData = result.pulledTracks > 0
+        || result.pushedPlayEvents > 0
+        || result.syncedArtwork > 0;
+    if (!hasNewData) {
+        return '';
+    }
     const parts = [
         result.pulledTracks > 0 ? `取得 ${result.pulledTracks}曲` : '',
         result.skippedTracks > 0 ? `既存 ${result.skippedTracks}曲` : '',
         result.pushedPlayEvents > 0 ? `再生回数 ${result.pushedPlayEvents}件` : '',
         result.syncedArtwork > 0 ? `ジャケット ${result.syncedArtwork}件` : '',
     ].filter(Boolean);
-    if (parts.length === 0) {
-        return result.syncedDevices > 0
-            ? 'UX Sync: 接続できたため同期を確認しました。'
-            : 'UX Sync: 接続を確認しましたが同期できませんでした。';
-    }
     return `UX Sync: 接続できたため同期しました（${parts.join(' / ')}）`;
 }
 
