@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"errors"
 	"io"
 	"testing"
 	"time"
@@ -25,6 +26,17 @@ func (s *fakeAudioStream) Stop() error {
 func (s *fakeAudioStream) Close() error {
 	s.closes++
 	return nil
+}
+
+// failingStartStream is a stream whose revival (Start) always fails with a
+// non-recoverable error, modelling a cached output stream that has gone dead.
+type failingStartStream struct {
+	fakeAudioStream
+}
+
+func (s *failingStartStream) Start() error {
+	s.starts++
+	return errors.New("stream start failed")
 }
 
 type fakeDecoder struct{}
@@ -54,31 +66,71 @@ func TestResumeRestartsPausedOutputStream(t *testing.T) {
 	}
 }
 
-func TestResumeReopensStreamAfterLongPause(t *testing.T) {
-	oldStream := &fakeAudioStream{}
-	newStream := &fakeAudioStream{}
+func TestResumeRestartsTrackAfterLongPause(t *testing.T) {
+	stream := &fakeAudioStream{}
+	var restartedAt float64
+	restartCalls := 0
 	player := &Player{
-		stream:  oldStream,
-		decoder: fakeDecoder{},
-		openOutputStream: func() (audioStream, error) {
-			return newStream, nil
+		stream:     stream,
+		decoder:    fakeDecoder{},
+		sampleRate: 44100,
+		restartTrack: func(position float64) error {
+			restartCalls++
+			restartedAt = position
+			return nil
 		},
 	}
 	player.playing.Store(true)
 	player.paused.Store(true)
+	// Simulate the decoder having advanced to ~10s before the long pause.
+	player.position.Store(int64(10 * 44100))
 	player.pausedSince.Store(time.Now().Add(-longPauseStreamRefreshAfter - time.Second).UnixNano())
 
 	if err := player.Resume(); err != nil {
 		t.Fatalf("resume failed: %v", err)
 	}
 
-	if oldStream.stops != 1 || oldStream.closes != 1 {
-		t.Fatalf("expected old stream to be stopped and closed, got stops=%d closes=%d", oldStream.stops, oldStream.closes)
+	if restartCalls != 1 {
+		t.Fatalf("expected the track to be rebuilt once after a long pause, got %d restarts", restartCalls)
 	}
-	if newStream.starts != 1 {
-		t.Fatalf("expected reopened stream to start once, got %d", newStream.starts)
+	if restartedAt < 9.9 || restartedAt > 10.1 {
+		t.Fatalf("expected restart to resume near the saved position (~10s), got %.3fs", restartedAt)
 	}
-	if player.stream != newStream {
-		t.Fatal("expected player to use reopened stream")
+	// The wedged cached stream must not be reused after a long pause.
+	if stream.starts != 0 {
+		t.Fatalf("expected the cached stream not to be restarted after a long pause, got %d starts", stream.starts)
+	}
+}
+
+// A short pause whose cached stream can no longer be revived must fall back to a
+// full track rebuild rather than silently leaving playback wedged.
+func TestResumeRestartsTrackWhenReviveFails(t *testing.T) {
+	stream := &failingStartStream{}
+	restartCalls := 0
+	player := &Player{
+		stream:     stream,
+		decoder:    fakeDecoder{},
+		sampleRate: 44100,
+		restartTrack: func(_ float64) error {
+			restartCalls++
+			return nil
+		},
+	}
+	player.playing.Store(true)
+	player.paused.Store(true)
+
+	if err := player.Resume(); err != nil {
+		t.Fatalf("resume failed: %v", err)
+	}
+
+	if restartCalls != 1 {
+		t.Fatalf("expected a full restart when reviving the stream fails, got %d restarts", restartCalls)
+	}
+}
+
+func TestRestartCurrentTrackWithoutTrackErrors(t *testing.T) {
+	player := &Player{}
+	if err := player.restartCurrentTrack(0); err == nil {
+		t.Fatal("expected restartCurrentTrack to error when no track is loaded")
 	}
 }
