@@ -94,6 +94,13 @@ type Player struct {
 	decoder          Decoder
 	file             *os.File
 	openOutputStream func() (audioStream, error)
+	// currentPath is the path of the track last started by Play (guarded by mu).
+	// It lets Resume rebuild the track from scratch after a long pause / system
+	// sleep, where the cached stream or subprocess-backed decoder may be dead.
+	currentPath string
+	// restartTrack rebuilds the current track at the given position; nil falls
+	// back to restartCurrentTrack. Exists as a test seam for Resume recovery.
+	restartTrack func(position float64) error
 
 	// Playback state (atomic for lock-free access in callback)
 	playing      atomic.Bool
@@ -538,6 +545,7 @@ func (p *Player) Play(filePath string, gainLinear float64) error {
 		return err
 	}
 	p.stream = stream
+	p.currentPath = filePath
 	p.playing.Store(true)
 	p.paused.Store(false)
 
@@ -890,27 +898,67 @@ func (p *Player) Pause() error {
 	return nil
 }
 
-// Resume resumes playback
+// Resume resumes playback.
+//
+// For a short pause the cached output stream is simply restarted. After a long
+// pause (e.g. the machine slept for hours), or when restarting the cached stream
+// fails, the stream and — critically — a subprocess-backed decoder (FFmpeg for
+// m4a/aac/ogg) may be dead, so reviving the old stream alone yields silent,
+// wedged playback. In that case the track is rebuilt from scratch at the saved
+// position, matching a fresh Play().
 func (p *Player) Resume() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	stream := p.stream
-
 	if stream == nil {
+		p.mu.Unlock()
 		return nil
 	}
 
-	if p.shouldRefreshStreamAfterPause() {
-		if err := p.reopenStream(); err != nil {
-			return err
+	if !p.shouldRefreshStreamAfterPause() {
+		err := stream.Start()
+		if err == nil || errors.Is(err, portaudio.StreamIsNotStopped) {
+			p.paused.Store(false)
+			p.pausedSince.Store(0)
+			p.mu.Unlock()
+			return nil
 		}
-	} else if err := stream.Start(); err != nil && !errors.Is(err, portaudio.StreamIsNotStopped) {
-		if reopenErr := p.reopenStream(); reopenErr != nil {
-			return fmt.Errorf("failed to resume stream (%w); reopen also failed: %v", err, reopenErr)
-		}
+		// Reviving the cached stream failed — fall through to a full rebuild.
+	}
+	p.mu.Unlock()
+
+	position := p.GetPosition()
+	restart := p.restartTrack
+	if restart == nil {
+		restart = p.restartCurrentTrack
+	}
+	if err := restart(position); err != nil {
+		return fmt.Errorf("failed to resume after long pause: %w", err)
+	}
+	return nil
+}
+
+// restartCurrentTrack rebuilds the current track from scratch (file, decoder and
+// output stream) and resumes at the given position. Used by Resume to recover
+// from a long pause / system sleep where reusing cached playback state would
+// otherwise leave playback silent and wedged.
+func (p *Player) restartCurrentTrack(position float64) error {
+	p.mu.RLock()
+	path := p.currentPath
+	p.mu.RUnlock()
+
+	if path == "" {
+		return errors.New("no current track to restart")
 	}
 
+	gain := math.Float64frombits(p.baseGain.Load())
+	if err := p.Play(path, gain); err != nil {
+		return err
+	}
+	if position > 0 {
+		if err := p.Seek(position); err != nil {
+			return err
+		}
+	}
 	p.paused.Store(false)
 	p.pausedSince.Store(0)
 	return nil
