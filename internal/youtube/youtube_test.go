@@ -113,3 +113,29 @@ func TestParseTranscriptXMLBodyTimedTextFormat3(t *testing.T) {
 		t.Fatalf("unexpected second text: %q", transcript[1].Text)
 	}
 }
+
+// TestParseTranscriptXMLBodyDeduplicatesLayeredKaraoke は、カラオケ風に装飾された
+// 字幕（同一開始時刻・同一テキストの <p> が縁取り用と塗り用の2層に分かれて重複する）を
+// 1行に統合できることを検証する。再現元: youtube.com/watch?v=eghAYpSDtRw の en 字幕。
+func TestParseTranscriptXMLBodyDeduplicatesLayeredKaraoke(t *testing.T) {
+	body := []byte(`<?xml version="1.0" encoding="utf-8"?>
+<timedtext format="3">
+  <body>
+    <p t="31081" d="2403"><s p="3">​ ​Sera♦: Among all the stars​ ​</s></p>
+    <p t="31081" d="2403"><s p="5">​ ​Sera♦: Among all the stars​ ​</s></p>
+    <p t="33484" d="3370"><s p="3">​ ​That shine in the sky​ ​</s></p>
+    <p t="33484" d="3370"><s p="5">​ ​That shine in the sky​ ​</s></p>
+  </body>
+</timedtext>`)
+
+	transcript, _, err := parseTranscriptXMLBody(body)
+	if err != nil {
+		t.Fatalf("parseTranscriptXMLBody should succeed: %v", err)
+	}
+	if len(transcript) != 2 {
+		t.Fatalf("layered karaoke should be deduplicated to 2 lines: got=%d", len(transcript))
+	}
+	if transcript[0].StartMs != 31081 || transcript[1].StartMs != 33484 {
+		t.Fatalf("unexpected startMs: %d, %d", transcript[0].StartMs, transcript[1].StartMs)
+	}
+}
