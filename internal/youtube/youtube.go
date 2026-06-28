@@ -164,8 +164,18 @@ func buildCaptionTrackInfoList(tracks []youtube.CaptionTrack) []CaptionTrackInfo
 	return infos
 }
 
+// zeroWidthReplacer はカラオケ風字幕が装飾として挿入するゼロ幅文字を除去する。
+// これらは Unicode 上の空白として扱われず strings.Fields では落ちないため、
+// 明示的に取り除かないと歌詞テキストに残ってしまう。
+var zeroWidthReplacer = strings.NewReplacer(
+	"\u200b", "", // ZERO WIDTH SPACE
+	"\u200c", "", // ZERO WIDTH NON-JOINER
+	"\u200d", "", // ZERO WIDTH JOINER
+	"\ufeff", "", // ZERO WIDTH NO-BREAK SPACE (BOM)
+)
+
 func sanitiseTranscriptText(text string) string {
-	unescaped := html.UnescapeString(text)
+	unescaped := zeroWidthReplacer.Replace(html.UnescapeString(text))
 	fields := strings.Fields(strings.ReplaceAll(unescaped, "\n", " "))
 	return strings.TrimSpace(strings.Join(fields, " "))
 }
