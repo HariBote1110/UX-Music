@@ -233,6 +233,17 @@ func appendTranscriptSegment(result youtube.VideoTranscript, startMs int, durati
 		return result
 	}
 
+	// カラオケ風に装飾された字幕は、同一の開始時刻・同一テキストの <p> を
+	// 縁取り用と塗り用の複数レイヤーとして重複出力することがある
+	// （例: youtube.com/watch?v=eghAYpSDtRw の en 字幕）。直前のセグメントと
+	// 開始時刻・テキストが一致する場合は同一行とみなし、二重登録を防ぐ。
+	if n := len(result); n > 0 {
+		last := result[n-1]
+		if last.StartMs == startMs && last.Text == text {
+			return result
+		}
+	}
+
 	return append(result, youtube.TranscriptSegment{
 		Text:       text,
 		StartMs:    startMs,
