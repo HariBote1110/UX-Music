@@ -34,6 +34,15 @@ func TestBuildCaptionTrackCandidatesPriority(t *testing.T) {
 	}
 }
 
+func TestSanitiseTranscriptTextStripsZeroWidth(t *testing.T) {
+	// カラオケ風字幕は装飾としてゼロ幅スペース (U+200B) を多用するため、
+	// 歌詞テキストに残さず除去する必要がある。
+	got := sanitiseTranscriptText("​ ​ ​Sera♦: Among all the stars​ ​")
+	if got != "Sera♦: Among all the stars" {
+		t.Fatalf("zero-width characters should be stripped: %q", got)
+	}
+}
+
 func TestTranscriptToLRC(t *testing.T) {
 	video := &yt.Video{
 		Title:  "Test Song",
