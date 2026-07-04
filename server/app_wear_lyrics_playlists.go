@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"ux-music-sidecar/internal/lyrics"
+	"ux-music-sidecar/internal/pathutil"
 	"ux-music-sidecar/internal/playlist"
 	"ux-music-sidecar/internal/store"
 )
@@ -112,12 +113,7 @@ func wearPlaylistPathToSongID(pathToID map[string]string, playlistPath string) (
 	if pathToID == nil || playlistPath == "" {
 		return "", false
 	}
-	candidates := []string{
-		playlistPath,
-		filepath.Clean(playlistPath),
-		filepath.ToSlash(playlistPath),
-		filepath.Clean(filepath.ToSlash(playlistPath)),
-	}
+	candidates := pathutil.SlashCandidateForms(playlistPath)
 	seen := make(map[string]struct{})
 	for _, k := range candidates {
 		k = strings.TrimSpace(k)

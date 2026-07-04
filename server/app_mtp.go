@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"ux-music-sidecar/internal/pathutil"
 	"ux-music-sidecar/pkg/mtp"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
-	"golang.org/x/text/unicode/norm"
 	"golang.org/x/text/width"
 )
 
@@ -238,7 +238,7 @@ func (a *App) MTPGetUntransferredSongs(librarySongs []interface{}) (map[string]i
 }
 
 func normalizeFileNameGo(fileName string) string {
-	name := norm.NFC.String(fileName)
+	name := pathutil.NFC(fileName)
 	name = width.Fold.String(name)
 	name = strings.ToLower(name)
 	return name
