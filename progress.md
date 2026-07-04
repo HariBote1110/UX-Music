@@ -6,12 +6,15 @@
 - 保存タブの保存処理が `syncMinFreeSpaceGB` / `syncCachePolicy` / `syncPreferredFormat` を同時に正規化して保存するようにした。
 - 同期タブのラベルを `転送時の音質` に変更し、push転送用の設定であることが分かる文言にした。
 - AIムード検索結果の表示名を `/` と `\` の両方で分割する `moodSearchDisplayName()` に集約し、Windowsパスでもファイル名だけを表示するようにした。
+- `markdown/wails-migration-gaps.md` では解消済みと書かれていた曲リスト右クリックの「プレイリストに追加」が、実コードでは `console.log` のみだったため、Wails の `AddSongsToPlaylist` へ曲メタデータを渡す実処理に差し替えた。
+- 不具合修正として renderer 版を `1.0.0-Beta-36b` から `1.0.0-Beta-36c` へ更新した。
 
 ### 検証
 - Red: `npm test -- --run js/features/ai-embed-settings.test.ts js/features/ux-sync-settings-dom.test.ts` で意図した3件の失敗を確認。
-- Green: `npm test -- --run js/features/ux-sync-settings.test.ts js/features/ai-embed-settings.test.ts js/features/ux-sync-settings-dom.test.ts` PASS。
+- Red: `npm test -- --run js/ui/list-renderer.test.ts` で曲リストのプレイリスト追加が未実装であることを確認。
+- Green: `npm test -- --run js/ui/list-renderer.test.ts js/features/ux-sync-settings.test.ts js/features/ai-embed-settings.test.ts js/features/ux-sync-settings-dom.test.ts` PASS。
 - `npm run typecheck` PASS。
-- `npm test -- --run` PASS（16 files / 129 tests）。
+- `npm test -- --run` PASS（17 files / 131 tests）。
 
 ## 2026-06-29 — フルスクリーン背景色が前曲のジャケット色になる不具合を修正
 
