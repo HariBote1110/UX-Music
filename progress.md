@@ -1,3 +1,30 @@
+## 2026-07-05 — ドメイン境界・無意味テスト・UI不整合の一斉是正
+
+### 実施内容
+- 探索エージェント3体（ドメイン境界／テスト品質／UI）でコードベースを監査し、検出結果を裏取りのうえ Sonnet 5 サブエージェント2体（Go 担当・renderer 担当）で並行修正した。
+- Go: `pkg/audio` の `internal/config` 依存を `SetFFmpegPaths` 注入方式に切断し、pkg→internal の層逆転を解消（1e7e6c1, 2ddb959）。
+- Go: 散在していたパス正規化（`filepath.Clean` / NFC / NFD）を新設 `internal/pathutil`（`CanonicalisePath` / `CandidateForms` / `SamePath` 等）に統一（3ed7fcf, 24c29dd）。`app_media.go` の `filepath.Clean` はパストラバーサル防御目的のため意図的に据え置き。
+- Go: `internal/playlist` と `internal/lyricssync` の `store.Instance` 直接参照を `SettingsProvider` interface 注入に変更し、ドメイン層→永続化層の直結を解消（50b5b28, fe12bea）。
+- Go: 未参照だった `internal/discord` を削除（f3d2469, 7584c56。並行作業により2コミットに分裂、実害なし）。`internal/special` を責務が読める `internal/moodspecial` に改名（6b70ca4）。
+- renderer: `renderer.ts` に重複していたシャッフル設定反映を `applyShuffleSetting` に共通化（300c647, cfebf87）。
+- renderer: DOM 文字列 contains だけの凍結テスト（ux-sync-settings-dom / default-artwork / equalizer-colour-events の呼び出し順比較 / mock_ui_test.mjs）を挙動検証テストに置換または削除（5c1cdc0, 4146035, 472ed7c）。
+- renderer: `stopQuiz` が `isResultShowing` / `startTime` / タイマーIDを未リセットのまま残し、離脱後の遅延 Space 入力で回答ボタンが二重生成される実バグを Red→Green で修正（fe473b8, f597751）。notification のタイマー競合疑いは再現不能で、既存実装は健全と判断し回帰テストのみ追加（1f77867）。
+- 不具合修正＋リファクタのため renderer 版を `1.0.0-Beta-36c` から `1.0.0-Beta-36d` へ更新した。
+
+### 選定理由・判断の根拠
+- `store.Instance` の全面 DI 化（server/ 含む80箇所超）は影響が大きすぎるため、層違反として実害のあるドメイン層（playlist / lyricssync）への注入導入に絞った。server/ 側の直接参照は今後の課題。
+- `internal/discord` は完全実装済みだったが、参照が TODO コメント1行のみで死蔵状態だったため、git 履歴から復元可能なことを根拠に削除を選択（実装完了より YAGNI を優先）。
+- 監査で挙がった「UX Sync 保存ボタン未接続」「fullscreen の var() 入れ子不正」は裏取りで誤検出と判明し、対応対象から除外した。
+
+### 検証
+- `go build ./...` / `go test -count=1 ./...` 全16パッケージ ok。
+- `npx vitest run` 19ファイル / 150テスト全通過。
+
+### 残課題・次のステップ
+- server/ パッケージ（約14,000行）のサブパッケージ分割と `store.Instance` の残存直接参照の DI 化。
+- MusicCenter テーマで右サイドバー（歌詞・キュー・イコライザ）が `display:none !important` により到達不能になる仕様の要否判断。
+- `pkg/normalize` に正確性テストがない（ベンチマークのみ）。
+
 ## 2026-07-04 — UX Sync保存UIとAIムード検索表示の不自然さを修正
 
 ### 実施内容
