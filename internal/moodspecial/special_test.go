@@ -1,4 +1,4 @@
-package special
+package moodspecial
 
 import (
 	"context"

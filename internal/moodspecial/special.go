@@ -1,10 +1,10 @@
-// Package special builds mood-themed playlist features by sending a list of
+// Package moodspecial builds mood-themed playlist features by sending a list of
 // candidate tracks to a chat LLM and parsing the structured response.
 //
 // The LLM never sees raw file paths — candidates are referenced by 1-based
 // indices in the prompt, and indices are mapped back to TrackIDs after
 // parsing. This protects against the LLM hallucinating or mistyping paths.
-package special
+package moodspecial
 
 import (
 	"context"

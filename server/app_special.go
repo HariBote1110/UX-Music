@@ -9,7 +9,7 @@ import (
 	"ux-music-sidecar/internal/audioembed"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/llamasrv"
-	"ux-music-sidecar/internal/special"
+	"ux-music-sidecar/internal/moodspecial"
 	"ux-music-sidecar/internal/store"
 )
 
@@ -41,11 +41,11 @@ func llamaServer() (*llamasrv.Server, error) {
 }
 
 // llmAdapter bridges llamasrv.Client (which exposes Chat(ctx, msg, ChatOptions))
-// into special.LLMChat (which expects Chat(ctx, msg, ChatOpts)). The two option
+// into moodspecial.LLMChat (which expects Chat(ctx, msg, ChatOpts)). The two option
 // structs are intentionally separate so the packages stay independent.
 type llmAdapter struct{ c *llamasrv.Client }
 
-func (a llmAdapter) Chat(ctx context.Context, msg string, opts special.ChatOpts) (string, error) {
+func (a llmAdapter) Chat(ctx context.Context, msg string, opts moodspecial.ChatOpts) (string, error) {
 	return a.c.Chat(ctx, msg, llamasrv.ChatOptions{
 		NPredict: opts.NPredict,
 		Temp:     opts.Temp,
@@ -62,7 +62,7 @@ func (a llmAdapter) Chat(ctx context.Context, msg string, opts special.ChatOpts)
 //  4. Refs in the JSON are mapped back to real track IDs.
 //
 // Blocking call. The first invocation pays ~10–20s of model load.
-func (a *App) GenerateMoodSpecial(mood string, topK int) (special.Feature, error) {
+func (a *App) GenerateMoodSpecial(mood string, topK int) (moodspecial.Feature, error) {
 	if topK <= 0 {
 		topK = 20
 	}
@@ -70,17 +70,17 @@ func (a *App) GenerateMoodSpecial(mood string, topK int) (special.Feature, error
 	// 1. CLAP candidate selection (reuses Phase 1 plumbing).
 	hits, err := a.SearchTracksByMood(mood, topK)
 	if err != nil {
-		return special.Feature{}, fmt.Errorf("候補曲の検索に失敗: %w", err)
+		return moodspecial.Feature{}, fmt.Errorf("候補曲の検索に失敗: %w", err)
 	}
 	if len(hits) == 0 {
-		return special.Feature{}, errors.New("候補曲が見つかりませんでした。先にライブラリを解析してください")
+		return moodspecial.Feature{}, errors.New("候補曲が見つかりませんでした。先にライブラリを解析してください")
 	}
 
 	// 2. Join library metadata.
 	meta := loadLibraryMetadataByPath()
-	candidates := make([]special.Candidate, 0, len(hits))
+	candidates := make([]moodspecial.Candidate, 0, len(hits))
 	for _, h := range hits {
-		c := special.Candidate{TrackID: h.TrackID}
+		c := moodspecial.Candidate{TrackID: h.TrackID}
 		if m, ok := meta[h.TrackID]; ok {
 			c.Title, _ = m["title"].(string)
 			c.Artist, _ = m["artist"].(string)
@@ -92,16 +92,16 @@ func (a *App) GenerateMoodSpecial(mood string, topK int) (special.Feature, error
 	// 3. Start llama-server if needed.
 	srv, err := llamaServer()
 	if err != nil {
-		return special.Feature{}, err
+		return moodspecial.Feature{}, err
 	}
 	if err := srv.Start(a.ctx); err != nil {
-		return special.Feature{}, fmt.Errorf("llama-server 起動に失敗: %w", err)
+		return moodspecial.Feature{}, fmt.Errorf("llama-server 起動に失敗: %w", err)
 	}
 
 	// 4. Build prompt, call LLM, parse, materialise.
-	feat, err := special.Generate(a.ctx, mood, candidates, llmAdapter{c: srv.Client()})
+	feat, err := moodspecial.Generate(a.ctx, mood, candidates, llmAdapter{c: srv.Client()})
 	if err != nil {
-		return special.Feature{}, fmt.Errorf("特集生成に失敗: %w", err)
+		return moodspecial.Feature{}, fmt.Errorf("特集生成に失敗: %w", err)
 	}
 	return feat, nil
 }
