@@ -6,6 +6,7 @@ import { playNextSong, playPrevSong, playSong } from './playback-manager.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { animateIconPaths } from '../ui/player-ui.js';
 import { isInterludeText } from './lyrics-translation.js';
+import { EQUALIZER_COLOURS_CHANGE_EVENT } from '../ui/utils.js';
 
 /** 間奏（[間奏] などのマーカーや空行）は文字を消し、行高だけ残す。 */
 function fsDisplayText(text: string | undefined): string {
@@ -91,6 +92,11 @@ export function notifyFullscreenSongChange() {
 window.addEventListener('fullscreen:lyrics-change', () => {
     if (!isOpen()) return;
     syncLyrics();
+});
+
+window.addEventListener(EQUALIZER_COLOURS_CHANGE_EVENT, () => {
+    if (!isOpen()) return;
+    syncColours();
 });
 
 // ---- 内部ユーティリティ ----
@@ -397,6 +403,9 @@ const FS_POS_EXIT     = 130;
 const FS_POS_ENTER    = -30;
 const fsDashOf = (pos: number, len: number) => len - (pos / 100) * len;
 
+// 2本のストロークをずらして動かす際の遅延量（ms）。上の線を先行させる。
+const FS_SHUFFLE_STAGGER = 120;
+
 function initialiseFsShuffleLoop() {
     const initPaths = (btn: HTMLElement | null, topClass: string, botClass: string) => {
         if (!btn) return;
@@ -435,21 +444,24 @@ async function runFsShuffleAnimation() {
 
     const timingExit  = { duration: 200, easing: 'ease-in',                       fill: 'forwards' as FillMode };
     const timingEnter = { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' as FillMode };
+    // 下の線は上の線より遅らせて動かす（ずらしアニメーション）。
+    const timingExitBottom  = { ...timingExit,  delay: FS_SHUFFLE_STAGGER };
+    const timingEnterBottom = { ...timingEnter, delay: FS_SHUFFLE_STAGGER };
 
     const exitAnims: Animation[] = [
         pathTop.animate([{ strokeDashoffset: fsDashOf(FS_POS_STANDARD, topLen) },    { strokeDashoffset: fsDashOf(FS_POS_EXIT, topLen) }],    timingExit),
-        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_EXIT, bottomLen) }], timingExit),
+        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_EXIT, bottomLen) }], timingExitBottom),
     ];
     if (headTop)    exitAnims.push(headTop.animate([{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExit));
-    if (headBottom) exitAnims.push(headBottom.animate([{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExit));
+    if (headBottom) exitAnims.push(headBottom.animate([{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExitBottom));
     await Promise.all(exitAnims.map(a => a.finished));
 
     const enterAnims: Animation[] = [
         pathTop.animate([{ strokeDashoffset: fsDashOf(FS_POS_ENTER, topLen) },    { strokeDashoffset: fsDashOf(FS_POS_STANDARD, topLen) }],    timingEnter),
-        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_ENTER, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }], timingEnter),
+        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_ENTER, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }], timingEnterBottom),
     ];
     if (headTop)    enterAnims.push(headTop.animate([{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter));
-    if (headBottom) enterAnims.push(headBottom.animate([{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter));
+    if (headBottom) enterAnims.push(headBottom.animate([{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnterBottom));
     await Promise.all(enterAnims.map(a => a.finished));
 
     pathTop.style.strokeDashoffset    = '0';

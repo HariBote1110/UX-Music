@@ -1,3 +1,19 @@
+## 2026-06-29 — フルスクリーン背景色が前曲のジャケット色になる不具合を修正
+
+### 実施内容
+- 症状：曲変更後にフルスクリーンモードへ入る、またはフルスクリーン中に曲が変わると、背景グラデーションが現在曲ではなく一つ前の曲から抽出された色になる。
+- 原因：フルスクリーン側の `notifyFullscreenSongChange()` は曲情報更新直後に `syncColours()` を呼んでいたが、ジャケット画像の読み込みと `setEqualizerColorFromArtwork()` による色抽出は非同期で完了する。そのため、フルスクリーンが CSS 変数 `--eq-color-1` / `--eq-color-2` を読む時点では前曲の値が残っていた。
+- 修正：`setEqualizerColorFromArtwork()` が CSS 変数更新後に `equalizer-colours-change` イベントを発火し、フルスクリーンビューが開いている場合はそのイベントで背景色を再同期するようにした。
+- TDD：色更新完了イベントが CSS 変数更新後に発火するテストを追加し、Red→Green を確認。
+
+### 検証
+- `npm test -- --run js/ui/equalizer-colour-events.test.ts` PASS。
+- `npm run typecheck` PASS。
+- `npm test -- --run` PASS（14 files / 125 tests）。
+
+### 補足
+- 既存の未コミット差分（シャッフルボタンのずらしアニメーション、package-lock 等）は巻き戻さず保持した。
+
 ## 2026-06-28 — YouTube 字幕（カラオケ風 en 字幕）の二重登録を修正
 
 ### 実施内容
