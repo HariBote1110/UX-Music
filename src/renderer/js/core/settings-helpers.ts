@@ -56,3 +56,18 @@ export async function loadRendererSettings(): Promise<RendererSettingsRead> {
     const raw = await loadNormalizedSettings();
     return raw as RendererSettingsRead;
 }
+
+/**
+ * Reflects a persisted `isShuffled` setting into app state and syncs the
+ * shuffle button's active class. No-op when `isShuffled` is not a boolean.
+ */
+export function applyShuffleSetting(
+    settings: { isShuffled?: unknown },
+    state: { isShuffled: boolean },
+    elements: { shuffleBtn: HTMLElement | null }
+): void {
+    if (typeof settings.isShuffled === 'boolean') {
+        state.isShuffled = settings.isShuffled;
+        if (elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
+    }
+}
