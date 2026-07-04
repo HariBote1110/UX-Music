@@ -1,3 +1,18 @@
+## 2026-07-04 — UX Sync保存UIとAIムード検索表示の不自然さを修正
+
+### 実施内容
+- 既存の未コミット差分を `fix: フルスクリーン背景色同期とシャッフル演出を調整` として整理した。
+- UX Sync Phase 5.16 / 5.17 のドキュメントに対して、保存タブから消えていた `syncCachePolicy` の選択UIを復帰した。
+- 保存タブの保存処理が `syncMinFreeSpaceGB` / `syncCachePolicy` / `syncPreferredFormat` を同時に正規化して保存するようにした。
+- 同期タブのラベルを `転送時の音質` に変更し、push転送用の設定であることが分かる文言にした。
+- AIムード検索結果の表示名を `/` と `\` の両方で分割する `moodSearchDisplayName()` に集約し、Windowsパスでもファイル名だけを表示するようにした。
+
+### 検証
+- Red: `npm test -- --run js/features/ai-embed-settings.test.ts js/features/ux-sync-settings-dom.test.ts` で意図した3件の失敗を確認。
+- Green: `npm test -- --run js/features/ux-sync-settings.test.ts js/features/ai-embed-settings.test.ts js/features/ux-sync-settings-dom.test.ts` PASS。
+- `npm run typecheck` PASS。
+- `npm test -- --run` PASS（16 files / 129 tests）。
+
 ## 2026-06-29 — フルスクリーン背景色が前曲のジャケット色になる不具合を修正
 
 ### 実施内容

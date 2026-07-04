@@ -148,6 +148,10 @@ function escapeHtml(s: string): string {
     );
 }
 
+export function moodSearchDisplayName(path: string): string {
+    return path.split(/[\\/]/).pop() || path;
+}
+
 async function onSearchClick(): Promise<void> {
     const input = $<HTMLInputElement>('ai-audio-embed-search-input');
     const list = $('ai-audio-embed-search-results') as HTMLUListElement | null;
@@ -175,7 +179,7 @@ async function onSearchClick(): Promise<void> {
         }
         list.innerHTML = hits
             .map(h => {
-                const name = (h.path.split('/').pop() ?? h.path);
+                const name = moodSearchDisplayName(h.path);
                 return `<li style="padding: 6px 8px; border-bottom: 1px solid #2a2a2a; display: flex; justify-content: space-between; gap: 8px;">
                     <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(h.path)}">${escapeHtml(name)}</span>
                     <span style="color: #4a9eff; font-variant-numeric: tabular-nums; flex-shrink: 0;">${h.score.toFixed(3)}</span>
@@ -211,7 +215,7 @@ function renderSpecial(feat: SpecialFeature): void {
     descEl.textContent = feat.description || '';
 
     const items = (feat.orderedTrackIds || []).map(id => {
-        const name = (id.split('/').pop() ?? id);
+        const name = moodSearchDisplayName(id);
         const comment = feat.perTrackComments?.[id] ?? '';
         return `<li style="margin: 6px 0; line-height: 1.5;">
             <div style="color: #eee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(id)}">${escapeHtml(name)}</div>

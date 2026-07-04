@@ -27,8 +27,10 @@ import {
     normaliseSyncPushResult,
     normaliseSyncTransferProgress,
     normaliseSyncPeers,
+    normaliseSyncCachePolicy,
     normaliseSyncPreferredFormat,
     startManualSyncPairing,
+    syncCachePolicyOptions,
     syncPreferredFormatOptions,
     syncTransferEncodingOptions,
     syncPeerConnectionLabel,
@@ -252,6 +254,7 @@ function switchUxSyncSettingsTab(tabName: string): void {
 
 async function refreshUxSyncStorageSettings(): Promise<void> {
     const input = document.getElementById('ux-sync-min-free-space-gb-input') as HTMLInputElement | null;
+    const cachePolicySelect = document.getElementById('ux-sync-cache-policy-select') as HTMLSelectElement | null;
     const preferredFormatSelect = document.getElementById('ux-sync-preferred-format-select') as HTMLSelectElement | null;
     const status = document.getElementById('ux-sync-storage-status');
     if (!input || !status) return;
@@ -259,6 +262,9 @@ async function refreshUxSyncStorageSettings(): Promise<void> {
         const settings = await loadRendererSettings();
         const value = normaliseSyncMinFreeSpaceGB((settings as { syncMinFreeSpaceGB?: unknown }).syncMinFreeSpaceGB ?? 5);
         input.value = String(value);
+        if (cachePolicySelect) {
+            cachePolicySelect.value = normaliseSyncCachePolicy((settings as { syncCachePolicy?: unknown }).syncCachePolicy);
+        }
         if (preferredFormatSelect) {
             preferredFormatSelect.value = normaliseSyncPreferredFormat((settings as { syncPreferredFormat?: unknown }).syncPreferredFormat);
         }
@@ -270,17 +276,26 @@ async function refreshUxSyncStorageSettings(): Promise<void> {
 
 async function saveUxSyncStorageSettings(): Promise<void> {
     const input = document.getElementById('ux-sync-min-free-space-gb-input') as HTMLInputElement | null;
+    const cachePolicySelect = document.getElementById('ux-sync-cache-policy-select') as HTMLSelectElement | null;
     const preferredFormatSelect = document.getElementById('ux-sync-preferred-format-select') as HTMLSelectElement | null;
     const status = document.getElementById('ux-sync-storage-status');
     if (!input || !status) return;
     const value = normaliseSyncMinFreeSpaceGB(input.value);
+    const cachePolicy = normaliseSyncCachePolicy(cachePolicySelect?.value);
     const preferredFormat = normaliseSyncPreferredFormat(preferredFormatSelect?.value);
     input.value = String(value);
+    if (cachePolicySelect) {
+        cachePolicySelect.value = cachePolicy;
+    }
     if (preferredFormatSelect) {
         preferredFormatSelect.value = preferredFormat;
     }
     try {
-        await musicApi.saveSettings({ syncMinFreeSpaceGB: value, syncPreferredFormat: preferredFormat });
+        await musicApi.saveSettings({
+            syncMinFreeSpaceGB: value,
+            syncCachePolicy: cachePolicy,
+            syncPreferredFormat: preferredFormat,
+        });
         status.textContent = formatSyncFreeSpaceSafetyStatus(value);
     } catch (e) {
         status.textContent = `設定の保存に失敗しました: ${(e as Error)?.message || String(e)}`;
@@ -862,6 +877,18 @@ export function initSettings() {
             syncTransferEncodingSelect.appendChild(el);
         }
         syncTransferEncodingSelect.dataset.optionsInitialised = 'true';
+    }
+
+    const syncCachePolicySelect = document.getElementById('ux-sync-cache-policy-select') as HTMLSelectElement | null;
+    if (syncCachePolicySelect && !syncCachePolicySelect.dataset.optionsInitialised) {
+        syncCachePolicySelect.innerHTML = '';
+        for (const option of syncCachePolicyOptions()) {
+            const el = document.createElement('option');
+            el.value = option.value;
+            el.textContent = option.label;
+            syncCachePolicySelect.appendChild(el);
+        }
+        syncCachePolicySelect.dataset.optionsInitialised = 'true';
     }
 
     const syncPreferredFormatSelect = document.getElementById('ux-sync-preferred-format-select') as HTMLSelectElement | null;

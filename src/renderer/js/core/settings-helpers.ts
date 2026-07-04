@@ -27,6 +27,9 @@ export interface RendererSettingsRead {
     enableEasterEggs?: boolean;
     enableYouTube?: boolean;
     uiTheme?: string;
+    syncMinFreeSpaceGB?: number;
+    syncCachePolicy?: string;
+    syncPreferredFormat?: string;
 }
 
 /**
