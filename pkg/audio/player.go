@@ -19,7 +19,6 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
-	"ux-music-sidecar/internal/config"
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/riff"
@@ -51,6 +50,37 @@ const longPauseStreamRefreshAfter = 30 * time.Minute
 var equalizerFrequencies = [equalizerBandCount]float64{31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000}
 
 var resolvedCommandPaths sync.Map
+
+// ffmpegPath and ffprobePath hold externally injected executable paths for
+// ffmpeg/ffprobe, avoiding a direct dependency on internal/config. Callers
+// should invoke SetFFmpegPaths before relying on ffmpeg/ffprobe resolution.
+var (
+	ffmpegPath  atomic.Value
+	ffprobePath atomic.Value
+)
+
+// SetFFmpegPaths injects the resolved ffmpeg/ffprobe executable paths to be
+// used by resolveCommandPath. This allows callers outside pkg/audio (e.g.
+// server/) to configure the paths without pkg/audio depending on their
+// configuration package.
+func SetFFmpegPaths(ffmpeg, ffprobe string) {
+	ffmpegPath.Store(ffmpeg)
+	ffprobePath.Store(ffprobe)
+}
+
+func loadFFmpegPath() string {
+	if v, ok := ffmpegPath.Load().(string); ok {
+		return v
+	}
+	return ""
+}
+
+func loadFFprobePath() string {
+	if v, ok := ffprobePath.Load().(string); ok {
+		return v
+	}
+	return ""
+}
 
 type audioStream interface {
 	Start() error
@@ -1621,13 +1651,13 @@ func resolveCommandPath(name string) (string, error) {
 		resolvedCommandPaths.Delete(name)
 	}
 
-	if name == "ffmpeg" && isExecutablePath(config.FFmpegPath) {
-		resolvedCommandPaths.Store(name, config.FFmpegPath)
-		return config.FFmpegPath, nil
+	if name == "ffmpeg" && isExecutablePath(loadFFmpegPath()) {
+		resolvedCommandPaths.Store(name, loadFFmpegPath())
+		return loadFFmpegPath(), nil
 	}
-	if name == "ffprobe" && isExecutablePath(config.FFprobePath) {
-		resolvedCommandPaths.Store(name, config.FFprobePath)
-		return config.FFprobePath, nil
+	if name == "ffprobe" && isExecutablePath(loadFFprobePath()) {
+		resolvedCommandPaths.Store(name, loadFFprobePath())
+		return loadFFprobePath(), nil
 	}
 
 	path, err := exec.LookPath(name)

@@ -61,6 +61,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.initOSMediaControls()
 
 	// Initialize Audio Player
+	audio.SetFFmpegPaths(config.FFmpegPath, config.FFprobePath)
 	player, err := audio.NewPlayer()
 	if err != nil {
 		println("Error initializing audio player:", err.Error())
