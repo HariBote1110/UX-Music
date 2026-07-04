@@ -9,8 +9,23 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"ux-music-sidecar/internal/store"
 )
+
+// SettingsProvider abstracts loading a persisted settings map, decoupling
+// this package from internal/store's concrete singleton implementation.
+type SettingsProvider interface {
+	LoadMap(name string) (map[string]interface{}, error)
+}
+
+var settingsProvider SettingsProvider
+
+// SetSettingsProvider injects the SettingsProvider implementation used to
+// read persisted settings (e.g. lyrics sync model consent). Callers
+// (e.g. server/) should call this during initialisation, passing
+// internal/store's Instance or an equivalent implementation.
+func SetSettingsProvider(provider SettingsProvider) {
+	settingsProvider = provider
+}
 
 const (
 	envPythonPath       = "PYTHONPATH"
@@ -219,7 +234,10 @@ func computeSidecarTimeout(durationSeconds float64) time.Duration {
 }
 
 func loadModelConsentFromStore() bool {
-	m, err := store.Instance.LoadMap("settings")
+	if settingsProvider == nil {
+		return false
+	}
+	m, err := settingsProvider.LoadMap("settings")
 	if err != nil {
 		return false
 	}
