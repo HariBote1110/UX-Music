@@ -114,5 +114,4 @@ func (a *App) bindLyricsSyncProgressEmitter() {
 }
 
 // pushDiscordPresence updates Discord Rich Presence state.
-// TODO: implement with internal/discord package.
 func (a *App) pushDiscordPresence(_ bool) {}
