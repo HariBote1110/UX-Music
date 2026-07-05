@@ -5,7 +5,7 @@ import {audio} from '../models';
 import {lyricssync} from '../models';
 import {cdrip} from '../models';
 import {uxsync} from '../models';
-import {special} from '../models';
+import {moodspecial} from '../models';
 import {mtp} from '../models';
 import {normalize} from '../models';
 import {scanner} from '../models';
@@ -88,7 +88,7 @@ export function DiscoverSyncDevices(arg1:number):Promise<Array<uxsync.MDNSPeer>>
 
 export function DownloadSyncTrack(arg1:string,arg2:string):Promise<server.SyncPullResult>;
 
-export function GenerateMoodSpecial(arg1:string,arg2:number):Promise<special.Feature>;
+export function GenerateMoodSpecial(arg1:string,arg2:number):Promise<moodspecial.Feature>;
 
 export function GetAllLoudnessData():Promise<Record<string, any>>;
 

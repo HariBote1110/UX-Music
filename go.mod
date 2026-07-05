@@ -12,7 +12,6 @@ require (
 	github.com/gordonklaus/portaudio v0.0.0-20250206071425-98a94950218b
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/hajimehoshi/go-mp3 v0.3.4
-	github.com/hugolgst/rich-go v0.0.0-20240715122152-74618cc1ace2
 	github.com/kkdai/youtube/v2 v2.10.5
 	github.com/mewkiz/flac v1.0.13
 	github.com/mjibson/go-dsp v0.0.0-20180508042940-11479a337f12
@@ -57,5 +56,4 @@ require (
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
-	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 )
