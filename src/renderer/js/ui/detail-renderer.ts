@@ -13,7 +13,7 @@ import {
 } from './list-renderer.js';
 import { clearMainContent } from './view-renderer.js';
 import { updateListSpacer } from './ui.js'; // 追加
-import { getAlbumSongs, getArtistSongs, setCurrentViewSongs } from '../core/library-model.js';
+import { getAlbumSongs, getArtistSongs, getArtistAlbums, setCurrentViewSongs } from '../core/library-model.js';
 const electronAPI = window.electronAPI;
 
 // モジュールスコープでスクロール位置を記憶
@@ -89,7 +89,7 @@ export function renderArtistDetailView(artist) {
     setCurrentViewSongs(artistSongs);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
-    const artistAlbums = [...state.albums.entries()].filter(([, album]) => (album as Record<string, unknown>).artist === (artist as Record<string, unknown>).name);
+    const artistAlbums = getArtistAlbums(artist);
     viewWrapper.innerHTML = `
         <div class="detail-header">
             <img class="detail-art-img artist-detail-art-round lazy-load">

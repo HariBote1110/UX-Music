@@ -149,6 +149,22 @@ export function getArtistSongs(artist: Record<string, unknown>) {
     return resolveSongsByIds((artist.songIds as string[]) || []);
 }
 
+/**
+ * アーティストが参加しているアルバムを [albumKey, album] の配列で返す。
+ * 代表アーティスト名の一致ではなく、所属曲の albumKey から辿ることで、
+ * コンピレーションアルバム（代表: Various Artists）も漏れなく含める。
+ */
+export function getArtistAlbums(artist: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
+    const albumKeys = new Set<string>();
+    getArtistSongs(artist).forEach((song) => {
+        const albumKey = (song as Record<string, unknown>).albumKey;
+        if (typeof albumKey === 'string' && state.albums.has(albumKey)) {
+            albumKeys.add(albumKey);
+        }
+    });
+    return [...albumKeys].map((key) => [key, state.albums.get(key) as Record<string, unknown>]);
+}
+
 export function setCurrentViewSongs(songs = []) {
     state.currentlyViewedSongIds = songs.map((song) => song.id).filter(Boolean);
 }
