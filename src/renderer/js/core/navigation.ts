@@ -122,6 +122,7 @@ export async function showView(viewId, options: Record<string, unknown> = {}) {
             type: options.type as string | null,
             identifier: options.identifier as string | null,
             data: options.data,
+            fromArtist: options.fromArtist as string | undefined,
         };
         const correspondingListViewLink = document.querySelector(`.nav-link[data-view="${options.type}-view"]`);
         if (correspondingListViewLink) {
@@ -181,11 +182,16 @@ export async function showPlaylist(playlistName) {
     }
 }
 
-export function showAlbum(albumKey) {
+export function showAlbum(albumKey, options: { fromArtist?: string } = {}) {
     const album = state.albums.get(albumKey);
     if (!album) return;
     state.currentlyViewedSongIds = Array.from((album as Record<string, unknown>).songIds as Iterable<string> || []);
-    void showView('album-detail-view', { type: 'album', identifier: albumKey, data: album });
+    void showView('album-detail-view', {
+        type: 'album',
+        identifier: albumKey,
+        data: album,
+        fromArtist: options.fromArtist,
+    });
 }
 
 export function showArtist(artistName) {

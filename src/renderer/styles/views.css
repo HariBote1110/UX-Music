@@ -444,6 +444,10 @@
 }
 
 /* --- 詳細表示のスタイル --- */
+.album-detail-back-btn {
+    margin-bottom: 16px;
+}
+
 .detail-header {
     display: flex;
     align-items: flex-end;
