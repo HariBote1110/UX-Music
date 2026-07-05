@@ -1,12 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../ui/view-renderer.js', () => ({
-    renderTrackView: vi.fn(),
-    renderAlbumView: vi.fn(),
+const mocks = vi.hoisted(() => ({
     renderArtistView: vi.fn(),
-    renderPlaylistView: vi.fn(),
+    renderAlbumView: vi.fn(),
     renderAlbumDetailView: vi.fn(),
     renderArtistDetailView: vi.fn(),
+}));
+
+vi.mock('../ui/view-renderer.js', () => ({
+    renderTrackView: vi.fn(),
+    renderAlbumView: mocks.renderAlbumView,
+    renderArtistView: mocks.renderArtistView,
+    renderPlaylistView: vi.fn(),
+    renderAlbumDetailView: mocks.renderAlbumDetailView,
+    renderArtistDetailView: mocks.renderArtistDetailView,
     renderPlaylistDetailView: vi.fn(),
     renderSituationView: vi.fn(),
     clearMainContent: vi.fn(),
@@ -36,31 +43,64 @@ vi.mock('./state.js', () => ({
     },
 }));
 
-describe('showAlbum', () => {
+async function setupLibrary() {
+    const { state } = await import('./state.js');
+    (state as any).albums = new Map([
+        ['album-1', { title: 'Test Album', artist: 'Test Artist', songIds: [] }],
+    ]);
+    (state as any).artists = new Map([
+        ['Test Artist', { name: 'Test Artist', songIds: [] }],
+    ]);
+    return state;
+}
+
+describe('ナビゲーション履歴（canGoBack / goBack）', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.resetModules();
         globalThis.document = {
             querySelector: vi.fn(() => null),
         } as unknown as Document;
     });
 
-    it('アーティスト詳細から遷移した場合、戻り先アーティスト名を currentDetailView.fromArtist に記録する', async () => {
-        const { state } = await import('./state.js');
-        (state as any).albums = new Map([['album-1', { title: 'Test Album', artist: 'Test Artist', songIds: [] }]]);
-
-        const { showAlbum } = await import('./navigation.js');
-        await showAlbum('album-1', { fromArtist: 'Test Artist' });
-
-        expect((state as any).currentDetailView.fromArtist).toBe('Test Artist');
+    it('一覧ビュー表示直後は戻れない', async () => {
+        await setupLibrary();
+        const nav = await import('./navigation.js');
+        await nav.showView('artist-view');
+        expect(nav.canGoBack()).toBe(false);
     });
 
-    it('アルバム一覧から直接遷移した場合、fromArtist は設定されない', async () => {
-        const { state } = await import('./state.js');
-        (state as any).albums = new Map([['album-1', { title: 'Test Album', artist: 'Test Artist', songIds: [] }]]);
+    it('アーティスト詳細→アルバム詳細と進んだ後、goBack で順に元のビューへ戻る', async () => {
+        await setupLibrary();
+        const nav = await import('./navigation.js');
 
-        const { showAlbum } = await import('./navigation.js');
-        await showAlbum('album-1');
+        await nav.showView('artist-view');
+        nav.showArtist('Test Artist');
+        expect(nav.canGoBack()).toBe(true);
 
-        expect((state as any).currentDetailView.fromArtist).toBeUndefined();
+        nav.showAlbum('album-1');
+        expect(nav.canGoBack()).toBe(true);
+
+        mocks.renderArtistDetailView.mockClear();
+        await nav.goBack();
+        expect(mocks.renderArtistDetailView).toHaveBeenCalledTimes(1);
+        expect(nav.canGoBack()).toBe(true);
+
+        mocks.renderArtistView.mockClear();
+        await nav.goBack();
+        expect(mocks.renderArtistView).toHaveBeenCalledTimes(1);
+        expect(nav.canGoBack()).toBe(false);
+    });
+
+    it('サイドナビで一覧ビューへ移動すると履歴はクリアされる', async () => {
+        await setupLibrary();
+        const nav = await import('./navigation.js');
+
+        await nav.showView('artist-view');
+        nav.showArtist('Test Artist');
+        expect(nav.canGoBack()).toBe(true);
+
+        await nav.showView('album-view');
+        expect(nav.canGoBack()).toBe(false);
     });
 });
