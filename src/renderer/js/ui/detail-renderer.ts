@@ -1,7 +1,8 @@
 // src/renderer/js/ui/detail-renderer.js
 
-import { state, elements } from '../core/state.js';
-import { showAlbum, showArtist } from '../core/navigation.js';
+import { elements } from '../core/state.js';
+import { showAlbum } from '../core/navigation.js';
+import { prependDetailBackButton } from './detail-back-button.js';
 import { playSong } from '../features/playback-manager.js';
 import { createAlbumGridItem } from './element-factory.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
@@ -29,9 +30,7 @@ export function renderAlbumDetailView(album) {
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
     const totalDuration = albumSongs.reduce((sum, song) => sum + (song.duration || 0), 0);
-    const fromArtist = (state.currentDetailView as Record<string, unknown>).fromArtist as string | undefined;
     viewWrapper.innerHTML = `
-        ${fromArtist ? '<button type="button" class="header-button album-detail-back-btn">← アーティストに戻る</button>' : ''}
         <div class="detail-header">
             <img class="detail-art-img lazy-load">
             <div class="detail-info">
@@ -59,9 +58,7 @@ export function renderAlbumDetailView(album) {
 
     initListHeaderResizing(viewWrapper);
 
-    if (fromArtist) {
-        viewWrapper.querySelector('.album-detail-back-btn')?.addEventListener('click', () => showArtist(fromArtist));
-    }
+    prependDetailBackButton(viewWrapper);
 
     const artImg = viewWrapper.querySelector('.detail-art-img') as HTMLImageElement | null;
 
@@ -107,7 +104,7 @@ export function renderArtistDetailView(artist) {
     } else {
         artistAlbums.forEach(([albumKey, album]) => {
             const albumItem = createAlbumGridItem(albumKey, album);
-            albumItem.addEventListener('click', () => showAlbum(albumKey, { fromArtist: (artist as Record<string, unknown>).name as string }));
+            albumItem.addEventListener('click', () => showAlbum(albumKey));
             grid.appendChild(albumItem);
         });
     }
@@ -116,6 +113,8 @@ export function renderArtistDetailView(artist) {
 
     // スペーサーを更新
     updateListSpacer();
+
+    prependDetailBackButton(viewWrapper);
 
     const artImg = viewWrapper.querySelector('.detail-art-img') as HTMLImageElement | null;
     if (artImg) artImg.dataset.src = resolveArtworkPath((artist as Record<string, unknown>).artwork, false);
@@ -176,6 +175,8 @@ export function renderPlaylistDetailView(playlistDetails: Record<string, unknown
     updateListSpacer();
 
     initListHeaderResizing(viewWrapper);
+
+    prependDetailBackButton(viewWrapper);
 
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, songs));
 
