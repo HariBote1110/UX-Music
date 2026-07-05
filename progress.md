@@ -1,3 +1,28 @@
+## 2026-07-05 — Desktop App: アルバム詳細に「アーティストに戻る」ボタンを追加
+
+### 実施内容
+- Desktop App（`src/renderer`）で、アーティスト一覧→アーティスト詳細→アルバム詳細と遷移した際に、アルバム一覧（中央セクション）に戻る手段がなく、アーティスト詳細へ戻れない不具合を解消した。
+- `src/renderer/js/core/navigation.ts` の `showAlbum` に任意引数 `{ fromArtist }` を追加し、`showView` 経由で `state.currentDetailView.fromArtist` に遷移元アーティスト名を記録するようにした。
+- `src/renderer/js/ui/detail-renderer.ts` の `renderArtistDetailView` 内のアルバムグリッドクリック時に `showAlbum(albumKey, { fromArtist: artist.name })` を渡すよう変更。
+- `renderAlbumDetailView` で `state.currentDetailView.fromArtist` が設定されている場合のみ、詳細ヘッダー左上に `.header-button.album-detail-back-btn`（「← アーティストに戻る」）を描画し、クリックで `showArtist(fromArtist)` を呼び出すようにした。
+- 既存の `.header-button`（quiz の戻るボタン等で使用）スタイルを再利用し、`views.css` に `.album-detail-back-btn { margin-bottom: 16px; }` のみ追加。
+- TDD: まず `src/renderer/js/core/navigation.test.ts` に「`showAlbum` が `fromArtist` オプション付きで呼ばれたとき `currentDetailView.fromArtist` に記録される／オプションなしでは記録されない」テストを追加し Red を確認、コミット後に実装して Green にした。
+- renderer 版を `1.0.0-Beta-36d` から `1.0.0-Beta-37a` へ更新（新機能追加のため PhaseVer +1）。
+
+### 選定理由・判断の根拠
+- 状態管理は既存の `state.currentDetailView`（`DetailViewState`、任意キー許容の型）を拡張する形にし、新しいグローバル状態や別ストアを作らず既存の遷移フローに最小差分で乗せた。
+- `renderAlbumDetailView` の統合テスト（DOM操作込み）は本プロジェクトが jsdom を導入しておらず、既存のDOMテストも手動モック中心のため、DOM生成込みの検証は割に合わないと判断。ロジックの核となる `showAlbum`／`currentDetailView` の状態遷移のみを vitest で検証する方針にした。
+- ボタンのスタイルは新規CSSクラスを増やさず、quiz-back-btn 等で既に使われている `.header-button` を流用し、UIの一貫性を優先した。
+
+### 検証
+- `npx vitest run`（src/renderer）: 20ファイル / 152テスト全通過。
+- `npx tsc --noEmit`: エラーなし。
+- `npx eslint`（変更ファイルのみ）: エラーなし（既存パターンと同様の `any` 警告のみ）。
+- Wails + Go バックエンドを要する実アプリでの目視確認は本セッションでは未実施（環境上の制約）。
+
+### 残課題・次のステップ
+- 実機（Wails dev サーバー起動）での目視確認は未実施のため、次回起動時に確認するとよい。
+
 ## 2026-07-05 — ドメイン境界・無意味テスト・UI不整合の一斉是正
 
 ### 実施内容
