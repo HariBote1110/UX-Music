@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/lyricssync"
 	"ux-music-sidecar/pkg/audio"
@@ -16,22 +17,24 @@ import (
 
 // App struct
 type App struct {
-	ctx               context.Context
-	playCountsEmitter func(context.Context, string, interface{})
-	ripper            *cdrip.Ripper
-	mtpManager        *mtp.Manager
-	normalizer        *normalize.Normalizer
-	loudnessMu        sync.Mutex
-	audioPlayer       *audio.Player
-	lyricsSyncer      *lyricssync.Syncer
-	mtpConnected      bool
-	mtpMu             sync.Mutex
-	mediaStateMu      sync.Mutex
-	mediaTitle        string
-	mediaArtist       string
-	mediaAlbum        string
-	mediaArtwork      string
-	deviceWatcherStop chan struct{}
+	ctx                context.Context
+	playCountsEmitter  func(context.Context, string, interface{})
+	ripper             *cdrip.Ripper
+	mtpManager         *mtp.Manager
+	normalizer         *normalize.Normalizer
+	loudnessMu         sync.Mutex
+	loudnessPending    map[string]interface{}
+	loudnessFlushTimer *time.Timer
+	audioPlayer        *audio.Player
+	lyricsSyncer       *lyricssync.Syncer
+	mtpConnected       bool
+	mtpMu              sync.Mutex
+	mediaStateMu       sync.Mutex
+	mediaTitle         string
+	mediaArtist        string
+	mediaAlbum         string
+	mediaArtwork       string
+	deviceWatcherStop  chan struct{}
 }
 
 // NewApp creates a new App struct
@@ -84,6 +87,11 @@ func (a *App) Startup(ctx context.Context) {
 	a.StartDeviceWatcher()
 
 	a.startSyncAutoLoop()
+}
+
+// Shutdown はWails終了前に遅延保存中の状態をディスクへ反映する。
+func (a *App) Shutdown(ctx context.Context) {
+	a.flushPendingLoudness()
 }
 
 // Ping returns a pong message

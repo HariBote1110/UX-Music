@@ -130,6 +130,7 @@ type Player struct {
 	fftLocalBuf []float64      // Local buffer for collecting samples
 	fftChan     chan []float64 // Channel for async FFT processing
 	fftMonoPool sync.Pool      // Reusable mono sample slices (avoids alloc in processAudio)
+	fftEnabled  atomic.Bool    // ビジュアライザー表示時だけFFTへサンプルを流す
 
 	// Equaliser
 	eqSettingsMu sync.RWMutex
@@ -767,6 +768,10 @@ func (p *Player) calculateFFT(input []float64) {
 
 // GetFrequencyData returns the current frequency data for visualization
 func (p *Player) GetFrequencyData() []uint8 {
+	if !p.fftEnabled.Load() {
+		return []uint8{}
+	}
+
 	p.fftMu.RLock()
 	defer p.fftMu.RUnlock()
 
@@ -774,6 +779,18 @@ func (p *Player) GetFrequencyData() []uint8 {
 	result := make([]uint8, len(p.fftResult))
 	copy(result, p.fftResult)
 	return result
+}
+
+// SetFrequencyAnalysisEnabled はリアルタイムコールバックからFFTへ流すサンプルを制御する。
+func (p *Player) SetFrequencyAnalysisEnabled(enabled bool) {
+	p.fftEnabled.Store(enabled)
+	if enabled {
+		return
+	}
+
+	p.fftMu.Lock()
+	defer p.fftMu.Unlock()
+	clear(p.fftResult)
 }
 
 // processAudio is called by PortAudio to fill the output buffer
@@ -851,7 +868,7 @@ func (p *Player) processAudio(out []float32) {
 		}
 
 		// Send samples for FFT (reuse pooled slice — no allocation in real-time callback)
-		if p.fftChan != nil && samplesToRead >= 512 && channels > 0 {
+		if p.fftEnabled.Load() && p.fftChan != nil && samplesToRead >= 512 && channels > 0 {
 			nMono := samplesToRead / channels
 			if nMono > 0 {
 				bufAny := p.fftMonoPool.Get()

@@ -9,11 +9,23 @@ declare global {
 
 const SAMPLE_INTERVAL_MS = 1000;
 const REPORT_INTERVAL_MS = 5000;
+const STORAGE_KEY = 'uxMusic.performanceMonitor';
 
 let sampleTimerId = null;
 let fpsFrameCount = 0;
 let fpsLoopId = null;
 let fpsLoopStartedAt = 0;
+
+declare global {
+    interface Window {
+        uxMusicPerformanceMonitor?: {
+            start: () => void;
+            stop: () => void;
+            enable: () => void;
+            disable: () => void;
+        };
+    }
+}
 
 const samples = {
     rssMb: [],
@@ -105,6 +117,19 @@ function reportAverages() {
     clearSamples();
 }
 
+export function isPerformanceMonitorEnabled() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const paramValue = params.get('perf') ?? params.get('performanceMonitor');
+        if (paramValue === '1' || paramValue === 'true') {
+            return true;
+        }
+        return window.localStorage?.getItem(STORAGE_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
 async function collectSample() {
     collectFpsSample();
 
@@ -148,3 +173,28 @@ export function startPerformanceMonitor() {
 
     console.log('[Perf] 5秒平均のパフォーマンスモニターを開始しました。');
 }
+
+export function stopPerformanceMonitor() {
+    if (sampleTimerId != null) {
+        window.clearInterval(sampleTimerId);
+        sampleTimerId = null;
+    }
+    if (fpsLoopId != null) {
+        cancelAnimationFrame(fpsLoopId);
+        fpsLoopId = null;
+    }
+    clearSamples();
+}
+
+window.uxMusicPerformanceMonitor = {
+    start: startPerformanceMonitor,
+    stop: stopPerformanceMonitor,
+    enable: () => {
+        window.localStorage?.setItem(STORAGE_KEY, '1');
+        startPerformanceMonitor();
+    },
+    disable: () => {
+        window.localStorage?.removeItem(STORAGE_KEY);
+        stopPerformanceMonitor();
+    },
+};

@@ -45,6 +45,7 @@ async function applyOutputDeviceChange(selectedItem: HTMLElement, newDeviceId: s
 }
 
 let lastPlayingQueueIndex = -1;
+let lastQueueRenderKeys = [];
 /** @type {HTMLElement | null} */
 let cachedMainPlayingItem = null;
 
@@ -111,8 +112,15 @@ export function updatePlayCountDisplay(songPath, count) {
 }
 
 export function renderQueueView() {
+    const nextQueueKeys = buildQueueRenderKeys();
+    if (isQueueRenderCurrent(nextQueueKeys)) {
+        syncQueuePlayingState();
+        return;
+    }
+
     elements.queueList.innerHTML = '';
     lastPlayingQueueIndex = -1;
+    lastQueueRenderKeys = nextQueueKeys;
     if (state.playbackQueue.length === 0) {
         elements.queueList.innerHTML = '<p class="no-lyrics">再生キューは空です</p>';
         return;
@@ -137,6 +145,46 @@ export function renderQueueView() {
         const playingItem = elements.queueList.querySelector(`[data-queue-index="${lastPlayingQueueIndex}"]`);
         playingItem?.scrollIntoView({ block: 'nearest' });
     }
+}
+
+function buildQueueRenderKeys() {
+    return state.playbackQueue.map((song, index) => {
+        const albumKey = typeof song?.albumKey === 'string' ? song.albumKey : '';
+        const album = albumKey ? state.albums.get(albumKey) : null;
+        const albumArtwork = album && typeof album === 'object' ? (album as Record<string, unknown>).artwork : '';
+        const artworkKey = typeof song?.artwork === 'string' ? song.artwork : JSON.stringify(song?.artwork ?? albumArtwork ?? '');
+        return [
+            index,
+            song?.id || '',
+            song?.path || '',
+            song?.title || '',
+            song?.artist || '',
+            albumKey,
+            artworkKey,
+            song?.syncAvailability || '',
+        ].join('\u0001');
+    });
+}
+
+function isQueueRenderCurrent(nextQueueKeys) {
+    if (!elements.queueList) {
+        return false;
+    }
+    if (nextQueueKeys.length !== lastQueueRenderKeys.length) {
+        return false;
+    }
+    if (nextQueueKeys.length === 0) {
+        return elements.queueList.querySelector('.no-lyrics') != null;
+    }
+    if (!elements.queueList.querySelector('[data-queue-index]')) {
+        return false;
+    }
+    for (let i = 0; i < nextQueueKeys.length; i++) {
+        if (nextQueueKeys[i] !== lastQueueRenderKeys[i]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 function syncQueuePlayingState() {

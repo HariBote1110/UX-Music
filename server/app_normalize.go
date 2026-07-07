@@ -9,11 +9,17 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/pkg/normalize"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/text/unicode/norm"
+)
+
+const (
+	loudnessFlushDelay      = 750 * time.Millisecond
+	loudnessFlushMaxPending = 64
 )
 
 func (a *App) NormalizeAnalyze(path string) normalize.AnalysisResult {
@@ -209,7 +215,7 @@ func extractLoudnessEntry(value interface{}) (loudness float64, truePeak float64
 // GetLoudnessValue returns the saved loudness for a song as a plain number.
 // Kept as number for backward compatibility with the playback pipeline.
 func (a *App) GetLoudnessValue(path string) (interface{}, error) {
-	loudnessMap := loadLoudnessMap()
+	loudnessMap := a.loadLoudnessMapWithPending()
 	for _, key := range loudnessPathCandidates(path) {
 		if value, ok := loudnessMap[key]; ok {
 			loudness, _, _, valid := extractLoudnessEntry(value)
@@ -225,7 +231,7 @@ func (a *App) GetLoudnessValue(path string) (interface{}, error) {
 // Each value is a map {"loudness": float64, "truePeak": float64} when available,
 // or a plain float64 for legacy entries that have no truePeak stored yet.
 func (a *App) GetAllLoudnessData() (map[string]interface{}, error) {
-	return loadLoudnessMap(), nil
+	return a.loadLoudnessMapWithPending(), nil
 }
 
 func (a *App) GetLibraryForNormalize() ([]interface{}, error) {
@@ -310,6 +316,28 @@ func loadLoudnessMap() map[string]interface{} {
 	return m
 }
 
+func cloneLoudnessMap(src map[string]interface{}) map[string]interface{} {
+	dst := make(map[string]interface{}, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
+}
+
+func (a *App) loadLoudnessMapWithPending() map[string]interface{} {
+	loudnessMap := cloneLoudnessMap(loadLoudnessMap())
+	if a == nil {
+		return loudnessMap
+	}
+
+	a.loudnessMu.Lock()
+	defer a.loudnessMu.Unlock()
+	for key, value := range a.loudnessPending {
+		loudnessMap[key] = value
+	}
+	return loudnessMap
+}
+
 func hasNumericLoudnessValue(value interface{}) bool {
 	switch value.(type) {
 	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
@@ -386,7 +414,7 @@ func (a *App) queueLoudnessAnalysis(paths []string) {
 		return
 	}
 
-	existing := loadLoudnessMap()
+	existing := a.loadLoudnessMapWithPending()
 	pending := filterPendingLoudnessPaths(paths, existing)
 	if len(pending) == 0 {
 		return
@@ -431,6 +459,7 @@ func (a *App) queueLoudnessAnalysis(paths []string) {
 		}
 
 		wg.Wait()
+		a.flushPendingLoudness()
 	}(pending)
 }
 
@@ -443,12 +472,62 @@ func (a *App) saveLoudnessEntry(path string, loudness float64, truePeak float64)
 	a.loudnessMu.Lock()
 	defer a.loudnessMu.Unlock()
 
-	loudnessMap := loadLoudnessMap()
 	entry := map[string]interface{}{"loudness": loudness, "truePeak": truePeak}
+	if a.loudnessPending == nil {
+		a.loudnessPending = make(map[string]interface{}, len(candidates))
+	}
 	for _, key := range candidates {
-		loudnessMap[key] = entry
+		a.loudnessPending[key] = entry
+	}
+
+	if len(a.loudnessPending) >= loudnessFlushMaxPending {
+		go a.flushPendingLoudness()
+		return
+	}
+	a.scheduleLoudnessFlushLocked()
+}
+
+func (a *App) scheduleLoudnessFlushLocked() {
+	if a.loudnessFlushTimer != nil {
+		return
+	}
+	a.loudnessFlushTimer = time.AfterFunc(loudnessFlushDelay, func() {
+		a.flushPendingLoudness()
+	})
+}
+
+func (a *App) flushPendingLoudness() {
+	if a == nil {
+		return
+	}
+
+	a.loudnessMu.Lock()
+	pending := a.loudnessPending
+	a.loudnessPending = nil
+	if a.loudnessFlushTimer != nil {
+		a.loudnessFlushTimer.Stop()
+		a.loudnessFlushTimer = nil
+	}
+	a.loudnessMu.Unlock()
+
+	if len(pending) == 0 {
+		return
+	}
+
+	loudnessMap := cloneLoudnessMap(loadLoudnessMap())
+	for key, value := range pending {
+		loudnessMap[key] = value
 	}
 	if err := store.Instance.Save("loudness", loudnessMap); err != nil {
-		fmt.Printf("[Normalize] Failed to save loudness for %s: %v\n", path, err)
+		fmt.Printf("[Normalize] Failed to save loudness batch: %v\n", err)
+		a.loudnessMu.Lock()
+		if a.loudnessPending == nil {
+			a.loudnessPending = make(map[string]interface{}, len(pending))
+		}
+		for key, value := range pending {
+			a.loudnessPending[key] = value
+		}
+		a.scheduleLoudnessFlushLocked()
+		a.loudnessMu.Unlock()
 	}
 }

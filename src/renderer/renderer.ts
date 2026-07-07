@@ -16,7 +16,7 @@ import { initEqualizer } from './js/ui/equalizer.js';
 // ▼▼▼ 修正: playNextSong, playPrevSong を適切にインポート ▼▼▼
 import { playNextSong, playPrevSong } from './js/features/playback-manager.js';
 import { initLazyLoader, observeNewImages } from './js/utils/lazy-loader.js';
-import { startPerformanceMonitor } from './js/utils/performance-monitor.js';
+import { isPerformanceMonitorEnabled, startPerformanceMonitor } from './js/utils/performance-monitor.js';
 import { musicApi } from './js/core/bridge.js';
 import { checkWails } from './js/core/wails-check.js';
 
@@ -81,7 +81,9 @@ async function initApp() {
     safeInit(initModal, 'Modal');
     safeInit(initDebugCommands, 'DebugCommands');
     safeInit(initEqualizer, 'Equalizer');
-    safeInit(startPerformanceMonitor, 'PerformanceMonitor');
+    if (isPerformanceMonitorEnabled()) {
+        safeInit(startPerformanceMonitor, 'PerformanceMonitor');
+    }
 
     const mainPlayer = document.getElementById('main-player');
     if (mainPlayer) {

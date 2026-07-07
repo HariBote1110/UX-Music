@@ -13,7 +13,61 @@ let lastFrameTime = 0;
 let visualizerObserver = null;
 let isVisualizerVisible = false;
 let isEcoModeEnabled = true;
-const GO_VISUALIZER_FETCH_INTERVAL_MS = 80;
+const GO_VISUALIZER_FETCH_INTERVAL_MS = 160;
+let isGoFrequencyAnalysisEnabled = false;
+
+function canRunVisualizer() {
+    return Boolean(
+        currentVisualizerBars &&
+        isPlaying() &&
+        state.visualizerMode !== 'static' &&
+        (!isEcoModeEnabled || isVisualizerVisible)
+    );
+}
+
+function setGoFrequencyAnalysisEnabled(enabled) {
+    if (!window.go || isGoFrequencyAnalysisEnabled === enabled) {
+        return;
+    }
+    const setter = getWailsApp()?.AudioSetFrequencyAnalysisEnabled;
+    if (typeof setter !== 'function') {
+        return;
+    }
+    isGoFrequencyAnalysisEnabled = enabled;
+    setter(enabled)?.catch?.(() => {
+        isGoFrequencyAnalysisEnabled = !enabled;
+    });
+}
+
+function stopGoFetchLoop() {
+    if (goFetchIntervalId != null) {
+        clearInterval(goFetchIntervalId);
+        goFetchIntervalId = null;
+    }
+    goPublishedFreq = null;
+    goPublishedFreqLen = 0;
+    setGoFrequencyAnalysisEnabled(false);
+}
+
+function syncGoFetchLoop() {
+    const shouldFetch = Boolean(window.go && getWailsApp() && canRunVisualizer());
+    setGoFrequencyAnalysisEnabled(shouldFetch);
+
+    if (!shouldFetch) {
+        if (goFetchIntervalId != null) {
+            clearInterval(goFetchIntervalId);
+            goFetchIntervalId = null;
+        }
+        return;
+    }
+
+    if (goFetchIntervalId == null) {
+        goFetchIntervalId = setInterval(() => {
+            void fetchGoData();
+        }, GO_VISUALIZER_FETCH_INTERVAL_MS);
+        void fetchGoData();
+    }
+}
 
 /**
  * ビジュアライザーの描画ループを開始する
@@ -21,14 +75,9 @@ const GO_VISUALIZER_FETCH_INTERVAL_MS = 80;
 export function startVisualizerLoop() {
     lastHeights.fill(4);
 
-    if (window.go && goFetchIntervalId == null) {
-        goFetchIntervalId = setInterval(() => {
-            void fetchGoData();
-        }, GO_VISUALIZER_FETCH_INTERVAL_MS);
-        void fetchGoData();
-    }
+    syncGoFetchLoop();
 
-    if (!visualizerFrameId && isPlaying()) {
+    if (!visualizerFrameId && canRunVisualizer()) {
         visualizerFrameId = requestAnimationFrame(draw);
     }
 }
@@ -37,10 +86,7 @@ export function startVisualizerLoop() {
  * ビジュアライザーの描画ループを停止する
  */
 export function stopVisualizerLoop() {
-    if (goFetchIntervalId != null) {
-        clearInterval(goFetchIntervalId);
-        goFetchIntervalId = null;
-    }
+    stopGoFetchLoop();
     if (visualizerFrameId) {
         cancelAnimationFrame(visualizerFrameId);
         visualizerFrameId = null;
@@ -68,6 +114,7 @@ export function toggleVisualizerEcoMode(enabled) {
             startVisualizerLoop();
         }
     }
+    syncGoFetchLoop();
 }
 
 /**
@@ -92,6 +139,11 @@ function setupVisualizerObserver(targetElement) {
                     startVisualizerLoop();
                 }
             } else {
+                syncGoFetchLoop();
+                if (visualizerFrameId) {
+                    cancelAnimationFrame(visualizerFrameId);
+                    visualizerFrameId = null;
+                }
                 if (currentVisualizerBars) {
                     lastHeights.fill(4);
                     currentVisualizerBars.forEach(bar => {
@@ -115,6 +167,7 @@ export function disconnectVisualizerObserver() {
         visualizerObserver.disconnect();
         visualizerObserver = null;
     }
+    syncGoFetchLoop();
 }
 
 /**
@@ -147,8 +200,10 @@ let goFetchIntervalId = null;
 
 async function fetchGoData() {
     if (isFetchingGoData || !getWailsApp()) return;
-    if (state.visualizerMode === 'static') return;
-    if (isEcoModeEnabled && !isVisualizerVisible) return;
+    if (!canRunVisualizer()) {
+        syncGoFetchLoop();
+        return;
+    }
 
     isFetchingGoData = true;
     try {
@@ -194,8 +249,9 @@ async function fetchGoData() {
  * ビジュアライザーの描画関数 (requestAnimationFrameでループ)
  */
 function draw(timestamp) {
-    if (!isPlaying()) {
+    if (!canRunVisualizer()) {
         visualizerFrameId = null;
+        syncGoFetchLoop();
         return;
     }
     visualizerFrameId = requestAnimationFrame(draw);
@@ -203,9 +259,6 @@ function draw(timestamp) {
     if (resumeAudioContext) {
         resumeAudioContext();
     }
-
-    if (isEcoModeEnabled && !isVisualizerVisible) return;
-    if (state.visualizerMode === 'static') return;
 
     if (state.userPreferredVisualizerFps > 0) {
         const frameInterval = 1000 / state.userPreferredVisualizerFps;
@@ -311,10 +364,12 @@ export function setVisualizerTarget(targetElement) {
             setupVisualizerObserver(targetElement); // 新しいターゲットでObserverをセットアップ
         } else {
             currentVisualizerBars = null;
+            syncGoFetchLoop();
         }
     } else {
         // ターゲットがnull（再生停止時など）
         currentVisualizerBars = null;
         disconnectVisualizerObserver(); // Observerを停止
     }
+    syncGoFetchLoop();
 }

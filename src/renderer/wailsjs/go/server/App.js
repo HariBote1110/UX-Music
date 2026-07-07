@@ -26,6 +26,10 @@ export function AudioGetFrequencyData() {
   return window['go']['server']['App']['AudioGetFrequencyData']();
 }
 
+export function AudioSetFrequencyAnalysisEnabled(arg1) {
+  return window['go']['server']['App']['AudioSetFrequencyAnalysisEnabled'](arg1);
+}
+
 export function AudioGetPosition() {
   return window['go']['server']['App']['AudioGetPosition']();
 }

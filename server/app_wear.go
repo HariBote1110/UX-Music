@@ -275,6 +275,9 @@ func wearArtworkHandler(w http.ResponseWriter, r *http.Request) {
 // Mobile clients use this to apply volume normalisation during local playback.
 func (ws *WearServer) wearLoudnessHandler(w http.ResponseWriter, r *http.Request) {
 	loudnessMap := loadLoudnessMap()
+	if ws != nil && ws.app != nil {
+		loudnessMap = ws.app.loadLoudnessMapWithPending()
+	}
 	if len(loudnessMap) == 0 {
 		writeJSON(w, map[string]interface{}{})
 		return

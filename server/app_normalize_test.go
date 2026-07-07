@@ -4,8 +4,24 @@ import (
 	"reflect"
 	"testing"
 
+	"ux-music-sidecar/internal/config"
+	"ux-music-sidecar/internal/store"
+
 	"golang.org/x/text/unicode/norm"
 )
+
+func useTempStore(t *testing.T) {
+	t.Helper()
+	prev := config.GetUserDataPath()
+	config.SetUserDataPath(t.TempDir())
+	if err := store.Instance.Save("loudness", map[string]interface{}{}); err != nil {
+		t.Fatalf("failed to reset loudness store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Instance.Save("loudness", map[string]interface{}{})
+		config.SetUserDataPath(prev)
+	})
+}
 
 func TestRehydrateNormalizeFilesPreservesPaths(t *testing.T) {
 	in := []interface{}{
@@ -143,4 +159,51 @@ func TestExtractLoudnessEntry(t *testing.T) {
 			t.Fatal("expected ok=false for nil")
 		}
 	})
+}
+
+func TestPendingLoudnessVisibleBeforeFlush(t *testing.T) {
+	useTempStore(t)
+	app := &App{}
+	path := "/music/pending.flac"
+
+	app.saveLoudnessEntry(path, -12.5, -1.2)
+	t.Cleanup(app.flushPendingLoudness)
+
+	got, err := app.GetLoudnessValue(path)
+	if err != nil {
+		t.Fatalf("GetLoudnessValue error: %v", err)
+	}
+	if got != float64(-12.5) {
+		t.Fatalf("GetLoudnessValue = %#v, want -12.5", got)
+	}
+
+	all, err := app.GetAllLoudnessData()
+	if err != nil {
+		t.Fatalf("GetAllLoudnessData error: %v", err)
+	}
+	if !hasStoredNumericLoudness(all, path) {
+		t.Fatalf("pending loudness should be visible in all data")
+	}
+}
+
+func TestFlushPendingLoudnessWritesBatch(t *testing.T) {
+	useTempStore(t)
+	app := &App{}
+	pathA := "/music/a.flac"
+	pathB := "/music/b.flac"
+
+	app.saveLoudnessEntry(pathA, -14.0, -1.0)
+	app.saveLoudnessEntry(pathB, -10.0, -0.5)
+	app.flushPendingLoudness()
+
+	persisted := loadLoudnessMap()
+	if !hasStoredNumericLoudness(persisted, pathA) {
+		t.Fatalf("pathA loudness was not persisted")
+	}
+	if !hasStoredNumericLoudness(persisted, pathB) {
+		t.Fatalf("pathB loudness was not persisted")
+	}
+	if len(app.loudnessPending) != 0 {
+		t.Fatalf("pending len = %d, want 0", len(app.loudnessPending))
+	}
 }

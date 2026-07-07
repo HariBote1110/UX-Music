@@ -174,6 +174,14 @@ func (a *App) AudioGetFrequencyData() []uint8 {
 	return data
 }
 
+// AudioSetFrequencyAnalysisEnabled はビジュアライザー利用時だけFFT解析を有効化する。
+func (a *App) AudioSetFrequencyAnalysisEnabled(enabled bool) {
+	if a.audioPlayer == nil {
+		return
+	}
+	a.audioPlayer.SetFrequencyAnalysisEnabled(enabled)
+}
+
 // AudioGetStatus returns playback status in one call for Wails polling.
 func (a *App) AudioGetStatus() map[string]interface{} {
 	if a.audioPlayer == nil {
