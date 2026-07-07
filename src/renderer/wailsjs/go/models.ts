@@ -524,11 +524,11 @@ export namespace server {
 	    freeSpaceBytes?: number;
 	    minFreeSpaceBytes?: number;
 	    errors?: string[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncAutoResult(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.checkedDevices = source["checkedDevices"];
@@ -552,11 +552,11 @@ export namespace server {
 	    roles?: string[];
 	    paired: boolean;
 	    lastSeenAt?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncDeviceRecord(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.deviceId = source["deviceId"];
@@ -615,11 +615,11 @@ export namespace server {
 	    failed: number;
 	    importedPaths: string[];
 	    errors?: string[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncPullResult(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.remoteDeviceId = source["remoteDeviceId"];
@@ -640,11 +640,11 @@ export namespace server {
 	    encodingMode: string;
 	    importedPaths: string[];
 	    errors?: string[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncPushResult(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.remoteDeviceId = source["remoteDeviceId"];
@@ -657,13 +657,27 @@ export namespace server {
 	        this.errors = source["errors"];
 	    }
 	}
+	export class SyncTrackRef {
+	    sourceDeviceId: string;
+	    sourceTrackId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncTrackRef(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceDeviceId = source["sourceDeviceId"];
+	        this.sourceTrackId = source["sourceTrackId"];
+	    }
+	}
 	export class SyncTransferOptions {
 	    encodingMode: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncTransferOptions(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.encodingMode = source["encodingMode"];
@@ -671,6 +685,7 @@ export namespace server {
 	}
 
 }
+
 export namespace uxsync {
 	
 	export class MDNSPeer {
@@ -707,3 +722,4 @@ export namespace uxsync {
 	}
 
 }
+

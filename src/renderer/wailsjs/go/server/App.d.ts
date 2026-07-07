@@ -83,6 +83,8 @@ export function DeleteSongs(arg1:Array<string>,arg2:boolean):Promise<Array<strin
 
 export function DiscoverSyncDevices(arg1:number):Promise<Array<uxsync.MDNSPeer>>;
 
+export function DownloadSyncTrack(arg1:string,arg2:string):Promise<server.SyncPullResult>;
+
 export function GetAllLoudnessData():Promise<Record<string, any>>;
 
 export function GetAllPlaylists():Promise<Array<string>>;
@@ -108,6 +110,8 @@ export function GetPlaylistDetails(arg1:string):Promise<any>;
 export function GetSettings():Promise<any>;
 
 export function GetSituationPlaylists():Promise<any>;
+
+export function GetUnifiedLibrary():Promise<Record<string, any>>;
 
 export function GetWearAddress():Promise<string>;
 
@@ -143,6 +147,8 @@ export function MTPInitialize():Promise<void>;
 
 export function MTPMakeDirectory(arg1:mtp.MakeDirOptions):Promise<void>;
 
+export function MTPSelectDownloadFolder():Promise<string>;
+
 export function MTPUploadFiles(arg1:mtp.TransferOptions):Promise<void>;
 
 export function MTPUploadFilesWithStructure(arg1:Record<string, any>):Promise<Record<string, any>>;
@@ -157,11 +163,15 @@ export function NormalizeStartJob(arg1:string,arg2:Array<any>,arg3:any):Promise<
 
 export function Ping():Promise<string>;
 
+export function PrefetchSyncTracks(arg1:Array<server.SyncTrackRef>):Promise<server.SyncPullResult>;
+
 export function PullSyncLibraryAssets(arg1:string,arg2:number):Promise<server.SyncPullResult>;
 
 export function PushSyncLibraryAssets(arg1:string,arg2:number):Promise<server.SyncPushResult>;
 
 export function PushSyncLibraryAssetsWithOptions(arg1:string,arg2:number,arg3:server.SyncTransferOptions):Promise<server.SyncPushResult>;
+
+export function RefreshSyncRemoteCatalog():Promise<void>;
 
 export function RenamePlaylist(arg1:Record<string, any>):Promise<void>;
 

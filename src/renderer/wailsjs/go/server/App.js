@@ -150,6 +150,10 @@ export function DiscoverSyncDevices(arg1) {
   return window['go']['server']['App']['DiscoverSyncDevices'](arg1);
 }
 
+export function DownloadSyncTrack(arg1, arg2) {
+  return window['go']['server']['App']['DownloadSyncTrack'](arg1, arg2);
+}
+
 export function GetAllLoudnessData() {
   return window['go']['server']['App']['GetAllLoudnessData']();
 }
@@ -200,6 +204,10 @@ export function GetSettings() {
 
 export function GetSituationPlaylists() {
   return window['go']['server']['App']['GetSituationPlaylists']();
+}
+
+export function GetUnifiedLibrary() {
+  return window['go']['server']['App']['GetUnifiedLibrary']();
 }
 
 export function GetWearAddress() {
@@ -270,6 +278,10 @@ export function MTPMakeDirectory(arg1) {
   return window['go']['server']['App']['MTPMakeDirectory'](arg1);
 }
 
+export function MTPSelectDownloadFolder() {
+  return window['go']['server']['App']['MTPSelectDownloadFolder']();
+}
+
 export function MTPUploadFiles(arg1) {
   return window['go']['server']['App']['MTPUploadFiles'](arg1);
 }
@@ -298,6 +310,10 @@ export function Ping() {
   return window['go']['server']['App']['Ping']();
 }
 
+export function PrefetchSyncTracks(arg1) {
+  return window['go']['server']['App']['PrefetchSyncTracks'](arg1);
+}
+
 export function PullSyncLibraryAssets(arg1, arg2) {
   return window['go']['server']['App']['PullSyncLibraryAssets'](arg1, arg2);
 }
@@ -308,6 +324,10 @@ export function PushSyncLibraryAssets(arg1, arg2) {
 
 export function PushSyncLibraryAssetsWithOptions(arg1, arg2, arg3) {
   return window['go']['server']['App']['PushSyncLibraryAssetsWithOptions'](arg1, arg2, arg3);
+}
+
+export function RefreshSyncRemoteCatalog() {
+  return window['go']['server']['App']['RefreshSyncRemoteCatalog']();
 }
 
 export function RenamePlaylist(arg1) {
