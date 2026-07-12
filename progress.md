@@ -1,3 +1,27 @@
+## 2026-07-13 — Desktop App: YouTube ストリーミング再生の実装（ダウンロード不要の再生モード復活）
+
+### 実施内容
+- 以前 Electron 版で挫折し、Wails 版では「ダウンロードモードのみ対応」とエラーで拒否していた YouTube ストリーミング再生を実装した。
+- 【技術スパイク】実装前に検証を実施し、成立を確認：`kkdai/youtube` で解決した googlevideo の直接 URL（音声専用 itag 251 / opus）を ffmpeg が直接デコードでき、`-ss` によるシークも Range リクエストで機能し、スロットリングも発生しない（30 秒分の音声を 0.2 秒で取得）。
+- 【pkg/audio】`Player.Play` に `isRemoteSource`（http/https 判定）を追加。リモート URL は `os.Open` と拡張子分岐を通さず、URL を直接読める ffmpeg デコーダーへ委ねる。デコーダー決定後の共通処理を `startDecodedPlayback` に抽出。既存のシーク（`ffmpeg -ss`）・ポーズ復帰はそのまま機能する。
+- 【internal/youtube】`chooseStreamFormat` を追加し、`GetYouTubeStreamURL` を音声専用フォーマット最高ビットレート優先（無ければ音声付きへフォールバック）に変更。URL は `Format.URL` 直参照をやめ `GetStreamURLContext` 経由にし、署名暗号化（signatureCipher）動画にも対応。
+- 【server】`youtubePlaybackMode: "stream"` を受け入れ、`buildStreamingSong`（type=youtube、path=元動画 URL、保存なし）でライブラリ登録する `addYouTubeStreamingLink` を追加。再生用に `ResolveYouTubeStreamURL` バインディングを新設（googlevideo URL は数時間で失効するため再生の都度解決）。
+- 【フロントエンド】`player.ts` の `play()` に `type === 'youtube'` 分岐を追加し、`ResolveYouTubeStreamURL` → `AudioPlay` で Go ネイティブパイプライン再生（EQ・ラウドネス・ビジュアライザーが有効）。`now-playing.ts` の YouTube 埋め込み iframe（autoplay 付き）はネイティブ再生と二重になるため廃止し、サムネイル表示に変更。
+- TDD: Red f59865a → Green 7c5d950（Go 側）→ 0070c84（フロントエンド）。wailsjs バインディング再生成込み。
+- renderer 版を `1.0.0-Beta-38a` から `1.0.0-Beta-39a` へ更新（機能追加のため PhaseVer +1）。
+
+### 選定理由・判断の根拠
+- 再生方式は「webview の `<audio>` 直再生」や「Go 側 HTTP プロキシ経由」ではなく、既存 ffmpeg デコーダーへの URL 直接渡しを選んだ。追加依存ゼロ・追加プロセスゼロで、既存のネイティブ再生パイプライン（EQ／ラウドネス／FFT ビジュアライザー／シーク復帰処理）がそのまま使えるため。
+- 過去に「無理」とされた要因は、当時の構成（Electron の埋め込み iframe 依存＝controls 隠蔽などの規約違反すれすれの実装）にあった。現在の Wails 構成は ffmpeg デコーダーが再生の中核であり、ffmpeg は HTTPS 入力とバイトレンジシークをネイティブサポートするため、構図が変わっていた。
+- ストリーム URL はライブラリに保存せず再生の都度解決する。googlevideo URL は数時間で失効し IP にも紐づくため、保存しても再利用できない。
+- フォーマットは音声専用（opus/m4a）優先とした。プログレッシブ形式（itag 18）は映像バイトも取得してしまい帯域の無駄になるため。
+- 埋め込み iframe の廃止は二重再生の解消が直接の理由だが、controls=0 での埋め込みは YouTube の埋め込み規約的にもグレーであり、「グレーな実装をなんとかしたい」という当初の目的にも沿う。
+
+### 残課題・次のステップ
+- 映像付きストリーミング（音と映像の同期表示）は未対応。現状は音声＋サムネイル表示。対応するなら映像ストリームの分離取得と同期が必要。
+- YouTube 側の仕様変更で `kkdai/youtube` の URL 解決が壊れる可能性は残る（ダウンロードモードと共通のリスク）。失敗時はエラー通知され、ダウンロードモードへの切替で回避可能。
+- ストリーミング曲は UX Sync／MTP 転送などファイル前提の機能の対象外。必要なら type=youtube を除外するガードの総点検を行う。
+
 ## 2026-07-05 — Desktop App: コンピレーション参加アーティストのアルバム表示バグ修正と、履歴ベースの共通戻るボタン導入
 
 ### 実施内容
