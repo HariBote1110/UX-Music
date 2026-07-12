@@ -99,8 +99,11 @@ func (a *App) AddYouTubeLink(payload interface{}) (map[string]interface{}, error
 
 	settings := loadSettingsMap()
 	mode := normaliseSettingValue(settings["youtubePlaybackMode"], "download")
+	if mode == "stream" {
+		return a.addYouTubeStreamingLink(trimmedURL)
+	}
 	if mode != "download" {
-		return nil, fmt.Errorf("現在のWails版では YouTube はダウンロードモードのみ対応しています")
+		return nil, fmt.Errorf("未対応のYouTube再生モードです: %s", mode)
 	}
 
 	quality := normaliseSettingValue(settings["youtubeDownloadQuality"], "full")
@@ -172,6 +175,65 @@ func (a *App) AddYouTubeLink(payload interface{}) (map[string]interface{}, error
 	wailsRuntime.EventsEmit(a.ctx, "show-notification", subtitleMessage)
 
 	return savedSong, nil
+}
+
+// buildStreamingSong はストリーミングモード用の曲エントリを生成する。
+// ファイルは保存せず、path に元動画 URL を保持し type を "youtube" とする。
+func buildStreamingSong(info *youtube.YouTubeVideoInfo, sourceURL string) map[string]interface{} {
+	return map[string]interface{}{
+		"id":        uuid.NewString(),
+		"path":      sourceURL,
+		"title":     firstNonEmpty(info.Title, sourceURL),
+		"artist":    firstNonEmpty(info.Author, "Unknown Artist"),
+		"album":     "YouTube",
+		"duration":  float64(info.Duration),
+		"artwork":   info.Thumbnail,
+		"type":      "youtube",
+		"sourceURL": sourceURL,
+		"hasVideo":  true,
+		"hubUrl":    info.HubURL,
+	}
+}
+
+// addYouTubeStreamingLink は動画をダウンロードせず、ストリーミング再生用の
+// エントリとしてライブラリへ登録する。
+func (a *App) addYouTubeStreamingLink(sourceURL string) (map[string]interface{}, error) {
+	info, err := youtube.GetYouTubeVideoInfo(sourceURL)
+	if err != nil {
+		fmt.Printf("[YouTube][App] streaming info fetch failed: %v\n", err)
+		return nil, err
+	}
+
+	song := buildStreamingSong(info, sourceURL)
+	added, savedSong, err := upsertLibrarySong(song)
+	if err != nil {
+		return nil, err
+	}
+
+	wailsRuntime.EventsEmit(a.ctx, "scan-complete", []interface{}{savedSong})
+	wailsRuntime.EventsEmit(a.ctx, "youtube-link-processed", savedSong)
+	if added {
+		wailsRuntime.EventsEmit(a.ctx, "show-notification", fmt.Sprintf("YouTube楽曲「%s」をストリーミング再生用に追加しました。", info.Title))
+	} else {
+		wailsRuntime.EventsEmit(a.ctx, "show-notification", fmt.Sprintf("YouTube楽曲「%s」を更新しました。", info.Title))
+	}
+
+	return savedSong, nil
+}
+
+// ResolveYouTubeStreamURL は動画 URL から再生用の直接ストリーム URL を解決する。
+// googlevideo の URL は数時間で失効するため、再生の都度呼び出すこと。
+func (a *App) ResolveYouTubeStreamURL(sourceURL string) (string, error) {
+	trimmed := strings.TrimSpace(sourceURL)
+	if trimmed == "" {
+		return "", fmt.Errorf("YouTubeのURLが空です")
+	}
+	streamURL, err := youtube.GetYouTubeStreamURL(trimmed)
+	if err != nil {
+		fmt.Printf("[YouTube][App] stream url resolve failed: %v\n", err)
+		return "", err
+	}
+	return streamURL, nil
 }
 
 func normaliseSettingValue(value interface{}, fallback string) string {

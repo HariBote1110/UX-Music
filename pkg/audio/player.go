@@ -475,6 +475,13 @@ func (p *Player) GetCurrentDevice() string {
 }
 
 // Play starts playback of an audio file. gainLinear scales samples after volume (1.0 = unity).
+// isRemoteSource は再生ソースが http/https の URL かどうかを判定する。
+// リモートソースはローカルファイルを開かず ffmpeg デコーダーへ直接渡す。
+func isRemoteSource(source string) bool {
+	lower := strings.ToLower(source)
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+}
+
 func (p *Player) Play(filePath string, gainLinear float64) error {
 	p.shutdownDecoderGoroutine()
 
@@ -495,6 +502,17 @@ func (p *Player) Play(filePath string, gainLinear float64) error {
 	if p.decoder != nil {
 		p.decoder.Close()
 		p.decoder = nil
+	}
+
+	if isRemoteSource(filePath) {
+		// リモート URL（YouTube ストリーミング等）は拡張子判定もローカル
+		// ファイルも使えないため、URL を直接読める ffmpeg デコーダーへ委ねる。
+		dec, err := newFFmpegDecoder(filePath)
+		if err != nil {
+			return fmt.Errorf("failed to open remote stream: %w", err)
+		}
+		p.decoder = dec
+		return p.startDecodedPlayback(filePath)
 	}
 
 	// Open file
@@ -551,6 +569,12 @@ func (p *Player) Play(filePath string, gainLinear float64) error {
 		return fmt.Errorf("unsupported format: %s", ext)
 	}
 
+	return p.startDecodedPlayback(filePath)
+}
+
+// startDecodedPlayback は決定済みの p.decoder から出力ストリームを組み立てて
+// 再生を開始する。呼び出し元が p.mu を保持していることを前提とする。
+func (p *Player) startDecodedPlayback(filePath string) error {
 	p.sampleRate = p.decoder.SampleRate()
 	p.channels = p.decoder.Channels()
 	p.totalSamples = p.decoder.Length()

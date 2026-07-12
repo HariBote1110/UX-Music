@@ -646,6 +646,37 @@ func DownloadThumbnail(thumbnailURL string, destPath string) error {
 	return err
 }
 
+// chooseStreamFormat はストリーミング再生に適したフォーマットを選ぶ。
+// 帯域を節約するため音声専用フォーマットの最高ビットレートを最優先し、
+// 音声専用が無い場合は音声を含む形式のうち最高ビットレートへフォールバックする。
+// 音声を含む形式が存在しない場合は nil を返す。
+func chooseStreamFormat(formats youtube.FormatList) *youtube.Format {
+	var audioOnly *youtube.Format
+	var withAudio *youtube.Format
+
+	for i := range formats {
+		f := &formats[i]
+		hasAudio := f.AudioChannels > 0 || strings.TrimSpace(f.AudioQuality) != ""
+		if !hasAudio {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(f.MimeType), "audio/") {
+			if audioOnly == nil || f.Bitrate > audioOnly.Bitrate {
+				audioOnly = f
+			}
+			continue
+		}
+		if withAudio == nil || f.Bitrate > withAudio.Bitrate {
+			withAudio = f
+		}
+	}
+
+	if audioOnly != nil {
+		return audioOnly
+	}
+	return withAudio
+}
+
 // GetYouTubeStreamURL returns a direct stream URL for the video
 func GetYouTubeStreamURL(videoURL string) (string, error) {
 	client := youtube.Client{}
@@ -658,12 +689,18 @@ func GetYouTubeStreamURL(videoURL string) (string, error) {
 		return "", fmt.Errorf("failed to get video: %w", err)
 	}
 
-	formats := video.Formats.WithAudioChannels()
-	formats.Sort()
-
-	if len(formats) == 0 {
-		return "", fmt.Errorf("no formats available")
+	format := chooseStreamFormat(video.Formats)
+	if format == nil {
+		return "", fmt.Errorf("no audio-capable formats available")
 	}
 
-	return formats[0].URL, nil
+	// URL が署名暗号化（signatureCipher）されている場合の復号も
+	// GetStreamURLContext が引き受けるため、Format.URL 直参照は避ける。
+	streamURL, err := client.GetStreamURLContext(ctx, video, format)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve stream url: %w", err)
+	}
+
+	fmt.Printf("[YouTube][Stream] resolved itag=%d mime=%q bitrate=%d\n", format.ItagNo, format.MimeType, format.Bitrate)
+	return streamURL, nil
 }
