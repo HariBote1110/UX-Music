@@ -148,3 +148,42 @@ func TestParseTranscriptXMLBodyDeduplicatesLayeredKaraoke(t *testing.T) {
 		t.Fatalf("unexpected startMs: %d, %d", transcript[0].StartMs, transcript[1].StartMs)
 	}
 }
+
+// TestChooseStreamFormat はストリーミング再生用フォーマット選択を検証する。
+// 帯域を節約するため音声専用フォーマットの最高ビットレートを最優先し、
+// 音声専用が無い場合は音声付きプログレッシブ形式へフォールバックする。
+func TestChooseStreamFormat(t *testing.T) {
+	audioLow := yt.Format{ItagNo: 140, MimeType: `audio/mp4; codecs="mp4a.40.2"`, Bitrate: 130000, AudioQuality: "AUDIO_QUALITY_MEDIUM", AudioChannels: 2}
+	audioHigh := yt.Format{ItagNo: 251, MimeType: `audio/webm; codecs="opus"`, Bitrate: 160000, AudioQuality: "AUDIO_QUALITY_MEDIUM", AudioChannels: 2}
+	progressive := yt.Format{ItagNo: 18, MimeType: `video/mp4; codecs="avc1.42001E, mp4a.40.2"`, Bitrate: 500000, QualityLabel: "360p", AudioQuality: "AUDIO_QUALITY_LOW", AudioChannels: 2}
+	videoOnly := yt.Format{ItagNo: 137, MimeType: `video/mp4; codecs="avc1.640028"`, Bitrate: 4000000, QualityLabel: "1080p"}
+
+	t.Run("音声専用の最高ビットレートを選ぶ", func(t *testing.T) {
+		formats := yt.FormatList{videoOnly, audioLow, progressive, audioHigh}
+		chosen := chooseStreamFormat(formats)
+		if chosen == nil {
+			t.Fatal("chooseStreamFormat returned nil")
+		}
+		if chosen.ItagNo != 251 {
+			t.Errorf("chosen itag = %d, want 251", chosen.ItagNo)
+		}
+	})
+
+	t.Run("音声専用が無ければ音声付きへフォールバック", func(t *testing.T) {
+		formats := yt.FormatList{videoOnly, progressive}
+		chosen := chooseStreamFormat(formats)
+		if chosen == nil {
+			t.Fatal("chooseStreamFormat returned nil")
+		}
+		if chosen.ItagNo != 18 {
+			t.Errorf("chosen itag = %d, want 18", chosen.ItagNo)
+		}
+	})
+
+	t.Run("音声を含む形式が無ければ nil", func(t *testing.T) {
+		formats := yt.FormatList{videoOnly}
+		if chosen := chooseStreamFormat(formats); chosen != nil {
+			t.Errorf("chosen = %+v, want nil", chosen)
+		}
+	})
+}
