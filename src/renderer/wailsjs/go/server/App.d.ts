@@ -186,6 +186,8 @@ export function RequestInitialLibrary():Promise<void>;
 
 export function RequestPlaylistsWithArtwork():Promise<void>;
 
+export function ResolveYouTubeStreamURL(arg1:string):Promise<string>;
+
 export function SaveAlbumSongOrder(arg1:string,arg2:Array<string>):Promise<void>;
 
 export function SaveLrcFile(arg1:string,arg2:string):Promise<void>;

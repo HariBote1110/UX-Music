@@ -120,13 +120,6 @@ function attachSidebarPreviewVideo(container, songPath, posterSrc) {
     return true;
 }
 
-function getYoutubeVideoId(url) {
-    if (typeof url !== 'string') return null;
-    const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/;
-    const match = url.match(regExp);
-    return match ? match[1] : null;
-}
-
 function buildArtworkCandidates(artwork) {
     const candidates = [];
     const appendUnique = (value) => {
@@ -190,23 +183,18 @@ export function updateNowPlayingView(song) {
         updateFooterArtwork(DEFAULT_ARTWORK_URL);
 
     } else if (song.type === 'youtube') {
-        console.log('[Debug:NowPlaying] YouTube モードで描画します。');
-        if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.classList.add('video-mode');
-        const videoId = getYoutubeVideoId(song.sourceURL || song.path);
-        if (videoId) {
-            const iframe = document.createElement('iframe');
-            iframe.width = '100%';
-            iframe.height = '100%';
-            iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&fs=0&iv_load_policy=3&modestbranding=1&origin=${window.location.protocol}//${window.location.host}`;
-            iframe.setAttribute('frameborder', '0');
-            iframe.setAttribute('allow', 'autoplay; encrypted-media');
-            if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.appendChild(iframe);
-        }
-
-        const artworkImage = new Image();
-        artworkImage.crossOrigin = "Anonymous";
-        artworkImage.onload = () => setEqualizerColorFromArtwork(artworkImage);
-        artworkImage.src = song.artwork;
+        console.log('[Debug:NowPlaying] YouTube ストリーミングモードで描画します。');
+        // 音声は Go 側のネイティブパイプラインで再生するため、埋め込み iframe
+        // （autoplay 付き）は使わない。二重再生になるうえ埋め込み規約的にも危うい。
+        const img = document.createElement('img');
+        img.crossOrigin = "Anonymous";
+        img.onload = () => setEqualizerColorFromArtwork(img);
+        img.onerror = () => {
+            img.onerror = null;
+            img.src = DEFAULT_ARTWORK_URL;
+        };
+        img.src = song.artwork || DEFAULT_ARTWORK_URL;
+        if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.appendChild(img);
         updateFooterArtwork(song.artwork || DEFAULT_ARTWORK_URL);
 
     } else {

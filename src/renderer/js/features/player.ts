@@ -450,6 +450,22 @@ export async function play(song, gainLinear = 1.0) {
             }
         }
 
+        if (song.type === 'youtube' && isWails) {
+            // ストリーミング再生: 都度 googlevideo の直接 URL を解決し（数時間で
+            // 失効するため保存しない）、Go 側のネイティブパイプラインで再生する。
+            const sourceUrl = typeof song.sourceURL === 'string' && song.sourceURL.trim() !== ''
+                ? song.sourceURL.trim()
+                : filePath;
+            const streamUrl = await getWailsApp()?.ResolveYouTubeStreamURL?.(sourceUrl);
+            if (typeof streamUrl !== 'string' || streamUrl.trim() === '') {
+                console.error('[Player] YouTube ストリーム URL の解決に失敗しました:', sourceUrl);
+                return false;
+            }
+            currentSongType = 'youtube';
+            await playLocal({ ...song, path: streamUrl }, gainLinear);
+            return true;
+        }
+
         currentSongType = 'local';
         await playLocal({ ...song, path: filePath }, gainLinear);
         return true;

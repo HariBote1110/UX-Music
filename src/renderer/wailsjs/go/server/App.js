@@ -354,6 +354,10 @@ export function RequestPlaylistsWithArtwork() {
   return window['go']['server']['App']['RequestPlaylistsWithArtwork']();
 }
 
+export function ResolveYouTubeStreamURL(arg1) {
+  return window['go']['server']['App']['ResolveYouTubeStreamURL'](arg1);
+}
+
 export function SaveAlbumSongOrder(arg1, arg2) {
   return window['go']['server']['App']['SaveAlbumSongOrder'](arg1, arg2);
 }
