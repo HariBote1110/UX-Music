@@ -142,6 +142,9 @@ type Player struct {
 	channels     int
 	volume       atomic.Uint64 // stored as float64 bits
 	baseGain     atomic.Uint64 // stored as float64 bits, default 1.0 (e.g. Wails loudness)
+	// liveSource is true while playing a live capture (process tap) source,
+	// which has no meaningful position/duration and cannot seek.
+	liveSource atomic.Bool
 
 	// Ring buffer for pre-decoded audio data
 	ringBuf       []float32     // Pre-decoded float32 samples
@@ -503,6 +506,7 @@ func (p *Player) Play(filePath string, gainLinear float64) error {
 		p.decoder.Close()
 		p.decoder = nil
 	}
+	p.liveSource.Store(false)
 
 	if isRemoteSource(filePath) {
 		// リモート URL（YouTube ストリーミング等）は拡張子判定もローカル
@@ -603,8 +607,11 @@ func (p *Player) startDecodedPlayback(filePath string) error {
 	p.playing.Store(true)
 	p.paused.Store(false)
 
-	// Start background decoder goroutine
-	go p.decoderLoop()
+	// Start background decoder goroutine. The stop channel is passed as an
+	// argument so it is captured before shutdownDecoderGoroutine can nil the
+	// field — reading p.decoderStop inside the goroutine would race with a
+	// rapid Stop and leave the loop unaware of the shutdown request.
+	go p.decoderLoop(p.decoderStop, p.decoderDone)
 
 	if err := stream.Start(); err != nil {
 		return fmt.Errorf("failed to start stream: %w", err)
@@ -685,15 +692,15 @@ func (p *Player) reopenStream() error {
 	return nil
 }
 
-// decoderLoop runs in background and fills the ring buffer
-func (p *Player) decoderLoop() {
-	defer close(p.decoderDone)
-	// Capture stop channel at goroutine start so we can check it even after
-	// shutdownDecoderGoroutine() nils p.decoderStop.
-	stopCh := p.decoderStop
+// decoderLoop runs in background and fills the ring buffer. stopCh is the
+// decoderStop channel captured at spawn time (see startDecodedPlayback).
+func (p *Player) decoderLoop(stopCh, doneCh chan struct{}) {
+	defer close(doneCh)
 
 	// Temporary buffer for reading from decoder
 	readBuf := make([]byte, 8192)
+	// Lazily allocated buffer for float32-capable decoders (live tap sources).
+	var readFloatBuf []float32
 
 	for {
 		select {
@@ -720,22 +727,44 @@ func (p *Player) decoderLoop() {
 			return
 		}
 
-		n, err := decoder.Read(readBuf)
-		if n > 0 {
-			// Convert int16 to float32 and write to ring buffer
-			samples := n / 2
-			writePos := p.ringWritePos.Load()
-
-			for i := 0; i < samples; i++ {
-				sample := int16(readBuf[i*2]) | int16(readBuf[i*2+1])<<8
-				floatSample := float32(sample) / 32768.0
-
-				idx := (writePos + int64(i)) % int64(p.ringBufSize)
-				p.ringBuf[idx] = floatSample
+		var n int
+		var err error
+		if floatDecoder, ok := decoder.(float32Decoder); ok {
+			// Float32-capable decoders (live tap sources) feed the float32
+			// ring directly — no int16 quantisation round-trip.
+			if readFloatBuf == nil {
+				readFloatBuf = make([]float32, 4096)
 			}
+			var samples int
+			samples, err = floatDecoder.ReadFloat32(readFloatBuf)
+			if samples > 0 {
+				writePos := p.ringWritePos.Load()
+				for i := 0; i < samples; i++ {
+					idx := (writePos + int64(i)) % int64(p.ringBufSize)
+					p.ringBuf[idx] = readFloatBuf[i]
+				}
+				p.ringWritePos.Store((writePos + int64(samples)) % int64(p.ringBufSize))
+				p.ringAvailable.Add(int64(samples))
+			}
+			n = samples
+		} else {
+			n, err = decoder.Read(readBuf)
+			if n > 0 {
+				// Convert int16 to float32 and write to ring buffer
+				samples := n / 2
+				writePos := p.ringWritePos.Load()
 
-			p.ringWritePos.Store((writePos + int64(samples)) % int64(p.ringBufSize))
-			p.ringAvailable.Add(int64(samples))
+				for i := 0; i < samples; i++ {
+					sample := int16(readBuf[i*2]) | int16(readBuf[i*2+1])<<8
+					floatSample := float32(sample) / 32768.0
+
+					idx := (writePos + int64(i)) % int64(p.ringBufSize)
+					p.ringBuf[idx] = floatSample
+				}
+
+				p.ringWritePos.Store((writePos + int64(samples)) % int64(p.ringBufSize))
+				p.ringAvailable.Add(int64(samples))
+			}
 		}
 		p.mu.RUnlock()
 
@@ -1003,6 +1032,9 @@ func (p *Player) restartCurrentTrack(position float64) error {
 	if path == "" {
 		return errors.New("no current track to restart")
 	}
+	if path == liveTapSourceLabel {
+		return errors.New("live tap source cannot be restarted from a path")
+	}
 
 	gain := math.Float64frombits(p.baseGain.Load())
 	if err := p.Play(path, gain); err != nil {
@@ -1036,6 +1068,7 @@ func (p *Player) Stop() error {
 		p.stream.Close()
 		p.stream = nil
 	}
+	p.stopLiveSourceLocked()
 	p.mu.Unlock()
 
 	p.playing.Store(false)
@@ -1051,6 +1084,11 @@ func (p *Player) Stop() error {
 
 // Seek seeks to a position in seconds
 func (p *Player) Seek(seconds float64) error {
+	if p.liveSource.Load() {
+		// Live capture sources have no timeline to seek within.
+		return nil
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -1133,6 +1171,11 @@ func (p *Player) SetEqualizer(active bool, preampDB float64, bands []float64) {
 
 // GetPosition returns the current position in seconds
 func (p *Player) GetPosition() float64 {
+	if p.liveSource.Load() {
+		// A live capture has no meaningful position.
+		return 0
+	}
+
 	p.mu.RLock()
 	sampleRate := p.sampleRate
 	p.mu.RUnlock()
