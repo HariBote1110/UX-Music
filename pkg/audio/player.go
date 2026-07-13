@@ -142,6 +142,10 @@ type Player struct {
 	channels     int
 	volume       atomic.Uint64 // stored as float64 bits
 	baseGain     atomic.Uint64 // stored as float64 bits, default 1.0 (e.g. Wails loudness)
+	// outputRMS holds the RMS of the most recent output callback buffer
+	// (post volume/baseGain/EQ), stored as float64 bits. Diagnostic probe
+	// used by the E2E volume check; written once per callback (RT-safe).
+	outputRMS atomic.Uint64
 	// liveSource is true while playing a live capture (process tap) source,
 	// which has no meaningful position/duration and cannot seek.
 	liveSource atomic.Bool
@@ -903,6 +907,7 @@ func (p *Player) processAudio(out []float32) {
 	}
 
 	// Read samples from ring buffer
+	sumSquares := 0.0
 	for i := 0; i < samplesToRead; i++ {
 		idx := (readPos + int64(i)) % ringBufSize
 		outputSample := float64(ringBuf[idx])
@@ -924,6 +929,10 @@ func (p *Player) processAudio(out []float32) {
 			outputSample = -1
 		}
 		out[i] = float32(outputSample)
+		sumSquares += outputSample * outputSample
+	}
+	if samplesToRead > 0 {
+		p.outputRMS.Store(math.Float64bits(math.Sqrt(sumSquares / float64(samplesToRead))))
 	}
 
 	// Fill remaining with silence
@@ -1115,6 +1124,12 @@ func (p *Player) Seek(seconds float64) error {
 
 	p.position.Store(targetSample)
 	return nil
+}
+
+// OutputRMS returns the RMS of the most recent output callback buffer
+// (post volume/baseGain/EQ). Diagnostic probe for the E2E volume check.
+func (p *Player) OutputRMS() float64 {
+	return math.Float64frombits(p.outputRMS.Load())
 }
 
 // SetVolume sets the volume (0.0 to 1.0)
