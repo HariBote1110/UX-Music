@@ -134,6 +134,8 @@ export function GetWearPairingQRDataURL():Promise<string>;
 
 export function GetWearPairingURL():Promise<string>;
 
+export function GetYouTubeEmbedURL(arg1:string):Promise<string>;
+
 export function GetYouTubeInfo(arg1:string):Promise<any>;
 
 export function HandleLyricsDrop(arg1:Array<string>):Promise<void>;

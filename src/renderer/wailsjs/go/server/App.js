@@ -250,6 +250,10 @@ export function GetWearPairingURL() {
   return window['go']['server']['App']['GetWearPairingURL']();
 }
 
+export function GetYouTubeEmbedURL(arg1) {
+  return window['go']['server']['App']['GetYouTubeEmbedURL'](arg1);
+}
+
 export function GetYouTubeInfo(arg1) {
   return window['go']['server']['App']['GetYouTubeInfo'](arg1);
 }
