@@ -1,3 +1,20 @@
+## 2026-07-13 — Desktop App: 公式再生のラウドネス正規化とリサイズ追従修正（サブエージェント実装）
+
+### 実施内容
+- 【ラウドネス正規化】innertube /player（ANDROID クライアント、kkdai と同一設定）から `audioConfig.loudnessDb` / `perceptualLoudnessDb` を取得する `internal/youtube/loudness.go` を追加（a52b959〜19e0bb0、TDD）。実測で `perceptualLoudnessDb = -14 + loudnessDb` が全検証動画で厳密に成立し、ffmpeg ebur128 の統合ラウドネス実測（-7.3 LUFS）とも一致 → perceptualLoudnessDb をコンテンツ実効 LUFS として採用。ゲインは純関数 `resolveEmbedPlaybackGain`（target − 実効 LUFS、上限 64 倍で Go 側 maxNormGain と一致）。適用は `AudioStartWebViewTap` 解決後に `AudioSetNormalisationGain`（playLiveSource が開始時に baseGain をリセットするため順序が重要）。取得不能時はゲイン 1.0。
+- 【リサイズ追従】埋め込みプレイヤーがサイドバーリサイズに追従しない原因は、`#youtube-embed-wrapper` に寸法指定がなく内側 iframe の height:100% が解決できないこと。wrapper に width/height 100% を付与し display:block 化（046155b）。実機ドラッグで双方向追従と再生継続を確認。ローカル動画プレビュー・サムネイルは無影響。
+- E2E をタップ開始＋ゲイン適用まで拡張し PASS（ログ例: loudness=-23.67 → gain=1.9209、target -18 に対し +5.67dB で計算どおり）。typecheck / vitest 176 件 / go test / wails build 全通過。
+- renderer 版を `1.0.0-Beta-41a` から `1.0.0-Beta-42a` へ更新（機能追加のため PhaseVer +1）。
+
+### 選定理由・判断の根拠
+- WEB クライアントの innertube は UNPLAYABLE を返すため ANDROID クライアントを採用。
+- loudnessDb の解釈は推測でなく実測（複数動画の相互関係＋ebur128 突き合わせ）で確定させた。
+- 埋め込みプレイヤー自身の減衰有無は未確定（自動再生ミュート問題で計測が汚染されたため）。ソース音源のラウドネスとして扱う設計とし、コードコメントに明記。
+
+### 残課題・次のステップ
+- **要対応**: WKWebView の自動再生ポリシーにより、E2E の自動再生では埋め込みが「ミュート＋音量0」で開始しタップに無音しか流れないことを実測で発見（onReady の unMute() は効かず）。ユーザー操作起点の本番再生で音が出るかは実機聴感の確認が必要。出ない場合はユーザージェスチャー文脈での unMute かホストページ側の対策を実装する。
+- ラウドネス正規化の聴感上の効き具合は、上記問題の確認後に評価するのが確実。
+
 ## 2026-07-13 — Desktop App: 公式再生エラー153の根治（ループバックホスト方式）と E2E 再生テスト整備（サブエージェント実装）
 
 ### 実施内容
