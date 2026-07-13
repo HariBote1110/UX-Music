@@ -166,6 +166,10 @@ export function DownloadSyncTrack(arg1, arg2) {
   return window['go']['server']['App']['DownloadSyncTrack'](arg1, arg2);
 }
 
+export function EmbedDebugLog(arg1) {
+  return window['go']['server']['App']['EmbedDebugLog'](arg1);
+}
+
 export function GenerateMoodSpecial(arg1, arg2) {
   return window['go']['server']['App']['GenerateMoodSpecial'](arg1, arg2);
 }
@@ -188,6 +192,10 @@ export function GetArtworksDir() {
 
 export function GetAudioEmbedStatus() {
   return window['go']['server']['App']['GetAudioEmbedStatus']();
+}
+
+export function GetE2EEmbedVideoID() {
+  return window['go']['server']['App']['GetE2EEmbedVideoID']();
 }
 
 export function GetLibraryForNormalize() {

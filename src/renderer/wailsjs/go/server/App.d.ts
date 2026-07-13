@@ -92,6 +92,8 @@ export function DiscoverSyncDevices(arg1:number):Promise<Array<uxsync.MDNSPeer>>
 
 export function DownloadSyncTrack(arg1:string,arg2:string):Promise<server.SyncPullResult>;
 
+export function EmbedDebugLog(arg1:string):Promise<void>;
+
 export function GenerateMoodSpecial(arg1:string,arg2:number):Promise<moodspecial.Feature>;
 
 export function GetAllLoudnessData():Promise<Record<string, any>>;
@@ -103,6 +105,8 @@ export function GetArtworkAsDataURL(arg1:string):Promise<string>;
 export function GetArtworksDir():Promise<string>;
 
 export function GetAudioEmbedStatus():Promise<server.AudioEmbedStatus>;
+
+export function GetE2EEmbedVideoID():Promise<string>;
 
 export function GetLibraryForNormalize():Promise<Array<any>>;
 
