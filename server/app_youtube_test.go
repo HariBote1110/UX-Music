@@ -219,3 +219,60 @@ func TestBuildStreamingSongFallbacks(t *testing.T) {
 		t.Errorf("artist = %q, want %q", got, "Unknown Artist")
 	}
 }
+
+func TestUsesStreamingRegistration(t *testing.T) {
+	tests := []struct {
+		mode string
+		want bool
+	}{
+		{"stream", true},
+		{"embed", true},
+		{"download", false},
+		{"", false},
+		{"unknown", false},
+	}
+	for _, tt := range tests {
+		if got := usesStreamingRegistration(tt.mode); got != tt.want {
+			t.Errorf("usesStreamingRegistration(%q) = %v, want %v", tt.mode, got, tt.want)
+		}
+	}
+}
+
+func TestStreamingLinkAddedNotification(t *testing.T) {
+	tests := []struct {
+		name  string
+		mode  string
+		title string
+		added bool
+		want  string
+	}{
+		{
+			name:  "embed added",
+			mode:  "embed",
+			title: "Song",
+			added: true,
+			want:  "YouTube楽曲「Song」を公式再生用に追加しました。",
+		},
+		{
+			name:  "stream added",
+			mode:  "stream",
+			title: "Song",
+			added: true,
+			want:  "YouTube楽曲「Song」をストリーミング再生用に追加しました。",
+		},
+		{
+			name:  "updated ignores mode",
+			mode:  "embed",
+			title: "Song",
+			added: false,
+			want:  "YouTube楽曲「Song」を更新しました。",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := streamingLinkAddedNotification(tt.mode, tt.title, tt.added); got != tt.want {
+				t.Errorf("streamingLinkAddedNotification() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
