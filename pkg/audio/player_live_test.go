@@ -280,6 +280,11 @@ func TestPlayLiveSourceOutputAppliesVolume(t *testing.T) {
 	}
 	defer player.Stop()
 
+	// このテストは定常時の音量反映を検証する。開始フェード（別テストで担保）は
+	// 無効化して先頭サンプルを定常値で評価する。
+	player.liveFadeTotal.Store(0)
+	player.liveFadeRemaining.Store(0)
+
 	// SetVolume がライブモードの出力コールバックにも反映されること。
 	player.SetVolume(0.5)
 
@@ -314,6 +319,10 @@ func TestPlayLiveSourceVolumeRemainsEffectiveWhenGainClips(t *testing.T) {
 	}
 	defer player.Stop()
 
+	// 開始フェード（別テストで担保）を無効化し、クリップ順序を定常値で評価する。
+	player.liveFadeTotal.Store(0)
+	player.liveFadeRemaining.Store(0)
+
 	player.SetVolume(0.5)
 	source.queue([]float32{0.8, 0.8, 0.8, 0.8})
 	deadline := time.Now().Add(2 * time.Second)
@@ -341,6 +350,10 @@ func TestPlayLiveSourceOutputRMSScalesWithVolume(t *testing.T) {
 		t.Fatalf("playLiveSource: %v", err)
 	}
 	defer player.Stop()
+
+	// 開始フェード（別テストで担保）を無効化し、RMS を定常値で評価する。
+	player.liveFadeTotal.Store(0)
+	player.liveFadeRemaining.Store(0)
 
 	waitForRing := func(want int64) {
 		deadline := time.Now().Add(2 * time.Second)

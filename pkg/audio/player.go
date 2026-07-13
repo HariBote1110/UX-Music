@@ -47,6 +47,11 @@ const (
 
 const longPauseStreamRefreshAfter = 30 * time.Minute
 
+// liveStartFadeSeconds is the duration of the output ramp applied at the start
+// of a live-capture (process tap) playback. It guards against an onset click /
+// DC step when the captured stream first opens. File playback is not faded.
+const liveStartFadeSeconds = 0.12
+
 var equalizerFrequencies = [equalizerBandCount]float64{31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000}
 
 var resolvedCommandPaths sync.Map
@@ -149,6 +154,12 @@ type Player struct {
 	// liveSource is true while playing a live capture (process tap) source,
 	// which has no meaningful position/duration and cannot seek.
 	liveSource atomic.Bool
+	// liveFadeRemaining / liveFadeTotal drive a short start-of-playback fade-in
+	// for live-capture sources, counted in interleaved output samples. File
+	// playback leaves both at 0 (no fade). Written by playLiveSource (under mu,
+	// before the stream starts) and decremented in processAudio (audio thread).
+	liveFadeRemaining atomic.Int64
+	liveFadeTotal     atomic.Int64
 
 	// Ring buffer for pre-decoded audio data
 	ringBuf       []float32     // Pre-decoded float32 samples
@@ -587,6 +598,11 @@ func (p *Player) startDecodedPlayback(filePath string) error {
 	p.channels = p.decoder.Channels()
 	p.totalSamples = p.decoder.Length()
 	p.position.Store(0)
+	// File playback is not faded; playLiveSource re-arms these after this call
+	// for live-capture sources. Reset here so a prior live fade never lingers
+	// into a subsequent file playback.
+	p.liveFadeRemaining.Store(0)
+	p.liveFadeTotal.Store(0)
 
 	// Initialize ring buffer (1 second of audio)
 	p.ringBufSize = p.sampleRate * p.channels * 2 // 2 seconds buffer
@@ -906,6 +922,13 @@ func (p *Player) processAudio(out []float32) {
 		samplesToRead = int(available)
 	}
 
+	// Start-of-playback fade-in (live-capture sources only; 0 for file
+	// playback). Ramps the final output from silence to unity so the onset of
+	// the captured stream cannot click.
+	fadeRemaining := p.liveFadeRemaining.Load()
+	fadeTotal := p.liveFadeTotal.Load()
+	fading := fadeTotal > 0 && fadeRemaining > 0
+
 	// Read samples from ring buffer
 	sumSquares := 0.0
 	for i := 0; i < samplesToRead; i++ {
@@ -934,8 +957,24 @@ func (p *Player) processAudio(out []float32) {
 			outputSample = -1
 		}
 		outputSample *= volume
+
+		if fading {
+			// factor ramps 0 → 1 as fadeRemaining counts down to 0.
+			outputSample *= 1.0 - float64(fadeRemaining)/float64(fadeTotal)
+			fadeRemaining--
+			if fadeRemaining <= 0 {
+				fading = false
+			}
+		}
+
 		out[i] = float32(outputSample)
 		sumSquares += outputSample * outputSample
+	}
+	if fadeTotal > 0 {
+		if fadeRemaining < 0 {
+			fadeRemaining = 0
+		}
+		p.liveFadeRemaining.Store(fadeRemaining)
 	}
 	if samplesToRead > 0 {
 		p.outputRMS.Store(math.Float64bits(math.Sqrt(sumSquares / float64(samplesToRead))))

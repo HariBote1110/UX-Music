@@ -197,6 +197,14 @@ func (p *Player) playLiveSource(source liveSampleSource, gainLinear float64) err
 		return err
 	}
 	p.liveSource.Store(true)
+
+	// Arm a short start-of-playback fade-in (interleaved output samples). The
+	// tapped audio is muted at source until the tap is established; this
+	// additionally smooths the onset of the captured stream. Set after
+	// startDecodedPlayback because it resets these fields.
+	fadeSamples := int64(float64(p.sampleRate)*liveStartFadeSeconds) * int64(p.channels)
+	p.liveFadeTotal.Store(fadeSamples)
+	p.liveFadeRemaining.Store(fadeSamples)
 	return nil
 }
 
