@@ -25,7 +25,12 @@ var embedVideoIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
 // embedPageTemplate は __VIDEO_ID__ を検証済みの動画 ID で置換して使う。
 // 親ウィンドウとのプロトコル:
 //   - ページ → 親: {source:'ux-embed', type:'ready'|'state'|'error'|'time', ...}
-//   - 親 → ページ: {source:'ux-embed-cmd', cmd:'play'|'pause'|'seek', seconds}
+//   - 親 → ページ: {source:'ux-embed-cmd', cmd:'play'|'pause'|'seek'|'unmute', seconds}
+//
+// 再生は必ずミュートで開始する（autoplay + mute=1）。ミュート中は WebKit
+// ヘルパーがシステムへ音を出さないため、プロセスタップ確立前の生音（音量
+// スライダーを迂回した爆音）が漏れない。親はタップ確立後に 'unmute' を送り、
+// その時点で初めて音が出る（出力はタップ経由の Go パイプラインに乗る）。
 const embedPageTemplate = `<!doctype html>
 <html>
 <head>
@@ -69,6 +74,7 @@ const embedPageTemplate = `<!doctype html>
             videoId: VIDEO_ID,
             playerVars: {
                 autoplay: 1,
+                mute: 1,
                 controls: 1,
                 enablejsapi: 1,
                 rel: 0,
@@ -76,7 +82,12 @@ const embedPageTemplate = `<!doctype html>
                 origin: location.origin
             },
             events: {
-                onReady: function () { post({ type: 'ready' }); startTimer(); },
+                onReady: function () {
+                    // 生音漏れ防止のため、確実にミュート状態から始める。
+                    try { player.mute(); } catch (e) { /* ignore */ }
+                    post({ type: 'ready' });
+                    startTimer();
+                },
                 onStateChange: function (e) { post({ type: 'state', state: e.data }); },
                 onError: function (e) { post({ type: 'error', code: e.data }); }
             }
@@ -90,6 +101,7 @@ const embedPageTemplate = `<!doctype html>
             if (d.cmd === 'play') player.playVideo();
             else if (d.cmd === 'pause') player.pauseVideo();
             else if (d.cmd === 'seek') player.seekTo(Math.max(0, Number(d.seconds) || 0), true);
+            else if (d.cmd === 'unmute') { player.unMute(); player.setVolume(100); }
         } catch (e) { /* ignore */ }
     });
 

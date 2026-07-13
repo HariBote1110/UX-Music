@@ -19,6 +19,11 @@ func TestBuildEmbedPageHTMLValidID(t *testing.T) {
 		"https://www.youtube.com/iframe_api",
 		"postMessage",
 		"ux-embed",
+		// 生音爆音防止のため、ページはミュート開始し unmute コマンドで音を出す。
+		"mute: 1",
+		"player.mute()",
+		"unmute",
+		"player.unMute()",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("html should contain %q", want)

@@ -49,6 +49,10 @@ describe('buildEmbedCommand', () => {
         expect(buildEmbedCommand('pause')).toEqual({ source: 'ux-embed-cmd', cmd: 'pause' });
     });
 
+    it('unmute コマンドを構築する（タップ確立後の音出し解除に使う）', () => {
+        expect(buildEmbedCommand('unmute')).toEqual({ source: 'ux-embed-cmd', cmd: 'unmute' });
+    });
+
     it('seek は秒数を 0 以上の有限値に丸めて付与する', () => {
         expect(buildEmbedCommand('seek', 42.5))
             .toEqual({ source: 'ux-embed-cmd', cmd: 'seek', seconds: 42.5 });

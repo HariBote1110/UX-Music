@@ -7,8 +7,10 @@
 // 配信するページに公式プレイヤーを置き、本体とは postMessage で
 // 制御・状態を中継する（プロトコルは youtube-embed-bridge.ts）。
 //
-// 規約上の理由から映像・コントロールは常に可視（controls=1）とし、
-// muted にはしない（ヘルパー出力のミュートはプロセスタップ側が行う）。
+// 規約上の理由から映像・コントロールは常に可視（controls=1）とする。
+// 再生はミュートで開始し（生音爆音の防止）、プロセスタップ確立後に
+// embedUnmute() で音を出す。以後はタップの mutedWhenTapped が
+// ヘルパーのシステム出力を消し、音声は Go パイプライン経由でのみ鳴る。
 
 import { getWailsApp } from '../core/bridge.js';
 import {
@@ -218,4 +220,13 @@ export function embedPlay(): void {
 
 export function embedPause(): void {
     sendCommand(buildEmbedCommand('pause'));
+}
+
+/**
+ * ホストページのミュートを解除して音を出す。埋め込みは常にミュートで
+ * 開始する（生音爆音の防止）ため、プロセスタップ確立後にこれを呼んで
+ * 初めて音声がタップ経由の Go パイプラインへ流れる。
+ */
+export function embedUnmute(): void {
+    sendCommand(buildEmbedCommand('unmute'));
 }

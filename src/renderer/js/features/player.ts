@@ -42,7 +42,8 @@ import {
     embedIsPaused,
     embedSeekTo,
     embedPlay,
-    embedPause
+    embedPause,
+    embedUnmute
 } from './youtube-embed-player.js';
 import { fetchEmbedEffectiveLoudness } from './youtube-embed-loudness.js';
 import { resolveEmbedPlaybackGain } from './playback-gain.js';
@@ -542,12 +543,21 @@ async function playEmbed(song, sourceCandidate) {
 
     const mounted = await mountEmbedPlayer(videoId, {
         onPlaying: () => {
-            // PLAYING になった時点で一度だけタップを開始する。
-            // タップはポーズ中も張ったままにする（ヘルパーが無音になるだけ）。
-            if (webViewTapStarted) return;
+            // 埋め込みはミュートで開始する（タップ確立前の生音爆音を防ぐ）。
+            // タップが確立して初めて unmute する。順序が安全性の要。
+            if (webViewTapStarted) {
+                // reattach などで再度 PLAYING になった場合。タップは張った
+                // ままなので、ミュートで再開したメディアの音を出し直す。
+                embedUnmute();
+                return;
+            }
             webViewTapStarted = true;
             void getWailsApp()?.AudioStartWebViewTap?.()
                 .then(() => {
+                    // タップ確立後に unmute。この時点で mutedWhenTapped が
+                    // ヘルパーのシステム出力を消しているため、生音は漏れず、
+                    // 音声はタップ経由の Go パイプラインからのみ鳴る。
+                    embedUnmute();
                     // playLiveSource が開始時に baseGain を 1.0 に戻すため、
                     // 正規化ゲインは必ずタップ開始の解決後に適用する。
                     return applyEmbedNormalisationGain(loudnessPromise);
@@ -555,6 +565,11 @@ async function playEmbed(song, sourceCandidate) {
                 .catch((err) => {
                     webViewTapStarted = false;
                     console.error('[Player] WebView タップの開始に失敗しました:', err);
+                    // タップを張れない場合（例: システム音声録音の許可未付与）は
+                    // 無音のままにせず、フォールバックでミュートを解除して素の
+                    // 音を出す。これはタップ機能導入前の挙動と同じで、爆音（開始
+                    // 直後の一瞬）ではなく定常的な素の音になる。
+                    embedUnmute();
                 });
         },
         onEnded: () => {

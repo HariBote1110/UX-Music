@@ -16,7 +16,7 @@ export type EmbedHostMessage =
     | { type: 'time'; currentTime: number; duration: number; state: number };
 
 export type EmbedCommand =
-    | { source: 'ux-embed-cmd'; cmd: 'play' | 'pause' }
+    | { source: 'ux-embed-cmd'; cmd: 'play' | 'pause' | 'unmute' }
     | { source: 'ux-embed-cmd'; cmd: 'seek'; seconds: number };
 
 function finiteOrZero(value: unknown): number {
@@ -55,9 +55,9 @@ export function parseEmbedHostMessage(data: unknown): EmbedHostMessage | null {
 }
 
 /** ホストページへ送る制御コマンドを構築する。seek の秒数は 0 以上の有限値へ丸める。 */
-export function buildEmbedCommand(cmd: 'play' | 'pause'): EmbedCommand;
+export function buildEmbedCommand(cmd: 'play' | 'pause' | 'unmute'): EmbedCommand;
 export function buildEmbedCommand(cmd: 'seek', seconds: number): EmbedCommand;
-export function buildEmbedCommand(cmd: 'play' | 'pause' | 'seek', seconds?: number): EmbedCommand {
+export function buildEmbedCommand(cmd: 'play' | 'pause' | 'seek' | 'unmute', seconds?: number): EmbedCommand {
     if (cmd === 'seek') {
         const raw = typeof seconds === 'number' && Number.isFinite(seconds) ? seconds : 0;
         return { source: 'ux-embed-cmd', cmd: 'seek', seconds: Math.max(0, raw) };
