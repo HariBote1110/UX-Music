@@ -18,6 +18,8 @@ export function AddYouTubeLink(arg1:any):Promise<Record<string, any>>;
 
 export function AnalyseLibraryAudioEmbeddings():Promise<server.AudioEmbedAnalyseResponse>;
 
+export function AudioDebugOutputRMS():Promise<number>;
+
 export function AudioGetCurrentDevice():Promise<string>;
 
 export function AudioGetDuration():Promise<number>;

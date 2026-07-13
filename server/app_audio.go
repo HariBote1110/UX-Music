@@ -151,6 +151,15 @@ func (a *App) AudioSetVolume(volume float64) {
 	a.audioPlayer.SetVolume(volume)
 }
 
+// AudioDebugOutputRMS returns the RMS of the most recent output callback
+// buffer (post volume/gain/EQ). Diagnostic probe for E2E volume checks.
+func (a *App) AudioDebugOutputRMS() float64 {
+	if a.audioPlayer == nil {
+		return 0
+	}
+	return sanitizeFiniteFloat64(a.audioPlayer.OutputRMS())
+}
+
 // AudioSetNormalisationGain sets loudness normalisation linear gain (1.0 = unity).
 func (a *App) AudioSetNormalisationGain(gain float64) {
 	if a.audioPlayer == nil {

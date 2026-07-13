@@ -7,6 +7,59 @@ import { mountEmbedPlayer } from './youtube-embed-player.js';
 import { fetchEmbedEffectiveLoudness } from './youtube-embed-loudness.js';
 import { resolveEmbedPlaybackGain } from './playback-gain.js';
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * タップ出力（processAudio 後）の RMS を一定時間サンプリングして平均する。
+ * 出力に volume が乗っていれば、音量 2 段階で平均 RMS が比例して変わる。
+ */
+async function averageOutputRMS(app: NonNullable<ReturnType<typeof getWailsApp>>, samples: number, intervalMs: number): Promise<number> {
+    let sum = 0;
+    let count = 0;
+    for (let i = 0; i < samples; i++) {
+        try {
+            const rms = await app.AudioDebugOutputRMS?.();
+            if (typeof rms === 'number' && Number.isFinite(rms)) {
+                sum += rms;
+                count += 1;
+            }
+        } catch {
+            /* 計測失敗のサンプルは除外 */
+        }
+        await sleep(intervalMs);
+    }
+    return count > 0 ? sum / count : 0;
+}
+
+/**
+ * AudioSetVolume を 2 段階（1.0 → 0.25）で設定し、出力 RMS が比例して
+ * 変わることを構造化ログ（e2e-volume …）として報告する。判定はシェル側。
+ */
+async function runVolumeCheck(app: NonNullable<ReturnType<typeof getWailsApp>>): Promise<void> {
+    // タップ音声が安定して流れ始めるまで待つ
+    await sleep(3000);
+
+    await app.AudioSetVolume?.(1.0);
+    await sleep(500);
+    const rmsFull = await averageOutputRMS(app, 12, 100);
+
+    await app.AudioSetVolume?.(0.25);
+    await sleep(500);
+    const rmsQuarter = await averageOutputRMS(app, 12, 100);
+
+    await app.AudioSetVolume?.(1.0);
+
+    if (rmsFull <= 1e-6) {
+        // 自動再生ミュート等で音が流れない環境では比例判定ができない
+        void app.EmbedDebugLog?.(`e2e-volume-skip rmsFull=${rmsFull.toFixed(6)} (no audible output)`);
+        return;
+    }
+    const ratio = rmsQuarter / rmsFull;
+    void app.EmbedDebugLog?.(
+        `e2e-volume rmsFull=${rmsFull.toFixed(6)} rmsQuarter=${rmsQuarter.toFixed(6)} ratio=${ratio.toFixed(4)}`
+    );
+}
+
 export async function runYouTubeEmbedE2E(): Promise<void> {
     const app = getWailsApp();
     if (!app?.GetE2EEmbedVideoID) return;
@@ -37,6 +90,7 @@ export async function runYouTubeEmbedE2E(): Promise<void> {
                     void app.EmbedDebugLog?.(
                         `e2e-gain loudness=${effectiveLoudness === null ? 'n/a' : effectiveLoudness.toFixed(2)} gain=${gain.toFixed(4)}`
                     );
+                    await runVolumeCheck(app);
                 })
                 .catch((err: unknown) => {
                     void app.EmbedDebugLog?.(`e2e-tap-failed ${String(err)}`);

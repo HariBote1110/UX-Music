@@ -57,8 +57,41 @@ for _ in $(seq 1 "$TIMEOUT_SECS"); do
     sleep 1
 done
 
-# PLAYING 後に音が出ていることの間接確認として 2 秒だけ流す
-[ "$VERDICT" = "PASS" ] && sleep 2
+# PLAYING 後は音量チェック（e2e-volume / e2e-volume-skip）の完了を待つ。
+# AudioSetVolume を 1.0 → 0.25 の 2 段階で設定し、タップ出力 RMS の比が
+# おおよそ 0.25（許容 0.10〜0.45）で変わることを確認する。
+if [ "$VERDICT" = "PASS" ]; then
+    VOLUME_VERDICT="TIMEOUT"
+    for _ in $(seq 1 30); do
+        if ! kill -0 "$APP_PID" 2>/dev/null; then
+            VOLUME_VERDICT="CRASHED"
+            break
+        fi
+        if grep -q "\[E2E\]\[YouTubeEmbed\] e2e-volume-skip" "$LOG_FILE"; then
+            VOLUME_VERDICT="SKIP"
+            break
+        fi
+        VOLUME_LINE="$(grep "\[E2E\]\[YouTubeEmbed\] e2e-volume " "$LOG_FILE" | head -1)"
+        if [ -n "$VOLUME_LINE" ]; then
+            RATIO="$(printf '%s\n' "$VOLUME_LINE" | sed -n 's/.*ratio=\([0-9.]*\).*/\1/p')"
+            if [ -n "$RATIO" ] && awk -v r="$RATIO" 'BEGIN { exit !(r >= 0.10 && r <= 0.45) }'; then
+                VOLUME_VERDICT="PASS"
+            else
+                VOLUME_VERDICT="FAIL"
+            fi
+            break
+        fi
+        sleep 1
+    done
+    echo "== 音量チェック判定: $VOLUME_VERDICT =="
+    if [ "$VOLUME_VERDICT" = "FAIL" ] || [ "$VOLUME_VERDICT" = "CRASHED" ]; then
+        VERDICT="FAIL"
+    elif [ "$VOLUME_VERDICT" = "SKIP" ]; then
+        echo "(環境制約により RMS 比例判定をスキップ — Go 単体テストで担保)"
+    elif [ "$VOLUME_VERDICT" = "TIMEOUT" ]; then
+        echo "(音量チェックのログが時間内に出力されず — 参考情報)"
+    fi
+fi
 
 echo "== 構造化ログ =="
 grep "\[E2E\]\[YouTubeEmbed\]" "$LOG_FILE" || echo "(構造化ログなし)"

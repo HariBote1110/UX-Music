@@ -18,6 +18,10 @@ export function AnalyseLibraryAudioEmbeddings() {
   return window['go']['server']['App']['AnalyseLibraryAudioEmbeddings']();
 }
 
+export function AudioDebugOutputRMS() {
+  return window['go']['server']['App']['AudioDebugOutputRMS']();
+}
+
 export function AudioGetCurrentDevice() {
   return window['go']['server']['App']['AudioGetCurrentDevice']();
 }
