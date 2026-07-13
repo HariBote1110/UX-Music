@@ -1,3 +1,20 @@
+## 2026-07-13 — Desktop App: embed 再生開始時の爆音を根治（ソースミュート→タップ確立後 unmute）
+
+### 実施内容
+- 公式再生（embed）で再生開始の一瞬だけ極端な爆音が鳴る安全問題を修正（サブエージェント実装、TDD）。
+- 確定原因は「タップ確立前の生音」：埋め込みホストページが autoplay かつ非ミュートで再生を始めるため、AudioStartWebViewTap がタップを張って CATapMutedWhenTapped でヘルパー出力を消すまでの数百 ms、WebKit の音がシステム音量のまま鳴っていた。この生音は Go の processAudio（音量スライダーは最終段でクリップ後に乗算）を通らないため、定常出力の天井を超えて突出＝爆音。Go 側フェードだけでは直らないためソースミュートで根治。
+- 主対策：埋め込みを mute=1 で開始（onReady でも mute）→ onPlaying で AudioStartWebViewTap が解決してから embedUnmute を送る。この時点でタップのミュートがヘルパー出力を消しているため生音漏れゼロ。reattach 時も unmute を送り直す。タップ開始失敗時はフォールバックで unmute し無音化を防ぐ。
+- 副対策（保険・埋め込み限定）：ライブ再生開始から約120ms 出力を 0→1 に線形フェードイン（RT セーフ）。ファイル再生は完全非対象で回帰なし（TestLiveStartFadeRampsOutputFromSilence で固定）。
+- go test / vitest 177 件 / typecheck / wails build / E2E すべて通過。renderer 版を 1.0.0-Beta-42d へ更新（不具合修正のため SubVer +1）。
+
+### 選定理由・判断の根拠
+- 爆音が Go 出力経路を通らない（生音）とアーキテクチャ上断定できたため、Go 側フェードは保険に留め、ソースミュート＋タップ確立後 unmute を主対策とした。
+- 代償として開始時に約0.1–0.3秒の無音が入るが、聴覚保護を優先。
+
+### 残課題・次のステップ
+- ユーザー操作起点の再生で player.unMute() が音を復帰させることが前提（標準 API で問題ないはず、失敗時もフォールバックで unmute）。実機聴感の最終確認が残る。
+- （別件・おいおい）YouTube UI の enableYouTube ゲートを外し公式再生を既定で使える形にする。DL/非公式ストリーミングのモード選択のみ隠す。
+
 ## 2026-07-13 — Desktop App: embed 音声タップの他アプリ巻き込みを修正（自アプリ WebKit ヘルパー PID 限定）
 
 ### 実施内容
