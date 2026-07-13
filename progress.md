@@ -1,3 +1,25 @@
+## 2026-07-13 — Desktop App: プロセスタップ音声基盤の実装完了（フェーズ2a、サブエージェント実装）
+
+### 実施内容
+- WebKit ヘルパープロセスの音声を捕捉して既存 Go パイプラインで再生する基盤を TDD で実装（453bf13〜f31d68b）：
+  - `pkg/audio/tapring.go`: ロックフリー SPSC リングバッファ（RT スレッド側は満杯時破棄、破棄/受信数を計上）。
+  - `pkg/audio/player_live.go` + `player.go`: ライブタップ再生モード。デコーダーに optional interface `float32Decoder`（`ReadFloat32`）を追加し、float32 のまま再生リングへ直結。EQ・ゲイン・FFT ビジュアライザーが有効。ライブ中は position/duration=0・Seek no-op、無音時は無音注入。
+  - `pkg/audio/processtap_darwin.{go,m,h}`: `ProcessTapCapture`（bundle ID / PID 指定、macOS 26 の bundleIDs + processRestoreEnabled 優先、旧 OS 向けプロセス列挙フォールバック）。
+  - `server/app_audio.go`: `AudioStartWebViewTap` / `AudioStopWebViewTap` バインディング追加、wailsjs 再生成。
+- **ユーザーの聴感報告（150Hz 級の低音）が実バグの発見につながった**：`kAudioTapPropertyFormat` は 48kHz を報告するが、IOProc の実供給レートは集約デバイスのクロック＝実出力デバイスレート（この環境では 192kHz）。48kHz 解釈だと 440Hz が 110Hz（2 オクターブ下）で再生される。`kAudioDevicePropertyNominalSampleRate` を照会する修正（d089400）で解消。
+- 実機検証コマンド `cmd/spike-tapplayer` は聴感に依存しない自動合否判定（ゼロクロス周波数・RMS 理論値一致・FFT ビン・Stop 後の通常再生復帰）で全フェーズ合格。
+- 副産物として decoderLoop の stop/done チャネル競合（EOF しないソースで Stop 不能になるレース）を発見・修正。
+
+### 選定理由・判断の根拠
+- s16le 変換ではなく float32 直結経路を採用：タップは float32 で届き再生リングも float32 のため、変換は量子化の往復損失のみで利点がない。出力ストリームはソースレートで開くためリサンプルも不要。
+- リングバッファは mutex ではなくロックフリー（atomic）：IOProc が Core Audio のリアルタイムスレッドから呼ばれるため。
+
+### 残課題・次のステップ（フェーズ2b: フロントエンド統合）
+- 公式埋め込みプレイヤー（IFrame Player API）を Now Playing に表示し、再生開始後に `AudioStartWebViewTap()` を呼ぶ接続。
+- ライブ中の position/duration は 0 のため、シークバーは YouTube プレイヤー側の時間で描画する必要がある。
+- bundle ID タップはシステム全体の com.apple.WebKit.GPU を対象にするため、Safari 等の音声も捕捉し得る。将来は自アプリのヘルパー PID 限定を検討。
+- 既定出力デバイス変更時は集約デバイスの作り直し（Stop→Start）が必要。
+
 ## 2026-07-13 — Desktop App: 「公式埋め込み＋プロセスタップ」方式の技術スパイク成功（YouTube 還元問題の解法）
 
 ### 実施内容
