@@ -76,8 +76,13 @@
         <div id="resizer" class="resizer-vertical"></div>
         <div class="sidebar right-sidebar">
             <div id="now-playing-container">
-                <div id="now-playing-artwork-container">
-                    <img src="./assets/default_artwork.png" alt="Now Playing Artwork">
+                <div id="now-playing-artwork-slot">
+                    <div id="now-playing-artwork-container">
+                        <img src="./assets/default_artwork.png" alt="Now Playing Artwork">
+                    </div>
+                    <button id="now-playing-fullscreen-btn" type="button" aria-label="フルスクリーンで表示" title="フルスクリーンで表示">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+                    </button>
                 </div>
                 <div id="now-playing-details">
                     <h2 id="now-playing-title" class="marquee-wrapper">

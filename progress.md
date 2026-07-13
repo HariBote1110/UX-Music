@@ -1,3 +1,17 @@
+## 2026-07-14 — Desktop App: 公式再生中にフルスクリーンへ入れない導線バグを修正
+
+### 実施内容
+- 公式再生（embed）中は Now Playing のアートワーク領域が YouTube iframe に覆われ、右クリック（フルスクリーン表示メニュー）が iframe に奪われて発火しない問題を修正。
+- アートワークを外側 slot（#now-playing-artwork-slot）で包み、iframe より上（z-index 10）に常設のフルスクリーンボタン（#now-playing-fullscreen-btn、ホバーで表示）を重ねた。ボタンは innerHTML クリアされる artwork-container の外に置くことで再描画でも生き残る。クリックで openFullscreenView。
+- typecheck / vitest 182 件 通過。renderer 版を 1.0.0-Beta-44b へ更新（不具合修正のため SubVer +1）。
+
+### 選定理由・判断の根拠
+- iframe 上では right-click / pointer イベントを奪えないため、右クリックメニューではなく iframe より上のレイヤーに実クリック可能なボタンを重ねる方式にした。
+- ボタンを artwork-container の内側に置くと updateNowPlayingView の innerHTML='' で消えるため、外側 slot に配置して恒久化した。
+
+### 残課題・次のステップ
+- GUI 実機での見た目確認（ホバーでボタンが出る／embed 中にクリックでフルスクリーンに入れる）は未実施。
+
 ## 2026-07-14 — Desktop App: フルスクリーンの公式再生対応とジャケット拡大（サブエージェント実装）
 
 ### 実施内容

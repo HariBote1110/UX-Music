@@ -340,4 +340,11 @@ export function setupArtworkContextMenu() {
     if (footerArtwork) {
         footerArtwork.addEventListener('contextmenu', openMenu);
     }
+
+    // 公式再生（embed）中はアートワーク領域が iframe に覆われ右クリックが
+    // 奪われるため、iframe より上に重ねた常設ボタンからフルスクリーンを開く。
+    const fullscreenBtn = document.getElementById('now-playing-fullscreen-btn');
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', () => openFullscreenView());
+    }
 }

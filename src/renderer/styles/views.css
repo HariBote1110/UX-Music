@@ -525,6 +525,7 @@
 }
 
 #now-playing-artwork-container {
+    position: relative;
     width: 100%;
     aspect-ratio: 1 / 1;
     border-radius: 8px;
@@ -534,6 +535,50 @@
     overflow: hidden;
     transition: aspect-ratio 0.3s ease;
     flex-shrink: 0;
+}
+
+/* アートワーク領域は updateNowPlayingView で innerHTML がクリアされるため、
+   フルスクリーンボタンは外側の slot に置いて生き残らせ、その上に重ねる。 */
+#now-playing-artwork-slot {
+    position: relative;
+    width: 100%;
+    flex-shrink: 0;
+}
+
+/* iframe（公式再生）が右クリックを奪うため、iframe より上に重ねる
+   常設のフルスクリーンボタン。ホバーで浮かび上がる。 */
+#now-playing-fullscreen-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+#now-playing-artwork-slot:hover #now-playing-fullscreen-btn {
+    opacity: 1;
+}
+
+#now-playing-fullscreen-btn:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+#now-playing-fullscreen-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
 }
 
 #now-playing-artwork-container.video-mode {
