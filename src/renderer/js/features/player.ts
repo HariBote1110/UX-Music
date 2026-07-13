@@ -44,6 +44,8 @@ import {
     embedPlay,
     embedPause
 } from './youtube-embed-player.js';
+import { fetchEmbedEffectiveLoudness } from './youtube-embed-loudness.js';
+import { resolveEmbedPlaybackGain } from './playback-gain.js';
 import * as WailsApp from '../../wailsjs/go/server/App.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
@@ -534,16 +536,26 @@ async function playEmbed(song, sourceCandidate) {
     currentSongType = 'youtube';
     webViewTapStarted = false;
 
+    // ラウドネス取得は再生開始と並行して先に走らせておく（正規化なしでも
+    // 再生自体は始められるため、mount をブロックしない）。
+    const loudnessPromise = fetchEmbedEffectiveLoudness(videoId);
+
     const mounted = await mountEmbedPlayer(videoId, {
         onPlaying: () => {
             // PLAYING になった時点で一度だけタップを開始する。
             // タップはポーズ中も張ったままにする（ヘルパーが無音になるだけ）。
             if (webViewTapStarted) return;
             webViewTapStarted = true;
-            void getWailsApp()?.AudioStartWebViewTap?.().catch((err) => {
-                webViewTapStarted = false;
-                console.error('[Player] WebView タップの開始に失敗しました:', err);
-            });
+            void getWailsApp()?.AudioStartWebViewTap?.()
+                .then(() => {
+                    // playLiveSource が開始時に baseGain を 1.0 に戻すため、
+                    // 正規化ゲインは必ずタップ開始の解決後に適用する。
+                    return applyEmbedNormalisationGain(loudnessPromise);
+                })
+                .catch((err) => {
+                    webViewTapStarted = false;
+                    console.error('[Player] WebView タップの開始に失敗しました:', err);
+                });
         },
         onEnded: () => {
             // 既存の曲終了導線（playback-manager の次曲遷移）に接続する
@@ -566,6 +578,34 @@ async function playEmbed(song, sourceCandidate) {
     return true;
 }
 
+/**
+ * 公式再生（embed）のラウドネス正規化ゲインを適用する。
+ * 実効ラウドネスが取れない動画は正規化なし（1.0）のまま通常再生する。
+ */
+async function applyEmbedNormalisationGain(loudnessPromise: Promise<number | null>): Promise<void> {
+    try {
+        const [effectiveLoudness, settings] = await Promise.all([
+            loudnessPromise,
+            loadRendererSettings()
+        ]);
+        // 待機中に停止・曲切替が起きていたら適用しない（ローカル曲経路の
+        // ゲインは AudioPlay が曲ごとに設定するため、上書きしない）。
+        if (!isEmbedPlayerActive() || !webViewTapStarted) return;
+
+        const targetLoudness =
+            typeof settings.targetLoudness === 'number' && Number.isFinite(settings.targetLoudness)
+                ? settings.targetLoudness
+                : -18.0;
+        const gain = resolveEmbedPlaybackGain({ effectiveLoudness, targetLoudness });
+        await getWailsApp()?.AudioSetNormalisationGain?.(gain);
+        const loudnessLabel = effectiveLoudness === null ? 'n/a' : effectiveLoudness.toFixed(2);
+        console.log(`[Player] embed 正規化ゲイン適用: loudness=${loudnessLabel} target=${targetLoudness} gain=${gain.toFixed(4)}`);
+        void getWailsApp()?.EmbedDebugLog?.(`gain-applied loudness=${loudnessLabel} target=${targetLoudness} gain=${gain.toFixed(4)}`);
+    } catch (err) {
+        console.warn('[Player] embed 正規化ゲインの適用に失敗しました:', err);
+    }
+}
+
 export async function stop() {
     if (isWails) {
         const wasEmbed = isEmbedPlayerActive() || webViewTapStarted;
@@ -574,6 +614,9 @@ export async function stop() {
             if (wasEmbed) {
                 // タップ捕捉を停止する（内部で Player.Stop も行われる）
                 await getWailsApp()?.AudioStopWebViewTap?.();
+                // embed 用の正規化ゲインを解除する（ローカル曲は AudioPlay が
+                // 曲ごとにゲインを設定するが、明示的に 1.0 へ戻しておく）。
+                await getWailsApp()?.AudioSetNormalisationGain?.(1.0);
             } else {
                 await WailsApp.AudioStop();
             }

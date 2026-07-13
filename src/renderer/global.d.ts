@@ -19,6 +19,8 @@ type WailsAppBindings = {
   EmbedDebugLog?: (message: string) => Promise<void>;
   GetE2EEmbedVideoID?: () => Promise<string>;
   GetYouTubeEmbedURL?: (videoId: string) => Promise<string>;
+  /** 公式再生（embed）のラウドネス正規化用（wails 再生成前でも参照できるよう optional で宣言）。 */
+  GetYouTubeEmbedLoudness?: (videoId: string) => Promise<{ available: boolean; effectiveLoudnessLufs: number }>;
 };
 
 interface ElectronAPI {

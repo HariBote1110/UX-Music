@@ -1,9 +1,11 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 	"ux-music-sidecar/internal/lyrics"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/internal/youtube"
@@ -247,6 +249,38 @@ func (a *App) ResolveYouTubeStreamURL(sourceURL string) (string, error) {
 		return "", err
 	}
 	return streamURL, nil
+}
+
+// YouTubeEmbedLoudness は公式再生（embed）のラウドネス正規化用に
+// フロントへ返す値。Available=false のときは正規化なしで再生する。
+type YouTubeEmbedLoudness struct {
+	Available             bool    `json:"available"`
+	EffectiveLoudnessLufs float64 `json:"effectiveLoudnessLufs"`
+}
+
+// GetYouTubeEmbedLoudness は動画 ID から実効ラウドネス（LUFS）を解決する。
+// 取得・解析に失敗しても error にはせず Available=false を返す
+// （フロントは正規化なしのフォールバックで通常再生を続けるため）。
+func (a *App) GetYouTubeEmbedLoudness(videoID string) YouTubeEmbedLoudness {
+	trimmed := strings.TrimSpace(videoID)
+	if !embedVideoIDPattern.MatchString(trimmed) {
+		return YouTubeEmbedLoudness{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	loudness, err := youtube.FetchEmbedLoudness(ctx, trimmed)
+	if err != nil {
+		fmt.Printf("[YouTube][Embed] loudness fetch failed video=%s err=%v\n", trimmed, err)
+		return YouTubeEmbedLoudness{}
+	}
+	effective, ok := youtube.EffectiveLoudnessLUFS(loudness)
+	if !ok {
+		fmt.Printf("[YouTube][Embed] loudness unavailable video=%s\n", trimmed)
+		return YouTubeEmbedLoudness{}
+	}
+	fmt.Printf("[YouTube][Embed] loudness video=%s effectiveLufs=%.2f\n", trimmed, effective)
+	return YouTubeEmbedLoudness{Available: true, EffectiveLoudnessLufs: effective}
 }
 
 func normaliseSettingValue(value interface{}, fallback string) string {

@@ -758,6 +758,20 @@ export namespace server {
 	        this.encodingMode = source["encodingMode"];
 	    }
 	}
+	export class YouTubeEmbedLoudness {
+	    available: boolean;
+	    effectiveLoudnessLufs: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new YouTubeEmbedLoudness(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.effectiveLoudnessLufs = source["effectiveLoudnessLufs"];
+	    }
+	}
 
 }
 

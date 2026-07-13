@@ -134,6 +134,8 @@ export function GetWearPairingQRDataURL():Promise<string>;
 
 export function GetWearPairingURL():Promise<string>;
 
+export function GetYouTubeEmbedLoudness(arg1:string):Promise<server.YouTubeEmbedLoudness>;
+
 export function GetYouTubeEmbedURL(arg1:string):Promise<string>;
 
 export function GetYouTubeInfo(arg1:string):Promise<any>;
