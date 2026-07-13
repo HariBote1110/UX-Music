@@ -270,6 +270,76 @@ func TestStopTearsDownLiveSourceAndRestoresNormalState(t *testing.T) {
 	}
 }
 
+func TestPlayLiveSourceOutputAppliesVolume(t *testing.T) {
+	source := newFakeLiveSource()
+	source.queue([]float32{0.8, 0.8, 0.8, 0.8})
+	player := newLiveTestPlayer()
+
+	if err := player.playLiveSource(source, 1.0); err != nil {
+		t.Fatalf("playLiveSource: %v", err)
+	}
+	defer player.Stop()
+
+	// SetVolume がライブモードの出力コールバックにも反映されること。
+	player.SetVolume(0.5)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for player.ringAvailable.Load() < 4 {
+		if time.Now().After(deadline) {
+			t.Fatalf("live samples never reached playback ring (available=%d)", player.ringAvailable.Load())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	out := make([]float32, 4)
+	player.processAudio(out)
+	for i, got := range out {
+		if diff := got - 0.4; diff > 1e-6 || diff < -1e-6 {
+			t.Fatalf("output sample %d: got %g, want 0.4 (0.8 * volume 0.5)", i, got)
+		}
+	}
+}
+
+func TestPlayLiveSourceOutputRMSScalesWithVolume(t *testing.T) {
+	source := newFakeLiveSource()
+	player := newLiveTestPlayer()
+
+	if err := player.playLiveSource(source, 1.0); err != nil {
+		t.Fatalf("playLiveSource: %v", err)
+	}
+	defer player.Stop()
+
+	waitForRing := func(want int64) {
+		deadline := time.Now().Add(2 * time.Second)
+		for player.ringAvailable.Load() < want {
+			if time.Now().After(deadline) {
+				t.Fatalf("live samples never reached playback ring (available=%d)", player.ringAvailable.Load())
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+
+	out := make([]float32, 4)
+
+	player.SetVolume(1.0)
+	source.queue([]float32{0.6, 0.6, 0.6, 0.6})
+	waitForRing(4)
+	player.processAudio(out)
+	rmsFull := player.OutputRMS()
+	if diff := rmsFull - 0.6; diff > 1e-6 || diff < -1e-6 {
+		t.Fatalf("RMS at volume 1.0: got %g, want 0.6", rmsFull)
+	}
+
+	player.SetVolume(0.25)
+	source.queue([]float32{0.6, 0.6, 0.6, 0.6})
+	waitForRing(4)
+	player.processAudio(out)
+	rmsQuarter := player.OutputRMS()
+	if diff := rmsQuarter - 0.15; diff > 1e-6 || diff < -1e-6 {
+		t.Fatalf("RMS at volume 0.25: got %g, want 0.15 (0.6 * 0.25)", rmsQuarter)
+	}
+}
+
 func TestPlayLiveSourceFeedsSamplesIntoPlaybackRing(t *testing.T) {
 	source := newFakeLiveSource()
 	source.queue([]float32{0.5, 0.5, 0.5, 0.5})
