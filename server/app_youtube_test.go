@@ -220,6 +220,50 @@ func TestBuildStreamingSongFallbacks(t *testing.T) {
 	}
 }
 
+// TestYoutubeLyricsFileName は LRC 保存ファイル名の規則を検証する。
+// ダウンロード曲・ストリーミング曲の双方で同一規則を用い、
+// get-lyrics の探索キー（title もしくは path のベース名）と一致させる必要がある。
+func TestYoutubeLyricsFileName(t *testing.T) {
+	tests := []struct {
+		name  string
+		title string
+		path  string
+		want  string
+	}{
+		{
+			name:  "download song uses title",
+			title: "My Song",
+			path:  "/Library/Artist/My Song.m4a",
+			want:  "My Song.lrc",
+		},
+		{
+			name:  "streaming song uses title even when path is a URL",
+			title: "My Song",
+			path:  "https://www.youtube.com/watch?v=abc123",
+			want:  "My Song.lrc",
+		},
+		{
+			name:  "empty title falls back to path basename without extension",
+			title: "",
+			path:  "/Library/Artist/Fallback Title.m4a",
+			want:  "Fallback Title.lrc",
+		},
+		{
+			name:  "empty title with URL path falls back to raw last segment",
+			title: "   ",
+			path:  "https://youtu.be/xyz",
+			want:  "xyz.lrc",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := youtubeLyricsFileName(tt.title, tt.path); got != tt.want {
+				t.Errorf("youtubeLyricsFileName(%q, %q) = %q, want %q", tt.title, tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUsesStreamingRegistration(t *testing.T) {
 	tests := []struct {
 		mode string
