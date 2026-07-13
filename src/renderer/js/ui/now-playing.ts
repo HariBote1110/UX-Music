@@ -7,6 +7,7 @@ import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { openFullscreenView, notifyFullscreenSongChange } from '../features/fullscreen-view.js';
 import { showContextMenu } from './utils.js';
 import { buildSafeMediaPathURL } from './media-url.js';
+import { isEmbedPlayerActive, reattachEmbedPlayer } from '../features/youtube-embed-player.js';
 const electronAPI = window.electronAPI;
 
 const VIDEO_PREVIEW_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.ogv'];
@@ -182,10 +183,19 @@ export function updateNowPlayingView(song) {
         setEqualizerColorFromArtwork(img);
         updateFooterArtwork(DEFAULT_ARTWORK_URL);
 
+    } else if (song.type === 'youtube' && isEmbedPlayerActive() && nowPlayingArtworkContainer
+        && reattachEmbedPlayer(nowPlayingArtworkContainer)) {
+        // 公式再生（embed）中の再描画: 稼働中の公式プレイヤーを新しい
+        // コンテナへ付け直す（iframe を破棄すると音声タップも途切れるため）。
+        console.log('[Debug:NowPlaying] 稼働中の YouTube 公式プレイヤーを再アタッチしました。');
+        updateFooterArtwork(song.artwork || DEFAULT_ARTWORK_URL);
+
     } else if (song.type === 'youtube') {
         console.log('[Debug:NowPlaying] YouTube ストリーミングモードで描画します。');
-        // 音声は Go 側のネイティブパイプラインで再生するため、埋め込み iframe
-        // （autoplay 付き）は使わない。二重再生になるうえ埋め込み規約的にも危うい。
+        // ストリーミング経路では音声を Go 側のネイティブパイプラインで再生する
+        // ため、埋め込み iframe（autoplay 付き）は使わない。二重再生になるうえ
+        // 埋め込み規約的にも危うい。公式再生（embed）経路のプレイヤー生成は
+        // player.ts の playEmbed が行う（ここではサムネイルを仮表示する）。
         const img = document.createElement('img');
         img.crossOrigin = "Anonymous";
         img.onload = () => setEqualizerColorFromArtwork(img);

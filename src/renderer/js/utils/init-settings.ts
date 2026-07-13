@@ -983,7 +983,8 @@ export function initSettings() {
 function updateQualityGroupState() {
     const youtubeMode = (document.querySelector('input[name="youtube-mode"]:checked') as HTMLInputElement | null)?.value;
     const qualityGroup = document.getElementById('youtube-quality-group');
-    if (youtubeMode === 'stream') {
+    // ダウンロード品質はダウンロードモード選択時のみ意味を持つ（stream / embed ではグレーアウト）
+    if (youtubeMode !== 'download') {
         qualityGroup?.classList.add('disabled');
         document.querySelectorAll<HTMLInputElement>('input[name="youtube-quality"]').forEach(radio => radio.disabled = true);
     } else {

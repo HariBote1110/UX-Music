@@ -31,6 +31,19 @@ import {
     dataArray
 } from './audio-graph.js';
 import { musicApi, getWailsApp } from '../core/bridge.js';
+import { resolveYouTubePlaybackRoute, extractYouTubeVideoId } from './youtube-embed-route.js';
+import {
+    mountEmbedPlayer,
+    destroyEmbedPlayer,
+    isEmbedPlayerActive,
+    embedGetCurrentTime,
+    embedGetDuration,
+    embedIsPlaying,
+    embedIsPaused,
+    embedSeekTo,
+    embedPlay,
+    embedPause
+} from './youtube-embed-player.js';
 import * as WailsApp from '../../wailsjs/go/server/App.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
@@ -51,6 +64,8 @@ const goState = {
 let goPollTimeoutId = null;
 let goPollInFlight = false;
 let lastSeekAtMs = 0;
+/** 公式再生（embed）中に WebView タップを開始済みかどうか */
+let webViewTapStarted = false;
 
 let savedCallbacks = {
     onSongEnded: () => { },
@@ -60,21 +75,27 @@ let savedCallbacks = {
 
 // 状態取得関数の変更
 export function getCurrentTime() {
+    if (isEmbedPlayerActive()) return embedGetCurrentTime();
     if (isWails) return goState.currentTime;
     return localPlayer ? localPlayer.currentTime : 0;
 }
 export function getDuration() {
+    if (isEmbedPlayerActive()) return embedGetDuration();
     if (isWails) return goState.duration;
     return localPlayer && Number.isFinite(localPlayer.duration) ? localPlayer.duration : 0;
 }
 export function isPlaying() {
+    if (isEmbedPlayerActive()) return embedIsPlaying();
     if (isWails) return goState.isPlaying;
     return localPlayer && !localPlayer.paused && !localPlayer.ended && localPlayer.readyState > 2;
 }
 
 // UI操作用の関数
 export async function playCurrent() {
-    if (isWails) {
+    if (isEmbedPlayerActive()) {
+        // タップは張ったまま、埋め込みプレイヤー側を再開する
+        embedPlay();
+    } else if (isWails) {
         await getWailsApp()?.AudioResume?.();
         // ポーリングでUI更新されるのでここでは状態強制更新しない
     } else if (localPlayer) {
@@ -86,7 +107,10 @@ export async function playCurrent() {
     }
 }
 export async function pauseCurrent() {
-    if (isWails) {
+    if (isEmbedPlayerActive()) {
+        // タップは張ったまま、埋め込みプレイヤー側を一時停止する
+        embedPause();
+    } else if (isWails) {
         await getWailsApp()?.AudioPause?.();
     } else if (localPlayer) {
         localPlayer.pause();
@@ -97,7 +121,12 @@ export async function seek(time) {
     const duration = getDuration();
     const seekTime = Math.max(0, Math.min(time, duration));
 
-    if (isWails) {
+    if (isEmbedPlayerActive()) {
+        embedSeekTo(seekTime);
+        lastSeekAtMs = Date.now();
+        goState.currentTime = seekTime; // 即時反映
+        updateSeekUI(seekTime);
+    } else if (isWails) {
         await getWailsApp()?.AudioSeek?.(seekTime);
         lastSeekAtMs = Date.now();
         goState.currentTime = seekTime; // 即時反映
@@ -200,7 +229,14 @@ function startGoStatePolling() {
             let paused;
 
             const app = getWailsApp();
-            if (typeof app?.AudioGetStatus === 'function') {
+            if (isEmbedPlayerActive()) {
+                // 公式再生（embed）中: Go 側はライブ再生で位置・長さが 0 を
+                // 返すため、YouTube プレイヤーから時間情報を取得する。
+                pos = embedGetCurrentTime();
+                dur = embedGetDuration();
+                playing = embedIsPlaying();
+                paused = embedIsPaused();
+            } else if (typeof app?.AudioGetStatus === 'function') {
                 const status = await app.AudioGetStatus();
                 pos = Number(status?.position);
                 dur = Number(status?.duration);
@@ -451,6 +487,11 @@ export async function play(song, gainLinear = 1.0) {
         }
 
         if (song.type === 'youtube' && isWails) {
+            const settings = await loadRendererSettings();
+            const route = resolveYouTubePlaybackRoute(song.type, settings.youtubePlaybackMode);
+            if (route === 'embed') {
+                return await playEmbed(song, filePath);
+            }
             // ストリーミング再生: 都度 googlevideo の直接 URL を解決し（数時間で
             // 失効するため保存しない）、Go 側のネイティブパイプラインで再生する。
             const sourceUrl = typeof song.sourceURL === 'string' && song.sourceURL.trim() !== ''
@@ -475,13 +516,71 @@ export async function play(song, gainLinear = 1.0) {
     }
 }
 
+/**
+ * 公式再生（embed）: Now Playing 領域に YouTube 公式プレイヤーを表示して
+ * 再生し、その音声を Core Audio プロセスタップ経由でネイティブ
+ * パイプライン（EQ・音量・ビジュアライザー）から出力する。
+ */
+async function playEmbed(song, sourceCandidate) {
+    const sourceUrl = typeof song.sourceURL === 'string' && song.sourceURL.trim() !== ''
+        ? song.sourceURL.trim()
+        : sourceCandidate;
+    const videoId = extractYouTubeVideoId(sourceUrl);
+    if (!videoId) {
+        console.error('[Player] YouTube 動画 ID の抽出に失敗しました:', sourceUrl);
+        return false;
+    }
+
+    currentSongType = 'youtube';
+    webViewTapStarted = false;
+
+    const mounted = await mountEmbedPlayer(videoId, {
+        onPlaying: () => {
+            // PLAYING になった時点で一度だけタップを開始する。
+            // タップはポーズ中も張ったままにする（ヘルパーが無音になるだけ）。
+            if (webViewTapStarted) return;
+            webViewTapStarted = true;
+            void getWailsApp()?.AudioStartWebViewTap?.().catch((err) => {
+                webViewTapStarted = false;
+                console.error('[Player] WebView タップの開始に失敗しました:', err);
+            });
+        },
+        onEnded: () => {
+            // 既存の曲終了導線（playback-manager の次曲遷移）に接続する
+            const finishedSong = state.playbackQueue[state.currentSongIndex];
+            if (state.analysedQueue.enabled && finishedSong) musicApi.songFinished(finishedSong);
+            if (typeof savedCallbacks.onSongEnded === 'function') savedCallbacks.onSongEnded();
+            updateLrcEditorControls(false, getDuration(), getDuration());
+        }
+    });
+    if (!mounted) return false;
+
+    const slider = elements.volumeSlider;
+    const rawVol = slider && typeof slider.value === 'string' ? parseFloat(slider.value) : 1;
+    const volume = Number.isFinite(rawVol) ? Math.min(1, Math.max(0, rawVol)) : 1;
+    await WailsApp.AudioSetVolume(volume);
+
+    updatePlayingIndicators();
+    updatePlaybackStateUI(true);
+    updateMediaSessionState('playing');
+    return true;
+}
+
 export async function stop() {
     if (isWails) {
+        const wasEmbed = isEmbedPlayerActive() || webViewTapStarted;
+        destroyEmbedPlayer();
         try {
-            await WailsApp.AudioStop();
+            if (wasEmbed) {
+                // タップ捕捉を停止する（内部で Player.Stop も行われる）
+                await getWailsApp()?.AudioStopWebViewTap?.();
+            } else {
+                await WailsApp.AudioStop();
+            }
         } catch (err) {
             console.warn('[Player] AudioStop:', err);
         }
+        webViewTapStarted = false;
         goState.isPlaying = false;
         goState.isPaused = false;
         goState.currentTime = 0;
@@ -556,6 +655,14 @@ async function playLocal(song, gainLinear = 1.0) {
 }
 
 export async function togglePlayPause() {
+    if (isEmbedPlayerActive()) {
+        if (embedIsPlaying()) {
+            embedPause();
+        } else {
+            embedPlay();
+        }
+        return;
+    }
     if (isWails) {
         const isPlaying = goState.isPlaying;
         if (isPlaying) {
