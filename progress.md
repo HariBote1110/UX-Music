@@ -1,3 +1,20 @@
+## 2026-07-13 — Desktop App: embed 音声タップの他アプリ巻き込みを修正（自アプリ WebKit ヘルパー PID 限定）
+
+### 実施内容
+- 公式再生（embed）で音量スライダーが効かない問題の真因を実測で特定・修正。真因は「タップ対象を bundle ID（com.apple.WebKit.GPU）で指定していたため、全アプリ共有の WebKit 音声（Safari 等）を捕捉・ミュート・再出力し、自アプリの埋め込み音声はほぼ捕捉できていなかった」こと。ユーザー実機で確定（UX Music の音量が Safari の YouTube/ニコニコに連動、Apple Music は無影響、自アプリ embed の OutputRMS≈0.00003）。
+- 診断プローブ uxDebug.embedVolumeProbe() で Go 出力段・フロント伝達は正常（RMS が音量に比例）と確認済みだったため、タップ対象選定のみを修正。
+- タップ対象を「自プロセスが帰属する WebKit ヘルパー PID」に限定：libproc（proc_listpids / proc_pidinfo / proc_pidpath）＋ responsibility_get_pid_responsible_for_pid で、WebKit パスかつ自 PID の子孫／responsible が自 PID 系のプロセスだけを選ぶ。純粋ロジック webKitHelperPIDsForSelf を TDD 実装。AudioStartWebViewTap は起動毎に PID を再列挙し、0 件時はエラー。
+- 実機ログで自アプリの 3 ヘルパーのみ対象化・Safari/Orion 等 38 個の他 WebKit を除外を確認。E2E の音量チェックが PASS（RMS 0.00003→0.1746、ratio 0.29）。
+- go test / vitest 176 件 / typecheck / wails build / E2E すべて通過。renderer 版を 1.0.0-Beta-42c へ更新（不具合修正のため SubVer +1）。
+
+### 選定理由・判断の根拠
+- WKWebView ヘルパーは launchd 直下の XPC プロセスで親子チェーンだけでは自アプリに辿れないため、responsibility_get_pid_responsible_for_pid を帰属シグナルに使う。
+- スパイク段階で警告されていた「bundle ID タップは他アプリを巻き込む」リスクが実害として顕在化したため、PID 限定へ全面移行し bundle ID 経路は廃止。
+
+### 残課題・次のステップ
+- 本番（Finder/Dock 起動）での実機未検証。この場合アプリ自身が responsible ルートになる設計だが未確認。ユーザーの通常起動での動作確認が望ましい。
+- TCC「システム音声録音」許可が未付与だとタップ失敗の可能性（別課題）。
+
 ## 2026-07-13 — Desktop App: embed 再生で音量スライダーが効かない問題の修正（クリップ順序バグ）
 
 ### 実施内容
