@@ -1,3 +1,26 @@
+## 2026-07-13 — Desktop App: YouTube「公式再生（embed）」モードの実装完了（フェーズ2b、サブエージェント実装）
+
+### 実施内容
+- 公式埋め込みプレイヤー（IFrame Player API、controls=1・映像可視）で再生し、音声だけをプロセスタップ経由で Go ネイティブパイプライン（EQ・音量・ビジュアライザー）から出力する再生モード「公式再生」を追加（92e0ef2〜f985000）。
+- 設定の YouTube 再生モードに「公式再生（推奨）」を追加。embed モードのリンク追加は stream と同じ非ダウンロード登録（type:"youtube"）。
+- 再生経路判定 `resolveYouTubePlaybackRoute` と動画 ID 抽出 `extractYouTubeVideoId`（watch / youtu.be / shorts / embed / live 対応）を純関数として TDD で実装（vitest 7 件）。
+- 埋め込みプレイヤー管理 `youtube-embed-player.ts`：IFrame API シングルトンロード、mountToken による競合破棄防止、再描画時の reattach（iframe 破棄による音途切れ・二重再生防止）。
+- player.ts 統合：PLAYING イベントで一度だけ `AudioStartWebViewTap()`、停止/曲切替で `destroyEmbedPlayer()`→`AudioStopWebViewTap()`。ポーズ/再開はタップを張ったまま pauseVideo/playVideo。時間・シーク・再生状態は embed 中は YouTube プレイヤー側から取得（Go はライブ再生で 0 を返すため）。ENDED は既存の曲終了導線（songFinished→次曲遷移）へ接続。
+- 検証：typecheck / vitest 163 件 / go build / go test / wails build（24 秒）すべて通過。
+- renderer 版を `1.0.0-Beta-39a` から `1.0.0-Beta-40a` へ更新（機能追加のため PhaseVer +1）。
+
+### 選定理由・判断の根拠
+- 埋め込みは controls 表示・映像可視のまま使う。規約グレーの解消（還元の成立）が目的のため、旧 Electron 時代の controls=0・不可視 iframe のような使い方はしない。
+- 埋め込み側はミュートしない：mutedWhenTapped が WebKit ヘルパーの出力を消すため、埋め込みを muted にするとタップに音が来なくなる。
+- ポーズ/再開でタップを解除しない：ヘルパーが無音になるだけで害がなく、再開レイテンシを最小化できる。
+
+### 残課題・次のステップ
+- 実機聴感確認（ユーザー実施）：映像表示・ネイティブ経路からの音・EQ/ビジュアライザー・二重再生なし・シーク/ポーズ/曲送り・通常曲復帰。
+- タップ確立までの数百 ms に一瞬生音が出る可能性（PLAYING→タップ確立の間）。実機で気になるようなら対策検討。
+- 広告再生中の duration がシークバーに出る挙動は未検証。
+- bundle ID タップは他アプリの WKWebView 音声（Safari 等）も捕捉し得る。将来は自アプリのヘルパー PID 限定を検討。
+- ラウドネス正規化の適用（YouTube player response の audioConfig.loudnessDb を自前 parse してゲイン設定）は未実装の次候補。
+
 ## 2026-07-13 — Desktop App: プロセスタップ音声基盤の実装完了（フェーズ2a、サブエージェント実装）
 
 ### 実施内容
