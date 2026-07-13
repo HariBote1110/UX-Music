@@ -1,3 +1,21 @@
+## 2026-07-14 — Desktop App: 公式再生/ストリーミング曲の同期歌詞（字幕→LRC）対応（サブエージェント実装）
+
+### 実施内容
+- YouTube を公式再生（embed）/ストリーミング（stream）で追加した曲について、UX Music の歌詞パネルに時刻同期歌詞を表示できるようにした（f646137〜f110e1a、TDD）。従来これらのモードは字幕→LRC 変換をスキップしており歌詞パネルが空だった。
+- 事前に字幕取得経路を実測で確定（使い捨て cmd/spike-captions、検証後削除）。結論：**timedtext 本文が安定取得できるのは kkdai(ANDROID) の CaptionTrack.BaseURL 直接 GET のみ**。WEB ウォッチページ抽出の baseURL は proof-of-origin token（pot）要求のため status 200 でも本文 0 バイト、innertube WEB /player も captions 抽出不可。よって「取れる動画は取り、取れない動画は歌詞なしで壊れない」方針。
+- internal/youtube に `FetchTranscriptLRC(url, preference)` を追加（DL せず字幕のみ取得して LRC/lang/vssId を返す）。server/app_youtube.go の addYouTubeStreamingLink（embed/stream 共通）で追加時に LRC を取得・保存。取得失敗でも登録は継続。
+- **副産物の既存バグ修正**：downloadTranscriptAsLRC の言語ルートが kkdai GetTranscript を使っており eghAYpSDtRw 等で HTTP 400 で字幕を取り逃していた。新設 loadTranscriptForTrack で「トラック BaseURL 直接 GET（新鮮な署名付き URL）優先→失敗時のみ GetTranscript」に変更し、ダウンロード経路も堅牢化。
+- 保存ファイル名を youtubeLyricsFileName(title, path)=<title>.lrc に集約。embed/stream 曲は path が動画 URL のため、フロントの get-lyrics は title 候補で探索する。保存も title 基準で一致（loadLyricsForSong・ローカル/DL 曲の読込は不変）。
+- 実データ検証：eghAYpSDtRw で 55 セグメントの同期 LRC を取得、6LtrI3MOfQg は ANDROID 応答に字幕が載らず取得不可を確認。go test / vitest 177 件 / typecheck / wails build / E2E すべて通過。renderer 版を 1.0.0-Beta-43a へ更新（機能追加のため PhaseVer +1）。
+
+### 選定理由・判断の根拠
+- WEB baseURL は pot 未保有では本文 0 バイトのため fallback として無意味と実測で判断し、実装しなかった（複雑さだけ増える）。
+- 保存名・探索キーをともに title 基準に揃えることで、フロント無改修で歌詞パネル同期に載せた。
+
+### 残課題・次のステップ
+- ANDROID 応答に字幕が載らない動画（例 6LtrI3MOfQg）は headless では取得不可。実環境（実 WKWebView）での取得可否は今後の調査対象。
+- srv3 の色・配置情報は現状破棄（parseTranscriptXMLBody が span テキスト結合のみ）。将来の「色分け表示」「フルスクリーン配置」対応時に別途拡張（非破壊）。[[project_youtube]]
+
 ## 2026-07-13 — Desktop App: embed 再生開始時の爆音を根治（ソースミュート→タップ確立後 unmute）
 
 ### 実施内容
