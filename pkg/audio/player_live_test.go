@@ -300,6 +300,39 @@ func TestPlayLiveSourceOutputAppliesVolume(t *testing.T) {
 	}
 }
 
+// 正規化ゲインが 1 を超える場合（embed の実効ラウドネス正規化で発生）、
+// クリップ前に volume を掛けると「sample×gain×volume が依然 1 以上」の
+// 範囲でスライダーが無効化される。クリップはゲイン段直後に行い、volume は
+// クリップ後の信号に必ず線形に効くこと。
+func TestPlayLiveSourceVolumeRemainsEffectiveWhenGainClips(t *testing.T) {
+	source := newFakeLiveSource()
+	player := newLiveTestPlayer()
+
+	// baseGain 2.0: 0.8 × 2.0 = 1.6 はクリップされて 1.0 になる
+	if err := player.playLiveSource(source, 2.0); err != nil {
+		t.Fatalf("playLiveSource: %v", err)
+	}
+	defer player.Stop()
+
+	player.SetVolume(0.5)
+	source.queue([]float32{0.8, 0.8, 0.8, 0.8})
+	deadline := time.Now().Add(2 * time.Second)
+	for player.ringAvailable.Load() < 4 {
+		if time.Now().After(deadline) {
+			t.Fatalf("live samples never reached playback ring (available=%d)", player.ringAvailable.Load())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	out := make([]float32, 4)
+	player.processAudio(out)
+	for i, got := range out {
+		if diff := got - 0.5; diff > 1e-6 || diff < -1e-6 {
+			t.Fatalf("output sample %d: got %g, want 0.5 (clip(0.8*2.0)=1.0 に volume 0.5)", i, got)
+		}
+	}
+}
+
 func TestPlayLiveSourceOutputRMSScalesWithVolume(t *testing.T) {
 	source := newFakeLiveSource()
 	player := newLiveTestPlayer()
