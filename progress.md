@@ -1,3 +1,20 @@
+## 2026-07-14 — Desktop App: フルスクリーンの公式再生対応とジャケット拡大（サブエージェント実装）
+
+### 実施内容
+- フルスクリーンモードで YouTube 公式再生（embed）の映像を表示できるようにし、通常曲のジャケットを画面を広く使って拡大表示するようにした（7a9d3f1〜af1c742、TDD）。
+- 所在判定は純関数 resolveEmbedContainerId / resolveFullscreenMediaMode（fullscreen-media.ts、vitest 5件）に切り出し、DOM 反映は fullscreen-view.ts の syncMedia に集約。フルスクリーンを開くと公式プレイヤー iframe を #fs-video-slot へ reattachEmbedPlayer で移動、閉じるとサイドバーへ戻す。曲送り（notifyFullscreenSongChange）でも所在を引き戻す。destroyEmbedPlayer は一切呼ばず DOM 移動のみで、音声タップと再生を切らない。
+- ジャケット拡大は CSS（components.css）：共有変数 --fs-media-size: min(100%, 56vh, 660px) でジャケット枠・映像枠・情報・シークバーの幅を統一（従来は max-width 400px 固定）。ジャケット枠(1:1)と映像枠(16:9)を共通ルールに集約。flex 比を 4:6→5:5、余白 clamp 化、メディアクエリで小ウィンドウ時に縮小して非破綻。
+- typecheck / vitest 182件 / wails build / E2E すべて通過。Go 側・server は未変更。renderer 版を 1.0.0-Beta-44a へ更新（機能追加のため PhaseVer +1）。
+
+### 選定理由・判断の根拠
+- iframe は破棄せず「移動」に限定：公式プレイヤーを壊すと音声タップと再生が切れるため（Now Playing 再描画時の reattach と同じ思想）。
+- ジャケットと映像でサイズ方針を共通変数化し、アスペクト比の差（1:1 と 16:9）だけを許容することでレイアウトを一元管理。
+
+### 残課題・次のステップ
+- GUI 手動確認は未実施（自動検証は全通過）。通常曲フルスクリーンのジャケット拡大、embed 曲の映像表示と音継続、閉じてサイドバーへ復帰、曲送りでの切替を実機で確認する必要がある。
+- 二重再生は理論上起きない（移動のみ）が、updateNowPlayingView→notifyFullscreenSongChange の呼び出し順に依存。
+- 極端に低い高さのウィンドウでは歌詞側の可読性が下がる可能性（レイアウトは overflow:hidden で非破綻）。
+
 ## 2026-07-14 — Desktop App: 公式再生/ストリーミング曲の同期歌詞（字幕→LRC）対応（サブエージェント実装）
 
 ### 実施内容
