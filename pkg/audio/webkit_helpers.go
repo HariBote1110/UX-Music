@@ -61,15 +61,26 @@ func selfDescendants(procs []procInfo, selfPID int) map[int]bool {
 // webKitHelperPIDsForSelf selects the WebKit helper processes that belong to
 // this application, excluding helpers owned by other apps (e.g. Safari's
 // shared WebKit processes). A helper qualifies when its executable is a WebKit
-// helper AND it is attributable to us by either of two independent signals:
+// helper AND it is attributable to us by one of these independent signals:
 //
 //   - it is a descendant of selfPID in the process tree, or
-//   - macOS holds selfPID (or one of our descendants) responsible for it.
+//   - macOS holds selfPID (or one of our descendants) responsible for it, or
+//   - macOS holds the same responsible root as us responsible for it.
 //
-// The responsibility signal covers XPC-launched helpers whose direct parent is
-// launchd rather than our process. Results preserve input order and are
-// deduplicated. selfPID itself is never returned.
-func webKitHelperPIDsForSelf(procs []procInfo, selfPID int) []int {
+// WebKit helpers are XPC services launched by launchd (PPID 1), so the process
+// tree never reaches them; the responsibility signals are what actually tie a
+// helper to its owning app. macOS's responsibility API reports the launch
+// session's top-level responsible process: for a Finder/Dock launch that is
+// the app itself (selfResponsiblePID == selfPID), so our helpers are
+// responsible to selfPID; when the app is launched from a terminal or a parent
+// app, that shared root is the terminal/parent, and our helpers are
+// responsible to it. Matching selfResponsiblePID covers the latter while still
+// excluding other apps, whose helpers carry a different responsible root.
+//
+// selfResponsiblePID <= 0 (or equal to selfPID) disables the shared-root
+// signal. Results preserve input order and are deduplicated. selfPID itself is
+// never returned.
+func webKitHelperPIDsForSelf(procs []procInfo, selfPID, selfResponsiblePID int) []int {
 	owned := selfDescendants(procs, selfPID)
 
 	var result []int
@@ -81,7 +92,10 @@ func webKitHelperPIDsForSelf(procs []procInfo, selfPID int) []int {
 		if !isWebKitHelperPath(p.Path) {
 			continue
 		}
-		ours := owned[p.PID] || p.ResponsiblePID == selfPID || owned[p.ResponsiblePID]
+		ours := owned[p.PID] ||
+			p.ResponsiblePID == selfPID ||
+			owned[p.ResponsiblePID] ||
+			(selfResponsiblePID > 0 && p.ResponsiblePID == selfResponsiblePID)
 		if !ours {
 			continue
 		}

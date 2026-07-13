@@ -49,7 +49,9 @@ func TestWebKitHelperPIDsForSelfSelectsOwnDescendantsOnly(t *testing.T) {
 		{PID: 2001, PPID: 2000, Path: gpuPath},
 		{PID: 2002, PPID: 2000, Path: wcPath},
 	}
-	got := webKitHelperPIDsForSelf(procs, self)
+	// 本番（Finder 起動）ではアプリ自身が responsible ルートになるため
+	// selfResponsiblePID == self を与える。
+	got := webKitHelperPIDsForSelf(procs, self, self)
 	want := []int{1001, 1002, 1003}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v (他アプリの WebKit ヘルパーが混入または自配下が漏れている)", got, want)
@@ -71,10 +73,39 @@ func TestWebKitHelperPIDsForSelfUsesResponsiblePID(t *testing.T) {
 		{PID: 2500, PPID: 1, ResponsiblePID: 2000, Path: gpuPath},
 		{PID: 2000, PPID: 1, Path: "/Applications/Safari.app/Contents/MacOS/Safari"},
 	}
-	got := webKitHelperPIDsForSelf(procs, self)
+	got := webKitHelperPIDsForSelf(procs, self, self)
 	want := []int{1500}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v (responsible ベースの帰属が誤り)", got, want)
+	}
+}
+
+// macOS の responsibility API は「起動セッションの最上位 responsible プロセス」
+// を返す。ターミナル/親アプリ経由で起動された場合、自プロセスの WebKit
+// ヘルパーの responsible は自 PID ではなく、その共通ルート（例: ターミナル）に
+// なる。自プロセスの responsible ルートと一致するヘルパーは対象に含め、別の
+// responsible ルートを持つ他アプリ（Safari）のヘルパーは除外すること。
+func TestWebKitHelperPIDsForSelfMatchesSharedResponsibleRoot(t *testing.T) {
+	t.Parallel()
+	const (
+		self = 1000
+		// 自プロセスを起動した共通ルート（ターミナル等）。
+		root = 500
+	)
+	procs := []procInfo{
+		{PID: root, PPID: 1, Path: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"},
+		{PID: self, PPID: root, ResponsiblePID: root, Path: appPath},
+		// 自プロセスの WebKit ヘルパー: launchd 直下、responsible は共通ルート。
+		{PID: 1010, PPID: 1, ResponsiblePID: root, Path: gpuPath},
+		{PID: 1011, PPID: 1, ResponsiblePID: root, Path: wcPath},
+		// Safari は別ルート（自身）を持つ → 除外。
+		{PID: 2000, PPID: 1, ResponsiblePID: 2000, Path: "/Applications/Safari.app/Contents/MacOS/Safari"},
+		{PID: 2001, PPID: 1, ResponsiblePID: 2000, Path: gpuPath},
+	}
+	got := webKitHelperPIDsForSelf(procs, self, root)
+	want := []int{1010, 1011}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v (共通 responsible ルートによる帰属が誤り)", got, want)
 	}
 }
 
@@ -88,7 +119,7 @@ func TestWebKitHelperPIDsForSelfReturnsEmptyWhenNoneOwned(t *testing.T) {
 		{PID: 2000, PPID: 1, Path: "/Applications/Safari.app/Contents/MacOS/Safari"},
 		{PID: 2001, PPID: 2000, Path: gpuPath},
 	}
-	if got := webKitHelperPIDsForSelf(procs, self); len(got) != 0 {
+	if got := webKitHelperPIDsForSelf(procs, self, self); len(got) != 0 {
 		t.Fatalf("got %v, want empty", got)
 	}
 }
@@ -100,7 +131,7 @@ func TestWebKitHelperPIDsForSelfExcludesSelf(t *testing.T) {
 	procs := []procInfo{
 		{PID: self, PPID: 1, ResponsiblePID: self, Path: gpuPath},
 	}
-	if got := webKitHelperPIDsForSelf(procs, self); len(got) != 0 {
+	if got := webKitHelperPIDsForSelf(procs, self, self); len(got) != 0 {
 		t.Fatalf("got %v, want empty (自プロセスは除外)", got)
 	}
 }

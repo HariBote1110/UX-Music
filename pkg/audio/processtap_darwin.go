@@ -132,8 +132,9 @@ func WebKitHelperDiagnostics() ([]WebKitHelperDiagnostic, error) {
 	if err != nil {
 		return nil, err
 	}
+	self := os.Getpid()
 	owned := make(map[int]bool)
-	for _, pid := range webKitHelperPIDsForSelf(procs, os.Getpid()) {
+	for _, pid := range webKitHelperPIDsForSelf(procs, self, selfResponsiblePID(self)) {
 		owned[pid] = true
 	}
 	var out []WebKitHelperDiagnostic
@@ -163,7 +164,19 @@ func WebKitHelperPIDs() ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return webKitHelperPIDsForSelf(procs, os.Getpid()), nil
+	self := os.Getpid()
+	return webKitHelperPIDsForSelf(procs, self, selfResponsiblePID(self)), nil
+}
+
+// selfResponsiblePID returns the responsible process macOS attributes to pid,
+// or 0 when it is unavailable or is pid itself (which the ownership filter
+// already covers). See webKitHelperPIDsForSelf for why this matters.
+func selfResponsiblePID(pid int) int {
+	rp := int(C.uxProcResponsiblePID(C.int(pid)))
+	if rp <= 0 || rp == pid {
+		return 0
+	}
+	return rp
 }
 
 // tapStatusString renders an OSStatus (or kUXTapErr* value) readably,
