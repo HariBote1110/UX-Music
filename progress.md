@@ -1,3 +1,21 @@
+## 2026-07-13 — Desktop App: 公式再生エラー153の根治（ループバックホスト方式）と E2E 再生テスト整備（サブエージェント実装）
+
+### 実施内容
+- 実機で発生した YouTube 埋め込みプレイヤーのエラー 153 を修正（addb0c5〜0bddad7）。E2E ログでの実測により原因を確定：Wails 本番ビルドはページ origin が独自スキーム `wails://wails` になり、IFrame API がそれを origin/forigin として YouTube に送り、かつ HTTP Referer が空のため「Referer 欠落/不正」として再生拒否されていた。
+- 修正方式は**ループバックホスト**：Go 側（server/embed_host.go）が 127.0.0.1 の空きポート（ループバック限定・lazy 起動）で `/embed?v=<11桁ID>` に公式プレイヤー入りページを配信し、Now Playing の iframe はそこを指す。ページ origin が `http://127.0.0.1:<port>` になるため YouTube が受理する。renderer とは postMessage で制御・状態を中継（純粋プロトコルは youtube-embed-bridge.ts、TDD）。公開 API 不変のため player.ts は無変更。
+- 動画 ID は正規表現で検証しインジェクション不可。CSP frame-src に `http://127.0.0.1:*` を追加。
+- **E2E 再生テストを整備**：`scripts/e2e-youtube-embed.sh` が wails build → 本番バイナリを環境変数付きで起動 → 起動直後に embed 再生を自動開始 → 構造化ログ（EmbedDebugLog）を監視し、PLAYING 到達で PASS / error で FAIL / 60 秒でタイムアウトを自動判定。修正後の本番バイナリで **PASS（起動から PLAYING まで約1秒）** を確認。
+- renderer 版を `1.0.0-Beta-40b` から `1.0.0-Beta-41a` へ更新（重大な不具合修正のため PhaseVer +1）。
+
+### 選定理由・判断の根拠
+- origin パラメーター調整・iframe 直接生成・assetserver ミドルウェアの各案は、いずれも「親ページが独自スキームである限り Referer が空のまま」という根本原因を解消できず却下。ループバックホストのみが本番（wails:// origin）で機能する。
+- E2E の完全ヘッドレス化は原理的に不可（YouTube 再生は実 WKWebView・実ネットワーク・実音声出力を要する）。ウィンドウ表示と数秒の実音を伴う半自動とし、合否判定のみ完全自動化した。
+
+### 残課題・次のステップ
+- 二重 iframe のため、Now Playing 再描画時の reattach（DOM 移動）で iframe が再読込され再生が頭から再開する可能性。実機で頻度を確認。
+- E2E は mount 直呼びのためプロセスタップ〜聴感（EQ が効く・二重再生なし）は実機確認が必要。
+- ループバックポートは起動ごとに変動。配信内容は公開動画の埋め込みページのみで秘匿情報なし。
+
 ## 2026-07-13 — Desktop App: YouTube「公式再生（embed）」モードの実装完了（フェーズ2b、サブエージェント実装）
 
 ### 実施内容
