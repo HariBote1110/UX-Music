@@ -136,12 +136,18 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
     host.classList.add('video-mode');
     const wrapper = document.createElement('div');
     wrapper.id = 'youtube-embed-wrapper';
+    // コンテナ（aspect-ratio でサイズが決まる）に常に追従させる。
+    // wrapper の高さが auto のままだと、内側 iframe の height:100% が
+    // 解決できず、サイドバーのリサイズに高さが追従しない。
+    wrapper.style.width = '100%';
+    wrapper.style.height = '100%';
     const iframe = document.createElement('iframe');
     iframe.src = embedUrl;
     iframe.allow = 'autoplay; encrypted-media; fullscreen';
     iframe.style.width = '100%';
     iframe.style.height = '100%';
     iframe.style.border = '0';
+    iframe.style.display = 'block'; // inline 既定だと baseline 分の隙間が出る
     wrapper.appendChild(iframe);
     host.appendChild(wrapper);
 
