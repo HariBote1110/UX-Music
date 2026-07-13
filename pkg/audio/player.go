@@ -922,12 +922,18 @@ func (p *Player) processAudio(out []float32) {
 			}
 		}
 
-		outputSample *= volume * baseGainLinear
+		// The normalisation gain is applied and clipped BEFORE the user
+		// volume. Clipping after the volume multiply would pin the output
+		// to the clip ceiling whenever baseGain > 1 (embed loudness
+		// normalisation), making the upper range of the volume slider
+		// inaudible. Post-clip, volume always scales the signal linearly.
+		outputSample *= baseGainLinear
 		if outputSample > 1 {
 			outputSample = 1
 		} else if outputSample < -1 {
 			outputSample = -1
 		}
+		outputSample *= volume
 		out[i] = float32(outputSample)
 		sumSquares += outputSample * outputSample
 	}
