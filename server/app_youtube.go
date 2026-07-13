@@ -99,8 +99,8 @@ func (a *App) AddYouTubeLink(payload interface{}) (map[string]interface{}, error
 
 	settings := loadSettingsMap()
 	mode := normaliseSettingValue(settings["youtubePlaybackMode"], "download")
-	if mode == "stream" {
-		return a.addYouTubeStreamingLink(trimmedURL)
+	if usesStreamingRegistration(mode) {
+		return a.addYouTubeStreamingLink(trimmedURL, mode)
 	}
 	if mode != "download" {
 		return nil, fmt.Errorf("未対応のYouTube再生モードです: %s", mode)
@@ -195,9 +195,26 @@ func buildStreamingSong(info *youtube.YouTubeVideoInfo, sourceURL string) map[st
 	}
 }
 
+// usesStreamingRegistration はダウンロードせず type:"youtube" の
+// エントリとして登録するモード（stream / embed）かどうかを返す。
+func usesStreamingRegistration(mode string) bool {
+	return mode == "stream" || mode == "embed"
+}
+
+// streamingLinkAddedNotification は stream / embed 登録完了時の通知文言を返す。
+func streamingLinkAddedNotification(mode, title string, added bool) string {
+	if !added {
+		return fmt.Sprintf("YouTube楽曲「%s」を更新しました。", title)
+	}
+	if mode == "embed" {
+		return fmt.Sprintf("YouTube楽曲「%s」を公式再生用に追加しました。", title)
+	}
+	return fmt.Sprintf("YouTube楽曲「%s」をストリーミング再生用に追加しました。", title)
+}
+
 // addYouTubeStreamingLink は動画をダウンロードせず、ストリーミング再生用の
-// エントリとしてライブラリへ登録する。
-func (a *App) addYouTubeStreamingLink(sourceURL string) (map[string]interface{}, error) {
+// エントリとしてライブラリへ登録する（stream / embed 共通）。
+func (a *App) addYouTubeStreamingLink(sourceURL, mode string) (map[string]interface{}, error) {
 	info, err := youtube.GetYouTubeVideoInfo(sourceURL)
 	if err != nil {
 		fmt.Printf("[YouTube][App] streaming info fetch failed: %v\n", err)
@@ -212,11 +229,7 @@ func (a *App) addYouTubeStreamingLink(sourceURL string) (map[string]interface{},
 
 	wailsRuntime.EventsEmit(a.ctx, "scan-complete", []interface{}{savedSong})
 	wailsRuntime.EventsEmit(a.ctx, "youtube-link-processed", savedSong)
-	if added {
-		wailsRuntime.EventsEmit(a.ctx, "show-notification", fmt.Sprintf("YouTube楽曲「%s」をストリーミング再生用に追加しました。", info.Title))
-	} else {
-		wailsRuntime.EventsEmit(a.ctx, "show-notification", fmt.Sprintf("YouTube楽曲「%s」を更新しました。", info.Title))
-	}
+	wailsRuntime.EventsEmit(a.ctx, "show-notification", streamingLinkAddedNotification(mode, info.Title, added))
 
 	return savedSong, nil
 }
