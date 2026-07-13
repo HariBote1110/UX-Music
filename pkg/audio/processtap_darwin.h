@@ -42,6 +42,14 @@ OSStatus uxTapGetFormat(AudioObjectID tap, double *sampleRate,
 OSStatus uxTapCreateAggregate(AudioObjectID tap, const char *uid,
                               AudioObjectID *outAggregate);
 
+// Reads the aggregate device's actual input stream format. This is the
+// format the IOProc really delivers: the aggregate runs at the underlying
+// output device's clock rate (e.g. 192kHz), which can differ from what
+// kAudioTapPropertyFormat reports on the tap itself.
+OSStatus uxTapGetAggregateInputFormat(AudioObjectID aggregate,
+                                      double *sampleRate,
+                                      unsigned int *channels);
+
 // Registers the IOProc on the aggregate device and starts IO. Samples are
 // delivered to the Go callback uxGoProcessTapSamples with clientID.
 OSStatus uxTapStartIO(AudioObjectID aggregate, uintptr_t clientID,

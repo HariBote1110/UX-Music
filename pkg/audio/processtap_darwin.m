@@ -249,6 +249,42 @@ OSStatus uxTapCreateAggregate(AudioObjectID tap, const char *uid,
     return err;
 }
 
+OSStatus uxTapGetAggregateInputFormat(AudioObjectID aggregate,
+                                      double *sampleRate,
+                                      unsigned int *channels) {
+    // The IOProc runs at the aggregate's clock, i.e. the nominal sample rate
+    // (the underlying output device rate, e.g. 192kHz for a hi-res DAC).
+    // Drift compensation resamples the tap into that clock, so the input
+    // stream format's 48kHz claim does NOT describe what the IOProc gets.
+    AudioObjectPropertyAddress rateAddr = {
+        kAudioDevicePropertyNominalSampleRate,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain,
+    };
+    Float64 nominalRate = 0;
+    UInt32 size = sizeof(nominalRate);
+    OSStatus err = AudioObjectGetPropertyData(aggregate, &rateAddr, 0, NULL,
+                                              &size, &nominalRate);
+    if (err != noErr) {
+        return err;
+    }
+    *sampleRate = nominalRate;
+
+    AudioObjectPropertyAddress formatAddr = {
+        kAudioDevicePropertyStreamFormat,
+        kAudioDevicePropertyScopeInput,
+        kAudioObjectPropertyElementMain,
+    };
+    AudioStreamBasicDescription asbd = {0};
+    size = sizeof(asbd);
+    if (AudioObjectGetPropertyData(aggregate, &formatAddr, 0, NULL,
+                                   &size, &asbd) == noErr &&
+        asbd.mChannelsPerFrame > 0) {
+        *channels = asbd.mChannelsPerFrame;
+    }
+    return noErr;
+}
+
 static OSStatus uxTapIOProc(AudioObjectID inDevice, const AudioTimeStamp *inNow,
                             const AudioBufferList *inInputData,
                             const AudioTimeStamp *inInputTime,

@@ -169,12 +169,7 @@ func StartProcessTap(targets ProcessTapTargets) (*ProcessTapCapture, error) {
 		fmt.Printf("[Audio] Process tap: format query failed (%s) — assuming 48kHz/2ch\n", tapStatusString(status))
 	}
 
-	// Two seconds of buffering absorbs scheduling jitter between the Core
-	// Audio real-time thread and the player's decoder goroutine.
-	capture.ring = newFloatRingBuffer(capture.sampleRate * capture.channels * 2)
-
 	capture.id = uintptr(processTapNextID.Add(1))
-	processTapRegistry.Store(capture.id, capture)
 
 	uid := C.CString(fmt.Sprintf("ux-music-tap-%d-%d", os.Getpid(), capture.id))
 	defer C.free(unsafe.Pointer(uid))
@@ -182,6 +177,29 @@ func StartProcessTap(targets ProcessTapTargets) (*ProcessTapCapture, error) {
 		capture.teardown()
 		return nil, fmt.Errorf("process tap aggregate device creation failed: %s", tapStatusString(status))
 	}
+
+	// The IOProc runs at the aggregate device's clock (the underlying output
+	// device rate, e.g. 192kHz), which can differ from the tap's own
+	// reported format. Playing 192kHz samples as if they were 48kHz would
+	// pitch everything two octaves down, so the aggregate input format is
+	// authoritative for what the IOProc actually delivers.
+	if status := C.uxTapGetAggregateInputFormat(capture.aggregate, &sampleRate, &channels); status == 0 && sampleRate > 0 && channels > 0 {
+		if int(sampleRate) != capture.sampleRate || int(channels) != capture.channels {
+			fmt.Printf("[Audio] Process tap: aggregate input format %dHz/%dch overrides tap-reported %dHz/%dch\n",
+				int(sampleRate), int(channels), capture.sampleRate, capture.channels)
+		}
+		capture.sampleRate = int(sampleRate)
+		capture.channels = int(channels)
+	} else if status != 0 {
+		fmt.Printf("[Audio] Process tap: aggregate format query failed (%s) — keeping tap-reported format\n", tapStatusString(status))
+	}
+
+	// Two seconds of buffering absorbs scheduling jitter between the Core
+	// Audio real-time thread and the player's decoder goroutine.
+	capture.ring = newFloatRingBuffer(capture.sampleRate * capture.channels * 2)
+
+	processTapRegistry.Store(capture.id, capture)
+
 	if status := C.uxTapStartIO(capture.aggregate, C.uintptr_t(capture.id), &capture.ioProcID); status != 0 {
 		capture.teardown()
 		return nil, fmt.Errorf("process tap IO start failed: %s", tapStatusString(status))
