@@ -1,42 +1,43 @@
-// YouTube IFrame Player API の埋め込みプレイヤー管理。
-// 公式再生（embed）モードで Now Playing のアートワーク領域に
-// 公式プレイヤーを表示し、音声は Go 側のプロセスタップ経由で出力する。
+// YouTube 公式再生（embed）モードの埋め込みプレイヤー管理。
+//
+// Wails のページは wails:// という独自スキームで動くため、ここから直接
+// IFrame Player API を使うと YouTube へ有効な HTTP Referer / origin が
+// 渡らず、エラー 153（Referer 欠落による埋め込み拒否）になる。そこで
+// Go 側のループバックホスト（http://127.0.0.1:<port>/embed?v=<id>）が
+// 配信するページに公式プレイヤーを置き、本体とは postMessage で
+// 制御・状態を中継する（プロトコルは youtube-embed-bridge.ts）。
+//
 // 規約上の理由から映像・コントロールは常に可視（controls=1）とし、
-// muted にはしない（ヘルパー出力のミュートはタップ側が行う）。
+// muted にはしない（ヘルパー出力のミュートはプロセスタップ側が行う）。
 
-interface YTPlayerLike {
-    playVideo(): void;
-    pauseVideo(): void;
-    seekTo(seconds: number, allowSeekAhead: boolean): void;
-    getCurrentTime(): number;
-    getDuration(): number;
-    getPlayerState(): number;
-    destroy(): void;
-}
-
-interface YTNamespace {
-    Player: new (element: HTMLElement, options: Record<string, unknown>) => YTPlayerLike;
-    PlayerState: {
-        ENDED: number;
-        PLAYING: number;
-        PAUSED: number;
-    };
-}
-
-declare global {
-    interface Window {
-        YT?: YTNamespace;
-        onYouTubeIframeAPIReady?: () => void;
-    }
-}
+import { getWailsApp } from '../core/bridge.js';
+import {
+    parseEmbedHostMessage,
+    buildEmbedCommand,
+    EMBED_PLAYER_STATE,
+    type EmbedCommand,
+} from './youtube-embed-bridge.js';
 
 export interface EmbedPlayerCallbacks {
     onPlaying: () => void;
     onEnded: () => void;
 }
 
-const IFRAME_API_URL = 'https://www.youtube.com/iframe_api';
 const ARTWORK_CONTAINER_ID = 'now-playing-artwork-container';
+
+interface EmbedSession {
+    iframe: HTMLIFrameElement;
+    wrapper: HTMLElement;
+    callbacks: EmbedPlayerCallbacks;
+    /** ホストページからの time メッセージで更新されるキャッシュ。 */
+    currentTime: number;
+    duration: number;
+    state: number;
+}
+
+let currentSession: EmbedSession | null = null;
+let mountToken = 0;
+let messageListenerAttached = false;
 
 /**
  * 埋め込みプレイヤーのイベントを console と Go 側の構造化ログ
@@ -45,50 +46,66 @@ const ARTWORK_CONTAINER_ID = 'now-playing-artwork-container';
 function embedLog(message: string): void {
     console.log(`[YouTubeEmbed] ${message}`);
     try {
-        const app = (window as unknown as { go?: { server?: { App?: { EmbedDebugLog?: (m: string) => Promise<void> } } } })
-            .go?.server?.App;
-        void app?.EmbedDebugLog?.(message);
+        void getWailsApp()?.EmbedDebugLog?.(message);
     } catch {
         /* ログ失敗は無視 */
     }
 }
 
-let apiReadyPromise: Promise<YTNamespace> | null = null;
-let currentPlayer: YTPlayerLike | null = null;
-let currentWrapper: HTMLElement | null = null;
-let mountToken = 0;
+/** ホストページ（iframe）からの postMessage を受けて状態キャッシュと導線を更新する。 */
+function handleHostMessage(event: MessageEvent): void {
+    const session = currentSession;
+    if (!session) return;
+    if (event.source !== session.iframe.contentWindow) return;
 
-/** IFrame Player API スクリプトをシングルトンとして動的ロードする。 */
-function loadIframeApi(): Promise<YTNamespace> {
-    if (window.YT?.Player) return Promise.resolve(window.YT);
-    if (apiReadyPromise) return apiReadyPromise;
+    const message = parseEmbedHostMessage(event.data);
+    if (!message) return;
 
-    apiReadyPromise = new Promise<YTNamespace>((resolve, reject) => {
-        const previousReady = window.onYouTubeIframeAPIReady;
-        window.onYouTubeIframeAPIReady = () => {
-            previousReady?.();
-            if (window.YT?.Player) {
-                resolve(window.YT);
-            } else {
-                reject(new Error('YouTube IFrame API の初期化に失敗しました'));
+    switch (message.type) {
+        case 'ready':
+            embedLog(`ready iframeSrc=${session.iframe.src}`);
+            break;
+        case 'state':
+            embedLog(`state=${message.state}${message.state === EMBED_PLAYER_STATE.PLAYING ? ' PLAYING' : message.state === EMBED_PLAYER_STATE.ENDED ? ' ENDED' : ''}`);
+            session.state = message.state;
+            if (message.state === EMBED_PLAYER_STATE.PLAYING) {
+                session.callbacks.onPlaying();
+            } else if (message.state === EMBED_PLAYER_STATE.ENDED) {
+                session.callbacks.onEnded();
             }
-        };
+            break;
+        case 'error':
+            console.error('[YouTubeEmbed] プレイヤーエラー:', message.code);
+            embedLog(`error=${message.code}`);
+            break;
+        case 'time':
+            session.currentTime = message.currentTime;
+            session.duration = message.duration;
+            session.state = message.state;
+            break;
+    }
+}
 
-        const script = document.createElement('script');
-        script.src = IFRAME_API_URL;
-        script.async = true;
-        script.onerror = () => {
-            apiReadyPromise = null;
-            reject(new Error('YouTube IFrame API の読み込みに失敗しました'));
-        };
-        document.head.appendChild(script);
-    });
-    return apiReadyPromise;
+function ensureMessageListener(): void {
+    if (messageListenerAttached) return;
+    window.addEventListener('message', handleHostMessage);
+    messageListenerAttached = true;
+}
+
+/** 稼働中のホストページへ制御コマンドを送る。 */
+function sendCommand(command: EmbedCommand): void {
+    const target = currentSession?.iframe.contentWindow;
+    if (!target) return;
+    try {
+        target.postMessage(command, '*');
+    } catch {
+        /* iframe が外れた直後などは無視 */
+    }
 }
 
 /**
- * アートワーク領域へ埋め込みプレイヤーを生成して自動再生を開始する。
- * 生成に成功したら true を返す。
+ * アートワーク領域へ埋め込みプレイヤー（ループバックホストの iframe）を
+ * 生成して自動再生を開始する。生成に成功したら true を返す。
  */
 export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCallbacks): Promise<boolean> {
     const host = document.getElementById(ARTWORK_CONTAINER_ID);
@@ -100,151 +117,99 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
     destroyEmbedPlayer();
     const token = ++mountToken;
 
-    host.innerHTML = '';
-    host.classList.add('video-mode');
-    const wrapper = document.createElement('div');
-    wrapper.id = 'youtube-embed-wrapper';
-    const mountPoint = document.createElement('div');
-    wrapper.appendChild(mountPoint);
-    host.appendChild(wrapper);
-    currentWrapper = wrapper;
-
-    let yt: YTNamespace;
+    let embedUrl = '';
     try {
-        yt = await loadIframeApi();
+        embedUrl = (await getWailsApp()?.GetYouTubeEmbedURL?.(videoId)) ?? '';
     } catch (error) {
-        console.error('[YouTubeEmbed] IFrame API の準備に失敗しました:', error);
+        console.error('[YouTubeEmbed] 埋め込み URL の取得に失敗しました:', error);
+        return false;
+    }
+    if (embedUrl === '') {
+        console.error('[YouTubeEmbed] 埋め込み URL が取得できません（Wails バインディング未提供）。');
         return false;
     }
     if (token !== mountToken) return false; // 待機中に別の再生開始/停止が走った
 
-    embedLog(`mount video=${videoId} location=${window.location.href} referrer=${document.referrer || '(empty)'} origin=${window.location.origin}`);
+    embedLog(`mount video=${videoId} embedUrl=${embedUrl} location=${window.location.href} referrer=${document.referrer || '(empty)'} origin=${window.location.origin}`);
 
-    currentPlayer = new yt.Player(mountPoint, {
-        width: '100%',
-        height: '100%',
-        videoId,
-        playerVars: {
-            autoplay: 1,
-            controls: 1,
-            enablejsapi: 1,
-            rel: 0,
-            playsinline: 1,
-        },
-        events: {
-            onReady: () => {
-                if (token !== mountToken) return;
-                const iframe = wrapper.querySelector('iframe');
-                embedLog(`ready iframeSrc=${iframe?.src ?? '(none)'}`);
-            },
-            onStateChange: (event: { data: number }) => {
-                if (token !== mountToken) return;
-                embedLog(`state=${event.data}${event.data === yt.PlayerState.PLAYING ? ' PLAYING' : event.data === yt.PlayerState.ENDED ? ' ENDED' : ''}`);
-                if (event.data === yt.PlayerState.PLAYING) {
-                    callbacks.onPlaying();
-                } else if (event.data === yt.PlayerState.ENDED) {
-                    callbacks.onEnded();
-                }
-            },
-            onError: (event: { data: number }) => {
-                console.error('[YouTubeEmbed] プレイヤーエラー:', event?.data);
-                embedLog(`error=${event?.data}`);
-            },
-        },
-    });
+    host.innerHTML = '';
+    host.classList.add('video-mode');
+    const wrapper = document.createElement('div');
+    wrapper.id = 'youtube-embed-wrapper';
+    const iframe = document.createElement('iframe');
+    iframe.src = embedUrl;
+    iframe.allow = 'autoplay; encrypted-media; fullscreen';
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = '0';
+    wrapper.appendChild(iframe);
+    host.appendChild(wrapper);
+
+    ensureMessageListener();
+    currentSession = {
+        iframe,
+        wrapper,
+        callbacks,
+        currentTime: 0,
+        duration: 0,
+        state: -1,
+    };
     return true;
 }
 
 /** 埋め込みプレイヤーを破棄し、アートワーク領域を空に戻す。 */
 export function destroyEmbedPlayer(): void {
     mountToken += 1;
-    if (currentPlayer) {
-        try {
-            currentPlayer.destroy();
-        } catch {
-            // destroy は iframe が既に外れていると例外を投げることがある
-        }
-        currentPlayer = null;
-    }
-    if (currentWrapper) {
-        currentWrapper.remove();
-        currentWrapper = null;
+    if (currentSession) {
+        currentSession.wrapper.remove();
+        currentSession = null;
     }
     const host = document.getElementById(ARTWORK_CONTAINER_ID);
     host?.classList.remove('video-mode');
 }
 
 export function isEmbedPlayerActive(): boolean {
-    return currentPlayer !== null;
+    return currentSession !== null;
 }
 
 /**
  * updateNowPlayingView 等でコンテナが再描画されたとき、稼働中の
  * 埋め込みプレイヤーを新しいコンテナへ付け直す。付け直せたら true。
+ *
+ * 注意: iframe を DOM 上で移動すると WebKit はページを再読込するが、
+ * ホストページは同じ URL のため自動再生から再開する。
  */
 export function reattachEmbedPlayer(container: HTMLElement): boolean {
-    if (!currentPlayer || !currentWrapper) return false;
+    if (!currentSession) return false;
     container.classList.add('video-mode');
-    container.appendChild(currentWrapper);
+    container.appendChild(currentSession.wrapper);
     return true;
 }
 
-function safeNumber(fn: () => number): number {
-    if (!currentPlayer) return 0;
-    try {
-        const value = fn();
-        return Number.isFinite(value) ? value : 0;
-    } catch {
-        return 0;
-    }
-}
-
 export function embedGetCurrentTime(): number {
-    return safeNumber(() => currentPlayer!.getCurrentTime());
+    return currentSession?.currentTime ?? 0;
 }
 
 export function embedGetDuration(): number {
-    return safeNumber(() => currentPlayer!.getDuration());
-}
-
-function embedPlayerState(): number | null {
-    if (!currentPlayer || typeof currentPlayer.getPlayerState !== 'function') return null;
-    try {
-        return currentPlayer.getPlayerState();
-    } catch {
-        return null;
-    }
+    return currentSession?.duration ?? 0;
 }
 
 export function embedIsPlaying(): boolean {
-    return embedPlayerState() === window.YT?.PlayerState.PLAYING;
+    return currentSession?.state === EMBED_PLAYER_STATE.PLAYING;
 }
 
 export function embedIsPaused(): boolean {
-    return embedPlayerState() === window.YT?.PlayerState.PAUSED;
+    return currentSession?.state === EMBED_PLAYER_STATE.PAUSED;
 }
 
 export function embedSeekTo(seconds: number): void {
-    if (!currentPlayer) return;
-    try {
-        currentPlayer.seekTo(Math.max(0, seconds), true);
-    } catch {
-        // 準備前の seek は無視する
-    }
+    sendCommand(buildEmbedCommand('seek', seconds));
 }
 
 export function embedPlay(): void {
-    try {
-        currentPlayer?.playVideo();
-    } catch {
-        /* ignore */
-    }
+    sendCommand(buildEmbedCommand('play'));
 }
 
 export function embedPause(): void {
-    try {
-        currentPlayer?.pauseVideo();
-    } catch {
-        /* ignore */
-    }
+    sendCommand(buildEmbedCommand('pause'));
 }
