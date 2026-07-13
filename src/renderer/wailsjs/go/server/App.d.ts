@@ -52,7 +52,11 @@ export function AudioSetNowPlayingMetadata(arg1:Record<string, any>):Promise<voi
 
 export function AudioSetVolume(arg1:number):Promise<void>;
 
+export function AudioStartWebViewTap():Promise<void>;
+
 export function AudioStop():Promise<void>;
+
+export function AudioStopWebViewTap():Promise<void>;
 
 export function AutoSyncLyrics(arg1:lyricssync.Request):Promise<lyricssync.Result>;
 

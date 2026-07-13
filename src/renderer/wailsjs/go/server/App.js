@@ -86,8 +86,16 @@ export function AudioSetVolume(arg1) {
   return window['go']['server']['App']['AudioSetVolume'](arg1);
 }
 
+export function AudioStartWebViewTap() {
+  return window['go']['server']['App']['AudioStartWebViewTap']();
+}
+
 export function AudioStop() {
   return window['go']['server']['App']['AudioStop']();
+}
+
+export function AudioStopWebViewTap() {
+  return window['go']['server']['App']['AudioStopWebViewTap']();
 }
 
 export function AutoSyncLyrics(arg1) {

@@ -101,6 +101,40 @@ func (a *App) AudioStop() error {
 	return nil
 }
 
+// webViewTapBundleIDs lists the WebKit helper processes that emit WKWebView
+// audio. On modern macOS the GPU process (com.apple.WebKit.GPU) renders the
+// audio; com.apple.WebKit.WebContent is included to cover configurations
+// where audio is rendered inside the content process instead.
+var webViewTapBundleIDs = []string{
+	"com.apple.WebKit.GPU",
+	"com.apple.WebKit.WebContent",
+}
+
+// AudioStartWebViewTap starts capturing the WKWebView helper processes'
+// audio via a Core Audio process tap and plays it through the normal
+// playback pipeline (EQ, gain, FFT, volume). The tapped helpers are muted at
+// source, so only the processed output is audible.
+func (a *App) AudioStartWebViewTap() error {
+	if a.audioPlayer == nil {
+		return fmt.Errorf("audio player not initialized")
+	}
+	targets := audio.ProcessTapTargets{BundleIDs: webViewTapBundleIDs}
+	if err := a.audioPlayer.PlayProcessTap(targets, 1.0); err != nil {
+		fmt.Printf("[Audio] WebView tap start failed: %v\n", err)
+		return err
+	}
+	return nil
+}
+
+// AudioStopWebViewTap stops the WebView tap and returns the player to
+// normal file playback use.
+func (a *App) AudioStopWebViewTap() error {
+	if a.audioPlayer == nil {
+		return nil
+	}
+	return a.audioPlayer.Stop()
+}
+
 // AudioSeek seeks to a position in seconds
 func (a *App) AudioSeek(seconds float64) error {
 	if a.audioPlayer == nil {
