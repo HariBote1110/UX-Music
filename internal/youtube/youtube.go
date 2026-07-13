@@ -360,6 +360,25 @@ func loadTranscriptByTrack(ctx context.Context, track youtube.CaptionTrack) (you
 	return result, nil
 }
 
+// loadTranscriptForTrack は字幕トラックの本文を取得する。
+// トラックの BaseURL（kkdai が player 応答から得た新鮮な署名付き URL）への
+// 直接 GET を優先する。kkdai の GetTranscript は独自に timedtext URL を組み立てる
+// ため、署名やパラメータの鮮度差で HTTP 400 になることがあるため、直接 GET が
+// 失敗したときのみフォールバックとして使う。
+func loadTranscriptForTrack(client *youtube.Client, video *youtube.Video, track youtube.CaptionTrack) (youtube.VideoTranscript, error) {
+	if strings.TrimSpace(track.BaseURL) != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		transcript, err := loadTranscriptByTrack(ctx, track)
+		cancel()
+		if err == nil && len(transcript) > 0 {
+			return transcript, nil
+		}
+		fmt.Printf("[YouTube][Transcript] direct baseURL fetch failed lang=%q err=%v; fallback to GetTranscript\n",
+			strings.TrimSpace(track.LanguageCode), err)
+	}
+	return client.GetTranscript(video, strings.TrimSpace(track.LanguageCode))
+}
+
 func downloadTranscriptAsLRC(client *youtube.Client, video *youtube.Video, preference TranscriptPreference) (string, string, string) {
 	if video == nil || len(video.CaptionTracks) == 0 {
 		fmt.Println("[YouTube][Transcript] caption track unavailable")
@@ -434,7 +453,7 @@ func downloadTranscriptAsLRC(client *youtube.Client, video *youtube.Video, prefe
 		}
 		visited[lang] = true
 
-		transcript, err := client.GetTranscript(video, lang)
+		transcript, err := loadTranscriptForTrack(client, video, candidate.Track)
 		if err != nil || len(transcript) == 0 {
 			fmt.Printf("[YouTube][Transcript] fetch failed lang=%q err=%v\n", lang, err)
 			continue
@@ -626,6 +645,36 @@ func DownloadYouTubeVideo(videoURL string, destDir string, audioOnly bool, prefe
 		Lang:              lang,
 		CaptionTrackVssID: captionTrackVssID,
 	}, nil
+}
+
+// FetchTranscriptLRC は動画をダウンロードせずに字幕だけを取得し、
+// 同期歌詞（LRC 文字列）・採用言語・トラック vssId を返す。embed / stream
+// モードの登録時に、ダウンロード経路と同じ規則で LRC を用意するために使う。
+//
+// 取得経路について（2026-07-14 実測で確定）:
+//   - kkdai（ANDROID クライアント）の CaptionTrac[i].BaseURL を直接 GET する
+//     経路のみが timedtext 本文を安定して返す（例: eghAYpSDtRw で 20124 バイト）。
+//   - WEB ウォッチページ / WEB innertube から抽出した baseURL は status 200 でも
+//     本文 0 バイトで返る（proof-of-origin token が要求されるため）。よって WEB
+//     フォールバックは本文を得られず無意味なため実装しない。
+//   - ANDROID 応答に字幕トラックが載らない動画（例: 6LtrI3MOfQg）は headless では
+//     取得不可。その場合は空の LRC を返し、呼び出し側は歌詞なしで登録する。
+func FetchTranscriptLRC(videoURL string, preference TranscriptPreference) (lrc string, lang string, vssID string, err error) {
+	client := youtube.Client{}
+	preference = normaliseTranscriptPreference(preference)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	video, err := client.GetVideoContext(ctx, videoURL)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to get video: %w", err)
+	}
+
+	lrc, lang, vssID = downloadTranscriptAsLRC(&client, video, preference)
+	fmt.Printf("[YouTube][Transcript] streaming fetch url=%q hasLyrics=%v lang=%q vssId=%q\n",
+		videoURL, strings.TrimSpace(lrc) != "", lang, vssID)
+	return lrc, lang, vssID, nil
 }
 
 // DownloadThumbnail downloads a thumbnail image to the specified path

@@ -102,7 +102,7 @@ func (a *App) AddYouTubeLink(payload interface{}) (map[string]interface{}, error
 	settings := loadSettingsMap()
 	mode := normaliseSettingValue(settings["youtubePlaybackMode"], "download")
 	if usesStreamingRegistration(mode) {
-		return a.addYouTubeStreamingLink(trimmedURL, mode)
+		return a.addYouTubeStreamingLink(trimmedURL, mode, transcriptPreference)
 	}
 	if mode != "download" {
 		return nil, fmt.Errorf("未対応のYouTube再生モードです: %s", mode)
@@ -149,23 +149,7 @@ func (a *App) AddYouTubeLink(payload interface{}) (map[string]interface{}, error
 	}
 	a.queueLoudnessAnalysis([]string{result.Path})
 
-	subtitleMessage := "字幕が見つからなかったため、同期歌詞は作成されませんでした。"
-	if strings.TrimSpace(result.Lyrics) != "" {
-		lrcName := fmt.Sprintf("%s.lrc", firstNonEmpty(result.Title, strings.TrimSuffix(filepath.Base(result.Path), filepath.Ext(result.Path))))
-		if err := lyrics.SaveLrcFile(lrcName, result.Lyrics); err == nil {
-			lang := strings.TrimSpace(result.Lang)
-			if lang == "" {
-				lang = "auto"
-			}
-			subtitleMessage = fmt.Sprintf("字幕から同期歌詞を保存しました（言語: %s / track: %s）。", lang, firstNonEmpty(result.CaptionTrackVssID, "unknown"))
-			fmt.Printf("[YouTube][App] lyrics saved file=%q lang=%q track=%q\n", lrcName, lang, result.CaptionTrackVssID)
-		} else {
-			subtitleMessage = fmt.Sprintf("字幕は取得できましたが、同期歌詞の保存に失敗しました: %v", err)
-			fmt.Printf("[YouTube][App] lyrics save failed: %v\n", err)
-		}
-	} else {
-		fmt.Println("[YouTube][App] lyrics not generated")
-	}
+	subtitleMessage := saveYouTubeLyrics(result.Title, result.Path, result.Lyrics, result.Lang, result.CaptionTrackVssID)
 
 	wailsRuntime.EventsEmit(a.ctx, "scan-complete", []interface{}{savedSong})
 	wailsRuntime.EventsEmit(a.ctx, "youtube-link-processed", savedSong)
@@ -177,6 +161,40 @@ func (a *App) AddYouTubeLink(payload interface{}) (map[string]interface{}, error
 	wailsRuntime.EventsEmit(a.ctx, "show-notification", subtitleMessage)
 
 	return savedSong, nil
+}
+
+// youtubeLyricsFileName は YouTube 楽曲の同期歌詞 LRC ファイル名を返す。
+// ダウンロード曲・ストリーミング曲の双方で同一規則を用い、フロントの
+// get-lyrics が探索するキー（title、無ければ path のベース名）と一致させる。
+// ストリーミング曲は path が動画 URL のため、title を第一キーとする。
+func youtubeLyricsFileName(title, path string) string {
+	base := strings.TrimSpace(title)
+	if base == "" {
+		name := filepath.Base(path)
+		base = strings.TrimSuffix(name, filepath.Ext(name))
+	}
+	return base + ".lrc"
+}
+
+// saveYouTubeLyrics は取得した LRC をユーザーの Lyrics ディレクトリへ保存し、
+// 結果を表す通知文言を返す。字幕が無い場合・保存に失敗した場合も、それぞれの
+// 文言を返して呼び出し側の分岐を単純化する。
+func saveYouTubeLyrics(title, path, lrc, lang, vssID string) string {
+	if strings.TrimSpace(lrc) == "" {
+		fmt.Println("[YouTube][App] lyrics not generated")
+		return "字幕が見つからなかったため、同期歌詞は作成されませんでした。"
+	}
+	lrcName := youtubeLyricsFileName(title, path)
+	if err := lyrics.SaveLrcFile(lrcName, lrc); err != nil {
+		fmt.Printf("[YouTube][App] lyrics save failed: %v\n", err)
+		return fmt.Sprintf("字幕は取得できましたが、同期歌詞の保存に失敗しました: %v", err)
+	}
+	resolvedLang := strings.TrimSpace(lang)
+	if resolvedLang == "" {
+		resolvedLang = "auto"
+	}
+	fmt.Printf("[YouTube][App] lyrics saved file=%q lang=%q track=%q\n", lrcName, resolvedLang, vssID)
+	return fmt.Sprintf("字幕から同期歌詞を保存しました（言語: %s / track: %s）。", resolvedLang, firstNonEmpty(vssID, "unknown"))
 }
 
 // buildStreamingSong はストリーミングモード用の曲エントリを生成する。
@@ -216,7 +234,7 @@ func streamingLinkAddedNotification(mode, title string, added bool) string {
 
 // addYouTubeStreamingLink は動画をダウンロードせず、ストリーミング再生用の
 // エントリとしてライブラリへ登録する（stream / embed 共通）。
-func (a *App) addYouTubeStreamingLink(sourceURL, mode string) (map[string]interface{}, error) {
+func (a *App) addYouTubeStreamingLink(sourceURL, mode string, transcriptPreference youtube.TranscriptPreference) (map[string]interface{}, error) {
 	info, err := youtube.GetYouTubeVideoInfo(sourceURL)
 	if err != nil {
 		fmt.Printf("[YouTube][App] streaming info fetch failed: %v\n", err)
@@ -229,9 +247,19 @@ func (a *App) addYouTubeStreamingLink(sourceURL, mode string) (map[string]interf
 		return nil, err
 	}
 
+	// 字幕→LRC 変換はダウンロード経路と同じ規則で行い、embed / stream 曲でも
+	// UX Music の歌詞パネルに時刻同期歌詞を表示できるようにする。
+	// 取得失敗は致命的ではないため、登録自体は継続する。
+	lrc, lang, vssID, transcriptErr := youtube.FetchTranscriptLRC(sourceURL, transcriptPreference)
+	if transcriptErr != nil {
+		fmt.Printf("[YouTube][App] streaming transcript fetch failed: %v\n", transcriptErr)
+	}
+	subtitleMessage := saveYouTubeLyrics(info.Title, sourceURL, lrc, lang, vssID)
+
 	wailsRuntime.EventsEmit(a.ctx, "scan-complete", []interface{}{savedSong})
 	wailsRuntime.EventsEmit(a.ctx, "youtube-link-processed", savedSong)
 	wailsRuntime.EventsEmit(a.ctx, "show-notification", streamingLinkAddedNotification(mode, info.Title, added))
+	wailsRuntime.EventsEmit(a.ctx, "show-notification", subtitleMessage)
 
 	return savedSong, nil
 }
