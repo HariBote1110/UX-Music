@@ -19,6 +19,7 @@ import { initLazyLoader, observeNewImages } from './js/utils/lazy-loader.js';
 import { startPerformanceMonitor } from './js/utils/performance-monitor.js';
 import { musicApi } from './js/core/bridge.js';
 import { checkWails } from './js/core/wails-check.js';
+import { runYouTubeEmbedE2E } from './js/features/youtube-embed-e2e.js';
 import { applyShuffleSetting } from './js/core/settings-helpers.js';
 
 window.onerror = function (msg, url, line, col, error) {
@@ -344,6 +345,7 @@ async function initApp() {
 
 initApp()
     .then(() => checkWails())
+    .then(() => runYouTubeEmbedE2E())
     .catch(err => console.error('App initialization failed:', err));
 
 // ─── 音声情報ボタン 波形ホバーアニメーション ───────────────────────────

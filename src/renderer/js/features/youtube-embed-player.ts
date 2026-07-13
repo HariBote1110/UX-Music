@@ -38,6 +38,21 @@ export interface EmbedPlayerCallbacks {
 const IFRAME_API_URL = 'https://www.youtube.com/iframe_api';
 const ARTWORK_CONTAINER_ID = 'now-playing-artwork-container';
 
+/**
+ * 埋め込みプレイヤーのイベントを console と Go 側の構造化ログ
+ * （E2E 判定用）の両方へ出力する。
+ */
+function embedLog(message: string): void {
+    console.log(`[YouTubeEmbed] ${message}`);
+    try {
+        const app = (window as unknown as { go?: { server?: { App?: { EmbedDebugLog?: (m: string) => Promise<void> } } } })
+            .go?.server?.App;
+        void app?.EmbedDebugLog?.(message);
+    } catch {
+        /* ログ失敗は無視 */
+    }
+}
+
 let apiReadyPromise: Promise<YTNamespace> | null = null;
 let currentPlayer: YTPlayerLike | null = null;
 let currentWrapper: HTMLElement | null = null;
@@ -103,6 +118,8 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
     }
     if (token !== mountToken) return false; // 待機中に別の再生開始/停止が走った
 
+    embedLog(`mount video=${videoId} location=${window.location.href} referrer=${document.referrer || '(empty)'} origin=${window.location.origin}`);
+
     currentPlayer = new yt.Player(mountPoint, {
         width: '100%',
         height: '100%',
@@ -115,8 +132,14 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
             playsinline: 1,
         },
         events: {
+            onReady: () => {
+                if (token !== mountToken) return;
+                const iframe = wrapper.querySelector('iframe');
+                embedLog(`ready iframeSrc=${iframe?.src ?? '(none)'}`);
+            },
             onStateChange: (event: { data: number }) => {
                 if (token !== mountToken) return;
+                embedLog(`state=${event.data}${event.data === yt.PlayerState.PLAYING ? ' PLAYING' : event.data === yt.PlayerState.ENDED ? ' ENDED' : ''}`);
                 if (event.data === yt.PlayerState.PLAYING) {
                     callbacks.onPlaying();
                 } else if (event.data === yt.PlayerState.ENDED) {
@@ -125,6 +148,7 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
             },
             onError: (event: { data: number }) => {
                 console.error('[YouTubeEmbed] プレイヤーエラー:', event?.data);
+                embedLog(`error=${event?.data}`);
             },
         },
     });
