@@ -7,6 +7,8 @@ import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { animateIconPaths } from '../ui/player-ui.js';
 import { isInterludeText } from './lyrics-translation.js';
 import { EQUALIZER_COLOURS_CHANGE_EVENT } from '../ui/utils.js';
+import { isEmbedPlayerActive, reattachEmbedPlayer } from './youtube-embed-player.js';
+import { resolveFullscreenMediaMode } from './fullscreen-media.js';
 
 /** 間奏（[間奏] などのマーカーや空行）は文字を消し、行高だけ残す。 */
 function fsDisplayText(text: string | undefined): string {
@@ -22,6 +24,8 @@ let currentTimeEl: HTMLElement | null = null;
 let durationEl: HTMLElement | null = null;
 let playBtn: HTMLElement | null = null;
 let artworkEl: HTMLImageElement | null = null;
+let artworkWrapperEl: HTMLElement | null = null;
+let videoSlotEl: HTMLElement | null = null;
 let titleEl: HTMLElement | null = null;
 let artistEl: HTMLElement | null = null;
 
@@ -72,6 +76,11 @@ export function openFullscreenView() {
 }
 
 export function closeFullscreenView() {
+    // 公式再生（embed）中はプレイヤー iframe をサイドバーの Now Playing
+    // コンテナへ戻す（破棄しないことで音声タップと再生を維持する）。
+    if (isEmbedPlayerActive() && elements.nowPlayingArtworkContainer) {
+        reattachEmbedPlayer(elements.nowPlayingArtworkContainer);
+    }
     overlayEl?.classList.remove('fs-open');
     stopTicker();
     document.removeEventListener('keydown', handleKeydown);
@@ -83,6 +92,7 @@ export function closeFullscreenView() {
 export function notifyFullscreenSongChange() {
     if (!isOpen()) return;
     syncSongInfo();
+    syncMedia();
     syncLyrics();
     syncColours();
     if (activeTab === 'queue') renderQueue();
@@ -131,8 +141,27 @@ function stopTicker() {
 
 // ---- 状態同期 ----
 
+/**
+ * フルスクリーン左側のメディア表示を同期する。公式再生（embed）中は
+ * 稼働中のプレイヤー iframe をフルスクリーンの映像スロットへ「移動」して
+ * 表示し（破棄すると音声タップが切れるため）、静止画ジャケットを隠す。
+ * embed 非稼働時は従来どおり静止画ジャケットを表示する。
+ */
+function syncMedia() {
+    const embedActive = isEmbedPlayerActive();
+    const mode = resolveFullscreenMediaMode(embedActive);
+    if (mode === 'video' && videoSlotEl && reattachEmbedPlayer(videoSlotEl)) {
+        videoSlotEl.classList.remove('hidden');
+        artworkWrapperEl?.classList.add('hidden');
+    } else {
+        videoSlotEl?.classList.add('hidden');
+        artworkWrapperEl?.classList.remove('hidden');
+    }
+}
+
 function syncAll() {
     syncSongInfo();
+    syncMedia();
     syncLyrics();
     syncColours();
     syncPlayState(isPlaying());
@@ -531,9 +560,10 @@ function buildOverlay(): HTMLElement {
         </button>
 
         <div class="fs-left">
-            <div class="fs-artwork-wrapper">
+            <div class="fs-artwork-wrapper" id="fs-artwork-wrapper">
                 <img id="fs-artwork" src="${DEFAULT_ARTWORK_URL}" alt="Album Artwork">
             </div>
+            <div class="fs-video-slot hidden" id="fs-video-slot"></div>
             <div class="fs-track-info">
                 <div class="fs-title" id="fs-title">曲を選択してください</div>
                 <div class="fs-artist" id="fs-artist"></div>
@@ -596,6 +626,8 @@ function buildOverlay(): HTMLElement {
 
     // DOM参照
     artworkEl     = el.querySelector('#fs-artwork');
+    artworkWrapperEl = el.querySelector('#fs-artwork-wrapper');
+    videoSlotEl   = el.querySelector('#fs-video-slot');
     titleEl       = el.querySelector('#fs-title');
     artistEl      = el.querySelector('#fs-artist');
     progressFill  = el.querySelector('#fs-progress-fill');

@@ -1814,18 +1814,21 @@
 
 /* レイアウト */
 .fs-left {
-    flex: 4 4 0;
+    flex: 5 5 0;
     min-width: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    padding: 40px;
+    padding: clamp(20px, 4vh, 48px);
     gap: 0;
+    /* ジャケット/映像・トラック情報・シークバーで共有する基準幅。
+       ウィンドウの幅と高さの双方に追従し、上限で頭打ちにする。 */
+    --fs-media-size: min(100%, 56vh, 660px);
 }
 
 .fs-right {
-    flex: 6;
+    flex: 5;
     display: flex;
     flex-direction: column;
     padding: 56px 72px;
@@ -1833,17 +1836,32 @@
     overflow: hidden;
 }
 
-/* アートワーク */
-.fs-artwork-wrapper {
-    width: 100%;
-    max-width: 400px;
-    aspect-ratio: 1 / 1;
+/* アートワーク（静止画）/ 映像（公式再生）の共通枠 */
+.fs-artwork-wrapper,
+.fs-video-slot {
+    width: var(--fs-media-size);
+    max-width: 100%;
     border-radius: 14px;
     overflow: hidden;
     box-shadow: 0 28px 56px rgba(0, 0, 0, 0.55);
-    margin-bottom: 36px;
-    background: #222;
+    margin-bottom: clamp(20px, 3.2vh, 36px);
     flex-shrink: 0;
+}
+.fs-artwork-wrapper {
+    aspect-ratio: 1 / 1;
+    background: #222;
+}
+/* 公式再生（embed）の映像枠。iframe は 16:9。 */
+.fs-video-slot {
+    aspect-ratio: 16 / 9;
+    background: #000;
+}
+.fs-video-slot iframe,
+.fs-video-slot #youtube-embed-wrapper {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
 }
 .fs-artwork-wrapper img {
     width: 100%;
@@ -1859,7 +1877,7 @@
 .fs-track-info {
     text-align: center;
     width: 100%;
-    max-width: 400px;
+    max-width: var(--fs-media-size);
     margin-bottom: 28px;
 }
 .fs-title {
@@ -1883,7 +1901,7 @@
 /* シークバー */
 .fs-progress-area {
     width: 100%;
-    max-width: 400px;
+    max-width: var(--fs-media-size);
     margin-bottom: 28px;
 }
 .fs-progress-bar {
@@ -2176,4 +2194,21 @@
     color: rgba(255, 255, 255, 0.45);
     font-size: 1rem;
     padding-top: 20px;
+}
+
+/* 幅の狭いウィンドウでは右側パネルの余白を詰めてジャケット/映像に幅を譲る。 */
+@media (max-width: 1000px) {
+    .fs-right {
+        padding: 40px 32px;
+    }
+    .fs-left {
+        padding: clamp(16px, 3vh, 32px);
+    }
+}
+
+/* 高さの低いウィンドウではメディアを縦寸法基準でさらに縮めて崩れを防ぐ。 */
+@media (max-height: 620px) {
+    .fs-left {
+        --fs-media-size: min(100%, 46vh, 660px);
+    }
 }
