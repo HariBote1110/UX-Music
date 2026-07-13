@@ -68,6 +68,104 @@ func ProcessTapBundleAPISupported() bool {
 	return C.uxTapBundleAPISupported() != 0
 }
 
+// procPathBufferSize bounds the executable path read from proc_pidpath.
+// PROC_PIDPATHINFO_MAXSIZE is 4 * MAXPATHLEN (4096) on macOS.
+const procPathBufferSize = 4096
+
+// gatherProcesses snapshots every accessible process with its parent and
+// responsible PID and executable path via libproc. Processes we cannot query
+// (e.g. denied by permissions) are still included with whatever fields could
+// be read, so the ownership filter can rely on the ones we own being fully
+// resolved.
+func gatherProcesses() ([]procInfo, error) {
+	needed := int(C.uxListAllPIDs(nil, 0))
+	if needed <= 0 {
+		return nil, fmt.Errorf("process enumeration failed: proc_listpids returned %d", needed)
+	}
+	// Headroom absorbs processes that spawn between sizing and reading.
+	capacity := needed + 128
+	pids := make([]C.int, capacity)
+	n := int(C.uxListAllPIDs(&pids[0], C.int(capacity)))
+	if n <= 0 {
+		return nil, fmt.Errorf("process enumeration failed: proc_listpids returned %d", n)
+	}
+
+	pathBuf := make([]C.char, procPathBufferSize)
+	procs := make([]procInfo, 0, n)
+	for i := 0; i < n; i++ {
+		pid := int(pids[i])
+		if pid <= 0 {
+			continue
+		}
+		info := procInfo{
+			PID:            pid,
+			PPID:           int(C.uxProcParentPID(C.int(pid))),
+			ResponsiblePID: int(C.uxProcResponsiblePID(C.int(pid))),
+		}
+		if plen := int(C.uxProcPath(C.int(pid), &pathBuf[0], C.int(procPathBufferSize))); plen > 0 {
+			info.Path = C.GoStringN(&pathBuf[0], C.int(plen))
+		}
+		procs = append(procs, info)
+	}
+	return procs, nil
+}
+
+// WebKitHelperDiagnostic describes a WebKit helper process and whether the
+// ownership filter attributes it to the current process. It backs the
+// cmd/webkit-helpers verification tool.
+type WebKitHelperDiagnostic struct {
+	PID            int
+	PPID           int
+	ResponsiblePID int
+	Path           string
+	// OwnedBySelf is true when this helper would be tapped by the current
+	// process (i.e. it is our descendant or held responsible to us).
+	OwnedBySelf bool
+}
+
+// WebKitHelperDiagnostics returns every WebKit helper process on the system,
+// flagging which ones the ownership filter attributes to the current process.
+// It lets a verification tool show that other apps' shared WebKit helpers are
+// excluded from our tap targeting.
+func WebKitHelperDiagnostics() ([]WebKitHelperDiagnostic, error) {
+	procs, err := gatherProcesses()
+	if err != nil {
+		return nil, err
+	}
+	owned := make(map[int]bool)
+	for _, pid := range webKitHelperPIDsForSelf(procs, os.Getpid()) {
+		owned[pid] = true
+	}
+	var out []WebKitHelperDiagnostic
+	for _, p := range procs {
+		if !isWebKitHelperPath(p.Path) {
+			continue
+		}
+		out = append(out, WebKitHelperDiagnostic{
+			PID:            p.PID,
+			PPID:           p.PPID,
+			ResponsiblePID: p.ResponsiblePID,
+			Path:           p.Path,
+			OwnedBySelf:    owned[p.PID],
+		})
+	}
+	return out, nil
+}
+
+// WebKitHelperPIDs returns the PIDs of the WebKit helper processes owned by
+// this application (descendants of, or held responsible to, our own process).
+// It is the targeting basis for the WebView tap: limiting to our own helpers
+// prevents the tap from capturing and muting other apps' shared WebKit audio
+// (e.g. Safari). The returned slice may be empty when no helper has been
+// spawned yet; callers should treat that as "no target".
+func WebKitHelperPIDs() ([]int, error) {
+	procs, err := gatherProcesses()
+	if err != nil {
+		return nil, err
+	}
+	return webKitHelperPIDsForSelf(procs, os.Getpid()), nil
+}
+
 // tapStatusString renders an OSStatus (or kUXTapErr* value) readably,
 // decoding printable four-char codes like the spike did.
 func tapStatusString(status C.OSStatus) string {

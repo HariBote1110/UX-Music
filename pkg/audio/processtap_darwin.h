@@ -61,4 +61,26 @@ OSStatus uxTapStopIO(AudioObjectID aggregate, AudioDeviceIOProcID procID);
 OSStatus uxTapDestroyAggregate(AudioObjectID aggregate);
 OSStatus uxTapDestroy(AudioObjectID tap);
 
+// ---- Process enumeration (libproc) ----
+//
+// These helpers back the Go ownership logic that limits WebView tapping to
+// this application's own WebKit helper processes. They wrap libproc so cgo
+// only ever sees plain integers and C strings.
+
+// Fills outPIDs with up to maxPIDs live process IDs and returns the count.
+// When outPIDs is NULL or maxPIDs <= 0, returns the number of PIDs currently
+// running (so the caller can size its buffer). Returns -1 on failure.
+int uxListAllPIDs(int *outPIDs, int maxPIDs);
+
+// Returns the parent PID of pid, or -1 when it cannot be determined.
+int uxProcParentPID(int pid);
+
+// Returns the process macOS holds responsible for pid (its owning app for
+// shared XPC helpers), or -1 when unavailable. May equal pid itself.
+int uxProcResponsiblePID(int pid);
+
+// Copies the executable path of pid into buf (capacity bufLen). Returns the
+// path length (>0) on success, or <= 0 on failure.
+int uxProcPath(int pid, char *buf, int bufLen);
+
 #endif

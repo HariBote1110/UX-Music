@@ -5,8 +5,17 @@
 #import <CoreAudio/CoreAudio.h>
 #import <CoreAudio/CATapDescription.h>
 #import <CoreAudio/AudioHardwareTapping.h>
+#include <libproc.h>
+#include <stdlib.h>
 
 #include "processtap_darwin.h"
+
+// Private but long-stable libproc/libsystem entry point that reports the
+// process macOS holds responsible for a given PID. It attributes shared XPC
+// helpers (e.g. com.apple.WebKit.GPU launched by launchd) to the app that
+// owns them, which is exactly how we distinguish our WebKit helpers from
+// another app's. Declared here because no public SDK header exposes it.
+extern int responsibility_get_pid_responsible_for_pid(pid_t pid);
 
 // Implemented in Go (processtap_darwin.go, //export uxGoProcessTapSamples).
 extern void uxGoProcessTapSamples(uintptr_t clientID, float *samples,
@@ -346,4 +355,53 @@ OSStatus uxTapDestroyAggregate(AudioObjectID aggregate) {
 
 OSStatus uxTapDestroy(AudioObjectID tap) {
     return AudioHardwareDestroyProcessTap(tap);
+}
+
+int uxListAllPIDs(int *outPIDs, int maxPIDs) {
+    if (outPIDs == NULL || maxPIDs <= 0) {
+        int bytes = proc_listpids(PROC_ALL_PIDS, 0, NULL, 0);
+        if (bytes <= 0) {
+            return -1;
+        }
+        return bytes / (int)sizeof(pid_t);
+    }
+    int bufBytes = maxPIDs * (int)sizeof(pid_t);
+    pid_t *tmp = (pid_t *)malloc((size_t)bufBytes);
+    if (tmp == NULL) {
+        return -1;
+    }
+    int bytes = proc_listpids(PROC_ALL_PIDS, 0, tmp, bufBytes);
+    if (bytes <= 0) {
+        free(tmp);
+        return -1;
+    }
+    int count = bytes / (int)sizeof(pid_t);
+    if (count > maxPIDs) {
+        count = maxPIDs;
+    }
+    for (int i = 0; i < count; i++) {
+        outPIDs[i] = (int)tmp[i];
+    }
+    free(tmp);
+    return count;
+}
+
+int uxProcParentPID(int pid) {
+    struct proc_bsdinfo info;
+    int n = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, PROC_PIDTBSDINFO_SIZE);
+    if (n != PROC_PIDTBSDINFO_SIZE) {
+        return -1;
+    }
+    return (int)info.pbi_ppid;
+}
+
+int uxProcResponsiblePID(int pid) {
+    return responsibility_get_pid_responsible_for_pid((pid_t)pid);
+}
+
+int uxProcPath(int pid, char *buf, int bufLen) {
+    if (buf == NULL || bufLen <= 0) {
+        return -1;
+    }
+    return proc_pidpath(pid, buf, (uint32_t)bufLen);
 }
