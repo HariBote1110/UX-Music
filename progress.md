@@ -1,3 +1,20 @@
+## 2026-07-14 — Desktop App: ビルド版(.app)の公式再生が無音になる問題を修正（TCC/署名）
+
+### 実施内容
+- `wails build` した .app を Finder/Dock 起動すると YouTube 公式再生（embed）だけ無音（ローカル曲は正常）という問題を修正（サブエージェント調査・実装、64c9b45）。
+- 実機ログで原因を確定：Finder 起動でもタップ対象 WebKit ヘルパーの PID は非空・タップ生成もエラー無しだが maxOutputRMS=0。ターミナル起動（=dev 文脈、Terminal.app の音声取り込み許可を継承）では 0.38。差分は TCC 帰属のみ＝**容疑A（TCC/署名）確定、PID 空振りの容疑Bは否定**。ビルド版は Finder 起動でアプリ自身が TCC subject になるが、用途文字列なし・codesign 上 Identifier=a.out で linker-signed（識別子不安定）のため許可を得られずタップが無音を返していた。
+- 修正：build/darwin/Info.plist・Info.dev.plist に NSMicrophoneUsageDescription / NSAudioCaptureUsageDescription（日本語用途説明）を追加。build/darwin/entitlements.plist（新規）で com.apple.security.device.audio-input＋ハードンドランタイム下で WebKit が落ちないよう allow-jit / allow-unsigned-executable-memory / disable-library-validation。scripts/sign-macos.sh（新規）で .app 全体を ad-hoc 再署名（--options runtime --entitlements、Identifier を com.wails.UX-Music にシール）し、build-install-app.sh のビルド後に自動実行するよう配線。Go コードは恒久変更なし。
+- 修正後の署名済み .app を open 起動→embed 再生で maxOutputRMS=0.39 を確認（ターミナル基準と同等）。今回は TCC 許可ダイアログ不要で自動許可された。go test / vitest 182 件 / typecheck / wails build / E2E / test-build-install-app すべて通過。renderer 版を 1.0.0-Beta-44c へ更新（不具合修正のため SubVer +1）。
+
+### 選定理由・判断の根拠
+- log で「PID 非空・タップ成功・RMS0」を確認し、コードではなく TCC/署名が原因と確定してから Info.plist/エンタイトルメント/署名を直した（憶測でコードを触らない）。
+- audio-input エンタイトルメント＋用途文字列＋適正バンドル署名が揃えば、自アプリ responsible な WebKit ヘルパーへのタップは許可ダイアログ無しで自動許可される。
+
+### 残課題・次のステップ
+- ad-hoc 署名のため再ビルド・再署名で cdhash が変わり TCC 許可がリセットされ得る（再承認が必要な場合あり）。sign-macos.sh にコメント済み。
+- 通常の `wails build` 単体では linker-signed のままなので、必ず sign-macos.sh（=build-install-app.sh）経由で配置する必要がある。
+- 配布時は Developer ID 署名＋notarization が別途必要（その識別子で TCC を取り直す形）。
+
 ## 2026-07-14 — Desktop App: 公式再生中にフルスクリーンへ入れない導線バグを修正
 
 ### 実施内容
