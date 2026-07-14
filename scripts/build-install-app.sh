@@ -77,6 +77,15 @@ else
   printf '== build をスキップ ==\n'
 fi
 
+# wails build は linker-signed の .app を出力する（Info.plist 非バインド・
+# Identifier=a.out）。この状態では TCC がコード識別子を安定に紐付けられず、
+# YouTube 公式再生の音声タップに必要なマイク/音声取り込み許可を付与できない。
+# バンドル全体を ad-hoc 署名し直して Info.plist をシールし、使用目的文字列と
+# エンタイトルメントを有効化する。
+if [[ -d "${app_source}" || "${dry_run}" == 1 ]]; then
+  run bash "${project_root}/scripts/sign-macos.sh" "${app_source}"
+fi
+
 if [[ ! -d "${app_source}" && "${dry_run}" != 1 ]]; then
   echo "ERROR: ビルド成果物が見つかりません: ${app_source}" >&2
   exit 1

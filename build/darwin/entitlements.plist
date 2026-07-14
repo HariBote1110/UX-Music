@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- YouTube 公式再生の音声を Core Audio プロセスタップで取り込むために必要。
+         ハードンドランタイム下では audio-input エンタイトルメントが無いと
+         タップが無音を返す（Finder/Dock 起動時の TCC 帰属先がアプリ自身に
+         なるため）。 -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- WebKit（WKWebView）は JIT と非署名実行メモリを使うため、ハードンド
+         ランタイム下ではこれらの緩和エンタイトルメントが無いと WebContent /
+         GPU ヘルパーが即座に SIGABRT で落ちる（ウィンドウが真っ黒になる）。 -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>
