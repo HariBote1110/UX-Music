@@ -1278,3 +1278,13 @@
 - R1: `lrc-editor.ts` の `setupLrcEditorListeners` (134 行・26 連続 addEventListener) を分割
 - R2: `lrc-editor.ts` の `runAutoSync` (118 行・ネスト 4 階層) の責務分離
 - 後続候補: G2 (GetSituationPlaylists 分割), G3, R3 (querySelector キャッシュ), R5 (デッドコード削除)
+## 2026-07-15 — macOS アプリのビルド・Applications 配置スクリプトを追加
+
+### 実施内容
+- `scripts/build-install-app.sh` を追加。プロジェクトルートで `wails build` を実行し、生成された `build/bin/UX-Music.app` を `/Applications/UX-Music.app` へ配置するようにした。
+- `--skip-build`、`--destination`、`--dry-run`、`--help` オプションを追加。
+- `scripts/test-build-install-app.sh` で dry-run のビルド・配置内容を検証した。
+
+### 検証結果
+- dry-run テスト通過。
+- 実機へのビルド・配置は未実行（スクリプト利用時に実行）。
