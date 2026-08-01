@@ -74,10 +74,15 @@ struct WearDesktopPlaylist: Codable, Equatable, Hashable, Sendable {
 /// HTTP client for the UX Music Wear LAN API (port 8765 by default).
 struct WearAPIClient: Sendable {
     private let baseURLString: String
+    /// Pairing/auth token sent as `X-UX-Music-Token` (or as a `token=` query item for endpoints that
+    /// hand a bare URL to something else, e.g. image loaders). Empty means "no token configured" —
+    /// requests are sent unauthenticated, matching the pre-auth desktop or `/wear/ping`.
+    private let token: String
     private let session: URLSession
 
-    init(baseURLString: String, session: URLSession = WearLANURLSession.shared) {
+    init(baseURLString: String, token: String = "", session: URLSession = WearLANURLSession.shared) {
         self.baseURLString = baseURLString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        self.token = token
         self.session = session
     }
 
@@ -89,11 +94,39 @@ struct WearAPIClient: Sendable {
         return u
     }
 
+    /// Builds a `URLRequest` with the auth header attached (when a token is configured).
+    private func authorizedRequest(url: URL) -> URLRequest {
+        var req = URLRequest(url: url)
+        if !token.isEmpty {
+            req.setValue(token, forHTTPHeaderField: "X-UX-Music-Token")
+        }
+        return req
+    }
+
+    private func authorizedRequest(path: String) throws -> URLRequest {
+        authorizedRequest(url: try url(path: path))
+    }
+
+    /// Appends `token=` to a URL's query items (for endpoints handed to code that can't set headers).
+    private func withTokenQuery(_ url: URL) -> URL {
+        guard !token.isEmpty, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "token", value: token)]
+        return components.url ?? url
+    }
+
     /// Uses `/wear/artwork/?id=…` so IDs stay query-encoded and `URL(string:)` is reliable (path form is brittle on iOS).
+    /// Token is added as a query item, not a header, since this string is handed to an image loader.
     func artworkURL(artworkId: String) -> String {
         guard !artworkId.isEmpty else { return "" }
         let encoded = artworkId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? artworkId
-        return "\(baseURLString)/wear/artwork/?id=\(encoded)"
+        var s = "\(baseURLString)/wear/artwork/?id=\(encoded)"
+        if !token.isEmpty {
+            let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token
+            s += "&token=\(encodedToken)"
+        }
+        return s
     }
 
     /// Decodes the `id` query value from a Wear LAN artwork URL (`/wear/artwork/?id=…`).
@@ -103,20 +136,21 @@ struct WearAPIClient: Sendable {
         return c.queryItems?.first { $0.name == "id" }?.value
     }
 
-    /// Health check. Returns the server hostname on success.
+    /// Health check. Returns the server hostname on success. `/wear/ping` is exempt from auth on the
+    /// desktop, but the token is still sent (harmless) so a stale/invalid token surfaces nowhere else.
     func ping() async throws -> String {
-        let (data, _) = try await session.data(from: try url(path: "/wear/ping"))
+        let (data, _) = try await session.data(for: authorizedRequest(path: "/wear/ping"))
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         return obj?["hostname"] as? String ?? ""
     }
 
     func fetchSongs() async throws -> [Song] {
-        let (data, _) = try await session.data(from: try url(path: "/wear/songs"))
+        let (data, _) = try await session.data(for: authorizedRequest(path: "/wear/songs"))
         return try JSONDecoder().decode([Song].self, from: data)
     }
 
     func fetchLoudness() async throws -> [String: Double] {
-        let (data, _) = try await session.data(from: try url(path: "/wear/loudness"))
+        let (data, _) = try await session.data(for: authorizedRequest(path: "/wear/loudness"))
         let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
         var out: [String: Double] = [:]
         for (k, v) in raw {
@@ -136,7 +170,7 @@ struct WearAPIClient: Sendable {
         guard let source = components.url else {
             throw URLError(.badURL)
         }
-        let (data, response) = try await session.data(from: source)
+        let (data, response) = try await session.data(for: authorizedRequest(url: source))
         guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
@@ -147,7 +181,7 @@ struct WearAPIClient: Sendable {
     }
 
     func fetchDesktopPlaylists() async throws -> [WearDesktopPlaylist] {
-        let (data, response) = try await session.data(from: try url(path: "/wear/playlists"))
+        let (data, response) = try await session.data(for: authorizedRequest(path: "/wear/playlists"))
         guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
@@ -158,7 +192,13 @@ struct WearAPIClient: Sendable {
     }
 
     func fetchState() async throws -> [String: Any] {
-        let (data, _) = try await session.data(from: try url(path: "/wear/state"))
+        let (data, response) = try await session.data(for: authorizedRequest(path: "/wear/state"))
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200 ... 299).contains(http.statusCode) else {
+            throw WearDownloadError.httpStatus(http.statusCode)
+        }
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
 
@@ -166,7 +206,7 @@ struct WearAPIClient: Sendable {
         var body: [String: Any] = ["action": action]
         if let value { body["value"] = value }
         let json = try JSONSerialization.data(withJSONObject: body)
-        var req = URLRequest(url: try url(path: "/wear/command"))
+        var req = try authorizedRequest(path: "/wear/command")
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = json
@@ -197,7 +237,7 @@ struct WearAPIClient: Sendable {
             throw URLError(.badURL)
         }
         try await ProgressDownloadSession.shared.download(
-            from: source,
+            from: withTokenQuery(source),
             to: destinationURL,
             progress: progress
         )
@@ -213,7 +253,7 @@ struct WearAPIClient: Sendable {
         guard let url = components.url else {
             throw URLError(.badURL)
         }
-        let (data, response) = try await session.data(from: url)
+        let (data, response) = try await session.data(for: authorizedRequest(url: withTokenQuery(url)))
         guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }

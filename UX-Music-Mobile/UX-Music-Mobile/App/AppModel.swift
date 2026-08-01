@@ -139,7 +139,7 @@ final class AppModel {
     var urlSession: URLSession = WearLANURLSession.shared
 
     func client() -> WearAPIClient {
-        WearAPIClient(baseURLString: serverConfig.baseURLString, session: urlSession)
+        WearAPIClient(baseURLString: serverConfig.baseURLString, token: serverConfig.token, session: urlSession)
     }
 
     /// Runs `operation` against the current server; on a connection-level failure (`URLError`),
@@ -153,8 +153,12 @@ final class AppModel {
 
         var lastError: Error?
         for (index, host) in hostsToTry.enumerated() {
-            let candidateConfig = ServerConfig(host: host, port: serverConfig.port)
-            let candidateClient = WearAPIClient(baseURLString: candidateConfig.baseURLString, session: urlSession)
+            let candidateConfig = ServerConfig(host: host, port: serverConfig.port, token: serverConfig.token)
+            let candidateClient = WearAPIClient(
+                baseURLString: candidateConfig.baseURLString,
+                token: candidateConfig.token,
+                session: urlSession
+            )
             do {
                 let result = try await operation(candidateClient)
                 if index > 0 {

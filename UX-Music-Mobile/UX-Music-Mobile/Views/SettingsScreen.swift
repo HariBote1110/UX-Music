@@ -4,6 +4,7 @@ struct SettingsScreen: View {
     @Environment(AppModel.self) private var model
     @State private var hostText = ""
     @State private var portText = ""
+    @State private var tokenText = ""
     @State private var pingResult: String?
     @State private var testing = false
     @State private var savedFlash = false
@@ -14,7 +15,7 @@ struct SettingsScreen: View {
     @FocusState private var focusedField: Field?
 
     private enum Field {
-        case host, port
+        case host, port, token
     }
 
     var body: some View {
@@ -32,8 +33,17 @@ struct SettingsScreen: View {
                     TextField("8765", text: $portText)
                         .keyboardType(.numberPad)
                         .focused($focusedField, equals: .port)
+
+                    TextField("Token (from desktop pairing QR)", text: $tokenText)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .focused($focusedField, equals: .token)
                 } header: {
                     Text("SERVER")
+                } footer: {
+                    Text("The token shown in the pairing QR code in UX Music's desktop Settings. Scanning the QR fills this in automatically.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section {
@@ -122,7 +132,11 @@ struct SettingsScreen: View {
                     if let pingResult {
                         Text(pingResult)
                             .font(.footnote)
-                            .foregroundStyle(pingResult.hasPrefix("Connected") ? .green : .red)
+                            .foregroundStyle(
+                                pingResult.hasPrefix("Connected") && !pingResult.hasPrefix("Connected but not paired")
+                                    ? .green
+                                    : .red
+                            )
                     }
                 }
             }
@@ -135,6 +149,7 @@ struct SettingsScreen: View {
             .onAppear {
                 hostText = model.serverConfig.host
                 portText = String(model.serverConfig.port)
+                tokenText = model.serverConfig.token
                 discovery.start()
             }
             .onDisappear {
@@ -154,6 +169,7 @@ struct SettingsScreen: View {
                             guard let url = URL(string: trimmed), model.applyPairingURL(url) else { return }
                             hostText = model.serverConfig.host
                             portText = String(model.serverConfig.port)
+                            tokenText = model.serverConfig.token
                             pingResult = "Paired — tap Test to verify"
                             showQRScanner = false
                         }
@@ -188,7 +204,11 @@ struct SettingsScreen: View {
         focusedField = nil
         selectedDiscoveryPeer = nil
         let port = Int(portText) ?? AppConstants.defaultServerPort
-        model.serverConfig = ServerConfig(host: hostText.trimmingCharacters(in: .whitespacesAndNewlines), port: port)
+        model.serverConfig = ServerConfig(
+            host: hostText.trimmingCharacters(in: .whitespacesAndNewlines),
+            port: port,
+            token: tokenText.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
         savedFlash = true
         Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -203,29 +223,41 @@ struct SettingsScreen: View {
         portText = String(peer.port)
         pingResult = nil
         testing = true
+        let token = tokenText.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             let candidates = WearConnectionCandidates.hosts(manualHost: peer.host, discoveredHosts: peer.connectionHosts)
-                .map { ServerConfig(host: $0, port: peer.port) }
+                .map { ServerConfig(host: $0, port: peer.port, token: token) }
             let resolved = await WearConnectionResolver.resolve(candidates: candidates) { candidate in
-                try await WearAPIClient(baseURLString: candidate.baseURLString).ping()
+                try await WearAPIClient(baseURLString: candidate.baseURLString, token: candidate.token).ping()
             }
+            guard let resolved else {
+                await MainActor.run {
+                    testing = false
+                    pingResult = "Connection failed: could not reach \(peer.displayName)"
+                }
+                return
+            }
+            let authorised = await WearConnectionResolver.checkAuthorised(
+                client: WearAPIClient(baseURLString: resolved.config.baseURLString, token: token)
+            )
             await MainActor.run {
                 testing = false
-                guard let resolved else {
-                    pingResult = "Connection failed: could not reach \(peer.displayName)"
-                    return
-                }
                 hostText = resolved.config.host
                 portText = String(resolved.config.port)
                 var config = resolved.config
+                config.token = token
                 config.fallbackHosts = candidates
                     .map(\.host)
                     .filter { $0 != resolved.config.host }
                 model.serverConfig = config
                 savedFlash = true
-                pingResult = resolved.serverName.isEmpty
-                    ? "Connected to \(resolved.config.host)"
-                    : "Connected to \(resolved.serverName) via \(resolved.config.host)"
+                if !authorised {
+                    pingResult = "Connected but not paired — scan the QR code or enter the token"
+                } else {
+                    pingResult = resolved.serverName.isEmpty
+                        ? "Connected to \(resolved.config.host)"
+                        : "Connected to \(resolved.serverName) via \(resolved.config.host)"
+                }
                 Task {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                     await MainActor.run { savedFlash = false }
@@ -266,9 +298,10 @@ struct SettingsScreen: View {
         testing = true
         pingResult = nil
         defer { testing = false }
+        let token = tokenText.trimmingCharacters(in: .whitespacesAndNewlines)
         let candidates = connectionTestCandidates()
         let resolved = await WearConnectionResolver.resolve(candidates: candidates) { candidate in
-            try await WearAPIClient(baseURLString: candidate.baseURLString).ping()
+            try await WearAPIClient(baseURLString: candidate.baseURLString, token: candidate.token).ping()
         }
         guard let resolved else {
             await MainActor.run {
@@ -276,29 +309,38 @@ struct SettingsScreen: View {
             }
             return
         }
+        let authorised = await WearConnectionResolver.checkAuthorised(
+            client: WearAPIClient(baseURLString: resolved.config.baseURLString, token: token)
+        )
         await MainActor.run {
             hostText = resolved.config.host
             portText = String(resolved.config.port)
             var config = resolved.config
+            config.token = token
             config.fallbackHosts = candidates
                 .map(\.host)
                 .filter { $0 != resolved.config.host }
             model.serverConfig = config
-            pingResult = resolved.serverName.isEmpty
-                ? "Connected to \(resolved.config.host)"
-                : "Connected to \(resolved.serverName) via \(resolved.config.host)"
+            if !authorised {
+                pingResult = "Connected but not paired — scan the QR code or enter the token"
+            } else {
+                pingResult = resolved.serverName.isEmpty
+                    ? "Connected to \(resolved.config.host)"
+                    : "Connected to \(resolved.serverName) via \(resolved.config.host)"
+            }
         }
     }
 
     private func connectionTestCandidates() -> [ServerConfig] {
         let host = hostText.trimmingCharacters(in: .whitespacesAndNewlines)
         let port = Int(portText) ?? AppConstants.defaultServerPort
-        let manual = ServerConfig(host: host, port: port)
+        let token = tokenText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let manual = ServerConfig(host: host, port: port, token: token)
         guard let peer = selectedDiscoveryPeer, peer.port == port else {
             return [manual]
         }
         let candidateHosts = WearConnectionCandidates.hosts(manualHost: host, discoveredHosts: peer.connectionHosts)
-        return candidateHosts.map { ServerConfig(host: $0, port: port) }
+        return candidateHosts.map { ServerConfig(host: $0, port: port, token: token) }
     }
 }
 
