@@ -46,3 +46,44 @@
 - Xcode プロジェクトはファイルシステム同期グループを使っておらず、新規 `.swift` ファイルは
   `project.pbxproj` に手動で `PBXBuildFile` / `PBXFileReference` / グループ / Sources
   ビルドフェーズの4箇所を追加しないとビルド対象に入らない。
+
+## 第2の根本原因: 認証トークン欠落（401 で全データ取得が失敗）
+
+- 疎通確認・フェイルオーバーを直しても、`server/app_wear.go:652` の `wearAuthMiddleware` が
+  `/wear/ping` と `/wear/mobile` 以外の全エンドポイントを認証必須にしているため、依然として
+  同期が失敗していた。トークンは `?token=` クエリ／`X-UX-Music-Token` ヘッダー／
+  `Authorization: Bearer` のいずれかで受理されるが、iOS アプリはどの経路でもトークンを
+  送っておらず、`fetchSongs` / `fetchState` / `downloadFile` などが軒並み 401 になっていた。
+  QR ペアリング URL `uxmusic://pair?host=&port=&token=` の `token` クエリも
+  `ServerConfig.fromPairingURL` が読み捨てていた。
+- `ServerConfig` に `token: String = ""` を追加し、`fallbackHosts` と同じ理由でカスタム
+  `init(from:)` に `decodeIfPresent` で後方互換デコードを実装した。`fromPairingURL` は
+  `uxmusic://` と `http(s)://` の両スキームで `token` クエリを読むようにした。
+  `Equatable` は `fallbackHosts` と同様 `token` も無視する（比較対象は `host`/`port` のみ）
+  ——設定画面の「選択中ピア」チェックマークが、トークンの再入力や再ペアリングで壊れないため。
+- `WearAPIClient` は `token` を保持し、`session.data(from:)` 直呼びをやめて
+  `URLRequest` を組み立てるヘルパー（`authorizedRequest`）経由に統一、`X-UX-Music-Token`
+  ヘッダーを付与するようにした。`artworkURL(artworkId:)` は文字列 URL として画像ローダーに
+  渡る経路のためヘッダーが使えず、`token=` をクエリに追加する方式にした（`downloadFile` /
+  `downloadArtwork` も同様にクエリ方式）。
+- `fetchState()` は元々 HTTP ステータスを見ずに常に JSON デコードを試みていたため、401 の
+  ボディが JSON でない場合に不定形のエラーになっていた。他メソッドと同じパターンで
+  ステータスチェックを追加し、非 2xx を `WearDownloadError.httpStatus(code)` として
+  投げるようにした——これにより「到達はできるが未認証」を判別できるようになった。
+- `WearConnectionResolver.checkAuthorised(client:)` を新設。`ping`（`/wear/ping` は認証
+  不要）が成功しても認証されているとは限らないため、認証必須の `/wear/state` を叩いて
+  `401` なら `false`、それ以外の失敗（オフライン・タイムアウト等）は「未証明であり否定は
+  されていない」として `true` を返す。`SettingsScreen.testConnection` /
+  `selectDiscoveredPeer` はこれを resolve 成功後に呼び、`pingResult` を
+  「Connected to …」（緑）と「Connected but not paired — scan the QR code or enter the
+  token」（赤）で出し分ける。
+- Settings の SERVER セクションに手動トークン入力欄（`TextField`、自動修正・自動大文字化
+  オフ）を追加した。QR スキャンなら自動で埋まるが、手動入力もできるようにする狙い。
+
+## Constraints / Gotchas（トークン対応）
+
+- `pingResult` の色分けは元々 `hasPrefix("Connected")` で緑判定していたため、
+  「Connected but not paired」を先にチェックして除外する条件にしないと誤って緑表示になる。
+- `AppModel.client()` / `AppModel.withFailover` のフェイルオーバー候補生成でも
+  `serverConfig.token` を渡し忘れると、フェイルオーバー後のホストだけ無認証リクエストに
+  なってしまう点に注意。
