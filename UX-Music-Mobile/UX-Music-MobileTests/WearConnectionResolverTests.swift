@@ -53,4 +53,41 @@ final class WearConnectionResolverTests: XCTestCase {
         let result = await WearConnectionResolver.resolve(candidates: []) { _ in "desk" }
         XCTAssertNil(result)
     }
+
+    /// Second sync bug: reachability (ping, unauthenticated) succeeding does not imply the token is
+    /// valid — `checkAuthorised` must distinguish "reachable but 401" from "reachable and authorised".
+    func testCheckAuthorised_returnsFalseOn401() async {
+        let client = WearAPIClient(baseURLString: "http://127.0.0.1:8765", session: stubbedSession(statusCode: 401))
+        let authorised = await WearConnectionResolver.checkAuthorised(client: client)
+        XCTAssertFalse(authorised)
+    }
+
+    func testCheckAuthorised_returnsTrueOn200() async {
+        let client = WearAPIClient(baseURLString: "http://127.0.0.1:8765", session: stubbedSession(statusCode: 200))
+        let authorised = await WearConnectionResolver.checkAuthorised(client: client)
+        XCTAssertTrue(authorised)
+    }
+}
+
+private final class StubURLProtocol: URLProtocol {
+    static var statusCode = 200
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let res = HTTPURLResponse(url: request.url!, statusCode: StubURLProtocol.statusCode, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: res, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: "{}".data(using: .utf8)!)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+private func stubbedSession(statusCode: Int) -> URLSession {
+    StubURLProtocol.statusCode = statusCode
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [StubURLProtocol.self]
+    return URLSession(configuration: config)
 }

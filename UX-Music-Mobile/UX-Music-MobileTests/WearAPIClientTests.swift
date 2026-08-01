@@ -114,6 +114,50 @@ final class WearAPIClientTests: XCTestCase {
         XCTAssertEqual(p.content, "[00:01.00]Hi")
     }
 
+    /// Root cause of second sync failure: the desktop's `wearAuthMiddleware` rejects every endpoint
+    /// except `/wear/ping` and `/wear/mobile` without a token, but the client never sent one.
+    func testPingSendsTokenHeaderWhenSet() async throws {
+        MockURLProtocol.handler = { req in
+            XCTAssertEqual(req.value(forHTTPHeaderField: "X-UX-Music-Token"), "secret")
+            let data = #"{"hostname":"desk"}"#.data(using: .utf8)!
+            let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (data, res)
+        }
+        let client = WearAPIClient(baseURLString: "http://127.0.0.1:8765", token: "secret", session: sessionWithMock())
+        _ = try await client.ping()
+    }
+
+    func testFetchStateOmitsTokenHeaderWhenEmpty() async throws {
+        MockURLProtocol.handler = { req in
+            XCTAssertNil(req.value(forHTTPHeaderField: "X-UX-Music-Token"))
+            let data = "{}".data(using: .utf8)!
+            let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (data, res)
+        }
+        let client = WearAPIClient(baseURLString: "http://127.0.0.1:8765", session: sessionWithMock())
+        _ = try await client.fetchState()
+    }
+
+    func testFetchStateThrowsOnUnauthorized() async throws {
+        MockURLProtocol.handler = { req in
+            let data = Data()
+            let res = HTTPURLResponse(url: req.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            return (data, res)
+        }
+        let client = WearAPIClient(baseURLString: "http://127.0.0.1:8765", session: sessionWithMock())
+        do {
+            _ = try await client.fetchState()
+            XCTFail("expected httpStatus(401)")
+        } catch let WearDownloadError.httpStatus(code) {
+            XCTAssertEqual(code, 401)
+        }
+    }
+
+    func testArtworkURL_appendsTokenQueryWhenSet() {
+        let client = WearAPIClient(baseURLString: "http://h:1", token: "abc def")
+        XCTAssertEqual(client.artworkURL(artworkId: "x"), "http://h:1/wear/artwork/?id=x&token=abc%20def")
+    }
+
     func testDecodeWearDesktopPlaylists() throws {
         let json = Data(
             #"[{"name":"Mix","songIds":["a","b"],"pathsNotInLibrary":["/gone.flac"]}]"#.utf8
