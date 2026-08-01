@@ -251,13 +251,7 @@ struct SettingsScreen: View {
                     .filter { $0 != resolved.config.host }
                 model.serverConfig = config
                 savedFlash = true
-                if !authorised {
-                    pingResult = "Connected but not paired — scan the QR code or enter the token"
-                } else {
-                    pingResult = resolved.serverName.isEmpty
-                        ? "Connected to \(resolved.config.host)"
-                        : "Connected to \(resolved.serverName) via \(resolved.config.host)"
-                }
+                pingResult = Self.connectionResultMessage(config: resolved.config, serverName: resolved.serverName, authorised: authorised)
                 Task {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                     await MainActor.run { savedFlash = false }
@@ -321,14 +315,20 @@ struct SettingsScreen: View {
                 .map(\.host)
                 .filter { $0 != resolved.config.host }
             model.serverConfig = config
-            if !authorised {
-                pingResult = "Connected but not paired — scan the QR code or enter the token"
-            } else {
-                pingResult = resolved.serverName.isEmpty
-                    ? "Connected to \(resolved.config.host)"
-                    : "Connected to \(resolved.serverName) via \(resolved.config.host)"
-            }
+            pingResult = Self.connectionResultMessage(config: resolved.config, serverName: resolved.serverName, authorised: authorised)
         }
+    }
+
+    /// Shared by `testConnection` and `selectDiscoveredPeer`: reachable-but-unauthorised (401 on
+    /// `/wear/state`) must read differently from a fully connected peer, since `.pingResult`'s colour
+    /// keys off whether the string starts with "Connected but not paired" (see body's `foregroundStyle`).
+    private static func connectionResultMessage(config: ServerConfig, serverName: String, authorised: Bool) -> String {
+        guard authorised else {
+            return "Connected but not paired — scan the QR code or enter the token"
+        }
+        return serverName.isEmpty
+            ? "Connected to \(config.host)"
+            : "Connected to \(serverName) via \(config.host)"
     }
 
     private func connectionTestCandidates() -> [ServerConfig] {
