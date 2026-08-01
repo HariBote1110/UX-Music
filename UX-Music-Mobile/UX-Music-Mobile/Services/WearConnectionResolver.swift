@@ -11,7 +11,11 @@ enum WearConnectionResolver {
         candidates: [ServerConfig],
         ping: @Sendable (ServerConfig) async throws -> String
     ) async -> (config: ServerConfig, serverName: String)? {
-        // Red-phase stub: not yet implemented.
-        nil
+        for candidate in candidates {
+            if let name = try? await ping(candidate) {
+                return (candidate, name)
+            }
+        }
+        return nil
     }
 }

@@ -147,8 +147,34 @@ final class AppModel {
     /// `serverConfig.host`. HTTP-status errors (`WearDownloadError.httpStatus`) mean the server was
     /// reached, so they are not retried against fallback hosts.
     func withFailover<T>(_ operation: @Sendable (WearAPIClient) async throws -> T) async throws -> T {
-        // Red-phase stub: not yet implemented.
-        try await operation(client())
+        let primaryHost = serverConfig.host
+        let fallbackHosts = serverConfig.fallbackHosts
+        let hostsToTry = [primaryHost] + fallbackHosts
+
+        var lastError: Error?
+        for (index, host) in hostsToTry.enumerated() {
+            let candidateConfig = ServerConfig(host: host, port: serverConfig.port)
+            let candidateClient = WearAPIClient(baseURLString: candidateConfig.baseURLString, session: urlSession)
+            do {
+                let result = try await operation(candidateClient)
+                if index > 0 {
+                    // Promote the host that just succeeded to primary; demote the rest (in their
+                    // existing relative order) to fallbackHosts.
+                    var remaining = hostsToTry
+                    remaining.remove(at: index)
+                    serverConfig.host = host
+                    serverConfig.fallbackHosts = remaining
+                }
+                return result
+            } catch let error as URLError {
+                lastError = error
+                continue
+            } catch {
+                // Reached the server (e.g. an HTTP-status error) — do not fail over.
+                throw error
+            }
+        }
+        throw lastError ?? URLError(.cannotConnectToHost)
     }
 
     /// Remote Wear URL, or `file://` when the jacket was cached under `DownloadedArtwork/` after a download.
