@@ -200,10 +200,9 @@ final class AppModel {
     func refreshLibrary() async {
         libraryState = .loading
         do {
-            let c = client()
-            let songs = try await c.fetchSongs()
+            let songs = try await withFailover { try await $0.fetchSongs() }
             libraryState = .loaded(songs)
-            if let map = try? await c.fetchLoudness() {
+            if let map = try? await withFailover({ try await $0.fetchLoudness() }) {
                 loudness = map
                 player.loudnessMap = map
                 player.refreshVolumeForCurrentSong()
@@ -220,7 +219,7 @@ final class AppModel {
 
     func refreshLoudnessOnly() async {
         do {
-            let map = try await client().fetchLoudness()
+            let map = try await withFailover { try await $0.fetchLoudness() }
             loudness = map
             player.loudnessMap = map
             player.refreshVolumeForCurrentSong()
@@ -235,10 +234,12 @@ final class AppModel {
         downloadProgress[song.id] = 0
         let tempDest = downloadManager.temporaryDownloadURL(songId: song.id)
         do {
-            try await client().downloadFile(songId: song.id, to: tempDest, preferOriginalAudio: true) { received, total in
-                Task { @MainActor in
-                    if total > 0 {
-                        self.downloadProgress[song.id] = Double(received) / Double(total)
+            try await withFailover { c in
+                try await c.downloadFile(songId: song.id, to: tempDest, preferOriginalAudio: true) { received, total in
+                    Task { @MainActor in
+                        if total > 0 {
+                            self.downloadProgress[song.id] = Double(received) / Double(total)
+                        }
                     }
                 }
             }
@@ -285,7 +286,7 @@ final class AppModel {
         guard !downloadManager.hasLocalArtwork(artworkId: song.artworkId) else { return }
         do {
             let dest = downloadManager.localArtworkDestinationURL(artworkId: song.artworkId)
-            try await client().downloadArtwork(artworkId: song.artworkId, to: dest)
+            try await withFailover { try await $0.downloadArtwork(artworkId: song.artworkId, to: dest) }
         } catch {
             // Optional: list rows still use remote artwork when reachable.
         }
@@ -313,7 +314,7 @@ final class AppModel {
 
     private func fetchAndStoreLyricsIfAvailable(for song: Song) async {
         do {
-            let payload = try await client().fetchLyrics(songId: song.id)
+            let payload = try await withFailover { try await $0.fetchLyrics(songId: song.id) }
             guard payload.found else { return }
             guard let type = payload.type else { return }
             guard let content = payload.content?.trimmingCharacters(in: .whitespacesAndNewlines), !content.isEmpty else { return }
@@ -326,7 +327,7 @@ final class AppModel {
     /// Fetches playlist metadata from the desktop (no local changes).
     func fetchDesktopPlaylistsPreview() async throws -> [WearDesktopPlaylist] {
         guard serverConfig.isConfigured else { throw DesktopPlaylistImportError.serverNotConfigured }
-        return try await client().fetchDesktopPlaylists()
+        return try await withFailover { try await $0.fetchDesktopPlaylists() }
     }
 
     /// Imports desktop playlists from `GET /wear/playlists`. Requires a configured server.
@@ -339,8 +340,8 @@ final class AppModel {
             tracksOmittedNotDownloaded: 0,
             failedTrackDownloads: 0
         )
-        let rows = try await client().fetchDesktopPlaylists()
-        let remoteSongs = try await client().fetchSongs()
+        let rows = try await withFailover { try await $0.fetchDesktopPlaylists() }
+        let remoteSongs = try await withFailover { try await $0.fetchSongs() }
         var remoteById: [String: Song] = [:]
         for s in remoteSongs { remoteById[s.id] = s }
 

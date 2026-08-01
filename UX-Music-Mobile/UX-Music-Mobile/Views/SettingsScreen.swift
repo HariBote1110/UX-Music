@@ -201,12 +201,36 @@ struct SettingsScreen: View {
         selectedDiscoveryPeer = peer
         hostText = peer.host
         portText = String(peer.port)
-        model.serverConfig = peer.serverConfig
-        savedFlash = true
-        pingResult = "Selected \(peer.displayName)"
+        pingResult = nil
+        testing = true
         Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            await MainActor.run { savedFlash = false }
+            let candidates = WearConnectionCandidates.hosts(manualHost: peer.host, discoveredHosts: peer.connectionHosts)
+                .map { ServerConfig(host: $0, port: peer.port) }
+            let resolved = await WearConnectionResolver.resolve(candidates: candidates) { candidate in
+                try await WearAPIClient(baseURLString: candidate.baseURLString).ping()
+            }
+            await MainActor.run {
+                testing = false
+                guard let resolved else {
+                    pingResult = "Connection failed: could not reach \(peer.displayName)"
+                    return
+                }
+                hostText = resolved.config.host
+                portText = String(resolved.config.port)
+                var config = resolved.config
+                config.fallbackHosts = candidates
+                    .map(\.host)
+                    .filter { $0 != resolved.config.host }
+                model.serverConfig = config
+                savedFlash = true
+                pingResult = resolved.serverName.isEmpty
+                    ? "Connected to \(resolved.config.host)"
+                    : "Connected to \(resolved.serverName) via \(resolved.config.host)"
+                Task {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    await MainActor.run { savedFlash = false }
+                }
+            }
         }
     }
 
@@ -243,27 +267,26 @@ struct SettingsScreen: View {
         pingResult = nil
         defer { testing = false }
         let candidates = connectionTestCandidates()
-        var failures: [String] = []
-        for candidate in candidates {
-            do {
-                let client = WearAPIClient(baseURLString: candidate.baseURLString)
-                let name = try await client.ping()
-                await MainActor.run {
-                    hostText = candidate.host
-                    portText = String(candidate.port)
-                    model.serverConfig = candidate
-                    pingResult = name.isEmpty
-                        ? "Connected to \(candidate.host)"
-                        : "Connected to \(name) via \(candidate.host)"
-                }
-                return
-            } catch {
-                failures.append("\(candidate.host): \(error.localizedDescription)")
-            }
+        let resolved = await WearConnectionResolver.resolve(candidates: candidates) { candidate in
+            try await WearAPIClient(baseURLString: candidate.baseURLString).ping()
         }
-
+        guard let resolved else {
+            await MainActor.run {
+                pingResult = "Connection failed: No endpoint available"
+            }
+            return
+        }
         await MainActor.run {
-            pingResult = "Connection failed: \(failures.first ?? "No endpoint available")"
+            hostText = resolved.config.host
+            portText = String(resolved.config.port)
+            var config = resolved.config
+            config.fallbackHosts = candidates
+                .map(\.host)
+                .filter { $0 != resolved.config.host }
+            model.serverConfig = config
+            pingResult = resolved.serverName.isEmpty
+                ? "Connected to \(resolved.config.host)"
+                : "Connected to \(resolved.serverName) via \(resolved.config.host)"
         }
     }
 

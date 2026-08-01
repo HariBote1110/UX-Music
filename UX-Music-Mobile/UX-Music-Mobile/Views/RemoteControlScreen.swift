@@ -79,7 +79,7 @@ struct RemoteControlScreen: View {
             if duration > 0 {
                 SeekSlider(position: position, duration: duration) { v in
                     Task {
-                        _ = try? await model.client().sendCommand(action: "seek", value: v)
+                        _ = try? await model.withFailover { try await $0.sendCommand(action: "seek", value: v) }
                         await pollOnce()
                     }
                 }
@@ -146,7 +146,7 @@ struct RemoteControlScreen: View {
 
     private func send(_ action: String) async {
         do {
-            _ = try await model.client().sendCommand(action: action, value: nil)
+            _ = try await model.withFailover { try await $0.sendCommand(action: action, value: nil) }
             await pollOnce()
         } catch {
             await MainActor.run { errorMessage = "Command failed: \(error.localizedDescription)" }
@@ -155,7 +155,7 @@ struct RemoteControlScreen: View {
 
     private func pollOnce() async {
         do {
-            let s = try await model.client().fetchState()
+            let s = try await model.withFailover { try await $0.fetchState() }
             await MainActor.run {
                 hasReceivedState = true
                 desktopState = s
