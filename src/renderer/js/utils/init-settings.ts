@@ -50,6 +50,26 @@ let uxSyncTransferProgressUnsubscribe: (() => void) | null = null;
 let uxSyncAutoResultUnsubscribe: (() => void) | null = null;
 
 /**
+ * <select> に選択肢を流し込む。
+ * dataset.optionsInitialised を目印にして、初期化を何度呼んでも
+ * 選択肢が重複して積み上がらないようにしている。
+ */
+export function populateSelectOptions(
+    select: HTMLSelectElement | null,
+    options: ReadonlyArray<{ value: string; label: string }>,
+): void {
+    if (!select || select.dataset.optionsInitialised) return;
+    select.innerHTML = '';
+    for (const option of options) {
+        const el = document.createElement('option');
+        el.value = option.value;
+        el.textContent = option.label;
+        select.appendChild(el);
+    }
+    select.dataset.optionsInitialised = 'true';
+}
+
+/**
  * 指定したテーマを body クラスに適用する。
  * 現状サポートするテーマ: 'default' | 'music-center'
  */
@@ -868,40 +888,13 @@ export function initSettings() {
     }
 
     const syncTransferEncodingSelect = document.getElementById('ux-sync-transfer-encoding-select') as HTMLSelectElement | null;
-    if (syncTransferEncodingSelect && !syncTransferEncodingSelect.dataset.optionsInitialised) {
-        syncTransferEncodingSelect.innerHTML = '';
-        for (const option of syncTransferEncodingOptions()) {
-            const el = document.createElement('option');
-            el.value = option.value;
-            el.textContent = option.label;
-            syncTransferEncodingSelect.appendChild(el);
-        }
-        syncTransferEncodingSelect.dataset.optionsInitialised = 'true';
-    }
+    populateSelectOptions(syncTransferEncodingSelect, syncTransferEncodingOptions());
 
     const syncCachePolicySelect = document.getElementById('ux-sync-cache-policy-select') as HTMLSelectElement | null;
-    if (syncCachePolicySelect && !syncCachePolicySelect.dataset.optionsInitialised) {
-        syncCachePolicySelect.innerHTML = '';
-        for (const option of syncCachePolicyOptions()) {
-            const el = document.createElement('option');
-            el.value = option.value;
-            el.textContent = option.label;
-            syncCachePolicySelect.appendChild(el);
-        }
-        syncCachePolicySelect.dataset.optionsInitialised = 'true';
-    }
+    populateSelectOptions(syncCachePolicySelect, syncCachePolicyOptions());
 
     const syncPreferredFormatSelect = document.getElementById('ux-sync-preferred-format-select') as HTMLSelectElement | null;
-    if (syncPreferredFormatSelect && !syncPreferredFormatSelect.dataset.optionsInitialised) {
-        syncPreferredFormatSelect.innerHTML = '';
-        for (const option of syncPreferredFormatOptions()) {
-            const el = document.createElement('option');
-            el.value = option.value;
-            el.textContent = option.label;
-            syncPreferredFormatSelect.appendChild(el);
-        }
-        syncPreferredFormatSelect.dataset.optionsInitialised = 'true';
-    }
+    populateSelectOptions(syncPreferredFormatSelect, syncPreferredFormatOptions());
 
     const syncPullOneBtn = document.getElementById('ux-sync-pull-one-btn');
     if (syncPullOneBtn && !syncPullOneBtn.dataset.listenerAttached) {

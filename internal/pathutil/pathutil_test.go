@@ -29,34 +29,68 @@ func TestNFC(t *testing.T) {
 	}
 }
 
-// TestCandidateForms mirrors the historical loudnessPathCandidates behaviour:
-// trimmed, cleaned, NFC and NFD forms, deduplicated, order preserved.
+// TestCandidateForms は期待値をリテラルで固定する。
+// 以前は本番と同じ手順（trim → Clean → NFC → NFD → dedupe）をテスト側で
+// 書き写して比較していたため、実装を変えると期待値も一緒に変わってしまい
+// 退行を検出できなかった。
+//
+// 濁点付き仮名は NFC が "ガ"(U+30AC) 1 文字、NFD が "カ"(U+30AB) +
+// 濁点(U+3099) の 2 文字になる。macOS のファイルシステムは NFD を返すため
+// 両形が候補に並ぶことが重要。
 func TestCandidateForms(t *testing.T) {
-	if got := CandidateForms("   "); got != nil {
-		t.Errorf("CandidateForms(blank) = %v, want nil", got)
+	// ソースが正規化されても壊れないようエスケープで書く。
+	const (
+		nfcKa = "\u30ac"       // ガ (NFC)
+		nfdKa = "\u30ab\u3099" // カ + 濁点符 (NFD)
+	)
+	cases := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{name: "blank", input: "   ", want: nil},
+		{name: "empty", input: "", want: nil},
+		{
+			// 前後空白 + 末尾スラッシュ付きの NFC 入力。
+			name:  "nfc with trailing slash and spaces",
+			input: "  /music/" + nfcKa + "/song.flac/  ",
+			want: []string{
+				"/music/" + nfcKa + "/song.flac/",
+				"/music/" + nfcKa + "/song.flac",
+				"/music/" + nfdKa + "/song.flac",
+			},
+		},
+		{
+			// NFD 入力。trimmed == cleaned == nfd なので候補は NFD と NFC の 2 件。
+			name:  "nfd input",
+			input: "/music/" + nfdKa + "/song.flac",
+			want: []string{
+				"/music/" + nfdKa + "/song.flac",
+				"/music/" + nfcKa + "/song.flac",
+			},
+		},
+		{
+			// ASCII のみ。NFC/NFD は cleaned と同一なので dedupe されて 2 件。
+			name:  "ascii needing clean",
+			input: "/a/b/../c/song.mp3",
+			want: []string{
+				"/a/b/../c/song.mp3",
+				"/a/c/song.mp3",
+			},
+		},
+		{
+			// すでに正規形の ASCII は 1 件だけ。
+			name:  "ascii already clean",
+			input: "/a/c/song.mp3",
+			want:  []string{"/a/c/song.mp3"},
+		},
 	}
-
-	raw := "  /music/ガ/song.flac/  " // NFC input with trailing slash + spaces
-	got := CandidateForms(raw)
-	trimmed := "/music/ガ/song.flac/"
-	cleaned := filepath.Clean(trimmed)
-	nfc := norm.NFC.String(cleaned)
-	nfd := norm.NFD.String(cleaned)
-
-	want := make([]string, 0, 4)
-	seen := map[string]struct{}{}
-	for _, c := range []string{trimmed, cleaned, nfc, nfd} {
-		if c == "" {
-			continue
-		}
-		if _, ok := seen[c]; ok {
-			continue
-		}
-		seen[c] = struct{}{}
-		want = append(want, c)
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("CandidateForms(%q) = %v, want %v", raw, got, want)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := CandidateForms(tc.input); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("CandidateForms(%q) = %#v, want %#v", tc.input, got, tc.want)
+			}
+		})
 	}
 }
 

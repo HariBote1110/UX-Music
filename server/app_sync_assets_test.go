@@ -479,6 +479,7 @@ func TestPushSyncLibraryAssetsUploadsLocalTrackToRemotePeer(t *testing.T) {
 		t.Fatalf("seed library: %v", err)
 	}
 
+	observer := &handlerObserver{}
 	var observedToken string
 	var observedSourceDeviceID string
 	var observedTrackID string
@@ -490,22 +491,30 @@ func TestPushSyncLibraryAssetsUploadsLocalTrackToRemotePeer(t *testing.T) {
 		case "/sync/library/import":
 			observedToken = r.Header.Get("X-UX-Music-Sync-Token")
 			if err := r.ParseMultipartForm(32 << 20); err != nil {
-				t.Fatalf("parse multipart: %v", err)
+				observer.errorf("parse multipart: %v", err)
+				http.Error(w, "bad multipart", http.StatusBadRequest)
+				return
 			}
 			var req syncLibraryImportRequest
 			if err := json.Unmarshal([]byte(r.FormValue("metadata")), &req); err != nil {
-				t.Fatalf("decode metadata: %v", err)
+				observer.errorf("decode metadata: %v", err)
+				http.Error(w, "bad metadata", http.StatusBadRequest)
+				return
 			}
 			observedSourceDeviceID = req.SourceDeviceID
 			observedTrackID = syncTrackID(req.Track)
 			file, _, err := r.FormFile("file")
 			if err != nil {
-				t.Fatalf("read file part: %v", err)
+				observer.errorf("read file part: %v", err)
+				http.Error(w, "missing file part", http.StatusBadRequest)
+				return
 			}
 			defer file.Close()
 			payload, err := io.ReadAll(file)
 			if err != nil {
-				t.Fatalf("read payload: %v", err)
+				observer.errorf("read payload: %v", err)
+				http.Error(w, "unreadable payload", http.StatusBadRequest)
+				return
 			}
 			observedBytes = string(payload)
 			writeJSON(w, syncLibraryImportResponse{Imported: true, Path: `C:\SyncLibrary\local.flac`})
@@ -516,6 +525,7 @@ func TestPushSyncLibraryAssetsUploadsLocalTrackToRemotePeer(t *testing.T) {
 	defer remote.Close()
 
 	result, err := NewApp().PushSyncLibraryAssets(remote.URL, 0)
+	observer.assertNoErrors(t)
 	if err != nil {
 		t.Fatalf("PushSyncLibraryAssets: %v", err)
 	}
@@ -577,39 +587,48 @@ func TestPushSyncLibraryAssetsIncludesMetadataArtworkAndPlayCount(t *testing.T) 
 		t.Fatalf("seed playcounts: %v", err)
 	}
 
+	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sync/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
 		case "/sync/library/import":
 			if err := r.ParseMultipartForm(32 << 20); err != nil {
-				t.Fatalf("parse multipart: %v", err)
+				observer.errorf("parse multipart: %v", err)
+				http.Error(w, "bad multipart", http.StatusBadRequest)
+				return
 			}
 			var req syncLibraryImportRequest
 			if err := json.Unmarshal([]byte(r.FormValue("metadata")), &req); err != nil {
-				t.Fatalf("decode metadata: %v", err)
+				observer.errorf("decode metadata: %v", err)
+				http.Error(w, "bad metadata", http.StatusBadRequest)
+				return
 			}
 			if req.Track["title"] != "Local Song" || req.Track["artist"] != "Artist" || req.Track["album"] != "Album" || req.Track["albumartist"] != "Album Artist" {
-				t.Fatalf("metadata was not preserved: %#v", req.Track)
+				observer.errorf("metadata was not preserved: %#v", req.Track)
 			}
 			if req.Track["trackNumber"] != float64(7) || req.Track["discNumber"] != float64(1) || req.Track["genre"] != "Rock" || req.Track["year"] != float64(2026) {
-				t.Fatalf("numeric metadata was not preserved: %#v", req.Track)
+				observer.errorf("numeric metadata was not preserved: %#v", req.Track)
 			}
 			playCount, _ := req.Track["syncPlayCount"].(map[string]interface{})
 			if playCount["count"] != float64(4) {
-				t.Fatalf("expected playcount metadata, got %#v", req.Track)
+				observer.errorf("expected playcount metadata, got %#v", req.Track)
 			}
 			artwork, _, err := r.FormFile("artwork")
 			if err != nil {
-				t.Fatalf("expected artwork part: %v", err)
+				observer.errorf("expected artwork part: %v", err)
+				http.Error(w, "missing artwork part", http.StatusBadRequest)
+				return
 			}
 			defer artwork.Close()
 			artworkBytes, err := io.ReadAll(artwork)
 			if err != nil {
-				t.Fatalf("read artwork: %v", err)
+				observer.errorf("read artwork: %v", err)
+				http.Error(w, "unreadable artwork", http.StatusBadRequest)
+				return
 			}
 			if string(artworkBytes) != "cover-bytes" {
-				t.Fatalf("unexpected artwork bytes %q", string(artworkBytes))
+				observer.errorf("unexpected artwork bytes %q", string(artworkBytes))
 			}
 			writeJSON(w, syncLibraryImportResponse{Imported: true, Path: `C:\SyncLibrary\local.flac`})
 		default:
@@ -619,6 +638,7 @@ func TestPushSyncLibraryAssetsIncludesMetadataArtworkAndPlayCount(t *testing.T) 
 	defer remote.Close()
 
 	result, err := NewApp().PushSyncLibraryAssets(remote.URL, 0)
+	observer.assertNoErrors(t)
 	if err != nil {
 		t.Fatalf("PushSyncLibraryAssets: %v", err)
 	}
@@ -687,20 +707,7 @@ func TestSyncLibraryImportAppliesUploadedArtworkAndPlayCount(t *testing.T) {
 		t.Fatalf("load library: %v", err)
 	}
 	imported := library[0].(map[string]interface{})
-	artworkMap, _ := imported["artwork"].(map[string]interface{})
-	if artworkMap["full"] == "" || artworkMap["thumbnail"] == "" {
-		t.Fatalf("expected imported artwork reference, got %#v", imported)
-	}
-	for _, key := range []string{"full", "thumbnail"} {
-		name, _ := artworkMap[key].(string)
-		path := filepath.Join(config.GetUserDataPath(), "Artworks", name)
-		if key == "thumbnail" {
-			path = filepath.Join(config.GetUserDataPath(), "Artworks", "thumbnails", name)
-		}
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected %s artwork file %q: %v", key, path, err)
-		}
-	}
+	requireSyncArtworkFiles(t, imported, "uploaded import")
 	importedPath, _ := imported["path"].(string)
 	counts, err := store.Instance.LoadMap("playcounts")
 	if err != nil {
@@ -747,6 +754,7 @@ func TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320(t *testing.T
 	}
 	t.Cleanup(func() { syncOpenMP3Stream = originalOpen })
 
+	observer := &handlerObserver{}
 	var observedFileName string
 	var observedFileType string
 	var observedEncoding string
@@ -758,24 +766,32 @@ func TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320(t *testing.T
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
 		case "/sync/library/import":
 			if err := r.ParseMultipartForm(32 << 20); err != nil {
-				t.Fatalf("parse multipart: %v", err)
+				observer.errorf("parse multipart: %v", err)
+				http.Error(w, "bad multipart", http.StatusBadRequest)
+				return
 			}
 			var req syncLibraryImportRequest
 			if err := json.Unmarshal([]byte(r.FormValue("metadata")), &req); err != nil {
-				t.Fatalf("decode metadata: %v", err)
+				observer.errorf("decode metadata: %v", err)
+				http.Error(w, "bad metadata", http.StatusBadRequest)
+				return
 			}
 			observedFileType, _ = req.Track["fileType"].(string)
 			observedEncoding, _ = req.Track["syncTransferEncoding"].(string)
 			observedBitrate, _ = req.Track["audioBitrateKbps"].(float64)
 			file, header, err := r.FormFile("file")
 			if err != nil {
-				t.Fatalf("read file part: %v", err)
+				observer.errorf("read file part: %v", err)
+				http.Error(w, "missing file part", http.StatusBadRequest)
+				return
 			}
 			defer file.Close()
 			observedFileName = header.Filename
 			payload, err := io.ReadAll(file)
 			if err != nil {
-				t.Fatalf("read payload: %v", err)
+				observer.errorf("read payload: %v", err)
+				http.Error(w, "unreadable payload", http.StatusBadRequest)
+				return
 			}
 			observedBytes = string(payload)
 			writeJSON(w, syncLibraryImportResponse{Imported: true, Path: `C:\SyncLibrary\local.mp3`})
@@ -788,6 +804,7 @@ func TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320(t *testing.T
 	result, err := NewApp().PushSyncLibraryAssetsWithOptions(remote.URL, 0, SyncTransferOptions{
 		EncodingMode: syncTransferEncodingMP3320,
 	})
+	observer.assertNoErrors(t)
 	if err != nil {
 		t.Fatalf("PushSyncLibraryAssetsWithOptions: %v", err)
 	}
@@ -827,12 +844,31 @@ func TestPushSyncLibraryAssetsWithOptionsStreamsMP3EncodingIntoUpload(t *testing
 	uploadSawFirstBytes := make(chan struct{})
 	var finishEncoderOnce sync.Once
 	finishEncoder := func() { finishEncoderOnce.Do(func() { close(encoderCanFinish) }) }
+	var uploadSawFirstBytesOnce sync.Once
+	signalUploadSawFirstBytes := func() { uploadSawFirstBytesOnce.Do(func() { close(uploadSawFirstBytes) }) }
+	observer := &handlerObserver{}
+	// failUpload はハンドラー／エンコーダー側の異常を記録したうえで、待ち受け側と
+	// エンコーダーの両方を解放する。
+	//   - 待ち受け側を解放しないとテストは 2 秒待ってから「mp3 が届かない」という
+	//     無関係な理由で落ち、本当の失敗理由が見えなくなる。
+	//   - エンコーダーを解放しないと push 側がリクエストボディを送り切れず、
+	//     ハンドラー復帰後にサーバーが残りのボディを読み切ろうとする段階で
+	//     remote.Close() ごと止まる（finishEncoder は t.Cleanup 実行時、つまり
+	//     defer remote.Close() より後にしか走らない）。
+	failUpload := func(format string, args ...interface{}) {
+		observer.errorf(format, args...)
+		signalUploadSawFirstBytes()
+		finishEncoder()
+	}
 	var encoderFinishedMu sync.Mutex
 	encoderFinished := false
 	originalOpen := syncOpenMP3Stream
 	syncOpenMP3Stream = func(_ context.Context, inputPath string) (io.ReadCloser, func() error, error) {
+		// このフックは push を走らせている別ゴルーチンから呼ばれるため、
+		// t.Fatalf ではなく記録＋エラー返却で終わらせる。
 		if inputPath != audioPath {
-			t.Fatalf("unexpected transcode input %q", inputPath)
+			failUpload("unexpected transcode input %q", inputPath)
+			return nil, nil, errTestSyncTranscodeFailed
 		}
 		reader, writer := io.Pipe()
 		go func() {
@@ -858,7 +894,9 @@ func TestPushSyncLibraryAssetsWithOptionsStreamsMP3EncodingIntoUpload(t *testing
 		case "/sync/library/import":
 			_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if err != nil {
-				t.Fatalf("parse content type: %v", err)
+				failUpload("parse content type: %v", err)
+				http.Error(w, "bad content type", http.StatusBadRequest)
+				return
 			}
 			multipartReader := multipart.NewReader(r.Body, params["boundary"])
 			for {
@@ -867,7 +905,9 @@ func TestPushSyncLibraryAssetsWithOptionsStreamsMP3EncodingIntoUpload(t *testing
 					break
 				}
 				if err != nil {
-					t.Fatalf("next part: %v", err)
+					failUpload("next part: %v", err)
+					http.Error(w, "bad multipart", http.StatusBadRequest)
+					return
 				}
 				if part.FormName() != "file" {
 					_, _ = io.Copy(io.Discard, part)
@@ -875,25 +915,35 @@ func TestPushSyncLibraryAssetsWithOptionsStreamsMP3EncodingIntoUpload(t *testing
 				}
 				buf := make([]byte, 4)
 				if _, err := io.ReadFull(part, buf); err != nil {
-					t.Fatalf("read first upload bytes: %v", err)
+					failUpload("read first upload bytes: %v", err)
+					http.Error(w, "unreadable payload", http.StatusBadRequest)
+					return
 				}
 				if string(buf) != "mp3-" {
-					t.Fatalf("unexpected first upload bytes %q", string(buf))
+					failUpload("unexpected first upload bytes %q", string(buf))
+					http.Error(w, "unexpected payload", http.StatusBadRequest)
+					return
 				}
 				encoderFinishedMu.Lock()
 				finishedBeforeFirstBytes := encoderFinished
 				encoderFinishedMu.Unlock()
 				if finishedBeforeFirstBytes {
-					t.Fatalf("expected upload to start before mp3 encoder finished")
+					failUpload("expected upload to start before mp3 encoder finished")
+					http.Error(w, "upload started after encoder finished", http.StatusInternalServerError)
+					return
 				}
-				close(uploadSawFirstBytes)
+				signalUploadSawFirstBytes()
 				finishEncoder()
 				rest, err := io.ReadAll(part)
 				if err != nil {
-					t.Fatalf("read remaining upload: %v", err)
+					failUpload("read remaining upload: %v", err)
+					http.Error(w, "unreadable payload", http.StatusBadRequest)
+					return
 				}
 				if string(rest) != "stream" {
-					t.Fatalf("unexpected remaining upload bytes %q", string(rest))
+					failUpload("unexpected remaining upload bytes %q", string(rest))
+					http.Error(w, "unexpected payload", http.StatusBadRequest)
+					return
 				}
 			}
 			writeJSON(w, syncLibraryImportResponse{Imported: true, Path: `C:\SyncLibrary\local.mp3`})
@@ -914,14 +964,20 @@ func TestPushSyncLibraryAssetsWithOptionsStreamsMP3EncodingIntoUpload(t *testing
 	select {
 	case <-uploadSawFirstBytes:
 	case <-time.After(2 * time.Second):
+		// タイムアウトより先にハンドラー側の記録を吐き出す。
+		// そちらが本当の失敗理由であることが多い。
+		observer.assertNoErrors(t)
 		t.Fatalf("upload did not receive mp3 bytes while encoder stream was still open")
 	}
+	observer.assertNoErrors(t)
 	select {
 	case err := <-done:
+		observer.assertNoErrors(t)
 		if err != nil {
 			t.Fatalf("PushSyncLibraryAssetsWithOptions: %v", err)
 		}
 	case <-time.After(2 * time.Second):
+		observer.assertNoErrors(t)
 		t.Fatalf("push did not finish after encoder stream completed")
 	}
 }
@@ -952,13 +1008,16 @@ func TestPushSyncLibraryAssetsEmitsTransferProgressWithFileAndSpeed(t *testing.T
 	}
 	t.Cleanup(func() { syncTransferProgressSink = originalSink })
 
+	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sync/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
 		case "/sync/library/import":
 			if _, err := io.Copy(io.Discard, r.Body); err != nil {
-				t.Fatalf("read request: %v", err)
+				observer.errorf("read request: %v", err)
+				http.Error(w, "unreadable request", http.StatusBadRequest)
+				return
 			}
 			writeJSON(w, syncLibraryImportResponse{Imported: true, Path: `C:\SyncLibrary\local.flac`})
 		default:
@@ -967,8 +1026,10 @@ func TestPushSyncLibraryAssetsEmitsTransferProgressWithFileAndSpeed(t *testing.T
 	}))
 	defer remote.Close()
 
-	if _, err := NewApp().PushSyncLibraryAssetsWithOptions(remote.URL, 1, SyncTransferOptions{}); err != nil {
-		t.Fatalf("PushSyncLibraryAssetsWithOptions: %v", err)
+	_, pushErr := NewApp().PushSyncLibraryAssetsWithOptions(remote.URL, 1, SyncTransferOptions{})
+	observer.assertNoErrors(t)
+	if pushErr != nil {
+		t.Fatalf("PushSyncLibraryAssetsWithOptions: %v", pushErr)
 	}
 
 	var uploading *SyncTransferProgress
@@ -1278,10 +1339,7 @@ func TestSyncMissingArtworkFromPeerContinuesAfterTrackError(t *testing.T) {
 	if _, exists := first["artwork"]; exists {
 		t.Fatalf("failed track should not receive artwork: %#v", first)
 	}
-	artwork, _ := second["artwork"].(map[string]interface{})
-	if artwork["full"] == "" || artwork["thumbnail"] == "" {
-		t.Fatalf("expected second track artwork, got %#v", second)
-	}
+	requireSyncArtworkFiles(t, second, "second track artwork backfill")
 }
 
 func TestPullSyncLibraryAssetsRequestsPreferredMP3320WhenPeerSupportsIt(t *testing.T) {
@@ -1476,5 +1534,88 @@ func TestResetSyncTestDataKeepsPairingSettingsAndClearsManagedMusicState(t *test
 	wantLibraryPath := filepath.Join(userData, "SyncLibrary")
 	if settings["libraryPath"] != wantLibraryPath {
 		t.Fatalf("expected libraryPath to be reset to %q, got %#v", wantLibraryPath, settings["libraryPath"])
+	}
+}
+
+// ペアリング済みピアが送ってくる multipart filename と albumartist は
+// そのまま SyncLibrary 配下のパス組み立てに使われるため、traversal 文字列を
+// 与えても書き込み先が管理ルート配下から外に出ないことを固定する。
+// ※ ここで検証しているのは「現状の実際の挙動」。sanitiseFileName は "/" と "\"
+// を "_" に置換し、末尾の "." / " " を落とすだけで ".." そのものは残す。
+func TestSyncLibraryImportKeepsTraversalFilenamesUnderManagedRoot(t *testing.T) {
+	newTempSyncStore(t)
+	token := ensureSyncAuthTokenForDevice("dev_evil")
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	metadata, err := writer.CreateFormField("metadata")
+	if err != nil {
+		t.Fatalf("create metadata field: %v", err)
+	}
+	if err := json.NewEncoder(metadata).Encode(syncLibraryImportRequest{
+		SourceDeviceID:    "dev_evil",
+		SourceDisplayName: "../../../etc",
+		Track: map[string]interface{}{
+			"id":          "track-evil",
+			"title":       "Evil",
+			"artist":      "../../..",
+			"albumartist": "../../..",
+			"album":       "../..",
+			"fileType":    ".flac",
+		},
+	}); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	file, err := writer.CreateFormFile("file", "../evil.flac")
+	if err != nil {
+		t.Fatalf("create file field: %v", err)
+	}
+	if _, err := file.Write([]byte("evil-audio")); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/sync/library/import", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("X-UX-Music-Sync-Token", token)
+	rec := httptest.NewRecorder()
+	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d: %s", rec.Code, rec.Body.String())
+	}
+	var response syncLibraryImportResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !response.Imported || response.Path == "" {
+		t.Fatalf("unexpected import response: %#v", response)
+	}
+
+	managedRoot := filepath.Join(config.GetUserDataPath(), syncManagedLibraryDirName)
+	resolved, err := filepath.Abs(filepath.Clean(response.Path))
+	if err != nil {
+		t.Fatalf("resolve imported path: %v", err)
+	}
+	rootAbs, err := filepath.Abs(managedRoot)
+	if err != nil {
+		t.Fatalf("resolve managed root: %v", err)
+	}
+	rel, err := filepath.Rel(rootAbs, resolved)
+	if err != nil {
+		t.Fatalf("relativise imported path: %v", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		t.Fatalf("import escaped the managed SyncLibrary root: root=%q path=%q rel=%q", rootAbs, resolved, rel)
+	}
+	if _, err := os.Stat(resolved); err != nil {
+		t.Fatalf("expected imported file to exist at %q: %v", resolved, err)
+	}
+	// 現状の挙動: 区切り文字は "_" になり、末尾のドットが落ちた形で 1 階層ずつに収まる。
+	// Go の multipart は Filename に filepath.Base を掛けるため "../evil.flac" は "evil.flac" になる。
+	wantRel := filepath.Join(".._.._.._etc", ".._.._", ".._", "evil.flac")
+	if rel != wantRel {
+		t.Fatalf("unexpected managed layout: got %q want %q", rel, wantRel)
 	}
 }

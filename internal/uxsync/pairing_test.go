@@ -5,6 +5,15 @@ import (
 	"time"
 )
 
+// ペアリングコードは両端末で同じ秘密から独立に導出されるため、導出式を変えると
+// 既存端末とペアリングできなくなる。ゴールデンベクタをリテラルで固定しておく。
+func TestPairingCode_goldenVector(t *testing.T) {
+	const want = "307102" // sha256("shared pairing secret")[0:4] を BigEndian uint32 で読み % 1000000
+	if got := PairingCode([]byte("shared pairing secret")); got != want {
+		t.Fatalf("PairingCode derivation changed: got %q want %q", got, want)
+	}
+}
+
 func TestPairingCode_isStableSixDigitCode(t *testing.T) {
 	code := PairingCode([]byte("shared pairing secret"))
 

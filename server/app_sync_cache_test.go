@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 )
 
@@ -254,4 +255,25 @@ func syncCacheSeedImportedFile(t *testing.T, id, title string) string {
 		t.Fatalf("seed library: %v", err)
 	}
 	return path
+}
+
+// 取り込み済みトラックの配置は SyncLibrary/<表示名>/<アーティスト>/<アルバム>/<ファイル名>。
+// このレイアウトはキャッシュの再スキャンや LRU 削除、既存ユーザーのディスク上の
+// 資産と結びついているため、レイアウト関数ではなくリテラルで固定する。
+// （他のテストは可読性のため syncCacheExpectedPath ヘルパーを使い続ける。）
+func TestSyncManagedTrackDestinationUsesLiteralSyncLibraryLayout(t *testing.T) {
+	newTempSyncStore(t)
+	got := syncManagedTrackDestination(
+		syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini"},
+		syncCacheRemoteTrack("remote-recent", "Recent"),
+		"remote-recent.flac",
+	)
+	rel, err := filepath.Rel(config.GetUserDataPath(), got)
+	if err != nil {
+		t.Fatalf("relativise managed path: %v", err)
+	}
+	want := filepath.Join("SyncLibrary", "Mac mini", "Artist", "Album", "remote-recent.flac")
+	if rel != want {
+		t.Fatalf("managed library layout changed: got %q want %q", rel, want)
+	}
 }

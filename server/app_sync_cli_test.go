@@ -19,6 +19,7 @@ func TestRunSyncCLIPairStoresTokenAndKnownPeer(t *testing.T) {
 	}
 
 	var confirmed bool
+	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sync/identity":
@@ -38,10 +39,14 @@ func TestRunSyncCLIPairStoresTokenAndKnownPeer(t *testing.T) {
 		case "/sync/pairing/confirm":
 			var req syncPairingConfirmRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("decode confirm request: %v", err)
+				observer.errorf("decode confirm request: %v", err)
+				http.Error(w, "bad confirm request", http.StatusBadRequest)
+				return
 			}
 			if req.SessionID != "sess_mac_1" || req.Code != "123456" {
-				t.Fatalf("unexpected confirm request: %#v", req)
+				observer.errorf("unexpected confirm request: %#v", req)
+				http.Error(w, "unexpected confirm request", http.StatusBadRequest)
+				return
 			}
 			confirmed = true
 			writeJSON(w, syncPairingConfirmResponse{
@@ -55,6 +60,7 @@ func TestRunSyncCLIPairStoresTokenAndKnownPeer(t *testing.T) {
 	defer remote.Close()
 
 	handled, err := RunSyncCLI([]string{"--sync-pair", remote.URL})
+	observer.assertNoErrors(t)
 	if err != nil {
 		t.Fatalf("sync pair cli: %v", err)
 	}
@@ -96,6 +102,7 @@ func TestRunSyncCLIAutoOnceRunsAutoSyncPairedDevices(t *testing.T) {
 	}
 
 	var observedEvents []uxsync.PlayEvent
+	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sync/identity":
@@ -107,7 +114,9 @@ func TestRunSyncCLIAutoOnceRunsAutoSyncPairedDevices(t *testing.T) {
 			}
 			var req syncLibraryEventsRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("decode events: %v", err)
+				observer.errorf("decode events: %v", err)
+				http.Error(w, "bad events payload", http.StatusBadRequest)
+				return
 			}
 			observedEvents = req.PlayEvents
 			writeJSON(w, syncLibraryEventsResponse{Accepted: len(req.PlayEvents), Ack: uxsync.EventAck{DeviceID: req.DeviceID, MaxDeviceSequence: 1}})
@@ -125,6 +134,7 @@ func TestRunSyncCLIAutoOnceRunsAutoSyncPairedDevices(t *testing.T) {
 	}
 
 	handled, err := RunSyncCLI([]string{"--sync-auto-once"})
+	observer.assertNoErrors(t)
 	if err != nil {
 		t.Fatalf("sync auto once cli: %v", err)
 	}

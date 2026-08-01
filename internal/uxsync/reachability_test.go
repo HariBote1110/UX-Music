@@ -1,11 +1,41 @@
 package uxsync
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 )
+
+// handlerObserver は httptest ハンドラーゴルーチンからの観測結果を溜める。
+// ハンドラー内で t.Fatalf を呼ぶと FailNow がテスト外ゴルーチンで走り、応答を
+// 返さないままハンドラーが終了して無関係な失敗に化けるため、記録だけ行い
+// テストゴルーチン側で assertNoErrors する。
+type handlerObserver struct {
+	mu     sync.Mutex
+	errors []string
+}
+
+func (o *handlerObserver) errorf(format string, args ...interface{}) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.errors = append(o.errors, fmt.Sprintf(format, args...))
+}
+
+func (o *handlerObserver) assertNoErrors(t *testing.T) {
+	t.Helper()
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if len(o.errors) == 0 {
+		return
+	}
+	for _, message := range o.errors {
+		t.Errorf("handler goroutine: %s", message)
+	}
+	t.FailNow()
+}
 
 func TestMDNSPeerCandidateBaseURLs_includesAllHostsInOrder(t *testing.T) {
 	peer := MDNSPeer{
@@ -25,9 +55,12 @@ func TestMDNSPeerCandidateBaseURLs_includesAllHostsInOrder(t *testing.T) {
 }
 
 func TestResolveReachablePeer_selectsFirstResponsiveCandidate(t *testing.T) {
+	observer := &handlerObserver{}
 	okServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/sync/identity" {
-			t.Fatalf("unexpected probe path: %s", r.URL.Path)
+			observer.errorf("unexpected probe path: %s", r.URL.Path)
+			http.Error(w, "unexpected probe path", http.StatusNotFound)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"role":"ux-music-sync"}`))
@@ -42,6 +75,7 @@ func TestResolveReachablePeer_selectsFirstResponsiveCandidate(t *testing.T) {
 	peer.Hosts = append(peer.Hosts, hostPortFromURL(t, okServer.URL))
 
 	resolved, err := ResolveReachablePeer(peer, nil)
+	observer.assertNoErrors(t)
 	if err != nil {
 		t.Fatalf("expected reachable peer: %v", err)
 	}

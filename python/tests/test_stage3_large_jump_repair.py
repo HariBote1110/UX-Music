@@ -2,9 +2,25 @@
 
 from __future__ import annotations
 
-import numpy as np
+import pytest
 
-from lyrics_sync import stage3_align
+from lyrics_sync import embeddings, stage3_align
+
+_FALLBACK = embeddings._FallbackModel()
+
+
+def _encode(texts: list[str], *, prefix: str):
+    """本番 ``embeddings._encode`` と同じ前処理で決定論的なベクトルを作る。
+
+    ゼロ行列を渡すと ``cosine_metrics`` が常に 0 になり、照合の主信号が消えてしまう。
+    オフラインでも動く fallback モデルを使って、区別のつく埋め込みで検証する。
+    """
+    return _FALLBACK.encode(
+        [f"{prefix}: {(t or '').strip()}" for t in texts],
+        convert_to_numpy=True,
+        show_progress_bar=False,
+        normalize_embeddings=True,
+    )
 
 
 def test_repair_large_jump_snap_targets_next_matched_line():
@@ -25,7 +41,7 @@ def test_repair_large_jump_snap_targets_next_matched_line():
     stage3_align._repair_large_jump_snap(rows, lines, segments, seg_texts)
 
     assert rows[3]["timestamp"] == 24.0
-    assert rows[3]["confidence"] <= 0.72
+    assert rows[3]["confidence"] == pytest.approx(0.72)
 
 
 def test_repair_isolated_gap_tail_snaps_previous_row():
@@ -46,7 +62,7 @@ def test_repair_isolated_gap_tail_snaps_previous_row():
     stage3_align._repair_isolated_gap_tail(rows, lines, segments, seg_texts)
 
     assert rows[1]["timestamp"] == 60.0
-    assert rows[1]["confidence"] <= 0.72
+    assert rows[1]["confidence"] == pytest.approx(0.72)
 
 
 def test_enforce_monotone_progress_raises_backwards_rows():
@@ -59,20 +75,34 @@ def test_enforce_monotone_progress_raises_backwards_rows():
     stage3_align._enforce_monotone_progress(rows)
 
     assert rows[1]["timestamp"] == 80.52
-    assert rows[1]["confidence"] <= 0.72
+    assert rows[1]["confidence"] == pytest.approx(0.72)
     assert rows[2]["timestamp"] == 82.52
-    assert rows[2]["confidence"] <= 0.72
+    assert rows[2]["confidence"] == pytest.approx(0.72)
+
+
+def test_repair_confidence_clamp_never_raises_an_already_low_confidence():
+    """0.72 は上限クランプであって代入ではない（``min(..., 0.72)`` の下側を固定する）。"""
+    rows = [
+        {"timestamp": 78.52, "source": "match", "confidence": 0.8},
+        {"timestamp": 67.22, "source": "match", "confidence": 0.31},
+    ]
+
+    stage3_align._enforce_monotone_progress(rows)
+
+    assert rows[1]["timestamp"] == 80.52
+    assert rows[1]["confidence"] == pytest.approx(0.31)
 
 
 def test_monotone_ranges_prefers_closer_repeat_candidate(monkeypatch):
     monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_TIME_WEIGHT", "0.5")
     monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "0.0")
     lines = ["repeat me", "repeat me"]
-    line_embs = np.zeros((2, 2), dtype=float)
-    seg_embs = np.zeros((3, 2), dtype=float)
-    seg_texts = ["repeat me", "repeat me", "repeat me"]
-    seg_starts = [10.0, 14.0, 30.0]
+    # 先頭に無関係なイントロ段を挟み、正解が恒等写像 (i, i) と一致しないようにする。
+    seg_texts = ["intro chatter", "repeat me", "repeat me", "repeat me"]
+    seg_starts = [2.0, 10.0, 14.0, 30.0]
     repeat_counts = {"repeat me": 2}
+    line_embs = _encode(lines, prefix="query")
+    seg_embs = _encode(seg_texts, prefix="passage")
 
     ranges = stage3_align._monotone_greedy_ranges(
         lines,
@@ -83,8 +113,10 @@ def test_monotone_ranges_prefers_closer_repeat_candidate(monkeypatch):
         repeat_counts,
     )
 
-    assert ranges[0] == (0, 0)
-    assert ranges[1] == (1, 1)
+    # 1 行目は無関係なイントロを飛ばして最初の "repeat me" へ。
+    assert ranges[0] == (1, 1)
+    # 2 行目は 30.0 の遠い繰り返しではなく、直近 14.0 の出現を選ぶ。
+    assert ranges[1] == (2, 2)
 
 
 def test_monotone_ranges_allows_small_repeat_rewind(monkeypatch):
@@ -92,11 +124,11 @@ def test_monotone_ranges_allows_small_repeat_rewind(monkeypatch):
     monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "0.0")
     monkeypatch.setenv("UX_MUSIC_REPEAT_REWIND_LIMIT_SECONDS", "18.0")
     lines = ["anchor", "repeat me", "repeat me"]
-    line_embs = np.zeros((3, 2), dtype=float)
-    seg_embs = np.zeros((3, 2), dtype=float)
     seg_texts = ["repeat me", "anchor", "repeat me"]
     seg_starts = [10.0, 14.0, 30.0]
     repeat_counts = {"repeat me": 2, "anchor": 1}
+    line_embs = _encode(lines, prefix="query")
+    seg_embs = _encode(seg_texts, prefix="passage")
 
     ranges = stage3_align._monotone_greedy_ranges(
         lines,
@@ -108,6 +140,7 @@ def test_monotone_ranges_allows_small_repeat_rewind(monkeypatch):
     )
 
     assert ranges[0] == (1, 1)
+    # 小さな巻き戻り（14.0 → 10.0）は許容され、遠い 30.0 へは吸われない。
     assert ranges[1] == (0, 0)
 
 
@@ -115,12 +148,13 @@ def test_monotone_ranges_keeps_earlier_repeat_over_exact_late_match(monkeypatch)
     monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_TIME_WEIGHT", "0.5")
     monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "0.0")
     monkeypatch.setenv("UX_MUSIC_REPEAT_REWIND_LIMIT_SECONDS", "18.0")
-    lines = ["anchor", "たとえあしたが見えず不可能だって", "たとえあしたが見えず不可能だって"]
-    line_embs = np.zeros((3, 2), dtype=float)
-    seg_embs = np.zeros((3, 2), dtype=float)
-    seg_texts = ["anchor", "たとえあしたが見えず不可能だって", "たとえあしたが見えず不可能だって"]
-    seg_starts = [64.6, 67.2, 160.94]
-    repeat_counts = {"anchor": 1, "たとえあしたが見えず不可能だって": 2}
+    chorus = "たとえあしたが見えず不可能だって"
+    lines = ["anchor", chorus, chorus]
+    seg_texts = ["イントロのざわめき", "anchor", chorus, chorus]
+    seg_starts = [60.0, 64.6, 67.2, 160.94]
+    repeat_counts = {"anchor": 1, chorus: 2}
+    line_embs = _encode(lines, prefix="query")
+    seg_embs = _encode(seg_texts, prefix="passage")
 
     ranges = stage3_align._monotone_greedy_ranges(
         lines,
@@ -131,8 +165,9 @@ def test_monotone_ranges_keeps_earlier_repeat_over_exact_late_match(monkeypatch)
         repeat_counts,
     )
 
-    assert ranges[0] == (0, 0)
-    assert ranges[1] == (1, 1)
+    assert ranges[0] == (1, 1)
+    # 完全一致する 160.94 の後半サビではなく、直後 67.2 の早い出現を保つ。
+    assert ranges[1] == (2, 2)
 
 
 def test_monotone_ranges_keeps_first_window_for_repeated_line(monkeypatch):
@@ -145,11 +180,11 @@ def test_monotone_ranges_keeps_first_window_for_repeated_line(monkeypatch):
     monkeypatch.setenv("UX_MUSIC_REPEAT_REWIND_LIMIT_SECONDS", "18.0")
 
     lines = ["anchor", "repeat me"]
-    seg_texts = ["anchor", "repeat x", "filler", "repeat me"]
-    seg_starts = [10.0, 12.0, 16.0, 20.0]
+    seg_texts = ["intro noise", "anchor", "repeat x", "filler", "repeat me"]
+    seg_starts = [6.0, 10.0, 12.0, 16.0, 20.0]
     repeat_counts = {"anchor": 1, "repeat me": 2}
-    line_embs = np.zeros((2, 2), dtype=float)
-    seg_embs = np.zeros((4, 2), dtype=float)
+    line_embs = _encode(lines, prefix="query")
+    seg_embs = _encode(seg_texts, prefix="passage")
 
     ranges = stage3_align._monotone_greedy_ranges(
         lines,
@@ -160,8 +195,9 @@ def test_monotone_ranges_keeps_first_window_for_repeated_line(monkeypatch):
         repeat_counts,
     )
 
-    assert ranges[0] == (0, 0)
-    assert ranges[1] == (1, 1)
+    assert ranges[0] == (1, 1)
+    # 最初の窓 [2,4) で十分なスコアが出るので、完全一致の "repeat me"(index 4) までは広げない。
+    assert ranges[1] == (2, 2)
 
 
 def test_monotone_ranges_stops_rescanning_when_repeat_gap_is_large(monkeypatch):
@@ -174,11 +210,11 @@ def test_monotone_ranges_stops_rescanning_when_repeat_gap_is_large(monkeypatch):
     monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_RESCAN_MAX_GAP_SECONDS", "3.0")
 
     lines = ["anchor", "repeat me"]
-    seg_texts = ["anchor", "repeat x", "filler", "repeat me"]
-    seg_starts = [10.0, 15.0, 18.0, 25.0]
+    seg_texts = ["intro noise", "anchor", "repeat x", "filler", "repeat me"]
+    seg_starts = [6.0, 10.0, 15.0, 18.0, 25.0]
     repeat_counts = {"anchor": 1, "repeat me": 2}
-    line_embs = np.zeros((2, 2), dtype=float)
-    seg_embs = np.zeros((4, 2), dtype=float)
+    line_embs = _encode(lines, prefix="query")
+    seg_embs = _encode(seg_texts, prefix="passage")
 
     ranges = stage3_align._monotone_greedy_ranges(
         lines,
@@ -189,8 +225,8 @@ def test_monotone_ranges_stops_rescanning_when_repeat_gap_is_large(monkeypatch):
         repeat_counts,
     )
 
-    assert ranges[0] == (0, 0)
-    assert ranges[1] == (1, 1)
+    assert ranges[0] == (1, 1)
+    assert ranges[1] == (2, 2)
 
 
 def test_monotone_ranges_does_not_rescan_middle_repeat_line(monkeypatch):
@@ -202,11 +238,11 @@ def test_monotone_ranges_does_not_rescan_middle_repeat_line(monkeypatch):
     monkeypatch.setenv("UX_MUSIC_SYNC_REPEAT_STEP_TOLERANCE_SECONDS", "0.0")
 
     lines = ["anchor", "repeat me", "repeat me"]
-    seg_texts = ["anchor", "repeat x", "filler", "repeat me"]
-    seg_starts = [10.0, 12.0, 16.0, 20.0]
+    seg_texts = ["intro noise", "anchor", "repeat x", "filler", "repeat me"]
+    seg_starts = [6.0, 10.0, 12.0, 16.0, 20.0]
     repeat_counts = {"anchor": 1, "repeat me": 2}
-    line_embs = np.zeros((3, 2), dtype=float)
-    seg_embs = np.zeros((4, 2), dtype=float)
+    line_embs = _encode(lines, prefix="query")
+    seg_embs = _encode(seg_texts, prefix="passage")
 
     ranges = stage3_align._monotone_greedy_ranges(
         lines,
@@ -217,9 +253,10 @@ def test_monotone_ranges_does_not_rescan_middle_repeat_line(monkeypatch):
         repeat_counts,
     )
 
-    assert ranges[0] == (0, 0)
-    assert ranges[1] == (1, 1)
-    assert ranges[2] == (3, 3)
+    assert ranges[0] == (1, 1)
+    assert ranges[1] == (2, 2)
+    # 中間の繰り返し行は再走査されず、末尾行だけが完全一致 index 4 へ進む。
+    assert ranges[2] == (4, 4)
 
 
 def test_repair_repeated_block_tail_extension_extends_only_tail(monkeypatch):
@@ -257,9 +294,9 @@ def test_repair_forward_drift_uses_skipped_segments_after_large_jump(monkeypatch
     stage3_align._repair_forward_drift_to_skipped_segments(rows, segments)
 
     assert rows[1]["timestamp"] == 44.0
-    assert rows[1]["confidence"] <= 0.72
+    assert rows[1]["confidence"] == pytest.approx(0.72)
     assert rows[2]["timestamp"] == 52.0
-    assert rows[2]["confidence"] <= 0.72
+    assert rows[2]["confidence"] == pytest.approx(0.72)
 
 
 def test_repair_forward_drift_handles_mid_sized_repeated_chorus_jump_when_tuned(monkeypatch):
@@ -283,7 +320,7 @@ def test_repair_forward_drift_handles_mid_sized_repeated_chorus_jump_when_tuned(
     assert rows[1]["timestamp"] == 163.0
     assert rows[2]["timestamp"] == 170.92
     assert rows[3]["timestamp"] == 177.22
-    assert rows[3]["confidence"] <= 0.72
+    assert rows[3]["confidence"] == pytest.approx(0.72)
 
 
 def test_repair_forward_drift_default_ignores_mid_sized_jump():
@@ -343,4 +380,4 @@ def test_repair_forward_drift_starts_from_early_segments(monkeypatch):
 
     assert rows[0]["timestamp"] == 24.0
     assert rows[1]["timestamp"] == 31.0
-    assert rows[1]["confidence"] <= 0.72
+    assert rows[1]["confidence"] == pytest.approx(0.72)

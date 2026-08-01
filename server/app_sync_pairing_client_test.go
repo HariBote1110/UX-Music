@@ -16,6 +16,7 @@ func TestStartSyncPairingCallsRemotePeerWithLocalDeviceID(t *testing.T) {
 	}
 
 	var observedStart syncPairingStartRequest
+	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sync/identity":
@@ -27,7 +28,9 @@ func TestStartSyncPairingCallsRemotePeerWithLocalDeviceID(t *testing.T) {
 		case "/sync/pairing/start":
 			var req syncPairingStartRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("decode start request: %v", err)
+				observer.errorf("decode start request: %v", err)
+				http.Error(w, "bad start request", http.StatusBadRequest)
+				return
 			}
 			observedStart = req
 			writeJSON(w, syncPairingStartResponse{
@@ -43,6 +46,7 @@ func TestStartSyncPairingCallsRemotePeerWithLocalDeviceID(t *testing.T) {
 	defer remote.Close()
 
 	started, err := (&App{}).StartSyncPairing(remote.URL + "/")
+	observer.assertNoErrors(t)
 	if err != nil {
 		t.Fatalf("start sync pairing: %v", err)
 	}
@@ -68,6 +72,7 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 	}
 
 	var observedConfirm syncPairingConfirmRequest
+	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sync/identity":
@@ -78,11 +83,15 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 		case "/sync/pairing/confirm":
 			var req syncPairingConfirmRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("decode confirm request: %v", err)
+				observer.errorf("decode confirm request: %v", err)
+				http.Error(w, "bad confirm request", http.StatusBadRequest)
+				return
 			}
 			observedConfirm = req
 			if req.SessionID != "sess_remote_1" || req.Code != "123456" {
-				t.Fatalf("unexpected confirm request: %#v", req)
+				observer.errorf("unexpected confirm request: %#v", req)
+				http.Error(w, "unexpected confirm request", http.StatusBadRequest)
+				return
 			}
 			writeJSON(w, syncPairingConfirmResponse{
 				DeviceID: "dev_local_mac",
@@ -95,6 +104,7 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 	defer remote.Close()
 
 	confirmed, err := (&App{}).ConfirmSyncPairing(remote.URL, "sess_remote_1", "123456", "dev_remote_pc")
+	observer.assertNoErrors(t)
 	if err != nil {
 		t.Fatalf("confirm sync pairing: %v", err)
 	}

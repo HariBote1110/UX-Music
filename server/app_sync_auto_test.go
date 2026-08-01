@@ -41,6 +41,23 @@ func TestSyncSongMatchKeyNormalisesMetadataAndDuration(t *testing.T) {
 	}
 }
 
+// syncSongMatchKey はデバイス間で曲を突き合わせるための識別子なので、
+// アルゴリズム（正規化 → "artist|album|title|duration" → SHA-1 hex）を
+// 変えると既存端末とマッチしなくなる。ゴールデン値をリテラルで固定し、
+// 意図しないフォーマット変更を検出する。値を書き換える＝互換性を壊す判断。
+func TestSyncSongMatchKeyGoldenValue(t *testing.T) {
+	got := syncSongMatchKey(map[string]interface{}{
+		"title":    "Song Title",
+		"artist":   "Artist",
+		"album":    "Album",
+		"duration": 180.0,
+	})
+	const want = "f38f971e3051520c718c3119a19ebdd535eae04a" // sha1("artist|album|song title|180")
+	if got != want {
+		t.Fatalf("syncSongMatchKey format changed: got %q want %q", got, want)
+	}
+}
+
 func TestSyncSongMatchKeyDistinguishesDifferentSongs(t *testing.T) {
 	first := syncSongMatchKey(map[string]interface{}{
 		"title":    "Song A",
@@ -133,6 +150,7 @@ func TestIncrementPlayCountTriggersImmediateSyncWhenPeerReachable(t *testing.T) 
 		"duration":          180.0,
 	}
 	received := make(chan []uxsync.PlayEvent, 1)
+	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sync/identity":
@@ -140,12 +158,14 @@ func TestIncrementPlayCountTriggersImmediateSyncWhenPeerReachable(t *testing.T) 
 		case "/sync/library/events":
 			var req syncLibraryEventsRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("decode events: %v", err)
+				observer.errorf("decode events: %v", err)
+				http.Error(w, "bad events payload", http.StatusBadRequest)
+				return
 			}
 			received <- req.PlayEvents
 			writeJSON(w, syncLibraryEventsResponse{
 				Accepted: len(req.PlayEvents),
-				Ack:     uxsync.EventAck{DeviceID: req.DeviceID, MaxDeviceSequence: 1, AckedEventIDs: eventIDs(req.PlayEvents)},
+				Ack:      uxsync.EventAck{DeviceID: req.DeviceID, MaxDeviceSequence: 1, AckedEventIDs: eventIDs(req.PlayEvents)},
 			})
 		default:
 			http.NotFound(w, r)
@@ -167,10 +187,12 @@ func TestIncrementPlayCountTriggersImmediateSyncWhenPeerReachable(t *testing.T) 
 
 	select {
 	case events := <-received:
+		observer.assertNoErrors(t)
 		if len(events) != 1 || events[0].DeviceID != "dev_air" || events[0].TrackID != "host-track-1" {
 			t.Fatalf("unexpected immediate sync events: %#v", events)
 		}
 	case <-time.After(500 * time.Millisecond):
+		observer.assertNoErrors(t)
 		t.Fatalf("expected playback to trigger immediate sync")
 	}
 }
@@ -194,6 +216,7 @@ func TestIncrementPlayCountImmediateSyncSkipsHeavyLibraryWork(t *testing.T) {
 	}
 	received := make(chan []uxsync.PlayEvent, 1)
 	unexpectedHeavyRequest := make(chan string, 1)
+	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sync/identity":
@@ -201,7 +224,9 @@ func TestIncrementPlayCountImmediateSyncSkipsHeavyLibraryWork(t *testing.T) {
 		case "/sync/library/events":
 			var req syncLibraryEventsRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("decode events: %v", err)
+				observer.errorf("decode events: %v", err)
+				http.Error(w, "bad events payload", http.StatusBadRequest)
+				return
 			}
 			received <- req.PlayEvents
 			writeJSON(w, syncLibraryEventsResponse{Accepted: len(req.PlayEvents), Ack: uxsync.EventAck{DeviceID: req.DeviceID, MaxDeviceSequence: 1}})
@@ -233,10 +258,12 @@ func TestIncrementPlayCountImmediateSyncSkipsHeavyLibraryWork(t *testing.T) {
 
 	select {
 	case events := <-received:
+		observer.assertNoErrors(t)
 		if len(events) != 1 || events[0].TrackID != "host-track-1" {
 			t.Fatalf("unexpected immediate sync events: %#v", events)
 		}
 	case <-time.After(500 * time.Millisecond):
+		observer.assertNoErrors(t)
 		t.Fatalf("expected playback to push play events")
 	}
 	select {
@@ -244,6 +271,7 @@ func TestIncrementPlayCountImmediateSyncSkipsHeavyLibraryWork(t *testing.T) {
 		t.Fatalf("immediate playback sync should only push play events, got request %s", path)
 	case <-time.After(200 * time.Millisecond):
 	}
+	observer.assertNoErrors(t)
 }
 
 func TestSyncLibraryEventsAppliesIncomingPlayCountsIdempotently(t *testing.T) {
@@ -526,6 +554,7 @@ func TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer(t *testing.T)
 
 	var observedToken string
 	var observedEvents []uxsync.PlayEvent
+	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/sync/identity":
@@ -534,7 +563,9 @@ func TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer(t *testing.T)
 			observedToken = r.Header.Get("X-UX-Music-Sync-Token")
 			var req syncLibraryEventsRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("decode events: %v", err)
+				observer.errorf("decode events: %v", err)
+				http.Error(w, "bad events payload", http.StatusBadRequest)
+				return
 			}
 			observedEvents = req.PlayEvents
 			writeJSON(w, syncLibraryEventsResponse{Accepted: len(req.PlayEvents), Ack: uxsync.EventAck{DeviceID: req.DeviceID, MaxDeviceSequence: 1}})
@@ -552,6 +583,7 @@ func TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer(t *testing.T)
 	}
 
 	result, err := NewApp().AutoSyncPairedDevices()
+	observer.assertNoErrors(t)
 	if err != nil {
 		t.Fatalf("AutoSyncPairedDevices: %v", err)
 	}
@@ -738,10 +770,19 @@ func countedEvent(eventID, deviceID, trackID, matchKey string, sequence int64) u
 	}
 }
 
+// setSyncTestStore は呼び出し側が用意した dir を userDataPath に差し込む。
+// newTempUserDataStore と同様、プロセスグローバルを書き換えるので終了時に
+// 直前の値へ戻す。戻さないと後続テストが削除済みパスを引き継ぐ。
 func setSyncTestStore(t *testing.T, dir string) {
 	t.Helper()
+	prevPath := config.GetUserDataPath()
+	prevStore := store.Instance
 	config.Instance.SetUserDataPath(dir)
 	store.Instance = &store.Store{}
+	t.Cleanup(func() {
+		config.SetUserDataPath(prevPath)
+		store.Instance = prevStore
+	})
 }
 
 func seedSyncDeviceAndLibrary(t *testing.T, deviceID string, song map[string]interface{}) {

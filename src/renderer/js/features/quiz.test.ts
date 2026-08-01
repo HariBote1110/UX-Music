@@ -1,97 +1,48 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * Minimal DOM stand-ins for the quiz view. Provides just enough of the
- * `HTMLElement` surface (classList, textContent, dataset, querySelector,
- * event listener registration) for quiz.ts to run without a real DOM/jsdom.
+ * jsdom の本物の DOM 上でクイズ画面を組み立てて検証する。
+ * 差し替えるのは以下だけ:
+ *  - HTMLMediaElement.play/pause（jsdom が未実装のため）
+ *  - core/state.js（ライブラリ内容をテストから決めたいため）
+ *  - window.electronAPI（Electron ブリッジ）
+ * 要素そのものは quiz.ts が生成した実マークアップをそのまま使う。
  */
-function createFakeElement(overrides: Record<string, unknown> = {}) {
-    const classes = new Set<string>();
-    const listeners: Record<string, Array<(...args: unknown[]) => void>> = {};
-    return {
-        classList: {
-            add: (c: string) => classes.add(c),
-            remove: (c: string) => classes.delete(c),
-            contains: (c: string) => classes.has(c),
-        },
-        textContent: '',
-        disabled: false,
-        dataset: {},
-        innerHTML: '',
-        src: '',
-        querySelector: () => createFakeElement(),
-        querySelectorAll: () => [],
-        appendChild: vi.fn(),
-        addEventListener: (type: string, fn: (...args: unknown[]) => void) => {
-            listeners[type] = listeners[type] ?? [];
-            listeners[type].push(fn);
-        },
-        _listeners: listeners,
-        ...overrides,
-    };
-}
-
 describe('stopQuiz cleanup', () => {
-    let audioPause: ReturnType<typeof vi.fn>;
-    let elementRegistry: Record<string, ReturnType<typeof createFakeElement>>;
-    let answerButtons: Array<ReturnType<typeof createFakeElement>>;
+    let audioPause: ReturnType<typeof vi.spyOn>;
+    let audioPlay: ReturnType<typeof vi.spyOn>;
+    let quizAudio: HTMLAudioElement | null;
+    let volumeSlider: HTMLInputElement;
 
     beforeEach(() => {
         vi.resetModules();
         vi.useFakeTimers();
 
-        audioPause = vi.fn();
-        answerButtons = [];
+        document.body.innerHTML = `
+            <div id="quiz-container"></div>
+            <audio id="main-player"></audio>
+        `;
 
-        // A fake Audio constructor: quiz.ts does `new Audio()` at module load time.
-        globalThis.Audio = vi.fn().mockImplementation(() => ({
-            pause: audioPause,
-            play: vi.fn(),
-            src: '',
-            currentTime: 0,
-            volume: 1,
-        })) as unknown as typeof Audio;
+        audioPlay = vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+        audioPause = vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
 
-        elementRegistry = {
-            'quiz-start-screen': createFakeElement(),
-            'quiz-game-screen': createFakeElement(),
-            'quiz-final-screen': createFakeElement(),
-            'quiz-start-btn': createFakeElement(),
-            'quiz-question-number': createFakeElement(),
-            'quiz-total-questions': createFakeElement(),
-            'quiz-timer': createFakeElement(),
-            'quiz-play-btn': createFakeElement({ querySelector: () => createFakeElement() }),
-            'quiz-answers': createFakeElement({ appendChild: (btn: ReturnType<typeof createFakeElement>) => {
-                answerButtons.push(btn);
-            } }),
-            'quiz-result': createFakeElement(),
-            'quiz-result-message': createFakeElement(),
-            'quiz-correct-artwork': createFakeElement(),
-            'quiz-correct-title': createFakeElement(),
-            'quiz-correct-artist': createFakeElement(),
-            'quiz-next-btn': createFakeElement(),
-            'quiz-retry-btn': createFakeElement(),
-            'quiz-final-score': createFakeElement(),
-            'quiz-final-total': createFakeElement(),
-            'quiz-final-avg-time': createFakeElement(),
-            'quiz-ranking-list': createFakeElement(),
+        // quiz.ts はモジュール読み込み時に `new Audio()` するので、
+        // 生成された実インスタンスを掴んでおく（生成物自体は本物の <audio>）。
+        quizAudio = null;
+        const RealAudio = window.Audio;
+        globalThis.Audio = vi.fn(() => {
+            const el = new RealAudio();
+            quizAudio = el;
+            return el;
+        }) as unknown as typeof Audio;
+
+        volumeSlider = document.createElement('input');
+        volumeSlider.type = 'range';
+        volumeSlider.value = '1';
+
+        (window as unknown as { electronAPI: unknown }).electronAPI = {
+            invoke: vi.fn(async () => []),
         };
-
-        globalThis.document = {
-            getElementById: (id: string) => elementRegistry[id] ?? null,
-            querySelector: (selector: string) => {
-                if (selector.includes('quiz-length')) return { value: '10' };
-                if (selector.includes('quiz-difficulty')) return { value: 'normal' };
-                return null;
-            },
-            createElement: () => createFakeElement(),
-        } as unknown as Document;
-
-        globalThis.window = {
-            electronAPI: { invoke: vi.fn() },
-        } as unknown as Window & typeof globalThis;
-
-        globalThis.performance = { now: () => Date.now() } as Performance;
 
         const fakeSongs = Array.from({ length: 6 }, (_, i) => ({
             id: `song-${i}`,
@@ -109,115 +60,214 @@ describe('stopQuiz cleanup', () => {
                 playCounts: {},
                 albums: new Map(),
             },
-            elements: {
-                volumeSlider: { value: '1', addEventListener: vi.fn() },
-            },
-        }));
-        vi.doMock('../ui/utils.js', () => ({
-            resolveArtworkPath: vi.fn(() => 'artwork.png'),
+            elements: { volumeSlider },
         }));
     });
 
     afterEach(() => {
         vi.useRealTimers();
         vi.restoreAllMocks();
+        document.body.innerHTML = '';
     });
+
+    function container(): HTMLElement {
+        return document.getElementById('quiz-container') as HTMLElement;
+    }
+
+    function el<T extends HTMLElement = HTMLElement>(id: string): T {
+        return document.getElementById(id) as T;
+    }
+
+    function isHidden(id: string): boolean {
+        return el(id).classList.contains('hidden');
+    }
+
+    function answerButtons(): HTMLButtonElement[] {
+        return Array.from(el('quiz-answers').querySelectorAll<HTMLButtonElement>('.answer-btn'));
+    }
+
+    /** 開始ボタン→再生ボタンと押して、スニペット再生タイマーが動く状態まで進める。 */
+    function startAndPlay(): void {
+        el<HTMLButtonElement>('quiz-start-btn').click();
+        // performance.now() はフェイクタイマー下では 0 始まりなので、
+        // startTime が falsy にならないよう時計を進めてから再生する。
+        vi.advanceTimersByTime(50);
+        el<HTMLButtonElement>('quiz-play-btn').click();
+    }
 
     it('pauses and resets the quiz audio element', async () => {
         const { renderQuizView, stopQuiz } = await import('./quiz.js');
-        renderQuizView(createFakeElement());
+        renderQuizView(container());
 
         stopQuiz();
 
         expect(audioPause).toHaveBeenCalled();
+        expect(quizAudio).not.toBeNull();
+        expect(quizAudio?.getAttribute('src')).toBe('');
     });
 
-    it('clears the snippet auto-stop timeout so it cannot fire after the view is left', async () => {
+    it('clears the snippet auto-stop timeout and the timer interval so nothing fires after the view is left', async () => {
         const { renderQuizView, stopQuiz } = await import('./quiz.js');
-        const container = createFakeElement();
-        renderQuizView(container);
+        renderQuizView(container());
 
-        // Simulate the game screen having started a snippet playback timer by
-        // driving the flow through the public start button handler.
-        const startBtnListeners = elementRegistry['quiz-start-btn']._listeners['click'] || [];
-        expect(startBtnListeners.length).toBeGreaterThan(0);
+        startAndPlay();
 
-        // startQuiz reads radio inputs via document.querySelector; our fake
-        // document.querySelector returns null, so guard against throwing by
-        // wrapping in a try — the important assertion is about timer counts.
-        const pendingTimersBefore = vi.getTimerCount();
+        // playSnippet が snippetTimeout と timerInterval を張った状態であること。
+        expect(el('quiz-play-btn').hasAttribute('disabled')).toBe(true);
+        expect(audioPlay).toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBeGreaterThan(0);
 
         stopQuiz();
 
-        // stopQuiz must not leave any pending timers (snippetTimeout/timerInterval) running.
-        expect(vi.getTimerCount()).toBeLessThanOrEqual(pendingTimersBefore);
+        // stopQuiz は保留中のタイマーを1つも残してはいけない。
+        expect(vi.getTimerCount()).toBe(0);
 
-        // Advancing time after stopQuiz must not throw or resume audio playback.
-        expect(() => vi.advanceTimersByTime(20000)).not.toThrow();
+        const timerTextAfterStop = el('quiz-timer').textContent;
+        const pauseCallsAfterStop = audioPause.mock.calls.length;
+
+        vi.advanceTimersByTime(20000);
+
+        // タイマーが生き残っていれば経過時間表示が書き換わるか、
+        // スニペット停止の pause が追加で呼ばれるはず。
+        expect(el('quiz-timer').textContent).toBe(timerTextAfterStop);
+        expect(audioPause.mock.calls.length).toBe(pauseCallsAfterStop);
     });
 
-    it('is idempotent — calling stopQuiz multiple times does not throw', async () => {
-        const { stopQuiz } = await import('./quiz.js');
+    it('restores the start screen and clears the audio source, and stays that way when called repeatedly', async () => {
+        const { renderQuizView, stopQuiz } = await import('./quiz.js');
+        renderQuizView(container());
 
-        expect(() => {
-            stopQuiz();
-            stopQuiz();
-            stopQuiz();
-        }).not.toThrow();
+        startAndPlay();
+        expect(isHidden('quiz-game-screen')).toBe(false);
+        expect(isHidden('quiz-start-screen')).toBe(true);
+
+        stopQuiz();
+        stopQuiz();
+        stopQuiz();
+
+        expect(isHidden('quiz-start-screen')).toBe(false);
+        expect(isHidden('quiz-game-screen')).toBe(true);
+        expect(isHidden('quiz-final-screen')).toBe(true);
+        expect(quizAudio?.getAttribute('src')).toBe('');
+        expect(vi.getTimerCount()).toBe(0);
     });
 
     it('resets the playing flag and final-screen flag so a later stopQuiz reflects a clean state', async () => {
         const { renderQuizView, stopQuiz } = await import('./quiz.js');
-        renderQuizView(createFakeElement());
+        renderQuizView(container());
 
         stopQuiz();
 
-        // After cleanup, the start screen should be shown again and the game/final
-        // screens hidden — this is only true if stopQuiz fully resets view state.
-        expect(elementRegistry['quiz-start-screen'].classList.contains('hidden')).toBe(false);
-        expect(elementRegistry['quiz-game-screen'].classList.contains('hidden')).toBe(true);
-        expect(elementRegistry['quiz-final-screen'].classList.contains('hidden')).toBe(true);
+        // 後片付け後は開始画面だけが見えている状態に戻る。
+        expect(isHidden('quiz-start-screen')).toBe(false);
+        expect(isHidden('quiz-game-screen')).toBe(true);
+        expect(isHidden('quiz-final-screen')).toBe(true);
     });
 
-    it('resets isResultShowing on stopQuiz, so a stray Space press after leaving mid-result does not call nextQuestion again', async () => {
+    it('marks the correct and selected answers when a question is answered', async () => {
+        const { renderQuizView } = await import('./quiz.js');
+        renderQuizView(container());
+
+        startAndPlay();
+
+        const buttons = answerButtons();
+        expect(buttons).toHaveLength(4);
+
+        buttons[0].click();
+
+        // quiz.ts の解答マーキング分岐が実際に走ること。
+        expect(buttons.every(btn => btn.disabled)).toBe(true);
+        expect(buttons.filter(btn => btn.classList.contains('correct'))).toHaveLength(1);
+        expect(isHidden('quiz-result')).toBe(false);
+        expect(el('quiz-result-message').textContent).toMatch(/正解！|残念！/);
+    });
+
+    it('resets isResultShowing on stopQuiz, so a stray Space press after leaving mid-result does not advance the quiz', async () => {
         const { renderQuizView, stopQuiz, handleQuizKeyPress } = await import('./quiz.js');
-        renderQuizView(createFakeElement());
+        renderQuizView(container());
 
-        // Start a question: this populates quizElements.answers with answer buttons
-        // wired to handleAnswer, and sets a startTime via the first playSnippet call.
-        const startBtnListeners = elementRegistry['quiz-start-btn']._listeners['click'] || [];
-        startBtnListeners[0]();
+        startAndPlay();
+        answerButtons()[0].click();
 
-        const playBtnListeners = elementRegistry['quiz-play-btn']._listeners['click'] || [];
-        playBtnListeners[0]();
+        // 結果表示中であることを確認してから離脱する。
+        expect(isHidden('quiz-result')).toBe(false);
+        expect(el('quiz-question-number').textContent).toBe('1');
 
-        expect(answerButtons.length).toBeGreaterThan(0);
-
-        // Answer the question: this sets quizState.isResultShowing = true internally.
-        const answerClickListeners = answerButtons[0]._listeners['click'] || [];
-        answerClickListeners[0]({ target: answerButtons[0] });
-
-        // Leave the quiz view mid-result (as navigation.ts does on view change).
         stopQuiz();
 
-        // A stray Space key press after leaving must not re-trigger nextQuestion
-        // (which would call generateQuestion and repopulate answers) — the quiz
-        // is no longer active, so isResultShowing must have been cleared by stopQuiz.
-        const answerCountAfterStop = answerButtons.length;
+        const spaceEvent = { code: 'Space', preventDefault: vi.fn() } as unknown as KeyboardEvent;
+        handleQuizKeyPress(spaceEvent);
+
+        // isResultShowing が残っていれば nextQuestion → generateQuestion が走り、
+        // 問題番号が 2 に進んでしまう。
+        expect(el('quiz-question-number').textContent).toBe('1');
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('leaves the view in the stopped state when a Space press arrives with no active question', async () => {
+        const { renderQuizView, stopQuiz, handleQuizKeyPress } = await import('./quiz.js');
+        renderQuizView(container());
+
+        stopQuiz();
+
         const spaceEvent = { code: 'Space', preventDefault: vi.fn() } as unknown as KeyboardEvent;
         handleQuizKeyPress(spaceEvent);
 
-        expect(answerButtons.length).toBe(answerCountAfterStop);
+        expect(spaceEvent.preventDefault).toHaveBeenCalled();
+        expect(isHidden('quiz-start-screen')).toBe(false);
+        expect(isHidden('quiz-game-screen')).toBe(true);
+        expect(el('quiz-answers').children).toHaveLength(0);
+        expect(audioPause).toHaveBeenCalled();
+        expect(quizAudio?.getAttribute('src')).toBe('');
+        expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('is idempotent and safe when called repeatedly with no active question', async () => {
-        const { renderQuizView, stopQuiz, handleQuizKeyPress } = await import('./quiz.js');
-        renderQuizView(createFakeElement());
+    describe('options.signal によるリスナー解除', () => {
+        it('signal 指定でもリスナーは通常どおり登録される', async () => {
+            const { renderQuizView, stopQuiz } = await import('./quiz.js');
+            const controller = new AbortController();
+            renderQuizView(container(), { signal: controller.signal });
 
-        stopQuiz();
+            el<HTMLButtonElement>('quiz-start-btn').click();
 
-        const spaceEvent = { code: 'Space', preventDefault: vi.fn() } as unknown as KeyboardEvent;
-        expect(() => handleQuizKeyPress(spaceEvent)).not.toThrow();
-        expect(audioPause).toHaveBeenCalled();
+            expect(isHidden('quiz-game-screen')).toBe(false);
+            expect(isHidden('quiz-start-screen')).toBe(true);
+
+            stopQuiz();
+        });
+
+        it('abort 後は開始・再生ボタンのクリックが一切効かない', async () => {
+            const { renderQuizView } = await import('./quiz.js');
+            const controller = new AbortController();
+            renderQuizView(container(), { signal: controller.signal });
+
+            controller.abort();
+
+            el<HTMLButtonElement>('quiz-start-btn').click();
+            el<HTMLButtonElement>('quiz-play-btn').click();
+
+            // リスナーが解除されていれば画面遷移もタイマー起動も起きない。
+            expect(isHidden('quiz-start-screen')).toBe(false);
+            expect(isHidden('quiz-game-screen')).toBe(true);
+            expect(el('quiz-answers').children).toHaveLength(0);
+            expect(audioPlay).not.toHaveBeenCalled();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it('abort 後は再挑戦ボタンのクリックも効かない', async () => {
+            const { renderQuizView } = await import('./quiz.js');
+            const controller = new AbortController();
+            renderQuizView(container(), { signal: controller.signal });
+
+            // 結果画面が出ている状態を模して、開始画面を隠しておく。
+            el('quiz-start-screen').classList.add('hidden');
+            el('quiz-final-screen').classList.remove('hidden');
+
+            controller.abort();
+            el<HTMLButtonElement>('quiz-retry-btn').click();
+
+            expect(isHidden('quiz-final-screen')).toBe(false);
+            expect(isHidden('quiz-start-screen')).toBe(true);
+        });
     });
 });

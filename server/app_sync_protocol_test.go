@@ -24,11 +24,18 @@ func TestSyncIdentityIncludesSchemaCapabilitiesAndNegotiation(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode identity: %v", err)
 	}
-	if response.ProtocolVersion != syncProtocolVersion || response.SchemaVersion != syncSchemaVersion {
-		t.Fatalf("identity should expose protocol/schema versions: %#v", response)
+	// ここはデバイス間で交換されるワイヤ契約なので、定数ではなくリテラルで固定する。
+	// 定数と突き合わせると本番側を書き換えてもテストが追随してしまい、互換性を
+	// 壊す変更を検出できない。ワイヤバージョンを上げるときは、この期待値を
+	// 意図的に書き換えること（＝ピア側の対応が必要という合図）。
+	if response.ProtocolVersion != "0.2" {
+		t.Fatalf("advertised protocolVersion must stay %q until the wire contract is bumped, got %q", "0.2", response.ProtocolVersion)
 	}
-	if response.MinCompatibleProtocolVersion != syncMinCompatibleProtocolVersion {
-		t.Fatalf("unexpected minimum compatible version: %#v", response)
+	if response.SchemaVersion != "2026-06-09" {
+		t.Fatalf("advertised schemaVersion must stay %q until the wire contract is bumped, got %q", "2026-06-09", response.SchemaVersion)
+	}
+	if response.MinCompatibleProtocolVersion != "0.1" {
+		t.Fatalf("advertised minCompatibleProtocolVersion must stay %q until the wire contract is bumped, got %q", "0.1", response.MinCompatibleProtocolVersion)
 	}
 	if !stringSliceContains(response.Capabilities, "library.import.v1") {
 		t.Fatalf("identity should advertise import capability: %#v", response.Capabilities)

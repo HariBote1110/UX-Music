@@ -14,9 +14,17 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 
 def _gated() -> bool:
     return os.environ.get("UX_MUSIC_AUDIO_EMBED_REAL_TEST", "") == "1"
+
+
+pytestmark = pytest.mark.skipif(
+    not _gated(),
+    reason="set UX_MUSIC_AUDIO_EMBED_REAL_TEST=1 to run; loads ~2GB CLAP and needs librosa",
+)
 
 
 def _resolve_sample_audio() -> str:

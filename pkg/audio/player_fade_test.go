@@ -16,16 +16,16 @@ func TestPlayLiveSourceArmsStartFade(t *testing.T) {
 	}
 	defer player.Stop()
 
-	// 48kHz / 2ch でおよそ sampleRate * channels * liveStartFadeSeconds。
-	want := int64(float64(48000)*liveStartFadeSeconds) * 2
+	// 仕様: フェード長 0.12 秒 @ 48kHz / 2ch = 48000 * 0.12 * 2 = 11520 サンプル。
+	// 本番と同じ式を書くと liveStartFadeSeconds を変えてもテストが追随して
+	// しまうため、期待値はリテラルで固定する。フェード長を変える際はここも
+	// 意図的に書き換えること。
+	const want int64 = 11520
 	if got := player.liveFadeTotal.Load(); got != want {
 		t.Fatalf("fade total: got %d, want %d", got, want)
 	}
 	if got := player.liveFadeRemaining.Load(); got != want {
 		t.Fatalf("fade remaining at start: got %d, want %d", got, want)
-	}
-	if want <= 0 {
-		t.Fatal("live start fade must be armed (> 0)")
 	}
 }
 
