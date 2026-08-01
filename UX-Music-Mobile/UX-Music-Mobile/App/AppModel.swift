@@ -135,8 +135,20 @@ final class AppModel {
         }
     }
 
+    /// Overridable in tests to inject a mocked `URLSession` (see `WearLANURLSession`).
+    var urlSession: URLSession = WearLANURLSession.shared
+
     func client() -> WearAPIClient {
-        WearAPIClient(baseURLString: serverConfig.baseURLString)
+        WearAPIClient(baseURLString: serverConfig.baseURLString, session: urlSession)
+    }
+
+    /// Runs `operation` against the current server; on a connection-level failure (`URLError`),
+    /// retries each `fallbackHosts` entry in order and promotes the first one that succeeds to
+    /// `serverConfig.host`. HTTP-status errors (`WearDownloadError.httpStatus`) mean the server was
+    /// reached, so they are not retried against fallback hosts.
+    func withFailover<T>(_ operation: @Sendable (WearAPIClient) async throws -> T) async throws -> T {
+        // Red-phase stub: not yet implemented.
+        try await operation(client())
     }
 
     /// Remote Wear URL, or `file://` when the jacket was cached under `DownloadedArtwork/` after a download.

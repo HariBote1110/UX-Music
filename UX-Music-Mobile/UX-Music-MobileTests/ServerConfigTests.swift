@@ -49,4 +49,31 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertFalse(ServerConfig(host: "", port: 8765).isConfigured)
         XCTAssertTrue(ServerConfig(host: "10.0.0.1", port: 8765).isConfigured)
     }
+
+    /// Regression: older persisted `ServerConfig` JSON has no `fallbackHosts` key. Decoding must not fail.
+    func testDecodeLegacyJSONWithoutFallbackHostsSucceeds() throws {
+        let json = Data(#"{"host":"10.0.0.1","port":8765}"#.utf8)
+        let cfg = try JSONDecoder().decode(ServerConfig.self, from: json)
+        XCTAssertEqual(cfg.host, "10.0.0.1")
+        XCTAssertEqual(cfg.port, 8765)
+        XCTAssertEqual(cfg.fallbackHosts, [])
+    }
+
+    func testFallbackHostsEncodeDecodeRoundTrip() throws {
+        var cfg = ServerConfig(host: "10.0.0.1", port: 8765)
+        cfg.fallbackHosts = ["10.0.0.2", "desk.local"]
+        let data = try JSONEncoder().encode(cfg)
+        let decoded = try JSONDecoder().decode(ServerConfig.self, from: data)
+        XCTAssertEqual(decoded.fallbackHosts, ["10.0.0.2", "desk.local"])
+    }
+
+    /// Equatable must ignore `fallbackHosts` so the "selected peer" checkmark in Settings keeps working
+    /// after a failover promotes a different host into `fallbackHosts`.
+    func testEquatableIgnoresFallbackHosts() {
+        var a = ServerConfig(host: "10.0.0.1", port: 8765)
+        var b = ServerConfig(host: "10.0.0.1", port: 8765)
+        a.fallbackHosts = ["10.0.0.2"]
+        b.fallbackHosts = []
+        XCTAssertEqual(a, b)
+    }
 }

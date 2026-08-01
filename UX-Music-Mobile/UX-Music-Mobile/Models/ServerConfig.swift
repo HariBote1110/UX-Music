@@ -1,12 +1,16 @@
 import Foundation
 
-struct ServerConfig: Codable, Equatable, Sendable {
+struct ServerConfig: Codable, Sendable {
     var host: String
     var port: Int
+    /// Other reachable hosts for the same desktop (e.g. from mDNS discovery or a promoted failover
+    /// host), tried in order when `host` becomes unreachable. Not part of `Equatable` — see below.
+    var fallbackHosts: [String] = []
 
-    init(host: String = "", port: Int = AppConstants.defaultServerPort) {
+    init(host: String = "", port: Int = AppConstants.defaultServerPort, fallbackHosts: [String] = []) {
         self.host = host
         self.port = port
+        self.fallbackHosts = fallbackHosts
     }
 
     /// Base URL without trailing slash (matches Flutter `ServerConfig.baseUrl`).
@@ -16,6 +20,19 @@ struct ServerConfig: Codable, Equatable, Sendable {
     }
 
     var isConfigured: Bool { !host.isEmpty }
+
+    private enum CodingKeys: String, CodingKey {
+        case host, port, fallbackHosts
+    }
+
+    /// Custom decode so older persisted JSON (no `fallbackHosts` key) still decodes: the synthesised
+    /// `Codable` conformance ignores a property's default value and requires the key to be present.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        host = try container.decode(String.self, forKey: .host)
+        port = try container.decode(Int.self, forKey: .port)
+        fallbackHosts = try container.decodeIfPresent([String].self, forKey: .fallbackHosts) ?? []
+    }
 
     /// Parses `uxmusic://pair?host=&port=` (QR from desktop) or `http(s)://host:port/…`.
     static func fromPairingURL(_ url: URL) -> ServerConfig? {
@@ -35,5 +52,14 @@ struct ServerConfig: Codable, Equatable, Sendable {
             return ServerConfig(host: host, port: port)
         }
         return nil
+    }
+}
+
+extension ServerConfig: Equatable {
+    /// Compares only `host`/`port`: `fallbackHosts` is bookkeeping for failover, not identity —
+    /// Settings uses `==` to show a checkmark next to the currently selected discovered peer, and
+    /// that must keep matching after a failover promotes a different host into `fallbackHosts`.
+    static func == (lhs: ServerConfig, rhs: ServerConfig) -> Bool {
+        lhs.host == rhs.host && lhs.port == rhs.port
     }
 }
