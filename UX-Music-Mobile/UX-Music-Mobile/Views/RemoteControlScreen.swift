@@ -33,6 +33,20 @@ struct RemoteControlScreen: View {
                 NowPlayingAmbientBackground(palette: nil)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Extra manual clearance ON TOP of the system-provided safe area inset.
+            // `HomeRootView` uses `tabViewBottomAccessory` (iOS 26.1+) to host the mini-player
+            // pill above the tab bar. That accessory container always reserves its own pill-
+            // shaped region — even when `MiniPlayerView` renders `EmptyView` because no local
+            // song is playing — but its true rendered height is system chrome that this view
+            // cannot introspect via GeometryReader (there is nothing of ours to measure when the
+            // content is empty). The automatic safe-area inset the system hands down to tab
+            // content under-reports this reserved height by roughly a dozen points, so the
+            // transport row's white play button still dipped under the pill's top edge. This
+            // fixed buffer closes that residual gap; it only adds space on top of whatever inset
+            // the system already provides, so it degrades gracefully across OS versions.
+            .safeAreaInset(edge: .bottom) {
+                Color.clear.frame(height: 44)
+            }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear { startPolling() }
             .onDisappear {
