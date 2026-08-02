@@ -1,5 +1,6 @@
 # Progress Index
 
+- [lan-api-v1.md](lan-api-v1.md) — LAN API v1 統一プロトコル仕様: `/wear/*`・`/sync/*` を `/v1/remote/*`・`/v1/sync/*` に再編、デバイス別トークン認証（`deviceAuthTokens`）・Bearer 一本化・QR→redeem 発行ペアリング・JSON エラー形式・バージョニング1体系化の決定記録
 - [mobile-remote-control-footer.md](mobile-remote-control-footer.md) — UX Music Mobile: Remote Control タブのトランスポート行がミニプレイヤー＋タブバーのフッターに重なるバグの原因（`.ignoresSafeArea()` を持つ背景をZStackの兄弟にするとレイアウトサイズが背景に引きずられる）と修正
 - [mobile-library-ui.md](mobile-library-ui.md) — UX Music Mobile: Local/Remote ライブラリ画面のタブ位置固定（共通 `LibrarySegmentedHeader`）と、行・グリッド・空状態の見た目統一（ellipsis メニュー集約、`ContentUnavailableView` は List 外に配置）
 - [mobile-nowplaying-visuals.md](mobile-nowplaying-visuals.md) — UX Music Mobile: 再生画面スワイプ時のセーフエリア帯グラデーション侵食バグ修正（`nowPlayingSidePanelCoverage` による黒被覆レイヤー）と、歌詞画面（`NowPlayingLyricsScreen`）の Apple Music 風環境光デザイン刷新（背景共有・エッジフェード・タップシーク・自動スクロール一時停止）
