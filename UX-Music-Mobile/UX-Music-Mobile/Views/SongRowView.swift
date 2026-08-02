@@ -24,16 +24,22 @@ struct SongRowView<Trailing: View>: View {
         self.trailing = trailing
     }
 
+    /// Tappable for play across the whole row (including the trailing spacer) when `onTap` is set.
+    /// The gesture and content shape live on the outer HStack so empty space is tappable too. Must
+    /// not wrap `trailing()` in a disabled `Button`, or download controls stay inactive while the
+    /// song is not yet local; placing `trailing()`'s own Button on top lets it win the hit-test over
+    /// the row-level tap gesture.
     var body: some View {
         HStack(spacing: 12) {
             leadingCluster
             Spacer(minLength: 0)
             trailing()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .modifier(OptionalRowTap(onTap: onTap))
     }
 
-    /// Tappable for play only when `onTap` is set. Must not wrap `trailing()` in a disabled `Button`, or
-    /// download controls stay inactive while the song is not yet local.
     private var leadingCluster: some View {
         HStack(spacing: 12) {
             if showTrackNumber, song.trackNumber > 0 {
@@ -55,8 +61,6 @@ struct SongRowView<Trailing: View>: View {
                     .lineLimit(1)
             }
         }
-        .contentShape(Rectangle())
-        .modifier(OptionalRowTap(onTap: onTap))
     }
 }
 
