@@ -1,7 +1,15 @@
 import SwiftUI
 
-private enum RemoteViewMode: String, CaseIterable {
+private enum RemoteViewMode: Int, CaseIterable {
     case albums, playlists, songs
+
+    var title: String {
+        switch self {
+        case .albums: return "Albums"
+        case .playlists: return "Playlists"
+        case .songs: return "Songs"
+        }
+    }
 }
 
 private enum RemoteLibraryNav: Hashable {
@@ -21,53 +29,30 @@ struct RemoteLibraryScreen: View {
     /// Avoid refetching on every `NavigationStack` pop; reset when this screen is recreated (e.g. changing tabs).
     @State private var didScheduleRemoteLoad = false
 
+    private var viewModeIndex: Binding<Int> {
+        Binding(
+            get: { viewMode.rawValue },
+            set: { newValue in
+                if let mode = RemoteViewMode(rawValue: newValue) { viewMode = mode }
+            }
+        )
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
+                LibrarySegmentedHeader(
+                    segments: RemoteViewMode.allCases.map(\.title),
+                    selectedIndex: viewModeIndex
+                ) {
+                    remoteActions
+                }
                 searchField
                 libraryBody
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black)
-            .navigationTitle("Remote Library")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Picker("View", selection: $viewMode) {
-                        Text("Albums").tag(RemoteViewMode.albums)
-                        Text("Playlists").tag(RemoteViewMode.playlists)
-                        Text("Songs").tag(RemoteViewMode.songs)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 320)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 16) {
-                        if model.serverConfig.isConfigured {
-                            Button {
-                                showDesktopPlaylistImport = true
-                            } label: {
-                                Image(systemName: "arrow.down.doc")
-                            }
-                            .accessibilityLabel("デスクトップのプレイリストを取り込む")
-                        }
-                        Button {
-                            Task {
-                                await model.refreshLibrary()
-                                await model.refreshLoudnessOnly()
-                                if viewMode == .playlists {
-                                    await loadRemotePlaylists()
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                        .accessibilityLabel("Refresh library")
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showDesktopPlaylistImport) {
                 DesktopPlaylistImportView(isPresented: $showDesktopPlaylistImport)
                     .environment(model)
@@ -103,6 +88,33 @@ struct RemoteLibraryScreen: View {
                     await model.refreshLoudnessOnly()
                 }
             }
+        }
+    }
+
+    private var remoteActions: some View {
+        HStack(spacing: 16) {
+            if model.serverConfig.isConfigured {
+                Button {
+                    showDesktopPlaylistImport = true
+                } label: {
+                    Image(systemName: "arrow.down.doc")
+                        .font(.system(size: 18))
+                }
+                .accessibilityLabel("デスクトップのプレイリストを取り込む")
+            }
+            Button {
+                Task {
+                    await model.refreshLibrary()
+                    await model.refreshLoudnessOnly()
+                    if viewMode == .playlists {
+                        await loadRemotePlaylists()
+                    }
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 18))
+            }
+            .accessibilityLabel("Refresh library")
         }
     }
 
