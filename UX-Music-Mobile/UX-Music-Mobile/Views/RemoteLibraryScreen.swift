@@ -116,6 +116,11 @@ struct RemoteLibraryScreen: View {
             }
             .accessibilityLabel("Refresh library")
         }
+        .foregroundStyle(.white)
+        // Always visible on this screen, so (unlike LocalLibraryScreen's ellipsis menu) there is
+        // no hidden-tab ghosting risk from owning the material backdrop here.
+        .frame(width: 32, height: 32)
+        .background(Circle().fill(.ultraThinMaterial))
     }
 
     private var searchField: some View {

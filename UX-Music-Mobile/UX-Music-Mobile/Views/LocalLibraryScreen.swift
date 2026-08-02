@@ -101,36 +101,45 @@ struct LocalLibraryScreen: View {
 
     @ViewBuilder
     private var playlistActionsMenu: some View {
-        Menu {
-            if viewMode == .playlists {
-                if model.serverConfig.isConfigured {
-                    Button {
-                        showDesktopPlaylistImport = true
-                    } label: {
-                        Label("デスクトップから取り込む", systemImage: "arrow.down.doc")
-                    }
-                }
+        let menu = Menu {
+            if model.serverConfig.isConfigured {
                 Button {
-                    playlistEditMode = playlistEditMode == .active ? .inactive : .active
+                    showDesktopPlaylistImport = true
                 } label: {
-                    Label(
-                        playlistEditMode == .active ? "並べ替えを終了" : "並べ替え",
-                        systemImage: "arrow.up.arrow.down"
-                    )
+                    Label("デスクトップから取り込む", systemImage: "arrow.down.doc")
                 }
-                Button {
-                    newPlaylistName = ""
-                    showNewPlaylistAlert = true
-                } label: {
-                    Label("新規プレイリスト", systemImage: "plus")
-                }
+            }
+            Button {
+                playlistEditMode = playlistEditMode == .active ? .inactive : .active
+            } label: {
+                Label(
+                    playlistEditMode == .active ? "並べ替えを終了" : "並べ替え",
+                    systemImage: "arrow.up.arrow.down"
+                )
+            }
+            Button {
+                newPlaylistName = ""
+                showNewPlaylistAlert = true
+            } label: {
+                Label("新規プレイリスト", systemImage: "plus")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.system(size: 20))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(.ultraThinMaterial))
         }
-        .opacity(viewMode == .playlists ? 1 : 0)
         .disabled(viewMode != .playlists)
+
+        // `.hidden()` (not `.opacity(0)`) so the `.ultraThinMaterial` circle backdrop is fully
+        // unrendered on non-Playlists tabs — a sibling background would otherwise stay faintly
+        // visible even at opacity 0. Layout space is still reserved (hidden views keep their size).
+        if viewMode == .playlists {
+            menu
+        } else {
+            menu.hidden()
+        }
     }
 
     private var emptyState: some View {

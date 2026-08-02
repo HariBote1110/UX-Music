@@ -21,9 +21,12 @@ struct LibrarySegmentedHeader<Trailing: View>: View {
             capsuleSegmentedControl
                 .frame(maxWidth: 300)
 
+            // NOTE: any `.ultraThinMaterial` circle backdrop must live inside each caller's
+            // `trailing` content (not here). A background applied at this level stays visible
+            // even when the wrapped content sets its own `.opacity(0)`/`.hidden()`, because it
+            // is a sibling layer rather than part of the same hidden subview — this previously
+            // produced a faint ghost circle on tabs where the accessory should be fully hidden.
             trailing()
-                .frame(width: 32, height: 32)
-                .background(Circle().fill(.ultraThinMaterial))
                 .frame(minWidth: 32, minHeight: 32, alignment: .trailing)
         }
         .padding(.horizontal, 16)
