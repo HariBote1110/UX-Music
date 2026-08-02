@@ -75,6 +75,11 @@
 		FEED0006000000000000AAA6 /* WatchTransferBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0007000000000000AAA7 /* WatchTransferBridge.swift */; };
 		FEED0003000000000000AAA3 /* WatchTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0001000000000000AAA1 /* WatchTransfer.swift */; };
 		FEED0005000000000000AAA5 /* WatchTransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0004000000000000AAA4 /* WatchTransferTests.swift */; };
+		FEED00100000000000000000 /* WatchLocalLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00110000000000000000 /* WatchLocalLibrary.swift */; };
+		FEED00120000000000000000 /* WatchConnectivityReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00130000000000000000 /* WatchConnectivityReceiver.swift */; };
+		FEED00140000000000000000 /* WatchAudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00150000000000000000 /* WatchAudioPlayerService.swift */; };
+		FEED00160000000000000000 /* WatchSongListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00170000000000000000 /* WatchSongListView.swift */; };
+		FEED00180000000000000000 /* WatchNowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00190000000000000000 /* WatchNowPlayingView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -179,6 +184,11 @@
 		FEED0001000000000000AAA1 /* WatchTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransfer.swift; sourceTree = "<group>"; };
 		FEED0007000000000000AAA7 /* WatchTransferBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferBridge.swift; sourceTree = "<group>"; };
 		FEED0004000000000000AAA4 /* WatchTransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferTests.swift; sourceTree = "<group>"; };
+		FEED00110000000000000000 /* WatchLocalLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLocalLibrary.swift; sourceTree = "<group>"; };
+		FEED00130000000000000000 /* WatchConnectivityReceiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityReceiver.swift; sourceTree = "<group>"; };
+		FEED00150000000000000000 /* WatchAudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioPlayerService.swift; sourceTree = "<group>"; };
+		FEED00170000000000000000 /* WatchSongListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSongListView.swift; sourceTree = "<group>"; };
+		FEED00190000000000000000 /* WatchNowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchNowPlayingView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -330,6 +340,11 @@
 				B4FD60C91428442F8A235B4E /* UXMusicWatchApp.swift */,
 				332646F2855E4CA194E31608 /* WatchRootView.swift */,
 				66498BF289AC41A2936302DE /* Assets.xcassets */,
+				FEED00110000000000000000 /* WatchLocalLibrary.swift */,
+				FEED00130000000000000000 /* WatchConnectivityReceiver.swift */,
+				FEED00150000000000000000 /* WatchAudioPlayerService.swift */,
+				FEED00170000000000000000 /* WatchSongListView.swift */,
+				FEED00190000000000000000 /* WatchNowPlayingView.swift */,
 			);
 			path = "UX-Music-Watch";
 			sourceTree = "<group>";
@@ -556,6 +571,11 @@
 				ED70471B3B4345BA8082875B /* UXMusicWatchApp.swift in Sources */,
 				8379E743BC3A42EA9A578132 /* WatchRootView.swift in Sources */,
 				FEED0003000000000000AAA3 /* WatchTransfer.swift in Sources */,
+				FEED00100000000000000000 /* WatchLocalLibrary.swift in Sources */,
+				FEED00120000000000000000 /* WatchConnectivityReceiver.swift in Sources */,
+				FEED00140000000000000000 /* WatchAudioPlayerService.swift in Sources */,
+				FEED00160000000000000000 /* WatchSongListView.swift in Sources */,
+				FEED00180000000000000000 /* WatchNowPlayingView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -808,6 +828,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.uxlabs.uxMusicMobile";
+				INFOPLIST_KEY_WKBackgroundModes = audio;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -836,6 +857,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.uxlabs.uxMusicMobile";
+				INFOPLIST_KEY_WKBackgroundModes = audio;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
