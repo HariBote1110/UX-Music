@@ -1,9 +1,11 @@
 import SwiftUI
 import UIKit
 
-private let nowPlayingFallbackAccent = Color(red: 0.45, green: 0.82, blue: 1.0)
+/// `internal` (not `private`) so the lyrics screen can share the same fallback tint.
+let nowPlayingFallbackAccent = Color(red: 0.45, green: 0.82, blue: 1.0)
 
-private enum NowPlayingPage: Equatable {
+/// `internal` (not `private`) so unit tests can drive `nowPlayingSidePanelCoverage` directly.
+enum NowPlayingPage: Equatable {
     case main
     case queue
     case favourites
@@ -17,7 +19,7 @@ private enum StripDragAxis {
 
 private let nowPlayingPanelSpring = Animation.spring(response: 0.52, dampingFraction: 0.78, blendDuration: 0.12)
 
-private func stripBaseX(page: NowPlayingPage, width w: CGFloat) -> CGFloat {
+func stripBaseX(page: NowPlayingPage, width w: CGFloat) -> CGFloat {
     switch page {
     case .main: return -w
     case .queue: return 0
@@ -27,7 +29,7 @@ private func stripBaseX(page: NowPlayingPage, width w: CGFloat) -> CGFloat {
 }
 
 /// Rubber-band slightly past [-2w, 0] for a softer feel while dragging.
-private func displayStripOffset(page: NowPlayingPage, horizontalDrag: CGFloat, width w: CGFloat) -> CGFloat {
+func displayStripOffset(page: NowPlayingPage, horizontalDrag: CGFloat, width w: CGFloat) -> CGFloat {
     guard w > 1 else { return 0 }
     guard page != .playbackSettings else { return -w }
     let base = stripBaseX(page: page, width: w)
@@ -44,8 +46,28 @@ private func displayStripOffset(page: NowPlayingPage, horizontalDrag: CGFloat, w
     return raw
 }
 
+/// How much a black safe-area cover should show (0…1) above the ambient background while the
+/// swipeable side-panel strip is dragged or settled on a side panel.
+///
+/// The ambient background is rendered full-screen (outside every `.clipped()` panel) so it can
+/// reach the status-bar and home-indicator bands, but the Queue / Favourites / PlaybackSettings
+/// panels only cover the safe-area-respecting content region. Without this cover, those bands
+/// keep showing ambient gradient behind a panel that is supposed to be solid black.
+///
+/// `page == .playbackSettings` is a full-screen overlay, so coverage is always 1. Otherwise
+/// coverage tracks how far the strip has moved away from the "main" resting position (`-w`),
+/// clamped to `[0, 1]` so rubber-band overshoot never exceeds full coverage.
+func nowPlayingSidePanelCoverage(page: NowPlayingPage, horizontalDrag: CGFloat, width w: CGFloat) -> CGFloat {
+    guard w > 1 else { return 0 }
+    if page == .playbackSettings { return 1 }
+    let offset = displayStripOffset(page: page, horizontalDrag: horizontalDrag, width: w)
+    let coverage = abs(offset + w) / w
+    return min(1, max(0, coverage))
+}
+
 /// `ToolbarItem` can propose a short height; large frames get clipped and `Circle()` looks truncated.
-private struct NowPlayingNavIconButton<Content: View>: View {
+/// `internal` (not `private`) so the lyrics screen's close button can reuse the same chrome.
+struct NowPlayingNavIconButton<Content: View>: View {
     let action: () -> Void
     let accessibilityLabel: String
     @ViewBuilder var label: () -> Content
@@ -109,6 +131,15 @@ struct NowPlayingView: View {
                 let toolbarClearance: CGFloat = 52
 
                 ZStack(alignment: .top) {
+                    // ── Safe-area cover ──────────────────────────────────────────────
+                    // Sits behind the strip but in front of the full-screen ambient
+                    // background, so the status-bar / home-indicator bands go solid
+                    // black in step with the side panels instead of leaking gradient.
+                    Color.black
+                        .opacity(nowPlayingSidePanelCoverage(page: page, horizontalDrag: horizontalDrag, width: w))
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+
                     // ── Horizontal panel strip ──────────────────────────────────────
                     HStack(spacing: 0) {
                         NowPlayingQueuePanel(page: $page, topInset: toolbarClearance)
@@ -169,7 +200,7 @@ struct NowPlayingView: View {
         .interactiveDismissDisabled(page == .favourites || page == .queue || page == .playbackSettings)
         .fullScreenCover(isPresented: $showLyricsScreen) {
             if let song = model.player.currentSong {
-                NowPlayingLyricsScreen(song: song, isPresented: $showLyricsScreen)
+                NowPlayingLyricsScreen(song: song, palette: ambientPalette, isPresented: $showLyricsScreen)
                     .environment(model)
             }
         }
@@ -575,7 +606,8 @@ private struct NowPlayingEmptyChrome: View {
 
 // MARK: - Background
 
-private struct NowPlayingAmbientBackground: View {
+/// `internal` (not `private`) so the lyrics screen can share the same environmental glow.
+struct NowPlayingAmbientBackground: View {
     var palette: ArtworkPlaybackPalette?
 
     var body: some View {

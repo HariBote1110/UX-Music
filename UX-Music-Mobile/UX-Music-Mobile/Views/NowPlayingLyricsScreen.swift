@@ -1,28 +1,61 @@
 import SwiftUI
 
+/// How long after the user last touch-scrolled the lyrics list before auto-scroll-to-active-line
+/// resumes. `nil` (no user scroll yet) always allows auto-scroll.
+func nowPlayingLyricsShouldAutoScroll(secondsSinceLastUserScroll: TimeInterval?) -> Bool {
+    guard let secondsSinceLastUserScroll else { return true }
+    return secondsSinceLastUserScroll >= 3.0
+}
+
+/// The playback position a synced-lyrics line should seek to when tapped.
+func nowPlayingLyricsSeekTime(for line: LRCParser.TimedLine) -> Double {
+    line.startTime
+}
+
+/// Edge-fade coefficient (0…1) for a given vertical fraction (0 = top, 1 = bottom) of the
+/// synced-lyrics scroll area. Fades out across the top 12% and the bottom 18%, full opacity
+/// (1) in between. Out-of-range fractions clamp to 0 (fully faded).
+func nowPlayingLyricsFadeOpacity(fraction: CGFloat) -> CGFloat {
+    guard fraction >= 0, fraction <= 1 else { return 0 }
+    let topBand: CGFloat = 0.12
+    let bottomBandStart: CGFloat = 0.82
+    if fraction < topBand {
+        return fraction / topBand
+    }
+    if fraction > bottomBandStart {
+        return max(0, 1 - (fraction - bottomBandStart) / (1 - bottomBandStart))
+    }
+    return 1
+}
+
 /// Full-screen lyrics viewer (plain `.txt` or synced `.lrc` using `MusicPlayerService.positionSeconds`).
+/// Shares the same ambient-glow background as `NowPlayingView` for a consistent Apple-Music-like feel.
 struct NowPlayingLyricsScreen: View {
     @Environment(AppModel.self) private var model
     let song: Song
+    /// Palette handed down from `NowPlayingView` so the background glow matches the player screen
+    /// without waiting for a fresh artwork-colour extraction.
+    let palette: ArtworkPlaybackPalette?
     @Binding var isPresented: Bool
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                lyricsBody
+        ZStack(alignment: .topTrailing) {
+            NowPlayingAmbientBackground(palette: palette)
+                .ignoresSafeArea(.all)
+
+            // Darken the ambient glow so lyric text keeps sufficient contrast.
+            Color.black.opacity(0.35)
+                .ignoresSafeArea(.all)
+
+            lyricsBody
+
+            NowPlayingNavIconButton(action: { isPresented = false }, accessibilityLabel: "閉じる") {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
             }
-            .navigationTitle("歌詞")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("閉じる") {
-                        isPresented = false
-                    }
-                }
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
         }
         .preferredColorScheme(.dark)
         .onChange(of: model.player.currentSong?.id) { _, newId in
@@ -39,10 +72,11 @@ struct NowPlayingLyricsScreen: View {
             case .plain(let text):
                 ScrollView {
                     Text(text)
-                        .font(.system(size: 18, weight: .regular, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .font(.system(size: 20, weight: .regular, design: .rounded))
+                        .lineSpacing(10)
+                        .foregroundStyle(.white.opacity(0.9))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(22)
+                        .padding(28)
                 }
             case .synced(let lines):
                 NowPlayingSyncedLyricsScroll(lines: lines)
@@ -66,33 +100,71 @@ private struct NowPlayingSyncedLyricsScroll: View {
     @Environment(AppModel.self) private var model
     let lines: [LRCParser.TimedLine]
 
+    /// Wall-clock time the user last dragged the scroll view, used to temporarily suspend
+    /// auto-scroll-to-active-line so a manual scroll is not fought by the timeline updates.
+    @State private var lastUserScrollAt: Date?
+
+    private static let autoScrollSpring = Animation.spring(response: 0.45, dampingFraction: 0.85)
+
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.05)) { _ in
+        TimelineView(.periodic(from: .now, by: 0.05)) { context in
             let position = max(0, model.player.positionSeconds)
             let active = LRCParser.activeLineIndex(in: lines, at: position)
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                            Text(line.text.isEmpty ? " " : line.text)
-                                .font(.system(size: 18, weight: index == active ? .semibold : .regular, design: .rounded))
-                                .foregroundStyle(index == active ? Color.white : Color.white.opacity(0.42))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id(line.id)
+            let secondsSinceUserScroll = lastUserScrollAt.map { context.date.timeIntervalSince($0) }
+
+            GeometryReader { geo in
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 20) {
+                            Spacer(minLength: geo.size.height * 0.35)
+
+                            ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                                let isActive = index == active
+                                Button {
+                                    model.player.seek(to: nowPlayingLyricsSeekTime(for: line))
+                                } label: {
+                                    Text(line.text.isEmpty ? " " : line.text)
+                                        .font(.system(size: 26, weight: isActive ? .bold : .semibold, design: .rounded))
+                                        .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.35))
+                                        .blur(radius: isActive ? 0 : 0.8)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .id(line.id)
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            Spacer(minLength: geo.size.height * 0.35)
                         }
+                        .padding(.horizontal, 28)
                     }
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 20)
-                }
-                .onAppear {
-                    guard active >= 0, active < lines.count else { return }
-                    proxy.scrollTo(lines[active].id, anchor: .center)
-                }
-                .onChange(of: active) { _, newIndex in
-                    guard newIndex >= 0, newIndex < lines.count else { return }
-                    let target = lines[newIndex].id
-                    withAnimation(.easeInOut(duration: 0.22)) {
-                        proxy.scrollTo(target, anchor: .center)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 4).onChanged { _ in
+                            lastUserScrollAt = .now
+                        }
+                    )
+                    .mask(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .black.opacity(0), location: 0.0),
+                                .init(color: .black, location: 0.12),
+                                .init(color: .black, location: 0.82),
+                                .init(color: .black.opacity(0), location: 1.0),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .onAppear {
+                        guard active >= 0, active < lines.count else { return }
+                        proxy.scrollTo(lines[active].id, anchor: .center)
+                    }
+                    .onChange(of: active) { _, newIndex in
+                        guard newIndex >= 0, newIndex < lines.count else { return }
+                        guard nowPlayingLyricsShouldAutoScroll(secondsSinceLastUserScroll: secondsSinceUserScroll) else { return }
+                        let target = lines[newIndex].id
+                        withAnimation(Self.autoScrollSpring) {
+                            proxy.scrollTo(target, anchor: .center)
+                        }
                     }
                 }
             }
