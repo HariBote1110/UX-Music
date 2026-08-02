@@ -13,14 +13,24 @@ struct RemoteControlScreen: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                NowPlayingAmbientBackground(palette: nil)
-
+            Group {
                 if !hasReceivedState, errorMessage != nil {
                     unreachableView
                 } else {
                     controlsView
                 }
+            }
+            // NOTE: the ambient background must be attached via `.background()` rather than
+            // stacked as a ZStack sibling. `NowPlayingAmbientBackground` internally calls
+            // `.ignoresSafeArea()`, and a ZStack sizes itself to the *largest* child — if the
+            // background were a sibling, its full-screen size would dominate the ZStack's layout
+            // size and the transport controls below would lay out against the un-inset screen
+            // height, pushing them underneath the mini-player/tab-bar footer overlay instead of
+            // the safe area actually left available by `HomeRootView`'s `.safeAreaInset`/
+            // `tabViewBottomAccessory`. `.background()` paints behind the primary content without
+            // affecting its layout size, so the footer inset is respected correctly.
+            .background {
+                NowPlayingAmbientBackground(palette: nil)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .toolbar(.hidden, for: .navigationBar)
