@@ -20,3 +20,9 @@
 - 上記の位置固定対応の際、`LibrarySegmentedHeader` の中身を独自カプセル実装から標準 `Picker(.segmented)`（iOS 標準のグレー角丸ボタン群）に置き換えたところ、ユーザーから「上の選択ボタンがダサい」「よくわからんグレーが出てきてる」と明確な NG が出た。
 - このアプリはヘッダー含め独自の黒基調デザインで統一されており、標準部品（特に `.segmented` Picker の灰色トラック）は世界観から浮く。**タブ切り替えのような目立つ UI 部品は、位置固定などの機能要件を満たしつつも、独自カプセル実装（`Capsule().fill(Color(white:0.12))` の外枠＋`matchedGeometryEffect` でスライドする選択ハイライト）を優先すること**。標準 SwiftUI コントロールへの安易な置換は避ける。
 - 併せてヘッダー帯の背景に敷いていた `Color(red: 0.11, green: 0.11, blue: 0.12)` の矩形も「よくわからんグレー」として指摘された。ヘッダーは背景を完全に透明にし、下地の黒に自然に溶け込ませるほうが良い。
+
+## 追記（2026-08-02）: カプセルタブに Liquid Glass を適用
+- 「独自カプセル実装だが塗りが平板でダサい」という指摘を受け、`LibrarySegmentedHeader.swift` のカプセル外枠と選択ハイライトに iOS 26 の `glassEffect(.regular, in: Capsule())` / `glassEffect(.regular.interactive(), in: Capsule())` を適用した。デプロイメントターゲットが 17.0（`project.pbxproj` の `IPHONEOS_DEPLOYMENT_TARGET`）のため、`#available(iOS 26.0, *)` で分岐し、未満の OS では従来の `Color(white: 0.12/0.22)` 塗りにフォールバックする。
+- `LocalLibraryScreen` の ellipsis メニューと `RemoteLibraryScreen` の取り込み/リフレッシュボタンは、共通の `LibraryHeaderGlassButtonStyle`（`LibrarySegmentedHeader.swift` 内、`ViewModifier`）を介して `.buttonStyle(.glass)`（iOS 26+）／`.ultraThinMaterial` 円形背景（iOS 26 未満）に統一した。`RemoteLibraryScreen` 側は従来 2 ボタンを 1 つの `.background(Circle()...)` で束ねていたため、ボタンごとに個別の円形フレーム＋glass を持つ構造に変更している。
+- `matchedGeometryEffect` によるハイライトのスライドアニメーションは維持（`segmentSelectionHighlight` 内で `#available` 分岐後も同じ `matchedGeometryEffect` を適用）。
+- シミュレータ（iOS 27, iPhone Air）で Albums/Playlists/Songs 切替時にガラスの背後透過・スライドアニメーションを目視確認済み。
