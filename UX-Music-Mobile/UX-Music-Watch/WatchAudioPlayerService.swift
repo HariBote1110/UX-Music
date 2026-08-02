@@ -3,7 +3,7 @@ import Foundation
 import WatchKit
 
 /// AVPlayer-backed playback service for the Watch app. Mirrors the reference implementation in
-/// the dormant `UX-Music-Wear` project (`WatchApp/Services/AudioPlayer.swift`): `.playback`
+/// standalone watch playback: `.playback`
 /// `AVAudioSession` category plus a `WKExtendedRuntimeSession` so audio keeps playing once the
 /// screen locks or the wrist drops.
 @MainActor
