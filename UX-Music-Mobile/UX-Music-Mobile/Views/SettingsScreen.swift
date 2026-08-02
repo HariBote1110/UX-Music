@@ -101,6 +101,12 @@ struct SettingsScreen: View {
 
                 Section {
                     HStack {
+                        Text("接続状態")
+                        Spacer()
+                        Text(watchActivationStatusText(model.watchTransferBridge.activationStatus))
+                            .foregroundStyle(watchActivationStatusColor(model.watchTransferBridge.activationStatus))
+                    }
+                    HStack {
                         Text("ペアリング状態")
                         Spacer()
                         Text(model.watchTransferBridge.isPaired ? "ペアリング済み" : "未ペアリング")
@@ -330,6 +336,23 @@ struct SettingsScreen: View {
                     await MainActor.run { savedFlash = false }
                 }
             }
+        }
+    }
+
+    private func watchActivationStatusText(_ status: WatchSessionActivationStatus) -> String {
+        switch status {
+        case .notActivated: return "未接続"
+        case .activating: return "接続中…"
+        case .activated: return "接続済み"
+        case .failed(let message): return "接続失敗: \(message)"
+        }
+    }
+
+    private func watchActivationStatusColor(_ status: WatchSessionActivationStatus) -> Color {
+        switch status {
+        case .activated: return .green
+        case .failed: return .red
+        default: return .secondary
         }
     }
 

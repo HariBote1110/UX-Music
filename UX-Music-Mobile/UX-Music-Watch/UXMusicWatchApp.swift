@@ -10,7 +10,13 @@ struct UXMusicWatchApp: App {
         let library = WatchLocalLibrary()
         _library = StateObject(wrappedValue: library)
         _player = StateObject(wrappedValue: WatchAudioPlayerService(library: library))
-        _connectivity = StateObject(wrappedValue: WatchConnectivityReceiver(library: library))
+        let connectivity = WatchConnectivityReceiver(library: library)
+        _connectivity = StateObject(wrappedValue: connectivity)
+        // Activated here (app init) rather than a view's onAppear: WatchConnectivity can invoke
+        // `didReceive` in the background before any view ever appears (e.g. the Watch app was
+        // launched by the system just to handle the incoming transfer), so the delegate must be
+        // registered as early as possible in the process's lifetime.
+        connectivity.activate()
     }
 
     var body: some Scene {
@@ -19,9 +25,6 @@ struct UXMusicWatchApp: App {
                 .environmentObject(library)
                 .environmentObject(player)
                 .environmentObject(connectivity)
-                .onAppear {
-                    connectivity.activate()
-                }
         }
     }
 }

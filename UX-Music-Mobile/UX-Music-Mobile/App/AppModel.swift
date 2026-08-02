@@ -84,6 +84,11 @@ final class AppModel {
         serverConfig = Self.loadSettings()
         downloadManager = DownloadManager()
         watchTransferBridge = WatchTransferBridge(downloadManager: downloadManager)
+        // Activated here (app model construction, i.e. at process launch) rather than from a
+        // view's onAppear: WCSession.activate() completes asynchronously, and a `send` requested
+        // before that completion must see the bridge already mid-activation to be queued correctly
+        // (see WatchTransferBridge.send / handleActivationCompletion).
+        watchTransferBridge.activate()
         self.lyricsFileStore = lyricsFileStore ?? LyricsFileStore()
         self.playlistStore = playlistStore ?? PlaylistStore()
         favouriteSongStore = FavouriteSongStore()

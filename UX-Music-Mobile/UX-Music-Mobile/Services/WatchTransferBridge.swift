@@ -15,6 +15,32 @@ struct WatchTransferQueueItem: Identifiable {
     var phase: Phase
 }
 
+/// `WCSession` activation state, kept as a plain enum (no `WCSession` dependency) so the
+/// queue/flush gating logic below is unit-testable without a real WatchConnectivity session.
+enum WatchSessionActivationStatus: Equatable {
+    case notActivated
+    case activating
+    case activated
+    case failed(String)
+}
+
+/// Pure gating logic for the "activate before transferFile" bug: `WCSession.activate()` completes
+/// asynchronously (`activationDidCompleteWith`), so a `send` requested beforehand must be queued
+/// rather than attempted immediately — attempting it immediately is what produced the "WCSession
+/// has not been activated" / "Application context data is nil" errors seen on a real device (the
+/// simulator's `wcd` is lenient enough that the same call silently succeeds there).
+enum WatchTransferActivationGating {
+    /// Whether a `send` request should be performed immediately given the current activation status.
+    static func shouldSendImmediately(status: WatchSessionActivationStatus) -> Bool {
+        status == .activated
+    }
+
+    /// The bridge's new activation status once `activationDidCompleteWith` reports its result.
+    static func statusAfterActivationCompletion(succeeded: Bool, errorDescription: String?) -> WatchSessionActivationStatus {
+        succeeded ? .activated : .failed(errorDescription ?? "Watch connectivity activation failed")
+    }
+}
+
 /// iOS-side WatchConnectivity bridge: sends already-downloaded audio files to the paired Apple
 /// Watch via `WCSession.transferFile`, alongside a `WatchTransferMeta` metadata dictionary the
 /// Watch uses to build its local library (see `WatchTransfer.swift`, shared with the Watch target).
@@ -27,27 +53,56 @@ final class WatchTransferBridge: NSObject, ObservableObject {
     @Published private(set) var queue: [WatchTransferQueueItem] = []
     @Published private(set) var isPaired = false
     @Published private(set) var isWatchAppInstalled = false
+    /// Observable so Settings can show *why* a transfer is stuck (e.g. still activating on launch,
+    /// or activation failed) instead of the item silently sitting in `.waiting`.
+    @Published private(set) var activationStatus: WatchSessionActivationStatus = .notActivated
 
     private let downloadManager: DownloadManager
+    /// Songs requested via `send` before activation completed; flushed once `activationStatus`
+    /// becomes `.activated`, or marked `.failed` if activation itself fails.
+    private var pendingSongs: [Song] = []
 
     init(downloadManager: DownloadManager) {
         self.downloadManager = downloadManager
     }
 
+    /// Activates the `WCSession`. Must be called exactly once, as early as possible in the app's
+    /// lifetime (from `AppModel.init`, not a view's `onAppear`) — on a real device `activate()`
+    /// completes asynchronously, and any `send` requested in the meantime is queued by `send`
+    /// below rather than attempted against a not-yet-activated session.
     func activate() {
-        guard WCSession.isSupported() else { return }
+        guard WCSession.isSupported() else {
+            activationStatus = .failed("WatchConnectivity unsupported")
+            return
+        }
+        guard activationStatus == .notActivated else { return }
+        activationStatus = .activating
         let session = WCSession.default
         session.delegate = self
         session.activate()
-        refreshPairingState()
     }
 
     /// Queues `song` for transfer. Requires the song be downloaded locally; no-ops otherwise.
+    /// If the session has not finished activating yet, the request is held in `pendingSongs` and
+    /// flushed once activation completes (see `handleActivationCompletion`).
     @discardableResult
     func send(_ song: Song) -> Bool {
         guard downloadManager.isDownloaded(songId: song.id) else { return false }
         guard !queue.contains(where: { $0.id == song.id && $0.phase != .sent }) else { return true }
 
+        upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .waiting))
+
+        guard WatchTransferActivationGating.shouldSendImmediately(status: activationStatus) else {
+            pendingSongs.append(song)
+            return true
+        }
+
+        performTransfer(song)
+        return true
+    }
+
+    /// Actually calls `WCSession.transferFile`. Only safe to call once `activationStatus == .activated`.
+    private func performTransfer(_ song: Song) {
         let localURL = URL(fileURLWithPath: downloadManager.localPathString(songId: song.id))
         let meta = WatchTransferMeta(
             id: song.id,
@@ -62,17 +117,37 @@ final class WatchTransferBridge: NSObject, ObservableObject {
 
         guard WCSession.isSupported() else {
             upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .failed("WatchConnectivity unsupported")))
-            return false
+            return
         }
         let session = WCSession.default
         guard session.activationState == .activated else {
             upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .failed("Watch not connected")))
-            return false
+            return
         }
 
         session.transferFile(localURL, metadata: meta.wcMetadata)
         upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .sent))
-        return true
+    }
+
+    private func handleActivationCompletion(succeeded: Bool, errorDescription: String?) {
+        activationStatus = WatchTransferActivationGating.statusAfterActivationCompletion(
+            succeeded: succeeded,
+            errorDescription: errorDescription
+        )
+        refreshPairingState()
+
+        let songs = pendingSongs
+        pendingSongs.removeAll()
+        switch activationStatus {
+        case .activated:
+            songs.forEach { performTransfer($0) }
+        case .failed(let reason):
+            songs.forEach { upsert(WatchTransferQueueItem(id: $0.id, title: $0.displayTitle, phase: .failed(reason))) }
+        case .notActivated, .activating:
+            // Should not happen (handleActivationCompletion only runs after activate() reports),
+            // but re-queue defensively rather than dropping the request.
+            pendingSongs = songs
+        }
     }
 
     private func upsert(_ item: WatchTransferQueueItem) {
@@ -99,7 +174,9 @@ extension WatchTransferBridge: WCSessionDelegate {
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: Error?
     ) {
-        Task { @MainActor in refreshPairingState() }
+        Task { @MainActor in
+            handleActivationCompletion(succeeded: activationState == .activated, errorDescription: error?.localizedDescription)
+        }
     }
 
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
