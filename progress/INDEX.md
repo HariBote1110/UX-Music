@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mobile-device-identity-zero-uuid.md](mobile-device-identity-zero-uuid.md) — UX Music Mobile: `DeviceIdentity` がシミュレータ等で返るゼロUUIDを有効な識別子として誤採用し、デスクトップ側 `deviceAuthTokens` に衝突登録される不具合の修正（`resolvedDeviceId` への切り出しとフォールバック生成）
 - [mobile-lan-api-v1-migration.md](mobile-lan-api-v1-migration.md) — UX-Music-Mobile を新 LAN API v1 に追従: wear 命名の全廃（RemoteAPIClient 等への改名）、Bearer 認証、secret→redeem 方式のペアリングへの変更
 - [lan-api-v1.md](lan-api-v1.md) — LAN API v1 統一プロトコル仕様: `/wear/*`・`/sync/*` を `/v1/remote/*`・`/v1/sync/*` に再編、デバイス別トークン認証（`deviceAuthTokens`）・Bearer 一本化・QR→redeem 発行ペアリング・JSON エラー形式・バージョニング1体系化の決定記録
 - [mobile-remote-control-footer.md](mobile-remote-control-footer.md) — UX Music Mobile: Remote Control タブのトランスポート行がミニプレイヤー＋タブバーのフッターに重なるバグの原因（`.ignoresSafeArea()` を持つ背景をZStackの兄弟にするとレイアウトサイズが背景に引きずられる）と修正
