@@ -116,4 +116,46 @@ final class WatchTransferTests: XCTestCase {
     func testShouldAddToLibraryIsFalseOnFailure() {
         XCTAssertFalse(WatchFileReceiveHandling.shouldAddToLibrary(.failed("copy failed")))
     }
+
+    // MARK: - WatchTransferActivationGating
+    //
+    // Pure gating logic for the "activate before transferFile" bug: on a real device,
+    // WCSession.activate() completes asynchronously, so a `send` requested before
+    // `activationDidCompleteWith` fires must be queued rather than attempted immediately
+    // (attempting it immediately is what produced the "WCSession has not been activated" /
+    // "Application context data is nil" errors seen on-device).
+
+    func testShouldSendImmediatelyIsFalseBeforeActivation() {
+        XCTAssertFalse(WatchTransferActivationGating.shouldSendImmediately(status: .notActivated))
+        XCTAssertFalse(WatchTransferActivationGating.shouldSendImmediately(status: .activating))
+    }
+
+    func testShouldSendImmediatelyIsTrueOnceActivated() {
+        XCTAssertTrue(WatchTransferActivationGating.shouldSendImmediately(status: .activated))
+    }
+
+    func testShouldSendImmediatelyIsFalseWhenActivationFailed() {
+        XCTAssertFalse(WatchTransferActivationGating.shouldSendImmediately(status: .failed("boom")))
+    }
+
+    func testStatusAfterActivationCompletionSucceededIsActivated() {
+        XCTAssertEqual(
+            WatchTransferActivationGating.statusAfterActivationCompletion(succeeded: true, errorDescription: nil),
+            .activated
+        )
+    }
+
+    func testStatusAfterActivationCompletionFailedCarriesErrorDescription() {
+        XCTAssertEqual(
+            WatchTransferActivationGating.statusAfterActivationCompletion(succeeded: false, errorDescription: "network gone"),
+            .failed("network gone")
+        )
+    }
+
+    func testStatusAfterActivationCompletionFailedFallsBackToDefaultMessageWhenNoError() {
+        XCTAssertEqual(
+            WatchTransferActivationGating.statusAfterActivationCompletion(succeeded: false, errorDescription: nil),
+            .failed("Watch connectivity activation failed")
+        )
+    }
 }
