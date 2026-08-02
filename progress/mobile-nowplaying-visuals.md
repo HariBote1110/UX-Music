@@ -72,6 +72,41 @@
   塗った角丸カードに変更し、`.listRowSeparator(.hidden)` を添えてセパレーター線が
   角丸カードの見た目を破らないようにした（Queue / Favourites 両パネル）。
 
+### 4. PlaybackSettings（EQ）パネルのドラッグ追従シート化
+
+- 従来はメイン画面での上方向ドラッグ終了時に `ty < -52` の閾値判定で `page = .playbackSettings`
+  へ切り替え、`.transition(.move(edge: .bottom).combined(with: .opacity))` で出現させていた。
+  指の動きに追従せず、離した瞬間に急に湧いて出る／フェードが安っぽいという課題があった。
+- 修正: パネルの出現を「指の持ち上げ量に応じて下端から迫り上がるシート」として再実装。
+  - 新規 `@State private var settingsDragOffset: CGFloat`（メイン画面での縦ドラッグの
+    生の translation.height、上方向のみ負値として反映。下方向のドラッグ量はここでは
+    `0` に丸め、既存の下スワイプ dismiss 判定を壊さないようにした）。
+  - 純関数を4つ追加（`NowPlayingView.swift`、`NowPlayingCoverageTests.swift` にテスト）:
+    - `nowPlayingSettingsSheetProgress(dragTranslationY:height:) -> CGFloat`
+      （上方向ドラッグ量 ÷ 画面高さ、`[0,1]` にクランプ）
+    - `nowPlayingSettingsSheetOffsetY(progress:height:) -> CGFloat`
+      （`h * (1 - progress)`。0 = 画面外に完全に隠れる、`h` = 完全に持ち上がる）
+    - `nowPlayingSettingsSheetDarkness(progress:) -> CGFloat`
+      （`progress * 0.5`。背面の暗さは最大 0.5 に留め、シート自体が常に前面として
+      明るく見えるようにした）
+    - `nowPlayingSettingsSheetShouldOpen(progress:) -> Bool`（`progress > 0.22` で確定）
+  - パネルは `page == .playbackSettings` のときだけでなく**常に描画**する方針に変更した
+    （`.transition` を廃止）。理由: `if` 条件でパネルの出し入れを行うと、`page` の状態変化が
+    瞬時に起こる SwiftUI の性質上、閉じるアニメーション中に条件が先に `false` になって
+    ビューが即座に消えてしまい、スプリングで下に戻る演出ができなかった。常時描画した上で
+    `.offset(y:)` にのみ progress を反映し、`.allowsHitTesting(page == .playbackSettings)`
+    で「完全に開いている時だけ操作を受け付ける」形にすることで、開閉どちらのアニメーションも
+    自然に追従するようにした。
+  - 背面の暗さは既存の `nowPlayingSidePanelCoverage`（safe-area 帯の被覆専用）とは別レイヤー
+    として `Color.black.opacity(nowPlayingSettingsSheetDarkness(progress:))` を追加した
+    （既存の coverage ロジックには手を入れていない）。
+  - 上端にグラバーバー（`Capsule` 幅36×高さ5、白 opacity 0.3）を追加し、シートらしい
+    見た目にした。
+  - リリース時の判定は `handleStripDragEnded` 内の縦軸ブランチで
+    `nowPlayingSettingsSheetShouldOpen(progress:)` を使うよう変更し、開かない場合は
+    `settingsDragOffset` をスプリングで 0 に戻す。下スワイプ dismiss（`ty > 68`）は
+    従来どおり維持。
+
 ## 検討したが採用しなかった案
 
 - アクティブ行を `scaleEffect` で拡大する案 → 不採用。フォントサイズを可変にすると

@@ -65,6 +65,40 @@ func nowPlayingSidePanelCoverage(page: NowPlayingPage, horizontalDrag: CGFloat, 
     return min(1, max(0, coverage))
 }
 
+/// How far the drag-to-reveal PlaybackSettings sheet has been lifted from the bottom edge,
+/// as a fraction of the content height (0 = resting off-screen below, 1 = fully raised).
+///
+/// Only upward drags (`dragTranslationY < 0`) lift the sheet; downward drags are clamped to 0
+/// so the same live translation value used for the main page's vertical-axis gesture can be
+/// fed straight in without a separate "is this an upward drag" branch at every call site.
+func nowPlayingSettingsSheetProgress(dragTranslationY ty: CGFloat, height h: CGFloat) -> CGFloat {
+    guard h > 1 else { return 0 }
+    let liftedUp = max(0, -ty)
+    return min(1, liftedUp / h)
+}
+
+/// Vertical offset (in points, measured from the sheet's fully-raised resting position) for the
+/// given lift `progress`. `0` progress parks the sheet a full height below (off-screen), `1`
+/// progress sits it flush at the top of the content area.
+func nowPlayingSettingsSheetOffsetY(progress: CGFloat, height h: CGFloat) -> CGFloat {
+    let clamped = min(1, max(0, progress))
+    return h * (1 - clamped)
+}
+
+/// How much to dim the content behind the rising sheet (0...0.5), scaling linearly with lift
+/// `progress` so the backdrop darkens smoothly as the sheet is dragged up, capping below full
+/// black so the sheet itself always reads as the brighter, foreground layer.
+func nowPlayingSettingsSheetDarkness(progress: CGFloat) -> CGFloat {
+    let clamped = min(1, max(0, progress))
+    return clamped * 0.5
+}
+
+/// Release-time decision: does the drag gesture end with enough lift `progress` to commit to
+/// opening the PlaybackSettings sheet, or should it spring back down?
+func nowPlayingSettingsSheetShouldOpen(progress: CGFloat) -> Bool {
+    progress > 0.22
+}
+
 /// `ToolbarItem` can propose a short height; large frames get clipped and `Circle()` looks truncated.
 /// `internal` (not `private`) so the lyrics screen's close button can reuse the same chrome.
 struct NowPlayingNavIconButton<Content: View>: View {
@@ -96,6 +130,9 @@ struct NowPlayingView: View {
     @State private var page: NowPlayingPage = .main
     @State private var horizontalDrag: CGFloat = 0
     @State private var lockedDragAxis: StripDragAxis?
+    /// Live vertical drag translation (points) while dragging the PlaybackSettings sheet up from
+    /// the main page. Negative values lift the sheet; kept at 0 whenever not mid-drag.
+    @State private var settingsDragOffset: CGFloat = 0
     @State private var showLyricsScreen = false
     /// Palette extracted from the current track's artwork.
     /// Kept at this level so the ambient background can be applied *outside* the
@@ -133,6 +170,11 @@ struct NowPlayingView: View {
                 // Extra vertical clearance needed inside the content area so that panel
                 // content is not obscured by the floating toolbar row (button ø34 + margins).
                 let toolbarClearance: CGFloat = 52
+                // While settled on the settings page the sheet is fully raised (progress 1);
+                // otherwise progress tracks the live upward drag from the main page.
+                let settingsSheetProgress: CGFloat = page == .playbackSettings
+                    ? 1
+                    : nowPlayingSettingsSheetProgress(dragTranslationY: settingsDragOffset, height: h)
 
                 ZStack(alignment: .top) {
                     // ── Safe-area cover ──────────────────────────────────────────────
@@ -141,6 +183,14 @@ struct NowPlayingView: View {
                     // black in step with the side panels instead of leaking gradient.
                     Color.black
                         .opacity(nowPlayingSidePanelCoverage(page: page, horizontalDrag: horizontalDrag, width: w))
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+
+                    // ── Sheet backdrop dimming ───────────────────────────────────────
+                    // Darkens the main page as the PlaybackSettings sheet is dragged up from
+                    // the bottom edge, independent of the side-panel safe-area cover above.
+                    Color.black
+                        .opacity(nowPlayingSettingsSheetDarkness(progress: settingsSheetProgress))
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
 
@@ -186,18 +236,27 @@ struct NowPlayingView: View {
                     .allowsHitTesting(page != .playbackSettings)
                     .gesture(stripDragGesture(width: w, height: h))
 
-                    // ── Playback-settings overlay ───────────────────────────────────
-                    if page == .playbackSettings {
-                        NowPlayingPlaybackSettingsPanel(page: $page, topInset: toolbarClearance)
-                            .frame(width: w, height: h)
-                            .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                                    .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
-                            }
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                            .zIndex(1)
-                    }
+                    // ── Playback-settings sheet ─────────────────────────────────────
+                    // Rendered unconditionally (not just when `page == .playbackSettings`) so
+                    // `offset(y:)` — not a `.transition` — can track the finger continuously
+                    // during the drag-up gesture from the main page and animate smoothly back
+                    // to fully hidden/shown on release, instead of popping in from a fixed edge.
+                    NowPlayingPlaybackSettingsPanel(page: $page, topInset: toolbarClearance)
+                        .frame(width: w, height: h)
+                        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                        }
+                        .overlay(alignment: .top) {
+                            Capsule()
+                                .fill(.white.opacity(0.3))
+                                .frame(width: 36, height: 5)
+                                .padding(.top, 8)
+                        }
+                        .offset(y: nowPlayingSettingsSheetOffsetY(progress: settingsSheetProgress, height: h))
+                        .allowsHitTesting(page == .playbackSettings)
+                        .zIndex(1)
 
                     // ── Floating toolbar ────────────────────────────────────────────
                     // y=0 inside this GeometryReader is already below the status bar /
@@ -288,6 +347,14 @@ struct NowPlayingView: View {
         }
     }
 
+    private func setSettingsDragLive(_ value: CGFloat) {
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            settingsDragOffset = value
+        }
+    }
+
     private func stripDragGesture(width w: CGFloat, height h: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 8, coordinateSpace: .local)
             .onChanged { value in
@@ -316,6 +383,14 @@ struct NowPlayingView: View {
                     case .playbackSettings:
                         break
                     }
+                }
+
+                if lockedDragAxis == .vertical, page == .main {
+                    // Only upward motion lifts the PlaybackSettings sheet; downward motion is
+                    // left alone here so the existing pull-down-to-dismiss threshold below still
+                    // sees the raw translation.
+                    setSettingsDragLive(min(0, ty))
+                    return
                 }
 
                 guard lockedDragAxis == .horizontal else { return }
@@ -349,16 +424,22 @@ struct NowPlayingView: View {
         if axis == .vertical {
             if page == .main {
                 // Content scrolls down (finger moves up) → settings; content scrolls up (finger moves down) → album / dismiss.
-                if ty < -52 {
+                let progress = nowPlayingSettingsSheetProgress(dragTranslationY: settingsDragOffset, height: h)
+                if nowPlayingSettingsSheetShouldOpen(progress: progress) {
                     withAnimation(nowPlayingPanelSpring) {
                         page = .playbackSettings
                         horizontalDrag = 0
+                        settingsDragOffset = 0
                     }
                     return
                 }
                 if ty > 68 {
+                    settingsDragOffset = 0
                     dismiss()
                     return
+                }
+                withAnimation(nowPlayingPanelSpring) {
+                    settingsDragOffset = 0
                 }
             }
             withAnimation(nowPlayingPanelSpring) {
