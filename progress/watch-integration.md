@@ -138,3 +138,19 @@
   / `WatchTransferMenuPolicyTests.swift`）は pbxproj に手動登録。
   `WatchTransferMenuPolicy.swift`・`WatchTransferMenuItems.swift` は
   iOS ターゲットのみのメンバーシップ（`AppModel`/`Song` は iOS 専用のため）。
+
+## シミュレータ E2E 検証の記録（フェーズ3後・2026-08-03）
+
+- iPhone Air ⇔ Apple Watch Series 11 (42mm) のペアシミュレータで検証。
+- **送信側は成功を確認**: 曲行の長押し →「Apple Watch に転送」→ `WCSession transferFile` が
+  `kNoErr` 完了（wcd 受理、FLAC 30MB）。転送メニューは Songs/アルバム詳細で表示を確認。
+- **Watch アプリ側への配達は未達**: Watch 側 wcd が `IDS ... fatal error, will not be
+  attempting to reconnect` を出しており、シミュレータの WatchConnectivity 転送トランス
+  ポート（IDS）がこの環境で機能しない。90秒待機してもファイル未着。
+- 重要な前提: `WCErrorCodeWatchAppNotInstalled` を避けるには、Watch アプリを
+  **iPhone アプリバンドル内蔵の `Watch/UX-Music-Watch.app` から** `simctl install`
+  すること（別 DerivedData の単体ビルドを入れると wcd が companion app と認識しない）。
+- シミュレータのタッチ入力（MCP 注入・Simulator.app の実クリックとも）が
+  デバイス再起動を跨ぐと死ぬ事象が多発（backboardd 起因、CoreSimulatorService 再起動で回復）。
+  タップ検証時は注入先 udid の明示が必須（Watch ブート後はパネルの対象が Watch に切り替わる）。
+- **結論: 受信→リアルタイム更新（WCSessionFile 生存期間修正）の end-to-end 確認は実機でのみ可能。**
