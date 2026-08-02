@@ -11,3 +11,7 @@
 
 ## Constraints / Gotchas
 - SwiftUI の `ZStack` はサイズを持たない `.background()` 系の背景と、サイズ計算に参加する通常の子要素との違いに注意。`.ignoresSafeArea()` を持つビューを ZStack の直接の子として重ねると、意図せず兄弟ビューのレイアウトサイズまで「フルスクリーン化」してしまうことがある。同様の環境光背景（`NowPlayingAmbientBackground`）を使う他の画面を新設する際も、背景は `.background()` 経由で付与すること。
+
+## 追記（2026-08-02）: 上記修正後も約13ptの重なりが残存 → 明示的バッファで解消
+- `.background()` 化だけでは解消せず、白い再生ボタンの下端がミニプレイヤーの空ピル上端に約13ptめり込んだ状態が残っていた。原因は iOS 26.1+ の `tabViewBottomAccessory`：`MiniPlayerView` が曲なしで `EmptyView` を返していても、ピル形のコンテナ自体はシステムのクロームとして表示され続ける。この予約領域はアプリ側の `GeometryReader` では測れず（測る対象のコンテンツが空のため）、タブコンテンツへ自動で配られる `safeAreaInset` はこの予約領域より心持ち小さい。
+- 対策: `RemoteControlScreen` に `.safeAreaInset(edge: .bottom) { Color.clear.frame(height: 44) }` を追加し、システムが自動で配る分に対する明示的な上乗せクリアランスとして確保した。リスト系のスクロール画面ではスクロールで逃げられるため気づきにくいが、固定レイアウト画面では同様の余裕を持たせること。
