@@ -1,0 +1,171 @@
+package server
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+)
+
+// newTempRemoteStore は Remote/LAN 系テスト用に一時 userDataPath とストアを差し込み、
+// 終了時に元のグローバル値へ戻す。復元しないと後続テストが前のテストの
+// userDataPath / store.Instance を引き継いでしまう。
+func newTempRemoteStore(t *testing.T) string {
+	t.Helper()
+	return newTempUserDataStore(t)
+}
+
+func TestBuildPairingURL_containsHostPortAndSecret(t *testing.T) {
+	newTempRemoteStore(t)
+
+	got := BuildPairingURL()
+	u, err := url.Parse(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.Scheme != "uxmusic" || u.Host != "pair" {
+		t.Fatalf("unexpected pairing URL: %q", got)
+	}
+	if u.Query().Get("host") == "" || u.Query().Get("port") == "" {
+		t.Fatalf("host/port missing: %q", got)
+	}
+	if u.Query().Get("secret") == "" {
+		t.Fatalf("pairing URL must include a one-time secret: %q", got)
+	}
+	// The QR code must never embed a long-lived token directly.
+	if u.Query().Get("token") != "" {
+		t.Fatalf("pairing URL must not embed a raw device token: %q", got)
+	}
+}
+
+func TestBuildPairingURL_secretsAreOneTimeUse(t *testing.T) {
+	newTempRemoteStore(t)
+
+	first, err := url.Parse(BuildPairingURL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := first.Query().Get("secret")
+
+	if !consumePairingRedeemSecret(secret) {
+		t.Fatalf("expected first redemption to succeed")
+	}
+	if consumePairingRedeemSecret(secret) {
+		t.Fatalf("expected secret to be single-use")
+	}
+}
+
+func TestDeviceAuthMiddlewareRejectsSensitiveEndpointWithoutToken(t *testing.T) {
+	newTempRemoteStore(t)
+	token := ensureDeviceAuthToken("dev_test")
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	})
+	handler := deviceAuthMiddleware(next)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/remote/songs", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated request code=%d want=%d", rec.Code, http.StatusUnauthorized)
+	}
+	if nextCalled {
+		t.Fatal("unauthenticated request reached sensitive handler")
+	}
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/remote/songs", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("authenticated request code=%d want=%d", rec.Code, http.StatusNoContent)
+	}
+	if !nextCalled {
+		t.Fatal("authenticated request did not reach sensitive handler")
+	}
+}
+
+func TestDeviceAuthMiddlewareAllowsQueryTokenForMediaEndpointsOnly(t *testing.T) {
+	newTempRemoteStore(t)
+	token := ensureDeviceAuthToken("dev_test")
+
+	nextCalled := false
+	handler := deviceAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	// Media GET endpoint: ?token= is accepted.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/remote/file/song-1?token="+url.QueryEscape(token), nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("media endpoint with query token: code=%d want=%d", rec.Code, http.StatusNoContent)
+	}
+	if !nextCalled {
+		t.Fatal("media endpoint with valid query token did not reach handler")
+	}
+
+	// Non-media endpoint: ?token= must NOT be accepted, only Authorization: Bearer.
+	nextCalled = false
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/remote/songs?token="+url.QueryEscape(token), nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("non-media endpoint with query token should be rejected, got code=%d", rec.Code)
+	}
+	if nextCalled {
+		t.Fatal("non-media endpoint accepted a query token")
+	}
+}
+
+// 形式は正しいが値の違うトークンを拒否すること。
+// 長さの違うトークンは ConstantTimeCompare 手前の長さチェックで弾かれるため、
+// 比較そのものの拒否経路を踏ませるには同じ長さの誤りトークンが必要。
+func TestDeviceAuthMiddlewareRejectsWrongToken(t *testing.T) {
+	newTempRemoteStore(t)
+	valid := ensureDeviceAuthToken("dev_test")
+	wrong := corruptSyncToken(valid)
+	if len(wrong) != len(valid) || wrong == valid {
+		t.Fatalf("test setup: wrong token must be same length and different: valid=%q wrong=%q", valid, wrong)
+	}
+
+	handler := deviceAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/remote/songs", nil)
+	req.Header.Set("Authorization", "Bearer "+wrong)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for wrong device token, got %d", rec.Code)
+	}
+}
+
+// 未ペアリング端末が持つトークン（このホストで発行・保存されていないトークン）は
+// 形式が正しくても拒否されること。
+func TestDeviceAuthMiddlewareRejectsTokenOfUnpairedDevice(t *testing.T) {
+	newTempRemoteStore(t)
+	_ = ensureDeviceAuthToken("dev_paired")
+	unpaired := generateAuthToken()
+
+	nextCalled := false
+	handler := deviceAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/v1/remote/songs", nil)
+	req.Header.Set("Authorization", "Bearer "+unpaired)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unpaired device token, got %d", rec.Code)
+	}
+	if nextCalled {
+		t.Fatal("unpaired device token reached sensitive handler")
+	}
+}

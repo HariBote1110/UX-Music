@@ -11,19 +11,19 @@ import (
 	"ux-music-sidecar/internal/store"
 )
 
-// wearLyricsHandler serves `GET /wear/lyrics?id={songId}` with JSON
+// remoteLyricsHandler serves `GET /v1/remote/lyrics?id={songId}` with JSON
 // `{ "found": true, "type": "lrc"|"txt", "content": "..." }` or `{ "found": false }`.
-func wearLyricsHandler(w http.ResponseWriter, r *http.Request) {
+func remoteLyricsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		writeAPIError(w, "GET only", http.StatusMethodNotAllowed)
 		return
 	}
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
 	if id == "" {
-		http.Error(w, "missing id", http.StatusBadRequest)
+		writeAPIError(w, "missing id", http.StatusBadRequest)
 		return
 	}
-	song, ok := wearLibrarySongByID(id)
+	song, ok := remoteLibrarySongByID(id)
 	if !ok {
 		writeJSON(w, map[string]interface{}{"found": false})
 		return
@@ -69,11 +69,11 @@ func wearLyricsHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"found": false})
 }
 
-// wearPlaylistsHandler serves `GET /wear/playlists` as a JSON array of
+// remotePlaylistsHandler serves `GET /v1/remote/playlists` as a JSON array of
 // `{ "name": string, "songIds": [...], "pathsNotInLibrary"?: [...] }`.
-func wearPlaylistsHandler(w http.ResponseWriter, r *http.Request) {
+func remotePlaylistsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		writeAPIError(w, "GET only", http.StatusMethodNotAllowed)
 		return
 	}
 	names, err := playlist.GetAllPlaylists()
@@ -91,7 +91,7 @@ func wearPlaylistsHandler(w http.ResponseWriter, r *http.Request) {
 		ids := make([]string, 0, len(paths))
 		var unmatched []string
 		for _, p := range paths {
-			if id, ok := wearPlaylistPathToSongID(pathToID, p); ok {
+			if id, ok := remotePlaylistPathToSongID(pathToID, p); ok {
 				ids = append(ids, id)
 			} else {
 				unmatched = append(unmatched, p)
@@ -109,7 +109,7 @@ func wearPlaylistsHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-func wearPlaylistPathToSongID(pathToID map[string]string, playlistPath string) (string, bool) {
+func remotePlaylistPathToSongID(pathToID map[string]string, playlistPath string) (string, bool) {
 	if pathToID == nil || playlistPath == "" {
 		return "", false
 	}
@@ -131,8 +131,8 @@ func wearPlaylistPathToSongID(pathToID map[string]string, playlistPath string) (
 	return "", false
 }
 
-// wearLibrarySongByID returns the raw library map for a song id (or path-shaped legacy id).
-func wearLibrarySongByID(id string) (map[string]interface{}, bool) {
+// remoteLibrarySongByID returns the raw library map for a song id (or path-shaped legacy id).
+func remoteLibrarySongByID(id string) (map[string]interface{}, bool) {
 	library, err := store.Instance.LoadSlice("library")
 	if err != nil || len(library) == 0 {
 		return nil, false

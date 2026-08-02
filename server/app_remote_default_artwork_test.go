@@ -12,7 +12,7 @@ import (
 	"ux-music-sidecar/internal/config"
 )
 
-func TestWearArtworkHandler_notFoundWhenFileMissing(t *testing.T) {
+func TestRemoteArtworkHandler_notFoundWhenFileMissing(t *testing.T) {
 	tmp := t.TempDir()
 	prev := config.GetUserDataPath()
 	config.SetUserDataPath(tmp)
@@ -22,9 +22,9 @@ func TestWearArtworkHandler_notFoundWhenFileMissing(t *testing.T) {
 	}
 
 	id := strings.Repeat("a", 64)
-	req := httptest.NewRequest(http.MethodGet, "/wear/artwork/?id="+id, nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/remote/artwork/?id="+id, nil)
 	rec := httptest.NewRecorder()
-	wearArtworkHandler(rec, req)
+	remoteArtworkHandler(rec, req)
 	res := rec.Result()
 	t.Cleanup(func() { _ = res.Body.Close() })
 

@@ -45,7 +45,7 @@ type MDNSPeer struct {
 func BuildMDNSText(info MDNSAdvertiseInfo) []string {
 	protocolVersion := strings.TrimSpace(info.ProtocolVersion)
 	if protocolVersion == "" {
-		protocolVersion = "0.1"
+		protocolVersion = "1.0"
 	}
 	schemaVersion := strings.TrimSpace(info.SchemaVersion)
 	return []string{

@@ -153,9 +153,9 @@ func TestIncrementPlayCountTriggersImmediateSyncWhenPeerReachable(t *testing.T) 
 	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini", ProtocolVersion: syncProtocolVersion})
-		case "/sync/library/events":
+		case "/v1/sync/library/events":
 			var req syncLibraryEventsRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				observer.errorf("decode events: %v", err)
@@ -174,7 +174,7 @@ func TestIncrementPlayCountTriggersImmediateSyncWhenPeerReachable(t *testing.T) 
 	defer remote.Close()
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_air",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: remote.URL}},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
@@ -219,9 +219,9 @@ func TestIncrementPlayCountImmediateSyncSkipsHeavyLibraryWork(t *testing.T) {
 	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini", ProtocolVersion: syncProtocolVersion, Roles: []string{"LibraryHost"}})
-		case "/sync/library/events":
+		case "/v1/sync/library/events":
 			var req syncLibraryEventsRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				observer.errorf("decode events: %v", err)
@@ -230,11 +230,11 @@ func TestIncrementPlayCountImmediateSyncSkipsHeavyLibraryWork(t *testing.T) {
 			}
 			received <- req.PlayEvents
 			writeJSON(w, syncLibraryEventsResponse{Accepted: len(req.PlayEvents), Ack: uxsync.EventAck{DeviceID: req.DeviceID, MaxDeviceSequence: 1}})
-		case "/sync/library/snapshot":
+		case "/v1/sync/library/snapshot":
 			unexpectedHeavyRequest <- r.URL.Path
 			http.Error(w, "snapshot should not run during immediate playback sync", http.StatusInternalServerError)
 		default:
-			if strings.HasPrefix(r.URL.Path, "/sync/assets/") {
+			if strings.HasPrefix(r.URL.Path, "/v1/sync/assets/") {
 				unexpectedHeavyRequest <- r.URL.Path
 				http.Error(w, "asset sync should not run during immediate playback sync", http.StatusInternalServerError)
 				return
@@ -245,7 +245,7 @@ func TestIncrementPlayCountImmediateSyncSkipsHeavyLibraryWork(t *testing.T) {
 	defer remote.Close()
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_air",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: remote.URL}},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
@@ -535,7 +535,7 @@ func TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer(t *testing.T)
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_portable",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -557,10 +557,10 @@ func TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer(t *testing.T)
 	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini", ProtocolVersion: syncProtocolVersion})
-		case "/sync/library/events":
-			observedToken = r.Header.Get("X-UX-Music-Sync-Token")
+		case "/v1/sync/library/events":
+			observedToken = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			var req syncLibraryEventsRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				observer.errorf("decode events: %v", err)
@@ -576,7 +576,7 @@ func TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer(t *testing.T)
 	defer remote.Close()
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_portable",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: remote.URL}},
 	}); err != nil {
 		t.Fatalf("seed known peer: %v", err)
@@ -627,10 +627,10 @@ func TestAutoSyncPairedDevicesAppliesRemotePlayCountSnapshotWithoutAssetPull(t *
 	assetRequests := 0
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini", ProtocolVersion: syncProtocolVersion, Roles: []string{"LibraryHost"}})
-		case "/sync/library/snapshot":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/library/snapshot":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -649,7 +649,7 @@ func TestAutoSyncPairedDevicesAppliesRemotePlayCountSnapshotWithoutAssetPull(t *
 				}},
 			})
 		default:
-			if strings.HasPrefix(r.URL.Path, "/sync/assets/") {
+			if strings.HasPrefix(r.URL.Path, "/v1/sync/assets/") {
 				assetRequests++
 				http.Error(w, "playcount metadata sync should not download assets", http.StatusInternalServerError)
 				return
@@ -660,7 +660,7 @@ func TestAutoSyncPairedDevicesAppliesRemotePlayCountSnapshotWithoutAssetPull(t *
 	defer remote.Close()
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_air",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: remote.URL}},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
@@ -813,7 +813,7 @@ func TestAutoSyncPairedDevicesDownloadsMissingArtworkForImportedTrack(t *testing
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_portable",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -833,10 +833,10 @@ func TestAutoSyncPairedDevicesDownloadsMissingArtworkForImportedTrack(t *testing
 
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini", ProtocolVersion: syncProtocolVersion})
-		case "/sync/assets/remote-track-1/artwork":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/assets/remote-track-1/artwork":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -849,7 +849,7 @@ func TestAutoSyncPairedDevicesDownloadsMissingArtworkForImportedTrack(t *testing
 	defer remote.Close()
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_portable",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: remote.URL}},
 	}); err != nil {
 		t.Fatalf("seed known peer: %v", err)
@@ -892,7 +892,7 @@ func TestAutoSyncPairedDevicesPullsOnlyMissingTracksFromLibraryHost(t *testing.T
 	}
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_portable",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -911,10 +911,10 @@ func TestAutoSyncPairedDevicesPullsOnlyMissingTracksFromLibraryHost(t *testing.T
 	assetRequests := map[string]int{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini", ProtocolVersion: syncProtocolVersion, Roles: []string{"LibraryHost"}})
-		case "/sync/library/snapshot":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/library/snapshot":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -925,15 +925,15 @@ func TestAutoSyncPairedDevicesPullsOnlyMissingTracksFromLibraryHost(t *testing.T
 					{"id": "remote-new", "path": "/Music/new.flac", "title": "New", "artist": "Artist", "album": "Album"},
 				},
 			})
-		case "/sync/assets/remote-new/file":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/assets/remote-new/file":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 			assetRequests[r.URL.Path]++
 			w.Header().Set("Content-Disposition", `attachment; filename="new.flac"`)
 			_, _ = w.Write([]byte("new-audio"))
-		case "/sync/assets/remote-existing/file":
+		case "/v1/sync/assets/remote-existing/file":
 			assetRequests[r.URL.Path]++
 			http.Error(w, "existing track should have been skipped", http.StatusInternalServerError)
 		default:
@@ -943,7 +943,7 @@ func TestAutoSyncPairedDevicesPullsOnlyMissingTracksFromLibraryHost(t *testing.T
 	defer remote.Close()
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_portable",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: remote.URL, Roles: []string{"LibraryHost"}}},
 	}); err != nil {
 		t.Fatalf("seed known peer: %v", err)
@@ -956,7 +956,7 @@ func TestAutoSyncPairedDevicesPullsOnlyMissingTracksFromLibraryHost(t *testing.T
 	if result.PulledTracks != 1 || result.SkippedTracks != 1 || result.FailedDevices != 0 {
 		t.Fatalf("unexpected auto pull counters: %#v", result)
 	}
-	if assetRequests["/sync/assets/remote-existing/file"] != 0 || assetRequests["/sync/assets/remote-new/file"] != 1 {
+	if assetRequests["/v1/sync/assets/remote-existing/file"] != 0 || assetRequests["/v1/sync/assets/remote-new/file"] != 1 {
 		t.Fatalf("unexpected asset requests: %#v", assetRequests)
 	}
 }
@@ -965,16 +965,16 @@ func TestAutoSyncPairedDevicesDoesNotPullTracksFromNonLibraryHost(t *testing.T) 
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_portable",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_peer": "tok_peer"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_peer": "tok_peer"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
 	snapshotRequests := 0
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_peer", DisplayName: "Controller", ProtocolVersion: syncProtocolVersion, Roles: []string{"Controller"}})
-		case "/sync/library/snapshot":
+		case "/v1/sync/library/snapshot":
 			snapshotRequests++
 			http.Error(w, "non LibraryHost should not be pulled", http.StatusInternalServerError)
 		default:
@@ -984,7 +984,7 @@ func TestAutoSyncPairedDevicesDoesNotPullTracksFromNonLibraryHost(t *testing.T) 
 	defer remote.Close()
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_portable",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_peer": "tok_peer"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_peer": "tok_peer"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_peer", DisplayName: "Controller", BaseURL: remote.URL, Roles: []string{"Controller"}}},
 	}); err != nil {
 		t.Fatalf("seed known peer: %v", err)
@@ -1004,7 +1004,7 @@ func TestAutoSyncPairedDevicesStopsWhenFreeSpaceIsBelowSafetyLimit(t *testing.T)
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:       "dev_portable",
 		syncMinFreeSpaceGBSettingsKey: 5.0,
-		syncAuthTokensSettingsKey:     map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey:     map[string]interface{}{"dev_host": "tok_host"},
 		syncKnownPeersSettingsKey:     []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: "http://127.0.0.1:1"}},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)

@@ -57,7 +57,7 @@ func TestMDNSPeerCandidateBaseURLs_includesAllHostsInOrder(t *testing.T) {
 func TestResolveReachablePeer_selectsFirstResponsiveCandidate(t *testing.T) {
 	observer := &handlerObserver{}
 	okServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/sync/identity" {
+		if r.URL.Path != "/v1/identity" {
 			observer.errorf("unexpected probe path: %s", r.URL.Path)
 			http.Error(w, "unexpected probe path", http.StatusNotFound)
 			return

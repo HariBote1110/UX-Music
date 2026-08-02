@@ -478,11 +478,11 @@ func (a *App) PushSyncLibraryAssetsWithOptions(baseURL string, limit int, option
 }
 
 func fetchSyncLibrarySnapshot(ctx context.Context, baseURL, token string) (syncLibrarySnapshotResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/sync/library/snapshot", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/sync/library/snapshot", nil)
 	if err != nil {
 		return syncLibrarySnapshotResponse{}, err
 	}
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := syncHTTPClient().Do(req)
 	if err != nil {
 		return syncLibrarySnapshotResponse{}, err
@@ -501,7 +501,7 @@ func fetchSyncLibrarySnapshot(ctx context.Context, baseURL, token string) (syncL
 func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string, identity syncIdentityResponse, track map[string]interface{}, current, total int) (string, error) {
 	trackID := syncTrackID(track)
 	encodingMode := syncPreferredFormatForIdentity(identity)
-	endpoint := baseURL + "/sync/assets/" + url.PathEscape(trackID) + "/file"
+	endpoint := baseURL + "/v1/sync/assets/" + url.PathEscape(trackID) + "/file"
 	if encodingMode == syncTransferEncodingMP3320 {
 		endpoint += "?encoding=mp3_320"
 	}
@@ -509,7 +509,7 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := syncAssetHTTPClient().Do(req)
 	if err != nil {
 		return "", err
@@ -823,12 +823,12 @@ func (a *App) uploadSyncTrackAsset(ctx context.Context, baseURL, token string, s
 		}
 	}()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/sync/library/import", reader)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/sync/library/import", reader)
 	if err != nil {
 		return syncLibraryImportResponse{}, err
 	}
 	req.Header.Set("Content-Type", multipartWriter.FormDataContentType())
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := syncAssetHTTPClient().Do(req)
 	if err != nil {
 		return syncLibraryImportResponse{}, err
@@ -1214,12 +1214,12 @@ func syncMissingArtworkFromPeer(ctx context.Context, baseURL, token, deviceID st
 var errSyncArtworkNotFound = fmt.Errorf("sync artwork not found")
 
 func downloadSyncArtworkAsset(ctx context.Context, baseURL, token, deviceID, trackID string) (map[string]string, error) {
-	endpoint := strings.TrimRight(baseURL, "/") + "/sync/assets/" + url.PathEscape(trackID) + "/artwork"
+	endpoint := strings.TrimRight(baseURL, "/") + "/v1/sync/assets/" + url.PathEscape(trackID) + "/artwork"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := syncAssetHTTPClient().Do(req)
 	if err != nil {
 		return nil, err
@@ -1306,7 +1306,7 @@ func writeSyncArtworkFile(path string, data []byte) error {
 }
 
 func parseSyncAssetPath(rawPath string) (string, string) {
-	rest := strings.TrimPrefix(rawPath, "/sync/assets/")
+	rest := strings.TrimPrefix(rawPath, "/v1/sync/assets/")
 	parts := strings.Split(strings.Trim(rest, "/"), "/")
 	if len(parts) != 2 {
 		return "", ""
@@ -1363,7 +1363,7 @@ func syncArtworkDescriptor(track map[string]interface{}) map[string]interface{} 
 	}
 	descriptor := map[string]interface{}{
 		"available": true,
-		"endpoint":  "/sync/assets/" + url.PathEscape(syncTrackID(track)) + "/artwork",
+		"endpoint":  "/v1/sync/assets/" + url.PathEscape(syncTrackID(track)) + "/artwork",
 	}
 	for key, value := range artwork {
 		descriptor[key] = value
@@ -1582,7 +1582,7 @@ func loadSyncAuthTokenForDevice(deviceID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rawTokens, _ := settings[syncAuthTokensSettingsKey].(map[string]interface{})
+	rawTokens, _ := settings[deviceAuthTokensSettingsKey].(map[string]interface{})
 	token, _ := rawTokens[deviceID].(string)
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -1601,7 +1601,7 @@ func ResetSyncTestData() (SyncResetResult, error) {
 		settings = map[string]interface{}{}
 	}
 	preserved := map[string]interface{}{}
-	for _, key := range []string{syncDeviceIDSettingsKey, syncAuthTokensSettingsKey, syncKnownPeersSettingsKey} {
+	for _, key := range []string{syncDeviceIDSettingsKey, deviceAuthTokensSettingsKey, syncKnownPeersSettingsKey} {
 		if value, ok := settings[key]; ok {
 			preserved[key] = value
 		}
@@ -1618,7 +1618,7 @@ func ResetSyncTestData() (SyncResetResult, error) {
 			return result, err
 		}
 	}
-	for _, dir := range []string{"Artworks", "WearCache", syncManagedLibraryDirName, "Playlists"} {
+	for _, dir := range []string{"Artworks", "RemoteCache", syncManagedLibraryDirName, "Playlists"} {
 		path := filepath.Join(userDataPath, dir)
 		if err := os.RemoveAll(path); err != nil {
 			return result, err

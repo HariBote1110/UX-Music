@@ -6,17 +6,17 @@ import (
 	"strings"
 )
 
-// ensureWearTrackOrder fills missing per-disc track indices for /wear/songs so mobile clients can sort
+// ensureRemoteTrackOrder fills missing per-disc track indices for /v1/remote/songs so mobile clients can sort
 // albums consistently. When every track in an (album × disc) bucket has trackNumber 0, we order by
 // path then title and assign 1..n (matching typical folder / rip order).
-func ensureWearTrackOrder(songs []map[string]interface{}) {
+func ensureRemoteTrackOrder(songs []map[string]interface{}) {
 	if len(songs) == 0 {
 		return
 	}
 	byAlbum := make(map[string][]map[string]interface{})
 	order := make([]string, 0)
 	for _, m := range songs {
-		key := wearNormAlbumKey(m)
+		key := remoteNormAlbumKey(m)
 		if _, seen := byAlbum[key]; !seen {
 			order = append(order, key)
 		}
@@ -27,7 +27,7 @@ func ensureWearTrackOrder(songs []map[string]interface{}) {
 		byDisc := make(map[int][]map[string]interface{})
 		discOrder := make([]int, 0)
 		for _, m := range list {
-			d := wearIntField(m, "discNumber")
+			d := remoteIntField(m, "discNumber")
 			if _, seen := byDisc[d]; !seen {
 				discOrder = append(discOrder, d)
 			}
@@ -36,15 +36,15 @@ func ensureWearTrackOrder(songs []map[string]interface{}) {
 		sort.Ints(discOrder)
 		for _, d := range discOrder {
 			bucket := byDisc[d]
-			if !wearAllTrackNumbersZero(bucket) {
+			if !remoteAllTrackNumbersZero(bucket) {
 				continue
 			}
 			sort.Slice(bucket, func(i, j int) bool {
-				return wearPathTitleLess(bucket[i], bucket[j])
+				return remotePathTitleLess(bucket[i], bucket[j])
 			})
 			for i, m := range bucket {
 				m["trackNumber"] = i + 1
-				if wearIntField(m, "discNumber") == 0 && d == 0 && len(discOrder) == 1 {
+				if remoteIntField(m, "discNumber") == 0 && d == 0 && len(discOrder) == 1 {
 					m["discNumber"] = 1
 				}
 			}
@@ -52,15 +52,15 @@ func ensureWearTrackOrder(songs []map[string]interface{}) {
 	}
 }
 
-func wearNormAlbumKey(m map[string]interface{}) string {
-	t := strings.TrimSpace(wearStringField(m, "album"))
+func remoteNormAlbumKey(m map[string]interface{}) string {
+	t := strings.TrimSpace(remoteStringField(m, "album"))
 	if t == "" {
 		return "Unknown Album"
 	}
 	return t
 }
 
-func wearStringField(m map[string]interface{}, key string) string {
+func remoteStringField(m map[string]interface{}, key string) string {
 	v, ok := m[key]
 	if !ok || v == nil {
 		return ""
@@ -73,19 +73,19 @@ func wearStringField(m map[string]interface{}, key string) string {
 	}
 }
 
-func wearIntField(m map[string]interface{}, key string) int {
+func remoteIntField(m map[string]interface{}, key string) int {
 	v, ok := m[key]
 	if !ok || v == nil {
 		return 0
 	}
-	i, ok := wearCoerceInt(v)
+	i, ok := remoteCoerceInt(v)
 	if !ok {
 		return 0
 	}
 	return i
 }
 
-func wearCoerceInt(v interface{}) (int, bool) {
+func remoteCoerceInt(v interface{}) (int, bool) {
 	switch x := v.(type) {
 	case int:
 		return x, true
@@ -103,22 +103,22 @@ func wearCoerceInt(v interface{}) (int, bool) {
 	}
 }
 
-func wearAllTrackNumbersZero(bucket []map[string]interface{}) bool {
+func remoteAllTrackNumbersZero(bucket []map[string]interface{}) bool {
 	for _, m := range bucket {
-		if wearIntField(m, "trackNumber") != 0 {
+		if remoteIntField(m, "trackNumber") != 0 {
 			return false
 		}
 	}
 	return len(bucket) > 0
 }
 
-func wearPathTitleLess(a, b map[string]interface{}) bool {
-	pa := strings.ToLower(wearStringField(a, "path"))
-	pb := strings.ToLower(wearStringField(b, "path"))
+func remotePathTitleLess(a, b map[string]interface{}) bool {
+	pa := strings.ToLower(remoteStringField(a, "path"))
+	pb := strings.ToLower(remoteStringField(b, "path"))
 	if pa != pb {
 		return pa < pb
 	}
-	ta := strings.ToLower(wearStringField(a, "title"))
-	tb := strings.ToLower(wearStringField(b, "title"))
+	ta := strings.ToLower(remoteStringField(a, "title"))
+	tb := strings.ToLower(remoteStringField(b, "title"))
 	return ta < tb
 }

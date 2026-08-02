@@ -216,7 +216,7 @@ func TestSyncLibraryEventsPushStoresChildPlayEventsAndReturnsAcks(t *testing.T) 
 
 func TestSyncLibraryEventsRejectsInvalidMethod(t *testing.T) {
 	newTempSyncStore(t)
-	req := httptest.NewRequest(http.MethodGet, "/sync/library/events", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sync/library/events", nil)
 	rec := httptest.NewRecorder()
 
 	(&App{}).syncLibraryEventsHandler(rec, req)
@@ -262,7 +262,7 @@ func TestSyncLibraryEventsEmitsUpdatedPlayCountsAfterApplyingEvents(t *testing.T
 			}{name: name, data: data})
 		},
 	}
-	req := httptest.NewRequest(http.MethodPost, "/sync/library/events", bytes.NewReader(payload))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sync/library/events", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -283,7 +283,7 @@ func TestSyncLibraryEventsEmitsUpdatedPlayCountsAfterApplyingEvents(t *testing.T
 
 func postSyncLibraryEvents(t *testing.T, payload []byte) syncLibraryEventsResponse {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/sync/library/events", bytes.NewReader(payload))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sync/library/events", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 

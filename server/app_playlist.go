@@ -147,7 +147,7 @@ func hasImmediatePlaybackSyncPeer() bool {
 	if err != nil {
 		return false
 	}
-	rawTokens, _ := settings[syncAuthTokensSettingsKey].(map[string]interface{})
+	rawTokens, _ := settings[deviceAuthTokensSettingsKey].(map[string]interface{})
 	if len(rawTokens) == 0 {
 		return false
 	}

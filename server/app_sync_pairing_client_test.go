@@ -19,13 +19,13 @@ func TestStartSyncPairingCallsRemotePeerWithLocalDeviceID(t *testing.T) {
 	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, map[string]interface{}{
 				"deviceId":    "dev_remote_pc",
 				"displayName": "mainPC",
 				"roles":       []string{"LibraryHost"},
 			})
-		case "/sync/pairing/start":
+		case "/v1/pairing/start":
 			var req syncPairingStartRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				observer.errorf("decode start request: %v", err)
@@ -75,12 +75,12 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, map[string]interface{}{
 				"deviceId":    "dev_remote_pc",
 				"displayName": "mainPC",
 			})
-		case "/sync/pairing/confirm":
+		case "/v1/pairing/confirm":
 			var req syncPairingConfirmRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				observer.errorf("decode confirm request: %v", err)
@@ -119,7 +119,7 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 	if err != nil {
 		t.Fatalf("load settings: %v", err)
 	}
-	rawTokens, _ := settings[syncAuthTokensSettingsKey].(map[string]interface{})
+	rawTokens, _ := settings[deviceAuthTokensSettingsKey].(map[string]interface{})
 	if rawTokens["dev_remote_pc"] != "tok_remote_for_local" {
 		t.Fatalf("expected token to be stored for remote device, got %#v", rawTokens)
 	}
@@ -128,7 +128,7 @@ func TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice(t *testing.T) 
 func TestListSyncDevicesReturnsPairedKnownPeerWithoutToken(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote_for_local"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote_for_local"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{
 			DeviceID:    "dev_remote_pc",
 			DisplayName: "mainPC",
@@ -157,7 +157,7 @@ func TestListSyncDevicesReturnsPairedKnownPeerWithoutToken(t *testing.T) {
 func TestListSyncDevicesKeepsTokenOnlyDeviceAsPaired(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote_for_local"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote_for_local"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -179,12 +179,12 @@ func TestConfirmSyncPairingRejectsChangedRemoteDevice(t *testing.T) {
 
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, map[string]interface{}{
 				"deviceId":    "dev_other_pc",
 				"displayName": "Unexpected PC",
 			})
-		case "/sync/pairing/confirm":
+		case "/v1/pairing/confirm":
 			writeJSON(w, syncPairingConfirmResponse{
 				DeviceID: "dev_local_mac",
 				Token:    "tok_remote_for_local",
@@ -204,7 +204,7 @@ func TestConfirmSyncPairingRejectsChangedRemoteDevice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load settings: %v", err)
 	}
-	rawTokens, _ := settings[syncAuthTokensSettingsKey].(map[string]interface{})
+	rawTokens, _ := settings[deviceAuthTokensSettingsKey].(map[string]interface{})
 	if len(rawTokens) != 0 {
 		t.Fatalf("expected no token to be stored, got %#v", rawTokens)
 	}

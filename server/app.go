@@ -60,8 +60,8 @@ func (a *App) Startup(ctx context.Context) {
 	a.bindLyricsSyncProgressEmitter()
 
 	// Start the LAN HTTP server for Apple Watch / iPhone / Mobile companion
-	StartWearServer(ctx, a)
-	fmt.Printf("[Wear] Server address: %s\n", GetWearServerAddress())
+	StartLANServer(ctx, a)
+	fmt.Printf("[LAN] Server address: %s\n", GetLANServerAddress())
 
 	a.initOSMediaControls()
 

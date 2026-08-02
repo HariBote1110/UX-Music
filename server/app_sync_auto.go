@@ -393,12 +393,12 @@ func pushSyncPlayEvents(ctx context.Context, baseURL, token, deviceID string, ev
 	if err != nil {
 		return 0, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/sync/library/events", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1/sync/library/events", bytes.NewReader(body))
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := syncHTTPClient().Do(req)
 	if err != nil {
 		return 0, err

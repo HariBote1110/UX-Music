@@ -32,7 +32,7 @@ func TestHashStemFromArtworkFilename(t *testing.T) {
 	})
 }
 
-func TestArtworkIDForWearSong_prefersArtworkFull(t *testing.T) {
+func TestArtworkIDForRemoteSong_prefersArtworkFull(t *testing.T) {
 	const onDisk = "1111111111111111111111111111111111111111111111111111111111111111"
 	song := map[string]interface{}{
 		"albumartist": "",
@@ -44,20 +44,20 @@ func TestArtworkIDForWearSong_prefersArtworkFull(t *testing.T) {
 			"thumbnail": onDisk + "_thumb.webp",
 		},
 	}
-	got := artworkIDForWearSong(song)
+	got := artworkIDForRemoteSong(song)
 	if got != onDisk {
 		t.Fatalf("got %q want %q (must match disk file stem, not recomputed from tags)", got, onDisk)
 	}
 }
 
-func TestArtworkIDForWearSong_fallbackUsesArtistWhenAlbumArtistEmpty(t *testing.T) {
+func TestArtworkIDForRemoteSong_fallbackUsesArtistWhenAlbumArtistEmpty(t *testing.T) {
 	song := map[string]interface{}{
 		"albumartist": "",
 		"artist":      "Band",
 		"album":       "LP",
 		"path":        "/x/y/track.m4a",
 	}
-	got := artworkIDForWearSong(song)
+	got := artworkIDForRemoteSong(song)
 	want := computeArtworkID("Band", "LP")
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)

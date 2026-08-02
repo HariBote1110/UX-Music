@@ -2,11 +2,8 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,118 +25,90 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const wearServerPort = "8765"
+const lanServerPort = "8765"
 
-const wearPairingURLScheme = "uxmusic"
-const wearAuthTokenSettingsKey = "wearAuthToken"
+const pairingURLScheme = "uxmusic"
 
-// WearServer holds the HTTP server for the /wear/ endpoints.
-type WearServer struct {
+// LANServer holds the HTTP server for the unified LAN API (/v1/remote/*,
+// /v1/sync/*, /v1/identity, /v1/pairing/*).
+type LANServer struct {
 	server   *http.Server
 	app      *App
 	syncMDNS *uxsync.MDNSAdvertisement
 	syncInfo uxsync.MDNSAdvertiseInfo
 }
 
-// StartWearServer starts the LAN HTTP server that serves the /wear/ API.
-// It binds to 0.0.0.0:8765 so that iPhone, Apple Watch, and mobile
-// companion apps on the same network can reach the UX Music library.
-func StartWearServer(ctx context.Context, app *App) *WearServer {
-	ws := &WearServer{app: app}
+// StartLANServer starts the LAN HTTP server that serves the unified /v1/ API.
+// It binds to 0.0.0.0:8765 so that iPhone, Apple Watch, and other desktops
+// on the same network can reach the UX Music library.
+func StartLANServer(ctx context.Context, app *App) *LANServer {
+	ls := &LANServer{app: app}
 
 	srv := &http.Server{
-		Addr:    "0.0.0.0:" + wearServerPort,
+		Addr:    "0.0.0.0:" + lanServerPort,
 		Handler: NewLANHTTPHandler(app),
 	}
 
 	go func() {
-		fmt.Printf("[Wear] HTTP server listening on :%s\n", wearServerPort)
+		fmt.Printf("[LAN] HTTP server listening on :%s\n", lanServerPort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("[Wear] Server error: %v\n", err)
+			fmt.Printf("[LAN] Server error: %v\n", err)
 		}
 	}()
 
 	go func() {
 		<-ctx.Done()
-		if ws.syncMDNS != nil {
-			ws.syncMDNS.Shutdown()
+		if ls.syncMDNS != nil {
+			ls.syncMDNS.Shutdown()
 		}
 		_ = srv.Close()
 	}()
 
-	ws.server = srv
-	ws.startSyncMDNS()
-	return ws
+	ls.server = srv
+	ls.startSyncMDNS()
+	return ls
 }
 
 func NewLANHTTPHandler(app *App) http.Handler {
-	ws := &WearServer{app: app}
+	ls := &LANServer{app: app}
 	mux := http.NewServeMux()
-	registerWearRoutes(mux, ws)
+	registerPairingRoutes(mux)
+	registerRemoteRoutes(mux, ls)
 	registerSyncRoutes(mux, app)
-	return corsMiddleware(lanAuthMiddleware(mux))
+	return corsMiddleware(deviceAuthMiddleware(mux))
 }
 
-func registerWearRoutes(mux *http.ServeMux, ws *WearServer) {
-	mux.HandleFunc("/wear/ping", wearPingHandler)
-	mux.HandleFunc("/wear/mobile", wearMobileMetaHandler)
-	mux.HandleFunc("/wear/songs", wearSongsHandler)
-	mux.HandleFunc("/wear/lyrics", wearLyricsHandler)
-	mux.HandleFunc("/wear/playlists", wearPlaylistsHandler)
-	mux.HandleFunc("/wear/file", wearFileHandler)
-	mux.HandleFunc("/wear/file/", wearFileHandler)
-	mux.HandleFunc("/wear/artwork/", wearArtworkHandler)
-	mux.HandleFunc("/wear/loudness", ws.wearLoudnessHandler)
-	mux.HandleFunc("/wear/state", ws.wearStateHandler)
-	mux.HandleFunc("/wear/command", ws.wearCommandHandler)
+func registerRemoteRoutes(mux *http.ServeMux, ls *LANServer) {
+	mux.HandleFunc("/v1/remote/songs", remoteSongsHandler)
+	mux.HandleFunc("/v1/remote/lyrics", remoteLyricsHandler)
+	mux.HandleFunc("/v1/remote/playlists", remotePlaylistsHandler)
+	mux.HandleFunc("/v1/remote/file", remoteFileHandler)
+	mux.HandleFunc("/v1/remote/file/", remoteFileHandler)
+	mux.HandleFunc("/v1/remote/artwork/", remoteArtworkHandler)
+	mux.HandleFunc("/v1/remote/loudness", ls.remoteLoudnessHandler)
+	mux.HandleFunc("/v1/remote/state", ls.remoteStateHandler)
+	mux.HandleFunc("/v1/remote/command", ls.remoteCommandHandler)
 }
 
-// GetWearServerAddress returns the LAN address of this machine for display in the UI.
-func GetWearServerAddress() string {
+// GetLANServerAddress returns the LAN address of this machine for display in the UI.
+func GetLANServerAddress() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
-		return "localhost:" + wearServerPort
+		return "localhost:" + lanServerPort
 	}
 	for _, addr := range addrs {
 		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
 			if ipNet.IP.To4() != nil {
-				return ipNet.IP.String() + ":" + wearServerPort
+				return ipNet.IP.String() + ":" + lanServerPort
 			}
 		}
 	}
-	return "localhost:" + wearServerPort
+	return "localhost:" + lanServerPort
 }
 
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
-func wearPingHandler(w http.ResponseWriter, r *http.Request) {
-	hostname, _ := os.Hostname()
-	// wearApi 2: mobile-oriented additions (original file source, /wear/mobile, etc.). Watch clients may ignore extra keys.
-	writeJSON(w, map[string]interface{}{
-		"version":  "0.1.0",
-		"hostname": hostname,
-		"wearApi":  2,
-	})
-}
-
-// wearMobileMetaHandler documents endpoints for phone companion apps (full-quality audio, cached artwork on device, etc.).
-func wearMobileMetaHandler(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]interface{}{
-		"role":      "ux-music-companion",
-		"wearApi":   2,
-		"songs":     "/wear/songs",
-		"file":      "/wear/file?id={songId}",
-		"fileHint":  "Add &source=original for library file without Watch transcoding (AAC 128k m4a). Omit for watch-optimised cache.",
-		"artwork":   "/wear/artwork/?id={artworkId}",
-		"loudness":  "/wear/loudness",
-		"lyrics":    "/wear/lyrics?id={songId}",
-		"playlists": "/wear/playlists",
-		"state":     "/wear/state",
-		"command":   "/wear/command (POST JSON)",
-	})
-}
-
-func wearSongsHandler(w http.ResponseWriter, r *http.Request) {
+func remoteSongsHandler(w http.ResponseWriter, r *http.Request) {
 	// Strip artwork blobs before sending to save bandwidth
 	library, err := store.Instance.LoadSlice("library")
 	if err != nil || len(library) == 0 {
@@ -163,29 +132,29 @@ func wearSongsHandler(w http.ResponseWriter, r *http.Request) {
 		// Artwork files on disk are named from internal/scanner/artwork.go (hash of
 		// tag-derived keys with artist fallbacks). The library JSON may normalise
 		// album fields differently, so prefer the hash embedded in song["artwork"].full.
-		clean["artworkId"] = artworkIDForWearSong(song)
+		clean["artworkId"] = artworkIDForRemoteSong(song)
 		stripped = append(stripped, clean)
 	}
 
-	ensureWearTrackOrder(stripped)
+	ensureRemoteTrackOrder(stripped)
 
 	writeJSON(w, stripped)
 }
 
-func wearFileHandler(w http.ResponseWriter, r *http.Request) {
+func remoteFileHandler(w http.ResponseWriter, r *http.Request) {
 	songID := strings.TrimSpace(r.URL.Query().Get("id"))
 	if songID == "" {
-		songID = strings.TrimPrefix(r.URL.Path, "/wear/file/")
+		songID = strings.TrimPrefix(r.URL.Path, "/v1/remote/file/")
 		songID = strings.TrimPrefix(songID, "/")
 		if decoded, err := url.PathUnescape(songID); err == nil {
 			songID = decoded
 		}
 	}
 	if songID == "" {
-		http.Error(w, "missing song ID", http.StatusBadRequest)
+		writeAPIError(w, "missing song ID", http.StatusBadRequest)
 		return
 	}
-	fmt.Printf("[Wear] GET /wear/file id=%q from %s\n", songID, r.RemoteAddr)
+	fmt.Printf("[Remote] GET /v1/remote/file id=%q from %s\n", songID, r.RemoteAddr)
 
 	filePath := findSongPathByID(songID)
 	if filePath == "" {
@@ -195,7 +164,7 @@ func wearFileHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Security: ensure the file path is absolute and exists
 	if !filepath.IsAbs(filePath) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		writeAPIError(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 	if _, err := os.Stat(filePath); err != nil {
@@ -218,7 +187,7 @@ func wearFileHandler(w http.ResponseWriter, r *http.Request) {
 	// Falls back to the original file if ffmpeg is unavailable or fails.
 	cachedPath, err := getOrTranscode(songID, filePath)
 	if err != nil {
-		fmt.Printf("[Wear] Transcode failed for %s: %v — serving original\n", songID, err)
+		fmt.Printf("[Remote] Transcode failed for %s: %v — serving original\n", songID, err)
 		http.ServeFile(w, r, filePath)
 		return
 	}
@@ -234,15 +203,15 @@ func wearFileHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, cachedPath)
 }
 
-func wearArtworkHandler(w http.ResponseWriter, r *http.Request) {
-	// Accept either /wear/artwork/{artworkId} (hash) or
+func remoteArtworkHandler(w http.ResponseWriter, r *http.Request) {
+	// Accept either /v1/remote/artwork/{artworkId} (hash) or
 	// a query param ?id={artworkId} for clients that cannot encode slashes.
 	artworkID := r.URL.Query().Get("id")
 	if artworkID == "" {
-		artworkID = strings.TrimPrefix(r.URL.Path, "/wear/artwork/")
+		artworkID = strings.TrimPrefix(r.URL.Path, "/v1/remote/artwork/")
 	}
 	if artworkID == "" {
-		http.Error(w, "missing artwork ID", http.StatusBadRequest)
+		writeAPIError(w, "missing artwork ID", http.StatusBadRequest)
 		return
 	}
 
@@ -250,7 +219,7 @@ func wearArtworkHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Security: artworkID must be a plain hex string (no path separators).
 	if strings.ContainsAny(artworkID, "/\\") {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		writeAPIError(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -262,18 +231,18 @@ func wearArtworkHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Security: must be inside artworksDir
 	if !strings.HasPrefix(artworkPath, artworksDir) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		writeAPIError(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
 	http.ServeFile(w, r, artworkPath)
 }
 
-// ─── Mobile Companion Handlers ──────────────────────────────────────────────
+// ─── Remote Companion Handlers ──────────────────────────────────────────────
 
-// wearLoudnessHandler returns a map of songID → LUFS loudness value.
-// Mobile clients use this to apply volume normalisation during local playback.
-func (ws *WearServer) wearLoudnessHandler(w http.ResponseWriter, r *http.Request) {
+// remoteLoudnessHandler returns a map of songID → LUFS loudness value.
+// Remote clients use this to apply volume normalisation during local playback.
+func (ls *LANServer) remoteLoudnessHandler(w http.ResponseWriter, r *http.Request) {
 	loudnessMap := loadLoudnessMap()
 	if len(loudnessMap) == 0 {
 		writeJSON(w, map[string]interface{}{})
@@ -294,31 +263,31 @@ func (ws *WearServer) wearLoudnessHandler(w http.ResponseWriter, r *http.Request
 	writeJSON(w, result)
 }
 
-// wearStateHandler returns the current desktop playback state.
-func (ws *WearServer) wearStateHandler(w http.ResponseWriter, r *http.Request) {
-	status := ws.app.AudioGetStatus()
+// remoteStateHandler returns the current desktop playback state.
+func (ls *LANServer) remoteStateHandler(w http.ResponseWriter, r *http.Request) {
+	status := ls.app.AudioGetStatus()
 
 	// Include current track metadata from OS media state
-	ws.app.mediaStateMu.Lock()
-	status["title"] = ws.app.mediaTitle
-	status["artist"] = ws.app.mediaArtist
-	status["album"] = ws.app.mediaAlbum
-	ws.app.mediaStateMu.Unlock()
+	ls.app.mediaStateMu.Lock()
+	status["title"] = ls.app.mediaTitle
+	status["artist"] = ls.app.mediaArtist
+	status["album"] = ls.app.mediaAlbum
+	ls.app.mediaStateMu.Unlock()
 
 	writeJSON(w, status)
 }
 
-// wearCommandHandler accepts remote playback commands from mobile clients.
+// remoteCommandHandler accepts remote playback commands from mobile clients.
 // Supported actions: toggle, play, pause, stop, next, prev, seek.
-func (ws *WearServer) wearCommandHandler(w http.ResponseWriter, r *http.Request) {
+func (ls *LANServer) remoteCommandHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		writeAPIError(w, "POST required", http.StatusMethodNotAllowed)
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1024))
 	if err != nil {
-		http.Error(w, "read body failed", http.StatusBadRequest)
+		writeAPIError(w, "read body failed", http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
@@ -328,33 +297,33 @@ func (ws *WearServer) wearCommandHandler(w http.ResponseWriter, r *http.Request)
 		Value  float64 `json:"value,omitempty"`
 	}
 	if err := json.Unmarshal(body, &cmd); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		writeAPIError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 
 	var cmdErr error
 	switch cmd.Action {
 	case "toggle":
-		if ws.app.AudioIsPlaying() {
-			cmdErr = ws.app.AudioPause()
+		if ls.app.AudioIsPlaying() {
+			cmdErr = ls.app.AudioPause()
 		} else {
-			cmdErr = ws.app.AudioResume()
+			cmdErr = ls.app.AudioResume()
 		}
 	case "play":
-		cmdErr = ws.app.AudioResume()
+		cmdErr = ls.app.AudioResume()
 	case "pause":
-		cmdErr = ws.app.AudioPause()
+		cmdErr = ls.app.AudioPause()
 	case "stop":
-		cmdErr = ws.app.AudioStop()
+		cmdErr = ls.app.AudioStop()
 	case "seek":
-		cmdErr = ws.app.AudioSeek(cmd.Value)
+		cmdErr = ls.app.AudioSeek(cmd.Value)
 	case "next", "prev":
 		// Queue management lives in the Wails frontend; delegate via event
-		if ws.app.ctx != nil {
-			wailsRuntime.EventsEmit(ws.app.ctx, "remote-command", cmd.Action)
+		if ls.app.ctx != nil {
+			wailsRuntime.EventsEmit(ls.app.ctx, "remote-command", cmd.Action)
 		}
 	default:
-		http.Error(w, "unknown action", http.StatusBadRequest)
+		writeAPIError(w, "unknown action", http.StatusBadRequest)
 		return
 	}
 
@@ -404,9 +373,9 @@ func getOrTranscode(songID, inputPath string) (string, error) {
 		return "", fmt.Errorf("ffmpeg not found: %w", err)
 	}
 
-	cacheDir := filepath.Join(config.GetUserDataPath(), "WearCache")
+	cacheDir := filepath.Join(config.GetUserDataPath(), "RemoteCache")
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		return "", fmt.Errorf("create WearCache dir: %w", err)
+		return "", fmt.Errorf("create transcode cache dir: %w", err)
 	}
 
 	// songID may contain slashes (path-shaped legacy keys); never use it as a path segment.
@@ -434,7 +403,7 @@ func getOrTranscode(songID, inputPath string) (string, error) {
 	tmpPath := cachedPath + ".tmp"
 	_ = os.Remove(tmpPath) // clean up any stale temp
 
-	fmt.Printf("[Wear] Transcoding %s → m4a 128 kbps …\n", songID)
+	fmt.Printf("[Remote] Transcoding %s → m4a 128 kbps …\n", songID)
 	start := time.Now()
 
 	cmd := exec.Command(ffmpegPath,
@@ -470,7 +439,7 @@ func getOrTranscode(songID, inputPath string) (string, error) {
 	if cached != nil {
 		cacheMB = float64(cached.Size()) / 1024 / 1024
 	}
-	fmt.Printf("[Wear] Transcoded %s in %.1fs  (%.1f MB → %.1f MB)\n",
+	fmt.Printf("[Remote] Transcoded %s in %.1fs  (%.1f MB → %.1f MB)\n",
 		songID, time.Since(start).Seconds(), origMB, cacheMB)
 
 	return cachedPath, nil
@@ -522,7 +491,7 @@ func findSongPathByID(id string) string {
 	if p := tryMatch(id); p != "" {
 		return p
 	}
-	// Old clients put path-like ids in the URL path; a leading "/" was lost after "/wear/file/".
+	// Old clients put path-like ids in the URL path; a leading "/" was lost after "/v1/remote/file/".
 	if !strings.HasPrefix(id, "/") {
 		if p := tryMatch("/" + id); p != "" {
 			return p
@@ -531,12 +500,12 @@ func findSongPathByID(id string) string {
 	return ""
 }
 
-// artworkIDForWearSong returns the hex filename stem served by /wear/artwork/{id}.
-func artworkIDForWearSong(song map[string]interface{}) string {
+// artworkIDForRemoteSong returns the hex filename stem served by /v1/remote/artwork/{id}.
+func artworkIDForRemoteSong(song map[string]interface{}) string {
 	if id := artworkIDFromStoredArtwork(song["artwork"]); id != "" {
 		return id
 	}
-	return computeArtworkIDForWearFallback(song)
+	return computeArtworkIDForRemoteFallback(song)
 }
 
 func artworkIDFromStoredArtwork(v interface{}) string {
@@ -578,9 +547,9 @@ func hashStemFromArtworkFilename(full string) string {
 	return stem
 }
 
-// computeArtworkIDForWearFallback mirrors internal/scanner/artwork.go tag fallbacks
+// computeArtworkIDForRemoteFallback mirrors internal/scanner/artwork.go tag fallbacks
 // when no artwork object is present (e.g. never extracted).
-func computeArtworkIDForWearFallback(song map[string]interface{}) string {
+func computeArtworkIDForRemoteFallback(song map[string]interface{}) string {
 	albumArtist, _ := song["albumartist"].(string)
 	artist, _ := song["artist"].(string)
 	album, _ := song["album"].(string)
@@ -622,7 +591,7 @@ func findArtworkByID(id, artworksDir string) string {
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		http.Error(w, "JSON encode error", http.StatusInternalServerError)
+		writeAPIError(w, "JSON encode error", http.StatusInternalServerError)
 	}
 }
 
@@ -632,7 +601,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-UX-Music-Sync-Token, X-UX-Music-Token")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -641,108 +610,38 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func wearPairingURLFromParts(host, port string) string {
+// BuildPairingURL returns a mobile deep link for QR pairing
+// (uxmusic://pair?host=&port=&secret=). The secret is a fresh one-time value;
+// the client redeems it via POST /v1/pairing/redeem to receive its own
+// device-specific auth token — no long-lived token is embedded in the QR code.
+func BuildPairingURL() string {
+	addr := GetLANServerAddress()
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		host, port = strings.TrimSpace(addr), lanServerPort
+	}
 	q := url.Values{}
 	q.Set("host", host)
 	q.Set("port", port)
-	q.Set("token", ensureWearAuthToken())
-	return wearPairingURLScheme + "://pair?" + q.Encode()
-}
-
-func wearAuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isWearPublicEndpoint(r.URL.Path) {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if !wearRequestHasValidToken(r, ensureWearAuthToken()) {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func isWearPublicEndpoint(path string) bool {
-	return path == "/wear/ping" || path == "/wear/mobile"
-}
-
-func wearRequestHasValidToken(r *http.Request, expected string) bool {
-	expected = strings.TrimSpace(expected)
-	if expected == "" {
-		return false
-	}
-	candidates := []string{
-		r.URL.Query().Get("token"),
-		r.Header.Get("X-UX-Music-Token"),
-	}
-	if auth := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(strings.ToLower(auth), "bearer ") {
-		candidates = append(candidates, strings.TrimSpace(auth[len("bearer "):]))
-	}
-	for _, candidate := range candidates {
-		candidate = strings.TrimSpace(candidate)
-		if len(candidate) != len(expected) {
-			continue
-		}
-		if subtle.ConstantTimeCompare([]byte(candidate), []byte(expected)) == 1 {
-			return true
-		}
-	}
-	return false
-}
-
-func ensureWearAuthToken() string {
-	settings, err := store.Instance.LoadMap("settings")
-	if err == nil {
-		if token, ok := settings[wearAuthTokenSettingsKey].(string); ok && strings.TrimSpace(token) != "" {
-			return strings.TrimSpace(token)
-		}
-	}
-	token := generateWearAuthToken()
-	if settings == nil {
-		settings = map[string]interface{}{}
-	}
-	settings[wearAuthTokenSettingsKey] = token
-	if err := store.Instance.Save("settings", settings); err != nil {
-		fmt.Printf("[Wear] Failed to save auth token: %v\n", err)
-	}
-	return token
-}
-
-func generateWearAuthToken() string {
-	var b [32]byte
-	if _, err := rand.Read(b[:]); err == nil {
-		return hex.EncodeToString(b[:])
-	}
-	fallback := sha256.Sum256([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
-	return hex.EncodeToString(fallback[:])
-}
-
-// BuildWearPairingURL returns a mobile deep link for QR pairing (uxmusic://pair?host=…&port=…).
-func BuildWearPairingURL() string {
-	addr := GetWearServerAddress()
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return wearPairingURLFromParts(strings.TrimSpace(addr), wearServerPort)
-	}
-	return wearPairingURLFromParts(host, port)
+	q.Set("secret", newPairingRedeemSecret())
+	return pairingURLScheme + "://pair?" + q.Encode()
 }
 
 // ─── Wails-exposed methods ──────────────────────────────────────────────────
 
-// GetWearAddress returns the LAN address shown to the user in Settings.
-func (a *App) GetWearAddress() string {
-	return GetWearServerAddress()
+// GetLANAddress returns the LAN address shown to the user in Settings.
+func (a *App) GetLANAddress() string {
+	return GetLANServerAddress()
 }
 
-// GetWearPairingURL returns the uxmusic:// URL encoded in the mobile pairing QR code.
-func (a *App) GetWearPairingURL() string {
-	return BuildWearPairingURL()
+// GetPairingURL returns the uxmusic:// URL encoded in the pairing QR code.
+func (a *App) GetPairingURL() string {
+	return BuildPairingURL()
 }
 
-// GetWearPairingQRDataURL returns a data:image/png;base64,… URL for the pairing QR code.
-func (a *App) GetWearPairingQRDataURL() (string, error) {
-	payload := BuildWearPairingURL()
+// GetPairingQRDataURL returns a data:image/png;base64,… URL for the pairing QR code.
+func (a *App) GetPairingQRDataURL() (string, error) {
+	payload := BuildPairingURL()
 	png, err := qrcode.Encode(payload, qrcode.Medium, 256)
 	if err != nil {
 		return "", err

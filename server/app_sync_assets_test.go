@@ -25,7 +25,7 @@ var errTestSyncTranscodeFailed = errors.New("test sync transcode failed")
 
 func TestSyncLibrarySnapshotRequiresTokenAndReturnsLibraryTracks(t *testing.T) {
 	newTempSyncStore(t)
-	token := ensureSyncAuthTokenForDevice("portable-client")
+	token := ensureDeviceAuthToken("portable-client")
 	songPath := filepath.Join(t.TempDir(), "song.flac")
 	if err := store.Instance.Save("library", []map[string]interface{}{
 		{
@@ -51,13 +51,13 @@ func TestSyncLibrarySnapshotRequiresTokenAndReturnsLibraryTracks(t *testing.T) {
 
 	handler := NewLANHTTPHandler(NewApp())
 	missing := httptest.NewRecorder()
-	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/sync/library/snapshot", nil))
+	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "/v1/sync/library/snapshot", nil))
 	if missing.Code != http.StatusUnauthorized {
 		t.Fatalf("expected snapshot to require sync token, got %d", missing.Code)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/sync/library/snapshot", nil)
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sync/library/snapshot", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -82,7 +82,7 @@ func TestSyncLibrarySnapshotRequiresTokenAndReturnsLibraryTracks(t *testing.T) {
 
 func TestSyncLibrarySnapshotDeduplicatesRepeatedLibraryPaths(t *testing.T) {
 	newTempSyncStore(t)
-	token := ensureSyncAuthTokenForDevice("portable-client")
+	token := ensureDeviceAuthToken("portable-client")
 	songPath := filepath.Join(t.TempDir(), "duplicated.mp3")
 	if err := store.Instance.Save("library", []map[string]interface{}{
 		{
@@ -112,8 +112,8 @@ func TestSyncLibrarySnapshotDeduplicatesRepeatedLibraryPaths(t *testing.T) {
 		t.Fatalf("seed playcounts: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/sync/library/snapshot", nil)
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sync/library/snapshot", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
 
@@ -138,7 +138,7 @@ func TestSyncLibrarySnapshotDeduplicatesRepeatedLibraryPaths(t *testing.T) {
 
 func TestSyncAssetFileServesOriginalFileByTrackID(t *testing.T) {
 	newTempSyncStore(t)
-	token := ensureSyncAuthTokenForDevice("portable-client")
+	token := ensureDeviceAuthToken("portable-client")
 	dir := t.TempDir()
 	audioPath := filepath.Join(dir, "source.flac")
 	if err := os.WriteFile(audioPath, []byte("audio-bytes"), 0o644); err != nil {
@@ -150,8 +150,8 @@ func TestSyncAssetFileServesOriginalFileByTrackID(t *testing.T) {
 		t.Fatalf("seed library: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/sync/assets/track-1/file", nil)
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sync/assets/track-1/file", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
 
@@ -165,7 +165,7 @@ func TestSyncAssetFileServesOriginalFileByTrackID(t *testing.T) {
 
 func TestSyncAssetFileServesMP3320EncodingWhenRequested(t *testing.T) {
 	newTempSyncStore(t)
-	token := ensureSyncAuthTokenForDevice("portable-client")
+	token := ensureDeviceAuthToken("portable-client")
 	dir := t.TempDir()
 	audioPath := filepath.Join(dir, "source.flac")
 	if err := os.WriteFile(audioPath, []byte("flac-bytes"), 0o644); err != nil {
@@ -184,8 +184,8 @@ func TestSyncAssetFileServesMP3320EncodingWhenRequested(t *testing.T) {
 	}
 	t.Cleanup(func() { syncOpenMP3Stream = originalOpen })
 
-	req := httptest.NewRequest(http.MethodGet, "/sync/assets/track-1/file?encoding=mp3_320", nil)
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sync/assets/track-1/file?encoding=mp3_320", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
 
@@ -211,7 +211,7 @@ func TestSyncAssetFileServesMP3320EncodingWhenRequested(t *testing.T) {
 
 func TestSyncAssetFileKeepsOriginalMP3WhenMP3320Requested(t *testing.T) {
 	newTempSyncStore(t)
-	token := ensureSyncAuthTokenForDevice("portable-client")
+	token := ensureDeviceAuthToken("portable-client")
 	dir := t.TempDir()
 	audioPath := filepath.Join(dir, "source.mp3")
 	if err := os.WriteFile(audioPath, []byte("original-mp3"), 0o644); err != nil {
@@ -229,8 +229,8 @@ func TestSyncAssetFileKeepsOriginalMP3WhenMP3320Requested(t *testing.T) {
 	}
 	t.Cleanup(func() { syncOpenMP3Stream = originalOpen })
 
-	req := httptest.NewRequest(http.MethodGet, "/sync/assets/track-1/file?encoding=mp3_320", nil)
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sync/assets/track-1/file?encoding=mp3_320", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
 
@@ -247,7 +247,7 @@ func TestSyncAssetFileKeepsOriginalMP3WhenMP3320Requested(t *testing.T) {
 
 func TestSyncAssetFileFailsMP3320EncodingWithoutOriginalFallback(t *testing.T) {
 	newTempSyncStore(t)
-	token := ensureSyncAuthTokenForDevice("portable-client")
+	token := ensureDeviceAuthToken("portable-client")
 	dir := t.TempDir()
 	audioPath := filepath.Join(dir, "source.flac")
 	if err := os.WriteFile(audioPath, []byte("flac-bytes"), 0o644); err != nil {
@@ -264,8 +264,8 @@ func TestSyncAssetFileFailsMP3320EncodingWithoutOriginalFallback(t *testing.T) {
 	}
 	t.Cleanup(func() { syncOpenMP3Stream = originalOpen })
 
-	req := httptest.NewRequest(http.MethodGet, "/sync/assets/track-1/file?encoding=mp3_320", nil)
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sync/assets/track-1/file?encoding=mp3_320", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
 
@@ -279,7 +279,7 @@ func TestSyncAssetFileFailsMP3320EncodingWithoutOriginalFallback(t *testing.T) {
 
 func TestSyncAssetArtworkServesArtworkByTrackID(t *testing.T) {
 	newTempSyncStore(t)
-	token := ensureSyncAuthTokenForDevice("portable-client")
+	token := ensureDeviceAuthToken("portable-client")
 	artworksDir := filepath.Join(config.GetUserDataPath(), "Artworks")
 	if err := os.MkdirAll(artworksDir, 0o755); err != nil {
 		t.Fatalf("create artworks dir: %v", err)
@@ -293,8 +293,8 @@ func TestSyncAssetArtworkServesArtworkByTrackID(t *testing.T) {
 		t.Fatalf("seed library: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/sync/assets/track-1/artwork", nil)
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sync/assets/track-1/artwork", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
 
@@ -308,7 +308,7 @@ func TestSyncAssetArtworkServesArtworkByTrackID(t *testing.T) {
 
 func TestSyncLibraryImportRequiresTokenAndImportsUploadedTrack(t *testing.T) {
 	newTempSyncStore(t)
-	token := ensureSyncAuthTokenForDevice("dev_mac_mini")
+	token := ensureDeviceAuthToken("dev_mac_mini")
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -342,7 +342,7 @@ func TestSyncLibraryImportRequiresTokenAndImportsUploadedTrack(t *testing.T) {
 		t.Fatalf("close multipart: %v", err)
 	}
 
-	missing := httptest.NewRequest(http.MethodPost, "/sync/library/import", bytes.NewReader(body.Bytes()))
+	missing := httptest.NewRequest(http.MethodPost, "/v1/sync/library/import", bytes.NewReader(body.Bytes()))
 	missing.Header.Set("Content-Type", writer.FormDataContentType())
 	missingRec := httptest.NewRecorder()
 	NewLANHTTPHandler(NewApp()).ServeHTTP(missingRec, missing)
@@ -350,9 +350,9 @@ func TestSyncLibraryImportRequiresTokenAndImportsUploadedTrack(t *testing.T) {
 		t.Fatalf("expected import to require sync token, got %d", missingRec.Code)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/sync/library/import", bytes.NewReader(body.Bytes()))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sync/library/import", bytes.NewReader(body.Bytes()))
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -387,7 +387,7 @@ func TestSyncLibraryImportRequiresTokenAndImportsUploadedTrack(t *testing.T) {
 
 func TestSyncLibraryImportUpdatesPlayCountWhenTrackAlreadyExists(t *testing.T) {
 	newTempSyncStore(t)
-	token := ensureSyncAuthTokenForDevice("dev_mac_mini")
+	token := ensureDeviceAuthToken("dev_mac_mini")
 	existingPath := filepath.Join(t.TempDir(), "already-imported.flac")
 	if err := os.WriteFile(existingPath, []byte("existing-audio"), 0o644); err != nil {
 		t.Fatalf("write existing file: %v", err)
@@ -427,9 +427,9 @@ func TestSyncLibraryImportUpdatesPlayCountWhenTrackAlreadyExists(t *testing.T) {
 		t.Fatalf("close multipart: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/sync/library/import", bytes.NewReader(body.Bytes()))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sync/library/import", bytes.NewReader(body.Bytes()))
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -456,7 +456,7 @@ func TestPushSyncLibraryAssetsUploadsLocalTrackToRemotePeer(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_local_mac",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -486,10 +486,10 @@ func TestPushSyncLibraryAssetsUploadsLocalTrackToRemotePeer(t *testing.T) {
 	var observedBytes string
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
-		case "/sync/library/import":
-			observedToken = r.Header.Get("X-UX-Music-Sync-Token")
+		case "/v1/sync/library/import":
+			observedToken = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			if err := r.ParseMultipartForm(32 << 20); err != nil {
 				observer.errorf("parse multipart: %v", err)
 				http.Error(w, "bad multipart", http.StatusBadRequest)
@@ -544,7 +544,7 @@ func TestPushSyncLibraryAssetsIncludesMetadataArtworkAndPlayCount(t *testing.T) 
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_local_mac",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -590,9 +590,9 @@ func TestPushSyncLibraryAssetsIncludesMetadataArtworkAndPlayCount(t *testing.T) 
 	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
-		case "/sync/library/import":
+		case "/v1/sync/library/import":
 			if err := r.ParseMultipartForm(32 << 20); err != nil {
 				observer.errorf("parse multipart: %v", err)
 				http.Error(w, "bad multipart", http.StatusBadRequest)
@@ -649,7 +649,7 @@ func TestPushSyncLibraryAssetsIncludesMetadataArtworkAndPlayCount(t *testing.T) 
 
 func TestSyncLibraryImportAppliesUploadedArtworkAndPlayCount(t *testing.T) {
 	newTempSyncStore(t)
-	token := ensureSyncAuthTokenForDevice("dev_mac_mini")
+	token := ensureDeviceAuthToken("dev_mac_mini")
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -693,9 +693,9 @@ func TestSyncLibraryImportAppliesUploadedArtworkAndPlayCount(t *testing.T) {
 		t.Fatalf("close writer: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/sync/library/import", &body)
+	req := httptest.NewRequest(http.MethodPost, "/v1/sync/library/import", &body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -723,7 +723,7 @@ func TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320(t *testing.T
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_local_mac",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -762,9 +762,9 @@ func TestPushSyncLibraryAssetsWithOptionsTranscodesLosslessToMP3320(t *testing.T
 	var observedBytes string
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
-		case "/sync/library/import":
+		case "/v1/sync/library/import":
 			if err := r.ParseMultipartForm(32 << 20); err != nil {
 				observer.errorf("parse multipart: %v", err)
 				http.Error(w, "bad multipart", http.StatusBadRequest)
@@ -820,7 +820,7 @@ func TestPushSyncLibraryAssetsWithOptionsStreamsMP3EncodingIntoUpload(t *testing
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_local_mac",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -889,9 +889,9 @@ func TestPushSyncLibraryAssetsWithOptionsStreamsMP3EncodingIntoUpload(t *testing
 
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
-		case "/sync/library/import":
+		case "/v1/sync/library/import":
 			_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if err != nil {
 				failUpload("parse content type: %v", err)
@@ -986,7 +986,7 @@ func TestPushSyncLibraryAssetsEmitsTransferProgressWithFileAndSpeed(t *testing.T
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_local_mac",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_remote_pc": "tok_remote"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -1011,9 +1011,9 @@ func TestPushSyncLibraryAssetsEmitsTransferProgressWithFileAndSpeed(t *testing.T
 	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_remote_pc", DisplayName: "mainPC"})
-		case "/sync/library/import":
+		case "/v1/sync/library/import":
 			if _, err := io.Copy(io.Discard, r.Body); err != nil {
 				observer.errorf("read request: %v", err)
 				http.Error(w, "unreadable request", http.StatusBadRequest)
@@ -1052,17 +1052,17 @@ func TestPushSyncLibraryAssetsEmitsTransferProgressWithFileAndSpeed(t *testing.T
 func TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
 
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini"})
-		case "/sync/library/snapshot":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/library/snapshot":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -1084,8 +1084,8 @@ func TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary(t *testing.
 					},
 				},
 			})
-		case "/sync/assets/remote-track-1/file":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/assets/remote-track-1/file":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -1144,7 +1144,7 @@ func TestPullSyncLibraryAssetsUpdatesPlayCountWhenImportedTrackAlreadyExists(t *
 		t.Fatalf("seed existing audio: %v", err)
 	}
 	if err := store.Instance.Save("settings", map[string]interface{}{
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -1166,10 +1166,10 @@ func TestPullSyncLibraryAssetsUpdatesPlayCountWhenImportedTrackAlreadyExists(t *
 	assetRequests := 0
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini"})
-		case "/sync/library/snapshot":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/library/snapshot":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -1187,7 +1187,7 @@ func TestPullSyncLibraryAssetsUpdatesPlayCountWhenImportedTrackAlreadyExists(t *
 					},
 				}},
 			})
-		case "/sync/assets/remote-track-1/file":
+		case "/v1/sync/assets/remote-track-1/file":
 			assetRequests++
 			http.Error(w, "already imported track should be skipped", http.StatusInternalServerError)
 		default:
@@ -1223,7 +1223,7 @@ func TestPullSyncLibraryAssetsSkipsRemoteTrackWhenLocalMatchExists(t *testing.T)
 		t.Fatalf("seed local audio: %v", err)
 	}
 	if err := store.Instance.Save("settings", map[string]interface{}{
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -1244,10 +1244,10 @@ func TestPullSyncLibraryAssetsSkipsRemoteTrackWhenLocalMatchExists(t *testing.T)
 	assetRequests := 0
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "MacBook Air"})
-		case "/sync/library/snapshot":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/library/snapshot":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -1265,7 +1265,7 @@ func TestPullSyncLibraryAssetsSkipsRemoteTrackWhenLocalMatchExists(t *testing.T)
 					},
 				},
 			})
-		case "/sync/assets/remote-track-1/file":
+		case "/v1/sync/assets/remote-track-1/file":
 			assetRequests++
 			http.Error(w, "should not download duplicate local match", http.StatusInternalServerError)
 		default:
@@ -1307,14 +1307,14 @@ func TestSyncMissingArtworkFromPeerContinuesAfterTrackError(t *testing.T) {
 	}
 
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		if r.Header.Get("Authorization") != "Bearer tok_host" {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 		switch r.URL.Path {
-		case "/sync/assets/track-1/artwork":
+		case "/v1/sync/assets/track-1/artwork":
 			http.Error(w, "temporary artwork failure", http.StatusInternalServerError)
-		case "/sync/assets/track-2/artwork":
+		case "/v1/sync/assets/track-2/artwork":
 			w.Header().Set("Content-Disposition", `attachment; filename="cover.webp"`)
 			_, _ = w.Write([]byte("cover-bytes"))
 		default:
@@ -1345,7 +1345,7 @@ func TestSyncMissingArtworkFromPeerContinuesAfterTrackError(t *testing.T) {
 func TestPullSyncLibraryAssetsRequestsPreferredMP3320WhenPeerSupportsIt(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
-		syncAuthTokensSettingsKey:      map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey:      map[string]interface{}{"dev_host": "tok_host"},
 		syncPreferredFormatSettingsKey: syncTransferEncodingMP3320,
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
@@ -1354,14 +1354,14 @@ func TestPullSyncLibraryAssetsRequestsPreferredMP3320WhenPeerSupportsIt(t *testi
 	var observedAssetQuery string
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{
 				DeviceID:     "dev_host",
 				DisplayName:  "Mac mini",
 				Capabilities: []string{"library.transcode.mp3-320.v1"},
 			})
-		case "/sync/library/snapshot":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/library/snapshot":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -1379,9 +1379,9 @@ func TestPullSyncLibraryAssetsRequestsPreferredMP3320WhenPeerSupportsIt(t *testi
 					},
 				},
 			})
-		case "/sync/assets/remote-track-1/file":
+		case "/v1/sync/assets/remote-track-1/file":
 			observedAssetQuery = r.URL.RawQuery
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -1419,7 +1419,7 @@ func TestPullSyncLibraryAssetsRequestsPreferredMP3320WhenPeerSupportsIt(t *testi
 func TestPullSyncLibraryAssetsFallsBackToOriginalWhenPeerLacksMP3320Capability(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
-		syncAuthTokensSettingsKey:      map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey:      map[string]interface{}{"dev_host": "tok_host"},
 		syncPreferredFormatSettingsKey: syncTransferEncodingMP3320,
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
@@ -1428,11 +1428,11 @@ func TestPullSyncLibraryAssetsFallsBackToOriginalWhenPeerLacksMP3320Capability(t
 	var observedAssetQuery string
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini"})
-		case "/sync/library/snapshot":
+		case "/v1/sync/library/snapshot":
 			writeJSON(w, syncLibrarySnapshotResponse{Count: 1, Tracks: []map[string]interface{}{{"id": "remote-track-1", "path": "/Volumes/Music/source.flac", "title": "Song"}}})
-		case "/sync/assets/remote-track-1/file":
+		case "/v1/sync/assets/remote-track-1/file":
 			observedAssetQuery = r.URL.RawQuery
 			w.Header().Set("Content-Disposition", `attachment; filename="source.flac"`)
 			_, _ = w.Write([]byte("remote-flac"))
@@ -1454,7 +1454,7 @@ func TestPullSyncLibraryAssetsFallsBackToOriginalWhenPeerLacksMP3320Capability(t
 func TestPullSyncLibraryAssetsKeepsOriginalWhenPreferredFormatIsOriginal(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
-		syncAuthTokensSettingsKey:      map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey:      map[string]interface{}{"dev_host": "tok_host"},
 		syncPreferredFormatSettingsKey: syncTransferEncodingOriginal,
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
@@ -1463,11 +1463,11 @@ func TestPullSyncLibraryAssetsKeepsOriginalWhenPreferredFormatIsOriginal(t *test
 	var observedAssetQuery string
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini", Capabilities: []string{"library.transcode.mp3-320.v1"}})
-		case "/sync/library/snapshot":
+		case "/v1/sync/library/snapshot":
 			writeJSON(w, syncLibrarySnapshotResponse{Count: 1, Tracks: []map[string]interface{}{{"id": "remote-track-1", "path": "/Volumes/Music/source.flac", "title": "Song"}}})
-		case "/sync/assets/remote-track-1/file":
+		case "/v1/sync/assets/remote-track-1/file":
 			observedAssetQuery = r.URL.RawQuery
 			w.Header().Set("Content-Disposition", `attachment; filename="source.flac"`)
 			_, _ = w.Write([]byte("remote-flac"))
@@ -1490,7 +1490,7 @@ func TestResetSyncTestDataKeepsPairingSettingsAndClearsManagedMusicState(t *test
 	newTempSyncStore(t)
 	userData := config.GetUserDataPath()
 	if err := store.Instance.Save("settings", map[string]interface{}{
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", BaseURL: "http://192.168.0.226:8765"}},
 		"libraryPath":             filepath.Join(t.TempDir(), "old-library"),
 	}); err != nil {
@@ -1525,7 +1525,7 @@ func TestResetSyncTestDataKeepsPairingSettingsAndClearsManagedMusicState(t *test
 	if err != nil {
 		t.Fatalf("load settings: %v", err)
 	}
-	if _, ok := settings[syncAuthTokensSettingsKey]; !ok {
+	if _, ok := settings[deviceAuthTokensSettingsKey]; !ok {
 		t.Fatalf("expected sync tokens to be preserved: %#v", settings)
 	}
 	if _, ok := settings[syncKnownPeersSettingsKey]; !ok {
@@ -1544,7 +1544,7 @@ func TestResetSyncTestDataKeepsPairingSettingsAndClearsManagedMusicState(t *test
 // を "_" に置換し、末尾の "." / " " を落とすだけで ".." そのものは残す。
 func TestSyncLibraryImportKeepsTraversalFilenamesUnderManagedRoot(t *testing.T) {
 	newTempSyncStore(t)
-	token := ensureSyncAuthTokenForDevice("dev_evil")
+	token := ensureDeviceAuthToken("dev_evil")
 
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -1577,9 +1577,9 @@ func TestSyncLibraryImportKeepsTraversalFilenamesUnderManagedRoot(t *testing.T) 
 		t.Fatalf("close multipart: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/sync/library/import", bytes.NewReader(body.Bytes()))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sync/library/import", bytes.NewReader(body.Bytes()))
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	NewLANHTTPHandler(NewApp()).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
