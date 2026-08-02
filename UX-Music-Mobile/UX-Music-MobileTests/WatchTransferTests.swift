@@ -106,4 +106,14 @@ final class WatchTransferTests: XCTestCase {
         let result = WatchLibraryIndex.retainingExistingFiles(existing) { $0.id == "1" }
         XCTAssertEqual(result.map(\.id), ["1"])
     }
+
+    // MARK: - WatchFileReceiveHandling
+
+    func testShouldAddToLibraryIsTrueOnSuccess() {
+        XCTAssertTrue(WatchFileReceiveHandling.shouldAddToLibrary(.succeeded(sample())))
+    }
+
+    func testShouldAddToLibraryIsFalseOnFailure() {
+        XCTAssertFalse(WatchFileReceiveHandling.shouldAddToLibrary(.failed("copy failed")))
+    }
 }

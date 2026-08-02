@@ -96,3 +96,22 @@ enum WatchLibraryIndex {
         songs.filter(fileExists)
     }
 }
+
+/// Outcome of attempting to persist a file received from the iPhone (copy from WatchConnectivity's
+/// transient inbox into the Watch's own storage). Kept separate from the WatchConnectivity plumbing
+/// so the "what happens to the library index next" decision is unit-testable without a real
+/// WCSession/WatchKit environment.
+enum WatchFileReceiveResult: Equatable {
+    case succeeded(WatchTransferMeta)
+    case failed(String)
+}
+
+enum WatchFileReceiveHandling {
+    /// Whether the library index should be updated (`addSong`) for this result. Only a successful
+    /// copy should ever reach the index — a failed copy must not register a song whose audio file
+    /// does not actually exist on disk.
+    static func shouldAddToLibrary(_ result: WatchFileReceiveResult) -> Bool {
+        if case .succeeded = result { return true }
+        return false
+    }
+}

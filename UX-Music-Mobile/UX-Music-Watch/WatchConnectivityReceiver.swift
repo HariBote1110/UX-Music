@@ -38,17 +38,31 @@ extension WatchConnectivityReceiver: WCSessionDelegate {
             return
         }
 
+        // `file.fileURL` is only guaranteed valid for the duration of this delegate call — moving
+        // it must happen synchronously, right here, on whatever (background) thread WatchConnectivity
+        // invoked us on. The previous implementation hopped to `@MainActor` via `Task` *before*
+        // touching the file, so by the time the copy ran the system had often already deleted the
+        // transient inbox file: the copy silently failed and the song never reached the library,
+        // which is why received songs never appeared on the Watch. `WatchAudioStorage` is a plain
+        // (non-actor-isolated) enum precisely so this path can resolve the destination and copy
+        // without waiting for the main actor.
+        let dest = WatchAudioStorage.audioFileURL(for: meta)
+        try? FileManager.default.removeItem(at: dest)
+        let result: WatchFileReceiveResult
+        do {
+            try FileManager.default.copyItem(at: file.fileURL, to: dest)
+            result = .succeeded(meta)
+        } catch {
+            print("[WatchConnectivityReceiver] Failed to save file: \(error)")
+            result = .failed(error.localizedDescription)
+        }
+
         Task { @MainActor in
             isReceiving = true
             receivingTitle = meta.displayTitle
 
-            let dest = library.audioFileURL(for: meta)
-            try? FileManager.default.removeItem(at: dest)
-            do {
-                try FileManager.default.copyItem(at: file.fileURL, to: dest)
+            if WatchFileReceiveHandling.shouldAddToLibrary(result) {
                 library.addSong(meta)
-            } catch {
-                print("[WatchConnectivityReceiver] Failed to save file: \(error)")
             }
 
             isReceiving = false
