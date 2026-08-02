@@ -154,3 +154,83 @@
   デバイス再起動を跨ぐと死ぬ事象が多発（backboardd 起因、CoreSimulatorService 再起動で回復）。
   タップ検証時は注入先 udid の明示が必須（Watch ブート後はパネルの対象が Watch に切り替わる）。
 - **結論: 受信→リアルタイム更新（WCSessionFile 生存期間修正）の end-to-end 確認は実機でのみ可能。**
+
+## フェーズ4: 実機での `WCSession has not been activated` 修正（activation gating）
+
+### Decision
+
+- **根本原因**: `WCSession.activate()` は非同期に完了する
+  （`activationDidCompleteWith` が実際のシグナル）。旧実装は
+  - iOS 側 `WatchTransferBridge.activate()` を `UXMusicMobileApp` の
+    `.onAppear`（View 初回描画後）から呼んでおり、かつ `activate()` 内で
+    `session.activate()` 呼び出し直後に同期的に `session.isPaired` /
+    `isWatchAppInstalled` を読んでいた（`activationDidCompleteWith` を待たず）。
+  - watchOS 側 `WatchConnectivityReceiver.activate()` も `WatchRootView` の
+    `.onAppear` から呼ばれていた。
+  実機のシミュレータより厳密な `wcd` はこの「activate 完了前のセッション参照/
+  操作」を `WCSession has not been activated` として拒否し、
+  `transferFile` 自体も届かず `Application context data is nil` が併発した
+  （シミュレータの `wcd` は緩く、フェーズ3の検証はここが原因で「送信成功」に
+  見えていた）。
+- **修正方針**: 「activate 完了を待たずに転送要求が来たら即実行せずキューに
+  積み、`activationDidCompleteWith` 完了後に flush する」設計に変更。
+  - `Services/WatchTransferBridge.swift`:
+    - `WatchSessionActivationStatus`（`.notActivated` / `.activating` /
+      `.activated` / `.failed(String)`）と、`WCSession` に依存しない純粋
+      ゲーティング関数 `WatchTransferActivationGating`
+      （`shouldSendImmediately(status:)` / `statusAfterActivationCompletion`）
+      を追加。ここだけを `UX-Music-MobileTests/WatchTransferTests.swift` で
+      TDD（先にテスト→コンパイルエラーで Red 確認→実装で Green）。
+    - `send(_:)` は `shouldSendImmediately` が false なら `pendingSongs` に
+      積んで即 return（キュー表示上は `.waiting`）。実際の
+      `WCSession.transferFile` 呼び出しは `performTransfer(_:)` に分離。
+    - `activationDidCompleteWith` → `handleActivationCompletion` で
+      `activationStatus` を更新し、`.activated` なら `pendingSongs` を
+      `performTransfer` で flush、`.failed` なら理由付きで `.failed` へ
+      遷移させる。`refreshPairingState()`（`isPaired`/`isWatchAppInstalled`
+      の読み取り）もこの完了後にのみ行うよう移動（activate 前の早期参照を排除）。
+    - `activate()` 自体は冪等化（`activationStatus == .notActivated` の
+      ときのみ実行）。
+    - `AppModel.init()` の最後で `watchTransferBridge.activate()` を呼ぶよう
+      変更し、`UXMusicMobileApp` 側の `.onAppear` からは削除（App 起動＝
+      `AppModel` 構築時点で必ず activate される）。
+    - `activationStatus` を `@Published` にして `SettingsScreen` の
+      APPLE WATCH セクション先頭に「接続状態」行として表示
+      （未接続・接続中…・接続済み・接続失敗: <理由>）。
+  - `UX-Music-Watch/UXMusicWatchApp.swift`: `connectivity.activate()` を
+    `WatchRootView` の `.onAppear` から `init()` 直後へ移動。
+    バックグラウンドで wcd がアプリを起こして `didReceive` を呼ぶケースでも、
+    delegate 登録が View 描画を待たず完了しているようにするため。
+    `WatchConnectivityReceiver` 自体は元から `UXMusicWatchApp` の
+    `@StateObject`（App 構造体のプロパティ＝プロセス生存期間で保持）なので、
+    delegate の強参照は既に確保されている（`WCSession.delegate` はセッション
+    側が保持しないため、呼び出し側が生存させ続ける必要がある点に注意）。
+
+### Alternatives considered
+
+- `WCSession.activate()` の完了を `await` できる API は存在しない
+  （delegate コールバックのみ）ため、`AsyncStream` 等でラップして
+  `send` を `async` にする案も検討したが、既存の `@discardableResult
+  func send(_ song: Song) -> Bool` の呼び出し側（`WatchTransferMenuItems`
+  など View 側のボタンアクション）を全て非同期化する必要があり影響範囲が
+  大きい。「同期 API のまま内部でキューイングする」現行案の方が変更を
+  `WatchTransferBridge` 内に閉じ込められるため採用。
+- `activationStatus` を watchOS 側にも作る案は見送り。watchOS 側の
+  `WatchConnectivityReceiver` は「送る」のではなく「受ける」側で、
+  activate 前に呼ばれうる自発的な API 呼び出し（`send` 相当）が存在しない
+  ため、activate 完了を待つ必要がある操作がそもそもない。
+
+### Constraints / Gotchas
+
+- `refreshPairingState()`（`session.isPaired` 等の読み取り）を activate 完了前に
+  呼ぶこと自体が `WCSession has not been activated` の一因だった。activate 系の
+  プロパティ・メソッドは「`activationDidCompleteWith` が一度でも呼ばれた後」
+  でしか安全に触れないと考えること。
+- 実機でしか再現しない類のバグ（シミュレータの `wcd` は寛容）。この修正の
+  実機確認はユーザー側で実施する（下記参照）。
+
+### 検証結果
+
+- `xcodebuild test -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air'` → TEST SUCCEEDED（`WatchTransferActivationGating` 向け新規6件を含め全件成功）
+- `xcodebuild -scheme UX-Music-Watch -destination 'generic/platform=watchOS Simulator' build` → BUILD SUCCEEDED
+- 実機確認はユーザーが実施予定（本フェーズではシミュレータ検証のみ）。
