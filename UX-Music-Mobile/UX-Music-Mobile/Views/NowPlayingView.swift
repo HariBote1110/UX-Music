@@ -799,7 +799,7 @@ private struct NowPlayingArtworkBlock: View {
             .task(id: taskIdentity) {
                 loaded = nil
                 guard !urlString.isEmpty else { return }
-                loaded = await WearRemoteArtworkImageLoader.loadUIImage(artworkId: artworkId, urlString: urlString)
+                loaded = await RemoteArtworkImageLoader.loadUIImage(artworkId: artworkId, urlString: urlString)
             }
     }
 

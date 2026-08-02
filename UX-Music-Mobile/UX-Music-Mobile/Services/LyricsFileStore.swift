@@ -18,7 +18,7 @@ final class LyricsFileStore {
         try? fileManager.createDirectory(at: lyricsDirectory, withIntermediateDirectories: true)
     }
 
-    /// Saves lyrics text; `type` should be `lrc` or `txt` (as returned by `/wear/lyrics`).
+    /// Saves lyrics text; `type` should be `lrc` or `txt` (as returned by `/v1/remote/lyrics`).
     func saveLyrics(_ content: String, wearType: String, songId: String) throws {
         let stem = Self.stem(for: songId)
         let ext = Self.normalisedExtension(wearType)

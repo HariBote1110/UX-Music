@@ -3,7 +3,7 @@ import Foundation
 
 // MARK: - LAN session (bypass system HTTP proxy / iCloud Private Relay for RFC1918)
 
-enum WearLANProxyKeys {
+enum RemoteLANProxyKeys {
     static let httpEnable = kCFNetworkProxiesHTTPEnable as String
     static let httpsEnable = "HTTPSEnable"
     static let socksEnable = "SOCKSEnable"
@@ -11,7 +11,7 @@ enum WearLANProxyKeys {
 }
 
 /// Dedicated session so `http://192.168.x.x:8765` is not sent through relay (`502 … unreachable through proxy`).
-enum WearLANURLSession {
+enum RemoteLANURLSession {
     static let shared = URLSession(configuration: makeConfiguration())
 
     static func makeConfiguration(
@@ -19,7 +19,7 @@ enum WearLANURLSession {
         resourceTimeout: TimeInterval = 45
     ) -> URLSessionConfiguration {
         let config = URLSessionConfiguration.ephemeral
-        config.applyWearLANProxyBypass()
+        config.applyRemoteLANProxyBypass()
         config.timeoutIntervalForRequest = requestTimeout
         config.timeoutIntervalForResource = resourceTimeout
         config.urlCache = nil
@@ -35,52 +35,65 @@ enum WearLANURLSession {
 }
 
 private extension URLSessionConfiguration {
-    /// Wear uses plain `http://` to the desktop and must never be routed through a system relay.
-    func applyWearLANProxyBypass() {
+    /// The LAN API uses plain `http://` to the desktop and must never be routed through a system relay.
+    func applyRemoteLANProxyBypass() {
         connectionProxyDictionary = [
-            WearLANProxyKeys.httpEnable: 0,
-            WearLANProxyKeys.httpsEnable: 0,
-            WearLANProxyKeys.socksEnable: 0,
-            WearLANProxyKeys.proxyAutoConfigEnable: 0,
+            RemoteLANProxyKeys.httpEnable: 0,
+            RemoteLANProxyKeys.httpsEnable: 0,
+            RemoteLANProxyKeys.socksEnable: 0,
+            RemoteLANProxyKeys.proxyAutoConfigEnable: 0,
         ]
     }
 }
 
-enum WearDownloadError: LocalizedError {
+/// `{"error":{"code":"...","message":"..."}}` as returned by every LAN API endpoint on failure.
+struct RemoteAPIErrorBody: Codable, Equatable, Sendable {
+    struct Detail: Codable, Equatable, Sendable {
+        var code: String
+        var message: String
+    }
+
+    var error: Detail
+}
+
+enum RemoteAPIError: LocalizedError {
     case httpStatus(Int)
+    case server(code: String, message: String)
 
     var errorDescription: String? {
         switch self {
         case .httpStatus(let code):
             return "Download failed (HTTP \(code))."
+        case .server(_, let message):
+            return message
         }
     }
 }
 
-/// JSON from `GET /wear/lyrics?id=…`.
-struct WearLyricsPayload: Codable, Equatable, Sendable {
+/// JSON from `GET /v1/remote/lyrics?id=…`.
+struct RemoteLyricsPayload: Codable, Equatable, Sendable {
     var found: Bool
     var type: String?
     var content: String?
 }
 
-/// One desktop playlist row from `GET /wear/playlists`.
-struct WearDesktopPlaylist: Codable, Equatable, Hashable, Sendable {
+/// One desktop playlist row from `GET /v1/remote/playlists`.
+struct RemoteDesktopPlaylist: Codable, Equatable, Hashable, Sendable {
     var name: String
     var songIds: [String]
     var pathsNotInLibrary: [String]?
 }
 
-/// HTTP client for the UX Music Wear LAN API (port 8765 by default).
-struct WearAPIClient: Sendable {
+/// HTTP client for the UX Music unified LAN API v1 (port 8765 by default).
+struct RemoteAPIClient: Sendable {
     private let baseURLString: String
-    /// Pairing/auth token sent as `X-UX-Music-Token` (or as a `token=` query item for endpoints that
-    /// hand a bare URL to something else, e.g. image loaders). Empty means "no token configured" —
-    /// requests are sent unauthenticated, matching the pre-auth desktop or `/wear/ping`.
+    /// Device auth token sent as `Authorization: Bearer <token>` (or as a `token=` query item for
+    /// endpoints that hand a bare URL to something else, e.g. image loaders). Empty means "no token
+    /// configured" — requests are sent unauthenticated, matching the pre-pairing desktop or `/v1/identity`.
     private let token: String
     private let session: URLSession
 
-    init(baseURLString: String, token: String = "", session: URLSession = WearLANURLSession.shared) {
+    init(baseURLString: String, token: String = "", session: URLSession = RemoteLANURLSession.shared) {
         self.baseURLString = baseURLString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         self.token = token
         self.session = session
@@ -98,7 +111,7 @@ struct WearAPIClient: Sendable {
     private func authorizedRequest(url: URL) -> URLRequest {
         var req = URLRequest(url: url)
         if !token.isEmpty {
-            req.setValue(token, forHTTPHeaderField: "X-UX-Music-Token")
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         return req
     }
@@ -116,12 +129,12 @@ struct WearAPIClient: Sendable {
         return components.url ?? url
     }
 
-    /// Uses `/wear/artwork/?id=…` so IDs stay query-encoded and `URL(string:)` is reliable (path form is brittle on iOS).
+    /// Uses `/v1/remote/artwork/?id=…` so IDs stay query-encoded and `URL(string:)` is reliable (path form is brittle on iOS).
     /// Token is added as a query item, not a header, since this string is handed to an image loader.
     func artworkURL(artworkId: String) -> String {
         guard !artworkId.isEmpty else { return "" }
         let encoded = artworkId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? artworkId
-        var s = "\(baseURLString)/wear/artwork/?id=\(encoded)"
+        var s = "\(baseURLString)/v1/remote/artwork/?id=\(encoded)"
         if !token.isEmpty {
             let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token
             s += "&token=\(encodedToken)"
@@ -129,28 +142,29 @@ struct WearAPIClient: Sendable {
         return s
     }
 
-    /// Decodes the `id` query value from a Wear LAN artwork URL (`/wear/artwork/?id=…`).
+    /// Decodes the `id` query value from a Remote LAN artwork URL (`/v1/remote/artwork/?id=…`).
     static func artworkId(fromArtworkEndpointURL url: URL) -> String? {
         guard let c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
-        guard c.path.contains("/wear/artwork") else { return nil }
+        guard c.path.contains("/v1/remote/artwork") else { return nil }
         return c.queryItems?.first { $0.name == "id" }?.value
     }
 
-    /// Health check. Returns the server hostname on success. `/wear/ping` is exempt from auth on the
-    /// desktop, but the token is still sent (harmless) so a stale/invalid token surfaces nowhere else.
+    /// Health check against the public identity endpoint. Returns the server hostname on success.
+    /// `GET /v1/identity` is exempt from auth, but the token is still sent (harmless) so a stale/invalid
+    /// token surfaces nowhere else.
     func ping() async throws -> String {
-        let (data, _) = try await session.data(for: authorizedRequest(path: "/wear/ping"))
+        let (data, _) = try await session.data(for: authorizedRequest(path: "/v1/identity"))
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         return obj?["hostname"] as? String ?? ""
     }
 
     func fetchSongs() async throws -> [Song] {
-        let (data, _) = try await session.data(for: authorizedRequest(path: "/wear/songs"))
+        let (data, _) = try await session.data(for: authorizedRequest(path: "/v1/remote/songs"))
         return try JSONDecoder().decode([Song].self, from: data)
     }
 
     func fetchLoudness() async throws -> [String: Double] {
-        let (data, _) = try await session.data(for: authorizedRequest(path: "/wear/loudness"))
+        let (data, _) = try await session.data(for: authorizedRequest(path: "/v1/remote/loudness"))
         let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
         var out: [String: Double] = [:]
         for (k, v) in raw {
@@ -161,44 +175,29 @@ struct WearAPIClient: Sendable {
         return out
     }
 
-    func fetchLyrics(songId: String) async throws -> WearLyricsPayload {
+    func fetchLyrics(songId: String) async throws -> RemoteLyricsPayload {
         guard var components = URLComponents(string: baseURLString) else {
             throw URLError(.badURL)
         }
-        components.path = "/wear/lyrics"
+        components.path = "/v1/remote/lyrics"
         components.queryItems = [URLQueryItem(name: "id", value: songId)]
         guard let source = components.url else {
             throw URLError(.badURL)
         }
         let (data, response) = try await session.data(for: authorizedRequest(url: source))
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200 ... 299).contains(http.statusCode) else {
-            throw WearDownloadError.httpStatus(http.statusCode)
-        }
-        return try JSONDecoder().decode(WearLyricsPayload.self, from: data)
+        try Self.throwIfNotOK(response, data: data)
+        return try JSONDecoder().decode(RemoteLyricsPayload.self, from: data)
     }
 
-    func fetchDesktopPlaylists() async throws -> [WearDesktopPlaylist] {
-        let (data, response) = try await session.data(for: authorizedRequest(path: "/wear/playlists"))
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200 ... 299).contains(http.statusCode) else {
-            throw WearDownloadError.httpStatus(http.statusCode)
-        }
-        return try JSONDecoder().decode([WearDesktopPlaylist].self, from: data)
+    func fetchDesktopPlaylists() async throws -> [RemoteDesktopPlaylist] {
+        let (data, response) = try await session.data(for: authorizedRequest(path: "/v1/remote/playlists"))
+        try Self.throwIfNotOK(response, data: data)
+        return try JSONDecoder().decode([RemoteDesktopPlaylist].self, from: data)
     }
 
     func fetchState() async throws -> [String: Any] {
-        let (data, response) = try await session.data(for: authorizedRequest(path: "/wear/state"))
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200 ... 299).contains(http.statusCode) else {
-            throw WearDownloadError.httpStatus(http.statusCode)
-        }
+        let (data, response) = try await session.data(for: authorizedRequest(path: "/v1/remote/state"))
+        try Self.throwIfNotOK(response, data: data)
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
 
@@ -206,7 +205,7 @@ struct WearAPIClient: Sendable {
         var body: [String: Any] = ["action": action]
         if let value { body["value"] = value }
         let json = try JSONSerialization.data(withJSONObject: body)
-        var req = try authorizedRequest(path: "/wear/command")
+        var req = try authorizedRequest(path: "/v1/remote/command")
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = json
@@ -216,8 +215,8 @@ struct WearAPIClient: Sendable {
     }
 
     /// Writes to `destinationURL` (file is replaced if it exists).
-    /// Uses `GET /wear/file?id=…` so song keys that are file paths (with `/`) are not mangled in the URL path.
-    /// When `preferOriginalAudio` is true, adds `source=original` so the desktop serves the library file (Wear 2+); otherwise the Watch AAC transcode path is used.
+    /// Uses `GET /v1/remote/file?id=…` so song keys that are file paths (with `/`) are not mangled in the URL path.
+    /// When `preferOriginalAudio` is true, adds `source=original` so the desktop serves the library file; otherwise the transcoded AAC path is used.
     func downloadFile(
         songId: String,
         to destinationURL: URL,
@@ -227,7 +226,7 @@ struct WearAPIClient: Sendable {
         guard var components = URLComponents(string: baseURLString) else {
             throw URLError(.badURL)
         }
-        components.path = "/wear/file"
+        components.path = "/v1/remote/file"
         var items = [URLQueryItem(name: "id", value: songId)]
         if preferOriginalAudio {
             items.append(URLQueryItem(name: "source", value: "original"))
@@ -243,23 +242,18 @@ struct WearAPIClient: Sendable {
         )
     }
 
-    /// Fetches `GET /wear/artwork/?id=…` and writes the image bytes (JPEG/PNG/WebP as served by the desktop).
+    /// Fetches `GET /v1/remote/artwork/?id=…` and writes the image bytes (JPEG/PNG/WebP as served by the desktop).
     func downloadArtwork(artworkId: String, to destinationURL: URL) async throws {
         guard var components = URLComponents(string: baseURLString) else {
             throw URLError(.badURL)
         }
-        components.path = "/wear/artwork/"
+        components.path = "/v1/remote/artwork/"
         components.queryItems = [URLQueryItem(name: "id", value: artworkId)]
         guard let url = components.url else {
             throw URLError(.badURL)
         }
         let (data, response) = try await session.data(for: authorizedRequest(url: withTokenQuery(url)))
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200 ... 299).contains(http.statusCode) else {
-            throw WearDownloadError.httpStatus(http.statusCode)
-        }
+        try Self.throwIfNotOK(response, data: data)
         guard !data.isEmpty else {
             throw URLError(.cannotParseResponse)
         }
@@ -271,6 +265,52 @@ struct WearAPIClient: Sendable {
         }
         try data.write(to: destinationURL, options: .atomic)
     }
+
+    /// Redeems a one-time QR pairing secret for a device-specific auth token via the public
+    /// `POST /v1/pairing/redeem` endpoint. Not tied to any existing token — this is how a token is
+    /// first obtained.
+    static func redeemPairingSecret(
+        baseURLString: String,
+        secret: String,
+        deviceId: String,
+        displayName: String,
+        session: URLSession = RemoteLANURLSession.shared
+    ) async throws -> (deviceId: String, token: String) {
+        let trimmedBase = baseURLString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let base = URL(string: trimmedBase) else {
+            throw URLError(.badURL)
+        }
+        let endpoint = base.appendingPathComponent("v1/pairing/redeem")
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "secret": secret,
+            "deviceId": deviceId,
+            "displayName": displayName,
+        ])
+        let (data, response) = try await session.data(for: req)
+        try throwIfNotOK(response, data: data)
+        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = obj["token"] as? String, !token.isEmpty
+        else {
+            throw URLError(.cannotParseResponse)
+        }
+        let resolvedDeviceId = obj["deviceId"] as? String ?? deviceId
+        return (resolvedDeviceId, token)
+    }
+
+    /// Throws `RemoteAPIError` for any non-2xx response, decoding the `{"error":{...}}` body when present.
+    private static func throwIfNotOK(_ response: URLResponse, data: Data) throws {
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard !(200 ... 299).contains(http.statusCode) else { return }
+        if let body = try? JSONDecoder().decode(RemoteAPIErrorBody.self, from: data) {
+            throw RemoteAPIError.server(code: body.error.code, message: body.error.message)
+        }
+        throw RemoteAPIError.httpStatus(http.statusCode)
+    }
 }
 
 // MARK: - Progress download
@@ -279,7 +319,7 @@ private final class ProgressDownloadSession: NSObject, URLSessionDownloadDelegat
     static let shared = ProgressDownloadSession()
 
     private lazy var session: URLSession = {
-        let c = WearLANURLSession.makeConfiguration(requestTimeout: 30, resourceTimeout: 300)
+        let c = RemoteLANURLSession.makeConfiguration(requestTimeout: 30, resourceTimeout: 300)
         return URLSession(configuration: c, delegate: self, delegateQueue: nil)
     }()
 
@@ -338,7 +378,7 @@ private final class ProgressDownloadSession: NSObject, URLSessionDownloadDelegat
         if let http = downloadTask.response as? HTTPURLResponse,
            !(200...299).contains(http.statusCode) {
             try? FileManager.default.removeItem(at: location)
-            state.continuation.resume(throwing: WearDownloadError.httpStatus(http.statusCode))
+            state.continuation.resume(throwing: RemoteAPIError.httpStatus(http.statusCode))
             return
         }
 

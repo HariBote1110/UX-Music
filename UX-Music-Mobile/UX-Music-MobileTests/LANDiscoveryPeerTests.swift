@@ -2,8 +2,8 @@ import Combine
 import XCTest
 @testable import UX_Music_Mobile
 
-final class WearDiscoveryPeerTests: XCTestCase {
-    private var discoveryService: WearDiscoveryService?
+final class LANDiscoveryPeerTests: XCTestCase {
+    private var discoveryService: LANDiscoveryService?
     private var discoveryCancellables: Set<AnyCancellable> = []
 
     override func tearDown() {
@@ -26,7 +26,7 @@ final class WearDiscoveryPeerTests: XCTestCase {
     }
 
     func testDiscoveryHidesSearchingIndicatorAfterScanTimeout() {
-        let service = WearDiscoveryService()
+        let service = LANDiscoveryService()
         discoveryService = service
         let stopped = expectation(description: "Discovery scan indicator stops after timeout")
         var didObserveStop = false
@@ -45,7 +45,7 @@ final class WearDiscoveryPeerTests: XCTestCase {
     }
 
     func testDiscoveryKeepsListenerActiveAfterScanTimeout() {
-        let service = WearDiscoveryService()
+        let service = LANDiscoveryService()
         discoveryService = service
         let stopped = expectation(description: "Discovery scan indicator stops after timeout")
         var didObserveStop = false
@@ -68,10 +68,10 @@ final class WearDiscoveryPeerTests: XCTestCase {
     func testRealDeviceDiscoversUXSyncMDNSPeer() throws {
         #if UX_MUSIC_REAL_DEVICE_DISCOVERY_TEST
         let found = expectation(description: "Discover a Wear-compatible UX Sync peer on the local network")
-        var resolvedPeer: WearDiscoveryPeer?
+        var resolvedPeer: LANDiscoveryPeer?
         var discoveryError: String?
         var hasFinished = false
-        let service = WearDiscoveryService()
+        let service = LANDiscoveryService()
         discoveryService = service
 
         func finish() {
@@ -82,7 +82,7 @@ final class WearDiscoveryPeerTests: XCTestCase {
 
         service.$peers
             .sink { peers in
-                guard let peer = peers.first(where: { $0.supportsWearAPI }) else { return }
+                guard let peer = peers.first(where: { $0.supportsRemoteAPI }) else { return }
                 resolvedPeer = peer
                 finish()
             }
@@ -108,7 +108,7 @@ final class WearDiscoveryPeerTests: XCTestCase {
             resolvedPeer,
             "No Wear-compatible _uxmusic-sync._tcp.local. peer was discovered. Keep UX Music open on the same Wi-Fi network and allow Local Network access for UX Music Mobile."
         )
-        XCTAssertTrue(peer.supportsWearAPI)
+        XCTAssertTrue(peer.supportsRemoteAPI)
         XCTAssertEqual(peer.port, AppConstants.defaultServerPort)
         #else
         throw XCTSkip("Pass OTHER_SWIFT_FLAGS='$(inherited) -DUX_MUSIC_REAL_DEVICE_DISCOVERY_TEST' to run the real-device LAN discovery probe.")
@@ -116,7 +116,7 @@ final class WearDiscoveryPeerTests: XCTestCase {
     }
 
     func testFromTXTBuildsServerConfigForWearHost() {
-        let peer = WearDiscoveryPeer(
+        let peer = LANDiscoveryPeer(
             name: "YukinoMac-mini",
             endpointHost: "YukinoMac-mini.local",
             addressHosts: [],
@@ -135,11 +135,11 @@ final class WearDiscoveryPeerTests: XCTestCase {
         XCTAssertEqual(peer.host, "YukinoMac-mini.local")
         XCTAssertEqual(peer.port, 8765)
         XCTAssertEqual(peer.serverConfig, ServerConfig(host: "YukinoMac-mini.local", port: 8765))
-        XCTAssertTrue(peer.supportsWearAPI)
+        XCTAssertTrue(peer.supportsRemoteAPI)
     }
 
     func testFromTXTUsesNumericAddressBeforeBonjourHostname() {
-        let peer = WearDiscoveryPeer(
+        let peer = LANDiscoveryPeer(
             name: "YukinoMac-mini",
             endpointHost: "YukinoMac-mini.local",
             addressHosts: ["192.168.0.226", "fe80::1"],
@@ -153,7 +153,7 @@ final class WearDiscoveryPeerTests: XCTestCase {
     }
 
     func testFromTXTKeepsAllIPv4ConnectionCandidatesBeforeBonjourHostname() {
-        let peer = WearDiscoveryPeer(
+        let peer = LANDiscoveryPeer(
             name: "YukinoMac-mini",
             endpointHost: "YukinoMac-mini.local",
             addressHosts: ["192.168.0.226", "fe80::1", "192.168.1.182", "192.168.0.226"],
@@ -169,7 +169,7 @@ final class WearDiscoveryPeerTests: XCTestCase {
 
     func testConnectionCandidatesKeepManualHostFirstAndDeduplicateDiscoveredHosts() {
         XCTAssertEqual(
-            WearConnectionCandidates.hosts(
+            RemoteConnectionCandidates.hosts(
                 manualHost: "192.168.0.226",
                 discoveredHosts: ["192.168.0.226", "192.168.1.182", "YukinoMac-mini.local"]
             ),
@@ -178,7 +178,7 @@ final class WearDiscoveryPeerTests: XCTestCase {
     }
 
     func testFromTXTFallsBackToServiceNameWhenDisplayNameIsMissing() {
-        let peer = WearDiscoveryPeer(
+        let peer = LANDiscoveryPeer(
             name: "mainPC",
             endpointHost: "mainpc.local.local.",
             addressHosts: [],
@@ -190,11 +190,11 @@ final class WearDiscoveryPeerTests: XCTestCase {
         XCTAssertEqual(peer.host, "mainpc.local")
         XCTAssertEqual(peer.id, "mainpc.local:8765")
         XCTAssertEqual(peer.endpointDescription, "mainpc.local:8765")
-        XCTAssertTrue(peer.supportsWearAPI)
+        XCTAssertTrue(peer.supportsRemoteAPI)
     }
 
     func testFromTXTAllowsRolelessSyncServiceForLegacyAdvertisement() {
-        let peer = WearDiscoveryPeer(
+        let peer = LANDiscoveryPeer(
             name: "legacy",
             endpointHost: "legacy.local",
             addressHosts: [],
@@ -202,11 +202,11 @@ final class WearDiscoveryPeerTests: XCTestCase {
             txt: [:]
         )
 
-        XCTAssertTrue(peer.supportsWearAPI)
+        XCTAssertTrue(peer.supportsRemoteAPI)
     }
 
     func testFromTXTRejectsPeerWithoutWearCompatibleRole() {
-        let peer = WearDiscoveryPeer(
+        let peer = LANDiscoveryPeer(
             name: "Controller",
             endpointHost: "controller.local",
             addressHosts: [],
@@ -214,6 +214,6 @@ final class WearDiscoveryPeerTests: XCTestCase {
             txt: ["roles": "Controller"]
         )
 
-        XCTAssertFalse(peer.supportsWearAPI)
+        XCTAssertFalse(peer.supportsRemoteAPI)
     }
 }

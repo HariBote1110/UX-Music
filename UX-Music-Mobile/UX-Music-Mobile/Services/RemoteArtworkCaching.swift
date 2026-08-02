@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import UIKit
 
-/// On-disk JPEG/PNG/WebP bytes for Wear `/wear/artwork` previews (Remote Library grids and rows).
+/// On-disk JPEG/PNG/WebP bytes for `/v1/remote/artwork` previews (Remote Library grids and rows).
 /// Separate from `DownloadManager`’s `DownloadedArtwork` so `pruneOrphanArtworkFiles` does not delete browsed jackets.
 struct RemoteArtworkPreviewCache: Sendable {
     let rootURL: URL
@@ -45,15 +45,15 @@ struct RemoteArtworkPreviewCache: Sendable {
 
 // MARK: - Load + coalesce in-flight fetches
 
-enum WearRemoteArtworkImageLoader {
+enum RemoteArtworkImageLoader {
     static func loadUIImage(artworkId: String, urlString: String) async -> UIImage? {
-        await WearRemoteArtworkFetchCoordinator.shared.image(artworkId: artworkId, urlString: urlString)
+        await RemoteArtworkFetchCoordinator.shared.image(artworkId: artworkId, urlString: urlString)
     }
 }
 
 /// In-memory: Wear returned 404 for this `artworkId`, so skip repeat HTTP and use bundled default.
-private actor WearRemoteArtworkMissCache {
-    static let shared = WearRemoteArtworkMissCache()
+private actor RemoteArtworkMissCache {
+    static let shared = RemoteArtworkMissCache()
 
     private var ids: Set<String> = []
 
@@ -75,35 +75,35 @@ private func wearRemoteArtworkLoadDirect(
 ) async -> UIImage? {
     if !artworkId.isEmpty, let cached = cache.fileURLIfPresent(artworkId: artworkId) {
         return await Task.detached(priority: .utility) {
-            UIImage(contentsOfFile: cached.path) ?? WearDefaultArtwork.uiImage()
+            UIImage(contentsOfFile: cached.path) ?? RemoteDefaultArtwork.uiImage()
         }.value
     }
-    if !artworkId.isEmpty, await WearRemoteArtworkMissCache.shared.contains(artworkId) {
-        return WearDefaultArtwork.uiImage()
+    if !artworkId.isEmpty, await RemoteArtworkMissCache.shared.contains(artworkId) {
+        return RemoteDefaultArtwork.uiImage()
     }
     guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
     if url.isFileURL {
         return await Task.detached(priority: .utility) {
-            UIImage(contentsOfFile: url.path) ?? WearDefaultArtwork.uiImage()
+            UIImage(contentsOfFile: url.path) ?? RemoteDefaultArtwork.uiImage()
         }.value
     }
     guard url.scheme == "http" || url.scheme == "https" else { return nil }
     do {
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
-        let (data, response) = try await WearLANURLSession.shared.data(for: request)
+        let (data, response) = try await RemoteLANURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
-            return WearDefaultArtwork.uiImage()
+            return RemoteDefaultArtwork.uiImage()
         }
-        let resolvedId = !artworkId.isEmpty ? artworkId : WearAPIClient.artworkId(fromArtworkEndpointURL: url)
+        let resolvedId = !artworkId.isEmpty ? artworkId : RemoteAPIClient.artworkId(fromArtworkEndpointURL: url)
         if http.statusCode == 404 {
             if let resolvedId {
-                await WearRemoteArtworkMissCache.shared.recordMissing(resolvedId)
+                await RemoteArtworkMissCache.shared.recordMissing(resolvedId)
             }
-            return WearDefaultArtwork.uiImage()
+            return RemoteDefaultArtwork.uiImage()
         }
         guard (200 ... 299).contains(http.statusCode) else {
-            return WearDefaultArtwork.uiImage()
+            return RemoteDefaultArtwork.uiImage()
         }
         if let resolvedId {
             try? cache.store(data: data, artworkId: resolvedId)
@@ -111,14 +111,14 @@ private func wearRemoteArtworkLoadDirect(
         let decoded = await Task.detached(priority: .utility) {
             UIImage(data: data)
         }.value
-        return decoded ?? WearDefaultArtwork.uiImage()
+        return decoded ?? RemoteDefaultArtwork.uiImage()
     } catch {
-        return WearDefaultArtwork.uiImage()
+        return RemoteDefaultArtwork.uiImage()
     }
 }
 
-private actor WearRemoteArtworkFetchCoordinator {
-    static let shared = WearRemoteArtworkFetchCoordinator()
+private actor RemoteArtworkFetchCoordinator {
+    static let shared = RemoteArtworkFetchCoordinator()
 
     private var tasks: [String: Task<UIImage?, Never>] = [:]
 

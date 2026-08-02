@@ -14,7 +14,7 @@ private enum RemoteViewMode: Int, CaseIterable {
 
 private enum RemoteLibraryNav: Hashable {
     case album(Album)
-    case playlist(WearDesktopPlaylist)
+    case playlist(RemoteDesktopPlaylist)
 }
 
 struct RemoteLibraryScreen: View {
@@ -23,7 +23,7 @@ struct RemoteLibraryScreen: View {
     @State private var query = ""
     @State private var path = NavigationPath()
     @State private var showDesktopPlaylistImport = false
-    @State private var remotePlaylistRows: [WearDesktopPlaylist] = []
+    @State private var remotePlaylistRows: [RemoteDesktopPlaylist] = []
     @State private var remotePlaylistsError: String?
     @State private var isLoadingRemotePlaylists = false
     /// Avoid refetching on every `NavigationStack` pop; reset when this screen is recreated (e.g. changing tabs).
@@ -234,13 +234,13 @@ struct RemoteLibraryScreen: View {
         }
     }
 
-    private func resolveSongs(for playlist: WearDesktopPlaylist, library: [Song]) -> [Song] {
+    private func resolveSongs(for playlist: RemoteDesktopPlaylist, library: [Song]) -> [Song] {
         var byId: [String: Song] = [:]
         for s in library { byId[s.id] = s }
         return playlist.songIds.compactMap { byId[$0] }
     }
 
-    private func filterPlaylists(_ rows: [WearDesktopPlaylist]) -> [WearDesktopPlaylist] {
+    private func filterPlaylists(_ rows: [RemoteDesktopPlaylist]) -> [RemoteDesktopPlaylist] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return rows }
         return rows.filter { $0.name.lowercased().contains(q) }
@@ -284,7 +284,7 @@ struct RemoteLibraryScreen: View {
         }
     }
 
-    private func remotePlaylistsGrid(rows: [WearDesktopPlaylist], librarySongs: [Song]) -> some View {
+    private func remotePlaylistsGrid(rows: [RemoteDesktopPlaylist], librarySongs: [Song]) -> some View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, pl in

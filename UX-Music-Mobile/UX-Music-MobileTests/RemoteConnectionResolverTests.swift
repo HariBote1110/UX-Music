@@ -1,14 +1,14 @@
 import XCTest
 @testable import UX_Music_Mobile
 
-final class WearConnectionResolverTests: XCTestCase {
+final class RemoteConnectionResolverTests: XCTestCase {
     func testResolve_returnsFirstReachableCandidate() async {
         let candidates = [
             ServerConfig(host: "10.0.0.1", port: 8765),
             ServerConfig(host: "10.0.0.2", port: 8765),
         ]
         var pinged: [String] = []
-        let result = await WearConnectionResolver.resolve(candidates: candidates) { config in
+        let result = await RemoteConnectionResolver.resolve(candidates: candidates) { config in
             pinged.append(config.host)
             if config.host == "10.0.0.1" {
                 throw URLError(.cannotConnectToHost)
@@ -29,7 +29,7 @@ final class WearConnectionResolverTests: XCTestCase {
             ServerConfig(host: "10.0.0.3", port: 8765),
         ]
         var pinged: [String] = []
-        _ = await WearConnectionResolver.resolve(candidates: candidates) { config in
+        _ = await RemoteConnectionResolver.resolve(candidates: candidates) { config in
             pinged.append(config.host)
             if config.host == "10.0.0.1" { return "desk" }
             XCTFail("Should not ping candidates after a success")
@@ -43,28 +43,28 @@ final class WearConnectionResolverTests: XCTestCase {
             ServerConfig(host: "10.0.0.1", port: 8765),
             ServerConfig(host: "10.0.0.2", port: 8765),
         ]
-        let result = await WearConnectionResolver.resolve(candidates: candidates) { _ in
+        let result = await RemoteConnectionResolver.resolve(candidates: candidates) { _ in
             throw URLError(.cannotConnectToHost)
         }
         XCTAssertNil(result)
     }
 
     func testResolve_returnsNilForEmptyCandidates() async {
-        let result = await WearConnectionResolver.resolve(candidates: []) { _ in "desk" }
+        let result = await RemoteConnectionResolver.resolve(candidates: []) { _ in "desk" }
         XCTAssertNil(result)
     }
 
     /// Second sync bug: reachability (ping, unauthenticated) succeeding does not imply the token is
     /// valid — `checkAuthorised` must distinguish "reachable but 401" from "reachable and authorised".
     func testCheckAuthorised_returnsFalseOn401() async {
-        let client = WearAPIClient(baseURLString: "http://127.0.0.1:8765", session: stubbedSession(statusCode: 401))
-        let authorised = await WearConnectionResolver.checkAuthorised(client: client)
+        let client = RemoteAPIClient(baseURLString: "http://127.0.0.1:8765", session: stubbedSession(statusCode: 401))
+        let authorised = await RemoteConnectionResolver.checkAuthorised(client: client)
         XCTAssertFalse(authorised)
     }
 
     func testCheckAuthorised_returnsTrueOn200() async {
-        let client = WearAPIClient(baseURLString: "http://127.0.0.1:8765", session: stubbedSession(statusCode: 200))
-        let authorised = await WearConnectionResolver.checkAuthorised(client: client)
+        let client = RemoteAPIClient(baseURLString: "http://127.0.0.1:8765", session: stubbedSession(statusCode: 200))
+        let authorised = await RemoteConnectionResolver.checkAuthorised(client: client)
         XCTAssertTrue(authorised)
     }
 }

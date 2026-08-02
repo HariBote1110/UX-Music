@@ -11,7 +11,7 @@
 		01A1A1A30101A1A10101A1A1 /* ServerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A40101A1A10101A1A1 /* ServerConfig.swift */; };
 		01A1A1A50101A1A10101A1A1 /* Song.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A60101A1A10101A1A1 /* Song.swift */; };
 		01A1A1A70101A1A10101A1A1 /* Album.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A80101A1A10101A1A1 /* Album.swift */; };
-		01A1A1A90101A1A10101A1A1 /* WearAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AA0101A1A10101A1A1 /* WearAPIClient.swift */; };
+		01A1A1A90101A1A10101A1A1 /* RemoteAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AA0101A1A10101A1A1 /* RemoteAPIClient.swift */; };
 		01A1A1AB0101A1A10101A1A1 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */; };
 		01A1A1AD0101A1A10101A1A1 /* MusicPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */; };
 		01A1A1AF0101A1A10101A1A1 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1B00101A1A10101A1A1 /* AppModel.swift */; };
@@ -36,8 +36,8 @@
 		E2E2E2E30101E2E10101E2E1 /* PairingQRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2E2E2E20101E2E10101E2E1 /* PairingQRScannerView.swift */; };
 		E5E5E5E60101E5E60101E5E6 /* LyricsFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E5E5E50101E5E50101E5E5 /* LyricsFileStore.swift */; };
 		E6E6E6E70101E6E70101E6E7 /* DesktopPlaylistImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6E6E6E60101E6E60101E6E6 /* DesktopPlaylistImportView.swift */; };
-		E8E8E8E70101E8E70101E8E7 /* WearDefaultArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8E8E8E80101E8E80101E8E8 /* WearDefaultArtwork.swift */; };
-		E8E8E8E90101E8E90101E8E9 /* WearDefaultArtworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8E8E8EA0101E8EA0101E8EA /* WearDefaultArtworkTests.swift */; };
+		E8E8E8E70101E8E70101E8E7 /* RemoteDefaultArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8E8E8E80101E8E80101E8E8 /* RemoteDefaultArtwork.swift */; };
+		E8E8E8E90101E8E90101E8E9 /* RemoteDefaultArtworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8E8E8EA0101E8EA0101E8EA /* RemoteDefaultArtworkTests.swift */; };
 		F1F1F1F00101F1F10101F1F1 /* ArtworkPaletteExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1F1F1F10101F1F10101F1F1 /* ArtworkPaletteExtractor.swift */; };
 		F3A3A3A30101F3A30101F3A3 /* Playlist.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A3A3A80101F3A80101F3A8 /* Playlist.swift */; };
 		F3A3A3A40101F3A40101F3A4 /* PlaylistStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A3A3A90101F3A90101F3A9 /* PlaylistStore.swift */; };
@@ -54,16 +54,17 @@
 		08BBB350C021CE6A26A343D3 /* NowPlayingCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0293916FD996449C93813E /* NowPlayingCoverageTests.swift */; };
 		DC0ACE196C8E39891385E751 /* NowPlayingLyricsLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D287369F4FA8961DC51E9B6 /* NowPlayingLyricsLogicTests.swift */; };
 		Q1Q1Q1Q20101Q1Q20101Q1Q2 /* RemotePlaylistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q1Q1Q1Q10101Q1Q10101Q1Q1 /* RemotePlaylistDetailView.swift */; };
-		W1D1D1C20101D1C20101D1C2 /* WearDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1D1D1C10101D1C10101D1C1 /* WearDiscoveryService.swift */; };
-		W1D1D1D20101D1D20101D1D2 /* WearDiscoveryPeerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1D1D1D10101D1D10101D1D1 /* WearDiscoveryPeerTests.swift */; };
-		F60101F60101F60101F60101 /* WearConnectionResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60101F70101F70101F70101 /* WearConnectionResolver.swift */; };
-		F60101F80101F80101F80101 /* WearConnectionResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60101F90101F90101F90101 /* WearConnectionResolverTests.swift */; };
+		W1D1D1C20101D1C20101D1C2 /* LANDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1D1D1C10101D1C10101D1C1 /* LANDiscoveryService.swift */; };
+		W1D1D1D20101D1D20101D1D2 /* LANDiscoveryPeerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1D1D1D10101D1D10101D1D1 /* LANDiscoveryPeerTests.swift */; };
+		F60101F60101F60101F60101 /* RemoteConnectionResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60101F70101F70101F70101 /* RemoteConnectionResolver.swift */; };
+		F60101F80101F80101F80101 /* RemoteConnectionResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60101F90101F90101F90101 /* RemoteConnectionResolverTests.swift */; };
 		F60101FA0101FA0101FA0101 /* AppModelFailoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60101FB0101FB0101FB0101 /* AppModelFailoverTests.swift */; };
+		D1D1D1D10101D1D10101D1D1 /* DeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1D1D1D20101D1D20101D1D2 /* DeviceIdentity.swift */; };
 		b077f2c8570b4c62ad6c8c75 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7db2069e8eb64b7382361146 /* Assets.xcassets */; };
 		b1b1b1B10101B1B10101B1B1 /* ServerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */; };
 		b1b1b1B30101B1B10101B1B1 /* SongDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B40101B1B10101B1B1 /* SongDecodingTests.swift */; };
 		b1b1b1B50101B1B10101B1B1 /* AlbumTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B60101B1B10101B1B1 /* AlbumTests.swift */; };
-		b1b1b1B70101B1B10101B1B1 /* WearAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B80101B1B10101B1B1 /* WearAPIClientTests.swift */; };
+		b1b1b1B70101B1B10101B1B1 /* RemoteAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B80101B1B10101B1B1 /* RemoteAPIClientTests.swift */; };
 		c2c2c2C20101C2C10101C2C1 /* AppModelDownloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -82,7 +83,7 @@
 		01A1A1A40101A1A10101A1A1 /* ServerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfig.swift; sourceTree = "<group>"; };
 		01A1A1A60101A1A10101A1A1 /* Song.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Song.swift; sourceTree = "<group>"; };
 		01A1A1A80101A1A10101A1A1 /* Album.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Album.swift; sourceTree = "<group>"; };
-		01A1A1AA0101A1A10101A1A1 /* WearAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearAPIClient.swift; sourceTree = "<group>"; };
+		01A1A1AA0101A1A10101A1A1 /* RemoteAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAPIClient.swift; sourceTree = "<group>"; };
 		01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerService.swift; sourceTree = "<group>"; };
 		01A1A1B00101A1A10101A1A1 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -109,8 +110,8 @@
 		E2E2E2E20101E2E10101E2E1 /* PairingQRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingQRScannerView.swift; sourceTree = "<group>"; };
 		E5E5E5E50101E5E50101E5E5 /* LyricsFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsFileStore.swift; sourceTree = "<group>"; };
 		E6E6E6E60101E6E60101E6E6 /* DesktopPlaylistImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPlaylistImportView.swift; sourceTree = "<group>"; };
-		E8E8E8E80101E8E80101E8E8 /* WearDefaultArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearDefaultArtwork.swift; sourceTree = "<group>"; };
-		E8E8E8EA0101E8EA0101E8EA /* WearDefaultArtworkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearDefaultArtworkTests.swift; sourceTree = "<group>"; };
+		E8E8E8E80101E8E80101E8E8 /* RemoteDefaultArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDefaultArtwork.swift; sourceTree = "<group>"; };
+		E8E8E8EA0101E8EA0101E8EA /* RemoteDefaultArtworkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDefaultArtworkTests.swift; sourceTree = "<group>"; };
 		F1F1F1F10101F1F10101F1F1 /* ArtworkPaletteExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkPaletteExtractor.swift; sourceTree = "<group>"; };
 		F3A3A3A80101F3A80101F3A8 /* Playlist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Playlist.swift; sourceTree = "<group>"; };
 		F3A3A3A90101F3A90101F3A9 /* PlaylistStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistStore.swift; sourceTree = "<group>"; };
@@ -127,16 +128,17 @@
 		4D0293916FD996449C93813E /* NowPlayingCoverageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingCoverageTests.swift; sourceTree = "<group>"; };
 		9D287369F4FA8961DC51E9B6 /* NowPlayingLyricsLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingLyricsLogicTests.swift; sourceTree = "<group>"; };
 		Q1Q1Q1Q10101Q1Q10101Q1Q1 /* RemotePlaylistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePlaylistDetailView.swift; sourceTree = "<group>"; };
-		W1D1D1C10101D1C10101D1C1 /* WearDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearDiscoveryService.swift; sourceTree = "<group>"; };
-		W1D1D1D10101D1D10101D1D1 /* WearDiscoveryPeerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearDiscoveryPeerTests.swift; sourceTree = "<group>"; };
-		F60101F70101F70101F70101 /* WearConnectionResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearConnectionResolver.swift; sourceTree = "<group>"; };
-		F60101F90101F90101F90101 /* WearConnectionResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearConnectionResolverTests.swift; sourceTree = "<group>"; };
+		W1D1D1C10101D1C10101D1C1 /* LANDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANDiscoveryService.swift; sourceTree = "<group>"; };
+		W1D1D1D10101D1D10101D1D1 /* LANDiscoveryPeerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANDiscoveryPeerTests.swift; sourceTree = "<group>"; };
+		F60101F70101F70101F70101 /* RemoteConnectionResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteConnectionResolver.swift; sourceTree = "<group>"; };
+		F60101F90101F90101F90101 /* RemoteConnectionResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteConnectionResolverTests.swift; sourceTree = "<group>"; };
 		F60101FB0101FB0101FB0101 /* AppModelFailoverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelFailoverTests.swift; sourceTree = "<group>"; };
+		D1D1D1D20101D1D20101D1D2 /* DeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentity.swift; sourceTree = "<group>"; };
 		a69b6b50c77c42d5883861b6 /* UX-Music-Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfigTests.swift; sourceTree = "<group>"; };
 		b1b1b1B40101B1B10101B1B1 /* SongDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongDecodingTests.swift; sourceTree = "<group>"; };
 		b1b1b1B60101B1B10101B1B1 /* AlbumTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumTests.swift; sourceTree = "<group>"; };
-		b1b1b1B80101B1B10101B1B1 /* WearAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearAPIClientTests.swift; sourceTree = "<group>"; };
+		b1b1b1B80101B1B10101B1B1 /* RemoteAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAPIClientTests.swift; sourceTree = "<group>"; };
 		b1b1b1BA0101B1B10101B1B1 /* UX-Music-MobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "UX-Music-MobileTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelDownloadTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -180,10 +182,10 @@
 				b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */,
 				b1b1b1B40101B1B10101B1B1 /* SongDecodingTests.swift */,
 				b1b1b1B60101B1B10101B1B1 /* AlbumTests.swift */,
-				b1b1b1B80101B1B10101B1B1 /* WearAPIClientTests.swift */,
+				b1b1b1B80101B1B10101B1B1 /* RemoteAPIClientTests.swift */,
 				c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */,
 				C1C1C1C40101C1C40101C1C4 /* RemoteArtworkPreviewCacheTests.swift */,
-				E8E8E8EA0101E8EA0101E8EA /* WearDefaultArtworkTests.swift */,
+				E8E8E8EA0101E8EA0101E8EA /* RemoteDefaultArtworkTests.swift */,
 				F3A3A3AB0101F3AB0101F3AB /* PlaylistStoreTests.swift */,
 				F3A3A3AC0101F3AC0101F3AC /* AppModelPlaylistTests.swift */,
 				B2B2B2B50101B2B50101B2B5 /* PlaybackControlStateTests.swift */,
@@ -192,8 +194,8 @@
 				4D0293916FD996449C93813E /* NowPlayingCoverageTests.swift */,
 				9D287369F4FA8961DC51E9B6 /* NowPlayingLyricsLogicTests.swift */,
 				F5F5F5F60101F5F60101F5F6 /* GraphicEqualiserConfigurationTests.swift */,
-				W1D1D1D10101D1D10101D1D1 /* WearDiscoveryPeerTests.swift */,
-				F60101F90101F90101F90101 /* WearConnectionResolverTests.swift */,
+				W1D1D1D10101D1D10101D1D1 /* LANDiscoveryPeerTests.swift */,
+				F60101F90101F90101F90101 /* RemoteConnectionResolverTests.swift */,
 				F60101FB0101FB0101FB0101 /* AppModelFailoverTests.swift */,
 			);
 			path = "UX-Music-MobileTests";
@@ -207,7 +209,8 @@
 				F1F1F1F10101F1F10101F1F1 /* ArtworkPaletteExtractor.swift */,
 				B2B2B2B30101B2B30101B2B3 /* PlaybackControlState.swift */,
 				N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */,
-				E8E8E8E80101E8E80101E8E8 /* WearDefaultArtwork.swift */,
+				E8E8E8E80101E8E80101E8E8 /* RemoteDefaultArtwork.swift */,
+				D1D1D1D20101D1D20101D1D2 /* DeviceIdentity.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -226,7 +229,7 @@
 		c0dec0de0101ca0e0101c0d3 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				01A1A1AA0101A1A10101A1A1 /* WearAPIClient.swift */,
+				01A1A1AA0101A1A10101A1A1 /* RemoteAPIClient.swift */,
 				01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */,
 				C1C1C1C20101C1C20101C1C2 /* RemoteArtworkCaching.swift */,
 				D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */,
@@ -234,9 +237,9 @@
 				F5F5F5F40101F5F40101F5F4 /* GraphicEqualiserConfiguration.swift */,
 				F3A3A3A90101F3A90101F3A9 /* PlaylistStore.swift */,
 				F4B4B4B20101F4B20101F4B2 /* FavouriteSongStore.swift */,
-				W1D1D1C10101D1C10101D1C1 /* WearDiscoveryService.swift */,
+				W1D1D1C10101D1C10101D1C1 /* LANDiscoveryService.swift */,
 				E5E5E5E50101E5E50101E5E5 /* LyricsFileStore.swift */,
-				F60101F70101F70101F70101 /* WearConnectionResolver.swift */,
+				F60101F70101F70101F70101 /* RemoteConnectionResolver.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -385,7 +388,7 @@
 				b1b1b1B10101B1B10101B1B1 /* ServerConfigTests.swift in Sources */,
 				b1b1b1B30101B1B10101B1B1 /* SongDecodingTests.swift in Sources */,
 				b1b1b1B50101B1B10101B1B1 /* AlbumTests.swift in Sources */,
-				b1b1b1B70101B1B10101B1B1 /* WearAPIClientTests.swift in Sources */,
+				b1b1b1B70101B1B10101B1B1 /* RemoteAPIClientTests.swift in Sources */,
 				c2c2c2C20101C2C10101C2C1 /* AppModelDownloadTests.swift in Sources */,
 				F3A3A3A60101F3A60101F3A6 /* PlaylistStoreTests.swift in Sources */,
 				F3A3A3A70101F3A70101F3A7 /* AppModelPlaylistTests.swift in Sources */,
@@ -396,9 +399,9 @@
 				DC0ACE196C8E39891385E751 /* NowPlayingLyricsLogicTests.swift in Sources */,
 				F5F5F5F70101F5F70101F5F7 /* GraphicEqualiserConfigurationTests.swift in Sources */,
 				C1C1C1C30101C1C30101C1C3 /* RemoteArtworkPreviewCacheTests.swift in Sources */,
-				E8E8E8E90101E8E90101E8E9 /* WearDefaultArtworkTests.swift in Sources */,
-				W1D1D1D20101D1D20101D1D2 /* WearDiscoveryPeerTests.swift in Sources */,
-				F60101F80101F80101F80101 /* WearConnectionResolverTests.swift in Sources */,
+				E8E8E8E90101E8E90101E8E9 /* RemoteDefaultArtworkTests.swift in Sources */,
+				W1D1D1D20101D1D20101D1D2 /* LANDiscoveryPeerTests.swift in Sources */,
+				F60101F80101F80101F80101 /* RemoteConnectionResolverTests.swift in Sources */,
 				F60101FA0101FA0101FA0101 /* AppModelFailoverTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -412,12 +415,13 @@
 				F1F1F1F00101F1F10101F1F1 /* ArtworkPaletteExtractor.swift in Sources */,
 				B2B2B2B20101B2B20101B2B2 /* PlaybackControlState.swift in Sources */,
 				N1N1N1N10101N1N10101N1N1 /* NowPlayingArtworkImageLoader.swift in Sources */,
-				E8E8E8E70101E8E70101E8E7 /* WearDefaultArtwork.swift in Sources */,
+				E8E8E8E70101E8E70101E8E7 /* RemoteDefaultArtwork.swift in Sources */,
+				D1D1D1D10101D1D10101D1D1 /* DeviceIdentity.swift in Sources */,
 				01A1A1A30101A1A10101A1A1 /* ServerConfig.swift in Sources */,
 				01A1A1A50101A1A10101A1A1 /* Song.swift in Sources */,
 				01A1A1A70101A1A10101A1A1 /* Album.swift in Sources */,
 				F3A3A3A30101F3A30101F3A3 /* Playlist.swift in Sources */,
-				01A1A1A90101A1A10101A1A1 /* WearAPIClient.swift in Sources */,
+				01A1A1A90101A1A10101A1A1 /* RemoteAPIClient.swift in Sources */,
 				01A1A1AB0101A1A10101A1A1 /* DownloadManager.swift in Sources */,
 				C1C1C1C10101C1C10101C1C1 /* RemoteArtworkCaching.swift in Sources */,
 				D0D0D0D10101D0D10101D0D1 /* DownloadedTrackFormatSniffer.swift in Sources */,
@@ -425,9 +429,9 @@
 				F5F5F5F50101F5F50101F5F5 /* GraphicEqualiserConfiguration.swift in Sources */,
 				F3A3A3A40101F3A40101F3A4 /* PlaylistStore.swift in Sources */,
 				F4B4B4B10101F4B10101F4B1 /* FavouriteSongStore.swift in Sources */,
-				W1D1D1C20101D1C20101D1C2 /* WearDiscoveryService.swift in Sources */,
+				W1D1D1C20101D1C20101D1C2 /* LANDiscoveryService.swift in Sources */,
 				E5E5E5E60101E5E60101E5E6 /* LyricsFileStore.swift in Sources */,
-				F60101F60101F60101F60101 /* WearConnectionResolver.swift in Sources */,
+				F60101F60101F60101F60101 /* RemoteConnectionResolver.swift in Sources */,
 				01A1A1AF0101A1A10101A1A1 /* AppModel.swift in Sources */,
 				01A1A1B10101A1A10101A1A1 /* ArtworkImageView.swift in Sources */,
 				01A1A1B30101A1A10101A1A1 /* SongRowView.swift in Sources */,

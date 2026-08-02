@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Remote Control tab: mirrors the desktop transport (`/wear/state` + `/wear/command`) using the
+/// Remote Control tab: mirrors the desktop transport (`/v1/remote/state` + `/v1/remote/command`) using the
 /// same visual language as `NowPlayingView` (ambient background, rounded artwork card, transport
 /// row) rather than a bare prototype-style layout.
 struct RemoteControlScreen: View {
@@ -8,7 +8,7 @@ struct RemoteControlScreen: View {
     @State private var desktopState: [String: Any] = [:]
     @State private var errorMessage: String?
     @State private var pollTask: Task<Void, Never>?
-    /// True after at least one successful `/wear/state` fetch (matches Flutter “stale state + error” UX).
+    /// True after at least one successful `/v1/remote/state` fetch (matches Flutter “stale state + error” UX).
     @State private var hasReceivedState = false
 
     var body: some View {
@@ -243,7 +243,7 @@ struct RemoteControlScreen: View {
     }
 }
 
-/// Looks up the playing track's artwork by title/artist against the Remote library (`/wear/state`
+/// Looks up the playing track's artwork by title/artist against the Remote library (`/v1/remote/state`
 /// has no `artworkId`), and falls back to a placeholder card matching `NowPlayingArtworkBlock`'s
 /// styling when the track cannot be resolved.
 private struct RemoteArtworkCard: View {

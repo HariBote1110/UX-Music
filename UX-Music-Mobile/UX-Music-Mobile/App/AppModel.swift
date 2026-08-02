@@ -53,6 +53,10 @@ final class AppModel {
     var libraryState: LibraryLoadState = .idle
     var loudness: [String: Double] = [:]
 
+    /// Message from the most recent failed `redeemPairing` call (invalid/expired secret, unreachable
+    /// host, …), shown by Settings next to the pairing field.
+    var pairingError: String?
+
     /// Drives the full-screen now playing sheet (lives on `AppModel` so `tabViewBottomAccessory` can update presentation reliably).
     var isNowPlayingSheetPresented = false
 
@@ -135,18 +139,18 @@ final class AppModel {
         }
     }
 
-    /// Overridable in tests to inject a mocked `URLSession` (see `WearLANURLSession`).
-    var urlSession: URLSession = WearLANURLSession.shared
+    /// Overridable in tests to inject a mocked `URLSession` (see `RemoteLANURLSession`).
+    var urlSession: URLSession = RemoteLANURLSession.shared
 
-    func client() -> WearAPIClient {
-        WearAPIClient(baseURLString: serverConfig.baseURLString, token: serverConfig.token, session: urlSession)
+    func client() -> RemoteAPIClient {
+        RemoteAPIClient(baseURLString: serverConfig.baseURLString, token: serverConfig.token, session: urlSession)
     }
 
     /// Runs `operation` against the current server; on a connection-level failure (`URLError`),
     /// retries each `fallbackHosts` entry in order and promotes the first one that succeeds to
-    /// `serverConfig.host`. HTTP-status errors (`WearDownloadError.httpStatus`) mean the server was
-    /// reached, so they are not retried against fallback hosts.
-    func withFailover<T>(_ operation: @Sendable (WearAPIClient) async throws -> T) async throws -> T {
+    /// `serverConfig.host`. HTTP-status errors (`RemoteAPIError`) mean the server was reached, so
+    /// they are not retried against fallback hosts.
+    func withFailover<T>(_ operation: @Sendable (RemoteAPIClient) async throws -> T) async throws -> T {
         let primaryHost = serverConfig.host
         let fallbackHosts = serverConfig.fallbackHosts
         let hostsToTry = [primaryHost] + fallbackHosts
@@ -154,7 +158,7 @@ final class AppModel {
         var lastError: Error?
         for (index, host) in hostsToTry.enumerated() {
             let candidateConfig = ServerConfig(host: host, port: serverConfig.port, token: serverConfig.token)
-            let candidateClient = WearAPIClient(
+            let candidateClient = RemoteAPIClient(
                 baseURLString: candidateConfig.baseURLString,
                 token: candidateConfig.token,
                 session: urlSession
@@ -193,12 +197,47 @@ final class AppModel {
         return client().artworkURL(artworkId: artworkId)
     }
 
-    /// Applies a pairing URL from QR or deep link. Returns whether configuration changed.
+    /// Applies a pairing URL from QR or deep link: redeems the embedded one-time secret for a
+    /// device-specific auth token via `POST /v1/pairing/redeem`. Returns whether pairing succeeded;
+    /// on failure, `pairingError` is set to a user-facing message.
     @discardableResult
-    func applyPairingURL(_ url: URL) -> Bool {
-        guard let cfg = ServerConfig.fromPairingURL(url), cfg.isConfigured else { return false }
-        serverConfig = cfg
-        return true
+    func applyPairingURL(_ url: URL) async -> Bool {
+        guard let request = ServerConfig.pairingRequest(fromPairingURL: url) else { return false }
+        return await redeemPairing(host: request.host, port: request.port, secret: request.secret)
+    }
+
+    /// Redeems a pairing secret (from QR or manual entry) for a device token and, on success, saves
+    /// it as `serverConfig`. Uses `DeviceIdentity` for `deviceId`/`displayName` so the desktop can
+    /// identify and later revoke this specific device.
+    @discardableResult
+    func redeemPairing(host: String, port: Int, secret: String) async -> Bool {
+        let baseURLString = ServerConfig(host: host, port: port).baseURLString
+        do {
+            let result = try await RemoteAPIClient.redeemPairingSecret(
+                baseURLString: baseURLString,
+                secret: secret,
+                deviceId: DeviceIdentity.deviceId,
+                displayName: DeviceIdentity.displayName,
+                session: urlSession
+            )
+            serverConfig = ServerConfig(host: host, port: port, token: result.token)
+            pairingError = nil
+            return true
+        } catch {
+            pairingError = Self.pairingErrorMessage(for: error)
+            return false
+        }
+    }
+
+    private static func pairingErrorMessage(for error: Error) -> String {
+        switch error {
+        case RemoteAPIError.server(_, let message):
+            return message
+        case RemoteAPIError.httpStatus(401):
+            return "ペアリングコードが無効か、期限切れです。"
+        default:
+            return error.localizedDescription
+        }
     }
 
     func refreshLibrary() async {
@@ -329,12 +368,12 @@ final class AppModel {
     }
 
     /// Fetches playlist metadata from the desktop (no local changes).
-    func fetchDesktopPlaylistsPreview() async throws -> [WearDesktopPlaylist] {
+    func fetchDesktopPlaylistsPreview() async throws -> [RemoteDesktopPlaylist] {
         guard serverConfig.isConfigured else { throw DesktopPlaylistImportError.serverNotConfigured }
         return try await withFailover { try await $0.fetchDesktopPlaylists() }
     }
 
-    /// Imports desktop playlists from `GET /wear/playlists`. Requires a configured server.
+    /// Imports desktop playlists from `GET /v1/remote/playlists`. Requires a configured server.
     func importDesktopPlaylists(missingPolicy: DesktopPlaylistMissingPolicy) async throws -> DesktopPlaylistImportOutcome {
         guard serverConfig.isConfigured else { throw DesktopPlaylistImportError.serverNotConfigured }
         var outcome = DesktopPlaylistImportOutcome(

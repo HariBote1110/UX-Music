@@ -1,6 +1,6 @@
 import Foundation
 
-/// Mirrors the Wear `/wear/songs` payload (same keys as Flutter `Song`).
+/// Mirrors the `GET /v1/remote/songs` payload (same keys as Flutter `Song`).
 struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
     var id: String
     var path: String

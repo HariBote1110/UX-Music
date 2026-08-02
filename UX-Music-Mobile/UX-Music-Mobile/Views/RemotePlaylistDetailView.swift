@@ -3,7 +3,7 @@ import SwiftUI
 /// Desktop playlist opened from Remote Library: same layout idea as `AlbumDetailView`, order follows desktop `songIds`.
 struct RemotePlaylistDetailView: View {
     @Environment(AppModel.self) private var model
-    let playlist: WearDesktopPlaylist
+    let playlist: RemoteDesktopPlaylist
 
     private var resolvedSongs: [Song] {
         guard case .loaded(let library) = model.libraryState else { return [] }

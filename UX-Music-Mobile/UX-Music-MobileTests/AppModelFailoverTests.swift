@@ -74,13 +74,15 @@ final class AppModelFailoverTests: XCTestCase {
             _ = try await model.withFailover { client in
                 _ = client
                 attemptedHosts.append("primary.invalid")
-                throw WearDownloadError.httpStatus(500)
+                throw RemoteAPIError.httpStatus(500)
             }
             XCTFail("Expected httpStatus error to propagate")
-        } catch let error as WearDownloadError {
+        } catch let error as RemoteAPIError {
             switch error {
             case .httpStatus(let code):
                 XCTAssertEqual(code, 500)
+            case .server:
+                XCTFail("expected .httpStatus(500), got .server")
             }
         }
 

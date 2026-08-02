@@ -6,8 +6,9 @@ struct ServerConfig: Codable, Sendable {
     /// Other reachable hosts for the same desktop (e.g. from mDNS discovery or a promoted failover
     /// host), tried in order when `host` becomes unreachable. Not part of `Equatable` — see below.
     var fallbackHosts: [String] = []
-    /// Pairing/auth token required by the desktop's `wearAuthMiddleware` for every endpoint except
-    /// `/wear/ping` and `/wear/mobile`. Not part of `Equatable` — see below.
+    /// Device-specific auth token, issued by `POST /v1/pairing/redeem` and required (as
+    /// `Authorization: Bearer <token>`) by every LAN API endpoint except `/v1/identity` and
+    /// `/v1/pairing/*`. Not part of `Equatable` — see below.
     var token: String = ""
 
     init(
@@ -45,27 +46,32 @@ struct ServerConfig: Codable, Sendable {
         token = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
     }
 
-    /// Parses `uxmusic://pair?host=&port=&token=` (QR from desktop) or `http(s)://host:port/…?token=`.
-    static func fromPairingURL(_ url: URL) -> ServerConfig? {
-        let scheme = (url.scheme ?? "").lowercased()
-        if scheme == "uxmusic" {
-            guard url.host?.lowercased() == "pair" else { return nil }
-            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-            let host = (items.first { $0.name == "host" }?.value ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let port = items.first { $0.name == "port" }?.value.flatMap { Int($0) } ?? AppConstants.defaultServerPort
-            let token = items.first { $0.name == "token" }?.value ?? ""
-            guard !host.isEmpty else { return nil }
-            return ServerConfig(host: host, port: port, token: token)
-        }
-        if scheme == "http" || scheme == "https" {
-            guard let host = url.host, !host.isEmpty else { return nil }
-            let port = url.port ?? AppConstants.defaultServerPort
-            let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                .queryItems?.first { $0.name == "token" }?.value ?? ""
-            return ServerConfig(host: host, port: port, token: token)
-        }
-        return nil
+}
+
+/// A scanned-but-not-yet-redeemed QR pairing payload (`uxmusic://pair?host=&port=&secret=`).
+/// `secret` is a one-time value good for 5 minutes; it must be exchanged for a device token via
+/// `POST /v1/pairing/redeem` before it can be used as `ServerConfig.token`.
+struct PairingRequest: Equatable, Sendable {
+    var host: String
+    var port: Int
+    var secret: String
+}
+
+extension ServerConfig {
+    /// Parses `uxmusic://pair?host=&port=&secret=` (QR from desktop). The raw token QR/URL forms are
+    /// no longer emitted by the desktop — a scanned secret must be redeemed via
+    /// `RemoteAPIClient.redeemPairingSecret` to obtain a device token.
+    static func pairingRequest(fromPairingURL url: URL) -> PairingRequest? {
+        guard (url.scheme ?? "").lowercased() == "uxmusic" else { return nil }
+        guard url.host?.lowercased() == "pair" else { return nil }
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let host = (items.first { $0.name == "host" }?.value ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let port = items.first { $0.name == "port" }?.value.flatMap { Int($0) } ?? AppConstants.defaultServerPort
+        let secret = (items.first { $0.name == "secret" }?.value ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, !secret.isEmpty else { return nil }
+        return PairingRequest(host: host, port: port, secret: secret)
     }
 }
 

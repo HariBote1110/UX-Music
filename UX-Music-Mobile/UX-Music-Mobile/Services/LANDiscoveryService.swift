@@ -2,7 +2,7 @@ import Combine
 import Darwin
 import Foundation
 
-struct WearDiscoveryPeer: Identifiable, Hashable, Sendable {
+struct LANDiscoveryPeer: Identifiable, Hashable, Sendable {
     let name: String
     let host: String
     let connectionHosts: [String]
@@ -11,7 +11,7 @@ struct WearDiscoveryPeer: Identifiable, Hashable, Sendable {
 
     init(name: String, endpointHost: String, addressHosts: [String] = [], port: Int, txt: [String: String]) {
         self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.connectionHosts = WearDiscoveryPeer.connectionHosts(endpointHost: endpointHost, addressHosts: addressHosts)
+        self.connectionHosts = LANDiscoveryPeer.connectionHosts(endpointHost: endpointHost, addressHosts: addressHosts)
         self.host = self.connectionHosts.first ?? ""
         self.port = port
         self.txt = txt
@@ -45,7 +45,7 @@ struct WearDiscoveryPeer: Identifiable, Hashable, Sendable {
             .filter { !$0.isEmpty }
     }
 
-    var supportsWearAPI: Bool {
+    var supportsRemoteAPI: Bool {
         guard !host.isEmpty, port > 0 else { return false }
         guard !roles.isEmpty else { return true }
         let roleSet = Set(roles.map { $0.lowercased() })
@@ -100,8 +100,8 @@ struct WearDiscoveryPeer: Identifiable, Hashable, Sendable {
     }
 }
 
-final class WearDiscoveryService: NSObject, ObservableObject {
-    @Published private(set) var peers: [WearDiscoveryPeer] = []
+final class LANDiscoveryService: NSObject, ObservableObject {
+    @Published private(set) var peers: [LANDiscoveryPeer] = []
     @Published private(set) var isBrowsing = false
     @Published private(set) var isDiscoveryActive = false
     @Published private(set) var errorMessage: String?
@@ -158,8 +158,8 @@ final class WearDiscoveryService: NSObject, ObservableObject {
         isDiscoveryActive = false
     }
 
-    private func upsert(_ peer: WearDiscoveryPeer) {
-        guard peer.supportsWearAPI else { return }
+    private func upsert(_ peer: LANDiscoveryPeer) {
+        guard peer.supportsRemoteAPI else { return }
         if let index = peers.firstIndex(where: { $0.id == peer.id }) {
             peers[index] = peer
         } else {
@@ -175,7 +175,7 @@ final class WearDiscoveryService: NSObject, ObservableObject {
     }
 }
 
-extension WearDiscoveryService: NetServiceBrowserDelegate {
+extension LANDiscoveryService: NetServiceBrowserDelegate {
     func netServiceBrowserWillSearch(_ browser: NetServiceBrowser) {
         DispatchQueue.main.async {
             self.isDiscoveryActive = true
@@ -215,13 +215,13 @@ extension WearDiscoveryService: NetServiceBrowserDelegate {
     }
 }
 
-extension WearDiscoveryService: NetServiceDelegate {
+extension LANDiscoveryService: NetServiceDelegate {
     func netServiceDidResolveAddress(_ sender: NetService) {
-        let txt = WearDiscoveryService.txtDictionary(from: sender.txtRecordData())
-        let peer = WearDiscoveryPeer(
+        let txt = LANDiscoveryService.txtDictionary(from: sender.txtRecordData())
+        let peer = LANDiscoveryPeer(
             name: sender.name,
             endpointHost: sender.hostName ?? "",
-            addressHosts: WearDiscoveryService.hostStrings(from: sender.addresses),
+            addressHosts: LANDiscoveryService.hostStrings(from: sender.addresses),
             port: sender.port,
             txt: txt
         )

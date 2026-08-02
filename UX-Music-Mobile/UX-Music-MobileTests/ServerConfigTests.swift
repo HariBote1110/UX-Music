@@ -2,39 +2,6 @@ import XCTest
 @testable import UX_Music_Mobile
 
 final class ServerConfigTests: XCTestCase {
-    func testFromPairingURL_customScheme() throws {
-        let u = try XCTUnwrap(URL(string: "uxmusic://pair?host=10.0.0.2&port=8765"))
-        let cfg = try XCTUnwrap(ServerConfig.fromPairingURL(u))
-        XCTAssertEqual(cfg.host, "10.0.0.2")
-        XCTAssertEqual(cfg.port, 8765)
-    }
-
-    func testFromPairingURL_customScheme_defaultPort() throws {
-        let u = try XCTUnwrap(URL(string: "uxmusic://pair?host=10.0.0.2"))
-        let cfg = try XCTUnwrap(ServerConfig.fromPairingURL(u))
-        XCTAssertEqual(cfg.host, "10.0.0.2")
-        XCTAssertEqual(cfg.port, AppConstants.defaultServerPort)
-    }
-
-    func testFromPairingURL_httpWithPort() throws {
-        let u = try XCTUnwrap(URL(string: "http://192.168.1.1:8765/wear/ping"))
-        let cfg = try XCTUnwrap(ServerConfig.fromPairingURL(u))
-        XCTAssertEqual(cfg.host, "192.168.1.1")
-        XCTAssertEqual(cfg.port, 8765)
-    }
-
-    func testFromPairingURL_httpNoExplicitPortUsesDefaultServerPort() throws {
-        let u = try XCTUnwrap(URL(string: "http://192.168.1.1/"))
-        let cfg = try XCTUnwrap(ServerConfig.fromPairingURL(u))
-        XCTAssertEqual(cfg.host, "192.168.1.1")
-        XCTAssertEqual(cfg.port, AppConstants.defaultServerPort)
-    }
-
-    func testFromPairingURL_rejectsWrongHost() throws {
-        let u = try XCTUnwrap(URL(string: "uxmusic://other?host=1.1.1.1&port=8765"))
-        XCTAssertNil(ServerConfig.fromPairingURL(u))
-    }
-
     func testBaseURLStringUsesHostWhenSet() {
         let cfg = ServerConfig(host: "192.168.0.5", port: 8765)
         XCTAssertEqual(cfg.baseURLString, "http://192.168.0.5:8765")
@@ -77,8 +44,7 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertEqual(a, b)
     }
 
-    /// Root cause of second sync failure: `wearAuthMiddleware` on the desktop rejects every
-    /// endpoint except `/wear/ping` and `/wear/mobile` without a token. `ServerConfig` must carry it.
+    /// The device auth token (issued by `POST /v1/pairing/redeem`) must round-trip through persistence.
     func testTokenEncodeDecodeRoundTrip() throws {
         var cfg = ServerConfig(host: "10.0.0.1", port: 8765)
         cfg.token = "secret-token"
@@ -94,18 +60,6 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertEqual(cfg.token, "")
     }
 
-    func testFromPairingURL_customScheme_readsToken() throws {
-        let u = try XCTUnwrap(URL(string: "uxmusic://pair?host=10.0.0.2&port=8765&token=abc123"))
-        let cfg = try XCTUnwrap(ServerConfig.fromPairingURL(u))
-        XCTAssertEqual(cfg.token, "abc123")
-    }
-
-    func testFromPairingURL_httpScheme_readsToken() throws {
-        let u = try XCTUnwrap(URL(string: "http://192.168.1.1:8765/wear/ping?token=abc123"))
-        let cfg = try XCTUnwrap(ServerConfig.fromPairingURL(u))
-        XCTAssertEqual(cfg.token, "abc123")
-    }
-
     /// Equatable must ignore `token` too — a manually re-entered or re-paired token must not break
     /// the "selected peer" checkmark comparison.
     func testEquatableIgnoresToken() {
@@ -114,5 +68,39 @@ final class ServerConfigTests: XCTestCase {
         a.token = "one"
         b.token = "two"
         XCTAssertEqual(a, b)
+    }
+
+    // MARK: - Pairing QR (uxmusic://pair?host=&port=&secret=)
+
+    func testPairingRequestFromPairingURL_parsesHostPortAndSecret() throws {
+        let u = try XCTUnwrap(URL(string: "uxmusic://pair?host=10.0.0.2&port=8765&secret=abc123"))
+        let request = try XCTUnwrap(ServerConfig.pairingRequest(fromPairingURL: u))
+        XCTAssertEqual(request.host, "10.0.0.2")
+        XCTAssertEqual(request.port, 8765)
+        XCTAssertEqual(request.secret, "abc123")
+    }
+
+    func testPairingRequestFromPairingURL_defaultPort() throws {
+        let u = try XCTUnwrap(URL(string: "uxmusic://pair?host=10.0.0.2&secret=abc123"))
+        let request = try XCTUnwrap(ServerConfig.pairingRequest(fromPairingURL: u))
+        XCTAssertEqual(request.host, "10.0.0.2")
+        XCTAssertEqual(request.port, AppConstants.defaultServerPort)
+    }
+
+    func testPairingRequestFromPairingURL_rejectsWrongHostComponent() {
+        let u = URL(string: "uxmusic://other?host=1.1.1.1&port=8765&secret=abc123")!
+        XCTAssertNil(ServerConfig.pairingRequest(fromPairingURL: u))
+    }
+
+    func testPairingRequestFromPairingURL_rejectsMissingSecret() {
+        let u = URL(string: "uxmusic://pair?host=10.0.0.2&port=8765")!
+        XCTAssertNil(ServerConfig.pairingRequest(fromPairingURL: u))
+    }
+
+    /// The desktop no longer emits bare-token QR/URLs — only `uxmusic://pair?...&secret=` — so an
+    /// `http(s)://` pairing link must not parse.
+    func testPairingRequestFromPairingURL_rejectsHTTPScheme() {
+        let u = URL(string: "http://192.168.1.1:8765/v1/identity?secret=abc123")!
+        XCTAssertNil(ServerConfig.pairingRequest(fromPairingURL: u))
     }
 }

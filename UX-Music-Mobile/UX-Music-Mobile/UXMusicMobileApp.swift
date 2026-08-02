@@ -14,7 +14,7 @@ struct UXMusicMobileApp: App {
                     UIApplication.shared.beginReceivingRemoteControlEvents()
                 }
                 .onOpenURL { url in
-                    _ = model.applyPairingURL(url)
+                    Task { _ = await model.applyPairingURL(url) }
                 }
         }
     }
