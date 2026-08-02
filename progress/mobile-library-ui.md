@@ -15,3 +15,8 @@
 ## Constraints / Gotchas
 - 新規 Swift ファイルを追加する際は `UX-Music-Mobile.xcodeproj/project.pbxproj` に `PBXBuildFile` / `PBXFileReference` / グループ登録 / `PBXSourcesBuildPhase` の4箇所を手動追加する必要がある（プロジェクトが手書き pbxproj 管理のため、Xcode GUI を介さない場合は忘れがちなので要注意）。
 - ContentUnavailableView を List 内に置くとレイアウトが壊れるケースがある（上記参照）。空状態は List の外側に置くのが安全。
+
+## 教訓（2026-08-02 追記）: 標準 `Picker(.segmented)` への置換は不評だった
+- 上記の位置固定対応の際、`LibrarySegmentedHeader` の中身を独自カプセル実装から標準 `Picker(.segmented)`（iOS 標準のグレー角丸ボタン群）に置き換えたところ、ユーザーから「上の選択ボタンがダサい」「よくわからんグレーが出てきてる」と明確な NG が出た。
+- このアプリはヘッダー含め独自の黒基調デザインで統一されており、標準部品（特に `.segmented` Picker の灰色トラック）は世界観から浮く。**タブ切り替えのような目立つ UI 部品は、位置固定などの機能要件を満たしつつも、独自カプセル実装（`Capsule().fill(Color(white:0.12))` の外枠＋`matchedGeometryEffect` でスライドする選択ハイライト）を優先すること**。標準 SwiftUI コントロールへの安易な置換は避ける。
+- 併せてヘッダー帯の背景に敷いていた `Color(red: 0.11, green: 0.11, blue: 0.12)` の矩形も「よくわからんグレー」として指摘された。ヘッダーは背景を完全に透明にし、下地の黒に自然に溶け込ませるほうが良い。
