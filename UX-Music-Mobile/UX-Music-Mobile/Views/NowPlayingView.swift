@@ -116,6 +116,10 @@ struct NowPlayingView: View {
         //        Toolbar buttons are placed at padding(.top, 8) from the content-area origin,
         //        which is already below the status-bar / Dynamic Island.
         //        Panel content receives `toolbarClearance` so VStack spacers clear the buttons.
+        //        Its innermost ZStack's back-most layer is a `.ignoresSafeArea()` black cover
+        //        whose opacity tracks `nowPlayingSidePanelCoverage`, so the safe-area bands go
+        //        solid black in step with the Queue / Favourites / PlaybackSettings panels
+        //        instead of leaking the ambient gradient behind them.
         ZStack {
             // ── Full-screen ambient background ─────────────────────────────────────
             NowPlayingAmbientBackground(palette: ambientPalette)
