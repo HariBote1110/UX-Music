@@ -73,6 +73,7 @@ final class AppModel {
     let player: MusicPlayerService
     let playlistStore: PlaylistStore
     let favouriteSongStore: FavouriteSongStore
+    let watchTransferBridge: WatchTransferBridge
 
     /// Locally persisted playlists (order matches `playlistStore`).
     private(set) var playlists: [Playlist] = []
@@ -82,6 +83,7 @@ final class AppModel {
     init(playlistStore: PlaylistStore? = nil, lyricsFileStore: LyricsFileStore? = nil) {
         serverConfig = Self.loadSettings()
         downloadManager = DownloadManager()
+        watchTransferBridge = WatchTransferBridge(downloadManager: downloadManager)
         self.lyricsFileStore = lyricsFileStore ?? LyricsFileStore()
         self.playlistStore = playlistStore ?? PlaylistStore()
         favouriteSongStore = FavouriteSongStore()

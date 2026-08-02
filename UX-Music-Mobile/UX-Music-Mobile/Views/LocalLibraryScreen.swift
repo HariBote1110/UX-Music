@@ -281,6 +281,13 @@ struct LocalLibraryScreen: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
                 )
+                .contextMenu {
+                    Button {
+                        model.watchTransferBridge.send(song)
+                    } label: {
+                        Label("Apple Watch に転送", systemImage: "applewatch")
+                    }
+                }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
                         model.removeDownloadedSong(songId: song.id)

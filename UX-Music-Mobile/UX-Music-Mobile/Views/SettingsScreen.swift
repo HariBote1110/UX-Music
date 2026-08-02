@@ -100,6 +100,39 @@ struct SettingsScreen: View {
                 }
 
                 Section {
+                    HStack {
+                        Text("ペアリング状態")
+                        Spacer()
+                        Text(model.watchTransferBridge.isPaired ? "ペアリング済み" : "未ペアリング")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Watch アプリ")
+                        Spacer()
+                        Text(model.watchTransferBridge.isWatchAppInstalled ? "インストール済み" : "未インストール")
+                            .foregroundStyle(.secondary)
+                    }
+                    if model.watchTransferBridge.queue.isEmpty {
+                        Text("転送済みの曲はありません。ローカルライブラリの曲を長押しして「Apple Watch に転送」を選んでください。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(model.watchTransferBridge.queue) { item in
+                            HStack {
+                                Text(item.title)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(watchTransferStatusText(item.phase))
+                                    .font(.footnote)
+                                    .foregroundStyle(watchTransferStatusColor(item.phase))
+                            }
+                        }
+                    }
+                } header: {
+                    Text("APPLE WATCH")
+                }
+
+                Section {
                     Button("デスクトップのプレイリストを取り込む") {
                         showDesktopPlaylistImport = true
                     }
@@ -297,6 +330,23 @@ struct SettingsScreen: View {
                     await MainActor.run { savedFlash = false }
                 }
             }
+        }
+    }
+
+    private func watchTransferStatusText(_ phase: WatchTransferQueueItem.Phase) -> String {
+        switch phase {
+        case .waiting: return "待機中"
+        case .sending: return "送信中…"
+        case .sent: return "送信済み"
+        case .failed(let message): return "失敗: \(message)"
+        }
+    }
+
+    private func watchTransferStatusColor(_ phase: WatchTransferQueueItem.Phase) -> Color {
+        switch phase {
+        case .sent: return .green
+        case .failed: return .red
+        default: return .secondary
         }
     }
 

@@ -72,6 +72,7 @@
 		B876FC45A8EA453AB2CF792F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 66498BF289AC41A2936302DE /* Assets.xcassets */; };
 		E44E6E4CD96B4110915888A8 /* UX-Music-Watch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FEED0002000000000000AAA2 /* WatchTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0001000000000000AAA1 /* WatchTransfer.swift */; };
+		FEED0006000000000000AAA6 /* WatchTransferBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0007000000000000AAA7 /* WatchTransferBridge.swift */; };
 		FEED0003000000000000AAA3 /* WatchTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0001000000000000AAA1 /* WatchTransfer.swift */; };
 		FEED0005000000000000AAA5 /* WatchTransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0004000000000000AAA4 /* WatchTransferTests.swift */; };
 /* End PBXBuildFile section */
@@ -176,6 +177,7 @@
 		66498BF289AC41A2936302DE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-Watch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FEED0001000000000000AAA1 /* WatchTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransfer.swift; sourceTree = "<group>"; };
+		FEED0007000000000000AAA7 /* WatchTransferBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferBridge.swift; sourceTree = "<group>"; };
 		FEED0004000000000000AAA4 /* WatchTransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -286,6 +288,7 @@
 				W1D1D1C10101D1C10101D1C1 /* LANDiscoveryService.swift */,
 				E5E5E5E50101E5E50101E5E5 /* LyricsFileStore.swift */,
 				F60101F70101F70101F70101 /* RemoteConnectionResolver.swift */,
+				FEED0007000000000000AAA7 /* WatchTransferBridge.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -509,6 +512,7 @@
 				E8E8E8E70101E8E70101E8E7 /* RemoteDefaultArtwork.swift in Sources */,
 				D1D1D1D10101D1D10101D1D1 /* DeviceIdentity.swift in Sources */,
 				FEED0002000000000000AAA2 /* WatchTransfer.swift in Sources */,
+				FEED0006000000000000AAA6 /* WatchTransferBridge.swift in Sources */,
 				01A1A1A30101A1A10101A1A1 /* ServerConfig.swift in Sources */,
 				01A1A1A50101A1A10101A1A1 /* Song.swift in Sources */,
 				01A1A1A70101A1A10101A1A1 /* Album.swift in Sources */,

@@ -12,6 +12,7 @@ struct UXMusicMobileApp: App {
                 .preferredColorScheme(.dark)
                 .onAppear {
                     UIApplication.shared.beginReceivingRemoteControlEvents()
+                    model.watchTransferBridge.activate()
                 }
                 .onOpenURL { url in
                     Task { _ = await model.applyPairingURL(url) }
