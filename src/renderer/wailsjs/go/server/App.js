@@ -202,6 +202,10 @@ export function GetE2EEmbedVideoID() {
   return window['go']['server']['App']['GetE2EEmbedVideoID']();
 }
 
+export function GetLANAddress() {
+  return window['go']['server']['App']['GetLANAddress']();
+}
+
 export function GetLibraryForNormalize() {
   return window['go']['server']['App']['GetLibraryForNormalize']();
 }
@@ -222,6 +226,14 @@ export function GetMTPDevices() {
   return window['go']['server']['App']['GetMTPDevices']();
 }
 
+export function GetPairingQRDataURL() {
+  return window['go']['server']['App']['GetPairingQRDataURL']();
+}
+
+export function GetPairingURL() {
+  return window['go']['server']['App']['GetPairingURL']();
+}
+
 export function GetPerformanceSnapshot() {
   return window['go']['server']['App']['GetPerformanceSnapshot']();
 }
@@ -240,18 +252,6 @@ export function GetSituationPlaylists() {
 
 export function GetUnifiedLibrary() {
   return window['go']['server']['App']['GetUnifiedLibrary']();
-}
-
-export function GetWearAddress() {
-  return window['go']['server']['App']['GetWearAddress']();
-}
-
-export function GetWearPairingQRDataURL() {
-  return window['go']['server']['App']['GetWearPairingQRDataURL']();
-}
-
-export function GetWearPairingURL() {
-  return window['go']['server']['App']['GetWearPairingURL']();
 }
 
 export function GetYouTubeEmbedLoudness(arg1) {

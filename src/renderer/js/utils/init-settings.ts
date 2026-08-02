@@ -124,26 +124,26 @@ async function refreshLyricsSyncCacheInfo() {
     }
 }
 
-async function refreshWearPairingQR() {
-    const group = document.getElementById('wear-mobile-pairing-group');
-    const wrap = document.getElementById('wear-pairing-qr-wrap');
-    const img = document.getElementById('wear-pairing-qr');
-    const urlEl = document.getElementById('wear-pairing-url');
-    const errEl = document.getElementById('wear-pairing-qr-error');
+async function refreshRemotePairingQR() {
+    const group = document.getElementById('remote-mobile-pairing-group');
+    const wrap = document.getElementById('remote-pairing-qr-wrap');
+    const img = document.getElementById('remote-pairing-qr');
+    const urlEl = document.getElementById('remote-pairing-url');
+    const errEl = document.getElementById('remote-pairing-qr-error');
     if (!group || !wrap || !img || !errEl) return;
     errEl.classList.add('hidden');
     errEl.textContent = '';
-    if (!getWailsApp()?.GetWearPairingQRDataURL) {
+    if (!getWailsApp()?.GetPairingQRDataURL) {
         group.classList.add('hidden');
         return;
     }
     group.classList.remove('hidden');
     try {
-        const dataUrl = await getWailsApp().GetWearPairingQRDataURL();
+        const dataUrl = await getWailsApp().GetPairingQRDataURL();
         (img as HTMLImageElement).src = dataUrl;
         wrap.classList.remove('hidden');
-        if (urlEl && getWailsApp()?.GetWearPairingURL) {
-            urlEl.textContent = await getWailsApp().GetWearPairingURL();
+        if (urlEl && getWailsApp()?.GetPairingURL) {
+            urlEl.textContent = await getWailsApp().GetPairingURL();
         }
     } catch (e) {
         wrap.classList.add('hidden');
@@ -729,7 +729,7 @@ export function initSettings() {
         }
 
         elements.settingsModalOverlay.classList.remove('hidden');
-        void refreshWearPairingQR();
+        void refreshRemotePairingQR();
         updateUxSyncSettingsEntry();
         void refreshLyricsSyncCacheInfo();
 

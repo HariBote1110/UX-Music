@@ -110,6 +110,8 @@ export function GetAudioEmbedStatus():Promise<server.AudioEmbedStatus>;
 
 export function GetE2EEmbedVideoID():Promise<string>;
 
+export function GetLANAddress():Promise<string>;
+
 export function GetLibraryForNormalize():Promise<Array<any>>;
 
 export function GetLoudnessValue(arg1:string):Promise<any>;
@@ -120,6 +122,10 @@ export function GetLyricsSyncResourceStatus():Promise<Record<string, any>>;
 
 export function GetMTPDevices():Promise<any>;
 
+export function GetPairingQRDataURL():Promise<string>;
+
+export function GetPairingURL():Promise<string>;
+
 export function GetPerformanceSnapshot():Promise<server.PerformanceSnapshot>;
 
 export function GetPlaylistDetails(arg1:string):Promise<any>;
@@ -129,12 +135,6 @@ export function GetSettings():Promise<any>;
 export function GetSituationPlaylists():Promise<any>;
 
 export function GetUnifiedLibrary():Promise<Record<string, any>>;
-
-export function GetWearAddress():Promise<string>;
-
-export function GetWearPairingQRDataURL():Promise<string>;
-
-export function GetWearPairingURL():Promise<string>;
 
 export function GetYouTubeEmbedLoudness(arg1:string):Promise<server.YouTubeEmbedLoudness>;
 
