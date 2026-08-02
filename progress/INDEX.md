@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mobile-lan-api-v1-migration.md](mobile-lan-api-v1-migration.md) — UX-Music-Mobile を新 LAN API v1 に追従: wear 命名の全廃（RemoteAPIClient 等への改名）、Bearer 認証、secret→redeem 方式のペアリングへの変更
 - [lan-api-v1.md](lan-api-v1.md) — LAN API v1 統一プロトコル仕様: `/wear/*`・`/sync/*` を `/v1/remote/*`・`/v1/sync/*` に再編、デバイス別トークン認証（`deviceAuthTokens`）・Bearer 一本化・QR→redeem 発行ペアリング・JSON エラー形式・バージョニング1体系化の決定記録
 - [mobile-remote-control-footer.md](mobile-remote-control-footer.md) — UX Music Mobile: Remote Control タブのトランスポート行がミニプレイヤー＋タブバーのフッターに重なるバグの原因（`.ignoresSafeArea()` を持つ背景をZStackの兄弟にするとレイアウトサイズが背景に引きずられる）と修正
 - [mobile-library-ui.md](mobile-library-ui.md) — UX Music Mobile: Local/Remote ライブラリ画面のタブ位置固定（共通 `LibrarySegmentedHeader`）と、行・グリッド・空状態の見た目統一（ellipsis メニュー集約、`ContentUnavailableView` は List 外に配置）
