@@ -1,3 +1,4 @@
 # Progress Index
 
+- [mobile-nowplaying-visuals.md](mobile-nowplaying-visuals.md) — UX Music Mobile: 再生画面スワイプ時のセーフエリア帯グラデーション侵食バグ修正（`nowPlayingSidePanelCoverage` による黒被覆レイヤー）と、歌詞画面（`NowPlayingLyricsScreen`）の Apple Music 風環境光デザイン刷新（背景共有・エッジフェード・タップシーク・自動スクロール一時停止）
 - [mobile-sync-failover.md](mobile-sync-failover.md) — UX Music Mobile: mDNS 発見ピア選択時の疎通確認欠如による同期不安定バグの修正（WearConnectionResolver・ServerConfig.fallbackHosts・AppModel.withFailover）、および第2の根本原因である wearAuthMiddleware 認証トークン欠落（401）の修正（ServerConfig.token・WearAPIClient の X-UX-Music-Token・checkAuthorised）
