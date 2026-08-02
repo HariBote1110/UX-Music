@@ -199,6 +199,10 @@ struct LocalLibraryScreen: View {
                                 .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
                         )
                         .contextMenu {
+                            WatchTransferBulkMenuItem(
+                                title: "プレイリストを Apple Watch に転送",
+                                songs: model.resolvedSongs(for: pl)
+                            )
                             Button(role: .destructive) {
                                 try? model.deletePlaylist(id: pl.id)
                             } label: {
@@ -282,11 +286,7 @@ struct LocalLibraryScreen: View {
                         .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
                 )
                 .contextMenu {
-                    Button {
-                        model.watchTransferBridge.send(song)
-                    } label: {
-                        Label("Apple Watch に転送", systemImage: "applewatch")
-                    }
+                    WatchTransferSongMenuItem(song: song)
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {

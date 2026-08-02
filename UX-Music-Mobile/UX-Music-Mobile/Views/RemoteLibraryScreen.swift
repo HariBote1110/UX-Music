@@ -336,6 +336,10 @@ struct RemoteLibraryScreen: View {
                                 Label("プレイリストをダウンロード", systemImage: "arrow.down.circle")
                             }
                         }
+                        WatchTransferBulkMenuItem(
+                            title: "プレイリストを Apple Watch に転送",
+                            songs: songsInPl
+                        )
                     }
                 }
             }
@@ -383,6 +387,10 @@ struct RemoteLibraryScreen: View {
                                 Label("Download album", systemImage: "arrow.down.circle")
                             }
                         }
+                        WatchTransferBulkMenuItem(
+                            title: "アルバムを Apple Watch に転送",
+                            songs: album.songs
+                        )
                     }
                 }
             }
@@ -408,6 +416,9 @@ struct RemoteLibraryScreen: View {
                     )
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
+                    .contextMenu {
+                        WatchTransferSongMenuItem(song: song)
+                    }
                 }
             }
             .padding(.bottom, 8)

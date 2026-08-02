@@ -71,3 +71,70 @@
 - `xcodebuild -scheme UX-Music-Watch -destination 'generic/platform=watchOS Simulator' build` → BUILD SUCCEEDED
 - `xcodebuild -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air' build` → BUILD SUCCEEDED
 - `xcodebuild test -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air'` → TEST SUCCEEDED（新規 `WatchTransferTests` 15件含め全件成功）
+
+## フェーズ3: 転送導線の全画面展開とバックグラウンド受信の不具合修正
+
+### Decision
+
+- **転送導線の一元化**: 「Apple Watch に転送」の判定・実行ロジックを
+  `Core/WatchTransferMenuPolicy.swift`（`canShowMenu` / `songsEligibleForBulkTransfer`、
+  純関数・テスト済み）と `Views/WatchTransferMenuItems.swift`
+  （`WatchTransferSongMenuItem` / `WatchTransferBulkMenuItem`、SwiftUI ラッパー）に
+  切り出した。以前は `LocalLibraryScreen` の曲行にしかボタンがなかったが、
+  この共通コンポーネントを `.contextMenu` に差し込むだけで済むようにし、
+  以下の全画面へ展開した:
+  - `LocalLibraryScreen`（曲行・プレイリスト行の一括転送）
+  - `AlbumDetailView`（曲行・アルバムヘッダーの一括転送）
+  - `PlaylistDetailView`（曲行・ツールバーの「...」メニューから一括転送）
+  - `RemotePlaylistDetailView`（曲行・プレイリストヘッダーの一括転送）
+  - `RemoteLibraryScreen`（曲行・アルバム/プレイリストのグリッドセルの一括転送）
+  - `NowPlayingView`（キューパネル・お気に入りパネルの各行）
+  - Watch 未ペア・WatchConnectivity 非対応時はメニュー項目自体を描画しない
+    （`WatchTransferMenuPolicy.canShowMenu`）。未ダウンロード曲は既存方針どおり
+    ボタンを disabled にする（非表示ではなく無効化）。
+- **受信後に一覧が更新されない不具合の根本原因**: `WatchConnectivityReceiver
+  .session(_:didReceive:)` が `nonisolated` の同期コールバックであるにも
+  関わらず、旧実装はファイルコピーそのものを `Task { @MainActor in ... }`
+  の中で行っていた。`WCSessionFile.fileURL` はデリゲート呼び出しが返るまでしか
+  有効性を保証されないため、メインアクターへのホップを待つ間に
+  WatchConnectivity がトランジェントな受信ファイルを削除してしまい、
+  `copyItem` が失敗 → `library.addSong` が一度も呼ばれず、曲が永遠にリストへ
+  反映されなかった。
+- **修正**: ファイルの実体コピーを `nonisolated` コンテキストのまま同期的に
+  実行するよう変更。`WatchLocalLibrary`（`@MainActor` クラス）が持っていた
+  ディレクトリ/パス計算を、アクター分離のない `enum WatchAudioStorage`
+  （`Core`/`WatchLocalLibrary.swift` 内、iOS・watchOS 両ターゲットではなく
+  watchOS のみ）に切り出し、`didReceive file:` から直接呼べるようにした。
+  コピーの成否は `WatchFileReceiveResult`（`Core/WatchTransfer.swift`、iOS/watchOS
+  共有）で表現し、`WatchFileReceiveHandling.shouldAddToLibrary` という純関数で
+  「成功時のみインデックスに追加する」判定をテスト可能にした
+  （`WatchTransferTests.testShouldAddToLibraryIsTrueOnSuccess` /
+  `testShouldAddToLibraryIsFalseOnFailure`）。`@Published songs` の更新自体は
+  引き続き `@MainActor` の `Task` 内で行う。
+- **フォアグラウンド復帰時の再読込**: `WatchLocalLibrary` に `reload()` を追加し、
+  `WatchRootView` の `.onChange(of: scenePhase)` で `.active` になったタイミングで
+  呼び出す。通常は `@Published songs` によるライブ更新で足りるが、サスペンド中に
+  完了した転送を取りこぼさないための保険。
+
+### Alternatives considered
+
+- `WatchLocalLibrary` 自体を `nonisolated` にする案は却下。`@Published` な
+  `songs` を安全に公開するには `@MainActor` のままにしておきたく、
+  パス計算だけを外に出す方が影響範囲が小さい。
+- WatchConnectivity の実際の受信・アクターホップの競合を統合テストする案は
+  見送り（WatchKit 用のユニットテストターゲットがそもそも存在せず、
+  実機/シミュレータのペアリングに依存するため）。代わりに「コピー成功/失敗
+  という結果に対して何が起きるべきか」を `WatchFileReceiveHandling` として
+  切り出し、その決定ロジックだけを iOS テストターゲットから検証する形にした。
+
+### Constraints / Gotchas
+
+- `WCSessionFile.fileURL` の有効期間はデリゲートコールバックの実行中のみ。
+  `nonisolated` なコールバックから `Task { @MainActor in ... }` で後回しに
+  した処理の中でこの URL を参照すると、システムが先にファイルを削除している
+  可能性があるため踏んではいけない罠。ファイル操作は必ずコールバックの
+  同期区間で完結させること。
+- 新規ファイル3点（`WatchTransferMenuPolicy.swift` / `WatchTransferMenuItems.swift`
+  / `WatchTransferMenuPolicyTests.swift`）は pbxproj に手動登録。
+  `WatchTransferMenuPolicy.swift`・`WatchTransferMenuItems.swift` は
+  iOS ターゲットのみのメンバーシップ（`AppModel`/`Song` は iOS 専用のため）。

@@ -1,4 +1,5 @@
 import SwiftUI
+import WatchConnectivity
 
 struct PlaylistDetailView: View {
     @Environment(AppModel.self) private var model
@@ -15,6 +16,13 @@ struct PlaylistDetailView: View {
     private var songs: [Song] {
         guard let pl = playlist else { return [] }
         return model.resolvedSongs(for: pl)
+    }
+
+    private var canShowWatchTransferMenu: Bool {
+        WatchTransferMenuPolicy.canShowMenu(
+            isWatchConnectivitySupported: WCSession.isSupported(),
+            isPaired: model.watchTransferBridge.isPaired
+        )
     }
 
     var body: some View {
@@ -37,6 +45,9 @@ struct PlaylistDetailView: View {
                             }
                         )
                         .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
+                        .contextMenu {
+                            WatchTransferSongMenuItem(song: song)
+                        }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 try? model.removeSongsFromPlaylist(playlistId: playlistId, songIds: [song.id])
@@ -63,6 +74,16 @@ struct PlaylistDetailView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack {
                         EditButton()
+                        if canShowWatchTransferMenu {
+                            Menu {
+                                WatchTransferBulkMenuItem(
+                                    title: "プレイリストを Apple Watch に転送",
+                                    songs: songs
+                                )
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                            }
+                        }
                         Button {
                             showAddSongs = true
                         } label: {

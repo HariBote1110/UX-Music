@@ -63,6 +63,9 @@ struct RemotePlaylistDetailView: View {
                         )
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
+                        .contextMenu {
+                            WatchTransferSongMenuItem(song: song)
+                        }
                     }
                 }
             }
@@ -114,6 +117,10 @@ struct RemotePlaylistDetailView: View {
                     Label("プレイリストをダウンロード", systemImage: "arrow.down.circle")
                 }
             }
+            WatchTransferBulkMenuItem(
+                title: "プレイリストを Apple Watch に転送",
+                songs: resolvedSongs
+            )
         }
     }
 

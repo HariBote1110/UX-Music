@@ -900,6 +900,9 @@ private struct NowPlayingQueuePanel: View {
                                 .padding(.horizontal, 8)
                         )
                         .listRowSeparator(.hidden)
+                        .contextMenu {
+                            WatchTransferSongMenuItem(song: song)
+                        }
                     }
                 }
             }
@@ -971,6 +974,9 @@ private struct NowPlayingFavouritesPanel: View {
                                 .padding(.horizontal, 8)
                         )
                         .listRowSeparator(.hidden)
+                        .contextMenu {
+                            WatchTransferSongMenuItem(song: song)
+                        }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 model.removeFavourite(songId: song.id)

@@ -35,6 +35,9 @@ struct AlbumDetailView: View {
                     )
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
+                    .contextMenu {
+                        WatchTransferSongMenuItem(song: song)
+                    }
                 }
             }
             .padding(.bottom, 8)
@@ -74,6 +77,10 @@ struct AlbumDetailView: View {
                     Label("Download album", systemImage: "arrow.down.circle")
                 }
             }
+            WatchTransferBulkMenuItem(
+                title: "アルバムを Apple Watch に転送",
+                songs: album.songs
+            )
         }
     }
 
