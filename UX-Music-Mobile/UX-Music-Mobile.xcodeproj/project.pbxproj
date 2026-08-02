@@ -20,6 +20,7 @@
 		01A1A1B70101A1A10101A1A1 /* MiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1B80101A1A10101A1A1 /* MiniPlayerView.swift */; };
 		01A1A1B90101A1A10101A1A1 /* LocalLibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1BA0101A1A10101A1A1 /* LocalLibraryScreen.swift */; };
 		01A1A1BB0101A1A10101A1A1 /* RemoteLibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1BC0101A1A10101A1A1 /* RemoteLibraryScreen.swift */; };
+		504978D3897121DB94ED3468 /* LibrarySegmentedHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47F5AEDF4F0386B112A5830 /* LibrarySegmentedHeader.swift */; };
 		01A1A1BD0101A1A10101A1A1 /* AlbumDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1BE0101A1A10101A1A1 /* AlbumDetailView.swift */; };
 		01A1A1BF0101A1A10101A1A1 /* RemoteControlScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1C00101A1A10101A1A1 /* RemoteControlScreen.swift */; };
 		01A1A1C10101A1A10101A1A1 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1C20101A1A10101A1A1 /* SettingsScreen.swift */; };
@@ -90,6 +91,7 @@
 		01A1A1B80101A1A10101A1A1 /* MiniPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerView.swift; sourceTree = "<group>"; };
 		01A1A1BA0101A1A10101A1A1 /* LocalLibraryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLibraryScreen.swift; sourceTree = "<group>"; };
 		01A1A1BC0101A1A10101A1A1 /* RemoteLibraryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteLibraryScreen.swift; sourceTree = "<group>"; };
+		E47F5AEDF4F0386B112A5830 /* LibrarySegmentedHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySegmentedHeader.swift; sourceTree = "<group>"; };
 		01A1A1BE0101A1A10101A1A1 /* AlbumDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumDetailView.swift; sourceTree = "<group>"; };
 		01A1A1C00101A1A10101A1A1 /* RemoteControlScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteControlScreen.swift; sourceTree = "<group>"; };
 		01A1A1C20101A1A10101A1A1 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
@@ -255,6 +257,7 @@
 				01A1A1B80101A1A10101A1A1 /* MiniPlayerView.swift */,
 				01A1A1BA0101A1A10101A1A1 /* LocalLibraryScreen.swift */,
 				01A1A1BC0101A1A10101A1A1 /* RemoteLibraryScreen.swift */,
+				E47F5AEDF4F0386B112A5830 /* LibrarySegmentedHeader.swift */,
 				01A1A1BE0101A1A10101A1A1 /* AlbumDetailView.swift */,
 				F3A3A3AA0101F3AA0101F3AA /* PlaylistDetailView.swift */,
 				01A1A1C00101A1A10101A1A1 /* RemoteControlScreen.swift */,
@@ -431,6 +434,7 @@
 				01A1A1B70101A1A10101A1A1 /* MiniPlayerView.swift in Sources */,
 				01A1A1B90101A1A10101A1A1 /* LocalLibraryScreen.swift in Sources */,
 				01A1A1BB0101A1A10101A1A1 /* RemoteLibraryScreen.swift in Sources */,
+				504978D3897121DB94ED3468 /* LibrarySegmentedHeader.swift in Sources */,
 				01A1A1BD0101A1A10101A1A1 /* AlbumDetailView.swift in Sources */,
 				F3A3A3A50101F3A50101F3A5 /* PlaylistDetailView.swift in Sources */,
 				01A1A1BF0101A1A10101A1A1 /* RemoteControlScreen.swift in Sources */,

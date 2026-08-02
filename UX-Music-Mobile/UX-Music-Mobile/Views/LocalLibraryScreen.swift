@@ -1,7 +1,15 @@
 import SwiftUI
 
-private enum LocalViewMode: String, CaseIterable {
+private enum LocalViewMode: Int, CaseIterable {
     case albums, playlists, songs
+
+    var title: String {
+        switch self {
+        case .albums: return "Albums"
+        case .playlists: return "Playlists"
+        case .songs: return "Songs"
+        }
+    }
 }
 
 private enum LibraryRoute: Hashable {
@@ -16,79 +24,53 @@ struct LocalLibraryScreen: View {
     @State private var showNewPlaylistAlert = false
     @State private var newPlaylistName = ""
     @State private var showDesktopPlaylistImport = false
+    @State private var playlistEditMode: EditMode = .inactive
 
     private var downloaded: [Song] {
         model.sortedDownloadedSongsForLibrary
     }
 
-    private var navigationTitleText: String {
-        switch viewMode {
-        case .playlists:
-            return model.playlists.isEmpty ? "Library" : "Library (\(model.playlists.count) playlists)"
-        default:
-            return downloaded.isEmpty ? "Library" : "Library (\(downloaded.count))"
-        }
+    private var viewModeIndex: Binding<Int> {
+        Binding(
+            get: { viewMode.rawValue },
+            set: { newValue in
+                if let mode = LocalViewMode(rawValue: newValue) { viewMode = mode }
+            }
+        )
     }
 
     var body: some View {
         NavigationStack(path: $path) {
-            Group {
-                switch viewMode {
-                case .albums:
-                    if downloaded.isEmpty {
-                        emptyState
-                    } else {
-                        albumContent(songs: downloaded)
-                    }
-                case .playlists:
-                    playlistContent
-                case .songs:
-                    if downloaded.isEmpty {
-                        emptyState
-                    } else {
-                        songsContent(songs: downloaded)
-                    }
+            VStack(spacing: 0) {
+                LibrarySegmentedHeader(
+                    segments: LocalViewMode.allCases.map(\.title),
+                    selectedIndex: viewModeIndex
+                ) {
+                    playlistActionsMenu
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black)
-            .navigationTitle(navigationTitleText)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Picker("View", selection: $viewMode) {
-                        Text("Albums").tag(LocalViewMode.albums)
-                        Text("Playlists").tag(LocalViewMode.playlists)
-                        Text("Songs").tag(LocalViewMode.songs)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 300)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if viewMode == .playlists {
-                        HStack {
-                            if model.serverConfig.isConfigured {
-                                Button {
-                                    showDesktopPlaylistImport = true
-                                } label: {
-                                    Image(systemName: "arrow.down.doc")
-                                }
-                                .accessibilityLabel("Import playlists from desktop")
-                            }
-                            EditButton()
-                            Button {
-                                newPlaylistName = ""
-                                showNewPlaylistAlert = true
-                            } label: {
-                                Image(systemName: "plus")
-                            }
-                            .accessibilityLabel("New playlist")
+                Group {
+                    switch viewMode {
+                    case .albums:
+                        if downloaded.isEmpty {
+                            emptyState
+                        } else {
+                            albumContent(songs: downloaded)
+                        }
+                    case .playlists:
+                        playlistContent
+                    case .songs:
+                        if downloaded.isEmpty {
+                            emptyState
+                        } else {
+                            songsContent(songs: downloaded)
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .background(Color.black)
+            .toolbar(.hidden, for: .navigationBar)
+            .environment(\.editMode, $playlistEditMode)
             .sheet(isPresented: $showDesktopPlaylistImport) {
                 DesktopPlaylistImportView(isPresented: $showDesktopPlaylistImport)
                     .environment(model)
@@ -117,47 +99,69 @@ struct LocalLibraryScreen: View {
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "music.note.list")
-                .font(.system(size: 56))
-                .foregroundStyle(.tertiary)
-            Text("No downloaded songs")
-                .font(.body)
-                .foregroundStyle(.secondary)
-            Text("Download songs from Remote Library")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-        }
-        .padding()
-    }
-
-    private var playlistContent: some View {
-        List {
-            if model.playlists.isEmpty {
-                VStack(spacing: 18) {
-                    Text("まだプレイリストがありません。+ で新規作成するか、デスクトップから取り込めます。")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    if model.serverConfig.isConfigured {
-                        Button {
-                            showDesktopPlaylistImport = true
-                        } label: {
-                            Label("デスクトップのプレイリストを取り込む", systemImage: "arrow.down.doc")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    } else {
-                        Text("設定でデスクトップに接続すると、ここからプレイリストを取り込めます。")
-                            .font(.footnote)
-                            .foregroundStyle(.tertiary)
-                            .multilineTextAlignment(.center)
+    @ViewBuilder
+    private var playlistActionsMenu: some View {
+        Menu {
+            if viewMode == .playlists {
+                if model.serverConfig.isConfigured {
+                    Button {
+                        showDesktopPlaylistImport = true
+                    } label: {
+                        Label("デスクトップから取り込む", systemImage: "arrow.down.doc")
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 28)
-                .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
-            } else {
+                Button {
+                    playlistEditMode = playlistEditMode == .active ? .inactive : .active
+                } label: {
+                    Label(
+                        playlistEditMode == .active ? "並べ替えを終了" : "並べ替え",
+                        systemImage: "arrow.up.arrow.down"
+                    )
+                }
+                Button {
+                    newPlaylistName = ""
+                    showNewPlaylistAlert = true
+                } label: {
+                    Label("新規プレイリスト", systemImage: "plus")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 20))
+        }
+        .opacity(viewMode == .playlists ? 1 : 0)
+        .disabled(viewMode != .playlists)
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView(
+            "No downloaded songs",
+            systemImage: "music.note.list",
+            description: Text("Download songs from Remote Library")
+        )
+    }
+
+    @ViewBuilder
+    private var playlistContent: some View {
+        if model.playlists.isEmpty {
+            ContentUnavailableView {
+                Label("まだプレイリストがありません", systemImage: "music.note.list")
+            } description: {
+                Text("+ で新規作成するか、デスクトップから取り込めます。")
+            } actions: {
+                if model.serverConfig.isConfigured {
+                    Button {
+                        showDesktopPlaylistImport = true
+                    } label: {
+                        Label("デスクトップのプレイリストを取り込む", systemImage: "arrow.down.doc")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black)
+        } else {
+            List {
                 Section {
                     ForEach(model.playlists) { pl in
                         NavigationLink(value: LibraryRoute.playlist(pl.id)) {
@@ -177,8 +181,14 @@ struct LocalLibraryScreen: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                            .padding(.vertical, 4)
                         }
-                        .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
+                        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
+                        )
                         .contextMenu {
                             Button(role: .destructive) {
                                 try? model.deletePlaylist(id: pl.id)
@@ -197,28 +207,19 @@ struct LocalLibraryScreen: View {
                     .onMove { source, destination in
                         try? model.movePlaylists(fromOffsets: source, toOffset: destination)
                     }
-                } footer: {
-                    if model.serverConfig.isConfigured {
-                        Button {
-                            showDesktopPlaylistImport = true
-                        } label: {
-                            Label("デスクトップからプレイリストを追加", systemImage: "arrow.down.doc")
-                        }
-                        .font(.subheadline)
-                    }
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Color.black)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(Color.black)
     }
 
     @ViewBuilder
     private func albumContent(songs: [Song]) -> some View {
         let albums = Album.fromSongs(songs)
         ScrollView {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                 ForEach(albums) { album in
                     NavigationLink(value: LibraryRoute.album(album)) {
                         VStack(alignment: .leading, spacing: 7) {
@@ -227,10 +228,11 @@ struct LocalLibraryScreen: View {
                                 ArtworkImageView(
                                     artworkId: album.artworkId,
                                     urlString: model.artworkURL(for: album.artworkId),
-                                    cornerRadius: 10,
+                                    cornerRadius: 12,
                                     size: side
                                 )
                                 .frame(width: side, height: side)
+                                .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
                             }
                             .aspectRatio(1, contentMode: .fit)
                             Text(album.displayName)
@@ -246,8 +248,8 @@ struct LocalLibraryScreen: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .padding(.bottom, 8)
         }
     }
@@ -263,7 +265,13 @@ struct LocalLibraryScreen: View {
                         playLocal(song: song, in: songs)
                     }
                 )
-                .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
+                .padding(.vertical, 4)
+                .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+                .listRowSeparator(.hidden)
+                .listRowBackground(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
+                )
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
                         model.removeDownloadedSong(songId: song.id)
