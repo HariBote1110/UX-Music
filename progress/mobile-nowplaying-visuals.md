@@ -53,6 +53,25 @@
 - ナビゲーションバーを廃止し、`NowPlayingNavIconButton` による「×」の浮きボタンのみ
   右上に配置（`NowPlayingView` の閉じるボタンと統一感を持たせた）。
 
+### 3. サイドパネルの角丸カード化（スワイプ中の直角見切れ対策）
+
+- 実機で横スワイプすると、隣から入ってくる Queue / Favourites / PlaybackSettings パネルが
+  「直角の板」のまま見切れて悪目立ちする問題があった。
+- 修正: `HStack` ストリップ内で `NowPlayingQueuePanel` / `NowPlayingFavouritesPanel` /
+  `NowPlayingPlaybackSettingsPanel` を `.frame(width:height:)` した直後に
+  `.clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))` を適用し、
+  さらに同形の `.strokeBorder(.white.opacity(0.08), lineWidth: 0.5)` を overlay して
+  カードのエッジを引き締めた。パネル自体の背景色（`Color.black`）は変更していない。
+- 定位置（`coverage == 1`）では背面の黒被覆レイヤーと同色になるため角丸は視認できず、
+  スワイプで隣のパネルが動いている間だけ角丸カードとして見える、という既存の
+  coverage 被覆の仕組みをそのまま利用している（ロジック変更なし）。
+- メイン再生パネル（`NowPlayingPlayingShell`）は環境光が透過するデザインのため
+  クリップ対象から意図的に除外した。
+- リスト行も同様に直角のブロック感があったため、`.listRowBackground` を単色の矩形から
+  `RoundedRectangle(cornerRadius: 12, style: .continuous)` を左右 8pt インセットして
+  塗った角丸カードに変更し、`.listRowSeparator(.hidden)` を添えてセパレーター線が
+  角丸カードの見た目を破らないようにした（Queue / Favourites 両パネル）。
+
 ## 検討したが採用しなかった案
 
 - アクティブ行を `scaleEffect` で拡大する案 → 不採用。フォントサイズを可変にすると

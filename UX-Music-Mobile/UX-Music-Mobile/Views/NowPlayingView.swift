@@ -148,6 +148,11 @@ struct NowPlayingView: View {
                     HStack(spacing: 0) {
                         NowPlayingQueuePanel(page: $page, topInset: toolbarClearance)
                             .frame(width: w, height: h)
+                            .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                            }
                         Group {
                             if let song = model.player.currentSong {
                                 NowPlayingPlayingShell(
@@ -165,6 +170,11 @@ struct NowPlayingView: View {
                         .frame(width: w, height: h)
                         NowPlayingFavouritesPanel(page: $page, topInset: toolbarClearance)
                             .frame(width: w, height: h)
+                            .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                            }
                     }
                     .frame(width: 3 * w, height: h, alignment: .leading)
                     .offset(
@@ -180,6 +190,11 @@ struct NowPlayingView: View {
                     if page == .playbackSettings {
                         NowPlayingPlaybackSettingsPanel(page: $page, topInset: toolbarClearance)
                             .frame(width: w, height: h)
+                            .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                            }
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                             .zIndex(1)
                     }
@@ -798,7 +813,12 @@ private struct NowPlayingQueuePanel: View {
                                 Spacer(minLength: 0)
                             }
                         }
-                        .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
+                                .padding(.horizontal, 8)
+                        )
+                        .listRowSeparator(.hidden)
                     }
                 }
             }
@@ -864,7 +884,12 @@ private struct NowPlayingFavouritesPanel: View {
                                 Spacer(minLength: 0)
                             }
                         }
-                        .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
+                                .padding(.horizontal, 8)
+                        )
+                        .listRowSeparator(.hidden)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 model.removeFavourite(songId: song.id)
