@@ -128,8 +128,8 @@ struct LocalLibraryScreen: View {
                 .font(.system(size: 20))
                 .foregroundStyle(.white)
                 .frame(width: 32, height: 32)
-                .background(Circle().fill(.ultraThinMaterial))
         }
+        .modifier(LibraryHeaderGlassButtonStyle())
         .disabled(viewMode != .playlists)
 
         // `.hidden()` (not `.opacity(0)`) so the `.ultraThinMaterial` circle backdrop is fully

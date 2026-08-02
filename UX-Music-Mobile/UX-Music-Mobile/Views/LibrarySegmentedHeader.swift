@@ -34,7 +34,22 @@ struct LibrarySegmentedHeader<Trailing: View>: View {
         .padding(.bottom, 10)
     }
 
+    @ViewBuilder
     private var capsuleSegmentedControl: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer {
+                segmentButtons
+                    .padding(4)
+            }
+            .glassEffect(.regular, in: Capsule())
+        } else {
+            segmentButtons
+                .padding(4)
+                .background(Capsule().fill(Color(white: 0.12)))
+        }
+    }
+
+    private var segmentButtons: some View {
         HStack(spacing: 4) {
             ForEach(Array(segments.enumerated()), id: \.offset) { index, title in
                 let isSelected = selectedIndex == index
@@ -50,9 +65,7 @@ struct LibrarySegmentedHeader<Trailing: View>: View {
                         .frame(height: 36)
                         .background {
                             if isSelected {
-                                Capsule()
-                                    .fill(Color(white: 0.22))
-                                    .matchedGeometryEffect(id: "librarySegmentSelection", in: segmentNamespace)
+                                segmentSelectionHighlight
                             }
                         }
                         .contentShape(Capsule())
@@ -60,8 +73,20 @@ struct LibrarySegmentedHeader<Trailing: View>: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(4)
-        .background(Capsule().fill(Color(white: 0.12)))
+    }
+
+    @ViewBuilder
+    private var segmentSelectionHighlight: some View {
+        if #available(iOS 26.0, *) {
+            Capsule()
+                .fill(.clear)
+                .glassEffect(.regular.interactive(), in: Capsule())
+                .matchedGeometryEffect(id: "librarySegmentSelection", in: segmentNamespace)
+        } else {
+            Capsule()
+                .fill(Color(white: 0.22))
+                .matchedGeometryEffect(id: "librarySegmentSelection", in: segmentNamespace)
+        }
     }
 }
 
@@ -70,5 +95,21 @@ extension LibrarySegmentedHeader where Trailing == Color {
         self.segments = segments
         self._selectedIndex = selectedIndex
         self.trailing = { Color.clear }
+    }
+}
+
+/// Shared circular glass treatment for the header's trailing accessory buttons (ellipsis menu,
+/// refresh, import) so they read as one system with the capsule segmented control and the
+/// system tab bar's own glass material. Falls back to the previous `.ultraThinMaterial` circle
+/// backdrop below iOS 26.
+struct LibraryHeaderGlassButtonStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .buttonStyle(.glass)
+        } else {
+            content
+                .background(Circle().fill(.ultraThinMaterial))
+        }
     }
 }
