@@ -43,6 +43,18 @@
 - 全部 `/v1/sync/*` に統合 → 役割が名前で分からなくなるため不採用。
 - 旧パスのエイリアス維持 → 未リリースのため不要と判断。
 
+## 実装メモ（仕様からの補足）
+
+- `GET /sync/schema` が返していた詳細スキーマ文書（`syncProtocolSchemaDocument`：
+  `Messages`/`Endpoints` の網羅的な定義）は `GET /v1/identity` へ完全統合せず、
+  そのまま廃止した。`protocolVersion`/`schemaVersion`/`capabilities`/
+  `negotiation` は `/v1/identity` に残っており、ピア間の互換性判定は従来どおり
+  可能。詳細スキーマドキュメントが必要になった場合は改めて `/v1/schema` 等の
+  形で再導入を検討する。
+- ペアリング QR 用の one-time secret はメモリ内（`pairingRedeemSecrets`）で
+  TTL 5 分・使い切り制。永続化はしていないため、アプリ再起動を跨いだ QR は
+  無効になる（表示のたびに再生成される想定と一致）。
+
 ## Constraints / Gotchas
 
 - ポートは 8765 のまま。mDNS `_uxmusic-sync._tcp` のアドバタイズも共通で1本。
