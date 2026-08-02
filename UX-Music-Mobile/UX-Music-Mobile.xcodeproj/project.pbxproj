@@ -67,6 +67,10 @@
 		b1b1b1B50101B1B10101B1B1 /* AlbumTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B60101B1B10101B1B1 /* AlbumTests.swift */; };
 		b1b1b1B70101B1B10101B1B1 /* RemoteAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B80101B1B10101B1B1 /* RemoteAPIClientTests.swift */; };
 		c2c2c2C20101C2C10101C2C1 /* AppModelDownloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */; };
+		ED70471B3B4345BA8082875B /* UXMusicWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4FD60C91428442F8A235B4E /* UXMusicWatchApp.swift */; };
+		8379E743BC3A42EA9A578132 /* WatchRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332646F2855E4CA194E31608 /* WatchRootView.swift */; };
+		B876FC45A8EA453AB2CF792F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 66498BF289AC41A2936302DE /* Assets.xcassets */; };
+		E44E6E4CD96B4110915888A8 /* UX-Music-Watch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -77,7 +81,28 @@
 			remoteGlobalIDString = 7b5e014a976d46a59bb8f1b1;
 			remoteInfo = "UX-Music-Mobile";
 		};
+		A6CF535A212947548ED45C2E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 966a652ae0af40ccbcea75dc /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7C9DC2182029478889705980;
+			remoteInfo = "UX-Music-Watch";
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		2621C7330A134498AACEDE40 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				E44E6E4CD96B4110915888A8 /* UX-Music-Watch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		01A1A1A20101A1A10101A1A1 /* AppConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConstants.swift; sourceTree = "<group>"; };
@@ -143,6 +168,10 @@
 		b1b1b1B80101B1B10101B1B1 /* RemoteAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAPIClientTests.swift; sourceTree = "<group>"; };
 		b1b1b1BA0101B1B10101B1B1 /* UX-Music-MobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "UX-Music-MobileTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelDownloadTests.swift; sourceTree = "<group>"; };
+		B4FD60C91428442F8A235B4E /* UXMusicWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXMusicWatchApp.swift; sourceTree = "<group>"; };
+		332646F2855E4CA194E31608 /* WatchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRootView.swift; sourceTree = "<group>"; };
+		66498BF289AC41A2936302DE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-Watch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -154,6 +183,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		b1b1b1BB0101B1B10101B1B1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B629BD7F4AB54B83B09031DC /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -278,11 +314,22 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		3CB21E9F792742E6B543539B /* UX-Music-Watch */ = {
+			isa = PBXGroup;
+			children = (
+				B4FD60C91428442F8A235B4E /* UXMusicWatchApp.swift */,
+				332646F2855E4CA194E31608 /* WatchRootView.swift */,
+				66498BF289AC41A2936302DE /* Assets.xcassets */,
+			);
+			path = "UX-Music-Watch";
+			sourceTree = "<group>";
+		};
 		c1727cf5369148288cb55f42 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				a69b6b50c77c42d5883861b6 /* UX-Music-Mobile.app */,
 				b1b1b1BA0101B1B10101B1B1 /* UX-Music-MobileTests.xctest */,
+				66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -292,6 +339,7 @@
 			children = (
 				31b03a3b51a84e449413faf3 /* UX-Music-Mobile */,
 				b1b1b1BC0101B1B10101B1B1 /* UX-Music-MobileTests */,
+				3CB21E9F792742E6B543539B /* UX-Music-Watch */,
 				c1727cf5369148288cb55f42 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -306,14 +354,33 @@
 				c89893ea387642a5aade6150 /* Sources */,
 				22acc5ea799842fc99d42788 /* Frameworks */,
 				8feac29e9199493999ce8b08 /* Resources */,
+				2621C7330A134498AACEDE40 /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1D4F61A55E6A4C35AF7473CE /* PBXTargetDependency */,
+			);
+			name = "UX-Music-Mobile";
+			productName = "UX-Music-Mobile";
+			productReference = a69b6b50c77c42d5883861b6 /* UX-Music-Mobile.app */;
+			productType = "com.apple.product-type.application";
+		};
+		7C9DC2182029478889705980 /* UX-Music-Watch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C038BEEF7C10411286F57F47 /* Build configuration list for PBXNativeTarget "UX-Music-Watch" */;
+			buildPhases = (
+				728D7D15F7224E1C9ADCB91B /* Sources */,
+				B629BD7F4AB54B83B09031DC /* Frameworks */,
+				711274923CBF4A06A12F6359 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = "UX-Music-Mobile";
-			productName = "UX-Music-Mobile";
-			productReference = a69b6b50c77c42d5883861b6 /* UX-Music-Mobile.app */;
+			name = "UX-Music-Watch";
+			productName = "UX-Music-Watch";
+			productReference = 66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */;
 			productType = "com.apple.product-type.application";
 		};
 		b1b1b1BD0101B1B10101B1B1 /* UX-Music-MobileTests */ = {
@@ -350,6 +417,9 @@
 						CreatedOnToolsVersion = 16.0;
 						TestTargetID = 7b5e014a976d46a59bb8f1b1;
 					};
+					7C9DC2182029478889705980 = {
+						CreatedOnToolsVersion = 16.0;
+					};
 				};
 			};
 			buildConfigurationList = 23a52a568c92470e8c5fea94 /* Build configuration list for PBXProject "UX-Music-Mobile" */;
@@ -368,6 +438,7 @@
 			targets = (
 				7b5e014a976d46a59bb8f1b1 /* UX-Music-Mobile */,
 				b1b1b1BD0101B1B10101B1B1 /* UX-Music-MobileTests */,
+				7C9DC2182029478889705980 /* UX-Music-Watch */,
 			);
 		};
 /* End PBXProject section */
@@ -378,6 +449,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				b077f2c8570b4c62ad6c8c75 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		711274923CBF4A06A12F6359 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B876FC45A8EA453AB2CF792F /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -457,6 +536,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		728D7D15F7224E1C9ADCB91B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ED70471B3B4345BA8082875B /* UXMusicWatchApp.swift in Sources */,
+				8379E743BC3A42EA9A578132 /* WatchRootView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -464,6 +552,11 @@
 			isa = PBXTargetDependency;
 			target = 7b5e014a976d46a59bb8f1b1 /* UX-Music-Mobile */;
 			targetProxy = b1b1b1B90101B1B10101B1B1 /* PBXContainerItemProxy */;
+		};
+		1D4F61A55E6A4C35AF7473CE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7C9DC2182029478889705980 /* UX-Music-Watch */;
+			targetProxy = A6CF535A212947548ED45C2E /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -689,6 +782,62 @@
 			};
 			name = Debug;
 		};
+		3FDDB67B4ED04D139DC8D953 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HMMQ7Z6976;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.uxlabs.uxMusicMobile";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		264FA2CDB8FF48079387DC40 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HMMQ7Z6976;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.uxlabs.uxMusicMobile";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -715,6 +864,15 @@
 			buildConfigurations = (
 				b1b1b1C10101B1B10101B1B1 /* Debug */,
 				b1b1b1C20101B1B10101B1B1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C038BEEF7C10411286F57F47 /* Build configuration list for PBXNativeTarget "UX-Music-Watch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3FDDB67B4ED04D139DC8D953 /* Debug */,
+				264FA2CDB8FF48079387DC40 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
