@@ -71,6 +71,9 @@
 		8379E743BC3A42EA9A578132 /* WatchRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332646F2855E4CA194E31608 /* WatchRootView.swift */; };
 		B876FC45A8EA453AB2CF792F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 66498BF289AC41A2936302DE /* Assets.xcassets */; };
 		E44E6E4CD96B4110915888A8 /* UX-Music-Watch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FEED0002000000000000AAA2 /* WatchTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0001000000000000AAA1 /* WatchTransfer.swift */; };
+		FEED0003000000000000AAA3 /* WatchTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0001000000000000AAA1 /* WatchTransfer.swift */; };
+		FEED0005000000000000AAA5 /* WatchTransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0004000000000000AAA4 /* WatchTransferTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -172,6 +175,8 @@
 		332646F2855E4CA194E31608 /* WatchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRootView.swift; sourceTree = "<group>"; };
 		66498BF289AC41A2936302DE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-Watch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		FEED0001000000000000AAA1 /* WatchTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransfer.swift; sourceTree = "<group>"; };
+		FEED0004000000000000AAA4 /* WatchTransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -236,6 +241,7 @@
 				W1D1D1D10101D1D10101D1D1 /* LANDiscoveryPeerTests.swift */,
 				F60101F90101F90101F90101 /* RemoteConnectionResolverTests.swift */,
 				F60101FB0101FB0101FB0101 /* AppModelFailoverTests.swift */,
+				FEED0004000000000000AAA4 /* WatchTransferTests.swift */,
 			);
 			path = "UX-Music-MobileTests";
 			sourceTree = "<group>";
@@ -250,6 +256,7 @@
 				N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */,
 				E8E8E8E80101E8E80101E8E8 /* RemoteDefaultArtwork.swift */,
 				D1D1D1D20101D1D20101D1D2 /* DeviceIdentity.swift */,
+				FEED0001000000000000AAA1 /* WatchTransfer.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -486,6 +493,7 @@
 				W1D1D1D20101D1D20101D1D2 /* LANDiscoveryPeerTests.swift in Sources */,
 				F60101F80101F80101F80101 /* RemoteConnectionResolverTests.swift in Sources */,
 				F60101FA0101FA0101FA0101 /* AppModelFailoverTests.swift in Sources */,
+				FEED0005000000000000AAA5 /* WatchTransferTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -500,6 +508,7 @@
 				N1N1N1N10101N1N10101N1N1 /* NowPlayingArtworkImageLoader.swift in Sources */,
 				E8E8E8E70101E8E70101E8E7 /* RemoteDefaultArtwork.swift in Sources */,
 				D1D1D1D10101D1D10101D1D1 /* DeviceIdentity.swift in Sources */,
+				FEED0002000000000000AAA2 /* WatchTransfer.swift in Sources */,
 				01A1A1A30101A1A10101A1A1 /* ServerConfig.swift in Sources */,
 				01A1A1A50101A1A10101A1A1 /* Song.swift in Sources */,
 				01A1A1A70101A1A10101A1A1 /* Album.swift in Sources */,
@@ -542,6 +551,7 @@
 			files = (
 				ED70471B3B4345BA8082875B /* UXMusicWatchApp.swift in Sources */,
 				8379E743BC3A42EA9A578132 /* WatchRootView.swift in Sources */,
+				FEED0003000000000000AAA3 /* WatchTransfer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
