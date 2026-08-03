@@ -100,7 +100,7 @@ func (a *App) AddYouTubeLink(payload interface{}) (map[string]interface{}, error
 	}
 
 	settings := loadSettingsMap()
-	mode := normaliseSettingValue(settings["youtubePlaybackMode"], "download")
+	mode := resolveYoutubePlaybackMode(settings)
 	if usesStreamingRegistration(mode) {
 		return a.addYouTubeStreamingLink(trimmedURL, mode, transcriptPreference)
 	}
@@ -213,6 +213,13 @@ func buildStreamingSong(info *youtube.YouTubeVideoInfo, sourceURL string) map[st
 		"hasVideo":  true,
 		"hubUrl":    info.HubURL,
 	}
+}
+
+// resolveYoutubePlaybackMode は設定から YouTube 再生モードを解決する。
+// 未設定の新規インストール状態では、還元がありグレーでない公式再生
+// （embed）を既定モードとする。
+func resolveYoutubePlaybackMode(settings map[string]interface{}) string {
+	return normaliseSettingValue(settings["youtubePlaybackMode"], "embed")
 }
 
 // usesStreamingRegistration はダウンロードせず type:"youtube" の

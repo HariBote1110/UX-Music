@@ -164,8 +164,8 @@ async function initApp() {
             state.groupAlbumArt = settings.groupAlbumArt;
             if (state.activeViewId === 'track-view') void showView('track-view');
         }
-        if (settings.enableYouTube) {
-            document.querySelectorAll('[data-feature="youtube"]').forEach(el => el.classList.remove('hidden'));
+        if (settings.enableYoutubeAdvancedModes) {
+            document.querySelectorAll('[data-feature="youtube-advanced"]').forEach(el => el.classList.remove('hidden'));
         }
     });
 

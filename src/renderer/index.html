@@ -54,10 +54,8 @@
                     </button>
                     <div id="library-actions-popup" class="hidden">
                         <button id="add-network-folder-btn" class="popup-action-button">ネットワークフォルダを追加</button>
-                        <button id="add-youtube-btn" class="popup-action-button hidden"
-                            data-feature="youtube">YouTubeリンクを追加</button>
-                        <button id="add-youtube-playlist-btn" class="popup-action-button hidden"
-                            data-feature="youtube">YouTubeプレイリストを追加</button>
+                        <button id="add-youtube-btn" class="popup-action-button">YouTubeリンクを追加</button>
+                        <button id="add-youtube-playlist-btn" class="popup-action-button">YouTubeプレイリストを追加</button>
                         <button id="set-library-btn" class="popup-action-button">ライブラリ場所設定</button>
                         <div class="popup-divider"></div>
                         <button id="normalize-view-btn" class="popup-action-button">音量をノーマライズ</button>
@@ -433,15 +431,15 @@
                         </div>
                     </div>
                 </div>
-                <div class="setting-group hidden" data-feature="youtube">
+                <div class="setting-group">
                     <div class="setting-item">
                         <h4>YouTube再生モード</h4>
                         <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
                         <div class="radio-group">
-                            <label>
+                            <label class="hidden" data-feature="youtube-advanced">
                                 <input type="radio" name="youtube-mode" value="download">
                                 <div>
-                                    <strong>ダウンロードモード (推奨)</strong>
+                                    <strong>ダウンロードモード</strong>
                                     <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
                                 </div>
                             </label>
@@ -452,7 +450,7 @@
                                     <small>YouTube の公式プレイヤーで再生します。再生数がカウントされ広告収益がクリエイターに入ります。イコライザー等はそのまま使えます。</small>
                                 </div>
                             </label>
-                            <label>
+                            <label class="hidden" data-feature="youtube-advanced">
                                 <input type="radio" name="youtube-mode" value="stream">
                                 <div>
                                     <strong>ストリーミングモード</strong>
@@ -462,7 +460,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="setting-group hidden" data-feature="youtube" id="youtube-quality-group">
+                <div class="setting-group hidden" data-feature="youtube-advanced" id="youtube-quality-group">
                     <div class="setting-item">
                         <h4>ダウンロード品質</h4>
                         <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>

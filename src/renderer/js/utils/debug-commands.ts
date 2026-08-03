@@ -48,10 +48,12 @@ async function embedVolumeProbe(): Promise<void> {
 
 const electronAPI = window.electronAPI;
 
-const YOUTUBE_CONSENT_MESSAGE = `
-    YouTube機能の有効化に関する注意事項：
+// YouTube の公式再生（embed）は既定で常に利用可能。ここで解放するのは
+// ダウンロードモード／ストリーミングモード（非公式）の選択 UI のみ。
+const YOUTUBE_ADVANCED_MODES_CONSENT_MESSAGE = `
+    YouTube追加モードの拡張に関する注意事項：
 
-    この機能を使用すると、YouTube上のコンテンツをダウンロードまたはストリーミング再生できますが、これは技術的な実験を目的としたものです。
+    既定の公式再生（embed）に加えて、ダウンロードモードおよびストリーミングモード（非公式）を選択できるようになります。これは技術的な実験を目的としたものです。
 
     ・ダウンロードしたコンテンツは、私的利用の範囲を遵守してください。
     ・著作権で保護されたコンテンツの不正なダウンロードや再配布は、法律で固く禁じられています。
@@ -60,12 +62,12 @@ const YOUTUBE_CONSENT_MESSAGE = `
     上記を理解し、自己の責任において機能を使用することに同意しますか？
 `;
 
-function requestYouTubeConsent() {
+function requestYoutubeAdvancedModesConsent() {
     if (window.go !== undefined) {
         return new Promise((resolve) => {
             showModalAdvanced({
-                title: 'YouTube機能の有効化',
-                message: YOUTUBE_CONSENT_MESSAGE.trim(),
+                title: 'YouTube追加モードの有効化',
+                message: YOUTUBE_ADVANCED_MODES_CONSENT_MESSAGE.trim(),
                 placeholder: '',
                 requireInput: false,
                 okText: '同意して有効化',
@@ -75,36 +77,36 @@ function requestYouTubeConsent() {
             });
         });
     }
-    return Promise.resolve(confirm(YOUTUBE_CONSENT_MESSAGE));
+    return Promise.resolve(confirm(YOUTUBE_ADVANCED_MODES_CONSENT_MESSAGE));
 }
 
-function revealYouTubeFeatureUI() {
-    document.querySelectorAll('[data-feature="youtube"], #add-youtube-btn, #add-youtube-playlist-btn').forEach((el) => {
+function revealYoutubeAdvancedModesUI() {
+    document.querySelectorAll('[data-feature="youtube-advanced"]').forEach((el) => {
         el.classList.remove('hidden');
     });
 }
 
-export async function enableYouTubeFeaturesWithConsent({ showAlert = true } = {}) {
+export async function enableYoutubeAdvancedModesWithConsent({ showAlert = true } = {}) {
     const settings = await loadRendererSettings();
-    if (settings.enableYouTube) {
-        revealYouTubeFeatureUI();
+    if (settings.enableYoutubeAdvancedModes) {
+        revealYoutubeAdvancedModesUI();
         if (showAlert) {
-            alert('YouTube機能はすでに有効です。');
+            alert('YouTube追加モードはすでに有効です。');
         }
         return true;
     }
 
-    const confirmation = await requestYouTubeConsent();
+    const confirmation = await requestYoutubeAdvancedModesConsent();
     if (!confirmation) {
-        console.log('[DEBUG] YouTube feature activation cancelled by user.');
+        console.log('[DEBUG] YouTube advanced modes activation cancelled by user.');
         return false;
     }
 
-    console.log('[DEBUG] YouTube features ENABLED.');
-    electronAPI.send('save-settings', { enableYouTube: true });
-    revealYouTubeFeatureUI();
+    console.log('[DEBUG] YouTube advanced modes ENABLED.');
+    electronAPI.send('save-settings', { enableYoutubeAdvancedModes: true });
+    revealYoutubeAdvancedModesUI();
     if (showAlert) {
-        alert('YouTube機能が有効になりました。');
+        alert('YouTube追加モードが有効になりました。');
     }
     return true;
 }
@@ -137,8 +139,8 @@ export function initDebugCommands() {
             }
             toggleVisualizerEcoMode(enabled);
         },
-        enableYouTubeFeatures: () => {
-            void enableYouTubeFeaturesWithConsent({ showAlert: true });
+        enableYoutubeAdvancedModes: () => {
+            void enableYoutubeAdvancedModesWithConsent({ showAlert: true });
         },
         embedVolumeProbe: () => {
             void embedVolumeProbe();
@@ -151,7 +153,7 @@ export function initDebugCommands() {
                 '  uxDebug.rollbackMigration()         - データ構造のマイグレーションを元に戻します。\n' +
                 '  uxDebug.setVisualizerFps(fps)       - ビジュアライザーのFPS上限を設定します。(0で制限解除)\n' +
                 '  uxDebug.toggleVisualizerEcoMode(bool) - ビジュアライザーのエコモードを切り替えます。(trueで有効(デフォルト), falseで無効)\n' +
-                '  uxDebug.enableYouTubeFeatures()         - YouTube関連の機能を有効化します。\n' +
+                '  uxDebug.enableYoutubeAdvancedModes()    - YouTubeのダウンロード／ストリーミング(非公式)モードを有効化します。\n' +
                 '  uxDebug.embedVolumeProbe()              - [診断] 公式再生中に音量を変えながら出力RMSを実測し、音量制御が届いているか判定します。\n' +
                 '  (補足) 「ライブラリを管理」ボタン連打でも有効化できます。\n' +
                 '  uxDebug.help()                          - このヘルプメッセージを表示します。',

@@ -25,7 +25,8 @@ export interface RendererSettingsRead {
     groupAlbumArt?: boolean;
     analysedQueue?: { enabled?: boolean; decayDays?: number };
     enableEasterEggs?: boolean;
-    enableYouTube?: boolean;
+    /** ダウンロードモード・ストリーミングモード（非公式）の選択 UI を表示するかどうか。既定の公式再生（embed）は常に利用可能。 */
+    enableYoutubeAdvancedModes?: boolean;
     uiTheme?: string;
     syncMinFreeSpaceGB?: number;
     syncCachePolicy?: string;

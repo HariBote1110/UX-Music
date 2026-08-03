@@ -264,6 +264,25 @@ func TestYoutubeLyricsFileName(t *testing.T) {
 	}
 }
 
+func TestResolveYoutubePlaybackMode(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings map[string]interface{}
+		want     string
+	}{
+		{"未設定なら公式再生(embed)を既定にする", map[string]interface{}{}, "embed"},
+		{"明示的にdownloadが指定されていればそれを使う", map[string]interface{}{"youtubePlaybackMode": "download"}, "download"},
+		{"明示的にstreamが指定されていればそれを使う", map[string]interface{}{"youtubePlaybackMode": "stream"}, "stream"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveYoutubePlaybackMode(tt.settings); got != tt.want {
+				t.Errorf("resolveYoutubePlaybackMode(%v) = %q, want %q", tt.settings, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUsesStreamingRegistration(t *testing.T) {
 	tests := []struct {
 		mode string

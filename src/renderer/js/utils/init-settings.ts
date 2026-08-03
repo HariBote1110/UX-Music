@@ -673,7 +673,7 @@ export function initSettings() {
 
         renderGraphicEQ();
 
-        const currentYoutubeMode = settings.youtubePlaybackMode || 'download';
+        const currentYoutubeMode = settings.youtubePlaybackMode || 'embed';
         (document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`) as HTMLInputElement).checked = true;
 
         const currentQuality = settings.youtubeDownloadQuality || 'full';
