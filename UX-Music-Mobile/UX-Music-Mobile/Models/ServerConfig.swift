@@ -10,32 +10,47 @@ struct ServerConfig: Codable, Sendable {
     /// `Authorization: Bearer <token>`) by every LAN API endpoint except `/v1/identity` and
     /// `/v1/pairing/*`. Not part of `Equatable` — see below.
     var token: String = ""
+    /// User's fixed-host choice from Settings: when set (non-blank), only this host is tried —
+    /// `AppModel.withFailover` does not fail over to `fallbackHosts` — so a deliberately chosen
+    /// address (e.g. a Tailscale IP while away from home) never gets silently swapped out. `nil`
+    /// (the default) means "auto": try `host`, then each `fallbackHosts` entry in order. Not part
+    /// of `Equatable` — see below.
+    var preferredHost: String?
 
     init(
         host: String = "",
         port: Int = AppConstants.defaultServerPort,
         fallbackHosts: [String] = [],
-        token: String = ""
+        token: String = "",
+        preferredHost: String? = nil
     ) {
         self.host = host
         self.port = port
         self.fallbackHosts = fallbackHosts
         self.token = token
+        self.preferredHost = preferredHost
+    }
+
+    /// The host actually used for connections: `preferredHost` when fixed mode is on (non-blank),
+    /// otherwise `host`.
+    var activeHost: String {
+        let trimmed = preferredHost?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? host : trimmed
     }
 
     /// Base URL without trailing slash (matches Flutter `ServerConfig.baseUrl`).
     var baseURLString: String {
-        let h = host.isEmpty ? "localhost" : host
+        let h = activeHost.isEmpty ? "localhost" : activeHost
         return "http://\(h):\(port)"
     }
 
     var isConfigured: Bool { !host.isEmpty }
 
     private enum CodingKeys: String, CodingKey {
-        case host, port, fallbackHosts, token
+        case host, port, fallbackHosts, token, preferredHost
     }
 
-    /// Custom decode so older persisted JSON (no `fallbackHosts`/`token` key) still decodes: the
+    /// Custom decode so older persisted JSON (missing any of these keys) still decodes: the
     /// synthesised `Codable` conformance ignores a property's default value and requires the key
     /// to be present.
     init(from decoder: Decoder) throws {
@@ -44,6 +59,7 @@ struct ServerConfig: Codable, Sendable {
         port = try container.decode(Int.self, forKey: .port)
         fallbackHosts = try container.decodeIfPresent([String].self, forKey: .fallbackHosts) ?? []
         token = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
+        preferredHost = try container.decodeIfPresent(String.self, forKey: .preferredHost)
     }
 
 }
