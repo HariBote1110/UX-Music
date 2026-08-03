@@ -158,4 +158,35 @@ final class WatchTransferTests: XCTestCase {
             .failed("Watch connectivity activation failed")
         )
     }
+
+    // MARK: - Artwork transfer
+
+    func testWCMetadataOmitsArtworkFileNameWhenNil() {
+        XCTAssertNil(sample().wcMetadata[WatchTransferMeta.metadataArtworkFileNameKey])
+    }
+
+    func testWCMetadataRoundTripPreservesArtworkFileName() {
+        var meta = sample()
+        meta.artworkFileName = WatchTransferMeta.storedArtworkFileName(forId: meta.id)
+        let decoded = WatchTransferMeta.fromWCMetadata(meta.wcMetadata)
+        XCTAssertEqual(decoded, meta)
+    }
+
+    func testArtworkWcMetadataMarksKindArtwork() {
+        XCTAssertTrue(WatchTransferMeta.isArtworkWcMetadata(sample().artworkWcMetadata))
+    }
+
+    func testIsArtworkWcMetadataIsFalseForAudioMetadata() {
+        XCTAssertFalse(WatchTransferMeta.isArtworkWcMetadata(sample().wcMetadata))
+    }
+
+    func testIsArtworkWcMetadataIsFalseForNil() {
+        XCTAssertFalse(WatchTransferMeta.isArtworkWcMetadata(nil))
+    }
+
+    func testStoredArtworkFileNameIsJPEGAndSanitised() {
+        let name = WatchTransferMeta.storedArtworkFileName(forId: "Artist/Album/Song")
+        XCTAssertFalse(name.contains("/"))
+        XCTAssertTrue(name.hasSuffix(".jpg"))
+    }
 }

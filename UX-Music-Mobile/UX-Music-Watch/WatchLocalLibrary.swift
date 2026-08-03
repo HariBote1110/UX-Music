@@ -15,6 +15,14 @@ enum WatchAudioStorage {
         return dir
     }()
 
+    static let artworkDirectory: URL = {
+        let fileManager = FileManager.default
+        let supportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = supportDir.appendingPathComponent("Artwork", isDirectory: true)
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
     static var indexFileURL: URL {
         let supportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return supportDir.appendingPathComponent("library.json")
@@ -24,6 +32,13 @@ enum WatchAudioStorage {
     /// into place, and by the player to load it). Pure given `meta` — safe to call from any thread.
     static func audioFileURL(for meta: WatchTransferMeta) -> URL {
         audioDirectory.appendingPathComponent(meta.storedFileName)
+    }
+
+    /// Destination URL for a song's downscaled artwork JPEG, resolved from `id` alone (not from
+    /// `WatchTransferMeta.artworkFileName`) so the receiver can save it without needing the full
+    /// song metadata — see `WatchTransferMeta.storedArtworkFileName(forId:)`.
+    static func artworkFileURL(forId id: String) -> URL {
+        artworkDirectory.appendingPathComponent(WatchTransferMeta.storedArtworkFileName(forId: id))
     }
 }
 
@@ -46,6 +61,14 @@ final class WatchLocalLibrary: ObservableObject {
     /// into place, and by the player to load it).
     func audioFileURL(for meta: WatchTransferMeta) -> URL {
         WatchAudioStorage.audioFileURL(for: meta)
+    }
+
+    /// URL for a song's cached artwork JPEG, if one has been received — `nil` if no artwork has
+    /// been transferred for this song yet (e.g. it was sent before artwork support existed;
+    /// re-sending from the iPhone will fill it in).
+    func artworkFileURLIfPresent(for meta: WatchTransferMeta) -> URL? {
+        let url = WatchAudioStorage.artworkFileURL(forId: meta.id)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
     /// Registers a newly received song whose audio file has already been moved to

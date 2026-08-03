@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Song list received from the iPhone. Tapping a row starts playback and switches to the
 /// Now Playing page (see `WatchRootView`'s paged `TabView`); swipe-to-delete removes the song and
@@ -24,6 +25,8 @@ struct WatchSongListView: View {
                             selectedPage = .nowPlaying
                         } label: {
                             HStack {
+                                WatchArtworkThumbnail(meta: meta)
+                                    .frame(width: 28, height: 28)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(meta.displayTitle)
                                         .font(.body)
@@ -53,6 +56,31 @@ struct WatchSongListView: View {
                 }
             }
             .navigationTitle("Library")
+        }
+    }
+}
+
+/// Small library-row thumbnail: the received-artwork JPEG if present, otherwise a generic note
+/// glyph placeholder. Kept as its own view (rather than inline in the `List`) so each row only
+/// re-reads its own artwork file, not the whole list's.
+private struct WatchArtworkThumbnail: View {
+    @EnvironmentObject private var library: WatchLocalLibrary
+    let meta: WatchTransferMeta
+
+    var body: some View {
+        ZStack {
+            if let url = library.artworkFileURLIfPresent(for: meta), let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.secondary.opacity(0.2))
+                Image(systemName: "music.note")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

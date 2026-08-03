@@ -33,6 +33,17 @@ extension WatchConnectivityReceiver: WCSessionDelegate {
     ) {}
 
     nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        // Artwork arrives as its own `transferFile`, tagged with `kind: "artwork"` rather than the
+        // full song metadata `fromWCMetadata` expects — handle it separately and return before
+        // attempting (and failing) to parse it as a song.
+        if WatchTransferMeta.isArtworkWcMetadata(file.metadata) {
+            guard let id = file.metadata?[WatchTransferMeta.metadataIDKey] as? String else { return }
+            let dest = WatchAudioStorage.artworkFileURL(forId: id)
+            try? FileManager.default.removeItem(at: dest)
+            try? FileManager.default.copyItem(at: file.fileURL, to: dest)
+            return
+        }
+
         guard let meta = WatchTransferMeta.fromWCMetadata(file.metadata) else {
             print("[WatchConnectivityReceiver] Received file without valid metadata")
             return

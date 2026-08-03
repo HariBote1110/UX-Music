@@ -13,6 +13,11 @@ struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
     var album: String
     var duration: Double
     var fileType: String
+    /// Filename of a downscaled artwork JPEG, transferred as a *separate* `transferFile` (not
+    /// embedded in this metadata dictionary — WatchConnectivity metadata has a small size limit
+    /// unsuited to image bytes). `nil` when the song has no locally-cached artwork on the iPhone at
+    /// send time, or for songs transferred before artwork support existed (re-sending fills it in).
+    var artworkFileName: String? = nil
 
     var displayTitle: String { title.isEmpty ? "Unknown Title" : title }
     var displayArtist: String { artist.isEmpty ? "Unknown Artist" : artist }
@@ -29,10 +34,15 @@ struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
     static let metadataAlbumKey = "album"
     static let metadataDurationKey = "duration"
     static let metadataFileTypeKey = "fileType"
+    static let metadataArtworkFileNameKey = "artworkFileName"
+    /// Distinguishes an artwork-only `transferFile` (see `kindArtwork`) from a regular audio
+    /// transfer, since the two carry very different metadata shapes.
+    static let metadataKindKey = "kind"
+    static let kindArtwork = "artwork"
 
     /// Dictionary shape expected by `WCSession.transferFile(_:metadata:)`.
     var wcMetadata: [String: Any] {
-        [
+        var dict: [String: Any] = [
             Self.metadataIDKey: id,
             Self.metadataTitleKey: title,
             Self.metadataArtistKey: artist,
@@ -40,6 +50,15 @@ struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
             Self.metadataDurationKey: duration,
             Self.metadataFileTypeKey: fileType
         ]
+        if let artworkFileName {
+            dict[Self.metadataArtworkFileNameKey] = artworkFileName
+        }
+        return dict
+    }
+
+    /// Metadata dictionary for the separate artwork `transferFile` (see `storedArtworkFileName`).
+    var artworkWcMetadata: [String: Any] {
+        [Self.metadataIDKey: id, Self.metadataKindKey: Self.kindArtwork]
     }
 
     /// Parses a WatchConnectivity file-transfer metadata dictionary; `nil` if a required key is
@@ -53,7 +72,22 @@ struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
             let duration = metadata?[metadataDurationKey] as? Double,
             let fileType = metadata?[metadataFileTypeKey] as? String
         else { return nil }
-        return WatchTransferMeta(id: id, title: title, artist: artist, album: album, duration: duration, fileType: fileType)
+        let artworkFileName = metadata?[metadataArtworkFileNameKey] as? String
+        return WatchTransferMeta(
+            id: id,
+            title: title,
+            artist: artist,
+            album: album,
+            duration: duration,
+            fileType: fileType,
+            artworkFileName: artworkFileName
+        )
+    }
+
+    /// Whether a WatchConnectivity file-transfer metadata dictionary describes an artwork transfer
+    /// (see `kindArtwork`) rather than an audio transfer.
+    static func isArtworkWcMetadata(_ metadata: [String: Any]?) -> Bool {
+        metadata?[metadataKindKey] as? String == kindArtwork
     }
 
     /// Filesystem-safe stem derived from `id` (song ids may be full desktop paths containing `/`).
@@ -67,6 +101,13 @@ struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
     /// Stored filename for the transferred audio asset on the Watch (`<sanitised-id>.<fileType>`).
     var storedFileName: String {
         "\(Self.storageStem(for: id)).\(fileType)"
+    }
+
+    /// Stored filename for the transferred artwork JPEG on the Watch (`<sanitised-id>.jpg`),
+    /// independent of `artworkFileName` (which merely records that one was sent) so the receiver
+    /// can resolve it from `id` alone.
+    static func storedArtworkFileName(forId id: String) -> String {
+        "\(storageStem(for: id)).jpg"
     }
 }
 

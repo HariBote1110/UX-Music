@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import WatchConnectivity
 
 /// One song queued (or already sent) to the paired Apple Watch.
@@ -104,7 +105,8 @@ final class WatchTransferBridge: NSObject, ObservableObject {
     /// Actually calls `WCSession.transferFile`. Only safe to call once `activationStatus == .activated`.
     private func performTransfer(_ song: Song) {
         let localURL = URL(fileURLWithPath: downloadManager.localPathString(songId: song.id))
-        let meta = WatchTransferMeta(
+        let hasArtwork = downloadManager.localArtworkFileURLIfPresent(artworkId: song.artworkId) != nil
+        var meta = WatchTransferMeta(
             id: song.id,
             title: song.title,
             artist: song.artist,
@@ -112,6 +114,9 @@ final class WatchTransferBridge: NSObject, ObservableObject {
             duration: song.duration,
             fileType: (localURL.pathExtension.isEmpty ? song.fileType : localURL.pathExtension)
         )
+        if hasArtwork {
+            meta.artworkFileName = WatchTransferMeta.storedArtworkFileName(forId: song.id)
+        }
 
         upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .sending))
 
@@ -126,7 +131,43 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         }
 
         session.transferFile(localURL, metadata: meta.wcMetadata)
+
+        // Artwork is sent as its own `transferFile` rather than embedded in `meta.wcMetadata`
+        // (WatchConnectivity metadata dictionaries are meant for small key/value pairs, not image
+        // bytes) — downscaled here so the transfer stays small and quick over Bluetooth/Wi-Fi.
+        if let artworkURL = downloadManager.localArtworkFileURLIfPresent(artworkId: song.artworkId),
+           let downscaledURL = Self.writeDownscaledArtwork(from: artworkURL, songId: song.id) {
+            session.transferFile(downscaledURL, metadata: meta.artworkWcMetadata)
+        }
+
         upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .sent))
+    }
+
+    /// Downscales the artwork at `sourceURL` to a long edge of ~400px and re-encodes it as a JPEG
+    /// (~50KB target) into a temporary file, suitable for the small Watch screen and a quick
+    /// WatchConnectivity transfer. Returns `nil` if the source image cannot be decoded.
+    private static func writeDownscaledArtwork(from sourceURL: URL, songId: String) -> URL? {
+        guard let image = UIImage(contentsOfFile: sourceURL.path) else { return nil }
+        let maxDimension: CGFloat = 400
+        let longEdge = max(image.size.width, image.size.height)
+        let scale = longEdge > maxDimension ? maxDimension / longEdge : 1
+        let targetSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        guard let jpegData = resized.jpegData(compressionQuality: 0.6) else { return nil }
+
+        let destURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(WatchTransferMeta.storedArtworkFileName(forId: songId))
+        try? FileManager.default.removeItem(at: destURL)
+        do {
+            try jpegData.write(to: destURL)
+            return destURL
+        } catch {
+            return nil
+        }
     }
 
     private func handleActivationCompletion(succeeded: Bool, errorDescription: String?) {

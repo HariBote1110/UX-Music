@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Now Playing page: always reachable via the paged `TabView` in `WatchRootView`, regardless of
 /// what is selected on the Library page. Seeking is driven by the Digital Crown rather than a
@@ -6,6 +7,7 @@ import SwiftUI
 /// standard scrubbing input (used by Apple's own Podcasts/Music apps).
 struct WatchNowPlayingView: View {
     @EnvironmentObject private var player: WatchAudioPlayerService
+    @EnvironmentObject private var library: WatchLocalLibrary
     /// Injected separately from `player` so this page (and only this page) observes the 0.5s
     /// position tick — see `WatchPlaybackProgress`'s doc comment for why that split fixes the
     /// stutter that used to happen when swiping between Library and Now Playing.
@@ -21,14 +23,46 @@ struct WatchNowPlayingView: View {
     private var duration: Double { max(player.currentSong?.duration ?? 0, 1) }
     private var displayedPosition: Double { isSeeking ? crownPosition : progress.position }
 
+    private var artworkImage: UIImage? {
+        guard
+            let song = player.currentSong,
+            let url = library.artworkFileURLIfPresent(for: song),
+            let data = try? Data(contentsOf: url)
+        else { return nil }
+        return UIImage(data: data)
+    }
+
     var body: some View {
+        ZStack {
+            if let artworkImage {
+                Image(uiImage: artworkImage)
+                    .resizable()
+                    .scaledToFill()
+                    .blur(radius: 20)
+                    .opacity(0.5)
+                    .ignoresSafeArea()
+            }
+
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         VStack(spacing: 8) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.secondary.opacity(0.2))
-                Image(systemName: "music.note")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.secondary)
+                if let artworkImage {
+                    Image(uiImage: artworkImage)
+                        .resizable()
+                        .scaledToFill()
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.secondary.opacity(0.2))
+                    Image(systemName: "music.note")
+                        .font(.system(size: 28))
+                        .foregroundStyle(.secondary)
+                }
             }
             .frame(width: 60, height: 60)
 
@@ -133,8 +167,10 @@ struct WatchNowPlayingView: View {
 }
 
 #Preview {
-    let player = WatchAudioPlayerService(library: WatchLocalLibrary())
+    let library = WatchLocalLibrary()
+    let player = WatchAudioPlayerService(library: library)
     WatchNowPlayingView()
         .environmentObject(player)
         .environmentObject(player.progress)
+        .environmentObject(library)
 }
