@@ -98,4 +98,58 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
     func testLoopbackPageURLRejectsInvalidVideoID() {
         XCTAssertNil(YouTubeEmbedPlayer.loopbackPageURL(port: 54321, videoID: "not an id"))
     }
+
+    // MARK: - Embed-restricted fallback (error code -> whether "open in YouTube app" applies)
+
+    func testEmbedFallbackIsOpenInYouTubeAppForEmbedDisallowedCodes() {
+        XCTAssertEqual(YouTubeEmbedPlayer.embedFallback(forErrorCode: 101), .openInYouTubeApp)
+        XCTAssertEqual(YouTubeEmbedPlayer.embedFallback(forErrorCode: 150), .openInYouTubeApp)
+    }
+
+    func testEmbedFallbackIsNoneForOtherErrorCodes() {
+        XCTAssertEqual(YouTubeEmbedPlayer.embedFallback(forErrorCode: 2), .none)
+        XCTAssertEqual(YouTubeEmbedPlayer.embedFallback(forErrorCode: 5), .none)
+        XCTAssertEqual(YouTubeEmbedPlayer.embedFallback(forErrorCode: 100), .none)
+        XCTAssertEqual(YouTubeEmbedPlayer.embedFallback(forErrorCode: -1), .none)
+        XCTAssertEqual(YouTubeEmbedPlayer.embedFallback(forErrorCode: 9999), .none)
+    }
+
+    // MARK: - "Open in YouTube" URLs
+
+    func testYouTubeAppDeepLinkURLForValidVideoID() {
+        XCTAssertEqual(
+            YouTubeEmbedPlayer.youtubeAppDeepLinkURL(videoID: "dQw4w9WgXcQ")?.absoluteString,
+            "youtube://watch?v=dQw4w9WgXcQ"
+        )
+    }
+
+    func testYouTubeAppDeepLinkURLRejectsInvalidVideoID() {
+        XCTAssertNil(YouTubeEmbedPlayer.youtubeAppDeepLinkURL(videoID: "not an id"))
+    }
+
+    func testYouTubeWebFallbackURLForValidVideoID() {
+        XCTAssertEqual(
+            YouTubeEmbedPlayer.youtubeWebFallbackURL(videoID: "dQw4w9WgXcQ")?.absoluteString,
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        )
+    }
+
+    func testYouTubeWebFallbackURLRejectsInvalidVideoID() {
+        XCTAssertNil(YouTubeEmbedPlayer.youtubeWebFallbackURL(videoID: "not an id"))
+    }
+
+    func testURLToOpenPrefersYouTubeAppWhenAvailable() {
+        let url = YouTubeEmbedPlayer.urlToOpen(forVideoID: "dQw4w9WgXcQ", youtubeAppIsAvailable: true)
+        XCTAssertEqual(url?.absoluteString, "youtube://watch?v=dQw4w9WgXcQ")
+    }
+
+    func testURLToOpenFallsBackToWebWhenAppUnavailable() {
+        let url = YouTubeEmbedPlayer.urlToOpen(forVideoID: "dQw4w9WgXcQ", youtubeAppIsAvailable: false)
+        XCTAssertEqual(url?.absoluteString, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    }
+
+    func testURLToOpenRejectsInvalidVideoIDRegardlessOfAppAvailability() {
+        XCTAssertNil(YouTubeEmbedPlayer.urlToOpen(forVideoID: "not an id", youtubeAppIsAvailable: true))
+        XCTAssertNil(YouTubeEmbedPlayer.urlToOpen(forVideoID: "not an id", youtubeAppIsAvailable: false))
+    }
 }
