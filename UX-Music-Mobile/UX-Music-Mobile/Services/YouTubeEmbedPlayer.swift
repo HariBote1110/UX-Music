@@ -147,10 +147,21 @@ enum YouTubeEmbedPlayer {
         }
     }
 
-    /// Host page HTML. Structurally mirrors `embedPageTemplate` in `server/embed_host.go`, but
-    /// posts bridge events to the native `uxYouTube` WKScriptMessageHandler instead of
-    /// `parent.postMessage`, and exposes `window.uxYouTubeCommand` for `evaluateJavaScript` calls
-    /// from Swift instead of listening for `message` events.
+    /// Host page HTML. Structurally mirrors `embedPageTemplate` in `server/embed_host.go`
+    /// (including the mute-then-unmute autoplay sequence), and relays bridge events via
+    /// `window.postMessage` exactly like desktop's `parent.postMessage`/`addEventListener` pair —
+    /// deliberately *not* by calling `window.webkit.messageHandlers` directly from this script. The
+    /// native `uxYouTube` handler is registered in an isolated `WKContentWorld`
+    /// (`YouTubePlaybackHost.bridgeContentWorld`) so `window.webkit.messageHandlers` is absent from
+    /// this `.page`-world script (and from the nested `youtube.com/embed` iframe's own `.page`
+    /// world), keeping the native bridge's exposure to a minimum — see the comment in
+    /// `YouTubePlaybackHost.init()`. (Note: this isolation does *not* fix IFrame Player API error
+    /// 150 for videos blocked on mobile — that turned out to be a genuine YouTube-side mobile-web
+    /// embedding restriction, reproducible in real mobile Safari; see
+    /// `progress/mobile-youtube-embed.md`.) A `WKUserScript` relay running in that isolated world
+    /// forwards this frame's `postMessage` traffic to the native handler. `window.uxYouTubeCommand`
+    /// (called from Swift via `evaluateJavaScript`, not from the isolated world) is unaffected since
+    /// `evaluateJavaScript` runs in the `.page` world by default.
     private static let embedPageTemplate = """
     <!doctype html>
     <html>
@@ -168,7 +179,8 @@ enum YouTubeEmbedPlayer {
         var timer = null;
 
         function post(msg) {
-            try { window.webkit.messageHandlers.uxYouTube.postMessage(msg); } catch (e) { /* ignore */ }
+            msg.source = 'ux-embed';
+            try { window.postMessage(msg, '*'); } catch (e) { /* ignore */ }
         }
 
         function startTimer() {
@@ -192,6 +204,7 @@ enum YouTubeEmbedPlayer {
                 videoId: VIDEO_ID,
                 playerVars: {
                     autoplay: 1,
+                    mute: 1,
                     playsinline: 1,
                     controls: 1,
                     enablejsapi: 1,
@@ -199,7 +212,11 @@ enum YouTubeEmbedPlayer {
                     origin: location.origin
                 },
                 events: {
-                    onReady: function () { post({ type: 'ready' }); startTimer(); },
+                    onReady: function () {
+                        try { player.mute(); } catch (e) { /* ignore */ }
+                        post({ type: 'ready' });
+                        startTimer();
+                    },
                     onStateChange: function (e) { post({ type: 'state', state: e.data }); },
                     onError: function (e) { post({ type: 'error', code: e.data }); }
                 }

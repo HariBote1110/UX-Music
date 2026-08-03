@@ -247,3 +247,85 @@ footerに「YouTube曲の再生には適用されません。」を表示。EQ�
 - アプリがバックグラウンドに回った場合の挙動（`AVAudioSession`は維持されるが、WKWebViewの
   JS/メディア実行がOS側でどこまで継続されるか）は本追補では未検証。フォアグラウンド内での
   画面遷移（Now Playing ⇄ Library）のみ確認対象とした。
+
+## フェーズC: 「特定動画が埋め込み不可」報告の調査（error 150 の真因特定）
+
+### 症状
+実機報告: 特定動画（例: Rick Astley "Never Gonna Give You Up"、videoId
+`dQw4w9WgXcQ`）で公式再生が「埋め込み不可」エラーになる。デスクトップ
+（`server/embed_host.go`、同一IFrameパラメータ）では同じ動画が再生できる。
+
+### 調査手法
+`UXMusicMobileApp.swift`に隠しデバッグフック
+`installDebugYouTubeAutoplayHookIfRequested()`を追加（`ProcessInfo.processInfo
+.environment["UXM_DEBUG_YT_VIDEO"]`が設定されていれば起動直後にその動画IDで
+`youtubePlaybackHost.load(videoID:)`を直接叩き、ブリッジイベントを`NSLog`に出力）。
+`xcrun simctl launch --setenv`（正しくは`SIMCTL_CHILD_UXM_DEBUG_YT_VIDEO`環境変数）
++ `xcrun simctl spawn <udid> log show`でイベントを観測した。このフックは実害がない
+（環境変数を明示的に設定しない限り何もしない）ため、恒久的に残した。
+
+### 観測結果: エラーコードは150で確定
+- `dQw4w9WgXcQ`: `ready` 直後に `error(code: 150)`（「埋め込みが許可されていません」）
+- `jNQXAC9IVRw`（制限なし動画、比較対照）: `ready` → `time` が継続、エラーなし
+
+### 検証した仮説と結果（すべて効果なし）
+1. **モバイルUAが原因** — `webView.customUserAgent`をmacOS Safari相当に偽装 →
+   **効果なし**（150のまま）。最終的にこの変更は撤回した（効果が確認できない
+   User-Agent偽装を残す理由がないため）。
+2. **`mute:1`/mute-then-unmute autoplayシーケンスの欠如** —
+   `server/embed_host.go`はautoplay+`mute:1`で開始し`onReady`で明示的に`player.mute()`
+   を呼ぶ（生音漏れ防止のため）のに対し、iOS版はミュートなしのunmuted autoplayだった。
+   playerVars・onReadyシーケンスをdesktopと完全一致させても**効果なし**。
+   ただしこの変更自体はdesktopとの一貫性のため`YouTubeEmbedPlayer.swift`に維持した。
+3. **`window.webkit.messageHandlers`のフレーム越境露出** —
+   `WKUserContentController.add(_:name:)`（デフォルトの`.page`ワールド）で追加した
+   メッセージハンドラは、そのWKWebView内の**全フレーム**（`youtube.com/embed/<id>`の
+   ような別オリジンのiframeも含む）自身の`window`オブジェクトに注入される
+   （Appleのセキュリティガイダンスが警告する既知の挙動）。YouTube側のプレイヤー
+   スクリプトがこれを検出して「ネイティブアプリのWKWebView内」と判定し再生拒否
+   している可能性を疑い、`WKContentWorld.world(name:)`による専用ワールドへの隔離
+   （`YouTubePlaybackHost.bridgeContentWorld`）+ `window.postMessage`ベースの
+   リレー（`WKUserScript`、desktop方式に一致）へ切り替えたが、**効果なし**
+   （150のまま）。この変更自体はセキュリティ上のベストプラクティス
+   （ネイティブブリッジの露出範囲最小化）として正当性があるため維持した。
+
+### 真因: YouTube側のモバイルWeb埋め込み制限（クライアント側では回避不能）
+上記いずれの変更でも解消しなかったため、**アプリ/WKWebViewの設定とは無関係の
+問題**であることを検証する目的で、シミュレータの実Safari（当アプリを一切介さない）
+で同一検証を行った:
+
+1. `https://www.youtube.com/embed/dQw4w9WgXcQ?...`へ直接ナビゲート → 「動画を
+   再生できません」表示。
+2. 当アプリのループバックサーバー（`YouTubeEmbedLoopbackServer`）が実際に配信する
+   `http://127.0.0.1:<port>/embed?v=dQw4w9WgXcQ`ページ（IFrame APIによる入れ子
+   iframe構造も含め、当アプリのWKWebViewが読み込むページと完全に同一）へ実Safari
+   でナビゲート → **同じく「動画を再生できません」**。
+
+これにより、**未改変の実機モバイルSafariでも同じエラーが再現する**ことが確定した。
+つまりWKWebViewの構成（UA・メッセージハンドラ・mute有無等）は無関係で、
+YouTubeのサーバー側がこの動画（および同種の動画）についてモバイルWebブラウザ
+からの埋め込みを拒否している——正規アプリへの誘導を目的とした、パブリッシャー側
+またはYouTube側の意図的な制限である可能性が高い。デスクトップで再生できるのは
+デスクトップブラウザ（Wails/WKWebView on macOS）からのアクセスだからであり、
+iOS版が「デスクトップと同一パラメータなのに失敗する」のはクライアント実装の
+不備ではなく、YouTube側がクライアントのプラットフォームで区別しているため。
+
+### 結論・今後の方針
+- クライアント側（JS/WKWebView設定）でのさらなる回避策は、正規の手段では
+  見込みが薄いと判断し、本セッションでは追加のなりすまし策（より深いUA/
+  Client Hints偽装等）は実施しないこととした。
+- `youtubePlaybackErrorMessage`（`YouTubeEmbedPlayer.errorMessage(code:)`の
+  101/150文言「この動画は投稿者により埋め込み再生が許可されていません。
+  YouTubeアプリでご視聴ください。」）は、この真因に照らして妥当な内容のまま
+  据え置いた（変更不要）。
+- 隠しデバッグフック（`UXM_DEBUG_YT_VIDEO`環境変数）は今後同種の実機報告調査に
+  再利用できるよう残している。
+
+### Constraints / Gotchas
+- `xcrun simctl launch --setenv`は無効（`Invalid device: --setenv`）。環境変数は
+  呼び出し側シェルで`SIMCTL_CHILD_<NAME>`変数として渡す必要がある
+  （`export SIMCTL_CHILD_UXM_DEBUG_YT_VIDEO=<videoId>`してから`simctl launch`）。
+- `xcrun simctl spawn <udid> log stream`をバックグラウンドでリダイレクトすると
+  バッファリングにより出力が遅延することがある。確実に読むには
+  `xcrun simctl spawn <udid> log show --last <N>s --predicate '...'`を都度実行する
+  方が確実。

@@ -20,6 +20,10 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
     /// Called whenever the embedded player reports a bridge event (ready/state/time/error).
     var onEvent: ((YouTubeEmbedPlayer.BridgeEvent) -> Void)?
 
+    /// Isolated `WKContentWorld` for the native bridge handler. See the long comment in `init()`
+    /// for why this cannot simply be the default `.page` world.
+    private static let bridgeContentWorld = WKContentWorld.world(name: "uxYouTubeBridge")
+
     override init() {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
@@ -30,7 +34,38 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
         webView.backgroundColor = .black
         self.webView = webView
         super.init()
-        webView.configuration.userContentController.add(self, name: "uxYouTube")
+        // The native bridge handler is registered in an isolated content world instead of the
+        // default `.page` world. `WKUserContentController.add(_:name:)` (the default-world
+        // overload) injects `window.webkit.messageHandlers` into *every* frame's own `window`
+        // object in this WKWebView — including cross-origin iframes such as YouTube's own
+        // `youtube.com/embed/<id>` iframe nested inside our embed page. This is a documented
+        // WKWebView quirk (Apple's own security guidance warns about it): the handler is not
+        // confined to the top frame or to same-origin frames, so without this, YouTube's own script
+        // running inside its iframe could detect `window.webkit.messageHandlers` and infer it is
+        // running inside a native app's WKWebView. This was investigated as a candidate cause of
+        // IFrame Player API error 150 ("embedding disallowed") on device, but did *not* turn out to
+        // be the actual cause (see `progress/mobile-youtube-embed.md`) — real, unmodified mobile
+        // Safari hits the same error 150 on the exact same loopback page, so this is a genuine
+        // server-side mobile-web embedding restriction on YouTube's side, not anything detectable
+        // client-side. Isolating the handler is kept regardless as a defence-in-depth hardening
+        // (least-privilege exposure of the native bridge), independent of that investigation. A
+        // small `WKUserScript` relay, injected into the same isolated world, listens for ordinary
+        // `window.postMessage` traffic sent by the `.page`-world embed script (see
+        // `YouTubeEmbedPlayer.buildEmbedHTML`) and forwards it to the native handler.
+        webView.configuration.userContentController.add(self, contentWorld: Self.bridgeContentWorld, name: "uxYouTube")
+        let relaySource = """
+        window.addEventListener('message', function (ev) {
+            if (!ev.data || ev.data.source !== 'ux-embed') return;
+            try { window.webkit.messageHandlers.uxYouTube.postMessage(ev.data); } catch (e) { /* ignore */ }
+        });
+        """
+        let relayScript = WKUserScript(
+            source: relaySource,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true,
+            in: Self.bridgeContentWorld
+        )
+        webView.configuration.userContentController.addUserScript(relayScript)
     }
 
     /// Loads the loopback embed page for `videoID`, starting the shared loopback server first if
