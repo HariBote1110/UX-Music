@@ -85,6 +85,26 @@ final class WatchTransferTests: XCTestCase {
         XCTAssertEqual(result.map(\.id), ["1", "2", "3"])
     }
 
+    /// `WatchConnectivityReceiver.session(_:didReceive:)` is `nonisolated`, so WatchConnectivity can
+    /// invoke it concurrently on background threads for several files arriving close together (e.g.
+    /// a bulk album transfer). Each call folds its result into the persisted index via
+    /// `WatchLibraryIndex.adding` on the main actor. Regardless of which delegate call happens to be
+    /// scheduled first, applying `adding` for every song in *any* interleaving must still retain all
+    /// of them — this pins that invariant so a future change to the merge logic (e.g. one that reads
+    /// a snapshot instead of folding) cannot silently reintroduce a lost-update race across a bulk
+    /// transfer.
+    func testAddingRetainsAllEntriesRegardlessOfArrivalOrder() {
+        let songs = (1...5).map { sample(id: "song-\($0)") }
+
+        for arrivalOrder in [songs, songs.reversed().map { $0 }, Array(songs[2...]) + Array(songs[..<2])] {
+            var index: [WatchTransferMeta] = []
+            for meta in arrivalOrder {
+                index = WatchLibraryIndex.adding(meta, to: index)
+            }
+            XCTAssertEqual(Set(index.map(\.id)), Set(songs.map(\.id)), "lost an entry for arrival order \(arrivalOrder.map(\.id))")
+        }
+    }
+
     // MARK: - WatchLibraryIndex.removing
 
     func testRemovingDeletesMatchingID() {

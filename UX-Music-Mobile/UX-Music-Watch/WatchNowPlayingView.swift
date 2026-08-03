@@ -19,23 +19,31 @@ struct WatchNowPlayingView: View {
     @State private var crownPosition: Double = 0
     @State private var isSeeking = false
     @State private var seekCommitTask: Task<Void, Never>?
+    /// Set right before `crownPosition` is assigned *programmatically* (`onAppear`, track change) so
+    /// the `onChange(of: crownPosition)` handler below can tell that sync apart from an actual Crown
+    /// rotation. Without this, syncing `crownPosition = progress.position` on appear/track-change
+    /// itself counts as a "change" and the handler flags it as a user seek — starting the 400ms
+    /// debounce and switching the progress tint to orange for that stretch even though the user
+    /// never touched the Crown. That is the visible "briefly orange, then blue" flash reported on
+    /// the progress bar.
+    @State private var isSyncingCrownProgrammatically = false
 
     private var duration: Double { max(player.currentSong?.duration ?? 0, 1) }
     private var displayedPosition: Double { isSeeking ? crownPosition : progress.position }
 
-    private var artworkImage: UIImage? {
-        guard
-            let song = player.currentSong,
-            let url = library.artworkFileURLIfPresent(for: song),
-            let data = try? Data(contentsOf: url)
-        else { return nil }
-        return UIImage(data: data)
-    }
+    /// Decoded artwork for `player.currentSong`, cached so it is only re-read from disk and
+    /// re-decoded when the track actually changes — not on every body evaluation. This view also
+    /// observes `progress` (the 0.5s position tick), so a plain computed property here would decode
+    /// the JPEG from disk twice (background blur + foreground artwork) every half second, which is
+    /// wasted main-thread I/O/CPU on every single tick and a plausible contributor to the playback
+    /// stutter reported when this page is visible.
+    @State private var cachedArtworkImage: UIImage?
+    @State private var cachedArtworkSongId: String?
 
     var body: some View {
         ZStack {
-            if let artworkImage {
-                Image(uiImage: artworkImage)
+            if let cachedArtworkImage {
+                Image(uiImage: cachedArtworkImage)
                     .resizable()
                     .scaledToFill()
                     .blur(radius: 20)
@@ -45,100 +53,128 @@ struct WatchNowPlayingView: View {
 
             content
         }
+        .onAppear { refreshCachedArtworkIfNeeded() }
+        .onChange(of: player.currentSong?.id) { _, _ in refreshCachedArtworkIfNeeded() }
+    }
+
+    /// Reloads `cachedArtworkImage` from disk only when the current song has actually changed —
+    /// see the doc comment on `cachedArtworkImage` for why this must not run on every redraw.
+    private func refreshCachedArtworkIfNeeded() {
+        guard let song = player.currentSong else {
+            cachedArtworkImage = nil
+            cachedArtworkSongId = nil
+            return
+        }
+        guard cachedArtworkSongId != song.id else { return }
+        cachedArtworkSongId = song.id
+        guard
+            let url = library.artworkFileURLIfPresent(for: song),
+            let data = try? Data(contentsOf: url)
+        else {
+            cachedArtworkImage = nil
+            return
+        }
+        cachedArtworkImage = UIImage(data: data)
     }
 
     @ViewBuilder
     private var content: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                if let artworkImage {
-                    Image(uiImage: artworkImage)
-                        .resizable()
-                        .scaledToFill()
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.secondary.opacity(0.2))
-                    Image(systemName: "music.note")
-                        .font(.system(size: 28))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 60, height: 60)
-
-            VStack(spacing: 2) {
-                Text(player.currentSong?.displayTitle ?? "Not Playing")
-                    .font(.headline)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text(player.currentSong?.displayArtist ?? "—")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            if let routeError = player.routeError {
-                Text(routeError)
-                    .font(.caption2)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
-            }
-
-            if player.currentSong != nil {
-                VStack(spacing: 2) {
-                    ProgressView(value: displayedPosition, total: duration)
-                        .progressViewStyle(.linear)
-                        .tint(isSeeking ? .orange : .blue)
-                    HStack {
-                        Text(formatTime(displayedPosition))
-                        Spacer()
-                        Text("-\(formatTime(max(duration - displayedPosition, 0)))")
+        // A `ScrollView` (rather than a bare `VStack`) so the page degrades gracefully on the
+        // smallest watch screens (e.g. Series 11 42mm) instead of clipping/overflowing past the
+        // bottom edge — the fixed paddings/spacings below were sized for larger screens and left
+        // the shuffle/repeat row pushed off-screen on 42mm.
+        ScrollView {
+            VStack(spacing: 8) {
+                ZStack {
+                    if let cachedArtworkImage {
+                        Image(uiImage: cachedArtworkImage)
+                            .resizable()
+                            .scaledToFill()
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } else {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.secondary.opacity(0.2))
+                        Image(systemName: "music.note")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.secondary)
                     }
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                }
+                .frame(width: 60, height: 60)
+
+                VStack(spacing: 2) {
+                    Text(player.currentSong?.displayTitle ?? "Not Playing")
+                        .font(.headline)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(player.currentSong?.displayArtist ?? "—")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                if let routeError = player.routeError {
+                    Text(routeError)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                }
+
+                if player.currentSong != nil {
+                    VStack(spacing: 2) {
+                        ProgressView(value: displayedPosition, total: duration)
+                            .progressViewStyle(.linear)
+                            .tint(isSeeking ? .orange : .blue)
+                        HStack {
+                            Text(formatTime(displayedPosition))
+                            Spacer()
+                            Text("-\(formatTime(max(duration - displayedPosition, 0)))")
+                        }
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack(spacing: 16) {
+                    Button { player.previous() } label: {
+                        Image(systemName: "backward.fill")
+                            .font(.title3)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button { player.togglePlayPause() } label: {
+                        Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 36))
+                            .foregroundStyle(.blue)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button { player.next() } label: {
+                        Image(systemName: "forward.fill")
+                            .font(.title3)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                HStack(spacing: 20) {
+                    Button { player.toggleShuffle() } label: {
+                        Image(systemName: "shuffle")
+                            .font(.caption)
+                            .foregroundStyle(player.isShuffled ? .blue : .secondary)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button { player.cycleRepeatMode() } label: {
+                        let imageName: String = player.repeatMode.systemImageName
+                        let tint: Color = player.repeatMode == .off ? .secondary : .blue
+                        Image(systemName: imageName)
+                            .font(.caption)
+                            .foregroundStyle(tint)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-
-            HStack(spacing: 16) {
-                Button { player.previous() } label: {
-                    Image(systemName: "backward.fill")
-                        .font(.title3)
-                }
-                .buttonStyle(.plain)
-
-                Button { player.togglePlayPause() } label: {
-                    Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 36))
-                        .foregroundStyle(.blue)
-                }
-                .buttonStyle(.plain)
-
-                Button { player.next() } label: {
-                    Image(systemName: "forward.fill")
-                        .font(.title3)
-                }
-                .buttonStyle(.plain)
-            }
-
-            HStack(spacing: 20) {
-                Button { player.toggleShuffle() } label: {
-                    Image(systemName: "shuffle")
-                        .font(.caption)
-                        .foregroundStyle(player.isShuffled ? .blue : .secondary)
-                }
-                .buttonStyle(.plain)
-
-                Button { player.cycleRepeatMode() } label: {
-                    let imageName: String = player.repeatMode.systemImageName
-                    let tint: Color = player.repeatMode == .off ? .secondary : .blue
-                    Image(systemName: imageName)
-                        .font(.caption)
-                        .foregroundStyle(tint)
-                }
-                .buttonStyle(.plain)
-            }
+            .padding()
         }
-        .padding()
         .focusable()
         .digitalCrownRotation(
             $crownPosition,
@@ -149,6 +185,13 @@ struct WatchNowPlayingView: View {
             isContinuous: false
         )
         .onChange(of: crownPosition) { _, newValue in
+            // A programmatic sync (`onAppear`/track change, below) assigns `crownPosition` too and
+            // must not be mistaken for a user seek — see `isSyncingCrownProgrammatically`'s doc
+            // comment.
+            guard !isSyncingCrownProgrammatically else {
+                isSyncingCrownProgrammatically = false
+                return
+            }
             isSeeking = true
             seekCommitTask?.cancel()
             seekCommitTask = Task {
@@ -161,9 +204,13 @@ struct WatchNowPlayingView: View {
             }
         }
         .onChange(of: player.currentSong?.id) { _, _ in
+            isSyncingCrownProgrammatically = true
             crownPosition = progress.position
         }
-        .onAppear { crownPosition = progress.position }
+        .onAppear {
+            isSyncingCrownProgrammatically = true
+            crownPosition = progress.position
+        }
         .navigationTitle("Now Playing")
     }
 

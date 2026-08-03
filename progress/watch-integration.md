@@ -548,3 +548,105 @@ Songs 側にそのまま残した。ページング構造（Library ⇄ Now Play
 - watchOS シミュレータ（Apple Watch Series 11 42mm, watchOS 27.0,
   `70E721E0-E9E9-477E-ACEA-FB8D939B74DC`）に単体ビルドをインストール・起動し、
   Library ページ（空状態）とページドットの表示をスクリーンショットで確認。
+
+# フェーズ8: Watch側バグ3件の調査・修正（一括転送/シークバー/スタッター）
+
+## Decision
+
+- **バグ1（アルバム一括転送で1曲目しか届かない）**: `WatchConnectivityReceiver.session(_:didReceive:)`
+  はコメントで示唆されていた「並行受信での索引 lost-update」を静的に精査したが、
+  再現する欠陥は見つからなかった。ファイルコピー自体は `nonisolated` context で
+  同期的に行われ、索引更新（`library.addSong`）は毎回 `Task { @MainActor in ... }`
+  でラップされている。この closure は `await` を一切含まないため、Swift の
+  MainActor 実行器は「サスペンションポイントなしの job を割り込みなく完了まで
+  実行する」という保証により、複数ファイルがほぼ同時に `didReceive` されても
+  `songs = WatchLibraryIndex.adding(meta, to: songs)` は必ず直列に、かつ
+  互いの結果を上書きせずに実行される（どちらのファイルの Task が先に
+  スケジュールされるかに関わらず、両方とも完了まで走り切る）。
+  `WatchLibraryIndex.adding` は id ベースの追記のみで副作用を持たない純関数なので、
+  到着順序に依存する欠陥もない。
+  → 実際に watchOS シミュレータへ `library.json` に2曲（`lonewolf1`/`lonewolf2`,
+  ともに album "Lone Wolf"）を直接書き込み、Library ページで2曲とも一覧表示
+  されることを目視確認した（受信パイプラインを介さずファイルを置く形での検証。
+  `session(_:didReceive:)` 自体を実機なしで駆動する watchOS 側テストターゲットが
+  存在しないため、これが実施可能な最も直接的な検証）。
+  → 回帰防止として `WatchTransferTests.testAddingRetainsAllEntriesRegardlessOfArrivalOrder`
+  を追加: `WatchLibraryIndex.adding` を異なる到着順（正順/逆順/入れ替え）で
+  畳み込んでも、全エントリが必ず残ることをピン留めした。将来 `addSong` の実装が
+  「スナップショットを読んでから書き戻す」ような非同期な形に変更された場合、
+  このテストと上記のアーキテクチャ上の不変条件（MainActor 上でサスペンションなし
+  に完結する）の両方を壊さないよう配慮が必要。
+  → 現状のコードに再現可能なバグを特定できなかったため、ユーザー報告の症状は
+    (a) 過去のビルド（ファイルコピーの nonisolated 化前）のものだった、
+    (b) WatchConnectivity 自体の実機特有の転送遅延/ドロップ（アプリコードの
+        制御外）のいずれかの可能性が高いと考えられる。実機で再発した場合は
+        `WatchConnectivityReceiver` に受信ファイルごとの詳細ログ（`transferFile`
+        のメタデータ内容と成功/失敗）を追加し、iOS側の送信ログと突き合わせる
+        のが次の診断ステップになる。
+
+- **バグ2a（シークバーが一瞬オレンジ→青になる）**: 真因を特定した。
+  `WatchNowPlayingView` は `.onAppear` と `.onChange(of: player.currentSong?.id)`
+  で `crownPosition = progress.position` と“同期”のために書き込んでいたが、
+  この代入自体が `.onChange(of: crownPosition)` を発火させ、そのハンドラは
+  無条件に `isSeeking = true`（→ tint が `.orange`）をセットしてから 400ms の
+  デバウンスタスクを起動していた。つまりユーザーが Crown に触れていなくても、
+  ページ表示や曲切り替えのたびに「オレンジ→(400ms後)青」のフラッシュが
+  発生していた。`isSyncingCrownProgrammatically` フラグを追加し、
+  プログラム的な同期の直後の1回だけ `onChange` ハンドラを無視させることで、
+  ユーザーの実際の Crown 操作のときだけ tint がオレンジになるよう修正した。
+
+- **バグ2b（Series 11 42mm で画面外にはみ出る）**: `WatchNowPlayingView` の
+  content を素の `VStack` から `ScrollView` でラップした。既存の固定
+  padding/spacing は大きめの画面サイズを前提にしていたと見られ、42mm では
+  シャッフル/リピート行が画面下端を割っていた可能性が高い。個々の余白を
+  画面サイズ別に微調整するより、内容が収まらない画面では素直にスクロール
+  させる方が壊れにくい。シミュレータ実機（Series 11 42mm, watchOS 27.0）で
+  再生中の Now Playing 画面を確認し、タイトル・アーティスト・進捗バー・
+  トランスポートボタンがすべて画面内に収まることを確認した
+  （`progress/../.tmp/watch_nowplaying.png` 相当のスクリーンショットで検証、
+  一時ファイルのため成果物には含めていない）。
+
+- **バグ3（ページ往来時のスタッター、残存分）**: `WatchNowPlayingView.artworkImage`
+  が **computed property** になっており、body 再評価のたびに（背景ブラー用・
+  前景用の計 2 回）ディスクから JPEG を読み直し `UIImage(data:)` でデコードして
+  いた。このビューは 0.5 秒ごとに更新される `progress.position` を購読して
+  いるため、曲が変わらない間も 0.5 秒ごとに 2 回のディスク I/O + JPEG デコードが
+  メインスレッドで走っていたことになる。これはフェーズ5〜7で対処した
+  「`WatchPlaybackProgress` を分離して不要な `objectWillChange` を止める」対策
+  の効果を一部相殺する、見落とされていた継続的なメインスレッド負荷であり、
+  スタッター残存の有力な一因と判断した。`cachedArtworkImage`/`cachedArtworkSongId`
+  を `@State` に持たせ、`currentSong.id` が実際に変わったときだけ
+  `refreshCachedArtworkIfNeeded()` で再読込するよう変更した。
+  - 実機プロファイルで追加確認すべき点（このセッションでは検証できず、
+    実機なし・Instruments 未接続のため推測に留まる）:
+    - Instruments の Time Profiler / Points of Interest で、ページ切替
+      （TabView のスワイプ）前後のメインスレッド使用率と、AVAudioSession の
+      再 activate 呼び出し回数（`activateAudioSession` は `play`/`togglePlayPause`
+      からのみ呼ばれ、ページ遷移そのものからは呼ばれていないことをコードレベル
+      では確認済みだが、実機で本当に再呼び出しが起きていないかは要確認）。
+    - `addPeriodicTimeObserver` の 0.5 秒 tick 自体は Now Playing 非表示中も
+      止めていない（`WatchAudioPlayerService.loadWithoutAutoplay` で登録した
+      ままトラック終了までクリアされない）。処理内容は `progress.position` への
+      代入のみで軽量ではあるが、Library ページ表示中に完全に無駄な tick が
+      走り続けている点は将来的な最適化余地として残る（今回は「見えている間だけ
+      軽くする」効果が薄いと判断し、着手しなかった）。
+
+## Alternatives considered
+
+- バグ1について、`WatchLocalLibrary`/`addSong` を `actor` へ全面移行する案も
+  検討したが、既存アーキテクチャ（MainActor 上でのサスペンションなし実行）で
+  既に安全性が担保されており、再現する欠陥もない状態で大規模リファクタを
+  行うのは過剰対応と判断し見送った。
+
+## Constraints / Gotchas
+
+- `UX-Music-MobileTests` は iOS 側テストターゲットのみで、watchOS 専用の
+  `WatchLocalLibrary`/`WatchConnectivityReceiver` 本体を直接ユニットテストする
+  ターゲットは存在しない。これらの型を直接駆動する並行性テストを書くには
+  watchOS 側テストターゲットの新設が必要（今回はスコープ外として見送り、
+  代わりに共有・純粋ロジック `WatchLibraryIndex.adding` の到着順序不変条件を
+  ピン留めするテストで代替した）。
+- watchOS シミュレータは `xcrun simctl` 単体ではスワイプ/タップの入力注入が
+  できない（`simctl io screenshot` は可能だが `simctl ui` 相当の入力コマンドは
+  ない）。Now Playing ページの実表示確認には Simulator.app を computer-use で
+  操作する必要があった。
