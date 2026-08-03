@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -35,6 +36,30 @@ func TestBuildPairingURL_containsHostPortAndSecret(t *testing.T) {
 	// The QR code must never embed a long-lived token directly.
 	if u.Query().Get("token") != "" {
 		t.Fatalf("pairing URL must not embed a raw device token: %q", got)
+	}
+}
+
+func TestBuildPairingURL_hostsParamListsAllLANAddresses(t *testing.T) {
+	newTempRemoteStore(t)
+
+	got := BuildPairingURL()
+	u, err := url.Parse(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	primaryHost := u.Query().Get("host")
+	hostsParam := u.Query().Get("hosts")
+	if hostsParam == "" {
+		t.Fatalf("pairing URL must include hosts= with all LAN addresses: %q", got)
+	}
+	found := false
+	for _, h := range strings.Split(hostsParam, ",") {
+		if h == primaryHost {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("hosts= must include the primary host %q: %q", primaryHost, hostsParam)
 	}
 }
 
