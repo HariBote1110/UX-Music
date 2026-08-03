@@ -77,6 +77,13 @@ struct WatchNowPlayingView: View {
                     .lineLimit(1)
             }
 
+            if let routeError = player.routeError {
+                Text(routeError)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+            }
+
             if player.currentSong != nil {
                 VStack(spacing: 2) {
                     ProgressView(value: displayedPosition, total: duration)

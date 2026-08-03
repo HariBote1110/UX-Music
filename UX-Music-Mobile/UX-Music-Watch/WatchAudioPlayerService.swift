@@ -1,7 +1,6 @@
 import AVFoundation
 import Foundation
 import MediaPlayer
-import WatchKit
 
 /// Playback progress, split out from `WatchAudioPlayerService` into its own `ObservableObject` so
 /// that the 0.5s-interval position tick does not fire `WatchAudioPlayerService.objectWillChange`.
@@ -16,10 +15,18 @@ final class WatchPlaybackProgress: ObservableObject {
     @Published var position: Double = 0
 }
 
-/// AVPlayer-backed playback service for the Watch app. Mirrors the reference implementation in
-/// standalone watch playback: `.playback`
-/// `AVAudioSession` category plus a `WKExtendedRuntimeSession` so audio keeps playing once the
-/// screen locks or the wrist drops.
+/// AVPlayer-backed playback service for the Watch app, using the platform's actual route for
+/// standalone background music playback: `AVAudioSession`'s `.playback` category with the
+/// `.longFormAudio` route-sharing policy, activated via `AVAudioSession.activate(options:completionHandler:)`.
+/// This is the correct mechanism for watchOS background audio — `WKExtendedRuntimeSession` (used
+/// previously) is intended for workouts and similar long-running *foreground-eligible* tasks, not
+/// music playback, and does not reliably keep `AVPlayer` audio going once the screen locks.
+///
+/// **Hardware constraint**: watchOS does not allow long-form audio playback over the built-in
+/// speaker — a Bluetooth output route (headphones, AirPods, or a paired output) must already be
+/// connected, or the system will surface its own "Select audio output" prompt the first time
+/// `activate` is called for a session. If no output is available, activation fails and playback
+/// does not start; see `routeError` below.
 ///
 /// System integration: publishes state to `MPNowPlayingInfoCenter` and wires
 /// `MPRemoteCommandCenter` (play/pause/next/previous) so the standard watchOS "Now Playing" glance,
@@ -31,6 +38,10 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     @Published var isPlaying = false
     @Published var repeatMode: WatchRepeatMode = .off
     @Published var isShuffled = false
+    /// Set when `AVAudioSession` activation fails (most commonly: no Bluetooth audio output
+    /// connected — watchOS cannot play long-form audio over the speaker). `WatchNowPlayingView`
+    /// surfaces this as a message; cleared on the next successful activation.
+    @Published var routeError: String?
 
     /// Playback position, split into `progress` (see above) to avoid the Library page re-rendering
     /// on every tick. Kept as a computed passthrough so the rest of this type (seek clamping,
@@ -48,7 +59,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     private var originalQueue: [WatchTransferMeta] = []
     private var currentIndex = 0
     private var timeObserver: Any?
-    private var runtimeSession: WKExtendedRuntimeSession?
     private let library: WatchLocalLibrary
 
     init(library: WatchLocalLibrary) {
@@ -57,6 +67,11 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         configureRemoteCommands()
     }
 
+    /// Starts playing `song` from `queue`. Activates the `AVAudioSession` (long-form-audio policy)
+    /// first — this is asynchronous and, on the first call for a session, may prompt the user to
+    /// choose an audio output — and only starts the `AVPlayer` once activation succeeds. If no
+    /// Bluetooth output is available, activation fails and `routeError` is set instead of silently
+    /// doing nothing.
     func play(_ song: WatchTransferMeta, queue songs: [WatchTransferMeta]) {
         originalQueue = songs
         if isShuffled {
@@ -69,8 +84,11 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             queue = songs
         }
         currentIndex = queue.firstIndex(where: { $0.id == song.id }) ?? 0
-        load(queue[currentIndex])
-        startExtendedRuntime()
+        let target = queue[currentIndex]
+        activateAudioSession { [weak self] activated in
+            guard let self, activated else { return }
+            self.load(target)
+        }
     }
 
     func togglePlayPause() {
@@ -78,12 +96,17 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         if isPlaying {
             player.pause()
             isPlaying = false
+            updateNowPlayingInfo()
+            saveResumeState()
         } else {
-            player.play()
-            isPlaying = true
+            activateAudioSession { [weak self] activated in
+                guard let self, activated else { return }
+                player.play()
+                self.isPlaying = true
+                self.updateNowPlayingInfo()
+                self.saveResumeState()
+            }
         }
-        updateNowPlayingInfo()
-        saveResumeState()
     }
 
     func next() {
@@ -180,7 +203,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             return
         }
 
-        configureAudioSession()
         let item = AVPlayerItem(url: url)
         let avPlayer = AVPlayer(playerItem: item)
         isPlaying = false
@@ -205,12 +227,37 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         updateNowPlayingInfo()
     }
 
-    private func configureAudioSession() {
+    /// Configures `.playback`/`.longFormAudio` (the background-eligible route for music, as opposed
+    /// to short/foreground audio) and activates the session asynchronously, invoking `completion`
+    /// back on the main actor with whether activation succeeded. On the first activation for a
+    /// session, watchOS may present its own "Select audio output" UI if no Bluetooth output is
+    /// already connected; if the user has no output available, activation fails and `routeError`
+    /// is set so callers can surface it instead of silently doing nothing.
+    private func activateAudioSession(completion: @escaping (Bool) -> Void) {
+        let session = AVAudioSession.sharedInstance()
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
+            try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
         } catch {
-            print("[WatchAudioPlayer] AVAudioSession error: \(error)")
+            print("[WatchAudioPlayer] AVAudioSession setCategory error: \(error)")
+            routeError = "Could not start audio playback."
+            completion(false)
+            return
+        }
+        session.activate(options: []) { [weak self] activated, error in
+            Task { @MainActor in
+                guard let self else { return }
+                if let error {
+                    print("[WatchAudioPlayer] AVAudioSession activation error: \(error)")
+                }
+                if activated {
+                    self.routeError = nil
+                } else {
+                    // Most commonly: no Bluetooth audio output connected — watchOS cannot play
+                    // long-form audio over the built-in speaker.
+                    self.routeError = "Connect Bluetooth headphones to play audio on Apple Watch."
+                }
+                completion(activated)
+            }
         }
     }
 
@@ -238,15 +285,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             updateNowPlayingInfo()
             saveResumeState()
         }
-    }
-
-    /// Keeps audio playing in the background (screen off / wrist down) for as long as watchOS grants.
-    private func startExtendedRuntime() {
-        runtimeSession?.invalidate()
-        let session = WKExtendedRuntimeSession()
-        session.delegate = self
-        session.start()
-        runtimeSession = session
     }
 
     /// Publishes the current track/position/rate to `MPNowPlayingInfoCenter` so watchOS's system
@@ -286,10 +324,8 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         let center = MPRemoteCommandCenter.shared()
 
         center.playCommand.addTarget { [weak self] _ in
-            guard let self, let player = self.player, !self.isPlaying else { return .commandFailed }
-            player.play()
-            self.isPlaying = true
-            self.updateNowPlayingInfo()
+            guard let self, self.player != nil, !self.isPlaying else { return .commandFailed }
+            self.togglePlayPause()
             return .success
         }
 
@@ -322,18 +358,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             return .success
         }
     }
-}
-
-extension WatchAudioPlayerService: WKExtendedRuntimeSessionDelegate {
-    nonisolated func extendedRuntimeSessionDidStart(_ extendedRuntimeSession: WKExtendedRuntimeSession) {}
-
-    nonisolated func extendedRuntimeSessionWillExpire(_ extendedRuntimeSession: WKExtendedRuntimeSession) {}
-
-    nonisolated func extendedRuntimeSession(
-        _ extendedRuntimeSession: WKExtendedRuntimeSession,
-        didInvalidateWith reason: WKExtendedRuntimeSessionInvalidationReason,
-        error: Error?
-    ) {}
 }
 
 /// On-disk storage for `WatchPlaybackResumeState`, under Application Support alongside the library
