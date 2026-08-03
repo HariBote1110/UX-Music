@@ -1,20 +1,22 @@
 import AVFoundation
 import Foundation
+import MediaPlayer
 import WatchKit
 
 /// AVPlayer-backed playback service for the Watch app. Mirrors the reference implementation in
 /// standalone watch playback: `.playback`
 /// `AVAudioSession` category plus a `WKExtendedRuntimeSession` so audio keeps playing once the
 /// screen locks or the wrist drops.
+///
+/// System integration: publishes state to `MPNowPlayingInfoCenter` and wires
+/// `MPRemoteCommandCenter` (play/pause/next/previous) so the standard watchOS "Now Playing" glance,
+/// AirPods controls, and the paired iPhone's control centre all reflect and drive this player.
 @MainActor
 final class WatchAudioPlayerService: NSObject, ObservableObject {
 
     @Published var currentSong: WatchTransferMeta?
     @Published var isPlaying = false
     @Published var position: Double = 0
-    @Published var volume: Double = 0.7 {
-        didSet { player?.volume = Float(volume) }
-    }
 
     private var player: AVPlayer?
     private var queue: [WatchTransferMeta] = []
@@ -25,6 +27,8 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
 
     init(library: WatchLocalLibrary) {
         self.library = library
+        super.init()
+        configureRemoteCommands()
     }
 
     func play(_ song: WatchTransferMeta, queue songs: [WatchTransferMeta]) {
@@ -43,22 +47,34 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             player.play()
             isPlaying = true
         }
+        updateNowPlayingInfo()
     }
 
     func next() {
         guard !queue.isEmpty else { return }
-        currentIndex = (currentIndex + 1) % queue.count
+        currentIndex = WatchQueueNavigation.nextIndex(current: currentIndex, count: queue.count)
         load(queue[currentIndex])
     }
 
     func previous() {
-        if position > 3 {
-            player?.seek(to: .zero)
+        if WatchQueueNavigation.shouldRestartOnPrevious(position: position) {
+            seek(to: 0)
         } else {
             guard !queue.isEmpty else { return }
-            currentIndex = (currentIndex - 1 + queue.count) % queue.count
+            currentIndex = WatchQueueNavigation.previousIndex(current: currentIndex, count: queue.count)
             load(queue[currentIndex])
         }
+    }
+
+    /// Seeks to `seconds`, clamped to the current track's duration (see `WatchSeekLogic`). Driven
+    /// by the Digital Crown on `WatchNowPlayingView` since dragging a slider is impractical on
+    /// watchOS.
+    func seek(to seconds: Double) {
+        let duration = currentSong?.duration ?? 0
+        let clamped = WatchSeekLogic.clampedPosition(seconds, duration: duration)
+        player?.seek(to: CMTime(seconds: clamped, preferredTimescale: 600))
+        position = clamped
+        updateNowPlayingInfo()
     }
 
     private func load(_ song: WatchTransferMeta) {
@@ -74,7 +90,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         configureAudioSession()
         let item = AVPlayerItem(url: url)
         let avPlayer = AVPlayer(playerItem: item)
-        avPlayer.volume = Float(volume)
         avPlayer.play()
         isPlaying = true
         player = avPlayer
@@ -84,6 +99,7 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             queue: .main
         ) { [weak self] time in
             self?.position = time.seconds
+            self?.updateNowPlayingInfo()
         }
 
         NotificationCenter.default.addObserver(
@@ -92,6 +108,8 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             name: .AVPlayerItemDidPlayToEndTime,
             object: item
         )
+
+        updateNowPlayingInfo()
     }
 
     private func configureAudioSession() {
@@ -125,6 +143,59 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         session.delegate = self
         session.start()
         runtimeSession = session
+    }
+
+    /// Publishes the current track/position/rate to `MPNowPlayingInfoCenter` so watchOS's system
+    /// "Now Playing" surface (and the paired iPhone) reflect what is actually playing.
+    private func updateNowPlayingInfo() {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = WatchNowPlayingInfoBuilder.buildInfo(
+            for: currentSong,
+            isPlaying: isPlaying,
+            position: position
+        )
+    }
+
+    /// Wires `MPRemoteCommandCenter` so play/pause/next/previous from AirPods, the watch's system
+    /// Now Playing glance, or the paired iPhone drive this player.
+    private func configureRemoteCommands() {
+        let center = MPRemoteCommandCenter.shared()
+
+        center.playCommand.addTarget { [weak self] _ in
+            guard let self, let player = self.player, !self.isPlaying else { return .commandFailed }
+            player.play()
+            self.isPlaying = true
+            self.updateNowPlayingInfo()
+            return .success
+        }
+
+        center.pauseCommand.addTarget { [weak self] _ in
+            guard let self, let player = self.player, self.isPlaying else { return .commandFailed }
+            player.pause()
+            self.isPlaying = false
+            self.updateNowPlayingInfo()
+            return .success
+        }
+
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            self?.togglePlayPause()
+            return .success
+        }
+
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            self?.next()
+            return .success
+        }
+
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            self?.previous()
+            return .success
+        }
+
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self, let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            self.seek(to: event.positionTime)
+            return .success
+        }
     }
 }
 

@@ -1,7 +1,21 @@
 import SwiftUI
 
+/// Now Playing page: always reachable via the paged `TabView` in `WatchRootView`, regardless of
+/// what is selected on the Library page. Seeking is driven by the Digital Crown rather than a
+/// slider — dragging a thin watchOS slider is unreliable, whereas the Crown is the platform's
+/// standard scrubbing input (used by Apple's own Podcasts/Music apps).
 struct WatchNowPlayingView: View {
     @EnvironmentObject private var player: WatchAudioPlayerService
+
+    /// Local seek target driven by the Crown. Mirrors `player.position` while idle; diverges only
+    /// while the user is actively rotating the Crown, so the displayed time updates instantly
+    /// without seeking the `AVPlayer` on every intermediate tick.
+    @State private var crownPosition: Double = 0
+    @State private var isSeeking = false
+    @State private var seekCommitTask: Task<Void, Never>?
+
+    private var duration: Double { max(player.currentSong?.duration ?? 0, 1) }
+    private var displayedPosition: Double { isSeeking ? crownPosition : player.position }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -25,15 +39,15 @@ struct WatchNowPlayingView: View {
                     .lineLimit(1)
             }
 
-            if let song = player.currentSong {
+            if player.currentSong != nil {
                 VStack(spacing: 2) {
-                    ProgressView(value: player.position, total: max(song.duration, 1))
+                    ProgressView(value: displayedPosition, total: duration)
                         .progressViewStyle(.linear)
-                        .tint(.blue)
+                        .tint(isSeeking ? .orange : .blue)
                     HStack {
-                        Text(formatTime(player.position))
+                        Text(formatTime(displayedPosition))
                         Spacer()
-                        Text(song.formattedDuration)
+                        Text("-\(formatTime(max(duration - displayedPosition, 0)))")
                     }
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
@@ -64,12 +78,29 @@ struct WatchNowPlayingView: View {
         .padding()
         .focusable()
         .digitalCrownRotation(
-            $player.volume,
+            $crownPosition,
             from: 0,
-            through: 1,
-            by: 0.05,
-            sensitivity: .medium
+            through: duration,
+            by: 1,
+            sensitivity: .medium,
+            isContinuous: false
         )
+        .onChange(of: crownPosition) { _, newValue in
+            isSeeking = true
+            seekCommitTask?.cancel()
+            seekCommitTask = Task {
+                // Debounce: only commit the seek once the Crown has been still for a moment, so a
+                // long rotation does not spam `AVPlayer.seek` on every intermediate tick.
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                guard !Task.isCancelled else { return }
+                player.seek(to: newValue)
+                isSeeking = false
+            }
+        }
+        .onChange(of: player.currentSong?.id) { _, _ in
+            crownPosition = player.position
+        }
+        .onAppear { crownPosition = player.position }
         .navigationTitle("Now Playing")
     }
 

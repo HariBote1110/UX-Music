@@ -1,15 +1,31 @@
 import SwiftUI
 
-/// Root screen for the UX Music Watch app: shows the synced song library received from the
-/// paired iPhone, with a brief overlay while a transfer is in progress.
+/// The two pages of the Watch app, swiped between horizontally like watchOS's own Music app
+/// (Now Playing is always reachable, regardless of what is selected in the library).
+enum WatchPage: Hashable {
+    case library
+    case nowPlaying
+}
+
+/// Root screen for the UX Music Watch app: a horizontally-paged `TabView` with the song library
+/// on one page and Now Playing on the other, so playback controls stay reachable at all times —
+/// tapping a song switches to Now Playing, but swiping back to Library never loses the ability to
+/// swipe forward again.
 struct WatchRootView: View {
     @EnvironmentObject private var connectivity: WatchConnectivityReceiver
     @EnvironmentObject private var library: WatchLocalLibrary
     @Environment(\.scenePhase) private var scenePhase
+    @State private var selectedPage: WatchPage = .library
 
     var body: some View {
         ZStack {
-            WatchSongListView()
+            TabView(selection: $selectedPage) {
+                WatchSongListView(selectedPage: $selectedPage)
+                    .tag(WatchPage.library)
+                WatchNowPlayingView()
+                    .tag(WatchPage.nowPlaying)
+            }
+            .tabViewStyle(.page)
 
             if connectivity.isReceiving {
                 VStack(spacing: 4) {
@@ -35,8 +51,9 @@ struct WatchRootView: View {
 }
 
 #Preview {
+    let library = WatchLocalLibrary()
     WatchRootView()
-        .environmentObject(WatchLocalLibrary())
-        .environmentObject(WatchAudioPlayerService(library: WatchLocalLibrary()))
-        .environmentObject(WatchConnectivityReceiver(library: WatchLocalLibrary()))
+        .environmentObject(library)
+        .environmentObject(WatchAudioPlayerService(library: library))
+        .environmentObject(WatchConnectivityReceiver(library: library))
 }
