@@ -172,4 +172,39 @@ final class WatchPlaybackLogicTests: XCTestCase {
         let decoded = try JSONDecoder().decode(WatchPlaybackResumeState.self, from: data)
         XCTAssertEqual(decoded, state)
     }
+
+    // MARK: - WatchAlbumGrouping
+
+    private func makeAlbumSong(_ id: String, album: String) -> WatchTransferMeta {
+        WatchTransferMeta(id: id, title: id, artist: "A", album: album, duration: 100, fileType: "m4a")
+    }
+
+    func testAlbumsGroupsSongsByAlbumPreservingTrackOrder() {
+        let songs = [
+            makeAlbumSong("1", album: "Beta"),
+            makeAlbumSong("2", album: "Alpha"),
+            makeAlbumSong("3", album: "Beta"),
+            makeAlbumSong("4", album: "Alpha")
+        ]
+        let albums = WatchAlbumGrouping.albums(from: songs)
+        XCTAssertEqual(albums.map(\.album), ["Alpha", "Beta"])
+        XCTAssertEqual(albums[0].songs.map(\.id), ["2", "4"])
+        XCTAssertEqual(albums[1].songs.map(\.id), ["1", "3"])
+    }
+
+    func testAlbumsUsesUnknownAlbumForBlankAlbumField() {
+        let songs = [WatchTransferMeta(id: "1", title: "T", artist: "A", album: "", duration: 10, fileType: "m4a")]
+        let albums = WatchAlbumGrouping.albums(from: songs)
+        XCTAssertEqual(albums.map(\.album), ["Unknown Album"])
+    }
+
+    func testAlbumsReturnsEmptyForEmptySongs() {
+        XCTAssertEqual(WatchAlbumGrouping.albums(from: []), [])
+    }
+
+    func testAlbumArtworkSongIsFirstSongInAlbum() {
+        let songs = [makeAlbumSong("1", album: "Alpha"), makeAlbumSong("2", album: "Alpha")]
+        let albums = WatchAlbumGrouping.albums(from: songs)
+        XCTAssertEqual(albums[0].artworkSong?.id, "1")
+    }
 }
