@@ -82,6 +82,16 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
     /// transfer are not offered for them (see `WatchTransferMenuPolicy`).
     var isYouTube: Bool { sourceType == .youtube }
 
+    /// Decides what tapping this row should do. Shared by every screen that renders `SongRowView`
+    /// (Remote song list, album detail, playlist detail) so YouTube songs consistently open the
+    /// official player instead of being offered the local-download tap target they have no file
+    /// for.
+    func rowTapAction(isDownloaded: Bool) -> SongRowTapAction {
+        if isYouTube { return .openYouTubePlayer(self) }
+        if isDownloaded { return .playDownloaded(self) }
+        return .none
+    }
+
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
@@ -164,4 +174,11 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         if let d = try c.decodeIfPresent(Double.self, forKey: key) { return Int(d) }
         return 0
     }
+}
+
+/// Tap outcome for a `SongRowView` row. See `Song.rowTapAction(isDownloaded:)`.
+enum SongRowTapAction: Equatable {
+    case openYouTubePlayer(Song)
+    case playDownloaded(Song)
+    case none
 }
