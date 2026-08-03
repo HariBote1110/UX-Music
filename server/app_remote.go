@@ -92,18 +92,35 @@ func registerRemoteRoutes(mux *http.ServeMux, ls *LANServer) {
 
 // GetLANServerAddress returns the LAN address of this machine for display in the UI.
 func GetLANServerAddress() string {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
+	addrs := lanIPv4Addresses()
+	if len(addrs) == 0 {
 		return "localhost:" + lanServerPort
 	}
+	return addrs[0] + ":" + lanServerPort
+}
+
+// lanIPv4Addresses returns every non-loopback, non-link-local IPv4 address bound to this
+// machine's network interfaces, in a stable order. A machine with several NICs (Wi-Fi,
+// Ethernet, Tailscale, …) can have multiple LAN-reachable addresses at once, and only the
+// mobile client — not the desktop — knows which one a given peer can actually reach. All of
+// them are therefore surfaced (via BuildPairingURL's hosts= param) so the client can probe
+// each candidate itself, mirroring the mDNS discovery failover in RemoteConnectionResolver.
+func lanIPv4Addresses() []string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var out []string
 	for _, addr := range addrs {
-		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
-			if ipNet.IP.To4() != nil {
-				return ipNet.IP.String() + ":" + lanServerPort
-			}
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() || ipNet.IP.IsLinkLocalUnicast() {
+			continue
+		}
+		if v4 := ipNet.IP.To4(); v4 != nil {
+			out = append(out, v4.String())
 		}
 	}
-	return "localhost:" + lanServerPort
+	return out
 }
 
 // ─── Handlers ───────────────────────────────────────────────────────────────
@@ -611,18 +628,26 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 // BuildPairingURL returns a mobile deep link for QR pairing
-// (uxmusic://pair?host=&port=&secret=). The secret is a fresh one-time value;
+// (uxmusic://pair?host=&hosts=&port=&secret=). The secret is a fresh one-time value;
 // the client redeems it via POST /v1/pairing/redeem to receive its own
 // device-specific auth token — no long-lived token is embedded in the QR code.
+//
+// hosts= carries every LAN IPv4 address of this machine (comma-separated, primary first) so a
+// mobile client on a different subnet/NIC than the one host= happens to name can still find a
+// reachable address, the same way mDNS discovery already fails over across candidates. host= is
+// kept for backwards compatibility with older QR readers.
 func BuildPairingURL() string {
-	addr := GetLANServerAddress()
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		host, port = strings.TrimSpace(addr), lanServerPort
+	addrs := lanIPv4Addresses()
+	host, port := "localhost", lanServerPort
+	if len(addrs) > 0 {
+		host = addrs[0]
 	}
 	q := url.Values{}
 	q.Set("host", host)
 	q.Set("port", port)
+	if len(addrs) > 0 {
+		q.Set("hosts", strings.Join(addrs, ","))
+	}
 	q.Set("secret", newPairingRedeemSecret())
 	return pairingURLScheme + "://pair?" + q.Encode()
 }
