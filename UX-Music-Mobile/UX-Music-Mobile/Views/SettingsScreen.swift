@@ -1,5 +1,20 @@
 import SwiftUI
 
+/// Whether Settings should try every known host in order ("automatic", current/legacy behaviour)
+/// or only ever connect to one host the user pinned ("fixed" — e.g. a Tailscale address while
+/// away from home). Mirrors `ServerConfig.preferredHost` (nil ⇔ `.automatic`).
+enum ConnectionSelectionMode: Hashable {
+    case automatic
+    case fixed
+}
+
+/// Per-row reachability probe result for the known-hosts list (`GET /v1/identity`).
+private enum HostReachability {
+    case checking
+    case reachable
+    case unreachable
+}
+
 struct SettingsScreen: View {
     @Environment(AppModel.self) private var model
     @State private var hostText = ""
@@ -16,6 +31,11 @@ struct SettingsScreen: View {
     @StateObject private var discovery = LANDiscoveryService()
     @FocusState private var focusedField: Field?
 
+    /// Auto vs fixed connection mode, mirrored from `model.serverConfig.preferredHost` on appear.
+    @State private var connectionMode: ConnectionSelectionMode = .automatic
+    /// Reachability probe result per known host string (see `HostReachability`), keyed by host.
+    @State private var hostReachability: [String: HostReachability] = [:]
+
     private enum Field {
         case host, port, secret
     }
@@ -23,6 +43,48 @@ struct SettingsScreen: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    HStack {
+                        Text("接続先")
+                        Spacer()
+                        Text("\(model.serverConfig.activeHost)（\(connectionMode == .fixed ? "固定" : "自動")）")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Picker("接続モード", selection: $connectionMode) {
+                        Text("自動（推奨）").tag(ConnectionSelectionMode.automatic)
+                        Text("固定").tag(ConnectionSelectionMode.fixed)
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: connectionMode) { _, newMode in
+                        if newMode == .automatic {
+                            model.serverConfig.preferredHost = nil
+                        }
+                    }
+
+                    if model.serverConfig.allKnownHosts.isEmpty {
+                        Text("既知のホストがありません。ペアリングまたは Discovery で接続すると候補が表示されます。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(model.serverConfig.allKnownHosts, id: \.self) { knownHost in
+                            Button {
+                                selectKnownHost(knownHost)
+                            } label: {
+                                knownHostRow(knownHost)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("接続先の選択")
+                } footer: {
+                    Text(connectionMode == .fixed
+                        ? "固定モードでは選んだホストにのみ接続し、失敗しても他の候補への自動切り替えは行いません。"
+                        : "自動モードでは上から順に到達できるホストを探し、成功したホストを優先接続先として記憶します。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section {
                     TextField("192.168.1.100", text: $hostText)
                         .keyboardType(.URL)
@@ -191,6 +253,7 @@ struct SettingsScreen: View {
             .onAppear {
                 hostText = model.serverConfig.host
                 portText = String(model.serverConfig.port)
+                connectionMode = (model.serverConfig.preferredHost?.isEmpty == false) ? .fixed : .automatic
                 discovery.start()
             }
             .onDisappear {
@@ -372,6 +435,64 @@ struct SettingsScreen: View {
         case .failed: return .red
         default: return .secondary
         }
+    }
+
+    /// Pins `knownHost` as the fixed connection target: switches `connectionMode` to `.fixed` and
+    /// sets `serverConfig.preferredHost`. Tapping a row in auto mode also switches to fixed — the
+    /// tap itself is the user's "use exactly this one" intent.
+    private func selectKnownHost(_ knownHost: String) {
+        connectionMode = .fixed
+        model.serverConfig.preferredHost = knownHost
+    }
+
+    /// One row per host known from `ServerConfig.allKnownHosts` (`host` + `fallbackHosts`,
+    /// deduplicated): the host string with a Tailscale/LAN badge, a reachability probe result, and
+    /// a checkmark when it is the currently active host.
+    private func knownHostRow(_ knownHost: String) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(knownHost)
+                    .font(.body)
+                Text(ServerConfig.isTailscaleLikeHost(knownHost) ? "Tailscale" : "LAN")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            reachabilityIndicator(for: knownHost)
+            if model.serverConfig.activeHost == knownHost {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
+        }
+        .contentShape(Rectangle())
+        .task(id: knownHost) {
+            await probeReachability(of: knownHost)
+        }
+    }
+
+    @ViewBuilder
+    private func reachabilityIndicator(for knownHost: String) -> some View {
+        switch hostReachability[knownHost] {
+        case .reachable:
+            Image(systemName: "checkmark.circle")
+                .foregroundStyle(.green)
+        case .unreachable:
+            Image(systemName: "xmark.circle")
+                .foregroundStyle(.red)
+        case .checking, .none:
+            ProgressView()
+                .controlSize(.small)
+        }
+    }
+
+    /// Pings `GET /v1/identity` (unauthenticated) against `knownHost` to show a reachability
+    /// verdict next to it, mirroring `RemoteConnectionResolver`'s own probe.
+    private func probeReachability(of knownHost: String) async {
+        hostReachability[knownHost] = .checking
+        let candidate = ServerConfig(host: knownHost, port: model.serverConfig.port)
+        let client = RemoteAPIClient(baseURLString: candidate.baseURLString, session: model.urlSession)
+        let ok = (try? await client.ping()) != nil
+        hostReachability[knownHost] = ok ? .reachable : .unreachable
     }
 
     private func discoveredPeerRow(_ peer: LANDiscoveryPeer) -> some View {
