@@ -17,6 +17,9 @@ struct UXMusicWatchApp: App {
         // launched by the system just to handle the incoming transfer), so the delegate must be
         // registered as early as possible in the process's lifetime.
         connectivity.activate()
+        // Restore the last song/position/queue/mode (without autoplaying) so the app reopens where
+        // the user left off, matching classic Walkman "resume" behaviour.
+        player.restoreResumeState()
     }
 
     var body: some Scene {
@@ -24,6 +27,7 @@ struct UXMusicWatchApp: App {
             WatchRootView()
                 .environmentObject(library)
                 .environmentObject(player)
+                .environmentObject(player.progress)
                 .environmentObject(connectivity)
         }
     }

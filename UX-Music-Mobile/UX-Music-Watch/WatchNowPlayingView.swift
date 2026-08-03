@@ -6,16 +6,20 @@ import SwiftUI
 /// standard scrubbing input (used by Apple's own Podcasts/Music apps).
 struct WatchNowPlayingView: View {
     @EnvironmentObject private var player: WatchAudioPlayerService
+    /// Injected separately from `player` so this page (and only this page) observes the 0.5s
+    /// position tick — see `WatchPlaybackProgress`'s doc comment for why that split fixes the
+    /// stutter that used to happen when swiping between Library and Now Playing.
+    @EnvironmentObject private var progress: WatchPlaybackProgress
 
-    /// Local seek target driven by the Crown. Mirrors `player.position` while idle; diverges only
-    /// while the user is actively rotating the Crown, so the displayed time updates instantly
+    /// Local seek target driven by the Crown. Mirrors `progress.position` while idle; diverges
+    /// only while the user is actively rotating the Crown, so the displayed time updates instantly
     /// without seeking the `AVPlayer` on every intermediate tick.
     @State private var crownPosition: Double = 0
     @State private var isSeeking = false
     @State private var seekCommitTask: Task<Void, Never>?
 
     private var duration: Double { max(player.currentSong?.duration ?? 0, 1) }
-    private var displayedPosition: Double { isSeeking ? crownPosition : player.position }
+    private var displayedPosition: Double { isSeeking ? crownPosition : progress.position }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -74,6 +78,24 @@ struct WatchNowPlayingView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            HStack(spacing: 20) {
+                Button { player.toggleShuffle() } label: {
+                    Image(systemName: "shuffle")
+                        .font(.caption)
+                        .foregroundStyle(player.isShuffled ? .blue : .secondary)
+                }
+                .buttonStyle(.plain)
+
+                Button { player.cycleRepeatMode() } label: {
+                    let imageName: String = player.repeatMode.systemImageName
+                    let tint: Color = player.repeatMode == .off ? .secondary : .blue
+                    Image(systemName: imageName)
+                        .font(.caption)
+                        .foregroundStyle(tint)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding()
         .focusable()
@@ -98,9 +120,9 @@ struct WatchNowPlayingView: View {
             }
         }
         .onChange(of: player.currentSong?.id) { _, _ in
-            crownPosition = player.position
+            crownPosition = progress.position
         }
-        .onAppear { crownPosition = player.position }
+        .onAppear { crownPosition = progress.position }
         .navigationTitle("Now Playing")
     }
 
@@ -111,6 +133,8 @@ struct WatchNowPlayingView: View {
 }
 
 #Preview {
+    let player = WatchAudioPlayerService(library: WatchLocalLibrary())
     WatchNowPlayingView()
-        .environmentObject(WatchAudioPlayerService(library: WatchLocalLibrary()))
+        .environmentObject(player)
+        .environmentObject(player.progress)
 }
