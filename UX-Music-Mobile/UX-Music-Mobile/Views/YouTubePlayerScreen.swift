@@ -1,92 +1,53 @@
 import SwiftUI
 
-/// YouTube official playback screen (phase 1: foreground-only).
-///
-/// The desktop app has no on-device search — only "paste a YouTube URL" — so this screen
-/// mirrors that: a link field resolves video metadata via `RemoteAPIClient.resolveYouTubeVideo`,
-/// then opens the full-screen WKWebView embed player. Starting YouTube playback pauses any local
-/// `MusicPlayerService` playback so the two never overlap.
-struct YouTubePlayerScreen: View {
+/// Resolves `song`'s YouTube URL (`song.sourceURL`, falling back to `song.path`) to video metadata
+/// and presents the full-screen official embed player. Used when a YouTube library entry is tapped
+/// in `RemoteLibraryScreen` — the dedicated "YouTube" tab was removed in favour of YouTube songs
+/// living in the normal library alongside local files (see `Song.sourceType`).
+struct RemoteYouTubeSongPlayerScreen: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var appModel
+    let song: Song
 
-    @State private var urlText: String = ""
-    @State private var isResolving = false
-    @State private var resolveError: String?
     @State private var resolvedVideo: RemoteYouTubeVideoInfo?
-    @State private var isPlayerPresented = false
+    @State private var resolveError: String?
 
     private var client: RemoteAPIClient {
         RemoteAPIClient(baseURLString: appModel.serverConfig.baseURLString, token: appModel.serverConfig.token)
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    TextField("YouTubeのURLを貼り付け", text: $urlText)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                    Button {
-                        Task { await resolve() }
-                    } label: {
-                        if isResolving {
-                            ProgressView()
-                        } else {
-                            Text("動画情報を取得")
-                        }
-                    }
-                    .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isResolving)
-                } footer: {
-                    if let resolveError {
-                        Text(resolveError).foregroundStyle(.red)
-                    } else {
-                        Text("デスクトップとペアリング済みのYouTube URLを貼り付けると、公式プレイヤーで再生できます。")
-                    }
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if let video = resolvedVideo {
+                YouTubeFullScreenPlayer(video: video)
+            } else if let resolveError {
+                VStack(spacing: 12) {
+                    Text(resolveError)
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                    Button("閉じる") { dismiss() }
+                        .buttonStyle(.borderedProminent)
                 }
-
-                if let video = resolvedVideo {
-                    Section {
-                        Button {
-                            appModel.player.stop()
-                            isPlayerPresented = true
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(video.title).font(.headline).lineLimit(2)
-                                    Text(video.author).font(.subheadline).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "play.circle.fill").font(.title2)
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("YouTube")
-            .fullScreenCover(isPresented: $isPlayerPresented) {
-                if let video = resolvedVideo {
-                    YouTubeFullScreenPlayer(video: video)
-                }
+            } else {
+                ProgressView().tint(.white)
             }
         }
-    }
-
-    private func resolve() async {
-        resolveError = nil
-        resolvedVideo = nil
-        isResolving = true
-        defer { isResolving = false }
-        do {
-            resolvedVideo = try await client.resolveYouTubeVideo(url: urlText.trimmingCharacters(in: .whitespacesAndNewlines))
-        } catch {
-            resolveError = "動画情報を取得できませんでした。URLとペアリング状態を確認してください。"
+        .task {
+            appModel.player.stop()
+            let url = song.sourceURL ?? song.path
+            do {
+                resolvedVideo = try await client.resolveYouTubeVideo(url: url)
+            } catch {
+                resolveError = "動画情報を取得できませんでした。デスクトップとのペアリング状態を確認してください。"
+            }
         }
     }
 }
 
 /// Full-screen official embed player (WKWebView), styled to match `NowPlayingView`'s black backdrop.
-private struct YouTubeFullScreenPlayer: View {
+struct YouTubeFullScreenPlayer: View {
     let video: RemoteYouTubeVideoInfo
 
     @Environment(\.dismiss) private var dismiss

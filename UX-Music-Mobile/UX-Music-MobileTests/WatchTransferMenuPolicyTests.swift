@@ -49,4 +49,27 @@ final class WatchTransferMenuPolicyTests: XCTestCase {
         let eligible = WatchTransferMenuPolicy.songsEligibleForBulkTransfer(songs, downloadedIds: ["1", "2", "3"])
         XCTAssertEqual(eligible.map(\.id), ["3", "1", "2"])
     }
+
+    // MARK: - YouTube songs
+
+    private func youtubeSong(id: String) -> Song {
+        var s = song(id: id)
+        s.sourceType = .youtube
+        s.sourceURL = "https://youtu.be/\(id)"
+        return s
+    }
+
+    func testIsEligibleForTransferIsFalseForYouTubeSongs() {
+        XCTAssertFalse(WatchTransferMenuPolicy.isEligibleForTransfer(youtubeSong(id: "1")))
+    }
+
+    func testIsEligibleForTransferIsTrueForLocalSongs() {
+        XCTAssertTrue(WatchTransferMenuPolicy.isEligibleForTransfer(song(id: "1")))
+    }
+
+    func testSongsEligibleForBulkTransferExcludesYouTubeSongs() {
+        let songs = [song(id: "1"), youtubeSong(id: "2"), song(id: "3")]
+        let eligible = WatchTransferMenuPolicy.songsEligibleForBulkTransfer(songs, downloadedIds: [])
+        XCTAssertEqual(eligible.map(\.id), ["1", "3"])
+    }
 }

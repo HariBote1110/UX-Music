@@ -28,12 +28,6 @@ struct HomeRootView: View {
             .tabItem { Label("Control", systemImage: "tv") }
             .tag(MainTab.control)
 
-            LazyTabRoot(isSelected: tab == .youtube) {
-                YouTubePlayerScreen()
-            }
-            .tabItem { Label("YouTube", systemImage: "play.rectangle.fill") }
-            .tag(MainTab.youtube)
-
             LazyTabRoot(isSelected: tab == .settings) {
                 SettingsScreen()
             }
@@ -115,6 +109,5 @@ private enum MainTab: Hashable {
     case library
     case remote
     case control
-    case youtube
     case settings
 }

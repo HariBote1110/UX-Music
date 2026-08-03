@@ -28,6 +28,8 @@ struct RemoteLibraryScreen: View {
     @State private var isLoadingRemotePlaylists = false
     /// Avoid refetching on every `NavigationStack` pop; reset when this screen is recreated (e.g. changing tabs).
     @State private var didScheduleRemoteLoad = false
+    @State private var showAddYouTubeLink = false
+    @State private var youTubeSongToPlay: Song?
 
     private var viewModeIndex: Binding<Int> {
         Binding(
@@ -55,6 +57,14 @@ struct RemoteLibraryScreen: View {
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showDesktopPlaylistImport) {
                 DesktopPlaylistImportView(isPresented: $showDesktopPlaylistImport)
+                    .environment(model)
+            }
+            .sheet(isPresented: $showAddYouTubeLink) {
+                AddYouTubeLinkSheet(isPresented: $showAddYouTubeLink)
+                    .environment(model)
+            }
+            .fullScreenCover(item: $youTubeSongToPlay) { song in
+                RemoteYouTubeSongPlayerScreen(song: song)
                     .environment(model)
             }
             .navigationDestination(for: RemoteLibraryNav.self) { route in
@@ -121,6 +131,23 @@ struct RemoteLibraryScreen: View {
             }
             .modifier(LibraryHeaderGlassButtonStyle())
             .accessibilityLabel("Refresh library")
+
+            if model.serverConfig.isConfigured {
+                Menu {
+                    Button {
+                        showAddYouTubeLink = true
+                    } label: {
+                        Label("YouTube の URL を追加", systemImage: "play.rectangle")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                }
+                .modifier(LibraryHeaderGlassButtonStyle())
+                .accessibilityLabel("その他の操作")
+            }
         }
     }
 
@@ -407,9 +434,11 @@ struct RemoteLibraryScreen: View {
                         song: song,
                         artworkId: song.artworkId,
                         artworkURL: model.artworkURL(for: song.artworkId),
-                        onTap: model.isSongDownloaded(songId: song.id)
-                            ? { playDownloaded(song, in: songs) }
-                            : nil,
+                        onTap: song.isYouTube
+                            ? { youTubeSongToPlay = song }
+                            : (model.isSongDownloaded(songId: song.id)
+                                ? { playDownloaded(song, in: songs) }
+                                : nil),
                         trailing: {
                             downloadTrailing(for: song)
                         }
@@ -417,6 +446,13 @@ struct RemoteLibraryScreen: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .contextMenu {
+                        if song.isYouTube {
+                            Button {
+                                youTubeSongToPlay = song
+                            } label: {
+                                Label("公式プレイヤーで再生", systemImage: "play.rectangle")
+                            }
+                        }
                         WatchTransferSongMenuItem(song: song)
                     }
                 }
@@ -427,7 +463,12 @@ struct RemoteLibraryScreen: View {
 
     @ViewBuilder
     private func downloadTrailing(for song: Song) -> some View {
-        if model.isSongDownloaded(songId: song.id) {
+        if song.isYouTube {
+            Image(systemName: "play.rectangle.fill")
+                .foregroundStyle(.secondary)
+                .font(.system(size: 18))
+                .accessibilityLabel("YouTube 公式再生")
+        } else if model.isSongDownloaded(songId: song.id) {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .font(.system(size: 20))

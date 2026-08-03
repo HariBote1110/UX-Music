@@ -20,6 +20,12 @@ enum WatchTransferMenuPolicy {
     /// only one song. `downloadedIds` is kept as a parameter for call-site source compatibility but
     /// is no longer consulted.
     static func songsEligibleForBulkTransfer(_ songs: [Song], downloadedIds: Set<String>) -> [Song] {
-        songs
+        songs.filter(isEligibleForTransfer)
+    }
+
+    /// YouTube library entries (`AddYouTubeLink`, played via the embed player) have no downloadable
+    /// audio file on the desktop side, so neither download nor Apple Watch transfer applies to them.
+    static func isEligibleForTransfer(_ song: Song) -> Bool {
+        !song.isYouTube
     }
 }

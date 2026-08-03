@@ -57,3 +57,44 @@ YouTube 再生を開始する際（`YouTubePlayerScreen` のプレイヤー起�
 - iOS の音声セッション（`AVAudioSession`）と `MusicPlayerService` の processTap の
   共存挙動は未検証（今回は `stop()` で明示的に排他するのみ）。
 - バックグラウンド再生・Now Playing センター連携は次フェーズ。
+
+## 統合フェーズ: 専用タブ廃止 → 通常ライブラリへの統合
+
+### Decision
+デスクトップの「YouTube もライブラリの一員」という方針に合わせ、iPhone の専用
+「YouTube」タブを廃止し、Remote ライブラリの通常曲一覧に統合した。
+
+- サーバー: `POST /v1/remote/youtube/add`（`server/app_remote_youtube.go`）を新設し、
+  デスクトップの `App.AddYouTubeLink` をそのまま呼ぶ。デスクトップの再生モード設定
+  （embed/stream/download）に従って登録され、以後は既存の `GET /v1/remote/songs` が
+  そのまま返す（`type`/`sourceURL` フィールドは元々ペイロードに含まれていたため、
+  songs ハンドラ自体の変更は不要だった）。
+- iPhone `Song` モデルに `sourceType`（JSON キー `type`、未指定は `.local`）と
+  `sourceURL` を追加。`isYouTube` 計算プロパティで判定。
+- `WatchTransferMenuPolicy.isEligibleForTransfer` / `songsEligibleForBulkTransfer` で
+  YouTube 曲を Watch 転送対象から除外。`AppModel.downloadAlbum` /
+  `downloadPlaylistSongs` / `albumHasTracksToDownload` / `playlistSongsContainUndownloaded`
+  も同様に YouTube 曲をスキップする。
+- `RemoteLibraryScreen` の曲行: YouTube 曲は末尾に `play.rectangle.fill` インジケータを
+  表示し、タップ／コンテキストメニューから `RemoteYouTubeSongPlayerScreen`
+  （旧 `YouTubePlayerScreen` のプレイヤー部分を流用・改称）を全画面表示する。
+- URL 追加導線は `RemoteLibraryScreen` のヘッダーに新設した ellipsis メニュー →
+  `AddYouTubeLinkSheet`（新規）に移設。追加後は `model.refreshLibrary()` で
+  一覧を再取得する。
+- `HomeRootView` から `.youtube` タブを削除。`YouTubePlayerScreen.swift` の
+  URL 貼り付け UI は削除し、`YouTubeFullScreenPlayer`（internal 化）と
+  `RemoteYouTubeSongPlayerScreen`（新規・URL解決→プレイヤー表示のラッパー）のみ残した。
+
+### Alternatives considered
+- `Song` に `videoId` を専用フィールドとして持たせる案は見送った。デスクトップの
+  ライブラリ JSON には videoId が保存されておらず（`path`/`sourceURL` が動画URL）、
+  タップ時に既存の `RemoteAPIClient.resolveYouTubeVideo(url:)` を呼んで解決する
+  既存フローをそのまま流用する方がサーバー側の変更を増やさずに済む。
+
+### Constraints / Gotchas
+- `/v1/remote/youtube/add` は `deviceAuthMiddleware` に自動的にかかるため、
+  ハンドラ自身は認証チェックを持たない（`isPublicLANEndpoint` に含めていない）。
+- YouTube 曲のダウンロード除外はダウンロードボタンを隠すだけでなく、
+  `AppModel` のアルバム/プレイリスト一括ダウンロードのループからも
+  除外している点に注意（ここを忘れると一括ダウンロードが動画URLをファイルとして
+  ダウンロードしようとして失敗する）。

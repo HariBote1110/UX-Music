@@ -1,5 +1,13 @@
 import Foundation
 
+/// Mirrors the `type` field the desktop library stores per song (`server/app_youtube.go`'s
+/// `buildStreamingSong`/`AddYouTubeLink` write `"youtube"`; ordinary scanned files have no `type`
+/// key at all, which decodes to `.local`).
+enum SongSourceType: String, Codable, Equatable, Hashable, Sendable {
+    case local
+    case youtube
+}
+
 /// Mirrors the `GET /v1/remote/songs` payload (same keys as Flutter `Song`).
 struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
     var id: String
@@ -18,11 +26,15 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
     var sampleRate: Int?
     var bitDepth: Int?
     var artworkId: String
+    var sourceType: SongSourceType
+    var sourceURL: String?
 
     enum CodingKeys: String, CodingKey {
         case id, path, title, artist, album, year, genre, duration
         case trackNumber, discNumber, fileSize, fileType, sampleRate, bitDepth, artworkId
         case albumArtist = "albumartist"
+        case sourceType = "type"
+        case sourceURL
     }
 
     init(
@@ -41,7 +53,9 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         fileType: String = "",
         sampleRate: Int? = nil,
         bitDepth: Int? = nil,
-        artworkId: String = ""
+        artworkId: String = "",
+        sourceType: SongSourceType = .local,
+        sourceURL: String? = nil
     ) {
         self.id = id
         self.path = path
@@ -59,7 +73,14 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         self.sampleRate = sampleRate
         self.bitDepth = bitDepth
         self.artworkId = artworkId
+        self.sourceType = sourceType
+        self.sourceURL = sourceURL
     }
+
+    /// `true` for songs registered via `AddYouTubeLink` (embed/stream modes). These have no local
+    /// file on the desktop's disk in the same sense a scanned file does, so download and Watch
+    /// transfer are not offered for them (see `WatchTransferMenuPolicy`).
+    var isYouTube: Bool { sourceType == .youtube }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -79,6 +100,8 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         try c.encodeIfPresent(sampleRate, forKey: .sampleRate)
         try c.encodeIfPresent(bitDepth, forKey: .bitDepth)
         try c.encode(artworkId, forKey: .artworkId)
+        try c.encode(sourceType, forKey: .sourceType)
+        try c.encodeIfPresent(sourceURL, forKey: .sourceURL)
     }
 
     init(from decoder: Decoder) throws {
@@ -99,6 +122,8 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         sampleRate = try c.decodeIfPresent(Int.self, forKey: .sampleRate)
         bitDepth = try c.decodeIfPresent(Int.self, forKey: .bitDepth)
         artworkId = try c.decodeIfPresent(String.self, forKey: .artworkId) ?? ""
+        sourceType = try c.decodeIfPresent(SongSourceType.self, forKey: .sourceType) ?? .local
+        sourceURL = try c.decodeIfPresent(String.self, forKey: .sourceURL)
     }
 
     var displayTitle: String { title.isEmpty ? "Unknown Title" : title }

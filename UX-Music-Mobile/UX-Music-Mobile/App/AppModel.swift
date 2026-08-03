@@ -340,16 +340,18 @@ final class AppModel {
     }
 
     /// Downloads every track in `album` that is not already local, in album order (sequential).
+    /// YouTube entries have no downloadable file on the desktop side and are skipped.
     func downloadAlbum(_ album: Album) async {
-        for song in album.songs {
+        for song in album.songs where !song.isYouTube {
             guard !downloadManager.isDownloaded(songId: song.id) else { continue }
             await downloadSong(song)
         }
     }
 
-    /// Downloads every track in `songs` in list order (sequential), skipping already local files.
+    /// Downloads every track in `songs` in list order (sequential), skipping already local files
+    /// and YouTube entries (see `downloadAlbum`).
     func downloadPlaylistSongs(_ songs: [Song]) async {
-        for song in songs {
+        for song in songs where !song.isYouTube {
             guard !downloadManager.isDownloaded(songId: song.id) else { continue }
             await downloadSong(song)
         }
@@ -357,12 +359,12 @@ final class AppModel {
 
     func albumHasTracksToDownload(_ album: Album) -> Bool {
         _ = downloadLibraryRevision
-        return album.songs.contains { !downloadManager.isDownloaded(songId: $0.id) }
+        return album.songs.contains { !$0.isYouTube && !downloadManager.isDownloaded(songId: $0.id) }
     }
 
     func playlistSongsContainUndownloaded(_ songs: [Song]) -> Bool {
         _ = downloadLibraryRevision
-        return songs.contains { !downloadManager.isDownloaded(songId: $0.id) }
+        return songs.contains { !$0.isYouTube && !downloadManager.isDownloaded(songId: $0.id) }
     }
 
     private func cacheArtworkAfterDownloadIfNeeded(for song: Song) async {

@@ -15,7 +15,7 @@ struct WatchTransferSongMenuItem: View {
         if WatchTransferMenuPolicy.canShowMenu(
             isWatchConnectivitySupported: WCSession.isSupported(),
             isPaired: model.watchTransferBridge.isPaired
-        ) {
+        ), WatchTransferMenuPolicy.isEligibleForTransfer(song) {
             Button {
                 model.watchTransferBridge.send(song)
             } label: {

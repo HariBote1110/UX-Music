@@ -221,6 +221,19 @@ struct RemoteAPIClient: Sendable {
         return try JSONDecoder().decode(RemoteYouTubeVideoInfo.self, from: data)
     }
 
+    /// Adds a YouTube video to the desktop library via `POST /v1/remote/youtube/add`, mirroring
+    /// the desktop's own `AddYouTubeLink` (see `server/app_remote_youtube.go`). The desktop's YouTube
+    /// playback mode setting decides whether this downloads the video or registers a streaming/embed
+    /// entry; either way the song then appears from `fetchSongs()` like any other library song.
+    func addYouTubeLink(url youtubeURL: String) async throws {
+        var req = try authorizedRequest(path: "/v1/remote/youtube/add")
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(["url": youtubeURL])
+        let (data, response) = try await session.data(for: req)
+        try Self.throwIfNotOK(response, data: data)
+    }
+
     func fetchState() async throws -> [String: Any] {
         let (data, response) = try await session.data(for: authorizedRequest(path: "/v1/remote/state"))
         try Self.throwIfNotOK(response, data: data)
