@@ -70,6 +70,55 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertEqual(a, b)
     }
 
+    // MARK: - preferredHost (fixed connection mode)
+
+    /// nil by default: fresh/legacy configs stay in "auto" mode.
+    func testPreferredHostDefaultsToNil() {
+        XCTAssertNil(ServerConfig(host: "10.0.0.1", port: 8765).preferredHost)
+    }
+
+    func testPreferredHostEncodeDecodeRoundTrip() throws {
+        var cfg = ServerConfig(host: "10.0.0.1", port: 8765)
+        cfg.preferredHost = "100.116.252.72"
+        let data = try JSONEncoder().encode(cfg)
+        let decoded = try JSONDecoder().decode(ServerConfig.self, from: data)
+        XCTAssertEqual(decoded.preferredHost, "100.116.252.72")
+    }
+
+    /// Regression: older persisted JSON has no `preferredHost` key. Decoding must not fail and must
+    /// default to nil (auto mode), never accidentally lock a legacy install into fixed mode.
+    func testDecodeLegacyJSONWithoutPreferredHostSucceeds() throws {
+        let json = Data(#"{"host":"10.0.0.1","port":8765}"#.utf8)
+        let cfg = try JSONDecoder().decode(ServerConfig.self, from: json)
+        XCTAssertNil(cfg.preferredHost)
+    }
+
+    /// Equatable must ignore `preferredHost` — same rationale as `fallbackHosts`/`token`: it is a
+    /// mode setting, not host identity.
+    func testEquatableIgnoresPreferredHost() {
+        var a = ServerConfig(host: "10.0.0.1", port: 8765)
+        var b = ServerConfig(host: "10.0.0.1", port: 8765)
+        a.preferredHost = "100.116.252.72"
+        b.preferredHost = nil
+        XCTAssertEqual(a, b)
+    }
+
+    /// `activeHost` is what `baseURLString`/connections should actually use: the preferred host
+    /// when fixed mode is on, otherwise the regular `host`.
+    func testActiveHostUsesPreferredHostWhenSet() {
+        var cfg = ServerConfig(host: "192.168.1.182", port: 8765)
+        cfg.preferredHost = "100.116.252.72"
+        XCTAssertEqual(cfg.activeHost, "100.116.252.72")
+        XCTAssertEqual(cfg.baseURLString, "http://100.116.252.72:8765")
+    }
+
+    func testActiveHostFallsBackToHostWhenPreferredHostNilOrBlank() {
+        var cfg = ServerConfig(host: "192.168.1.182", port: 8765)
+        XCTAssertEqual(cfg.activeHost, "192.168.1.182")
+        cfg.preferredHost = "   "
+        XCTAssertEqual(cfg.activeHost, "192.168.1.182")
+    }
+
     // MARK: - Pairing QR (uxmusic://pair?host=&port=&secret=)
 
     func testPairingRequestFromPairingURL_parsesHostPortAndSecret() throws {
