@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"ux-music-sidecar/internal/youtube"
@@ -55,6 +56,36 @@ func TestRemoteYouTubeResolveHandlerRejectsInvalidURL(t *testing.T) {
 	req := httptest.NewRequest("GET", "/v1/remote/youtube/resolve?url=not-a-youtube-link", nil)
 	rec := httptest.NewRecorder()
 	remoteYouTubeResolveHandler(rec, req)
+	if rec.Code != 400 {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRemoteYouTubeAddHandlerRejectsWrongMethod(t *testing.T) {
+	ls := &LANServer{app: &App{}}
+	req := httptest.NewRequest("GET", "/v1/remote/youtube/add", nil)
+	rec := httptest.NewRecorder()
+	ls.remoteYouTubeAddHandler(rec, req)
+	if rec.Code != 405 {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestRemoteYouTubeAddHandlerRejectsMissingURL(t *testing.T) {
+	ls := &LANServer{app: &App{}}
+	req := httptest.NewRequest("POST", "/v1/remote/youtube/add", strings.NewReader(`{"url":""}`))
+	rec := httptest.NewRecorder()
+	ls.remoteYouTubeAddHandler(rec, req)
+	if rec.Code != 400 {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRemoteYouTubeAddHandlerRejectsInvalidBody(t *testing.T) {
+	ls := &LANServer{app: &App{}}
+	req := httptest.NewRequest("POST", "/v1/remote/youtube/add", strings.NewReader(`not-json`))
+	rec := httptest.NewRecorder()
+	ls.remoteYouTubeAddHandler(rec, req)
 	if rec.Code != 400 {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
