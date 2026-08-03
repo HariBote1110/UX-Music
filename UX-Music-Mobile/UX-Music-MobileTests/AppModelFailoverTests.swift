@@ -108,4 +108,68 @@ final class AppModelFailoverTests: XCTestCase {
         }
         XCTAssertEqual(model.serverConfig.host, "primary.invalid")
     }
+
+    // MARK: - Multi-NIC QR pairing (uxmusic://pair?host=&hosts=&port=&secret=)
+
+    /// The primary `host=` is unreachable but a `hosts=` candidate is: `applyPairingURL` must probe
+    /// every candidate (like Discovery/`withFailover` do) rather than only trying the first one, and
+    /// must save the reachable host as primary with the rest tucked into `fallbackHosts`.
+    func testApplyPairingURL_probesHostsListAndSavesReachableHostAsPrimary() async throws {
+        let model = AppModel()
+        model.urlSession = sessionWithMock()
+
+        FailoverMockURLProtocol.handler = { req in
+            if req.url?.host == "192.168.1.182" {
+                throw URLError(.cannotConnectToHost)
+            }
+            if req.url?.path == "/v1/pairing/redeem" {
+                XCTAssertEqual(req.url?.host, "192.168.0.140")
+                let data = #"{"deviceId":"dev1","token":"tok-123"}"#.data(using: .utf8)!
+                let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (data, res)
+            }
+            let data = #"{"hostname":"desk"}"#.data(using: .utf8)!
+            let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (data, res)
+        }
+
+        let url = try XCTUnwrap(URL(string: "uxmusic://pair?host=192.168.1.182&hosts=192.168.1.182,192.168.0.140&port=8765&secret=abc123"))
+        let ok = await model.applyPairingURL(url)
+
+        XCTAssertTrue(ok)
+        XCTAssertEqual(model.serverConfig.host, "192.168.0.140")
+        XCTAssertEqual(model.serverConfig.token, "tok-123")
+        XCTAssertEqual(model.serverConfig.fallbackHosts, ["192.168.1.182"])
+        XCTAssertNil(model.pairingError)
+    }
+
+    /// None of the QR's candidate hosts are reachable: `pairingError` must tell the user to check
+    /// their network rather than failing silently.
+    func testApplyPairingURL_allHostsUnreachableSetsNetworkError() async throws {
+        let model = AppModel()
+        model.urlSession = sessionWithMock()
+
+        FailoverMockURLProtocol.handler = { _ in
+            throw URLError(.cannotConnectToHost)
+        }
+
+        let url = try XCTUnwrap(URL(string: "uxmusic://pair?host=192.168.1.182&hosts=192.168.1.182,192.168.0.140&port=8765&secret=abc123"))
+        let ok = await model.applyPairingURL(url)
+
+        XCTAssertFalse(ok)
+        XCTAssertEqual(model.pairingError, "デスクトップに到達できません。同じ Wi-Fi に接続しているか確認してください。")
+    }
+
+    /// A malformed or outdated QR (fails `ServerConfig.pairingRequest`) must not fail silently —
+    /// `pairingError` must be set so the UI can surface it.
+    func testApplyPairingURL_parseFailureSetsPairingError() async throws {
+        let model = AppModel()
+        model.urlSession = sessionWithMock()
+
+        let url = try XCTUnwrap(URL(string: "uxmusic://pair?host=192.168.1.182"))
+        let ok = await model.applyPairingURL(url)
+
+        XCTAssertFalse(ok)
+        XCTAssertEqual(model.pairingError, "QRコードを読み取れませんでした。デスクトップアプリを最新版に更新してください。")
+    }
 }

@@ -103,4 +103,23 @@ final class ServerConfigTests: XCTestCase {
         let u = URL(string: "http://192.168.1.1:8765/v1/identity?secret=abc123")!
         XCTAssertNil(ServerConfig.pairingRequest(fromPairingURL: u))
     }
+
+    // MARK: - Multi-NIC hosts= (uxmusic://pair?host=&hosts=&port=&secret=)
+
+    /// A desktop with several LAN NICs (Wi-Fi/Ethernet/Tailscale) embeds every reachable address in
+    /// `hosts=` so the phone can probe each candidate rather than only the (possibly unreachable)
+    /// primary `host=`.
+    func testPairingRequestFromPairingURL_parsesHostsList() throws {
+        let u = try XCTUnwrap(URL(string: "uxmusic://pair?host=192.168.1.182&hosts=192.168.1.182,192.168.0.140,100.116.252.72&port=8765&secret=abc123"))
+        let request = try XCTUnwrap(ServerConfig.pairingRequest(fromPairingURL: u))
+        XCTAssertEqual(request.host, "192.168.1.182")
+        XCTAssertEqual(request.hosts, ["192.168.1.182", "192.168.0.140", "100.116.252.72"])
+    }
+
+    /// Older desktop builds only emit `host=` — the candidate list must still contain that one host.
+    func testPairingRequestFromPairingURL_missingHostsFallsBackToHostOnly() throws {
+        let u = try XCTUnwrap(URL(string: "uxmusic://pair?host=10.0.0.2&port=8765&secret=abc123"))
+        let request = try XCTUnwrap(ServerConfig.pairingRequest(fromPairingURL: u))
+        XCTAssertEqual(request.hosts, ["10.0.0.2"])
+    }
 }
