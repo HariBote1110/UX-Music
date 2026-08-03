@@ -342,3 +342,127 @@
 - `xcodebuild -scheme UX-Music-Watch -destination 'generic/platform=watchOS Simulator' build` → BUILD SUCCEEDED
 - `xcodebuild -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air' build` → BUILD SUCCEEDED
 - `xcodebuild test -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air'` → TEST SUCCEEDED（`WatchPlaybackLogicTests` 新規16件を含め全件成功）
+
+## フェーズ6: 再生スタッター修正・アートワーク対応・Walkman世代ギャップ解消
+
+### 決定1: 再生スタッターの原因と対策
+
+**原因**: `WatchAudioPlayerService` は `currentSong`/`isPlaying`/`position` を
+すべて同一の `ObservableObject` の `@Published` として持っていた。
+`addPeriodicTimeObserver`（0.5秒毎）が `position` を更新するたび、その
+`ObservableObject` を `@EnvironmentObject` として参照している **すべての
+View**（Library ページを含む）が SwiftUI の差分検出により再描画されていた
+——実際に `position` を読んでいない `WatchSongListView` も、同じ
+ObservableObject を購読しているだけで巻き添えになる。加えて
+`updateNowPlayingInfo()`（`MPNowPlayingInfoCenter.default().nowPlayingInfo`
+辞書の再構築）もこのティック毎に呼ばれており、二重に無駄なコストが
+乗っていた。Library⇄Now Playing のページ切替時に体感できる音声スタッター
+（描画スレッドの詰まりが AVFoundation の再生キューにも影響）はここに起因
+すると判断した。
+
+**対策**: `position` だけを別の軽量 `ObservableObject`
+（`WatchPlaybackProgress`、`WatchAudioPlayerService.swift` に同居）に切り出し、
+`WatchNowPlayingView` だけがこれを `@EnvironmentObject` として購読する構造に
+変更。Library ページは `WatchPlaybackProgress` を一切知らないため、0.5秒
+ティックで再描画されなくなった。あわせて `updateNowPlayingInfo()` の呼び出し
+をティック毎から「状態が変化する操作（load/play/pause/seek/next/previous/
+曲終端）」のみに限定した。`MPNowPlayingInfoPropertyElapsedPlaybackTime` +
+`MPNowPlayingInfoPropertyPlaybackRate` の組はシステム側で経過時間を補間する
+設計のため、毎ティックの辞書再構築は本来不要だった。
+
+### 決定2: アートワーク転送方式
+
+`WatchTransferMeta` の `wcMetadata`（`transferFile` の metadata 引数）には
+サイズ上限があり画像バイト列を直接載せるのは不適切なため、フェーズ2の
+決定どおり **音声と同じ仕組みで別ファイルとして転送** する方式を採用した。
+- iOS 側: `DownloadManager.localArtworkFileURLIfPresent(artworkId:)` で
+  ローカルにダウンロード済みのジャケットを取得し、`UIGraphicsImageRenderer`
+  で長辺 400px にダウンスケール、JPEG（圧縮率0.6, 目安 ~50KB）に再エンコード
+  して一時ファイルに書き出し、`kind: "artwork"` を付けた metadata で
+  2本目の `transferFile` として送信する。
+- `WatchTransferMeta` に `artworkFileName`（任意）を追加したが、実際の
+  保存先ファイル名は `id` から決定的に導出する
+  `WatchTransferMeta.storedArtworkFileName(forId:)` を使う。
+  `artworkFileName` フィールドはメタデータ上「アートワークが存在する」
+  ことを示すマーカーとして持たせているが、受信側は `id` だけで解決できる
+  ため、フィールドの有無に依存しない堅牢な設計にした。
+- watchOS 側: `WatchConnectivityReceiver.didReceive` で
+  `WatchTransferMeta.isArtworkWcMetadata` を先にチェックし、アートワーク
+  転送なら `WatchAudioStorage.artworkFileURL(forId:)` にコピーして即
+  return（曲メタデータとしてのパースは行わない）。
+- 既に転送済み（アートワーク無し）の曲は、iPhone 側から再転送すれば
+  アートワークが付与される（フェーズ2で決めた「同じ id は追加スキップ」
+  の `WatchLibraryIndex.adding` はこの再転送の音声側には影響するが、
+  アートワークは曲メタデータの index とは独立したファイルなので
+  再転送時は問題なく上書きされる）。
+
+### 決定3: リピート/シャッフル/レジューム
+
+Walkman S313 世代とのギャップのうち実装したもの:
+- **リピートモード**: `WatchRepeatMode`（off/all/one）を
+  `Core/WatchPlaybackLogic.swift` に追加。`.next()` で
+  off→all→one→off と巡回。曲終端の挙動は `WatchQueueNavigation.autoAdvance`
+  （純関数）で off の場合は最後の曲で停止するよう変更した
+  （従来は暗黙に無限ループしていた）。
+- **シャッフル**: `WatchShuffleLogic.applyShuffle` （純関数、乱数生成は
+  呼び出し側の `Array.shuffled()` に任せてテスト容易性を確保）で、現在の
+  再生曲を先頭に固定したままキューを並べ替える。オフに戻すと
+  `originalQueue`（`WatchAudioPlayerService` が保持する未シャッフルの
+  元順序）に復元する。
+- **レジューム**: `WatchPlaybackResumeState`（Codable）に曲ID・位置・
+  シャッフル後キュー/元キューの曲ID列・リピートモード・シャッフル状態を
+  保存し、`WatchResumeStorage`（Application Support 配下の JSON）に永続化。
+  状態が変化する操作のたびに保存するため、プロセスが不意にkillされても
+  ロストは最後の1操作分に限られる。アプリ起動時
+  （`UXMusicWatchApp.init`）に `restoreResumeState()` を呼び、曲・位置・
+  キュー・モードを復元するが **再生は自動開始しない**（`loadWithoutAutoplay`
+  を使い、`AVPlayer.play()` を呼ばない）。
+
+キュー順序・シャッフル・リピート遷移・レジューム状態の encode/decode は
+すべて `Core/WatchPlaybackLogic.swift` の純関数として実装し、
+`UX-Music-MobileTests/WatchPlaybackLogicTests.swift` に Red→Green で
+テストを追加した（`WatchRepeatModeTests`, `autoAdvance`, `applyShuffle`,
+`WatchResumeLogic`, `WatchPlaybackResumeState` の JSON ラウンドトリップ）。
+
+### 一般的な音楽プレイヤーとの機能ギャップ一覧（今回見送り）
+
+ユーザー指示により実装を見送り、分析のみ記録:
+- **EQ/音質効果**: iPhone 版にはグラフィカルイコライザー機能があるが、
+  Watch 版には無い。watchOS の `AVAudioEngine` でのリアルタイム
+  イコライジングは電池消費・実装コストが大きく、Watch という利用文脈
+  （運動中など）を考えると優先度は低いと判断。
+- **A-B リピート**: 特定区間のループ再生。Digital Crown シークとの
+  UI 設計の相性が課題（区間の始点・終点をどう指定するか）。
+- **歌詞表示**: iPhone 版は LRC 歌詞表示に対応しているが、Watch の
+  画面サイズでは実用的な体験を作るのが難しく、`WatchTransferMeta` にも
+  歌詞データを持たせていない。
+- **フォルダ階層 / プレイリスト**: 現状 Watch 側は単一のフラットな
+  曲リストのみ。iPhone 側のプレイリスト/フォルダ構造を転送・表示する
+  仕組みは無い。
+- **FM ラジオ**: 物理 Walkman の FM チューナー相当機能。UX Music は
+  ストリーミング/ローカル再生専用アプリのためスコープ外。
+- **曲情報の長押し詳細表示**: アルバム名は Now Playing に表示済みだが、
+  長さ・ファイル形式などの詳細を長押しで見るモーダルは今回は
+  実装しなかった（無理に追加しない、との指示どおり）。
+
+### Constraints / Gotchas
+
+- SwiftUI で `@EnvironmentObject` を複数 View 間で共有する場合、
+  「同じオブジェクトを見ているが読んでいないプロパティの変化」でも
+  そのオブジェクトを参照している View は再描画される。頻繁に変わる値
+  （進捗など）は、それを実際に必要とする View だけが購読する別
+  ObservableObject に切り出すのが定石。
+- `player.repeatMode.systemImageName` を `Image(systemName:)` の引数に
+  直接三項演算子の色と組み合わせて書くと、Swift の型チェッカーが
+  タイムアウトする（`the compiler is unable to type-check this
+  expression in reasonable time`）。`let` で中間変数に分けて型注釈を
+  与えることで回避した。
+- watchOS でも `UIImage`/`UIGraphicsImageRenderer` は利用可能（UIKit の
+  サブセットが watchOS にもリンクされている）ため、iOS 側と同じ API で
+  ダウンスケール処理を書けた。
+
+### 検証結果
+
+- `xcodebuild -scheme UX-Music-Watch -destination 'generic/platform=watchOS Simulator' build` → BUILD SUCCEEDED
+- `xcodebuild -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air' build` → BUILD SUCCEEDED
+- `xcodebuild test -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air'` → TEST SUCCEEDED（190件全成功、フェーズ6で新規24件追加）
