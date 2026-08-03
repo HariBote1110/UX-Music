@@ -204,13 +204,18 @@ final class AppModel {
         return client().artworkURL(artworkId: artworkId)
     }
 
-    /// Applies a pairing URL from QR or deep link: redeems the embedded one-time secret for a
-    /// device-specific auth token via `POST /v1/pairing/redeem`. Returns whether pairing succeeded;
-    /// on failure, `pairingError` is set to a user-facing message.
+    /// Applies a pairing URL from QR or deep link: probes every LAN address the desktop advertised
+    /// (`hosts=`) for reachability, then redeems the embedded one-time secret against whichever
+    /// candidate answered, mirroring the mDNS-discovery failover in `RemoteConnectionResolver`.
+    /// Returns whether pairing succeeded; on any failure — malformed URL, no reachable host, or a
+    /// rejected secret — `pairingError` is set to a user-facing message rather than failing silently.
     @discardableResult
     func applyPairingURL(_ url: URL) async -> Bool {
-        guard let request = ServerConfig.pairingRequest(fromPairingURL: url) else { return false }
-        return await redeemPairing(host: request.host, port: request.port, secret: request.secret)
+        guard let request = ServerConfig.pairingRequest(fromPairingURL: url) else {
+            pairingError = "QRコードを読み取れませんでした。デスクトップアプリを最新版に更新してください。"
+            return false
+        }
+        return await redeemPairing(hosts: request.hosts, port: request.port, secret: request.secret)
     }
 
     /// Redeems a pairing secret (from QR or manual entry) for a device token and, on success, saves
@@ -234,6 +239,26 @@ final class AppModel {
             pairingError = Self.pairingErrorMessage(for: error)
             return false
         }
+    }
+
+    /// Probes `hosts` in order (like `withFailover`/Discovery) for the first one that answers
+    /// `GET /v1/identity`, then redeems the secret against that reachable host. On success, the
+    /// remaining candidates are kept as `fallbackHosts` so later requests can fail over too.
+    @discardableResult
+    func redeemPairing(hosts: [String], port: Int, secret: String) async -> Bool {
+        let candidates = hosts.map { ServerConfig(host: $0, port: port) }
+        let resolved = await RemoteConnectionResolver.resolve(candidates: candidates) { candidate in
+            try await RemoteAPIClient(baseURLString: candidate.baseURLString, session: urlSession).ping()
+        }
+        guard let resolved else {
+            pairingError = "デスクトップに到達できません。同じ Wi-Fi に接続しているか確認してください。"
+            return false
+        }
+        let ok = await redeemPairing(host: resolved.config.host, port: port, secret: secret)
+        if ok {
+            serverConfig.fallbackHosts = hosts.filter { $0 != resolved.config.host }
+        }
+        return ok
     }
 
     private static func pairingErrorMessage(for error: Error) -> String {

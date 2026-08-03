@@ -55,11 +55,15 @@ struct PairingRequest: Equatable, Sendable {
     var host: String
     var port: Int
     var secret: String
+    /// All LAN addresses the desktop advertised for itself (from `hosts=`), primary `host` first.
+    /// A desktop with several NICs (Wi-Fi/Ethernet/Tailscale) may only be reachable from the phone
+    /// on one of these — falls back to `[host]` for older QR codes without `hosts=`.
+    var hosts: [String]
 }
 
 extension ServerConfig {
-    /// Parses `uxmusic://pair?host=&port=&secret=` (QR from desktop). The raw token QR/URL forms are
-    /// no longer emitted by the desktop — a scanned secret must be redeemed via
+    /// Parses `uxmusic://pair?host=&hosts=&port=&secret=` (QR from desktop). The raw token QR/URL
+    /// forms are no longer emitted by the desktop — a scanned secret must be redeemed via
     /// `RemoteAPIClient.redeemPairingSecret` to obtain a device token.
     static func pairingRequest(fromPairingURL url: URL) -> PairingRequest? {
         guard (url.scheme ?? "").lowercased() == "uxmusic" else { return nil }
@@ -71,7 +75,12 @@ extension ServerConfig {
         let secret = (items.first { $0.name == "secret" }?.value ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !host.isEmpty, !secret.isEmpty else { return nil }
-        return PairingRequest(host: host, port: port, secret: secret)
+        let hostsRaw = items.first { $0.name == "hosts" }?.value ?? ""
+        let hosts = hostsRaw
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return PairingRequest(host: host, port: port, secret: secret, hosts: hosts.isEmpty ? [host] : hosts)
     }
 }
 
