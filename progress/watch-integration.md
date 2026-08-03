@@ -466,3 +466,85 @@ Walkman S313 世代とのギャップのうち実装したもの:
 - `xcodebuild -scheme UX-Music-Watch -destination 'generic/platform=watchOS Simulator' build` → BUILD SUCCEEDED
 - `xcodebuild -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air' build` → BUILD SUCCEEDED
 - `xcodebuild test -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air'` → TEST SUCCEEDED（190件全成功、フェーズ6で新規24件追加）
+
+## フェーズ7: ページスワイプ/削除スワイプ競合・バックグラウンド再生・アルバム階層
+
+ユーザー報告の3件に対応。
+
+### 決定1: ページスワイプと曲削除スワイプの競合
+
+`WatchRootView` の Library ⇄ Now Playing 水平ページング（`.tabViewStyle(.page)`）と、
+`WatchSongListView` の行 `swipeActions`（削除）がどちらも右スワイプのジェスチャー領域を
+取り合っていた。**削除を `swipeActions` から長押しの `.contextMenu` に変更**し、行スワイプ
+自体を廃止した。ページングは `WatchRootView` 側で変更なく維持。watchOS の
+`List` 行では長押しコンテキストメニューが標準的な破壊的操作の導線でもあり、
+Music アプリ等とも挙動が近い。
+
+### 決定2: バックグラウンド再生
+
+`WKExtendedRuntimeSession` はワークアウト等の「フォアグラウンド継続が前提の
+長時間タスク」向けの API であり、音楽再生の正規ルートではなかった。
+`WatchAudioPlayerService` を以下に変更:
+- `AVAudioSession.setCategory(.playback, mode: .default, policy: .longFormAudio)`
+- `AVAudioSession.activate(options:completionHandler:)`（非同期。初回呼び出し時、
+  出力先未接続なら OS が「オーディオ出力を選択」UI を出す）
+- `play(_:queue:)` と `togglePlayPause()`（再開側）はこの activation を待ってから
+  実際に `AVPlayer` を開始する構造に変更（`activateAudioSession(completion:)`）。
+- activation 失敗時（主に Bluetooth 出力未接続）は `@Published var routeError:
+  String?` にメッセージを設定し、`WatchNowPlayingView` に赤字で表示。
+- `WKExtendedRuntimeSession` / `WKExtendedRuntimeSessionDelegate` 実装・
+  `WatchKit` の import を削除。
+
+**重要な制約（コード docコメントにも明記）**: watchOS は長時間のオーディオ再生を
+本体スピーカーでは許可しない。Bluetooth 出力（イヤホン/AirPods等）が接続されて
+いる必要があり、未接続時は `activate` が失敗して再生が始まらない。
+
+### 決定3: アルバム階層
+
+`Core/WatchPlaybackLogic.swift` に純関数 `WatchAlbumGrouping.albums(from:)` と
+`WatchAlbumGroup`（`album`/`songs`/`artworkSong`）を追加。`displayAlbum`
+（空文字は "Unknown Album" に丸められる）でグルーピングし、アルバム名の
+ロケール比較で昇順ソート。トラック順は「iPhone から受信した順序をそのまま
+維持する」（`WatchTransferMeta` にトラック番号フィールドが無いため）。
+`UX-Music-MobileTests/WatchPlaybackLogicTests.swift` で TDD（Red→Green）。
+
+UI 側は `WatchSongListView` に "Songs / Albums" のトグル（watchOS は
+`.pickerStyle(.segmented)` が使えないため、2つの `Button` を並べた自作の
+トグルで代替）を追加。Albums 選択時はアルバム一覧（アートワークサムネイル＋
+アルバム名＋曲数）→ タップでそのアルバムの曲一覧（トラック順）→ 曲タップで
+そのアルバムをキューとして再生、という階層にした。フラットな全曲リストは
+Songs 側にそのまま残した。ページング構造（Library ⇄ Now Playing）はこの
+変更の影響を受けない。行の描画・削除コンテキストメニューは `WatchSongRow`
+という共有 private View に切り出し、フラットリストとアルバム詳細の両方から
+再利用している。
+
+### Alternatives considered
+
+- 削除導線をトグルの「編集モード」ボタンにする案も検討したが、watchOS の
+  画面サイズでは長押しコンテキストメニューの方が発見しやすく手数も少ないため
+  不採用。
+- Songs/Albums の切り替えを別ページ（`TabView` にページを追加）にする案は、
+  「Library ⇄ Now Playing」の2ページ構成という既存メンタルモデルを崩すため
+  見送り、Library ページ内のセクション切り替えとした。
+
+### Constraints / Gotchas
+
+- `.pickerStyle(.segmented)` は watchOS で unavailable（コンパイルエラー）。
+  代替として `HStack` に並べた `Button` 2つで簡易トグルを自作した。
+- `AVAudioSession.activate(options:completionHandler:)` は初回呼び出し時に
+  システムの出力先選択 UI を出しうるため、シミュレータ単体では実際の
+  Bluetooth 出力が無く `routeError` 側に倒れる可能性が高い。**実機で
+  Bluetooth イヤホンを接続した状態での確認が必須**（下記参照）。
+- シミュレータには曲データ転送手段が無く（WatchConnectivity のシミュレータ間
+  転送はフェーズ3で不安定と判明済み）、Songs/Albums トグルやアルバム階層UI・
+  削除コンテキストメニューの実データでのスクリーンショット確認は本フェーズでは
+  行えなかった。ビルド成功・空ライブラリ状態でのアプリ起動・ページドット表示
+  までは実機/シミュレータで確認済み。
+
+### 検証結果
+
+- `xcodebuild -scheme UX-Music-Watch -destination 'generic/platform=watchOS Simulator' build` → BUILD SUCCEEDED
+- `xcodebuild -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air' build test` → BUILD SUCCEEDED / TEST SUCCEEDED（`WatchAlbumGrouping` 新規4件を含め全件成功）
+- watchOS シミュレータ（Apple Watch Series 11 42mm, watchOS 27.0,
+  `70E721E0-E9E9-477E-ACEA-FB8D939B74DC`）に単体ビルドをインストール・起動し、
+  Library ページ（空状態）とページドットの表示をスクリーンショットで確認。
