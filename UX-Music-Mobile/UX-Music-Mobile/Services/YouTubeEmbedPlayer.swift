@@ -103,6 +103,54 @@ enum YouTubeEmbedPlayer {
         }
     }
 
+    /// How the UI should recover from an `onError` code. `.openInYouTubeApp` covers 101/150
+    /// ("embedding disallowed") — see `progress/mobile-youtube-embed.md` (フェーズC): this is a
+    /// genuine server-side YouTube restriction on mobile-web embedding, reproducible in real
+    /// mobile Safari, so no in-app playback retry can recover it. The only path back to the video
+    /// itself is the official YouTube app (or its website), which still counts the view and pays
+    /// out to the creator normally. Other codes (invalid parameter, HTML5 player error, video not
+    /// found, local loopback-server start failure) get no fallback action — those are either
+    /// transient or mean the video is genuinely gone.
+    enum EmbedFallback: Equatable {
+        case none
+        case openInYouTubeApp
+    }
+
+    static func embedFallback(forErrorCode code: Int) -> EmbedFallback {
+        switch code {
+        case 101, 150:
+            return .openInYouTubeApp
+        default:
+            return .none
+        }
+    }
+
+    /// `youtube://` deep link that opens `videoID` directly in the official YouTube app, if
+    /// installed. `nil` for an invalid video ID.
+    static func youtubeAppDeepLinkURL(videoID: String) -> URL? {
+        guard isValidVideoID(videoID) else { return nil }
+        return URL(string: "youtube://watch?v=\(videoID)")
+    }
+
+    /// `https://www.youtube.com/watch?v=<id>` fallback for when the YouTube app is not installed
+    /// (opened in Safari instead). `nil` for an invalid video ID.
+    static func youtubeWebFallbackURL(videoID: String) -> URL? {
+        guard isValidVideoID(videoID) else { return nil }
+        return URL(string: "https://www.youtube.com/watch?v=\(videoID)")
+    }
+
+    /// Picks which of the two above to actually open. `youtubeAppIsAvailable` is the caller's
+    /// `UIApplication.shared.canOpenURL(_:)` check against the app's URL scheme — kept as a plain
+    /// `Bool` parameter (rather than calling `UIApplication` here) so this selection logic stays a
+    /// pure, unit-testable function.
+    static func urlToOpen(forVideoID videoID: String, youtubeAppIsAvailable: Bool) -> URL? {
+        guard isValidVideoID(videoID) else { return nil }
+        if youtubeAppIsAvailable, let appURL = youtubeAppDeepLinkURL(videoID: videoID) {
+            return appURL
+        }
+        return youtubeWebFallbackURL(videoID: videoID)
+    }
+
     /// Decodes a `window.webkit.messageHandlers.uxYouTube.postMessage(...)` payload sent by the
     /// page's JS bridge into a typed event. Returns `nil` for unrecognised or malformed payloads.
     static func parseBridgeMessage(_ body: [String: Any]) -> BridgeEvent? {
