@@ -65,8 +65,10 @@
 		W1D1D1C20101D1C20101D1C2 /* LANDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1D1D1C10101D1C10101D1C1 /* LANDiscoveryService.swift */; };
 		W1D1D1D20101D1D20101D1D2 /* LANDiscoveryPeerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1D1D1D10101D1D10101D1D1 /* LANDiscoveryPeerTests.swift */; };
 		F60101F60101F60101F60101 /* RemoteConnectionResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60101F70101F70101F70101 /* RemoteConnectionResolver.swift */; };
+		CC1101F60101F60101F60101 /* ConnectionCandidatePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC1101F70101F70101F70101 /* ConnectionCandidatePolicy.swift */; };
 		F60101F80101F80101F80101 /* RemoteConnectionResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60101F90101F90101F90101 /* RemoteConnectionResolverTests.swift */; };
 		F60101FA0101FA0101FA0101 /* AppModelFailoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60101FB0101FB0101FB0101 /* AppModelFailoverTests.swift */; };
+		CC1101FA0101FA0101FA0101 /* ConnectionCandidatePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC1101FB0101FB0101FB0101 /* ConnectionCandidatePolicyTests.swift */; };
 		D1D1D1D10101D1D10101D1D1 /* DeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1D1D1D20101D1D20101D1D2 /* DeviceIdentity.swift */; };
 		b077f2c8570b4c62ad6c8c75 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7db2069e8eb64b7382361146 /* Assets.xcassets */; };
 		b1b1b1B10101B1B10101B1B1 /* ServerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */; };
@@ -192,8 +194,10 @@
 		W1D1D1C10101D1C10101D1C1 /* LANDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANDiscoveryService.swift; sourceTree = "<group>"; };
 		W1D1D1D10101D1D10101D1D1 /* LANDiscoveryPeerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANDiscoveryPeerTests.swift; sourceTree = "<group>"; };
 		F60101F70101F70101F70101 /* RemoteConnectionResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteConnectionResolver.swift; sourceTree = "<group>"; };
+		CC1101F70101F70101F70101 /* ConnectionCandidatePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionCandidatePolicy.swift; sourceTree = "<group>"; };
 		F60101F90101F90101F90101 /* RemoteConnectionResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteConnectionResolverTests.swift; sourceTree = "<group>"; };
 		F60101FB0101FB0101FB0101 /* AppModelFailoverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelFailoverTests.swift; sourceTree = "<group>"; };
+		CC1101FB0101FB0101FB0101 /* ConnectionCandidatePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionCandidatePolicyTests.swift; sourceTree = "<group>"; };
 		D1D1D1D20101D1D20101D1D2 /* DeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentity.swift; sourceTree = "<group>"; };
 		a69b6b50c77c42d5883861b6 /* UX-Music-Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfigTests.swift; sourceTree = "<group>"; };
@@ -292,6 +296,7 @@
 				W1D1D1D10101D1D10101D1D1 /* LANDiscoveryPeerTests.swift */,
 				F60101F90101F90101F90101 /* RemoteConnectionResolverTests.swift */,
 				F60101FB0101FB0101FB0101 /* AppModelFailoverTests.swift */,
+				CC1101FB0101FB0101FB0101 /* ConnectionCandidatePolicyTests.swift */,
 				FEED0004000000000000AAA4 /* WatchTransferTests.swift */,
 				FEED000E000000000000AAAE /* WatchTransferMenuPolicyTests.swift */,
 				FEED0023000000000000AA23 /* WatchPlaybackLogicTests.swift */,
@@ -345,6 +350,7 @@
 				W1D1D1C10101D1C10101D1C1 /* LANDiscoveryService.swift */,
 				E5E5E5E50101E5E50101E5E5 /* LyricsFileStore.swift */,
 				F60101F70101F70101F70101 /* RemoteConnectionResolver.swift */,
+				CC1101F70101F70101F70101 /* ConnectionCandidatePolicy.swift */,
 				FEED0007000000000000AAA7 /* WatchTransferBridge.swift */,
 			);
 			path = Services;
@@ -567,6 +573,7 @@
 				W1D1D1D20101D1D20101D1D2 /* LANDiscoveryPeerTests.swift in Sources */,
 				F60101F80101F80101F80101 /* RemoteConnectionResolverTests.swift in Sources */,
 				F60101FA0101FA0101FA0101 /* AppModelFailoverTests.swift in Sources */,
+				CC1101FA0101FA0101FA0101 /* ConnectionCandidatePolicyTests.swift in Sources */,
 				FEED0005000000000000AAA5 /* WatchTransferTests.swift in Sources */,
 				FEED000F000000000000AAAF /* WatchTransferMenuPolicyTests.swift in Sources */,
 				FEED0024000000000000AA24 /* WatchPlaybackLogicTests.swift in Sources */,
@@ -611,6 +618,7 @@
 				W1D1D1C20101D1C20101D1C2 /* LANDiscoveryService.swift in Sources */,
 				E5E5E5E60101E5E60101E5E6 /* LyricsFileStore.swift in Sources */,
 				F60101F60101F60101F60101 /* RemoteConnectionResolver.swift in Sources */,
+				CC1101F60101F60101F60101 /* ConnectionCandidatePolicy.swift in Sources */,
 				01A1A1AF0101A1A10101A1A1 /* AppModel.swift in Sources */,
 				01A1A1B10101A1A10101A1A1 /* ArtworkImageView.swift in Sources */,
 				01A1A1B30101A1A10101A1A1 /* SongRowView.swift in Sources */,
