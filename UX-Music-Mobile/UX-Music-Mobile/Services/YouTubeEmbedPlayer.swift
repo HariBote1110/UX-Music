@@ -1,0 +1,188 @@
+import Foundation
+
+/// Pure logic for the YouTube official embed player (WKWebView + IFrame Player API).
+///
+/// Mirrors `server/embed_host.go` from the desktop app, adapted for iOS. On desktop, the
+/// player page is served from a `127.0.0.1` loopback HTTP host so the page's origin is a
+/// valid `http://` origin (otherwise YouTube rejects the embed with error 153, "Referer
+/// missing"). On iOS there is no long-running local HTTP server; instead the HTML is loaded
+/// via `WKWebView.loadHTMLString(_:baseURL:)` with `baseURL = http://127.0.0.1`, which sets
+/// the page's `document.location`/`origin` to that value without an actual server needing to
+/// answer requests on that port. This is the standard mobile workaround for IFrame API error
+/// 153 and avoids the complexity of a `WKURLSchemeHandler` (a custom scheme such as
+/// `ux-embed://` is not an `http`/`https` origin, so YouTube would still refuse it).
+enum YouTubeEmbedPlayer {
+    private static let videoIDPattern = try! NSRegularExpression(pattern: "^[A-Za-z0-9_-]{11}$")
+
+    enum EmbedPlayerError: Error, Equatable {
+        case invalidVideoID
+    }
+
+    enum PlayerState: Equatable {
+        case unstarted
+        case ended
+        case playing
+        case paused
+        case buffering
+        case cued
+        case unknown(Int)
+
+        init(rawState: Int) {
+            switch rawState {
+            case -1: self = .unstarted
+            case 0: self = .ended
+            case 1: self = .playing
+            case 2: self = .paused
+            case 3: self = .buffering
+            case 5: self = .cued
+            default: self = .unknown(rawState)
+            }
+        }
+    }
+
+    enum BridgeEvent: Equatable {
+        case ready
+        case state(PlayerState)
+        case time(current: Double, duration: Double)
+        case error(code: Int)
+    }
+
+    enum Command: Equatable {
+        case play
+        case pause
+        case seek(seconds: Double)
+        case unmute
+    }
+
+    /// Validates a YouTube video ID (always 11 characters of `[A-Za-z0-9_-]`, matching
+    /// `embedVideoIDPattern` in `server/embed_host.go`) and builds the host page HTML.
+    static func buildEmbedHTML(videoID: String) throws -> String {
+        let range = NSRange(videoID.startIndex..<videoID.endIndex, in: videoID)
+        guard videoIDPattern.firstMatch(in: videoID, range: range) != nil else {
+            throw EmbedPlayerError.invalidVideoID
+        }
+        return embedPageTemplate.replacingOccurrences(of: "__VIDEO_ID__", with: videoID)
+    }
+
+    /// Decodes a `window.webkit.messageHandlers.uxYouTube.postMessage(...)` payload sent by the
+    /// page's JS bridge into a typed event. Returns `nil` for unrecognised or malformed payloads.
+    static func parseBridgeMessage(_ body: [String: Any]) -> BridgeEvent? {
+        guard let type = body["type"] as? String else { return nil }
+        switch type {
+        case "ready":
+            return .ready
+        case "state":
+            guard let raw = (body["state"] as? Int) ?? (body["state"] as? NSNumber)?.intValue else { return nil }
+            return .state(PlayerState(rawState: raw))
+        case "time":
+            guard let current = numberValue(body["currentTime"]), let duration = numberValue(body["duration"]) else {
+                return nil
+            }
+            return .time(current: current, duration: duration)
+        case "error":
+            guard let code = (body["code"] as? Int) ?? (body["code"] as? NSNumber)?.intValue else { return nil }
+            return .error(code: code)
+        default:
+            return nil
+        }
+    }
+
+    private static func numberValue(_ value: Any?) -> Double? {
+        if let d = value as? Double { return d }
+        if let i = value as? Int { return Double(i) }
+        if let n = value as? NSNumber { return n.doubleValue }
+        return nil
+    }
+
+    /// Builds the JS snippet evaluated on the WKWebView to drive the embedded player.
+    static func commandScript(_ command: Command) -> String {
+        switch command {
+        case .play:
+            return "window.uxYouTubeCommand({cmd:'play'});"
+        case .pause:
+            return "window.uxYouTubeCommand({cmd:'pause'});"
+        case .seek(let seconds):
+            return "window.uxYouTubeCommand({cmd:'seek', seconds:\(seconds)});"
+        case .unmute:
+            return "window.uxYouTubeCommand({cmd:'unmute'});"
+        }
+    }
+
+    /// Host page HTML. Structurally mirrors `embedPageTemplate` in `server/embed_host.go`, but
+    /// posts bridge events to the native `uxYouTube` WKScriptMessageHandler instead of
+    /// `parent.postMessage`, and exposes `window.uxYouTubeCommand` for `evaluateJavaScript` calls
+    /// from Swift instead of listening for `message` events.
+    private static let embedPageTemplate = """
+    <!doctype html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}</style>
+    </head>
+    <body>
+    <div id="player"></div>
+    <script>
+    (function () {
+        'use strict';
+        var VIDEO_ID = '__VIDEO_ID__';
+        var player = null;
+        var timer = null;
+
+        function post(msg) {
+            try { window.webkit.messageHandlers.uxYouTube.postMessage(msg); } catch (e) { /* ignore */ }
+        }
+
+        function startTimer() {
+            if (timer) return;
+            timer = setInterval(function () {
+                if (!player || typeof player.getCurrentTime !== 'function') return;
+                try {
+                    post({
+                        type: 'time',
+                        currentTime: player.getCurrentTime() || 0,
+                        duration: player.getDuration() || 0
+                    });
+                } catch (e) { /* ignore */ }
+            }, 250);
+        }
+
+        window.onYouTubeIframeAPIReady = function () {
+            player = new YT.Player('player', {
+                width: '100%',
+                height: '100%',
+                videoId: VIDEO_ID,
+                playerVars: {
+                    autoplay: 1,
+                    playsinline: 1,
+                    controls: 1,
+                    enablejsapi: 1,
+                    rel: 0,
+                    origin: location.origin
+                },
+                events: {
+                    onReady: function () { post({ type: 'ready' }); startTimer(); },
+                    onStateChange: function (e) { post({ type: 'state', state: e.data }); },
+                    onError: function (e) { post({ type: 'error', code: e.data }); }
+                }
+            });
+        };
+
+        window.uxYouTubeCommand = function (d) {
+            if (!player) return;
+            try {
+                if (d.cmd === 'play') player.playVideo();
+                else if (d.cmd === 'pause') player.pauseVideo();
+                else if (d.cmd === 'seek') player.seekTo(Math.max(0, Number(d.seconds) || 0), true);
+                else if (d.cmd === 'unmute') { player.unMute(); player.setVolume(100); }
+            } catch (e) { /* ignore */ }
+        };
+
+        var s = document.createElement('script');
+        s.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(s);
+    })();
+    </script>
+    </body>
+    </html>
+    """
+}

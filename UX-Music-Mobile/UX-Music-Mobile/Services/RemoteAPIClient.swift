@@ -84,6 +84,15 @@ struct RemoteDesktopPlaylist: Codable, Equatable, Hashable, Sendable {
     var pathsNotInLibrary: [String]?
 }
 
+/// JSON from `GET /v1/remote/youtube/resolve?url=…`.
+struct RemoteYouTubeVideoInfo: Codable, Equatable, Sendable {
+    var videoId: String
+    var title: String
+    var author: String
+    var duration: Int
+    var thumbnail: String
+}
+
 /// HTTP client for the UX Music unified LAN API v1 (port 8765 by default).
 struct RemoteAPIClient: Sendable {
     private let baseURLString: String
@@ -193,6 +202,23 @@ struct RemoteAPIClient: Sendable {
         let (data, response) = try await session.data(for: authorizedRequest(path: "/v1/remote/playlists"))
         try Self.throwIfNotOK(response, data: data)
         return try JSONDecoder().decode([RemoteDesktopPlaylist].self, from: data)
+    }
+
+    /// Resolves a YouTube URL to video metadata via the desktop's `GetYouTubeVideoInfo` logic,
+    /// exposed over the LAN API since the desktop has no on-device YouTube search — only
+    /// URL-based lookup, so the mobile client offers the same "paste a link" flow.
+    func resolveYouTubeVideo(url youtubeURL: String) async throws -> RemoteYouTubeVideoInfo {
+        guard var components = URLComponents(string: baseURLString) else {
+            throw URLError(.badURL)
+        }
+        components.path = "/v1/remote/youtube/resolve"
+        components.queryItems = [URLQueryItem(name: "url", value: youtubeURL)]
+        guard let source = components.url else {
+            throw URLError(.badURL)
+        }
+        let (data, response) = try await session.data(for: authorizedRequest(url: source))
+        try Self.throwIfNotOK(response, data: data)
+        return try JSONDecoder().decode(RemoteYouTubeVideoInfo.self, from: data)
     }
 
     func fetchState() async throws -> [String: Any] {
