@@ -64,6 +64,44 @@ struct SongRowView<Trailing: View>: View {
     }
 }
 
+/// Trailing indicator shared by every screen that lists songs via `SongRowView`. YouTube songs
+/// have no local file, so they always show the "open official player" indicator instead of the
+/// download controls; ordinary songs keep the download/queued/downloaded states.
+struct SongRowDownloadTrailing: View {
+    @Environment(AppModel.self) private var model
+    let song: Song
+
+    var body: some View {
+        if song.isYouTube {
+            Image(systemName: "play.rectangle.fill")
+                .foregroundStyle(.secondary)
+                .font(.system(size: 18))
+                .accessibilityLabel("YouTube 公式再生")
+        } else if model.isSongDownloaded(songId: song.id) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .font(.system(size: 20))
+        } else if let p = model.downloadProgress[song.id] {
+            Group {
+                if p > 0 {
+                    ProgressView(value: p, total: 1)
+                } else {
+                    ProgressView()
+                }
+            }
+            .frame(width: 22, height: 22)
+        } else {
+            Button {
+                Task { await model.downloadSong(song) }
+            } label: {
+                Image(systemName: "arrow.down.circle")
+                    .font(.system(size: 22))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
 private struct OptionalRowTap: ViewModifier {
     let onTap: (() -> Void)?
 

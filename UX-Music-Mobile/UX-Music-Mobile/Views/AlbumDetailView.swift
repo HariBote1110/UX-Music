@@ -3,6 +3,7 @@ import SwiftUI
 struct AlbumDetailView: View {
     @Environment(AppModel.self) private var model
     let album: Album
+    @State private var youTubeSongToPlay: Song?
 
     var body: some View {
         ScrollView {
@@ -26,16 +27,21 @@ struct AlbumDetailView: View {
                         artworkId: song.artworkId,
                         artworkURL: model.artworkURL(for: song.artworkId),
                         showTrackNumber: true,
-                        onTap: model.isSongDownloaded(songId: song.id)
-                            ? { play(song) }
-                            : nil,
+                        onTap: rowTap(for: song),
                         trailing: {
-                            trailing(for: song)
+                            SongRowDownloadTrailing(song: song)
                         }
                     )
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .contextMenu {
+                        if song.isYouTube {
+                            Button {
+                                youTubeSongToPlay = song
+                            } label: {
+                                Label("公式プレイヤーで再生", systemImage: "play.rectangle")
+                            }
+                        }
                         WatchTransferSongMenuItem(song: song)
                     }
                 }
@@ -47,6 +53,10 @@ struct AlbumDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .fullScreenCover(item: $youTubeSongToPlay) { song in
+            RemoteYouTubeSongPlayerScreen(song: song)
+                .environment(model)
+        }
     }
 
     private var header: some View {
@@ -84,23 +94,11 @@ struct AlbumDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private func trailing(for song: Song) -> some View {
-        if model.isSongDownloaded(songId: song.id) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .font(.system(size: 20))
-        } else if model.downloadProgress[song.id] != nil {
-            ProgressView()
-                .frame(width: 22, height: 22)
-        } else {
-            Button {
-                Task { await model.downloadSong(song) }
-            } label: {
-                Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 22))
-            }
-            .buttonStyle(.plain)
+    private func rowTap(for song: Song) -> (() -> Void)? {
+        switch song.rowTapAction(isDownloaded: model.isSongDownloaded(songId: song.id)) {
+        case .openYouTubePlayer: return { youTubeSongToPlay = song }
+        case .playDownloaded: return { play(song) }
+        case .none: return nil
         }
     }
 

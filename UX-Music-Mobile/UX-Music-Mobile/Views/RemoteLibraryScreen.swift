@@ -434,13 +434,9 @@ struct RemoteLibraryScreen: View {
                         song: song,
                         artworkId: song.artworkId,
                         artworkURL: model.artworkURL(for: song.artworkId),
-                        onTap: song.isYouTube
-                            ? { youTubeSongToPlay = song }
-                            : (model.isSongDownloaded(songId: song.id)
-                                ? { playDownloaded(song, in: songs) }
-                                : nil),
+                        onTap: rowTap(for: song, in: songs),
                         trailing: {
-                            downloadTrailing(for: song)
+                            SongRowDownloadTrailing(song: song)
                         }
                     )
                     .padding(.horizontal, 16)
@@ -461,34 +457,11 @@ struct RemoteLibraryScreen: View {
         }
     }
 
-    @ViewBuilder
-    private func downloadTrailing(for song: Song) -> some View {
-        if song.isYouTube {
-            Image(systemName: "play.rectangle.fill")
-                .foregroundStyle(.secondary)
-                .font(.system(size: 18))
-                .accessibilityLabel("YouTube 公式再生")
-        } else if model.isSongDownloaded(songId: song.id) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .font(.system(size: 20))
-        } else if let p = model.downloadProgress[song.id] {
-            Group {
-                if p > 0 {
-                    ProgressView(value: p, total: 1)
-                } else {
-                    ProgressView()
-                }
-            }
-            .frame(width: 22, height: 22)
-        } else {
-            Button {
-                Task { await model.downloadSong(song) }
-            } label: {
-                Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 22))
-            }
-            .buttonStyle(.plain)
+    private func rowTap(for song: Song, in list: [Song]) -> (() -> Void)? {
+        switch song.rowTapAction(isDownloaded: model.isSongDownloaded(songId: song.id)) {
+        case .openYouTubePlayer: return { youTubeSongToPlay = song }
+        case .playDownloaded: return { playDownloaded(song, in: list) }
+        case .none: return nil
         }
     }
 
