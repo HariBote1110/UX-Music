@@ -144,6 +144,45 @@ enum WatchSeekLogic {
     }
 }
 
+/// One album's worth of songs, grouped for the Watch's "Albums" browse mode (see
+/// `WatchAlbumGrouping`). `songs` keeps the order they appeared in the source list — the Watch
+/// receives songs from the iPhone in track order already, so no separate track-number field is
+/// needed to reconstruct it.
+struct WatchAlbumGroup: Identifiable, Equatable {
+    var id: String { album }
+    var album: String
+    var songs: [WatchTransferMeta]
+
+    /// The song whose artwork represents this album in the album list (simply the first song —
+    /// good enough since most albums share one piece of artwork across all tracks).
+    var artworkSong: WatchTransferMeta? { songs.first }
+}
+
+/// Pure grouping of a flat song list into per-album buckets, kept free of any Watch UI/storage
+/// dependency so the "how do songs collapse into albums" rule is unit-testable on its own. Used by
+/// `WatchSongListView`'s "Albums" browse mode alongside the existing flat "Songs" list.
+enum WatchAlbumGrouping {
+    /// Groups `songs` by `displayAlbum` (so a blank album field collapses to "Unknown Album"
+    /// rather than splintering into its own blank-named group), preserving both the order albums
+    /// first appear in `songs` and each song's original position within its album, then sorts the
+    /// resulting albums alphabetically for browsing.
+    static func albums(from songs: [WatchTransferMeta]) -> [WatchAlbumGroup] {
+        var order: [String] = []
+        var buckets: [String: [WatchTransferMeta]] = [:]
+        for song in songs {
+            let key = song.displayAlbum
+            if buckets[key] == nil {
+                order.append(key)
+                buckets[key] = []
+            }
+            buckets[key]?.append(song)
+        }
+        return order
+            .map { WatchAlbumGroup(album: $0, songs: buckets[$0] ?? []) }
+            .sorted { $0.album.localizedStandardCompare($1.album) == .orderedAscending }
+    }
+}
+
 /// Builds the `MPNowPlayingInfoCenter` payload from Watch playback state, kept as a pure function so
 /// the key/value mapping is unit-testable without `MPNowPlayingInfoCenter.default()` (which cannot
 /// be observed from an XCTest target).
