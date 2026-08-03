@@ -32,16 +32,16 @@ final class WatchTransferMenuPolicyTests: XCTestCase {
         )
     }
 
-    func testSongsEligibleForBulkTransferKeepsOnlyDownloaded() {
+    func testSongsEligibleForBulkTransferIncludesUndownloadedSongs() {
         let songs = [song(id: "1"), song(id: "2"), song(id: "3")]
         let eligible = WatchTransferMenuPolicy.songsEligibleForBulkTransfer(songs, downloadedIds: ["1", "3"])
-        XCTAssertEqual(eligible.map(\.id), ["1", "3"])
+        XCTAssertEqual(eligible.map(\.id), ["1", "2", "3"])
     }
 
-    func testSongsEligibleForBulkTransferIsEmptyWhenNoneDownloaded() {
+    func testSongsEligibleForBulkTransferIncludesAllSongsWhenNoneDownloaded() {
         let songs = [song(id: "1"), song(id: "2")]
         let eligible = WatchTransferMenuPolicy.songsEligibleForBulkTransfer(songs, downloadedIds: [])
-        XCTAssertTrue(eligible.isEmpty)
+        XCTAssertEqual(eligible.map(\.id), ["1", "2"])
     }
 
     func testSongsEligibleForBulkTransferPreservesOriginalOrder() {

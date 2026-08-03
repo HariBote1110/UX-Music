@@ -10,10 +10,16 @@ enum WatchTransferMenuPolicy {
         isWatchConnectivitySupported && isPaired
     }
 
-    /// Selects the subset of `songs` eligible for a bulk (album/playlist) transfer: only songs
-    /// already downloaded locally can be sent, matching the existing single-song transfer policy
-    /// (`WatchTransferBridge.send`). Preserves the original ordering.
+    /// All songs eligible for a bulk (album/playlist) transfer, in the original order.
+    ///
+    /// Previously filtered to only already-downloaded songs, matching the old single-song
+    /// `WatchTransferBridge.send` policy. That filter is gone now that `send` downloads an
+    /// undownloaded song before transferring it (see `WatchTransferBridge.downloadThenQueue`) — a
+    /// bulk transfer used to silently drop any track that had not been downloaded yet, so e.g. a
+    /// two-track album with one downloaded track appeared to fully transfer while actually sending
+    /// only one song. `downloadedIds` is kept as a parameter for call-site source compatibility but
+    /// is no longer consulted.
     static func songsEligibleForBulkTransfer(_ songs: [Song], downloadedIds: Set<String>) -> [Song] {
-        songs.filter { downloadedIds.contains($0.id) }
+        songs
     }
 }

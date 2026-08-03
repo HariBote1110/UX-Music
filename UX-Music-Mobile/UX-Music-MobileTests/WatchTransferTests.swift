@@ -209,4 +209,22 @@ final class WatchTransferTests: XCTestCase {
         XCTAssertFalse(name.contains("/"))
         XCTAssertTrue(name.hasSuffix(".jpg"))
     }
+
+    // MARK: - WatchTransferDownloadOutcome
+    //
+    // Pure phase-transition logic for `WatchTransferBridge.send`'s "download an undownloaded song,
+    // then transfer it" path (see WatchTransferBridge.downloadThenQueue). Previously an undownloaded
+    // song was rejected outright by `send` with no queue entry at all, which is how a bulk album
+    // transfer could silently drop tracks that had not been downloaded yet.
+
+    func testPhaseAfterDownloadIsWaitingOnSuccess() {
+        XCTAssertEqual(WatchTransferDownloadOutcome.phaseAfterDownload(succeeded: true), .waiting)
+    }
+
+    func testPhaseAfterDownloadIsFailedOnFailure() {
+        guard case .failed(let message) = WatchTransferDownloadOutcome.phaseAfterDownload(succeeded: false) else {
+            return XCTFail("expected .failed phase")
+        }
+        XCTAssertFalse(message.isEmpty)
+    }
 }

@@ -4,8 +4,9 @@ import WatchConnectivity
 /// Shared "Apple Watch に転送" context-menu button for a single song. Usable from any screen that
 /// lists songs (Songs tab, album/playlist detail, Now Playing queue/favourites) so the action is not
 /// limited to one screen. Renders nothing when WatchConnectivity is unsupported or no Watch is
-/// paired; otherwise the button is disabled for songs that are not downloaded locally, matching the
-/// existing `WatchTransferBridge.send` policy.
+/// paired. Always enabled: `WatchTransferBridge.send` downloads the song first (shown as
+/// `.downloading` in the transfer queue) if it is not local yet, so this no longer needs to disable
+/// itself for undownloaded songs.
 struct WatchTransferSongMenuItem: View {
     @Environment(AppModel.self) private var model
     let song: Song
@@ -20,14 +21,13 @@ struct WatchTransferSongMenuItem: View {
             } label: {
                 Label("Apple Watch に転送", systemImage: "applewatch")
             }
-            .disabled(!model.isSongDownloaded(songId: song.id))
         }
     }
 }
 
-/// Bulk "Apple Watch に転送" context-menu button for an album/playlist: queues every downloaded song
-/// in `songs` for transfer. Disabled (not hidden) when none of the songs are downloaded yet, so the
-/// menu still communicates the action exists.
+/// Bulk "Apple Watch に転送" context-menu button for an album/playlist: queues every song in `songs`
+/// for transfer, downloading any that are not local yet (see `WatchTransferSongMenuItem`). Disabled
+/// (not hidden) only when `songs` itself is empty, so the menu still communicates the action exists.
 struct WatchTransferBulkMenuItem: View {
     @Environment(AppModel.self) private var model
     let title: String

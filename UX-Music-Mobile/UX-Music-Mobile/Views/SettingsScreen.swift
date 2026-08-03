@@ -358,6 +358,7 @@ struct SettingsScreen: View {
 
     private func watchTransferStatusText(_ phase: WatchTransferQueueItem.Phase) -> String {
         switch phase {
+        case .downloading: return "ダウンロード中…"
         case .waiting: return "待機中"
         case .sending: return "送信中…"
         case .sent: return "送信済み"

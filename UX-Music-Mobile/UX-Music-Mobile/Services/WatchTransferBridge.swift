@@ -5,6 +5,7 @@ import WatchConnectivity
 /// One song queued (or already sent) to the paired Apple Watch.
 struct WatchTransferQueueItem: Identifiable {
     enum Phase: Equatable {
+        case downloading
         case waiting
         case sending
         case sent
@@ -42,6 +43,17 @@ enum WatchTransferActivationGating {
     }
 }
 
+/// Pure phase-transition logic for `send`'s "download first, then transfer" path: a song that is
+/// not downloaded yet is queued as `.downloading`, `downloadHandler` is awaited, and this decides
+/// what the queue item becomes next. Kept as a free function (no `DownloadManager`/`WCSession`
+/// dependency) so the download-failure branch — previously untested because `send` used to just
+/// silently `return false` for undownloaded songs — is unit-testable.
+enum WatchTransferDownloadOutcome {
+    static func phaseAfterDownload(succeeded: Bool) -> WatchTransferQueueItem.Phase {
+        succeeded ? .waiting : .failed("ダウンロードに失敗しました。デスクトップとの接続を確認してください")
+    }
+}
+
 /// iOS-side WatchConnectivity bridge: sends already-downloaded audio files to the paired Apple
 /// Watch via `WCSession.transferFile`, alongside a `WatchTransferMeta` metadata dictionary the
 /// Watch uses to build its local library (see `WatchTransfer.swift`, shared with the Watch target).
@@ -63,6 +75,12 @@ final class WatchTransferBridge: NSObject, ObservableObject {
     /// becomes `.activated`, or marked `.failed` if activation itself fails.
     private var pendingSongs: [Song] = []
 
+    /// Downloads `song` from the desktop server, returning whether it is locally available
+    /// afterwards. Wired up by `AppModel` after construction (see its `init`) since downloading
+    /// needs `RemoteAPIClient`/`withFailover`, which this bridge deliberately has no dependency on.
+    /// `send` fails a song immediately with a clear reason if this is never set.
+    var downloadHandler: ((Song) async -> Bool)?
+
     init(downloadManager: DownloadManager) {
         self.downloadManager = downloadManager
     }
@@ -83,23 +101,56 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         session.activate()
     }
 
-    /// Queues `song` for transfer. Requires the song be downloaded locally; no-ops otherwise.
+    /// Queues `song` for transfer. Songs that are not downloaded locally yet are downloaded first
+    /// (shown as `.downloading` in the queue) rather than being silently dropped — this used to
+    /// `return false` for undownloaded songs, which meant an undownloaded song in a bulk album
+    /// transfer vanished with no queue entry and no error the user could see.
     /// If the session has not finished activating yet, the request is held in `pendingSongs` and
     /// flushed once activation completes (see `handleActivationCompletion`).
     @discardableResult
     func send(_ song: Song) -> Bool {
-        guard downloadManager.isDownloaded(songId: song.id) else { return false }
         guard !queue.contains(where: { $0.id == song.id && $0.phase != .sent }) else { return true }
 
+        guard downloadManager.isDownloaded(songId: song.id) else {
+            downloadThenQueue(song)
+            return true
+        }
+
+        queueForTransfer(song)
+        return true
+    }
+
+    /// Downloads `song` via `downloadHandler`, then queues it for transfer on success or records a
+    /// `.failed` queue entry (with a reason the user can see) on failure.
+    private func downloadThenQueue(_ song: Song) {
+        upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .downloading))
+
+        guard let downloadHandler else {
+            upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .failed("ダウンロード機能が利用できません")))
+            return
+        }
+
+        Task {
+            let succeeded = await downloadHandler(song)
+            let phase = WatchTransferDownloadOutcome.phaseAfterDownload(succeeded: succeeded)
+            self.upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: phase))
+            if succeeded {
+                self.queueForTransfer(song)
+            }
+        }
+    }
+
+    /// Moves an already-downloaded `song` into `.waiting` and either transfers it immediately or
+    /// holds it in `pendingSongs` until `WCSession` activation completes.
+    private func queueForTransfer(_ song: Song) {
         upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .waiting))
 
         guard WatchTransferActivationGating.shouldSendImmediately(status: activationStatus) else {
             pendingSongs.append(song)
-            return true
+            return
         }
 
         performTransfer(song)
-        return true
     }
 
     /// Actually calls `WCSession.transferFile`. Only safe to call once `activationStatus == .activated`.

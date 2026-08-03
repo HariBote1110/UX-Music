@@ -102,6 +102,15 @@ final class AppModel {
             return await NowPlayingArtworkImageLoader.uiImage(from: url)
         }
         refreshPlaylists()
+        // Wired up after every stored property is initialised (not passed into
+        // WatchTransferBridge's own initialiser) because downloading needs `withFailover`/
+        // `RemoteAPIClient`, which live on `AppModel` itself — giving the bridge a closure avoids a
+        // circular dependency between the two types.
+        watchTransferBridge.downloadHandler = { [weak self] song in
+            guard let self else { return false }
+            await self.downloadSong(song)
+            return self.downloadManager.isDownloaded(songId: song.id)
+        }
     }
 
     private func touchDownloadLibrary() {

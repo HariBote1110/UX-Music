@@ -650,3 +650,58 @@ Songs 側にそのまま残した。ページング構造（Library ⇄ Now Play
   できない（`simctl io screenshot` は可能だが `simctl ui` 相当の入力コマンドは
   ない）。Now Playing ページの実表示確認には Simulator.app を computer-use で
   操作する必要があった。
+
+# フェーズ9: バグ1の真因を特定・修正（送信側の未ダウンロード曲サイレントスキップ）
+
+## Decision
+
+- フェーズ8の調査ではバグ1（Lone Wolf アルバム2曲中、未DLの main heroine が
+  届かない）の真因を「受信側の並行性問題」と仮定して精査したが、実際の
+  原因は **送信側** にあった。`WatchTransferBridge.send(_:)` の冒頭が
+  `guard downloadManager.isDownloaded(songId: song.id) else { return false }`
+  となっており、未ダウンロードの曲はキューにすら載らず（`queue` に
+  エントリが追加されない）、UI 上のエラー表示もなく黙ってスキップされて
+  いた。`WatchTransferBulkMenuItem` の一括転送も
+  `WatchTransferMenuPolicy.songsEligibleForBulkTransfer` でダウンロード済み
+  のみに絞っていたため、同じ理由でアルバム一括転送時に未DL曲が欠落して
+  いた。フェーズ8で「受信パイプラインには再現するバグがない」と結論した
+  のは正しかったが、その先（送信側フィルタ）まで疑わなかったのが調査の
+  抜け穴だった。
+- 修正: `WatchTransferBridge.send` は未ダウンロード曲を拒否せず、まず
+  `.downloading` フェーズでキューに載せ、新設した `downloadHandler`
+  クロージャ（`AppModel.init` の末尾で `downloadSong(_:)` をラップして
+  注入。`RemoteAPIClient`/`withFailover` への依存は `AppModel` 側にしか
+  ないため、循環依存を避けるためにクロージャ注入とした）でダウンロードを
+  実行してから `.waiting`（→`.sending`→`.sent`）へ遷移させる。ダウンロード
+  失敗時は `.failed("ダウンロードに失敗しました。デスクトップとの接続を
+  確認してください")` としてキューに残し、原因をユーザーに見せる。
+  フェーズ遷移の分岐（成功→`.waiting`／失敗→`.failed`）は純関数
+  `WatchTransferDownloadOutcome.phaseAfterDownload(succeeded:)` に切り出し、
+  `WatchTransferTests` でユニットテスト化した。
+- `WatchTransferMenuPolicy.songsEligibleForBulkTransfer` はダウンロード
+  済みフィルタを撤廃し、常に全曲を返すようにした（`downloadedIds`
+  引数は呼び出し側の互換性のために残置、内部では未参照）。これに伴い
+  `WatchTransferBulkMenuItem`/`WatchTransferSongMenuItem` 側の
+  「未ダウンロードだからボタンを無効化する」ロジックも撤去した
+  （`send` がダウンロードまで面倒を見るため不要になった）。
+- Settings の転送キュー表示（`SettingsScreen.watchTransferStatusText`）に
+  `.downloading` → 「ダウンロード中…」を追加した。
+
+## Alternatives considered
+
+- ダウンロードを `WatchTransferBridge` 自身に持たせる（`RemoteAPIClient`
+  を直接保持させる）案は、`AppModel` の接続状態管理（`withFailover` に
+  よるフェイルオーバー・サーバー設定）を丸ごと複製することになるため
+  見送り、`AppModel` 側からクロージャを注入する形にした。
+
+## Constraints / Gotchas
+
+- `downloadHandler` は `AppModel.init` の**末尾**（全ストアドプロパティ
+  初期化後）で代入する必要がある。`watchTransferBridge.activate()` の
+  直後（他のプロパティ初期化前）に置くと `self` を弱参照で使うクロージャ
+  内で「initialised前のプロパティを使っている」ものとして Swift の
+  definite-initialization チェックに弾かれてビルドエラーになる。
+- `WatchTransferBridge` は `@MainActor` クラスなので、`send` 内で
+  `Task { ... }` を起こしても（`Task.detached` でない限り）MainActor
+  コンテキストを引き継ぐ。`downloadHandler` 完了後の `upsert`/
+  `queueForTransfer` 呼び出しに明示的な `MainActor.run` は不要。
