@@ -14,6 +14,7 @@
 		01A1A1A90101A1A10101A1A1 /* RemoteAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AA0101A1A10101A1A1 /* RemoteAPIClient.swift */; };
 		A4577566A2F0407386191821 /* YouTubeEmbedPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EBCFE9FEEDD422EBDFEA1D5 /* YouTubeEmbedPlayer.swift */; };
 		F50222EC82C1492BBF74D7C3 /* YouTubeEmbedPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09143B44DB7494383712142 /* YouTubeEmbedPlayerView.swift */; };
+		36D232AF85C94F728B481EE6 /* YouTubeEmbedLoopbackServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F16CBB54E1F54891921937FD /* YouTubeEmbedLoopbackServer.swift */; };
 		EAF165BCE1A4426CA065EBE4 /* YouTubePlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8191614502FC4E63A0F7FEF7 /* YouTubePlayerScreen.swift */; };
 		9E3DC57BBDB8499296265B1C /* AddYouTubeLinkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7ECB9F8ABA4D298A527758 /* AddYouTubeLinkSheet.swift */; };
 		01A1A1AB0101A1A10101A1A1 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */; };
@@ -71,6 +72,7 @@
 		b1b1b1B50101B1B10101B1B1 /* AlbumTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B60101B1B10101B1B1 /* AlbumTests.swift */; };
 		b1b1b1B70101B1B10101B1B1 /* RemoteAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B80101B1B10101B1B1 /* RemoteAPIClientTests.swift */; };
 		4008DEFF1C10495FBC1AC7F4 /* YouTubeEmbedPlayerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30B86AAEF3AD46E782970FB2 /* YouTubeEmbedPlayerTests.swift */; };
+		8098F3419A4340F2839A8045 /* YouTubeEmbedLoopbackServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E90895B7C10F45BA81A10875 /* YouTubeEmbedLoopbackServerTests.swift */; };
 		831E247A43EF4643914580E1 /* SongRowTapActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54508DB658D74F67BBE9C310 /* SongRowTapActionTests.swift */; };
 		c2c2c2C20101C2C10101C2C1 /* AppModelDownloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */; };
 		ED70471B3B4345BA8082875B /* UXMusicWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4FD60C91428442F8A235B4E /* UXMusicWatchApp.swift */; };
@@ -133,6 +135,7 @@
 		01A1A1AA0101A1A10101A1A1 /* RemoteAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAPIClient.swift; sourceTree = "<group>"; };
 		1EBCFE9FEEDD422EBDFEA1D5 /* YouTubeEmbedPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeEmbedPlayer.swift; sourceTree = "<group>"; };
 		C09143B44DB7494383712142 /* YouTubeEmbedPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeEmbedPlayerView.swift; sourceTree = "<group>"; };
+		F16CBB54E1F54891921937FD /* YouTubeEmbedLoopbackServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeEmbedLoopbackServer.swift; sourceTree = "<group>"; };
 		8191614502FC4E63A0F7FEF7 /* YouTubePlayerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubePlayerScreen.swift; sourceTree = "<group>"; };
 		FD7ECB9F8ABA4D298A527758 /* AddYouTubeLinkSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddYouTubeLinkSheet.swift; sourceTree = "<group>"; };
 		01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
@@ -192,6 +195,7 @@
 		b1b1b1B60101B1B10101B1B1 /* AlbumTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumTests.swift; sourceTree = "<group>"; };
 		b1b1b1B80101B1B10101B1B1 /* RemoteAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAPIClientTests.swift; sourceTree = "<group>"; };
 		30B86AAEF3AD46E782970FB2 /* YouTubeEmbedPlayerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeEmbedPlayerTests.swift; sourceTree = "<group>"; };
+		E90895B7C10F45BA81A10875 /* YouTubeEmbedLoopbackServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeEmbedLoopbackServerTests.swift; sourceTree = "<group>"; };
 		54508DB658D74F67BBE9C310 /* SongRowTapActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongRowTapActionTests.swift; sourceTree = "<group>"; };
 		b1b1b1BA0101B1B10101B1B1 /* UX-Music-MobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "UX-Music-MobileTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelDownloadTests.swift; sourceTree = "<group>"; };
@@ -263,6 +267,7 @@
 				b1b1b1B60101B1B10101B1B1 /* AlbumTests.swift */,
 				b1b1b1B80101B1B10101B1B1 /* RemoteAPIClientTests.swift */,
 				30B86AAEF3AD46E782970FB2 /* YouTubeEmbedPlayerTests.swift */,
+				E90895B7C10F45BA81A10875 /* YouTubeEmbedLoopbackServerTests.swift */,
 				54508DB658D74F67BBE9C310 /* SongRowTapActionTests.swift */,
 				c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */,
 				C1C1C1C40101C1C40101C1C4 /* RemoteArtworkPreviewCacheTests.swift */,
@@ -318,6 +323,7 @@
 			children = (
 				01A1A1AA0101A1A10101A1A1 /* RemoteAPIClient.swift */,
 				1EBCFE9FEEDD422EBDFEA1D5 /* YouTubeEmbedPlayer.swift */,
+				F16CBB54E1F54891921937FD /* YouTubeEmbedLoopbackServer.swift */,
 				01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */,
 				C1C1C1C20101C1C20101C1C2 /* RemoteArtworkCaching.swift */,
 				D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */,
@@ -532,6 +538,7 @@
 				b1b1b1B50101B1B10101B1B1 /* AlbumTests.swift in Sources */,
 				b1b1b1B70101B1B10101B1B1 /* RemoteAPIClientTests.swift in Sources */,
 				4008DEFF1C10495FBC1AC7F4 /* YouTubeEmbedPlayerTests.swift in Sources */,
+				8098F3419A4340F2839A8045 /* YouTubeEmbedLoopbackServerTests.swift in Sources */,
 				831E247A43EF4643914580E1 /* SongRowTapActionTests.swift in Sources */,
 				c2c2c2C20101C2C10101C2C1 /* AppModelDownloadTests.swift in Sources */,
 				F3A3A3A60101F3A60101F3A6 /* PlaylistStoreTests.swift in Sources */,
@@ -574,6 +581,7 @@
 				F3A3A3A30101F3A30101F3A3 /* Playlist.swift in Sources */,
 				01A1A1A90101A1A10101A1A1 /* RemoteAPIClient.swift in Sources */,
 				A4577566A2F0407386191821 /* YouTubeEmbedPlayer.swift in Sources */,
+				36D232AF85C94F728B481EE6 /* YouTubeEmbedLoopbackServer.swift in Sources */,
 				F50222EC82C1492BBF74D7C3 /* YouTubeEmbedPlayerView.swift in Sources */,
 				EAF165BCE1A4426CA065EBE4 /* YouTubePlayerScreen.swift in Sources */,
 				9E3DC57BBDB8499296265B1C /* AddYouTubeLinkSheet.swift in Sources */,

@@ -3,11 +3,11 @@ import WebKit
 
 /// WKWebView wrapper hosting the official YouTube IFrame Player for a single video ID.
 ///
-/// Loaded via `loadHTMLString(_:baseURL:)` with `baseURL = http://127.0.0.1` — see the doc
-/// comment on `YouTubeEmbedPlayer` for why this avoids IFrame API error 153 without needing a
-/// real local HTTP server on-device. Playback events flow back to SwiftUI through the
-/// `uxYouTube` WKScriptMessageHandler; commands (play/pause/seek) are pushed down via
-/// `evaluateJavaScript`.
+/// Loaded from `YouTubeEmbedLoopbackServer`, an in-app loopback HTTP host, so the page has a
+/// genuine `http://127.0.0.1:<port>` origin (see that type's doc comment for why the previous
+/// `loadHTMLString(_:baseURL:)` fake-origin approach was unreliable on-device). Playback events
+/// flow back to SwiftUI through the `uxYouTube` WKScriptMessageHandler; commands
+/// (play/pause/seek) are pushed down via `evaluateJavaScript`.
 /// Owns the live `WKWebView` so a SwiftUI screen can send playback commands (play/pause/seek)
 /// from outside the `UIViewRepresentable` update cycle.
 @MainActor
@@ -25,7 +25,10 @@ struct YouTubeEmbedPlayerView: UIViewRepresentable {
     /// Called on the main actor whenever the embedded player reports a bridge event.
     var onEvent: (YouTubeEmbedPlayer.BridgeEvent) -> Void = { _ in }
 
-    private static let embedOrigin = URL(string: "http://127.0.0.1")
+    /// Process-wide loopback host. One listener serves every embed page the app opens; it is
+    /// cheap to keep running for the app's lifetime (mirrors `startEmbedHost`'s `sync.Once` on
+    /// desktop, which never stops the server either).
+    private static let loopbackServer = YouTubeEmbedLoopbackServer()
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onEvent: onEvent)
@@ -41,11 +44,19 @@ struct YouTubeEmbedPlayerView: UIViewRepresentable {
         webView.scrollView.isScrollEnabled = false
         webView.isOpaque = false
         webView.backgroundColor = .black
-
-        if let html = try? YouTubeEmbedPlayer.buildEmbedHTML(videoID: videoID) {
-            webView.loadHTMLString(html, baseURL: Self.embedOrigin)
-        }
         controller.webView = webView
+
+        Task { @MainActor in
+            do {
+                let port = try await Self.loopbackServer.ensureStarted()
+                guard let url = YouTubeEmbedPlayer.loopbackPageURL(port: Int(port), videoID: videoID) else {
+                    return
+                }
+                webView.load(URLRequest(url: url))
+            } catch {
+                context.coordinator.onEvent(.error(code: -1))
+            }
+        }
         return webView
     }
 

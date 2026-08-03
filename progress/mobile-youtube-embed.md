@@ -98,3 +98,53 @@ YouTube 再生を開始する際（`YouTubePlayerScreen` のプレイヤー起�
   `AppModel` のアルバム/プレイリスト一括ダウンロードのループからも
   除外している点に注意（ここを忘れると一括ダウンロードが動画URLをファイルとして
   ダウンロードしようとして失敗する）。
+
+## フェーズ3: 実機再生エラー修正（ループバック方式への切り替え）
+
+### Decision
+`loadHTMLString(_:baseURL:)` の擬似オリジン方式は、シミュレータの一部動画では
+動いていたものの実機報告で再生エラーになるケースがあった。原因は WebKit が実際に
+`http://127.0.0.1` へリクエストを発行するわけではなく、`document.location`/`origin`
+だけをその値に見せかけている点にあり、埋め込み制限のある動画（IFrame API エラー
+150/153系）や実機の WebKit 実装差でこの見せかけが通らないケースがあると判断した。
+デスクトップ（`server/embed_host.go`）が本物の `127.0.0.1` ループバック HTTP
+サーバーで解決済みだったため、iOS 版にも同じ方式を移植した。
+
+- 新規 `UX-Music-Mobile/UX-Music-Mobile/Services/YouTubeEmbedLoopbackServer.swift`:
+  `Network.framework` の `NWListener`（`requiredLocalEndpoint = 127.0.0.1:any`）で
+  ループバック限定の最小 HTTP/1.1 サーバーを実装。`GET /embed?v=<id>` のみに応答する。
+  アプリプロセス内で一度だけ起動し、以後は `YouTubeEmbedPlayerView` が使い回す
+  （desktop の `sync.Once` 常駐ホストと同じ設計）。
+- `YouTubeEmbedPlayer.loopbackPageURL(port:videoID:)` を追加（`embedHostPageURL`
+  のiOS版）。`YouTubeEmbedPlayerView` は `loadHTMLString` ではなく
+  `webView.load(URLRequest(url:))` でこの URL を読み込むように変更。
+- `YouTubeEmbedPlayer.errorMessage(code:)` を追加し、IFrame API の `onError`
+  コード（2/5/100/101/150、および `-1`=ループバックサーバー起動失敗）を日本語の
+  エラーメッセージに変換。`RemoteYouTubeSongPlayerScreen`（`YouTubeFullScreenPlayer`）
+  で `.error` イベント受信時にこのメッセージを画面に表示するようにした
+  （従来は握りつぶされてユーザーには何も表示されなかった）。
+
+### Alternatives considered
+- `WKURLSchemeHandler` によるカスタムスキームは、依然として `http`/`https`
+  オリジンではないため見送り（フェーズ1と同じ判断を維持）。
+- ループバックサーバーをリクエストごとに起動/停止する案は、初回再生の遅延と
+  実装の複雑化を招くため、desktop 同様「アプリ起動中は張りっぱなし」を採用。
+
+### Constraints / Gotchas
+- `NWListener` の `newConnectionHandler`/`stateUpdateHandler` は `.main` キュー上で
+  呼ばれるが、`YouTubeEmbedLoopbackServer` 自体は actor なので、キュー由来のコード
+  から actor 内メソッドを呼ぶ際は必ず `Task { await ... }` で橋渡ししている。
+- `YouTubeEmbedLoopbackServerTests` はモックを使わず、実際に `NWListener` を
+  `127.0.0.1:0`（空きポート）で起動して `URLSession` から本物の HTTP リクエストを
+  投げる統合テストにした（`server/embed_host_test.go` と同じ戦略）。
+- 本フェーズでは「YouTube 曲をローカルライブラリの通常曲と同列に扱う」という
+  ユーザー要望のうち、公式プレイヤーの再生エラー修正（フェーズA）のみを実施した。
+  ローカルライブラリへの `メタデータのみ登録` とキュー/お気に入り/プレイリストへの
+  完全統合（フェーズB: `DownloadManager` 相当のYouTube用永続化、
+  `MusicPlayerService` へのYouTubeバックエンド追加、`NowPlayingView` への埋め込み
+  プレイヤー表示、queue の自動次曲送り連携）は本セッションのスコープに含めなかった。
+  `MusicPlayerService`（999行）・`NowPlayingView`・`DownloadManager` の永続化構造
+  （`isDownloaded` がファイル実在チェックに強く依存している）に踏み込む必要があり、
+  安全に TDD で刻むには別セッションでの着手が妥当と判断した。次回着手時は
+  `DownloadManager.isDownloaded` とは別の「ライブラリメンバーシップ」概念を先に
+  設計してから、`MusicPlayerService` の再生バックエンド切替に着手するとよい。

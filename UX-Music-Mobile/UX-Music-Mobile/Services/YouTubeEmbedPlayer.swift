@@ -14,6 +14,11 @@ import Foundation
 enum YouTubeEmbedPlayer {
     private static let videoIDPattern = try! NSRegularExpression(pattern: "^[A-Za-z0-9_-]{11}$")
 
+    private static func isValidVideoID(_ videoID: String) -> Bool {
+        let range = NSRange(videoID.startIndex..<videoID.endIndex, in: videoID)
+        return videoIDPattern.firstMatch(in: videoID, range: range) != nil
+    }
+
     enum EmbedPlayerError: Error, Equatable {
         case invalidVideoID
     }
@@ -57,11 +62,45 @@ enum YouTubeEmbedPlayer {
     /// Validates a YouTube video ID (always 11 characters of `[A-Za-z0-9_-]`, matching
     /// `embedVideoIDPattern` in `server/embed_host.go`) and builds the host page HTML.
     static func buildEmbedHTML(videoID: String) throws -> String {
-        let range = NSRange(videoID.startIndex..<videoID.endIndex, in: videoID)
-        guard videoIDPattern.firstMatch(in: videoID, range: range) != nil else {
+        guard isValidVideoID(videoID) else {
             throw EmbedPlayerError.invalidVideoID
         }
         return embedPageTemplate.replacingOccurrences(of: "__VIDEO_ID__", with: videoID)
+    }
+
+    /// URL for the app-local loopback HTTP host (`YouTubeEmbedLoopbackServer`) serving the embed
+    /// page for `videoID` on `port`. Mirrors `embedHostPageURL` in `server/embed_host.go`. Returns
+    /// `nil` for an invalid video ID instead of throwing, since callers building a URL to hand to
+    /// `WKWebView.load(_:)` have no natural place to surface a thrown error.
+    static func loopbackPageURL(port: Int, videoID: String) -> URL? {
+        guard isValidVideoID(videoID) else { return nil }
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = "127.0.0.1"
+        components.port = port
+        components.path = "/embed"
+        components.queryItems = [URLQueryItem(name: "v", value: videoID)]
+        return components.url
+    }
+
+    /// Japanese user-facing message for an IFrame Player API `onError` code. Codes per the
+    /// official docs: 2 = invalid parameter, 5 = HTML5 player error, 100 = video not
+    /// found/removed, 101/150 = embedding disallowed by the video owner.
+    static func errorMessage(code: Int) -> String {
+        switch code {
+        case -1:
+            return "再生用のローカルサーバーを起動できませんでした。アプリを再起動してお試しください。"
+        case 2:
+            return "動画を再生できませんでした（不正なパラメータ）。"
+        case 5:
+            return "動画を再生できませんでした（プレイヤーエラー）。"
+        case 100:
+            return "この動画は見つかりませんでした（削除または非公開の可能性があります）。"
+        case 101, 150:
+            return "この動画は投稿者により埋め込み再生が許可されていません。YouTubeアプリでご視聴ください。"
+        default:
+            return "動画の再生中にエラーが発生しました（コード: \(code)）。"
+        }
     }
 
     /// Decodes a `window.webkit.messageHandlers.uxYouTube.postMessage(...)` payload sent by the

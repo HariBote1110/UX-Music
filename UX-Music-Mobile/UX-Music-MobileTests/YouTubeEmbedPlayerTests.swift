@@ -51,4 +51,51 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
         XCTAssertEqual(YouTubeEmbedPlayer.commandScript(.pause), "window.uxYouTubeCommand({cmd:'pause'});")
         XCTAssertEqual(YouTubeEmbedPlayer.commandScript(.seek(seconds: 42.5)), "window.uxYouTubeCommand({cmd:'seek', seconds:42.5});")
     }
+
+    // MARK: - IFrame API error code -> Japanese user-facing message
+
+    func testErrorMessageForInvalidParameter() {
+        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 2), "動画を再生できませんでした（不正なパラメータ）。")
+    }
+
+    func testErrorMessageForHTML5Error() {
+        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 5), "動画を再生できませんでした（プレイヤーエラー）。")
+    }
+
+    func testErrorMessageForVideoNotFound() {
+        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 100), "この動画は見つかりませんでした（削除または非公開の可能性があります）。")
+    }
+
+    func testErrorMessageForEmbedDisallowed() {
+        XCTAssertEqual(
+            YouTubeEmbedPlayer.errorMessage(code: 101),
+            "この動画は投稿者により埋め込み再生が許可されていません。YouTubeアプリでご視聴ください。"
+        )
+        XCTAssertEqual(
+            YouTubeEmbedPlayer.errorMessage(code: 150),
+            "この動画は投稿者により埋め込み再生が許可されていません。YouTubeアプリでご視聴ください。"
+        )
+    }
+
+    func testErrorMessageForLoopbackServerStartFailure() {
+        XCTAssertEqual(
+            YouTubeEmbedPlayer.errorMessage(code: -1),
+            "再生用のローカルサーバーを起動できませんでした。アプリを再起動してお試しください。"
+        )
+    }
+
+    func testErrorMessageForUnknownCodeFallsBackToGeneric() {
+        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 9999), "動画の再生中にエラーが発生しました（コード: 9999）。")
+    }
+
+    // MARK: - Loopback host page URL (mirrors `embedHostPageURL` in server/embed_host.go)
+
+    func testLoopbackPageURLBuildsCorrectPathAndQuery() throws {
+        let url = try XCTUnwrap(YouTubeEmbedPlayer.loopbackPageURL(port: 54321, videoID: "dQw4w9WgXcQ"))
+        XCTAssertEqual(url.absoluteString, "http://127.0.0.1:54321/embed?v=dQw4w9WgXcQ")
+    }
+
+    func testLoopbackPageURLRejectsInvalidVideoID() {
+        XCTAssertNil(YouTubeEmbedPlayer.loopbackPageURL(port: 54321, videoID: "not an id"))
+    }
 }

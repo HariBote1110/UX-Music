@@ -53,6 +53,7 @@ struct YouTubeFullScreenPlayer: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var controller = YouTubePlayerController()
     @State private var isPlaying = false
+    @State private var playbackErrorMessage: String?
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -62,13 +63,26 @@ struct YouTubeFullScreenPlayer: View {
                     switch event {
                     case .state(.playing):
                         isPlaying = true
+                        playbackErrorMessage = nil
                     case .state(.paused), .state(.ended):
                         isPlaying = false
+                    case .error(let code):
+                        isPlaying = false
+                        playbackErrorMessage = YouTubeEmbedPlayer.errorMessage(code: code)
                     default:
                         break
                     }
                 }
                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
+
+                if let playbackErrorMessage {
+                    Text(playbackErrorMessage)
+                        .font(.subheadline)
+                        .foregroundStyle(.red.opacity(0.9))
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 12)
+                        .padding(.horizontal)
+                }
 
                 Text(video.title)
                     .font(.headline)
