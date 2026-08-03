@@ -211,9 +211,11 @@ final class AppModel {
     /// `serverConfig.host`. HTTP-status errors (`RemoteAPIError`) mean the server was reached, so
     /// they are not retried against fallback hosts.
     func withFailover<T>(_ operation: @Sendable (RemoteAPIClient) async throws -> T) async throws -> T {
-        let primaryHost = serverConfig.host
-        let fallbackHosts = serverConfig.fallbackHosts
-        let hostsToTry = [primaryHost] + fallbackHosts
+        let hostsToTry = ConnectionCandidatePolicy.hostsToTry(
+            primaryHost: serverConfig.host,
+            fallbackHosts: serverConfig.fallbackHosts,
+            preferredHost: serverConfig.preferredHost
+        )
 
         var lastError: Error?
         for (index, host) in hostsToTry.enumerated() {

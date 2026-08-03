@@ -109,6 +109,59 @@ final class AppModelFailoverTests: XCTestCase {
         XCTAssertEqual(model.serverConfig.host, "primary.invalid")
     }
 
+    // MARK: - Fixed connection mode (preferredHost)
+
+    /// Fixed mode (`preferredHost` set): a failure on that host must propagate as an error rather
+    /// than trying any `fallbackHosts` entry, even though some exist.
+    func testWithFailover_fixedModeDoesNotTryFallbackHosts() async throws {
+        let model = AppModel()
+        model.urlSession = sessionWithMock()
+        model.serverConfig = ServerConfig(host: "192.168.1.182", port: 8765)
+        model.serverConfig.fallbackHosts = ["192.168.0.140"]
+        model.serverConfig.preferredHost = "100.116.252.72"
+
+        var attemptedHosts: [String] = []
+        FailoverMockURLProtocol.handler = { req in
+            attemptedHosts.append(req.url?.host ?? "")
+            throw URLError(.cannotConnectToHost)
+        }
+
+        do {
+            _ = try await model.withFailover { client in try await client.ping() }
+            XCTFail("Expected failure")
+        } catch {
+            XCTAssertEqual((error as? URLError)?.code, .cannotConnectToHost)
+        }
+
+        XCTAssertEqual(attemptedHosts, ["100.116.252.72"])
+        // Fixed mode must not rewrite `host`/`fallbackHosts` on failure.
+        XCTAssertEqual(model.serverConfig.host, "192.168.1.182")
+        XCTAssertEqual(model.serverConfig.fallbackHosts, ["192.168.0.140"])
+    }
+
+    /// Fixed mode succeeding must not promote the preferred host into `host` — there is nothing to
+    /// fail over to, so `host`/`fallbackHosts` stay untouched.
+    func testWithFailover_fixedModeSucceedsWithoutRewritingHost() async throws {
+        let model = AppModel()
+        model.urlSession = sessionWithMock()
+        model.serverConfig = ServerConfig(host: "192.168.1.182", port: 8765)
+        model.serverConfig.fallbackHosts = ["192.168.0.140"]
+        model.serverConfig.preferredHost = "100.116.252.72"
+
+        FailoverMockURLProtocol.handler = { req in
+            XCTAssertEqual(req.url?.host, "100.116.252.72")
+            let data = #"{"hostname":"desk"}"#.data(using: .utf8)!
+            let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (data, res)
+        }
+
+        let hostname = try await model.withFailover { client in try await client.ping() }
+
+        XCTAssertEqual(hostname, "desk")
+        XCTAssertEqual(model.serverConfig.host, "192.168.1.182")
+        XCTAssertEqual(model.serverConfig.fallbackHosts, ["192.168.0.140"])
+    }
+
     // MARK: - Multi-NIC QR pairing (uxmusic://pair?host=&hosts=&port=&secret=)
 
     /// The primary `host=` is unreachable but a `hosts=` candidate is: `applyPairingURL` must probe
