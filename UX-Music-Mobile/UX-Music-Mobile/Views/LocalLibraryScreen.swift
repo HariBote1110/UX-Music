@@ -259,6 +259,12 @@ struct LocalLibraryScreen: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        WatchTransferBulkMenuItem(
+                            title: "アルバムを Apple Watch に転送",
+                            songs: album.songs
+                        )
+                    }
                 }
             }
             .padding(.horizontal, 16)
