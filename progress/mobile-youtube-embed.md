@@ -202,3 +202,48 @@ EQ（`NowPlayingPlaybackSettingsPanel`）側の無効化は本セッションで
   既存の `YouTubeEmbedPlayerTests`（純関数レイヤー）でカバーされる範囲を超える単体テストは
   今回追加していない（`resolveYouTubeVideoID` や `handleYouTubeBridgeEvent` の呼び出し
   経路は手動/シミュレータでの動作確認に依存）。
+
+## フェーズB追補: WKWebViewの常駐化・EQ無効化・videoIDキャッシュ
+
+### Decision: `YouTubePlaybackHost` でWKWebViewをサービスレベルに常駐させる
+従来 `NowPlayingView` が `YouTubeEmbedPlayerView`（`UIViewRepresentable`）を直接生成しており、
+Now Playingを閉じると`WKWebView`ごと破棄され、YouTube曲の再生がその場で止まっていた
+（ローカル曲は`AVAudioEngine`がバックグラウンドで鳴り続けるのと非対称だった）。
+`Services/YouTubePlaybackHost.swift`（新規、`NSObject & WKScriptMessageHandler`）を
+`MusicPlayerService.youtubePlaybackHost`として常駐させ、`WKWebView`をアプリプロセスの
+生存期間中ずっと保持するようにした。`Views/YouTubeEmbedHostContainerView.swift`（新規）は
+この単一のWKWebViewインスタンスを「借りて表示」するだけの`UIViewRepresentable`で、
+表示中は現在のコンテナに`addSubview`、`dismantleUIView`では単に`removeFromSuperview`する
+だけで**破棄はしない**。WKWebViewインスタンス自体が生き続け、JS/IFrame再生状態も維持される
+ため、Now Playingを閉じてLocal Libraryに戻ってもYouTube曲の音が鳴り続け、ミニプレイヤー/
+リモートコマンドからのpause/nextも引き続き効く。
+
+`loadAndPlayYouTube`は`youtubePlaybackHost.load(videoID:)`を直接呼ぶよう変更し、
+「NowPlayingViewが表示された結果としてWKWebViewが生成され再生が始まる」という以前の
+（ビューの生成に再生開始が依存する）暗黙の前提を解消した — 再生開始はサービス層の
+`play()`呼び出し時点で決まり、ビューの表示・非表示とは独立している。
+
+共有の`YouTubeEmbedLoopbackServer`は`.shared`という静的プロパティに変更し、常駐ホストと
+（ライブラリ追加前のプレビュー用に残した）`YouTubeEmbedPlayerView`の使い捨てWKWebViewの
+両方が同じループバックサーバーを使う。
+
+### Decision: EQパネルはYouTube曲再生中は無効化
+`NowPlayingPlaybackSettingsPanel`のEqualiserセクションに`.disabled(isYouTubeSong)`を付与し、
+footerに「YouTube曲の再生には適用されません。」を表示。EQは`AVAudioUnitEQ`経由でローカル
+再生のみに効くため、YouTube曲では操作しても無意味であることを明示した。
+
+### Decision: `resolveYouTubeVideoID`の結果をメモリキャッシュ
+`MusicPlayerService.youtubeVideoIDCache: [String: String]`（songId→videoId）を追加。
+同じYouTube曲を再度再生する際はサーバーへ問い合わせず、キャッシュ済みのvideoIdを
+そのまま`youtubePlaybackHost.load(videoID:)`に渡す。プロセス内メモリのみ（永続化はしない）。
+
+### Constraints / Gotchas
+- `YouTubePlaybackHost.userContentController(_:didReceive:)`は`nonisolated`にした上で
+  `MainActor.assumeIsolated`経由で`onEvent`を呼ぶ（`WKScriptMessageHandler`はメインスレッドで
+  呼ばれる契約だが、プロトコル要件自体は`@MainActor`ではないため）。
+- `YouTubeEmbedHostContainerView`の`dismantleUIView`はstaticメソッドで`webView`を直接
+  キャプチャできないため、コンテナの`subviews`から`WKWebView`を探して`removeFromSuperview`
+  している（同じインスタンスなので実質的に`webView.removeFromSuperview()`と同じ効果）。
+- アプリがバックグラウンドに回った場合の挙動（`AVAudioSession`は維持されるが、WKWebViewの
+  JS/メディア実行がOS側でどこまで継続されるか）は本追補では未検証。フォアグラウンド内での
+  画面遷移（Now Playing ⇄ Library）のみ確認対象とした。

@@ -814,17 +814,14 @@ private struct NowPlayingArtworkBlock: View {
     }
 
     /// Official YouTube embed player, shown in place of jacket art while the current song is a
-    /// YouTube library member (see `MusicPlayerService`'s YouTube backend). Binds to the shared
-    /// `youtubeController` so transport buttons elsewhere in `NowPlayingView` control this same
-    /// WKWebView instance.
+    /// YouTube library member (see `MusicPlayerService`'s YouTube backend). Reparents the single
+    /// persistent `WKWebView` owned by `youtubePlaybackHost` into this screen while it is visible
+    /// (see `YouTubeEmbedHostContainerView`) — dismissing Now Playing detaches it from display but
+    /// does not stop it, so playback continues while browsing the Library, same as a local file.
     @ViewBuilder
     private var youtubeEmbedFill: some View {
-        if let videoID = model.player.currentYouTubeVideoID {
-            YouTubeEmbedPlayerView(
-                videoID: videoID,
-                controller: model.player.youtubeController,
-                onEvent: { model.player.handleYouTubeBridgeEvent($0) }
-            )
+        if model.player.currentYouTubeVideoID != nil {
+            YouTubeEmbedHostContainerView(webView: model.player.youtubePlaybackHost.webView)
         } else if let error = model.player.youtubePlaybackErrorMessage {
             ZStack {
                 Color.black
@@ -1052,6 +1049,9 @@ private struct NowPlayingPlaybackSettingsPanel: View {
                 .padding(.top, topInset + 4)
                 .padding(.bottom, 8)
             List {
+                // EQ has no effect on YouTube songs (audio comes from the embedded WKWebView, not
+                // AVAudioEngine), so its controls are disabled instead of pretending they apply.
+                let isYouTubeSong = model.player.currentSong?.isYouTube ?? false
                 Section {
                     Toggle(
                         "Enable equaliser",
@@ -1093,7 +1093,12 @@ private struct NowPlayingPlaybackSettingsPanel: View {
                         .listRowInsets(.init(top: 8, leading: 10, bottom: 8, trailing: 10))
                 } header: {
                     Text("Equaliser")
+                } footer: {
+                    if isYouTubeSong {
+                        Text("YouTube曲の再生には適用されません。")
+                    }
                 }
+                .disabled(isYouTubeSong)
 
                 Section {
                     Toggle("Crossfade", isOn: .constant(false))

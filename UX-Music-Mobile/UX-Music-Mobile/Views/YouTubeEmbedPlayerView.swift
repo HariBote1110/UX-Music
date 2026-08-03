@@ -25,11 +25,6 @@ struct YouTubeEmbedPlayerView: UIViewRepresentable {
     /// Called on the main actor whenever the embedded player reports a bridge event.
     var onEvent: (YouTubeEmbedPlayer.BridgeEvent) -> Void = { _ in }
 
-    /// Process-wide loopback host. One listener serves every embed page the app opens; it is
-    /// cheap to keep running for the app's lifetime (mirrors `startEmbedHost`'s `sync.Once` on
-    /// desktop, which never stops the server either).
-    private static let loopbackServer = YouTubeEmbedLoopbackServer()
-
     func makeCoordinator() -> Coordinator {
         Coordinator(onEvent: onEvent)
     }
@@ -48,7 +43,7 @@ struct YouTubeEmbedPlayerView: UIViewRepresentable {
 
         Task { @MainActor in
             do {
-                let port = try await Self.loopbackServer.ensureStarted()
+                let port = try await YouTubeEmbedLoopbackServer.shared.ensureStarted()
                 guard let url = YouTubeEmbedPlayer.loopbackPageURL(port: Int(port), videoID: videoID) else {
                     return
                 }

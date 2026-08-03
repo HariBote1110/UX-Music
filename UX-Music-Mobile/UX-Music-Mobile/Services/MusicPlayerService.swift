@@ -63,15 +63,21 @@ final class MusicPlayerService {
     /// video ID using the desktop's `resolveYouTubeVideo` LAN endpoint. `nil` on failure.
     var resolveYouTubeVideoID: (@MainActor (Song) async -> String?)?
 
-    /// Owns the live embed `WKWebView` — set by whichever SwiftUI view currently hosts
-    /// `YouTubeEmbedPlayerView(controller: youtubeController, …)` (typically `NowPlayingView`).
-    let youtubeController = YouTubePlayerController()
+    /// Owns the single, long-lived `WKWebView` for YouTube playback. Kept alive for the app
+    /// process's lifetime (not tied to `NowPlayingView`'s presentation) so a YouTube song keeps
+    /// playing after the user navigates back to the Library — the same as a local file continuing
+    /// via `AVAudioEngine`. SwiftUI only ever borrows `youtubePlaybackHost.webView` for display
+    /// (see `YouTubeEmbedHostContainerView`).
+    let youtubePlaybackHost = YouTubePlaybackHost()
     /// Video ID for the currently-loading/playing YouTube song, or `nil` when idle or resolution failed.
     private(set) var currentYouTubeVideoID: String?
     /// Set when `resolveYouTubeVideoID` fails or the embed player reports an error — surfaced by `NowPlayingView`.
     private(set) var youtubePlaybackErrorMessage: String?
     /// Bumped on every `loadAndPlayYouTube`/backend switch so a bridge event from a superseded video is ignored.
     private var youtubePlaybackGeneration: UInt64 = 0
+    /// Caches `resolveYouTubeVideoID(song)` results by song id so replaying the same Library song
+    /// does not re-hit the desktop's `resolveYouTubeVideo` LAN endpoint every time.
+    private var youtubeVideoIDCache: [String: String] = [:]
 
     /// Audio session activation is deferred until playback starts to keep app launch light.
     private var playbackSessionPrepared = false
@@ -102,6 +108,9 @@ final class MusicPlayerService {
         addAudioInterruptionObserver()
         addAudioRouteChangeObserver()
         installRemoteCommandHandlers()
+        youtubePlaybackHost.onEvent = { [weak self] event in
+            self?.handleYouTubeBridgeEvent(event)
+        }
     }
 
     /// Invalidates pending `scheduleFile` / `scheduleSegment` completion callbacks before the next `playerNode.stop()`.
@@ -466,7 +475,7 @@ final class MusicPlayerService {
     /// - Parameter resumeAfterSeek: When `nil`, keeps playing iff the node was already playing (scrub-while-paused stays paused).
     func seek(to seconds: Double, resumeAfterSeek: Bool? = nil) {
         if let song = currentSong, song.isYouTube {
-            youtubeController.send(.seek(seconds: seconds))
+            youtubePlaybackHost.send(.seek(seconds: seconds))
             positionSeconds = min(max(0, seconds), durationSeconds > 0 ? durationSeconds : seconds)
             updateNowPlayingCentre()
             return
@@ -532,14 +541,18 @@ final class MusicPlayerService {
     // MARK: - YouTube playback backend
 
     /// Stops the embed player without touching `queue`/`currentSong` — used when switching the
-    /// active backend to local playback, and from `stop()`.
+    /// active backend to local playback, and from `stop()`. The `WKWebView` itself is not
+    /// destroyed (see `YouTubePlaybackHost`) — only paused.
     private func stopYouTubeBackend() {
         youtubePlaybackGeneration &+= 1
-        youtubeController.send(.pause)
+        youtubePlaybackHost.send(.pause)
         currentYouTubeVideoID = nil
         youtubePlaybackErrorMessage = nil
     }
 
+    /// Loads and plays `song` on the persistent `youtubePlaybackHost` directly — independent of
+    /// whether any SwiftUI view currently displays `youtubePlaybackHost.webView` (see that type's
+    /// doc comment). `currentYouTubeVideoID` only reflects what is loaded for display purposes.
     private func loadAndPlayYouTube(_ song: Song) async {
         youtubePlaybackGeneration &+= 1
         let generation = youtubePlaybackGeneration
@@ -550,33 +563,50 @@ final class MusicPlayerService {
         isPlaying = true
         updateNowPlayingCentre()
 
-        guard let resolver = resolveYouTubeVideoID, let videoID = await resolver(song) else {
+        let videoID: String
+        if let cached = youtubeVideoIDCache[song.id] {
+            videoID = cached
+        } else {
+            guard let resolver = resolveYouTubeVideoID, let resolved = await resolver(song) else {
+                guard generation == youtubePlaybackGeneration else { return }
+                isPlaying = false
+                youtubePlaybackErrorMessage = "動画情報を取得できませんでした。デスクトップとのペアリング状態を確認してください。"
+                updateNowPlayingCentre()
+                return
+            }
+            videoID = resolved
+            youtubeVideoIDCache[song.id] = resolved
+        }
+        guard generation == youtubePlaybackGeneration else { return }
+
+        do {
+            try await youtubePlaybackHost.load(videoID: videoID)
+        } catch {
             guard generation == youtubePlaybackGeneration else { return }
             isPlaying = false
-            youtubePlaybackErrorMessage = "動画情報を取得できませんでした。デスクトップとのペアリング状態を確認してください。"
+            youtubePlaybackErrorMessage = YouTubeEmbedPlayer.errorMessage(code: -1)
             updateNowPlayingCentre()
             return
         }
         guard generation == youtubePlaybackGeneration else { return }
+        // `playerVars.autoplay = 1` (see `YouTubeEmbedPlayer`) starts playback once the IFrame API
+        // reports `onReady` — no explicit `.play` command needed here.
         currentYouTubeVideoID = videoID
-        // `NowPlayingView` loads a fresh `YouTubeEmbedPlayerView` for this video ID with
-        // `playerVars.autoplay = 1` (see `YouTubeEmbedPlayer`), so playback starts on its own once
-        // the WKWebView mounts — no explicit `.play` command needed here.
     }
 
     private func toggleYouTubePlayPause() {
-        youtubeController.send(isPlaying ? .pause : .play)
+        youtubePlaybackHost.send(isPlaying ? .pause : .play)
         isPlaying.toggle()
         updateNowPlayingCentre()
     }
 
-    /// Routes IFrame Player API events (via `YouTubeEmbedPlayerView.onEvent`) into the unified
-    /// transport state. Called by whichever view currently hosts the embed player.
+    /// Routes IFrame Player API events (via `YouTubePlaybackHost.onEvent`) into the unified
+    /// transport state.
     func handleYouTubeBridgeEvent(_ event: YouTubeEmbedPlayer.BridgeEvent) {
         guard let song = currentSong, song.isYouTube else { return }
         switch event {
         case .ready:
-            youtubeController.send(.unmute)
+            youtubePlaybackHost.send(.unmute)
         case .state(.playing):
             isPlaying = true
             youtubePlaybackErrorMessage = nil

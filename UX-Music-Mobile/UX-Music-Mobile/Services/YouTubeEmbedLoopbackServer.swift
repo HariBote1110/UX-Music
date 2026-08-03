@@ -16,6 +16,12 @@ import Network
 /// `NWListener`-backed HTTP/1.1 responder bound to the loopback interface only, serving
 /// `GET /embed?v=<id>` and nothing else.
 actor YouTubeEmbedLoopbackServer {
+    /// Process-wide instance. One listener serves every embed page the app opens — both the
+    /// disposable preview player (`YouTubeEmbedPlayerView`) and the persistent
+    /// `YouTubePlaybackHost` owned by `MusicPlayerService` share it; it is cheap to keep running
+    /// for the app's lifetime (mirrors `startEmbedHost`'s `sync.Once` on desktop).
+    static let shared = YouTubeEmbedLoopbackServer()
+
     enum ServerError: Error {
         case listenerFailed(String)
     }
