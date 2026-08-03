@@ -148,3 +148,57 @@ YouTube 再生を開始する際（`YouTubePlayerScreen` のプレイヤー起�
   安全に TDD で刻むには別セッションでの着手が妥当と判断した。次回着手時は
   `DownloadManager.isDownloaded` とは別の「ライブラリメンバーシップ」概念を先に
   設計してから、`MusicPlayerService` の再生バックエンド切替に着手するとよい。
+
+## フェーズB: ライブラリ統合と統一プレイヤー（本セッション）
+
+### Decision: `LibraryMembershipStore` でメンバーシップとファイル実在を分離
+`DownloadManager.downloadedSongs` は「メタデータ」と「ファイル実在」を前提が
+密結合しており（`isDownloaded` はファイルが実際に存在するかを都度チェックする）、
+YouTube曲（ファイルを持たない）をそのまま登録すると壊れる。そこで
+`Services/LibraryMembershipStore.swift` を新設し、YouTube曲のメタデータのみを
+`UserDefaults`（`youtube_library_songs_meta_v1`）に永続化する専用ストアとした。
+`AppModel.librarySongsById`（private computed）が `DownloadManager.downloadedSongs`
+と `LibraryMembershipStore.songs` をマージし、`sortedDownloadedSongsForLibrary` /
+`resolvedSongs(for:)` / `favouriteSongsForPlayback` / `artworkIdForPlaylist` /
+`downloadedSongsEligibleForPlaylist` はすべてこのマージ結果を参照するよう変更した。
+`isSongDownloaded`（ファイル実在）とは別に `isLibrarySongMember`（メンバーシップ有無）
+を新設し、呼び分けている。
+
+`RemoteLibraryScreen` の `SongRowDownloadTrailing` は YouTube曲について、従来の
+静的アイコン表示から「追加」ボタン（未追加時 `plus.circle`）/ チェック表示
+（追加済み `checkmark.circle.fill`）に変更。コンテキストメニューにも
+追加/削除アクションを追加した。
+
+### Decision: `MusicPlayerService` に第二の再生バックエンドを追加（ファイルの書き換えは最小化）
+既存の `AVAudioEngine` タイムライン管理（`currentAudioFile`/`scheduledSegmentStartFrame`
+等）は大規模なため全面刷新はせず、`currentSong.isYouTube` で分岐する薄いルーティング層
+（`loadActive(_:)`）を `play`/`next`/`previous`/`playQueueItem` の内部呼び出し点に追加した。
+YouTube曲用に `youtubeController`（`YouTubePlayerController`、既存の embed 実装から流用）・
+`currentYouTubeVideoID`・`resolveYouTubeVideoID`（`AppModel` から注入されるクロージャ、
+`resolveYouTubeVideo` LAN APIを叩く）・`handleYouTubeBridgeEvent(_:)` を追加。
+IFrame Player API の `onStateChange(ended)` は既存の `advanceAfterEnd()` を呼ぶことで
+ローカル曲の自然終了と同じキュー送り経路に合流する。バックエンド切替時は
+`stopLocalPlaybackEngineOnly()` / `stopYouTubeBackend()`（どちらも `queue`/`currentSong`
+は保持したまま該当バックエンドだけ止める）で相互に排他した。
+
+`NowPlayingView` の `NowPlayingArtworkBlock` は `song.isYouTube` のとき
+`YouTubeEmbedPlayerView` をアートワーク領域に表示し、`onEvent` を
+`MusicPlayerService.handleYouTubeBridgeEvent` に直結。歌詞ボタンは YouTube曲では無効化。
+EQ（`NowPlayingPlaybackSettingsPanel`）側の無効化は本セッションでは未着手（ファイル前提の
+機能ではあるが、有効にしても実害はなく — ローカル再生と異なりEQは効かないだけ — 優先度を
+下げた）。
+
+### Constraints / Gotchas
+- `resolveYouTubeVideoID` は `song.sourceURL ?? song.path` を都度サーバーへ問い合わせる
+  （動画IDのキャッシュはしていない）。オフライン時はエラーメッセージを
+  `youtubePlaybackErrorMessage` に格納し `NowPlayingView` に表示する。
+- `WKWebView` は `NowPlayingView` が表示されているときだけ生成される（`YouTubeEmbedPlayerView`
+  は `UIViewRepresentable`）。バックグラウンド/オフスクリーンでの常駐生成は行っていない
+  ため、Now Playing シートを閉じると WKWebView は破棄され、IFrame 側の再生も止まる
+  （`isPlaying` の状態はサービス側に残るが実体の再生は止まっている）。完全なバックグラウンド
+  再生には、アプリのルート階層に常駐する非表示ホストへの置き換えが必要 — 次フェーズの課題。
+- テストは `LibraryMembershipStoreTests`（永続化ラウンドトリップ）を追加。
+  `MusicPlayerService` のYouTubeバックエンド分岐はWKWebView/ネットワーク依存が強く、
+  既存の `YouTubeEmbedPlayerTests`（純関数レイヤー）でカバーされる範囲を超える単体テストは
+  今回追加していない（`resolveYouTubeVideoID` や `handleYouTubeBridgeEvent` の呼び出し
+  経路は手動/シミュレータでの動作確認に依存）。
