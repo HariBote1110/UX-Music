@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mobile-sync-failover.md](mobile-sync-failover.md) — （追記）接続先ホストの手動選択・固定モードを追加：`ServerConfig.preferredHost`/`activeHost`、純粋関数 `ConnectionCandidatePolicy.hostsToTry`、Settings の既知ホスト一覧UI（到達確認・Tailscale/LANバッジ・タップで固定化）
 - [mobile-youtube-embed.md](mobile-youtube-embed.md) — iPhone版 YouTube 公式再生: フェーズ1〜Bでライブラリ統合・常駐WKWebView化を実施。フェーズCで「特定動画が埋め込み不可（error 150）」報告を調査し、UA偽装・mute同期・メッセージハンドラのフレーム越境露出隔離のいずれも効果がないことを確認、実Safariでも同一URLで同じエラーが再現することから**YouTube側のモバイルWeb埋め込み制限（クライアント側では回避不能）**と結論。フェーズDでフォールバックUXを実装: error 101/150時に「YouTube で開く」ボタン（`youtube://`優先、なければSafari）を表示し、キュー再生中は3秒後に自動で次の曲へスキップ（トースト表示）
 - [desktop-youtube-gate-removal.md](desktop-youtube-gate-removal.md) — デスクトップ版 YouTube 機能の `enableYouTube` 全体ゲートを撤廃し新規インストール直後から利用可、既定の再生モードを公式再生(embed)に変更、ダウンロード／ストリーミング(非公式)モードの選択肢のみを `enableYoutubeAdvancedModes`（旧ゲート機構を流用・リネーム）で引き続き隠す
 - [mobile-qr-pairing-multi-nic.md](mobile-qr-pairing-multi-nic.md) — QRペアリングが複数NIC環境（Wi-Fi/有線/Tailscale等）で失敗する不具合の修正: `BuildPairingURL`のhosts=に全LAN IPv4を埋め込み、モバイル側は`RemoteConnectionResolver`で到達可能な候補を探してからredeem・fallbackHosts保存、パース失敗時もpairingErrorをサイレントにしない
@@ -10,4 +11,3 @@
 - [mobile-remote-control-footer.md](mobile-remote-control-footer.md) — UX Music Mobile: Remote Control タブのトランスポート行がミニプレイヤー＋タブバーのフッターに重なるバグの原因（`.ignoresSafeArea()` を持つ背景をZStackの兄弟にするとレイアウトサイズが背景に引きずられる）と修正
 - [mobile-library-ui.md](mobile-library-ui.md) — UX Music Mobile: Local/Remote ライブラリ画面のタブ位置固定（共通 `LibrarySegmentedHeader`）と、行・グリッド・空状態の見た目統一（ellipsis メニュー集約、`ContentUnavailableView` は List 外に配置）
 - [mobile-nowplaying-visuals.md](mobile-nowplaying-visuals.md) — UX Music Mobile: 再生画面スワイプ時のセーフエリア帯グラデーション侵食バグ修正（`nowPlayingSidePanelCoverage` による黒被覆レイヤー）と、歌詞画面（`NowPlayingLyricsScreen`）の Apple Music 風環境光デザイン刷新（背景共有・エッジフェード・タップシーク・自動スクロール一時停止）
-- [mobile-sync-failover.md](mobile-sync-failover.md) — UX Music Mobile: mDNS 発見ピア選択時の疎通確認欠如による同期不安定バグの修正（WearConnectionResolver・ServerConfig.fallbackHosts・AppModel.withFailover）、および第2の根本原因である wearAuthMiddleware 認証トークン欠落（401）の修正（ServerConfig.token・WearAPIClient の X-UX-Music-Token・checkAuthorised）

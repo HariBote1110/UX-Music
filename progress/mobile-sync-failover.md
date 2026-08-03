@@ -87,3 +87,36 @@
 - `AppModel.client()` / `AppModel.withFailover` のフェイルオーバー候補生成でも
   `serverConfig.token` を渡し忘れると、フェイルオーバー後のホストだけ無認証リクエストに
   なってしまう点に注意。
+
+## Decision（接続先ホストの手動選択・固定モード）
+
+- 自動フェイルオーバーだけでは「今どの IP に繋がっているか見えない」「外出先で
+  Tailscale IP を明示的に使いたい」というニーズに応えられないため、`ServerConfig` に
+  `preferredHost: String?`（既定 `nil` = 自動モード）を追加した。`nil`/空文字なら
+  従来どおり `host` → `fallbackHosts` の順に自動フェイルオーバー、非空なら「固定モード」
+  としてそのホストのみを試し、失敗してもフェイルオーバーしない（エラーをそのまま表示）。
+- 候補ホストの決定ロジックは `ConnectionCandidatePolicy.hostsToTry(primaryHost:
+  fallbackHosts:preferredHost:)` という純粋関数に切り出し、`AppModel.withFailover` から
+  呼ぶだけにした。ネットワークを一切使わない純粋関数なので、自動/固定の分岐は
+  `ConnectionCandidatePolicyTests` で単体テストしている（`AppModelFailoverTests` 側は
+  モック `URLProtocol` 越しに固定モードがフェイルオーバーしないことだけを確認）。
+- `ServerConfig.activeHost`（`preferredHost` があればそれ、なければ `host`）を新設し、
+  `baseURLString` はこれを使うようにした。これにより `AppModel.client()` や
+  `artworkURL(for:)` など `withFailover` を経由しない単発リクエストも、固定モード時は
+  自動的に `preferredHost` を向く。
+- Settings に「接続先の選択」セクションを追加：現在の `activeHost` とモード表示、
+  自動/固定のセグメントピッカー、`host`+`fallbackHosts` を統合した既知ホスト一覧
+  （`ServerConfig.allKnownHosts`）。各行は `/v1/identity` への軽い到達確認
+  （✓/✗/計測中）と Tailscale（100.64.0.0/10 帯）/LAN バッジを表示し、タップすると
+  固定モードに切り替えてそのホストを `preferredHost` に設定する。
+- `preferredHost` は `fallbackHosts`/`token` と同様 `Equatable` の比較対象から除外した
+  （host/port が同じなら「選択中ピア」チェックマークは維持される、というこれまでの方針を
+  踏襲）。Codable は他フィールドと同じく `decodeIfPresent` で旧永続化データとの後方互換を
+  確保している。
+
+### Alternatives considered
+
+- 「固定モード時は `host` 自体を書き換える」案は採用しなかった：`preferredHost` を
+  `host`/`fallbackHosts` とは独立させたほうが、自動モードに戻したときに以前の
+  自動フェイルオーバー状態（`host`＝直近成功ホスト、`fallbackHosts`＝残り）をそのまま
+  再利用でき、ユーザーが固定⇔自動を行き来しても情報が失われない。
