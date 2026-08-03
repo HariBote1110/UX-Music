@@ -512,6 +512,7 @@ private struct NowPlayingPlayingShell: View {
     var bottomInset: CGFloat = 0
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(AppModel.self) private var model
 
     private var accent: Color {
         palette?.accentColor ?? nowPlayingFallbackAccent
@@ -568,6 +569,26 @@ private struct NowPlayingPlayingShell: View {
                     .padding(.bottom, 8)
 
                 Spacer(minLength: bottomInset + (horizontalSizeClass == .regular ? 48 : 24))
+            }
+
+            // Brief "スキップしました" toast for when an embed-restricted YouTube track
+            // (`MusicPlayerService.scheduleAutoSkipAfterEmbedRestriction`) auto-advances the
+            // queue. Deliberately at this shell level (not nested inside the YouTube error view)
+            // so it stays visible across the transition onto whatever track plays next, including
+            // a local file.
+            if let skipped = model.player.youtubePlaybackJustSkippedMessage {
+                VStack {
+                    Text(skipped)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.black.opacity(0.6), in: Capsule())
+                        .padding(.top, topInset + 8)
+                    Spacer()
+                }
+                .transition(.opacity)
+                .animation(.easeInOut, value: model.player.youtubePlaybackJustSkippedMessage)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -825,11 +846,23 @@ private struct NowPlayingArtworkBlock: View {
         } else if let error = model.player.youtubePlaybackErrorMessage {
             ZStack {
                 Color.black
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.8))
-                    .multilineTextAlignment(.center)
-                    .padding(16)
+                VStack(spacing: 16) {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                    if model.player.youtubePlaybackErrorFallback == .openInYouTubeApp {
+                        Button {
+                            model.player.openYouTubePlaybackErrorInYouTubeApp()
+                        } label: {
+                            Label("YouTube で開く", systemImage: "arrow.up.forward.app")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                    }
+                }
+                .padding(16)
             }
         } else {
             ZStack {

@@ -329,3 +329,65 @@ iOS版が「デスクトップと同一パラメータなのに失敗する」�
   バッファリングにより出力が遅延することがある。確実に読むには
   `xcrun simctl spawn <udid> log show --last <N>s --predicate '...'`を都度実行する
   方が確実。
+
+## フェーズD: embed不可(101/150)発生時のフォールバックUX
+
+フェーズCで「クライアント側では回避不能」と結論した embed 不可エラーについて、
+再生自体を通す代わりに **ユーザーを公式アプリ/サイトへ誘導する**フォールバックを実装した。
+
+### Decision: 判定・URL生成は`YouTubeEmbedPlayer`の純関数に切り出し
+- `YouTubeEmbedPlayer.EmbedFallback`（`.none` / `.openInYouTubeApp`）と
+  `embedFallback(forErrorCode:)`: 101/150のみ`.openInYouTubeApp`と判定
+  （他コードは再試行不可能なほどの制限ではない、または動画自体が存在しないため
+  「YouTubeで開く」を出しても意味がない）。
+- `youtubeAppDeepLinkURL(videoID:)`（`youtube://watch?v=<id>`）、
+  `youtubeWebFallbackURL(videoID:)`（`https://www.youtube.com/watch?v=<id>`）、
+  `urlToOpen(forVideoID:youtubeAppIsAvailable:)`（アプリ有無で切替）を追加。
+  `UIApplication.canOpenURL`の結果をBoolでそのまま渡す設計にし、`UIApplication`
+  依存を持ち込まずに純関数のままテスト可能にした（`YouTubeEmbedPlayerTests`に
+  TDDで先にテストを追加してからこの実装をコミット）。
+- `Info.plist`に`LSApplicationQueriesSchemes`として`youtube`を追加。これがないと
+  YouTubeアプリがインストールされていても`canOpenURL`が常に`false`を返す
+  （iOSの仕様）。
+
+### Decision: `MusicPlayerService`側の状態とキュー自動スキップ
+- `youtubePlaybackErrorFallback`・`youtubePlaybackErrorVideoID`を追加。
+  `.error(code:)`受信時、`embedFallback`が`.openInYouTubeApp`の場合のみ
+  `currentYouTubeVideoID`を`nil`にクリアする（`NowPlayingView`側の表示優先度が
+  `currentYouTubeVideoID != nil`→WebView / それ以外→エラーメッセージ、の順の
+  ままなので、クリアしないと「読み込み済みだが実際には死んでいるWebView」が
+  エラー表示より優先されてしまう。他のエラーコードではこの優先度の問題は
+  従来から未解決のまま — 本フェーズのスコープ外として据え置いた）。
+- `scheduleAutoSkipAfterEmbedRestriction(generation:)`: 3秒待ってから
+  `youtubePlaybackJustSkippedMessage`（トースト文言）をセットして
+  `advanceAfterEnd()`を呼ぶ（`queue.count > 1`なら`next()`、単曲キューなら
+  停止するだけ、という既存の分岐をそのまま流用）。`generation`
+  （`youtubePlaybackGeneration`）で、待機中にユーザーが手動操作した場合は
+  スキップしない安全策とした。
+- `openYouTubePlaybackErrorInYouTubeApp()`: `youtubePlaybackErrorVideoID`から
+  `urlToOpen`でURLを組み立てて`UIApplication.shared.open`する。
+  `NowPlayingView`の「YouTube で開く」ボタンから呼ばれる。
+
+### Alternatives considered
+- 「スキップした」トーストを`NowPlayingArtworkBlock`内（エラー表示と同じ場所）に
+  出す案は不採用。`stopYouTubeBackend`/`loadAndPlayYouTube`は次の曲へ切り替わる
+  際に`youtubePlaybackErrorMessage`を即座にクリアするため、エラービュー内に
+  ネストしたトーストは次の曲のロードが完了する前に表示領域ごと消えてしまい、
+  実質ユーザーの目に触れない。そのため`NowPlayingPlayingShell`（曲種別を問わない
+  シェルレベル）にトーストを昇格し、`youtubePlaybackJustSkippedMessage`自体は
+  `stopYouTubeBackend`/`loadAndPlayYouTube`では**意図的にクリアしない**
+  （自身の3秒タイマーでのみ消える）ようにして、次の曲（ローカル曲でもYouTube曲でも）
+  の表示に重ねて数秒だけ見えるようにした。
+- 自動スキップの遅延時間は3秒固定とした。「YouTubeで開く」をタップする猶予と、
+  キューを長時間止めないことのバランスとして妥当と判断（ユーザー設定化は
+  オーバーエンジニアリングと判断し見送り）。
+
+### Constraints / Gotchas
+- `handleYouTubeBridgeEvent`・`scheduleAutoSkipAfterEmbedRestriction`・
+  `openYouTubePlaybackErrorInYouTubeApp`はWKWebView/UIApplication/実際のキュー
+  状態に強く依存するため、フェーズBと同様に単体テストは追加していない
+  （純粋ロジック部分の`YouTubeEmbedPlayer`のみTDDでカバー）。動作確認は
+  ビルド成功・既存テストスイート全green・コードレビューベース。
+- `youtubePlaybackErrorVideoID`は`.error`受信時点の`currentYouTubeVideoID`を
+  退避したものであり、`currentYouTubeVideoID`自体は同じタイミングで`nil`に
+  クリアされる。両者を混同すると「開く」ボタンがvideoIDを見失うので注意。

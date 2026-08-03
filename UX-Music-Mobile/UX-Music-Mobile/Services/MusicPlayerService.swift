@@ -73,6 +73,17 @@ final class MusicPlayerService {
     private(set) var currentYouTubeVideoID: String?
     /// Set when `resolveYouTubeVideoID` fails or the embed player reports an error — surfaced by `NowPlayingView`.
     private(set) var youtubePlaybackErrorMessage: String?
+    /// How `NowPlayingView` should let the user recover from `youtubePlaybackErrorMessage` — see
+    /// `YouTubeEmbedPlayer.EmbedFallback`. `.openInYouTubeApp` for error 101/150 (embedding
+    /// disallowed on mobile; see `progress/mobile-youtube-embed.md` フェーズC), `.none` otherwise.
+    private(set) var youtubePlaybackErrorFallback: YouTubeEmbedPlayer.EmbedFallback = .none
+    /// Video ID captured at the moment an embed-restricted error fires, kept around so the
+    /// "YouTube で開く" button still knows which video to open even though `currentYouTubeVideoID`
+    /// is cleared to switch `NowPlayingView` away from the (now non-functional) embed WebView.
+    private(set) var youtubePlaybackErrorVideoID: String?
+    /// Transient "スキップしました" style message shown briefly in `NowPlayingView` right after an
+    /// embed-restricted error auto-advances the queue to the next track. `nil` most of the time.
+    private(set) var youtubePlaybackJustSkippedMessage: String?
     /// Bumped on every `loadAndPlayYouTube`/backend switch so a bridge event from a superseded video is ignored.
     private var youtubePlaybackGeneration: UInt64 = 0
     /// Caches `resolveYouTubeVideoID(song)` results by song id so replaying the same Library song
@@ -548,6 +559,13 @@ final class MusicPlayerService {
         youtubePlaybackHost.send(.pause)
         currentYouTubeVideoID = nil
         youtubePlaybackErrorMessage = nil
+        youtubePlaybackErrorFallback = .none
+        youtubePlaybackErrorVideoID = nil
+        // Deliberately NOT clearing `youtubePlaybackJustSkippedMessage` here: this is called as
+        // part of switching to the next queue item (see `loadActive`), which is exactly when an
+        // embed-restriction auto-skip (`scheduleAutoSkipAfterEmbedRestriction`) wants its "スキップ
+        // しました" toast to actually be visible for a moment on the new track. It clears itself
+        // via its own short timer instead.
     }
 
     /// Loads and plays `song` on the persistent `youtubePlaybackHost` directly — independent of
@@ -558,6 +576,10 @@ final class MusicPlayerService {
         let generation = youtubePlaybackGeneration
         currentYouTubeVideoID = nil
         youtubePlaybackErrorMessage = nil
+        youtubePlaybackErrorFallback = .none
+        youtubePlaybackErrorVideoID = nil
+        // See the comment in `stopYouTubeBackend()` for why `youtubePlaybackJustSkippedMessage`
+        // is deliberately left alone here.
         positionSeconds = 0
         durationSeconds = song.duration > 0 ? song.duration : 0
         isPlaying = true
@@ -627,10 +649,54 @@ final class MusicPlayerService {
         case .error(let code):
             isPlaying = false
             youtubePlaybackErrorMessage = YouTubeEmbedPlayer.errorMessage(code: code)
+            let fallback = YouTubeEmbedPlayer.embedFallback(forErrorCode: code)
+            youtubePlaybackErrorFallback = fallback
+            if fallback == .openInYouTubeApp {
+                // The embed WebView is not going to recover from this (see
+                // `progress/mobile-youtube-embed.md` フェーズC: this is a genuine YouTube-side
+                // mobile-web embedding restriction, not something a retry fixes), so stop showing
+                // it in favour of the error + "YouTube で開く" UI, and let the queue move on
+                // instead of stalling indefinitely on an unplayable track.
+                youtubePlaybackErrorVideoID = currentYouTubeVideoID
+                currentYouTubeVideoID = nil
+                scheduleAutoSkipAfterEmbedRestriction(generation: youtubePlaybackGeneration)
+            }
             updateNowPlayingCentre()
         default:
             break
         }
+    }
+
+    /// After an embed-restricted error (101/150), gives the user a short window to notice the
+    /// "YouTube で開く" button before automatically advancing the queue — see
+    /// `handleYouTubeBridgeEvent`'s `.error` case and `progress/mobile-youtube-embed.md` フェーズD.
+    /// Guarded by `generation` so this no-ops if the user has already navigated away (manual
+    /// next/previous, a different song loaded, playback stopped, …) by the time the delay elapses.
+    private func scheduleAutoSkipAfterEmbedRestriction(generation: UInt64) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard let self, generation == self.youtubePlaybackGeneration else { return }
+            let skippedMessage = "埋め込み再生が許可されていないためスキップしました"
+            self.youtubePlaybackJustSkippedMessage = skippedMessage
+            await self.advanceAfterEnd()
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                // Only clear it if nothing else (e.g. a later skip) has replaced it since.
+                guard let self, self.youtubePlaybackJustSkippedMessage == skippedMessage else { return }
+                self.youtubePlaybackJustSkippedMessage = nil
+            }
+        }
+    }
+
+    /// Opens the video behind the current embed-restricted error in the official YouTube app (or
+    /// Safari, if the app is not installed) — called from `NowPlayingView`'s "YouTube で開く"
+    /// button. Playing via the official app/site still counts the view and pays out to the
+    /// creator normally, unlike any embed workaround.
+    func openYouTubePlaybackErrorInYouTubeApp() {
+        guard let videoID = youtubePlaybackErrorVideoID else { return }
+        let appIsAvailable = URL(string: "youtube://").map { UIApplication.shared.canOpenURL($0) } ?? false
+        guard let url = YouTubeEmbedPlayer.urlToOpen(forVideoID: videoID, youtubeAppIsAvailable: appIsAvailable) else { return }
+        UIApplication.shared.open(url)
     }
 
     private func loadAndPlay(_ song: Song) async {
