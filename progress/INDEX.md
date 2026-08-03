@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mobile-qr-pairing-multi-nic.md](mobile-qr-pairing-multi-nic.md) — QRペアリングが複数NIC環境（Wi-Fi/有線/Tailscale等）で失敗する不具合の修正: `BuildPairingURL`のhosts=に全LAN IPv4を埋め込み、モバイル側は`RemoteConnectionResolver`で到達可能な候補を探してからredeem・fallbackHosts保存、パース失敗時もpairingErrorをサイレントにしない
 - [watch-integration.md](watch-integration.md) — UX Music Mobile: Apple Watch 再生機能の移植（フェーズ2〜5）。共有 `WatchTransferMeta`/`WatchLibraryIndex`（iOS/watchOS 両ターゲット）、iOS 送信ブリッジ（ダウンロード済みのみ転送可）、watchOS 受信・永続化・AVPlayer 再生・UI。フェーズ5でLibrary⇄Now Playingの水平ページング化・Digital Crownシーク・MPNowPlayingInfoCenter/MPRemoteCommandCenter連携を追加
 - [mobile-device-identity-zero-uuid.md](mobile-device-identity-zero-uuid.md) — UX Music Mobile: `DeviceIdentity` がシミュレータ等で返るゼロUUIDを有効な識別子として誤採用し、デスクトップ側 `deviceAuthTokens` に衝突登録される不具合の修正（`resolvedDeviceId` への切り出しとフォールバック生成）
 - [mobile-lan-api-v1-migration.md](mobile-lan-api-v1-migration.md) — UX-Music-Mobile を新 LAN API v1 に追従: wear 命名の全廃（RemoteAPIClient 等への改名）、Bearer 認証、secret→redeem 方式のペアリングへの変更
