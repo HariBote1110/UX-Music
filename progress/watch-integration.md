@@ -234,3 +234,111 @@
 - `xcodebuild test -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air'` → TEST SUCCEEDED（`WatchTransferActivationGating` 向け新規6件を含め全件成功）
 - `xcodebuild -scheme UX-Music-Watch -destination 'generic/platform=watchOS Simulator' build` → BUILD SUCCEEDED
 - 実機確認はユーザーが実施予定（本フェーズではシミュレータ検証のみ）。
+
+## フェーズ5: 再生 UI 本格化（ページング化・Digital Crown シーク・システム連携）
+
+実機での再生自体は動くようになったが、ユーザーから3点の不満が出た:
+「戻るボタンでLibraryに戻ると再生画面に戻れない」「シークバーが操作不能」
+「全体的に機能不足」。これに対応した。
+
+### Decision
+
+- **ナビゲーション構造**: `WatchSongListView` の行から `WatchNowPlayingView` へ
+  `NavigationLink` で push する構造（フェーズ2〜4）をやめ、`WatchRootView` を
+  `TabView(selection:) { ... }.tabViewStyle(.page)` による **Library ⇄ Now
+  Playing の水平ページング**に変更した（`WatchPage` enum で選択状態を管理）。
+  watchOS の `.page` スタイルはデフォルトで水平ページング（iOS の縦ドットとは
+  挙動が異なる）ため、これが「標準アプリ（Music/Podcasts）のページめくり」と
+  同じ体験になる。曲行タップ時は `player.play(...)` に加えて
+  `selectedPage = .nowPlaying` を設定して自動遷移させ、Library ページへ戻っても
+  Now Playing ページ自体は `TabView` の中に常に存在するため、指1本のスワイプで
+  いつでも再生画面へ戻れる（= 元の不満1を解消）。
+- **Digital Crown シーク**: watchOS でスライダーのドラッグ操作は当たり判定が
+  細く実用的でないため、`WatchNowPlayingView` に `.digitalCrownRotation` を
+  `$crownPosition`（0秒〜曲長の秒数レンジ）にバインドしてシーク入力とした。
+  回転中は `isSeeking` フラグを立てて `crownPosition` をそのまま表示（進捗バー・
+  経過/残り時間ラベル）し、`AVPlayer.seek` は叩かない。回転が 0.4 秒止まったら
+  （`Task.sleep` によるデバウンス、回転のたびに前のタスクを `cancel`）
+  `player.seek(to:)` を確定コミットする。これで「回転のたびに毎回シークして
+  引っかかる」を避けつつ、離した瞬間の反映も速い。曲が切り替わったら
+  `crownPosition` を新しい `player.position`（＝0）に同期する。
+- **クランプ処理の純関数化**: 「シーク位置は 0〜曲長にクランプする」
+  ルールを `Core/WatchPlaybackLogic.swift` の `WatchSeekLogic.clampedPosition`
+  として切り出し、`WatchAudioPlayerService.seek(to:)` から呼ぶ形にした。
+  合わせて `next()`/`previous()` の曲送り順序（ラップアラウンド）と
+  「再生位置が3秒を超えていたら先頭曲へ戻さず現在曲を先頭に戻す」判定も
+  `WatchQueueNavigation`（`nextIndex`/`previousIndex`/`shouldRestartOnPrevious`）
+  として同じファイルに切り出した。いずれも `WatchTransfer.swift` と同じ手法で
+  iOS/watchOS 両ターゲットのメンバーシップにし、
+  `UX-Music-MobileTests/WatchPlaybackLogicTests.swift` から TDD で検証。
+- **システム統合**: `WatchAudioPlayerService` に
+  `MPNowPlayingInfoCenter.default().nowPlayingInfo` の更新（曲変更時・
+  0.5秒ごとの再生位置更新時・play/pause 切替時・seek 時）と、
+  `MPRemoteCommandCenter.shared()` の `playCommand` /
+  `pauseCommand` / `togglePlayPauseCommand` / `nextTrackCommand` /
+  `previousTrackCommand` / `changePlaybackPositionCommand` のハンドラ登録を
+  追加した。Now Playing 情報の dict 構築自体も
+  `WatchNowPlayingInfoBuilder.buildInfo(for:isPlaying:position:)` という純関数
+  にして（`MPMediaItemPropertyTitle` 等のキーを使うだけで
+  `MPNowPlayingInfoCenter` 自体には触れない）、
+  `WatchPlaybackLogicTests` から検証できるようにした。これにより watchOS
+  標準の Now Playing グランス・AirPods の再生/一時停止/スキップ操作・
+  ペアの iPhone 側コントロールが実再生と連動する。
+- **音量の扱い（判断）**: Digital Crown をシーク専用に割り当てたため、
+  フェーズ2で実装していた「Crown で音量調整」機能は削除した。
+  `WKInterfaceVolumeControl` 相当を別途 UI に追加する案もあったが、
+  Crown と競合しない独立した音量 UI を狭い watchOS 画面に増設するより、
+  **音量調整は watchOS 標準のサイドボタン操作／Control Center／ペアの
+  iPhone に委ねる**（システム任せ）方針とした。これは Apple Music アプリ
+  自身も Now Playing 画面では音量スライダーを持たず Crown をシークに
+  使う挙動と揃える判断。
+- **Library の再生中インジケータ**: `WatchSongListView` の各行に、
+  `player.currentSong?.id == meta.id` のときスピーカーアイコン
+  （再生中は `speaker.wave.2.fill`、一時停止中は `speaker.fill`）を
+  表示するようにした。行タップの実装は `NavigationLink` から
+  `Button { player.play(...); selectedPage = .nowPlaying }` に変更（削除の
+  swipeActions はそのまま維持）。
+
+### Alternatives considered
+
+- ナビゲーションを「2タブ構造（`TabView` に `.tabItem` でタブバー表示）」に
+  する案も検討したが、watchOS はタブバーではなく横スワイプでページを
+  めくるのが標準的な体験（Music/Podcasts/Now Playing グランス等）のため、
+  `.tabViewStyle(.page)` によるページングを採用した。`.verticalPage`
+  （縦スクロールでページをめくるスタイル）は要件で明示的に除外されていた
+  こともあり不採用。
+- シーク UI として `Slider` + `.focusable().digitalCrownRotation` を
+  スライダーの見た目のまま Crown で動かす案も検討したが、watchOS では
+  スライダーの視覚的なつまみが小さく操作感の向上に寄与しないため、
+  進捗バー（`ProgressView`、非操作）+ Crown 直結という Podcasts アプリに
+  近い構成にした。
+- Crown シークを「回転量の相対的なデルタ」で実装する案（現在位置に
+  加算していく）も検討したが、`.digitalCrownRotation` はバインドした
+  `Double` を直接ドライブする絶対値 API のため、素直に「0〜曲長」の
+  レンジへ直接バインドする方が実装・テストともにシンプルだった。
+
+### Constraints / Gotchas
+
+- `.digitalCrownRotation` の `through:` に曲の長さ（`Double`）をそのまま
+  渡すため、`WatchTransferMeta.duration` が 0 の曲（メタデータ欠損）では
+  レンジが 0 になり Crown が効かない。`duration` の下限を `max(_, 1)` で
+  ガードしている（`WatchNowPlayingView.duration`）。
+- `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` はシングルトンで
+  グローバル状態を持つため、`WatchAudioPlayerService` の
+  ユニットテストは意図的に作らなかった（実機/シミュレータの `MediaPlayer`
+  フレームワーク状態に依存し、TDD 対象としての価値が低い）。代わりに
+  「渡す dict の中身が正しいか」だけを `WatchNowPlayingInfoBuilder`
+  という純関数として切り出しテストで担保する方針にした
+  （`Core/WatchPlaybackLogic.swift` 参照）。
+- 転送メタデータ `WatchTransferMeta` にアートワークのフィールドが
+  存在しない（フェーズ2の決定どおり軽量ペイロード優先）ため、
+  Now Playing 画面のアートワーク表示は本フェーズでは見送った
+  （音符アイコンのプレースホルダーのまま）。アートワークを追加するには
+  `WatchTransferBridge` の転送ペイロードに画像データを追加する必要があり、
+  ペイロードサイズ・転送時間とのトレードオフになるため別途判断が必要。
+
+### 検証結果
+
+- `xcodebuild -scheme UX-Music-Watch -destination 'generic/platform=watchOS Simulator' build` → BUILD SUCCEEDED
+- `xcodebuild -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air' build` → BUILD SUCCEEDED
+- `xcodebuild test -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air'` → TEST SUCCEEDED（`WatchPlaybackLogicTests` 新規16件を含め全件成功）
