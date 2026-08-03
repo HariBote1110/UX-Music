@@ -323,11 +323,12 @@ struct NowPlayingView: View {
                     Image(systemName: "text.alignleft")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(
-                            model.hasLocalLyricsFile(for: song.id)
+                            !song.isYouTube && model.hasLocalLyricsFile(for: song.id)
                                 ? Color.white.opacity(0.9)
                                 : Color.white.opacity(0.38)
                         )
                 }
+                .disabled(song.isYouTube)
                 NowPlayingNavIconButton(action: {
                     model.toggleFavourite(songId: song.id)
                 }, accessibilityLabel: "Favourite") {
@@ -525,7 +526,7 @@ private struct NowPlayingPlayingShell: View {
             VStack(spacing: 0) {
                 Spacer(minLength: topInset + (horizontalSizeClass == .regular ? 40 : 16))
 
-                NowPlayingArtworkBlock(artworkId: artworkId, urlString: artworkURLString, accent: accent)
+                NowPlayingArtworkBlock(song: song, artworkId: artworkId, urlString: artworkURLString, accent: accent)
                     .padding(.horizontal, 28)
 
                 Spacer(minLength: 28)
@@ -773,10 +774,12 @@ struct NowPlayingAmbientBackground: View {
 // MARK: - Artwork
 
 private struct NowPlayingArtworkBlock: View {
+    let song: Song
     let artworkId: String
     let urlString: String
     let accent: Color
 
+    @Environment(AppModel.self) private var model
     @State private var loaded: UIImage?
 
     private var taskIdentity: String { "\(artworkId)\u{1E}\(urlString)\u{1E}np" }
@@ -786,8 +789,14 @@ private struct NowPlayingArtworkBlock: View {
             .aspectRatio(1, contentMode: .fit)
             .frame(maxWidth: 340)
             .overlay {
-                artworkFill
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Group {
+                    if song.isYouTube {
+                        youtubeEmbedFill
+                    } else {
+                        artworkFill
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay {
@@ -797,10 +806,40 @@ private struct NowPlayingArtworkBlock: View {
             .shadow(color: .black.opacity(0.55), radius: 32, y: 18)
             .shadow(color: accent.opacity(0.15), radius: 40, y: 12)
             .task(id: taskIdentity) {
+                guard !song.isYouTube else { return }
                 loaded = nil
                 guard !urlString.isEmpty else { return }
                 loaded = await RemoteArtworkImageLoader.loadUIImage(artworkId: artworkId, urlString: urlString)
             }
+    }
+
+    /// Official YouTube embed player, shown in place of jacket art while the current song is a
+    /// YouTube library member (see `MusicPlayerService`'s YouTube backend). Binds to the shared
+    /// `youtubeController` so transport buttons elsewhere in `NowPlayingView` control this same
+    /// WKWebView instance.
+    @ViewBuilder
+    private var youtubeEmbedFill: some View {
+        if let videoID = model.player.currentYouTubeVideoID {
+            YouTubeEmbedPlayerView(
+                videoID: videoID,
+                controller: model.player.youtubeController,
+                onEvent: { model.player.handleYouTubeBridgeEvent($0) }
+            )
+        } else if let error = model.player.youtubePlaybackErrorMessage {
+            ZStack {
+                Color.black
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                    .padding(16)
+            }
+        } else {
+            ZStack {
+                Color.black
+                ProgressView().tint(.white.opacity(0.6))
+            }
+        }
     }
 
     @ViewBuilder

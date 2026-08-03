@@ -18,6 +18,7 @@
 		EAF165BCE1A4426CA065EBE4 /* YouTubePlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8191614502FC4E63A0F7FEF7 /* YouTubePlayerScreen.swift */; };
 		9E3DC57BBDB8499296265B1C /* AddYouTubeLinkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7ECB9F8ABA4D298A527758 /* AddYouTubeLinkSheet.swift */; };
 		01A1A1AB0101A1A10101A1A1 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */; };
+		7F93E94DF4914161B7AD4ADC /* LibraryMembershipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB70EB185924AECA2642CCA /* LibraryMembershipStore.swift */; };
 		01A1A1AD0101A1A10101A1A1 /* MusicPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */; };
 		01A1A1AF0101A1A10101A1A1 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1B00101A1A10101A1A1 /* AppModel.swift */; };
 		01A1A1B10101A1A10101A1A1 /* ArtworkImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1B20101A1A10101A1A1 /* ArtworkImageView.swift */; };
@@ -75,6 +76,7 @@
 		8098F3419A4340F2839A8045 /* YouTubeEmbedLoopbackServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E90895B7C10F45BA81A10875 /* YouTubeEmbedLoopbackServerTests.swift */; };
 		831E247A43EF4643914580E1 /* SongRowTapActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54508DB658D74F67BBE9C310 /* SongRowTapActionTests.swift */; };
 		c2c2c2C20101C2C10101C2C1 /* AppModelDownloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */; };
+		989B69B59F4940BDA602420F /* LibraryMembershipStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 658DF9DA374B42C3A9EDC156 /* LibraryMembershipStoreTests.swift */; };
 		ED70471B3B4345BA8082875B /* UXMusicWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4FD60C91428442F8A235B4E /* UXMusicWatchApp.swift */; };
 		8379E743BC3A42EA9A578132 /* WatchRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332646F2855E4CA194E31608 /* WatchRootView.swift */; };
 		B876FC45A8EA453AB2CF792F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 66498BF289AC41A2936302DE /* Assets.xcassets */; };
@@ -139,6 +141,7 @@
 		8191614502FC4E63A0F7FEF7 /* YouTubePlayerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubePlayerScreen.swift; sourceTree = "<group>"; };
 		FD7ECB9F8ABA4D298A527758 /* AddYouTubeLinkSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddYouTubeLinkSheet.swift; sourceTree = "<group>"; };
 		01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+		0BB70EB185924AECA2642CCA /* LibraryMembershipStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryMembershipStore.swift; sourceTree = "<group>"; };
 		01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerService.swift; sourceTree = "<group>"; };
 		01A1A1B00101A1A10101A1A1 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		01A1A1B20101A1A10101A1A1 /* ArtworkImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkImageView.swift; sourceTree = "<group>"; };
@@ -199,6 +202,7 @@
 		54508DB658D74F67BBE9C310 /* SongRowTapActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongRowTapActionTests.swift; sourceTree = "<group>"; };
 		b1b1b1BA0101B1B10101B1B1 /* UX-Music-MobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "UX-Music-MobileTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelDownloadTests.swift; sourceTree = "<group>"; };
+		658DF9DA374B42C3A9EDC156 /* LibraryMembershipStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryMembershipStoreTests.swift; sourceTree = "<group>"; };
 		B4FD60C91428442F8A235B4E /* UXMusicWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXMusicWatchApp.swift; sourceTree = "<group>"; };
 		332646F2855E4CA194E31608 /* WatchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRootView.swift; sourceTree = "<group>"; };
 		66498BF289AC41A2936302DE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -270,6 +274,7 @@
 				E90895B7C10F45BA81A10875 /* YouTubeEmbedLoopbackServerTests.swift */,
 				54508DB658D74F67BBE9C310 /* SongRowTapActionTests.swift */,
 				c2c2c2C30101C2C10101C2C1 /* AppModelDownloadTests.swift */,
+				658DF9DA374B42C3A9EDC156 /* LibraryMembershipStoreTests.swift */,
 				C1C1C1C40101C1C40101C1C4 /* RemoteArtworkPreviewCacheTests.swift */,
 				E8E8E8EA0101E8EA0101E8EA /* RemoteDefaultArtworkTests.swift */,
 				F3A3A3AB0101F3AB0101F3AB /* PlaylistStoreTests.swift */,
@@ -325,6 +330,7 @@
 				1EBCFE9FEEDD422EBDFEA1D5 /* YouTubeEmbedPlayer.swift */,
 				F16CBB54E1F54891921937FD /* YouTubeEmbedLoopbackServer.swift */,
 				01A1A1AC0101A1A10101A1A1 /* DownloadManager.swift */,
+				0BB70EB185924AECA2642CCA /* LibraryMembershipStore.swift */,
 				C1C1C1C20101C1C20101C1C2 /* RemoteArtworkCaching.swift */,
 				D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */,
 				01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */,
@@ -541,6 +547,7 @@
 				8098F3419A4340F2839A8045 /* YouTubeEmbedLoopbackServerTests.swift in Sources */,
 				831E247A43EF4643914580E1 /* SongRowTapActionTests.swift in Sources */,
 				c2c2c2C20101C2C10101C2C1 /* AppModelDownloadTests.swift in Sources */,
+				989B69B59F4940BDA602420F /* LibraryMembershipStoreTests.swift in Sources */,
 				F3A3A3A60101F3A60101F3A6 /* PlaylistStoreTests.swift in Sources */,
 				F3A3A3A70101F3A70101F3A7 /* AppModelPlaylistTests.swift in Sources */,
 				B2B2B2B40101B2B40101B2B4 /* PlaybackControlStateTests.swift in Sources */,
@@ -586,6 +593,7 @@
 				EAF165BCE1A4426CA065EBE4 /* YouTubePlayerScreen.swift in Sources */,
 				9E3DC57BBDB8499296265B1C /* AddYouTubeLinkSheet.swift in Sources */,
 				01A1A1AB0101A1A10101A1A1 /* DownloadManager.swift in Sources */,
+				7F93E94DF4914161B7AD4ADC /* LibraryMembershipStore.swift in Sources */,
 				C1C1C1C10101C1C10101C1C1 /* RemoteArtworkCaching.swift in Sources */,
 				D0D0D0D10101D0D10101D0D1 /* DownloadedTrackFormatSniffer.swift in Sources */,
 				01A1A1AD0101A1A10101A1A1 /* MusicPlayerService.swift in Sources */,

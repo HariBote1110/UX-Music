@@ -51,6 +51,28 @@ final class MusicPlayerService {
     /// When set (by `AppModel`), jacket art is shown in Now Playing, Dynamic Island, and Control Centre.
     var loadArtworkImage: (@MainActor (Song) async -> UIImage?)?
 
+    // MARK: - YouTube playback backend
+    //
+    // `currentSong.isYouTube` picks which backend the transport controls (play/pause/seek/
+    // next/previous) drive: the `AVAudioEngine` graph above for local files, or this WKWebView-
+    // backed IFrame player for YouTube songs added to the Library (see `AppModel.addYouTubeSongToLibrary`).
+    // `queue`/`currentIndex`/`currentSong` bookkeeping is shared across both backends so a mixed
+    // queue advances seamlessly regardless of what kind the next track is.
+
+    /// Injected by `AppModel`: resolves a YouTube `Song` (via `sourceURL`/`path`) to an 11-char
+    /// video ID using the desktop's `resolveYouTubeVideo` LAN endpoint. `nil` on failure.
+    var resolveYouTubeVideoID: (@MainActor (Song) async -> String?)?
+
+    /// Owns the live embed `WKWebView` — set by whichever SwiftUI view currently hosts
+    /// `YouTubeEmbedPlayerView(controller: youtubeController, …)` (typically `NowPlayingView`).
+    let youtubeController = YouTubePlayerController()
+    /// Video ID for the currently-loading/playing YouTube song, or `nil` when idle or resolution failed.
+    private(set) var currentYouTubeVideoID: String?
+    /// Set when `resolveYouTubeVideoID` fails or the embed player reports an error — surfaced by `NowPlayingView`.
+    private(set) var youtubePlaybackErrorMessage: String?
+    /// Bumped on every `loadAndPlayYouTube`/backend switch so a bridge event from a superseded video is ignored.
+    private var youtubePlaybackGeneration: UInt64 = 0
+
     /// Audio session activation is deferred until playback starts to keep app launch light.
     private var playbackSessionPrepared = false
     private let sessionActivationLock = NSLock()
@@ -373,12 +395,16 @@ final class MusicPlayerService {
         }
         let active = queue[currentIndex]
         currentSong = active
-        await loadAndPlay(active)
+        await loadActive(active)
     }
 
     func togglePlayPause() {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            if let song = self.currentSong, song.isYouTube {
+                self.toggleYouTubePlayPause()
+                return
+            }
             self.activateSessionIfNeededSync()
             if self.playerNode.isPlaying {
                 self.frozenPositionWhilePaused = self.currentTimelineSeconds()
@@ -401,7 +427,7 @@ final class MusicPlayerService {
         currentIndex = (currentIndex + 1) % queue.count
         let s = queue[currentIndex]
         currentSong = s
-        await loadAndPlay(s)
+        await loadActive(s)
     }
 
     func previous() async {
@@ -412,7 +438,7 @@ final class MusicPlayerService {
             currentIndex = (currentIndex - 1 + queue.count) % queue.count
             let s = queue[currentIndex]
             currentSong = s
-            await loadAndPlay(s)
+            await loadActive(s)
         }
     }
 
@@ -422,11 +448,29 @@ final class MusicPlayerService {
         currentIndex = index
         let s = queue[currentIndex]
         currentSong = s
-        await loadAndPlay(s)
+        await loadActive(s)
+    }
+
+    /// Routes to the local `AVAudioEngine` path or the YouTube embed backend depending on `song.isYouTube`,
+    /// stopping whichever backend is not needed so the two never play simultaneously.
+    private func loadActive(_ song: Song) async {
+        if song.isYouTube {
+            stopLocalPlaybackEngineOnly()
+            await loadAndPlayYouTube(song)
+        } else {
+            stopYouTubeBackend()
+            await loadAndPlay(song)
+        }
     }
 
     /// - Parameter resumeAfterSeek: When `nil`, keeps playing iff the node was already playing (scrub-while-paused stays paused).
     func seek(to seconds: Double, resumeAfterSeek: Bool? = nil) {
+        if let song = currentSong, song.isYouTube {
+            youtubeController.send(.seek(seconds: seconds))
+            positionSeconds = min(max(0, seconds), durationSeconds > 0 ? durationSeconds : seconds)
+            updateNowPlayingCentre()
+            return
+        }
         guard let file = currentAudioFile else { return }
         let sr = file.processingFormat.sampleRate
         guard sr > 0 else { return }
@@ -458,24 +502,105 @@ final class MusicPlayerService {
     }
 
     func stop() {
-        bumpPlaybackCompletionGeneration()
-        playerNode.stop()
-        engine.stop()
-        currentAudioFile = nil
+        stopLocalPlaybackEngineOnly()
+        stopYouTubeBackend()
         currentSong = nil
         currentIndex = -1
         queue = []
         isPlaying = false
         positionSeconds = 0
         durationSeconds = 0
-        scheduledSegmentStartFrame = 0
-        frozenPositionWhilePaused = nil
-        lastWireFormat = nil
         lastPublishedNowPlayingSongId = nil
         artworkLoadedForSongId = nil
         artworkInFlightForSongId = nil
         nowPlayingArtworkImage = nil
         updateNowPlayingCentre()
+    }
+
+    /// Stops the `AVAudioEngine` graph without touching `queue`/`currentSong` — used when switching
+    /// the active backend to YouTube for the current track (see `loadActive`).
+    private func stopLocalPlaybackEngineOnly() {
+        bumpPlaybackCompletionGeneration()
+        playerNode.stop()
+        engine.stop()
+        currentAudioFile = nil
+        scheduledSegmentStartFrame = 0
+        frozenPositionWhilePaused = nil
+        lastWireFormat = nil
+    }
+
+    // MARK: - YouTube playback backend
+
+    /// Stops the embed player without touching `queue`/`currentSong` — used when switching the
+    /// active backend to local playback, and from `stop()`.
+    private func stopYouTubeBackend() {
+        youtubePlaybackGeneration &+= 1
+        youtubeController.send(.pause)
+        currentYouTubeVideoID = nil
+        youtubePlaybackErrorMessage = nil
+    }
+
+    private func loadAndPlayYouTube(_ song: Song) async {
+        youtubePlaybackGeneration &+= 1
+        let generation = youtubePlaybackGeneration
+        currentYouTubeVideoID = nil
+        youtubePlaybackErrorMessage = nil
+        positionSeconds = 0
+        durationSeconds = song.duration > 0 ? song.duration : 0
+        isPlaying = true
+        updateNowPlayingCentre()
+
+        guard let resolver = resolveYouTubeVideoID, let videoID = await resolver(song) else {
+            guard generation == youtubePlaybackGeneration else { return }
+            isPlaying = false
+            youtubePlaybackErrorMessage = "動画情報を取得できませんでした。デスクトップとのペアリング状態を確認してください。"
+            updateNowPlayingCentre()
+            return
+        }
+        guard generation == youtubePlaybackGeneration else { return }
+        currentYouTubeVideoID = videoID
+        // `NowPlayingView` loads a fresh `YouTubeEmbedPlayerView` for this video ID with
+        // `playerVars.autoplay = 1` (see `YouTubeEmbedPlayer`), so playback starts on its own once
+        // the WKWebView mounts — no explicit `.play` command needed here.
+    }
+
+    private func toggleYouTubePlayPause() {
+        youtubeController.send(isPlaying ? .pause : .play)
+        isPlaying.toggle()
+        updateNowPlayingCentre()
+    }
+
+    /// Routes IFrame Player API events (via `YouTubeEmbedPlayerView.onEvent`) into the unified
+    /// transport state. Called by whichever view currently hosts the embed player.
+    func handleYouTubeBridgeEvent(_ event: YouTubeEmbedPlayer.BridgeEvent) {
+        guard let song = currentSong, song.isYouTube else { return }
+        switch event {
+        case .ready:
+            youtubeController.send(.unmute)
+        case .state(.playing):
+            isPlaying = true
+            youtubePlaybackErrorMessage = nil
+            updateNowPlayingCentre()
+        case .state(.paused):
+            isPlaying = false
+            updateNowPlayingCentre()
+        case .state(.ended):
+            isPlaying = false
+            updateNowPlayingCentre()
+            Task { @MainActor [weak self] in
+                await self?.advanceAfterEnd()
+            }
+        case .time(let current, let duration):
+            positionSeconds = current
+            if duration > 0 { durationSeconds = duration }
+            updateNowPlayingCentre()
+        case .error(let code):
+            isPlaying = false
+            youtubePlaybackErrorMessage = YouTubeEmbedPlayer.errorMessage(code: code)
+            updateNowPlayingCentre()
+        default:
+            break
+        }
     }
 
     private func loadAndPlay(_ song: Song) async {

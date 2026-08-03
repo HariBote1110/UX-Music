@@ -69,6 +69,8 @@ final class AppModel {
     private(set) var downloadLibraryRevision: Int = 0
 
     let downloadManager: DownloadManager
+    /// Metadata-only membership for songs with no local file (YouTube songs added via "ライブラリに追加").
+    let libraryMembershipStore: LibraryMembershipStore
     let lyricsFileStore: LyricsFileStore
     let player: MusicPlayerService
     let playlistStore: PlaylistStore
@@ -83,6 +85,7 @@ final class AppModel {
     init(playlistStore: PlaylistStore? = nil, lyricsFileStore: LyricsFileStore? = nil) {
         serverConfig = Self.loadSettings()
         downloadManager = DownloadManager()
+        libraryMembershipStore = LibraryMembershipStore()
         watchTransferBridge = WatchTransferBridge(downloadManager: downloadManager)
         // Activated here (app model construction, i.e. at process launch) rather than from a
         // view's onAppear: WCSession.activate() completes asynchronously, and a `send` requested
@@ -101,6 +104,11 @@ final class AppModel {
             guard !s.isEmpty, let url = URL(string: s) else { return nil }
             return await NowPlayingArtworkImageLoader.uiImage(from: url)
         }
+        player.resolveYouTubeVideoID = { [weak self] song in
+            guard let self else { return nil }
+            let url = song.sourceURL ?? song.path
+            return try? await self.withFailover { try await $0.resolveYouTubeVideo(url: url).videoId }
+        }
         refreshPlaylists()
         // Wired up after every stored property is initialised (not passed into
         // WatchTransferBridge's own initialiser) because downloading needs `withFailover`/
@@ -117,10 +125,19 @@ final class AppModel {
         downloadLibraryRevision &+= 1
     }
 
-    /// Local tracks in album / disc / track order (not global title sort — avoids scrambled queues and grids).
-    var sortedDownloadedSongsForLibrary: [Song] {
+    /// Every song that is a member of the local Library: downloaded files, plus YouTube songs
+    /// added via "ライブラリに追加" (no local file — see `LibraryMembershipStore`). Downloaded
+    /// metadata wins on an id clash, though the two sets do not overlap in practice.
+    private var librarySongsById: [String: Song] {
         _ = downloadLibraryRevision
-        return downloadManager.downloadedSongs.values.sorted(by: Song.libraryFlatDisplayOrderAscending)
+        var byId = libraryMembershipStore.songs
+        for (id, song) in downloadManager.downloadedSongs { byId[id] = song }
+        return byId
+    }
+
+    /// Local Library tracks in album / disc / track order (not global title sort — avoids scrambled queues and grids).
+    var sortedDownloadedSongsForLibrary: [Song] {
+        librarySongsById.values.sorted(by: Song.libraryFlatDisplayOrderAscending)
     }
 
     func isSongDownloaded(songId: String) -> Bool {
@@ -128,16 +145,43 @@ final class AppModel {
         return downloadManager.isDownloaded(songId: songId)
     }
 
+    /// Whether `songId` belongs to the local Library at all — a downloaded file, or a YouTube
+    /// song added via "ライブラリに追加". Unlike `isSongDownloaded`, true for YouTube members
+    /// even though they have no local file.
+    func isLibrarySongMember(songId: String) -> Bool {
+        _ = downloadLibraryRevision
+        return libraryMembershipStore.contains(songId: songId) || downloadManager.isDownloaded(songId: songId)
+    }
+
+    /// Adds a YouTube song (`song.isYouTube == true`) to the local Library as metadata only —
+    /// no file download, no Watch transfer (see `WatchTransferMenuPolicy`).
+    func addYouTubeSongToLibrary(_ song: Song) {
+        guard song.isYouTube else { return }
+        libraryMembershipStore.add(song)
+        touchDownloadLibrary()
+    }
+
+    func removeYouTubeSongFromLibrary(songId: String) {
+        favouriteSongStore.remove(songId: songId)
+        favouriteSongIds = favouriteSongStore.orderedIds
+        libraryMembershipStore.remove(songId: songId)
+        touchDownloadLibrary()
+    }
+
+    /// Removes a Library song regardless of kind — a downloaded file or a YouTube membership.
     func removeDownloadedSong(songId: String) {
+        if libraryMembershipStore.contains(songId: songId) {
+            removeYouTubeSongFromLibrary(songId: songId)
+            return
+        }
         lyricsFileStore.remove(for: songId)
         downloadManager.remove(songId: songId)
         touchDownloadLibrary()
     }
 
-    /// Downloaded songs not already in the playlist (for “Add songs”); observes `downloadLibraryRevision`.
+    /// Library songs not already in the playlist (for “Add songs”); observes `downloadLibraryRevision`.
     func downloadedSongsEligibleForPlaylist(excludingPlaylistSongIds songIds: Set<String>) -> [Song] {
-        _ = downloadLibraryRevision
-        return downloadManager.downloadedSongs.values
+        librarySongsById.values
             .filter { !songIds.contains($0.id) }
             .sorted(by: Song.libraryFlatDisplayOrderAscending)
     }
@@ -535,16 +579,17 @@ final class AppModel {
         refreshPlaylists()
     }
 
-    /// Maps `playlist.songIds` to downloaded `Song`s; missing IDs are skipped (removed tracks).
+    /// Maps `playlist.songIds` to Library `Song`s (downloaded or YouTube members); missing IDs
+    /// are skipped (removed tracks).
     func resolvedSongs(for playlist: Playlist) -> [Song] {
-        _ = downloadLibraryRevision
-        return playlist.songIds.compactMap { downloadManager.downloadedSongs[$0] }
+        let byId = librarySongsById
+        return playlist.songIds.compactMap { byId[$0] }
     }
 
     func artworkIdForPlaylist(_ playlist: Playlist) -> String {
-        _ = downloadLibraryRevision
+        let byId = librarySongsById
         for sid in playlist.songIds {
-            if let s = downloadManager.downloadedSongs[sid], !s.artworkId.isEmpty {
+            if let s = byId[sid], !s.artworkId.isEmpty {
                 return s.artworkId
             }
         }
@@ -567,9 +612,9 @@ final class AppModel {
         favouriteSongIds = favouriteSongStore.orderedIds
     }
 
-    /// Favourite ids mapped to downloaded `Song`s (missing downloads are omitted).
+    /// Favourite ids mapped to Library `Song`s (downloaded or YouTube members; missing entries omitted).
     func favouriteSongsForPlayback() -> [Song] {
-        _ = downloadLibraryRevision
-        return favouriteSongIds.compactMap { downloadManager.downloadedSongs[$0] }
+        let byId = librarySongsById
+        return favouriteSongIds.compactMap { byId[$0] }
     }
 }

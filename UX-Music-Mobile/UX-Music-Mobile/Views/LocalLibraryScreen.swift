@@ -308,10 +308,17 @@ struct LocalLibraryScreen: View {
         .background(Color.black)
     }
 
+    /// Resolves a Library song for playback: local file path for downloaded songs, unchanged for
+    /// YouTube members (their `path`/`sourceURL` is the video URL, resolved by `MusicPlayerService`
+    /// via `AppModel.resolveYouTubeVideoID` — no local file involved).
+    private func resolvedForPlayback(_ song: Song) -> Song {
+        song.isYouTube ? song : song.withPath(model.downloadManager.localPathString(songId: song.id))
+    }
+
     private func playLocal(song: Song, in list: [Song]) {
-        let downloaded = list.filter { model.isSongDownloaded(songId: $0.id) }
-        let localSong = song.withPath(model.downloadManager.localPathString(songId: song.id))
-        let queue = downloaded.map { $0.withPath(model.downloadManager.localPathString(songId: $0.id)) }
+        let playable = list.filter { model.isLibrarySongMember(songId: $0.id) }
+        let localSong = resolvedForPlayback(song)
+        let queue = playable.map { resolvedForPlayback($0) }
         Task {
             await model.player.play(localSong, newQueue: queue)
         }

@@ -65,18 +65,30 @@ struct SongRowView<Trailing: View>: View {
 }
 
 /// Trailing indicator shared by every screen that lists songs via `SongRowView`. YouTube songs
-/// have no local file, so they always show the "open official player" indicator instead of the
-/// download controls; ordinary songs keep the download/queued/downloaded states.
+/// have no local file, so instead of the download controls they show a "ライブラリに追加" action
+/// (a checkmark once the song is already a Library member — see `AppModel.libraryMembershipStore`);
+/// ordinary songs keep the download/queued/downloaded states.
 struct SongRowDownloadTrailing: View {
     @Environment(AppModel.self) private var model
     let song: Song
 
     var body: some View {
         if song.isYouTube {
-            Image(systemName: "play.rectangle.fill")
-                .foregroundStyle(.secondary)
-                .font(.system(size: 18))
-                .accessibilityLabel("YouTube 公式再生")
+            if model.isLibrarySongMember(songId: song.id) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.system(size: 20))
+                    .accessibilityLabel("ライブラリに追加済み")
+            } else {
+                Button {
+                    model.addYouTubeSongToLibrary(song)
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 22))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("ライブラリに追加")
+            }
         } else if model.isSongDownloaded(songId: song.id) {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)

@@ -11,4 +11,6 @@ enum AppConstants {
     static let playlistsPersistenceKey = "local_playlists_v1"
     /// Ordered favourite song ids (downloaded tracks only when resolving for UI).
     static let favouriteSongIdsKey = "favourite_song_ids_v1"
+    /// Metadata-only library membership for YouTube songs (no local file — see `LibraryMembershipStore`).
+    static let youtubeLibrarySongsMetaKey = "youtube_library_songs_meta_v1"
 }

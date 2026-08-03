@@ -448,6 +448,19 @@ struct RemoteLibraryScreen: View {
                             } label: {
                                 Label("公式プレイヤーで再生", systemImage: "play.rectangle")
                             }
+                            if model.isLibrarySongMember(songId: song.id) {
+                                Button(role: .destructive) {
+                                    model.removeYouTubeSongFromLibrary(songId: song.id)
+                                } label: {
+                                    Label("ライブラリから削除", systemImage: "minus.circle")
+                                }
+                            } else {
+                                Button {
+                                    model.addYouTubeSongToLibrary(song)
+                                } label: {
+                                    Label("ライブラリに追加", systemImage: "plus.circle")
+                                }
+                            }
                         }
                         WatchTransferSongMenuItem(song: song)
                     }
