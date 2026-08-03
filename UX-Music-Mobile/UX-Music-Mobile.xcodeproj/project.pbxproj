@@ -72,6 +72,9 @@
 		B876FC45A8EA453AB2CF792F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 66498BF289AC41A2936302DE /* Assets.xcassets */; };
 		E44E6E4CD96B4110915888A8 /* UX-Music-Watch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FEED0002000000000000AAA2 /* WatchTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0001000000000000AAA1 /* WatchTransfer.swift */; };
+		FEED0021000000000000AA21 /* WatchPlaybackLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */; };
+		FEED0022000000000000AA22 /* WatchPlaybackLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */; };
+		FEED0024000000000000AA24 /* WatchPlaybackLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0023000000000000AA23 /* WatchPlaybackLogicTests.swift */; };
 		FEED0006000000000000AAA6 /* WatchTransferBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0007000000000000AAA7 /* WatchTransferBridge.swift */; };
 		FEED0003000000000000AAA3 /* WatchTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0001000000000000AAA1 /* WatchTransfer.swift */; };
 		FEED0005000000000000AAA5 /* WatchTransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0004000000000000AAA4 /* WatchTransferTests.swift */; };
@@ -185,6 +188,8 @@
 		66498BF289AC41A2936302DE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-Watch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FEED0001000000000000AAA1 /* WatchTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransfer.swift; sourceTree = "<group>"; };
+		FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlaybackLogic.swift; sourceTree = "<group>"; };
+		FEED0023000000000000AA23 /* WatchPlaybackLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlaybackLogicTests.swift; sourceTree = "<group>"; };
 		FEED0007000000000000AAA7 /* WatchTransferBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferBridge.swift; sourceTree = "<group>"; };
 		FEED0004000000000000AAA4 /* WatchTransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferTests.swift; sourceTree = "<group>"; };
 		FEED000A000000000000AAAA /* WatchTransferMenuPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferMenuPolicy.swift; sourceTree = "<group>"; };
@@ -261,6 +266,7 @@
 				F60101FB0101FB0101FB0101 /* AppModelFailoverTests.swift */,
 				FEED0004000000000000AAA4 /* WatchTransferTests.swift */,
 				FEED000E000000000000AAAE /* WatchTransferMenuPolicyTests.swift */,
+				FEED0023000000000000AA23 /* WatchPlaybackLogicTests.swift */,
 			);
 			path = "UX-Music-MobileTests";
 			sourceTree = "<group>";
@@ -277,6 +283,7 @@
 				D1D1D1D20101D1D20101D1D2 /* DeviceIdentity.swift */,
 				FEED0001000000000000AAA1 /* WatchTransfer.swift */,
 				FEED000A000000000000AAAA /* WatchTransferMenuPolicy.swift */,
+				FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -522,6 +529,7 @@
 				F60101FA0101FA0101FA0101 /* AppModelFailoverTests.swift in Sources */,
 				FEED0005000000000000AAA5 /* WatchTransferTests.swift in Sources */,
 				FEED000F000000000000AAAF /* WatchTransferMenuPolicyTests.swift in Sources */,
+				FEED0024000000000000AA24 /* WatchPlaybackLogicTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -537,6 +545,7 @@
 				E8E8E8E70101E8E70101E8E7 /* RemoteDefaultArtwork.swift in Sources */,
 				D1D1D1D10101D1D10101D1D1 /* DeviceIdentity.swift in Sources */,
 				FEED0002000000000000AAA2 /* WatchTransfer.swift in Sources */,
+				FEED0021000000000000AA21 /* WatchPlaybackLogic.swift in Sources */,
 				FEED0006000000000000AAA6 /* WatchTransferBridge.swift in Sources */,
 				FEED000B000000000000AAAB /* WatchTransferMenuPolicy.swift in Sources */,
 				01A1A1A30101A1A10101A1A1 /* ServerConfig.swift in Sources */,
@@ -583,6 +592,7 @@
 				ED70471B3B4345BA8082875B /* UXMusicWatchApp.swift in Sources */,
 				8379E743BC3A42EA9A578132 /* WatchRootView.swift in Sources */,
 				FEED0003000000000000AAA3 /* WatchTransfer.swift in Sources */,
+				FEED0022000000000000AA22 /* WatchPlaybackLogic.swift in Sources */,
 				FEED00100000000000000000 /* WatchLocalLibrary.swift in Sources */,
 				FEED00120000000000000000 /* WatchConnectivityReceiver.swift in Sources */,
 				FEED00140000000000000000 /* WatchAudioPlayerService.swift in Sources */,
