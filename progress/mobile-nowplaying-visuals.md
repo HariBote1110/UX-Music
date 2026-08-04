@@ -293,3 +293,5 @@ Desktop準拠のパラメータをそのまま実機で確認したところ「�
   `.animation(.easeInOut(duration: 0.25), value: isAutoScrolling)` で滑らかにした。
 - オフセット計算そのもの（`nowPlayingLyricsLineOffsets`/`nowPlayingLyricsLineDelay`の
   数式）には変更がないため、既存テストはそのまま流用（値の呼び出し元定数のみ変更）。
+- 追加フィードバック「もっと早い方がいい」を受け、`motionDuration` を `0.48s→0.3s`、
+  `delayStep` を `25ms→15ms` にさらに短縮（カスケード感は薄く残る程度）。
