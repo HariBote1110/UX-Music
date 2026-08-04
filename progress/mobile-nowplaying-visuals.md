@@ -193,3 +193,79 @@
   確認できたが、シミュレータでの目視確認（スクショ/録画）は完了できていない。次回は
   `xcrun simctl io <udid> recordVideo` で操作全体を録画しつつ実機相当の Simulator.app
   を前面化した状態で試す、または `idb ui tap` 等の別経路を検討すること。
+
+## 6. Desktop 版歌詞表示への忠実な移植（`scrollTo` → コンテナオフセット方式への切替）
+
+### 6-1. Desktop 実装の解析結果（`src/renderer/js/features/fullscreen-view.ts` / `src/renderer/styles/components.css`）
+
+Desktop の同期歌詞（`.fs-lyrics-inner.fs-lrc`）は `ScrollView` 的な要素をまったく使わず、
+全行を `position: absolute` で敷き詰め、`applyLyricsMotion()` がアクティブ行のインデックス
+が変わるたびに全行の `translateY` を再計算して CSS transition に任せる方式だった。
+
+- **スクロール方式**: コンテナ全体のスクロールではなく、行ごとの `transform: translateY(...)`
+  オフセット。`applyLyricsMotion(activeIndex)` が `cachedLrcHeights`（各行の実測高さ、
+  `getBoundingClientRect().height` を一度計測してキャッシュ）を使い、アクティブ行を
+  `anchorY = lyricsEl.clientHeight * ANCHOR_RATIO`（`ANCHOR_RATIO = 0.35`、コンテナ高さの
+  35%地点）に固定し、そこから前後の行を `height + INTER_BLOCK_GAP`（`16px`）の累積で
+  積み上げる（`fullscreen-view.ts:392-426`）。
+- **イージング/時間**: `transition-property: transform, opacity, color`、
+  `transition-duration: var(--fs-line-dur)`（`MOTION_DURATION_MS = 800ms`、行指定変更時。
+  初回描画は `immediate=true` で `0ms`）、`transition-delay` はアクティブ行からの距離
+  `dist = |i - activeIndex|` に比例して `dist * MOTION_DELAY_STEP_MS`（`40ms`）ずつ
+  遅延する波状カスケード。`transition-timing-function` は明示指定がなく CSS 既定の
+  `ease`（`components.css:2143-2162`）。
+- **アクティブ行の視覚**: `color: #fff`・`transform: scale(1.091)`
+  （`transform-origin: left center`）・`text-shadow: 0 0 24px rgba(255,255,255,0.15)`。
+  非アクティブ行は `color: rgba(255,255,255,0.45)`・`scale(1)`。**blur は一切使われていない**
+  ──减衰カーブは「距離に応じた連続関数」ではなく、アクティブ/非アクティブの二値のみ。
+  フォントは `font-size: 2.2rem`・`font-weight: 700`・`line-height: 1.45`。
+  行幅は `width: calc(100% / 1.091)` として、左端起点スケール時に右端がコンテナ外へ
+  はみ出さないよう事前に縮めてある。
+- **画面内の固定位置**: 上記のとおりコンテナ高さの **35%** に固定（画面中央ではなく
+  やや上寄り）。
+- **フェード**: 行の減衰ではなく、コンテナ (`.fs-lyrics-container`) 側の
+  `mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%)`
+  で上下端をフェードアウトさせている。上 8%・下 30%（`black 70%` から `100%` までが
+  フェード帯）で **上下非対称**（下側の帯の方が広い）。
+- **クリック時の挙動**: Desktop には歌詞行クリックによるシーク機能自体が存在しない
+  （`fs-lyrics-inner.fs-lrc p` に `cursor: default` が付いており、クリックハンドラも
+  未登録）。
+- **手動スクロール時の挙動**: 該当なし（そもそもスクロール要素ではないため）。
+
+### 6-2. iPhone への移植判断
+
+- 上記の通り Desktop は「コンテナ transform オフセット方式」であることが確定したため、
+  進捗ファイル冒頭「5-3」で見送っていた `ScrollViewReader.scrollTo` からの切替を、
+  今回は実施した。`ScrollViewReader` の補間では上記のような「アクティブ行を固定アンカーに
+  留めたまま前後の行を実測高さで積み上げる」計算を表現できないため。
+- 純関数 `nowPlayingLyricsLineOffsets(heights:activeIndex:anchorY:gap:)` /
+  `nowPlayingLyricsLineDelay(index:activeIndex:stepSeconds:)`
+  （`Views/NowPlayingLyricsScreen.swift`）として `applyLyricsMotion` の計算式をそのまま
+  移植し、`UX-Music-MobileTests/NowPlayingLyricsLogicTests.swift` でテスト済み（TDD Red→Green）。
+  各行の実測高さは `LyricsLineHeightKey`（`PreferenceKey`）で背景 `GeometryReader` から収集。
+- `nowPlayingLyricsFadeOpacity` の帯域を `12%/82%`（対称）から Desktop と同じ `8%/70%`
+  （上下非対称）に変更。
+- 行の視覚は Desktop に合わせて **blur を撤去**し、アクティブ/非アクティブの二値
+  （色: `.white` / `.white.opacity(0.45)`、`scaleEffect(1.091, anchor: .leading)`、
+  アクティブ時のみ `shadow`）に統一。モバイル向けにフォントサイズは 22pt（Desktop の
+  2.2rem を iPhone 画面幅にそのまま持ち込むと折り返しが激しくなるため縮小）で妥協した
+  以外はパラメータをそのまま踏襲。
+- 行タップでのシークは Desktop に存在しない機能だが、モバイル固有の既存仕様
+  （タスク指示で「維持」と明示）としてそのまま残した。
+- 手動ドラッグ→3秒後に自動追従へ復帰、は Desktop に対応が無いためモバイル独自仕様として
+  従来どおり維持。`DragGesture` の `translation` を `manualDragOffset` に積算し、
+  `Task.sleep(3秒)` 後に `nowPlayingLyricsShouldAutoScroll` の判定を経てスプリング
+  （`response: 0.5, dampingFraction: 0.85`）で 0 に戻す実装にした
+  （`revertTask` で多重スケジュールを防止）。
+
+### 6-3. 検証
+
+- `xcodebuild -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air' build` /
+  `test` ともに green（`NowPlayingLyricsLogicTests` 全件含む）。
+- タップ注入が不安定な環境のため、`UXMusicMobileApp.swift` に
+  `UXM_DEBUG_LYRICS_SONG` 環境変数フックを追加（`songId` 完全一致優先、フォールバックで
+  タイトル/アーティスト部分一致）。GReeeeN「道」（`songId: b6818055-f2e5-4e27-9979-f0b4254a9400`、
+  ダウンロード済み LRC あり）を自動再生 → Now Playing → 歌詞画面自動オープンで検証し、
+  `xcrun simctl io <udid> recordVideo` で録画・スクショ採取した。アクティブ行がコンテナ
+  高さの約35%地点に太字・白色で固定され、他行は灰色・通常ウェイトで積み上がっている
+  ことを目視確認。
