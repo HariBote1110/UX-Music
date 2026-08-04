@@ -285,6 +285,9 @@ struct NowPlayingView: View {
         .onAppear {
             horizontalDrag = 0
             lockedDragAxis = nil
+            if model.debugForceOpenLyrics {
+                showLyricsScreen = true
+            }
         }
         .onChange(of: model.player.currentSong) { _, newSong in
             if newSong == nil { ambientPalette = nil }

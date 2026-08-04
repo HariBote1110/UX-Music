@@ -60,6 +60,11 @@ final class AppModel {
     /// Drives the full-screen now playing sheet (lives on `AppModel` so `tabViewBottomAccessory` can update presentation reliably).
     var isNowPlayingSheetPresented = false
 
+    /// Debug-only hook (set via `UXM_DEBUG_LYRICS_SONG`, see `UXMusicMobileApp`) asking
+    /// `NowPlayingView` to auto-open its synced-lyrics screen once presented, so the lyrics
+    /// motion can be recorded/inspected without driving the tap-through UI by hand.
+    var debugForceOpenLyrics = false
+
     /// songId → 0...1 while downloading
     var downloadProgress: [String: Double] = [:]
     /// Last failure from `downloadSong` / `downloadAlbum` (shown on Remote Library).
