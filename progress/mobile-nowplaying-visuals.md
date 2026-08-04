@@ -109,9 +109,64 @@
 
 ## 検討したが採用しなかった案
 
-- アクティブ行を `scaleEffect` で拡大する案 → 不採用。フォントサイズを可変にすると
-  LazyVStack の行高が変わり、スクロール位置がガタつく（レイアウトジャンプ）ため、
-  サイズは全行固定にして weight / opacity / blur のみで強調した。
+- アクティブ行を `scaleEffect` で拡大する案 → 初回実装時点では不採用。フォントサイズを
+  可変にすると LazyVStack の行高が変わり、スクロール位置がガタつく（レイアウトジャンプ）
+  ため、サイズは全行固定にして weight / opacity / blur のみで強調した。
+  - **のちに撤回**: 「5. 歌詞行の Apple Music 級トランジション」で `scaleEffect` を
+    再導入した。理由は下記参照（`scaleEffect` はレンダリング変換のみで `LazyVStack` が
+    親に報告する intrinsic size を変えないため、フォントサイズ可変時とは異なりレイアウト
+    ジャンプを起こさない）。
+
+## 5. 歌詞行の Apple Music 級トランジション（YouTube 16:9 カード対応と同時実装）
+
+### 5-1. YouTube 動画カードの 16:9 化（`NowPlayingArtworkBlock`）
+
+- `NowPlayingView.swift` の `NowPlayingArtworkBlock.body` で、外枠の `Color.clear` に
+  かけていた `.aspectRatio(1, contentMode: .fit)` を
+  `.aspectRatio(song.isYouTube ? 16.0/9.0 : 1, contentMode: .fit)` に変更。
+  横幅は既存どおり `.frame(maxWidth: 340)` で共通のまま、縦だけが曲種別で変わる。
+  角丸・影・枠線・サムネイルプレースホルダは既存の `.overlay` / `.clipShape` /
+  `.shadow` チェーンをそのまま利用（変更なし）ため個別に作り直していない。
+- ローカル曲⇄YouTube 曲の曲送りでカードの縦横比が切り替わる際のアニメーションは、
+  ブロック全体に `.animation(.spring(response: 0.45, dampingFraction: 0.85), value: song.isYouTube)`
+  を付与して実現。上下の空間は親 `VStack`（`NowPlayingPlayingShell`）側の `Spacer` が
+  そのまま吸収するため、カード側にレイアウト補正のロジックを追加する必要はなかった。
+
+### 5-2. 同期歌詞のスクロール・行トランジション（`NowPlayingSyncedLyricsScroll`）
+
+- スクロール用スプリングを `response: 0.45, dampingFraction: 0.85` から
+  `response: 0.6, dampingFraction: 0.8` に変更（Apple Music 寄りの、より「ゆったり
+  持ち上がる」タイミングに調整）。`ScrollViewReader.scrollTo` と行のスタイル変化
+  （後述）の両方が同じ `Self.autoScrollSpring` を参照するようにし、スクロール位置と
+  行の見た目が必ず同じテンポで遷移するようにした。
+- アクティブ行に `.scaleEffect(isActive ? 1.05 : 1, anchor: .leading)` を追加し、
+  各行の `Button` に `.animation(Self.autoScrollSpring, value: isActive)` を付けて
+  scale / foregroundStyle / blur を同一スプリングで同時に遷移させる
+  （`withAnimation` でラップされたスクロールと合わせて「行がふわっと持ち上がる」
+  見た目になる）。
+- パフォーマンス対策として、blur は従来「非アクティブ行は常に 0.8」だったのを、
+  アクティブ行から `blurNeighbourRadius`（6行）以内だけ `2.2` を掛け、それ以外は
+  `0`（blur なし）にした。`LazyVStack` は一度測定した行を保持し続けるため、長い
+  歌詞ファイルで全行に blur を掛け続けると GPU コストが線形に増える懸念があり、
+  近傍だけに絞ることで軽減した。
+
+### 5-3. ScrollViewReader を維持した判断（offset ベース自前スクロールへの切替は見送り）
+
+- タスク指示では `scrollPosition`（iOS17+）やオフセットベースの自前スクロールへの
+  切替も検討してよいとされていたが、今回は既存の `ScrollViewReader.scrollTo` +
+  `withAnimation(spring)` の構成を維持した。
+  - 理由: 現状の実装は `scrollTo(id:anchor:.center)` を spring でラップしており、
+    実機/シミュレータでの目視確認（本チケットでは tap 注入が不安定だったため未実施、
+    別セクション「罠」参照）は行えなかったが、コード上は「対象行の `id` に対して
+    align: .center で遷移」という単純な構成であり、荒さの主因になりやすい
+    「頻繁な `scrollTo` 呼び出しの割り込み」は `onChange(of: active)` 経由の
+    1件のみで、ドラッグ中は `lastUserScrollAt` によって自動スクロール自体が
+    止まるため競合しない。実装コストと壊れるリスク（`scrollPosition` は
+    `LazyVStack` + 可変長行という現在の構成との相性検証が別途必要）に対して、
+    スプリングの response/dampingFraction 調整と行トランジション統一だけで
+    体感の大部分は改善できると判断し、オフセット自前実装への切替は見送った。
+    将来 `scrollTo` の補間の粗さが実機で問題になった場合の次の一手として
+    `scrollPosition(id:anchor:)` への切替を検討する、という形で先送りにした。
 
 ## 罠・非自明な制約
 
@@ -129,3 +184,12 @@
   （`UX-Music-Mobile.xcodeproj/project.pbxproj`）に
   `PBXBuildFile` / `PBXFileReference` / グループ内の参照 / `PBXSourcesBuildPhase`
   の4箇所へ手動登録しないとビルド対象に含まれない。
+- `mcp__Claude_Code_iOS_Simulator__control` の `tap` / `touch_path` によるアプリ内
+  リスト行タップが、iPhone Air シミュレータ（E7DC188E-...）上で今回まったく反応しない
+  事象が発生した（アルバム→曲一覧への遷移タップは成功したが、曲行タップで再生開始が
+  一度も起こらなかった）。座標・タイミング（`sleep` 挿入）・`tap` と `touch_path`
+  の両方を試したが再現せず、原因切り分けはできていない。この事象により本セクションの
+  変更（16:9 カード・歌詞行トランジション）は `xcodebuild build`/`test` の green は
+  確認できたが、シミュレータでの目視確認（スクショ/録画）は完了できていない。次回は
+  `xcrun simctl io <udid> recordVideo` で操作全体を録画しつつ実機相当の Simulator.app
+  を前面化した状態で試す、または `idb ui tap` 等の別経路を検討すること。

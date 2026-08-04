@@ -104,7 +104,15 @@ private struct NowPlayingSyncedLyricsScroll: View {
     /// auto-scroll-to-active-line so a manual scroll is not fought by the timeline updates.
     @State private var lastUserScrollAt: Date?
 
-    private static let autoScrollSpring = Animation.spring(response: 0.45, dampingFraction: 0.85)
+    /// Apple-Music-style "line lifts into place" spring, shared by the scroll-to-active-line
+    /// animation and every row's scale/opacity/blur transition so they move in lockstep instead
+    /// of the scroll settling before (or after) the text finishes fading in.
+    private static let autoScrollSpring = Animation.spring(response: 0.6, dampingFraction: 0.8)
+
+    /// How many lines either side of the active line still receive the blur treatment. Blurring
+    /// every off-screen row is wasted GPU work (LazyVStack keeps them alive once measured), so
+    /// only rows close enough to ever be visible pay for it.
+    private static let blurNeighbourRadius = 6
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.05)) { context in
@@ -120,17 +128,20 @@ private struct NowPlayingSyncedLyricsScroll: View {
 
                             ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
                                 let isActive = index == active
+                                let isNearActive = active >= 0 && abs(index - active) <= Self.blurNeighbourRadius
                                 Button {
                                     model.player.seek(to: nowPlayingLyricsSeekTime(for: line))
                                 } label: {
                                     Text(line.text.isEmpty ? " " : line.text)
                                         .font(.system(size: 26, weight: isActive ? .bold : .semibold, design: .rounded))
                                         .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.35))
-                                        .blur(radius: isActive ? 0 : 0.8)
+                                        .blur(radius: isActive ? 0 : (isNearActive ? 2.2 : 0))
+                                        .scaleEffect(isActive ? 1.05 : 1, anchor: .leading)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .id(line.id)
                                 }
                                 .buttonStyle(.plain)
+                                .animation(Self.autoScrollSpring, value: isActive)
                             }
 
                             Spacer(minLength: geo.size.height * 0.35)
