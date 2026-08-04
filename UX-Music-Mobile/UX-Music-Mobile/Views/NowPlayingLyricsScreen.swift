@@ -13,12 +13,14 @@ func nowPlayingLyricsSeekTime(for line: LRCParser.TimedLine) -> Double {
 }
 
 /// Edge-fade coefficient (0…1) for a given vertical fraction (0 = top, 1 = bottom) of the
-/// synced-lyrics scroll area. Fades out across the top 12% and the bottom 18%, full opacity
-/// (1) in between. Out-of-range fractions clamp to 0 (fully faded).
+/// synced-lyrics container. Mirrors UX Music Desktop's `.fs-lyrics-container` mask-image
+/// (`linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%)`):
+/// fades in across the top 8% and out across the bottom 30%, full opacity in between.
+/// Out-of-range fractions clamp to 0 (fully faded).
 func nowPlayingLyricsFadeOpacity(fraction: CGFloat) -> CGFloat {
     guard fraction >= 0, fraction <= 1 else { return 0 }
-    let topBand: CGFloat = 0.12
-    let bottomBandStart: CGFloat = 0.82
+    let topBand: CGFloat = 0.08
+    let bottomBandStart: CGFloat = 0.70
     if fraction < topBand {
         return fraction / topBand
     }
@@ -26,6 +28,39 @@ func nowPlayingLyricsFadeOpacity(fraction: CGFloat) -> CGFloat {
         return max(0, 1 - (fraction - bottomBandStart) / (1 - bottomBandStart))
     }
     return 1
+}
+
+/// Vertical offset (from the container's top edge) for every synced-lyrics line, given each
+/// line's measured height. Mirrors Desktop's `applyLyricsMotion` in
+/// `src/renderer/js/features/fullscreen-view.ts`: the active line (or index 0 if none is
+/// active yet) is pinned at `anchorY`, and every other line is stacked above/below it by
+/// cumulative height + a fixed inter-line `gap`.
+func nowPlayingLyricsLineOffsets(heights: [CGFloat], activeIndex: Int, anchorY: CGFloat, gap: CGFloat) -> [CGFloat] {
+    let n = heights.count
+    guard n > 0 else { return [] }
+
+    let base = min(max(0, activeIndex), n - 1)
+    var offsets = [CGFloat](repeating: 0, count: n)
+    offsets[base] = anchorY
+
+    if base + 1 < n {
+        for i in (base + 1)..<n {
+            offsets[i] = offsets[i - 1] + heights[i - 1] + gap
+        }
+    }
+    if base > 0 {
+        for i in stride(from: base - 1, through: 0, by: -1) {
+            offsets[i] = offsets[i + 1] - heights[i] - gap
+        }
+    }
+    return offsets
+}
+
+/// Stagger delay (seconds) for a line's transition, proportional to its distance from the
+/// active line — mirrors Desktop's `MOTION_DELAY_STEP_MS` cascade (`dist * 40ms`).
+func nowPlayingLyricsLineDelay(index: Int, activeIndex: Int, stepSeconds: Double) -> Double {
+    let effectiveActive = activeIndex >= 0 ? activeIndex : 0
+    return Double(abs(index - effectiveActive)) * stepSeconds
 }
 
 /// Full-screen lyrics viewer (plain `.txt` or synced `.lrc` using `MusicPlayerService.positionSeconds`).
