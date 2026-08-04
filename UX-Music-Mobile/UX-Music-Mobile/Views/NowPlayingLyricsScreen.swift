@@ -178,8 +178,8 @@ private struct NowPlayingSyncedLyricsScroll: View {
     // smaller, closer viewport — trimmed to keep the wave-cascade feel while snapping into
     // place noticeably faster. easeOut so the line "arrives" quickly and settles, rather than
     // easing symmetrically in and out.
-    private static let motionDuration: Double = 0.48
-    private static let delayStep: Double = 0.025
+    private static let motionDuration: Double = 0.3
+    private static let delayStep: Double = 0.015
     private static let motionCurve = Animation.easeOut(duration: motionDuration)
 
     // Off-active-line blur, restored only while auto-scroll is actively tracking playback
