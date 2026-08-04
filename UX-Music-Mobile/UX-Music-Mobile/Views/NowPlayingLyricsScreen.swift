@@ -129,90 +129,142 @@ struct NowPlayingLyricsScreen: View {
     }
 }
 
+/// Per-line measured height, keyed by line index, collected via a background `GeometryReader`
+/// so `nowPlayingLyricsLineOffsets` can lay every line out without SwiftUI's coarse
+/// `ScrollViewReader.scrollTo` interpolation getting in the way.
+private struct LyricsLineHeightKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
 // MARK: - Synced (LRC) body
 
+/// Container-offset synced-lyrics view, ported from UX Music Desktop's
+/// `applyLyricsMotion`/`.fs-lyrics-inner.fs-lrc` (`src/renderer/js/features/fullscreen-view.ts`,
+/// `src/renderer/styles/components.css`): every line is absolutely positioned inside the
+/// container, the active line is pinned at a fixed fraction of the container's height, and
+/// every other line cascades into place with a per-distance stagger delay. This reproduces
+/// Desktop's motion far more faithfully than `ScrollViewReader.scrollTo`, whose interpolation
+/// cannot express the wave-like cascade or the fixed on-screen anchor position.
 private struct NowPlayingSyncedLyricsScroll: View {
     @Environment(AppModel.self) private var model
     let lines: [LRCParser.TimedLine]
 
-    /// Wall-clock time the user last dragged the scroll view, used to temporarily suspend
+    /// Measured height of each line, populated via `LyricsLineHeightKey`. Falls back to a
+    /// plausible single-line height until the real measurement lands (first frame only).
+    @State private var lineHeights: [Int: CGFloat] = [:]
+
+    /// Accumulated offset (points) from a manual drag, layered on top of the auto-computed
+    /// layout. Springs back to zero once auto-scroll resumes.
+    @State private var manualDragOffset: CGFloat = 0
+    @GestureState private var liveDragTranslation: CGFloat = 0
+    @State private var revertTask: Task<Void, Never>?
+
+    /// Wall-clock time the user last dragged the lyrics, used to temporarily suspend
     /// auto-scroll-to-active-line so a manual scroll is not fought by the timeline updates.
     @State private var lastUserScrollAt: Date?
 
-    /// Apple-Music-style "line lifts into place" spring, shared by the scroll-to-active-line
-    /// animation and every row's scale/opacity/blur transition so they move in lockstep instead
-    /// of the scroll settling before (or after) the text finishes fading in.
-    private static let autoScrollSpring = Animation.spring(response: 0.6, dampingFraction: 0.8)
+    // Desktop parameters (see `src/renderer/js/features/fullscreen-view.ts`):
+    // ANCHOR_RATIO, INTER_BLOCK_GAP, MOTION_DURATION_MS, MOTION_DELAY_STEP_MS, and the
+    // active-line `scale(1.091)` from `.fs-lyrics-inner.fs-lrc p.active`.
+    private static let anchorRatio: CGFloat = 0.35
+    private static let interLineGap: CGFloat = 16
+    private static let motionDuration: Double = 0.8
+    private static let delayStep: Double = 0.04
+    private static let activeScale: CGFloat = 1.091
+    private static let fallbackLineHeight: CGFloat = 44
 
-    /// How many lines either side of the active line still receive the blur treatment. Blurring
-    /// every off-screen row is wasted GPU work (LazyVStack keeps them alive once measured), so
-    /// only rows close enough to ever be visible pay for it.
-    private static let blurNeighbourRadius = 6
+    private static let revertSpring = Animation.spring(response: 0.5, dampingFraction: 0.85)
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.05)) { context in
+        TimelineView(.periodic(from: .now, by: 0.05)) { _ in
             let position = max(0, model.player.positionSeconds)
             let active = LRCParser.activeLineIndex(in: lines, at: position)
-            let secondsSinceUserScroll = lastUserScrollAt.map { context.date.timeIntervalSince($0) }
 
             GeometryReader { geo in
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 20) {
-                            Spacer(minLength: geo.size.height * 0.35)
+                let anchorY = geo.size.height * Self.anchorRatio
+                let heights = (0..<lines.count).map { lineHeights[$0] ?? Self.fallbackLineHeight }
+                let offsets = nowPlayingLyricsLineOffsets(
+                    heights: heights, activeIndex: active, anchorY: anchorY, gap: Self.interLineGap
+                )
+                let dragOffset = manualDragOffset + liveDragTranslation
 
-                            ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                                let isActive = index == active
-                                let isNearActive = active >= 0 && abs(index - active) <= Self.blurNeighbourRadius
-                                Button {
-                                    model.player.seek(to: nowPlayingLyricsSeekTime(for: line))
-                                } label: {
-                                    Text(line.text.isEmpty ? " " : line.text)
-                                        .font(.system(size: 26, weight: isActive ? .bold : .semibold, design: .rounded))
-                                        .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.35))
-                                        .blur(radius: isActive ? 0 : (isNearActive ? 2.2 : 0))
-                                        .scaleEffect(isActive ? 1.05 : 1, anchor: .leading)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .id(line.id)
-                                }
-                                .buttonStyle(.plain)
-                                .animation(Self.autoScrollSpring, value: isActive)
+                ZStack(alignment: .topLeading) {
+                    ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                        let isActive = index == active
+                        let delay = nowPlayingLyricsLineDelay(index: index, activeIndex: active, stepSeconds: Self.delayStep)
+                        let y = (offsets.indices.contains(index) ? offsets[index] : anchorY) + dragOffset
+
+                        Button {
+                            model.player.seek(to: nowPlayingLyricsSeekTime(for: line))
+                        } label: {
+                            Text(line.text.isEmpty ? " " : line.text)
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                                .lineSpacing(4)
+                                .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.45))
+                                .shadow(color: .white.opacity(isActive ? 0.15 : 0), radius: isActive ? 20 : 0)
+                                .frame(width: max(0, geo.size.width - 56), alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .scaleEffect(isActive ? Self.activeScale : 1, anchor: .leading)
+                        .background(
+                            GeometryReader { lineGeo in
+                                Color.clear.preference(key: LyricsLineHeightKey.self, value: [index: lineGeo.size.height])
                             }
-
-                            Spacer(minLength: geo.size.height * 0.35)
-                        }
-                        .padding(.horizontal, 28)
-                    }
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 4).onChanged { _ in
-                            lastUserScrollAt = .now
-                        }
-                    )
-                    .mask(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .black.opacity(0), location: 0.0),
-                                .init(color: .black, location: 0.12),
-                                .init(color: .black, location: 0.82),
-                                .init(color: .black.opacity(0), location: 1.0),
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
                         )
-                    )
-                    .onAppear {
-                        guard active >= 0, active < lines.count else { return }
-                        proxy.scrollTo(lines[active].id, anchor: .center)
-                    }
-                    .onChange(of: active) { _, newIndex in
-                        guard newIndex >= 0, newIndex < lines.count else { return }
-                        guard nowPlayingLyricsShouldAutoScroll(secondsSinceLastUserScroll: secondsSinceUserScroll) else { return }
-                        let target = lines[newIndex].id
-                        withAnimation(Self.autoScrollSpring) {
-                            proxy.scrollTo(target, anchor: .center)
-                        }
+                        .offset(x: 28, y: y)
+                        .animation(.easeInOut(duration: Self.motionDuration).delay(delay), value: active)
                     }
                 }
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 4)
+                        .updating($liveDragTranslation) { value, state, _ in
+                            state = value.translation.height
+                        }
+                        .onChanged { _ in
+                            lastUserScrollAt = .now
+                            revertTask?.cancel()
+                        }
+                        .onEnded { value in
+                            manualDragOffset += value.translation.height
+                            lastUserScrollAt = .now
+                            scheduleAutoScrollResume()
+                        }
+                )
+            }
+            .onPreferenceChange(LyricsLineHeightKey.self) { lineHeights = $0 }
+            .mask(
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0), location: 0.0),
+                        .init(color: .black, location: 0.08),
+                        .init(color: .black, location: 0.70),
+                        .init(color: .black.opacity(0), location: 1.0),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        }
+    }
+
+    /// Waits for `nowPlayingLyricsShouldAutoScroll`'s resume window (3 seconds of no manual
+    /// drag), then springs `manualDragOffset` back to zero so the layout re-anchors on the
+    /// active line.
+    private func scheduleAutoScrollResume() {
+        revertTask?.cancel()
+        revertTask = Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled else { return }
+            guard nowPlayingLyricsShouldAutoScroll(
+                secondsSinceLastUserScroll: lastUserScrollAt.map { Date().timeIntervalSince($0) }
+            ) else { return }
+            await MainActor.run {
+                withAnimation(Self.revertSpring) { manualDragOffset = 0 }
             }
         }
     }
