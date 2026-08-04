@@ -269,3 +269,27 @@ Desktop の同期歌詞（`.fs-lyrics-inner.fs-lrc`）は `ScrollView` 的な要
   `xcrun simctl io <udid> recordVideo` で録画・スクショ採取した。アクティブ行がコンテナ
   高さの約35%地点に太字・白色で固定され、他行は灰色・通常ウェイトで積み上がっている
   ことを目視確認。
+
+### 6-4. ユーザーフィードバックによる調整（Desktopパラメータからの意図的な逸脱）
+
+Desktop準拠のパラメータをそのまま実機で確認したところ「もっさりしてる」とのフィードバック
+があり、以下の2点をモバイル向けに調整した（Desktop の値は`progress`上の記録として残し、
+コード側は調整後の値を採用）。
+
+- **モーション速度**: `motionDuration` を `0.8s → 0.48s`、`delayStep` を `40ms → 25ms` に
+  短縮。カーブも `ease` から `easeOut`（`Animation.easeOut(duration:)`）に変更し、行が
+  素早く定位置に「到達」してから止まる印象にした。カスケード自体（距離比例の遅延）は
+  維持。Desktop の画面サイズ・視聴距離と iPhone のそれが異なるため、同じ絶対時間では
+  相対的に遅く感じられるのが原因と判断。
+- **ぼかしの条件付き復活**: Desktop にはぼかしが存在しないが、旧実装（本ファイル冒頭
+  「5-2」参照）で採用していた近傍ぼかしをユーザー要望で復活。ただし「常時ぼかす」の
+  ではなく、**自動追従中（`isAutoScrolling`）のみ**適用し、手動ドラッグ中〜3秒の自動
+  復帰待機中は解除する仕様にした。`isAutoScrolling` は既存の
+  `nowPlayingLyricsShouldAutoScroll` 判定と `liveDragTranslation != 0`（ドラッグ中判定）
+  を組み合わせて算出し、新規の状態は追加していない。ぼかし量は `blurRadius(distance:)`
+  （`private static func`、テスト対象外の単純な線形クランプ）で
+  `0.8 + 0.12 * (distance - 1)`、最大 `1.5`、`blurNeighbourRadius = 6` 行を超えると `0`
+  （GPU コスト対策として近傍のみ、という既存方針を踏襲）。ぼかしの有無の切り替えは
+  `.animation(.easeInOut(duration: 0.25), value: isAutoScrolling)` で滑らかにした。
+- オフセット計算そのもの（`nowPlayingLyricsLineOffsets`/`nowPlayingLyricsLineDelay`の
+  数式）には変更がないため、既存テストはそのまま流用（値の呼び出し元定数のみ変更）。
