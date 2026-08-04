@@ -166,22 +166,49 @@ private struct NowPlayingSyncedLyricsScroll: View {
     /// auto-scroll-to-active-line so a manual scroll is not fought by the timeline updates.
     @State private var lastUserScrollAt: Date?
 
-    // Desktop parameters (see `src/renderer/js/features/fullscreen-view.ts`):
-    // ANCHOR_RATIO, INTER_BLOCK_GAP, MOTION_DURATION_MS, MOTION_DELAY_STEP_MS, and the
-    // active-line `scale(1.091)` from `.fs-lyrics-inner.fs-lrc p.active`.
+    // Layout parameters ported from Desktop (see `src/renderer/js/features/fullscreen-view.ts`):
+    // ANCHOR_RATIO, INTER_BLOCK_GAP, and the active-line `scale(1.091)` from
+    // `.fs-lyrics-inner.fs-lrc p.active`.
     private static let anchorRatio: CGFloat = 0.35
     private static let interLineGap: CGFloat = 16
-    private static let motionDuration: Double = 0.8
-    private static let delayStep: Double = 0.04
     private static let activeScale: CGFloat = 1.091
     private static let fallbackLineHeight: CGFloat = 44
 
+    // Motion timing. Desktop uses 800ms/40ms-per-line, but that read as sluggish on iPhone's
+    // smaller, closer viewport — trimmed to keep the wave-cascade feel while snapping into
+    // place noticeably faster. easeOut so the line "arrives" quickly and settles, rather than
+    // easing symmetrically in and out.
+    private static let motionDuration: Double = 0.48
+    private static let delayStep: Double = 0.025
+    private static let motionCurve = Animation.easeOut(duration: motionDuration)
+
+    // Off-active-line blur, restored only while auto-scroll is actively tracking playback
+    // (i.e. not while the user is mid-drag or within the 3s manual-scroll grace window) —
+    // blurring text the user is actively trying to read by hand felt wrong, so it is
+    // suppressed for that window and fades back in once auto-scroll resumes.
+    private static let blurNeighbourRadius = 6
+    private static let blurBase: CGFloat = 0.8
+    private static let blurStep: CGFloat = 0.12
+    private static let blurMax: CGFloat = 1.5
+    private static let blurFade = Animation.easeInOut(duration: 0.25)
+
     private static let revertSpring = Animation.spring(response: 0.5, dampingFraction: 0.85)
 
+    /// Blur radius for a line at `distance` steps from the active line, capped at `blurMax` and
+    /// zero once outside `blurNeighbourRadius` (kept off-screen rows cheap to render).
+    private static func blurRadius(distance: Int) -> CGFloat {
+        guard distance > 0, distance <= blurNeighbourRadius else { return 0 }
+        return min(blurMax, blurBase + blurStep * CGFloat(distance - 1))
+    }
+
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.05)) { _ in
+        TimelineView(.periodic(from: .now, by: 0.05)) { context in
             let position = max(0, model.player.positionSeconds)
             let active = LRCParser.activeLineIndex(in: lines, at: position)
+            let secondsSinceUserScroll = lastUserScrollAt.map { context.date.timeIntervalSince($0) }
+            let isDragging = liveDragTranslation != 0
+            let isAutoScrolling = !isDragging
+                && nowPlayingLyricsShouldAutoScroll(secondsSinceLastUserScroll: secondsSinceUserScroll)
 
             GeometryReader { geo in
                 let anchorY = geo.size.height * Self.anchorRatio
@@ -194,8 +221,10 @@ private struct NowPlayingSyncedLyricsScroll: View {
                 ZStack(alignment: .topLeading) {
                     ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
                         let isActive = index == active
+                        let distance = abs(index - max(0, active))
                         let delay = nowPlayingLyricsLineDelay(index: index, activeIndex: active, stepSeconds: Self.delayStep)
                         let y = (offsets.indices.contains(index) ? offsets[index] : anchorY) + dragOffset
+                        let blur = isAutoScrolling ? Self.blurRadius(distance: distance) : 0
 
                         Button {
                             model.player.seek(to: nowPlayingLyricsSeekTime(for: line))
@@ -205,6 +234,7 @@ private struct NowPlayingSyncedLyricsScroll: View {
                                 .lineSpacing(4)
                                 .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.45))
                                 .shadow(color: .white.opacity(isActive ? 0.15 : 0), radius: isActive ? 20 : 0)
+                                .blur(radius: blur)
                                 .frame(width: max(0, geo.size.width - 56), alignment: .leading)
                         }
                         .buttonStyle(.plain)
@@ -215,7 +245,8 @@ private struct NowPlayingSyncedLyricsScroll: View {
                             }
                         )
                         .offset(x: 28, y: y)
-                        .animation(.easeInOut(duration: Self.motionDuration).delay(delay), value: active)
+                        .animation(Self.motionCurve.delay(delay), value: active)
+                        .animation(Self.blurFade, value: isAutoScrolling)
                     }
                 }
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
