@@ -825,7 +825,10 @@ private struct NowPlayingArtworkBlock: View {
 
     var body: some View {
         Color.clear
-            .aspectRatio(1, contentMode: .fit)
+            // YouTube tracks get a 16:9 video-shaped card; local tracks keep the classic square
+            // jacket. Both share the same width cap so the card only changes height when the
+            // song source switches, and that height change is animated below.
+            .aspectRatio(song.isYouTube ? 16.0 / 9.0 : 1, contentMode: .fit)
             .frame(maxWidth: 340)
             .overlay {
                 Group {
@@ -844,6 +847,7 @@ private struct NowPlayingArtworkBlock: View {
             }
             .shadow(color: .black.opacity(0.55), radius: 32, y: 18)
             .shadow(color: accent.opacity(0.15), radius: 40, y: 12)
+            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: song.isYouTube)
             .task(id: taskIdentity) {
                 guard !song.isYouTube else { return }
                 loaded = nil
