@@ -29,7 +29,6 @@ struct RemoteLibraryScreen: View {
     /// Avoid refetching on every `NavigationStack` pop; reset when this screen is recreated (e.g. changing tabs).
     @State private var didScheduleRemoteLoad = false
     @State private var showAddYouTubeLink = false
-    @State private var youTubeSongToPlay: Song?
 
     private var viewModeIndex: Binding<Int> {
         Binding(
@@ -61,10 +60,6 @@ struct RemoteLibraryScreen: View {
             }
             .sheet(isPresented: $showAddYouTubeLink) {
                 AddYouTubeLinkSheet(isPresented: $showAddYouTubeLink)
-                    .environment(model)
-            }
-            .fullScreenCover(item: $youTubeSongToPlay) { song in
-                RemoteYouTubeSongPlayerScreen(song: song)
                     .environment(model)
             }
             .navigationDestination(for: RemoteLibraryNav.self) { route in
@@ -443,11 +438,6 @@ struct RemoteLibraryScreen: View {
                     .padding(.vertical, 8)
                     .contextMenu {
                         if song.isYouTube {
-                            Button {
-                                youTubeSongToPlay = song
-                            } label: {
-                                Label("公式プレイヤーで再生", systemImage: "play.rectangle")
-                            }
                             if model.isLibrarySongMember(songId: song.id) {
                                 Button(role: .destructive) {
                                     model.removeYouTubeSongFromLibrary(songId: song.id)
@@ -472,9 +462,19 @@ struct RemoteLibraryScreen: View {
 
     private func rowTap(for song: Song, in list: [Song]) -> (() -> Void)? {
         switch song.rowTapAction(isDownloaded: model.isSongDownloaded(songId: song.id)) {
-        case .openYouTubePlayer: return { youTubeSongToPlay = song }
+        case .openYouTubePlayer: return { playYouTube(song) }
         case .playDownloaded: return { playDownloaded(song, in: list) }
         case .none: return nil
+        }
+    }
+
+    /// Plays a YouTube library song as a normal single-song queue, exactly like tapping any local
+    /// song — the mini player picks it up and expands into `NowPlayingView` on tap, same as any
+    /// other track. YouTube songs get no dedicated player screen any more (see
+    /// `progress/mobile-youtube-embed.md`).
+    private func playYouTube(_ song: Song) {
+        Task {
+            await model.player.play(song, newQueue: [song])
         }
     }
 

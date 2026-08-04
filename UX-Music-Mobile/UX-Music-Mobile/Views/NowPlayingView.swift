@@ -518,6 +518,16 @@ private struct NowPlayingPlayingShell: View {
         palette?.accentColor ?? nowPlayingFallbackAccent
     }
 
+    /// Source used for ambient-palette extraction: the official YouTube thumbnail while a YouTube
+    /// track's embed video ID is known, otherwise the ordinary artwork URL. Keeps the ambient
+    /// background in step with the on-screen video the same way local artwork drives it.
+    private var paletteSourceURLString: String {
+        if song.isYouTube, let videoID = model.player.currentYouTubeVideoID {
+            return youtubeThumbnailURLString(videoID: videoID)
+        }
+        return artworkURLString
+    }
+
     var body: some View {
         ZStack {
             // The ambient background for the full screen is rendered at the NowPlayingView
@@ -592,14 +602,22 @@ private struct NowPlayingPlayingShell: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: artworkURLString) {
-            guard let url = URL(string: artworkURLString), !artworkURLString.isEmpty else {
+        .task(id: paletteSourceURLString) {
+            let source = paletteSourceURLString
+            guard let url = URL(string: source), !source.isEmpty else {
                 palette = nil
                 return
             }
             palette = await ArtworkPaletteExtractor.palette(forArtworkURL: url)
         }
     }
+}
+
+/// Standard-resolution official thumbnail for a YouTube video ID (`i.ytimg.com`), used both as the
+/// loading-state placeholder behind the embed player and as the ambient-palette source so YouTube
+/// tracks get the same colour-matched backdrop as local artwork.
+func youtubeThumbnailURLString(videoID: String) -> String {
+    "https://i.ytimg.com/vi/\(videoID)/hqdefault.jpg"
 }
 
 // MARK: - Progress (only this subtree observes position / duration)
@@ -841,8 +859,15 @@ private struct NowPlayingArtworkBlock: View {
     /// does not stop it, so playback continues while browsing the Library, same as a local file.
     @ViewBuilder
     private var youtubeEmbedFill: some View {
-        if model.player.currentYouTubeVideoID != nil {
-            YouTubeEmbedHostContainerView(webView: model.player.youtubePlaybackHost.webView)
+        if let videoID = model.player.currentYouTubeVideoID {
+            ZStack {
+                // Shown immediately (no network round-trip needed for the embed itself) and kept
+                // underneath the video so a slow embed handshake never shows a blank black square.
+                youtubeThumbnail(videoID: videoID)
+                YouTubeEmbedHostContainerView(webView: model.player.youtubePlaybackHost.webView)
+                    .opacity(model.player.isPlaying ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.35), value: model.player.isPlaying)
+            }
         } else if let error = model.player.youtubePlaybackErrorMessage {
             ZStack {
                 Color.black
@@ -886,6 +911,24 @@ private struct NowPlayingArtworkBlock: View {
                 ProgressView()
                     .tint(.white.opacity(0.6))
             }
+        }
+    }
+
+    /// Official YouTube thumbnail, shown behind the embed while it loads. Falls back to the same
+    /// note-glyph placeholder as local artwork if the thumbnail itself fails to load.
+    @ViewBuilder
+    private func youtubeThumbnail(videoID: String) -> some View {
+        if let url = URL(string: youtubeThumbnailURLString(videoID: videoID)) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().scaledToFill()
+                default:
+                    placeholder
+                }
+            }
+        } else {
+            placeholder
         }
     }
 

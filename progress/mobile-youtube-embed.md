@@ -391,3 +391,89 @@ iOS版が「デスクトップと同一パラメータなのに失敗する」�
 - `youtubePlaybackErrorVideoID`は`.error`受信時点の`currentYouTubeVideoID`を
   退避したものであり、`currentYouTubeVideoID`自体は同じタイミングで`nil`に
   クリアされる。両者を混同すると「開く」ボタンがvideoIDを見失うので注意。
+
+## フェーズ: UI 統一（専用プレイヤー画面の廃止 → NowPlayingView 一本化）
+
+### 決定事項
+
+#### 専用 YouTube プレイヤー画面（`YouTubePlayerScreen.swift`）を削除
+`RemoteYouTubeSongPlayerScreen` / `YouTubeFullScreenPlayer` を削除し、
+`RemoteLibraryScreen` / `AlbumDetailView` / `RemotePlaylistDetailView` の
+`fullScreenCover(item: $youTubeSongToPlay)` 経路をすべて廃止した。YouTube 曲の
+タップは `song.rowTapAction(isDownloaded:)` の `.openYouTubePlayer` ケースを
+経由するのは変わらないが、遷移先を専用画面ではなく
+`model.player.play(song, newQueue: [song])`（単曲キュー）に変更した。
+`MusicPlayerService.play` は既存の YouTube バックエンド統合（`resolveYouTubeVideoID`
+→ `loadAndPlayYouTube`）を持っているため、ローカル曲と全く同じ入口から
+YouTube 再生を開始できる。ミニプレイヤー → タップで `NowPlayingView` を開く、
+という通常の導線にそのまま乗る（ローカル曲のタップ時と同じく、その場で
+`isNowPlayingSheetPresented` を true にはしない — ローカル曲の既存挙動に合わせた）。
+
+ライブラリ未追加の Remote YouTube 曲を直接タップした場合も、`Song.sourceURL`/
+`path` を積んだ `Song` 値をそのままキューに渡すだけなので、ライブラリへの追加を
+強制しない（`addYouTubeSongToLibrary` は別途、行の `+` ボタン/コンテキストメニュー
+からのみ）。
+
+各画面の「公式プレイヤーで再生」コンテキストメニュー項目も削除した
+（タップの遷移先と完全に同じ内容になったため、別動線として残す意味がなくなった）。
+
+#### `pbxproj` からの参照除去
+`UX-Music-Mobile.xcodeproj/project.pbxproj` から `YouTubePlayerScreen.swift` の
+`PBXBuildFile` / `PBXFileReference` / グループ参照 / ソースリスト参照の4箇所を
+`sed` で削除。ファイル本体も削除。
+
+#### NowPlaying のサムネイル読み込み中プレースホルダ
+`NowPlayingView.swift` の `NowPlayingArtworkBlock.youtubeEmbedFill` を、埋め込み
+WKWebView 単体表示から「サムネイル背景 + フェードインする埋め込み」の ZStack に
+変更した。サムネイル URL は `youtubeThumbnailURLString(videoID:)`
+（`https://i.ytimg.com/vi/<id>/hqdefault.jpg`、公式の標準解像度サムネイル）で
+動画IDから直接組み立てる — デスクトップ側の `resolveYouTubeVideo` レスポンスには
+`thumbnail` フィールドがあるが、`MusicPlayerService.resolveYouTubeVideoID` は
+videoID 文字列のみを返す設計になっており、サムネイルURLまで持ち回るには
+`MusicPlayerService` の状態を増やす必要がある。動画IDから直接サムネイルURLを
+機械的に導出できる（YouTube の公開URLパターン）ため、この方が変更範囲が小さく、
+バックエンド呼び出しも増えないと判断した。
+
+埋め込み本体は `model.player.isPlaying` を条件に `opacity` を 0→1 に
+`.easeInOut(duration: 0.35)` でアニメーションさせ、`YouTubeEmbedHostContainerView`
+自体は常時マウントしておく（再生開始タイミングでサムネイルからクロスフェード）。
+
+#### アンビエント背景のパレット抽出
+`NowPlayingPlayingShell` のパレット抽出タスクを `artworkURLString` ではなく
+`paletteSourceURLString`（YouTube 曲かつ動画ID判明時はサムネイルURL、それ以外は
+従来のアートワークURL）に切り替えた。`ArtworkPaletteExtractor.palette(forArtworkURL:)`
+は `http(s)` URL を素直に fetch する実装なので、ローカル曲のアートワーク取得経路と
+完全に同じ関数をサムネイルURLにも使い回せる（新規の抽出ロジックは不要）。
+
+### Alternatives considered
+- デスクトップの `resolveYouTubeVideo` から返る `thumbnail` フィールドを
+  `MusicPlayerService` まで持ち回って `NowPlayingView` に渡す設計も検討したが、
+  `currentYouTubeVideoID`（String）だけを保持している現状の状態設計に
+  `currentYouTubeThumbnailURL` を追加で並走させる必要があり、動画IDから
+  決定的に導出できるサムネイルURLのために状態を増やすのは過剰と判断し見送った。
+- YouTube 曲タップ時に即座に `NowPlayingView` を開く（`isNowPlayingSheetPresented
+  = true`）案も検討したが、ローカル曲のタップは常にミニプレイヤー止まりで
+  ユーザーが明示的に展開する既存挙動と非対称になるため不採用。「YouTube 曲は
+  普通の曲と同じ扱い」という今回の方針そのものに反する。
+
+### 検証
+- `xcodebuild -scheme UX-Music-Mobile -destination 'platform=iOS Simulator,name=iPhone Air' build` / `test`: 成功（既存テスト全green、新規ロジック追加なしのためユニットテスト追加は不要と判断）。
+- `xcodebuild -scheme UX-Music-Watch build`（watchOS destination）: 成功。
+- 実機（シミュレータ）確認: `UXM_DEBUG_YT_VIDEO=jNQXAC9IVRw` の隠しデバッグフックで
+  `YouTubePlaybackHost` への動画ロードと IFrame Player API の `ready` イベント到達を
+  ログで確認した。ただし本フェーズのシミュレータ操作セッションでは Remote タブの
+  「YouTube の URL を追加」フォームへのテキスト入力・ペーストがことごとく
+  ツール側のタップ注入で失敗し（`text`/paste 操作がフィールドに反映されない）、
+  「NowPlaying 上で YouTube 曲が動画付きで再生されているスクリーンショット」の
+  取得までは至らなかった。ローカル曲でのミニプレイヤー→ライブラリ遷移は正常に
+  タップ操作できたため、アプリ側の問題ではなくこのセッションのシミュレータ自動化
+  ツール固有の不安定さと判断している。次回検証時は実機タップかVoiceOver経由の
+  自動化を検討。
+
+### Constraints / Gotchas
+- `SongRowDownloadTrailing` は YouTube 曲を「+」（ライブラリ未追加）/
+  緑チェック（追加済み）で表示し、通常曲のダウンロード進捗UIとは別系統。
+  今回のタップ導線統一では触っていない。
+- `youtubeThumbnailURLString` は `NowPlayingView.swift` の file-scope 関数として
+  `internal` 公開（`private` にしない）。`NowPlayingArtworkBlock`（同ファイル内の
+  別 struct）と将来的にテストコードの両方から参照できるようにするため。

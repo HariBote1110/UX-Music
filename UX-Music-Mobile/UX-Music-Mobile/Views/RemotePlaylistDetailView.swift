@@ -4,7 +4,6 @@ import SwiftUI
 struct RemotePlaylistDetailView: View {
     @Environment(AppModel.self) private var model
     let playlist: RemoteDesktopPlaylist
-    @State private var youTubeSongToPlay: Song?
 
     private var resolvedSongs: [Song] {
         guard case .loaded(let library) = model.libraryState else { return [] }
@@ -63,13 +62,6 @@ struct RemotePlaylistDetailView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .contextMenu {
-                            if song.isYouTube {
-                                Button {
-                                    youTubeSongToPlay = song
-                                } label: {
-                                    Label("公式プレイヤーで再生", systemImage: "play.rectangle")
-                                }
-                            }
                             WatchTransferSongMenuItem(song: song)
                         }
                     }
@@ -93,10 +85,6 @@ struct RemotePlaylistDetailView: View {
                     .accessibilityLabel("プレイリストをダウンロード")
                 }
             }
-        }
-        .fullScreenCover(item: $youTubeSongToPlay) { song in
-            RemoteYouTubeSongPlayerScreen(song: song)
-                .environment(model)
         }
     }
 
@@ -146,9 +134,18 @@ struct RemotePlaylistDetailView: View {
 
     private func rowTap(for song: Song) -> (() -> Void)? {
         switch song.rowTapAction(isDownloaded: model.isSongDownloaded(songId: song.id)) {
-        case .openYouTubePlayer: return { youTubeSongToPlay = song }
+        case .openYouTubePlayer: return { playYouTube(song) }
         case .playDownloaded: return { play(song) }
         case .none: return nil
+        }
+    }
+
+    /// Plays a YouTube song as a normal single-song queue, exactly like tapping any local
+    /// song — no dedicated YouTube player screen any more (see
+    /// `progress/mobile-youtube-embed.md`).
+    private func playYouTube(_ song: Song) {
+        Task {
+            await model.player.play(song, newQueue: [song])
         }
     }
 
