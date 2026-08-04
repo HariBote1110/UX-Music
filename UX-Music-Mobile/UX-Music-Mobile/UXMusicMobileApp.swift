@@ -71,9 +71,10 @@ struct UXMusicMobileApp: App {
                 return
             }
             let needle = query.lowercased()
-            guard let song = songs.first(where: {
-                $0.title.lowercased().contains(needle) || $0.artist.lowercased().contains(needle)
-            }) else {
+            guard let song = songs.first(where: { $0.id == query })
+                ?? songs.first(where: {
+                    $0.title.lowercased().contains(needle) || $0.artist.lowercased().contains(needle)
+                }) else {
                 NSLog("[UXM_DEBUG_LYRICS] no song matched query=%@ (library has %d songs)", query, songs.count)
                 return
             }
