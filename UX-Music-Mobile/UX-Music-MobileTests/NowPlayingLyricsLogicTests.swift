@@ -12,6 +12,9 @@ final class NowPlayingLyricsLogicTests: XCTestCase {
     }
 
     // MARK: - Edge fade coefficient
+    //
+    // Matches UX Music Desktop's `.fs-lyrics-container` mask-image:
+    // `linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%)`.
 
     func testFadeIsZeroAtVeryTop() {
         XCTAssertEqual(nowPlayingLyricsFadeOpacity(fraction: 0), 0, accuracy: 0.001)
@@ -26,19 +29,19 @@ final class NowPlayingLyricsLogicTests: XCTestCase {
     }
 
     func testFadeRisesAcrossTopBand() {
-        // Top fade band is the first 12% of the height.
+        // Top fade band is the first 8% of the height (Desktop: transparent 0% -> black 8%).
         let atStart = nowPlayingLyricsFadeOpacity(fraction: 0.0)
-        let atMid = nowPlayingLyricsFadeOpacity(fraction: 0.06)
-        let atEnd = nowPlayingLyricsFadeOpacity(fraction: 0.12)
+        let atMid = nowPlayingLyricsFadeOpacity(fraction: 0.04)
+        let atEnd = nowPlayingLyricsFadeOpacity(fraction: 0.08)
         XCTAssertLessThan(atStart, atMid)
         XCTAssertLessThan(atMid, atEnd)
         XCTAssertEqual(atEnd, 1, accuracy: 0.001)
     }
 
     func testFadeFallsAcrossBottomBand() {
-        // Bottom fade band is the last 18% of the height.
-        let atStart = nowPlayingLyricsFadeOpacity(fraction: 0.82)
-        let atMid = nowPlayingLyricsFadeOpacity(fraction: 0.91)
+        // Bottom fade band is the last 30% of the height (Desktop: black 70% -> transparent 100%).
+        let atStart = nowPlayingLyricsFadeOpacity(fraction: 0.70)
+        let atMid = nowPlayingLyricsFadeOpacity(fraction: 0.85)
         let atEnd = nowPlayingLyricsFadeOpacity(fraction: 1.0)
         XCTAssertEqual(atStart, 1, accuracy: 0.001)
         XCTAssertGreaterThan(atMid, atEnd)
@@ -64,5 +67,51 @@ final class NowPlayingLyricsLogicTests: XCTestCase {
 
     func testAutoScrollResumesWhenNoUserScrollYet() {
         XCTAssertTrue(nowPlayingLyricsShouldAutoScroll(secondsSinceLastUserScroll: nil))
+    }
+
+    // MARK: - Container-offset line layout (mirrors Desktop `applyLyricsMotion` in
+    // `src/renderer/js/features/fullscreen-view.ts`: anchor the active line at a fixed
+    // fraction of the container height, then stack every other line above/below it by
+    // cumulative measured height + a fixed inter-line gap).
+
+    func testActiveLineSitsAtAnchor() {
+        let offsets = nowPlayingLyricsLineOffsets(heights: [40, 40, 40], activeIndex: 1, anchorY: 100, gap: 16)
+        XCTAssertEqual(offsets[1], 100, accuracy: 0.001)
+    }
+
+    func testLinesAfterActiveStackDownwardsByHeightPlusGap() {
+        let offsets = nowPlayingLyricsLineOffsets(heights: [40, 50, 60], activeIndex: 0, anchorY: 20, gap: 16)
+        // offsets[1] = anchor + height[0] + gap
+        XCTAssertEqual(offsets[1], 20 + 40 + 16, accuracy: 0.001)
+        // offsets[2] = offsets[1] + height[1] + gap
+        XCTAssertEqual(offsets[2], 20 + 40 + 16 + 50 + 16, accuracy: 0.001)
+    }
+
+    func testLinesBeforeActiveStackUpwardsByHeightPlusGap() {
+        let offsets = nowPlayingLyricsLineOffsets(heights: [40, 50, 60], activeIndex: 2, anchorY: 200, gap: 16)
+        // offsets[1] = anchor - height[1] - gap
+        XCTAssertEqual(offsets[1], 200 - 50 - 16, accuracy: 0.001)
+        // offsets[0] = offsets[1] - height[0] - gap
+        XCTAssertEqual(offsets[0], 200 - 50 - 16 - 40 - 16, accuracy: 0.001)
+    }
+
+    func testOffsetsClampActiveIndexIntoBounds() {
+        // No active line yet (-1) behaves like index 0, matching Desktop's `baseIndex`.
+        let offsets = nowPlayingLyricsLineOffsets(heights: [40, 40], activeIndex: -1, anchorY: 50, gap: 16)
+        XCTAssertEqual(offsets[0], 50, accuracy: 0.001)
+    }
+
+    func testOffsetsReturnsEmptyForEmptyHeights() {
+        XCTAssertEqual(nowPlayingLyricsLineOffsets(heights: [], activeIndex: 0, anchorY: 50, gap: 16), [])
+    }
+
+    func testLineDelayIsProportionalToDistanceFromActive() {
+        XCTAssertEqual(nowPlayingLyricsLineDelay(index: 5, activeIndex: 5, stepSeconds: 0.04), 0, accuracy: 0.0001)
+        XCTAssertEqual(nowPlayingLyricsLineDelay(index: 7, activeIndex: 5, stepSeconds: 0.04), 0.08, accuracy: 0.0001)
+        XCTAssertEqual(nowPlayingLyricsLineDelay(index: 2, activeIndex: 5, stepSeconds: 0.04), 0.12, accuracy: 0.0001)
+    }
+
+    func testLineDelayTreatsNoActiveLineAsIndexZero() {
+        XCTAssertEqual(nowPlayingLyricsLineDelay(index: 3, activeIndex: -1, stepSeconds: 0.04), 0.12, accuracy: 0.0001)
     }
 }
