@@ -150,7 +150,7 @@ struct RemoteLibraryScreen: View {
         HStack {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("Search…", text: $query)
+            TextField("曲・アーティスト・アルバムを検索", text: $query)
                 .textFieldStyle(.plain)
         }
         .padding(10)
@@ -172,7 +172,6 @@ struct RemoteLibraryScreen: View {
         case .failed:
             errorView
         case .loaded(let songs):
-            let filtered = filter(songs)
             VStack(spacing: 0) {
                 if let err = model.downloadError {
                     HStack(alignment: .top, spacing: 8) {
@@ -192,14 +191,24 @@ struct RemoteLibraryScreen: View {
                 }
                 if viewMode == .playlists {
                     remotePlaylistsPane(librarySongs: songs)
-                } else if filtered.isEmpty {
-                    Text(songs.isEmpty ? "No songs on server" : "No matching songs")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewMode == .albums {
-                    remoteAlbumsGrid(songs: filtered)
+                    let albums = filterAlbums(Album.fromSongs(songs))
+                    if albums.isEmpty {
+                        Text(songs.isEmpty ? "No songs on server" : "No matching songs")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        remoteAlbumsGrid(albums: albums)
+                    }
                 } else {
-                    remoteSongsList(songs: filtered)
+                    let filtered = SongSearchFilter.filter(songs, query: query)
+                    if filtered.isEmpty {
+                        Text(songs.isEmpty ? "No songs on server" : "No matching songs")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        remoteSongsList(songs: filtered)
+                    }
                 }
             }
         }
@@ -219,14 +228,12 @@ struct RemoteLibraryScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func filter(_ songs: [Song]) -> [Song] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return songs }
-        return songs.filter {
-            $0.title.lowercased().contains(q)
-                || $0.artist.lowercased().contains(q)
-                || $0.album.lowercased().contains(q)
-        }
+    /// Keeps an album entry (with all of its tracks, not just the matching ones) when any of its
+    /// songs match the current search query — album membership shouldn't fragment mid-scroll just
+    /// because one track's tag didn't match.
+    private func filterAlbums(_ albums: [Album]) -> [Album] {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return albums }
+        return albums.filter { !SongSearchFilter.filter($0.songs, query: query).isEmpty }
     }
 
     private func loadRemotePlaylists() async {
@@ -370,9 +377,8 @@ struct RemoteLibraryScreen: View {
         }
     }
 
-    private func remoteAlbumsGrid(songs: [Song]) -> some View {
-        let albums = Album.fromSongs(songs)
-        return ScrollView {
+    private func remoteAlbumsGrid(albums: [Album]) -> some View {
+        ScrollView {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(albums) { album in
                     Button {
@@ -422,13 +428,20 @@ struct RemoteLibraryScreen: View {
     }
 
     private func remoteSongsList(songs: [Song]) -> some View {
-        ScrollView {
+        // Mirrors `LocalLibraryScreen`'s rule (task 1): only draw album-run connectors while the
+        // shared `librarySortOrder` is `.album` — Remote has no sort control of its own, but its
+        // song order comes straight from the server in album order, so this stays meaningful
+        // whenever Local hasn't been switched to title/artist/duration.
+        let groupPositions: [AlbumGroupPosition]? =
+            model.librarySortOrder == .album ? AlbumGrouping.positions(for: songs) : nil
+        return ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(songs) { song in
+                ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
                     SongRowView(
                         song: song,
                         artworkId: song.artworkId,
                         artworkURL: model.artworkURL(for: song.artworkId),
+                        albumGroupPosition: groupPositions?[index],
                         onTap: rowTap(for: song, in: songs),
                         trailing: {
                             SongRowDownloadTrailing(song: song)
