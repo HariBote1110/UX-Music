@@ -1,33 +1,66 @@
 import SwiftUI
 
+/// Segment order mirrors the desktop sidebar: 曲 / アルバム / アーティスト / プレイリスト / For You.
 private enum LocalViewMode: Int, CaseIterable {
-    case albums, playlists, songs
+    case songs, albums, artists, playlists, forYou
 
     var title: String {
         switch self {
-        case .albums: return "Albums"
-        case .playlists: return "Playlists"
-        case .songs: return "Songs"
+        case .songs: return "曲"
+        case .albums: return "アルバム"
+        case .artists: return "アーティスト"
+        case .playlists: return "プレイリスト"
+        case .forYou: return "For You"
         }
     }
 }
 
-private enum LibraryRoute: Hashable {
+/// Not `private`: `ArtistDetailView` (a separate file, same `NavigationStack`) also pushes
+/// `.album(_:)` routes onto this screen's path, so the type must be visible outside this file.
+enum LibraryRoute: Hashable {
     case album(Album)
+    case artist(Artist)
     case playlist(String)
 }
 
 struct LocalLibraryScreen: View {
     @Environment(AppModel.self) private var model
-    @State private var viewMode: LocalViewMode = .albums
+    @State private var viewMode: LocalViewMode = .songs
     @State private var path = NavigationPath()
     @State private var showNewPlaylistAlert = false
     @State private var newPlaylistName = ""
     @State private var showDesktopPlaylistImport = false
     @State private var playlistEditMode: EditMode = .inactive
+    @State private var searchQuery = ""
 
     private var downloaded: [Song] {
         model.sortedDownloadedSongsForLibrary
+    }
+
+    /// `downloaded` sorted by the user's chosen `librarySortOrder`; album-run grouping (task 1) is
+    /// only meaningful when this equals `.album`, since any other order scatters an album's tracks.
+    private var sortedSongs: [Song] {
+        model.librarySortOrder.sorted(downloaded)
+    }
+
+    private var searchedSongs: [Song] {
+        SongSearchFilter.filter(sortedSongs, query: searchQuery)
+    }
+
+    private var searchedAlbums: [Album] {
+        let albums = Album.fromSongs(downloaded)
+        guard !searchQuery.isEmpty else { return albums }
+        return albums.filter { !SongSearchFilter.filter($0.songs, query: searchQuery).isEmpty }
+    }
+
+    private var searchedArtists: [Artist] {
+        let artists = Artist.fromSongs(downloaded)
+        guard !searchQuery.isEmpty else { return artists }
+        return artists.filter { !SongSearchFilter.filter($0.songs, query: searchQuery).isEmpty }
+    }
+
+    private var forYouSections: [SituationPlaylistResolver.Section] {
+        SituationPlaylistResolver.resolve(model.situationPlaylists, library: downloaded)
     }
 
     private var viewModeIndex: Binding<Int> {
@@ -46,24 +79,35 @@ struct LocalLibraryScreen: View {
                     segments: LocalViewMode.allCases.map(\.title),
                     selectedIndex: viewModeIndex
                 ) {
-                    playlistActionsMenu
+                    headerTrailing
+                }
+                if [.songs, .albums, .artists].contains(viewMode) {
+                    searchField
                 }
                 Group {
                     switch viewMode {
-                    case .albums:
-                        if downloaded.isEmpty {
-                            emptyState
-                        } else {
-                            albumContent(songs: downloaded)
-                        }
-                    case .playlists:
-                        playlistContent
                     case .songs:
                         if downloaded.isEmpty {
                             emptyState
                         } else {
-                            songsContent(songs: downloaded)
+                            songsContent(songs: searchedSongs)
                         }
+                    case .albums:
+                        if downloaded.isEmpty {
+                            emptyState
+                        } else {
+                            albumContent(albums: searchedAlbums)
+                        }
+                    case .artists:
+                        if downloaded.isEmpty {
+                            emptyState
+                        } else {
+                            artistContent(artists: searchedArtists)
+                        }
+                    case .playlists:
+                        playlistContent
+                    case .forYou:
+                        forYouContent
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -79,6 +123,8 @@ struct LocalLibraryScreen: View {
                 switch route {
                 case .album(let album):
                     AlbumDetailView(album: album)
+                case .artist(let artist):
+                    ArtistDetailView(artist: artist)
                 case .playlist(let id):
                     PlaylistDetailView(playlistId: id)
                 }
@@ -96,7 +142,58 @@ struct LocalLibraryScreen: View {
             } message: {
                 Text("Enter a name for the new playlist.")
             }
+            .task(id: viewMode) {
+                guard viewMode == .forYou else { return }
+                await model.refreshSituationPlaylists()
+            }
         }
+    }
+
+    /// The header's trailing accessory is a single fixed-position slot shared by every segment
+    /// (see `LibrarySegmentedHeader`): the playlist ellipsis menu on Playlists, the sort menu on
+    /// Songs (task 3), reserved-but-empty space everywhere else so switching tabs never shifts
+    /// the segmented control.
+    @ViewBuilder
+    private var headerTrailing: some View {
+        switch viewMode {
+        case .playlists:
+            playlistActionsMenu
+        case .songs:
+            sortMenu
+        default:
+            Color.clear.frame(width: 32, height: 32)
+        }
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            Picker("並び替え", selection: Bindable(model).librarySortOrder) {
+                ForEach(LibrarySortOrder.allCases) { order in
+                    Text(order.displayName).tag(order)
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down.circle")
+                .font(.system(size: 20))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+        }
+        .modifier(LibraryHeaderGlassButtonStyle())
+        .accessibilityLabel("並び替え")
+    }
+
+    private var searchField: some View {
+        HStack {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("曲・アーティスト・アルバムを検索", text: $searchQuery)
+                .textFieldStyle(.plain)
+        }
+        .padding(10)
+        .background(Color(red: 0.17, green: 0.17, blue: 0.18))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder
@@ -130,16 +227,8 @@ struct LocalLibraryScreen: View {
                 .frame(width: 32, height: 32)
         }
         .modifier(LibraryHeaderGlassButtonStyle())
-        .disabled(viewMode != .playlists)
 
-        // `.hidden()` (not `.opacity(0)`) so the `.ultraThinMaterial` circle backdrop is fully
-        // unrendered on non-Playlists tabs — a sibling background would otherwise stay faintly
-        // visible even at opacity 0. Layout space is still reserved (hidden views keep their size).
-        if viewMode == .playlists {
-            menu
-        } else {
-            menu.hidden()
-        }
+        menu
     }
 
     private var emptyState: some View {
@@ -229,8 +318,7 @@ struct LocalLibraryScreen: View {
     }
 
     @ViewBuilder
-    private func albumContent(songs: [Song]) -> some View {
-        let albums = Album.fromSongs(songs)
+    private func albumContent(albums: [Album]) -> some View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                 ForEach(albums) { album in
@@ -274,12 +362,18 @@ struct LocalLibraryScreen: View {
     }
 
     private func songsContent(songs: [Song]) -> some View {
-        List {
-            ForEach(songs) { song in
+        // Album-run grouping (task 1) only makes sense while songs are actually in album order —
+        // under any other `librarySortOrder` an album's tracks are scattered, so `positions` would
+        // draw misleading connectors between unrelated rows.
+        let groupPositions: [AlbumGroupPosition]? =
+            model.librarySortOrder == .album ? AlbumGrouping.positions(for: songs) : nil
+        return List {
+            ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
                 SongRowView(
                     song: song,
                     artworkId: song.artworkId,
                     artworkURL: model.artworkURL(for: song.artworkId),
+                    albumGroupPosition: groupPositions?[index],
                     onTap: {
                         playLocal(song: song, in: songs)
                     }
@@ -306,6 +400,104 @@ struct LocalLibraryScreen: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color.black)
+    }
+
+    @ViewBuilder
+    private func artistContent(artists: [Artist]) -> some View {
+        if artists.isEmpty {
+            Text("一致するアーティストがありません")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List {
+                ForEach(artists) { artist in
+                    NavigationLink(value: LibraryRoute.artist(artist)) {
+                        HStack(spacing: 12) {
+                            ArtworkImageView(
+                                artworkId: artist.artworkId,
+                                urlString: model.artworkURL(for: artist.artworkId),
+                                cornerRadius: 22,
+                                size: 44
+                            )
+                            .frame(width: 44, height: 44)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(artist.displayName)
+                                    .font(.body.weight(.semibold))
+                                    .lineLimit(1)
+                                Text("\(artist.albums.count) アルバム · \(artist.songs.count) 曲")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
+                    )
+                    .contextMenu {
+                        WatchTransferBulkMenuItem(
+                            title: "アーティストの曲を Apple Watch に転送",
+                            songs: artist.songs
+                        )
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Color.black)
+        }
+    }
+
+    /// "For You": server-generated situational playlists (最近追加した曲/よく聴く曲/ランダムピック, …),
+    /// resolved against the downloaded library via `SituationPlaylistResolver`. An empty
+    /// `situationPlaylists` is the *normal* state for a desktop that predates the endpoint, so this
+    /// shows a neutral explanation rather than an error.
+    @ViewBuilder
+    private var forYouContent: some View {
+        if forYouSections.isEmpty {
+            ContentUnavailableView {
+                Label("For You はまだ空です", systemImage: "sparkles")
+            } description: {
+                Text("デスクトップ側の対応バージョンに更新すると、最近追加した曲やよく聴く曲がここに表示されます。")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black)
+        } else {
+            List {
+                ForEach(forYouSections, id: \.name) { section in
+                    Section(section.name) {
+                        ForEach(section.songs) { song in
+                            SongRowView(
+                                song: song,
+                                artworkId: song.artworkId,
+                                artworkURL: model.artworkURL(for: song.artworkId),
+                                onTap: {
+                                    playLocal(song: song, in: section.songs)
+                                }
+                            )
+                            .padding(.vertical, 4)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
+                            )
+                            .contextMenu {
+                                WatchTransferSongMenuItem(song: song)
+                            }
+                        }
+                    }
+                    .headerProminence(.increased)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Color.black)
+        }
     }
 
     /// Resolves a Library song for playback: local file path for downloaded songs, unchanged for
