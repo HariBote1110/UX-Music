@@ -23,3 +23,6 @@ python/.pytest_cache/
 /swift
 .claude/
 .codex/
+
+# Mobile 検証用スクラッチ（スクリーンショット等）
+UX-Music-Mobile/.tmp/
