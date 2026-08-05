@@ -13,4 +13,6 @@ enum AppConstants {
     static let favouriteSongIdsKey = "favourite_song_ids_v1"
     /// Metadata-only library membership for YouTube songs (no local file — see `LibraryMembershipStore`).
     static let youtubeLibrarySongsMetaKey = "youtube_library_songs_meta_v1"
+    /// Persisted `LibrarySortOrder.rawValue` for the local Library song list.
+    static let librarySortOrderKey = "uxmusic.library.sortOrder"
 }
