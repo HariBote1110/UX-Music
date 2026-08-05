@@ -29,9 +29,9 @@ struct PlaylistDetailView: View {
         Group {
             if playlist == nil {
                 ContentUnavailableView(
-                    "Playlist unavailable",
+                    "プレイリストを利用できません",
                     systemImage: "music.note.list",
-                    description: Text("This playlist was removed or is no longer available.")
+                    description: Text("このプレイリストは削除されたか、利用できなくなりました。")
                 )
             } else {
                 List {
@@ -52,7 +52,7 @@ struct PlaylistDetailView: View {
                             Button(role: .destructive) {
                                 try? model.removeSongsFromPlaylist(playlistId: playlistId, songIds: [song.id])
                             } label: {
-                                Label("Remove", systemImage: "minus.circle")
+                                Label("削除", systemImage: "minus.circle")
                             }
                         }
                     }
@@ -65,7 +65,7 @@ struct PlaylistDetailView: View {
             }
         }
         .background(Color.black)
-        .navigationTitle(playlist?.name ?? "Playlist")
+        .navigationTitle(playlist?.name ?? "プレイリスト")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -89,11 +89,11 @@ struct PlaylistDetailView: View {
                         } label: {
                             Image(systemName: "plus")
                         }
-                        .accessibilityLabel("Add songs")
+                        .accessibilityLabel("曲を追加")
                     }
                 }
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Rename") {
+                    Button("名前を変更") {
                         renameText = playlist?.name ?? ""
                         showRename = true
                     }
@@ -104,14 +104,14 @@ struct PlaylistDetailView: View {
             AddSongsToPlaylistSheet(playlistId: playlistId)
                 .environment(model)
         }
-        .alert("Rename playlist", isPresented: $showRename) {
-            TextField("Name", text: $renameText)
-            Button("Save") {
+        .alert("プレイリスト名を変更", isPresented: $showRename) {
+            TextField("名前", text: $renameText)
+            Button("保存") {
                 try? model.renamePlaylist(id: playlistId, newName: renameText)
             }
-            Button("Cancel", role: .cancel) {}
+            Button("キャンセル", role: .cancel) {}
         } message: {
-            Text("Enter a new name for this playlist.")
+            Text("このプレイリストの新しい名前を入力してください。")
         }
     }
 
@@ -145,7 +145,7 @@ private struct AddSongsToPlaylistSheet: View {
         NavigationStack {
             List {
                 if candidates.isEmpty {
-                    Text("All downloaded songs are already in this playlist.")
+                    Text("ダウンロード済みの曲はすべてこのプレイリストに追加済みです。")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(candidates) { song in
@@ -167,11 +167,11 @@ private struct AddSongsToPlaylistSheet: View {
                     }
                 }
             }
-            .navigationTitle("Add songs")
+            .navigationTitle("曲を追加")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                    Button("完了") { dismiss() }
                 }
             }
         }

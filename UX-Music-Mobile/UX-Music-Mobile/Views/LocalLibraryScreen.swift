@@ -129,18 +129,18 @@ struct LocalLibraryScreen: View {
                     PlaylistDetailView(playlistId: id)
                 }
             }
-            .alert("New playlist", isPresented: $showNewPlaylistAlert) {
-                TextField("Name", text: $newPlaylistName)
-                Button("Create") {
+            .alert("新規プレイリスト", isPresented: $showNewPlaylistAlert) {
+                TextField("名前", text: $newPlaylistName)
+                Button("作成") {
                     let name = newPlaylistName
                     newPlaylistName = ""
                     try? model.createPlaylist(name: name)
                 }
-                Button("Cancel", role: .cancel) {
+                Button("キャンセル", role: .cancel) {
                     newPlaylistName = ""
                 }
             } message: {
-                Text("Enter a name for the new playlist.")
+                Text("新しいプレイリストの名前を入力してください。")
             }
             .task(id: viewMode) {
                 guard viewMode == .forYou else { return }
@@ -233,9 +233,9 @@ struct LocalLibraryScreen: View {
 
     private var emptyState: some View {
         ContentUnavailableView(
-            "No downloaded songs",
+            "ダウンロード済みの曲がありません",
             systemImage: "music.note.list",
-            description: Text("Download songs from Remote Library")
+            description: Text("リモートライブラリから曲をダウンロードしてください")
         )
     }
 
@@ -274,7 +274,7 @@ struct LocalLibraryScreen: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(pl.name)
                                         .font(.body.weight(.semibold))
-                                    Text("\(pl.songIds.count) songs")
+                                    Text("\(pl.songIds.count) 曲")
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
                                 }
@@ -295,14 +295,14 @@ struct LocalLibraryScreen: View {
                             Button(role: .destructive) {
                                 try? model.deletePlaylist(id: pl.id)
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label("削除", systemImage: "trash")
                             }
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 try? model.deletePlaylist(id: pl.id)
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label("削除", systemImage: "trash")
                             }
                         }
                     }
@@ -340,7 +340,7 @@ struct LocalLibraryScreen: View {
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
                                 .foregroundStyle(.primary)
-                            Text("\(album.displayArtist) · \(album.songs.count) songs")
+                            Text("\(album.displayArtist) · \(album.songs.count) 曲")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -392,7 +392,7 @@ struct LocalLibraryScreen: View {
                     Button(role: .destructive) {
                         model.removeDownloadedSong(songId: song.id)
                     } label: {
-                        Label("Delete", systemImage: "trash")
+                        Label("削除", systemImage: "trash")
                     }
                 }
             }
@@ -462,7 +462,7 @@ struct LocalLibraryScreen: View {
             ContentUnavailableView {
                 Label("For You はまだ空です", systemImage: "sparkles")
             } description: {
-                Text("デスクトップ側の対応バージョンに更新すると、最近追加した曲やよく聴く曲がここに表示されます。")
+                Text("デスクトップに接続して曲をダウンロードすると、最近追加した曲やよく聴く曲がここに表示されます。")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black)

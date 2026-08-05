@@ -103,7 +103,7 @@ struct ArtistDetailView: View {
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
                             .foregroundStyle(.primary)
-                        Text("\(album.songs.count) songs")
+                        Text("\(album.songs.count) 曲")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
