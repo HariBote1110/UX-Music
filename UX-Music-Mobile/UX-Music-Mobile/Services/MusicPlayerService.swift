@@ -14,11 +14,121 @@ final class MusicPlayerService {
 
     private var queue: [Song] = []
     private var currentIndex: Int = -1
+    /// The queue's order before shuffle was turned on, so turning it back off is lossless. Empty
+    /// when shuffle is off.
+    private var originalQueue: [Song] = []
 
     /// Current playback queue (local files), in play order.
     var playbackQueue: [Song] { queue }
     /// Index of the current track in `playbackQueue`, or `-1` when idle.
     var currentQueueIndex: Int { currentIndex }
+
+    // MARK: - Repeat / shuffle (persisted)
+
+    private(set) var repeatMode: PlaybackRepeatMode = .off
+    private(set) var isShuffleEnabled = false
+    private let repeatModeDefaultsKey = "uxmusic.playback.repeatMode"
+    private let shuffleEnabledDefaultsKey = "uxmusic.playback.shuffleEnabled"
+
+    /// Cycles repeat off → all → one → off, matching a physical Walkman's repeat button.
+    func cycleRepeatMode() {
+        setRepeatMode(repeatMode.next())
+    }
+
+    func setRepeatMode(_ mode: PlaybackRepeatMode) {
+        guard mode != repeatMode else { return }
+        repeatMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: repeatModeDefaultsKey)
+    }
+
+    func toggleShuffle() {
+        setShuffleEnabled(!isShuffleEnabled)
+    }
+
+    /// Turning shuffle on reorders `queue` (keeping the currently-playing song at its current
+    /// position, not interrupting playback); turning it off restores `originalQueue` and recomputes
+    /// `currentIndex` for the currently-playing song.
+    func setShuffleEnabled(_ enabled: Bool) {
+        guard enabled != isShuffleEnabled else { return }
+        let currentId = currentSong?.id
+        if enabled {
+            originalQueue = queue
+            let indices = Array(queue.indices).shuffled()
+            queue = PlaybackShuffleLogic.applyShuffle(queue: queue, shuffledIndices: indices, currentId: currentId)
+        } else {
+            queue = originalQueue
+            originalQueue = []
+        }
+        if let currentId, let idx = queue.firstIndex(where: { $0.id == currentId }) {
+            currentIndex = idx
+        }
+        isShuffleEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: shuffleEnabledDefaultsKey)
+    }
+
+    private func loadPlaybackModesFromUserDefaults() {
+        let defaults = UserDefaults.standard
+        if let raw = defaults.string(forKey: repeatModeDefaultsKey), let mode = PlaybackRepeatMode(rawValue: raw) {
+            repeatMode = mode
+        }
+        isShuffleEnabled = defaults.bool(forKey: shuffleEnabledDefaultsKey)
+    }
+
+    // MARK: - Queue editing
+
+    /// Moves the item at `from` so it ends up at index `to` in the resulting queue, keeping
+    /// `currentIndex` pointing at the same song (playback is not interrupted — this never loads a
+    /// different track).
+    func moveQueueItem(from: Int, to: Int) {
+        guard queue.indices.contains(from) else { return }
+        let newCurrentIndex = PlaybackQueueEditing.currentIndexAfterMoving(from: from, to: to, currentIndex: currentIndex)
+        queue = PlaybackQueueEditing.moveElement(in: queue, from: from, to: to)
+        currentIndex = newCurrentIndex
+    }
+
+    /// Removes the item at `index`. Removing the currently-playing item advances playback to
+    /// whatever takes its place; removing the last remaining item stops playback entirely.
+    func removeQueueItem(at index: Int) async {
+        guard queue.indices.contains(index) else { return }
+        let wasCurrent = index == currentIndex
+        guard let newCurrentIndex = PlaybackQueueEditing.currentIndexAfterRemoving(
+            removedIndex: index,
+            currentIndex: currentIndex,
+            countBefore: queue.count
+        ) else {
+            stop()
+            return
+        }
+        queue.remove(at: index)
+        currentIndex = newCurrentIndex
+        if wasCurrent, queue.indices.contains(currentIndex) {
+            let s = queue[currentIndex]
+            currentSong = s
+            await loadActive(s)
+        }
+    }
+
+    /// Inserts `song` immediately after the currently-playing item ("play next"). When the queue is
+    /// empty, becomes the new (unstarted) queue.
+    func insertNext(_ song: Song) {
+        guard currentIndex >= 0 else {
+            queue = [song]
+            currentIndex = 0
+            return
+        }
+        queue.insert(song, at: min(currentIndex + 1, queue.count))
+    }
+
+    /// Appends `song` to the end of the queue. When the queue is empty, becomes the new
+    /// (unstarted) queue.
+    func appendToQueue(_ song: Song) {
+        guard currentIndex >= 0 else {
+            queue = [song]
+            currentIndex = 0
+            return
+        }
+        queue.append(song)
+    }
 
     private var positionTimer: Timer?
     private var interruptionObserver: NSObjectProtocol?
@@ -115,6 +225,7 @@ final class MusicPlayerService {
         configureEqualiserBandsStatically()
         pushEqualiserToAudioUnit()
         loadEqualiserStateFromUserDefaults()
+        loadPlaybackModesFromUserDefaults()
         startPositionTimer()
         addAudioInterruptionObserver()
         addAudioRouteChangeObserver()
@@ -405,7 +516,13 @@ final class MusicPlayerService {
 
     func play(_ song: Song, newQueue: [Song]?) async {
         if let newQueue {
-            queue = newQueue
+            if isShuffleEnabled {
+                originalQueue = newQueue
+                let indices = Array(newQueue.indices).shuffled()
+                queue = PlaybackShuffleLogic.applyShuffle(queue: newQueue, shuffledIndices: indices, currentId: song.id)
+            } else {
+                queue = newQueue
+            }
         }
         if let idx = queue.firstIndex(where: { $0.id == song.id }) {
             currentIndex = idx
@@ -442,20 +559,25 @@ final class MusicPlayerService {
         }
     }
 
+    /// Explicit "skip forward" (UI button / remote command) — always wraps to the start of the
+    /// queue, regardless of `repeatMode` (classic media-player behaviour; only the *natural end of
+    /// track* path in `advanceAfterEnd()` respects "stop when repeat is off").
     func next() async {
         guard !queue.isEmpty else { return }
-        currentIndex = (currentIndex + 1) % queue.count
+        currentIndex = PlaybackQueueNavigation.nextIndex(current: currentIndex, count: queue.count)
         let s = queue[currentIndex]
         currentSong = s
         await loadActive(s)
     }
 
+    /// Explicit "skip back" — restarts the current track if more than a few seconds in, otherwise
+    /// wraps to the end of the queue (same wrap-always rule as `next()`).
     func previous() async {
         guard !queue.isEmpty else { return }
-        if positionSeconds > 3 {
+        if PlaybackQueueNavigation.shouldRestartOnPrevious(position: positionSeconds) {
             seek(to: 0)
         } else {
-            currentIndex = (currentIndex - 1 + queue.count) % queue.count
+            currentIndex = PlaybackQueueNavigation.previousIndex(current: currentIndex, count: queue.count)
             let s = queue[currentIndex]
             currentSong = s
             await loadActive(s)
@@ -849,14 +971,19 @@ final class MusicPlayerService {
         return isPlaying ? .success : .commandFailed
     }
 
+    /// Natural end-of-track (buffer completion / YouTube `.ended`) — unlike `next()`, this respects
+    /// `repeatMode`: stops at the end of the queue when repeat is off (the bug this fixes — the
+    /// queue previously always looped `(currentIndex + 1) % queue.count` regardless of any repeat
+    /// setting), restarts the current track for repeat-one, and wraps for repeat-all.
     private func advanceAfterEnd() async {
-        if queue.count > 1 {
-            await next()
-        } else {
-            // Single-track queue: song finished naturally. Sync state immediately so Now Playing
-            // reflects the paused/stopped state even when the background timer is throttled by iOS.
+        switch PlaybackQueueNavigation.autoAdvance(current: currentIndex, count: queue.count, repeatMode: repeatMode) {
+        case .stop:
+            // Sync state immediately so Now Playing reflects the paused/stopped state even when the
+            // background timer is throttled by iOS.
             syncIsPlayingFromNode()
             updateNowPlayingCentre()
+        case .index(let idx):
+            await playQueueItem(at: idx)
         }
     }
 

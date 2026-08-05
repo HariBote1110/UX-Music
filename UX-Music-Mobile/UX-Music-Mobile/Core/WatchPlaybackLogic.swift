@@ -1,12 +1,17 @@
 import Foundation
 import MediaPlayer
 
-/// Pure queue-navigation arithmetic shared by the Watch player service and its tests. Kept free of
-/// `AVPlayer`/WatchKit so the wrap-around and "restart vs. skip back" rules are unit-testable
-/// without a real playback session.
+/// Pure queue-navigation arithmetic shared by the Watch player service, `MusicPlayerService`
+/// (the iPhone-local player), and their tests. Kept free of `AVPlayer`/WatchKit so the wrap-around
+/// and "restart vs. skip back" rules are unit-testable without a real playback session.
+///
+/// Originally Watch-only (hence the historic `Watch*` names, kept below as `typealias` shims so
+/// `WatchPlaybackLogicTests.swift` and the watchOS target keep compiling unchanged); generalised so
+/// `MusicPlayerService` can share the same shuffle/repeat/auto-advance rules instead of the
+/// always-loop `(currentIndex + 1) % queue.count` it used to hard-code.
 ///
 /// This type has iOS and watchOS target membership, mirroring `WatchTransfer.swift`.
-enum WatchQueueNavigation {
+enum PlaybackQueueNavigation {
     /// Index of the next track, wrapping to the start of the queue. `0` when the queue is empty
     /// (caller is expected to guard on `count == 0` separately if that should be a no-op).
     static func nextIndex(current: Int, count: Int) -> Int {
@@ -30,7 +35,7 @@ enum WatchQueueNavigation {
     /// Unlike `nextIndex` (used for the manual "skip forward" button, which always wraps), this
     /// stops playback at the end of the queue when repeat is off — matching classic Walkman/media
     /// player behaviour instead of silently looping forever.
-    static func autoAdvance(current: Int, count: Int, repeatMode: WatchRepeatMode) -> WatchAutoAdvanceResult {
+    static func autoAdvance(current: Int, count: Int, repeatMode: PlaybackRepeatMode) -> PlaybackAutoAdvanceResult {
         guard count > 0 else { return .stop }
         switch repeatMode {
         case .one:
@@ -44,22 +49,22 @@ enum WatchQueueNavigation {
     }
 }
 
-/// Outcome of `WatchQueueNavigation.autoAdvance`: either move to another index, or stop playback
+/// Outcome of `PlaybackQueueNavigation.autoAdvance`: either move to another index, or stop playback
 /// because the queue has been exhausted with repeat off.
-enum WatchAutoAdvanceResult: Equatable {
+enum PlaybackAutoAdvanceResult: Equatable {
     case index(Int)
     case stop
 }
 
-/// Explicit repeat state for the Watch player (previously an implicit "always loop the queue").
-/// `next()` cycles through the three states in the order a physical Walkman's repeat button would:
-/// off → all → one → off.
-enum WatchRepeatMode: String, Codable, Equatable, CaseIterable {
+/// Explicit repeat state for a player (previously an implicit "always loop the queue" on the
+/// iPhone-local player). `next()` cycles through the three states in the order a physical Walkman's
+/// repeat button would: off → all → one → off.
+enum PlaybackRepeatMode: String, Codable, Equatable, CaseIterable {
     case off
     case all
     case one
 
-    func next() -> WatchRepeatMode {
+    func next() -> PlaybackRepeatMode {
         switch self {
         case .off: return .all
         case .all: return .one
@@ -80,7 +85,7 @@ enum WatchRepeatMode: String, Codable, Equatable, CaseIterable {
 /// (`Array.shuffled()` at the call site) so this function stays deterministic and unit-testable;
 /// it only handles the "keep the currently-playing song first" rule, matching classic media-player
 /// shuffle UX where turning shuffle on never interrupts what is currently playing.
-enum WatchShuffleLogic {
+enum PlaybackShuffleLogic {
     /// Reorders `queue` according to `shuffledIndices` (expected to be a permutation of
     /// `queue.indices`), then moves the song matching `currentId` to the front. Returns `queue`
     /// unchanged if `shuffledIndices` does not match `queue`'s count (defensive — should not
@@ -100,6 +105,16 @@ enum WatchShuffleLogic {
         return shuffled
     }
 }
+
+// MARK: - Backwards-compatible names
+//
+// The types above were generalised from Watch-only to shared iOS/watchOS playback logic (see the
+// doc comment on `PlaybackQueueNavigation`). These aliases keep `WatchPlaybackLogicTests.swift` and
+// any watchOS-side call sites compiling unchanged.
+typealias WatchQueueNavigation = PlaybackQueueNavigation
+typealias WatchAutoAdvanceResult = PlaybackAutoAdvanceResult
+typealias WatchRepeatMode = PlaybackRepeatMode
+typealias WatchShuffleLogic = PlaybackShuffleLogic
 
 /// Persisted "where were we" snapshot so the Watch app can restore the last song, position, queue
 /// order, and mode after a relaunch — without auto-starting playback (a cold-launch loading a fresh
