@@ -70,11 +70,26 @@ enum RemoteAPIError: LocalizedError {
     }
 }
 
-/// JSON from `GET /v1/remote/lyrics?id=…`.
+/// JSON from `GET /v1/remote/lyrics?id=…`. `translationContent`/`translationFormat` are optional so
+/// older desktops without the 和訳 (Japanese translation) extension keep decoding fine —
+/// `decodeIfPresent` (the compiler-synthesised behaviour for `Optional` properties) simply leaves
+/// them `nil` when the server omits the keys.
 struct RemoteLyricsPayload: Codable, Equatable, Sendable {
     var found: Bool
     var type: String?
     var content: String?
+    /// Japanese translation text, mirroring the desktop's `{base}.ja.lrc` / `{base}.ja.txt` sidecar.
+    var translationContent: String?
+    /// `"lrc"` or `"txt"` — which sidecar format `translationContent` came from.
+    var translationFormat: String?
+}
+
+/// One row from `GET /v1/remote/situation-playlists`: a server-generated, read-only playlist for
+/// "For You" (situational listening — recently added, frequently played, random pick, …). Order in
+/// the JSON array is meaningful (最近追加した曲 / よく聴く曲 / ランダムピック) and is preserved as-is.
+struct SituationPlaylist: Codable, Equatable, Sendable {
+    var name: String
+    var songIds: [String]
 }
 
 /// One desktop playlist row from `GET /v1/remote/playlists`.
@@ -196,6 +211,15 @@ struct RemoteAPIClient: Sendable {
         let (data, response) = try await session.data(for: authorizedRequest(url: source))
         try Self.throwIfNotOK(response, data: data)
         return try JSONDecoder().decode(RemoteLyricsPayload.self, from: data)
+    }
+
+    /// `GET /v1/remote/situation-playlists` — "For You" server-generated playlists. Older desktops
+    /// without this endpoint answer 404; callers wanting a graceful empty result on 404 should catch
+    /// `RemoteAPIError.httpStatus(404)` (see `AppModel.refreshSituationPlaylists`).
+    func fetchSituationPlaylists() async throws -> [SituationPlaylist] {
+        let (data, response) = try await session.data(for: authorizedRequest(path: "/v1/remote/situation-playlists"))
+        try Self.throwIfNotOK(response, data: data)
+        return try JSONDecoder().decode([SituationPlaylist].self, from: data)
     }
 
     func fetchDesktopPlaylists() async throws -> [RemoteDesktopPlaylist] {

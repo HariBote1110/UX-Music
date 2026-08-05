@@ -159,6 +159,52 @@ final class RemoteAPIClientTests: XCTestCase {
         XCTAssertEqual(client.artworkURL(artworkId: "x"), "http://h:1/v1/remote/artwork/?id=x&token=abc%20def")
     }
 
+    func testDecodeRemoteLyricsPayloadWithTranslation() throws {
+        let json = Data(
+            #"{"found":true,"type":"lrc","content":"[00:01.00]Hi","translationContent":"[00:01.00]やあ","translationFormat":"lrc"}"#.utf8
+        )
+        let p = try JSONDecoder().decode(RemoteLyricsPayload.self, from: json)
+        XCTAssertEqual(p.translationContent, "[00:01.00]やあ")
+        XCTAssertEqual(p.translationFormat, "lrc")
+    }
+
+    /// Older desktops without the 和訳 extension omit the translation keys entirely — must still decode.
+    func testDecodeRemoteLyricsPayloadWithoutTranslationKeysStillDecodes() throws {
+        let json = Data(#"{"found":true,"type":"txt","content":"Hi"}"#.utf8)
+        let p = try JSONDecoder().decode(RemoteLyricsPayload.self, from: json)
+        XCTAssertNil(p.translationContent)
+        XCTAssertNil(p.translationFormat)
+    }
+
+    func testFetchSituationPlaylistsDecodesOrderedArray() async throws {
+        MockURLProtocol.handler = { req in
+            XCTAssertTrue(req.url?.path.contains("v1/remote/situation-playlists") ?? false)
+            let data = Data(
+                #"[{"name":"最近追加した曲","songIds":["a"]},{"name":"よく聴く曲","songIds":["b","c"]},{"name":"ランダムピック","songIds":[]}]"#.utf8
+            )
+            let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (data, res)
+        }
+        let client = RemoteAPIClient(baseURLString: "http://127.0.0.1:8765", session: sessionWithMock())
+        let rows = try await client.fetchSituationPlaylists()
+        XCTAssertEqual(rows.map(\.name), ["最近追加した曲", "よく聴く曲", "ランダムピック"])
+        XCTAssertEqual(rows[1].songIds, ["b", "c"])
+    }
+
+    func testFetchSituationPlaylistsThrowsHTTPStatusOn404() async throws {
+        MockURLProtocol.handler = { req in
+            let res = HTTPURLResponse(url: req.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!
+            return (Data(), res)
+        }
+        let client = RemoteAPIClient(baseURLString: "http://127.0.0.1:8765", session: sessionWithMock())
+        do {
+            _ = try await client.fetchSituationPlaylists()
+            XCTFail("expected an error")
+        } catch RemoteAPIError.httpStatus(let code) {
+            XCTAssertEqual(code, 404)
+        }
+    }
+
     func testDecodeRemoteDesktopPlaylists() throws {
         let json = Data(
             #"[{"name":"Mix","songIds":["a","b"],"pathsNotInLibrary":["/gone.flac"]}]"#.utf8

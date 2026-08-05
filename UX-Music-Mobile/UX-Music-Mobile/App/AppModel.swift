@@ -31,6 +31,17 @@ enum LocalLyricsDisplayMode: Equatable {
     case synced([LRCParser.TimedLine])
 }
 
+/// How to render on-device lyrics *with* their Japanese translation (和訳) merged in — an
+/// additive counterpart to `LocalLyricsDisplayMode` kept as a separate type/API
+/// (`AppModel.localBilingualLyricsDisplay(for:)`) rather than changing that enum's associated
+/// values, so `Views/NowPlayingLyricsScreen.swift`'s existing `.plain(String)`/`.synced([LRCParser
+/// .TimedLine])` switch keeps compiling unchanged. The View agent can adopt this new API when
+/// building the 和訳 UI.
+enum BilingualLyricsDisplayMode: Equatable {
+    case plain([TranslatedPlainLine])
+    case synced([TranslatedTimedLine])
+}
+
 enum DesktopPlaylistImportError: LocalizedError {
     case serverNotConfigured
 
@@ -52,6 +63,19 @@ final class AppModel {
 
     var libraryState: LibraryLoadState = .idle
     var loudness: [String: Double] = [:]
+
+    /// User-selected local Library sort order, persisted to `UserDefaults` so it survives relaunch.
+    var librarySortOrder: LibrarySortOrder {
+        didSet {
+            guard librarySortOrder != oldValue else { return }
+            UserDefaults.standard.set(librarySortOrder.rawValue, forKey: AppConstants.librarySortOrderKey)
+        }
+    }
+
+    /// "For You" server-generated playlists (`GET /v1/remote/situation-playlists`), loaded on
+    /// demand via `refreshSituationPlaylists()`. Empty (not an error state) when the desktop
+    /// predates the endpoint (404) or hasn't been queried yet.
+    private(set) var situationPlaylists: [SituationPlaylist] = []
 
     /// Message from the most recent failed `redeemPairing` call (invalid/expired secret, unreachable
     /// host, …), shown by Settings next to the pairing field.
@@ -89,6 +113,12 @@ final class AppModel {
 
     init(playlistStore: PlaylistStore? = nil, lyricsFileStore: LyricsFileStore? = nil) {
         serverConfig = Self.loadSettings()
+        if let raw = UserDefaults.standard.string(forKey: AppConstants.librarySortOrderKey),
+           let restored = LibrarySortOrder(rawValue: raw) {
+            librarySortOrder = restored
+        } else {
+            librarySortOrder = .album
+        }
         downloadManager = DownloadManager()
         libraryMembershipStore = LibraryMembershipStore()
         watchTransferBridge = WatchTransferBridge(downloadManager: downloadManager)
@@ -449,6 +479,29 @@ final class AppModel {
         lyricsFileStore.hasLyrics(for: songId)
     }
 
+    /// Lyrics for the full-screen viewer, merged with the Japanese translation sidecar when one was
+    /// saved (see `LyricsTranslationMerger`). `nil` when no local lyrics file exists at all.
+    func localBilingualLyricsDisplay(for songId: String) -> BilingualLyricsDisplayMode? {
+        guard let raw = lyricsFileStore.plainTextIfPresent(for: songId) else { return nil }
+        let translationRaw = lyricsFileStore.translationPlainTextIfPresent(for: songId)
+
+        guard lyricsFileStore.hasLRCFile(for: songId) else {
+            return .plain(LyricsTranslationMerger.mergePlainWithJaTxt(primaryText: raw, translationText: translationRaw ?? ""))
+        }
+        let timed = LRCParser.parseTimedLines(raw)
+        guard !timed.isEmpty else {
+            return .plain(LyricsTranslationMerger.mergePlainWithJaTxt(primaryText: raw, translationText: translationRaw ?? ""))
+        }
+        guard let translationRaw else {
+            return .synced(timed.map { TranslatedTimedLine(id: $0.id, startTime: $0.startTime, text: $0.text, translation: nil) })
+        }
+        if lyricsFileStore.hasJaLRCFile(for: songId) {
+            let translationTimed = LRCParser.parseTimedLines(translationRaw)
+            return .synced(LyricsTranslationMerger.mergeTimedWithJaLRC(primary: timed, translation: translationTimed))
+        }
+        return .synced(LyricsTranslationMerger.mergeTimedWithJaTxt(primary: timed, translationText: translationRaw))
+    }
+
     private func fetchAndStoreLyricsIfAvailable(for song: Song) async {
         do {
             let payload = try await withFailover { try await $0.fetchLyrics(songId: song.id) }
@@ -456,8 +509,29 @@ final class AppModel {
             guard let type = payload.type else { return }
             guard let content = payload.content?.trimmingCharacters(in: .whitespacesAndNewlines), !content.isEmpty else { return }
             try lyricsFileStore.saveLyrics(content, wearType: type, songId: song.id)
+            if let translationFormat = payload.translationFormat,
+               let translationContent = payload.translationContent?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !translationContent.isEmpty {
+                try? lyricsFileStore.saveTranslation(translationContent, translationFormat: translationFormat, songId: song.id)
+            }
         } catch {
             // Lyrics are optional; do not surface as download errors.
+        }
+    }
+
+    // MARK: - For You (situation playlists)
+
+    /// Loads `GET /v1/remote/situation-playlists` on demand. On a 404 (desktop predates the
+    /// endpoint) resolves to an empty list rather than surfacing an error — this is a graceful
+    /// "feature not available yet" outcome, not a failure. Other errors leave the previous
+    /// `situationPlaylists` value in place (matching `refreshLoudnessOnly`'s failure handling).
+    func refreshSituationPlaylists() async {
+        do {
+            situationPlaylists = try await withFailover { try await $0.fetchSituationPlaylists() }
+        } catch RemoteAPIError.httpStatus(404) {
+            situationPlaylists = []
+        } catch {
+            // Keep the previous value; the desktop may just be briefly unreachable.
         }
     }
 
