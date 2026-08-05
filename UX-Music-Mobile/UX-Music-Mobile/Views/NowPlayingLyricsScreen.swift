@@ -12,6 +12,24 @@ func nowPlayingLyricsSeekTime(for line: LRCParser.TimedLine) -> Double {
     line.startTime
 }
 
+/// Overload for the bilingual (和訳) line type — same seek behaviour, different associated data.
+func nowPlayingLyricsSeekTime(for line: TranslatedTimedLine) -> Double {
+    line.startTime
+}
+
+/// Mirrors `LRCParser.activeLineIndex(in:at:)` for `TranslatedTimedLine`. Duplicated rather than
+/// shared because `LRCParser` lives under `Core/`, which is out of scope for this file to edit —
+/// the two must stay in sync by inspection if the "last line at-or-before `time`" rule ever
+/// changes.
+func nowPlayingActiveTranslatedLineIndex(in lines: [TranslatedTimedLine], at time: Double) -> Int {
+    guard !lines.isEmpty else { return 0 }
+    var best = 0
+    for (i, line) in lines.enumerated() where line.startTime <= time {
+        best = i
+    }
+    return best
+}
+
 /// Edge-fade coefficient (0…1) for a given vertical fraction (0 = top, 1 = bottom) of the
 /// synced-lyrics container. Mirrors UX Music Desktop's `.fs-lyrics-container` mask-image
 /// (`linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%)`):
@@ -102,16 +120,20 @@ struct NowPlayingLyricsScreen: View {
 
     @ViewBuilder
     private var lyricsBody: some View {
-        if let mode = model.localLyricsDisplay(for: song.id) {
+        // Bilingual (和訳) API: same underlying lyrics file, with a Japanese translation merged
+        // in per-line when a translation sidecar was saved. `translation == nil` (interludes, or
+        // no translation at all) renders identically to the original single-language view.
+        if let mode = model.localBilingualLyricsDisplay(for: song.id) {
             switch mode {
-            case .plain(let text):
+            case .plain(let lines):
                 ScrollView {
-                    Text(text)
-                        .font(.system(size: 20, weight: .regular, design: .rounded))
-                        .lineSpacing(10)
-                        .foregroundStyle(.white.opacity(0.9))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(28)
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                            NowPlayingBilingualPlainLine(line: line)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(28)
                 }
             case .synced(let lines):
                 NowPlayingSyncedLyricsScroll(lines: lines)
@@ -125,6 +147,26 @@ struct NowPlayingLyricsScreen: View {
             }
             .foregroundStyle(.secondary)
             .padding()
+        }
+    }
+}
+
+/// One line of the plain-text (non-synced) lyrics view, with its 和訳 rendered beneath when
+/// present. Kept as its own view (rather than inline in the `ForEach`) so the "no translation ->
+/// no extra row, no extra space" rule is a single `if let`, not duplicated per call site.
+private struct NowPlayingBilingualPlainLine: View {
+    let line: TranslatedPlainLine
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(line.text.isEmpty ? " " : line.text)
+                .font(.system(size: 20, weight: .regular, design: .rounded))
+                .foregroundStyle(.white.opacity(0.9))
+            if let translation = line.translation {
+                Text(translation)
+                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
         }
     }
 }
@@ -150,7 +192,7 @@ private struct LyricsLineHeightKey: PreferenceKey {
 /// cannot express the wave-like cascade or the fixed on-screen anchor position.
 private struct NowPlayingSyncedLyricsScroll: View {
     @Environment(AppModel.self) private var model
-    let lines: [LRCParser.TimedLine]
+    let lines: [TranslatedTimedLine]
 
     /// Measured height of each line, populated via `LyricsLineHeightKey`. Falls back to a
     /// plausible single-line height until the real measurement lands (first frame only).
@@ -204,7 +246,7 @@ private struct NowPlayingSyncedLyricsScroll: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.05)) { context in
             let position = max(0, model.player.positionSeconds)
-            let active = LRCParser.activeLineIndex(in: lines, at: position)
+            let active = nowPlayingActiveTranslatedLineIndex(in: lines, at: position)
             let secondsSinceUserScroll = lastUserScrollAt.map { context.date.timeIntervalSince($0) }
             let isDragging = liveDragTranslation != 0
             let isAutoScrolling = !isDragging
@@ -229,13 +271,25 @@ private struct NowPlayingSyncedLyricsScroll: View {
                         Button {
                             model.player.seek(to: nowPlayingLyricsSeekTime(for: line))
                         } label: {
-                            Text(line.text.isEmpty ? " " : line.text)
-                                .font(.system(size: 22, weight: .bold, design: .rounded))
-                                .lineSpacing(4)
-                                .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.45))
-                                .shadow(color: .white.opacity(isActive ? 0.15 : 0), radius: isActive ? 20 : 0)
-                                .blur(radius: blur)
-                                .frame(width: max(0, geo.size.width - 56), alignment: .leading)
+                            // The translation (和訳), when present, rides along inside the same
+                            // `Button` label as the primary line so the background `GeometryReader`
+                            // below (which drives `nowPlayingLyricsLineOffsets`'s cumulative-height
+                            // stacking) measures the *combined* row height automatically — no change
+                            // to the offset arithmetic itself was needed, only what it measures.
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(line.text.isEmpty ? " " : line.text)
+                                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                                    .lineSpacing(4)
+                                    .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.45))
+                                    .shadow(color: .white.opacity(isActive ? 0.15 : 0), radius: isActive ? 20 : 0)
+                                if let translation = line.translation {
+                                    Text(translation)
+                                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(isActive ? Color.white.opacity(0.6) : Color.white.opacity(0.28))
+                                }
+                            }
+                            .blur(radius: blur)
+                            .frame(width: max(0, geo.size.width - 56), alignment: .leading)
                         }
                         .buttonStyle(.plain)
                         .scaleEffect(isActive ? Self.activeScale : 1, anchor: .leading)
