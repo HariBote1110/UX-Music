@@ -59,11 +59,16 @@ func remoteLyricsHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(content) == "" {
 			continue
 		}
-		writeJSON(w, map[string]interface{}{
+		out := map[string]interface{}{
 			"found":   true,
 			"type":    typ,
 			"content": content,
-		})
+		}
+		if translationContent := strings.TrimSpace(res["translationContent"]); translationContent != "" {
+			out["translationContent"] = res["translationContent"]
+			out["translationFormat"] = res["translationFormat"]
+		}
+		writeJSON(w, out)
 		return
 	}
 	writeJSON(w, map[string]interface{}{"found": false})
