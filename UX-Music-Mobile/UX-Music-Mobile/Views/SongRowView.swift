@@ -5,6 +5,11 @@ struct SongRowView<Trailing: View>: View {
     let artworkId: String
     let artworkURL: String
     var showTrackNumber: Bool = false
+    /// This row's position within a run of consecutive same-album rows (see `AlbumGrouping
+    /// .positions`). `nil` (the default) keeps the previous unconditional-artwork behaviour so
+    /// every existing call site compiles unchanged; callers opt in by passing the computed
+    /// position only when their list is in album order.
+    var albumGroupPosition: AlbumGroupPosition? = nil
     var onTap: (() -> Void)? = nil
     @ViewBuilder private let trailing: () -> Trailing
 
@@ -13,6 +18,7 @@ struct SongRowView<Trailing: View>: View {
         artworkId: String,
         artworkURL: String,
         showTrackNumber: Bool = false,
+        albumGroupPosition: AlbumGroupPosition? = nil,
         onTap: (() -> Void)? = nil,
         @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }
     ) {
@@ -20,6 +26,7 @@ struct SongRowView<Trailing: View>: View {
         self.artworkId = artworkId
         self.artworkURL = artworkURL
         self.showTrackNumber = showTrackNumber
+        self.albumGroupPosition = albumGroupPosition
         self.onTap = onTap
         self.trailing = trailing
     }
@@ -42,7 +49,9 @@ struct SongRowView<Trailing: View>: View {
 
     private var leadingCluster: some View {
         HStack(spacing: 12) {
-            if showTrackNumber, song.trackNumber > 0 {
+            if let position = albumGroupPosition, position == .middle || position == .last {
+                AlbumGroupConnectorView(position: position)
+            } else if showTrackNumber, song.trackNumber > 0 {
                 Text("\(song.trackNumber)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -111,6 +120,39 @@ struct SongRowDownloadTrailing: View {
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+/// Mobile equivalent of the desktop's `groupAlbumArt` connector (`element-factory.ts`'s
+/// `createSongItem`, ~line 62–140): drawn in place of the artwork for interior/last rows of a
+/// consecutive same-album run. `.middle` rows get a full-height line down the centre; `.last` rows
+/// get a line from the top down to the centre, then an elbow running right — the `└` the desktop
+/// draws to visually "close" the group under its first row's artwork. `--text-muted` becomes
+/// `Color.secondary` at low opacity, the closest mobile analogue.
+private struct AlbumGroupConnectorView: View {
+    let position: AlbumGroupPosition
+    private let slotSize: CGFloat = 48
+    private let lineWidth: CGFloat = 1.5
+
+    var body: some View {
+        Canvas { context, size in
+            let midX = size.width / 2
+            let midY = size.height / 2
+            var path = Path()
+            switch position {
+            case .middle:
+                path.move(to: CGPoint(x: midX, y: 0))
+                path.addLine(to: CGPoint(x: midX, y: size.height))
+            case .last:
+                path.move(to: CGPoint(x: midX, y: 0))
+                path.addLine(to: CGPoint(x: midX, y: midY))
+                path.addLine(to: CGPoint(x: size.width, y: midY))
+            case .single, .first:
+                break
+            }
+            context.stroke(path, with: .color(Color.secondary.opacity(0.35)), lineWidth: lineWidth)
+        }
+        .frame(width: slotSize, height: slotSize)
     }
 }
 
