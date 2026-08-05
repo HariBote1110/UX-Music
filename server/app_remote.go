@@ -82,6 +82,7 @@ func registerRemoteRoutes(mux *http.ServeMux, ls *LANServer) {
 	mux.HandleFunc("/v1/remote/songs", remoteSongsHandler)
 	mux.HandleFunc("/v1/remote/lyrics", remoteLyricsHandler)
 	mux.HandleFunc("/v1/remote/playlists", remotePlaylistsHandler)
+	mux.HandleFunc("/v1/remote/situation-playlists", remoteSituationPlaylistsHandler)
 	mux.HandleFunc("/v1/remote/youtube/resolve", remoteYouTubeResolveHandler)
 	mux.HandleFunc("/v1/remote/youtube/add", ls.remoteYouTubeAddHandler)
 	mux.HandleFunc("/v1/remote/file", remoteFileHandler)

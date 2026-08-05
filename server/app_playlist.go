@@ -304,25 +304,11 @@ func (a *App) GetSituationPlaylists() (interface{}, error) {
 		return result, nil
 	}
 
-	if recent := pickRecentlyAdded(songs, situationPlaylistMaxItems); len(recent) > 0 {
-		result["recently_added"] = map[string]interface{}{
-			"name":  "最近追加した曲",
-			"songs": recent,
-		}
-	}
-
 	counts, _ := store.Instance.LoadMap("playcounts")
-	if mostPlayed := pickMostPlayed(songs, counts, situationPlaylistMaxItems); len(mostPlayed) > 0 {
-		result["most_played"] = map[string]interface{}{
-			"name":  "よく聴く曲",
-			"songs": mostPlayed,
-		}
-	}
-
-	if random := pickRandomPick(songs, situationPlaylistMaxItems); len(random) > 0 {
-		result["random_pick"] = map[string]interface{}{
-			"name":  "ランダムピック",
-			"songs": random,
+	for _, bucket := range generateSituationPlaylists(songs, counts) {
+		result[bucket.key] = map[string]interface{}{
+			"name":  bucket.name,
+			"songs": bucket.songs,
 		}
 	}
 

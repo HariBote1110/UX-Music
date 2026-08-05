@@ -114,6 +114,46 @@ func remotePlaylistsHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
+// remoteSituationPlaylistsHandler serves `GET /v1/remote/situation-playlists`
+// as a JSON array of `{ "name": string, "songIds": [...] }`, in the fixed
+// order (recently added → most played → random pick), omitting any entry
+// whose song list is empty. It shares the picking logic with the
+// Wails-facing (*App).GetSituationPlaylists via generateSituationPlaylists.
+func remoteSituationPlaylistsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeAPIError(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	songs, err := store.Instance.LoadSlice("library")
+	if err != nil || len(songs) == 0 {
+		writeJSON(w, []interface{}{})
+		return
+	}
+	counts, _ := store.Instance.LoadMap("playcounts")
+
+	out := make([]map[string]interface{}, 0, 3)
+	for _, bucket := range generateSituationPlaylists(songs, counts) {
+		ids := make([]string, 0, len(bucket.songs))
+		for _, s := range bucket.songs {
+			song, ok := s.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if id, _ := song["id"].(string); id != "" {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) == 0 {
+			continue
+		}
+		out = append(out, map[string]interface{}{
+			"name":    bucket.name,
+			"songIds": ids,
+		})
+	}
+	writeJSON(w, out)
+}
+
 func remotePlaylistPathToSongID(pathToID map[string]string, playlistPath string) (string, bool) {
 	if pathToID == nil || playlistPath == "" {
 		return "", false
