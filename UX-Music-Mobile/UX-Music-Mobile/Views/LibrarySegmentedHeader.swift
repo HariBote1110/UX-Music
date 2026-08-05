@@ -19,13 +19,17 @@ struct LibrarySegmentedHeader<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Picker("View", selection: $selectedIndex) {
-                ForEach(Array(segments.enumerated()), id: \.offset) { index, title in
-                    Text(title).tag(index)
+            if segments.count > 3 {
+                scrollableSegments
+            } else {
+                Picker("View", selection: $selectedIndex) {
+                    ForEach(Array(segments.enumerated()), id: \.offset) { index, title in
+                        Text(title).tag(index)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 300)
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 300)
 
             // NOTE: any `.ultraThinMaterial` circle backdrop must live inside each caller's
             // `trailing` content (not here). A background applied at this level stays visible
@@ -38,6 +42,33 @@ struct LibrarySegmentedHeader<Trailing: View>: View {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 10)
+    }
+
+    /// Local Library's five segments (曲/アルバム/アーティスト/プレイリスト/For You) do not fit the native
+    /// `.segmented` Picker's ~300pt budget without truncating labels, so anything beyond three
+    /// segments renders as a horizontally scrollable row of capsule buttons instead — same
+    /// selection model as the Picker case, but segments scroll into view rather than clipping.
+    private var scrollableSegments: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { index, title in
+                    let isSelected = index == selectedIndex
+                    Button {
+                        selectedIndex = index
+                    } label: {
+                        Text(title)
+                            .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                            .foregroundStyle(isSelected ? Color.black : Color.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule().fill(isSelected ? Color.white : Color.white.opacity(0.12))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 }
 
