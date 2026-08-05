@@ -106,4 +106,30 @@ final class NowPlayingSettingsSheetProgressTests: XCTestCase {
     func testShouldOpenAboveThresholdIsTrue() {
         XCTAssertTrue(nowPlayingSettingsSheetShouldOpen(progress: 0.3))
     }
+
+    // MARK: - Queue reorder destination translation
+    //
+    // `List.onMove`'s `destination` uses "gap index in the original array" semantics (matching
+    // the classic `RangeReplaceableCollection.move(fromOffsets:toOffset:)` helper), whereas
+    // `MusicPlayerService.moveQueueItem(from:to:)` expects the item's final resting index in the
+    // *resulting* array. `nowPlayingQueueMoveDestination` bridges the two.
+
+    func testMoveDestinationForwardSubtractsOneForTheRemovedSlot() {
+        // [A,B,C,D], drag A (0) to the gap after C (destination 3) -> ends up at index 2: [B,C,A,D].
+        XCTAssertEqual(nowPlayingQueueMoveDestination(from: 0, to: 3), 2)
+    }
+
+    func testMoveDestinationForwardToEndOfList() {
+        // [A,B,C,D], drag A (0) to the gap past D (destination 4) -> ends up at index 3: [B,C,D,A].
+        XCTAssertEqual(nowPlayingQueueMoveDestination(from: 0, to: 4), 3)
+    }
+
+    func testMoveDestinationBackwardIsUnchanged() {
+        // [A,B,C,D], drag D (3) to the gap before A (destination 0) -> ends up at index 0: [D,A,B,C].
+        XCTAssertEqual(nowPlayingQueueMoveDestination(from: 3, to: 0), 0)
+    }
+
+    func testMoveDestinationToSameSlotIsNoOp() {
+        XCTAssertEqual(nowPlayingQueueMoveDestination(from: 2, to: 2), 2)
+    }
 }

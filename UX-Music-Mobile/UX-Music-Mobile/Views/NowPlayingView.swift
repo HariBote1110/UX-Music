@@ -99,6 +99,15 @@ func nowPlayingSettingsSheetShouldOpen(progress: CGFloat) -> Bool {
     progress > 0.22
 }
 
+/// Translates `List.onMove`'s `destination` — a "gap index in the original array" (the same
+/// convention as the classic `RangeReplaceableCollection.move(fromOffsets:toOffset:)` helper) —
+/// into the final resting index `MusicPlayerService.moveQueueItem(from:to:)` expects (the
+/// item's index in the *resulting* array). Moving forward past the vacated slot shifts every
+/// later index down by one; moving backward needs no adjustment.
+func nowPlayingQueueMoveDestination(from: Int, to: Int) -> Int {
+    from < to ? to - 1 : to
+}
+
 /// `ToolbarItem` can propose a short height; large frames get clipped and `Circle()` looks truncated.
 /// `internal` (not `private`) so the lyrics screen's close button can reuse the same chrome.
 struct NowPlayingNavIconButton<Content: View>: View {
@@ -681,7 +690,18 @@ private struct NowPlayingTransportSection: View {
     let accent: Color
 
     var body: some View {
-        HStack(spacing: 44) {
+        HStack(spacing: 28) {
+            transportIconButton(
+                systemName: "shuffle",
+                size: 18,
+                frame: 44,
+                tint: model.player.isShuffleEnabled ? accent : .white.opacity(0.55)
+            ) {
+                model.player.toggleShuffle()
+            }
+            .accessibilityLabel("シャッフル")
+            .accessibilityValue(model.player.isShuffleEnabled ? "オン" : "オフ")
+
             transportIconButton(systemName: "backward.fill", size: 22) {
                 Task { await model.player.previous() }
             }
@@ -707,15 +727,41 @@ private struct NowPlayingTransportSection: View {
                 Task { await model.player.next() }
             }
             .accessibilityLabel("Next track")
+
+            transportIconButton(
+                systemName: model.player.repeatMode == .one ? "repeat.1" : "repeat",
+                size: 18,
+                frame: 44,
+                tint: model.player.repeatMode == .off ? .white.opacity(0.55) : accent
+            ) {
+                model.player.cycleRepeatMode()
+            }
+            .accessibilityLabel("リピート")
+            .accessibilityValue(repeatModeAccessibilityValue)
+        }
+    }
+
+    private var repeatModeAccessibilityValue: String {
+        switch model.player.repeatMode {
+        case .off: return "オフ"
+        case .all: return "すべてをリピート"
+        case .one: return "1曲をリピート"
         }
     }
 
     private func transportIconButton(systemName: String, size: CGFloat, action: @escaping () -> Void) -> some View {
+        transportIconButton(systemName: systemName, size: size, frame: 56, tint: .white, action: action)
+    }
+
+    /// Shared pill styling for every transport control; `frame`/`tint` let the secondary
+    /// shuffle/repeat buttons stay visually subordinate to previous/next while reusing the
+    /// same shape language (translucent circle, semibold SF Symbol).
+    private func transportIconButton(systemName: String, size: CGFloat, frame: CGFloat, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: size, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 56, height: 56)
+                .foregroundStyle(tint)
+                .frame(width: frame, height: frame)
                 .background(.white.opacity(0.12), in: Circle())
         }
         .buttonStyle(.plain)
@@ -963,50 +1009,81 @@ private struct NowPlayingQueuePanel: View {
     @Environment(AppModel.self) private var model
     var topInset: CGFloat = 0
 
+    /// Drives `List`'s `.environment(\.editMode, _)`; the panel has no navigation bar of its
+    /// own to host a standard `EditButton`, so the custom header below toggles this directly.
+    @State private var editMode: EditMode = .inactive
+
     private var queue: [Song] {
         model.player.playbackQueue
     }
 
+    /// Stable row identity for `ForEach`/`.onMove`. Keying on `Array.indices` (as the read-only
+    /// list used to) breaks reorder/delete animations once rows can move — SwiftUI needs an id
+    /// that follows the *song*, not the slot. Song ids can repeat within a queue (the same track
+    /// queued twice), so the index still rides along to disambiguate.
+    private struct QueueRow: Identifiable {
+        let id: String
+        let index: Int
+        let song: Song
+    }
+
+    private var rows: [QueueRow] {
+        queue.enumerated().map { offset, song in
+            QueueRow(id: "\(song.id)#\(offset)", index: offset, song: song)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Up next")
-                .font(.title2.weight(.bold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 20)
-                .padding(.top, topInset + 4)
-                .padding(.bottom, 8)
+            HStack(alignment: .firstTextBaseline) {
+                Text("Up next")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                if !queue.isEmpty {
+                    Button(editMode == .active ? "完了" : "並べ替え") {
+                        withAnimation(nowPlayingPanelSpring) {
+                            editMode = editMode == .active ? .inactive : .active
+                        }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(nowPlayingFallbackAccent)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, topInset + 4)
+            .padding(.bottom, 8)
             List {
                 if queue.isEmpty {
                     Text("The queue is empty.")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(Array(queue.indices), id: \.self) { idx in
-                        let song = queue[idx]
+                    ForEach(rows) { row in
                         Button {
                             Task {
-                                await model.player.playQueueItem(at: idx)
+                                await model.player.playQueueItem(at: row.index)
                                 withAnimation(nowPlayingPanelSpring) {
                                     page = .main
                                 }
                             }
                         } label: {
                             HStack(spacing: 12) {
-                                if idx == model.player.currentQueueIndex {
+                                if row.index == model.player.currentQueueIndex {
                                     Image(systemName: "waveform")
                                         .font(.system(size: 14, weight: .semibold))
                                         .foregroundStyle(nowPlayingFallbackAccent)
                                         .frame(width: 22)
                                 } else {
-                                    Text("\(idx + 1)")
+                                    Text("\(row.index + 1)")
                                         .font(.system(size: 13, weight: .medium, design: .monospaced))
                                         .foregroundStyle(.tertiary)
                                         .frame(width: 22)
                                 }
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(song.displayTitle)
+                                    Text(row.song.displayTitle)
                                         .font(.body.weight(.semibold))
                                         .foregroundStyle(.primary)
-                                    Text(song.displayArtist)
+                                    Text(row.song.displayArtist)
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
                                 }
@@ -1020,13 +1097,24 @@ private struct NowPlayingQueuePanel: View {
                         )
                         .listRowSeparator(.hidden)
                         .contextMenu {
-                            WatchTransferSongMenuItem(song: song)
+                            WatchTransferSongMenuItem(song: row.song)
+                        }
+                    }
+                    .onMove { offsets, destination in
+                        guard let from = offsets.first else { return }
+                        let to = nowPlayingQueueMoveDestination(from: from, to: destination)
+                        model.player.moveQueueItem(from: from, to: to)
+                    }
+                    .onDelete { offsets in
+                        for index in offsets.sorted(by: >) {
+                            Task { await model.player.removeQueueItem(at: index) }
                         }
                     }
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .environment(\.editMode, $editMode)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
