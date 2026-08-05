@@ -1,8 +1,9 @@
 import Foundation
 
 /// One timed lyric line paired with its optional Japanese translation. Mirrors `LRCParser.TimedLine`
-/// plus a `translation`.
-struct TranslatedTimedLine: Identifiable, Equatable, Sendable {
+/// plus a `translation`. Conforms to `LyricsTimedLine` so it shares `LRCParser.activeLineIndex`'s
+/// active-line rule instead of duplicating it.
+struct TranslatedTimedLine: Identifiable, Equatable, Sendable, LyricsTimedLine {
     let id: Int
     let startTime: Double
     let text: String

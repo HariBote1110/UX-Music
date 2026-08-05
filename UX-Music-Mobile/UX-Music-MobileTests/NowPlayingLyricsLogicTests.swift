@@ -117,10 +117,9 @@ final class NowPlayingLyricsLogicTests: XCTestCase {
 
     // MARK: - Bilingual (和訳) synced lyrics
     //
-    // `TranslatedTimedLine` carries the same timing as `LRCParser.TimedLine` but the model layer
-    // (Core/LyricsTranslationMerger.swift, App/AppModel.swift) is owned elsewhere, so this screen
-    // cannot call `LRCParser.activeLineIndex` directly on the translated array. These mirror its
-    // logic locally against the translated line type.
+    // `TranslatedTimedLine` carries the same timing as `LRCParser.TimedLine` and conforms to
+    // `LyricsTimedLine`, so the active-line rule is `LRCParser.activeLineIndex` itself — these
+    // exercise that shared implementation against the translated line type.
 
     func testTranslatedSeekTimeForwardsLineStartTime() {
         let line = TranslatedTimedLine(id: 4, startTime: 12.25, text: "Hi", translation: "やあ")
@@ -133,9 +132,9 @@ final class NowPlayingLyricsLogicTests: XCTestCase {
             TranslatedTimedLine(id: 1, startTime: 10, text: "b", translation: nil),
             TranslatedTimedLine(id: 2, startTime: 20, text: "c", translation: "し"),
         ]
-        XCTAssertEqual(nowPlayingActiveTranslatedLineIndex(in: lines, at: 15), 1)
-        XCTAssertEqual(nowPlayingActiveTranslatedLineIndex(in: lines, at: 20), 2)
-        XCTAssertEqual(nowPlayingActiveTranslatedLineIndex(in: lines, at: 999), 2)
+        XCTAssertEqual(LRCParser.activeLineIndex(in: lines, at: 15), 1)
+        XCTAssertEqual(LRCParser.activeLineIndex(in: lines, at: 20), 2)
+        XCTAssertEqual(LRCParser.activeLineIndex(in: lines, at: 999), 2)
     }
 
     func testActiveTranslatedLineIndexBeforeFirstLineIsZero() {
@@ -143,10 +142,10 @@ final class NowPlayingLyricsLogicTests: XCTestCase {
             TranslatedTimedLine(id: 0, startTime: 5, text: "a", translation: nil),
             TranslatedTimedLine(id: 1, startTime: 10, text: "b", translation: nil),
         ]
-        XCTAssertEqual(nowPlayingActiveTranslatedLineIndex(in: lines, at: 0), 0)
+        XCTAssertEqual(LRCParser.activeLineIndex(in: lines, at: 0), 0)
     }
 
     func testActiveTranslatedLineIndexIsZeroForEmptyLines() {
-        XCTAssertEqual(nowPlayingActiveTranslatedLineIndex(in: [], at: 5), 0)
+        XCTAssertEqual(LRCParser.activeLineIndex(in: [TranslatedTimedLine](), at: 5), 0)
     }
 }

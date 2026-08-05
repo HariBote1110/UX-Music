@@ -7,27 +7,11 @@ func nowPlayingLyricsShouldAutoScroll(secondsSinceLastUserScroll: TimeInterval?)
     return secondsSinceLastUserScroll >= 3.0
 }
 
-/// The playback position a synced-lyrics line should seek to when tapped.
-func nowPlayingLyricsSeekTime(for line: LRCParser.TimedLine) -> Double {
+/// The playback position a synced-lyrics line should seek to when tapped. Generic over
+/// `LyricsTimedLine` so it covers both the plain `LRCParser.TimedLine` and the bilingual (和訳)
+/// `TranslatedTimedLine` with one implementation.
+func nowPlayingLyricsSeekTime<Line: LyricsTimedLine>(for line: Line) -> Double {
     line.startTime
-}
-
-/// Overload for the bilingual (和訳) line type — same seek behaviour, different associated data.
-func nowPlayingLyricsSeekTime(for line: TranslatedTimedLine) -> Double {
-    line.startTime
-}
-
-/// Mirrors `LRCParser.activeLineIndex(in:at:)` for `TranslatedTimedLine`. Duplicated rather than
-/// shared because `LRCParser` lives under `Core/`, which is out of scope for this file to edit —
-/// the two must stay in sync by inspection if the "last line at-or-before `time`" rule ever
-/// changes.
-func nowPlayingActiveTranslatedLineIndex(in lines: [TranslatedTimedLine], at time: Double) -> Int {
-    guard !lines.isEmpty else { return 0 }
-    var best = 0
-    for (i, line) in lines.enumerated() where line.startTime <= time {
-        best = i
-    }
-    return best
 }
 
 /// Edge-fade coefficient (0…1) for a given vertical fraction (0 = top, 1 = bottom) of the
@@ -246,7 +230,7 @@ private struct NowPlayingSyncedLyricsScroll: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.05)) { context in
             let position = max(0, model.player.positionSeconds)
-            let active = nowPlayingActiveTranslatedLineIndex(in: lines, at: position)
+            let active = LRCParser.activeLineIndex(in: lines, at: position)
             let secondsSinceUserScroll = lastUserScrollAt.map { context.date.timeIntervalSince($0) }
             let isDragging = liveDragTranslation != 0
             let isAutoScrolling = !isDragging
