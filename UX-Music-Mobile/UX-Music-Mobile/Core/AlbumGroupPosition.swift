@@ -48,3 +48,44 @@ enum AlbumGrouping {
         return result
     }
 }
+
+/// Geometry of the connector line drawn in place of (or under) a song row's artwork for a run of
+/// consecutive same-album rows. Kept pure and separate from the SwiftUI `Canvas` so the one property
+/// that actually matters — the line is *continuous* once rows are stacked with no gap between them —
+/// is unit-testable.
+///
+/// Coordinates are row-local: `y == 0` is the row's top edge, `y == rowHeight` its bottom edge.
+enum AlbumGroupConnector {
+    /// A vertical run of the connector line within one row.
+    struct Segment: Equatable {
+        let fromY: CGFloat
+        let toY: CGFloat
+    }
+
+    /// The vertical line this row contributes, or `nil` when the row draws no connector at all.
+    ///
+    /// `.first` still shows its artwork, so its line is only the stub between the artwork's bottom
+    /// edge and the row's bottom edge — that stub is what closes the gap to the next row's line.
+    static func verticalSegment(
+        for position: AlbumGroupPosition,
+        rowHeight: CGFloat,
+        artworkSize: CGFloat
+    ) -> Segment? {
+        switch position {
+        case .single:
+            return nil
+        case .first:
+            return Segment(fromY: (rowHeight + artworkSize) / 2, toY: rowHeight)
+        case .middle:
+            return Segment(fromY: 0, toY: rowHeight)
+        case .last:
+            return Segment(fromY: 0, toY: rowHeight / 2)
+        }
+    }
+
+    /// Whether the row closes the run with a horizontal elbow running right from the line's end —
+    /// the `└` the desktop draws under the group's first-row artwork.
+    static func hasElbow(for position: AlbumGroupPosition) -> Bool {
+        position == .last
+    }
+}
