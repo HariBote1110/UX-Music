@@ -1,8 +1,12 @@
 import SwiftUI
 
-/// Segment order mirrors the desktop sidebar: 曲 / アルバム / アーティスト / プレイリスト / For You.
-private enum LocalViewMode: Int, CaseIterable {
-    case songs, albums, artists, playlists, forYou
+/// Segment order mirrors the desktop sidebar: 曲 / アルバム / アーティスト / プレイリスト.
+///
+/// Four segments is the most the native `.segmented` Picker fits without truncating a Japanese
+/// label (it apportions segments equally), and it is also what the paged `TabView` swipes between —
+/// the two have to agree, so adding a segment means re-checking both.
+private enum LocalViewMode: Int, CaseIterable, Hashable {
+    case songs, albums, artists, playlists
 
     var title: String {
         switch self {
@@ -10,7 +14,6 @@ private enum LocalViewMode: Int, CaseIterable {
         case .albums: return "アルバム"
         case .artists: return "アーティスト"
         case .playlists: return "プレイリスト"
-        case .forYou: return "For You"
         }
     }
 }
@@ -32,6 +35,9 @@ struct LocalLibraryScreen: View {
     @State private var showDesktopPlaylistImport = false
     @State private var playlistEditMode: EditMode = .inactive
     @State private var searchQuery = ""
+    /// Separate from `searchQuery`: the playlists page filters by playlist name, not by song tags,
+    /// so carrying a song search across the page swipe would silently hide every playlist.
+    @State private var playlistQuery = ""
 
     private var downloaded: [Song] {
         model.sortedDownloadedSongsForLibrary
@@ -59,10 +65,6 @@ struct LocalLibraryScreen: View {
         return artists.filter { !SongSearchFilter.filter($0.songs, query: searchQuery).isEmpty }
     }
 
-    private var forYouSections: [SituationPlaylistResolver.Section] {
-        SituationPlaylistResolver.resolve(model.situationPlaylists, library: downloaded)
-    }
-
     private var viewModeIndex: Binding<Int> {
         Binding(
             get: { viewMode.rawValue },
@@ -78,38 +80,19 @@ struct LocalLibraryScreen: View {
                 LibrarySegmentedHeader(
                     segments: LocalViewMode.allCases.map(\.title),
                     selectedIndex: viewModeIndex
-                ) {
-                    headerTrailing
+                )
+                // Horizontal swipe pages between segments (the Picker above stays in sync via
+                // `viewMode`). Row-level `swipeActions` were removed from every list on this screen
+                // because they swallow the page gesture whenever a swipe starts on a row — the same
+                // conflict `WatchSongListView` hit; per-song destructive actions moved to the
+                // long-press context menu instead.
+                TabView(selection: $viewMode) {
+                    page { songsPane }.tag(LocalViewMode.songs)
+                    page { albumsPane }.tag(LocalViewMode.albums)
+                    page { artistsPane }.tag(LocalViewMode.artists)
+                    page { playlistsPane }.tag(LocalViewMode.playlists)
                 }
-                if [.songs, .albums, .artists].contains(viewMode) {
-                    searchField
-                }
-                Group {
-                    switch viewMode {
-                    case .songs:
-                        if downloaded.isEmpty {
-                            emptyState
-                        } else {
-                            songsContent(songs: searchedSongs)
-                        }
-                    case .albums:
-                        if downloaded.isEmpty {
-                            emptyState
-                        } else {
-                            albumContent(albums: searchedAlbums)
-                        }
-                    case .artists:
-                        if downloaded.isEmpty {
-                            emptyState
-                        } else {
-                            artistContent(artists: searchedArtists)
-                        }
-                    case .playlists:
-                        playlistContent
-                    case .forYou:
-                        forYouContent
-                    }
-                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(Color.black)
@@ -142,27 +125,65 @@ struct LocalLibraryScreen: View {
             } message: {
                 Text("新しいプレイリストの名前を入力してください。")
             }
-            .task(id: viewMode) {
-                guard viewMode == .forYou else { return }
-                await model.refreshSituationPlaylists()
+        }
+    }
+
+    /// Every page fills the paged `TabView` so the four segments are the same height and the swipe
+    /// gesture is live over the whole area, not just where a page happens to have content.
+    private func page<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var songsPane: some View {
+        VStack(spacing: 0) {
+            LibrarySearchRow(query: $searchQuery) { sortMenu }
+            if downloaded.isEmpty {
+                emptyState
+            } else {
+                songsContent(songs: searchedSongs)
             }
         }
     }
 
-    /// The header's trailing accessory is a single fixed-position slot shared by every segment
-    /// (see `LibrarySegmentedHeader`): the playlist ellipsis menu on Playlists, the sort menu on
-    /// Songs (task 3), reserved-but-empty space everywhere else so switching tabs never shifts
-    /// the segmented control.
     @ViewBuilder
-    private var headerTrailing: some View {
-        switch viewMode {
-        case .playlists:
-            playlistActionsMenu
-        case .songs:
-            sortMenu
-        default:
-            Color.clear.frame(width: 32, height: 32)
+    private var albumsPane: some View {
+        VStack(spacing: 0) {
+            LibrarySearchRow(query: $searchQuery) { emptyAccessory }
+            if downloaded.isEmpty {
+                emptyState
+            } else {
+                albumContent(albums: searchedAlbums)
+            }
         }
+    }
+
+    @ViewBuilder
+    private var artistsPane: some View {
+        VStack(spacing: 0) {
+            LibrarySearchRow(query: $searchQuery) { emptyAccessory }
+            if downloaded.isEmpty {
+                emptyState
+            } else {
+                artistContent(artists: searchedArtists)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var playlistsPane: some View {
+        VStack(spacing: 0) {
+            LibrarySearchRow(query: $playlistQuery, prompt: "プレイリストを検索") {
+                playlistActionsMenu
+            }
+            playlistContent
+        }
+    }
+
+    /// Reserved-but-empty accessory slot so every page's search field is the same width.
+    private var emptyAccessory: some View {
+        Color.clear.frame(width: 32, height: 32)
     }
 
     private var sortMenu: some View {
@@ -182,18 +203,10 @@ struct LocalLibraryScreen: View {
         .accessibilityLabel("並び替え")
     }
 
-    private var searchField: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("曲・アーティスト・アルバムを検索", text: $searchQuery)
-                .textFieldStyle(.plain)
-        }
-        .padding(10)
-        .background(Color(red: 0.17, green: 0.17, blue: 0.18))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+    private var searchedPlaylists: [Playlist] {
+        let query = playlistQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return model.playlists }
+        return model.playlists.filter { $0.name.lowercased().contains(query) }
     }
 
     @ViewBuilder
@@ -258,10 +271,14 @@ struct LocalLibraryScreen: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black)
+        } else if searchedPlaylists.isEmpty {
+            Text("一致するプレイリストがありません")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List {
                 Section {
-                    ForEach(model.playlists) { pl in
+                    ForEach(searchedPlaylists) { pl in
                         NavigationLink(value: LibraryRoute.playlist(pl.id)) {
                             HStack(spacing: 12) {
                                 ArtworkImageView(
@@ -279,15 +296,15 @@ struct LocalLibraryScreen: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            .padding(.vertical, 4)
+                            .frame(height: SongRowMetrics.rowHeight)
                         }
-                        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
-                        )
+                        .modifier(LibraryListRowStyle())
                         .contextMenu {
+                            Button {
+                                playlistEditMode = playlistEditMode == .active ? .inactive : .active
+                            } label: {
+                                Label("並べ替え", systemImage: "arrow.up.arrow.down")
+                            }
                             WatchTransferBulkMenuItem(
                                 title: "プレイリストを Apple Watch に転送",
                                 songs: model.resolvedSongs(for: pl)
@@ -298,17 +315,12 @@ struct LocalLibraryScreen: View {
                                 Label("削除", systemImage: "trash")
                             }
                         }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                try? model.deletePlaylist(id: pl.id)
-                            } label: {
-                                Label("削除", systemImage: "trash")
-                            }
-                        }
                     }
-                    .onMove { source, destination in
+                    // Only while unfiltered: `movePlaylists` takes offsets into `model.playlists`,
+                    // which a filtered `searchedPlaylists` no longer lines up with.
+                    .onMove(perform: playlistQuery.isEmpty ? { source, destination in
                         try? model.movePlaylists(fromOffsets: source, toOffset: destination)
-                    }
+                    } : nil)
                 }
             }
             .listStyle(.plain)
@@ -378,21 +390,15 @@ struct LocalLibraryScreen: View {
                         playLocal(song: song, in: songs)
                     }
                 )
-                .padding(.vertical, 4)
-                .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
-                .listRowSeparator(.hidden)
-                .listRowBackground(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
-                )
+                .modifier(LibraryListRowStyle())
                 .contextMenu {
+                    SongQueueMenuItems(song: resolvedForPlayback(song))
+                    AddSongToPlaylistMenuItem(songId: song.id)
                     WatchTransferSongMenuItem(song: song)
-                }
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
                         model.removeDownloadedSong(songId: song.id)
                     } label: {
-                        Label("削除", systemImage: "trash")
+                        Label("ライブラリから削除", systemImage: "trash")
                     }
                 }
             }
@@ -430,68 +436,15 @@ struct LocalLibraryScreen: View {
                                     .lineLimit(1)
                             }
                         }
-                        .padding(.vertical, 4)
+                        .frame(height: SongRowMetrics.rowHeight)
                     }
-                    .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
-                    )
+                    .modifier(LibraryListRowStyle())
                     .contextMenu {
                         WatchTransferBulkMenuItem(
                             title: "アーティストの曲を Apple Watch に転送",
                             songs: artist.songs
                         )
                     }
-                }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(Color.black)
-        }
-    }
-
-    /// "For You": server-generated situational playlists (最近追加した曲/よく聴く曲/ランダムピック, …),
-    /// resolved against the downloaded library via `SituationPlaylistResolver`. An empty
-    /// `situationPlaylists` is the *normal* state for a desktop that predates the endpoint, so this
-    /// shows a neutral explanation rather than an error.
-    @ViewBuilder
-    private var forYouContent: some View {
-        if forYouSections.isEmpty {
-            ContentUnavailableView {
-                Label("For You はまだ空です", systemImage: "sparkles")
-            } description: {
-                Text("デスクトップに接続して曲をダウンロードすると、最近追加した曲やよく聴く曲がここに表示されます。")
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black)
-        } else {
-            List {
-                ForEach(forYouSections, id: \.name) { section in
-                    Section(section.name) {
-                        ForEach(section.songs) { song in
-                            SongRowView(
-                                song: song,
-                                artworkId: song.artworkId,
-                                artworkURL: model.artworkURL(for: song.artworkId),
-                                onTap: {
-                                    playLocal(song: song, in: section.songs)
-                                }
-                            )
-                            .padding(.vertical, 4)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
-                            )
-                            .contextMenu {
-                                WatchTransferSongMenuItem(song: song)
-                            }
-                        }
-                    }
-                    .headerProminence(.increased)
                 }
             }
             .listStyle(.plain)

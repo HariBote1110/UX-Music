@@ -44,15 +44,14 @@ struct PlaylistDetailView: View {
                                 play(song)
                             }
                         )
-                        .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
+                        .modifier(LibraryListRowStyle())
                         .contextMenu {
+                            SongQueueMenuItems(song: song.withPath(model.downloadManager.localPathString(songId: song.id)))
                             WatchTransferSongMenuItem(song: song)
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 try? model.removeSongsFromPlaylist(playlistId: playlistId, songIds: [song.id])
                             } label: {
-                                Label("削除", systemImage: "minus.circle")
+                                Label("プレイリストから削除", systemImage: "minus.circle")
                             }
                         }
                     }

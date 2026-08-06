@@ -45,10 +45,8 @@ struct RemoteLibraryScreen: View {
                 LibrarySegmentedHeader(
                     segments: RemoteViewMode.allCases.map(\.title),
                     selectedIndex: viewModeIndex
-                ) {
-                    remoteActions
-                }
-                searchField
+                )
+                LibrarySearchRow(query: $query) { remoteActions }
                 libraryBody
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -144,20 +142,6 @@ struct RemoteLibraryScreen: View {
                 .accessibilityLabel("その他の操作")
             }
         }
-    }
-
-    private var searchField: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("曲・アーティスト・アルバムを検索", text: $query)
-                .textFieldStyle(.plain)
-        }
-        .padding(10)
-        .background(Color(red: 0.17, green: 0.17, blue: 0.18))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
     }
 
     @ViewBuilder
@@ -447,8 +431,7 @@ struct RemoteLibraryScreen: View {
                             SongRowDownloadTrailing(song: song)
                         }
                     )
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, SongRowMetrics.horizontalInset)
                     .contextMenu {
                         if song.isYouTube {
                             if model.isLibrarySongMember(songId: song.id) {

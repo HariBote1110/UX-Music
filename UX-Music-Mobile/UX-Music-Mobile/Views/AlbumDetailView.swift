@@ -31,8 +31,7 @@ struct AlbumDetailView: View {
                             SongRowDownloadTrailing(song: song)
                         }
                     )
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, SongRowMetrics.horizontalInset)
                     .contextMenu {
                         WatchTransferSongMenuItem(song: song)
                     }
