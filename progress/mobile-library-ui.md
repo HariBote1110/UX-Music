@@ -32,3 +32,25 @@
 - 最終結論：`LibrarySegmentedHeader.swift` は独自カプセル実装（`matchedGeometryEffect` によるスライドハイライトや自前 `glassEffect`）を全廃し、iOS 標準の `Picker("View", selection:) { ... }.pickerStyle(.segmented)` に置き換えた。ヘッダーの背景は完全透明のまま（グレーの帯は追加しない）で、黒背景に標準 segmented control を直接載せる。
 - iOS 26 以降、システムが `.segmented` Picker に標準で Liquid Glass 質感とネイティブのスライドアニメーションを与えるため、独自実装は不要という判断。今後同様の「標準 vs 独自」の揺り戻しが起きた場合は、まずグレーの背景帯を足していないか確認すること（それ単体が「くすんで見える」の主因になりやすい）。
 - ellipsis メニュー（`LibraryHeaderGlassButtonStyle` 経由の `.buttonStyle(.glass)`）は標準 API なので変更なし。
+
+## 改修（2026-08-07）: 行のベタ塗り化・連結線の連続化・スワイプ切替
+
+ユーザー指摘は4点（リストの角丸が画面端に変な余白を作る／アルバムまとめ表示の線が途切れ途切れ／上部の切り替えがしづらく SwiftUI 準拠でない／セグメント切替はスワイプで行いたい）。
+
+### Decision
+- **行はベタ塗り・全幅**。`RoundedRectangle(cornerRadius: 12)` の角丸カードを行ごとに敷き、`listRowInsets` で左右 8pt 空けていたのをやめ、共通の `LibraryListRowStyle`（`SongRowView.swift`）に統一した。背景色 `Color(red: 0.07, green: 0.07, blue: 0.08)` は据え置きだが `listRowBackground` に単色を渡して行幅いっぱいに敷き、`listRowInsets` は上下 0・左右 16pt（コンテンツのインセットのみ）。角丸カードを隙間なく並べると角の欠けが画面端の黒い切れ端として見えるのが元凶だった。
+- **行高を固定**（`SongRowMetrics.rowHeight = 64`）。呼び出し側の `.padding(.vertical, 4/8)` は全廃。行が隙間なく接するのがアルバム連結線を繋げる前提条件になる。
+- **連結線のジオメトリを純粋関数へ**。`AlbumGroupConnector`（`Core/AlbumGroupPosition.swift`）が行ローカル y 座標で描画区間を返す。`Canvas` は高さを固定せず行高いっぱいに広がる（`.frame(width:)` のみ指定し、`HStack` に `.frame(height:)` で降ってくる提案を受け取る）。`.first` 行はアートワークに加えて「アートワーク下端→行下端」のスタブ線も描く（`ZStack`）ため、アートワーク直下から最終行のエルボーまで一本に繋がる。
+- **セグメント切替は paged `TabView`**（`.tabViewStyle(.page(indexDisplayMode: .never))`）でスワイプ可能にし、**ライブラリ各リストの `.swipeActions` は全廃**。`WatchSongListView` が watchOS で踏んだのと同じ競合（行スワイプがページジェスチャを食う）を避けるため。曲削除・キュー操作（次に再生／最後に追加）・プレイリスト追加・Watch 転送は長押しの `contextMenu` に集約した（`SongQueueMenuItems` / `AddSongToPlaylistMenuItem`）。
+- **For You セグメントを廃止**（ユーザー判断）。`SituationPlaylistResolver` と `AppModel.refreshSituationPlaylists` は残置（テストも維持）、UI からのみ外した。
+- **Picker は全幅の独立行に分離**。`.segmented` はセグメントを等幅配分するため、trailing アクセサリに 32pt 取られるだけで「アーティ…」と切り詰められる（iPhone 17 実機幅 402pt で再現）。`LibrarySegmentedHeader` から trailing スロットを削除して Picker に全幅を与え、並び替え／ellipsis／更新ボタンは新設の `LibrarySearchRow` の trailing に移した。Local のプレイリストタブにも検索欄を持たせ（`playlistQuery`）、4ページの構造を揃えている。
+
+### Alternatives considered
+- 5セグメント（For You 込み）のまま標準 Picker を使う → 却下。等幅配分で 6 文字ラベルが必ず切れる。
+- スクロール可能な独自カプセル行を作り直す → 却下。「SwiftUI 準拠でない見た目」がまさに今回の指摘対象。
+- 検索欄をページ外（ヘッダー直下）に固定 → 却下。プレイリストタブだけ検索欄がないとページ送りのたびに高さが変わる。
+
+### Constraints / Gotchas
+- `LibraryListRowStyle` と `SongRowMetrics` は `Views/SongRowView.swift` に同居させている。新規 Swift ファイルを足すと `project.pbxproj` の4箇所を手書きする必要があるため（このファイル冒頭の注意書き参照）、共有部品は既存ファイルに寄せた。
+- プレイリストの `.onMove` は `playlistQuery` が空のときだけ有効。`movePlaylists` は `model.playlists` のオフセットを取るので、絞り込み後のリストとは添字が一致しない。
+- **未検証**: スワイプでのページ送りと長押しメニューの動作は、この作業時点の Mac で CoreSimulator の HID 入力が壊れており（`No Legacy HID port found` / タップは成功を返すがアプリに届かない）、実機相当の操作確認ができていない。静止画としてのレイアウト（ベタ塗り行・連結線・4セグメント Picker）はスクリーンショットで確認済み。

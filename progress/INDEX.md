@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mobile-library-ui.md](mobile-library-ui.md) — （追記 2026-08-07）ライブラリ行を角丸カードから全幅ベタ塗り（`LibraryListRowStyle`）＋固定行高へ、アルバム連結線を純粋関数 `AlbumGroupConnector` 化して行をまたいで連続表示、セグメント切替を paged `TabView` のスワイプに変更し競合する行スワイプを全廃（削除・キュー操作は長押しメニューへ集約）、For You 廃止、`.segmented` の等幅配分による文字切れを避けるため Picker を全幅の独立行に分離しアクセサリを検索行へ移動
 - [mobile-desktop-parity-features.md](mobile-desktop-parity-features.md) — Mobile版 Desktop機能パリティ: 和訳表示（Desktopの`.ja.lrc`サイドカーをLAN APIで配信・`BilingualLyricsDisplayMode`を並行追加）、For You（`/v1/remote/situation-playlists`新設・生成ロジックはWails版と共有）、シャッフル/リピート（Watch側純粋ロジックの汎用化・リピートOFF不可の不具合も解消）、キュー編集、検索、ソート、アーティストビュー、Desktop準拠のアルバム単位アートワークまとめ表示とナビ再編の判断記録
 - [mobile-nowplaying-visuals.md](mobile-nowplaying-visuals.md) — （追記）同期歌詞画面を Desktop 版（`applyLyricsMotion`）に忠実なコンテナオフセット方式へ刷新: 全行を実測高さ＋固定ギャップで積み上げアクティブ行をコンテナ高35%にアンカー、距離比例のステガー遅延(40ms)・ease 0.8秒、blurを廃止しアクティブ/非アクティブ二値の色・scale(1.091)に統一、フェード帯域をDesktopのmask-image(8%/70%)に合わせて変更。純関数 `nowPlayingLyricsLineOffsets`/`nowPlayingLyricsLineDelay` をTDDで追加し、`UXM_DEBUG_LYRICS_SONG` デバッグフック＋録画で実機相当の目視検証を実施
 - [mobile-sync-failover.md](mobile-sync-failover.md) — （追記）接続先ホストの手動選択・固定モードを追加：`ServerConfig.preferredHost`/`activeHost`、純粋関数 `ConnectionCandidatePolicy.hostsToTry`、Settings の既知ホスト一覧UI（到達確認・Tailscale/LANバッジ・タップで固定化）
