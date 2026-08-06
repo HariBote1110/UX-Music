@@ -4,8 +4,13 @@ struct HomeRootView: View {
     @Environment(AppModel.self) private var model
     @State private var tab: MainTab = .library
 
+    /// Deliberately does *not* also check `isNowPlayingSheetPresented`. Toggling this flips the
+    /// accessory modifier on and off, which re-creates the whole `TabView` subtree (see
+    /// `uxMusicTabMiniPlayer`), and Now Playing opens as a `fullScreenCover` that covers the mini
+    /// player anyway — gating on it would rebuild every tab each time the user opened or closed it.
+    /// As written it flips at most once per session, when the first song starts.
     private var showMiniPlayerAccessory: Bool {
-        !model.isNowPlayingSheetPresented && model.player.currentSong != nil
+        model.player.currentSong != nil
     }
 
     var body: some View {
@@ -84,16 +89,25 @@ private struct LazyTabRoot<Content: View>: View {
 
 private extension View {
     /// iOS 26.1+: `tabViewBottomAccessory` stacks the bar above the tab bar. Earlier OS uses `safeAreaInset`.
+    ///
+    /// The 26.1 branch applies the *modifier* conditionally rather than returning an empty accessory
+    /// when nothing is playing. The system draws the accessory's glass capsule as soon as the
+    /// modifier is present, whatever the content is — an `EmptyView` and a zero-height `Color.clear`
+    /// both leave a ~56pt empty capsule floating over the list (verified on the simulator). Applying
+    /// the modifier at all is the only thing that controls whether the capsule exists.
+    ///
+    /// The cost is that toggling `isEnabled` re-creates the `TabView` subtree, so the gate must flip
+    /// as rarely as possible — see `HomeRootView.showMiniPlayerAccessory`.
     @ViewBuilder
     func uxMusicTabMiniPlayer<Content: View>(
         isEnabled: Bool,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         if #available(iOS 26.1, *) {
-            self.tabViewBottomAccessory {
-                if isEnabled {
-                    content()
-                }
+            if isEnabled {
+                self.tabViewBottomAccessory { content() }
+            } else {
+                self
             }
         } else {
             self.safeAreaInset(edge: .bottom, spacing: 0) {

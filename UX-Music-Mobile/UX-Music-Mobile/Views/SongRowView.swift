@@ -14,11 +14,15 @@ enum SongRowMetrics {
 ///
 /// Rows used to be individual `RoundedRectangle` cards inset 8pt from each edge; packed together
 /// with no gap between them the rounded corners just produced odd slivers of black along the screen
-/// edges. A solid fill spanning the full row width reads as one continuous surface instead, and it
-/// is what makes the album connector line look joined up rather than sliced per card.
+/// edges. Rows now carry no fill of their own at all and sit directly on the screen's black — one
+/// uninterrupted surface, which is also what makes the album connector line read as joined up
+/// rather than sliced per card.
+///
+/// A slightly-lighter row fill (the old `0.07` card colour, spanning the full width) was tried
+/// first and looked worse: wherever the list's content ended — under the tab bar, above the mini
+/// player — the slab stopped against the black background as a hard horizontal seam cutting a row
+/// in half. Matching the page background removes the seam entirely.
 struct LibraryListRowStyle: ViewModifier {
-    static let fill = Color(red: 0.07, green: 0.07, blue: 0.08)
-
     func body(content: Content) -> some View {
         content
             .listRowInsets(EdgeInsets(
@@ -28,7 +32,7 @@ struct LibraryListRowStyle: ViewModifier {
                 trailing: SongRowMetrics.horizontalInset
             ))
             .listRowSeparator(.hidden)
-            .listRowBackground(Self.fill)
+            .listRowBackground(Color.clear)
     }
 }
 

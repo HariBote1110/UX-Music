@@ -50,6 +50,11 @@
 - スクロール可能な独自カプセル行を作り直す → 却下。「SwiftUI 準拠でない見た目」がまさに今回の指摘対象。
 - 検索欄をページ外（ヘッダー直下）に固定 → 却下。プレイリストタブだけ検索欄がないとページ送りのたびに高さが変わる。
 
+### 追記: 画面下部の「空カプセル」と黒帯の継ぎ目
+- **行の塗りは黒（＝ページ背景と同色）にする**。当初 `0.07` のグレーを全幅に敷いたが、リストの内容が終わる位置（タブバー下・ミニプレイヤー上）でスラブが黒背景に突き当たり、行を横一文字に断ち切る継ぎ目として見えた。`listRowBackground(Color.clear)` にして下地の黒をそのまま見せると継ぎ目が消える。
+- **`tabViewBottomAccessory` は修飾子ごと条件分岐する**。中で `if isEnabled { ... }` として空を返しても、システムは修飾子が付いている限りガラスのカプセル（約56pt）を描き続ける。`EmptyView` でも `Color.clear.frame(height: 0)` でも同じで、シミュレータで両方確認した。何も再生していないのに空カプセルが浮いて最下行に被るのはこれが原因。
+- 修飾子の条件分岐は `TabView` のビュー同一性を変えるため、切り替わるたびに全タブが作り直される（各画面の `@State` とスクロール位置が飛ぶ）。そのため `showMiniPlayerAccessory` から `isNowPlayingSheetPresented` の条件を外した。Now Playing は `fullScreenCover` でミニプレイヤーごと覆うので隠す必要がなく、残しておくと開閉のたびに全タブが再構築されてしまう。現在の条件は `currentSong != nil` だけなので、フリップは原則セッション中の初回再生時の1回きり。
+
 ### Constraints / Gotchas
 - `LibraryListRowStyle` と `SongRowMetrics` は `Views/SongRowView.swift` に同居させている。新規 Swift ファイルを足すと `project.pbxproj` の4箇所を手書きする必要があるため（このファイル冒頭の注意書き参照）、共有部品は既存ファイルに寄せた。
 - プレイリストの `.onMove` は `playlistQuery` が空のときだけ有効。`movePlaylists` は `model.playlists` のオフセットを取るので、絞り込み後のリストとは添字が一致しない。
