@@ -40,7 +40,7 @@ struct HomeRootView: View {
             .tag(MainTab.settings)
         }
         .uxMusicTabMiniPlayer(isEnabled: showMiniPlayerAccessory) {
-            miniPlayerStack
+            MiniPlayerView()
         }
         // fullScreenCover instead of sheet: the Now Playing screen is a full-screen
         // experience (like Apple Music). A sheet leaves system-injected top/bottom
@@ -56,16 +56,6 @@ struct HomeRootView: View {
         }
     }
 
-    @ViewBuilder
-    private var miniPlayerStack: some View {
-        VStack(spacing: 0) {
-            Divider()
-                .overlay(Color.white.opacity(0.14))
-            MiniPlayerView()
-        }
-        .frame(maxWidth: .infinity)
-        .background(.bar)
-    }
 }
 
 // MARK: - Lazy tab roots
@@ -110,9 +100,19 @@ private extension View {
                 self
             }
         } else {
+            // Pre-26.1 has no floating accessory, so the mini player is a plain bar pinned above
+            // the tab bar and has to bring its own separator and material. On 26.1+ the system's
+            // accessory already provides the glass; stacking `.bar` on top of it made the capsule
+            // read as a heavy frosted slab.
             self.safeAreaInset(edge: .bottom, spacing: 0) {
                 if isEnabled {
-                    content()
+                    VStack(spacing: 0) {
+                        Divider()
+                            .overlay(Color.white.opacity(0.14))
+                        content()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .background(.bar)
                 }
             }
         }

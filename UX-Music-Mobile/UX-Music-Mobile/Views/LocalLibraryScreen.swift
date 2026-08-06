@@ -76,24 +76,44 @@ struct LocalLibraryScreen: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            VStack(spacing: 0) {
-                LibrarySegmentedHeader(
-                    segments: LocalViewMode.allCases.map(\.title),
-                    selectedIndex: viewModeIndex
-                )
-                // Horizontal swipe pages between segments (the Picker above stays in sync via
-                // `viewMode`). Row-level `swipeActions` were removed from every list on this screen
-                // because they swallow the page gesture whenever a swipe starts on a row — the same
-                // conflict `WatchSongListView` hit; per-song destructive actions moved to the
-                // long-press context menu instead.
-                TabView(selection: $viewMode) {
-                    page { songsPane }.tag(LocalViewMode.songs)
-                    page { albumsPane }.tag(LocalViewMode.albums)
-                    page { artistsPane }.tag(LocalViewMode.artists)
-                    page { playlistsPane }.tag(LocalViewMode.playlists)
+            // Horizontal swipe pages between segments (the Picker in the header stays in sync via
+            // `viewMode`). Row-level `swipeActions` were removed from every list on this screen
+            // because they swallow the page gesture whenever a swipe starts on a row — the same
+            // conflict `WatchSongListView` hit; per-song destructive actions moved to the
+            // long-press context menu instead.
+            //
+            // The header is a top `safeAreaInset` rather than the first element of a `VStack`:
+            // stacking it above the pages shrinks each page's frame, so its list stops dead at the
+            // tab bar instead of running underneath it. As an inset the pages keep the full screen
+            // height and every list scrolls under both the header and the floating tab bar, with
+            // the scroll content inset automatically so nothing ends up unreachable.
+            // `GeometryReader` + `ignoresSafeArea(.bottom)`: a paged `TabView` insets its pages by
+            // the safe area, so a list inside one stops dead at the tab bar instead of running
+            // under it. Letting the pages reach the screen's bottom edge and re-applying the inset
+            // as *scroll content* margin gives the intended look — rows pass behind the floating
+            // tab bar — while keeping the last row scrollable clear of it. Reading the inset from
+            // the proxy (rather than hard-coding it) is what keeps the margin exact.
+            //
+            // The header stays stacked above the pages rather than being a top `safeAreaInset`:
+            // the paged `TabView` does not pass an inset from that modifier down to its pages
+            // either, so the first row would start underneath the header with nothing to push it
+            // clear.
+            LibraryBottomBleed { bottomInset in
+                VStack(spacing: 0) {
+                    header
+                    TabView(selection: $viewMode) {
+                        page(bottomInset: bottomInset) { songsPane }
+                            .tag(LocalViewMode.songs)
+                        page(bottomInset: bottomInset) { albumsPane }
+                            .tag(LocalViewMode.albums)
+                        page(bottomInset: bottomInset) { artistsPane }
+                            .tag(LocalViewMode.artists)
+                        page(bottomInset: bottomInset) { playlistsPane }
+                            .tag(LocalViewMode.playlists)
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(Color.black)
             .toolbar(.hidden, for: .navigationBar)
@@ -130,55 +150,72 @@ struct LocalLibraryScreen: View {
 
     /// Every page fills the paged `TabView` so the four segments are the same height and the swipe
     /// gesture is live over the whole area, not just where a page happens to have content.
-    private func page<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    /// `bottomInset` is the tab bar's safe area, re-applied to the page's scroll content because
+    /// the pages themselves now extend past it (see `body`).
+    private func page<Content: View>(
+        bottomInset: CGFloat,
+        @ViewBuilder _ content: () -> Content
+    ) -> some View {
         content()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentMargins(.bottom, bottomInset, for: .scrollContent)
+    }
+
+    /// Segmented picker plus the current segment's search row, stacked above the pages.
+    private var header: some View {
+        VStack(spacing: 0) {
+            LibrarySegmentedHeader(
+                segments: LocalViewMode.allCases.map(\.title),
+                selectedIndex: viewModeIndex
+            )
+            searchRow
+        }
+        .background(Color.black)
+    }
+
+    @ViewBuilder
+    private var searchRow: some View {
+        switch viewMode {
+        case .songs:
+            LibrarySearchRow(query: $searchQuery) { sortMenu }
+        case .albums, .artists:
+            LibrarySearchRow(query: $searchQuery) { emptyAccessory }
+        case .playlists:
+            LibrarySearchRow(query: $playlistQuery, prompt: "プレイリストを検索") {
+                playlistActionsMenu
+            }
+        }
     }
 
     @ViewBuilder
     private var songsPane: some View {
-        VStack(spacing: 0) {
-            LibrarySearchRow(query: $searchQuery) { sortMenu }
-            if downloaded.isEmpty {
-                emptyState
-            } else {
-                songsContent(songs: searchedSongs)
-            }
+        if downloaded.isEmpty {
+            emptyState
+        } else {
+            songsContent(songs: searchedSongs)
         }
     }
 
     @ViewBuilder
     private var albumsPane: some View {
-        VStack(spacing: 0) {
-            LibrarySearchRow(query: $searchQuery) { emptyAccessory }
-            if downloaded.isEmpty {
-                emptyState
-            } else {
-                albumContent(albums: searchedAlbums)
-            }
+        if downloaded.isEmpty {
+            emptyState
+        } else {
+            albumContent(albums: searchedAlbums)
         }
     }
 
     @ViewBuilder
     private var artistsPane: some View {
-        VStack(spacing: 0) {
-            LibrarySearchRow(query: $searchQuery) { emptyAccessory }
-            if downloaded.isEmpty {
-                emptyState
-            } else {
-                artistContent(artists: searchedArtists)
-            }
+        if downloaded.isEmpty {
+            emptyState
+        } else {
+            artistContent(artists: searchedArtists)
         }
     }
 
-    @ViewBuilder
     private var playlistsPane: some View {
-        VStack(spacing: 0) {
-            LibrarySearchRow(query: $playlistQuery, prompt: "プレイリストを検索") {
-                playlistActionsMenu
-            }
-            playlistContent
-        }
+        playlistContent
     }
 
     /// Reserved-but-empty accessory slot so every page's search field is the same width.

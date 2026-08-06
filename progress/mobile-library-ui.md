@@ -55,6 +55,16 @@
 - **`tabViewBottomAccessory` は修飾子ごと条件分岐する**。中で `if isEnabled { ... }` として空を返しても、システムは修飾子が付いている限りガラスのカプセル（約56pt）を描き続ける。`EmptyView` でも `Color.clear.frame(height: 0)` でも同じで、シミュレータで両方確認した。何も再生していないのに空カプセルが浮いて最下行に被るのはこれが原因。
 - 修飾子の条件分岐は `TabView` のビュー同一性を変えるため、切り替わるたびに全タブが作り直される（各画面の `@State` とスクロール位置が飛ぶ）。そのため `showMiniPlayerAccessory` から `isNowPlayingSheetPresented` の条件を外した。Now Playing は `fullScreenCover` でミニプレイヤーごと覆うので隠す必要がなく、残しておくと開閉のたびに全タブが再構築されてしまう。現在の条件は `currentSong != nil` だけなので、フリップは原則セッション中の初回再生時の1回きり。
 
+### 追記: リストをタブバーの下まで潜らせる（`LibraryBottomBleed`）
+- リストがフローティングタブバーの上端でぷつりと止まり、その下が黒帯として残るのが不自然という指摘。原因は **paged `TabView` がページを安全領域でインセットする**こと。ページ内の `List` は安全領域の存在を知らされないので、フレームがタブバーの手前で終わる。
+- 対策として `LibraryBottomBleed`（`LibrarySegmentedHeader.swift`）を新設。`GeometryReader` + `.ignoresSafeArea(.container, edges: .bottom)` で中身を画面下端まで広げ、手放したインセット値をクロージャに渡して呼び出し側が `.contentMargins(.bottom, inset, for: .scrollContent)` として再適用する。見た目はタブバーの下に潜り、最終行はスクロールすればタブバーの上に出る。高さをハードコードしないので端末差やミニプレイヤーの有無に追従する。
+- ヘッダーを上側の `safeAreaInset` にする案は却下。paged `TabView` は**上方向のインセットもページに伝えない**ので、先頭行がヘッダーの裏から始まってしまう（シミュレータで確認）。ヘッダーは従来どおり `VStack` でページの上に積む。
+- Local/Remote に加えて Album/Artist/Playlist の詳細画面にも同じ処理を適用済み。
+- 診断のコツ: 「どこでコンテナが終わっているか」は一時的に `.background(Color.red)` を敷いてスクショを撮るのが早い。行が黒背景に透明で乗っているため、コンテンツの有無だけでは判別できない。
+
+### 追記: ミニプレイヤーの曇りが濃すぎる件
+- `tabViewBottomAccessory` の中身に `.background(.bar)` を敷いていたため、システムのガラス質感と二重掛けになり厚い曇りガラスに見えていた。26.1+ の accessory 経路では `MiniPlayerView` を素で渡し、`Divider` + `.bar` は accessory を持たない 26.1 未満の `safeAreaInset` 経路側にだけ残した。
+
 ### Constraints / Gotchas
 - `LibraryListRowStyle` と `SongRowMetrics` は `Views/SongRowView.swift` に同居させている。新規 Swift ファイルを足すと `project.pbxproj` の4箇所を手書きする必要があるため（このファイル冒頭の注意書き参照）、共有部品は既存ファイルに寄せた。
 - プレイリストの `.onMove` は `playlistQuery` が空のときだけ有効。`movePlaylists` は `model.playlists` のオフセットを取るので、絞り込み後のリストとは添字が一致しない。

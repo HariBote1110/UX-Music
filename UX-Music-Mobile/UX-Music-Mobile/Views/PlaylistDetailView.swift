@@ -26,6 +26,33 @@ struct PlaylistDetailView: View {
     }
 
     var body: some View {
+        LibraryBottomBleed { bottomInset in
+            listBody
+                .contentMargins(.bottom, bottomInset, for: .scrollContent)
+        }
+        .background(Color.black)
+        .navigationTitle(playlist?.name ?? "プレイリスト")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar { detailToolbar }
+        .sheet(isPresented: $showAddSongs) {
+            AddSongsToPlaylistSheet(playlistId: playlistId)
+                .environment(model)
+        }
+        .alert("プレイリスト名を変更", isPresented: $showRename) {
+            TextField("名前", text: $renameText)
+            Button("保存") {
+                try? model.renamePlaylist(id: playlistId, newName: renameText)
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("このプレイリストの新しい名前を入力してください。")
+        }
+    }
+
+    @ViewBuilder
+    private var listBody: some View {
         Group {
             if playlist == nil {
                 ContentUnavailableView(
@@ -63,54 +90,38 @@ struct PlaylistDetailView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .background(Color.black)
-        .navigationTitle(playlist?.name ?? "プレイリスト")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar {
-            if playlist != nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack {
-                        EditButton()
-                        if canShowWatchTransferMenu {
-                            Menu {
-                                WatchTransferBulkMenuItem(
-                                    title: "プレイリストを Apple Watch に転送",
-                                    songs: songs
-                                )
-                            } label: {
-                                Image(systemName: "ellipsis.circle")
-                            }
-                        }
-                        Button {
-                            showAddSongs = true
+    }
+
+    @ToolbarContentBuilder
+    private var detailToolbar: some ToolbarContent {
+        if playlist != nil {
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack {
+                    EditButton()
+                    if canShowWatchTransferMenu {
+                        Menu {
+                            WatchTransferBulkMenuItem(
+                                title: "プレイリストを Apple Watch に転送",
+                                songs: songs
+                            )
                         } label: {
-                            Image(systemName: "plus")
+                            Image(systemName: "ellipsis.circle")
                         }
-                        .accessibilityLabel("曲を追加")
                     }
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("名前を変更") {
-                        renameText = playlist?.name ?? ""
-                        showRename = true
+                    Button {
+                        showAddSongs = true
+                    } label: {
+                        Image(systemName: "plus")
                     }
+                    .accessibilityLabel("曲を追加")
                 }
             }
-        }
-        .sheet(isPresented: $showAddSongs) {
-            AddSongsToPlaylistSheet(playlistId: playlistId)
-                .environment(model)
-        }
-        .alert("プレイリスト名を変更", isPresented: $showRename) {
-            TextField("名前", text: $renameText)
-            Button("保存") {
-                try? model.renamePlaylist(id: playlistId, newName: renameText)
+            ToolbarItem(placement: .topBarLeading) {
+                Button("名前を変更") {
+                    renameText = playlist?.name ?? ""
+                    showRename = true
+                }
             }
-            Button("キャンセル", role: .cancel) {}
-        } message: {
-            Text("このプレイリストの新しい名前を入力してください。")
         }
     }
 

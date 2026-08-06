@@ -70,6 +70,25 @@ struct LibrarySearchRow<Accessory: View>: View {
     }
 }
 
+/// Lets a screen's scrolling content run underneath the floating tab bar (and the mini player
+/// accessory) instead of stopping dead at its top edge, which reads as the list being sliced off by
+/// a black band.
+///
+/// Extends its content past the bottom safe area and hands the inset it just gave up to the
+/// closure, so the caller can re-apply it as scroll *content* margin — the last row then still
+/// scrolls clear of the bar. Measuring it here rather than hard-coding a height keeps it correct
+/// across devices and whether or not the mini player is showing.
+struct LibraryBottomBleed<Content: View>: View {
+    @ViewBuilder var content: (CGFloat) -> Content
+
+    var body: some View {
+        GeometryReader { proxy in
+            content(proxy.safeAreaInsets.bottom)
+        }
+        .ignoresSafeArea(.container, edges: .bottom)
+    }
+}
+
 /// Shared circular glass treatment for the header's trailing accessory buttons (ellipsis menu,
 /// refresh, import) so they read as one system with the capsule segmented control and the
 /// system tab bar's own glass material. Falls back to the previous `.ultraThinMaterial` circle

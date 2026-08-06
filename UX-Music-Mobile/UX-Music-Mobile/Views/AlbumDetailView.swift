@@ -5,6 +5,18 @@ struct AlbumDetailView: View {
     let album: Album
 
     var body: some View {
+        LibraryBottomBleed { bottomInset in
+            scrollBody
+                .contentMargins(.bottom, bottomInset, for: .scrollContent)
+        }
+        .background(Color.black)
+        .navigationTitle(album.displayName)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+
+    private var scrollBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
@@ -39,11 +51,6 @@ struct AlbumDetailView: View {
             }
             .padding(.bottom, 8)
         }
-        .background(Color.black)
-        .navigationTitle(album.displayName)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 
     private var header: some View {

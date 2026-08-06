@@ -41,15 +41,20 @@ struct RemoteLibraryScreen: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            VStack(spacing: 0) {
-                LibrarySegmentedHeader(
-                    segments: RemoteViewMode.allCases.map(\.title),
-                    selectedIndex: viewModeIndex
-                )
-                LibrarySearchRow(query: $query) { remoteActions }
-                libraryBody
+            // See `LibraryBottomBleed`: without it the grids/lists stop at the tab bar's top edge
+            // instead of scrolling under it.
+            LibraryBottomBleed { bottomInset in
+                VStack(spacing: 0) {
+                    LibrarySegmentedHeader(
+                        segments: RemoteViewMode.allCases.map(\.title),
+                        selectedIndex: viewModeIndex
+                    )
+                    LibrarySearchRow(query: $query) { remoteActions }
+                    libraryBody
+                        .contentMargins(.bottom, bottomInset, for: .scrollContent)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black)
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showDesktopPlaylistImport) {
