@@ -4,12 +4,12 @@ import { elements, state } from '../core/state.js';
 import { analyser, dataArray, resumeAudioContext } from './audio-graph.js';
 import { isPlaying } from './player.js';
 import { getWailsApp } from '../core/bridge.js';
-import { computeBarHeights } from './visualizer-mapping.js';
+import { computeBarHeights, createVisualizerState } from './visualizer-mapping.js';
 
 let visualizerFrameId = null;
 let currentVisualizerBars = null;
 let observedTarget = null;
-const lastHeights = new Array(6).fill(4);
+let visualizerState = createVisualizerState();
 let lastFrameTime = 0;
 let lastDrawTimestamp = 0;
 let visualizerObserver = null;
@@ -21,7 +21,7 @@ const GO_VISUALIZER_FETCH_INTERVAL_MS = 40;
  * ビジュアライザーの描画ループを開始する
  */
 export function startVisualizerLoop() {
-    lastHeights.fill(4);
+    visualizerState = createVisualizerState();
     lastDrawTimestamp = 0;
 
     if (window.go && goFetchIntervalId == null) {
@@ -49,7 +49,7 @@ export function stopVisualizerLoop() {
         visualizerFrameId = null;
     }
     if (currentVisualizerBars) {
-        lastHeights.fill(4);
+        visualizerState = createVisualizerState();
         currentVisualizerBars.forEach(bar => {
             if (bar.style.height !== '4px') bar.style.height = '4px';
         });
@@ -96,7 +96,7 @@ function setupVisualizerObserver(targetElement) {
                 }
             } else {
                 if (currentVisualizerBars) {
-                    lastHeights.fill(4);
+                    visualizerState = createVisualizerState();
                     currentVisualizerBars.forEach(bar => {
                         if (bar.style.height !== '4px') bar.style.height = '4px';
                     });
@@ -243,7 +243,7 @@ function draw(timestamp) {
         const dtMs = lastDrawTimestamp === 0 ? 16.7 : timestamp - lastDrawTimestamp;
         lastDrawTimestamp = timestamp;
 
-        const heights = computeBarHeights(sourceData, sampleRate, fftSize, lastHeights, dtMs);
+        const heights = computeBarHeights(sourceData, sampleRate, fftSize, visualizerState, dtMs);
 
         currentVisualizerBars.forEach((bar, index) => {
             const newHeightPx = `${heights[index]}px`;

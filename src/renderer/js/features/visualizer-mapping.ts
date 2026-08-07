@@ -25,15 +25,49 @@ const RELEASE_COEFFICIENT = 0.18;
 const REFERENCE_FRAME_MS = 16.7;
 const MAX_COEFFICIENT_MULTIPLIER = 2;
 
+/** AGCエンベロープの下限（無音・静かなパッセージでノイズを増幅しないための床）。 */
+const ENV_FLOOR = 0.25;
+
+/** エンベロープ減衰の半減期(ms)。 */
+const ENV_DECAY_HALF_LIFE_MS = 4000;
+
+/** 正規化後の相対ダイナミクスに対するコントラストカーブ。 */
+const AGC_CONTRAST_EXPONENT = 1.6;
+
+const BAR_COUNT = BAND_EDGES_HZ.length - 1;
+
+/** バー描画に用いる永続状態。前フレームの高さと帯域別AGCエンベロープを保持する。 */
+export interface VisualizerState {
+    /** 前フレームの高さ(px)。長さ6。 */
+    lastHeights: number[];
+    /** 帯域別AGCエンベロープ（直近ピークの追跡値）。長さ6。 */
+    envelope: number[];
+}
+
+/**
+ * computeBarHeights 用の初期状態を生成する。
+ * lastHeights は無音時の高さ(4px)、envelope はAGCの下限値で初期化する。
+ */
+export function createVisualizerState(): VisualizerState {
+    return {
+        lastHeights: new Array(BAR_COUNT).fill(MIN_HEIGHT_PX),
+        envelope: new Array(BAR_COUNT).fill(ENV_FLOOR)
+    };
+}
+
 /**
  * sourceData（周波数バイト配列）から6バー分の高さ(px)を計算する。
- * lastHeights は前フレームの高さを保持する長さ6の配列で、この関数が
- * アタック/リリースのスムージング結果でその場を更新する。
+ * state は前フレームの高さと帯域別AGCエンベロープを保持するオブジェクトで、
+ * この関数がその場で破壊的に更新する。
+ *
+ * 各帯域は自身の直近ピーク（エンベロープ）に対して正規化される（AGC）。
+ * これにより、音楽全体の音量に関わらずバーは常に相対的なダイナミクスを表現し、
+ * 常に上限付近に張り付くことを防ぐ。
  *
  * @param sourceData FFT周波数バイト配列（dBスケール済み、0-255）
  * @param sampleRate サンプルレート(Hz)
  * @param fftSize FFTサイズ（sourceData.length のおよそ2倍）
- * @param lastHeights 前フレームの高さ(px)。長さ6。破壊的に更新される
+ * @param state 前フレームの高さとAGCエンベロープ。破壊的に更新される
  * @param dtMs 前フレームからの経過時間(ms)。rAFのタイムスタンプ差分
  * @returns 今フレームのバー高さ(px)。長さ6
  */
@@ -41,9 +75,10 @@ export function computeBarHeights(
     sourceData: Uint8Array,
     sampleRate: number,
     fftSize: number,
-    lastHeights: number[],
+    state: VisualizerState,
     dtMs: number
 ): number[] {
+    const { lastHeights, envelope } = state;
     const binWidth = sampleRate / fftSize;
     const barCount = BAND_EDGES_HZ.length - 1;
     const frameMultiplier = Math.min(MAX_COEFFICIENT_MULTIPLIER, dtMs > 0 ? dtMs / REFERENCE_FRAME_MS : 1);
@@ -75,7 +110,21 @@ export function computeBarHeights(
         const curved = Math.pow(u, CURVE_EXPONENT);
         const compensated = Math.min(1, curved * BAND_GAINS[i]);
 
-        const target = compensated * HEIGHT_SCALE_PX + MIN_HEIGHT_PX;
+        let out;
+        if (compensated <= 0) {
+            // ノイズゲート済み: エンベロープは更新せず、出力は0のまま。
+            out = 0;
+        } else {
+            if (compensated > envelope[i]) {
+                envelope[i] = compensated;
+            } else {
+                envelope[i] = Math.max(ENV_FLOOR, envelope[i] * Math.pow(0.5, dtMs / ENV_DECAY_HALF_LIFE_MS));
+            }
+            const normalized = Math.min(1, compensated / envelope[i]);
+            out = Math.pow(normalized, AGC_CONTRAST_EXPONENT);
+        }
+
+        const target = out * HEIGHT_SCALE_PX + MIN_HEIGHT_PX;
 
         const previous = lastHeights[i] ?? MIN_HEIGHT_PX;
         let next;
