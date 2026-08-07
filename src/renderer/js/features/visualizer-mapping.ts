@@ -31,8 +31,14 @@ const ENV_FLOOR = 0.25;
 /** エンベロープ減衰の半減期(ms)。 */
 const ENV_DECAY_HALF_LIFE_MS = 4000;
 
+/** エンベロープ立ち上がりの半減期(ms)。瞬時追従を避け、突発的な音の一発でエンベロープが張り付くのを防ぐ。 */
+const ENV_RISE_HALF_LIFE_MS = 250;
+
 /** 正規化後の相対ダイナミクスに対するコントラストカーブ。 */
 const AGC_CONTRAST_EXPONENT = 1.6;
+
+/** エンベロープに対するヘッドルーム。持続音がバーの上限に張り付かないよう、正規化の分母を底上げする。 */
+const HEADROOM = 1.2;
 
 const BAR_COUNT = BAND_EDGES_HZ.length - 1;
 
@@ -116,11 +122,14 @@ export function computeBarHeights(
             out = 0;
         } else {
             if (compensated > envelope[i]) {
-                envelope[i] = compensated;
+                // 瞬時に追従せず、短い半減期で滑らかに立ち上がらせる。
+                // これにより単発の突発音（トランジェント）はエンベロープを追い越して
+                // 一瞬だけ上限まで振れるが、持続音はエンベロープに追いつかれて頭打ちになる。
+                envelope[i] += (compensated - envelope[i]) * (1 - Math.pow(0.5, dtMs / ENV_RISE_HALF_LIFE_MS));
             } else {
                 envelope[i] = Math.max(ENV_FLOOR, envelope[i] * Math.pow(0.5, dtMs / ENV_DECAY_HALF_LIFE_MS));
             }
-            const normalized = Math.min(1, compensated / envelope[i]);
+            const normalized = Math.min(1, compensated / (envelope[i] * HEADROOM));
             out = Math.pow(normalized, AGC_CONTRAST_EXPONENT);
         }
 

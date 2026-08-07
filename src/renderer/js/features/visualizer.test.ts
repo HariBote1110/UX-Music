@@ -120,8 +120,10 @@ describe('computeBarHeights', () => {
     it('recovers upward once the envelope decays: the same moderate input maps higher after a long quiet stretch', () => {
         const state = createVisualizerState();
 
-        // Establish a high envelope peak.
-        for (let i = 0; i < 5; i++) {
+        // Establish a high envelope peak. Enough frames for the (smoothed) envelope to
+        // fully converge onto the loud level, so the transient onset spike has already
+        // passed and what we measure next is genuine steady-state suppression.
+        for (let i = 0; i < 60; i++) {
             computeBarHeights(makeBroadband(255), SAMPLE_RATE, FFT_SIZE, state, 16.7);
         }
 
@@ -133,7 +135,7 @@ describe('computeBarHeights', () => {
         // Reset heights toward floor artificially isn't needed — instead let the envelope
         // decay across a long silent/moderate span using a large dtMs jump (several seconds).
         const recoveringState = createVisualizerState();
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 60; i++) {
             computeBarHeights(makeBroadband(255), SAMPLE_RATE, FFT_SIZE, recoveringState, 16.7);
         }
         // Big time jump: several half-lives of decay (4s half-life -> 12s = 3 half-lives).
