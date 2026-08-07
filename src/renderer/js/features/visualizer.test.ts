@@ -149,4 +149,40 @@ describe('computeBarHeights', () => {
             expect(h).toBeGreaterThan(suppressedHeights[i]);
         });
     });
+
+    it('settles clearly below the 20px ceiling under sustained constant loud input (no pegging)', () => {
+        const state = createVisualizerState();
+
+        // Feed the same loud broadband level for many frames so both the envelope
+        // and the smoothed height have time to converge to their steady state.
+        let heights = heightsAfterFrames(state, () => makeBroadbandLoud(), 200);
+
+        heights.forEach((h) => {
+            expect(h).toBeLessThan(17);
+        });
+    });
+
+    it('still spikes close to the ceiling on a sudden onset after quiet frames (transient response preserved)', () => {
+        const state = createVisualizerState();
+
+        // Long quiet stretch: envelope decays to its floor.
+        heightsAfterFrames(state, () => makeSilence(), 100);
+
+        // Sudden loud onset: within a handful of frames the height should climb
+        // close to the ceiling, since the envelope hasn't caught up yet.
+        const heights = heightsAfterFrames(state, () => makeBroadbandLoud(), 5);
+
+        heights.forEach((h) => {
+            expect(h).toBeGreaterThan(18);
+        });
+    });
 });
+
+/** Feeds `frames` frames of `makeFrame()` through state, returning the final heights. */
+function heightsAfterFrames(state: ReturnType<typeof createVisualizerState>, makeFrame: () => Uint8Array, frames: number): number[] {
+    let heights: number[] = state.lastHeights.slice();
+    for (let i = 0; i < frames; i++) {
+        heights = computeBarHeights(makeFrame(), SAMPLE_RATE, FFT_SIZE, state, 16.7);
+    }
+    return heights;
+}
