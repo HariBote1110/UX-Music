@@ -13,7 +13,7 @@ let lastFrameTime = 0;
 let visualizerObserver = null;
 let isVisualizerVisible = false;
 let isEcoModeEnabled = true;
-const GO_VISUALIZER_FETCH_INTERVAL_MS = 80;
+const GO_VISUALIZER_FETCH_INTERVAL_MS = 40;
 
 /**
  * ビジュアライザーの描画ループを開始する
