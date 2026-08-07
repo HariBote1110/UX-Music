@@ -1,5 +1,6 @@
 # Progress Index
 
+- [visualizer-perceptual-mapping.md](visualizer-perceptual-mapping.md) — ビジュアライザーのバー高さマッピングを聴覚特性ベースに刷新: 連続対数バンド(40/150/450/1400/4000/9000/16000Hz)のビン平均、ノイズフロア0.22でのゲート、dB領域向けのゆるいカーブ(pow 1.1)、等ラウドネス補正ゲイン、アタック0.55/リリース0.18の非対称スムージング（フレームレート非依存化）に置き換え、中央バー強調のsine乗数を撤去。純粋関数`computeBarHeights`を`visualizer-mapping.ts`へ切り出しTDDで実装
 - [visualizer-fft-normalisation.md](visualizer-fft-normalisation.md) — デスクトップ版ビジュアライザーのバー張り付きバグを修正: `calculateFFT` が未正規化FFTマグニチュードをdB変換していたため常に255に張り付いていた問題を、FFTサイズによる正規化とリニア領域での時間平滑化（AnalyserNode相当）で解消。合わせてGoデータ取得間隔を80ms→40msに短縮
 - [mobile-library-ui.md](mobile-library-ui.md) — （追記 2026-08-07）ライブラリ行を角丸カードから全幅ベタ塗り（`LibraryListRowStyle`）＋固定行高へ、アルバム連結線を純粋関数 `AlbumGroupConnector` 化して行をまたいで連続表示、セグメント切替を paged `TabView` のスワイプに変更し競合する行スワイプを全廃（削除・キュー操作は長押しメニューへ集約）、For You 廃止、`.segmented` の等幅配分による文字切れを避けるため Picker を全幅の独立行に分離しアクセサリを検索行へ移動
 - [mobile-desktop-parity-features.md](mobile-desktop-parity-features.md) — Mobile版 Desktop機能パリティ: 和訳表示（Desktopの`.ja.lrc`サイドカーをLAN APIで配信・`BilingualLyricsDisplayMode`を並行追加）、For You（`/v1/remote/situation-playlists`新設・生成ロジックはWails版と共有）、シャッフル/リピート（Watch側純粋ロジックの汎用化・リピートOFF不可の不具合も解消）、キュー編集、検索、ソート、アーティストビュー、Desktop準拠のアルバム単位アートワークまとめ表示とナビ再編の判断記録
