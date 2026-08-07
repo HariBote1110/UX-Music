@@ -4,12 +4,14 @@ import { elements, state } from '../core/state.js';
 import { analyser, dataArray, resumeAudioContext } from './audio-graph.js';
 import { isPlaying } from './player.js';
 import { getWailsApp } from '../core/bridge.js';
+import { computeBarHeights } from './visualizer-mapping.js';
 
 let visualizerFrameId = null;
 let currentVisualizerBars = null;
 let observedTarget = null;
 const lastHeights = new Array(6).fill(4);
 let lastFrameTime = 0;
+let lastDrawTimestamp = 0;
 let visualizerObserver = null;
 let isVisualizerVisible = false;
 let isEcoModeEnabled = true;
@@ -20,6 +22,7 @@ const GO_VISUALIZER_FETCH_INTERVAL_MS = 40;
  */
 export function startVisualizerLoop() {
     lastHeights.fill(4);
+    lastDrawTimestamp = 0;
 
     if (window.go && goFetchIntervalId == null) {
         goFetchIntervalId = setInterval(() => {
@@ -234,48 +237,13 @@ function draw(timestamp) {
     }
 
     if (currentVisualizerBars && sourceData) {
-        // iPhoneスタイルの対数スケール周波数配分
-        // サンプルレート48kHz、FFTサイズ256の場合、各binは約187.5Hzの帯域幅
-        // ターゲット周波数: 60Hz(低音), 250Hz, 1kHz, 4kHz, 8kHz, 16kHz(高音)
-        // 対数スケールで均等に分散
-        const targetFrequencies = [60, 250, 1000, 4000, 8000, 16000];
-        const binWidth = sampleRate / fftSize;
+        // 聴覚特性ベースのマッピング（対数バンドのエネルギー平均 → ノイズゲート →
+        // 等ラウドネス補正 → アタック/リリース非対称スムージング）は
+        // visualizer-mapping.js に切り出し、単体テスト可能にしている。
+        const dtMs = lastDrawTimestamp === 0 ? 16.7 : timestamp - lastDrawTimestamp;
+        lastDrawTimestamp = timestamp;
 
-        // 各ターゲット周波数に対応するビンインデックスを計算
-        // 低周波数帯域では複数のビンを平均化してより滑らかな表示を実現
-        const heights = targetFrequencies.map((freq, i) => {
-            const centerBin = Math.round(freq / binWidth);
-
-            // 周波数帯域に応じてビン範囲を調整（低音は広く、高音は狭く）
-            const binRange = Math.max(1, Math.floor(3 - i * 0.4));
-
-            // Goデータの場合、ビン配列の範囲内かチェック
-            if (centerBin >= sourceData.length) return 4;
-
-            const startBin = Math.max(0, centerBin - binRange);
-            const endBin = Math.min(sourceData.length - 1, centerBin + binRange);
-
-            // 範囲内のビンの平均値を計算
-            let sum = 0;
-            let count = 0;
-            for (let b = startBin; b <= endBin; b++) {
-                sum += sourceData[b];
-                count++;
-            }
-            const avgValue = count > 0 ? sum / count / 255 : 0;
-
-            // べき乗でダイナミクスを調整（低めの値を強調）
-            const scaledValue = Math.pow(avgValue, 1.4);
-
-            // 中央のバーを少し強調（視覚的なバランス調整）
-            const multiplier = 1 + Math.sin((i / (targetFrequencies.length - 1)) * Math.PI) * 0.3;
-            const targetHeight = (scaledValue * multiplier * 12) + 4;
-
-            // スムージング（前フレームとの補間）
-            const newHeight = lastHeights[i] * 0.4 + targetHeight * 0.6;
-            lastHeights[i] = newHeight;
-            return Math.min(20, Math.max(4, newHeight));
-        });
+        const heights = computeBarHeights(sourceData, sampleRate, fftSize, lastHeights, dtMs);
 
         currentVisualizerBars.forEach((bar, index) => {
             const newHeightPx = `${heights[index]}px`;
