@@ -185,6 +185,7 @@ type Player struct {
 	fftLocalBuf []float64      // Local buffer for collecting samples
 	fftChan     chan []float64 // Channel for async FFT processing
 	fftMonoPool sync.Pool      // Reusable mono sample slices (avoids alloc in processAudio)
+	fftSmoothed []float64      // Linear-domain smoothed magnitudes (AnalyserNode-style temporal smoothing)
 
 	// Equaliser
 	eqSettingsMu sync.RWMutex
@@ -241,6 +242,7 @@ func (p *Player) initFFT(size int) {
 	p.fftSize = size
 	p.fftSamples = make([]float64, 0, size)
 	p.fftResult = make([]uint8, size/2)
+	p.fftSmoothed = make([]float64, size/2)
 	p.fftWindow = make([]float64, size)
 	p.fftLocalBuf = make([]float64, 0, size) // Local buffer for batch collection
 	p.fftChan = make(chan []float64, 4)      // Buffered channel for async FFT
@@ -845,12 +847,25 @@ func (p *Player) calculateFFT(input []float64) {
 
 	// Convert to magnitude and scale to 0-255
 	// We only need first half (Nyquist)
+	//
+	// fft.FFTReal returns UNNORMALISED magnitudes (they scale with fftSize),
+	// so we divide by fftSize to mimic WebAudio's AnalyserNode, which
+	// normalises internally before the dB conversion. Without this, typical
+	// music produces magnitudes in the hundreds, 20*log10(mag) is positive,
+	// and every bin clamps to maxDecibels -> the visualiser bars peg at 255
+	// and appear frozen.
+	//
+	// We then apply AnalyserNode-style temporal smoothing in the LINEAR
+	// magnitude domain (smoothingTimeConstant-equivalent, k=0.8) before
+	// converting to dB, so bars decay smoothly instead of jumping frame to
+	// frame.
+	const smoothingFactor = 0.8
 	for i := 0; i < len(p.fftResult) && i < len(fftRes); i++ {
-		mag := cmplx.Abs(fftRes[i])
+		mag := cmplx.Abs(fftRes[i]) / float64(p.fftSize)
 
-		// Log scale mapping simluating AnalyserNode
-		// mag approaches 0 -> -inf dB
-		// mag ~ 1 -> 0 dB? (depends on normalization)
+		smoothed := smoothingFactor*p.fftSmoothed[i] + (1-smoothingFactor)*mag
+		p.fftSmoothed[i] = smoothed
+		mag = smoothed
 
 		var db float64
 		if mag > 0 {
