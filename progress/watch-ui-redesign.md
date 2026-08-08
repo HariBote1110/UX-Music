@@ -25,3 +25,8 @@
 - Crown フォーカスは `WKInterfaceVolumeControl.focus()`（watchOS 6.0+）を `Coordinator` から一度だけ呼ぶ方式。`SystemVolumeControl` に `autoFocusesCrown` パラメータを追加して共有部品化（キューページは false、Now Playing は true）。
 - **シャッフル/リピートをデスクトップ版 SVG（`random.svg`/`repeat.svg`）で大型化**。SVG はアセットカタログに `preserves-vector-representation` + `template-rendering-intent: template` でそのまま取り込めた（`currentColor` ストロークでも問題なし。actool 警告ゼロ、Assets.car 内の実ピクセルまで検証済み）。「1曲リピート」はデスクトップに変種がないため、リピートアイコン＋小さな「1」バッジで表現。
 - 未再生時の背景はデスクトップ既定アートワーク（`RemoteDefaultArtwork`）を再生時と同じスクリムで全面表示（ユーザー要望）。
+
+## 追記 (2026-08-08 第2ラウンド): 音量HUD・アイコンアニメーション・背景はみ出し修正
+- **音量はインライン行をやめ macOS（Sequoia 以前）風の縦型オーバーレイ HUD に**（ユーザー要望）。行を足した結果ページが縦に溢れてスクロール化したため。Crown→音量は不可視の `SystemVolumeControl` が担い、表示は `AVAudioSession.outputVolume` の KVO（`WatchVolumeHUD.swift`）。変化時のみ表示・1.2秒でフェードアウト、`allowsHitTesting(false)` でレイアウト非干渉。
+- **シャッフル/リピートの静的 SVG アセットは廃止し、SwiftUI `Path` + `StrokeStyle.dashPhase` アニメーションで Desktop の動きを移植**。静的画像では「ストロークがパスに沿ってスライドする」動き（Desktop の売り）は再現不可能。パラメータは Desktop `player-ui.ts` と同一（standard=100/exit=130/enter=-30、dashArray=[len, len*3]、退場200ms ease-in→無アニメーションワープ→再入場400ms cubic-bezier(0.16,1,0.3,1)、シャッフル下線120ms遅延、リピート上下弧逆方向）。パス長近似・オフセット計算は `Core/ModeIconAnimationMaths.swift` に純関数化しテスト11件（app/Watch 両ターゲットで共有）。
+- **ページスワイプ時に背景ジャケットの断片が隣ページに見える問題の真因は `scaledToFill` の非クリップはみ出し**。paged `TabView` は遷移中に隣ページを描くため、フレーム＋`.clipped()` なしの fill 画像はページ境界を越えて見える。`GeometryReader`（自身に `.ignoresSafeArea()`）でページ実寸を取り、明示フレーム＋`.clipped()` で解決。
