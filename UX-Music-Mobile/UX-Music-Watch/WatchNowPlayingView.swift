@@ -6,8 +6,11 @@ import UIKit
 /// (with a dark scrim so text stays legible), matching watchOS's own Music app Now Playing screen,
 /// rather than a small foreground artwork tile. The progress bar is display-only — seeking via the
 /// Digital Crown was deliberately dropped (prev/next remain the only way to change tracks) — and the
-/// Crown instead drives the system volume row below the shuffle/repeat controls, matching how
-/// Apple's own Music app dedicates the Crown to volume on its Now Playing screen.
+/// Crown instead drives the system volume, matching how Apple's own Music app dedicates the Crown
+/// to volume on its Now Playing screen. There is no visible volume row (an earlier version had one,
+/// but it pushed the page past 45mm-screen height); instead a `SystemVolumeControl` sized down to
+/// near-nothing keeps Crown focus, and `WatchVolumeHUDOverlay` shows a transient macOS-style
+/// vertical gauge whenever the level actually changes — see `WatchVolumeHUD.swift`.
 struct WatchNowPlayingView: View {
     @EnvironmentObject private var player: WatchAudioPlayerService
     @EnvironmentObject private var library: WatchLocalLibrary
@@ -15,6 +18,8 @@ struct WatchNowPlayingView: View {
     /// position tick — see `WatchPlaybackProgress`'s doc comment for why that split fixes the
     /// stutter that used to happen when swiping between Library and Now Playing.
     @EnvironmentObject private var progress: WatchPlaybackProgress
+
+    @StateObject private var volumeObserver = WatchVolumeObserver()
 
     private var duration: Double { max(player.currentSong?.duration ?? 0, 1) }
 
@@ -31,9 +36,25 @@ struct WatchNowPlayingView: View {
         ZStack {
             backgroundArtwork
             content
+            hiddenCrownVolumeControl
+            WatchVolumeHUDOverlay(level: volumeObserver.level)
         }
         .onAppear { refreshCachedArtworkIfNeeded() }
         .onChange(of: player.currentSong?.id) { _, _ in refreshCachedArtworkIfNeeded() }
+    }
+
+    /// `SystemVolumeControl` shrunk to near-invisibility rather than removed outright: its whole
+    /// purpose here is to keep taking Digital Crown focus (`autoFocusesCrown: true`) so rotating
+    /// the Crown adjusts system volume without a visible control cluttering the page — the visible
+    /// feedback comes entirely from `WatchVolumeHUDOverlay` above, driven by the KVO-observed
+    /// `outputVolume` change that the Crown rotation causes. Sized to 1×1 with near-zero (not
+    /// literally zero) opacity, since a fully invisible/zero-opacity control risks not being
+    /// eligible to take Crown focus on some watchOS versions.
+    private var hiddenCrownVolumeControl: some View {
+        SystemVolumeControl(autoFocusesCrown: true)
+            .frame(width: 1, height: 1)
+            .opacity(0.02)
+            .accessibilityHidden(true)
     }
 
     /// Full-bleed background: the cached artwork scaled to fill the page, with a dark scrim so the
@@ -179,21 +200,6 @@ struct WatchNowPlayingView: View {
                         repeatIcon
                     }
                     .buttonStyle(.plain)
-                }
-
-                // Slim system volume row: the Digital Crown's sole job on this page (see the
-                // type-level doc comment) is adjusting volume, not seeking. `autoFocusesCrown`
-                // requests Crown focus for this specific control as soon as it appears, so rotating
-                // the Crown here changes the volume immediately without needing a tap first.
-                HStack(spacing: 4) {
-                    Image(systemName: "speaker.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.6))
-                    SystemVolumeControl(autoFocusesCrown: true)
-                        .frame(height: 26)
-                    Image(systemName: "speaker.wave.3.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.6))
                 }
             }
             .padding()
