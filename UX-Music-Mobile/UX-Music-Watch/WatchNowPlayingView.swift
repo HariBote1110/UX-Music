@@ -4,9 +4,10 @@ import UIKit
 /// Now Playing page: always reachable via the paged `TabView` in `WatchRootView`, regardless of
 /// what is selected on the Library page. The cached artwork fills the whole page as a background
 /// (with a dark scrim so text stays legible), matching watchOS's own Music app Now Playing screen,
-/// rather than a small foreground artwork tile. Seeking is driven by the Digital Crown rather than
-/// a slider — dragging a thin watchOS slider is unreliable, whereas the Crown is the platform's
-/// standard scrubbing input (used by Apple's own Podcasts/Music apps).
+/// rather than a small foreground artwork tile. The progress bar is display-only — seeking via the
+/// Digital Crown was deliberately dropped (prev/next remain the only way to change tracks) — and the
+/// Crown instead drives the system volume row below the shuffle/repeat controls, matching how
+/// Apple's own Music app dedicates the Crown to volume on its Now Playing screen.
 struct WatchNowPlayingView: View {
     @EnvironmentObject private var player: WatchAudioPlayerService
     @EnvironmentObject private var library: WatchLocalLibrary
@@ -15,23 +16,7 @@ struct WatchNowPlayingView: View {
     /// stutter that used to happen when swiping between Library and Now Playing.
     @EnvironmentObject private var progress: WatchPlaybackProgress
 
-    /// Local seek target driven by the Crown. Mirrors `progress.position` while idle; diverges
-    /// only while the user is actively rotating the Crown, so the displayed time updates instantly
-    /// without seeking the `AVPlayer` on every intermediate tick.
-    @State private var crownPosition: Double = 0
-    @State private var isSeeking = false
-    @State private var seekCommitTask: Task<Void, Never>?
-    /// Set right before `crownPosition` is assigned *programmatically* (`onAppear`, track change) so
-    /// the `onChange(of: crownPosition)` handler below can tell that sync apart from an actual Crown
-    /// rotation. Without this, syncing `crownPosition = progress.position` on appear/track-change
-    /// itself counts as a "change" and the handler flags it as a user seek — starting the 400ms
-    /// debounce and switching the progress tint to orange for that stretch even though the user
-    /// never touched the Crown. That is the visible "briefly orange, then blue" flash reported on
-    /// the progress bar.
-    @State private var isSyncingCrownProgrammatically = false
-
     private var duration: Double { max(player.currentSong?.duration ?? 0, 1) }
-    private var displayedPosition: Double { isSeeking ? crownPosition : progress.position }
 
     /// Decoded artwork for `player.currentSong`, cached so it is only re-read from disk and
     /// re-decoded when the track actually changes — not on every body evaluation. This view also
@@ -133,14 +118,15 @@ struct WatchNowPlayingView: View {
                 }
 
                 if player.currentSong != nil {
+                    // Display-only: no Crown/tap seeking — see the type-level doc comment for why.
                     VStack(spacing: 2) {
-                        ProgressView(value: displayedPosition, total: duration)
+                        ProgressView(value: progress.position, total: duration)
                             .progressViewStyle(.linear)
-                            .tint(isSeeking ? .orange : .white)
+                            .tint(.blue)
                         HStack {
-                            Text(formatTime(displayedPosition))
+                            Text(formatTime(progress.position))
                             Spacer()
-                            Text("-\(formatTime(max(duration - displayedPosition, 0)))")
+                            Text("-\(formatTime(max(duration - progress.position, 0)))")
                         }
                         .font(.system(size: 9))
                         .foregroundStyle(.white.opacity(0.7))
@@ -181,46 +167,25 @@ struct WatchNowPlayingView: View {
                     }
                     .buttonStyle(.plain)
                 }
+
+                // Slim system volume row: the Digital Crown's sole job on this page (see the
+                // type-level doc comment) is adjusting volume, not seeking. `autoFocusesCrown`
+                // requests Crown focus for this specific control as soon as it appears, so rotating
+                // the Crown here changes the volume immediately without needing a tap first.
+                HStack(spacing: 4) {
+                    Image(systemName: "speaker.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.6))
+                    SystemVolumeControl(autoFocusesCrown: true)
+                        .frame(height: 26)
+                    Image(systemName: "speaker.wave.3.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
             }
             .padding()
         }
         .scrollBounceBehavior(.basedOnSize)
-        .focusable()
-        .digitalCrownRotation(
-            $crownPosition,
-            from: 0,
-            through: duration,
-            by: 1,
-            sensitivity: .medium,
-            isContinuous: false
-        )
-        .onChange(of: crownPosition) { _, newValue in
-            // A programmatic sync (`onAppear`/track change, below) assigns `crownPosition` too and
-            // must not be mistaken for a user seek — see `isSyncingCrownProgrammatically`'s doc
-            // comment.
-            guard !isSyncingCrownProgrammatically else {
-                isSyncingCrownProgrammatically = false
-                return
-            }
-            isSeeking = true
-            seekCommitTask?.cancel()
-            seekCommitTask = Task {
-                // Debounce: only commit the seek once the Crown has been still for a moment, so a
-                // long rotation does not spam `AVPlayer.seek` on every intermediate tick.
-                try? await Task.sleep(nanoseconds: 400_000_000)
-                guard !Task.isCancelled else { return }
-                player.seek(to: newValue)
-                isSeeking = false
-            }
-        }
-        .onChange(of: player.currentSong?.id) { _, _ in
-            isSyncingCrownProgrammatically = true
-            crownPosition = progress.position
-        }
-        .onAppear {
-            isSyncingCrownProgrammatically = true
-            crownPosition = progress.position
-        }
         .navigationTitle("再生中")
     }
 

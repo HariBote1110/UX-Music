@@ -40,12 +40,35 @@ struct WatchQueueVolumeView: View {
 /// is the only way to surface it. `.local` targets the Watch's own output, matching how this app
 /// always plays back through the Watch's own `AVAudioSession` (see `WatchAudioPlayerService`) rather
 /// than routing audio through the paired iPhone.
-private struct SystemVolumeControl: WKInterfaceObjectRepresentable {
+///
+/// Target-internal (not `private`) so `WatchNowPlayingView` can reuse the same control for its
+/// Digital Crown volume row — see that view's doc comment for why the Crown drives volume rather
+/// than seeking there.
+struct SystemVolumeControl: WKInterfaceObjectRepresentable {
+    /// When `true`, calls `WKInterfaceVolumeControl.focus()` once after the control first appears so
+    /// the Digital Crown drives it immediately without requiring a tap first. Used by
+    /// `WatchNowPlayingView`, where the Crown's sole job is now volume; left `false` here on the
+    /// Queue & Volume page, where the control sits above a scrollable queue list the Crown should
+    /// scroll by default.
+    var autoFocusesCrown: Bool = false
+
     func makeWKInterfaceObject(context: Context) -> WKInterfaceVolumeControl {
         WKInterfaceVolumeControl(origin: .local)
     }
 
-    func updateWKInterfaceObject(_ wkInterfaceObject: WKInterfaceVolumeControl, context: Context) {}
+    func updateWKInterfaceObject(_ wkInterfaceObject: WKInterfaceVolumeControl, context: Context) {
+        guard autoFocusesCrown, !context.coordinator.hasFocused else { return }
+        context.coordinator.hasFocused = true
+        wkInterfaceObject.focus()
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    /// Tracks whether `focus()` has already been requested, so it fires once (on first appearance)
+    /// rather than on every SwiftUI update pass.
+    final class Coordinator {
+        var hasFocused = false
+    }
 }
 
 #Preview {
