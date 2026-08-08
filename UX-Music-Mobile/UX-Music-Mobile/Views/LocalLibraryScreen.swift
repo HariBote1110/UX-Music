@@ -54,13 +54,13 @@ struct LocalLibraryScreen: View {
     }
 
     private var searchedAlbums: [Album] {
-        let albums = Album.fromSongs(downloaded)
+        let albums = model.albumSortOrder.sorted(Album.fromSongs(downloaded))
         guard !searchQuery.isEmpty else { return albums }
         return albums.filter { !SongSearchFilter.filter($0.songs, query: searchQuery).isEmpty }
     }
 
     private var searchedArtists: [Artist] {
-        let artists = Artist.fromSongs(downloaded)
+        let artists = model.artistSortOrder.sorted(Artist.fromSongs(downloaded))
         guard !searchQuery.isEmpty else { return artists }
         return artists.filter { !SongSearchFilter.filter($0.songs, query: searchQuery).isEmpty }
     }
@@ -173,18 +173,49 @@ struct LocalLibraryScreen: View {
         .background(Color.black)
     }
 
-    @ViewBuilder
+    /// Routes the shared search field to the right query for the current tab. Playlists filters by
+    /// playlist name rather than song tags (see `playlistQuery`'s declaration), everything else
+    /// shares `searchQuery`.
+    private var searchQueryBinding: Binding<String> {
+        viewMode == .playlists ? $playlistQuery : $searchQuery
+    }
+
+    private var searchPrompt: String {
+        viewMode == .playlists ? "プレイリストを検索" : "曲・アーティスト・アルバムを検索"
+    }
+
+    /// One `LibrarySearchRow` instance shared by every tab (rather than a separate instance per
+    /// `viewMode`, as this used to be) so paging between tabs updates only the accessory — see
+    /// `headerAccessory` — instead of tearing down and rebuilding the whole row, which is what made
+    /// the accessory icon pop in/out instead of animating. The field's prompt and bound query still
+    /// switch per tab, but that swap is instant (no `.animation` wraps this row), so it reads as an
+    /// ordinary state change rather than something visibly animating.
     private var searchRow: some View {
-        switch viewMode {
-        case .songs:
-            LibrarySearchRow(query: $searchQuery) { sortMenu }
-        case .albums, .artists:
-            LibrarySearchRow(query: $searchQuery) { emptyAccessory }
-        case .playlists:
-            LibrarySearchRow(query: $playlistQuery, prompt: "プレイリストを検索") {
-                playlistActionsMenu
+        LibrarySearchRow(query: searchQueryBinding, prompt: searchPrompt) {
+            headerAccessory
+        }
+    }
+
+    /// Cross-fades between the per-tab accessory buttons. Every tab shows a sort menu with the same
+    /// icon now except playlists (`ellipsis.circle`), so in practice this only visibly animates on
+    /// transitions into/out of the playlists tab. The `.animation` is scoped to this `ZStack` alone
+    /// (not to `searchRow`, which contains the search field and would otherwise animate too) —
+    /// see `searchRow`'s doc comment.
+    @ViewBuilder
+    private var headerAccessory: some View {
+        ZStack {
+            switch viewMode {
+            case .songs:
+                sortMenu.transition(.opacity)
+            case .albums:
+                albumSortMenu.transition(.opacity)
+            case .artists:
+                artistSortMenu.transition(.opacity)
+            case .playlists:
+                playlistActionsMenu.transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.18), value: viewMode)
     }
 
     @ViewBuilder
@@ -218,15 +249,44 @@ struct LocalLibraryScreen: View {
         playlistContent
     }
 
-    /// Reserved-but-empty accessory slot so every page's search field is the same width.
-    private var emptyAccessory: some View {
-        Color.clear.frame(width: 32, height: 32)
-    }
-
     private var sortMenu: some View {
         Menu {
             Picker("並び替え", selection: Bindable(model).librarySortOrder) {
                 ForEach(LibrarySortOrder.allCases) { order in
+                    Text(order.displayName).tag(order)
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down.circle")
+                .font(.system(size: 20))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+        }
+        .modifier(LibraryHeaderGlassButtonStyle())
+        .accessibilityLabel("並び替え")
+    }
+
+    private var albumSortMenu: some View {
+        Menu {
+            Picker("並び替え", selection: Bindable(model).albumSortOrder) {
+                ForEach(AlbumSortOrder.allCases) { order in
+                    Text(order.displayName).tag(order)
+                }
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down.circle")
+                .font(.system(size: 20))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+        }
+        .modifier(LibraryHeaderGlassButtonStyle())
+        .accessibilityLabel("並び替え")
+    }
+
+    private var artistSortMenu: some View {
+        Menu {
+            Picker("並び替え", selection: Bindable(model).artistSortOrder) {
+                ForEach(ArtistSortOrder.allCases) { order in
                     Text(order.displayName).tag(order)
                 }
             }
