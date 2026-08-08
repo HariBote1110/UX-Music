@@ -6,6 +6,8 @@ import (
 	"sync"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/lyricssync"
+	"ux-music-sidecar/internal/playlist"
+	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/pkg/audio"
 	"ux-music-sidecar/pkg/cdrip"
 	"ux-music-sidecar/pkg/mtp"
@@ -36,6 +38,9 @@ type App struct {
 
 // NewApp creates a new App struct
 func NewApp() *App {
+	playlist.SetSettingsProvider(store.Instance)
+	lyricssync.SetSettingsProvider(store.Instance)
+
 	return &App{
 		playCountsEmitter: func(ctx context.Context, name string, data interface{}) {
 			wailsRuntime.EventsEmit(ctx, name, data)
@@ -55,12 +60,13 @@ func (a *App) Startup(ctx context.Context) {
 	a.bindLyricsSyncProgressEmitter()
 
 	// Start the LAN HTTP server for Apple Watch / iPhone / Mobile companion
-	StartWearServer(ctx, a)
-	fmt.Printf("[Wear] Server address: %s\n", GetWearServerAddress())
+	StartLANServer(ctx, a)
+	fmt.Printf("[LAN] Server address: %s\n", GetLANServerAddress())
 
 	a.initOSMediaControls()
 
 	// Initialize Audio Player
+	audio.SetFFmpegPaths(config.FFmpegPath, config.FFprobePath)
 	player, err := audio.NewPlayer()
 	if err != nil {
 		println("Error initializing audio player:", err.Error())
@@ -108,5 +114,4 @@ func (a *App) bindLyricsSyncProgressEmitter() {
 }
 
 // pushDiscordPresence updates Discord Rich Presence state.
-// TODO: implement with internal/discord package.
 func (a *App) pushDiscordPresence(_ bool) {}

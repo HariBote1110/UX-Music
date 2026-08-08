@@ -25,6 +25,41 @@ func TestBuildMDNSText_includesSyncIdentity(t *testing.T) {
 	}
 }
 
+func TestBuildMDNSText_omitsCapabilitiesAndKeepsEachStringWithinDNSLimit(t *testing.T) {
+	text := BuildMDNSText(MDNSAdvertiseInfo{
+		DeviceID:        "dev_mac_mini",
+		DisplayName:     "Living Room Mac mini",
+		ProtocolVersion: "0.2",
+		SchemaVersion:   "2026-06-09",
+		Capabilities: []string{
+			"identity.v1",
+			"schema.v1",
+			"discovery.mdns.v1",
+			"pairing.code.v1",
+			"library.events.v1",
+			"library.snapshot.v1",
+			"library.asset-file.v1",
+			"library.artwork.v1",
+			"library.import.v1",
+			"library.storage-safety.v1",
+			"library.transfer-progress.v1",
+			"library.transcode.mp3-320.v1",
+			"library.auto-sync.v1",
+		},
+		Roles: []string{"LibraryHost", "PlaybackTarget", "Controller"},
+	})
+	values := mdnsTextMap(text)
+
+	if _, exists := values["capabilities"]; exists {
+		t.Fatalf("capabilities should be resolved via /sync/identity, not mDNS TXT: %#v", values)
+	}
+	for _, item := range text {
+		if len([]byte(item)) > 255 {
+			t.Fatalf("mDNS TXT item exceeds 255 bytes: len=%d item=%q", len([]byte(item)), item)
+		}
+	}
+}
+
 func TestNormaliseMDNSPeer_prefersIPv4AndParsesRoles(t *testing.T) {
 	peer := NormaliseMDNSPeer(MDNSServiceEntry{
 		Instance: "UX Music on Mac mini",

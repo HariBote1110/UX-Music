@@ -113,3 +113,32 @@ func TestPickRandomPick_ReturnsEmptyForSmallLibrary(t *testing.T) {
 		t.Fatalf("len = %d, want 0", len(got))
 	}
 }
+
+// TestGenerateSituationPlaylists_OrderAndOmitsEmpty は、Wails 版 GetSituationPlaylists
+// と LAN API ハンドラの両方が使う共有ロジックが、固定順序（最近追加→よく聴く→ランダム
+// ピック）で空バケットを省いて返すことを検証する。
+func TestGenerateSituationPlaylists_OrderAndOmitsEmpty(t *testing.T) {
+	songs := libSongs("a", "b", "c")
+	counts := map[string]interface{}{
+		"b": map[string]interface{}{"count": float64(3)},
+	}
+	got := generateSituationPlaylists(songs, counts)
+
+	// library has only 3 songs (< 5), so random pick is empty and must be omitted.
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2 (recently_added, most_played); got %+v", len(got), got)
+	}
+	if got[0].key != "recently_added" || got[0].name != "最近追加した曲" {
+		t.Fatalf("bucket[0] = %+v, want recently_added", got[0])
+	}
+	if got[1].key != "most_played" || got[1].name != "よく聴く曲" {
+		t.Fatalf("bucket[1] = %+v, want most_played", got[1])
+	}
+}
+
+func TestGenerateSituationPlaylists_EmptyLibraryYieldsNoBuckets(t *testing.T) {
+	got := generateSituationPlaylists(nil, nil)
+	if len(got) != 0 {
+		t.Fatalf("len = %d, want 0", len(got))
+	}
+}

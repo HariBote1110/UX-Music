@@ -5,6 +5,8 @@ import {
     buildLyricsTranslationPrompt,
     deriveLyricsFileBase,
     formatLrcTimestamp,
+    isBlankPrimaryLine,
+    isInterludeText,
     mergeLrcWithJaLrc,
     mergeLrcWithJaTxt,
     mergePlainTxtWithJa,
@@ -28,7 +30,40 @@ describe('parseLRC', () => {
     });
 });
 
+describe('isInterludeText', () => {
+    it('treats blank / whitespace as interlude', () => {
+        expect(isInterludeText('')).toBe(true);
+        expect(isInterludeText('   ')).toBe(true);
+        expect(isInterludeText(undefined)).toBe(true);
+    });
+
+    it('treats interlude markers as interlude (case-insensitive)', () => {
+        expect(isInterludeText('[間奏]')).toBe(true);
+        expect(isInterludeText(' [間奏] ')).toBe(true);
+        expect(isInterludeText('[interlude]')).toBe(true);
+        expect(isInterludeText('[INTERLUDE]')).toBe(true);
+        expect(isInterludeText('(interlude)')).toBe(true);
+    });
+
+    it('keeps real lyrics visible', () => {
+        expect(isInterludeText('Hello')).toBe(false);
+        expect(isInterludeText('間奏が終わる')).toBe(false);
+    });
+
+    it('is shared by isBlankPrimaryLine so markers count as blank', () => {
+        expect(isBlankPrimaryLine('[間奏]')).toBe(true);
+        expect(isBlankPrimaryLine('Hello')).toBe(false);
+    });
+});
+
 describe('mergeLrcWithJaLrc', () => {
+    it('drops Japanese on [間奏] interlude markers, not only blank lines', () => {
+        const en = parseLRC('[00:00.00]A\n[00:01.00][間奏]\n[00:02.00]C');
+        const ja = parseLRC('[00:00.00]あ\n[00:01.00]間奏\n[00:02.00]う');
+        const m = mergeLrcWithJaLrc(en, ja);
+        expect(m[1].translation).toBeUndefined();
+    });
+
     it('attaches by timestamp', () => {
         const en = parseLRC('[00:10.00]Hello');
         const ja = parseLRC('[00:10.00]こんにちは');
@@ -100,6 +135,16 @@ describe('buildLyricsTranslationPrompt', () => {
         expect(p).toContain('3. c');
         expect(p).toContain('2. [INTERLUDE:');
         expect(p).toMatch(/2\.\s+\[INTERLUDE:/);
+    });
+
+    it('treats existing [間奏] markers as interludes, not literal lyrics', () => {
+        const p = buildLyricsTranslationPrompt({
+            title: 'T',
+            artist: 'A',
+            lines: ['a', '[間奏]', 'c'],
+        });
+        expect(p).toContain('2. [INTERLUDE:');
+        expect(p).not.toMatch(/2\.\s+\[間奏\]/);
     });
 });
 

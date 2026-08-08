@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"ux-music-sidecar/internal/config"
+	"ux-music-sidecar/internal/pathutil"
 	"ux-music-sidecar/internal/scanner"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/pkg/audio"
@@ -270,12 +271,7 @@ func sanitiseFileName(name string) string {
 }
 
 func samePath(aPath, bPath string) bool {
-	aAbs, aErr := filepath.Abs(aPath)
-	bAbs, bErr := filepath.Abs(bPath)
-	if aErr != nil || bErr != nil {
-		return filepath.Clean(aPath) == filepath.Clean(bPath)
-	}
-	return filepath.Clean(aAbs) == filepath.Clean(bAbs)
+	return pathutil.SamePath(aPath, bPath)
 }
 
 func copyFile(src, dst string) error {

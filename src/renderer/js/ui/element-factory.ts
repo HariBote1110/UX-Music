@@ -34,6 +34,19 @@ function findArtworkFromSongIds(songIds = []) {
     return null;
 }
 
+export function songPlayCountValue(song, playCounts = state.playCounts) {
+    const path = typeof song?.path === 'string' ? song.path : '';
+    const localCount = path ? playCounts?.[path]?.count : undefined;
+    if (Number.isFinite(Number(localCount))) {
+        return Number(localCount);
+    }
+    const syncCount = song?.syncPlayCount?.count;
+    if (Number.isFinite(Number(syncCount))) {
+        return Number(syncCount);
+    }
+    return 0;
+}
+
 export function createSongItem(song, index, songList, options: { groupAlbumArt?: boolean } = {}) {
     const { groupAlbumArt = true } = options;
     const songIdentifier = song.id || song.path || '';
@@ -83,7 +96,7 @@ export function createSongItem(song, index, songList, options: { groupAlbumArt?:
         album: `<div class="song-album"><div class="marquee-wrapper"><div class="marquee-content"><span>${escapeHtml(song.album)}</span></div></div></div>`,
         hires: `<div class="song-hires">${hiResIconHTML}</div>`,
         duration: `<div class="song-duration"><span>${formatTime(song.duration || 0)}</span></div>`,
-        playCount: `<div class="song-play-count">${(state.playCounts && state.playCounts[song.path] && state.playCounts[song.path].count) || 0}</div>`,
+        playCount: `<div class="song-play-count">${songPlayCountValue(song)}</div>`,
     };
 
     const visibleCols = getVisibleColumns();

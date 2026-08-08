@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* http://localhost:* http://wails.localhost:* ws://127.0.0.1:* ws://localhost:* ws://wails.localhost:* wss://127.0.0.1:* wss://localhost:* wss://wails.localhost:*; img-src 'self' data: https: file: safe-artwork:; media-src 'self' file:; frame-src https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
+        content="default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* http://localhost:* http://wails.localhost:* ws://127.0.0.1:* ws://localhost:* ws://wails.localhost:* wss://127.0.0.1:* wss://localhost:* wss://wails.localhost:*; img-src 'self' data: https: file: safe-artwork:; media-src 'self' file:; frame-src http://127.0.0.1:* https://www.youtube.com https://songwhip.com/ https://linkco.re/ https://fanlink.to/ https://fanlink.tv/ https://lnk.to/;">
     <title>UX Music</title>
     <link rel="stylesheet" href="./styles/base.css">
     <link rel="stylesheet" href="./styles/layout.css">
@@ -54,10 +54,8 @@
                     </button>
                     <div id="library-actions-popup" class="hidden">
                         <button id="add-network-folder-btn" class="popup-action-button">ネットワークフォルダを追加</button>
-                        <button id="add-youtube-btn" class="popup-action-button hidden"
-                            data-feature="youtube">YouTubeリンクを追加</button>
-                        <button id="add-youtube-playlist-btn" class="popup-action-button hidden"
-                            data-feature="youtube">YouTubeプレイリストを追加</button>
+                        <button id="add-youtube-btn" class="popup-action-button">YouTubeリンクを追加</button>
+                        <button id="add-youtube-playlist-btn" class="popup-action-button">YouTubeプレイリストを追加</button>
                         <button id="set-library-btn" class="popup-action-button">ライブラリ場所設定</button>
                         <div class="popup-divider"></div>
                         <button id="normalize-view-btn" class="popup-action-button">音量をノーマライズ</button>
@@ -76,8 +74,13 @@
         <div id="resizer" class="resizer-vertical"></div>
         <div class="sidebar right-sidebar">
             <div id="now-playing-container">
-                <div id="now-playing-artwork-container">
-                    <img src="./assets/default_artwork.png" alt="Now Playing Artwork">
+                <div id="now-playing-artwork-slot">
+                    <div id="now-playing-artwork-container">
+                        <img src="./assets/default_artwork.png" alt="Now Playing Artwork">
+                    </div>
+                    <button id="now-playing-fullscreen-btn" type="button" aria-label="フルスクリーンで表示" title="フルスクリーンで表示">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+                    </button>
                 </div>
                 <div id="now-playing-details">
                     <h2 id="now-playing-title" class="marquee-wrapper">
@@ -260,16 +263,69 @@
                         <button id="manage-devices-btn" class="settings-button">表示するデバイスを管理...</button>
                     </div>
                 </div>
-                <div class="setting-group" id="wear-mobile-pairing-group">
+                <div class="setting-group" id="ai-audio-embed-group">
+                    <div class="setting-item">
+                        <h4>AI 音声解析 (Beta)</h4>
+                        <p class="setting-description">
+                            ライブラリの曲を CLAP で解析して、テキストでムード検索できるようにします (例: 「夜ドライブ」「切ない」)。
+                            初回はモデルロード ~5秒、1曲あたり ~2秒。Mac のみ。
+                        </p>
+                        <p id="ai-audio-embed-status" class="setting-description" aria-live="polite">確認中…</p>
+                        <button id="ai-audio-embed-analyse-btn" type="button" class="settings-button">ライブラリを解析</button>
+                        <div id="ai-audio-embed-progress-wrap" class="hidden" style="margin-top: 8px;">
+                            <div id="ai-audio-embed-progress-bar"
+                                style="height: 8px; background: #2a2a2a; border-radius: 4px; overflow: hidden;">
+                                <div id="ai-audio-embed-progress-fill"
+                                    style="height: 100%; width: 0%; background: #4a9eff; transition: width 0.2s;">
+                                </div>
+                            </div>
+                            <p id="ai-audio-embed-progress-text" class="setting-description"
+                                style="margin-top: 4px;"></p>
+                        </div>
+
+                        <div style="margin-top: 16px;">
+                            <p class="setting-description">ムードで検索:</p>
+                            <div style="display: flex; gap: 8px; margin-top: 4px;">
+                                <input type="text" id="ai-audio-embed-search-input"
+                                    placeholder="例: 夜ドライブ / 切ない J-POP"
+                                    style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; outline: none;">
+                                <button id="ai-audio-embed-search-btn" type="button"
+                                    class="settings-button">検索</button>
+                            </div>
+                            <ul id="ai-audio-embed-search-results"
+                                style="list-style: none; padding: 0; margin-top: 8px; max-height: 280px; overflow-y: auto;">
+                            </ul>
+
+                            <div id="ai-special-actions" class="hidden" style="margin-top: 12px;">
+                                <button id="ai-special-generate-btn" type="button" class="settings-button">
+                                    Gemma 4 E2B で特集化
+                                </button>
+                                <p id="ai-special-status" class="setting-description" aria-live="polite"
+                                    style="margin-top: 4px;"></p>
+                            </div>
+
+                            <div id="ai-special-result" class="hidden"
+                                style="margin-top: 12px; padding: 12px; background: #1e1e1e; border-radius: 6px;">
+                                <h5 id="ai-special-title"
+                                    style="margin: 0 0 6px 0; color: #4a9eff; font-size: 14px;"></h5>
+                                <p id="ai-special-description"
+                                    style="margin: 0 0 10px 0; font-size: 12px; color: #ccc; line-height: 1.6;"></p>
+                                <ol id="ai-special-tracks" style="margin: 0; padding-left: 20px; font-size: 12px;">
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-group" id="remote-mobile-pairing-group">
                     <div class="setting-item">
                         <h4>モバイルアプリ連携（QR）</h4>
                         <p class="setting-description">iPhone の UX Music アプリで Settings の「Pair with QR code」を選び、この QR
                             を読み取ります。デスクトップと iPhone を同じ Wi‑Fi に接続してください。</p>
-                        <div id="wear-pairing-qr-wrap" class="wear-pairing-qr-wrap hidden">
-                            <img id="wear-pairing-qr" alt="モバイル連携用 QR コード" width="220" height="220">
+                        <div id="remote-pairing-qr-wrap" class="remote-pairing-qr-wrap hidden">
+                            <img id="remote-pairing-qr" alt="モバイル連携用 QR コード" width="220" height="220">
                         </div>
-                        <p id="wear-pairing-url" class="wear-pairing-url" aria-live="polite"></p>
-                        <p id="wear-pairing-qr-error" class="wear-pairing-error hidden" role="alert"></p>
+                        <p id="remote-pairing-url" class="remote-pairing-url" aria-live="polite"></p>
+                        <p id="remote-pairing-qr-error" class="remote-pairing-error hidden" role="alert"></p>
                     </div>
                 </div>
                 <div class="setting-group" id="ux-sync-settings-entry-group">
@@ -375,29 +431,36 @@
                         </div>
                     </div>
                 </div>
-                <div class="setting-group hidden" data-feature="youtube">
+                <div class="setting-group">
                     <div class="setting-item">
                         <h4>YouTube再生モード</h4>
                         <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
                         <div class="radio-group">
-                            <label>
+                            <label class="hidden" data-feature="youtube-advanced">
                                 <input type="radio" name="youtube-mode" value="download">
                                 <div>
-                                    <strong>ダウンロードモード (推奨)</strong>
+                                    <strong>ダウンロードモード</strong>
                                     <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
                                 </div>
                             </label>
                             <label>
+                                <input type="radio" name="youtube-mode" value="embed">
+                                <div>
+                                    <strong>公式再生（推奨）</strong>
+                                    <small>YouTube の公式プレイヤーで再生します。再生数がカウントされ広告収益がクリエイターに入ります。イコライザー等はそのまま使えます。</small>
+                                </div>
+                            </label>
+                            <label class="hidden" data-feature="youtube-advanced">
                                 <input type="radio" name="youtube-mode" value="stream">
                                 <div>
                                     <strong>ストリーミングモード</strong>
-                                    <small>すぐに再生できますが、再生先の変更はできず、音と映像が同期されます。</small>
+                                    <small>すぐに再生できますが、非公式な再生のため再生数は増えません。再生先の変更はできず、音と映像が同期されます。</small>
                                 </div>
                             </label>
                         </div>
                     </div>
                 </div>
-                <div class="setting-group hidden" data-feature="youtube" id="youtube-quality-group">
+                <div class="setting-group hidden" data-feature="youtube-advanced" id="youtube-quality-group">
                     <div class="setting-item">
                         <h4>ダウンロード品質</h4>
                         <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>
@@ -611,6 +674,17 @@
                         </div>
                         <button id="ux-sync-discover-btn" type="button" class="settings-button">同期端末を探す</button>
                     </div>
+                    <div class="ux-sync-transfer-controls">
+                        <label for="ux-sync-manual-host-input">IP / ホスト</label>
+                        <input id="ux-sync-manual-host-input" class="ux-sync-transfer-select" type="text" inputmode="url" autocomplete="off" placeholder="192.168.0.143">
+                        <label for="ux-sync-manual-port-input">ポート</label>
+                        <input id="ux-sync-manual-port-input" class="ux-sync-transfer-select" type="number" min="1" max="65535" inputmode="numeric" placeholder="8765">
+                        <div class="ux-sync-transfer-actions">
+                            <button id="ux-sync-manual-connect-btn" type="button" class="settings-button">接続</button>
+                        </div>
+                    </div>
+                    <p id="ux-sync-manual-status" class="ux-sync-pairing-status" aria-live="polite"></p>
+                    <div id="ux-sync-manual-pairing-actions" class="ux-sync-pairing-actions"></div>
                     <div id="ux-sync-peer-list" class="ux-sync-peer-list" aria-live="polite"></div>
                 </section>
                 <section class="ux-sync-settings-panel hidden" data-ux-sync-panel="sync" aria-labelledby="ux-sync-transfer-heading">
@@ -625,7 +699,7 @@
                         <select id="ux-sync-transfer-peer-select" class="ux-sync-transfer-select">
                             <option value="">未選択</option>
                         </select>
-                        <label for="ux-sync-transfer-encoding-select">転送音質</label>
+                        <label for="ux-sync-transfer-encoding-select">転送時の音質</label>
                         <select id="ux-sync-transfer-encoding-select" class="ux-sync-transfer-select">
                             <option value="original">原本のまま</option>
                             <option value="mp3_320">MP3 320kbps</option>
@@ -649,6 +723,10 @@
                     <div class="ux-sync-transfer-controls">
                         <label for="ux-sync-min-free-space-gb-input">最低空き容量</label>
                         <input id="ux-sync-min-free-space-gb-input" class="ux-sync-transfer-select" type="number" min="0" max="1024" step="0.5" inputmode="decimal" value="5">
+                        <label for="ux-sync-cache-policy-select">キャッシュ方針</label>
+                        <select id="ux-sync-cache-policy-select" class="ux-sync-transfer-select"></select>
+                        <label for="ux-sync-preferred-format-select">優先フォーマット</label>
+                        <select id="ux-sync-preferred-format-select" class="ux-sync-transfer-select"></select>
                         <div class="ux-sync-transfer-actions">
                             <button id="ux-sync-storage-save-btn" type="button" class="settings-button">保存</button>
                         </div>

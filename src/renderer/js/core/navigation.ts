@@ -32,6 +32,33 @@ const OVERLAY_NAV_VIEWS = new Set([
     'mtp-transfer-view',
 ]);
 
+/** 戻るボタンの対象となる詳細ビュー */
+const DETAIL_VIEWS = new Set([
+    'album-detail-view',
+    'artist-detail-view',
+    'playlist-detail-view',
+]);
+
+interface ViewHistoryEntry {
+    viewId: string;
+    options: Record<string, unknown>;
+}
+
+/** 詳細ビューへ遷移した際の遷移元を積むナビゲーション履歴 */
+const viewHistory: ViewHistoryEntry[] = [];
+let currentViewEntry: ViewHistoryEntry | null = null;
+
+export function canGoBack() {
+    return viewHistory.length > 0;
+}
+
+/** 履歴上の一つ前のビューへ戻る */
+export async function goBack() {
+    const entry = viewHistory.pop();
+    if (!entry) return;
+    await showView(entry.viewId, { ...entry.options, isBackNavigation: true });
+}
+
 let viewSessionAbort: AbortController | null = null;
 
 function newViewSessionSignal(): AbortSignal {
@@ -107,6 +134,22 @@ export async function showView(viewId, options: Record<string, unknown> = {}) {
     if (viewId !== 'mtp-browser-view') stopMtpBrowser();
 
     const signal = newViewSessionSignal();
+
+    // ナビゲーション履歴の更新（オーバーレイ系ビューは履歴に関与しない）
+    const isBackNavigation = options.isBackNavigation === true;
+    if (!OVERLAY_NAV_VIEWS.has(viewId)) {
+        if (isBackNavigation) {
+            // goBack 由来: 履歴は goBack 側で pop 済み
+        } else if (DETAIL_VIEWS.has(viewId)) {
+            if (currentViewEntry) {
+                viewHistory.push(currentViewEntry);
+            }
+        } else {
+            // 一覧ビューへの通常遷移では履歴を破棄する
+            viewHistory.length = 0;
+        }
+        currentViewEntry = { viewId, options: { ...options, isBackNavigation: undefined } };
+    }
 
     state.activeViewId = viewId;
     elements.navLinks.forEach((l) => l.classList.remove('active'));

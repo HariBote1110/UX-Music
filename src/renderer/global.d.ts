@@ -15,6 +15,12 @@ type WailsAppBindings = {
   PullSyncLibraryAssets?: (baseUrl: string, limit: number) => Promise<unknown>;
   PushSyncLibraryAssets?: (baseUrl: string, limit: number) => Promise<unknown>;
   PushSyncLibraryAssetsWithOptions?: (baseUrl: string, limit: number, options: { encodingMode?: string }) => Promise<unknown>;
+  /** YouTube 公式再生（embed）の E2E 検証用（wails 再生成前でも参照できるよう optional で宣言）。 */
+  EmbedDebugLog?: (message: string) => Promise<void>;
+  GetE2EEmbedVideoID?: () => Promise<string>;
+  GetYouTubeEmbedURL?: (videoId: string) => Promise<string>;
+  /** 公式再生（embed）のラウドネス正規化用（wails 再生成前でも参照できるよう optional で宣言）。 */
+  GetYouTubeEmbedLoudness?: (videoId: string) => Promise<{ available: boolean; effectiveLoudnessLufs: number }>;
 };
 
 interface ElectronAPI {

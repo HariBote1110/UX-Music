@@ -120,7 +120,7 @@ func TestRefreshSyncRemoteCatalogStoresSnapshotAndPreservesExistingOnFailure(t *
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_portable",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host", "dev_stale": "tok_stale"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host", "dev_stale": "tok_stale"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestRefreshSyncRemoteCatalogStoresSnapshotAndPreservesExistingOnFailure(t *
 		t.Fatalf("seed stale catalog: %v", err)
 	}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		if r.Header.Get("Authorization") != "Bearer tok_host" {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -171,13 +171,20 @@ func TestDownloadSyncTrackImportsRemoteCatalogTrack(t *testing.T) {
 	newTempSyncStore(t)
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/assets/remote-track-1/file":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/assets/remote-track-1/file":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 			w.Header().Set("Content-Disposition", `attachment; filename="remote.flac"`)
 			_, _ = w.Write([]byte("remote-audio"))
+		case "/v1/sync/assets/remote-track-1/artwork":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Disposition", `attachment; filename="cover.webp"`)
+			_, _ = w.Write([]byte("remote-artwork"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -185,7 +192,7 @@ func TestDownloadSyncTrackImportsRemoteCatalogTrack(t *testing.T) {
 	defer remote.Close()
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_portable",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_host": "tok_host"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: remote.URL, Roles: []string{"LibraryHost"}}},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
@@ -223,6 +230,7 @@ func TestDownloadSyncTrackImportsRemoteCatalogTrack(t *testing.T) {
 	if imported["syncSourceDeviceId"] != "dev_host" || imported["syncSourceTrackId"] != "remote-track-1" {
 		t.Fatalf("expected imported sync source metadata, got %#v", imported)
 	}
+	requireSyncArtworkFiles(t, imported, "downloaded sync track")
 }
 
 func TestDownloadSyncTrackFailsWithoutReachablePeerOrToken(t *testing.T) {

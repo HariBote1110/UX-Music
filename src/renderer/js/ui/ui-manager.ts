@@ -10,11 +10,9 @@ import { getWailsApp, isWailsMode } from '../core/bridge.js';
 import { showNotification, hideNotification } from './notification.js';
 import { showContextMenu, formatBytes } from './utils.js';
 import {
-    rebuildLibraryIndexes,
+    mergeSongsIntoLibrary,
     groupLibraryByAlbum,
     groupLibraryByArtist,
-    upsertAlbumForSong,
-    upsertArtistForSong,
 } from '../core/library-model.js';
 import { loadNormalizedSettings } from '../core/settings-helpers.js';
 
@@ -289,32 +287,7 @@ export function addSongsToLibrary({ songs, albums, skipRender = false }: { songs
     }
 
     if (songs && songs.length > 0) {
-        if (state.libraryByPath.size === 0 || state.libraryById.size === 0) {
-            rebuildLibraryIndexes();
-        }
-
-        songs.forEach((newSong) => {
-            if (!newSong.id && newSong.path) {
-                newSong.id = newSong.path;
-            }
-            const existingSong = state.libraryByPath.get(newSong.path);
-            if (existingSong) {
-                Object.assign(existingSong, newSong);
-                fullRegroupNeeded = true;
-            } else {
-                state.library.push(newSong);
-                if (newSong.id) {
-                    state.libraryById.set(newSong.id, newSong);
-                }
-                if (newSong.path) {
-                    state.libraryByPath.set(newSong.path, newSong);
-                }
-                if (!migrationNeeded && !newSong.sourceURL) {
-                    upsertAlbumForSong(newSong);
-                    upsertArtistForSong(newSong);
-                }
-            }
-        });
+        fullRegroupNeeded = mergeSongsIntoLibrary(songs);
     }
 
     if (migrationNeeded || fullRegroupNeeded) {

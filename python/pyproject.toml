@@ -22,6 +22,29 @@ dependencies = [
 dev = [
   "pytest>=8.0",
 ]
+# ほとんどのテストは pytest と numpy だけで動く。torch/demucs を含む base
+# dependencies を入れずにテストを回すための軽量な extra。
+# `pip install --no-deps -e "." && pip install ".[test]"` 相当の使い方を想定。
+test = [
+  "pytest>=8.0",
+  "numpy",
+]
+# Phase 1 of markdown/ai-feature-special-plan.md: CLAP-based audio embeddings.
+# Installed on demand: `python/.venv/bin/pip install -e ".[audio-embed]"`.
+audio-embed = [
+  "laion-clap>=1.1.6",
+  "librosa>=0.10,<1",
+  "torchvision>=0.17,<1",
+]
+# Phase 3 of markdown/ai-feature-special-plan.md: Gemma 4 E2B via MLX-LM.
+# Installed on demand: `python/.venv/bin/pip install -e ".[gemma-special]"`.
+gemma-special = [
+  "mlx>=0.19",
+  "mlx-lm>=0.20",
+]
+
+[tool.setuptools]
+packages = ["lyrics_sync", "audio_embed"]
 
 [tool.pytest.ini_options]
 markers = [

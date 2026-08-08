@@ -189,6 +189,29 @@ export namespace lyricssync {
 
 }
 
+export namespace moodspecial {
+	
+	export class Feature {
+	    title: string;
+	    description: string;
+	    orderedTrackIds: string[];
+	    perTrackComments: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new Feature(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.description = source["description"];
+	        this.orderedTrackIds = source["orderedTrackIds"];
+	        this.perTrackComments = source["perTrackComments"];
+	    }
+	}
+
+}
+
 export namespace mtp {
 	
 	export class DeleteOptions {
@@ -469,6 +492,58 @@ export namespace scanner {
 
 export namespace server {
 	
+	export class AudioEmbedAnalyseResponse {
+	    considered: number;
+	    skipped: number;
+	    analysed: number;
+	    failed: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AudioEmbedAnalyseResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.considered = source["considered"];
+	        this.skipped = source["skipped"];
+	        this.analysed = source["analysed"];
+	        this.failed = source["failed"];
+	        this.error = source["error"];
+	    }
+	}
+	export class AudioEmbedSearchHit {
+	    trackId: string;
+	    path: string;
+	    score: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AudioEmbedSearchHit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.trackId = source["trackId"];
+	        this.path = source["path"];
+	        this.score = source["score"];
+	    }
+	}
+	export class AudioEmbedStatus {
+	    stored: number;
+	    version: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AudioEmbedStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stored = source["stored"];
+	        this.version = source["version"];
+	        this.error = source["error"];
+	    }
+	}
 	export class AudioEqualizerSettings {
 	    active: boolean;
 	    preamp: number;
@@ -524,11 +599,11 @@ export namespace server {
 	    freeSpaceBytes?: number;
 	    minFreeSpaceBytes?: number;
 	    errors?: string[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncAutoResult(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.checkedDevices = source["checkedDevices"];
@@ -552,11 +627,11 @@ export namespace server {
 	    roles?: string[];
 	    paired: boolean;
 	    lastSeenAt?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncDeviceRecord(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.deviceId = source["deviceId"];
@@ -615,11 +690,11 @@ export namespace server {
 	    failed: number;
 	    importedPaths: string[];
 	    errors?: string[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncPullResult(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.remoteDeviceId = source["remoteDeviceId"];
@@ -640,11 +715,11 @@ export namespace server {
 	    encodingMode: string;
 	    importedPaths: string[];
 	    errors?: string[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncPushResult(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.remoteDeviceId = source["remoteDeviceId"];
@@ -657,20 +732,49 @@ export namespace server {
 	        this.errors = source["errors"];
 	    }
 	}
+	export class SyncTrackRef {
+	    sourceDeviceId: string;
+	    sourceTrackId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncTrackRef(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceDeviceId = source["sourceDeviceId"];
+	        this.sourceTrackId = source["sourceTrackId"];
+	    }
+	}
 	export class SyncTransferOptions {
 	    encodingMode: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncTransferOptions(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.encodingMode = source["encodingMode"];
 	    }
 	}
+	export class YouTubeEmbedLoudness {
+	    available: boolean;
+	    effectiveLoudnessLufs: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new YouTubeEmbedLoudness(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.effectiveLoudnessLufs = source["effectiveLoudnessLufs"];
+	    }
+	}
 
 }
+
 export namespace uxsync {
 	
 	export class MDNSPeer {
@@ -707,3 +811,4 @@ export namespace uxsync {
 	}
 
 }
+

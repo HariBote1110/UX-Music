@@ -10,8 +10,8 @@ require (
 	github.com/go-audio/wav v1.1.0
 	github.com/google/uuid v1.6.0
 	github.com/gordonklaus/portaudio v0.0.0-20250206071425-98a94950218b
+	github.com/grandcat/zeroconf v1.0.0
 	github.com/hajimehoshi/go-mp3 v0.3.4
-	github.com/hugolgst/rich-go v0.0.0-20240715122152-74618cc1ace2
 	github.com/kkdai/youtube/v2 v2.10.5
 	github.com/mewkiz/flac v1.0.13
 	github.com/mjibson/go-dsp v0.0.0-20180508042940-11479a337f12
@@ -31,7 +31,6 @@ require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/pprof v0.0.0-20250208200701-d0013a598941 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/grandcat/zeroconf v1.0.0 // indirect
 	github.com/icza/bitio v1.1.0 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
 	github.com/labstack/echo/v4 v4.13.3 // indirect
@@ -57,5 +56,4 @@ require (
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
-	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 )

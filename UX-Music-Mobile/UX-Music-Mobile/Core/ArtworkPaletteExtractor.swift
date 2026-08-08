@@ -52,7 +52,7 @@ enum ArtworkPaletteExtractor {
     private static func fetchData(from url: URL) async throws -> Data {
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
-        let (data, response) = try await WearLANURLSession.shared.data(for: request)
+        let (data, response) = try await RemoteLANURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200 ... 299).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }

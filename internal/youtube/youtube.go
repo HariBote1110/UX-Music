@@ -164,8 +164,18 @@ func buildCaptionTrackInfoList(tracks []youtube.CaptionTrack) []CaptionTrackInfo
 	return infos
 }
 
+// zeroWidthReplacer はカラオケ風字幕が装飾として挿入するゼロ幅文字を除去する。
+// これらは Unicode 上の空白として扱われず strings.Fields では落ちないため、
+// 明示的に取り除かないと歌詞テキストに残ってしまう。
+var zeroWidthReplacer = strings.NewReplacer(
+	"\u200b", "", // ZERO WIDTH SPACE
+	"\u200c", "", // ZERO WIDTH NON-JOINER
+	"\u200d", "", // ZERO WIDTH JOINER
+	"\ufeff", "", // ZERO WIDTH NO-BREAK SPACE (BOM)
+)
+
 func sanitiseTranscriptText(text string) string {
-	unescaped := html.UnescapeString(text)
+	unescaped := zeroWidthReplacer.Replace(html.UnescapeString(text))
 	fields := strings.Fields(strings.ReplaceAll(unescaped, "\n", " "))
 	return strings.TrimSpace(strings.Join(fields, " "))
 }
@@ -231,6 +241,17 @@ func appendTranscriptSegment(result youtube.VideoTranscript, startMs int, durati
 	text := sanitiseTranscriptText(rawText)
 	if text == "" {
 		return result
+	}
+
+	// カラオケ風に装飾された字幕は、同一の開始時刻・同一テキストの <p> を
+	// 縁取り用と塗り用の複数レイヤーとして重複出力することがある
+	// （例: youtube.com/watch?v=eghAYpSDtRw の en 字幕）。直前のセグメントと
+	// 開始時刻・テキストが一致する場合は同一行とみなし、二重登録を防ぐ。
+	if n := len(result); n > 0 {
+		last := result[n-1]
+		if last.StartMs == startMs && last.Text == text {
+			return result
+		}
 	}
 
 	return append(result, youtube.TranscriptSegment{
@@ -339,6 +360,25 @@ func loadTranscriptByTrack(ctx context.Context, track youtube.CaptionTrack) (you
 	return result, nil
 }
 
+// loadTranscriptForTrack は字幕トラックの本文を取得する。
+// トラックの BaseURL（kkdai が player 応答から得た新鮮な署名付き URL）への
+// 直接 GET を優先する。kkdai の GetTranscript は独自に timedtext URL を組み立てる
+// ため、署名やパラメータの鮮度差で HTTP 400 になることがあるため、直接 GET が
+// 失敗したときのみフォールバックとして使う。
+func loadTranscriptForTrack(client *youtube.Client, video *youtube.Video, track youtube.CaptionTrack) (youtube.VideoTranscript, error) {
+	if strings.TrimSpace(track.BaseURL) != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		transcript, err := loadTranscriptByTrack(ctx, track)
+		cancel()
+		if err == nil && len(transcript) > 0 {
+			return transcript, nil
+		}
+		fmt.Printf("[YouTube][Transcript] direct baseURL fetch failed lang=%q err=%v; fallback to GetTranscript\n",
+			strings.TrimSpace(track.LanguageCode), err)
+	}
+	return client.GetTranscript(video, strings.TrimSpace(track.LanguageCode))
+}
+
 func downloadTranscriptAsLRC(client *youtube.Client, video *youtube.Video, preference TranscriptPreference) (string, string, string) {
 	if video == nil || len(video.CaptionTracks) == 0 {
 		fmt.Println("[YouTube][Transcript] caption track unavailable")
@@ -413,7 +453,7 @@ func downloadTranscriptAsLRC(client *youtube.Client, video *youtube.Video, prefe
 		}
 		visited[lang] = true
 
-		transcript, err := client.GetTranscript(video, lang)
+		transcript, err := loadTranscriptForTrack(client, video, candidate.Track)
 		if err != nil || len(transcript) == 0 {
 			fmt.Printf("[YouTube][Transcript] fetch failed lang=%q err=%v\n", lang, err)
 			continue
@@ -607,6 +647,36 @@ func DownloadYouTubeVideo(videoURL string, destDir string, audioOnly bool, prefe
 	}, nil
 }
 
+// FetchTranscriptLRC は動画をダウンロードせずに字幕だけを取得し、
+// 同期歌詞（LRC 文字列）・採用言語・トラック vssId を返す。embed / stream
+// モードの登録時に、ダウンロード経路と同じ規則で LRC を用意するために使う。
+//
+// 取得経路について（2026-07-14 実測で確定）:
+//   - kkdai（ANDROID クライアント）の CaptionTrac[i].BaseURL を直接 GET する
+//     経路のみが timedtext 本文を安定して返す（例: eghAYpSDtRw で 20124 バイト）。
+//   - WEB ウォッチページ / WEB innertube から抽出した baseURL は status 200 でも
+//     本文 0 バイトで返る（proof-of-origin token が要求されるため）。よって WEB
+//     フォールバックは本文を得られず無意味なため実装しない。
+//   - ANDROID 応答に字幕トラックが載らない動画（例: 6LtrI3MOfQg）は headless では
+//     取得不可。その場合は空の LRC を返し、呼び出し側は歌詞なしで登録する。
+func FetchTranscriptLRC(videoURL string, preference TranscriptPreference) (lrc string, lang string, vssID string, err error) {
+	client := youtube.Client{}
+	preference = normaliseTranscriptPreference(preference)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	video, err := client.GetVideoContext(ctx, videoURL)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to get video: %w", err)
+	}
+
+	lrc, lang, vssID = downloadTranscriptAsLRC(&client, video, preference)
+	fmt.Printf("[YouTube][Transcript] streaming fetch url=%q hasLyrics=%v lang=%q vssId=%q\n",
+		videoURL, strings.TrimSpace(lrc) != "", lang, vssID)
+	return lrc, lang, vssID, nil
+}
+
 // DownloadThumbnail downloads a thumbnail image to the specified path
 func DownloadThumbnail(thumbnailURL string, destPath string) error {
 	resp, err := http.Get(thumbnailURL)
@@ -625,6 +695,37 @@ func DownloadThumbnail(thumbnailURL string, destPath string) error {
 	return err
 }
 
+// chooseStreamFormat はストリーミング再生に適したフォーマットを選ぶ。
+// 帯域を節約するため音声専用フォーマットの最高ビットレートを最優先し、
+// 音声専用が無い場合は音声を含む形式のうち最高ビットレートへフォールバックする。
+// 音声を含む形式が存在しない場合は nil を返す。
+func chooseStreamFormat(formats youtube.FormatList) *youtube.Format {
+	var audioOnly *youtube.Format
+	var withAudio *youtube.Format
+
+	for i := range formats {
+		f := &formats[i]
+		hasAudio := f.AudioChannels > 0 || strings.TrimSpace(f.AudioQuality) != ""
+		if !hasAudio {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(f.MimeType), "audio/") {
+			if audioOnly == nil || f.Bitrate > audioOnly.Bitrate {
+				audioOnly = f
+			}
+			continue
+		}
+		if withAudio == nil || f.Bitrate > withAudio.Bitrate {
+			withAudio = f
+		}
+	}
+
+	if audioOnly != nil {
+		return audioOnly
+	}
+	return withAudio
+}
+
 // GetYouTubeStreamURL returns a direct stream URL for the video
 func GetYouTubeStreamURL(videoURL string) (string, error) {
 	client := youtube.Client{}
@@ -637,12 +738,18 @@ func GetYouTubeStreamURL(videoURL string) (string, error) {
 		return "", fmt.Errorf("failed to get video: %w", err)
 	}
 
-	formats := video.Formats.WithAudioChannels()
-	formats.Sort()
-
-	if len(formats) == 0 {
-		return "", fmt.Errorf("no formats available")
+	format := chooseStreamFormat(video.Formats)
+	if format == nil {
+		return "", fmt.Errorf("no audio-capable formats available")
 	}
 
-	return formats[0].URL, nil
+	// URL が署名暗号化（signatureCipher）されている場合の復号も
+	// GetStreamURLContext が引き受けるため、Format.URL 直参照は避ける。
+	streamURL, err := client.GetStreamURLContext(ctx, video, format)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve stream url: %w", err)
+	}
+
+	fmt.Printf("[YouTube][Stream] resolved itag=%d mime=%q bitrate=%d\n", format.ItagNo, format.MimeType, format.Bitrate)
+	return streamURL, nil
 }

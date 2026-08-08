@@ -1,0 +1,164 @@
+name: test
+
+# 目的: 「テストが通っている」と「テストが一度も走っていない」を区別できるようにする。
+# このリポジトリには従来 CI が無く、その結果として
+#   - pytest に収集されないテストファイル
+#   - 常に失敗し続けるテストファイル
+#   - ビルドすら通らないテストパッケージ
+# が長期間気付かれずに残っていた。
+#
+# Linux 上で確実に動く 3 ジョブ（Go / renderer / Python）を必須ゲートとし、
+# macOS 必須のもの（Swift, CoreAudio）は別ジョブに分離している。
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Go: server / internal / pkg
+  # ---------------------------------------------------------------------------
+  go:
+    name: go test (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pkg/audio は portaudio を無条件 import しているため、
+      # これが無いとパッケージ全体がコンパイルできずテストが「存在しない」扱いになる。
+      - name: Install portaudio
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends portaudio19-dev
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/renderer/package-lock.json
+
+      # main.go の `//go:embed all:src/renderer/dist` を満たすために
+      # renderer を先にビルドする。これが無いと `go list ./...` 自体が失敗する。
+      - name: Build renderer dist (required by go:embed)
+        working-directory: src/renderer
+        run: |
+          npm ci
+          npm run build
+
+      # cmd/spike-* は CoreAudio 依存の macOS 専用スパイク、
+      # node_modules 配下は依存パッケージに同梱された Go コードなので除外する。
+      - name: Resolve package list
+        id: pkgs
+        run: |
+          PKGS=$(go list ./... | grep -v 'node_modules' | grep -v '/cmd/spike-' | tr '\n' ' ')
+          echo "list=$PKGS" >> "$GITHUB_OUTPUT"
+          echo "$PKGS"
+
+      # 現状 pkg/audio に既存の指摘（Seek(sample int64) error が io.Seeker の
+      # シグネチャと衝突している）が 7 件残っており、そのままだとここで止まる。
+      # 本番コードの修正は別件なので、解消するまでは情報提供に留める。
+      # 解消したら continue-on-error を外して必須ゲートに戻すこと。
+      - name: go vet
+        continue-on-error: true
+        run: go vet ${{ steps.pkgs.outputs.list }}
+
+      - name: go test (-race)
+        run: go test -race -count=1 ${{ steps.pkgs.outputs.list }}
+
+      # テスト間でプロセスグローバル（config.Instance / store.Instance）を
+      # 汚染していないことを担保する。順序依存のバグはこれでしか出ない。
+      - name: go test (-shuffle=on)
+        run: go test -count=1 -shuffle=on ${{ steps.pkgs.outputs.list }}
+
+  # ---------------------------------------------------------------------------
+  # renderer: TypeScript (vitest / jsdom)
+  # ---------------------------------------------------------------------------
+  renderer:
+    name: vitest (renderer)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/renderer
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/renderer/package-lock.json
+
+      - run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: vitest
+        run: npm run test
+
+  # ---------------------------------------------------------------------------
+  # Python: lyrics_sync / audio_embed のテスト
+  # ---------------------------------------------------------------------------
+  python:
+    name: pytest (lyrics-sync)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # base dependencies には torch / demucs / faster-whisper が含まれ数GBになる。
+      # 大半のテストは pytest + numpy だけで動くので、そこだけ入れる
+      # （pyproject.toml の [project.optional-dependencies].test と同じ構成）。
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest numpy
+
+      - name: pytest
+        run: python -m pytest python/tests -v
+
+  # ---------------------------------------------------------------------------
+  # macOS 専用: Swift サイドカー / iOS アプリ
+  # ---------------------------------------------------------------------------
+  # 注意: 下の 2 ジョブは Linux では検証できていない（初回実行で調整が必要かもしれない）。
+  # 上の 3 ジョブが必須ゲートで、こちらは macOS ランナーでのみ動く追加の網。
+  swift-cli:
+    name: swift test (lyrics-sync CLI)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: swift test
+        working-directory: swift/lyrics-sync
+        run: swift test
+
+  ios-mobile:
+    name: xcodebuild test (UX-Music-Mobile)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: List available simulators
+        run: xcrun simctl list devices available
+
+      - name: xcodebuild test
+        working-directory: UX-Music-Mobile
+        run: |
+          xcodebuild test \
+            -project UX-Music-Mobile.xcodeproj \
+            -scheme UX-Music-Mobile \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty || exit ${PIPESTATUS[0]}

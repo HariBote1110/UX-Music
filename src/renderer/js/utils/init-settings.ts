@@ -5,6 +5,7 @@ import { setVisualizerFpsLimit } from '../features/player.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { initPlaybackSettings } from '../features/playback-manager.js';
+import { initAiEmbedSettings } from '../features/ai-embed-settings.js';
 import { musicApi, getWailsApp } from '../core/bridge.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
 import { updateListSpacer } from '../ui/ui.js';
@@ -26,6 +27,11 @@ import {
     normaliseSyncPushResult,
     normaliseSyncTransferProgress,
     normaliseSyncPeers,
+    normaliseSyncCachePolicy,
+    normaliseSyncPreferredFormat,
+    startManualSyncPairing,
+    syncCachePolicyOptions,
+    syncPreferredFormatOptions,
     syncTransferEncodingOptions,
     syncPeerConnectionLabel,
     syncPullActionState,
@@ -42,6 +48,26 @@ let uxSyncPeers: SyncPeer[] = [];
 let uxSyncDevices: SyncDevice[] = [];
 let uxSyncTransferProgressUnsubscribe: (() => void) | null = null;
 let uxSyncAutoResultUnsubscribe: (() => void) | null = null;
+
+/**
+ * <select> に選択肢を流し込む。
+ * dataset.optionsInitialised を目印にして、初期化を何度呼んでも
+ * 選択肢が重複して積み上がらないようにしている。
+ */
+export function populateSelectOptions(
+    select: HTMLSelectElement | null,
+    options: ReadonlyArray<{ value: string; label: string }>,
+): void {
+    if (!select || select.dataset.optionsInitialised) return;
+    select.innerHTML = '';
+    for (const option of options) {
+        const el = document.createElement('option');
+        el.value = option.value;
+        el.textContent = option.label;
+        select.appendChild(el);
+    }
+    select.dataset.optionsInitialised = 'true';
+}
 
 /**
  * 指定したテーマを body クラスに適用する。
@@ -98,26 +124,26 @@ async function refreshLyricsSyncCacheInfo() {
     }
 }
 
-async function refreshWearPairingQR() {
-    const group = document.getElementById('wear-mobile-pairing-group');
-    const wrap = document.getElementById('wear-pairing-qr-wrap');
-    const img = document.getElementById('wear-pairing-qr');
-    const urlEl = document.getElementById('wear-pairing-url');
-    const errEl = document.getElementById('wear-pairing-qr-error');
+async function refreshRemotePairingQR() {
+    const group = document.getElementById('remote-mobile-pairing-group');
+    const wrap = document.getElementById('remote-pairing-qr-wrap');
+    const img = document.getElementById('remote-pairing-qr');
+    const urlEl = document.getElementById('remote-pairing-url');
+    const errEl = document.getElementById('remote-pairing-qr-error');
     if (!group || !wrap || !img || !errEl) return;
     errEl.classList.add('hidden');
     errEl.textContent = '';
-    if (!getWailsApp()?.GetWearPairingQRDataURL) {
+    if (!getWailsApp()?.GetPairingQRDataURL) {
         group.classList.add('hidden');
         return;
     }
     group.classList.remove('hidden');
     try {
-        const dataUrl = await getWailsApp().GetWearPairingQRDataURL();
+        const dataUrl = await getWailsApp().GetPairingQRDataURL();
         (img as HTMLImageElement).src = dataUrl;
         wrap.classList.remove('hidden');
-        if (urlEl && getWailsApp()?.GetWearPairingURL) {
-            urlEl.textContent = await getWailsApp().GetWearPairingURL();
+        if (urlEl && getWailsApp()?.GetPairingURL) {
+            urlEl.textContent = await getWailsApp().GetPairingURL();
         }
     } catch (e) {
         wrap.classList.add('hidden');
@@ -201,6 +227,34 @@ function closeUxSyncSettings() {
     document.getElementById('ux-sync-settings-modal-overlay')?.classList.add('hidden');
 }
 
+async function runManualUxSyncPairing(): Promise<void> {
+    const hostInput = document.getElementById('ux-sync-manual-host-input') as HTMLInputElement | null;
+    const portInput = document.getElementById('ux-sync-manual-port-input') as HTMLInputElement | null;
+    const button = document.getElementById('ux-sync-manual-connect-btn') as HTMLButtonElement | null;
+    const status = document.getElementById('ux-sync-manual-status');
+    const actions = document.getElementById('ux-sync-manual-pairing-actions');
+    if (!hostInput || !button || !status || !actions) return;
+
+    button.disabled = true;
+    button.textContent = '接続中...';
+    status.textContent = '手動入力した端末へ接続しています。';
+    actions.innerHTML = '';
+    try {
+        const result = await startManualSyncPairing(hostInput.value, portInput?.value, baseUrl => musicApi.startSyncPairing(baseUrl));
+        if (!result) {
+            status.textContent = 'IP またはホスト名を入力してください。';
+            return;
+        }
+        status.textContent = `${result.peer.reachableBaseUrl} から6桁コードを取得しました。`;
+        renderUxSyncPairingConfirm(actions, result.peer, result.started);
+    } catch (e) {
+        status.textContent = `手動接続に失敗しました: ${(e as Error)?.message || String(e)}`;
+    } finally {
+        button.disabled = false;
+        button.textContent = '接続';
+    }
+}
+
 function switchUxSyncSettingsTab(tabName: string): void {
     document.querySelectorAll<HTMLButtonElement>('.ux-sync-settings-tab[data-ux-sync-tab]').forEach(tab => {
         const active = tab.dataset.uxSyncTab === tabName;
@@ -220,12 +274,20 @@ function switchUxSyncSettingsTab(tabName: string): void {
 
 async function refreshUxSyncStorageSettings(): Promise<void> {
     const input = document.getElementById('ux-sync-min-free-space-gb-input') as HTMLInputElement | null;
+    const cachePolicySelect = document.getElementById('ux-sync-cache-policy-select') as HTMLSelectElement | null;
+    const preferredFormatSelect = document.getElementById('ux-sync-preferred-format-select') as HTMLSelectElement | null;
     const status = document.getElementById('ux-sync-storage-status');
     if (!input || !status) return;
     try {
         const settings = await loadRendererSettings();
         const value = normaliseSyncMinFreeSpaceGB((settings as { syncMinFreeSpaceGB?: unknown }).syncMinFreeSpaceGB ?? 5);
         input.value = String(value);
+        if (cachePolicySelect) {
+            cachePolicySelect.value = normaliseSyncCachePolicy((settings as { syncCachePolicy?: unknown }).syncCachePolicy);
+        }
+        if (preferredFormatSelect) {
+            preferredFormatSelect.value = normaliseSyncPreferredFormat((settings as { syncPreferredFormat?: unknown }).syncPreferredFormat);
+        }
         status.textContent = formatSyncFreeSpaceSafetyStatus(value);
     } catch (e) {
         status.textContent = `設定の読み込みに失敗しました: ${(e as Error)?.message || String(e)}`;
@@ -234,12 +296,26 @@ async function refreshUxSyncStorageSettings(): Promise<void> {
 
 async function saveUxSyncStorageSettings(): Promise<void> {
     const input = document.getElementById('ux-sync-min-free-space-gb-input') as HTMLInputElement | null;
+    const cachePolicySelect = document.getElementById('ux-sync-cache-policy-select') as HTMLSelectElement | null;
+    const preferredFormatSelect = document.getElementById('ux-sync-preferred-format-select') as HTMLSelectElement | null;
     const status = document.getElementById('ux-sync-storage-status');
     if (!input || !status) return;
     const value = normaliseSyncMinFreeSpaceGB(input.value);
+    const cachePolicy = normaliseSyncCachePolicy(cachePolicySelect?.value);
+    const preferredFormat = normaliseSyncPreferredFormat(preferredFormatSelect?.value);
     input.value = String(value);
+    if (cachePolicySelect) {
+        cachePolicySelect.value = cachePolicy;
+    }
+    if (preferredFormatSelect) {
+        preferredFormatSelect.value = preferredFormat;
+    }
     try {
-        await musicApi.saveSettings({ syncMinFreeSpaceGB: value });
+        await musicApi.saveSettings({
+            syncMinFreeSpaceGB: value,
+            syncCachePolicy: cachePolicy,
+            syncPreferredFormat: preferredFormat,
+        });
         status.textContent = formatSyncFreeSpaceSafetyStatus(value);
     } catch (e) {
         status.textContent = `設定の保存に失敗しました: ${(e as Error)?.message || String(e)}`;
@@ -582,6 +658,7 @@ function renderUxSyncPairingConfirm(actions: HTMLElement, peer: SyncPeer, starte
 export function initSettings() {
     // Initialise playback settings from storage
     initPlaybackSettings();
+    initAiEmbedSettings();
 
     // 起動時にユーザーが選択したUIテーマを復元する
     void loadRendererSettings().then(settings => {
@@ -596,7 +673,7 @@ export function initSettings() {
 
         renderGraphicEQ();
 
-        const currentYoutubeMode = settings.youtubePlaybackMode || 'download';
+        const currentYoutubeMode = settings.youtubePlaybackMode || 'embed';
         (document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`) as HTMLInputElement).checked = true;
 
         const currentQuality = settings.youtubeDownloadQuality || 'full';
@@ -652,7 +729,7 @@ export function initSettings() {
         }
 
         elements.settingsModalOverlay.classList.remove('hidden');
-        void refreshWearPairingQR();
+        void refreshRemotePairingQR();
         updateUxSyncSettingsEntry();
         void refreshLyricsSyncCacheInfo();
 
@@ -772,6 +849,14 @@ export function initSettings() {
         syncDiscoverBtn.dataset.listenerAttached = 'true';
     }
 
+    const syncManualConnectBtn = document.getElementById('ux-sync-manual-connect-btn');
+    if (syncManualConnectBtn && !syncManualConnectBtn.dataset.listenerAttached) {
+        syncManualConnectBtn.addEventListener('click', () => {
+            void runManualUxSyncPairing();
+        });
+        syncManualConnectBtn.dataset.listenerAttached = 'true';
+    }
+
     const syncSettingsOpenBtn = document.getElementById('ux-sync-settings-open-btn');
     if (syncSettingsOpenBtn && !syncSettingsOpenBtn.dataset.listenerAttached) {
         syncSettingsOpenBtn.addEventListener('click', openUxSyncSettings);
@@ -803,16 +888,13 @@ export function initSettings() {
     }
 
     const syncTransferEncodingSelect = document.getElementById('ux-sync-transfer-encoding-select') as HTMLSelectElement | null;
-    if (syncTransferEncodingSelect && !syncTransferEncodingSelect.dataset.optionsInitialised) {
-        syncTransferEncodingSelect.innerHTML = '';
-        for (const option of syncTransferEncodingOptions()) {
-            const el = document.createElement('option');
-            el.value = option.value;
-            el.textContent = option.label;
-            syncTransferEncodingSelect.appendChild(el);
-        }
-        syncTransferEncodingSelect.dataset.optionsInitialised = 'true';
-    }
+    populateSelectOptions(syncTransferEncodingSelect, syncTransferEncodingOptions());
+
+    const syncCachePolicySelect = document.getElementById('ux-sync-cache-policy-select') as HTMLSelectElement | null;
+    populateSelectOptions(syncCachePolicySelect, syncCachePolicyOptions());
+
+    const syncPreferredFormatSelect = document.getElementById('ux-sync-preferred-format-select') as HTMLSelectElement | null;
+    populateSelectOptions(syncPreferredFormatSelect, syncPreferredFormatOptions());
 
     const syncPullOneBtn = document.getElementById('ux-sync-pull-one-btn');
     if (syncPullOneBtn && !syncPullOneBtn.dataset.listenerAttached) {
@@ -894,7 +976,8 @@ export function initSettings() {
 function updateQualityGroupState() {
     const youtubeMode = (document.querySelector('input[name="youtube-mode"]:checked') as HTMLInputElement | null)?.value;
     const qualityGroup = document.getElementById('youtube-quality-group');
-    if (youtubeMode === 'stream') {
+    // ダウンロード品質はダウンロードモード選択時のみ意味を持つ（stream / embed ではグレーアウト）
+    if (youtubeMode !== 'download') {
         qualityGroup?.classList.add('disabled');
         document.querySelectorAll<HTMLInputElement>('input[name="youtube-quality"]').forEach(radio => radio.disabled = true);
     } else {

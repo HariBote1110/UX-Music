@@ -34,6 +34,15 @@ func TestBuildCaptionTrackCandidatesPriority(t *testing.T) {
 	}
 }
 
+func TestSanitiseTranscriptTextStripsZeroWidth(t *testing.T) {
+	// カラオケ風字幕は装飾としてゼロ幅スペース (U+200B) を多用するため、
+	// 歌詞テキストに残さず除去する必要がある。
+	got := sanitiseTranscriptText("​ ​ ​Sera♦: Among all the stars​ ​")
+	if got != "Sera♦: Among all the stars" {
+		t.Fatalf("zero-width characters should be stripped: %q", got)
+	}
+}
+
 func TestTranscriptToLRC(t *testing.T) {
 	video := &yt.Video{
 		Title:  "Test Song",
@@ -112,4 +121,69 @@ func TestParseTranscriptXMLBodyTimedTextFormat3(t *testing.T) {
 	if transcript[1].Text != "Can you hear me?" {
 		t.Fatalf("unexpected second text: %q", transcript[1].Text)
 	}
+}
+
+// TestParseTranscriptXMLBodyDeduplicatesLayeredKaraoke は、カラオケ風に装飾された
+// 字幕（同一開始時刻・同一テキストの <p> が縁取り用と塗り用の2層に分かれて重複する）を
+// 1行に統合できることを検証する。再現元: youtube.com/watch?v=eghAYpSDtRw の en 字幕。
+func TestParseTranscriptXMLBodyDeduplicatesLayeredKaraoke(t *testing.T) {
+	body := []byte(`<?xml version="1.0" encoding="utf-8"?>
+<timedtext format="3">
+  <body>
+    <p t="31081" d="2403"><s p="3">​ ​Sera♦: Among all the stars​ ​</s></p>
+    <p t="31081" d="2403"><s p="5">​ ​Sera♦: Among all the stars​ ​</s></p>
+    <p t="33484" d="3370"><s p="3">​ ​That shine in the sky​ ​</s></p>
+    <p t="33484" d="3370"><s p="5">​ ​That shine in the sky​ ​</s></p>
+  </body>
+</timedtext>`)
+
+	transcript, _, err := parseTranscriptXMLBody(body)
+	if err != nil {
+		t.Fatalf("parseTranscriptXMLBody should succeed: %v", err)
+	}
+	if len(transcript) != 2 {
+		t.Fatalf("layered karaoke should be deduplicated to 2 lines: got=%d", len(transcript))
+	}
+	if transcript[0].StartMs != 31081 || transcript[1].StartMs != 33484 {
+		t.Fatalf("unexpected startMs: %d, %d", transcript[0].StartMs, transcript[1].StartMs)
+	}
+}
+
+// TestChooseStreamFormat はストリーミング再生用フォーマット選択を検証する。
+// 帯域を節約するため音声専用フォーマットの最高ビットレートを最優先し、
+// 音声専用が無い場合は音声付きプログレッシブ形式へフォールバックする。
+func TestChooseStreamFormat(t *testing.T) {
+	audioLow := yt.Format{ItagNo: 140, MimeType: `audio/mp4; codecs="mp4a.40.2"`, Bitrate: 130000, AudioQuality: "AUDIO_QUALITY_MEDIUM", AudioChannels: 2}
+	audioHigh := yt.Format{ItagNo: 251, MimeType: `audio/webm; codecs="opus"`, Bitrate: 160000, AudioQuality: "AUDIO_QUALITY_MEDIUM", AudioChannels: 2}
+	progressive := yt.Format{ItagNo: 18, MimeType: `video/mp4; codecs="avc1.42001E, mp4a.40.2"`, Bitrate: 500000, QualityLabel: "360p", AudioQuality: "AUDIO_QUALITY_LOW", AudioChannels: 2}
+	videoOnly := yt.Format{ItagNo: 137, MimeType: `video/mp4; codecs="avc1.640028"`, Bitrate: 4000000, QualityLabel: "1080p"}
+
+	t.Run("音声専用の最高ビットレートを選ぶ", func(t *testing.T) {
+		formats := yt.FormatList{videoOnly, audioLow, progressive, audioHigh}
+		chosen := chooseStreamFormat(formats)
+		if chosen == nil {
+			t.Fatal("chooseStreamFormat returned nil")
+		}
+		if chosen.ItagNo != 251 {
+			t.Errorf("chosen itag = %d, want 251", chosen.ItagNo)
+		}
+	})
+
+	t.Run("音声専用が無ければ音声付きへフォールバック", func(t *testing.T) {
+		formats := yt.FormatList{videoOnly, progressive}
+		chosen := chooseStreamFormat(formats)
+		if chosen == nil {
+			t.Fatal("chooseStreamFormat returned nil")
+		}
+		if chosen.ItagNo != 18 {
+			t.Errorf("chosen itag = %d, want 18", chosen.ItagNo)
+		}
+	})
+
+	t.Run("音声を含む形式が無ければ nil", func(t *testing.T) {
+		formats := yt.FormatList{videoOnly}
+		if chosen := chooseStreamFormat(formats); chosen != nil {
+			t.Errorf("chosen = %+v, want nil", chosen)
+		}
+	})
 }
