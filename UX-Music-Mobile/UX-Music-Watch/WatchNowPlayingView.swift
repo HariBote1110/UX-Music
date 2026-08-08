@@ -52,20 +52,33 @@ struct WatchNowPlayingView: View {
 
     /// Shared full-bleed treatment (scaled to fill, dark scrim overlay) applied to both the real
     /// cached artwork and the `RemoteDefaultArtwork` idle fallback so the two states look alike.
+    ///
+    /// `scaledToFill()` deliberately overflows whatever frame precedes it (that is how "fill" mode
+    /// avoids empty gaps), so without an explicit frame + `.clipped()` afterwards, the oversized
+    /// image paints outside this view's own bounds. That overflow used to bleed into the
+    /// neighbouring Queue page while swiping between pages in the paged `TabView` (`WatchRootView`)
+    /// — the TabView can render adjacent pages' content during a swipe transition, and unclipped
+    /// content isn't confined to its own page. `GeometryReader` here supplies the exact page size
+    /// (via `.ignoresSafeArea()` on the reader itself, so `proxy.size` already spans the full
+    /// screen including safe areas); the image is then explicitly framed to that same size and
+    /// `.clipped()`, so it still covers the whole page but can never draw a pixel beyond it.
     @ViewBuilder
     private func fullBleedArtwork(_ image: Image) -> some View {
-        image
-            .resizable()
-            .scaledToFill()
-            .ignoresSafeArea()
-            .overlay {
-                LinearGradient(
-                    colors: [Color.black.opacity(0.75), Color.black.opacity(0.35), Color.black.opacity(0.8)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-            }
+        GeometryReader { proxy in
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+                .overlay {
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.75), Color.black.opacity(0.35), Color.black.opacity(0.8)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+        }
+        .ignoresSafeArea()
     }
 
     /// Reloads `cachedArtworkImage` from disk only when the current song has actually changed —
