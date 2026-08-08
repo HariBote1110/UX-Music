@@ -116,6 +116,7 @@
 		FEED00140000000000000000 /* WatchAudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00150000000000000000 /* WatchAudioPlayerService.swift */; };
 		FEED00160000000000000000 /* WatchSongListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00170000000000000000 /* WatchSongListView.swift */; };
 		FEED00180000000000000000 /* WatchNowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00190000000000000000 /* WatchNowPlayingView.swift */; };
+		FEED00260000000000000000 /* WatchQueueVolumeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00250000000000000000 /* WatchQueueVolumeView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -260,6 +261,7 @@
 		FEED00150000000000000000 /* WatchAudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioPlayerService.swift; sourceTree = "<group>"; };
 		FEED00170000000000000000 /* WatchSongListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSongListView.swift; sourceTree = "<group>"; };
 		FEED00190000000000000000 /* WatchNowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchNowPlayingView.swift; sourceTree = "<group>"; };
+		FEED00250000000000000000 /* WatchQueueVolumeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchQueueVolumeView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -451,6 +453,7 @@
 				FEED00150000000000000000 /* WatchAudioPlayerService.swift */,
 				FEED00170000000000000000 /* WatchSongListView.swift */,
 				FEED00190000000000000000 /* WatchNowPlayingView.swift */,
+				FEED00250000000000000000 /* WatchQueueVolumeView.swift */,
 			);
 			path = "UX-Music-Watch";
 			sourceTree = "<group>";
@@ -718,6 +721,7 @@
 				FEED00140000000000000000 /* WatchAudioPlayerService.swift in Sources */,
 				FEED00160000000000000000 /* WatchSongListView.swift in Sources */,
 				FEED00180000000000000000 /* WatchNowPlayingView.swift in Sources */,
+				FEED00260000000000000000 /* WatchQueueVolumeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
