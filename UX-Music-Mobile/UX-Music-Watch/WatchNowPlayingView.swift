@@ -105,7 +105,9 @@ struct WatchNowPlayingView: View {
         // A `ScrollView` (rather than a bare `VStack`) so the page degrades gracefully on the
         // smallest watch screens (e.g. Series 11 42mm) instead of clipping/overflowing past the
         // bottom edge — the fixed paddings/spacings below were sized for larger screens and left
-        // the shuffle/repeat row pushed off-screen on 42mm.
+        // the shuffle/repeat row pushed off-screen on 42mm. `.scrollBounceBehavior(.basedOnSize)`
+        // below keeps this from scrolling/bouncing on screens where the content already fits,
+        // while still allowing 42mm to scroll.
         ScrollView {
             VStack(spacing: 8) {
                 VStack(spacing: 2) {
@@ -185,6 +187,7 @@ struct WatchNowPlayingView: View {
             }
             .padding()
         }
+        .scrollBounceBehavior(.basedOnSize)
         .focusable()
         .digitalCrownRotation(
             $crownPosition,
