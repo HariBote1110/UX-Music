@@ -3,7 +3,7 @@ import SwiftUI
 /// Desktop playlist opened from Remote Library: same layout idea as `AlbumDetailView`, order follows desktop `songIds`.
 struct RemotePlaylistDetailView: View {
     @Environment(AppModel.self) private var model
-    let playlist: WearDesktopPlaylist
+    let playlist: RemoteDesktopPlaylist
 
     private var resolvedSongs: [Song] {
         guard case .loaded(let library) = model.libraryState else { return [] }
@@ -54,15 +54,16 @@ struct RemotePlaylistDetailView: View {
                             artworkId: song.artworkId,
                             artworkURL: model.artworkURL(for: song.artworkId),
                             showTrackNumber: false,
-                            onTap: model.isSongDownloaded(songId: song.id)
-                                ? { play(song) }
-                                : nil,
+                            onTap: rowTap(for: song),
                             trailing: {
-                                trailing(for: song)
+                                SongRowDownloadTrailing(song: song)
                             }
                         )
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
+                        .contextMenu {
+                            WatchTransferSongMenuItem(song: song)
+                        }
                     }
                 }
             }
@@ -114,6 +115,10 @@ struct RemotePlaylistDetailView: View {
                     Label("プレイリストをダウンロード", systemImage: "arrow.down.circle")
                 }
             }
+            WatchTransferBulkMenuItem(
+                title: "プレイリストを Apple Watch に転送",
+                songs: resolvedSongs
+            )
         }
     }
 
@@ -127,23 +132,20 @@ struct RemotePlaylistDetailView: View {
         .frame(height: 280)
     }
 
-    @ViewBuilder
-    private func trailing(for song: Song) -> some View {
-        if model.isSongDownloaded(songId: song.id) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .font(.system(size: 20))
-        } else if model.downloadProgress[song.id] != nil {
-            ProgressView()
-                .frame(width: 22, height: 22)
-        } else {
-            Button {
-                Task { await model.downloadSong(song) }
-            } label: {
-                Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 22))
-            }
-            .buttonStyle(.plain)
+    private func rowTap(for song: Song) -> (() -> Void)? {
+        switch song.rowTapAction(isDownloaded: model.isSongDownloaded(songId: song.id)) {
+        case .openYouTubePlayer: return { playYouTube(song) }
+        case .playDownloaded: return { play(song) }
+        case .none: return nil
+        }
+    }
+
+    /// Plays a YouTube song as a normal single-song queue, exactly like tapping any local
+    /// song — no dedicated YouTube player screen any more (see
+    /// `progress/mobile-youtube-embed.md`).
+    private func playYouTube(_ song: Song) {
+        Task {
+            await model.player.play(song, newQueue: [song])
         }
     }
 

@@ -455,7 +455,8 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - `/sync/identity` が `protocolVersion`、`minCompatibleProtocolVersion`、`schemaVersion`、`capabilities`、`negotiation` を返す。
 - client は `/sync/identity` へ `X-UX-Music-Sync-Protocol-Version`、`X-UX-Music-Sync-Schema-Version`、`X-UX-Music-Sync-Capabilities` を送り、自分の対応状況を申告する。
 - `/sync/schema` が endpoint / message / capability / 拡張規則を含む機械可読スキーマを返す。
-- mDNS TXT に `schemaVersion` と `capabilities` を追加し、発見段階でも軽量に機能差を確認できるようにする。
+- mDNS TXT に `schemaVersion` を追加する。capability は TXT へ載せず、到達確認時の `/sync/identity` から取得する。
+- UX Sync 専用設定画面の `端末` タブから IP / ホスト名と任意ポートを入力し、mDNS discovery を使わず既存の `StartSyncPairing` / `ConfirmSyncPairing` フローを開始できる。
 - `ux-sync-transfer-progress` event により、pull / push 中のファイル名、件数、転送量、転送速度、変換モードを UI に表示できる。
 - `PushSyncLibraryAssetsWithOptions(baseURL, limit, { encodingMode: "mp3_320" })` により、FLAC などのロスレス音源を MP3 320kbps へ変換しながら転送できる。
 - UX Sync 専用設定画面の `同期` タブから、原本転送または MP3 320kbps 転送を選択できる。
@@ -470,13 +471,13 @@ MacBook Air のような 256GB 端末では、既定で `portable` アセット�
 - 統一ライブラリビューでは local 曲を `syncAvailability=local`、remote 曲を `syncAvailability=remote` として返し、remote 曲は `DL可能` 表示とプレースホルダ artwork の対象にする。
 - `DownloadSyncTrack(sourceDeviceId, sourceTrackId)` により、統一ライブラリビュー上の remote 曲を取得元 peer から単曲ダウンロードし、完了後に local path で再生へ遷移できる。
 - `syncCachePolicy` により `mirror`（全曲 pull）/ `selective`（最近再生＋キュー先読み）を選択でき、selective では空き容量閾値未満時に同期取得音源を LRU 削除できる。
+- `syncPreferredFormat` により pull 側の取得形式を `original` / `mp3_320` から選択でき、対応 peer では `/sync/assets/{trackId}/file?encoding=mp3_320` により MP3 320kbps の portable cache を取得できる。
 - 詳細仕様は `markdown/ux-music-sync-protocol.md` を参照する。
 
 未実装:
 
 - 親側での portable 圧縮アセット生成と再利用。
 - 変換済み portable 圧縮アセットの永続キャッシュと再利用。
-- 音源本体の自動転送に対する容量ポリシーと端末別同期設定。
 - 容量不足時の自動削除ポリシーと失敗時の再試行キュー。
 
 テスト:

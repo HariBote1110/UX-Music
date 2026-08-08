@@ -115,10 +115,21 @@ export function normaliseSyncCachePolicy(raw: unknown): 'mirror' | 'selective' {
     return raw === 'selective' ? 'selective' : 'mirror';
 }
 
+export function normaliseSyncPreferredFormat(raw: unknown): 'original' | 'mp3_320' {
+    return raw === 'mp3_320' ? 'mp3_320' : 'original';
+}
+
 export function syncCachePolicyOptions(): Array<{ value: 'mirror' | 'selective'; label: string }> {
     return [
         { value: 'mirror', label: '全曲ミラー' },
         { value: 'selective', label: '最近再生＋キュー先読み' },
+    ];
+}
+
+export function syncPreferredFormatOptions(): Array<{ value: 'original' | 'mp3_320'; label: string }> {
+    return [
+        { value: 'original', label: '原本' },
+        { value: 'mp3_320', label: 'MP3 320kbps' },
     ];
 }
 
@@ -227,6 +238,47 @@ export function formatSyncPeerEndpoint(peer: SyncPeer): string {
 export function syncPeerPairingBaseUrl(peer: SyncPeer): string {
     const endpoint = formatSyncPeerEndpoint(peer);
     return endpoint === '未確認' ? '' : endpoint;
+}
+
+export function manualSyncPeerBaseUrl(host: string, port?: string): string | null {
+    const rawHost = readString(host);
+    const rawPort = readString(port);
+    if (!rawHost || containsControlCharacter(rawHost) || containsControlCharacter(rawPort)) {
+        return null;
+    }
+    if (/^https?:\/\//i.test(rawHost)) {
+        try {
+            return trimTrailingSlash(new URL(rawHost).toString());
+        } catch {
+            return null;
+        }
+    }
+    const hostHasPort = rawHost.includes(':') && !isBareIPv6Literal(rawHost);
+    const formattedHost = hostHasPort ? rawHost : formatHost(rawHost);
+    const formattedPort = hostHasPort ? '' : normaliseManualSyncPort(rawPort);
+    if (!hostHasPort && !formattedPort) {
+        return null;
+    }
+    return `http://${formattedHost}${hostHasPort ? '' : `:${formattedPort}`}`;
+}
+
+export async function startManualSyncPairing(
+    host: string,
+    port: string | undefined,
+    startPairing: (baseUrl: string) => Promise<unknown>
+): Promise<{ peer: SyncPeer; started: SyncPairingStart } | null> {
+    const baseUrl = manualSyncPeerBaseUrl(host, port);
+    if (!baseUrl) {
+        return null;
+    }
+    const started = normaliseSyncPairingStart(await startPairing(baseUrl));
+    if (!started) {
+        throw new Error('ペアリング開始応答が不正です。');
+    }
+    return {
+        peer: manualSyncPeer(baseUrl, host),
+        started,
+    };
 }
 
 export function formatSyncPeerRoles(peer: SyncPeer): string {
@@ -376,17 +428,20 @@ export function formatSyncAutoResultNotification(result: SyncAutoResult): string
     if (result.checkedDevices <= 0) {
         return '';
     }
+    // 実際に新しいデータが動いたときだけ通知する。既存曲のスキップや単なる接続確認は
+    // 毎分の自動同期ごとにトーストが乱発される原因になるため、無音にする。
+    const hasNewData = result.pulledTracks > 0
+        || result.pushedPlayEvents > 0
+        || result.syncedArtwork > 0;
+    if (!hasNewData) {
+        return '';
+    }
     const parts = [
         result.pulledTracks > 0 ? `取得 ${result.pulledTracks}曲` : '',
         result.skippedTracks > 0 ? `既存 ${result.skippedTracks}曲` : '',
         result.pushedPlayEvents > 0 ? `再生回数 ${result.pushedPlayEvents}件` : '',
         result.syncedArtwork > 0 ? `ジャケット ${result.syncedArtwork}件` : '',
     ].filter(Boolean);
-    if (parts.length === 0) {
-        return result.syncedDevices > 0
-            ? 'UX Sync: 接続できたため同期を確認しました。'
-            : 'UX Sync: 接続を確認しましたが同期できませんでした。';
-    }
     return `UX Sync: 接続できたため同期しました（${parts.join(' / ')}）`;
 }
 
@@ -480,6 +535,61 @@ function readStringArray(value: unknown): string[] {
 
 function formatHost(host: string): string {
     return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+}
+
+function manualSyncPeer(baseUrl: string, rawHost: string): SyncPeer {
+    let host = readString(rawHost);
+    try {
+        host = new URL(baseUrl).hostname || host;
+    } catch {
+        // Keep the manual input as a readable fallback.
+    }
+    return {
+        deviceId: `manual:${baseUrl}`,
+        displayName: readString(rawHost) || baseUrl,
+        host,
+        hosts: host ? [host] : [],
+        port: manualSyncPeerPort(baseUrl),
+        roles: [],
+        reachableBaseUrl: baseUrl,
+        paired: false,
+    };
+}
+
+function manualSyncPeerPort(baseUrl: string): number | undefined {
+    try {
+        const parsed = new URL(baseUrl);
+        const port = parsed.port ? Number.parseInt(parsed.port, 10) : 8765;
+        return Number.isFinite(port) ? port : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function normaliseManualSyncPort(port: string): string | null {
+    if (!port) {
+        return '8765';
+    }
+    if (!/^\d+$/.test(port)) {
+        return null;
+    }
+    const value = Number(port);
+    if (!Number.isInteger(value) || value <= 0 || value > 65535) {
+        return null;
+    }
+    return String(value);
+}
+
+function trimTrailingSlash(value: string): string {
+    return value.replace(/\/+$/, '');
+}
+
+function containsControlCharacter(value: string): boolean {
+    return /[\u0000-\u001F\u007F]/.test(value);
+}
+
+function isBareIPv6Literal(value: string): boolean {
+    return value.includes(':') && !value.startsWith('[') && value.split(':').length > 2 && !value.includes(']');
 }
 
 function parseSyncBaseUrl(baseUrl: string): { host: string; port?: number } | null {

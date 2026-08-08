@@ -1,9 +1,11 @@
 import SwiftUI
 import UIKit
 
-private let nowPlayingFallbackAccent = Color(red: 0.45, green: 0.82, blue: 1.0)
+/// `internal` (not `private`) so the lyrics screen can share the same fallback tint.
+let nowPlayingFallbackAccent = Color(red: 0.45, green: 0.82, blue: 1.0)
 
-private enum NowPlayingPage: Equatable {
+/// `internal` (not `private`) so unit tests can drive `nowPlayingSidePanelCoverage` directly.
+enum NowPlayingPage: Equatable {
     case main
     case queue
     case favourites
@@ -17,7 +19,7 @@ private enum StripDragAxis {
 
 private let nowPlayingPanelSpring = Animation.spring(response: 0.52, dampingFraction: 0.78, blendDuration: 0.12)
 
-private func stripBaseX(page: NowPlayingPage, width w: CGFloat) -> CGFloat {
+func stripBaseX(page: NowPlayingPage, width w: CGFloat) -> CGFloat {
     switch page {
     case .main: return -w
     case .queue: return 0
@@ -27,7 +29,7 @@ private func stripBaseX(page: NowPlayingPage, width w: CGFloat) -> CGFloat {
 }
 
 /// Rubber-band slightly past [-2w, 0] for a softer feel while dragging.
-private func displayStripOffset(page: NowPlayingPage, horizontalDrag: CGFloat, width w: CGFloat) -> CGFloat {
+func displayStripOffset(page: NowPlayingPage, horizontalDrag: CGFloat, width w: CGFloat) -> CGFloat {
     guard w > 1 else { return 0 }
     guard page != .playbackSettings else { return -w }
     let base = stripBaseX(page: page, width: w)
@@ -44,8 +46,71 @@ private func displayStripOffset(page: NowPlayingPage, horizontalDrag: CGFloat, w
     return raw
 }
 
+/// How much a black safe-area cover should show (0…1) above the ambient background while the
+/// swipeable side-panel strip is dragged or settled on a side panel.
+///
+/// The ambient background is rendered full-screen (outside every `.clipped()` panel) so it can
+/// reach the status-bar and home-indicator bands, but the Queue / Favourites / PlaybackSettings
+/// panels only cover the safe-area-respecting content region. Without this cover, those bands
+/// keep showing ambient gradient behind a panel that is supposed to be solid black.
+///
+/// `page == .playbackSettings` is a full-screen overlay, so coverage is always 1. Otherwise
+/// coverage tracks how far the strip has moved away from the "main" resting position (`-w`),
+/// clamped to `[0, 1]` so rubber-band overshoot never exceeds full coverage.
+func nowPlayingSidePanelCoverage(page: NowPlayingPage, horizontalDrag: CGFloat, width w: CGFloat) -> CGFloat {
+    guard w > 1 else { return 0 }
+    if page == .playbackSettings { return 1 }
+    let offset = displayStripOffset(page: page, horizontalDrag: horizontalDrag, width: w)
+    let coverage = abs(offset + w) / w
+    return min(1, max(0, coverage))
+}
+
+/// How far the drag-to-reveal PlaybackSettings sheet has been lifted from the bottom edge,
+/// as a fraction of the content height (0 = resting off-screen below, 1 = fully raised).
+///
+/// Only upward drags (`dragTranslationY < 0`) lift the sheet; downward drags are clamped to 0
+/// so the same live translation value used for the main page's vertical-axis gesture can be
+/// fed straight in without a separate "is this an upward drag" branch at every call site.
+func nowPlayingSettingsSheetProgress(dragTranslationY ty: CGFloat, height h: CGFloat) -> CGFloat {
+    guard h > 1 else { return 0 }
+    let liftedUp = max(0, -ty)
+    return min(1, liftedUp / h)
+}
+
+/// Vertical offset (in points, measured from the sheet's fully-raised resting position) for the
+/// given lift `progress`. `0` progress parks the sheet a full height below (off-screen), `1`
+/// progress sits it flush at the top of the content area.
+func nowPlayingSettingsSheetOffsetY(progress: CGFloat, height h: CGFloat) -> CGFloat {
+    let clamped = min(1, max(0, progress))
+    return h * (1 - clamped)
+}
+
+/// How much to dim the content behind the rising sheet (0...0.5), scaling linearly with lift
+/// `progress` so the backdrop darkens smoothly as the sheet is dragged up, capping below full
+/// black so the sheet itself always reads as the brighter, foreground layer.
+func nowPlayingSettingsSheetDarkness(progress: CGFloat) -> CGFloat {
+    let clamped = min(1, max(0, progress))
+    return clamped * 0.5
+}
+
+/// Release-time decision: does the drag gesture end with enough lift `progress` to commit to
+/// opening the PlaybackSettings sheet, or should it spring back down?
+func nowPlayingSettingsSheetShouldOpen(progress: CGFloat) -> Bool {
+    progress > 0.22
+}
+
+/// Translates `List.onMove`'s `destination` — a "gap index in the original array" (the same
+/// convention as the classic `RangeReplaceableCollection.move(fromOffsets:toOffset:)` helper) —
+/// into the final resting index `MusicPlayerService.moveQueueItem(from:to:)` expects (the
+/// item's index in the *resulting* array). Moving forward past the vacated slot shifts every
+/// later index down by one; moving backward needs no adjustment.
+func nowPlayingQueueMoveDestination(from: Int, to: Int) -> Int {
+    from < to ? to - 1 : to
+}
+
 /// `ToolbarItem` can propose a short height; large frames get clipped and `Circle()` looks truncated.
-private struct NowPlayingNavIconButton<Content: View>: View {
+/// `internal` (not `private`) so the lyrics screen's close button can reuse the same chrome.
+struct NowPlayingNavIconButton<Content: View>: View {
     let action: () -> Void
     let accessibilityLabel: String
     @ViewBuilder var label: () -> Content
@@ -74,6 +139,9 @@ struct NowPlayingView: View {
     @State private var page: NowPlayingPage = .main
     @State private var horizontalDrag: CGFloat = 0
     @State private var lockedDragAxis: StripDragAxis?
+    /// Live vertical drag translation (points) while dragging the PlaybackSettings sheet up from
+    /// the main page. Negative values lift the sheet; kept at 0 whenever not mid-drag.
+    @State private var settingsDragOffset: CGFloat = 0
     @State private var showLyricsScreen = false
     /// Palette extracted from the current track's artwork.
     /// Kept at this level so the ambient background can be applied *outside* the
@@ -94,6 +162,10 @@ struct NowPlayingView: View {
         //        Toolbar buttons are placed at padding(.top, 8) from the content-area origin,
         //        which is already below the status-bar / Dynamic Island.
         //        Panel content receives `toolbarClearance` so VStack spacers clear the buttons.
+        //        Its innermost ZStack's back-most layer is a `.ignoresSafeArea()` black cover
+        //        whose opacity tracks `nowPlayingSidePanelCoverage`, so the safe-area bands go
+        //        solid black in step with the Queue / Favourites / PlaybackSettings panels
+        //        instead of leaking the ambient gradient behind them.
         ZStack {
             // ── Full-screen ambient background ─────────────────────────────────────
             NowPlayingAmbientBackground(palette: ambientPalette)
@@ -107,12 +179,39 @@ struct NowPlayingView: View {
                 // Extra vertical clearance needed inside the content area so that panel
                 // content is not obscured by the floating toolbar row (button ø34 + margins).
                 let toolbarClearance: CGFloat = 52
+                // While settled on the settings page the sheet is fully raised (progress 1);
+                // otherwise progress tracks the live upward drag from the main page.
+                let settingsSheetProgress: CGFloat = page == .playbackSettings
+                    ? 1
+                    : nowPlayingSettingsSheetProgress(dragTranslationY: settingsDragOffset, height: h)
 
                 ZStack(alignment: .top) {
+                    // ── Safe-area cover ──────────────────────────────────────────────
+                    // Sits behind the strip but in front of the full-screen ambient
+                    // background, so the status-bar / home-indicator bands go solid
+                    // black in step with the side panels instead of leaking gradient.
+                    Color.black
+                        .opacity(nowPlayingSidePanelCoverage(page: page, horizontalDrag: horizontalDrag, width: w))
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+
+                    // ── Sheet backdrop dimming ───────────────────────────────────────
+                    // Darkens the main page as the PlaybackSettings sheet is dragged up from
+                    // the bottom edge, independent of the side-panel safe-area cover above.
+                    Color.black
+                        .opacity(nowPlayingSettingsSheetDarkness(progress: settingsSheetProgress))
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+
                     // ── Horizontal panel strip ──────────────────────────────────────
                     HStack(spacing: 0) {
                         NowPlayingQueuePanel(page: $page, topInset: toolbarClearance)
                             .frame(width: w, height: h)
+                            .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                            }
                         Group {
                             if let song = model.player.currentSong {
                                 NowPlayingPlayingShell(
@@ -130,6 +229,11 @@ struct NowPlayingView: View {
                         .frame(width: w, height: h)
                         NowPlayingFavouritesPanel(page: $page, topInset: toolbarClearance)
                             .frame(width: w, height: h)
+                            .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                            }
                     }
                     .frame(width: 3 * w, height: h, alignment: .leading)
                     .offset(
@@ -141,13 +245,27 @@ struct NowPlayingView: View {
                     .allowsHitTesting(page != .playbackSettings)
                     .gesture(stripDragGesture(width: w, height: h))
 
-                    // ── Playback-settings overlay ───────────────────────────────────
-                    if page == .playbackSettings {
-                        NowPlayingPlaybackSettingsPanel(page: $page, topInset: toolbarClearance)
-                            .frame(width: w, height: h)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                            .zIndex(1)
-                    }
+                    // ── Playback-settings sheet ─────────────────────────────────────
+                    // Rendered unconditionally (not just when `page == .playbackSettings`) so
+                    // `offset(y:)` — not a `.transition` — can track the finger continuously
+                    // during the drag-up gesture from the main page and animate smoothly back
+                    // to fully hidden/shown on release, instead of popping in from a fixed edge.
+                    NowPlayingPlaybackSettingsPanel(page: $page, topInset: toolbarClearance)
+                        .frame(width: w, height: h)
+                        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                                .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                        }
+                        .overlay(alignment: .top) {
+                            Capsule()
+                                .fill(.white.opacity(0.3))
+                                .frame(width: 36, height: 5)
+                                .padding(.top, 8)
+                        }
+                        .offset(y: nowPlayingSettingsSheetOffsetY(progress: settingsSheetProgress, height: h))
+                        .allowsHitTesting(page == .playbackSettings)
+                        .zIndex(1)
 
                     // ── Floating toolbar ────────────────────────────────────────────
                     // y=0 inside this GeometryReader is already below the status bar /
@@ -169,13 +287,16 @@ struct NowPlayingView: View {
         .interactiveDismissDisabled(page == .favourites || page == .queue || page == .playbackSettings)
         .fullScreenCover(isPresented: $showLyricsScreen) {
             if let song = model.player.currentSong {
-                NowPlayingLyricsScreen(song: song, isPresented: $showLyricsScreen)
+                NowPlayingLyricsScreen(song: song, palette: ambientPalette, isPresented: $showLyricsScreen)
                     .environment(model)
             }
         }
         .onAppear {
             horizontalDrag = 0
             lockedDragAxis = nil
+            if model.debugForceOpenLyrics {
+                showLyricsScreen = true
+            }
         }
         .onChange(of: model.player.currentSong) { _, newSong in
             if newSong == nil { ambientPalette = nil }
@@ -214,11 +335,12 @@ struct NowPlayingView: View {
                     Image(systemName: "text.alignleft")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(
-                            model.hasLocalLyricsFile(for: song.id)
+                            !song.isYouTube && model.hasLocalLyricsFile(for: song.id)
                                 ? Color.white.opacity(0.9)
                                 : Color.white.opacity(0.38)
                         )
                 }
+                .disabled(song.isYouTube)
                 NowPlayingNavIconButton(action: {
                     model.toggleFavourite(songId: song.id)
                 }, accessibilityLabel: "Favourite") {
@@ -235,6 +357,14 @@ struct NowPlayingView: View {
         transaction.animation = nil
         withTransaction(transaction) {
             horizontalDrag = value
+        }
+    }
+
+    private func setSettingsDragLive(_ value: CGFloat) {
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            settingsDragOffset = value
         }
     }
 
@@ -268,6 +398,14 @@ struct NowPlayingView: View {
                     }
                 }
 
+                if lockedDragAxis == .vertical, page == .main {
+                    // Only upward motion lifts the PlaybackSettings sheet; downward motion is
+                    // left alone here so the existing pull-down-to-dismiss threshold below still
+                    // sees the raw translation.
+                    setSettingsDragLive(min(0, ty))
+                    return
+                }
+
                 guard lockedDragAxis == .horizontal else { return }
                 setHorizontalDragLive(tx)
             }
@@ -299,16 +437,22 @@ struct NowPlayingView: View {
         if axis == .vertical {
             if page == .main {
                 // Content scrolls down (finger moves up) → settings; content scrolls up (finger moves down) → album / dismiss.
-                if ty < -52 {
+                let progress = nowPlayingSettingsSheetProgress(dragTranslationY: settingsDragOffset, height: h)
+                if nowPlayingSettingsSheetShouldOpen(progress: progress) {
                     withAnimation(nowPlayingPanelSpring) {
                         page = .playbackSettings
                         horizontalDrag = 0
+                        settingsDragOffset = 0
                     }
                     return
                 }
                 if ty > 68 {
+                    settingsDragOffset = 0
                     dismiss()
                     return
+                }
+                withAnimation(nowPlayingPanelSpring) {
+                    settingsDragOffset = 0
                 }
             }
             withAnimation(nowPlayingPanelSpring) {
@@ -380,9 +524,20 @@ private struct NowPlayingPlayingShell: View {
     var bottomInset: CGFloat = 0
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(AppModel.self) private var model
 
     private var accent: Color {
         palette?.accentColor ?? nowPlayingFallbackAccent
+    }
+
+    /// Source used for ambient-palette extraction: the official YouTube thumbnail while a YouTube
+    /// track's embed video ID is known, otherwise the ordinary artwork URL. Keeps the ambient
+    /// background in step with the on-screen video the same way local artwork drives it.
+    private var paletteSourceURLString: String {
+        if song.isYouTube, let videoID = model.player.currentYouTubeVideoID {
+            return youtubeThumbnailURLString(videoID: videoID)
+        }
+        return artworkURLString
     }
 
     var body: some View {
@@ -394,7 +549,7 @@ private struct NowPlayingPlayingShell: View {
             VStack(spacing: 0) {
                 Spacer(minLength: topInset + (horizontalSizeClass == .regular ? 40 : 16))
 
-                NowPlayingArtworkBlock(artworkId: artworkId, urlString: artworkURLString, accent: accent)
+                NowPlayingArtworkBlock(song: song, artworkId: artworkId, urlString: artworkURLString, accent: accent)
                     .padding(.horizontal, 28)
 
                 Spacer(minLength: 28)
@@ -437,16 +592,44 @@ private struct NowPlayingPlayingShell: View {
 
                 Spacer(minLength: bottomInset + (horizontalSizeClass == .regular ? 48 : 24))
             }
+
+            // Brief "スキップしました" toast for when an embed-restricted YouTube track
+            // (`MusicPlayerService.scheduleAutoSkipAfterEmbedRestriction`) auto-advances the
+            // queue. Deliberately at this shell level (not nested inside the YouTube error view)
+            // so it stays visible across the transition onto whatever track plays next, including
+            // a local file.
+            if let skipped = model.player.youtubePlaybackJustSkippedMessage {
+                VStack {
+                    Text(skipped)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.black.opacity(0.6), in: Capsule())
+                        .padding(.top, topInset + 8)
+                    Spacer()
+                }
+                .transition(.opacity)
+                .animation(.easeInOut, value: model.player.youtubePlaybackJustSkippedMessage)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: artworkURLString) {
-            guard let url = URL(string: artworkURLString), !artworkURLString.isEmpty else {
+        .task(id: paletteSourceURLString) {
+            let source = paletteSourceURLString
+            guard let url = URL(string: source), !source.isEmpty else {
                 palette = nil
                 return
             }
             palette = await ArtworkPaletteExtractor.palette(forArtworkURL: url)
         }
     }
+}
+
+/// Standard-resolution official thumbnail for a YouTube video ID (`i.ytimg.com`), used both as the
+/// loading-state placeholder behind the embed player and as the ambient-palette source so YouTube
+/// tracks get the same colour-matched backdrop as local artwork.
+func youtubeThumbnailURLString(videoID: String) -> String {
+    "https://i.ytimg.com/vi/\(videoID)/hqdefault.jpg"
 }
 
 // MARK: - Progress (only this subtree observes position / duration)
@@ -507,7 +690,18 @@ private struct NowPlayingTransportSection: View {
     let accent: Color
 
     var body: some View {
-        HStack(spacing: 44) {
+        HStack(spacing: 28) {
+            transportIconButton(
+                systemName: "shuffle",
+                size: 18,
+                frame: 44,
+                tint: model.player.isShuffleEnabled ? accent : .white.opacity(0.55)
+            ) {
+                model.player.toggleShuffle()
+            }
+            .accessibilityLabel("シャッフル")
+            .accessibilityValue(model.player.isShuffleEnabled ? "オン" : "オフ")
+
             transportIconButton(systemName: "backward.fill", size: 22) {
                 Task { await model.player.previous() }
             }
@@ -533,15 +727,41 @@ private struct NowPlayingTransportSection: View {
                 Task { await model.player.next() }
             }
             .accessibilityLabel("Next track")
+
+            transportIconButton(
+                systemName: model.player.repeatMode == .one ? "repeat.1" : "repeat",
+                size: 18,
+                frame: 44,
+                tint: model.player.repeatMode == .off ? .white.opacity(0.55) : accent
+            ) {
+                model.player.cycleRepeatMode()
+            }
+            .accessibilityLabel("リピート")
+            .accessibilityValue(repeatModeAccessibilityValue)
+        }
+    }
+
+    private var repeatModeAccessibilityValue: String {
+        switch model.player.repeatMode {
+        case .off: return "オフ"
+        case .all: return "すべてをリピート"
+        case .one: return "1曲をリピート"
         }
     }
 
     private func transportIconButton(systemName: String, size: CGFloat, action: @escaping () -> Void) -> some View {
+        transportIconButton(systemName: systemName, size: size, frame: 56, tint: .white, action: action)
+    }
+
+    /// Shared pill styling for every transport control; `frame`/`tint` let the secondary
+    /// shuffle/repeat buttons stay visually subordinate to previous/next while reusing the
+    /// same shape language (translucent circle, semibold SF Symbol).
+    private func transportIconButton(systemName: String, size: CGFloat, frame: CGFloat, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: size, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 56, height: 56)
+                .foregroundStyle(tint)
+                .frame(width: frame, height: frame)
                 .background(.white.opacity(0.12), in: Circle())
         }
         .buttonStyle(.plain)
@@ -575,7 +795,8 @@ private struct NowPlayingEmptyChrome: View {
 
 // MARK: - Background
 
-private struct NowPlayingAmbientBackground: View {
+/// `internal` (not `private`) so the lyrics screen can share the same environmental glow.
+struct NowPlayingAmbientBackground: View {
     var palette: ArtworkPlaybackPalette?
 
     var body: some View {
@@ -641,21 +862,32 @@ private struct NowPlayingAmbientBackground: View {
 // MARK: - Artwork
 
 private struct NowPlayingArtworkBlock: View {
+    let song: Song
     let artworkId: String
     let urlString: String
     let accent: Color
 
+    @Environment(AppModel.self) private var model
     @State private var loaded: UIImage?
 
     private var taskIdentity: String { "\(artworkId)\u{1E}\(urlString)\u{1E}np" }
 
     var body: some View {
         Color.clear
-            .aspectRatio(1, contentMode: .fit)
+            // YouTube tracks get a 16:9 video-shaped card; local tracks keep the classic square
+            // jacket. Both share the same width cap so the card only changes height when the
+            // song source switches, and that height change is animated below.
+            .aspectRatio(song.isYouTube ? 16.0 / 9.0 : 1, contentMode: .fit)
             .frame(maxWidth: 340)
             .overlay {
-                artworkFill
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Group {
+                    if song.isYouTube {
+                        youtubeEmbedFill
+                    } else {
+                        artworkFill
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay {
@@ -664,11 +896,58 @@ private struct NowPlayingArtworkBlock: View {
             }
             .shadow(color: .black.opacity(0.55), radius: 32, y: 18)
             .shadow(color: accent.opacity(0.15), radius: 40, y: 12)
+            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: song.isYouTube)
             .task(id: taskIdentity) {
+                guard !song.isYouTube else { return }
                 loaded = nil
                 guard !urlString.isEmpty else { return }
-                loaded = await WearRemoteArtworkImageLoader.loadUIImage(artworkId: artworkId, urlString: urlString)
+                loaded = await RemoteArtworkImageLoader.loadUIImage(artworkId: artworkId, urlString: urlString)
             }
+    }
+
+    /// Official YouTube embed player, shown in place of jacket art while the current song is a
+    /// YouTube library member (see `MusicPlayerService`'s YouTube backend). Reparents the single
+    /// persistent `WKWebView` owned by `youtubePlaybackHost` into this screen while it is visible
+    /// (see `YouTubeEmbedHostContainerView`) — dismissing Now Playing detaches it from display but
+    /// does not stop it, so playback continues while browsing the Library, same as a local file.
+    @ViewBuilder
+    private var youtubeEmbedFill: some View {
+        if let videoID = model.player.currentYouTubeVideoID {
+            ZStack {
+                // Shown immediately (no network round-trip needed for the embed itself) and kept
+                // underneath the video so a slow embed handshake never shows a blank black square.
+                youtubeThumbnail(videoID: videoID)
+                YouTubeEmbedHostContainerView(webView: model.player.youtubePlaybackHost.webView)
+                    .opacity(model.player.isPlaying ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.35), value: model.player.isPlaying)
+            }
+        } else if let error = model.player.youtubePlaybackErrorMessage {
+            ZStack {
+                Color.black
+                VStack(spacing: 16) {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                    if model.player.youtubePlaybackErrorFallback == .openInYouTubeApp {
+                        Button {
+                            model.player.openYouTubePlaybackErrorInYouTubeApp()
+                        } label: {
+                            Label("YouTube で開く", systemImage: "arrow.up.forward.app")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                    }
+                }
+                .padding(16)
+            }
+        } else {
+            ZStack {
+                Color.black
+                ProgressView().tint(.white.opacity(0.6))
+            }
+        }
     }
 
     @ViewBuilder
@@ -685,6 +964,24 @@ private struct NowPlayingArtworkBlock: View {
                 ProgressView()
                     .tint(.white.opacity(0.6))
             }
+        }
+    }
+
+    /// Official YouTube thumbnail, shown behind the embed while it loads. Falls back to the same
+    /// note-glyph placeholder as local artwork if the thumbnail itself fails to load.
+    @ViewBuilder
+    private func youtubeThumbnail(videoID: String) -> some View {
+        if let url = URL(string: youtubeThumbnailURLString(videoID: videoID)) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().scaledToFill()
+                default:
+                    placeholder
+                }
+            }
+        } else {
+            placeholder
         }
     }
 
@@ -712,62 +1009,112 @@ private struct NowPlayingQueuePanel: View {
     @Environment(AppModel.self) private var model
     var topInset: CGFloat = 0
 
+    /// Drives `List`'s `.environment(\.editMode, _)`; the panel has no navigation bar of its
+    /// own to host a standard `EditButton`, so the custom header below toggles this directly.
+    @State private var editMode: EditMode = .inactive
+
     private var queue: [Song] {
         model.player.playbackQueue
     }
 
+    /// Stable row identity for `ForEach`/`.onMove`. Keying on `Array.indices` (as the read-only
+    /// list used to) breaks reorder/delete animations once rows can move — SwiftUI needs an id
+    /// that follows the *song*, not the slot. Song ids can repeat within a queue (the same track
+    /// queued twice), so the index still rides along to disambiguate.
+    private struct QueueRow: Identifiable {
+        let id: String
+        let index: Int
+        let song: Song
+    }
+
+    private var rows: [QueueRow] {
+        queue.enumerated().map { offset, song in
+            QueueRow(id: "\(song.id)#\(offset)", index: offset, song: song)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Up next")
-                .font(.title2.weight(.bold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 20)
-                .padding(.top, topInset + 4)
-                .padding(.bottom, 8)
+            HStack(alignment: .firstTextBaseline) {
+                Text("Up next")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                if !queue.isEmpty {
+                    Button(editMode == .active ? "完了" : "並べ替え") {
+                        withAnimation(nowPlayingPanelSpring) {
+                            editMode = editMode == .active ? .inactive : .active
+                        }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(nowPlayingFallbackAccent)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, topInset + 4)
+            .padding(.bottom, 8)
             List {
                 if queue.isEmpty {
                     Text("The queue is empty.")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(Array(queue.indices), id: \.self) { idx in
-                        let song = queue[idx]
+                    ForEach(rows) { row in
                         Button {
                             Task {
-                                await model.player.playQueueItem(at: idx)
+                                await model.player.playQueueItem(at: row.index)
                                 withAnimation(nowPlayingPanelSpring) {
                                     page = .main
                                 }
                             }
                         } label: {
                             HStack(spacing: 12) {
-                                if idx == model.player.currentQueueIndex {
+                                if row.index == model.player.currentQueueIndex {
                                     Image(systemName: "waveform")
                                         .font(.system(size: 14, weight: .semibold))
                                         .foregroundStyle(nowPlayingFallbackAccent)
                                         .frame(width: 22)
                                 } else {
-                                    Text("\(idx + 1)")
+                                    Text("\(row.index + 1)")
                                         .font(.system(size: 13, weight: .medium, design: .monospaced))
                                         .foregroundStyle(.tertiary)
                                         .frame(width: 22)
                                 }
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(song.displayTitle)
+                                    Text(row.song.displayTitle)
                                         .font(.body.weight(.semibold))
                                         .foregroundStyle(.primary)
-                                    Text(song.displayArtist)
+                                    Text(row.song.displayArtist)
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer(minLength: 0)
                             }
                         }
-                        .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
+                                .padding(.horizontal, 8)
+                        )
+                        .listRowSeparator(.hidden)
+                        .contextMenu {
+                            WatchTransferSongMenuItem(song: row.song)
+                        }
+                    }
+                    .onMove { offsets, destination in
+                        guard let from = offsets.first else { return }
+                        let to = nowPlayingQueueMoveDestination(from: from, to: destination)
+                        model.player.moveQueueItem(from: from, to: to)
+                    }
+                    .onDelete { offsets in
+                        for index in offsets.sorted(by: >) {
+                            Task { await model.player.removeQueueItem(at: index) }
+                        }
                     }
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .environment(\.editMode, $editMode)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
@@ -828,7 +1175,15 @@ private struct NowPlayingFavouritesPanel: View {
                                 Spacer(minLength: 0)
                             }
                         }
-                        .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
+                        .listRowBackground(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
+                                .padding(.horizontal, 8)
+                        )
+                        .listRowSeparator(.hidden)
+                        .contextMenu {
+                            WatchTransferSongMenuItem(song: song)
+                        }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 model.removeFavourite(songId: song.id)
@@ -865,6 +1220,9 @@ private struct NowPlayingPlaybackSettingsPanel: View {
                 .padding(.top, topInset + 4)
                 .padding(.bottom, 8)
             List {
+                // EQ has no effect on YouTube songs (audio comes from the embedded WKWebView, not
+                // AVAudioEngine), so its controls are disabled instead of pretending they apply.
+                let isYouTubeSong = model.player.currentSong?.isYouTube ?? false
                 Section {
                     Toggle(
                         "Enable equaliser",
@@ -906,7 +1264,12 @@ private struct NowPlayingPlaybackSettingsPanel: View {
                         .listRowInsets(.init(top: 8, leading: 10, bottom: 8, trailing: 10))
                 } header: {
                     Text("Equaliser")
+                } footer: {
+                    if isYouTubeSong {
+                        Text("YouTube曲の再生には適用されません。")
+                    }
                 }
+                .disabled(isYouTubeSong)
 
                 Section {
                     Toggle("Crossfade", isOn: .constant(false))

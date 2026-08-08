@@ -45,8 +45,8 @@ func RunSyncCLI(args []string) (bool, error) {
 		// Start the LAN sync HTTP server head-less (no Wails GUI) so a machine
 		// can act as a sync receiver for verification without a desktop session.
 		app := NewApp()
-		StartWearServer(context.Background(), app)
-		fmt.Println("[Sync] head-less sync server listening on :" + wearServerPort)
+		StartLANServer(context.Background(), app)
+		fmt.Println("[Sync] head-less sync server listening on :" + lanServerPort)
 		select {}
 	case "--sync-pull":
 		if len(args) < 2 {

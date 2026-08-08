@@ -5,7 +5,7 @@ struct DesktopPlaylistImportView: View {
     @Environment(AppModel.self) private var model
     @Binding var isPresented: Bool
 
-    @State private var rows: [WearDesktopPlaylist] = []
+    @State private var rows: [RemoteDesktopPlaylist] = []
     @State private var isLoadingPreview = true
     @State private var previewError: String?
     @State private var missingPolicy: DesktopPlaylistMissingPolicy = .omitMissingDownloads

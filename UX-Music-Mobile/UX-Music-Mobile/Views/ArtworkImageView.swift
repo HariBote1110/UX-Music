@@ -28,7 +28,7 @@ struct ArtworkImageView: View {
         .task(id: taskIdentity) {
             loaded = nil
             guard !urlString.isEmpty else { return }
-            let img = await WearRemoteArtworkImageLoader.loadUIImage(artworkId: artworkId, urlString: urlString)
+            let img = await RemoteArtworkImageLoader.loadUIImage(artworkId: artworkId, urlString: urlString)
             loaded = img
         }
     }
@@ -90,7 +90,7 @@ struct WearCachedHeroArtworkView: View {
         .task(id: taskIdentity) {
             loaded = nil
             guard !urlString.isEmpty else { return }
-            loaded = await WearRemoteArtworkImageLoader.loadUIImage(artworkId: artworkId, urlString: urlString)
+            loaded = await RemoteArtworkImageLoader.loadUIImage(artworkId: artworkId, urlString: urlString)
         }
     }
 }

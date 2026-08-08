@@ -19,29 +19,34 @@ func TestRunSyncCLIPairStoresTokenAndKnownPeer(t *testing.T) {
 	}
 
 	var confirmed bool
+	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{
 				DeviceID:        "dev_mac_mini",
 				DisplayName:     "YukinoMac-mini",
 				ProtocolVersion: syncProtocolVersion,
 				Roles:           []string{"LibraryHost"},
 			})
-		case "/sync/pairing/start":
+		case "/v1/pairing/start":
 			writeJSON(w, syncPairingStartResponse{
 				SessionID: "sess_mac_1",
 				DeviceID:  "dev_crescent",
 				Code:      "123456",
 				ExpiresAt: "2026-06-09T09:45:00Z",
 			})
-		case "/sync/pairing/confirm":
+		case "/v1/pairing/confirm":
 			var req syncPairingConfirmRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("decode confirm request: %v", err)
+				observer.errorf("decode confirm request: %v", err)
+				http.Error(w, "bad confirm request", http.StatusBadRequest)
+				return
 			}
 			if req.SessionID != "sess_mac_1" || req.Code != "123456" {
-				t.Fatalf("unexpected confirm request: %#v", req)
+				observer.errorf("unexpected confirm request: %#v", req)
+				http.Error(w, "unexpected confirm request", http.StatusBadRequest)
+				return
 			}
 			confirmed = true
 			writeJSON(w, syncPairingConfirmResponse{
@@ -55,6 +60,7 @@ func TestRunSyncCLIPairStoresTokenAndKnownPeer(t *testing.T) {
 	defer remote.Close()
 
 	handled, err := RunSyncCLI([]string{"--sync-pair", remote.URL})
+	observer.assertNoErrors(t)
 	if err != nil {
 		t.Fatalf("sync pair cli: %v", err)
 	}
@@ -66,7 +72,7 @@ func TestRunSyncCLIPairStoresTokenAndKnownPeer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load settings: %v", err)
 	}
-	tokens, _ := settings[syncAuthTokensSettingsKey].(map[string]interface{})
+	tokens, _ := settings[deviceAuthTokensSettingsKey].(map[string]interface{})
 	if tokens["dev_mac_mini"] != "tok_mac_for_crescent" {
 		t.Fatalf("expected Mac token to be saved, got %#v", tokens)
 	}
@@ -80,7 +86,7 @@ func TestRunSyncCLIAutoOnceRunsAutoSyncPairedDevices(t *testing.T) {
 	newTempSyncStore(t)
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_crescent",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_mac_mini": "tok_mac"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_mac_mini": "tok_mac"},
 	}); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
@@ -96,18 +102,21 @@ func TestRunSyncCLIAutoOnceRunsAutoSyncPairedDevices(t *testing.T) {
 	}
 
 	var observedEvents []uxsync.PlayEvent
+	observer := &handlerObserver{}
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_mac_mini", DisplayName: "YukinoMac-mini", ProtocolVersion: syncProtocolVersion})
-		case "/sync/library/events":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_mac" {
+		case "/v1/sync/library/events":
+			if r.Header.Get("Authorization") != "Bearer tok_mac" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 			var req syncLibraryEventsRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("decode events: %v", err)
+				observer.errorf("decode events: %v", err)
+				http.Error(w, "bad events payload", http.StatusBadRequest)
+				return
 			}
 			observedEvents = req.PlayEvents
 			writeJSON(w, syncLibraryEventsResponse{Accepted: len(req.PlayEvents), Ack: uxsync.EventAck{DeviceID: req.DeviceID, MaxDeviceSequence: 1}})
@@ -118,13 +127,14 @@ func TestRunSyncCLIAutoOnceRunsAutoSyncPairedDevices(t *testing.T) {
 	defer remote.Close()
 	if err := store.Instance.Save("settings", map[string]interface{}{
 		syncDeviceIDSettingsKey:   "dev_crescent",
-		syncAuthTokensSettingsKey: map[string]interface{}{"dev_mac_mini": "tok_mac"},
+		deviceAuthTokensSettingsKey: map[string]interface{}{"dev_mac_mini": "tok_mac"},
 		syncKnownPeersSettingsKey: []syncKnownPeerRecord{{DeviceID: "dev_mac_mini", DisplayName: "YukinoMac-mini", BaseURL: remote.URL}},
 	}); err != nil {
 		t.Fatalf("seed known peer: %v", err)
 	}
 
 	handled, err := RunSyncCLI([]string{"--sync-auto-once"})
+	observer.assertNoErrors(t)
 	if err != nil {
 		t.Fatalf("sync auto once cli: %v", err)
 	}

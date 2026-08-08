@@ -4,6 +4,35 @@ import "sort"
 
 const situationPlaylistMaxItems = 20
 
+// situationPlaylistBucket is one generated "For You" playlist: a stable key
+// for the Wails-facing map, the display name, and the picked songs.
+type situationPlaylistBucket struct {
+	key   string
+	name  string
+	songs []interface{}
+}
+
+// generateSituationPlaylists picks the "For You" buckets in their fixed
+// display order (recently added → most played → random pick), omitting any
+// bucket whose song list came back empty. Both the Wails-facing
+// (*App).GetSituationPlaylists and the LAN API's
+// remoteSituationPlaylistsHandler share this so the picking logic lives in
+// one place.
+func generateSituationPlaylists(songs []interface{}, counts map[string]interface{}) []situationPlaylistBucket {
+	candidates := []situationPlaylistBucket{
+		{key: "recently_added", name: "最近追加した曲", songs: pickRecentlyAdded(songs, situationPlaylistMaxItems)},
+		{key: "most_played", name: "よく聴く曲", songs: pickMostPlayed(songs, counts, situationPlaylistMaxItems)},
+		{key: "random_pick", name: "ランダムピック", songs: pickRandomPick(songs, situationPlaylistMaxItems)},
+	}
+	out := make([]situationPlaylistBucket, 0, len(candidates))
+	for _, c := range candidates {
+		if len(c.songs) > 0 {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // pickRecentlyAdded returns the last `limit` entries of `songs` in reverse
 // insertion order (newest first). Library is assumed to be append-only, so
 // the tail represents the most recent additions.

@@ -1,4 +1,5 @@
 import SwiftUI
+import WatchConnectivity
 
 struct PlaylistDetailView: View {
     @Environment(AppModel.self) private var model
@@ -17,13 +18,47 @@ struct PlaylistDetailView: View {
         return model.resolvedSongs(for: pl)
     }
 
+    private var canShowWatchTransferMenu: Bool {
+        WatchTransferMenuPolicy.canShowMenu(
+            isWatchConnectivitySupported: WCSession.isSupported(),
+            isPaired: model.watchTransferBridge.isPaired
+        )
+    }
+
     var body: some View {
+        LibraryBottomBleed { bottomInset in
+            listBody
+                .contentMargins(.bottom, bottomInset, for: .scrollContent)
+        }
+        .background(Color.black)
+        .navigationTitle(playlist?.name ?? "プレイリスト")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar { detailToolbar }
+        .sheet(isPresented: $showAddSongs) {
+            AddSongsToPlaylistSheet(playlistId: playlistId)
+                .environment(model)
+        }
+        .alert("プレイリスト名を変更", isPresented: $showRename) {
+            TextField("名前", text: $renameText)
+            Button("保存") {
+                try? model.renamePlaylist(id: playlistId, newName: renameText)
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("このプレイリストの新しい名前を入力してください。")
+        }
+    }
+
+    @ViewBuilder
+    private var listBody: some View {
         Group {
             if playlist == nil {
                 ContentUnavailableView(
-                    "Playlist unavailable",
+                    "プレイリストを利用できません",
                     systemImage: "music.note.list",
-                    description: Text("This playlist was removed or is no longer available.")
+                    description: Text("このプレイリストは削除されたか、利用できなくなりました。")
                 )
             } else {
                 List {
@@ -36,12 +71,14 @@ struct PlaylistDetailView: View {
                                 play(song)
                             }
                         )
-                        .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        .modifier(LibraryListRowStyle())
+                        .contextMenu {
+                            SongQueueMenuItems(song: song.withPath(model.downloadManager.localPathString(songId: song.id)))
+                            WatchTransferSongMenuItem(song: song)
                             Button(role: .destructive) {
                                 try? model.removeSongsFromPlaylist(playlistId: playlistId, songIds: [song.id])
                             } label: {
-                                Label("Remove", systemImage: "minus.circle")
+                                Label("プレイリストから削除", systemImage: "minus.circle")
                             }
                         }
                     }
@@ -53,44 +90,38 @@ struct PlaylistDetailView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .background(Color.black)
-        .navigationTitle(playlist?.name ?? "Playlist")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar {
-            if playlist != nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack {
-                        EditButton()
-                        Button {
-                            showAddSongs = true
+    }
+
+    @ToolbarContentBuilder
+    private var detailToolbar: some ToolbarContent {
+        if playlist != nil {
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack {
+                    EditButton()
+                    if canShowWatchTransferMenu {
+                        Menu {
+                            WatchTransferBulkMenuItem(
+                                title: "プレイリストを Apple Watch に転送",
+                                songs: songs
+                            )
                         } label: {
-                            Image(systemName: "plus")
+                            Image(systemName: "ellipsis.circle")
                         }
-                        .accessibilityLabel("Add songs")
                     }
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Rename") {
-                        renameText = playlist?.name ?? ""
-                        showRename = true
+                    Button {
+                        showAddSongs = true
+                    } label: {
+                        Image(systemName: "plus")
                     }
+                    .accessibilityLabel("曲を追加")
                 }
             }
-        }
-        .sheet(isPresented: $showAddSongs) {
-            AddSongsToPlaylistSheet(playlistId: playlistId)
-                .environment(model)
-        }
-        .alert("Rename playlist", isPresented: $showRename) {
-            TextField("Name", text: $renameText)
-            Button("Save") {
-                try? model.renamePlaylist(id: playlistId, newName: renameText)
+            ToolbarItem(placement: .topBarLeading) {
+                Button("名前を変更") {
+                    renameText = playlist?.name ?? ""
+                    showRename = true
+                }
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Enter a new name for this playlist.")
         }
     }
 
@@ -124,7 +155,7 @@ private struct AddSongsToPlaylistSheet: View {
         NavigationStack {
             List {
                 if candidates.isEmpty {
-                    Text("All downloaded songs are already in this playlist.")
+                    Text("ダウンロード済みの曲はすべてこのプレイリストに追加済みです。")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(candidates) { song in
@@ -146,11 +177,11 @@ private struct AddSongsToPlaylistSheet: View {
                     }
                 }
             }
-            .navigationTitle("Add songs")
+            .navigationTitle("曲を追加")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                    Button("完了") { dismiss() }
                 }
             }
         }

@@ -9,13 +9,15 @@ import (
 )
 
 func TestNormaliseSidecarRuntimePreference(t *testing.T) {
+	// 期待値は定数ではなくリテラルで書く。定数側を書き換えるとテストも一緒に
+	// 追随してしまい、設定値（UX_MUSIC_LYRICS_RUNTIME）の綴り変更を検出できない。
 	cases := map[string]string{
-		"":        sidecarRuntimeAuto,
-		"auto":    sidecarRuntimeAuto,
-		"python":  sidecarRuntimePython,
-		"swift":   sidecarRuntimeSwift,
-		"SWIFT":   sidecarRuntimeSwift,
-		"unknown": sidecarRuntimeAuto,
+		"":        "auto",
+		"auto":    "auto",
+		"python":  "python",
+		"swift":   "swift",
+		"SWIFT":   "swift",
+		"unknown": "auto",
 	}
 	for input, want := range cases {
 		if got := normaliseSidecarRuntimePreference(input); got != want {

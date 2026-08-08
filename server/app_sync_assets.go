@@ -39,6 +39,7 @@ const syncTransferStageUploading = "uploading"
 const syncTransferStageDone = "done"
 const syncTransferStageSkipped = "skipped"
 const syncTransferStageFailed = "failed"
+const syncTranscodeMP3320Capability = "library.transcode.mp3-320.v1"
 
 var syncTransferProgressSink = emitSyncTransferProgress
 var syncOpenMP3Stream = openSyncMP3Stream
@@ -121,10 +122,17 @@ func syncLibrarySnapshotHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tracks := make([]map[string]interface{}, 0, len(library))
+	seenTracks := map[string]bool{}
 	for _, item := range library {
 		song, ok := item.(map[string]interface{})
 		if !ok {
 			continue
+		}
+		if key := syncSnapshotDedupeKey(song); key != "" {
+			if seenTracks[key] {
+				continue
+			}
+			seenTracks[key] = true
 		}
 		clean := make(map[string]interface{}, len(song))
 		for key, value := range song {
@@ -136,6 +144,7 @@ func syncLibrarySnapshotHandler(w http.ResponseWriter, r *http.Request) {
 		if artwork := syncArtworkDescriptor(song); len(artwork) > 0 {
 			clean["syncArtwork"] = artwork
 		}
+		attachSyncPlayCountForTransfer(clean, song)
 		tracks = append(tracks, clean)
 	}
 	writeJSON(w, syncLibrarySnapshotResponse{
@@ -145,6 +154,19 @@ func syncLibrarySnapshotHandler(w http.ResponseWriter, r *http.Request) {
 		Tracks:      tracks,
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func syncSnapshotDedupeKey(song map[string]interface{}) string {
+	path := strings.TrimSpace(syncTrackString(song, "path"))
+	if path != "" {
+		return "path:" + filepath.Clean(path)
+	}
+	sourceDeviceID := strings.TrimSpace(syncTrackString(song, "syncSourceDeviceId"))
+	sourceTrackID := strings.TrimSpace(syncTrackString(song, "syncSourceTrackId"))
+	if sourceDeviceID != "" && sourceTrackID != "" {
+		return "source:" + sourceDeviceID + ":" + sourceTrackID
+	}
+	return ""
 }
 
 func syncAssetFileHandler(w http.ResponseWriter, r *http.Request) {
@@ -176,6 +198,28 @@ func syncAssetFileHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := os.Stat(filePath); err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	if normaliseSyncTransferEncodingMode(r.URL.Query().Get("encoding")) == syncTransferEncodingMP3320 && !syncFilePathIsMP3(filePath) {
+		stream, wait, err := syncOpenMP3Stream(r.Context(), filePath)
+		if err != nil {
+			http.Error(w, "failed to transcode asset", http.StatusInternalServerError)
+			return
+		}
+		defer stream.Close()
+		safeName := syncMP3TransferFileName(filePath)
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, safeName))
+		w.Header().Set("Content-Type", "audio/mpeg")
+		w.Header().Set("X-UX-Music-Sync-Transfer-Encoding", syncTransferEncodingMP3320)
+		w.Header().Set("X-UX-Music-Sync-Audio-Bitrate", "320")
+		if _, err := io.Copy(w, stream); err != nil {
+			return
+		}
+		if wait != nil {
+			if err := wait(); err != nil {
+				return
+			}
+		}
 		return
 	}
 	safeName := filepath.Base(filePath)
@@ -226,7 +270,11 @@ func syncLibraryImportHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing source device or track id", http.StatusBadRequest)
 		return
 	}
-	if syncImportedTrackExists(payload.SourceDeviceID, trackID) {
+	if importedPath := syncImportedTrackPath(payload.SourceDeviceID, trackID); importedPath != "" {
+		if err := applySyncImportedPlayCount(payload.Track, importedPath); err != nil {
+			http.Error(w, "failed to update imported track playcount", http.StatusInternalServerError)
+			return
+		}
 		writeJSON(w, syncLibraryImportResponse{Skipped: true})
 		return
 	}
@@ -279,6 +327,10 @@ func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, 
 		RemoteDeviceID:    identity.DeviceID,
 		RemoteDisplayName: syncIdentityDisplayName(identity),
 	}
+	localMatchKeys, err := syncLocalLibraryMatchKeys()
+	if err != nil {
+		return SyncPullResult{}, err
+	}
 	for _, track := range snapshot.Tracks {
 		if limit > 0 && result.Downloaded >= limit {
 			break
@@ -289,7 +341,16 @@ func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, 
 			result.Errors = append(result.Errors, "track id is missing")
 			continue
 		}
-		if syncImportedTrackExists(identity.DeviceID, trackID) {
+		if importedPath := syncImportedTrackPath(identity.DeviceID, trackID); importedPath != "" {
+			if err := applySyncImportedPlayCount(track, importedPath); err != nil {
+				result.Failed++
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", trackID, err))
+				continue
+			}
+			result.Skipped++
+			continue
+		}
+		if key := syncSongMatchKey(track); key != "" && localMatchKeys[key] {
 			result.Skipped++
 			continue
 		}
@@ -417,11 +478,11 @@ func (a *App) PushSyncLibraryAssetsWithOptions(baseURL string, limit int, option
 }
 
 func fetchSyncLibrarySnapshot(ctx context.Context, baseURL, token string) (syncLibrarySnapshotResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/sync/library/snapshot", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/sync/library/snapshot", nil)
 	if err != nil {
 		return syncLibrarySnapshotResponse{}, err
 	}
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := syncHTTPClient().Do(req)
 	if err != nil {
 		return syncLibrarySnapshotResponse{}, err
@@ -439,12 +500,16 @@ func fetchSyncLibrarySnapshot(ctx context.Context, baseURL, token string) (syncL
 
 func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string, identity syncIdentityResponse, track map[string]interface{}, current, total int) (string, error) {
 	trackID := syncTrackID(track)
-	endpoint := baseURL + "/sync/assets/" + url.PathEscape(trackID) + "/file"
+	encodingMode := syncPreferredFormatForIdentity(identity)
+	endpoint := baseURL + "/v1/sync/assets/" + url.PathEscape(trackID) + "/file"
+	if encodingMode == syncTransferEncodingMP3320 {
+		endpoint += "?encoding=mp3_320"
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := syncAssetHTTPClient().Do(req)
 	if err != nil {
 		return "", err
@@ -453,7 +518,12 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("sync asset request failed: %s", resp.Status)
 	}
-	destPath := syncManagedTrackDestination(identity, track, syncResponseFileName(resp, track))
+	responseEncoding := syncResponseTransferEncoding(resp)
+	fileName := syncResponseFileName(resp, track)
+	if encodingMode == syncTransferEncodingMP3320 && responseEncoding == syncTransferEncodingMP3320 {
+		fileName = syncMP3TransferFileName(fileName)
+	}
+	destPath := syncManagedTrackDestination(identity, track, fileName)
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return "", err
 	}
@@ -474,7 +544,7 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 			BytesDone:      done,
 			BytesTotal:     totalBytes,
 			BytesPerSecond: bytesPerSecond,
-			EncodingMode:   syncTransferEncodingOriginal,
+			EncodingMode:   responseEncoding,
 		})
 	})
 	_, copyErr := io.Copy(out, progress)
@@ -491,7 +561,19 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 		_ = os.Remove(tmpPath)
 		return "", err
 	}
-	if err := upsertSyncImportedTrack(identity, track, destPath); err != nil {
+	importTrack := cloneSyncTrackMap(track)
+	if responseEncoding == syncTransferEncodingMP3320 {
+		importTrack["fileType"] = ".mp3"
+		importTrack["syncTransferEncoding"] = syncTransferEncodingMP3320
+		importTrack["audioBitrateKbps"] = 320
+	}
+	if artwork, err := downloadSyncArtworkAsset(ctx, baseURL, token, identity.DeviceID, trackID); err == nil && len(artwork) > 0 {
+		importTrack["artwork"] = artwork
+	}
+	if err := upsertSyncImportedTrack(identity, importTrack, destPath); err != nil {
+		return "", err
+	}
+	if err := applySyncImportedPlayCount(importTrack, destPath); err != nil {
 		return "", err
 	}
 	app.emitSyncTransferProgress(SyncTransferProgress{
@@ -502,7 +584,7 @@ func downloadSyncTrackAsset(ctx context.Context, app *App, baseURL, token string
 		FileName:     filepath.Base(destPath),
 		Current:      current,
 		Total:        total,
-		EncodingMode: syncTransferEncodingOriginal,
+		EncodingMode: responseEncoding,
 	})
 	return destPath, nil
 }
@@ -741,12 +823,12 @@ func (a *App) uploadSyncTrackAsset(ctx context.Context, baseURL, token string, s
 		}
 	}()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/sync/library/import", reader)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/sync/library/import", reader)
 	if err != nil {
 		return syncLibraryImportResponse{}, err
 	}
 	req.Header.Set("Content-Type", multipartWriter.FormDataContentType())
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := syncAssetHTTPClient().Do(req)
 	if err != nil {
 		return syncLibraryImportResponse{}, err
@@ -922,11 +1004,92 @@ func normaliseSyncTransferEncodingMode(raw string) string {
 	}
 }
 
+func syncPreferredFormat() string {
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		return syncTransferEncodingOriginal
+	}
+	return normaliseSyncTransferEncodingMode(syncCatalogString(settings, syncPreferredFormatSettingsKey))
+}
+
+func syncPreferredFormatForIdentity(identity syncIdentityResponse) string {
+	preferred := syncPreferredFormat()
+	if preferred != syncTransferEncodingMP3320 {
+		return syncTransferEncodingOriginal
+	}
+	if !syncIdentityHasCapability(identity, syncTranscodeMP3320Capability) {
+		return syncTransferEncodingOriginal
+	}
+	return syncTransferEncodingMP3320
+}
+
+func syncIdentityHasCapability(identity syncIdentityResponse, capability string) bool {
+	for _, item := range identity.Capabilities {
+		if strings.TrimSpace(item) == capability {
+			return true
+		}
+	}
+	return false
+}
+
+func syncResponseTransferEncoding(resp *http.Response) string {
+	if resp == nil {
+		return syncTransferEncodingOriginal
+	}
+	return normaliseSyncTransferEncodingMode(resp.Header.Get("X-UX-Music-Sync-Transfer-Encoding"))
+}
+
+func syncFilePathIsMP3(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".mp3")
+}
+
+func syncMP3TransferFileName(path string) string {
+	base := filepath.Base(path)
+	if base == "" || base == "." {
+		return "track.mp3"
+	}
+	ext := filepath.Ext(base)
+	if ext == "" {
+		return base + ".mp3"
+	}
+	return strings.TrimSuffix(base, ext) + ".mp3"
+}
+
+func cloneSyncTrackMap(track map[string]interface{}) map[string]interface{} {
+	clone := make(map[string]interface{}, len(track))
+	for key, value := range track {
+		clone[key] = value
+	}
+	return clone
+}
+
 func syncTransferCandidateCount(library []interface{}, limit int) int {
 	if limit > 0 && limit < len(library) {
 		return limit
 	}
 	return len(library)
+}
+
+func syncLocalLibraryMatchKeys() (map[string]bool, error) {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return nil, err
+	}
+	keys := map[string]bool{}
+	for _, item := range library {
+		track, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(syncTrackString(track, "syncSourceDeviceId")) != "" {
+			continue
+		}
+		key := syncSongMatchKey(track)
+		if key != "" {
+			keys[key] = true
+		}
+	}
+	return keys, nil
 }
 
 func syncAssetHTTPClient() *http.Client {
@@ -1031,7 +1194,7 @@ func syncMissingArtworkFromPeer(ctx context.Context, baseURL, token, deviceID st
 			continue
 		}
 		if err != nil {
-			return changed, err
+			continue
 		}
 		if len(artwork) == 0 {
 			continue
@@ -1051,12 +1214,12 @@ func syncMissingArtworkFromPeer(ctx context.Context, baseURL, token, deviceID st
 var errSyncArtworkNotFound = fmt.Errorf("sync artwork not found")
 
 func downloadSyncArtworkAsset(ctx context.Context, baseURL, token, deviceID, trackID string) (map[string]string, error) {
-	endpoint := strings.TrimRight(baseURL, "/") + "/sync/assets/" + url.PathEscape(trackID) + "/artwork"
+	endpoint := strings.TrimRight(baseURL, "/") + "/v1/sync/assets/" + url.PathEscape(trackID) + "/artwork"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := syncAssetHTTPClient().Do(req)
 	if err != nil {
 		return nil, err
@@ -1143,7 +1306,7 @@ func writeSyncArtworkFile(path string, data []byte) error {
 }
 
 func parseSyncAssetPath(rawPath string) (string, string) {
-	rest := strings.TrimPrefix(rawPath, "/sync/assets/")
+	rest := strings.TrimPrefix(rawPath, "/v1/sync/assets/")
 	parts := strings.Split(strings.Trim(rest, "/"), "/")
 	if len(parts) != 2 {
 		return "", ""
@@ -1200,7 +1363,7 @@ func syncArtworkDescriptor(track map[string]interface{}) map[string]interface{} 
 	}
 	descriptor := map[string]interface{}{
 		"available": true,
-		"endpoint":  "/sync/assets/" + url.PathEscape(syncTrackID(track)) + "/artwork",
+		"endpoint":  "/v1/sync/assets/" + url.PathEscape(syncTrackID(track)) + "/artwork",
 	}
 	for key, value := range artwork {
 		descriptor[key] = value
@@ -1247,9 +1410,13 @@ func sanitiseSyncArtworkFileName(raw string) string {
 }
 
 func syncImportedTrackExists(deviceID, trackID string) bool {
+	return syncImportedTrackPath(deviceID, trackID) != ""
+}
+
+func syncImportedTrackPath(deviceID, trackID string) string {
 	library, err := store.Instance.LoadSlice("library")
 	if err != nil {
-		return false
+		return ""
 	}
 	for _, item := range library {
 		existing, ok := item.(map[string]interface{})
@@ -1259,12 +1426,12 @@ func syncImportedTrackExists(deviceID, trackID string) bool {
 		if existing["syncSourceDeviceId"] == deviceID && existing["syncSourceTrackId"] == trackID {
 			if path, _ := existing["path"].(string); strings.TrimSpace(path) != "" {
 				if _, err := os.Stat(path); err == nil {
-					return true
+					return path
 				}
 			}
 		}
 	}
-	return false
+	return ""
 }
 
 func syncTrackID(track map[string]interface{}) string {
@@ -1348,12 +1515,62 @@ func applySyncImportedPlayCount(track map[string]interface{}, destPath string) e
 		counts = map[string]interface{}{}
 	}
 	entry := normalisePlayCountEntry(counts[destPath])
-	entry["count"] = playCount["count"]
-	if history, ok := playCount["history"].([]interface{}); ok {
-		entry["history"] = trimPlayCountHistory(history)
+	incomingCount := syncSettingFloat64(playCount["count"])
+	currentCount := syncSettingFloat64(entry["count"])
+	if incomingCount >= currentCount {
+		entry["count"] = incomingCount
+		if history, ok := playCount["history"].([]interface{}); ok {
+			entry["history"] = trimPlayCountHistory(history)
+		}
 	}
 	counts[destPath] = entry
-	return store.Instance.Save("playcounts", counts)
+	if err := store.Instance.Save("playcounts", counts); err != nil {
+		return err
+	}
+	return applySyncImportedPlayCountBase(playCount, destPath)
+}
+
+func applySyncImportedPlayCountBase(playCount map[string]interface{}, destPath string) error {
+	migration, err := store.Instance.LoadMap(syncPlayCountBaseMigrationStoreName)
+	if err != nil {
+		return nil
+	}
+	if migrated, _ := migration["migrated"].(bool); !migrated {
+		return nil
+	}
+	base, err := store.Instance.LoadMap(syncPlayCountBaseStoreName)
+	if err != nil {
+		base = map[string]interface{}{}
+	}
+	entry := normalisePlayCountEntry(base[destPath])
+	incomingCount := syncSettingFloat64(playCount["count"])
+	targetBaseCount := incomingCount - float64(syncLocalProjectedPlayCount(destPath))
+	if targetBaseCount < 0 {
+		targetBaseCount = 0
+	}
+	currentCount := syncSettingFloat64(entry["count"])
+	if targetBaseCount != currentCount {
+		entry["count"] = targetBaseCount
+	}
+	if history, ok := playCount["history"].([]interface{}); ok && len(history) > 0 {
+		entry["history"] = trimPlayCountHistory(history)
+	}
+	base[destPath] = entry
+	if err := store.Instance.Save(syncPlayCountBaseStoreName, base); err != nil {
+		return err
+	}
+	return recalculateAllSyncPlayCounts()
+}
+
+func syncLocalProjectedPlayCount(path string) int {
+	events, err := loadSyncPlayEvents()
+	if err != nil {
+		return 0
+	}
+	if playCount, ok := syncPlayCountsByResolvedPath(events)[path]; ok {
+		return playCount.Count
+	}
+	return 0
 }
 
 func loadSyncAuthTokenForDevice(deviceID string) (string, error) {
@@ -1365,7 +1582,7 @@ func loadSyncAuthTokenForDevice(deviceID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rawTokens, _ := settings[syncAuthTokensSettingsKey].(map[string]interface{})
+	rawTokens, _ := settings[deviceAuthTokensSettingsKey].(map[string]interface{})
 	token, _ := rawTokens[deviceID].(string)
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -1384,7 +1601,7 @@ func ResetSyncTestData() (SyncResetResult, error) {
 		settings = map[string]interface{}{}
 	}
 	preserved := map[string]interface{}{}
-	for _, key := range []string{syncDeviceIDSettingsKey, syncAuthTokensSettingsKey, syncKnownPeersSettingsKey} {
+	for _, key := range []string{syncDeviceIDSettingsKey, deviceAuthTokensSettingsKey, syncKnownPeersSettingsKey} {
 		if value, ok := settings[key]; ok {
 			preserved[key] = value
 		}
@@ -1401,7 +1618,7 @@ func ResetSyncTestData() (SyncResetResult, error) {
 			return result, err
 		}
 	}
-	for _, dir := range []string{"Artworks", "WearCache", syncManagedLibraryDirName, "Playlists"} {
+	for _, dir := range []string{"Artworks", "RemoteCache", syncManagedLibraryDirName, "Playlists"} {
 		path := filepath.Join(userDataPath, dir)
 		if err := os.RemoveAll(path); err != nil {
 			return result, err

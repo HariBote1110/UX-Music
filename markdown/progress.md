@@ -1,5 +1,146 @@
 # 開発進捗ログ (progress.md)
 
+## 2026年6月10日
+
+### UX Sync snapshot重複曲数の補正
+
+- **課題**:
+    - Air 側に過去の重複 import で同じ実ファイルパスを指す library 行が複数残っていると、mini 側の自動同期トーストで既存曲数が実ライブラリより大きく表示されていた。
+- **実装内容**:
+    - `/sync/library/snapshot` 生成時に同じ `path` の track を代表1件へ重複排除し、`count` も重複排除後の件数を返すようにした。
+    - `path` が空の特殊ケースでは `syncSourceDeviceId` / `syncSourceTrackId` を重複排除キーとして使い、同期元IDが同じ曲を重複して公開しないようにした。
+- **検証**:
+    - `go test ./server -run TestSyncLibrarySnapshotDeduplicatesRepeatedLibraryPaths -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-34c` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-37c` に更新。
+
+### UX Sync 再生回数の全件メタデータ同期
+
+- **課題**:
+    - リアルタイム再生イベントは届いていても、端末ごとの `playcounts-base` がズレていると、Air / mini 間で基準再生回数がずれたままになっていた。
+    - peer の `syncPlayCount` は総再生回数なのに、そのまま `playcounts-base` へ入れると、ローカル `sync-play-events` の投影分がさらに加算されて二重計上されていた。
+- **実装内容**:
+    - `AutoSyncPairedDevices()` が `LibraryHost` peer の snapshot を取得した時に、`track.syncPlayCount` をローカル同一曲へ全件反映するようにした。
+    - 突合は `syncSourceDeviceId` / `syncSourceTrackId` を優先し、未取得またはローカル同一曲では `syncSongMatchKey` で反映するようにした。
+    - 反映時は音源やジャケットを取得せず、`syncPlayCount` からローカル `sync-play-events` の投影数を差し引いた値を `playcounts-base` に保存するようにした。
+- **検証**:
+    - `go test ./server -run 'TestAutoSyncPairedDevicesAppliesRemotePlayCountSnapshotWithoutAssetPull|TestPullSyncLibraryAssetsUpdatesPlayCountWhenImportedTrackAlreadyExists|TestIncrementPlayCountKeepsImportedSyncPlayCountBase' -count=1`
+    - `go test ./server -run 'TestIncrementPlayCountImmediateSyncSkipsHeavyLibraryWork|TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer|TestSyncPlayCountsConvergeAcrossBidirectionalMetadataMatchedEvents' -count=1`
+    - `go test ./server -run TestApplySyncPlayCountSnapshotSubtractsLocalEventProjectionFromBase -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-34b` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-37b` に更新。
+
+### UX Sync 再生時即時同期
+
+- **課題**:
+    - 通信可能な状態でも、再生回数は定期 AutoSync まで peer へ届かず、Air / mini 間で「再生した直後の反映」が遅れていた。
+    - 再生直後の即時同期に総合 AutoSync を使うと、`/sync/library/snapshot`、pull、ジャケット補完まで走り、再生回数反映には重すぎた。
+- **実装内容**:
+    - `IncrementPlayCount()` で `PlayEvent` を保存し `playcounts` を更新した直後に、再生イベント専用の軽量同期をバックグラウンドで即時スケジュールするようにした。
+    - 連続再生で同期ジョブが重なり続けないよう、実行中の追加要求は pending として畳み、完了後にもう一度同期を試すようにした。
+    - 即時同期を再生イベント専用の軽量 flush に分離し、再生直後は `/sync/library/events` だけを実行するようにした。
+- **検証**:
+    - `go test ./server -run 'TestIncrementPlayCountTriggersImmediateSyncWhenPeerReachable|TestIncrementPlayCountRecordsLocalSyncPlayEvent|TestIncrementPlayCountKeepsImportedSyncPlayCountBase' -count=1`
+    - `go test ./server -run 'TestAutoSyncPairedDevicesPushesLocalPlayEventsToReachablePeer|TestSyncPlayCountsConvergeAcrossBidirectionalMetadataMatchedEvents' -count=1`
+    - `go test ./server -run TestIncrementPlayCountImmediateSyncSkipsHeavyLibraryWork -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-33b` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-36b` に更新。
+
+### UX Sync 再生回数メタデータ先行同期
+
+- **課題**:
+    - ジャケットは remote catalog / pull 経由で取得できていたが、再生回数は音源 push 時の metadata に偏っており、Air 側では既存曲や未取得 remote 曲の再生回数が mini 側と大きくズレていた。
+    - 既に import 済みの曲へ push が再送された場合、音源重複は skipped になるが `syncPlayCount` も破棄されていた。
+    - Air 側で再生した瞬間、`playcounts-base` に入っていない同期済み再生回数が `base + sync-play-events` の再計算で消え、Air 側ローカル回数だけに戻って見えていた。
+- **実装内容**:
+    - `/sync/library/snapshot` の各 track に、送信側 `playcounts` から正規化した `syncPlayCount` を同梱するようにした。
+    - `PullSyncLibraryAssets()` は既に取得済みの同期曲を再ダウンロードせず、snapshot の `syncPlayCount` だけを実保存パスの `playcounts` へ反映するようにした。
+    - pull で新規取得した曲にも import 後に `syncPlayCount` を反映し、`library.json` には転送用フィールドを残さないようにした。
+    - `/sync/library/import` の重複 skipped 経路でも、既存保存パスへ `syncPlayCount` だけを反映するようにした。
+    - `playcounts-base` migration 済みの環境では、受信した `syncPlayCount` を `playcounts-base` にも反映し、その後の再生時再計算で同期済み回数が消えないようにした。
+    - renderer の再生回数表示は local path の `playCounts` を優先し、未取得 remote 曲では `song.syncPlayCount.count` を fallback として表示するようにした。
+- **検証**:
+    - `go test ./server -run 'TestSyncLibrarySnapshotRequiresTokenAndReturnsLibraryTracks|TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary|TestPullSyncLibraryAssetsUpdatesPlayCountWhenImportedTrackAlreadyExists' -count=1`
+    - `go test ./server -run TestSyncLibraryImportUpdatesPlayCountWhenTrackAlreadyExists -count=1`
+    - `go test ./server -run TestIncrementPlayCountKeepsImportedSyncPlayCountBase -count=1`
+    - `npm test --prefix src/renderer -- --run js/ui/sync-availability.test.ts`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-32c` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-35c` に更新。
+
+### UX Sync 実環境バグ修正（相互ペアリング・重複表示・ジャケット取得）
+
+- **課題**:
+    - 手動ペアリング確定後、開始側の `baseUrl` が受信側へ保存されず、片方向だけ既知 peer が残る状態になり得た。
+    - 統一ライブラリの再読み込みで remote 曲を表示した後、同一曲をローカル取得しても renderer の path ベース merge が stale remote 曲を残していた。
+    - タップDL / pull 取得では音源のみ保存され、remote catalog の `syncArtwork` 情報に対応する実ジャケットファイルが取得されていなかった。
+- **実装内容**:
+    - `/sync/pairing/start` / `/sync/pairing/confirm` の payload に開始側 identity と到達可能 `baseUrl` を追加し、受信側 known peer 保存時は payload の `baseUrl` を優先するようにした。旧 payload でも従来どおり 200 応答できる互換性は維持した。
+    - renderer のライブラリ反映処理を `mergeSongsIntoLibrary` に切り出し、同一曲 match key では local 曲を優先して stale remote 曲を置換し、インデックスを再構築するようにした。
+    - `downloadSyncTrackAsset` で音源保存後・library upsert 前に `/sync/assets/{trackId}/artwork` を取得し、成功時は `artwork` 参照を保存するようにした。ジャケット取得失敗や未検出は音源取得を失敗扱いにしない。
+    - `syncMissingArtworkFromPeer` は track 単位の artwork 取得エラーで全体を中断せず、後続 track の補完を続行するようにした。
+- **検証**:
+    - `go test ./server -run 'TestSyncPairingConfirmStoresInitiatorKnownPeerFromPayload|TestStartSyncPairingCallsRemotePeerWithLocalDeviceID|TestConfirmSyncPairingStoresRemoteIssuedTokenForRemoteDevice|TestSyncPairingStartAndConfirmIssuesToken' -count=1`
+    - `npm test --prefix src/renderer -- --run js/core/library-model.test.ts js/ui/sync-availability.test.ts js/features/playback-manager.test.ts`
+    - `go test ./server -run 'TestDownloadSyncTrackImportsRemoteCatalogTrack|TestSyncMissingArtworkFromPeerContinuesAfterTrackError|TestPullSyncLibraryAssetsDownloadsRemoteTrackIntoManagedLibrary' -count=1`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-31b` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-34b` に更新。
+
+### UX Sync 手動ペアリング導線
+
+- **課題**:
+    - mDNS が使えない／不安定な環境では、発見一覧からペアリングを開始できず、直接到達できる peer とも接続できなかった。
+- **実装内容**:
+    - UX Sync 専用設定画面の `端末` タブへ IP / ホスト名と任意ポートの手動入力欄を追加した。
+    - `manualSyncPeerBaseUrl` と `startManualSyncPairing` を追加し、手動入力から baseURL を組み立てて既存の6桁コード確認ペアリングフローへ流せるようにした。
+- **検証**:
+    - `npm test --prefix src/renderer -- --run js/features/ux-sync-settings.test.ts`
+    - `go test ./... -count=1`
+    - `npm test --prefix src/renderer`
+    - `npm run typecheck --prefix src/renderer`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-31a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-34a` に更新。
+
+### mDNS TXT 255バイト制限の緊急修正
+
+- **課題**:
+    - mDNS TXT の `capabilities=` が full capability set で 255 バイトを超え、zeroconf の広告送信が失敗して UX Sync の相互発見が効かなくなっていた。
+- **実装内容**:
+    - `BuildMDNSText` から `capabilities` 行を外し、mDNS TXT を `deviceId` / `displayName` / `protocolVersion` / `schemaVersion` / `roles` の軽量ヒントに限定した。
+    - capability は reachableBaseUrl probe 後の `/sync/identity` response から取得する方針を protocol 文書へ明記した。
+- **検証**:
+    - `go test ./internal/uxsync ./server -run 'TestBuildMDNSText|TestSyncMDNSAdvertiseInfo_usesHostIdentity' -count=1`
+    - `go test ./... -count=1`
+    - `npm test --prefix src/renderer`
+    - `npm run typecheck --prefix src/renderer`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-30b` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-33b` に更新。
+
+### UX Sync ポータブル MP3 キャッシュ
+
+- **課題**:
+    - Air など容量制約のある portable client でも、pull / タップDL / prefetch / selective 自動同期は原本を取得しており、push 側だけにあった MP3 320kbps 変換を活かせなかった。
+- **実装内容**:
+    - `/sync/assets/{trackId}/file?encoding=mp3_320` を追加し、元が非 MP3 の曲は `syncOpenMP3Stream` で MP3 320kbps として配信するようにした。
+    - 元が MP3 の曲は再変換せず原本配信し、変換失敗時は原本フォールバックせずエラーにするようにした。
+    - `syncPreferredFormat` 設定を追加し、`mp3_320` かつ peer が `library.transcode.mp3-320.v1` を広告する場合だけ取得 URL に `encoding=mp3_320` を付けるようにした。
+    - pull 取込曲へ `syncTransferEncoding: "mp3_320"` と `audioBitrateKbps: 320` を保存し、UX Sync 設定の `保存` タブへ優先フォーマット選択を追加した。
+- **検証**:
+    - `go test ./server -run 'TestSyncAssetFileServesMP3320EncodingWhenRequested|TestSyncAssetFileKeepsOriginalMP3WhenMP3320Requested|TestSyncAssetFileServesOriginalFileByTrackID|TestSyncAssetFileFailsMP3320EncodingWithoutOriginalFallback|TestPullSyncLibraryAssetsRequestsPreferredMP3320WhenPeerSupportsIt|TestPullSyncLibraryAssetsFallsBackToOriginalWhenPeerLacksMP3320Capability|TestPullSyncLibraryAssetsKeepsOriginalWhenPreferredFormatIsOriginal|TestSyncSongMatchKeyIgnoresTransferredFormat' -count=1`
+    - `npm test --prefix src/renderer -- --run js/features/ux-sync-settings.test.ts`
+    - `go test ./... -count=1`
+    - `npm test --prefix src/renderer`
+    - `npm run typecheck --prefix src/renderer`
+- **バージョン情報の更新**:
+    - `src/renderer/package.json` と `src/renderer/package-lock.json` を `1.0.0-Beta-30a` に更新。
+    - `markdown/requirement.md` を `0.1.9-Beta-33a` に更新。
+
 ## 2026年6月9日
 
 ### safe-media Windows絶対パス復元の修正

@@ -2,6 +2,16 @@ import { state } from '../core/state.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 // ▲▲▲ 追加 ▲▲▲
 
+export const EQUALIZER_COLOURS_CHANGE_EVENT = 'equalizer-colours-change';
+
+function notifyEqualizerColoursChanged() {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    const event = typeof CustomEvent === 'function'
+        ? new CustomEvent(EQUALIZER_COLOURS_CHANGE_EVENT)
+        : new Event(EQUALIZER_COLOURS_CHANGE_EVENT);
+    window.dispatchEvent(event);
+}
+
 /**
  * Resolves the path to an artwork image. This is the single source of truth.
  * @param {object|string|null} artwork - The artwork data from a song or album object.
@@ -370,5 +380,6 @@ export async function setEqualizerColorFromArtwork(imageElement) {
     } else {
         setDefaultColors();
     }
+    notifyEqualizerColoursChanged();
 }
 // ▲▲▲ 追加 ▲▲▲

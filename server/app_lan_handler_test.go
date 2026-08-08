@@ -9,7 +9,7 @@ import (
 func TestNewLANHTTPHandlerIncludesSyncIdentity(t *testing.T) {
 	newTempSyncStore(t)
 	handler := NewLANHTTPHandler(NewApp())
-	req := httptest.NewRequest(http.MethodGet, "/sync/identity", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/identity", nil)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)

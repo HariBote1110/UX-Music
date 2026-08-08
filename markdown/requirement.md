@@ -1,4 +1,4 @@
-# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-32c)
+# 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-37c)
 
 ## 概要
 ローカル・オンラインの音源を統合的に管理・再生できるデスクトップ音楽プレーヤー。Electronフレームワークを基盤とし、音源のインポート、再生、管理に関する多岐にわたる機能を提供。独自ライブラリ管理だけでなく、CDリッピングやMTP転送など、オーディオマニア向けの機能も充実している。
@@ -77,21 +77,22 @@ Windows 側で mDNS discovery が空になる環境でも、ペアリング済�
 - **広告名正規化**: mDNS instance / TXT `displayName` に使う表示名から `.local` suffix を除去し、`YukinoMac-mini.local` ではなく `YukinoMac-mini` として広告する。
 - **既知peer保存**: inbound pairing の confirm 成功時、相手 `deviceId`、表示名、実通信元 IP から `http://{remote-ip}:8765` を既知 peer として `settings.syncKnownPeers` に保存する。
 - **発見fallback**: `DiscoverSyncDevices(timeoutMs)` と `/sync/discover` は mDNS 結果に `syncKnownPeers` をマージし、mDNS browse が不安定でもペアリング済み端末を候補に出す。
+- **手動ペアリング**: mDNS が使えないネットワークでは、UX Sync 専用設定画面の `端末` タブに IP / ホスト名と任意ポートを入力し、既存の6桁コード確認ペアリングを開始できる。
 
 ### [新規] UX Sync 音源pull MVP / SSH検証CLI
 ペア済み端末から、GUI を経由せず最小の音源転送を検証できる。
-- **ライブラリスナップショット**: `/sync/library/snapshot` は同期トークンを要求し、アートワーク blob を除いた曲一覧を返す。
-- **原本音源取得**: `/sync/assets/{trackId}/file` は同期トークンを要求し、登録済み曲IDに対応するローカル原本ファイルだけを返す。任意パス指定は受け付けない。
-- **子側pull取り込み**: `PullSyncLibraryAssets(baseURL, limit)` は保存済み `syncAuthTokens` を使って親へ接続し、受信音源を子側ユーザーデータ配下の `SyncLibrary` に保存し、`library.json` へ `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込む。
+- **ライブラリスナップショット**: `/sync/library/snapshot` は同期トークンを要求し、アートワーク blob を除いた曲一覧を返す。送信側に再生回数がある曲は `syncPlayCount` を含め、音源未取得の remote 曲でも再生回数を表示できる。同じ実ファイルパスを指す重複 library 行は代表1件だけを返し、過去の重複 import 残骸で同期曲数や既存曲トーストが膨らまないようにする。
+- **音源取得**: `/sync/assets/{trackId}/file` は同期トークンを要求し、登録済み曲IDに対応するローカル原本ファイルだけを返す。`encoding=mp3_320` かつ peer が `library.transcode.mp3-320.v1` を持つ場合は、元が非 MP3 の曲を MP3 320kbps としてストリーミング配信できる。任意パス指定は受け付けない。
+- **子側pull取り込み**: `PullSyncLibraryAssets(baseURL, limit)` は保存済み `syncAuthTokens` を使って親へ接続し、受信音源を子側ユーザーデータ配下の `SyncLibrary` に保存し、`library.json` へ `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込む。受信した `syncPlayCount` は実保存パスの `playcounts` と再計算用の `playcounts-base` に反映し、既に取得済みの曲は音源を再取得せず再生回数だけ更新する。`settings.syncPreferredFormat="mp3_320"` の端末は対応 peer から MP3 320kbps を取得し、非対応 peer では原本取得へフォールバックする。
 - **SSH検証CLI**: `--sync-reset-test-data` はペアリング情報を温存して検証用ライブラリ状態を初期化し、`--sync-pull-one` / `--sync-pull` は WebView2 を起動せず SSH から音源pullを実行する。
-- **GUI操作**: UX Sync 専用設定画面の `同期` タブから同期元 peer を選択し、`1曲取得` または `全曲取得` を実行できる。実行結果は取得数・既存数・失敗数と保存先パスとして表示する。
+- **GUI操作**: UX Sync 専用設定画面の `端末` タブから mDNS 探索または手動入力でペアリングを開始できる。`同期` タブから同期元 peer を選択し、`1曲取得` または `全曲取得` を実行できる。実行結果は取得数・既存数・失敗数と保存先パスとして表示する。
 - **ペア済み端末復元**: `ListSyncDevices()` は保存済み `syncAuthTokens` と `syncKnownPeers` から同期トークンを返さずにペア済み端末一覧を返す。UX Sync 専用設定画面は mDNS discovery が空でもこの一覧を端末表示と同期元候補へマージし、画面を閉じた後もペアリング済み状態を維持する。
 - **push転送**: `/sync/library/import` は同期トークンを要求し、ペア済み端末から multipart で届いた音源とメタデータを `SyncLibrary` へ保存する。`PushSyncLibraryAssets(baseURL, limit)` はローカルライブラリの音源を相手端末へ転送し、UX Sync 専用設定画面の `同期` タブから `1曲転送` / `全曲転送` を実行できる。
 - **転送進捗と圧縮転送**: UX Sync 専用設定画面は転送中のファイル名、件数、転送量、転送速度を表示する。`PushSyncLibraryAssetsWithOptions(baseURL, limit, { encodingMode: "mp3_320" })` により、FLAC などの重い音源を MP3 320kbps へ変換しながら転送できる。
-- **再生回数の自動同期**: ローカル再生回数の加算時に `PlayEvent` を `sync-play-events` へ記録し、接続可能なペア済み端末へ定期的に `/sync/library/events` でpushする。受信側は新規イベントだけを既存 `playcounts` へ反映し、同じイベントの再送では二重加算しない。
+- **再生回数の自動同期**: ローカル再生回数の加算時に `PlayEvent` を `sync-play-events` へ記録し、接続可能なペア済み端末へ即時バックグラウンド同期と定期同期で `/sync/library/events` をpushする。即時同期は再生イベント送信だけに限定し、音源取得やジャケット補完は定期 AutoSync に任せる。定期 AutoSync は peer の `/sync/library/snapshot` に含まれる `syncPlayCount` を同一曲へ全件反映し、端末ごとにズレた基準再生回数を収束させる。`syncPlayCount` は peer 側の総数として扱い、ローカル `sync-play-events` の投影数を引いた値を `playcounts-base` へ保存して二重加算を避ける。受信側は新規イベントだけを既存 `playcounts` へ反映し、同じイベントの再送では二重加算しない。
 - **ジャケットの自動補完同期**: `/sync/assets/{trackId}/artwork` は同期トークン付きで保存済みジャケットを返す。`AutoSyncPairedDevices()` は接続可能なペア済み端末に対し、既に取り込み済みの同期曲で欠けているジャケットを自動取得し、`Artworks` と `Artworks/thumbnails`、`library.json` の `artwork.full` / `artwork.thumbnail` に反映する。
-- **空き容量安全停止**: `settings.syncMinFreeSpaceGB` が正の値の場合、UX Sync は保存先ボリュームの空き容量が指定GB未満の時に自動同期、音源取得、音源受信を停止する。UX Sync 専用設定画面の `保存` タブから最低空き容量を変更できる。
-- **プロトコルスキーマ**: `/sync/schema` は `protocolVersion`、`schemaVersion`、capability、endpoint、message、拡張規則を含む機械可読スキーマを返す。`/sync/identity` は client が送る `X-UX-Music-Sync-Protocol-Version` / `X-UX-Music-Sync-Schema-Version` / `X-UX-Music-Sync-Capabilities` を元に negotiation 結果を返し、非互換 major の peer は同期操作前に拒否する。仕様は `markdown/ux-music-sync-protocol.md` を参照する。
+- **空き容量安全停止と保存形式**: `settings.syncMinFreeSpaceGB` が正の値の場合、UX Sync は保存先ボリュームの空き容量が指定GB未満の時に自動同期、音源取得、音源受信を停止する。UX Sync 専用設定画面の `保存` タブから最低空き容量と pull 側の優先フォーマット（原本 / MP3 320kbps）を変更できる。
+- **プロトコルスキーマ**: `/sync/schema` は `protocolVersion`、`schemaVersion`、capability、endpoint、message、拡張規則を含む機械可読スキーマを返す。`/sync/identity` は client が送る `X-UX-Music-Sync-Protocol-Version` / `X-UX-Music-Sync-Schema-Version` / `X-UX-Music-Sync-Capabilities` を元に negotiation 結果を返し、非互換 major の peer は同期操作前に拒否する。mDNS TXT は軽量ヒントに限定し、capability は `/sync/identity` から取得する。仕様は `markdown/ux-music-sync-protocol.md` を参照する。
 
 ### [更新] YouTubeダウンロード
 YouTube URL から楽曲をライブラリに追加する際、字幕を同時取得して同期歌詞（LRC）を生成する機能。

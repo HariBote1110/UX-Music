@@ -9,6 +9,7 @@ import {
     buildJaTxtFileContent,
     buildLyricsTranslationPrompt,
     deriveLyricsFileBase,
+    isInterludeText,
     mergeLrcWithJaLrc,
     mergeLrcWithJaTxt,
     mergePlainTxtWithJa,
@@ -117,6 +118,35 @@ function isLrcLineArray(lyrics) {
 }
 
 /**
+ * クリップボードへコピーする。Web 標準 API（navigator.clipboard）を優先する。
+ * Wails の ClipboardSetText は IPC ブリッジ経由で非 ASCII（日本語）を文字化け
+ * させることがあるため、利用できない場合のフォールバックに留める。
+ */
+async function copyTextToClipboard(text: string): Promise<void> {
+    if (navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return;
+        } catch {
+            // セキュアコンテキスト外などで失敗したら Wails 側にフォールバック
+        }
+    }
+    try {
+        await ClipboardSetText(text);
+    } catch {
+        // どちらも失敗した場合は黙って諦める（コピーは補助機能のため）
+    }
+}
+
+/**
+ * 表示用の本文を返す。間奏（[間奏] などのマーカーや空行）は文字を出さず、
+ * 行の高さだけ残すため半角スペースに置き換える。
+ */
+function lyricsDisplayText(text) {
+    return isInterludeText(text) ? ' ' : text;
+}
+
+/**
  * 歌詞表示エリアをクリアする
  */
 function clearLyrics() {
@@ -186,14 +216,14 @@ function renderLyrics(lyrics) {
                 p.classList.add('lyrics-line--bilingual');
                 const primary = document.createElement('span');
                 primary.className = 'lyrics-line-primary';
-                primary.textContent = line.text;
+                primary.textContent = lyricsDisplayText(line.text);
                 p.appendChild(primary);
                 const tr = document.createElement('span');
                 tr.className = 'lyrics-line-translation';
                 tr.textContent = line.translation;
                 p.appendChild(tr);
             } else {
-                p.textContent = line.text;
+                p.textContent = lyricsDisplayText(line.text);
             }
             elements.lyricsView.appendChild(p);
         });
@@ -220,14 +250,14 @@ function renderLyrics(lyrics) {
             p.classList.add('lyrics-line--bilingual');
             const primary = document.createElement('span');
             primary.className = 'lyrics-line-primary';
-            primary.textContent = line.text;
+            primary.textContent = lyricsDisplayText(line.text);
             p.appendChild(primary);
             const tr = document.createElement('span');
             tr.className = 'lyrics-line-translation';
             tr.textContent = line.translation;
             p.appendChild(tr);
         } else {
-            p.textContent = line.text;
+            p.textContent = lyricsDisplayText(line.text);
         }
         if (Number.isFinite(line.sourceLine)) {
             p.dataset.sourceLine = String(line.sourceLine);
@@ -480,11 +510,7 @@ function handleLyricsContextMenu(event) {
                         artist: currentContextMenuSong.artist || '',
                         lines: cachedTranslationPromptLines
                     });
-                    ClipboardSetText(prompt).catch(() => {
-                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                            navigator.clipboard.writeText(prompt);
-                        }
-                    });
+                    void copyTextToClipboard(prompt);
                 }
             });
         }

@@ -17,6 +17,19 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>QR code scanning is used to connect to UX Music on your desktop.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<!-- Lets `UIApplication.canOpenURL` detect whether the official YouTube app is installed, so
+		     the "YouTube で開く" fallback (shown when embedded playback is disallowed on mobile —
+		     see progress/mobile-youtube-embed.md フェーズC/D) can prefer the app deep link
+		     (`youtube://watch?v=<id>`) over the Safari fallback. Without declaring the scheme here,
+		     `canOpenURL` always returns false for it regardless of whether the app is installed. -->
+		<string>youtube</string>
+	</array>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_uxmusic-sync._tcp</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

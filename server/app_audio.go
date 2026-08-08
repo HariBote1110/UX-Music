@@ -101,6 +101,51 @@ func (a *App) AudioStop() error {
 	return nil
 }
 
+// AudioStartWebViewTap starts capturing the WKWebView helper processes'
+// audio via a Core Audio process tap and plays it through the normal
+// playback pipeline (EQ, gain, FFT, volume). The tapped helpers are muted at
+// source, so only the processed output is audible.
+//
+// Targeting is limited to the WebKit helper processes this application owns
+// (its own descendants / responsible children). Targeting by bundle ID would
+// tap the *shared*, system-wide WebKit processes and thereby capture and mute
+// other apps' audio too (e.g. Safari's YouTube playback) — the very bug this
+// resolves. Helper PIDs are resolved at each start so that a freshly spawned
+// helper (embed just mounted, or a video switch that respawned it) is picked
+// up. When no helper is owned yet the call returns an error so the frontend
+// can surface it.
+func (a *App) AudioStartWebViewTap() error {
+	if a.audioPlayer == nil {
+		return fmt.Errorf("audio player not initialized")
+	}
+	pids, err := audio.WebKitHelperPIDs()
+	if err != nil {
+		fmt.Printf("[Audio] WebView tap: WebKit helper enumeration failed: %v\n", err)
+		return err
+	}
+	if len(pids) == 0 {
+		err := fmt.Errorf("no WebKit helper process owned by this app was found to tap")
+		fmt.Printf("[Audio] WebView tap: %v\n", err)
+		return err
+	}
+	fmt.Printf("[Audio] WebView tap: targeting own WebKit helper PIDs %v\n", pids)
+	targets := audio.ProcessTapTargets{PIDs: pids}
+	if err := a.audioPlayer.PlayProcessTap(targets, 1.0); err != nil {
+		fmt.Printf("[Audio] WebView tap start failed: %v\n", err)
+		return err
+	}
+	return nil
+}
+
+// AudioStopWebViewTap stops the WebView tap and returns the player to
+// normal file playback use.
+func (a *App) AudioStopWebViewTap() error {
+	if a.audioPlayer == nil {
+		return nil
+	}
+	return a.audioPlayer.Stop()
+}
+
 // AudioSeek seeks to a position in seconds
 func (a *App) AudioSeek(seconds float64) error {
 	if a.audioPlayer == nil {
@@ -115,6 +160,15 @@ func (a *App) AudioSetVolume(volume float64) {
 		return
 	}
 	a.audioPlayer.SetVolume(volume)
+}
+
+// AudioDebugOutputRMS returns the RMS of the most recent output callback
+// buffer (post volume/gain/EQ). Diagnostic probe for E2E volume checks.
+func (a *App) AudioDebugOutputRMS() float64 {
+	if a.audioPlayer == nil {
+		return 0
+	}
+	return sanitizeFiniteFloat64(a.audioPlayer.OutputRMS())
 }
 
 // AudioSetNormalisationGain sets loudness normalisation linear gain (1.0 = unity).

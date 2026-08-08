@@ -53,9 +53,28 @@ function timeKey(time: number): number {
     return Math.round(time * 1000) / 1000;
 }
 
+/** Literal interlude markers an LRC may carry instead of a blank line. */
+const INTERLUDE_MARKERS = new Set(['[間奏]', '[interlude]', '(interlude)']);
+
+/**
+ * True when a line is an interlude: either blank/whitespace, or one of the
+ * explicit markers ([間奏], [interlude], …) that older saved files still carry.
+ * Interludes are rendered as empty space and never receive a translation.
+ */
+export function isInterludeText(text: string | undefined): boolean {
+    if (text === undefined) {
+        return true;
+    }
+    const t = text.trim();
+    if (t === '') {
+        return true;
+    }
+    return INTERLUDE_MARKERS.has(t.toLowerCase());
+}
+
 /** True when the primary lyric line has no visible words (instrumental / blank). */
 export function isBlankPrimaryLine(text: string | undefined): boolean {
-    return text === undefined || text.trim() === '';
+    return isInterludeText(text);
 }
 
 /**
@@ -139,7 +158,7 @@ export function buildLyricsTranslationPrompt(opts: {
     const body = opts.lines
         .map((line, i) => {
             const t = line.replace(/\n/g, ' ').trim();
-            if (t === '') {
+            if (isInterludeText(t)) {
                 return `${i + 1}. ${LYRICS_INTERLUDE_PLACEHOLDER}`;
             }
             return `${i + 1}. ${t}`;

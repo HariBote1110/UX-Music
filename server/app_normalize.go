@@ -9,11 +9,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"ux-music-sidecar/internal/pathutil"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/pkg/normalize"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
-	"golang.org/x/text/unicode/norm"
 )
 
 func (a *App) NormalizeAnalyze(path string) normalize.AnalysisResult {
@@ -324,28 +324,7 @@ func hasNumericLoudnessValue(value interface{}) bool {
 }
 
 func loudnessPathCandidates(path string) []string {
-	trimmed := strings.TrimSpace(path)
-	if trimmed == "" {
-		return nil
-	}
-
-	cleaned := filepath.Clean(trimmed)
-	nfc := norm.NFC.String(cleaned)
-	nfd := norm.NFD.String(cleaned)
-
-	candidates := make([]string, 0, 4)
-	seen := make(map[string]struct{}, 4)
-	for _, candidate := range []string{trimmed, cleaned, nfc, nfd} {
-		if candidate == "" {
-			continue
-		}
-		if _, exists := seen[candidate]; exists {
-			continue
-		}
-		seen[candidate] = struct{}{}
-		candidates = append(candidates, candidate)
-	}
-	return candidates
+	return pathutil.CandidateForms(path)
 }
 
 func hasStoredNumericLoudness(existing map[string]interface{}, path string) bool {
