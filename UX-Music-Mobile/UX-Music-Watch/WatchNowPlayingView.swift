@@ -2,8 +2,10 @@ import SwiftUI
 import UIKit
 
 /// Now Playing page: always reachable via the paged `TabView` in `WatchRootView`, regardless of
-/// what is selected on the Library page. Seeking is driven by the Digital Crown rather than a
-/// slider — dragging a thin watchOS slider is unreliable, whereas the Crown is the platform's
+/// what is selected on the Library page. The cached artwork fills the whole page as a background
+/// (with a dark scrim so text stays legible), matching watchOS's own Music app Now Playing screen,
+/// rather than a small foreground artwork tile. Seeking is driven by the Digital Crown rather than
+/// a slider — dragging a thin watchOS slider is unreliable, whereas the Crown is the platform's
 /// standard scrubbing input (used by Apple's own Podcasts/Music apps).
 struct WatchNowPlayingView: View {
     @EnvironmentObject private var player: WatchAudioPlayerService
@@ -34,27 +36,48 @@ struct WatchNowPlayingView: View {
     /// Decoded artwork for `player.currentSong`, cached so it is only re-read from disk and
     /// re-decoded when the track actually changes — not on every body evaluation. This view also
     /// observes `progress` (the 0.5s position tick), so a plain computed property here would decode
-    /// the JPEG from disk twice (background blur + foreground artwork) every half second, which is
-    /// wasted main-thread I/O/CPU on every single tick and a plausible contributor to the playback
-    /// stutter reported when this page is visible.
+    /// the JPEG from disk and re-decode it every half second purely to redraw the full-bleed
+    /// background, which is wasted main-thread I/O/CPU on every single tick and a plausible
+    /// contributor to the playback stutter reported when this page is visible.
     @State private var cachedArtworkImage: UIImage?
     @State private var cachedArtworkSongId: String?
 
     var body: some View {
         ZStack {
-            if let cachedArtworkImage {
-                Image(uiImage: cachedArtworkImage)
-                    .resizable()
-                    .scaledToFill()
-                    .blur(radius: 20)
-                    .opacity(0.5)
-                    .ignoresSafeArea()
-            }
-
+            backgroundArtwork
             content
         }
         .onAppear { refreshCachedArtworkIfNeeded() }
         .onChange(of: player.currentSong?.id) { _, _ in refreshCachedArtworkIfNeeded() }
+    }
+
+    /// Full-bleed background: the cached artwork scaled to fill the page, with a dark scrim so the
+    /// title/artist/controls stay legible over any artwork. Falls back to a plain dark placeholder
+    /// (with a faint note glyph) when there is no artwork yet.
+    @ViewBuilder
+    private var backgroundArtwork: some View {
+        if let cachedArtworkImage {
+            Image(uiImage: cachedArtworkImage)
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
+                .overlay {
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.75), Color.black.opacity(0.35), Color.black.opacity(0.8)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                }
+        } else {
+            ZStack {
+                Color.black
+                Image(systemName: "music.note")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.white.opacity(0.15))
+            }
+            .ignoresSafeArea()
+        }
     }
 
     /// Reloads `cachedArtworkImage` from disk only when the current song has actually changed —
@@ -85,30 +108,15 @@ struct WatchNowPlayingView: View {
         // the shuffle/repeat row pushed off-screen on 42mm.
         ScrollView {
             VStack(spacing: 8) {
-                ZStack {
-                    if let cachedArtworkImage {
-                        Image(uiImage: cachedArtworkImage)
-                            .resizable()
-                            .scaledToFill()
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    } else {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.secondary.opacity(0.2))
-                        Image(systemName: "music.note")
-                            .font(.system(size: 28))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(width: 60, height: 60)
-
                 VStack(spacing: 2) {
-                    Text(player.currentSong?.displayTitle ?? "Not Playing")
+                    Text(player.currentSong?.displayTitle ?? "再生していません")
                         .font(.headline)
+                        .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     Text(player.currentSong?.displayArtist ?? "—")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.7))
                         .lineLimit(1)
                 }
 
@@ -123,14 +131,14 @@ struct WatchNowPlayingView: View {
                     VStack(spacing: 2) {
                         ProgressView(value: displayedPosition, total: duration)
                             .progressViewStyle(.linear)
-                            .tint(isSeeking ? .orange : .blue)
+                            .tint(isSeeking ? .orange : .white)
                         HStack {
                             Text(formatTime(displayedPosition))
                             Spacer()
                             Text("-\(formatTime(max(duration - displayedPosition, 0)))")
                         }
                         .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.7))
                     }
                 }
 
@@ -138,19 +146,21 @@ struct WatchNowPlayingView: View {
                     Button { player.previous() } label: {
                         Image(systemName: "backward.fill")
                             .font(.title3)
+                            .foregroundStyle(.white)
                     }
                     .buttonStyle(.plain)
 
                     Button { player.togglePlayPause() } label: {
                         Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 36))
-                            .foregroundStyle(.blue)
+                            .font(.system(size: 40))
+                            .foregroundStyle(.white)
                     }
                     .buttonStyle(.plain)
 
                     Button { player.next() } label: {
                         Image(systemName: "forward.fill")
                             .font(.title3)
+                            .foregroundStyle(.white)
                     }
                     .buttonStyle(.plain)
                 }
@@ -159,13 +169,13 @@ struct WatchNowPlayingView: View {
                     Button { player.toggleShuffle() } label: {
                         Image(systemName: "shuffle")
                             .font(.caption)
-                            .foregroundStyle(player.isShuffled ? .blue : .secondary)
+                            .foregroundStyle(player.isShuffled ? .blue : .white.opacity(0.6))
                     }
                     .buttonStyle(.plain)
 
                     Button { player.cycleRepeatMode() } label: {
                         let imageName: String = player.repeatMode.systemImageName
-                        let tint: Color = player.repeatMode == .off ? .secondary : .blue
+                        let tint: Color = player.repeatMode == .off ? .white.opacity(0.6) : .blue
                         Image(systemName: imageName)
                             .font(.caption)
                             .foregroundStyle(tint)
@@ -211,7 +221,7 @@ struct WatchNowPlayingView: View {
             isSyncingCrownProgrammatically = true
             crownPosition = progress.position
         }
-        .navigationTitle("Now Playing")
+        .navigationTitle("再生中")
     }
 
     private func formatTime(_ seconds: Double) -> String {

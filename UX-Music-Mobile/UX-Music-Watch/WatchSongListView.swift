@@ -1,28 +1,18 @@
 import SwiftUI
 import UIKit
 
-/// Browse mode for the Library page: a flat list of every song, or songs grouped by album (see
-/// `WatchAlbumGrouping`). Kept as a page-local `@State` rather than persisted — the Watch app is
-/// small enough that re-opening on the default flat list each launch is not disorienting.
-private enum WatchLibraryBrowseMode: String, CaseIterable {
-    case songs = "Songs"
-    case albums = "Albums"
-}
-
-/// Song list received from the iPhone. Tapping a row starts playback and switches to the
-/// Now Playing page (see `WatchRootView`'s paged `TabView`). Deletion is a long-press context menu
-/// rather than a row swipe: on watchOS the Library and Now Playing pages are themselves swiped
-/// between horizontally (see `WatchRootView`), and a right-swipe on a list row was being captured
-/// by the row's own `swipeActions` instead of the page `TabView`, making it impossible to swipe
-/// from Library to Now Playing while a finger started on a row. A long press has no such conflict.
-/// A segmented control at the top switches between the flat song list and albums grouped by
-/// `WatchAlbumGrouping`; the currently-playing song is marked with a small speaker glyph in either
-/// mode.
+/// Library page: a plain native `List` with two `NavigationLink` rows ("Songs"/"Albums") pushing
+/// the flat song list and the album list respectively — the same drill-down pattern watchOS's own
+/// Music app uses for its library, rather than a custom segmented-style toggle. Tapping a song row
+/// starts playback and switches to the Now Playing page (see `WatchRootView`'s paged `TabView`).
+/// Deletion is a long-press context menu rather than a row swipe: on watchOS the Library and Now
+/// Playing/Queue pages are themselves swiped between horizontally (see `WatchRootView`), and a
+/// right-swipe on a list row was being captured by the row's own `swipeActions` instead of the page
+/// `TabView`, making it impossible to swipe from Library to Now Playing while a finger started on a
+/// row. A long press has no such conflict.
 struct WatchSongListView: View {
     @EnvironmentObject private var library: WatchLocalLibrary
-    @EnvironmentObject private var player: WatchAudioPlayerService
     @Binding var selectedPage: WatchPage
-    @State private var browseMode: WatchLibraryBrowseMode = .songs
 
     private var albums: [WatchAlbumGroup] { WatchAlbumGrouping.albums(from: library.songs) }
 
@@ -30,51 +20,34 @@ struct WatchSongListView: View {
         NavigationStack {
             Group {
                 if library.songs.isEmpty {
-                    Text("No songs yet.\nTransfer from the iPhone app.")
+                    Text("曲がありません\niPhone アプリから転送してください")
                         .multilineTextAlignment(.center)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding()
                 } else {
-                    VStack(spacing: 0) {
-                        // `.segmented` is unavailable on watchOS; `.wheel` isn't right for a
-                        // two-option toggle either, so this is rendered as a pair of plain
-                        // buttons that behave like a segmented control.
-                        HStack(spacing: 4) {
-                            ForEach(WatchLibraryBrowseMode.allCases, id: \.self) { mode in
-                                Button {
-                                    browseMode = mode
-                                } label: {
-                                    Text(mode.rawValue)
-                                        .font(.caption2)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 4)
-                                        .background(browseMode == mode ? Color.blue : Color.secondary.opacity(0.2))
-                                        .foregroundStyle(browseMode == mode ? .white : .primary)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 4)
-                        .padding(.top, 4)
-
-                        switch browseMode {
-                        case .songs:
+                    List {
+                        NavigationLink {
                             songList(library.songs)
-                        case .albums:
+                                .navigationTitle("曲")
+                        } label: {
+                            Label("曲", systemImage: "music.note")
+                        }
+                        NavigationLink {
                             albumList
+                        } label: {
+                            Label("アルバム", systemImage: "square.stack")
                         }
                     }
                 }
             }
-            .navigationTitle("Library")
+            .navigationTitle("ライブラリ")
         }
     }
 
     private func songList(_ songs: [WatchTransferMeta]) -> some View {
         List(songs) { meta in
-            WatchSongRow(meta: meta, queue: songs, selectedPage: $selectedPage)
+            WatchSongRow(meta: meta, queue: songs) { selectedPage = .nowPlaying }
         }
     }
 
@@ -90,13 +63,14 @@ struct WatchSongListView: View {
                         Text(album.album)
                             .font(.body)
                             .lineLimit(1)
-                        Text("\(album.songs.count) song\(album.songs.count == 1 ? "" : "s")")
+                        Text("\(album.songs.count)曲")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
         }
+        .navigationTitle("アルバム")
     }
 }
 
@@ -104,32 +78,33 @@ struct WatchSongListView: View {
 /// starts the whole album playing as the queue (in track order), positioned at that track — not
 /// just the single song — matching how tapping a track in an album normally behaves.
 private struct WatchAlbumDetailView: View {
-    @EnvironmentObject private var player: WatchAudioPlayerService
     let album: WatchAlbumGroup
     @Binding var selectedPage: WatchPage
 
     var body: some View {
         List(album.songs) { meta in
-            WatchSongRow(meta: meta, queue: album.songs, selectedPage: $selectedPage)
+            WatchSongRow(meta: meta, queue: album.songs) { selectedPage = .nowPlaying }
         }
         .navigationTitle(album.album)
     }
 }
 
-/// A single tappable song row shared by the flat song list and album detail list: starts playback
-/// of `queue` from `meta` and switches to Now Playing on tap; offers "Delete" via a long-press
-/// context menu (see `WatchSongListView`'s doc comment for why this replaced row swipe actions).
-private struct WatchSongRow: View {
+/// A single tappable song row shared by the flat song list, the album detail list, and the
+/// Queue & Volume page's "up next" list (see `WatchQueueVolumeView`): starts playback of `queue`
+/// from `meta` and invokes `onSelect` (e.g. switching to Now Playing on the Library pages; a no-op
+/// on the Queue page, which stays put). Offers "Delete" via a long-press context menu (see
+/// `WatchSongListView`'s doc comment for why this replaced row swipe actions).
+struct WatchSongRow: View {
     @EnvironmentObject private var library: WatchLocalLibrary
     @EnvironmentObject private var player: WatchAudioPlayerService
     let meta: WatchTransferMeta
     let queue: [WatchTransferMeta]
-    @Binding var selectedPage: WatchPage
+    var onSelect: () -> Void = {}
 
     var body: some View {
         Button {
             player.play(meta, queue: queue)
-            selectedPage = .nowPlaying
+            onSelect()
         } label: {
             HStack {
                 WatchArtworkThumbnail(meta: meta)
@@ -156,7 +131,7 @@ private struct WatchSongRow: View {
             Button(role: .destructive) {
                 library.removeSong(id: meta.id)
             } label: {
-                Label("Delete", systemImage: "trash")
+                Label("削除", systemImage: "trash")
             }
         }
     }

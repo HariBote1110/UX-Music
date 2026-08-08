@@ -52,6 +52,13 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     }
     let progress = WatchPlaybackProgress()
 
+    /// Read-only view of the queue as it is actually playing (post-shuffle, if shuffled), for
+    /// `WatchQueueVolumeView`'s "up next" list. A plain computed passthrough (rather than a second
+    /// `@Published` copy) — `queue` only ever changes together with `currentSong`/`isPlaying`, both
+    /// of which already drive a re-render of any view observing this object, so there is nothing to
+    /// duplicate or keep in sync.
+    var playbackQueue: [WatchTransferMeta] { queue }
+
     private var player: AVPlayer?
     /// The queue as it is actually playing (shuffled, if `isShuffled`).
     private var queue: [WatchTransferMeta] = []
@@ -239,7 +246,7 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
         } catch {
             print("[WatchAudioPlayer] AVAudioSession setCategory error: \(error)")
-            routeError = "Could not start audio playback."
+            routeError = "再生を開始できませんでした。"
             completion(false)
             return
         }
@@ -254,7 +261,7 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
                 } else {
                     // Most commonly: no Bluetooth audio output connected — watchOS cannot play
                     // long-form audio over the built-in speaker.
-                    self.routeError = "Connect Bluetooth headphones to play audio on Apple Watch."
+                    self.routeError = "Apple Watch で再生するには Bluetooth イヤホンを接続してください。"
                 }
                 completion(activated)
             }
