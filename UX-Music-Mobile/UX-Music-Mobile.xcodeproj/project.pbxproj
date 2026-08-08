@@ -119,6 +119,7 @@
 		FEED00160000000000000000 /* WatchSongListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00170000000000000000 /* WatchSongListView.swift */; };
 		FEED00180000000000000000 /* WatchNowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00190000000000000000 /* WatchNowPlayingView.swift */; };
 		FEED00260000000000000000 /* WatchQueueVolumeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00250000000000000000 /* WatchQueueVolumeView.swift */; };
+		FEED0030000000000000AA30 /* ModeIconAnimationMathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -266,6 +267,7 @@
 		FEED00170000000000000000 /* WatchSongListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSongListView.swift; sourceTree = "<group>"; };
 		FEED00190000000000000000 /* WatchNowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchNowPlayingView.swift; sourceTree = "<group>"; };
 		FEED00250000000000000000 /* WatchQueueVolumeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchQueueVolumeView.swift; sourceTree = "<group>"; };
+		FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeIconAnimationMathsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -348,6 +350,7 @@
 				4FCA8FC823B346CE96652D1B /* LyricsTranslationMergerTests.swift */,
 				B6CD72516EEA418A92F213A9 /* AppModelLibraryFeaturesTests.swift */,
 				38349C37B905480B9FBF56E5 /* MusicPlayerServiceQueueTests.swift */,
+				FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */,
 			);
 			path = "UX-Music-MobileTests";
 			sourceTree = "<group>";
@@ -644,6 +647,7 @@
 				EC2F7342E67E4A18A26E8F48 /* LyricsTranslationMergerTests.swift in Sources */,
 				9EFCF4D0AB00484A8E3D6F45 /* AppModelLibraryFeaturesTests.swift in Sources */,
 				90EE2C6FCF944F06AE14DE84 /* MusicPlayerServiceQueueTests.swift in Sources */,
+				FEED0030000000000000AA30 /* ModeIconAnimationMathsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
