@@ -15,4 +15,8 @@ enum AppConstants {
     static let youtubeLibrarySongsMetaKey = "youtube_library_songs_meta_v1"
     /// Persisted `LibrarySortOrder.rawValue` for the local Library song list.
     static let librarySortOrderKey = "uxmusic.library.sortOrder"
+    /// Persisted `AlbumSortOrder.rawValue` for the local Library album grid.
+    static let albumSortOrderKey = "uxmusic.library.albumSortOrder"
+    /// Persisted `ArtistSortOrder.rawValue` for the local Library artist list.
+    static let artistSortOrderKey = "uxmusic.library.artistSortOrder"
 }

@@ -72,6 +72,22 @@ final class AppModel {
         }
     }
 
+    /// User-selected local Library album grid sort order, persisted to `UserDefaults` so it survives relaunch.
+    var albumSortOrder: AlbumSortOrder {
+        didSet {
+            guard albumSortOrder != oldValue else { return }
+            UserDefaults.standard.set(albumSortOrder.rawValue, forKey: AppConstants.albumSortOrderKey)
+        }
+    }
+
+    /// User-selected local Library artist list sort order, persisted to `UserDefaults` so it survives relaunch.
+    var artistSortOrder: ArtistSortOrder {
+        didSet {
+            guard artistSortOrder != oldValue else { return }
+            UserDefaults.standard.set(artistSortOrder.rawValue, forKey: AppConstants.artistSortOrderKey)
+        }
+    }
+
     /// "For You" server-generated playlists (`GET /v1/remote/situation-playlists`), loaded on
     /// demand via `refreshSituationPlaylists()`. Empty (not an error state) when the desktop
     /// predates the endpoint (404) or hasn't been queried yet.
@@ -118,6 +134,18 @@ final class AppModel {
             librarySortOrder = restored
         } else {
             librarySortOrder = .album
+        }
+        if let raw = UserDefaults.standard.string(forKey: AppConstants.albumSortOrderKey),
+           let restored = AlbumSortOrder(rawValue: raw) {
+            albumSortOrder = restored
+        } else {
+            albumSortOrder = .name
+        }
+        if let raw = UserDefaults.standard.string(forKey: AppConstants.artistSortOrderKey),
+           let restored = ArtistSortOrder(rawValue: raw) {
+            artistSortOrder = restored
+        } else {
+            artistSortOrder = .name
         }
         downloadManager = DownloadManager()
         libraryMembershipStore = LibraryMembershipStore()
