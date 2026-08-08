@@ -192,12 +192,12 @@ struct WatchNowPlayingView: View {
 
                 HStack(spacing: 20) {
                     Button { player.toggleShuffle() } label: {
-                        shuffleIcon
+                        WatchShuffleIcon(isActive: player.isShuffled)
                     }
                     .buttonStyle(.plain)
 
                     Button { player.cycleRepeatMode() } label: {
-                        repeatIcon
+                        WatchRepeatIcon(repeatMode: player.repeatMode)
                     }
                     .buttonStyle(.plain)
                 }
@@ -206,49 +206,6 @@ struct WatchNowPlayingView: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .navigationTitle("再生中")
-    }
-
-    /// Desktop app's shuffle icon (`random.svg`), reused as a watchOS template image so it tints via
-    /// `.foregroundStyle` like the SF Symbol it replaces. Sized well above the old `.caption` glyph
-    /// (20pt) inside a 36pt tap frame, per Apple's minimum touch-target guidance for watchOS.
-    @ViewBuilder
-    private var shuffleIcon: some View {
-        Image("DesktopShuffleIcon")
-            .renderingMode(.template)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 20, height: 20)
-            .foregroundStyle(player.isShuffled ? .blue : .white.opacity(0.6))
-            .frame(width: 36, height: 36)
-            .contentShape(Rectangle())
-    }
-
-    /// Desktop app's repeat icon (`repeat.svg`), reused the same way as `shuffleIcon`. The desktop
-    /// SVG only has one repeat glyph (no "repeat one" variant), so the `.one` state is rendered as
-    /// the same icon with a small filled "1" badge overlaid in the corner, tinted like the active
-    /// state — cheaper than shipping a second asset and keeps the active/inactive tint logic
-    /// unchanged from before.
-    @ViewBuilder
-    private var repeatIcon: some View {
-        let tint: Color = player.repeatMode == .off ? .white.opacity(0.6) : .blue
-        ZStack(alignment: .bottomTrailing) {
-            Image("DesktopRepeatIcon")
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 20, height: 20)
-                .foregroundStyle(tint)
-
-            if player.repeatMode == .one {
-                Text("1")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 11, height: 11)
-                    .background(Circle().fill(tint))
-            }
-        }
-        .frame(width: 36, height: 36)
-        .contentShape(Rectangle())
     }
 
     private func formatTime(_ seconds: Double) -> String {
