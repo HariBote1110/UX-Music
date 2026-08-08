@@ -45,29 +45,36 @@ struct WatchQueueVolumeView: View {
 /// Digital Crown volume row — see that view's doc comment for why the Crown drives volume rather
 /// than seeking there.
 struct SystemVolumeControl: WKInterfaceObjectRepresentable {
-    /// When `true`, calls `WKInterfaceVolumeControl.focus()` once after the control first appears so
-    /// the Digital Crown drives it immediately without requiring a tap first. Used by
-    /// `WatchNowPlayingView`, where the Crown's sole job is now volume; left `false` here on the
-    /// Queue & Volume page, where the control sits above a scrollable queue list the Crown should
-    /// scroll by default.
+    /// When `true`, calls `WKInterfaceVolumeControl.focus()` so the Digital Crown drives it
+    /// immediately without requiring a tap first. Used by `WatchNowPlayingView`, where the Crown's
+    /// sole job is now volume; left `false` here on the Queue & Volume page, where the control sits
+    /// above a scrollable queue list the Crown should scroll by default.
     var autoFocusesCrown: Bool = false
+    /// Bumped by the caller each time it wants focus re-requested — typically once per page
+    /// appearance rather than only once for the view's whole lifetime, since Crown focus is
+    /// contested (paging to another tab can hand it to a different focusable element, and it does
+    /// not automatically return here on its own). `updateWKInterfaceObject` calls `focus()` only
+    /// when this value has changed since the last call, so routine SwiftUI update passes (e.g. the
+    /// 0.5s playback-position tick on `WatchNowPlayingView`) don't each re-trigger it.
+    var refocusTrigger: Int = 0
 
     func makeWKInterfaceObject(context: Context) -> WKInterfaceVolumeControl {
         WKInterfaceVolumeControl(origin: .local)
     }
 
     func updateWKInterfaceObject(_ wkInterfaceObject: WKInterfaceVolumeControl, context: Context) {
-        guard autoFocusesCrown, !context.coordinator.hasFocused else { return }
-        context.coordinator.hasFocused = true
+        guard autoFocusesCrown, context.coordinator.lastFocusedTrigger != refocusTrigger else { return }
+        context.coordinator.lastFocusedTrigger = refocusTrigger
         wkInterfaceObject.focus()
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    /// Tracks whether `focus()` has already been requested, so it fires once (on first appearance)
-    /// rather than on every SwiftUI update pass.
+    /// Tracks the `refocusTrigger` value `focus()` was last called for, so it re-fires only when
+    /// the caller bumps the trigger (typically on page appearance) rather than on every SwiftUI
+    /// update pass.
     final class Coordinator {
-        var hasFocused = false
+        var lastFocusedTrigger: Int?
     }
 }
 

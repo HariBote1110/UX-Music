@@ -218,13 +218,15 @@ private struct AnimatedTwoStrokeIcon: View {
     }
 }
 
-/// Shuffle icon: replaces `Image("DesktopShuffleIcon")`. Sized and tap-target-framed the same as
-/// before (~20pt icon in a 36pt tap frame); triggers the slide animation whenever `isActive`
-/// changes, i.e. on every tap of the shuffle button (`player.toggleShuffle()` flips `isActive`
-/// unconditionally).
+/// Shuffle icon: replaces `Image("DesktopShuffleIcon")`. `iconSize` and `tapFrameSize` default to
+/// the original fixed sizing (~20pt icon in a 36pt tap frame), but `WatchNowPlayingView`'s
+/// `ViewThatFits` ladder passes smaller values on its more compact rungs so this row can shrink
+/// along with the rest of the page. Triggers the slide animation whenever `isActive` changes, i.e.
+/// on every tap of the shuffle button (`player.toggleShuffle()` flips `isActive` unconditionally).
 struct WatchShuffleIcon: View {
     let isActive: Bool
     var iconSize: CGFloat = 20
+    var tapFrameSize: CGFloat = 36
 
     @StateObject private var animator = ModeIconAnimator(staggerSeconds: 0.12)
 
@@ -242,19 +244,20 @@ struct WatchShuffleIcon: View {
             tint: isActive ? .blue : .white.opacity(0.6),
             iconSize: iconSize
         )
-        .frame(width: 36, height: 36)
+        .frame(width: tapFrameSize, height: tapFrameSize)
         .contentShape(Rectangle())
         .onChange(of: isActive) { _, _ in animator.trigger() }
     }
 }
 
 /// Repeat icon: replaces `Image("DesktopRepeatIcon")`. Keeps the existing "1" badge overlay for
-/// `.one`, tinted like the active state. Triggers the slide animation whenever `repeatMode`
-/// changes, i.e. on every tap of the repeat button (`player.cycleRepeatMode()` always advances to
-/// a different mode).
+/// `.one`, tinted like the active state. `iconSize`/`tapFrameSize` default as in `WatchShuffleIcon`
+/// — see its doc comment. Triggers the slide animation whenever `repeatMode` changes, i.e. on
+/// every tap of the repeat button (`player.cycleRepeatMode()` always advances to a different mode).
 struct WatchRepeatIcon: View {
     let repeatMode: WatchRepeatMode
     var iconSize: CGFloat = 20
+    var tapFrameSize: CGFloat = 36
 
     @StateObject private var animator = ModeIconAnimator(staggerSeconds: 0)
 
@@ -284,7 +287,7 @@ struct WatchRepeatIcon: View {
                     .background(Circle().fill(tint))
             }
         }
-        .frame(width: 36, height: 36)
+        .frame(width: tapFrameSize, height: tapFrameSize)
         .contentShape(Rectangle())
         .onChange(of: repeatMode) { _, _ in animator.trigger() }
     }

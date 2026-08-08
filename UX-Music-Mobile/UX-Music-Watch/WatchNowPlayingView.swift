@@ -8,9 +8,54 @@ import UIKit
 /// Digital Crown was deliberately dropped (prev/next remain the only way to change tracks) — and the
 /// Crown instead drives the system volume, matching how Apple's own Music app dedicates the Crown
 /// to volume on its Now Playing screen. There is no visible volume row (an earlier version had one,
-/// but it pushed the page past 45mm-screen height); instead a `SystemVolumeControl` sized down to
-/// near-nothing keeps Crown focus, and `WatchVolumeHUDOverlay` shows a transient macOS-style
-/// vertical gauge whenever the level actually changes — see `WatchVolumeHUD.swift`.
+/// but it pushed the page past 45mm-screen height); instead a `SystemVolumeControl` keeps Crown
+/// focus (see `hiddenCrownVolumeControl`'s doc comment), and `WatchVolumeHUDOverlay` shows a
+/// transient macOS-style vertical gauge whenever the level actually changes — see
+/// `WatchVolumeHUD.swift`.
+///
+/// ## Layout: `ViewThatFits`, not hand-tuned metrics
+///
+/// Two earlier rounds of this view hardcoded a single set of spacings/paddings/glyph sizes, each
+/// tuned against a screenshot of the worst case seen at the time — and each round still overflowed
+/// (`ScrollView` kicking in, which per `hiddenCrownVolumeControl` also lets the Digital Crown steal
+/// focus from volume) as soon as content or the device changed. That approach cannot work in
+/// principle: Apple Watch ships at least six screen heights (40/41/42/44/45/46/49mm), watchOS lets
+/// the user scale text via Dynamic Type (changing `.headline`/`.caption2`/etc. line heights
+/// independently of screen size), and the content itself varies (the route-error line only appears
+/// sometimes). Any single fixed constant is correct for one point in that combined space and wrong
+/// for others — there is no constant that is simultaneously "tight enough for 40mm at the largest
+/// Dynamic Type size with a route error" and "not comically cramped on a 49mm Ultra with default
+/// text". Hand-tuning is chasing a moving target.
+///
+/// `content` below instead offers `ViewThatFits(in: .vertical)` a ladder of candidates, each built
+/// from the same `nowPlayingStack(_:)` with different `NowPlayingMetrics`, from roomiest to most
+/// compact:
+/// 1. **`.roomy`** — every element (title/artist, route error when present, progress bar with
+///    elapsed/remaining times, transport row, shuffle/repeat row), generous spacing and glyph sizes.
+/// 2. **`.compact`** — the same elements, tighter spacing/smaller glyphs.
+/// 3. **`.reduced`** — drops the elapsed/remaining time row (the progress bar itself stays), tighter
+///    still.
+/// 4. **A `ScrollView` wrapping `.reduced`** — the last-resort fallback, so devices/content/text-size
+///    combinations too tight for any of the first three (measured on-device: the smallest watch
+///    combined with the route-error line, even at default Dynamic Type; larger watches with the
+///    route-error line still land on `.reduced` without scrolling) degrade to scrolling instead of
+///    clipping.
+///
+/// `ViewThatFits` measures each candidate's actual rendered height — on the real device, at the
+/// user's real text size, with the real content (route error present or not) — and picks the first
+/// one that genuinely fits the space SwiftUI actually proposes for this page. No per-device magic
+/// numbers, and nothing to re-tune the next time a screen size or content line is added.
+///
+/// Candidates 1–3 deliberately contain **no `ScrollView`**, so on any device where content fits at
+/// all, nothing on this page is scrollable — which matters beyond just avoiding clipping: watchOS
+/// scrolls scrollable content with the Digital Crown by default, and this page instead wants the
+/// Crown dedicated to volume (see `hiddenCrownVolumeControl`). A stray `ScrollView` on a page whose
+/// hidden volume control fails to hold Crown focus would silently fall back to scrolling the page
+/// instead of changing the volume; keeping candidates 1–3 scroll-free removes that failure mode
+/// entirely for the vast majority of device/text-size/content combinations, regardless of how
+/// reliably Crown focus is held. Only candidate 4 — reached solely under the most extreme
+/// combination — brings a `ScrollView` back, and at that point scrolling instead of clipping is the
+/// correct outcome anyway.
 struct WatchNowPlayingView: View {
     @EnvironmentObject private var player: WatchAudioPlayerService
     @EnvironmentObject private var library: WatchLocalLibrary
@@ -20,6 +65,11 @@ struct WatchNowPlayingView: View {
     @EnvironmentObject private var progress: WatchPlaybackProgress
 
     @StateObject private var volumeObserver = WatchVolumeObserver()
+
+    /// Bumped on every `onAppear` so `hiddenCrownVolumeControl` re-requests Crown focus each time
+    /// this page becomes visible again, not just once for the lifetime of the view — see that
+    /// property's doc comment.
+    @State private var crownRefocusTrigger = 0
 
     private var duration: Double { max(player.currentSong?.duration ?? 0, 1) }
 
@@ -39,21 +89,37 @@ struct WatchNowPlayingView: View {
             hiddenCrownVolumeControl
             WatchVolumeHUDOverlay(level: volumeObserver.level)
         }
-        .onAppear { refreshCachedArtworkIfNeeded() }
+        .onAppear {
+            refreshCachedArtworkIfNeeded()
+            crownRefocusTrigger += 1
+        }
         .onChange(of: player.currentSong?.id) { _, _ in refreshCachedArtworkIfNeeded() }
     }
 
-    /// `SystemVolumeControl` shrunk to near-invisibility rather than removed outright: its whole
-    /// purpose here is to keep taking Digital Crown focus (`autoFocusesCrown: true`) so rotating
-    /// the Crown adjusts system volume without a visible control cluttering the page — the visible
-    /// feedback comes entirely from `WatchVolumeHUDOverlay` above, driven by the KVO-observed
-    /// `outputVolume` change that the Crown rotation causes. Sized to 1×1 with near-zero (not
-    /// literally zero) opacity, since a fully invisible/zero-opacity control risks not being
-    /// eligible to take Crown focus on some watchOS versions.
+    /// `SystemVolumeControl` kept invisible rather than removed outright: its whole purpose here is
+    /// to keep taking Digital Crown focus (`autoFocusesCrown: true`) so rotating the Crown adjusts
+    /// system volume without a visible control cluttering the page — the visible feedback comes
+    /// entirely from `WatchVolumeHUDOverlay` above, driven by the KVO-observed `outputVolume` change
+    /// that the Crown rotation causes.
+    ///
+    /// Two robustness measures beyond the original 1×1/0.02-opacity control:
+    /// - **Larger frame (44×44, watchOS's usual minimum tap-target size)** rather than 1×1. A 1pt
+    ///   target is imperceptible visually either way at this opacity, but WatchKit's own Crown-focus
+    ///   machinery is more likely to treat a near-zero-size element as not worth focusing than a
+    ///   normally-sized one. `.allowsHitTesting(false)` keeps the larger frame from ever intercepting
+    ///   taps meant for the transport buttons it overlaps in the `ZStack`.
+    /// - **Re-focus on every page appearance, not only once.** `SystemVolumeControl`'s
+    ///   `refocusTrigger` is compared against the last value it focused at; `crownRefocusTrigger`
+    ///   above increments in `onAppear`, so returning to this page after paging to Library or Queue
+    ///   re-requests focus instead of assuming a focus grabbed once, long ago, is still held. This
+    ///   directly addresses Crown focus being contested when paging between tabs — the Queue page
+    ///   has its own (non-auto-focusing) `SystemVolumeControl`, and other focusable elements can
+    ///   claim the Crown while this page is off-screen.
     private var hiddenCrownVolumeControl: some View {
-        SystemVolumeControl(autoFocusesCrown: true)
-            .frame(width: 1, height: 1)
+        SystemVolumeControl(autoFocusesCrown: true, refocusTrigger: crownRefocusTrigger)
+            .frame(width: 44, height: 44)
             .opacity(0.02)
+            .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
 
@@ -122,100 +188,163 @@ struct WatchNowPlayingView: View {
         cachedArtworkImage = UIImage(data: data)
     }
 
+    /// See the type-level doc comment for the `ViewThatFits` ladder this builds. Each candidate is
+    /// the same `nowPlayingStack(_:)` content, just parameterised by `NowPlayingMetrics`; the final
+    /// candidate additionally wraps it in a `ScrollView` as a last-resort fallback.
     @ViewBuilder
     private var content: some View {
-        // A `ScrollView` (rather than a bare `VStack`) so the page degrades gracefully on the
-        // smallest watch screens (e.g. Series 11 42mm) instead of clipping/overflowing past the
-        // bottom edge. The paddings/spacings below are tuned so the *playing* state — title/artist,
-        // route error (if any), progress bar + elapsed/remaining times, transport row, and
-        // shuffle/repeat row — fits without scrolling on 45mm-class screens and larger (the
-        // progress block is what pushes the idle-state height over the edge, since it only renders
-        // while a song is current). `.scrollBounceBehavior(.basedOnSize)` keeps this from
-        // scrolling/bouncing on screens where the content already fits, while still allowing the
-        // smallest watches (40/41mm) to scroll instead of clipping.
-        ScrollView {
-            VStack(spacing: 5) {
-                VStack(spacing: 2) {
-                    Text(player.currentSong?.displayTitle ?? "再生していません")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text(player.currentSong?.displayArtist ?? "—")
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .lineLimit(1)
-                }
+        ViewThatFits(in: .vertical) {
+            nowPlayingStack(.roomy)
+            nowPlayingStack(.compact)
+            nowPlayingStack(.reduced)
+            ScrollView {
+                nowPlayingStack(.reduced)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .navigationTitle("再生中")
+    }
 
-                if let routeError = player.routeError {
-                    Text(routeError)
-                        .font(.caption2)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                }
+    /// Builds one `ViewThatFits` candidate at the given compactness level. Structural content is
+    /// identical across all callers (title/artist, optional route error, progress block shown only
+    /// while a song is current, transport row, shuffle/repeat row) — only spacing, padding, and
+    /// glyph sizes vary, via `metrics`.
+    @ViewBuilder
+    private func nowPlayingStack(_ metrics: NowPlayingMetrics) -> some View {
+        VStack(spacing: metrics.stackSpacing) {
+            VStack(spacing: metrics.titleArtistSpacing) {
+                Text(player.currentSong?.displayTitle ?? "再生していません")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(player.currentSong?.displayArtist ?? "—")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
+            }
 
-                if player.currentSong != nil {
-                    // Display-only: no Crown/tap seeking — see the type-level doc comment for why.
-                    VStack(spacing: 2) {
-                        ProgressView(value: progress.position, total: duration)
-                            .progressViewStyle(.linear)
-                            .tint(.blue)
+            if let routeError = player.routeError {
+                Text(routeError)
+                    .font(metrics.routeErrorFont)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+            }
+
+            if player.currentSong != nil {
+                // Display-only: no Crown/tap seeking — see the type-level doc comment for why.
+                VStack(spacing: metrics.progressBlockSpacing) {
+                    ProgressView(value: progress.position, total: duration)
+                        .progressViewStyle(.linear)
+                        .tint(.blue)
+                    if metrics.showsTimeRow {
                         HStack {
                             Text(formatTime(progress.position))
                             Spacer()
                             Text("-\(formatTime(max(duration - progress.position, 0)))")
                         }
-                        .font(.system(size: 9))
+                        .font(metrics.timeFont)
                         .foregroundStyle(.white.opacity(0.7))
                     }
                 }
-
-                HStack(spacing: 16) {
-                    Button { player.previous() } label: {
-                        Image(systemName: "backward.fill")
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button { player.togglePlayPause() } label: {
-                        Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 34))
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button { player.next() } label: {
-                        Image(systemName: "forward.fill")
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                HStack(spacing: 20) {
-                    Button { player.toggleShuffle() } label: {
-                        WatchShuffleIcon(isActive: player.isShuffled)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button { player.cycleRepeatMode() } label: {
-                        WatchRepeatIcon(repeatMode: player.repeatMode)
-                    }
-                    .buttonStyle(.plain)
-                }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
+
+            HStack(spacing: metrics.transportSpacing) {
+                Button { player.previous() } label: {
+                    Image(systemName: "backward.fill")
+                        .font(metrics.transportGlyphFont)
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+
+                Button { player.togglePlayPause() } label: {
+                    Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: metrics.playButtonPointSize))
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+
+                Button { player.next() } label: {
+                    Image(systemName: "forward.fill")
+                        .font(metrics.transportGlyphFont)
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: metrics.modeRowSpacing) {
+                Button { player.toggleShuffle() } label: {
+                    WatchShuffleIcon(isActive: player.isShuffled, iconSize: metrics.modeIconSize, tapFrameSize: metrics.modeTapFrameSize)
+                }
+                .buttonStyle(.plain)
+
+                Button { player.cycleRepeatMode() } label: {
+                    WatchRepeatIcon(repeatMode: player.repeatMode, iconSize: metrics.modeIconSize, tapFrameSize: metrics.modeTapFrameSize)
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .navigationTitle("再生中")
+        .padding(.horizontal, metrics.horizontalPadding)
+        .padding(.vertical, metrics.verticalPadding)
     }
 
     private func formatTime(_ seconds: Double) -> String {
         let total = Int(seconds)
         return String(format: "%d:%02d", total / 60, total % 60)
     }
+}
+
+/// One point on the `ViewThatFits` compactness ladder documented on `WatchNowPlayingView` —
+/// spacing, padding, and glyph sizes for a single candidate. Pure data; `nowPlayingStack(_:)`
+/// applies it, `ViewThatFits` decides which one is actually used, per device/text-size/content.
+private struct NowPlayingMetrics {
+    var stackSpacing: CGFloat
+    var titleArtistSpacing: CGFloat
+    var progressBlockSpacing: CGFloat
+    /// Whether the elapsed/remaining time row is shown below the progress bar. `false` only for
+    /// `.reduced` — the one element the ladder sheds before resorting to a `ScrollView`.
+    var showsTimeRow: Bool
+    var timeFont: Font
+    /// Font for the route-error line (when `player.routeError` is set). Kept smaller on the
+    /// tighter tiers so the (often three-line) error message wraps to fewer lines instead of
+    /// dominating the available height — measured to matter more than any other single lever here.
+    var routeErrorFont: Font
+    var transportSpacing: CGFloat
+    var transportGlyphFont: Font
+    var playButtonPointSize: CGFloat
+    var modeRowSpacing: CGFloat
+    var modeIconSize: CGFloat
+    var modeTapFrameSize: CGFloat
+    var horizontalPadding: CGFloat
+    var verticalPadding: CGFloat
+
+    /// Everything, comfortably spaced — the candidate `ViewThatFits` prefers whenever there is room
+    /// to spare (larger watches, default Dynamic Type).
+    static let roomy = NowPlayingMetrics(
+        stackSpacing: 10, titleArtistSpacing: 4, progressBlockSpacing: 4, showsTimeRow: true,
+        timeFont: .system(size: 11), routeErrorFont: .caption2, transportSpacing: 22,
+        transportGlyphFont: .title2, playButtonPointSize: 40, modeRowSpacing: 26, modeIconSize: 22,
+        modeTapFrameSize: 36, horizontalPadding: 16, verticalPadding: 8
+    )
+
+    /// Everything, tightened — roughly the metrics the previous hand-tuned single-layout version
+    /// used (spacing 5 / padding 12,4 / 34pt play button), now just one rung of the ladder instead
+    /// of the only option.
+    static let compact = NowPlayingMetrics(
+        stackSpacing: 5, titleArtistSpacing: 2, progressBlockSpacing: 2, showsTimeRow: true,
+        timeFont: .system(size: 9), routeErrorFont: .system(size: 10), transportSpacing: 16,
+        transportGlyphFont: .title3, playButtonPointSize: 34, modeRowSpacing: 20, modeIconSize: 20,
+        modeTapFrameSize: 36, horizontalPadding: 12, verticalPadding: 4
+    )
+
+    /// Drops the elapsed/remaining time row (the progress bar itself is kept) and tightens further
+    /// still — the last non-scrolling rung before the `ScrollView` fallback.
+    static let reduced = NowPlayingMetrics(
+        stackSpacing: 3, titleArtistSpacing: 1, progressBlockSpacing: 0, showsTimeRow: false,
+        timeFont: .system(size: 9), routeErrorFont: .system(size: 9), transportSpacing: 10,
+        transportGlyphFont: .system(size: 16), playButtonPointSize: 28, modeRowSpacing: 12,
+        modeIconSize: 16, modeTapFrameSize: 28, horizontalPadding: 8, verticalPadding: 0
+    )
 }
 
 #Preview {
