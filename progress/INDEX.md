@@ -1,5 +1,7 @@
 # Progress Index
 
+- [watch-ui-redesign.md](watch-ui-redesign.md) — Watch UI を3ページ構成（ライブラリ⇄再生中⇄キュー&音量）に刷新: 自作トグルを `List` 掘り下げに、再生中はアートワーク全面背景化、音量は `WKInterfaceVolumeControl` ラップで新設、UI 文言を日本語統一。(a)Crown音量化・(b)メニュー経由の却下理由と `WatchSongRow` の `onSelect` 一般化を記録
+- [mobile-library-ui.md](mobile-library-ui.md) — （追記 2026-08-08）検索行アクセサリのスワイプ時ポップを解消: 真因はタブ毎の `LibrarySearchRow` 別インスタンス生成で、全タブ共通の単一インスタンス化＋アクセサリのみクロスフェードに。`AlbumSortOrder`/`ArtistSortOrder` 新設で全タブにボタン常設、Remote も Local と同じ paged TabView へ統一
 - [visualizer-perceptual-mapping.md](visualizer-perceptual-mapping.md) — ビジュアライザーのバー高さマッピングを聴覚特性ベースに刷新: 連続対数バンド(40/150/450/1400/4000/9000/16000Hz)のビン平均、ノイズフロア0.22でのゲート、dB領域向けのゆるいカーブ(pow 1.1)、等ラウドネス補正ゲイン、アタック0.55/リリース0.18の非対称スムージング（フレームレート非依存化）に置き換え、中央バー強調のsine乗数を撤去。純粋関数`computeBarHeights`を`visualizer-mapping.ts`へ切り出しTDDで実装。追記: 実音源で値が上限付近に張り付く問題を、帯域別AGC（直近ピーク正規化、即時アタック/半減期4秒減衰、ENV_FLOOR 0.25、コントラストpow 1.6）で解消し状態をオブジェクト化
 - [visualizer-fft-normalisation.md](visualizer-fft-normalisation.md) — デスクトップ版ビジュアライザーのバー張り付きバグを修正: `calculateFFT` が未正規化FFTマグニチュードをdB変換していたため常に255に張り付いていた問題を、FFTサイズによる正規化とリニア領域での時間平滑化（AnalyserNode相当）で解消。合わせてGoデータ取得間隔を80ms→40msに短縮
 - [mobile-library-ui.md](mobile-library-ui.md) — （追記 2026-08-07）ライブラリ行を角丸カードから全幅ベタ塗り（`LibraryListRowStyle`）＋固定行高へ、アルバム連結線を純粋関数 `AlbumGroupConnector` 化して行をまたいで連続表示、セグメント切替を paged `TabView` のスワイプに変更し競合する行スワイプを全廃（削除・キュー操作は長押しメニューへ集約）、For You 廃止、`.segmented` の等幅配分による文字切れを避けるため Picker を全幅の独立行に分離しアクセサリを検索行へ移動

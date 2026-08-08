@@ -69,3 +69,11 @@
 - `LibraryListRowStyle` と `SongRowMetrics` は `Views/SongRowView.swift` に同居させている。新規 Swift ファイルを足すと `project.pbxproj` の4箇所を手書きする必要があるため（このファイル冒頭の注意書き参照）、共有部品は既存ファイルに寄せた。
 - プレイリストの `.onMove` は `playlistQuery` が空のときだけ有効。`movePlaylists` は `model.playlists` のオフセットを取るので、絞り込み後のリストとは添字が一致しない。
 - **未検証**: スワイプでのページ送りと長押しメニューの動作は、この作業時点の Mac で CoreSimulator の HID 入力が壊れており（`No Legacy HID port found` / タップは成功を返すがアプリに届かない）、実機相当の操作確認ができていない。静止画としてのレイアウト（ベタ塗り行・連結線・4セグメント Picker）はスクリーンショットで確認済み。
+
+### 追記 (2026-08-08): 検索行アクセサリの常設化とスワイプ時ポップの解消・Remote のページング統一
+- 症状: 曲⇄アルバム等のスワイプで検索欄隣のアクセサリボタンが無アニメーションで出たり消えたりして不自然。
+- **真因はタブ毎に `LibrarySearchRow` を別インスタンスで生成していたこと**（`switch viewMode` で行ごと差し替え）。`.animation` をアクセサリに限定しても、行全体が再構築される限りポップは消えない。
+- 対策: `searchRow` を全タブ共通の**単一インスタンス**に統合（クエリ／プロンプトはタブに応じた computed binding で切替、行自体は無アニメーション）。アクセサリのみ `ZStack` + `.transition(.opacity)` + `.animation(.easeInOut(0.18s), value: viewMode)` でクロスフェード。
+- あわせて全タブにボタンを常設するため `AlbumSortOrder`（アルバム名順／アーティスト名順／曲数順）と `ArtistSortOrder`（名前順／曲数順）を `Core/CollectionSortOrder.swift` に新設（TDD・`CollectionSortOrderTests` 12件）。永続化は `librarySortOrder` と同パターン（`AppConstants` のキー＋`didSet`／init 復元）。
+- **Remote 側も Local と同じ paged `TabView` 構造へ載せ替え**、スワイプでセグメント切替可能に（UI 一貫性の指摘対応）。`libraryState` の idle/loading/failed 分岐は TabView の外側、`downloadError` バナーも TabView の上で全ページ共通。
+- Alternatives: 全タブを共通の ellipsis メニュー1個に統一する案（案B）は却下 — ヘッダーは完全固定になるが、最も使う曲タブの並び替えが1タップ遠くなる。
