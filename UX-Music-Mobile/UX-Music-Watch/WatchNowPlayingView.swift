@@ -52,32 +52,35 @@ struct WatchNowPlayingView: View {
     }
 
     /// Full-bleed background: the cached artwork scaled to fill the page, with a dark scrim so the
-    /// title/artist/controls stay legible over any artwork. Falls back to a plain dark placeholder
-    /// (with a faint note glyph) when there is no artwork yet.
+    /// title/artist/controls stay legible over any artwork. Falls back to `RemoteDefaultArtwork` —
+    /// a bundled copy of the desktop app's default artwork jacket — when there is no artwork yet,
+    /// so the idle state gets the same blur/opacity/scrim treatment as the playing state instead of
+    /// a plain black page.
     @ViewBuilder
     private var backgroundArtwork: some View {
         if let cachedArtworkImage {
-            Image(uiImage: cachedArtworkImage)
-                .resizable()
-                .scaledToFill()
-                .ignoresSafeArea()
-                .overlay {
-                    LinearGradient(
-                        colors: [Color.black.opacity(0.75), Color.black.opacity(0.35), Color.black.opacity(0.8)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea()
-                }
+            fullBleedArtwork(Image(uiImage: cachedArtworkImage))
         } else {
-            ZStack {
-                Color.black
-                Image(systemName: "music.note")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.white.opacity(0.15))
-            }
-            .ignoresSafeArea()
+            fullBleedArtwork(Image("RemoteDefaultArtwork"))
         }
+    }
+
+    /// Shared full-bleed treatment (scaled to fill, dark scrim overlay) applied to both the real
+    /// cached artwork and the `RemoteDefaultArtwork` idle fallback so the two states look alike.
+    @ViewBuilder
+    private func fullBleedArtwork(_ image: Image) -> some View {
+        image
+            .resizable()
+            .scaledToFill()
+            .ignoresSafeArea()
+            .overlay {
+                LinearGradient(
+                    colors: [Color.black.opacity(0.75), Color.black.opacity(0.35), Color.black.opacity(0.8)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            }
     }
 
     /// Reloads `cachedArtworkImage` from disk only when the current song has actually changed —
