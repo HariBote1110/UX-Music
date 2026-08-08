@@ -126,12 +126,15 @@ struct WatchNowPlayingView: View {
     private var content: some View {
         // A `ScrollView` (rather than a bare `VStack`) so the page degrades gracefully on the
         // smallest watch screens (e.g. Series 11 42mm) instead of clipping/overflowing past the
-        // bottom edge — the fixed paddings/spacings below were sized for larger screens and left
-        // the shuffle/repeat row pushed off-screen on 42mm. `.scrollBounceBehavior(.basedOnSize)`
-        // below keeps this from scrolling/bouncing on screens where the content already fits,
-        // while still allowing 42mm to scroll.
+        // bottom edge. The paddings/spacings below are tuned so the *playing* state — title/artist,
+        // route error (if any), progress bar + elapsed/remaining times, transport row, and
+        // shuffle/repeat row — fits without scrolling on 45mm-class screens and larger (the
+        // progress block is what pushes the idle-state height over the edge, since it only renders
+        // while a song is current). `.scrollBounceBehavior(.basedOnSize)` keeps this from
+        // scrolling/bouncing on screens where the content already fits, while still allowing the
+        // smallest watches (40/41mm) to scroll instead of clipping.
         ScrollView {
-            VStack(spacing: 8) {
+            VStack(spacing: 5) {
                 VStack(spacing: 2) {
                     Text(player.currentSong?.displayTitle ?? "再生していません")
                         .font(.headline)
@@ -177,7 +180,7 @@ struct WatchNowPlayingView: View {
 
                     Button { player.togglePlayPause() } label: {
                         Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 40))
+                            .font(.system(size: 34))
                             .foregroundStyle(.white)
                     }
                     .buttonStyle(.plain)
@@ -202,7 +205,8 @@ struct WatchNowPlayingView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
         }
         .scrollBounceBehavior(.basedOnSize)
         .navigationTitle("再生中")
