@@ -107,6 +107,8 @@
 		FEED0021000000000000AA21 /* WatchPlaybackLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */; };
 		FEED0022000000000000AA22 /* WatchPlaybackLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */; };
 		FEED0024000000000000AA24 /* WatchPlaybackLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0023000000000000AA23 /* WatchPlaybackLogicTests.swift */; };
+		FEED0033000000000000AA33 /* ModeIconAnimationMaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0032000000000000AA32 /* ModeIconAnimationMaths.swift */; };
+		FEED0034000000000000AA34 /* ModeIconAnimationMaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0032000000000000AA32 /* ModeIconAnimationMaths.swift */; };
 		FEED0006000000000000AAA6 /* WatchTransferBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0007000000000000AAA7 /* WatchTransferBridge.swift */; };
 		FEED0003000000000000AAA3 /* WatchTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0001000000000000AAA1 /* WatchTransfer.swift */; };
 		FEED0005000000000000AAA5 /* WatchTransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0004000000000000AAA4 /* WatchTransferTests.swift */; };
@@ -256,6 +258,7 @@
 		FEED0001000000000000AAA1 /* WatchTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransfer.swift; sourceTree = "<group>"; };
 		FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlaybackLogic.swift; sourceTree = "<group>"; };
 		FEED0023000000000000AA23 /* WatchPlaybackLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlaybackLogicTests.swift; sourceTree = "<group>"; };
+		FEED0032000000000000AA32 /* ModeIconAnimationMaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeIconAnimationMaths.swift; sourceTree = "<group>"; };
 		FEED0007000000000000AAA7 /* WatchTransferBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferBridge.swift; sourceTree = "<group>"; };
 		FEED0004000000000000AAA4 /* WatchTransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferTests.swift; sourceTree = "<group>"; };
 		FEED000A000000000000AAAA /* WatchTransferMenuPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransferMenuPolicy.swift; sourceTree = "<group>"; };
@@ -375,6 +378,7 @@
 				F7BDF513722B4F588ED85C68 /* AlbumGroupPosition.swift */,
 				C90B386DF8A0466AAF2183FE /* SituationPlaylistResolver.swift */,
 				3ABB8F8673614992A6F51E34 /* LyricsTranslationMerger.swift */,
+				FEED0032000000000000AA32 /* ModeIconAnimationMaths.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -717,6 +721,7 @@
 				E9C57EBF9E4447E3B08B8325 /* LyricsTranslationMerger.swift in Sources */,
 				18A4C7A01D874E1CA883AE6C /* Artist.swift in Sources */,
 				366EBD42F98144F3818933ED /* ArtistDetailView.swift in Sources */,
+				FEED0033000000000000AA33 /* ModeIconAnimationMaths.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -734,6 +739,7 @@
 				FEED00160000000000000000 /* WatchSongListView.swift in Sources */,
 				FEED00180000000000000000 /* WatchNowPlayingView.swift in Sources */,
 				FEED00260000000000000000 /* WatchQueueVolumeView.swift in Sources */,
+				FEED0034000000000000AA34 /* ModeIconAnimationMaths.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
