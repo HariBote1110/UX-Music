@@ -42,7 +42,14 @@ struct RemoteLibraryScreen: View {
     var body: some View {
         NavigationStack(path: $path) {
             // See `LibraryBottomBleed`: without it the grids/lists stop at the tab bar's top edge
-            // instead of scrolling under it.
+            // instead of scrolling under it. Mirrors `LocalLibraryScreen`: the paged `TabView`
+            // (inside `libraryBody`) insets its own pages by the safe area, so the pages are let
+            // through to the screen's bottom edge here and that inset is re-applied per page as
+            // scroll content margin via `page(bottomInset:)`.
+            //
+            // Rows on this screen use context menus rather than `swipeActions`, so there is no
+            // gesture conflict with the page swipe to guard against (see `LocalLibraryScreen`'s
+            // note on why `swipeActions` was removed there).
             LibraryBottomBleed { bottomInset in
                 VStack(spacing: 0) {
                     LibrarySegmentedHeader(
@@ -50,8 +57,7 @@ struct RemoteLibraryScreen: View {
                         selectedIndex: viewModeIndex
                     )
                     LibrarySearchRow(query: $query) { remoteActions }
-                    libraryBody
-                        .contentMargins(.bottom, bottomInset, for: .scrollContent)
+                    libraryBody(bottomInset: bottomInset)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -149,8 +155,22 @@ struct RemoteLibraryScreen: View {
         }
     }
 
+    /// Every page fills the paged `TabView` so the three segments are the same height and the
+    /// swipe gesture is live over the whole area, not just where a page happens to have content.
+    /// `bottomInset` is the tab bar's safe area, re-applied to the page's scroll content because
+    /// the pages themselves extend past it (see `body`). Mirrors
+    /// `LocalLibraryScreen.page(bottomInset:)`.
+    private func page<Content: View>(
+        bottomInset: CGFloat,
+        @ViewBuilder _ content: () -> Content
+    ) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentMargins(.bottom, bottomInset, for: .scrollContent)
+    }
+
     @ViewBuilder
-    private var libraryBody: some View {
+    private func libraryBody(bottomInset: CGFloat) -> some View {
         switch model.libraryState {
         case .idle:
             Color.clear
@@ -178,28 +198,45 @@ struct RemoteLibraryScreen: View {
                     .padding(10)
                     .background(Color.orange.opacity(0.15))
                 }
-                if viewMode == .playlists {
-                    remotePlaylistsPane(librarySongs: songs)
-                } else if viewMode == .albums {
-                    let albums = filterAlbums(Album.fromSongs(songs))
-                    if albums.isEmpty {
-                        Text(songs.isEmpty ? "サーバーに曲がありません" : "一致する曲がありません")
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        remoteAlbumsGrid(albums: albums)
-                    }
-                } else {
-                    let filtered = SongSearchFilter.filter(songs, query: query)
-                    if filtered.isEmpty {
-                        Text(songs.isEmpty ? "サーバーに曲がありません" : "一致する曲がありません")
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        remoteSongsList(songs: filtered)
-                    }
+                TabView(selection: $viewMode) {
+                    page(bottomInset: bottomInset) { albumsPane(songs: songs) }
+                        .tag(RemoteViewMode.albums)
+                    page(bottomInset: bottomInset) { playlistsPane(songs: songs) }
+                        .tag(RemoteViewMode.playlists)
+                    page(bottomInset: bottomInset) { songsPane(songs: songs) }
+                        .tag(RemoteViewMode.songs)
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func albumsPane(songs: [Song]) -> some View {
+        let albums = filterAlbums(Album.fromSongs(songs))
+        if albums.isEmpty {
+            Text(songs.isEmpty ? "サーバーに曲がありません" : "一致する曲がありません")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            remoteAlbumsGrid(albums: albums)
+        }
+    }
+
+    private func playlistsPane(songs: [Song]) -> some View {
+        remotePlaylistsPane(librarySongs: songs)
+    }
+
+    @ViewBuilder
+    private func songsPane(songs: [Song]) -> some View {
+        let filtered = SongSearchFilter.filter(songs, query: query)
+        if filtered.isEmpty {
+            Text(songs.isEmpty ? "サーバーに曲がありません" : "一致する曲がありません")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            remoteSongsList(songs: filtered)
         }
     }
 
