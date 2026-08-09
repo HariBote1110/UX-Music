@@ -12,6 +12,10 @@
 		5389213763E94726B2D40940 /* LibrarySortOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E89A57EC3FD426CBB078222 /* LibrarySortOrder.swift */; };
 		BE69EFC77F8C32EBA2BDE16B /* CollectionSortOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE73B0F8923A19A4AD3A2E7F /* CollectionSortOrder.swift */; };
 		E4764704BE414712AF41ED7D /* AlbumGroupPosition.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7BDF513722B4F588ED85C68 /* AlbumGroupPosition.swift */; };
+		934EAC9DD4EB677B2EBD5D5C /* AlbumGroupPosition.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7BDF513722B4F588ED85C68 /* AlbumGroupPosition.swift */; };
+		FCF7FCB40DAC7268194A2333 /* ArtworkMemoryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E8232ED356CCE267DA6872 /* ArtworkMemoryCache.swift */; };
+		6195166E717CD30E926D419D /* ArtworkMemoryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E8232ED356CCE267DA6872 /* ArtworkMemoryCache.swift */; };
+		48A938B2CCB818D335F900B3 /* ArtworkMemoryCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C952F936165C7686FF48A3F6 /* ArtworkMemoryCacheTests.swift */; };
 		E9C57EBF9E4447E3B08B8325 /* LyricsTranslationMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ABB8F8673614992A6F51E34 /* LyricsTranslationMerger.swift */; };
 		18A4C7A01D874E1CA883AE6C /* Artist.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3F0B98F67004EC7BAE5381B /* Artist.swift */; };
 		F548AB3DC1F244E18D72F3B6 /* SituationPlaylistResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90B386DF8A0466AAF2183FE /* SituationPlaylistResolver.swift */; };
@@ -163,6 +167,8 @@
 		4E89A57EC3FD426CBB078222 /* LibrarySortOrder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySortOrder.swift; sourceTree = "<group>"; };
 		AE73B0F8923A19A4AD3A2E7F /* CollectionSortOrder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionSortOrder.swift; sourceTree = "<group>"; };
 		F7BDF513722B4F588ED85C68 /* AlbumGroupPosition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumGroupPosition.swift; sourceTree = "<group>"; };
+		B7E8232ED356CCE267DA6872 /* ArtworkMemoryCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkMemoryCache.swift; sourceTree = "<group>"; };
+		C952F936165C7686FF48A3F6 /* ArtworkMemoryCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtworkMemoryCacheTests.swift; sourceTree = "<group>"; };
 		3ABB8F8673614992A6F51E34 /* LyricsTranslationMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsTranslationMerger.swift; sourceTree = "<group>"; };
 		C3F0B98F67004EC7BAE5381B /* Artist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Artist.swift; sourceTree = "<group>"; };
 		C90B386DF8A0466AAF2183FE /* SituationPlaylistResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SituationPlaylistResolver.swift; sourceTree = "<group>"; };
@@ -353,6 +359,7 @@
 				293E4CC74493F09601F47B4C /* CollectionSortOrderTests.swift */,
 				C23F26B7DC3E4084B98CBC3B /* ArtistTests.swift */,
 				96F1FFFD654C4BBEA3453280 /* AlbumGroupPositionTests.swift */,
+				C952F936165C7686FF48A3F6 /* ArtworkMemoryCacheTests.swift */,
 				D0B943F38E2D483696387D1A /* SituationPlaylistResolverTests.swift */,
 				4FCA8FC823B346CE96652D1B /* LyricsTranslationMergerTests.swift */,
 				B6CD72516EEA418A92F213A9 /* AppModelLibraryFeaturesTests.swift */,
@@ -380,6 +387,7 @@
 				4E89A57EC3FD426CBB078222 /* LibrarySortOrder.swift */,
 				AE73B0F8923A19A4AD3A2E7F /* CollectionSortOrder.swift */,
 				F7BDF513722B4F588ED85C68 /* AlbumGroupPosition.swift */,
+				B7E8232ED356CCE267DA6872 /* ArtworkMemoryCache.swift */,
 				C90B386DF8A0466AAF2183FE /* SituationPlaylistResolver.swift */,
 				3ABB8F8673614992A6F51E34 /* LyricsTranslationMerger.swift */,
 				FEED0032000000000000AA32 /* ModeIconAnimationMaths.swift */,
@@ -653,6 +661,7 @@
 				4351669762EAD685FD0970F7 /* CollectionSortOrderTests.swift in Sources */,
 				415529D96F5C44859DDF8120 /* ArtistTests.swift in Sources */,
 				12AF72EA6FD2408C9B604052 /* AlbumGroupPositionTests.swift in Sources */,
+				48A938B2CCB818D335F900B3 /* ArtworkMemoryCacheTests.swift in Sources */,
 				34EC20EFE5634606AC074EF0 /* SituationPlaylistResolverTests.swift in Sources */,
 				EC2F7342E67E4A18A26E8F48 /* LyricsTranslationMergerTests.swift in Sources */,
 				9EFCF4D0AB00484A8E3D6F45 /* AppModelLibraryFeaturesTests.swift in Sources */,
@@ -723,6 +732,7 @@
 				5389213763E94726B2D40940 /* LibrarySortOrder.swift in Sources */,
 				BE69EFC77F8C32EBA2BDE16B /* CollectionSortOrder.swift in Sources */,
 				E4764704BE414712AF41ED7D /* AlbumGroupPosition.swift in Sources */,
+				FCF7FCB40DAC7268194A2333 /* ArtworkMemoryCache.swift in Sources */,
 				F548AB3DC1F244E18D72F3B6 /* SituationPlaylistResolver.swift in Sources */,
 				E9C57EBF9E4447E3B08B8325 /* LyricsTranslationMerger.swift in Sources */,
 				18A4C7A01D874E1CA883AE6C /* Artist.swift in Sources */,
@@ -739,6 +749,7 @@
 				8379E743BC3A42EA9A578132 /* WatchRootView.swift in Sources */,
 				FEED0003000000000000AAA3 /* WatchTransfer.swift in Sources */,
 				FEED0022000000000000AA22 /* WatchPlaybackLogic.swift in Sources */,
+				6195166E717CD30E926D419D /* ArtworkMemoryCache.swift in Sources */,
 				FEED00100000000000000000 /* WatchLocalLibrary.swift in Sources */,
 				FEED00120000000000000000 /* WatchConnectivityReceiver.swift in Sources */,
 				FEED00140000000000000000 /* WatchAudioPlayerService.swift in Sources */,
