@@ -423,6 +423,7 @@ struct SettingsScreen: View {
         switch phase {
         case .downloading: return "ダウンロード中…"
         case .waiting: return "待機中"
+        case .preparing: return "変換中…"
         case .sending: return "送信中…"
         case .sent: return "送信済み"
         case .failed(let message): return "失敗: \(message)"

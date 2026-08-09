@@ -7,6 +7,9 @@ struct WatchTransferQueueItem: Identifiable {
     enum Phase: Equatable {
         case downloading
         case waiting
+        /// `WatchTransferAudioPolicy` decided the local file needs transcoding to AAC before it can
+        /// be sent (see `WatchTransferBridge.performTransfer`); `WatchAudioTranscoder` is running.
+        case preparing
         case sending
         case sent
         case failed(String)
@@ -176,9 +179,50 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         performTransfer(song)
     }
 
-    /// Actually calls `WCSession.transferFile`. Only safe to call once `activationStatus == .activated`.
+    /// Decides (via `WatchTransferAudioPolicy`) whether the local file needs transcoding before it
+    /// can be sent, then either sends it immediately or transcodes first. Only safe to call once
+    /// `activationStatus == .activated`.
     private func performTransfer(_ song: Song) {
         let localURL = URL(fileURLWithPath: downloadManager.localPathString(songId: song.id))
+        let originalFileType = localURL.pathExtension.isEmpty ? song.fileType : localURL.pathExtension
+        let fileSizeBytes = Self.fileSize(at: localURL)
+
+        let decision = WatchTransferAudioPolicy.decision(
+            fileType: originalFileType,
+            fileSizeBytes: fileSizeBytes,
+            duration: song.duration
+        )
+
+        guard decision == .transcode else {
+            sendFile(localURL, fileType: originalFileType, song: song)
+            return
+        }
+
+        upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .preparing))
+
+        let transcoder = WatchAudioTranscoder()
+        Task {
+            var transcodedURL: URL?
+            do {
+                transcodedURL = try await transcoder.transcodedFileURL(source: localURL, songId: song.id)
+            } catch {
+                // A slow transfer of the original file beats no transfer at all — fall through to
+                // `WatchTransferTranscodeOutcome.fileToSend` below, which sends the original on `nil`.
+                print("[WatchTransferBridge] Watch向けAACトランスコードに失敗、元ファイルを送信します（\(song.id)）: \(error.localizedDescription)")
+            }
+            let fileToSend = WatchTransferTranscodeOutcome.fileToSend(
+                originalURL: localURL,
+                originalFileType: originalFileType,
+                transcodedURL: transcodedURL
+            )
+            self.sendFile(fileToSend.url, fileType: fileToSend.fileType, song: song)
+        }
+    }
+
+    /// Actually calls `WCSession.transferFile` for `fileURL` (either the original local file, or a
+    /// transcoded AAC cache file — see `performTransfer`), alongside a `WatchTransferMeta` built
+    /// with `fileType` (which must match the bytes at `fileURL`, not necessarily `song.fileType`).
+    private func sendFile(_ fileURL: URL, fileType: String, song: Song) {
         let hasArtwork = downloadManager.localArtworkFileURLIfPresent(artworkId: song.artworkId) != nil
         var meta = WatchTransferMeta(
             id: song.id,
@@ -186,7 +230,7 @@ final class WatchTransferBridge: NSObject, ObservableObject {
             artist: song.artist,
             album: song.album,
             duration: song.duration,
-            fileType: (localURL.pathExtension.isEmpty ? song.fileType : localURL.pathExtension)
+            fileType: fileType
         )
         if hasArtwork {
             meta.artworkFileName = WatchTransferMeta.storedArtworkFileName(forId: song.id)
@@ -204,7 +248,7 @@ final class WatchTransferBridge: NSObject, ObservableObject {
             return
         }
 
-        session.transferFile(localURL, metadata: meta.wcMetadata)
+        session.transferFile(fileURL, metadata: meta.wcMetadata)
 
         // Artwork is sent as its own `transferFile` rather than embedded in `meta.wcMetadata`
         // (WatchConnectivity metadata dictionaries are meant for small key/value pairs, not image
@@ -215,6 +259,11 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         }
 
         upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .sent))
+    }
+
+    private static func fileSize(at url: URL) -> Int64 {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return 0 }
+        return (attributes[.size] as? NSNumber)?.int64Value ?? 0
     }
 
     /// Downscales the artwork at `sourceURL` to a long edge of ~400px and re-encodes it as a JPEG
