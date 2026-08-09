@@ -214,6 +214,33 @@ enum WatchAlbumGrouping {
     }
 }
 
+/// The flat "Songs" list's album-sorted order, bundled together with the per-row
+/// `AlbumGroupPosition` each song occupies in that order (see `WatchAlbumGrouping
+/// .songsSortedByAlbum` and `AlbumGrouping.positions(forAlbumKeys:)`, the two pure functions this
+/// composes). `songs` and `groupPositions` are always the same length and index-aligned, since
+/// `WatchSongListView.songList` consumes them together by index.
+///
+/// Exists so `WatchLocalLibrary` can compute this pair *once* whenever `songs` actually changes
+/// (see `WatchLocalLibrary.flatOrder`/`setSongs(_:)`) instead of a SwiftUI view recomputing it
+/// inline every time its body evaluates — which, for `WatchSongListView.songList`, turned out to
+/// be more often than "the user actually opened the songs list": `NavigationLink(destination:label:)`
+/// builds its destination view eagerly as soon as the *label* row appears (confirmed by counting
+/// invocations while running the Library page, before ever tapping "曲" — see
+/// `progress/watch-ui-redesign.md`), so the sort/group ran on every Library-page render regardless
+/// of navigation.
+struct WatchFlatSongOrder: Equatable {
+    var songs: [WatchTransferMeta]
+    var groupPositions: [AlbumGroupPosition]
+
+    static let empty = WatchFlatSongOrder(songs: [], groupPositions: [])
+
+    static func computed(from songs: [WatchTransferMeta]) -> WatchFlatSongOrder {
+        let sorted = WatchAlbumGrouping.songsSortedByAlbum(songs)
+        let positions = AlbumGrouping.positions(forAlbumKeys: sorted.map(\.displayAlbum))
+        return WatchFlatSongOrder(songs: sorted, groupPositions: positions)
+    }
+}
+
 /// Builds the `MPNowPlayingInfoCenter` payload from Watch playback state, kept as a pure function so
 /// the key/value mapping is unit-testable without `MPNowPlayingInfoCenter.default()` (which cannot
 /// be observed from an XCTest target).
