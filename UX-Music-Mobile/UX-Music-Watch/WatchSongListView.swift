@@ -46,10 +46,29 @@ struct WatchSongListView: View {
         }
     }
 
+    /// The flat "Songs" list, sorted into album order (see `WatchAlbumGrouping.songsSortedByAlbum`)
+    /// so consecutive same-album rows actually form runs, then rendered with the album-run
+    /// connector (see `WatchSongRowMetrics`'s doc comment) — the app's signature list style,
+    /// already on iOS/desktop, trialled here first per the album detail list and the Queue &
+    /// Volume page, which deliberately keep their previous look (`WatchSongRow.albumGroupPosition`
+    /// stays at its `nil` default there).
     private func songList(_ songs: [WatchTransferMeta]) -> some View {
-        List(songs) { meta in
-            WatchSongRow(meta: meta, queue: songs) { selectedPage = .nowPlaying }
+        let sorted = WatchAlbumGrouping.songsSortedByAlbum(songs)
+        let groupPositions = AlbumGrouping.positions(forAlbumKeys: sorted.map(\.displayAlbum))
+        return List {
+            ForEach(Array(sorted.enumerated()), id: \.element.id) { index, meta in
+                WatchSongRow(
+                    meta: meta,
+                    queue: sorted,
+                    albumGroupPosition: groupPositions[index]
+                ) { selectedPage = .nowPlaying }
+                    .modifier(WatchLibraryListRowStyle())
+            }
         }
+        // Removes watchOS's default per-row card chrome/spacing — see `WatchLibraryListRowStyle`'s
+        // doc comment for why that spacing (not a separator line) is what would otherwise break the
+        // connector's continuity between rows.
+        .listStyle(.plain)
     }
 
     private var albumList: some View {
@@ -90,6 +109,47 @@ private struct WatchAlbumDetailView: View {
     }
 }
 
+/// Watch-side analogue of the iOS app's `SongRowMetrics` (`Views/SongRowView.swift`): sized for the
+/// Watch's much smaller screen (~150-176pt usable width, ~242pt height) rather than reusing the iOS
+/// numbers directly. `artworkSize` is unchanged from the row's original fixed 28pt thumbnail frame
+/// (already within the 28-32pt Watch range) so lists that opt out of the album-run connector
+/// (`WatchSongRow.albumGroupPosition == nil`: album detail, Queue & Volume) keep their exact prior
+/// look — only `rowHeight`/`WatchLibraryListRowStyle` are new, and both are applied only where the
+/// connector is opted into (see `WatchSongRow.body`).
+///
+/// `rowHeight` is fixed and `WatchLibraryListRowStyle` adds no vertical row padding, so consecutive
+/// rows touch exactly — the same invariant the connector line needs on iOS (`LibraryListRowStyle`'s
+/// doc comment): any gap between rows makes the line look chopped at the boundary.
+enum WatchSongRowMetrics {
+    static let artworkSize: CGFloat = 28
+    static let rowHeight: CGFloat = 46
+    /// Horizontal inset of a row's content from the screen edge.
+    static let horizontalInset: CGFloat = 8
+}
+
+/// Applied only to rows opted into the album-run connector (see `WatchSongRowMetrics`'s doc
+/// comment) — the flat "Songs" list. Mirrors iOS's `LibraryListRowStyle`: rows carry no background
+/// of their own so the connector line reads as one continuous line rather than something sliced
+/// per row.
+///
+/// No `.listRowSeparator(.hidden)` here — that modifier is unavailable on watchOS (it fails to
+/// compile: `'listRowSeparator(_:edges:)' is unavailable in watchOS`). `songList(_:)` instead sets
+/// `.listStyle(.plain)` on the `List` itself, which is what actually removes watchOS's default
+/// per-row card chrome/spacing (the default style otherwise inserts a visible gap between rows,
+/// which would break the connector line's continuity regardless of this modifier).
+struct WatchLibraryListRowStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .listRowInsets(EdgeInsets(
+                top: 0,
+                leading: WatchSongRowMetrics.horizontalInset,
+                bottom: 0,
+                trailing: WatchSongRowMetrics.horizontalInset
+            ))
+            .listRowBackground(Color.clear)
+    }
+}
+
 /// A single tappable song row shared by the flat song list, the album detail list, and the
 /// Queue & Volume page's "up next" list (see `WatchQueueVolumeView`): starts playback of `queue`
 /// from `meta` and invokes `onSelect` (e.g. switching to Now Playing on the Library pages; a no-op
@@ -100,6 +160,13 @@ struct WatchSongRow: View {
     @EnvironmentObject private var player: WatchAudioPlayerService
     let meta: WatchTransferMeta
     let queue: [WatchTransferMeta]
+    /// This row's position within a run of consecutive same-album rows in `queue`'s current order
+    /// — see `AlbumGroupPosition` and `WatchSongListView.songList(_:)`, the only caller that
+    /// computes this today. `nil` (the default) keeps this row's original variable-height,
+    /// system-default list styling and always-shown artwork: the album detail list and the
+    /// Queue & Volume page deliberately do not opt into the connector yet (see
+    /// `progress/watch-ui-redesign.md`), matching how `SongRowView` opts in on iOS.
+    var albumGroupPosition: AlbumGroupPosition? = nil
     var onSelect: () -> Void = {}
 
     var body: some View {
@@ -108,8 +175,7 @@ struct WatchSongRow: View {
             onSelect()
         } label: {
             HStack {
-                WatchArtworkThumbnail(meta: meta)
-                    .frame(width: 28, height: 28)
+                leadingSlot
                 VStack(alignment: .leading, spacing: 2) {
                     Text(meta.displayTitle)
                         .font(.body)
@@ -126,6 +192,8 @@ struct WatchSongRow: View {
                         .font(.caption)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(GroupedRowHeight(isGrouped: albumGroupPosition != nil))
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -135,6 +203,75 @@ struct WatchSongRow: View {
                 Label("削除", systemImage: "trash")
             }
         }
+    }
+
+    /// Artwork, or the album-run connector — always the same width so titles line up. A `.first`
+    /// row shows *both*: the artwork plus the stub of line beneath it that joins the next row's
+    /// connector (see `AlbumGroupConnector`'s doc comment).
+    @ViewBuilder
+    private var leadingSlot: some View {
+        if let position = albumGroupPosition, position != .single {
+            ZStack {
+                WatchAlbumGroupConnectorView(position: position)
+                if position == .first {
+                    WatchArtworkThumbnail(meta: meta)
+                        .frame(width: WatchSongRowMetrics.artworkSize, height: WatchSongRowMetrics.artworkSize)
+                }
+            }
+            .frame(width: WatchSongRowMetrics.artworkSize)
+        } else {
+            WatchArtworkThumbnail(meta: meta)
+                .frame(width: WatchSongRowMetrics.artworkSize, height: WatchSongRowMetrics.artworkSize)
+        }
+    }
+}
+
+/// Fixes the row's height to `WatchSongRowMetrics.rowHeight` only when the row has opted into the
+/// album-run connector — lists that have not (album detail, Queue & Volume) keep their original
+/// system-default row height, unchanged. See `WatchSongRowMetrics`'s doc comment for why the fixed
+/// height matters wherever the connector is actually drawn.
+private struct GroupedRowHeight: ViewModifier {
+    let isGrouped: Bool
+
+    func body(content: Content) -> some View {
+        if isGrouped {
+            content.frame(height: WatchSongRowMetrics.rowHeight)
+        } else {
+            content
+        }
+    }
+}
+
+/// Watch analogue of the iOS `AlbumGroupConnectorView` (`Views/SongRowView.swift`): draws the
+/// vertical line — and, on a run's last row, the `└` elbow — in place of/under a row's artwork for
+/// a run of consecutive same-album rows. See `AlbumGroupConnector` for the pure geometry this reads;
+/// this view only turns that geometry into a `Canvas` stroke.
+///
+/// Takes the row's *whole* height (no fixed height of its own, so the enclosing `HStack`'s proposal
+/// fills it) rather than `WatchSongRowMetrics.artworkSize` — drawing at the artwork's height would
+/// leave a gap at each row boundary and make the line look chopped, the same pitfall iOS's version
+/// avoids.
+private struct WatchAlbumGroupConnectorView: View {
+    let position: AlbumGroupPosition
+    private let lineWidth: CGFloat = 1
+
+    var body: some View {
+        Canvas { context, size in
+            guard let segment = AlbumGroupConnector.verticalSegment(
+                for: position,
+                rowHeight: size.height,
+                artworkSize: WatchSongRowMetrics.artworkSize
+            ) else { return }
+            let midX = size.width / 2
+            var path = Path()
+            path.move(to: CGPoint(x: midX, y: segment.fromY))
+            path.addLine(to: CGPoint(x: midX, y: segment.toY))
+            if AlbumGroupConnector.hasElbow(for: position) {
+                path.addLine(to: CGPoint(x: size.width, y: segment.toY))
+            }
+            context.stroke(path, with: .color(Color.secondary.opacity(0.35)), lineWidth: lineWidth)
+        }
+        .frame(width: WatchSongRowMetrics.artworkSize)
     }
 }
 
@@ -175,7 +312,7 @@ private struct WatchArtworkThumbnail: View {
     /// it (`WatchSongRowMetrics.artworkSize`, 28pt) — decoding straight to a small thumbnail via
     /// ImageIO avoids ever allocating a full-size decoded bitmap, which is what keeps
     /// `WatchArtworkCache`'s per-entry footprint small.
-    private static let thumbnailMaxPixelSize: CGFloat = 96
+    nonisolated private static let thumbnailMaxPixelSize: CGFloat = 96
 
     var body: some View {
         ZStack {
@@ -222,7 +359,12 @@ private struct WatchArtworkThumbnail: View {
     /// `UIImage(data:)` followed by a separate resize: ImageIO never allocates a full-size decoded
     /// bitmap at all when a smaller target is requested, so this is both lighter and faster than
     /// decode-then-downsize for a row-sized thumbnail.
-    private static func decodeThumbnail(at url: URL, maxPixelSize: CGFloat) -> UIImage? {
+    ///
+    /// `nonisolated` because `WatchArtworkThumbnail` is a `View` (implicitly main-actor-isolated,
+    /// like `body`) but this must run inside `Task.detached` genuinely off the main actor — without
+    /// this, calling it from the detached closure is an implicit actor hop the compiler flags as a
+    /// missing `await` (`-Xfrontend -strict-concurrency` warning, an error under Swift 6 mode).
+    nonisolated private static func decodeThumbnail(at url: URL, maxPixelSize: CGFloat) -> UIImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
