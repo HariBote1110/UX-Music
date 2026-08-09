@@ -73,4 +73,26 @@ final class WatchAudioTranscoderTests: XCTestCase {
         XCTAssertEqual(firstOutput, secondOutput)
         XCTAssertEqual(firstModDate, secondModDate, "second call should reuse the cached file rather than re-encoding")
     }
+
+    // MARK: - TranscodeError.appendFailed
+    //
+    // `AVAssetWriterInput.append` returning `false` mid-encode (disk full, interrupted session,
+    // etc.) is not practical to simulate against a real AVAssetWriter in a unit test, so this pins
+    // just the pure error-construction decision the pump loop's append-failure branch relies on:
+    // prefer the writer's own error description when available, otherwise fall back to a generic
+    // message rather than surfacing `nil`/losing the failure entirely.
+
+    func testAppendFailedUsesWriterErrorDescriptionWhenPresent() {
+        XCTAssertEqual(
+            WatchAudioTranscoder.TranscodeError.appendFailed(writerErrorDescription: "disk full"),
+            .writerFailed("disk full")
+        )
+    }
+
+    func testAppendFailedFallsBackToGenericMessageWhenWriterErrorIsNil() {
+        XCTAssertEqual(
+            WatchAudioTranscoder.TranscodeError.appendFailed(writerErrorDescription: nil),
+            .writerFailed("append failed")
+        )
+    }
 }
