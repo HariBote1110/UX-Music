@@ -749,6 +749,7 @@
 				8379E743BC3A42EA9A578132 /* WatchRootView.swift in Sources */,
 				FEED0003000000000000AAA3 /* WatchTransfer.swift in Sources */,
 				FEED0022000000000000AA22 /* WatchPlaybackLogic.swift in Sources */,
+				934EAC9DD4EB677B2EBD5D5C /* AlbumGroupPosition.swift in Sources */,
 				6195166E717CD30E926D419D /* ArtworkMemoryCache.swift in Sources */,
 				FEED00100000000000000000 /* WatchLocalLibrary.swift in Sources */,
 				FEED00120000000000000000 /* WatchConnectivityReceiver.swift in Sources */,

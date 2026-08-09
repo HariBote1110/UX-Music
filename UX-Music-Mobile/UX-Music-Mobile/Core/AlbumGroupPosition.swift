@@ -17,17 +17,36 @@ enum AlbumGroupPosition: Equatable, Sendable {
 }
 
 enum AlbumGrouping {
+    #if os(iOS)
     /// Groups `songs` (already in display order) into consecutive runs keyed by
     /// `Song.groupingAlbumTitle`, returning one `AlbumGroupPosition` per input song in the same
     /// order. Non-adjacent repeats of the same album (e.g. a shuffled or manually-edited queue)
     /// form separate runs rather than merging — only *consecutive* rows sharing an album collapse.
+    ///
+    /// `Song` is an iOS-only model, so this convenience overload is `#if os(iOS)`-gated; the actual
+    /// run-detection lives in `positions(forAlbumKeys:)` below, which has no such dependency and is
+    /// also compiled into the watchOS target — see that function's doc comment.
     static func positions(for songs: [Song]) -> [AlbumGroupPosition] {
+        positions(forAlbumKeys: songs.map { $0.groupingAlbumTitle })
+    }
+    #endif
+
+    /// Groups `albumKeys` (already in display order, one per row) into consecutive runs, returning
+    /// one `AlbumGroupPosition` per entry in the same order. Non-adjacent repeats of the same key
+    /// (e.g. a shuffled or manually-edited queue) form separate runs rather than merging — only
+    /// *consecutive* rows sharing a key collapse.
+    ///
+    /// Kept keyed on a plain `String` rather than `Song` so the run-detection itself has no
+    /// dependency on any particular song model: `positions(for:)` above (the iOS `Song` list) and
+    /// the Watch's flat "Songs" list (`WatchTransferMeta.displayAlbum`, see
+    /// `WatchSongListView.songList(_:)`) both funnel through here.
+    static func positions(forAlbumKeys albumKeys: [String]) -> [AlbumGroupPosition] {
         var result: [AlbumGroupPosition] = []
-        result.reserveCapacity(songs.count)
+        result.reserveCapacity(albumKeys.count)
         var i = 0
-        while i < songs.count {
+        while i < albumKeys.count {
             var j = i
-            while j + 1 < songs.count, songs[j + 1].groupingAlbumTitle == songs[i].groupingAlbumTitle {
+            while j + 1 < albumKeys.count, albumKeys[j + 1] == albumKeys[i] {
                 j += 1
             }
             if j == i {

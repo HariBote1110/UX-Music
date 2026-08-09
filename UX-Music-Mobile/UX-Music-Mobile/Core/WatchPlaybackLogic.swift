@@ -196,6 +196,22 @@ enum WatchAlbumGrouping {
             .map { WatchAlbumGroup(album: $0, songs: buckets[$0] ?? []) }
             .sorted { $0.album.localizedStandardCompare($1.album) == .orderedAscending }
     }
+
+    /// Flattens `songs` into album order: the same per-album buckets `albums(from:)` builds
+    /// (keyed by `displayAlbum`, albums sorted alphabetically), but with each bucket's songs
+    /// concatenated back into one list instead of kept as separate album pages. Each bucket
+    /// preserves its songs' original relative order (already track order — see `WatchAlbumGroup`'s
+    /// doc comment), so this mirrors the spirit of the iOS default order
+    /// (`Song.libraryFlatDisplayOrderAscending`: album, then disc/track), minus the disc/track
+    /// fields `WatchTransferMeta` does not carry.
+    ///
+    /// Exists so the Watch's flat "Songs" list can actually form consecutive same-album runs for
+    /// `AlbumGrouping.positions(forAlbumKeys:)` — in transfer order, as songs previously rendered,
+    /// runs would rarely form since a song's neighbours are whatever arrived next from the iPhone,
+    /// not necessarily its albummates.
+    static func songsSortedByAlbum(_ songs: [WatchTransferMeta]) -> [WatchTransferMeta] {
+        albums(from: songs).flatMap(\.songs)
+    }
 }
 
 /// Builds the `MPNowPlayingInfoCenter` payload from Watch playback state, kept as a pure function so
