@@ -50,6 +50,19 @@ final class WatchLocalLibrary: ObservableObject {
 
     @Published private(set) var songs: [WatchTransferMeta] = []
 
+    /// The flat "Songs" list's album-sorted order plus per-row connector positions (see
+    /// `WatchFlatSongOrder`), and the "Albums" browse mode's per-album grouping (see
+    /// `WatchAlbumGrouping.albums(from:)`) — both derived from `songs` and recomputed exactly once
+    /// by `setSongs(_:)` whenever `songs` actually changes, rather than inline inside
+    /// `WatchSongListView`'s body. That view used to call `WatchAlbumGrouping.songsSortedByAlbum`/
+    /// `AlbumGrouping.positions(forAlbumKeys:)`/`WatchAlbumGrouping.albums(from:)` itself on every
+    /// body evaluation — including evaluations triggered by `NavigationLink(destination:label:)`
+    /// eagerly building its destination as soon as the Library page's row appears, well before the
+    /// user actually taps into either list (confirmed by instrumented counts while running the app
+    /// — see `progress/watch-ui-redesign.md`).
+    @Published private(set) var flatOrder: WatchFlatSongOrder = .empty
+    @Published private(set) var albums: [WatchAlbumGroup] = []
+
     static let shared = WatchLocalLibrary()
 
     init(fileManager: FileManager = .default) {
@@ -74,14 +87,14 @@ final class WatchLocalLibrary: ObservableObject {
     /// Registers a newly received song whose audio file has already been moved to
     /// `audioFileURL(for:)`. No-op if the id is already present (see `WatchLibraryIndex.adding`).
     func addSong(_ meta: WatchTransferMeta) {
-        songs = WatchLibraryIndex.adding(meta, to: songs)
+        setSongs(WatchLibraryIndex.adding(meta, to: songs))
         saveToDisk()
     }
 
     /// Removes the song's index entry and deletes its audio file.
     func removeSong(id: String) {
         guard let meta = songs.first(where: { $0.id == id }) else { return }
-        songs = WatchLibraryIndex.removing(id: id, from: songs)
+        setSongs(WatchLibraryIndex.removing(id: id, from: songs))
         saveToDisk()
         try? FileManager.default.removeItem(at: audioFileURL(for: meta))
     }
@@ -97,9 +110,18 @@ final class WatchLocalLibrary: ObservableObject {
             let data = try? Data(contentsOf: WatchAudioStorage.indexFileURL),
             let decoded = try? JSONDecoder().decode([WatchTransferMeta].self, from: data)
         else { return }
-        songs = WatchLibraryIndex.retainingExistingFiles(decoded) { meta in
+        setSongs(WatchLibraryIndex.retainingExistingFiles(decoded) { meta in
             FileManager.default.fileExists(atPath: self.audioFileURL(for: meta).path)
-        }
+        })
+    }
+
+    /// Single choke point for updating `songs`: also refreshes the derived `flatOrder`/`albums`
+    /// caches in the same step, so they can never go stale relative to `songs` and are computed
+    /// exactly once per actual change (see the doc comment on `flatOrder`).
+    private func setSongs(_ newSongs: [WatchTransferMeta]) {
+        songs = newSongs
+        flatOrder = WatchFlatSongOrder.computed(from: newSongs)
+        albums = WatchAlbumGrouping.albums(from: newSongs)
     }
 
     private func saveToDisk() {
