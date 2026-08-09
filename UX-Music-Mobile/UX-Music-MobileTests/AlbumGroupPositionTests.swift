@@ -42,6 +42,36 @@ final class AlbumGroupPositionTests: XCTestCase {
     func testEmptyInputReturnsEmpty() {
         XCTAssertEqual(AlbumGrouping.positions(for: []), [])
     }
+
+    // MARK: - positions(forAlbumKeys:)
+    //
+    // The pure entry point `AlbumGrouping.positions(for:)` (above, keyed by the iOS-only `Song`
+    // model) delegates to, so non-`Song` callers — namely the Watch's `WatchTransferMeta` via
+    // `displayAlbum` — can share the same run-detection without depending on `Song`. See
+    // `AlbumGroupPosition.swift`'s doc comment.
+
+    func testPositionsForAlbumKeysDetectsRunsTheSameWayAsPositionsForSongs() {
+        XCTAssertEqual(
+            AlbumGrouping.positions(forAlbumKeys: ["A", "A", "B", "C", "C", "C"]),
+            [.first, .last, .single, .first, .middle, .last]
+        )
+    }
+
+    func testPositionsForAlbumKeysEmptyReturnsEmpty() {
+        XCTAssertEqual(AlbumGrouping.positions(forAlbumKeys: []), [])
+    }
+
+    func testPositionsForSongsDelegatesToPositionsForAlbumKeys() {
+        let songs = [
+            song(id: "1", album: "A"),
+            song(id: "2", album: "A"),
+            song(id: "3", album: "B"),
+        ]
+        XCTAssertEqual(
+            AlbumGrouping.positions(for: songs),
+            AlbumGrouping.positions(forAlbumKeys: songs.map { $0.groupingAlbumTitle })
+        )
+    }
 }
 
 /// 連結線のジオメトリ。行を隙間なく積んだときに first→middle→last の線が

@@ -207,4 +207,39 @@ final class WatchPlaybackLogicTests: XCTestCase {
         let albums = WatchAlbumGrouping.albums(from: songs)
         XCTAssertEqual(albums[0].artworkSong?.id, "1")
     }
+
+    // MARK: - WatchAlbumGrouping.songsSortedByAlbum
+    //
+    // Flattens the flat "Songs" list into album order (mirroring the iOS default,
+    // `Song.libraryFlatDisplayOrderAscending`, minus the disc/track fields `WatchTransferMeta`
+    // does not carry) so consecutive same-album rows actually form runs for
+    // `AlbumGrouping.positions(forAlbumKeys:)` to detect — see `WatchSongListView.songList(_:)`.
+
+    func testSongsSortedByAlbumGroupsAlbumsAlphabeticallyPreservingTrackOrder() {
+        let songs = [
+            makeAlbumSong("1", album: "Beta"),
+            makeAlbumSong("2", album: "Alpha"),
+            makeAlbumSong("3", album: "Beta"),
+            makeAlbumSong("4", album: "Alpha"),
+        ]
+        let sorted = WatchAlbumGrouping.songsSortedByAlbum(songs)
+        XCTAssertEqual(sorted.map(\.id), ["2", "4", "1", "3"])
+    }
+
+    func testSongsSortedByAlbumReturnsEmptyForEmptySongs() {
+        XCTAssertEqual(WatchAlbumGrouping.songsSortedByAlbum([]), [])
+    }
+
+    /// Ties the two new pure entry points together: once the flat list is in album order, the
+    /// connector run-detection actually finds runs.
+    func testSongsSortedByAlbumFormsConsecutiveRunsForAlbumGroupPositions() {
+        let songs = [
+            makeAlbumSong("1", album: "Beta"),
+            makeAlbumSong("2", album: "Alpha"),
+            makeAlbumSong("3", album: "Beta"),
+        ]
+        let sorted = WatchAlbumGrouping.songsSortedByAlbum(songs)
+        let positions = AlbumGrouping.positions(forAlbumKeys: sorted.map(\.displayAlbum))
+        XCTAssertEqual(positions, [.single, .first, .last])
+    }
 }
