@@ -15,8 +15,6 @@ struct WatchSongListView: View {
     @EnvironmentObject private var library: WatchLocalLibrary
     @Binding var selectedPage: WatchPage
 
-    private var albums: [WatchAlbumGroup] { WatchAlbumGrouping.albums(from: library.songs) }
-
     var body: some View {
         NavigationStack {
             Group {
@@ -29,7 +27,7 @@ struct WatchSongListView: View {
                 } else {
                     List {
                         NavigationLink {
-                            songList(library.songs)
+                            songList
                                 .navigationTitle("曲")
                         } label: {
                             Label("曲", systemImage: "music.note")
@@ -46,33 +44,52 @@ struct WatchSongListView: View {
         }
     }
 
-    /// The flat "Songs" list, sorted into album order (see `WatchAlbumGrouping.songsSortedByAlbum`)
-    /// so consecutive same-album rows actually form runs, then rendered with the album-run
-    /// connector (see `WatchSongRowMetrics`'s doc comment) — the app's signature list style,
-    /// already on iOS/desktop, trialled here first per the album detail list and the Queue &
-    /// Volume page, which deliberately keep their previous look (`WatchSongRow.albumGroupPosition`
-    /// stays at its `nil` default there).
-    private func songList(_ songs: [WatchTransferMeta]) -> some View {
-        let sorted = WatchAlbumGrouping.songsSortedByAlbum(songs)
-        let groupPositions = AlbumGrouping.positions(forAlbumKeys: sorted.map(\.displayAlbum))
-        return List {
-            ForEach(Array(sorted.enumerated()), id: \.element.id) { index, meta in
-                WatchSongRow(
-                    meta: meta,
-                    queue: sorted,
-                    albumGroupPosition: groupPositions[index]
-                ) { selectedPage = .nowPlaying }
-                    .modifier(WatchLibraryListRowStyle())
+    /// The flat "Songs" list, sorted into album order so consecutive same-album rows actually form
+    /// runs, rendered with the album-run connector (see `WatchSongRowMetrics`'s doc comment) — the
+    /// app's signature list style, already on iOS/desktop, trialled here first per the album detail
+    /// list and the Queue & Volume page, which deliberately keep their previous look
+    /// (`WatchSongRow.albumGroupPosition` stays at its `nil` default there).
+    ///
+    /// `ScrollView` + `LazyVStack(spacing: 0)`, not `List` — mirrors the established pattern for a
+    /// connector-bearing list in this codebase (`RemoteLibraryScreen.remoteSongsList` on iOS, which
+    /// uses the same construction with `SongRowView`). Two real bugs on watchOS made this the fix,
+    /// not just a style match with iOS (see `progress/watch-ui-redesign.md` for the measurements):
+    ///
+    /// 1. **The connector had a visible gap at every row boundary on a real device.** watchOS's
+    ///    `List` — even with `.listStyle(.plain)` and `.listRowInsets(top: 0, bottom: 0)` on every
+    ///    row — still inserts inter-row spacing that neither of those controls: a full-resolution
+    ///    screenshot's pixels showed a ~15pt dead band between each row's fixed-height content,
+    ///    breaking the `AlbumGroupConnector` line's continuity. `LazyVStack(spacing: 0)` sets that
+    ///    spacing directly rather than fighting an opaque `List` default.
+    /// 2. `library.flatOrder` (see below) removes the *duplicate* per-appearance sort/group, but the
+    ///    `LazyVStack`/`ScrollView` swap is what makes the destination itself genuinely cheap to
+    ///    build repeatedly: `NavigationLink(destination:label:)` builds its destination eagerly as
+    ///    soon as the Library page's row appears (not lazily on tap), so this view's construction
+    ///    cost is paid on every Library-page render regardless of navigation.
+    ///
+    /// Decode concurrency was investigated and ruled out as a slowness cause: `sample`-profiling
+    /// entering this screen showed only 1-2 concurrent `WatchArtworkThumbnail` decodes at a time
+    /// (matching the on-screen row count), both before and after this change — watchOS's `List` was
+    /// already backed by `UICollectionView` and materialised rows lazily, and `LazyVStack` preserves
+    /// that property. No additional decode throttling was needed.
+    private var songList: some View {
+        let order = library.flatOrder
+        return ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(order.songs.enumerated()), id: \.element.id) { index, meta in
+                    WatchSongRow(
+                        meta: meta,
+                        queue: order.songs,
+                        albumGroupPosition: order.groupPositions[index]
+                    ) { selectedPage = .nowPlaying }
+                        .padding(.horizontal, WatchSongRowMetrics.horizontalInset)
+                }
             }
         }
-        // Removes watchOS's default per-row card chrome/spacing — see `WatchLibraryListRowStyle`'s
-        // doc comment for why that spacing (not a separator line) is what would otherwise break the
-        // connector's continuity between rows.
-        .listStyle(.plain)
     }
 
     private var albumList: some View {
-        List(albums) { album in
+        List(library.albums) { album in
             NavigationLink {
                 WatchAlbumDetailView(album: album, selectedPage: $selectedPage)
             } label: {
@@ -114,40 +131,20 @@ private struct WatchAlbumDetailView: View {
 /// numbers directly. `artworkSize` is unchanged from the row's original fixed 28pt thumbnail frame
 /// (already within the 28-32pt Watch range) so lists that opt out of the album-run connector
 /// (`WatchSongRow.albumGroupPosition == nil`: album detail, Queue & Volume) keep their exact prior
-/// look — only `rowHeight`/`WatchLibraryListRowStyle` are new, and both are applied only where the
-/// connector is opted into (see `WatchSongRow.body`).
+/// look — only `rowHeight` is new, applied only where the connector is opted into (see
+/// `WatchSongRow.body`).
 ///
-/// `rowHeight` is fixed and `WatchLibraryListRowStyle` adds no vertical row padding, so consecutive
-/// rows touch exactly — the same invariant the connector line needs on iOS (`LibraryListRowStyle`'s
-/// doc comment): any gap between rows makes the line look chopped at the boundary.
+/// `rowHeight` is fixed and `songList` stacks rows with no spacing of its own
+/// (`LazyVStack(spacing: 0)`), so consecutive rows touch exactly — the same invariant the connector
+/// line needs on iOS (`LibraryListRowStyle`'s doc comment): any gap between rows makes the line
+/// look chopped at the boundary. A `List`-based approach was tried first and produced exactly that
+/// chop — see `songList`'s doc comment for the measured gap and why `ScrollView`/`LazyVStack`
+/// replaced it.
 enum WatchSongRowMetrics {
     static let artworkSize: CGFloat = 28
     static let rowHeight: CGFloat = 46
     /// Horizontal inset of a row's content from the screen edge.
     static let horizontalInset: CGFloat = 8
-}
-
-/// Applied only to rows opted into the album-run connector (see `WatchSongRowMetrics`'s doc
-/// comment) — the flat "Songs" list. Mirrors iOS's `LibraryListRowStyle`: rows carry no background
-/// of their own so the connector line reads as one continuous line rather than something sliced
-/// per row.
-///
-/// No `.listRowSeparator(.hidden)` here — that modifier is unavailable on watchOS (it fails to
-/// compile: `'listRowSeparator(_:edges:)' is unavailable in watchOS`). `songList(_:)` instead sets
-/// `.listStyle(.plain)` on the `List` itself, which is what actually removes watchOS's default
-/// per-row card chrome/spacing (the default style otherwise inserts a visible gap between rows,
-/// which would break the connector line's continuity regardless of this modifier).
-struct WatchLibraryListRowStyle: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .listRowInsets(EdgeInsets(
-                top: 0,
-                leading: WatchSongRowMetrics.horizontalInset,
-                bottom: 0,
-                trailing: WatchSongRowMetrics.horizontalInset
-            ))
-            .listRowBackground(Color.clear)
-    }
 }
 
 /// A single tappable song row shared by the flat song list, the album detail list, and the
@@ -161,10 +158,10 @@ struct WatchSongRow: View {
     let meta: WatchTransferMeta
     let queue: [WatchTransferMeta]
     /// This row's position within a run of consecutive same-album rows in `queue`'s current order
-    /// — see `AlbumGroupPosition` and `WatchSongListView.songList(_:)`, the only caller that
-    /// computes this today. `nil` (the default) keeps this row's original variable-height,
-    /// system-default list styling and always-shown artwork: the album detail list and the
-    /// Queue & Volume page deliberately do not opt into the connector yet (see
+    /// — see `AlbumGroupPosition` and `WatchSongListView.songList`, the only caller that passes
+    /// this today (from `WatchLocalLibrary.flatOrder`). `nil` (the default) keeps this row's
+    /// original variable-height, system-default list styling and always-shown artwork: the album
+    /// detail list and the Queue & Volume page deliberately do not opt into the connector yet (see
     /// `progress/watch-ui-redesign.md`), matching how `SongRowView` opts in on iOS.
     var albumGroupPosition: AlbumGroupPosition? = nil
     var onSelect: () -> Void = {}
