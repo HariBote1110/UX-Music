@@ -24,7 +24,12 @@ struct WatchRootView: View {
             TabView(selection: $selectedPage) {
                 WatchSongListView(selectedPage: $selectedPage)
                     .tag(WatchPage.library)
-                WatchNowPlayingView()
+                // `isActive` tells the page whether it is genuinely the one on screen right now —
+                // see `WatchNowPlayingView.hiddenCrownVolumeControl`'s doc comment for why that
+                // (rather than the page's own `onAppear`) must gate requesting Digital Crown focus:
+                // this paged `TabView` keeps adjacent pages mounted, so `onAppear` alone cannot tell
+                // "became visible" apart from "still mounted while another page is shown".
+                WatchNowPlayingView(isActive: selectedPage == .nowPlaying)
                     .tag(WatchPage.nowPlaying)
                 WatchQueueVolumeView()
                     .tag(WatchPage.queue)

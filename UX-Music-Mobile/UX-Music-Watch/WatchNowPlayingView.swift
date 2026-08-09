@@ -64,11 +64,16 @@ struct WatchNowPlayingView: View {
     /// stutter that used to happen when swiping between Library and Now Playing.
     @EnvironmentObject private var progress: WatchPlaybackProgress
 
+    /// Whether this page is the one currently selected in `WatchRootView`'s paged `TabView`, passed
+    /// down from `selectedPage` there. **Required** for `hiddenCrownVolumeControl` — see its doc
+    /// comment for why `onAppear` alone cannot be trusted to mean "became visible" on this page.
+    let isActive: Bool
+
     @StateObject private var volumeObserver = WatchVolumeObserver()
 
-    /// Bumped on every `onAppear` so `hiddenCrownVolumeControl` re-requests Crown focus each time
-    /// this page becomes visible again, not just once for the lifetime of the view — see that
-    /// property's doc comment.
+    /// Bumped whenever `isActive` becomes `true` (see `onChange` below) so `hiddenCrownVolumeControl`
+    /// re-requests Crown focus each time this page is actually paged to, not just once for the
+    /// lifetime of the view — see that property's doc comment.
     @State private var crownRefocusTrigger = 0
 
     private var duration: Double { max(player.currentSong?.duration ?? 0, 1) }
@@ -91,32 +96,52 @@ struct WatchNowPlayingView: View {
         }
         .onAppear {
             refreshCachedArtworkIfNeeded()
-            crownRefocusTrigger += 1
         }
         .onChange(of: player.currentSong?.id) { _, _ in refreshCachedArtworkIfNeeded() }
+        .onChange(of: isActive) { _, active in
+            // Only the transition *to* active matters — see `hiddenCrownVolumeControl`'s doc
+            // comment for why re-focusing must be gated on this rather than `onAppear`.
+            if active { crownRefocusTrigger += 1 }
+        }
     }
 
     /// `SystemVolumeControl` kept invisible rather than removed outright: its whole purpose here is
-    /// to keep taking Digital Crown focus (`autoFocusesCrown: true`) so rotating the Crown adjusts
-    /// system volume without a visible control cluttering the page — the visible feedback comes
-    /// entirely from `WatchVolumeHUDOverlay` above, driven by the KVO-observed `outputVolume` change
-    /// that the Crown rotation causes.
+    /// to keep taking Digital Crown focus (`autoFocusesCrown:`) so rotating the Crown adjusts system
+    /// volume without a visible control cluttering the page — the visible feedback comes entirely
+    /// from `WatchVolumeHUDOverlay` above, driven by the KVO-observed `outputVolume` change that the
+    /// Crown rotation causes.
     ///
-    /// Two robustness measures beyond the original 1×1/0.02-opacity control:
+    /// **`autoFocusesCrown` is tied to `isActive`, not hardcoded `true` — this is load-bearing, not
+    /// cosmetic.** `WatchRootView`'s paged `TabView` keeps adjacent pages mounted (so paging back to
+    /// them is instant), which means this view's `onAppear`/`body` keep re-running even while the
+    /// Queue & Volume page is the one actually on screen. Earlier versions called
+    /// `wkInterfaceObject.focus()` unconditionally whenever `onAppear` fired, on the assumption that
+    /// "appeared" meant "became visible" — it does not, for a kept-alive adjacent page. Calling
+    /// `focus()` on a `WKInterfaceVolumeControl` that is not part of the *currently front* interface
+    /// controller does not just fail to grab the Crown: it walks WatchKit's responder chain
+    /// (`becomeFirstResponder` → `_UIHostingView._didChange(toFirstResponder:)`) back into SwiftUI's
+    /// AttributeGraph while that graph is already mid-update, which the graph detects as a dependency
+    /// cycle. Confirmed by sampling the pegged process (`sample <pid>`, watchOS 26 Simulator): 100% of
+    /// main-thread samples sat inside this exact call chain, spending most of their time in
+    /// `AG::Graph::UpdateStack::push_slow`/`update()` (occasionally `print_cycle`, which itself burns
+    /// CPU in `fprintf`) — the main run loop never got back control, so neither the page swipe nor the
+    /// Digital Crown did anything. Gating `autoFocusesCrown` on `isActive` stops `focus()` from ever
+    /// being called while this page is off-screen, which removes the trigger at its source. (A
+    /// regression introduced in 7b8f532 — see `progress/watch-ui-redesign.md` for the full bisect.)
+    ///
+    /// Two further robustness measures beyond the original 1×1/0.02-opacity control:
     /// - **Larger frame (44×44, watchOS's usual minimum tap-target size)** rather than 1×1. A 1pt
     ///   target is imperceptible visually either way at this opacity, but WatchKit's own Crown-focus
     ///   machinery is more likely to treat a near-zero-size element as not worth focusing than a
     ///   normally-sized one. `.allowsHitTesting(false)` keeps the larger frame from ever intercepting
     ///   taps meant for the transport buttons it overlaps in the `ZStack`.
-    /// - **Re-focus on every page appearance, not only once.** `SystemVolumeControl`'s
+    /// - **Re-focus on every genuine page appearance, not only once.** `SystemVolumeControl`'s
     ///   `refocusTrigger` is compared against the last value it focused at; `crownRefocusTrigger`
-    ///   above increments in `onAppear`, so returning to this page after paging to Library or Queue
-    ///   re-requests focus instead of assuming a focus grabbed once, long ago, is still held. This
-    ///   directly addresses Crown focus being contested when paging between tabs — the Queue page
-    ///   has its own (non-auto-focusing) `SystemVolumeControl`, and other focusable elements can
-    ///   claim the Crown while this page is off-screen.
+    ///   above increments only when `isActive` turns `true` (see the `onChange` above), so returning
+    ///   to this page after paging to Library or Queue re-requests focus instead of assuming a focus
+    ///   grabbed once, long ago, is still held.
     private var hiddenCrownVolumeControl: some View {
-        SystemVolumeControl(autoFocusesCrown: true, refocusTrigger: crownRefocusTrigger)
+        SystemVolumeControl(autoFocusesCrown: isActive, refocusTrigger: crownRefocusTrigger)
             .frame(width: 44, height: 44)
             .opacity(0.02)
             .allowsHitTesting(false)
@@ -350,7 +375,7 @@ private struct NowPlayingMetrics {
 #Preview {
     let library = WatchLocalLibrary()
     let player = WatchAudioPlayerService(library: library)
-    WatchNowPlayingView()
+    WatchNowPlayingView(isActive: true)
         .environmentObject(player)
         .environmentObject(player.progress)
         .environmentObject(library)
