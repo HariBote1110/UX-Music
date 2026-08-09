@@ -92,3 +92,36 @@ Apple Watch SE 3 (40mm), watchOS 26.5 シミュレータで、修正前ビルド
 ### 制約・未検証事項
 - **2種目のウォッチサイズでの対話的検証は今回のセッションでは完了できなかった**。シミュレータ操作ツールは新規デバイスへ接続するたびにユーザーの明示許可（「Let Claude use it」）を要求する仕組みで、`Apple Watch SE 3 (40mm)` 以外の全デバイス（Ultra 3 49mm・Series 11 42mm 等）への接続要求が非対話セッション中はタイムアウト/未許可のまま解消できなかった。ただし今回の原因も修正も画面サイズ・Dynamic Type・`ViewThatFits` の候補選択とは無関係で、`TabView` のページ選択状態のみに基づくロジックのため、サイズによって挙動が変わる要素はコード上存在しない。次回、対話セッションで許可が下りた際に他サイズでの目視確認を推奨。
 - 仮説1で指摘した `WatchSongRow`/`WatchArtworkThumbnail` の非キャッシュ同期デコードは実在する別件の技術的負債。今回のフリーズの原因ではないためスコープ外としたが、キューが数百曲規模になった際の描画コスト増を避けるため、`WatchNowPlayingView.cachedArtworkImage` 相当のキャッシュ機構を検討する価値はある。
+
+## 追記 (2026-08-09 第5ラウンド): 行アートワークのデコードキャッシュ実装 + フラット曲リストへのアルバム連結線UI試験導入
+
+第4ラウンドで技術的負債として残した「`WatchSongRow`/`WatchArtworkThumbnail` の非キャッシュ同期デコード」の解消と、デスクトップ/iOS の看板 UI（連続する同一アルバム行の連結線表現）の Watch フラット曲リストへの試験導入を、同じ行コンポーネントを書き換える一続きの作業として実施。
+
+### アートワークデコードキャッシュ
+
+- **設計**: `Core/ArtworkMemoryCache.swift` に、値の型に依存しない汎用 LRU キャッシュ `ArtworkMemoryCache<Value>` を新設。容量超過時は最も長く未参照のキーから追い出す。スレッド安全性は `actor` ではなく `NSLock` — SwiftUI `body` からの同期読み出しと、バックグラウンドデコード後の書き込みの両方を `await` なしで行える必要があったため。
+- **`NSCache` を採用しなかった理由**: `NSCache` の追い出しはシステムの不透明なコスト指標に依存し決定的でない。「容量/追い出しポリシーはテスト可能な形にする」という要件を満たせないため、追い出し順序を明示的に検証できる自前 LRU にした。テストは `ArtworkMemoryCacheTests.swift` に8件（挿入/取得・追い出し・参照によるリフレッシュ・上書き・容量1のエッジケースなど）、`Value` は `UIImage` ではなく `String` を使い、デコード処理と完全に分離してポリシーだけを検証している。
+- **Watch 側の統合**: `WatchSongListView.swift` 内に `WatchArtworkThumbnail`（`ArtworkMemoryCache<UIImage>` を包む private な `WatchArtworkCache.shared`、容量80）。`body` 内の同期 `Data(contentsOf:)` + `UIImage(data:)` を廃止し、`.task(id: meta?.id)` から呼ぶ非同期パスに置き換えた。`.task(id:)` は `meta?.id` が変化したときだけ再実行される（前回投稿で問題視した「無関係な `@Published` の変化でも body 再評価のたびに全行が再デコードされる」という経路自体を断つ）。
+- **デコードは ImageIO のサムネイル API（`CGImageSourceCreateThumbnailAtIndex`）を `Task.detached(priority: .utility)` の中で実行**。`UIImage(data:)` でフルサイズ（iPhone 転送時点で長辺約400px、`WatchTransferBridge.writeDownscaledArtwork` 参照）を一度デコードしてから縮小するのではなく、ImageIO にターゲットサイズ（96px）を渡してフルサイズのビットマップを一度も確保させない。1エントリあたり概算96×96×4byte≒36KBで、容量80でも合計約2.9MBに収まる。
+- **`sample` による検証**（後述の実機データ投入時に実施）: `CGImageSourceCreateWithURL`/`CGImageSourceCreateThumbnailAtIndex`/`IIO_Reader_AppleJPEG` 系のフレームはすべて `com.apple.root.utility-qos` の背景スレッド配下にのみ出現し、メインスレッドの呼び出し木（6秒サンプリング、スクロール操作を継続しながら採取）には一件も現れなかった。メインスレッド側で `WatchArtworkThumbnail.resolvedImage` に到達しているのは `artworkFileURLIfPresent`（`lstat` 呼び出し1回のみ）と `Task.detached` の生成コストだけで、実デコードは確実にオフメインで走っている。
+
+### アルバム連結線 UI の Watch 移植
+
+- **共有した部分**: 実行検出（run 検出）ロジックそのもの。`Core/AlbumGroupPosition.swift` の `AlbumGrouping.positions(for songs: [Song])` は `Song` 依存部分を `#if os(iOS)` で括り、実体は新設の `AlbumGrouping.positions(forAlbumKeys albumKeys: [String])`（`[String]` を受け取るだけの純粋関数）へ委譲する形に分割。これにより同じ run 検出ロジックが Watch ターゲットのビルドにも参加できる（`Song` 型自体は Watch ターゲットに存在しないため、そのままでは共有できなかった）。`AlbumGroupConnector`（行内の線ジオメトリ、`rowHeight`/`artworkSize` でパラメータ化済み）は変更なしでそのまま Watch 側から呼べた。
+- **Watch 側で再定義した部分**: 曲一覧の「アルバムキー」の取得元。iOS は `Song.groupingAlbumTitle`（トリム済み・空なら "Unknown Album"）だが、Watch は実体を `WatchTransferMeta` で持つため `displayAlbum`（空なら "Unknown Album"、`WatchAlbumGrouping.albums(from:)` と同じキー）を使う。両者とも「同じ意味のアルバムキー文字列」を `positions(forAlbumKeys:)` に渡すだけなので、`Song`/`WatchTransferMeta` 側の差異を吸収する専用コードは不要だった。
+- **フラットリストをアルバム順に並べ替える必要があった**: 今回導入前は `library.songs`（転送順）をそのまま表示しており、連続する行が同じアルバムになることはほぼなく、連結線機能が事実上不可視だった。`Core/WatchPlaybackLogic.swift` の `WatchAlbumGrouping` に `songsSortedByAlbum(_:)` を追加 — 既存の `albums(from:)`（アルバムキーでバケット化・アルバム名昇順・バケット内はトラック到着順を保持）をそのままフラット化するだけの実装。iOS のデフォルト表示順（`Song.libraryFlatDisplayOrderAscending`: アルバム→ディスク/トラック番号）の精神を踏襲しつつ、`WatchTransferMeta` が持たないディスク/トラック番号の代わりに到着順（＝送信元 iPhone 側のトラック順、`WatchAlbumGroup` のドキュメント参照）を使う。
+- **Watch 専用メトリクス**: iOS の `SongRowMetrics`（アートワーク48pt・行高64pt・横インセット16pt、画面幅約390pt基準）をそのまま流用せず、`WatchSongListView.swift` に `WatchSongRowMetrics`（アートワーク28pt・行高46pt・横インセット8pt）を新設。アートワークサイズは既存行が使っていた28ptをそのまま維持した — 28〜32ptの推奨レンジ内に収まっており、かつ連結線を使わない側（アルバム詳細・キュー&音量ページ）の見た目を一切変えずに済むため。行高・横インセットは連結線を使う側（フラット「曲」リスト）だけに `WatchLibraryListRowStyle`／固定 `.frame(height:)` として適用し、opt-in しないリストは元の可変高・システム標準余白のまま。
+- **連結線は `nil` デフォルトで opt-in**: iOS の `SongRowView.albumGroupPosition` と同じ設計を `WatchSongRow.albumGroupPosition` にも踏襲。アルバム詳細リストとキュー&音量ページは呼び出し側で一切パラメータを渡さないため、常に `nil`（連結線なし・常時アートワーク表示・可変行高）のまま — 見た目・挙動とも今回のリファクタ前と同一であることをシミュレータで確認済み。
+
+### 見た目の検証（シミュレータへの実データ投入 → 削除）
+
+`Apple Watch Series 11 (46mm)` watchOS 26.5 シミュレータの `Library/Application Support`（`library.json`／`Audio/`／`Artwork/`）に、Pillow で生成した実 JPEG アートワーク付きの28曲（複数トラックのアルバム5件＋単曲アルバム8件）を一時的に直接書き込んで検証した（アプリのソース改変は一切なし。`git diff` は投入前後で完全に空）。
+
+- 連結線は行境界をまたいで途切れず連続しており（2トラック・4トラック・6トラックの各runでズーム画像を確認）、runの最終行にのみ `└` エルボーが出ること、先頭行はアートワーク＋下端までの線分（次行への継ぎ目）を出すこと、単曲アルバムはアートワークのみで線が一切出ないことをすべて目視確認した。
+- アルバム詳細リスト・キュー&音量ページは、複数トラックの run を含む状態でもすべての行にアートワークが表示され、連結線・行高固定のいずれも適用されていないことを確認（連結線導入前の見た目のまま）。
+- 検証後は `simctl uninstall` でアプリごと削除（Application Support 配下の投入データも道連れに消滅）。リポジトリ側は一切変更していないため `git status`/`git diff` は最初から最後まで空のまま。
+
+### 意外だった点・ハマった点
+
+- **`.listRowSeparator(_:edges:)` は watchOS では使えない**（コンパイルエラー: `'listRowSeparator(_:edges:)' is unavailable in watchOS`）。iOS の `LibraryListRowStyle` をそのまま真似ようとして最初にここで躓いた。watchOS の `List` はデフォルトで行間にカード風の余白を入れる設計で、そもそも「セパレータ線」の概念がない。代わりに `List` 自体へ `.listStyle(.plain)` を指定することでカード風の余白そのものを消し、行を隙間なく積む狙いを達成した。
+- **`View` に生える `static func`/`static let` はメインアクター分離を暗黙に継承する**。`WatchArtworkThumbnail`（`View` 準拠）の `static func decodeThumbnail` を `Task.detached` の中から呼んだところ、「メインアクター隔離のプロパティ/関数をアクター外から呼んでいる」という警告（Swift 6 モードではエラー）が出た。`nonisolated` を明示的に付けることで解消 — `body` がメインアクター前提であることの副作用として、同じ型に生える static メンバーまで暗黙に隔離される点は事前に想定していなかった。
