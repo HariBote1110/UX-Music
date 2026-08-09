@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -137,18 +138,48 @@ struct WatchSongRow: View {
     }
 }
 
+/// Shared decoded-artwork cache for every Watch song row (Library "Songs"/"Albums" lists, album
+/// detail, Queue & Volume — anywhere `WatchArtworkThumbnail` is used). See `ArtworkMemoryCache`'s
+/// doc comment for why this exists (and how its capacity/eviction policy is tested) and
+/// `WatchArtworkThumbnail`'s doc comment for the decode this caches.
+///
+/// Capacity of 80: entries are decoded at `WatchArtworkThumbnail.thumbnailMaxPixelSize` (~96px),
+/// not the full ~400px JPEG the iPhone transfers (see `WatchTransferBridge
+/// .writeDownscaledArtwork`), so 80 entries is roughly 80 × 36KB ≈ 2.9MB — comfortably inside
+/// watchOS's per-app memory budget while covering far more rows than a Watch screen ever shows at
+/// once.
+private enum WatchArtworkCache {
+    static let shared = ArtworkMemoryCache<UIImage>(capacity: 80)
+}
+
 /// Small library-row thumbnail: the received-artwork JPEG if present, otherwise a generic note
 /// glyph placeholder. Kept as its own view (rather than inline in the `List`) so each row only
-/// re-reads its own artwork file, not the whole list's. `meta` is optional so the album list can
-/// reuse this for `WatchAlbumGroup.artworkSong`, which is `nil` only for a (never-expected) empty
-/// album.
+/// resolves its own artwork, not the whole list's. `meta` is optional so the album list can reuse
+/// this for `WatchAlbumGroup.artworkSong`, which is `nil` only for a (never-expected) empty album.
+///
+/// Decoding used to happen synchronously inside `body` (`Data(contentsOf:)` + `UIImage(data:)`),
+/// which re-read and re-decoded the JPEG from disk **on the main thread on every SwiftUI render
+/// pass** — including passes triggered by unrelated `@Published` changes on
+/// `WatchAudioPlayerService`, which every row observes. `WatchNowPlayingView` already solved this
+/// for its one full-bleed image (see its `cachedArtworkImage` doc comment); this view now gets the
+/// same treatment: a placeholder shows until the decode finishes, the actual decode happens off the
+/// main thread, and the result is kept in `WatchArtworkCache` so a song already seen this session is
+/// resolved from memory rather than decoded again.
 private struct WatchArtworkThumbnail: View {
     @EnvironmentObject private var library: WatchLocalLibrary
     let meta: WatchTransferMeta?
+    @State private var image: UIImage?
+
+    /// Long-edge pixel size to decode artwork thumbnails at. The transferred JPEG is ~400px long
+    /// edge (see `WatchTransferBridge.writeDownscaledArtwork`), far larger than this row ever draws
+    /// it (`WatchSongRowMetrics.artworkSize`, 28pt) — decoding straight to a small thumbnail via
+    /// ImageIO avoids ever allocating a full-size decoded bitmap, which is what keeps
+    /// `WatchArtworkCache`'s per-entry footprint small.
+    private static let thumbnailMaxPixelSize: CGFloat = 96
 
     var body: some View {
         ZStack {
-            if let meta, let url = library.artworkFileURLIfPresent(for: meta), let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
+            if let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -161,6 +192,45 @@ private struct WatchArtworkThumbnail: View {
                     .foregroundStyle(.secondary)
             }
         }
+        // `.task(id:)` re-runs only when `meta?.id` actually changes (and cancels the previous
+        // attempt if it does) — unlike plain code in `body`, it does *not* re-fire on every redraw,
+        // which is what let unrelated `@Published` churn re-trigger a decode before.
+        .task(id: meta?.id) {
+            image = await Self.resolvedImage(for: meta, library: library)
+        }
+    }
+
+    private static func resolvedImage(for meta: WatchTransferMeta?, library: WatchLocalLibrary) async -> UIImage? {
+        guard let meta else { return nil }
+        if let cached = WatchArtworkCache.shared.value(forKey: meta.id) {
+            return cached
+        }
+        guard let url = library.artworkFileURLIfPresent(for: meta) else { return nil }
+        // `.detached` so the decode genuinely runs off the main actor regardless of what actor
+        // `.task` inherited from its caller — confirmed off-main by sampling the running app (see
+        // `progress/watch-ui-redesign.md`).
+        let decoded = await Task.detached(priority: .utility) { () -> UIImage? in
+            decodeThumbnail(at: url, maxPixelSize: thumbnailMaxPixelSize)
+        }.value
+        if let decoded {
+            WatchArtworkCache.shared.setValue(decoded, forKey: meta.id)
+        }
+        return decoded
+    }
+
+    /// Decodes straight to a small bitmap via ImageIO's thumbnail generator rather than
+    /// `UIImage(data:)` followed by a separate resize: ImageIO never allocates a full-size decoded
+    /// bitmap at all when a smaller target is requested, so this is both lighter and faster than
+    /// decode-then-downsize for a row-sized thumbnail.
+    private static func decodeThumbnail(at url: URL, maxPixelSize: CGFloat) -> UIImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceCreateThumbnailWithTransform: true
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 }
 
