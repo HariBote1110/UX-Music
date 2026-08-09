@@ -242,4 +242,49 @@ final class WatchPlaybackLogicTests: XCTestCase {
         let positions = AlbumGrouping.positions(forAlbumKeys: sorted.map(\.displayAlbum))
         XCTAssertEqual(positions, [.single, .first, .last])
     }
+
+    // MARK: - WatchFlatSongOrder
+    //
+    // `WatchLocalLibrary` caches this once per actual change to `songs` (see its `setSongs(_:)`)
+    // instead of `WatchSongListView.songList` recomputing `songsSortedByAlbum` +
+    // `positions(forAlbumKeys:)` inline in the view body, which reran on every body evaluation
+    // (including ones with no library change) — see `progress/watch-ui-redesign.md`.
+
+    func testFlatSongOrderComputedMatchesSeparatelyCalledFunctions() {
+        let songs = [
+            makeAlbumSong("1", album: "Beta"),
+            makeAlbumSong("2", album: "Alpha"),
+            makeAlbumSong("3", album: "Beta"),
+            makeAlbumSong("4", album: "Alpha"),
+        ]
+        let order = WatchFlatSongOrder.computed(from: songs)
+        let expectedSongs = WatchAlbumGrouping.songsSortedByAlbum(songs)
+        let expectedPositions = AlbumGrouping.positions(forAlbumKeys: expectedSongs.map(\.displayAlbum))
+        XCTAssertEqual(order.songs.map(\.id), expectedSongs.map(\.id))
+        XCTAssertEqual(order.groupPositions, expectedPositions)
+    }
+
+    /// The two arrays are consumed together by index (`WatchSongListView.songList`), so they must
+    /// always have equal counts -- an off-by-one here would crash a row lookup, not just look wrong.
+    func testFlatSongOrderSongsAndGroupPositionsHaveEqualCount() {
+        let songs = [
+            makeAlbumSong("1", album: "Beta"),
+            makeAlbumSong("2", album: "Alpha"),
+            makeAlbumSong("3", album: "Beta"),
+        ]
+        let order = WatchFlatSongOrder.computed(from: songs)
+        XCTAssertEqual(order.songs.count, order.groupPositions.count)
+    }
+
+    func testFlatSongOrderEmptyIsComputedFromEmptySongs() {
+        XCTAssertEqual(WatchFlatSongOrder.empty, WatchFlatSongOrder.computed(from: []))
+    }
+
+    func testFlatSongOrderComputedIsDeterministic() {
+        let songs = [
+            makeAlbumSong("1", album: "Beta"),
+            makeAlbumSong("2", album: "Alpha"),
+        ]
+        XCTAssertEqual(WatchFlatSongOrder.computed(from: songs), WatchFlatSongOrder.computed(from: songs))
+    }
 }
