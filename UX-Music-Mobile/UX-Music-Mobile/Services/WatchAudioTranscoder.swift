@@ -5,7 +5,7 @@ import Foundation
 /// transfer to the Apple Watch when `WatchTransferAudioPolicy.decision(...)` says `.transcode`
 /// (see that type for the rationale).
 struct WatchAudioTranscoder {
-    enum TranscodeError: LocalizedError {
+    enum TranscodeError: LocalizedError, Equatable {
         case noAudioTrack
         case readerFailed(String)
         case writerFailed(String)
@@ -16,6 +16,14 @@ struct WatchAudioTranscoder {
             case .readerFailed(let reason): return "読み込みに失敗しました: \(reason)"
             case .writerFailed(let reason): return "書き出しに失敗しました: \(reason)"
             }
+        }
+
+        /// Error to surface when `AVAssetWriterInput.append` returns `false` mid-encode (disk full,
+        /// an interrupted `AVAudioSession`, etc.). `AVAssetWriter.error` may not be populated the
+        /// instant `append` fails, so this falls back to a generic message rather than losing the
+        /// failure entirely.
+        static func appendFailed(writerErrorDescription: String?) -> Self {
+            .writerFailed(writerErrorDescription ?? "append failed")
         }
     }
 
@@ -121,8 +129,12 @@ struct WatchAudioTranscoder {
     }
 
     /// Drives sample buffers from `readerOutput` into `writerInput` until the source is exhausted,
-    /// then finishes writing. Resumes exactly once, on either the reader-failure or the
+    /// then finishes writing. Resumes exactly once, on the reader-failure, append-failure, or
     /// writer-completion path.
+    ///
+    /// `resumeOnce` guards against a double-resume (a `CheckedContinuation` misuse that traps): all
+    /// call sites run serially on `pumpQueue` (the queue passed to `requestMediaDataWhenReady`), so
+    /// the `didResume` flag needs no separate locking.
     private static func pump(
         reader: AVAssetReader,
         readerOutput: AVAssetReaderTrackOutput,
@@ -131,27 +143,48 @@ struct WatchAudioTranscoder {
     ) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let pumpQueue = DispatchQueue(label: "uk.co.uxmusic.WatchAudioTranscoder.pump")
+            var didResume = false
+            func resumeOnce(throwing error: Error?) {
+                guard !didResume else { return }
+                didResume = true
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+
             writerInput.requestMediaDataWhenReady(on: pumpQueue) {
                 while writerInput.isReadyForMoreMediaData {
-                    if let sampleBuffer = readerOutput.copyNextSampleBuffer() {
-                        writerInput.append(sampleBuffer)
-                        continue
-                    }
-
-                    writerInput.markAsFinished()
-                    if reader.status == .failed {
-                        reader.cancelReading()
-                        continuation.resume(throwing: TranscodeError.readerFailed(reader.error?.localizedDescription ?? "reader failed"))
+                    guard let sampleBuffer = readerOutput.copyNextSampleBuffer() else {
+                        writerInput.markAsFinished()
+                        if reader.status == .failed {
+                            reader.cancelReading()
+                            resumeOnce(throwing: TranscodeError.readerFailed(reader.error?.localizedDescription ?? "reader failed"))
+                            return
+                        }
+                        writer.finishWriting {
+                            if writer.status == .completed {
+                                resumeOnce(throwing: nil)
+                            } else {
+                                resumeOnce(throwing: TranscodeError.writerFailed(writer.error?.localizedDescription ?? "writer failed"))
+                            }
+                        }
                         return
                     }
-                    writer.finishWriting {
-                        if writer.status == .completed {
-                            continuation.resume()
-                        } else {
-                            continuation.resume(throwing: TranscodeError.writerFailed(writer.error?.localizedDescription ?? "writer failed"))
-                        }
+
+                    guard writerInput.append(sampleBuffer) else {
+                        // `append` returning false means the writer has failed mid-encode (disk
+                        // full, an interrupted session, etc.). Left unhandled, `isReadyForMoreMediaData`
+                        // typically goes false without the ready-callback ever firing again, so the
+                        // continuation would never resume — the caller's `Task` in
+                        // `WatchTransferBridge.performTransfer` would hang forever with the queue
+                        // item stuck in `.preparing` and no fallback transfer of the original file.
+                        reader.cancelReading()
+                        writerInput.markAsFinished()
+                        resumeOnce(throwing: TranscodeError.appendFailed(writerErrorDescription: writer.error?.localizedDescription))
+                        return
                     }
-                    return
                 }
             }
         }
