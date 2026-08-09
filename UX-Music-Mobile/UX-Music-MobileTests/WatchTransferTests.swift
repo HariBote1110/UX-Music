@@ -227,4 +227,34 @@ final class WatchTransferTests: XCTestCase {
         }
         XCTAssertFalse(message.isEmpty)
     }
+
+    // MARK: - WatchTransferTranscodeOutcome
+    //
+    // Pure "what actually gets transferred" decision for `performTransfer`'s transcode-then-send
+    // path (see `WatchTransferBridge`): a successful transcode sends the cached AAC file announced
+    // as `m4a`; a failed/skipped transcode falls back to the original file/fileType, since a slow
+    // transfer of the original beats no transfer at all.
+
+    func testFileToSendUsesTranscodedURLAndM4aFileTypeOnSuccess() {
+        let original = URL(fileURLWithPath: "/tmp/original.flac")
+        let transcoded = URL(fileURLWithPath: "/tmp/cache/abc123.m4a")
+        let result = WatchTransferTranscodeOutcome.fileToSend(
+            originalURL: original,
+            originalFileType: "flac",
+            transcodedURL: transcoded
+        )
+        XCTAssertEqual(result.url, transcoded)
+        XCTAssertEqual(result.fileType, "m4a")
+    }
+
+    func testFileToSendFallsBackToOriginalOnTranscodeFailure() {
+        let original = URL(fileURLWithPath: "/tmp/original.flac")
+        let result = WatchTransferTranscodeOutcome.fileToSend(
+            originalURL: original,
+            originalFileType: "flac",
+            transcodedURL: nil
+        )
+        XCTAssertEqual(result.url, original)
+        XCTAssertEqual(result.fileType, "flac")
+    }
 }
