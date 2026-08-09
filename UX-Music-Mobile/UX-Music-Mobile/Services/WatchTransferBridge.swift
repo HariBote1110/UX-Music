@@ -54,6 +54,29 @@ enum WatchTransferDownloadOutcome {
     }
 }
 
+/// Pure "what actually gets transferred" decision for `performTransfer`'s transcode-then-send path
+/// (`WatchTransferAudioPolicy.decision(...) == .transcode`): a successful `WatchAudioTranscoder` run
+/// sends the cached AAC file, announced to the Watch as `m4a` so `meta.fileType` matches the bytes
+/// actually being sent; a failed/skipped transcode falls back to the original file and its original
+/// fileType, on the principle that a slow transfer of the original beats no transfer at all. Kept as
+/// a free function (no `WCSession`/`WatchAudioTranscoder` dependency) so the fallback branch is
+/// unit-testable without a real encoder.
+enum WatchTransferTranscodeOutcome {
+    struct FileToSend: Equatable {
+        let url: URL
+        let fileType: String
+    }
+
+    /// - Parameter transcodedURL: The cache file produced by `WatchAudioTranscoder`, or `nil` if the
+    ///   transcode attempt failed.
+    static func fileToSend(originalURL: URL, originalFileType: String, transcodedURL: URL?) -> FileToSend {
+        guard let transcodedURL else {
+            return FileToSend(url: originalURL, fileType: originalFileType)
+        }
+        return FileToSend(url: transcodedURL, fileType: "m4a")
+    }
+}
+
 /// iOS-side WatchConnectivity bridge: sends already-downloaded audio files to the paired Apple
 /// Watch via `WCSession.transferFile`, alongside a `WatchTransferMeta` metadata dictionary the
 /// Watch uses to build its local library (see `WatchTransfer.swift`, shared with the Watch target).
