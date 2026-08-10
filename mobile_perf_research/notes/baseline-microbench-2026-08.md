@@ -148,12 +148,58 @@ n=800 のダウンロード済みフィクスチャ（ファイル＋UserDefault
   実際のジャケット画像での再検証、および実機（またはInstruments Time Profiler）での確認が
   必要 — この結果だけで「4番は対策不要」と判断するのは早計。
 
+## 最適化後の再計測（2026-08-11）
+
+`Services/DownloadManager.swift` の `resolvedExistingFileURL`（`isDownloaded`/`localPathString`/
+`watchTransferSourceURL`/`remove` の土台）を、呼び出しごとの `tracksDirectory` 全列挙から
+`stem -> URL` の辞書（`resolvedFileURLByStem`）引き1回のO(1)処理へ変更した（コミット
+`fed42b0`）。辞書は `init`（`loadMeta` の既存列挙を再利用、二重列挙なし）で1回構築し、
+`finalizeDownloadedPart`／`finalizeDownloadedAACPart`／`remove(songId:)` で差分更新する。
+`register` には自己修復パス（未登録stemのみ1回だけ列挙）を追加し、`finalizeDownloadedPart`
+を経由せず直接ファイルを書いてから `register` するテスト用の書き込みパターンでも辞書が
+正しく追いつくようにした（本番の書き込みは常に `finalizeDownloadedPart`/`finalizeDownloadedAACPart`
+経由のため、この自己修復パスは通常は辞書引き1回で完了する）。
+
+### (a') `isDownloaded` の n スケーリング — 最適化前後比較
+
+再現コマンド（(a)節と同一、個別テストのみ指定）:
+
+```bash
+cd UX-Music-Mobile
+TEST_RUNNER_UXM_PERF=1 xcodebuild test \
+  -scheme UX-Music-Mobile \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:UX-Music-MobileTests/PerformanceBenchmarkTests/testIsDownloadedScaling_n100 \
+  -only-testing:UX-Music-MobileTests/PerformanceBenchmarkTests/testIsDownloadedScaling_n400 \
+  -only-testing:UX-Music-MobileTests/PerformanceBenchmarkTests/testIsDownloadedScaling_n800
+```
+
+| n | 最適化前 平均 | 最適化前 相対標準偏差 | 最適化後 平均 | 最適化後 相対標準偏差 | 高速化倍率 |
+|---|---|---|---|---|---|
+| 100 | 97.81 ms | 13.4% | 2.83 ms | 37.7% | **34.5x** |
+| 400 | 1258.05 ms | 27.1% | 9.28 ms | 15.9% | **135.6x** |
+| 800 | 5219.87 ms | 20.8% | 19.64 ms | 16.4% | **265.7x** |
+
+最適化後のスケーリング比（平均値ベース、線形なら n の倍率と一致するはず）:
+
+| 区間 | n の倍率 | 所要時間の倍率（最適化後） |
+|---|---|---|
+| 100→400 | 4.0x | 3.28x |
+| 400→800 | 2.0x | 2.12x |
+
+n=100 は絶対時間が数ms台と小さく相対標準偏差が37.7%とやや大きいが、n=400・n=800では
+n の倍率にほぼ比例する伸び方になっており、O(n²) から O(n)（各呼び出しはO(1)の辞書引き、
+合計n回で線形）への転換を裏付ける。仮説1（`isDownloaded` の二次スケーリング）で確認した
+問題は解消された。
+
+公開APIの挙動は変更なし。フルスイート実行結果は448 pass / 8 skip（既存444件 + 本最適化で
+追加したキャッシュ正当性の回帰テスト4件、失敗0件）。
+
 ## 次の一手 / 未検証事項
 
 - (d) は合成グラデーション画像の限界が疑われるため、実際のジャケット画像（JPEG, 3000px級,
   高周波成分あり）でのA/Bを別途取ってから4番の対策要否を最終判断する。
-- 修正実装（1番: stem辞書化によるisDownloadedのO(1)化）を先に着手し、本ノートの(a)表を
-  ビフォーアフター比較のベースラインとして使う。
-- (c) DownloadManager initの非同期化後、同条件でこのベンチを再実行し改善幅を確認する。
+- 仮説1（1番: stem辞書化によるisDownloadedのO(1)化）は実装・再計測済み（「最適化後の再計測」節）。
+- (c) DownloadManager initの非同期化後、同条件でこのベンチを再実行し改善幅を確認する（未着手）。
 - (b) は800曲規模の単発コストは軽いが、デバウンスや非表示タブの遅延評価を入れた場合の
   改善幅も後続で計測する価値がある（現状は「対策前でも軽い」という参考値）。
