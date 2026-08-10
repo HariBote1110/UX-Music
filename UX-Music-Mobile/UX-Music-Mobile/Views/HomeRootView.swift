@@ -80,25 +80,27 @@ private struct LazyTabRoot<Content: View>: View {
 private extension View {
     /// iOS 26.1+: `tabViewBottomAccessory` stacks the bar above the tab bar. Earlier OS uses `safeAreaInset`.
     ///
-    /// The 26.1 branch applies the *modifier* conditionally rather than returning an empty accessory
-    /// when nothing is playing. The system draws the accessory's glass capsule as soon as the
-    /// modifier is present, whatever the content is — an `EmptyView` and a zero-height `Color.clear`
-    /// both leave a ~56pt empty capsule floating over the list (verified on the simulator). Applying
-    /// the modifier at all is the only thing that controls whether the capsule exists.
+    /// An earlier version of this modifier applied `.tabViewBottomAccessory` inside an `if isEnabled
+    /// { self.tabViewBottomAccessory { … } } else { self }` branch, because rendering an `EmptyView`
+    /// or a zero-height `Color.clear` *inside* an always-applied accessory still left a ~56pt empty
+    /// glass capsule floating over the list (verified on the simulator) — the system drew the capsule
+    /// as soon as the modifier was present, regardless of content. But that if/else swapped the
+    /// `TabView`'s structural identity the first time `isEnabled` flipped false→true (first song
+    /// played), so SwiftUI rebuilt the whole subtree and every tab's scroll position reset — see
+    /// `progress/tab-accessory-scroll-reset.md`.
     ///
-    /// The cost is that toggling `isEnabled` re-creates the `TabView` subtree, so the gate must flip
-    /// as rarely as possible — see `HomeRootView.showMiniPlayerAccessory`.
+    /// The fix: iOS 26.1 also ships `tabViewBottomAccessory(isEnabled:content:)`, a single modifier
+    /// call that toggles the accessory's visibility (no capsule when `isEnabled` is `false`) without
+    /// restructuring the view tree — the `TabView` keeps one stable identity across the flip, so
+    /// scroll position survives. Confirmed empirically: no empty capsule at idle launch (no song
+    /// playing) on the simulator.
     @ViewBuilder
     func uxMusicTabMiniPlayer<Content: View>(
         isEnabled: Bool,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         if #available(iOS 26.1, *) {
-            if isEnabled {
-                self.tabViewBottomAccessory { content() }
-            } else {
-                self
-            }
+            self.tabViewBottomAccessory(isEnabled: isEnabled) { content() }
         } else {
             // Pre-26.1 has no floating accessory, so the mini player is a plain bar pinned above
             // the tab bar and has to bring its own separator and material. On 26.1+ the system's
