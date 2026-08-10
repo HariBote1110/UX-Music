@@ -133,6 +133,7 @@
 		FEED0051000000000000AA51 /* WatchModeIconViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0050000000000000AA50 /* WatchModeIconViews.swift */; };
 		FEED0030000000000000AA30 /* ModeIconAnimationMathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */; };
 		7F05430A7D2547A327AB5410 /* DownloadAudioQualityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0912543B047D9F34525C1AA2 /* DownloadAudioQualityTests.swift */; };
+		638E87451FD1BDEE7B6AB78A /* DownloadAudioQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE6CF287D813BDA7F36A151 /* DownloadAudioQuality.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -291,6 +292,7 @@
 		FEED0050000000000000AA50 /* WatchModeIconViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModeIconViews.swift; sourceTree = "<group>"; };
 		FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeIconAnimationMathsTests.swift; sourceTree = "<group>"; };
 		0912543B047D9F34525C1AA2 /* DownloadAudioQualityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadAudioQualityTests.swift; sourceTree = "<group>"; };
+		5DE6CF287D813BDA7F36A151 /* DownloadAudioQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadAudioQuality.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -405,6 +407,7 @@
 				C90B386DF8A0466AAF2183FE /* SituationPlaylistResolver.swift */,
 				3ABB8F8673614992A6F51E34 /* LyricsTranslationMerger.swift */,
 				FEED0032000000000000AA32 /* ModeIconAnimationMaths.swift */,
+				5DE6CF287D813BDA7F36A151 /* DownloadAudioQuality.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -758,6 +761,7 @@
 				18A4C7A01D874E1CA883AE6C /* Artist.swift in Sources */,
 				366EBD42F98144F3818933ED /* ArtistDetailView.swift in Sources */,
 				FEED0033000000000000AA33 /* ModeIconAnimationMaths.swift in Sources */,
+				638E87451FD1BDEE7B6AB78A /* DownloadAudioQuality.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
