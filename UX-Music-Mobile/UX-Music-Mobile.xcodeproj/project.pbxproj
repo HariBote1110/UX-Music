@@ -132,6 +132,7 @@
 		FEED0041000000000000AA41 /* WatchVolumeHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0040000000000000AA40 /* WatchVolumeHUD.swift */; };
 		FEED0051000000000000AA51 /* WatchModeIconViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0050000000000000AA50 /* WatchModeIconViews.swift */; };
 		FEED0030000000000000AA30 /* ModeIconAnimationMathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */; };
+		7F05430A7D2547A327AB5410 /* DownloadAudioQualityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0912543B047D9F34525C1AA2 /* DownloadAudioQualityTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -289,6 +290,7 @@
 		FEED0040000000000000AA40 /* WatchVolumeHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchVolumeHUD.swift; sourceTree = "<group>"; };
 		FEED0050000000000000AA50 /* WatchModeIconViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModeIconViews.swift; sourceTree = "<group>"; };
 		FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeIconAnimationMathsTests.swift; sourceTree = "<group>"; };
+		0912543B047D9F34525C1AA2 /* DownloadAudioQualityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadAudioQualityTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -375,6 +377,7 @@
 				B6CD72516EEA418A92F213A9 /* AppModelLibraryFeaturesTests.swift */,
 				38349C37B905480B9FBF56E5 /* MusicPlayerServiceQueueTests.swift */,
 				FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */,
+				0912543B047D9F34525C1AA2 /* DownloadAudioQualityTests.swift */,
 			);
 			path = "UX-Music-MobileTests";
 			sourceTree = "<group>";
@@ -681,6 +684,7 @@
 				9EFCF4D0AB00484A8E3D6F45 /* AppModelLibraryFeaturesTests.swift in Sources */,
 				90EE2C6FCF944F06AE14DE84 /* MusicPlayerServiceQueueTests.swift in Sources */,
 				FEED0030000000000000AA30 /* ModeIconAnimationMathsTests.swift in Sources */,
+				7F05430A7D2547A327AB5410 /* DownloadAudioQualityTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
