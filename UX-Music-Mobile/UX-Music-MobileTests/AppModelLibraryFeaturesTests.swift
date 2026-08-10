@@ -30,6 +30,7 @@ final class AppModelLibraryFeaturesTests: XCTestCase {
     override func tearDown() {
         LibraryFeaturesMockURLProtocol.handler = nil
         UserDefaults.standard.removeObject(forKey: AppConstants.librarySortOrderKey)
+        UserDefaults.standard.removeObject(forKey: AppConstants.downloadAudioQualityKey)
         super.tearDown()
     }
 
@@ -53,6 +54,22 @@ final class AppModelLibraryFeaturesTests: XCTestCase {
         model.librarySortOrder = .artist
         let reloaded = AppModel()
         XCTAssertEqual(reloaded.librarySortOrder, .artist)
+    }
+
+    // MARK: - downloadAudioQuality persistence
+
+    func testDownloadAudioQualityDefaultsToOriginal() {
+        UserDefaults.standard.removeObject(forKey: AppConstants.downloadAudioQualityKey)
+        let model = AppModel()
+        XCTAssertEqual(model.downloadAudioQuality, .original)
+    }
+
+    func testDownloadAudioQualityPersistsAcrossInstances() {
+        UserDefaults.standard.removeObject(forKey: AppConstants.downloadAudioQualityKey)
+        let model = AppModel()
+        model.downloadAudioQuality = .both
+        let reloaded = AppModel()
+        XCTAssertEqual(reloaded.downloadAudioQuality, .both)
     }
 
     // MARK: - refreshSituationPlaylists
