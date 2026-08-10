@@ -44,18 +44,76 @@ final class DownloadManager {
         try fm.moveItem(at: tempURL, to: dest)
     }
 
+    /// AAC variant path for `songId` (`<stem>_aac.m4a`), stored alongside the original when
+    /// `DownloadAudioQuality.aac`/`.both` is used. Deliberately outside `resolvedExistingFileURL`'s
+    /// `base == stem` match, so it stays invisible to the original-file resolution logic — any
+    /// combination of the two files is valid regardless of the current setting.
+    func aacVariantDestinationURL(songId: String) -> URL {
+        tracksDirectory.appendingPathComponent("\(Self.storedStem(for: songId))_aac.m4a")
+    }
+
+    /// The AAC variant file if one was downloaded and stored, `nil` otherwise.
+    func localAACVariantURLIfPresent(songId: String) -> URL? {
+        let url = aacVariantDestinationURL(songId: songId)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// After a successful "AAC" HTTP download (`DownloadAudioQuality.aac`/`.both`) into
+    /// `temporaryDownloadURL`, sniffs the header and applies `AACVariantFinalisePlan`: the desktop
+    /// server falls back to serving ORIGINAL bytes when its ffmpeg is unavailable, so what was
+    /// requested as AAC may actually be the original file's bytes.
+    func finalizeDownloadedAACPart(at tempURL: URL, song: Song) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: tempURL.path) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        let head = try Self.readFileHead(url: tempURL, maxBytes: 64)
+        let sniffedExt = DownloadedTrackFormatSniffer.preferredExtension(
+            header: head,
+            libraryPath: song.path,
+            fileType: song.fileType
+        )
+        let plan = AACVariantFinalisePlan.plan(
+            sniffedExtension: sniffedExt,
+            originalAlreadyPresent: resolvedExistingFileURL(songId: song.id) != nil
+        )
+        switch plan {
+        case .storeAsVariant:
+            let dest = aacVariantDestinationURL(songId: song.id)
+            if fm.fileExists(atPath: dest.path) {
+                try fm.removeItem(at: dest)
+            }
+            try fm.moveItem(at: tempURL, to: dest)
+        case .storeAsOriginal:
+            try finalizeDownloadedPart(at: tempURL, song: song)
+        case .discard:
+            try? fm.removeItem(at: tempURL)
+        }
+    }
+
     /// Hypothetical `.m4a` path when no resolved file exists (legacy callers / tests).
     func localFileURL(songId: String) -> URL {
         tracksDirectory.appendingPathComponent(Self.storedFileName(for: songId))
     }
 
+    /// Full-quality original if present, else the AAC variant, else the (possibly non-existent)
+    /// legacy `.m4a` path — playback always prefers full quality when both files exist.
     func localPathString(songId: String) -> String {
-        resolvedExistingFileURL(songId: songId)?.path ?? localFileURL(songId: songId).path
+        if let original = resolvedExistingFileURL(songId: songId) { return original.path }
+        if let aac = localAACVariantURLIfPresent(songId: songId) { return aac.path }
+        return localFileURL(songId: songId).path
+    }
+
+    /// The file `WatchTransferBridge` should send: the AAC variant when present (already the right
+    /// size/format for the Watch, so `WatchTransferAudioPolicy` skips on-device transcoding
+    /// entirely), otherwise the resolved original, otherwise `nil` when nothing is downloaded.
+    func watchTransferSourceURL(songId: String) -> URL? {
+        localAACVariantURLIfPresent(songId: songId) ?? resolvedExistingFileURL(songId: songId)
     }
 
     func isDownloaded(songId: String) -> Bool {
         guard downloadedSongs[songId] != nil else { return false }
-        return resolvedExistingFileURL(songId: songId) != nil
+        return resolvedExistingFileURL(songId: songId) != nil || localAACVariantURLIfPresent(songId: songId) != nil
     }
 
     func register(_ song: Song) {
@@ -67,6 +125,9 @@ final class DownloadManager {
         downloadedSongs.removeValue(forKey: songId)
         if let u = resolvedExistingFileURL(songId: songId) {
             try? FileManager.default.removeItem(at: u)
+        }
+        if let aac = localAACVariantURLIfPresent(songId: songId) {
+            try? FileManager.default.removeItem(at: aac)
         }
         saveMeta()
         pruneOrphanArtworkFiles()
@@ -173,11 +234,13 @@ final class DownloadManager {
         }
     }
 
+    /// True when `stem.*` (the original) or `stem_aac.m4a` (the AAC-only variant) is present — an
+    /// AAC-only song must still survive `loadMeta` on relaunch even though it has no `stem.*` file.
     private static func trackListContainsStem(_ names: [String], stem: String) -> Bool {
         names.contains { name in
             guard !name.hasPrefix("incomplete_") else { return false }
             let base = (name as NSString).deletingPathExtension
-            return base == stem
+            return base == stem || base == "\(stem)_aac"
         }
     }
 

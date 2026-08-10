@@ -201,6 +201,21 @@ struct SettingsScreen: View {
                 }
 
                 Section {
+                    Picker("ダウンロード音質", selection: Bindable(model).downloadAudioQuality) {
+                        ForEach(DownloadAudioQuality.allCases) { quality in
+                            Text(quality.displayName).tag(quality)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("ダウンロード")
+                } footer: {
+                    Text("AAC は約 1/7 のサイズで Apple Watch への転送が速いです。「フル + AAC」なら再生はフル音質、Watch 転送には AAC が使われます。既にダウンロード済みの曲には遡って適用されません。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
                     Button("デスクトップのプレイリストを取り込む") {
                         showDesktopPlaylistImport = true
                     }

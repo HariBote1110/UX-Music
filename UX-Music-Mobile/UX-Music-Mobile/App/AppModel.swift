@@ -88,6 +88,16 @@ final class AppModel {
         }
     }
 
+    /// User-selected audio quality for new downloads (Settings → ダウンロード音質), persisted to
+    /// `UserDefaults` so it survives relaunch. Only affects downloads requested after the change —
+    /// see `downloadSong` and `progress/download-audio-quality.md`.
+    var downloadAudioQuality: DownloadAudioQuality {
+        didSet {
+            guard downloadAudioQuality != oldValue else { return }
+            UserDefaults.standard.set(downloadAudioQuality.rawValue, forKey: AppConstants.downloadAudioQualityKey)
+        }
+    }
+
     /// "For You" server-generated playlists (`GET /v1/remote/situation-playlists`), loaded on
     /// demand via `refreshSituationPlaylists()`. Empty (not an error state) when the desktop
     /// predates the endpoint (404) or hasn't been queried yet.
@@ -147,6 +157,9 @@ final class AppModel {
         } else {
             artistSortOrder = .name
         }
+        downloadAudioQuality = DownloadAudioQuality.restored(
+            fromRawValue: UserDefaults.standard.string(forKey: AppConstants.downloadAudioQualityKey)
+        )
         downloadManager = DownloadManager()
         libraryMembershipStore = LibraryMembershipStore()
         watchTransferBridge = WatchTransferBridge(downloadManager: downloadManager)
@@ -421,30 +434,57 @@ final class AppModel {
         }
     }
 
+    /// Downloads `song` according to `downloadAudioQuality`: one request for `.original`/`.aac`,
+    /// two sequential requests for `.both` (original, then AAC — see `DownloadRequestPlan`), sharing
+    /// a single `downloadProgress[song.id]` entry mapped 0–1 across whichever steps run. The song is
+    /// registered once its first step succeeds; if `.both`'s second (AAC) step then fails, the error
+    /// is surfaced via `downloadError` but the already-downloaded first file stays registered.
     func downloadSong(_ song: Song) async {
         guard downloadProgress[song.id] == nil else { return }
         downloadError = nil
         downloadProgress[song.id] = 0
-        let tempDest = downloadManager.temporaryDownloadURL(songId: song.id)
-        do {
-            try await withFailover { c in
-                try await c.downloadFile(songId: song.id, to: tempDest, preferOriginalAudio: true) { received, total in
-                    Task { @MainActor in
-                        if total > 0 {
-                            self.downloadProgress[song.id] = Double(received) / Double(total)
+        let steps = DownloadRequestPlan.steps(for: downloadAudioQuality)
+        var registered = false
+
+        for (index, step) in steps.enumerated() {
+            let tempDest = downloadManager.temporaryDownloadURL(songId: song.id)
+            let stepBase = Double(index) / Double(steps.count)
+            let stepSpan = 1.0 / Double(steps.count)
+            do {
+                try await withFailover { c in
+                    try await c.downloadFile(songId: song.id, to: tempDest, preferOriginalAudio: step.preferOriginalAudio) { received, total in
+                        Task { @MainActor in
+                            if total > 0 {
+                                self.downloadProgress[song.id] = stepBase + stepSpan * (Double(received) / Double(total))
+                            }
                         }
                     }
                 }
+                if step.preferOriginalAudio {
+                    try downloadManager.finalizeDownloadedPart(at: tempDest, song: song)
+                } else {
+                    try downloadManager.finalizeDownloadedAACPart(at: tempDest, song: song)
+                }
+                if !registered {
+                    downloadManager.register(song)
+                    registered = true
+                }
+            } catch {
+                try? FileManager.default.removeItem(at: tempDest)
+                downloadError = error.localizedDescription
+                guard registered else {
+                    // First step failed: nothing was downloaded, matching the previous single-request behaviour.
+                    downloadProgress.removeValue(forKey: song.id)
+                    return
+                }
+                // `.both`'s second (AAC) step failed after the first succeeded: keep the first file.
+                break
             }
-            try downloadManager.finalizeDownloadedPart(at: tempDest, song: song)
-            downloadManager.register(song)
-            await cacheArtworkAfterDownloadIfNeeded(for: song)
-            await fetchAndStoreLyricsIfAvailable(for: song)
-            touchDownloadLibrary()
-        } catch {
-            downloadError = error.localizedDescription
-            try? FileManager.default.removeItem(at: tempDest)
         }
+
+        await cacheArtworkAfterDownloadIfNeeded(for: song)
+        await fetchAndStoreLyricsIfAvailable(for: song)
+        touchDownloadLibrary()
         downloadProgress.removeValue(forKey: song.id)
     }
 

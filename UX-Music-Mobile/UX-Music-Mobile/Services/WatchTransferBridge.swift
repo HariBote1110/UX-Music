@@ -183,7 +183,13 @@ final class WatchTransferBridge: NSObject, ObservableObject {
     /// can be sent, then either sends it immediately or transcodes first. Only safe to call once
     /// `activationStatus == .activated`.
     private func performTransfer(_ song: Song) {
-        let localURL = URL(fileURLWithPath: downloadManager.localPathString(songId: song.id))
+        // Prefers the AAC variant (see `DownloadManager.watchTransferSourceURL`) when one was
+        // downloaded (`DownloadAudioQuality.aac`/`.both`): it is already 128 kbps m4a, so
+        // `WatchTransferAudioPolicy` below naturally resolves to `.passthrough` and the on-device
+        // `WatchAudioTranscoder` is skipped entirely. Falls back to `localPathString` (original-only
+        // downloads) when no AAC variant exists.
+        let localURL = downloadManager.watchTransferSourceURL(songId: song.id)
+            ?? URL(fileURLWithPath: downloadManager.localPathString(songId: song.id))
         let originalFileType = localURL.pathExtension.isEmpty ? song.fileType : localURL.pathExtension
         let fileSizeBytes = Self.fileSize(at: localURL)
 
