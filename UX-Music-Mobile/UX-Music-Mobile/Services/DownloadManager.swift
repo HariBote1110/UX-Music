@@ -9,6 +9,24 @@ final class DownloadManager {
     private var tracksDirectory: URL
     private var artworkDirectory: URL
 
+    /// `stem` (sha256 of songId) -> resolved original-file URL under `tracksDirectory`. This is the
+    /// in-memory replacement for what `resolvedExistingFileURL` used to compute by enumerating
+    /// `tracksDirectory` on every call (measured O(n²) over a render pass of n rows — see
+    /// `mobile_perf_research/notes/baseline-microbench-2026-08.md`). Built once in `init` (reusing
+    /// `loadMeta`'s existing enumeration, so `init` still does exactly one directory listing) and kept
+    /// in sync incrementally by every method that changes which original file exists for a stem:
+    /// `finalizeDownloadedPart` (incl. `removeFinalisedTrackFiles`'s purge), `finalizeDownloadedAACPart`
+    /// (via `finalizeDownloadedPart` on its `.storeAsOriginal` branch), `remove(songId:)`, and
+    /// `register` (self-heal, see its doc comment).
+    ///
+    /// AAC-variant files (`<stem>_aac.m4a`) are deliberately NOT tracked here: `localAACVariantURLIfPresent`
+    /// already does a single fixed-path `fileExists` check, which is already O(1) and needed no caching.
+    ///
+    /// The index never goes stale in practice: nothing outside this file writes into `tracksDirectory`
+    /// (`WatchAudioTranscoder` writes into `Caches`, a different directory), so every original-file
+    /// mutation flows through one of the methods above.
+    private var resolvedFileURLByStem: [String: URL] = [:]
+
     init(fileManager: FileManager = .default) {
         documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         tracksDirectory = documentsDirectory.appendingPathComponent("DownloadedTracks", isDirectory: true)
@@ -42,6 +60,7 @@ final class DownloadManager {
             try fm.removeItem(at: dest)
         }
         try fm.moveItem(at: tempURL, to: dest)
+        resolvedFileURLByStem[stem] = dest
     }
 
     /// AAC variant path for `songId` (`<stem>_aac.m4a`), stored alongside the original when
@@ -118,17 +137,31 @@ final class DownloadManager {
 
     func register(_ song: Song) {
         downloadedSongs[song.id] = song
+        let stem = Self.storedStem(for: song.id)
+        if resolvedFileURLByStem[stem] == nil {
+            // Self-heal: in production every download calls `finalizeDownloadedPart`/
+            // `finalizeDownloadedAACPart` before `register`, so the index already has this stem and
+            // this branch is a single dictionary lookup that does nothing. It only does real work
+            // when a file was placed under `tracksDirectory` without going through those methods
+            // (e.g. test fixtures that `Data.write` straight to `localFileURL(songId:)`) — a single
+            // directory enumeration to pick the file up, not a per-call cost on the read path.
+            if let match = Self.resolveOriginalFileURL(forStem: stem, in: tracksDirectory) {
+                resolvedFileURLByStem[stem] = match
+            }
+        }
         saveMeta()
     }
 
     func remove(songId: String) {
         downloadedSongs.removeValue(forKey: songId)
+        let stem = Self.storedStem(for: songId)
         if let u = resolvedExistingFileURL(songId: songId) {
             try? FileManager.default.removeItem(at: u)
         }
         if let aac = localAACVariantURLIfPresent(songId: songId) {
             try? FileManager.default.removeItem(at: aac)
         }
+        resolvedFileURLByStem.removeValue(forKey: stem)
         saveMeta()
         pruneOrphanArtworkFiles()
     }
@@ -173,14 +206,18 @@ final class DownloadManager {
     }
 
     private func loadMeta() {
+        // Single pass over `tracksDirectory`: builds `resolvedFileURLByStem` (the index that replaces
+        // `resolvedExistingFileURL`'s former per-call enumeration) and, from the same listing, the
+        // AAC-variant presence check below — so this optimisation adds no second enumeration here.
+        let fm = FileManager.default
+        let trackFiles =
+            (try? fm.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil)) ?? []
+        resolvedFileURLByStem = Self.buildResolvedFileURLByStem(from: trackFiles)
+
         guard let data = UserDefaults.standard.data(forKey: AppConstants.downloadedSongsMetaKey),
               let list = try? JSONDecoder().decode([Song].self, from: data)
         else { return }
 
-        let fm = FileManager.default
-        let trackNames =
-            (try? fm.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil))?
-                .map(\.lastPathComponent) ?? []
         let docM4aBasenames = Set(
             (try? fm.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil))?
                 .filter { $0.pathExtension.lowercased() == "m4a" }
@@ -189,7 +226,7 @@ final class DownloadManager {
 
         for song in list {
             let stem = Self.storedStem(for: song.id)
-            if Self.trackListContainsStem(trackNames, stem: stem) {
+            if resolvedFileURLByStem[stem] != nil || Self.trackFilesContainAACVariant(trackFiles, stem: stem) {
                 downloadedSongs[song.id] = song
                 continue
             }
@@ -224,23 +261,64 @@ final class DownloadManager {
 
     private func removeFinalisedTrackFiles(forStem stem: String) {
         guard let files = try? FileManager.default.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil) else { return }
+        var removedAny = false
         for f in files {
             let name = f.lastPathComponent
             if name.hasPrefix("incomplete_") { continue }
             let base = f.deletingPathExtension().lastPathComponent
             if base == stem {
                 try? FileManager.default.removeItem(at: f)
+                removedAny = true
             }
+        }
+        if removedAny {
+            resolvedFileURLByStem.removeValue(forKey: stem)
         }
     }
 
-    /// True when `stem.*` (the original) or `stem_aac.m4a` (the AAC-only variant) is present — an
-    /// AAC-only song must still survive `loadMeta` on relaunch even though it has no `stem.*` file.
-    private static func trackListContainsStem(_ names: [String], stem: String) -> Bool {
-        names.contains { name in
-            guard !name.hasPrefix("incomplete_") else { return false }
-            let base = (name as NSString).deletingPathExtension
-            return base == stem || base == "\(stem)_aac"
+    /// Builds the `stem -> URL` index from a single `tracksDirectory` listing: excludes
+    /// `incomplete_*.tmp` temp files and `<stem>_aac.m4a` variants (tracked separately, see
+    /// `resolvedFileURLByStem`'s doc comment), and — matching the old per-call enumeration's tie-break —
+    /// keeps the lexicographically smallest path when more than one file shares a stem.
+    private static func buildResolvedFileURLByStem(from files: [URL]) -> [String: URL] {
+        var candidatesByStem: [String: [URL]] = [:]
+        for f in files {
+            let name = f.lastPathComponent
+            if name.hasPrefix("incomplete_") { continue }
+            let base = f.deletingPathExtension().lastPathComponent
+            if base.hasSuffix("_aac") { continue }
+            candidatesByStem[base, default: []].append(f)
+        }
+        var result: [String: URL] = [:]
+        for (stem, urls) in candidatesByStem {
+            if let smallest = urls.min(by: { $0.path < $1.path }) {
+                result[stem] = smallest
+            }
+        }
+        return result
+    }
+
+    /// Single-stem variant of `buildResolvedFileURLByStem`, used by `register`'s self-heal path where
+    /// only one stem's presence needs resolving (see `resolvedFileURLByStem`'s doc comment).
+    private static func resolveOriginalFileURL(forStem stem: String, in directory: URL) -> URL? {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return nil }
+        let matches = files.filter { f in
+            let name = f.lastPathComponent
+            if name.hasPrefix("incomplete_") { return false }
+            return f.deletingPathExtension().lastPathComponent == stem
+        }
+        return matches.min(by: { $0.path < $1.path })
+    }
+
+    /// True when `stem_aac.m4a` (the AAC-only variant) is present in an already-fetched directory
+    /// listing — an AAC-only song must still survive `loadMeta` on relaunch even though it has no
+    /// `stem.*` original file.
+    private static func trackFilesContainAACVariant(_ files: [URL], stem: String) -> Bool {
+        let variantBase = "\(stem)_aac"
+        return files.contains { f in
+            let name = f.lastPathComponent
+            if name.hasPrefix("incomplete_") { return false }
+            return f.deletingPathExtension().lastPathComponent == variantBase
         }
     }
 
@@ -257,16 +335,17 @@ final class DownloadManager {
         return true
     }
 
+    /// O(1) dictionary lookup (formerly a full `tracksDirectory` enumeration on every call — the
+    /// measured O(n²) source, see `resolvedFileURLByStem`'s doc comment). No per-hit `fileExists`
+    /// re-verification: the index is kept in sync by every method that mutates `tracksDirectory`, and
+    /// nothing else touches that directory, so a hit here is never stale.
+    ///
+    /// The legacy `Documents/<id>.m4a` fallback stays a direct filesystem check — it only applies to
+    /// UUID-style ids without `stem.*`/`_aac` files (see `isSimpleLegacyFileStem`), a rare, bounded path.
     private func resolvedExistingFileURL(songId: String) -> URL? {
         let stem = Self.storedStem(for: songId)
-        guard let files = try? FileManager.default.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil) else { return nil }
-        let matches = files.filter { f in
-            let name = f.lastPathComponent
-            if name.hasPrefix("incomplete_") { return false }
-            return f.deletingPathExtension().lastPathComponent == stem
-        }
-        if let u = matches.sorted(by: { $0.path < $1.path }).first {
-            return u
+        if let cached = resolvedFileURLByStem[stem] {
+            return cached
         }
         if let leg = legacyFlatFileURL(songId: songId), FileManager.default.fileExists(atPath: leg.path) {
             return leg
