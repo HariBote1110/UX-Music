@@ -240,4 +240,66 @@ final class AppModelDownloadTests: XCTestCase {
         XCTAssertEqual(dm.localPathString(songId: id), dm.localFileURL(songId: id).path)
         dm.remove(songId: id)
     }
+
+    // MARK: - Cache-correctness pins (resolvedExistingFileURL index — see Services/DownloadManager.swift)
+    //
+    // These pin behaviours that a per-call `contentsOfDirectory` enumeration satisfies trivially but
+    // an in-memory stem index could get wrong if updated incompletely. They must keep passing
+    // unchanged after the O(n) -> O(1) `isDownloaded`/`localPathString` optimisation.
+
+    func testIsDownloadedTrueImmediatelyAfterFinalizeDownloadedPartSameInstance() throws {
+        let dm = DownloadManager()
+        let id = "unit-cache-\(UUID().uuidString)"
+        let s = song(id: id)
+        let temp = dm.temporaryDownloadURL(songId: id)
+        try (Data("fLaC".utf8) + Data(repeating: 0, count: 40)).write(to: temp, options: .atomic)
+        try dm.finalizeDownloadedPart(at: temp, song: s)
+        dm.register(s)
+
+        XCTAssertTrue(dm.isDownloaded(songId: id))
+        dm.remove(songId: id)
+    }
+
+    func testIsDownloadedFalseImmediatelyAfterRemoveSameInstance() throws {
+        let dm = DownloadManager()
+        let id = "unit-cache-\(UUID().uuidString)"
+        let s = song(id: id)
+        try Data("orig".utf8).write(to: dm.localFileURL(songId: id))
+        dm.register(s)
+        XCTAssertTrue(dm.isDownloaded(songId: id))
+
+        dm.remove(songId: id)
+
+        XCTAssertFalse(dm.isDownloaded(songId: id))
+    }
+
+    func testFreshDownloadManagerInstanceSeesFilesCreatedBeforeItsInit() throws {
+        let dm1 = DownloadManager()
+        let id = "unit-cache-\(UUID().uuidString)"
+        let s = song(id: id)
+        let temp = dm1.temporaryDownloadURL(songId: id)
+        try (Data("fLaC".utf8) + Data(repeating: 0, count: 40)).write(to: temp, options: .atomic)
+        try dm1.finalizeDownloadedPart(at: temp, song: s)
+        dm1.register(s)
+
+        // A brand-new instance must rebuild its index from disk in `init`, not inherit `dm1`'s state.
+        let dm2 = DownloadManager()
+        XCTAssertTrue(dm2.isDownloaded(songId: id))
+
+        dm2.remove(songId: id)
+    }
+
+    func testAACVariantOnlySongStillDetectedAfterReinit() throws {
+        let dm1 = DownloadManager()
+        let id = "unit-cache-\(UUID().uuidString)"
+        let s = song(id: id)
+        try Data("aac-bytes".utf8).write(to: dm1.aacVariantDestinationURL(songId: id))
+        dm1.register(s)
+        XCTAssertTrue(dm1.isDownloaded(songId: id))
+
+        let dm2 = DownloadManager()
+        XCTAssertTrue(dm2.isDownloaded(songId: id))
+
+        dm2.remove(songId: id)
+    }
 }
