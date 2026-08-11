@@ -25,7 +25,7 @@ struct AlbumDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(album.songs.count) 曲")
+                    Text(String(format: String(localized: "%ld Songs"), album.songs.count))
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
                 }
@@ -78,7 +78,7 @@ struct AlbumDetailView: View {
                 Button {
                     Task { await model.downloadAlbum(album) }
                 } label: {
-                    Label("アルバムをダウンロード", systemImage: "arrow.down.circle")
+                    Label("Download Album", systemImage: "arrow.down.circle")
                 }
             }
             WatchTransferBulkMenuItem(

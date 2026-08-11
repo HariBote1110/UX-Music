@@ -47,7 +47,7 @@ struct LibrarySegmentedHeader: View {
 /// accessory should be fully hidden.
 struct LibrarySearchRow<Accessory: View>: View {
     @Binding var query: String
-    var prompt: String = "曲・アーティスト・アルバムを検索"
+    var prompt: String = String(localized: "Search Songs, Artists, Albums")
     @ViewBuilder var accessory: () -> Accessory
 
     var body: some View {

@@ -139,12 +139,12 @@ struct SongQueueMenuItems: View {
         Button {
             model.player.insertNext(song)
         } label: {
-            Label("次に再生", systemImage: "text.line.first.and.arrowtriangle.forward")
+            Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
         }
         Button {
             model.player.appendToQueue(song)
         } label: {
-            Label("最後に追加", systemImage: "text.line.last.and.arrowtriangle.forward")
+            Label("Add to End of Queue", systemImage: "text.line.last.and.arrowtriangle.forward")
         }
     }
 }
@@ -164,7 +164,7 @@ struct AddSongToPlaylistMenuItem: View {
                     }
                 }
             } label: {
-                Label("プレイリストに追加", systemImage: "text.badge.plus")
+                Label("Add to Playlist", systemImage: "text.badge.plus")
             }
         }
     }
@@ -184,7 +184,7 @@ struct SongRowDownloadTrailing: View {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                     .font(.system(size: 20))
-                    .accessibilityLabel("ライブラリに追加済み")
+                    .accessibilityLabel("Added to Library")
             } else {
                 Button {
                     model.addYouTubeSongToLibrary(song)
@@ -193,7 +193,7 @@ struct SongRowDownloadTrailing: View {
                         .font(.system(size: 22))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("ライブラリに追加")
+                .accessibilityLabel("Add to Library")
             }
         } else if model.isSongDownloaded(songId: song.id) {
             Image(systemName: "checkmark.circle.fill")

@@ -10,10 +10,10 @@ private enum LocalViewMode: Int, CaseIterable, Hashable {
 
     var title: String {
         switch self {
-        case .songs: return "曲"
-        case .albums: return "アルバム"
-        case .artists: return "アーティスト"
-        case .playlists: return "プレイリスト"
+        case .songs: return String(localized: "Songs")
+        case .albums: return String(localized: "Albums")
+        case .artists: return String(localized: "Artists")
+        case .playlists: return String(localized: "Playlists")
         }
     }
 }
@@ -132,18 +132,18 @@ struct LocalLibraryScreen: View {
                     PlaylistDetailView(playlistId: id)
                 }
             }
-            .alert("新規プレイリスト", isPresented: $showNewPlaylistAlert) {
-                TextField("名前", text: $newPlaylistName)
-                Button("作成") {
+            .alert("New Playlist", isPresented: $showNewPlaylistAlert) {
+                TextField("Name", text: $newPlaylistName)
+                Button("Create") {
                     let name = newPlaylistName
                     newPlaylistName = ""
                     try? model.createPlaylist(name: name)
                 }
-                Button("キャンセル", role: .cancel) {
+                Button("Cancel", role: .cancel) {
                     newPlaylistName = ""
                 }
             } message: {
-                Text("新しいプレイリストの名前を入力してください。")
+                Text("Enter a name for the new playlist.")
             }
         }
     }
@@ -181,7 +181,7 @@ struct LocalLibraryScreen: View {
     }
 
     private var searchPrompt: String {
-        viewMode == .playlists ? "プレイリストを検索" : "曲・アーティスト・アルバムを検索"
+        viewMode == .playlists ? String(localized: "Search Playlists") : String(localized: "Search Songs, Artists, Albums")
     }
 
     /// One `LibrarySearchRow` instance shared by every tab (rather than a separate instance per
@@ -251,7 +251,7 @@ struct LocalLibraryScreen: View {
 
     private var sortMenu: some View {
         Menu {
-            Picker("並び替え", selection: Bindable(model).librarySortOrder) {
+            Picker("Sort", selection: Bindable(model).librarySortOrder) {
                 ForEach(LibrarySortOrder.allCases) { order in
                     Text(order.displayName).tag(order)
                 }
@@ -263,12 +263,12 @@ struct LocalLibraryScreen: View {
                 .frame(width: 32, height: 32)
         }
         .modifier(LibraryHeaderGlassButtonStyle())
-        .accessibilityLabel("並び替え")
+        .accessibilityLabel("Sort")
     }
 
     private var albumSortMenu: some View {
         Menu {
-            Picker("並び替え", selection: Bindable(model).albumSortOrder) {
+            Picker("Sort", selection: Bindable(model).albumSortOrder) {
                 ForEach(AlbumSortOrder.allCases) { order in
                     Text(order.displayName).tag(order)
                 }
@@ -280,12 +280,12 @@ struct LocalLibraryScreen: View {
                 .frame(width: 32, height: 32)
         }
         .modifier(LibraryHeaderGlassButtonStyle())
-        .accessibilityLabel("並び替え")
+        .accessibilityLabel("Sort")
     }
 
     private var artistSortMenu: some View {
         Menu {
-            Picker("並び替え", selection: Bindable(model).artistSortOrder) {
+            Picker("Sort", selection: Bindable(model).artistSortOrder) {
                 ForEach(ArtistSortOrder.allCases) { order in
                     Text(order.displayName).tag(order)
                 }
@@ -297,7 +297,7 @@ struct LocalLibraryScreen: View {
                 .frame(width: 32, height: 32)
         }
         .modifier(LibraryHeaderGlassButtonStyle())
-        .accessibilityLabel("並び替え")
+        .accessibilityLabel("Sort")
     }
 
     private var searchedPlaylists: [Playlist] {
@@ -313,14 +313,14 @@ struct LocalLibraryScreen: View {
                 Button {
                     showDesktopPlaylistImport = true
                 } label: {
-                    Label("デスクトップから取り込む", systemImage: "arrow.down.doc")
+                    Label("Import from Desktop", systemImage: "arrow.down.doc")
                 }
             }
             Button {
                 playlistEditMode = playlistEditMode == .active ? .inactive : .active
             } label: {
                 Label(
-                    playlistEditMode == .active ? "並べ替えを終了" : "並べ替え",
+                    playlistEditMode == .active ? "End Reordering" : "Reorder",
                     systemImage: "arrow.up.arrow.down"
                 )
             }
@@ -328,7 +328,7 @@ struct LocalLibraryScreen: View {
                 newPlaylistName = ""
                 showNewPlaylistAlert = true
             } label: {
-                Label("新規プレイリスト", systemImage: "plus")
+                Label("New Playlist", systemImage: "plus")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -343,9 +343,9 @@ struct LocalLibraryScreen: View {
 
     private var emptyState: some View {
         ContentUnavailableView(
-            "ダウンロード済みの曲がありません",
+            "No Downloaded Songs",
             systemImage: "music.note.list",
-            description: Text("リモートライブラリから曲をダウンロードしてください")
+            description: Text("Download songs from the remote library.")
         )
     }
 
@@ -353,15 +353,15 @@ struct LocalLibraryScreen: View {
     private var playlistContent: some View {
         if model.playlists.isEmpty {
             ContentUnavailableView {
-                Label("まだプレイリストがありません", systemImage: "music.note.list")
+                Label("No Playlists Yet", systemImage: "music.note.list")
             } description: {
-                Text("+ で新規作成するか、デスクトップから取り込めます。")
+                Text("Create one with + or import from desktop.")
             } actions: {
                 if model.serverConfig.isConfigured {
                     Button {
                         showDesktopPlaylistImport = true
                     } label: {
-                        Label("デスクトップのプレイリストを取り込む", systemImage: "arrow.down.doc")
+                        Label("Import Desktop Playlist", systemImage: "arrow.down.doc")
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -369,7 +369,7 @@ struct LocalLibraryScreen: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black)
         } else if searchedPlaylists.isEmpty {
-            Text("一致するプレイリストがありません")
+            Text("No Matching Playlists")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -388,7 +388,7 @@ struct LocalLibraryScreen: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(pl.name)
                                         .font(.body.weight(.semibold))
-                                    Text("\(pl.songIds.count) 曲")
+                                    Text(String(format: String(localized: "%ld Songs"), pl.songIds.count))
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
                                 }
@@ -400,7 +400,7 @@ struct LocalLibraryScreen: View {
                             Button {
                                 playlistEditMode = playlistEditMode == .active ? .inactive : .active
                             } label: {
-                                Label("並べ替え", systemImage: "arrow.up.arrow.down")
+                                Label("Reorder", systemImage: "arrow.up.arrow.down")
                             }
                             WatchTransferBulkMenuItem(
                                 title: "Transfer Playlist to Apple Watch",
@@ -409,7 +409,7 @@ struct LocalLibraryScreen: View {
                             Button(role: .destructive) {
                                 try? model.deletePlaylist(id: pl.id)
                             } label: {
-                                Label("削除", systemImage: "trash")
+                                Label("Delete", systemImage: "trash")
                             }
                         }
                     }
@@ -449,7 +449,7 @@ struct LocalLibraryScreen: View {
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
                                 .foregroundStyle(.primary)
-                            Text("\(album.displayArtist) · \(album.songs.count) 曲")
+                            Text(String(format: String(localized: "%@ · %ld Songs"), album.displayArtist, album.songs.count))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -495,7 +495,7 @@ struct LocalLibraryScreen: View {
                     Button(role: .destructive) {
                         model.removeDownloadedSong(songId: song.id)
                     } label: {
-                        Label("ライブラリから削除", systemImage: "trash")
+                        Label("Remove from Library", systemImage: "trash")
                     }
                 }
             }
@@ -508,7 +508,7 @@ struct LocalLibraryScreen: View {
     @ViewBuilder
     private func artistContent(artists: [Artist]) -> some View {
         if artists.isEmpty {
-            Text("一致するアーティストがありません")
+            Text("No Matching Artists")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -527,7 +527,7 @@ struct LocalLibraryScreen: View {
                                 Text(artist.displayName)
                                     .font(.body.weight(.semibold))
                                     .lineLimit(1)
-                                Text("\(artist.albums.count) アルバム · \(artist.songs.count) 曲")
+                                Text(String(format: String(localized: "%ld Albums · %ld Songs"), artist.albums.count, artist.songs.count))
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)

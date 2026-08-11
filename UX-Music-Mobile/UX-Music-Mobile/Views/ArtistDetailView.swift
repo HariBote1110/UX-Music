@@ -24,11 +24,11 @@ struct ArtistDetailView: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 HStack {
-                    Text("\(artist.albums.count) アルバム")
+                    Text(String(format: String(localized: "%ld Albums"), artist.albums.count))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(artist.songs.count) 曲")
+                    Text(String(format: String(localized: "%ld Songs"), artist.songs.count))
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
                 }
@@ -109,7 +109,7 @@ struct ArtistDetailView: View {
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
                             .foregroundStyle(.primary)
-                        Text("\(album.songs.count) 曲")
+                        Text(String(format: String(localized: "%ld Songs"), album.songs.count))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
