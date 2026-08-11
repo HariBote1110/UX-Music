@@ -1,5 +1,4 @@
 import SwiftUI
-import WatchKit
 
 @main
 struct UXMusicWatchApp: App {
@@ -20,20 +19,19 @@ struct UXMusicWatchApp: App {
         connectivity.activate()
         // User report: "画面OFFになったあと勝手に文字盤に戻っちゃって転送が止まる" — once the
         // screen turns off, watchOS returns to the clock face after its "on screen wake show last
-        // app" grace period (2 minutes by default), and WCSession file delivery stalls until this
-        // app is frontmost again. `isFrontmostTimeoutExtended` asks for the longer 8-minute grace
-        // instead, which covers most single-song/small-album transfers.
+        // app" grace period, and WCSession file delivery stalls until this app is frontmost again.
         //
-        // Caveat found while implementing this: WatchKit's header for this property marks it
-        // `WK_DEPRECATED_WATCHOS(4.0, 7.0, "No longer supported")` — Apple stopped honouring it
-        // from watchOS 7 onwards, and this project's `WATCHOS_DEPLOYMENT_TARGET` is 10.0. There is
-        // no direct replacement for arbitrary background work (`WKExtendedRuntimeSession` is scoped
-        // to workout/mindfulness/alarm-style sessions, not general connectivity), so this call is
-        // kept as a harmless best-effort — it may be a no-op on current watchOS. The durable fix is
+        // This used to call `WKExtension.shared().isFrontmostTimeoutExtended = true` to ask for a
+        // longer grace period, but that call itself crashes at launch: this is a SwiftUI-lifecycle
+        // watchOS app, which has no `WKExtension` instance at all, so `WKExtension.shared()` aborts
+        // immediately (user-confirmed device console line). The property is also deprecated/no-op
+        // from watchOS 7 onwards regardless (`WK_DEPRECATED_WATCHOS(4.0, 7.0, "No longer
+        // supported")`), and `WKApplication.shared().isFrontmostTimeoutExtended` — the
+        // SwiftUI-lifecycle equivalent — carries the same "no longer supported" deprecation, so it
+        // is not a viable replacement either. This mitigation is fully withdrawn; the durable fix is
         // a direct background `URLSession` download on the Watch (see
         // `watch_transfer_research/notes/watch-direct-download-plan.md`), which survives app
         // suspension by design instead of depending on frontmost state at all.
-        WKExtension.shared().isFrontmostTimeoutExtended = true
         // Restore the last song/position/queue/mode (without autoplaying) so the app reopens where
         // the user left off, matching classic Walkman "resume" behaviour.
         player.restoreResumeState()

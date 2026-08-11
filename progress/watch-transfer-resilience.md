@@ -18,17 +18,22 @@ watchOSがWatchアプリをアクティブ（frontmost）とみなしている�
 「画面OFFで前回のアプリ表示を保持」設定の猶予時間（既定2分）を過ぎると文字盤に戻り、
 配信が事実上止まる。
 
-### 対処1: `isFrontmostTimeoutExtended`（`UX-Music-Watch/UXMusicWatchApp.swift`）
+### 対処1（撤回済み）: `isFrontmostTimeoutExtended`（`UX-Music-Watch/UXMusicWatchApp.swift`）
 
 アプリ起動時に`WKExtension.shared().isFrontmostTimeoutExtended = true`を設定し、猶予を
-2分から8分に延長を試みる。
+2分から8分に延長を試みる案だった。
 
-**限界**: WatchKitのヘッダーで`WK_DEPRECATED_WATCHOS(4.0, 7.0, "No longer supported")`と
-明記されており、watchOS 7以降Appleがこの挙動を保証しなくなった（本プロジェクトの
-`WATCHOS_DEPLOYMENT_TARGET`は10.0）。有効な代替APIも存在しない
-（`WKExtendedRuntimeSession`はワークアウト/マインドフルネス等の限定用途で汎用転送には
-使えない）。したがって「効くかもしれないが保証はしない」ベストエフォート策であり、
-恒久対策ではない。
+**実機クラッシュとして確定**: ユーザーの実機コンソールで、起動直後に
+`WKExtension.shared().isFrontmostTimeoutExtended = true`の行がクラッシュ地点として確認された。
+本アプリはSwiftUIライフサイクルのwatchOSアプリであり`WKExtension`のインスタンスが
+そもそも存在しないため、`WKExtension.shared()`の呼び出し自体が起動時に即abortする
+（"Thread 1: abort with payload or reason"）。つまりこの対処はベストエフォートですらなく、
+このコミット以降Watchアプリが起動のたびにクラッシュし続けていた。
+
+`WKApplication.shared().isFrontmostTimeoutExtended`（SwiftUIライフサイクル版の相当API）に
+置き換える案も検討したが、こちらも同じく`WK_DEPRECATED_WATCHOS(4.0, 7.0, "No longer
+supported")`が付与されており代替として不十分なため、frontmost延長の試み自体を完全に撤回し
+該当行を削除した。残る対処はキュー永続化（下記）とUIヒント、および将来の直接ダウンロードのみ。
 
 ## iPhone側キューの永続化（`Services/WatchTransferBridge.swift`）
 
@@ -70,7 +75,8 @@ Watchアプリを開いたままにする・長時間の一括転送では「設
 
 ## 恒久対策ではない理由
 
-上記3つはいずれも「watchOSのfrontmost依存という制約の中で被害を減らす」対症療法。
+対処1は実機クラッシュにより撤回済み。残るキュー永続化とUIヒントの2つも
+「watchOSのfrontmost依存という制約の中で被害を減らす」対症療法にすぎない。
 frontmost状態に依存しない転送手段（Watch自身がバックグラウンド`URLSession`でLAN経由
 直接ダウンロードする方式）が本来の恒久対策であり、
 `watch_transfer_research/notes/watch-direct-download-plan.md`に計画がある（未着手）。
