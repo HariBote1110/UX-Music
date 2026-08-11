@@ -609,6 +609,28 @@ final class WatchTransferTests: XCTestCase {
         XCTAssertTrue(plan.toMarkFailed.isEmpty)
     }
 
+    /// Real-device crash guard ("Thread 1: abort with payload or reason"): `outstanding` used to be
+    /// fed straight into `Dictionary(uniqueKeysWithValues:)`, which traps on a duplicate key. A
+    /// duplicate song id can reach `outstanding` from `WCSession.outstandingFileTransfers` (e.g. a
+    /// re-send racing an in-flight transfer across relaunches), so `plan` must tolerate it rather than
+    /// crash. Dedup rule: the *last* matching entry in `outstanding` wins — this mirrors the
+    /// `outstandingTransfersById[songId] = transfer` boundary in `WatchTransferBridge`, which also
+    /// keeps the last write for the same id.
+    func testReconciliationToleratesDuplicateOutstandingIdsKeepingLastFraction() {
+        let plan = WatchTransferRestoreReconciliation.plan(
+            persisted: [pendingEntry("1")],
+            outstanding: [
+                WatchTransferRestoreReconciliation.OutstandingTransfer(id: "1", fraction: 0.2),
+                WatchTransferRestoreReconciliation.OutstandingTransfer(id: "1", fraction: 0.9)
+            ],
+            downloadedSongIds: []
+        )
+        XCTAssertEqual(plan.toResumeSending.map(\.id), ["1"])
+        XCTAssertEqual(plan.toResumeSending.first?.phase, .sending(0.9))
+        XCTAssertTrue(plan.toReenqueueSongIds.isEmpty)
+        XCTAssertTrue(plan.toMarkFailed.isEmpty)
+    }
+
     // MARK: - WatchTransferHintPolicy
     //
     // User report: transfers stall once the Watch screen turns off and watchOS returns to the clock
