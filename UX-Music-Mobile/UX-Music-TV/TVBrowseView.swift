@@ -73,7 +73,9 @@ struct TVBrowseView: View {
                 if !browseModel.playlists.isEmpty {
                     TVShelfSection(title: String(localized: "tv.browse.playlists")) {
                         ForEach(browseModel.playlists, id: \.name) { playlist in
-                            TVPlaylistCard(playlist: playlist)
+                            TVPlaylistCard(playlist: playlist) {
+                                Task { await playFirstTrack(of: playlist) }
+                            }
                         }
                     }
                 }
@@ -87,6 +89,19 @@ struct TVBrowseView: View {
         guard let first = album.songs.first else { return }
         await playbackController.play(first, queue: album.songs)
         // Auto-enter Now Playing when playback starts from the browse UI (Phase 2 §1).
+        nowPlayingPresented = true
+    }
+
+    /// Playlist tap → play-from-first with the rest queued, mirroring the album shelf's
+    /// play-from-selection rule (§1-4's queue rule). `RemoteDesktopPlaylist` only carries
+    /// `songIds` (not full `Song` values), so the ordered `Song` queue is derived here via
+    /// `TVPlaylistQueueBuilder.songs(for:allSongs:)` — a pure function so the "unknown/missing
+    /// song id" filtering is unit-testable without touching the browse model or network.
+    private func playFirstTrack(of playlist: RemoteDesktopPlaylist) async {
+        let orderedSongs = TVPlaylistQueueBuilder.songs(for: playlist, allSongs: browseModel.songs)
+        guard let first = orderedSongs.first else { return }
+        await playbackController.play(first, queue: orderedSongs)
+        // Auto-enter Now Playing when playback starts from the browse UI (Phase 2 §1), same as albums.
         nowPlayingPresented = true
     }
 }
@@ -169,18 +184,22 @@ private struct TVAlbumCard: View {
 
 private struct TVPlaylistCard: View {
     let playlist: RemoteDesktopPlaylist
+    let onSelect: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.secondary.opacity(0.2))
-                .overlay(Image(systemName: "music.note.list").font(.system(size: 48)))
-                .frame(width: 220, height: 220)
-            Text(playlist.name)
-                .font(.headline)
-                .lineLimit(1)
+        Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: 8) {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.secondary.opacity(0.2))
+                    .overlay(Image(systemName: "music.note.list").font(.system(size: 48)))
+                    .frame(width: 220, height: 220)
+                Text(playlist.name)
+                    .font(.headline)
+                    .lineLimit(1)
+            }
+            .frame(width: 220)
         }
-        .frame(width: 220)
+        .buttonStyle(.card)
     }
 }
 
