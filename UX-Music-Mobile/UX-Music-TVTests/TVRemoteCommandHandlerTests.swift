@@ -43,6 +43,25 @@ final class TVRemoteCommandHandlerTests: XCTestCase {
         XCTAssertFalse(TVRemoteAuth.isAuthorized(authorizationHeader: "abc123", expectedToken: "abc123"))
     }
 
+    /// Security fix (`progress/tvos-connect.md` 2026-08-12 追記): the receiver must authenticate
+    /// against its own independently-generated control token, never the host pairing token — a
+    /// caller presenting the host token (e.g. one leaked from a different channel) must be
+    /// rejected once the receiver's `expectedToken` is the control token, not the host token.
+    func testHostPairingTokenDoesNotAuthorizeAgainstIndependentControlToken() {
+        let hostPairingToken = "host-pairing-token-xyz"
+        let controlToken = "receiver-control-token-abc"
+        XCTAssertNotEqual(hostPairingToken, controlToken)
+
+        XCTAssertFalse(TVRemoteAuth.isAuthorized(
+            authorizationHeader: "Bearer \(hostPairingToken)",
+            expectedToken: controlToken
+        ))
+        XCTAssertTrue(TVRemoteAuth.isAuthorized(
+            authorizationHeader: "Bearer \(controlToken)",
+            expectedToken: controlToken
+        ))
+    }
+
     func testIdentityPayloadAlwaysReportsTVRole() {
         let payload = TVIdentityPayload.json(deviceName: "Living Room")
         XCTAssertEqual(payload["hostname"] as? String, "Living Room")
