@@ -110,13 +110,15 @@ Mac mini (Library Host)                    クライアント群
 - **発見**: TV が mDNS `_uxmusic-sync._tcp` で Host を探索し、候補一覧を表示。
   複数 NIC/複数 Host は一覧から選択。
 - **ペアリング**: 既存のデスクトップ間フロー（`POST /v1/pairing/start` → 6 桁コード・
-  2 分 TTL → `confirm`）を流用する。向きは **TV がイニシエータ**:
-  1. TV が選択した Host へ `start` を叩き、**TV 画面に 6 桁コードを大きく表示**。
-  2. ユーザーが **Host の GUI（またはペア済み Mobile 経由）で承認**し、`confirm` で
-     デバイス別トークン発行 → `deviceAuthTokens` に登録。
-  3. Host がヘッドレス運用中で GUI が開けない場合に備え、Mobile 側に
-     「Host への TV 承認 UI」を用意するのは Phase 3 の任意項目とし、Phase 1 では
-     「ペアリング時のみ GUI を開く」運用を許容する。
+  2 分 TTL → `confirm`）を流用する。向きは **TV がイニシエータ**。
+  - **実装時判明（2026-08-11・progress/tvos-pairing.md）**: 既存 start/confirm には
+    ホスト側の人手承認ステップがそもそも存在しない（コードは目視突合用の表示で、
+    デスクトップ間でも開始と確定は同一操作者が連続実行。安全境界は「LAN 上で公開の
+    `/v1/pairing/*` に到達できること」自体）。よって当初案の「Host GUI で承認」は
+    見送り、TV は start → コード大画面表示 → confirm を自動連続実行する形に
+    単純化した（サーバー変更なし・既存信頼モデルと同等）。
+  - ホスト側承認（TV に限らずペアリング全体の強化）が必要になった場合は、
+    別課題として `/v1/pairing/*` 全体の信頼モデルを再設計する。
 - 認証は既存規約どおり `Authorization: Bearer <token>`、メディア系 GET のみ `?token=`。
 
 ### 1-3. 閲覧 UI（10-foot / フォーカスベース）
