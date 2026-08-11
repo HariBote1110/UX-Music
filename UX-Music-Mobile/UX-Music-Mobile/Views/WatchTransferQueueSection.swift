@@ -62,6 +62,19 @@ struct WatchTransferQueueSection: View {
             }
         } header: {
             Text("APPLE WATCH")
+        } footer: {
+            // User report: transfers stall once the Watch screen turns off and watchOS returns to
+            // the clock face — WCSession delivery only reliably flows while the Watch app is
+            // frontmost. Shown only while something is actually in flight (see
+            // `WatchTransferHintPolicy`), not for `.waiting`/`.downloading` items where nothing has
+            // started sending yet.
+            if WatchTransferHintPolicy.shouldShowFrontmostHint(items: bridge.queue) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Keep the Watch app open on your wrist while transferring — for long batches, extend Settings > General > Return to Clock for this app to Custom (1 Hour).")
+                    Text("Charging the Watch and a fast Wi-Fi connection also speed up large transfers.")
+                }
+                .font(.footnote)
+            }
         }
     }
 

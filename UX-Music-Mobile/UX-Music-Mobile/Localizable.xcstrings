@@ -3833,6 +3833,38 @@
           }
         }
       }
+    },
+    "Keep the Watch app open on your wrist while transferring — for long batches, extend Settings > General > Return to Clock for this app to Custom (1 Hour)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep the Watch app open on your wrist while transferring — for long batches, extend Settings > General > Return to Clock for this app to Custom (1 Hour)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "転送中はApple Watchでアプリを開いたままにしてください。まとめて転送するときは「設定 > 一般 > 時計に戻る」でこのアプリの設定を「カスタム(1時間)」に延長すると安定します。"
+          }
+        }
+      }
+    },
+    "Charging the Watch and a fast Wi-Fi connection also speed up large transfers." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Charging the Watch and a fast Wi-Fi connection also speed up large transfers."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watchの充電と高速なWi-Fi接続も、大きな転送を速くするのに役立ちます。"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"
