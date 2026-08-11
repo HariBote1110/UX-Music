@@ -35,6 +35,7 @@
 | GET /wear/loudness | GET /v1/remote/loudness |
 | GET /wear/state | GET /v1/remote/state |
 | POST /wear/command | POST /v1/remote/command |
+| （新設） | POST /v1/remote/play-event（Sync ピアでない軽量クライアント向けの再生完了報告。詳細は `progress/remote-play-event.md`） |
 | /sync/library/*, /sync/assets/*, /sync/discover | /v1/sync/library/*, /v1/sync/assets/*, /v1/sync/discover |
 
 ## Alternatives considered
