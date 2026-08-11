@@ -112,4 +112,63 @@ final class DownloadAudioQualityTests: XCTestCase {
         XCTAssertEqual(DownloadAACBitrate.kbps128.displayName, localizedString("128 kbps"))
         XCTAssertEqual(DownloadAACBitrate.kbps320.displayName, localizedString("320 kbps"))
     }
+
+    // MARK: - ProgressPublishThrottle (shared with Watch transfer KVO — see WatchTransferTests)
+
+    func testShouldPublishFalseForSubStepAdvance() {
+        XCTAssertFalse(ProgressPublishThrottle.shouldPublish(previous: 0.1, next: 0.105))
+    }
+
+    func testShouldPublishTrueAtOrAboveStepBoundary() {
+        XCTAssertTrue(ProgressPublishThrottle.shouldPublish(previous: 0.1, next: 0.11))
+    }
+
+    // MARK: - BulkDownloadStatusReducer
+    //
+    // Pure status-transition logic for `AppModel.downloadAlbum`/`downloadPlaylistSongs`'s bulk
+    // download banner (see `AppModel.bulkDownloadStatus`). Kept as a free function over
+    // `BulkDownloadStatus` so the state machine is unit-testable without a real download/network.
+
+    func testStartSetsTotalCountAndZeroesEverythingElse() {
+        let status = BulkDownloadStatusReducer.start(total: 5)
+        XCTAssertEqual(status.totalCount, 5)
+        XCTAssertEqual(status.completedCount, 0)
+        XCTAssertEqual(status.currentTitle, "")
+        XCTAssertEqual(status.currentFraction, 0)
+    }
+
+    func testSongStartedSetsTitleAndResetsFraction() {
+        let status = BulkDownloadStatusReducer.songStarted(
+            BulkDownloadStatusReducer.progress(BulkDownloadStatusReducer.start(total: 3), fraction: 0.8),
+            title: "Track Two"
+        )
+        XCTAssertEqual(status.currentTitle, "Track Two")
+        XCTAssertEqual(status.currentFraction, 0)
+        XCTAssertEqual(status.totalCount, 3)
+        XCTAssertEqual(status.completedCount, 0)
+    }
+
+    func testProgressUpdatesOnlyFraction() {
+        let started = BulkDownloadStatusReducer.songStarted(BulkDownloadStatusReducer.start(total: 2), title: "Track One")
+        let status = BulkDownloadStatusReducer.progress(started, fraction: 0.42)
+        XCTAssertEqual(status.currentFraction, 0.42)
+        XCTAssertEqual(status.currentTitle, "Track One")
+        XCTAssertEqual(status.totalCount, 2)
+    }
+
+    func testSongFinishedIncrementsCompletedAndResetsFraction() {
+        let inProgress = BulkDownloadStatusReducer.progress(
+            BulkDownloadStatusReducer.songStarted(BulkDownloadStatusReducer.start(total: 2), title: "Track One"),
+            fraction: 1.0
+        )
+        let status = BulkDownloadStatusReducer.songFinished(inProgress)
+        XCTAssertEqual(status.completedCount, 1)
+        XCTAssertEqual(status.currentFraction, 0)
+        XCTAssertEqual(status.totalCount, 2)
+    }
+
+    func testFinishReturnsNil() {
+        let status = BulkDownloadStatusReducer.start(total: 1)
+        XCTAssertNil(BulkDownloadStatusReducer.finish(status))
+    }
 }
