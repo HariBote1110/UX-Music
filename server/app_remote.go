@@ -92,6 +92,7 @@ func registerRemoteRoutes(mux *http.ServeMux, ls *LANServer) {
 	mux.HandleFunc("/v1/remote/loudness", ls.remoteLoudnessHandler)
 	mux.HandleFunc("/v1/remote/state", ls.remoteStateHandler)
 	mux.HandleFunc("/v1/remote/command", ls.remoteCommandHandler)
+	mux.HandleFunc("/v1/remote/play-event", ls.app.remotePlayEventHandler)
 }
 
 // GetLANServerAddress returns the LAN address of this machine for display in the UI.
