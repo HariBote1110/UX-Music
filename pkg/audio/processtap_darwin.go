@@ -321,6 +321,13 @@ func StartProcessTap(targets ProcessTapTargets) (*ProcessTapCapture, error) {
 	return capture, nil
 }
 
+// StartProcessTapCapture is the platform-agnostic entry point for callers
+// (e.g. the LAN relay, server/app_remote_relay_source.go) that only need the
+// TapCapture interface rather than the concrete *ProcessTapCapture type.
+func StartProcessTapCapture(targets ProcessTapTargets) (TapCapture, error) {
+	return StartProcessTap(targets)
+}
+
 // ReadSamples copies up to len(dst) captured samples without blocking.
 func (c *ProcessTapCapture) ReadSamples(dst []float32) int {
 	return c.ring.Read(dst)

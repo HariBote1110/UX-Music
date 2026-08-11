@@ -18,3 +18,9 @@ func WebKitHelperPIDs() ([]int, error) {
 func (p *Player) PlayProcessTap(targets ProcessTapTargets, gainLinear float64) error {
 	return errProcessTapUnsupported
 }
+
+// StartProcessTapCapture is unsupported outside darwin; it always returns an
+// error. See processtap_darwin.go for the real implementation.
+func StartProcessTapCapture(targets ProcessTapTargets) (TapCapture, error) {
+	return nil, errProcessTapUnsupported
+}
