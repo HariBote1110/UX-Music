@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -203,9 +204,15 @@ func remoteFileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try to serve a Watch-optimised transcoded version (AAC 128 kbps m4a).
+	// Try to serve a transcoded AAC m4a at the requested bitrate (128 kbps by
+	// default — the Watch-oriented default that also keeps old clients working).
 	// Falls back to the original file if ffmpeg is unavailable or fails.
-	cachedPath, err := getOrTranscode(songID, filePath)
+	rawBitrate := r.URL.Query().Get("bitrate")
+	bitrateKbps := parseAACBitrateQueryParam(rawBitrate)
+	if rawBitrate != "" && bitrateKbps == defaultAACBitrateKbps && rawBitrate != fmt.Sprintf("%d", defaultAACBitrateKbps) {
+		fmt.Printf("[Remote] Invalid bitrate param %q for %s — falling back to %d kbps\n", rawBitrate, songID, defaultAACBitrateKbps)
+	}
+	cachedPath, err := getOrTranscode(songID, filePath, bitrateKbps)
 	if err != nil {
 		fmt.Printf("[Remote] Transcode failed for %s: %v — serving original\n", songID, err)
 		http.ServeFile(w, r, filePath)
@@ -379,36 +386,98 @@ func buildPathToIDMap() map[string]string {
 // ─── Watch-optimised Transcoding ────────────────────────────────────────────
 
 // transcodeOnce guards in-progress transcodings so that concurrent requests
-// for the same song ID do not launch multiple ffmpeg processes.
-var transcodeOnce sync.Map // key: songID, value: *sync.Mutex
+// for the same song ID + bitrate do not launch multiple ffmpeg processes.
+var transcodeOnce sync.Map // key: "songID|bitrate", value: *sync.Mutex
 
-// getOrTranscode returns the path to a Watch-optimised m4a for the given song.
-// On first call it transcodes via ffmpeg and caches the result.
-// On subsequent calls it returns the cached file immediately.
-// Falls back to original if ffmpeg is not found or transcoding fails.
-func getOrTranscode(songID, inputPath string) (string, error) {
-	// Locate ffmpeg — common paths on macOS + PATH fallback
-	ffmpegPath, err := locateFfmpeg()
-	if err != nil {
-		return "", fmt.Errorf("ffmpeg not found: %w", err)
+// defaultAACBitrateKbps is served when the client omits ?bitrate= or sends an
+// invalid value. It matches the historical hard-coded rate, so old clients
+// (and the Watch, which always requests this endpoint without ?bitrate=)
+// keep working unchanged.
+const defaultAACBitrateKbps = 128
+
+// allowedAACBitratesKbps are the only bitrates the transcoder will produce.
+var allowedAACBitratesKbps = map[int]bool{128: true, 192: true, 256: true, 320: true}
+
+// normaliseAACBitrateKbps clamps an arbitrary integer to one of the allowed
+// AAC bitrates, falling back to defaultAACBitrateKbps for anything else.
+func normaliseAACBitrateKbps(kbps int) int {
+	if allowedAACBitratesKbps[kbps] {
+		return kbps
 	}
+	return defaultAACBitrateKbps
+}
+
+// parseAACBitrateQueryParam parses the raw "bitrate" query string value into
+// an allowed AAC bitrate, defaulting on empty/invalid input. It never errors
+// — callers should log separately if they want to surface a bad value.
+func parseAACBitrateQueryParam(raw string) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultAACBitrateKbps
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return defaultAACBitrateKbps
+	}
+	return normaliseAACBitrateKbps(n)
+}
+
+// remoteLegacyTranscodeCacheStem returns the pre-bitrate-selection cache file
+// stem (sha256 of songID only), used to detect and reuse caches written
+// before this feature existed.
+func remoteLegacyTranscodeCacheStem(songID string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(songID)))
+}
+
+// remoteTranscodeCacheStem returns the cache file stem for a given song +
+// bitrate. songID may contain slashes (path-shaped legacy keys), so it must
+// never be used directly as a path segment.
+func remoteTranscodeCacheStem(songID string, bitrateKbps int) string {
+	return fmt.Sprintf("%x_%d", sha256.Sum256([]byte(songID)), bitrateKbps)
+}
+
+// getOrTranscode returns the path to an AAC m4a transcoded at bitrateKbps for
+// the given song. On first call it transcodes via ffmpeg and caches the
+// result. On subsequent calls it returns the cached file immediately.
+// Falls back to original if ffmpeg is not found or transcoding fails.
+//
+// Backward compatibility: for the default 128 kbps rate only, a pre-existing
+// legacy cache file (written before per-bitrate caching existed) is reused
+// as-is rather than being re-transcoded. New 128 kbps writes always use the
+// bitrate-suffixed cache name.
+func getOrTranscode(songID, inputPath string, bitrateKbps int) (string, error) {
+	bitrateKbps = normaliseAACBitrateKbps(bitrateKbps)
 
 	cacheDir := filepath.Join(config.GetUserDataPath(), "RemoteCache")
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", fmt.Errorf("create transcode cache dir: %w", err)
 	}
 
-	// songID may contain slashes (path-shaped legacy keys); never use it as a path segment.
-	cacheStem := fmt.Sprintf("%x", sha256.Sum256([]byte(songID)))
+	cacheStem := remoteTranscodeCacheStem(songID, bitrateKbps)
 	cachedPath := filepath.Join(cacheDir, cacheStem+".m4a")
+
+	// Legacy fallback: a pre-bitrate-selection cache at 128 kbps is reused as-is.
+	if bitrateKbps == defaultAACBitrateKbps {
+		legacyPath := filepath.Join(cacheDir, remoteLegacyTranscodeCacheStem(songID)+".m4a")
+		if _, err := os.Stat(legacyPath); err == nil {
+			return legacyPath, nil
+		}
+	}
 
 	// Fast path: cache hit
 	if _, err := os.Stat(cachedPath); err == nil {
 		return cachedPath, nil
 	}
 
-	// Serialise concurrent requests for the same song
-	mu, _ := transcodeOnce.LoadOrStore(songID, &sync.Mutex{})
+	// Locate ffmpeg — common paths on macOS + PATH fallback
+	ffmpegPath, err := locateFfmpeg()
+	if err != nil {
+		return "", fmt.Errorf("ffmpeg not found: %w", err)
+	}
+
+	// Serialise concurrent requests for the same song + bitrate
+	lockKey := fmt.Sprintf("%s|%d", songID, bitrateKbps)
+	mu, _ := transcodeOnce.LoadOrStore(lockKey, &sync.Mutex{})
 	lock := mu.(*sync.Mutex)
 	lock.Lock()
 	defer lock.Unlock()
@@ -423,13 +492,13 @@ func getOrTranscode(songID, inputPath string) (string, error) {
 	tmpPath := cachedPath + ".tmp"
 	_ = os.Remove(tmpPath) // clean up any stale temp
 
-	fmt.Printf("[Remote] Transcoding %s → m4a 128 kbps …\n", songID)
+	fmt.Printf("[Remote] Transcoding %s → m4a %d kbps …\n", songID, bitrateKbps)
 	start := time.Now()
 
 	cmd := exec.Command(ffmpegPath,
 		"-i", inputPath,
 		"-c:a", "aac", // AAC codec (native to watchOS)
-		"-b:a", "128k", // 128 kbps — good balance for Watch speaker / earbuds
+		"-b:a", fmt.Sprintf("%dk", bitrateKbps),
 		"-ar", "44100", // 44.1 kHz sample rate
 		"-ac", "2", // stereo
 		"-vn",                // strip video / embedded artwork (saves space)
