@@ -182,6 +182,25 @@ struct RemoteAPIClient: Sendable {
         return obj?["hostname"] as? String ?? ""
     }
 
+    /// `GET /v1/identity`'s `capabilities` array (e.g. `"remote.relay.v1"` for the Phase 3-3
+    /// YouTube LAN relay — see `TVRelayCapability`). Missing/malformed responses degrade to `[]`
+    /// rather than throwing, matching `ping()`'s tolerance of this public, unauthenticated endpoint.
+    func fetchIdentityCapabilities() async throws -> [String] {
+        let (data, _) = try await session.data(for: authorizedRequest(path: "/v1/identity"))
+        let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return obj?["capabilities"] as? [String] ?? []
+    }
+
+    /// Builds an authenticated request for `GET /v1/remote/relay` (Phase 3-3 chunked ADTS
+    /// AAC-LC audio of whatever YouTube video is playing on the host). Unlike
+    /// `/v1/remote/file`/`/v1/remote/artwork/`, this endpoint does NOT accept a `?token=` query
+    /// fallback (see `server/app_apierror.go`'s `isMediaQueryTokenEndpoint`) — only the
+    /// `Authorization` header authenticates it. Callers needing a bare `URL` for something like
+    /// `AVURLAsset` must attach `request.allHTTPHeaderFields` via `AVURLAssetHTTPHeaderFieldsKey`.
+    func relayRequest() throws -> URLRequest {
+        try authorizedRequest(path: "/v1/remote/relay")
+    }
+
     func fetchSongs() async throws -> [Song] {
         let (data, _) = try await session.data(for: authorizedRequest(path: "/v1/remote/songs"))
         return try JSONDecoder().decode([Song].self, from: data)
