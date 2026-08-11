@@ -1017,10 +1017,13 @@ private struct NowPlayingQueuePanel: View {
         model.player.playbackQueue
     }
 
-    /// Stable row identity for `ForEach`/`.onMove`. Keying on `Array.indices` (as the read-only
-    /// list used to) breaks reorder/delete animations once rows can move — SwiftUI needs an id
-    /// that follows the *song*, not the slot. Song ids can repeat within a queue (the same track
-    /// queued twice), so the index still rides along to disambiguate.
+    /// Stable row identity for `ForEach`/`.onMove`. Plain `Array.indices` (as the read-only list
+    /// used to use) breaks reorder/delete animations: every edit shifts the offsets — and hence
+    /// the ids — of all subsequent rows, so SwiftUI can't tell they're the same row and tears down
+    /// / rebuilds them instead of animating a clean move or delete (visible as old row content
+    /// briefly flashing during the transition). `PlaybackQueueEditing.occurrenceIdentities` keys
+    /// each row on its song id plus how many earlier queue entries share that id, which stays
+    /// fixed across edits to *other* rows; only a duplicate of the same song shifts it.
     private struct QueueRow: Identifiable {
         let id: String
         let index: Int
@@ -1028,9 +1031,20 @@ private struct NowPlayingQueuePanel: View {
     }
 
     private var rows: [QueueRow] {
-        queue.enumerated().map { offset, song in
-            QueueRow(id: "\(song.id)#\(offset)", index: offset, song: song)
+        let ids = PlaybackQueueEditing.occurrenceIdentities(for: queue.map(\.id))
+        return queue.indices.map { offset in
+            QueueRow(id: ids[offset], index: offset, song: queue[offset])
         }
+    }
+
+    /// Removes the queue row identified by `rowId`, looking its index up in the live queue at the
+    /// moment the button is tapped rather than trusting the `row.index` captured when the context
+    /// menu was built — the menu can stay open across a queue mutation triggered elsewhere, and an
+    /// offset captured earlier could point at a different row by the time this runs.
+    private func removeFromQueue(rowId: String) {
+        let ids = PlaybackQueueEditing.occurrenceIdentities(for: queue.map(\.id))
+        guard let index = ids.firstIndex(of: rowId) else { return }
+        Task { await model.player.removeQueueItem(at: index) }
     }
 
     var body: some View {
@@ -1098,6 +1112,11 @@ private struct NowPlayingQueuePanel: View {
                         .listRowSeparator(.hidden)
                         .contextMenu {
                             WatchTransferSongMenuItem(song: row.song)
+                            Button(role: .destructive) {
+                                removeFromQueue(rowId: row.id)
+                            } label: {
+                                Label("キューから削除", systemImage: "trash")
+                            }
                         }
                     }
                     .onMove { offsets, destination in
@@ -1105,11 +1124,9 @@ private struct NowPlayingQueuePanel: View {
                         let to = nowPlayingQueueMoveDestination(from: from, to: destination)
                         model.player.moveQueueItem(from: from, to: to)
                     }
-                    .onDelete { offsets in
-                        for index in offsets.sorted(by: >) {
-                            Task { await model.player.removeQueueItem(at: index) }
-                        }
-                    }
+                    // Row-level swipe-to-delete used to live here, but it fought the panel's own
+                    // horizontal swipe-to-dismiss gesture (both read a horizontal drag on the same
+                    // row). Removal now lives only in the context menu above.
                 }
             }
             .listStyle(.plain)
