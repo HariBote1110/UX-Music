@@ -54,6 +54,33 @@ AACバリアントは既に128kbps m4aなので `WatchTransferAudioPolicy.decisi
 設定変更は新規ダウンロードの挙動のみを変える。既存のダウンロード済みファイルは一切変更しない
 （Settings 画面のフッターにその旨を明記）。
 
+## AACビットレート選択（2026-08 追加）
+
+- サーバ `GET /v1/remote/file?id=…` に `bitrate` クエリパラメータ（128/192/256/320）を追加した。
+  `source=original` 指定時は無視される。未指定・不正値（範囲外の数値、非数値）は従来どおり
+  128kbps にフォールバックする（Watch 向けデフォルト・旧クライアント互換のため）。不正値は
+  サーバログに1行出力するが、エラーにはしない。
+  - 純粋ロジックは `normaliseAACBitrateKbps` / `parseAACBitrateQueryParam`
+    （`server/app_remote.go`）に切り出し、ffmpeg 実行なしでテスト可能にした。
+  - キャッシュファイル名は `<sha256(songID)>_<bitrate>.m4a` に変更（`remoteTranscodeCacheStem`）。
+    ロックキー（`transcodeOnce`）も `songID|bitrate` に変更し、異なるビットレートの同時リクエストが
+    互いをブロックしないようにした。
+  - **後方互換**: 128kbps のみ、旧形式キャッシュ `<sha256(songID)>.m4a`
+    （`remoteLegacyTranscodeCacheStem`）が存在すればそれを再トランスコードせず再利用する。
+    新規書き込みは常にビットレート付きファイル名を使う。
+- iOS側: `Core/DownloadAudioQuality.swift` に `DownloadAACBitrate`（128/192/256/320、既定 256）を
+  追加。`AppModel.downloadAACBitrate` に `downloadAudioQuality` と同じ `UserDefaults` パターンで
+  永続化（キー: `uxmusic.download.aacBitrate`、不正な永続値は256にフォールバック）。
+  `RemoteAPIClient.downloadFile` はこの値を `bitrate=` クエリとして付与する
+  （`preferOriginalAudio == true` のときは付与しない）。クエリ組み立ては
+  `RemoteAPIClient.downloadFileQueryItems` という純粋関数に切り出してユニットテストした。
+  Settings 画面に「AAC Bitrate」ピッカー（menuスタイル）を追加し、ダウンロード音質が `.original`
+  のときは無効化。フッターに「Watch転送は常に128kbpsへ最適化される」旨を明記。
+- Watch転送は無変更: `WatchTransferAudioPolicy` は既に ≤192kbps の m4a をパススルー、
+  それを超えるものはオンデバイスで128kbpsへ再トランスコードするため、256/320kbpsでダウンロード
+  した曲も Watch では自動的に128kbpsになる（境界値192kbps/256kbps/320kbpsのテストを
+  `WatchTransferAudioPolicyTests` に追加してこの相互作用を明文化した）。
+
 ## Alternatives considered
 
 - 「AACのみ保持しオリジナルを消す／逆」のような単一ファイル切り替え方式は、設定変更のたびに
