@@ -181,6 +181,11 @@ struct TVConnectedView: View {
         _playbackController = StateObject(
             wrappedValue: TVPlaybackController(client: apiClient, player: sharedPlayer)
         )
+        // Phase 3-2: report natural track completions to the host for playcount convergence.
+        let reporter = TVPlayEventReporter(client: apiClient)
+        sharedPlayer.onTrackNaturallyFinished = { song in
+            reporter.report(song: song)
+        }
     }
 
     var body: some View {

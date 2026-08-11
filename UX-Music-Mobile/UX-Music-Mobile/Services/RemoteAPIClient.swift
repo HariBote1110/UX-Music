@@ -264,6 +264,22 @@ struct RemoteAPIClient: Sendable {
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
 
+    /// `POST /v1/remote/play-event` — reports a completed play to the host for playcount
+    /// convergence (`markdown/appletv-servermode-plan.md` §3-2, `progress/remote-play-event.md`).
+    /// `playedAt` must already be an RFC3339 string in UTC (see `TVPlayEventPolicy.rfc3339`); this
+    /// method does no formatting of its own so it stays trivially testable/mockable.
+    func postPlayEvent(trackId: String, playedAt: String, durationPlayedSec: Double?) async throws {
+        var body: [String: Any] = ["trackId": trackId, "playedAt": playedAt]
+        if let durationPlayedSec { body["durationPlayedSec"] = durationPlayedSec }
+        let json = try JSONSerialization.data(withJSONObject: body)
+        var req = try authorizedRequest(path: "/v1/remote/play-event")
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = json
+        let (data, response) = try await session.data(for: req)
+        try Self.throwIfNotOK(response, data: data)
+    }
+
     func sendCommand(action: String, value: Double?) async throws -> Bool {
         var body: [String: Any] = ["action": action]
         if let value { body["value"] = value }

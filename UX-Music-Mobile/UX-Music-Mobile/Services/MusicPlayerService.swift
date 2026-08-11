@@ -144,6 +144,15 @@ final class MusicPlayerService {
     var normaliseEnabled = true
     var masterVolume: Float = 1
 
+    /// Fired once per track that reaches its natural end (buffer completion / YouTube `.ended`),
+    /// with the song that just finished — i.e. exactly the `advanceAfterEnd()` path, never the
+    /// explicit `next()`/`previous()` skip paths. Used by the TV target's play-event reporter
+    /// (`markdown/appletv-servermode-plan.md` §3-2, `progress/tv-remote-play-event-client.md`) to
+    /// decide when a play "counts"; `nil` on iOS/watchOS where nothing observes it. Kept as a
+    /// plain closure (not a Combine/NotificationCenter broadcast) since there is currently only
+    /// ever one observer.
+    var onTrackNaturallyFinished: ((Song) -> Void)?
+
     // MARK: - Equaliser (persisted)
 
     private(set) var equaliserEnabled = false
@@ -1005,6 +1014,9 @@ final class MusicPlayerService {
     /// queue previously always looped `(currentIndex + 1) % queue.count` regardless of any repeat
     /// setting), restarts the current track for repeat-one, and wraps for repeat-all.
     private func advanceAfterEnd() async {
+        if let finishedSong = currentSong {
+            onTrackNaturallyFinished?(finishedSong)
+        }
         switch PlaybackQueueNavigation.autoAdvance(current: currentIndex, count: queue.count, repeatMode: repeatMode) {
         case .stop:
             // Sync state immediately so Now Playing reflects the paused/stopped state even when the
