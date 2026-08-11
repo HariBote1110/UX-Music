@@ -2,10 +2,10 @@ import Foundation
 
 /// One TV discovered on `_uxmusic-remote._tcp` (Phase 3-1 Connect-style target picker,
 /// `markdown/appletv-servermode-plan.md` §3-1). `token` comes straight from the TXT record —
-/// `TVRemoteControlServer` advertises the same Bearer token it validates requests against (see
-/// `progress/tvos-connect.md` for why that's an acceptable extension of the existing
-/// LAN-is-the-trust-boundary pairing model), so no extra handshake is needed before this iOS app
-/// can issue commands against it.
+/// `TVRemoteControlServer` advertises the same control token it validates requests against (an
+/// independent token the TV mints for itself via `TVControlTokenStore`, NOT the host pairing
+/// token — see `progress/tvos-connect.md` 2026-08-12 追記 for the security rationale), so no
+/// extra handshake is needed before this iOS app can issue commands against it.
 struct TVRemoteTarget: Identifiable, Hashable, Sendable {
     let name: String
     let host: String

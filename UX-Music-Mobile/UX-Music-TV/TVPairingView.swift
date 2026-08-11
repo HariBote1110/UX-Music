@@ -166,6 +166,8 @@ struct TVConnectedView: View {
     @ObservedObject var model: TVAppModel
     @StateObject private var browseModel: TVBrowseModel
     @StateObject private var playbackController: TVPlaybackController
+    @StateObject private var relayModel: TVRelayModel
+    @StateObject private var relayPlaybackController: TVRelayPlaybackController
     private let player: MusicPlayerService
     private let client: RemoteAPIClient
     private let remoteControlServer: TVRemoteControlServer
@@ -182,15 +184,21 @@ struct TVConnectedView: View {
         _playbackController = StateObject(
             wrappedValue: TVPlaybackController(client: apiClient, player: sharedPlayer)
         )
+        // Phase 3-3 (TV side): YouTube LAN relay reception — see `progress/tvos-relay-reception.md`.
+        _relayModel = StateObject(wrappedValue: TVRelayModel(client: apiClient))
+        _relayPlaybackController = StateObject(wrappedValue: TVRelayPlaybackController(client: apiClient))
         // Phase 3-2: report natural track completions to the host for playcount convergence.
         let reporter = TVPlayEventReporter(client: apiClient)
         sharedPlayer.onTrackNaturallyFinished = { song in
             reporter.report(song: song)
         }
         // Phase 3-1 (TV side): let this TV itself be picked as a Connect-style playback target.
+        // Security fix (`progress/tvos-connect.md` 2026-08-12 追記): authenticate with — and
+        // advertise — this TV's own control token, NEVER the host pairing token (`config.token`),
+        // so the mDNS broadcast can't leak a credential that grants Host library access.
         remoteControlServer = TVRemoteControlServer(
             player: sharedPlayer,
-            token: config.token,
+            token: TVControlTokenStore().loadOrCreate(),
             deviceName: DeviceIdentity.displayName
         )
     }
@@ -199,12 +207,21 @@ struct TVConnectedView: View {
         TVBrowseView(
             browseModel: browseModel,
             playbackController: playbackController,
+            relayModel: relayModel,
+            relayPlaybackController: relayPlaybackController,
             player: player,
             client: client,
             onSignOut: { model.forgetPairing() }
         )
-        .task { remoteControlServer.start() }
-        .onDisappear { remoteControlServer.stop() }
+        .task {
+            remoteControlServer.start()
+            relayModel.startPolling()
+        }
+        .onDisappear {
+            remoteControlServer.stop()
+            relayModel.stopPolling()
+            relayPlaybackController.stop()
+        }
     }
 }
 

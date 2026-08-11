@@ -39,12 +39,14 @@ final class TVRemoteControlServer {
             logger.error("failed to bind remote-control listener on port \(port)")
             return
         }
-        // §3-1: the receiver's Bearer token is the same token this TV obtained at pairing
-        // (symmetric shared secret against the Host) — advertising it in the TXT record is how
-        // the iOS picker (§3-1 Mobile side) learns it, since there is no separate distribution
-        // channel in scope here. This deliberately extends the LAN-is-the-trust-boundary
-        // conclusion `progress/tvos-pairing.md` already reached for pairing itself; see
-        // `progress/tvos-connect.md` for the full rationale.
+        // §3-1, revised 2026-08-12 (security fix — see `progress/tvos-connect.md`): the receiver's
+        // Bearer token is a control token this TV mints and persists for itself
+        // (`TVControlTokenStore`) — independent of the host pairing token. Advertising it in the
+        // TXT record is how the iOS picker (§3-1 Mobile side) learns it, since there is no
+        // separate distribution channel in scope here. Leaking this token only grants control of
+        // this TV's own playback — comparable exposure to the existing open pairing endpoints —
+        // unlike the host pairing token, which would grant the whole Host `/v1/remote/*` library
+        // API. See `progress/tvos-pairing.md` for the underlying LAN-is-the-trust-boundary model.
         listener.service = NWListener.Service(
             name: deviceName,
             type: Self.serviceType,
