@@ -21,4 +21,6 @@ enum AppConstants {
     static let artistSortOrderKey = "uxmusic.library.artistSortOrder"
     /// Persisted `DownloadAudioQuality.rawValue` for new downloads (Settings → ダウンロード音質).
     static let downloadAudioQualityKey = "uxmusic.download.audioQuality"
+    /// Persisted `DownloadAACBitrate.rawValue` for new AAC downloads (Settings → ダウンロード音質).
+    static let downloadAACBitrateKey = "uxmusic.download.aacBitrate"
 }

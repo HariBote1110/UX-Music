@@ -212,10 +212,21 @@ struct SettingsScreen: View {
                         }
                     }
                     .pickerStyle(.segmented)
+
+                    Picker("AAC Bitrate", selection: Bindable(model).downloadAACBitrate) {
+                        ForEach(DownloadAACBitrate.allCases) { bitrate in
+                            Text(bitrate.displayName).tag(bitrate)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(model.downloadAudioQuality == .original)
                 } header: {
                     Text("Download")
                 } footer: {
                     Text("AAC is about 1/7 the size, so transfers to Apple Watch are faster. With \u{201C}Full + AAC\u{201D}, playback uses full quality while Watch transfers use AAC. This does not apply retroactively to songs already downloaded.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Text("Higher bitrates sound better but take up more space. Apple Watch transfers always optimise to 128 kbps regardless of this setting.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

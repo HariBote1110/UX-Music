@@ -87,4 +87,29 @@ final class WatchTransferAudioPolicyTests: XCTestCase {
             .passthrough
         )
     }
+
+    // MARK: - Selectable AAC download bitrate interplay (progress/download-audio-quality.md)
+    //
+    // A downloaded AAC variant's bitrate is now user-selectable (128/192/256/320 kbps, see
+    // `DownloadAACBitrate`), so `WatchTransferAudioPolicy` must keep behaving as documented: a
+    // ≤192 kbps m4a passes through unmodified, anything above is re-transcoded to 128 kbps on the
+    // Watch side regardless of the desktop-selected bitrate.
+
+    /// Boundary: exactly 192 kbps (the `.kbps192` download option) still passes through.
+    func testM4aAtExactly192kbpsBoundaryPassesThrough() {
+        // 192_000 bps * 300s / 8 = 7,200,000 bytes
+        XCTAssertEqual(WatchTransferAudioPolicy.decision(fileType: "m4a", fileSizeBytes: 7_200_000, duration: 300), .passthrough)
+    }
+
+    /// A 256 kbps download (the new default `DownloadAACBitrate`) is above the passthrough ceiling and must be re-transcoded.
+    func testM4aAt256kbpsTranscodes() {
+        // 256_000 bps * 300s / 8 = 9,600,000 bytes
+        XCTAssertEqual(WatchTransferAudioPolicy.decision(fileType: "m4a", fileSizeBytes: 9_600_000, duration: 300), .transcode)
+    }
+
+    /// A 320 kbps download (the highest `DownloadAACBitrate` option) is also re-transcoded.
+    func testM4aAt320kbpsTranscodes() {
+        // 320_000 bps * 300s / 8 = 12,000,000 bytes
+        XCTAssertEqual(WatchTransferAudioPolicy.decision(fileType: "m4a", fileSizeBytes: 12_000_000, duration: 300), .transcode)
+    }
 }

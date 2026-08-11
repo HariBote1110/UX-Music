@@ -279,22 +279,25 @@ struct RemoteAPIClient: Sendable {
 
     /// Writes to `destinationURL` (file is replaced if it exists).
     /// Uses `GET /v1/remote/file?id=…` so song keys that are file paths (with `/`) are not mangled in the URL path.
-    /// When `preferOriginalAudio` is true, adds `source=original` so the desktop serves the library file; otherwise the transcoded AAC path is used.
+    /// When `preferOriginalAudio` is true, adds `source=original` so the desktop serves the library file; otherwise the
+    /// transcoded AAC path is used, at `aacBitrateKbps` (128/192/256/320 — see `DownloadAACBitrate`; ignored when
+    /// `preferOriginalAudio` is true).
     func downloadFile(
         songId: String,
         to destinationURL: URL,
         preferOriginalAudio: Bool = true,
+        aacBitrateKbps: Int = DownloadAACBitrate.defaultValue.rawValue,
         progress: @escaping @Sendable (Int64, Int64) -> Void
     ) async throws {
         guard var components = URLComponents(string: baseURLString) else {
             throw URLError(.badURL)
         }
         components.path = "/v1/remote/file"
-        var items = [URLQueryItem(name: "id", value: songId)]
-        if preferOriginalAudio {
-            items.append(URLQueryItem(name: "source", value: "original"))
-        }
-        components.queryItems = items
+        components.queryItems = Self.downloadFileQueryItems(
+            songId: songId,
+            preferOriginalAudio: preferOriginalAudio,
+            aacBitrateKbps: aacBitrateKbps
+        )
         guard let source = components.url else {
             throw URLError(.badURL)
         }
@@ -303,6 +306,19 @@ struct RemoteAPIClient: Sendable {
             to: destinationURL,
             progress: progress
         )
+    }
+
+    /// Pure query-item builder for `downloadFile`'s request, extracted so the URL contract is
+    /// unit-testable without a network stack. `source=original` and `bitrate=` are mutually
+    /// exclusive: the desktop's `/v1/remote/file` only reads `bitrate` on the transcoded (non-original) path.
+    static func downloadFileQueryItems(songId: String, preferOriginalAudio: Bool, aacBitrateKbps: Int) -> [URLQueryItem] {
+        var items = [URLQueryItem(name: "id", value: songId)]
+        if preferOriginalAudio {
+            items.append(URLQueryItem(name: "source", value: "original"))
+        } else {
+            items.append(URLQueryItem(name: "bitrate", value: String(aacBitrateKbps)))
+        }
+        return items
     }
 
     /// Fetches `GET /v1/remote/artwork/?id=…` and writes the image bytes (JPEG/PNG/WebP as served by the desktop).

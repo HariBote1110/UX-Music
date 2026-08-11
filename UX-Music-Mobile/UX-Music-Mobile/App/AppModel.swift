@@ -98,6 +98,16 @@ final class AppModel {
         }
     }
 
+    /// User-selected AAC bitrate for new AAC downloads (Settings → ダウンロード音質), persisted to
+    /// `UserDefaults` so it survives relaunch. Only meaningful when `downloadAudioQuality` requests
+    /// an AAC variant (`.aac`/`.both`); see `downloadSong` and `progress/download-audio-quality.md`.
+    var downloadAACBitrate: DownloadAACBitrate {
+        didSet {
+            guard downloadAACBitrate != oldValue else { return }
+            UserDefaults.standard.set(downloadAACBitrate.rawValue, forKey: AppConstants.downloadAACBitrateKey)
+        }
+    }
+
     /// "For You" server-generated playlists (`GET /v1/remote/situation-playlists`), loaded on
     /// demand via `refreshSituationPlaylists()`. Empty (not an error state) when the desktop
     /// predates the endpoint (404) or hasn't been queried yet.
@@ -159,6 +169,9 @@ final class AppModel {
         }
         downloadAudioQuality = DownloadAudioQuality.restored(
             fromRawValue: UserDefaults.standard.string(forKey: AppConstants.downloadAudioQualityKey)
+        )
+        downloadAACBitrate = DownloadAACBitrate.restored(
+            fromRawValue: UserDefaults.standard.integer(forKey: AppConstants.downloadAACBitrateKey)
         )
         downloadManager = DownloadManager()
         libraryMembershipStore = LibraryMembershipStore()
@@ -452,7 +465,7 @@ final class AppModel {
             let stepSpan = 1.0 / Double(steps.count)
             do {
                 try await withFailover { c in
-                    try await c.downloadFile(songId: song.id, to: tempDest, preferOriginalAudio: step.preferOriginalAudio) { received, total in
+                    try await c.downloadFile(songId: song.id, to: tempDest, preferOriginalAudio: step.preferOriginalAudio, aacBitrateKbps: self.downloadAACBitrate.rawValue) { received, total in
                         Task { @MainActor in
                             if total > 0 {
                                 self.downloadProgress[song.id] = stepBase + stepSpan * (Double(received) / Double(total))

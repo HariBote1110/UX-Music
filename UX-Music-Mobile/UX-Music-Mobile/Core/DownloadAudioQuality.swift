@@ -53,6 +53,39 @@ enum DownloadRequestPlan {
     }
 }
 
+/// User-selectable AAC bitrate for new AAC downloads from the desktop server (`GET
+/// /v1/remote/file?bitrate=…`, only meaningful when `preferOriginalAudio == false`). Persisted on
+/// `AppModel.downloadAACBitrate` (mirrors `DownloadAudioQuality`'s `UserDefaults` pattern). Watch
+/// transfers are unaffected by this setting: `WatchTransferAudioPolicy` already passes ≤192 kbps m4a
+/// through unmodified and re-transcodes anything above that to 128 kbps on-device, so a 256/320 kbps
+/// download still ends up at 128 kbps on the Watch (see `progress/download-audio-quality.md`).
+enum DownloadAACBitrate: Int, CaseIterable, Identifiable, Sendable {
+    case kbps128 = 128
+    case kbps192 = 192
+    case kbps256 = 256
+    case kbps320 = 320
+
+    var id: Int { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .kbps128: return String(localized: "128 kbps")
+        case .kbps192: return String(localized: "192 kbps")
+        case .kbps256: return String(localized: "256 kbps")
+        case .kbps320: return String(localized: "320 kbps")
+        }
+    }
+
+    /// The bitrate used when no valid setting has been persisted yet.
+    static let defaultValue: DownloadAACBitrate = .kbps256
+
+    /// `AppModel.init`'s restore helper: an unknown or missing raw value (e.g. `0` from a never-set
+    /// `UserDefaults` key) falls back to `defaultValue`.
+    static func restored(fromRawValue raw: Int) -> DownloadAACBitrate {
+        DownloadAACBitrate(rawValue: raw) ?? .defaultValue
+    }
+}
+
 /// Decision for `DownloadManager.finalizeDownloadedAACPart`: the desktop server falls back to
 /// serving ORIGINAL bytes when its ffmpeg is unavailable, so a download requested as "AAC" may
 /// actually be the original file's bytes (flac/mp3/etc). Kept as a pure function so the decision

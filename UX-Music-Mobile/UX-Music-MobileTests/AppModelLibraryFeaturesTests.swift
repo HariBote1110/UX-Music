@@ -31,6 +31,7 @@ final class AppModelLibraryFeaturesTests: XCTestCase {
         LibraryFeaturesMockURLProtocol.handler = nil
         UserDefaults.standard.removeObject(forKey: AppConstants.librarySortOrderKey)
         UserDefaults.standard.removeObject(forKey: AppConstants.downloadAudioQualityKey)
+        UserDefaults.standard.removeObject(forKey: AppConstants.downloadAACBitrateKey)
         super.tearDown()
     }
 
@@ -70,6 +71,28 @@ final class AppModelLibraryFeaturesTests: XCTestCase {
         model.downloadAudioQuality = .both
         let reloaded = AppModel()
         XCTAssertEqual(reloaded.downloadAudioQuality, .both)
+    }
+
+    // MARK: - downloadAACBitrate persistence
+
+    func testDownloadAACBitrateDefaultsTo256() {
+        UserDefaults.standard.removeObject(forKey: AppConstants.downloadAACBitrateKey)
+        let model = AppModel()
+        XCTAssertEqual(model.downloadAACBitrate, .kbps256)
+    }
+
+    func testDownloadAACBitratePersistsAcrossInstances() {
+        UserDefaults.standard.removeObject(forKey: AppConstants.downloadAACBitrateKey)
+        let model = AppModel()
+        model.downloadAACBitrate = .kbps320
+        let reloaded = AppModel()
+        XCTAssertEqual(reloaded.downloadAACBitrate, .kbps320)
+    }
+
+    func testDownloadAACBitrateFallsBackTo256ForInvalidPersistedValue() {
+        UserDefaults.standard.set(999, forKey: AppConstants.downloadAACBitrateKey)
+        let model = AppModel()
+        XCTAssertEqual(model.downloadAACBitrate, .kbps256)
     }
 
     // MARK: - refreshSituationPlaylists

@@ -1,6 +1,70 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "128 kbps": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "128 kbps"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "128 kbps"
+          }
+        }
+      }
+    },
+    "192 kbps": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "192 kbps"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "192 kbps"
+          }
+        }
+      }
+    },
+    "256 kbps": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "256 kbps"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "256 kbps"
+          }
+        }
+      }
+    },
+    "320 kbps": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "320 kbps"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "320 kbps"
+          }
+        }
+      }
+    },
     "\"Omit\" adds only the songs already on this device, in order. \"Download\" fetches the missing ones from the desktop first, in the same order, then adds them (songs that fail to download are skipped).": {
       "localizations": {
         "en": {
@@ -93,6 +157,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "AAC (小容量)"
+          }
+        }
+      }
+    },
+    "AAC Bitrate": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AAC Bitrate"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AAC ビットレート"
           }
         }
       }
@@ -1421,6 +1501,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "未保存の曲の扱い"
+          }
+        }
+      }
+    },
+    "Higher bitrates sound better but take up more space. Apple Watch transfers always optimise to 128 kbps regardless of this setting.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Higher bitrates sound better but take up more space. Apple Watch transfers always optimise to 128 kbps regardless of this setting."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ビットレートが高いほど音質は良くなりますが、容量も増えます。Apple Watch への転送は、この設定にかかわらず常に128kbpsに最適化されます。"
           }
         }
       }

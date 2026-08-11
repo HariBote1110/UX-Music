@@ -106,6 +106,24 @@ final class RemoteAPIClientTests: XCTestCase {
         XCTAssertTrue(u.query?.contains("id=") == true)
     }
 
+    // MARK: - RemoteAPIClient.downloadFileQueryItems (real production code, not re-derived in the test)
+
+    func testDownloadFileQueryItemsOriginalOmitsBitrateAndAddsSource() {
+        let items = RemoteAPIClient.downloadFileQueryItems(songId: "track-1", preferOriginalAudio: true, aacBitrateKbps: 256)
+        XCTAssertEqual(items, [
+            URLQueryItem(name: "id", value: "track-1"),
+            URLQueryItem(name: "source", value: "original"),
+        ])
+    }
+
+    func testDownloadFileQueryItemsAACIncludesBitrateNotSource() {
+        let items = RemoteAPIClient.downloadFileQueryItems(songId: "track-1", preferOriginalAudio: false, aacBitrateKbps: 192)
+        XCTAssertEqual(items, [
+            URLQueryItem(name: "id", value: "track-1"),
+            URLQueryItem(name: "bitrate", value: "192"),
+        ])
+    }
+
     func testDecodeRemoteLyricsPayload() throws {
         let json = Data(#"{"found":true,"type":"lrc","content":"[00:01.00]Hi"}"#.utf8)
         let p = try JSONDecoder().decode(RemoteLyricsPayload.self, from: json)
