@@ -166,6 +166,7 @@ struct TVConnectedView: View {
     @ObservedObject var model: TVAppModel
     @StateObject private var browseModel: TVBrowseModel
     @StateObject private var playbackController: TVPlaybackController
+    private let player: MusicPlayerService
     private let client: RemoteAPIClient
 
     init(model: TVAppModel) {
@@ -174,9 +175,11 @@ struct TVConnectedView: View {
         let baseURL = "http://\(config.activeHost):\(config.port)"
         let apiClient = RemoteAPIClient(baseURLString: baseURL, token: config.token)
         self.client = apiClient
+        let sharedPlayer = MusicPlayerService()
         _browseModel = StateObject(wrappedValue: TVBrowseModel(client: apiClient))
+        player = sharedPlayer
         _playbackController = StateObject(
-            wrappedValue: TVPlaybackController(client: apiClient, player: MusicPlayerService())
+            wrappedValue: TVPlaybackController(client: apiClient, player: sharedPlayer)
         )
     }
 
@@ -184,6 +187,7 @@ struct TVConnectedView: View {
         TVBrowseView(
             browseModel: browseModel,
             playbackController: playbackController,
+            player: player,
             client: client,
             onSignOut: { model.forgetPairing() }
         )

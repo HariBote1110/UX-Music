@@ -11,8 +11,13 @@ import SwiftUI
 struct TVBrowseView: View {
     @ObservedObject var browseModel: TVBrowseModel
     @ObservedObject var playbackController: TVPlaybackController
+    let player: MusicPlayerService
     let client: RemoteAPIClient
     let onSignOut: () -> Void
+
+    /// Set to `true` whenever playback starts from the browse UI (Phase 2 "enter automatically"
+    /// rule), and can also be flipped by the focusable Now Playing affordance below.
+    @State private var nowPlayingPresented = false
 
     var body: some View {
         NavigationStack {
@@ -23,8 +28,20 @@ struct TVBrowseView: View {
                         Button(String(localized: "tv.browse.signOut"), action: onSignOut)
                     }
                 }
+                .safeAreaInset(edge: .bottom) {
+                    if player.currentSong != nil {
+                        TVNowPlayingAffordance(player: player, client: client) {
+                            nowPlayingPresented = true
+                        }
+                        .padding(.horizontal, 64)
+                        .padding(.bottom, 24)
+                    }
+                }
         }
         .task { await browseModel.reload() }
+        .fullScreenCover(isPresented: $nowPlayingPresented) {
+            TVNowPlayingView(player: player, client: client)
+        }
     }
 
     @ViewBuilder
@@ -69,6 +86,41 @@ struct TVBrowseView: View {
     private func playFirstTrack(of album: Album) async {
         guard let first = album.songs.first else { return }
         await playbackController.play(first, queue: album.songs)
+        // Auto-enter Now Playing when playback starts from the browse UI (Phase 2 §1).
+        nowPlayingPresented = true
+    }
+}
+
+/// Small focusable bar showing what's currently playing, with a tap target that opens the
+/// full-screen Now Playing view — the "focusable now-playing affordance" entry point from the
+/// Phase 2 plan, alongside the automatic-on-play-start entry above.
+private struct TVNowPlayingAffordance: View {
+    let player: MusicPlayerService
+    let client: RemoteAPIClient
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 16) {
+                TVArtworkImage(artworkId: player.currentSong?.artworkId ?? "", client: client)
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(player.currentSong?.title ?? "")
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(player.currentSong?.artist ?? "")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+            }
+            .padding(16)
+        }
+        .buttonStyle(.card)
+        .accessibilityLabel(String(localized: "tv.nowPlaying.affordance"))
     }
 }
 
