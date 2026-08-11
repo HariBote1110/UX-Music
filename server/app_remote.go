@@ -75,6 +75,7 @@ func NewLANHTTPHandler(app *App) http.Handler {
 	registerPairingRoutes(mux)
 	registerRemoteRoutes(mux, ls)
 	registerSyncRoutes(mux, app)
+	registerLocalRoutes(mux)
 	return corsMiddleware(deviceAuthMiddleware(mux))
 }
 

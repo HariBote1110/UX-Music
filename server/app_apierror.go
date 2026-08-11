@@ -86,7 +86,9 @@ func deviceAuthMiddleware(next http.Handler) http.Handler {
 }
 
 func isPublicLANEndpoint(path string) bool {
-	return path == "/v1/identity" || strings.HasPrefix(path, "/v1/pairing/")
+	// /v1/local/shutdown is not authenticated by device token; it is gated
+	// instead by loopback remote address + headless mode (see app_local.go).
+	return path == "/v1/identity" || strings.HasPrefix(path, "/v1/pairing/") || path == localShutdownPath
 }
 
 // isMediaQueryTokenEndpoint reports whether the given path may accept a

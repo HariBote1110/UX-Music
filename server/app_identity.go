@@ -36,8 +36,20 @@ func identityHandler(w http.ResponseWriter, r *http.Request) {
 		MinCompatibleProtocolVersion: syncMinCompatibleProtocolVersion,
 		SchemaVersion:                syncSchemaVersion,
 		Capabilities:                 syncCapabilities(),
-		Roles:                        info.Roles,
+		Roles:                        append(append([]string{}, info.Roles...), currentServerModeRole()),
 		Negotiation:                  syncNegotiationFromRequest(r),
 		Extensions:                   map[string]interface{}{},
 	})
+}
+
+// currentServerModeRole returns the "headless" or "gui" role advertised in
+// /v1/identity's roles list, reflecting the process-wide mode set via
+// SetServerMode. This is deliberately kept separate from
+// syncMDNSAdvertiseInfo's Roles (mDNS TXT record), which stay
+// capability-only for backward compatibility with existing peers.
+func currentServerModeRole() string {
+	if CurrentServerMode() == ModeHeadless {
+		return ModeHeadless
+	}
+	return ModeGUI
 }
