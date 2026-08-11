@@ -1,7 +1,7 @@
 # Apple TV 対応・PC サーバー運用化 計画書
 
 作成: 2026-08-11 ／ ステータス: 承認待ち → 実装順は Phase 0 から
-関連: `progress/lan-api-v1.md`（LAN API v1 SSoT）、`markdown/sync-*.md`（Sync 各計画）
+関連: `progress/lan-api-v1.md`（LAN API v1 SSoT）、`markdown/archive/sync-*.md`（Sync 各計画・アーカイブ済み）
 
 ## 0. ゴールと全体像
 

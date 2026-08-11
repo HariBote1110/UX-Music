@@ -36,9 +36,10 @@
 
 ## 📚 ドキュメント
 
-- **[技術仕様書 (DOCUMENT.md)](./DOCUMENT.md)**: ファイル構成や主要な関数の役割など、コードの全体像を解説しています。
-- **[開発への貢献 (CONTRIBUTING.md)](./CONTRIBUTING.md)**: 技術スタックや環境構築の手順など、開発に参加したい方向けの情報です。
-- **[機能詳細 (FEATURES.md)](./FEATURES.md)**: Light Flightモードなど、各機能の目的や詳細を解説しています。
-- **[開発ロードマップ (ROADMAP.md)](./ROADMAP.md)**: 今後の追加機能や改善計画をまとめています。
+- **[開発への貢献 (contributing.md)](./markdown/contributing.md)**: 技術スタックや環境構築の手順など、開発に参加したい方向けの情報です。
+- **[機能詳細 (features.md)](./markdown/features.md)**: Light Flightモードなど、各機能の目的や詳細を解説しています。
+- **[開発ロードマップ (roadmap.md)](./markdown/roadmap.md)**: 今後の追加機能や改善計画をまとめています。
+- **[意思決定記録 (progress/)](./progress/INDEX.md)**: 設計判断・技術選定の記録（最新の仕様の SSoT）。
+- 旧 Electron 期の技術仕様書は [markdown/archive/document.md](./markdown/archive/document.md) にアーカイブ済みです。
 - **[既知の問題 (ISSUES.md)](./ISSUES.md)**: 現在確認されている問題点やバグの一覧です。
 - **[開発進捗ログ (PROGRESS.md)](./PROGRESS.md)**: これまでの開発の経緯を時系列で記録しています。
