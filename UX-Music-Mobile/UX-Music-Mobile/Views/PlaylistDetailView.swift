@@ -18,13 +18,6 @@ struct PlaylistDetailView: View {
         return model.resolvedSongs(for: pl)
     }
 
-    private var canShowWatchTransferMenu: Bool {
-        WatchTransferMenuPolicy.canShowMenu(
-            isWatchConnectivitySupported: WCSession.isSupported(),
-            isPaired: model.watchTransferBridge.isPaired
-        )
-    }
-
     var body: some View {
         LibraryBottomBleed { bottomInset in
             listBody
@@ -98,16 +91,7 @@ struct PlaylistDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack {
                     EditButton()
-                    if canShowWatchTransferMenu {
-                        Menu {
-                            WatchTransferBulkMenuItem(
-                                title: "Transfer Playlist to Apple Watch",
-                                songs: songs
-                            )
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                        }
-                    }
+                    WatchTransferPlaylistMenuButton(bridge: model.watchTransferBridge, songs: songs)
                     Button {
                         showAddSongs = true
                     } label: {
@@ -131,6 +115,35 @@ struct PlaylistDetailView: View {
         let queue = downloaded.map { $0.withPath(model.downloadManager.localPathString(songId: $0.id)) }
         Task {
             await model.player.play(localSong, newQueue: queue)
+        }
+    }
+}
+
+// MARK: - Watch transfer toolbar button
+
+/// The "…" toolbar menu that wraps `WatchTransferBulkMenuItem` for this playlist. Kept as its own
+/// `@ObservedObject`-backed view (rather than a `canShowWatchTransferMenu` computed property reading
+/// `model.watchTransferBridge.isPaired` straight from `PlaylistDetailView`'s `@Observable`-driven
+/// body) for the same reason as `WatchTransferQueueSection`/`WatchTransferSongMenuItemBody` — a
+/// nested `ObservableObject`'s `@Published` changes do not invalidate an `@Observable` view. See
+/// `progress/watch-transfer-ui-observation.md`.
+private struct WatchTransferPlaylistMenuButton: View {
+    @ObservedObject var bridge: WatchTransferBridge
+    let songs: [Song]
+
+    var body: some View {
+        if WatchTransferMenuPolicy.canShowMenu(
+            isWatchConnectivitySupported: WCSession.isSupported(),
+            isPaired: bridge.isPaired
+        ) {
+            Menu {
+                WatchTransferBulkMenuItem(
+                    title: "Transfer Playlist to Apple Watch",
+                    songs: songs
+                )
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
         }
     }
 }

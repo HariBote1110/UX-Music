@@ -166,53 +166,7 @@ struct SettingsScreen: View {
                     Text("DISCOVERY")
                 }
 
-                Section {
-                    HStack {
-                        Text("Connection Status")
-                        Spacer()
-                        Text(watchActivationStatusText(model.watchTransferBridge.activationStatus))
-                            .foregroundStyle(watchActivationStatusColor(model.watchTransferBridge.activationStatus))
-                    }
-                    HStack {
-                        Text("Pairing Status")
-                        Spacer()
-                        Text(model.watchTransferBridge.isPaired ? "Paired" : "Not Paired")
-                            .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("Watch App")
-                        Spacer()
-                        Text(model.watchTransferBridge.isWatchAppInstalled ? "Installed" : "Not Installed")
-                            .foregroundStyle(.secondary)
-                    }
-                    if model.watchTransferBridge.queue.isEmpty {
-                        Text("No transferred songs yet. Long-press a song in your local library and choose \u{201C}Transfer to Apple Watch\u{201D}.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        let summary = WatchTransferQueueSummary.aggregate(items: model.watchTransferBridge.queue)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(String(format: String(localized: "Completed %lld of %lld"), summary.completedCount, summary.totalCount))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                            if summary.isActive {
-                                ProgressView(value: summary.meanFraction)
-                            }
-                        }
-                        ForEach(model.watchTransferBridge.queue) { item in
-                            HStack {
-                                Text(item.title)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text(watchTransferStatusText(item.phase))
-                                    .font(.footnote)
-                                    .foregroundStyle(watchTransferStatusColor(item.phase))
-                            }
-                        }
-                    }
-                } header: {
-                    Text("APPLE WATCH")
-                }
+                WatchTransferQueueSection(bridge: model.watchTransferBridge)
 
                 Section {
                     Picker("Download Quality", selection: Bindable(model).downloadAudioQuality) {
@@ -441,45 +395,6 @@ struct SettingsScreen: View {
                     await MainActor.run { savedFlash = false }
                 }
             }
-        }
-    }
-
-    private func watchActivationStatusText(_ status: WatchSessionActivationStatus) -> String {
-        switch status {
-        case .notActivated: return String(localized: "Not Connected")
-        case .activating: return String(localized: "Connecting…")
-        case .activated: return String(localized: "Connected")
-        case .failed(let message):
-            return String(format: String(localized: "Connection failed: %@"), message)
-        }
-    }
-
-    private func watchActivationStatusColor(_ status: WatchSessionActivationStatus) -> Color {
-        switch status {
-        case .activated: return .green
-        case .failed: return .red
-        default: return .secondary
-        }
-    }
-
-    private func watchTransferStatusText(_ phase: WatchTransferQueueItem.Phase) -> String {
-        switch phase {
-        case .downloading: return String(localized: "Downloading…")
-        case .waiting: return String(localized: "Waiting")
-        case .preparing: return String(localized: "Converting…")
-        case .sending(let fraction):
-            return String(format: String(localized: "Sending… %d%%"), Int((fraction * 100).rounded()))
-        case .sent: return String(localized: "Sent")
-        case .failed(let message):
-            return String(format: String(localized: "Failed: %@"), message)
-        }
-    }
-
-    private func watchTransferStatusColor(_ phase: WatchTransferQueueItem.Phase) -> Color {
-        switch phase {
-        case .sent: return .green
-        case .failed: return .red
-        default: return .secondary
         }
     }
 
