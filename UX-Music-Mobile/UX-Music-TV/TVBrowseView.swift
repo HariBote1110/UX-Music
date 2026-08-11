@@ -11,6 +11,8 @@ import SwiftUI
 struct TVBrowseView: View {
     @ObservedObject var browseModel: TVBrowseModel
     @ObservedObject var playbackController: TVPlaybackController
+    @ObservedObject var relayModel: TVRelayModel
+    @ObservedObject var relayPlaybackController: TVRelayPlaybackController
     let player: MusicPlayerService
     let client: RemoteAPIClient
     let onSignOut: () -> Void
@@ -18,6 +20,8 @@ struct TVBrowseView: View {
     /// Set to `true` whenever playback starts from the browse UI (Phase 2 "enter automatically"
     /// rule), and can also be flipped by the focusable Now Playing affordance below.
     @State private var nowPlayingPresented = false
+    /// Set to `true` when the user selects the relay shelf entry (Phase 3-3 receiver).
+    @State private var relayPresented = false
 
     var body: some View {
         NavigationStack {
@@ -42,6 +46,25 @@ struct TVBrowseView: View {
         .fullScreenCover(isPresented: $nowPlayingPresented) {
             TVNowPlayingView(player: player, client: client)
         }
+        .fullScreenCover(isPresented: $relayPresented) {
+            TVRelayBannerView(relayModel: relayModel, relayPlaybackController: relayPlaybackController) {
+                relayPresented = false
+            }
+        }
+        // If the host stops relaying while the banner is up (e.g. the PC operator paused or
+        // closed the YouTube embed), exit the banner rather than leaving a dead stream on screen.
+        .onChange(of: relayModel.isAvailable) { _, isAvailable in
+            if relayPresented && !isAvailable {
+                relayPresented = false
+            }
+        }
+    }
+
+    /// Pauses local playback and switches to the host's YouTube relay stream (Phase 3-3 §3-3).
+    private func playRelay() {
+        player.stop()
+        relayPlaybackController.start()
+        relayPresented = true
     }
 
     @ViewBuilder
@@ -61,6 +84,15 @@ struct TVBrowseView: View {
     private var shelves: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 48) {
+                if relayModel.isAvailable {
+                    TVShelfSection(title: String(localized: "tv.browse.relay")) {
+                        TVRelayCard(
+                            title: relayModel.title,
+                            thumbnailURLString: relayModel.thumbnail,
+                            onSelect: playRelay
+                        )
+                    }
+                }
                 if !browseModel.albums.isEmpty {
                     TVShelfSection(title: String(localized: "tv.browse.albums")) {
                         ForEach(browseModel.albums) { album in
@@ -227,6 +259,79 @@ struct TVArtworkImage: View {
             }
         }
         .clipped()
+    }
+}
+
+/// Shelf card for the Phase 3-3 relay entry — thumbnail loaded directly from the YouTube CDN URL
+/// the host reports (public internet, no LAN auth needed), not through `TVArtworkImage`/
+/// `RemoteAPIClient.artworkURL` since this isn't a library artwork id.
+private struct TVRelayCard: View {
+    let title: String
+    let thumbnailURLString: String
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: 8) {
+                AsyncImage(url: URL(string: thumbnailURLString)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    default:
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12).fill(.secondary.opacity(0.2))
+                            Image(systemName: "play.tv")
+                                .font(.system(size: 40))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .frame(width: 220, height: 220)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipped()
+                Text(title.isEmpty ? String(localized: "tv.browse.relay") : title)
+                    .font(.headline)
+                    .lineLimit(1)
+            }
+            .frame(width: 220)
+        }
+        .buttonStyle(.card)
+    }
+}
+
+/// Broadcast-type banner shown while relay playback is active — per the plan the PC (Host) is the
+/// operator, so this deliberately has no seek/skip controls, only exit. Selecting back/menu on the
+/// tvOS remote dismisses this `fullScreenCover`, which triggers `onDisappear` and stops the stream.
+private struct TVRelayBannerView: View {
+    @ObservedObject var relayModel: TVRelayModel
+    @ObservedObject var relayPlaybackController: TVRelayPlaybackController
+    let onExit: () -> Void
+
+    var body: some View {
+        VStack(spacing: 32) {
+            AsyncImage(url: URL(string: relayModel.thumbnail)) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().aspectRatio(contentMode: .fit)
+                default:
+                    Image(systemName: "play.tv")
+                        .font(.system(size: 96))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxHeight: 400)
+            Text(String(localized: "tv.relay.banner.subtitle"))
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            Text(relayModel.title)
+                .font(.title)
+                .multilineTextAlignment(.center)
+            Button(String(localized: "tv.relay.banner.exit"), action: onExit)
+        }
+        .padding(64)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.black)
+        .onDisappear { relayPlaybackController.stop() }
     }
 }
 

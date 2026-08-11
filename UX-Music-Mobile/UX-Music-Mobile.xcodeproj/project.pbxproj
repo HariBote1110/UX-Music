@@ -157,6 +157,7 @@
 		1D8A719303704445B5C53062 /* TVRemoteControlServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE173A685C64FF091AF7232 /* TVRemoteControlServer.swift */; };
 		D010C16C7B764EE89B6147A1 /* TVControlTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C7E5CE251A04188A6BABB91 /* TVControlTokenStore.swift */; };
 		06B203126988412C8F396209 /* TVRelayModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B993EC35DB4C3EAD56E051 /* TVRelayModel.swift */; };
+		5D8D6B8341084DC097DD841B /* TVRelayPlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 946C13E309B94F8DB2FFCDE6 /* TVRelayPlaybackController.swift */; };
 		B6B0D1C5732047AF83053627 /* TVPlaybackCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D550767CE3F4A9AB7FBCFBC /* TVPlaybackCache.swift */; };
 		AA3AD98E60314CAD8492A8F0 /* TVPlaybackCacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34DF86046C324670807966A9 /* TVPlaybackCacheStore.swift */; };
 		49A388166BBE4F1AAB7BF888 /* TVBrowseModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82FC6B518F2444E3A62181A5 /* TVBrowseModel.swift */; };
@@ -388,6 +389,7 @@
 		8CE173A685C64FF091AF7232 /* TVRemoteControlServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRemoteControlServer.swift; sourceTree = "<group>"; };
 		2C7E5CE251A04188A6BABB91 /* TVControlTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVControlTokenStore.swift; sourceTree = "<group>"; };
 		E4B993EC35DB4C3EAD56E051 /* TVRelayModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRelayModel.swift; sourceTree = "<group>"; };
+		946C13E309B94F8DB2FFCDE6 /* TVRelayPlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRelayPlaybackController.swift; sourceTree = "<group>"; };
 		2D550767CE3F4A9AB7FBCFBC /* TVPlaybackCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlaybackCache.swift; sourceTree = "<group>"; };
 		34DF86046C324670807966A9 /* TVPlaybackCacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlaybackCacheStore.swift; sourceTree = "<group>"; };
 		82FC6B518F2444E3A62181A5 /* TVBrowseModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVBrowseModel.swift; sourceTree = "<group>"; };
@@ -683,6 +685,7 @@
 				8CE173A685C64FF091AF7232 /* TVRemoteControlServer.swift */,
 				2C7E5CE251A04188A6BABB91 /* TVControlTokenStore.swift */,
 				E4B993EC35DB4C3EAD56E051 /* TVRelayModel.swift */,
+				946C13E309B94F8DB2FFCDE6 /* TVRelayPlaybackController.swift */,
 				2D550767CE3F4A9AB7FBCFBC /* TVPlaybackCache.swift */,
 				34DF86046C324670807966A9 /* TVPlaybackCacheStore.swift */,
 				82FC6B518F2444E3A62181A5 /* TVBrowseModel.swift */,
@@ -1068,6 +1071,7 @@
 				1D8A719303704445B5C53062 /* TVRemoteControlServer.swift in Sources */,
 				D010C16C7B764EE89B6147A1 /* TVControlTokenStore.swift in Sources */,
 				06B203126988412C8F396209 /* TVRelayModel.swift in Sources */,
+				5D8D6B8341084DC097DD841B /* TVRelayPlaybackController.swift in Sources */,
 				B6B0D1C5732047AF83053627 /* TVPlaybackCache.swift in Sources */,
 				AA3AD98E60314CAD8492A8F0 /* TVPlaybackCacheStore.swift in Sources */,
 				49A388166BBE4F1AAB7BF888 /* TVBrowseModel.swift in Sources */,

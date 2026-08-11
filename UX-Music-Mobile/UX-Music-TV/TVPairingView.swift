@@ -166,6 +166,8 @@ struct TVConnectedView: View {
     @ObservedObject var model: TVAppModel
     @StateObject private var browseModel: TVBrowseModel
     @StateObject private var playbackController: TVPlaybackController
+    @StateObject private var relayModel: TVRelayModel
+    @StateObject private var relayPlaybackController: TVRelayPlaybackController
     private let player: MusicPlayerService
     private let client: RemoteAPIClient
     private let remoteControlServer: TVRemoteControlServer
@@ -182,6 +184,9 @@ struct TVConnectedView: View {
         _playbackController = StateObject(
             wrappedValue: TVPlaybackController(client: apiClient, player: sharedPlayer)
         )
+        // Phase 3-3 (TV side): YouTube LAN relay reception — see `progress/tvos-relay-reception.md`.
+        _relayModel = StateObject(wrappedValue: TVRelayModel(client: apiClient))
+        _relayPlaybackController = StateObject(wrappedValue: TVRelayPlaybackController(client: apiClient))
         // Phase 3-2: report natural track completions to the host for playcount convergence.
         let reporter = TVPlayEventReporter(client: apiClient)
         sharedPlayer.onTrackNaturallyFinished = { song in
@@ -202,12 +207,21 @@ struct TVConnectedView: View {
         TVBrowseView(
             browseModel: browseModel,
             playbackController: playbackController,
+            relayModel: relayModel,
+            relayPlaybackController: relayPlaybackController,
             player: player,
             client: client,
             onSignOut: { model.forgetPairing() }
         )
-        .task { remoteControlServer.start() }
-        .onDisappear { remoteControlServer.stop() }
+        .task {
+            remoteControlServer.start()
+            relayModel.startPolling()
+        }
+        .onDisappear {
+            remoteControlServer.stop()
+            relayModel.stopPolling()
+            relayPlaybackController.stop()
+        }
     }
 }
 
