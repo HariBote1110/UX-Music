@@ -80,3 +80,57 @@ Watchアプリを開いたままにする・長時間の一括転送では「設
 frontmost状態に依存しない転送手段（Watch自身がバックグラウンド`URLSession`でLAN経由
 直接ダウンロードする方式）が本来の恒久対策であり、
 `watch_transfer_research/notes/watch-direct-download-plan.md`に計画がある（未着手）。
+
+## 実機クラッシュ報告への対処（クラッシュ監査）
+
+### 報告
+
+実機で"Thread 1: abort with payload or reason"により落ちる（ログなし）。監査で
+最有力候補1件とハードニング項目2件を洗い出した。
+
+### 最有力候補: `WatchTransferRestoreReconciliation.plan`の重複キーtrap
+
+`Dictionary(uniqueKeysWithValues:)`は同じキーが2回渡されるとtrapする。`plan`が
+受け取る`outstanding`（`WCSession.outstandingFileTransfers`由来）に同一曲idの
+エントリが複数含まれうる場合、これがそのままクラッシュの引き金になる。
+
+シミュレータでは`WCSession.outstandingFileTransfers`が実機のような複雑な状態
+（再起動をまたいだ再送と進行中転送の競合）を再現しないため、実機専用の再現条件だった
+（テストは`plan`に直接ダブりを渡すことで、実際の`WCSession`状態を再現せずに検証している）。
+
+**重複排除ルール**: 同一idが複数ある場合は「最後に見たエントリ（配列内で後ろにある方）」
+を採用する。これは`WatchTransferBridge`側の`outstandingTransfersById[songId] = transfer`
+という既存の代入（forループの後勝ち）と自然に一致するルールを選んだ。
+
+**対処箇所（2箇所）**:
+1. `WatchTransferBridge.restorePersistedQueueIfNeeded`（境界）:
+   `outstandingTransfersById`の構築完了後にそこから`outstanding`配列を導出するよう変更
+   （以前は同じforループ内で両方を別々に積んでおり、`outstandingTransfersById`はdedupされる
+   一方`outstanding`配列はされない、という不整合があった）。
+2. `WatchTransferRestoreReconciliation.plan`（純粋関数）:
+   `Dictionary(uniqueKeysWithValues:)`を`Dictionary(_:uniquingKeysWith:)`に変更し、
+   将来別の呼び出し元がdedupを怠ってもtrapしないようにした。
+
+ユーザーの実機コンソール出力での確認待ち。
+
+### ハードニング1: `WKExtension.shared()`起動時クラッシュ（撤回で解消・上記「対処1」参照）
+
+同じ監査の過程で、frontmost延長の試み自体が実機クラッシュの原因であることが
+コンソール出力から確定した。詳細は上の「対処1（撤回済み）」節を参照。
+
+### ハードニング2: 「No longer downloaded」の翻訳欠落
+
+`plan`の`.failed`分岐が`String(localized: "No longer downloaded")`を参照していたが、
+`Localizable.xcstrings`に対応する翻訳がなかった（実行時はキー文字列がそのまま
+UIに表示される、ローカライズとしての機能不全）。en/jaの翻訳を追加した。
+`LocalizationCatalogCompletenessTests`は`localizations`キー自体が存在しないエントリを
+`entry.localizations`が`nil`になる形で既に検出できる実装だったため、テスト自体の
+強化は不要と判断した。
+
+### ハードニング3: transcoderの`resumeOnce`ガード
+
+`WatchAudioTranscoder.pump`のコメントは「全resumeパスがpumpQueue上で直列実行される」
+としていたが、`writer.finishWriting`の完了ハンドラはAVFoundation内部キューで走るため
+誤り。現状`markAsFinished`後はpumpの以降のコールバックが呼ばれないため実際の二重resumeは
+発生しないが、`didResume`フラグを`OSAllocatedUnfairLock`で保護し、コメントも実態に
+合わせて修正した（挙動は変更なし）。
