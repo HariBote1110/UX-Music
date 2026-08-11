@@ -150,6 +150,9 @@
 		F28D0A8D34714DF08870674D /* TVPlaylistQueueBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBB6C305AD5141EBB7A3A494 /* TVPlaylistQueueBuilder.swift */; };
 		A4A755EA9FD14813B315E120 /* TVPlayEventReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B020DF1CDF4842BB9120ED85 /* TVPlayEventReporter.swift */; };
 		E70BD7A91055429F8E8E8464 /* TVPlayEventPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 837D5ADF76294D3797AF116D /* TVPlayEventPolicy.swift */; };
+		C4AB447EF0A94A8E87EC3F1E /* TVRemoteCommandHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FC8A7492412458A8BA35435 /* TVRemoteCommandHandler.swift */; };
+		32B945B814C345B18FCED8AE /* TVRemoteHTTPMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33B05FEBBDE14F94B2FE988B /* TVRemoteHTTPMessage.swift */; };
+		1D8A719303704445B5C53062 /* TVRemoteControlServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE173A685C64FF091AF7232 /* TVRemoteControlServer.swift */; };
 		B6B0D1C5732047AF83053627 /* TVPlaybackCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D550767CE3F4A9AB7FBCFBC /* TVPlaybackCache.swift */; };
 		AA3AD98E60314CAD8492A8F0 /* TVPlaybackCacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34DF86046C324670807966A9 /* TVPlaybackCacheStore.swift */; };
 		49A388166BBE4F1AAB7BF888 /* TVBrowseModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82FC6B518F2444E3A62181A5 /* TVBrowseModel.swift */; };
@@ -159,6 +162,8 @@
 		C8D4DEA98F6D4789B2E1915D /* TVPrefetchPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B3AFD84BA742868B45B120 /* TVPrefetchPlannerTests.swift */; };
 		C84FED80534F43ED986FC173 /* TVPlaylistQueueBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0124DCE695BF4C7EA63EFB8A /* TVPlaylistQueueBuilderTests.swift */; };
 		23FDAA2E096745508B66605A /* TVPlayEventPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 568E1835201A440F8DACF340 /* TVPlayEventPolicyTests.swift */; };
+		4F50BF1B558D4B179087337E /* TVRemoteCommandHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03AC7CEBB2DF4300881F17AF /* TVRemoteCommandHandlerTests.swift */; };
+		EC9BA0B9A4D14EF999E2CD3D /* TVRemoteHTTPMessageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24813B4277694D7BA557A10B /* TVRemoteHTTPMessageTests.swift */; };
 		DBC591AC0E6B4B9F87F6A23E /* TVPlaybackCachePlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B58148FC2DE8459CAFF9072F /* TVPlaybackCachePlanTests.swift */; };
 		F48971AC1E8245799D2E6410 /* TVPairingReducerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F385E0974C2445A9A2DE832 /* TVPairingReducerTests.swift */; };
 		2EC9A21CD9E645A7A54EAE8B /* TVServerConfigStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B317F60E689E403194490C85 /* TVServerConfigStoreTests.swift */; };
@@ -370,6 +375,9 @@
 		DBB6C305AD5141EBB7A3A494 /* TVPlaylistQueueBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlaylistQueueBuilder.swift; sourceTree = "<group>"; };
 		B020DF1CDF4842BB9120ED85 /* TVPlayEventReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlayEventReporter.swift; sourceTree = "<group>"; };
 		837D5ADF76294D3797AF116D /* TVPlayEventPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlayEventPolicy.swift; sourceTree = "<group>"; };
+		5FC8A7492412458A8BA35435 /* TVRemoteCommandHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRemoteCommandHandler.swift; sourceTree = "<group>"; };
+		33B05FEBBDE14F94B2FE988B /* TVRemoteHTTPMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRemoteHTTPMessage.swift; sourceTree = "<group>"; };
+		8CE173A685C64FF091AF7232 /* TVRemoteControlServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRemoteControlServer.swift; sourceTree = "<group>"; };
 		2D550767CE3F4A9AB7FBCFBC /* TVPlaybackCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlaybackCache.swift; sourceTree = "<group>"; };
 		34DF86046C324670807966A9 /* TVPlaybackCacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlaybackCacheStore.swift; sourceTree = "<group>"; };
 		82FC6B518F2444E3A62181A5 /* TVBrowseModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVBrowseModel.swift; sourceTree = "<group>"; };
@@ -379,6 +387,8 @@
 		93B3AFD84BA742868B45B120 /* TVPrefetchPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPrefetchPlannerTests.swift; sourceTree = "<group>"; };
 		0124DCE695BF4C7EA63EFB8A /* TVPlaylistQueueBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlaylistQueueBuilderTests.swift; sourceTree = "<group>"; };
 		568E1835201A440F8DACF340 /* TVPlayEventPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlayEventPolicyTests.swift; sourceTree = "<group>"; };
+		03AC7CEBB2DF4300881F17AF /* TVRemoteCommandHandlerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRemoteCommandHandlerTests.swift; sourceTree = "<group>"; };
+		24813B4277694D7BA557A10B /* TVRemoteHTTPMessageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRemoteHTTPMessageTests.swift; sourceTree = "<group>"; };
 		B58148FC2DE8459CAFF9072F /* TVPlaybackCachePlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlaybackCachePlanTests.swift; sourceTree = "<group>"; };
 		6F385E0974C2445A9A2DE832 /* TVPairingReducerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPairingReducerTests.swift; sourceTree = "<group>"; };
 		B317F60E689E403194490C85 /* TVServerConfigStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVServerConfigStoreTests.swift; sourceTree = "<group>"; };
@@ -654,6 +664,9 @@
 				DBB6C305AD5141EBB7A3A494 /* TVPlaylistQueueBuilder.swift */,
 				B020DF1CDF4842BB9120ED85 /* TVPlayEventReporter.swift */,
 				837D5ADF76294D3797AF116D /* TVPlayEventPolicy.swift */,
+				5FC8A7492412458A8BA35435 /* TVRemoteCommandHandler.swift */,
+				33B05FEBBDE14F94B2FE988B /* TVRemoteHTTPMessage.swift */,
+				8CE173A685C64FF091AF7232 /* TVRemoteControlServer.swift */,
 				2D550767CE3F4A9AB7FBCFBC /* TVPlaybackCache.swift */,
 				34DF86046C324670807966A9 /* TVPlaybackCacheStore.swift */,
 				82FC6B518F2444E3A62181A5 /* TVBrowseModel.swift */,
@@ -677,6 +690,8 @@
 				93B3AFD84BA742868B45B120 /* TVPrefetchPlannerTests.swift */,
 				0124DCE695BF4C7EA63EFB8A /* TVPlaylistQueueBuilderTests.swift */,
 				568E1835201A440F8DACF340 /* TVPlayEventPolicyTests.swift */,
+				03AC7CEBB2DF4300881F17AF /* TVRemoteCommandHandlerTests.swift */,
+				24813B4277694D7BA557A10B /* TVRemoteHTTPMessageTests.swift */,
 				B58148FC2DE8459CAFF9072F /* TVPlaybackCachePlanTests.swift */,
 				9B1DF82EC02B47E3BB01405E /* TVAmbientStateMachineTests.swift */,
 			);
@@ -1028,6 +1043,9 @@
 				F28D0A8D34714DF08870674D /* TVPlaylistQueueBuilder.swift in Sources */,
 				A4A755EA9FD14813B315E120 /* TVPlayEventReporter.swift in Sources */,
 				E70BD7A91055429F8E8E8464 /* TVPlayEventPolicy.swift in Sources */,
+				C4AB447EF0A94A8E87EC3F1E /* TVRemoteCommandHandler.swift in Sources */,
+				32B945B814C345B18FCED8AE /* TVRemoteHTTPMessage.swift in Sources */,
+				1D8A719303704445B5C53062 /* TVRemoteControlServer.swift in Sources */,
 				B6B0D1C5732047AF83053627 /* TVPlaybackCache.swift in Sources */,
 				AA3AD98E60314CAD8492A8F0 /* TVPlaybackCacheStore.swift in Sources */,
 				49A388166BBE4F1AAB7BF888 /* TVBrowseModel.swift in Sources */,
@@ -1066,6 +1084,8 @@
 				C8D4DEA98F6D4789B2E1915D /* TVPrefetchPlannerTests.swift in Sources */,
 				C84FED80534F43ED986FC173 /* TVPlaylistQueueBuilderTests.swift in Sources */,
 				23FDAA2E096745508B66605A /* TVPlayEventPolicyTests.swift in Sources */,
+				4F50BF1B558D4B179087337E /* TVRemoteCommandHandlerTests.swift in Sources */,
+				EC9BA0B9A4D14EF999E2CD3D /* TVRemoteHTTPMessageTests.swift in Sources */,
 				DBC591AC0E6B4B9F87F6A23E /* TVPlaybackCachePlanTests.swift in Sources */,
 				94DB3D1F88174415A2DDBF71 /* TVAmbientStateMachineTests.swift in Sources */,
 			);

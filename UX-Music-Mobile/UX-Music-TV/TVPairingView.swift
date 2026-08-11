@@ -168,6 +168,7 @@ struct TVConnectedView: View {
     @StateObject private var playbackController: TVPlaybackController
     private let player: MusicPlayerService
     private let client: RemoteAPIClient
+    private let remoteControlServer: TVRemoteControlServer
 
     init(model: TVAppModel) {
         self.model = model
@@ -186,6 +187,12 @@ struct TVConnectedView: View {
         sharedPlayer.onTrackNaturallyFinished = { song in
             reporter.report(song: song)
         }
+        // Phase 3-1 (TV side): let this TV itself be picked as a Connect-style playback target.
+        remoteControlServer = TVRemoteControlServer(
+            player: sharedPlayer,
+            token: config.token,
+            deviceName: DeviceIdentity.displayName
+        )
     }
 
     var body: some View {
@@ -196,6 +203,8 @@ struct TVConnectedView: View {
             client: client,
             onSignOut: { model.forgetPairing() }
         )
+        .task { remoteControlServer.start() }
+        .onDisappear { remoteControlServer.stop() }
     }
 }
 
