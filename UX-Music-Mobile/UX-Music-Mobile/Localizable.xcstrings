@@ -1354,6 +1354,22 @@
         }
       }
     },
+    "Downloading %lld of %lld: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading %lld of %lld: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ダウンロード中 %lld/%lld: %@"
+          }
+        }
+      }
+    },
     "Downloading…": {
       "localizations": {
         "en": {

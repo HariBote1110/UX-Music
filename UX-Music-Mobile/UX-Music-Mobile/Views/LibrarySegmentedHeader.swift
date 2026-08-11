@@ -70,6 +70,29 @@ struct LibrarySearchRow<Accessory: View>: View {
     }
 }
 
+/// Slim capsule progress banner shown above the Library screens' content while a bulk download
+/// (`AppModel.downloadAlbum`/`downloadPlaylistSongs`) is in progress — see `AppModel.bulkDownloadStatus`
+/// and `BulkDownloadStatusReducer`. Placed once here (rather than duplicated per screen) and used by
+/// both `LocalLibraryScreen` and `RemoteLibraryScreen`'s headers, directly below `LibrarySearchRow`.
+struct BulkDownloadStatusBanner: View {
+    let status: BulkDownloadStatus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(String(format: String(localized: "Downloading %lld of %lld: %@"), status.completedCount + 1, status.totalCount, status.currentTitle))
+                .font(.footnote)
+                .lineLimit(1)
+            ProgressView(value: status.currentFraction)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(red: 0.17, green: 0.17, blue: 0.18))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+    }
+}
+
 /// Lets a screen's scrolling content run underneath the floating tab bar (and the mini player
 /// accessory) instead of stopping dead at its top edge, which reads as the list being sliced off by
 /// a black band.

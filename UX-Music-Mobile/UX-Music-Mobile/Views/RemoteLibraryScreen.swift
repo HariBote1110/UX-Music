@@ -57,6 +57,9 @@ struct RemoteLibraryScreen: View {
                         selectedIndex: viewModeIndex
                     )
                     LibrarySearchRow(query: $query) { remoteActions }
+                    if let status = model.bulkDownloadStatus {
+                        BulkDownloadStatusBanner(status: status)
+                    }
                     libraryBody(bottomInset: bottomInset)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

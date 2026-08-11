@@ -130,6 +130,12 @@ final class AppModel {
     /// Last failure from `downloadSong` / `downloadAlbum` (shown on Remote Library).
     var downloadError: String?
 
+    /// Aggregate status for a bulk download in progress (`downloadAlbum`/`downloadPlaylistSongs`),
+    /// driving the slim capsule banner above the Library screens' content (see `BulkDownloadStatus`
+    /// and `BulkDownloadStatusReducer`). `nil` outside of a bulk download — a standalone
+    /// `downloadSong` call never sets this, so it stays `nil` and no banner appears.
+    var bulkDownloadStatus: BulkDownloadStatus?
+
     /// Bumped when local download metadata changes so `@Observable` invalidates library views that do not read `downloadProgress`.
     private(set) var downloadLibraryRevision: Int = 0
 
@@ -467,9 +473,9 @@ final class AppModel {
                 try await withFailover { c in
                     try await c.downloadFile(songId: song.id, to: tempDest, preferOriginalAudio: step.preferOriginalAudio, aacBitrateKbps: self.downloadAACBitrate.rawValue) { received, total in
                         Task { @MainActor in
-                            if total > 0 {
-                                self.downloadProgress[song.id] = stepBase + stepSpan * (Double(received) / Double(total))
-                            }
+                            guard total > 0 else { return }
+                            let fraction = stepBase + stepSpan * (Double(received) / Double(total))
+                            self.publishDownloadProgress(songId: song.id, fraction: fraction)
                         }
                     }
                 }
@@ -501,22 +507,50 @@ final class AppModel {
         downloadProgress.removeValue(forKey: song.id)
     }
 
+    /// Writes `downloadProgress[songId]` (and, when a bulk download is in progress, the banner's
+    /// `bulkDownloadStatus.currentFraction`) throttled via `ProgressPublishThrottle` to roughly 1%
+    /// steps — `downloadFile`'s progress callback ticks many times per second, and publishing every
+    /// tick re-renders every visible row observing `downloadProgress` (see
+    /// `mobile_perf_research/notes/static-review-2026-08.md` finding 3).
+    private func publishDownloadProgress(songId: String, fraction: Double) {
+        let previous = downloadProgress[songId] ?? 0
+        guard ProgressPublishThrottle.shouldPublish(previous: previous, next: fraction) else { return }
+        downloadProgress[songId] = fraction
+        if let status = bulkDownloadStatus {
+            bulkDownloadStatus = BulkDownloadStatusReducer.progress(status, fraction: fraction)
+        }
+    }
+
     /// Downloads every track in `album` that is not already local, in album order (sequential).
-    /// YouTube entries have no downloadable file on the desktop side and are skipped.
+    /// YouTube entries have no downloadable file on the desktop side and are skipped. Drives
+    /// `bulkDownloadStatus` (see `BulkDownloadStatusReducer`) for the bulk download banner while
+    /// more than zero tracks actually need downloading; cleared on every exit path, including an
+    /// early return or a thrown error inside `downloadSong`.
     func downloadAlbum(_ album: Album) async {
-        for song in album.songs where !song.isYouTube {
-            guard !downloadManager.isDownloaded(songId: song.id) else { continue }
+        await runBulkDownload(album.songs.filter { !$0.isYouTube && !downloadManager.isDownloaded(songId: $0.id) })
+    }
+
+    /// Shared bulk-download loop for `downloadAlbum`/`downloadPlaylistSongs`: both already filter
+    /// their input down to the songs that actually need downloading before calling this.
+    private func runBulkDownload(_ songs: [Song]) async {
+        guard !songs.isEmpty else { return }
+        var status = BulkDownloadStatusReducer.start(total: songs.count)
+        bulkDownloadStatus = status
+        defer { bulkDownloadStatus = BulkDownloadStatusReducer.finish(status) }
+
+        for song in songs {
+            status = BulkDownloadStatusReducer.songStarted(status, title: song.displayTitle)
+            bulkDownloadStatus = status
             await downloadSong(song)
+            status = BulkDownloadStatusReducer.songFinished(status)
+            bulkDownloadStatus = status
         }
     }
 
     /// Downloads every track in `songs` in list order (sequential), skipping already local files
     /// and YouTube entries (see `downloadAlbum`).
     func downloadPlaylistSongs(_ songs: [Song]) async {
-        for song in songs where !song.isYouTube {
-            guard !downloadManager.isDownloaded(songId: song.id) else { continue }
-            await downloadSong(song)
-        }
+        await runBulkDownload(songs.filter { !$0.isYouTube && !downloadManager.isDownloaded(songId: $0.id) })
     }
 
     func albumHasTracksToDownload(_ album: Album) -> Bool {

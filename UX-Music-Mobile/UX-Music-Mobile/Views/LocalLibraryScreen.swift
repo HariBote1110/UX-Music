@@ -169,6 +169,9 @@ struct LocalLibraryScreen: View {
                 selectedIndex: viewModeIndex
             )
             searchRow
+            if let status = model.bulkDownloadStatus {
+                BulkDownloadStatusBanner(status: status)
+            }
         }
         .background(Color.black)
     }
