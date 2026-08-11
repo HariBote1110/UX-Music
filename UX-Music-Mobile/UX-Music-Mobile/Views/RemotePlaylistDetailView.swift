@@ -22,10 +22,10 @@ struct RemotePlaylistDetailView: View {
                 header
                 HStack(alignment: .top, spacing: 8) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("デスクトップのプレイリスト")
+                        Text("Desktop Playlist")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text("\(resolvedSongs.count) 曲")
+                        Text(String(format: String(localized: "%ld Songs"), resolvedSongs.count))
                             .font(.footnote)
                             .foregroundStyle(.tertiary)
                     }
@@ -35,7 +35,7 @@ struct RemotePlaylistDetailView: View {
                 .padding(.vertical, 8)
 
                 if let missing = playlist.pathsNotInLibrary, !missing.isEmpty {
-                    Text("ライブラリに無いためスキップされたパス: \(missing.count) 件")
+                    Text(String(format: String(localized: "Paths skipped (not in library): %ld"), missing.count))
                         .font(.footnote)
                         .foregroundStyle(.orange.opacity(0.9))
                         .padding(.horizontal, 16)
@@ -43,7 +43,7 @@ struct RemotePlaylistDetailView: View {
                 }
 
                 if resolvedSongs.isEmpty {
-                    Text("このプレイリストに対応する曲がリモート一覧にありません。ライブラリを更新してから再度お試しください。")
+                    Text("This playlist has no matching songs in the remote library. Refresh the library and try again.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
@@ -82,7 +82,7 @@ struct RemotePlaylistDetailView: View {
                     } label: {
                         Image(systemName: "arrow.down.circle")
                     }
-                    .accessibilityLabel("プレイリストをダウンロード")
+                    .accessibilityLabel("Download Playlist")
                 }
             }
         }
@@ -112,7 +112,7 @@ struct RemotePlaylistDetailView: View {
                 Button {
                     Task { await model.downloadPlaylistSongs(resolvedSongs) }
                 } label: {
-                    Label("プレイリストをダウンロード", systemImage: "arrow.down.circle")
+                    Label("Download Playlist", systemImage: "arrow.down.circle")
                 }
             }
             WatchTransferBulkMenuItem(

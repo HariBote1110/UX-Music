@@ -5,9 +5,9 @@ private enum RemoteViewMode: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .albums: return "アルバム"
-        case .playlists: return "プレイリスト"
-        case .songs: return "曲"
+        case .albums: return String(localized: "Albums")
+        case .playlists: return String(localized: "Playlists")
+        case .songs: return String(localized: "Songs")
         }
     }
 }
@@ -117,7 +117,7 @@ struct RemoteLibraryScreen: View {
                         .frame(width: 32, height: 32)
                 }
                 .modifier(LibraryHeaderGlassButtonStyle())
-                .accessibilityLabel("デスクトップのプレイリストを取り込む")
+                .accessibilityLabel("Import Desktop Playlist")
             }
             Button {
                 Task {
@@ -134,14 +134,14 @@ struct RemoteLibraryScreen: View {
                     .frame(width: 32, height: 32)
             }
             .modifier(LibraryHeaderGlassButtonStyle())
-            .accessibilityLabel("ライブラリを更新")
+            .accessibilityLabel("Refresh Library")
 
             if model.serverConfig.isConfigured {
                 Menu {
                     Button {
                         showAddYouTubeLink = true
                     } label: {
-                        Label("YouTube の URL を追加", systemImage: "play.rectangle")
+                        Label("Add YouTube URL", systemImage: "play.rectangle")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -150,7 +150,7 @@ struct RemoteLibraryScreen: View {
                         .frame(width: 32, height: 32)
                 }
                 .modifier(LibraryHeaderGlassButtonStyle())
-                .accessibilityLabel("その他の操作")
+                .accessibilityLabel("More Actions")
             }
         }
     }
@@ -190,7 +190,7 @@ struct RemoteLibraryScreen: View {
                             .font(.footnote)
                             .foregroundStyle(.primary)
                         Spacer(minLength: 0)
-                        Button("閉じる") {
+                        Button("Close") {
                             model.downloadError = nil
                         }
                         .font(.footnote)
@@ -216,7 +216,7 @@ struct RemoteLibraryScreen: View {
     private func albumsPane(songs: [Song]) -> some View {
         let albums = filterAlbums(Album.fromSongs(songs))
         if albums.isEmpty {
-            Text(songs.isEmpty ? "サーバーに曲がありません" : "一致する曲がありません")
+            Text(songs.isEmpty ? "No Songs on Server" : "No Matching Songs")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -232,7 +232,7 @@ struct RemoteLibraryScreen: View {
     private func songsPane(songs: [Song]) -> some View {
         let filtered = SongSearchFilter.filter(songs, query: query)
         if filtered.isEmpty {
-            Text(songs.isEmpty ? "サーバーに曲がありません" : "一致する曲がありません")
+            Text(songs.isEmpty ? "No Songs on Server" : "No Matching Songs")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -245,9 +245,9 @@ struct RemoteLibraryScreen: View {
             Image(systemName: "wifi.slash")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text("ライブラリの読み込みに失敗しました")
+            Text("Failed to Load Library")
                 .foregroundStyle(.secondary)
-            Button("再試行") {
+            Button("Retry") {
                 Task { await model.refreshLibrary() }
             }
         }
@@ -304,24 +304,24 @@ struct RemoteLibraryScreen: View {
     @ViewBuilder
     private func remotePlaylistsPane(librarySongs: [Song]) -> some View {
         if !model.serverConfig.isConfigured {
-            Text("設定でデスクトップに接続すると、プレイリストを表示してダウンロードできます。")
+            Text("Connect to desktop in Settings to browse and download playlists.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if isLoadingRemotePlaylists, remotePlaylistRows.isEmpty, remotePlaylistsError == nil {
-            ProgressView("プレイリストを読み込み中…")
+            ProgressView("Loading Playlists…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = remotePlaylistsError {
             VStack(spacing: 12) {
-                Text("プレイリストを取得できませんでした")
+                Text("Couldn't Load Playlists")
                     .font(.body.weight(.semibold))
                 Text(err)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                Button("再試行") {
+                Button("Retry") {
                     Task { await loadRemotePlaylists() }
                 }
             }
@@ -330,7 +330,7 @@ struct RemoteLibraryScreen: View {
         } else {
             let filteredRows = filterPlaylists(remotePlaylistRows)
             if filteredRows.isEmpty {
-                Text(query.isEmpty ? "デスクトップにプレイリストがありません" : "一致するプレイリストがありません")
+                Text(query.isEmpty ? "No Playlists on Desktop" : "No Matching Playlists")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -376,7 +376,7 @@ struct RemoteLibraryScreen: View {
                                 .lineLimit(2)
                                 .foregroundStyle(.primary)
                                 .multilineTextAlignment(.leading)
-                            Text("\(count) 曲")
+                            Text(String(format: String(localized: "%ld Songs"), count))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -388,7 +388,7 @@ struct RemoteLibraryScreen: View {
                             Button {
                                 Task { await model.downloadPlaylistSongs(songsInPl) }
                             } label: {
-                                Label("プレイリストをダウンロード", systemImage: "arrow.down.circle")
+                                Label("Download Playlist", systemImage: "arrow.down.circle")
                             }
                         }
                         WatchTransferBulkMenuItem(
@@ -438,7 +438,7 @@ struct RemoteLibraryScreen: View {
                             Button {
                                 Task { await model.downloadAlbum(album) }
                             } label: {
-                                Label("アルバムをダウンロード", systemImage: "arrow.down.circle")
+                                Label("Download Album", systemImage: "arrow.down.circle")
                             }
                         }
                         WatchTransferBulkMenuItem(
@@ -480,13 +480,13 @@ struct RemoteLibraryScreen: View {
                                 Button(role: .destructive) {
                                     model.removeYouTubeSongFromLibrary(songId: song.id)
                                 } label: {
-                                    Label("ライブラリから削除", systemImage: "minus.circle")
+                                    Label("Remove from Library", systemImage: "minus.circle")
                                 }
                             } else {
                                 Button {
                                     model.addYouTubeSongToLibrary(song)
                                 } label: {
-                                    Label("ライブラリに追加", systemImage: "plus.circle")
+                                    Label("Add to Library", systemImage: "plus.circle")
                                 }
                             }
                         }

@@ -61,7 +61,7 @@ struct RemoteControlScreen: View {
             Label("Desktop unreachable", systemImage: "wifi.slash")
                 .foregroundStyle(.white)
         } description: {
-            Text("Wi-Fi 上でデスクトップの UX Music が起動しているか確認してください。")
+            Text("Check that UX Music is running on the desktop over Wi-Fi.")
                 .foregroundStyle(.white.opacity(0.55))
         }
         .tint(.white)

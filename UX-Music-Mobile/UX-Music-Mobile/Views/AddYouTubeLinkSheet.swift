@@ -21,7 +21,7 @@ struct AddYouTubeLinkSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("YouTubeのURLを貼り付け", text: $urlText)
+                    TextField("Paste YouTube URL", text: $urlText)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
@@ -29,21 +29,21 @@ struct AddYouTubeLinkSheet: View {
                     if let errorMessage {
                         Text(errorMessage).foregroundStyle(.red)
                     } else {
-                        Text("デスクトップの再生モード設定に従い、ライブラリへ楽曲として追加されます。")
+                        Text("Songs are added to the library according to the desktop's playback mode setting.")
                     }
                 }
             }
-            .navigationTitle("YouTube の URL を追加")
+            .navigationTitle("Add YouTube URL")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("キャンセル") { isPresented = false }
+                    Button("Cancel") { isPresented = false }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isSubmitting {
                         ProgressView()
                     } else {
-                        Button("追加") { Task { await submit() } }
+                        Button("Add") { Task { await submit() } }
                             .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
@@ -60,7 +60,7 @@ struct AddYouTubeLinkSheet: View {
             await model.refreshLibrary()
             isPresented = false
         } catch {
-            errorMessage = "追加できませんでした。URLとペアリング状態を確認してください。"
+            errorMessage = String(localized: "Couldn't add it. Check the URL and pairing status.")
         }
     }
 }

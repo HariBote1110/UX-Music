@@ -86,7 +86,7 @@ struct NowPlayingLyricsScreen: View {
 
             lyricsBody
 
-            NowPlayingNavIconButton(action: { isPresented = false }, accessibilityLabel: "閉じる") {
+            NowPlayingNavIconButton(action: { isPresented = false }, accessibilityLabel: String(localized: "Close")) {
                 Image(systemName: "xmark")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
@@ -124,9 +124,9 @@ struct NowPlayingLyricsScreen: View {
             }
         } else {
             ContentUnavailableView {
-                Label("歌詞がありません", systemImage: "text.page")
+                Label("No Lyrics", systemImage: "text.page")
             } description: {
-                Text("この曲は保存された歌詞ファイルがありません。リモートライブラリからダウンロードした曲は、デスクトップ側に歌詞がある場合に自動で取り込まれます。")
+                Text("This song has no saved lyrics file. Songs downloaded from the remote library are imported automatically when the desktop has lyrics available.")
                     .multilineTextAlignment(.center)
             }
             .foregroundStyle(.secondary)
