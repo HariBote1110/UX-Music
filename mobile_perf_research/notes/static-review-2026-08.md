@@ -45,6 +45,11 @@ Albums/Artists の `Album.fromSongs` / `Artist.fromSongs`（O(n) 再グループ
 
 **対策方向**: 行単位の観測スコープ分離、または進捗書き込みのスロットリング。
 
+**2026-08-11 追記**: 書き込み側のスロットリングを実施（`ProgressPublishThrottle`、約1%刻み未満の
+更新は`downloadProgress`/`bulkDownloadStatus`へ書き込まない。`WatchTransferBridge`のKVO進捗観測
+とも共有）。commit 6484564。ただし観測粒度（辞書全体を読む全可視行が毎回再描画される構造）自体は
+未解消 — ティック頻度を減らしただけで、行単位の観測スコープ分離は引き続き対策候補として残る。
+
 ### 4. アートワークのフル解像度デコード＋iOS 側メモリキャッシュ未接続
 
 `RemoteArtworkCaching.swift`: `UIImage(contentsOfFile:)` を原寸デコード（44〜180pt 表示なのに）。
