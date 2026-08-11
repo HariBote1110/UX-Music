@@ -5,6 +5,10 @@ enum AppConstants {
     static let defaultTargetLoudness: Double = -18
     static let wearPathPrefix = "/wear"
     static let syncMDNSServiceType = "_uxmusic-sync._tcp."
+    /// Phase 3-1 Connect-style TV receiver (`TVRemoteControlServer`) advertises itself under this
+    /// service type — distinct from `syncMDNSServiceType` since a TV is not a Sync peer (see
+    /// `progress/tvos-connect.md`).
+    static let tvRemoteMDNSServiceType = "_uxmusic-remote._tcp."
     static let downloadedSongsMetaKey = "downloaded_songs_meta"
     static let serverConfigKey = "server_config"
     /// JSON envelope for user-created playlists (local device).

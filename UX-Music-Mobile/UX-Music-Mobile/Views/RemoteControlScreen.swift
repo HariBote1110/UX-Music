@@ -3,13 +3,33 @@ import SwiftUI
 /// Remote Control tab: mirrors the desktop transport (`/v1/remote/state` + `/v1/remote/command`) using the
 /// same visual language as `NowPlayingView` (ambient background, rounded artwork card, transport
 /// row) rather than a bare prototype-style layout.
+/// Selects which device the transport controls below actually operate on (Phase 3-1 Mobile side,
+/// "この iPhone" vs a discovered Apple TV `_uxmusic-remote._tcp` receiver). Session-only — no
+/// persistence across app launches (per plan §3-1's picker UX scope).
+enum RemoteControlTarget: Hashable {
+    case thisIPhone
+    case tv(TVRemoteTarget)
+}
+
 struct RemoteControlScreen: View {
     @Environment(AppModel.self) private var model
+    @StateObject private var tvDiscovery = TVRemoteDiscoveryService()
+    @State private var selectedTarget: RemoteControlTarget = .thisIPhone
     @State private var desktopState: [String: Any] = [:]
     @State private var errorMessage: String?
     @State private var pollTask: Task<Void, Never>?
     /// True after at least one successful `/v1/remote/state` fetch (matches Flutter “stale state + error” UX).
     @State private var hasReceivedState = false
+
+    /// The client commands/state polling actually go through — the Host's failover-aware client
+    /// when `selectedTarget == .thisIPhone`, or a direct client against the TV's own receiver
+    /// otherwise. Reuses the exact same `RemoteAPIClient` type/`sendCommand`/`fetchState` calls
+    /// either way; only the base URL + token differ (§3-1: "reuse the existing remote-control
+    /// client code pattern").
+    private var tvClient: RemoteAPIClient? {
+        guard case .tv(let target) = selectedTarget else { return nil }
+        return RemoteAPIClient(baseURLString: target.baseURLString, token: target.token)
+    }
 
     var body: some View {
         NavigationStack {
@@ -48,10 +68,14 @@ struct RemoteControlScreen: View {
                 Color.clear.frame(height: 44)
             }
             .toolbar(.hidden, for: .navigationBar)
-            .onAppear { startPolling() }
+            .onAppear {
+                startPolling()
+                tvDiscovery.start()
+            }
             .onDisappear {
                 pollTask?.cancel()
                 pollTask = nil
+                tvDiscovery.stop()
             }
         }
     }
@@ -75,8 +99,15 @@ struct RemoteControlScreen: View {
         let album = desktopState["album"] as? String ?? ""
 
         return VStack(spacing: 0) {
-            connectionChip
-                .padding(.top, 12)
+            HStack {
+                connectionChip
+                Spacer()
+                RemoteControlTargetPicker(selected: selectedTarget, tvTargets: tvDiscovery.targets) { target in
+                    switchTarget(target)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
 
             Spacer(minLength: 12)
 
@@ -105,10 +136,7 @@ struct RemoteControlScreen: View {
             if duration > 0 {
                 VStack(alignment: .leading, spacing: 10) {
                     SeekSlider(position: position, duration: duration) { v in
-                        Task {
-                            _ = try? await model.withFailover { try await $0.sendCommand(action: "seek", value: v) }
-                            await pollOnce()
-                        }
+                        Task { await send("seek", value: v) }
                     }
                     .tint(.white)
 
@@ -210,9 +238,13 @@ struct RemoteControlScreen: View {
         return "\(m):\(String(format: "%02d", s))"
     }
 
-    private func send(_ action: String) async {
+    private func send(_ action: String, value: Double? = nil) async {
         do {
-            _ = try await model.withFailover { try await $0.sendCommand(action: action, value: nil) }
+            if let tvClient {
+                _ = try await tvClient.sendCommand(action: action, value: value)
+            } else {
+                _ = try await model.withFailover { try await $0.sendCommand(action: action, value: value) }
+            }
             await pollOnce()
         } catch {
             await MainActor.run { errorMessage = "Command failed: \(error.localizedDescription)" }
@@ -221,7 +253,12 @@ struct RemoteControlScreen: View {
 
     private func pollOnce() async {
         do {
-            let s = try await model.withFailover { try await $0.fetchState() }
+            let s: [String: Any]
+            if let tvClient {
+                s = try await tvClient.fetchState()
+            } else {
+                s = try await model.withFailover { try await $0.fetchState() }
+            }
             await MainActor.run {
                 hasReceivedState = true
                 desktopState = s
@@ -239,6 +276,63 @@ struct RemoteControlScreen: View {
                 await pollOnce()
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
+        }
+    }
+
+    /// Switching targets clears the last-known state so the transport row doesn't briefly show
+    /// the previous target's stale track/position before the next poll lands.
+    private func switchTarget(_ target: RemoteControlTarget) {
+        selectedTarget = target
+        hasReceivedState = false
+        desktopState = [:]
+        errorMessage = nil
+        Task { await pollOnce() }
+    }
+}
+
+/// "この iPhone" vs discovered Apple TV receivers (§3-1). A plain menu rather than a full screen —
+/// this mirrors the existing Remote tab's compact chip-style status affordances
+/// (`connectionChip`) rather than introducing a new navigation pattern.
+private struct RemoteControlTargetPicker: View {
+    let selected: RemoteControlTarget
+    let tvTargets: [TVRemoteTarget]
+    let onSelect: (RemoteControlTarget) -> Void
+
+    private var label: String {
+        switch selected {
+        case .thisIPhone: return String(localized: "This iPhone")
+        case .tv(let target): return target.displayName
+        }
+    }
+
+    var body: some View {
+        Menu {
+            Button(String(localized: "This iPhone")) { onSelect(.thisIPhone) }
+            if !tvTargets.isEmpty {
+                Divider()
+                ForEach(tvTargets) { target in
+                    Button(target.displayName) { onSelect(.tv(target)) }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: iconName)
+                Text(label)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+            }
+            .font(.caption)
+            .foregroundStyle(.white.opacity(0.75))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(.ultraThinMaterial))
+        }
+    }
+
+    private var iconName: String {
+        switch selected {
+        case .thisIPhone: return "iphone"
+        case .tv: return "appletv.fill"
         }
     }
 }
