@@ -1,5 +1,9 @@
 # iOS/Watch アプリの多言語対応（en/ja String Catalog）
 
+**状態: 完了（2026-08-11）**。iOS アプリの日本語ハードコード文字列の全数スイープが完了し、
+`grep -rlP '[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}]'` でユーザー向け View/Service/Core 層に該当する
+ヒットは無い（コメント・ログ・データ照合用リテラルを除く。詳細は下記「意図的に未対応のまま残したもの」）。
+
 ## 決定事項
 
 - **String Catalog を手書きで導入**: `UX-Music-Mobile/UX-Music-Mobile/Localizable.xcstrings`（iOS アプリターゲット）と
@@ -34,26 +38,47 @@
   `WatchRootView.swift`（受信中トースト）、`WatchNowPlayingView.swift`、`WatchSongListView.swift`
   （Watch 側は日本語ハードコードを洗い出した結果、この 5 ファイルで全件だった）
 
-### 未対応（意図的に今回のスコープ外）
+### 続行セッションで完了（2026-08-11）
 
-以下のファイルにはまだ日本語ハードコード文字列が残っている（`grep -rlP '[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}]'`
-で検出可能）。iOS アプリ全体は 12,000 行超・40 ファイル規模で、1 セッションでの完全対応には至らなかった:
+前回セッションが未対応としてリストした残りファイルすべてに対応し、iOS アプリの en/ja 対応スイープを完了した:
 
 `Views/LibrarySegmentedHeader.swift`, `Views/AlbumDetailView.swift`, `Views/ArtistDetailView.swift`,
 `Views/RemoteLibraryScreen.swift`, `Views/RemotePlaylistDetailView.swift`, `Views/SongRowView.swift`,
 `Views/NowPlayingLyricsScreen.swift`, `Views/AddYouTubeLinkSheet.swift`, `Views/LocalLibraryScreen.swift`,
 `Views/PlaylistDetailView.swift`, `Views/RemoteControlScreen.swift`, `Views/DesktopPlaylistImportView.swift`,
-`Views/HomeRootView.swift`（ホーム画面下部タブの "Library"/"Remote"/"Control" が英語のまま「設定」とだけ日本語、
-という stray が実機で確認できる既知の不整合)、
-`Core/CollectionSortOrder.swift`, `Core/LibrarySortOrder.swift`（`testDisplayNamesAreJapanese` が既存のまま残っている）,
-`Core/LyricsTranslationMerger.swift`, `Core/WatchTransferMenuPolicy.swift`,
-`Services/MusicPlayerService.swift`, `Services/RemoteAPIClient.swift`, `Services/YouTubeEmbedPlayer.swift`,
-`Services/LibraryMembershipStore.swift`
+`Core/CollectionSortOrder.swift`, `Core/LibrarySortOrder.swift`,
+`Services/MusicPlayerService.swift`（YouTube 再生エラー・スキップ通知の2文字列のみ。ログ/print/JSブリッジ文字列は対象外）,
+`Services/YouTubeEmbedPlayer.swift`（`errorMessage(code:)` の全ケース）。
 
-これらは次のセッションで同じ手順（キー抽出 → 両カタログへ追記 → コード側をキー文字列に置換 → 該当テストを
-`String(localized:)`/`localizedString(_:locale:)` 参照に更新）で続行できる。`LocalizationCatalogCompletenessTests`
-は「カタログに載っているキーが両言語そろっているか」だけを保証するもので、「まだカタログに載っていない stray
-文字列がないか」までは検出しない（用途外）。
+`UX-Music-Mobile/Localizable.xcstrings` に 101 キーを追加（119 → 220）。カウント内訳（曲数・アルバム数などの
+`%ld`/`%@` プレースホルダ付きキー約10個を含む）は git 履歴のコミット差分を参照。
+
+**実機報告のホームタブバー混在バグを特定・修正**: `Views/HomeRootView.swift` の `Label("Library"...)` /
+`Label("Remote"...)` / `Label("Control"...)` は元々コード上は英語リテラルのままで、`String Catalog` に
+`"Library"`/`"Remote"`/`"Control"` キー自体が一度も登録されていなかった（前回セッションが `SettingsScreen.swift`
+の `"Settings"` キーだけ登録し、`HomeRootView.swift` はスコープ外としていたため）。カタログに存在しないキーは
+黙って元のリテラル文字列にフォールバックするため、ja ロケールでは「ライブラリ」ではなく英語の "Library" が
+表示され、"設定" だけ日本語という stray になっていた。`Library`→`ライブラリ`、`Remote`→`リモート`、
+`Control`→`コントロール` の3キーを追加して解消。シミュレータでの ja/en 両ロケール実機確認で修正を確認済み。
+
+`Core/WatchTransferMenuPolicy.swift` はドキュメントコメント以外に日本語/英語ハードコードのユーザー向け文字列が
+存在せず対応不要だった。
+
+### 意図的に未対応のまま残したもの
+
+- `Services/RemoteAPIClient.swift` / `Services/LibraryMembershipStore.swift`: 日本語はすべてドキュメントコメント内
+  （`"ライブラリに追加"` 等をコメントで参照しているだけ）で、ユーザーに表示される文字列は存在しない。
+- `Core/LyricsTranslationMerger.swift` の `interludeMarkers`（`"[間奏]"` など）: UI 表示文字列ではなく、保存済み
+  歌詞ファイルの間奏マーカーをパースするためのデータ照合用リテラル。翻訳すると既存の保存済み `.lrc`/`.txt`
+  ファイルとのマッチングが壊れるため、意図的に翻訳対象外とした。
+- `Services/MusicPlayerService.swift` / `Services/YouTubeEmbedPlayer.swift` のログ/`print`/デバッグコメント中の
+  日本語（例: `WatchTransferBridge.swift` の `print("...Watch向けAACトランスコードに失敗...")`）: ユーザーに
+  到達しないため対象外。
+
+`LocalizationCatalogCompletenessTests` は「カタログに載っているキーが両言語そろっているか」だけを保証するもので、
+「まだカタログに載っていない stray 文字列がないか」までは検出しない（用途外）。今回のスイープはコード側の
+`grep -rlP '[\x{3040}-\x{30FF}\x{4E00}-\x{9FFF}]'` による日本語ハードコード全数チェックと、シミュレータでの
+ja/en 両ロケール目視確認（ホームタブバー・ライブラリ一覧の空状態表示）で仕上げた。
 
 ## pingResult の色分けロジックの副作用修正
 
@@ -68,6 +93,17 @@
   で `en`/`ja` 両方の翻訳値を直接ピン留めできる（`DownloadAudioQualityTests`、`AppModelFailoverTests`）。
 - `LocalizationCatalogCompletenessTests`（新規）: 2 つの `.xcstrings` を直接 JSON パースし、全キーに `en`/`ja` 両方の
   `translated` かつ非空の翻訳があることを保証する。
+- `LibrarySortOrderTests.testDisplayNamesAreJapanese` / `CollectionSortOrderTests.testAlbumDisplayNamesAreJapanese` /
+  `testArtistDisplayNamesAreJapanese`: `displayName` を翻訳キー化したのに合わせ、`testDisplayNamesAreLocalized` /
+  `testAlbumDisplayNamesAreLocalized` / `testArtistDisplayNamesAreLocalized` にリネーム。`displayName` の現在ロケール
+  参照に加えて `localizedString(_:locale: "ja")` で既存の日本語値を、`localizedString(_:locale: "en")` で新設の
+  英語値をそれぞれピン留めするアサーションを追加（弱体化ではなく強化）。
+- `YouTubeEmbedPlayerTests`: `errorMessage(code:)` の各ケースを `localizedString(_:locale:)` で en/ja 両方ピン留め
+  しつつ、`errorMessage(code:)` 自体の戻り値は現在ロケール（テストホストの既定ロケール）と比較する形に変更。
+  この過程で気づいた点: このリポジトリのテストホストは既定ロケールが `ja`（英語ではない）。`String(format:)` の
+  結果を決め打ちで英語文字列と比較すると現在ロケールが ja の環境で落ちるため、`DownloadAudioQualityTests` と同じ
+  「`displayName`/`errorMessage` は current-locale lookup と比較、個別の en/ja 値は `locale:` 明示で別途ピン留め」
+  という規約に統一した。
 
 ## 言語を追加する場合
 
