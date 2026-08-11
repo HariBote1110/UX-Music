@@ -98,6 +98,11 @@ enum ProgressPublishThrottle {
     /// publishing.
     static let step = 0.01
 
+    /// Floating-point tolerance so a boundary advance that should count as "a full step" (e.g.
+    /// `0.11 - 0.1`, which is `0.009999999999999998` in `Double`) is not rejected by binary
+    /// floating-point rounding.
+    private static let epsilon = 1e-9
+
     /// - Parameters:
     ///   - previous: The fraction most recently published (or the initial value, typically `0`).
     ///   - next: The newly observed fraction.
@@ -105,7 +110,51 @@ enum ProgressPublishThrottle {
     ///   it reached `1.0` (always published so a finished transfer/download never gets stuck
     ///   showing a stale sub-100% value).
     static func shouldPublish(previous: Double, next: Double) -> Bool {
-        next >= 1.0 || next - previous >= step
+        next >= 1.0 || next - previous >= step - epsilon
+    }
+}
+
+/// Aggregate state for a bulk download in progress (`AppModel.downloadAlbum`/
+/// `downloadPlaylistSongs`), driving the slim capsule banner shown above the Library screens'
+/// content while `AppModel.bulkDownloadStatus != nil`. A single-song `AppModel.downloadSong` call
+/// made outside a bulk loop never creates one of these — the per-row progress ring is enough there
+/// — so the banner only ever appears for a genuine multi-song operation.
+struct BulkDownloadStatus: Equatable {
+    let totalCount: Int
+    let completedCount: Int
+    let currentTitle: String
+    let currentFraction: Double
+}
+
+/// Pure status-transition logic for `BulkDownloadStatus`, extracted out of
+/// `AppModel.downloadAlbum`/`downloadPlaylistSongs` so the state machine driving the bulk download
+/// banner is unit-testable without a real download/network.
+enum BulkDownloadStatusReducer {
+    static func start(total: Int) -> BulkDownloadStatus {
+        BulkDownloadStatus(totalCount: total, completedCount: 0, currentTitle: "", currentFraction: 0)
+    }
+
+    /// The next song in the batch has started: updates the displayed title and resets the
+    /// per-song progress fraction back to `0`.
+    static func songStarted(_ status: BulkDownloadStatus, title: String) -> BulkDownloadStatus {
+        BulkDownloadStatus(totalCount: status.totalCount, completedCount: status.completedCount, currentTitle: title, currentFraction: 0)
+    }
+
+    /// A progress tick for the song currently downloading.
+    static func progress(_ status: BulkDownloadStatus, fraction: Double) -> BulkDownloadStatus {
+        BulkDownloadStatus(totalCount: status.totalCount, completedCount: status.completedCount, currentTitle: status.currentTitle, currentFraction: fraction)
+    }
+
+    /// The current song finished (successfully or not — `AppModel.downloadSong` already surfaces
+    /// per-song failures via `downloadError`, so the bulk loop simply moves on): increments the
+    /// completed count and resets the fraction for the next song.
+    static func songFinished(_ status: BulkDownloadStatus) -> BulkDownloadStatus {
+        BulkDownloadStatus(totalCount: status.totalCount, completedCount: status.completedCount + 1, currentTitle: status.currentTitle, currentFraction: 0)
+    }
+
+    /// The batch is done (including an early exit or error) — clears the banner.
+    static func finish(_ status: BulkDownloadStatus) -> BulkDownloadStatus? {
+        nil
     }
 }
 
