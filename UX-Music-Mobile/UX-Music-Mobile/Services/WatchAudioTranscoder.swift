@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 
 /// Transcodes a local audio file to AAC-LC 128 kbps stereo 44.1 kHz in an `.m4a` container, for
 /// transfer to the Apple Watch when `WatchTransferAudioPolicy.decision(...)` says `.transcode`
@@ -134,9 +135,14 @@ struct WatchAudioTranscoder {
     /// then finishes writing. Resumes exactly once, on the reader-failure, append-failure, or
     /// writer-completion path.
     ///
-    /// `resumeOnce` guards against a double-resume (a `CheckedContinuation` misuse that traps): all
-    /// call sites run serially on `pumpQueue` (the queue passed to `requestMediaDataWhenReady`), so
-    /// the `didResume` flag needs no separate locking.
+    /// `resumeOnce` guards against a double-resume (a `CheckedContinuation` misuse that traps).
+    /// Most call sites (the reader-failure and append-failure paths) run serially on `pumpQueue`
+    /// (the queue passed to `requestMediaDataWhenReady`), but `writer.finishWriting`'s completion
+    /// handler runs on an AVFoundation-internal queue, not `pumpQueue` — so `didResume` is not
+    /// actually single-queue-confined and needs real synchronisation rather than relying on
+    /// `pumpQueue` serialisation. There is no known live double-resume today (`markAsFinished` stops
+    /// further `requestMediaDataWhenReady` callbacks before `finishWriting` is called), but the lock
+    /// makes the guard correct regardless of which queue calls it.
     private static func pump(
         reader: AVAssetReader,
         readerOutput: AVAssetReaderTrackOutput,
@@ -145,10 +151,14 @@ struct WatchAudioTranscoder {
     ) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let pumpQueue = DispatchQueue(label: "uk.co.uxmusic.WatchAudioTranscoder.pump")
-            var didResume = false
+            let didResumeLock = OSAllocatedUnfairLock(initialState: false)
             func resumeOnce(throwing error: Error?) {
-                guard !didResume else { return }
-                didResume = true
+                let shouldResume = didResumeLock.withLock { didResume in
+                    guard !didResume else { return false }
+                    didResume = true
+                    return true
+                }
+                guard shouldResume else { return }
                 if let error {
                     continuation.resume(throwing: error)
                 } else {
