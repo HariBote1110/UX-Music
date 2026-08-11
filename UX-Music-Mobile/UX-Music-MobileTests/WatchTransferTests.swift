@@ -73,10 +73,19 @@ final class WatchTransferTests: XCTestCase {
         XCTAssertEqual(result.map(\.id), ["1"])
     }
 
-    func testAddingIsNoOpForDuplicateID() {
-        let existing = [sample(id: "1")]
-        let result = WatchLibraryIndex.adding(sample(id: "1"), to: existing)
-        XCTAssertEqual(result.count, 1)
+    /// Spec change: a re-sent transfer for an already-received song used to be a no-op ("first
+    /// write wins"), which meant an old entry could never gain fields added later (e.g.
+    /// trackNumber/discNumber — see `WatchAlbumGrouping`). Re-sending now refreshes the existing
+    /// entry's metadata in place, at the same position, so "re-send an album to repair its order"
+    /// is a real recovery path for songs transferred before this fix.
+    func testAddingUpdatesExistingEntryInPlaceForDuplicateID() {
+        var updated = sample(id: "1")
+        updated.title = "New Title"
+        let existing = [sample(id: "1"), sample(id: "2")]
+        let result = WatchLibraryIndex.adding(updated, to: existing)
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result.map(\.id), ["1", "2"], "must not move the updated entry's position")
+        XCTAssertEqual(result[0].title, "New Title")
     }
 
     func testAddingPreservesOrder() {
@@ -189,6 +198,57 @@ final class WatchTransferTests: XCTestCase {
         var meta = sample()
         meta.artworkFileName = WatchTransferMeta.storedArtworkFileName(forId: meta.id)
         let decoded = WatchTransferMeta.fromWCMetadata(meta.wcMetadata)
+        XCTAssertEqual(decoded, meta)
+    }
+
+    // MARK: - trackNumber / discNumber
+    //
+    // Carried so the Watch can sort within an album by track order instead of assuming transfer
+    // order == track order (see `WatchAlbumGrouping`) — that assumption broke once on-device
+    // transcoding made `transferFile` calls land in transcode-completion order, not enqueue order.
+    // Optional so old persisted Watch index JSON (and metadata from an old sender) still decodes.
+
+    func testWCMetadataRoundTripPreservesTrackAndDiscNumber() {
+        var meta = sample()
+        meta.trackNumber = 3
+        meta.discNumber = 2
+        let decoded = WatchTransferMeta.fromWCMetadata(meta.wcMetadata)
+        XCTAssertEqual(decoded, meta)
+        XCTAssertEqual(decoded?.trackNumber, 3)
+        XCTAssertEqual(decoded?.discNumber, 2)
+    }
+
+    func testWCMetadataOmitsTrackAndDiscNumberWhenNil() {
+        let dict = sample().wcMetadata
+        XCTAssertNil(dict[WatchTransferMeta.metadataTrackNumberKey])
+        XCTAssertNil(dict[WatchTransferMeta.metadataDiscNumberKey])
+    }
+
+    func testFromWCMetadataSucceedsWhenTrackAndDiscNumberKeysMissing() {
+        // Simulates decoding metadata sent by an old sender version that predates these fields.
+        let dict = sample().wcMetadata
+        let decoded = WatchTransferMeta.fromWCMetadata(dict)
+        XCTAssertNotNil(decoded)
+        XCTAssertNil(decoded?.trackNumber)
+        XCTAssertNil(decoded?.discNumber)
+    }
+
+    func testJSONDecodeSucceedsWhenTrackAndDiscNumberKeysMissingFromPersistedIndex() throws {
+        // Simulates a Watch index JSON persisted before these fields existed.
+        let json = """
+        {"id":"1","title":"Song","artist":"Artist","album":"Album","duration":123.4,"fileType":"m4a"}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(WatchTransferMeta.self, from: json)
+        XCTAssertNil(decoded.trackNumber)
+        XCTAssertNil(decoded.discNumber)
+    }
+
+    func testJSONEncodeDecodeRoundTripPreservesTrackAndDiscNumber() throws {
+        var meta = sample()
+        meta.trackNumber = 7
+        meta.discNumber = 1
+        let data = try JSONEncoder().encode(meta)
+        let decoded = try JSONDecoder().decode(WatchTransferMeta.self, from: data)
         XCTAssertEqual(decoded, meta)
     }
 

@@ -160,9 +160,10 @@ enum WatchSeekLogic {
 }
 
 /// One album's worth of songs, grouped for the Watch's "Albums" browse mode (see
-/// `WatchAlbumGrouping`). `songs` keeps the order they appeared in the source list — the Watch
-/// receives songs from the iPhone in track order already, so no separate track-number field is
-/// needed to reconstruct it.
+/// `WatchAlbumGrouping`). `songs` is sorted into track order by `WatchAlbumGrouping.albums(from:)`
+/// (disc, then track, then arrival order for songs with no number) — songs are *not* guaranteed to
+/// arrive from the iPhone in track order (on-device transcoding can finish, and therefore
+/// `transferFile`, out of enqueue order), so the sort is load-bearing, not cosmetic.
 struct WatchAlbumGroup: Identifiable, Equatable {
     var id: String { album }
     var album: String
@@ -178,9 +179,12 @@ struct WatchAlbumGroup: Identifiable, Equatable {
 /// `WatchSongListView`'s "Albums" browse mode alongside the existing flat "Songs" list.
 enum WatchAlbumGrouping {
     /// Groups `songs` by `displayAlbum` (so a blank album field collapses to "Unknown Album"
-    /// rather than splintering into its own blank-named group), preserving both the order albums
-    /// first appear in `songs` and each song's original position within its album, then sorts the
-    /// resulting albums alphabetically for browsing.
+    /// rather than splintering into its own blank-named group), preserving the order albums first
+    /// appear in `songs`, then sorts the resulting albums alphabetically for browsing. Within each
+    /// album, songs are sorted into track order (disc, then track number; songs missing a number
+    /// sort after numbered ones and keep their relative arrival order — see `sortedByTrackOrder`)
+    /// rather than kept in arrival order, since arrival order is not reliably track order (see
+    /// `WatchAlbumGroup`'s doc comment).
     static func albums(from songs: [WatchTransferMeta]) -> [WatchAlbumGroup] {
         var order: [String] = []
         var buckets: [String: [WatchTransferMeta]] = [:]
@@ -193,22 +197,34 @@ enum WatchAlbumGrouping {
             buckets[key]?.append(song)
         }
         return order
-            .map { WatchAlbumGroup(album: $0, songs: buckets[$0] ?? []) }
+            .map { WatchAlbumGroup(album: $0, songs: sortedByTrackOrder(buckets[$0] ?? [])) }
             .sorted { $0.album.localizedStandardCompare($1.album) == .orderedAscending }
     }
 
+    /// Sorts one album's songs by (discNumber, trackNumber), treating a missing number as sorting
+    /// after every numbered song. Relies on `sorted(by:)` being a stable sort (guaranteed since
+    /// Swift 5) so songs tied on this key — most commonly two songs both missing a number — keep
+    /// their relative arrival order instead of being reshuffled arbitrarily.
+    private static func sortedByTrackOrder(_ songs: [WatchTransferMeta]) -> [WatchTransferMeta] {
+        songs.sorted { lhs, rhs in
+            let lhsDisc = lhs.discNumber ?? Int.max
+            let rhsDisc = rhs.discNumber ?? Int.max
+            if lhsDisc != rhsDisc { return lhsDisc < rhsDisc }
+            let lhsTrack = lhs.trackNumber ?? Int.max
+            let rhsTrack = rhs.trackNumber ?? Int.max
+            return lhsTrack < rhsTrack
+        }
+    }
+
     /// Flattens `songs` into album order: the same per-album buckets `albums(from:)` builds
-    /// (keyed by `displayAlbum`, albums sorted alphabetically), but with each bucket's songs
-    /// concatenated back into one list instead of kept as separate album pages. Each bucket
-    /// preserves its songs' original relative order (already track order — see `WatchAlbumGroup`'s
-    /// doc comment), so this mirrors the spirit of the iOS default order
-    /// (`Song.libraryFlatDisplayOrderAscending`: album, then disc/track), minus the disc/track
-    /// fields `WatchTransferMeta` does not carry.
+    /// (keyed by `displayAlbum`, albums sorted alphabetically, each bucket sorted into track order),
+    /// with each bucket's songs concatenated back into one list instead of kept as separate album
+    /// pages. Mirrors the spirit of the iOS default order (`Song.libraryFlatDisplayOrderAscending`:
+    /// album, then disc/track).
     ///
     /// Exists so the Watch's flat "Songs" list can actually form consecutive same-album runs for
-    /// `AlbumGrouping.positions(forAlbumKeys:)` — in transfer order, as songs previously rendered,
-    /// runs would rarely form since a song's neighbours are whatever arrived next from the iPhone,
-    /// not necessarily its albummates.
+    /// `AlbumGrouping.positions(forAlbumKeys:)` — in raw arrival order, runs would rarely form since
+    /// a song's neighbours are whatever arrived next from the iPhone, not necessarily its albummates.
     static func songsSortedByAlbum(_ songs: [WatchTransferMeta]) -> [WatchTransferMeta] {
         albums(from: songs).flatMap(\.songs)
     }

@@ -18,6 +18,15 @@ struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
     /// unsuited to image bytes). `nil` when the song has no locally-cached artwork on the iPhone at
     /// send time, or for songs transferred before artwork support existed (re-sending fills it in).
     var artworkFileName: String? = nil
+    /// 1-based track/disc number from `Song.trackNumber`/`Song.discNumber`, `nil` when the source
+    /// tag is missing (`Song`'s fields default to `0` for "unknown" — see `WatchTransferBridge`,
+    /// which maps that to `nil` here). Used by `WatchAlbumGrouping` to sort an album's songs into
+    /// their proper track order instead of assuming transfer order == track order — an assumption
+    /// broken by on-device transcoding, which can complete (and therefore `transferFile`) out of
+    /// enqueue order. Optional so old persisted Watch index JSON, and metadata from a sender that
+    /// predates these fields, still decode/parse fine.
+    var trackNumber: Int? = nil
+    var discNumber: Int? = nil
 
     var displayTitle: String { title.isEmpty ? "Unknown Title" : title }
     var displayArtist: String { artist.isEmpty ? "Unknown Artist" : artist }
@@ -35,6 +44,8 @@ struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
     static let metadataDurationKey = "duration"
     static let metadataFileTypeKey = "fileType"
     static let metadataArtworkFileNameKey = "artworkFileName"
+    static let metadataTrackNumberKey = "trackNumber"
+    static let metadataDiscNumberKey = "discNumber"
     /// Distinguishes an artwork-only `transferFile` (see `kindArtwork`) from a regular audio
     /// transfer, since the two carry very different metadata shapes.
     static let metadataKindKey = "kind"
@@ -52,6 +63,12 @@ struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
         ]
         if let artworkFileName {
             dict[Self.metadataArtworkFileNameKey] = artworkFileName
+        }
+        if let trackNumber {
+            dict[Self.metadataTrackNumberKey] = trackNumber
+        }
+        if let discNumber {
+            dict[Self.metadataDiscNumberKey] = discNumber
         }
         return dict
     }
@@ -73,6 +90,8 @@ struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
             let fileType = metadata?[metadataFileTypeKey] as? String
         else { return nil }
         let artworkFileName = metadata?[metadataArtworkFileNameKey] as? String
+        let trackNumber = metadata?[metadataTrackNumberKey] as? Int
+        let discNumber = metadata?[metadataDiscNumberKey] as? Int
         return WatchTransferMeta(
             id: id,
             title: title,
@@ -80,7 +99,9 @@ struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
             album: album,
             duration: duration,
             fileType: fileType,
-            artworkFileName: artworkFileName
+            artworkFileName: artworkFileName,
+            trackNumber: trackNumber,
+            discNumber: discNumber
         )
     }
 
@@ -115,11 +136,19 @@ struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
 /// Application Support on the Watch). Kept as free functions with no WatchKit dependency so the
 /// behaviour is unit-testable from the iOS test target.
 enum WatchLibraryIndex {
-    /// Appends `meta` unless an entry with the same id already exists (first write wins; a
-    /// re-sent transfer for an already-received song is a no-op).
+    /// Appends `meta` if no entry with the same id exists yet; otherwise updates that entry's
+    /// metadata in place, at the same position, rather than leaving it untouched. This used to be
+    /// "first write wins" (a re-sent transfer was a no-op), which meant an already-received song
+    /// could never pick up fields added to `WatchTransferMeta` later (e.g. trackNumber/discNumber —
+    /// see `WatchAlbumGrouping`). Updating in place makes "re-send an album" a real way to repair
+    /// the order of songs transferred before that fix.
     static func adding(_ meta: WatchTransferMeta, to songs: [WatchTransferMeta]) -> [WatchTransferMeta] {
-        guard !songs.contains(where: { $0.id == meta.id }) else { return songs }
-        return songs + [meta]
+        guard let index = songs.firstIndex(where: { $0.id == meta.id }) else {
+            return songs + [meta]
+        }
+        var updated = songs
+        updated[index] = meta
+        return updated
     }
 
     /// Removes the entry with `id`, if present. No-op when the id is not in the index.

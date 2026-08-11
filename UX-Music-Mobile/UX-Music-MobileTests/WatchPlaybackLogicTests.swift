@@ -208,6 +208,62 @@ final class WatchPlaybackLogicTests: XCTestCase {
         XCTAssertEqual(albums[0].artworkSong?.id, "1")
     }
 
+    // MARK: - WatchAlbumGrouping — within-album sort by track/disc number
+    //
+    // On-device transcoding (`WatchTransferBridge.performTransfer`) used to send songs to the Watch
+    // in transcode-completion order, not the order they were enqueued in — short songs finish first,
+    // so an album's tracks could arrive scrambled. `WatchTransferMeta` now carries optional
+    // trackNumber/discNumber, and each album bucket sorts by (discNumber, trackNumber), falling back
+    // to arrival order when a song has no number so old transfers (predating this fix) still display
+    // sensibly.
+
+    private func makeTrackSong(_ id: String, album: String, track: Int? = nil, disc: Int? = nil) -> WatchTransferMeta {
+        var meta = WatchTransferMeta(id: id, title: id, artist: "A", album: album, duration: 100, fileType: "m4a")
+        meta.trackNumber = track
+        meta.discNumber = disc
+        return meta
+    }
+
+    func testAlbumsSortsShuffledArrivalByTrackNumber() {
+        let songs = [
+            makeTrackSong("3", album: "Alpha", track: 3),
+            makeTrackSong("1", album: "Alpha", track: 1),
+            makeTrackSong("2", album: "Alpha", track: 2)
+        ]
+        let albums = WatchAlbumGrouping.albums(from: songs)
+        XCTAssertEqual(albums[0].songs.map(\.id), ["1", "2", "3"])
+    }
+
+    func testAlbumsPreservesArrivalOrderWhenNoTrackNumbers() {
+        let songs = [
+            makeTrackSong("3", album: "Alpha"),
+            makeTrackSong("1", album: "Alpha"),
+            makeTrackSong("2", album: "Alpha")
+        ]
+        let albums = WatchAlbumGrouping.albums(from: songs)
+        XCTAssertEqual(albums[0].songs.map(\.id), ["3", "1", "2"])
+    }
+
+    func testAlbumsSortsNumberedSongsBeforeUnnumberedOnesWhichKeepArrivalOrder() {
+        let songs = [
+            makeTrackSong("unnumbered-a", album: "Alpha"),
+            makeTrackSong("2", album: "Alpha", track: 2),
+            makeTrackSong("unnumbered-b", album: "Alpha"),
+            makeTrackSong("1", album: "Alpha", track: 1)
+        ]
+        let albums = WatchAlbumGrouping.albums(from: songs)
+        XCTAssertEqual(albums[0].songs.map(\.id), ["1", "2", "unnumbered-a", "unnumbered-b"])
+    }
+
+    func testAlbumsSortsDiscTwoTrackOneAfterDiscOneTrackNine() {
+        let songs = [
+            makeTrackSong("d2t1", album: "Alpha", track: 1, disc: 2),
+            makeTrackSong("d1t9", album: "Alpha", track: 9, disc: 1)
+        ]
+        let albums = WatchAlbumGrouping.albums(from: songs)
+        XCTAssertEqual(albums[0].songs.map(\.id), ["d1t9", "d2t1"])
+    }
+
     // MARK: - WatchAlbumGrouping.songsSortedByAlbum
     //
     // Flattens the flat "Songs" list into album order (mirroring the iOS default,
