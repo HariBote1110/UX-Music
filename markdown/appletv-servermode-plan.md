@@ -1,6 +1,7 @@
 # Apple TV 対応・PC サーバー運用化 計画書
 
-作成: 2026-08-11 ／ ステータス: 承認待ち → 実装順は Phase 0 から
+作成: 2026-08-11 ／ ステータス: **Phase 0〜3 実装完了（2026-08-12）— 実機検証待ち**
+実機検証の残項目: 実タップ音声の E2E とレイテンシ・同一 WebKit ヘルパーへの二重タップ実負荷・出力デバイス切替時の relay タップ再構築（未実装ギャップ）・AVPlayer での生 ADTS 受信可否・TV/iPhone 実機動作・launchd 常駐の実運用投入（各 progress/ 記録の未確定リスト参照）
 関連: `progress/lan-api-v1.md`（LAN API v1 SSoT）、`markdown/archive/sync-*.md`（Sync 各計画・アーカイブ済み）
 
 ## 0. ゴールと全体像
