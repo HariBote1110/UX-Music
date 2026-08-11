@@ -1,3 +1,7 @@
+> **このドキュメントは廃止済みです（2026-08-11）。**
+> `/sync/*`（無版）・`/wear/*` の wire schema であり、LAN API v1 統一（`/v1/remote/*` ・ `/v1/sync/*`、デバイス別トークン認証、`GET /v1/identity` へのスキーマ統合）により置き換えられました。
+> 現在の仕様は [`progress/lan-api-v1.md`](../../progress/lan-api-v1.md) を参照してください。
+
 # UX Music Sync Protocol Schema
 
 ## 目的

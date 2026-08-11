@@ -1,3 +1,7 @@
+> **このドキュメントは廃止済みです（2026-08-11）。**
+> Electron 版のディレクトリ構成（`src/main/index.js` 等）を前提にした技術仕様書です。現行のリポジトリルートは Wails（Go + TypeScript）版で、`src/main/` は存在しません。Electron 版のソースは比較用に `Electron_Based_UX-Music/` へ移動済みです。
+> 現行アーキテクチャは `main.go` ・ `server/` ・ `internal/` ・ `src/renderer/` を参照してください。
+
 # 技術仕様書 (document.md)
 
 ## 1. プロジェクト概要
