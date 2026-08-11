@@ -9,7 +9,6 @@ import (
 	"ux-music-sidecar/internal/store"
 
 	"github.com/google/uuid"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 var immediatePlaybackSyncState struct {
@@ -28,7 +27,7 @@ func (a *App) LoadLibrary() {
 			"albums": make(map[string]interface{}),
 		}
 	}
-	wailsRuntime.EventsEmit(a.ctx, "load-library", data)
+	a.emit("load-library", data)
 }
 
 func (a *App) GetUnifiedLibrary() (map[string]interface{}, error) {
@@ -80,7 +79,7 @@ func (a *App) RequestInitialLibrary() {
 func (a *App) LoadPlayCounts() {
 	fmt.Println("[Wails] LoadPlayCounts called")
 	counts, _ := store.Instance.LoadMap("playcounts")
-	wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", counts)
+	a.emit("play-counts-updated", counts)
 }
 
 // IncrementPlayCount increments the play count for a song
@@ -103,7 +102,7 @@ func (a *App) IncrementPlayCount(song map[string]interface{}) {
 	}
 
 	if a.ctx != nil {
-		wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", countsMap)
+		a.emit("play-counts-updated", countsMap)
 	}
 	scheduleImmediatePlaybackSync(a)
 }
@@ -229,7 +228,7 @@ func (a *App) SongSkipped(data map[string]interface{}) {
 func (a *App) RequestPlaylistsWithArtwork() {
 	playlistNames, err := playlist.GetAllPlaylists()
 	if err != nil {
-		wailsRuntime.EventsEmit(a.ctx, "playlists-updated", []interface{}{})
+		a.emit("playlists-updated", []interface{}{})
 		return
 	}
 
@@ -267,7 +266,7 @@ func (a *App) RequestPlaylistsWithArtwork() {
 		})
 	}
 
-	wailsRuntime.EventsEmit(a.ctx, "playlists-updated", playlists)
+	a.emit("playlists-updated", playlists)
 }
 
 // GetPlaylistDetails returns the songs in a playlist

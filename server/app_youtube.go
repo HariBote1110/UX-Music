@@ -11,7 +11,6 @@ import (
 	"ux-music-sidecar/internal/youtube"
 
 	"github.com/google/uuid"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // GetYouTubeInfo calls the existing GetYouTubeVideoInfo logic
@@ -151,14 +150,14 @@ func (a *App) AddYouTubeLink(payload interface{}) (map[string]interface{}, error
 
 	subtitleMessage := saveYouTubeLyrics(result.Title, result.Path, result.Lyrics, result.Lang, result.CaptionTrackVssID)
 
-	wailsRuntime.EventsEmit(a.ctx, "scan-complete", []interface{}{savedSong})
-	wailsRuntime.EventsEmit(a.ctx, "youtube-link-processed", savedSong)
+	a.emit("scan-complete", []interface{}{savedSong})
+	a.emit("youtube-link-processed", savedSong)
 	if added {
-		wailsRuntime.EventsEmit(a.ctx, "show-notification", fmt.Sprintf("YouTube楽曲「%s」を追加しました。", result.Title))
+		a.emit("show-notification", fmt.Sprintf("YouTube楽曲「%s」を追加しました。", result.Title))
 	} else {
-		wailsRuntime.EventsEmit(a.ctx, "show-notification", fmt.Sprintf("YouTube楽曲「%s」を更新しました。", result.Title))
+		a.emit("show-notification", fmt.Sprintf("YouTube楽曲「%s」を更新しました。", result.Title))
 	}
-	wailsRuntime.EventsEmit(a.ctx, "show-notification", subtitleMessage)
+	a.emit("show-notification", subtitleMessage)
 
 	return savedSong, nil
 }
@@ -263,10 +262,10 @@ func (a *App) addYouTubeStreamingLink(sourceURL, mode string, transcriptPreferen
 	}
 	subtitleMessage := saveYouTubeLyrics(info.Title, sourceURL, lrc, lang, vssID)
 
-	wailsRuntime.EventsEmit(a.ctx, "scan-complete", []interface{}{savedSong})
-	wailsRuntime.EventsEmit(a.ctx, "youtube-link-processed", savedSong)
-	wailsRuntime.EventsEmit(a.ctx, "show-notification", streamingLinkAddedNotification(mode, info.Title, added))
-	wailsRuntime.EventsEmit(a.ctx, "show-notification", subtitleMessage)
+	a.emit("scan-complete", []interface{}{savedSong})
+	a.emit("youtube-link-processed", savedSong)
+	a.emit("show-notification", streamingLinkAddedNotification(mode, info.Title, added))
+	a.emit("show-notification", subtitleMessage)
 
 	return savedSong, nil
 }

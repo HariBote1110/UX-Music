@@ -3,8 +3,6 @@ package server
 import (
 	"ux-music-sidecar/internal/lyrics"
 	"ux-music-sidecar/internal/lyricssync"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // GetLyrics finds lyrics for a song
@@ -21,7 +19,7 @@ func (a *App) SaveLrcFile(fileName string, content string) error {
 func (a *App) HandleLyricsDrop(paths []string) error {
 	count, err := lyrics.CopyLyricsFiles(paths)
 	if err == nil && count > 0 {
-		wailsRuntime.EventsEmit(a.ctx, "lyrics-added-notification", count)
+		a.emit("lyrics-added-notification", count)
 	}
 	return err
 }

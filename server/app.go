@@ -12,14 +12,23 @@ import (
 	"ux-music-sidecar/pkg/cdrip"
 	"ux-music-sidecar/pkg/mtp"
 	"ux-music-sidecar/pkg/normalize"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// eventsEmitFunc is the process-wide event emission hook shared by every App
+// instance and by package-level helpers that do not carry an *App (e.g.
+// emitSyncTransferProgress). It defaults to a no-op so the server package
+// stays headless-safe; app_wails_adapter.go's wireWailsRuntime rewires it to
+// wailsRuntime.EventsEmit when running under the GUI.
+var eventsEmitFunc = func(context.Context, string, interface{}) {}
 
 // App struct
 type App struct {
-	ctx               context.Context
+	ctx context.Context
+	// playCountsEmitter is the injectable event emitter backing emit below.
+	// The name predates its generalisation to all events (Phase 0-1); it is
+	// kept so existing tests can inject a spy without depending on internals.
 	playCountsEmitter func(context.Context, string, interface{})
+	dialogs           DialogProvider
 	ripper            *cdrip.Ripper
 	mtpManager        *mtp.Manager
 	normalizer        *normalize.Normalizer
@@ -42,20 +51,35 @@ func NewApp() *App {
 	lyricssync.SetSettingsProvider(store.Instance)
 
 	return &App{
-		playCountsEmitter: func(ctx context.Context, name string, data interface{}) {
-			wailsRuntime.EventsEmit(ctx, name, data)
-		},
-		ripper:       cdrip.NewRipper("", config.FFmpegPath, config.GetUserDataPath()),
-		mtpManager:   mtp.NewManager(),
-		normalizer:   normalize.NewNormalizer(config.FFmpegPath, config.FFprobePath),
-		lyricsSyncer: lyricssync.NewSyncer(),
+		playCountsEmitter: eventsEmitFunc,
+		dialogs:           headlessDialogProvider{},
+		ripper:            cdrip.NewRipper("", config.FFmpegPath, config.GetUserDataPath()),
+		mtpManager:        mtp.NewManager(),
+		normalizer:        normalize.NewNormalizer(config.FFmpegPath, config.FFprobePath),
+		lyricsSyncer:      lyricssync.NewSyncer(),
 	}
+}
+
+// emit forwards an event to the frontend via the injected emitter. In GUI
+// mode this reaches wailsRuntime.EventsEmit (wired by wireWailsRuntime);
+// headless it is a safe no-op. data may be nil for events that carry no
+// payload.
+func (a *App) emit(name string, data interface{}) {
+	if a == nil || a.ctx == nil {
+		return
+	}
+	emitter := a.playCountsEmitter
+	if emitter == nil {
+		emitter = eventsEmitFunc
+	}
+	emitter(a.ctx, name, data)
 }
 
 // Startup is called when the app starts. The context is saved
 // so we can call the runtime methods
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+	a.wireWailsRuntime()
 
 	a.bindLyricsSyncProgressEmitter()
 
@@ -77,9 +101,7 @@ func (a *App) Startup(ctx context.Context) {
 		a.audioPlayer.SetOnFinished(func() {
 			a.updateOSPlaybackState(false)
 			a.pushDiscordPresence(false)
-			if a.ctx != nil {
-				wailsRuntime.EventsEmit(a.ctx, "audio-playback-finished")
-			}
+			a.emit("audio-playback-finished", nil)
 		})
 	}
 
@@ -103,10 +125,7 @@ func (a *App) bindLyricsSyncProgressEmitter() {
 		return
 	}
 	a.lyricsSyncer.SetProgressHandler(func(stage string, percent float64) {
-		if a.ctx == nil {
-			return
-		}
-		wailsRuntime.EventsEmit(a.ctx, "lyrics-sync-progress", map[string]interface{}{
+		a.emit("lyrics-sync-progress", map[string]interface{}{
 			"stage":   stage,
 			"percent": percent,
 		})

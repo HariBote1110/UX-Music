@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"ux-music-sidecar/internal/config"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) initOSMediaControls() {
@@ -15,7 +13,7 @@ func (a *App) initOSMediaControls() {
 		if a.ctx == nil {
 			return
 		}
-		wailsRuntime.EventsEmit(a.ctx, "os-media-command", command)
+		a.emit("os-media-command", command)
 	})
 	if err != nil {
 		println("[OSMedia] initialization failed:", err.Error())

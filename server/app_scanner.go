@@ -17,7 +17,6 @@ import (
 	"ux-music-sidecar/pkg/audio"
 
 	"github.com/google/uuid"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // ScanLibrary calls the existing ScanLibrary logic
@@ -28,13 +27,13 @@ func (a *App) ScanLibrary(paths []string) scanner.ScanResult {
 	if err != nil {
 		fmt.Printf("[Wails] Failed to prepare library path: %v\n", err)
 		scanResult := scanner.ScanResult{Songs: []scanner.Song{}, Count: 0, Time: 0}
-		wailsRuntime.EventsEmit(a.ctx, "scan-complete", scanResult.Songs)
+		a.emit("scan-complete", scanResult.Songs)
 		return scanResult
 	}
 	if libraryPath == "" {
 		fmt.Println("[Wails] Library path selection cancelled")
 		scanResult := scanner.ScanResult{Songs: []scanner.Song{}, Count: 0, Time: 0}
-		wailsRuntime.EventsEmit(a.ctx, "scan-complete", scanResult.Songs)
+		a.emit("scan-complete", scanResult.Songs)
 		return scanResult
 	}
 
@@ -71,7 +70,7 @@ func (a *App) ScanLibrary(paths []string) scanner.ScanResult {
 	}
 
 	_ = store.Instance.Save("library", existingSongs)
-	wailsRuntime.EventsEmit(a.ctx, "scan-complete", newSongs)
+	a.emit("scan-complete", newSongs)
 	a.queueLoudnessAnalysis(extractSongPaths(newSongs))
 
 	go a.BuildFLACIndexes()
@@ -94,7 +93,7 @@ func (a *App) getOrPromptLibraryPath() (string, error) {
 		return libraryPath, nil
 	}
 
-	selectedPath, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+	selectedPath, err := a.dialogs.OpenDirectoryDialog(a.ctx, DialogOptions{
 		Title: "ライブラリとして使用するフォルダを選択してください",
 	})
 	if err != nil {
@@ -108,12 +107,12 @@ func (a *App) getOrPromptLibraryPath() (string, error) {
 	if err := store.Instance.Save("settings", settings); err != nil {
 		return "", err
 	}
-	wailsRuntime.EventsEmit(a.ctx, "settings-loaded", settings)
+	a.emit("settings-loaded", settings)
 	return selectedPath, nil
 }
 
 func (a *App) SetLibraryPath() (string, error) {
-	selectedPath, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+	selectedPath, err := a.dialogs.OpenDirectoryDialog(a.ctx, DialogOptions{
 		Title: "ライブラリフォルダを選択してください",
 	})
 	if err != nil {
@@ -129,8 +128,8 @@ func (a *App) SetLibraryPath() (string, error) {
 		return "", err
 	}
 
-	wailsRuntime.EventsEmit(a.ctx, "settings-loaded", settings)
-	wailsRuntime.EventsEmit(a.ctx, "show-notification", "ライブラリフォルダを設定しました。")
+	a.emit("settings-loaded", settings)
+	a.emit("show-notification", "ライブラリフォルダを設定しました。")
 	return selectedPath, nil
 }
 
@@ -425,7 +424,7 @@ func (a *App) BuildFLACIndexes() {
 						fmt.Printf("[Audio] Error indexing %s: %v\n", j.path, err)
 					}
 					c := completed.Add(1)
-					wailsRuntime.EventsEmit(a.ctx, "flac-index-progress", map[string]interface{}{
+					a.emit("flac-index-progress", map[string]interface{}{
 						"current": int(c),
 						"total":   total,
 						"path":    filepath.Base(j.path),
@@ -440,7 +439,7 @@ func (a *App) BuildFLACIndexes() {
 		close(jobs)
 
 		wg.Wait()
-		wailsRuntime.EventsEmit(a.ctx, "flac-index-complete", total)
+		a.emit("flac-index-complete", total)
 		fmt.Println("[Wails] BuildFLACIndexes completed")
 	}()
 }

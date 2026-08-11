@@ -23,7 +23,6 @@ import (
 	"ux-music-sidecar/internal/uxsync"
 
 	"github.com/skip2/go-qrcode"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const lanServerPort = "8765"
@@ -346,9 +345,7 @@ func (ls *LANServer) remoteCommandHandler(w http.ResponseWriter, r *http.Request
 		cmdErr = ls.app.AudioSeek(cmd.Value)
 	case "next", "prev":
 		// Queue management lives in the Wails frontend; delegate via event
-		if ls.app.ctx != nil {
-			wailsRuntime.EventsEmit(ls.app.ctx, "remote-command", cmd.Action)
-		}
+		ls.app.emit("remote-command", cmd.Action)
 	default:
 		writeAPIError(w, "unknown action", http.StatusBadRequest)
 		return

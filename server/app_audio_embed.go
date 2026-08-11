@@ -8,8 +8,6 @@ import (
 	"ux-music-sidecar/internal/audioembed"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // CurrentAudioEmbedVersion is the version tag the analyser uses when checking
@@ -72,7 +70,7 @@ func (a *App) AnalyseLibraryAudioEmbeddings() AudioEmbedAnalyseResponse {
 			BatchSize: 16,
 			OnProgress: func(done, total int) {
 				if a.ctx != nil {
-					wailsRuntime.EventsEmit(a.ctx, "audio-embed-progress", map[string]int{
+					a.emit("audio-embed-progress", map[string]int{
 						"done": done, "total": total,
 					})
 				}

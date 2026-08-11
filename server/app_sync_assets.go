@@ -23,7 +23,6 @@ import (
 	"ux-music-sidecar/internal/store"
 
 	"github.com/google/uuid"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const syncManagedLibraryDirName = "SyncLibrary"
@@ -984,7 +983,7 @@ func (a *App) emitSyncTransferProgress(progress SyncTransferProgress) {
 
 func emitSyncTransferProgress(ctx context.Context, progress SyncTransferProgress) {
 	if ctx != nil {
-		wailsRuntime.EventsEmit(ctx, syncTransferProgressEventName, progress)
+		eventsEmitFunc(ctx, syncTransferProgressEventName, progress)
 	}
 }
 

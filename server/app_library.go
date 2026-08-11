@@ -7,8 +7,6 @@ import (
 	"strings"
 	"ux-music-sidecar/internal/playlist"
 	"ux-music-sidecar/internal/store"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // DeleteSongs deletes songs from library and (optionally) from disk.
@@ -77,7 +75,7 @@ func (a *App) DeleteSongs(paths []string, deleteFiles bool) ([]string, error) {
 		}
 	}
 
-	wailsRuntime.EventsEmit(a.ctx, "songs-deleted", deletedPaths)
+	a.emit("songs-deleted", deletedPaths)
 	a.RequestPlaylistsWithArtwork()
 	fmt.Printf("[Wails] DeleteSongs completed: deleted=%d\n", len(deletedPaths))
 	return deletedPaths, nil
@@ -122,7 +120,7 @@ func (a *App) SaveAlbumSongOrder(albumKey string, orderedSongIds []string) error
 		return fmt.Errorf("failed to save library: %w", err)
 	}
 
-	wailsRuntime.EventsEmit(a.ctx, "album-order-saved", map[string]interface{}{
+	a.emit("album-order-saved", map[string]interface{}{
 		"albumKey":       albumKey,
 		"orderedSongIds": orderedSongIds,
 	})

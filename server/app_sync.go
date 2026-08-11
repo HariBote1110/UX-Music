@@ -16,8 +16,6 @@ import (
 
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/internal/uxsync"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const syncPlayEventsStoreName = "sync-play-events"
@@ -540,13 +538,7 @@ func (a *App) emitPlayCountsUpdated() {
 	if err != nil {
 		return
 	}
-	emitter := a.playCountsEmitter
-	if emitter == nil {
-		emitter = func(ctx context.Context, name string, data interface{}) {
-			wailsRuntime.EventsEmit(ctx, name, data)
-		}
-	}
-	emitter(a.ctx, "play-counts-updated", counts)
+	a.emit("play-counts-updated", counts)
 }
 
 func loadSyncPlayEvents() ([]uxsync.PlayEvent, error) {

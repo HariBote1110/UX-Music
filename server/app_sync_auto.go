@@ -13,12 +13,10 @@ import (
 	"time"
 	"unicode"
 
+	"golang.org/x/text/unicode/norm"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/internal/uxsync"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
-	"golang.org/x/text/unicode/norm"
 )
 
 type SyncAutoResult struct {
@@ -267,7 +265,7 @@ func (a *App) startSyncAutoLoop() {
 			// 新規データ・一時停止・失敗があったときだけ通知する。既存曲のスキップや
 			// 単なる接続確認では emit しない（毎分のトースト乱発を防ぐ）。
 			if a.ctx != nil && (err != nil || syncAutoResultIsNotable(result)) {
-				wailsRuntime.EventsEmit(a.ctx, "ux-sync-auto-result", result)
+				a.emit("ux-sync-auto-result", result)
 			}
 			timer.Reset(60 * time.Second)
 		}

@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 	"ux-music-sidecar/pkg/audio"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type AudioEqualizerSettings struct {
@@ -332,13 +330,13 @@ func (a *App) StartDeviceWatcher() {
 				if listFP != lastListFP {
 					lastListFP = listFP
 					fmt.Println("[Audio] Device list changed, notifying frontend")
-					wailsRuntime.EventsEmit(a.ctx, "audio-devices-changed")
+					a.emit("audio-devices-changed", nil)
 				}
 				currentDefault := liveDefaultName(devices)
 				if currentDefault != lastDefaultName {
 					lastDefaultName = currentDefault
 					fmt.Printf("[Audio] Default device changed to: %s\n", currentDefault)
-					wailsRuntime.EventsEmit(a.ctx, "audio-default-device-changed")
+					a.emit("audio-default-device-changed", nil)
 				}
 			}
 		}

@@ -8,8 +8,6 @@ import (
 	"ux-music-sidecar/internal/scanner"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/pkg/cdrip"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) CDScan() ([]cdrip.Track, error) {
@@ -79,7 +77,7 @@ func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 	progressChan := make(chan cdrip.RipProgress)
 	go func() {
 		for p := range progressChan {
-			wailsRuntime.EventsEmit(a.ctx, "rip-progress", p)
+			a.emit("rip-progress", p)
 		}
 	}()
 
@@ -139,7 +137,7 @@ func (a *App) CDStartRip(args map[string]interface{}) (interface{}, error) {
 	_ = store.Instance.Save("library", existingSongs)
 
 	// cd-rip-complete イベントで通知（scan-complete と区別してビュー再描画を回避）
-	wailsRuntime.EventsEmit(a.ctx, "cd-rip-complete", newSongs)
+	a.emit("cd-rip-complete", newSongs)
 	a.queueLoudnessAnalysis(outputPaths)
 
 	outputDir := a.ripper.OutputDir(libraryPath)

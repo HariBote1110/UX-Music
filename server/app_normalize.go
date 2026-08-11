@@ -12,8 +12,6 @@ import (
 	"ux-music-sidecar/internal/pathutil"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/pkg/normalize"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) NormalizeAnalyze(path string) normalize.AnalysisResult {
@@ -134,7 +132,7 @@ func (a *App) NormalizeStartJob(jobType string, files []interface{}, options int
 
 	if len(jobs) == 0 {
 		fmt.Printf("[Normalize] NormalizeStartJob: no runnable jobs (jobType=%s, incomingFiles=%d)\n", jobType, len(files))
-		wailsRuntime.EventsEmit(a.ctx, "normalize-job-finished", map[string]interface{}{
+		a.emit("normalize-job-finished", map[string]interface{}{
 			"jobType":       jobType,
 			"scheduled":     0,
 			"incomingFiles": len(files),
@@ -173,7 +171,7 @@ func (a *App) NormalizeStartJob(jobType string, files []interface{}, options int
 					res = normalize.NormalizeResult{Success: false, Error: fmt.Sprintf("unknown normalise job type: %s", jobType)}
 				}
 
-				wailsRuntime.EventsEmit(a.ctx, "normalize-worker-result", map[string]interface{}{
+				a.emit("normalize-worker-result", map[string]interface{}{
 					"type":   eventType,
 					"id":     j.ID,
 					"path":   j.FilePath,
@@ -182,7 +180,7 @@ func (a *App) NormalizeStartJob(jobType string, files []interface{}, options int
 			}(job)
 		}
 		wg.Wait()
-		wailsRuntime.EventsEmit(a.ctx, "normalize-job-finished", map[string]interface{}{
+		a.emit("normalize-job-finished", map[string]interface{}{
 			"jobType":   jobType,
 			"scheduled": len(jobs),
 		})
@@ -234,9 +232,9 @@ func (a *App) GetLibraryForNormalize() ([]interface{}, error) {
 }
 
 func (a *App) SelectFilesForNormalize() ([]string, error) {
-	paths, err := wailsRuntime.OpenMultipleFilesDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+	paths, err := a.dialogs.OpenMultipleFilesDialog(a.ctx, DialogOptions{
 		Title: "音声ファイルを選択",
-		Filters: []wailsRuntime.FileFilter{
+		Filters: []FileFilter{
 			{DisplayName: "Audio Files (*.mp3;*.flac;*.wav;*.m4a;*.ogg)", Pattern: "*.mp3;*.flac;*.wav;*.m4a;*.ogg"},
 		},
 	})
@@ -247,7 +245,7 @@ func (a *App) SelectFilesForNormalize() ([]string, error) {
 }
 
 func (a *App) SelectNormalizeOutputFolder() (string, error) {
-	path, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+	path, err := a.dialogs.OpenDirectoryDialog(a.ctx, DialogOptions{
 		Title: "出力先フォルダを選択",
 	})
 	if err != nil {
@@ -257,7 +255,7 @@ func (a *App) SelectNormalizeOutputFolder() (string, error) {
 }
 
 func (a *App) SelectFolderForNormalize() ([]string, error) {
-	root, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+	root, err := a.dialogs.OpenDirectoryDialog(a.ctx, DialogOptions{
 		Title: "フォルダを選択",
 	})
 	if err != nil {
@@ -398,7 +396,7 @@ func (a *App) queueLoudnessAnalysis(paths []string) {
 				}
 
 				if a.ctx != nil {
-					wailsRuntime.EventsEmit(a.ctx, "loudness-analysis-result", map[string]interface{}{
+					a.emit("loudness-analysis-result", map[string]interface{}{
 						"success":  result.Success,
 						"loudness": result.Loudness,
 						"truePeak": result.TruePeak,
