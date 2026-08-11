@@ -35,11 +35,23 @@ func identityHandler(w http.ResponseWriter, r *http.Request) {
 		ProtocolVersion:              syncProtocolVersion,
 		MinCompatibleProtocolVersion: syncMinCompatibleProtocolVersion,
 		SchemaVersion:                syncSchemaVersion,
-		Capabilities:                 syncCapabilities(),
+		Capabilities:                 identityCapabilities(),
 		Roles:                        append(append([]string{}, info.Roles...), currentServerModeRole()),
 		Negotiation:                  syncNegotiationFromRequest(r),
 		Extensions:                   map[string]interface{}{},
 	})
+}
+
+// identityCapabilities returns syncCapabilities() plus remoteRelayCapability
+// when running in GUI mode. GET /v1/remote/relay only exists meaningfully
+// with the Wails desktop app driving the official YouTube IFrame player, so
+// headless processes must not advertise it (see markdown/appletv-servermode-plan.md §3-3).
+func identityCapabilities() []string {
+	capabilities := syncCapabilities()
+	if CurrentServerMode() == ModeGUI {
+		capabilities = append(capabilities, remoteRelayCapability)
+	}
+	return capabilities
 }
 
 // currentServerModeRole returns the "headless" or "gui" role advertised in

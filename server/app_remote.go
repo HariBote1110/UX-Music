@@ -91,6 +91,7 @@ func registerRemoteRoutes(mux *http.ServeMux, ls *LANServer) {
 	mux.HandleFunc("/v1/remote/artwork/", remoteArtworkHandler)
 	mux.HandleFunc("/v1/remote/loudness", ls.remoteLoudnessHandler)
 	mux.HandleFunc("/v1/remote/state", ls.remoteStateHandler)
+	mux.HandleFunc("/v1/remote/relay", remoteRelayHandler)
 	mux.HandleFunc("/v1/remote/command", ls.remoteCommandHandler)
 	mux.HandleFunc("/v1/remote/play-event", ls.app.remotePlayEventHandler)
 }
@@ -301,6 +302,15 @@ func (ls *LANServer) remoteStateHandler(w http.ResponseWriter, r *http.Request) 
 	status["artist"] = ls.app.mediaArtist
 	status["album"] = ls.app.mediaAlbum
 	ls.app.mediaStateMu.Unlock()
+
+	// Additive relay block for Phase 3-3 (YouTube 音声中継). Existing fields
+	// are untouched so older clients ignoring unknown keys keep working.
+	relayActive, relayTitle, relayThumbnail := remoteRelay.State()
+	status["relay"] = map[string]interface{}{
+		"active":    relayActive,
+		"title":     relayTitle,
+		"thumbnail": relayThumbnail,
+	}
 
 	writeJSON(w, status)
 }

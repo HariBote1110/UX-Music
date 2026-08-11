@@ -36,6 +36,7 @@
 | GET /wear/state | GET /v1/remote/state |
 | POST /wear/command | POST /v1/remote/command |
 | （新設） | POST /v1/remote/play-event（Sync ピアでない軽量クライアント向けの再生完了報告。詳細は `progress/remote-play-event.md`） |
+| （新設） | GET /v1/remote/relay（GUI モード限定・YouTube 音声中継の AAC-LC ADTS 放送。認証必須・ヘッドレス時404・非アクティブ時409。詳細は `progress/remote-relay.md`） |
 | /sync/library/*, /sync/assets/*, /sync/discover | /v1/sync/library/*, /v1/sync/assets/*, /v1/sync/discover |
 
 ## Alternatives considered
