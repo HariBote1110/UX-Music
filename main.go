@@ -31,6 +31,8 @@ func main() {
 		return
 	}
 
+	server.SetServerMode(server.ModeGUI)
+
 	// Create an instance of the app structure
 	app := server.NewApp()
 

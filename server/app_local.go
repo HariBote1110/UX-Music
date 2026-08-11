@@ -20,12 +20,19 @@ const localShutdownPath = "/v1/local/shutdown"
 // GUI mode (which never reaches this far) and tests stay safe.
 var headlessShutdownTrigger = func() {}
 
-// setHeadlessShutdownTriggerForTest overrides headlessShutdownTrigger for the
-// duration of a test and returns a func that restores the previous value.
-func setHeadlessShutdownTriggerForTest(fn func()) func() {
+// setHeadlessShutdownTrigger overrides headlessShutdownTrigger and returns a
+// func that restores the previous value. RunHeadlessServe uses this to wire
+// the endpoint to its own shutdown signal; tests use it to observe whether
+// the trigger fired without actually tearing anything down.
+func setHeadlessShutdownTrigger(fn func()) func() {
 	previous := headlessShutdownTrigger
 	headlessShutdownTrigger = fn
 	return func() { headlessShutdownTrigger = previous }
+}
+
+// setHeadlessShutdownTriggerForTest is an alias kept for test readability.
+func setHeadlessShutdownTriggerForTest(fn func()) func() {
+	return setHeadlessShutdownTrigger(fn)
 }
 
 func registerLocalRoutes(mux *http.ServeMux) {
