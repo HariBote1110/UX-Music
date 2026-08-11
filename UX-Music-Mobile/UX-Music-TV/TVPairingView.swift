@@ -160,20 +160,33 @@ struct TVPairingResultView: View {
     }
 }
 
-/// Shown once a host token is persisted and no new pairing flow is active.
+/// Shown once a host token is persisted and no new pairing flow is active. Hosts the Phase 1-3/1-4
+/// browse + playback UI (`TVBrowseView`) built against the paired `RemoteAPIClient`.
 struct TVConnectedView: View {
     @ObservedObject var model: TVAppModel
+    @StateObject private var browseModel: TVBrowseModel
+    @StateObject private var playbackController: TVPlaybackController
+    private let client: RemoteAPIClient
+
+    init(model: TVAppModel) {
+        self.model = model
+        let config = model.serverConfig
+        let baseURL = "http://\(config.activeHost):\(config.port)"
+        let apiClient = RemoteAPIClient(baseURLString: baseURL, token: config.token)
+        self.client = apiClient
+        _browseModel = StateObject(wrappedValue: TVBrowseModel(client: apiClient))
+        _playbackController = StateObject(
+            wrappedValue: TVPlaybackController(client: apiClient, player: MusicPlayerService())
+        )
+    }
 
     var body: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 72))
-                .foregroundStyle(.green)
-            Text("\(model.serverConfig.activeHost) に接続済み")
-                .font(.title2)
-            Button("ペアリングを解除") { model.forgetPairing() }
-        }
-        .padding()
+        TVBrowseView(
+            browseModel: browseModel,
+            playbackController: playbackController,
+            client: client,
+            onSignOut: { model.forgetPairing() }
+        )
     }
 }
 
