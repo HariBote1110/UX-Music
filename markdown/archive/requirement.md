@@ -1,3 +1,7 @@
+> **このドキュメントは廃止済みです（2026-08-11）。**
+> Electron 版アーキテクチャ（`src/main/`, IPC 等）と旧 `/wear/*` ・ `/sync/*`（無版）API を前提にした仕様書です。現行はWails（Go + TypeScript）版であり、LAN API v1 統一（`/v1/remote/*` ・ `/v1/sync/*`）により大部分の記載が実態と乖離しています。
+> 現在の機能一覧は [`markdown/features.md`](../features.md)、LAN API は [`progress/lan-api-v1.md`](../../progress/lan-api-v1.md) を参照してください。
+
 # 音楽プレーヤー「UX Music」機能仕様書 (v0.1.9-Beta-37c)
 
 ## 概要

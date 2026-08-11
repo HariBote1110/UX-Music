@@ -1,3 +1,7 @@
+> **このドキュメントは廃止済みです（2026-08-11）。**
+> UX Sync（旧 `/sync/*` ・ `/wear/*`）の完了済みタスク履歴です。当時のAPIはLAN API v1 統一により `/v1/remote/*` ・ `/v1/sync/*` へ再編済みで、記載のエンドポイント・設定キー（`syncAuthTokens` 等）は現行実装と一致しません。
+> 現在の仕様は [`progress/lan-api-v1.md`](../../progress/lan-api-v1.md) を参照してください。
+
 # Task: UX Sync Phase 5.18 - 手動ペアリング導線
 
 ## 概要

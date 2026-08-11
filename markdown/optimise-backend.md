@@ -150,22 +150,24 @@ FFT 結果チャネル（バッファサイズ 4）に詰まったサンプル�
 
 ---
 
-## 6. Wear サーバ（影響度: 低）
+## 6. LAN Remote サーバ（影響度: 低）
+
+※ 旧 Wear API（`/wear/*`、`app_wear.go`）は `progress/lan-api-v1.md` の決定に基づき `/v1/remote/*`（`server/app_remote.go`）へ再編済み。以下は現行のハンドラ名に合わせて更新している。
 
 ### 対象ファイル
-- `app_wear.go`
+- `server/app_remote.go`
 
 ### 6-1. リクエストごとに pathToIDMap を再構築
 
-**場所**: `wearLoudnessHandler`
+**場所**: `remoteLoudnessHandler`
 
 リクエストのたびにライブラリ全体を走査して `pathToIDMap` を構築している。曲数 × リクエスト数の計算量になる。
 
 **改善案**: マップをキャッシュし、ライブラリ更新時のみ再構築する。
 
-### 6-2. /wear/songs でページネーション未対応
+### 6-2. /v1/remote/songs でページネーション未対応
 
-**場所**: `wearSongsHandler`
+**場所**: `remoteSongsHandler`
 
 全曲のメタデータを一括で JSON レスポンスとして返している。大規模ライブラリでは応答サイズが巨大になる。
 
