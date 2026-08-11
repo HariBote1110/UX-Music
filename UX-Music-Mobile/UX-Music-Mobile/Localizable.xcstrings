@@ -1,6 +1,86 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "\"Omit\" adds only the songs already on this device, in order. \"Download\" fetches the missing ones from the desktop first, in the same order, then adds them (songs that fail to download are skipped).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"Omit\" adds only the songs already on this device, in order. \"Download\" fetches the missing ones from the desktop first, in the same order, then adds them (songs that fail to download are skipped)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「除く」は端末にある曲だけを並び順どおりに追加します。「ダウンロード」は不足分をデスクトップから順に取得してから同じ順で追加します（取得に失敗した曲はスキップされます）。"
+          }
+        }
+      }
+    },
+    "%@ · %ld Songs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %ld Songs"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %ld 曲"
+          }
+        }
+      }
+    },
+    "%ld Albums": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%ld Albums"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%ld アルバム"
+          }
+        }
+      }
+    },
+    "%ld Albums · %ld Songs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%ld Albums · %ld Songs"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%ld アルバム · %ld 曲"
+          }
+        }
+      }
+    },
+    "%ld Songs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%ld Songs"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%ld 曲"
+          }
+        }
+      }
+    },
     "AAC (Small)": {
       "localizations": {
         "en": {
@@ -49,6 +129,118 @@
         }
       }
     },
+    "Add": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "追加"
+          }
+        }
+      }
+    },
+    "Add Songs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Songs"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "曲を追加"
+          }
+        }
+      }
+    },
+    "Add YouTube URL": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add YouTube URL"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "YouTube の URL を追加"
+          }
+        }
+      }
+    },
+    "Add to End of Queue": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add to End of Queue"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最後に追加"
+          }
+        }
+      }
+    },
+    "Add to Library": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add to Library"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリに追加"
+          }
+        }
+      }
+    },
+    "Add to Playlist": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add to Playlist"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリストに追加"
+          }
+        }
+      }
+    },
+    "Added to Library": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Added to Library"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリに追加済み"
+          }
+        }
+      }
+    },
     "Aim at the QR code in UX Music → Settings on your desktop.": {
       "localizations": {
         "en": {
@@ -61,6 +253,70 @@
           "stringUnit": {
             "state": "translated",
             "value": "デスクトップの UX Music → 設定 にある QR コードにカメラを向けてください。"
+          }
+        }
+      }
+    },
+    "Albums": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Albums"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アルバム"
+          }
+        }
+      }
+    },
+    "All downloaded songs are already in this playlist.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All downloaded songs are already in this playlist."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ダウンロード済みの曲はすべてこのプレイリストに追加済みです。"
+          }
+        }
+      }
+    },
+    "An error occurred while playing the video (code: %d).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An error occurred while playing the video (code: %d)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画の再生中にエラーが発生しました（コード: %d）。"
+          }
+        }
+      }
+    },
+    "Artists": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artists"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アーティスト"
           }
         }
       }
@@ -113,6 +369,134 @@
         }
       }
     },
+    "By Album": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Album"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アルバム順"
+          }
+        }
+      }
+    },
+    "By Album Name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Album Name"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アルバム名順"
+          }
+        }
+      }
+    },
+    "By Artist": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Artist"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アーティスト順"
+          }
+        }
+      }
+    },
+    "By Artist Name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Artist Name"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アーティスト名順"
+          }
+        }
+      }
+    },
+    "By Duration": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Duration"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再生時間順"
+          }
+        }
+      }
+    },
+    "By Name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Name"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名前順"
+          }
+        }
+      }
+    },
+    "By Song Count": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Song Count"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "曲数順"
+          }
+        }
+      }
+    },
+    "By Title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By Title"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "タイトル順"
+          }
+        }
+      }
+    },
     "Cancel": {
       "localizations": {
         "en": {
@@ -129,6 +513,22 @@
         }
       }
     },
+    "Check that UX Music is running on the desktop over Wi-Fi.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check that UX Music is running on the desktop over Wi-Fi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wi-Fi 上でデスクトップの UX Music が起動しているか確認してください。"
+          }
+        }
+      }
+    },
     "Close": {
       "localizations": {
         "en": {
@@ -141,6 +541,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "閉じる"
+          }
+        }
+      }
+    },
+    "Connect to desktop in Settings to browse and download playlists.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect to desktop in Settings to browse and download playlists."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定でデスクトップに接続すると、プレイリストを表示してダウンロードできます。"
           }
         }
       }
@@ -337,6 +753,22 @@
         }
       }
     },
+    "Control": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Control"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コントロール"
+          }
+        }
+      }
+    },
     "Converting…": {
       "localizations": {
         "en": {
@@ -385,6 +817,134 @@
         }
       }
     },
+    "Couldn't Load Playlists": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't Load Playlists"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリストを取得できませんでした"
+          }
+        }
+      }
+    },
+    "Couldn't add it. Check the URL and pairing status.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't add it. Check the URL and pairing status."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "追加できませんでした。URLとペアリング状態を確認してください。"
+          }
+        }
+      }
+    },
+    "Couldn't fetch video info. Check the pairing status with the desktop.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't fetch video info. Check the pairing status with the desktop."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画情報を取得できませんでした。デスクトップとのペアリング状態を確認してください。"
+          }
+        }
+      }
+    },
+    "Couldn't play the video (invalid parameter).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't play the video (invalid parameter)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画を再生できませんでした（不正なパラメータ）。"
+          }
+        }
+      }
+    },
+    "Couldn't play the video (player error).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't play the video (player error)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動画を再生できませんでした（プレイヤーエラー）。"
+          }
+        }
+      }
+    },
+    "Couldn't start the local playback server. Please restart the app and try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't start the local playback server. Please restart the app and try again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再生用のローカルサーバーを起動できませんでした。アプリを再起動してお試しください。"
+          }
+        }
+      }
+    },
+    "Create": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "作成"
+          }
+        }
+      }
+    },
+    "Create one with + or import from desktop.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create one with + or import from desktop."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+ で新規作成するか、デスクトップから取り込めます。"
+          }
+        }
+      }
+    },
     "Crossfade": {
       "localizations": {
         "en": {
@@ -417,6 +977,38 @@
         }
       }
     },
+    "Delete": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "削除"
+          }
+        }
+      }
+    },
+    "Desktop Playlist": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desktop Playlist"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デスクトップのプレイリスト"
+          }
+        }
+      }
+    },
     "Done": {
       "localizations": {
         "en": {
@@ -445,6 +1037,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "ダウンロード"
+          }
+        }
+      }
+    },
+    "Download Album": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download Album"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アルバムをダウンロード"
+          }
+        }
+      }
+    },
+    "Download First": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download First"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先にダウンロードしてから取り込む"
+          }
+        }
+      }
+    },
+    "Download Playlist": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download Playlist"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリストをダウンロード"
           }
         }
       }
@@ -497,6 +1137,22 @@
         }
       }
     },
+    "Download songs from the remote library.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download songs from the remote library."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リモートライブラリから曲をダウンロードしてください"
+          }
+        }
+      }
+    },
     "Downloading…": {
       "localizations": {
         "en": {
@@ -529,6 +1185,54 @@
         }
       }
     },
+    "End Reordering": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End Reordering"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "並べ替えを終了"
+          }
+        }
+      }
+    },
+    "Enter a name for the new playlist.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a name for the new playlist."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいプレイリストの名前を入力してください。"
+          }
+        }
+      }
+    },
+    "Enter a new name for this playlist.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a new name for this playlist."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプレイリストの新しい名前を入力してください。"
+          }
+        }
+      }
+    },
     "Enter and save a host name to copy desktop playlists to this device.": {
       "localizations": {
         "en": {
@@ -557,6 +1261,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "イコライザー"
+          }
+        }
+      }
+    },
+    "Failed downloads: %ld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed downloads: %ld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ダウンロード失敗: %ld 件"
+          }
+        }
+      }
+    },
+    "Failed to Load Library": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to Load Library"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリの読み込みに失敗しました"
           }
         }
       }
@@ -673,6 +1409,38 @@
         }
       }
     },
+    "Handling of Unsaved Songs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handling of Unsaved Songs"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未保存の曲の扱い"
+          }
+        }
+      }
+    },
+    "Import Desktop Playlist": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import Desktop Playlist"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デスクトップのプレイリストを取り込む"
+          }
+        }
+      }
+    },
     "Import Desktop Playlists": {
       "localizations": {
         "en": {
@@ -685,6 +1453,102 @@
           "stringUnit": {
             "state": "translated",
             "value": "デスクトップのプレイリストを取り込む"
+          }
+        }
+      }
+    },
+    "Import Error": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import Error"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取り込みエラー"
+          }
+        }
+      }
+    },
+    "Import Method": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import Method"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取り込み方法"
+          }
+        }
+      }
+    },
+    "Import Result": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import Result"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取り込み結果"
+          }
+        }
+      }
+    },
+    "Import from Desktop": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import from Desktop"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デスクトップから取り込む"
+          }
+        }
+      }
+    },
+    "Import with These Settings": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import with These Settings"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この内容で取り込む"
+          }
+        }
+      }
+    },
+    "Importing…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Importing…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取り込み中…"
           }
         }
       }
@@ -753,6 +1617,70 @@
         }
       }
     },
+    "Library": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Library"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリ"
+          }
+        }
+      }
+    },
+    "Loading Playlists…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading Playlists…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリストを読み込み中…"
+          }
+        }
+      }
+    },
+    "Loading from Desktop…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading from Desktop…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デスクトップから読み込み中…"
+          }
+        }
+      }
+    },
+    "More Actions": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More Actions"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その他の操作"
+          }
+        }
+      }
+    },
     "More audio options will appear here in a future update.": {
       "localizations": {
         "en": {
@@ -769,6 +1697,38 @@
         }
       }
     },
+    "Name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名前"
+          }
+        }
+      }
+    },
+    "New Playlist": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Playlist"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新規プレイリスト"
+          }
+        }
+      }
+    },
     "Next track": {
       "localizations": {
         "en": {
@@ -781,6 +1741,134 @@
           "stringUnit": {
             "state": "translated",
             "value": "次の曲"
+          }
+        }
+      }
+    },
+    "No Downloaded Songs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Downloaded Songs"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ダウンロード済みの曲がありません"
+          }
+        }
+      }
+    },
+    "No Lyrics": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Lyrics"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "歌詞がありません"
+          }
+        }
+      }
+    },
+    "No Matching Artists": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Matching Artists"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一致するアーティストがありません"
+          }
+        }
+      }
+    },
+    "No Matching Playlists": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Matching Playlists"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一致するプレイリストがありません"
+          }
+        }
+      }
+    },
+    "No Matching Songs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Matching Songs"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一致する曲がありません"
+          }
+        }
+      }
+    },
+    "No Playlists Yet": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Playlists Yet"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだプレイリストがありません"
+          }
+        }
+      }
+    },
+    "No Playlists on Desktop": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Playlists on Desktop"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デスクトップにプレイリストがありません"
+          }
+        }
+      }
+    },
+    "No Songs on Server": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Songs on Server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバーに曲がありません"
           }
         }
       }
@@ -977,6 +2065,22 @@
         }
       }
     },
+    "Omit from Playlist": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Omit from Playlist"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリストから除いて取り込む"
+          }
+        }
+      }
+    },
     "On": {
       "localizations": {
         "en": {
@@ -1021,6 +2125,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "その他"
+          }
+        }
+      }
+    },
+    "Overview": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overview"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "概要"
           }
         }
       }
@@ -1153,6 +2273,54 @@
         }
       }
     },
+    "Paste YouTube URL": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paste YouTube URL"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "YouTubeのURLを貼り付け"
+          }
+        }
+      }
+    },
+    "Paths outside desktop library: %ld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paths outside desktop library: %ld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デスクトップライブラリ外のパス: %ld 件"
+          }
+        }
+      }
+    },
+    "Paths skipped (not in library): %ld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paths skipped (not in library): %ld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリに無いためスキップされたパス: %ld 件"
+          }
+        }
+      }
+    },
     "Pause": {
       "localizations": {
         "en": {
@@ -1185,6 +2353,22 @@
         }
       }
     },
+    "Play Next": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play Next"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "次に再生"
+          }
+        }
+      }
+    },
     "Playback": {
       "localizations": {
         "en": {
@@ -1197,6 +2381,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "再生設定"
+          }
+        }
+      }
+    },
+    "Playlist": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playlist"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリスト"
+          }
+        }
+      }
+    },
+    "Playlist Count": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playlist Count"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリスト数"
+          }
+        }
+      }
+    },
+    "Playlist Unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playlist Unavailable"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリストを利用できません"
+          }
+        }
+      }
+    },
+    "Playlists": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playlists"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリスト"
+          }
+        }
+      }
+    },
+    "Playlists created: %ld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playlists created: %ld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "作成したプレイリスト: %ld 件"
           }
         }
       }
@@ -1297,6 +2561,38 @@
         }
       }
     },
+    "Refresh Library": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Library"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリを更新"
+          }
+        }
+      }
+    },
+    "Remote": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リモート"
+          }
+        }
+      }
+    },
     "Remove": {
       "localizations": {
         "en": {
@@ -1313,6 +2609,38 @@
         }
       }
     },
+    "Remove from Library": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove from Library"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブラリから削除"
+          }
+        }
+      }
+    },
+    "Remove from Playlist": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove from Playlist"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリストから削除"
+          }
+        }
+      }
+    },
     "Remove from Queue": {
       "localizations": {
         "en": {
@@ -1325,6 +2653,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "キューから削除"
+          }
+        }
+      }
+    },
+    "Rename": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "名前を変更"
+          }
+        }
+      }
+    },
+    "Rename Playlist": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename Playlist"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリスト名を変更"
           }
         }
       }
@@ -1393,6 +2753,22 @@
         }
       }
     },
+    "Retry": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再試行"
+          }
+        }
+      }
+    },
     "SERVER": {
       "localizations": {
         "en": {
@@ -1453,6 +2829,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "QRをスキャン"
+          }
+        }
+      }
+    },
+    "Search Playlists": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search Playlists"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "プレイリストを検索"
+          }
+        }
+      }
+    },
+    "Search Songs, Artists, Albums": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search Songs, Artists, Albums"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "曲・アーティスト・アルバムを検索"
           }
         }
       }
@@ -1565,6 +2973,118 @@
           "stringUnit": {
             "state": "translated",
             "value": "シャッフル"
+          }
+        }
+      }
+    },
+    "Skipped (empty): %ld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skipped (empty): %ld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "空のためスキップ: %ld 件"
+          }
+        }
+      }
+    },
+    "Skipped because embedded playback is not allowed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skipped because embedded playback is not allowed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "埋め込み再生が許可されていないためスキップしました"
+          }
+        }
+      }
+    },
+    "Songs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Songs"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "曲"
+          }
+        }
+      }
+    },
+    "Songs Not Saved on Device": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Songs Not Saved on Device"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端末に未保存の曲"
+          }
+        }
+      }
+    },
+    "Songs are added to the library according to the desktop's playback mode setting.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Songs are added to the library according to the desktop's playback mode setting."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デスクトップの再生モード設定に従い、ライブラリへ楽曲として追加されます。"
+          }
+        }
+      }
+    },
+    "Songs not included on device: %ld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Songs not included on device: %ld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "端末に含めなかった曲: %ld 件"
+          }
+        }
+      }
+    },
+    "Sort": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sort"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "並び替え"
           }
         }
       }
@@ -1713,6 +3233,86 @@
         }
       }
     },
+    "This playlist has no matching songs in the remote library. Refresh the library and try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This playlist has no matching songs in the remote library. Refresh the library and try again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプレイリストに対応する曲がリモート一覧にありません。ライブラリを更新してから再度お試しください。"
+          }
+        }
+      }
+    },
+    "This playlist was deleted or is no longer available.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This playlist was deleted or is no longer available."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このプレイリストは削除されたか、利用できなくなりました。"
+          }
+        }
+      }
+    },
+    "This song has no saved lyrics file. Songs downloaded from the remote library are imported automatically when the desktop has lyrics available.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This song has no saved lyrics file. Songs downloaded from the remote library are imported automatically when the desktop has lyrics available."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この曲は保存された歌詞ファイルがありません。リモートライブラリからダウンロードした曲は、デスクトップ側に歌詞がある場合に自動で取り込まれます。"
+          }
+        }
+      }
+    },
+    "This video wasn't found (it may have been removed or made private).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This video wasn't found (it may have been removed or made private)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この動画は見つかりませんでした（削除または非公開の可能性があります）。"
+          }
+        }
+      }
+    },
+    "This video's owner has disabled embedded playback. Please watch it in the YouTube app.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This video's owner has disabled embedded playback. Please watch it in the YouTube app."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この動画は投稿者により埋め込み再生が許可されていません。YouTubeアプリでご視聴ください。"
+          }
+        }
+      }
+    },
     "Transfer Album to Apple Watch": {
       "localizations": {
         "en": {
@@ -1821,6 +3421,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "不明なタイトル"
+          }
+        }
+      }
+    },
+    "Unresolved Paths on Desktop": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unresolved Paths on Desktop"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デスクトップ側で未解決のパス"
           }
         }
       }
