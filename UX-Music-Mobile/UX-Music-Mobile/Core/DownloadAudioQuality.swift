@@ -86,6 +86,29 @@ enum DownloadAACBitrate: Int, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Decides whether a progress fraction update (0.0–1.0) is significant enough to publish to
+/// `@Observable`/`@Published` state, used to throttle high-frequency progress callbacks —
+/// `AppModel.downloadSong`'s URLSession progress handler and `WatchTransferBridge.sendFile`'s KVO
+/// observation of `WCSessionFileTransfer.progress.fractionCompleted` both tick many times per
+/// second, and publishing every tick re-renders every visible row/label observing the value (see
+/// `mobile_perf_research/notes/static-review-2026-08.md` finding 3). Kept as a pure function so the
+/// step size is unit-testable without a real network/transfer.
+enum ProgressPublishThrottle {
+    /// Minimum fractional advance since the last published value before a new update is worth
+    /// publishing.
+    static let step = 0.01
+
+    /// - Parameters:
+    ///   - previous: The fraction most recently published (or the initial value, typically `0`).
+    ///   - next: The newly observed fraction.
+    /// - Returns: `true` if `next` should be published — either it advanced by at least `step`, or
+    ///   it reached `1.0` (always published so a finished transfer/download never gets stuck
+    ///   showing a stale sub-100% value).
+    static func shouldPublish(previous: Double, next: Double) -> Bool {
+        next >= 1.0 || next - previous >= step
+    }
+}
+
 /// Decision for `DownloadManager.finalizeDownloadedAACPart`: the desktop server falls back to
 /// serving ORIGINAL bytes when its ffmpeg is unavailable, so a download requested as "AAC" may
 /// actually be the original file's bytes (flac/mp3/etc). Kept as a pure function so the decision

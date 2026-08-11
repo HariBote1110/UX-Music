@@ -10,7 +10,14 @@ struct WatchTransferQueueItem: Identifiable {
         /// `WatchTransferAudioPolicy` decided the local file needs transcoding to AAC before it can
         /// be sent (see `WatchTransferBridge.performTransfer`); `WatchAudioTranscoder` is running.
         case preparing
-        case sending
+        /// `WCSession.transferFile` was enqueued and is in flight; the associated value is
+        /// `WCSessionFileTransfer.progress.fractionCompleted` (0.0–1.0), observed via KVO in
+        /// `WatchTransferBridge.sendFile` and throttled by `ProgressPublishThrottle`. `transferFile`
+        /// only *enqueues* the transfer — it does not mean any bytes have moved yet — so this used
+        /// to jump straight to `.sent` the instant it was called, showing "Sent" for a multi-minute
+        /// transfer that had not even started.
+        case sending(Double)
+        /// `WCSessionDelegate.session(_:didFinish:error:)` reported success.
         case sent
         case failed(String)
     }
@@ -80,6 +87,69 @@ enum WatchTransferTranscodeOutcome {
     }
 }
 
+/// Pure phase mapping for `WCSessionDelegate.session(_:didFinish:error:)` — kept as a free function
+/// (no `WCSession` dependency) so the success/failure mapping is unit-testable. Previously this
+/// delegate callback only handled the error branch (a success left the queue item however `sendFile`
+/// had already (wrongly) set it, i.e. `.sent` before the transfer had actually finished).
+enum WatchTransferCompletionOutcome {
+    static func phase(error: Error?) -> WatchTransferQueueItem.Phase {
+        if let error {
+            return .failed(error.localizedDescription)
+        }
+        return .sent
+    }
+}
+
+/// Aggregate progress across `WatchTransferBridge.queue`, used by the Settings screen's queue
+/// summary header ("完了 m/n" plus an aggregate `ProgressView` while any item is still in flight —
+/// see `SettingsScreen`). Kept as a pure function over `[WatchTransferQueueItem]` so the aggregation
+/// policy is unit-testable without a real `WCSession`.
+enum WatchTransferQueueSummary {
+    struct Aggregate: Equatable {
+        /// Number of items whose phase is `.sent`.
+        let completedCount: Int
+        let totalCount: Int
+        /// Mean of every item's fraction: `1.0` for `.sent`, the in-progress fraction for
+        /// `.sending`, `0` for every other phase. `0` for an empty queue.
+        let meanFraction: Double
+        /// Whether any item is still actively transferring or being prepared — the header's
+        /// aggregate `ProgressView` is only shown while this is `true`.
+        let isActive: Bool
+    }
+
+    static func aggregate(items: [WatchTransferQueueItem]) -> Aggregate {
+        guard !items.isEmpty else {
+            return Aggregate(completedCount: 0, totalCount: 0, meanFraction: 0, isActive: false)
+        }
+
+        var completedCount = 0
+        var fractionSum = 0.0
+        var isActive = false
+
+        for item in items {
+            switch item.phase {
+            case .sent:
+                completedCount += 1
+                fractionSum += 1.0
+            case .sending(let fraction):
+                fractionSum += fraction
+                isActive = true
+            case .preparing:
+                isActive = true
+            case .downloading, .waiting, .failed:
+                break
+            }
+        }
+
+        return Aggregate(
+            completedCount: completedCount,
+            totalCount: items.count,
+            meanFraction: fractionSum / Double(items.count),
+            isActive: isActive
+        )
+    }
+}
+
 /// iOS-side WatchConnectivity bridge: sends already-downloaded audio files to the paired Apple
 /// Watch via `WCSession.transferFile`, alongside a `WatchTransferMeta` metadata dictionary the
 /// Watch uses to build its local library (see `WatchTransfer.swift`, shared with the Watch target).
@@ -100,6 +170,17 @@ final class WatchTransferBridge: NSObject, ObservableObject {
     /// Songs requested via `send` before activation completed; flushed once `activationStatus`
     /// becomes `.activated`, or marked `.failed` if activation itself fails.
     private var pendingSongs: [Song] = []
+
+    /// In-flight audio `WCSessionFileTransfer`s, keyed by song id — artwork transfers (sent
+    /// separately, see `sendFile`) are deliberately not tracked here, so their progress stays
+    /// silent and `didFinish` never mutates the queue for them (see `handleTransferCompletion`).
+    private var activeTransfers: [String: WCSessionFileTransfer] = [:]
+    /// KVO observation of each tracked transfer's `progress.fractionCompleted`, kept alongside
+    /// `activeTransfers` so it can be invalidated once the transfer finishes (`handleTransferCompletion`).
+    private var transferObservations: [String: NSKeyValueObservation] = [:]
+    /// Last fraction upserted into the queue for a given song id, so `ProgressPublishThrottle` has
+    /// something to compare each new KVO callback against.
+    private var lastPublishedFraction: [String: Double] = [:]
 
     /// Downloads `song` from the desktop server, returning whether it is locally available
     /// afterwards. Wired up by `AppModel` after construction (see its `init`) since downloading
@@ -242,7 +323,8 @@ final class WatchTransferBridge: NSObject, ObservableObject {
             meta.artworkFileName = WatchTransferMeta.storedArtworkFileName(forId: song.id)
         }
 
-        upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .sending))
+        upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .sending(0)))
+        lastPublishedFraction[song.id] = 0
 
         guard WCSession.isSupported() else {
             upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .failed("WatchConnectivity unsupported")))
@@ -254,7 +336,19 @@ final class WatchTransferBridge: NSObject, ObservableObject {
             return
         }
 
-        session.transferFile(fileURL, metadata: meta.wcMetadata)
+        // `transferFile` only *enqueues* the transfer — completion (success or failure) arrives
+        // later via `WCSessionDelegate.session(_:didFinish:error:)` (see `handleTransferCompletion`),
+        // and in-flight progress arrives via KVO on the returned `WCSessionFileTransfer.progress`
+        // below. Only the audio transfer is tracked; the artwork transfer further down is fire-and-
+        // forget.
+        let audioTransfer = session.transferFile(fileURL, metadata: meta.wcMetadata)
+        activeTransfers[song.id] = audioTransfer
+        transferObservations[song.id] = audioTransfer.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+            let fraction = progress.fractionCompleted
+            Task { @MainActor in
+                self?.handleTransferProgress(songId: song.id, fraction: fraction)
+            }
+        }
 
         // Artwork is sent as its own `transferFile` rather than embedded in `meta.wcMetadata`
         // (WatchConnectivity metadata dictionaries are meant for small key/value pairs, not image
@@ -263,8 +357,30 @@ final class WatchTransferBridge: NSObject, ObservableObject {
            let downscaledURL = Self.writeDownscaledArtwork(from: artworkURL, songId: song.id) {
             session.transferFile(downscaledURL, metadata: meta.artworkWcMetadata)
         }
+    }
 
-        upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .sent))
+    /// KVO callback for a tracked audio transfer's `progress.fractionCompleted`, throttled via
+    /// `ProgressPublishThrottle` so SwiftUI is not re-rendering the queue row on every tick.
+    private func handleTransferProgress(songId: String, fraction: Double) {
+        let previous = lastPublishedFraction[songId] ?? 0
+        guard ProgressPublishThrottle.shouldPublish(previous: previous, next: fraction) else { return }
+        lastPublishedFraction[songId] = fraction
+        guard let title = queue.first(where: { $0.id == songId })?.title else { return }
+        upsert(WatchTransferQueueItem(id: songId, title: title, phase: .sending(fraction)))
+    }
+
+    /// `WCSessionDelegate.session(_:didFinish:error:)` for a tracked audio transfer: resolves the
+    /// final phase via `WatchTransferCompletionOutcome`, restores the item's title from the existing
+    /// queue entry (the delegate callback itself only carries the WatchConnectivity metadata, not a
+    /// display title), and tears down the KVO observation/tracking entries.
+    private func handleTransferCompletion(songId: String, error: Error?) {
+        transferObservations[songId]?.invalidate()
+        transferObservations.removeValue(forKey: songId)
+        activeTransfers.removeValue(forKey: songId)
+        lastPublishedFraction.removeValue(forKey: songId)
+
+        let title = queue.first(where: { $0.id == songId })?.title ?? ""
+        upsert(WatchTransferQueueItem(id: songId, title: title, phase: WatchTransferCompletionOutcome.phase(error: error)))
     }
 
     private static func fileSize(at url: URL) -> Int64 {
@@ -364,11 +480,13 @@ extension WatchTransferBridge: WCSessionDelegate {
         didFinish fileTransfer: WCSessionFileTransfer,
         error: Error?
     ) {
-        guard let songId = fileTransfer.file.metadata?[WatchTransferMeta.metadataIDKey] as? String else { return }
+        let metadata = fileTransfer.file.metadata
+        // Artwork transfers are deliberately untracked (see `sendFile`/`activeTransfers`) — silently
+        // ignore their completion rather than mutating the queue with an artwork-only "song".
+        guard !WatchTransferMeta.isArtworkWcMetadata(metadata) else { return }
+        guard let songId = metadata?[WatchTransferMeta.metadataIDKey] as? String else { return }
         Task { @MainActor in
-            if let error {
-                self.upsert(WatchTransferQueueItem(id: songId, title: "", phase: .failed(error.localizedDescription)))
-            }
+            self.handleTransferCompletion(songId: songId, error: error)
         }
     }
 }

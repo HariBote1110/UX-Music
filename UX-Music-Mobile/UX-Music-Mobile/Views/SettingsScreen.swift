@@ -190,6 +190,15 @@ struct SettingsScreen: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
+                        let summary = WatchTransferQueueSummary.aggregate(items: model.watchTransferBridge.queue)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(String(format: String(localized: "Completed %lld of %lld"), summary.completedCount, summary.totalCount))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            if summary.isActive {
+                                ProgressView(value: summary.meanFraction)
+                            }
+                        }
                         ForEach(model.watchTransferBridge.queue) { item in
                             HStack {
                                 Text(item.title)
@@ -458,7 +467,8 @@ struct SettingsScreen: View {
         case .downloading: return String(localized: "Downloading…")
         case .waiting: return String(localized: "Waiting")
         case .preparing: return String(localized: "Converting…")
-        case .sending: return String(localized: "Sending…")
+        case .sending(let fraction):
+            return String(format: String(localized: "Sending… %d%%"), Int((fraction * 100).rounded()))
         case .sent: return String(localized: "Sent")
         case .failed(let message):
             return String(format: String(localized: "Failed: %@"), message)

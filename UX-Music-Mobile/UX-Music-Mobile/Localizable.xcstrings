@@ -712,6 +712,22 @@
         }
       }
     },
+    "Completed %lld of %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed %lld of %lld"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完了 %lld/%lld"
+          }
+        }
+      }
+    },
     "Connect to desktop in Settings to browse and download playlists.": {
       "localizations": {
         "en": {
@@ -3147,6 +3163,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "送信中…"
+          }
+        }
+      }
+    },
+    "Sending… %d%%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sending… %d%%"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "送信中… %d%%"
           }
         }
       }
