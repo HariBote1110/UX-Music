@@ -276,6 +276,25 @@ enum WatchTransferRestoreReconciliation {
     }
 }
 
+/// Pure predicate for whether `WatchTransferQueueSection` should show its "keep the Watch app
+/// frontmost" footer hint (user report: transfers stall once the Watch screen turns off and
+/// watchOS returns to the clock face). Shown only while a transfer is actually in flight over
+/// WatchConnectivity (`.preparing`/`.sending`) — not for `.waiting`/`.downloading`, where the hint
+/// would be premature (nothing has started sending yet), and not once everything has settled into
+/// `.sent`/`.failed`.
+enum WatchTransferHintPolicy {
+    static func shouldShowFrontmostHint(items: [WatchTransferQueueItem]) -> Bool {
+        items.contains { item in
+            switch item.phase {
+            case .preparing, .sending:
+                return true
+            case .downloading, .waiting, .sent, .failed:
+                return false
+            }
+        }
+    }
+}
+
 /// iOS-side WatchConnectivity bridge: sends already-downloaded audio files to the paired Apple
 /// Watch via `WCSession.transferFile`, alongside a `WatchTransferMeta` metadata dictionary the
 /// Watch uses to build its local library (see `WatchTransfer.swift`, shared with the Watch target).
