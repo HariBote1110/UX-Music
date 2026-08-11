@@ -3,7 +3,7 @@ import UIKit
 import WatchConnectivity
 
 /// One song queued (or already sent) to the paired Apple Watch.
-struct WatchTransferQueueItem: Identifiable {
+struct WatchTransferQueueItem: Identifiable, Equatable {
     enum Phase: Equatable {
         case downloading
         case waiting
@@ -170,6 +170,109 @@ enum WatchTransferQueueSummary {
             meanFraction: fractionSum / Double(items.count),
             isActive: isActive
         )
+    }
+}
+
+/// One still-pending (not `.sent`/`.failed`) entry persisted across app launches — see
+/// `WatchTransferQueuePersistence`. Deliberately carries only `id`/`title` (not the full `Phase`):
+/// on restore, the phase is re-derived from live state (`WCSession.outstandingFileTransfers`,
+/// `DownloadManager.downloadedSongs`) rather than trusted from a stale snapshot — see
+/// `WatchTransferRestoreReconciliation`.
+struct WatchTransferPendingQueueEntry: Codable, Equatable {
+    let id: String
+    let title: String
+}
+
+/// Pure logic for persisting `WatchTransferBridge.queue`'s still-pending subset to UserDefaults, so
+/// killing the iPhone app does not silently lose track of songs that had not finished sending yet
+/// (user report: "アプリ閉じちゃうと転送止まっちゃう"). Kept as free functions over
+/// `[WatchTransferQueueItem]`/`[WatchTransferPendingQueueEntry]` (no `UserDefaults` dependency) so
+/// both the subset selection and the write-avoidance check are unit-testable; the actual
+/// UserDefaults read/write stays thin plumbing in `WatchTransferBridge`.
+enum WatchTransferQueuePersistence {
+    /// The subset of `queue` worth persisting: everything except `.sent` (done, nothing to resume)
+    /// and `.failed` (already a terminal, user-visible error — resuming it would just fail again),
+    /// in queue order.
+    static func pendingSnapshot(from queue: [WatchTransferQueueItem]) -> [WatchTransferPendingQueueEntry] {
+        queue.compactMap { item in
+            switch item.phase {
+            case .sent, .failed:
+                return nil
+            case .downloading, .waiting, .preparing, .sending:
+                return WatchTransferPendingQueueEntry(id: item.id, title: item.title)
+            }
+        }
+    }
+
+    /// Whether `current` is worth writing to UserDefaults given what was last persisted — the queue
+    /// changes on every KVO progress tick (`sendFile`'s `.sending(fraction)` upserts), but the
+    /// persisted subset only needs to change when an item enters/leaves the pending set or its title
+    /// changes, so most of those ticks should not trigger a write.
+    static func shouldPersist(current: [WatchTransferPendingQueueEntry], lastPersisted: [WatchTransferPendingQueueEntry]?) -> Bool {
+        current != lastPersisted
+    }
+}
+
+/// Pure reconciliation for resuming a persisted pending queue (`WatchTransferQueuePersistence`) once
+/// `WCSession` activation completes after an app relaunch. For each persisted entry, decides whether
+/// it is:
+/// - still actively transferring (`id` present in `WCSession.outstandingFileTransfers`) — reattach
+///   live progress rather than re-sending from scratch;
+/// - resumable (downloaded locally, not outstanding) — re-enter the FIFO transfer work queue
+///   (`WatchTransferWorkQueue`) so it gets a fresh `transferFile` call; or
+/// - unresumable (no longer downloaded, e.g. the user deleted the local file while the app was
+///   closed) — mark `.failed` with a reason the user can see instead of silently vanishing.
+///
+/// Kept as a free function (no `WCSession`/`DownloadManager` dependency) so the three-way split and
+/// the ordering guarantee are unit-testable without a real session or file system.
+enum WatchTransferRestoreReconciliation {
+    struct OutstandingTransfer: Equatable {
+        let id: String
+        let fraction: Double
+    }
+
+    struct Plan: Equatable {
+        /// Persisted entries with a live `WCSessionFileTransfer` still in flight, re-expressed as
+        /// `.sending(fraction)` queue items ready to `upsert`.
+        let toResumeSending: [WatchTransferQueueItem]
+        /// Song ids to re-enqueue into the FIFO transfer work queue, **in persisted order** — this
+        /// is what keeps the ordering fix from `progress/watch-transfer-order.md` intact across a
+        /// relaunch (re-enqueuing in any other order would scramble album track order again).
+        let toReenqueueSongIds: [String]
+        /// Persisted entries that can no longer be resolved to a downloaded `Song`, re-expressed as
+        /// `.failed` queue items ready to `upsert`.
+        let toMarkFailed: [WatchTransferQueueItem]
+    }
+
+    static func plan(
+        persisted: [WatchTransferPendingQueueEntry],
+        outstanding: [OutstandingTransfer],
+        downloadedSongIds: Set<String>
+    ) -> Plan {
+        let outstandingFractionsById = Dictionary(uniqueKeysWithValues: outstanding.map { ($0.id, $0.fraction) })
+
+        var toResumeSending: [WatchTransferQueueItem] = []
+        var toReenqueueSongIds: [String] = []
+        var toMarkFailed: [WatchTransferQueueItem] = []
+
+        for entry in persisted {
+            // Outstanding takes priority over "is it downloaded" — a song can be both (still
+            // transferring, and its local file obviously still exists), and reattaching its live
+            // progress is strictly better than redundantly re-sending it from scratch.
+            if let fraction = outstandingFractionsById[entry.id] {
+                toResumeSending.append(WatchTransferQueueItem(id: entry.id, title: entry.title, phase: .sending(fraction)))
+            } else if downloadedSongIds.contains(entry.id) {
+                toReenqueueSongIds.append(entry.id)
+            } else {
+                toMarkFailed.append(WatchTransferQueueItem(
+                    id: entry.id,
+                    title: entry.title,
+                    phase: .failed(String(localized: "No longer downloaded"))
+                ))
+            }
+        }
+
+        return Plan(toResumeSending: toResumeSending, toReenqueueSongIds: toReenqueueSongIds, toMarkFailed: toMarkFailed)
     }
 }
 

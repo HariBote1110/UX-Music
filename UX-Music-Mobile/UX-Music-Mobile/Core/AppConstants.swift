@@ -23,4 +23,8 @@ enum AppConstants {
     static let downloadAudioQualityKey = "uxmusic.download.audioQuality"
     /// Persisted `DownloadAACBitrate.rawValue` for new AAC downloads (Settings → ダウンロード音質).
     static let downloadAACBitrateKey = "uxmusic.download.aacBitrate"
+    /// Persisted snapshot (id + title) of `WatchTransferBridge.queue` entries not yet `.sent`/
+    /// `.failed`, so a relaunched iPhone app can resume them — see `WatchTransferQueuePersistence`
+    /// and `WatchTransferRestoreReconciliation`.
+    static let watchTransferPendingQueueKey = "uxmusic.watchTransfer.pendingQueue"
 }
