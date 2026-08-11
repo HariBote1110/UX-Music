@@ -249,7 +249,12 @@ enum WatchTransferRestoreReconciliation {
         outstanding: [OutstandingTransfer],
         downloadedSongIds: Set<String>
     ) -> Plan {
-        let outstandingFractionsById = Dictionary(uniqueKeysWithValues: outstanding.map { ($0.id, $0.fraction) })
+        // Real-device crash guard ("Thread 1: abort with payload or reason"): `outstanding` is not
+        // guaranteed id-unique by callers (see `WatchTransferBridge.restorePersistedQueueIfNeeded`'s
+        // comment), and `Dictionary(uniqueKeysWithValues:)` traps on a duplicate key. Tolerate
+        // duplicates here too, keeping the *last* matching entry's fraction — the same rule the
+        // call site already applies when building `outstandingTransfersById`.
+        let outstandingFractionsById = Dictionary(outstanding.map { ($0.id, $0.fraction) }, uniquingKeysWith: { _, latest in latest })
 
         var toResumeSending: [WatchTransferQueueItem] = []
         var toReenqueueSongIds: [String] = []
@@ -708,15 +713,24 @@ final class WatchTransferBridge: NSObject, ObservableObject {
 
         guard let persisted = Self.loadPersistedPendingEntries(from: userDefaults), !persisted.isEmpty else { return }
 
+        // `session.outstandingFileTransfers` is not guaranteed id-unique (a re-send racing an
+        // in-flight transfer across relaunches can surface the same song id twice) — dedup here by
+        // keeping the *last* transfer seen per id, both for `outstandingTransfersById` (so
+        // `trackTransfer` below only re-attaches once per id) and for the `outstanding` array fed
+        // into `WatchTransferRestoreReconciliation.plan`, so both stay consistent with the same
+        // last-wins rule. `plan` itself also tolerates duplicates defensively — see its
+        // `Dictionary(..., uniquingKeysWith:)` — but deduping at this boundary is what keeps
+        // `outstandingTransfersById` and the plan's view of "outstanding" in agreement.
         let session = WCSession.default
         var outstandingTransfersById: [String: WCSessionFileTransfer] = [:]
-        var outstanding: [WatchTransferRestoreReconciliation.OutstandingTransfer] = []
         for transfer in session.outstandingFileTransfers {
             let metadata = transfer.file.metadata
             guard !WatchTransferMeta.isArtworkWcMetadata(metadata) else { continue }
             guard let songId = metadata?[WatchTransferMeta.metadataIDKey] as? String else { continue }
             outstandingTransfersById[songId] = transfer
-            outstanding.append(WatchTransferRestoreReconciliation.OutstandingTransfer(id: songId, fraction: transfer.progress.fractionCompleted))
+        }
+        let outstanding = outstandingTransfersById.map {
+            WatchTransferRestoreReconciliation.OutstandingTransfer(id: $0.key, fraction: $0.value.progress.fractionCompleted)
         }
 
         let plan = WatchTransferRestoreReconciliation.plan(
