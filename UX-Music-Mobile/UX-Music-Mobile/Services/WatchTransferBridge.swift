@@ -285,7 +285,9 @@ enum WatchTransferRestoreReconciliation {
 @MainActor
 final class WatchTransferBridge: NSObject, ObservableObject {
 
-    @Published private(set) var queue: [WatchTransferQueueItem] = []
+    @Published private(set) var queue: [WatchTransferQueueItem] = [] {
+        didSet { persistQueueIfNeeded() }
+    }
     @Published private(set) var isPaired = false
     @Published private(set) var isWatchAppInstalled = false
     /// Observable so Settings can show *why* a transfer is stuck (e.g. still activating on launch,
@@ -293,9 +295,20 @@ final class WatchTransferBridge: NSObject, ObservableObject {
     @Published private(set) var activationStatus: WatchSessionActivationStatus = .notActivated
 
     private let downloadManager: DownloadManager
+    private let userDefaults: UserDefaults
     /// Songs requested via `send` before activation completed; flushed once `activationStatus`
     /// becomes `.activated`, or marked `.failed` if activation itself fails.
     private var pendingSongs: [Song] = []
+
+    /// Last `WatchTransferQueuePersistence.pendingSnapshot` written to `userDefaults` (or loaded
+    /// from it at launch), so `persistQueueIfNeeded` only writes when the persisted-relevant subset
+    /// actually changed rather than on every queue mutation (including high-frequency progress
+    /// ticks).
+    private var lastPersistedPendingSnapshot: [WatchTransferPendingQueueEntry]?
+    /// Whether `restorePersistedQueueIfNeeded` has already run this launch — activation can complete
+    /// more than once in a session's lifetime (e.g. `sessionDidDeactivate` re-activates), and restore
+    /// must only happen once.
+    private var hasRestoredPersistedQueue = false
 
     /// In-flight audio `WCSessionFileTransfer`s, keyed by song id — artwork transfers (sent
     /// separately, see `sendFile`) are deliberately not tracked here, so their progress stays
@@ -322,8 +335,13 @@ final class WatchTransferBridge: NSObject, ObservableObject {
     /// `send` fails a song immediately with a clear reason if this is never set.
     var downloadHandler: ((Song) async -> Bool)?
 
-    init(downloadManager: DownloadManager) {
+    init(downloadManager: DownloadManager, userDefaults: UserDefaults = .standard) {
         self.downloadManager = downloadManager
+        self.userDefaults = userDefaults
+        // Seed `lastPersistedPendingSnapshot` from whatever was already on disk so the very first
+        // `persistQueueIfNeeded` call after restore correctly diffs against it instead of treating
+        // an unchanged snapshot as "new" and rewriting it immediately.
+        lastPersistedPendingSnapshot = Self.loadPersistedPendingEntries(from: userDefaults)
     }
 
     /// Activates the `WCSession`. Must be called exactly once, as early as possible in the app's
@@ -513,13 +531,7 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         // below. Only the audio transfer is tracked; the artwork transfer further down is fire-and-
         // forget.
         let audioTransfer = session.transferFile(fileURL, metadata: meta.wcMetadata)
-        activeTransfers[song.id] = audioTransfer
-        transferObservations[song.id] = audioTransfer.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
-            let fraction = progress.fractionCompleted
-            Task { @MainActor in
-                self?.handleTransferProgress(songId: song.id, fraction: fraction)
-            }
-        }
+        trackTransfer(audioTransfer, songId: song.id)
 
         // Artwork is sent as its own `transferFile` rather than embedded in `meta.wcMetadata`
         // (WatchConnectivity metadata dictionaries are meant for small key/value pairs, not image
@@ -527,6 +539,21 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         if let artworkURL = downloadManager.localArtworkFileURLIfPresent(artworkId: song.artworkId),
            let downscaledURL = Self.writeDownscaledArtwork(from: artworkURL, songId: song.id) {
             session.transferFile(downscaledURL, metadata: meta.artworkWcMetadata)
+        }
+    }
+
+    /// Registers `transfer` in `activeTransfers`/`transferObservations` and attaches the KVO
+    /// progress callback — shared by `sendFile` (a freshly enqueued transfer) and
+    /// `restorePersistedQueueIfNeeded` (an already-in-flight transfer discovered via
+    /// `WCSession.outstandingFileTransfers` after a relaunch), so both paths keep the queue's
+    /// `.sending(fraction)` live rather than stale.
+    private func trackTransfer(_ transfer: WCSessionFileTransfer, songId: String) {
+        activeTransfers[songId] = transfer
+        transferObservations[songId] = transfer.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+            let fraction = progress.fractionCompleted
+            Task { @MainActor in
+                self?.handleTransferProgress(songId: songId, fraction: fraction)
+            }
         }
     }
 
@@ -598,6 +625,7 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         switch activationStatus {
         case .activated:
             songs.forEach { performTransfer($0) }
+            restorePersistedQueueIfNeeded()
         case .failed(let reason):
             songs.forEach { upsert(WatchTransferQueueItem(id: $0.id, title: $0.displayTitle, phase: .failed(reason))) }
         case .notActivated, .activating:
@@ -620,6 +648,87 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         let session = WCSession.default
         isPaired = session.isPaired
         isWatchAppInstalled = session.isWatchAppInstalled
+    }
+
+    // MARK: - Queue persistence (survive iPhone app relaunch)
+    //
+    // User report: "アプリ閉じちゃうと転送止まっちゃう" — killing the iPhone app used to lose track
+    // of every song that had not reached `.sent` yet, since `queue`/`transferWorkQueue` were
+    // in-memory only. See `WatchTransferQueuePersistence`/`WatchTransferRestoreReconciliation` for
+    // the pure logic; this section is the thin UserDefaults/WCSession plumbing around it.
+
+    /// Writes `queue`'s pending subset to `userDefaults` if (and only if) it actually changed since
+    /// the last write — called from `queue`'s `didSet`, which fires on every mutation including
+    /// high-frequency `.sending(fraction)` progress ticks.
+    private func persistQueueIfNeeded() {
+        let snapshot = WatchTransferQueuePersistence.pendingSnapshot(from: queue)
+        guard WatchTransferQueuePersistence.shouldPersist(current: snapshot, lastPersisted: lastPersistedPendingSnapshot) else { return }
+        lastPersistedPendingSnapshot = snapshot
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        userDefaults.set(data, forKey: AppConstants.watchTransferPendingQueueKey)
+    }
+
+    private static func loadPersistedPendingEntries(from userDefaults: UserDefaults) -> [WatchTransferPendingQueueEntry]? {
+        guard let data = userDefaults.data(forKey: AppConstants.watchTransferPendingQueueKey) else { return nil }
+        return try? JSONDecoder().decode([WatchTransferPendingQueueEntry].self, from: data)
+    }
+
+    /// Resumes whatever was persisted from a previous launch, once (guarded by
+    /// `hasRestoredPersistedQueue`) per process lifetime, right after activation succeeds. Reads
+    /// `WCSession.outstandingFileTransfers` for the "still actually transferring" half of the
+    /// reconciliation and `downloadManager.downloadedSongs` for the "can still be re-sent" half —
+    /// see `WatchTransferRestoreReconciliation.plan`.
+    ///
+    /// A song both outstanding and later re-sent is not a duplicate on the Watch: re-sending an
+    /// already-received song updates its existing `WatchLibraryIndex` entry in place rather than
+    /// adding a second one (see `WatchLibraryIndex.adding`), so there is no need to separately check
+    /// whether the Watch already has it.
+    private func restorePersistedQueueIfNeeded() {
+        guard !hasRestoredPersistedQueue else { return }
+        hasRestoredPersistedQueue = true
+
+        guard let persisted = Self.loadPersistedPendingEntries(from: userDefaults), !persisted.isEmpty else { return }
+
+        let session = WCSession.default
+        var outstandingTransfersById: [String: WCSessionFileTransfer] = [:]
+        var outstanding: [WatchTransferRestoreReconciliation.OutstandingTransfer] = []
+        for transfer in session.outstandingFileTransfers {
+            let metadata = transfer.file.metadata
+            guard !WatchTransferMeta.isArtworkWcMetadata(metadata) else { continue }
+            guard let songId = metadata?[WatchTransferMeta.metadataIDKey] as? String else { continue }
+            outstandingTransfersById[songId] = transfer
+            outstanding.append(WatchTransferRestoreReconciliation.OutstandingTransfer(id: songId, fraction: transfer.progress.fractionCompleted))
+        }
+
+        let plan = WatchTransferRestoreReconciliation.plan(
+            persisted: persisted,
+            outstanding: outstanding,
+            downloadedSongIds: Set(downloadManager.downloadedSongs.keys)
+        )
+
+        for item in plan.toResumeSending {
+            upsert(item)
+            lastPublishedFraction[item.id] = {
+                if case .sending(let fraction) = item.phase { return fraction }
+                return 0
+            }()
+            if let transfer = outstandingTransfersById[item.id] {
+                trackTransfer(transfer, songId: item.id)
+            }
+        }
+
+        // Re-enqueue in persisted order so the FIFO worker (`WatchTransferWorkQueue`) issues
+        // `transferFile` calls in the same order these songs were originally queued — see
+        // `WatchTransferRestoreReconciliation.Plan.toReenqueueSongIds`.
+        for songId in plan.toReenqueueSongIds {
+            guard let song = downloadManager.downloadedSongs[songId] else { continue }
+            upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .waiting))
+            performTransfer(song)
+        }
+
+        for item in plan.toMarkFailed {
+            upsert(item)
+        }
     }
 }
 
