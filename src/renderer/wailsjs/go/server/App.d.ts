@@ -182,6 +182,8 @@ export function NormalizeApply(arg1:normalize.NormalizeJob):Promise<normalize.No
 
 export function NormalizeStartJob(arg1:string,arg2:Array<any>,arg3:any):Promise<void>;
 
+export function NotifyYouTubePlaybackState(arg1:boolean,arg2:string,arg3:string):Promise<void>;
+
 export function Ping():Promise<string>;
 
 export function PrefetchSyncTracks(arg1:Array<server.SyncTrackRef>):Promise<server.SyncPullResult>;

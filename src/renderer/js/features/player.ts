@@ -524,6 +524,28 @@ export async function play(song, gainLinear = 1.0) {
  * 再生し、その音声を Core Audio プロセスタップ経由でネイティブ
  * パイプライン（EQ・音量・ビジュアライザー）から出力する。
  */
+/**
+ * LAN 中継（/v1/remote/relay）へ「YouTube 公式再生の開始/終了」を伝える。
+ * ヘッドレス時やバインディング未提供時は Go 側が no-op になる設計なので、
+ * ここでは失敗をログするだけで再生自体は止めない（中継はあくまで付随機能）。
+ */
+function notifyRelayPlaybackState(active: boolean, title: string, thumbnailURL: string): void {
+    try {
+        void getWailsApp()?.NotifyYouTubePlaybackState?.(active, title, thumbnailURL)
+            ?.catch((err) => console.warn('[Player] NotifyYouTubePlaybackState 失敗:', err));
+    } catch (err) {
+        console.warn('[Player] NotifyYouTubePlaybackState 呼び出し失敗:', err);
+    }
+}
+
+/** song.artwork（文字列 or {thumbnail,full}）から中継用サムネイル URL を取り出す。 */
+function resolveRelayThumbnailURL(song): string {
+    const artwork = song?.artwork;
+    if (typeof artwork === 'string') return artwork;
+    if (artwork && typeof artwork === 'object') return artwork.thumbnail || artwork.full || '';
+    return '';
+}
+
 async function playEmbed(song, sourceCandidate) {
     const sourceUrl = typeof song.sourceURL === 'string' && song.sourceURL.trim() !== ''
         ? song.sourceURL.trim()
@@ -552,6 +574,10 @@ async function playEmbed(song, sourceCandidate) {
                 return;
             }
             webViewTapStarted = true;
+            // ローカル再生用タップ（AudioStartWebViewTap）とは別に、LAN 中継用の
+            // プロセスタップも同じヘルパーを対象に独立して起動する。中継側の
+            // 成否はローカル再生を妨げないため、await せず fire-and-forget。
+            notifyRelayPlaybackState(true, song.title || 'Unknown', resolveRelayThumbnailURL(song));
             void getWailsApp()?.AudioStartWebViewTap?.()
                 .then(() => {
                     // タップ確立後に unmute。この時点で mutedWhenTapped が
@@ -573,6 +599,7 @@ async function playEmbed(song, sourceCandidate) {
                 });
         },
         onEnded: () => {
+            notifyRelayPlaybackState(false, '', '');
             // 既存の曲終了導線（playback-manager の次曲遷移）に接続する
             const finishedSong = state.playbackQueue[state.currentSongIndex];
             if (state.analysedQueue.enabled && finishedSong) musicApi.songFinished(finishedSong);
@@ -627,6 +654,7 @@ export async function stop() {
         destroyEmbedPlayer();
         try {
             if (wasEmbed) {
+                notifyRelayPlaybackState(false, '', '');
                 // タップ捕捉を停止する（内部で Player.Stop も行われる）
                 await getWailsApp()?.AudioStopWebViewTap?.();
                 // embed 用の正規化ゲインを解除する（ローカル曲は AudioPlay が

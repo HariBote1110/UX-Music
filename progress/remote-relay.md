@@ -48,3 +48,23 @@
 - **エンコードコーデックの最終確定**は計画書どおり「AAC-LC 想定、レイテンシ実測後」のまま。今回の実測はあくまで合成 PCM でのローカルテストであり、実タップ音声・実機 tvOS/iPhone 受信でのエンドツーエンドレイテンシは未計測。
 - **フロントエンドから Go への「再生中の YouTube 動画」メタデータ（曲名・サムネイル）受け渡し経路**も未定義。現状 `relayEngine.Start(source, title, thumbnail)` は呼び出し側が値を渡す形にしてあるが、実際に何が呼ぶか（Wails バインディング経由の新規メソッドを想定）は本チケットのスコープ外。
 - 受信側（TV/iPhone）の実装・「PC で再生中の YouTube をローカル再生パイプラインへの割り込みとして提示する」UI は計画書どおり別チケット（スコープ外）。
+
+## 追記（実タップ→中継の配線を接続）
+
+上記「未確定」の1〜3を解消し、GUI モードでは実際に「公式 embed 再生開始 → Core Audio プロセスタップ → relayEngine」まで一本につながる状態にした。
+
+- **トリガー経路**: 新しい Wails バインディング `App.NotifyYouTubePlaybackState(active bool, title string, thumbnailURL string) error`（`server/app_remote_relay_notify.go`）。ヘッドレスモードでは `CurrentServerMode() != ModeGUI` で即 `nil` を返す no-op（`/v1/remote/relay` 自体のゲートと同じパターン）。
+  - フロントエンドは `src/renderer/js/features/player.ts` の `playEmbed()` 内、既存の `AudioStartWebViewTap` 呼び出し箇所（`onPlaying` コールバック、タップ確立トリガー）に隣接して `notifyRelayPlaybackState(true, song.title, resolveRelayThumbnailURL(song))` を追加。曲終了（`onEnded`）と明示停止（`stop()` の `wasEmbed` 分岐）で `notifyRelayPlaybackState(false, '', '')` を呼ぶ。一時停止（`pauseCurrent()`）では呼ばない — 既存の `AudioStartWebViewTap` 自体もポーズ中はタップを張ったままにする設計（コメント「タップは張ったまま、埋め込みプレイヤー側を一時停止する」）を踏襲し、ポーズ中も中継を維持する。
+  - 中継用タップの成否はローカル再生（`AudioStartWebViewTap`）と独立させ、await せず fire-and-forget にした。中継はあくまで付随機能であり、失敗してもローカル再生を止めるべきではないため。
+- **タップ対象**: `cmd/spike-processtap` の phase B（自プロセスではなく子プロセス＝WKWebView 相当のヘルパーをタップする設計）と、既存の `AudioStartWebViewTap`（`server/app_audio.go`）が踏襲している「このアプリが所有する WebKit ヘルパー PID を都度解決してタップする」方式をそのまま流用した。embed は Wails の WebView 内で再生されるため、タップ対象は「YouTube 再生プロセス」ではなく「このアプリの WebKit ヘルパープロセス」であり、`audio.WebKitHelperPIDs()` で解決する。ローカル再生用タップ（`a.audioPlayer.PlayProcessTap`、スピーカー出力）とは別に、中継専用の `ProcessTapCapture` を独立に起動する（同じヘルパーを2つの独立したアグリゲートデバイスがタップする形）。処理を分離した理由は、`a.audioPlayer` 内部の `Player` 型に依存せず `server` パッケージ側だけで完結させたかったため（`Player.PlayProcessTap` はローカル再生パイプライン＝EQ/gain/FFT 前提の型で、relay の PCM だけを横取りする用途には合わない）。
+- **タップアダプタ**: `pkg/audio/processtap_capture.go` にプラットフォーム非依存の `TapCapture` インタフェース（`ReadSamples`/`SampleRate`/`Channels`/`Stop`）を切り出し、darwin では `StartProcessTapCapture` が既存の `StartProcessTap` をそのまま返し、他プラットフォームでは非対応エラーを返すスタブを追加。`server/app_remote_relay_source.go` の `processTapRelaySource` がこれを `RelayPCMSource` へ橋渡しする。`ReadSamples` が非ブロッキングで 0 を返す間は 5ms スリープしてから再ポーリングし（`relayEngine.pumpPCM` の busy loop 対策、未確定項目3への回答）、明示的な `Close()` でのみ枯渇（`ok=false`）を報告する（タップ自体は「今は何もない」を「終わった」と区別できないため、終了判断は呼び出し側＝`NotifyYouTubePlaybackState` に一元化した）。
+- **ライフサイクル**: `NotifyYouTubePlaybackState` はパッケージ変数 `relayTapSource`/`relayTapCapture`（`relayTapMu` で保護、`remoteRelay` 自体と同じくプロセス単位のシングルトン前提）を保持し、呼び出しのたびにまず前回のタップ・中継を止めてから必要なら新しく始める（`relayEngine.Start` 自身の「前のソースを Stop してから開始」という既存方針と揃えた）。PID 解決関数・タップ起動関数はパッケージ変数（`relayWebKitHelperPIDs`/`relayStartProcessTap`）として注入可能にし、Core Audio 実機なしで CI 上でもライフサイクル（開始/停止/切替時の旧タップ停止/ヘルパー未検出時のエラー/タップ起動失敗時のエラー）を検証できるようにした（`server/app_remote_relay_notify_test.go`、フェイクは `server/app_remote_relay_source_test.go` の `fakeTapCapture`）。
+- **メタデータ**: `NotifyYouTubePlaybackState` の `title`/`thumbnailURL` はそのまま `remoteRelay.Start(source, title, thumbnailURL)` に渡り、既存の `/v1/remote/state` の `relay` ブロックへ反映される（配線のみで `app_remote.go` 側の変更は不要だった）。
+
+### 実機検証で残っているもの（本チケットでは検証不可能）
+
+- **実タップ音声での動作確認**: `processTapRelaySource` のポーリング・枯渇制御ロジックはフェイクで単体テスト済みだが、実際の `ProcessTapCapture`（Core Audio 実機・システム音声録音の権限ダイアログ）を通した end-to-end 動作（`/v1/remote/relay` を叩いて実際に AAC が聞こえるか）は on-machine 検証が必須。
+- **end-to-end レイテンシの実測**: 依然として合成 PCM でのローカルテストのみ。実タップ→ffmpeg→HTTP chunked→tvOS/iPhone 受信側までの実測レイテンシは未計測。
+- **同一ヘルパーに対する二重タップの挙動**: ローカル再生用タップ（`AudioStartWebViewTap` 経由）と中継用タップ（`NotifyYouTubePlaybackState` 経由）は同じ WebKit ヘルパーを独立した2つのアグリゲートデバイスでタップする設計にした。理論上は Core Audio のプロセスタップは複数リスナーを許容するはずだが、実機での CPU 負荷・音ズレ・タップ確立の競合有無は未検証。問題が出た場合は「ローカル再生用タップのリングバッファを relay とも共有する」設計へ変更する必要がある。
+- **出力デバイス切替時の再構築**: `ProcessTapCapture` はデフォルト出力デバイス変更時に再構築が必要（`processtap_darwin.go` のコメント参照）。ローカル再生用タップ側はこのフックを持つ想定だが、中継用タップ側に同様の再構築フックは今回実装していない（出力デバイスを切り替えると中継が無音のまま止まる可能性がある）。
+- **受信側（TV/iPhone）実装・UI**: 引き続き別チケット（スコープ外）。

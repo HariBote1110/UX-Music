@@ -346,6 +346,10 @@ export function NormalizeStartJob(arg1, arg2, arg3) {
   return window['go']['server']['App']['NormalizeStartJob'](arg1, arg2, arg3);
 }
 
+export function NotifyYouTubePlaybackState(arg1, arg2, arg3) {
+  return window['go']['server']['App']['NotifyYouTubePlaybackState'](arg1, arg2, arg3);
+}
+
 export function Ping() {
   return window['go']['server']['App']['Ping']();
 }
