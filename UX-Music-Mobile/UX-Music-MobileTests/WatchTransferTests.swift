@@ -257,4 +257,93 @@ final class WatchTransferTests: XCTestCase {
         XCTAssertEqual(result.url, original)
         XCTAssertEqual(result.fileType, "flac")
     }
+
+    // MARK: - WatchTransferCompletionOutcome
+    //
+    // Pure phase mapping for `WCSessionDelegate.session(_:didFinish:error:)` — the previous
+    // implementation only handled the error branch and left success entirely unmapped, which is how
+    // `.sending` (upserted immediately on `transferFile` — itself only an enqueue, not a completed
+    // transfer) got shown to the user as if it were done.
+
+    func testCompletionPhaseIsSentWhenNoError() {
+        XCTAssertEqual(WatchTransferCompletionOutcome.phase(error: nil), .sent)
+    }
+
+    func testCompletionPhaseIsFailedWithReasonOnError() {
+        let error = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "connection lost"])
+        XCTAssertEqual(WatchTransferCompletionOutcome.phase(error: error), .failed("connection lost"))
+    }
+
+    // MARK: - WatchTransferQueueSummary
+    //
+    // Pure aggregate for the Settings screen's queue summary header ("完了 m/n" + an aggregate
+    // ProgressView while any item is still `.sending`/`.preparing`) — see `SettingsScreen`.
+
+    func testAggregateOfEmptyQueue() {
+        let result = WatchTransferQueueSummary.aggregate(items: [])
+        XCTAssertEqual(result.completedCount, 0)
+        XCTAssertEqual(result.totalCount, 0)
+        XCTAssertEqual(result.meanFraction, 0)
+        XCTAssertFalse(result.isActive)
+    }
+
+    private func item(id: String, phase: WatchTransferQueueItem.Phase) -> WatchTransferQueueItem {
+        WatchTransferQueueItem(id: id, title: "Song \(id)", phase: phase)
+    }
+
+    func testAggregateAllSent() {
+        let items = [item(id: "1", phase: .sent), item(id: "2", phase: .sent)]
+        let result = WatchTransferQueueSummary.aggregate(items: items)
+        XCTAssertEqual(result.completedCount, 2)
+        XCTAssertEqual(result.totalCount, 2)
+        XCTAssertEqual(result.meanFraction, 1.0)
+        XCTAssertFalse(result.isActive)
+    }
+
+    func testAggregateMixedPhases() {
+        let items = [
+            item(id: "1", phase: .sent),
+            item(id: "2", phase: .sending(0.5)),
+            item(id: "3", phase: .waiting)
+        ]
+        let result = WatchTransferQueueSummary.aggregate(items: items)
+        XCTAssertEqual(result.completedCount, 1)
+        XCTAssertEqual(result.totalCount, 3)
+        XCTAssertEqual(result.meanFraction, 0.5, accuracy: 0.0001)
+        XCTAssertTrue(result.isActive)
+    }
+
+    func testAggregateIsActiveWhilePreparingEvenWithNoSendingItems() {
+        let items = [item(id: "1", phase: .preparing), item(id: "2", phase: .waiting)]
+        let result = WatchTransferQueueSummary.aggregate(items: items)
+        XCTAssertTrue(result.isActive)
+        XCTAssertEqual(result.meanFraction, 0)
+    }
+
+    // MARK: - ProgressPublishThrottle
+    //
+    // Shared throttle for high-frequency progress callbacks (Watch transfer KVO
+    // `fractionCompleted`, `AppModel.downloadProgress`) — publishing every tick would hammer
+    // SwiftUI, so updates are only surfaced in ~1% steps (always publishing on reaching 1.0 so a
+    // completed transfer/download never gets stuck showing 99%).
+
+    func testShouldPublishFalseForSubStepAdvance() {
+        XCTAssertFalse(ProgressPublishThrottle.shouldPublish(previous: 0, next: 0.005))
+    }
+
+    func testShouldPublishTrueAtStepBoundary() {
+        XCTAssertTrue(ProgressPublishThrottle.shouldPublish(previous: 0, next: 0.01))
+    }
+
+    func testShouldPublishTrueForLargeAdvance() {
+        XCTAssertTrue(ProgressPublishThrottle.shouldPublish(previous: 0.2, next: 0.5))
+    }
+
+    func testShouldPublishAlwaysTrueOnReachingComplete() {
+        XCTAssertTrue(ProgressPublishThrottle.shouldPublish(previous: 0.995, next: 1.0))
+    }
+
+    func testShouldPublishFalseWhenNoAdvance() {
+        XCTAssertFalse(ProgressPublishThrottle.shouldPublish(previous: 0.5, next: 0.5))
+    }
 }
