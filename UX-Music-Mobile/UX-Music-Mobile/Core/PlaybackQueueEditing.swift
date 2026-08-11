@@ -74,4 +74,25 @@ enum PlaybackQueueEditing {
         }
         return currentIndex
     }
+
+    /// Stable `ForEach` row identity for a list of (possibly repeating) ids, e.g. song ids in a
+    /// playback queue. Keying a row purely on its array offset (as the Up next panel used to)
+    /// means any removal or reorder shifts the offsets — and hence the ids — of every subsequent
+    /// row, so SwiftUI cannot tell they're the "same" row and tears down/rebuilds them instead of
+    /// animating a clean move or delete. That teardown-and-rebuild is what reads as stale content
+    /// briefly flashing during the transition.
+    ///
+    /// Each returned id is `"<id>#<occurrence>"`, where `occurrence` counts how many earlier
+    /// entries in the array share that id. This keeps a row's identity fixed across edits that
+    /// don't touch its own entry — reordering or removing *other* rows never changes it — and only
+    /// shifts when an earlier *duplicate* of the same id is removed, in which case the surviving
+    /// copy simply inherits the identity the removed one used to have (consistent, not stale).
+    static func occurrenceIdentities(for ids: [String]) -> [String] {
+        var seenCounts: [String: Int] = [:]
+        return ids.map { id in
+            let occurrence = seenCounts[id, default: 0]
+            seenCounts[id] = occurrence + 1
+            return "\(id)#\(occurrence)"
+        }
+    }
 }
