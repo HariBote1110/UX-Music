@@ -100,6 +100,29 @@ enum WatchTransferCompletionOutcome {
     }
 }
 
+/// Pure FIFO ordering for `WatchTransferBridge`'s transcode→send worker (see `performTransfer`).
+/// A song that needs transcoding used to be handled by its own detached `Task`, so multiple songs'
+/// transcodes ran concurrently and `WCSession.transferFile` — which only happens after a song's
+/// transcode finishes — ended up called in transcode-completion order (short songs finish first),
+/// not the order the songs were enqueued in. Since WatchConnectivity delivers files in the order
+/// `transferFile` was called, that scrambled album track order on the Watch. Draining this queue
+/// one song at a time, front to back, makes `transferFile` calls happen in enqueue order regardless
+/// of how long any individual transcode takes. Kept as free functions over `[Song]` (no `WCSession`/
+/// `WatchAudioTranscoder` dependency) so the FIFO invariant is unit-testable on its own.
+enum WatchTransferWorkQueue {
+    /// Appends `song` to the back of `queue`.
+    static func enqueuing(_ song: Song, onto queue: [Song]) -> [Song] {
+        queue + [song]
+    }
+
+    /// Removes and returns the song at the front of `queue`, alongside the remaining queue.
+    /// `nil` when `queue` is empty.
+    static func dequeuingFront(from queue: [Song]) -> (song: Song, remaining: [Song])? {
+        guard let first = queue.first else { return nil }
+        return (first, Array(queue.dropFirst()))
+    }
+}
+
 /// Aggregate progress across `WatchTransferBridge.queue`, used by the Settings screen's queue
 /// summary header ("完了 m/n" plus an aggregate `ProgressView` while any item is still in flight —
 /// see `SettingsScreen`). Kept as a pure function over `[WatchTransferQueueItem]` so the aggregation
@@ -182,6 +205,14 @@ final class WatchTransferBridge: NSObject, ObservableObject {
     /// something to compare each new KVO callback against.
     private var lastPublishedFraction: [String: Double] = [:]
 
+    /// Songs waiting for `transcodeAndSend` (see `performTransfer`/`WatchTransferWorkQueue`) — one
+    /// song is fully handled (transcode if needed, then `transferFile`) before the next starts, so
+    /// `transferFile` calls always happen in the order songs were enqueued here.
+    private var transferWorkQueue: [Song] = []
+    /// Whether `drainTransferWorkQueue` is currently running, so `performTransfer` does not start a
+    /// second concurrent drain loop.
+    private var isDrainingTransferWorkQueue = false
+
     /// Downloads `song` from the desktop server, returning whether it is locally available
     /// afterwards. Wired up by `AppModel` after construction (see its `init`) since downloading
     /// needs `RemoteAPIClient`/`withFailover`, which this bridge deliberately has no dependency on.
@@ -260,10 +291,45 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         performTransfer(song)
     }
 
-    /// Decides (via `WatchTransferAudioPolicy`) whether the local file needs transcoding before it
-    /// can be sent, then either sends it immediately or transcodes first. Only safe to call once
-    /// `activationStatus == .activated`.
+    /// Enqueues `song` onto `transferWorkQueue` and starts the drain worker if it is not already
+    /// running. Only safe to call once `activationStatus == .activated`.
+    ///
+    /// Transcode-then-send used to run per-song on its own detached `Task`, so several songs'
+    /// transcodes ran concurrently and `sendFile` (and therefore `WCSession.transferFile`) ended up
+    /// called in transcode-completion order rather than enqueue order — a short song could finish
+    /// transcoding before a long one enqueued earlier, jumping ahead of it in the Watch's received
+    /// order. Routing every song through this single FIFO queue instead guarantees `transferFile`
+    /// calls happen in the order songs were queued.
     private func performTransfer(_ song: Song) {
+        transferWorkQueue = WatchTransferWorkQueue.enqueuing(song, onto: transferWorkQueue)
+        startDrainingTransferWorkQueueIfNeeded()
+    }
+
+    /// Starts `drainTransferWorkQueue` unless a drain is already in flight (in which case the newly
+    /// enqueued song will simply be picked up by that same loop).
+    private func startDrainingTransferWorkQueueIfNeeded() {
+        guard !isDrainingTransferWorkQueue, !transferWorkQueue.isEmpty else { return }
+        isDrainingTransferWorkQueue = true
+        Task {
+            await drainTransferWorkQueue()
+        }
+    }
+
+    /// Drains `transferWorkQueue` strictly front-to-back, awaiting each song's `transcodeAndSend`
+    /// fully (transcode if needed, then `sendFile`) before dequeuing the next — this sequencing,
+    /// not just the FIFO data structure, is what keeps `transferFile` calls in enqueue order.
+    private func drainTransferWorkQueue() async {
+        while let (song, remaining) = WatchTransferWorkQueue.dequeuingFront(from: transferWorkQueue) {
+            transferWorkQueue = remaining
+            await transcodeAndSend(song)
+        }
+        isDrainingTransferWorkQueue = false
+    }
+
+    /// Decides (via `WatchTransferAudioPolicy`) whether the local file needs transcoding before it
+    /// can be sent, then either sends it immediately or transcodes first. Runs to completion before
+    /// `drainTransferWorkQueue` starts the next song.
+    private func transcodeAndSend(_ song: Song) async {
         // Prefers the AAC variant (see `DownloadManager.watchTransferSourceURL`) when one was
         // downloaded (`DownloadAudioQuality.aac`/`.both`): it is already 128 kbps m4a, so
         // `WatchTransferAudioPolicy` below naturally resolves to `.passthrough` and the on-device
@@ -288,22 +354,20 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .preparing))
 
         let transcoder = WatchAudioTranscoder()
-        Task {
-            var transcodedURL: URL?
-            do {
-                transcodedURL = try await transcoder.transcodedFileURL(source: localURL, songId: song.id)
-            } catch {
-                // A slow transfer of the original file beats no transfer at all — fall through to
-                // `WatchTransferTranscodeOutcome.fileToSend` below, which sends the original on `nil`.
-                print("[WatchTransferBridge] Watch向けAACトランスコードに失敗、元ファイルを送信します（\(song.id)）: \(error.localizedDescription)")
-            }
-            let fileToSend = WatchTransferTranscodeOutcome.fileToSend(
-                originalURL: localURL,
-                originalFileType: originalFileType,
-                transcodedURL: transcodedURL
-            )
-            self.sendFile(fileToSend.url, fileType: fileToSend.fileType, song: song)
+        var transcodedURL: URL?
+        do {
+            transcodedURL = try await transcoder.transcodedFileURL(source: localURL, songId: song.id)
+        } catch {
+            // A slow transfer of the original file beats no transfer at all — fall through to
+            // `WatchTransferTranscodeOutcome.fileToSend` below, which sends the original on `nil`.
+            print("[WatchTransferBridge] Watch向けAACトランスコードに失敗、元ファイルを送信します（\(song.id)）: \(error.localizedDescription)")
         }
+        let fileToSend = WatchTransferTranscodeOutcome.fileToSend(
+            originalURL: localURL,
+            originalFileType: originalFileType,
+            transcodedURL: transcodedURL
+        )
+        sendFile(fileToSend.url, fileType: fileToSend.fileType, song: song)
     }
 
     /// Actually calls `WCSession.transferFile` for `fileURL` (either the original local file, or a
@@ -317,7 +381,11 @@ final class WatchTransferBridge: NSObject, ObservableObject {
             artist: song.artist,
             album: song.album,
             duration: song.duration,
-            fileType: fileType
+            fileType: fileType,
+            // `Song.trackNumber`/`discNumber` default to 0 for "unknown" (see `Song.swift`); map
+            // that to `nil` so `WatchAlbumGrouping` treats it as "no number" rather than track 0.
+            trackNumber: song.trackNumber > 0 ? song.trackNumber : nil,
+            discNumber: song.discNumber > 0 ? song.discNumber : nil
         )
         if hasArtwork {
             meta.artworkFileName = WatchTransferMeta.storedArtworkFileName(forId: song.id)

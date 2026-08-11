@@ -406,4 +406,51 @@ final class WatchTransferTests: XCTestCase {
     func testShouldPublishFalseWhenNoAdvance() {
         XCTAssertFalse(ProgressPublishThrottle.shouldPublish(previous: 0.5, next: 0.5))
     }
+
+    // MARK: - WatchTransferWorkQueue
+    //
+    // Pure FIFO ordering for `WatchTransferBridge`'s transcode→send worker. Fixes the bug where a
+    // per-song detached `Task` in the old `performTransfer` let `WCSession.transferFile` calls land
+    // in transcode-completion order (short songs finish first) rather than enqueue order, scrambling
+    // album track order on the Watch. Draining strictly FIFO — one song fully handled before the
+    // next starts — makes `transferFile` calls happen in enqueue order regardless of how long any
+    // individual transcode takes.
+
+    private func workSong(_ id: String) -> Song {
+        Song(id: id, path: "/tmp/\(id).flac", title: id)
+    }
+
+    func testEnqueuingAppendsToBackOfQueue() {
+        let queue = WatchTransferWorkQueue.enqueuing(workSong("2"), onto: [workSong("1")])
+        XCTAssertEqual(queue.map(\.id), ["1", "2"])
+    }
+
+    func testDequeuingFrontReturnsFirstSongAndRemainder() {
+        let queue = [workSong("1"), workSong("2"), workSong("3")]
+        let result = WatchTransferWorkQueue.dequeuingFront(from: queue)
+        XCTAssertEqual(result?.song.id, "1")
+        XCTAssertEqual(result?.remaining.map(\.id), ["2", "3"])
+    }
+
+    func testDequeuingFrontReturnsNilForEmptyQueue() {
+        XCTAssertNil(WatchTransferWorkQueue.dequeuingFront(from: []))
+    }
+
+    /// Simulates a full drain and pins that the resulting send order matches enqueue order,
+    /// independent of anything that would happen between each dequeue (e.g. a slow transcode) —
+    /// the real bug this fixes was send order depending on transcode duration.
+    func testDrainingQueueSequentiallyPreservesEnqueueOrder() {
+        var queue: [Song] = []
+        for id in ["slow-1", "fast-2", "medium-3"] {
+            queue = WatchTransferWorkQueue.enqueuing(workSong(id), onto: queue)
+        }
+
+        var sentOrder: [String] = []
+        while let (song, remaining) = WatchTransferWorkQueue.dequeuingFront(from: queue) {
+            queue = remaining
+            sentOrder.append(song.id)
+        }
+
+        XCTAssertEqual(sentOrder, ["slow-1", "fast-2", "medium-3"])
+    }
 }
