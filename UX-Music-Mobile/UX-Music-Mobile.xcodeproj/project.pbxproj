@@ -171,6 +171,7 @@
 		F48971AC1E8245799D2E6410 /* TVPairingReducerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F385E0974C2445A9A2DE832 /* TVPairingReducerTests.swift */; };
 		2EC9A21CD9E645A7A54EAE8B /* TVServerConfigStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B317F60E689E403194490C85 /* TVServerConfigStoreTests.swift */; };
 		829F8B2AA8AD4951A4A71FFD /* TVControlTokenStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E9A64D01A824259BB04CF0B /* TVControlTokenStoreTests.swift */; };
+		D832959E2AC74BF7B67909F4 /* TVRelayModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B936B1D9BC4528B1832796 /* TVRelayModelTests.swift */; };
 		4699912D6FB947E39228F1D5 /* TVAppModelPairingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55A8151627984709A41BBB75 /* TVAppModelPairingFlowTests.swift */; };
 		B3DEF54EB8334B1291102C25 /* MusicPlayerServicePlaybackSpikeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72961CAFB4547F7B62BF901 /* MusicPlayerServicePlaybackSpikeTests.swift */; };
 		76A7C768EF0647DB9462A2DA /* spike-sine.wav in Resources */ = {isa = PBXBuildFile; fileRef = 03E5B3C082DC4F5393BF1972 /* spike-sine.wav */; };
@@ -400,6 +401,7 @@
 		6F385E0974C2445A9A2DE832 /* TVPairingReducerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPairingReducerTests.swift; sourceTree = "<group>"; };
 		B317F60E689E403194490C85 /* TVServerConfigStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVServerConfigStoreTests.swift; sourceTree = "<group>"; };
 		9E9A64D01A824259BB04CF0B /* TVControlTokenStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVControlTokenStoreTests.swift; sourceTree = "<group>"; };
+		74B936B1D9BC4528B1832796 /* TVRelayModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRelayModelTests.swift; sourceTree = "<group>"; };
 		55A8151627984709A41BBB75 /* TVAppModelPairingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVAppModelPairingFlowTests.swift; sourceTree = "<group>"; };
 		B72961CAFB4547F7B62BF901 /* MusicPlayerServicePlaybackSpikeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerServicePlaybackSpikeTests.swift; sourceTree = "<group>"; };
 		03E5B3C082DC4F5393BF1972 /* spike-sine.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "Fixtures/spike-sine.wav"; sourceTree = "<group>"; };
@@ -698,6 +700,7 @@
 				6F385E0974C2445A9A2DE832 /* TVPairingReducerTests.swift */,
 				B317F60E689E403194490C85 /* TVServerConfigStoreTests.swift */,
 				9E9A64D01A824259BB04CF0B /* TVControlTokenStoreTests.swift */,
+				74B936B1D9BC4528B1832796 /* TVRelayModelTests.swift */,
 				55A8151627984709A41BBB75 /* TVAppModelPairingFlowTests.swift */,
 				93B3AFD84BA742868B45B120 /* TVPrefetchPlannerTests.swift */,
 				0124DCE695BF4C7EA63EFB8A /* TVPlaylistQueueBuilderTests.swift */,
@@ -1096,6 +1099,7 @@
 				F48971AC1E8245799D2E6410 /* TVPairingReducerTests.swift in Sources */,
 				2EC9A21CD9E645A7A54EAE8B /* TVServerConfigStoreTests.swift in Sources */,
 				829F8B2AA8AD4951A4A71FFD /* TVControlTokenStoreTests.swift in Sources */,
+				D832959E2AC74BF7B67909F4 /* TVRelayModelTests.swift in Sources */,
 				4699912D6FB947E39228F1D5 /* TVAppModelPairingFlowTests.swift in Sources */,
 				C8D4DEA98F6D4789B2E1915D /* TVPrefetchPlannerTests.swift in Sources */,
 				C84FED80534F43ED986FC173 /* TVPlaylistQueueBuilderTests.swift in Sources */,
