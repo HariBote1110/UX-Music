@@ -608,4 +608,38 @@ final class WatchTransferTests: XCTestCase {
         XCTAssertTrue(plan.toReenqueueSongIds.isEmpty)
         XCTAssertTrue(plan.toMarkFailed.isEmpty)
     }
+
+    // MARK: - WatchTransferHintPolicy
+    //
+    // User report: transfers stall once the Watch screen turns off and watchOS returns to the clock
+    // face. `WatchTransferQueueQueueSection` shows a short frontmost-timeout hint while a transfer is
+    // actively in flight (`.preparing`/`.sending`) — not for `.waiting`/`.downloading`, where nothing
+    // is being sent over WatchConnectivity yet and the hint would be premature.
+
+    func testShouldShowFrontmostHintIsFalseForEmptyQueue() {
+        XCTAssertFalse(WatchTransferHintPolicy.shouldShowFrontmostHint(items: []))
+    }
+
+    func testShouldShowFrontmostHintIsTrueWhenSending() {
+        XCTAssertTrue(WatchTransferHintPolicy.shouldShowFrontmostHint(items: [item(id: "1", phase: .sending(0.2))]))
+    }
+
+    func testShouldShowFrontmostHintIsTrueWhenPreparing() {
+        XCTAssertTrue(WatchTransferHintPolicy.shouldShowFrontmostHint(items: [item(id: "1", phase: .preparing)]))
+    }
+
+    func testShouldShowFrontmostHintIsFalseWhenOnlyWaitingOrDownloading() {
+        let items = [item(id: "1", phase: .waiting), item(id: "2", phase: .downloading)]
+        XCTAssertFalse(WatchTransferHintPolicy.shouldShowFrontmostHint(items: items))
+    }
+
+    func testShouldShowFrontmostHintIsFalseWhenOnlySentOrFailed() {
+        let items = [item(id: "1", phase: .sent), item(id: "2", phase: .failed("boom"))]
+        XCTAssertFalse(WatchTransferHintPolicy.shouldShowFrontmostHint(items: items))
+    }
+
+    func testShouldShowFrontmostHintIsTrueWhenMixedWithInactiveItems() {
+        let items = [item(id: "1", phase: .sent), item(id: "2", phase: .sending(0.5))]
+        XCTAssertTrue(WatchTransferHintPolicy.shouldShowFrontmostHint(items: items))
+    }
 }
