@@ -188,9 +188,12 @@ struct TVConnectedView: View {
             reporter.report(song: song)
         }
         // Phase 3-1 (TV side): let this TV itself be picked as a Connect-style playback target.
+        // Security fix (`progress/tvos-connect.md` 2026-08-12 追記): authenticate with — and
+        // advertise — this TV's own control token, NEVER the host pairing token (`config.token`),
+        // so the mDNS broadcast can't leak a credential that grants Host library access.
         remoteControlServer = TVRemoteControlServer(
             player: sharedPlayer,
-            token: config.token,
+            token: TVControlTokenStore().loadOrCreate(),
             deviceName: DeviceIdentity.displayName
         )
     }
