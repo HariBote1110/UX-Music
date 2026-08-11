@@ -53,7 +53,7 @@ enum WatchTransferActivationGating {
 /// silently `return false` for undownloaded songs — is unit-testable.
 enum WatchTransferDownloadOutcome {
     static func phaseAfterDownload(succeeded: Bool) -> WatchTransferQueueItem.Phase {
-        succeeded ? .waiting : .failed("ダウンロードに失敗しました。デスクトップとの接続を確認してください")
+        succeeded ? .waiting : .failed(String(localized: "Download failed. Check the connection to the desktop app."))
     }
 }
 
@@ -152,7 +152,7 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .downloading))
 
         guard let downloadHandler else {
-            upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .failed("ダウンロード機能が利用できません")))
+            upsert(WatchTransferQueueItem(id: song.id, title: song.displayTitle, phase: .failed(String(localized: "Download is not available"))))
             return
         }
 

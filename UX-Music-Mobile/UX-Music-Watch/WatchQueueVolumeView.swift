@@ -13,14 +13,14 @@ struct WatchQueueVolumeView: View {
 
     var body: some View {
         List {
-            Section("音量") {
+            Section("Volume") {
                 SystemVolumeControl()
                     .frame(height: 28)
             }
 
             Section {
                 if player.playbackQueue.isEmpty {
-                    Text("キューは空です")
+                    Text("The queue is empty")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -30,7 +30,7 @@ struct WatchQueueVolumeView: View {
                 }
             }
         }
-        .navigationTitle("キュー")
+        .navigationTitle("Queue")
     }
 }
 

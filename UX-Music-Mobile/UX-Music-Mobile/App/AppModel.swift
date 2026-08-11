@@ -48,7 +48,7 @@ enum DesktopPlaylistImportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .serverNotConfigured:
-            return "設定でデスクトップとペアリングしてください。"
+            return String(localized: "Please pair with the desktop app in Settings.")
         }
     }
 }
@@ -343,7 +343,7 @@ final class AppModel {
     @discardableResult
     func applyPairingURL(_ url: URL) async -> Bool {
         guard let request = ServerConfig.pairingRequest(fromPairingURL: url) else {
-            pairingError = "QRコードを読み取れませんでした。デスクトップアプリを最新版に更新してください。"
+            pairingError = String(localized: "Could not read the QR code. Please update the desktop app to the latest version.")
             return false
         }
         return await redeemPairing(hosts: request.hosts, port: request.port, secret: request.secret)
@@ -382,7 +382,7 @@ final class AppModel {
             try await RemoteAPIClient(baseURLString: candidate.baseURLString, session: urlSession).ping()
         }
         guard let resolved else {
-            pairingError = "デスクトップに到達できません。同じ Wi-Fi に接続しているか確認してください。"
+            pairingError = String(localized: "Could not reach the desktop app. Check that you are on the same Wi-Fi network.")
             return false
         }
         let ok = await redeemPairing(host: resolved.config.host, port: port, secret: secret)
@@ -397,7 +397,7 @@ final class AppModel {
         case RemoteAPIError.server(_, let message):
             return message
         case RemoteAPIError.httpStatus(401):
-            return "ペアリングコードが無効か、期限切れです。"
+            return String(localized: "The pairing code is invalid or has expired.")
         default:
             return error.localizedDescription
         }

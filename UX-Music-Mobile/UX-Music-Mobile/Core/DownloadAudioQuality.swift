@@ -16,9 +16,9 @@ enum DownloadAudioQuality: String, CaseIterable, Identifiable, Sendable {
 
     var displayName: String {
         switch self {
-        case .original: return "フル音質"
-        case .aac: return "AAC (小容量)"
-        case .both: return "フル + AAC"
+        case .original: return String(localized: "Full Quality")
+        case .aac: return String(localized: "AAC (Small)")
+        case .both: return String(localized: "Full + AAC")
         }
     }
 

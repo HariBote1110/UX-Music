@@ -39,7 +39,7 @@ struct WatchRootView: View {
             if connectivity.isReceiving {
                 VStack(spacing: 4) {
                     ProgressView()
-                    Text("\(connectivity.receivingTitle)を受信中…")
+                    Text(String(format: String(localized: "Receiving %@…"), connectivity.receivingTitle))
                         .font(.caption2)
                         .multilineTextAlignment(.center)
                 }

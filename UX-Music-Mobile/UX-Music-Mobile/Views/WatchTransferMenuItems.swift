@@ -19,7 +19,7 @@ struct WatchTransferSongMenuItem: View {
             Button {
                 model.watchTransferBridge.send(song)
             } label: {
-                Label("Apple Watch に転送", systemImage: "applewatch")
+                Label("Transfer to Apple Watch", systemImage: "applewatch")
             }
         }
     }

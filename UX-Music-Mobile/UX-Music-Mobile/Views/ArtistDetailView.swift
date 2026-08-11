@@ -82,7 +82,7 @@ struct ArtistDetailView: View {
         .frame(height: 200)
         .contextMenu {
             WatchTransferBulkMenuItem(
-                title: "アーティストの曲を Apple Watch に転送",
+                title: "Transfer Artist's Songs to Apple Watch",
                 songs: artist.songs
             )
         }
@@ -118,7 +118,7 @@ struct ArtistDetailView: View {
                 .buttonStyle(.plain)
                 .contextMenu {
                     WatchTransferBulkMenuItem(
-                        title: "アルバムを Apple Watch に転送",
+                        title: "Transfer Album to Apple Watch",
                         songs: album.songs
                     )
                 }

@@ -116,7 +116,7 @@ struct RemotePlaylistDetailView: View {
                 }
             }
             WatchTransferBulkMenuItem(
-                title: "プレイリストを Apple Watch に転送",
+                title: "Transfer Playlist to Apple Watch",
                 songs: resolvedSongs
             )
         }

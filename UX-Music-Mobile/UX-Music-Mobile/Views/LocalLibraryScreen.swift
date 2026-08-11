@@ -403,7 +403,7 @@ struct LocalLibraryScreen: View {
                                 Label("並べ替え", systemImage: "arrow.up.arrow.down")
                             }
                             WatchTransferBulkMenuItem(
-                                title: "プレイリストを Apple Watch に転送",
+                                title: "Transfer Playlist to Apple Watch",
                                 songs: model.resolvedSongs(for: pl)
                             )
                             Button(role: .destructive) {
@@ -458,7 +458,7 @@ struct LocalLibraryScreen: View {
                     .buttonStyle(.plain)
                     .contextMenu {
                         WatchTransferBulkMenuItem(
-                            title: "アルバムを Apple Watch に転送",
+                            title: "Transfer Album to Apple Watch",
                             songs: album.songs
                         )
                     }
@@ -538,7 +538,7 @@ struct LocalLibraryScreen: View {
                     .modifier(LibraryListRowStyle())
                     .contextMenu {
                         WatchTransferBulkMenuItem(
-                            title: "アーティストの曲を Apple Watch に転送",
+                            title: "Transfer Artist's Songs to Apple Watch",
                             songs: artist.songs
                         )
                     }

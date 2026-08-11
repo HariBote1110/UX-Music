@@ -392,7 +392,7 @@ struct RemoteLibraryScreen: View {
                             }
                         }
                         WatchTransferBulkMenuItem(
-                            title: "プレイリストを Apple Watch に転送",
+                            title: "Transfer Playlist to Apple Watch",
                             songs: songsInPl
                         )
                     }
@@ -442,7 +442,7 @@ struct RemoteLibraryScreen: View {
                             }
                         }
                         WatchTransferBulkMenuItem(
-                            title: "アルバムを Apple Watch に転送",
+                            title: "Transfer Album to Apple Watch",
                             songs: album.songs
                         )
                     }

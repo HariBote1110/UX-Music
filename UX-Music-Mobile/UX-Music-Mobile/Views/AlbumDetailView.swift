@@ -82,7 +82,7 @@ struct AlbumDetailView: View {
                 }
             }
             WatchTransferBulkMenuItem(
-                title: "アルバムを Apple Watch に転送",
+                title: "Transfer Album to Apple Watch",
                 songs: album.songs
             )
         }

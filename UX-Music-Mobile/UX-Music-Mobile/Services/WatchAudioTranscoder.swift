@@ -12,9 +12,11 @@ struct WatchAudioTranscoder {
 
         var errorDescription: String? {
             switch self {
-            case .noAudioTrack: return "音声トラックが見つかりません"
-            case .readerFailed(let reason): return "読み込みに失敗しました: \(reason)"
-            case .writerFailed(let reason): return "書き出しに失敗しました: \(reason)"
+            case .noAudioTrack: return String(localized: "No audio track was found")
+            case .readerFailed(let reason):
+                return String(format: String(localized: "Reading failed: %@"), reason)
+            case .writerFailed(let reason):
+                return String(format: String(localized: "Writing failed: %@"), reason)
             }
         }
 

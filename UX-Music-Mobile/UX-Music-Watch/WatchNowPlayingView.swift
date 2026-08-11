@@ -227,7 +227,7 @@ struct WatchNowPlayingView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
         }
-        .navigationTitle("再生中")
+        .navigationTitle("Now Playing")
     }
 
     /// Builds one `ViewThatFits` candidate at the given compactness level. Structural content is
@@ -238,7 +238,7 @@ struct WatchNowPlayingView: View {
     private func nowPlayingStack(_ metrics: NowPlayingMetrics) -> some View {
         VStack(spacing: metrics.stackSpacing) {
             VStack(spacing: metrics.titleArtistSpacing) {
-                Text(player.currentSong?.displayTitle ?? "再生していません")
+                Text(player.currentSong?.displayTitle ?? String(localized: "Not Playing"))
                     .font(.headline)
                     .foregroundStyle(.white)
                     .lineLimit(1)

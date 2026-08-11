@@ -23,6 +23,11 @@ struct SettingsScreen: View {
     /// `AppModel.redeemPairing` on Save/Test; cleared once redeemed since it is single-use.
     @State private var secretText = ""
     @State private var pingResult: String?
+    /// Whether the most recent `pingResult` represents a successful (green) or failed (red)
+    /// outcome. Kept as a separate flag rather than inspecting `pingResult`'s text — the text is
+    /// localised for display, so string-prefix matching on it (the previous approach) would break
+    /// once the message is translated to a non-English locale.
+    @State private var pingIsHealthy = false
     @State private var testing = false
     @State private var savedFlash = false
     @State private var showQRScanner = false
@@ -45,15 +50,15 @@ struct SettingsScreen: View {
             List {
                 Section {
                     HStack {
-                        Text("接続先")
+                        Text("Connected host")
                         Spacer()
-                        Text("\(model.serverConfig.activeHost)（\(connectionMode == .fixed ? "固定" : "自動")）")
+                        Text(verbatim: "\(model.serverConfig.activeHost) (\(connectionMode == .fixed ? String(localized: "Fixed") : String(localized: "Automatic")))")
                             .foregroundStyle(.secondary)
                     }
 
-                    Picker("接続モード", selection: $connectionMode) {
-                        Text("自動（推奨）").tag(ConnectionSelectionMode.automatic)
-                        Text("固定").tag(ConnectionSelectionMode.fixed)
+                    Picker("Connection mode", selection: $connectionMode) {
+                        Text("Automatic (Recommended)").tag(ConnectionSelectionMode.automatic)
+                        Text("Fixed").tag(ConnectionSelectionMode.fixed)
                     }
                     .pickerStyle(.segmented)
                     .onChange(of: connectionMode) { _, newMode in
@@ -63,7 +68,7 @@ struct SettingsScreen: View {
                     }
 
                     if model.serverConfig.allKnownHosts.isEmpty {
-                        Text("既知のホストがありません。ペアリングまたは Discovery で接続すると候補が表示されます。")
+                        Text("No known hosts yet. Candidates appear once you connect via pairing or Discovery.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
@@ -76,11 +81,11 @@ struct SettingsScreen: View {
                         }
                     }
                 } header: {
-                    Text("接続先の選択")
+                    Text("Connection Target")
                 } footer: {
                     Text(connectionMode == .fixed
-                        ? "固定モードでは選んだホストにのみ接続し、失敗しても他の候補への自動切り替えは行いません。"
-                        : "自動モードでは上から順に到達できるホストを探し、成功したホストを優先接続先として記憶します。")
+                        ? "In fixed mode, only the selected host is used — there is no automatic fallback to other candidates on failure."
+                        : "In automatic mode, hosts are tried from the top until one responds, and the successful host is remembered as the preferred target.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -98,14 +103,14 @@ struct SettingsScreen: View {
                         .keyboardType(.numberPad)
                         .focused($focusedField, equals: .port)
 
-                    TextField("ペアリングコード（secret）", text: $secretText)
+                    TextField("Pairing Code (secret)", text: $secretText)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .focused($focusedField, equals: .secret)
                 } header: {
                     Text("SERVER")
                 } footer: {
-                    Text("デスクトップの UX Music → 設定 のペアリング QR に表示されるコード。QR をスキャンすると自動的に入力・交換されます。手入力した場合は Save か Test を押すとデバイス用トークンに交換されます。")
+                    Text("The code shown in the desktop UX Music app's Settings → Pairing QR. Scanning the QR code fills this in and exchanges it automatically. If typed manually, tap Save or Test to exchange it for a device token.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -163,25 +168,25 @@ struct SettingsScreen: View {
 
                 Section {
                     HStack {
-                        Text("接続状態")
+                        Text("Connection Status")
                         Spacer()
                         Text(watchActivationStatusText(model.watchTransferBridge.activationStatus))
                             .foregroundStyle(watchActivationStatusColor(model.watchTransferBridge.activationStatus))
                     }
                     HStack {
-                        Text("ペアリング状態")
+                        Text("Pairing Status")
                         Spacer()
-                        Text(model.watchTransferBridge.isPaired ? "ペアリング済み" : "未ペアリング")
+                        Text(model.watchTransferBridge.isPaired ? "Paired" : "Not Paired")
                             .foregroundStyle(.secondary)
                     }
                     HStack {
-                        Text("Watch アプリ")
+                        Text("Watch App")
                         Spacer()
-                        Text(model.watchTransferBridge.isWatchAppInstalled ? "インストール済み" : "未インストール")
+                        Text(model.watchTransferBridge.isWatchAppInstalled ? "Installed" : "Not Installed")
                             .foregroundStyle(.secondary)
                     }
                     if model.watchTransferBridge.queue.isEmpty {
-                        Text("転送済みの曲はありません。ローカルライブラリの曲を長押しして「Apple Watch に転送」を選んでください。")
+                        Text("No transferred songs yet. Long-press a song in your local library and choose \u{201C}Transfer to Apple Watch\u{201D}.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
@@ -201,27 +206,27 @@ struct SettingsScreen: View {
                 }
 
                 Section {
-                    Picker("ダウンロード音質", selection: Bindable(model).downloadAudioQuality) {
+                    Picker("Download Quality", selection: Bindable(model).downloadAudioQuality) {
                         ForEach(DownloadAudioQuality.allCases) { quality in
                             Text(quality.displayName).tag(quality)
                         }
                     }
                     .pickerStyle(.segmented)
                 } header: {
-                    Text("ダウンロード")
+                    Text("Download")
                 } footer: {
-                    Text("AAC は約 1/7 のサイズで Apple Watch への転送が速いです。「フル + AAC」なら再生はフル音質、Watch 転送には AAC が使われます。既にダウンロード済みの曲には遡って適用されません。")
+                    Text("AAC is about 1/7 the size, so transfers to Apple Watch are faster. With \u{201C}Full + AAC\u{201D}, playback uses full quality while Watch transfers use AAC. This does not apply retroactively to songs already downloaded.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
 
                 Section {
-                    Button("デスクトップのプレイリストを取り込む") {
+                    Button("Import Desktop Playlists") {
                         showDesktopPlaylistImport = true
                     }
                     .disabled(!model.serverConfig.isConfigured)
                     if !model.serverConfig.isConfigured {
-                        Text("ホスト名を入力して保存すると、デスクトップのプレイリストをこの端末にコピーできます。")
+                        Text("Enter and save a host name to copy desktop playlists to this device.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -251,11 +256,7 @@ struct SettingsScreen: View {
                     if let pingResult {
                         Text(pingResult)
                             .font(.footnote)
-                            .foregroundStyle(
-                                pingResult.hasPrefix("Connected") && !pingResult.hasPrefix("Connected but not paired")
-                                    ? .green
-                                    : .red
-                            )
+                            .foregroundStyle(pingIsHealthy ? .green : .red)
                     }
                 }
             }
@@ -296,10 +297,12 @@ struct SettingsScreen: View {
                                         hostText = model.serverConfig.host
                                         portText = String(model.serverConfig.port)
                                         secretText = ""
-                                        pingResult = "Paired — connected"
+                                        pingResult = String(localized: "Paired — connected")
+                                        pingIsHealthy = true
                                         flashSaved()
                                     } else {
-                                        pingResult = model.pairingError ?? "Pairing failed"
+                                        pingResult = model.pairingError ?? String(localized: "Pairing failed")
+                                        pingIsHealthy = false
                                     }
                                 }
                             }
@@ -358,10 +361,12 @@ struct SettingsScreen: View {
             hostText = model.serverConfig.host
             portText = String(model.serverConfig.port)
             secretText = ""
-            pingResult = "Paired — connected"
+            pingResult = String(localized: "Paired — connected")
+            pingIsHealthy = true
             flashSaved()
         } else {
-            pingResult = model.pairingError ?? "Pairing failed"
+            pingResult = model.pairingError ?? String(localized: "Pairing failed")
+            pingIsHealthy = false
         }
     }
 
@@ -390,7 +395,8 @@ struct SettingsScreen: View {
             guard let resolved else {
                 await MainActor.run {
                     testing = false
-                    pingResult = "Connection failed: could not reach \(peer.displayName)"
+                    pingResult = String(format: String(localized: "Connection failed: could not reach %@"), peer.displayName)
+                    pingIsHealthy = false
                 }
                 return
             }
@@ -409,6 +415,7 @@ struct SettingsScreen: View {
                 model.serverConfig = config
                 savedFlash = true
                 pingResult = Self.connectionResultMessage(config: resolved.config, serverName: resolved.serverName, authorised: authorised)
+                pingIsHealthy = authorised
                 Task {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                     await MainActor.run { savedFlash = false }
@@ -419,10 +426,11 @@ struct SettingsScreen: View {
 
     private func watchActivationStatusText(_ status: WatchSessionActivationStatus) -> String {
         switch status {
-        case .notActivated: return "未接続"
-        case .activating: return "接続中…"
-        case .activated: return "接続済み"
-        case .failed(let message): return "接続失敗: \(message)"
+        case .notActivated: return String(localized: "Not Connected")
+        case .activating: return String(localized: "Connecting…")
+        case .activated: return String(localized: "Connected")
+        case .failed(let message):
+            return String(format: String(localized: "Connection failed: %@"), message)
         }
     }
 
@@ -436,12 +444,13 @@ struct SettingsScreen: View {
 
     private func watchTransferStatusText(_ phase: WatchTransferQueueItem.Phase) -> String {
         switch phase {
-        case .downloading: return "ダウンロード中…"
-        case .waiting: return "待機中"
-        case .preparing: return "変換中…"
-        case .sending: return "送信中…"
-        case .sent: return "送信済み"
-        case .failed(let message): return "失敗: \(message)"
+        case .downloading: return String(localized: "Downloading…")
+        case .waiting: return String(localized: "Waiting")
+        case .preparing: return String(localized: "Converting…")
+        case .sending: return String(localized: "Sending…")
+        case .sent: return String(localized: "Sent")
+        case .failed(let message):
+            return String(format: String(localized: "Failed: %@"), message)
         }
     }
 
@@ -520,7 +529,7 @@ struct SettingsScreen: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 if !peer.protocolVersion.isEmpty {
-                    Text("UX Sync \(peer.protocolVersion)")
+                    Text(verbatim: "UX Sync \(peer.protocolVersion)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -556,9 +565,11 @@ struct SettingsScreen: View {
                 hostText = model.serverConfig.host
                 portText = String(model.serverConfig.port)
                 secretText = ""
-                pingResult = "Paired — connected"
+                pingResult = String(localized: "Paired — connected")
+                pingIsHealthy = true
             } else {
-                pingResult = model.pairingError ?? "Pairing failed"
+                pingResult = model.pairingError ?? String(localized: "Pairing failed")
+                pingIsHealthy = false
             }
             return
         }
@@ -570,7 +581,8 @@ struct SettingsScreen: View {
         }
         guard let resolved else {
             await MainActor.run {
-                pingResult = "Connection failed: No endpoint available"
+                pingResult = String(localized: "Connection failed: No endpoint available")
+                pingIsHealthy = false
             }
             return
         }
@@ -587,19 +599,20 @@ struct SettingsScreen: View {
                 .filter { $0 != resolved.config.host }
             model.serverConfig = config
             pingResult = Self.connectionResultMessage(config: resolved.config, serverName: resolved.serverName, authorised: authorised)
+            pingIsHealthy = authorised
         }
     }
 
-    /// Shared by `testConnection` and `selectDiscoveredPeer`: reachable-but-unauthorised (401 on
-    /// `/v1/remote/state`) must read differently from a fully connected peer, since `.pingResult`'s colour
-    /// keys off whether the string starts with "Connected but not paired" (see body's `foregroundStyle`).
+    /// Shared by `testConnection` and `selectDiscoveredPeer`. `authorised` (not the returned text)
+    /// drives `pingIsHealthy`, since the text is localised for display and must not be pattern
+    /// matched.
     private static func connectionResultMessage(config: ServerConfig, serverName: String, authorised: Bool) -> String {
         guard authorised else {
-            return "Connected but not paired — scan the QR code or enter a pairing code"
+            return String(localized: "Connected but not paired — scan the QR code or enter a pairing code")
         }
         return serverName.isEmpty
-            ? "Connected to \(config.host)"
-            : "Connected to \(serverName) via \(config.host)"
+            ? String(format: String(localized: "Connected to %@"), config.host)
+            : String(format: String(localized: "Connected to %@ via %@"), serverName, config.host)
     }
 
     private func connectionTestCandidates(token: String) -> [ServerConfig] {

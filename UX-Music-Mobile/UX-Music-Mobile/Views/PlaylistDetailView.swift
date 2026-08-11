@@ -101,7 +101,7 @@ struct PlaylistDetailView: View {
                     if canShowWatchTransferMenu {
                         Menu {
                             WatchTransferBulkMenuItem(
-                                title: "プレイリストを Apple Watch に転送",
+                                title: "Transfer Playlist to Apple Watch",
                                 songs: songs
                             )
                         } label: {

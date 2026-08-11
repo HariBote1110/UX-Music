@@ -23,10 +23,21 @@ final class DownloadAudioQualityTests: XCTestCase {
         XCTAssertEqual(DownloadAudioQuality.restored(fromRawValue: "both"), .both)
     }
 
-    func testDisplayNamesAreJapanese() {
-        XCTAssertEqual(DownloadAudioQuality.original.displayName, "フル音質")
-        XCTAssertEqual(DownloadAudioQuality.aac.displayName, "AAC (小容量)")
-        XCTAssertEqual(DownloadAudioQuality.both.displayName, "フル + AAC")
+    /// Pins both catalog localisations for `displayName`'s keys directly (rather than only
+    /// checking the device's current locale), so a regression in either language's translation
+    /// in `Localizable.xcstrings` is caught regardless of which locale the test runs under.
+    func testDisplayNamesAreLocalisedInBothLanguages() {
+        XCTAssertEqual(localizedString("Full Quality", locale: "ja"), "フル音質")
+        XCTAssertEqual(localizedString("AAC (Small)", locale: "ja"), "AAC (小容量)")
+        XCTAssertEqual(localizedString("Full + AAC", locale: "ja"), "フル + AAC")
+
+        XCTAssertEqual(localizedString("Full Quality", locale: "en"), "Full Quality")
+        XCTAssertEqual(localizedString("AAC (Small)", locale: "en"), "AAC (Small)")
+        XCTAssertEqual(localizedString("Full + AAC", locale: "en"), "Full + AAC")
+
+        XCTAssertEqual(DownloadAudioQuality.original.displayName, localizedString("Full Quality"))
+        XCTAssertEqual(DownloadAudioQuality.aac.displayName, localizedString("AAC (Small)"))
+        XCTAssertEqual(DownloadAudioQuality.both.displayName, localizedString("Full + AAC"))
     }
 
     // MARK: - Request-step derivation

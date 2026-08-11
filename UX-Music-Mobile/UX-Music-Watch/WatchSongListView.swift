@@ -19,7 +19,7 @@ struct WatchSongListView: View {
         NavigationStack {
             Group {
                 if library.songs.isEmpty {
-                    Text("曲がありません\niPhone アプリから転送してください")
+                    Text("No songs\nTransfer from the iPhone app")
                         .multilineTextAlignment(.center)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -28,19 +28,19 @@ struct WatchSongListView: View {
                     List {
                         NavigationLink {
                             songList
-                                .navigationTitle("曲")
+                                .navigationTitle("Songs")
                         } label: {
-                            Label("曲", systemImage: "music.note")
+                            Label("Songs", systemImage: "music.note")
                         }
                         NavigationLink {
                             albumList
                         } label: {
-                            Label("アルバム", systemImage: "square.stack")
+                            Label("Albums", systemImage: "square.stack")
                         }
                     }
                 }
             }
-            .navigationTitle("ライブラリ")
+            .navigationTitle("Library")
         }
     }
 
@@ -100,14 +100,14 @@ struct WatchSongListView: View {
                         Text(album.album)
                             .font(.body)
                             .lineLimit(1)
-                        Text("\(album.songs.count)曲")
+                        Text(String(format: String(localized: "%d songs"), album.songs.count))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
         }
-        .navigationTitle("アルバム")
+        .navigationTitle("Albums")
     }
 }
 
@@ -197,7 +197,7 @@ struct WatchSongRow: View {
             Button(role: .destructive) {
                 library.removeSong(id: meta.id)
             } label: {
-                Label("削除", systemImage: "trash")
+                Label("Delete", systemImage: "trash")
             }
         }
     }

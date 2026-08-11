@@ -331,7 +331,7 @@ struct NowPlayingView: View {
             HStack(spacing: 10) {
                 NowPlayingNavIconButton(action: {
                     showLyricsScreen = true
-                }, accessibilityLabel: "歌詞を表示") {
+                }, accessibilityLabel: "Show lyrics") {
                     Image(systemName: "text.alignleft")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(
@@ -699,8 +699,8 @@ private struct NowPlayingTransportSection: View {
             ) {
                 model.player.toggleShuffle()
             }
-            .accessibilityLabel("シャッフル")
-            .accessibilityValue(model.player.isShuffleEnabled ? "オン" : "オフ")
+            .accessibilityLabel("Shuffle")
+            .accessibilityValue(model.player.isShuffleEnabled ? "On" : "Off")
 
             transportIconButton(systemName: "backward.fill", size: 22) {
                 Task { await model.player.previous() }
@@ -736,16 +736,16 @@ private struct NowPlayingTransportSection: View {
             ) {
                 model.player.cycleRepeatMode()
             }
-            .accessibilityLabel("リピート")
+            .accessibilityLabel("Repeat")
             .accessibilityValue(repeatModeAccessibilityValue)
         }
     }
 
     private var repeatModeAccessibilityValue: String {
         switch model.player.repeatMode {
-        case .off: return "オフ"
-        case .all: return "すべてをリピート"
-        case .one: return "1曲をリピート"
+        case .off: return String(localized: "Off")
+        case .all: return String(localized: "Repeat all")
+        case .one: return String(localized: "Repeat one")
         }
     }
 
@@ -933,7 +933,7 @@ private struct NowPlayingArtworkBlock: View {
                         Button {
                             model.player.openYouTubePlaybackErrorInYouTubeApp()
                         } label: {
-                            Label("YouTube で開く", systemImage: "arrow.up.forward.app")
+                            Label("Open in YouTube", systemImage: "arrow.up.forward.app")
                                 .font(.subheadline.weight(.semibold))
                         }
                         .buttonStyle(.borderedProminent)
@@ -1055,7 +1055,7 @@ private struct NowPlayingQueuePanel: View {
                     .foregroundStyle(.white)
                 Spacer()
                 if !queue.isEmpty {
-                    Button(editMode == .active ? "完了" : "並べ替え") {
+                    Button(editMode == .active ? "Done" : "Reorder") {
                         withAnimation(nowPlayingPanelSpring) {
                             editMode = editMode == .active ? .inactive : .active
                         }
@@ -1115,7 +1115,7 @@ private struct NowPlayingQueuePanel: View {
                             Button(role: .destructive) {
                                 removeFromQueue(rowId: row.id)
                             } label: {
-                                Label("キューから削除", systemImage: "trash")
+                                Label("Remove from Queue", systemImage: "trash")
                             }
                         }
                     }
@@ -1283,7 +1283,7 @@ private struct NowPlayingPlaybackSettingsPanel: View {
                     Text("Equaliser")
                 } footer: {
                     if isYouTubeSong {
-                        Text("YouTube曲の再生には適用されません。")
+                        Text("Not applied to YouTube playback.")
                     }
                 }
                 .disabled(isYouTubeSong)

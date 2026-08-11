@@ -210,7 +210,7 @@ final class AppModelFailoverTests: XCTestCase {
         let ok = await model.applyPairingURL(url)
 
         XCTAssertFalse(ok)
-        XCTAssertEqual(model.pairingError, "デスクトップに到達できません。同じ Wi-Fi に接続しているか確認してください。")
+        XCTAssertEqual(model.pairingError, localizedString("Could not reach the desktop app. Check that you are on the same Wi-Fi network."))
     }
 
     /// A malformed or outdated QR (fails `ServerConfig.pairingRequest`) must not fail silently —
@@ -223,6 +223,6 @@ final class AppModelFailoverTests: XCTestCase {
         let ok = await model.applyPairingURL(url)
 
         XCTAssertFalse(ok)
-        XCTAssertEqual(model.pairingError, "QRコードを読み取れませんでした。デスクトップアプリを最新版に更新してください。")
+        XCTAssertEqual(model.pairingError, localizedString("Could not read the QR code. Please update the desktop app to the latest version."))
     }
 }
