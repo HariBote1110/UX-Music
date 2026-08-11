@@ -169,6 +169,12 @@ final class MusicPlayerService {
     // `queue`/`currentIndex`/`currentSong` bookkeeping is shared across both backends so a mixed
     // queue advances seamlessly regardless of what kind the next track is.
 
+    // tvOS has no WebKit/WKWebView (see `markdown/appletv-servermode-plan.md` Phase 1-1's
+    // explicit note: "tvOS にブラウザは存在しない"), so the whole YouTube embed backend is an
+    // iOS/watchOS-only concern. `MusicPlayerService` is otherwise shared with the tvOS target, so
+    // this block — and every other YouTube call site below — is guarded out on tvOS rather than
+    // split into a separate type (TV never receives a `song.isYouTube == true` track in Phase 1).
+    #if !os(tvOS)
     /// Injected by `AppModel`: resolves a YouTube `Song` (via `sourceURL`/`path`) to an 11-char
     /// video ID using the desktop's `resolveYouTubeVideo` LAN endpoint. `nil` on failure.
     var resolveYouTubeVideoID: (@MainActor (Song) async -> String?)?
@@ -199,6 +205,7 @@ final class MusicPlayerService {
     /// Caches `resolveYouTubeVideoID(song)` results by song id so replaying the same Library song
     /// does not re-hit the desktop's `resolveYouTubeVideo` LAN endpoint every time.
     private var youtubeVideoIDCache: [String: String] = [:]
+    #endif
 
     /// Audio session activation is deferred until playback starts to keep app launch light.
     private var playbackSessionPrepared = false
@@ -230,9 +237,11 @@ final class MusicPlayerService {
         addAudioInterruptionObserver()
         addAudioRouteChangeObserver()
         installRemoteCommandHandlers()
+        #if !os(tvOS)
         youtubePlaybackHost.onEvent = { [weak self] event in
             self?.handleYouTubeBridgeEvent(event)
         }
+        #endif
     }
 
     /// Invalidates pending `scheduleFile` / `scheduleSegment` completion callbacks before the next `playerNode.stop()`.
@@ -538,10 +547,12 @@ final class MusicPlayerService {
     func togglePlayPause() {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            #if !os(tvOS)
             if let song = self.currentSong, song.isYouTube {
                 self.toggleYouTubePlayPause()
                 return
             }
+            #endif
             self.activateSessionIfNeededSync()
             if self.playerNode.isPlaying {
                 self.frozenPositionWhilePaused = self.currentTimelineSeconds()
@@ -596,6 +607,7 @@ final class MusicPlayerService {
     /// Routes to the local `AVAudioEngine` path or the YouTube embed backend depending on `song.isYouTube`,
     /// stopping whichever backend is not needed so the two never play simultaneously.
     private func loadActive(_ song: Song) async {
+        #if !os(tvOS)
         if song.isYouTube {
             stopLocalPlaybackEngineOnly()
             await loadAndPlayYouTube(song)
@@ -603,16 +615,23 @@ final class MusicPlayerService {
             stopYouTubeBackend()
             await loadAndPlay(song)
         }
+        #else
+        // TV is never handed a YouTube track in Phase 1 (see `markdown/appletv-servermode-plan.md`
+        // — relay-only in Phase 3), so the local `AVAudioEngine` path is unconditional here.
+        await loadAndPlay(song)
+        #endif
     }
 
     /// - Parameter resumeAfterSeek: When `nil`, keeps playing iff the node was already playing (scrub-while-paused stays paused).
     func seek(to seconds: Double, resumeAfterSeek: Bool? = nil) {
+        #if !os(tvOS)
         if let song = currentSong, song.isYouTube {
             youtubePlaybackHost.send(.seek(seconds: seconds))
             positionSeconds = min(max(0, seconds), durationSeconds > 0 ? durationSeconds : seconds)
             updateNowPlayingCentre()
             return
         }
+        #endif
         guard let file = currentAudioFile else { return }
         let sr = file.processingFormat.sampleRate
         guard sr > 0 else { return }
@@ -645,7 +664,9 @@ final class MusicPlayerService {
 
     func stop() {
         stopLocalPlaybackEngineOnly()
+        #if !os(tvOS)
         stopYouTubeBackend()
+        #endif
         currentSong = nil
         currentIndex = -1
         queue = []
@@ -672,6 +693,12 @@ final class MusicPlayerService {
     }
 
     // MARK: - YouTube playback backend
+    //
+    // Whole block excluded on tvOS — no WebKit there (see the `#if !os(tvOS)` note further up
+    // this file). `handleYouTubeBridgeEvent`/`openYouTubePlaybackErrorInYouTubeApp` are called
+    // from `NowPlayingView`, which is iOS/watchOS-only UI; the tvOS Now Playing UI lands in
+    // Phase 2 and will not call these.
+    #if !os(tvOS)
 
     /// Stops the embed player without touching `queue`/`currentSong` — used when switching the
     /// active backend to local playback, and from `stop()`. The `WKWebView` itself is not
@@ -820,6 +847,8 @@ final class MusicPlayerService {
         guard let url = YouTubeEmbedPlayer.urlToOpen(forVideoID: videoID, youtubeAppIsAvailable: appIsAvailable) else { return }
         UIApplication.shared.open(url)
     }
+
+    #endif
 
     private func loadAndPlay(_ song: Song) async {
         await preparePlaybackSessionIfNeeded()

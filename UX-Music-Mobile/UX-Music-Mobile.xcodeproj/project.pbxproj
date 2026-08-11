@@ -140,6 +140,26 @@
 		638E87451FD1BDEE7B6AB78A /* DownloadAudioQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE6CF287D813BDA7F36A151 /* DownloadAudioQuality.swift */; };
 		7576636BB2B148188B9AA8F2 /* LocalizationTestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE0394F21811469395789027 /* LocalizationTestHelpers.swift */; };
 		2D6316B8C62C4865B9477053 /* LocalizationCatalogCompletenessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9641CC4E57D4B59BDB33477 /* LocalizationCatalogCompletenessTests.swift */; };
+		CD881D2AF1DA4D118475294B /* UXMusicTVApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D454E197DC4F5681C3044E /* UXMusicTVApp.swift */; };
+		A3D2815F272C4FC7A6BEFB86 /* TVPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62E15EEEC34B4E9AA23F209C /* TVPlaceholderView.swift */; };
+		B3DEF54EB8334B1291102C25 /* MusicPlayerServicePlaybackSpikeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72961CAFB4547F7B62BF901 /* MusicPlayerServicePlaybackSpikeTests.swift */; };
+		76A7C768EF0647DB9462A2DA /* spike-sine.wav in Resources */ = {isa = PBXBuildFile; fileRef = 03E5B3C082DC4F5393BF1972 /* spike-sine.wav */; };
+		2D4C3AA79A2B480D9D46499E /* RemoteAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AA0101A1A10101A1A1 /* RemoteAPIClient.swift */; };
+		4516F3EEF4CE4B649D89B7A9 /* RemoteConnectionResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60101F70101F70101F70101 /* RemoteConnectionResolver.swift */; };
+		72C99DF38EC4405FBB899240 /* ConnectionCandidatePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC1101F70101F70101F70101 /* ConnectionCandidatePolicy.swift */; };
+		A8CA40E2EE0148CB9919C5A1 /* LANDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1D1D1C10101D1C10101D1C1 /* LANDiscoveryService.swift */; };
+		1F995C6679914228AAD06954 /* DeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1D1D1D20101D1D20101D1D2 /* DeviceIdentity.swift */; };
+		42C2D356B6034DE1894F73DC /* AppConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A20101A1A10101A1A1 /* AppConstants.swift */; };
+		BDA15A9D798A4AAD89170FCE /* ServerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A40101A1A10101A1A1 /* ServerConfig.swift */; };
+		77E2DC8E2B304EBFAEFF45D7 /* Song.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A60101A1A10101A1A1 /* Song.swift */; };
+		28D5292DF7384FF7B2BE1E15 /* Album.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A80101A1A10101A1A1 /* Album.swift */; };
+		41D14A48145C4129AA84484B /* Playlist.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A3A3A80101F3A80101F3A8 /* Playlist.swift */; };
+		F4886C72940D4DD78B8634E9 /* Artist.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3F0B98F67004EC7BAE5381B /* Artist.swift */; };
+		AB2EB6E388074071BD763A15 /* MusicPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */; };
+		FF9A9EA91DC4488489602B91 /* GraphicEqualiserConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F5F5F40101F5F40101F5F4 /* GraphicEqualiserConfiguration.swift */; };
+		3A3A3A3A0303A3A30303A3A3 /* WatchPlaybackLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */; };
+		4B4B4B4B0404B4B40404B4B4 /* DownloadAudioQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE6CF287D813BDA7F36A151 /* DownloadAudioQuality.swift */; };
+		5C5C5C5C0505C5C50505C5C5 /* PlaybackQueueEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81C30A3149CE455A93E45602 /* PlaybackQueueEditing.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -156,6 +176,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 7C9DC2182029478889705980;
 			remoteInfo = "UX-Music-Watch";
+		};
+		A234BACE420449C2BFA36699 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 966a652ae0af40ccbcea75dc /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3F09AF48DA3F42D280AB53DF;
+			remoteInfo = "UX-Music-TV";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -305,6 +332,12 @@
 		5DE6CF287D813BDA7F36A151 /* DownloadAudioQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadAudioQuality.swift; sourceTree = "<group>"; };
 		DE0394F21811469395789027 /* LocalizationTestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTestHelpers.swift; sourceTree = "<group>"; };
 		D9641CC4E57D4B59BDB33477 /* LocalizationCatalogCompletenessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationCatalogCompletenessTests.swift; sourceTree = "<group>"; };
+		00D454E197DC4F5681C3044E /* UXMusicTVApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UXMusicTVApp.swift; sourceTree = "<group>"; };
+		62E15EEEC34B4E9AA23F209C /* TVPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlaceholderView.swift; sourceTree = "<group>"; };
+		B72961CAFB4547F7B62BF901 /* MusicPlayerServicePlaybackSpikeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerServicePlaybackSpikeTests.swift; sourceTree = "<group>"; };
+		03E5B3C082DC4F5393BF1972 /* spike-sine.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "Fixtures/spike-sine.wav"; sourceTree = "<group>"; };
+		4CCF760A7E8443E390EC0086 /* UX-Music-TV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-TV.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7A6ACFADEEE0440BA8A07E42 /* UX-Music-TVTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "UX-Music-TVTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -323,6 +356,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B629BD7F4AB54B83B09031DC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CD2CE45437784B32AA3FABDE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		42D9111A015D4D17A8712D42 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -527,6 +574,8 @@
 				a69b6b50c77c42d5883861b6 /* UX-Music-Mobile.app */,
 				b1b1b1BA0101B1B10101B1B1 /* UX-Music-MobileTests.xctest */,
 				66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */,
+				4CCF760A7E8443E390EC0086 /* UX-Music-TV.app */,
+				7A6ACFADEEE0440BA8A07E42 /* UX-Music-TVTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -537,8 +586,28 @@
 				31b03a3b51a84e449413faf3 /* UX-Music-Mobile */,
 				b1b1b1BC0101B1B10101B1B1 /* UX-Music-MobileTests */,
 				3CB21E9F792742E6B543539B /* UX-Music-Watch */,
+				D2786394471F49DD9A7A8C8F /* UX-Music-TV */,
+				AF1DAD0FDC4444A8A5C87ACD /* UX-Music-TVTests */,
 				c1727cf5369148288cb55f42 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		D2786394471F49DD9A7A8C8F /* UX-Music-TV */ = {
+			isa = PBXGroup;
+			children = (
+				00D454E197DC4F5681C3044E /* UXMusicTVApp.swift */,
+				62E15EEEC34B4E9AA23F209C /* TVPlaceholderView.swift */,
+			);
+			path = "UX-Music-TV";
+			sourceTree = "<group>";
+		};
+		AF1DAD0FDC4444A8A5C87ACD /* UX-Music-TVTests */ = {
+			isa = PBXGroup;
+			children = (
+				B72961CAFB4547F7B62BF901 /* MusicPlayerServicePlaybackSpikeTests.swift */,
+				03E5B3C082DC4F5393BF1972 /* spike-sine.wav */,
+			);
+			path = "UX-Music-TVTests";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -597,6 +666,41 @@
 			productReference = b1b1b1BA0101B1B10101B1B1 /* UX-Music-MobileTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		3F09AF48DA3F42D280AB53DF /* UX-Music-TV */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 33CF314B3EB94707BF0F7417 /* Build configuration list for PBXNativeTarget "UX-Music-TV" */;
+			buildPhases = (
+				61CD532A9A64413196736C63 /* Sources */,
+				CD2CE45437784B32AA3FABDE /* Frameworks */,
+				7C3AC11115C14C9EA3BB7253 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "UX-Music-TV";
+			productName = "UX-Music-TV";
+			productReference = 4CCF760A7E8443E390EC0086 /* UX-Music-TV.app */;
+			productType = "com.apple.product-type.application";
+		};
+		6193B7C9A52F4851B89C19F1 /* UX-Music-TVTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9F576EFEE5214745933F16DF /* Build configuration list for PBXNativeTarget "UX-Music-TVTests" */;
+			buildPhases = (
+				70927D2C2E4242A0BD43E3E1 /* Sources */,
+				42D9111A015D4D17A8712D42 /* Frameworks */,
+				E595F56C332C4538894C3644 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				853BBB17BC4F4B6C8068A10B /* PBXTargetDependency */,
+			);
+			name = "UX-Music-TVTests";
+			productName = "UX-Music-TVTests";
+			productReference = 7A6ACFADEEE0440BA8A07E42 /* UX-Music-TVTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -616,6 +720,13 @@
 					};
 					7C9DC2182029478889705980 = {
 						CreatedOnToolsVersion = 16.0;
+					};
+					3F09AF48DA3F42D280AB53DF = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					6193B7C9A52F4851B89C19F1 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = 3F09AF48DA3F42D280AB53DF;
 					};
 				};
 			};
@@ -637,6 +748,8 @@
 				7b5e014a976d46a59bb8f1b1 /* UX-Music-Mobile */,
 				b1b1b1BD0101B1B10101B1B1 /* UX-Music-MobileTests */,
 				7C9DC2182029478889705980 /* UX-Music-Watch */,
+				3F09AF48DA3F42D280AB53DF /* UX-Music-TV */,
+				6193B7C9A52F4851B89C19F1 /* UX-Music-TVTests */,
 			);
 		};
 /* End PBXProject section */
@@ -657,6 +770,21 @@
 			files = (
 				B876FC45A8EA453AB2CF792F /* Assets.xcassets in Resources */,
 				061A9DA419E44389B24D6A56 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7C3AC11115C14C9EA3BB7253 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E595F56C332C4538894C3644 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				76A7C768EF0647DB9462A2DA /* spike-sine.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -812,6 +940,39 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		61CD532A9A64413196736C63 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CD881D2AF1DA4D118475294B /* UXMusicTVApp.swift in Sources */,
+				A3D2815F272C4FC7A6BEFB86 /* TVPlaceholderView.swift in Sources */,
+				2D4C3AA79A2B480D9D46499E /* RemoteAPIClient.swift in Sources */,
+				4516F3EEF4CE4B649D89B7A9 /* RemoteConnectionResolver.swift in Sources */,
+				72C99DF38EC4405FBB899240 /* ConnectionCandidatePolicy.swift in Sources */,
+				A8CA40E2EE0148CB9919C5A1 /* LANDiscoveryService.swift in Sources */,
+				1F995C6679914228AAD06954 /* DeviceIdentity.swift in Sources */,
+				42C2D356B6034DE1894F73DC /* AppConstants.swift in Sources */,
+				BDA15A9D798A4AAD89170FCE /* ServerConfig.swift in Sources */,
+				77E2DC8E2B304EBFAEFF45D7 /* Song.swift in Sources */,
+				28D5292DF7384FF7B2BE1E15 /* Album.swift in Sources */,
+				41D14A48145C4129AA84484B /* Playlist.swift in Sources */,
+				F4886C72940D4DD78B8634E9 /* Artist.swift in Sources */,
+				AB2EB6E388074071BD763A15 /* MusicPlayerService.swift in Sources */,
+				FF9A9EA91DC4488489602B91 /* GraphicEqualiserConfiguration.swift in Sources */,
+				3A3A3A3A0303A3A30303A3A3 /* WatchPlaybackLogic.swift in Sources */,
+				4B4B4B4B0404B4B40404B4B4 /* DownloadAudioQuality.swift in Sources */,
+				5C5C5C5C0505C5C50505C5C5 /* PlaybackQueueEditing.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		70927D2C2E4242A0BD43E3E1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B3DEF54EB8334B1291102C25 /* MusicPlayerServicePlaybackSpikeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -824,6 +985,11 @@
 			isa = PBXTargetDependency;
 			target = 7C9DC2182029478889705980 /* UX-Music-Watch */;
 			targetProxy = A6CF535A212947548ED45C2E /* PBXContainerItemProxy */;
+		};
+		853BBB17BC4F4B6C8068A10B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3F09AF48DA3F42D280AB53DF /* UX-Music-TV */;
+			targetProxy = A234BACE420449C2BFA36699 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1107,6 +1273,98 @@
 			};
 			name = Release;
 		};
+		8C6A08465E2C4F92A18002C7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HMMQ7Z6976;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.tv";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Debug;
+		};
+		7387EB01DB0B4478834192A1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HMMQ7Z6976;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.tv";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Release;
+		};
+		44DCFE1D90E54460ACCF9679 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HMMQ7Z6976;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.tvTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/UX-Music-TV.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/UX-Music-TV";
+			};
+			name = Debug;
+		};
+		377CBB19BE8A4450A6AD31F7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HMMQ7Z6976;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.tvTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/UX-Music-TV.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/UX-Music-TV";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -1142,6 +1400,24 @@
 			buildConfigurations = (
 				3FDDB67B4ED04D139DC8D953 /* Debug */,
 				264FA2CDB8FF48079387DC40 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		33CF314B3EB94707BF0F7417 /* Build configuration list for PBXNativeTarget "UX-Music-TV" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8C6A08465E2C4F92A18002C7 /* Debug */,
+				7387EB01DB0B4478834192A1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9F576EFEE5214745933F16DF /* Build configuration list for PBXNativeTarget "UX-Music-TVTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				44DCFE1D90E54460ACCF9679 /* Debug */,
+				377CBB19BE8A4450A6AD31F7 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

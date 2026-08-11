@@ -86,6 +86,11 @@ enum PlaybackRepeatMode: String, Codable, Equatable, CaseIterable {
 /// it only handles the "keep the currently-playing song first" rule, matching classic media-player
 /// shuffle UX where turning shuffle on never interrupts what is currently playing.
 enum PlaybackShuffleLogic {
+    // The `[WatchTransferMeta]` overload is Watch-only (that type lives in `WatchTransfer.swift`,
+    // not shared with tvOS); the `[Song]` overload used by `MusicPlayerService` on tvOS lives in
+    // `PlaybackQueueEditing.swift` instead. Excluded here rather than pulling `WatchTransfer.swift`
+    // (and its own dependency graph) into the TV target for a shuffle helper it never calls.
+    #if !os(tvOS)
     /// Reorders `queue` according to `shuffledIndices` (expected to be a permutation of
     /// `queue.indices`), then moves the song matching `currentId` to the front. Returns `queue`
     /// unchanged if `shuffledIndices` does not match `queue`'s count (defensive — should not
@@ -104,6 +109,7 @@ enum PlaybackShuffleLogic {
         shuffled.insert(current, at: 0)
         return shuffled
     }
+    #endif
 }
 
 // MARK: - Backwards-compatible names
@@ -130,6 +136,14 @@ struct WatchPlaybackResumeState: Codable, Equatable {
     var repeatMode: WatchRepeatMode
     var isShuffled: Bool
 }
+
+// The remainder of this file (`WatchResumeLogic` onward) is Watch-app-specific: it works in terms
+// of `WatchTransferMeta`/`AlbumGroupPosition` (defined in `WatchTransfer.swift`/
+// `AlbumGroupPosition.swift`, not shared with tvOS — see `progress/tvos-target.md`). Only the
+// queue-navigation/repeat/shuffle logic above is shared with `MusicPlayerService` on tvOS, so it
+// is excluded there rather than pulling the whole Watch transfer-metadata type graph into the TV
+// target for no reason.
+#if !os(tvOS)
 
 /// Pure helpers for turning a `WatchPlaybackResumeState` back into a live queue against whatever
 /// songs are actually present in the library at launch (a song may have been deleted since the
@@ -273,3 +287,5 @@ enum WatchNowPlayingInfoBuilder {
         ]
     }
 }
+
+#endif
