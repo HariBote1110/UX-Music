@@ -60,6 +60,19 @@ WCSession transferFile より速い**。Wi-Fi 直結が使われる条件（バ�
   合流するため二重取得は自然に冪等になる想定だが、fileType 不一致（旧 flac 転送済み曲）は
   「first write wins」により残存 → 再送 UX と合わせて要検討
 
+## 採択理由の追記（実機報告が後押し）
+
+実機報告「アプリ閉じちゃうと転送止まっちゃう。画面OFFになったあと勝手に文字盤に戻っちゃって
+転送が止まる」への対処として `progress/watch-transfer-resilience.md` で対症療法3件
+（Watch側 `isFrontmostTimeoutExtended`・iPhone側キュー永続化・UI案内）を実装したが、
+この過程で `isFrontmostTimeoutExtended` がwatchOS 7以降 `WK_DEPRECATED_WATCHOS(..., "No longer
+supported")` と判明し、frontmost依存を軽減する現実的なAPIが存在しないことが確定した。
+つまり `WCSession.transferFile` を使う限り「アプリを開いたままにしてもらう」以上の対策は
+watchOS側には無い。この報告は、本計画が想定していた「WCSessionはfrontmostに依存するが
+バックグラウンドURLSessionは仕様として起動suspend後も継続する」という差を、実際のユーザー
+体験として裏付ける具体的な駆動要因になった。着手判断（フェーズ0計測）の優先度を上げる根拠として記録する。
+
 ## 関連
 
 - ボトルネック調査と AAC128 採択: [watch-transfer-bottleneck.md](watch-transfer-bottleneck.md)
+- 実機報告への対症療法3件（本計画着手までの緩和策）: [watch-transfer-resilience.md](../../progress/watch-transfer-resilience.md)
