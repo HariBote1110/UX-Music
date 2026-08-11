@@ -1,0 +1,182 @@
+import SwiftUI
+
+/// Root shell for Phase 1-2: host discovery → pairing (large 6-digit code) → connected state.
+/// Replaces `TVPlaceholderView` as the app's entry point.
+struct TVRootView: View {
+    @StateObject private var model = TVAppModel()
+
+    var body: some View {
+        Group {
+            if model.isPaired, case .idle = model.pairingState {
+                TVConnectedView(model: model)
+            } else {
+                TVHostDiscoveryView(model: model)
+            }
+        }
+        .onAppear { model.startDiscovery() }
+        .onDisappear { model.stopDiscovery() }
+    }
+}
+
+/// Discovers hosts via mDNS (`LANDiscoveryService`, `_uxmusic-sync._tcp`) and lets the user pick
+/// one to pair with. Focus-friendly list for the Siri Remote.
+struct TVHostDiscoveryView: View {
+    @ObservedObject var model: TVAppModel
+
+    var body: some View {
+        NavigationStack {
+            content
+                .navigationTitle("UX Music を選択")
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.pairingState {
+        case .idle:
+            hostList
+        case .starting, .awaitingConfirmation, .confirming:
+            TVPairingCodeView(state: model.pairingState)
+        case .paired:
+            TVPairingResultView(state: model.pairingState) { model.resetPairingFlow() }
+        case .failed:
+            TVPairingResultView(state: model.pairingState) { model.resetPairingFlow() }
+        }
+    }
+
+    private var hostList: some View {
+        VStack(spacing: 32) {
+            Text("同じネットワーク上の UX Music を検索しています")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+
+            if model.discovery.peers.isEmpty {
+                ProgressView()
+            } else {
+                List(model.discovery.peers) { peer in
+                    Button {
+                        Task { await model.pair(with: peer) }
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(peer.displayName).font(.headline)
+                                Text(peer.endpointDescription).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
+        .padding()
+    }
+}
+
+/// Full-screen large 6-digit pairing code, shown while `start`/`confirm` are in flight.
+struct TVPairingCodeView: View {
+    let state: TVPairingState
+
+    var body: some View {
+        VStack(spacing: 40) {
+            Text(hostDisplayName)
+                .font(.title2)
+                .foregroundStyle(.secondary)
+
+            if let code = code {
+                Text(code)
+                    .font(.system(size: 120, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .kerning(12)
+            } else {
+                ProgressView()
+            }
+
+            Text(statusText)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+    }
+
+    private var hostDisplayName: String {
+        switch state {
+        case .starting(let name), .awaitingConfirmation(let name, _), .confirming(let name, _):
+            return name
+        default:
+            return ""
+        }
+    }
+
+    private var code: String? {
+        switch state {
+        case .awaitingConfirmation(_, let start), .confirming(_, let start):
+            return start.code
+        default:
+            return nil
+        }
+    }
+
+    private var statusText: String {
+        switch state {
+        case .starting:
+            return "コードを取得しています…"
+        case .awaitingConfirmation, .confirming:
+            return "ペアリングを確定しています…"
+        default:
+            return ""
+        }
+    }
+}
+
+/// Success or failure terminal state, with a button to try again.
+struct TVPairingResultView: View {
+    let state: TVPairingState
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 24) {
+            switch state {
+            case .paired(let hostDisplayName, _):
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 72))
+                    .foregroundStyle(.green)
+                Text("\(hostDisplayName) とペアリングしました")
+                    .font(.title2)
+            case .failed(let message):
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 72))
+                    .foregroundStyle(.yellow)
+                Text("ペアリングに失敗しました")
+                    .font(.title2)
+                Text(message)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                Button("もう一度試す", action: onRetry)
+            default:
+                EmptyView()
+            }
+        }
+        .padding()
+    }
+}
+
+/// Shown once a host token is persisted and no new pairing flow is active.
+struct TVConnectedView: View {
+    @ObservedObject var model: TVAppModel
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 72))
+                .foregroundStyle(.green)
+            Text("\(model.serverConfig.activeHost) に接続済み")
+                .font(.title2)
+            Button("ペアリングを解除") { model.forgetPairing() }
+        }
+        .padding()
+    }
+}
+
+#Preview {
+    TVRootView()
+}
