@@ -48,6 +48,18 @@ func RunSyncCLI(args []string) (bool, error) {
 		// Phase 0-2.
 		fmt.Println("[Serve] --sync-serve is deprecated; use --serve instead.")
 		return true, RunHeadlessServe()
+	case "--install-agent":
+		if err := installLaunchAgent(); err != nil {
+			return true, err
+		}
+		fmt.Println("[Serve] installed and bootstrapped com.uxmusic.serve LaunchAgent")
+		return true, nil
+	case "--uninstall-agent":
+		if err := uninstallLaunchAgent(); err != nil {
+			return true, err
+		}
+		fmt.Println("[Serve] booted out and removed com.uxmusic.serve LaunchAgent")
+		return true, nil
 	case "--sync-pull":
 		if len(args) < 2 {
 			return true, fmt.Errorf("--sync-pull requires a peer base URL")

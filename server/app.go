@@ -43,6 +43,11 @@ type App struct {
 	mediaAlbum        string
 	mediaArtwork      string
 	deviceWatcherStop chan struct{}
+	// bootedOutResidentAgent records whether Startup booted out a resident
+	// `--serve` LaunchAgent to take over port 8765 (see performGUIHandoff in
+	// app_handoff.go). When set, Shutdown re-bootstraps the agent so it
+	// resumes its KeepAlive-managed run.
+	bootedOutResidentAgent bool
 }
 
 // NewApp creates a new App struct
@@ -82,6 +87,13 @@ func (a *App) Startup(ctx context.Context) {
 	a.wireWailsRuntime()
 
 	a.bindLyricsSyncProgressEmitter()
+
+	// Before binding port 8765, check whether a resident `--serve` LaunchAgent
+	// is already holding it and hand off if so (Phase 0-3; see
+	// app_handoff.go). If another GUI instance holds it instead, this
+	// deliberately does not take over — StartLANServer's bind failure is
+	// logged but non-fatal.
+	a.bootedOutResidentAgent = performGUIHandoff(handoffProbeBaseURL)
 
 	// Start the LAN HTTP server for Apple Watch / iPhone / Mobile companion
 	StartLANServer(ctx, a)

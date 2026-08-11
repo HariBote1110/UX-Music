@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"sync"
 	"ux-music-sidecar/internal/audioembed"
 	"ux-music-sidecar/internal/config"
@@ -121,6 +122,21 @@ func (a *App) Shutdown(ctx context.Context) {
 	_ = ctx
 	if llamaSrv != nil {
 		_ = llamaSrv.Stop()
+	}
+	// If Startup booted out a resident `--serve` LaunchAgent to take over
+	// port 8765, restore it now so KeepAlive resumes managing it. A crash
+	// exit skips this (see progress/launchd-handoff.md) — the agent stays
+	// booted out until the next GUI launch or login.
+	if a.bootedOutResidentAgent {
+		uid := strconv.Itoa(os.Getuid())
+		plistPath, err := launchAgentPlistPath()
+		if err != nil {
+			fmt.Printf("[Handoff] could not resolve LaunchAgent plist path: %v\n", err)
+			return
+		}
+		if err := currentLaunchAgentRunner.Bootstrap(uid, plistPath); err != nil {
+			fmt.Printf("[Handoff] failed to restore resident agent: %v\n", err)
+		}
 	}
 }
 
