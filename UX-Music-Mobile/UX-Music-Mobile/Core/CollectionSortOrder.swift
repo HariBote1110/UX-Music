@@ -13,9 +13,9 @@ enum AlbumSortOrder: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var displayName: String {
         switch self {
-        case .name: return "アルバム名順"
-        case .artist: return "アーティスト名順"
-        case .songCount: return "曲数順"
+        case .name: return String(localized: "By Album Name")
+        case .artist: return String(localized: "By Artist Name")
+        case .songCount: return String(localized: "By Song Count")
         }
     }
 
@@ -59,8 +59,8 @@ enum ArtistSortOrder: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var displayName: String {
         switch self {
-        case .name: return "名前順"
-        case .songCount: return "曲数順"
+        case .name: return String(localized: "By Name")
+        case .songCount: return String(localized: "By Song Count")
         }
     }
 

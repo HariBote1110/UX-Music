@@ -714,7 +714,7 @@ final class MusicPlayerService {
             guard let resolver = resolveYouTubeVideoID, let resolved = await resolver(song) else {
                 guard generation == youtubePlaybackGeneration else { return }
                 isPlaying = false
-                youtubePlaybackErrorMessage = "動画情報を取得できませんでした。デスクトップとのペアリング状態を確認してください。"
+                youtubePlaybackErrorMessage = String(localized: "Couldn't fetch video info. Check the pairing status with the desktop.")
                 updateNowPlayingCentre()
                 return
             }
@@ -798,7 +798,7 @@ final class MusicPlayerService {
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             guard let self, generation == self.youtubePlaybackGeneration else { return }
-            let skippedMessage = "埋め込み再生が許可されていないためスキップしました"
+            let skippedMessage = String(localized: "Skipped because embedded playback is not allowed")
             self.youtubePlaybackJustSkippedMessage = skippedMessage
             await self.advanceAfterEnd()
             Task { @MainActor [weak self] in

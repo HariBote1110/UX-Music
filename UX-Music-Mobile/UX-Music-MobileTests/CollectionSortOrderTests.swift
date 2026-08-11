@@ -29,10 +29,21 @@ final class CollectionSortOrderTests: XCTestCase {
 
     // MARK: - AlbumSortOrder
 
-    func testAlbumDisplayNamesAreJapanese() {
-        XCTAssertEqual(AlbumSortOrder.name.displayName, "アルバム名順")
-        XCTAssertEqual(AlbumSortOrder.artist.displayName, "アーティスト名順")
-        XCTAssertEqual(AlbumSortOrder.songCount.displayName, "曲数順")
+    /// Pins both locales' translations directly (rather than the running test host's current
+    /// locale) so a regression in either language is caught regardless of which locale the test
+    /// happens to run under. `displayName` itself still resolves via the current locale.
+    func testAlbumDisplayNamesAreLocalized() {
+        XCTAssertEqual(AlbumSortOrder.name.displayName, localizedString("By Album Name"))
+        XCTAssertEqual(AlbumSortOrder.artist.displayName, localizedString("By Artist Name"))
+        XCTAssertEqual(AlbumSortOrder.songCount.displayName, localizedString("By Song Count"))
+
+        XCTAssertEqual(localizedString("By Album Name", locale: "ja"), "アルバム名順")
+        XCTAssertEqual(localizedString("By Artist Name", locale: "ja"), "アーティスト名順")
+        XCTAssertEqual(localizedString("By Song Count", locale: "ja"), "曲数順")
+
+        XCTAssertEqual(localizedString("By Album Name", locale: "en"), "By Album Name")
+        XCTAssertEqual(localizedString("By Artist Name", locale: "en"), "By Artist Name")
+        XCTAssertEqual(localizedString("By Song Count", locale: "en"), "By Song Count")
     }
 
     func testAlbumNameOrderSortsAlphabeticallyLikeExistingDefault() {
@@ -89,9 +100,18 @@ final class CollectionSortOrderTests: XCTestCase {
 
     // MARK: - ArtistSortOrder
 
-    func testArtistDisplayNamesAreJapanese() {
-        XCTAssertEqual(ArtistSortOrder.name.displayName, "名前順")
-        XCTAssertEqual(ArtistSortOrder.songCount.displayName, "曲数順")
+    /// Pins both locales' translations directly (rather than the running test host's current
+    /// locale) so a regression in either language is caught regardless of which locale the test
+    /// happens to run under. `displayName` itself still resolves via the current locale.
+    func testArtistDisplayNamesAreLocalized() {
+        XCTAssertEqual(ArtistSortOrder.name.displayName, localizedString("By Name"))
+        XCTAssertEqual(ArtistSortOrder.songCount.displayName, localizedString("By Song Count"))
+
+        XCTAssertEqual(localizedString("By Name", locale: "ja"), "名前順")
+        XCTAssertEqual(localizedString("By Song Count", locale: "ja"), "曲数順")
+
+        XCTAssertEqual(localizedString("By Name", locale: "en"), "By Name")
+        XCTAssertEqual(localizedString("By Song Count", locale: "en"), "By Song Count")
     }
 
     func testArtistNameOrderSortsAlphabeticallyLikeExistingDefault() {

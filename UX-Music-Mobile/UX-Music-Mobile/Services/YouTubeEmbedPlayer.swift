@@ -89,17 +89,17 @@ enum YouTubeEmbedPlayer {
     static func errorMessage(code: Int) -> String {
         switch code {
         case -1:
-            return "再生用のローカルサーバーを起動できませんでした。アプリを再起動してお試しください。"
+            return String(localized: "Couldn't start the local playback server. Please restart the app and try again.")
         case 2:
-            return "動画を再生できませんでした（不正なパラメータ）。"
+            return String(localized: "Couldn't play the video (invalid parameter).")
         case 5:
-            return "動画を再生できませんでした（プレイヤーエラー）。"
+            return String(localized: "Couldn't play the video (player error).")
         case 100:
-            return "この動画は見つかりませんでした（削除または非公開の可能性があります）。"
+            return String(localized: "This video wasn't found (it may have been removed or made private).")
         case 101, 150:
-            return "この動画は投稿者により埋め込み再生が許可されていません。YouTubeアプリでご視聴ください。"
+            return String(localized: "This video's owner has disabled embedded playback. Please watch it in the YouTube app.")
         default:
-            return "動画の再生中にエラーが発生しました（コード: \(code)）。"
+            return String(format: String(localized: "An error occurred while playing the video (code: %d)."), code)
         }
     }
 

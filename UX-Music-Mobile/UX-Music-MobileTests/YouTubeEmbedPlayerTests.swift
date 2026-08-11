@@ -52,40 +52,72 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
         XCTAssertEqual(YouTubeEmbedPlayer.commandScript(.seek(seconds: 42.5)), "window.uxYouTubeCommand({cmd:'seek', seconds:42.5});")
     }
 
-    // MARK: - IFrame API error code -> Japanese user-facing message
+    // MARK: - IFrame API error code -> localised user-facing message
 
     func testErrorMessageForInvalidParameter() {
-        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 2), "動画を再生できませんでした（不正なパラメータ）。")
+        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 2), localizedString("Couldn't play the video (invalid parameter)."))
+        XCTAssertEqual(localizedString("Couldn't play the video (invalid parameter).", locale: "ja"), "動画を再生できませんでした（不正なパラメータ）。")
+        XCTAssertEqual(localizedString("Couldn't play the video (invalid parameter).", locale: "en"), "Couldn't play the video (invalid parameter).")
     }
 
     func testErrorMessageForHTML5Error() {
-        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 5), "動画を再生できませんでした（プレイヤーエラー）。")
+        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 5), localizedString("Couldn't play the video (player error)."))
+        XCTAssertEqual(localizedString("Couldn't play the video (player error).", locale: "ja"), "動画を再生できませんでした（プレイヤーエラー）。")
+        XCTAssertEqual(localizedString("Couldn't play the video (player error).", locale: "en"), "Couldn't play the video (player error).")
     }
 
     func testErrorMessageForVideoNotFound() {
-        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 100), "この動画は見つかりませんでした（削除または非公開の可能性があります）。")
+        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 100), localizedString("This video wasn't found (it may have been removed or made private)."))
+        XCTAssertEqual(
+            localizedString("This video wasn't found (it may have been removed or made private).", locale: "ja"),
+            "この動画は見つかりませんでした（削除または非公開の可能性があります）。"
+        )
+        XCTAssertEqual(
+            localizedString("This video wasn't found (it may have been removed or made private).", locale: "en"),
+            "This video wasn't found (it may have been removed or made private)."
+        )
     }
 
     func testErrorMessageForEmbedDisallowed() {
+        let expected = localizedString("This video's owner has disabled embedded playback. Please watch it in the YouTube app.")
+        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 101), expected)
+        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 150), expected)
         XCTAssertEqual(
-            YouTubeEmbedPlayer.errorMessage(code: 101),
+            localizedString("This video's owner has disabled embedded playback. Please watch it in the YouTube app.", locale: "ja"),
             "この動画は投稿者により埋め込み再生が許可されていません。YouTubeアプリでご視聴ください。"
         )
         XCTAssertEqual(
-            YouTubeEmbedPlayer.errorMessage(code: 150),
-            "この動画は投稿者により埋め込み再生が許可されていません。YouTubeアプリでご視聴ください。"
+            localizedString("This video's owner has disabled embedded playback. Please watch it in the YouTube app.", locale: "en"),
+            "This video's owner has disabled embedded playback. Please watch it in the YouTube app."
         )
     }
 
     func testErrorMessageForLoopbackServerStartFailure() {
         XCTAssertEqual(
             YouTubeEmbedPlayer.errorMessage(code: -1),
+            localizedString("Couldn't start the local playback server. Please restart the app and try again.")
+        )
+        XCTAssertEqual(
+            localizedString("Couldn't start the local playback server. Please restart the app and try again.", locale: "ja"),
             "再生用のローカルサーバーを起動できませんでした。アプリを再起動してお試しください。"
+        )
+        XCTAssertEqual(
+            localizedString("Couldn't start the local playback server. Please restart the app and try again.", locale: "en"),
+            "Couldn't start the local playback server. Please restart the app and try again."
         )
     }
 
     func testErrorMessageForUnknownCodeFallsBackToGeneric() {
-        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 9999), "動画の再生中にエラーが発生しました（コード: 9999）。")
+        let jaFormat = localizedString("An error occurred while playing the video (code: %d).", locale: "ja")
+        let enFormat = localizedString("An error occurred while playing the video (code: %d).", locale: "en")
+        XCTAssertEqual(jaFormat, "動画の再生中にエラーが発生しました（コード: %d）。")
+        XCTAssertEqual(enFormat, "An error occurred while playing the video (code: %d).")
+
+        // `errorMessage(code:)` resolves against the current locale, matching whatever the test
+        // host's language happens to be — pin against that same current-locale lookup rather than
+        // assuming "en", mirroring `DownloadAudioQualityTests`'s convention.
+        let currentFormat = localizedString("An error occurred while playing the video (code: %d).")
+        XCTAssertEqual(YouTubeEmbedPlayer.errorMessage(code: 9999), String(format: currentFormat, 9999))
     }
 
     // MARK: - Loopback host page URL (mirrors `embedHostPageURL` in server/embed_host.go)

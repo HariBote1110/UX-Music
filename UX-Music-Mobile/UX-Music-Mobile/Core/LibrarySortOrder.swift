@@ -13,10 +13,10 @@ enum LibrarySortOrder: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var displayName: String {
         switch self {
-        case .album: return "アルバム順"
-        case .title: return "タイトル順"
-        case .artist: return "アーティスト順"
-        case .duration: return "再生時間順"
+        case .album: return String(localized: "By Album")
+        case .title: return String(localized: "By Title")
+        case .artist: return String(localized: "By Artist")
+        case .duration: return String(localized: "By Duration")
         }
     }
 
