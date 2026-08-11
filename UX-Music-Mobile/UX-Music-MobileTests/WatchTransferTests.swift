@@ -453,4 +453,159 @@ final class WatchTransferTests: XCTestCase {
 
         XCTAssertEqual(sentOrder, ["slow-1", "fast-2", "medium-3"])
     }
+
+    // MARK: - WatchTransferQueuePersistence
+    //
+    // User report: "アプリ閉じちゃうと転送止まっちゃう" — the iPhone-side queue used to live only in
+    // `WatchTransferBridge.queue` (an in-memory `@Published` array), so killing the iPhone app lost
+    // track of every song that had not finished sending yet. This snapshots the still-pending subset
+    // (not `.sent`/`.failed`) to UserDefaults so a relaunch can resume them (see
+    // `WatchTransferRestoreReconciliation` below for the resume-side logic).
+
+    func testPendingSnapshotExcludesSentAndFailedItems() {
+        let queue = [
+            item(id: "1", phase: .sent),
+            item(id: "2", phase: .failed("boom")),
+            item(id: "3", phase: .waiting)
+        ]
+        let snapshot = WatchTransferQueuePersistence.pendingSnapshot(from: queue)
+        XCTAssertEqual(snapshot.map(\.id), ["3"])
+    }
+
+    func testPendingSnapshotIncludesEveryInFlightPhase() {
+        let queue = [
+            item(id: "1", phase: .downloading),
+            item(id: "2", phase: .waiting),
+            item(id: "3", phase: .preparing),
+            item(id: "4", phase: .sending(0.4))
+        ]
+        let snapshot = WatchTransferQueuePersistence.pendingSnapshot(from: queue)
+        XCTAssertEqual(snapshot.map(\.id), ["1", "2", "3", "4"])
+    }
+
+    func testPendingSnapshotPreservesQueueOrder() {
+        let queue = [item(id: "z", phase: .waiting), item(id: "a", phase: .waiting)]
+        let snapshot = WatchTransferQueuePersistence.pendingSnapshot(from: queue)
+        XCTAssertEqual(snapshot.map(\.id), ["z", "a"])
+    }
+
+    func testPendingSnapshotCarriesTitle() {
+        let queue = [item(id: "1", phase: .waiting)]
+        let snapshot = WatchTransferQueuePersistence.pendingSnapshot(from: queue)
+        XCTAssertEqual(snapshot.first?.title, "Song 1")
+    }
+
+    func testShouldPersistIsFalseWhenSnapshotUnchanged() {
+        let snapshot = [WatchTransferPendingQueueEntry(id: "1", title: "Song 1")]
+        XCTAssertFalse(WatchTransferQueuePersistence.shouldPersist(current: snapshot, lastPersisted: snapshot))
+    }
+
+    func testShouldPersistIsTrueWhenSnapshotDiffers() {
+        let previous = [WatchTransferPendingQueueEntry(id: "1", title: "Song 1")]
+        let current = [WatchTransferPendingQueueEntry(id: "1", title: "Song 1"), WatchTransferPendingQueueEntry(id: "2", title: "Song 2")]
+        XCTAssertTrue(WatchTransferQueuePersistence.shouldPersist(current: current, lastPersisted: previous))
+    }
+
+    func testShouldPersistIsTrueWhenNothingPersistedYet() {
+        let current = [WatchTransferPendingQueueEntry(id: "1", title: "Song 1")]
+        XCTAssertTrue(WatchTransferQueuePersistence.shouldPersist(current: current, lastPersisted: nil))
+    }
+
+    func testPendingQueueEntryCodableRoundTrip() throws {
+        let entry = WatchTransferPendingQueueEntry(id: "abc/def", title: "Song Title")
+        let data = try JSONEncoder().encode([entry])
+        let decoded = try JSONDecoder().decode([WatchTransferPendingQueueEntry].self, from: data)
+        XCTAssertEqual(decoded, [entry])
+    }
+
+    // MARK: - WatchTransferRestoreReconciliation
+    //
+    // Pure reconciliation for resuming a persisted pending queue on relaunch: for each persisted
+    // entry, decide whether it is still actively transferring (present in
+    // `WCSession.outstandingFileTransfers` — reattach progress), resumable (downloaded locally, not
+    // outstanding — re-enter the FIFO work queue in persisted order, preserving the ordering fix from
+    // `progress/watch-transfer-order.md`), or unresumable (no longer downloaded — mark failed).
+
+    private func pendingEntry(_ id: String, title: String? = nil) -> WatchTransferPendingQueueEntry {
+        WatchTransferPendingQueueEntry(id: id, title: title ?? "Song \(id)")
+    }
+
+    func testReconciliationResumesOutstandingTransfersWithLiveProgress() {
+        let plan = WatchTransferRestoreReconciliation.plan(
+            persisted: [pendingEntry("1")],
+            outstanding: [WatchTransferRestoreReconciliation.OutstandingTransfer(id: "1", fraction: 0.7)],
+            downloadedSongIds: []
+        )
+        XCTAssertEqual(plan.toResumeSending.map(\.id), ["1"])
+        XCTAssertEqual(plan.toResumeSending.first?.phase, .sending(0.7))
+        XCTAssertTrue(plan.toReenqueueSongIds.isEmpty)
+        XCTAssertTrue(plan.toMarkFailed.isEmpty)
+    }
+
+    func testReconciliationReenqueuesDownloadedNonOutstandingEntries() {
+        let plan = WatchTransferRestoreReconciliation.plan(
+            persisted: [pendingEntry("1")],
+            outstanding: [],
+            downloadedSongIds: ["1"]
+        )
+        XCTAssertEqual(plan.toReenqueueSongIds, ["1"])
+        XCTAssertTrue(plan.toResumeSending.isEmpty)
+        XCTAssertTrue(plan.toMarkFailed.isEmpty)
+    }
+
+    func testReconciliationMarksFailedWhenNoLongerDownloadedAndNotOutstanding() {
+        let plan = WatchTransferRestoreReconciliation.plan(
+            persisted: [pendingEntry("1")],
+            outstanding: [],
+            downloadedSongIds: []
+        )
+        XCTAssertTrue(plan.toReenqueueSongIds.isEmpty)
+        XCTAssertTrue(plan.toResumeSending.isEmpty)
+        XCTAssertEqual(plan.toMarkFailed.map(\.id), ["1"])
+        guard case .failed(let message) = plan.toMarkFailed.first?.phase else {
+            return XCTFail("expected .failed phase")
+        }
+        XCTAssertFalse(message.isEmpty)
+    }
+
+    /// Pins the FIFO ordering guarantee: songs must re-enter the transfer work queue in the order
+    /// they were persisted, not e.g. outstanding-transfer order or download-resolution order.
+    func testReconciliationPreservesPersistedOrderForReenqueuedSongs() {
+        let plan = WatchTransferRestoreReconciliation.plan(
+            persisted: [pendingEntry("slow-1"), pendingEntry("fast-2"), pendingEntry("medium-3")],
+            outstanding: [],
+            downloadedSongIds: ["slow-1", "fast-2", "medium-3"]
+        )
+        XCTAssertEqual(plan.toReenqueueSongIds, ["slow-1", "fast-2", "medium-3"])
+    }
+
+    func testReconciliationHandlesMixOfAllThreeOutcomes() {
+        let plan = WatchTransferRestoreReconciliation.plan(
+            persisted: [pendingEntry("outstanding-1"), pendingEntry("resumable-2"), pendingEntry("gone-3")],
+            outstanding: [WatchTransferRestoreReconciliation.OutstandingTransfer(id: "outstanding-1", fraction: 0.3)],
+            downloadedSongIds: ["resumable-2"]
+        )
+        XCTAssertEqual(plan.toResumeSending.map(\.id), ["outstanding-1"])
+        XCTAssertEqual(plan.toReenqueueSongIds, ["resumable-2"])
+        XCTAssertEqual(plan.toMarkFailed.map(\.id), ["gone-3"])
+    }
+
+    func testReconciliationOutstandingTakesPriorityOverDownloadedCheck() {
+        // A song can be both "outstanding" (still transferring) and "downloaded" — outstanding must
+        // win so its live progress is reattached rather than being redundantly re-sent from scratch.
+        let plan = WatchTransferRestoreReconciliation.plan(
+            persisted: [pendingEntry("1")],
+            outstanding: [WatchTransferRestoreReconciliation.OutstandingTransfer(id: "1", fraction: 0.9)],
+            downloadedSongIds: ["1"]
+        )
+        XCTAssertEqual(plan.toResumeSending.map(\.id), ["1"])
+        XCTAssertTrue(plan.toReenqueueSongIds.isEmpty)
+    }
+
+    func testReconciliationOfEmptyPersistedQueueProducesEmptyPlan() {
+        let plan = WatchTransferRestoreReconciliation.plan(persisted: [], outstanding: [], downloadedSongIds: [])
+        XCTAssertTrue(plan.toResumeSending.isEmpty)
+        XCTAssertTrue(plan.toReenqueueSongIds.isEmpty)
+        XCTAssertTrue(plan.toMarkFailed.isEmpty)
+    }
 }
