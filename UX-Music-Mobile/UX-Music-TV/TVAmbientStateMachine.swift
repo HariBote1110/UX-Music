@@ -21,4 +21,20 @@ enum TVAmbientStateMachine {
         guard secondsSinceLastInteraction >= idleTimeout else { return .normal }
         return .ambient
     }
+
+    /// What a Menu/Back (`onExitCommand`) press should do, given the current presentation. This is
+    /// the two-step exit: from `.ambient`, Menu only wakes the screen back to `.normal` (matching
+    /// any other interaction); only a Menu press while already `.normal` dismisses the Now Playing
+    /// screen back to browse. Without this split, a single Menu press fired while the screensaver
+    /// was up would both drop ambient *and* dismiss in the same gesture, which reads as the screen
+    /// vanishing without warning and risks a rapid second Menu press falling through to the tvOS
+    /// home screen instead of browse.
+    enum ExitAction: Equatable {
+        case returnToNormal
+        case dismissScreen
+    }
+
+    static func exitCommand(current: State) -> ExitAction {
+        current == .ambient ? .returnToNormal : .dismissScreen
+    }
 }

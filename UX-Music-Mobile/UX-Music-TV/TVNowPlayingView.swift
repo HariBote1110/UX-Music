@@ -12,6 +12,7 @@ struct TVNowPlayingView: View {
     let player: MusicPlayerService
     let client: RemoteAPIClient
 
+    @Environment(\.dismiss) private var dismiss
     @State private var lyricsLines: [LRCParser.TimedLine] = []
     @State private var lastInteractionAt = Date()
     @State private var ambientState: TVAmbientStateMachine.State = .normal
@@ -36,7 +37,7 @@ struct TVNowPlayingView: View {
         .task(id: player.currentSong?.id) { await loadLyrics() }
         .onMoveCommand { _ in registerInteraction() }
         .onTapGesture { registerInteraction() }
-        .onExitCommand { registerInteraction() }
+        .onExitCommand { handleExitCommand() }
         .background(Color.black.ignoresSafeArea())
     }
 
@@ -59,6 +60,21 @@ struct TVNowPlayingView: View {
     private func registerInteraction() {
         lastInteractionAt = .now
         ambientState = .normal
+    }
+
+    /// Menu/Back handler: two-step exit driven by `TVAmbientStateMachine.exitCommand` (pure, unit
+    /// tested). While the ambient (screensaver) presentation is up, Menu only wakes the screen back
+    /// to normal — it must NOT also dismiss in the same press, or a quick double-press of Menu would
+    /// fall through the dismissed `fullScreenCover` straight to the tvOS home screen. Only a Menu
+    /// press while already showing the normal layout dismisses back to browse; playback is
+    /// untouched either way (see `MusicPlayerService`, which lives above this view).
+    private func handleExitCommand() {
+        switch TVAmbientStateMachine.exitCommand(current: ambientState) {
+        case .returnToNormal:
+            registerInteraction()
+        case .dismissScreen:
+            dismiss()
+        }
     }
 
     /// Fetches `/v1/remote/lyrics` for the current song and parses synced (`.lrc`) content only —
@@ -223,27 +239,52 @@ private struct TVNowPlayingTransportBar: View {
     let player: MusicPlayerService
 
     var body: some View {
-        HStack(spacing: 48) {
+        HStack(spacing: 56) {
             Button {
                 Task { await player.previous() }
             } label: {
-                Image(systemName: "backward.fill").font(.system(size: 32))
+                Image(systemName: "backward.fill")
             }
+            .buttonStyle(TVTransportButtonStyle(size: 32))
             .accessibilityLabel(String(localized: "tv.nowPlaying.previous"))
             Button {
                 player.togglePlayPause()
             } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 40))
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
             }
+            .buttonStyle(TVTransportButtonStyle(size: 44))
             .accessibilityLabel(String(localized: player.isPlaying ? "tv.nowPlaying.pause" : "tv.nowPlaying.play"))
             Button {
                 Task { await player.next() }
             } label: {
-                Image(systemName: "forward.fill").font(.system(size: 32))
+                Image(systemName: "forward.fill")
             }
+            .buttonStyle(TVTransportButtonStyle(size: 32))
             .accessibilityLabel(String(localized: "tv.nowPlaying.next"))
         }
-        .buttonStyle(.card)
+    }
+}
+
+/// Borderless, icon-only focus treatment for the Now Playing transport row (`markdown/appletv-servermode-plan.md`
+/// Phase 2 polish). tvOS's default `.card` button style draws a grey capsule behind focused
+/// buttons, which reads as a settings-dialog control rather than a 10-foot music surface — this
+/// style instead lifts the SF Symbol itself: a gentle scale-up, a brightness/weight jump from
+/// secondary to full white, and a soft glow, all animated so focus changes feel smooth rather than
+/// snapping.
+private struct TVTransportButtonStyle: ButtonStyle {
+    let size: CGFloat
+    @Environment(\.isFocused) private var isFocused
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: size, weight: isFocused ? .semibold : .regular))
+            .foregroundStyle(isFocused ? Color.white : Color.white.opacity(0.55))
+            .scaleEffect((isFocused ? 1.22 : 1.0) * (configuration.isPressed ? 0.92 : 1.0))
+            .shadow(color: .white.opacity(isFocused ? 0.45 : 0), radius: isFocused ? 18 : 0)
+            .padding(20)
+            .contentShape(Rectangle())
+            .animation(.easeInOut(duration: 0.15), value: isFocused)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 
