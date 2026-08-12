@@ -29,6 +29,7 @@
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_uxmusic-sync._tcp</string>
+		<string>_uxmusic-remote._tcp</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

@@ -295,6 +295,7 @@
 		D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadedTrackFormatSniffer.swift; sourceTree = "<group>"; };
 		D7D7D7D50101D7D50101D7D5 /* LyricsFileStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsFileStoreTests.swift; sourceTree = "<group>"; };
 		E2E2E2E10101E2E10101E2E1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1F2A3B4C5D6E7F8091A2B3C4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		E2E2E2E20101E2E10101E2E1 /* PairingQRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingQRScannerView.swift; sourceTree = "<group>"; };
 		E5E5E5E50101E5E50101E5E5 /* LyricsFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsFileStore.swift; sourceTree = "<group>"; };
 		E6E6E6E60101E6E60101E6E6 /* DesktopPlaylistImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPlaylistImportView.swift; sourceTree = "<group>"; };
@@ -694,6 +695,7 @@
 				EE3230AB8E5F420DBD7E85E5 /* TVAmbientStateMachine.swift */,
 				1AF3E42646B24882B3E784AA /* TVNowPlayingView.swift */,
 				6D54A3B1339A47648ED348A2 /* Localizable.xcstrings */,
+				1F2A3B4C5D6E7F8091A2B3C4 /* Info.plist */,
 			);
 			path = "UX-Music-TV";
 			sourceTree = "<group>";
@@ -1428,6 +1430,7 @@
 				DEVELOPMENT_TEAM = HMMQ7Z6976;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "UX-Music-TV/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1454,6 +1457,7 @@
 				DEVELOPMENT_TEAM = HMMQ7Z6976;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "UX-Music-TV/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
