@@ -1,0 +1,76 @@
+# Apple TV「シネマティック」デザイン言語（案B）採用
+
+## Decision
+
+ユーザーが「UX Musicと繋がるだけで精神的な繋がりを一切感じないUI」として現行の素のtvOS UIを却下し、
+デスクトップ版のデザイントークンを継承した「案B（シネマティック）」を承認。`UX-Music-TV/TVDesignTokens.swift`
+に共有トークン・共有ビュー部品として実装し、Now Playing・Browse・Pairing/Discoveryの3画面へ横展開した。
+
+- **パレット**: チャコール `#161618`（ベース）/ `#1c1c1e`（サーフェス）/ `#2c2c2e`（挙上サーフェス）。
+  文字色は白 / `#a1a1aa`（セカンダリ）/ `#71717a`（ターシャリ）。
+  デスクトップのプログレスバー・EQ配色と同じシグネチャーグラデーション ピンク `#ff5d77` → ブルー `#3b82f6` を、
+  進捗バー・フォーカスの縁取り・現在再生中歌詞のアクセントバーに使用。
+- **背景**: `TVCinematicBackground` が全画面チャコールの上に、静的な `RadialGradient` 2つ（左上ピンク・右下ブルー）を
+  重ねる「ライトプール」を描画。ライブblurではなく固定半径のグラデーションなので tvOS でも滑らかに動く。
+  `breathing: true`（アンビエント時）でオパシティのみをゆっくりアニメーションさせ、ぼかし半径のアニメーションは避けた
+  （パフォーマンス制約どおり）。
+- **Now Playing**: 左に丸角カード化したアートワーク（角丸8pt・ピンク寄りのシャドウ）。右にタイトル（`.medium`太さ）・
+  アーティスト・3行フォーカス歌詞ブロック（前の行=ミュート小、現在行=白・大・左端4ptピンクアクセントバー、
+  次の行=ミュート）。歌詞なしの曲はこれまでどおりアートワーク中心レイアウトへフォールバック。下部にピンク→ブルー
+  グラデーション塗りの薄い（4pt）プログレスストリップ。トランスポートボタンは既存 `TVTransportButtonStyle`
+  （フォーカスでスケール/明度変化）を維持し、新背景に合わせて微調整のみ。
+- **Browse**: 同じチャコール＋ライトプール（`intensity: 0.6` でNow Playingより控えめ）。棚カードは
+  `TVCinematicCardStyle`（新規 `ButtonStyle`）を適用し、`.buttonStyle(.card)` の標準グレーカプセルの代わりに
+  `@Environment(\.isFocused)` を見てフォーカス時のみピンク→ブルーの角丸ボーダー（`strokeBorder`）＋ソフトなピンク
+  シャドウを描く。tvOSのSwiftUIには `.card` スタイルの内部フォーカス演出（白ハロー）を直接差し替えるAPIがなく、
+  代わりに独自 `ButtonStyle` に丸ごと置き換える方式にした（`TVTransportButtonStyle` と同じアプローチ）。
+- **アンビエントモード**: 既存 `TVAmbientStateMachine`（30秒無操作＋再生中のみ、TDD済み）のセマンティクスと
+  二段階Menu終了フローはそのまま。表現面のみ、`TVCinematicBackground(breathing: true)` でライトプールがゆっくり
+  明滅し、アートワークウォッシュ（後述）の不透明度をさらに下げてアートワークを後退させる。
+- **Pairing/Discovery**: `TVRootView` に `TVCinematicBackground(intensity: 0.5)` を適用し、6桁ペアリングコードに
+  シグネチャーグラデーションの文字色を付与。構造・ロジックは無変更。
+
+## アートワーク色抽出の判断（v1）
+
+真の「アートワークの支配色を抽出してグラデーションに混ぜる」処理は実装せず、v1では次の簡易版を採用した:
+
+- `TVNowPlayingAmbientBackground` が、現在のアートワークを強くぼかし（blur 70〜90pt）、低い不透明度
+  （0.18〜0.3）・`blendMode(.plusLighter)` で `TVCinematicBackground` の上に重ねるだけ。
+- 理由: tvOS 上でのピクセルサンプリング（`CIAreaAverage` 等）はメインスレッドを塞ぎやすく、フォーカス操作の
+  レイテンシに直結する 10-foot UI では体感の滑らかさを最優先すべきと判断。ブリーフ側も「抽出が重ければ
+  シグネチャーカラーのみでv1は許容」と明記されていたため、それを採用した。
+- 将来 Phase で本格的な色抽出（バックグラウンドタスクでのダウンサンプリング＋出現色の量子化）をやる場合は、
+  結果をアートワークIDごとにキャッシュしてから `TVCinematicBackground` へ色を渡す形にする想定。
+
+## Alternatives considered
+
+- **`.buttonStyle(.card)` を維持しつつ overlay だけ足す**: tvOS の `.card` スタイルはフォーカス時に自前で白い
+  ハローを描画するため、overlay を足しても両方が重なって視覚的にノイズになった。全面差し替え
+  （`TVCinematicCardStyle`）の方がデザイン意図に忠実。
+- **ライブGaussianBlurをアンビエント/背景に多用**: 案として検討したが、ブリーフの「静的radialグラデーション＋
+  opacity/positionのゆっくりしたアニメーションを優先」という制約と、tvOS実機でのblurコストを踏まえ、既存の
+  `TVNowPlayingAmbientBackground` のblurは維持しつつ主役をライトプールに譲る形（低opacity化）に留めた。
+- **アートワーク色のリアルタイム抽出**: 上記のとおりv1では見送り。
+
+## Constraints / Gotchas
+
+- 新規Swiftファイル（`TVDesignTokens.swift`）を追加した際は Xcode プロジェクトファイル
+  （`UX-Music-Mobile.xcodeproj/project.pbxproj`）に `PBXBuildFile` / `PBXFileReference` / グループ子要素 /
+  `Sources` ビルドフェーズの4箇所を手動で追加しないとビルドに含まれない（Xcode GUIを使わずファイル追加した場合の
+  既知の落とし穴）。
+- `MusicPlayerService` の再生状態プロパティ（`currentSong`/`isPlaying`/`positionSeconds`/`durationSeconds`）は
+  すべて `private(set)` のため、プレビュー用スタブは型の外から差し込めない。`#if DEBUG` ブロックで
+  `configureForPreview(song:isPlaying:positionSeconds:durationSeconds:)` を `MusicPlayerService` 本体に追加し、
+  DEBUGビルドのみ露出させた（Release/実運用パスには一切影響しない）。
+- `UXMusicTVApp` は `#if DEBUG` で `ProcessInfo.processInfo.environment["UXTV_PREVIEW"]` を見て
+  `TVNowPlayingPreviewHarness` / `TVBrowsePreviewHarness`（いずれも各ビューファイル内 `#if DEBUG` ブロックに実装）
+  に分岐する。起動方法:
+  ```
+  SIMCTL_CHILD_UXTV_PREVIEW=nowplaying xcrun simctl launch --terminate-running-process "Apple TV" com.uxlabs.uxMusicMobile.tv
+  SIMCTL_CHILD_UXTV_PREVIEW=browse xcrun simctl launch --terminate-running-process "Apple TV" com.uxlabs.uxMusicMobile.tv
+  ```
+  ペアリング・LAN接続なしでスクリーンショット検証できる。プレビューハーネスは実在しないホスト
+  （`http://198.51.100.1:9999`）を指す `RemoteAPIClient` を使うため、アートワーク画像取得は失敗して
+  プレースホルダ（音符アイコン）表示になる——これは想定内（"生成済みプレースホルダー画像"の簡易版）。
+- 検証スクリーンショット: `/tmp/claude-501/tvdesign_nowplaying.png`,
+  `/tmp/claude-501/tvdesign_browse.png`（38%進捗・3行フォーカス歌詞・フォーカスカードのグラデーション縁取りを確認済み）。

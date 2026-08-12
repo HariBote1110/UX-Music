@@ -191,6 +191,7 @@
 		AB2EB6E388074071BD763A15 /* MusicPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */; };
 		F0029622EAEE4205B5B470DB /* LRCParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = P2P2P2P20101P2P20101P2P2 /* LRCParser.swift */; };
 		C0A2CD756F354040A91F2036 /* TVAmbientStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE3230AB8E5F420DBD7E85E5 /* TVAmbientStateMachine.swift */; };
+		56CE0C14CCE14293B089A018 /* TVDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D9713488664F42941E2FB0 /* TVDesignTokens.swift */; };
 		3F98CC49EFAD43F98AA2A83C /* TVNowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AF3E42646B24882B3E784AA /* TVNowPlayingView.swift */; };
 		94DB3D1F88174415A2DDBF71 /* TVAmbientStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1DF82EC02B47E3BB01405E /* TVAmbientStateMachineTests.swift */; };
 		FF9A9EA91DC4488489602B91 /* GraphicEqualiserConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F5F5F40101F5F40101F5F4 /* GraphicEqualiserConfiguration.swift */; };
@@ -313,6 +314,7 @@
 		N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingArtworkImageLoader.swift; sourceTree = "<group>"; };
 		P2P2P2P20101P2P20101P2P2 /* LRCParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LRCParser.swift; sourceTree = "<group>"; };
 		EE3230AB8E5F420DBD7E85E5 /* TVAmbientStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVAmbientStateMachine.swift; sourceTree = "<group>"; };
+		13D9713488664F42941E2FB0 /* TVDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVDesignTokens.swift; sourceTree = "<group>"; };
 		1AF3E42646B24882B3E784AA /* TVNowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVNowPlayingView.swift; sourceTree = "<group>"; };
 		9B1DF82EC02B47E3BB01405E /* TVAmbientStateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVAmbientStateMachineTests.swift; sourceTree = "<group>"; };
 		P3P3P3P30101P3P30101P3P3 /* NowPlayingLyricsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingLyricsScreen.swift; sourceTree = "<group>"; };
@@ -693,6 +695,7 @@
 				6FAA495EF2FC4A71B79A5DE2 /* TVPlaybackController.swift */,
 				459B4A28AECE4F8C8375C1E3 /* TVBrowseView.swift */,
 				EE3230AB8E5F420DBD7E85E5 /* TVAmbientStateMachine.swift */,
+				13D9713488664F42941E2FB0 /* TVDesignTokens.swift */,
 				1AF3E42646B24882B3E784AA /* TVNowPlayingView.swift */,
 				6D54A3B1339A47648ED348A2 /* Localizable.xcstrings */,
 				1F2A3B4C5D6E7F8091A2B3C4 /* Info.plist */,
@@ -1097,6 +1100,7 @@
 				5C5C5C5C0505C5C50505C5C5 /* PlaybackQueueEditing.swift in Sources */,
 				F0029622EAEE4205B5B470DB /* LRCParser.swift in Sources */,
 				C0A2CD756F354040A91F2036 /* TVAmbientStateMachine.swift in Sources */,
+				56CE0C14CCE14293B089A018 /* TVDesignTokens.swift in Sources */,
 				3F98CC49EFAD43F98AA2A83C /* TVNowPlayingView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

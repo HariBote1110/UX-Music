@@ -38,13 +38,14 @@ struct TVNowPlayingView: View {
         .onMoveCommand { _ in registerInteraction() }
         .onTapGesture { registerInteraction() }
         .onExitCommand { handleExitCommand() }
-        .background(Color.black.ignoresSafeArea())
+        .background(TVDesignTokens.charcoalBase.ignoresSafeArea())
     }
 
     @ViewBuilder
     private func content(ambient: Bool) -> some View {
         ZStack {
-            TVNowPlayingAmbientBackground(artworkId: player.currentSong?.artworkId ?? "", client: client)
+            TVCinematicBackground(breathing: ambient)
+            TVNowPlayingAmbientBackground(artworkId: player.currentSong?.artworkId ?? "", client: client, ambient: ambient)
 
             if ambient {
                 TVAmbientOverlay(song: player.currentSong, lyricsLines: lyricsLines, player: player)
@@ -99,24 +100,45 @@ struct TVNowPlayingView: View {
     }
 }
 
-/// Blurred, slowly drifting artwork backdrop shared by every Now Playing layout (normal, lyrics,
-/// and ambient) so switching between them never has a jarring background swap.
+/// Faint, slowly drifting artwork wash layered *under* the signature pink/blue light pools
+/// (`TVCinematicBackground`) so the current song's dominant colours tint the scene without a full
+/// colour-extraction pipeline — see `progress/tvos-design.md` "artwork-tint decision" for why v1
+/// blends a low-opacity blurred artwork wash rather than sampling pixel colours. Recedes further
+/// (lower opacity, more blur) in ambient mode per the design brief.
 private struct TVNowPlayingAmbientBackground: View {
     let artworkId: String
     let client: RemoteAPIClient
+    var ambient: Bool = false
     @State private var driftUp = false
 
     var body: some View {
         TVArtworkImage(artworkId: artworkId, client: client)
             .scaleEffect(driftUp ? 1.12 : 1.0)
-            .blur(radius: 60)
-            .overlay(Color.black.opacity(0.55))
+            .blur(radius: ambient ? 90 : 70)
+            .opacity(ambient ? 0.18 : 0.3)
+            .blendMode(.plusLighter)
             .ignoresSafeArea()
+            .animation(.easeInOut(duration: 1.2), value: ambient)
             .onAppear {
                 withAnimation(.easeInOut(duration: 18).repeatForever(autoreverses: true)) {
                     driftUp = true
                 }
             }
+    }
+}
+
+/// Large artwork card: rounded corners with a subtle pink-tinted glow shadow per the cinematic
+/// design (`progress/tvos-design.md`), used for songs without synced lyrics.
+private struct TVCinematicArtworkCard: View {
+    let artworkId: String
+    let client: RemoteAPIClient
+    let size: CGFloat
+
+    var body: some View {
+        TVArtworkImage(artworkId: artworkId, client: client)
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .shadow(color: TVDesignTokens.signaturePink.opacity(0.25), radius: 36, y: 12)
     }
 }
 
@@ -126,10 +148,7 @@ private struct TVNowPlayingArtworkLayout: View {
 
     var body: some View {
         VStack(spacing: 40) {
-            TVArtworkImage(artworkId: player.currentSong?.artworkId ?? "", client: client)
-                .frame(width: 560, height: 560)
-                .clipShape(RoundedRectangle(cornerRadius: 24))
-                .shadow(radius: 40)
+            TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: 560)
             TVNowPlayingInfoBlock(player: player)
             TVNowPlayingTransportBar(player: player)
         }
@@ -143,52 +162,84 @@ private struct TVNowPlayingLyricsLayout: View {
     let lines: [LRCParser.TimedLine]
 
     var body: some View {
-        HStack(spacing: 64) {
-            VStack(spacing: 32) {
-                TVArtworkImage(artworkId: player.currentSong?.artworkId ?? "", client: client)
-                    .frame(width: 340, height: 340)
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                    .shadow(radius: 30)
-                TVNowPlayingInfoBlock(player: player)
-                TVNowPlayingTransportBar(player: player)
-            }
-            .frame(width: 480)
+        HStack(alignment: .center, spacing: 64) {
+            TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: 420)
 
-            TVSyncedLyricsView(lines: lines, positionSeconds: player.positionSeconds)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(alignment: .leading, spacing: 28) {
+                Text(player.currentSong?.title ?? "")
+                    .font(.system(size: 40, weight: .medium))
+                    .lineLimit(1)
+                Text(player.currentSong?.artist ?? "")
+                    .font(.system(size: 24))
+                    .foregroundStyle(TVDesignTokens.textSecondary)
+                    .lineLimit(1)
+
+                TVSyncedLyricsFocusView(lines: lines, positionSeconds: player.positionSeconds)
+                    .padding(.top, 12)
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(80)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Spacer()
+                TVNowPlayingProgressBar(player: player)
+                Spacer()
+            }
+        }
     }
 }
 
-/// Large-type, current-line-highlighted synced lyrics list for 10-foot viewing. The active line
-/// is computed purely by `LRCParser.activeLineIndex` (shared, TDD'd unit — see
-/// `UX-Music-MobileTests/LRCParserTests.swift`); this view only turns that index into a smoothly
-/// scrolled, highlighted presentation.
-struct TVSyncedLyricsView: View {
+/// Three-line "focus" lyrics block: previous line (muted, small), current line (white, larger,
+/// with a pink accent bar on the left edge), next line (muted) — smooth vertical transition as
+/// lines advance. The active/prev/next indices are all derived from `LRCParser.activeLineIndex`
+/// (shared, TDD'd pure function — see `UX-Music-MobileTests/LRCParserTests.swift`); this view only
+/// renders that index as a windowed, animated presentation.
+struct TVSyncedLyricsFocusView: View {
     let lines: [LRCParser.TimedLine]
     let positionSeconds: Double
 
     var body: some View {
         let active = LRCParser.activeLineIndex(in: lines, at: positionSeconds)
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    ForEach(lines) { line in
-                        Text(line.text.isEmpty ? " " : line.text)
-                            .font(.system(size: line.id == lines[active].id ? 44 : 32, weight: line.id == lines[active].id ? .bold : .regular, design: .rounded))
-                            .foregroundStyle(line.id == lines[active].id ? Color.white : Color.white.opacity(0.4))
-                            .id(line.id)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 14) {
+            lineView(at: active - 1, style: .muted)
+            currentLineView(at: active)
+            lineView(at: active + 1, style: .muted)
+        }
+        .animation(.easeInOut(duration: 0.4), value: active)
+    }
+
+    private enum LineStyle { case muted }
+
+    @ViewBuilder
+    private func lineView(at index: Int, style: LineStyle) -> some View {
+        if lines.indices.contains(index) {
+            Text(lines[index].text.isEmpty ? " " : lines[index].text)
+                .font(.system(size: 24, design: .rounded))
+                .foregroundStyle(TVDesignTokens.textTertiary)
+                .lineLimit(1)
+                .id(lines[index].id)
+        } else {
+            Text(" ").font(.system(size: 24)).hidden()
+        }
+    }
+
+    @ViewBuilder
+    private func currentLineView(at index: Int) -> some View {
+        if lines.indices.contains(index) {
+            HStack(spacing: 16) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(TVDesignTokens.signaturePink)
+                    .frame(width: 4, height: 40)
+                Text(lines[index].text.isEmpty ? " " : lines[index].text)
+                    .font(.system(size: 36, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
             }
-            .onChange(of: active) { _, _ in
-                guard lines.indices.contains(active) else { return }
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    proxy.scrollTo(lines[active].id, anchor: .center)
-                }
-            }
+            .padding(.leading, 4)
+            .id(lines[index].id)
         }
     }
 }
@@ -199,11 +250,11 @@ private struct TVNowPlayingInfoBlock: View {
     var body: some View {
         VStack(spacing: 12) {
             Text(player.currentSong?.title ?? "")
-                .font(.system(size: 34, weight: .bold))
+                .font(.system(size: 34, weight: .medium))
                 .lineLimit(1)
             Text(player.currentSong?.artist ?? "")
                 .font(.system(size: 22))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(TVDesignTokens.textSecondary)
                 .lineLimit(1)
             TVNowPlayingProgressBar(player: player)
         }
@@ -215,7 +266,7 @@ private struct TVNowPlayingProgressBar: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            ProgressView(value: player.durationSeconds > 0 ? player.positionSeconds / player.durationSeconds : 0)
+            TVGradientProgressBar(fraction: player.durationSeconds > 0 ? player.positionSeconds / player.durationSeconds : 0)
                 .frame(width: 480)
             HStack {
                 Text(Self.format(player.positionSeconds))
@@ -223,7 +274,7 @@ private struct TVNowPlayingProgressBar: View {
                 Text(Self.format(player.durationSeconds))
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(TVDesignTokens.textSecondary)
             .frame(width: 480)
         }
     }
@@ -288,6 +339,42 @@ private struct TVTransportButtonStyle: ButtonStyle {
     }
 }
 
+#if DEBUG
+/// Preview-only harness for `UXTV_PREVIEW=nowplaying` (see `UXMusicTVApp`), rendering the
+/// lyrics-focus layout with rich stub data — fake title/artist/artwork id, a 3-line lyrics window
+/// mid-song, and 38% progress — so the cinematic design can be screenshotted in the simulator
+/// without pairing to a host. See `progress/tvos-design.md`.
+struct TVNowPlayingPreviewHarness: View {
+    private let player = MusicPlayerService()
+    private let client = RemoteAPIClient(baseURLString: "http://198.51.100.1:9999")
+
+    private static let lines: [LRCParser.TimedLine] = [
+        .init(id: 0, startTime: 0, text: "夜が明ける前に"),
+        .init(id: 1, startTime: 10, text: "この歌を君に届けたい"),
+        .init(id: 2, startTime: 20, text: "繋がっていると感じられるように"),
+        .init(id: 3, startTime: 30, text: "遠く離れていても"),
+        .init(id: 4, startTime: 40, text: "この音楽が架け橋になる"),
+    ]
+
+    var body: some View {
+        ZStack {
+            TVCinematicBackground()
+            TVNowPlayingAmbientBackground(artworkId: "preview", client: client)
+            TVNowPlayingLyricsLayout(player: player, client: client, lines: Self.lines)
+        }
+        .background(TVDesignTokens.charcoalBase.ignoresSafeArea())
+        .onAppear {
+            player.configureForPreview(
+                song: Song(id: "preview", path: "", title: "夜明けのメロディー", artist: "UX Music Demo", artworkId: "preview"),
+                isPlaying: true,
+                positionSeconds: 15.2,
+                durationSeconds: 40
+            )
+        }
+    }
+}
+#endif
+
 /// Ambient (screensaver-style) presentation: same drifting blurred artwork as the base layer, with
 /// track info and (if present) the current lyric line overlaid quietly. Any interaction — handled
 /// by the parent `TVNowPlayingView`'s `onMoveCommand`/`onTapGesture`/`onExitCommand` — returns to
@@ -301,18 +388,23 @@ private struct TVAmbientOverlay: View {
         VStack(spacing: 24) {
             Spacer()
             Text(song?.title ?? "")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.85))
+                .font(.system(size: 28, weight: .medium))
+                .foregroundStyle(.white.opacity(0.75))
             Text(song?.artist ?? "")
                 .font(.system(size: 18))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(TVDesignTokens.textSecondary)
             if !lyricsLines.isEmpty {
                 let active = LRCParser.activeLineIndex(in: lyricsLines, at: player.positionSeconds)
-                Text(lyricsLines[active].text)
-                    .font(.system(size: 22, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .padding(.top, 8)
-                    .animation(.easeInOut(duration: 0.4), value: active)
+                HStack(spacing: 12) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(TVDesignTokens.signaturePink.opacity(0.6))
+                        .frame(width: 3, height: 22)
+                    Text(lyricsLines[active].text)
+                        .font(.system(size: 22, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+                .padding(.top, 8)
+                .animation(.easeInOut(duration: 0.4), value: active)
             }
         }
         .padding(.bottom, 120)

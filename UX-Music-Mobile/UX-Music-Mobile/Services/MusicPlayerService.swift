@@ -216,6 +216,18 @@ final class MusicPlayerService {
     private var youtubeVideoIDCache: [String: String] = [:]
     #endif
 
+    #if DEBUG
+    /// Sets transport/track state directly, bypassing `AVAudioEngine`, so screens can be rendered
+    /// with rich fake data for screenshot verification (`UXTV_PREVIEW`, see `UXMusicTVApp` and
+    /// `progress/tvos-design.md`) without touching the network or real playback. DEBUG-only.
+    func configureForPreview(song: Song, isPlaying: Bool, positionSeconds: Double, durationSeconds: Double) {
+        self.currentSong = song
+        self.isPlaying = isPlaying
+        self.positionSeconds = positionSeconds
+        self.durationSeconds = durationSeconds
+    }
+    #endif
+
     /// Audio session activation is deferred until playback starts to keep app launch light.
     private var playbackSessionPrepared = false
     private let sessionActivationLock = NSLock()

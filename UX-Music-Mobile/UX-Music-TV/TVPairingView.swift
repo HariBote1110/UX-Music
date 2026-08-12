@@ -15,6 +15,7 @@ struct TVRootView: View {
         }
         .onAppear { model.startDiscovery() }
         .onDisappear { model.stopDiscovery() }
+        .background(TVCinematicBackground(intensity: 0.5))
     }
 }
 
@@ -48,7 +49,7 @@ struct TVHostDiscoveryView: View {
         VStack(spacing: 32) {
             Text("同じネットワーク上の UX Music を検索しています")
                 .font(.title3)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(TVDesignTokens.textSecondary)
 
             if model.discovery.peers.isEmpty {
                 ProgressView()
@@ -60,7 +61,7 @@ struct TVHostDiscoveryView: View {
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(peer.displayName).font(.headline)
-                                Text(peer.endpointDescription).font(.caption).foregroundStyle(.secondary)
+                                Text(peer.endpointDescription).font(.caption).foregroundStyle(TVDesignTokens.textSecondary)
                             }
                             Spacer()
                         }
@@ -80,20 +81,21 @@ struct TVPairingCodeView: View {
         VStack(spacing: 40) {
             Text(hostDisplayName)
                 .font(.title2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(TVDesignTokens.textSecondary)
 
             if let code = code {
                 Text(code)
                     .font(.system(size: 120, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .kerning(12)
+                    .foregroundStyle(TVDesignTokens.signatureGradient)
             } else {
                 ProgressView()
             }
 
             Text(statusText)
                 .font(.title3)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(TVDesignTokens.textSecondary)
         }
         .padding()
     }
@@ -151,7 +153,7 @@ struct TVPairingResultView: View {
                     .font(.title2)
                 Text(message)
                     .font(.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(TVDesignTokens.textSecondary)
                 Button("もう一度試す", action: onRetry)
             default:
                 EmptyView()

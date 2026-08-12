@@ -7,7 +7,23 @@ import SwiftUI
 struct UXMusicTVApp: App {
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            // DEBUG-only preview harness (`progress/tvos-design.md`): launching with
+            // `UXTV_PREVIEW=nowplaying|browse` (e.g. via
+            // `SIMCTL_CHILD_UXTV_PREVIEW=nowplaying xcrun simctl launch …`) renders a screen with
+            // rich stub data, no pairing/network required, so the cinematic design can be
+            // screenshotted directly in the simulator.
+            switch ProcessInfo.processInfo.environment["UXTV_PREVIEW"] {
+            case "nowplaying":
+                TVNowPlayingPreviewHarness()
+            case "browse":
+                TVBrowsePreviewHarness()
+            default:
+                TVRootView()
+            }
+            #else
             TVRootView()
+            #endif
         }
     }
 }

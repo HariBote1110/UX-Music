@@ -32,6 +32,7 @@ struct TVBrowseView: View {
                         Button(String(localized: "tv.browse.signOut"), action: onSignOut)
                     }
                 }
+                .background(TVCinematicBackground(intensity: 0.6))
                 .safeAreaInset(edge: .bottom) {
                     if player.currentSong != nil {
                         TVNowPlayingAffordance(player: player, client: client) {
@@ -158,7 +159,7 @@ private struct TVNowPlayingAffordance: View {
                         .lineLimit(1)
                     Text(player.currentSong?.artist ?? "")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(TVDesignTokens.textSecondary)
                         .lineLimit(1)
                 }
                 Spacer()
@@ -166,7 +167,7 @@ private struct TVNowPlayingAffordance: View {
             }
             .padding(16)
         }
-        .buttonStyle(.card)
+        .buttonStyle(TVCinematicCardStyle())
         .accessibilityLabel(String(localized: "tv.nowPlaying.affordance"))
     }
 }
@@ -205,12 +206,12 @@ private struct TVAlbumCard: View {
                     .lineLimit(1)
                 Text(album.displayArtist)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(TVDesignTokens.textSecondary)
                     .lineLimit(1)
             }
             .frame(width: 220)
         }
-        .buttonStyle(.card)
+        .buttonStyle(TVCinematicCardStyle())
     }
 }
 
@@ -231,7 +232,7 @@ private struct TVPlaylistCard: View {
             }
             .frame(width: 220)
         }
-        .buttonStyle(.card)
+        .buttonStyle(TVCinematicCardStyle())
     }
 }
 
@@ -254,7 +255,7 @@ struct TVArtworkImage: View {
                     RoundedRectangle(cornerRadius: 12).fill(.secondary.opacity(0.2))
                     Image(systemName: "music.note")
                         .font(.system(size: 40))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(TVDesignTokens.textSecondary)
                 }
             }
         }
@@ -282,7 +283,7 @@ private struct TVRelayCard: View {
                             RoundedRectangle(cornerRadius: 12).fill(.secondary.opacity(0.2))
                             Image(systemName: "play.tv")
                                 .font(.system(size: 40))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(TVDesignTokens.textSecondary)
                         }
                     }
                 }
@@ -295,7 +296,7 @@ private struct TVRelayCard: View {
             }
             .frame(width: 220)
         }
-        .buttonStyle(.card)
+        .buttonStyle(TVCinematicCardStyle())
     }
 }
 
@@ -316,13 +317,13 @@ private struct TVRelayBannerView: View {
                 default:
                     Image(systemName: "play.tv")
                         .font(.system(size: 96))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(TVDesignTokens.textSecondary)
                 }
             }
             .frame(maxHeight: 400)
             Text(String(localized: "tv.relay.banner.subtitle"))
                 .font(.headline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(TVDesignTokens.textSecondary)
             Text(relayModel.title)
                 .font(.title)
                 .multilineTextAlignment(.center)
@@ -330,10 +331,47 @@ private struct TVRelayBannerView: View {
         }
         .padding(64)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.black)
+        .background(TVDesignTokens.charcoalBase)
         .onDisappear { relayPlaybackController.stop() }
     }
 }
+
+#if DEBUG
+/// Preview-only harness for `UXTV_PREVIEW=browse` (see `UXMusicTVApp`), rendering the shelf layout
+/// with stub albums/playlists directly — bypassing `TVBrowseModel`'s network load — so the
+/// cinematic focus treatment (`TVCinematicCardStyle`) can be screenshotted without pairing. See
+/// `progress/tvos-design.md`.
+struct TVBrowsePreviewHarness: View {
+    private let client = RemoteAPIClient(baseURLString: "http://198.51.100.1:9999")
+
+    private static let albums: [Album] = (1 ... 4).map { i in
+        Album(
+            normalisedAlbumTitle: "デモアルバム \(i)",
+            artistName: "UX Music Demo",
+            artworkId: "preview-\(i)",
+            songs: [Song(id: "song-\(i)", path: "", title: "デモ曲 \(i)", artist: "UX Music Demo")]
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 48) {
+                    TVShelfSection(title: String(localized: "tv.browse.albums")) {
+                        ForEach(Self.albums) { album in
+                            TVAlbumCard(album: album, client: client) {}
+                        }
+                    }
+                }
+                .padding(.horizontal, 64)
+                .padding(.vertical, 32)
+            }
+            .navigationTitle(String(localized: "tv.browse.title"))
+        }
+        .background(TVCinematicBackground(intensity: 0.6))
+    }
+}
+#endif
 
 private struct TVBrowseErrorView: View {
     let message: String
@@ -348,7 +386,7 @@ private struct TVBrowseErrorView: View {
                 .font(.title2)
             Text(message)
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(TVDesignTokens.textSecondary)
             Button(String(localized: "tv.browse.error.retry"), action: onRetry)
         }
         .padding()
