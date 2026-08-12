@@ -56,12 +56,11 @@ func NewApp() *App {
 	lyricssync.SetSettingsProvider(store.Instance)
 
 	return &App{
-		playCountsEmitter: eventsEmitFunc,
-		dialogs:           headlessDialogProvider{},
-		ripper:            cdrip.NewRipper("", config.FFmpegPath, config.GetUserDataPath()),
-		mtpManager:        mtp.NewManager(),
-		normalizer:        normalize.NewNormalizer(config.FFmpegPath, config.FFprobePath),
-		lyricsSyncer:      lyricssync.NewSyncer(),
+		dialogs:      headlessDialogProvider{},
+		ripper:       cdrip.NewRipper("", config.FFmpegPath, config.GetUserDataPath()),
+		mtpManager:   mtp.NewManager(),
+		normalizer:   normalize.NewNormalizer(config.FFmpegPath, config.FFprobePath),
+		lyricsSyncer: lyricssync.NewSyncer(),
 	}
 }
 
