@@ -53,6 +53,7 @@ final class TVRelayStreamPlayer: NSObject {
     private var didStartRendering = false
     private var bufferedSeconds: Double = 0
     private var lastRMSLogTime = Date.distantPast
+    private var isEngineConnected = false
 
     init(jitterBufferSeconds: Double = 0.75, sessionConfiguration: URLSessionConfiguration = .default) {
         self.jitterBufferSeconds = jitterBufferSeconds
@@ -69,9 +70,15 @@ final class TVRelayStreamPlayer: NSObject {
         decoder = nil
         didStartRendering = false
         bufferedSeconds = 0
+        isEngineConnected = false
 
         engine.attach(playerNode)
-        engine.connect(playerNode, to: engine.mainMixerNode, format: nil)
+        // Deliberately NOT connected here: `AVAudioEngine.connect(_:to:format:)` with `format:
+        // nil` picks up whatever the node's default output format happens to be, which does not
+        // match the stream's actual sample rate/channel count and previously caused a hard
+        // `EXC_BAD_ACCESS` crash inside `AURemoteIO`'s render thread the moment a mismatched PCM
+        // buffer was scheduled. The connection is made lazily in `schedule(_:format:channelCount:)`
+        // once the real decoded format is known (from the ADTS header, so it never changes after).
 
         task = session.dataTask(with: request)
         task?.delegate = self
@@ -91,6 +98,7 @@ final class TVRelayStreamPlayer: NSObject {
         parser = ADTSFrameParser()
         didStartRendering = false
         bufferedSeconds = 0
+        isEngineConnected = false
     }
 
     // MARK: - Frame handling
@@ -134,6 +142,10 @@ final class TVRelayStreamPlayer: NSObject {
             }
         }
 
+        if !isEngineConnected {
+            engine.connect(playerNode, to: engine.mainMixerNode, format: format)
+            isEngineConnected = true
+        }
         if !engine.isRunning {
             try? engine.start()
         }

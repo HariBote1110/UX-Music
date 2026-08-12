@@ -43,11 +43,15 @@ final class TVAACDecoder {
         }
         self.sourceFormat = sourceFormat
 
+        // Non-interleaved: `AVAudioEngine`'s internal graph (`AVAudioEngine.connect(_:to:format:)`)
+        // requires the engine's canonical non-interleaved format — connecting with an interleaved
+        // format throws `kAudioUnitErr_FormatNotSupported` (-10868), confirmed when wiring this up
+        // against the sim E2E harness (see `progress/tvos-relay-reception.md`).
         guard let outputFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: sampleRate,
             channels: channelCount,
-            interleaved: true
+            interleaved: false
         ) else {
             throw TVAACDecoderError.unsupportedFormat
         }
