@@ -1,5 +1,25 @@
 import SwiftUI
 
+/// The one full-screen cover `TVBrowseView` can have up at a time — see `presentation`'s doc
+/// comment on why this replaced three independent `.fullScreenCover` modifiers.
+enum TVBrowsePresentation: Identifiable, Equatable {
+    case nowPlaying
+    case detail(TVLibraryDetailContent)
+    case relay
+
+    var id: String {
+        switch self {
+        case .nowPlaying: return "nowPlaying"
+        case .detail(let content): return "detail:\(content.id)"
+        case .relay: return "relay"
+        }
+    }
+
+    static func == (lhs: TVBrowsePresentation, rhs: TVBrowsePresentation) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 /// Phase 1-3 browse UI: artwork-led, focus-based shelves (no text search as the primary
 /// entry point — see `markdown/appletv-servermode-plan.md` §1-3). Reachable once
 /// `TVAppModel.isPaired` is true.
@@ -17,14 +37,17 @@ struct TVBrowseView: View {
     let client: RemoteAPIClient
     let onSignOut: () -> Void
 
-    /// Set to `true` whenever playback starts from the browse UI (Phase 2 "enter automatically"
-    /// rule), and can also be flipped by the focusable Now Playing affordance below.
-    @State private var nowPlayingPresented = false
-    /// Set to `true` when the user selects the relay shelf entry (Phase 3-3 receiver).
-    @State private var relayPresented = false
-    /// Album/playlist tap opens a detail screen instead of playing immediately (user report: tap
-    /// should NOT start playback). `nil` when no detail screen is presented.
-    @State private var presentedDetail: TVLibraryDetailContent?
+    /// Single source of truth for whichever full-screen cover is up (Now Playing / detail /
+    /// relay banner), replacing three sibling `.fullScreenCover` modifiers that used to drive
+    /// independently. Regression root cause (see `progress/tvos-design.md`): dismissing the
+    /// detail cover (`presentedDetail = nil`) and presenting the Now Playing cover
+    /// (`nowPlayingPresented = true`) on two *separate* `.fullScreenCover` modifiers races on
+    /// tvOS — the dismiss of one and the present of the other, both driven from the same
+    /// presenting view, aren't sequenced by SwiftUI, so the second present can be dropped and the
+    /// user is left on a stale/initial screen. A single `.fullScreenCover(item:)` switching over
+    /// one `@State` enum makes cover-to-cover transitions (detail → Now Playing) go through one
+    /// presentation context instead of two, which SwiftUI handles reliably.
+    @State private var presentation: TVBrowsePresentation?
 
     var body: some View {
         NavigationStack {
@@ -43,7 +66,7 @@ struct TVBrowseView: View {
                 .safeAreaInset(edge: .bottom) {
                     if player.currentSong != nil {
                         TVNowPlayingAffordance(player: player, client: client) {
-                            nowPlayingPresented = true
+                            presentation = .nowPlaying
                         }
                         .padding(.horizontal, 64)
                         .padding(.bottom, 24)
@@ -51,25 +74,25 @@ struct TVBrowseView: View {
                 }
         }
         .task { await browseModel.reload() }
-        .fullScreenCover(isPresented: $nowPlayingPresented) {
-            TVNowPlayingView(player: player, client: client)
-        }
-        .fullScreenCover(item: $presentedDetail) { content in
-            TVLibraryDetailView(content: content, client: client) { song, queue in
-                presentedDetail = nil
-                Task { await play(song, queue: queue) }
-            }
-        }
-        .fullScreenCover(isPresented: $relayPresented) {
-            TVRelayBannerView(relayModel: relayModel, relayPlaybackController: relayPlaybackController) {
-                relayPresented = false
+        .fullScreenCover(item: $presentation) { presented in
+            switch presented {
+            case .nowPlaying:
+                TVNowPlayingView(player: player, client: client)
+            case .detail(let content):
+                TVLibraryDetailView(content: content, client: client) { song, queue in
+                    Task { await play(song, queue: queue) }
+                }
+            case .relay:
+                TVRelayBannerView(relayModel: relayModel, relayPlaybackController: relayPlaybackController) {
+                    presentation = nil
+                }
             }
         }
         // If the host stops relaying while the banner is up (e.g. the PC operator paused or
         // closed the YouTube embed), exit the banner rather than leaving a dead stream on screen.
         .onChange(of: relayModel.isAvailable) { _, isAvailable in
-            if relayPresented && !isAvailable {
-                relayPresented = false
+            if presentation == .relay && !isAvailable {
+                presentation = nil
             }
         }
     }
@@ -78,7 +101,7 @@ struct TVBrowseView: View {
     private func playRelay() {
         player.stop()
         relayPlaybackController.start()
-        relayPresented = true
+        presentation = .relay
     }
 
     @ViewBuilder
@@ -112,7 +135,7 @@ struct TVBrowseView: View {
                     TVShelfSection(title: String(localized: "tv.browse.albums")) {
                         ForEach(browseModel.albums) { album in
                             TVAlbumCard(album: album, client: client) {
-                                presentedDetail = .album(album)
+                                presentation = .detail(.album(album))
                             }
                         }
                     }
@@ -121,7 +144,7 @@ struct TVBrowseView: View {
                     TVShelfSection(title: String(localized: "tv.browse.playlists")) {
                         ForEach(browseModel.playlists, id: \.name) { playlist in
                             TVPlaylistCard(playlist: playlist) {
-                                presentedDetail = .playlist(playlist, allSongs: browseModel.songs)
+                                presentation = .detail(.playlist(playlist, allSongs: browseModel.songs))
                             }
                         }
                     }
@@ -138,8 +161,12 @@ struct TVBrowseView: View {
     /// via `TVPlaylistQueueBuilder.songs(for:allSongs:)` before reaching here.
     private func play(_ song: Song, queue: [Song]) async {
         await playbackController.play(song, queue: queue)
-        // Auto-enter Now Playing when playback starts from the browse UI (Phase 2 §1).
-        nowPlayingPresented = true
+        // Auto-enter Now Playing when playback starts from the browse UI (Phase 2 §1), whether
+        // called from a shelf tap (no cover up yet) or from the detail screen's track selection
+        // (replaces the still-presented detail cover with Now Playing in one step — see
+        // `presentation`'s doc comment above for why this must go through a single
+        // `.fullScreenCover(item:)` rather than a dismiss-then-present pair).
+        presentation = .nowPlaying
     }
 }
 

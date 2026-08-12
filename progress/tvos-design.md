@@ -123,3 +123,45 @@
   トラックでスタブ）。スクリーンショット: `/tmp/claude-501/tvdesign_albumdetail.png`,
   `/tmp/claude-501/tvdesign_browse2.png`（いずれもラベルがカード内に収まり、見出しが
   左揃え・白になっていることを確認済み）。
+
+## 追記: Now Playingが「初期画面のまま」になる再生退行の原因と修正
+
+実機報告「再生画面に何も起こらない。飛ぶだけで初期の画面が表示される」を調査した結果、
+上記のアルバム詳細画面導入（コミット7ecbbd5）が原因だった。
+
+### 原因
+
+`TVBrowseView`が独立した3つの`.fullScreenCover`修飾子（Now Playing用の`isPresented:`、
+詳細画面用の`item:`、中継バナー用の`isPresented:`）を同じビューに付けていた。詳細画面から
+トラックを選ぶと、`onPlay`クロージャが`presentedDetail = nil`（詳細カバーを閉じる）→
+非同期`Task`で`playbackController.play`完了後に`nowPlayingPresented = true`
+（Now Playingカバーを開く）という順で状態を変えていたが、**この2つは別々の
+`.fullScreenCover`修飾子**であり、同じ提示元ビューからの「閉じる」と「開く」がtvOS上で
+競合する。詳細カバーの dismiss アニメーションが終わる前に Now Playing の present が走ると、
+2つ目の present が黙って失敗し、ユーザーは（dismiss だけが完遂した）ブラウズ画面か、
+空のまま残った Now Playing 相当の画面に取り残される——調査時に立てた3つの仮説のうち
+「②プレゼンテーションの積み重ね（cover-on-cover はトップの提示元から出す必要がある）」
+が実際の原因だった（①のインスタンス重複、③のObservationトラップはどちらも実装済みの
+既存パターンを踏襲していただけで問題なし——`MusicPlayerService`は`TVPairingView`で
+1つだけ生成され、`TVBrowseView`/`TVNowPlayingView`両方に同一インスタンスが渡っている）。
+
+### 修正
+
+`TVBrowseView`の3つの`@State`（`nowPlayingPresented`/`relayPresented`/`presentedDetail`）を
+`TVBrowsePresentation`という1つの`Identifiable & Equatable`列挙型（`.nowPlaying` /
+`.detail(TVLibraryDetailContent)` / `.relay`）に統合し、`.fullScreenCover(item:)`
+1本に一本化した。詳細画面のトラック選択は`presentedDetail = nil`を経由せず、
+`presentation`を`.detail`から`.nowPlaying`へ直接切り替える——同一の提示コンテキストでの
+アイテム変更になるため、SwiftUIが確実にカバーの入れ替えを処理する。
+
+### 検証
+
+`UXTV_PREVIEW=detailplay`を追加（`TVDetailPlayPreviewHarness`、`UXMusicTVApp.swift`）。
+実プロダクションと同じ`TVBrowsePresentation`を使い、詳細画面を表示した0.4秒後に
+（トラック行タップ相当の）`onPlay`クロージャをプログラム的に発火、`MusicPlayerService`を
+`configureForPreview`（オーディオエンジン非使用・無音）でスタブ曲に設定してから
+`presentation = .nowPlaying`に切り替える。スクリーンショット
+`/tmp/claude-501/tvfix_nowplaying_live.png`で、詳細画面から遷移した直後に
+タイトル「検証用スタブ曲」・アーティスト「UX Music Demo」・進捗「0:12 / 3:00」・
+一時停止アイコンが表示されることを確認——修正前の「初期/空画面」ではなく、実際の
+トラック状態が即座に反映されることを確認した。

@@ -20,6 +20,8 @@ struct UXMusicTVApp: App {
                 TVBrowsePreviewHarness()
             case "albumdetail":
                 TVLibraryDetailPreviewHarness()
+            case "detailplay":
+                TVDetailPlayPreviewHarness()
             case "relay":
                 TVRelayStreamPreviewHarness()
             default:
@@ -40,6 +42,61 @@ struct UXMusicTVApp: App {
 /// `TVRelayPlaybackController.start()`. The `[RelayStream] rendering rms=` log lines
 /// (`TVRelayStreamPlayer`, DEBUG-only) are what the harness's caller greps out of
 /// `xcrun simctl spawn ... log stream` to confirm real, non-silent decoded audio.
+/// DEBUG-only harness for `UXTV_PREVIEW=detailplay`, reproducing the dead-Now-Playing regression
+/// (`progress/tvos-design.md`): renders `TVLibraryDetailView` under the SAME `TVBrowsePresentation`
+/// single-cover mechanism `TVBrowseView` uses, then programmatically triggers a track selection
+/// (mirroring the manual path: user taps a track row) shortly after appearing. `MusicPlayerService`
+/// is put in preview mode via `configureForPreview` (never touches the audio engine — no sound in
+/// the simulator) with a stub song and non-zero progress, standing in for a completed
+/// `TVPlaybackController.play(_:queue:)` call. If the regression's cover-on-cover race were still
+/// present, this would leave the screen on the detail view or a blank cover; with the fix, it
+/// settles on Now Playing showing the stub track's title and advancing progress.
+struct TVDetailPlayPreviewHarness: View {
+    @State private var presentation: TVBrowsePresentation? = .detail(Self.content)
+    private let player = MusicPlayerService()
+    private let client = RemoteAPIClient(baseURLString: "http://198.51.100.1:9999")
+
+    private static let stubSong = Song(
+        id: "stub-1", path: "", title: "検証用スタブ曲", artist: "UX Music Demo", artworkId: "preview-1"
+    )
+    private static let content = TVLibraryDetailContent(
+        id: "preview-detailplay",
+        title: "デモアルバム",
+        artist: "UX Music Demo",
+        artworkId: "preview-1",
+        songs: [stubSong]
+    )
+
+    var body: some View {
+        Group {
+            switch presentation {
+            case .detail(let content):
+                TVLibraryDetailView(content: content, client: client, onPlay: simulateTrackSelection)
+            case .nowPlaying:
+                TVNowPlayingView(player: player, client: client)
+            case .relay, .none:
+                EmptyView()
+            }
+        }
+        .task {
+            // Simulate the user selecting the stub track shortly after the detail screen appears
+            // — the manual path is tapping a `TVTrackRow` (or the header's 「再生」 button), both
+            // of which call this same `onPlay` closure in production (`TVLibraryDetailView.swift`).
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            simulateTrackSelection(Self.stubSong, [Self.stubSong])
+        }
+    }
+
+    /// Stands in for `TVBrowseView.play(_:queue:)`: configures the (silent, preview-mode) player
+    /// with the selected track and switches the single-cover `presentation` state straight from
+    /// `.detail` to `.nowPlaying`, exactly as production code does after `TVPlaybackController.play`
+    /// completes.
+    private func simulateTrackSelection(_ song: Song, _ queue: [Song]) {
+        player.configureForPreview(song: song, isPlaying: true, positionSeconds: 12, durationSeconds: 180)
+        presentation = .nowPlaying
+    }
+}
+
 struct TVRelayStreamPreviewHarness: View {
     @StateObject private var controller: TVRelayPlaybackController
 
