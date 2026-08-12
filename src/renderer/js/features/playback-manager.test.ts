@@ -146,6 +146,48 @@ describe('resolveRemotePlaybackDownload', () => {
     });
 });
 
+describe('handleRemotePlaySongEvent', () => {
+    it('resolves the song by id and plays it via the same path as a click', async () => {
+        const { handleRemotePlaySongEvent } = await import('./playback-manager.js');
+        const song = { id: 'trk-1', title: 'Remote Song' };
+        const findSong = vi.fn(() => song);
+        const playResolvedSong = vi.fn();
+        const notifyNotFound = vi.fn();
+
+        handleRemotePlaySongEvent('trk-1', { findSong, notifyNotFound, playResolvedSong });
+
+        expect(findSong).toHaveBeenCalledWith('trk-1');
+        expect(playResolvedSong).toHaveBeenCalledWith(song);
+        expect(notifyNotFound).not.toHaveBeenCalled();
+    });
+
+    it('shows the not-found notification when the song id is unknown', async () => {
+        const { handleRemotePlaySongEvent } = await import('./playback-manager.js');
+        const findSong = vi.fn(() => null);
+        const playResolvedSong = vi.fn();
+        const notifyNotFound = vi.fn();
+
+        handleRemotePlaySongEvent('missing-id', { findSong, notifyNotFound, playResolvedSong });
+
+        expect(notifyNotFound).toHaveBeenCalledOnce();
+        expect(playResolvedSong).not.toHaveBeenCalled();
+    });
+
+    it('ignores non-string or empty payloads without touching the library', async () => {
+        const { handleRemotePlaySongEvent } = await import('./playback-manager.js');
+        const findSong = vi.fn();
+        const playResolvedSong = vi.fn();
+        const notifyNotFound = vi.fn();
+
+        handleRemotePlaySongEvent(undefined, { findSong, notifyNotFound, playResolvedSong });
+        handleRemotePlaySongEvent('   ', { findSong, notifyNotFound, playResolvedSong });
+
+        expect(findSong).not.toHaveBeenCalled();
+        expect(playResolvedSong).not.toHaveBeenCalled();
+        expect(notifyNotFound).not.toHaveBeenCalled();
+    });
+});
+
 describe('remoteQueuePrefetchRefs', () => {
     it('builds refs for upcoming remote queue items only', async () => {
         const { remoteQueuePrefetchRefs } = await import('./playback-manager.js');
