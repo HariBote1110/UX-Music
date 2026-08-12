@@ -70,3 +70,52 @@
 - `xcodebuild -project UX-Music-Mobile.xcodeproj -scheme UX-Music-Mobile -destination
   'platform=iOS Simulator,name=iPhone 17' build` → **BUILD SUCCEEDED**（既存 iOS ターゲットに
   リグレッションなし）。
+
+## 追記（2026-08-13）: `NetServiceBrowser` が tvOS 26 で無反応 → `NWBrowser` へ移行
+
+- **症状**: 実機不要で tvOS シミュレータ（"Apple TV"）上で再現。ホスト（デスクトップ版
+  UX Music、同一 Mac 上で稼働中）が `_uxmusic-sync._tcp` を広告しており、Mac 側から
+  `dns-sd -B _uxmusic-sync._tcp local.` で見えている状態でも、TV アプリの発見画面
+  （`TVHostDiscoveryView`）は「同じネットワーク上の UX Music を検索しています」のまま
+  無限にスピナーを表示し続けた。
+- **切り分け**: `xcrun simctl spawn "Apple TV" log stream` でアプリのプロセスログを直接
+  観測したところ、`LANDiscoveryService.start()` が `NetServiceBrowser.searchForServices` を
+  呼んだ直後から NetService/mDNS 関連のログが一切出ない（`nw_browser_*`・`nw_resolver_*` の
+  類がゼロ）。ネットワーク経路自体は正常（Info.plist の `NSBonjourServices`/
+  `NSLocalNetworkUsageDescription` は commit a9cc9d5 で追加済み、ホストの advertise も
+  `dns-sd` から見えている）ため、**tvOS 26 上で `NetServiceBrowser` の検索呼び出し自体が
+  完全に不発になっている**と判断した。
+- **対処**: `LANDiscoveryService`（`UX-Music-Mobile/Services/LANDiscoveryService.swift`）の
+  内部実装を `Network.framework` の `NWBrowser`（`.bonjourWithTXTRecord(type:domain:)`）に
+  全面移行。公開インターフェース（`peers`/`isBrowsing`/`isDiscoveryActive`/`errorMessage`/
+  `start(scanTimeout:)`/`stop()`、`LANDiscoveryPeer` とその `connectionHosts` 意味論）は
+  変更していないため、`SettingsScreen`（iOS）・`TVAppModel`/`TVPairingView`（tvOS）は無改修。
+  - **ホスト/ポート解決**: `NWBrowser.Result.endpoint`（`.service(...)`）へ直接
+    `NWConnection` を張り、`.ready` 状態になった時点の `currentPath?.remoteEndpoint`
+    （`.hostPort` ケース）から具体アドレスを読む方式を採用した。`NetService` の
+    per-result resolve は tvOS 26 でも同じ不発リスクを抱えると判断し検証しなかった。
+    実機（シミュレータ）で確認した限り、この resolve は 30ms 未満で完了する。
+  - **注意点**: `NWEndpoint.Host.ipv4` の `description`（Swift の文字列補間）は
+    `192.168.1.182%en0` のように `%interface` スコープ ID が付与される。これは
+    `LANDiscoveryPeer.isIPv4Address`（`inet_pton`）に通すと非 IPv4 と誤判定されて
+    `connectionHosts` から脱落するため、`IPv4Address.rawValue`（4 バイト）から自前で
+    ドット区切り文字列を組み立てるようにした（スコープ ID を含めない）。
+  - TXT レコードは `NWBrowser.Result.Metadata.bonjour(NWTXTRecord).dictionary` から取得
+    （`NWTXTRecord` は `[String: String]` への変換プロパティを持つ）。
+  - `TVRemoteDiscoveryService`（iOS 側 `_uxmusic-remote._tcp` TV ピッカー）は今回
+    移行していない（スコープ外・iOS からの発見であり tvOS 26 の不発とは別経路）。ただし
+    `NetService` ベースの TXT/アドレス解析ヘルパー（`LANDiscoveryService.txtDictionary`/
+    `hostStrings`）はこのサービスが依存しているため `LANDiscoveryService` に残置した。
+- **もう一つの不具合（合わせて修正）**: `NWBrowser` 移行後も `discovery.peers` は更新される
+  のに画面が更新されないケースを実地確認で発見。原因は `TVAppModel`（`ObservableObject`）が
+  `discovery`（別の `ObservableObject`）を保持しているだけで、`discovery.objectWillChange`
+  を自身の `objectWillChange` へ転送していなかったこと。`TVHostDiscoveryView` は
+  `@ObservedObject var model: TVAppModel` しか観測しないため、SwiftUI は
+  `discovery.peers` の変化を再描画のトリガーとして認識できていなかった。
+  `TVAppModel.init` で `discovery.objectWillChange.sink { self.objectWillChange.send() }`
+  を購読することで解消（`UX-Music-TV/TVAppModel.swift`）。
+- **`TVRemoteControlServer`（TV 側 `_uxmusic-remote._tcp` の広告）は対象外と判断**:
+  すでに `NWListener` + `NWListener.Service` を使っており、`NetServiceBrowser` 系の
+  不発とは無関係の実装だったため変更していない。
+- **検証**: tvOS シミュレータへインストール・起動し、`xcrun simctl io screenshot` で
+  発見画面が「YukinoMac-mini / 192.168.x.x:8765」の1件を表示することを目視確認。

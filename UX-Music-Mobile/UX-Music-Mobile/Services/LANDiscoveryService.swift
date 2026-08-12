@@ -1,6 +1,7 @@
 import Combine
 import Darwin
 import Foundation
+import Network
 
 struct LANDiscoveryPeer: Identifiable, Hashable, Sendable {
     let name: String
@@ -100,14 +101,22 @@ struct LANDiscoveryPeer: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Discovers `_uxmusic-sync._tcp` peers using `Network.framework`'s `NWBrowser`.
+///
+/// This previously used `NetServiceBrowser`, but on tvOS 26 (verified in the "Apple TV" simulator)
+/// `NetServiceBrowser.searchForServices` produced zero mDNS traffic — `log stream` showed no
+/// NetService/mDNS activity at all while the host was actively advertising and reachable via
+/// `dns-sd`. `NWBrowser` with a `.bonjourWithTXTRecord` descriptor is the modern, actively
+/// maintained API for the same job and is confirmed working on both tvOS simulator and iOS.
+/// See `progress/tvos-pairing.md` for the investigation notes.
 final class LANDiscoveryService: NSObject, ObservableObject {
     @Published private(set) var peers: [LANDiscoveryPeer] = []
     @Published private(set) var isBrowsing = false
     @Published private(set) var isDiscoveryActive = false
     @Published private(set) var errorMessage: String?
 
-    private var browser: NetServiceBrowser?
-    private var resolvingServices: [String: NetService] = [:]
+    private var browser: NWBrowser?
+    private var resolvingConnections: [String: NWConnection] = [:]
     private var scanTimeoutWorkItem: DispatchWorkItem?
 
     func start(scanTimeout: TimeInterval = 6) {
@@ -115,11 +124,20 @@ final class LANDiscoveryService: NSObject, ObservableObject {
         errorMessage = nil
         isBrowsing = true
         if browser == nil {
-            let next = NetServiceBrowser()
-            next.delegate = self
+            let serviceType = LANDiscoveryService.bonjourType(from: AppConstants.syncMDNSServiceType)
+            let descriptor = NWBrowser.Descriptor.bonjourWithTXTRecord(type: serviceType, domain: nil)
+            let parameters = NWParameters()
+            parameters.includePeerToPeer = false
+            let next = NWBrowser(for: descriptor, using: parameters)
+            next.stateUpdateHandler = { [weak self] state in
+                self?.handleBrowserState(state)
+            }
+            next.browseResultsChangedHandler = { [weak self] results, changes in
+                self?.handleResults(results, changes: changes)
+            }
             browser = next
             isDiscoveryActive = true
-            next.searchForServices(ofType: AppConstants.syncMDNSServiceType, inDomain: "local.")
+            next.start(queue: .main)
         }
         scheduleScanTimeout(after: scanTimeout)
     }
@@ -149,11 +167,10 @@ final class LANDiscoveryService: NSObject, ObservableObject {
     }
 
     private func stopBrowsing() {
-        browser?.stop()
-        browser?.delegate = nil
+        browser?.cancel()
         browser = nil
-        resolvingServices.values.forEach { $0.stop() }
-        resolvingServices.removeAll()
+        resolvingConnections.values.forEach { $0.cancel() }
+        resolvingConnections.removeAll()
         isBrowsing = false
         isDiscoveryActive = false
     }
@@ -170,70 +187,129 @@ final class LANDiscoveryService: NSObject, ObservableObject {
         }
     }
 
-    private func serviceKey(_ service: NetService) -> String {
-        "\(service.name)|\(service.type)|\(service.domain)"
-    }
-}
-
-extension LANDiscoveryService: NetServiceBrowserDelegate {
-    func netServiceBrowserWillSearch(_ browser: NetServiceBrowser) {
-        DispatchQueue.main.async {
-            self.isDiscoveryActive = true
-            self.isBrowsing = true
-            self.errorMessage = nil
+    private func handleBrowserState(_ state: NWBrowser.State) {
+        switch state {
+        case .ready:
+            DispatchQueue.main.async {
+                self.isDiscoveryActive = true
+                self.errorMessage = nil
+            }
+        case .failed:
+            DispatchQueue.main.async {
+                self.cancelScanTimeout()
+                self.isBrowsing = false
+                self.isDiscoveryActive = false
+                self.errorMessage = "Discovery failed."
+            }
+        case .cancelled:
+            DispatchQueue.main.async {
+                self.isBrowsing = false
+                self.isDiscoveryActive = false
+            }
+        default:
+            break
         }
     }
 
-    func netServiceBrowserDidStopSearch(_ browser: NetServiceBrowser) {
-        DispatchQueue.main.async {
-            self.cancelScanTimeout()
-            self.isBrowsing = false
-            self.isDiscoveryActive = false
+    private func handleResults(_ results: Set<NWBrowser.Result>, changes: Set<NWBrowser.Result.Change>) {
+        for change in changes {
+            if case .removed(let result) = change {
+                DispatchQueue.main.async {
+                    self.peers.removeAll { $0.name == LANDiscoveryService.serviceName(of: result.endpoint) }
+                }
+            }
+        }
+        for result in results {
+            resolve(result)
         }
     }
 
-    func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
-        DispatchQueue.main.async {
-            self.cancelScanTimeout()
-            self.isBrowsing = false
-            self.isDiscoveryActive = false
-            self.errorMessage = "Discovery failed."
+    private func resolve(_ result: NWBrowser.Result) {
+        let key = LANDiscoveryService.resultKey(result)
+        guard resolvingConnections[key] == nil else { return }
+        guard let name = LANDiscoveryService.serviceName(of: result.endpoint) else { return }
+
+        let txt: [String: String]
+        if case .bonjour(let record) = result.metadata {
+            txt = record.dictionary
+        } else {
+            txt = [:]
+        }
+
+        let connection = NWConnection(to: result.endpoint, using: .tcp)
+        resolvingConnections[key] = connection
+        connection.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
+            switch state {
+            case .ready:
+                let hostPort = LANDiscoveryService.hostAndPort(from: connection.currentPath?.remoteEndpoint)
+                connection.cancel()
+                self.resolvingConnections.removeValue(forKey: key)
+                guard let (host, port) = hostPort else { return }
+                let peer = LANDiscoveryPeer(
+                    name: name,
+                    endpointHost: "\(name).local",
+                    addressHosts: [host],
+                    port: port,
+                    txt: txt
+                )
+                DispatchQueue.main.async {
+                    self.upsert(peer)
+                }
+            case .failed, .cancelled:
+                self.resolvingConnections.removeValue(forKey: key)
+                connection.cancel()
+            default:
+                break
+            }
+        }
+        connection.start(queue: .main)
+    }
+
+    private static func resultKey(_ result: NWBrowser.Result) -> String {
+        "\(result.endpoint)"
+    }
+
+    private static func serviceName(of endpoint: NWEndpoint) -> String? {
+        if case .service(let name, _, _, _) = endpoint {
+            return name
+        }
+        return nil
+    }
+
+    /// `NWBrowser`'s Bonjour descriptor wants a bare service type (e.g. `_uxmusic-sync._tcp`), not
+    /// the trailing-dot form `NetService`/`NSBonjourServices` use.
+    private static func bonjourType(from serviceType: String) -> String {
+        serviceType.hasSuffix(".") ? String(serviceType.dropLast()) : serviceType
+    }
+
+    /// Resolves an established connection's remote endpoint into a numeric host string + port,
+    /// which is how a `.service(...)` Bonjour endpoint's actual reachable address is learned.
+    private static func hostAndPort(from endpoint: NWEndpoint?) -> (String, Int)? {
+        guard let endpoint, case .hostPort(let host, let port) = endpoint else { return nil }
+        return (LANDiscoveryService.hostString(from: host), Int(port.rawValue))
+    }
+
+    private static func hostString(from host: NWEndpoint.Host) -> String {
+        switch host {
+        case .ipv4(let address):
+            // `IPv4Address`'s own `description` appends a `%interface` scope suffix (e.g.
+            // "192.168.1.182%en0") which `inet_pton`/`LANDiscoveryPeer.isIPv4Address` rejects —
+            // format the raw 4 bytes ourselves to get a plain dotted-decimal string.
+            return address.rawValue.map(String.init).joined(separator: ".")
+        case .ipv6(let address):
+            return "\(address)"
+        case .name(let name, _):
+            return name
+        @unknown default:
+            return "\(host)"
         }
     }
 
-    func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
-        service.delegate = self
-        resolvingServices[serviceKey(service)] = service
-        service.resolve(withTimeout: 5)
-    }
-
-    func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
-        resolvingServices.removeValue(forKey: serviceKey(service))
-        DispatchQueue.main.async {
-            self.peers.removeAll { $0.name == service.name || $0.host == service.hostName }
-        }
-    }
-}
-
-extension LANDiscoveryService: NetServiceDelegate {
-    func netServiceDidResolveAddress(_ sender: NetService) {
-        let txt = LANDiscoveryService.txtDictionary(from: sender.txtRecordData())
-        let peer = LANDiscoveryPeer(
-            name: sender.name,
-            endpointHost: sender.hostName ?? "",
-            addressHosts: LANDiscoveryService.hostStrings(from: sender.addresses),
-            port: sender.port,
-            txt: txt
-        )
-        DispatchQueue.main.async {
-            self.upsert(peer)
-        }
-    }
-
-    func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
-        resolvingServices.removeValue(forKey: serviceKey(sender))
-    }
-
+    // `TVRemoteDiscoveryService` (iOS-side `_uxmusic-remote._tcp` TV picker) still uses
+    // `NetServiceBrowser`/`NetService` and relies on these two parsing helpers. Only this
+    // service's own `_uxmusic-sync._tcp` browsing was confirmed inert on tvOS, so that migration
+    // is left for its own pass — kept here so it keeps compiling unchanged.
     static func txtDictionary(from data: Data?) -> [String: String] {
         guard let data else { return [:] }
         let raw = NetService.dictionary(fromTXTRecord: data)

@@ -41,6 +41,7 @@ final class TVAppModel: ObservableObject {
     let discovery: LANDiscoveryService
     private let pairingClient: TVPairingClient
     private let store: TVServerConfigStore
+    private var discoveryForwarding: AnyCancellable?
 
     init(
         discovery: LANDiscoveryService = LANDiscoveryService(),
@@ -51,6 +52,14 @@ final class TVAppModel: ObservableObject {
         self.pairingClient = pairingClient
         self.store = store
         self.serverConfig = store.load()
+        // `discovery` is its own `ObservableObject` — views that only hold `@ObservedObject var
+        // model: TVAppModel` do not re-render on `discovery.peers` changes unless this forwards
+        // them, since SwiftUI only tracks the object it directly wraps. Without this, discovered
+        // peers land in `discovery.peers` but `TVHostDiscoveryView` never redraws past the
+        // spinner — confirmed live in the tvOS simulator (see `progress/tvos-pairing.md`).
+        discoveryForwarding = discovery.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
     }
 
     var isPaired: Bool { !serverConfig.token.isEmpty && serverConfig.isConfigured }
