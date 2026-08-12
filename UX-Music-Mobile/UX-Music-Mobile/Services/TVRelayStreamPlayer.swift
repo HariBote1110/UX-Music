@@ -54,13 +54,32 @@ final class TVRelayStreamPlayer: NSObject {
     private var bufferedSeconds: Double = 0
     private var lastRMSLogTime = Date.distantPast
     private var isEngineConnected = false
+    private let muteOutput: Bool
 
-    init(jitterBufferSeconds: Double = 0.75, sessionConfiguration: URLSessionConfiguration = .default) {
+    /// - Parameter muteOutput: silences `mainMixerNode` (`outputVolume = 0`) so verification runs
+    ///   (the `UXTV_PREVIEW=relay` DEBUG harness, and any future automated test that schedules
+    ///   real PCM) never play audible sound through the host Mac's speakers. The
+    ///   `[RelayStream] rendering rms=` log is computed from the decoded samples *before* they
+    ///   reach the mixer (`logRMSIfDue`, called from `schedule` before the buffer is even built),
+    ///   so muting the speaker output does not weaken that signal. Defaults to auto-detecting
+    ///   `UXTV_PREVIEW`/`XCTestConfigurationFilePath` in the process environment so production
+    ///   (real pairing flow) playback is never accidentally muted.
+    init(
+        jitterBufferSeconds: Double = 0.75,
+        sessionConfiguration: URLSessionConfiguration = .default,
+        muteOutput: Bool = TVRelayStreamPlayer.isRunningUnderPreviewOrTestHarness
+    ) {
         self.jitterBufferSeconds = jitterBufferSeconds
+        self.muteOutput = muteOutput
         sessionConfiguration.timeoutIntervalForRequest = 30
         sessionConfiguration.timeoutIntervalForResource = 0 // long-lived stream
         self.session = URLSession(configuration: sessionConfiguration)
         super.init()
+    }
+
+    private static var isRunningUnderPreviewOrTestHarness: Bool {
+        let env = ProcessInfo.processInfo.environment
+        return env["UXTV_PREVIEW"] != nil || env["XCTestConfigurationFilePath"] != nil
     }
 
     /// Starts streaming, parsing, decoding and playing `request`. Idempotent teardown is the
@@ -73,6 +92,9 @@ final class TVRelayStreamPlayer: NSObject {
         isEngineConnected = false
 
         engine.attach(playerNode)
+        if muteOutput {
+            engine.mainMixerNode.outputVolume = 0
+        }
         // Deliberately NOT connected here: `AVAudioEngine.connect(_:to:format:)` with `format:
         // nil` picks up whatever the node's default output format happens to be, which does not
         // match the stream's actual sample rate/channel count and previously caused a hard
