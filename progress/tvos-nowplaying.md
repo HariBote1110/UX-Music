@@ -63,3 +63,44 @@
   同期歌詞レイアウトに切り替える。プレーンテキスト歌詞（`type == "txt"`）はタイムスタンプが
   なく現在行ハイライトができないため、10フィート表示ではアートワーク中心レイアウトに
   フォールバックする（iOS版のような静的テキスト表示は今回実装していない）。
+
+## 追記（実機不具合修正：Menuで一切閉じられない／トランスポートボタンのフォーカス表現）
+
+### Decision
+
+- **「`fullScreenCover`はMenuで自動的にdismissされる」という上のDecisionの記述は誤りだった**。
+  実機（Apple TV）で検証したところ、Now Playing画面はMenu/戻るを押しても一切閉じず、
+  ブラウズ画面へ戻る手段がなかった。原因は`TVNowPlayingView`側で独自に
+  `.onExitCommand { registerInteraction() }`を実装しており、Menu押下を常に「アンビエント
+  解除のための操作」として消費してしまい、`dismiss()`を一度も呼んでいなかったこと。
+  tvOSの`fullScreenCover`はMenuで自動的には閉じず、`onExitCommand`を実装した場合はその
+  ハンドラが呼ばれる方が優先される（このアプリはアンビエント解除のために元々
+  `onExitCommand`を実装していたため、標準の自動dismissには最初から乗っていなかった）。
+- **2段階終了（アンビエント→通常→ブラウズ）**: `TVAmbientStateMachine`に
+  `exitCommand(current:) -> ExitAction`（`.returnToNormal` / `.dismissScreen`）を純粋関数として
+  追加しTDDで検証。アンビエント表示中のMenuは`.returnToNormal`（＝`registerInteraction()`と
+  同じ効果で通常表示に戻すのみ）、通常表示でのMenuのみ`.dismissScreen`
+  （`@Environment(\.dismiss)`を呼び`fullScreenCover`を閉じる）。1回のMenu押下でアンビエント
+  解除とブラウズへの離脱を同時に行わないのは、素早い2回目のMenuがdismiss後の
+  ブラウズ画面（通常のNavigationStack）に届いてtvOSホーム画面まで抜けてしまうのを防ぐため。
+  再生は`MusicPlayerService`がView階層と独立して継続するため、dismissしても止まらない。
+- **トランスポートボタンのフォーカス表現**: 既定の`.buttonStyle(.card)`が描くグレーの
+  カプセルを廃止し、`TVTransportButtonStyle`（`ButtonStyle` + `@Environment(\.isFocused)`）に
+  置き換えた。ボーダーレスのSF Symbolのみを表示し、フォーカス時はスケール1.0→1.22、
+  フォントウェイトregular→semibold、色を`.white.opacity(0.55)`→`.white`、ソフトな白グロー
+  （`shadow`）を`0.15s`の`easeInOut`でアニメーションさせる。押下時はさらに0.92倍に縮める。
+  3ボタン共通のスタイルとして適用し、設定ダイアログ的なグレーの四角ではなく10-foot
+  音楽UIらしい軽やかなフォーカス表現にした。
+
+### Verification
+
+- `TVAmbientStateMachineTests`に`exitCommand`のテストを2件追加（Red→Green）。
+  `xcodebuild ... -scheme UX-Music-TV -destination 'platform=tvOS Simulator,name=Apple TV' test`
+  はビルド・テストとも全件成功（`TEST SUCCEEDED`）。
+- 実機ライブ確認は今回、既にペアリング済みの「Apple TV」シミュレータ状態を使い回せず、
+  かつtvOSシミュレータのSiri Remote操作（Menu送出）を自動操作するツールがこの環境には
+  なかったため、コードレベルの確認（`dismiss()`の配線・`onExitCommand`の呼び出し経路・
+  純粋関数のユニットテスト）に留めた。UI配線自体は`dismiss()`呼び出し1行の追加のみで、
+  分岐ロジックは全てユニットテスト済みの`TVAmbientStateMachine.exitCommand`に委譲している
+  ため、リスクは低いと判断。次回実機確認時は「アンビエント中にMenu→通常表示に戻る→
+  もう一度Menu→ブラウズに戻る（再生継続）」の2段階を確認すること。
