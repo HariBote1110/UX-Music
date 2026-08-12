@@ -54,6 +54,51 @@ export async function initPlaybackSettings() {
         elements.loopBtn.classList.toggle('loop-one', state.playbackMode === PLAYBACK_MODES.LOOP_ONE);
         console.log(`[Debug:Playback] ループモードを復元: ${state.playbackMode}`);
     }
+
+    initRemotePlaySongListener();
+}
+
+/**
+ * Go 側 (server/app_remote.go の remoteCommandHandler, action: "play-song") が
+ * emit する "remote-play-song" イベントを購読する。ペア済みクライアント
+ * (Apple TV 等) からライブラリ楽曲 ID を指定した再生要求を受け取り、
+ * ユーザーが曲をクリックした場合と同じ playSong() 経路へ合流させる
+ * (ローカル曲はそのまま再生され、YouTube 由来の曲は公式埋め込み経由の
+ * 再生 → LAN 中継へ自動的に進む)。Wails 環境以外 (ブラウザプレビュー等)
+ * では window.runtime が存在しないため何もしない。
+ */
+function initRemotePlaySongListener() {
+    if (!window.runtime || typeof window.runtime.EventsOn !== 'function') {
+        return;
+    }
+    window.runtime.EventsOn('remote-play-song', (songId: unknown) => {
+        handleRemotePlaySongEvent(songId);
+    });
+}
+
+/**
+ * "remote-play-song" イベントの本体処理。依存を注入できる形にして
+ * ユニットテストから検証できるようにしている
+ * (playback-manager.test.ts の describe('handleRemotePlaySongEvent', ...))。
+ */
+export function handleRemotePlaySongEvent(songId: unknown, deps: {
+    findSong?: (id: string) => unknown;
+    notifyNotFound?: () => void;
+    playResolvedSong?: (song: unknown) => void;
+} = {}) {
+    const findSong = deps.findSong ?? getSongById;
+    const notifyNotFound = deps.notifyNotFound ?? (() => showNotification('指定された曲がライブラリに見つかりませんでした。'));
+    const playResolvedSong = deps.playResolvedSong ?? ((song: unknown) => playSong(0, [song]));
+
+    if (typeof songId !== 'string' || songId.trim() === '') {
+        return;
+    }
+    const song = findSong(songId);
+    if (!song) {
+        notifyNotFound();
+        return;
+    }
+    playResolvedSong(song);
 }
 
 export function playSong(index, sourceList = null, forcePlay = false) {

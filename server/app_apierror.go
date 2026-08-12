@@ -43,6 +43,20 @@ func writeAPIError(w http.ResponseWriter, message string, status int) {
 	})
 }
 
+// writeAPIErrorWithCode is writeAPIError with an explicit error code,
+// for call sites whose failure mode is not adequately named by the HTTP
+// status alone (e.g. "gui_required" for a 409 that means "no Wails runtime").
+func writeAPIErrorWithCode(w http.ResponseWriter, code, message string, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(apiErrorBody{
+		Error: apiErrorDetail{
+			Code:    code,
+			Message: message,
+		},
+	})
+}
+
 func apiErrorCodeForStatus(status int) string {
 	switch status {
 	case http.StatusBadRequest:
