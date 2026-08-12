@@ -74,3 +74,52 @@
   プレースホルダ（音符アイコン）表示になる——これは想定内（"生成済みプレースホルダー画像"の簡易版）。
 - 検証スクリーンショット: `/tmp/claude-501/tvdesign_nowplaying.png`,
   `/tmp/claude-501/tvdesign_browse.png`（38%進捗・3行フォーカス歌詞・フォーカスカードのグラデーション縁取りを確認済み）。
+
+## 追記: アルバム/プレイリスト詳細画面の追加とBrowse実機フィードバック対応
+
+実機（本物のApple TV）でのユーザー確認で3点の指摘があり、対応した。
+
+### Decision（アルバムタップ即再生の廃止 → 詳細画面）
+
+- 「アルバムカードをタップすると即再生される」挙動をユーザーが「意図しない」と報告。
+  `TVBrowseView`のアルバム/プレイリストタップは、即再生ではなく`TVLibraryDetailView`
+  （新規 `TVLibraryDetailView.swift`）を開くように変更した。
+- アルバム・プレイリストで別々のビューを作らず、`TVLibraryDetailContent`という中間データ型
+  （`title`/`artist`/`artworkId?`/`songs`）を介して**1つの汎用詳細ビュー**で両方をまかなう
+  DRY設計にした。`.album(_:)`/`.playlist(_:allSongs:)`のstaticファクトリで変換する
+  （プレイリストは`artworkId`が無いため`nil`→汎用アイコンにフォールバック）。
+  プレイリストの曲順解決は既存の`TVPlaylistQueueBuilder.songs(for:allSongs:)`をそのまま
+  再利用——重複実装しない。
+- 詳細画面の構成: 左に大きめ（320×320）アートワーク＋ピンク寄りシャドウのグロー、右にタイトル・
+  アーティスト・「再生」ボタン（`content.songs.first`から再生）。下にフォーカス可能なトラック
+  リスト（トラック番号・タイトル・アーティスト・`m:ss`長さ）。各行タップで「そのトラックから
+  再生、残りはキュー」——既存の`TVPlaybackController.play(_:queue:)`の再生規則をそのまま使う。
+- `TVBrowseView`側は`presentedDetail: TVLibraryDetailContent?`を`.fullScreenCover(item:)`で
+  提示。`onPlay`クロージャは`presentedDetail = nil`してから`playbackController.play`と
+  `nowPlayingPresented = true`を呼ぶ——詳細画面を閉じてからNow Playingへ、の順序をここで保証。
+
+### Decision（Browse画面のポリッシュ）
+
+- **フォーカスカードのラベルはみ出し**: `TVAlbumCard`/`TVPlaylistCard`のタイトル/アーティスト
+  行に`.frame(width: 220, alignment: .leading)` + `.truncationMode(.tail)`を個別に付与し、
+  VStack全体にも`.clipped()`を追加。ただし最初の修正だけでは**カードの角丸コーナーぎりぎりに
+  文字が接し、フォーカス時のスケールで先頭1文字がコーナーの丸みに食われる**症状が
+  シミュレータのスクリーンショットで再現した（"UX Music Demo"の"U"が欠ける）。
+  各テキストに`.padding(.horizontal, 4)`を追加してから`.frame(width: 220)`することで解消——
+  paddingしてからframeで幅確定、の順序がポイント（逆順だとpaddingがframe外にはみ出る）。
+- **上部見出しが弱い**: システムの`navigationTitle`はtvOS上で中央寄り・ミュートグレーで表示され
+  「弱い」という指摘どおりだった。`navigationTitle("")`で空にし、代わりに棚と同じ
+  `VStack(alignment: .leading)`内に`TVBrowseHeader`（白・`.medium`・40pt、左揃え）を追加。
+  オーバーサイズのヒーローにはせず「控えめだが存在感のある」見出しに留めた
+  （ブリーフの「大袈裟にしない」指示どおり）。
+- プレビューハーネス`TVBrowsePreviewHarness`も実装と同じ構成（`TVBrowseHeader`追加・
+  `navigationTitle("")`）に揃えないと、スクリーンショット検証が実装とズレる
+  ——これは一度ズレて気づいた（`UXTV_PREVIEW=browse`のスクショに古い中央グレー見出しが
+  残っていた）。プレビューハーネスは常に実装側の変更と同時に更新すること。
+
+### 検証
+
+- `UXTV_PREVIEW=albumdetail`を追加（`TVLibraryDetailPreviewHarness`、6曲・長いタイトルの
+  トラックでスタブ）。スクリーンショット: `/tmp/claude-501/tvdesign_albumdetail.png`,
+  `/tmp/claude-501/tvdesign_browse2.png`（いずれもラベルがカード内に収まり、見出しが
+  左揃え・白になっていることを確認済み）。

@@ -101,3 +101,71 @@
   想定していない（`progress/serve-headless-mode.md`のモデル通り、`--serve`は別プロセス
   起動）。もし将来的にランタイムでモード切替が起きる設計になった場合はこのキャッシュを
   見直す必要がある。
+
+## 追記: 「中継が失敗すると何も再生できなくなる」の修正（失敗検知とテアダウン）
+
+実機フィードバックで報告された不具合: 中継（YouTube）再生が失敗すると、以降ローカル再生も
+含めて何も再生できなくなる。
+
+### 何が壊れていたか
+
+- `TVRelayPlaybackController`は`start()`で`AVPlayerItem`/`AVPlayer`を作って`play()`を
+  呼ぶだけで、**失敗を検知する仕組みが一切無かった**。生ADTSストリームが`AVPlayer`で
+  デコードできない（本ファイル冒頭のコメントに記録済みの未検証リスク）場合、
+  `AVPlayerItem.status`が`.failed`になっても誰も観測しておらず、コントローラは
+  「再生中のつもり」のまま固まっていた。
+- `TVBrowseView`側もこの失敗を知る手段が無いため、`TVRelayBannerView`は「読み込み中の
+  ままのダミー動画」を表示し続け、ユーザーが手動で「終了」を押さない限りバナーが閉じず、
+  ローカル`MusicPlayerService`の状態自体は`playRelay()`で`player.stop()`済みのため、
+  実際にはローカル再生は「再開できる」状態だったが、**UIがバナーに閉じ込められたままで
+  そこへ戻る手段が実質無かった**（実機のリモートで「終了」ボタンへフォーカスが渡らない/
+  応答が遅い等、失敗した`AVPlayer`のパイプラインがUIスレッド近辺で詰まる報告と一致）。
+
+### Decision（状態機械の分離とTDD）
+
+- 純粋ロジックを`TVRelayPlaybackReducer`（新規 `TVRelayPlaybackReducer.swift`）に切り出し、
+  `AVFoundation`に触れず単体テスト可能にした（`TVRelayPlaybackReducerTests.swift`）。
+  - `TVRelayPlaybackState`: `.idle` / `.playing` / `.failed(reason:)`
+  - `TVRelayPlaybackEvent`: `.start` / `.fail(reason:)` / `.exit`
+  - `TVRelayPlaybackReducer.isLocalPlaybackUsable(_:)` — **本修正の核心の不変条件**:
+    `.idle`と`.failed`は常に`true`、`.playing`のときだけ`false`。つまり「中継が失敗した
+    状態」は「中継していない状態」と同じくローカル再生可能、という不変条件をテストで
+    固定した（`testFullFailureRecoveryLifecycleEndsPlayerUsable`で
+    start→fail→exitの一連の遷移を通しで検証）。
+- `TVRelayPlaybackController`は3つの失敗シグナルを監視するようにした:
+  1. `AVPlayerItem.status`のKVO監視 → `.failed`になったら`fail(reason:)`。
+  2. `AVPlayerItemFailedToPlayToEndTimeNotification`の通知監視。
+  3. 起動後8秒（`startupTimeout`、テスト時は差し替え可能）以内に`AVPlayer.rate`が
+     一度も0超にならなければタイムアウトとして`fail(reason:)`（レート監視はKVOで
+     `didStartPlaying`フラグを立てる）。
+  - いずれかが発火すると`fail(reason:)`が呼ばれ、`teardown()`（KVO解除・通知解除・
+    タイムアウトタスクキャンセル・`AVPlayer`停止＆破棄）を実行してから
+    `state = .failed(reason:)`に遷移する。**テアダウンを先に行うため、失敗が検知された
+    時点で既にローカル再生は使用可能な状態に戻っている。**
+  - 二重failガード: `fail(reason:)`は`state == .playing`のときのみ有効
+    （タイムアウトと`AVPlayerItem`失敗が同時に発火しても2回目は無視）。
+- `TVRelayBannerView`は`relayPlaybackController.state`を見て、`.failed(reason:)`のときは
+  再生中UIの代わりにエラーバナー（黄色い警告アイコン＋「中継の再生に失敗しました」＋理由＋
+  「終了」ボタンのみ）を表示する。表示された時点で既にローカル再生は復旧済みなので、
+  このビューは「ユーザーに知らせて閉じさせる」以上のことをする必要がない。
+
+### Alternatives considered
+
+- **バナー表示中に裏で自動的にバナーを閉じる（`relayPresented = false`を失敗検知時に
+  自動セット）**: 見送り。ユーザーに「失敗した」ことを知らせずに黙って閉じると、
+  「押したのに何も起きなかった」という別の混乱を生む。エラーの可視化を優先し、閉じるのは
+  明示的な「終了」ボタン（既存の`onDisappear`経路）に統一した。
+- **`AVPlayer`の失敗時に自動リトライ**: 見送り。ブリーフの要求は「ローカル再生への復帰」で
+  あり、リトライは要求されていない上、根本原因（生ADTSが再生できない可能性）が解消しない
+  限りリトライしても同じ結果になる可能性が高い。
+
+### Constraints / Gotchas
+
+- `AVPlayerItem`/`AVPlayer`のKVOオブザーバーとNotificationCenterオブザーバーの解除漏れは
+  クラッシュ・メモリリークに直結するため、`teardown()`に一本化し、`stop()`（正常終了）と
+  `fail(reason:)`（異常終了）の両方から必ずこの1箇所を通るようにした。
+- `startupTimeout`をイニシャライザ引数化した（デフォルト8秒）ことで、将来テストで
+  `AVPlayer`をモック化する際にタイムアウトを短く差し替えられる余地を残した
+  （今回は`AVFoundation`実体を使うテストまでは書いていない——`TVRelayPlaybackReducer`側の
+  純粋ロジックのみTDD対象とし、`AVPlayer`配線自体は実機/シミュレータでのビルド・
+  目視確認に留めた）。

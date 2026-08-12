@@ -22,11 +22,18 @@ struct TVBrowseView: View {
     @State private var nowPlayingPresented = false
     /// Set to `true` when the user selects the relay shelf entry (Phase 3-3 receiver).
     @State private var relayPresented = false
+    /// Album/playlist tap opens a detail screen instead of playing immediately (user report: tap
+    /// should NOT start playback). `nil` when no detail screen is presented.
+    @State private var presentedDetail: TVLibraryDetailContent?
 
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle(String(localized: "tv.browse.title"))
+                // The system nav title reads weak/centred on tvOS; a left-aligned, higher-contrast
+                // `TVBrowseHeader` inside `shelves` carries the heading instead (user feedback —
+                // see `progress/tvos-design.md`). The system title is kept empty (not removed
+                // entirely) so the toolbar's sign-out item still has a navigation bar to sit in.
+                .navigationTitle("")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button(String(localized: "tv.browse.signOut"), action: onSignOut)
@@ -46,6 +53,12 @@ struct TVBrowseView: View {
         .task { await browseModel.reload() }
         .fullScreenCover(isPresented: $nowPlayingPresented) {
             TVNowPlayingView(player: player, client: client)
+        }
+        .fullScreenCover(item: $presentedDetail) { content in
+            TVLibraryDetailView(content: content, client: client) { song, queue in
+                presentedDetail = nil
+                Task { await play(song, queue: queue) }
+            }
         }
         .fullScreenCover(isPresented: $relayPresented) {
             TVRelayBannerView(relayModel: relayModel, relayPlaybackController: relayPlaybackController) {
@@ -85,6 +98,7 @@ struct TVBrowseView: View {
     private var shelves: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 48) {
+                TVBrowseHeader()
                 if relayModel.isAvailable {
                     TVShelfSection(title: String(localized: "tv.browse.relay")) {
                         TVRelayCard(
@@ -98,7 +112,7 @@ struct TVBrowseView: View {
                     TVShelfSection(title: String(localized: "tv.browse.albums")) {
                         ForEach(browseModel.albums) { album in
                             TVAlbumCard(album: album, client: client) {
-                                Task { await playFirstTrack(of: album) }
+                                presentedDetail = .album(album)
                             }
                         }
                     }
@@ -107,7 +121,7 @@ struct TVBrowseView: View {
                     TVShelfSection(title: String(localized: "tv.browse.playlists")) {
                         ForEach(browseModel.playlists, id: \.name) { playlist in
                             TVPlaylistCard(playlist: playlist) {
-                                Task { await playFirstTrack(of: playlist) }
+                                presentedDetail = .playlist(playlist, allSongs: browseModel.songs)
                             }
                         }
                     }
@@ -118,23 +132,13 @@ struct TVBrowseView: View {
         }
     }
 
-    private func playFirstTrack(of album: Album) async {
-        guard let first = album.songs.first else { return }
-        await playbackController.play(first, queue: album.songs)
+    /// Plays `song` with `queue` behind it — used by both the album and playlist detail screens'
+    /// 「再生」 button (`queue.first`) and per-track selection (play-from-selection, §1-4's queue
+    /// rule). `RemoteDesktopPlaylist`'s queue is pre-derived by `TVLibraryDetailContent.playlist`
+    /// via `TVPlaylistQueueBuilder.songs(for:allSongs:)` before reaching here.
+    private func play(_ song: Song, queue: [Song]) async {
+        await playbackController.play(song, queue: queue)
         // Auto-enter Now Playing when playback starts from the browse UI (Phase 2 §1).
-        nowPlayingPresented = true
-    }
-
-    /// Playlist tap → play-from-first with the rest queued, mirroring the album shelf's
-    /// play-from-selection rule (§1-4's queue rule). `RemoteDesktopPlaylist` only carries
-    /// `songIds` (not full `Song` values), so the ordered `Song` queue is derived here via
-    /// `TVPlaylistQueueBuilder.songs(for:allSongs:)` — a pure function so the "unknown/missing
-    /// song id" filtering is unit-testable without touching the browse model or network.
-    private func playFirstTrack(of playlist: RemoteDesktopPlaylist) async {
-        let orderedSongs = TVPlaylistQueueBuilder.songs(for: playlist, allSongs: browseModel.songs)
-        guard let first = orderedSongs.first else { return }
-        await playbackController.play(first, queue: orderedSongs)
-        // Auto-enter Now Playing when playback starts from the browse UI (Phase 2 §1), same as albums.
         nowPlayingPresented = true
     }
 }
@@ -172,6 +176,18 @@ private struct TVNowPlayingAffordance: View {
     }
 }
 
+/// Left-aligned, higher-contrast "UX Music" heading (user feedback: the previous centred system
+/// nav title read weak/muted). Deliberately modest — a headline weight, not an oversized hero —
+/// per the cinematic language's restraint. See `progress/tvos-design.md`.
+private struct TVBrowseHeader: View {
+    var body: some View {
+        Text(String(localized: "tv.browse.title"))
+            .font(.system(size: 40, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 private struct TVShelfSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
@@ -201,15 +217,28 @@ private struct TVAlbumCard: View {
                 TVArtworkImage(artworkId: album.artworkId, client: client)
                     .frame(width: 220, height: 220)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                // `.frame(width:)` + `.truncationMode` on each label (not just the parent VStack),
+                // plus a small horizontal inset, so text truncates to the card's footprint even
+                // under the focus `scaleEffect` instead of sitting flush against the rounded card
+                // corner — user report: focused labels were spilling past the card edge / getting
+                // clipped by the corner radius rather than truncating cleanly. See
+                // `progress/tvos-design.md`.
                 Text(album.displayName)
                     .font(.headline)
                     .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 4)
+                    .frame(width: 220, alignment: .leading)
                 Text(album.displayArtist)
                     .font(.subheadline)
                     .foregroundStyle(TVDesignTokens.textSecondary)
                     .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 4)
+                    .frame(width: 220, alignment: .leading)
             }
             .frame(width: 220)
+            .clipped()
         }
         .buttonStyle(TVCinematicCardStyle())
     }
@@ -229,8 +258,12 @@ private struct TVPlaylistCard: View {
                 Text(playlist.name)
                     .font(.headline)
                     .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 4)
+                    .frame(width: 220, alignment: .leading)
             }
             .frame(width: 220)
+            .clipped()
         }
         .buttonStyle(TVCinematicCardStyle())
     }
@@ -303,12 +336,32 @@ private struct TVRelayCard: View {
 /// Broadcast-type banner shown while relay playback is active — per the plan the PC (Host) is the
 /// operator, so this deliberately has no seek/skip controls, only exit. Selecting back/menu on the
 /// tvOS remote dismisses this `fullScreenCover`, which triggers `onDisappear` and stops the stream.
+///
+/// Also renders the failure-recovery state (`TVRelayPlaybackController.state == .failed`, see
+/// `progress/tvos-relay-reception.md`): by the time this case renders, the controller has already
+/// torn the `AVPlayer` down and local playback is usable again — this view only needs to surface
+/// the localised error and let the user exit.
 private struct TVRelayBannerView: View {
     @ObservedObject var relayModel: TVRelayModel
     @ObservedObject var relayPlaybackController: TVRelayPlaybackController
     let onExit: () -> Void
 
     var body: some View {
+        Group {
+            switch relayPlaybackController.state {
+            case .failed(let reason):
+                failureContent(reason: reason)
+            case .idle, .playing:
+                playingContent
+            }
+        }
+        .padding(64)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(TVDesignTokens.charcoalBase)
+        .onDisappear { relayPlaybackController.stop() }
+    }
+
+    private var playingContent: some View {
         VStack(spacing: 32) {
             AsyncImage(url: URL(string: relayModel.thumbnail)) { phase in
                 switch phase {
@@ -329,10 +382,21 @@ private struct TVRelayBannerView: View {
                 .multilineTextAlignment(.center)
             Button(String(localized: "tv.relay.banner.exit"), action: onExit)
         }
-        .padding(64)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(TVDesignTokens.charcoalBase)
-        .onDisappear { relayPlaybackController.stop() }
+    }
+
+    private func failureContent(reason: String) -> some View {
+        VStack(spacing: 24) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 72))
+                .foregroundStyle(.yellow)
+            Text(String(localized: "tv.relay.error.title"))
+                .font(.title2)
+            Text(reason)
+                .font(.body)
+                .foregroundStyle(TVDesignTokens.textSecondary)
+                .multilineTextAlignment(.center)
+            Button(String(localized: "tv.relay.banner.exit"), action: onExit)
+        }
     }
 }
 
@@ -357,6 +421,7 @@ struct TVBrowsePreviewHarness: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 48) {
+                    TVBrowseHeader()
                     TVShelfSection(title: String(localized: "tv.browse.albums")) {
                         ForEach(Self.albums) { album in
                             TVAlbumCard(album: album, client: client) {}
@@ -366,7 +431,7 @@ struct TVBrowsePreviewHarness: View {
                 .padding(.horizontal, 64)
                 .padding(.vertical, 32)
             }
-            .navigationTitle(String(localized: "tv.browse.title"))
+            .navigationTitle("")
         }
         .background(TVCinematicBackground(intensity: 0.6))
     }

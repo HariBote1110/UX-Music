@@ -9,7 +9,7 @@ struct UXMusicTVApp: App {
         WindowGroup {
             #if DEBUG
             // DEBUG-only preview harness (`progress/tvos-design.md`): launching with
-            // `UXTV_PREVIEW=nowplaying|browse` (e.g. via
+            // `UXTV_PREVIEW=nowplaying|browse|albumdetail` (e.g. via
             // `SIMCTL_CHILD_UXTV_PREVIEW=nowplaying xcrun simctl launch …`) renders a screen with
             // rich stub data, no pairing/network required, so the cinematic design can be
             // screenshotted directly in the simulator.
@@ -18,6 +18,8 @@ struct UXMusicTVApp: App {
                 TVNowPlayingPreviewHarness()
             case "browse":
                 TVBrowsePreviewHarness()
+            case "albumdetail":
+                TVLibraryDetailPreviewHarness()
             default:
                 TVRootView()
             }
