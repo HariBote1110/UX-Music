@@ -42,15 +42,20 @@ final class TVAppModel: ObservableObject {
     private let pairingClient: TVPairingClient
     private let store: TVServerConfigStore
     private var discoveryForwarding: AnyCancellable?
+    /// Delay before `.paired` auto-advances to `.idle` (see `pair(with:)`). Injectable so tests
+    /// can pass `0` and observe the transition without waiting on a real clock.
+    private let successAdvanceDelayNanoseconds: UInt64
 
     init(
         discovery: LANDiscoveryService = LANDiscoveryService(),
         pairingClient: TVPairingClient = URLSessionTVPairingClient(),
-        store: TVServerConfigStore = TVServerConfigStore()
+        store: TVServerConfigStore = TVServerConfigStore(),
+        successAdvanceDelayNanoseconds: UInt64 = 1_500_000_000
     ) {
         self.discovery = discovery
         self.pairingClient = pairingClient
         self.store = store
+        self.successAdvanceDelayNanoseconds = successAdvanceDelayNanoseconds
         self.serverConfig = store.load()
         // `discovery` is its own `ObservableObject` — views that only hold `@ObservedObject var
         // model: TVAppModel` do not re-render on `discovery.peers` changes unless this forwards
@@ -94,6 +99,7 @@ final class TVAppModel: ObservableObject {
             )
             persistPairedConfig(peer: peer, token: confirmed.token)
             pairingState = TVPairingReducer.reduce(pairingState, .confirmSucceeded(deviceId: confirmed.deviceId))
+            scheduleAutoAdvanceFromPairedState()
         } catch {
             if case .confirming = pairingState {
                 pairingState = TVPairingReducer.reduce(pairingState, .confirmFailed(errorMessage(error)))
@@ -105,6 +111,22 @@ final class TVAppModel: ObservableObject {
 
     func resetPairingFlow() {
         pairingState = TVPairingReducer.reduce(pairingState, .reset)
+    }
+
+    /// Success is otherwise a dead end: `TVPairingResultView`'s `.paired` case shows only a
+    /// checkmark, and `TVRootView` only switches to `TVConnectedView` once `pairingState` is back
+    /// to `.idle`. Give the user a short beat to see the confirmation, then advance automatically.
+    /// Runs as its own `Task` (rather than being awaited inline in `pair(with:)`) so `pair(with:)`
+    /// still returns as soon as `.paired` is reached — matching the belt-and-braces "開始" button
+    /// in `TVPairingResultView`, which can also drive this same transition immediately.
+    private func scheduleAutoAdvanceFromPairedState() {
+        Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: self.successAdvanceDelayNanoseconds)
+            if case .paired = self.pairingState {
+                self.resetPairingFlow()
+            }
+        }
     }
 
     func forgetPairing() {

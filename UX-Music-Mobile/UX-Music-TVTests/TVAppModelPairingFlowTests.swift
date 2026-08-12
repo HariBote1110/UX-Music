@@ -61,6 +61,12 @@ final class TVAppModelPairingFlowTests: XCTestCase {
         )
 
         await model.pair(with: makePeer())
+        XCTAssertEqual(model.pairingState, .paired(hostDisplayName: "Mac mini", deviceId: "device-1"))
+
+        // The auto-advance runs as its own zero-delay Task (see `scheduleAutoAdvanceFromPairedState`),
+        // scheduled but not yet necessarily run the instant `pair(with:)` returns; give the run loop
+        // a turn to execute it.
+        try? await Task.sleep(nanoseconds: 50_000_000)
 
         XCTAssertEqual(model.pairingState, .idle)
         XCTAssertTrue(model.isPaired)

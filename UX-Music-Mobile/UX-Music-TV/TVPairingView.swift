@@ -142,6 +142,7 @@ struct TVPairingResultView: View {
                     .foregroundStyle(.green)
                 Text("\(hostDisplayName) とペアリングしました")
                     .font(.title2)
+                Button("開始", action: onRetry)
             case .failed(let message):
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 72))
