@@ -169,3 +169,72 @@
   （今回は`AVFoundation`実体を使うテストまでは書いていない——`TVRelayPlaybackReducer`側の
   純粋ロジックのみTDD対象とし、`AVPlayer`配線自体は実機/シミュレータでのビルド・
   目視確認に留めた）。
+
+## 追記（AVPlayer不可の確定・自前ADTS再生への置き換え）
+
+### Decision
+
+- **実機でAVPlayerが生ADTS中継ストリームを再生できないことが確定した。** `GET
+  /v1/remote/relay`はコンテナなしのチャンクADTS AAC-LCエレメンタリストリームであり、
+  `AVURLAsset`が再生可能アイテムとして解決できず、単なる「失敗しうる」ではなく一貫した
+  ハード失敗だった（既存の失敗検知・ローカル復旧経路自体は正しく機能することを確認済み）。
+- `TVRelayPlaybackController`のAVPlayer経路を、自前実装の`TVRelayStreamPlayer`に置き換えた。
+  構成: `URLSession`ストリーミングdata task（`Authorization: Bearer`ヘッダ付き）→
+  `ADTSFrameParser`（純粋な増分バイト列パーサ、`UX-Music-Mobile/Services/`に配置し
+  iOS側も将来共有可能）→ `TVAACDecoder`（`AVAudioConverter`でADTSフレームをPCM Float32に
+  デコード）→ 約0.75秒のジッタバッファ → 専用`AVAudioEngine`/`AVAudioPlayerNode`で
+  スケジュール再生。
+- **エンジン選択**: `MusicPlayerService`のエンジンを再利用せず、専用の軽量`AVAudioEngine`を
+  都度起動・破棄する方式を採った。`TVRelayPlaybackController`は中継開始前に呼び出し側が
+  ローカル再生を停止している前提のため、エンジンの排他制御を新たに設計する必要がなく、
+  10バンドEQ・LUFS正規化グラフ（中継ストリームは既にホスト側でミックス済みの音声なので
+  不要）に無関係なサブシステムを結合する理由もない。単純さを優先した。
+- **ジッタバッファ**: 0.75秒分のPCMがバッファされてから`playerNode.play()`を呼ぶことで、
+  チャンク転送のネットワーク揺らぎを吸収する。「起動成功」の判定基準もAVPlayerの
+  `rate`監視から「PCMが実際にスケジュールされ始めたか」に変更した（8秒タイムアウト・
+  失敗バナー・ローカル再生復旧という既存の状態遷移自体はそのまま維持）。
+- **DEBUGログ信号**: `TVRelayStreamPlayer`は約2秒ごとに`[RelayStream] rendering rms=<value>`
+  をNSLog出力する（DEBUGビルドのみ）。実機・シミュレータでの検証や将来のデバッグに使う。
+
+### TDDフィクスチャ
+
+- 実際に中継ストリームをキャプチャした`relay-sample.aac`（約6秒、ADTS AAC-LC、
+  256kbps/44.1kHz/stereo）を`UX-Music-TVTests/Fixtures/`にコミットし、
+  `ADTSFrameParserTests`（1バイトずつ・任意境界でのチャンク分割・ゴミバイト混入からの
+  再同期を含む）と`TVAACDecoderTests`（デコード後PCMのRMSが無音でないことを検証）で
+  このサンプルに対してTDDした。tvOSシミュレータのテストスイートは全件green。
+
+### シミュレータE2E検証
+
+- 実ホストなしで検証するため、`relay_sample.bin`を`/v1/remote/relay`としてチャンク転送
+  （約32kB/sペーシングでループ配信）する使い捨てのPython製モックHTTPサーバーを用意した。
+- `UXMusicTVApp`に`UXTV_PREVIEW=relay`ハーネス（`TVRelayStreamPreviewHarness`）を追加し、
+  `UXTV_RELAY_HOST`/`UXTV_RELAY_PORT`/`UXTV_RELAY_TOKEN`環境変数（`simctl launch`実行前に
+  呼び出し元シェルで`SIMCTL_CHILD_`プレフィックス付きでexportする必要がある——
+  `simctl launch <device> <bundle-id> <argv...>`の末尾引数として渡してもプロセス環境には
+  伝播しない）でモックサーバーへ接続し、ペアリングUIなしで`TVRelayPlaybackController.start()`
+  を即座に呼ぶ。
+- 検証中に2つの実行時クラッシュを発見・修正した（詳細はコミットログ参照）:
+  1. `AVAudioEngine.connect(playerNode, to: mainMixerNode, format: nil)`を`start()`時点
+     （デコード形式判明前）に呼んでいたため、ノードのデフォルト出力フォーマットと
+     実際にスケジュールするPCMのフォーマットが食い違い、`AURemoteIO`のレンダースレッドで
+     `EXC_BAD_ACCESS`を起こしていた → 最初のフレームをデコードして実フォーマットが
+     判明してから遅延接続するように変更。
+  2. 接続フォーマットに`interleaved: true`を使っていたため
+     `kAudioUnitErr_FormatNotSupported(-10868)`で例外終了していた →
+     `AVAudioEngine`の内部グラフはnon-interleaved（canonical）フォーマットを要求するため
+     `TVAACDecoder.outputFormat`を`interleaved: false`に変更。
+- 修正後、`xcrun simctl spawn ... log stream`で`[RelayStream] rendering rms=0.08〜0.15`
+  （無音でない値）が約2秒間隔で25秒以上継続することを確認した。モックサーバーはこの後
+  停止済み（使い捨て、リポジトリには含まれない）。
+
+### 残課題
+
+- **実機での音出し確認は未実施。** シミュレータのCoreAudioスタックと実機のtvOS
+  デバイスのオーディオ経路は完全に同一ではないため、実Apple TV実機で実際にホストの
+  中継ストリームに接続し、耳で聞こえることの確認が残っている。
+- ネットワーク切断時の再接続は本フェーズのスコープ外（要求どおり）——ホスト側の停止や
+  切断は既存の失敗検知経路（ネットワークエラー→`fail(reason:)`→ローカル再生復旧）に
+  乗るのみで、自動再接続はしない。
+- ジッタバッファ長（0.75秒）やチャンクごとのデコード粒度（1024サンプル/ADTSフレーム）は
+  実機のWi-Fi環境でのネットワーク揺らぎに対するチューニングをまだ行っていない。
