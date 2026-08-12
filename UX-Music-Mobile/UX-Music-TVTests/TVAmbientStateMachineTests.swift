@@ -58,4 +58,19 @@ final class TVAmbientStateMachineTests: XCTestCase {
         )
         XCTAssertEqual(next, .ambient)
     }
+
+    // MARK: - exitCommand (Menu/Back on Now Playing)
+
+    /// A Menu press while ambient is the "wake up" step of the two-step exit: it must only drop
+    /// back to the normal layout, never fall through and dismiss the whole screen in one press
+    /// (which would risk the OS interpreting a second rapid Menu as "go to the tvOS home screen").
+    func test_exitCommand_fromAmbient_returnsToNormal() {
+        XCTAssertEqual(TVAmbientStateMachine.exitCommand(current: .ambient), .returnToNormal)
+    }
+
+    /// A Menu press while already normal is the second step: dismiss the Now Playing screen back
+    /// to browse.
+    func test_exitCommand_fromNormal_dismisses() {
+        XCTAssertEqual(TVAmbientStateMachine.exitCommand(current: .normal), .dismissScreen)
+    }
 }
