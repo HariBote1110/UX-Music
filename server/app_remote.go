@@ -316,7 +316,7 @@ func (ls *LANServer) remoteStateHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 // remoteCommandHandler accepts remote playback commands from mobile clients.
-// Supported actions: toggle, play, pause, stop, next, prev, seek.
+// Supported actions: toggle, play, pause, stop, next, prev, seek, play-song.
 func (ls *LANServer) remoteCommandHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeAPIError(w, "POST required", http.StatusMethodNotAllowed)
@@ -333,6 +333,7 @@ func (ls *LANServer) remoteCommandHandler(w http.ResponseWriter, r *http.Request
 	var cmd struct {
 		Action string  `json:"action"`
 		Value  float64 `json:"value,omitempty"`
+		SongID string  `json:"songId,omitempty"`
 	}
 	if err := json.Unmarshal(body, &cmd); err != nil {
 		writeAPIError(w, "invalid JSON", http.StatusBadRequest)
@@ -358,6 +359,29 @@ func (ls *LANServer) remoteCommandHandler(w http.ResponseWriter, r *http.Request
 	case "next", "prev":
 		// Queue management lives in the Wails frontend; delegate via event
 		ls.app.emit("remote-command", cmd.Action)
+	case "play-song":
+		// Playback needs the renderer (local files play via <audio>, YouTube
+		// entries route through the official embed which then drives the LAN
+		// relay), so this action is meaningless without a Wails runtime.
+		if CurrentServerMode() != ModeGUI {
+			writeAPIErrorWithCode(w, "gui_required", "play-song requires the desktop app to be running in GUI mode", http.StatusConflict)
+			return
+		}
+		songID := strings.TrimSpace(cmd.SongID)
+		if songID == "" {
+			writeAPIError(w, "missing songId", http.StatusBadRequest)
+			return
+		}
+		if _, ok := remoteLibrarySongByID(songID); !ok {
+			writeAPIError(w, "song not found", http.StatusNotFound)
+			return
+		}
+		// A dedicated event (rather than folding this into the plain-string
+		// "remote-command" used by next/prev) keeps existing subscribers
+		// unaffected: they still receive only a string, unchanged. Renderer
+		// resolves songID against the already-loaded library state and
+		// reuses the same play-entry path a user click would take.
+		ls.app.emit("remote-play-song", songID)
 	default:
 		writeAPIError(w, "unknown action", http.StatusBadRequest)
 		return
