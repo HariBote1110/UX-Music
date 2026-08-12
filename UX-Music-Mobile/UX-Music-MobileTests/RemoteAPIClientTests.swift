@@ -279,6 +279,39 @@ final class RemoteAPIClientTests: XCTestCase {
             XCTAssertEqual(message, "invalid or expired secret")
         }
     }
+
+    func testSendPlaySongCommandPostsActionAndSongId() async throws {
+        MockURLProtocol.handler = { req in
+            XCTAssertEqual(req.httpMethod, "POST")
+            XCTAssertTrue(req.url?.path.contains("v1/remote/command") ?? false)
+            let body = try XCTUnwrap(req.httpBodyStreamOrBody())
+            let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
+            XCTAssertEqual(obj["action"], "play-song")
+            XCTAssertEqual(obj["songId"], "song-1")
+            let data = #"{"ok":true}"#.data(using: .utf8)!
+            let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (data, res)
+        }
+        let client = RemoteAPIClient(baseURLString: "http://127.0.0.1:8765", session: sessionWithMock())
+        try await client.sendPlaySongCommand(songId: "song-1")
+    }
+
+    /// Headless host case (`progress/remote-play-song.md`): the desktop returns 409 with the
+    /// dedicated `gui_required` code when it has no Wails runtime to route playback through.
+    func testSendPlaySongCommandThrowsGuiRequiredOnHeadlessHost() async throws {
+        MockURLProtocol.handler = { req in
+            let data = #"{"error":{"code":"gui_required","message":"GUI is required to play songs"}}"#.data(using: .utf8)!
+            let res = HTTPURLResponse(url: req.url!, statusCode: 409, httpVersion: nil, headerFields: nil)!
+            return (data, res)
+        }
+        let client = RemoteAPIClient(baseURLString: "http://127.0.0.1:8765", session: sessionWithMock())
+        do {
+            try await client.sendPlaySongCommand(songId: "song-1")
+            XCTFail("expected an error")
+        } catch RemoteAPIError.server(let code, _) {
+            XCTAssertEqual(code, "gui_required")
+        }
+    }
 }
 
 private extension URLRequest {

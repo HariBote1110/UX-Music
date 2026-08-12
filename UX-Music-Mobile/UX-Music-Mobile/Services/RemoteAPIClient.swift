@@ -299,6 +299,22 @@ struct RemoteAPIClient: Sendable {
         try Self.throwIfNotOK(response, data: data)
     }
 
+    /// `POST /v1/remote/command` (`action: "play-song"`) — starts playback of `songId` on the
+    /// host (`progress/remote-play-song.md`). Unlike `sendCommand`, this throws rather than
+    /// swallowing failures into a bare `Bool`: callers (the TV's "PC経由で再生中" flow) need to
+    /// distinguish an unknown song (404), a headless host that cannot run playback at all (409
+    /// `gui_required` — `RemoteAPIError.server(code: "gui_required", ...)`), and a plain network
+    /// failure, each of which needs a different localised message.
+    func sendPlaySongCommand(songId: String) async throws {
+        let json = try JSONSerialization.data(withJSONObject: ["action": "play-song", "songId": songId])
+        var req = try authorizedRequest(path: "/v1/remote/command")
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = json
+        let (data, response) = try await session.data(for: req)
+        try Self.throwIfNotOK(response, data: data)
+    }
+
     func sendCommand(action: String, value: Double?) async throws -> Bool {
         var body: [String: Any] = ["action": action]
         if let value { body["value"] = value }
