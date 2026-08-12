@@ -20,6 +20,8 @@ struct UXMusicTVApp: App {
                 TVBrowsePreviewHarness()
             case "albumdetail":
                 TVLibraryDetailPreviewHarness()
+            case "youtubebadge":
+                TVYouTubeBadgePreviewHarness()
             case "detailplay":
                 TVDetailPlayPreviewHarness()
             case "relay":
@@ -74,7 +76,7 @@ struct TVDetailPlayPreviewHarness: View {
                 TVLibraryDetailView(content: content, client: client, onPlay: simulateTrackSelection)
             case .nowPlaying:
                 TVNowPlayingView(player: player, client: client)
-            case .relay, .none:
+            case .relay, .remotePlaySong, .none:
                 EmptyView()
             }
         }

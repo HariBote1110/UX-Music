@@ -290,6 +290,102 @@
         }
       }
     },
+    "tv.remotePlay.badge" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PC"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PC"
+          }
+        }
+      }
+    },
+    "tv.remotePlay.error.guiRequired" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This song plays through the PC app. Please make sure UX Music is running on your computer."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この曲はPCアプリ経由で再生されます。パソコンでUX Musicを起動してください。"
+          }
+        }
+      }
+    },
+    "tv.remotePlay.error.requestFailed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't ask the PC to start playback."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PCへの再生開始リクエストに失敗しました。"
+          }
+        }
+      }
+    },
+    "tv.remotePlay.error.timeout" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playback didn't start on the PC in time."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PCでの再生が時間内に開始しませんでした。"
+          }
+        }
+      }
+    },
+    "tv.remotePlay.error.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't play via PC"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PC経由の再生に失敗しました"
+          }
+        }
+      }
+    },
+    "tv.remotePlay.waiting.subtitle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starting playback on the PC…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PCで再生を開始しています…"
+          }
+        }
+      }
+    },
     "tv.relay.error.requestFailed" : {
       "localizations" : {
         "en" : {

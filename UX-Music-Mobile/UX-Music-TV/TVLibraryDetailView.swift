@@ -119,6 +119,21 @@ struct TVLibraryDetailView: View {
     }
 }
 
+/// Small "PC" marker shown next to YouTube-sourced tracks (`Song.isYouTube`) so it's clear
+/// selecting them plays through the desktop's official YouTube embed + LAN relay rather than local
+/// playback (`progress/tvos-relay-reception.md` 追記). Deliberately subtle — a small pill, not a
+/// full-size icon — to match the cinematic language's restraint (see `TVDesignTokens`).
+struct TVRemotePlayBadge: View {
+    var body: some View {
+        Text(String(localized: "tv.remotePlay.badge"))
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(TVDesignTokens.signaturePink.opacity(0.25), in: Capsule())
+            .foregroundStyle(.white)
+    }
+}
+
 private struct TVTrackRow: View {
     let index: Int
     let song: Song
@@ -130,9 +145,14 @@ private struct TVTrackRow: View {
                 .foregroundStyle(TVDesignTokens.textSecondary)
                 .frame(width: 32, alignment: .trailing)
             VStack(alignment: .leading, spacing: 2) {
-                Text(song.title)
-                    .font(.headline)
-                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    Text(song.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    if song.isYouTube {
+                        TVRemotePlayBadge()
+                    }
+                }
                 if !song.artist.isEmpty {
                     Text(song.artist)
                         .font(.subheadline)
@@ -178,6 +198,36 @@ struct TVLibraryDetailPreviewHarness: View {
                 duration: Double(150 + i * 7)
             )
         }
+    )
+
+    var body: some View {
+        TVLibraryDetailView(content: Self.content, client: client) { _, _ in }
+    }
+}
+
+/// Preview-only harness for `UXTV_PREVIEW=youtubebadge` (`progress/tvos-relay-reception.md` 追記):
+/// a detail screen with one local track and one YouTube-sourced stub track (`sourceType: .youtube`)
+/// so `TVRemotePlayBadge` (the small "PC" marker on `TVTrackRow`) can be screenshotted without
+/// pairing/network.
+struct TVYouTubeBadgePreviewHarness: View {
+    private let client = RemoteAPIClient(baseURLString: "http://198.51.100.1:9999")
+
+    private static let content = TVLibraryDetailContent(
+        id: "preview-youtubebadge",
+        title: "デモアルバム（YouTube混在）",
+        artist: "UX Music Demo",
+        artworkId: "preview-1",
+        songs: [
+            Song(id: "local-1", path: "/a.mp3", title: "ローカル曲", artist: "UX Music Demo", duration: 180),
+            Song(
+                id: "yt-1",
+                path: "",
+                title: "YouTube由来の曲 - PC経由で再生されます",
+                artist: "UX Music Demo",
+                duration: 210,
+                sourceType: .youtube
+            ),
+        ]
     )
 
     var body: some View {

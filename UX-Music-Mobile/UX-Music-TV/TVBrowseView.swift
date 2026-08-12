@@ -6,12 +6,16 @@ enum TVBrowsePresentation: Identifiable, Equatable {
     case nowPlaying
     case detail(TVLibraryDetailContent)
     case relay
+    /// "PC経由で再生中" flow (`progress/tvos-relay-reception.md` 追記): shown while a YouTube-sourced
+    /// song selection is being sent to the host and while waiting for `relay.active` to flip true.
+    case remotePlaySong
 
     var id: String {
         switch self {
         case .nowPlaying: return "nowPlaying"
         case .detail(let content): return "detail:\(content.id)"
         case .relay: return "relay"
+        case .remotePlaySong: return "remotePlaySong"
         }
     }
 
@@ -33,9 +37,31 @@ struct TVBrowseView: View {
     @ObservedObject var playbackController: TVPlaybackController
     @ObservedObject var relayModel: TVRelayModel
     @ObservedObject var relayPlaybackController: TVRelayPlaybackController
+    @StateObject private var remotePlaySongCoordinator: TVRemotePlaySongCoordinator
     let player: MusicPlayerService
     let client: RemoteAPIClient
     let onSignOut: () -> Void
+
+    init(
+        browseModel: TVBrowseModel,
+        playbackController: TVPlaybackController,
+        relayModel: TVRelayModel,
+        relayPlaybackController: TVRelayPlaybackController,
+        player: MusicPlayerService,
+        client: RemoteAPIClient,
+        onSignOut: @escaping () -> Void
+    ) {
+        self.browseModel = browseModel
+        self.playbackController = playbackController
+        self.relayModel = relayModel
+        self.relayPlaybackController = relayPlaybackController
+        self.player = player
+        self.client = client
+        self.onSignOut = onSignOut
+        _remotePlaySongCoordinator = StateObject(
+            wrappedValue: TVRemotePlaySongCoordinator(client: client, relayPlaybackController: relayPlaybackController)
+        )
+    }
 
     /// Single source of truth for whichever full-screen cover is up (Now Playing / detail /
     /// relay banner), replacing three sibling `.fullScreenCover` modifiers that used to drive
@@ -86,6 +112,11 @@ struct TVBrowseView: View {
                 TVRelayBannerView(relayModel: relayModel, relayPlaybackController: relayPlaybackController) {
                     presentation = nil
                 }
+            case .remotePlaySong:
+                TVRemotePlaySongWaitingView(coordinator: remotePlaySongCoordinator) {
+                    remotePlaySongCoordinator.cancel()
+                    presentation = nil
+                }
             }
         }
         // If the host stops relaying while the banner is up (e.g. the PC operator paused or
@@ -95,6 +126,14 @@ struct TVBrowseView: View {
                 presentation = nil
             }
         }
+        // Once the "PC経由で再生中" flow observes `relay.active` and starts
+        // `relayPlaybackController`, hand off from the waiting screen to the same relay banner the
+        // "PCで再生中のYouTube" shelf entry uses.
+        .onChange(of: remotePlaySongCoordinator.state) { _, state in
+            if presentation == .remotePlaySong, case .active = state {
+                presentation = .relay
+            }
+        }
     }
 
     /// Pauses local playback and switches to the host's YouTube relay stream (Phase 3-3 §3-3).
@@ -102,6 +141,15 @@ struct TVBrowseView: View {
         player.stop()
         relayPlaybackController.start()
         presentation = .relay
+    }
+
+    /// Selecting a YouTube-sourced song (browse shelf or detail track list): pauses local
+    /// playback and sends `play-song` to the host, then waits for the relay to come up
+    /// (`progress/tvos-relay-reception.md` 追記).
+    private func playViaPC(_ song: Song) {
+        player.stop()
+        remotePlaySongCoordinator.start(songId: song.id)
+        presentation = .remotePlaySong
     }
 
     @ViewBuilder
@@ -160,13 +208,21 @@ struct TVBrowseView: View {
     /// rule). `RemoteDesktopPlaylist`'s queue is pre-derived by `TVLibraryDetailContent.playlist`
     /// via `TVPlaylistQueueBuilder.songs(for:allSongs:)` before reaching here.
     private func play(_ song: Song, queue: [Song]) async {
-        await playbackController.play(song, queue: queue)
-        // Auto-enter Now Playing when playback starts from the browse UI (Phase 2 §1), whether
-        // called from a shelf tap (no cover up yet) or from the detail screen's track selection
-        // (replaces the still-presented detail cover with Now Playing in one step — see
-        // `presentation`'s doc comment above for why this must go through a single
-        // `.fullScreenCover(item:)` rather than a dismiss-then-present pair).
-        presentation = .nowPlaying
+        // Selection-routing decision (`TVSongPlaybackRouting`): YouTube-sourced songs have no
+        // audio the TV can stream directly, so they play via the paired PC's own playback + LAN
+        // relay instead of the local `TVPlaybackController` path.
+        switch TVSongPlaybackRouting.route(for: song) {
+        case .viaPC:
+            playViaPC(song)
+        case .local:
+            await playbackController.play(song, queue: queue)
+            // Auto-enter Now Playing when playback starts from the browse UI (Phase 2 §1), whether
+            // called from a shelf tap (no cover up yet) or from the detail screen's track selection
+            // (replaces the still-presented detail cover with Now Playing in one step — see
+            // `presentation`'s doc comment above for why this must go through a single
+            // `.fullScreenCover(item:)` rather than a dismiss-then-present pair).
+            presentation = .nowPlaying
+        }
     }
 }
 
@@ -417,6 +473,56 @@ private struct TVRelayBannerView: View {
                 .font(.system(size: 72))
                 .foregroundStyle(.yellow)
             Text(String(localized: "tv.relay.error.title"))
+                .font(.title2)
+            Text(reason)
+                .font(.body)
+                .foregroundStyle(TVDesignTokens.textSecondary)
+                .multilineTextAlignment(.center)
+            Button(String(localized: "tv.relay.banner.exit"), action: onExit)
+        }
+    }
+}
+
+/// Shown while the "PC経由で再生中" flow (`TVRemotePlaySongCoordinator`) is sending `play-song` and
+/// waiting for the host's relay to come up. On success `TVBrowseView` swaps this cover for
+/// `TVRelayBannerView` (`onChange(of: remotePlaySongCoordinator.state)`); on failure/timeout this
+/// same view shows the localised error with an exit button, matching `TVRelayBannerView`'s
+/// failure-recovery presentation.
+private struct TVRemotePlaySongWaitingView: View {
+    @ObservedObject var coordinator: TVRemotePlaySongCoordinator
+    let onExit: () -> Void
+
+    var body: some View {
+        Group {
+            switch coordinator.state {
+            case .failed(let reason):
+                failureContent(reason: reason)
+            case .idle, .sending, .waitingForRelay, .active:
+                waitingContent
+            }
+        }
+        .padding(64)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(TVDesignTokens.charcoalBase)
+    }
+
+    private var waitingContent: some View {
+        VStack(spacing: 32) {
+            ProgressView()
+                .controlSize(.large)
+            Text(String(localized: "tv.remotePlay.waiting.subtitle"))
+                .font(.headline)
+                .foregroundStyle(TVDesignTokens.textSecondary)
+            Button(String(localized: "tv.relay.banner.exit"), action: onExit)
+        }
+    }
+
+    private func failureContent(reason: String) -> some View {
+        VStack(spacing: 24) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 72))
+                .foregroundStyle(.yellow)
+            Text(String(localized: "tv.remotePlay.error.title"))
                 .font(.title2)
             Text(reason)
                 .font(.body)
