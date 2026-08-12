@@ -49,6 +49,24 @@ final class TVAppModelPairingFlowTests: XCTestCase {
         XCTAssertEqual(TVServerConfigStore(defaults: defaults).load().token, "tv-token")
     }
 
+    func testSuccessfulPairingAutoAdvancesToIdleAfterSuccessBeat() async {
+        let stub = StubTVPairingClient(
+            startResult: .success(TVPairingStart(sessionId: "s1", code: "654321", expiresAt: "")),
+            confirmResult: .success(TVPairingConfirmed(deviceId: "device-1", token: "tv-token"))
+        )
+        let model = TVAppModel(
+            pairingClient: stub,
+            store: TVServerConfigStore(defaults: defaults),
+            successAdvanceDelayNanoseconds: 0
+        )
+
+        await model.pair(with: makePeer())
+
+        XCTAssertEqual(model.pairingState, .idle)
+        XCTAssertTrue(model.isPaired)
+        XCTAssertEqual(model.serverConfig.token, "tv-token")
+    }
+
     func testStartFailureLeavesNoTokenPersisted() async {
         let stub = StubTVPairingClient(
             startResult: .failure(TVPairingError.network("host unreachable")),
