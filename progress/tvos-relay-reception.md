@@ -238,3 +238,71 @@
   乗るのみで、自動再接続はしない。
 - ジッタバッファ長（0.75秒）やチャンクごとのデコード粒度（1024サンプル/ADTSフレーム）は
   実機のWi-Fi環境でのネットワーク揺らぎに対するチューニングをまだ行っていない。
+
+## 追記（2026-08-13）: TVでのYouTube曲選択→PC経由再生→中継自動参加
+
+対象: `UX-Music-Mobile/`のみ。デスクトップ側の`POST /v1/remote/command`（`action:
+"play-song"`）は既に別エージェントが実装・マージ済み（`progress/remote-play-song.md`
+参照）。ここではTVがそれを叩いて中継に自動参加するところまでを実装した。
+
+### Decision
+
+- **選曲ルーティングの判別軸**: `Song.isYouTube`（`sourceType == .youtube`、iOS/Mobile側の
+  `rowTapAction(isDownloaded:)`が既にYouTube由来かどうかの判定に使っている同じフィールド）
+  をそのまま流用した。TV独自の判定ロジックは作らず、`TVSongPlaybackRouting.route(for:)`
+  という1行の純粋関数（`song.isYouTube ? .viaPC : .local`）に切り出しただけ。ローカル曲は
+  既存の`TVPlaybackController.play(_:queue:)`経路を一切変更していない。
+
+- **待機フローの状態機械**: `TVRemotePlaySongReducer`（`idle → sending → waitingForRelay →
+  active` / `failed(reason:)`）を`TVRelayPlaybackReducer`と同じ設計パターンで新設し、
+  ネットワーク副作用を`TVRemotePlaySongCoordinator`（`ObservableObject`）に分離した。
+  Coordinatorは`RemoteAPIClient.sendPlaySongCommand(songId:)`を叩き、成功後は
+  `GET /v1/remote/state`を0.5秒間隔・最大10秒ポーリングして`relay.active`を待つ
+  （`TVRelayStateBlock.parse`を再利用——中継可否棚の判定と同じパース関数）。`active`を
+  観測したら`TVRelayPlaybackController.start()`を呼んで既存の中継受信（`TVRelayStreamPlayer`
+  経由のADTS AAC-LC再生）にそのまま合流させる——新しい受信パスは作っていない。
+
+- **UI統合**: `TVBrowseView.play(_:queue:)`の入口を`TVSongPlaybackRouting.route(for:)`で
+  分岐。`.viaPC`側は`player.stop()`→`remotePlaySongCoordinator.start(songId:)`→
+  `TVBrowsePresentation.remotePlaySong`（新設の待機/エラー画面）を表示し、
+  `remotePlaySongCoordinator.state`が`.active`になったら`presentation = .relay`へスワップして
+  既存の`TVRelayBannerView`（ブロードキャスト型・操作なし）に着地する。失敗
+  （`gui_required`・404・タイムアウト）は`TVRelayBannerView`の失敗表示と同じ見た目
+  （アイコン＋理由文＋「終了」ボタン）で待機画面自身が表示し、ボタンで
+  `fullScreenCover`を閉じて元の画面（ブラウズ棚 or 詳細トラック一覧）に戻る。
+  `RemoteAPIClient.sendPlaySongCommand`は`sendCommand(action:value:)`と違い`Bool`ではなく
+  `throws`にした——`gui_required`（409）・未知の曲（404）・単純なネットワーク失敗を
+  呼び出し側で区別してローカライズ文言を出し分ける必要があるため。
+
+- **視覚マーカーの配置範囲**: 「YouTube由来の曲はPC経由で再生される」ことを示す
+  `TVRemotePlayBadge`（小さな「PC」ピル、`TVDesignTokens.signaturePink`基調）は
+  `TVLibraryDetailView`のトラック行（`TVTrackRow`）にのみ追加した。ブラウズ棚は現状
+  アルバム/プレイリスト単位（`Album.fromSongs`によるグルーピング）で、個々の曲を直接
+  並べる棚が存在しないため、「棚に出す」対象がそもそも無い。将来単曲棚が追加された場合は
+  同じ`TVRemotePlayBadge`を再利用する想定。
+
+### Alternatives considered
+
+- **`"remote-command"`と同様に`sendCommand(action:value:)`を`Bool`のまま拡張し`songId`も
+  渡せるようにする** → 呼び出し側（TVのPC経由再生フロー）が失敗理由（`gui_required`か
+  ただのネットワーク断か）を区別できず、ローカライズ文言を出し分けられないため不採用。
+  専用の`sendPlaySongCommand(songId:) async throws`を新設した。
+- **待機UIを`TVRelayBannerView`に状態を追加してそのまま流用する** → 「PCへの送信中／
+  中継が上がるのを待っている」という、既存の`TVRelayPlaybackState`にはない中間状態が
+  必要になり、既存の型を汚さず`TVRemotePlaySongState`を独立させた方が
+  `TVRelayPlaybackReducer`のテストの意味も曇らせずに済むと判断した。UIの見た目
+  （アイコン・ボタン配置）はあえて`TVRelayBannerView`の失敗表示に揃えている。
+
+### Constraints / Gotchas
+
+- ポーリング間隔0.5秒・タイムアウト10秒は`TVRemotePlaySongCoordinator`のイニシャライザ
+  引数として注入可能にしてある（`TVRelayModel.startPolling(interval:)`と同じ設計）。
+  実機でのチューニングが必要になった場合はここを調整する。
+- TDD対象は`TVSongPlaybackRouting.route(for:)`と`TVRemotePlaySongReducer`の純粋部分のみ
+  （`UX-Music-TVTests/TVRemotePlaySongFlowTests.swift`）。`TVRemotePlaySongCoordinator`自体
+  （ネットワーク・ポーリングの副作用）はユニットテストしていない——実ホストを立てずに
+  検証する指示だったため、UI差し込み（`TVBrowseView`の分岐）と状態遷移ロジックの正しさで
+  担保する方針とした。
+- UI確認は`UXTV_PREVIEW=youtubebadge`（新設）で、ローカル曲とYouTube曲混在の詳細画面を
+  ペアリング/ネットワーク無しでスクリーンショットできる。他のプレビューモード
+  （`nowplaying`/`browse`/`albumdetail`/`detailplay`/`relay`）と同じ仕組み。
