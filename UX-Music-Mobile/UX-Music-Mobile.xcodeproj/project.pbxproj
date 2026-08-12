@@ -210,6 +210,8 @@
 		ED26D0AB10E0419E8C8D840A /* TVRelayPlaybackReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28EF570A97E4291A2F5576D /* TVRelayPlaybackReducer.swift */; };
 		177B41DBDD424B8BA4C0AC21 /* TVLibraryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85B5827875848A0842DF2C3 /* TVLibraryDetailView.swift */; };
 		DE33DF0010974B6695E4E0A4 /* TVRelayPlaybackReducerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBDFAD59F9134E18947F7BA3 /* TVRelayPlaybackReducerTests.swift */; };
+		D707317B477549A0A811AB30 /* TVRemotePlaySongFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05F09BE911440FAAAEFBF79 /* TVRemotePlaySongFlow.swift */; };
+		C2BD7392157F4FA3ABC5093D /* TVRemotePlaySongFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9BBB07B1B5A44A48A327568 /* TVRemotePlaySongFlowTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -435,6 +437,8 @@
 		A28EF570A97E4291A2F5576D /* TVRelayPlaybackReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRelayPlaybackReducer.swift; sourceTree = "<group>"; };
 		C85B5827875848A0842DF2C3 /* TVLibraryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVLibraryDetailView.swift; sourceTree = "<group>"; };
 		EBDFAD59F9134E18947F7BA3 /* TVRelayPlaybackReducerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRelayPlaybackReducerTests.swift; sourceTree = "<group>"; };
+		B05F09BE911440FAAAEFBF79 /* TVRemotePlaySongFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRemotePlaySongFlow.swift; sourceTree = "<group>"; };
+		C9BBB07B1B5A44A48A327568 /* TVRemotePlaySongFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRemotePlaySongFlowTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -724,6 +728,7 @@
 				6D54A3B1339A47648ED348A2 /* Localizable.xcstrings */,
 				C85B5827875848A0842DF2C3 /* TVLibraryDetailView.swift */,
 				A28EF570A97E4291A2F5576D /* TVRelayPlaybackReducer.swift */,
+				B05F09BE911440FAAAEFBF79 /* TVRemotePlaySongFlow.swift */,
 				1F2A3B4C5D6E7F8091A2B3C4 /* Info.plist */,
 			);
 			path = "UX-Music-TV";
@@ -747,6 +752,7 @@
 				B58148FC2DE8459CAFF9072F /* TVPlaybackCachePlanTests.swift */,
 				9B1DF82EC02B47E3BB01405E /* TVAmbientStateMachineTests.swift */,
 				EBDFAD59F9134E18947F7BA3 /* TVRelayPlaybackReducerTests.swift */,
+				C9BBB07B1B5A44A48A327568 /* TVRemotePlaySongFlowTests.swift */,
 				519492E5D9224E618D074703 /* ADTSFrameParserTests.swift */,
 				B877759BF6134232BD4ACD0D /* TVAACDecoderTests.swift */,
 				92D8CE0D89C34AACA2B5A81A /* relay-sample.aac */,
@@ -1138,6 +1144,7 @@
 				3F98CC49EFAD43F98AA2A83C /* TVNowPlayingView.swift in Sources */,
 				177B41DBDD424B8BA4C0AC21 /* TVLibraryDetailView.swift in Sources */,
 				ED26D0AB10E0419E8C8D840A /* TVRelayPlaybackReducer.swift in Sources */,
+				D707317B477549A0A811AB30 /* TVRemotePlaySongFlow.swift in Sources */,
 				2926FA4B7FB54CC0B62ACD33 /* ADTSFrameParser.swift in Sources */,
 				4AC2FA27841E413C9A104624 /* TVAACDecoder.swift in Sources */,
 				D53D95A50FA449B58C316F74 /* TVRelayStreamPlayer.swift in Sources */,
@@ -1164,6 +1171,7 @@
 				DBC591AC0E6B4B9F87F6A23E /* TVPlaybackCachePlanTests.swift in Sources */,
 				94DB3D1F88174415A2DDBF71 /* TVAmbientStateMachineTests.swift in Sources */,
 				DE33DF0010974B6695E4E0A4 /* TVRelayPlaybackReducerTests.swift in Sources */,
+				C2BD7392157F4FA3ABC5093D /* TVRemotePlaySongFlowTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
