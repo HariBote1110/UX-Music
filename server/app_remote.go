@@ -217,6 +217,18 @@ func remoteFileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Live streaming transcode: a client with no cached copy (typically a TV
+	// with limited local storage) can start playback in well under a second
+	// via a live ffmpeg encode, while separately downloading the original
+	// through a plain (no ?stream=) request for future offline playback.
+	// Range requests are not meaningful here (there is no seekable
+	// Content-Length — the response is chunked) and are ignored rather than
+	// honoured.
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("stream")), "aac") {
+		serveFileStreamAAC(w, r, filePath)
+		return
+	}
+
 	// Phone / full-quality: skip Watch transcoding (original bitrate and container).
 	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("source")), "original") {
 		safeName := filepath.Base(filePath)
