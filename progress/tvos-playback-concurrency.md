@@ -98,3 +98,76 @@ relay/stream 両パスを共通化）は、`MusicPlayerService` 側との結合�
 
 ## DEBUG watchdog
 今回のスコープでは未実装（Phase 2 のフル actor 統合と合わせて着手するのが妥当と判断）。
+
+## 追記（ストレス回帰スイート・DEBUG watchdog 実装）
+
+順位1〜2の修正（`elapsedSeconds`/`pause()`/`resume()`）が実運用の連打・高頻度切り替えでも
+本当にハングしないことを証明するため、`UX-Music-TVTests/TVPlaybackStressTests.swift` を追加した。
+すべて `XCTestExpectation` ベースのハードタイムアウト（`runWithHardTimeout`）で包み、ハングした
+場合はテスト自体が「期待値未充足」で FAIL する（スイート全体を巻き込んで停止することはない）。
+
+### スイート構成
+1. `testFiftyRapidPlaySwitchCyclesAlternatingStreamAndCachedEndsOnLastRequestedSong` — キャッシュ
+   ミス（ストリーム強制）曲とキャッシュヒットに転じる曲を交互に、待機なしで50回連続 `play()`。
+   最終セッションが直近リクエスト曲を再生していることのみを検証（到達すること自体が回帰シグナル）。
+2. `testStopWhileChunksArrivingThenImmediateRestartTwentyTimesDoesNotHang` — `TVRelayStreamPlayer`
+   単体に対し、ジッターバッファ（0.75秒）を満たす前に `stop()` → 即 `start()` を20回連打し、
+   最後に1セッションを完走させて健全性を確認。
+3. `testPauseResumeIdentityAfterFiveConsecutiveSwitchesAffectsCurrentSongOnly` — 5連続曲切り替え後の
+   pause/resume が直近セッションのみに作用することを検証（`TVPlaybackControllerStreamSwitchTests`の
+   1回切り替え版を5回に拡張）。
+
+### 結果（ローカル実行・シミュレータ）
+- 3連続 `-only-testing` 実行、すべて PASS（`testFiftyRapid...`約0.3〜0.5秒、
+  `testStopWhileChunksArriving...`約0.17秒、`testPauseResumeIdentity...`約0.05〜0.07秒）。
+- tvOS フルスイート（119件）・iOS フルスイート（532件、共有コア `TVRelayStreamPlayer.swift` を
+  触ったため実行）ともに 0 failed。
+
+### スイートが実際に洗い出した本物のバグ（本番コード側の修正）
+`testStopWhileChunksArrivingThenImmediateRestartTwentyTimesDoesNotHang` を最初に実装した際、
+最終セッションが `jitterBufferSeconds`（0.75秒）を一度も満たせず10秒タイムアウトで FAIL した。
+`TVRelayStreamPlayer.swift` に一時的な診断ログ（`/tmp` へのファイル書き込み、後で全削除）を仕込んで
+追跡した結果、監査（順位3「generationLock」）とは別の、実装済みだったはずの stale-chunk 破棄機構
+そのもののバグを発見:
+
+- `urlSession(_:dataTask:didReceive:)` で `capturedGeneration = self.generation` を
+  **`engineQueue.async` のクロージャの中で** 読んでいた。クロージャ内では代入直後に
+  `handle(frames, expectedGeneration: capturedGeneration)` を呼ぶだけで、その間に `generation` が
+  変わる余地（サスペンションポイントや別クロージャの割り込み）が存在しない。つまり
+  `expectedGeneration == generation` は常に自明に真になり、「stale chunk を捨てる」というコメントの
+  意図に反して実質何も判定していなかった。
+- さらに、`parser.feed(data)` はこの（無意味な）判定より前に無条件で実行されていた。`parser` は
+  セッションごとではなく `TVRelayStreamPlayer` インスタンス共有の単一プロパティなので、stale な
+  古いセッションのバイト列が新しいセッションの ADTS フレーム境界検出用パーサに混入し、フレーム
+  同期を破壊していた（`handle` 内で最終的に捨てられるフレームが出てきても、その時点で既に
+  `parser` のバイトストリーム状態は壊れている）。
+
+修正: `capturedGeneration` を **delegate queue 上、`engineQueue.async` にディスパッチする前**に
+読むよう変更し、かつ `parser.feed(data)` の直前に `capturedGeneration == self.generation` の
+再チェックを追加（`parser` に触れる前に stale chunk を完全に捨てる）。20連打ストレスという
+極端な条件でなければ表面化しない不変条件違反だった。
+
+### テストハーネス側で踏んだ落とし穴（記録として）
+上記の本番修正後もテスト2は同じ10秒タイムアウトで FAIL し続けた。診断ログで確認すると
+`TVRelayStreamPlayer` 自体は正常に最後まで完走（`bufferedSeconds` がジッター閾値を大幅に超えて
+最後まで到達、デコードエラーなし）していたが、`relayStreamPlayerDidStartRendering` の
+`DispatchQueue.main.async` コールバックだけが待機中ずっと配送されなかった。原因はテスト側:
+`XCTWaiter().wait(for:timeout:)`（`TVRelayStreamPlayerLifecycleTests` の `RenderRecorder.wait` を
+そのまま踏襲）を `@MainActor` の `Task` 内部から同期的に呼んでいたため、`DispatchQueue.main` の
+キューが実際にドレインされる機会が得られなかった（伝統的な同期 `XCTestCase` メソッド直下で
+呼ぶ場合とは実行コンテキストが異なる）。`TVPlaybackControllerStreamSwitchTests` の
+`waitUntilStreaming` と同じ「`await Task.sleep` によるポーリング」に置き換えて解消した。
+以後、`@MainActor` の `Task` 内から `TVRelayStreamPlayerDelegate` 系コールバックを待つ新規テストは
+ブロッキング `XCTWaiter().wait` ではなく非同期ポーリングを使うこと。
+
+## DEBUG watchdog（実装済み）
+`UX-Music-TV/MainThreadWatchdog.swift`（DEBUG専用）を追加し、`UXMusicTVApp.init()` から起動。
+バックグラウンドの `DispatchSourceTimer` が0.5秒おきに `DispatchQueue.main` へ ping を送り、
+直前の ping が2秒以内にサービスされなければ `[MainThreadWatchdog] main thread blocked >2.0s
+(blocked for X.XXs)` を一度だけログ（`logSink`、DEBUGビルドは `NSLog`、テストは注入差し替え可能）。
+`Thread.callStackSymbols` は呼び出し元スレッド自身のスタックしか取れない（他スレッドのスタックを
+外部から取得する公開APIがない）ため、実機で本当のスタックが欲しい場合は、このログ行が出た
+タイムスタンプを手がかりに `lldb`（`bt` on thread 1）やハングレポートを併用する運用を想定。
+実機ログで `[MainThreadWatchdog]` を検索すればハング発生箇所・発生時刻の当たりが付けられる。
+ユニットテスト（`MainThreadWatchdogTests.swift`）は実際に `DispatchQueue.main.sync` でメインスレッド
+をブロックし、注入した `logSink` にログが届くことを検証している。

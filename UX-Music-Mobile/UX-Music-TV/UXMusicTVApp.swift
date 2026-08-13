@@ -5,6 +5,22 @@ import SwiftUI
 /// `markdown/appletv-servermode-plan.md`, Phase 1-3 onward).
 @main
 struct UXMusicTVApp: App {
+    #if DEBUG
+    /// Started once, on first access, from `init()` below — see `MainThreadWatchdog`'s doc comment
+    /// (`progress/tvos-playback-concurrency.md` "DEBUG watchdog" 追記) for why this exists: a real-
+    /// device way to catch the audit's deferred rank 3/4 hazards (or anything else) actually
+    /// blocking the main thread, rather than only reasoning about it statically.
+    private static let mainThreadWatchdog: MainThreadWatchdog = {
+        let watchdog = MainThreadWatchdog()
+        watchdog.start()
+        return watchdog
+    }()
+
+    init() {
+        _ = Self.mainThreadWatchdog // force the lazy static initializer (and thus `start()`) to run
+    }
+    #endif
+
     var body: some Scene {
         WindowGroup {
             #if DEBUG
