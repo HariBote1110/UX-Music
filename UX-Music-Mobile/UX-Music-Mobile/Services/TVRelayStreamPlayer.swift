@@ -115,6 +115,17 @@ class TVRelayStreamPlayer: NSObject {
     /// they now use `engineQueue.async` (never `.sync`) for the actual engine teardown/setup work.
     private let generationLock = NSLock()
     private var _generation: Int = 0
+
+    /// Guards `cachedElapsedSeconds` ONLY — deliberately a separate, always-cheap lock rather than
+    /// routing `elapsedSeconds` through `engineQueue.sync` (`progress/tvos-playback-concurrency.md`
+    /// "MainActor→engineQueue.sync" 追記). The 250ms progress-mirror poll
+    /// (`TVPlaybackController.progressMirrorTask`) reads this from the MainActor on every tick, and
+    /// blocking that on `engineQueue`'s FIFO — which can be busy decoding/scheduling a batch of
+    /// frames — was the highest-ranked hang candidate in the audit. `cachedElapsedSeconds` is
+    /// written from `engineQueue` (inside `schedule`, i.e. already serialised with engine mutation)
+    /// and read from any thread under this tiny, always-uncontended lock instead.
+    private let elapsedLock = NSLock()
+    private var cachedElapsedSeconds: Double = 0
     private var generation: Int {
         generationLock.lock()
         defer { generationLock.unlock() }
@@ -189,6 +200,7 @@ class TVRelayStreamPlayer: NSObject {
             didStartRendering = false
             bufferedSeconds = 0
             isEngineConnected = false
+            refreshCachedElapsedSeconds()
 
             if !engine.attachedNodes.contains(playerNode) {
                 engine.attach(playerNode)
@@ -237,6 +249,7 @@ class TVRelayStreamPlayer: NSObject {
             didStartRendering = false
             bufferedSeconds = 0
             isEngineConnected = false
+            refreshCachedElapsedSeconds()
         }
     }
 
@@ -247,25 +260,41 @@ class TVRelayStreamPlayer: NSObject {
     /// (`didStartRendering`). Used by `TVSongStreamController`/`TVPlaybackController` to mirror
     /// progress into `MusicPlayerService.updateExternalPlaybackProgress` for `TVNowPlayingView`.
     var elapsedSeconds: Double {
-        engineQueue.sync {
-            guard didStartRendering,
-                  let nodeTime = playerNode.lastRenderTime,
-                  let playerTime = playerNode.playerTime(forNodeTime: nodeTime),
-                  playerTime.sampleRate > 0
-            else { return 0 }
-            return Double(playerTime.sampleTime) / playerTime.sampleRate
+        elapsedLock.lock()
+        defer { elapsedLock.unlock() }
+        return cachedElapsedSeconds
+    }
+
+    /// Recomputes `cachedElapsedSeconds` from the render clock. Always called from `engineQueue`
+    /// (`schedule`, already serialised with engine mutation there) — never touches `engineQueue`
+    /// itself, so it never contends with a busy decode/schedule backlog.
+    private func refreshCachedElapsedSeconds() {
+        var value: Double = 0
+        if didStartRendering,
+           let nodeTime = playerNode.lastRenderTime,
+           let playerTime = playerNode.playerTime(forNodeTime: nodeTime),
+           playerTime.sampleRate > 0 {
+            value = Double(playerTime.sampleTime) / playerTime.sampleRate
         }
+        elapsedLock.lock()
+        cachedElapsedSeconds = value
+        elapsedLock.unlock()
     }
 
     /// Pauses playback in place (network keeps streaming/buffering in the background — this only
     /// stops the render, mirroring `MusicPlayerService.togglePlayPause()`'s local-file pause).
+    ///
+    /// Deliberately `engineQueue.async`, not `.sync` (`progress/tvos-playback-concurrency.md`):
+    /// the caller is always the MainActor, and this is user-tap-triggered so there is no need to
+    /// block it on the engine's own serial queue just to observe completion.
     func pause() {
-        engineQueue.sync { playerNode.pause() }
+        engineQueue.async { [self] in playerNode.pause() }
     }
 
-    /// Resumes a paused stream. No-op if `stop()` has since torn the engine down.
+    /// Resumes a paused stream. No-op if `stop()` has since torn the engine down. See `pause()`'s
+    /// doc comment for why this is `.async`, not `.sync`.
     func resume() {
-        engineQueue.sync {
+        engineQueue.async { [self] in
             guard engine.attachedNodes.contains(playerNode) else { return }
             if !engine.isRunning { try? engine.start() }
             playerNode.play()
@@ -344,6 +373,7 @@ class TVRelayStreamPlayer: NSObject {
                 player.delegate?.relayStreamPlayerDidStartRendering(player)
             }
         }
+        refreshCachedElapsedSeconds()
     }
 
     #if DEBUG
