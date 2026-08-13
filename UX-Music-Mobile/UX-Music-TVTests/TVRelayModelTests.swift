@@ -55,4 +55,20 @@ final class TVRelayModelTests: XCTestCase {
         // Capable host, actively relaying.
         XCTAssertTrue(TVRelayAvailability.isAvailable(capabilities: ["remote.relay.v1"], relay: activeRelay))
     }
+
+    // MARK: - Transport state (relay banner play/pause reflection)
+
+    func testIsPlayingReadsRootLevelPlayingKey() {
+        XCTAssertTrue(TVRelayTransportState.isPlaying(fromStateJSON: ["playing": true]))
+        XCTAssertFalse(TVRelayTransportState.isPlaying(fromStateJSON: ["playing": false]))
+    }
+
+    func testIsPlayingFallsBackToProvidedDefaultWhenKeyMissing() {
+        XCTAssertTrue(TVRelayTransportState.isPlaying(fromStateJSON: [:], defaultingTo: true))
+        XCTAssertFalse(TVRelayTransportState.isPlaying(fromStateJSON: [:], defaultingTo: false))
+    }
+
+    func testIsPlayingDefaultsToTrueWhenNoFallbackGiven() {
+        XCTAssertTrue(TVRelayTransportState.isPlaying(fromStateJSON: [:]))
+    }
 }

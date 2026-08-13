@@ -35,6 +35,18 @@ struct TVRelayStateBlock: Equatable {
     }
 }
 
+/// Pure parse of the root-level `playing` key in `GET /v1/remote/state`
+/// (`server/app_audio.go`'s `AudioGetStatus`) — the HOST's own transport state, which the relay
+/// banner's play/pause button reflects (`progress/tvos-relay-reception.md` 追記 — relay transport
+/// controls). Missing/malformed data defaults to `true` (the expected state right after a relay
+/// starts) rather than throwing, matching `TVRelayStateBlock`'s degrade-gracefully approach for
+/// this additive-ish field.
+enum TVRelayTransportState {
+    static func isPlaying(fromStateJSON json: [String: Any], defaultingTo fallback: Bool = true) -> Bool {
+        json["playing"] as? Bool ?? fallback
+    }
+}
+
 /// The single rule deciding whether the browse UI shows the relay shelf entry: the host must both
 /// support the feature (capability present — guards older hosts) AND currently have something
 /// actively relaying (guards the common case of a capable host with nothing playing).
@@ -54,6 +66,12 @@ final class TVRelayModel: ObservableObject {
     @Published private(set) var isAvailable = false
     @Published private(set) var title = ""
     @Published private(set) var thumbnail = ""
+    /// Root-level `playing` key from `GET /v1/remote/state` (`server/app_audio.go`'s
+    /// `AudioGetStatus`) — reflects the HOST's own transport state (which the relay banner's
+    /// play/pause button drives via `POST /v1/remote/command`), not anything local to the TV.
+    /// Defaults to `true` so the transport button shows "pause" (the expected state right after
+    /// a relay starts) until the first poll tick resolves the real value.
+    @Published private(set) var isPlaying = true
 
     private let client: RemoteAPIClient
     private var capabilities: [String] = []
@@ -91,5 +109,6 @@ final class TVRelayModel: ObservableObject {
         isAvailable = TVRelayAvailability.isAvailable(capabilities: capabilities, relay: relay)
         title = relay.title
         thumbnail = relay.thumbnail
+        isPlaying = TVRelayTransportState.isPlaying(fromStateJSON: json, defaultingTo: isPlaying)
     }
 }

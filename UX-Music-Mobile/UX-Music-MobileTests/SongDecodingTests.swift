@@ -67,4 +67,27 @@ final class SongDecodingTests: XCTestCase {
         XCTAssertTrue(song.isYouTube)
         XCTAssertEqual(song.sourceURL, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
     }
+
+    /// `hasLocalAudio` is additive on `GET /v1/remote/songs` (`progress/tvos-relay-reception.md`
+    /// 追記): an older desktop, or any payload predating the field, omits it entirely. Missing must
+    /// decode to `nil` and read as `true` via `effectiveHasLocalAudio`, never `false` — treating a
+    /// merely-unpopulated field as "no local audio" would wrongly force every YouTube song onto the
+    /// via-PC relay path even when the desktop can serve the file directly.
+    func testDecodesSongWithoutHasLocalAudioDefaultsToNilAndEffectiveTrue() throws {
+        let json = """
+        {"id": "abc", "path": "/music/a.m4a", "title": "T", "type": "youtube"}
+        """.data(using: .utf8)!
+        let song = try JSONDecoder().decode(Song.self, from: json)
+        XCTAssertNil(song.hasLocalAudio)
+        XCTAssertTrue(song.effectiveHasLocalAudio)
+    }
+
+    func testDecodesSongWithHasLocalAudioFalse() throws {
+        let json = """
+        {"id": "abc", "path": "", "title": "T", "type": "youtube", "hasLocalAudio": false}
+        """.data(using: .utf8)!
+        let song = try JSONDecoder().decode(Song.self, from: json)
+        XCTAssertEqual(song.hasLocalAudio, false)
+        XCTAssertFalse(song.effectiveHasLocalAudio)
+    }
 }

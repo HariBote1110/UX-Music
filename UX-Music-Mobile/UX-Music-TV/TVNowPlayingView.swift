@@ -321,8 +321,10 @@ private struct TVNowPlayingTransportBar: View {
 /// buttons, which reads as a settings-dialog control rather than a 10-foot music surface — this
 /// style instead lifts the SF Symbol itself: a gentle scale-up, a brightness/weight jump from
 /// secondary to full white, and a soft glow, all animated so focus changes feel smooth rather than
-/// snapping.
-private struct TVTransportButtonStyle: ButtonStyle {
+/// snapping. Not `private` — also reused by `TVRelayBannerView`'s transport row
+/// (`TVBrowseView.swift`) so the relay banner's play/pause/stop buttons match the same cinematic
+/// focus treatment.
+struct TVTransportButtonStyle: ButtonStyle {
     let size: CGFloat
     @Environment(\.isFocused) private var isFocused
 

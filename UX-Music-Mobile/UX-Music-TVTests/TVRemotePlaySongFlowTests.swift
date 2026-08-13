@@ -15,9 +15,27 @@ final class TVRemotePlaySongFlowTests: XCTestCase {
         XCTAssertEqual(TVSongPlaybackRouting.route(for: song), .local)
     }
 
-    func testYouTubeSongRoutesViaPC() {
-        let song = Song(id: "2", path: "", sourceType: .youtube)
+    /// Most YouTube-sourced songs are downloaded, so the host serves their audio locally — they
+    /// route the same as any local song (`progress/tvos-relay-reception.md` 追記 — "route by file
+    /// availability, not source").
+    func testDownloadedYouTubeSongRoutesToLocalPlayback() {
+        let song = Song(id: "2", path: "", sourceType: .youtube, hasLocalAudio: true)
+        XCTAssertEqual(TVSongPlaybackRouting.route(for: song), .local)
+    }
+
+    /// Only a song the host genuinely cannot serve audio for (embed/stream-only entry) routes via
+    /// the PC's own playback + LAN relay.
+    func testYouTubeSongWithoutLocalAudioRoutesViaPC() {
+        let song = Song(id: "3", path: "", sourceType: .youtube, hasLocalAudio: false)
         XCTAssertEqual(TVSongPlaybackRouting.route(for: song), .viaPC)
+    }
+
+    /// `hasLocalAudio` is additive — an older desktop (or a not-yet-updated in-flight response)
+    /// omitting the key entirely must default to `.local`, never silently regress a YouTube song
+    /// that used to always route via PC into being treated as unavailable.
+    func testYouTubeSongWithMissingHasLocalAudioDefaultsToLocalPlayback() {
+        let song = Song(id: "4", path: "", sourceType: .youtube, hasLocalAudio: nil)
+        XCTAssertEqual(TVSongPlaybackRouting.route(for: song), .local)
     }
 
     // MARK: - Reducer

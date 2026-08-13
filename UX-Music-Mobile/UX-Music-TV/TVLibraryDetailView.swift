@@ -119,10 +119,14 @@ struct TVLibraryDetailView: View {
     }
 }
 
-/// Small "PC" marker shown next to YouTube-sourced tracks (`Song.isYouTube`) so it's clear
-/// selecting them plays through the desktop's official YouTube embed + LAN relay rather than local
-/// playback (`progress/tvos-relay-reception.md` 追記). Deliberately subtle — a small pill, not a
-/// full-size icon — to match the cinematic language's restraint (see `TVDesignTokens`).
+/// Small "PC" marker shown next to via-PC tracks (`TVSongPlaybackRouting.route(for:) == .viaPC`,
+/// i.e. `Song.hasLocalAudio == false`) so it's clear selecting them plays through the desktop's
+/// official YouTube embed + LAN relay rather than local playback
+/// (`progress/tvos-relay-reception.md` 追記 — "route by file availability, not source": most
+/// YouTube-sourced songs ARE downloaded and stream locally like any other song, so this badge no
+/// longer appears on every `Song.isYouTube` track, only the ones that genuinely have no local
+/// audio to stream). Deliberately subtle — a small pill, not a full-size icon — to match the
+/// cinematic language's restraint (see `TVDesignTokens`).
 struct TVRemotePlayBadge: View {
     var body: some View {
         Text(String(localized: "tv.remotePlay.badge"))
@@ -149,7 +153,7 @@ private struct TVTrackRow: View {
                     Text(song.title)
                         .font(.headline)
                         .lineLimit(1)
-                    if song.isYouTube {
+                    if TVSongPlaybackRouting.route(for: song) == .viaPC {
                         TVRemotePlayBadge()
                     }
                 }
@@ -225,7 +229,8 @@ struct TVYouTubeBadgePreviewHarness: View {
                 title: "YouTube由来の曲 - PC経由で再生されます",
                 artist: "UX Music Demo",
                 duration: 210,
-                sourceType: .youtube
+                sourceType: .youtube,
+                hasLocalAudio: false
             ),
         ]
     )

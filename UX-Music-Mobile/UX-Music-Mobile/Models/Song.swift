@@ -28,6 +28,14 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
     var artworkId: String
     var sourceType: SongSourceType
     var sourceURL: String?
+    /// Whether the host can serve this song's audio locally (`/v1/remote/file/{id}` returns
+    /// 206/200). Additive field from `GET /v1/remote/songs` — older desktops (or a parallel
+    /// in-flight server change) may omit it entirely, which decodes to `nil` and is treated as
+    /// `true` everywhere via `effectiveHasLocalAudio` for backward compatibility: most YouTube
+    /// songs ARE downloaded and playable like any local file, so "missing key" must not be
+    /// misread as "no audio" (`progress/tvos-relay-reception.md` 追記 — routing by file
+    /// availability, not source).
+    var hasLocalAudio: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, path, title, artist, album, year, genre, duration
@@ -35,6 +43,7 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         case albumArtist = "albumartist"
         case sourceType = "type"
         case sourceURL
+        case hasLocalAudio
     }
 
     init(
@@ -55,7 +64,8 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         bitDepth: Int? = nil,
         artworkId: String = "",
         sourceType: SongSourceType = .local,
-        sourceURL: String? = nil
+        sourceURL: String? = nil,
+        hasLocalAudio: Bool? = nil
     ) {
         self.id = id
         self.path = path
@@ -75,12 +85,18 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         self.artworkId = artworkId
         self.sourceType = sourceType
         self.sourceURL = sourceURL
+        self.hasLocalAudio = hasLocalAudio
     }
 
     /// `true` for songs registered via `AddYouTubeLink` (embed/stream modes). These have no local
     /// file on the desktop's disk in the same sense a scanned file does, so download and Watch
     /// transfer are not offered for them (see `WatchTransferMenuPolicy`).
     var isYouTube: Bool { sourceType == .youtube }
+
+    /// `hasLocalAudio` with backward-compatible defaulting: missing/`nil` (older desktop, or
+    /// simply not yet populated) reads as `true`. See `hasLocalAudio`'s doc comment for why
+    /// "missing" must not be misread as "unavailable".
+    var effectiveHasLocalAudio: Bool { hasLocalAudio ?? true }
 
     /// Decides what tapping this row should do. Shared by every screen that renders `SongRowView`
     /// (Remote song list, album detail, playlist detail) so YouTube songs consistently open the
@@ -112,6 +128,7 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         try c.encode(artworkId, forKey: .artworkId)
         try c.encode(sourceType, forKey: .sourceType)
         try c.encodeIfPresent(sourceURL, forKey: .sourceURL)
+        try c.encodeIfPresent(hasLocalAudio, forKey: .hasLocalAudio)
     }
 
     init(from decoder: Decoder) throws {
@@ -134,6 +151,7 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         artworkId = try c.decodeIfPresent(String.self, forKey: .artworkId) ?? ""
         sourceType = try c.decodeIfPresent(SongSourceType.self, forKey: .sourceType) ?? .local
         sourceURL = try c.decodeIfPresent(String.self, forKey: .sourceURL)
+        hasLocalAudio = try c.decodeIfPresent(Bool.self, forKey: .hasLocalAudio)
     }
 
     var displayTitle: String { title.isEmpty ? "Unknown Title" : title }

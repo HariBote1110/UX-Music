@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The one full-screen cover `TVBrowseView` can have up at a time — see `presentation`'s doc
 /// comment on why this replaced three independent `.fullScreenCover` modifiers.
@@ -109,7 +110,7 @@ struct TVBrowseView: View {
                     Task { await play(song, queue: queue) }
                 }
             case .relay:
-                TVRelayBannerView(relayModel: relayModel, relayPlaybackController: relayPlaybackController) {
+                TVRelayBannerView(relayModel: relayModel, relayPlaybackController: relayPlaybackController, client: client) {
                     presentation = nil
                 }
             case .remotePlaySong:
@@ -352,30 +353,61 @@ private struct TVPlaylistCard: View {
     }
 }
 
-/// Async artwork loader with a placeholder while loading/on failure, built on `AsyncImage`
-/// against `RemoteAPIClient.artworkURL(artworkId:)` (which already embeds the `?token=` query
-/// item — see that method's doc comment). TV-local rather than shared: the iOS artwork loader is
-/// entangled with iOS's on-disk image cache, which isn't a clean fit for the OS-purgeable
-/// `Caches` story tvOS uses (see `progress/tvos-playback.md`).
+/// Async artwork loader with a placeholder → fade-in, fetching against
+/// `RemoteAPIClient.artworkURL(artworkId:)` (which already embeds the `?token=` query item — see
+/// that method's doc comment). TV-local rather than shared: the iOS artwork loader
+/// (`RemoteArtworkImageLoader`) is entangled with iOS's on-disk image cache, which isn't a clean
+/// fit for the OS-purgeable `Caches` story tvOS uses (see `progress/tvos-playback.md`).
+///
+/// Deliberately NOT built on bare `AsyncImage` — root-caused a "no artwork on the FIRST Now
+/// Playing open, but a re-open shows it" bug (`progress/tvos-relay-reception.md` 追記): `AsyncImage`
+/// starts its fetch from its own internal `onAppear`, and when it's newly inserted as part of a
+/// `.fullScreenCover` presentation TRANSITION (not a plain appear), that internal `onAppear` can
+/// fire and its request get raced/dropped by the transition without `AsyncImage` ever retrying —
+/// it only reacts to an explicit URL change, and the URL here doesn't change once
+/// `player.currentSong` is set. A second open constructs a brand-new `TVNowPlayingView`/
+/// `TVArtworkImage` outside any transition, so it loads cleanly and the bug reads as "works after
+/// reopen". Driving the fetch from `.task(id:)` instead sidesteps this: SwiftUI's task lifecycle
+/// is scheduled independently of the presentation transition's appear/disappear timing and is
+/// guaranteed to run once per `artworkId`, so the image now reliably appears on the first open too
+/// (placeholder → fade-in once loaded).
 struct TVArtworkImage: View {
     let artworkId: String
     let client: RemoteAPIClient
 
+    @State private var loadedImage: UIImage?
+    @State private var loadedArtworkId: String?
+
     var body: some View {
-        AsyncImage(url: artworkId.isEmpty ? nil : URL(string: client.artworkURL(artworkId: artworkId))) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().aspectRatio(contentMode: .fill)
-            default:
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12).fill(.secondary.opacity(0.2))
-                    Image(systemName: "music.note")
-                        .font(.system(size: 40))
-                        .foregroundStyle(TVDesignTokens.textSecondary)
-                }
+        ZStack {
+            if let loadedImage, loadedArtworkId == artworkId {
+                Image(uiImage: loadedImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .transition(.opacity)
+            } else {
+                RoundedRectangle(cornerRadius: 12).fill(.secondary.opacity(0.2))
+                Image(systemName: "music.note")
+                    .font(.system(size: 40))
+                    .foregroundStyle(TVDesignTokens.textSecondary)
             }
         }
         .clipped()
+        .animation(.easeInOut(duration: 0.25), value: loadedArtworkId)
+        .task(id: artworkId) { await load() }
+    }
+
+    private func load() async {
+        guard !artworkId.isEmpty, let url = URL(string: client.artworkURL(artworkId: artworkId)) else {
+            loadedImage = nil
+            loadedArtworkId = nil
+            return
+        }
+        guard let (data, _) = try? await RemoteLANURLSession.shared.data(from: url) else { return }
+        guard let image = UIImage(data: data) else { return }
+        guard !Task.isCancelled else { return }
+        loadedImage = image
+        loadedArtworkId = artworkId
     }
 }
 
@@ -416,9 +448,12 @@ private struct TVRelayCard: View {
     }
 }
 
-/// Broadcast-type banner shown while relay playback is active — per the plan the PC (Host) is the
-/// operator, so this deliberately has no seek/skip controls, only exit. Selecting back/menu on the
-/// tvOS remote dismisses this `fullScreenCover`, which triggers `onDisappear` and stops the stream.
+/// Broadcast-type banner shown while relay playback is active. Per the plan the PC (Host) is the
+/// operator, so this still has no seek/skip controls (the desktop has no embed queue to skip
+/// within — `progress/tvos-relay-reception.md` 追記), but it now sends play/pause and stop over
+/// `POST /v1/remote/command` (`toggle`/`stop`) so the TV isn't a dead end while relaying: selecting
+/// back/menu on the Siri Remote (or the exit button) dismisses this `fullScreenCover`, which
+/// triggers `onDisappear` and stops the stream reception locally.
 ///
 /// Also renders the failure-recovery state (`TVRelayPlaybackController.state == .failed`, see
 /// `progress/tvos-relay-reception.md`): by the time this case renders, the controller has already
@@ -427,6 +462,7 @@ private struct TVRelayCard: View {
 private struct TVRelayBannerView: View {
     @ObservedObject var relayModel: TVRelayModel
     @ObservedObject var relayPlaybackController: TVRelayPlaybackController
+    let client: RemoteAPIClient
     let onExit: () -> Void
 
     var body: some View {
@@ -442,6 +478,10 @@ private struct TVRelayBannerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(TVDesignTokens.charcoalBase)
         .onDisappear { relayPlaybackController.stop() }
+        // Siri Remote's physical play/pause button while this screen is frontmost — mirrors the
+        // on-screen toggle button below rather than driving any TV-local player (there is none;
+        // the audio is the host's own YouTube embed).
+        .onPlayPauseCommand { Task { await sendToggle() } }
     }
 
     private var playingContent: some View {
@@ -463,8 +503,43 @@ private struct TVRelayBannerView: View {
             Text(relayModel.title)
                 .font(.title)
                 .multilineTextAlignment(.center)
+            transportRow
             Button(String(localized: "tv.relay.banner.exit"), action: onExit)
         }
+    }
+
+    private var transportRow: some View {
+        HStack(spacing: 56) {
+            Button {
+                Task { await sendToggle() }
+            } label: {
+                Image(systemName: relayModel.isPlaying ? "pause.fill" : "play.fill")
+            }
+            .buttonStyle(TVTransportButtonStyle(size: 40))
+            .accessibilityLabel(String(localized: relayModel.isPlaying ? "tv.relay.transport.pause" : "tv.relay.transport.play"))
+
+            Button {
+                Task { await sendStop() }
+            } label: {
+                Image(systemName: "stop.fill")
+            }
+            .buttonStyle(TVTransportButtonStyle(size: 40))
+            .accessibilityLabel(String(localized: "tv.relay.transport.stop"))
+        }
+    }
+
+    /// `POST /v1/remote/command` (`action: "toggle"`) — whether the desktop honours this during
+    /// embed playback is the parallel desktop-side fix; this view's job is only to send the
+    /// correct command and reflect `TVRelayModel.isPlaying` from the next `/v1/remote/state` poll.
+    private func sendToggle() async {
+        _ = try? await client.sendCommand(action: "toggle", value: nil)
+    }
+
+    /// `POST /v1/remote/command` (`action: "stop"`), then tears down the TV-side relay reception
+    /// via the existing exit path (`onExit` → dismiss → `onDisappear` → `relayPlaybackController.stop()`).
+    private func sendStop() async {
+        _ = try? await client.sendCommand(action: "stop", value: nil)
+        onExit()
     }
 
     private func failureContent(reason: String) -> some View {

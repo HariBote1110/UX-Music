@@ -306,3 +306,87 @@
 - UI確認は`UXTV_PREVIEW=youtubebadge`（新設）で、ローカル曲とYouTube曲混在の詳細画面を
   ペアリング/ネットワーク無しでスクリーンショットできる。他のプレビューモード
   （`nowplaying`/`browse`/`albumdetail`/`detailplay`/`relay`）と同じ仕組み。
+
+## 追記（ファイル有無で分岐・PC経由再生の透明化・Now Playing初回アートワーク欠落）
+
+実機（`127.0.0.1:8765`）を読み取り専用で確認したところ、ライブラリ中のYouTube由来曲の
+大半は既にダウンロード済みで、ホストが`/v1/remote/file/{id}`から直接音声を返せる
+（`HTTP 206`確認済み）状態だった。にもかかわらずTVは`Song.isYouTube`だけで全件を
+PC経由リレーへ回していたため、実際には再生できる曲までPCオペレーター依存のブロード
+キャスト型再生に落としていた——「YouTube由来／ローカルの壁を作らない」という方針に反する。
+
+### Decision
+
+- **選曲ルーティングの判別軸を`Song.isYouTube`から`Song.hasLocalAudio`へ差し替えた**。
+  `GET /v1/remote/songs`に並行して追加された加法的フィールド`hasLocalAudio: Bool?`
+  （デスクトップ側が`/v1/remote/file/{id}`で実際に音声を返せるかを表す）を`Song`に追加し、
+  欠落時は`nil`のまま保持して`effectiveHasLocalAudio`（`hasLocalAudio ?? true`）で
+  「missing → true」の後方互換を取った——欠落を「音声なし」と誤読すると、旧デスクトップや
+  ロールアウト中の応答に対して全曲がPC経由に落ちてしまうため。
+  `TVSongPlaybackRouting.route(for:)`は`song.effectiveHasLocalAudio ? .local : .viaPC`の
+  1行に置き換え、`.local`側は既存の`TVPlaybackController.play(_:queue:)`経路
+  （EQ/LUFS・フルトランスポート・prefetch/cache・play-event報告）を一切変更していない。
+  「PC」バッジ（`TVRemotePlayBadge`）も表示条件を`song.isYouTube`から
+  `TVSongPlaybackRouting.route(for:) == .viaPC`へ変更し、実際にPC経由でしか再生できない
+  曲にのみ出るようにした。
+- **リレーバナーへ最小限のトランスポート（再生/一時停止・停止）を追加した**。従来は
+  「PCオペレーターが操作する放送」という設計で終了ボタンしか無く、選曲後にTVから
+  一切制御できなかった。`TVRelayBannerView`に`POST /v1/remote/command`
+  （`action: "toggle"`/`"stop"`）を送るボタン2つを追加し、Siri Remoteの物理再生/一時停止
+  ボタンも`.onPlayPauseCommand`で同じ`toggle`にマッピングした。次/前スキップは追加して
+  いない——デスクトップのYouTube embed再生にはキュー概念が無く、`next`/`prev`を送っても
+  意味のある挙動にならないため（`server/app_remote.go`の`remoteCommandHandler`は
+  `toggle`/`play`/`pause`/`stop`/`next`/`prev`/`seek`/`play-song`を受け付けるが、embed
+  再生中の`next`/`prev`の扱いはデスクトップ側の並行修正の範囲）。再生/一時停止状態は
+  `GET /v1/remote/state`のルート直下`playing`キー（`server/app_audio.go`の
+  `AudioGetStatus`）を`TVRelayModel`が既存の5秒ポーリングで追加取得し
+  （純粋パース部分は`TVRelayTransportState.isPlaying(fromStateJSON:defaultingTo:)`に
+  切り出してTDD）、`isPlaying`として公開している。停止ボタンは`stop`コマンド送信後に
+  `onExit()`を呼び、既存の離脱経路（`dismiss` → `onDisappear` →
+  `relayPlaybackController.stop()`）でTV側の中継受信を確実にteardownする。
+  デスクトップがembed再生中に`toggle`/`stop`を実際に honour するかは並行して進んでいる
+  デスクトップ側修正の範囲——この変更の責務は「正しいコマンドを送り、次の
+  `/v1/remote/state`ポーリングで状態を反映する」ところまで。
+- **Now Playing初回オープン時のアートワーク欠落を修正した**。原因は`TVArtworkImage`が
+  素の`AsyncImage(url:)`に依存していたこと：`AsyncImage`は自身の内部`onAppear`から
+  フェッチを開始するが、`.fullScreenCover`の提示トランジションの最中に新規挿入される
+  ケースでは、その内部`onAppear`の発火がトランジションとレースして取得が始まらない/
+  取りこぼされることがあり、しかも`AsyncImage`はURLが変わらない限り自動リトライしない
+  ——一度崩れると同じNow Playingセッション中は復帰しない。2回目に開くときは
+  トランジション外で`TVNowPlayingView`/`TVArtworkImage`が新規に構築されるため問題なく
+  読み込め、「初回だけ欠ける・開き直すと直る」という報告と一致する。修正は
+  `TVArtworkImage`を`AsyncImage`から`.task(id: artworkId)`駆動の自前ローダー
+  （`RemoteLANURLSession.shared`で取得し`@State private var loadedImage: UIImage?`に
+  格納、プレースホルダー→フェードイン）へ置き換えた。`.task(id:)`のライフサイクルは
+  提示トランジションのappear/disappearタイミングとは独立してスケジュールされ、
+  `artworkId`ごとに一度だけ確実に実行される。実機（`127.0.0.1:8765`）に対して
+  `UXTV_PREVIEW=livenowplaying`ハーネス（既存、`MusicPlayerService.masterVolume = 0`で
+  無音化済み）でTVシミュレータ起動直後にNow Playingを初回表示させ、アートワークが
+  即座に表示されることをスクリーンショットで確認した
+  （`/tmp/claude-501/.../scratchpad/tvfix_artwork_first.png`）。
+
+### Alternatives considered
+
+- **アートワーク欠落をURLCacheのウォームアップやリトライロジックの追加で対処する** →
+  根本原因が「トランジション中のAsyncImage内部`onAppear`のレース」である以上、対症療法
+  になりがちで再発リスクが残る。`.task(id:)`への置き換えは`AsyncImage`の暗黙のライフ
+  サイクルそのものを回避できるため、より確実な修正と判断した。
+- **リレーバナーに次/前スキップも追加する** → デスクトップのYouTube embed再生には
+  キュー・プレイリストの概念が無く、`next`/`prev`を送っても現状は意味のある挙動を
+  定義できないため見送った。デスクトップ側にキュー機能が入った場合の拡張ポイントとして
+  `TVRemoteCommandHandler`側の語彙（`next`/`previous`）は既に存在する。
+
+### Constraints / Gotchas
+
+- `hasLocalAudio`はデスクトップ側の並行修正（`GET /v1/remote/songs`への追加）が前提。
+  本変更はデコード側（`Song.hasLocalAudio: Bool?` + `effectiveHasLocalAudio`）と
+  ルーティング側（`TVSongPlaybackRouting`）のみで、フィールドが未着地の期間も
+  「欠落→true→ローカル扱い」で安全に動作する。
+- リレーバナーのトランスポート状態は`TVRelayModel`の5秒ポーリング間隔に依存するため、
+  トグル直後の見た目の反映に最大5秒のラグがありうる。実機でユーザー体験上問題になる
+  場合はリレーバナー表示中だけポーリング間隔を短縮する改善余地がある（未実施）。
+- リレーバナーのトランスポートボタンの実機E2E（実際にホストのembed再生をtoggle/stopで
+  操作できるか）は、ホストへの書き込み系操作（`POST`）が本タスクの制約で禁止されて
+  いたため未検証——TV側が正しいリクエストを送ることと、`TVRelayModel`のポーリングが
+  正しく状態を反映することは単体テスト/ビルドで確認済み。デスクトップ側のembed再生が
+  実際に`toggle`/`stop`を honour するかは並行するデスクトップ側修正の検証範囲。

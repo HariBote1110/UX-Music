@@ -1,10 +1,12 @@
 import Foundation
 
 /// Where selecting `song` on the TV should send playback (`progress/tvos-relay-reception.md` 追記
-/// — "selecting a YouTube-sourced song plays it via the PC"). Local (scanned-file) songs keep the
-/// existing `TVPlaybackController` path unchanged; YouTube-sourced songs (`Song.isYouTube`, mirrors
-/// the desktop's `AddYouTubeLink`-written `type: "youtube"`) have no audio the TV can stream
-/// directly, so they route through the desktop's own playback + LAN relay instead.
+/// — "route by file availability, not source": most YouTube-sourced songs are downloaded, so the
+/// host serves their audio at `/v1/remote/file/{id}` exactly like any scanned file, and the TV
+/// should stream them through the normal local path (EQ/LUFS, full transport, prefetch/cache,
+/// play-event reporting) with no distinction from a local song. Only songs the host genuinely
+/// cannot serve audio for (`Song.hasLocalAudio == false` — an embed/stream-only YouTube entry)
+/// route through the desktop's own playback + LAN relay instead.
 enum TVSongPlaybackRoute: Equatable {
     case local
     case viaPC
@@ -12,7 +14,7 @@ enum TVSongPlaybackRoute: Equatable {
 
 enum TVSongPlaybackRouting {
     static func route(for song: Song) -> TVSongPlaybackRoute {
-        song.isYouTube ? .viaPC : .local
+        song.effectiveHasLocalAudio ? .local : .viaPC
     }
 }
 
