@@ -153,12 +153,28 @@ describe('handleRemotePlaySongEvent', () => {
         const findSong = vi.fn(() => song);
         const playResolvedSong = vi.fn();
         const notifyNotFound = vi.fn();
+        const markRemoteInitiated = vi.fn();
 
-        handleRemotePlaySongEvent('trk-1', { findSong, notifyNotFound, playResolvedSong });
+        handleRemotePlaySongEvent('trk-1', { findSong, notifyNotFound, playResolvedSong, markRemoteInitiated });
 
         expect(findSong).toHaveBeenCalledWith('trk-1');
         expect(playResolvedSong).toHaveBeenCalledWith(song);
         expect(notifyNotFound).not.toHaveBeenCalled();
+    });
+
+    it('marks the session remote-initiated before starting playback, so the desktop stays silent', async () => {
+        const { handleRemotePlaySongEvent } = await import('./playback-manager.js');
+        const song = { id: 'trk-1', title: 'Remote Song' };
+        const findSong = vi.fn(() => song);
+        const callOrder: string[] = [];
+        const playResolvedSong = vi.fn(() => { callOrder.push('play'); });
+        const notifyNotFound = vi.fn();
+        const markRemoteInitiated = vi.fn(() => { callOrder.push('mark'); });
+
+        handleRemotePlaySongEvent('trk-1', { findSong, notifyNotFound, playResolvedSong, markRemoteInitiated });
+
+        expect(markRemoteInitiated).toHaveBeenCalledOnce();
+        expect(callOrder).toEqual(['mark', 'play']);
     });
 
     it('shows the not-found notification when the song id is unknown', async () => {
@@ -166,11 +182,13 @@ describe('handleRemotePlaySongEvent', () => {
         const findSong = vi.fn(() => null);
         const playResolvedSong = vi.fn();
         const notifyNotFound = vi.fn();
+        const markRemoteInitiated = vi.fn();
 
-        handleRemotePlaySongEvent('missing-id', { findSong, notifyNotFound, playResolvedSong });
+        handleRemotePlaySongEvent('missing-id', { findSong, notifyNotFound, playResolvedSong, markRemoteInitiated });
 
         expect(notifyNotFound).toHaveBeenCalledOnce();
         expect(playResolvedSong).not.toHaveBeenCalled();
+        expect(markRemoteInitiated).not.toHaveBeenCalled();
     });
 
     it('ignores non-string or empty payloads without touching the library', async () => {
@@ -178,13 +196,15 @@ describe('handleRemotePlaySongEvent', () => {
         const findSong = vi.fn();
         const playResolvedSong = vi.fn();
         const notifyNotFound = vi.fn();
+        const markRemoteInitiated = vi.fn();
 
-        handleRemotePlaySongEvent(undefined, { findSong, notifyNotFound, playResolvedSong });
-        handleRemotePlaySongEvent('   ', { findSong, notifyNotFound, playResolvedSong });
+        handleRemotePlaySongEvent(undefined, { findSong, notifyNotFound, playResolvedSong, markRemoteInitiated });
+        handleRemotePlaySongEvent('   ', { findSong, notifyNotFound, playResolvedSong, markRemoteInitiated });
 
         expect(findSong).not.toHaveBeenCalled();
         expect(playResolvedSong).not.toHaveBeenCalled();
         expect(notifyNotFound).not.toHaveBeenCalled();
+        expect(markRemoteInitiated).not.toHaveBeenCalled();
     });
 });
 
