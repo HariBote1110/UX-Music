@@ -1,5 +1,6 @@
 # Progress Index
 
+- [menubar-tray-mode.md](menubar-tray-mode.md) — macOSメニューバーのNSStatusItem常駐をハンドロールcgo/Objective-Cで追加。energye/systray等のサードパーティ実装はNSApplicationのdelegateを差し替えてしまいHideWindowOnClose/Cmd+Qの実クイット経路と衝突するため不採用とし、既存のOSメディアキー用イベント経路とruntime.Show/Quitを再利用する自前実装を選択
 - [background-window-close.md](background-window-close.md) — メインウィンドウを閉じてもプロセスを終了させずバックグラウンド常駐させる実装。wails v2.11.0のObjective-C実装(`WindowDelegate.m`)を読み、`HideWindowOnClose: true`にするとクローズボタンがOnBeforeCloseに到達せずネイティブに隠す/Dockクリックで復帰することを確認。Cmd+QはAppMenu追加で実クイットに到達するためOnBeforeCloseは常にfalseを返すだけでよいと判明（クイット意図フラグは不要）
 
 - [remote-songs-dedup.md](remote-songs-dedup.md) — 「アルバム内の曲が重複することがある」報告の根本原因はライブラリストア自体の重複エントリ（CD Ripsステージング先と整理後アルバムフォルダの二重登録、disc 0/1違いの二重リッピング、レガシーpath文字列ID vs UUID ID）と判明。ストアは非破壊のまま`GET /v1/remote/songs`のAPIレイヤーで`dedupRemoteSongs`により重複除去（タイトル/アルバム/アーティスト/トラック番号/正規化ディスク番号がキー、UUID優先→fileSize大優先→先着優先、YouTube由来エントリは対象外）
