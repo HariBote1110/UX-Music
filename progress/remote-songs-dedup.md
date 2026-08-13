@@ -40,6 +40,10 @@
 
 `server/app_remote_songs_dedup_test.go` にテーブル駆動テストを追加（UUID優先、disc 0/1同一視、真の複数ディスクは両方残る、トラック番号違いは両方残る、タイトルの大小文字・空白差異は同一視、YouTubeエントリは対象外、fileSize比較、同点時は先頭優先、出力順保持）。`go test ./server/` は全件成功。
 
+## Desktop に重複が見えていなかった理由（2026-08-13 追記）
+
+ユーザー報告どおり、同じライブラリストアを見ているのに Desktop では重複表示が起きていなかった。理由は renderer 側の `mergeSongsIntoLibrary`（`src/renderer/js/core/library-model.ts`）で、`librarySongMatchKey`（`meta:artist|album|title|duration秒`、NFKC 正規化＋小文字化＋空白圧縮）によるコンテンツ一致マージが行われており、同一曲の別エントリは `Object.assign` で1件に吸収されるため。つまり **Desktop はクライアント側で暗黙に重複除去していた**が、TV/リモートクライアントは `/v1/remote/songs` の生データをそのまま表示していた。本修正はこの除去をサーバー側 API 層に持たせ、全リモートクライアントで Desktop と同等の見え方に揃えるもの。
+
 ## 今後の選択肢（未着手）
 
 - ライブラリストア自体のクリーンアップ（CD Rips ステージングエントリの削除、レガシーpath-IDエントリの正規化）。
