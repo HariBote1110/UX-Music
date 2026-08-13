@@ -1,7 +1,16 @@
 // uxmusic/src/renderer/js/playback-manager.js
 
 import { state, elements, PLAYBACK_MODES } from '../core/state.js';
-import { getCurrentTime, getDuration, play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
+import {
+    getCurrentTime,
+    getDuration,
+    play as playSongInPlayer,
+    stop as stopSongInPlayer,
+    playCurrent as playCurrentInPlayer,
+    pauseCurrent as pauseCurrentInPlayer,
+    seek as seekInPlayer,
+    isPlaying as isPlayingInPlayer
+} from './player.js';
 import { updatePlayingIndicators, renderQueueView } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
@@ -56,6 +65,8 @@ export async function initPlaybackSettings() {
     }
 
     initRemotePlaySongListener();
+    initRemoteCommandListener();
+    initRemoteEmbedCommandListener();
 }
 
 /**
@@ -105,6 +116,105 @@ export function handleRemotePlaySongEvent(songId: unknown, deps: {
     }
     markRemoteInitiated();
     playResolvedSong(song);
+}
+
+/**
+ * Go 側 (server/app_remote.go の remoteCommandHandler, action: "next"/"prev")
+ * が emit する "remote-command" イベントを購読する。next/prev はキュー管理が
+ * レンダラー側 (このファイルの playNextSong/playPrevSong) にしかない概念な
+ * ので、embed 再生中かどうかに関わらず常にこの経路で処理する — 遷移先の曲を
+ * playSong() → play() へ渡す時点で、埋め込み/ローカルいずれの再生経路にも
+ * 正しく再突入する。
+ */
+function initRemoteCommandListener() {
+    if (!window.runtime || typeof window.runtime.EventsOn !== 'function') {
+        return;
+    }
+    window.runtime.EventsOn('remote-command', (action: unknown) => {
+        handleRemoteCommandEvent(action);
+    });
+}
+
+export function handleRemoteCommandEvent(action: unknown, deps: {
+    playNext?: () => void;
+    playPrev?: () => void;
+} = {}) {
+    const playNext = deps.playNext ?? playNextSong;
+    const playPrev = deps.playPrev ?? playPrevSong;
+
+    switch (action) {
+        case 'next':
+            playNext();
+            break;
+        case 'prev':
+            playPrev();
+            break;
+        default:
+            break;
+    }
+}
+
+/**
+ * Go 側 (server/app_remote.go の remoteCommandHandler) が、YouTube 公式埋め込み
+ * セッション中 (remoteRelay がアクティブ) に emit する "remote-embed-command"
+ * イベントを購読する。toggle/play/pause/stop/seek をそのまま Go の
+ * audio.Player へ流しても、実際に鳴っているのはレンダラー内の IFrame プレイ
+ * ヤーなので届かない。player.ts の playCurrent/pauseCurrent/seek/stop は
+ * isEmbedPlayerActive() を見て埋め込み/ローカルを自動判別する既存の実装な
+ * ので、ここではそれらをそのまま呼び出すだけでよい。
+ */
+function initRemoteEmbedCommandListener() {
+    if (!window.runtime || typeof window.runtime.EventsOn !== 'function') {
+        return;
+    }
+    window.runtime.EventsOn('remote-embed-command', (payload: unknown) => {
+        handleRemoteEmbedCommandEvent(payload);
+    });
+}
+
+export function handleRemoteEmbedCommandEvent(payload: unknown, deps: {
+    playCurrent?: () => void;
+    pauseCurrent?: () => void;
+    stop?: () => void;
+    seek?: (time: number) => void;
+    isPlaying?: () => boolean;
+} = {}) {
+    const doPlay = deps.playCurrent ?? playCurrentInPlayer;
+    const doPause = deps.pauseCurrent ?? pauseCurrentInPlayer;
+    const doStop = deps.stop ?? stopSongInPlayer;
+    const doSeek = deps.seek ?? seekInPlayer;
+    const checkIsPlaying = deps.isPlaying ?? isPlayingInPlayer;
+
+    if (payload === null || typeof payload !== 'object') {
+        return;
+    }
+    const { action, value } = payload as { action?: unknown; value?: unknown };
+
+    switch (action) {
+        case 'toggle':
+            if (checkIsPlaying()) {
+                doPause();
+            } else {
+                doPlay();
+            }
+            break;
+        case 'play':
+            doPlay();
+            break;
+        case 'pause':
+            doPause();
+            break;
+        case 'stop':
+            doStop();
+            break;
+        case 'seek':
+            if (typeof value === 'number' && Number.isFinite(value)) {
+                doSeek(value);
+            }
+            break;
+        default:
+            break;
+    }
 }
 
 export function playSong(index, sourceList = null, forcePlay = false) {

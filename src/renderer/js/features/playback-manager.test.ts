@@ -208,6 +208,117 @@ describe('handleRemotePlaySongEvent', () => {
     });
 });
 
+describe('handleRemoteCommandEvent', () => {
+    it('advances to the next song for action "next"', async () => {
+        const { handleRemoteCommandEvent } = await import('./playback-manager.js');
+        const playNext = vi.fn();
+        const playPrev = vi.fn();
+
+        handleRemoteCommandEvent('next', { playNext, playPrev });
+
+        expect(playNext).toHaveBeenCalledOnce();
+        expect(playPrev).not.toHaveBeenCalled();
+    });
+
+    it('goes back to the previous song for action "prev"', async () => {
+        const { handleRemoteCommandEvent } = await import('./playback-manager.js');
+        const playNext = vi.fn();
+        const playPrev = vi.fn();
+
+        handleRemoteCommandEvent('prev', { playNext, playPrev });
+
+        expect(playPrev).toHaveBeenCalledOnce();
+        expect(playNext).not.toHaveBeenCalled();
+    });
+
+    it('ignores unknown actions', async () => {
+        const { handleRemoteCommandEvent } = await import('./playback-manager.js');
+        const playNext = vi.fn();
+        const playPrev = vi.fn();
+
+        handleRemoteCommandEvent('unknown', { playNext, playPrev });
+
+        expect(playNext).not.toHaveBeenCalled();
+        expect(playPrev).not.toHaveBeenCalled();
+    });
+});
+
+describe('handleRemoteEmbedCommandEvent', () => {
+    it('plays when toggled while paused', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const playCurrent = vi.fn();
+        const pauseCurrent = vi.fn();
+        const isPlaying = vi.fn(() => false);
+
+        handleRemoteEmbedCommandEvent({ action: 'toggle' }, { playCurrent, pauseCurrent, isPlaying });
+
+        expect(playCurrent).toHaveBeenCalledOnce();
+        expect(pauseCurrent).not.toHaveBeenCalled();
+    });
+
+    it('pauses when toggled while playing', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const playCurrent = vi.fn();
+        const pauseCurrent = vi.fn();
+        const isPlaying = vi.fn(() => true);
+
+        handleRemoteEmbedCommandEvent({ action: 'toggle' }, { playCurrent, pauseCurrent, isPlaying });
+
+        expect(pauseCurrent).toHaveBeenCalledOnce();
+        expect(playCurrent).not.toHaveBeenCalled();
+    });
+
+    it('routes play/pause/stop to their respective embed-aware player functions', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const playCurrent = vi.fn();
+        const pauseCurrent = vi.fn();
+        const stop = vi.fn();
+
+        handleRemoteEmbedCommandEvent({ action: 'play' }, { playCurrent, pauseCurrent, stop });
+        handleRemoteEmbedCommandEvent({ action: 'pause' }, { playCurrent, pauseCurrent, stop });
+        handleRemoteEmbedCommandEvent({ action: 'stop' }, { playCurrent, pauseCurrent, stop });
+
+        expect(playCurrent).toHaveBeenCalledOnce();
+        expect(pauseCurrent).toHaveBeenCalledOnce();
+        expect(stop).toHaveBeenCalledOnce();
+    });
+
+    it('seeks to the numeric value carried by the payload', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const seek = vi.fn();
+
+        handleRemoteEmbedCommandEvent({ action: 'seek', value: 42.5 }, { seek });
+
+        expect(seek).toHaveBeenCalledWith(42.5);
+    });
+
+    it('ignores a seek payload with a non-numeric value', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const seek = vi.fn();
+
+        handleRemoteEmbedCommandEvent({ action: 'seek', value: 'nope' }, { seek });
+
+        expect(seek).not.toHaveBeenCalled();
+    });
+
+    it('ignores non-object or malformed payloads', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const playCurrent = vi.fn();
+        const pauseCurrent = vi.fn();
+        const stop = vi.fn();
+        const seek = vi.fn();
+
+        handleRemoteEmbedCommandEvent(null, { playCurrent, pauseCurrent, stop, seek });
+        handleRemoteEmbedCommandEvent(undefined, { playCurrent, pauseCurrent, stop, seek });
+        handleRemoteEmbedCommandEvent('toggle', { playCurrent, pauseCurrent, stop, seek });
+
+        expect(playCurrent).not.toHaveBeenCalled();
+        expect(pauseCurrent).not.toHaveBeenCalled();
+        expect(stop).not.toHaveBeenCalled();
+        expect(seek).not.toHaveBeenCalled();
+    });
+});
+
 describe('remoteQueuePrefetchRefs', () => {
     it('builds refs for upcoming remote queue items only', async () => {
         const { remoteQueuePrefetchRefs } = await import('./playback-manager.js');
