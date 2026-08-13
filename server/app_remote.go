@@ -312,6 +312,11 @@ func (ls *LANServer) remoteStateHandler(w http.ResponseWriter, r *http.Request) 
 		"thumbnail": relayThumbnail,
 	}
 
+	// Additive: true while the desktop's own speaker output is silenced for
+	// a remote-initiated playback session (see MarkNextPlaybackRemoteInitiated
+	// in app_audio.go). The relay above is unaffected either way.
+	status["localMuted"] = ls.app.AudioIsLocalMuted()
+
 	writeJSON(w, status)
 }
 

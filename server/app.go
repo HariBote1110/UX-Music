@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/lyricssync"
 	"ux-music-sidecar/internal/playlist"
@@ -48,6 +49,15 @@ type App struct {
 	// app_handoff.go). When set, Shutdown re-bootstraps the agent so it
 	// resumes its KeepAlive-managed run.
 	bootedOutResidentAgent bool
+	// remoteInitiatedNext marks that the *next* AudioPlay/AudioStartWebViewTap
+	// call originates from a remote-play-song command (POST
+	// /v1/remote/command {"action":"play-song"}) rather than a local click,
+	// so the desktop should stay silent for that session while its LAN relay
+	// keeps working unchanged. Set via MarkNextPlaybackRemoteInitiated
+	// (called by the renderer's handleRemotePlaySongEvent before playSong),
+	// consumed exactly once by consumeRemoteInitiatedNext. See
+	// progress/remote-play-song.md.
+	remoteInitiatedNext atomic.Bool
 }
 
 // NewApp creates a new App struct

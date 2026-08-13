@@ -46,15 +46,49 @@ func (a *App) AudioGetCurrentDevice() string {
 	return a.audioPlayer.GetCurrentDevice()
 }
 
+// MarkNextPlaybackRemoteInitiated marks that the next AudioPlay or
+// AudioStartWebViewTap call starts a remote-initiated session (triggered by
+// POST /v1/remote/command {"action":"play-song"}, not a local click). That
+// call will silence the desktop's own speaker output for the session while
+// leaving the LAN relay untouched (see pkg/audio.Player.SetLocalMuted).
+// The renderer calls this from handleRemotePlaySongEvent, right before
+// invoking playSong for the remotely-requested song.
+func (a *App) MarkNextPlaybackRemoteInitiated() {
+	a.remoteInitiatedNext.Store(true)
+}
+
+// consumeRemoteInitiatedNext reports whether the next playback start was
+// marked remote-initiated, resetting the marker so it only ever applies to
+// one call. A local play (AudioPlay/AudioStartWebViewTap invoked without a
+// prior MarkNextPlaybackRemoteInitiated) reads false here and so unmutes.
+func (a *App) consumeRemoteInitiatedNext() bool {
+	return a.remoteInitiatedNext.Swap(false)
+}
+
+// AudioIsLocalMuted reports whether local speaker output is currently
+// silenced (remote-initiated playback session). Surfaced additively in
+// GET /v1/remote/state as "localMuted".
+func (a *App) AudioIsLocalMuted() bool {
+	if a.audioPlayer == nil {
+		return false
+	}
+	return a.audioPlayer.IsLocalMuted()
+}
+
 // AudioPlay starts playback of an audio file
 func (a *App) AudioPlay(filePath string, gainLinear float64) error {
 	if a.audioPlayer == nil {
 		return fmt.Errorf("audio player not initialized")
 	}
+	remoteInitiated := a.consumeRemoteInitiatedNext()
 	if err := a.audioPlayer.Play(filePath, gainLinear); err != nil {
 		fmt.Printf("[Audio] Play failed (%s): %v\n", filePath, err)
 		return err
 	}
+	// Local files via play-song stay silent for a remote-initiated session;
+	// any ordinary local play (remoteInitiated == false) unmutes, ending a
+	// previous remote-initiated session's mute.
+	a.audioPlayer.SetLocalMuted(remoteInitiated)
 	a.updateOSNowPlayingByPath(filePath, true)
 	a.pushDiscordPresence(true)
 	return nil
@@ -128,10 +162,16 @@ func (a *App) AudioStartWebViewTap() error {
 	}
 	fmt.Printf("[Audio] WebView tap: targeting own WebKit helper PIDs %v\n", pids)
 	targets := audio.ProcessTapTargets{PIDs: pids}
+	remoteInitiated := a.consumeRemoteInitiatedNext()
 	if err := a.audioPlayer.PlayProcessTap(targets, 1.0); err != nil {
 		fmt.Printf("[Audio] WebView tap start failed: %v\n", err)
 		return err
 	}
+	// The tapped WebKit helper is muted at source either way (see the doc
+	// comment above); this additionally gates the *local* re-render so a
+	// remote-initiated embed session stays silent on the desktop while the
+	// separate relay tap (server/app_remote_relay_notify.go) keeps working.
+	a.audioPlayer.SetLocalMuted(remoteInitiated)
 	return nil
 }
 
