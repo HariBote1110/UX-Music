@@ -11,6 +11,19 @@ protocol TVRelayStreamPlayerDelegate: AnyObject {
     /// The network connection ended (host stopped, error, non-2xx) or decode failed
     /// unrecoverably. `reason` is a user-facing (already localised where possible) string.
     func relayStreamPlayer(_ player: TVRelayStreamPlayer, didFailWith reason: String)
+    /// The HTTP body ended with NO error (`didCompleteWithError: nil`) — i.e. a normal,
+    /// successful end of stream. The continuous YouTube relay never reaches this in practice
+    /// (the host keeps the connection open for as long as it's relaying), but Task A's
+    /// per-song stream (`GET /v1/remote/file?id=…&stream=aac`) is finite: the desktop closes
+    /// the connection once the whole track has been sent, and THAT is this type's only signal
+    /// that the track finished — there is no separate "end of track" marker in the ADTS byte
+    /// stream itself. Default no-op via the protocol extension below so `TVRelayPlaybackController`
+    /// (which never expects to see this) doesn't need to implement it.
+    func relayStreamPlayerDidReachEndOfStream(_ player: TVRelayStreamPlayer)
+}
+
+extension TVRelayStreamPlayerDelegate {
+    func relayStreamPlayerDidReachEndOfStream(_ player: TVRelayStreamPlayer) {}
 }
 
 /// Plays the host's YouTube LAN relay stream (`GET /v1/remote/relay`) by parsing and decoding the
@@ -40,6 +53,22 @@ protocol TVRelayStreamPlayerDelegate: AnyObject {
 /// **Jitter buffer**: decoded PCM is queued and playback only starts once ~0.75s of audio is
 /// buffered (`jitterBufferSeconds`), smoothing out network scheduling jitter from the chunked
 /// transfer without adding much perceptible latency.
+///
+/// **EQ routing decision (Task A, `progress/tvos-playback.md`)**: this type is now reused for two
+/// call sites — the continuous relay (unchanged) and Task A's per-song stream-first playback path
+/// for cache misses. `MusicPlayerService`'s 10-band `AVAudioUnitEQ` is a private node fully owned
+/// by its own engine (confirmed by reading `MusicPlayerService.swift`); there is no reusable public
+/// EQ graph to attach here, and re-implementing a second 10-band EQ purely for the ~seconds-long
+/// window before the cached original takes over on the next play was judged not worth the
+/// complexity. What DOES matter for the cache-miss case is loudness: playing an un-normalised
+/// stream noticeably louder/quieter than the cached-path `MusicPlayerService.applyLoudnessGain()`
+/// track before it would be a jarring level jump. So this player applies ONLY the LUFS gain
+/// (`outputGain`, same linear-gain formula as `MusicPlayerService`) via `mainMixerNode.outputVolume`
+/// — cheap, no extra node needed — and skips the 10-band EQ curve for the streamed portion of a
+/// song. The very same song immediately gets full EQ once it's next played from the
+/// `TVPlaybackCacheStore`-cached original (`TVPlaybackController`'s background download). Documented
+/// as the pragmatic first step; a shared EQ graph is future work if the loudness-only gap proves
+/// audible in practice.
 final class TVRelayStreamPlayer: NSObject {
     weak var delegate: TVRelayStreamPlayerDelegate?
 
@@ -55,6 +84,20 @@ final class TVRelayStreamPlayer: NSObject {
     private var lastRMSLogTime = Date.distantPast
     private var isEngineConnected = false
     private let muteOutput: Bool
+
+    /// LUFS loudness gain for Task A's per-song stream path (`progress/tvos-playback.md` "EQ/LUFS
+    /// のルーティング判断" 追記). Linear gain (same `pow(10, dB/20)` formula and `0...4` clamp as
+    /// `MusicPlayerService.applyLoudnessGain()`), applied to `mainMixerNode.outputVolume` — the
+    /// relay path (continuous YouTube audio, already the host's own mix) has never needed this and
+    /// stays at the default `1.0`. Full 10-band EQ is deliberately NOT replicated on this
+    /// standalone engine; see the type doc comment's "EQ routing decision" for why.
+    var outputGain: Float = 1.0 {
+        didSet { applyOutputVolume() }
+    }
+
+    private func applyOutputVolume() {
+        engine.mainMixerNode.outputVolume = muteOutput ? 0 : outputGain
+    }
 
     /// - Parameter muteOutput: silences `mainMixerNode` (`outputVolume = 0`) so verification runs
     ///   (the `UXTV_PREVIEW=relay` DEBUG harness, and any future automated test that schedules
@@ -92,9 +135,7 @@ final class TVRelayStreamPlayer: NSObject {
         isEngineConnected = false
 
         engine.attach(playerNode)
-        if muteOutput {
-            engine.mainMixerNode.outputVolume = 0
-        }
+        applyOutputVolume()
         // Deliberately NOT connected here: `AVAudioEngine.connect(_:to:format:)` with `format:
         // nil` picks up whatever the node's default output format happens to be, which does not
         // match the stream's actual sample rate/channel count and previously caused a hard
@@ -231,7 +272,16 @@ extension TVRelayStreamPlayer: URLSessionDataDelegate {
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        guard let error, (error as NSError).code != NSURLErrorCancelled else { return }
+        guard let error else {
+            // Normal end of the HTTP body: for the finite per-song stream (Task A) this IS end of
+            // track; the continuous relay stream never reaches this branch in practice.
+            let player = self
+            DispatchQueue.main.async {
+                player.delegate?.relayStreamPlayerDidReachEndOfStream(player)
+            }
+            return
+        }
+        guard (error as NSError).code != NSURLErrorCancelled else { return }
         fail(reason: error.localizedDescription)
     }
 }

@@ -201,6 +201,35 @@ struct RemoteAPIClient: Sendable {
         try authorizedRequest(path: "/v1/remote/relay")
     }
 
+    /// Builds an authenticated request for `GET /v1/remote/file?id=…&stream=aac` (Task A
+    /// stream-first playback for cache misses, `progress/tvos-playback.md`). The desktop returns
+    /// chunked ADTS AAC-LC 256kbps/44.1kHz/stereo — byte-for-byte the same elementary-stream
+    /// format as `GET /v1/remote/relay` — so the response can be handed straight to
+    /// `TVRelayStreamPlayer` (or whatever reusable ADTS stream player wraps it), exactly like
+    /// `relayRequest()`. Uses the `Authorization` header rather than the `?token=` query fallback
+    /// for the same reason as `relayRequest()`: this is a long-lived chunked body, not a
+    /// query-token-friendly one-shot download.
+    func songStreamRequest(songId: String) throws -> URLRequest {
+        guard var components = URLComponents(string: baseURLString) else {
+            throw URLError(.badURL)
+        }
+        components.path = "/v1/remote/file"
+        components.queryItems = Self.songStreamQueryItems(songId: songId)
+        guard let source = components.url else {
+            throw URLError(.badURL)
+        }
+        return authorizedRequest(url: source)
+    }
+
+    /// Pure query-item builder for `songStreamRequest`, extracted so the URL contract is
+    /// unit-testable without a network stack (mirrors `downloadFileQueryItems`).
+    static func songStreamQueryItems(songId: String) -> [URLQueryItem] {
+        [
+            URLQueryItem(name: "id", value: songId),
+            URLQueryItem(name: "stream", value: "aac"),
+        ]
+    }
+
     func fetchSongs() async throws -> [Song] {
         let (data, _) = try await session.data(for: authorizedRequest(path: "/v1/remote/songs"))
         return try JSONDecoder().decode([Song].self, from: data)
