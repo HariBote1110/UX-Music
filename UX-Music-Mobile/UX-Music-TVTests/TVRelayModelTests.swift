@@ -71,4 +71,46 @@ final class TVRelayModelTests: XCTestCase {
     func testIsPlayingDefaultsToTrueWhenNoFallbackGiven() {
         XCTAssertTrue(TVRelayTransportState.isPlaying(fromStateJSON: [:]))
     }
+
+    // MARK: - Position/duration (relay seek bar, Task B)
+
+    func testPositionParsesRootLevelPositionAndDuration() {
+        let block = TVRelayPositionState.parse(fromStateJSON: ["position": 12.5, "duration": 200.0])
+        XCTAssertEqual(block.position, 12.5)
+        XCTAssertEqual(block.duration, 200.0)
+        XCTAssertTrue(block.isSeekable)
+    }
+
+    func testPositionIsNotSeekableWhenDurationMissing() {
+        let block = TVRelayPositionState.parse(fromStateJSON: ["position": 12.5])
+        XCTAssertFalse(block.isSeekable)
+    }
+
+    func testPositionIsNotSeekableWhenDurationIsZero() {
+        let block = TVRelayPositionState.parse(fromStateJSON: ["position": 0.0, "duration": 0.0])
+        XCTAssertFalse(block.isSeekable)
+    }
+
+    func testPositionIsNotSeekableWhenDurationIsNegative() {
+        let block = TVRelayPositionState.parse(fromStateJSON: ["position": 0.0, "duration": -1.0])
+        XCTAssertFalse(block.isSeekable)
+    }
+
+    func testPositionClampsFractionToUnitRange() {
+        let midway = TVRelayPositionState.parse(fromStateJSON: ["position": 50.0, "duration": 200.0])
+        XCTAssertEqual(midway.fraction, 0.25, accuracy: 0.0001)
+
+        let overrun = TVRelayPositionState.parse(fromStateJSON: ["position": 999.0, "duration": 200.0])
+        XCTAssertEqual(overrun.fraction, 1.0, accuracy: 0.0001)
+
+        let notSeekable = TVRelayPositionState.parse(fromStateJSON: [:])
+        XCTAssertEqual(notSeekable.fraction, 0.0, accuracy: 0.0001)
+    }
+
+    func testSeekTargetClampsWithinDurationAndAppliesDelta() {
+        let block = TVRelayPositionState(position: 30, duration: 200)
+        XCTAssertEqual(block.seekTarget(delta: 10), 40)
+        XCTAssertEqual(block.seekTarget(delta: -50), 0) // clamps to 0, never negative
+        XCTAssertEqual(block.seekTarget(delta: 1000), 200) // clamps to duration
+    }
 }
