@@ -26,6 +26,8 @@ struct UXMusicTVApp: App {
                 TVDetailPlayPreviewHarness()
             case "relay":
                 TVRelayStreamPreviewHarness()
+            case "livenowplaying":
+                TVLiveNowPlayingHarness()
             default:
                 TVRootView()
             }
@@ -120,6 +122,55 @@ struct TVRelayStreamPreviewHarness: View {
         }
         .padding(48)
         .onAppear { controller.start() }
+    }
+}
+
+/// DEBUG-only harness for the real (non-preview) local-song playback + Now Playing pipeline,
+/// used to verify the tap→firstAudio latency fix (`TVPlaybackController.play`, see
+/// `progress/tvos-playback.md`) and that `TVNowPlayingView`'s progress bar genuinely advances
+/// during live playback (`progress/tvos-nowplaying.md`) — as opposed to `TVDetailPlayPreviewHarness`,
+/// which only exercises `configureForPreview`'s static stub values.
+///
+/// Reads `UXTV_LIVE_HOST`/`UXTV_LIVE_PORT`/`UXTV_LIVE_TOKEN`/`UXTV_LIVE_SONG_ID`
+/// (`SIMCTL_CHILD_`-prefixed via `xcrun simctl launch`), fetches the real queue from
+/// `/v1/remote/songs`, mutes `MusicPlayerService.masterVolume` (no sound in the simulator), and
+/// drives `TVPlaybackController.play` exactly as `TVBrowseView.play(_:queue:)` does in production,
+/// then presents the real `TVNowPlayingView` (not a stub).
+struct TVLiveNowPlayingHarness: View {
+    @StateObject private var playbackController: TVPlaybackController
+    private let player = MusicPlayerService()
+    private let client: RemoteAPIClient
+    private let songId: String?
+
+    init() {
+        let env = ProcessInfo.processInfo.environment
+        let host = env["UXTV_LIVE_HOST"] ?? "127.0.0.1"
+        let port = env["UXTV_LIVE_PORT"] ?? "8765"
+        let token = env["UXTV_LIVE_TOKEN"] ?? ""
+        let apiClient = RemoteAPIClient(baseURLString: "http://\(host):\(port)", token: token)
+        client = apiClient
+        songId = env["UXTV_LIVE_SONG_ID"]
+        let sharedPlayer = player
+        sharedPlayer.masterVolume = 0 // muted per verification convention — never audible in the simulator
+        _playbackController = StateObject(wrappedValue: TVPlaybackController(client: apiClient, player: sharedPlayer))
+    }
+
+    var body: some View {
+        TVNowPlayingView(player: player, client: client)
+            .task {
+                guard let songId else { return }
+                do {
+                    let songs = try await client.fetchSongs()
+                    guard let songIdx = songs.firstIndex(where: { $0.id == songId }) else { return }
+                    // Realistic prefetch window (current + next 2, matching TVPlaybackController's
+                    // default `prefetchCount`), NOT a single-song queue — the ordering bug this
+                    // harness verifies only shows up when there is something to prefetch.
+                    let queue = Array(songs[songIdx..<min(songs.count, songIdx + 3)])
+                    await playbackController.play(queue[0], queue: queue)
+                } catch {
+                    NSLog("[TVLiveNowPlayingHarness] fetchSongs/play failed: %@", String(describing: error))
+                }
+            }
     }
 }
 #endif

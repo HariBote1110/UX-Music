@@ -165,3 +165,97 @@
 タイトル「検証用スタブ曲」・アーティスト「UX Music Demo」・進捗「0:12 / 3:00」・
 一時停止アイコンが表示されることを確認——修正前の「初期/空画面」ではなく、実際の
 トラック状態が即座に反映されることを確認した。
+
+## 追記（2026-08-13）: 「Now Playingが継続的に死んでいる」実機再報告の再調査
+
+上記コミット（`c3fbcc7`）の検証は `TVDetailPlayPreviewHarness` の**静止画スクリーンショット1枚**
+だったため、「一度は正しい値で描画されたが、以後は更新されないスタブ表示」と「本当にライブ
+更新されている表示」を区別できていなかった。実機からの再報告を受け、ゼロから再調査した。
+
+### 調査した経路（問題なしと確認）
+
+- **`MusicPlayerService`の観測方式**: `@Observable`（Observation framework）で、`TVNowPlayingView`
+  および配下の `TVNowPlayingProgressBar` 等は `player` を素の `let` プロパティとして受け取り、
+  `body` 内で `player.positionSeconds` 等を直接読んでいる。`@Observable` はトップレベルで
+  読んだプロパティを自動追跡するため、`@ObservedObject`/`@Bindable` などのラッパーなしで
+  正しく動作する構成——`progress/watch-transfer-ui-observation.md` が警告する「`@Observable`
+  親の中に裸の `ObservableObject` 子をネストする」罠には該当しない（`MusicPlayerService` 自体が
+  `@Observable` であり、`ObservableObject` の子を持っていない）。
+- **進捗を駆動するタイマー**: `MusicPlayerService.init()` が無条件に `startPositionTimer()` を
+  呼び、`Timer(timeInterval: 0.25, repeats: true)` を `RunLoop.main` に `.common` モードで
+  登録している（tvOS も含め全プラットフォーム共通、`configureForPreview` 等の分岐なし）。
+  `tickPlaybackPosition()` は `AVAudioPlayerNode.lastRenderTime` から実時間を計算するため、
+  実際に音声が再生されていれば `positionSeconds` は確実に進む。
+- **play/pause/トラック変化のUI反映**: `TVNowPlayingTransportBar` は `player.togglePlayPause()`/
+  `player.next()`/`player.previous()` を直接呼び、戻り値の状態変化は上記の `@Observable`
+  自動追跡で反映される。
+
+### 実機同等の検証で確認した結果: 現行コードは正しく動作している
+
+`TVDetailPlayPreviewHarness`（`configureForPreview` によるスタブ静止値）ではなく、
+**実際にAVAudioEngineで再生する経路**を実機相当で検証する必要があったため、新設の
+DEBUG専用ハーネス `TVLiveNowPlayingHarness`（`UXTV_PREVIEW=livenowplaying`、
+`UXMusicTVApp.swift`）を追加した。稼働中のライブホスト（`http://127.0.0.1:8765`、実ライブラリ）
+に対して本物の `TVPlaybackController.play` → `MusicPlayerService.play` を実行し
+（`masterVolume = 0` でミュート、`progress/tvos-playback.md` の速度改修と同じ経路）、
+実際に鳴っている（はずの）曲の `TVNowPlayingView` を約6秒間隔で2回スクリーンショット
+（`/tmp/claude-501/npfix_t0.png`・`npfix_t6.png`）した結果、進捗表示が **0:03 → 0:09**
+（一時停止アイコン表示、= 再生中）と正しく進んでいることを確認した。つまり
+`MusicPlayerService`→`TVNowPlayingView`の観測チェーン自体は、現在のコードで壊れていない。
+
+### それでも見つけた、実際に壊れうる箇所（防御的に修正）
+
+`TVPairingView.swift`の`TVConnectedView`（`TVBrowseView`に`player`を渡す組み立て役）を精査した
+ところ、`player`と`remoteControlServer`が**参照型（クラス）でありながら素の`let`プロパティ**
+として`init`内で構築されていた:
+
+```swift
+private let player: MusicPlayerService     // ← 修正前
+private let remoteControlServer: TVRemoteControlServer  // ← 修正前
+init(model: TVAppModel) {
+    let sharedPlayer = MusicPlayerService()
+    player = sharedPlayer
+    _playbackController = StateObject(
+        wrappedValue: TVPlaybackController(client: apiClient, player: sharedPlayer)
+    )
+    ...
+}
+```
+
+`TVConnectedView`は`struct View`なので、親（`TVRootView`、`model: TVAppModel`を`@ObservedObject`
+で観測）が再レンダリングされるたびに`init`が再実行される。`@StateObject`（`playbackController`
+など）は`wrappedValue`の自動クロージャが**初回のみ**評価され、以後は同一インスタンスを
+保持し続けるのに対し、素の`let`はビューの構造的アイデンティティが保たれていても**再init毎に
+毎回新しい`MusicPlayerService()`/`TVRemoteControlServer`が作られて代入される**。つまり
+2回目以降の再initが発生すると、`playbackController`は初回の`sharedPlayer`を握ったまま実際に
+音声を再生し続ける一方、`TVBrowseView`/`TVNowPlayingView`へ渡る`player`は毎回差し替わった
+「一度も`play()`されていない別インスタンス」になり得る——これはまさに「実際に鳴っている
+プレイヤーと画面が観測しているプレイヤーが別物になる」種類の、ログにもクラッシュにも出ない
+静かな死んだNow Playingを引き起こしうるバグで、`watch-transfer-ui-observation.md`が警告する
+Observationの罠と同系統（今回は`@Observable`×`ObservableObject`の混在ではなく、
+「`struct View`の`let`格納プロパティは再init毎に再評価される」というSwiftUIの基本仕様を
+参照型プロパティに対して見落としたケース）。
+
+現在の`TVAppModel`は`pairingState`/`serverConfig`の2つの`@Published`のみを持ち、接続完了後の
+通常運用ではどちらも変化しないため、この再initは通常セッションでは起きないと考えられる
+（=今回の実機再現ができなかった理由と整合する）。ただし将来`TVAppModel`に別の`@Published`
+状態を足したり、`TVConnectedView`の親階層が変わった場合に静かに再発しうる地雷であるため、
+`@StateObject`と同じ「初回のみ評価・以後は同一インスタンスを保持」という意味論を持つ`@State`
+（参照型に対しても同じ保証を提供する）へ変更し、構造的に再発を防止した:
+
+```swift
+@State private var player: MusicPlayerService
+@State private var remoteControlServer: TVRemoteControlServer
+...
+_player = State(initialValue: sharedPlayer)
+_remoteControlServer = State(initialValue: TVRemoteControlServer(...))
+```
+
+### 検証
+
+- `xcodebuild test`（`UX-Music-TV`スキーム、tvOSシミュレータ）: 全件成功。
+- 実際のライブホストに対する再生で進捗が0:03→0:09と進むスクリーンショットにより、
+  観測チェーン自体が正しく動作することを実証済み（上記）。
+- `TVConnectedView`の`@State`化はコンパイル成功のみ確認——再init自体を実機で誘発する
+  再現手順が無いため、この防御的修正そのものをスクリーンショットで直接反証／実証すること
+  はできていない（コード上の構造的保証としては`@StateObject`と同じ強度）。

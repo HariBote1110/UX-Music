@@ -171,9 +171,22 @@ struct TVConnectedView: View {
     @StateObject private var playbackController: TVPlaybackController
     @StateObject private var relayModel: TVRelayModel
     @StateObject private var relayPlaybackController: TVRelayPlaybackController
-    private let player: MusicPlayerService
+    // `@State`, NOT `let` — see `progress/tvos-nowplaying.md` "再生開始レイテンシ" 追記 for the failure
+    // mode this avoids: `TVConnectedView` is a plain `struct View`, so its `init` re-runs on every
+    // re-render of the parent (`TVRootView`), and a bare `let` stored property is recomputed on
+    // every one of those re-inits even though the view's on-screen identity is preserved. `player`
+    // and `remoteControlServer` are reference types (classes), so a `let` would silently swap in a
+    // brand-new `MusicPlayerService`/`TVRemoteControlServer` on every re-init while `playbackController`
+    // (a `@StateObject`, whose `wrappedValue` autoclosure only ever runs once) stays pinned to the
+    // *original* `sharedPlayer` from the very first init — `TVBrowseView`/`TVNowPlayingView` would then
+    // observe a player instance that never actually plays anything, i.e. a permanently "dead" Now
+    // Playing screen with no assertion or crash to surface it. `@State` (like `@StateObject`) only
+    // uses its initial-value expression on the view's first appearance and preserves the same
+    // instance across subsequent re-inits, so every re-render sees the SAME player that
+    // `playbackController` drives.
+    @State private var player: MusicPlayerService
+    @State private var remoteControlServer: TVRemoteControlServer
     private let client: RemoteAPIClient
-    private let remoteControlServer: TVRemoteControlServer
 
     init(model: TVAppModel) {
         self.model = model
@@ -183,7 +196,7 @@ struct TVConnectedView: View {
         self.client = apiClient
         let sharedPlayer = MusicPlayerService()
         _browseModel = StateObject(wrappedValue: TVBrowseModel(client: apiClient))
-        player = sharedPlayer
+        _player = State(initialValue: sharedPlayer)
         _playbackController = StateObject(
             wrappedValue: TVPlaybackController(client: apiClient, player: sharedPlayer)
         )
@@ -199,11 +212,11 @@ struct TVConnectedView: View {
         // Security fix (`progress/tvos-connect.md` 2026-08-12 追記): authenticate with — and
         // advertise — this TV's own control token, NEVER the host pairing token (`config.token`),
         // so the mDNS broadcast can't leak a credential that grants Host library access.
-        remoteControlServer = TVRemoteControlServer(
+        _remoteControlServer = State(initialValue: TVRemoteControlServer(
             player: sharedPlayer,
             token: TVControlTokenStore().loadOrCreate(),
             deviceName: DeviceIdentity.displayName
-        )
+        ))
     }
 
     var body: some View {

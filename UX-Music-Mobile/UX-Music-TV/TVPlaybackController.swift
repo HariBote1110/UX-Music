@@ -46,33 +46,55 @@ final class TVPlaybackController: ObservableObject {
 
     /// Starts playback of `song` from `queue` (album/playlist tap → play-from-selection, per
     /// §1-4's queue rule), prefetching `song` plus the next `prefetchCount` queue entries.
+    ///
+    /// Ordering matters here (see `progress/tvos-playback.md` "再生開始レイテンシ" 追記): only the
+    /// CURRENT track is awaited before handing off to `MusicPlayerService.play`. The loudness fetch
+    /// runs concurrently with that download (`async let`), and every other queue entry's prefetch is
+    /// fired off in a detached, non-awaited `Task` AFTER audio has started — it must never sit on the
+    /// critical path between a tap and first sound.
     func play(_ song: Song, queue: [Song]) async {
+        #if DEBUG
+        let tapStart = DispatchTime.now()
+        #endif
         connectionState = .buffering
         guard let currentIndex = queue.firstIndex(where: { $0.id == song.id }) else { return }
 
+        let idsToPrefetch = TVPrefetchPlanner.songIdsToPrefetch(
+            queue: queue,
+            currentIndex: currentIndex,
+            prefetchCount: prefetchCount
+        )
+        let protectedIds = Set(idsToPrefetch)
+        let trailingIds = idsToPrefetch.filter { $0 != song.id }
+
         do {
-            let loudness = try await client.fetchLoudness()
-            player.loudnessMap = loudness
+            async let loudnessTask = client.fetchLoudness()
+            let downloaded = try await cache.ensureCached(songId: song.id, protectedSongIds: protectedIds)
 
-            let idsToPrefetch = TVPrefetchPlanner.songIdsToPrefetch(
-                queue: queue,
-                currentIndex: currentIndex,
-                prefetchCount: prefetchCount
-            )
-            let protectedIds = Set(idsToPrefetch)
-
+            var active = song
+            active.path = downloaded.fileURL.path
             var cachedQueue = queue
-            for id in idsToPrefetch {
-                guard let idx = cachedQueue.firstIndex(where: { $0.id == id }) else { continue }
-                let downloaded = try await cache.ensureCached(songId: id, protectedSongIds: protectedIds)
+            if let idx = cachedQueue.firstIndex(where: { $0.id == song.id }) {
                 cachedQueue[idx].path = downloaded.fileURL.path
             }
 
-            guard let activeIdx = cachedQueue.firstIndex(where: { $0.id == song.id }) else { return }
-            let active = cachedQueue[activeIdx]
+            player.loudnessMap = try await loudnessTask
             await cache.pinCurrentlyPlaying(songId: active.id)
             await player.play(active, newQueue: cachedQueue)
             connectionState = .ready
+            #if DEBUG
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - tapStart.uptimeNanoseconds) / 1_000_000
+            NSLog("[TVPlay] tap→firstAudio: %.0fms", elapsedMs)
+            #endif
+
+            // Fire-and-forget: the remaining prefetch window downloads in the background and must
+            // never block (or be blocked by) the audio that is already playing.
+            let cacheStore = cache
+            Task.detached(priority: .utility) {
+                for id in trailingIds {
+                    _ = try? await cacheStore.ensureCached(songId: id, protectedSongIds: protectedIds)
+                }
+            }
         } catch {
             connectionState = .unreachable(message: error.localizedDescription)
         }
