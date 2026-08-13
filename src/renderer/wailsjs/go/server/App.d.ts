@@ -54,6 +54,8 @@ export function AudioSetNowPlayingMetadata(arg1:Record<string, any>):Promise<voi
 
 export function AudioSetVolume(arg1:number):Promise<void>;
 
+export function AudioIsLocalMuted():Promise<boolean>;
+
 export function AudioStartWebViewTap():Promise<void>;
 
 export function AudioStop():Promise<void>;
@@ -175,6 +177,8 @@ export function MTPUploadFiles(arg1:mtp.TransferOptions):Promise<void>;
 export function MTPUploadFilesWithStructure(arg1:Record<string, any>):Promise<Record<string, any>>;
 
 export function MTPWalk(arg1:mtp.WalkOptions):Promise<any>;
+
+export function MarkNextPlaybackRemoteInitiated():Promise<void>;
 
 export function NormalizeAnalyze(arg1:string):Promise<normalize.AnalysisResult>;
 

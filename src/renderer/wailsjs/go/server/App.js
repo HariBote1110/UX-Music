@@ -94,6 +94,10 @@ export function AudioStartWebViewTap() {
   return window['go']['server']['App']['AudioStartWebViewTap']();
 }
 
+export function AudioIsLocalMuted() {
+  return window['go']['server']['App']['AudioIsLocalMuted']();
+}
+
 export function AudioStop() {
   return window['go']['server']['App']['AudioStop']();
 }
@@ -332,6 +336,10 @@ export function MTPUploadFilesWithStructure(arg1) {
 
 export function MTPWalk(arg1) {
   return window['go']['server']['App']['MTPWalk'](arg1);
+}
+
+export function MarkNextPlaybackRemoteInitiated() {
+  return window['go']['server']['App']['MarkNextPlaybackRemoteInitiated']();
 }
 
 export function NormalizeAnalyze(arg1) {

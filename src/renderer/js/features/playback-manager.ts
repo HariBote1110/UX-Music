@@ -8,7 +8,7 @@ import { updateNowPlayingView } from '../ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 import { resolveLocalPlaybackGain } from './playback-gain.js';
 import { buildSkipEvent } from './playback-skip.js';
-import { musicApi, isWailsMode } from '../core/bridge.js';
+import { musicApi, isWailsMode, getWailsApp } from '../core/bridge.js';
 import { getSongById, getSongByPath } from '../core/library-model.js';
 const electronAPI = window.electronAPI;
 const pendingLoudnessRequests = new Set();
@@ -85,10 +85,15 @@ export function handleRemotePlaySongEvent(songId: unknown, deps: {
     findSong?: (id: string) => unknown;
     notifyNotFound?: () => void;
     playResolvedSong?: (song: unknown) => void;
+    markRemoteInitiated?: () => void;
 } = {}) {
     const findSong = deps.findSong ?? getSongById;
     const notifyNotFound = deps.notifyNotFound ?? (() => showNotification('指定された曲がライブラリに見つかりませんでした。'));
     const playResolvedSong = deps.playResolvedSong ?? ((song: unknown) => playSong(0, [song]));
+    // PC自体のスピーカーを無音化するためのGo側フラグ (App.MarkNextPlaybackRemoteInitiated)
+    // を立てる。次の1回のAudioPlay/AudioStartWebViewTapだけに効く一度きりの
+    // マーカーなので、必ずplayResolvedSong（=playSong経由の再生開始）の前に呼ぶ。
+    const markRemoteInitiated = deps.markRemoteInitiated ?? (() => getWailsApp()?.MarkNextPlaybackRemoteInitiated?.());
 
     if (typeof songId !== 'string' || songId.trim() === '') {
         return;
@@ -98,6 +103,7 @@ export function handleRemotePlaySongEvent(songId: unknown, deps: {
         notifyNotFound();
         return;
     }
+    markRemoteInitiated();
     playResolvedSong(song);
 }
 
