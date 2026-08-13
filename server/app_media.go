@@ -128,6 +128,7 @@ func (a *App) updateOSPlaybackState(playing bool) {
 
 	normalizedTitle, normalizedArtist, normalizedAlbum := normalizeNowPlayingMetadata(title, artist, album)
 	setOSNowPlaying(normalizedTitle, normalizedArtist, normalizedAlbum, artworkPath, playing)
+	setTrayPlayPauseLabel(trayPlayPauseLabel(playing))
 }
 
 func (a *App) clearOSNowPlayingState() {

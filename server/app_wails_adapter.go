@@ -53,3 +53,18 @@ func (a *App) wireWailsRuntime() {
 	}
 	a.dialogs = wailsDialogProvider{}
 }
+
+// trayShowWindow re-shows the app after HideWindowOnClose hid it via
+// [NSApp hide:]. runtime.Show reaches Frontend.Show -> mainWindow.ShowApplication
+// -> [NSApplication unhide:self] on darwin, which is the counterpart to that
+// hide call (see progress/menubar-tray-mode.md and
+// progress/background-window-close.md).
+func (a *App) trayShowWindow() {
+	wailsRuntime.Show(a.ctx)
+}
+
+// trayQuit triggers the same real-quit path as Cmd+Q / the App-menu Quit
+// item.
+func (a *App) trayQuit() {
+	wailsRuntime.Quit(a.ctx)
+}

@@ -120,6 +120,7 @@ func (a *App) StopGemmaServer() error {
 // long-lived child processes (llama-server etc.).
 func (a *App) Shutdown(ctx context.Context) {
 	_ = ctx
+	destroyTray()
 	if llamaSrv != nil {
 		_ = llamaSrv.Stop()
 	}

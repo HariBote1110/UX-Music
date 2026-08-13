@@ -109,6 +109,7 @@ func (a *App) Startup(ctx context.Context) {
 	fmt.Printf("[LAN] Server address: %s\n", GetLANServerAddress())
 
 	a.initOSMediaControls()
+	a.initTray()
 
 	// Initialize Audio Player
 	audio.SetFFmpegPaths(config.FFmpegPath, config.FFprobePath)
