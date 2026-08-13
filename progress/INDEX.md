@@ -1,5 +1,6 @@
 # Progress Index
 
+- [tvos-playback-concurrency.md](tvos-playback-concurrency.md) — 「UIが頻繁にハングする」報告への構造監査。ownership/queueマップと境界越え同期呼び出し全件（`TVRelayStreamPlayer.elapsedSeconds`/`pause`/`resume`のMainActor→`engineQueue.sync`、`generationLock`のMainActor取得、`MusicPlayerService.dispatchToMainSync`）を危険度順にランク付け。最頻発の`elapsedSeconds`/`pause`/`resume`の同期呼び出しを解消し、フル`actor StreamSession`統合は将来スコープとして設計メモを記録
 - [tvos-nowplaying-textcolumn.md](tvos-nowplaying-textcolumn.md) — ストリーム再生実機で「Now Playingのテキスト列が消える」不具合の根本原因（曲切り替え時、歌詞フェッチ完了までlyricsLinesが前曲のまま残り、`HStack(alignment: .center)`が可変高さのテキスト列を毎フレーム中央寄せし直すため視覚的に上へジャンプしていた）と修正（フェッチ前に同期クリア＋`.top`揃え）。あわせて`TVRelayStreamPlayer.start()/stop()`の`engineQueue.sync`をMainActorデッドロック回避のため`.async`化した設計判断も記録
 
 - [remote-relay-thumbnail.md](remote-relay-thumbnail.md) — 中継Now Playingサムネイルを可能な限り高解像度で転送する方針。レンダラーは動画IDが分かれば常に`maxresdefault`候補URLを`NotifyYouTubePlaybackState`へ渡し、Go側`resolveRelayThumbnailURL`が`maxresdefault→sddefault→hqdefault`の順にHEADプローブして最初に200が返ったものを採用（全滅時はhqdefaultへ無条件フォールバック）。動画IDごとに`sync.Map`で結果をキャッシュし音声パス外・曲ごと高々1回のみプローブ。YouTube以外のURLはそのまま素通り
