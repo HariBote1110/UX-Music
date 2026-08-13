@@ -38,6 +38,7 @@
 | （新設） | POST /v1/remote/play-event（Sync ピアでない軽量クライアント向けの再生完了報告。詳細は `progress/remote-play-event.md`） |
 | （新設） | GET /v1/remote/relay（GUI モード限定・YouTube 音声中継の AAC-LC ADTS 放送。認証必須・ヘッドレス時404・非アクティブ時409。詳細は `progress/remote-relay.md`） |
 | （新設） | POST /v1/remote/command の action: "play-song"（ペア済みクライアントからライブラリ楽曲IDを指定して再生開始を指示。ヘッドレス時 409 gui_required・未知の songId は 404。詳細は `progress/remote-play-song.md`） |
+| （追加フィールド） | GET /v1/remote/songs の各曲へ `hasLocalAudio: boolean` を追加（既存フィールドは不変）。`true` なら GET /v1/remote/file/{id} が音声を返す。ダウンロードせず埋め込み再生のみで登録された YouTube 曲（`type:"youtube"`）は `false` になり、/v1/remote/file/{id} は `no_local_audio` エラーコード付きの 404 を返す。詳細は `progress/remote-embed-control.md`。 |
 | /sync/library/*, /sync/assets/*, /sync/discover | /v1/sync/library/*, /v1/sync/assets/*, /v1/sync/discover |
 
 ## Alternatives considered

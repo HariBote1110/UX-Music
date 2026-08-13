@@ -156,12 +156,29 @@ func remoteSongsHandler(w http.ResponseWriter, r *http.Request) {
 		// tag-derived keys with artist fallbacks). The library JSON may normalise
 		// album fields differently, so prefer the hash embedded in song["artwork"].full.
 		clean["artworkId"] = artworkIDForRemoteSong(song)
+		// Additive: tells clients whether GET /v1/remote/file/{id} will actually
+		// serve audio. Entries registered with type:"youtube" (see buildStreamingSong
+		// in app_youtube.go) hold a video URL in "path", not a local file — TV/mobile
+		// clients must route those through embed/relay playback instead of expecting
+		// a downloadable file. Everything else (type:"local" or the unset legacy
+		// default) has a real file on disk.
+		clean["hasLocalAudio"] = songHasLocalAudio(song)
 		stripped = append(stripped, clean)
 	}
 
 	ensureRemoteTrackOrder(stripped)
 
 	writeJSON(w, stripped)
+}
+
+// songHasLocalAudio reports whether a library entry has a playable local
+// audio file (true) or is an embed/relay-only YouTube link registered via
+// buildStreamingSong (type:"youtube", "path" holds a video URL, not a file
+// path). Entries with type:"local" or no "type" at all (the legacy default,
+// predating this field) have a real file on disk.
+func songHasLocalAudio(song map[string]interface{}) bool {
+	typ, _ := song["type"].(string)
+	return typ != "youtube"
 }
 
 func remoteFileHandler(w http.ResponseWriter, r *http.Request) {
@@ -178,6 +195,11 @@ func remoteFileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Printf("[Remote] GET /v1/remote/file id=%q from %s\n", songID, r.RemoteAddr)
+
+	if song, ok := remoteLibrarySongByID(songID); ok && !songHasLocalAudio(song) {
+		writeAPIErrorWithCode(w, "no_local_audio", "this song has no local audio file (embed/relay only)", http.StatusNotFound)
+		return
+	}
 
 	filePath := findSongPathByID(songID)
 	if filePath == "" {
@@ -320,6 +342,17 @@ func (ls *LANServer) remoteStateHandler(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, status)
 }
 
+// embedSessionActive reports whether the desktop is currently playing a
+// YouTube official embed (renderer's IFrame player, relayed to
+// GET /v1/remote/relay) rather than a local file through the Go
+// audio.Player. It reuses remoteRelay's own active flag — set by
+// NotifyYouTubePlaybackState when the renderer's playEmbed() starts/ends a
+// session — instead of tracking a second, parallel piece of state.
+func embedSessionActive() bool {
+	active, _, _ := remoteRelay.State()
+	return active
+}
+
 // remoteCommandHandler accepts remote playback commands from mobile clients.
 // Supported actions: toggle, play, pause, stop, next, prev, seek, play-song.
 func (ls *LANServer) remoteCommandHandler(w http.ResponseWriter, r *http.Request) {
@@ -343,6 +376,27 @@ func (ls *LANServer) remoteCommandHandler(w http.ResponseWriter, r *http.Request
 	if err := json.Unmarshal(body, &cmd); err != nil {
 		writeAPIError(w, "invalid JSON", http.StatusBadRequest)
 		return
+	}
+
+	// While a YouTube official embed session is active (renderer notified Go
+	// via NotifyYouTubePlaybackState → remoteRelay.active), the Go
+	// audio.Player is not what is actually sounding — the renderer's IFrame
+	// player is. Transport commands must therefore be routed to the
+	// renderer instead of driving a Go player nobody is listening to.
+	// remote-command's plain-string "next"/"prev" is untouched: queue
+	// advancement already lives in the renderer (playback-manager.ts
+	// playNextSong/playPrevSong), which re-enters play()'s own embed/local
+	// routing per song regardless of whether the outgoing song was an embed.
+	if embedSessionActive() {
+		switch cmd.Action {
+		case "toggle", "play", "pause", "stop", "seek":
+			ls.app.emit("remote-embed-command", map[string]interface{}{
+				"action": cmd.Action,
+				"value":  cmd.Value,
+			})
+			writeJSON(w, map[string]interface{}{"ok": true})
+			return
+		}
 	}
 
 	var cmdErr error
