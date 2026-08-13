@@ -156,12 +156,29 @@ func remoteSongsHandler(w http.ResponseWriter, r *http.Request) {
 		// tag-derived keys with artist fallbacks). The library JSON may normalise
 		// album fields differently, so prefer the hash embedded in song["artwork"].full.
 		clean["artworkId"] = artworkIDForRemoteSong(song)
+		// Additive: tells clients whether GET /v1/remote/file/{id} will actually
+		// serve audio. Entries registered with type:"youtube" (see buildStreamingSong
+		// in app_youtube.go) hold a video URL in "path", not a local file — TV/mobile
+		// clients must route those through embed/relay playback instead of expecting
+		// a downloadable file. Everything else (type:"local" or the unset legacy
+		// default) has a real file on disk.
+		clean["hasLocalAudio"] = songHasLocalAudio(song)
 		stripped = append(stripped, clean)
 	}
 
 	ensureRemoteTrackOrder(stripped)
 
 	writeJSON(w, stripped)
+}
+
+// songHasLocalAudio reports whether a library entry has a playable local
+// audio file (true) or is an embed/relay-only YouTube link registered via
+// buildStreamingSong (type:"youtube", "path" holds a video URL, not a file
+// path). Entries with type:"local" or no "type" at all (the legacy default,
+// predating this field) have a real file on disk.
+func songHasLocalAudio(song map[string]interface{}) bool {
+	typ, _ := song["type"].(string)
+	return typ != "youtube"
 }
 
 func remoteFileHandler(w http.ResponseWriter, r *http.Request) {
@@ -178,6 +195,11 @@ func remoteFileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Printf("[Remote] GET /v1/remote/file id=%q from %s\n", songID, r.RemoteAddr)
+
+	if song, ok := remoteLibrarySongByID(songID); ok && !songHasLocalAudio(song) {
+		writeAPIErrorWithCode(w, "no_local_audio", "this song has no local audio file (embed/relay only)", http.StatusNotFound)
+		return
+	}
 
 	filePath := findSongPathByID(songID)
 	if filePath == "" {
