@@ -68,6 +68,13 @@ actor TVPlaybackCacheStore {
         }
     }
 
+    /// Cheap existence check with no download side effect — used by Task A's stream-first
+    /// decision (`TVSongPlaybackPlan.shouldStream`) to decide, before touching the network,
+    /// whether `songId` can play from cache immediately or needs the stream-first path.
+    func isCached(songId: String) -> Bool {
+        fileManager.fileExists(atPath: fileURL(for: songId).path)
+    }
+
     /// Returns the cached file URL for `songId`, downloading it first if not already cached.
     /// `protectedSongIds` (typically the currently-playing + already-queued-for-prefetch ids)
     /// are never evicted to make room for this download.

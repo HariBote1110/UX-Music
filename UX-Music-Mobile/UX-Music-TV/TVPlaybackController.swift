@@ -17,11 +17,21 @@ final class TVPlaybackController: ObservableObject {
     }
 
     @Published private(set) var connectionState: ConnectionState = .idle
+    /// Task A stream-first playback state (`progress/tvos-playback.md`). `.idle` whenever the
+    /// current track played from cache (the unchanged fast path) — only a cache MISS drives this
+    /// through `.loading` → `.streaming` → `.finished`/`.failed`. The browse/Now Playing UI binds
+    /// its loading spinner to `TVSongStreamPlaybackReducer.isLoading(streamState)`.
+    @Published private(set) var streamState: TVSongStreamPlaybackState = .idle
 
     private let client: RemoteAPIClient
     private let cache: TVPlaybackCacheStore
     private let player: MusicPlayerService
     private let prefetchCount: Int
+    private let streamController: TVSongStreamController
+    /// Set by `play(_:queue:)` right before starting a stream so `advanceAfterStreamEnd` knows
+    /// which queue to advance from — `TVSongStreamController` itself is queue-agnostic.
+    private var streamingQueue: [Song] = []
+    private var streamingSongIndex: Int = 0
 
     init(
         client: RemoteAPIClient,
@@ -42,7 +52,17 @@ final class TVPlaybackController: ObservableObject {
                 }
             )
         }
+        self.streamController = TVSongStreamController(client: client)
+        streamController.$state.receive(on: DispatchQueue.main).sink { [weak self] in self?.streamState = $0 }
+            .store(in: &cancellables)
+        streamController.onStreamEnded = { [weak self] didFinishNaturally in
+            Task { @MainActor [weak self] in
+                self?.advanceAfterStreamEnd(didFinishNaturally: didFinishNaturally)
+            }
+        }
     }
+
+    private var cancellables = Set<AnyCancellable>()
 
     /// Starts playback of `song` from `queue` (album/playlist tap → play-from-selection, per
     /// §1-4's queue rule), prefetching `song` plus the next `prefetchCount` queue entries.
@@ -56,6 +76,7 @@ final class TVPlaybackController: ObservableObject {
         #if DEBUG
         let tapStart = DispatchTime.now()
         #endif
+        streamController.stop() // any previous stream-first playback is no longer relevant
         connectionState = .buffering
         guard let currentIndex = queue.firstIndex(where: { $0.id == song.id }) else { return }
 
@@ -66,6 +87,37 @@ final class TVPlaybackController: ObservableObject {
         )
         let protectedIds = Set(idsToPrefetch)
         let trailingIds = idsToPrefetch.filter { $0 != song.id }
+
+        // Task A: a cache hit takes the unchanged fast path below; a miss starts streaming
+        // IMMEDIATELY (before the loudness fetch even resolves) so first audio never waits on the
+        // full-file download. This check is synchronous disk I/O only — no network round-trip.
+        let cacheHit = await cache.isCached(songId: song.id)
+        if TVSongPlaybackPlan.shouldStream(cacheHit: cacheHit) {
+            streamingQueue = queue
+            streamingSongIndex = currentIndex
+            let loudnessMap = (try? await client.fetchLoudness()) ?? player.loudnessMap
+            player.loudnessMap = loudnessMap
+            let gain = Self.linearLoudnessGain(
+                lufs: loudnessMap[song.id],
+                targetLoudness: player.targetLoudness,
+                normaliseEnabled: player.normaliseEnabled
+            )
+            streamController.start(songId: song.id, outputGain: gain)
+            connectionState = .ready // "ready" here means "stream request in flight"; streamState carries the real loading UI
+
+            // Fire-and-forget: download the ORIGINAL file into the cache in the background so the
+            // NEXT play (or a repeat) uses the fully-EQ'd cached path. Deliberately does not
+            // hot-swap the currently-streaming audio mid-song (documented future option in
+            // `progress/tvos-playback.md`).
+            let cacheStore = cache
+            Task.detached(priority: .utility) {
+                _ = try? await cacheStore.ensureCached(songId: song.id, protectedSongIds: protectedIds)
+                for id in trailingIds {
+                    _ = try? await cacheStore.ensureCached(songId: id, protectedSongIds: protectedIds)
+                }
+            }
+            return
+        }
 
         do {
             async let loudnessTask = client.fetchLoudness()
@@ -98,5 +150,36 @@ final class TVPlaybackController: ObservableObject {
         } catch {
             connectionState = .unreachable(message: error.localizedDescription)
         }
+    }
+
+    /// Track-end/failure handoff from the streaming path: `MusicPlayerService.advanceAfterEnd()`
+    /// handles queue advance for the cached path internally (it owns the queue once
+    /// `player.play` is called), but the stream-first path never hands the song to
+    /// `MusicPlayerService` at all, so this controller must advance the queue itself. Mirrors
+    /// `PlaybackQueueNavigation.autoAdvance`'s "just go to the next index" shape, kept minimal
+    /// since Task A explicitly scopes out repeat-mode handling for the streaming path (falls back
+    /// to the cache-backed path on the next queue entry via a fresh `play(_:queue:)`, which
+    /// re-evaluates cache-hit/miss and repeat naturally on THAT call).
+    private func advanceAfterStreamEnd(didFinishNaturally: Bool) {
+        guard didFinishNaturally else { return } // a failed stream does not auto-advance
+        let nextIndex = streamingSongIndex + 1
+        guard nextIndex < streamingQueue.count else { return }
+        let nextSong = streamingQueue[nextIndex]
+        let queue = streamingQueue
+        Task { [weak self] in
+            await self?.play(nextSong, queue: queue)
+        }
+    }
+
+    /// Linear LUFS gain — identical formula/clamp to `MusicPlayerService.applyLoudnessGain()` —
+    /// computed here (rather than exposed from `MusicPlayerService`, which keeps its engine/EQ
+    /// fully private) so `TVSongStreamController`'s standalone engine can apply the same loudness
+    /// normalisation as the cached path. See `TVRelayStreamPlayer`'s "EQ routing decision" doc
+    /// comment for why only gain (not the 10-band EQ curve) is replicated here.
+    static func linearLoudnessGain(lufs: Double?, targetLoudness: Double, normaliseEnabled: Bool) -> Float {
+        guard normaliseEnabled, let lufs else { return 1 }
+        let gainDb = targetLoudness - lufs
+        let lin = pow(10, gainDb / 20)
+        return min(max(Float(lin), 0), 4)
     }
 }

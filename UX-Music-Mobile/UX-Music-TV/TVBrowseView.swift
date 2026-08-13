@@ -135,6 +135,16 @@ struct TVBrowseView: View {
                 presentation = .relay
             }
         }
+        // Task A "immediate UI feedback" requirement: a cache-miss selection must show SOME
+        // feedback within ~100ms, before Now Playing has even finished presenting its cover. This
+        // overlay sits above whichever screen is currently up (browse shelf tap, or a still-
+        // presenting detail/Now Playing cover) rather than living inside any one destination view,
+        // so it's visible regardless of which of those triggered `playbackController.play`.
+        .overlay {
+            if TVSongStreamPlaybackReducer.isLoading(playbackController.streamState) {
+                TVStreamLoadingOverlay()
+            }
+        }
     }
 
     /// Pauses local playback and switches to the host's YouTube relay stream (Phase 3-3 §3-3).
@@ -618,6 +628,32 @@ private struct TVRelayBannerView: View {
                 .multilineTextAlignment(.center)
             Button(String(localized: "tv.relay.banner.exit"), action: onExit)
         }
+    }
+}
+
+/// Small, unobtrusive top-corner "starting playback" indicator for Task A's stream-first cache
+/// miss path. Deliberately not a full-screen blocking spinner — the user's existing focus/browse
+/// context should stay usable while the stream connects (~1s to first audio per the brief).
+private struct TVStreamLoadingOverlay: View {
+    var body: some View {
+        VStack {
+            HStack(spacing: 16) {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                Text(String(localized: "tv.stream.loading"))
+                    .font(.callout)
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(.top, 48)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.2), value: true)
+        .allowsHitTesting(false)
     }
 }
 
