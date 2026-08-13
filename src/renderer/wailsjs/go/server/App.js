@@ -386,6 +386,10 @@ export function RenamePlaylist(arg1) {
   return window['go']['server']['App']['RenamePlaylist'](arg1);
 }
 
+export function ReportEmbedPlaybackState(arg1, arg2, arg3) {
+  return window['go']['server']['App']['ReportEmbedPlaybackState'](arg1, arg2, arg3);
+}
+
 export function RequestInitialLibrary() {
   return window['go']['server']['App']['RequestInitialLibrary']();
 }

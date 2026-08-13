@@ -351,6 +351,22 @@ func (ls *LANServer) remoteStateHandler(w http.ResponseWriter, r *http.Request) 
 	// in app_audio.go). The relay above is unaffected either way.
 	status["localMuted"] = ls.app.AudioIsLocalMuted()
 
+	// During an embed (YouTube IFrame) session the Go audio.Player above is
+	// idle — AudioGetStatus's position/duration/playing would read 0/0/false
+	// — while the renderer's IFrame player is what is actually sounding.
+	// Prefer the renderer's own report (ReportEmbedPlaybackState) so TV/
+	// mobile clients' seek UI reflects the embed instead. Additive: only
+	// overrides these three keys, and only while both an embed session is
+	// active and at least one report has arrived for it.
+	if relayActive {
+		if pos, dur, playing, active := currentEmbedPlaybackReport.Get(); active {
+			status["position"] = pos
+			status["duration"] = dur
+			status["playing"] = playing
+			status["paused"] = !playing
+		}
+	}
+
 	writeJSON(w, status)
 }
 

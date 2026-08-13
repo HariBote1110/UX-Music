@@ -30,7 +30,7 @@ import {
     analyser,
     dataArray
 } from './audio-graph.js';
-import { musicApi, getWailsApp } from '../core/bridge.js';
+import { musicApi, getWailsApp, isWailsMode } from '../core/bridge.js';
 import { resolveYouTubePlaybackRoute, extractYouTubeVideoId } from './youtube-embed-route.js';
 import {
     mountEmbedPlayer,
@@ -93,11 +93,23 @@ export function isPlaying() {
     return localPlayer && !localPlayer.paused && !localPlayer.ended && localPlayer.readyState > 2;
 }
 
+// 公式再生（embed）中: Go 側の /v1/remote/state がライブ再生の position/
+// duration/playing をそのまま反映できるよう、IFrame プレイヤーの状態を
+// Wails 経由で Go へ報告する。ポーリング（約1秒間隔）に加え、pause/seek の
+// 直後にも即時報告する。Wails 環境でなければ何もしない（Electron 版には
+// 対応する Go バインドが存在しない）。
+export function reportEmbedPlaybackState(position: number, duration: number, playing: boolean) {
+    if (!isWailsMode()) return;
+    const app = getWailsApp();
+    void app?.ReportEmbedPlaybackState?.(position, duration, playing);
+}
+
 // UI操作用の関数
 export async function playCurrent() {
     if (isEmbedPlayerActive()) {
         // タップは張ったまま、埋め込みプレイヤー側を再開する
         embedPlay();
+        reportEmbedPlaybackState(embedGetCurrentTime(), embedGetDuration(), true);
     } else if (isWails) {
         await getWailsApp()?.AudioResume?.();
         // ポーリングでUI更新されるのでここでは状態強制更新しない
@@ -113,6 +125,7 @@ export async function pauseCurrent() {
     if (isEmbedPlayerActive()) {
         // タップは張ったまま、埋め込みプレイヤー側を一時停止する
         embedPause();
+        reportEmbedPlaybackState(embedGetCurrentTime(), embedGetDuration(), false);
     } else if (isWails) {
         await getWailsApp()?.AudioPause?.();
     } else if (localPlayer) {
@@ -129,6 +142,7 @@ export async function seek(time) {
         lastSeekAtMs = Date.now();
         goState.currentTime = seekTime; // 即時反映
         updateSeekUI(seekTime);
+        reportEmbedPlaybackState(seekTime, duration, embedIsPlaying());
     } else if (isWails) {
         await getWailsApp()?.AudioSeek?.(seekTime);
         lastSeekAtMs = Date.now();
@@ -239,6 +253,10 @@ function startGoStatePolling() {
                 dur = embedGetDuration();
                 playing = embedIsPlaying();
                 paused = embedIsPaused();
+                // ~1回/秒（このポーリング間隔そのもの）で Go 側へ報告し、
+                // /v1/remote/state の position/duration/playing が embed
+                // 再生を反映できるようにする。
+                reportEmbedPlaybackState(pos, dur, playing);
             } else if (typeof app?.AudioGetStatus === 'function') {
                 const status = await app.AudioGetStatus();
                 pos = Number(status?.position);
