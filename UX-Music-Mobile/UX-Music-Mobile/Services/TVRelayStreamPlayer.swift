@@ -419,9 +419,32 @@ extension TVRelayStreamPlayer: URLSessionDataDelegate {
         // `start()` and `stop()`), so it is dispatched onto `engineQueue` too rather than run
         // inline on the delegate queue — otherwise `parser.feed` here could race a concurrent
         // `parser = ADTSFrameParser()` reset from `stop()`/`start()` on the main thread.
+        //
+        // `capturedGeneration` MUST be read here, on the delegate queue, BEFORE dispatching onto
+        // `engineQueue` — not inside the dispatched closure. `generation`'s getter/`bumpGeneration()`
+        // are guarded by `generationLock`, not `engineQueue` (see that lock's doc comment), so
+        // `start()`/`stop()` can bump it at any moment, including while this closure is sitting in
+        // `engineQueue`'s backlog. Reading it up front captures "what session was this chunk sent
+        // for", so a `stop()`/`start()` that happens before this closure gets its turn on
+        // `engineQueue` (stress case: `TVPlaybackStressTests`'s rapid stop/restart churn, where
+        // `engineQueue` can be backed up with several superseded sessions' worth of chunks) is
+        // correctly detected as stale by `handle(_:expectedGeneration:)`. Capturing it INSIDE the
+        // closure instead (the previous bug) reads the CURRENT generation at execution time, which
+        // trivially always equals itself and defeats the staleness check entirely — stale frames
+        // from a torn-down session would silently get fed into the NEW session's `parser`/`decoder`.
+        let capturedGeneration = generation
         engineQueue.async { [weak self] in
             guard let self else { return }
-            let capturedGeneration = self.generation
+            // Re-check on `engineQueue` itself, BEFORE touching `parser`: `parser` is a single
+            // shared instance reset by `start()`/`stop()` (not one per session), so a stale chunk
+            // fed into it here — even if `handle(_:expectedGeneration:)` would go on to discard the
+            // resulting frames — has already corrupted the CURRENT session's byte-stream framing by
+            // the time that discard happens (`TVPlaybackStressTests`'s rapid stop/restart churn
+            // reliably produced silently-failing decodes this way before this guard existed: a
+            // stale chunk's bytes got spliced into the new session's ADTS stream, desyncing frame
+            // boundaries for everything after it). This is the one place a generation mismatch must
+            // stop the chunk outright rather than merely skip the engine-touching part of `handle`.
+            guard capturedGeneration == self.generation else { return }
             let frames = self.parser.feed(data)
             self.handle(frames, expectedGeneration: capturedGeneration)
         }
