@@ -154,6 +154,12 @@ type Player struct {
 	// liveSource is true while playing a live capture (process tap) source,
 	// which has no meaningful position/duration and cannot seek.
 	liveSource atomic.Bool
+	// localMuted silences the local speaker output in processAudio while
+	// still consuming the ring buffer, so position/state keep progressing
+	// and (for live-tap sources) the relay's independent capture is
+	// unaffected. Used for remote-initiated playback (see
+	// server/app_audio.go's MarkNextPlaybackRemoteInitiated).
+	localMuted atomic.Bool
 	// liveFadeRemaining / liveFadeTotal drive a short start-of-playback fade-in
 	// for live-capture sources, counted in interleaved output samples. File
 	// playback leaves both at 0 (no fade). Written by playLiveSource (under mu,
@@ -910,6 +916,7 @@ func (p *Player) processAudio(out []float32) {
 	paused := p.paused.Load()
 	volume := p.getVolume()
 	baseGainLinear := math.Float64frombits(p.baseGain.Load())
+	muted := p.localMuted.Load()
 
 	if !playing || paused {
 		// Fill with silence
@@ -980,6 +987,10 @@ func (p *Player) processAudio(out []float32) {
 			if fadeRemaining <= 0 {
 				fading = false
 			}
+		}
+
+		if muted {
+			outputSample = 0
 		}
 
 		out[i] = float32(outputSample)
@@ -1190,6 +1201,20 @@ func (p *Player) Seek(seconds float64) error {
 // (post volume/baseGain/EQ). Diagnostic probe for the E2E volume check.
 func (p *Player) OutputRMS() float64 {
 	return math.Float64frombits(p.outputRMS.Load())
+}
+
+// SetLocalMuted silences (true) or restores (false) local speaker output.
+// Playback keeps running underneath — position advances, EQ/FFT still see
+// samples, and (for the WebView-tap path) the LAN relay's independent
+// capture is untouched — only the value written to the output callback
+// buffer is gated.
+func (p *Player) SetLocalMuted(muted bool) {
+	p.localMuted.Store(muted)
+}
+
+// IsLocalMuted reports whether local speaker output is currently silenced.
+func (p *Player) IsLocalMuted() bool {
+	return p.localMuted.Load()
 }
 
 // SetVolume sets the volume (0.0 to 1.0)
