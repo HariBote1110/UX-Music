@@ -342,6 +342,17 @@ func (ls *LANServer) remoteStateHandler(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, status)
 }
 
+// embedSessionActive reports whether the desktop is currently playing a
+// YouTube official embed (renderer's IFrame player, relayed to
+// GET /v1/remote/relay) rather than a local file through the Go
+// audio.Player. It reuses remoteRelay's own active flag — set by
+// NotifyYouTubePlaybackState when the renderer's playEmbed() starts/ends a
+// session — instead of tracking a second, parallel piece of state.
+func embedSessionActive() bool {
+	active, _, _ := remoteRelay.State()
+	return active
+}
+
 // remoteCommandHandler accepts remote playback commands from mobile clients.
 // Supported actions: toggle, play, pause, stop, next, prev, seek, play-song.
 func (ls *LANServer) remoteCommandHandler(w http.ResponseWriter, r *http.Request) {
@@ -365,6 +376,27 @@ func (ls *LANServer) remoteCommandHandler(w http.ResponseWriter, r *http.Request
 	if err := json.Unmarshal(body, &cmd); err != nil {
 		writeAPIError(w, "invalid JSON", http.StatusBadRequest)
 		return
+	}
+
+	// While a YouTube official embed session is active (renderer notified Go
+	// via NotifyYouTubePlaybackState → remoteRelay.active), the Go
+	// audio.Player is not what is actually sounding — the renderer's IFrame
+	// player is. Transport commands must therefore be routed to the
+	// renderer instead of driving a Go player nobody is listening to.
+	// remote-command's plain-string "next"/"prev" is untouched: queue
+	// advancement already lives in the renderer (playback-manager.ts
+	// playNextSong/playPrevSong), which re-enters play()'s own embed/local
+	// routing per song regardless of whether the outgoing song was an embed.
+	if embedSessionActive() {
+		switch cmd.Action {
+		case "toggle", "play", "pause", "stop", "seek":
+			ls.app.emit("remote-embed-command", map[string]interface{}{
+				"action": cmd.Action,
+				"value":  cmd.Value,
+			})
+			writeJSON(w, map[string]interface{}{"ok": true})
+			return
+		}
 	}
 
 	var cmdErr error
