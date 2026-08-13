@@ -32,6 +32,7 @@ import {
 } from './audio-graph.js';
 import { musicApi, getWailsApp, isWailsMode } from '../core/bridge.js';
 import { resolveYouTubePlaybackRoute, extractYouTubeVideoId } from './youtube-embed-route.js';
+import { resolveRelayThumbnailCandidate } from './youtube-thumbnail.js';
 import {
     mountEmbedPlayer,
     destroyEmbedPlayer,
@@ -556,14 +557,6 @@ function notifyRelayPlaybackState(active: boolean, title: string, thumbnailURL: 
     }
 }
 
-/** song.artwork（文字列 or {thumbnail,full}）から中継用サムネイル URL を取り出す。 */
-function resolveRelayThumbnailURL(song): string {
-    const artwork = song?.artwork;
-    if (typeof artwork === 'string') return artwork;
-    if (artwork && typeof artwork === 'object') return artwork.thumbnail || artwork.full || '';
-    return '';
-}
-
 async function playEmbed(song, sourceCandidate) {
     const sourceUrl = typeof song.sourceURL === 'string' && song.sourceURL.trim() !== ''
         ? song.sourceURL.trim()
@@ -595,7 +588,7 @@ async function playEmbed(song, sourceCandidate) {
             // ローカル再生用タップ（AudioStartWebViewTap）とは別に、LAN 中継用の
             // プロセスタップも同じヘルパーを対象に独立して起動する。中継側の
             // 成否はローカル再生を妨げないため、await せず fire-and-forget。
-            notifyRelayPlaybackState(true, song.title || 'Unknown', resolveRelayThumbnailURL(song));
+            notifyRelayPlaybackState(true, song.title || 'Unknown', resolveRelayThumbnailCandidate(song, videoId));
             void getWailsApp()?.AudioStartWebViewTap?.()
                 .then(() => {
                     // タップ確立後に unmute。この時点で mutedWhenTapped が

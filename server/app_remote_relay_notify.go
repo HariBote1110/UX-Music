@@ -77,7 +77,11 @@ func (a *App) NotifyYouTubePlaybackState(active bool, title string, thumbnailURL
 	}
 
 	source := newProcessTapRelaySource(capture)
-	if err := remoteRelay.Start(source, title, thumbnailURL); err != nil {
+	// Upgrade to the highest-resolution thumbnail actually available for the
+	// video (probed + cached in resolveRelayThumbnailURL) rather than
+	// whatever quality the renderer happened to have on hand — see
+	// progress/remote-relay-thumbnail.md.
+	if err := remoteRelay.Start(source, title, resolveRelayThumbnailURL(thumbnailURL)); err != nil {
 		_ = capture.Stop()
 		return fmt.Errorf("relay start failed: %w", err)
 	}
