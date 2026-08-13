@@ -166,6 +166,7 @@ func remoteSongsHandler(w http.ResponseWriter, r *http.Request) {
 		stripped = append(stripped, clean)
 	}
 
+	stripped = dedupRemoteSongs(stripped)
 	ensureRemoteTrackOrder(stripped)
 
 	writeJSON(w, stripped)
