@@ -186,7 +186,9 @@
 		D53D95A50FA449B58C316F74 /* TVRelayStreamPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 429E681AD3414B728BDC246F /* TVRelayStreamPlayer.swift */; };
 		9DDBAC52E9834B5DA03BFD27 /* ADTSFrameParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519492E5D9224E618D074703 /* ADTSFrameParserTests.swift */; };
 		97152ED1FC5C4DFABD8F5E32 /* TVAACDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B877759BF6134232BD4ACD0D /* TVAACDecoderTests.swift */; };
+		94770FE64C164368B88DE359 /* TVRelayStreamPlayerLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F83DED10C8D4BFCAF4F3FDC /* TVRelayStreamPlayerLifecycleTests.swift */; };
 		8A95B017BC544D3A8D24F69E /* relay-sample.aac in Resources */ = {isa = PBXBuildFile; fileRef = 92D8CE0D89C34AACA2B5A81A /* relay-sample.aac */; };
+		B1034CA4D7AA46898A4F05F1 /* relay-sample.aac in Resources */ = {isa = PBXBuildFile; fileRef = 92D8CE0D89C34AACA2B5A81A /* relay-sample.aac */; };
 		4516F3EEF4CE4B649D89B7A9 /* RemoteConnectionResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60101F70101F70101F70101 /* RemoteConnectionResolver.swift */; };
 		72C99DF38EC4405FBB899240 /* ConnectionCandidatePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC1101F70101F70101F70101 /* ConnectionCandidatePolicy.swift */; };
 		A8CA40E2EE0148CB9919C5A1 /* LANDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = W1D1D1C10101D1C10101D1C1 /* LANDiscoveryService.swift */; };
@@ -436,6 +438,7 @@
 		03E5B3C082DC4F5393BF1972 /* spike-sine.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "Fixtures/spike-sine.wav"; sourceTree = "<group>"; };
 		519492E5D9224E618D074703 /* ADTSFrameParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ADTSFrameParserTests.swift; sourceTree = "<group>"; };
 		B877759BF6134232BD4ACD0D /* TVAACDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVAACDecoderTests.swift; sourceTree = "<group>"; };
+		9F83DED10C8D4BFCAF4F3FDC /* TVRelayStreamPlayerLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRelayStreamPlayerLifecycleTests.swift; sourceTree = "<group>"; };
 		92D8CE0D89C34AACA2B5A81A /* relay-sample.aac */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Fixtures/relay-sample.aac"; sourceTree = "<group>"; };
 		4CCF760A7E8443E390EC0086 /* UX-Music-TV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-TV.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7A6ACFADEEE0440BA8A07E42 /* UX-Music-TVTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "UX-Music-TVTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -770,6 +773,7 @@
 				C9BBB07B1B5A44A48A327568 /* TVRemotePlaySongFlowTests.swift */,
 				519492E5D9224E618D074703 /* ADTSFrameParserTests.swift */,
 				B877759BF6134232BD4ACD0D /* TVAACDecoderTests.swift */,
+				9F83DED10C8D4BFCAF4F3FDC /* TVRelayStreamPlayerLifecycleTests.swift */,
 				92D8CE0D89C34AACA2B5A81A /* relay-sample.aac */,
 			);
 			path = "UX-Music-TVTests";
@@ -943,6 +947,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E7D4F072EFF94DB98F25D06B /* Localizable.xcstrings in Resources */,
+				B1034CA4D7AA46898A4F05F1 /* relay-sample.aac in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1176,6 +1181,7 @@
 				B3DEF54EB8334B1291102C25 /* MusicPlayerServicePlaybackSpikeTests.swift in Sources */,
 				9DDBAC52E9834B5DA03BFD27 /* ADTSFrameParserTests.swift in Sources */,
 				97152ED1FC5C4DFABD8F5E32 /* TVAACDecoderTests.swift in Sources */,
+				94770FE64C164368B88DE359 /* TVRelayStreamPlayerLifecycleTests.swift in Sources */,
 				F48971AC1E8245799D2E6410 /* TVPairingReducerTests.swift in Sources */,
 				2EC9A21CD9E645A7A54EAE8B /* TVServerConfigStoreTests.swift in Sources */,
 				829F8B2AA8AD4951A4A71FFD /* TVControlTokenStoreTests.swift in Sources */,

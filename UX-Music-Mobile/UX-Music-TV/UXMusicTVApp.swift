@@ -28,6 +28,8 @@ struct UXMusicTVApp: App {
                 TVRelayStreamPreviewHarness()
             case "livenowplaying":
                 TVLiveNowPlayingHarness()
+            case "songstream":
+                TVSongStreamPreviewHarness()
             default:
                 TVRootView()
             }
@@ -172,5 +174,115 @@ struct TVLiveNowPlayingHarness: View {
                 }
             }
     }
+}
+
+/// DEBUG-only harness for `UXTV_PREVIEW=songstream` — exercises Task A's stream-first path
+/// (`TVPlaybackController.play` cache-miss branch → `TVSongStreamController` →
+/// `TVRelayStreamPlayer`) end to end against the bundled `relay-sample.aac` fixture served through
+/// a mock `URLProtocol`, so it needs no live host. Used to verify both halves of this task's fix:
+/// (1) `TVNowPlayingView` shows title/artwork/progress from the very first streamed frame (the
+/// "empty Now Playing during streaming" defect — see `MusicPlayerService`'s "External playback
+/// bridging" section), and (2) playing the SAME song twice in a row (start → stop → start, the
+/// crash repro's exact ordering) no longer crashes (`TVRelayStreamPlayer.engineQueue`'s
+/// synchronisation fix). `UXTV_SONGSTREAM_REPLAY=1` drives the second half automatically: after
+/// the first stream starts rendering, it waits briefly, calls `play` again for the SAME song
+/// (forcing `streamController.stop()` then a fresh `start()`), and logs
+/// `[SongStreamHarness] replay ok` once the second stream also starts rendering — the crash, if
+/// the fix regressed, would terminate the process before that log line appears.
+struct TVSongStreamPreviewHarness: View {
+    @StateObject private var playbackController: TVPlaybackController
+    private let player = MusicPlayerService()
+    private let client: RemoteAPIClient
+    private static let song = Song(
+        id: "songstream-demo", path: "", title: "ストリーム検証曲", artist: "UX Music Demo", artworkId: "preview-1"
+    )
+
+    init() {
+        UXTVSongStreamMockURLProtocol.register()
+        // Unreachable loopback port: `fetchLoudness()`/background cache download fail fast
+        // (`try?`-swallowed) rather than hanging — the stream itself is served by the mock
+        // protocol below regardless of this host being unreachable.
+        let apiClient = RemoteAPIClient(baseURLString: "http://127.0.0.1:1")
+        client = apiClient
+        let sharedPlayer = player
+        sharedPlayer.masterVolume = 0 // muted per verification convention — never audible in the simulator
+        let cache = TVPlaybackCacheStore(
+            directory: FileManager.default.temporaryDirectory.appendingPathComponent("songstream-harness-\(UUID().uuidString)"),
+            downloader: { _, _ in throw URLError(.cannotConnectToHost) }
+        )
+        _playbackController = StateObject(wrappedValue: TVPlaybackController(
+            client: apiClient,
+            player: sharedPlayer,
+            cache: cache,
+            streamPlayerFactory: { TVRelayStreamPlayer(sessionConfiguration: UXTVSongStreamMockURLProtocol.sessionConfiguration(), muteOutput: true) }
+        ))
+    }
+
+    var body: some View {
+        TVNowPlayingView(player: player, client: client)
+            .task {
+                await playbackController.play(Self.song, queue: [Self.song])
+                guard ProcessInfo.processInfo.environment["UXTV_SONGSTREAM_REPLAY"] == "1" else { return }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                NSLog("[SongStreamHarness] replaying same song")
+                await playbackController.play(Self.song, queue: [Self.song])
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                NSLog("[SongStreamHarness] replay ok")
+            }
+    }
+}
+
+/// Serves the bundled `relay-sample.aac` fixture, chunked, for any request whose path is
+/// `/v1/remote/file` — matching `RemoteAPIClient.songStreamRequest`'s route — so
+/// `TVSongStreamPreviewHarness` can drive a real stream end to end with no live host. Mirrors
+/// `TVRelayStreamPlayerLifecycleTests`'s `ChunkedFixtureURLProtocol` (test target can't share code
+/// with the app target, hence the duplication).
+final class UXTVSongStreamMockURLProtocol: URLProtocol {
+    static func register() {
+        URLProtocol.registerClass(UXTVSongStreamMockURLProtocol.self)
+    }
+
+    static func sessionConfiguration() -> URLSessionConfiguration {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [UXTVSongStreamMockURLProtocol.self]
+        return config
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.path == "/v1/remote/file"
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let fixtureURL = Bundle.main.url(forResource: "relay-sample", withExtension: "aac"),
+              let data = try? Data(contentsOf: fixtureURL)
+        else {
+            client?.urlProtocol(self, didFailWithError: URLError(.fileDoesNotExist))
+            return
+        }
+        let response = HTTPURLResponse(
+            url: request.url ?? URL(string: "https://mock.invalid")!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "audio/aac"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+
+        let chunkSize = 4096
+        var offset = 0
+        DispatchQueue.global().async { [weak self] in
+            while offset < data.count {
+                guard let self else { return }
+                let end = min(offset + chunkSize, data.count)
+                self.client?.urlProtocol(self, didLoad: data.subdata(in: offset..<end))
+                offset = end
+                usleep(2000)
+            }
+            self?.client?.urlProtocolDidFinishLoading(self!)
+        }
+    }
+
+    override func stopLoading() {}
 }
 #endif

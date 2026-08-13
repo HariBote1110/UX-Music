@@ -16,9 +16,19 @@ final class TVSongStreamController: ObservableObject {
 
     private let client: RemoteAPIClient
     private let startupTimeout: TimeInterval
+    /// Builds the `TVRelayStreamPlayer` for each `start()` call. Defaults to the plain production
+    /// initialiser; overridable so DEBUG preview harnesses / tests can point playback at a mock
+    /// `URLSessionConfiguration` (e.g. `UXTV_PREVIEW=songstream`, see `UXMusicTVApp.swift`)
+    /// without needing a live host.
+    private let streamPlayerFactory: () -> TVRelayStreamPlayer
     private var streamPlayer: TVRelayStreamPlayer?
     private var timeoutTask: Task<Void, Never>?
     private var didStartPlaying = false
+    private(set) var isPaused = false
+
+    /// Elapsed playback position of the current stream, or `0` when idle. See
+    /// `TVRelayStreamPlayer.elapsedSeconds`.
+    var elapsedSeconds: Double { streamPlayer?.elapsedSeconds ?? 0 }
 
     /// Called exactly once per stream, either when the track finishes naturally
     /// (`didReachEndOfStream`) or when the stream fails outright — the caller (`TVPlaybackController`)
@@ -28,9 +38,14 @@ final class TVSongStreamController: ObservableObject {
     /// back rather than silently going quiet.
     var onStreamEnded: ((_ didFinishNaturally: Bool) -> Void)?
 
-    init(client: RemoteAPIClient, startupTimeout: TimeInterval = 8) {
+    init(
+        client: RemoteAPIClient,
+        startupTimeout: TimeInterval = 8,
+        streamPlayerFactory: @escaping () -> TVRelayStreamPlayer = { TVRelayStreamPlayer() }
+    ) {
         self.client = client
         self.startupTimeout = startupTimeout
+        self.streamPlayerFactory = streamPlayerFactory
     }
 
     /// Starts (or restarts) the stream-first path for `songId`. `outputGain` is the linear LUFS
@@ -40,13 +55,14 @@ final class TVSongStreamController: ObservableObject {
         teardown()
         state = TVSongStreamPlaybackReducer.reduce(state, event: .start)
         didStartPlaying = false
+        isPaused = false
 
         guard let request = try? client.songStreamRequest(songId: songId) else {
             fail(reason: String(localized: "tv.stream.error.unknown"))
             return
         }
 
-        let newPlayer = TVRelayStreamPlayer()
+        let newPlayer = streamPlayerFactory()
         newPlayer.outputGain = outputGain
         newPlayer.delegate = self
         streamPlayer = newPlayer
@@ -68,6 +84,20 @@ final class TVSongStreamController: ObservableObject {
     func stop() {
         teardown()
         state = TVSongStreamPlaybackReducer.reduce(state, event: .reset)
+    }
+
+    /// Pauses/resumes the live stream in place — routed here from
+    /// `MusicPlayerService.togglePlayPause()` via `externalPlaybackCommandHandler` while streaming
+    /// owns Now Playing (`progress/tvos-playback.md` "Now Playing 統合"). No-op before playback has
+    /// actually started (nothing to pause yet).
+    func togglePlayPause() {
+        guard let streamPlayer, didStartPlaying else { return }
+        if isPaused {
+            streamPlayer.resume()
+        } else {
+            streamPlayer.pause()
+        }
+        isPaused.toggle()
     }
 
     private func fail(reason: String) {

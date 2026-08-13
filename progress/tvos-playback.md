@@ -207,3 +207,131 @@ Apple TV シミュレータ（`UXTV_PREVIEW=livenowplaying` — 新設の DEBUG 
 - **曲の途中でのストリーム→キャッシュ済みファイルへのホットスワップ**: ブリーフで明示的に
   却下・将来オプションとして指定されていたため実装せず。
 - **ストリーミング経路にもフル10バンドEQを複製**: 上記「EQ/LUFSのルーティング判断」参照。
+
+## 追記（実機クラッシュ修正・Now Playing統合・URLProtocolモックE2Eの決着）
+
+### クラッシュの根本原因
+
+実機での再現手順（未キャッシュ曲をストリーミング再生→バックアウト→同じ曲を再再生）で報告された
+`AVAEInternal.h:71 required condition is false: [_nodes containsObject: node1] &&
+[_nodes containsObject: node2]`（`AVAudioEngine.connect`内）は、`TVRelayStreamPlayer`の
+`engine`/`playerNode`に対する**スレッド間の無同期な競合**が原因だった。
+
+- `URLSessionDataDelegate`のコールバック（`didReceive data:`→`handle`→`schedule`）は
+  `URLSession`のデリゲートキュー（バックグラウンドの`OperationQueue`）上で実行される。
+- 一方`stop()`は常に`TVSongStreamController`（`@MainActor`）から呼ばれる＝メインスレッド。
+- 両者は`engine.attach`/`engine.detach`/`engine.connect`という同じミュータブル状態を
+  一切の同期なしに触っていた。ユーザーがバックアウトした瞬間にはすでにデリゲートキューへ
+  ディスパッチ済みのチャンクが残っており、その`schedule()`が`engine.connect(playerNode, …)`を
+  実行するのと、`stop()`側の`engine.detach(playerNode)`がメインスレッドで実行されるのが
+  競合レースになり得た。「detachされた直後のノードへconnectする」「まだattachされていない
+  ノードへconnectする」のどちらの順序でも`_nodes`に対象ノードが含まれない状態で`connect`が
+  呼ばれ、クラッシュに直結する。
+
+`TVSongStreamController`/`TVRelayPlaybackController`はどちらも`start()`のたびに
+**新しい`TVRelayStreamPlayer`インスタンス**を生成しており（インスタンス使い回しではない）、
+複数インスタンス間の競合ではなく、**単一インスタンスの`stop()`とその直前に受信済みだった
+チャンクの遅延処理との自己競合**である点に注意。
+
+### 修正内容
+
+`TVRelayStreamPlayer`に専用のシリアルディスパッチキュー`engineQueue`を新設し、
+`engine`/`playerNode`/`isEngineConnected`/`parser`/`decoder`への全アクセスを
+このキュー上に一本化した。
+
+- `start()`・`stop()`は`engineQueue.sync`で実行 — `stop()`が返った時点で、進行中/キュー済みの
+  `schedule()`は必ず完了している（`stop()`と`handle`/`schedule`が絶対に交錯しない）。
+- `stop()`のたびに`generation`カウンタをインクリメントし、`urlSession(_:didReceive:)`は
+  受信時点の`generation`を`engineQueue.async`クロージャに閉じ込める。`handle`/`schedule`は
+  毎フレームその値を現在の`generation`と比較し、不一致（＝すでに`stop()`された古いセッション）
+  なら即座に何もせず抜ける。デリゲートキュー上で受信済みだが未処理だったチャンクが、
+  すでに解体されたエンジンに触れることはなくなった。
+- `schedule()`にも`engine.attachedNodes.contains(playerNode)`の防御チェックを追加し、
+  万一`generation`チェックをすり抜けても`connect`が未attachのノードに対して呼ばれることはない。
+
+### 回帰テスト
+
+`UX-Music-TVTests/TVRelayStreamPlayerLifecycleTests.swift`を新設。
+`URLProtocol`スタブ（`ChunkedFixtureURLProtocol`）で`relay-sample.aac`フィクスチャを
+4096バイトずつ・2ms間隔でチャンク配信し、**同一の`TVRelayStreamPlayer`インスタンスに対して
+start→（`didStartRendering`まで待機）→stop→即start→stopを2回連続実行**して、両方とも
+クラッシュせず`didStartRendering`が発火することを確認する。実機の再現手順（バックアウト＝
+ストリーム途中でのstop、直後の同曲再再生）を`stop()`のタイミングごと再現している。
+
+**前回セッションの`progress`追記にあった「`TVRelayStreamPlayer`の内部`URLSession`に対して
+`URLProtocol`スタブが一度もインターセプトされなかった」問題はここで解決した**: 原因は
+スタブ登録自体ではなく、`TVRelayStreamPlayer.init`に渡す`URLSessionConfiguration`を
+呼び出し側が実際に注入できていなかった構成だったと見られる。今回は
+`TVRelayStreamPlayer(sessionConfiguration:muteOutput:)`に明示的に
+`protocolClasses = [ChunkedFixtureURLProtocol.self]`を設定した`.ephemeral`構成を渡し、
+`didStartRendering`/RMSログとも正常に発火することを確認した。
+
+### Now Playing統合（ストリーミング中に何も表示されない問題）
+
+`TVNowPlayingView`は`MusicPlayerService.currentSong`/`isPlaying`/`positionSeconds`
+**のみ**を観測しているが、ストリーミング経路（`TVSongStreamController`→
+`TVRelayStreamPlayer`）は`MusicPlayerService`を一切経由しないため、音声は鳴っていても
+Now Playing画面のタイトル/アートワーク/進捗が空のままになっていた。
+
+**採用した方式（ブリーフの選択肢(b)）**: 別エンジンは維持したまま、`MusicPlayerService`へ
+メタデータ/進捗をミラーリングし、トランスポート操作をストリーム側へルーティングするブリッジを
+追加した。
+
+- 却下した(a)（デコード済みPCMを`MusicPlayerService`のエンジンへ直接スケジュールする案）:
+  `MusicPlayerService`のスケジューリングAPIは`AVAudioFile`前提（`playerNode.scheduleSegment`/
+  `scheduleFile`）で、ファイルなしのバッファ列を流し込む経路が存在しない。追加するには
+  `MusicPlayerService`の再生コア（EQ/LUFS/シーク/自然終了検出を含む）に新しい入力経路を
+  割り込ませる必要があり、共有サービス（iOS/watchOSとも共通）への影響範囲が大きすぎると判断。
+- (b)は`TVRelayStreamPlayer`の「専用エンジンを維持する」既存設計判断（EQ/LUFSのルーティング
+  判断と同じ理由）と一貫しており、変更が`MusicPlayerService`の薄いブリッジAPI追加と
+  `TVPlaybackController`の配線だけで完結する。
+
+**`MusicPlayerService`側の追加API**（"External playback bridging"セクション）:
+`isExternallyDriven`フラグ、`beginExternalPlayback(song:durationSeconds:)`、
+`updateExternalPlaybackProgress(seconds:)`、`setExternalPlaybackIsPlaying(_:)`、
+`endExternalPlayback()`、`externalPlaybackCommandHandler`。
+`togglePlayPause()`/`next()`/`previous()`/`stop()`は`isExternallyDriven`のとき
+真っ先に`externalPlaybackCommandHandler`へルーティングし、ローカル`AVAudioEngine`/YouTube
+バックエンド（ストリーミング曲にはファイルが存在しない）には一切触れない。
+`play(_:newQueue:)`（キャッシュ済みパスへの引き継ぎ時）は`isExternallyDriven`を強制解除する。
+
+**`TVRelayStreamPlayer`側の追加**: `elapsedSeconds`（`playerNode.playerTime(forNodeTime:)`
+から算出、`MusicPlayerService.currentTimelineSeconds()`と同じ手法）、`pause()`/`resume()`
+（`engineQueue`経由）。
+
+**`TVPlaybackController`の配線**: ストリーム開始直後（`didStartRendering`を待たず）に
+`player.beginExternalPlayback`を呼び、250ms間隔の`Task`ループで`elapsedSeconds`を
+`updateExternalPlaybackProgress`へミラーリング。`externalPlaybackCommandHandler`で
+`.togglePlayPause`→`streamController.togglePlayPause()`、`.next`/`.previous`→
+キュー内インデックスを±1して`play()`を再呼び出し、`.stop`→`streamController.stop()`に
+それぞれルーティング。
+
+### シミュレータE2E（決着）
+
+前回断念していた「`UXTV_PREVIEW`ハーネスはペア済みホスト接続前提でストリーミング選択自体を
+再現できない」問題を、`TVSongStreamController`に`streamPlayerFactory`の注入点を追加すること
+（テストと同じ理由・同じ解決策）で解消した。`UXTV_PREVIEW=songstream`
+（`UXMusicTVApp.swift`の`TVSongStreamPreviewHarness`）は、ライブホストなしで
+`TVPlaybackController.play`のキャッシュミス経路をフルに駆動する：
+
+- `RemoteAPIClient`は到達不能なループバックポート（`fetchLoudness`/バックグラウンドDL失敗は
+  `try?`で握り潰され無害）、`TVPlaybackCacheStore`は毎回使い捨ての一時ディレクトリで
+  常にキャッシュミス、`TVRelayStreamPlayer`のセッションだけ`UXTVSongStreamMockURLProtocol`
+  （`relay-sample.aac`をチャンク配信）を注入。
+- `UXTV_SONGSTREAM_REPLAY=1`で「初回ストリーム開始→2秒待機→同曲を`play()`で再度呼び出し
+  （`stop()`→`start()`の実クラッシュ順序を再現）」まで自動実行し、
+  `[SongStreamHarness] replay ok`ログとその後もプロセスが生存していることでクラッシュ非再現を
+  確認できる。
+- シミュレータ実行で確認: 初回ストリーミング中からNow Playingにタイトル「ストリーム検証曲」/
+  アーティスト「UX Music Demo」/トランスポート（一時停止アイコン＝再生中）が表示され
+  （従来は空白だった）、同曲の即時再再生後もクラッシュなくプロセスが生存し、Now Playingの
+  表示も維持されることを確認（スクリーンショット2枚）。
+
+### 未解決・今後の課題
+
+- ストリーミング中の`durationSeconds`は呼び出し元が渡す`Song.duration`頼みで、実際の総再生時間
+  をストリーム自体からは取得できない（ADTSには長さ情報がない）。実運用では`Song.duration`が
+  Songテーブルの既知値のため実害は小さいが、明示しておく。
+- アートワークは`TVNowPlayingView`が`client`経由で`artworkId`から画像を都度フェッチする
+  既存の仕組みをそのまま利用しており、この変更では触れていない（ハーネスのスクリーンショットで
+  プレースホルダーになっているのはモックホストへ到達できないためで、想定通りの挙動）。

@@ -228,6 +228,75 @@ final class MusicPlayerService {
     }
     #endif
 
+    // MARK: - External playback bridging (Task A stream-first path, tvOS)
+    //
+    // `TVSongStreamController`'s stream-first path (`progress/tvos-playback.md` "Now Playing
+    // 統合" 追記) decodes and plays audio through its OWN dedicated `AVAudioEngine`
+    // (`TVRelayStreamPlayer`), never through this service's engine — see
+    // `TVRelayStreamPlayer`'s "Engine choice" doc comment for why a second engine was kept rather
+    // than reusing this one. But `TVNowPlayingView` (shared with iOS/watchOS) reads title/artwork/
+    // progress/transport EXCLUSIVELY from this service's `currentSong`/`isPlaying`/`positionSeconds`
+    // — without this bridge, the Now Playing screen would show nothing during a streamed play even
+    // though audio is audibly playing. This section lets `TVPlaybackController` mirror the
+    // streaming song's metadata/progress into this service and re-route transport commands to the
+    // stream, without ever touching `AVAudioEngine`/the YouTube backend for a song that has no
+    // local file yet.
+
+    /// True while an external stream (`TVSongStreamController`) — not this service's own
+    /// `AVAudioEngine`/YouTube backend — is producing the audio for `currentSong`. Checked first by
+    /// every transport entry point below so a Now Playing tap during streaming is routed to
+    /// `externalPlaybackCommandHandler` instead of falling through to `loadAndPlay`/YouTube paths
+    /// that have nothing loaded for a song that only exists as a live stream.
+    private(set) var isExternallyDriven = false
+
+    enum ExternalPlaybackCommand {
+        case togglePlayPause
+        case next
+        case previous
+        case stop
+    }
+
+    /// Set by the external stream's owner (`TVPlaybackController`) before `beginExternalPlayback`
+    /// and cleared by `endExternalPlayback`. Receives transport commands raised while
+    /// `isExternallyDriven` is true.
+    var externalPlaybackCommandHandler: ((ExternalPlaybackCommand) -> Void)?
+
+    /// Starts mirroring an external stream's metadata into `currentSong`/`isPlaying`/
+    /// `durationSeconds` for the shared Now Playing UI. Deliberately does NOT touch
+    /// `queue`/`currentIndex` — the caller owns queue advancement for the streaming path (see
+    /// `TVPlaybackController.advanceAfterStreamEnd`).
+    func beginExternalPlayback(song: Song, durationSeconds: Double) {
+        currentSong = song
+        isPlaying = true
+        positionSeconds = 0
+        self.durationSeconds = durationSeconds
+        isExternallyDriven = true
+    }
+
+    /// Called periodically by the stream's owner as the track advances — there is no local
+    /// `AVAudioEngine` timeline to derive this from during streaming, so the caller polls
+    /// `TVRelayStreamPlayer.elapsedSeconds` and pushes it in.
+    func updateExternalPlaybackProgress(seconds: Double) {
+        guard isExternallyDriven else { return }
+        positionSeconds = min(max(0, seconds), durationSeconds > 0 ? durationSeconds : seconds)
+    }
+
+    /// Mirrors the stream's actual paused/playing state (e.g. after `.togglePlayPause` is routed
+    /// back out and handled) so `TVNowPlayingView`'s play/pause icon stays correct.
+    func setExternalPlaybackIsPlaying(_ playing: Bool) {
+        guard isExternallyDriven else { return }
+        isPlaying = playing
+    }
+
+    /// Ends external mirroring. Does not itself clear `currentSong` — the caller decides what (if
+    /// anything) replaces it next: a natural end/failure falls through to `TVPlaybackController`
+    /// advancing the queue (a fresh `beginExternalPlayback`/`play` call), an explicit stop calls
+    /// `stop()` below.
+    func endExternalPlayback() {
+        isExternallyDriven = false
+        externalPlaybackCommandHandler = nil
+    }
+
     /// Audio session activation is deferred until playback starts to keep app launch light.
     private var playbackSessionPrepared = false
     private let sessionActivationLock = NSLock()
@@ -545,6 +614,15 @@ final class MusicPlayerService {
     }
 
     func play(_ song: Song, newQueue: [Song]?) async {
+        // A previous stream-first session may still be marked external (e.g. the cache finished
+        // downloading mid-stream and `TVPlaybackController` now hands off to the normal cached
+        // path) — this service's own engine is about to take over, so external mirroring must end
+        // first or `togglePlayPause`/`next`/`previous` below would keep routing to a stream that's
+        // no longer relevant.
+        if isExternallyDriven {
+            isExternallyDriven = false
+            externalPlaybackCommandHandler = nil
+        }
         if let newQueue {
             if isShuffleEnabled {
                 originalQueue = newQueue
@@ -566,6 +644,10 @@ final class MusicPlayerService {
     }
 
     func togglePlayPause() {
+        if isExternallyDriven {
+            externalPlaybackCommandHandler?(.togglePlayPause)
+            return
+        }
         Task { @MainActor [weak self] in
             guard let self else { return }
             #if !os(tvOS)
@@ -595,6 +677,10 @@ final class MusicPlayerService {
     /// queue, regardless of `repeatMode` (classic media-player behaviour; only the *natural end of
     /// track* path in `advanceAfterEnd()` respects "stop when repeat is off").
     func next() async {
+        if isExternallyDriven {
+            externalPlaybackCommandHandler?(.next)
+            return
+        }
         guard !queue.isEmpty else { return }
         currentIndex = PlaybackQueueNavigation.nextIndex(current: currentIndex, count: queue.count)
         let s = queue[currentIndex]
@@ -605,6 +691,10 @@ final class MusicPlayerService {
     /// Explicit "skip back" — restarts the current track if more than a few seconds in, otherwise
     /// wraps to the end of the queue (same wrap-always rule as `next()`).
     func previous() async {
+        if isExternallyDriven {
+            externalPlaybackCommandHandler?(.previous)
+            return
+        }
         guard !queue.isEmpty else { return }
         if PlaybackQueueNavigation.shouldRestartOnPrevious(position: positionSeconds) {
             seek(to: 0)
@@ -684,6 +774,11 @@ final class MusicPlayerService {
     }
 
     func stop() {
+        if isExternallyDriven {
+            externalPlaybackCommandHandler?(.stop)
+            isExternallyDriven = false
+            externalPlaybackCommandHandler = nil
+        }
         stopLocalPlaybackEngineOnly()
         #if !os(tvOS)
         stopYouTubeBackend()

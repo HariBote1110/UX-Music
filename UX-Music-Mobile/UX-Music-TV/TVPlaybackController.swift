@@ -32,12 +32,18 @@ final class TVPlaybackController: ObservableObject {
     /// which queue to advance from — `TVSongStreamController` itself is queue-agnostic.
     private var streamingQueue: [Song] = []
     private var streamingSongIndex: Int = 0
+    /// Polls `TVSongStreamController.elapsedSeconds` into `player.updateExternalPlaybackProgress`
+    /// while streaming owns Now Playing — there is no local `AVAudioEngine` timeline to derive
+    /// progress from during a stream (see `MusicPlayerService`'s "External playback bridging"
+    /// section). Cancelled whenever streaming stops/finishes/fails.
+    private var progressMirrorTask: Task<Void, Never>?
 
     init(
         client: RemoteAPIClient,
         player: MusicPlayerService,
         cache: TVPlaybackCacheStore? = nil,
-        prefetchCount: Int = 2
+        prefetchCount: Int = 2,
+        streamPlayerFactory: @escaping () -> TVRelayStreamPlayer = { TVRelayStreamPlayer() }
     ) {
         self.client = client
         self.player = player
@@ -52,13 +58,55 @@ final class TVPlaybackController: ObservableObject {
                 }
             )
         }
-        self.streamController = TVSongStreamController(client: client)
+        self.streamController = TVSongStreamController(client: client, streamPlayerFactory: streamPlayerFactory)
         streamController.$state.receive(on: DispatchQueue.main).sink { [weak self] in self?.streamState = $0 }
             .store(in: &cancellables)
         streamController.onStreamEnded = { [weak self] didFinishNaturally in
             Task { @MainActor [weak self] in
+                self?.stopProgressMirror()
+                self?.player.endExternalPlayback()
                 self?.advanceAfterStreamEnd(didFinishNaturally: didFinishNaturally)
             }
+        }
+        // Now Playing transport bridge (`progress/tvos-playback.md` "Now Playing 統合" 追記):
+        // routes `MusicPlayerService`'s transport calls back to the stream while
+        // `player.isExternallyDriven` is true — see `MusicPlayerService`'s "External playback
+        // bridging" section for why this exists (the streamed song has no local file for the
+        // service's own engine to load).
+        player.externalPlaybackCommandHandler = { [weak self] command in
+            guard let self else { return }
+            switch command {
+            case .togglePlayPause:
+                self.streamController.togglePlayPause()
+                self.player.setExternalPlaybackIsPlaying(!self.streamController.isPaused)
+            case .next:
+                self.advanceStreamingQueue(by: 1)
+            case .previous:
+                self.advanceStreamingQueue(by: -1)
+            case .stop:
+                self.stopProgressMirror()
+                self.streamController.stop()
+            }
+        }
+    }
+
+    private func stopProgressMirror() {
+        progressMirrorTask?.cancel()
+        progressMirrorTask = nil
+    }
+
+    /// Explicit skip forward/back (Now Playing transport buttons) while streaming owns playback —
+    /// mirrors `MusicPlayerService.next()`/`previous()`'s "always wrap" shape but, like
+    /// `advanceAfterStreamEnd`, must drive the queue itself since the streamed song was never
+    /// handed to `MusicPlayerService`'s own queue.
+    private func advanceStreamingQueue(by delta: Int) {
+        guard !streamingQueue.isEmpty else { return }
+        let count = streamingQueue.count
+        let nextIndex = ((streamingSongIndex + delta) % count + count) % count
+        let nextSong = streamingQueue[nextIndex]
+        let queue = streamingQueue
+        Task { [weak self] in
+            await self?.play(nextSong, queue: queue)
         }
     }
 
@@ -77,6 +125,7 @@ final class TVPlaybackController: ObservableObject {
         let tapStart = DispatchTime.now()
         #endif
         streamController.stop() // any previous stream-first playback is no longer relevant
+        stopProgressMirror()
         connectionState = .buffering
         guard let currentIndex = queue.firstIndex(where: { $0.id == song.id }) else { return }
 
@@ -105,6 +154,18 @@ final class TVPlaybackController: ObservableObject {
             streamController.start(songId: song.id, outputGain: gain)
             connectionState = .ready // "ready" here means "stream request in flight"; streamState carries the real loading UI
 
+            // Now Playing shows title/artwork/progress from the FIRST streamed frame onward (not
+            // just once cached), per the brief: `TVNowPlayingView` reads exclusively from `player`,
+            // so mirror the song in immediately rather than waiting for `didStartRendering`.
+            player.beginExternalPlayback(song: song, durationSeconds: song.duration)
+            progressMirrorTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    guard let self else { return }
+                    self.player.updateExternalPlaybackProgress(seconds: self.streamController.elapsedSeconds)
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                }
+            }
+
             // Fire-and-forget: download the ORIGINAL file into the cache in the background so the
             // NEXT play (or a repeat) uses the fully-EQ'd cached path. Deliberately does not
             // hot-swap the currently-streaming audio mid-song (documented future option in
@@ -120,6 +181,7 @@ final class TVPlaybackController: ObservableObject {
         }
 
         do {
+            stopProgressMirror()
             async let loudnessTask = client.fetchLoudness()
             let downloaded = try await cache.ensureCached(songId: song.id, protectedSongIds: protectedIds)
 

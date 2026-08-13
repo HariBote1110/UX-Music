@@ -85,6 +85,28 @@ final class TVRelayStreamPlayer: NSObject {
     private var isEngineConnected = false
     private let muteOutput: Bool
 
+    /// Serialises every touch of `engine`/`playerNode`/`isEngineConnected` between two otherwise
+    /// racing call paths: `stop()` (always called from the owning controller's actor, i.e. the
+    /// main thread) and `URLSessionDataDelegate` callbacks (delivered on `session`'s delegate
+    /// queue, a background queue, from `handle`/`schedule`). Before this queue existed, a chunk
+    /// already in flight when the user backed out could run `schedule()`'s
+    /// `engine.connect(playerNode, …)` concurrently with `stop()`'s `engine.detach(playerNode)`
+    /// on the main thread — exactly the crash from the real-device repro
+    /// (`AVAEInternal.h:71 … [_nodes containsObject: node1] && [_nodes containsObject: node2]`):
+    /// `connect` observing a node that had just been detached out from under it, or not yet
+    /// (re-)attached. Routing every engine mutation through this single serial queue makes
+    /// `start()`, `schedule()` and `stop()` totally ordered with respect to each other, so the
+    /// detach in `stop()` can never interleave with a connect/attach elsewhere. `stop()` uses
+    /// `sync` so it does not return until any in-flight schedule has fully completed, guaranteeing
+    /// the engine is inert before the caller starts a new session on the same or a new player
+    /// instance. See `progress/tvos-playback.md` for the full root-cause writeup.
+    private let engineQueue = DispatchQueue(label: "com.uxmusic.tv.relaystreamplayer.engine")
+    /// Bumped on every `stop()`; frame-handling closures captured on `engineQueue` before the stop
+    /// check this against the value they captured and no-op if it has since changed, so any chunk
+    /// that was already enqueued on `engineQueue` when `stop()` was called is discarded rather than
+    /// touching a torn-down engine.
+    private var generation: Int = 0
+
     /// LUFS loudness gain for Task A's per-song stream path (`progress/tvos-playback.md` "EQ/LUFS
     /// のルーティング判断" 追記). Linear gain (same `pow(10, dB/20)` formula and `0...4` clamp as
     /// `MusicPlayerService.applyLoudnessGain()`), applied to `mainMixerNode.outputVolume` — the
@@ -128,20 +150,25 @@ final class TVRelayStreamPlayer: NSObject {
     /// Starts streaming, parsing, decoding and playing `request`. Idempotent teardown is the
     /// caller's responsibility (`TVRelayPlaybackController` always calls `stop()` first).
     func start(request: URLRequest) {
-        parser = ADTSFrameParser()
-        decoder = nil
-        didStartRendering = false
-        bufferedSeconds = 0
-        isEngineConnected = false
+        engineQueue.sync {
+            parser = ADTSFrameParser()
+            decoder = nil
+            didStartRendering = false
+            bufferedSeconds = 0
+            isEngineConnected = false
+            generation += 1
 
-        engine.attach(playerNode)
-        applyOutputVolume()
-        // Deliberately NOT connected here: `AVAudioEngine.connect(_:to:format:)` with `format:
-        // nil` picks up whatever the node's default output format happens to be, which does not
-        // match the stream's actual sample rate/channel count and previously caused a hard
-        // `EXC_BAD_ACCESS` crash inside `AURemoteIO`'s render thread the moment a mismatched PCM
-        // buffer was scheduled. The connection is made lazily in `schedule(_:format:channelCount:)`
-        // once the real decoded format is known (from the ADTS header, so it never changes after).
+            if !engine.attachedNodes.contains(playerNode) {
+                engine.attach(playerNode)
+            }
+            applyOutputVolume()
+            // Deliberately NOT connected here: `AVAudioEngine.connect(_:to:format:)` with `format:
+            // nil` picks up whatever the node's default output format happens to be, which does not
+            // match the stream's actual sample rate/channel count and previously caused a hard
+            // `EXC_BAD_ACCESS` crash inside `AURemoteIO`'s render thread the moment a mismatched PCM
+            // buffer was scheduled. The connection is made lazily in `schedule(_:format:channelCount:)`
+            // once the real decoded format is known (from the ADTS header, so it never changes after).
+        }
 
         task = session.dataTask(with: request)
         task?.delegate = self
@@ -149,25 +176,70 @@ final class TVRelayStreamPlayer: NSObject {
     }
 
     /// Tears down the network task and the dedicated audio engine. Safe to call repeatedly.
+    /// Synchronous with respect to `engineQueue`: by the time this returns, any `schedule()` call
+    /// that was already running or queued has finished, and the bumped `generation` makes every
+    /// frame still in flight on the delegate queue a no-op once it reaches `handle`/`schedule` —
+    /// see `engineQueue`'s doc comment for the crash this prevents.
     func stop() {
         task?.cancel()
         task = nil
-        playerNode.stop()
-        engine.stop()
-        if engine.attachedNodes.contains(playerNode) {
-            engine.detach(playerNode)
+        engineQueue.sync {
+            generation += 1
+            playerNode.stop()
+            if engine.isRunning {
+                engine.stop()
+            }
+            if engine.attachedNodes.contains(playerNode) {
+                engine.detach(playerNode)
+            }
+            decoder = nil
+            parser = ADTSFrameParser()
+            didStartRendering = false
+            bufferedSeconds = 0
+            isEngineConnected = false
         }
-        decoder = nil
-        parser = ADTSFrameParser()
-        didStartRendering = false
-        bufferedSeconds = 0
-        isEngineConnected = false
+    }
+
+    /// Approximate elapsed playback position, derived the same way as
+    /// `MusicPlayerService.currentTimelineSeconds()` (`AVAudioPlayerNode.playerTime(forNodeTime:)`
+    /// against the node's own render clock) — the only timeline available here since this is a
+    /// live decoded stream, not a seekable file. `0` before playback has actually started
+    /// (`didStartRendering`). Used by `TVSongStreamController`/`TVPlaybackController` to mirror
+    /// progress into `MusicPlayerService.updateExternalPlaybackProgress` for `TVNowPlayingView`.
+    var elapsedSeconds: Double {
+        engineQueue.sync {
+            guard didStartRendering,
+                  let nodeTime = playerNode.lastRenderTime,
+                  let playerTime = playerNode.playerTime(forNodeTime: nodeTime),
+                  playerTime.sampleRate > 0
+            else { return 0 }
+            return Double(playerTime.sampleTime) / playerTime.sampleRate
+        }
+    }
+
+    /// Pauses playback in place (network keeps streaming/buffering in the background — this only
+    /// stops the render, mirroring `MusicPlayerService.togglePlayPause()`'s local-file pause).
+    func pause() {
+        engineQueue.sync { playerNode.pause() }
+    }
+
+    /// Resumes a paused stream. No-op if `stop()` has since torn the engine down.
+    func resume() {
+        engineQueue.sync {
+            guard engine.attachedNodes.contains(playerNode) else { return }
+            if !engine.isRunning { try? engine.start() }
+            playerNode.play()
+        }
     }
 
     // MARK: - Frame handling
 
-    private func handle(_ frames: [ADTSFrame]) {
-        guard !frames.isEmpty else { return }
+    /// Always invoked on `engineQueue` (from the delegate-queue dispatch in
+    /// `urlSession(_:dataTask:didReceive:)`). `expectedGeneration` pins this closure to the
+    /// session that scheduled it: if `stop()` bumped `generation` in the meantime, this is a
+    /// stale chunk from a torn-down session and must not touch the engine.
+    private func handle(_ frames: [ADTSFrame], expectedGeneration: Int) {
+        guard !frames.isEmpty, expectedGeneration == generation else { return }
 
         if decoder == nil {
             do {
@@ -180,6 +252,7 @@ final class TVRelayStreamPlayer: NSObject {
         guard let decoder else { return }
 
         for frame in frames {
+            guard expectedGeneration == generation else { return }
             let pcm: [Float]
             do {
                 pcm = try decoder.decode(frame)
@@ -191,6 +264,9 @@ final class TVRelayStreamPlayer: NSObject {
         }
     }
 
+    /// Always invoked on `engineQueue`, with `generation` already re-checked by the caller
+    /// (`handle`) immediately before each call — never touches `engine`/`playerNode` for a
+    /// session that `stop()` has since torn down.
     private func schedule(_ interleaved: [Float], format: AVAudioFormat, channelCount: Int) {
         let frameCount = interleaved.count / channelCount
         guard frameCount > 0,
@@ -204,6 +280,8 @@ final class TVRelayStreamPlayer: NSObject {
                 channelData[channel][frameIndex] = interleaved[frameIndex * channelCount + channel]
             }
         }
+
+        guard engine.attachedNodes.contains(playerNode) else { return }
 
         if !isEngineConnected {
             engine.connect(playerNode, to: engine.mainMixerNode, format: format)
@@ -267,8 +345,16 @@ extension TVRelayStreamPlayer: URLSessionDataDelegate {
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        let frames = parser.feed(data)
-        handle(frames)
+        // Parsing (`parser.feed`) also touches engine-session state (`parser` is reset by both
+        // `start()` and `stop()`), so it is dispatched onto `engineQueue` too rather than run
+        // inline on the delegate queue — otherwise `parser.feed` here could race a concurrent
+        // `parser = ADTSFrameParser()` reset from `stop()`/`start()` on the main thread.
+        engineQueue.async { [weak self] in
+            guard let self else { return }
+            let capturedGeneration = self.generation
+            let frames = self.parser.feed(data)
+            self.handle(frames, expectedGeneration: capturedGeneration)
+        }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
