@@ -42,6 +42,10 @@ export function AudioGetStatus() {
   return window['go']['server']['App']['AudioGetStatus']();
 }
 
+export function AudioIsLocalMuted() {
+  return window['go']['server']['App']['AudioIsLocalMuted']();
+}
+
 export function AudioIsPaused() {
   return window['go']['server']['App']['AudioIsPaused']();
 }
@@ -92,10 +96,6 @@ export function AudioSetVolume(arg1) {
 
 export function AudioStartWebViewTap() {
   return window['go']['server']['App']['AudioStartWebViewTap']();
-}
-
-export function AudioIsLocalMuted() {
-  return window['go']['server']['App']['AudioIsLocalMuted']();
 }
 
 export function AudioStop() {

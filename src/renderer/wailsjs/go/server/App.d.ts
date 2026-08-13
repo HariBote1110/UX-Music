@@ -30,6 +30,8 @@ export function AudioGetPosition():Promise<number>;
 
 export function AudioGetStatus():Promise<Record<string, any>>;
 
+export function AudioIsLocalMuted():Promise<boolean>;
+
 export function AudioIsPaused():Promise<boolean>;
 
 export function AudioIsPlaying():Promise<boolean>;
@@ -53,8 +55,6 @@ export function AudioSetNormalisationGain(arg1:number):Promise<void>;
 export function AudioSetNowPlayingMetadata(arg1:Record<string, any>):Promise<void>;
 
 export function AudioSetVolume(arg1:number):Promise<void>;
-
-export function AudioIsLocalMuted():Promise<boolean>;
 
 export function AudioStartWebViewTap():Promise<void>;
 
