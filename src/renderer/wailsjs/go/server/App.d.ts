@@ -202,6 +202,8 @@ export function RefreshSyncRemoteCatalog():Promise<void>;
 
 export function RenamePlaylist(arg1:Record<string, any>):Promise<void>;
 
+export function ReportEmbedPlaybackState(arg1:number,arg2:number,arg3:boolean):Promise<void>;
+
 export function RequestInitialLibrary():Promise<void>;
 
 export function RequestPlaylistsWithArtwork():Promise<void>;

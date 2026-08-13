@@ -55,6 +55,11 @@ func (a *App) NotifyYouTubePlaybackState(active bool, title string, thumbnailURL
 	stopRelayTapLocked()
 
 	if !active {
+		// The embed session (and whatever it was reporting via
+		// ReportEmbedPlaybackState) has ended; drop the stale report so a
+		// later Go-player (local file) session's /v1/remote/state isn't
+		// overridden by the last embed song's position.
+		currentEmbedPlaybackReport.Clear()
 		return nil
 	}
 
@@ -72,7 +77,11 @@ func (a *App) NotifyYouTubePlaybackState(active bool, title string, thumbnailURL
 	}
 
 	source := newProcessTapRelaySource(capture)
-	if err := remoteRelay.Start(source, title, thumbnailURL); err != nil {
+	// Upgrade to the highest-resolution thumbnail actually available for the
+	// video (probed + cached in resolveRelayThumbnailURL) rather than
+	// whatever quality the renderer happened to have on hand — see
+	// progress/remote-relay-thumbnail.md.
+	if err := remoteRelay.Start(source, title, resolveRelayThumbnailURL(thumbnailURL)); err != nil {
 		_ = capture.Stop()
 		return fmt.Errorf("relay start failed: %w", err)
 	}

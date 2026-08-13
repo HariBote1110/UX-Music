@@ -217,6 +217,18 @@ func remoteFileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Live streaming transcode: a client with no cached copy (typically a TV
+	// with limited local storage) can start playback in well under a second
+	// via a live ffmpeg encode, while separately downloading the original
+	// through a plain (no ?stream=) request for future offline playback.
+	// Range requests are not meaningful here (there is no seekable
+	// Content-Length — the response is chunked) and are ignored rather than
+	// honoured.
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("stream")), "aac") {
+		serveFileStreamAAC(w, r, filePath)
+		return
+	}
+
 	// Phone / full-quality: skip Watch transcoding (original bitrate and container).
 	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("source")), "original") {
 		safeName := filepath.Base(filePath)
@@ -338,6 +350,22 @@ func (ls *LANServer) remoteStateHandler(w http.ResponseWriter, r *http.Request) 
 	// a remote-initiated playback session (see MarkNextPlaybackRemoteInitiated
 	// in app_audio.go). The relay above is unaffected either way.
 	status["localMuted"] = ls.app.AudioIsLocalMuted()
+
+	// During an embed (YouTube IFrame) session the Go audio.Player above is
+	// idle — AudioGetStatus's position/duration/playing would read 0/0/false
+	// — while the renderer's IFrame player is what is actually sounding.
+	// Prefer the renderer's own report (ReportEmbedPlaybackState) so TV/
+	// mobile clients' seek UI reflects the embed instead. Additive: only
+	// overrides these three keys, and only while both an embed session is
+	// active and at least one report has arrived for it.
+	if relayActive {
+		if pos, dur, playing, active := currentEmbedPlaybackReport.Get(); active {
+			status["position"] = pos
+			status["duration"] = dur
+			status["playing"] = playing
+			status["paused"] = !playing
+		}
+	}
 
 	writeJSON(w, status)
 }

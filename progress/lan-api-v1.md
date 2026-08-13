@@ -39,6 +39,9 @@
 | （新設） | GET /v1/remote/relay（GUI モード限定・YouTube 音声中継の AAC-LC ADTS 放送。認証必須・ヘッドレス時404・非アクティブ時409。詳細は `progress/remote-relay.md`） |
 | （新設） | POST /v1/remote/command の action: "play-song"（ペア済みクライアントからライブラリ楽曲IDを指定して再生開始を指示。ヘッドレス時 409 gui_required・未知の songId は 404。詳細は `progress/remote-play-song.md`） |
 | （追加フィールド） | GET /v1/remote/songs の各曲へ `hasLocalAudio: boolean` を追加（既存フィールドは不変）。`true` なら GET /v1/remote/file/{id} が音声を返す。ダウンロードせず埋め込み再生のみで登録された YouTube 曲（`type:"youtube"`）は `false` になり、/v1/remote/file/{id} は `no_local_audio` エラーコード付きの 404 を返す。詳細は `progress/remote-embed-control.md`。 |
+| （追加クエリパラメータ） | GET /v1/remote/file/{id}?stream=aac（ローカルキャッシュを持たないTVクライアント向け。ffmpeg出力をチャンク転送でそのまま配信、`/v1/remote/relay`と同一のADTS AAC-LC 256kbps・44.1kHzステレオ。Rangeリクエストは非対応・素通り。クライアント切断でffmpegを確実に停止。`stream=`なしの既存動作は完全不変。詳細は `progress/remote-stream-transcode.md`） |
+| （追加フィールド） | POST /v1/remote/command 不使用の新Wailsバインド `ReportEmbedPlaybackState` により、YouTube公式embed再生中は GET /v1/remote/state のroot直下 `position`/`duration`/`playing`/`paused` がembedの実再生位置を反映するようになった（加算的：報告が無い間・embedセッション非アクティブ時は既存のGoプレイヤー由来の値のまま）。詳細は `progress/remote-embed-state-report.md`。 |
+| （挙動変更） | GET /v1/remote/state の `relay.thumbnail` が、可能な限り高解像度のYouTubeサムネイル（`maxresdefault`→`sddefault`→`hqdefault`の順にGo側がプローブし採用）になった。既存の型・キーは不変。詳細は `progress/remote-relay-thumbnail.md`。 |
 | /sync/library/*, /sync/assets/*, /sync/discover | /v1/sync/library/*, /v1/sync/assets/*, /v1/sync/discover |
 
 ## Alternatives considered
