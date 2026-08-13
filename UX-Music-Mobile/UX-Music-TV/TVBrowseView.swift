@@ -486,30 +486,83 @@ private struct TVRelayBannerView: View {
 
     private var playingContent: some View {
         VStack(spacing: 32) {
-            AsyncImage(url: URL(string: relayModel.thumbnail)) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fit)
-                default:
-                    Image(systemName: "play.tv")
-                        .font(.system(size: 96))
-                        .foregroundStyle(TVDesignTokens.textSecondary)
-                }
-            }
-            .frame(maxHeight: 400)
+            relayThumbnailCard
             Text(String(localized: "tv.relay.banner.subtitle"))
                 .font(.headline)
                 .foregroundStyle(TVDesignTokens.textSecondary)
             Text(relayModel.title)
                 .font(.title)
                 .multilineTextAlignment(.center)
+            if relayModel.position.isSeekable {
+                TVRelaySeekBar(position: relayModel.position, onSeek: { relayModel.seek(to: $0) })
+                    .frame(maxWidth: 720)
+            }
             transportRow
             Button(String(localized: "tv.relay.banner.exit"), action: onExit)
         }
     }
 
+    /// Large 16:9 artwork treatment for the relay Now Playing (coordinator-added scope: "show the
+    /// thumbnail as beautifully as possible" since there is no video on TV). YouTube thumbnails
+    /// are natively 16:9 — unlike the square local-song artwork elsewhere in the app, this must
+    /// never be centre-cropped into a square frame. A blurred, heavily-scaled copy of the same
+    /// image fills the card behind it (matching the cinematic language used for local Now
+    /// Playing's ambient background) so letterboxing never shows flat colour, and the sharp image
+    /// fades in once loaded rather than popping in abruptly.
+    private var relayThumbnailCard: some View {
+        GeometryReader { proxy in
+            let width = min(proxy.size.width, 960)
+            let height = width * 9 / 16
+            ZStack {
+                AsyncImage(url: URL(string: relayModel.thumbnail)) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .blur(radius: 40)
+                            .opacity(0.6)
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: width, height: height)
+                .clipShape(RoundedRectangle(cornerRadius: 24))
+
+                AsyncImage(url: URL(string: relayModel.thumbnail)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .transition(.opacity.animation(.easeIn(duration: 0.35)))
+                    case .empty:
+                        Color.clear
+                    default:
+                        Image(systemName: "play.tv")
+                            .font(.system(size: 96))
+                            .foregroundStyle(TVDesignTokens.textSecondary)
+                    }
+                }
+                .frame(width: width, height: height)
+            }
+            .frame(width: width, height: height)
+            .clipShape(RoundedRectangle(cornerRadius: 24))
+            .shadow(color: TVDesignTokens.signaturePink.opacity(0.25), radius: 36)
+            .frame(maxWidth: .infinity)
+        }
+        .frame(height: 400)
+    }
+
     private var transportRow: some View {
         HStack(spacing: 56) {
+            Button {
+                relayModel.seek(to: relayModel.position.seekTarget(delta: -10))
+            } label: {
+                Image(systemName: "gobackward.10")
+            }
+            .buttonStyle(TVTransportButtonStyle(size: 32))
+            .accessibilityLabel(String(localized: "tv.relay.transport.seekBack"))
+            .opacity(relayModel.position.isSeekable ? 1 : 0)
+            .disabled(!relayModel.position.isSeekable)
+
             Button {
                 Task { await sendToggle() }
             } label: {
@@ -525,6 +578,16 @@ private struct TVRelayBannerView: View {
             }
             .buttonStyle(TVTransportButtonStyle(size: 40))
             .accessibilityLabel(String(localized: "tv.relay.transport.stop"))
+
+            Button {
+                relayModel.seek(to: relayModel.position.seekTarget(delta: 10))
+            } label: {
+                Image(systemName: "goforward.10")
+            }
+            .buttonStyle(TVTransportButtonStyle(size: 32))
+            .accessibilityLabel(String(localized: "tv.relay.transport.seekForward"))
+            .opacity(relayModel.position.isSeekable ? 1 : 0)
+            .disabled(!relayModel.position.isSeekable)
         }
     }
 
@@ -555,6 +618,63 @@ private struct TVRelayBannerView: View {
                 .multilineTextAlignment(.center)
             Button(String(localized: "tv.relay.banner.exit"), action: onExit)
         }
+    }
+}
+
+/// Seek bar for the relay banner (Task B, `progress/tvos-relay-reception.md`). tvOS idiom: the bar
+/// is a focusable element; while focused, left/right on the Siri Remote's touch surface (delivered
+/// as `onMoveCommand`) nudges the position ±10s per press, and press-and-hold auto-repeats via the
+/// same command (the system already debounces/repeats directional presses while held, so no manual
+/// timer is needed here). Position updates optimistically (`TVRelayModel.seek(to:)`) — the actual
+/// audio jump arrives ~1s later once the host's embed seeks and the relay jitter buffer refills.
+private struct TVRelaySeekBar: View {
+    let position: TVRelayPositionState
+    let onSeek: (Double) -> Void
+
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.2))
+                        .frame(height: isFocused ? 10 : 6)
+                    Capsule()
+                        .fill(TVDesignTokens.signatureAngularGradient)
+                        .frame(width: max(proxy.size.width * position.fraction, 4), height: isFocused ? 10 : 6)
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+            }
+            .frame(height: 10)
+            .focusable(true)
+            .focused($isFocused)
+            .scaleEffect(isFocused ? 1.03 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: isFocused)
+            .onMoveCommand { direction in
+                switch direction {
+                case .left:
+                    onSeek(position.seekTarget(delta: -10))
+                case .right:
+                    onSeek(position.seekTarget(delta: 10))
+                default:
+                    break
+                }
+            }
+
+            HStack {
+                Text(Self.formatted(position.position))
+                Spacer()
+                Text(Self.formatted(position.duration))
+            }
+            .font(.caption)
+            .foregroundStyle(TVDesignTokens.textSecondary)
+        }
+    }
+
+    private static func formatted(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }
 

@@ -290,6 +290,70 @@
         }
       }
     },
+    "tv.relay.transport.seekBack" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back 10s"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10秒戻る"
+          }
+        }
+      }
+    },
+    "tv.relay.transport.seekForward" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forward 10s"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10秒進む"
+          }
+        }
+      }
+    },
+    "tv.stream.loading" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starting playback…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再生を開始しています…"
+          }
+        }
+      }
+    },
+    "tv.stream.error.unknown" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't start streaming this track."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この曲のストリーミングを開始できませんでした。"
+          }
+        }
+      }
+    },
     "tv.relay.error.requestFailed" : {
       "localizations" : {
         "en" : {

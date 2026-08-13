@@ -47,6 +47,40 @@ enum TVRelayTransportState {
     }
 }
 
+/// Pure parse of the root-level `position`/`duration` keys in `GET /v1/remote/state`
+/// (`server/app_audio.go`'s `AudioGetStatus`, extended so the desktop reports the YouTube embed's
+/// own playback position — see `progress/tvos-relay-reception.md` "シークバー" 追記). Both keys are
+/// additive: an older host, or a host whose embed hasn't reported a duration yet, simply omits or
+/// zeroes them, and this type reads that as "not seekable" rather than throwing or showing a
+/// bogus 0/0 bar (Task B's "handle absent/zero duration gracefully — hide the bar" requirement).
+struct TVRelayPositionState: Equatable {
+    let position: Double
+    let duration: Double
+
+    /// A bar is only worth showing once the host has reported a strictly-positive duration.
+    var isSeekable: Bool { duration > 0 }
+
+    /// `position / duration`, clamped to `0...1`. `0` when not seekable so callers can bind it
+    /// directly to a progress view without a branch.
+    var fraction: Double {
+        guard isSeekable else { return 0 }
+        return min(max(position / duration, 0), 1)
+    }
+
+    /// `position + delta`, clamped to `0...duration` — used by the ±10s skip controls so a skip
+    /// near either edge never sends a negative or out-of-range seek target.
+    func seekTarget(delta: Double) -> Double {
+        min(max(position + delta, 0), duration)
+    }
+
+    static func parse(fromStateJSON json: [String: Any]) -> TVRelayPositionState {
+        TVRelayPositionState(
+            position: (json["position"] as? Double) ?? 0,
+            duration: (json["duration"] as? Double) ?? 0
+        )
+    }
+}
+
 /// The single rule deciding whether the browse UI shows the relay shelf entry: the host must both
 /// support the feature (capability present — guards older hosts) AND currently have something
 /// actively relaying (guards the common case of a capable host with nothing playing).
@@ -72,6 +106,14 @@ final class TVRelayModel: ObservableObject {
     /// Defaults to `true` so the transport button shows "pause" (the expected state right after
     /// a relay starts) until the first poll tick resolves the real value.
     @Published private(set) var isPlaying = true
+    /// Root-level `position`/`duration` (Task B, `progress/tvos-relay-reception.md`). Defaults to
+    /// `.init(position: 0, duration: 0)` (not seekable) until the first poll resolves real values.
+    @Published private(set) var position = TVRelayPositionState(position: 0, duration: 0)
+    /// Set optimistically by the seek bar the instant the user commits a seek, so the bar doesn't
+    /// visibly snap back to the pre-seek position while waiting ~1s for the jitter-buffered audio
+    /// to actually catch up and the next poll tick to confirm it (see seek bar doc comment in
+    /// `TVBrowseView.swift`). Cleared automatically once a poll reports a position close to it.
+    private var optimisticSeekTarget: Double?
 
     private let client: RemoteAPIClient
     private var capabilities: [String] = []
@@ -110,5 +152,32 @@ final class TVRelayModel: ObservableObject {
         title = relay.title
         thumbnail = relay.thumbnail
         isPlaying = TVRelayTransportState.isPlaying(fromStateJSON: json, defaultingTo: isPlaying)
+
+        let polled = TVRelayPositionState.parse(fromStateJSON: json)
+        if let target = optimisticSeekTarget {
+            // Once the polled position has caught up to within 2s of the optimistic target, trust
+            // the poll again; otherwise keep showing the optimistic target so the bar doesn't jump
+            // backwards while the ~1s jitter-buffer delay is still catching up.
+            if abs(polled.position - target) < 2 {
+                optimisticSeekTarget = nil
+                position = polled
+            } else {
+                position = TVRelayPositionState(position: target, duration: polled.duration)
+            }
+        } else {
+            position = polled
+        }
+    }
+
+    /// Sends `POST /v1/remote/command {"action":"seek","value":<seconds>}` (field name verified
+    /// against `server/app_remote.go`'s seek case) and immediately shows the target position in
+    /// the UI — the actual audio jump arrives ~1s later once the host's embed seeks and the relay
+    /// jitter buffer refills, so waiting for a poll round-trip would make the bar feel laggy.
+    func seek(to seconds: Double) {
+        optimisticSeekTarget = seconds
+        position = TVRelayPositionState(position: seconds, duration: position.duration)
+        Task { [client] in
+            _ = try? await client.sendCommand(action: "seek", value: seconds)
+        }
     }
 }

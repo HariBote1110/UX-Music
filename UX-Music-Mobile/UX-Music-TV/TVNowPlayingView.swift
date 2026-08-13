@@ -328,13 +328,24 @@ struct TVTransportButtonStyle: ButtonStyle {
     let size: CGFloat
     @Environment(\.isFocused) private var isFocused
 
+    /// Layout-shift fix (`progress/tvos-playback.md` "フォーカス時のレイアウトシフト" 追記): the
+    /// focus↔unfocus weight lift (`.regular` → `.semibold`) changes the SF Symbol glyph's
+    /// *intrinsic* metrics, which used to reflow sibling views (artwork, title/artist labels)
+    /// whenever a transport button gained/lost focus. Reserving a fixed frame sized for the
+    /// LARGEST focused state (icon at `size`, scaled by the focused `scaleEffect`, plus padding)
+    /// makes the button's contribution to its parent's layout constant regardless of focus —
+    /// only content *inside* that frame changes (weight, colour, glow), and `scaleEffect` is
+    /// render-only so it never affects layout either. `size * 1.22` matches the focused
+    /// `scaleEffect` factor below so the visually-largest glyph still fits inside the reserved box.
+    private var reservedDimension: CGFloat { (size * 1.22) + 40 } // 40 = 20pt padding × 2
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: size, weight: isFocused ? .semibold : .regular))
             .foregroundStyle(isFocused ? Color.white : Color.white.opacity(0.55))
-            .scaleEffect((isFocused ? 1.22 : 1.0) * (configuration.isPressed ? 0.92 : 1.0))
             .shadow(color: .white.opacity(isFocused ? 0.45 : 0), radius: isFocused ? 18 : 0)
-            .padding(20)
+            .frame(width: reservedDimension, height: reservedDimension)
+            .scaleEffect((isFocused ? 1.22 : 1.0) * (configuration.isPressed ? 0.92 : 1.0))
             .contentShape(Rectangle())
             .animation(.easeInOut(duration: 0.15), value: isFocused)
             .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
