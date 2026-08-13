@@ -124,6 +124,25 @@ final class RemoteAPIClientTests: XCTestCase {
         ])
     }
 
+    // MARK: - RemoteAPIClient.songStreamQueryItems / songStreamRequest (Task A stream-first playback)
+
+    func testSongStreamQueryItemsRequestsAACStream() {
+        let items = RemoteAPIClient.songStreamQueryItems(songId: "track-1")
+        XCTAssertEqual(items, [
+            URLQueryItem(name: "id", value: "track-1"),
+            URLQueryItem(name: "stream", value: "aac"),
+        ])
+    }
+
+    func testSongStreamRequestBuildsFileEndpointWithBearerHeader() throws {
+        let client = RemoteAPIClient(baseURLString: "http://192.168.0.5:8765", token: "secret-token")
+        let request = try client.songStreamRequest(songId: "track-1")
+        XCTAssertEqual(request.url?.path, "/v1/remote/file")
+        XCTAssertTrue(request.url?.query?.contains("stream=aac") == true)
+        XCTAssertTrue(request.url?.query?.contains("id=track-1") == true)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer secret-token")
+    }
+
     func testDecodeRemoteLyricsPayload() throws {
         let json = Data(#"{"found":true,"type":"lrc","content":"[00:01.00]Hi"}"#.utf8)
         let p = try JSONDecoder().decode(RemoteLyricsPayload.self, from: json)
