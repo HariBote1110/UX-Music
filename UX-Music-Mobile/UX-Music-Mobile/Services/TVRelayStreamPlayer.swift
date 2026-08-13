@@ -88,6 +88,32 @@ class TVRelayStreamPlayer: NSObject {
     private var isEngineConnected = false
     private let muteOutput: Bool
 
+    /// Test-visible: true while this instance's `playerNode` is attached, connected and NOT
+    /// stopped/muted — i.e. genuinely capable of producing audible output right now. Flipped to
+    /// `false` synchronously by `silenceImmediately()`/`stop()`'s instant-mute step, so a
+    /// regression test can assert "the OLD session is provably silent no later than the moment
+    /// the NEW session reports first audio" (`progress/tvos-playback-concurrency.md` "double
+    /// audio" symptom). Read/written only from `engineQueue` except the `silenceImmediately()`
+    /// write itself, which is deliberately synchronous/off-queue — see that method's doc comment.
+    private(set) var isRenderActiveForTesting = false
+
+    /// Instantly makes this session's audio inaudible WITHOUT waiting for `engineQueue` — the
+    /// counterpart to `stop()`'s async graph teardown. `AVAudioMixerNode.outputVolume` and
+    /// `AVAudioPlayerNode.volume` are documented by Apple as safe to set from any thread while the
+    /// engine is running (they are render-parameter writes, not graph-topology changes like
+    /// `connect`/`detach`, which DO require `engineQueue`'s serialisation — see that queue's doc
+    /// comment). Calling this synchronously, on the caller's own thread (always the MainActor in
+    /// practice), closes the double-audio window described in
+    /// `progress/tvos-playback-concurrency.md`: previously `stop()`'s teardown was purely
+    /// `engineQueue.async`, so a new session's engine could start producing audible output while
+    /// the old session's engine was still mid-flight on `engineQueue`, rendering scheduled buffers
+    /// concurrently. Idempotent and safe to call even before `start()` / after `stop()`.
+    func silenceImmediately() {
+        playerNode.volume = 0
+        engine.mainMixerNode.outputVolume = 0
+        isRenderActiveForTesting = false
+    }
+
     /// Serialises every touch of `engine`/`playerNode`/`isEngineConnected` between two otherwise
     /// racing call paths: `stop()` (always called from the owning controller's actor, i.e. the
     /// main thread) and `URLSessionDataDelegate` callbacks (delivered on `session`'s delegate
@@ -233,6 +259,7 @@ class TVRelayStreamPlayer: NSObject {
     /// already in flight on the delegate queue is discarded the moment it reaches `handle`/`schedule`,
     /// without needing to wait for this block to actually run.
     func stop() {
+        silenceImmediately() // instant, off-queue — see its doc comment
         task?.cancel()
         task = nil
         bumpGeneration()
@@ -367,6 +394,7 @@ class TVRelayStreamPlayer: NSObject {
 
         if !didStartRendering, bufferedSeconds >= jitterBufferSeconds {
             didStartRendering = true
+            isRenderActiveForTesting = true
             playerNode.play()
             let player = self
             DispatchQueue.main.async {
@@ -451,16 +479,26 @@ extension TVRelayStreamPlayer: URLSessionDataDelegate {
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        // Captured here (delegate queue), BEFORE the generation could be bumped by a `stop()` that
+        // races this callback — same rationale as `didReceive data:`'s `capturedGeneration`. A
+        // session superseded between `task.cancel()` returning and this callback actually firing
+        // must never be allowed to emit an end-of-stream/failure event; otherwise the coordinator
+        // above (`TVSongStreamController`/`TVRelayPlaybackController`) could advance its queue (or
+        // fail) off a session nobody asked about any more —
+        // `progress/tvos-playback-concurrency.md` "stale end events" symptom.
+        let capturedGeneration = generation
         guard let error else {
             // Normal end of the HTTP body: for the finite per-song stream (Task A) this IS end of
             // track; the continuous relay stream never reaches this branch in practice.
             let player = self
             DispatchQueue.main.async {
+                guard capturedGeneration == player.generation else { return }
                 player.delegate?.relayStreamPlayerDidReachEndOfStream(player)
             }
             return
         }
         guard (error as NSError).code != NSURLErrorCancelled else { return }
+        guard capturedGeneration == generation else { return }
         fail(reason: error.localizedDescription)
     }
 }

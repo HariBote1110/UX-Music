@@ -117,16 +117,25 @@ final class TVSongStreamController: ObservableObject {
 }
 
 extension TVSongStreamController: TVRelayStreamPlayerDelegate {
+    /// Every callback below first checks `player === streamPlayer` — defence in depth alongside
+    /// `TVRelayStreamPlayer`'s own generation guard. `teardown()` always nils the outgoing
+    /// player's `delegate` synchronously on the MainActor before a new one starts, so this should
+    /// already be unreachable for a superseded session in practice; the identity check makes that
+    /// an enforced invariant rather than an emergent property of call ordering
+    /// (`progress/tvos-playback-concurrency.md` "sessionID gating").
     func relayStreamPlayerDidStartRendering(_ player: TVRelayStreamPlayer) {
+        guard player === streamPlayer else { return }
         didStartPlaying = true
         state = TVSongStreamPlaybackReducer.reduce(state, event: .didStartRendering)
     }
 
     func relayStreamPlayer(_ player: TVRelayStreamPlayer, didFailWith reason: String) {
+        guard player === streamPlayer else { return }
         fail(reason: reason)
     }
 
     func relayStreamPlayerDidReachEndOfStream(_ player: TVRelayStreamPlayer) {
+        guard player === streamPlayer else { return }
         guard state == .streaming else { return } // ignore late callback after teardown/fail
         teardown()
         state = TVSongStreamPlaybackReducer.reduce(state, event: .didReachEndOfStream)

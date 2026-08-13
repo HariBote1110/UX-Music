@@ -37,6 +37,20 @@ final class TVPlaybackController: ObservableObject {
     /// progress from during a stream (see `MusicPlayerService`'s "External playback bridging"
     /// section). Cancelled whenever streaming stops/finishes/fails.
     private var progressMirrorTask: Task<Void, Never>?
+    /// Bumped at the very top of every `play(_:queue:)` call, BEFORE any `await`. Each call
+    /// captures its own value (`myToken`) and re-checks `myToken == playToken` after every
+    /// suspension point before doing anything with externally-visible effect (starting a stream,
+    /// calling `player.play`, mutating `streamingQueue`/`connectionState`). This is what makes
+    /// concurrent/rapid `play()` calls self-superseding rather than racing: `play()` is `async`
+    /// and has several `await`s (cache lookup, loudness fetch, download), and nothing previously
+    /// prevented two overlapping calls (e.g. a user tap racing `advanceAfterStreamEnd`'s
+    /// fire-and-forget `Task`) from interleaving their side effects — the exact "startup-phase
+    /// switching" and "rapid hop" symptoms in `progress/tvos-playback-concurrency.md`. A
+    /// superseded call bails out silently the moment it notices; only the LAST call to reach a
+    /// checkpoint is allowed through it, so at most one `play()` invocation ever ends up actually
+    /// starting audio at a time — enforced by construction, not by hoping callers serialise
+    /// themselves.
+    private var playToken: Int = 0
 
     init(
         client: RemoteAPIClient,
@@ -124,6 +138,8 @@ final class TVPlaybackController: ObservableObject {
         #if DEBUG
         let tapStart = DispatchTime.now()
         #endif
+        playToken += 1
+        let myToken = playToken
         streamController.stop() // any previous stream-first playback is no longer relevant
         stopProgressMirror()
         connectionState = .buffering
@@ -141,10 +157,12 @@ final class TVPlaybackController: ObservableObject {
         // IMMEDIATELY (before the loudness fetch even resolves) so first audio never waits on the
         // full-file download. This check is synchronous disk I/O only — no network round-trip.
         let cacheHit = await cache.isCached(songId: song.id)
+        guard myToken == playToken else { return } // superseded by a newer play() while awaiting the cache check
         if TVSongPlaybackPlan.shouldStream(cacheHit: cacheHit) {
             streamingQueue = queue
             streamingSongIndex = currentIndex
             let loudnessMap = (try? await client.fetchLoudness()) ?? player.loudnessMap
+            guard myToken == playToken else { return } // superseded while awaiting loudness
             player.loudnessMap = loudnessMap
             let gain = Self.linearLoudnessGain(
                 lufs: loudnessMap[song.id],
@@ -184,6 +202,7 @@ final class TVPlaybackController: ObservableObject {
             stopProgressMirror()
             async let loudnessTask = client.fetchLoudness()
             let downloaded = try await cache.ensureCached(songId: song.id, protectedSongIds: protectedIds)
+            guard myToken == playToken else { return } // superseded while awaiting the download
 
             var active = song
             active.path = downloaded.fileURL.path
@@ -193,7 +212,9 @@ final class TVPlaybackController: ObservableObject {
             }
 
             player.loudnessMap = try await loudnessTask
+            guard myToken == playToken else { return } // superseded while awaiting loudness
             await cache.pinCurrentlyPlaying(songId: active.id)
+            guard myToken == playToken else { return } // superseded while pinning
             await player.play(active, newQueue: cachedQueue)
             connectionState = .ready
             #if DEBUG

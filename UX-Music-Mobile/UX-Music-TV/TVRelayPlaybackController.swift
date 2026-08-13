@@ -102,11 +102,16 @@ final class TVRelayPlaybackController: ObservableObject {
 }
 
 extension TVRelayPlaybackController: TVRelayStreamPlayerDelegate {
+    /// `player === streamPlayer` identity check — see `TVSongStreamController`'s matching delegate
+    /// extension doc comment for the rationale (defence in depth alongside
+    /// `TVRelayStreamPlayer`'s own generation guard).
     func relayStreamPlayerDidStartRendering(_ player: TVRelayStreamPlayer) {
+        guard player === streamPlayer else { return }
         didStartPlaying = true
     }
 
     func relayStreamPlayer(_ player: TVRelayStreamPlayer, didFailWith reason: String) {
+        guard player === streamPlayer else { return }
         fail(reason: reason)
     }
 }

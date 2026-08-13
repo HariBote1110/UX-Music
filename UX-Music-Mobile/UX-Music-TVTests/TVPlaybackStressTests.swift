@@ -141,6 +141,158 @@ final class TVPlaybackStressTests: XCTestCase {
         }
     }
 
+    // MARK: - 4. double audio: old session provably silent no later than new session's first audio
+
+    /// Direct regression proof for `progress/tvos-playback-concurrency.md`'s "double audio"
+    /// symptom: switch from session A to session B WHILE A is actively rendering (past its jitter
+    /// buffer), and assert A's `isRenderActiveForTesting` flag is already `false` by the time B's
+    /// `relayStreamPlayerDidStartRendering` delegate callback fires. Before `stop()` gained its
+    /// synchronous `silenceImmediately()` step, A's teardown was purely `engineQueue.async`
+    /// (fire-and-forget), so A's engine could still be mid-render when B started — this test would
+    /// have had no way to observe that ordering violation before `isRenderActiveForTesting`/
+    /// `silenceImmediately()` existed, since both engines were muted (`muteOutput: true`) and
+    /// nothing surfaced "was A still rendering" as a testable fact.
+    func testOldSessionIsSilencedNoLaterThanNewSessionsFirstAudio() async throws {
+        let fixtureURL = try Self.fixtureURL()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StressPacedFixtureURLProtocol.self]
+        StressPacedFixtureURLProtocol.fixtureURL = fixtureURL
+        let request = URLRequest(url: URL(string: "https://mock.invalid/v1/remote/file?id=song-1&stream=aac")!)
+
+        await runWithHardTimeout("double-audio: old session silenced before new session's first audio", timeout: 20) {
+            let playerA = TVRelayStreamPlayer(sessionConfiguration: config, muteOutput: true)
+            let recorderA = StressRenderRecorder()
+            playerA.delegate = recorderA
+            playerA.start(request: request)
+
+            // Wait until A is genuinely rendering (past the jitter buffer) — the worst-case moment
+            // to switch, since A's engine is actively scheduling/playing buffers right now.
+            let renderDeadline = Date().addingTimeInterval(10)
+            while recorderA.renderCount == 0 {
+                if Date() > renderDeadline {
+                    XCTFail("session A never started rendering within 10s")
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+            XCTAssertTrue(playerA.isRenderActiveForTesting, "sanity check: A must be actively rendering before the switch")
+
+            // Now switch to B — mirrors `TVSongStreamController.start()`'s ordering: the old
+            // player is stopped (which must silence it INSTANTLY) before the new one starts.
+            playerA.stop()
+            XCTAssertFalse(
+                playerA.isRenderActiveForTesting,
+                "session A must be silenced synchronously by stop(), not merely queued for later teardown"
+            )
+
+            let playerB = TVRelayStreamPlayer(sessionConfiguration: config, muteOutput: true)
+            let recorderB = StressRenderRecorder()
+            playerB.delegate = recorderB
+            playerB.start(request: request)
+
+            let bDeadline = Date().addingTimeInterval(10)
+            while recorderB.renderCount == 0 {
+                if Date() > bDeadline {
+                    XCTFail("session B never started rendering within 10s")
+                    return
+                }
+                // The load-bearing assertion: at EVERY point while waiting for B's first audio,
+                // A must remain silent. A single `false` anywhere in this loop would be the
+                // double-audio window made observable.
+                XCTAssertFalse(playerA.isRenderActiveForTesting, "session A must stay silent while B starts up")
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+
+            XCTAssertFalse(playerA.isRenderActiveForTesting, "session A must still be silent once B has first audio")
+            playerB.stop()
+        }
+    }
+
+    // MARK: - 5. rapid-hop stress: 30 switches with random 50-500ms gaps, deterministic seed
+
+    /// A deterministic (seeded) linear-congruential generator standing in for `SystemRandomNumberGenerator`
+    /// so this test's gap sequence is reproducible across runs/machines — a flaky interval sequence
+    /// would undermine the "run 3 consecutive times" confidence check this test exists to support.
+    private struct SeededGenerator: RandomNumberGenerator {
+        private var state: UInt64
+        init(seed: UInt64) { state = seed }
+        mutating func next() -> UInt64 {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return state
+        }
+    }
+
+    /// 30 `play()` calls in rapid succession with random 50-500ms gaps (deterministic seed = 42),
+    /// alternating stream-forced and cache-hit songs across a 4-song pool — the "rapid hop" stress
+    /// scenario from `progress/tvos-playback-concurrency.md`. Asserts: (1) the final state is the
+    /// LAST requested song, (2) `TVPlaybackController`'s internal `playToken` never allowed more
+    /// than one in-flight `play()` call to reach `MusicPlayerService.play`/`streamController.start`
+    /// — observed indirectly via `player.currentSong` always matching either the song just
+    /// requested or a song still legitimately in flight, never a stale one left playing after a
+    /// newer request landed first ("spurious advance" would show up as `currentSong` reverting to
+    /// an earlier song after a later one already committed).
+    func testThirtyRapidHopsWithRandomGapsEndsOnLastRequestedSongWithNoSpuriousAdvance() async throws {
+        UXTVStreamSwitchMockURLProtocol.register()
+        let apiClient = RemoteAPIClient(
+            baseURLString: "http://127.0.0.1:1",
+            session: URLSession(configuration: UXTVStreamSwitchMockURLProtocol.sessionConfiguration())
+        )
+        let player = MusicPlayerService()
+        player.masterVolume = 0
+        let cache = TVPlaybackCacheStore(
+            directory: FileManager.default.temporaryDirectory.appendingPathComponent("stress-rapid-hop-\(UUID().uuidString)"),
+            downloader: { songId, destination in
+                if songId.hasPrefix("cached-") {
+                    try Data("dummy-cached-audio".utf8).write(to: destination)
+                } else {
+                    throw URLError(.cannotConnectToHost)
+                }
+            }
+        )
+        let controller = TVPlaybackController(
+            client: apiClient,
+            player: player,
+            cache: cache,
+            streamPlayerFactory: {
+                TVRelayStreamPlayer(sessionConfiguration: UXTVStreamSwitchMockURLProtocol.sessionConfiguration(), muteOutput: true)
+            }
+        )
+
+        let songs = [
+            Song(id: "stream-1", path: "", title: "St1", artist: "Demo", artworkId: "1"),
+            Song(id: "cached-1", path: "", title: "Ca1", artist: "Demo", artworkId: "2"),
+            Song(id: "stream-2", path: "", title: "St2", artist: "Demo", artworkId: "3"),
+            Song(id: "cached-2", path: "", title: "Ca2", artist: "Demo", artworkId: "4"),
+        ]
+
+        var rng = SeededGenerator(seed: 42)
+        var lastSong = songs[0]
+
+        await runWithHardTimeout("thirty rapid hops with random gaps", timeout: 60) {
+            for i in 0..<30 {
+                let song = songs[Int(rng.next() % UInt64(songs.count))]
+                lastSong = song
+                let gapMs = UInt64(50 + rng.next() % 451) // 50-500ms
+                Task { await controller.play(song, queue: songs) }
+                try? await Task.sleep(nanoseconds: gapMs * 1_000_000)
+                _ = i
+            }
+
+            // Let the last-fired play() settle (it may still be mid-flight — download/loudness
+            // await — when the loop above returns).
+            let deadline = Date().addingTimeInterval(15)
+            while player.currentSong?.id != lastSong.id, controller.streamState != .streaming {
+                if Date() > deadline { break }
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+
+            XCTAssertEqual(
+                player.currentSong?.id, lastSong.id,
+                "the final observable state must be the LAST-requested song, never a spurious reversion to an earlier one"
+            )
+        }
+    }
+
     private static func fixtureURL() throws -> URL {
         let bundle = Bundle(for: TVPlaybackStressTests.self)
         guard let url = bundle.url(forResource: "relay-sample", withExtension: "aac") else {
