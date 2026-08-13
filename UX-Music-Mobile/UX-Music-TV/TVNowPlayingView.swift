@@ -83,10 +83,13 @@ struct TVNowPlayingView: View {
     /// so (per the Phase 2 plan) songs without *synced* lyrics fall back to the artwork-centric
     /// layout exactly as if they had no lyrics at all.
     private func loadLyrics() async {
-        guard let song = player.currentSong else {
-            lyricsLines = []
-            return
-        }
+        // Clear synchronously BEFORE the fetch, not just on failure/not-found: without this, the
+        // PREVIOUS song's lyric lines stayed visible (with the NEW song's already-reset
+        // `positionSeconds`) for the whole in-flight window of this `await` — see
+        // `TVNowPlayingLyricsLayout`'s `.top`-alignment doc comment for the layout symptom this
+        // mismatch caused.
+        lyricsLines = []
+        guard let song = player.currentSong else { return }
         do {
             let payload = try await client.fetchLyrics(songId: song.id)
             guard payload.found, payload.type == "lrc", let raw = payload.content else {
@@ -161,9 +164,25 @@ private struct TVNowPlayingLyricsLayout: View {
     let client: RemoteAPIClient
     let lines: [LRCParser.TimedLine]
 
+    /// Matches `TVCinematicArtworkCard`'s fixed `size` below — see the `.top`-alignment note.
+    private static let artworkSize: CGFloat = 420
+
     var body: some View {
-        HStack(alignment: .center, spacing: 64) {
-            TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: 420)
+        // `alignment: .top`, NOT `.center` (`progress/tvos-nowplaying-textcolumn.md`
+        // "テキスト列の位置固定" 追記): with `.center`, the title/artist/lyrics column's vertical
+        // position was derived from centring it against whichever sibling was taller — normally the
+        // fixed-height artwork card, so invisible in the harness's stable states. But the text
+        // column's OWN height is NOT fixed (it grows/shrinks with the synced-lyrics block, and
+        // during a song switch there is a real in-flight window — `TVNowPlayingView.loadLyrics()` —
+        // where `lyricsLines` still holds the PREVIOUS song's lines while `currentSong`/
+        // `positionSeconds` have already switched to the new one), so its measured height varies
+        // frame to frame. `.center` alignment then re-centres the column every time that height
+        // changes, which reads as the text visibly sliding up (or down) rather than staying put —
+        // the reported "テキスト部分が全部上に消滅してる" defect. Pinning both children to `.top`
+        // makes the title/artist's vertical position depend ONLY on the fixed `padding(80)` origin,
+        // never on lyrics content height.
+        HStack(alignment: .top, spacing: 64) {
+            TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: Self.artworkSize)
 
             VStack(alignment: .leading, spacing: 28) {
                 Text(player.currentSong?.title ?? "")
@@ -176,8 +195,6 @@ private struct TVNowPlayingLyricsLayout: View {
 
                 TVSyncedLyricsFocusView(lines: lines, positionSeconds: player.positionSeconds)
                     .padding(.top, 12)
-
-                Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -69,7 +69,10 @@ extension TVRelayStreamPlayerDelegate {
 /// `TVPlaybackCacheStore`-cached original (`TVPlaybackController`'s background download). Documented
 /// as the pragmatic first step; a shared EQ graph is future work if the loudness-only gap proves
 /// audible in practice.
-final class TVRelayStreamPlayer: NSObject {
+/// Not `final`: `TVPlaybackControllerStreamSwitchTests` subclasses this to tag/count
+/// `pause()`/`resume()` calls per session (no other seam exists to prove pause/resume route to the
+/// CURRENT stream, not a superseded one — see that test file's doc comment).
+class TVRelayStreamPlayer: NSObject {
     weak var delegate: TVRelayStreamPlayerDelegate?
 
     private let jitterBufferSeconds: Double
@@ -101,11 +104,30 @@ final class TVRelayStreamPlayer: NSObject {
     /// the engine is inert before the caller starts a new session on the same or a new player
     /// instance. See `progress/tvos-playback.md` for the full root-cause writeup.
     private let engineQueue = DispatchQueue(label: "com.uxmusic.tv.relaystreamplayer.engine")
-    /// Bumped on every `stop()`; frame-handling closures captured on `engineQueue` before the stop
-    /// check this against the value they captured and no-op if it has since changed, so any chunk
-    /// that was already enqueued on `engineQueue` when `stop()` was called is discarded rather than
-    /// touching a torn-down engine.
-    private var generation: Int = 0
+    /// Bumped on every `start()`/`stop()`; frame-handling closures captured on `engineQueue` before
+    /// the stop check this against the value they captured and no-op if it has since changed, so
+    /// any chunk that was already enqueued on `engineQueue` when `stop()` was called is discarded
+    /// rather than touching a torn-down engine.
+    ///
+    /// Guarded by `generationLock`, NOT `engineQueue` (`progress/tvos-playback.md` "engineQueue↔
+    /// MainActor デッドロック" 追記): `start()`/`stop()` must be able to bump this from the MainActor
+    /// WITHOUT waiting for `engineQueue` — see `bumpGeneration()`/`start()`/`stop()` below for why
+    /// they now use `engineQueue.async` (never `.sync`) for the actual engine teardown/setup work.
+    private let generationLock = NSLock()
+    private var _generation: Int = 0
+    private var generation: Int {
+        generationLock.lock()
+        defer { generationLock.unlock() }
+        return _generation
+    }
+
+    @discardableResult
+    private func bumpGeneration() -> Int {
+        generationLock.lock()
+        defer { generationLock.unlock() }
+        _generation += 1
+        return _generation
+    }
 
     /// LUFS loudness gain for Task A's per-song stream path (`progress/tvos-playback.md` "EQ/LUFS
     /// のルーティング判断" 追記). Linear gain (same `pow(10, dB/20)` formula and `0...4` clamp as
@@ -149,14 +171,24 @@ final class TVRelayStreamPlayer: NSObject {
 
     /// Starts streaming, parsing, decoding and playing `request`. Idempotent teardown is the
     /// caller's responsibility (`TVRelayPlaybackController` always calls `stop()` first).
+    ///
+    /// Deliberately `engineQueue.async`, not `.sync` (`progress/tvos-playback.md` "engineQueue↔
+    /// MainActor デッドロック" 追記): the caller is always the MainActor (`TVSongStreamController`/
+    /// `TVRelayPlaybackController`), and blocking it on `engineQueue` risked a hang if any
+    /// AVAudioEngine call on that queue ever synchronously waited on the render thread or the
+    /// MainActor. `generation` is bumped FIRST, synchronously, via the lock-guarded
+    /// `bumpGeneration()` — not inside this block — so callers never need to wait for `engineQueue`
+    /// just to make stale in-flight frames a no-op; only the actual `engine`/`playerNode` mutation
+    /// is deferred onto the queue, and the serial queue's FIFO ordering (this player's own,
+    /// per-instance) still totally orders it against any `stop()` issued just before.
     func start(request: URLRequest) {
-        engineQueue.sync {
+        bumpGeneration()
+        engineQueue.async { [self] in
             parser = ADTSFrameParser()
             decoder = nil
             didStartRendering = false
             bufferedSeconds = 0
             isEngineConnected = false
-            generation += 1
 
             if !engine.attachedNodes.contains(playerNode) {
                 engine.attach(playerNode)
@@ -176,15 +208,23 @@ final class TVRelayStreamPlayer: NSObject {
     }
 
     /// Tears down the network task and the dedicated audio engine. Safe to call repeatedly.
-    /// Synchronous with respect to `engineQueue`: by the time this returns, any `schedule()` call
-    /// that was already running or queued has finished, and the bumped `generation` makes every
-    /// frame still in flight on the delegate queue a no-op once it reaches `handle`/`schedule` —
-    /// see `engineQueue`'s doc comment for the crash this prevents.
+    ///
+    /// Deliberately `engineQueue.async`, not `.sync` — see `start()`'s doc comment for the
+    /// MainActor-deadlock-avoidance rationale; the same applies here. `[self]` (a STRONG capture,
+    /// not `[weak self]`) is intentional: the whole point of deferring is that the caller
+    /// (`TVSongStreamController.teardown()`) drops its own reference to this player right after
+    /// calling `stop()`, and a weak capture would let this object be deallocated before the
+    /// enqueued teardown runs — silently skipping `engine.detach`/`.stop()` and leaking/reintroducing
+    /// the exact torn-down-engine race this queue exists to prevent. The strong capture keeps the
+    /// player alive just long enough for its own queued teardown to finish, then it is released
+    /// normally. `generation` is bumped synchronously up front (see `bumpGeneration()`) so any frame
+    /// already in flight on the delegate queue is discarded the moment it reaches `handle`/`schedule`,
+    /// without needing to wait for this block to actually run.
     func stop() {
         task?.cancel()
         task = nil
-        engineQueue.sync {
-            generation += 1
+        bumpGeneration()
+        engineQueue.async { [self] in
             playerNode.stop()
             if engine.isRunning {
                 engine.stop()

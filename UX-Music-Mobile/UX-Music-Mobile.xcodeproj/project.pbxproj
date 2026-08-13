@@ -187,6 +187,7 @@
 		9DDBAC52E9834B5DA03BFD27 /* ADTSFrameParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519492E5D9224E618D074703 /* ADTSFrameParserTests.swift */; };
 		97152ED1FC5C4DFABD8F5E32 /* TVAACDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B877759BF6134232BD4ACD0D /* TVAACDecoderTests.swift */; };
 		94770FE64C164368B88DE359 /* TVRelayStreamPlayerLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F83DED10C8D4BFCAF4F3FDC /* TVRelayStreamPlayerLifecycleTests.swift */; };
+		57489472DCEE4E519367099F /* TVPlaybackControllerStreamSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45923F6EE939419CB882CC99 /* TVPlaybackControllerStreamSwitchTests.swift */; };
 		8A95B017BC544D3A8D24F69E /* relay-sample.aac in Resources */ = {isa = PBXBuildFile; fileRef = 92D8CE0D89C34AACA2B5A81A /* relay-sample.aac */; };
 		B1034CA4D7AA46898A4F05F1 /* relay-sample.aac in Resources */ = {isa = PBXBuildFile; fileRef = 92D8CE0D89C34AACA2B5A81A /* relay-sample.aac */; };
 		4516F3EEF4CE4B649D89B7A9 /* RemoteConnectionResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60101F70101F70101F70101 /* RemoteConnectionResolver.swift */; };
@@ -439,6 +440,7 @@
 		519492E5D9224E618D074703 /* ADTSFrameParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ADTSFrameParserTests.swift; sourceTree = "<group>"; };
 		B877759BF6134232BD4ACD0D /* TVAACDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVAACDecoderTests.swift; sourceTree = "<group>"; };
 		9F83DED10C8D4BFCAF4F3FDC /* TVRelayStreamPlayerLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRelayStreamPlayerLifecycleTests.swift; sourceTree = "<group>"; };
+		45923F6EE939419CB882CC99 /* TVPlaybackControllerStreamSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlaybackControllerStreamSwitchTests.swift; sourceTree = "<group>"; };
 		92D8CE0D89C34AACA2B5A81A /* relay-sample.aac */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Fixtures/relay-sample.aac"; sourceTree = "<group>"; };
 		4CCF760A7E8443E390EC0086 /* UX-Music-TV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-TV.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7A6ACFADEEE0440BA8A07E42 /* UX-Music-TVTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "UX-Music-TVTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -774,6 +776,7 @@
 				519492E5D9224E618D074703 /* ADTSFrameParserTests.swift */,
 				B877759BF6134232BD4ACD0D /* TVAACDecoderTests.swift */,
 				9F83DED10C8D4BFCAF4F3FDC /* TVRelayStreamPlayerLifecycleTests.swift */,
+				45923F6EE939419CB882CC99 /* TVPlaybackControllerStreamSwitchTests.swift */,
 				92D8CE0D89C34AACA2B5A81A /* relay-sample.aac */,
 			);
 			path = "UX-Music-TVTests";
@@ -1182,6 +1185,7 @@
 				9DDBAC52E9834B5DA03BFD27 /* ADTSFrameParserTests.swift in Sources */,
 				97152ED1FC5C4DFABD8F5E32 /* TVAACDecoderTests.swift in Sources */,
 				94770FE64C164368B88DE359 /* TVRelayStreamPlayerLifecycleTests.swift in Sources */,
+				57489472DCEE4E519367099F /* TVPlaybackControllerStreamSwitchTests.swift in Sources */,
 				F48971AC1E8245799D2E6410 /* TVPairingReducerTests.swift in Sources */,
 				2EC9A21CD9E645A7A54EAE8B /* TVServerConfigStoreTests.swift in Sources */,
 				829F8B2AA8AD4951A4A71FFD /* TVControlTokenStoreTests.swift in Sources */,

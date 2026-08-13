@@ -1,5 +1,7 @@
 # Progress Index
 
+- [tvos-nowplaying-textcolumn.md](tvos-nowplaying-textcolumn.md) — ストリーム再生実機で「Now Playingのテキスト列が消える」不具合の根本原因（曲切り替え時、歌詞フェッチ完了までlyricsLinesが前曲のまま残り、`HStack(alignment: .center)`が可変高さのテキスト列を毎フレーム中央寄せし直すため視覚的に上へジャンプしていた）と修正（フェッチ前に同期クリア＋`.top`揃え）。あわせて`TVRelayStreamPlayer.start()/stop()`の`engineQueue.sync`をMainActorデッドロック回避のため`.async`化した設計判断も記録
+
 - [remote-relay-thumbnail.md](remote-relay-thumbnail.md) — 中継Now Playingサムネイルを可能な限り高解像度で転送する方針。レンダラーは動画IDが分かれば常に`maxresdefault`候補URLを`NotifyYouTubePlaybackState`へ渡し、Go側`resolveRelayThumbnailURL`が`maxresdefault→sddefault→hqdefault`の順にHEADプローブして最初に200が返ったものを採用（全滅時はhqdefaultへ無条件フォールバック）。動画IDごとに`sync.Map`で結果をキャッシュし音声パス外・曲ごと高々1回のみプローブ。YouTube以外のURLはそのまま素通り
 - [remote-embed-state-report.md](remote-embed-state-report.md) — YouTube公式embed再生中は`/v1/remote/state`のroot直下position/duration/playingがGoのaudio.Playerのアイドル値になり、TVのシークUIが機能しない問題への対処。新設Wailsバインド`ReportEmbedPlaybackState`をレンダラーの既存embedポーリングtick（約1秒間隔）＋pause/seek直後に呼び、Go側`currentEmbedPlaybackReport`（プロセス内シングルトン）へ書き込む。`remoteStateHandler`はembedセッション中かつ報告済みのときのみ該当3フィールド＋pausedを加算的に上書き、セッション終了（`NotifyYouTubePlaybackState(false)`）でクリア。TVのseekコマンドは秒単位で一貫しており修正不要と確認
 - [remote-stream-transcode.md](remote-stream-transcode.md) — TVがローカルキャッシュなしの曲でも1秒未満で再生開始できるよう、`GET /v1/remote/file/{id}?stream=aac`でffmpeg出力をレスポンスへ直接パイプするライブトランスコード配信を新設。`/v1/remote/relay`と同一のADTS AAC-LC 256kbps・44.1kHzステレオでTV側のデコードパイプラインを共用。クライアント切断は`r.Context()`経由でffmpegを確実に停止・reap。プレーンな（`stream=`なし）`/v1/remote/file/{id}`は完全不変、Rangeリクエストはstream指定時は無視する仕様として明記

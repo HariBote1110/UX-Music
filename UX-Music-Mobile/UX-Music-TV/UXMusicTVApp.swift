@@ -199,10 +199,21 @@ struct TVSongStreamPreviewHarness: View {
 
     init() {
         UXTVSongStreamMockURLProtocol.register()
-        // Unreachable loopback port: `fetchLoudness()`/background cache download fail fast
-        // (`try?`-swallowed) rather than hanging — the stream itself is served by the mock
-        // protocol below regardless of this host being unreachable.
-        let apiClient = RemoteAPIClient(baseURLString: "http://127.0.0.1:1")
+        // `UXTV_SONGSTREAM_LYRICS` (`none|empty|lrc`, default `none`) drives the mock's
+        // `/v1/remote/lyrics` response so this harness can exercise `TVNowPlayingView`'s lyrics
+        // states while running the REAL stream-first path end to end (`progress/tvos-nowplaying-textcolumn.md`)
+        // — unlike a bare `RemoteLyricsPayload` handed straight to `TVNowPlayingLyricsLayout`, this
+        // goes through `MusicPlayerService.beginExternalPlayback` → `.task(id:)` → `loadLyrics()`
+        // exactly like the real device does.
+        UXTVSongStreamMockURLProtocol.lyricsVariant = ProcessInfo.processInfo.environment["UXTV_SONGSTREAM_LYRICS"] ?? "none"
+        // Loopback port normally unreachable, but `UXTVSongStreamMockURLProtocol` now also serves
+        // `/v1/remote/lyrics` (see above), so `fetchLyrics` succeeds via the mock rather than
+        // failing fast — everything else (`fetchLoudness()`/background cache download) still fails
+        // fast against the real unreachable port, as before.
+        let apiClient = RemoteAPIClient(
+            baseURLString: "http://127.0.0.1:1",
+            session: URLSession(configuration: UXTVSongStreamMockURLProtocol.sessionConfiguration())
+        )
         client = apiClient
         let sharedPlayer = player
         sharedPlayer.masterVolume = 0 // muted per verification convention — never audible in the simulator
@@ -238,6 +249,11 @@ struct TVSongStreamPreviewHarness: View {
 /// `TVRelayStreamPlayerLifecycleTests`'s `ChunkedFixtureURLProtocol` (test target can't share code
 /// with the app target, hence the duplication).
 final class UXTVSongStreamMockURLProtocol: URLProtocol {
+    /// `none|empty|lrc` — see `TVSongStreamPreviewHarness.init`'s doc comment. `none` answers
+    /// `found: false` (mirrors "no lyrics on the server"), `empty` answers `found: true` with an
+    /// empty `.lrc` body (parses to zero timed lines), `lrc` answers a real multi-line `.lrc` body.
+    static var lyricsVariant = "none"
+
     static func register() {
         URLProtocol.registerClass(UXTVSongStreamMockURLProtocol.self)
     }
@@ -249,12 +265,16 @@ final class UXTVSongStreamMockURLProtocol: URLProtocol {
     }
 
     override class func canInit(with request: URLRequest) -> Bool {
-        request.url?.path == "/v1/remote/file"
+        request.url?.path == "/v1/remote/file" || request.url?.path == "/v1/remote/lyrics"
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        if request.url?.path == "/v1/remote/lyrics" {
+            startLoadingLyrics()
+            return
+        }
         guard let fixtureURL = Bundle.main.url(forResource: "relay-sample", withExtension: "aac"),
               let data = try? Data(contentsOf: fixtureURL)
         else {
@@ -281,6 +301,33 @@ final class UXTVSongStreamMockURLProtocol: URLProtocol {
             }
             self?.client?.urlProtocolDidFinishLoading(self!)
         }
+    }
+
+    private func startLoadingLyrics() {
+        let body: [String: Any?]
+        switch Self.lyricsVariant {
+        case "empty":
+            body = ["found": true, "type": "lrc", "content": ""]
+        case "lrc":
+            let lrc = """
+            [00:00.00]夜が明ける前に
+            [00:10.00]この歌を君に届けたい
+            [00:20.00]繋がっていると感じられるように
+            """
+            body = ["found": true, "type": "lrc", "content": lrc]
+        default: // "none"
+            body = ["found": false, "type": nil, "content": nil]
+        }
+        let data = try! JSONSerialization.data(withJSONObject: body.compactMapValues { $0 })
+        let response = HTTPURLResponse(
+            url: request.url ?? URL(string: "https://mock.invalid")!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
     }
 
     override func stopLoading() {}
