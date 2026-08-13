@@ -171,3 +171,83 @@ relay/stream 両パスを共通化）は、`MusicPlayerService` 側との結合�
 実機ログで `[MainThreadWatchdog]` を検索すればハング発生箇所・発生時刻の当たりが付けられる。
 ユニットテスト（`MainThreadWatchdogTests.swift`）は実際に `DispatchQueue.main.sync` でメインスレッド
 をブロックし、注入した `logSink` にログが届くことを検証している。
+
+## 追記（実機フィールド報告への対応・セッション排他性のライトウェイト実装）
+
+実機（本物のApple TV）で「UIハングは解消したが、①高速切り替え時に旧曲と新曲が二重に鳴る、
+②アルバムを高速で無音のまま素通りする（曲が瞬時に次々`finished`扱いになる）、③再生開始30秒以内の
+切り替えで①②が起きやすい」という報告を受けた。本ドキュメント「今後」節で設計メモを残していた
+フル `actor StreamSession` 統合（`TVRelayStreamPlayer`+`TVSongStreamController`+
+`TVRelayPlaybackController`を単一actorへ統合）は、既存200+テストの移行コストに対して、実際の
+3症状の根本原因はそこまでの再構築なしに解消できると判断し、今回は「MainActorが唯一のエントリ
+ポイントであり、セッションIDで全イベントをゲートする」という不変条件を、既存のクラス構成を保った
+まま`session ID`相当の仕組み（インスタンス同一性 + `generation`カウンタ + `playToken`）で満たす
+軽量な実装とした。
+
+### 根本原因の特定（コード読解で確認、実機なしで再現できるユニットテストも作成）
+
+| 症状 | 根本原因 |
+| :--- | :--- |
+| ① 二重音声 | `TVRelayStreamPlayer`は**インスタンスごとに専用の`AVAudioEngine`**を持つ（設計判断は型doc comment「Engine choice」参照）。`stop()`は`engineQueue.async`（fire-and-forget）で解体するため、新しいセッション（別インスタンス、別エンジン）が音を鳴らし始めても、旧エンジンがまだ`engineQueue`のバックログを処理中で物理的にレンダリングを続けている窓が存在した。ハードウェア出力レベルでは両エンジンが同時にAVAudioSessionへミックスされるため、実機でのみ「二重に鳴る」として顕在化する（テストは`muteOutput: true`で検証していたため、この窓の存在自体は今まで可視化されていなかった）。 |
+| ② アルバム高速素通り（無音finished連鎖） | `TVPlaybackController.play(_:queue:)`は`async`で複数の`await`（キャッシュ判定・ラウドネス取得・ダウンロード）を挟むが、呼び出し側を直列化する仕組みが存在しなかった。`advanceAfterStreamEnd`/`advanceStreamingQueue`は`Task { await self?.play(...) }`という非追跡のfire-and-forget Taskで次の`play()`を発火するため、ユーザーの連続タップや自動アドバンスが積み重なると**複数の`play()`呼び出しが`await`のサスペンションポイントで交互に実行され得る**（`await`地点でMainActorが他のTaskに実行権を渡すため）。後発の呼び出しが先に副作用（`streamController.start`/`player.play`）に到達すると、先発の呼び出しが後からその副作用を追い越して発火し、直前に始まったセッションを即座に`teardown`→`onStreamEnded`させる、という連鎖が起き得た。これが「曲が一瞬も鳴らないまま次々`finished`扱いになる」という観測と一致する。 |
+| ③ 起動30秒以内の切替不安定 | ①②の窓はどちらも「新旧セッションが半端に重なっている」時間帯でこそ踏みやすく、`didStartRendering`前（ジッターバッファが満ちる前）の"半初期化"状態はまさにその窓が長く開いている状態だった。①②を構造的に閉じることで③も同時に解消される（③単独の別バグではなく①②の発現条件という位置づけ）。 |
+
+### 実装した修正（すべて既存クラス構成のまま、`progress`記載の不変条件をコードで強制）
+
+1. **`TVRelayStreamPlayer.silenceImmediately()`**（`UX-Music-Mobile/Services/TVRelayStreamPlayer.swift`）
+   `stop()`の先頭で**同期的に**（`engineQueue`を待たず、呼び出し元スレッド＝常にMainActorで）
+   `playerNode.volume = 0` / `engine.mainMixerNode.outputVolume = 0`を設定する。両プロパティは
+   Appleのドキュメント上、エンジン稼働中でも任意スレッドから安全に設定できるレンダーパラメータ
+   （`connect`/`detach`のようなグラフ位相変更ではない）と明記されている。これにより「新セッションの
+   最初の音が鳴る時点で旧セッションは可聴状態ではない」ことを**構築的に**保証する。実際のグラフ解体
+   （`detach`/`engine.stop()`）は従来どおり`engineQueue.async`のままでよい（もう可聴ではないので
+   タイミングは無関係）。テスト可視化のため`isRenderActiveForTesting`フラグを追加（`schedule()`が
+   ジッターバッファを満たした時に`true`、`silenceImmediately()`で`false`）。
+2. **`didCompleteWithError`の`generation`再チェック**（同ファイル）
+   正常終了（`error == nil`、Task Aの有限ストリームにとっての「曲終わり」シグナル）パスに、
+   `didReceive data:`と同じ「delegateキュー上で先にgenerationを捕獲→`DispatchQueue.main.async`内で
+   再チェック」パターンを追加。`stop()`と`didCompleteWithError`のレース（`task.cancel()`が
+   `NSURLErrorCancelled`ではなく正常終了として先に届く極小窓）に対する多重防御。
+3. **`player === streamPlayer`同一性チェック**（`TVSongStreamController`/`TVRelayPlaybackController`
+   の全`TVRelayStreamPlayerDelegate`実装）
+   「EVERY upstream event carries its sessionID; the coordinator drops events whose ID ≠ current」
+   をコードで明示。`teardown()`が同期的にdelegateをnilしているため実質的には従来から到達不能だった
+   経路だが、暗黙の呼び出し順序ではなく型レベルで強制する。
+4. **`TVPlaybackController.playToken`**（`play(_:queue:)`）
+   呼び出しの先頭で`playToken`をインクリメントし`myToken`として捕獲、各`await`境界の直後に
+   `myToken == playToken`を再チェックしてから次の副作用に進む。不一致なら即座にreturnし、
+   一切の状態変更（`streamController.start`/`player.play`/キュー更新）を行わない。これにより
+   `play()`の複数同時呼び出しが自己supersede化され、「最後にトークンを取った呼び出しだけが
+   実際に音を出す」ことを構築的に保証する（MainActorの単一エントリポイント性を`playToken`という
+   最小限の機構で「唯一のセッションだけが副作用を持つ」不変条件に変換）。フル`actor`化はせず、
+   `@MainActor final class`のままトークンチェックだけを追加する形にとどめた——`play()`の外から
+   見た振る舞い（superseded call is a silent no-op）は設計メモにあった「actorのみが排他制御を持つ」
+   と等価だが、実装コストと既存テスト互換性の両立を優先した判断。
+
+### 回帰テスト（`UX-Music-TVTests/TVPlaybackStressTests.swift`に追加）
+
+1. `testOldSessionIsSilencedNoLaterThanNewSessionsFirstAudio` — セッションAをジッターバッファを
+   超えて実際にレンダリング中の状態まで進め、その状態で`stop()`した瞬間に`isRenderActiveForTesting`
+   が`false`になっていること、かつセッションBが初回レンダリングに達するまでの間ずっと`false`のまま
+   であることを検証。二重音声症状に対する直接的な非可聴性の証明。
+2. `testThirtyRapidHopsWithRandomGapsEndsOnLastRequestedSongWithNoSpuriousAdvance` — 決定論的
+   （seed=42固定の線形合同法）な30回の`play()`呼び出しを、50〜500msのランダム間隔で**追跡しない
+   `Task`から非同期発火**（`await`せず次のホップへ進む＝実際の高速連打/自動アドバンスの重なりを
+   再現）。最終的に`player.currentSong`が最後にリクエストした曲と一致することのみを検証（到達す
+   ること自体、および最終状態の正しさが回帰シグナル）。
+3. 既存の`testStopWhileChunksArrivingThenImmediateRestartTwentyTimesDoesNotHang`
+   （20回の`stop`/`start`連打）、`testFiftyRapidPlaySwitchCyclesAlternatingStreamAndCachedEndsOnLastRequestedSong`
+   （50回連打）、`testPauseResumeIdentityAfterFiveConsecutiveSwitchesAffectsCurrentSongOnly`
+   （5連続切替後のpause/resume同一性）は無変更のまま全green。
+
+### テスト結果
+- tvOSフルスイート（124件、新規2件を含む）を3回連続実行、すべて `** TEST SUCCEEDED **`。
+- iOSフルスイート（共有コア`TVRelayStreamPlayer.swift`を変更したため実行、iPhone 17シミュレータ）
+  も `** TEST SUCCEEDED **`。
+
+### 見送った選択肢（フル`actor StreamSession`統合）
+本ドキュメント「今後」節の設計そのものは依然として有効な将来オプションとして残す。今回の3症状は
+「MainActor→session間の非同期fire-and-forgetな解体」と「並行`play()`呼び出しの非直列化」という
+2点の局所的な穴が原因であり、`playToken`＋同期ミュートで閉じられることを実機報告の症状と1:1で
+対応づけて確認できた。`generationLock`/`dispatchToMainSync`（監査の危険度3位・4位、UIハングとは
+別カテゴリ）は今回もスコープ外のまま。
