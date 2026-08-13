@@ -1,5 +1,7 @@
 # Progress Index
 
+- [background-window-close.md](background-window-close.md) — メインウィンドウを閉じてもプロセスを終了させずバックグラウンド常駐させる実装。wails v2.11.0のObjective-C実装(`WindowDelegate.m`)を読み、`HideWindowOnClose: true`にするとクローズボタンがOnBeforeCloseに到達せずネイティブに隠す/Dockクリックで復帰することを確認。Cmd+QはAppMenu追加で実クイットに到達するためOnBeforeCloseは常にfalseを返すだけでよいと判明（クイット意図フラグは不要）
+
 - [remote-songs-dedup.md](remote-songs-dedup.md) — 「アルバム内の曲が重複することがある」報告の根本原因はライブラリストア自体の重複エントリ（CD Ripsステージング先と整理後アルバムフォルダの二重登録、disc 0/1違いの二重リッピング、レガシーpath文字列ID vs UUID ID）と判明。ストアは非破壊のまま`GET /v1/remote/songs`のAPIレイヤーで`dedupRemoteSongs`により重複除去（タイトル/アルバム/アーティスト/トラック番号/正規化ディスク番号がキー、UUID優先→fileSize大優先→先着優先、YouTube由来エントリは対象外）
 - [tvos-playback-concurrency.md](tvos-playback-concurrency.md) — 「UIが頻繁にハングする」報告への構造監査。ownership/queueマップと境界越え同期呼び出し全件（`TVRelayStreamPlayer.elapsedSeconds`/`pause`/`resume`のMainActor→`engineQueue.sync`、`generationLock`のMainActor取得、`MusicPlayerService.dispatchToMainSync`）を危険度順にランク付け。最頻発の`elapsedSeconds`/`pause`/`resume`の同期呼び出しを解消し、フル`actor StreamSession`統合は将来スコープとして設計メモを記録
 - [tvos-nowplaying-textcolumn.md](tvos-nowplaying-textcolumn.md) — ストリーム再生実機で「Now Playingのテキスト列が消える」不具合の根本原因（曲切り替え時、歌詞フェッチ完了までlyricsLinesが前曲のまま残り、`HStack(alignment: .center)`が可変高さのテキスト列を毎フレーム中央寄せし直すため視覚的に上へジャンプしていた）と修正（フェッチ前に同期クリア＋`.top`揃え）。あわせて`TVRelayStreamPlayer.start()/stop()`の`engineQueue.sync`をMainActorデッドロック回避のため`.async`化した設計判断も記録
