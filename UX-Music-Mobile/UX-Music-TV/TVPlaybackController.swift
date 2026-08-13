@@ -176,7 +176,7 @@ final class TVPlaybackController: ObservableObject {
     /// fully private) so `TVSongStreamController`'s standalone engine can apply the same loudness
     /// normalisation as the cached path. See `TVRelayStreamPlayer`'s "EQ routing decision" doc
     /// comment for why only gain (not the 10-band EQ curve) is replicated here.
-    static func linearLoudnessGain(lufs: Double?, targetLoudness: Double, normaliseEnabled: Bool) -> Float {
+    nonisolated static func linearLoudnessGain(lufs: Double?, targetLoudness: Double, normaliseEnabled: Bool) -> Float {
         guard normaliseEnabled, let lufs else { return 1 }
         let gainDb = targetLoudness - lufs
         let lin = pow(10, gainDb / 20)

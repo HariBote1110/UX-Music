@@ -212,6 +212,7 @@
 		063287B581684585B07A289D /* TVSongStreamPlaybackReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 175304B2B0B34007AD05EC7D /* TVSongStreamPlaybackReducer.swift */; };
 		177B41DBDD424B8BA4C0AC21 /* TVLibraryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C85B5827875848A0842DF2C3 /* TVLibraryDetailView.swift */; };
 		DE33DF0010974B6695E4E0A4 /* TVRelayPlaybackReducerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBDFAD59F9134E18947F7BA3 /* TVRelayPlaybackReducerTests.swift */; };
+		2BBE3BBDA7494007BD76D6B4 /* TVPlaybackControllerGainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0496FEF17D465F97082983 /* TVPlaybackControllerGainTests.swift */; };
 		78A3657EF038428AB02E3160 /* TVSongStreamPlaybackReducerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FBC887A080740DFADD876E6 /* TVSongStreamPlaybackReducerTests.swift */; };
 		D707317B477549A0A811AB30 /* TVRemotePlaySongFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05F09BE911440FAAAEFBF79 /* TVRemotePlaySongFlow.swift */; };
 		4949ED24FBF645C782C62694 /* TVRemotePlaySongCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 475A792649EF418B84947FF0 /* TVRemotePlaySongCoordinator.swift */; };
@@ -443,6 +444,7 @@
 		175304B2B0B34007AD05EC7D /* TVSongStreamPlaybackReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVSongStreamPlaybackReducer.swift; sourceTree = "<group>"; };
 		C85B5827875848A0842DF2C3 /* TVLibraryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVLibraryDetailView.swift; sourceTree = "<group>"; };
 		EBDFAD59F9134E18947F7BA3 /* TVRelayPlaybackReducerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRelayPlaybackReducerTests.swift; sourceTree = "<group>"; };
+		4A0496FEF17D465F97082983 /* TVPlaybackControllerGainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlaybackControllerGainTests.swift; sourceTree = "<group>"; };
 		9FBC887A080740DFADD876E6 /* TVSongStreamPlaybackReducerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVSongStreamPlaybackReducerTests.swift; sourceTree = "<group>"; };
 		B05F09BE911440FAAAEFBF79 /* TVRemotePlaySongFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRemotePlaySongFlow.swift; sourceTree = "<group>"; };
 		475A792649EF418B84947FF0 /* TVRemotePlaySongCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRemotePlaySongCoordinator.swift; sourceTree = "<group>"; };
@@ -763,6 +765,7 @@
 				B58148FC2DE8459CAFF9072F /* TVPlaybackCachePlanTests.swift */,
 				9B1DF82EC02B47E3BB01405E /* TVAmbientStateMachineTests.swift */,
 				EBDFAD59F9134E18947F7BA3 /* TVRelayPlaybackReducerTests.swift */,
+				4A0496FEF17D465F97082983 /* TVPlaybackControllerGainTests.swift */,
 				9FBC887A080740DFADD876E6 /* TVSongStreamPlaybackReducerTests.swift */,
 				C9BBB07B1B5A44A48A327568 /* TVRemotePlaySongFlowTests.swift */,
 				519492E5D9224E618D074703 /* ADTSFrameParserTests.swift */,
@@ -1186,6 +1189,7 @@
 				DBC591AC0E6B4B9F87F6A23E /* TVPlaybackCachePlanTests.swift in Sources */,
 				94DB3D1F88174415A2DDBF71 /* TVAmbientStateMachineTests.swift in Sources */,
 				DE33DF0010974B6695E4E0A4 /* TVRelayPlaybackReducerTests.swift in Sources */,
+				2BBE3BBDA7494007BD76D6B4 /* TVPlaybackControllerGainTests.swift in Sources */,
 				78A3657EF038428AB02E3160 /* TVSongStreamPlaybackReducerTests.swift in Sources */,
 				C2BD7392157F4FA3ABC5093D /* TVRemotePlaySongFlowTests.swift in Sources */,
 			);

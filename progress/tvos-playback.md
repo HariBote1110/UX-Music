@@ -121,3 +121,89 @@ Apple TV シミュレータ（`UXTV_PREVIEW=livenowplaying` — 新設の DEBUG 
 チェイス再生（部分ファイル受信しながら再生開始する擬似ストリーミング）——計画書
 （`markdown/appletv-servermode-plan.md`）で既に触れられている方向性。今回はタップ→初回音声の
 「順序・並行性」の修正に留め、チェイス再生の実装には着手していない。
+
+## 追記（2026-08-13）: ストリームファースト再生（Task A、キャッシュミス時の"待たせない"再生）
+
+### 設計
+
+「次の一手」で触れたチェイス再生の実装。キャッシュヒット時は上記の修正済みパスをそのまま
+使う。**キャッシュミス時**は、デスクトップ側で並行整備中の
+`GET /v1/remote/file?id=…&stream=aac`（チャンクADTS AAC-LC 256kbps/44.1kHz/stereo ——
+`GET /v1/remote/relay` と完全に同一フォーマット）を使い、フルファイルダウンロードを待たずに
+即座に再生を開始する:
+
+1. `TVPlaybackController.play` は `cache.isCached(songId:)`（ディスクI/Oのみ、ネットワーク
+   往復ゼロ）でキャッシュヒット/ミスを判定。
+2. ミスなら `TVSongStreamController.start(songId:outputGain:)` を即座に呼ぶ。内部では
+   **リレー受信で実装済みの `TVRelayStreamPlayer`（`URLSession`ストリーミング → 
+   `ADTSFrameParser` → `TVAACDecoder` → ジッタバッファ → 専用`AVAudioEngine`）をそのまま
+   再利用**——フォーマットがリレーと同一なので新規デコードパイプラインは不要と判断。
+   `TVRelayStreamPlayerDelegate` に `relayStreamPlayerDidReachEndOfStream` を追加し
+   （`didCompleteWithError: nil` を「曲の終端」として通知）、有限長の曲ストリームでも
+   「いつ次の曲へ進むか」を検出できるようにした（リレーの継続ストリームでは実質発生しない
+   イベントだが、プロトコルとしては両者で共有）。
+3. 同時に `TVPlaybackCacheStore.ensureCached` を `Task.detached` でバックグラウンド起動し、
+   オリジナルファイルをキャッシュへDL。**曲の途中でストリーミング→キャッシュ再生への
+   ホットスワップはしない**（ユーザーに違和感のあるバッファ切り替え/音飛びのリスクがあり、
+   今回のスコープでは正当化できないと判断——次回再生 or リピート時に自然にキャッシュ経路へ
+   切り替わる設計で十分）。将来ホットスワップしたくなった場合の拡張ポイントとしてのみ
+   ここに記録する。
+4. トラック終端（ストリームの正常終了）はストリーム側で検出し、
+   `TVPlaybackController.advanceAfterStreamEnd` がキュー内の次の曲へ`play(_:queue:)`を
+   呼び直す。`MusicPlayerService.advanceAfterEnd()`（リピートモード対応・キュー管理）は
+   ローカル再生専用でストリーミング経路には関与しないため、ストリーミング側は意図的に
+   「次の1曲へ進むだけ」の最小実装とした（リピートモード等はその次の`play()`呼び出しが
+   キャッシュ/ストリームどちらを選ぶかを含めて自然に再評価される）。
+
+### EQ/LUFSのルーティング判断
+
+`MusicPlayerService`の10バンド`AVAudioUnitEQ`は完全にprivateで自分のエンジンに紐づいており、
+別エンジン（`TVRelayStreamPlayer`の専用`AVAudioEngine`）から再利用する経路がない
+（コードを読んで確認済み）。フルEQグラフを別途複製するコストは、キャッシュ完了後の次回再生では
+どのみち通常のEQ付き再生に切り替わる「数十秒〜数分のワンショットの窓」のためだけに見合わない
+と判断した。一方でラウドネス（LUFS）正規化は音量差が体感として大きいため省略しないことにし、
+`MusicPlayerService.applyLoudnessGain()`と同じ線形ゲイン式（`10^((target-lufs)/20)`、
+`0...4`にクランプ）を`TVPlaybackController.linearLoudnessGain`として複製し、
+`TVRelayStreamPlayer.outputGain`（`mainMixerNode.outputVolume`に反映）へ渡す方式にした。
+リレー経路（ホスト自身のミックス済み音声）は従来通りgain=1のまま変更していない。
+
+### 検証
+
+- `TVSongStreamPlaybackReducer`/`TVSongPlaybackPlan`（loading→streaming→finished/failed の
+  純粋状態機械、キャッシュヒット判定）を単体テストでカバー
+  （`UX-Music-TVTests/TVSongStreamPlaybackReducerTests.swift`）。
+- `RemoteAPIClient.songStreamRequest`/`songStreamQueryItems`（`stream=aac`クエリ+
+  Authorizationヘッダの構築）を単体テストでカバー（`RemoteAPIClientTests.swift`）。
+- `TVPlaybackController.linearLoudnessGain`は当初`@MainActor`分離の`TVPlaybackController`の
+  static funcとして実装したため、非MainActorのテストコンテキストから直接呼べず
+  ビルドが失敗した。ゲイン計算自体はアクター状態に依存しない純粋関数なので
+  `nonisolated static func`に変更し解消（`TVPlaybackControllerGainTests.swift`で
+  `MusicPlayerService.applyLoudnessGain()`と同じ式であることを回帰カバー）。
+- **モックストリームサーバでのE2Eレイテンシ計測は2案とも失敗し、断念した**:
+  1. `Network.framework`の`NWListener`でループバックHTTPサーバを立てる案 →
+     シミュレータのテストランナー上で永久にハングした（macOSのローカルネットワーク権限
+     ダイアログをヘッドレスでは誰も許可できず、ブロックされ続けていると見られる）。
+  2. `URLProtocol`スタブ（`URLSessionConfiguration.protocolClasses`経由でリクエストを
+     プロセス内でインターセプトし、実ソケットを一切使わない）に切り替えた案 →
+     ソケットは回避できたが、`TVRelayStreamPlayer`の内部`URLSession`に対して
+     スタブが一度もインターセプトされず（`didStartRendering`/`didFailWith`のどちらの
+     delegateコールバックも発火せず10秒でタイムアウト）、原因を追う時間的余裕がなく
+     断念した。
+  テストコード自体は削除し（赤いテストを残さない方針）、`xcodebuild test`によるtvOS
+  ターゲット全体のユニット/統合テストスイートは green を確認済み。
+- **未実施**: 実デスクトップの`stream=aac`エンドポイントに対する実測レイテンシ
+  （このセッション実行時点でエンドポイントが並行実装中のため測定不能）。モックサーバでの
+  自動化レイテンシ計測も上記の理由で断念したため、次回はデスクトップ側エンドポイントが
+  着地した実機/実ホスト構成で`[TVPlay]`ログと同様の計測ログを追加して実測することを
+  推奨する。
+- シミュレータでの選択→ローディングUI→初回音声のE2Eスクリーンショットは、
+  `UXTV_PREVIEW`系のDEBUGハーネスが「ペア済みホストへの接続」を前提とする構成が多く、
+  ホストへの書き込み系操作が本タスクの制約で禁止されていたため、ストリーミング選択の
+  トリガー自体を再現できず未実施。`TVStreamLoadingOverlay`のコード自体は
+  `xcodebuild build`で型チェック済み。
+
+### 却下した代替案
+
+- **曲の途中でのストリーム→キャッシュ済みファイルへのホットスワップ**: ブリーフで明示的に
+  却下・将来オプションとして指定されていたため実装せず。
+- **ストリーミング経路にもフル10バンドEQを複製**: 上記「EQ/LUFSのルーティング判断」参照。

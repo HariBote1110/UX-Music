@@ -390,3 +390,68 @@ PC経由リレーへ回していたため、実際には再生できる曲まで
   いたため未検証——TV側が正しいリクエストを送ることと、`TVRelayModel`のポーリングが
   正しく状態を反映することは単体テスト/ビルドで確認済み。デスクトップ側のembed再生が
   実際に`toggle`/`stop`を honour するかは並行するデスクトップ側修正の検証範囲。
+
+## 追記（2026-08-13）: Task B — リレーバナーへのシークバー追加
+
+### Decision
+
+- `GET /v1/remote/state`ルート直下の`position`/`duration`（デスクトップ側で並行拡張中）を
+  純粋パースする`TVRelayPositionState`を新設（既存の`TVRelayStateBlock`/
+  `TVRelayTransportState`と同じ「欠落・不正値は安全側に倒す」方針を踏襲）。
+  `duration`が欠落・0以下なら`isSeekable == false`とし、`TVRelayBannerView`側は
+  そのままバーを隠す（ブリーフの「absent/zero durationを優雅に扱う」要件）。
+- シーク送信は既存の`RemoteAPIClient.sendCommand(action:value:)`をそのまま使用——
+  `server/app_remote.go`のseekケースを実際に読み、フィールド名が`"value"`（float64、
+  `sendCommand`の`value`引数と同名）であることを確認した上で配線した。
+- **楽観的UI**: `TVRelayModel.seek(to:)`は`POST`を投げると同時に`position`を即座に
+  シーク先へ更新する。ブリーフに明記されている通り、ジッタバッファ（`TVRelayStreamPlayer`の
+  0.75秘バッファ）越しに実際の音声がジャンプするまで約1秒かかるため、ポーリング結果
+  （5秒間隔）を待つとバーの操作感が著しく悪くなる。ポーリングが返す位置が楽観値の2秒
+  以内に追いついたら楽観値を破棄して信頼するポーリング値に戻す、というシンプルな収束
+  条件にした。
+- tvOSイディオム: シークバー自体を`.focusable(true)`にし、フォーカス中は`onMoveCommand`の
+  `.left`/`.right`で±10秒（押しっぱなしはシステムのリピート挙動に委譲——追加のタイマー
+  実装はしていない）。トランスポート行にも同じ±10秒ボタンを追加し、両方から同じ
+  `TVRelayPositionState.seekTarget(delta:)`（0...durationにクランプ）を呼ぶ。
+
+### Constraints / Gotchas
+
+- デスクトップ側の`position`/`duration`拡張が未着地の間は`isSeekable`が常に`false`となり
+  バーは表示されない——追加的な変更なので古いホストに対しても安全に劣化する。
+- 実機/実ホストでの「シーク送信→実際に約1秒後に音声がジャンプする」E2Eは、本タスクの
+  制約（ホストへの書き込み系`POST`実行が原則禁止）のため未検証。TV側の純粋ロジックと
+  リクエスト構築は単体テストで確認済み。
+
+## 追記（2026-08-13）: コーディネーター追加スコープ — トランスポートフォーカスの
+レイアウトシフト修正・リレーサムネイルの16:9表示
+
+### Decision
+
+- **レイアウトシフト**: 根本原因はユーザー報告どおり`TVTransportButtonStyle`の
+  `.font(weight: isFocused ? .semibold : .regular)`——グリフの実サイズ（intrinsic size）が
+  フォーカスの有無で変わり、`HStack`内の兄弟要素（アートワーク等）が再レイアウトされて
+  いた。修正はフォーカス時の最大サイズ（`size * 1.22`スケール分 + パディング）で
+  `.frame(width:height:)`を固定し、それより後段の`scaleEffect`（描画のみ・レイアウト
+  非関与）で見た目の拡大を行う方式に統一。これにより中身（ウェイト・色・グロー）が
+  変化してもレイアウトへの寄与は常に一定になる。
+- **リレーサムネイル16:9表示**: YouTubeサムネイルは16:9であり、既存の正方形アートワーク
+  フレームにそのまま押し込むと不自然なクロップが発生する。16:9の専用カード
+  （`relayThumbnailCard`）を新設し、同じ画像をぼかして敷いたレターボックス背景＋
+  シャープな前面画像のフェードインというシネマティックな言語を維持したまま実装した。
+
+### Constraints / Gotchas
+
+- レイアウトシフト修正の実機/シミュレータでのフォーカス⇄非フォーカス比較スクリーンショット
+  検証は部分的にしか実施できなかった。`UXTV_PREVIEW=detailplay`ハーネスで
+  トランスポートバー（`TVNowPlayingTransportBar`、`TVTransportButtonStyle`使用）を
+  1枚スクリーンショット取得——デフォルトで再生/一時停止ボタンにフォーカスが当たった
+  状態（拡大・白発光）を確認できたが、そこから他のボタンへフォーカスを移す
+  キー入力操作（computer-use MCP経由のSimulatorへのキー送信）が本セッション環境で
+  "user interrupt"エラーを繰り返し返し実行できず、フォーカス移動前後の2枚比較は
+  未完了。修正自体はコードレビュー（固定`.frame(width:height:)`の適用箇所の確認）と
+  ビルド成功で担保している——次回、tvOSシミュレータへの確実なキー入力手段が使える
+  環境で2枚比較を追記する。
+- サムネイルのフェードインは`AsyncImage`の`.transition(.opacity)`に依存しており、
+  `progress/tvos-design.md`で既知の「トランジション中の`AsyncImage`内部`onAppear`レース」
+  と同種の潜在リスクがある——現時点では顕在化を確認できていないが、アートワーク欠落系の
+  不具合が再発した場合はまずこのパスを疑うこと。
