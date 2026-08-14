@@ -26,3 +26,34 @@
 - `SidecarArtworkLayout`/`SidecarLyricsMotionPolicy`/`SidecarBackgroundGradient` はいずれも `SidecarDirective.swift` に純関数として集約し、`UX-Music-MobileTests/SidecarLayoutMotionTests.swift` でTDD（Red→Green）。
 - 歌詞行の `.animation(value: activeIndex)` はperf制約（`SidecarActiveLineUpdatePolicy` による change-gated 更新、固定アンカーの `TimelineView`）を変更していない — アニメーションパラメータのみ追加。
 - `xcrun simctl io screenshot` はデバイスがランドスケープ方向にジオメトリ更新されていても素のフレームバッファはポートレート寸法で返ってくる場合があるため、検証時は `sips -r -90` で回転してから確認した（アプリ自体は正しくランドスケープ表示している）。
+
+## Decision（2026-08-15 追記: 歌詞モーション完全パリティ化 — 行別絶対位置レイアウトへの再実装）
+
+上記「3. 歌詞モーション」で移植したパラメータ（`ANCHOR_RATIO`/`MOTION_DURATION_MS`/`MOTION_DELAY_STEP_MS`/`activeLineScale`）は正しかったが、それらを**どう使うか**がDesktopと根本的に異なっていた。ユーザー評価「悪くはないが良くもない」を受けて、Desktop実装を全面的に読み直し、完全パリティで再実装した。
+
+### 抽出したDesktop仕様（`src/renderer/js/features/fullscreen-view.ts` / `src/renderer/styles/components.css`）
+
+- **各行は独立して動く、スクロールしない**: `applyLyricsMotion`（`fullscreen-view.ts:392-426`）は各 `<p>` 要素に個別の `--fs-line-y`（`translateY`、絶対位置の `top`）を設定する。コンテナ自体はスクロールしない（`.fs-lyrics-inner.fs-lrc { position: relative; overflow: hidden }`、`components.css:2137-2142`）。
+- **位置計算**: アクティブ行（`activeIndex`、なければ `0`）を `anchorY = lyricsEl.clientHeight * ANCHOR_RATIO(0.35)` に固定し、そこから前後の行を「自身の高さ + `INTER_BLOCK_GAP(16px)`」の累積和で並べる（`fullscreen-view.ts:411-416`）。高さは初回 `getBoundingClientRect()` で測定してキャッシュ（`cachedLrcHeights`）。
+- **トランジション**: `transition-property: transform, opacity, color`、`duration` は通常 `MOTION_DURATION_MS(800ms)`／初期表示・リサイズ時のみ `0ms`（immediate）、`delay` は `abs(i - activeIndex) * MOTION_DELAY_STEP_MS(40ms)`（`fullscreen-view.ts:418-422`）。`transition-timing-function` の明示指定なし＝UA既定の `ease`（`cubic-bezier(0.25, 0.1, 0.25, 1.0)`）。
+- **アクティブ判定**: `findLyricsIndex`（`fullscreen-view.ts:366-390`）は「時刻 `<=` の最後の行」だが、**最初の行の時刻より前は `-1`**（どの行もハイライトしない＝イントロ無音区間はアクティブ行なし）。最後の行以降は最終行のインデックス。200ms間隔の `setInterval`（`fullscreen-view.ts:124-132`）で毎回この判定を呼ぶ。オフセット/リード定数は一切なし（生の再生位置をそのまま比較）。
+- **スタイル**（`components.css:2143-2162`）: フォントサイズ・太さは全行共通（`2.2rem`/`700`、アクティブでも変えない）、色はアクティブ `#fff`・非アクティブ `rgba(255,255,255,0.45)` の二値のみ（距離に応じたopacity減衰は存在しない）、アクティブのみ `scale(1.091)`（`transform-origin: left center`）と `text-shadow: 0 0 24px rgba(255,255,255,0.15)` のグロー。幅は `calc(100% / 1.091)` でスケール後もはみ出さないよう事前に確保。
+
+### 旧実装（前回移植）の誤り
+
+1. **最大の欠陥**: `ScrollView` + `ScrollViewReader.scrollTo(anchor:)` でリスト全体を1つのユニットとしてスクロールしていた。Desktopは行ごとに独立した `transform` アニメーションであり、「全体がスクロールする」動きはDesktopに存在しない。
+2. **余分な装飾**: `opacity(forDistance:isActive:)` という距離ベースのopacityフォールオフ（`max(0.2, 0.55 - distance*0.08)`）を独自追加していたが、Desktopには存在しない（二値の45%/100%のみ）。フォントウェイトをアクティブ時のみ `.bold` に切り替えるのもDesktopにない（Desktopは常時700=bold）。
+3. **タイミングのズレ**: `LRCParser.activeLineIndex` を流用しており、最初の行より前の時刻を `0`（先頭行）にクランプしていた。Desktopは `-1`（無ハイライト）。イントロ中に不要なハイライトが出ていた。
+
+### 新実装
+
+- `SidecarLyricsLayout.tops(heights:baseIndex:paneHeight:)`（純関数、`Services/SidecarDirective.swift`）: `applyLyricsMotion` の累積位置計算を1:1移植。`UX-Music-MobileTests/SidecarLayoutMotionTests.swift` でTDD。
+- `SidecarLyricsMotionPolicy.activeIndex(in:at:)`（同ファイル）: `findLyricsIndex` を1:1移植（`-1` 前置き含む）。既存の `LRCParser.activeLineIndex`（他画面が意図的に `0` クランプを使う）とは別関数として新設し、他画面の挙動には触れていない。
+- `SidecarSyncedLyricsList`（`Views/SidecarScreen.swift`）: `ScrollView` を廃止し、`GeometryReader` + `ZStack(alignment: .topLeading)` の中で各行に `.offset(y:)` を個別付与、`PreferenceKey` で行ごとの実測高さを収集して `SidecarLyricsLayout.tops` に渡す。アニメーションは `.timingCurve(0.25, 0.1, 0.25, 1.0, duration: 0.8).delay(distance * 0.04)`（CSS既定の `ease` を明示的に再現）。パフォーマンス確保のため、計算上の `y` がペイン範囲 ± 400pt を超える行は描画自体をスキップ（Desktopにはこの概念はないが、SwiftUIは全行を常時レイアウトするコストがCSS/DOMより高いため、コスト境界として追加）。
+- スタイルはDesktop CSS通りに単純化: 太さは常時 `.bold`、色は `.white.opacity(isActive ? 1 : 0.45)` の二値、アクティブのみ `scaleEffect(1.091, anchor: .leading)` と `.shadow(color: .white.opacity(0.15), radius: 24)`。距離ベースのopacity減衰・フォントウェイト切替は削除。
+
+### 検証
+
+- `SidecarLayoutMotionTests`（新規9ケース＋既存）・全体テストスイート（`LocalizationCatalogCompletenessTests` を除く）: 563 passed / 0 failed / 8 skipped。
+- `scripts/sidecar_stub_server.py` に `--lrc-file` オプションを追加（従来は歌詞エンドポイントが常時404固定だった）し、20行の密なLRCフィクスチャで実機相当検証。1秒間隔の連続スクリーンショットで「行ごとに独立して動く」モーション、アクティブ/非アクティブの二値スタイル、開始前（`-1`）は最初の行の時刻ちょうどで初めてハイライトが付くタイミングを目視確認（`/private/tmp/.../scratchpad/motion_seq_*.png`、`still_*.png`）。
+- パフォーマンス再計測（歌詞アニメーション中、iPhone 17 Pro シミュレータ）: RSS 319MB台で横ばい、CPU 2〜4%、20秒間の `BLSInvalidateFrameSpecifiersAction` は1件のみ。`progress/sidecar-poll-tick-cpu-leak.md` で修正したTimelineViewストームの再発なし。

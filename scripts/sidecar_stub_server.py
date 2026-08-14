@@ -30,6 +30,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     song_id = "stub-song-1"
     duration = 210.0
     playing = True
+    lrc_content = None
 
     def log_message(self, fmt, *args):
         pass  # keep stdout quiet; measurements read ps/log separately
@@ -59,6 +60,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(payload)
             return
         if self.path.startswith("/v1/remote/lyrics"):
+            if Handler.lrc_content is not None:
+                body = json.dumps({"found": True, "type": "lrc", "content": Handler.lrc_content}).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             # Realistic 404 unless songId is empty (fuzzy-match path never fetches lyrics
             # by songId anyway) -- exercises SidecarScreen's optional-lyrics error path.
             self.send_response(404)
@@ -77,10 +86,14 @@ def main():
     parser.add_argument("--port", type=int, default=8799)
     parser.add_argument("--song-id", type=str, default="stub-song-1")
     parser.add_argument("--no-playing", action="store_true")
+    parser.add_argument("--lrc-file", type=str, default=None, help="Serve this file's content as dense LRC lyrics for /v1/remote/lyrics.")
     args = parser.parse_args()
 
     Handler.song_id = args.song_id
     Handler.playing = not args.no_playing
+    if args.lrc_file:
+        with open(args.lrc_file, "r", encoding="utf-8") as f:
+            Handler.lrc_content = f.read()
 
     server = http.server.ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
     print(f"[sidecar_stub_server] listening on 0.0.0.0:{args.port} songId={args.song_id!r} playing={Handler.playing}")
