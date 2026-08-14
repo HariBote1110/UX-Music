@@ -175,6 +175,25 @@ final class RemoteAPIClientTests: XCTestCase {
         _ = try await client.fetchState()
     }
 
+    /// The desktop reads an optional `X-Device-Name` header on authenticated LAN requests to
+    /// self-report a display name for devices paired before display-name support existed (see
+    /// `DeviceIdentity.displayName`). URLSession passes non-ASCII header values through unmodified
+    /// (verified empirically), so no percent-encoding is needed — the raw name is sent as-is.
+    func testPingSendsDeviceNameHeader() async throws {
+        MockURLProtocol.handler = { req in
+            XCTAssertEqual(req.value(forHTTPHeaderField: "X-Device-Name"), "Yukiの iPhone")
+            let data = #"{"hostname":"desk"}"#.data(using: .utf8)!
+            let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (data, res)
+        }
+        let client = RemoteAPIClient(
+            baseURLString: "http://127.0.0.1:8765",
+            deviceName: "Yukiの iPhone",
+            session: sessionWithMock()
+        )
+        _ = try await client.ping()
+    }
+
     func testFetchStateThrowsOnUnauthorized() async throws {
         MockURLProtocol.handler = { req in
             let data = #"{"error":{"code":"unauthorized","message":"Unauthorized"}}"#.data(using: .utf8)!

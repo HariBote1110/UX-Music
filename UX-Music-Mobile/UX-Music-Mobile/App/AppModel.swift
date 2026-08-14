@@ -384,7 +384,12 @@ final class AppModel {
     var urlSession: URLSession = RemoteLANURLSession.shared
 
     func client() -> RemoteAPIClient {
-        RemoteAPIClient(baseURLString: serverConfig.baseURLString, token: serverConfig.token, session: urlSession)
+        RemoteAPIClient(
+            baseURLString: serverConfig.baseURLString,
+            token: serverConfig.token,
+            deviceName: DeviceIdentity.displayName,
+            session: urlSession
+        )
     }
 
     /// Runs `operation` against the current server; on a connection-level failure (`URLError`),

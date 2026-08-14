@@ -115,11 +115,21 @@ struct RemoteAPIClient: Sendable {
     /// endpoints that hand a bare URL to something else, e.g. image loaders). Empty means "no token
     /// configured" — requests are sent unauthenticated, matching the pre-pairing desktop or `/v1/identity`.
     private let token: String
+    /// Sent as `X-Device-Name` on every authenticated request so the desktop can self-report/refresh
+    /// a device's display name (fixes devices paired before display-name support existed). Empty
+    /// means "do not send the header" — matches `DeviceIdentity.displayName` being unavailable/empty.
+    private let deviceName: String
     private let session: URLSession
 
-    init(baseURLString: String, token: String = "", session: URLSession = RemoteLANURLSession.shared) {
+    init(
+        baseURLString: String,
+        token: String = "",
+        deviceName: String = "",
+        session: URLSession = RemoteLANURLSession.shared
+    ) {
         self.baseURLString = baseURLString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         self.token = token
+        self.deviceName = deviceName
         self.session = session
     }
 
@@ -136,6 +146,9 @@ struct RemoteAPIClient: Sendable {
         var req = URLRequest(url: url)
         if !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if !deviceName.isEmpty {
+            req.setValue(deviceName, forHTTPHeaderField: "X-Device-Name")
         }
         return req
     }
