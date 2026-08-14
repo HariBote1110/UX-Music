@@ -103,7 +103,10 @@ struct SidecarScreen: View {
     /// Forces landscape while this screen is on screen, restoring the app's normal `.all` mask on
     /// dismiss (see `SidecarOrientationPolicy`, `AppDelegate.application(_:supportedInterfaceOrientationsFor:)`).
     private func applyOrientation(sidecarPresented: Bool) {
-        SidecarOrientationLock.current = SidecarOrientationPolicy.mask(sidecarPresented: sidecarPresented)
+        SidecarOrientationLock.current = SidecarOrientationPolicy.mask(
+            sidecarPresented: sidecarPresented,
+            defaultMask: SidecarOrientationLock.defaultMask
+        )
         guard let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
             ?? UIApplication.shared.connectedScenes.first as? UIWindowScene
         else { return }

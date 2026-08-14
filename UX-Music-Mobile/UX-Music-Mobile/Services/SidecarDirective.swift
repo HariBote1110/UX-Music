@@ -96,9 +96,17 @@ struct SidecarMetadataSnapshot: Equatable {
 /// pure and separate from `AppDelegate` so the decision is unit-testable without a UIKit runtime.
 enum SidecarOrientationPolicy {
     /// `.landscape` while the sidecar's fullscreen cover is on screen (it is landscape-first —
-    /// large artwork beside synced lyrics), `.all` otherwise (the app's normal default).
-    static func mask(sidecarPresented: Bool) -> UIInterfaceOrientationMask {
-        sidecarPresented ? .landscape : .all
+    /// large artwork beside synced lyrics), `defaultMask` otherwise.
+    ///
+    /// `defaultMask` MUST match Info.plist's `UISupportedInterfaceOrientations` for the current
+    /// idiom exactly (see `SidecarOrientationLock.defaultMask`). Returning a broader mask than
+    /// Info.plist declares (e.g. `.all`, which includes portrait-upside-down on iPhone even though
+    /// Info.plist's `~iphone` key excludes it) makes UIKit's declared-supported set disagree with
+    /// itself on every geometry query, which drives BackBoardServices into a continuous
+    /// frame-invalidation loop (BLSInvalidateFrameSpecifiersAction) — visible as runaway CPU/RSS
+    /// growth even while the sidecar is never shown, because the mismatch exists from launch.
+    static func mask(sidecarPresented: Bool, defaultMask: UIInterfaceOrientationMask) -> UIInterfaceOrientationMask {
+        sidecarPresented ? .landscape : defaultMask
     }
 }
 

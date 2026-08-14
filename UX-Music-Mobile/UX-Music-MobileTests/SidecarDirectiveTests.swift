@@ -7,11 +7,17 @@ final class SidecarDirectiveTests: XCTestCase {
     // MARK: - SidecarOrientationPolicy
 
     func testMaskIsLandscapeWhenSidecarPresented() {
-        XCTAssertEqual(SidecarOrientationPolicy.mask(sidecarPresented: true), .landscape)
+        XCTAssertEqual(
+            SidecarOrientationPolicy.mask(sidecarPresented: true, defaultMask: .allButUpsideDown),
+            .landscape
+        )
     }
 
-    func testMaskIsAllWhenSidecarNotPresented() {
-        XCTAssertEqual(SidecarOrientationPolicy.mask(sidecarPresented: false), .all)
+    func testMaskIsDefaultWhenSidecarNotPresented() {
+        XCTAssertEqual(
+            SidecarOrientationPolicy.mask(sidecarPresented: false, defaultMask: .allButUpsideDown),
+            .allButUpsideDown
+        )
     }
 
     // MARK: - SidecarChromeVisibilityPolicy
