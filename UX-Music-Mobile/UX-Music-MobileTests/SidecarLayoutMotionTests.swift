@@ -106,4 +106,69 @@ final class SidecarLayoutMotionTests: XCTestCase {
         XCTAssertEqual(SidecarBackgroundGradient.mixRatio, 0.30, accuracy: 0.0001)
         XCTAssertEqual(SidecarBackgroundGradient.transitionDuration, 1.2, accuracy: 0.0001)
     }
+
+    // MARK: - SidecarLyricsLayout
+
+    /// Ported from Desktop's `applyLyricsMotion` (`fullscreen-view.ts:392-426`): the base (active,
+    /// or index 0 while nothing is active yet) line sits at `paneHeight * ANCHOR_RATIO`, and every
+    /// other line stacks above/below it via a running sum of `height + INTER_BLOCK_GAP (16)`.
+    func testTopsAnchorsBaseIndexAtAnchorRatio() {
+        let tops = SidecarLyricsLayout.tops(heights: [40, 40, 40], baseIndex: 1, paneHeight: 200)
+        XCTAssertEqual(tops[1], 70, accuracy: 0.001) // 200 * 0.35
+    }
+
+    func testTopsStackForwardWithGap() {
+        let tops = SidecarLyricsLayout.tops(heights: [40, 50, 60], baseIndex: 0, paneHeight: 200)
+        XCTAssertEqual(tops[0], 70, accuracy: 0.001)
+        XCTAssertEqual(tops[1], 70 + 40 + 16, accuracy: 0.001)
+        XCTAssertEqual(tops[2], 70 + 40 + 16 + 50 + 16, accuracy: 0.001)
+    }
+
+    func testTopsStackBackwardWithGap() {
+        let tops = SidecarLyricsLayout.tops(heights: [40, 50, 60], baseIndex: 2, paneHeight: 200)
+        XCTAssertEqual(tops[2], 70, accuracy: 0.001)
+        XCTAssertEqual(tops[1], 70 - 50 - 16, accuracy: 0.001)
+        XCTAssertEqual(tops[0], 70 - 50 - 16 - 40 - 16, accuracy: 0.001)
+    }
+
+    func testTopsClampsBaseIndexIntoRange() {
+        let tops = SidecarLyricsLayout.tops(heights: [40, 40], baseIndex: 99, paneHeight: 200)
+        XCTAssertEqual(tops[1], 70, accuracy: 0.001)
+    }
+
+    func testTopsEmptyHeightsReturnsEmpty() {
+        XCTAssertEqual(SidecarLyricsLayout.tops(heights: [], baseIndex: 0, paneHeight: 200), [])
+    }
+
+    func testInterBlockGapAndAnchorRatioMatchDesktop() {
+        XCTAssertEqual(SidecarLyricsLayout.interBlockGap, 16, accuracy: 0.0001)
+        XCTAssertEqual(SidecarLyricsLayout.anchorRatio, 0.35, accuracy: 0.0001)
+    }
+
+    // MARK: - SidecarLyricsMotionPolicy.activeIndex (Desktop `findLyricsIndex` parity)
+
+    /// Ported from Desktop's `findLyricsIndex` (`fullscreen-view.ts:366-390`): before the first
+    /// line's timestamp, NO line is active (`-1`) — unlike `LRCParser.activeLineIndex`, which other
+    /// screens intentionally clamp to `0` for a different UX. The sidecar must not highlight line 0
+    /// during an instrumental intro.
+    func testActiveIndexReturnsMinusOneBeforeFirstLine() {
+        let lines = [LRCParser.TimedLine(id: 1, startTime: 10, text: "a"), LRCParser.TimedLine(id: 2, startTime: 20, text: "b")]
+        XCTAssertEqual(SidecarLyricsMotionPolicy.activeIndex(in: lines, at: 5), -1)
+    }
+
+    func testActiveIndexReturnsLastLineAtOrAfterEnd() {
+        let lines = [LRCParser.TimedLine(id: 1, startTime: 10, text: "a"), LRCParser.TimedLine(id: 2, startTime: 20, text: "b")]
+        XCTAssertEqual(SidecarLyricsMotionPolicy.activeIndex(in: lines, at: 999), 1)
+    }
+
+    func testActiveIndexTracksLastLineAtOrBeforeTime() {
+        let lines = [LRCParser.TimedLine(id: 1, startTime: 10, text: "a"), LRCParser.TimedLine(id: 2, startTime: 20, text: "b"), LRCParser.TimedLine(id: 3, startTime: 30, text: "c")]
+        XCTAssertEqual(SidecarLyricsMotionPolicy.activeIndex(in: lines, at: 20), 1)
+        XCTAssertEqual(SidecarLyricsMotionPolicy.activeIndex(in: lines, at: 25), 1)
+    }
+
+    func testActiveIndexEmptyLinesReturnsMinusOne() {
+        let lines: [LRCParser.TimedLine] = []
+        XCTAssertEqual(SidecarLyricsMotionPolicy.activeIndex(in: lines, at: 5), -1)
+    }
 }
