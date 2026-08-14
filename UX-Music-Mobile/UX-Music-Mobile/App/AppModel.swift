@@ -188,15 +188,45 @@ final class AppModel {
         }
         sidecarActive = directive.active
         guard directive.active else { return }
-        sidecarSongId = directive.songId
-        sidecarArtworkId = directive.artworkId
-        sidecarTitle = state["title"] as? String ?? ""
-        sidecarArtist = state["artist"] as? String ?? ""
-        sidecarAlbum = state["album"] as? String ?? ""
+
+        // position/positionTimestamp are written unconditionally below — SidecarProgressInterpolation
+        // needs a fresh wall-clock anchor every successful tick. Everything else is written only
+        // when it actually changed: the desktop reports the same track dozens of times per minute
+        // while it plays, and an unconditional write fires an @Observable invalidation for every
+        // view reading these properties (SidecarArtworkView, the title/artist labels, …) on every
+        // 2s tick even though nothing changed (see progress/sidecar-poll-tick-cpu-leak.md).
+        let newMetadata = SidecarMetadataSnapshot(
+            songId: directive.songId,
+            artworkId: directive.artworkId,
+            title: state["title"] as? String ?? "",
+            artist: state["artist"] as? String ?? "",
+            album: state["album"] as? String ?? "",
+            duration: Self.doubleValue(state["duration"]),
+            playing: state["playing"] as? Bool ?? false
+        )
+        if newMetadata != currentSidecarMetadata {
+            sidecarSongId = newMetadata.songId
+            sidecarArtworkId = newMetadata.artworkId
+            sidecarTitle = newMetadata.title
+            sidecarArtist = newMetadata.artist
+            sidecarAlbum = newMetadata.album
+            sidecarDuration = newMetadata.duration
+            sidecarPlaying = newMetadata.playing
+        }
         sidecarPosition = Self.doubleValue(state["position"])
-        sidecarDuration = Self.doubleValue(state["duration"])
-        sidecarPlaying = state["playing"] as? Bool ?? false
         sidecarPositionTimestamp = Date()
+    }
+
+    private var currentSidecarMetadata: SidecarMetadataSnapshot {
+        SidecarMetadataSnapshot(
+            songId: sidecarSongId,
+            artworkId: sidecarArtworkId,
+            title: sidecarTitle,
+            artist: sidecarArtist,
+            album: sidecarAlbum,
+            duration: sidecarDuration,
+            playing: sidecarPlaying
+        )
     }
 
     private static func doubleValue(_ any: Any?) -> Double {

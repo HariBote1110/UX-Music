@@ -314,39 +314,51 @@ private struct SidecarSyncedLyricsList: View {
     @Environment(AppModel.self) private var model
     let lines: [LRCParser.TimedLine]
 
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.2)) { context in
-            let interpolated = SidecarProgressInterpolation.interpolatedPosition(
-                position: model.sidecarPosition,
-                timestamp: model.sidecarPositionTimestamp,
-                playing: model.sidecarPlaying,
-                now: context.date,
-                duration: model.sidecarDuration
-            )
-            let active = LRCParser.activeLineIndex(in: lines, at: interpolated)
+    /// Updated at most once per actual line change (see `SidecarActiveLineUpdatePolicy`) rather
+    /// than on every 0.2s tick, so the `ForEach` below only re-diffs when the highlighted line
+    /// genuinely moves instead of 5x/sec for as long as the sidecar screen is on screen.
+    @State private var activeIndex = 0
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                            let distance = abs(index - active)
-                            let isActive = index == active
-                            Text(line.text.isEmpty ? " " : line.text)
-                                .font(.system(size: isActive ? 23 : 18, weight: isActive ? .bold : .regular, design: .rounded))
-                                .foregroundStyle(.white.opacity(SidecarSyncedLyricsList.opacity(forDistance: distance, isActive: isActive)))
-                                .id(line.id)
-                        }
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                        let distance = abs(index - activeIndex)
+                        let isActive = index == activeIndex
+                        Text(line.text.isEmpty ? " " : line.text)
+                            .font(.system(size: isActive ? 23 : 18, weight: isActive ? .bold : .regular, design: .rounded))
+                            .foregroundStyle(.white.opacity(SidecarSyncedLyricsList.opacity(forDistance: distance, isActive: isActive)))
+                            .id(line.id)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.trailing, 8)
                 }
-                .onChange(of: active) { _, newValue in
-                    guard lines.indices.contains(newValue) else { return }
-                    withAnimation(.easeOut(duration: 0.35)) {
-                        proxy.scrollTo(lines[newValue].id, anchor: .center)
-                    }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, 8)
+            }
+            .onChange(of: activeIndex) { _, newValue in
+                guard lines.indices.contains(newValue) else { return }
+                withAnimation(.easeOut(duration: 0.35)) {
+                    proxy.scrollTo(lines[newValue].id, anchor: .center)
                 }
             }
+            .background(
+                TimelineView(.periodic(from: .now, by: 0.2)) { context in
+                    Color.clear
+                        .task(id: context.date) {
+                            let interpolated = SidecarProgressInterpolation.interpolatedPosition(
+                                position: model.sidecarPosition,
+                                timestamp: model.sidecarPositionTimestamp,
+                                playing: model.sidecarPlaying,
+                                now: context.date,
+                                duration: model.sidecarDuration
+                            )
+                            let newActive = LRCParser.activeLineIndex(in: lines, at: interpolated)
+                            if SidecarActiveLineUpdatePolicy.shouldUpdate(currentIndex: activeIndex, newIndex: newActive) {
+                                activeIndex = newActive
+                            }
+                        }
+                }
+            )
         }
     }
 
