@@ -47,6 +47,74 @@ func TestPairingRedeem_PersistsDisplayNameForRemoteDeviceList(t *testing.T) {
 	}
 }
 
+// TestRemoteStateHandler_ExposesSongIDAndArtworkID verifies that /v1/remote/state
+// surfaces the currently playing song's ID and artwork ID as top-level
+// fields, so mobile clients can resolve lyrics/artwork by ID (GET
+// /v1/remote/lyrics, /v1/remote/artwork/{id}) instead of fuzzy title
+// matching. AudioSetNowPlayingMetadata is the only call site that currently
+// updates now-playing metadata, so it is extended to accept optional
+// "songId"/"artworkId" keys alongside the existing title/artist/album/artwork.
+func TestRemoteStateHandler_ExposesSongIDAndArtworkID(t *testing.T) {
+	newTempRemoteStore(t)
+	app := NewApp()
+	token := ensureDeviceAuthToken("dev_songid")
+
+	if err := app.AudioSetNowPlayingMetadata(map[string]interface{}{
+		"title":     "Song",
+		"artist":    "Artist",
+		"album":     "Album",
+		"songId":    "song-123",
+		"artworkId": "artwork-abc",
+	}); err != nil {
+		t.Fatalf("AudioSetNowPlayingMetadata: %v", err)
+	}
+
+	ls := &LANServer{app: app}
+	handler := corsMiddleware(deviceAuthMiddleware(http.HandlerFunc(ls.remoteStateHandler)))
+	req := httptest.NewRequest(http.MethodGet, "/v1/remote/state", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var status map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got, _ := status["songId"].(string); got != "song-123" {
+		t.Fatalf("songId = %q, want %q", got, "song-123")
+	}
+	if got, _ := status["artworkId"].(string); got != "artwork-abc" {
+		t.Fatalf("artworkId = %q, want %q", got, "artwork-abc")
+	}
+}
+
+// TestRemoteStateHandler_SongIDEmptyWhenUnknown verifies that a fresh App
+// (no now-playing metadata ever set) reports empty strings rather than
+// omitting the fields, so clients can rely on their presence.
+func TestRemoteStateHandler_SongIDEmptyWhenUnknown(t *testing.T) {
+	newTempRemoteStore(t)
+	app := NewApp()
+	token := ensureDeviceAuthToken("dev_songid_empty")
+
+	ls := &LANServer{app: app}
+	handler := corsMiddleware(deviceAuthMiddleware(http.HandlerFunc(ls.remoteStateHandler)))
+	req := httptest.NewRequest(http.MethodGet, "/v1/remote/state", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var status map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got, ok := status["songId"].(string); !ok || got != "" {
+		t.Fatalf("songId = %v, want empty string", status["songId"])
+	}
+	if got, ok := status["artworkId"].(string); !ok || got != "" {
+		t.Fatalf("artworkId = %v, want empty string", status["artworkId"])
+	}
+}
+
 func TestRemoteStateHandler_SidecarActiveOnlyForTargetDevice(t *testing.T) {
 	newTempRemoteStore(t)
 	app := NewApp()
