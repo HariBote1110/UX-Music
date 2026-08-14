@@ -194,6 +194,27 @@ export const musicApi = {
     }
     return Promise.resolve([]);
   },
+  listPairedRemoteDevices: () => {
+    const app = getWailsApp();
+    if (app?.ListPairedRemoteDevices) {
+      return app.ListPairedRemoteDevices();
+    }
+    return Promise.resolve([]);
+  },
+  setSidecarTargetDevice: (deviceId: string) => {
+    const app = getWailsApp();
+    if (app?.SetSidecarTargetDevice) {
+      return app.SetSidecarTargetDevice(deviceId);
+    }
+    return Promise.resolve();
+  },
+  getSidecarTargetDevice: () => {
+    const app = getWailsApp();
+    if (app?.GetSidecarTargetDevice) {
+      return app.GetSidecarTargetDevice();
+    }
+    return Promise.resolve('');
+  },
   startSyncPairing: (baseUrl: string) => {
     const app = getWailsApp();
     if (app?.StartSyncPairing) {

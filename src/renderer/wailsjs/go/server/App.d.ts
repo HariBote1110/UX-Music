@@ -134,6 +134,8 @@ export function GetPlaylistDetails(arg1:string):Promise<any>;
 
 export function GetSettings():Promise<any>;
 
+export function GetSidecarTargetDevice():Promise<string>;
+
 export function GetSituationPlaylists():Promise<any>;
 
 export function GetUnifiedLibrary():Promise<Record<string, any>>;
@@ -147,6 +149,8 @@ export function GetYouTubeInfo(arg1:string):Promise<any>;
 export function HandleLyricsDrop(arg1:Array<string>):Promise<void>;
 
 export function IncrementPlayCount(arg1:Record<string, any>):Promise<void>;
+
+export function ListPairedRemoteDevices():Promise<Array<Record<string, any>>>;
 
 export function ListSyncDevices():Promise<Array<server.SyncDeviceRecord>>;
 
@@ -233,6 +237,8 @@ export function SelectNormalizeOutputFolder():Promise<string>;
 export function SetLibraryPath():Promise<string>;
 
 export function SetLyricsSyncModelConsent(arg1:boolean):Promise<void>;
+
+export function SetSidecarTargetDevice(arg1:string):Promise<void>;
 
 export function SongFinished(arg1:Record<string, any>):Promise<void>;
 

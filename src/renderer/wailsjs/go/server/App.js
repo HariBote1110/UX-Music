@@ -250,6 +250,10 @@ export function GetSettings() {
   return window['go']['server']['App']['GetSettings']();
 }
 
+export function GetSidecarTargetDevice() {
+  return window['go']['server']['App']['GetSidecarTargetDevice']();
+}
+
 export function GetSituationPlaylists() {
   return window['go']['server']['App']['GetSituationPlaylists']();
 }
@@ -276,6 +280,10 @@ export function HandleLyricsDrop(arg1) {
 
 export function IncrementPlayCount(arg1) {
   return window['go']['server']['App']['IncrementPlayCount'](arg1);
+}
+
+export function ListPairedRemoteDevices() {
+  return window['go']['server']['App']['ListPairedRemoteDevices']();
 }
 
 export function ListSyncDevices() {
@@ -448,6 +456,10 @@ export function SetLibraryPath() {
 
 export function SetLyricsSyncModelConsent(arg1) {
   return window['go']['server']['App']['SetLyricsSyncModelConsent'](arg1);
+}
+
+export function SetSidecarTargetDevice(arg1) {
+  return window['go']['server']['App']['SetSidecarTargetDevice'](arg1);
 }
 
 export function SongFinished(arg1) {
