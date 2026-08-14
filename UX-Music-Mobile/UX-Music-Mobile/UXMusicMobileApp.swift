@@ -16,6 +16,7 @@ struct UXMusicMobileApp: App {
                     UIApplication.shared.beginReceivingRemoteControlEvents()
                     installDebugYouTubeAutoplayHookIfRequested()
                     installDebugLyricsAutoOpenHookIfRequested()
+                    installDebugSidecarHostHookIfRequested()
                 }
                 .onOpenURL { url in
                     Task { _ = await model.applyPairingURL(url) }
@@ -95,5 +96,26 @@ struct UXMusicMobileApp: App {
             model.debugForceOpenLyrics = true
             model.isNowPlayingSheetPresented = true
         }
+    }
+
+    /// Hidden debug hook for reproducing the sidecar-screen CPU/RSS leak (see
+    /// `progress/sidecar-poll-tick-cpu-leak.md`) without a real desktop paired. When the
+    /// `UXM_DEBUG_SIDECAR_HOST` environment variable (e.g. `127.0.0.1`, paired with
+    /// `UXM_DEBUG_SIDECAR_PORT`, set by exporting `SIMCTL_CHILD_UXM_DEBUG_SIDECAR_HOST=127.0.0.1`
+    /// and `SIMCTL_CHILD_UXM_DEBUG_SIDECAR_PORT=8799` in the shell before `xcrun simctl launch` —
+    /// `simctl` only forwards env vars prefixed `SIMCTL_CHILD_` to the launched process) is
+    /// present, points `serverConfig` at that host/port with a dummy token so
+    /// `startSidecarPolling()` (already running via the `scenePhase` handler above) drives
+    /// `SidecarScreen`'s `fullScreenCover` against a local stub server
+    /// (`scripts/sidecar_stub_server.py` answers `/v1/remote/state` with `sidecar.active=true`).
+    /// Left in place intentionally — harmless in normal launches since the environment variable
+    /// is never set outside of manual debugging.
+    private func installDebugSidecarHostHookIfRequested() {
+        guard let host = ProcessInfo.processInfo.environment["UXM_DEBUG_SIDECAR_HOST"], !host.isEmpty else {
+            return
+        }
+        let port = ProcessInfo.processInfo.environment["UXM_DEBUG_SIDECAR_PORT"].flatMap(Int.init) ?? 8799
+        NSLog("[UXM_DEBUG_SIDECAR] pointing serverConfig at %@:%d", host, port)
+        model.serverConfig = ServerConfig(host: host, port: port, token: "debug-sidecar-token")
     }
 }
