@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -76,7 +77,8 @@ func remoteDeviceNameFor(deviceID string) string {
 
 // saveRemoteDeviceName persists a display name for deviceID, used by
 // ListPairedRemoteDevices. Called from pairingRedeemHandler when the mobile
-// pairing flow supplies one.
+// pairing flow supplies one, and from deviceAuthMiddleware when a client
+// self-reports its name via the X-Device-Name header.
 func saveRemoteDeviceName(deviceID, displayName string) error {
 	deviceID = strings.TrimSpace(deviceID)
 	displayName = strings.TrimSpace(displayName)
@@ -94,6 +96,35 @@ func saveRemoteDeviceName(deviceID, displayName string) error {
 	rawNames[deviceID] = displayName
 	settings[remoteDeviceNamesSettingsKey] = rawNames
 	return store.Instance.Save("settings", settings)
+}
+
+// remoteDeviceNameHeaderMaxLength caps the length of a self-reported
+// X-Device-Name value before persisting it, defensively bounding what an
+// LAN caller can write into settings.
+const remoteDeviceNameHeaderMaxLength = 64
+
+// maybeUpdateRemoteDeviceNameFromHeader reads the optional X-Device-Name
+// header from r and, if it is non-empty and differs from the name already
+// stored for deviceID, persists it via saveRemoteDeviceName. This lets
+// clients self-report a display name on every authenticated LAN request,
+// covering devices paired before remoteDeviceNames existed (whose name was
+// otherwise only ever set at pairing-redeem time). A settings write is
+// skipped when the (trimmed, truncated) name already matches, so routine
+// polling does not hit the store on every request.
+func maybeUpdateRemoteDeviceNameFromHeader(r *http.Request, deviceID string) {
+	name := strings.TrimSpace(r.Header.Get("X-Device-Name"))
+	if name == "" {
+		return
+	}
+	if len(name) > remoteDeviceNameHeaderMaxLength {
+		name = strings.TrimSpace(name[:remoteDeviceNameHeaderMaxLength])
+	}
+	if name == "" || name == remoteDeviceNameFor(deviceID) {
+		return
+	}
+	if err := saveRemoteDeviceName(deviceID, name); err != nil {
+		fmt.Printf("[LAN] Failed to save self-reported device name: %v\n", err)
+	}
 }
 
 // PairedRemoteDevice is one entry returned by ListPairedRemoteDevices.

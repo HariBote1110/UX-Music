@@ -111,6 +111,7 @@ func deviceAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		recordRemoteDeviceLastSeen(deviceID)
+		maybeUpdateRemoteDeviceNameFromHeader(r, deviceID)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), deviceIDContextKey{}, deviceID)))
 	})
 }
