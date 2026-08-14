@@ -4,6 +4,7 @@ import UIKit
 @main
 struct UXMusicMobileApp: App {
     @State private var model = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -17,6 +18,16 @@ struct UXMusicMobileApp: App {
                 }
                 .onOpenURL { url in
                     Task { _ = await model.applyPairingURL(url) }
+                }
+                // The desktop's "sidecar" fullscreen push (see `SidecarScreen`) only makes sense
+                // while the app is actually on screen — polling in the background would burn
+                // battery/network for a display the user cannot see.
+                .onChange(of: scenePhase, initial: true) { _, newPhase in
+                    if newPhase == .active {
+                        model.startSidecarPolling()
+                    } else {
+                        model.stopSidecarPolling()
+                    }
                 }
         }
     }

@@ -120,6 +120,92 @@ final class AppModel {
     /// Drives the full-screen now playing sheet (lives on `AppModel` so `tabViewBottomAccessory` can update presentation reliably).
     var isNowPlayingSheetPresented = false
 
+    // MARK: - Sidecar (desktop-pushed fullscreen now-playing display)
+
+    /// Latest `sidecar.active` reading from `/v1/remote/state`, driven by `startSidecarPolling()`
+    /// while the app is foregrounded (see `SidecarDirective`). `SidecarScreen`'s `fullScreenCover`
+    /// is bound to `isSidecarPresented`, not this property directly, so a local dismissal (the
+    /// screen's close button) is respected even while the desktop keeps reporting `active == true`.
+    private(set) var sidecarActive = false
+    /// `songId` from the desktop's directive, when present (see `SidecarDirective`).
+    private(set) var sidecarSongId: String?
+    /// `artworkId` from the desktop's directive, when present.
+    private(set) var sidecarArtworkId: String?
+    private(set) var sidecarTitle = ""
+    private(set) var sidecarArtist = ""
+    private(set) var sidecarAlbum = ""
+    private(set) var sidecarPosition: Double = 0
+    private(set) var sidecarDuration: Double = 0
+    private(set) var sidecarPlaying = false
+    /// Wall-clock time `sidecarPosition` was captured at, for `SidecarProgressInterpolation`.
+    private(set) var sidecarPositionTimestamp = Date()
+
+    /// Set by `SidecarScreen`'s close button; cleared automatically once the desktop directive
+    /// goes false and then true again (see `SidecarPresentationPolicy.shouldClearDismissal`).
+    private var sidecarLocallyDismissed = false
+    private var sidecarPollTask: Task<Void, Never>?
+
+    /// Whether `SidecarScreen`'s `fullScreenCover` should currently be shown.
+    var isSidecarPresented: Bool {
+        SidecarPresentationPolicy.shouldPresent(active: sidecarActive, locallyDismissed: sidecarLocallyDismissed)
+    }
+
+    /// Starts polling `/v1/remote/state` for the sidecar directive every 2s. Safe to call multiple
+    /// times (cancels any previous task first) — intended to be driven by the app root's
+    /// `scenePhase` becoming `.active`. Coexists with `RemoteControlScreen`'s own polling; both are
+    /// read-only `GET`s against the same endpoint.
+    func startSidecarPolling() {
+        sidecarPollTask?.cancel()
+        sidecarPollTask = Task {
+            while !Task.isCancelled {
+                await sidecarPollOnce()
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+    }
+
+    /// Stops the sidecar poller (app root's `scenePhase` leaving `.active`) and dismisses the
+    /// sidecar screen — it is a foreground-only, display-only surface.
+    func stopSidecarPolling() {
+        sidecarPollTask?.cancel()
+        sidecarPollTask = nil
+        sidecarActive = false
+    }
+
+    /// Local dismissal from `SidecarScreen`'s close button (see `isSidecarPresented`).
+    func dismissSidecarLocally() {
+        sidecarLocallyDismissed = true
+    }
+
+    private func sidecarPollOnce() async {
+        guard let state = try? await withFailover({ try await $0.fetchState() }) else {
+            // Keep the previous sidecar state; a transient failure should not flash the screen away.
+            return
+        }
+        let directive = SidecarDirective.parse(from: state)
+        if SidecarPresentationPolicy.shouldClearDismissal(previousActive: sidecarActive, newActive: directive.active) {
+            sidecarLocallyDismissed = false
+        }
+        sidecarActive = directive.active
+        guard directive.active else { return }
+        sidecarSongId = directive.songId
+        sidecarArtworkId = directive.artworkId
+        sidecarTitle = state["title"] as? String ?? ""
+        sidecarArtist = state["artist"] as? String ?? ""
+        sidecarAlbum = state["album"] as? String ?? ""
+        sidecarPosition = Self.doubleValue(state["position"])
+        sidecarDuration = Self.doubleValue(state["duration"])
+        sidecarPlaying = state["playing"] as? Bool ?? false
+        sidecarPositionTimestamp = Date()
+    }
+
+    private static func doubleValue(_ any: Any?) -> Double {
+        if let d = any as? Double { return d }
+        if let i = any as? Int { return Double(i) }
+        if let n = any as? NSNumber { return n.doubleValue }
+        return 0
+    }
+
     /// Debug-only hook (set via `UXM_DEBUG_LYRICS_SONG`, see `UXMusicMobileApp`) asking
     /// `NowPlayingView` to auto-open its synced-lyrics screen once presented, so the lyrics
     /// motion can be recorded/inspected without driving the tap-through UI by hand.
