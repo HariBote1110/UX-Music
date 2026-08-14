@@ -137,6 +137,8 @@ func (a *App) clearOSNowPlayingState() {
 	a.mediaArtist = ""
 	a.mediaAlbum = ""
 	a.mediaArtwork = ""
+	a.mediaSongID = ""
+	a.mediaArtworkID = ""
 	a.mediaStateMu.Unlock()
 
 	clearOSNowPlaying()

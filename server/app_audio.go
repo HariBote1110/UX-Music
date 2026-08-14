@@ -295,12 +295,21 @@ func (a *App) AudioSetNowPlayingMetadata(metadata map[string]interface{}) error 
 	artist, _ := metadata["artist"].(string)
 	album, _ := metadata["album"].(string)
 	artwork, _ := metadata["artwork"].(string)
+	// Optional: not every caller knows the library song/artwork ID (e.g.
+	// YouTube embeds), so these are additive and default to "" — see
+	// remoteStateHandler's songId/artworkId fields.
+	songID, _ := metadata["songId"].(string)
+	artworkID, _ := metadata["artworkId"].(string)
 
 	playing := false
 	if a.audioPlayer != nil {
 		playing = a.audioPlayer.IsPlaying()
 	}
 	a.updateOSNowPlayingMetadata(title, artist, album, artwork, playing)
+	a.mediaStateMu.Lock()
+	a.mediaSongID = strings.TrimSpace(songID)
+	a.mediaArtworkID = strings.TrimSpace(artworkID)
+	a.mediaStateMu.Unlock()
 	a.pushDiscordPresence(playing)
 	return nil
 }

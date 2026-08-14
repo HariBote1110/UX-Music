@@ -336,6 +336,8 @@ func (ls *LANServer) remoteStateHandler(w http.ResponseWriter, r *http.Request) 
 	status["title"] = ls.app.mediaTitle
 	status["artist"] = ls.app.mediaArtist
 	status["album"] = ls.app.mediaAlbum
+	status["songId"] = ls.app.mediaSongID
+	status["artworkId"] = ls.app.mediaArtworkID
 	ls.app.mediaStateMu.Unlock()
 
 	// Additive relay block for Phase 3-3 (YouTube 音声中継). Existing fields

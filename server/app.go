@@ -43,6 +43,13 @@ type App struct {
 	mediaArtist       string
 	mediaAlbum        string
 	mediaArtwork      string
+	// mediaSongID/mediaArtworkID mirror the currently playing song's library
+	// ID and artwork hash (see artworkIDForRemoteSong), when the caller of
+	// AudioSetNowPlayingMetadata supplies them. Surfaced as top-level
+	// "songId"/"artworkId" in GET /v1/remote/state so mobile clients can
+	// resolve lyrics/artwork by ID instead of fuzzy title matching.
+	mediaSongID    string
+	mediaArtworkID string
 	deviceWatcherStop chan struct{}
 	// bootedOutResidentAgent records whether Startup booted out a resident
 	// `--serve` LaunchAgent to take over port 8765 (see performGUIHandoff in

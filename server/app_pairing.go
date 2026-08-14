@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -217,6 +218,9 @@ func pairingRedeemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := ensureDeviceAuthToken(deviceID)
+	if err := saveRemoteDeviceName(deviceID, req.DisplayName); err != nil {
+		fmt.Printf("[Pairing] Failed to save device display name: %v\n", err)
+	}
 	writeJSON(w, pairingRedeemResponse{
 		DeviceID: deviceID,
 		Token:    token,
