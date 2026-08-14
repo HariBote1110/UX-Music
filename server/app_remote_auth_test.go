@@ -170,6 +170,31 @@ func TestDeviceAuthMiddlewareRejectsWrongToken(t *testing.T) {
 	}
 }
 
+// 認証成功時、リクエストの context に一致した deviceID が付与されること。
+// ハンドラ側（sidecar directive や last-seen 記録）がこの deviceID を参照する。
+func TestDeviceAuthMiddlewareAttachesDeviceIDToContext(t *testing.T) {
+	newTempRemoteStore(t)
+	token := ensureDeviceAuthToken("dev_ctx")
+
+	var gotDeviceID string
+	handler := deviceAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotDeviceID = deviceIDFromContext(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/remote/songs", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("unexpected status: %d", rec.Code)
+	}
+	if gotDeviceID != "dev_ctx" {
+		t.Fatalf("deviceID in context = %q, want %q", gotDeviceID, "dev_ctx")
+	}
+}
+
 // 未ペアリング端末が持つトークン（このホストで発行・保存されていないトークン）は
 // 形式が正しくても拒否されること。
 func TestDeviceAuthMiddlewareRejectsTokenOfUnpairedDevice(t *testing.T) {
