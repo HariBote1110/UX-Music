@@ -28,20 +28,17 @@ struct SidecarScreen: View {
     /// keeps the schedule's entries deterministic across reconstructions, so it settles into the
     /// intended 0.25s cadence instead of restarting every tick.
     @State private var progressScheduleAnchor = Date()
+    /// Extracted (at most once per artwork change — see the `.task(id:)` below) from the current
+    /// track's artwork, feeding `SidecarAmbientBackground`'s Desktop-matched gradient. `nil` while
+    /// unresolved (no explicit `artworkId` on the sidecar directive) or before the first extraction
+    /// completes, in which case the background falls back to a fixed near-black gradient.
+    @State private var ambientPalette: ArtworkPlaybackPalette?
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            NowPlayingAmbientBackground(palette: nil)
+            SidecarAmbientBackground(palette: ambientPalette)
                 .ignoresSafeArea(.all)
-
-            // Darkening scrim so artwork/lyrics text always keeps contrast regardless of the
-            // ambient background's derived palette.
-            LinearGradient(
-                colors: [Color.black.opacity(0.45), Color.black.opacity(0.2), Color.black.opacity(0.5)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea(.all)
+                .animation(.easeInOut(duration: SidecarBackgroundGradient.transitionDuration), value: ambientPalette)
 
             GeometryReader { geo in
                 let isLandscape = geo.size.width > geo.size.height
@@ -49,7 +46,7 @@ struct SidecarScreen: View {
                     if isLandscape {
                         HStack(alignment: .center, spacing: 40) {
                             artworkAndInfo
-                                .frame(maxWidth: geo.size.width * 0.4)
+                                .frame(maxWidth: geo.size.width * 0.4, maxHeight: .infinity)
                             lyricsPane
                         }
                     } else {
@@ -60,14 +57,19 @@ struct SidecarScreen: View {
                     }
                 }
                 .padding(32)
+                // Leaves room at the bottom for the edge-pinned `progressBar` below so the
+                // vertically-centred artwork/text block never grows tall enough to collide with
+                // it (the original bug behind complaint #2 — the seek bar visually landing between
+                // the artist and album labels when the centred content block was tall).
+                .padding(.bottom, 56)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
             VStack {
                 Spacer()
                 progressBar
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 28)
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 14)
             }
 
             NowPlayingNavIconButton(
@@ -98,6 +100,30 @@ struct SidecarScreen: View {
         .task(id: model.sidecarSongId) {
             await reloadLyricsIfNeeded()
         }
+        .task(id: model.sidecarArtworkId) {
+            await reloadAmbientPaletteIfNeeded()
+        }
+    }
+
+    // MARK: - Ambient background
+
+    /// Resolves and caches the artwork palette feeding `SidecarAmbientBackground`. Only keyed off
+    /// `model.sidecarArtworkId` (the directive's explicit artwork id) rather than duplicating
+    /// `SidecarArtworkView`'s fuzzy title/artist library match — the fuzzy-match path is a
+    /// secondary fallback (no `artworkId` in `/v1/remote/state`), and the ambient background simply
+    /// stays at its default near-black gradient in that case rather than every view independently
+    /// re-deriving the resolved id.
+    private func reloadAmbientPaletteIfNeeded() async {
+        guard let artworkId = model.sidecarArtworkId, !artworkId.isEmpty else {
+            ambientPalette = nil
+            return
+        }
+        let urlString = model.artworkURL(for: artworkId)
+        guard !urlString.isEmpty, let url = URL(string: urlString) else {
+            ambientPalette = nil
+            return
+        }
+        ambientPalette = await ArtworkPaletteExtractor.palette(forArtworkURL: url)
     }
 
     // MARK: - Idle chrome visibility
@@ -136,16 +162,32 @@ struct SidecarScreen: View {
 
     private var artworkAndInfo: some View {
         VStack(spacing: 20) {
-            SidecarArtworkView(songId: model.sidecarSongId, artworkId: model.sidecarArtworkId, title: model.sidecarTitle, artist: model.sidecarArtist)
-                .aspectRatio(1, contentMode: .fit)
-                .frame(maxWidth: 420)
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .strokeBorder(.white.opacity(0.14), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.6), radius: 36, y: 20)
-                .padding(.horizontal, 12)
+            // `GeometryReader` here (rather than `.aspectRatio(1, contentMode: .fit)` directly on
+            // the artwork) is what fixes the black-letterboxing-bars bug: `.aspectRatio(.fit)`
+            // depends on the *proposed* size already being close to square, but this column's
+            // proposed box is however tall the HStack row happens to be (which, unconstrained,
+            // does not equal `min(width, height)`). Computing an explicit square side
+            // (`SidecarArtworkLayout.squareSide`) from the column's actual measured bounds and
+            // applying it as a hard `.frame(width:height:)` guarantees a true square regardless of
+            // the column's own aspect ratio or the underlying artwork image's aspect ratio (the
+            // `ArtworkImageView` inside always fills via `.aspectRatio(contentMode: .fill)`).
+            GeometryReader { geo in
+                let side = SidecarArtworkLayout.squareSide(
+                    columnWidth: geo.size.width,
+                    columnHeight: geo.size.height,
+                    margin: 12,
+                    maxSide: 420
+                )
+                SidecarArtworkView(songId: model.sidecarSongId, artworkId: model.sidecarArtworkId, title: model.sidecarTitle, artist: model.sidecarArtist)
+                    .frame(width: side, height: side)
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .strokeBorder(.white.opacity(0.14), lineWidth: 1)
+                    }
+                    .shadow(color: .black.opacity(0.6), radius: 36, y: 20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
 
             VStack(spacing: 6) {
                 Text(model.sidecarTitle.isEmpty ? String(localized: "No track") : model.sidecarTitle)
@@ -229,6 +271,11 @@ struct SidecarScreen: View {
 
     // MARK: - Progress
 
+    /// A thin full-width capsule pinned near the screen's bottom edge (see `body`'s outer
+    /// `VStack { Spacer(); progressBar }`), with the elapsed/remaining monospaced time labels
+    /// inline at its two ends rather than stacked underneath — "シークバーを画面の端っこに配置".
+    /// The capsule itself always stays visible (per `SidecarChromeVisibilityPolicy`'s existing
+    /// "idle elegance" behaviour); only the two time labels fold into the chrome fade.
     private var progressBar: some View {
         TimelineView(.periodic(from: progressScheduleAnchor, by: 0.25)) { context in
             let interpolated = SidecarProgressInterpolation.interpolatedPosition(
@@ -239,9 +286,14 @@ struct SidecarScreen: View {
                 duration: model.sidecarDuration
             )
             let labelsVisible = SidecarChromeVisibilityPolicy.isVisible(lastInteraction: lastInteraction, now: context.date)
-            VStack(spacing: 8) {
+            let fraction = model.sidecarDuration > 0 ? min(1, max(0, interpolated / model.sidecarDuration)) : 0
+
+            HStack(spacing: 10) {
+                Text(sidecarFormatTime(interpolated))
+                    .opacity(labelsVisible ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.4), value: labelsVisible)
+
                 GeometryReader { geo in
-                    let fraction = model.sidecarDuration > 0 ? min(1, max(0, interpolated / model.sidecarDuration)) : 0
                     ZStack(alignment: .leading) {
                         Capsule().fill(.white.opacity(0.16))
                         Capsule().fill(.white.opacity(0.7))
@@ -250,16 +302,12 @@ struct SidecarScreen: View {
                 }
                 .frame(height: 3)
 
-                HStack {
-                    Text(sidecarFormatTime(interpolated))
-                    Spacer()
-                    Text(sidecarFormatTime(max(0, model.sidecarDuration - interpolated)))
-                }
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.45))
-                .opacity(labelsVisible ? 1 : 0)
-                .animation(.easeInOut(duration: 0.4), value: labelsVisible)
+                Text(sidecarFormatTime(max(0, model.sidecarDuration - interpolated)))
+                    .opacity(labelsVisible ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.4), value: labelsVisible)
             }
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.45))
             .onChange(of: context.date) { _, newDate in
                 chromeNow = newDate
             }
@@ -272,6 +320,40 @@ private func sidecarFormatTime(_ seconds: Double) -> String {
     let m = Int(seconds) / 60
     let s = Int(seconds) % 60
     return "\(m):\(String(format: "%02d", s))"
+}
+
+/// Ported from Desktop's fullscreen overlay background (`src/renderer/styles/components.css:1764-
+/// 1776`, `.fs-overlay`): a 135°-diagonal two-stop linear gradient between the artwork's two
+/// dominant colours, each mixed 30% into a near-black `#0e0e1a` base
+/// (`SidecarBackgroundGradient.mixedStop`). `.topLeading`/`.bottomTrailing` approximates CSS's
+/// 135deg direction (down-and-right diagonal) — SwiftUI's `LinearGradient` has no raw degree API.
+/// Falls back to a fixed near-black gradient (rather than the old `NowPlayingAmbientBackground`
+/// pink/blue default) when no palette has been extracted yet, matching Desktop's
+/// `setDefaultColors()` fallback being *dark*, not brand-coloured, before the first extraction.
+private struct SidecarAmbientBackground: View {
+    let palette: ArtworkPlaybackPalette?
+
+    private static let fallbackBase = Color(red: 14.0 / 255.0, green: 14.0 / 255.0, blue: 26.0 / 255.0)
+
+    var body: some View {
+        LinearGradient(
+            colors: [stop1, stop2],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private var stop1: Color {
+        guard let palette else { return Self.fallbackBase }
+        let mixed = SidecarBackgroundGradient.mixedStop(from: palette.swatch1)
+        return Color(red: mixed.0, green: mixed.1, blue: mixed.2)
+    }
+
+    private var stop2: Color {
+        guard let palette else { return Self.fallbackBase }
+        let mixed = SidecarBackgroundGradient.mixedStop(from: palette.swatch2)
+        return Color(red: mixed.0, green: mixed.1, blue: mixed.2)
+    }
 }
 
 /// Resolves the sidecar's artwork: uses `artworkId` directly when the directive supplied one,
@@ -350,9 +432,22 @@ private struct SidecarSyncedLyricsList: View {
                     ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
                         let distance = abs(index - activeIndex)
                         let isActive = index == activeIndex
+                        // Same font size for every line — the active/inactive distinction is a
+                        // `scaleEffect`, matching Desktop's `.fs-lyrics-inner.fs-lrc p.active {
+                        // transform: ... scale(1.091); }` (`components.css:2158-2162`) rather than
+                        // swapping font sizes, plus a per-line stagger delay proportional to
+                        // distance from the active line (Desktop's `MOTION_DELAY_STEP_MS`,
+                        // `fullscreen-view.ts`'s `applyLyricsMotion`) so the ripple settles outward
+                        // from the active line instead of every line snapping in lockstep.
                         Text(line.text.isEmpty ? " " : line.text)
-                            .font(.system(size: isActive ? 23 : 18, weight: isActive ? .bold : .regular, design: .rounded))
+                            .font(.system(size: 18, weight: isActive ? .bold : .regular, design: .rounded))
                             .foregroundStyle(.white.opacity(SidecarSyncedLyricsList.opacity(forDistance: distance, isActive: isActive)))
+                            .scaleEffect(isActive ? SidecarLyricsMotionPolicy.activeLineScale : 1, anchor: .leading)
+                            .animation(
+                                .easeInOut(duration: SidecarLyricsMotionPolicy.duration)
+                                    .delay(SidecarLyricsMotionPolicy.staggerDelay(forDistance: distance)),
+                                value: activeIndex
+                            )
                             .id(line.id)
                     }
                 }
@@ -361,8 +456,11 @@ private struct SidecarSyncedLyricsList: View {
             }
             .onChange(of: activeIndex) { _, newValue in
                 guard lines.indices.contains(newValue) else { return }
-                withAnimation(.easeOut(duration: 0.35)) {
-                    proxy.scrollTo(lines[newValue].id, anchor: .center)
+                // `SidecarLyricsMotionPolicy.scrollAnchor` (`y: 0.35`) matches Desktop's
+                // `ANCHOR_RATIO = 0.35` — the active line settles 35% down the pane rather than
+                // dead centre — and the duration matches `MOTION_DURATION_MS = 800`.
+                withAnimation(.easeInOut(duration: SidecarLyricsMotionPolicy.duration)) {
+                    proxy.scrollTo(lines[newValue].id, anchor: SidecarLyricsMotionPolicy.scrollAnchor)
                 }
             }
             .background(
