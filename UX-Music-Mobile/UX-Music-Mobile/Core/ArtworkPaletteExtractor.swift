@@ -10,6 +10,12 @@ struct ArtworkPlaybackPalette: Equatable {
     var bottom: (Double, Double, Double)
     /// Slider tint and soft radial highlights.
     var accent: (Double, Double, Double)
+    /// Saturation-boosted (but otherwise undarkened) leading/trailing region averages — the raw
+    /// two-swatch input `SidecarBackgroundGradient` mixes towards near-black, mirroring Desktop's
+    /// two dominant-colour extraction feeding `--eq-color-1`/`--eq-color-2`
+    /// (`src/renderer/js/ui/utils.ts`'s `setEqualizerColorFromArtwork`).
+    var swatch1: (Double, Double, Double)
+    var swatch2: (Double, Double, Double)
 
     var topColor: Color { Color(red: top.0, green: top.1, blue: top.2) }
     var bottomColor: Color { Color(red: bottom.0, green: bottom.1, blue: bottom.2) }
@@ -17,6 +23,7 @@ struct ArtworkPlaybackPalette: Equatable {
 
     static func == (lhs: ArtworkPlaybackPalette, rhs: ArtworkPlaybackPalette) -> Bool {
         lhs.top == rhs.top && lhs.bottom == rhs.bottom && lhs.accent == rhs.accent
+            && lhs.swatch1 == rhs.swatch1 && lhs.swatch2 == rhs.swatch2
     }
 }
 
@@ -123,7 +130,9 @@ enum ArtworkPaletteExtractor {
                 clamp(accent.0 * 0.55 + 0.25),
                 clamp(accent.1 * 0.55 + 0.25),
                 clamp(accent.2 * 0.55 + 0.25)
-            )
+            ),
+            swatch1: boostSaturation(leadingAvg, amount: 1.25),
+            swatch2: boostSaturation(trailingAvg, amount: 1.25)
         )
     }
 

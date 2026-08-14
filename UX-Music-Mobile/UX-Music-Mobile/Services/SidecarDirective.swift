@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import UIKit
 
 /// Parsed "sidecar" directive from `GET /v1/remote/state`'s `"sidecar": {"active": Bool}` field,
@@ -123,6 +124,72 @@ enum SidecarChromeVisibilityPolicy {
     ///   - idleThreshold: seconds of inactivity after which the chrome fades out.
     static func isVisible(lastInteraction: Date, now: Date, idleThreshold: TimeInterval = defaultIdleThreshold) -> Bool {
         now.timeIntervalSince(lastInteraction) < idleThreshold
+    }
+}
+
+/// Computes the artwork's square side length for `SidecarScreen`'s left column, guaranteeing a
+/// perfect square (no letterboxing bars) regardless of the column's own aspect ratio: the square is
+/// capped by whichever of the column's width/height (after margins) is shorter, and never exceeds
+/// `maxSide`. Kept pure so the sizing decision is unit-testable without a `GeometryReader` runtime.
+enum SidecarArtworkLayout {
+    static func squareSide(columnWidth: CGFloat, columnHeight: CGFloat, margin: CGFloat, maxSide: CGFloat) -> CGFloat {
+        let shorter = min(columnWidth, columnHeight) - margin
+        return min(max(0, shorter), maxSide)
+    }
+}
+
+/// Ported from Desktop's fullscreen lyrics motion (`src/renderer/js/features/fullscreen-view.ts`'s
+/// `applyLyricsMotion`, `ANCHOR_RATIO`/`MOTION_DURATION_MS`/`MOTION_DELAY_STEP_MS`, plus the
+/// `.fs-lyrics-inner.fs-lrc p.active` `scale(1.091)` in `components.css:2158-2162`). Parameters
+/// `SidecarSyncedLyricsList` applies to its `ScrollViewReader.scrollTo` and per-line
+/// transform/opacity animations so the motion feel matches the desktop fullscreen player instead of
+/// the previous flat 0.35s ease-out scroll.
+enum SidecarLyricsMotionPolicy {
+    /// `MOTION_DURATION_MS = 800` (`fullscreen-view.ts`).
+    static let duration: TimeInterval = 0.8
+    /// `MOTION_DELAY_STEP_MS = 40` — each line's transition is staggered by its distance from the
+    /// active line (`fullscreen-view.ts`'s `applyLyricsMotion`: `dist * MOTION_DELAY_STEP_MS`).
+    static let staggerStep: TimeInterval = 0.04
+    /// `ANCHOR_RATIO = 0.35` — the active line sits 35% down the lyrics pane, not dead centre
+    /// (`fullscreen-view.ts`).
+    static let scrollAnchor = UnitPoint(x: 0.5, y: 0.35)
+    /// `.fs-lyrics-inner.fs-lrc p.active { transform: ... scale(1.091); }` (`components.css:2160`).
+    static let activeLineScale: CGFloat = 1.091
+
+    /// - Parameter distance: `abs(index - activeIndex)`, as computed by callers; defensively
+    ///   clamped to `>= 0` so a negative input can never yield a negative (i.e. "starts before now")
+    ///   delay.
+    static func staggerDelay(forDistance distance: Int) -> TimeInterval {
+        TimeInterval(max(0, distance)) * staggerStep
+    }
+}
+
+/// Ported from Desktop's fullscreen overlay background recipe (`src/renderer/styles/components.css`
+/// lines 1764-1776, `.fs-overlay`): a two-stop 135° linear gradient between the artwork's two
+/// dominant colours, each mixed 30% into a near-black base (`#0e0e1a`) via CSS `color-mix`, with a
+/// 1.2s ease transition whenever the colours change (on track change). Kept pure/testable — the
+/// `Color` construction and the 1.2s `.animation(...)` live in `SidecarScreen`'s view code.
+enum SidecarBackgroundGradient {
+    /// `#0e0e1a` in 0…1 sRGB — the near-black `color-mix` base from `components.css:1770-1771`.
+    static let mixBase: (Double, Double, Double) = (14.0 / 255.0, 14.0 / 255.0, 26.0 / 255.0)
+    /// The `30%` in `color-mix(in srgb, var(--fs-bg-N) 30%, #0e0e1a)`.
+    static let mixRatio: Double = 0.30
+    /// `transition: background 1.2s ease` (`components.css:1776`).
+    static let transitionDuration: TimeInterval = 1.2
+
+    /// Mixes an artwork swatch `ratio` of the way towards `mixBase`, matching CSS `color-mix`'s
+    /// linear per-channel blend (`result = swatch * ratio + base * (1 - ratio)`).
+    static func mixedStop(
+        from swatch: (Double, Double, Double),
+        ratio: Double = mixRatio,
+        base: (Double, Double, Double) = mixBase
+    ) -> (Double, Double, Double) {
+        let clampedRatio = min(1, max(0, ratio))
+        return (
+            swatch.0 * clampedRatio + base.0 * (1 - clampedRatio),
+            swatch.1 * clampedRatio + base.1 * (1 - clampedRatio),
+            swatch.2 * clampedRatio + base.2 * (1 - clampedRatio)
+        )
     }
 }
 
