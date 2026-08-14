@@ -8,6 +8,27 @@ import SwiftUI
 /// side, a thin progress bar along the bottom. The close button and time labels fade out after a
 /// few seconds of inactivity for an "idle elegance" ambient look (`SidecarChromeVisibilityPolicy`);
 /// any tap brings them back.
+/// Named spacing constants for the landscape sidecar layout (`SidecarScreen.body`/`artworkAndInfo`).
+/// Tuned by iterative screenshot comparison so the artwork/title block reads as one composed unit
+/// and the two columns feel related rather than floating apart — see `progress/sidecar-lyrics-fade-and-spacing.md`.
+private enum SidecarLayoutSpacing {
+    /// Gap between the artwork column and the lyrics pane. Was `40`pt, which combined with the
+    /// artwork column's own internal centring left a wide dead zone between the two columns.
+    static let columnGap: CGFloat = 20
+    /// Fraction of the available width the artwork column claims. Narrowed from `0.4` so the
+    /// artwork itself (capped at `SidecarArtworkLayout`'s `maxSide`) sits closer to the lyrics pane
+    /// instead of centring within an oversized column.
+    static let artworkColumnWidthFraction: CGFloat = 0.3
+    /// Gap between the artwork and the title/artist/album block below it. Was `20`pt.
+    static let artworkToInfoGap: CGFloat = 16
+    /// Gap between the title, artist, and album lines. Was `6`pt.
+    static let infoLineGap: CGFloat = 8
+    /// Outer padding around the whole landscape content (artwork column + lyrics pane). Was `32`pt.
+    static let contentOuterPadding: CGFloat = 28
+    /// Extra bottom clearance reserved for the edge-pinned `progressBar`. Was `56`pt.
+    static let contentBottomClearance: CGFloat = 48
+}
+
 struct SidecarScreen: View {
     @Environment(AppModel.self) private var model
     @State private var lyricsLines: [LRCParser.TimedLine] = []
@@ -44,9 +65,9 @@ struct SidecarScreen: View {
                 let isLandscape = geo.size.width > geo.size.height
                 Group {
                     if isLandscape {
-                        HStack(alignment: .center, spacing: 40) {
+                        HStack(alignment: .center, spacing: SidecarLayoutSpacing.columnGap) {
                             artworkAndInfo
-                                .frame(maxWidth: geo.size.width * 0.4, maxHeight: .infinity)
+                                .frame(maxWidth: geo.size.width * SidecarLayoutSpacing.artworkColumnWidthFraction, maxHeight: .infinity)
                             lyricsPane
                         }
                     } else {
@@ -56,12 +77,12 @@ struct SidecarScreen: View {
                         }
                     }
                 }
-                .padding(32)
+                .padding(SidecarLayoutSpacing.contentOuterPadding)
                 // Leaves room at the bottom for the edge-pinned `progressBar` below so the
                 // vertically-centred artwork/text block never grows tall enough to collide with
                 // it (the original bug behind complaint #2 — the seek bar visually landing between
                 // the artist and album labels when the centred content block was tall).
-                .padding(.bottom, 56)
+                .padding(.bottom, SidecarLayoutSpacing.contentBottomClearance)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
@@ -161,7 +182,7 @@ struct SidecarScreen: View {
     // MARK: - Artwork + track info
 
     private var artworkAndInfo: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: SidecarLayoutSpacing.artworkToInfoGap) {
             // `GeometryReader` here (rather than `.aspectRatio(1, contentMode: .fit)` directly on
             // the artwork) is what fixes the black-letterboxing-bars bug: `.aspectRatio(.fit)`
             // depends on the *proposed* size already being close to square, but this column's
@@ -189,7 +210,7 @@ struct SidecarScreen: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
-            VStack(spacing: 6) {
+            VStack(spacing: SidecarLayoutSpacing.infoLineGap) {
                 Text(model.sidecarTitle.isEmpty ? String(localized: "No track") : model.sidecarTitle)
                     .font(.system(size: 30, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
@@ -216,27 +237,30 @@ struct SidecarScreen: View {
 
     @ViewBuilder
     private var lyricsPane: some View {
-        if !lyricsLines.isEmpty {
-            SidecarSyncedLyricsList(lines: lyricsLines)
-        } else if let plain = lyricsPlainText, !plain.isEmpty {
-            ScrollView {
-                Text(plain)
-                    .font(.system(size: 18, weight: .regular, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.trailing, 8)
+        Group {
+            if !lyricsLines.isEmpty {
+                SidecarSyncedLyricsList(lines: lyricsLines)
+            } else if let plain = lyricsPlainText, !plain.isEmpty {
+                ScrollView {
+                    Text(plain)
+                        .font(.system(size: 18, weight: .regular, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.trailing, 8)
+                }
+            } else {
+                VStack(spacing: 14) {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 56, weight: .ultraLight))
+                        .foregroundStyle(.white.opacity(0.22))
+                    Text(String(localized: "No Lyrics"))
+                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        } else {
-            VStack(spacing: 14) {
-                Image(systemName: "music.note")
-                    .font(.system(size: 56, weight: .ultraLight))
-                    .foregroundStyle(.white.opacity(0.22))
-                Text(String(localized: "No Lyrics"))
-                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.35))
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .mask(SidecarLyricsEdgeFade.gradient)
     }
 
     private func reloadLyricsIfNeeded() async {
@@ -320,6 +344,31 @@ private func sidecarFormatTime(_ seconds: Double) -> String {
     let m = Int(seconds) / 60
     let s = Int(seconds) % 60
     return "\(m):\(String(format: "%02d", s))"
+}
+
+/// Soft top/bottom dissolve for `lyricsPane`, so lines scroll into and out of view rather than
+/// being hard-clipped by the pane's bounds — ported 1:1 from Desktop's fullscreen lyrics container
+/// (`src/renderer/styles/components.css:2072-2078`, `.fs-lyrics-container`'s `mask-image`/
+/// `-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent
+/// 100%)`). The stops are intentionally asymmetric (an 8%-deep fade at the top, a 30%-deep fade at
+/// the bottom) — that asymmetry is Desktop's own choice, kept here for parity rather than "fixed"
+/// into a symmetric fade.
+private enum SidecarLyricsEdgeFade {
+    static let topOpaqueStop: CGFloat = 0.08
+    static let bottomOpaqueStop: CGFloat = 0.70
+
+    static var gradient: LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: .black.opacity(0), location: 0),
+                .init(color: .black, location: topOpaqueStop),
+                .init(color: .black, location: bottomOpaqueStop),
+                .init(color: .black.opacity(0), location: 1),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
 }
 
 /// Ported from Desktop's fullscreen overlay background (`src/renderer/styles/components.css:1764-
