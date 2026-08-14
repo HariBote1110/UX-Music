@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,43 @@ import (
 
 	"ux-music-sidecar/internal/store"
 )
+
+// TestPairingRedeem_PersistsDisplayNameForRemoteDeviceList verifies that a
+// displayName supplied at /v1/pairing/redeem time (the mobile pairing flow)
+// is persisted and later surfaced by ListPairedRemoteDevices, so the
+// sidecar target picker UI can show a human-readable name instead of a bare
+// deviceID.
+func TestPairingRedeem_PersistsDisplayNameForRemoteDeviceList(t *testing.T) {
+	newTempRemoteStore(t)
+	app := NewApp()
+	secret := newPairingRedeemSecret()
+
+	body, _ := json.Marshal(pairingRedeemRequest{
+		Secret:      secret,
+		DeviceID:    "dev_named",
+		DisplayName: "Yuki's iPhone",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/pairing/redeem", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	pairingRedeemHandler(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("redeem status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+
+	devices := app.ListPairedRemoteDevices()
+	found := false
+	for _, d := range devices {
+		if d.DeviceID == "dev_named" {
+			found = true
+			if d.DisplayName != "Yuki's iPhone" {
+				t.Fatalf("DisplayName = %q, want %q", d.DisplayName, "Yuki's iPhone")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("dev_named not present in ListPairedRemoteDevices")
+	}
+}
 
 func TestRemoteStateHandler_SidecarActiveOnlyForTargetDevice(t *testing.T) {
 	newTempRemoteStore(t)
