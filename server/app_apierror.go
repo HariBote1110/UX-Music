@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -13,6 +14,19 @@ import (
 
 	"ux-music-sidecar/internal/store"
 )
+
+// deviceIDContextKey is the typed context key under which deviceAuthMiddleware
+// attaches the authenticated caller's deviceID, for handlers that need to
+// know who is calling (e.g. the sidecar directive, last-seen tracking).
+type deviceIDContextKey struct{}
+
+// deviceIDFromContext returns the authenticated deviceID attached by
+// deviceAuthMiddleware, or "" if the request context carries none (e.g.
+// public endpoints that bypass authentication).
+func deviceIDFromContext(ctx context.Context) string {
+	id, _ := ctx.Value(deviceIDContextKey{}).(string)
+	return id
+}
 
 // deviceAuthTokensSettingsKey stores a map[deviceID]token shared by every LAN
 // API caller (mobile companions, Apple Watch, and desktop sync peers alike).
@@ -91,11 +105,13 @@ func deviceAuthMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if !lanRequestHasValidDeviceToken(r) {
+		deviceID, ok := lanRequestDeviceID(r)
+		if !ok {
 			writeAPIError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		next.ServeHTTP(w, r)
+		recordRemoteDeviceLastSeen(deviceID)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), deviceIDContextKey{}, deviceID)))
 	})
 }
 
@@ -113,7 +129,9 @@ func isMediaQueryTokenEndpoint(path string) bool {
 	return strings.HasPrefix(path, "/v1/remote/file") || strings.HasPrefix(path, "/v1/remote/artwork/")
 }
 
-func lanRequestHasValidDeviceToken(r *http.Request) bool {
+// lanRequestDeviceID validates the request's device token and returns the
+// matched deviceID, or ("", false) if the token is missing or invalid.
+func lanRequestDeviceID(r *http.Request) (string, bool) {
 	token := ""
 	if auth := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(strings.ToLower(auth), "bearer ") {
 		token = strings.TrimSpace(auth[len("bearer "):])
@@ -122,31 +140,41 @@ func lanRequestHasValidDeviceToken(r *http.Request) bool {
 		token = strings.TrimSpace(r.URL.Query().Get("token"))
 	}
 	if token == "" {
-		return false
+		return "", false
 	}
 	return deviceTokenIsValid(token)
 }
 
-func deviceTokenIsValid(token string) bool {
+// lanRequestHasValidDeviceToken is a bool-only convenience wrapper around
+// lanRequestDeviceID, kept for call sites that do not need the deviceID.
+func lanRequestHasValidDeviceToken(r *http.Request) bool {
+	_, ok := lanRequestDeviceID(r)
+	return ok
+}
+
+// deviceTokenIsValid checks token against every entry in deviceAuthTokens,
+// returning the matched deviceID alongside the bool for callers that need to
+// know who authenticated (not just that someone did).
+func deviceTokenIsValid(token string) (string, bool) {
 	token = strings.TrimSpace(token)
 	if token == "" {
-		return false
+		return "", false
 	}
 	settings, err := store.Instance.LoadMap("settings")
 	if err != nil {
-		return false
+		return "", false
 	}
 	rawTokens, _ := settings[deviceAuthTokensSettingsKey].(map[string]interface{})
-	for _, raw := range rawTokens {
+	for deviceID, raw := range rawTokens {
 		expected, ok := raw.(string)
 		if !ok {
 			continue
 		}
 		if len(token) == len(expected) && subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1 {
-			return true
+			return deviceID, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // ensureDeviceAuthToken returns the existing token for deviceID, generating
