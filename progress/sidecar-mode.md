@@ -10,6 +10,8 @@
 - ペアリング redeem 時の `DisplayName`（リクエストに元々存在したが未使用だった）を新設定キー `remoteDeviceNames` に永続化し、デバイス一覧の表示名に使用。
 - iOS側ローカル解除（×ボタン）は「directive が一度 false に戻るまで再提示を抑制」する純関数ポリシー（`SidecarPresentationPolicy`）で実装。
 
+- 追補（フィードバック対応）: (1) デバイス名は再ペアリング不要で直すため、クライアントが認証済みLANリクエスト全てに `X-Device-Name` ヘッダで名乗り、サーバーは値が変わった時だけ `remoteDeviceNames` へ保存（毎ポーリング書込み回避、64文字上限、CORS許可リストへ追加）。非ASCII名はURLSessionが素通しすることを実測確認し無加工で送信。 (2) サイドカー表示中は横画面固定: `AppDelegate` の `supportedInterfaceOrientationsFor` が静的 `SidecarOrientationLock` を参照し、表示時に `.landscape`＋`requestGeometryUpdate`、解除で `.all` に復帰（判定は純関数 `SidecarOrientationPolicy`）。 (3) ビジュアル刷新: 角丸+影+微ボーダーのジャケット、タイポ階層、歌詞アクティブ行強調と距離減衰、5秒無操作で操作UIフェード（`SidecarChromeVisibilityPolicy`、純関数）。
+
 ## Alternatives considered
 - **Mobile起点の自動昇格（横向き+給電+再生中で自動遷移）**: StandBy的で魅力はあるが、Mac側操作だけで完結する動線を本線にしたため第2段のオプション扱いに格下げ（未実装）。
 - **SSE/WebSocket化**: ボタン押下→表示まで最大2秒の遅延はポーリングで許容と判断。体感が悪ければ後日push化。

@@ -150,7 +150,7 @@ export function HandleLyricsDrop(arg1:Array<string>):Promise<void>;
 
 export function IncrementPlayCount(arg1:Record<string, any>):Promise<void>;
 
-export function ListPairedRemoteDevices():Promise<Array<Record<string, any>>>;
+export function ListPairedRemoteDevices():Promise<Array<server.PairedRemoteDevice>>;
 
 export function ListSyncDevices():Promise<Array<server.SyncDeviceRecord>>;
 

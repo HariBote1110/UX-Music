@@ -560,6 +560,24 @@ export namespace server {
 	        this.bands = source["bands"];
 	    }
 	}
+	export class PairedRemoteDevice {
+	    deviceId: string;
+	    displayName: string;
+	    lastSeenAt: string;
+	    online: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PairedRemoteDevice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.deviceId = source["deviceId"];
+	        this.displayName = source["displayName"];
+	        this.lastSeenAt = source["lastSeenAt"];
+	        this.online = source["online"];
+	    }
+	}
 	export class PerformanceSnapshot {
 	    timestampUtc: string;
 	    processRssMb: number;
