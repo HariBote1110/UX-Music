@@ -409,14 +409,43 @@ private struct SidecarArtworkView: View {
 /// rather than duplicating the motion system for a secondary, glanceable display). The active line
 /// is full-opacity/larger/bold; neighbouring lines dim further the more lines away from active they
 /// are, so the eye is drawn to the current lyric without the rest of the pane feeling empty.
+/// Collects each line's own (unscaled, pre-transform) rendered height, keyed by index — mirrors
+/// Desktop's `cachedLrcHeights` (`fullscreen-view.ts`'s `applyLyricsMotion`), which measures each
+/// `<p>`'s `getBoundingClientRect().height` once and reuses it for the cumulative layout sum.
+private struct SidecarLineHeightKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+/// Renders lyric lines exactly like Desktop's fullscreen LRC pane
+/// (`.fs-lyrics-inner.fs-lrc`, `components.css:2137-2162`, driven by `applyLyricsMotion` in
+/// `fullscreen-view.ts:392-426`): **each line moves independently**, absolutely positioned by its
+/// own animated `y` offset, rather than the whole list being scrolled as one unit. The active line
+/// is anchored at `paneHeight * ANCHOR_RATIO` (`SidecarLyricsLayout.anchorRatio`); every other line
+/// stacks above/below it via a running sum of `height + interBlockGap` — computed by
+/// `SidecarLyricsLayout.tops`, ported 1:1 from `applyLyricsMotion`. Each line's transform animates
+/// over `MOTION_DURATION_MS` with a `dist * MOTION_DELAY_STEP_MS` start delay, using CSS's default
+/// `ease` timing function (`cubic-bezier(0.25, 0.1, 0.25, 1.0)` — Desktop sets no
+/// `transition-timing-function`, so the UA default applies), matching `components.css:2154-2156`'s
+/// `transition-property: transform, opacity, color`.
+///
+/// Styling is intentionally minimal — only what `components.css:2143-2162` actually specifies:
+/// bold weight on every line (Desktop never swaps weight), colour `rgba(255,255,255,0.45)` inactive
+/// vs `#fff` active (a flat two-state swap, no distance-based opacity falloff — Desktop has none),
+/// `scale(1.091)` from the leading edge on the active line only, and its `text-shadow: 0 0 24px
+/// rgba(255,255,255,0.15)` glow. No previous port's extra embellishments survive here.
 private struct SidecarSyncedLyricsList: View {
     @Environment(AppModel.self) private var model
     let lines: [LRCParser.TimedLine]
 
-    /// Updated at most once per actual line change (see `SidecarActiveLineUpdatePolicy`) rather
-    /// than on every 0.2s tick, so the `ForEach` below only re-diffs when the highlighted line
+    /// `-1` means "nothing active yet" (before the first line's timestamp — see
+    /// `SidecarLyricsMotionPolicy.activeIndex`), matching Desktop's `applyLyricsMotion(-1, true)`
+    /// initial state. Updated at most once per actual line change (`SidecarActiveLineUpdatePolicy`)
+    /// rather than on every 0.2s tick, so this view only re-diffs when the highlighted line
     /// genuinely moves instead of 5x/sec for as long as the sidecar screen is on screen.
-    @State private var activeIndex = 0
+    @State private var activeIndex = -1
     /// Stable anchor for the `TimelineView` below — see `SidecarScreen.progressScheduleAnchor`'s
     /// doc comment for why `.now` (re-evaluated on every reconstruction) is unsafe whenever the
     /// tick can write `@State` that this view itself reads (here, `activeIndex` via
@@ -424,70 +453,78 @@ private struct SidecarSyncedLyricsList: View {
     /// reconstruction per genuine line change rather than an unbounded loop, but a fixed anchor
     /// removes the footgun entirely.
     @State private var lyricsScheduleAnchor = Date()
+    /// Per-line measured heights (index → height), fed by `SidecarLineHeightKey`. Missing entries
+    /// (not yet measured, e.g. a line never rendered because it's far outside the viewport margin)
+    /// fall back to `Self.fallbackLineHeight` for the layout sum — same "reuse a placeholder until
+    /// measured" approach as Desktop's `cachedLrcHeights`.
+    @State private var lineHeights: [Int: CGFloat] = [:]
+
+    /// Placeholder height used for any line not yet measured, so far-off lines can still be slotted
+    /// into the cumulative layout before they've ever been rendered once.
+    private static let fallbackLineHeight: CGFloat = 44
+    /// Lines whose computed `y` falls further than this outside the pane's `[0, paneHeight]` range
+    /// are skipped entirely, bounding the number of live views/animations to roughly what's visible
+    /// (plus a small margin for lines animating into frame) instead of the whole song.
+    private static let renderMargin: CGFloat = 400
+    /// CSS's default `transition-timing-function: ease` (Desktop sets no explicit timing function
+    /// on `.fs-lyrics-inner.fs-lrc p`, so the UA default `ease` applies).
+    private static let easing = (0.25, 0.1, 0.25, 1.0)
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                        let distance = abs(index - activeIndex)
+        GeometryReader { paneGeo in
+            let paneHeight = paneGeo.size.height
+            let heights = (0..<lines.count).map { lineHeights[$0] ?? Self.fallbackLineHeight }
+            let baseIndex = lines.isEmpty ? 0 : min(max(0, activeIndex), lines.count - 1)
+            let tops = SidecarLyricsLayout.tops(heights: heights, baseIndex: baseIndex, paneHeight: paneHeight)
+
+            ZStack(alignment: .topLeading) {
+                ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                    let y = index < tops.count ? tops[index] : 0
+                    if y > -Self.renderMargin && y < paneHeight + Self.renderMargin {
                         let isActive = index == activeIndex
-                        // Same font size for every line — the active/inactive distinction is a
-                        // `scaleEffect`, matching Desktop's `.fs-lyrics-inner.fs-lrc p.active {
-                        // transform: ... scale(1.091); }` (`components.css:2158-2162`) rather than
-                        // swapping font sizes, plus a per-line stagger delay proportional to
-                        // distance from the active line (Desktop's `MOTION_DELAY_STEP_MS`,
-                        // `fullscreen-view.ts`'s `applyLyricsMotion`) so the ripple settles outward
-                        // from the active line instead of every line snapping in lockstep.
+                        let distance = abs(index - baseIndex)
                         Text(line.text.isEmpty ? " " : line.text)
-                            .font(.system(size: 18, weight: isActive ? .bold : .regular, design: .rounded))
-                            .foregroundStyle(.white.opacity(SidecarSyncedLyricsList.opacity(forDistance: distance, isActive: isActive)))
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white.opacity(isActive ? 1 : 0.45))
+                            .shadow(color: .white.opacity(isActive ? 0.15 : 0), radius: isActive ? 24 : 0)
+                            .frame(width: paneGeo.size.width / SidecarLyricsMotionPolicy.activeLineScale, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
                             .scaleEffect(isActive ? SidecarLyricsMotionPolicy.activeLineScale : 1, anchor: .leading)
+                            .offset(y: y)
                             .animation(
-                                .easeInOut(duration: SidecarLyricsMotionPolicy.duration)
+                                .timingCurve(Self.easing.0, Self.easing.1, Self.easing.2, Self.easing.3, duration: SidecarLyricsMotionPolicy.duration)
                                     .delay(SidecarLyricsMotionPolicy.staggerDelay(forDistance: distance)),
-                                value: activeIndex
+                                value: y
                             )
-                            .id(line.id)
+                            .background(
+                                GeometryReader { lineGeo in
+                                    Color.clear.preference(key: SidecarLineHeightKey.self, value: [index: lineGeo.size.height])
+                                }
+                            )
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, 8)
             }
-            .onChange(of: activeIndex) { _, newValue in
-                guard lines.indices.contains(newValue) else { return }
-                // `SidecarLyricsMotionPolicy.scrollAnchor` (`y: 0.35`) matches Desktop's
-                // `ANCHOR_RATIO = 0.35` — the active line settles 35% down the pane rather than
-                // dead centre — and the duration matches `MOTION_DURATION_MS = 800`.
-                withAnimation(.easeInOut(duration: SidecarLyricsMotionPolicy.duration)) {
-                    proxy.scrollTo(lines[newValue].id, anchor: SidecarLyricsMotionPolicy.scrollAnchor)
-                }
+            .onPreferenceChange(SidecarLineHeightKey.self) { newHeights in
+                lineHeights.merge(newHeights) { _, new in new }
             }
-            .background(
-                TimelineView(.periodic(from: lyricsScheduleAnchor, by: 0.2)) { context in
-                    Color.clear
-                        .task(id: context.date) {
-                            let interpolated = SidecarProgressInterpolation.interpolatedPosition(
-                                position: model.sidecarPosition,
-                                timestamp: model.sidecarPositionTimestamp,
-                                playing: model.sidecarPlaying,
-                                now: context.date,
-                                duration: model.sidecarDuration
-                            )
-                            let newActive = LRCParser.activeLineIndex(in: lines, at: interpolated)
-                            if SidecarActiveLineUpdatePolicy.shouldUpdate(currentIndex: activeIndex, newIndex: newActive) {
-                                activeIndex = newActive
-                            }
-                        }
-                }
-            )
         }
-    }
-
-    /// Distance-based opacity falloff for non-active lines: the active line is fully opaque, and
-    /// each further line away dims a bit more, bottoming out at a low but still legible floor.
-    private static func opacity(forDistance distance: Int, isActive: Bool) -> Double {
-        guard !isActive else { return 1 }
-        return max(0.2, 0.55 - Double(distance) * 0.08)
+        .background(
+            TimelineView(.periodic(from: lyricsScheduleAnchor, by: 0.2)) { context in
+                Color.clear
+                    .task(id: context.date) {
+                        let interpolated = SidecarProgressInterpolation.interpolatedPosition(
+                            position: model.sidecarPosition,
+                            timestamp: model.sidecarPositionTimestamp,
+                            playing: model.sidecarPlaying,
+                            now: context.date,
+                            duration: model.sidecarDuration
+                        )
+                        let newActive = SidecarLyricsMotionPolicy.activeIndex(in: lines, at: interpolated)
+                        if SidecarActiveLineUpdatePolicy.shouldUpdate(currentIndex: activeIndex, newIndex: newActive) {
+                            activeIndex = newActive
+                        }
+                    }
+            }
+        )
     }
 }
