@@ -137,7 +137,7 @@ export function formatSongTitle(title) {
 }
 
 
-type ContextMenuItem = {
+export type ContextMenuItem = {
     label?: string;
     type?: 'separator';
     action?: () => void;
