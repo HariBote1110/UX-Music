@@ -219,3 +219,97 @@ func TestDeviceAuthMiddlewareRejectsTokenOfUnpairedDevice(t *testing.T) {
 		t.Fatal("unpaired device token reached sensitive handler")
 	}
 }
+
+// X-Device-Name ヘッダーを伴う認証済みリクエストは、その名前を
+// remoteDeviceNames へ自己申告として反映すること。ペアリング前に登録された
+// 端末など、リダイレクト時に表示名が取得できなかったケースを救済する。
+func TestDeviceAuthMiddlewareSelfReportsDeviceNameFromHeader(t *testing.T) {
+	newTempRemoteStore(t)
+	token := ensureDeviceAuthToken("dev_name")
+
+	handler := deviceAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/remote/songs", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Device-Name", "  Yuki's iPhone  ")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("unexpected status: %d", rec.Code)
+	}
+	if got := remoteDeviceNameFor("dev_name"); got != "Yuki's iPhone" {
+		t.Fatalf("remoteDeviceNameFor = %q, want trimmed %q", got, "Yuki's iPhone")
+	}
+}
+
+// 既に同じ名前が保存済みの場合は設定への再書き込みを行わないこと（毎回の
+// ポーリングで無駄な store 書き込みが発生するのを防ぐ）。
+func TestDeviceAuthMiddlewareSkipsWriteWhenDeviceNameUnchanged(t *testing.T) {
+	newTempRemoteStore(t)
+	token := ensureDeviceAuthToken("dev_name2")
+	if err := saveRemoteDeviceName("dev_name2", "Existing Name"); err != nil {
+		t.Fatalf("setup saveRemoteDeviceName: %v", err)
+	}
+
+	handler := deviceAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/remote/songs", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Device-Name", "Existing Name")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("unexpected status: %d", rec.Code)
+	}
+	if got := remoteDeviceNameFor("dev_name2"); got != "Existing Name" {
+		t.Fatalf("remoteDeviceNameFor = %q, want unchanged %q", got, "Existing Name")
+	}
+}
+
+// 過度に長い名前は defensively 64 文字に切り詰めて保存すること。
+func TestDeviceAuthMiddlewareTruncatesOverlongDeviceName(t *testing.T) {
+	newTempRemoteStore(t)
+	token := ensureDeviceAuthToken("dev_name3")
+
+	handler := deviceAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	longName := strings.Repeat("A", 200)
+	req := httptest.NewRequest(http.MethodGet, "/v1/remote/songs", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Device-Name", longName)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("unexpected status: %d", rec.Code)
+	}
+	got := remoteDeviceNameFor("dev_name3")
+	if len(got) != 64 {
+		t.Fatalf("remoteDeviceNameFor length = %d, want 64", len(got))
+	}
+}
+
+// CORS の allowlist が X-Device-Name ヘッダーを許可すること（自己申告名を
+// LAN 経由のブラウザ/WebView 系クライアントからも送れるようにするため）。
+func TestCORSMiddlewareAllowsDeviceNameHeader(t *testing.T) {
+	handler := corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodOptions, "/v1/remote/songs", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	allowed := rec.Header().Get("Access-Control-Allow-Headers")
+	if !strings.Contains(allowed, "X-Device-Name") {
+		t.Fatalf("Access-Control-Allow-Headers = %q, want it to include X-Device-Name", allowed)
+	}
+}
