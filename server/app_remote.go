@@ -352,6 +352,11 @@ func (ls *LANServer) remoteStateHandler(w http.ResponseWriter, r *http.Request) 
 	// in app_audio.go). The relay above is unaffected either way.
 	status["localMuted"] = ls.app.AudioIsLocalMuted()
 
+	// Additive: sidecar directive telling this caller whether it is the
+	// current fullscreen sidecar target (see app_sidecar.go). Always
+	// present so older clients that ignore unknown keys keep working.
+	status["sidecar"] = ls.app.sidecarDirectiveFor(deviceIDFromContext(r.Context()))
+
 	// During an embed (YouTube IFrame) session the Go audio.Player above is
 	// idle — AudioGetStatus's position/duration/playing would read 0/0/false
 	// — while the renderer's IFrame player is what is actually sounding.

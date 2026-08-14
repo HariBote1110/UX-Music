@@ -58,6 +58,11 @@ type App struct {
 	// consumed exactly once by consumeRemoteInitiatedNext. See
 	// progress/remote-play-song.md.
 	remoteInitiatedNext atomic.Bool
+	// sidecarMu guards sidecarTargetDeviceID, the paired iOS device (if any)
+	// currently receiving the fullscreen sidecar now-playing directive via
+	// GET /v1/remote/state (see app_sidecar.go).
+	sidecarMu             sync.Mutex
+	sidecarTargetDeviceID string
 }
 
 // NewApp creates a new App struct
