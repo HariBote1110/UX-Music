@@ -174,4 +174,44 @@ final class SidecarDirectiveTests: XCTestCase {
     func testShouldNotClearDismissalOnTrueToFalseTransition() {
         XCTAssertFalse(SidecarPresentationPolicy.shouldClearDismissal(previousActive: true, newActive: false))
     }
+
+    // MARK: - SidecarMetadataSnapshot
+
+    /// Guards `AppModel`'s sidecar poller: title/artist/album/artwork/duration/playing rarely
+    /// change between 2s ticks (the desktop reports the same track dozens of times while it
+    /// plays), so writing them unconditionally on every tick fires an `@Observable` invalidation
+    /// for every view reading them even though nothing actually changed. `position`/`timestamp`
+    /// are deliberately excluded — those must be written every successful tick regardless of
+    /// value so `SidecarProgressInterpolation` keeps a fresh wall-clock anchor.
+    func testMetadataSnapshotEqualWhenAllFieldsMatch() {
+        let a = SidecarMetadataSnapshot(songId: "s1", artworkId: "a1", title: "T", artist: "Ar", album: "Al", duration: 200, playing: true)
+        let b = SidecarMetadataSnapshot(songId: "s1", artworkId: "a1", title: "T", artist: "Ar", album: "Al", duration: 200, playing: true)
+        XCTAssertEqual(a, b)
+    }
+
+    func testMetadataSnapshotDiffersWhenTitleChanges() {
+        let a = SidecarMetadataSnapshot(songId: "s1", artworkId: "a1", title: "T", artist: "Ar", album: "Al", duration: 200, playing: true)
+        let b = SidecarMetadataSnapshot(songId: "s1", artworkId: "a1", title: "Different", artist: "Ar", album: "Al", duration: 200, playing: true)
+        XCTAssertNotEqual(a, b)
+    }
+
+    func testMetadataSnapshotDiffersWhenPlayingChanges() {
+        let a = SidecarMetadataSnapshot(songId: "s1", artworkId: "a1", title: "T", artist: "Ar", album: "Al", duration: 200, playing: true)
+        let b = SidecarMetadataSnapshot(songId: "s1", artworkId: "a1", title: "T", artist: "Ar", album: "Al", duration: 200, playing: false)
+        XCTAssertNotEqual(a, b)
+    }
+
+    // MARK: - SidecarActiveLineUpdatePolicy
+
+    /// Guards `SidecarSyncedLyricsList`'s `TimelineView(.periodic(from:by: 0.2))` tick: recomputing
+    /// the interpolated position at 5Hz is cheap, but writing it to `@State` unconditionally forces
+    /// the whole lyric `ForEach` to re-diff 5x/sec for as long as the sidecar screen is on screen.
+    /// Only an actual change of active line should trigger that redraw.
+    func testActiveLineUpdatePolicySameIndexDoesNotUpdate() {
+        XCTAssertFalse(SidecarActiveLineUpdatePolicy.shouldUpdate(currentIndex: 3, newIndex: 3))
+    }
+
+    func testActiveLineUpdatePolicyDifferentIndexUpdates() {
+        XCTAssertTrue(SidecarActiveLineUpdatePolicy.shouldUpdate(currentIndex: 3, newIndex: 4))
+    }
 }
