@@ -84,3 +84,19 @@ enum SidecarOrientationPolicy {
         sidecarPresented ? .landscape : .all
     }
 }
+
+/// Decides whether `SidecarScreen`'s chrome (close button, elapsed/remaining time labels) is
+/// visible: shown right after any tap, faded out after a few seconds of inactivity so the display
+/// stays glanceable/ambient. The progress bar itself stays visible regardless — only the labels and
+/// close button fold into this "idle elegance" behaviour.
+enum SidecarChromeVisibilityPolicy {
+    static let defaultIdleThreshold: TimeInterval = 5
+
+    /// - Parameters:
+    ///   - lastInteraction: wall-clock time of the most recent tap (or screen appearance).
+    ///   - now: the wall-clock time to evaluate visibility at.
+    ///   - idleThreshold: seconds of inactivity after which the chrome fades out.
+    static func isVisible(lastInteraction: Date, now: Date, idleThreshold: TimeInterval = defaultIdleThreshold) -> Bool {
+        now.timeIntervalSince(lastInteraction) < idleThreshold
+    }
+}
