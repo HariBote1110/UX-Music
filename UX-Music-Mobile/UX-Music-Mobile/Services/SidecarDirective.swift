@@ -75,6 +75,23 @@ enum SidecarPresentationPolicy {
     }
 }
 
+/// Everything about the current sidecar track other than playback position — the fields that
+/// realistically stay constant for dozens of consecutive 2s poll ticks while a track plays.
+/// `AppModel`'s poller compares snapshots and only writes its `@Observable` properties when this
+/// changes, so views that read those properties (e.g. `SidecarArtworkView`, the title/artist
+/// labels) are not invalidated every tick for no reason. `position`/`positionTimestamp` are
+/// deliberately kept outside this snapshot — they must be written every successful tick regardless
+/// of value so `SidecarProgressInterpolation` keeps a fresh wall-clock anchor.
+struct SidecarMetadataSnapshot: Equatable {
+    var songId: String?
+    var artworkId: String?
+    var title: String
+    var artist: String
+    var album: String
+    var duration: Double
+    var playing: Bool
+}
+
 /// Decides the app-wide supported-orientation mask while `SidecarScreen` is/isn't presented. Kept
 /// pure and separate from `AppDelegate` so the decision is unit-testable without a UIKit runtime.
 enum SidecarOrientationPolicy {
@@ -98,5 +115,15 @@ enum SidecarChromeVisibilityPolicy {
     ///   - idleThreshold: seconds of inactivity after which the chrome fades out.
     static func isVisible(lastInteraction: Date, now: Date, idleThreshold: TimeInterval = defaultIdleThreshold) -> Bool {
         now.timeIntervalSince(lastInteraction) < idleThreshold
+    }
+}
+
+/// Guards `SidecarSyncedLyricsList`'s `TimelineView(.periodic(from:by: 0.2))` tick: recomputing the
+/// interpolated position at 5Hz is cheap, but writing it to `@State` unconditionally forces the
+/// whole lyric `ForEach` to re-diff 5x/sec for as long as the sidecar screen stays on screen. Only
+/// an actual change of active line should trigger that redraw.
+enum SidecarActiveLineUpdatePolicy {
+    static func shouldUpdate(currentIndex: Int, newIndex: Int) -> Bool {
+        currentIndex != newIndex
     }
 }
