@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Parsed "sidecar" directive from `GET /v1/remote/state`'s `"sidecar": {"active": Bool}` field,
 /// plus the optional top-level `songId`/`artworkId` strings the desktop may include so
@@ -71,5 +72,15 @@ enum SidecarPresentationPolicy {
     /// false → true transition (a new sidecar session started on the desktop).
     static func shouldClearDismissal(previousActive: Bool, newActive: Bool) -> Bool {
         !previousActive && newActive
+    }
+}
+
+/// Decides the app-wide supported-orientation mask while `SidecarScreen` is/isn't presented. Kept
+/// pure and separate from `AppDelegate` so the decision is unit-testable without a UIKit runtime.
+enum SidecarOrientationPolicy {
+    /// `.landscape` while the sidecar's fullscreen cover is on screen (it is landscape-first —
+    /// large artwork beside synced lyrics), `.all` otherwise (the app's normal default).
+    static func mask(sidecarPresented: Bool) -> UIInterfaceOrientationMask {
+        sidecarPresented ? .landscape : .all
     }
 }

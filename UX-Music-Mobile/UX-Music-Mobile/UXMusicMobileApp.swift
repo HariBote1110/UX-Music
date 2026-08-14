@@ -3,6 +3,7 @@ import UIKit
 
 @main
 struct UXMusicMobileApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 

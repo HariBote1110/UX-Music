@@ -62,11 +62,34 @@ struct SidecarScreen: View {
         .preferredColorScheme(.dark)
         .contentShape(Rectangle())
         .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { showControls.toggle() } }
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+            applyOrientation(sidecarPresented: true)
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+            applyOrientation(sidecarPresented: false)
+        }
         .task(id: model.sidecarSongId) {
             await reloadLyricsIfNeeded()
         }
+    }
+
+    // MARK: - Orientation
+
+    /// Forces landscape while this screen is on screen, restoring the app's normal `.all` mask on
+    /// dismiss (see `SidecarOrientationPolicy`, `AppDelegate.application(_:supportedInterfaceOrientationsFor:)`).
+    private func applyOrientation(sidecarPresented: Bool) {
+        SidecarOrientationLock.current = SidecarOrientationPolicy.mask(sidecarPresented: sidecarPresented)
+        guard let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
+            ?? UIApplication.shared.connectedScenes.first as? UIWindowScene
+        else { return }
+        if sidecarPresented {
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape)) { _ in }
+        } else {
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: .all)) { _ in }
+        }
+        scene.windows.first(where: \.isKeyWindow)?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
     }
 
     // MARK: - Artwork + track info
