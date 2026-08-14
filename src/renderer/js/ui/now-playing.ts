@@ -8,6 +8,8 @@ import { openFullscreenView, notifyFullscreenSongChange } from '../features/full
 import { showContextMenu } from './utils.js';
 import { buildSafeMediaPathURL } from './media-url.js';
 import { isEmbedPlayerActive, reattachEmbedPlayer } from '../features/youtube-embed-player.js';
+import { musicApi } from '../core/bridge.js';
+import { buildSidecarMenuItems } from '../features/sidecar.js';
 const electronAPI = window.electronAPI;
 
 const VIDEO_PREVIEW_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.ogv'];
@@ -320,18 +322,32 @@ export function updateNowPlayingView(song) {
 /**
  * 右クリックで右サイドバーのジャケットからフルスクリーンウィンドウを開くコンテキストメニューを設定する
  */
+const LONG_PRESS_DURATION_MS = 500;
+
+/** ペアリング済みデバイス一覧を取得し、サイドカーメニュー項目を組み立てて表示する。 */
+async function openSidecarMenu(x: number, y: number) {
+    const currentTarget = await musicApi.getSidecarTargetDevice?.().catch(() => '') ?? '';
+    const devices = await musicApi.listPairedRemoteDevices?.().catch(() => []) ?? [];
+
+    const items = buildSidecarMenuItems(devices, currentTarget, {
+        openFullscreenView: () => openFullscreenView(),
+        setSidecarTargetDevice: (deviceId: string) => {
+            musicApi.setSidecarTargetDevice?.(deviceId)?.catch((error: unknown) => {
+                console.warn('[NowPlaying] サイドカー先デバイスの設定に失敗しました:', error);
+            });
+        },
+    });
+
+    showContextMenu(x, y, items);
+}
+
 export function setupArtworkContextMenu() {
     const artworkContainer = document.getElementById('now-playing-artwork-container');
     const footerArtwork = document.getElementById('footer-artwork');
 
     const openMenu = (event: MouseEvent) => {
         event.preventDefault();
-        showContextMenu(event.pageX, event.pageY, [
-            {
-                label: 'フルスクリーンで表示',
-                action: () => openFullscreenView(),
-            },
-        ]);
+        void openSidecarMenu(event.pageX, event.pageY);
     };
 
     if (artworkContainer) {
@@ -345,6 +361,37 @@ export function setupArtworkContextMenu() {
     // 奪われるため、iframe より上に重ねた常設ボタンからフルスクリーンを開く。
     const fullscreenBtn = document.getElementById('now-playing-fullscreen-btn');
     if (fullscreenBtn) {
-        fullscreenBtn.addEventListener('click', () => openFullscreenView());
+        // 長押し（約500ms）でサイドカー用のデバイス選択メニューを開く。
+        // 長押しが発火した場合は、直後に発火する click（=通常フルスクリーン）を抑止する。
+        let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+        let longPressTriggered = false;
+
+        const clearLongPressTimer = () => {
+            if (longPressTimer !== null) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        };
+
+        fullscreenBtn.addEventListener('click', (event: MouseEvent) => {
+            if (longPressTriggered) {
+                longPressTriggered = false;
+                event.stopImmediatePropagation();
+                return;
+            }
+            openFullscreenView();
+        });
+
+        fullscreenBtn.addEventListener('pointerdown', (event: PointerEvent) => {
+            longPressTriggered = false;
+            const { clientX, clientY } = event;
+            longPressTimer = setTimeout(() => {
+                longPressTriggered = true;
+                void openSidecarMenu(clientX, clientY);
+            }, LONG_PRESS_DURATION_MS);
+        });
+        fullscreenBtn.addEventListener('pointerup', () => clearLongPressTimer());
+        fullscreenBtn.addEventListener('pointerleave', () => clearLongPressTimer());
+        fullscreenBtn.addEventListener('pointercancel', () => clearLongPressTimer());
     }
 }
