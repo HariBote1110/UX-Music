@@ -14,6 +14,37 @@ final class SidecarDirectiveTests: XCTestCase {
         XCTAssertEqual(SidecarOrientationPolicy.mask(sidecarPresented: false), .all)
     }
 
+    // MARK: - SidecarChromeVisibilityPolicy
+
+    func testChromeVisibleImmediatelyAfterInteraction() {
+        let now = Date(timeIntervalSince1970: 1000)
+        XCTAssertTrue(SidecarChromeVisibilityPolicy.isVisible(lastInteraction: now, now: now))
+    }
+
+    func testChromeVisibleJustBeforeIdleThreshold() {
+        let last = Date(timeIntervalSince1970: 1000)
+        let now = last.addingTimeInterval(4.9)
+        XCTAssertTrue(SidecarChromeVisibilityPolicy.isVisible(lastInteraction: last, now: now))
+    }
+
+    func testChromeHiddenAtIdleThreshold() {
+        let last = Date(timeIntervalSince1970: 1000)
+        let now = last.addingTimeInterval(5)
+        XCTAssertFalse(SidecarChromeVisibilityPolicy.isVisible(lastInteraction: last, now: now))
+    }
+
+    func testChromeHiddenWellPastIdleThreshold() {
+        let last = Date(timeIntervalSince1970: 1000)
+        let now = last.addingTimeInterval(60)
+        XCTAssertFalse(SidecarChromeVisibilityPolicy.isVisible(lastInteraction: last, now: now))
+    }
+
+    func testChromeVisibleAgainWithCustomThreshold() {
+        let last = Date(timeIntervalSince1970: 1000)
+        let now = last.addingTimeInterval(2)
+        XCTAssertFalse(SidecarChromeVisibilityPolicy.isVisible(lastInteraction: last, now: now, idleThreshold: 1))
+    }
+
     // MARK: - SidecarDirective.parse
 
     func testParseActiveWithSongIdAndArtworkId() {
