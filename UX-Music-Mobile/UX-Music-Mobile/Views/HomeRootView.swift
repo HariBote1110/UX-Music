@@ -54,6 +54,18 @@ struct HomeRootView: View {
             NowPlayingView()
                 .environment(model)
         }
+        // Desktop-pushed "sidecar" display (see `SidecarDirective`/`AppModel.startSidecarPolling`).
+        // Bound to `isSidecarPresented` (not `sidecarActive` directly) so a local close-button
+        // dismissal sticks until the desktop directive goes false→true again.
+        .fullScreenCover(isPresented: Binding(
+            get: { model.isSidecarPresented },
+            set: { newValue in
+                if !newValue { model.dismissSidecarLocally() }
+            }
+        )) {
+            SidecarScreen()
+                .environment(model)
+        }
     }
 
 }
