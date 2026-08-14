@@ -1,7 +1,18 @@
+import UIKit
 import XCTest
 @testable import UX_Music_Mobile
 
 final class SidecarDirectiveTests: XCTestCase {
+
+    // MARK: - SidecarOrientationPolicy
+
+    func testMaskIsLandscapeWhenSidecarPresented() {
+        XCTAssertEqual(SidecarOrientationPolicy.mask(sidecarPresented: true), .landscape)
+    }
+
+    func testMaskIsAllWhenSidecarNotPresented() {
+        XCTAssertEqual(SidecarOrientationPolicy.mask(sidecarPresented: false), .all)
+    }
 
     // MARK: - SidecarDirective.parse
 
