@@ -14,6 +14,20 @@ struct SidecarScreen: View {
     @State private var lyricsPlainText: String?
     @State private var lyricsLoadedForSongId: String?
     @State private var lastInteraction = Date()
+    /// Stable anchor for `progressBar`'s `TimelineView(.periodic(from:by:))`. MUST NOT be `.now`
+    /// evaluated fresh inside `progressBar`'s body: `progressBar`'s own tick writes `chromeNow`
+    /// (via `.onChange(of: context.date)`), which `chromeVisible` reads, which the close button's
+    /// `.opacity(chromeVisible ? 1 : 0)` reads — so every tick forces `SidecarScreen.body` to
+    /// re-evaluate and reconstruct a brand-new `TimelineView` value. A schedule anchored at `.now`
+    /// re-evaluated on every reconstruction has no settled cadence: each fresh instance's first
+    /// entry fires immediately, which writes `chromeNow` again, which reconstructs again — an
+    /// unbounded feedback loop that pegs the main thread at ~100% and (empirically, see
+    /// `progress/sidecar-poll-tick-cpu-leak.md` round 3) storms
+    /// `BLSInvalidateFrameSpecifiersAction` at tens of thousands of events/sec while the sidecar
+    /// is presented. Anchoring at a `@State` value fixed once (at this view's first construction)
+    /// keeps the schedule's entries deterministic across reconstructions, so it settles into the
+    /// intended 0.25s cadence instead of restarting every tick.
+    @State private var progressScheduleAnchor = Date()
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -216,7 +230,7 @@ struct SidecarScreen: View {
     // MARK: - Progress
 
     private var progressBar: some View {
-        TimelineView(.periodic(from: .now, by: 0.25)) { context in
+        TimelineView(.periodic(from: progressScheduleAnchor, by: 0.25)) { context in
             let interpolated = SidecarProgressInterpolation.interpolatedPosition(
                 position: model.sidecarPosition,
                 timestamp: model.sidecarPositionTimestamp,
@@ -321,6 +335,13 @@ private struct SidecarSyncedLyricsList: View {
     /// than on every 0.2s tick, so the `ForEach` below only re-diffs when the highlighted line
     /// genuinely moves instead of 5x/sec for as long as the sidecar screen is on screen.
     @State private var activeIndex = 0
+    /// Stable anchor for the `TimelineView` below — see `SidecarScreen.progressScheduleAnchor`'s
+    /// doc comment for why `.now` (re-evaluated on every reconstruction) is unsafe whenever the
+    /// tick can write `@State` that this view itself reads (here, `activeIndex` via
+    /// `SidecarActiveLineUpdatePolicy`-gated writes). The gate limits the blast radius to one
+    /// reconstruction per genuine line change rather than an unbounded loop, but a fixed anchor
+    /// removes the footgun entirely.
+    @State private var lyricsScheduleAnchor = Date()
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -345,7 +366,7 @@ private struct SidecarSyncedLyricsList: View {
                 }
             }
             .background(
-                TimelineView(.periodic(from: .now, by: 0.2)) { context in
+                TimelineView(.periodic(from: lyricsScheduleAnchor, by: 0.2)) { context in
                     Color.clear
                         .task(id: context.date) {
                             let interpolated = SidecarProgressInterpolation.interpolatedPosition(

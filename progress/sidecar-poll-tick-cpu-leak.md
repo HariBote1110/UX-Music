@@ -27,3 +27,28 @@
 
 ## Alternatives considered (追記)
 - ポーラー/TimelineViewの差分ガード漏れを再度疑ったが、`AppModel.sidecarPollOnce()`と`SidecarActiveLineUpdatePolicy`は既に`a5213e6`で差分ガード済みであり、かつサイドカー画面自体が一度も表示されていない状態でも再現したため棄却。原因はサイドカーのUI側ではなく、アプリ全体のシーン管理（`AppDelegate`）のデフォルト値にあった。
+
+## Decision (2026-08-15 第3ラウンド追記: サイドカー表示中のみ発生する第3の原因 — TimelineViewの`.now`アンカー再構築ループ)
+
+- 上記2件の修正後も実機で「サイドカー表示中のみ」CPU高騰・メモリ増加が再現するとの報告。今回は実デスクトップなしで再現・特定するため、`UXM_DEBUG_SIDECAR_HOST`/`UXM_DEBUG_SIDECAR_PORT`環境変数フック（`UXMusicMobileApp.swift`、`UXM_DEBUG_YT_VIDEO`と同パターン）と`scripts/sidecar_stub_server.py`（`/v1/remote/state`スタブ、`server/app_remote.go`のJSON形状を模倣）を新設し、iPhone 17シミュレータでサイドカー画面を確実に表示させて計測した。
+- **手順**: `python3 scripts/sidecar_stub_server.py --port 8799` を起動 → ビルドしたアプリを`xcrun simctl install`→ `SIMCTL_CHILD_UXM_DEBUG_SIDECAR_HOST=127.0.0.1 SIMCTL_CHILD_UXM_DEBUG_SIDECAR_PORT=8799 xcrun simctl launch <udid> com.uxlabs.uxMusicMobile` → サイドカー画面がフルスクリーンカバーで表示されるのを確認 → `ps -o pid,pcpu,rss` を10秒間隔でサンプリング + `xcrun simctl spawn <udid> log show --last Ns --predicate 'eventMessage contains "BLSInvalidateFrameSpecifiersAction"'` でイベント数計測 + `sample <pid> <N>` でメインスレッドスタックを採取。
+- **計測（修正前、フルコンテンツ・オリエンテーション強制ON）**: CPU 99〜100%張り付き、RSSが数十秒で400MB台→1GB超へ単調増加、`BLSInvalidateFrameSpecifiersAction`が20秒間で330,050件（≈16,500件/秒）。`sample`のメインスレッドコールグラフは `CA::Transaction::commit → ... → ViewGraphRootValueUpdater.render → GraphHost.flushTransactions → AG::Subgraph::update → SidecarScreen.body.getter` が支配的で、body評価が絶え間なく繰り返されていた。
+- **一次仮説の棄却**: ラウンド2と同じ「オリエンテーション整合性不一致」（`SidecarScreen.applyOrientation`が`.landscape`マスク＋`requestGeometryUpdate`を要求するがシミュレータは物理的にportraitのまま）を疑い、`applyOrientation`を丸ごと無効化（マスク変更なし・ジオメトリ要求なし）して再計測したが、**ストームは変化せず継続**（5秒で133,112件・81,538件）。オリエンテーション機構は今回の原因ではないと判明・棄却。
+- **二分探索**（`applyOrientation`無効のまま、`SidecarScreen.body`の内容を一つずつ足し引きして再ビルド・再計測）:
+  - bodyを`Text("stub")`のみに置換 → ストーム消失（BLS 1件/5秒、CPU 0.4%）。フルスクリーンカバーの提示機構自体は無罪と確認。
+  - `GeometryReader`＋`artworkAndInfo`＋`lyricsPane`＋`progressBar`（クローズボタンなし）→ ストームなし（CPU 1.2%）。
+  - 上記に閉じるボタン（`NowPlayingNavIconButton`、`.ultraThinMaterial`・`.opacity(chromeVisible ? 1:0)`・`.animation(value:)`付き）を追加 → **ストーム再現**（5秒で119,497件）。
+  - 閉じるボタンから`.ultraThinMaterial`を撤去（不透明色に置換）してもストーム継続（108,449件）→ ブラー素材は無罪。
+  - `.animation(value:)`を撤去してもストーム継続（108,449件）→ アニメーションモディファイアも無罪。
+  - `Button`ラッパーを撤去し`Image`単体＋`.opacity(chromeVisible ? 1:0)`のみにしてもストーム継続（109,925件）→ インタラクティブ要素も無罪。
+  - `.opacity(chromeVisible ? 1:0)`を静的`opacity`に戻す（`chromeVisible`を読まない）と**ストーム消失**（1件/5秒）。ここで「`chromeVisible`を読む兄弟ビューの存在」が必要条件と特定。
+  - `GeometryReader`を撤去（静的`VStack`に置換）してもストーム継続（`progressBar`＋`chromeVisible`読み取りビューのみで再現、5秒で107,352件）→ `GeometryReader`も無罪。
+  - `artworkAndInfo`/`lyricsPane`をプレースホルダ`Text`に置換してもストーム継続（85,386件）→ ネットワーク依存サブビュー群も無罪。最終的に「背景＋スクリム＋プレースホルダ＋`progressBar`＋`chromeVisible`を読む兄弟ビュー」の最小構成でも再現することを確認。
+- **真因**: `progressBar`は`TimelineView(.periodic(from: .now, by: 0.25))`で、tickごとに`.onChange(of: context.date) { chromeNow = newDate }`という**親ビュー（`SidecarScreen`）の`@State`を書き込む**。`chromeNow`は`SidecarScreen`自身の計算プロパティ`chromeVisible`が参照しており、それを閉じるボタンの`.opacity(chromeVisible ? 1:0)`が読んでいる。したがって`chromeNow`が変わるたびに`SidecarScreen.body`全体が再評価され、`progressBar`（＝新しい`TimelineView`インスタンス）が**毎回作り直される**。ここで`from: .now`は**再構築のたびにその時点の`Date()`で再評価される**ため、新しいスケジュールは常に「たった今」を起点とし、最初のtickがほぼ即座に発火する。これが`chromeNow`を再度書き込み→再び`body`再評価→また新しい`TimelineView`が`.now`で再構築…という**アンカーレス・フィードバックループ**を形成し、メインスレッドが可能な限り高速にこのサイクルを回し続けてCPU100%・BLSストーム・RSS単調増加を引き起こしていた。`SidecarSyncedLyricsList`内のもう一つの`TimelineView(.periodic(from: .now, by: 0.2))`も同型パターン（tickが`activeIndex`という自ビューが読む`@State`を書く）だが、`SidecarActiveLineUpdatePolicy.shouldUpdate`が実際に行が変わった時だけ書き込むようゲートしているため、無条件ループにはならず今回は顕在化していなかった（同じ原理の潜在バグとして同時に修正）。
+- **修正**（`UX-Music-Mobile/UX-Music-Mobile/Views/SidecarScreen.swift`）: 両方の`TimelineView`のアンカーを`.now`（式評価のたびに変わる）から、ビュー初回構築時に一度だけ固定される`@State`（`progressScheduleAnchor`／`lyricsScheduleAnchor`、いずれも`= Date()`で初期化）に変更。ビューが何度再構築されても同じアンカーを渡すため、スケジュールが安定し毎tickごとの即時再発火が起きなくなる。ロジック自体（`SidecarProgressInterpolation`・`SidecarChromeVisibilityPolicy`・`SidecarActiveLineUpdatePolicy`）は無変更。SwiftUIのビュー構造体の配線に起因する問題のため、TDD対象の純粋関数ロジック変更はなし（既存の`SidecarDirectiveTests`は全て green のまま）。
+- **検証（修正後、フルコンテンツ・オリエンテーション強制ON、同一計測手順で3分間）**: RSSは285〜295MB台で横ばい（増加傾向なし）、CPUは0.8〜1.8%で安定、直近60秒の`BLSInvalidateFrameSpecifiersAction`は1件（ベースライン相当）。修正前の単一5〜20秒ウィンドウで74,699〜330,050件だったのに対し、3分間ずっと1件のみ。スクリーンショットで進捗バーの伸縮・時間ラベル/閉じるボタンのアイドル時フェードアウト（`SidecarChromeVisibilityPolicy`）も正常動作を確認。
+- **デバッグハーネスの扱い**: `UXM_DEBUG_SIDECAR_HOST`/`UXM_DEBUG_SIDECAR_PORT`フックは今回で3回目の必要になったため、`#if DEBUG`で囲わず（既存の`UXM_DEBUG_YT_VIDEO`/`UXM_DEBUG_LYRICS_SONG`と同じ「環境変数未設定時は無害」方式）恒久的に残すことにした。`scripts/sidecar_stub_server.py`はリポジトリに追加（`server/app_remote.go`のJSON形状を手動で追従させる必要がある点は既知のメンテナンスコスト）。
+
+## Alternatives considered (第3ラウンド追記)
+- オリエンテーション整合性不一致（ラウンド2と同型の再発）を最有力候補として最初に検証したが、`applyOrientation`を完全に無効化してもストームが変化しなかったため実測で棄却。
+- `.ultraThinMaterial`によるライブブラーの継続的再サンプリング、`.animation(value:)`によるCore Animation継続コミット、`Button`のジェスチャ認識機構、`GeometryReader`によるウィンドウジオメトリ問い合わせを順に疑ったが、いずれも単体除去でストームが消えなかったため実測で棄却。真因は`TimelineView(.periodic(from: .now, ...))`が親`@State`書き込みと組み合わさった際のアンカー再構築ループだった。
