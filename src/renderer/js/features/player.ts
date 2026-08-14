@@ -31,6 +31,7 @@ import {
     dataArray
 } from './audio-graph.js';
 import { musicApi, getWailsApp, isWailsMode } from '../core/bridge.js';
+import { deriveArtworkIdFromArtworkFilename } from './now-playing-metadata.js';
 import { resolveYouTubePlaybackRoute, extractYouTubeVideoId } from './youtube-embed-route.js';
 import { resolveRelayThumbnailCandidate } from './youtube-thumbnail.js';
 import {
@@ -454,11 +455,19 @@ async function updateOSNowPlayingMetadata(song) {
     if (!getWailsApp()?.AudioSetNowPlayingMetadata) return;
     if (!song) return;
 
+    const artworkFilename = typeof song.artwork === 'object' && song.artwork !== null
+        ? song.artwork.full
+        : undefined;
+
     const payload = {
         title: song.title || 'Unknown',
         artist: song.artist || 'Unknown',
         album: song.album || '',
-        artwork: resolveNowPlayingArtworkSource(song)
+        artwork: resolveNowPlayingArtworkSource(song),
+        // サイドカー/リモート状態(GET /v1/remote/state)向け。song.id はライブラリの曲ID、
+        // artworkId はアートワークファイル名（SHA256ハッシュ）に対応する。
+        songId: song.id || '',
+        artworkId: deriveArtworkIdFromArtworkFilename(artworkFilename)
     };
 
     try {
