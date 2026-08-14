@@ -162,6 +162,58 @@ enum SidecarLyricsMotionPolicy {
     static func staggerDelay(forDistance distance: Int) -> TimeInterval {
         TimeInterval(max(0, distance)) * staggerStep
     }
+
+    /// Ported from Desktop's `findLyricsIndex` (`fullscreen-view.ts:366-390`): the last line whose
+    /// `startTime` is `<= time`, or `-1` before the first line's timestamp (no line highlighted
+    /// during an instrumental intro) and `lines.count - 1` at/after the last line's timestamp.
+    /// Deliberately distinct from `LRCParser.activeLineIndex`, which other screens clamp to `0`
+    /// before the first line for a different UX — the sidecar must match Desktop exactly.
+    static func activeIndex<Line: LyricsTimedLine>(in lines: [Line], at time: Double) -> Int {
+        guard !lines.isEmpty else { return -1 }
+        if time < lines[0].startTime { return -1 }
+        var best = 0
+        for (i, line) in lines.enumerated() where line.startTime <= time {
+            best = i
+        }
+        return best
+    }
+}
+
+/// Ported from Desktop's `applyLyricsMotion` cumulative top-position layout
+/// (`fullscreen-view.ts:392-426`): each lyric line is positioned independently — not scrolled as a
+/// group — with the base line (active, or index 0 while nothing is active yet) anchored at
+/// `paneHeight * anchorRatio`, and every other line stacked above/below it by a running sum of its
+/// own height plus `interBlockGap`. Pure so `SidecarSyncedLyricsList` can feed it measured line
+/// heights and get back per-line `y` offsets to animate towards independently.
+enum SidecarLyricsLayout {
+    /// `INTER_BLOCK_GAP = 16` (`fullscreen-view.ts:55`).
+    static let interBlockGap: CGFloat = 16
+    /// `ANCHOR_RATIO = 0.35` (`fullscreen-view.ts:54`).
+    static let anchorRatio: CGFloat = 0.35
+
+    /// - Parameters:
+    ///   - heights: Measured height of each line, same order/count as the rendered lines.
+    ///   - baseIndex: The active line index, or `0` when nothing is active yet (Desktop:
+    ///     `activeIndex >= 0 ? activeIndex : 0`); clamped into `heights.indices`.
+    ///   - paneHeight: The lyrics pane's own height, used to compute the anchor Y.
+    static func tops(heights: [CGFloat], baseIndex: Int, paneHeight: CGFloat) -> [CGFloat] {
+        guard !heights.isEmpty else { return [] }
+        let anchorY = paneHeight * anchorRatio
+        let b = min(max(0, baseIndex), heights.count - 1)
+        var tops = [CGFloat](repeating: 0, count: heights.count)
+        tops[b] = anchorY
+        if b + 1 < heights.count {
+            for i in (b + 1)..<heights.count {
+                tops[i] = tops[i - 1] + heights[i - 1] + interBlockGap
+            }
+        }
+        if b - 1 >= 0 {
+            for i in stride(from: b - 1, through: 0, by: -1) {
+                tops[i] = tops[i + 1] - heights[i] - interBlockGap
+            }
+        }
+        return tops
+    }
 }
 
 /// Ported from Desktop's fullscreen overlay background recipe (`src/renderer/styles/components.css`
