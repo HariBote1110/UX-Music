@@ -14,7 +14,6 @@ import {
 import { applyMasterVolume } from '../features/audio-graph.js';
 import { formatTime } from './utils.js';
 import { getWailsApp } from '../core/bridge.js';
-const electronAPI = window.electronAPI;
 
 let isSeeking = false;
 let wasPlayingBeforeSeek = false;
@@ -358,11 +357,7 @@ export function initPlayerControls(initialPlayer, _callbacks) {
         }
 
         volumeSaveTimer = setTimeout(() => {
-            if (getWailsApp()) {
-                getWailsApp()?.SaveSettings?.({ volume: volume })?.catch?.(() => { });
-            } else {
-                electronAPI.send('save-settings', { volume: volume });
-            }
+            getWailsApp()?.SaveSettings?.({ volume: volume })?.catch?.(() => { });
             volumeSaveTimer = null;
         }, 120);
     });

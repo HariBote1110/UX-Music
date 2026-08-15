@@ -695,7 +695,6 @@ export async function stop() {
     }
     stopVisualizerLoop();
     resetPlaybackUI();
-    if (!isWails) electronAPI.send('playback-stopped');
     updateMediaSessionState('none');
 }
 

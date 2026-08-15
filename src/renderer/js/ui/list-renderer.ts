@@ -12,7 +12,6 @@ import { getVisibleColumns, getGridTemplate, showColumnContextMenu } from './col
 import { updateGridStyle } from './column-resizer.js';
 import { getWailsApp, musicApi } from '../core/bridge.js';
 import { showNotification } from './notification.js';
-const electronAPI = window.electronAPI;
 
 type PlaylistAddSourceSong = {
     path?: string;
@@ -228,39 +227,30 @@ export function setupSongListScroller(listElement, songList, options: { contextV
                 songsForMenu = songList.filter(s => state.selectedSongIds.has(s.id));
             }
 
-            if (typeof window.go !== 'undefined') {
-                // Wails 環境: JavaScript ベースのコンテキストメニュー
-                const menuItems = [
-                    {
-                        label: '再生',
-                        action: () => playSong(index, songList)
-                    },
-                    {
-                        label: songsForMenu.length > 1 ? `ライブラリから削除 (${songsForMenu.length}曲)` : 'ライブラリから削除',
-                        action: () => deleteSongsFromLibrary(songsForMenu)
-                    }
-                ];
-
-                // プレイリストがある場合のみサブメニューを追加
-                if (state.playlists && state.playlists.length > 0) {
-                    const playlistSubmenu = (state.playlists as Record<string, unknown>[]).map(playlist => ({
-                        label: playlist.name as string,
-                        action: () => void addSongsToPlaylistFromMenu(String(playlist.name ?? ''), songsForMenu)
-                    }));
-                    (menuItems as unknown[]).push({
-                        label: 'プレイリストに追加',
-                        submenu: playlistSubmenu
-                    });
+            const menuItems = [
+                {
+                    label: '再生',
+                    action: () => playSong(index, songList)
+                },
+                {
+                    label: songsForMenu.length > 1 ? `ライブラリから削除 (${songsForMenu.length}曲)` : 'ライブラリから削除',
+                    action: () => deleteSongsFromLibrary(songsForMenu)
                 }
+            ];
 
-                showContextMenu(e.pageX, e.pageY, menuItems);
-            } else {
-                // Electron 環境: メインプロセスにメニュー表示を委譲
-                electronAPI.send('show-song-context-menu', {
-                    songs: songsForMenu,
-                    context: { view: contextView, playlistName }
+            // プレイリストがある場合のみサブメニューを追加
+            if (state.playlists && state.playlists.length > 0) {
+                const playlistSubmenu = (state.playlists as Record<string, unknown>[]).map(playlist => ({
+                    label: playlist.name as string,
+                    action: () => void addSongsToPlaylistFromMenu(String(playlist.name ?? ''), songsForMenu)
+                }));
+                (menuItems as unknown[]).push({
+                    label: 'プレイリストに追加',
+                    submenu: playlistSubmenu
                 });
             }
+
+            showContextMenu(e.pageX, e.pageY, menuItems);
         });
 
         window.observeNewArtworks(songItem); // Lazy-load 用
