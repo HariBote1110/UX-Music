@@ -1,5 +1,6 @@
 # Progress Index
 
+- [electron-legacy-cleanup.md](electron-legacy-cleanup.md) — Electron→Wails移行後に残っていた到達不能／未実装チャンネルの死んだコードを削除（list-renderer.ts/player-ui.ts/player.tsの到達不能フォールバック、init-listeners.tsのコメントアウト行と未emitリスナー、debug-commands.tsの未実装デバッグコマンド、ipc.tsの死んだ・重複IPCリスナー、wails-check.tsの「(Wails Mode)」バージョン表示）。根本原因はinitIPCのcallbacks注入パターンがrenderer.ts/bridge.tsの直接登録移行後も取り残されていたこと。window.electronAPIは現役のWailsシムとして温存、機能欠落系（人間判断待ち）の項目には未着手と明記
 - [first-playback-warmup.md](first-playback-warmup.md) — 「起動後の初回再生だけがまれに音切れ／歪む（MP3・FLAC共通）」の根本原因は2つ。(A) `startDecodedPlayback()` がリングバッファの事前充填を待たず `stream.Start()` していたため初回のコールドなデコード（初回ディスクI/O・cgo呼び出し）が間に合わず半端なバッファを読んでいた（`prefillSatisfied` 純粋関数＋上限150msのポーリング `waitForPrefill` で解消）。(B) 実ストリームは初回 `Play()` まで一度も開かれずCoreAudioのDAC電源投入／フォーマットネゴシエーションのコストがそこに乗っていた（`NewPlayer()` 末尾で48kHz/2ch無音ストリームを同期的に開閉する `warmUpOutputDevice()` で解消。非同期実行は`-race`でPortAudioのグローバル状態への同時アクセスが検出されたため不採用）
 
 - [tray-arc-retain.md](tray-arc-retain.md) — メニューバーのトレイアイコン非表示不具合の根本原因はcgoがObjective-CをデフォルトMRCでコンパイルすること。ARCスタイルで書かれた`tray_darwin.m`では`statusItemWithLength:`が返すautoreleasedなNSStatusItemがretainされず即解放されていた。`#cgo CFLAGS`に`-fobjc-arc`を追加しパッケージ全体（`os_media_darwin.m`含む）をARC化して修正
