@@ -1,5 +1,7 @@
 # Progress Index
 
+- [footer-hit-testing.md](footer-hit-testing.md) — デフォルトテーマのフッター（`.playback-bar`）にあった `pointer-events: none` を除去しクリックすり抜けを修正。当時の「背面のノーマライズ適用ボタン等へクリックを届ける」根拠は `--footer-height` による各ビューの余白確保で解消済みと判明。mc-theme側はすでに個別回避済みだった
+
 - [sidecar-lyrics-fade-and-bilingual.md](sidecar-lyrics-fade-and-bilingual.md) — サイドカー歌詞ペインの上下端フェード（Desktop `.fs-lyrics-container` のmask-imageを1:1移植）、左カラム（アートワーク/情報ブロック）の余白詰め、和訳（バイリンガル）対応（`RemoteLyricsPayload.translationContent`を既存`LyricsTranslationMerger`でペアリングしDesktop `.fs-line-bilingual`準拠のスタイルで描画）
 
 - [sidecar-ui-refinement.md](sidecar-ui-refinement.md) — サイドカー画面のアートワーク黒帯除去（GeometryReaderベースの正方形化）、シークバーの画面端配置＋端インライン時間ラベル、Desktopフルスクリーンプレイヤー準拠の歌詞モーション（アンカー比率/所要時間/段階遅延/scaleベース強調）、背景グラデーションのDesktop色ミックス移植
