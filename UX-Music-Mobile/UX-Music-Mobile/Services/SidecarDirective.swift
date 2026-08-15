@@ -42,6 +42,16 @@ struct SidecarDirective: Equatable, Sendable {
 /// decision (`.ja.lrc` → timestamp-paired, `.ja.txt` → positional) but driven by the payload's own
 /// `translationFormat` string instead of which sidecar file exists on disk — the sidecar screen
 /// fetches lyrics directly from the remote endpoint rather than through `LyricsFileStore`.
+/// Ports Desktop's `fsDisplayText` (`fullscreen-view.ts:13-16`): interludes — blank lines or a
+/// literal marker such as `[間奏]` — never show their raw text, only reserved line-height (a single
+/// space). Rendering must go through this helper rather than a bare `.isEmpty` check, since a saved
+/// LRC's interlude line often carries the literal marker text, not an empty string.
+enum SidecarLyricsDisplay {
+    static func text(for raw: String) -> String {
+        LyricsTranslationMerger.isInterludeText(raw) ? " " : raw
+    }
+}
+
 enum SidecarLyricsTranslationMerge {
     /// - Parameters:
     ///   - primary: The already-parsed timed primary lines.

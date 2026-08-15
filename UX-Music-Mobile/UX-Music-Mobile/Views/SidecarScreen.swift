@@ -527,7 +527,7 @@ private struct SidecarBilingualPlainLine: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: SidecarLyricsTranslationStyle.blockGap) {
-            Text(line.text.isEmpty ? " " : line.text)
+            Text(SidecarLyricsDisplay.text(for: line.text))
                 .font(.system(size: 18, weight: .regular, design: .rounded))
                 .foregroundStyle(.white.opacity(0.85))
             if let translation = line.translation {
@@ -620,7 +620,7 @@ private struct SidecarSyncedLyricsList: View {
                         // automatically, so `SidecarLyricsLayout.tops`'s cumulative stacking
                         // absorbs the extra height without any change to its own arithmetic.
                         VStack(alignment: .leading, spacing: SidecarLyricsTranslationStyle.blockGap) {
-                            Text(line.text.isEmpty ? " " : line.text)
+                            Text(SidecarLyricsDisplay.text(for: line.text))
                                 .font(.system(size: 28, weight: .bold, design: .rounded))
                                 .foregroundStyle(.white.opacity(isActive ? 1 : 0.45))
                                 .shadow(color: .white.opacity(isActive ? 0.15 : 0), radius: isActive ? 24 : 0)
