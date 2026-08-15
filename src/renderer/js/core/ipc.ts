@@ -24,35 +24,6 @@ export function initIPC(callbacks) {
     console.log('[IPC] initIPC called');
     logPerf("initIPC called.");
 
-    electronAPI.on('load-library', (data) => {
-        logPerf("Received 'load-library' from main.");
-        const d = data as Record<string, unknown>;
-        console.log(`[Debug] Received initial library with ${d.songs ? (d.songs as unknown[]).length : 0} songs.`);
-        callbacks.onLibraryLoaded?.(data);
-    });
-    electronAPI.on('settings-loaded', (settings) => {
-        logPerf("Received 'settings-loaded' from main.");
-        console.log('[Debug] Settings loaded.');
-        callbacks.onSettingsLoaded?.(settings);
-    });
-    electronAPI.on('play-counts-updated', (counts) => {
-        callbacks.onPlayCountsUpdated?.(counts);
-    });
-    electronAPI.on('youtube-link-processed', (newSong) => {
-        callbacks.onYoutubeLinkProcessed?.(newSong);
-    });
-    electronAPI.on('playlists-updated', (playlists) => {
-        callbacks.onPlaylistsUpdated?.(playlists);
-    });
-    electronAPI.on('scan-complete', (newSongs) => {
-        callbacks.onScanComplete?.(newSongs);
-    });
-    electronAPI.on('artwork-changed', (payload) => {
-        callbacks.onArtworkChanged?.(payload);
-    });
-    electronAPI.on('album-order-saved', (payload) => {
-        callbacks.onAlbumOrderSaved?.(payload);
-    });
     electronAPI.on('flac-index-progress', (progress) => {
         callbacks.onFlacIndexProgress?.(progress);
     });
