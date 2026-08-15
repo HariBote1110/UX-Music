@@ -4,15 +4,21 @@ import { resolveEmbedPlaybackGain } from './playback-gain.js';
 // 公式再生（embed）のラウドネス正規化ゲイン。
 // 実効ラウドネス（LUFS）は Go 側が YouTube player response の
 // audioConfig から解決する（perceptualLoudnessDb ≒ -14 + loudnessDb）。
+//
+// 埋め込みプレイヤー自身が自前の正規化減衰を掛けてからタップへ音を渡すため
+// （実測: cont −14.6 / tgt −19.0 で video.volume 0.60 = −4.4 dB）、コンテンツ
+// ラウドネスをそのまま基準にすると二重に減衰する。ここではプレイヤー通過後の
+// ラウドネスを min(コンテンツ, YouTube のターゲット) と推定する。
+// 実際の減衰量は再生開始後に Go 側の実測ラウドネス補正が引き取る。
 describe('resolveEmbedPlaybackGain', () => {
-    it('computes gain from target and effective loudness (local と同じ思想)', () => {
-        // target -18, effective -7.31 → gainDb = -10.69
+    it('YouTube のターゲット（-14）より大きいコンテンツは減衰後の値を基準にする', () => {
+        // cont -7.31 は YouTube 側で -14 まで下げられて届く → gainDb = -18 -(-14) = -4
         const gain = resolveEmbedPlaybackGain({ effectiveLoudness: -7.31, targetLoudness: -18 });
-        expect(gain).toBeCloseTo(Math.pow(10, -10.69 / 20), 6);
+        expect(gain).toBeCloseTo(Math.pow(10, -4 / 20), 6);
     });
 
     it('boosts quiet content', () => {
-        // target -18, effective -23 → +5 dB
+        // cont -23 は YouTube 側でブーストされない（減衰は片方向）→ +5 dB
         const gain = resolveEmbedPlaybackGain({ effectiveLoudness: -23, targetLoudness: -18 });
         expect(gain).toBeCloseTo(Math.pow(10, 5 / 20), 6);
     });
@@ -23,8 +29,9 @@ describe('resolveEmbedPlaybackGain', () => {
     });
 
     it('defaults target loudness to -18 when invalid', () => {
+        // cont -13 → 減衰後 -14 とみなす → gainDb = -18 -(-14) = -4
         const gain = resolveEmbedPlaybackGain({ effectiveLoudness: -13, targetLoudness: Number.NaN });
-        expect(gain).toBeCloseTo(Math.pow(10, -5 / 20), 6);
+        expect(gain).toBeCloseTo(Math.pow(10, -4 / 20), 6);
     });
 
     it('clamps excessive boost to the Go pipeline limit (64x)', () => {
