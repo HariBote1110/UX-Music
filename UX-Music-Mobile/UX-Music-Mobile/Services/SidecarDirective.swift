@@ -37,47 +37,6 @@ struct SidecarDirective: Equatable, Sendable {
     }
 }
 
-/// Chooses which `LyricsTranslationMerger` pairing to apply to a `/v1/remote/lyrics` response's
-/// `translationContent`, mirroring `AppModel.localBilingualLyricsDisplay(for:)`'s file-based
-/// decision (`.ja.lrc` → timestamp-paired, `.ja.txt` → positional) but driven by the payload's own
-/// `translationFormat` string instead of which sidecar file exists on disk — the sidecar screen
-/// fetches lyrics directly from the remote endpoint rather than through `LyricsFileStore`.
-/// Ports Desktop's `fsDisplayText` (`fullscreen-view.ts:13-16`): interludes — blank lines or a
-/// literal marker such as `[間奏]` — never show their raw text, only reserved line-height (a single
-/// space). Rendering must go through this helper rather than a bare `.isEmpty` check, since a saved
-/// LRC's interlude line often carries the literal marker text, not an empty string.
-enum SidecarLyricsDisplay {
-    static func text(for raw: String) -> String {
-        LyricsTranslationMerger.isInterludeText(raw) ? " " : raw
-    }
-}
-
-enum SidecarLyricsTranslationMerge {
-    /// - Parameters:
-    ///   - primary: The already-parsed timed primary lines.
-    ///   - translationContent: Raw `translationContent` from `RemoteLyricsPayload`, or `nil`/blank
-    ///     if the desktop has no 和訳 saved for this track.
-    ///   - translationFormat: `"lrc"` or `"txt"` (`RemoteLyricsPayload.translationFormat`); any
-    ///     other value (including `nil`) is treated as positional `"txt"` pairing, matching
-    ///     `LyricsTranslationMerger.mergeTimedWithJaTxt`'s existing "no sidecar file" fallback shape.
-    static func merge(
-        primary: [LRCParser.TimedLine],
-        translationContent: String?,
-        translationFormat: String?
-    ) -> [TranslatedTimedLine] {
-        guard let translationContent = translationContent?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !translationContent.isEmpty
-        else {
-            return primary.map { TranslatedTimedLine(id: $0.id, startTime: $0.startTime, text: $0.text, translation: nil) }
-        }
-        if translationFormat == "lrc" {
-            let translationTimed = LRCParser.parseTimedLines(translationContent)
-            return LyricsTranslationMerger.mergeTimedWithJaLRC(primary: primary, translation: translationTimed)
-        }
-        return LyricsTranslationMerger.mergeTimedWithJaTxt(primary: primary, translationText: translationContent)
-    }
-}
-
 /// Interpolates the sidecar's playback position between 2s poll ticks so the progress bar keeps
 /// animating smoothly (see `AppModel`'s sidecar poller, which stamps `sidecarPositionTimestamp` on
 /// every successful fetch).
@@ -179,84 +138,6 @@ enum SidecarArtworkLayout {
     }
 }
 
-/// Ported from Desktop's fullscreen lyrics motion (`src/renderer/js/features/fullscreen-view.ts`'s
-/// `applyLyricsMotion`, `ANCHOR_RATIO`/`MOTION_DURATION_MS`/`MOTION_DELAY_STEP_MS`, plus the
-/// `.fs-lyrics-inner.fs-lrc p.active` `scale(1.091)` in `components.css:2158-2162`). Parameters
-/// `SidecarSyncedLyricsList` applies to its `ScrollViewReader.scrollTo` and per-line
-/// transform/opacity animations so the motion feel matches the desktop fullscreen player instead of
-/// the previous flat 0.35s ease-out scroll.
-enum SidecarLyricsMotionPolicy {
-    /// `MOTION_DURATION_MS = 800` (`fullscreen-view.ts`).
-    static let duration: TimeInterval = 0.8
-    /// `MOTION_DELAY_STEP_MS = 40` — each line's transition is staggered by its distance from the
-    /// active line (`fullscreen-view.ts`'s `applyLyricsMotion`: `dist * MOTION_DELAY_STEP_MS`).
-    static let staggerStep: TimeInterval = 0.04
-    /// `ANCHOR_RATIO = 0.35` — the active line sits 35% down the lyrics pane, not dead centre
-    /// (`fullscreen-view.ts`).
-    static let scrollAnchor = UnitPoint(x: 0.5, y: 0.35)
-    /// `.fs-lyrics-inner.fs-lrc p.active { transform: ... scale(1.091); }` (`components.css:2160`).
-    static let activeLineScale: CGFloat = 1.091
-
-    /// - Parameter distance: `abs(index - activeIndex)`, as computed by callers; defensively
-    ///   clamped to `>= 0` so a negative input can never yield a negative (i.e. "starts before now")
-    ///   delay.
-    static func staggerDelay(forDistance distance: Int) -> TimeInterval {
-        TimeInterval(max(0, distance)) * staggerStep
-    }
-
-    /// Ported from Desktop's `findLyricsIndex` (`fullscreen-view.ts:366-390`): the last line whose
-    /// `startTime` is `<= time`, or `-1` before the first line's timestamp (no line highlighted
-    /// during an instrumental intro) and `lines.count - 1` at/after the last line's timestamp.
-    /// Deliberately distinct from `LRCParser.activeLineIndex`, which other screens clamp to `0`
-    /// before the first line for a different UX — the sidecar must match Desktop exactly.
-    static func activeIndex<Line: LyricsTimedLine>(in lines: [Line], at time: Double) -> Int {
-        guard !lines.isEmpty else { return -1 }
-        if time < lines[0].startTime { return -1 }
-        var best = 0
-        for (i, line) in lines.enumerated() where line.startTime <= time {
-            best = i
-        }
-        return best
-    }
-}
-
-/// Ported from Desktop's `applyLyricsMotion` cumulative top-position layout
-/// (`fullscreen-view.ts:392-426`): each lyric line is positioned independently — not scrolled as a
-/// group — with the base line (active, or index 0 while nothing is active yet) anchored at
-/// `paneHeight * anchorRatio`, and every other line stacked above/below it by a running sum of its
-/// own height plus `interBlockGap`. Pure so `SidecarSyncedLyricsList` can feed it measured line
-/// heights and get back per-line `y` offsets to animate towards independently.
-enum SidecarLyricsLayout {
-    /// `INTER_BLOCK_GAP = 16` (`fullscreen-view.ts:55`).
-    static let interBlockGap: CGFloat = 16
-    /// `ANCHOR_RATIO = 0.35` (`fullscreen-view.ts:54`).
-    static let anchorRatio: CGFloat = 0.35
-
-    /// - Parameters:
-    ///   - heights: Measured height of each line, same order/count as the rendered lines.
-    ///   - baseIndex: The active line index, or `0` when nothing is active yet (Desktop:
-    ///     `activeIndex >= 0 ? activeIndex : 0`); clamped into `heights.indices`.
-    ///   - paneHeight: The lyrics pane's own height, used to compute the anchor Y.
-    static func tops(heights: [CGFloat], baseIndex: Int, paneHeight: CGFloat) -> [CGFloat] {
-        guard !heights.isEmpty else { return [] }
-        let anchorY = paneHeight * anchorRatio
-        let b = min(max(0, baseIndex), heights.count - 1)
-        var tops = [CGFloat](repeating: 0, count: heights.count)
-        tops[b] = anchorY
-        if b + 1 < heights.count {
-            for i in (b + 1)..<heights.count {
-                tops[i] = tops[i - 1] + heights[i - 1] + interBlockGap
-            }
-        }
-        if b - 1 >= 0 {
-            for i in stride(from: b - 1, through: 0, by: -1) {
-                tops[i] = tops[i + 1] - heights[i] - interBlockGap
-            }
-        }
-        return tops
-    }
-}
-
 /// Ported from Desktop's fullscreen overlay background recipe (`src/renderer/styles/components.css`
 /// lines 1764-1776, `.fs-overlay`): a two-stop 135° linear gradient between the artwork's two
 /// dominant colours, each mixed 30% into a near-black base (`#0e0e1a`) via CSS `color-mix`, with a
@@ -283,15 +164,5 @@ enum SidecarBackgroundGradient {
             swatch.1 * clampedRatio + base.1 * (1 - clampedRatio),
             swatch.2 * clampedRatio + base.2 * (1 - clampedRatio)
         )
-    }
-}
-
-/// Guards `SidecarSyncedLyricsList`'s `TimelineView(.periodic(from:by: 0.2))` tick: recomputing the
-/// interpolated position at 5Hz is cheap, but writing it to `@State` unconditionally forces the
-/// whole lyric `ForEach` to re-diff 5x/sec for as long as the sidecar screen stays on screen. Only
-/// an actual change of active line should trigger that redraw.
-enum SidecarActiveLineUpdatePolicy {
-    static func shouldUpdate(currentIndex: Int, newIndex: Int) -> Bool {
-        currentIndex != newIndex
     }
 }

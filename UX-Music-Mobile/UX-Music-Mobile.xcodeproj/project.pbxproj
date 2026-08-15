@@ -210,7 +210,14 @@
 		F4886C72940D4DD78B8634E9 /* Artist.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3F0B98F67004EC7BAE5381B /* Artist.swift */; };
 		AB2EB6E388074071BD763A15 /* MusicPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */; };
 		F0029622EAEE4205B5B470DB /* LRCParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = P2P2P2P20101P2P20101P2P2 /* LRCParser.swift */; };
+		A1B2C3D4E5F60102A1B2C3D4 /* LyricsStageKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60101A1B2C3D4 /* LyricsStageKit.swift */; };
+		A1B2C3D4E5F60103A1B2C3D4 /* LyricsStageKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60101A1B2C3D4 /* LyricsStageKit.swift */; };
+		A1B2C3D4E5F60104A1B2C3D4 /* LyricsTranslationMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ABB8F8673614992A6F51E34 /* LyricsTranslationMerger.swift */; };
 		C0A2CD756F354040A91F2036 /* TVAmbientStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE3230AB8E5F420DBD7E85E5 /* TVAmbientStateMachine.swift */; };
+		B1B2C3D4E5F60202B1B2C3D4 /* TVAmbientPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60201B1B2C3D4 /* TVAmbientPresentation.swift */; };
+		B1B2C3D4E5F60204B1B2C3D4 /* TVLyricsStageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60203B1B2C3D4 /* TVLyricsStageView.swift */; };
+		B1B2C3D4E5F60206B1B2C3D4 /* TVAmbientPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60205B1B2C3D4 /* TVAmbientPresentationTests.swift */; };
+		B1B2C3D4E5F60208B1B2C3D4 /* TVLyricsStageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60207B1B2C3D4 /* TVLyricsStageTests.swift */; };
 		56CE0C14CCE14293B089A018 /* TVDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13D9713488664F42941E2FB0 /* TVDesignTokens.swift */; };
 		3F98CC49EFAD43F98AA2A83C /* TVNowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AF3E42646B24882B3E784AA /* TVNowPlayingView.swift */; };
 		94DB3D1F88174415A2DDBF71 /* TVAmbientStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1DF82EC02B47E3BB01405E /* TVAmbientStateMachineTests.swift */; };
@@ -347,7 +354,12 @@
 		F5F5F5F60101F5F60101F5F6 /* GraphicEqualiserConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphicEqualiserConfigurationTests.swift; sourceTree = "<group>"; };
 		N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingArtworkImageLoader.swift; sourceTree = "<group>"; };
 		P2P2P2P20101P2P20101P2P2 /* LRCParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LRCParser.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60101A1B2C3D4 /* LyricsStageKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsStageKit.swift; sourceTree = "<group>"; };
 		EE3230AB8E5F420DBD7E85E5 /* TVAmbientStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVAmbientStateMachine.swift; sourceTree = "<group>"; };
+		B1B2C3D4E5F60201B1B2C3D4 /* TVAmbientPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVAmbientPresentation.swift; sourceTree = "<group>"; };
+		B1B2C3D4E5F60203B1B2C3D4 /* TVLyricsStageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVLyricsStageView.swift; sourceTree = "<group>"; };
+		B1B2C3D4E5F60205B1B2C3D4 /* TVAmbientPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVAmbientPresentationTests.swift; sourceTree = "<group>"; };
+		B1B2C3D4E5F60207B1B2C3D4 /* TVLyricsStageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVLyricsStageTests.swift; sourceTree = "<group>"; };
 		13D9713488664F42941E2FB0 /* TVDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVDesignTokens.swift; sourceTree = "<group>"; };
 		1AF3E42646B24882B3E784AA /* TVNowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVNowPlayingView.swift; sourceTree = "<group>"; };
 		9B1DF82EC02B47E3BB01405E /* TVAmbientStateMachineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVAmbientStateMachineTests.swift; sourceTree = "<group>"; };
@@ -604,6 +616,7 @@
 				B7E8232ED356CCE267DA6872 /* ArtworkMemoryCache.swift */,
 				C90B386DF8A0466AAF2183FE /* SituationPlaylistResolver.swift */,
 				3ABB8F8673614992A6F51E34 /* LyricsTranslationMerger.swift */,
+				A1B2C3D4E5F60101A1B2C3D4 /* LyricsStageKit.swift */,
 				FEED0032000000000000AA32 /* ModeIconAnimationMaths.swift */,
 				5DE6CF287D813BDA7F36A151 /* DownloadAudioQuality.swift */,
 			);
@@ -759,6 +772,8 @@
 				6FAA495EF2FC4A71B79A5DE2 /* TVPlaybackController.swift */,
 				459B4A28AECE4F8C8375C1E3 /* TVBrowseView.swift */,
 				EE3230AB8E5F420DBD7E85E5 /* TVAmbientStateMachine.swift */,
+				B1B2C3D4E5F60201B1B2C3D4 /* TVAmbientPresentation.swift */,
+				B1B2C3D4E5F60203B1B2C3D4 /* TVLyricsStageView.swift */,
 				13D9713488664F42941E2FB0 /* TVDesignTokens.swift */,
 				1AF3E42646B24882B3E784AA /* TVNowPlayingView.swift */,
 				6D54A3B1339A47648ED348A2 /* Localizable.xcstrings */,
@@ -791,6 +806,8 @@
 				24813B4277694D7BA557A10B /* TVRemoteHTTPMessageTests.swift */,
 				B58148FC2DE8459CAFF9072F /* TVPlaybackCachePlanTests.swift */,
 				9B1DF82EC02B47E3BB01405E /* TVAmbientStateMachineTests.swift */,
+				B1B2C3D4E5F60205B1B2C3D4 /* TVAmbientPresentationTests.swift */,
+				B1B2C3D4E5F60207B1B2C3D4 /* TVLyricsStageTests.swift */,
 				EBDFAD59F9134E18947F7BA3 /* TVRelayPlaybackReducerTests.swift */,
 				4A0496FEF17D465F97082983 /* TVPlaybackControllerGainTests.swift */,
 				9FBC887A080740DFADD876E6 /* TVSongStreamPlaybackReducerTests.swift */,
@@ -1120,6 +1137,7 @@
 				FCF7FCB40DAC7268194A2333 /* ArtworkMemoryCache.swift in Sources */,
 				F548AB3DC1F244E18D72F3B6 /* SituationPlaylistResolver.swift in Sources */,
 				E9C57EBF9E4447E3B08B8325 /* LyricsTranslationMerger.swift in Sources */,
+				A1B2C3D4E5F60102A1B2C3D4 /* LyricsStageKit.swift in Sources */,
 				18A4C7A01D874E1CA883AE6C /* Artist.swift in Sources */,
 				366EBD42F98144F3818933ED /* ArtistDetailView.swift in Sources */,
 				FEED0033000000000000AA33 /* ModeIconAnimationMaths.swift in Sources */,
@@ -1191,7 +1209,11 @@
 				4B4B4B4B0404B4B40404B4B4 /* DownloadAudioQuality.swift in Sources */,
 				5C5C5C5C0505C5C50505C5C5 /* PlaybackQueueEditing.swift in Sources */,
 				F0029622EAEE4205B5B470DB /* LRCParser.swift in Sources */,
+				A1B2C3D4E5F60103A1B2C3D4 /* LyricsStageKit.swift in Sources */,
+				A1B2C3D4E5F60104A1B2C3D4 /* LyricsTranslationMerger.swift in Sources */,
 				C0A2CD756F354040A91F2036 /* TVAmbientStateMachine.swift in Sources */,
+				B1B2C3D4E5F60202B1B2C3D4 /* TVAmbientPresentation.swift in Sources */,
+				B1B2C3D4E5F60204B1B2C3D4 /* TVLyricsStageView.swift in Sources */,
 				56CE0C14CCE14293B089A018 /* TVDesignTokens.swift in Sources */,
 				3F98CC49EFAD43F98AA2A83C /* TVNowPlayingView.swift in Sources */,
 				177B41DBDD424B8BA4C0AC21 /* TVLibraryDetailView.swift in Sources */,
@@ -1230,6 +1252,8 @@
 				EC9BA0B9A4D14EF999E2CD3D /* TVRemoteHTTPMessageTests.swift in Sources */,
 				DBC591AC0E6B4B9F87F6A23E /* TVPlaybackCachePlanTests.swift in Sources */,
 				94DB3D1F88174415A2DDBF71 /* TVAmbientStateMachineTests.swift in Sources */,
+				B1B2C3D4E5F60206B1B2C3D4 /* TVAmbientPresentationTests.swift in Sources */,
+				B1B2C3D4E5F60208B1B2C3D4 /* TVLyricsStageTests.swift in Sources */,
 				DE33DF0010974B6695E4E0A4 /* TVRelayPlaybackReducerTests.swift in Sources */,
 				2BBE3BBDA7494007BD76D6B4 /* TVPlaybackControllerGainTests.swift in Sources */,
 				78A3657EF038428AB02E3160 /* TVSongStreamPlaybackReducerTests.swift in Sources */,

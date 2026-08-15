@@ -372,49 +372,6 @@ private func sidecarFormatTime(_ seconds: Double) -> String {
     return "\(m):\(String(format: "%02d", s))"
 }
 
-/// Soft top/bottom dissolve for `lyricsPane`, so lines scroll into and out of view rather than
-/// being hard-clipped by the pane's bounds. Originally ported 1:1 from Desktop's fullscreen lyrics
-/// container (`src/renderer/styles/components.css:2072-2078`, `.fs-lyrics-container`'s
-/// `mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%)`),
-/// but Mobile now **intentionally diverges** from that recipe: user feedback on the sidecar screen
-/// ("歌詞のフェード、スパッと切れてる感じがある、もうちょっとじわじわ消えてほしい") found Desktop's
-/// short, linear 8%/30%-deep ramps read as an abrupt cut rather than a dissolve on the sidecar's
-/// larger lyrics pane. This version lengthens both ramps (top: 0–20%, bottom: 60–100%) and shapes
-/// each with four intermediate stops approximating an ease-in-out opacity curve — a straight 2-stop
-/// `LinearGradient` ramp reads as a hard edge close to its terminal stop because the eye is far more
-/// sensitive to opacity change near full-transparent/full-opaque than a linear alpha ramp delivers;
-/// front-loading small opacity deltas near the transparent end and easing into the opaque end reads
-/// as a genuine gradual melt instead. See `progress/sidecar-lyrics-fade-and-bilingual.md`.
-private enum SidecarLyricsEdgeFade {
-    /// Where the top ramp reaches full opacity (Desktop: `8%`).
-    static let topOpaqueStop: CGFloat = 0.20
-    /// Where the bottom ramp starts leaving full opacity (Desktop: `70%`).
-    static let bottomOpaqueStop: CGFloat = 0.60
-
-    static var gradient: LinearGradient {
-        LinearGradient(
-            stops: [
-                // Top ramp: transparent → opaque over 0–20%, eased (ease-in-out — slow start,
-                // fast middle, slow finish) rather than linear.
-                .init(color: .black.opacity(0), location: 0),
-                .init(color: .black.opacity(0.08), location: 0.05),
-                .init(color: .black.opacity(0.30), location: 0.10),
-                .init(color: .black.opacity(0.65), location: 0.15),
-                .init(color: .black, location: topOpaqueStop),
-                // Fully opaque band across the middle of the lyrics pane.
-                .init(color: .black, location: bottomOpaqueStop),
-                // Bottom ramp: opaque → transparent over 60–100%, mirrored easing.
-                .init(color: .black.opacity(0.65), location: 0.75),
-                .init(color: .black.opacity(0.30), location: 0.85),
-                .init(color: .black.opacity(0.08), location: 0.93),
-                .init(color: .black.opacity(0), location: 1),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
-}
-
 /// Ported from Desktop's fullscreen overlay background (`src/renderer/styles/components.css:1764-
 /// 1776`, `.fs-overlay`): a 135°-diagonal two-stop linear gradient between the artwork's two
 /// dominant colours, each mixed 30% into a near-black `#0e0e1a` base

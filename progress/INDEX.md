@@ -1,5 +1,7 @@
 # Progress Index
 
+- [tvos-ambient-artwork-retention.md](tvos-ambient-artwork-retention.md) — 「無操作30秒で背景だけ残りUI・ジャケットが消える」の正体はアンビエントモードの設計そのもの（通常レイアウトを丸ごと捨てて画面下部の小さなテキストだけの`TVAmbientOverlay`へ差し替え＋背景ウォッシュの後退）。アンビエントを「クロームのフェード」に再定義し、アートワーク・歌詞は残してトランスポート／シークバーだけを消す方式へ変更（純粋enum `TVAmbientPresentation`、contentOpacityが0にならないことをテストで固定）。焼き付き対策は周期120秒・振幅28ptのリサージュドリフトで代替、アンビエント中のボタンは`.disabled`でフォーカスツリーからも除外。あわせて歌詞表示をSidecar（＝Desktopフルスクリーン）準拠に作り直し（3行固定ウィンドウ→行独立モーション、`[間奏]`空白化、和訳バイリンガル、端フェード）、共有ロジックを`Core/LyricsStageKit.swift`へ切り出してMobile/TV両ターゲットで共有。`TimelineView`の`.now`アンカー問題（sidecar-poll-tick-cpu-leak）もTV側に残っていたため同時に修正
+
 - [embed-loudness-live-correction.md](embed-loudness-live-correction.md) — 公式再生（embed）がローカル曲より1〜4.4dB小さく鳴る原因は二重ラウドネス正規化。埋め込みプレイヤー自身が`<video>.volume`を下げて減衰させている（ブラウザ実測で確認、cont−tgtぶん・片方向）のに、アプリが減衰前の`perceptualLoudnessDb`を基準に再度減衰させていた。推定ゲインを`min(cont, -14)`基準へ是正し、さらにタップ音声のBS.1770積分ラウドネスを実測して差分を補正する経路（`pkg/audio/loudness_meter.go`）を新設。当初案の「ホストページで実減衰を読む」はYT.Playerがクロスオリジンiframeのため不可能と判明し却下
 
 - [electron-legacy-cleanup.md](electron-legacy-cleanup.md) — Electron→Wails移行後に残っていた到達不能／未実装チャンネルの死んだコードを削除（list-renderer.ts/player-ui.ts/player.tsの到達不能フォールバック、init-listeners.tsのコメントアウト行と未emitリスナー、debug-commands.tsの未実装デバッグコマンド、ipc.tsの死んだ・重複IPCリスナー、wails-check.tsの「(Wails Mode)」バージョン表示）。根本原因はinitIPCのcallbacks注入パターンがrenderer.ts/bridge.tsの直接登録移行後も取り残されていたこと。window.electronAPIは現役のWailsシムとして温存、機能欠落系（人間判断待ち）の項目には未着手と明記

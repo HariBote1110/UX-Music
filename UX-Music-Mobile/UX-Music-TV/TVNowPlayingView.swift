@@ -3,8 +3,9 @@ import UIKit
 
 /// Full-screen Now Playing (`markdown/appletv-servermode-plan.md` Phase 2). Large artwork, track
 /// info, progress, and Siri Remote transport controls, plus synced lyrics (falling back to an
-/// artwork-centric layout for songs without lyrics) and an ambient presentation after a period of
-/// no remote interaction. Media-key handling itself (play/pause/next/previous from the physical
+/// artwork-centric layout for songs without lyrics) and an ambient (idle) presentation after a
+/// period of no remote interaction — which dims the chrome away but deliberately keeps the artwork
+/// and lyrics on screen, see `TVAmbientPresentation`. Media-key handling itself (play/pause/next/previous from the physical
 /// remote, Control Centre, etc.) already comes for free from `MusicPlayerService`'s existing
 /// `MPRemoteCommandCenter`/`MPNowPlayingInfoCenter` wiring, which is shared unmodified with
 /// iOS/watchOS — see `progress/tvos-nowplaying.md` for why no TV-specific seam was needed there.
@@ -13,21 +14,41 @@ struct TVNowPlayingView: View {
     let client: RemoteAPIClient
 
     @Environment(\.dismiss) private var dismiss
-    @State private var lyricsLines: [LRCParser.TimedLine] = []
+    /// Timed lines, each optionally paired with its 和訳 — see `SidecarLyricsTranslationMerge`.
+    /// `translation == nil` on every line renders identically to the original single-language pane.
+    @State private var lyricsLines: [TranslatedTimedLine] = []
     @State private var lastInteractionAt = Date()
     @State private var ambientState: TVAmbientStateMachine.State = .normal
+    /// When the current ambient stretch began, driving `TVAmbientPresentation.driftOffset`'s phase.
+    /// `nil` while normal.
+    @State private var ambientSince: Date?
+    /// Stable anchor for the idle-tick `TimelineView` below. MUST NOT be `.now` evaluated inside the
+    /// body: this tick writes `@State` (`ambientState`/`ambientSince`) that the body itself reads, so
+    /// every tick reconstructs the `TimelineView`; a schedule re-anchored at a fresh `.now` on each
+    /// reconstruction fires its first entry immediately, writes again, and reconstructs again — the
+    /// unbounded feedback loop documented in `progress/sidecar-poll-tick-cpu-leak.md`. Anchoring at a
+    /// `@State` value fixed once keeps the entries deterministic, so it settles into the intended 1s
+    /// cadence.
+    @State private var tickAnchor = Date()
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        TimelineView(.periodic(from: tickAnchor, by: 1)) { context in
             let idleSeconds = context.date.timeIntervalSince(lastInteractionAt)
             let resolved = TVAmbientStateMachine.next(
                 current: ambientState,
                 isPlaying: player.isPlaying,
                 secondsSinceLastInteraction: idleSeconds
             )
+            let drift = TVAmbientPresentation.driftOffset(
+                ambient: resolved == .ambient,
+                secondsSinceAmbientStart: context.date.timeIntervalSince(ambientSince ?? context.date)
+            )
 
-            content(ambient: resolved == .ambient)
-                .onChange(of: resolved) { _, newValue in ambientState = newValue }
+            content(ambient: resolved == .ambient, drift: drift)
+                .onChange(of: resolved) { _, newValue in
+                    ambientState = newValue
+                    ambientSince = newValue == .ambient ? Date() : nil
+                }
         }
         .onAppear { UIApplication.shared.isIdleTimerDisabled = player.isPlaying }
         .onChange(of: player.isPlaying) { _, playing in
@@ -41,34 +62,41 @@ struct TVNowPlayingView: View {
         .background(TVDesignTokens.charcoalBase.ignoresSafeArea())
     }
 
+    /// Ambient does NOT swap the layout out any more — see `TVAmbientPresentation` for the defect
+    /// that behaviour caused (30s idle left nothing but the background wash). The same artwork/
+    /// lyrics layout stays mounted; it only dims, loses its chrome, and drifts slowly.
     @ViewBuilder
-    private func content(ambient: Bool) -> some View {
+    private func content(ambient: Bool, drift: CGSize) -> some View {
         ZStack {
             TVCinematicBackground(breathing: ambient)
             TVNowPlayingAmbientBackground(artworkId: player.currentSong?.artworkId ?? "", client: client, ambient: ambient)
 
-            if ambient {
-                TVAmbientOverlay(song: player.currentSong, lyricsLines: lyricsLines, player: player)
-            } else if lyricsLines.isEmpty {
-                TVNowPlayingArtworkLayout(player: player, client: client)
-            } else {
-                TVNowPlayingLyricsLayout(player: player, client: client, lines: lyricsLines)
+            Group {
+                if lyricsLines.isEmpty {
+                    TVNowPlayingArtworkLayout(player: player, client: client, ambient: ambient)
+                } else {
+                    TVNowPlayingLyricsLayout(player: player, client: client, lines: lyricsLines, ambient: ambient)
+                }
             }
+            .opacity(TVAmbientPresentation.contentOpacity(ambient: ambient))
+            .offset(x: drift.width, y: drift.height)
+            .animation(.linear(duration: 1), value: drift)
         }
-        .animation(.easeInOut(duration: 1.2), value: ambient)
+        .animation(.easeInOut(duration: TVAmbientPresentation.transitionDuration), value: ambient)
     }
 
     private func registerInteraction() {
         lastInteractionAt = .now
         ambientState = .normal
+        ambientSince = nil
     }
 
     /// Menu/Back handler: two-step exit driven by `TVAmbientStateMachine.exitCommand` (pure, unit
-    /// tested). While the ambient (screensaver) presentation is up, Menu only wakes the screen back
-    /// to normal — it must NOT also dismiss in the same press, or a quick double-press of Menu would
-    /// fall through the dismissed `fullScreenCover` straight to the tvOS home screen. Only a Menu
-    /// press while already showing the normal layout dismisses back to browse; playback is
-    /// untouched either way (see `MusicPlayerService`, which lives above this view).
+    /// tested). While the ambient presentation is up, Menu only wakes the screen back to normal — it
+    /// must NOT also dismiss in the same press, or a quick double-press of Menu would fall through
+    /// the dismissed `fullScreenCover` straight to the tvOS home screen. Only a Menu press while
+    /// already showing the normal layout dismisses back to browse; playback is untouched either way
+    /// (see `MusicPlayerService`, which lives above this view).
     private func handleExitCommand() {
         switch TVAmbientStateMachine.exitCommand(current: ambientState) {
         case .returnToNormal:
@@ -81,7 +109,9 @@ struct TVNowPlayingView: View {
     /// Fetches `/v1/remote/lyrics` for the current song and parses synced (`.lrc`) content only —
     /// plain-text lyrics have no timestamps to drive a current-line highlight on a 10-foot display,
     /// so (per the Phase 2 plan) songs without *synced* lyrics fall back to the artwork-centric
-    /// layout exactly as if they had no lyrics at all.
+    /// layout exactly as if they had no lyrics at all. Any 和訳 the desktop has saved for the track
+    /// arrives on the same payload and is paired in by `SidecarLyricsTranslationMerge`, the same
+    /// helper the Sidecar screen uses.
     private func loadLyrics() async {
         // Clear synchronously BEFORE the fetch, not just on failure/not-found: without this, the
         // PREVIOUS song's lyric lines stayed visible (with the NEW song's already-reset
@@ -96,7 +126,11 @@ struct TVNowPlayingView: View {
                 lyricsLines = []
                 return
             }
-            lyricsLines = LRCParser.parseTimedLines(raw)
+            lyricsLines = SidecarLyricsTranslationMerge.merge(
+                primary: LRCParser.parseTimedLines(raw),
+                translationContent: payload.translationContent,
+                translationFormat: payload.translationFormat
+            )
         } catch {
             lyricsLines = []
         }
@@ -148,12 +182,17 @@ private struct TVCinematicArtworkCard: View {
 private struct TVNowPlayingArtworkLayout: View {
     let player: MusicPlayerService
     let client: RemoteAPIClient
+    var ambient: Bool = false
 
     var body: some View {
         VStack(spacing: 40) {
             TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: 560)
-            TVNowPlayingInfoBlock(player: player)
+            TVNowPlayingInfoBlock(player: player, ambient: ambient)
             TVNowPlayingTransportBar(player: player)
+                .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
+                // `.disabled` also removes the buttons from the tvOS focus tree, so a Select press
+                // while the chrome is invisible can't blind-toggle playback.
+                .disabled(ambient)
         }
         .padding(80)
     }
@@ -162,7 +201,8 @@ private struct TVNowPlayingArtworkLayout: View {
 private struct TVNowPlayingLyricsLayout: View {
     let player: MusicPlayerService
     let client: RemoteAPIClient
-    let lines: [LRCParser.TimedLine]
+    let lines: [TranslatedTimedLine]
+    var ambient: Bool = false
 
     /// Matches `TVCinematicArtworkCard`'s fixed `size` below — see the `.top`-alignment note.
     private static let artworkSize: CGFloat = 420
@@ -193,7 +233,7 @@ private struct TVNowPlayingLyricsLayout: View {
                     .foregroundStyle(TVDesignTokens.textSecondary)
                     .lineLimit(1)
 
-                TVSyncedLyricsFocusView(lines: lines, positionSeconds: player.positionSeconds)
+                TVLyricsStageView(player: player, lines: lines)
                     .padding(.top, 12)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -205,64 +245,14 @@ private struct TVNowPlayingLyricsLayout: View {
                 TVNowPlayingProgressBar(player: player)
                 Spacer()
             }
-        }
-    }
-}
-
-/// Three-line "focus" lyrics block: previous line (muted, small), current line (white, larger,
-/// with a pink accent bar on the left edge), next line (muted) — smooth vertical transition as
-/// lines advance. The active/prev/next indices are all derived from `LRCParser.activeLineIndex`
-/// (shared, TDD'd pure function — see `UX-Music-MobileTests/LRCParserTests.swift`); this view only
-/// renders that index as a windowed, animated presentation.
-struct TVSyncedLyricsFocusView: View {
-    let lines: [LRCParser.TimedLine]
-    let positionSeconds: Double
-
-    var body: some View {
-        let active = LRCParser.activeLineIndex(in: lines, at: positionSeconds)
-        VStack(alignment: .leading, spacing: 14) {
-            lineView(at: active - 1, style: .muted)
-            currentLineView(at: active)
-            lineView(at: active + 1, style: .muted)
-        }
-        .animation(.easeInOut(duration: 0.4), value: active)
-    }
-
-    private enum LineStyle { case muted }
-
-    @ViewBuilder
-    private func lineView(at index: Int, style: LineStyle) -> some View {
-        if lines.indices.contains(index) {
-            Text(lines[index].text.isEmpty ? " " : lines[index].text)
-                .font(.system(size: 24, design: .rounded))
-                .foregroundStyle(TVDesignTokens.textTertiary)
-                .lineLimit(1)
-                .id(lines[index].id)
-        } else {
-            Text(" ").font(.system(size: 24)).hidden()
-        }
-    }
-
-    @ViewBuilder
-    private func currentLineView(at index: Int) -> some View {
-        if lines.indices.contains(index) {
-            HStack(spacing: 16) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(TVDesignTokens.signaturePink)
-                    .frame(width: 4, height: 40)
-                Text(lines[index].text.isEmpty ? " " : lines[index].text)
-                    .font(.system(size: 36, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-            }
-            .padding(.leading, 4)
-            .id(lines[index].id)
+            .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
         }
     }
 }
 
 private struct TVNowPlayingInfoBlock: View {
     let player: MusicPlayerService
+    var ambient: Bool = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -274,6 +264,7 @@ private struct TVNowPlayingInfoBlock: View {
                 .foregroundStyle(TVDesignTokens.textSecondary)
                 .lineLimit(1)
             TVNowPlayingProgressBar(player: player)
+                .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
         }
     }
 }
@@ -378,12 +369,14 @@ struct TVNowPlayingPreviewHarness: View {
     private let player = MusicPlayerService()
     private let client = RemoteAPIClient(baseURLString: "http://198.51.100.1:9999")
 
-    private static let lines: [LRCParser.TimedLine] = [
-        .init(id: 0, startTime: 0, text: "夜が明ける前に"),
-        .init(id: 1, startTime: 10, text: "この歌を君に届けたい"),
-        .init(id: 2, startTime: 20, text: "繋がっていると感じられるように"),
-        .init(id: 3, startTime: 30, text: "遠く離れていても"),
-        .init(id: 4, startTime: 40, text: "この音楽が架け橋になる"),
+    /// Includes a 和訳 pairing and an `[間奏]` marker so the harness screenshots exercise both
+    /// bilingual rendering and interlude blanking, not just the plain single-language case.
+    private static let lines: [TranslatedTimedLine] = [
+        .init(id: 0, startTime: 0, text: "Before the night breaks", translation: "夜が明ける前に"),
+        .init(id: 1, startTime: 10, text: "I want to send you this song", translation: "この歌を君に届けたい"),
+        .init(id: 2, startTime: 20, text: "[間奏]", translation: nil),
+        .init(id: 3, startTime: 30, text: "So you can feel we're connected", translation: "繋がっていると感じられるように"),
+        .init(id: 4, startTime: 40, text: "However far apart we are", translation: "遠く離れていても"),
     ]
 
     var body: some View {
@@ -403,41 +396,29 @@ struct TVNowPlayingPreviewHarness: View {
         }
     }
 }
-#endif
 
-/// Ambient (screensaver-style) presentation: same drifting blurred artwork as the base layer, with
-/// track info and (if present) the current lyric line overlaid quietly. Any interaction — handled
-/// by the parent `TVNowPlayingView`'s `onMoveCommand`/`onTapGesture`/`onExitCommand` — returns to
-/// the normal layout.
-private struct TVAmbientOverlay: View {
-    let song: Song?
-    let lyricsLines: [LRCParser.TimedLine]
-    let player: MusicPlayerService
+/// Preview-only harness for `UXTV_PREVIEW=nowplayingambient` — renders the REAL `TVNowPlayingView`
+/// (not just one of its layouts) with a preview-configured player and never touches the remote, so
+/// leaving it alone for `TVAmbientStateMachine.idleTimeout` seconds reproduces the reported defect's
+/// exact conditions: 「操作を止めてから30秒程度経つと背景だけが残り、UIやジャケットが消えてしまう」.
+/// Screenshot it immediately and again after ~35s — with the `TVAmbientPresentation` fix both frames
+/// still show the artwork and track info; only the transport row and progress bar fade out.
+/// `client` points at a TEST-NET address so `loadLyrics()`'s fetch fails fast and the harness settles
+/// on the artwork-centric layout (the one whose disappearance was reported) rather than hanging.
+struct TVNowPlayingAmbientPreviewHarness: View {
+    private let player = MusicPlayerService()
+    private let client = RemoteAPIClient(baseURLString: "http://198.51.100.1:9999")
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            Text(song?.title ?? "")
-                .font(.system(size: 28, weight: .medium))
-                .foregroundStyle(.white.opacity(0.75))
-            Text(song?.artist ?? "")
-                .font(.system(size: 18))
-                .foregroundStyle(TVDesignTokens.textSecondary)
-            if !lyricsLines.isEmpty {
-                let active = LRCParser.activeLineIndex(in: lyricsLines, at: player.positionSeconds)
-                HStack(spacing: 12) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(TVDesignTokens.signaturePink.opacity(0.6))
-                        .frame(width: 3, height: 22)
-                    Text(lyricsLines[active].text)
-                        .font(.system(size: 22, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.65))
-                }
-                .padding(.top, 8)
-                .animation(.easeInOut(duration: 0.4), value: active)
+        TVNowPlayingView(player: player, client: client)
+            .onAppear {
+                player.configureForPreview(
+                    song: Song(id: "preview", path: "", title: "夜明けのメロディー", artist: "UX Music Demo", artworkId: "preview"),
+                    isPlaying: true,
+                    positionSeconds: 15.2,
+                    durationSeconds: 240
+                )
             }
-        }
-        .padding(.bottom, 120)
-        .transition(.opacity)
     }
 }
+#endif
