@@ -54,12 +54,12 @@ export function AudioIsPlaying() {
   return window['go']['server']['App']['AudioIsPlaying']();
 }
 
-export function AudioLiveLoudnessCorrectionGain() {
-  return window['go']['server']['App']['AudioLiveLoudnessCorrectionGain']();
-}
-
 export function AudioListDevices() {
   return window['go']['server']['App']['AudioListDevices']();
+}
+
+export function AudioLiveLoudnessCorrectionGain() {
+  return window['go']['server']['App']['AudioLiveLoudnessCorrectionGain']();
 }
 
 export function AudioPause() {

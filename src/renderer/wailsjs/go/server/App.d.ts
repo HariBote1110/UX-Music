@@ -36,9 +36,9 @@ export function AudioIsPaused():Promise<boolean>;
 
 export function AudioIsPlaying():Promise<boolean>;
 
-export function AudioLiveLoudnessCorrectionGain():Promise<number>;
-
 export function AudioListDevices():Promise<Array<audio.Device>>;
+
+export function AudioLiveLoudnessCorrectionGain():Promise<number>;
 
 export function AudioPause():Promise<void>;
 
