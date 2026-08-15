@@ -1,5 +1,7 @@
 # Progress Index
 
+- [tray-arc-retain.md](tray-arc-retain.md) — メニューバーのトレイアイコン非表示不具合の根本原因はcgoがObjective-CをデフォルトMRCでコンパイルすること。ARCスタイルで書かれた`tray_darwin.m`では`statusItemWithLength:`が返すautoreleasedなNSStatusItemがretainされず即解放されていた。`#cgo CFLAGS`に`-fobjc-arc`を追加しパッケージ全体（`os_media_darwin.m`含む）をARC化して修正
+
 - [footer-hit-testing.md](footer-hit-testing.md) — デフォルトテーマのフッター（`.playback-bar`）にあった `pointer-events: none` を除去しクリックすり抜けを修正。当時の「背面のノーマライズ適用ボタン等へクリックを届ける」根拠は `--footer-height` による各ビューの余白確保で解消済みと判明。mc-theme側はすでに個別回避済みだった
 
 - [sidecar-lyrics-fade-and-bilingual.md](sidecar-lyrics-fade-and-bilingual.md) — サイドカー歌詞ペインの上下端フェード（Desktop `.fs-lyrics-container` のmask-imageを1:1移植）、左カラム（アートワーク/情報ブロック）の余白詰め、和訳（バイリンガル）対応（`RemoteLyricsPayload.translationContent`を既存`LyricsTranslationMerger`でペアリングしDesktop `.fs-line-bilingual`準拠のスタイルで描画）
