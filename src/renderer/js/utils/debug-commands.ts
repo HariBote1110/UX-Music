@@ -113,18 +113,6 @@ export async function enableYoutubeAdvancedModesWithConsent({ showAlert = true }
 
 export function initDebugCommands() {
     const uxDebug = {
-        resetLibrary: () => {
-            const confirmation = confirm('本当にライブラリをリセットしますか？...');
-            if (confirmation) {
-                electronAPI.send('debug-reset-library');
-            }
-        },
-        rollbackMigration: () => {
-            const confirmation = confirm('本当にマイグレーションをロールバックしますか？...');
-            if (confirmation) {
-                electronAPI.send('debug-rollback-migration');
-            }
-        },
         setVisualizerFps: (fps) => {
             if (typeof fps !== 'number') {
                 console.error('[DEBUG] Please provide a number...');
@@ -149,8 +137,6 @@ export function initDebugCommands() {
             console.log(
                 '%cUX Music デバッグコマンド一覧:\n' +
                 '%c' +
-                '  uxDebug.resetLibrary()                - 全てのライブラリデータを削除します。\n' +
-                '  uxDebug.rollbackMigration()         - データ構造のマイグレーションを元に戻します。\n' +
                 '  uxDebug.setVisualizerFps(fps)       - ビジュアライザーのFPS上限を設定します。(0で制限解除)\n' +
                 '  uxDebug.toggleVisualizerEcoMode(bool) - ビジュアライザーのエコモードを切り替えます。(trueで有効(デフォルト), falseで無効)\n' +
                 '  uxDebug.enableYoutubeAdvancedModes()    - YouTubeのダウンロード／ストリーミング(非公式)モードを有効化します。\n' +

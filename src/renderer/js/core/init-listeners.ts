@@ -68,7 +68,6 @@ export function initEventListeners() {
                 title: 'ネットワークフォルダのパス',
                 placeholder: '\\\\ServerName\\ShareName',
                 onOk: (path) => {
-                    // electronAPI.send('start-scan-paths', [path]);
                     musicApi.startScanPaths([path]);
                 }
             });
@@ -350,12 +349,6 @@ export function initEventListeners() {
         } else if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedSongIds.size > 0) {
             e.preventDefault();
             deleteSelectedSongs();
-        }
-    });
-
-    electronAPI.on('navigate-back', () => {
-        if (state.currentDetailView.type) {
-            void showView(state.activeListView);
         }
     });
 
