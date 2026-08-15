@@ -1,5 +1,7 @@
 # Progress Index
 
+- [first-playback-warmup.md](first-playback-warmup.md) — 「起動後の初回再生だけがまれに音切れ／歪む（MP3・FLAC共通）」の根本原因は2つ。(A) `startDecodedPlayback()` がリングバッファの事前充填を待たず `stream.Start()` していたため初回のコールドなデコード（初回ディスクI/O・cgo呼び出し）が間に合わず半端なバッファを読んでいた（`prefillSatisfied` 純粋関数＋上限150msのポーリング `waitForPrefill` で解消）。(B) 実ストリームは初回 `Play()` まで一度も開かれずCoreAudioのDAC電源投入／フォーマットネゴシエーションのコストがそこに乗っていた（`NewPlayer()` 末尾で48kHz/2ch無音ストリームを同期的に開閉する `warmUpOutputDevice()` で解消。非同期実行は`-race`でPortAudioのグローバル状態への同時アクセスが検出されたため不採用）
+
 - [tray-arc-retain.md](tray-arc-retain.md) — メニューバーのトレイアイコン非表示不具合の根本原因はcgoがObjective-CをデフォルトMRCでコンパイルすること。ARCスタイルで書かれた`tray_darwin.m`では`statusItemWithLength:`が返すautoreleasedなNSStatusItemがretainされず即解放されていた。`#cgo CFLAGS`に`-fobjc-arc`を追加しパッケージ全体（`os_media_darwin.m`含む）をARC化して修正
 
 - [footer-hit-testing.md](footer-hit-testing.md) — デフォルトテーマのフッター（`.playback-bar`）にあった `pointer-events: none` を除去しクリックすり抜けを修正。当時の「背面のノーマライズ適用ボタン等へクリックを届ける」根拠は `--footer-height` による各ビューの余白確保で解消済みと判明。mc-theme側はすでに個別回避済みだった
