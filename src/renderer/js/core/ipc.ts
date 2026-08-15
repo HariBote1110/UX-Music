@@ -24,9 +24,6 @@ export function initIPC(callbacks) {
     console.log('[IPC] initIPC called');
     logPerf("initIPC called.");
 
-    electronAPI.on('app-info-response', (info) => {
-        callbacks.onAppInfoResponse?.(info);
-    });
     electronAPI.on('load-library', (data) => {
         logPerf("Received 'load-library' from main.");
         const d = data as Record<string, unknown>;
@@ -47,32 +44,6 @@ export function initIPC(callbacks) {
     electronAPI.on('playlists-updated', (playlists) => {
         callbacks.onPlaylistsUpdated?.(playlists);
     });
-    electronAPI.on('force-reload-playlist', (playlistName) => {
-        callbacks.onForceReloadPlaylist?.(playlistName);
-    });
-    electronAPI.on('force-reload-library', () => {
-        callbacks.onForceReloadLibrary?.();
-    });
-    electronAPI.on('show-loading', (text) => { // YouTube用
-        callbacks.onShowLoading?.(text);
-    });
-    electronAPI.on('hide-loading', () => { // YouTube用
-        callbacks.onHideLoading?.();
-    });
-    electronAPI.on('show-error', (message) => {
-        callbacks.onShowError?.(message);
-    });
-    electronAPI.on('playlist-import-progress', (progress) => { // YouTube用
-        callbacks.onPlaylistImportProgress?.(progress);
-    });
-    electronAPI.on('playlist-import-finished', () => { // YouTube用
-        callbacks.onPlaylistImportFinished?.();
-    });
-
-    electronAPI.on('scan-progress', (progress) => {
-        callbacks.onScanProgress?.(progress);
-    });
-
     electronAPI.on('scan-complete', (newSongs) => {
         callbacks.onScanComplete?.(newSongs);
     });
