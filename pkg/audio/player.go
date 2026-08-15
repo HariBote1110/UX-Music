@@ -182,6 +182,25 @@ type Player struct {
 	liveFadeRemaining atomic.Int64
 	liveFadeTotal     atomic.Int64
 
+	// liveMeter measures the loudness of the incoming live-capture stream
+	// (pre-gain) so the estimated normalisation gain can be corrected against
+	// what actually arrives. Fed by processAudio (audio thread), read by the
+	// correction goroutine. nil while no correction is running.
+	// See player_live_loudness.go.
+	liveMeter atomic.Pointer[loudnessMeter]
+	// liveCorrectionTarget / liveCorrectionCurrent hold the loudness
+	// correction multiplier applied on top of baseGain, as float64 bits
+	// (zero value means "no correction"; see gainFromBits). The current value
+	// ramps towards the target inside processAudio so changes never step.
+	liveCorrectionTarget  atomic.Uint64
+	liveCorrectionCurrent atomic.Uint64
+	// liveCorrectionStep is the per-sample one-pole ramp coefficient.
+	liveCorrectionStep atomic.Uint64
+	// liveCorrectionTargetLUFS is the loudness the corrected output aims for.
+	liveCorrectionTargetLUFS atomic.Uint64
+	liveCorrectionMu         sync.Mutex
+	liveCorrectionStop       chan struct{}
+
 	// Ring buffer for pre-decoded audio data
 	ringBuf       []float32     // Pre-decoded float32 samples
 	ringBufSize   int           // Total size of ring buffer
@@ -1098,11 +1117,29 @@ func (p *Player) processAudio(out []float32) {
 	fadeTotal := p.liveFadeTotal.Load()
 	fading := fadeTotal > 0 && fadeRemaining > 0
 
+	// Live-capture loudness correction: measure the incoming stream and ramp
+	// the correction multiplier towards its target. Both are inert (nil meter,
+	// unity gains) for file playback. See player_live_loudness.go.
+	meter := p.liveMeter.Load()
+	correction := gainFromBits(p.liveCorrectionCurrent.Load())
+	correctionTarget := gainFromBits(p.liveCorrectionTarget.Load())
+	correctionStep := math.Float64frombits(p.liveCorrectionStep.Load())
+	correcting := correctionStep > 0 && correction != correctionTarget
+
 	// Read samples from ring buffer
 	sumSquares := 0.0
 	for i := 0; i < samplesToRead; i++ {
 		idx := (readPos + int64(i)) % ringBufSize
 		outputSample := float64(ringBuf[idx])
+
+		// The meter must see the stream as captured: before EQ, before any
+		// gain. The correction is then computed against this measurement.
+		if meter != nil && channels > 0 {
+			meter.processSample(i%channels, outputSample)
+		}
+		if correcting {
+			correction += (correctionTarget - correction) * correctionStep
+		}
 
 		if useEqualizer {
 			outputSample *= float64(eqCfg.preamp)
@@ -1119,7 +1156,7 @@ func (p *Player) processAudio(out []float32) {
 		// to the clip ceiling whenever baseGain > 1 (embed loudness
 		// normalisation), making the upper range of the volume slider
 		// inaudible. Post-clip, volume always scales the signal linearly.
-		outputSample *= baseGainLinear
+		outputSample *= baseGainLinear * correction
 		if outputSample > 1 {
 			outputSample = 1
 		} else if outputSample < -1 {
@@ -1148,6 +1185,9 @@ func (p *Player) processAudio(out []float32) {
 			fadeRemaining = 0
 		}
 		p.liveFadeRemaining.Store(fadeRemaining)
+	}
+	if correcting {
+		p.setLiveCorrectionCurrentGain(correction)
 	}
 	if samplesToRead > 0 {
 		p.outputRMS.Store(math.Float64bits(math.Sqrt(sumSquares / float64(samplesToRead))))
@@ -1297,6 +1337,9 @@ func (p *Player) Stop() error {
 	}
 	p.stopLiveSourceLocked()
 	p.mu.Unlock()
+
+	// 補正は曲（ライブ捕捉）に紐づく状態なので、次の再生へ持ち越さない。
+	p.StopLiveLoudnessCorrection()
 
 	p.playing.Store(false)
 	p.paused.Store(false)
