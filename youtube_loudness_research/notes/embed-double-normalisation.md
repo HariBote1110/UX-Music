@@ -91,7 +91,24 @@ UX-Music はその減衰前の値（`perceptualLoudnessDb`）を「タップに�
   postMessage で本体へ返す。ゲインは `target − (cont + 20log10(video.volume))` で算出する。
   YouTube 側のターゲット変更や DRC 有無に自動追随する。
 
+### 追記（実装時の結果）
+
+**案 B は実装不能と判明**。`YT.Player` の実体は youtube.com のクロスオリジン iframe で、
+ホストページからは `<video>.volume` も `getStatsForNerds()` も読めない。IFrame API が
+公開する `apiInterface` を実測で列挙したが（`getVolume` / `isMuted` など 64 メソッド）、
+実減衰を返すものは存在せず、`getVolume()` は減衰前の 100 を返すだけだった。
+
+代わりに採用したのは案 A と「タップ音声そのものの実測」のハイブリッド:
+
+- 開始直後は案 A（`min(cont, −14)`）の推定ゲインで鳴らす。
+- 並行して ITU-R BS.1770 の積分ラウドネスをタップ音声（EQ・ゲイン適用前）で実測し、
+  `(目標 − 実測) − 既に掛けた推定ゲイン` を補正として乗算する（500ms ごとに再計算、
+  0.4 秒ランプ、±12 dB クランプ、測定 1.5 秒未満は補正しない）。
+
+実装の詳細と注意点は [progress/embed-loudness-live-correction.md](../../progress/embed-loudness-live-correction.md)。
+
 未検証:
+- 実機での聴感確認（プロセスタップにシステム音声録音の許可が要るため自動検証不可）。
 - DRC（`tgt −19.0`）がどの条件で選ばれるか（動画側／アカウント設定／クライアント種別）。
 - `<video>.volume` が再生途中で変化するか（曲の途中でターゲットが変わるか）。実装時は
   一定間隔での再読み取り、または `volumechange` 監視が要るかもしれない。
