@@ -220,4 +220,30 @@ final class SidecarDirectiveTests: XCTestCase {
     func testActiveLineUpdatePolicyDifferentIndexUpdates() {
         XCTAssertTrue(SidecarActiveLineUpdatePolicy.shouldUpdate(currentIndex: 3, newIndex: 4))
     }
+
+    // MARK: - SidecarLyricsDisplay
+
+    /// Mirrors Desktop's `fsDisplayText` (`fullscreen-view.ts:14-16`): a literal marker line such
+    /// as `[間奏]` must render as blank space, not the bracketed text itself.
+    func testDisplayTextBlanksLiteralInterludeMarkers() {
+        XCTAssertEqual(SidecarLyricsDisplay.text(for: "[間奏]"), " ")
+        XCTAssertEqual(SidecarLyricsDisplay.text(for: "[interlude]"), " ")
+        XCTAssertEqual(SidecarLyricsDisplay.text(for: "(interlude)"), " ")
+        XCTAssertEqual(SidecarLyricsDisplay.text(for: "[INTERLUDE]"), " ")
+    }
+
+    func testDisplayTextBlanksEmptyOrWhitespaceLines() {
+        XCTAssertEqual(SidecarLyricsDisplay.text(for: ""), " ")
+        XCTAssertEqual(SidecarLyricsDisplay.text(for: "   "), " ")
+    }
+
+    /// Must not over-filter real lyrics that merely start with a bracket.
+    func testDisplayTextKeepsRealLyricsThatStartWithBrackets() {
+        XCTAssertEqual(SidecarLyricsDisplay.text(for: "[Chorus] hello"), "[Chorus] hello")
+        XCTAssertEqual(SidecarLyricsDisplay.text(for: "(laughs) that's funny"), "(laughs) that's funny")
+    }
+
+    func testDisplayTextKeepsOrdinaryLyrics() {
+        XCTAssertEqual(SidecarLyricsDisplay.text(for: "Hello there"), "Hello there")
+    }
 }
