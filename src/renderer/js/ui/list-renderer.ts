@@ -180,7 +180,6 @@ function deleteSongsFromLibrary(songs) {
  */
 export function setupSongListScroller(listElement, songList, options: { contextView?: string; playlistName?: string | null; initialScrollTop?: number; saveScrollPosition?: (top: number) => void } = {}) {
     const {
-        contextView = 'library',
         playlistName = null,
         initialScrollTop = 0,
         saveScrollPosition // detail-renderer から渡されるコールバック
