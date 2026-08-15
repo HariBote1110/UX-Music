@@ -11,14 +11,23 @@ protocol TVRelayStreamPlayerDelegate: AnyObject {
     /// The network connection ended (host stopped, error, non-2xx) or decode failed
     /// unrecoverably. `reason` is a user-facing (already localised where possible) string.
     func relayStreamPlayer(_ player: TVRelayStreamPlayer, didFailWith reason: String)
-    /// The HTTP body ended with NO error (`didCompleteWithError: nil`) — i.e. a normal,
-    /// successful end of stream. The continuous YouTube relay never reaches this in practice
-    /// (the host keeps the connection open for as long as it's relaying), but Task A's
-    /// per-song stream (`GET /v1/remote/file?id=…&stream=aac`) is finite: the desktop closes
-    /// the connection once the whole track has been sent, and THAT is this type's only signal
-    /// that the track finished — there is no separate "end of track" marker in the ADTS byte
-    /// stream itself. Default no-op via the protocol extension below so `TVRelayPlaybackController`
-    /// (which never expects to see this) doesn't need to implement it.
+    /// The track has finished PLAYING: the HTTP body ended with no error AND every buffer that was
+    /// scheduled from it has finished rendering. The continuous YouTube relay never reaches this in
+    /// practice (the host keeps the connection open for as long as it's relaying), but Task A's
+    /// per-song stream (`GET /v1/remote/file?id=…&stream=aac`) is finite, and the caller
+    /// (`TVSongStreamController` → `TVPlaybackController.advanceAfterStreamEnd`) treats this as
+    /// "advance the queue".
+    ///
+    /// **Both halves of that condition are load-bearing** (`progress/tvos-playback.md` "受信完了≠
+    /// 再生完了" 追記). This used to fire on the body ending alone, which is NOT end of track: the
+    /// host runs ffmpeg with no `-re` (`server/app_remote_stream.go`), so over LAN it transcodes and
+    /// sends a whole track in a few seconds regardless of the track's real duration. The body
+    /// therefore closes while minutes of decoded PCM are still queued on the player node — reporting
+    /// end-of-track there auto-advanced the queue a few seconds into every uncached song, the
+    /// reported "通常の音源が数秒でスキップされる" symptom.
+    ///
+    /// Default no-op via the protocol extension below so `TVRelayPlaybackController` (which never
+    /// expects to see this) doesn't need to implement it.
     func relayStreamPlayerDidReachEndOfStream(_ player: TVRelayStreamPlayer)
 }
 
@@ -87,6 +96,22 @@ class TVRelayStreamPlayer: NSObject {
     private var lastRMSLogTime = Date.distantPast
     private var isEngineConnected = false
     private let muteOutput: Bool
+
+    /// End-of-TRACK bookkeeping — see `relayStreamPlayerDidReachEndOfStream`'s doc comment for why
+    /// the HTTP body ending is not on its own a usable end-of-track signal. All three are touched
+    /// ONLY from `engineQueue` (`schedule`, the `.dataPlayedBack` completion handler, and the
+    /// body-completion hop in `didCompleteWithError`), so they need no separate lock; they are reset
+    /// by both `start()` and `stop()` alongside the rest of the per-session state.
+    ///
+    /// `buffersAwaitingPlayback` counts buffers handed to `playerNode` that have not yet reported
+    /// `.dataPlayedBack`. It is the drain gauge: reaching 0 means everything decoded so far has
+    /// actually been heard. Combined with `didReceiveEntireBody` ("nothing more is coming"), 0
+    /// means — and only then means — the track is over.
+    private var buffersAwaitingPlayback = 0
+    private var didReceiveEntireBody = false
+    /// One-shot latch so a drain that momentarily hits 0 more than once (e.g. the last buffer's
+    /// callback racing the body-completion hop) cannot report the same track's end twice.
+    private var didReportEndOfStream = false
 
     /// Test-visible: true while this instance's `playerNode` is attached, connected and NOT
     /// stopped/muted — i.e. genuinely capable of producing audible output right now. Flipped to
@@ -226,6 +251,9 @@ class TVRelayStreamPlayer: NSObject {
             didStartRendering = false
             bufferedSeconds = 0
             isEngineConnected = false
+            buffersAwaitingPlayback = 0
+            didReceiveEntireBody = false
+            didReportEndOfStream = false
             refreshCachedElapsedSeconds()
 
             if !engine.attachedNodes.contains(playerNode) {
@@ -276,6 +304,9 @@ class TVRelayStreamPlayer: NSObject {
             didStartRendering = false
             bufferedSeconds = 0
             isEngineConnected = false
+            buffersAwaitingPlayback = 0
+            didReceiveEntireBody = false
+            didReportEndOfStream = false
             refreshCachedElapsedSeconds()
         }
     }
@@ -387,21 +418,84 @@ class TVRelayStreamPlayer: NSObject {
             try? engine.start()
         }
 
-        playerNode.scheduleBuffer(buffer, completionHandler: nil)
+        // `.dataPlayedBack` (not the default `.dataConsumed`, and not the plain
+        // `completionHandler:` overload — which is `.dataConsumed` too): the drain gauge has to
+        // count audio the listener has actually HEARD. `.dataConsumed` fires as soon as the buffer
+        // has been handed to the render pipeline, which for this player happens almost immediately
+        // after scheduling — it would make `buffersAwaitingPlayback` hit 0 seconds into the track
+        // and reintroduce the exact premature-advance bug this counter exists to fix.
+        buffersAwaitingPlayback += 1
+        let scheduledGeneration = generation
+        playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            // Delivered on an internal AVAudioEngine thread — hop onto `engineQueue` before touching
+            // any per-session state, same as every other mutation in this type.
+            self?.engineQueue.async { [weak self] in
+                self?.noteBufferPlayedBack(expectedGeneration: scheduledGeneration)
+            }
+        }
         bufferedSeconds += Double(frameCount) / format.sampleRate
 
         logRMSIfDue(interleaved)
 
-        if !didStartRendering, bufferedSeconds >= jitterBufferSeconds {
-            didStartRendering = true
-            isRenderActiveForTesting = true
-            playerNode.play()
-            let player = self
-            DispatchQueue.main.async {
-                player.delegate?.relayStreamPlayerDidStartRendering(player)
-            }
-        }
+        beginRenderingIfNeeded()
         refreshCachedElapsedSeconds()
+    }
+
+    /// Starts the render once the jitter buffer has filled. Always invoked on `engineQueue`.
+    ///
+    /// - Parameter force: ignore the `jitterBufferSeconds` threshold and start with whatever is
+    ///   buffered. Set only from the body-completion path: if a track's ENTIRE decoded length is
+    ///   shorter than the 0.75s jitter buffer, the threshold can never be met, so without this the
+    ///   node would never be told to play — no audio, no `.dataPlayedBack` callbacks, and therefore
+    ///   a drain that never completes and a queue that never advances. Nothing more is coming at
+    ///   that point, so there is nothing left to buffer against.
+    private func beginRenderingIfNeeded(force: Bool = false) {
+        guard !didStartRendering, bufferedSeconds > 0 else { return }
+        guard force || bufferedSeconds >= jitterBufferSeconds else { return }
+        guard isEngineConnected, engine.attachedNodes.contains(playerNode) else { return }
+
+        didStartRendering = true
+        isRenderActiveForTesting = true
+        if !engine.isRunning {
+            try? engine.start()
+        }
+        playerNode.play()
+        let player = self
+        DispatchQueue.main.async {
+            player.delegate?.relayStreamPlayerDidStartRendering(player)
+        }
+    }
+
+    /// One scheduled buffer has finished being heard. Always invoked on `engineQueue`.
+    ///
+    /// Also refreshes `cachedElapsedSeconds`: `schedule()` used to be the only caller, so once the
+    /// whole body had arrived (a few seconds in, over LAN) scheduling stopped and the Now Playing
+    /// progress bar froze while audio kept playing. These callbacks arrive at roughly one per
+    /// decoded AAC frame (~43/s at 44.1kHz), which keeps the mirrored progress smooth for the whole
+    /// track, not just its first few seconds.
+    private func noteBufferPlayedBack(expectedGeneration: Int) {
+        guard expectedGeneration == generation else { return } // stale session; `stop()` already ran
+        buffersAwaitingPlayback = max(0, buffersAwaitingPlayback - 1)
+        refreshCachedElapsedSeconds()
+        reportEndOfStreamIfDrained(expectedGeneration: expectedGeneration)
+    }
+
+    /// Reports end of TRACK iff the body is complete AND everything scheduled from it has been
+    /// heard. Always invoked on `engineQueue`.
+    private func reportEndOfStreamIfDrained(expectedGeneration: Int) {
+        guard !didReportEndOfStream,
+              didReceiveEntireBody,
+              buffersAwaitingPlayback == 0
+        else { return }
+        didReportEndOfStream = true
+        let player = self
+        DispatchQueue.main.async {
+            // Re-checked on the main queue for the same reason `didCompleteWithError` re-checks:
+            // a `stop()` between this dispatch and its delivery must not let a superseded session
+            // advance the caller's queue.
+            guard expectedGeneration == player.generation else { return }
+            player.delegate?.relayStreamPlayerDidReachEndOfStream(player)
+        }
     }
 
     #if DEBUG
@@ -488,12 +582,22 @@ extension TVRelayStreamPlayer: URLSessionDataDelegate {
         // `progress/tvos-playback-concurrency.md` "stale end events" symptom.
         let capturedGeneration = generation
         guard let error else {
-            // Normal end of the HTTP body: for the finite per-song stream (Task A) this IS end of
-            // track; the continuous relay stream never reaches this branch in practice.
-            let player = self
-            DispatchQueue.main.async {
-                guard capturedGeneration == player.generation else { return }
-                player.delegate?.relayStreamPlayerDidReachEndOfStream(player)
+            // Normal end of the HTTP body. NOT end of track — it only means no more bytes are
+            // coming; whatever was decoded from them is very likely still playing (see
+            // `relayStreamPlayerDidReachEndOfStream`'s doc comment). All this does is arm the
+            // condition; the actual report comes from whichever of the two finishes last, this hop
+            // or the final `.dataPlayedBack` callback.
+            //
+            // Hopping onto `engineQueue` is what makes "whatever was decoded from them" true rather
+            // than hopeful: `URLSession` delivers `didReceive data:` and this callback serially on
+            // the same delegate queue, and both hop onto `engineQueue` in that order, so this block
+            // is guaranteed to run AFTER every chunk of the body has been parsed, decoded and
+            // scheduled — `buffersAwaitingPlayback` is therefore complete by the time it is read.
+            engineQueue.async { [self] in
+                guard capturedGeneration == generation else { return }
+                didReceiveEntireBody = true
+                beginRenderingIfNeeded(force: true)
+                reportEndOfStreamIfDrained(expectedGeneration: capturedGeneration)
             }
             return
         }
