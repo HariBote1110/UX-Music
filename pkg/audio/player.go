@@ -255,7 +255,82 @@ func NewPlayer() (*Player, error) {
 		p.currentDevice = defaultDevice
 	}
 
+	// Warm up the output device now (adds at most ~warmUpDuration to this
+	// one-time start-up call) so the CoreAudio IOProc creation cost is paid
+	// here instead of during the user's first Play(). This runs
+	// synchronously rather than in a detached goroutine: PortAudio's
+	// underlying C library is not safe for concurrent global calls, and an
+	// async warm-up could still be mid-flight when Close() (or SetDevice's
+	// Terminate/Initialize) calls into PortAudio from another goroutine.
+	p.warmUpOutputDevice()
+
 	return p, nil
+}
+
+// warmUpOutputDevice opens, starts, briefly runs and stops a short silent
+// output stream at a neutral format (48kHz/stereo), so PortAudio/CoreAudio
+// creates and warms up the real-time IOProc thread during start-up instead
+// of during the user's first Play(). On macOS the HAL powers up the DAC and
+// negotiates format/latency on first IOProc creation — a one-time cost that
+// is otherwise paid inline during the first user-visible playback (worst
+// case for Bluetooth/USB devices), which is one of the two causes of a
+// broken first play.
+//
+// This is entirely best-effort: every error path returns silently and never
+// touches Player state used by real playback (p.stream, p.sampleRate, …). A
+// machine with no output device, or a device that rejects 48kHz stereo, must
+// still end up with a fully working Player — warm-up failing must never fail
+// NewPlayer.
+func (p *Player) warmUpOutputDevice() {
+	defer func() {
+		// This runs off the user-visible path; guard against any unexpected
+		// panic deep in the cgo bindings so it can never bring the app down.
+		_ = recover()
+	}()
+
+	const (
+		warmUpSampleRate      = 48000
+		warmUpChannels        = 2
+		warmUpFramesPerBuffer = 1024
+		warmUpDuration        = 30 * time.Millisecond
+	)
+
+	device := p.resolvedOutputDevice()
+	if device == nil {
+		return
+	}
+
+	channels := min(warmUpChannels, device.MaxOutputChannels)
+	if channels <= 0 {
+		return
+	}
+
+	params := portaudio.StreamParameters{
+		Output: portaudio.StreamDeviceParameters{
+			Device:   device,
+			Channels: channels,
+			Latency:  device.DefaultLowOutputLatency,
+		},
+		SampleRate:      warmUpSampleRate,
+		FramesPerBuffer: warmUpFramesPerBuffer,
+	}
+
+	stream, err := portaudio.OpenStream(params, func(out []float32) {
+		// Silence only — this stream must never be audible.
+		for i := range out {
+			out[i] = 0
+		}
+	})
+	if err != nil {
+		return
+	}
+	defer stream.Close()
+
+	if err := stream.Start(); err != nil {
+		return
+	}
+	time.Sleep(warmUpDuration)
+	_ = stream.Stop()
 }
 
 // initFFT initializes FFT buffers
