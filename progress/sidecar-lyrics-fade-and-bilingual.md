@@ -44,3 +44,24 @@
 - ローカルのDesktop（`UX-Music.app`）がポート `8765` (`ultraseek-http`) を掴んでいると、スタブサーバーがそのポートで待ち受けても実際のリクエストはDesktop側の本物のAPIに刺さり `401 Unauthorized` になる（スタブは常に200を返すため、切り分けの決め手はレスポンスコード）。スタブは別ポート（例: `8799`）で起動すること。
 - `installDebugSidecarHostHookIfRequested()` は環境変数を読むのがプロセス起動時の一度きりなので、`xcrun simctl launch` を単に再実行してもアプリが既に前面稼働中だと環境変数が反映されない。`xcrun simctl terminate` で確実にプロセスを終了させてから `launch` すること。
 - MCPシミュレータの `screenshot` はアプリがランドスケープを強制していてもデバイスの物理フレーム（ポートレート）をそのまま返す（コンテンツだけ回転して描画される）。目視確認用には `xcrun simctl io <udid> screenshot` の生PNGを `sips -r -90` で回転させると正しい向きになる。
+
+## 追記（実機バグ: `[間奏]` マーカーがそのまま表示される）
+
+ユーザー報告（実機）: サイドカー歌詞ペインに `[間奏]` の文字がそのまま表示される。DesktopのフルスクリーンプレーヤーはCanonicalな基準であり、間奏マーカーは表示しない（行の高さだけ残して文字を消す）。
+
+### 原因
+Desktopの `fsDisplayText`（`src/renderer/js/features/fullscreen-view.ts:13-16`）は、同期・非同期どちらの歌詞描画パスでも `isInterludeText(text) ? ' ' : text` を通す。`isInterludeText`（`src/renderer/js/features/lyrics-translation.ts:56-73`）は「空/空白のみ」に加え、`[間奏]` / `[interlude]` / `(interlude)`（大小文字無視）というリテラルマーカー文字列も間奏として扱う。
+
+iOS側は既に `LyricsTranslationMerger.isInterludeText`（`Core/LyricsTranslationMerger.swift:31-40`）としてこの判定ロジック自体は1:1移植済みで、和訳の非付与（`mergeTimedWithJaLRC`/`mergeTimedWithJaTxt`）には使われていた。しかし `SidecarScreen.swift` の実際の描画箇所（`SidecarSyncedLyricsList` 本体と `SidecarBilingualPlainLine`）は `line.text.isEmpty ? " " : line.text` という素朴な空文字チェックのみで、LRCに `[間奏]` のようなリテラルマーカーが**空文字ではなくその文字列そのもの**として保存されているケースを見落としていた。
+
+### 実装
+`Services/SidecarDirective.swift` に `SidecarLyricsDisplay.text(for:)` を新設し、`LyricsTranslationMerger.isInterludeText` を再利用して `isInterludeText(raw) ? " " : raw` を返す（Desktopの `fsDisplayText` と同じ規則）。`SidecarScreen.swift` の2箇所（同期歌詞の `Text(line.text.isEmpty ? " " : line.text)` とプレーンテキストの `SidecarBilingualPlainLine`）をこのヘルパー経由に置き換えた。
+
+タイミング/アクティブ行の挙動はDesktopと同じく「行はスキップせず残し、文字だけ消す」ため、`[間奏]` 行自身がアクティブになった瞬間はスケール・シャドウ付きの空白ブロックとして表示される（前の行がそのまま伸びて居座るわけではない）。`LRCParser.activeLineIndex`／`SidecarLyricsMotionPolicy` 側の変更は不要だった。
+
+### テスト
+TDD: `UX-Music-MobileTests/SidecarDirectiveTests.swift` に `SidecarLyricsDisplay` 用のテストを先に追加（RED確認後に実装）。マーカー各種（`[間奏]`/`[interlude]`/`(interlude)`/大文字）・空/空白行のブランク化、および `[Chorus] hello` のような「ブラケットで始まるが実際の歌詞」を誤って消さないケースをカバー。
+
+### Gotchas
+- `UX-Music-MobileTests/SidecarLayoutMotionTests.swift` は現状 `project.pbxproj` の `PBXSourcesBuildPhase` に登録されておらず、`-only-testing:UX-Music-MobileTests/SidecarLayoutMotionTests` を指定してもビルド対象に含まれないため `0 tests` のまま `TEST SUCCEEDED` を返す（サイレントに何も実行されない）。新規テストは既にターゲットに登録済みの `SidecarDirectiveTests.swift` 側に追加した。このファイルの未登録自体は本タスクのスコープ外なので手を付けていない（別途プロジェクト整備が必要）。
+- 検証は `scripts/sidecar_stub_server.py --lrc-file`（`[間奏]`/`(interlude)`/`[Chorus] ...` を含むLRC、ポート8799）＋ `xcrun simctl io <udid> screenshot` で実施。アクティブ行が `[間奏]` の位置に来た瞬間、画面上に文字は一切出ず、前後の実歌詞行の間にスケール分の空白ギャップだけが生じることを確認した。
