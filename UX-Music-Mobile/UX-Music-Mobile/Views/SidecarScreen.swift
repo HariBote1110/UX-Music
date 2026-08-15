@@ -26,8 +26,21 @@ private enum SidecarLayoutSpacing {
     static let infoLineGap: CGFloat = 8
     /// Outer padding around the whole landscape content (artwork column + lyrics pane). Was `32`pt.
     static let contentOuterPadding: CGFloat = 28
-    /// Extra bottom clearance reserved for the edge-pinned `progressBar`. Was `56`pt.
-    static let contentBottomClearance: CGFloat = 48
+    /// Extra bottom clearance reserved for the edge-pinned `progressBar`. Was `56`pt, then `48`pt.
+    /// Shrunk further per user feedback ("シークバー周りの余白を詰めて欲しい。そこまでシークバーは
+    /// 重要じゃない") — the bar is deliberately de-emphasised, so the centred content block should
+    /// claim most of the reclaimed space rather than the bar keeping a generous reserved band.
+    static let contentBottomClearance: CGFloat = 24
+    /// `progressBar`'s own horizontal inset from the screen edges. Was `28`pt inline — narrowed so
+    /// the bar reads as hugging the bottom edge rather than sitting in its own padded band.
+    static let progressBarHorizontalPadding: CGFloat = 20
+    /// `progressBar`'s own inset from the bottom safe area. Was `14`pt inline.
+    static let progressBarBottomPadding: CGFloat = 8
+    /// Track thickness of the progress capsule. Was `3`pt inline — thinned slightly so the bar
+    /// reads as a subtle edge element rather than a prominent control.
+    static let progressBarHeight: CGFloat = 2
+    /// Point size of the elapsed/remaining time labels. Was `11`pt inline.
+    static let progressBarLabelFontSize: CGFloat = 10
 }
 
 struct SidecarScreen: View {
@@ -93,8 +106,8 @@ struct SidecarScreen: View {
             VStack {
                 Spacer()
                 progressBar
-                    .padding(.horizontal, 28)
-                    .padding(.bottom, 14)
+                    .padding(.horizontal, SidecarLayoutSpacing.progressBarHorizontalPadding)
+                    .padding(.bottom, SidecarLayoutSpacing.progressBarBottomPadding)
             }
 
             NowPlayingNavIconButton(
@@ -337,13 +350,13 @@ struct SidecarScreen: View {
                             .frame(width: geo.size.width * fraction)
                     }
                 }
-                .frame(height: 3)
+                .frame(height: SidecarLayoutSpacing.progressBarHeight)
 
                 Text(sidecarFormatTime(max(0, model.sidecarDuration - interpolated)))
                     .opacity(labelsVisible ? 1 : 0)
                     .animation(.easeInOut(duration: 0.4), value: labelsVisible)
             }
-            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .font(.system(size: SidecarLayoutSpacing.progressBarLabelFontSize, weight: .medium, design: .monospaced))
             .foregroundStyle(.white.opacity(0.45))
             .onChange(of: context.date) { _, newDate in
                 chromeNow = newDate
@@ -360,22 +373,40 @@ private func sidecarFormatTime(_ seconds: Double) -> String {
 }
 
 /// Soft top/bottom dissolve for `lyricsPane`, so lines scroll into and out of view rather than
-/// being hard-clipped by the pane's bounds — ported 1:1 from Desktop's fullscreen lyrics container
-/// (`src/renderer/styles/components.css:2072-2078`, `.fs-lyrics-container`'s `mask-image`/
-/// `-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent
-/// 100%)`). The stops are intentionally asymmetric (an 8%-deep fade at the top, a 30%-deep fade at
-/// the bottom) — that asymmetry is Desktop's own choice, kept here for parity rather than "fixed"
-/// into a symmetric fade.
+/// being hard-clipped by the pane's bounds. Originally ported 1:1 from Desktop's fullscreen lyrics
+/// container (`src/renderer/styles/components.css:2072-2078`, `.fs-lyrics-container`'s
+/// `mask-image: linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%)`),
+/// but Mobile now **intentionally diverges** from that recipe: user feedback on the sidecar screen
+/// ("歌詞のフェード、スパッと切れてる感じがある、もうちょっとじわじわ消えてほしい") found Desktop's
+/// short, linear 8%/30%-deep ramps read as an abrupt cut rather than a dissolve on the sidecar's
+/// larger lyrics pane. This version lengthens both ramps (top: 0–20%, bottom: 60–100%) and shapes
+/// each with four intermediate stops approximating an ease-in-out opacity curve — a straight 2-stop
+/// `LinearGradient` ramp reads as a hard edge close to its terminal stop because the eye is far more
+/// sensitive to opacity change near full-transparent/full-opaque than a linear alpha ramp delivers;
+/// front-loading small opacity deltas near the transparent end and easing into the opaque end reads
+/// as a genuine gradual melt instead. See `progress/sidecar-lyrics-fade-and-bilingual.md`.
 private enum SidecarLyricsEdgeFade {
-    static let topOpaqueStop: CGFloat = 0.08
-    static let bottomOpaqueStop: CGFloat = 0.70
+    /// Where the top ramp reaches full opacity (Desktop: `8%`).
+    static let topOpaqueStop: CGFloat = 0.20
+    /// Where the bottom ramp starts leaving full opacity (Desktop: `70%`).
+    static let bottomOpaqueStop: CGFloat = 0.60
 
     static var gradient: LinearGradient {
         LinearGradient(
             stops: [
+                // Top ramp: transparent → opaque over 0–20%, eased (ease-in-out — slow start,
+                // fast middle, slow finish) rather than linear.
                 .init(color: .black.opacity(0), location: 0),
+                .init(color: .black.opacity(0.08), location: 0.05),
+                .init(color: .black.opacity(0.30), location: 0.10),
+                .init(color: .black.opacity(0.65), location: 0.15),
                 .init(color: .black, location: topOpaqueStop),
+                // Fully opaque band across the middle of the lyrics pane.
                 .init(color: .black, location: bottomOpaqueStop),
+                // Bottom ramp: opaque → transparent over 60–100%, mirrored easing.
+                .init(color: .black.opacity(0.65), location: 0.75),
+                .init(color: .black.opacity(0.30), location: 0.85),
+                .init(color: .black.opacity(0.08), location: 0.93),
                 .init(color: .black.opacity(0), location: 1),
             ],
             startPoint: .top,

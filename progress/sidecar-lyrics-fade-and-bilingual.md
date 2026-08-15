@@ -29,3 +29,18 @@
 - `scripts/sidecar_stub_server.py` に `--translation-lrc-file` を追加（`translationContent`/`translationFormat: "lrc"` を `/v1/remote/lyrics` に付加）。実機なしでバイリンガル表示を検証できる。
 - `SidecarLyricsTranslationMerge` は `UX-Music-MobileTests/SidecarLayoutMotionTests.swift` にTDDで追加（欠落/空文字時のnil化、lrc形式のタイムスタンプ一致、txt形式の位置一致、フォーマット欠落時のフォールバック、間奏行への和訳非付与）。
 - 全体テストスイート: 564 passed / 1 failed（`LocalizationCatalogCompletenessTests.testIOSCatalogHasCompleteTranslations` — 既知の無関係な既存失敗、`tv.relay.error.unknown` キー欠落） / 8 skipped。
+
+## 追記（シークバー余白の追い込み・歌詞フェードのDesktop乖離）
+
+ユーザーから2点の追加フィードバックを受け、`SidecarScreen.swift` をさらに調整した。
+
+1. **シークバー周りの余白**（「シークバーは重要じゃないので余白を詰めて」）: `SidecarLayoutSpacing.contentBottomClearance` を `48pt → 24pt` に短縮し、`progressBar` 自身の `.padding(.horizontal, 28→20)`／`.padding(.bottom, 14→8)` も名前付き定数化（`progressBarHorizontalPadding`/`progressBarBottomPadding`）して縮小した。バーの太さも `3pt → 2pt`、時刻ラベルのフォントサイズも `11pt → 10pt` に落とし、バーが画面端に控えめに張り付く「重要でない要素」として読めるようにした。
+
+2. **歌詞フェードの緩化**（「スパッと切れる感じがある、もうじわじわ消えてほしい」）: `SidecarLyricsEdgeFade` は元々Desktopの `.fs-lyrics-container` マスク（`transparent 0% → black 8% → black 70% → transparent 100%`）を1:1移植したものだったが、サイドカーの歌詞ペインでは短い直線的ランプが「唐突に切れる」ように見えることが分かった。**この画面はここでDesktopの見た目から意図的に乖離する**: 上端ランプを `0–8%` → `0–20%`、下端ランプを `70–100%` → `60–100%` に伸ばし、両端とも直線1段ではなく `0 / 0.08 / 0.30 / 0.65 / 1.0` の不透明度を4〜5点打つイーズドランプにして、視覚的に緩やかな溶暗に近づけた。
+
+検証は `scripts/sidecar_stub_server.py --lrc-file` （密なLRC）をスタブとして使い、UXM-Verifyシミュレータ（landscape固定）で `git stash` によるbefore/afterのスクリーンショット比較を実施。上端行が完全に見切れず徐々に薄くなること、バーが画面端に寄って主張しなくなったことを目視確認した。
+
+### Gotchas
+- ローカルのDesktop（`UX-Music.app`）がポート `8765` (`ultraseek-http`) を掴んでいると、スタブサーバーがそのポートで待ち受けても実際のリクエストはDesktop側の本物のAPIに刺さり `401 Unauthorized` になる（スタブは常に200を返すため、切り分けの決め手はレスポンスコード）。スタブは別ポート（例: `8799`）で起動すること。
+- `installDebugSidecarHostHookIfRequested()` は環境変数を読むのがプロセス起動時の一度きりなので、`xcrun simctl launch` を単に再実行してもアプリが既に前面稼働中だと環境変数が反映されない。`xcrun simctl terminate` で確実にプロセスを終了させてから `launch` すること。
+- MCPシミュレータの `screenshot` はアプリがランドスケープを強制していてもデバイスの物理フレーム（ポートレート）をそのまま返す（コンテンツだけ回転して描画される）。目視確認用には `xcrun simctl io <udid> screenshot` の生PNGを `sips -r -90` で回転させると正しい向きになる。
