@@ -3,6 +3,11 @@
 package server
 
 /*
+// ARC is enabled for this package via the -fobjc-arc flag declared in
+// tray_darwin.go's #cgo CFLAGS (cgo concatenates CFLAGS across all files in
+// a package, so it applies here too). os_media_darwin.m has no manual
+// retain/release/autorelease/dealloc calls or unbridged CF casts, so it
+// compiles cleanly under ARC.
 #cgo CFLAGS: -x objective-c
 #cgo LDFLAGS: -framework Foundation -framework AppKit -framework MediaPlayer
 #include <stdlib.h>

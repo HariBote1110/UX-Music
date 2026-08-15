@@ -3,7 +3,15 @@
 package server
 
 /*
-#cgo CFLAGS: -x objective-c
+// ARC is required here: tray_darwin.m is written in ARC style (no manual
+// retain/release/autorelease calls), but cgo compiles Objective-C sources
+// under MRC unless -fobjc-arc is passed. Without it, the autoreleased
+// NSStatusItem returned by statusItemWithLength: is deallocated as soon as
+// the enclosing autorelease pool drains, and the menu-bar tray icon never
+// appears. #cgo CFLAGS apply package-wide (see os_media_darwin.go), so this
+// single line also arcifies os_media_darwin.m, which has been verified to
+// be ARC-safe.
+#cgo CFLAGS: -x objective-c -fobjc-arc
 #cgo LDFLAGS: -framework Foundation -framework AppKit
 #include <stdlib.h>
 
