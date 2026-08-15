@@ -159,16 +159,9 @@ body.resizing {
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 
     z-index: 1000;
-    /* 背面を透過させ、下のメイン列（ノーマライズの適用ボタン等）へクリックを届ける */
-    pointer-events: none;
-}
-
-.playback-bar .footer-artwork-container,
-.playback-bar .playback-controls,
-.playback-bar .progress-container,
-.playback-bar .audio-info-container,
-.playback-bar .volume-container,
-.playback-bar .device-container {
+    /* フッター全体で当たり判定を有効化する。各ビューは --footer-height 分の
+       余白を確保しているため（ui.ts が実測してセットする）、フッターの背面へ
+       クリックを透過させる必要はない。 */
     pointer-events: auto;
 }
 
