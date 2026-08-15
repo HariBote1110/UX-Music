@@ -1,5 +1,5 @@
 // src/renderer/js/env-setup.js
-// Wails などの非 Electron 環境でも動作するように、window.electronAPI を安全化する
+// Wails 環境（および非 Wails のブラウザフォールバック）でも動作するように、window.electronAPI を安全化する
 import { errorMessage, readRecord, youtubeUrlFromPayload } from '../utils/type-guards.js';
 
 const isWailsEnvironment = () => window.go !== undefined || window.runtime !== undefined;
@@ -100,7 +100,7 @@ window.electronAPI = window.electronAPI || {
                 setTimeout(() => window.electronAPI.on(channel, callback), 100);
             }
         } else {
-            console.log(`[Electron-Mock] on: mock subscribing to ${channel}`);
+            console.log(`[electronAPI-shim] on: mock subscribing to ${channel}`);
         }
     },
     invoke: async (channel: string, ...args: unknown[]) => {

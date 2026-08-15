@@ -98,8 +98,8 @@ export function isPlaying() {
 // 公式再生（embed）中: Go 側の /v1/remote/state がライブ再生の position/
 // duration/playing をそのまま反映できるよう、IFrame プレイヤーの状態を
 // Wails 経由で Go へ報告する。ポーリング（約1秒間隔）に加え、pause/seek の
-// 直後にも即時報告する。Wails 環境でなければ何もしない（Electron 版には
-// 対応する Go バインドが存在しない）。
+// 直後にも即時報告する。Wails 環境でなければ何もしない（非 Wails の
+// ブラウザフォールバックには対応する Go バインドが存在しない）。
 export function reportEmbedPlaybackState(position: number, duration: number, playing: boolean) {
     if (!isWailsMode()) return;
     const app = getWailsApp();
@@ -334,7 +334,7 @@ function startGoStatePolling() {
 export async function initPlayer(playerElement, callbacks, sinkId = null) {
     savedCallbacks = { ...callbacks };
     isWails = typeof window.go !== 'undefined';
-    // Wails: output routing is via Go/PortAudio; `sinkId` is ignored (Web Audio is Electron-only).
+    // Wails: output routing is via Go/PortAudio; `sinkId` is ignored (Web Audio is used only by the non-Wails browser fallback).
 
     if (isWails) {
         console.log('[Player] Initializing in Wails mode (Go Backend)');
@@ -478,7 +478,7 @@ async function updateOSNowPlayingMetadata(song) {
 }
 
 /**
- * @param {number} [gainLinear=1.0] — Wails: linear gain from playback-manager (loudness). Electron: ignored; Web Audio `setBaseGain` applies.
+ * @param {number} [gainLinear=1.0] — Wails: linear gain from playback-manager (loudness). Non-Wails browser fallback: ignored; Web Audio `setBaseGain` applies.
  * @returns {Promise<boolean>} true if output playback actually started (Wails: AudioPlay resolved).
  */
 export async function play(song, gainLinear = 1.0) {
@@ -492,7 +492,7 @@ export async function play(song, gainLinear = 1.0) {
     }
 
     try {
-        // In Wails mode, loudness is applied in Go via `gainLinear`; keep Electron path below.
+        // In Wails mode, loudness is applied in Go via `gainLinear`; keep the non-Wails browser fallback path below.
         if (!isWails) {
             const settings = await loadRendererSettings();
             const TARGET_LOUDNESS =
