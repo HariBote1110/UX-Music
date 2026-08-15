@@ -335,3 +335,94 @@ Now Playing画面のタイトル/アートワーク/進捗が空のままにな�
 - アートワークは`TVNowPlayingView`が`client`経由で`artworkId`から画像を都度フェッチする
   既存の仕組みをそのまま利用しており、この変更では触れていない（ハーネスのスクリーンショットで
   プレースホルダーになっているのはモックホストへ到達できないためで、想定通りの挙動）。
+
+## 追記（2026-08-15）: 実機報告「通常の音源が数秒で次の曲へスキップされる」の真因と修正
+
+### 症状
+
+Apple TV で通常の（YouTube ではない）音源を再生すると、音自体は正しく鳴っているのに数秒で
+勝手に次の曲へ送られていく。曲の長さを問わず、スキップまでの時間はほぼ一定。
+
+### 真因: 受信完了 ≠ 再生完了
+
+`TVRelayStreamPlayer` が `URLSessionTaskDelegate.didCompleteWithError(nil)`、つまり HTTP ボディの
+正常終端を、そのまま `relayStreamPlayerDidReachEndOfStream`（＝曲の終端）として報告していた。
+これを受けた `TVSongStreamController` → `TVPlaybackController.advanceAfterStreamEnd` がキューを
+進めるため、再生開始の数秒後に次の曲へ飛ぶ。
+
+ボディの終端が曲の終端と乖離する理由はサーバー側にある。`GET /v1/remote/file/{id}?stream=aac`
+（`server/app_remote_stream.go`）の ffmpeg には `-re`（実時間送出）が無く、可能な限り高速に
+トランスコードして送出する。つまり LAN では**曲の実尺と無関係に数秒で全体を送り切って接続が
+閉じる**。その時点で `playerNode` にはまだ数分ぶんのデコード済み PCM が積まれており、音は
+鳴り続けている。「音は正しいのにスキップされる」という報告の見え方はこれで完全に説明がつく。
+
+クライアント側にドレインの計測が一切無かったことが対になる原因で、`schedule()` は
+`scheduleBuffer(buffer, completionHandler: nil)` で積みっぱなしにしており、「積んだバッファを
+実際に鳴らし終えたか」を追跡していなかった。
+
+型のドキュメントコメントにあった「ADTS バイト列には曲終端マーカーが無いので接続クローズが唯一の
+終了シグナル」という前提が、そもそも成り立っていなかったということ。連続リレー（YouTube）では
+ホストが接続を開きっぱなしにするためこの分岐に到達せず、Task A の有限ストリームで初めて露呈した。
+
+### 修正
+
+end-of-track を「ボディ受信完了 **かつ** スケジュール済みバッファの再生完了」の合流点に変更した。
+
+- `buffersAwaitingPlayback` / `didReceiveEntireBody` / `didReportEndOfStream` を追加。いずれも
+  `engineQueue` 上でのみ触れるため追加のロックは不要（`start()`/`stop()` の既存リセット群に追加）。
+- `scheduleBuffer` を `.dataPlayedBack` コールバック付きに変更。**既定の `.dataConsumed` では
+  直らない**——レンダーパイプラインへ渡した時点で発火するため、カウンタが結局数秒で 0 になり
+  同じバグが再発する。引数なしの `completionHandler:` オーバーロードも `.dataConsumed` 相当なので
+  同様に不可。
+- `didCompleteWithError(nil)` は `engineQueue` へホップして条件を立てるだけに降格。ホップが
+  順序保証そのものになっている点が重要で、`URLSession` はデータチャンクと完了コールバックを
+  同一デリゲートキューで直列配送し、双方が `engineQueue` へ FIFO で積まれるため、この
+  ブロックが走る時点で全チャンクのパース・デコード・スケジュールが完了していることが保証される
+  （＝`buffersAwaitingPlayback` を読んで良い）。
+- 曲全体の長さがジッタバッファ（0.75 秒）未満の場合、閾値を満たせず `playerNode.play()` が
+  永久に呼ばれない。それだと `.dataPlayedBack` も来ずドレインが完了せずキューが止まるので、
+  ボディ完了時は閾値を無視して再生を開始する（`beginRenderingIfNeeded(force:)`）。もう後続の
+  バイトは来ないのでバッファリングする対象自体が無い。
+
+### 同時に直った副次バグ: Now Playing の進捗凍結
+
+`refreshCachedElapsedSeconds()` の呼び出し元が `schedule()` だけだったため、ボディを受信し切って
+スケジュールが止まった時点（LAN では数秒）で `elapsedSeconds` が凍結し、Now Playing の進捗バーが
+再生中にもかかわらず止まっていた。`.dataPlayedBack` コールバックからも呼ぶようにしたことで、
+デコード AAC フレームあたり約 1 回（44.1kHz で約 43 回/秒）更新され、曲の最後まで滑らかに進む。
+
+### 回帰テスト
+
+`TVRelayStreamPlayerEndOfStreamTests`（`TVRelayStreamPlayerLifecycleTests.swift` に同居。
+pbxproj を触らずに済ませるため新規ファイルにしていない）。約 6 秒の `relay-sample.aac` を
+`ChunkedFixtureURLProtocol` が約 0.1 秒の実時間で配信するので、「ボディ完了」と「実際の再生完了」の
+間に約 60 倍の開きができ、非フレーキーな判定ができる。
+
+- 再生中は end-of-stream を報告しないこと（修正前は 0.116 秒で報告され失敗）
+- ドレイン完了後には必ず報告すること（修正前 0.125 秒 → **修正後 6.041 秒**で fixture の実尺と一致）
+- ボディ完了後も `elapsedSeconds` が進み続けること
+
+### Gotcha: このテストは `Thread.sleep` で書いてはいけない
+
+デリゲート通知は `DispatchQueue.main.async` で届く一方、XCTest はテスト本体をメインスレッドで
+実行する。したがって `Thread.sleep` で待つとコールバックを配送するキュー自体を塞いでしまい、
+**壊れた実装に対しても「report されていない」と観測されてテストが無条件に通る**。初稿で実際に
+踏んで、1 本目が誤って通った。同期は `XCTestExpectation`（`wait(for:timeout:)`）または
+`RunLoop.run(until:)` を使うこと。どちらもメインランループを回す。
+
+加えて、「早すぎる報告が無いこと」を見る反転 expectation は `start()` の**前に**仕掛ける必要が
+ある。後から仕掛けると壊れた実装の約 0.12 秒の報告を取りこぼし、また誤って通る。
+
+### 却下した代替案
+
+- **サーバー側に `-re` を付けて実時間送出にする**: 症状は消えるが、先読みバッファが貯まらなくなり
+  ネットワーク揺らぎに弱くなる。バックグラウンドで並走するオリジナルファイルのダウンロードと
+  帯域を食い合う設計意図にも反する。クライアント側の判定バグをサーバーの送出速度で隠すことに
+  なるため単独では採らない。
+
+### 未解決・今後の課題
+
+- 曲全体ぶんの `AVAudioPCMBuffer` を前もって積む構造は変えていない。1024 フレーム/バッファ・
+  ステレオ Float32 で 1 バッファ約 8KB なので、4 分の曲でおよそ 80MB を保持する計算になる。
+  今回の変更で増えたわけではない（従来から受信したそばから全て積んでいた）が、長尺トラックでの
+  メモリ挙動は別途見直す価値がある。
