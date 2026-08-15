@@ -171,4 +171,50 @@ final class SidecarLayoutMotionTests: XCTestCase {
         let lines: [LRCParser.TimedLine] = []
         XCTAssertEqual(SidecarLyricsMotionPolicy.activeIndex(in: lines, at: 5), -1)
     }
+
+    // MARK: - SidecarLyricsTranslationMerge
+
+    func testTranslationMergeReturnsNilTranslationsWhenContentAbsent() {
+        let primary = [LRCParser.TimedLine(id: 1, startTime: 1, text: "hi")]
+        let merged = SidecarLyricsTranslationMerge.merge(primary: primary, translationContent: nil, translationFormat: nil)
+        XCTAssertEqual(merged, [TranslatedTimedLine(id: 1, startTime: 1, text: "hi", translation: nil)])
+    }
+
+    func testTranslationMergeReturnsNilTranslationsWhenContentBlank() {
+        let primary = [LRCParser.TimedLine(id: 1, startTime: 1, text: "hi")]
+        let merged = SidecarLyricsTranslationMerge.merge(primary: primary, translationContent: "   \n", translationFormat: "txt")
+        XCTAssertEqual(merged, [TranslatedTimedLine(id: 1, startTime: 1, text: "hi", translation: nil)])
+    }
+
+    func testTranslationMergeUsesTimestampPairingForLRCFormat() {
+        let primary = [
+            LRCParser.TimedLine(id: 1, startTime: 1, text: "hi"),
+            LRCParser.TimedLine(id: 2, startTime: 5, text: "there"),
+        ]
+        let translationContent = "[00:05.00]やあ\n[00:01.00]こんにちは"
+        let merged = SidecarLyricsTranslationMerge.merge(primary: primary, translationContent: translationContent, translationFormat: "lrc")
+        XCTAssertEqual(merged.map(\.translation), ["こんにちは", "やあ"])
+    }
+
+    func testTranslationMergeUsesPositionalPairingForTxtFormat() {
+        let primary = [
+            LRCParser.TimedLine(id: 1, startTime: 1, text: "hi"),
+            LRCParser.TimedLine(id: 2, startTime: 5, text: "there"),
+        ]
+        let translationContent = "こんにちは\nやあ"
+        let merged = SidecarLyricsTranslationMerge.merge(primary: primary, translationContent: translationContent, translationFormat: "txt")
+        XCTAssertEqual(merged.map(\.translation), ["こんにちは", "やあ"])
+    }
+
+    func testTranslationMergeTreatsMissingFormatAsPositional() {
+        let primary = [LRCParser.TimedLine(id: 1, startTime: 1, text: "hi")]
+        let merged = SidecarLyricsTranslationMerge.merge(primary: primary, translationContent: "こんにちは", translationFormat: nil)
+        XCTAssertEqual(merged.map(\.translation), ["こんにちは"])
+    }
+
+    func testTranslationMergeNeverTranslatesInterludeLines() {
+        let primary = [LRCParser.TimedLine(id: 1, startTime: 1, text: "")]
+        let merged = SidecarLyricsTranslationMerge.merge(primary: primary, translationContent: "should not attach", translationFormat: "txt")
+        XCTAssertEqual(merged.map(\.translation), [nil])
+    }
 }

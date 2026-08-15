@@ -31,6 +31,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
     duration = 210.0
     playing = True
     lrc_content = None
+    translation_content = None
+    translation_format = "lrc"
 
     def log_message(self, fmt, *args):
         pass  # keep stdout quiet; measurements read ps/log separately
@@ -61,7 +63,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         if self.path.startswith("/v1/remote/lyrics"):
             if Handler.lrc_content is not None:
-                body = json.dumps({"found": True, "type": "lrc", "content": Handler.lrc_content}).encode("utf-8")
+                payload = {"found": True, "type": "lrc", "content": Handler.lrc_content}
+                if Handler.translation_content is not None:
+                    payload["translationContent"] = Handler.translation_content
+                    payload["translationFormat"] = Handler.translation_format
+                body = json.dumps(payload).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -87,6 +93,7 @@ def main():
     parser.add_argument("--song-id", type=str, default="stub-song-1")
     parser.add_argument("--no-playing", action="store_true")
     parser.add_argument("--lrc-file", type=str, default=None, help="Serve this file's content as dense LRC lyrics for /v1/remote/lyrics.")
+    parser.add_argument("--translation-lrc-file", type=str, default=None, help="Serve this file's content as translationContent (translationFormat=lrc) alongside --lrc-file.")
     args = parser.parse_args()
 
     Handler.song_id = args.song_id
@@ -94,6 +101,10 @@ def main():
     if args.lrc_file:
         with open(args.lrc_file, "r", encoding="utf-8") as f:
             Handler.lrc_content = f.read()
+    if args.translation_lrc_file:
+        with open(args.translation_lrc_file, "r", encoding="utf-8") as f:
+            Handler.translation_content = f.read()
+        Handler.translation_format = "lrc"
 
     server = http.server.ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
     print(f"[sidecar_stub_server] listening on 0.0.0.0:{args.port} songId={args.song_id!r} playing={Handler.playing}")

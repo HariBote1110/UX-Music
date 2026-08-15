@@ -31,8 +31,11 @@ private enum SidecarLayoutSpacing {
 
 struct SidecarScreen: View {
     @Environment(AppModel.self) private var model
-    @State private var lyricsLines: [LRCParser.TimedLine] = []
-    @State private var lyricsPlainText: String?
+    /// Timed lines, each optionally paired with its 和訳 (Japanese translation) — see
+    /// `SidecarLyricsTranslationMerge`. `translation == nil` on every line renders identically to
+    /// the original single-language pane.
+    @State private var lyricsLines: [TranslatedTimedLine] = []
+    @State private var lyricsPlainText: [TranslatedPlainLine] = []
     @State private var lyricsLoadedForSongId: String?
     @State private var lastInteraction = Date()
     /// Stable anchor for `progressBar`'s `TimelineView(.periodic(from:by:))`. MUST NOT be `.now`
@@ -240,13 +243,15 @@ struct SidecarScreen: View {
         Group {
             if !lyricsLines.isEmpty {
                 SidecarSyncedLyricsList(lines: lyricsLines)
-            } else if let plain = lyricsPlainText, !plain.isEmpty {
+            } else if !lyricsPlainText.isEmpty {
                 ScrollView {
-                    Text(plain)
-                        .font(.system(size: 18, weight: .regular, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.trailing, 8)
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(lyricsPlainText.enumerated()), id: \.offset) { _, line in
+                            SidecarBilingualPlainLine(line: line)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, 8)
                 }
             } else {
                 VStack(spacing: 14) {
@@ -267,14 +272,14 @@ struct SidecarScreen: View {
         guard let songId = model.sidecarSongId, !songId.isEmpty, lyricsLoadedForSongId != songId else {
             if model.sidecarSongId == nil {
                 lyricsLines = []
-                lyricsPlainText = nil
+                lyricsPlainText = []
                 lyricsLoadedForSongId = nil
             }
             return
         }
         lyricsLoadedForSongId = songId
         lyricsLines = []
-        lyricsPlainText = nil
+        lyricsPlainText = []
         do {
             let payload = try await model.withFailover { try await $0.fetchLyrics(songId: songId) }
             guard payload.found, let content = payload.content?.trimmingCharacters(in: .whitespacesAndNewlines), !content.isEmpty else {
@@ -283,11 +288,18 @@ struct SidecarScreen: View {
             if payload.type == "lrc" {
                 let timed = LRCParser.parseTimedLines(content)
                 if !timed.isEmpty {
-                    lyricsLines = timed
+                    lyricsLines = SidecarLyricsTranslationMerge.merge(
+                        primary: timed,
+                        translationContent: payload.translationContent,
+                        translationFormat: payload.translationFormat
+                    )
                     return
                 }
             }
-            lyricsPlainText = content
+            lyricsPlainText = LyricsTranslationMerger.mergePlainWithJaTxt(
+                primaryText: content,
+                translationText: payload.translationContent ?? ""
+            )
         } catch {
             // Lyrics are optional for the sidecar display; leave the "No Lyrics" placeholder.
         }
@@ -461,6 +473,40 @@ private struct SidecarArtworkView: View {
 /// Collects each line's own (unscaled, pre-transform) rendered height, keyed by index — mirrors
 /// Desktop's `cachedLrcHeights` (`fullscreen-view.ts`'s `applyLyricsMotion`), which measures each
 /// `<p>`'s `getBoundingClientRect().height` once and reuses it for the cumulative layout sum.
+/// Styling for the 和訳 (translation) subline in both the synced and plain lyrics panes — ported
+/// from Desktop's `.fs-line-translation` (`components.css:2187-2190`: `font-size: 0.7em`,
+/// `color: rgba(255, 255, 255, 0.5)`, a flat colour that does not swap with active/inactive state)
+/// and `.fs-line-bilingual`'s `gap: 4px` between the primary and translation rows.
+private enum SidecarLyricsTranslationStyle {
+    /// `0.7em` of the synced pane's `28`pt primary line (Desktop: `2.2rem` primary → `0.7em` ≈ 19.6pt).
+    static let fontSize: CGFloat = 20
+    /// `0.7em` of the plain-text pane's `18`pt primary line.
+    static let plainFontSize: CGFloat = 13
+    static let opacity: Double = 0.5
+    static let blockGap: CGFloat = 4
+}
+
+/// One line of the plain-text (non-synced) sidecar lyrics view, with its 和訳 rendered beneath when
+/// present — the untimed-lyrics counterpart to `SidecarSyncedLyricsList`'s per-line translation,
+/// styled with the same `SidecarLyricsTranslationStyle` constants and mirroring
+/// `NowPlayingLyricsScreen.NowPlayingBilingualPlainLine`'s "no translation → no extra row" rule.
+private struct SidecarBilingualPlainLine: View {
+    let line: TranslatedPlainLine
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SidecarLyricsTranslationStyle.blockGap) {
+            Text(line.text.isEmpty ? " " : line.text)
+                .font(.system(size: 18, weight: .regular, design: .rounded))
+                .foregroundStyle(.white.opacity(0.85))
+            if let translation = line.translation {
+                Text(translation)
+                    .font(.system(size: SidecarLyricsTranslationStyle.plainFontSize, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(SidecarLyricsTranslationStyle.opacity))
+            }
+        }
+    }
+}
+
 private struct SidecarLineHeightKey: PreferenceKey {
     static var defaultValue: [Int: CGFloat] = [:]
     static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
@@ -487,7 +533,7 @@ private struct SidecarLineHeightKey: PreferenceKey {
 /// rgba(255,255,255,0.15)` glow. No previous port's extra embellishments survive here.
 private struct SidecarSyncedLyricsList: View {
     @Environment(AppModel.self) private var model
-    let lines: [LRCParser.TimedLine]
+    let lines: [TranslatedTimedLine]
 
     /// `-1` means "nothing active yet" (before the first line's timestamp — see
     /// `SidecarLyricsMotionPolicy.activeIndex`), matching Desktop's `applyLyricsMotion(-1, true)`
@@ -532,10 +578,26 @@ private struct SidecarSyncedLyricsList: View {
                     if y > -Self.renderMargin && y < paneHeight + Self.renderMargin {
                         let isActive = index == activeIndex
                         let distance = abs(index - baseIndex)
-                        Text(line.text.isEmpty ? " " : line.text)
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white.opacity(isActive ? 1 : 0.45))
-                            .shadow(color: .white.opacity(isActive ? 0.15 : 0), radius: isActive ? 24 : 0)
+                        // 和訳 (translation), when present, rides along beneath the primary line
+                        // inside the same block — ported from Desktop's `.fs-line-bilingual`
+                        // (`components.css:2182-2190`: flex column, `gap: 4px`, translation at
+                        // `0.7em` of the primary's `2.2rem` and a fixed `rgba(255,255,255,0.5)`
+                        // regardless of active state). Sharing one block means it rides the same
+                        // offset/delay as the primary line — no separate animation entity — and
+                        // the height `PreferenceKey` below measures the combined block
+                        // automatically, so `SidecarLyricsLayout.tops`'s cumulative stacking
+                        // absorbs the extra height without any change to its own arithmetic.
+                        VStack(alignment: .leading, spacing: SidecarLyricsTranslationStyle.blockGap) {
+                            Text(line.text.isEmpty ? " " : line.text)
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white.opacity(isActive ? 1 : 0.45))
+                                .shadow(color: .white.opacity(isActive ? 0.15 : 0), radius: isActive ? 24 : 0)
+                            if let translation = line.translation {
+                                Text(translation)
+                                    .font(.system(size: SidecarLyricsTranslationStyle.fontSize, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white.opacity(SidecarLyricsTranslationStyle.opacity))
+                            }
+                        }
                             .frame(width: paneGeo.size.width / SidecarLyricsMotionPolicy.activeLineScale, alignment: .leading)
                             .fixedSize(horizontal: false, vertical: true)
                             .scaleEffect(isActive ? SidecarLyricsMotionPolicy.activeLineScale : 1, anchor: .leading)

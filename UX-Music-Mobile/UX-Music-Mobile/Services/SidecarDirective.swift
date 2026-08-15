@@ -37,6 +37,37 @@ struct SidecarDirective: Equatable, Sendable {
     }
 }
 
+/// Chooses which `LyricsTranslationMerger` pairing to apply to a `/v1/remote/lyrics` response's
+/// `translationContent`, mirroring `AppModel.localBilingualLyricsDisplay(for:)`'s file-based
+/// decision (`.ja.lrc` → timestamp-paired, `.ja.txt` → positional) but driven by the payload's own
+/// `translationFormat` string instead of which sidecar file exists on disk — the sidecar screen
+/// fetches lyrics directly from the remote endpoint rather than through `LyricsFileStore`.
+enum SidecarLyricsTranslationMerge {
+    /// - Parameters:
+    ///   - primary: The already-parsed timed primary lines.
+    ///   - translationContent: Raw `translationContent` from `RemoteLyricsPayload`, or `nil`/blank
+    ///     if the desktop has no 和訳 saved for this track.
+    ///   - translationFormat: `"lrc"` or `"txt"` (`RemoteLyricsPayload.translationFormat`); any
+    ///     other value (including `nil`) is treated as positional `"txt"` pairing, matching
+    ///     `LyricsTranslationMerger.mergeTimedWithJaTxt`'s existing "no sidecar file" fallback shape.
+    static func merge(
+        primary: [LRCParser.TimedLine],
+        translationContent: String?,
+        translationFormat: String?
+    ) -> [TranslatedTimedLine] {
+        guard let translationContent = translationContent?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !translationContent.isEmpty
+        else {
+            return primary.map { TranslatedTimedLine(id: $0.id, startTime: $0.startTime, text: $0.text, translation: nil) }
+        }
+        if translationFormat == "lrc" {
+            let translationTimed = LRCParser.parseTimedLines(translationContent)
+            return LyricsTranslationMerger.mergeTimedWithJaLRC(primary: primary, translation: translationTimed)
+        }
+        return LyricsTranslationMerger.mergeTimedWithJaTxt(primary: primary, translationText: translationContent)
+    }
+}
+
 /// Interpolates the sidecar's playback position between 2s poll ticks so the progress bar keeps
 /// animating smoothly (see `AppModel`'s sidecar poller, which stamps `sidecarPositionTimestamp` on
 /// every successful fetch).

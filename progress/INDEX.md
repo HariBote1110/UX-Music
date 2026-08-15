@@ -1,5 +1,7 @@
 # Progress Index
 
+- [sidecar-lyrics-fade-and-bilingual.md](sidecar-lyrics-fade-and-bilingual.md) — サイドカー歌詞ペインの上下端フェード（Desktop `.fs-lyrics-container` のmask-imageを1:1移植）、左カラム（アートワーク/情報ブロック）の余白詰め、和訳（バイリンガル）対応（`RemoteLyricsPayload.translationContent`を既存`LyricsTranslationMerger`でペアリングしDesktop `.fs-line-bilingual`準拠のスタイルで描画）
+
 - [sidecar-ui-refinement.md](sidecar-ui-refinement.md) — サイドカー画面のアートワーク黒帯除去（GeometryReaderベースの正方形化）、シークバーの画面端配置＋端インライン時間ラベル、Desktopフルスクリーンプレイヤー準拠の歌詞モーション（アンカー比率/所要時間/段階遅延/scaleベース強調）、背景グラデーションのDesktop色ミックス移植
 
 - [sidecar-poll-tick-cpu-leak.md](sidecar-poll-tick-cpu-leak.md) — サイドカー表示中/非表示問わず発生するメモリ単調増加・CPU高騰の根本原因調査。当初`@Observable`の無条件invalidation（ポーラー）と`TimelineView(.periodic)`内の歌詞ScrollViewを差分ガードで修正したが、それでもLibraryタブのみ・サイドカー非表示でも再現。真因は`86eb43d`で追加された`AppDelegate.supportedInterfaceOrientationsFor`のデフォルトマスクが`.all`でInfo.plistの`UISupportedInterfaceOrientations~iphone`（PortraitUpsideDown除外）と不一致だったこと。UIKit/BackBoardServicesが起動直後からこの不一致を解決しようとして`BLSInvalidateFrameSpecifiersAction`を無限発火しRSSが単調増加していた。`SidecarOrientationLock.defaultMask`をidiom別にInfo.plistと一致させて修正。（追記 第3ラウンド）サイドカー表示中のみ再現する別原因を`UXM_DEBUG_SIDECAR_HOST`ハーネス＋`scripts/sidecar_stub_server.py`で実機なしに再現・二分探索。真因は`SidecarScreen.progressBar`の`TimelineView(.periodic(from: .now, ...))`が親`@State`（`chromeNow`）を書き込み、それを閉じるボタンが読むことでbody全体が毎tick再構築され、`.now`アンカーが再構築のたびに「今」へ再評価されて即時再発火するアンカーレス・フィードバックループ。オリエンテーション整合性・ブラー素材・アニメーション・GeometryReaderは実測で棄却。アンカーを構築時に1回だけ固定される`@State`（`progressScheduleAnchor`/`lyricsScheduleAnchor`）に変更して修正、3分間RSS横ばい・CPU2%未満・BLSベースライン相当まで復帰を確認
