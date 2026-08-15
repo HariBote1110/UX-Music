@@ -52,6 +52,136 @@ final class TVRelayStreamPlayerLifecycleTests: XCTestCase {
     }
 }
 
+/// Regression coverage for the "通常の音源が数秒で次の曲へスキップされる" report
+/// (`progress/tvos-playback.md` "受信完了≠再生完了" 追記).
+///
+/// Root cause: `didCompleteWithError(nil)` — the HTTP body ending — was reported straight through as
+/// `relayStreamPlayerDidReachEndOfStream`, and `TVPlaybackController.advanceAfterStreamEnd` takes
+/// that as "the track finished, advance the queue". But the host's `?stream=aac` endpoint runs
+/// ffmpeg with no `-re` (`server/app_remote_stream.go`), so over LAN the whole track is transcoded
+/// and sent in a few SECONDS regardless of its actual duration. The body therefore closes while
+/// several minutes of decoded PCM are still queued on `playerNode` — audible playback is fine right
+/// up until the auto-advance tears it down, which is exactly the reported symptom.
+///
+/// The fixture is ~6s of audio delivered in ~0.1s of wall time by `ChunkedFixtureURLProtocol`
+/// (4096-byte chunks, 2ms apart), so the gap between "body complete" and "audio actually finished"
+/// is ~60x — plenty of margin for a non-flaky assertion.
+/// Every wait here goes through `XCTestExpectation`, never `Thread.sleep`: the delegate callbacks
+/// are delivered via `DispatchQueue.main.async` and XCTest runs the test body ON the main thread, so
+/// a `Thread.sleep` would block the very queue the callback needs and the test would observe "no
+/// end-of-stream" no matter what the player did (this exact mistake made the first draft of
+/// `testEndOfStreamIsNotReportedWhileBufferedAudioIsStillPlaying` pass against the KNOWN-broken
+/// implementation). `wait(for:timeout:)` and `RunLoop.run(until:)` both pump the main run loop.
+final class TVRelayStreamPlayerEndOfStreamTests: XCTestCase {
+    /// The core assertion: 2.5s in, the entire HTTP body has long since arrived (~0.1s) but only
+    /// ~2.5s of the ~6s fixture can possibly have been heard, so end-of-stream MUST NOT have been
+    /// reported yet. The inverted expectation is armed BEFORE `start()` — arming it afterwards
+    /// would race the (broken) implementation's ~0.12s report and silently pass again.
+    func testEndOfStreamIsNotReportedWhileBufferedAudioIsStillPlaying() throws {
+        let (player, recorder, request) = try Self.makeFixturePlayer()
+        defer { player.stop() }
+
+        let rendering = expectation(description: "didStartRendering")
+        let premature = expectation(description: "no end-of-stream while audio is still playing")
+        premature.isInverted = true
+        recorder.renderingExpectation = rendering
+        recorder.endOfStreamExpectation = premature
+
+        player.start(request: request)
+        wait(for: [rendering, premature], timeout: 2.5)
+
+        XCTAssertNil(recorder.failureReason, "stream should not have failed: \(recorder.failureReason ?? "")")
+    }
+
+    /// The other half of the contract: it must still fire once the queued audio has genuinely
+    /// drained, otherwise the queue would simply never advance and playback would dead-end.
+    func testEndOfStreamIsReportedOnceTheBufferedAudioHasDrained() throws {
+        let (player, recorder, request) = try Self.makeFixturePlayer()
+        defer { player.stop() }
+
+        let ended = expectation(description: "didReachEndOfStream")
+        recorder.endOfStreamExpectation = ended
+
+        let startedAt = Date()
+        player.start(request: request)
+        wait(for: [ended], timeout: 25)
+
+        XCTAssertEqual(recorder.endOfStreamCount, 1, "expected exactly one end-of-stream report")
+        XCTAssertGreaterThan(
+            Date().timeIntervalSince(startedAt),
+            5,
+            "end-of-stream arrived before the ~6s fixture could have finished playing"
+        )
+    }
+
+    /// `refreshCachedElapsedSeconds()` used to be reachable only from `schedule()`, so once the body
+    /// had been fully received (and scheduling therefore stopped, ~0.1s in) `elapsedSeconds` froze —
+    /// Now Playing's progress bar stalled a couple of seconds in even though audio kept playing.
+    func testElapsedSecondsKeepsAdvancingAfterTheHTTPBodyHasFinished() throws {
+        let (player, recorder, request) = try Self.makeFixturePlayer()
+        defer { player.stop() }
+
+        let rendering = expectation(description: "didStartRendering")
+        recorder.renderingExpectation = rendering
+        player.start(request: request)
+        wait(for: [rendering], timeout: 10)
+
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        let firstSample = player.elapsedSeconds
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        let secondSample = player.elapsedSeconds
+
+        XCTAssertGreaterThan(firstSample, 0, "playback never advanced at all")
+        XCTAssertGreaterThan(
+            secondSample,
+            firstSample,
+            "elapsedSeconds froze after the HTTP body completed (\(firstSample) → \(secondSample))"
+        )
+    }
+
+    private static func makeFixturePlayer() throws -> (TVRelayStreamPlayer, EndOfStreamRecorder, URLRequest) {
+        let bundle = Bundle(for: TVRelayStreamPlayerEndOfStreamTests.self)
+        guard let fixtureURL = bundle.url(forResource: "relay-sample", withExtension: "aac") else {
+            throw XCTSkip("relay-sample.aac fixture not found in test bundle")
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ChunkedFixtureURLProtocol.self]
+        ChunkedFixtureURLProtocol.fixtureURL = fixtureURL
+
+        let player = TVRelayStreamPlayer(sessionConfiguration: config, muteOutput: true)
+        let recorder = EndOfStreamRecorder()
+        player.delegate = recorder
+        let request = URLRequest(url: URL(string: "https://mock.invalid/v1/remote/file?id=song-1&stream=aac")!)
+        return (player, recorder, request)
+    }
+}
+
+/// Expectation-driven delegate recorder for `TVRelayStreamPlayerEndOfStreamTests`. Deliberately
+/// separate from `RenderRecorder` (whose count-based API predates these tests and is shared with
+/// `TVRelayStreamPlayerLifecycleTests`) so that neither test's synchronisation style constrains the
+/// other. No locking: every callback arrives on the main queue and every read happens on the main
+/// thread between `wait`/`run(until:)` calls.
+private final class EndOfStreamRecorder: TVRelayStreamPlayerDelegate {
+    private(set) var endOfStreamCount = 0
+    private(set) var failureReason: String?
+    var renderingExpectation: XCTestExpectation?
+    var endOfStreamExpectation: XCTestExpectation?
+
+    func relayStreamPlayerDidStartRendering(_ player: TVRelayStreamPlayer) {
+        renderingExpectation?.fulfill()
+        renderingExpectation = nil // one session per test; a second fulfil would over-fulfil
+    }
+
+    func relayStreamPlayer(_ player: TVRelayStreamPlayer, didFailWith reason: String) {
+        failureReason = reason
+    }
+
+    func relayStreamPlayerDidReachEndOfStream(_ player: TVRelayStreamPlayer) {
+        endOfStreamCount += 1
+        endOfStreamExpectation?.fulfill()
+    }
+}
+
 /// Captures `TVRelayStreamPlayerDelegate` callbacks onto an `XCTestExpectation` per session so the
 /// test can synchronise on "first buffer scheduled" without a fixed sleep.
 private final class RenderRecorder: TVRelayStreamPlayerDelegate {
