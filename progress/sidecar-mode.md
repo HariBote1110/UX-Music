@@ -23,3 +23,11 @@
 - Mobile の `RemoteControlScreen` のポーリングとアプリレベルポーラーは併走しうる（どちらも読み取りGETのみで無害）。
 - サイドカー画面の遠隔操作コントロール（タップで一時停止等）は未実装。`RemoteAPIClient.sendCommand` が `model.withFailover` から届くため後付け可能。
 - 既存の未解決事項: `Localizable.xcstrings` に `tv.relay.error.unknown` の訳が欠けており、カタログ完全性テストが1件failする（本件と無関係・先行作業由来）。
+
+## 追補: サイドカーデバイス選択メニューが無関係な操作で消える不具合（Beta-55b）
+- 症状: Desktop側の「サイドカーに表示」コンテキストメニュー（ジャケット右クリック／フルスクリーンボタン長押し）が「わけわからないところで」一瞬で消える、という報告。
+- 調査したが原因ではなかった経路: (1) 非同期ギャップ — `openSidecarMenu`（`js/ui/now-playing.ts`）は `getSidecarTargetDevice`/`listPairedRemoteDevices` を await してから `showContextMenu` を呼ぶため、長押し release の pointerup/click がメニュー表示より先に発火するが、`showContextMenu`（`js/ui/utils.ts`）は dismiss リスナー登録自体を `requestAnimationFrame` で1フレーム遅延させており、開いた直後の残存イベントでは閉じない設計に既になっていた。(2) サブメニューの `mouseleave` 即時収納 — サブメニューは親 `menuItem` の DOM 子要素として追加されており、親→子への移動では `mouseleave` が発火しないため対角移動で消えるケースは再現しなかった。
+- 真因: `showContextMenu` が `document` に `capture:true` の `scroll` リスナーをグローバル登録しており、メニューと無関係などの要素（曲一覧・サイドバー等）をスクロールしただけでも `removeContextMenu()` が呼ばれていた。メニュー要素自体は CSS で `position: fixed`（`styles/components.css` `.context-menu`）のためビューポート内で位置が動かず、本来スクロール追従は不要。曲一覧などの他の呼び出し元では「一覧の文脈が変わったら閉じる」という設計として妥当だが、フルスクリーン長押しで開くサイドカーメニューには無関係で、ユーザー体感としては「関係ない場所を触っただけで消える」不具合になっていた。
+- 修正: `showContextMenu(x, y, items, options?)` に `ShowContextMenuOptions.closeOnScroll`（既定 `true`）を追加し、他の呼び出し元（曲リスト・列設定・MTPブラウザ・歌詞メニュー等）は無変更のまま、サイドカーメニューの呼び出し（`openSidecarMenu`）だけ `{ closeOnScroll: false }` を指定してスクロールでは閉じないようにした。Escape・外側クリック・別要素への右クリックでの dismiss は維持。
+- テスト: `js/ui/context-menu-dismiss.test.ts`（jsdom）でデフォルト挙動（無関係要素のスクロールで閉じる）・`closeOnScroll:false` 時に閉じないこと・`closeOnScroll:false` でも Escape では閉じることを検証。
+- 手動確認手順（実機）: Mac版でペア済みデバイスがある状態で、①ジャケット右クリック、②フルスクリーンボタンを約500ms長押し、のそれぞれでメニューを開き、開いたまま曲一覧やサイドバーをスクロールしてもメニューが消えないこと、Escapeキーやメニュー外クリックでは従来通り閉じることを確認する。あわせて曲一覧右クリックメニューでは従来通りスクロールで閉じることも確認する（`closeOnScroll` 既定値の回帰確認）。
