@@ -47,6 +47,21 @@ const (
 
 const longPauseStreamRefreshAfter = 30 * time.Minute
 
+// outputFramesPerBuffer is the PortAudio callback buffer size (in frames) used
+// for every output stream opened by newPortAudioOutputStream.
+const outputFramesPerBuffer = 4096
+
+// startPrefillPollInterval / startPrefillMaxWait bound how long
+// startDecodedPlayback waits for decoderLoop to fill the ring buffer before
+// starting the output stream. The cap exists so a slow disk, a cold decoder
+// start-up, or a stalled decoder can never block playback from starting —
+// worst case the first callback reads a short buffer, which is still better
+// than hanging the whole app on first play.
+const (
+	startPrefillPollInterval = 2 * time.Millisecond
+	startPrefillMaxWait      = 150 * time.Millisecond
+)
+
 // liveStartFadeSeconds is the duration of the output ramp applied at the start
 // of a live-capture (process tap) playback. It guards against an onset click /
 // DC step when the captured stream first opens. File playback is not faded.
@@ -641,6 +656,13 @@ func (p *Player) startDecodedPlayback(filePath string) error {
 	// rapid Stop and leave the loop unaware of the shutdown request.
 	go p.decoderLoop(p.decoderStop, p.decoderDone)
 
+	// 初回再生はデコーダ／ディスク I/O／cgo 呼び出しがすべてコールドな
+	// ため、decoderLoop がリングバッファへ十分書き込む前に stream.Start()
+	// してしまうと、最初のコールバックが半端なバッファを読み音が途切れる。
+	// stream.Start() の前に事前充填を待つ（上限あり — 詳細は
+	// startPrefillMaxWait のコメントを参照）。
+	p.waitForPrefill(p.decoderStop, p.decoderDone)
+
 	if err := stream.Start(); err != nil {
 		return fmt.Errorf("failed to start stream: %w", err)
 	}
@@ -686,7 +708,7 @@ func (p *Player) newPortAudioOutputStream() (*portaudio.Stream, error) {
 			Latency:  device.DefaultLowOutputLatency,
 		},
 		SampleRate:      float64(p.sampleRate),
-		FramesPerBuffer: 4096,
+		FramesPerBuffer: outputFramesPerBuffer,
 	}
 	stream, err := portaudio.OpenStream(params, func(out []float32) {
 		p.processAudio(out)
@@ -718,6 +740,56 @@ func (p *Player) reopenStream() error {
 		return fmt.Errorf("failed to start stream: %w", err)
 	}
 	return nil
+}
+
+// prefillSatisfied reports whether the ring buffer holds enough decoded
+// audio for the output stream to start safely. It is a pure function so the
+// start-of-playback decision can be unit-tested without PortAudio.
+//
+// A decoder that has already finished (decoderFinished) always counts as
+// ready, even with an empty or partially filled buffer — a track shorter
+// than one FramesPerBuffer worth of samples must never make the caller wait
+// for a threshold it can never reach.
+func prefillSatisfied(available, framesPerBuffer, channels int, decoderFinished bool) bool {
+	if decoderFinished {
+		return true
+	}
+	if framesPerBuffer <= 0 || channels <= 0 {
+		return true
+	}
+	return available >= framesPerBuffer*channels
+}
+
+// waitForPrefill blocks until the ring buffer has been prefilled enough for
+// stream.Start() to begin on a full buffer, or until one of the following
+// happens first: the decoder finishes (doneCh closes — e.g. a very short
+// track), the decoder/track is superseded by a concurrent Stop/Play (stopCh
+// closes), or startPrefillMaxWait elapses. The cap guarantees a slow disk or
+// a stalled decoder can never block playback from starting.
+func (p *Player) waitForPrefill(stopCh, doneCh chan struct{}) {
+	deadline := time.Now().Add(startPrefillMaxWait)
+	for {
+		select {
+		case <-stopCh:
+			return
+		default:
+		}
+
+		decoderFinished := false
+		select {
+		case <-doneCh:
+			decoderFinished = true
+		default:
+		}
+
+		if prefillSatisfied(int(p.ringAvailable.Load()), outputFramesPerBuffer, p.channels, decoderFinished) {
+			return
+		}
+		if time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(startPrefillPollInterval)
+	}
 }
 
 // decoderLoop runs in background and fills the ring buffer. stopCh is the
