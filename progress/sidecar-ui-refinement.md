@@ -57,3 +57,9 @@
 - `SidecarLayoutMotionTests`（新規9ケース＋既存）・全体テストスイート（`LocalizationCatalogCompletenessTests` を除く）: 563 passed / 0 failed / 8 skipped。
 - `scripts/sidecar_stub_server.py` に `--lrc-file` オプションを追加（従来は歌詞エンドポイントが常時404固定だった）し、20行の密なLRCフィクスチャで実機相当検証。1秒間隔の連続スクリーンショットで「行ごとに独立して動く」モーション、アクティブ/非アクティブの二値スタイル、開始前（`-1`）は最初の行の時刻ちょうどで初めてハイライトが付くタイミングを目視確認（`/private/tmp/.../scratchpad/motion_seq_*.png`、`still_*.png`）。
 - パフォーマンス再計測（歌詞アニメーション中、iPhone 17 Pro シミュレータ）: RSS 319MB台で横ばい、CPU 2〜4%、20秒間の `BLSInvalidateFrameSpecifiersAction` は1件のみ。`progress/sidecar-poll-tick-cpu-leak.md` で修正したTimelineViewストームの再発なし。
+
+## Decision（2026-08-15 追記: `SidecarLayoutMotionTests.swift` がXcodeプロジェクトに未登録だった不具合を修正）
+
+ディスク上・git管理下には存在していた `UX-Music-MobileTests/SidecarLayoutMotionTests.swift` が `project.pbxproj` の `UX-Music-MobileTests` ターゲットの Sources ビルドフェーズに一度も登録されていなかった（PBXFileReference/PBXBuildFile/グループメンバーシップ/Sourcesエントリのいずれも欠落）。そのため `-only-testing:UX-Music-MobileTests/SidecarLayoutMotionTests` を指定しても実行対象0件で「成功」扱いになっており、上記57行目に記した「新規9ケース＋既存」を含む30ケースが**一度も実機/シミュレータで実行されていなかった**（TDDのRed→Greenを経たと思われていたテストが、実際にはコンパイルすら通っていたか未検証だった）。
+
+`SidecarDirectiveTests.swift`（正しく登録済みの隣接テストファイル）のUUID形式・4箇所の登録パターンをそのまま踏襲して手動で `project.pbxproj` に追記し、他のテストファイル・アプリ側ソースファイルに同様の未登録がないか全数チェック（差分なし、他は全て登録済みと確認）。登録後にシミュレータで実行したところ30件全て green で通過し、実装側の修正は不要だった。

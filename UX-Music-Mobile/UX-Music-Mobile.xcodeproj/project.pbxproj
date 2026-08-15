@@ -100,6 +100,7 @@
 		7D755225E54248769CE3672D /* SidecarDirective.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE60406E6AD54DD79715CF05 /* SidecarDirective.swift */; };
 		55121DCC10264119BFCD8D4A /* SidecarScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60453866D17143B48F8B7AAD /* SidecarScreen.swift */; };
 		29B173DFA69B4D3C91FFEBBB /* SidecarDirectiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C84CA695586479AAFCF7831 /* SidecarDirectiveTests.swift */; };
+		C04E792BC6474C9E9BA3C3E3 /* SidecarLayoutMotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB095C2AB86142CCB85D867C /* SidecarLayoutMotionTests.swift */; };
 		b077f2c8570b4c62ad6c8c75 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7db2069e8eb64b7382361146 /* Assets.xcassets */; };
 		453C89C841B1456DBA8F697A /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 588F83FDDE734E7DA54AC513 /* Localizable.xcstrings */; };
 		b1b1b1B10101B1B10101B1B1 /* ServerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */; };
@@ -367,6 +368,7 @@
 		AE60406E6AD54DD79715CF05 /* SidecarDirective.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidecarDirective.swift; sourceTree = "<group>"; };
 		60453866D17143B48F8B7AAD /* SidecarScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidecarScreen.swift; sourceTree = "<group>"; };
 		8C84CA695586479AAFCF7831 /* SidecarDirectiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidecarDirectiveTests.swift; sourceTree = "<group>"; };
+		AB095C2AB86142CCB85D867C /* SidecarLayoutMotionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidecarLayoutMotionTests.swift; sourceTree = "<group>"; };
 		a69b6b50c77c42d5883861b6 /* UX-Music-Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfigTests.swift; sourceTree = "<group>"; };
 		F7C4B8410CB24C429F22CED8 /* DeviceIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentityTests.swift; sourceTree = "<group>"; };
@@ -575,6 +577,7 @@
 				DE0394F21811469395789027 /* LocalizationTestHelpers.swift */,
 				D9641CC4E57D4B59BDB33477 /* LocalizationCatalogCompletenessTests.swift */,
 				8C84CA695586479AAFCF7831 /* SidecarDirectiveTests.swift */,
+				AB095C2AB86142CCB85D867C /* SidecarLayoutMotionTests.swift */,
 			);
 			path = "UX-Music-MobileTests";
 			sourceTree = "<group>";
@@ -1038,6 +1041,7 @@
 				7576636BB2B148188B9AA8F2 /* LocalizationTestHelpers.swift in Sources */,
 				2D6316B8C62C4865B9477053 /* LocalizationCatalogCompletenessTests.swift in Sources */,
 				29B173DFA69B4D3C91FFEBBB /* SidecarDirectiveTests.swift in Sources */,
+				C04E792BC6474C9E9BA3C3E3 /* SidecarLayoutMotionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
