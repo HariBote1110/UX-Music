@@ -54,6 +54,10 @@ export function AudioIsPlaying() {
   return window['go']['server']['App']['AudioIsPlaying']();
 }
 
+export function AudioLiveLoudnessCorrectionGain() {
+  return window['go']['server']['App']['AudioLiveLoudnessCorrectionGain']();
+}
+
 export function AudioListDevices() {
   return window['go']['server']['App']['AudioListDevices']();
 }
@@ -94,12 +98,20 @@ export function AudioSetVolume(arg1) {
   return window['go']['server']['App']['AudioSetVolume'](arg1);
 }
 
+export function AudioStartLiveLoudnessCorrection(arg1) {
+  return window['go']['server']['App']['AudioStartLiveLoudnessCorrection'](arg1);
+}
+
 export function AudioStartWebViewTap() {
   return window['go']['server']['App']['AudioStartWebViewTap']();
 }
 
 export function AudioStop() {
   return window['go']['server']['App']['AudioStop']();
+}
+
+export function AudioStopLiveLoudnessCorrection() {
+  return window['go']['server']['App']['AudioStopLiveLoudnessCorrection']();
 }
 
 export function AudioStopWebViewTap() {

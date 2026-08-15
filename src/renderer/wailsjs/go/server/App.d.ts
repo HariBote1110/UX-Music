@@ -36,6 +36,8 @@ export function AudioIsPaused():Promise<boolean>;
 
 export function AudioIsPlaying():Promise<boolean>;
 
+export function AudioLiveLoudnessCorrectionGain():Promise<number>;
+
 export function AudioListDevices():Promise<Array<audio.Device>>;
 
 export function AudioPause():Promise<void>;
@@ -56,9 +58,13 @@ export function AudioSetNowPlayingMetadata(arg1:Record<string, any>):Promise<voi
 
 export function AudioSetVolume(arg1:number):Promise<void>;
 
+export function AudioStartLiveLoudnessCorrection(arg1:number):Promise<void>;
+
 export function AudioStartWebViewTap():Promise<void>;
 
 export function AudioStop():Promise<void>;
+
+export function AudioStopLiveLoudnessCorrection():Promise<void>;
 
 export function AudioStopWebViewTap():Promise<void>;
 

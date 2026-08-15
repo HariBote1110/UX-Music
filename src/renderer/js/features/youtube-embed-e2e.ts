@@ -75,6 +75,9 @@ export async function runYouTubeEmbedE2E(): Promise<void> {
     void app.EmbedDebugLog?.(`e2e-start video=${videoId}`);
     // 本番経路（player.ts の playEmbed）と同様に、ラウドネス取得を
     // 再生と並行して開始し、タップ開始後に正規化ゲインを適用する。
+    // ただし実測ラウドネス補正（AudioStartLiveLoudnessCorrection）は起動しない。
+    // 補正は時間とともにゲインを動かすため、後段の runVolumeCheck が見る出力 RMS が
+    // 測定タイミング依存になってしまう。ここでは推定ゲインのみを決定的に検証する。
     const loudnessPromise = fetchEmbedEffectiveLoudness(videoId);
     let tapStarted = false;
     const mounted = await mountEmbedPlayer(videoId, {

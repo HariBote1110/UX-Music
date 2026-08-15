@@ -643,6 +643,11 @@ async function playEmbed(song, sourceCandidate) {
 /**
  * 公式再生（embed）のラウドネス正規化ゲインを適用する。
  * 実効ラウドネスが取れない動画は正規化なし（1.0）のまま通常再生する。
+ *
+ * ここで掛けるのは「YouTube 側の減衰後ラウドネス」の推定に基づく暫定値。
+ * 実際の減衰量はクロスオリジンの iframe 越しには取れないため、適用後に
+ * Go 側の実測ラウドネス補正（AudioStartLiveLoudnessCorrection）を起動し、
+ * タップ音声の実測値でこのゲインを補正させる。
  */
 async function applyEmbedNormalisationGain(loudnessPromise: Promise<number | null>): Promise<void> {
     try {
@@ -660,6 +665,9 @@ async function applyEmbedNormalisationGain(loudnessPromise: Promise<number | nul
                 : -18.0;
         const gain = resolveEmbedPlaybackGain({ effectiveLoudness, targetLoudness });
         await getWailsApp()?.AudioSetNormalisationGain?.(gain);
+        // 推定ゲインを掛けた「後」に実測補正を開始する。補正係数は推定ゲインとの
+        // 差分として決まるため、順序を逆にすると 1 周期ぶん誤った補正が乗る。
+        await getWailsApp()?.AudioStartLiveLoudnessCorrection?.(targetLoudness);
         const loudnessLabel = effectiveLoudness === null ? 'n/a' : effectiveLoudness.toFixed(2);
         console.log(`[Player] embed 正規化ゲイン適用: loudness=${loudnessLabel} target=${targetLoudness} gain=${gain.toFixed(4)}`);
         void getWailsApp()?.EmbedDebugLog?.(`gain-applied loudness=${loudnessLabel} target=${targetLoudness} gain=${gain.toFixed(4)}`);
@@ -675,6 +683,8 @@ export async function stop() {
         try {
             if (wasEmbed) {
                 notifyRelayPlaybackState(false, '', '');
+                // 実測補正は曲に紐づく状態なので、次の曲へ持ち越さない。
+                await getWailsApp()?.AudioStopLiveLoudnessCorrection?.();
                 // タップ捕捉を停止する（内部で Player.Stop も行われる）
                 await getWailsApp()?.AudioStopWebViewTap?.();
                 // embed 用の正規化ゲインを解除する（ローカル曲は AudioPlay が
