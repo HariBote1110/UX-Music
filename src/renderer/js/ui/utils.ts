@@ -233,8 +233,27 @@ function buildMenuElement(items: ContextMenuItem[], isSubmenu = false): HTMLElem
     return menu;
 }
 
-export function showContextMenu(x: number, y: number, items: ContextMenuItem[]) {
+export type ShowContextMenuOptions = {
+    /**
+     * true の場合、メニューと無関係な要素のスクロールでもメニューを閉じる（既定値: true）。
+     * メニューは position: fixed でビューポートに固定されるため本来スクロール追従は不要だが、
+     * 曲リストなどでは「スクロールしたら一覧の文脈が変わったのでメニューを閉じる」という
+     * 既存の挙動を維持するために既定で有効にしている。
+     * サイドカーメニューのように、他の場所のスクロールと無関係に開いたままにしたい
+     * 呼び出し元は false を指定すること。
+     */
+    closeOnScroll?: boolean;
+};
+
+export function showContextMenu(
+    x: number,
+    y: number,
+    items: ContextMenuItem[],
+    options: ShowContextMenuOptions = {},
+) {
     removeContextMenu();
+
+    const { closeOnScroll = true } = options;
 
     const menu = buildMenuElement(items);
     // 一時的に非表示でDOMに追加してサイズを計測
@@ -267,14 +286,18 @@ export function showContextMenu(x: number, y: number, items: ContextMenuItem[]) 
         document.addEventListener('keydown', onKeydown);
         document.addEventListener('pointerdown', onPointerDown, { capture: true });
         document.addEventListener('contextmenu', onContextMenu);
-        document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+        if (closeOnScroll) {
+            document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+        }
     });
 
     activeMenuCleanup = () => {
         document.removeEventListener('keydown', onKeydown);
         document.removeEventListener('pointerdown', onPointerDown, { capture: true });
         document.removeEventListener('contextmenu', onContextMenu);
-        document.removeEventListener('scroll', onScroll, { capture: true });
+        if (closeOnScroll) {
+            document.removeEventListener('scroll', onScroll, { capture: true });
+        }
     };
 }
 

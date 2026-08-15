@@ -338,7 +338,10 @@ async function openSidecarMenu(x: number, y: number) {
         },
     });
 
-    showContextMenu(x, y, items);
+    // サイドカーメニューは position: fixed で開くため、無関係な箇所（曲一覧や
+    // サイドバーなど）のスクロールでは閉じないようにする。デフォルト動作のまま
+    // だと「わけわからないところで表示が消える」原因になる。
+    showContextMenu(x, y, items, { closeOnScroll: false });
 }
 
 export function setupArtworkContextMenu() {
