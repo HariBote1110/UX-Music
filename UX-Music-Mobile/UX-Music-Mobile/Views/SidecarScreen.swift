@@ -8,9 +8,10 @@ import SwiftUI
 /// side, a thin progress bar along the bottom. The close button and time labels fade out after a
 /// few seconds of inactivity for an "idle elegance" ambient look (`SidecarChromeVisibilityPolicy`);
 /// any tap brings them back.
+
 /// Named spacing constants for the landscape sidecar layout (`SidecarScreen.body`/`artworkAndInfo`).
 /// Tuned by iterative screenshot comparison so the artwork/title block reads as one composed unit
-/// and the two columns feel related rather than floating apart — see `progress/sidecar-lyrics-fade-and-spacing.md`.
+/// and the two columns feel related rather than floating apart — see `progress/sidecar-lyrics-fade-and-bilingual.md`.
 private enum SidecarLayoutSpacing {
     /// Gap between the artwork column and the lyrics pane. Was `40`pt, which combined with the
     /// artwork column's own internal centring left a wide dead zone between the two columns.
