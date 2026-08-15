@@ -224,15 +224,17 @@ func TestLoudnessMeterIgnoresSilence(t *testing.T) {
 			meter.processSample(ch, 0)
 		}
 	}
-	feedSine(meter, 0.5, 2.0, sampleRate, channels)
+	feedSine(meter, 0.5, 6.0, sampleRate, channels)
 
 	withSilence, ok := meter.integratedLUFS()
 	if !ok {
 		t.Fatal("測定できていない")
 	}
 
+	// 無音→信号の境界にまたがるブロック（サブブロック単位で一部だけ無音）は
+	// BS.1770 の定義どおりゲートを通るため、わずかな差は残る。
 	reference := newLoudnessMeter(sampleRate, channels)
-	feedSine(reference, 0.5, 2.0, sampleRate, channels)
+	feedSine(reference, 0.5, 6.0, sampleRate, channels)
 	want, _ := reference.integratedLUFS()
 
 	if math.Abs(withSilence-want) > 0.3 {
