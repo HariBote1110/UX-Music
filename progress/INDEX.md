@@ -1,5 +1,9 @@
 # Progress Index
 
+- [licence-audit.md](licence-audit.md) — LICENSE は GPL-2.0 だが直接依存に Apache-2.0 が4つ（go-mp3 / go-audio/wav / go-audio/audio / purego）あり、FSF の見解では GPLv2 と非互換（Go は静的リンクで回避不可）。解決策は GPL-3.0-or-later への変更か Apache-2.0 依存の排除（WAV 自作で2つ同時に消せる）。誤解の訂正として ffmpeg は同梱しておらず実行時に PATH から解決するため GPL の義務は発生しない。同梱 copyleft は cdparanoia（GPL-2.0、exec 起動なので伝播しない）のみで、`libkalam.dylib` はライセンス不明＝最大の未確認リスク
+
+- [flac-native-decoder.md](flac-native-decoder.md) — mewkiz/flac をやめて `pkg/audio/flac` に FLAC デコーダを自作する決定。理由は補助コードが自作デコーダ級に膨らんでいたこと（ID3v2 付き FLAC のための原本 remux＝破壊的書き換え、SeekTable 不在時の全フレームスキャン索引＋ディスクキャッシュ、`reflect`+`unsafe` による非公開フィールド注入）と、int16 固定インターフェースによる 24bit のディザなし切り捨て。Rust を却下したのはデコーダがオーディオコールバック外のゴルーチンで 150ms 先読み済み＝GC 論法が不成立、`go test -race` の検査外に出るコスト、Swift 側は AVFoundation で自前デコード不要＝共有先が無いため。検証は `flac -d` とのバイト一致＋STREAMINFO の MD5 自己検証の二重経路、フィクスチャは ffmpeg+flac CLI でその場生成
+
 - [tvos-ambient-artwork-retention.md](tvos-ambient-artwork-retention.md) — 「無操作30秒で背景だけ残りUI・ジャケットが消える」の正体はアンビエントモードの設計そのもの（通常レイアウトを丸ごと捨てて画面下部の小さなテキストだけの`TVAmbientOverlay`へ差し替え＋背景ウォッシュの後退）。アンビエントを「クロームのフェード」に再定義し、アートワーク・歌詞は残してトランスポート／シークバーだけを消す方式へ変更（純粋enum `TVAmbientPresentation`、contentOpacityが0にならないことをテストで固定）。焼き付き対策は周期120秒・振幅28ptのリサージュドリフトで代替、アンビエント中のボタンは`.disabled`でフォーカスツリーからも除外。あわせて歌詞表示をSidecar（＝Desktopフルスクリーン）準拠に作り直し（3行固定ウィンドウ→行独立モーション、`[間奏]`空白化、和訳バイリンガル、端フェード）、共有ロジックを`Core/LyricsStageKit.swift`へ切り出してMobile/TV両ターゲットで共有。`TimelineView`の`.now`アンカー問題（sidecar-poll-tick-cpu-leak）もTV側に残っていたため同時に修正
 
 - [embed-loudness-live-correction.md](embed-loudness-live-correction.md) — 公式再生（embed）がローカル曲より1〜4.4dB小さく鳴る原因は二重ラウドネス正規化。埋め込みプレイヤー自身が`<video>.volume`を下げて減衰させている（ブラウザ実測で確認、cont−tgtぶん・片方向）のに、アプリが減衰前の`perceptualLoudnessDb`を基準に再度減衰させていた。推定ゲインを`min(cont, -14)`基準へ是正し、さらにタップ音声のBS.1770積分ラウドネスを実測して差分を補正する経路（`pkg/audio/loudness_meter.go`）を新設。当初案の「ホストページで実減衰を読む」はYT.Playerがクロスオリジンiframeのため不可能と判明し却下
