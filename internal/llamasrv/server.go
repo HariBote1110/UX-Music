@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -106,8 +105,11 @@ func (s *Server) Start(ctx context.Context) error {
 		cmd.Stdout = f
 		cmd.Stderr = f
 	}
-	// Put the child in its own process group so we can SIGTERM cleanly.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// プロセスグループの設定（Unix）／相当の準備（Windows）はプラットフォーム
+	// ごとに proc_unix.go・proc_windows.go に分けている。Windows には
+	// Setpgid に相当する概念が無いため、同一シグネチャの薄いラッパーとして
+	// 抽象化した（詳細は各ファイルのコメント参照）。
+	configureProcAttr(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("llamasrv: start %s: %w", s.cfg.BinaryPath, err)
@@ -159,8 +161,9 @@ func (s *Server) terminateLocked() error {
 	}
 	pid := s.cmd.Process.Pid
 
-	// SIGTERM first, escalate to SIGKILL after 3s.
-	_ = s.cmd.Process.Signal(syscall.SIGTERM)
+	// Unix: SIGTERM first, escalate to SIGKILL after 3s.
+	// Windows: terminateProc は最初から強制終了する（proc_windows.go 参照）。
+	_ = terminateProc(s.cmd)
 	done := make(chan struct{})
 	go func() {
 		_ = s.cmd.Wait()
@@ -193,11 +196,8 @@ func (s *Server) isAliveLocked() bool {
 	if s.cmd == nil || s.cmd.Process == nil {
 		return false
 	}
-	// On Unix, signal 0 probes liveness without delivering anything.
-	if err := s.cmd.Process.Signal(syscall.Signal(0)); err != nil {
-		return false
-	}
-	return true
+	// 生存確認もプラットフォーム依存（proc_unix.go / proc_windows.go）。
+	return isProcAlive(s.cmd)
 }
 
 // Client returns the HTTP client bound to this server.
