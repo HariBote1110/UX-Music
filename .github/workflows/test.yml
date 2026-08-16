@@ -85,12 +85,6 @@ jobs:
       - name: go test (-shuffle=on)
         run: go test -count=1 -shuffle=on ${{ steps.pkgs.outputs.list }}
 
-      # relay_ci_research/ の一時診断ステップ: server パッケージの中継テスト
-      # だけを繰り返し・単独実行し、CI 固有の失敗がクロステスト干渉か
-      # テスト単体の問題かを切り分ける。調査完了後に削除すること。
-      - name: "[TEMP] go test relay isolation (-race, -count=5)"
-        run: go test -race -count=5 -v -run '^TestRemoteRelayEngine_MultipleConcurrentClientsBothReceiveBytes$' ./server/
-
   # ---------------------------------------------------------------------------
   # Go: Windows 専用コードのビルドゲート
   # ---------------------------------------------------------------------------

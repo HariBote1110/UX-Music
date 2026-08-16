@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 	"os/exec"
 	"strconv"
 	"sync"
-	"time"
 )
 
 // remoteRelayCapability is advertised in /v1/identity's capabilities list,
@@ -73,39 +71,6 @@ type relayEngine struct {
 	nextSubID  int
 	cancel     context.CancelFunc
 	ffmpegPath func() (string, error)
-
-	// debugMu guards debugf independently of mu: logf is called from within
-	// code that already holds mu (e.g. broadcast, Subscribe), so debugf
-	// cannot share that lock without deadlocking.
-	debugMu sync.RWMutex
-	// debugf is a diagnostic hook for the GitHub Actions-only flakiness
-	// investigation in relay_ci_research/notes/. nil in production (zero
-	// overhead beyond a lock/nil check); tests set it via setDebugf to route
-	// timestamped pipeline events (ffmpeg stderr, byte counts, subscriber
-	// counts) to t.Logf. See relay_ci_research/notes/INDEX.md.
-	debugf func(format string, args ...interface{})
-}
-
-// setDebugf installs (or, with nil, clears) the diagnostic hook. Safe for
-// concurrent use with logf from any goroutine.
-func (e *relayEngine) setDebugf(fn func(format string, args ...interface{})) {
-	e.debugMu.Lock()
-	e.debugf = fn
-	e.debugMu.Unlock()
-}
-
-// logf reports to debugf when set, prefixed with a monotonic-ish wall clock
-// timestamp so events from ffmpeg's stderr goroutine, pumpPCM, pumpADTS and
-// broadcast can be interleaved and ordered after the fact. No-op (a lock plus
-// nil check) when debugf is unset, i.e. always in production.
-func (e *relayEngine) logf(format string, args ...interface{}) {
-	e.debugMu.RLock()
-	fn := e.debugf
-	e.debugMu.RUnlock()
-	if fn == nil {
-		return
-	}
-	fn("[%s] "+format, append([]interface{}{time.Now().Format("15:04:05.000000")}, args...)...)
 }
 
 func newRelayEngine() *relayEngine {
@@ -128,10 +93,8 @@ func (e *relayEngine) Start(source RelayPCMSource, title, thumbnail string) erro
 
 	ffmpegPath, err := e.ffmpegPath()
 	if err != nil {
-		e.logf("ffmpegPath() failed: %v", err)
 		return fmt.Errorf("ffmpeg not found: %w", err)
 	}
-	e.logf("resolved ffmpeg path: %s", ffmpegPath)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, ffmpegPath,
@@ -169,17 +132,10 @@ func (e *relayEngine) Start(source RelayPCMSource, title, thumbnail string) erro
 		cancel()
 		return fmt.Errorf("ffmpeg stdout pipe: %w", err)
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		cancel()
-		return fmt.Errorf("ffmpeg stderr pipe: %w", err)
-	}
 	if err := cmd.Start(); err != nil {
-		e.logf("cmd.Start() failed: %v", err)
 		cancel()
 		return fmt.Errorf("ffmpeg start: %w", err)
 	}
-	e.logf("cmd.Start() succeeded, pid=%d", cmd.Process.Pid)
 
 	e.mu.Lock()
 	e.generation++
@@ -190,12 +146,10 @@ func (e *relayEngine) Start(source RelayPCMSource, title, thumbnail string) erro
 	e.cancel = cancel
 	e.mu.Unlock()
 
-	go e.pumpStderr(stderr)
 	go e.pumpPCM(source, stdin)
 	go e.pumpADTS(stdout)
 	go func() {
-		waitErr := cmd.Wait()
-		e.logf("cmd.Wait() returned: %v", waitErr)
+		_ = cmd.Wait()
 		e.stopIfCurrent(gen)
 	}()
 
@@ -215,24 +169,11 @@ func (e *relayEngine) Start(source RelayPCMSource, title, thumbnail string) erro
 func (e *relayEngine) stopIfCurrent(gen int) {
 	e.mu.Lock()
 	if gen != e.generation {
-		e.logf("stopIfCurrent: stale generation %d (current %d), skipping teardown", gen, e.generation)
 		e.mu.Unlock()
 		return
 	}
 	e.mu.Unlock()
 	e.Stop()
-}
-
-// pumpStderr relays ffmpeg's stderr line-by-line to the diagnostic hook. In
-// production (debugf nil) this still drains the pipe — required so ffmpeg
-// never blocks writing to a full, unread stderr pipe — but does no logging
-// work beyond the drain.
-func (e *relayEngine) pumpStderr(stderr io.ReadCloser) {
-	defer stderr.Close()
-	scanner := bufio.NewScanner(stderr)
-	for scanner.Scan() {
-		e.logf("ffmpeg stderr: %s", scanner.Text())
-	}
 }
 
 // pumpPCM reads interleaved float32 frames from source and writes them as
@@ -242,11 +183,9 @@ func (e *relayEngine) pumpPCM(source RelayPCMSource, stdin io.WriteCloser) {
 	defer stdin.Close()
 	samples := make([]float32, 4096)
 	bytes := make([]byte, len(samples)*4)
-	var totalPCMBytes int64
 	for {
 		n, ok := source.ReadPCM(samples)
 		if !ok {
-			e.logf("pumpPCM: source exhausted, totalPCMBytesWritten=%d", totalPCMBytes)
 			return
 		}
 		if n == 0 {
@@ -255,12 +194,9 @@ func (e *relayEngine) pumpPCM(source RelayPCMSource, stdin io.WriteCloser) {
 		for i := 0; i < n; i++ {
 			binary.LittleEndian.PutUint32(bytes[i*4:], math.Float32bits(samples[i]))
 		}
-		written := n * 4
-		if _, err := stdin.Write(bytes[:written]); err != nil {
-			e.logf("pumpPCM: stdin.Write failed after totalPCMBytesWritten=%d: %v", totalPCMBytes, err)
+		if _, err := stdin.Write(bytes[:n*4]); err != nil {
 			return
 		}
-		totalPCMBytes += int64(written)
 	}
 }
 
@@ -269,22 +205,14 @@ func (e *relayEngine) pumpPCM(source RelayPCMSource, stdin io.WriteCloser) {
 func (e *relayEngine) pumpADTS(stdout io.ReadCloser) {
 	defer stdout.Close()
 	buf := make([]byte, 4096)
-	var totalADTSBytes int64
-	firstChunkLogged := false
 	for {
 		n, err := stdout.Read(buf)
 		if n > 0 {
-			if !firstChunkLogged {
-				e.logf("pumpADTS: first chunk arrived, n=%d bytes", n)
-				firstChunkLogged = true
-			}
-			totalADTSBytes += int64(n)
 			chunk := make([]byte, n)
 			copy(chunk, buf[:n])
 			e.broadcast(chunk)
 		}
 		if err != nil {
-			e.logf("pumpADTS: stdout.Read ended, totalADTSBytesRead=%d, err=%v", totalADTSBytes, err)
 			return
 		}
 	}
@@ -296,17 +224,12 @@ func (e *relayEngine) pumpADTS(stdout io.ReadCloser) {
 func (e *relayEngine) broadcast(chunk []byte) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	subCount := len(e.subs)
-	sent, dropped := 0, 0
 	for _, sub := range e.subs {
 		select {
 		case sub.ch <- chunk:
-			sent++
 		default:
-			dropped++
 		}
 	}
-	e.logf("broadcast: chunkBytes=%d subscribers=%d sent=%d dropped=%d", len(chunk), subCount, sent, dropped)
 }
 
 // Stop tears down the active encode (if any) and closes every subscriber's
@@ -351,7 +274,6 @@ func (e *relayEngine) Subscribe() (chan []byte, func()) {
 	e.nextSubID++
 	ch := make(chan []byte, 32)
 	e.subs[id] = &relaySubscriber{ch: ch}
-	e.logf("Subscribe: id=%d totalSubscribers=%d", id, len(e.subs))
 	return ch, func() { e.unsubscribe(id) }
 }
 

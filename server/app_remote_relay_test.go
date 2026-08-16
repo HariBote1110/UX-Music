@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
-	"strings"
 	"testing"
 	"time"
 )
@@ -254,30 +253,22 @@ func TestRemoteRelayEngine_SingleClientReceivesADTSBytes(t *testing.T) {
 }
 
 func TestRemoteRelayEngine_MultipleConcurrentClientsBothReceiveBytes(t *testing.T) {
-	// relay_ci_research/notes/ で GitHub Actions 固有の失敗を計測中。
-	// 診断のため一時的に GITHUB_ACTIONS スキップを外し、relayEngine.debugf
-	// 経由で ffmpeg stderr・バイト数・購読者数を t.Logf に出している。
+	// かつて GitHub Actions の ubuntu-latest ランナー上でのみ、両クライアント
+	// とも 0 バイトで再現性よく失敗していた（relay_ci_research/notes/
+	// stale-cmd-wait-teardown.md に詳細）。原因は relayEngine の再入可能性
+	// バグ: Start() が spawn する「ffmpeg 終了を待って Stop() する」ゴルー
+	// チンが自分の属するセッションを区別できておらず、かつ Stop() 側もその
+	// ゴルーチンの完了を待たない。直前のテスト（Single/MultiClient は同じ
+	// パッケージグローバル remoteRelay を共有する）の ffmpeg プロセスの
+	// 終了・パイプ EOF が CI の混雑したランナーで遅延し、次テストの Start()
+	// より後に完了すると、古いセッションの Stop() が新しいセッションの
+	// 購読者を巻き込んで破棄していた。app_remote_relay.go の generation
+	// カウンタ（stopIfCurrent）でこの再入を防止したため、スキップを解除
+	// している。回帰テストは TestRelayEngine_StaleGenerationStopIsNoOp。
 	requireFFmpegForTest(t)
 	newTempRemoteStore(t)
 	withServerMode(t, ModeGUI)
 	token := ensureDeviceAuthToken("dev_test_multi")
-
-	if path, err := exec.LookPath("ffmpeg"); err == nil {
-		if out, verErr := exec.Command(path, "-version").Output(); verErr == nil {
-			firstLine := string(out)
-			if idx := strings.IndexByte(firstLine, '\n'); idx >= 0 {
-				firstLine = firstLine[:idx]
-			}
-			t.Logf("[diag] ffmpeg path=%s version=%q", path, firstLine)
-		} else {
-			t.Logf("[diag] ffmpeg -version failed: %v", verErr)
-		}
-	} else {
-		t.Logf("[diag] exec.LookPath(ffmpeg) failed: %v", err)
-	}
-
-	remoteRelay.setDebugf(t.Logf)
-	t.Cleanup(func() { remoteRelay.setDebugf(nil) })
 
 	source := newChanRelayPCMSource(44100, 1)
 	if err := remoteRelay.Start(source, "Test Song", ""); err != nil {
