@@ -14,9 +14,9 @@ func TestDecodeResidual_SinglePartitionRice(t *testing.T) {
 	values := []int32{-3, 5, 0, 1, -1, 7} // blockSize - predictorOrder values
 
 	var w testBitWriter
-	w.writeBits(0, 2)  // coding method 0
-	w.writeBits(0, 4)  // partition order 0 -> 1 partition
-	w.writeBits(2, 4)  // rice parameter 2
+	w.writeBits(0, 2) // coding method 0
+	w.writeBits(0, 4) // partition order 0 -> 1 partition
+	w.writeBits(2, 4) // rice parameter 2
 	for _, v := range values {
 		w.writeRice(v, 2)
 	}

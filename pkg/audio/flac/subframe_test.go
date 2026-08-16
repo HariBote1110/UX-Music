@@ -6,7 +6,7 @@ import (
 )
 
 func writeSubframeHeader(w *testBitWriter, typeCode uint64, wastedBits int) {
-	w.writeBits(0, 1)      // padding
+	w.writeBits(0, 1) // padding
 	w.writeBits(typeCode, 6)
 	if wastedBits == 0 {
 		w.writeBits(0, 1)
