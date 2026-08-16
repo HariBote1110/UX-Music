@@ -211,11 +211,31 @@ func TestRemoteRelayEngine_MultipleConcurrentClientsBothReceiveBytes(t *testing.
 	}
 	t.Cleanup(remoteRelay.Stop)
 
+	// 元々は 60 回（実時間 300ms）しか PCM を送っていなかった。
+	// Subscribe は「呼び出し後に broadcast された分しか受け取れず、
+	// バックログの再生は無い」設計（relayEngine.Subscribe のコメント参照）
+	// なので、httptest.NewServer の起動や2クライアント分の HTTP
+	// ハンドシェイクが CI の混雑したランナーでこの 300ms の生配信ウィンドウ
+	// より遅く終わると、購読が完了した時点でもう新しいチャンクが一切
+	// 来ず、読み取り側のデッドラインをいくら伸ばしても 0 バイトのまま
+	// 打ち切られる（実際に CI で確認済みの症状と一致する）。本番の
+	// バックログ非対応という仕様自体は変えず、テストの生配信ウィンドウを
+	// 5秒に広げて購読の遅延に対する猶予を確保する。
+	stopPush := make(chan struct{})
+	t.Cleanup(func() { close(stopPush) })
 	go func() {
 		phase := 0.0
-		for i := 0; i < 60; i++ {
-			source.push(sineChunk(2048, &phase, 44100))
-			time.Sleep(5 * time.Millisecond)
+		for i := 0; i < 1000; i++ {
+			select {
+			case <-stopPush:
+				return
+			case source.ch <- sineChunk(2048, &phase, 44100):
+			}
+			select {
+			case <-stopPush:
+				return
+			case <-time.After(5 * time.Millisecond):
+			}
 		}
 	}()
 
