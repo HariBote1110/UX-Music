@@ -24,13 +24,6 @@ export function initIPC(callbacks) {
     console.log('[IPC] initIPC called');
     logPerf("initIPC called.");
 
-    electronAPI.on('flac-index-progress', (progress) => {
-        callbacks.onFlacIndexProgress?.(progress);
-    });
-    electronAPI.on('flac-index-complete', (total) => {
-        callbacks.onFlacIndexComplete?.(total);
-    });
-
     electronAPI.on('loudness-analysis-result', (rawResult) => {
         const result = rawResult as Record<string, unknown>;
         const filePath = typeof result?.filePath === 'string' ? result.filePath : '';

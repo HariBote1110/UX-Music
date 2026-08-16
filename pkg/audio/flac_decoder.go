@@ -31,6 +31,16 @@ type flacAdapterDecoder struct {
 	framePos int
 }
 
+// newFLACDecoder is player.go's entry point for FLAC playback: it
+// constructs the native pkg/audio/flac-backed adapter, replacing the
+// mewkiz/flac-based flacDecoder. On open failure, player.go falls back to
+// the ffmpeg decoder (see startDecodedPlayback's ".flac" case); this
+// decoder itself never falls back mid-stream, since pkg/audio/flac reports
+// errors rather than panicking on malformed input.
+func newFLACDecoder(file *os.File) (*flacAdapterDecoder, error) {
+	return newFLACAdapterDecoder(file)
+}
+
 // newFLACAdapterDecoder opens file as a FLAC stream via the native decoder.
 func newFLACAdapterDecoder(file *os.File) (*flacAdapterDecoder, error) {
 	dec, err := nativeflac.NewDecoder(file)
