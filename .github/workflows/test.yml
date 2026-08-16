@@ -246,9 +246,22 @@ jobs:
   # 上の 3 ジョブが必須ゲートで、こちらは macOS ランナーでのみ動く追加の網。
   swift-cli:
     name: swift test (lyrics-sync CLI)
-    runs-on: macos-14
+    # Package.swift が swift-tools-version 6.0 を要求するため、Swift 5.10 までしか
+    # 積んでいない macos-14 では「package が要求する tools version をインストール済みの
+    # バージョンが満たせない」エラーで即死する。開発機は Swift 6.3.2 で動いており、
+    # 依存の WhisperKit も 6.x 系を前提にする可能性が高いので、Package.swift 側を
+    # 落とすのではなくランナー側を Swift 6 系がデフォルトの macos-15 に上げる。
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+
+      # ツールチェインのバージョンドリフトは「Package.swift が新しいのにランナーが
+      # 古い」形で再発しやすい。次に同じ事故が起きたときログから即座に切り分けられる
+      # よう、swift test の直前に実際に使われているバージョンを出しておく。
+      - name: Show toolchain versions
+        run: |
+          swift --version
+          xcodebuild -version
 
       - name: swift test
         working-directory: swift/lyrics-sync
