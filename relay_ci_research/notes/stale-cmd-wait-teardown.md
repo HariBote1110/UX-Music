@@ -245,3 +245,120 @@ installed version is 5.10.0` で毎回落ちているが、これは `main` ブ�
 （`server/app_remote_relay_test.go`）を残した。これは実 ffmpeg プロセス
 を起動せず `stopIfCurrent` を直接駆動するホワイトボックステストであり、
 今後 `relayEngine` のライフサイクルを変更する際の安全網になる。
+
+## 追記: 世代ガードそのものが非原子だった（レビュー指摘）
+
+上記の `stopIfCurrent` 初版は次のように書かれていた:
+
+```go
+func (e *relayEngine) stopIfCurrent(gen int) {
+	e.mu.Lock()
+	if gen != e.generation {
+		e.mu.Unlock()
+		return
+	}
+	e.mu.Unlock()   // ここで一旦ロック解放
+	e.Stop()        // Stop() が再度ロックを取る。その間に generation が変わりうる
+}
+```
+
+「世代が一致するか確認する」区間と「実際に teardown する」区間が **別々
+のクリティカルセクション**になっており、両者の間にロックが解放される
+隙間があった。この隙間だけを見れば以下のインターリーブが理論上可能:
+
+1. `stopIfCurrent(gen=5)` が `e.generation == 5` を確認してアンロック。
+2. その間に別ゴルーチンで `Start()` が走る:
+   冒頭の `e.Stop()` で世代が 6 に、続く `Start()` 自身の処理で世代が 7
+   になり、新しいセッションが `active = true` になる。
+3. `stopIfCurrent` が再開して `e.Stop()` を呼び、世代 7（＝直前に始まった
+   ばかりの新しいセッション）を破棄してしまう。
+
+これは今回修正したはずの「古いセッションが新しいセッションを巻き込んで
+破棄する」バグそのものであり、単に発生しうる窓（ウィンドウ）が「ffmpeg
+プロセスの終了・パイプ EOF にかかる秒単位の時間」から「ロック解放から
+再取得までの数命令」へと桁違いに狭まっただけだった。世代ガードを導入した
+目的は「stale teardown をほぼ起きなくする」ことではなく「原理的に起こり
+得なくする」ことだったため、この残存ウィンドウは見過ごせないレビュー
+指摘として扱った。
+
+### 修正
+
+チェックと teardown を同一のクリティカルセクションにするため、
+ロックを保持したまま teardown 本体を呼べるように `teardownLocked` を
+切り出した:
+
+```go
+func (e *relayEngine) Stop() {
+	e.mu.Lock()
+	e.teardownLocked()
+}
+
+// teardownLocked は e.mu を保持した状態で呼ばれる必要があり、内部で
+// アンロックする（何もアクティブでなければ即座に、そうでなければ
+// teardown 対象の状態をキャプチャした直後に、ブロッキングする
+// cancel()/close() の前で）。
+func (e *relayEngine) teardownLocked() {
+	e.generation++
+	if !e.active {
+		e.mu.Unlock()
+		return
+	}
+	// ...以降、既存の cancel/subs キャプチャ → e.mu.Unlock() → cancel() → close() ...
+}
+
+func (e *relayEngine) stopIfCurrent(gen int) {
+	e.mu.Lock()
+	if gen != e.generation {
+		e.mu.Unlock()
+		return
+	}
+	e.teardownLocked()   // ロックを保持したまま teardown。隙間なし
+}
+```
+
+`Start()` は `e.mu` を保持したまま世代をインクリメントするため、
+「世代の比較」から「実際のインクリメント（teardown 側）」までロックを
+保持し続けることで、この窓を完全に閉じられる。
+
+`teardownLocked` という名前は「ロックを握ったまま呼ぶ」契約を示す一方で、
+関数自身は内部でアンロックして返る（呼び出し元はロックの解放を意識しなくて
+よい）ため、この非対称な契約をコメントで明示した。
+
+### この窓をテストで直接踏ませることはしなかった
+
+チェックと teardown の間に意図的にフックを挟んで狙って踏ませることは、
+バグそのものより有害（本番コードに「テストのためだけに存在する隙間」を
+作ることになる）と判断し、行っていない。既存の
+`TestRelayEngine_StaleGenerationStopIsNoOp` は「古い世代からの
+`stopIfCurrent` 呼び出しが現行セッションを壊さない」という振る舞いを
+そのままカバーしており、今回の変更はその振る舞いを変えない構造的な
+窓の除去（チェックと teardown の単一クリティカルセクション化）である
+ため、既存テストのままで十分と判断した。
+
+### `Subscribe` / `unsubscribe` / `State` の同種パターンの点検
+
+同じ「ロック下で読んで、解放してから、読んだ内容が依然として真である
+前提で行動する」パターンが他に無いか確認した:
+
+- `Subscribe`・`unsubscribe`: どちらも `e.mu.Lock(); defer e.mu.Unlock()`
+  の単一クリティカルセクション内で読み取りと書き込みの両方を完結して
+  おり、ロックを跨いだ「読んでから行動する」区間は無い。**問題なし。**
+- `State()`: 単純なスナップショット取得（`active/title/thumbnail` を
+  ロック下でコピーして返すだけ）であり、それ自体に read-modify-write は
+  無い。**関数単体としては問題なし。**
+  ただし呼び出し側の `remoteRelayHandler`（同ファイル）に
+  `State()` → （ロック解放）→ `Subscribe()` という2段の呼び出しがあり、
+  その間に `Stop()` が挟まると「`State()` 時点では active だったが
+  `Subscribe()` 時点ではすでに非アクティブ」という状態で購読が成立し
+  うる。この場合、新しく作られた（Stop 後の空の）`subs` マップに購読者
+  が追加されるだけで、以後 `broadcast` が呼ばれることも無く、また
+  `Stop()` 済みなのでその購読チャンネルが `close` されることも無い
+  （次に `Start()`→`Stop()` が起きるまで）。実害は
+  「クライアントが `r.Context().Done()`（切断）まで無音のまま待たされる」
+  程度で、他セッションを破壊するような重大度ではないが、`State()` と
+  `Subscribe()` の非原子性という意味では確かに同種のパターンである。
+  今回の世代ガード修正のスコープ外（別のハンドラ層の話であり、
+  `relayEngine` 自体の再入可能性バグではない）と判断し、**未修正のまま
+  記録に残す**。将来 `remoteRelayHandler` を触る際は、
+  `Subscribe()` 自体に「アクティブでなければ即座に閉じたチャンネルを
+  返す」といった原子的な確認を追加する形で解消できる。

@@ -166,14 +166,22 @@ func (e *relayEngine) Start(source RelayPCMSource, title, thumbnail string) erro
 // Explicit callers (t.Cleanup(remoteRelay.Stop), Start()'s own leading
 // e.Stop()) go through Stop() directly and always tear down, bumping the
 // generation so any still-pending stopIfCurrent(oldGen) becomes a no-op.
+//
+// The generation check and the teardown are performed in the same critical
+// section (via teardownLocked) rather than as two separate lock/unlock
+// pairs: releasing the lock between "gen still matches" and "tear down"
+// would reopen — in a much narrower window, but not a closed one — exactly
+// the stale-teardown race this mechanism exists to prevent (Start() could
+// bump the generation and activate a new session in the gap). See
+// relay_ci_research/notes/stale-cmd-wait-teardown.md for why this matters
+// even though the window is only a few instructions wide.
 func (e *relayEngine) stopIfCurrent(gen int) {
 	e.mu.Lock()
 	if gen != e.generation {
 		e.mu.Unlock()
 		return
 	}
-	e.mu.Unlock()
-	e.Stop()
+	e.teardownLocked()
 }
 
 // pumpPCM reads interleaved float32 frames from source and writes them as
@@ -236,10 +244,22 @@ func (e *relayEngine) broadcast(chunk []byte) {
 // channel, ending their HTTP responses. Safe to call when nothing is active.
 func (e *relayEngine) Stop() {
 	e.mu.Lock()
-	// Bump unconditionally (even when nothing is active) so that any
-	// stopIfCurrent(gen) still in flight from a previous session's cmd.Wait()
-	// goroutine is guaranteed to see a mismatch and no-op, regardless of
-	// whether this Stop() call itself has anything to tear down.
+	e.teardownLocked()
+}
+
+// teardownLocked bumps the generation and, if a session is active, tears it
+// down: it must be called with e.mu already held, and it releases e.mu
+// itself (immediately if nothing is active; otherwise after capturing the
+// state to tear down, before the blocking cancel()/close() calls) rather
+// than leaving that to the caller. Callers must not touch e.mu again after
+// calling this.
+//
+// Bumping the generation happens before the active check, unconditionally,
+// so that any stopIfCurrent(gen) still in flight from a previous session's
+// cmd.Wait() goroutine is guaranteed to see a mismatch and no-op on its next
+// call, regardless of whether this particular call has anything to tear
+// down.
+func (e *relayEngine) teardownLocked() {
 	e.generation++
 	if !e.active {
 		e.mu.Unlock()
