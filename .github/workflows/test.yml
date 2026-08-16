@@ -28,7 +28,7 @@ jobs:
     name: go test (linux)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # pkg/audio は portaudio を無条件 import しているため、
       # これが無いとパッケージ全体がコンパイルできずテストが「存在しない」扱いになる。
@@ -98,7 +98,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # msys2 shell 内から後続ステップで使うため checkout 自体は shell 指定なしで良いが、
           # defaults.run.shell が全ステップに効くので actions/checkout も msys2 上で動く。
@@ -201,7 +201,7 @@ jobs:
       run:
         working-directory: src/renderer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v4
         with:
@@ -224,7 +224,7 @@ jobs:
     name: pytest (lyrics-sync)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-python@v5
         with:
@@ -253,7 +253,7 @@ jobs:
     # 落とすのではなくランナー側を Swift 6 系がデフォルトの macos-15 に上げる。
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # ツールチェインのバージョンドリフトは「Package.swift が新しいのにランナーが
       # 古い」形で再発しやすい。次に同じ事故が起きたときログから即座に切り分けられる
@@ -271,7 +271,7 @@ jobs:
     name: xcodebuild test (UX-Music-Mobile)
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: List available simulators
         run: xcrun simctl list devices available
