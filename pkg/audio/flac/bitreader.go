@@ -1,8 +1,13 @@
-// Package flac implements a hand-written FLAC decoder, built to replace the
-// reflect/unsafe-laden path through github.com/mewkiz/flac used elsewhere in
-// this repository. This file provides the MSB-first bit reader that every
-// later stage (stream/frame header parsing, and eventually subframe and
-// residual decoding) is built on.
+// Package flac implements a hand-written FLAC decoder following RFC 9639.
+// It replaced github.com/mewkiz/flac, which required reflect/unsafe field
+// injection to seek, a full-file frame index, and rewriting the user's
+// original file to cope with ID3v2 tags. Decoding is verified bit-exact
+// against the reference decoder and against the STREAMINFO MD5.
+//
+// This file provides the MSB-first bit reader that every later stage
+// (stream and frame header parsing, subframe and residual decoding) is
+// built on. It never panics on malformed input: every path returns an
+// error, and no reflect or unsafe is used anywhere in the package.
 package flac
 
 import (
