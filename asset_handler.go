@@ -79,8 +79,13 @@ func decodeSafeMediaPath(raw string) (string, bool) {
 	if decoded == "" {
 		return "", false
 	}
+	hasDriveLetter := hasWindowsDriveLetterPath(decoded)
+	// library.json may have been written by a POSIX (macOS/Linux) build, so
+	// a leading "/" without a drive letter is a legitimate absolute path
+	// even when this process is running on Windows.
+	posixRooted := !hasDriveLetter && strings.HasPrefix(decoded, "/")
 	var candidate string
-	if filepath.VolumeName(decoded) != "" || strings.HasPrefix(decoded, "/") || hasWindowsDriveLetterPath(decoded) {
+	if filepath.VolumeName(decoded) != "" || posixRooted || hasDriveLetter {
 		candidate = filepath.Clean(decoded)
 	} else {
 		candidate = filepath.Clean(string(filepath.Separator) + decoded)
@@ -88,7 +93,13 @@ func decodeSafeMediaPath(raw string) (string, bool) {
 	if candidate == string(filepath.Separator) || strings.Contains(candidate, "\x00") {
 		return "", false
 	}
-	return candidate, filepath.IsAbs(candidate) || hasWindowsDriveLetterPath(filepath.ToSlash(candidate))
+	// filepath.IsAbs is drive-letter-strict on Windows: a POSIX-rooted path
+	// with no drive letter (e.g. "\Users\yuki\Music\song.mp4" after
+	// filepath.Clean) is reported as *not* absolute there, even though it is
+	// a legitimate absolute path key coming from a macOS-created library.
+	// Accept it explicitly via posixRooted so cross-platform libraries keep
+	// resolving regardless of which OS is currently serving them.
+	return candidate, filepath.IsAbs(candidate) || hasDriveLetter || posixRooted
 }
 
 func hasWindowsDriveLetterPath(path string) bool {
