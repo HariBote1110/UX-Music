@@ -5,16 +5,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/pathutil"
 	"ux-music-sidecar/internal/scanner"
 	"ux-music-sidecar/internal/store"
-	"ux-music-sidecar/pkg/audio"
 
 	"github.com/google/uuid"
 )
@@ -72,8 +68,6 @@ func (a *App) ScanLibrary(paths []string) scanner.ScanResult {
 	_ = store.Instance.Save("library", existingSongs)
 	a.emit("scan-complete", newSongs)
 	a.queueLoudnessAnalysis(extractSongPaths(newSongs))
-
-	go a.BuildFLACIndexes()
 
 	scanResult.Songs = newSongs
 	scanResult.Count = len(newSongs)
@@ -375,71 +369,4 @@ func extractSongPaths(songs []scanner.Song) []string {
 		}
 	}
 	return paths
-}
-
-// BuildFLACIndexes iterates through the library and pre-generates indexes for all FLAC files
-func (a *App) BuildFLACIndexes() {
-	fmt.Println("[Wails] BuildFLACIndexes started")
-	songs, _ := store.Instance.LoadSlice("library")
-	if len(songs) == 0 {
-		return
-	}
-
-	var flacPaths []string
-	for _, s := range songs {
-		song := s.(map[string]interface{})
-		path, ok := song["path"].(string)
-		if ok && strings.HasSuffix(strings.ToLower(path), ".flac") {
-			flacPaths = append(flacPaths, path)
-		}
-	}
-
-	total := len(flacPaths)
-	if total == 0 {
-		return
-	}
-	fmt.Printf("[Wails] Found %d FLAC files to index\n", total)
-
-	go func() {
-		numWorkers := runtime.NumCPU()
-		if numWorkers > 4 {
-			numWorkers = 4
-		}
-
-		type job struct {
-			index int
-			path  string
-		}
-		jobs := make(chan job, total)
-		var wg sync.WaitGroup
-
-		var completed atomic.Int32
-
-		for w := 0; w < numWorkers; w++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for j := range jobs {
-					if err := audio.BuildFLACIndex(j.path); err != nil {
-						fmt.Printf("[Audio] Error indexing %s: %v\n", j.path, err)
-					}
-					c := completed.Add(1)
-					a.emit("flac-index-progress", map[string]interface{}{
-						"current": int(c),
-						"total":   total,
-						"path":    filepath.Base(j.path),
-					})
-				}
-			}()
-		}
-
-		for i, path := range flacPaths {
-			jobs <- job{index: i, path: path}
-		}
-		close(jobs)
-
-		wg.Wait()
-		a.emit("flac-index-complete", total)
-		fmt.Println("[Wails] BuildFLACIndexes completed")
-	}()
 }

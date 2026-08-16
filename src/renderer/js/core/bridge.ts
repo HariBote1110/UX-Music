@@ -173,13 +173,6 @@ export const musicApi = {
     }
     return api && api.invoke('delete-playlist', name);
   },
-  buildFLACIndexes: () => {
-    const app = getWailsApp();
-    if (app) {
-      return app.BuildFLACIndexes();
-    }
-    return api && api.send('build-flac-indexes');
-  },
   discoverSyncDevices: (timeoutMs = 2500) => {
     const app = getWailsApp();
     if (app?.DiscoverSyncDevices) {

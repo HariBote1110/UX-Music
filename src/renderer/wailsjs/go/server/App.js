@@ -126,10 +126,6 @@ export function AutoSyncPairedDevices() {
   return window['go']['server']['App']['AutoSyncPairedDevices']();
 }
 
-export function BuildFLACIndexes() {
-  return window['go']['server']['App']['BuildFLACIndexes']();
-}
-
 export function CDApplyMetadata(arg1) {
   return window['go']['server']['App']['CDApplyMetadata'](arg1);
 }

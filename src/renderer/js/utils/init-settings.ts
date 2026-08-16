@@ -830,15 +830,6 @@ export function initSettings() {
         updateAudioDevices();
     });
 
-    const buildFlacBtn = document.getElementById('build-flac-indexes-btn') as HTMLButtonElement | null;
-    if (buildFlacBtn) {
-        buildFlacBtn.addEventListener('click', () => {
-            buildFlacBtn.disabled = true;
-            buildFlacBtn.textContent = '構築中...';
-            musicApi.buildFLACIndexes();
-        });
-    }
-
     bindUxSyncAutoResultToast();
 
     const syncDiscoverBtn = document.getElementById('ux-sync-discover-btn');

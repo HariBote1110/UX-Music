@@ -42,7 +42,32 @@
 - 増分 1（完了）: MSB ファーストのビットリーダー（`ReadBits` / `ReadBitsSigned` / `ReadUnary` / `ReadUTF8Uint64` / アラインメント）
 - 増分 2（完了）: ID3v2 スキップ、`fLaC` シグネチャ、メタデータチェーンと STREAMINFO の解析（SEEKTABLE は生バイトで保持）、フレームヘッダ解析と CRC-8 検証
 - 増分 3（完了）: サブフレーム（CONSTANT / VERBATIM / FIXED / LPC）、RESIDUAL（Rice 符号化、method 0/1、エスケープ）、ステレオデコリレーション（left/side・right/side・mid/side）、フレーム CRC-16 検証、公開 API（`NewDecoder` / `Info` / `ReadFrame` / `Close`）。`flac -d` の出力とのビット完全一致、および STREAMINFO MD5 の自己検証に合格（44.1kHz/16bit・96kHz/24bit・モノラル、圧縮レベル 0/5/8、`-m` による mid/side、1 ブロック未満の極短ファイルの各条件で確認）。
-- 増分 4 以降（未着手）: シーク、`pkg/audio` への統合（float32 出力への変換含む）
+- 増分 4（完了）: `Decoder.SeekSample` によるサンプル精度シーク、`pkg/audio` へのアダプタ経由統合（float32 出力への変換含む）、`mewkiz/flac` の完全撤去。詳細は以下。
+
+## 増分4: シーク設計
+
+`Decoder.SeekSample(sample int64) error`（`pkg/audio/flac/seek.go`）は2経路を持つ。
+
+- **SEEKTABLE がある場合（高速経路）**: `Stream.SeekTableRaw` に保持していた生バイトをこの時点で初めてパースする（18バイト/点: 先頭サンプル番号8バイト＋`AudioStart`からのバイトオフセット8バイト＋フレームサンプル数2バイト、いずれもビッグエンディアン）。先頭サンプル番号が `0xFFFFFFFFFFFFFFFF` のプレースホルダー点は無視し、目的サンプル以下で最大のサンプル番号を持つ点へ直接シークする。
+- **SEEKTABLE が無い場合（バイナリサーチ経路）**: `[AudioStart, fileEnd)` を対象に二分探索する。各候補バイト位置から前方走査し、`0xFF` 候補バイトごとに `ParseFrameHeader` を試して同期コード＋CRC-8 検証に成功した位置を「有効なフレームヘッダ」と確定する（CRC-8 検証込みなので偽陽性の同期一致を弾ける）。見つかったフレームの先頭サンプル番号で `target` との大小を比較し範囲を絞り込む。
+
+どちらの経路でも、着地したバイト位置から `decodeFrame` でフル デコードしながら前進し、目的サンプルを含むフレームに到達したら、そのフレームの先頭を `target - frameStart` サンプルぶんトリムしてから次の `ReadFrame` に返す（`Decoder.pendingFrame`/`pendingSkip`）。この「フルデコードして前進」方式のため線形デコード＋読み飛ばしと**常にビット完全一致**する（等価性テストの担保根拠）。
+
+フレーム先頭サンプルの算出（`frameStartSample`）は、固定ブロックサイズストリーム（`FrameHeader.VariableBlockSize == false`）ではヘッダのフレーム番号 × STREAMINFO の `MaxBlockSize`、可変ブロックサイズストリームではヘッダのサンプル番号をそのまま使う（RFC 9639 のフレームヘッダ仕様どおり）。
+
+範囲外シークは負値・`TotalSamples` 超過のいずれもエラーを返す（クランプではなく明示エラーを選択）。`pkg/audio` 側のアダプタ（`flacAdapterDecoder.Seek`）は既存の `wavDecoder.Seek` 等に合わせてクランプしてから `SeekSample` を呼ぶため、プレイヤー層からは常に範囲内の呼び出しになる。
+
+## 増分4: 統合で削除したもの
+
+`pkg/audio/player.go` から `mewkiz/flac` 依存の補助コード一式を削除し、`pkg/audio/flac_decoder.go` の `flacAdapterDecoder`（`newFLACDecoder` 経由）に完全に置き換えた。
+
+- **`remuxFLACFile()` とその起動元** — ID3v2 タグ付き FLAC を開いた2秒後に ffmpeg でユーザーの原本ファイルを書き換えていた破壊的処理。バックグラウンドで起動していたゴルーチンごと削除。新デコーダは ID3v2 ヘッダをネイティブにスキップするため不要。回帰防止として `pkg/audio/flac_decoder_test.go` に `TestPlayerFLACDecoder_ID3v2FileNeverModified` を追加（ID3v2 付きフィクスチャを `newFLACDecoder` 経由でフルデコードし、旧remuxが発火する2秒を超えて待っても内容・mtimeが変化しないことを検証。統合前は実際に旧remuxが発火し red だったことを確認済み）。
+- **全フレームスキャン索引一式** — `flacFrameIndex` 型、`buildIndex()`、ディスクキャッシュ（`getFLACCachePath`/`saveFLACIndex`/`loadFLACIndex`/`getFLACCacheDir`）、公開関数 `BuildFLACIndex()`。新デコーダはシーク時にだけ二分探索するため、ライブラリ全曲を事前に全読みする必要が消えた。
+- **`reflect`+`unsafe` によるプライベートフィールド注入** — `applySeekTable()`、`flacStreamReadSeeker`/`flacStreamDataStart`/`flacStreamSetSeekTable`。mewkiz の非公開フィールドへ `unsafe.Pointer` 経由で書き込んでいた箇所を全廃。`player.go` から `reflect`/`unsafe` の import ごと削除。
+- **ミッドストリーム ffmpeg フォールバック** — `switchToFFmpeg()` と `flacDecoder.Read` 内の呼び出し。新デコーダは panic せず必ず error を返すため、デコード開始後に別デコーダへ切り替える理由が無い。**オープン時のフォールバックのみ残した**（新デコーダが `NewDecoder` に失敗した場合だけ ffmpeg デコーダにフォールバックする、`player.go` の `.flac` ケース）。
+- **`server/app_scanner.go` の `BuildFLACIndexes()` とその起動（`go a.BuildFLACIndexes()`）** — ライブラリスキャン後に全 FLAC を索引化するワーカープールごと削除。Wails バインディング（`BuildFLACIndexes`）、フロントエンドの呼び出し元（`bridge.ts` の `buildFLACIndexes`、設定画面の「FLACシークインデックスを構築」ボタンとその進捗UI一式、`ipc.ts`/`renderer.ts` の `flac-index-progress`/`flac-index-complete` リスナー）も合わせて削除。
+- **`github.com/mewkiz/flac`・`github.com/mewkiz/flac/frame`・`github.com/mewkiz/flac/meta` の import と `go.mod` の依存** — `go mod tidy` で `mewkiz/flac`・`mewkiz/pkg` を go.sum から完全除去。`go list -deps` で未リンクを確認したうえで `index.html` のライセンス一覧からも該当2行を削除。
+- `detectID3v2Size` — 新デコーダが ID3v2 を自前で処理するため未使用化し削除。
 
 `ReadUnary` は現状 1 ビットずつのループで、Rice 復号を載せた後にバイト単位スキャンへ最適化する余地がある（正しさには影響しない）。
 

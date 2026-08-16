@@ -72,8 +72,6 @@ export function AutoSyncLyrics(arg1:lyricssync.Request):Promise<lyricssync.Resul
 
 export function AutoSyncPairedDevices():Promise<server.SyncAutoResult>;
 
-export function BuildFLACIndexes():Promise<void>;
-
 export function CDApplyMetadata(arg1:Record<string, any>):Promise<cdrip.ReleaseInfo>;
 
 export function CDApplyVocaDBMetadata(arg1:Record<string, any>):Promise<cdrip.ReleaseInfo>;
