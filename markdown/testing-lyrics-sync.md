@@ -89,20 +89,16 @@ cd python && UX_MUSIC_IGNORE_INTEGRATION=1 python3 -m pytest tests/test_ignore_p
 | `ignore_assets.py` | リポジトリルート基準で `IGNORE/` のパス・歌詞読み込み・結合フラグ判定 |
 | `test_ignore_local_assets.py` | `lyrics.txt` / FLAC が存在するときのみ走る軽い検証（キーフレーズ・`soundfile` で FLAC ヘッダ） |
 | `test_ignore_pipeline_integration.py` | 上記 `heavy` 結合。環境変数とアセット両方が揃わない場合は skip |
-| `test_stage2_asr_hints.py` | Whisper に渡す **`initial_prompt` / hotwords`** 用文字列や言語ヒント生成の単体検証 |
-| `test_stage3_align_monotone.py` | **`_monotone_greedy_ranges`** と **`_pick_start_word`** の行列・スタブ前提の単体検証 |
+
+整列処理の単体テストは `test_stage3_large_jump_repair.py` / `test_stage3_interpolate.py` / `test_stage3_align_end_to_end.py` / `test_sync_accuracy_metrics.py` を参照。
 
 加えて **`python/tests/test_pipeline_dummy.py`** は `test_*` 関数を持たないため **`pytest` では収集されない**。`python3 python/tests/test_pipeline_dummy.py` のように実行すると、`UX_MUSIC_LYRICS_SYNC_DUMMY=1` で CLI の subprocess を通すスタンドアロンのスモークになる。
 
 ---
 
-## 5. Whisper 歌詞ヒント（本番・アプリ設定）
+## 5. Whisper 歌詞ヒント（未実装）
 
-自動同期本体の ASR では、入力歌詞から **`initial_prompt` / hotwords`** を組み立てる（詳細は `python/lyrics_sync/stage2_asr.py`）。結合テストでは直接は網羅しないが、挙動切り替え用に次がある。
-
-| 変数 | 意味 |
-|:---|:---|
-| `UX_MUSIC_WHISPER_LYRIC_PROMPT` | `0` / `false` / `no` で歌詞ベースの誘導をオフ |
+**現行の `python/lyrics_sync/stage2_asr.py` に歌詞ベースの ASR 誘導は実装されていない。** 入力歌詞から `initial_prompt` / hotwords を組み立てて Whisper を誘導する案は別ブランチで試作されたが、その後 `stage3_align` が大幅に作り直されたため取り込まれていない。試作は `origin/archive/lyrics-sync-old-main` の `ff33693` に残っている。経緯は `progress/lyrics-sync-asr-hint-deferred.md` を参照。
 
 ---
 

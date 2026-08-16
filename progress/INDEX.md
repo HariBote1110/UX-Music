@@ -1,5 +1,7 @@
 # Progress Index
 
+- [lyrics-sync-asr-hint-deferred.md](lyrics-sync-asr-hint-deferred.md) — 旧 lyrics-sync 系統（`origin/archive/lyrics-sync-old-main`）から拾うものの取捨。間奏付近の疎いASRセグメント抑制（`71c3e54`）は現行 `stage3_align`（202行→783行、`_repair_*` 5種＋`is_interlude`）が上位互換のため破棄、「Whisper に歌詞を `initial_prompt`/hotwords として渡す」（`ff33693`）は現行版に存在しない独自アイデアのため保留（cherry-pick 不可・現行実装への移植が必要）。IGNORE テスト一式とドキュメントのみ取り込み、`markdown/testing-lyrics-sync.md` の「機能が存在する前提」の記述を未実装と明記に修正
+
 - [licence-audit.md](licence-audit.md) — LICENSE を GPL-2.0 から GPL-3.0 へ変更（`b664b6f`）して解決済み。問題は直接依存の Apache-2.0 4つ（go-mp3 / go-audio/wav / go-audio/audio / purego）が FSF の見解で GPLv2 と非互換だったこと（Go は静的リンクで回避不可）。誤解の訂正として ffmpeg は同梱しておらず実行時に PATH から解決するため GPL の義務は発生しない。同梱 copyleft は cdparanoia（GPL-2.0、exec 起動なので伝播しない）のみで、`libkalam.dylib` はライセンス不明＝最大の未確認リスク
 
 - [flac-native-decoder.md](flac-native-decoder.md) — mewkiz/flac をやめて `pkg/audio/flac` に FLAC デコーダを自作する決定。理由は補助コードが自作デコーダ級に膨らんでいたこと（ID3v2 付き FLAC のための原本 remux＝破壊的書き換え、SeekTable 不在時の全フレームスキャン索引＋ディスクキャッシュ、`reflect`+`unsafe` による非公開フィールド注入）と、int16 固定インターフェースによる 24bit のディザなし切り捨て。Rust を却下したのはデコーダがオーディオコールバック外のゴルーチンで 150ms 先読み済み＝GC 論法が不成立、`go test -race` の検査外に出るコスト、Swift 側は AVFoundation で自前デコード不要＝共有先が無いため。検証は `flac -d` とのバイト一致＋STREAMINFO の MD5 自己検証の二重経路、フィクスチャは ffmpeg+flac CLI でその場生成。増分3でサブフレーム／Rice残差／ステレオデコリレーション／フレームCRC-16／公開APIを実装し全フィクスチャでビット完全一致に到達。二重バッファリングによる最終フレーム欠落バグを受け入れテストで検出・修正（`BitReader.AtEOF`追加）
