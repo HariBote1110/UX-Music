@@ -145,6 +145,16 @@ final class MusicPlayerService {
     var normaliseEnabled = true
     var masterVolume: Float = 1
 
+    /// Optional hook for platforms that keep audio files in a local cache rather than always
+    /// having `song.path` point at something readable (tvOS: only the initially tapped song's
+    /// `path` is rewritten to the cache file by `TVPlaybackController`; every other queue entry
+    /// still carries its server-side path). When `loadAndPlay` finds `song.path` missing, it
+    /// calls this closure and, if it returns a song, retries with that song's `path` instead —
+    /// so skip/auto-advance/remote-command paths all resolve through the same place `play(_:)`
+    /// already goes through on tvOS. `nil` on iOS/watchOS, where every queue entry's `path` is
+    /// already a real local file.
+    var localFileResolver: ((Song) async -> Song?)?
+
     /// Fired once per track that reaches its natural end (buffer completion / YouTube `.ended`),
     /// with the song that just finished — i.e. exactly the `advanceAfterEnd()` path, never the
     /// explicit `next()`/`previous()` skip paths. Used by the TV target's play-event reporter
@@ -982,20 +992,44 @@ final class MusicPlayerService {
 
     #endif
 
+    /// Writes a resolver-rewritten `path` back into `currentSong` and the matching `queue` entry,
+    /// so seek/route-change rescheduling (which re-reads `currentSong`/`queue`, not the local
+    /// `song` passed into `loadAndPlay`) keeps using the resolved local file.
+    private func updateQueueEntryPath(for song: Song) {
+        if currentSong?.id == song.id {
+            currentSong = song
+        }
+        if let idx = queue.firstIndex(where: { $0.id == song.id }) {
+            queue[idx] = song
+        }
+    }
+
     private func loadAndPlay(_ song: Song, generation: UInt64) async {
         await preparePlaybackSessionIfNeeded()
         guard playGeneration.isCurrent(generation) else { return }
         await Task.yield()
         guard playGeneration.isCurrent(generation) else { return }
 
-        let path = song.path
-        guard FileManager.default.fileExists(atPath: path) else {
-            #if DEBUG
-            NSLog("UXMusic: missing local file at %@", path)
-            #endif
-            return
+        var song = song
+        if !FileManager.default.fileExists(atPath: song.path) {
+            guard let resolver = localFileResolver, let resolved = await resolver(song) else {
+                #if DEBUG
+                NSLog("UXMusic: missing local file at %@", song.path)
+                #endif
+                return
+            }
+            guard playGeneration.isCurrent(generation) else { return }
+            guard FileManager.default.fileExists(atPath: resolved.path) else {
+                #if DEBUG
+                NSLog("UXMusic: resolver returned unreadable path for %@: %@", song.id, resolved.path)
+                #endif
+                return
+            }
+            song = resolved
+            updateQueueEntryPath(for: song)
         }
 
+        let path = song.path
         let url = URL(fileURLWithPath: path)
 
         let file: AVAudioFile

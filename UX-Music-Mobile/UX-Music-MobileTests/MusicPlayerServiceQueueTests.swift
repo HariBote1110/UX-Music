@@ -187,4 +187,75 @@ final class MusicPlayerServiceQueueTests: XCTestCase {
         XCTAssertEqual(player.playbackQueue.map(\.id), ["A"])
         XCTAssertEqual(player.currentQueueIndex, 0)
     }
+
+    // MARK: - localFileResolver
+
+    /// Writes a trivial-but-real file so `AVAudioFile(forReading:)` inside `loadAndPlay` can at
+    /// least attempt to open it — the resolver contract only promises a *readable path*, not a
+    /// decodable one, so `loadAndPlay` may still bail out after that point. What this covers is
+    /// the part before that: the resolver gets invoked, and its returned path is written back
+    /// into `currentSong`/the queue entry.
+    private func makeTempFile(_ id: String) -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(id)-\(UUID().uuidString).m4a")
+        FileManager.default.createFile(atPath: url.path, contents: Data([0, 1, 2, 3]))
+        return url
+    }
+
+    func testNextInvokesResolverAndRewritesCurrentSongPathWhenFileIsMissing() async {
+        let player = MusicPlayerService()
+        let queue = songs(["A", "B"])
+        await player.play(queue[0], newQueue: queue) // current = A, index 0
+
+        let resolvedURL = makeTempFile("B")
+        var resolverCalls: [String] = []
+        player.localFileResolver = { song in
+            resolverCalls.append(song.id)
+            var resolved = song
+            resolved.path = resolvedURL.path
+            return resolved
+        }
+
+        await player.next()
+
+        XCTAssertEqual(resolverCalls, ["B"])
+        XCTAssertEqual(player.currentSong?.id, "B")
+        XCTAssertEqual(player.currentSong?.path, resolvedURL.path)
+        XCTAssertEqual(player.playbackQueue[player.currentQueueIndex].path, resolvedURL.path)
+
+        try? FileManager.default.removeItem(at: resolvedURL)
+    }
+
+    func testNextLeavesPathUnchangedWhenResolverReturnsNil() async {
+        let player = MusicPlayerService()
+        let queue = songs(["A", "B"])
+        await player.play(queue[0], newQueue: queue) // current = A, index 0
+
+        player.localFileResolver = { _ in nil }
+
+        await player.next()
+
+        XCTAssertEqual(player.currentSong?.id, "B")
+        XCTAssertEqual(player.currentSong?.path, "/nonexistent/B.m4a")
+    }
+
+    func testNextSkipsResolverWhenFileAlreadyExists() async {
+        let player = MusicPlayerService()
+        let existingURL = makeTempFile("B")
+        let queue = [song("A"), Song(id: "B", path: existingURL.path, title: "B")]
+        await player.play(queue[0], newQueue: queue) // current = A, index 0
+
+        var resolverCalled = false
+        player.localFileResolver = { _ in
+            resolverCalled = true
+            return nil
+        }
+
+        await player.next() // advances to B, whose path already exists on disk
+
+        XCTAssertFalse(resolverCalled)
+        XCTAssertEqual(player.currentSong?.id, "B")
+        XCTAssertEqual(player.currentSong?.path, existingURL.path)
+
+        try? FileManager.default.removeItem(at: existingURL)
+    }
 }
