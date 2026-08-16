@@ -52,7 +52,18 @@ type relaySubscriber struct {
 // a time (GUI mode plays one YouTube video at a time, per the plan's
 // "broadcast" model — no per-client video/relay).
 type relayEngine struct {
-	mu         sync.Mutex
+	mu sync.Mutex
+	// generation counts every Start()/Stop() transition. Each Start() records
+	// the generation it owns; the goroutine that calls cmd.Wait() for that
+	// session's ffmpeg process only tears the engine down if its generation
+	// is still current (see stopIfCurrent). This guards against a stale
+	// session's teardown racing a newer one: Stop() does not (and, given
+	// ffmpeg's process-exit latency, realistically cannot) wait for the
+	// previous session's goroutines to fully exit before Start() launches the
+	// next session, so without this guard a slow-to-exit previous ffmpeg
+	// process can tear down a session that already replaced it. See
+	// relay_ci_research/notes/ for the CI evidence that motivated this.
+	generation int
 	active     bool
 	title      string
 	thumbnail  string
@@ -127,6 +138,8 @@ func (e *relayEngine) Start(source RelayPCMSource, title, thumbnail string) erro
 	}
 
 	e.mu.Lock()
+	e.generation++
+	gen := e.generation
 	e.active = true
 	e.title = title
 	e.thumbnail = thumbnail
@@ -137,10 +150,38 @@ func (e *relayEngine) Start(source RelayPCMSource, title, thumbnail string) erro
 	go e.pumpADTS(stdout)
 	go func() {
 		_ = cmd.Wait()
-		e.Stop()
+		e.stopIfCurrent(gen)
 	}()
 
 	return nil
+}
+
+// stopIfCurrent tears the engine down (as Stop does) only if gen is still
+// the generation that is currently active. It is the teardown path for a
+// session's own cmd.Wait() goroutine: if a newer Start() has already
+// replaced this session by the time ffmpeg exits — plausible on a loaded
+// runner, where process-exit and pipe-EOF latency after Stop()'s
+// cancel() can outlast the next Start() — tearing down unconditionally
+// would kill the new session's subscribers instead of the old, exited one.
+// Explicit callers (t.Cleanup(remoteRelay.Stop), Start()'s own leading
+// e.Stop()) go through Stop() directly and always tear down, bumping the
+// generation so any still-pending stopIfCurrent(oldGen) becomes a no-op.
+//
+// The generation check and the teardown are performed in the same critical
+// section (via teardownLocked) rather than as two separate lock/unlock
+// pairs: releasing the lock between "gen still matches" and "tear down"
+// would reopen — in a much narrower window, but not a closed one — exactly
+// the stale-teardown race this mechanism exists to prevent (Start() could
+// bump the generation and activate a new session in the gap). See
+// relay_ci_research/notes/stale-cmd-wait-teardown.md for why this matters
+// even though the window is only a few instructions wide.
+func (e *relayEngine) stopIfCurrent(gen int) {
+	e.mu.Lock()
+	if gen != e.generation {
+		e.mu.Unlock()
+		return
+	}
+	e.teardownLocked()
 }
 
 // pumpPCM reads interleaved float32 frames from source and writes them as
@@ -203,6 +244,23 @@ func (e *relayEngine) broadcast(chunk []byte) {
 // channel, ending their HTTP responses. Safe to call when nothing is active.
 func (e *relayEngine) Stop() {
 	e.mu.Lock()
+	e.teardownLocked()
+}
+
+// teardownLocked bumps the generation and, if a session is active, tears it
+// down: it must be called with e.mu already held, and it releases e.mu
+// itself (immediately if nothing is active; otherwise after capturing the
+// state to tear down, before the blocking cancel()/close() calls) rather
+// than leaving that to the caller. Callers must not touch e.mu again after
+// calling this.
+//
+// Bumping the generation happens before the active check, unconditionally,
+// so that any stopIfCurrent(gen) still in flight from a previous session's
+// cmd.Wait() goroutine is guaranteed to see a mismatch and no-op on its next
+// call, regardless of whether this particular call has anything to tear
+// down.
+func (e *relayEngine) teardownLocked() {
+	e.generation++
 	if !e.active {
 		e.mu.Unlock()
 		return

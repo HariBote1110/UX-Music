@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
 	"testing"
 	"time"
@@ -140,6 +139,59 @@ func TestRemoteRelayHandler_NoActiveSourceReturns409(t *testing.T) {
 	}
 }
 
+// TestRelayEngine_StaleGenerationStopIsNoOp is a white-box regression test
+// for the reentrancy hazard described in
+// relay_ci_research/notes/stale-cmd-wait-teardown.md: Start()'s trailing
+// `go func(){ cmd.Wait(); e.Stop() }()` used to tear the engine down
+// unconditionally, with no way to tell "my session" apart from "whichever
+// session happens to be active when I finally get scheduled". A slow-to-exit
+// previous ffmpeg process could therefore kill a session that had already
+// replaced it. It does not spawn a real ffmpeg process — that would make the
+// stale-goroutine race itself nondeterministic to test — instead it drives
+// the generation guard (stopIfCurrent) directly against manually-set engine
+// state, which is exactly the mechanism the real cmd.Wait() goroutine
+// exercises.
+func TestRelayEngine_StaleGenerationStopIsNoOp(t *testing.T) {
+	e := newRelayEngine()
+
+	// Simulate session 1 having started (generation 1) and already having
+	// been superseded by session 2 (generation 2, the "current" one).
+	e.mu.Lock()
+	e.generation = 2
+	e.active = true
+	ch := make(chan []byte, 1)
+	e.subs[0] = &relaySubscriber{ch: ch}
+	e.mu.Unlock()
+
+	// Session 1's cmd.Wait() goroutine finally returns and calls
+	// stopIfCurrent(1). It must be a no-op: session 2 is still current.
+	e.stopIfCurrent(1)
+
+	active, _, _ := e.State()
+	if !active {
+		t.Fatalf("stopIfCurrent(stale generation) deactivated the engine, want the current session left running")
+	}
+	select {
+	case _, ok := <-ch:
+		if !ok {
+			t.Fatalf("stopIfCurrent(stale generation) closed the current session's subscriber channel")
+		}
+	default:
+	}
+
+	// Session 2's own cmd.Wait() goroutine returns and calls
+	// stopIfCurrent(2). This must actually tear the engine down.
+	e.stopIfCurrent(2)
+
+	active, _, _ = e.State()
+	if active {
+		t.Fatalf("stopIfCurrent(current generation) left the engine active, want it torn down")
+	}
+	if _, ok := <-ch; ok {
+		t.Fatalf("stopIfCurrent(current generation) left the subscriber channel open, want it closed")
+	}
+}
+
 func TestRemoteRelayEngine_SingleClientReceivesADTSBytes(t *testing.T) {
 	requireFFmpegForTest(t)
 	newTempRemoteStore(t)
@@ -201,25 +253,18 @@ func TestRemoteRelayEngine_SingleClientReceivesADTSBytes(t *testing.T) {
 }
 
 func TestRemoteRelayEngine_MultipleConcurrentClientsBothReceiveBytes(t *testing.T) {
-	// このテストは server パッケージが非 darwin で一切コンパイルできて
-	// いなかった別件のビルド破壊が直った今回、GitHub Actions の
-	// ubuntu-latest ランナー上で初めて実行され、生配信ウィンドウを
-	// 5秒・読み取りデッドラインを20秒まで広げても再現性よく「両クライア
-	// ントとも0バイト」で失敗することを確認した。一方で、同じ Linux
-	// （linux/amd64、Ubuntu 24.04 相当・golang:1.25 系イメージ、-race
-	// 有効、CPU 制限あり/なし両方、count=20 の繰り返し）を Docker で
-	// 再現しようとしたが一度も再現しなかった。単一クライアント版
-	// （TestRemoteRelayEngine_SingleClientReceivesADTSBytes）は同じ CI で
-	// 安定して通っているため、ffmpeg パイプライン自体は機能しており、
-	// GitHub Actions のホスト型ランナーに固有の何か（ネットワーク
-	// サンドボックス等）が2クライアント同時購読の経路だけに影響して
-	// いる可能性が高い。本物のコードのバグである確証が得られないまま
-	// 握りつぶすのを避けるため、CI 上でのみ明示的にスキップし、理由を
-	// ここに残す。ローンチ環境（GitHub Actions）以外では通常どおり
-	// 実行され続ける。
-	if os.Getenv("GITHUB_ACTIONS") == "true" {
-		t.Skip("GitHub Actions の Linux ランナーでのみ再現する未解明の環境要因で失敗するためスキップ（ローカル/Docker linux-amd64では再現せず）。詳細は本関数冒頭のコメント参照")
-	}
+	// かつて GitHub Actions の ubuntu-latest ランナー上でのみ、両クライアント
+	// とも 0 バイトで再現性よく失敗していた（relay_ci_research/notes/
+	// stale-cmd-wait-teardown.md に詳細）。原因は relayEngine の再入可能性
+	// バグ: Start() が spawn する「ffmpeg 終了を待って Stop() する」ゴルー
+	// チンが自分の属するセッションを区別できておらず、かつ Stop() 側もその
+	// ゴルーチンの完了を待たない。直前のテスト（Single/MultiClient は同じ
+	// パッケージグローバル remoteRelay を共有する）の ffmpeg プロセスの
+	// 終了・パイプ EOF が CI の混雑したランナーで遅延し、次テストの Start()
+	// より後に完了すると、古いセッションの Stop() が新しいセッションの
+	// 購読者を巻き込んで破棄していた。app_remote_relay.go の generation
+	// カウンタ（stopIfCurrent）でこの再入を防止したため、スキップを解除
+	// している。回帰テストは TestRelayEngine_StaleGenerationStopIsNoOp。
 	requireFFmpegForTest(t)
 	newTempRemoteStore(t)
 	withServerMode(t, ModeGUI)
