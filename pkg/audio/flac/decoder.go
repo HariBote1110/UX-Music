@@ -3,7 +3,6 @@
 package flac
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -33,7 +32,6 @@ const defaultMaxBlockSize = 65535
 type Decoder struct {
 	stream *Stream
 	rs     io.ReadSeeker
-	raw    *bufio.Reader
 	br     *BitReader
 
 	chBufs [][]int32 // one reusable buffer per channel, sized to the stream's max block size
@@ -68,13 +66,10 @@ func NewDecoder(rs io.ReadSeeker) (*Decoder, error) {
 		chBufs[i] = make([]int32, maxBlock)
 	}
 
-	raw := bufio.NewReaderSize(rs, bitReaderBufSize)
-
 	d := &Decoder{
 		stream: stream,
 		rs:     rs,
-		raw:    raw,
-		br:     NewBitReader(raw),
+		br:     NewBitReader(rs),
 		chBufs: chBufs,
 	}
 	d.frame.Samples = make([][]int32, channels)
@@ -92,11 +87,12 @@ func (d *Decoder) Info() StreamInfo {
 // or was corrupt, in the middle of a frame. The returned *Frame is only
 // valid until the next call to ReadFrame or Close.
 func (d *Decoder) ReadFrame() (*Frame, error) {
-	if _, err := d.raw.Peek(1); err != nil {
-		if errors.Is(err, io.EOF) {
-			return nil, io.EOF
-		}
+	atEOF, err := d.br.AtEOF()
+	if err != nil {
 		return nil, err
+	}
+	if atEOF {
+		return nil, io.EOF
 	}
 
 	header, err := decodeFrame(d.br, d.stream.Info, d.chBufs)
