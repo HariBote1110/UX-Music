@@ -106,10 +106,14 @@ jobs:
       # Windows には apt 相当の標準パッケージマネージャが無いため、
       # MSYS2/MinGW-w64 で gcc・pkg-config・portaudio を揃える
       # （vcpkg より pkg-config 連携がシンプルなためこちらを採用）。
+      # path-type: inherit にしないと Windows 側 PATH（setup-go / setup-node が
+      # 追加した go・npm）が msys2 シェル内から見えず、後続の npm ci や go build が
+      # 「command not found」になる。
       - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
+          path-type: inherit
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-pkg-config
