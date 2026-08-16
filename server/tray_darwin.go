@@ -30,14 +30,6 @@ import (
 //go:embed assets/tray_icon_template.png
 var trayIconPNG []byte
 
-const (
-	trayCommandShowWindow = 1
-	trayCommandPlayPause  = 2
-	trayCommandNext       = 3
-	trayCommandPrevious   = 4
-	trayCommandQuit       = 5
-)
-
 var (
 	trayCommandMu sync.RWMutex
 	trayCommandCB func(int)
