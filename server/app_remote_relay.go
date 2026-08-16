@@ -54,7 +54,18 @@ type relaySubscriber struct {
 // a time (GUI mode plays one YouTube video at a time, per the plan's
 // "broadcast" model — no per-client video/relay).
 type relayEngine struct {
-	mu         sync.Mutex
+	mu sync.Mutex
+	// generation counts every Start()/Stop() transition. Each Start() records
+	// the generation it owns; the goroutine that calls cmd.Wait() for that
+	// session's ffmpeg process only tears the engine down if its generation
+	// is still current (see stopIfCurrent). This guards against a stale
+	// session's teardown racing a newer one: Stop() does not (and, given
+	// ffmpeg's process-exit latency, realistically cannot) wait for the
+	// previous session's goroutines to fully exit before Start() launches the
+	// next session, so without this guard a slow-to-exit previous ffmpeg
+	// process can tear down a session that already replaced it. See
+	// relay_ci_research/notes/ for the CI evidence that motivated this.
+	generation int
 	active     bool
 	title      string
 	thumbnail  string
@@ -63,23 +74,38 @@ type relayEngine struct {
 	cancel     context.CancelFunc
 	ffmpegPath func() (string, error)
 
+	// debugMu guards debugf independently of mu: logf is called from within
+	// code that already holds mu (e.g. broadcast, Subscribe), so debugf
+	// cannot share that lock without deadlocking.
+	debugMu sync.RWMutex
 	// debugf is a diagnostic hook for the GitHub Actions-only flakiness
 	// investigation in relay_ci_research/notes/. nil in production (zero
-	// overhead beyond a nil check); tests set it to route timestamped
-	// pipeline events (ffmpeg stderr, byte counts, subscriber counts) to
-	// t.Logf. See relay_ci_research/notes/INDEX.md.
+	// overhead beyond a lock/nil check); tests set it via setDebugf to route
+	// timestamped pipeline events (ffmpeg stderr, byte counts, subscriber
+	// counts) to t.Logf. See relay_ci_research/notes/INDEX.md.
 	debugf func(format string, args ...interface{})
+}
+
+// setDebugf installs (or, with nil, clears) the diagnostic hook. Safe for
+// concurrent use with logf from any goroutine.
+func (e *relayEngine) setDebugf(fn func(format string, args ...interface{})) {
+	e.debugMu.Lock()
+	e.debugf = fn
+	e.debugMu.Unlock()
 }
 
 // logf reports to debugf when set, prefixed with a monotonic-ish wall clock
 // timestamp so events from ffmpeg's stderr goroutine, pumpPCM, pumpADTS and
-// broadcast can be interleaved and ordered after the fact. No-op (single nil
-// check) when debugf is unset, i.e. always in production.
+// broadcast can be interleaved and ordered after the fact. No-op (a lock plus
+// nil check) when debugf is unset, i.e. always in production.
 func (e *relayEngine) logf(format string, args ...interface{}) {
-	if e.debugf == nil {
+	e.debugMu.RLock()
+	fn := e.debugf
+	e.debugMu.RUnlock()
+	if fn == nil {
 		return
 	}
-	e.debugf("[%s] "+format, append([]interface{}{time.Now().Format("15:04:05.000000")}, args...)...)
+	fn("[%s] "+format, append([]interface{}{time.Now().Format("15:04:05.000000")}, args...)...)
 }
 
 func newRelayEngine() *relayEngine {
@@ -156,6 +182,8 @@ func (e *relayEngine) Start(source RelayPCMSource, title, thumbnail string) erro
 	e.logf("cmd.Start() succeeded, pid=%d", cmd.Process.Pid)
 
 	e.mu.Lock()
+	e.generation++
+	gen := e.generation
 	e.active = true
 	e.title = title
 	e.thumbnail = thumbnail
@@ -168,10 +196,31 @@ func (e *relayEngine) Start(source RelayPCMSource, title, thumbnail string) erro
 	go func() {
 		waitErr := cmd.Wait()
 		e.logf("cmd.Wait() returned: %v", waitErr)
-		e.Stop()
+		e.stopIfCurrent(gen)
 	}()
 
 	return nil
+}
+
+// stopIfCurrent tears the engine down (as Stop does) only if gen is still
+// the generation that is currently active. It is the teardown path for a
+// session's own cmd.Wait() goroutine: if a newer Start() has already
+// replaced this session by the time ffmpeg exits — plausible on a loaded
+// runner, where process-exit and pipe-EOF latency after Stop()'s
+// cancel() can outlast the next Start() — tearing down unconditionally
+// would kill the new session's subscribers instead of the old, exited one.
+// Explicit callers (t.Cleanup(remoteRelay.Stop), Start()'s own leading
+// e.Stop()) go through Stop() directly and always tear down, bumping the
+// generation so any still-pending stopIfCurrent(oldGen) becomes a no-op.
+func (e *relayEngine) stopIfCurrent(gen int) {
+	e.mu.Lock()
+	if gen != e.generation {
+		e.logf("stopIfCurrent: stale generation %d (current %d), skipping teardown", gen, e.generation)
+		e.mu.Unlock()
+		return
+	}
+	e.mu.Unlock()
+	e.Stop()
 }
 
 // pumpStderr relays ffmpeg's stderr line-by-line to the diagnostic hook. In
@@ -264,6 +313,11 @@ func (e *relayEngine) broadcast(chunk []byte) {
 // channel, ending their HTTP responses. Safe to call when nothing is active.
 func (e *relayEngine) Stop() {
 	e.mu.Lock()
+	// Bump unconditionally (even when nothing is active) so that any
+	// stopIfCurrent(gen) still in flight from a previous session's cmd.Wait()
+	// goroutine is guaranteed to see a mismatch and no-op, regardless of
+	// whether this Stop() call itself has anything to tear down.
+	e.generation++
 	if !e.active {
 		e.mu.Unlock()
 		return

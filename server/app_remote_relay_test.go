@@ -140,6 +140,59 @@ func TestRemoteRelayHandler_NoActiveSourceReturns409(t *testing.T) {
 	}
 }
 
+// TestRelayEngine_StaleGenerationStopIsNoOp is a white-box regression test
+// for the reentrancy hazard described in
+// relay_ci_research/notes/stale-cmd-wait-teardown.md: Start()'s trailing
+// `go func(){ cmd.Wait(); e.Stop() }()` used to tear the engine down
+// unconditionally, with no way to tell "my session" apart from "whichever
+// session happens to be active when I finally get scheduled". A slow-to-exit
+// previous ffmpeg process could therefore kill a session that had already
+// replaced it. It does not spawn a real ffmpeg process — that would make the
+// stale-goroutine race itself nondeterministic to test — instead it drives
+// the generation guard (stopIfCurrent) directly against manually-set engine
+// state, which is exactly the mechanism the real cmd.Wait() goroutine
+// exercises.
+func TestRelayEngine_StaleGenerationStopIsNoOp(t *testing.T) {
+	e := newRelayEngine()
+
+	// Simulate session 1 having started (generation 1) and already having
+	// been superseded by session 2 (generation 2, the "current" one).
+	e.mu.Lock()
+	e.generation = 2
+	e.active = true
+	ch := make(chan []byte, 1)
+	e.subs[0] = &relaySubscriber{ch: ch}
+	e.mu.Unlock()
+
+	// Session 1's cmd.Wait() goroutine finally returns and calls
+	// stopIfCurrent(1). It must be a no-op: session 2 is still current.
+	e.stopIfCurrent(1)
+
+	active, _, _ := e.State()
+	if !active {
+		t.Fatalf("stopIfCurrent(stale generation) deactivated the engine, want the current session left running")
+	}
+	select {
+	case _, ok := <-ch:
+		if !ok {
+			t.Fatalf("stopIfCurrent(stale generation) closed the current session's subscriber channel")
+		}
+	default:
+	}
+
+	// Session 2's own cmd.Wait() goroutine returns and calls
+	// stopIfCurrent(2). This must actually tear the engine down.
+	e.stopIfCurrent(2)
+
+	active, _, _ = e.State()
+	if active {
+		t.Fatalf("stopIfCurrent(current generation) left the engine active, want it torn down")
+	}
+	if _, ok := <-ch; ok {
+		t.Fatalf("stopIfCurrent(current generation) left the subscriber channel open, want it closed")
+	}
+}
+
 func TestRemoteRelayEngine_SingleClientReceivesADTSBytes(t *testing.T) {
 	requireFFmpegForTest(t)
 	newTempRemoteStore(t)
@@ -223,8 +276,8 @@ func TestRemoteRelayEngine_MultipleConcurrentClientsBothReceiveBytes(t *testing.
 		t.Logf("[diag] exec.LookPath(ffmpeg) failed: %v", err)
 	}
 
-	remoteRelay.debugf = t.Logf
-	t.Cleanup(func() { remoteRelay.debugf = nil })
+	remoteRelay.setDebugf(t.Logf)
+	t.Cleanup(func() { remoteRelay.setDebugf(nil) })
 
 	source := newChanRelayPCMSource(44100, 1)
 	if err := remoteRelay.Start(source, "Test Song", ""); err != nil {
