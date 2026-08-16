@@ -373,6 +373,60 @@ func TestBitReader_BitsRead(t *testing.T) {
 	}
 }
 
+func TestBitReader_AtEOF(t *testing.T) {
+	t.Run("false when unread bytes remain", func(t *testing.T) {
+		br := NewBitReader(bytes.NewReader([]byte{0x01, 0x02}))
+		atEOF, err := br.AtEOF()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if atEOF {
+			t.Fatal("expected AtEOF to be false with unread bytes remaining")
+		}
+	})
+
+	t.Run("true once every byte is consumed", func(t *testing.T) {
+		br := NewBitReader(bytes.NewReader([]byte{0x01}))
+		if _, err := br.ReadRawBytes(1); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		atEOF, err := br.AtEOF()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !atEOF {
+			t.Fatal("expected AtEOF to be true after consuming the only byte")
+		}
+	})
+
+	t.Run("false when internal buffer already holds unconsumed trailing bytes", func(t *testing.T) {
+		// Simulates the double-buffering scenario this method exists to
+		// handle correctly: the reader's own buffer already has more data
+		// than has been logically consumed, even though the underlying
+		// io.Reader itself might report EOF on the next raw Read.
+		data := bytes.Repeat([]byte{0x7F}, 10)
+		br := NewBitReader(bytes.NewReader(data))
+		if _, err := br.ReadRawBytes(3); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		atEOF, err := br.AtEOF()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if atEOF {
+			t.Fatal("expected AtEOF to be false while the internal buffer still holds unconsumed bytes")
+		}
+		// AtEOF must not have consumed anything.
+		rest, err := br.ReadRawBytes(7)
+		if err != nil {
+			t.Fatalf("unexpected error reading remaining bytes: %v", err)
+		}
+		if len(rest) != 7 {
+			t.Fatalf("got %d remaining bytes, want 7", len(rest))
+		}
+	})
+}
+
 func TestBitReader_Capture(t *testing.T) {
 	t.Run("captures bytes across mixed reads", func(t *testing.T) {
 		data := []byte{0xAB, 0xCD, 0xEF, 0x12}
