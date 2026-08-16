@@ -36,7 +36,19 @@ func TestAssetHandlerServesRegisteredSafeMediaWithReservedCharacters(t *testing.
 	config.SetUserDataPath(tmpDir)
 	store.Instance = &store.Store{}
 
-	mediaPath := filepath.Join(tmpDir, "song ? 100%.mp4")
+	// "?" is a valid filename character on macOS/Linux, but NTFS/the Windows
+	// filesystem API reject it outright, so a fixture using it cannot even
+	// be created there. The behaviour under test — serving a registered
+	// asset whose filename contains URL-reserved characters that must
+	// survive percent-decoding — still matters on Windows, so swap in a
+	// character set that is both URL-reserved and a legal Windows filename:
+	// "#" (fragment delimiter) alongside "%" (the percent-encoding escape
+	// itself, already exercised on every platform).
+	reservedName := "song ? 100%.mp4"
+	if runtime.GOOS == "windows" {
+		reservedName = "song # 100%.mp4"
+	}
+	mediaPath := filepath.Join(tmpDir, reservedName)
 	if err := os.WriteFile(mediaPath, []byte("video"), 0644); err != nil {
 		t.Fatal(err)
 	}
