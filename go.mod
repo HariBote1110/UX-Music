@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
-	github.com/ebitengine/purego v0.9.1
+	github.com/ganeshrvel/go-mtpfs v1.0.3
 	github.com/go-audio/audio v1.0.0
 	github.com/go-audio/riff v1.0.0
 	github.com/go-audio/wav v1.1.0
@@ -25,13 +25,11 @@ require (
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/dop251/goja v0.0.0-20250125213203-5ef83b82af17 // indirect
-	github.com/ganeshrvel/go-mtpfs v1.0.3 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/pprof v0.0.0-20250208200701-d0013a598941 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/hanwen/go-fuse/v2 v2.0.2 // indirect
 	github.com/hanwen/usb v0.0.0-20141217151552-69aee4530ac7 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
 	github.com/labstack/echo/v4 v4.13.3 // indirect
