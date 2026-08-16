@@ -38,8 +38,8 @@ type fixtureParams struct {
 }
 
 var (
-	fixtureMu    sync.Mutex
-	fixtureCache = map[fixtureParams]string{}
+	fixtureMu         sync.Mutex
+	fixtureCacheByKey = map[string]string{}
 )
 
 // lookTool resolves a CLI tool by name, falling back to the common Homebrew
@@ -76,6 +76,15 @@ func requireFFmpegAndFlacForTest(t *testing.T) (ffmpegPath, flacPath string) {
 // the content is deliberately non-trivial.
 func generateFixture(t *testing.T, p fixtureParams) string {
 	t.Helper()
+	return generateFixtureWithFlacArgs(t, p, nil, "")
+}
+
+// generateFixtureWithFlacArgs is generateFixture with extra CLI flags
+// (e.g. "-m" to allow mid-side stereo coding) inserted into the `flac`
+// invocation. tag disambiguates the memoisation cache key and output file
+// name from the plain variant.
+func generateFixtureWithFlacArgs(t *testing.T, p fixtureParams, extraFlacArgs []string, tag string) string {
+	t.Helper()
 	ffmpegPath, flacPath := requireFFmpegAndFlacForTest(t)
 	if p.durationSeconds == 0 {
 		p.durationSeconds = 3
@@ -83,11 +92,12 @@ func generateFixture(t *testing.T, p fixtureParams) string {
 
 	fixtureMu.Lock()
 	defer fixtureMu.Unlock()
-	if path, ok := fixtureCache[p]; ok {
+	strKey := fmt.Sprintf("%+v|%s", p, tag)
+	if path, ok := fixtureCacheByKey[strKey]; ok {
 		return path
 	}
 
-	key := fmt.Sprintf("fx_%dhz_%dch_%dbit_c%d_%ds", p.sampleRate, p.channels, p.bitsPerSample, p.compressionLevel, p.durationSeconds)
+	key := fmt.Sprintf("fx_%dhz_%dch_%dbit_c%d_%ds%s", p.sampleRate, p.channels, p.bitsPerSample, p.compressionLevel, p.durationSeconds, tag)
 	wavPath := filepath.Join(fixtureDir, key+".wav")
 	flacOutPath := filepath.Join(fixtureDir, key+".flac")
 
@@ -120,18 +130,19 @@ func generateFixture(t *testing.T, p fixtureParams) string {
 		t.Fatalf("ffmpeg fixture generation failed: %v\n%s", err, out)
 	}
 
-	flacArgs := []string{
-		"-f", "--totally-silent",
+	flacArgs := []string{"-f", "--totally-silent"}
+	flacArgs = append(flacArgs, extraFlacArgs...)
+	flacArgs = append(flacArgs,
 		fmt.Sprintf("-%d", p.compressionLevel),
 		"-o", flacOutPath,
 		wavPath,
-	}
+	)
 	cmd = exec.Command(flacPath, flacArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("flac encode of fixture failed: %v\n%s", err, out)
 	}
 
-	fixtureCache[p] = flacOutPath
+	fixtureCacheByKey[strKey] = flacOutPath
 	return flacOutPath
 }
 
