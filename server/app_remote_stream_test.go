@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -220,14 +219,6 @@ func TestRemoteFileHandler_StreamAAC_ClientDisconnectKillsFfmpeg(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("ffmpeg process %d was still alive after client disconnect", killedPID)
-}
-
-func processAliveForTest(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	return err == nil
 }
 
 func TestRemoteFileHandler_StreamAAC_NoLocalAudioReturns404(t *testing.T) {
