@@ -4,6 +4,7 @@
 package pathutil
 
 import (
+	stdpath "path"
 	"path/filepath"
 	"strings"
 
@@ -24,9 +25,29 @@ func NFC(s string) string {
 	return norm.NFC.String(s)
 }
 
+// toSlashForm returns path with backslashes rewritten to forward slashes,
+// independent of the OS this process runs on.
+//
+// filepath.ToSlash is NOT sufficient here: it only rewrites the *current*
+// OS's filepath.Separator, so on macOS/Linux (Separator == '/') it leaves a
+// Windows-authored, backslash-separated path untouched. library.json is a
+// portable file that may be opened on a different OS than the one that
+// wrote it, so separator normalisation must not depend on the runtime OS.
+func toSlashForm(path string) string {
+	return strings.ReplaceAll(path, "\\", "/")
+}
+
 // CandidateForms returns lookup candidates for a stored path key: the
-// trimmed input, its cleaned form, and the NFC/NFD normalised variants of
-// the cleaned form, deduplicated in that order. A blank input yields nil.
+// trimmed input, its OS-native cleaned form, its OS-independent slash form,
+// and the NFC/NFD normalised variants of both, deduplicated in that order.
+// A blank input yields nil.
+//
+// Both the native and slash forms are needed because a path key may have
+// been written by either a POSIX (macOS/Linux) or a Windows build of this
+// app: filepath.Clean always emits the *current* OS's separator regardless
+// of the input's separator style, so relying on it alone silently drops the
+// candidate a cross-platform-authored library actually needs (see
+// TestCandidateFormsResolvesAcrossPlatforms).
 func CandidateForms(path string) []string {
 	trimmed := strings.TrimSpace(path)
 	if trimmed == "" {
@@ -34,24 +55,39 @@ func CandidateForms(path string) []string {
 	}
 
 	cleaned := filepath.Clean(trimmed)
-	nfc := norm.NFC.String(cleaned)
-	nfd := norm.NFD.String(cleaned)
+	slash := stdpath.Clean(toSlashForm(trimmed))
 
-	return dedupeNonEmpty([]string{trimmed, cleaned, nfc, nfd})
+	return dedupeNonEmpty([]string{
+		trimmed,
+		cleaned,
+		slash,
+		norm.NFC.String(cleaned),
+		norm.NFD.String(cleaned),
+		norm.NFC.String(slash),
+		norm.NFD.String(slash),
+	})
 }
 
 // SlashCandidateForms returns lookup candidates for a path that may be
 // stored with either native or forward-slash separators: the raw path, its
-// cleaned form, the slash form and the cleaned slash form, deduplicated.
+// OS-native cleaned form, the slash form and the cleaned slash form,
+// deduplicated.
+//
+// The cleaned slash form uses path.Clean (always "/"-based), not
+// filepath.Clean(toSlashForm(path)): filepath.Clean re-emits the current
+// OS's separator regardless of its input, so on Windows that combination
+// silently turned the "slash form" back into a backslash form and defeated
+// its purpose (see TestSlashCandidateFormsResolvesAcrossPlatforms).
 func SlashCandidateForms(path string) []string {
 	if path == "" {
 		return nil
 	}
+	slash := toSlashForm(path)
 	return dedupeNonEmpty([]string{
 		path,
 		filepath.Clean(path),
-		filepath.ToSlash(path),
-		filepath.Clean(filepath.ToSlash(path)),
+		slash,
+		stdpath.Clean(slash),
 	})
 }
 
