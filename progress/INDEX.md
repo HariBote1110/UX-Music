@@ -1,5 +1,7 @@
 # Progress Index
 
+- [tv-local-file-resolver.md](tv-local-file-resolver.md) — TVでスキップ・自動再生が無音のまま曲名だけ変わる問題（キュー内の曲がサーバ側パスのままでloadAndPlayのfileExistsガードが黙って離脱）を、`MusicPlayerService.localFileResolver` フック＋TV側ensureCached解決の単一フローで修正。Siri Remoteで再生再開できない問題（play/pauseCommand常時両有効）の`RemoteCommandEnablement`による相互排他化もこの回
+
 - [tvos-nowplaying-artwork-stab.md](tvos-nowplaying-artwork-stab.md) — TV NowPlayingで歌詞ロード時にジャケットが突き刺さる崩壊の真因（2ビュー木の無遷移スワップをambientアニメーションが捕捉して位置・サイズを補間）と、単一`TVNowPlayingStageLayout`への構造統合による修正。高さ制約だけの初回修正(2f0a339)では直らなかった経緯も記録
 
 - [tv-lyrics-layout-and-play-generation-guard.md](tv-lyrics-layout-and-play-generation-guard.md) — TVの歌詞表示時レイアウト崩壊（`TVLyricsStageView`の`GeometryReader`に無限高さ提案が届く問題を画面由来の有限`contentHeight`で構造的に制約）と、曲切替時のシークバー暴走・停止不能（`MusicPlayerService`のplay系連鎖に`PlaybackGenerationGuard`世代トークンを導入し、全サスペンションポイント後に再チェック）の修正
