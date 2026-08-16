@@ -207,45 +207,61 @@ private struct TVNowPlayingLyricsLayout: View {
     /// Matches `TVCinematicArtworkCard`'s fixed `size` below — see the `.top`-alignment note.
     private static let artworkSize: CGFloat = 420
 
+    /// Total top+bottom `padding(80)` stripped from the screen height below to get the finite
+    /// height available to the row's content.
+    private static let outerPadding: CGFloat = 160
+
     var body: some View {
-        // `alignment: .top`, NOT `.center` (`progress/tvos-nowplaying-textcolumn.md`
-        // "テキスト列の位置固定" 追記): with `.center`, the title/artist/lyrics column's vertical
-        // position was derived from centring it against whichever sibling was taller — normally the
-        // fixed-height artwork card, so invisible in the harness's stable states. But the text
-        // column's OWN height is NOT fixed (it grows/shrinks with the synced-lyrics block, and
-        // during a song switch there is a real in-flight window — `TVNowPlayingView.loadLyrics()` —
-        // where `lyricsLines` still holds the PREVIOUS song's lines while `currentSong`/
-        // `positionSeconds` have already switched to the new one), so its measured height varies
-        // frame to frame. `.center` alignment then re-centres the column every time that height
-        // changes, which reads as the text visibly sliding up (or down) rather than staying put —
-        // the reported "テキスト部分が全部上に消滅してる" defect. Pinning both children to `.top`
-        // makes the title/artist's vertical position depend ONLY on the fixed `padding(80)` origin,
-        // never on lyrics content height.
-        HStack(alignment: .top, spacing: 64) {
-            TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: Self.artworkSize)
+        // Outermost `GeometryReader` exists solely to turn the screen size into a finite content
+        // height *before* it reaches `TVLyricsStageView`'s own `GeometryReader` — see that view's
+        // comment for why an unbounded proposal there is unacceptable. Everything below is otherwise
+        // unchanged.
+        GeometryReader { screenGeo in
+            let contentHeight = max(0, screenGeo.size.height - Self.outerPadding)
 
-            VStack(alignment: .leading, spacing: 28) {
-                Text(player.currentSong?.title ?? "")
-                    .font(.system(size: 40, weight: .medium))
-                    .lineLimit(1)
-                Text(player.currentSong?.artist ?? "")
-                    .font(.system(size: 24))
-                    .foregroundStyle(TVDesignTokens.textSecondary)
-                    .lineLimit(1)
+            // `alignment: .top`, NOT `.center` (`progress/tvos-nowplaying-textcolumn.md`
+            // "テキスト列の位置固定" 追記): with `.center`, the title/artist/lyrics column's vertical
+            // position was derived from centring it against whichever sibling was taller — normally the
+            // fixed-height artwork card, so invisible in the harness's stable states. But the text
+            // column's OWN height is NOT fixed (it grows/shrinks with the synced-lyrics block, and
+            // during a song switch there is a real in-flight window — `TVNowPlayingView.loadLyrics()` —
+            // where `lyricsLines` still holds the PREVIOUS song's lines while `currentSong`/
+            // `positionSeconds` have already switched to the new one), so its measured height varies
+            // frame to frame. `.center` alignment then re-centres the column every time that height
+            // changes, which reads as the text visibly sliding up (or down) rather than staying put —
+            // the reported "テキスト部分が全部上に消滅してる" defect. Pinning both children to `.top`
+            // makes the title/artist's vertical position depend ONLY on the fixed `padding(80)` origin,
+            // never on lyrics content height.
+            HStack(alignment: .top, spacing: 64) {
+                TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: Self.artworkSize)
 
-                TVLyricsStageView(player: player, lines: lines)
-                    .padding(.top, 12)
+                VStack(alignment: .leading, spacing: 28) {
+                    Text(player.currentSong?.title ?? "")
+                        .font(.system(size: 40, weight: .medium))
+                        .lineLimit(1)
+                    Text(player.currentSong?.artist ?? "")
+                        .font(.system(size: 24))
+                        .foregroundStyle(TVDesignTokens.textSecondary)
+                        .lineLimit(1)
+
+                    // Explicit `maxHeight: .infinity`, capped by the VStack's own `contentHeight`
+                    // frame below, so `TVLyricsStageView`'s `GeometryReader` always receives a finite
+                    // proposal instead of the unbounded one an unconstrained flexible child would get.
+                    TVLyricsStageView(player: player, lines: lines)
+                        .padding(.top, 12)
+                        .frame(maxHeight: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: contentHeight, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(80)
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                TVNowPlayingProgressBar(player: player)
-                Spacer()
+            .padding(80)
+            .safeAreaInset(edge: .bottom) {
+                HStack {
+                    Spacer()
+                    TVNowPlayingProgressBar(player: player)
+                    Spacer()
+                }
+                .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
             }
-            .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
         }
     }
 }
