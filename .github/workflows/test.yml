@@ -122,6 +122,7 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-portaudio
+            mingw-w64-x86_64-ffmpeg
 
       # setup-go は通常の Windows shell 前提のため PATH 解決が MSYS2 と噛み合わないことがある。
       # msys2 の pacman で go 自体を入れず actions/setup-go を使うのは、
@@ -178,24 +179,13 @@ jobs:
           CC: gcc
         run: go vet ${{ steps.pkgs.outputs.list }}
 
-      # 実行してみた結果、GitHub Windows ランナーに音声デバイスが無いことに
-      # 起因するものだけでなく、これまで server パッケージが非 darwin で
-      # 一度もコンパイルできていなかった（別件のビルド破壊）ために誰も
-      # 気付けていなかった、Windows 固有の本物の挙動差・バグが複数見つかった:
-      #   - internal/pathutil.CandidateForms: filepath.Clean が Windows では
-      #     "\" 区切りを返すため、POSIX 形式のパス候補を期待するテストが
-      #     Windows では素で壊れる（本番コードが OS 依存の filepath を
-      #     使っている疑い）。
-      #   - main_asset_handler_test.go: "?" を含むファイル名は Windows の
-      #     ファイルシステムでは作成できず、テストフィクスチャ自体が
-      #     Windows 非対応。
-      #   - main_licence_list_test.go: Windows ビルドでのみリンクされる
-      #     go-webview2 が二重に検出され、ライセンス一覧の突き合わせに失敗。
-      # これらは今回のスコープ（ビルドを通す）を超える本物の要修正項目
-      # なので、握りつぶさず情報提供に留める。個別に Issue 化して解消し
-      # たら continue-on-error を外して必須ゲートに戻すこと。
+      # Windows 固有のパス区切り文字バグ（internal/pathutil.CandidateForms /
+      # decodeSafeMediaPath が POSIX 形式で書かれた library.json を解決
+      # できない）、ライセンス一覧の記載漏れ（go-webview2）、テストフィクス
+      # チャの非対応（"?" を含むファイル名は NTFS で作成できない）、
+      # launchd 専有テストの環境依存（$HOME が %USERPROFILE% と食い違う）
+      # をすべて解消したため、必須ゲートに昇格した。
       - name: go test
-        continue-on-error: true
         env:
           CGO_ENABLED: 1
           CC: gcc
