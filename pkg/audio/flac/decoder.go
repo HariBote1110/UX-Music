@@ -36,6 +36,12 @@ type Decoder struct {
 
 	chBufs [][]int32 // one reusable buffer per channel, sized to the stream's max block size
 	frame  Frame     // reused across ReadFrame calls; Samples reslices chBufs
+
+	// pendingFrame, when non-nil, is a frame already decoded by SeekSample
+	// (trimmed to start at the requested target sample) that the next call
+	// to ReadFrame should return without decoding anything further.
+	pendingFrame *Frame
+	pendingSkip  int // samples to trim from the head of pendingFrame
 }
 
 // NewDecoder parses the FLAC stream header from rs (ID3v2 skip, "fLaC"
@@ -87,6 +93,20 @@ func (d *Decoder) Info() StreamInfo {
 // or was corrupt, in the middle of a frame. The returned *Frame is only
 // valid until the next call to ReadFrame or Close.
 func (d *Decoder) ReadFrame() (*Frame, error) {
+	if d.pendingFrame != nil {
+		frame := d.pendingFrame
+		skip := d.pendingSkip
+		d.pendingFrame = nil
+		d.pendingSkip = 0
+		if skip > 0 {
+			frame.BlockSize -= skip
+			for i := range frame.Samples {
+				frame.Samples[i] = frame.Samples[i][skip:]
+			}
+		}
+		return frame, nil
+	}
+
 	atEOF, err := d.br.AtEOF()
 	if err != nil {
 		return nil, err
