@@ -1,5 +1,7 @@
 # Progress Index
 
+- [tvos-nowplaying-artwork-stab.md](tvos-nowplaying-artwork-stab.md) — TV NowPlayingで歌詞ロード時にジャケットが突き刺さる崩壊の真因（2ビュー木の無遷移スワップをambientアニメーションが捕捉して位置・サイズを補間）と、単一`TVNowPlayingStageLayout`への構造統合による修正。高さ制約だけの初回修正(2f0a339)では直らなかった経緯も記録
+
 - [tv-lyrics-layout-and-play-generation-guard.md](tv-lyrics-layout-and-play-generation-guard.md) — TVの歌詞表示時レイアウト崩壊（`TVLyricsStageView`の`GeometryReader`に無限高さ提案が届く問題を画面由来の有限`contentHeight`で構造的に制約）と、曲切替時のシークバー暴走・停止不能（`MusicPlayerService`のplay系連鎖に`PlaybackGenerationGuard`世代トークンを導入し、全サスペンションポイント後に再チェック）の修正
 
 - [flac-native-decoder.md](flac-native-decoder.md) — mewkiz/flac をやめて `pkg/audio/flac` に FLAC デコーダを自作し、`pkg/audio` へ統合完了（増分4）。`Decoder.SeekSample` はSEEKTABLE高速経路（生バイトをこの時点で初めてパース、プレースホルダー点は無視）とバイナリサーチ経路（CRC-8検証付き同期スキャンでフレーム境界を絞り込み）の2系統を持ち、どちらも目的フレームまでフルデコードしてトリムするため線形デコード＋読み飛ばしと常にビット完全一致。統合で`player.go`から削除したのは、ID3v2付きFLACを2秒後にffmpegで書き換える破壊的remux、SeekTable不在時の全フレームスキャン索引＋ディスクキャッシュ、`reflect`+`unsafe`による非公開フィールド注入、ミッドストリームffmpegフォールバック（オープン時フォールバックのみ残置）。`server/app_scanner.go`の全曲事前索引ジョブ（`BuildFLACIndexes`）とWailsバインディング・フロントエンドUIも削除。`go mod tidy`で`mewkiz/flac`・`mewkiz/pkg`をgo.sumから完全除去し確認
