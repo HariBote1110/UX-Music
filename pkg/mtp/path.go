@@ -16,3 +16,14 @@ func splitPathComponents(p string) []string {
 	}
 	return out
 }
+
+// joinPath appends name to a device directory path, always producing a
+// leading-slash, non-trailing-slash form (e.g. "/Music" + "foo" ->
+// "/Music/foo").
+func joinPath(base, name string) string {
+	base = strings.TrimSuffix(base, "/")
+	if base == "" {
+		return "/" + name
+	}
+	return base + "/" + name
+}
