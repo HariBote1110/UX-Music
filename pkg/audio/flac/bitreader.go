@@ -244,3 +244,25 @@ func (b *BitReader) ReadUTF8Uint64() (uint64, error) {
 func (b *BitReader) BitsRead() uint64 {
 	return b.totalBits
 }
+
+// AtEOF reports whether the reader has definitively reached the end of the
+// underlying stream: no bytes remain buffered internally, and a further
+// attempt to fill the buffer from the underlying io.Reader yields a clean
+// io.EOF. It is intended to be called only at a byte-aligned position,
+// between logical units (e.g. between frames), and never consumes a bit.
+//
+// A false return with a non-nil error means refilling the buffer failed
+// with something other than a clean end-of-stream (a genuine I/O error),
+// which callers should treat as a hard failure rather than "no more data".
+func (b *BitReader) AtEOF() (bool, error) {
+	if b.bufPos < b.bufLen {
+		return false, nil
+	}
+	if err := b.fill(); err != nil {
+		if errors.Is(err, io.EOF) {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
+}
