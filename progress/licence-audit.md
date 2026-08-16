@@ -41,11 +41,21 @@ ffmpeg は**同梱していない**。`locateFfmpeg()` が実行時に PATH か�
 |---|---|---|
 | `cdparanoia` | **GPL-2.0** | 唯一同梱している copyleft。Makefile が `.app/Contents/Resources/bin` へコピーする。`exec` で別プロセス起動のため FSF の解釈では独立したプログラム扱いで、Go コード本体へは伝播しない |
 | `libusb.dylib` | LGPL-2.1 | 動的リンクのため任意ライセンスで利用可（再リンク可能性の確保は必要） |
-| `libkalam.dylib` | **不明** | MTP 用。由来を示す記録がリポジトリ内に無い。**ここが最大の未確認リスク** |
+| `libkalam.dylib` | **New BSD（3条項）** | MTP 用。特定済み — 下記参照 |
 | `xld` | — | 204 バイトのシェルスクリプト。ユーザーが自分でインストールした `/Applications/XLD.app` を呼ぶだけで、XLD 自体は同梱していない |
+
+## `libkalam.dylib` の特定（解決済み）
+
+出所不明だった `pkg/mtp/lib/libkalam.dylib` を特定した。
+
+- **判定方法:** `strings pkg/mtp/lib/libkalam.dylib` に `github.com/ganeshrvel/go-mtpfs` およびその関数シンボル（`mtp.(*Device).GetDeviceInfo` 等）が埋め込まれている。`kalam.h` 自体にはライセンスヘッダが無いため、バイナリの埋め込みシンボルが唯一の手がかりだった。
+- **正体:** OpenMTP 作者（ganeshrvel）による `hanwen/go-mtpfs` のフォーク。
+- **ライセンス: New BSD（3条項）、Copyright (c) 2012 Google Inc.** 許諾的で GPLv3 と互換。
+- **注意:** GitHub API は `ganeshrvel/go-mtpfs` を `NOASSERTION` と返すが、これはライセンス本文が `//` コメント形式で書かれており分類器が認識できないだけ。実際の `LICENSE` ファイルには New BSD 全文がある。
+- **混同注意:** `ganeshrvel/openmtp`（Electron アプリ本体）は MIT だが、同梱しているのはそちらではなく go-mtpfs 由来のライブラリ。
 
 ## 未解決事項
 
-- **`libkalam.dylib` の出所とライセンスの特定**（唯一残っている未確認リスク）。
+- **第三者ライセンス表示ファイルが存在しない（要対応）。** リポジトリに `THIRD-PARTY-NOTICES` に相当するものが無い。3 条項 BSD は「バイナリ配布時に著作権表示・条件文・免責事項を添付すること」を要求し、MIT も同等の表示を要求する。対象は libkalam（New BSD）、libusb（LGPL-2.1）、PortAudio・Wails・kkdai/youtube・zeroconf（MIT）、dhowden/tag・go-dsp・go-qrcode（BSD）、go-mp3・go-audio×2・purego（Apache-2.0）、cdparanoia（GPL-2.0）など同梱・静的リンクする全て。**配布した時点でこれらの条件を満たしていない状態。** GPLv3 化とは独立した不備で、`.app` 内か About ダイアログに集約した表示を用意する必要がある。
 - cdparanoia（GPL-2.0）の同梱は GPLv3 化後も継続。GPL-2.0-only は GPLv3 と非互換だが、`exec` による別プロセス起動で独立したプログラム扱いのため、単一の著作物としてのライセンス衝突は生じないとの理解。将来 GPL を離れる場合はここが障害になる。
 - これらの義務はすべて**配布時に発生**する。個人利用のみなら顕在化しない。
