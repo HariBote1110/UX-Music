@@ -82,6 +82,105 @@ jobs:
         run: go test -count=1 -shuffle=on ${{ steps.pkgs.outputs.list }}
 
   # ---------------------------------------------------------------------------
+  # Go: Windows 専用コードのビルドゲート
+  # ---------------------------------------------------------------------------
+  # server/app_sync_disk_windows.go・pkg/mtp/mtp_windows.go・pkg/mtp/stderr_windows.go
+  # は //go:build windows 制約のため上の linux ジョブでは一切コンパイルされず、
+  # 壊れても誰も気付けない。Windows ランナーでビルドを通すことでこれを検出する。
+  go-windows:
+    name: go build (windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # msys2 shell 内から後続ステップで使うため checkout 自体は shell 指定なしで良いが、
+          # defaults.run.shell が全ステップに効くので actions/checkout も msys2 上で動く。
+          # これ自体は git 呼び出しのみで問題ない。
+          fetch-depth: 1
+
+      # pkg/audio は portaudio を無条件 import しており、cgo 経由で
+      # pkg-config 経由の portaudio ヘッダ/ライブラリを要求する。
+      # Windows には apt 相当の標準パッケージマネージャが無いため、
+      # MSYS2/MinGW-w64 で gcc・pkg-config・portaudio を揃える
+      # （vcpkg より pkg-config 連携がシンプルなためこちらを採用）。
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-portaudio
+
+      # setup-go は通常の Windows shell 前提のため PATH 解決が MSYS2 と噛み合わないことがある。
+      # msys2 の pacman で go 自体を入れず actions/setup-go を使うのは、
+      # go.mod のバージョン指定（go-version-file）にリポジトリ内の他ジョブと揃えて追従させるため。
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/renderer/package-lock.json
+
+      # main.go の `//go:embed all:src/renderer/dist` を満たすために
+      # renderer を先にビルドする。これが無いと `go list ./...` 自体が失敗する。
+      - name: Build renderer dist (required by go:embed)
+        working-directory: src/renderer
+        run: |
+          npm ci
+          npm run build
+
+      # cgo を有効化し、コンパイラを MinGW-w64 gcc に固定する。
+      # PKG_CONFIG_PATH は MSYS2 の pkg-config が portaudio-2.0.pc を
+      # 見つけられるように明示しておく（MINGW64 環境では通常自動で通るが、
+      # actions/setup-go が PATH を書き換えるため念のため固定する）。
+      - name: Resolve package list
+        id: pkgs
+        env:
+          CGO_ENABLED: 1
+          CC: gcc
+        run: |
+          PKGS=$(go list ./... | grep -v 'node_modules' | grep -v '/cmd/spike-' | tr '\n' ' ')
+          echo "list=$PKGS" >> "$GITHUB_OUTPUT"
+          echo "$PKGS"
+
+      # ビルドが通ることこそがこのジョブの主目的。
+      # Windows 専用ファイル（*_windows.go）は他ジョブでは一切コンパイルされないため、
+      # ここで壊れていないことを確認できるのはこのジョブだけ。
+      - name: go build
+        env:
+          CGO_ENABLED: 1
+          CC: gcc
+        run: go build ${{ steps.pkgs.outputs.list }}
+
+      # linux 版 go job と同様に go vet も既存の指摘（Seek(sample int64) error が
+      # io.Seeker のシグネチャと衝突している等）で失敗するため、情報提供に留める。
+      # 解消したら continue-on-error を外して必須ゲートに戻すこと。
+      - name: go vet
+        continue-on-error: true
+        env:
+          CGO_ENABLED: 1
+          CC: gcc
+        run: go vet ${{ steps.pkgs.outputs.list }}
+
+      # GitHub 提供の Windows ランナーには音声出力デバイスが存在しないため、
+      # portaudio 経由でオーディオデバイスを開こうとするテストは環境起因で
+      # 失敗・ハングしうる。「本物の Windows バグ」と「CI に音声デバイスが無いだけ」を
+      # 区別するため、まずは必須ゲートとして実行してみる。
+      - name: go test
+        env:
+          CGO_ENABLED: 1
+          CC: gcc
+        run: go test -count=1 -timeout 5m ${{ steps.pkgs.outputs.list }}
+
+  # ---------------------------------------------------------------------------
   # renderer: TypeScript (vitest / jsdom)
   # ---------------------------------------------------------------------------
   renderer:
