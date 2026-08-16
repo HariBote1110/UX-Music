@@ -1,5 +1,7 @@
 # Progress Index
 
+- [tv-lyrics-layout-and-play-generation-guard.md](tv-lyrics-layout-and-play-generation-guard.md) — TVの歌詞表示時レイアウト崩壊（`TVLyricsStageView`の`GeometryReader`に無限高さ提案が届く問題を画面由来の有限`contentHeight`で構造的に制約）と、曲切替時のシークバー暴走・停止不能（`MusicPlayerService`のplay系連鎖に`PlaybackGenerationGuard`世代トークンを導入し、全サスペンションポイント後に再チェック）の修正
+
 - [flac-native-decoder.md](flac-native-decoder.md) — mewkiz/flac をやめて `pkg/audio/flac` に FLAC デコーダを自作し、`pkg/audio` へ統合完了（増分4）。`Decoder.SeekSample` はSEEKTABLE高速経路（生バイトをこの時点で初めてパース、プレースホルダー点は無視）とバイナリサーチ経路（CRC-8検証付き同期スキャンでフレーム境界を絞り込み）の2系統を持ち、どちらも目的フレームまでフルデコードしてトリムするため線形デコード＋読み飛ばしと常にビット完全一致。統合で`player.go`から削除したのは、ID3v2付きFLACを2秒後にffmpegで書き換える破壊的remux、SeekTable不在時の全フレームスキャン索引＋ディスクキャッシュ、`reflect`+`unsafe`による非公開フィールド注入、ミッドストリームffmpegフォールバック（オープン時フォールバックのみ残置）。`server/app_scanner.go`の全曲事前索引ジョブ（`BuildFLACIndexes`）とWailsバインディング・フロントエンドUIも削除。`go mod tidy`で`mewkiz/flac`・`mewkiz/pkg`をgo.sumから完全除去し確認
 
 - [lyrics-sync-asr-hint-deferred.md](lyrics-sync-asr-hint-deferred.md) — 旧 lyrics-sync 系統（`origin/archive/lyrics-sync-old-main`）から拾うものの取捨。間奏付近の疎いASRセグメント抑制（`71c3e54`）は現行 `stage3_align`（202行→783行、`_repair_*` 5種＋`is_interlude`）が上位互換のため破棄、「Whisper に歌詞を `initial_prompt`/hotwords として渡す」（`ff33693`）は現行版に存在しない独自アイデアのため保留（cherry-pick 不可・現行実装への移植が必要）。IGNORE テスト一式とドキュメントのみ取り込み、`markdown/testing-lyrics-sync.md` の「機能が存在する前提」の記述を未実装と明記に修正
