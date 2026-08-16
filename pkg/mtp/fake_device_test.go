@@ -50,10 +50,10 @@ func (f *fakeDevice) addFile(parent uint32, name string, content []byte) uint32 
 	h := f.nextHandle
 	f.nextHandle++
 	f.objects[h] = gomtp.ObjectInfo{
-		Filename:         name,
-		ObjectFormat:     gomtp.OFC_Undefined,
-		ParentObject:     parent,
-		CompressedSize:   uint32(len(content)),
+		Filename:       name,
+		ObjectFormat:   gomtp.OFC_Undefined,
+		ParentObject:   parent,
+		CompressedSize: uint32(len(content)),
 	}
 	f.data[h] = content
 	f.children[parent] = append(f.children[parent], h)
@@ -132,8 +132,17 @@ func (f *fakeDevice) GetObject(handle uint32, w io.Writer, cb gomtp.ProgressFunc
 }
 
 func (f *fakeDevice) DeleteObject(handle uint32) error {
-	for _, child := range f.children[handle] {
+	for _, child := range append([]uint32{}, f.children[handle]...) {
 		_ = f.DeleteObject(child)
+	}
+	if oi, ok := f.objects[handle]; ok {
+		siblings := f.children[oi.ParentObject]
+		for i, h := range siblings {
+			if h == handle {
+				f.children[oi.ParentObject] = append(siblings[:i], siblings[i+1:]...)
+				break
+			}
+		}
 	}
 	delete(f.objects, handle)
 	delete(f.data, handle)
