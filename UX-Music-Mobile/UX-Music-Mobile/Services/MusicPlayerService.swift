@@ -1378,9 +1378,10 @@ final class MusicPlayerService {
 
         let c = MPRemoteCommandCenter.shared()
         let active = currentSong != nil
-        c.playCommand.isEnabled = active
-        c.pauseCommand.isEnabled = active
-        c.togglePlayPauseCommand.isEnabled = active
+        let commandState = RemoteCommandEnablement.state(hasSong: active, isPlaying: isPlaying)
+        c.playCommand.isEnabled = commandState.playEnabled
+        c.pauseCommand.isEnabled = commandState.pauseEnabled
+        c.togglePlayPauseCommand.isEnabled = commandState.toggleEnabled
         c.nextTrackCommand.isEnabled = active && queue.count > 1
         c.previousTrackCommand.isEnabled = active && queue.count > 1
         c.changePlaybackPositionCommand.isEnabled = active
