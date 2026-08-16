@@ -4,10 +4,13 @@
 package audio
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"errors"
 	"io"
 	"os"
 	"testing"
+	"time"
 
 	nativeflac "ux-music-sidecar/pkg/audio/flac"
 )
@@ -220,5 +223,75 @@ func TestFlacAdapterDecoder_Seek_MatchesLinearDecode(t *testing.T) {
 				t.Fatalf("post-seek sample %d channel %d: got %v, want %v", i, ch, gotSample, want)
 			}
 		}
+	}
+}
+
+// TestPlayerFLACDecoder_ID3v2FileNeverModified is the regression lock for
+// the deleted remuxFLACFile behaviour: the old mewkiz-based decoder
+// scheduled a background goroutine that rewrote an ID3v2-tagged FLAC file
+// in place, 2 seconds after opening it, to convert ID3v2 tags to
+// VorbisComment. The new decoder skips ID3v2 natively and must never touch
+// the file. This drives the player's actual decoder construction path
+// (newFLACDecoder), not the adapter directly, so it also locks in the
+// integration wiring.
+func TestPlayerFLACDecoder_ID3v2FileNeverModified(t *testing.T) {
+	base := generateAudioFlacFixture(t, 44100, 2, 16, 1)
+	path := prependAudioID3v2(t, base)
+
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read fixture before decode: %v", err)
+	}
+	beforeHash := sha256.Sum256(before)
+	infoBefore, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("failed to stat fixture before decode: %v", err)
+	}
+	modTimeBefore := infoBefore.ModTime()
+
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("failed to open fixture: %v", err)
+	}
+
+	dec, err := newFLACDecoder(file)
+	if err != nil {
+		file.Close()
+		t.Fatalf("newFLACDecoder failed on ID3v2-prefixed FLAC: %v", err)
+	}
+
+	// Decode the whole stream, as normal playback would.
+	buf := make([]byte, 8192)
+	for {
+		_, err := dec.Read(buf)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Read failed: %v", err)
+		}
+	}
+	dec.Close()
+
+	// The deleted remux path fired its rewrite from a goroutine 2 seconds
+	// after opening; wait comfortably past that so a regression would have
+	// had time to occur.
+	time.Sleep(3 * time.Second)
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read fixture after decode: %v", err)
+	}
+	afterHash := sha256.Sum256(after)
+	infoAfter, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("failed to stat fixture after decode: %v", err)
+	}
+
+	if afterHash != beforeHash || !bytes.Equal(before, after) {
+		t.Fatal("ID3v2-tagged FLAC file was modified by decoding — remux-on-open regression")
+	}
+	if !infoAfter.ModTime().Equal(modTimeBefore) {
+		t.Fatalf("ID3v2-tagged FLAC file's mtime changed: before=%v after=%v", modTimeBefore, infoAfter.ModTime())
 	}
 }
