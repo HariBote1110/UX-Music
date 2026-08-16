@@ -14,11 +14,121 @@ final class MusicPlayerService {
 
     private var queue: [Song] = []
     private var currentIndex: Int = -1
+    /// The queue's order before shuffle was turned on, so turning it back off is lossless. Empty
+    /// when shuffle is off.
+    private var originalQueue: [Song] = []
 
     /// Current playback queue (local files), in play order.
     var playbackQueue: [Song] { queue }
     /// Index of the current track in `playbackQueue`, or `-1` when idle.
     var currentQueueIndex: Int { currentIndex }
+
+    // MARK: - Repeat / shuffle (persisted)
+
+    private(set) var repeatMode: PlaybackRepeatMode = .off
+    private(set) var isShuffleEnabled = false
+    private let repeatModeDefaultsKey = "uxmusic.playback.repeatMode"
+    private let shuffleEnabledDefaultsKey = "uxmusic.playback.shuffleEnabled"
+
+    /// Cycles repeat off → all → one → off, matching a physical Walkman's repeat button.
+    func cycleRepeatMode() {
+        setRepeatMode(repeatMode.next())
+    }
+
+    func setRepeatMode(_ mode: PlaybackRepeatMode) {
+        guard mode != repeatMode else { return }
+        repeatMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: repeatModeDefaultsKey)
+    }
+
+    func toggleShuffle() {
+        setShuffleEnabled(!isShuffleEnabled)
+    }
+
+    /// Turning shuffle on reorders `queue` (keeping the currently-playing song at its current
+    /// position, not interrupting playback); turning it off restores `originalQueue` and recomputes
+    /// `currentIndex` for the currently-playing song.
+    func setShuffleEnabled(_ enabled: Bool) {
+        guard enabled != isShuffleEnabled else { return }
+        let currentId = currentSong?.id
+        if enabled {
+            originalQueue = queue
+            let indices = Array(queue.indices).shuffled()
+            queue = PlaybackShuffleLogic.applyShuffle(queue: queue, shuffledIndices: indices, currentId: currentId)
+        } else {
+            queue = originalQueue
+            originalQueue = []
+        }
+        if let currentId, let idx = queue.firstIndex(where: { $0.id == currentId }) {
+            currentIndex = idx
+        }
+        isShuffleEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: shuffleEnabledDefaultsKey)
+    }
+
+    private func loadPlaybackModesFromUserDefaults() {
+        let defaults = UserDefaults.standard
+        if let raw = defaults.string(forKey: repeatModeDefaultsKey), let mode = PlaybackRepeatMode(rawValue: raw) {
+            repeatMode = mode
+        }
+        isShuffleEnabled = defaults.bool(forKey: shuffleEnabledDefaultsKey)
+    }
+
+    // MARK: - Queue editing
+
+    /// Moves the item at `from` so it ends up at index `to` in the resulting queue, keeping
+    /// `currentIndex` pointing at the same song (playback is not interrupted — this never loads a
+    /// different track).
+    func moveQueueItem(from: Int, to: Int) {
+        guard queue.indices.contains(from) else { return }
+        let newCurrentIndex = PlaybackQueueEditing.currentIndexAfterMoving(from: from, to: to, currentIndex: currentIndex)
+        queue = PlaybackQueueEditing.moveElement(in: queue, from: from, to: to)
+        currentIndex = newCurrentIndex
+    }
+
+    /// Removes the item at `index`. Removing the currently-playing item advances playback to
+    /// whatever takes its place; removing the last remaining item stops playback entirely.
+    func removeQueueItem(at index: Int) async {
+        guard queue.indices.contains(index) else { return }
+        let wasCurrent = index == currentIndex
+        guard let newCurrentIndex = PlaybackQueueEditing.currentIndexAfterRemoving(
+            removedIndex: index,
+            currentIndex: currentIndex,
+            countBefore: queue.count
+        ) else {
+            stop()
+            return
+        }
+        queue.remove(at: index)
+        currentIndex = newCurrentIndex
+        if wasCurrent, queue.indices.contains(currentIndex) {
+            let s = queue[currentIndex]
+            currentSong = s
+            await loadActive(s)
+        }
+    }
+
+    /// Inserts `song` immediately after the currently-playing item ("play next"). When the queue is
+    /// empty, becomes the new (unstarted) queue.
+    func insertNext(_ song: Song) {
+        guard currentIndex >= 0 else {
+            queue = [song]
+            currentIndex = 0
+            return
+        }
+        queue.insert(song, at: min(currentIndex + 1, queue.count))
+    }
+
+    /// Appends `song` to the end of the queue. When the queue is empty, becomes the new
+    /// (unstarted) queue.
+    func appendToQueue(_ song: Song) {
+        guard currentIndex >= 0 else {
+            queue = [song]
+            currentIndex = 0
+            return
+        }
+        queue.append(song)
+    }
 
     private var positionTimer: Timer?
     private var interruptionObserver: NSObjectProtocol?
@@ -33,6 +143,15 @@ final class MusicPlayerService {
     var targetLoudness: Double = AppConstants.defaultTargetLoudness
     var normaliseEnabled = true
     var masterVolume: Float = 1
+
+    /// Fired once per track that reaches its natural end (buffer completion / YouTube `.ended`),
+    /// with the song that just finished — i.e. exactly the `advanceAfterEnd()` path, never the
+    /// explicit `next()`/`previous()` skip paths. Used by the TV target's play-event reporter
+    /// (`markdown/appletv-servermode-plan.md` §3-2, `progress/tv-remote-play-event-client.md`) to
+    /// decide when a play "counts"; `nil` on iOS/watchOS where nothing observes it. Kept as a
+    /// plain closure (not a Combine/NotificationCenter broadcast) since there is currently only
+    /// ever one observer.
+    var onTrackNaturallyFinished: ((Song) -> Void)?
 
     // MARK: - Equaliser (persisted)
 
@@ -50,6 +169,133 @@ final class MusicPlayerService {
 
     /// When set (by `AppModel`), jacket art is shown in Now Playing, Dynamic Island, and Control Centre.
     var loadArtworkImage: (@MainActor (Song) async -> UIImage?)?
+
+    // MARK: - YouTube playback backend
+    //
+    // `currentSong.isYouTube` picks which backend the transport controls (play/pause/seek/
+    // next/previous) drive: the `AVAudioEngine` graph above for local files, or this WKWebView-
+    // backed IFrame player for YouTube songs added to the Library (see `AppModel.addYouTubeSongToLibrary`).
+    // `queue`/`currentIndex`/`currentSong` bookkeeping is shared across both backends so a mixed
+    // queue advances seamlessly regardless of what kind the next track is.
+
+    // tvOS has no WebKit/WKWebView (see `markdown/appletv-servermode-plan.md` Phase 1-1's
+    // explicit note: "tvOS にブラウザは存在しない"), so the whole YouTube embed backend is an
+    // iOS/watchOS-only concern. `MusicPlayerService` is otherwise shared with the tvOS target, so
+    // this block — and every other YouTube call site below — is guarded out on tvOS rather than
+    // split into a separate type (TV never receives a `song.isYouTube == true` track in Phase 1).
+    #if !os(tvOS)
+    /// Injected by `AppModel`: resolves a YouTube `Song` (via `sourceURL`/`path`) to an 11-char
+    /// video ID using the desktop's `resolveYouTubeVideo` LAN endpoint. `nil` on failure.
+    var resolveYouTubeVideoID: (@MainActor (Song) async -> String?)?
+
+    /// Owns the single, long-lived `WKWebView` for YouTube playback. Kept alive for the app
+    /// process's lifetime (not tied to `NowPlayingView`'s presentation) so a YouTube song keeps
+    /// playing after the user navigates back to the Library — the same as a local file continuing
+    /// via `AVAudioEngine`. SwiftUI only ever borrows `youtubePlaybackHost.webView` for display
+    /// (see `YouTubeEmbedHostContainerView`).
+    let youtubePlaybackHost = YouTubePlaybackHost()
+    /// Video ID for the currently-loading/playing YouTube song, or `nil` when idle or resolution failed.
+    private(set) var currentYouTubeVideoID: String?
+    /// Set when `resolveYouTubeVideoID` fails or the embed player reports an error — surfaced by `NowPlayingView`.
+    private(set) var youtubePlaybackErrorMessage: String?
+    /// How `NowPlayingView` should let the user recover from `youtubePlaybackErrorMessage` — see
+    /// `YouTubeEmbedPlayer.EmbedFallback`. `.openInYouTubeApp` for error 101/150 (embedding
+    /// disallowed on mobile; see `progress/mobile-youtube-embed.md` フェーズC), `.none` otherwise.
+    private(set) var youtubePlaybackErrorFallback: YouTubeEmbedPlayer.EmbedFallback = .none
+    /// Video ID captured at the moment an embed-restricted error fires, kept around so the
+    /// "YouTube で開く" button still knows which video to open even though `currentYouTubeVideoID`
+    /// is cleared to switch `NowPlayingView` away from the (now non-functional) embed WebView.
+    private(set) var youtubePlaybackErrorVideoID: String?
+    /// Transient "スキップしました" style message shown briefly in `NowPlayingView` right after an
+    /// embed-restricted error auto-advances the queue to the next track. `nil` most of the time.
+    private(set) var youtubePlaybackJustSkippedMessage: String?
+    /// Bumped on every `loadAndPlayYouTube`/backend switch so a bridge event from a superseded video is ignored.
+    private var youtubePlaybackGeneration: UInt64 = 0
+    /// Caches `resolveYouTubeVideoID(song)` results by song id so replaying the same Library song
+    /// does not re-hit the desktop's `resolveYouTubeVideo` LAN endpoint every time.
+    private var youtubeVideoIDCache: [String: String] = [:]
+    #endif
+
+    #if DEBUG
+    /// Sets transport/track state directly, bypassing `AVAudioEngine`, so screens can be rendered
+    /// with rich fake data for screenshot verification (`UXTV_PREVIEW`, see `UXMusicTVApp` and
+    /// `progress/tvos-design.md`) without touching the network or real playback. DEBUG-only.
+    func configureForPreview(song: Song, isPlaying: Bool, positionSeconds: Double, durationSeconds: Double) {
+        self.currentSong = song
+        self.isPlaying = isPlaying
+        self.positionSeconds = positionSeconds
+        self.durationSeconds = durationSeconds
+    }
+    #endif
+
+    // MARK: - External playback bridging (Task A stream-first path, tvOS)
+    //
+    // `TVSongStreamController`'s stream-first path (`progress/tvos-playback.md` "Now Playing
+    // 統合" 追記) decodes and plays audio through its OWN dedicated `AVAudioEngine`
+    // (`TVRelayStreamPlayer`), never through this service's engine — see
+    // `TVRelayStreamPlayer`'s "Engine choice" doc comment for why a second engine was kept rather
+    // than reusing this one. But `TVNowPlayingView` (shared with iOS/watchOS) reads title/artwork/
+    // progress/transport EXCLUSIVELY from this service's `currentSong`/`isPlaying`/`positionSeconds`
+    // — without this bridge, the Now Playing screen would show nothing during a streamed play even
+    // though audio is audibly playing. This section lets `TVPlaybackController` mirror the
+    // streaming song's metadata/progress into this service and re-route transport commands to the
+    // stream, without ever touching `AVAudioEngine`/the YouTube backend for a song that has no
+    // local file yet.
+
+    /// True while an external stream (`TVSongStreamController`) — not this service's own
+    /// `AVAudioEngine`/YouTube backend — is producing the audio for `currentSong`. Checked first by
+    /// every transport entry point below so a Now Playing tap during streaming is routed to
+    /// `externalPlaybackCommandHandler` instead of falling through to `loadAndPlay`/YouTube paths
+    /// that have nothing loaded for a song that only exists as a live stream.
+    private(set) var isExternallyDriven = false
+
+    enum ExternalPlaybackCommand {
+        case togglePlayPause
+        case next
+        case previous
+        case stop
+    }
+
+    /// Set by the external stream's owner (`TVPlaybackController`) before `beginExternalPlayback`
+    /// and cleared by `endExternalPlayback`. Receives transport commands raised while
+    /// `isExternallyDriven` is true.
+    var externalPlaybackCommandHandler: ((ExternalPlaybackCommand) -> Void)?
+
+    /// Starts mirroring an external stream's metadata into `currentSong`/`isPlaying`/
+    /// `durationSeconds` for the shared Now Playing UI. Deliberately does NOT touch
+    /// `queue`/`currentIndex` — the caller owns queue advancement for the streaming path (see
+    /// `TVPlaybackController.advanceAfterStreamEnd`).
+    func beginExternalPlayback(song: Song, durationSeconds: Double) {
+        currentSong = song
+        isPlaying = true
+        positionSeconds = 0
+        self.durationSeconds = durationSeconds
+        isExternallyDriven = true
+    }
+
+    /// Called periodically by the stream's owner as the track advances — there is no local
+    /// `AVAudioEngine` timeline to derive this from during streaming, so the caller polls
+    /// `TVRelayStreamPlayer.elapsedSeconds` and pushes it in.
+    func updateExternalPlaybackProgress(seconds: Double) {
+        guard isExternallyDriven else { return }
+        positionSeconds = min(max(0, seconds), durationSeconds > 0 ? durationSeconds : seconds)
+    }
+
+    /// Mirrors the stream's actual paused/playing state (e.g. after `.togglePlayPause` is routed
+    /// back out and handled) so `TVNowPlayingView`'s play/pause icon stays correct.
+    func setExternalPlaybackIsPlaying(_ playing: Bool) {
+        guard isExternallyDriven else { return }
+        isPlaying = playing
+    }
+
+    /// Ends external mirroring. Does not itself clear `currentSong` — the caller decides what (if
+    /// anything) replaces it next: a natural end/failure falls through to `TVPlaybackController`
+    /// advancing the queue (a fresh `beginExternalPlayback`/`play` call), an explicit stop calls
+    /// `stop()` below.
+    func endExternalPlayback() {
+        isExternallyDriven = false
+        externalPlaybackCommandHandler = nil
+    }
 
     /// Audio session activation is deferred until playback starts to keep app launch light.
     private var playbackSessionPrepared = false
@@ -76,10 +322,16 @@ final class MusicPlayerService {
         configureEqualiserBandsStatically()
         pushEqualiserToAudioUnit()
         loadEqualiserStateFromUserDefaults()
+        loadPlaybackModesFromUserDefaults()
         startPositionTimer()
         addAudioInterruptionObserver()
         addAudioRouteChangeObserver()
         installRemoteCommandHandlers()
+        #if !os(tvOS)
+        youtubePlaybackHost.onEvent = { [weak self] event in
+            self?.handleYouTubeBridgeEvent(event)
+        }
+        #endif
     }
 
     /// Invalidates pending `scheduleFile` / `scheduleSegment` completion callbacks before the next `playerNode.stop()`.
@@ -362,8 +614,23 @@ final class MusicPlayerService {
     }
 
     func play(_ song: Song, newQueue: [Song]?) async {
+        // A previous stream-first session may still be marked external (e.g. the cache finished
+        // downloading mid-stream and `TVPlaybackController` now hands off to the normal cached
+        // path) — this service's own engine is about to take over, so external mirroring must end
+        // first or `togglePlayPause`/`next`/`previous` below would keep routing to a stream that's
+        // no longer relevant.
+        if isExternallyDriven {
+            isExternallyDriven = false
+            externalPlaybackCommandHandler = nil
+        }
         if let newQueue {
-            queue = newQueue
+            if isShuffleEnabled {
+                originalQueue = newQueue
+                let indices = Array(newQueue.indices).shuffled()
+                queue = PlaybackShuffleLogic.applyShuffle(queue: newQueue, shuffledIndices: indices, currentId: song.id)
+            } else {
+                queue = newQueue
+            }
         }
         if let idx = queue.firstIndex(where: { $0.id == song.id }) {
             currentIndex = idx
@@ -373,12 +640,22 @@ final class MusicPlayerService {
         }
         let active = queue[currentIndex]
         currentSong = active
-        await loadAndPlay(active)
+        await loadActive(active)
     }
 
     func togglePlayPause() {
+        if isExternallyDriven {
+            externalPlaybackCommandHandler?(.togglePlayPause)
+            return
+        }
         Task { @MainActor [weak self] in
             guard let self else { return }
+            #if !os(tvOS)
+            if let song = self.currentSong, song.isYouTube {
+                self.toggleYouTubePlayPause()
+                return
+            }
+            #endif
             self.activateSessionIfNeededSync()
             if self.playerNode.isPlaying {
                 self.frozenPositionWhilePaused = self.currentTimelineSeconds()
@@ -396,23 +673,36 @@ final class MusicPlayerService {
         }
     }
 
+    /// Explicit "skip forward" (UI button / remote command) — always wraps to the start of the
+    /// queue, regardless of `repeatMode` (classic media-player behaviour; only the *natural end of
+    /// track* path in `advanceAfterEnd()` respects "stop when repeat is off").
     func next() async {
+        if isExternallyDriven {
+            externalPlaybackCommandHandler?(.next)
+            return
+        }
         guard !queue.isEmpty else { return }
-        currentIndex = (currentIndex + 1) % queue.count
+        currentIndex = PlaybackQueueNavigation.nextIndex(current: currentIndex, count: queue.count)
         let s = queue[currentIndex]
         currentSong = s
-        await loadAndPlay(s)
+        await loadActive(s)
     }
 
+    /// Explicit "skip back" — restarts the current track if more than a few seconds in, otherwise
+    /// wraps to the end of the queue (same wrap-always rule as `next()`).
     func previous() async {
+        if isExternallyDriven {
+            externalPlaybackCommandHandler?(.previous)
+            return
+        }
         guard !queue.isEmpty else { return }
-        if positionSeconds > 3 {
+        if PlaybackQueueNavigation.shouldRestartOnPrevious(position: positionSeconds) {
             seek(to: 0)
         } else {
-            currentIndex = (currentIndex - 1 + queue.count) % queue.count
+            currentIndex = PlaybackQueueNavigation.previousIndex(current: currentIndex, count: queue.count)
             let s = queue[currentIndex]
             currentSong = s
-            await loadAndPlay(s)
+            await loadActive(s)
         }
     }
 
@@ -422,11 +712,37 @@ final class MusicPlayerService {
         currentIndex = index
         let s = queue[currentIndex]
         currentSong = s
-        await loadAndPlay(s)
+        await loadActive(s)
+    }
+
+    /// Routes to the local `AVAudioEngine` path or the YouTube embed backend depending on `song.isYouTube`,
+    /// stopping whichever backend is not needed so the two never play simultaneously.
+    private func loadActive(_ song: Song) async {
+        #if !os(tvOS)
+        if song.isYouTube {
+            stopLocalPlaybackEngineOnly()
+            await loadAndPlayYouTube(song)
+        } else {
+            stopYouTubeBackend()
+            await loadAndPlay(song)
+        }
+        #else
+        // TV is never handed a YouTube track in Phase 1 (see `markdown/appletv-servermode-plan.md`
+        // — relay-only in Phase 3), so the local `AVAudioEngine` path is unconditional here.
+        await loadAndPlay(song)
+        #endif
     }
 
     /// - Parameter resumeAfterSeek: When `nil`, keeps playing iff the node was already playing (scrub-while-paused stays paused).
     func seek(to seconds: Double, resumeAfterSeek: Bool? = nil) {
+        #if !os(tvOS)
+        if let song = currentSong, song.isYouTube {
+            youtubePlaybackHost.send(.seek(seconds: seconds))
+            positionSeconds = min(max(0, seconds), durationSeconds > 0 ? durationSeconds : seconds)
+            updateNowPlayingCentre()
+            return
+        }
+        #endif
         guard let file = currentAudioFile else { return }
         let sr = file.processingFormat.sampleRate
         guard sr > 0 else { return }
@@ -458,25 +774,197 @@ final class MusicPlayerService {
     }
 
     func stop() {
-        bumpPlaybackCompletionGeneration()
-        playerNode.stop()
-        engine.stop()
-        currentAudioFile = nil
+        if isExternallyDriven {
+            externalPlaybackCommandHandler?(.stop)
+            isExternallyDriven = false
+            externalPlaybackCommandHandler = nil
+        }
+        stopLocalPlaybackEngineOnly()
+        #if !os(tvOS)
+        stopYouTubeBackend()
+        #endif
         currentSong = nil
         currentIndex = -1
         queue = []
         isPlaying = false
         positionSeconds = 0
         durationSeconds = 0
-        scheduledSegmentStartFrame = 0
-        frozenPositionWhilePaused = nil
-        lastWireFormat = nil
         lastPublishedNowPlayingSongId = nil
         artworkLoadedForSongId = nil
         artworkInFlightForSongId = nil
         nowPlayingArtworkImage = nil
         updateNowPlayingCentre()
     }
+
+    /// Stops the `AVAudioEngine` graph without touching `queue`/`currentSong` — used when switching
+    /// the active backend to YouTube for the current track (see `loadActive`).
+    private func stopLocalPlaybackEngineOnly() {
+        bumpPlaybackCompletionGeneration()
+        playerNode.stop()
+        engine.stop()
+        currentAudioFile = nil
+        scheduledSegmentStartFrame = 0
+        frozenPositionWhilePaused = nil
+        lastWireFormat = nil
+    }
+
+    // MARK: - YouTube playback backend
+    //
+    // Whole block excluded on tvOS — no WebKit there (see the `#if !os(tvOS)` note further up
+    // this file). `handleYouTubeBridgeEvent`/`openYouTubePlaybackErrorInYouTubeApp` are called
+    // from `NowPlayingView`, which is iOS/watchOS-only UI; the tvOS Now Playing UI lands in
+    // Phase 2 and will not call these.
+    #if !os(tvOS)
+
+    /// Stops the embed player without touching `queue`/`currentSong` — used when switching the
+    /// active backend to local playback, and from `stop()`. The `WKWebView` itself is not
+    /// destroyed (see `YouTubePlaybackHost`) — only paused.
+    private func stopYouTubeBackend() {
+        youtubePlaybackGeneration &+= 1
+        youtubePlaybackHost.send(.pause)
+        currentYouTubeVideoID = nil
+        youtubePlaybackErrorMessage = nil
+        youtubePlaybackErrorFallback = .none
+        youtubePlaybackErrorVideoID = nil
+        // Deliberately NOT clearing `youtubePlaybackJustSkippedMessage` here: this is called as
+        // part of switching to the next queue item (see `loadActive`), which is exactly when an
+        // embed-restriction auto-skip (`scheduleAutoSkipAfterEmbedRestriction`) wants its "スキップ
+        // しました" toast to actually be visible for a moment on the new track. It clears itself
+        // via its own short timer instead.
+    }
+
+    /// Loads and plays `song` on the persistent `youtubePlaybackHost` directly — independent of
+    /// whether any SwiftUI view currently displays `youtubePlaybackHost.webView` (see that type's
+    /// doc comment). `currentYouTubeVideoID` only reflects what is loaded for display purposes.
+    private func loadAndPlayYouTube(_ song: Song) async {
+        youtubePlaybackGeneration &+= 1
+        let generation = youtubePlaybackGeneration
+        currentYouTubeVideoID = nil
+        youtubePlaybackErrorMessage = nil
+        youtubePlaybackErrorFallback = .none
+        youtubePlaybackErrorVideoID = nil
+        // See the comment in `stopYouTubeBackend()` for why `youtubePlaybackJustSkippedMessage`
+        // is deliberately left alone here.
+        positionSeconds = 0
+        durationSeconds = song.duration > 0 ? song.duration : 0
+        isPlaying = true
+        updateNowPlayingCentre()
+
+        let videoID: String
+        if let cached = youtubeVideoIDCache[song.id] {
+            videoID = cached
+        } else {
+            guard let resolver = resolveYouTubeVideoID, let resolved = await resolver(song) else {
+                guard generation == youtubePlaybackGeneration else { return }
+                isPlaying = false
+                youtubePlaybackErrorMessage = String(localized: "Couldn't fetch video info. Check the pairing status with the desktop.")
+                updateNowPlayingCentre()
+                return
+            }
+            videoID = resolved
+            youtubeVideoIDCache[song.id] = resolved
+        }
+        guard generation == youtubePlaybackGeneration else { return }
+
+        do {
+            try await youtubePlaybackHost.load(videoID: videoID)
+        } catch {
+            guard generation == youtubePlaybackGeneration else { return }
+            isPlaying = false
+            youtubePlaybackErrorMessage = YouTubeEmbedPlayer.errorMessage(code: -1)
+            updateNowPlayingCentre()
+            return
+        }
+        guard generation == youtubePlaybackGeneration else { return }
+        // `playerVars.autoplay = 1` (see `YouTubeEmbedPlayer`) starts playback once the IFrame API
+        // reports `onReady` — no explicit `.play` command needed here.
+        currentYouTubeVideoID = videoID
+    }
+
+    private func toggleYouTubePlayPause() {
+        youtubePlaybackHost.send(isPlaying ? .pause : .play)
+        isPlaying.toggle()
+        updateNowPlayingCentre()
+    }
+
+    /// Routes IFrame Player API events (via `YouTubePlaybackHost.onEvent`) into the unified
+    /// transport state.
+    func handleYouTubeBridgeEvent(_ event: YouTubeEmbedPlayer.BridgeEvent) {
+        guard let song = currentSong, song.isYouTube else { return }
+        switch event {
+        case .ready:
+            youtubePlaybackHost.send(.unmute)
+        case .state(.playing):
+            isPlaying = true
+            youtubePlaybackErrorMessage = nil
+            updateNowPlayingCentre()
+        case .state(.paused):
+            isPlaying = false
+            updateNowPlayingCentre()
+        case .state(.ended):
+            isPlaying = false
+            updateNowPlayingCentre()
+            Task { @MainActor [weak self] in
+                await self?.advanceAfterEnd()
+            }
+        case .time(let current, let duration):
+            positionSeconds = current
+            if duration > 0 { durationSeconds = duration }
+            updateNowPlayingCentre()
+        case .error(let code):
+            isPlaying = false
+            youtubePlaybackErrorMessage = YouTubeEmbedPlayer.errorMessage(code: code)
+            let fallback = YouTubeEmbedPlayer.embedFallback(forErrorCode: code)
+            youtubePlaybackErrorFallback = fallback
+            if fallback == .openInYouTubeApp {
+                // The embed WebView is not going to recover from this (see
+                // `progress/mobile-youtube-embed.md` フェーズC: this is a genuine YouTube-side
+                // mobile-web embedding restriction, not something a retry fixes), so stop showing
+                // it in favour of the error + "YouTube で開く" UI, and let the queue move on
+                // instead of stalling indefinitely on an unplayable track.
+                youtubePlaybackErrorVideoID = currentYouTubeVideoID
+                currentYouTubeVideoID = nil
+                scheduleAutoSkipAfterEmbedRestriction(generation: youtubePlaybackGeneration)
+            }
+            updateNowPlayingCentre()
+        default:
+            break
+        }
+    }
+
+    /// After an embed-restricted error (101/150), gives the user a short window to notice the
+    /// "YouTube で開く" button before automatically advancing the queue — see
+    /// `handleYouTubeBridgeEvent`'s `.error` case and `progress/mobile-youtube-embed.md` フェーズD.
+    /// Guarded by `generation` so this no-ops if the user has already navigated away (manual
+    /// next/previous, a different song loaded, playback stopped, …) by the time the delay elapses.
+    private func scheduleAutoSkipAfterEmbedRestriction(generation: UInt64) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard let self, generation == self.youtubePlaybackGeneration else { return }
+            let skippedMessage = String(localized: "Skipped because embedded playback is not allowed")
+            self.youtubePlaybackJustSkippedMessage = skippedMessage
+            await self.advanceAfterEnd()
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                // Only clear it if nothing else (e.g. a later skip) has replaced it since.
+                guard let self, self.youtubePlaybackJustSkippedMessage == skippedMessage else { return }
+                self.youtubePlaybackJustSkippedMessage = nil
+            }
+        }
+    }
+
+    /// Opens the video behind the current embed-restricted error in the official YouTube app (or
+    /// Safari, if the app is not installed) — called from `NowPlayingView`'s "YouTube で開く"
+    /// button. Playing via the official app/site still counts the view and pays out to the
+    /// creator normally, unlike any embed workaround.
+    func openYouTubePlaybackErrorInYouTubeApp() {
+        guard let videoID = youtubePlaybackErrorVideoID else { return }
+        let appIsAvailable = URL(string: "youtube://").map { UIApplication.shared.canOpenURL($0) } ?? false
+        guard let url = YouTubeEmbedPlayer.urlToOpen(forVideoID: videoID, youtubeAppIsAvailable: appIsAvailable) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    #endif
 
     private func loadAndPlay(_ song: Song) async {
         await preparePlaybackSessionIfNeeded()
@@ -628,14 +1116,22 @@ final class MusicPlayerService {
         return isPlaying ? .success : .commandFailed
     }
 
+    /// Natural end-of-track (buffer completion / YouTube `.ended`) — unlike `next()`, this respects
+    /// `repeatMode`: stops at the end of the queue when repeat is off (the bug this fixes — the
+    /// queue previously always looped `(currentIndex + 1) % queue.count` regardless of any repeat
+    /// setting), restarts the current track for repeat-one, and wraps for repeat-all.
     private func advanceAfterEnd() async {
-        if queue.count > 1 {
-            await next()
-        } else {
-            // Single-track queue: song finished naturally. Sync state immediately so Now Playing
-            // reflects the paused/stopped state even when the background timer is throttled by iOS.
+        if let finishedSong = currentSong {
+            onTrackNaturallyFinished?(finishedSong)
+        }
+        switch PlaybackQueueNavigation.autoAdvance(current: currentIndex, count: queue.count, repeatMode: repeatMode) {
+        case .stop:
+            // Sync state immediately so Now Playing reflects the paused/stopped state even when the
+            // background timer is throttled by iOS.
             syncIsPlayingFromNode()
             updateNowPlayingCentre()
+        case .index(let idx):
+            await playQueueItem(at: idx)
         }
     }
 

@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 	"ux-music-sidecar/pkg/audio"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type AudioEqualizerSettings struct {
@@ -48,15 +46,49 @@ func (a *App) AudioGetCurrentDevice() string {
 	return a.audioPlayer.GetCurrentDevice()
 }
 
+// MarkNextPlaybackRemoteInitiated marks that the next AudioPlay or
+// AudioStartWebViewTap call starts a remote-initiated session (triggered by
+// POST /v1/remote/command {"action":"play-song"}, not a local click). That
+// call will silence the desktop's own speaker output for the session while
+// leaving the LAN relay untouched (see pkg/audio.Player.SetLocalMuted).
+// The renderer calls this from handleRemotePlaySongEvent, right before
+// invoking playSong for the remotely-requested song.
+func (a *App) MarkNextPlaybackRemoteInitiated() {
+	a.remoteInitiatedNext.Store(true)
+}
+
+// consumeRemoteInitiatedNext reports whether the next playback start was
+// marked remote-initiated, resetting the marker so it only ever applies to
+// one call. A local play (AudioPlay/AudioStartWebViewTap invoked without a
+// prior MarkNextPlaybackRemoteInitiated) reads false here and so unmutes.
+func (a *App) consumeRemoteInitiatedNext() bool {
+	return a.remoteInitiatedNext.Swap(false)
+}
+
+// AudioIsLocalMuted reports whether local speaker output is currently
+// silenced (remote-initiated playback session). Surfaced additively in
+// GET /v1/remote/state as "localMuted".
+func (a *App) AudioIsLocalMuted() bool {
+	if a.audioPlayer == nil {
+		return false
+	}
+	return a.audioPlayer.IsLocalMuted()
+}
+
 // AudioPlay starts playback of an audio file
 func (a *App) AudioPlay(filePath string, gainLinear float64) error {
 	if a.audioPlayer == nil {
 		return fmt.Errorf("audio player not initialized")
 	}
+	remoteInitiated := a.consumeRemoteInitiatedNext()
 	if err := a.audioPlayer.Play(filePath, gainLinear); err != nil {
 		fmt.Printf("[Audio] Play failed (%s): %v\n", filePath, err)
 		return err
 	}
+	// Local files via play-song stay silent for a remote-initiated session;
+	// any ordinary local play (remoteInitiated == false) unmutes, ending a
+	// previous remote-initiated session's mute.
+	a.audioPlayer.SetLocalMuted(remoteInitiated)
 	a.updateOSNowPlayingByPath(filePath, true)
 	a.pushDiscordPresence(true)
 	return nil
@@ -101,6 +133,57 @@ func (a *App) AudioStop() error {
 	return nil
 }
 
+// AudioStartWebViewTap starts capturing the WKWebView helper processes'
+// audio via a Core Audio process tap and plays it through the normal
+// playback pipeline (EQ, gain, FFT, volume). The tapped helpers are muted at
+// source, so only the processed output is audible.
+//
+// Targeting is limited to the WebKit helper processes this application owns
+// (its own descendants / responsible children). Targeting by bundle ID would
+// tap the *shared*, system-wide WebKit processes and thereby capture and mute
+// other apps' audio too (e.g. Safari's YouTube playback) — the very bug this
+// resolves. Helper PIDs are resolved at each start so that a freshly spawned
+// helper (embed just mounted, or a video switch that respawned it) is picked
+// up. When no helper is owned yet the call returns an error so the frontend
+// can surface it.
+func (a *App) AudioStartWebViewTap() error {
+	if a.audioPlayer == nil {
+		return fmt.Errorf("audio player not initialized")
+	}
+	pids, err := audio.WebKitHelperPIDs()
+	if err != nil {
+		fmt.Printf("[Audio] WebView tap: WebKit helper enumeration failed: %v\n", err)
+		return err
+	}
+	if len(pids) == 0 {
+		err := fmt.Errorf("no WebKit helper process owned by this app was found to tap")
+		fmt.Printf("[Audio] WebView tap: %v\n", err)
+		return err
+	}
+	fmt.Printf("[Audio] WebView tap: targeting own WebKit helper PIDs %v\n", pids)
+	targets := audio.ProcessTapTargets{PIDs: pids}
+	remoteInitiated := a.consumeRemoteInitiatedNext()
+	if err := a.audioPlayer.PlayProcessTap(targets, 1.0); err != nil {
+		fmt.Printf("[Audio] WebView tap start failed: %v\n", err)
+		return err
+	}
+	// The tapped WebKit helper is muted at source either way (see the doc
+	// comment above); this additionally gates the *local* re-render so a
+	// remote-initiated embed session stays silent on the desktop while the
+	// separate relay tap (server/app_remote_relay_notify.go) keeps working.
+	a.audioPlayer.SetLocalMuted(remoteInitiated)
+	return nil
+}
+
+// AudioStopWebViewTap stops the WebView tap and returns the player to
+// normal file playback use.
+func (a *App) AudioStopWebViewTap() error {
+	if a.audioPlayer == nil {
+		return nil
+	}
+	return a.audioPlayer.Stop()
+}
+
 // AudioSeek seeks to a position in seconds
 func (a *App) AudioSeek(seconds float64) error {
 	if a.audioPlayer == nil {
@@ -115,6 +198,15 @@ func (a *App) AudioSetVolume(volume float64) {
 		return
 	}
 	a.audioPlayer.SetVolume(volume)
+}
+
+// AudioDebugOutputRMS returns the RMS of the most recent output callback
+// buffer (post volume/gain/EQ). Diagnostic probe for E2E volume checks.
+func (a *App) AudioDebugOutputRMS() float64 {
+	if a.audioPlayer == nil {
+		return 0
+	}
+	return sanitizeFiniteFloat64(a.audioPlayer.OutputRMS())
 }
 
 // AudioSetNormalisationGain sets loudness normalisation linear gain (1.0 = unity).
@@ -203,12 +295,21 @@ func (a *App) AudioSetNowPlayingMetadata(metadata map[string]interface{}) error 
 	artist, _ := metadata["artist"].(string)
 	album, _ := metadata["album"].(string)
 	artwork, _ := metadata["artwork"].(string)
+	// Optional: not every caller knows the library song/artwork ID (e.g.
+	// YouTube embeds), so these are additive and default to "" — see
+	// remoteStateHandler's songId/artworkId fields.
+	songID, _ := metadata["songId"].(string)
+	artworkID, _ := metadata["artworkId"].(string)
 
 	playing := false
 	if a.audioPlayer != nil {
 		playing = a.audioPlayer.IsPlaying()
 	}
 	a.updateOSNowPlayingMetadata(title, artist, album, artwork, playing)
+	a.mediaStateMu.Lock()
+	a.mediaSongID = strings.TrimSpace(songID)
+	a.mediaArtworkID = strings.TrimSpace(artworkID)
+	a.mediaStateMu.Unlock()
 	a.pushDiscordPresence(playing)
 	return nil
 }
@@ -278,13 +379,13 @@ func (a *App) StartDeviceWatcher() {
 				if listFP != lastListFP {
 					lastListFP = listFP
 					fmt.Println("[Audio] Device list changed, notifying frontend")
-					wailsRuntime.EventsEmit(a.ctx, "audio-devices-changed")
+					a.emit("audio-devices-changed", nil)
 				}
 				currentDefault := liveDefaultName(devices)
 				if currentDefault != lastDefaultName {
 					lastDefaultName = currentDefault
 					fmt.Printf("[Audio] Default device changed to: %s\n", currentDefault)
-					wailsRuntime.EventsEmit(a.ctx, "audio-default-device-changed")
+					a.emit("audio-default-device-changed", nil)
 				}
 			}
 		}

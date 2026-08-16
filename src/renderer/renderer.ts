@@ -19,6 +19,8 @@ import { initLazyLoader, observeNewImages } from './js/utils/lazy-loader.js';
 import { startPerformanceMonitor } from './js/utils/performance-monitor.js';
 import { musicApi } from './js/core/bridge.js';
 import { checkWails } from './js/core/wails-check.js';
+import { runYouTubeEmbedE2E } from './js/features/youtube-embed-e2e.js';
+import { applyShuffleSetting } from './js/core/settings-helpers.js';
 
 window.onerror = function (msg, url, line, col, error) {
     console.error(`[Global Error] ${msg} at ${url}:${line}:${col}`, error);
@@ -157,16 +159,13 @@ async function initApp() {
             restoreSavedSinkId(settings.audioOutputId);
         }
 
-        if (typeof settings.isShuffled === 'boolean') {
-            state.isShuffled = settings.isShuffled;
-            if (elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
-        }
+        applyShuffleSetting(settings, state, elements);
         if (typeof settings.groupAlbumArt === 'boolean') {
             state.groupAlbumArt = settings.groupAlbumArt;
             if (state.activeViewId === 'track-view') void showView('track-view');
         }
-        if (settings.enableYouTube) {
-            document.querySelectorAll('[data-feature="youtube"]').forEach(el => el.classList.remove('hidden'));
+        if (settings.enableYoutubeAdvancedModes) {
+            document.querySelectorAll('[data-feature="youtube-advanced"]').forEach(el => el.classList.remove('hidden'));
         }
     });
 
@@ -267,10 +266,7 @@ async function initApp() {
             if (typeof settings.groupAlbumArt === 'boolean') {
                 state.groupAlbumArt = settings.groupAlbumArt;
             }
-            if (typeof settings.isShuffled === 'boolean') {
-                state.isShuffled = settings.isShuffled;
-                if (elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
-            }
+            applyShuffleSetting(settings, state, elements);
         }
 
         if (window.go || settings.libraryPath) {
@@ -349,6 +345,7 @@ async function initApp() {
 
 initApp()
     .then(() => checkWails())
+    .then(() => runYouTubeEmbedE2E())
     .catch(err => console.error('App initialization failed:', err));
 
 // ─── 音声情報ボタン 波形ホバーアニメーション ───────────────────────────

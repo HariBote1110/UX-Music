@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 )
 
@@ -33,7 +34,7 @@ func TestAutoSyncPairedDevicesSelectivePullsOnlyRecentRemoteTracks(t *testing.T)
 	if result.PulledTracks != 1 || result.SkippedTracks != 0 {
 		t.Fatalf("expected selective sync to pull only one recent remote track, got %#v", result)
 	}
-	if assetRequests["/sync/assets/remote-recent/file"] != 1 || assetRequests["/sync/assets/remote-older/file"] != 0 {
+	if assetRequests["/v1/sync/assets/remote-recent/file"] != 1 || assetRequests["/v1/sync/assets/remote-older/file"] != 0 {
 		t.Fatalf("unexpected selective asset requests: %#v", assetRequests)
 	}
 }
@@ -51,7 +52,7 @@ func TestAutoSyncPairedDevicesMirrorPolicyPullsAllTracksByDefault(t *testing.T) 
 	if result.PulledTracks != 2 {
 		t.Fatalf("expected mirror policy to pull all tracks, got %#v", result)
 	}
-	if assetRequests["/sync/assets/remote-recent/file"] != 1 || assetRequests["/sync/assets/remote-older/file"] != 1 {
+	if assetRequests["/v1/sync/assets/remote-recent/file"] != 1 || assetRequests["/v1/sync/assets/remote-older/file"] != 1 {
 		t.Fatalf("unexpected mirror asset requests: %#v", assetRequests)
 	}
 }
@@ -85,7 +86,7 @@ func TestPrefetchSyncTracksDownloadsSpecifiedRemoteTracks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PrefetchSyncTracks: %v", err)
 	}
-	if result.Downloaded != 1 || assetRequests["/sync/assets/remote-older/file"] != 1 || assetRequests["/sync/assets/remote-recent/file"] != 0 {
+	if result.Downloaded != 1 || assetRequests["/v1/sync/assets/remote-older/file"] != 1 || assetRequests["/v1/sync/assets/remote-recent/file"] != 0 {
 		t.Fatalf("unexpected prefetch result=%#v requests=%#v", result, assetRequests)
 	}
 }
@@ -152,10 +153,10 @@ func syncCacheTestServer(t *testing.T, assetRequests map[string]int) *httptest.S
 	t.Helper()
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/sync/identity":
+		case "/v1/identity":
 			writeJSON(w, syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini", ProtocolVersion: syncProtocolVersion, Roles: []string{"LibraryHost"}})
-		case "/sync/library/snapshot":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/library/snapshot":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -167,13 +168,13 @@ func syncCacheTestServer(t *testing.T, assetRequests map[string]int) *httptest.S
 					syncCacheRemoteTrack("remote-older", "Older"),
 				},
 			})
-		case "/sync/assets/remote-recent/file", "/sync/assets/remote-older/file":
-			if r.Header.Get("X-UX-Music-Sync-Token") != "tok_host" {
+		case "/v1/sync/assets/remote-recent/file", "/v1/sync/assets/remote-older/file":
+			if r.Header.Get("Authorization") != "Bearer tok_host" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 			assetRequests[r.URL.Path]++
-			trackID := strings.TrimPrefix(strings.TrimSuffix(r.URL.Path, "/file"), "/sync/assets/")
+			trackID := strings.TrimPrefix(strings.TrimSuffix(r.URL.Path, "/file"), "/v1/sync/assets/")
 			w.Header().Set("Content-Disposition", `attachment; filename="`+trackID+`.flac"`)
 			_, _ = w.Write([]byte("remote-audio"))
 		default:
@@ -188,7 +189,7 @@ func seedSyncCacheSettings(t *testing.T, policy, baseURL string) {
 	t.Helper()
 	settings := map[string]interface{}{
 		syncDeviceIDSettingsKey:       "dev_portable",
-		syncAuthTokensSettingsKey:     map[string]interface{}{"dev_host": "tok_host"},
+		deviceAuthTokensSettingsKey:     map[string]interface{}{"dev_host": "tok_host"},
 		syncKnownPeersSettingsKey:     []syncKnownPeerRecord{{DeviceID: "dev_host", DisplayName: "Mac mini", BaseURL: baseURL, Roles: []string{"LibraryHost"}}},
 		syncMinFreeSpaceGBSettingsKey: 5.0,
 	}
@@ -254,4 +255,25 @@ func syncCacheSeedImportedFile(t *testing.T, id, title string) string {
 		t.Fatalf("seed library: %v", err)
 	}
 	return path
+}
+
+// 取り込み済みトラックの配置は SyncLibrary/<表示名>/<アーティスト>/<アルバム>/<ファイル名>。
+// このレイアウトはキャッシュの再スキャンや LRU 削除、既存ユーザーのディスク上の
+// 資産と結びついているため、レイアウト関数ではなくリテラルで固定する。
+// （他のテストは可読性のため syncCacheExpectedPath ヘルパーを使い続ける。）
+func TestSyncManagedTrackDestinationUsesLiteralSyncLibraryLayout(t *testing.T) {
+	newTempSyncStore(t)
+	got := syncManagedTrackDestination(
+		syncIdentityResponse{DeviceID: "dev_host", DisplayName: "Mac mini"},
+		syncCacheRemoteTrack("remote-recent", "Recent"),
+		"remote-recent.flac",
+	)
+	rel, err := filepath.Rel(config.GetUserDataPath(), got)
+	if err != nil {
+		t.Fatalf("relativise managed path: %v", err)
+	}
+	want := filepath.Join("SyncLibrary", "Mac mini", "Artist", "Album", "remote-recent.flac")
+	if rel != want {
+		t.Fatalf("managed library layout changed: got %q want %q", rel, want)
+	}
 }

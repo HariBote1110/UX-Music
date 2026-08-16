@@ -1,0 +1,70 @@
+import SwiftUI
+
+/// The three pages of the Watch app, swiped between horizontally like watchOS's own Music app
+/// (Now Playing and Queue & Volume are always reachable, regardless of what is selected in the
+/// library).
+enum WatchPage: Hashable {
+    case library
+    case nowPlaying
+    case queue
+}
+
+/// Root screen for the UX Music Watch app: a horizontally-paged `TabView` with the song library,
+/// Now Playing, and Queue & Volume as its three pages, so playback controls stay reachable at all
+/// times — tapping a song switches to Now Playing, but swiping back to Library never loses the
+/// ability to swipe forward again.
+struct WatchRootView: View {
+    @EnvironmentObject private var connectivity: WatchConnectivityReceiver
+    @EnvironmentObject private var library: WatchLocalLibrary
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var selectedPage: WatchPage = .library
+
+    var body: some View {
+        ZStack {
+            TabView(selection: $selectedPage) {
+                WatchSongListView(selectedPage: $selectedPage)
+                    .tag(WatchPage.library)
+                // `isActive` tells the page whether it is genuinely the one on screen right now —
+                // see `WatchNowPlayingView.hiddenCrownVolumeControl`'s doc comment for why that
+                // (rather than the page's own `onAppear`) must gate requesting Digital Crown focus:
+                // this paged `TabView` keeps adjacent pages mounted, so `onAppear` alone cannot tell
+                // "became visible" apart from "still mounted while another page is shown".
+                WatchNowPlayingView(isActive: selectedPage == .nowPlaying)
+                    .tag(WatchPage.nowPlaying)
+                WatchQueueVolumeView()
+                    .tag(WatchPage.queue)
+            }
+            .tabViewStyle(.page)
+
+            if connectivity.isReceiving {
+                VStack(spacing: 4) {
+                    ProgressView()
+                    Text(String(format: String(localized: "Receiving %@…"), connectivity.receivingTitle))
+                        .font(.caption2)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(8)
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Belt-and-braces: the library already updates live via `@Published songs` as files
+            // arrive, but re-reading from disk on foreground guards against any transfer that
+            // completed while the app was suspended and missed a `@Published` update.
+            if newPhase == .active {
+                library.reload()
+            }
+        }
+    }
+}
+
+#Preview {
+    let library = WatchLocalLibrary()
+    let player = WatchAudioPlayerService(library: library)
+    WatchRootView()
+        .environmentObject(library)
+        .environmentObject(player)
+        .environmentObject(player.progress)
+        .environmentObject(WatchConnectivityReceiver(library: library))
+}

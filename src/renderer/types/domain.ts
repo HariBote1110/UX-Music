@@ -56,7 +56,7 @@ export interface AppSettings {
   audioOutputId?: string | null;
   isShuffled?: boolean;
   groupAlbumArt?: boolean;
-  enableYouTube?: boolean;
+  enableYoutubeAdvancedModes?: boolean;
   libraryPath?: string;
   [key: string]: unknown;
 }

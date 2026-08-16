@@ -23,6 +23,10 @@
         <string>true</string>
         <key>NSHumanReadableCopyright</key>
         <string>{{.Info.Copyright}}</string>
+        <key>NSMicrophoneUsageDescription</key>
+        <string>YouTube 公式再生の音声をアプリ内でイコライザー・音量・ビジュアライザーに通して出力するため、UX Music 自身の再生音声を取り込みます。マイクや他アプリの音声を録音・保存することはありません。</string>
+        <key>NSAudioCaptureUsageDescription</key>
+        <string>YouTube 公式再生の音声をアプリ内でイコライザー・音量・ビジュアライザーに通して出力するため、UX Music 自身の再生音声を取り込みます。音声を録音・保存することはありません。</string>
         {{if .Info.FileAssociations}}
         <key>CFBundleDocumentTypes</key>
         <array>

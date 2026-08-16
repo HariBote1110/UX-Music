@@ -43,7 +43,7 @@ func probeSyncIdentity(client *http.Client, baseURL string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), clientTimeout(client))
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/sync/identity", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/identity", nil)
 	if err != nil {
 		return err
 	}

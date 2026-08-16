@@ -4,20 +4,32 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/lyricssync"
+	"ux-music-sidecar/internal/playlist"
+	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/pkg/audio"
 	"ux-music-sidecar/pkg/cdrip"
 	"ux-music-sidecar/pkg/mtp"
 	"ux-music-sidecar/pkg/normalize"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// eventsEmitFunc is the process-wide event emission hook shared by every App
+// instance and by package-level helpers that do not carry an *App (e.g.
+// emitSyncTransferProgress). It defaults to a no-op so the server package
+// stays headless-safe; app_wails_adapter.go's wireWailsRuntime rewires it to
+// wailsRuntime.EventsEmit when running under the GUI.
+var eventsEmitFunc = func(context.Context, string, interface{}) {}
 
 // App struct
 type App struct {
-	ctx               context.Context
+	ctx context.Context
+	// playCountsEmitter is the injectable event emitter backing emit below.
+	// The name predates its generalisation to all events (Phase 0-1); it is
+	// kept so existing tests can inject a spy without depending on internals.
 	playCountsEmitter func(context.Context, string, interface{})
+	dialogs           DialogProvider
 	ripper            *cdrip.Ripper
 	mtpManager        *mtp.Manager
 	normalizer        *normalize.Normalizer
@@ -31,15 +43,42 @@ type App struct {
 	mediaArtist       string
 	mediaAlbum        string
 	mediaArtwork      string
+	// mediaSongID/mediaArtworkID mirror the currently playing song's library
+	// ID and artwork hash (see artworkIDForRemoteSong), when the caller of
+	// AudioSetNowPlayingMetadata supplies them. Surfaced as top-level
+	// "songId"/"artworkId" in GET /v1/remote/state so mobile clients can
+	// resolve lyrics/artwork by ID instead of fuzzy title matching.
+	mediaSongID    string
+	mediaArtworkID string
 	deviceWatcherStop chan struct{}
+	// bootedOutResidentAgent records whether Startup booted out a resident
+	// `--serve` LaunchAgent to take over port 8765 (see performGUIHandoff in
+	// app_handoff.go). When set, Shutdown re-bootstraps the agent so it
+	// resumes its KeepAlive-managed run.
+	bootedOutResidentAgent bool
+	// remoteInitiatedNext marks that the *next* AudioPlay/AudioStartWebViewTap
+	// call originates from a remote-play-song command (POST
+	// /v1/remote/command {"action":"play-song"}) rather than a local click,
+	// so the desktop should stay silent for that session while its LAN relay
+	// keeps working unchanged. Set via MarkNextPlaybackRemoteInitiated
+	// (called by the renderer's handleRemotePlaySongEvent before playSong),
+	// consumed exactly once by consumeRemoteInitiatedNext. See
+	// progress/remote-play-song.md.
+	remoteInitiatedNext atomic.Bool
+	// sidecarMu guards sidecarTargetDeviceID, the paired iOS device (if any)
+	// currently receiving the fullscreen sidecar now-playing directive via
+	// GET /v1/remote/state (see app_sidecar.go).
+	sidecarMu             sync.Mutex
+	sidecarTargetDeviceID string
 }
 
 // NewApp creates a new App struct
 func NewApp() *App {
+	playlist.SetSettingsProvider(store.Instance)
+	lyricssync.SetSettingsProvider(store.Instance)
+
 	return &App{
-		playCountsEmitter: func(ctx context.Context, name string, data interface{}) {
-			wailsRuntime.EventsEmit(ctx, name, data)
-		},
+		dialogs:      headlessDialogProvider{},
 		ripper:       cdrip.NewRipper("", config.FFmpegPath, config.GetUserDataPath()),
 		mtpManager:   mtp.NewManager(),
 		normalizer:   normalize.NewNormalizer(config.FFmpegPath, config.FFprobePath),
@@ -47,20 +86,45 @@ func NewApp() *App {
 	}
 }
 
+// emit forwards an event to the frontend via the injected emitter. In GUI
+// mode this reaches wailsRuntime.EventsEmit (wired by wireWailsRuntime);
+// headless it is a safe no-op. data may be nil for events that carry no
+// payload.
+func (a *App) emit(name string, data interface{}) {
+	if a == nil || a.ctx == nil {
+		return
+	}
+	emitter := a.playCountsEmitter
+	if emitter == nil {
+		emitter = eventsEmitFunc
+	}
+	emitter(a.ctx, name, data)
+}
+
 // Startup is called when the app starts. The context is saved
 // so we can call the runtime methods
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+	a.wireWailsRuntime()
 
 	a.bindLyricsSyncProgressEmitter()
 
+	// Before binding port 8765, check whether a resident `--serve` LaunchAgent
+	// is already holding it and hand off if so (Phase 0-3; see
+	// app_handoff.go). If another GUI instance holds it instead, this
+	// deliberately does not take over — StartLANServer's bind failure is
+	// logged but non-fatal.
+	a.bootedOutResidentAgent = performGUIHandoff(handoffProbeBaseURL)
+
 	// Start the LAN HTTP server for Apple Watch / iPhone / Mobile companion
-	StartWearServer(ctx, a)
-	fmt.Printf("[Wear] Server address: %s\n", GetWearServerAddress())
+	StartLANServer(ctx, a)
+	fmt.Printf("[LAN] Server address: %s\n", GetLANServerAddress())
 
 	a.initOSMediaControls()
+	a.initTray()
 
 	// Initialize Audio Player
+	audio.SetFFmpegPaths(config.FFmpegPath, config.FFprobePath)
 	player, err := audio.NewPlayer()
 	if err != nil {
 		println("Error initializing audio player:", err.Error())
@@ -71,9 +135,7 @@ func (a *App) Startup(ctx context.Context) {
 		a.audioPlayer.SetOnFinished(func() {
 			a.updateOSPlaybackState(false)
 			a.pushDiscordPresence(false)
-			if a.ctx != nil {
-				wailsRuntime.EventsEmit(a.ctx, "audio-playback-finished")
-			}
+			a.emit("audio-playback-finished", nil)
 		})
 	}
 
@@ -97,10 +159,7 @@ func (a *App) bindLyricsSyncProgressEmitter() {
 		return
 	}
 	a.lyricsSyncer.SetProgressHandler(func(stage string, percent float64) {
-		if a.ctx == nil {
-			return
-		}
-		wailsRuntime.EventsEmit(a.ctx, "lyrics-sync-progress", map[string]interface{}{
+		a.emit("lyrics-sync-progress", map[string]interface{}{
 			"stage":   stage,
 			"percent": percent,
 		})
@@ -108,5 +167,4 @@ func (a *App) bindLyricsSyncProgressEmitter() {
 }
 
 // pushDiscordPresence updates Discord Rich Presence state.
-// TODO: implement with internal/discord package.
 func (a *App) pushDiscordPresence(_ bool) {}

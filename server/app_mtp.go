@@ -6,10 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"ux-music-sidecar/internal/pathutil"
 	"ux-music-sidecar/pkg/mtp"
 
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
-	"golang.org/x/text/unicode/norm"
 	"golang.org/x/text/width"
 )
 
@@ -39,17 +38,17 @@ func (a *App) MTPWalk(opts mtp.WalkOptions) (interface{}, error) {
 
 func (a *App) MTPUploadFiles(opts mtp.TransferOptions) error {
 	return a.mtpManager.UploadFiles(opts, func(data interface{}) {
-		wailsRuntime.EventsEmit(a.ctx, "mtp-upload-preprocess", data)
+		a.emit("mtp-upload-preprocess", data)
 	}, func(prog mtp.TransferProgress) {
-		wailsRuntime.EventsEmit(a.ctx, "mtp-upload-progress", prog)
+		a.emit("mtp-upload-progress", prog)
 	})
 }
 
 func (a *App) MTPDownloadFiles(opts mtp.TransferOptions) error {
 	return a.mtpManager.DownloadFiles(opts, func(data interface{}) {
-		wailsRuntime.EventsEmit(a.ctx, "mtp-download-preprocess", data)
+		a.emit("mtp-download-preprocess", data)
 	}, func(prog mtp.TransferProgress) {
-		wailsRuntime.EventsEmit(a.ctx, "mtp-download-progress", prog)
+		a.emit("mtp-download-progress", prog)
 	})
 }
 
@@ -86,9 +85,9 @@ func (a *App) MTPUploadFilesWithStructure(data map[string]interface{}) (map[stri
 			Sources:     sources,
 			Destination: dest,
 		}, func(data interface{}) {
-			wailsRuntime.EventsEmit(a.ctx, "mtp-upload-preprocess", data)
+			a.emit("mtp-upload-preprocess", data)
 		}, func(prog mtp.TransferProgress) {
-			wailsRuntime.EventsEmit(a.ctx, "mtp-upload-progress", prog)
+			a.emit("mtp-upload-progress", prog)
 		})
 
 		if err != nil {
@@ -110,7 +109,7 @@ func (a *App) MTPDeleteFile(opts mtp.DeleteOptions) error {
 }
 
 func (a *App) SelectMTPDownloadFolder() (string, error) {
-	return wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+	return a.dialogs.OpenDirectoryDialog(a.ctx, DialogOptions{
 		Title: "ダウンロード先フォルダを選択",
 	})
 }
@@ -120,7 +119,7 @@ func (a *App) MTPMakeDirectory(opts mtp.MakeDirOptions) error {
 }
 
 func (a *App) MTPSelectDownloadFolder() (string, error) {
-	return wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+	return a.dialogs.OpenDirectoryDialog(a.ctx, DialogOptions{
 		Title: "ダウンロード先フォルダを選択",
 	})
 }
@@ -238,7 +237,7 @@ func (a *App) MTPGetUntransferredSongs(librarySongs []interface{}) (map[string]i
 }
 
 func normalizeFileNameGo(fileName string) string {
-	name := norm.NFC.String(fileName)
+	name := pathutil.NFC(fileName)
 	name = width.Fold.String(name)
 	name = strings.ToLower(name)
 	return name
@@ -314,7 +313,7 @@ func (a *App) startMTPMonitor() {
 					a.mtpMu.Lock()
 					a.mtpConnected = false
 					a.mtpMu.Unlock()
-					wailsRuntime.EventsEmit(a.ctx, "mtp-device-disconnected")
+					a.emit("mtp-device-disconnected", nil)
 					// Reset to fast polling after disconnect
 					currentInterval = minInterval
 					ticker.Reset(currentInterval)
@@ -394,7 +393,7 @@ func (a *App) startMTPMonitor() {
 			ticker.Reset(currentInterval)
 
 			fmt.Printf("[MTP Monitor] Device connected: %s\n", deviceName)
-			wailsRuntime.EventsEmit(a.ctx, "mtp-device-connected", payload)
+			a.emit("mtp-device-connected", payload)
 		}
 	}()
 }

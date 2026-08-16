@@ -5,6 +5,15 @@ import { getCurrentTime, getDuration, isPlaying, togglePlayPause, seek } from '.
 import { playNextSong, playPrevSong, playSong } from './playback-manager.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { animateIconPaths } from '../ui/player-ui.js';
+import { isInterludeText } from './lyrics-translation.js';
+import { EQUALIZER_COLOURS_CHANGE_EVENT } from '../ui/utils.js';
+import { isEmbedPlayerActive, reattachEmbedPlayer } from './youtube-embed-player.js';
+import { resolveFullscreenMediaMode } from './fullscreen-media.js';
+
+/** 間奏（[間奏] などのマーカーや空行）は文字を消し、行高だけ残す。 */
+function fsDisplayText(text: string | undefined): string {
+    return isInterludeText(text) ? ' ' : (text ?? '');
+}
 
 // ---- 内部状態 ----
 let overlayEl: HTMLElement | null = null;
@@ -15,6 +24,8 @@ let currentTimeEl: HTMLElement | null = null;
 let durationEl: HTMLElement | null = null;
 let playBtn: HTMLElement | null = null;
 let artworkEl: HTMLImageElement | null = null;
+let artworkWrapperEl: HTMLElement | null = null;
+let videoSlotEl: HTMLElement | null = null;
 let titleEl: HTMLElement | null = null;
 let artistEl: HTMLElement | null = null;
 
@@ -65,6 +76,11 @@ export function openFullscreenView() {
 }
 
 export function closeFullscreenView() {
+    // 公式再生（embed）中はプレイヤー iframe をサイドバーの Now Playing
+    // コンテナへ戻す（破棄しないことで音声タップと再生を維持する）。
+    if (isEmbedPlayerActive() && elements.nowPlayingArtworkContainer) {
+        reattachEmbedPlayer(elements.nowPlayingArtworkContainer);
+    }
     overlayEl?.classList.remove('fs-open');
     stopTicker();
     document.removeEventListener('keydown', handleKeydown);
@@ -76,6 +92,7 @@ export function closeFullscreenView() {
 export function notifyFullscreenSongChange() {
     if (!isOpen()) return;
     syncSongInfo();
+    syncMedia();
     syncLyrics();
     syncColours();
     if (activeTab === 'queue') renderQueue();
@@ -85,6 +102,11 @@ export function notifyFullscreenSongChange() {
 window.addEventListener('fullscreen:lyrics-change', () => {
     if (!isOpen()) return;
     syncLyrics();
+});
+
+window.addEventListener(EQUALIZER_COLOURS_CHANGE_EVENT, () => {
+    if (!isOpen()) return;
+    syncColours();
 });
 
 // ---- 内部ユーティリティ ----
@@ -119,8 +141,27 @@ function stopTicker() {
 
 // ---- 状態同期 ----
 
+/**
+ * フルスクリーン左側のメディア表示を同期する。公式再生（embed）中は
+ * 稼働中のプレイヤー iframe をフルスクリーンの映像スロットへ「移動」して
+ * 表示し（破棄すると音声タップが切れるため）、静止画ジャケットを隠す。
+ * embed 非稼働時は従来どおり静止画ジャケットを表示する。
+ */
+function syncMedia() {
+    const embedActive = isEmbedPlayerActive();
+    const mode = resolveFullscreenMediaMode(embedActive);
+    if (mode === 'video' && videoSlotEl && reattachEmbedPlayer(videoSlotEl)) {
+        videoSlotEl.classList.remove('hidden');
+        artworkWrapperEl?.classList.add('hidden');
+    } else {
+        videoSlotEl?.classList.add('hidden');
+        artworkWrapperEl?.classList.remove('hidden');
+    }
+}
+
 function syncAll() {
     syncSongInfo();
+    syncMedia();
     syncLyrics();
     syncColours();
     syncPlayState(isPlaying());
@@ -269,14 +310,14 @@ function syncLyrics() {
                 p.classList.add('fs-line-bilingual');
                 const pri = document.createElement('span');
                 pri.className = 'fs-line-primary';
-                pri.textContent = line.text;
+                pri.textContent = fsDisplayText(line.text);
                 p.appendChild(pri);
                 const tr = document.createElement('span');
                 tr.className = 'fs-line-translation';
                 tr.textContent = line.translation;
                 p.appendChild(tr);
             } else {
-                p.textContent = line.text;
+                p.textContent = fsDisplayText(line.text);
             }
             lyricsEl.appendChild(p);
         });
@@ -297,14 +338,14 @@ function syncLyrics() {
                 p.classList.add('fs-line-bilingual');
                 const pri = document.createElement('span');
                 pri.className = 'fs-line-primary';
-                pri.textContent = line.text;
+                pri.textContent = fsDisplayText(line.text);
                 p.appendChild(pri);
                 const tr = document.createElement('span');
                 tr.className = 'fs-line-translation';
                 tr.textContent = line.translation;
                 p.appendChild(tr);
             } else {
-                p.textContent = typeof line === 'string' ? line : (line.text ?? '');
+                p.textContent = fsDisplayText(typeof line === 'string' ? line : (line.text ?? ''));
             }
             lyricsEl.appendChild(p);
         });
@@ -391,6 +432,9 @@ const FS_POS_EXIT     = 130;
 const FS_POS_ENTER    = -30;
 const fsDashOf = (pos: number, len: number) => len - (pos / 100) * len;
 
+// 2本のストロークをずらして動かす際の遅延量（ms）。上の線を先行させる。
+const FS_SHUFFLE_STAGGER = 120;
+
 function initialiseFsShuffleLoop() {
     const initPaths = (btn: HTMLElement | null, topClass: string, botClass: string) => {
         if (!btn) return;
@@ -429,21 +473,24 @@ async function runFsShuffleAnimation() {
 
     const timingExit  = { duration: 200, easing: 'ease-in',                       fill: 'forwards' as FillMode };
     const timingEnter = { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' as FillMode };
+    // 下の線は上の線より遅らせて動かす（ずらしアニメーション）。
+    const timingExitBottom  = { ...timingExit,  delay: FS_SHUFFLE_STAGGER };
+    const timingEnterBottom = { ...timingEnter, delay: FS_SHUFFLE_STAGGER };
 
     const exitAnims: Animation[] = [
         pathTop.animate([{ strokeDashoffset: fsDashOf(FS_POS_STANDARD, topLen) },    { strokeDashoffset: fsDashOf(FS_POS_EXIT, topLen) }],    timingExit),
-        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_EXIT, bottomLen) }], timingExit),
+        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_EXIT, bottomLen) }], timingExitBottom),
     ];
     if (headTop)    exitAnims.push(headTop.animate([{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExit));
-    if (headBottom) exitAnims.push(headBottom.animate([{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExit));
+    if (headBottom) exitAnims.push(headBottom.animate([{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExitBottom));
     await Promise.all(exitAnims.map(a => a.finished));
 
     const enterAnims: Animation[] = [
         pathTop.animate([{ strokeDashoffset: fsDashOf(FS_POS_ENTER, topLen) },    { strokeDashoffset: fsDashOf(FS_POS_STANDARD, topLen) }],    timingEnter),
-        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_ENTER, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }], timingEnter),
+        pathBottom.animate([{ strokeDashoffset: fsDashOf(FS_POS_ENTER, bottomLen) }, { strokeDashoffset: fsDashOf(FS_POS_STANDARD, bottomLen) }], timingEnterBottom),
     ];
     if (headTop)    enterAnims.push(headTop.animate([{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter));
-    if (headBottom) enterAnims.push(headBottom.animate([{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter));
+    if (headBottom) enterAnims.push(headBottom.animate([{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnterBottom));
     await Promise.all(enterAnims.map(a => a.finished));
 
     pathTop.style.strokeDashoffset    = '0';
@@ -513,9 +560,10 @@ function buildOverlay(): HTMLElement {
         </button>
 
         <div class="fs-left">
-            <div class="fs-artwork-wrapper">
+            <div class="fs-artwork-wrapper" id="fs-artwork-wrapper">
                 <img id="fs-artwork" src="${DEFAULT_ARTWORK_URL}" alt="Album Artwork">
             </div>
+            <div class="fs-video-slot hidden" id="fs-video-slot"></div>
             <div class="fs-track-info">
                 <div class="fs-title" id="fs-title">曲を選択してください</div>
                 <div class="fs-artist" id="fs-artist"></div>
@@ -578,6 +626,8 @@ function buildOverlay(): HTMLElement {
 
     // DOM参照
     artworkEl     = el.querySelector('#fs-artwork');
+    artworkWrapperEl = el.querySelector('#fs-artwork-wrapper');
+    videoSlotEl   = el.querySelector('#fs-video-slot');
     titleEl       = el.querySelector('#fs-title');
     artistEl      = el.querySelector('#fs-artist');
     progressFill  = el.querySelector('#fs-progress-fill');

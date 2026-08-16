@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -41,13 +40,26 @@ func RunSyncCLI(args []string) (bool, error) {
 			return true, err
 		}
 		return true, writeSyncCLIJSON(result)
+	case "--serve":
+		return true, RunHeadlessServe()
 	case "--sync-serve":
-		// Start the LAN sync HTTP server head-less (no Wails GUI) so a machine
-		// can act as a sync receiver for verification without a desktop session.
-		app := NewApp()
-		StartWearServer(context.Background(), app)
-		fmt.Println("[Sync] head-less sync server listening on :" + wearServerPort)
-		select {}
+		// Deprecated alias for --serve, kept so existing verification scripts
+		// and launchd plists keep working. See markdown/appletv-servermode-plan.md
+		// Phase 0-2.
+		fmt.Println("[Serve] --sync-serve is deprecated; use --serve instead.")
+		return true, RunHeadlessServe()
+	case "--install-agent":
+		if err := installLaunchAgent(); err != nil {
+			return true, err
+		}
+		fmt.Println("[Serve] installed and bootstrapped com.uxmusic.serve LaunchAgent")
+		return true, nil
+	case "--uninstall-agent":
+		if err := uninstallLaunchAgent(); err != nil {
+			return true, err
+		}
+		fmt.Println("[Serve] booted out and removed com.uxmusic.serve LaunchAgent")
+		return true, nil
 	case "--sync-pull":
 		if len(args) < 2 {
 			return true, fmt.Errorf("--sync-pull requires a peer base URL")

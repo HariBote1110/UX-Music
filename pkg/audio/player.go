@@ -19,7 +19,6 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
-	"ux-music-sidecar/internal/config"
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/riff"
@@ -48,9 +47,60 @@ const (
 
 const longPauseStreamRefreshAfter = 30 * time.Minute
 
+// outputFramesPerBuffer is the PortAudio callback buffer size (in frames) used
+// for every output stream opened by newPortAudioOutputStream.
+const outputFramesPerBuffer = 4096
+
+// startPrefillPollInterval / startPrefillMaxWait bound how long
+// startDecodedPlayback waits for decoderLoop to fill the ring buffer before
+// starting the output stream. The cap exists so a slow disk, a cold decoder
+// start-up, or a stalled decoder can never block playback from starting —
+// worst case the first callback reads a short buffer, which is still better
+// than hanging the whole app on first play.
+const (
+	startPrefillPollInterval = 2 * time.Millisecond
+	startPrefillMaxWait      = 150 * time.Millisecond
+)
+
+// liveStartFadeSeconds is the duration of the output ramp applied at the start
+// of a live-capture (process tap) playback. It guards against an onset click /
+// DC step when the captured stream first opens. File playback is not faded.
+const liveStartFadeSeconds = 0.12
+
 var equalizerFrequencies = [equalizerBandCount]float64{31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000}
 
 var resolvedCommandPaths sync.Map
+
+// ffmpegPath and ffprobePath hold externally injected executable paths for
+// ffmpeg/ffprobe, avoiding a direct dependency on internal/config. Callers
+// should invoke SetFFmpegPaths before relying on ffmpeg/ffprobe resolution.
+var (
+	ffmpegPath  atomic.Value
+	ffprobePath atomic.Value
+)
+
+// SetFFmpegPaths injects the resolved ffmpeg/ffprobe executable paths to be
+// used by resolveCommandPath. This allows callers outside pkg/audio (e.g.
+// server/) to configure the paths without pkg/audio depending on their
+// configuration package.
+func SetFFmpegPaths(ffmpeg, ffprobe string) {
+	ffmpegPath.Store(ffmpeg)
+	ffprobePath.Store(ffprobe)
+}
+
+func loadFFmpegPath() string {
+	if v, ok := ffmpegPath.Load().(string); ok {
+		return v
+	}
+	return ""
+}
+
+func loadFFprobePath() string {
+	if v, ok := ffprobePath.Load().(string); ok {
+		return v
+	}
+	return ""
+}
 
 type audioStream interface {
 	Start() error
@@ -94,6 +144,13 @@ type Player struct {
 	decoder          Decoder
 	file             *os.File
 	openOutputStream func() (audioStream, error)
+	// currentPath is the path of the track last started by Play (guarded by mu).
+	// It lets Resume rebuild the track from scratch after a long pause / system
+	// sleep, where the cached stream or subprocess-backed decoder may be dead.
+	currentPath string
+	// restartTrack rebuilds the current track at the given position; nil falls
+	// back to restartCurrentTrack. Exists as a test seam for Resume recovery.
+	restartTrack func(position float64) error
 
 	// Playback state (atomic for lock-free access in callback)
 	playing      atomic.Bool
@@ -105,6 +162,44 @@ type Player struct {
 	channels     int
 	volume       atomic.Uint64 // stored as float64 bits
 	baseGain     atomic.Uint64 // stored as float64 bits, default 1.0 (e.g. Wails loudness)
+	// outputRMS holds the RMS of the most recent output callback buffer
+	// (post volume/baseGain/EQ), stored as float64 bits. Diagnostic probe
+	// used by the E2E volume check; written once per callback (RT-safe).
+	outputRMS atomic.Uint64
+	// liveSource is true while playing a live capture (process tap) source,
+	// which has no meaningful position/duration and cannot seek.
+	liveSource atomic.Bool
+	// localMuted silences the local speaker output in processAudio while
+	// still consuming the ring buffer, so position/state keep progressing
+	// and (for live-tap sources) the relay's independent capture is
+	// unaffected. Used for remote-initiated playback (see
+	// server/app_audio.go's MarkNextPlaybackRemoteInitiated).
+	localMuted atomic.Bool
+	// liveFadeRemaining / liveFadeTotal drive a short start-of-playback fade-in
+	// for live-capture sources, counted in interleaved output samples. File
+	// playback leaves both at 0 (no fade). Written by playLiveSource (under mu,
+	// before the stream starts) and decremented in processAudio (audio thread).
+	liveFadeRemaining atomic.Int64
+	liveFadeTotal     atomic.Int64
+
+	// liveMeter measures the loudness of the incoming live-capture stream
+	// (pre-gain) so the estimated normalisation gain can be corrected against
+	// what actually arrives. Fed by processAudio (audio thread), read by the
+	// correction goroutine. nil while no correction is running.
+	// See player_live_loudness.go.
+	liveMeter atomic.Pointer[loudnessMeter]
+	// liveCorrectionTarget / liveCorrectionCurrent hold the loudness
+	// correction multiplier applied on top of baseGain, as float64 bits
+	// (zero value means "no correction"; see gainFromBits). The current value
+	// ramps towards the target inside processAudio so changes never step.
+	liveCorrectionTarget  atomic.Uint64
+	liveCorrectionCurrent atomic.Uint64
+	// liveCorrectionStep is the per-sample one-pole ramp coefficient.
+	liveCorrectionStep atomic.Uint64
+	// liveCorrectionTargetLUFS is the loudness the corrected output aims for.
+	liveCorrectionTargetLUFS atomic.Uint64
+	liveCorrectionMu         sync.Mutex
+	liveCorrectionStop       chan struct{}
 
 	// Ring buffer for pre-decoded audio data
 	ringBuf       []float32     // Pre-decoded float32 samples
@@ -130,6 +225,7 @@ type Player struct {
 	fftLocalBuf []float64      // Local buffer for collecting samples
 	fftChan     chan []float64 // Channel for async FFT processing
 	fftMonoPool sync.Pool      // Reusable mono sample slices (avoids alloc in processAudio)
+	fftSmoothed []float64      // Linear-domain smoothed magnitudes (AnalyserNode-style temporal smoothing)
 
 	// Equaliser
 	eqSettingsMu sync.RWMutex
@@ -178,7 +274,82 @@ func NewPlayer() (*Player, error) {
 		p.currentDevice = defaultDevice
 	}
 
+	// Warm up the output device now (adds at most ~warmUpDuration to this
+	// one-time start-up call) so the CoreAudio IOProc creation cost is paid
+	// here instead of during the user's first Play(). This runs
+	// synchronously rather than in a detached goroutine: PortAudio's
+	// underlying C library is not safe for concurrent global calls, and an
+	// async warm-up could still be mid-flight when Close() (or SetDevice's
+	// Terminate/Initialize) calls into PortAudio from another goroutine.
+	p.warmUpOutputDevice()
+
 	return p, nil
+}
+
+// warmUpOutputDevice opens, starts, briefly runs and stops a short silent
+// output stream at a neutral format (48kHz/stereo), so PortAudio/CoreAudio
+// creates and warms up the real-time IOProc thread during start-up instead
+// of during the user's first Play(). On macOS the HAL powers up the DAC and
+// negotiates format/latency on first IOProc creation — a one-time cost that
+// is otherwise paid inline during the first user-visible playback (worst
+// case for Bluetooth/USB devices), which is one of the two causes of a
+// broken first play.
+//
+// This is entirely best-effort: every error path returns silently and never
+// touches Player state used by real playback (p.stream, p.sampleRate, …). A
+// machine with no output device, or a device that rejects 48kHz stereo, must
+// still end up with a fully working Player — warm-up failing must never fail
+// NewPlayer.
+func (p *Player) warmUpOutputDevice() {
+	defer func() {
+		// This runs off the user-visible path; guard against any unexpected
+		// panic deep in the cgo bindings so it can never bring the app down.
+		_ = recover()
+	}()
+
+	const (
+		warmUpSampleRate      = 48000
+		warmUpChannels        = 2
+		warmUpFramesPerBuffer = 1024
+		warmUpDuration        = 30 * time.Millisecond
+	)
+
+	device := p.resolvedOutputDevice()
+	if device == nil {
+		return
+	}
+
+	channels := min(warmUpChannels, device.MaxOutputChannels)
+	if channels <= 0 {
+		return
+	}
+
+	params := portaudio.StreamParameters{
+		Output: portaudio.StreamDeviceParameters{
+			Device:   device,
+			Channels: channels,
+			Latency:  device.DefaultLowOutputLatency,
+		},
+		SampleRate:      warmUpSampleRate,
+		FramesPerBuffer: warmUpFramesPerBuffer,
+	}
+
+	stream, err := portaudio.OpenStream(params, func(out []float32) {
+		// Silence only — this stream must never be audible.
+		for i := range out {
+			out[i] = 0
+		}
+	})
+	if err != nil {
+		return
+	}
+	defer stream.Close()
+
+	if err := stream.Start(); err != nil {
+		return
+	}
+	time.Sleep(warmUpDuration)
+	_ = stream.Stop()
 }
 
 // initFFT initializes FFT buffers
@@ -186,6 +357,7 @@ func (p *Player) initFFT(size int) {
 	p.fftSize = size
 	p.fftSamples = make([]float64, 0, size)
 	p.fftResult = make([]uint8, size/2)
+	p.fftSmoothed = make([]float64, size/2)
 	p.fftWindow = make([]float64, size)
 	p.fftLocalBuf = make([]float64, 0, size) // Local buffer for batch collection
 	p.fftChan = make(chan []float64, 4)      // Buffered channel for async FFT
@@ -438,6 +610,13 @@ func (p *Player) GetCurrentDevice() string {
 }
 
 // Play starts playback of an audio file. gainLinear scales samples after volume (1.0 = unity).
+// isRemoteSource は再生ソースが http/https の URL かどうかを判定する。
+// リモートソースはローカルファイルを開かず ffmpeg デコーダーへ直接渡す。
+func isRemoteSource(source string) bool {
+	lower := strings.ToLower(source)
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+}
+
 func (p *Player) Play(filePath string, gainLinear float64) error {
 	p.shutdownDecoderGoroutine()
 
@@ -458,6 +637,18 @@ func (p *Player) Play(filePath string, gainLinear float64) error {
 	if p.decoder != nil {
 		p.decoder.Close()
 		p.decoder = nil
+	}
+	p.liveSource.Store(false)
+
+	if isRemoteSource(filePath) {
+		// リモート URL（YouTube ストリーミング等）は拡張子判定もローカル
+		// ファイルも使えないため、URL を直接読める ffmpeg デコーダーへ委ねる。
+		dec, err := newFFmpegDecoder(filePath)
+		if err != nil {
+			return fmt.Errorf("failed to open remote stream: %w", err)
+		}
+		p.decoder = dec
+		return p.startDecodedPlayback(filePath)
 	}
 
 	// Open file
@@ -514,10 +705,21 @@ func (p *Player) Play(filePath string, gainLinear float64) error {
 		return fmt.Errorf("unsupported format: %s", ext)
 	}
 
+	return p.startDecodedPlayback(filePath)
+}
+
+// startDecodedPlayback は決定済みの p.decoder から出力ストリームを組み立てて
+// 再生を開始する。呼び出し元が p.mu を保持していることを前提とする。
+func (p *Player) startDecodedPlayback(filePath string) error {
 	p.sampleRate = p.decoder.SampleRate()
 	p.channels = p.decoder.Channels()
 	p.totalSamples = p.decoder.Length()
 	p.position.Store(0)
+	// File playback is not faded; playLiveSource re-arms these after this call
+	// for live-capture sources. Reset here so a prior live fade never lingers
+	// into a subsequent file playback.
+	p.liveFadeRemaining.Store(0)
+	p.liveFadeTotal.Store(0)
 
 	// Initialize ring buffer (1 second of audio)
 	p.ringBufSize = p.sampleRate * p.channels * 2 // 2 seconds buffer
@@ -538,11 +740,22 @@ func (p *Player) Play(filePath string, gainLinear float64) error {
 		return err
 	}
 	p.stream = stream
+	p.currentPath = filePath
 	p.playing.Store(true)
 	p.paused.Store(false)
 
-	// Start background decoder goroutine
-	go p.decoderLoop()
+	// Start background decoder goroutine. The stop channel is passed as an
+	// argument so it is captured before shutdownDecoderGoroutine can nil the
+	// field — reading p.decoderStop inside the goroutine would race with a
+	// rapid Stop and leave the loop unaware of the shutdown request.
+	go p.decoderLoop(p.decoderStop, p.decoderDone)
+
+	// 初回再生はデコーダ／ディスク I/O／cgo 呼び出しがすべてコールドな
+	// ため、decoderLoop がリングバッファへ十分書き込む前に stream.Start()
+	// してしまうと、最初のコールバックが半端なバッファを読み音が途切れる。
+	// stream.Start() の前に事前充填を待つ（上限あり — 詳細は
+	// startPrefillMaxWait のコメントを参照）。
+	p.waitForPrefill(p.decoderStop, p.decoderDone)
 
 	if err := stream.Start(); err != nil {
 		return fmt.Errorf("failed to start stream: %w", err)
@@ -589,7 +802,7 @@ func (p *Player) newPortAudioOutputStream() (*portaudio.Stream, error) {
 			Latency:  device.DefaultLowOutputLatency,
 		},
 		SampleRate:      float64(p.sampleRate),
-		FramesPerBuffer: 4096,
+		FramesPerBuffer: outputFramesPerBuffer,
 	}
 	stream, err := portaudio.OpenStream(params, func(out []float32) {
 		p.processAudio(out)
@@ -623,15 +836,65 @@ func (p *Player) reopenStream() error {
 	return nil
 }
 
-// decoderLoop runs in background and fills the ring buffer
-func (p *Player) decoderLoop() {
-	defer close(p.decoderDone)
-	// Capture stop channel at goroutine start so we can check it even after
-	// shutdownDecoderGoroutine() nils p.decoderStop.
-	stopCh := p.decoderStop
+// prefillSatisfied reports whether the ring buffer holds enough decoded
+// audio for the output stream to start safely. It is a pure function so the
+// start-of-playback decision can be unit-tested without PortAudio.
+//
+// A decoder that has already finished (decoderFinished) always counts as
+// ready, even with an empty or partially filled buffer — a track shorter
+// than one FramesPerBuffer worth of samples must never make the caller wait
+// for a threshold it can never reach.
+func prefillSatisfied(available, framesPerBuffer, channels int, decoderFinished bool) bool {
+	if decoderFinished {
+		return true
+	}
+	if framesPerBuffer <= 0 || channels <= 0 {
+		return true
+	}
+	return available >= framesPerBuffer*channels
+}
+
+// waitForPrefill blocks until the ring buffer has been prefilled enough for
+// stream.Start() to begin on a full buffer, or until one of the following
+// happens first: the decoder finishes (doneCh closes — e.g. a very short
+// track), the decoder/track is superseded by a concurrent Stop/Play (stopCh
+// closes), or startPrefillMaxWait elapses. The cap guarantees a slow disk or
+// a stalled decoder can never block playback from starting.
+func (p *Player) waitForPrefill(stopCh, doneCh chan struct{}) {
+	deadline := time.Now().Add(startPrefillMaxWait)
+	for {
+		select {
+		case <-stopCh:
+			return
+		default:
+		}
+
+		decoderFinished := false
+		select {
+		case <-doneCh:
+			decoderFinished = true
+		default:
+		}
+
+		if prefillSatisfied(int(p.ringAvailable.Load()), outputFramesPerBuffer, p.channels, decoderFinished) {
+			return
+		}
+		if time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(startPrefillPollInterval)
+	}
+}
+
+// decoderLoop runs in background and fills the ring buffer. stopCh is the
+// decoderStop channel captured at spawn time (see startDecodedPlayback).
+func (p *Player) decoderLoop(stopCh, doneCh chan struct{}) {
+	defer close(doneCh)
 
 	// Temporary buffer for reading from decoder
 	readBuf := make([]byte, 8192)
+	// Lazily allocated buffer for float32-capable decoders (live tap sources).
+	var readFloatBuf []float32
 
 	for {
 		select {
@@ -658,22 +921,44 @@ func (p *Player) decoderLoop() {
 			return
 		}
 
-		n, err := decoder.Read(readBuf)
-		if n > 0 {
-			// Convert int16 to float32 and write to ring buffer
-			samples := n / 2
-			writePos := p.ringWritePos.Load()
-
-			for i := 0; i < samples; i++ {
-				sample := int16(readBuf[i*2]) | int16(readBuf[i*2+1])<<8
-				floatSample := float32(sample) / 32768.0
-
-				idx := (writePos + int64(i)) % int64(p.ringBufSize)
-				p.ringBuf[idx] = floatSample
+		var n int
+		var err error
+		if floatDecoder, ok := decoder.(float32Decoder); ok {
+			// Float32-capable decoders (live tap sources) feed the float32
+			// ring directly — no int16 quantisation round-trip.
+			if readFloatBuf == nil {
+				readFloatBuf = make([]float32, 4096)
 			}
+			var samples int
+			samples, err = floatDecoder.ReadFloat32(readFloatBuf)
+			if samples > 0 {
+				writePos := p.ringWritePos.Load()
+				for i := 0; i < samples; i++ {
+					idx := (writePos + int64(i)) % int64(p.ringBufSize)
+					p.ringBuf[idx] = readFloatBuf[i]
+				}
+				p.ringWritePos.Store((writePos + int64(samples)) % int64(p.ringBufSize))
+				p.ringAvailable.Add(int64(samples))
+			}
+			n = samples
+		} else {
+			n, err = decoder.Read(readBuf)
+			if n > 0 {
+				// Convert int16 to float32 and write to ring buffer
+				samples := n / 2
+				writePos := p.ringWritePos.Load()
 
-			p.ringWritePos.Store((writePos + int64(samples)) % int64(p.ringBufSize))
-			p.ringAvailable.Add(int64(samples))
+				for i := 0; i < samples; i++ {
+					sample := int16(readBuf[i*2]) | int16(readBuf[i*2+1])<<8
+					floatSample := float32(sample) / 32768.0
+
+					idx := (writePos + int64(i)) % int64(p.ringBufSize)
+					p.ringBuf[idx] = floatSample
+				}
+
+				p.ringWritePos.Store((writePos + int64(samples)) % int64(p.ringBufSize))
+				p.ringAvailable.Add(int64(samples))
+			}
 		}
 		p.mu.RUnlock()
 
@@ -734,12 +1019,25 @@ func (p *Player) calculateFFT(input []float64) {
 
 	// Convert to magnitude and scale to 0-255
 	// We only need first half (Nyquist)
+	//
+	// fft.FFTReal returns UNNORMALISED magnitudes (they scale with fftSize),
+	// so we divide by fftSize to mimic WebAudio's AnalyserNode, which
+	// normalises internally before the dB conversion. Without this, typical
+	// music produces magnitudes in the hundreds, 20*log10(mag) is positive,
+	// and every bin clamps to maxDecibels -> the visualiser bars peg at 255
+	// and appear frozen.
+	//
+	// We then apply AnalyserNode-style temporal smoothing in the LINEAR
+	// magnitude domain (smoothingTimeConstant-equivalent, k=0.8) before
+	// converting to dB, so bars decay smoothly instead of jumping frame to
+	// frame.
+	const smoothingFactor = 0.8
 	for i := 0; i < len(p.fftResult) && i < len(fftRes); i++ {
-		mag := cmplx.Abs(fftRes[i])
+		mag := cmplx.Abs(fftRes[i]) / float64(p.fftSize)
 
-		// Log scale mapping simluating AnalyserNode
-		// mag approaches 0 -> -inf dB
-		// mag ~ 1 -> 0 dB? (depends on normalization)
+		smoothed := smoothingFactor*p.fftSmoothed[i] + (1-smoothingFactor)*mag
+		p.fftSmoothed[i] = smoothed
+		mag = smoothed
 
 		var db float64
 		if mag > 0 {
@@ -784,6 +1082,7 @@ func (p *Player) processAudio(out []float32) {
 	paused := p.paused.Load()
 	volume := p.getVolume()
 	baseGainLinear := math.Float64frombits(p.baseGain.Load())
+	muted := p.localMuted.Load()
 
 	if !playing || paused {
 		// Fill with silence
@@ -811,10 +1110,36 @@ func (p *Player) processAudio(out []float32) {
 		samplesToRead = int(available)
 	}
 
+	// Start-of-playback fade-in (live-capture sources only; 0 for file
+	// playback). Ramps the final output from silence to unity so the onset of
+	// the captured stream cannot click.
+	fadeRemaining := p.liveFadeRemaining.Load()
+	fadeTotal := p.liveFadeTotal.Load()
+	fading := fadeTotal > 0 && fadeRemaining > 0
+
+	// Live-capture loudness correction: measure the incoming stream and ramp
+	// the correction multiplier towards its target. Both are inert (nil meter,
+	// unity gains) for file playback. See player_live_loudness.go.
+	meter := p.liveMeter.Load()
+	correction := gainFromBits(p.liveCorrectionCurrent.Load())
+	correctionTarget := gainFromBits(p.liveCorrectionTarget.Load())
+	correctionStep := math.Float64frombits(p.liveCorrectionStep.Load())
+	correcting := correctionStep > 0 && correction != correctionTarget
+
 	// Read samples from ring buffer
+	sumSquares := 0.0
 	for i := 0; i < samplesToRead; i++ {
 		idx := (readPos + int64(i)) % ringBufSize
 		outputSample := float64(ringBuf[idx])
+
+		// The meter must see the stream as captured: before EQ, before any
+		// gain. The correction is then computed against this measurement.
+		if meter != nil && channels > 0 {
+			meter.processSample(i%channels, outputSample)
+		}
+		if correcting {
+			correction += (correctionTarget - correction) * correctionStep
+		}
 
 		if useEqualizer {
 			outputSample *= float64(eqCfg.preamp)
@@ -826,13 +1151,46 @@ func (p *Player) processAudio(out []float32) {
 			}
 		}
 
-		outputSample *= volume * baseGainLinear
+		// The normalisation gain is applied and clipped BEFORE the user
+		// volume. Clipping after the volume multiply would pin the output
+		// to the clip ceiling whenever baseGain > 1 (embed loudness
+		// normalisation), making the upper range of the volume slider
+		// inaudible. Post-clip, volume always scales the signal linearly.
+		outputSample *= baseGainLinear * correction
 		if outputSample > 1 {
 			outputSample = 1
 		} else if outputSample < -1 {
 			outputSample = -1
 		}
+		outputSample *= volume
+
+		if fading {
+			// factor ramps 0 → 1 as fadeRemaining counts down to 0.
+			outputSample *= 1.0 - float64(fadeRemaining)/float64(fadeTotal)
+			fadeRemaining--
+			if fadeRemaining <= 0 {
+				fading = false
+			}
+		}
+
+		if muted {
+			outputSample = 0
+		}
+
 		out[i] = float32(outputSample)
+		sumSquares += outputSample * outputSample
+	}
+	if fadeTotal > 0 {
+		if fadeRemaining < 0 {
+			fadeRemaining = 0
+		}
+		p.liveFadeRemaining.Store(fadeRemaining)
+	}
+	if correcting {
+		p.setLiveCorrectionCurrentGain(correction)
+	}
+	if samplesToRead > 0 {
+		p.outputRMS.Store(math.Float64bits(math.Sqrt(sumSquares / float64(samplesToRead))))
 	}
 
 	// Fill remaining with silence
@@ -890,27 +1248,70 @@ func (p *Player) Pause() error {
 	return nil
 }
 
-// Resume resumes playback
+// Resume resumes playback.
+//
+// For a short pause the cached output stream is simply restarted. After a long
+// pause (e.g. the machine slept for hours), or when restarting the cached stream
+// fails, the stream and — critically — a subprocess-backed decoder (FFmpeg for
+// m4a/aac/ogg) may be dead, so reviving the old stream alone yields silent,
+// wedged playback. In that case the track is rebuilt from scratch at the saved
+// position, matching a fresh Play().
 func (p *Player) Resume() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	stream := p.stream
-
 	if stream == nil {
+		p.mu.Unlock()
 		return nil
 	}
 
-	if p.shouldRefreshStreamAfterPause() {
-		if err := p.reopenStream(); err != nil {
-			return err
+	if !p.shouldRefreshStreamAfterPause() {
+		err := stream.Start()
+		if err == nil || errors.Is(err, portaudio.StreamIsNotStopped) {
+			p.paused.Store(false)
+			p.pausedSince.Store(0)
+			p.mu.Unlock()
+			return nil
 		}
-	} else if err := stream.Start(); err != nil && !errors.Is(err, portaudio.StreamIsNotStopped) {
-		if reopenErr := p.reopenStream(); reopenErr != nil {
-			return fmt.Errorf("failed to resume stream (%w); reopen also failed: %v", err, reopenErr)
-		}
+		// Reviving the cached stream failed — fall through to a full rebuild.
+	}
+	p.mu.Unlock()
+
+	position := p.GetPosition()
+	restart := p.restartTrack
+	if restart == nil {
+		restart = p.restartCurrentTrack
+	}
+	if err := restart(position); err != nil {
+		return fmt.Errorf("failed to resume after long pause: %w", err)
+	}
+	return nil
+}
+
+// restartCurrentTrack rebuilds the current track from scratch (file, decoder and
+// output stream) and resumes at the given position. Used by Resume to recover
+// from a long pause / system sleep where reusing cached playback state would
+// otherwise leave playback silent and wedged.
+func (p *Player) restartCurrentTrack(position float64) error {
+	p.mu.RLock()
+	path := p.currentPath
+	p.mu.RUnlock()
+
+	if path == "" {
+		return errors.New("no current track to restart")
+	}
+	if path == liveTapSourceLabel {
+		return errors.New("live tap source cannot be restarted from a path")
 	}
 
+	gain := math.Float64frombits(p.baseGain.Load())
+	if err := p.Play(path, gain); err != nil {
+		return err
+	}
+	if position > 0 {
+		if err := p.Seek(position); err != nil {
+			return err
+		}
+	}
 	p.paused.Store(false)
 	p.pausedSince.Store(0)
 	return nil
@@ -934,7 +1335,11 @@ func (p *Player) Stop() error {
 		p.stream.Close()
 		p.stream = nil
 	}
+	p.stopLiveSourceLocked()
 	p.mu.Unlock()
+
+	// 補正は曲（ライブ捕捉）に紐づく状態なので、次の再生へ持ち越さない。
+	p.StopLiveLoudnessCorrection()
 
 	p.playing.Store(false)
 	p.paused.Store(false)
@@ -949,6 +1354,11 @@ func (p *Player) Stop() error {
 
 // Seek seeks to a position in seconds
 func (p *Player) Seek(seconds float64) error {
+	if p.liveSource.Load() {
+		// Live capture sources have no timeline to seek within.
+		return nil
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -975,6 +1385,26 @@ func (p *Player) Seek(seconds float64) error {
 
 	p.position.Store(targetSample)
 	return nil
+}
+
+// OutputRMS returns the RMS of the most recent output callback buffer
+// (post volume/baseGain/EQ). Diagnostic probe for the E2E volume check.
+func (p *Player) OutputRMS() float64 {
+	return math.Float64frombits(p.outputRMS.Load())
+}
+
+// SetLocalMuted silences (true) or restores (false) local speaker output.
+// Playback keeps running underneath — position advances, EQ/FFT still see
+// samples, and (for the WebView-tap path) the LAN relay's independent
+// capture is untouched — only the value written to the output callback
+// buffer is gated.
+func (p *Player) SetLocalMuted(muted bool) {
+	p.localMuted.Store(muted)
+}
+
+// IsLocalMuted reports whether local speaker output is currently silenced.
+func (p *Player) IsLocalMuted() bool {
+	return p.localMuted.Load()
 }
 
 // SetVolume sets the volume (0.0 to 1.0)
@@ -1031,6 +1461,11 @@ func (p *Player) SetEqualizer(active bool, preampDB float64, bands []float64) {
 
 // GetPosition returns the current position in seconds
 func (p *Player) GetPosition() float64 {
+	if p.liveSource.Load() {
+		// A live capture has no meaningful position.
+		return 0
+	}
+
 	p.mu.RLock()
 	sampleRate := p.sampleRate
 	p.mu.RUnlock()
@@ -1573,13 +2008,13 @@ func resolveCommandPath(name string) (string, error) {
 		resolvedCommandPaths.Delete(name)
 	}
 
-	if name == "ffmpeg" && isExecutablePath(config.FFmpegPath) {
-		resolvedCommandPaths.Store(name, config.FFmpegPath)
-		return config.FFmpegPath, nil
+	if name == "ffmpeg" && isExecutablePath(loadFFmpegPath()) {
+		resolvedCommandPaths.Store(name, loadFFmpegPath())
+		return loadFFmpegPath(), nil
 	}
-	if name == "ffprobe" && isExecutablePath(config.FFprobePath) {
-		resolvedCommandPaths.Store(name, config.FFprobePath)
-		return config.FFprobePath, nil
+	if name == "ffprobe" && isExecutablePath(loadFFprobePath()) {
+		resolvedCommandPaths.Store(name, loadFFprobePath())
+		return loadFFprobePath(), nil
 	}
 
 	path, err := exec.LookPath(name)

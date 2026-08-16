@@ -7,6 +7,7 @@ import { getLrcEditorHtml } from './lrc-editor-markup.js';
 import { applyAlignedTimestamps, validateAutoSyncPrereqs } from './lrc-auto-sync.js';
 import { togglePlayPause, seek, getCurrentTime, getDuration, isPlaying } from './player.js';
 import { getWailsApp, isWailsMode } from '../core/bridge.js';
+import { isInterludeText } from './lyrics-translation.js';
 
 const electronAPI = window.electronAPI;
 
@@ -52,11 +53,6 @@ function createLyricLine(text, timestamp = null) {
         text,
         timestamp,
     };
-}
-
-function isInterludeText(text) {
-    const normalised = (text || '').trim().toLowerCase();
-    return normalised === '' || normalised === '[間奏]' || normalised === '[interlude]' || normalised === '(interlude)';
 }
 
 function clamp(value, min, max) {
@@ -1415,7 +1411,11 @@ async function handleSaveLrc() {
         .filter(line => typeof line.timestamp === 'number')
         .sort((a, b) => a.timestamp - b.timestamp);
 
-    const bodyLines = sortedLines.map(line => `[${formatLrcTime(line.timestamp)}]${line.text}`);
+    // 間奏マーカー（[間奏] など）はファイルには空行として書き出す。表示・和訳側は空行を間奏として扱う。
+    const bodyLines = sortedLines.map(line => {
+        const text = isInterludeText(line.text) ? '' : line.text;
+        return `[${formatLrcTime(line.timestamp)}]${text}`;
+    });
     const lrcContent = [...lrcMetadataLines, ...bodyLines].join('\n');
 
     const baseName = getBasename(currentEditorSong.path).replace(getExtname(currentEditorSong.path), '');

@@ -2,14 +2,20 @@ package server
 
 import (
 	"fmt"
+	"sync"
 	"strings"
 	"time"
 	"ux-music-sidecar/internal/playlist"
 	"ux-music-sidecar/internal/store"
 
 	"github.com/google/uuid"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+var immediatePlaybackSyncState struct {
+	sync.Mutex
+	running bool
+	pending bool
+}
 
 // LoadLibrary loads the library and emits an event
 func (a *App) LoadLibrary() {
@@ -21,7 +27,7 @@ func (a *App) LoadLibrary() {
 			"albums": make(map[string]interface{}),
 		}
 	}
-	wailsRuntime.EventsEmit(a.ctx, "load-library", data)
+	a.emit("load-library", data)
 }
 
 func (a *App) GetUnifiedLibrary() (map[string]interface{}, error) {
@@ -73,7 +79,7 @@ func (a *App) RequestInitialLibrary() {
 func (a *App) LoadPlayCounts() {
 	fmt.Println("[Wails] LoadPlayCounts called")
 	counts, _ := store.Instance.LoadMap("playcounts")
-	wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", counts)
+	a.emit("play-counts-updated", counts)
 }
 
 // IncrementPlayCount increments the play count for a song
@@ -96,8 +102,64 @@ func (a *App) IncrementPlayCount(song map[string]interface{}) {
 	}
 
 	if a.ctx != nil {
-		wailsRuntime.EventsEmit(a.ctx, "play-counts-updated", countsMap)
+		a.emit("play-counts-updated", countsMap)
 	}
+	scheduleImmediatePlaybackSync(a)
+}
+
+func scheduleImmediatePlaybackSync(a *App) {
+	if a == nil {
+		return
+	}
+	if !hasImmediatePlaybackSyncPeer() {
+		return
+	}
+	immediatePlaybackSyncState.Lock()
+	immediatePlaybackSyncState.pending = true
+	if immediatePlaybackSyncState.running {
+		immediatePlaybackSyncState.Unlock()
+		return
+	}
+	immediatePlaybackSyncState.running = true
+	immediatePlaybackSyncState.Unlock()
+
+	go func() {
+		for {
+			immediatePlaybackSyncState.Lock()
+			if !immediatePlaybackSyncState.pending {
+				immediatePlaybackSyncState.running = false
+				immediatePlaybackSyncState.Unlock()
+				return
+			}
+			immediatePlaybackSyncState.pending = false
+			immediatePlaybackSyncState.Unlock()
+
+			if _, err := a.flushSyncPlayEventsToReachablePeers(); err != nil {
+				fmt.Printf("[Wails] immediate playback sync failed: %v\n", err)
+			}
+		}
+	}()
+}
+
+func hasImmediatePlaybackSyncPeer() bool {
+	settings, err := store.Instance.LoadMap("settings")
+	if err != nil {
+		return false
+	}
+	rawTokens, _ := settings[deviceAuthTokensSettingsKey].(map[string]interface{})
+	if len(rawTokens) == 0 {
+		return false
+	}
+	for _, peer := range decodeSyncKnownPeerRecords(settings[syncKnownPeersSettingsKey]) {
+		deviceID := strings.TrimSpace(peer.DeviceID)
+		if deviceID == "" || strings.TrimSpace(peer.BaseURL) == "" {
+			continue
+		}
+		if token, _ := rawTokens[deviceID].(string); strings.TrimSpace(token) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // SongFinished handles the end of a song, updating analysis score
@@ -166,7 +228,7 @@ func (a *App) SongSkipped(data map[string]interface{}) {
 func (a *App) RequestPlaylistsWithArtwork() {
 	playlistNames, err := playlist.GetAllPlaylists()
 	if err != nil {
-		wailsRuntime.EventsEmit(a.ctx, "playlists-updated", []interface{}{})
+		a.emit("playlists-updated", []interface{}{})
 		return
 	}
 
@@ -204,7 +266,7 @@ func (a *App) RequestPlaylistsWithArtwork() {
 		})
 	}
 
-	wailsRuntime.EventsEmit(a.ctx, "playlists-updated", playlists)
+	a.emit("playlists-updated", playlists)
 }
 
 // GetPlaylistDetails returns the songs in a playlist
@@ -241,25 +303,11 @@ func (a *App) GetSituationPlaylists() (interface{}, error) {
 		return result, nil
 	}
 
-	if recent := pickRecentlyAdded(songs, situationPlaylistMaxItems); len(recent) > 0 {
-		result["recently_added"] = map[string]interface{}{
-			"name":  "最近追加した曲",
-			"songs": recent,
-		}
-	}
-
 	counts, _ := store.Instance.LoadMap("playcounts")
-	if mostPlayed := pickMostPlayed(songs, counts, situationPlaylistMaxItems); len(mostPlayed) > 0 {
-		result["most_played"] = map[string]interface{}{
-			"name":  "よく聴く曲",
-			"songs": mostPlayed,
-		}
-	}
-
-	if random := pickRandomPick(songs, situationPlaylistMaxItems); len(random) > 0 {
-		result["random_pick"] = map[string]interface{}{
-			"name":  "ランダムピック",
-			"songs": random,
+	for _, bucket := range generateSituationPlaylists(songs, counts) {
+		result[bucket.key] = map[string]interface{}{
+			"name":  bucket.name,
+			"songs": bucket.songs,
 		}
 	}
 

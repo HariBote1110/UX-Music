@@ -4,14 +4,13 @@
 
 ## 🛠️ 技術スタック
 
-- **フレームワーク**: Electron
-- **言語**: JavaScript (Node.js), HTML5, CSS3
-- **主要ライブラリ**:
-    - `sharp`: アートワークの画像処理
-    - `@distube/ytdl-core`: YouTube関連処理
+- **フレームワーク**: Wails v2（Go バックエンド + TypeScript/HTML/CSS フロントエンド）。旧 Electron 版は `Electron_Based_UX-Music/` に比較用として残置（下記参照）。
+- **言語**: Go, TypeScript, HTML5, CSS3
+- **主要ライブラリ / ツール**:
+    - `wails`: デスクトップアプリのビルド・実行基盤
+    - `sharp`: アートワークの画像処理（フロントエンド側）
     - `music-metadata`: 音声ファイルのメタデータ解析
-    - `fluent-ffmpeg`: 音声ファイルのラウドネス値解析
-    - `electron-builder`: アプリケーションのビルド
+    - `ffmpeg` / `ffprobe`: 音声ファイルのラウドネス値解析・トランスコード
 
 ## 💻 環境構築
 
@@ -28,8 +27,9 @@
 
 3.  アプリケーションを開発モードで起動します。
     ```bash
-    npm start
+    wails dev
     ```
+    （`Makefile` の `make dev` からも起動できます。）
 
 ## 📌 比較用ディレクトリの扱い
 

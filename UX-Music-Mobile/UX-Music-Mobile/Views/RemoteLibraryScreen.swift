@@ -1,12 +1,20 @@
 import SwiftUI
 
-private enum RemoteViewMode: String, CaseIterable {
+private enum RemoteViewMode: Int, CaseIterable {
     case albums, playlists, songs
+
+    var title: String {
+        switch self {
+        case .albums: return String(localized: "Albums")
+        case .playlists: return String(localized: "Playlists")
+        case .songs: return String(localized: "Songs")
+        }
+    }
 }
 
 private enum RemoteLibraryNav: Hashable {
     case album(Album)
-    case playlist(WearDesktopPlaylist)
+    case playlist(RemoteDesktopPlaylist)
 }
 
 struct RemoteLibraryScreen: View {
@@ -15,61 +23,55 @@ struct RemoteLibraryScreen: View {
     @State private var query = ""
     @State private var path = NavigationPath()
     @State private var showDesktopPlaylistImport = false
-    @State private var remotePlaylistRows: [WearDesktopPlaylist] = []
+    @State private var remotePlaylistRows: [RemoteDesktopPlaylist] = []
     @State private var remotePlaylistsError: String?
     @State private var isLoadingRemotePlaylists = false
     /// Avoid refetching on every `NavigationStack` pop; reset when this screen is recreated (e.g. changing tabs).
     @State private var didScheduleRemoteLoad = false
+    @State private var showAddYouTubeLink = false
+
+    private var viewModeIndex: Binding<Int> {
+        Binding(
+            get: { viewMode.rawValue },
+            set: { newValue in
+                if let mode = RemoteViewMode(rawValue: newValue) { viewMode = mode }
+            }
+        )
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
-            VStack(spacing: 0) {
-                searchField
-                libraryBody
+            // See `LibraryBottomBleed`: without it the grids/lists stop at the tab bar's top edge
+            // instead of scrolling under it. Mirrors `LocalLibraryScreen`: the paged `TabView`
+            // (inside `libraryBody`) insets its own pages by the safe area, so the pages are let
+            // through to the screen's bottom edge here and that inset is re-applied per page as
+            // scroll content margin via `page(bottomInset:)`.
+            //
+            // Rows on this screen use context menus rather than `swipeActions`, so there is no
+            // gesture conflict with the page swipe to guard against (see `LocalLibraryScreen`'s
+            // note on why `swipeActions` was removed there).
+            LibraryBottomBleed { bottomInset in
+                VStack(spacing: 0) {
+                    LibrarySegmentedHeader(
+                        segments: RemoteViewMode.allCases.map(\.title),
+                        selectedIndex: viewModeIndex
+                    )
+                    LibrarySearchRow(query: $query) { remoteActions }
+                    if let status = model.bulkDownloadStatus {
+                        BulkDownloadStatusBanner(status: status)
+                    }
+                    libraryBody(bottomInset: bottomInset)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black)
-            .navigationTitle("Remote Library")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Picker("View", selection: $viewMode) {
-                        Text("Albums").tag(RemoteViewMode.albums)
-                        Text("Playlists").tag(RemoteViewMode.playlists)
-                        Text("Songs").tag(RemoteViewMode.songs)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 320)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 16) {
-                        if model.serverConfig.isConfigured {
-                            Button {
-                                showDesktopPlaylistImport = true
-                            } label: {
-                                Image(systemName: "arrow.down.doc")
-                            }
-                            .accessibilityLabel("デスクトップのプレイリストを取り込む")
-                        }
-                        Button {
-                            Task {
-                                await model.refreshLibrary()
-                                await model.refreshLoudnessOnly()
-                                if viewMode == .playlists {
-                                    await loadRemotePlaylists()
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                        .accessibilityLabel("Refresh library")
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showDesktopPlaylistImport) {
                 DesktopPlaylistImportView(isPresented: $showDesktopPlaylistImport)
+                    .environment(model)
+            }
+            .sheet(isPresented: $showAddYouTubeLink) {
+                AddYouTubeLinkSheet(isPresented: $showAddYouTubeLink)
                     .environment(model)
             }
             .navigationDestination(for: RemoteLibraryNav.self) { route in
@@ -106,22 +108,72 @@ struct RemoteLibraryScreen: View {
         }
     }
 
-    private var searchField: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Search…", text: $query)
-                .textFieldStyle(.plain)
+    private var remoteActions: some View {
+        HStack(spacing: 8) {
+            if model.serverConfig.isConfigured {
+                Button {
+                    showDesktopPlaylistImport = true
+                } label: {
+                    Image(systemName: "arrow.down.doc")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                }
+                .modifier(LibraryHeaderGlassButtonStyle())
+                .accessibilityLabel("Import Desktop Playlist")
+            }
+            Button {
+                Task {
+                    await model.refreshLibrary()
+                    await model.refreshLoudnessOnly()
+                    if viewMode == .playlists {
+                        await loadRemotePlaylists()
+                    }
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+            }
+            .modifier(LibraryHeaderGlassButtonStyle())
+            .accessibilityLabel("Refresh Library")
+
+            if model.serverConfig.isConfigured {
+                Menu {
+                    Button {
+                        showAddYouTubeLink = true
+                    } label: {
+                        Label("Add YouTube URL", systemImage: "play.rectangle")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                }
+                .modifier(LibraryHeaderGlassButtonStyle())
+                .accessibilityLabel("More Actions")
+            }
         }
-        .padding(10)
-        .background(Color(red: 0.17, green: 0.17, blue: 0.18))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+    }
+
+    /// Every page fills the paged `TabView` so the three segments are the same height and the
+    /// swipe gesture is live over the whole area, not just where a page happens to have content.
+    /// `bottomInset` is the tab bar's safe area, re-applied to the page's scroll content because
+    /// the pages themselves extend past it (see `body`). Mirrors
+    /// `LocalLibraryScreen.page(bottomInset:)`.
+    private func page<Content: View>(
+        bottomInset: CGFloat,
+        @ViewBuilder _ content: () -> Content
+    ) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentMargins(.bottom, bottomInset, for: .scrollContent)
     }
 
     @ViewBuilder
-    private var libraryBody: some View {
+    private func libraryBody(bottomInset: CGFloat) -> some View {
         switch model.libraryState {
         case .idle:
             Color.clear
@@ -132,7 +184,6 @@ struct RemoteLibraryScreen: View {
         case .failed:
             errorView
         case .loaded(let songs):
-            let filtered = filter(songs)
             VStack(spacing: 0) {
                 if let err = model.downloadError {
                     HStack(alignment: .top, spacing: 8) {
@@ -142,7 +193,7 @@ struct RemoteLibraryScreen: View {
                             .font(.footnote)
                             .foregroundStyle(.primary)
                         Spacer(minLength: 0)
-                        Button("Dismiss") {
+                        Button("Close") {
                             model.downloadError = nil
                         }
                         .font(.footnote)
@@ -150,18 +201,45 @@ struct RemoteLibraryScreen: View {
                     .padding(10)
                     .background(Color.orange.opacity(0.15))
                 }
-                if viewMode == .playlists {
-                    remotePlaylistsPane(librarySongs: songs)
-                } else if filtered.isEmpty {
-                    Text(songs.isEmpty ? "No songs on server" : "No matching songs")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if viewMode == .albums {
-                    remoteAlbumsGrid(songs: filtered)
-                } else {
-                    remoteSongsList(songs: filtered)
+                TabView(selection: $viewMode) {
+                    page(bottomInset: bottomInset) { albumsPane(songs: songs) }
+                        .tag(RemoteViewMode.albums)
+                    page(bottomInset: bottomInset) { playlistsPane(songs: songs) }
+                        .tag(RemoteViewMode.playlists)
+                    page(bottomInset: bottomInset) { songsPane(songs: songs) }
+                        .tag(RemoteViewMode.songs)
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func albumsPane(songs: [Song]) -> some View {
+        let albums = filterAlbums(Album.fromSongs(songs))
+        if albums.isEmpty {
+            Text(songs.isEmpty ? "No Songs on Server" : "No Matching Songs")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            remoteAlbumsGrid(albums: albums)
+        }
+    }
+
+    private func playlistsPane(songs: [Song]) -> some View {
+        remotePlaylistsPane(librarySongs: songs)
+    }
+
+    @ViewBuilder
+    private func songsPane(songs: [Song]) -> some View {
+        let filtered = SongSearchFilter.filter(songs, query: query)
+        if filtered.isEmpty {
+            Text(songs.isEmpty ? "No Songs on Server" : "No Matching Songs")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            remoteSongsList(songs: filtered)
         }
     }
 
@@ -170,7 +248,7 @@ struct RemoteLibraryScreen: View {
             Image(systemName: "wifi.slash")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text("Failed to load library")
+            Text("Failed to Load Library")
                 .foregroundStyle(.secondary)
             Button("Retry") {
                 Task { await model.refreshLibrary() }
@@ -179,14 +257,12 @@ struct RemoteLibraryScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func filter(_ songs: [Song]) -> [Song] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return songs }
-        return songs.filter {
-            $0.title.lowercased().contains(q)
-                || $0.artist.lowercased().contains(q)
-                || $0.album.lowercased().contains(q)
-        }
+    /// Keeps an album entry (with all of its tracks, not just the matching ones) when any of its
+    /// songs match the current search query — album membership shouldn't fragment mid-scroll just
+    /// because one track's tag didn't match.
+    private func filterAlbums(_ albums: [Album]) -> [Album] {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return albums }
+        return albums.filter { !SongSearchFilter.filter($0.songs, query: query).isEmpty }
     }
 
     private func loadRemotePlaylists() async {
@@ -216,13 +292,13 @@ struct RemoteLibraryScreen: View {
         }
     }
 
-    private func resolveSongs(for playlist: WearDesktopPlaylist, library: [Song]) -> [Song] {
+    private func resolveSongs(for playlist: RemoteDesktopPlaylist, library: [Song]) -> [Song] {
         var byId: [String: Song] = [:]
         for s in library { byId[s.id] = s }
         return playlist.songIds.compactMap { byId[$0] }
     }
 
-    private func filterPlaylists(_ rows: [WearDesktopPlaylist]) -> [WearDesktopPlaylist] {
+    private func filterPlaylists(_ rows: [RemoteDesktopPlaylist]) -> [RemoteDesktopPlaylist] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return rows }
         return rows.filter { $0.name.lowercased().contains(q) }
@@ -231,24 +307,24 @@ struct RemoteLibraryScreen: View {
     @ViewBuilder
     private func remotePlaylistsPane(librarySongs: [Song]) -> some View {
         if !model.serverConfig.isConfigured {
-            Text("設定でデスクトップに接続すると、プレイリストを表示してダウンロードできます。")
+            Text("Connect to desktop in Settings to browse and download playlists.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if isLoadingRemotePlaylists, remotePlaylistRows.isEmpty, remotePlaylistsError == nil {
-            ProgressView("プレイリストを読み込み中…")
+            ProgressView("Loading Playlists…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = remotePlaylistsError {
             VStack(spacing: 12) {
-                Text("プレイリストを取得できませんでした")
+                Text("Couldn't Load Playlists")
                     .font(.body.weight(.semibold))
                 Text(err)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                Button("再試行") {
+                Button("Retry") {
                     Task { await loadRemotePlaylists() }
                 }
             }
@@ -257,7 +333,7 @@ struct RemoteLibraryScreen: View {
         } else {
             let filteredRows = filterPlaylists(remotePlaylistRows)
             if filteredRows.isEmpty {
-                Text(query.isEmpty ? "デスクトップにプレイリストがありません" : "一致するプレイリストがありません")
+                Text(query.isEmpty ? "No Playlists on Desktop" : "No Matching Playlists")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -266,7 +342,7 @@ struct RemoteLibraryScreen: View {
         }
     }
 
-    private func remotePlaylistsGrid(rows: [WearDesktopPlaylist], librarySongs: [Song]) -> some View {
+    private func remotePlaylistsGrid(rows: [RemoteDesktopPlaylist], librarySongs: [Song]) -> some View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, pl in
@@ -303,7 +379,7 @@ struct RemoteLibraryScreen: View {
                                 .lineLimit(2)
                                 .foregroundStyle(.primary)
                                 .multilineTextAlignment(.leading)
-                            Text("\(count) songs")
+                            Text(String(format: String(localized: "%ld Songs"), count))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -315,9 +391,13 @@ struct RemoteLibraryScreen: View {
                             Button {
                                 Task { await model.downloadPlaylistSongs(songsInPl) }
                             } label: {
-                                Label("プレイリストをダウンロード", systemImage: "arrow.down.circle")
+                                Label("Download Playlist", systemImage: "arrow.down.circle")
                             }
                         }
+                        WatchTransferBulkMenuItem(
+                            title: "Transfer Playlist to Apple Watch",
+                            songs: songsInPl
+                        )
                     }
                 }
             }
@@ -326,9 +406,8 @@ struct RemoteLibraryScreen: View {
         }
     }
 
-    private func remoteAlbumsGrid(songs: [Song]) -> some View {
-        let albums = Album.fromSongs(songs)
-        return ScrollView {
+    private func remoteAlbumsGrid(albums: [Album]) -> some View {
+        ScrollView {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(albums) { album in
                     Button {
@@ -362,9 +441,13 @@ struct RemoteLibraryScreen: View {
                             Button {
                                 Task { await model.downloadAlbum(album) }
                             } label: {
-                                Label("Download album", systemImage: "arrow.down.circle")
+                                Label("Download Album", systemImage: "arrow.down.circle")
                             }
                         }
+                        WatchTransferBulkMenuItem(
+                            title: "Transfer Album to Apple Watch",
+                            songs: album.songs
+                        )
                     }
                 }
             }
@@ -374,51 +457,65 @@ struct RemoteLibraryScreen: View {
     }
 
     private func remoteSongsList(songs: [Song]) -> some View {
-        ScrollView {
+        // Mirrors `LocalLibraryScreen`'s rule (task 1): only draw album-run connectors while the
+        // shared `librarySortOrder` is `.album` — Remote has no sort control of its own, but its
+        // song order comes straight from the server in album order, so this stays meaningful
+        // whenever Local hasn't been switched to title/artist/duration.
+        let groupPositions: [AlbumGroupPosition]? =
+            model.librarySortOrder == .album ? AlbumGrouping.positions(for: songs) : nil
+        return ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(songs) { song in
+                ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
                     SongRowView(
                         song: song,
                         artworkId: song.artworkId,
                         artworkURL: model.artworkURL(for: song.artworkId),
-                        onTap: model.isSongDownloaded(songId: song.id)
-                            ? { playDownloaded(song, in: songs) }
-                            : nil,
+                        albumGroupPosition: groupPositions?[index],
+                        onTap: rowTap(for: song, in: songs),
                         trailing: {
-                            downloadTrailing(for: song)
+                            SongRowDownloadTrailing(song: song)
                         }
                     )
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, SongRowMetrics.horizontalInset)
+                    .contextMenu {
+                        if song.isYouTube {
+                            if model.isLibrarySongMember(songId: song.id) {
+                                Button(role: .destructive) {
+                                    model.removeYouTubeSongFromLibrary(songId: song.id)
+                                } label: {
+                                    Label("Remove from Library", systemImage: "minus.circle")
+                                }
+                            } else {
+                                Button {
+                                    model.addYouTubeSongToLibrary(song)
+                                } label: {
+                                    Label("Add to Library", systemImage: "plus.circle")
+                                }
+                            }
+                        }
+                        WatchTransferSongMenuItem(song: song)
+                    }
                 }
             }
             .padding(.bottom, 8)
         }
     }
 
-    @ViewBuilder
-    private func downloadTrailing(for song: Song) -> some View {
-        if model.isSongDownloaded(songId: song.id) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .font(.system(size: 20))
-        } else if let p = model.downloadProgress[song.id] {
-            Group {
-                if p > 0 {
-                    ProgressView(value: p, total: 1)
-                } else {
-                    ProgressView()
-                }
-            }
-            .frame(width: 22, height: 22)
-        } else {
-            Button {
-                Task { await model.downloadSong(song) }
-            } label: {
-                Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 22))
-            }
-            .buttonStyle(.plain)
+    private func rowTap(for song: Song, in list: [Song]) -> (() -> Void)? {
+        switch song.rowTapAction(isDownloaded: model.isSongDownloaded(songId: song.id)) {
+        case .openYouTubePlayer: return { playYouTube(song) }
+        case .playDownloaded: return { playDownloaded(song, in: list) }
+        case .none: return nil
+        }
+    }
+
+    /// Plays a YouTube library song as a normal single-song queue, exactly like tapping any local
+    /// song — the mini player picks it up and expands into `NowPlayingView` on tap, same as any
+    /// other track. YouTube songs get no dedicated player screen any more (see
+    /// `progress/mobile-youtube-embed.md`).
+    private func playYouTube(_ song: Song) {
+        Task {
+            await model.player.play(song, newQueue: [song])
         }
     }
 

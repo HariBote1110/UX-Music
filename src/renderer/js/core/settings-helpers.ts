@@ -25,8 +25,12 @@ export interface RendererSettingsRead {
     groupAlbumArt?: boolean;
     analysedQueue?: { enabled?: boolean; decayDays?: number };
     enableEasterEggs?: boolean;
-    enableYouTube?: boolean;
+    /** ダウンロードモード・ストリーミングモード（非公式）の選択 UI を表示するかどうか。既定の公式再生（embed）は常に利用可能。 */
+    enableYoutubeAdvancedModes?: boolean;
     uiTheme?: string;
+    syncMinFreeSpaceGB?: number;
+    syncCachePolicy?: string;
+    syncPreferredFormat?: string;
 }
 
 /**
@@ -52,4 +56,19 @@ export async function loadNormalizedSettings(): Promise<Record<string, unknown>>
 export async function loadRendererSettings(): Promise<RendererSettingsRead> {
     const raw = await loadNormalizedSettings();
     return raw as RendererSettingsRead;
+}
+
+/**
+ * Reflects a persisted `isShuffled` setting into app state and syncs the
+ * shuffle button's active class. No-op when `isShuffled` is not a boolean.
+ */
+export function applyShuffleSetting(
+    settings: { isShuffled?: unknown },
+    state: { isShuffled: boolean },
+    elements: { shuffleBtn: HTMLElement | null }
+): void {
+    if (typeof settings.isShuffled === 'boolean') {
+        state.isShuffled = settings.isShuffled;
+        if (elements.shuffleBtn) elements.shuffleBtn.classList.toggle('active', state.isShuffled);
+    }
 }

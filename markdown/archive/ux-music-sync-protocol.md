@@ -1,0 +1,162 @@
+> **このドキュメントは廃止済みです（2026-08-11）。**
+> `/sync/*`（無版）・`/wear/*` の wire schema であり、LAN API v1 統一（`/v1/remote/*` ・ `/v1/sync/*`、デバイス別トークン認証、`GET /v1/identity` へのスキーマ統合）により置き換えられました。
+> 現在の仕様は [`progress/lan-api-v1.md`](../../progress/lan-api-v1.md) を参照してください。
+
+# UX Music Sync Protocol Schema
+
+## 目的
+UX Sync は同一 LAN 上の UX Music 端末同士が、発見・ペアリング・再生イベント同期・音源取得・音源転送を行うための HTTP / mDNS プロトコルである。
+
+この文書は wire schema の安定した参照点であり、実装は `/sync/schema` でも同じ考え方の機械可読スキーマを公開する。
+
+## バージョンと互換性
+- `protocol`: `ux-music-sync`
+- `protocolVersion`: `0.2`
+- `minCompatibleProtocolVersion`: `0.1`
+- `schemaVersion`: `2026-06-09`
+
+互換性判定は最小実装として major 部分で行う。`0.x` 同士は互換、`1.x` など major が異なる端末は pairing / pull / push の前に拒否する。
+
+## 拡張規則
+- 未知フィールドは無視する。
+- 未知 capability は保持してよいが、実行可能とはみなさない。
+- 将来拡張用の自由領域は `extensions` に入れる。
+- track metadata の未知フィールドは、取り込み時に壊さない範囲で保持してよい。
+- artwork など巨大 blob は snapshot / import metadata では送らず、必要なら別 capability と別 endpoint で扱う。
+
+## ネゴシエーション
+client は `/sync/identity` へ次のヘッダで自分の対応状況を申告する。
+
+- `X-UX-Music-Sync-Protocol-Version`
+- `X-UX-Music-Sync-Schema-Version`
+- `X-UX-Music-Sync-Capabilities`
+
+server は identity 応答に `negotiation` を含める。
+
+```json
+{
+  "protocolVersion": "0.2",
+  "schemaVersion": "2026-06-09",
+  "capabilities": ["identity.v1", "library.import.v1"],
+  "negotiation": {
+    "requestedProtocolVersion": "0.1",
+    "selectedProtocolVersion": "0.2",
+    "selectedSchemaVersion": "2026-06-09",
+    "acceptedCapabilities": ["library.import.v1"],
+    "compatible": true
+  }
+}
+```
+
+## Capabilities
+- `identity.v1`: `/sync/identity`
+- `schema.v1`: `/sync/schema`
+- `discovery.mdns.v1`: `_uxmusic-sync._tcp.local.` mDNS discovery
+- `pairing.code.v1`: 6桁コード確認ペアリング
+- `library.events.v1`: 再生イベントpush
+- `library.snapshot.v1`: ライブラリスナップショット取得
+- `library.asset-file.v1`: 曲ID指定の音源取得
+- `library.artwork.v1`: 曲ID指定のジャケット画像取得
+- `library.import.v1`: multipart 音源push取り込み
+- `library.storage-safety.v1`: 保存先空き容量が設定閾値未満の場合に同期を停止する
+- `library.transfer-progress.v1`: Wails UI / local client 向け転送進捗イベント
+- `library.transcode.mp3-320.v1`: MP3 320kbps へ変換しながら転送するオプション
+- `library.auto-sync.v1`: 接続可能なペア済み端末へ軽量な同期ジョブを定期実行する
+
+## 公開エンドポイント
+| Method | Path | Auth | Capability |
+| :--- | :--- | :--- | :--- |
+| GET | `/sync/identity` | public | `identity.v1` |
+| GET | `/sync/schema` | public | `schema.v1` |
+| POST | `/sync/pairing/start` | public | `pairing.code.v1` |
+| POST | `/sync/pairing/confirm` | public | `pairing.code.v1` |
+| GET | `/sync/library/snapshot` | sync-token | `library.snapshot.v1` |
+| GET | `/sync/assets/{trackId}/file` | sync-token | `library.asset-file.v1` |
+| GET | `/sync/assets/{trackId}/artwork` | sync-token | `library.artwork.v1` |
+| POST | `/sync/library/import` | sync-token | `library.import.v1` |
+| POST | `/sync/library/events` | sync-token | `library.events.v1` |
+
+## ジャケット同期
+`library.artwork.v1` は、ジャケット画像を track metadata の巨大 blob として混ぜず、同期トークン付きの個別 asset として扱う。
+
+- `/sync/library/snapshot` はローカル `artwork` を直接返さず、取得可能な場合だけ `syncArtwork` 参照を返す。
+- `/sync/assets/{trackId}/artwork` は、ライブラリ登録済み曲の保存済みジャケットを返す。
+- `/sync/library/import` の multipart payload は任意の `artwork` part を受け取れる。受信側は `Artworks` と `Artworks/thumbnails` 配下へ保存し、`library.json` には安全なファイル名だけを `artwork.full` / `artwork.thumbnail` として保存する。
+
+## 転送オプション
+push 転送のローカル呼び出しは `encodingMode` を指定できる。pull 側は端末設定 `syncPreferredFormat` で希望フォーマットを指定できる。
+
+- `original`: 原本ファイルをそのまま送る。
+- `mp3_320`: MP3以外の音源を MP3 320kbps へストリーミング変換しながら送信し、`syncTransferEncoding: "mp3_320"` と `audioBitrateKbps: 320` を metadata に付けて送る。
+
+`GET /sync/assets/{trackId}/file?encoding=mp3_320` は、peer が `library.transcode.mp3-320.v1` を広告している場合に使う。元が非 MP3 の曲は `Content-Type: audio/mpeg`、`X-UX-Music-Sync-Transfer-Encoding: mp3_320`、`X-UX-Music-Sync-Audio-Bitrate: 320`、`.mp3` ファイル名で返す。元が MP3 の曲は再変換せず原本を返す。capability が無い peer には query を付けず原本取得へフォールバックする。
+
+`mp3_320` は保存容量と転送時間を優先する portable client 向けのモードである。変換失敗時はその曲を failed として扱い、勝手に原本へフォールバックしない。
+
+## snapshot転送メタデータ
+`GET /sync/library/snapshot` の各 `track` は、表示と後続 pull に必要な軽量メタデータを含める。巨大な `artwork` blob は含めず、ジャケットは `syncArtwork` descriptor と `/sync/assets/{trackId}/artwork` で扱う。
+
+送信側に再生回数がある場合、`track.syncPlayCount` に `count` と任意の `history` を入れる。受信側は remote catalog 表示ではこの値を使い、pull 取得済みの曲では音源を再取得せず実保存パスの `playcounts` へ反映してよい。`syncPlayCount` 自体は `library.json` へ残さない。
+
+## push転送メタデータ
+`POST /sync/library/import` の multipart `metadata` は、表示に必要な曲メタデータを `track` に含める。`title`、`artist`、`album`、`albumartist`、`trackNumber`、`discNumber`、`genre`、`year` などの既知フィールドは未知フィールドと同じく保持する。
+
+送信側に再生回数がある場合、`track.syncPlayCount` に `count` と任意の `history` を入れる。受信側は音源を保存した実パスをキーに `playcounts` へ反映し、`syncPlayCount` 自体は `library.json` へ残さない。
+
+ジャケットは可能な限り multipart `artwork` part として同梱する。送信側の `Artworks` 管理済みファイルを優先し、受信側は `Artworks` と `Artworks/thumbnails` 配下へ保存して `track.artwork.full` / `track.artwork.thumbnail` を更新する。受信側は payload のメタデータが不足している場合、保存済み音源を再スキャンしてタグと埋め込みジャケットを補完してから `library.json` へ反映する。
+
+## 転送進捗
+UI には `ux-sync-transfer-progress` event として次の情報を流す。
+
+```json
+{
+  "direction": "push",
+  "stage": "uploading",
+  "trackId": "track-1",
+  "title": "Song",
+  "fileName": "song.mp3",
+  "current": 1,
+  "total": 12,
+  "bytesDone": 1572864,
+  "bytesTotal": 3145728,
+  "bytesPerSecond": 1572864,
+  "encodingMode": "mp3_320",
+  "updatedAt": "2026-06-09T05:56:00Z"
+}
+```
+
+`stage` は `preparing`、`transcoding`、`downloading`、`uploading`、`done`、`skipped`、`failed` を使う。
+
+## 自動同期
+`library.auto-sync.v1` は、ペア済み端末の既知URLへ接続できた時に、手動ボタンなしで同期を試す capability である。ローカル再生回数の `PlayEvent` を `/sync/library/events` へpushし、再生回数の加算直後にも UI をブロックしないバックグラウンド即時同期を試す。即時同期は `/sync/library/events` だけを使う軽量 flush とし、`LibraryHost` 役割を持つ peer からの `/sync/library/snapshot` は定期 AutoSync で取得する。AutoSync は snapshot 内の `track.syncPlayCount` を peer 側の総数として同一曲へ全件反映し、ローカル `sync-play-events` の投影数を差し引いた値を `playcounts-base` へ保存することで、音源取得とは独立して基準再生回数を収束させる。`/sync/assets/{trackId}/file` による未取得曲取得は定期 AutoSync の後続処理で行う。端末設定 `syncPreferredFormat="mp3_320"` かつ peer が `library.transcode.mp3-320.v1` を持つ場合は、auto sync / tap DL / prefetch の全取得で `encoding=mp3_320` を要求する。既に `syncSourceDeviceId` / `syncSourceTrackId` 付きで取り込み済みかつ実ファイルが存在する曲は skip として扱い、二重転送しない。既に同期済みの曲で欠けているジャケットは `/sync/assets/{trackId}/artwork` から補完する。
+
+## 空き容量安全停止
+`library.storage-safety.v1` は、受信側がローカル保存先ボリュームの空き容量を確認し、`settings.syncMinFreeSpaceGB` を下回る場合に同期を停止できることを示す。`syncMinFreeSpaceGB` が `0` または未設定の場合は無効である。
+
+- `AutoSyncPairedDevices()` は peer 接続前に確認し、停止時は `SyncAutoResult.paused=true` と `pauseReason="free-space-below-limit"` を返す。
+- `PullSyncLibraryAssets()` と `/sync/library/import` は、音源やジャケットの受信前に同じ判定を行う。
+- `freeSpaceBytes` と `minFreeSpaceBytes` は診断用の数値であり、古い client は未知フィールドとして無視してよい。
+
+## mDNS TXT
+mDNS TXT は軽量な事前情報として扱い、最終判断は `/sync/identity` で行う。DNS TXT の1文字列は255バイト上限があるため、capability 一覧は載せず、到達確認時の `/sync/identity` response から取得する。
+
+- `deviceId`
+- `displayName`
+- `protocolVersion`
+- `schemaVersion`
+- `roles`
+
+## Wear API profile
+Wear API (`/wear/*`) は、UX Sync Protocol の lightweight mobile / wearable profile として扱う。既存の iOS / Wear companion は `/sync/*` のペアリングや選択同期を必須にせず、同じ `_uxmusic-sync._tcp.local.` mDNS 広告から Desktop を発見し、同じ `:8765` の `/wear/ping` と `/wear/mobile` で Wear API 対応を確認してよい。
+
+Wear API profile は次の用途を持つ。
+
+- 手動 host / port 入力なしの LAN 自動発見。
+- phone / wearable 向けの軽量ライブラリ取得（`/wear/songs`）。
+- 選択した曲やアルバムの端末内保存（`/wear/file?id=...&source=original`）。
+- ジャケット、歌詞、プレイリスト、リモートコントロールの既存 companion 機能。
+
+Mobile client は `_uxmusic-sync._tcp.local.` の TXT から `displayName`、`roles`、`protocolVersion` を表示用に使い、`LibraryHost` または将来の `WearHost` role を持つ peer を Wear API 候補として扱う。互換性のため、同 service type で `roles` が欠けている広告も候補に含めてよい。最終的な接続確認は `/wear/ping` で行い、より詳細な endpoint 情報は `/wear/mobile` から取得する。iOS client は同一LAN IPへの `http://...:8765` 通信を system proxy、iCloud relay、cellular fallback に流さず、発見した peer へ直接接続する。
+
+## 注意
+現時点の Sync token 認証は「保存済み token のいずれかに一致するか」を見る。将来は `sourceDeviceId` と token の対応関係まで検証する capability を追加する。

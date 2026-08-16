@@ -8,12 +8,6 @@ export async function checkWails() {
         try {
             const result = await app.Ping();
             console.log('[Wails] Ping Result:', result);
-
-            // UIに表示するテスト
-            const versionEl = document.getElementById('app-version');
-            if (versionEl) {
-                versionEl.textContent += ' (Wails Mode)';
-            }
         } catch (err) {
             console.error('[Wails] Error calling Ping:', err);
         }

@@ -10,8 +10,69 @@ import { showContextMenu } from './utils.js';
 import { showModalAdvanced } from './modal.js';
 import { getVisibleColumns, getGridTemplate, showColumnContextMenu } from './column-config.js';
 import { updateGridStyle } from './column-resizer.js';
-import { getWailsApp } from '../core/bridge.js';
-const electronAPI = window.electronAPI;
+import { getWailsApp, musicApi } from '../core/bridge.js';
+import { showNotification } from './notification.js';
+
+type PlaylistAddSourceSong = {
+    path?: string;
+    duration?: number;
+    artist?: string;
+    title?: string;
+    [key: string]: unknown;
+};
+
+type PlaylistAddPayloadSong = {
+    path: string;
+    duration: number;
+    artist: string;
+    title: string;
+};
+
+function playlistAddCount(result: unknown): number {
+    if (Number.isFinite(Number(result))) {
+        return Number(result);
+    }
+    if (result && typeof result === 'object') {
+        const addedCount = (result as { addedCount?: unknown }).addedCount;
+        return Number.isFinite(Number(addedCount)) ? Number(addedCount) : 0;
+    }
+    return 0;
+}
+
+export function playlistAddPayloadForSongs(playlistName: string, songs: PlaylistAddSourceSong[]) {
+    return {
+        playlistName,
+        songs: songs
+            .filter(song => typeof song.path === 'string' && song.path.length > 0)
+            .map((song): PlaylistAddPayloadSong => ({
+                path: song.path as string,
+                duration: Number.isFinite(Number(song.duration)) ? Number(song.duration) : 0,
+                artist: typeof song.artist === 'string' ? song.artist : '',
+                title: typeof song.title === 'string' ? song.title : '',
+            })),
+    };
+}
+
+export async function addSongsToPlaylistFromMenu(playlistName: string, songs: PlaylistAddSourceSong[]): Promise<number> {
+    const payload = playlistAddPayloadForSongs(playlistName, songs);
+    if (!playlistName.trim() || payload.songs.length === 0) {
+        showNotification('プレイリストへ追加できる曲がありません。', 3000);
+        return 0;
+    }
+    try {
+        const result = await musicApi.addSongsToPlaylist(payload);
+        const added = playlistAddCount(result);
+        if (added > 0) {
+            showNotification(`${added}曲をプレイリスト「${playlistName}」に追加しました。`, 3000);
+        } else {
+            showNotification('すべての曲が既にプレイリストに存在します。', 3000);
+        }
+        return added;
+    } catch (error) {
+        showNotification(`プレイリストへの追加に失敗しました: ${(error as Error)?.message || String(error)}`, 4000);
+        return 0;
+    }
+}
 
 /**
  * 曲リストの共通ヘッダーHTMLを作成する（column-config に基づく動的生成）
@@ -119,7 +180,6 @@ function deleteSongsFromLibrary(songs) {
  */
 export function setupSongListScroller(listElement, songList, options: { contextView?: string; playlistName?: string | null; initialScrollTop?: number; saveScrollPosition?: (top: number) => void } = {}) {
     const {
-        contextView = 'library',
         playlistName = null,
         initialScrollTop = 0,
         saveScrollPosition // detail-renderer から渡されるコールバック
@@ -166,42 +226,30 @@ export function setupSongListScroller(listElement, songList, options: { contextV
                 songsForMenu = songList.filter(s => state.selectedSongIds.has(s.id));
             }
 
-            if (typeof window.go !== 'undefined') {
-                // Wails 環境: JavaScript ベースのコンテキストメニュー
-                const menuItems = [
-                    {
-                        label: '再生',
-                        action: () => playSong(index, songList)
-                    },
-                    {
-                        label: songsForMenu.length > 1 ? `ライブラリから削除 (${songsForMenu.length}曲)` : 'ライブラリから削除',
-                        action: () => deleteSongsFromLibrary(songsForMenu)
-                    }
-                ];
-
-                // プレイリストがある場合のみサブメニューを追加
-                if (state.playlists && state.playlists.length > 0) {
-                    const playlistSubmenu = (state.playlists as Record<string, unknown>[]).map(playlist => ({
-                        label: playlist.name as string,
-                        action: () => {
-                            // TODO: プレイリストに曲を追加する処理
-                            console.log(`Adding songs to playlist: ${playlist.name}`, songsForMenu);
-                        }
-                    }));
-                    (menuItems as unknown[]).push({
-                        label: 'プレイリストに追加',
-                        submenu: playlistSubmenu
-                    });
+            const menuItems = [
+                {
+                    label: '再生',
+                    action: () => playSong(index, songList)
+                },
+                {
+                    label: songsForMenu.length > 1 ? `ライブラリから削除 (${songsForMenu.length}曲)` : 'ライブラリから削除',
+                    action: () => deleteSongsFromLibrary(songsForMenu)
                 }
+            ];
 
-                showContextMenu(e.pageX, e.pageY, menuItems);
-            } else {
-                // Electron 環境: メインプロセスにメニュー表示を委譲
-                electronAPI.send('show-song-context-menu', {
-                    songs: songsForMenu,
-                    context: { view: contextView, playlistName }
+            // プレイリストがある場合のみサブメニューを追加
+            if (state.playlists && state.playlists.length > 0) {
+                const playlistSubmenu = (state.playlists as Record<string, unknown>[]).map(playlist => ({
+                    label: playlist.name as string,
+                    action: () => void addSongsToPlaylistFromMenu(String(playlist.name ?? ''), songsForMenu)
+                }));
+                (menuItems as unknown[]).push({
+                    label: 'プレイリストに追加',
+                    submenu: playlistSubmenu
                 });
             }
+
+            showContextMenu(e.pageX, e.pageY, menuItems);
         });
 
         window.observeNewArtworks(songItem); // Lazy-load 用

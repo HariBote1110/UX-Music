@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_uxmusic-sync._tcp</string>
+		<string>_uxmusic-remote._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>UX Music はローカルネットワーク上のデスクトップ版 UX Music ライブラリに接続するためにローカルネットワークを使用します。</string>
+</dict>
+</plist>

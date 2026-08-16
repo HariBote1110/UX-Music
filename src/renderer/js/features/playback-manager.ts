@@ -1,14 +1,23 @@
 // uxmusic/src/renderer/js/playback-manager.js
 
 import { state, elements, PLAYBACK_MODES } from '../core/state.js';
-import { getCurrentTime, getDuration, play as playSongInPlayer, stop as stopSongInPlayer } from './player.js';
+import {
+    getCurrentTime,
+    getDuration,
+    play as playSongInPlayer,
+    stop as stopSongInPlayer,
+    playCurrent as playCurrentInPlayer,
+    pauseCurrent as pauseCurrentInPlayer,
+    seek as seekInPlayer,
+    isPlaying as isPlayingInPlayer
+} from './player.js';
 import { updatePlayingIndicators, renderQueueView } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 import { resolveLocalPlaybackGain } from './playback-gain.js';
 import { buildSkipEvent } from './playback-skip.js';
-import { musicApi, isWailsMode } from '../core/bridge.js';
+import { musicApi, isWailsMode, getWailsApp } from '../core/bridge.js';
 import { getSongById, getSongByPath } from '../core/library-model.js';
 const electronAPI = window.electronAPI;
 const pendingLoudnessRequests = new Set();
@@ -53,6 +62,158 @@ export async function initPlaybackSettings() {
         elements.loopBtn.classList.toggle('active', state.playbackMode !== PLAYBACK_MODES.NORMAL);
         elements.loopBtn.classList.toggle('loop-one', state.playbackMode === PLAYBACK_MODES.LOOP_ONE);
         console.log(`[Debug:Playback] ループモードを復元: ${state.playbackMode}`);
+    }
+
+    initRemotePlaySongListener();
+    initRemoteCommandListener();
+    initRemoteEmbedCommandListener();
+}
+
+/**
+ * Go 側 (server/app_remote.go の remoteCommandHandler, action: "play-song") が
+ * emit する "remote-play-song" イベントを購読する。ペア済みクライアント
+ * (Apple TV 等) からライブラリ楽曲 ID を指定した再生要求を受け取り、
+ * ユーザーが曲をクリックした場合と同じ playSong() 経路へ合流させる
+ * (ローカル曲はそのまま再生され、YouTube 由来の曲は公式埋め込み経由の
+ * 再生 → LAN 中継へ自動的に進む)。Wails 環境以外 (ブラウザプレビュー等)
+ * では window.runtime が存在しないため何もしない。
+ */
+function initRemotePlaySongListener() {
+    if (!window.runtime || typeof window.runtime.EventsOn !== 'function') {
+        return;
+    }
+    window.runtime.EventsOn('remote-play-song', (songId: unknown) => {
+        handleRemotePlaySongEvent(songId);
+    });
+}
+
+/**
+ * "remote-play-song" イベントの本体処理。依存を注入できる形にして
+ * ユニットテストから検証できるようにしている
+ * (playback-manager.test.ts の describe('handleRemotePlaySongEvent', ...))。
+ */
+export function handleRemotePlaySongEvent(songId: unknown, deps: {
+    findSong?: (id: string) => unknown;
+    notifyNotFound?: () => void;
+    playResolvedSong?: (song: unknown) => void;
+    markRemoteInitiated?: () => void;
+} = {}) {
+    const findSong = deps.findSong ?? getSongById;
+    const notifyNotFound = deps.notifyNotFound ?? (() => showNotification('指定された曲がライブラリに見つかりませんでした。'));
+    const playResolvedSong = deps.playResolvedSong ?? ((song: unknown) => playSong(0, [song]));
+    // PC自体のスピーカーを無音化するためのGo側フラグ (App.MarkNextPlaybackRemoteInitiated)
+    // を立てる。次の1回のAudioPlay/AudioStartWebViewTapだけに効く一度きりの
+    // マーカーなので、必ずplayResolvedSong（=playSong経由の再生開始）の前に呼ぶ。
+    const markRemoteInitiated = deps.markRemoteInitiated ?? (() => getWailsApp()?.MarkNextPlaybackRemoteInitiated?.());
+
+    if (typeof songId !== 'string' || songId.trim() === '') {
+        return;
+    }
+    const song = findSong(songId);
+    if (!song) {
+        notifyNotFound();
+        return;
+    }
+    markRemoteInitiated();
+    playResolvedSong(song);
+}
+
+/**
+ * Go 側 (server/app_remote.go の remoteCommandHandler, action: "next"/"prev")
+ * が emit する "remote-command" イベントを購読する。next/prev はキュー管理が
+ * レンダラー側 (このファイルの playNextSong/playPrevSong) にしかない概念な
+ * ので、embed 再生中かどうかに関わらず常にこの経路で処理する — 遷移先の曲を
+ * playSong() → play() へ渡す時点で、埋め込み/ローカルいずれの再生経路にも
+ * 正しく再突入する。
+ */
+function initRemoteCommandListener() {
+    if (!window.runtime || typeof window.runtime.EventsOn !== 'function') {
+        return;
+    }
+    window.runtime.EventsOn('remote-command', (action: unknown) => {
+        handleRemoteCommandEvent(action);
+    });
+}
+
+export function handleRemoteCommandEvent(action: unknown, deps: {
+    playNext?: () => void;
+    playPrev?: () => void;
+} = {}) {
+    const playNext = deps.playNext ?? playNextSong;
+    const playPrev = deps.playPrev ?? playPrevSong;
+
+    switch (action) {
+        case 'next':
+            playNext();
+            break;
+        case 'prev':
+            playPrev();
+            break;
+        default:
+            break;
+    }
+}
+
+/**
+ * Go 側 (server/app_remote.go の remoteCommandHandler) が、YouTube 公式埋め込み
+ * セッション中 (remoteRelay がアクティブ) に emit する "remote-embed-command"
+ * イベントを購読する。toggle/play/pause/stop/seek をそのまま Go の
+ * audio.Player へ流しても、実際に鳴っているのはレンダラー内の IFrame プレイ
+ * ヤーなので届かない。player.ts の playCurrent/pauseCurrent/seek/stop は
+ * isEmbedPlayerActive() を見て埋め込み/ローカルを自動判別する既存の実装な
+ * ので、ここではそれらをそのまま呼び出すだけでよい。
+ */
+function initRemoteEmbedCommandListener() {
+    if (!window.runtime || typeof window.runtime.EventsOn !== 'function') {
+        return;
+    }
+    window.runtime.EventsOn('remote-embed-command', (payload: unknown) => {
+        handleRemoteEmbedCommandEvent(payload);
+    });
+}
+
+export function handleRemoteEmbedCommandEvent(payload: unknown, deps: {
+    playCurrent?: () => void;
+    pauseCurrent?: () => void;
+    stop?: () => void;
+    seek?: (time: number) => void;
+    isPlaying?: () => boolean;
+} = {}) {
+    const doPlay = deps.playCurrent ?? playCurrentInPlayer;
+    const doPause = deps.pauseCurrent ?? pauseCurrentInPlayer;
+    const doStop = deps.stop ?? stopSongInPlayer;
+    const doSeek = deps.seek ?? seekInPlayer;
+    const checkIsPlaying = deps.isPlaying ?? isPlayingInPlayer;
+
+    if (payload === null || typeof payload !== 'object') {
+        return;
+    }
+    const { action, value } = payload as { action?: unknown; value?: unknown };
+
+    switch (action) {
+        case 'toggle':
+            if (checkIsPlaying()) {
+                doPause();
+            } else {
+                doPlay();
+            }
+            break;
+        case 'play':
+            doPlay();
+            break;
+        case 'pause':
+            doPause();
+            break;
+        case 'stop':
+            doStop();
+            break;
+        case 'seek':
+            if (typeof value === 'number' && Number.isFinite(value)) {
+                doSeek(value);
+            }
+            break;
+        default:
+            break;
     }
 }
 

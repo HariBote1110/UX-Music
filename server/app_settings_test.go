@@ -4,14 +4,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"ux-music-sidecar/internal/config"
-	"ux-music-sidecar/internal/store"
 )
 
 func TestGetArtworkAsDataURLRejectsTraversal(t *testing.T) {
-	tmpDir := t.TempDir()
-	config.SetUserDataPath(tmpDir)
-	store.Instance = &store.Store{}
+	// userDataPath / store.Instance はプロセスグローバルなので、
+	// テスト終了時に必ず元へ戻すヘルパー経由で差し替える。
+	tmpDir := newTempUserDataStore(t)
 
 	if err := os.MkdirAll(filepath.Join(tmpDir, "Artworks"), 0755); err != nil {
 		t.Fatal(err)

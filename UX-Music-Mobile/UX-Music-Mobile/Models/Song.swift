@@ -1,6 +1,14 @@
 import Foundation
 
-/// Mirrors the Wear `/wear/songs` payload (same keys as Flutter `Song`).
+/// Mirrors the `type` field the desktop library stores per song (`server/app_youtube.go`'s
+/// `buildStreamingSong`/`AddYouTubeLink` write `"youtube"`; ordinary scanned files have no `type`
+/// key at all, which decodes to `.local`).
+enum SongSourceType: String, Codable, Equatable, Hashable, Sendable {
+    case local
+    case youtube
+}
+
+/// Mirrors the `GET /v1/remote/songs` payload (same keys as Flutter `Song`).
 struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
     var id: String
     var path: String
@@ -18,11 +26,24 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
     var sampleRate: Int?
     var bitDepth: Int?
     var artworkId: String
+    var sourceType: SongSourceType
+    var sourceURL: String?
+    /// Whether the host can serve this song's audio locally (`/v1/remote/file/{id}` returns
+    /// 206/200). Additive field from `GET /v1/remote/songs` — older desktops (or a parallel
+    /// in-flight server change) may omit it entirely, which decodes to `nil` and is treated as
+    /// `true` everywhere via `effectiveHasLocalAudio` for backward compatibility: most YouTube
+    /// songs ARE downloaded and playable like any local file, so "missing key" must not be
+    /// misread as "no audio" (`progress/tvos-relay-reception.md` 追記 — routing by file
+    /// availability, not source).
+    var hasLocalAudio: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, path, title, artist, album, year, genre, duration
         case trackNumber, discNumber, fileSize, fileType, sampleRate, bitDepth, artworkId
         case albumArtist = "albumartist"
+        case sourceType = "type"
+        case sourceURL
+        case hasLocalAudio
     }
 
     init(
@@ -41,7 +62,10 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         fileType: String = "",
         sampleRate: Int? = nil,
         bitDepth: Int? = nil,
-        artworkId: String = ""
+        artworkId: String = "",
+        sourceType: SongSourceType = .local,
+        sourceURL: String? = nil,
+        hasLocalAudio: Bool? = nil
     ) {
         self.id = id
         self.path = path
@@ -59,6 +83,29 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         self.sampleRate = sampleRate
         self.bitDepth = bitDepth
         self.artworkId = artworkId
+        self.sourceType = sourceType
+        self.sourceURL = sourceURL
+        self.hasLocalAudio = hasLocalAudio
+    }
+
+    /// `true` for songs registered via `AddYouTubeLink` (embed/stream modes). These have no local
+    /// file on the desktop's disk in the same sense a scanned file does, so download and Watch
+    /// transfer are not offered for them (see `WatchTransferMenuPolicy`).
+    var isYouTube: Bool { sourceType == .youtube }
+
+    /// `hasLocalAudio` with backward-compatible defaulting: missing/`nil` (older desktop, or
+    /// simply not yet populated) reads as `true`. See `hasLocalAudio`'s doc comment for why
+    /// "missing" must not be misread as "unavailable".
+    var effectiveHasLocalAudio: Bool { hasLocalAudio ?? true }
+
+    /// Decides what tapping this row should do. Shared by every screen that renders `SongRowView`
+    /// (Remote song list, album detail, playlist detail) so YouTube songs consistently open the
+    /// official player instead of being offered the local-download tap target they have no file
+    /// for.
+    func rowTapAction(isDownloaded: Bool) -> SongRowTapAction {
+        if isYouTube { return .openYouTubePlayer(self) }
+        if isDownloaded { return .playDownloaded(self) }
+        return .none
     }
 
     func encode(to encoder: Encoder) throws {
@@ -79,6 +126,9 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         try c.encodeIfPresent(sampleRate, forKey: .sampleRate)
         try c.encodeIfPresent(bitDepth, forKey: .bitDepth)
         try c.encode(artworkId, forKey: .artworkId)
+        try c.encode(sourceType, forKey: .sourceType)
+        try c.encodeIfPresent(sourceURL, forKey: .sourceURL)
+        try c.encodeIfPresent(hasLocalAudio, forKey: .hasLocalAudio)
     }
 
     init(from decoder: Decoder) throws {
@@ -99,6 +149,9 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         sampleRate = try c.decodeIfPresent(Int.self, forKey: .sampleRate)
         bitDepth = try c.decodeIfPresent(Int.self, forKey: .bitDepth)
         artworkId = try c.decodeIfPresent(String.self, forKey: .artworkId) ?? ""
+        sourceType = try c.decodeIfPresent(SongSourceType.self, forKey: .sourceType) ?? .local
+        sourceURL = try c.decodeIfPresent(String.self, forKey: .sourceURL)
+        hasLocalAudio = try c.decodeIfPresent(Bool.self, forKey: .hasLocalAudio)
     }
 
     var displayTitle: String { title.isEmpty ? "Unknown Title" : title }
@@ -139,4 +192,11 @@ struct Song: Codable, Equatable, Hashable, Identifiable, Sendable {
         if let d = try c.decodeIfPresent(Double.self, forKey: key) { return Int(d) }
         return 0
     }
+}
+
+/// Tap outcome for a `SongRowView` row. See `Song.rowTapAction(isDownloaded:)`.
+enum SongRowTapAction: Equatable {
+    case openYouTubePlayer(Song)
+    case playDownloaded(Song)
+    case none
 }

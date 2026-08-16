@@ -14,9 +14,16 @@ build/bin/UX-Music.app/Contents/MacOS/UX-Music
 /src/sidecars/mtp/node_modules
 /src/sidecars/mtp/node_modules
 /src/sidecars/mtp/node_modules
+*.md5
 
 /IGNORE/
 python/.venv/
 *.egg-info/
 .pytest_cache/
 python/.pytest_cache/
+/swift
+.claude/
+.codex/
+
+# Mobile 検証用スクラッチ（スクリーンショット等）
+UX-Music-Mobile/.tmp/

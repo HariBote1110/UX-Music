@@ -1,4 +1,5 @@
 import SwiftUI
+import WatchConnectivity
 
 struct PlaylistDetailView: View {
     @Environment(AppModel.self) private var model
@@ -18,12 +19,39 @@ struct PlaylistDetailView: View {
     }
 
     var body: some View {
+        LibraryBottomBleed { bottomInset in
+            listBody
+                .contentMargins(.bottom, bottomInset, for: .scrollContent)
+        }
+        .background(Color.black)
+        .navigationTitle(playlist?.name ?? String(localized: "Playlist"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar { detailToolbar }
+        .sheet(isPresented: $showAddSongs) {
+            AddSongsToPlaylistSheet(playlistId: playlistId)
+                .environment(model)
+        }
+        .alert("Rename Playlist", isPresented: $showRename) {
+            TextField("Name", text: $renameText)
+            Button("Save") {
+                try? model.renamePlaylist(id: playlistId, newName: renameText)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Enter a new name for this playlist.")
+        }
+    }
+
+    @ViewBuilder
+    private var listBody: some View {
         Group {
             if playlist == nil {
                 ContentUnavailableView(
-                    "Playlist unavailable",
+                    "Playlist Unavailable",
                     systemImage: "music.note.list",
-                    description: Text("This playlist was removed or is no longer available.")
+                    description: Text("This playlist was deleted or is no longer available.")
                 )
             } else {
                 List {
@@ -36,12 +64,14 @@ struct PlaylistDetailView: View {
                                 play(song)
                             }
                         )
-                        .listRowBackground(Color(red: 0.07, green: 0.07, blue: 0.08))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        .modifier(LibraryListRowStyle())
+                        .contextMenu {
+                            SongQueueMenuItems(song: song.withPath(model.downloadManager.localPathString(songId: song.id)))
+                            WatchTransferSongMenuItem(song: song)
                             Button(role: .destructive) {
                                 try? model.removeSongsFromPlaylist(playlistId: playlistId, songIds: [song.id])
                             } label: {
-                                Label("Remove", systemImage: "minus.circle")
+                                Label("Remove from Playlist", systemImage: "minus.circle")
                             }
                         }
                     }
@@ -53,44 +83,29 @@ struct PlaylistDetailView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .background(Color.black)
-        .navigationTitle(playlist?.name ?? "Playlist")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar {
-            if playlist != nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack {
-                        EditButton()
-                        Button {
-                            showAddSongs = true
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                        .accessibilityLabel("Add songs")
+    }
+
+    @ToolbarContentBuilder
+    private var detailToolbar: some ToolbarContent {
+        if playlist != nil {
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack {
+                    EditButton()
+                    WatchTransferPlaylistMenuButton(bridge: model.watchTransferBridge, songs: songs)
+                    Button {
+                        showAddSongs = true
+                    } label: {
+                        Image(systemName: "plus")
                     }
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Rename") {
-                        renameText = playlist?.name ?? ""
-                        showRename = true
-                    }
+                    .accessibilityLabel("Add Songs")
                 }
             }
-        }
-        .sheet(isPresented: $showAddSongs) {
-            AddSongsToPlaylistSheet(playlistId: playlistId)
-                .environment(model)
-        }
-        .alert("Rename playlist", isPresented: $showRename) {
-            TextField("Name", text: $renameText)
-            Button("Save") {
-                try? model.renamePlaylist(id: playlistId, newName: renameText)
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Rename") {
+                    renameText = playlist?.name ?? ""
+                    showRename = true
+                }
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Enter a new name for this playlist.")
         }
     }
 
@@ -100,6 +115,35 @@ struct PlaylistDetailView: View {
         let queue = downloaded.map { $0.withPath(model.downloadManager.localPathString(songId: $0.id)) }
         Task {
             await model.player.play(localSong, newQueue: queue)
+        }
+    }
+}
+
+// MARK: - Watch transfer toolbar button
+
+/// The "…" toolbar menu that wraps `WatchTransferBulkMenuItem` for this playlist. Kept as its own
+/// `@ObservedObject`-backed view (rather than a `canShowWatchTransferMenu` computed property reading
+/// `model.watchTransferBridge.isPaired` straight from `PlaylistDetailView`'s `@Observable`-driven
+/// body) for the same reason as `WatchTransferQueueSection`/`WatchTransferSongMenuItemBody` — a
+/// nested `ObservableObject`'s `@Published` changes do not invalidate an `@Observable` view. See
+/// `progress/watch-transfer-ui-observation.md`.
+private struct WatchTransferPlaylistMenuButton: View {
+    @ObservedObject var bridge: WatchTransferBridge
+    let songs: [Song]
+
+    var body: some View {
+        if WatchTransferMenuPolicy.canShowMenu(
+            isWatchConnectivitySupported: WCSession.isSupported(),
+            isPaired: bridge.isPaired
+        ) {
+            Menu {
+                WatchTransferBulkMenuItem(
+                    title: "Transfer Playlist to Apple Watch",
+                    songs: songs
+                )
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
         }
     }
 }
@@ -146,7 +190,7 @@ private struct AddSongsToPlaylistSheet: View {
                     }
                 }
             }
-            .navigationTitle("Add songs")
+            .navigationTitle("Add Songs")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

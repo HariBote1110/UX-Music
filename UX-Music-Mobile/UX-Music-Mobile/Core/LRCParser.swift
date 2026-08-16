@@ -1,8 +1,15 @@
 import Foundation
 
+/// Common shape for any lyric line that carries a synced start time. Lets the "last line at-or-
+/// before `time`" active-line rule live in one place instead of being copied per line type (e.g.
+/// `LRCParser.TimedLine` and `TranslatedTimedLine`).
+protocol LyricsTimedLine {
+    var startTime: Double { get }
+}
+
 /// Minimal LRC parsing for synced on-device display (timestamp → line text).
 enum LRCParser {
-    struct TimedLine: Identifiable, Equatable, Sendable {
+    struct TimedLine: Identifiable, Equatable, Sendable, LyricsTimedLine {
         let id: Int
         let startTime: Double
         let text: String
@@ -23,8 +30,10 @@ enum LRCParser {
         return out.sorted { $0.startTime < $1.startTime }
     }
 
-    /// Index of the line whose `startTime` is last among those `<= time` (clamped to first line when before first timestamp).
-    static func activeLineIndex(in lines: [TimedLine], at time: Double) -> Int {
+    /// Index of the line whose `startTime` is last among those `<= time` (clamped to first line
+    /// when before first timestamp). Generic over `LyricsTimedLine` so any synced line type (e.g.
+    /// `TranslatedTimedLine`) shares this one rule instead of re-implementing it.
+    static func activeLineIndex<Line: LyricsTimedLine>(in lines: [Line], at time: Double) -> Int {
         guard !lines.isEmpty else { return 0 }
         var best = 0
         for (i, line) in lines.enumerated() where line.startTime <= time {

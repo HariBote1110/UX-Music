@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"ux-music-sidecar/internal/config"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) initOSMediaControls() {
@@ -15,7 +13,7 @@ func (a *App) initOSMediaControls() {
 		if a.ctx == nil {
 			return
 		}
-		wailsRuntime.EventsEmit(a.ctx, "os-media-command", command)
+		a.emit("os-media-command", command)
 	})
 	if err != nil {
 		println("[OSMedia] initialization failed:", err.Error())
@@ -130,6 +128,7 @@ func (a *App) updateOSPlaybackState(playing bool) {
 
 	normalizedTitle, normalizedArtist, normalizedAlbum := normalizeNowPlayingMetadata(title, artist, album)
 	setOSNowPlaying(normalizedTitle, normalizedArtist, normalizedAlbum, artworkPath, playing)
+	setTrayPlayPauseLabel(trayPlayPauseLabel(playing))
 }
 
 func (a *App) clearOSNowPlayingState() {
@@ -138,6 +137,8 @@ func (a *App) clearOSNowPlayingState() {
 	a.mediaArtist = ""
 	a.mediaAlbum = ""
 	a.mediaArtwork = ""
+	a.mediaSongID = ""
+	a.mediaArtworkID = ""
 	a.mediaStateMu.Unlock()
 
 	clearOSNowPlaying()

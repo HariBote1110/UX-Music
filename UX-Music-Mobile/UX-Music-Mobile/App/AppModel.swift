@@ -31,13 +31,24 @@ enum LocalLyricsDisplayMode: Equatable {
     case synced([LRCParser.TimedLine])
 }
 
+/// How to render on-device lyrics *with* their Japanese translation (和訳) merged in — an
+/// additive counterpart to `LocalLyricsDisplayMode` kept as a separate type/API
+/// (`AppModel.localBilingualLyricsDisplay(for:)`) rather than changing that enum's associated
+/// values, so `Views/NowPlayingLyricsScreen.swift`'s existing `.plain(String)`/`.synced([LRCParser
+/// .TimedLine])` switch keeps compiling unchanged. The View agent can adopt this new API when
+/// building the 和訳 UI.
+enum BilingualLyricsDisplayMode: Equatable {
+    case plain([TranslatedPlainLine])
+    case synced([TranslatedTimedLine])
+}
+
 enum DesktopPlaylistImportError: LocalizedError {
     case serverNotConfigured
 
     var errorDescription: String? {
         switch self {
         case .serverNotConfigured:
-            return "設定でデスクトップとペアリングしてください。"
+            return String(localized: "Please pair with the desktop app in Settings.")
         }
     }
 }
@@ -53,22 +64,205 @@ final class AppModel {
     var libraryState: LibraryLoadState = .idle
     var loudness: [String: Double] = [:]
 
+    /// User-selected local Library sort order, persisted to `UserDefaults` so it survives relaunch.
+    var librarySortOrder: LibrarySortOrder {
+        didSet {
+            guard librarySortOrder != oldValue else { return }
+            UserDefaults.standard.set(librarySortOrder.rawValue, forKey: AppConstants.librarySortOrderKey)
+        }
+    }
+
+    /// User-selected local Library album grid sort order, persisted to `UserDefaults` so it survives relaunch.
+    var albumSortOrder: AlbumSortOrder {
+        didSet {
+            guard albumSortOrder != oldValue else { return }
+            UserDefaults.standard.set(albumSortOrder.rawValue, forKey: AppConstants.albumSortOrderKey)
+        }
+    }
+
+    /// User-selected local Library artist list sort order, persisted to `UserDefaults` so it survives relaunch.
+    var artistSortOrder: ArtistSortOrder {
+        didSet {
+            guard artistSortOrder != oldValue else { return }
+            UserDefaults.standard.set(artistSortOrder.rawValue, forKey: AppConstants.artistSortOrderKey)
+        }
+    }
+
+    /// User-selected audio quality for new downloads (Settings → ダウンロード音質), persisted to
+    /// `UserDefaults` so it survives relaunch. Only affects downloads requested after the change —
+    /// see `downloadSong` and `progress/download-audio-quality.md`.
+    var downloadAudioQuality: DownloadAudioQuality {
+        didSet {
+            guard downloadAudioQuality != oldValue else { return }
+            UserDefaults.standard.set(downloadAudioQuality.rawValue, forKey: AppConstants.downloadAudioQualityKey)
+        }
+    }
+
+    /// User-selected AAC bitrate for new AAC downloads (Settings → ダウンロード音質), persisted to
+    /// `UserDefaults` so it survives relaunch. Only meaningful when `downloadAudioQuality` requests
+    /// an AAC variant (`.aac`/`.both`); see `downloadSong` and `progress/download-audio-quality.md`.
+    var downloadAACBitrate: DownloadAACBitrate {
+        didSet {
+            guard downloadAACBitrate != oldValue else { return }
+            UserDefaults.standard.set(downloadAACBitrate.rawValue, forKey: AppConstants.downloadAACBitrateKey)
+        }
+    }
+
+    /// "For You" server-generated playlists (`GET /v1/remote/situation-playlists`), loaded on
+    /// demand via `refreshSituationPlaylists()`. Empty (not an error state) when the desktop
+    /// predates the endpoint (404) or hasn't been queried yet.
+    private(set) var situationPlaylists: [SituationPlaylist] = []
+
+    /// Message from the most recent failed `redeemPairing` call (invalid/expired secret, unreachable
+    /// host, …), shown by Settings next to the pairing field.
+    var pairingError: String?
+
     /// Drives the full-screen now playing sheet (lives on `AppModel` so `tabViewBottomAccessory` can update presentation reliably).
     var isNowPlayingSheetPresented = false
+
+    // MARK: - Sidecar (desktop-pushed fullscreen now-playing display)
+
+    /// Latest `sidecar.active` reading from `/v1/remote/state`, driven by `startSidecarPolling()`
+    /// while the app is foregrounded (see `SidecarDirective`). `SidecarScreen`'s `fullScreenCover`
+    /// is bound to `isSidecarPresented`, not this property directly, so a local dismissal (the
+    /// screen's close button) is respected even while the desktop keeps reporting `active == true`.
+    private(set) var sidecarActive = false
+    /// `songId` from the desktop's directive, when present (see `SidecarDirective`).
+    private(set) var sidecarSongId: String?
+    /// `artworkId` from the desktop's directive, when present.
+    private(set) var sidecarArtworkId: String?
+    private(set) var sidecarTitle = ""
+    private(set) var sidecarArtist = ""
+    private(set) var sidecarAlbum = ""
+    private(set) var sidecarPosition: Double = 0
+    private(set) var sidecarDuration: Double = 0
+    private(set) var sidecarPlaying = false
+    /// Wall-clock time `sidecarPosition` was captured at, for `SidecarProgressInterpolation`.
+    private(set) var sidecarPositionTimestamp = Date()
+
+    /// Set by `SidecarScreen`'s close button; cleared automatically once the desktop directive
+    /// goes false and then true again (see `SidecarPresentationPolicy.shouldClearDismissal`).
+    private var sidecarLocallyDismissed = false
+    private var sidecarPollTask: Task<Void, Never>?
+
+    /// Whether `SidecarScreen`'s `fullScreenCover` should currently be shown.
+    var isSidecarPresented: Bool {
+        SidecarPresentationPolicy.shouldPresent(active: sidecarActive, locallyDismissed: sidecarLocallyDismissed)
+    }
+
+    /// Starts polling `/v1/remote/state` for the sidecar directive every 2s. Safe to call multiple
+    /// times (cancels any previous task first) — intended to be driven by the app root's
+    /// `scenePhase` becoming `.active`. Coexists with `RemoteControlScreen`'s own polling; both are
+    /// read-only `GET`s against the same endpoint.
+    func startSidecarPolling() {
+        sidecarPollTask?.cancel()
+        sidecarPollTask = Task {
+            while !Task.isCancelled {
+                await sidecarPollOnce()
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+    }
+
+    /// Stops the sidecar poller (app root's `scenePhase` leaving `.active`) and dismisses the
+    /// sidecar screen — it is a foreground-only, display-only surface.
+    func stopSidecarPolling() {
+        sidecarPollTask?.cancel()
+        sidecarPollTask = nil
+        sidecarActive = false
+    }
+
+    /// Local dismissal from `SidecarScreen`'s close button (see `isSidecarPresented`).
+    func dismissSidecarLocally() {
+        sidecarLocallyDismissed = true
+    }
+
+    private func sidecarPollOnce() async {
+        guard let state = try? await withFailover({ try await $0.fetchState() }) else {
+            // Keep the previous sidecar state; a transient failure should not flash the screen away.
+            return
+        }
+        let directive = SidecarDirective.parse(from: state)
+        if SidecarPresentationPolicy.shouldClearDismissal(previousActive: sidecarActive, newActive: directive.active) {
+            sidecarLocallyDismissed = false
+        }
+        sidecarActive = directive.active
+        guard directive.active else { return }
+
+        // position/positionTimestamp are written unconditionally below — SidecarProgressInterpolation
+        // needs a fresh wall-clock anchor every successful tick. Everything else is written only
+        // when it actually changed: the desktop reports the same track dozens of times per minute
+        // while it plays, and an unconditional write fires an @Observable invalidation for every
+        // view reading these properties (SidecarArtworkView, the title/artist labels, …) on every
+        // 2s tick even though nothing changed (see progress/sidecar-poll-tick-cpu-leak.md).
+        let newMetadata = SidecarMetadataSnapshot(
+            songId: directive.songId,
+            artworkId: directive.artworkId,
+            title: state["title"] as? String ?? "",
+            artist: state["artist"] as? String ?? "",
+            album: state["album"] as? String ?? "",
+            duration: Self.doubleValue(state["duration"]),
+            playing: state["playing"] as? Bool ?? false
+        )
+        if newMetadata != currentSidecarMetadata {
+            sidecarSongId = newMetadata.songId
+            sidecarArtworkId = newMetadata.artworkId
+            sidecarTitle = newMetadata.title
+            sidecarArtist = newMetadata.artist
+            sidecarAlbum = newMetadata.album
+            sidecarDuration = newMetadata.duration
+            sidecarPlaying = newMetadata.playing
+        }
+        sidecarPosition = Self.doubleValue(state["position"])
+        sidecarPositionTimestamp = Date()
+    }
+
+    private var currentSidecarMetadata: SidecarMetadataSnapshot {
+        SidecarMetadataSnapshot(
+            songId: sidecarSongId,
+            artworkId: sidecarArtworkId,
+            title: sidecarTitle,
+            artist: sidecarArtist,
+            album: sidecarAlbum,
+            duration: sidecarDuration,
+            playing: sidecarPlaying
+        )
+    }
+
+    private static func doubleValue(_ any: Any?) -> Double {
+        if let d = any as? Double { return d }
+        if let i = any as? Int { return Double(i) }
+        if let n = any as? NSNumber { return n.doubleValue }
+        return 0
+    }
+
+    /// Debug-only hook (set via `UXM_DEBUG_LYRICS_SONG`, see `UXMusicMobileApp`) asking
+    /// `NowPlayingView` to auto-open its synced-lyrics screen once presented, so the lyrics
+    /// motion can be recorded/inspected without driving the tap-through UI by hand.
+    var debugForceOpenLyrics = false
 
     /// songId → 0...1 while downloading
     var downloadProgress: [String: Double] = [:]
     /// Last failure from `downloadSong` / `downloadAlbum` (shown on Remote Library).
     var downloadError: String?
 
+    /// Aggregate status for a bulk download in progress (`downloadAlbum`/`downloadPlaylistSongs`),
+    /// driving the slim capsule banner above the Library screens' content (see `BulkDownloadStatus`
+    /// and `BulkDownloadStatusReducer`). `nil` outside of a bulk download — a standalone
+    /// `downloadSong` call never sets this, so it stays `nil` and no banner appears.
+    var bulkDownloadStatus: BulkDownloadStatus?
+
     /// Bumped when local download metadata changes so `@Observable` invalidates library views that do not read `downloadProgress`.
     private(set) var downloadLibraryRevision: Int = 0
 
     let downloadManager: DownloadManager
+    /// Metadata-only membership for songs with no local file (YouTube songs added via "ライブラリに追加").
+    let libraryMembershipStore: LibraryMembershipStore
     let lyricsFileStore: LyricsFileStore
     let player: MusicPlayerService
     let playlistStore: PlaylistStore
     let favouriteSongStore: FavouriteSongStore
+    let watchTransferBridge: WatchTransferBridge
 
     /// Locally persisted playlists (order matches `playlistStore`).
     private(set) var playlists: [Playlist] = []
@@ -77,7 +271,38 @@ final class AppModel {
 
     init(playlistStore: PlaylistStore? = nil, lyricsFileStore: LyricsFileStore? = nil) {
         serverConfig = Self.loadSettings()
+        if let raw = UserDefaults.standard.string(forKey: AppConstants.librarySortOrderKey),
+           let restored = LibrarySortOrder(rawValue: raw) {
+            librarySortOrder = restored
+        } else {
+            librarySortOrder = .album
+        }
+        if let raw = UserDefaults.standard.string(forKey: AppConstants.albumSortOrderKey),
+           let restored = AlbumSortOrder(rawValue: raw) {
+            albumSortOrder = restored
+        } else {
+            albumSortOrder = .name
+        }
+        if let raw = UserDefaults.standard.string(forKey: AppConstants.artistSortOrderKey),
+           let restored = ArtistSortOrder(rawValue: raw) {
+            artistSortOrder = restored
+        } else {
+            artistSortOrder = .name
+        }
+        downloadAudioQuality = DownloadAudioQuality.restored(
+            fromRawValue: UserDefaults.standard.string(forKey: AppConstants.downloadAudioQualityKey)
+        )
+        downloadAACBitrate = DownloadAACBitrate.restored(
+            fromRawValue: UserDefaults.standard.integer(forKey: AppConstants.downloadAACBitrateKey)
+        )
         downloadManager = DownloadManager()
+        libraryMembershipStore = LibraryMembershipStore()
+        watchTransferBridge = WatchTransferBridge(downloadManager: downloadManager)
+        // Activated here (app model construction, i.e. at process launch) rather than from a
+        // view's onAppear: WCSession.activate() completes asynchronously, and a `send` requested
+        // before that completion must see the bridge already mid-activation to be queued correctly
+        // (see WatchTransferBridge.send / handleActivationCompletion).
+        watchTransferBridge.activate()
         self.lyricsFileStore = lyricsFileStore ?? LyricsFileStore()
         self.playlistStore = playlistStore ?? PlaylistStore()
         favouriteSongStore = FavouriteSongStore()
@@ -90,17 +315,40 @@ final class AppModel {
             guard !s.isEmpty, let url = URL(string: s) else { return nil }
             return await NowPlayingArtworkImageLoader.uiImage(from: url)
         }
+        player.resolveYouTubeVideoID = { [weak self] song in
+            guard let self else { return nil }
+            let url = song.sourceURL ?? song.path
+            return try? await self.withFailover { try await $0.resolveYouTubeVideo(url: url).videoId }
+        }
         refreshPlaylists()
+        // Wired up after every stored property is initialised (not passed into
+        // WatchTransferBridge's own initialiser) because downloading needs `withFailover`/
+        // `RemoteAPIClient`, which live on `AppModel` itself — giving the bridge a closure avoids a
+        // circular dependency between the two types.
+        watchTransferBridge.downloadHandler = { [weak self] song in
+            guard let self else { return false }
+            await self.downloadSong(song)
+            return self.downloadManager.isDownloaded(songId: song.id)
+        }
     }
 
     private func touchDownloadLibrary() {
         downloadLibraryRevision &+= 1
     }
 
-    /// Local tracks in album / disc / track order (not global title sort — avoids scrambled queues and grids).
-    var sortedDownloadedSongsForLibrary: [Song] {
+    /// Every song that is a member of the local Library: downloaded files, plus YouTube songs
+    /// added via "ライブラリに追加" (no local file — see `LibraryMembershipStore`). Downloaded
+    /// metadata wins on an id clash, though the two sets do not overlap in practice.
+    private var librarySongsById: [String: Song] {
         _ = downloadLibraryRevision
-        return downloadManager.downloadedSongs.values.sorted(by: Song.libraryFlatDisplayOrderAscending)
+        var byId = libraryMembershipStore.songs
+        for (id, song) in downloadManager.downloadedSongs { byId[id] = song }
+        return byId
+    }
+
+    /// Local Library tracks in album / disc / track order (not global title sort — avoids scrambled queues and grids).
+    var sortedDownloadedSongsForLibrary: [Song] {
+        librarySongsById.values.sorted(by: Song.libraryFlatDisplayOrderAscending)
     }
 
     func isSongDownloaded(songId: String) -> Bool {
@@ -108,16 +356,43 @@ final class AppModel {
         return downloadManager.isDownloaded(songId: songId)
     }
 
+    /// Whether `songId` belongs to the local Library at all — a downloaded file, or a YouTube
+    /// song added via "ライブラリに追加". Unlike `isSongDownloaded`, true for YouTube members
+    /// even though they have no local file.
+    func isLibrarySongMember(songId: String) -> Bool {
+        _ = downloadLibraryRevision
+        return libraryMembershipStore.contains(songId: songId) || downloadManager.isDownloaded(songId: songId)
+    }
+
+    /// Adds a YouTube song (`song.isYouTube == true`) to the local Library as metadata only —
+    /// no file download, no Watch transfer (see `WatchTransferMenuPolicy`).
+    func addYouTubeSongToLibrary(_ song: Song) {
+        guard song.isYouTube else { return }
+        libraryMembershipStore.add(song)
+        touchDownloadLibrary()
+    }
+
+    func removeYouTubeSongFromLibrary(songId: String) {
+        favouriteSongStore.remove(songId: songId)
+        favouriteSongIds = favouriteSongStore.orderedIds
+        libraryMembershipStore.remove(songId: songId)
+        touchDownloadLibrary()
+    }
+
+    /// Removes a Library song regardless of kind — a downloaded file or a YouTube membership.
     func removeDownloadedSong(songId: String) {
+        if libraryMembershipStore.contains(songId: songId) {
+            removeYouTubeSongFromLibrary(songId: songId)
+            return
+        }
         lyricsFileStore.remove(for: songId)
         downloadManager.remove(songId: songId)
         touchDownloadLibrary()
     }
 
-    /// Downloaded songs not already in the playlist (for “Add songs”); observes `downloadLibraryRevision`.
+    /// Library songs not already in the playlist (for “Add songs”); observes `downloadLibraryRevision`.
     func downloadedSongsEligibleForPlaylist(excludingPlaylistSongIds songIds: Set<String>) -> [Song] {
-        _ = downloadLibraryRevision
-        return downloadManager.downloadedSongs.values
+        librarySongsById.values
             .filter { !songIds.contains($0.id) }
             .sorted(by: Song.libraryFlatDisplayOrderAscending)
     }
@@ -135,8 +410,57 @@ final class AppModel {
         }
     }
 
-    func client() -> WearAPIClient {
-        WearAPIClient(baseURLString: serverConfig.baseURLString)
+    /// Overridable in tests to inject a mocked `URLSession` (see `RemoteLANURLSession`).
+    var urlSession: URLSession = RemoteLANURLSession.shared
+
+    func client() -> RemoteAPIClient {
+        RemoteAPIClient(
+            baseURLString: serverConfig.baseURLString,
+            token: serverConfig.token,
+            deviceName: DeviceIdentity.displayName,
+            session: urlSession
+        )
+    }
+
+    /// Runs `operation` against the current server; on a connection-level failure (`URLError`),
+    /// retries each `fallbackHosts` entry in order and promotes the first one that succeeds to
+    /// `serverConfig.host`. HTTP-status errors (`RemoteAPIError`) mean the server was reached, so
+    /// they are not retried against fallback hosts.
+    func withFailover<T>(_ operation: @Sendable (RemoteAPIClient) async throws -> T) async throws -> T {
+        let hostsToTry = ConnectionCandidatePolicy.hostsToTry(
+            primaryHost: serverConfig.host,
+            fallbackHosts: serverConfig.fallbackHosts,
+            preferredHost: serverConfig.preferredHost
+        )
+
+        var lastError: Error?
+        for (index, host) in hostsToTry.enumerated() {
+            let candidateConfig = ServerConfig(host: host, port: serverConfig.port, token: serverConfig.token)
+            let candidateClient = RemoteAPIClient(
+                baseURLString: candidateConfig.baseURLString,
+                token: candidateConfig.token,
+                session: urlSession
+            )
+            do {
+                let result = try await operation(candidateClient)
+                if index > 0 {
+                    // Promote the host that just succeeded to primary; demote the rest (in their
+                    // existing relative order) to fallbackHosts.
+                    var remaining = hostsToTry
+                    remaining.remove(at: index)
+                    serverConfig.host = host
+                    serverConfig.fallbackHosts = remaining
+                }
+                return result
+            } catch let error as URLError {
+                lastError = error
+                continue
+            } catch {
+                // Reached the server (e.g. an HTTP-status error) — do not fail over.
+                throw error
+            }
+        }
+        throw lastError ?? URLError(.cannotConnectToHost)
     }
 
     /// Remote Wear URL, or `file://` when the jacket was cached under `DownloadedArtwork/` after a download.
@@ -151,21 +475,80 @@ final class AppModel {
         return client().artworkURL(artworkId: artworkId)
     }
 
-    /// Applies a pairing URL from QR or deep link. Returns whether configuration changed.
+    /// Applies a pairing URL from QR or deep link: probes every LAN address the desktop advertised
+    /// (`hosts=`) for reachability, then redeems the embedded one-time secret against whichever
+    /// candidate answered, mirroring the mDNS-discovery failover in `RemoteConnectionResolver`.
+    /// Returns whether pairing succeeded; on any failure — malformed URL, no reachable host, or a
+    /// rejected secret — `pairingError` is set to a user-facing message rather than failing silently.
     @discardableResult
-    func applyPairingURL(_ url: URL) -> Bool {
-        guard let cfg = ServerConfig.fromPairingURL(url), cfg.isConfigured else { return false }
-        serverConfig = cfg
-        return true
+    func applyPairingURL(_ url: URL) async -> Bool {
+        guard let request = ServerConfig.pairingRequest(fromPairingURL: url) else {
+            pairingError = String(localized: "Could not read the QR code. Please update the desktop app to the latest version.")
+            return false
+        }
+        return await redeemPairing(hosts: request.hosts, port: request.port, secret: request.secret)
+    }
+
+    /// Redeems a pairing secret (from QR or manual entry) for a device token and, on success, saves
+    /// it as `serverConfig`. Uses `DeviceIdentity` for `deviceId`/`displayName` so the desktop can
+    /// identify and later revoke this specific device.
+    @discardableResult
+    func redeemPairing(host: String, port: Int, secret: String) async -> Bool {
+        let baseURLString = ServerConfig(host: host, port: port).baseURLString
+        do {
+            let result = try await RemoteAPIClient.redeemPairingSecret(
+                baseURLString: baseURLString,
+                secret: secret,
+                deviceId: DeviceIdentity.deviceId,
+                displayName: DeviceIdentity.displayName,
+                session: urlSession
+            )
+            serverConfig = ServerConfig(host: host, port: port, token: result.token)
+            pairingError = nil
+            return true
+        } catch {
+            pairingError = Self.pairingErrorMessage(for: error)
+            return false
+        }
+    }
+
+    /// Probes `hosts` in order (like `withFailover`/Discovery) for the first one that answers
+    /// `GET /v1/identity`, then redeems the secret against that reachable host. On success, the
+    /// remaining candidates are kept as `fallbackHosts` so later requests can fail over too.
+    @discardableResult
+    func redeemPairing(hosts: [String], port: Int, secret: String) async -> Bool {
+        let candidates = hosts.map { ServerConfig(host: $0, port: port) }
+        let resolved = await RemoteConnectionResolver.resolve(candidates: candidates) { candidate in
+            try await RemoteAPIClient(baseURLString: candidate.baseURLString, session: urlSession).ping()
+        }
+        guard let resolved else {
+            pairingError = String(localized: "Could not reach the desktop app. Check that you are on the same Wi-Fi network.")
+            return false
+        }
+        let ok = await redeemPairing(host: resolved.config.host, port: port, secret: secret)
+        if ok {
+            serverConfig.fallbackHosts = hosts.filter { $0 != resolved.config.host }
+        }
+        return ok
+    }
+
+    private static func pairingErrorMessage(for error: Error) -> String {
+        switch error {
+        case RemoteAPIError.server(_, let message):
+            return message
+        case RemoteAPIError.httpStatus(401):
+            return String(localized: "The pairing code is invalid or has expired.")
+        default:
+            return error.localizedDescription
+        }
     }
 
     func refreshLibrary() async {
         libraryState = .loading
         do {
-            let c = client()
-            let songs = try await c.fetchSongs()
+            let songs = try await withFailover { try await $0.fetchSongs() }
             libraryState = .loaded(songs)
-            if let map = try? await c.fetchLoudness() {
+            if let map = try? await withFailover({ try await $0.fetchLoudness() }) {
                 loudness = map
                 player.loudnessMap = map
                 player.refreshVolumeForCurrentSong()
@@ -182,7 +565,7 @@ final class AppModel {
 
     func refreshLoudnessOnly() async {
         do {
-            let map = try await client().fetchLoudness()
+            let map = try await withFailover { try await $0.fetchLoudness() }
             loudness = map
             player.loudnessMap = map
             player.refreshVolumeForCurrentSong()
@@ -191,55 +574,114 @@ final class AppModel {
         }
     }
 
+    /// Downloads `song` according to `downloadAudioQuality`: one request for `.original`/`.aac`,
+    /// two sequential requests for `.both` (original, then AAC — see `DownloadRequestPlan`), sharing
+    /// a single `downloadProgress[song.id]` entry mapped 0–1 across whichever steps run. The song is
+    /// registered once its first step succeeds; if `.both`'s second (AAC) step then fails, the error
+    /// is surfaced via `downloadError` but the already-downloaded first file stays registered.
     func downloadSong(_ song: Song) async {
         guard downloadProgress[song.id] == nil else { return }
         downloadError = nil
         downloadProgress[song.id] = 0
-        let tempDest = downloadManager.temporaryDownloadURL(songId: song.id)
-        do {
-            try await client().downloadFile(songId: song.id, to: tempDest, preferOriginalAudio: true) { received, total in
-                Task { @MainActor in
-                    if total > 0 {
-                        self.downloadProgress[song.id] = Double(received) / Double(total)
+        let steps = DownloadRequestPlan.steps(for: downloadAudioQuality)
+        var registered = false
+
+        for (index, step) in steps.enumerated() {
+            let tempDest = downloadManager.temporaryDownloadURL(songId: song.id)
+            let stepBase = Double(index) / Double(steps.count)
+            let stepSpan = 1.0 / Double(steps.count)
+            do {
+                try await withFailover { c in
+                    try await c.downloadFile(songId: song.id, to: tempDest, preferOriginalAudio: step.preferOriginalAudio, aacBitrateKbps: self.downloadAACBitrate.rawValue) { received, total in
+                        Task { @MainActor in
+                            guard total > 0 else { return }
+                            let fraction = stepBase + stepSpan * (Double(received) / Double(total))
+                            self.publishDownloadProgress(songId: song.id, fraction: fraction)
+                        }
                     }
                 }
+                if step.preferOriginalAudio {
+                    try downloadManager.finalizeDownloadedPart(at: tempDest, song: song)
+                } else {
+                    try downloadManager.finalizeDownloadedAACPart(at: tempDest, song: song)
+                }
+                if !registered {
+                    downloadManager.register(song)
+                    registered = true
+                }
+            } catch {
+                try? FileManager.default.removeItem(at: tempDest)
+                downloadError = error.localizedDescription
+                guard registered else {
+                    // First step failed: nothing was downloaded, matching the previous single-request behaviour.
+                    downloadProgress.removeValue(forKey: song.id)
+                    return
+                }
+                // `.both`'s second (AAC) step failed after the first succeeded: keep the first file.
+                break
             }
-            try downloadManager.finalizeDownloadedPart(at: tempDest, song: song)
-            downloadManager.register(song)
-            await cacheArtworkAfterDownloadIfNeeded(for: song)
-            await fetchAndStoreLyricsIfAvailable(for: song)
-            touchDownloadLibrary()
-        } catch {
-            downloadError = error.localizedDescription
-            try? FileManager.default.removeItem(at: tempDest)
         }
+
+        await cacheArtworkAfterDownloadIfNeeded(for: song)
+        await fetchAndStoreLyricsIfAvailable(for: song)
+        touchDownloadLibrary()
         downloadProgress.removeValue(forKey: song.id)
     }
 
-    /// Downloads every track in `album` that is not already local, in album order (sequential).
-    func downloadAlbum(_ album: Album) async {
-        for song in album.songs {
-            guard !downloadManager.isDownloaded(songId: song.id) else { continue }
-            await downloadSong(song)
+    /// Writes `downloadProgress[songId]` (and, when a bulk download is in progress, the banner's
+    /// `bulkDownloadStatus.currentFraction`) throttled via `ProgressPublishThrottle` to roughly 1%
+    /// steps — `downloadFile`'s progress callback ticks many times per second, and publishing every
+    /// tick re-renders every visible row observing `downloadProgress` (see
+    /// `mobile_perf_research/notes/static-review-2026-08.md` finding 3).
+    private func publishDownloadProgress(songId: String, fraction: Double) {
+        let previous = downloadProgress[songId] ?? 0
+        guard ProgressPublishThrottle.shouldPublish(previous: previous, next: fraction) else { return }
+        downloadProgress[songId] = fraction
+        if let status = bulkDownloadStatus {
+            bulkDownloadStatus = BulkDownloadStatusReducer.progress(status, fraction: fraction)
         }
     }
 
-    /// Downloads every track in `songs` in list order (sequential), skipping already local files.
-    func downloadPlaylistSongs(_ songs: [Song]) async {
+    /// Downloads every track in `album` that is not already local, in album order (sequential).
+    /// YouTube entries have no downloadable file on the desktop side and are skipped. Drives
+    /// `bulkDownloadStatus` (see `BulkDownloadStatusReducer`) for the bulk download banner while
+    /// more than zero tracks actually need downloading; cleared on every exit path, including an
+    /// early return or a thrown error inside `downloadSong`.
+    func downloadAlbum(_ album: Album) async {
+        await runBulkDownload(album.songs.filter { !$0.isYouTube && !downloadManager.isDownloaded(songId: $0.id) })
+    }
+
+    /// Shared bulk-download loop for `downloadAlbum`/`downloadPlaylistSongs`: both already filter
+    /// their input down to the songs that actually need downloading before calling this.
+    private func runBulkDownload(_ songs: [Song]) async {
+        guard !songs.isEmpty else { return }
+        var status = BulkDownloadStatusReducer.start(total: songs.count)
+        bulkDownloadStatus = status
+        defer { bulkDownloadStatus = BulkDownloadStatusReducer.finish(status) }
+
         for song in songs {
-            guard !downloadManager.isDownloaded(songId: song.id) else { continue }
+            status = BulkDownloadStatusReducer.songStarted(status, title: song.displayTitle)
+            bulkDownloadStatus = status
             await downloadSong(song)
+            status = BulkDownloadStatusReducer.songFinished(status)
+            bulkDownloadStatus = status
         }
+    }
+
+    /// Downloads every track in `songs` in list order (sequential), skipping already local files
+    /// and YouTube entries (see `downloadAlbum`).
+    func downloadPlaylistSongs(_ songs: [Song]) async {
+        await runBulkDownload(songs.filter { !$0.isYouTube && !downloadManager.isDownloaded(songId: $0.id) })
     }
 
     func albumHasTracksToDownload(_ album: Album) -> Bool {
         _ = downloadLibraryRevision
-        return album.songs.contains { !downloadManager.isDownloaded(songId: $0.id) }
+        return album.songs.contains { !$0.isYouTube && !downloadManager.isDownloaded(songId: $0.id) }
     }
 
     func playlistSongsContainUndownloaded(_ songs: [Song]) -> Bool {
         _ = downloadLibraryRevision
-        return songs.contains { !downloadManager.isDownloaded(songId: $0.id) }
+        return songs.contains { !$0.isYouTube && !downloadManager.isDownloaded(songId: $0.id) }
     }
 
     private func cacheArtworkAfterDownloadIfNeeded(for song: Song) async {
@@ -247,7 +689,7 @@ final class AppModel {
         guard !downloadManager.hasLocalArtwork(artworkId: song.artworkId) else { return }
         do {
             let dest = downloadManager.localArtworkDestinationURL(artworkId: song.artworkId)
-            try await client().downloadArtwork(artworkId: song.artworkId, to: dest)
+            try await withFailover { try await $0.downloadArtwork(artworkId: song.artworkId, to: dest) }
         } catch {
             // Optional: list rows still use remote artwork when reachable.
         }
@@ -273,25 +715,69 @@ final class AppModel {
         lyricsFileStore.hasLyrics(for: songId)
     }
 
+    /// Lyrics for the full-screen viewer, merged with the Japanese translation sidecar when one was
+    /// saved (see `LyricsTranslationMerger`). `nil` when no local lyrics file exists at all.
+    func localBilingualLyricsDisplay(for songId: String) -> BilingualLyricsDisplayMode? {
+        guard let raw = lyricsFileStore.plainTextIfPresent(for: songId) else { return nil }
+        let translationRaw = lyricsFileStore.translationPlainTextIfPresent(for: songId)
+
+        guard lyricsFileStore.hasLRCFile(for: songId) else {
+            return .plain(LyricsTranslationMerger.mergePlainWithJaTxt(primaryText: raw, translationText: translationRaw ?? ""))
+        }
+        let timed = LRCParser.parseTimedLines(raw)
+        guard !timed.isEmpty else {
+            return .plain(LyricsTranslationMerger.mergePlainWithJaTxt(primaryText: raw, translationText: translationRaw ?? ""))
+        }
+        guard let translationRaw else {
+            return .synced(timed.map { TranslatedTimedLine(id: $0.id, startTime: $0.startTime, text: $0.text, translation: nil) })
+        }
+        if lyricsFileStore.hasJaLRCFile(for: songId) {
+            let translationTimed = LRCParser.parseTimedLines(translationRaw)
+            return .synced(LyricsTranslationMerger.mergeTimedWithJaLRC(primary: timed, translation: translationTimed))
+        }
+        return .synced(LyricsTranslationMerger.mergeTimedWithJaTxt(primary: timed, translationText: translationRaw))
+    }
+
     private func fetchAndStoreLyricsIfAvailable(for song: Song) async {
         do {
-            let payload = try await client().fetchLyrics(songId: song.id)
+            let payload = try await withFailover { try await $0.fetchLyrics(songId: song.id) }
             guard payload.found else { return }
             guard let type = payload.type else { return }
             guard let content = payload.content?.trimmingCharacters(in: .whitespacesAndNewlines), !content.isEmpty else { return }
             try lyricsFileStore.saveLyrics(content, wearType: type, songId: song.id)
+            if let translationFormat = payload.translationFormat,
+               let translationContent = payload.translationContent?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !translationContent.isEmpty {
+                try? lyricsFileStore.saveTranslation(translationContent, translationFormat: translationFormat, songId: song.id)
+            }
         } catch {
             // Lyrics are optional; do not surface as download errors.
         }
     }
 
-    /// Fetches playlist metadata from the desktop (no local changes).
-    func fetchDesktopPlaylistsPreview() async throws -> [WearDesktopPlaylist] {
-        guard serverConfig.isConfigured else { throw DesktopPlaylistImportError.serverNotConfigured }
-        return try await client().fetchDesktopPlaylists()
+    // MARK: - For You (situation playlists)
+
+    /// Loads `GET /v1/remote/situation-playlists` on demand. On a 404 (desktop predates the
+    /// endpoint) resolves to an empty list rather than surfacing an error — this is a graceful
+    /// "feature not available yet" outcome, not a failure. Other errors leave the previous
+    /// `situationPlaylists` value in place (matching `refreshLoudnessOnly`'s failure handling).
+    func refreshSituationPlaylists() async {
+        do {
+            situationPlaylists = try await withFailover { try await $0.fetchSituationPlaylists() }
+        } catch RemoteAPIError.httpStatus(404) {
+            situationPlaylists = []
+        } catch {
+            // Keep the previous value; the desktop may just be briefly unreachable.
+        }
     }
 
-    /// Imports desktop playlists from `GET /wear/playlists`. Requires a configured server.
+    /// Fetches playlist metadata from the desktop (no local changes).
+    func fetchDesktopPlaylistsPreview() async throws -> [RemoteDesktopPlaylist] {
+        guard serverConfig.isConfigured else { throw DesktopPlaylistImportError.serverNotConfigured }
+        return try await withFailover { try await $0.fetchDesktopPlaylists() }
+    }
+
+    /// Imports desktop playlists from `GET /v1/remote/playlists`. Requires a configured server.
     func importDesktopPlaylists(missingPolicy: DesktopPlaylistMissingPolicy) async throws -> DesktopPlaylistImportOutcome {
         guard serverConfig.isConfigured else { throw DesktopPlaylistImportError.serverNotConfigured }
         var outcome = DesktopPlaylistImportOutcome(
@@ -301,8 +787,8 @@ final class AppModel {
             tracksOmittedNotDownloaded: 0,
             failedTrackDownloads: 0
         )
-        let rows = try await client().fetchDesktopPlaylists()
-        let remoteSongs = try await client().fetchSongs()
+        let rows = try await withFailover { try await $0.fetchDesktopPlaylists() }
+        let remoteSongs = try await withFailover { try await $0.fetchSongs() }
         var remoteById: [String: Song] = [:]
         for s in remoteSongs { remoteById[s.id] = s }
 
@@ -410,16 +896,17 @@ final class AppModel {
         refreshPlaylists()
     }
 
-    /// Maps `playlist.songIds` to downloaded `Song`s; missing IDs are skipped (removed tracks).
+    /// Maps `playlist.songIds` to Library `Song`s (downloaded or YouTube members); missing IDs
+    /// are skipped (removed tracks).
     func resolvedSongs(for playlist: Playlist) -> [Song] {
-        _ = downloadLibraryRevision
-        return playlist.songIds.compactMap { downloadManager.downloadedSongs[$0] }
+        let byId = librarySongsById
+        return playlist.songIds.compactMap { byId[$0] }
     }
 
     func artworkIdForPlaylist(_ playlist: Playlist) -> String {
-        _ = downloadLibraryRevision
+        let byId = librarySongsById
         for sid in playlist.songIds {
-            if let s = downloadManager.downloadedSongs[sid], !s.artworkId.isEmpty {
+            if let s = byId[sid], !s.artworkId.isEmpty {
                 return s.artworkId
             }
         }
@@ -442,9 +929,9 @@ final class AppModel {
         favouriteSongIds = favouriteSongStore.orderedIds
     }
 
-    /// Favourite ids mapped to downloaded `Song`s (missing downloads are omitted).
+    /// Favourite ids mapped to Library `Song`s (downloaded or YouTube members; missing entries omitted).
     func favouriteSongsForPlayback() -> [Song] {
-        _ = downloadLibraryRevision
-        return favouriteSongIds.compactMap { downloadManager.downloadedSongs[$0] }
+        let byId = librarySongsById
+        return favouriteSongIds.compactMap { byId[$0] }
     }
 }

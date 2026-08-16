@@ -14,6 +14,14 @@ export function AddYouTubeLink(arg1) {
   return window['go']['server']['App']['AddYouTubeLink'](arg1);
 }
 
+export function AnalyseLibraryAudioEmbeddings() {
+  return window['go']['server']['App']['AnalyseLibraryAudioEmbeddings']();
+}
+
+export function AudioDebugOutputRMS() {
+  return window['go']['server']['App']['AudioDebugOutputRMS']();
+}
+
 export function AudioGetCurrentDevice() {
   return window['go']['server']['App']['AudioGetCurrentDevice']();
 }
@@ -34,6 +42,10 @@ export function AudioGetStatus() {
   return window['go']['server']['App']['AudioGetStatus']();
 }
 
+export function AudioIsLocalMuted() {
+  return window['go']['server']['App']['AudioIsLocalMuted']();
+}
+
 export function AudioIsPaused() {
   return window['go']['server']['App']['AudioIsPaused']();
 }
@@ -44,6 +56,10 @@ export function AudioIsPlaying() {
 
 export function AudioListDevices() {
   return window['go']['server']['App']['AudioListDevices']();
+}
+
+export function AudioLiveLoudnessCorrectionGain() {
+  return window['go']['server']['App']['AudioLiveLoudnessCorrectionGain']();
 }
 
 export function AudioPause() {
@@ -82,8 +98,24 @@ export function AudioSetVolume(arg1) {
   return window['go']['server']['App']['AudioSetVolume'](arg1);
 }
 
+export function AudioStartLiveLoudnessCorrection(arg1) {
+  return window['go']['server']['App']['AudioStartLiveLoudnessCorrection'](arg1);
+}
+
+export function AudioStartWebViewTap() {
+  return window['go']['server']['App']['AudioStartWebViewTap']();
+}
+
 export function AudioStop() {
   return window['go']['server']['App']['AudioStop']();
+}
+
+export function AudioStopLiveLoudnessCorrection() {
+  return window['go']['server']['App']['AudioStopLiveLoudnessCorrection']();
+}
+
+export function AudioStopWebViewTap() {
+  return window['go']['server']['App']['AudioStopWebViewTap']();
 }
 
 export function AutoSyncLyrics(arg1) {
@@ -150,6 +182,18 @@ export function DiscoverSyncDevices(arg1) {
   return window['go']['server']['App']['DiscoverSyncDevices'](arg1);
 }
 
+export function DownloadSyncTrack(arg1, arg2) {
+  return window['go']['server']['App']['DownloadSyncTrack'](arg1, arg2);
+}
+
+export function EmbedDebugLog(arg1) {
+  return window['go']['server']['App']['EmbedDebugLog'](arg1);
+}
+
+export function GenerateMoodSpecial(arg1, arg2) {
+  return window['go']['server']['App']['GenerateMoodSpecial'](arg1, arg2);
+}
+
 export function GetAllLoudnessData() {
   return window['go']['server']['App']['GetAllLoudnessData']();
 }
@@ -164,6 +208,18 @@ export function GetArtworkAsDataURL(arg1) {
 
 export function GetArtworksDir() {
   return window['go']['server']['App']['GetArtworksDir']();
+}
+
+export function GetAudioEmbedStatus() {
+  return window['go']['server']['App']['GetAudioEmbedStatus']();
+}
+
+export function GetE2EEmbedVideoID() {
+  return window['go']['server']['App']['GetE2EEmbedVideoID']();
+}
+
+export function GetLANAddress() {
+  return window['go']['server']['App']['GetLANAddress']();
 }
 
 export function GetLibraryForNormalize() {
@@ -186,6 +242,14 @@ export function GetMTPDevices() {
   return window['go']['server']['App']['GetMTPDevices']();
 }
 
+export function GetPairingQRDataURL() {
+  return window['go']['server']['App']['GetPairingQRDataURL']();
+}
+
+export function GetPairingURL() {
+  return window['go']['server']['App']['GetPairingURL']();
+}
+
 export function GetPerformanceSnapshot() {
   return window['go']['server']['App']['GetPerformanceSnapshot']();
 }
@@ -198,20 +262,24 @@ export function GetSettings() {
   return window['go']['server']['App']['GetSettings']();
 }
 
+export function GetSidecarTargetDevice() {
+  return window['go']['server']['App']['GetSidecarTargetDevice']();
+}
+
 export function GetSituationPlaylists() {
   return window['go']['server']['App']['GetSituationPlaylists']();
 }
 
-export function GetWearAddress() {
-  return window['go']['server']['App']['GetWearAddress']();
+export function GetUnifiedLibrary() {
+  return window['go']['server']['App']['GetUnifiedLibrary']();
 }
 
-export function GetWearPairingQRDataURL() {
-  return window['go']['server']['App']['GetWearPairingQRDataURL']();
+export function GetYouTubeEmbedLoudness(arg1) {
+  return window['go']['server']['App']['GetYouTubeEmbedLoudness'](arg1);
 }
 
-export function GetWearPairingURL() {
-  return window['go']['server']['App']['GetWearPairingURL']();
+export function GetYouTubeEmbedURL(arg1) {
+  return window['go']['server']['App']['GetYouTubeEmbedURL'](arg1);
 }
 
 export function GetYouTubeInfo(arg1) {
@@ -224,6 +292,10 @@ export function HandleLyricsDrop(arg1) {
 
 export function IncrementPlayCount(arg1) {
   return window['go']['server']['App']['IncrementPlayCount'](arg1);
+}
+
+export function ListPairedRemoteDevices() {
+  return window['go']['server']['App']['ListPairedRemoteDevices']();
 }
 
 export function ListSyncDevices() {
@@ -270,6 +342,10 @@ export function MTPMakeDirectory(arg1) {
   return window['go']['server']['App']['MTPMakeDirectory'](arg1);
 }
 
+export function MTPSelectDownloadFolder() {
+  return window['go']['server']['App']['MTPSelectDownloadFolder']();
+}
+
 export function MTPUploadFiles(arg1) {
   return window['go']['server']['App']['MTPUploadFiles'](arg1);
 }
@@ -280,6 +356,10 @@ export function MTPUploadFilesWithStructure(arg1) {
 
 export function MTPWalk(arg1) {
   return window['go']['server']['App']['MTPWalk'](arg1);
+}
+
+export function MarkNextPlaybackRemoteInitiated() {
+  return window['go']['server']['App']['MarkNextPlaybackRemoteInitiated']();
 }
 
 export function NormalizeAnalyze(arg1) {
@@ -294,8 +374,16 @@ export function NormalizeStartJob(arg1, arg2, arg3) {
   return window['go']['server']['App']['NormalizeStartJob'](arg1, arg2, arg3);
 }
 
+export function NotifyYouTubePlaybackState(arg1, arg2, arg3) {
+  return window['go']['server']['App']['NotifyYouTubePlaybackState'](arg1, arg2, arg3);
+}
+
 export function Ping() {
   return window['go']['server']['App']['Ping']();
+}
+
+export function PrefetchSyncTracks(arg1) {
+  return window['go']['server']['App']['PrefetchSyncTracks'](arg1);
 }
 
 export function PullSyncLibraryAssets(arg1, arg2) {
@@ -310,8 +398,16 @@ export function PushSyncLibraryAssetsWithOptions(arg1, arg2, arg3) {
   return window['go']['server']['App']['PushSyncLibraryAssetsWithOptions'](arg1, arg2, arg3);
 }
 
+export function RefreshSyncRemoteCatalog() {
+  return window['go']['server']['App']['RefreshSyncRemoteCatalog']();
+}
+
 export function RenamePlaylist(arg1) {
   return window['go']['server']['App']['RenamePlaylist'](arg1);
+}
+
+export function ReportEmbedPlaybackState(arg1, arg2, arg3) {
+  return window['go']['server']['App']['ReportEmbedPlaybackState'](arg1, arg2, arg3);
 }
 
 export function RequestInitialLibrary() {
@@ -320,6 +416,10 @@ export function RequestInitialLibrary() {
 
 export function RequestPlaylistsWithArtwork() {
   return window['go']['server']['App']['RequestPlaylistsWithArtwork']();
+}
+
+export function ResolveYouTubeStreamURL(arg1) {
+  return window['go']['server']['App']['ResolveYouTubeStreamURL'](arg1);
 }
 
 export function SaveAlbumSongOrder(arg1, arg2) {
@@ -336,6 +436,10 @@ export function SaveSettings(arg1) {
 
 export function ScanLibrary(arg1) {
   return window['go']['server']['App']['ScanLibrary'](arg1);
+}
+
+export function SearchTracksByMood(arg1, arg2) {
+  return window['go']['server']['App']['SearchTracksByMood'](arg1, arg2);
 }
 
 export function SelectAndChangeAlbumArtwork(arg1) {
@@ -366,6 +470,10 @@ export function SetLyricsSyncModelConsent(arg1) {
   return window['go']['server']['App']['SetLyricsSyncModelConsent'](arg1);
 }
 
+export function SetSidecarTargetDevice(arg1) {
+  return window['go']['server']['App']['SetSidecarTargetDevice'](arg1);
+}
+
 export function SongFinished(arg1) {
   return window['go']['server']['App']['SongFinished'](arg1);
 }
@@ -384,6 +492,10 @@ export function StartSyncPairing(arg1) {
 
 export function StopDeviceWatcher() {
   return window['go']['server']['App']['StopDeviceWatcher']();
+}
+
+export function StopGemmaServer() {
+  return window['go']['server']['App']['StopGemmaServer']();
 }
 
 export function UpdatePlaylistSongOrder(arg1) {

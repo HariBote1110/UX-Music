@@ -115,4 +115,191 @@ final class AppModelDownloadTests: XCTestCase {
         XCTAssertTrue(onDisk.hasSuffix(".flac"), onDisk)
         try? FileManager.default.removeItem(atPath: onDisk)
     }
+
+    // MARK: - AAC variant (DownloadAudioQuality: .aac / .both)
+
+    private func song(id: String) -> Song {
+        Song(id: id, path: "/lib/\(id).m4a", title: "T", artist: "A", album: "Al", albumArtist: "", artworkId: "")
+    }
+
+    func testIsDownloadedTrueWithOnlyAACVariantPresent() throws {
+        let dm = DownloadManager()
+        let id = "unit-aac-\(UUID().uuidString)"
+        let s = song(id: id)
+        try Data("aac-bytes".utf8).write(to: dm.aacVariantDestinationURL(songId: id))
+        dm.register(s)
+        XCTAssertTrue(dm.isDownloaded(songId: id))
+        dm.remove(songId: id)
+    }
+
+    func testWatchTransferSourceURLPrefersAACVariantWhenPresent() throws {
+        let dm = DownloadManager()
+        let id = "unit-aac-\(UUID().uuidString)"
+        let s = song(id: id)
+        try Data("orig".utf8).write(to: dm.localFileURL(songId: id))
+        dm.register(s)
+        try Data("aac-bytes".utf8).write(to: dm.aacVariantDestinationURL(songId: id))
+        let source = dm.watchTransferSourceURL(songId: id)
+        XCTAssertEqual(source, dm.aacVariantDestinationURL(songId: id))
+        dm.remove(songId: id)
+    }
+
+    func testWatchTransferSourceURLFallsBackToOriginalWhenNoAACVariant() throws {
+        let dm = DownloadManager()
+        let id = "unit-aac-\(UUID().uuidString)"
+        let s = song(id: id)
+        try Data("orig".utf8).write(to: dm.localFileURL(songId: id))
+        dm.register(s)
+        let source = dm.watchTransferSourceURL(songId: id)
+        XCTAssertEqual(source?.lastPathComponent, dm.localFileURL(songId: id).lastPathComponent)
+        dm.remove(songId: id)
+    }
+
+    func testWatchTransferSourceURLNilWhenNothingDownloaded() {
+        let dm = DownloadManager()
+        let id = "unit-aac-\(UUID().uuidString)"
+        XCTAssertNil(dm.watchTransferSourceURL(songId: id))
+    }
+
+    func testLocalPathStringPrefersOriginalOverAACVariant() throws {
+        let dm = DownloadManager()
+        let id = "unit-aac-\(UUID().uuidString)"
+        let s = song(id: id)
+        try Data("orig".utf8).write(to: dm.localFileURL(songId: id))
+        try Data("aac-bytes".utf8).write(to: dm.aacVariantDestinationURL(songId: id))
+        dm.register(s)
+        XCTAssertEqual(dm.localPathString(songId: id), dm.localFileURL(songId: id).path)
+        dm.remove(songId: id)
+    }
+
+    func testLocalPathStringFallsBackToAACVariantWhenNoOriginal() throws {
+        let dm = DownloadManager()
+        let id = "unit-aac-\(UUID().uuidString)"
+        let s = song(id: id)
+        try Data("aac-bytes".utf8).write(to: dm.aacVariantDestinationURL(songId: id))
+        dm.register(s)
+        XCTAssertEqual(dm.localPathString(songId: id), dm.aacVariantDestinationURL(songId: id).path)
+        dm.remove(songId: id)
+    }
+
+    func testRemoveDeletesAACVariantToo() throws {
+        let dm = DownloadManager()
+        let id = "unit-aac-\(UUID().uuidString)"
+        let s = song(id: id)
+        try Data("aac-bytes".utf8).write(to: dm.aacVariantDestinationURL(songId: id))
+        dm.register(s)
+        dm.remove(songId: id)
+        XCTAssertNil(dm.localAACVariantURLIfPresent(songId: id))
+    }
+
+    func testFinalizeDownloadedAACPartStoresM4aAsVariant() throws {
+        let dm = DownloadManager()
+        let id = "unit-aac-\(UUID().uuidString)"
+        let s = song(id: id)
+        let temp = dm.temporaryDownloadURL(songId: id)
+        // Minimal ISO-BMFF ("....ftyp") header so DownloadedTrackFormatSniffer sniffs "m4a".
+        var body = Data([0, 0, 0, 0x18])
+        body.append(Data("ftyp".utf8))
+        body.append(Data(repeating: 0, count: 40))
+        try body.write(to: temp, options: .atomic)
+        try dm.finalizeDownloadedAACPart(at: temp, song: s)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: temp.path))
+        XCTAssertNotNil(dm.localAACVariantURLIfPresent(songId: id))
+        try? FileManager.default.removeItem(at: dm.aacVariantDestinationURL(songId: id))
+    }
+
+    func testFinalizeDownloadedAACPartFallsBackToOriginalWhenServerFellBackToOriginalBytes() throws {
+        let dm = DownloadManager()
+        let id = "unit-aac-\(UUID().uuidString)"
+        let s = song(id: id)
+        let temp = dm.temporaryDownloadURL(songId: id)
+        let body = Data("fLaC".utf8) + Data(repeating: 0, count: 40)
+        try body.write(to: temp, options: .atomic)
+        try dm.finalizeDownloadedAACPart(at: temp, song: s)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: temp.path))
+        XCTAssertNil(dm.localAACVariantURLIfPresent(songId: id))
+        dm.register(s)
+        XCTAssertTrue(dm.localPathString(songId: id).hasSuffix(".flac"))
+        dm.remove(songId: id)
+    }
+
+    func testFinalizeDownloadedAACPartDiscardsWhenOriginalAlreadyPresent() throws {
+        let dm = DownloadManager()
+        let id = "unit-aac-\(UUID().uuidString)"
+        let s = song(id: id)
+        try Data("orig".utf8).write(to: dm.localFileURL(songId: id))
+        dm.register(s)
+
+        let temp = dm.temporaryDownloadURL(songId: id)
+        let body = Data("fLaC".utf8) + Data(repeating: 0, count: 40)
+        try body.write(to: temp, options: .atomic)
+        try dm.finalizeDownloadedAACPart(at: temp, song: s)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: temp.path))
+        XCTAssertNil(dm.localAACVariantURLIfPresent(songId: id))
+        XCTAssertEqual(dm.localPathString(songId: id), dm.localFileURL(songId: id).path)
+        dm.remove(songId: id)
+    }
+
+    // MARK: - Cache-correctness pins (resolvedExistingFileURL index — see Services/DownloadManager.swift)
+    //
+    // These pin behaviours that a per-call `contentsOfDirectory` enumeration satisfies trivially but
+    // an in-memory stem index could get wrong if updated incompletely. They must keep passing
+    // unchanged after the O(n) -> O(1) `isDownloaded`/`localPathString` optimisation.
+
+    func testIsDownloadedTrueImmediatelyAfterFinalizeDownloadedPartSameInstance() throws {
+        let dm = DownloadManager()
+        let id = "unit-cache-\(UUID().uuidString)"
+        let s = song(id: id)
+        let temp = dm.temporaryDownloadURL(songId: id)
+        try (Data("fLaC".utf8) + Data(repeating: 0, count: 40)).write(to: temp, options: .atomic)
+        try dm.finalizeDownloadedPart(at: temp, song: s)
+        dm.register(s)
+
+        XCTAssertTrue(dm.isDownloaded(songId: id))
+        dm.remove(songId: id)
+    }
+
+    func testIsDownloadedFalseImmediatelyAfterRemoveSameInstance() throws {
+        let dm = DownloadManager()
+        let id = "unit-cache-\(UUID().uuidString)"
+        let s = song(id: id)
+        try Data("orig".utf8).write(to: dm.localFileURL(songId: id))
+        dm.register(s)
+        XCTAssertTrue(dm.isDownloaded(songId: id))
+
+        dm.remove(songId: id)
+
+        XCTAssertFalse(dm.isDownloaded(songId: id))
+    }
+
+    func testFreshDownloadManagerInstanceSeesFilesCreatedBeforeItsInit() throws {
+        let dm1 = DownloadManager()
+        let id = "unit-cache-\(UUID().uuidString)"
+        let s = song(id: id)
+        let temp = dm1.temporaryDownloadURL(songId: id)
+        try (Data("fLaC".utf8) + Data(repeating: 0, count: 40)).write(to: temp, options: .atomic)
+        try dm1.finalizeDownloadedPart(at: temp, song: s)
+        dm1.register(s)
+
+        // A brand-new instance must rebuild its index from disk in `init`, not inherit `dm1`'s state.
+        let dm2 = DownloadManager()
+        XCTAssertTrue(dm2.isDownloaded(songId: id))
+
+        dm2.remove(songId: id)
+    }
+
+    func testAACVariantOnlySongStillDetectedAfterReinit() throws {
+        let dm1 = DownloadManager()
+        let id = "unit-cache-\(UUID().uuidString)"
+        let s = song(id: id)
+        try Data("aac-bytes".utf8).write(to: dm1.aacVariantDestinationURL(songId: id))
+        dm1.register(s)
+        XCTAssertTrue(dm1.isDownloaded(songId: id))
+
+        let dm2 = DownloadManager()
+        XCTAssertTrue(dm2.isDownloaded(songId: id))
+
+        dm2.remove(songId: id)
+    }
 }

@@ -10,16 +10,14 @@ import (
 	"time"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // SelectAndChangeAlbumArtwork opens a file picker, then replaces the artwork
 // for every song whose album field matches albumKey.
 func (a *App) SelectAndChangeAlbumArtwork(albumKey string) error {
-	imagePath, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+	imagePath, err := a.dialogs.OpenFileDialog(a.ctx, DialogOptions{
 		Title: "アートワーク画像を選択",
-		Filters: []wailsRuntime.FileFilter{
+		Filters: []FileFilter{
 			{
 				DisplayName: "画像ファイル (*.jpg;*.jpeg;*.png;*.webp)",
 				Pattern:     "*.jpg;*.jpeg;*.png;*.webp",
@@ -91,7 +89,7 @@ func (a *App) SelectAndChangeAlbumArtwork(albumKey string) error {
 		return fmt.Errorf("failed to save library: %w", err)
 	}
 
-	wailsRuntime.EventsEmit(a.ctx, "artwork-changed", map[string]interface{}{
+	a.emit("artwork-changed", map[string]interface{}{
 		"albumKey": albumKey,
 		"artwork":  newArtwork,
 	})

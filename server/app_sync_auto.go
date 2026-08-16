@@ -13,12 +13,10 @@ import (
 	"time"
 	"unicode"
 
+	"golang.org/x/text/unicode/norm"
 	"ux-music-sidecar/internal/config"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/internal/uxsync"
-
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
-	"golang.org/x/text/unicode/norm"
 )
 
 type SyncAutoResult struct {
@@ -89,6 +87,11 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 			result.PushedPlayEvents += accepted
 		}
 		if syncPeerSupportsLibraryAutoPull(identity) {
+			if _, err := syncPlayCountMetadataFromPeer(ctx, device.BaseURL, token, identity); err != nil {
+				result.FailedDevices++
+				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", identity.DeviceID, err))
+				continue
+			}
 			_ = refreshSingleSyncRemoteCatalog(ctx, SyncDeviceRecord{
 				DeviceID:    identity.DeviceID,
 				DisplayName: identity.DisplayName,
@@ -134,6 +137,112 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 	return result, nil
 }
 
+func syncPlayCountMetadataFromPeer(ctx context.Context, baseURL, token string, identity syncIdentityResponse) (int, error) {
+	snapshot, err := fetchSyncLibrarySnapshot(ctx, baseURL, token)
+	if err != nil {
+		return 0, err
+	}
+	return applySyncPlayCountSnapshot(identity.DeviceID, snapshot.Tracks)
+}
+
+func applySyncPlayCountSnapshot(remoteDeviceID string, tracks []map[string]interface{}) (int, error) {
+	pathBySource := syncLibraryPathBySource(remoteDeviceID)
+	pathByMatchKey := syncLibraryPathByMatchKey()
+	updated := 0
+	for _, track := range tracks {
+		playCount := normaliseSyncPlayCountForTransfer(track["syncPlayCount"])
+		if len(playCount) == 0 {
+			continue
+		}
+		path := ""
+		if trackID := syncTrackID(track); trackID != "" {
+			path = pathBySource[trackID]
+		}
+		if path == "" {
+			path = pathByMatchKey[syncSongMatchKey(track)]
+		}
+		if path == "" {
+			continue
+		}
+		if err := applySyncImportedPlayCount(track, path); err != nil {
+			return updated, err
+		}
+		updated++
+	}
+	return updated, nil
+}
+
+func syncLibraryPathBySource(deviceID string) map[string]string {
+	library, err := store.Instance.LoadSlice("library")
+	if err != nil {
+		return map[string]string{}
+	}
+	paths := map[string]string{}
+	for _, item := range library {
+		song, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if syncTrackString(song, "syncSourceDeviceId") != deviceID {
+			continue
+		}
+		sourceTrackID := syncTrackString(song, "syncSourceTrackId")
+		path := syncTrackString(song, "path")
+		if sourceTrackID != "" && path != "" {
+			paths[sourceTrackID] = path
+		}
+	}
+	return paths
+}
+
+func (a *App) flushSyncPlayEventsToReachablePeers() (SyncAutoResult, error) {
+	ctx := context.Background()
+	if a != nil && a.ctx != nil {
+		ctx = a.ctx
+	}
+	devices, err := a.ListSyncDevices()
+	if err != nil {
+		return SyncAutoResult{}, err
+	}
+	localDeviceID := ensureSyncDeviceID()
+	events, err := loadSyncPlayEvents()
+	if err != nil {
+		return SyncAutoResult{}, err
+	}
+	localEvents := filterSyncPlayEventsByDevice(events, localDeviceID)
+	result := SyncAutoResult{}
+	if len(localEvents) == 0 {
+		return result, nil
+	}
+	for _, device := range devices {
+		if !device.Paired || strings.TrimSpace(device.BaseURL) == "" {
+			continue
+		}
+		result.CheckedDevices++
+		identity, err := fetchSyncIdentity(ctx, device.BaseURL)
+		if err != nil {
+			result.FailedDevices++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", device.DeviceID, err))
+			continue
+		}
+		token, err := loadSyncAuthTokenForDevice(identity.DeviceID)
+		if err != nil {
+			result.FailedDevices++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", identity.DeviceID, err))
+			continue
+		}
+		accepted, err := pushSyncPlayEvents(ctx, device.BaseURL, token, localDeviceID, localEvents)
+		if err != nil {
+			result.FailedDevices++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", identity.DeviceID, err))
+			continue
+		}
+		result.PushedPlayEvents += accepted
+		result.SyncedDevices++
+	}
+	return result, nil
+}
+
 func syncPeerSupportsLibraryAutoPull(identity syncIdentityResponse) bool {
 	for _, role := range identity.Roles {
 		if strings.EqualFold(strings.TrimSpace(role), "LibraryHost") {
@@ -153,12 +262,27 @@ func (a *App) startSyncAutoLoop() {
 		for {
 			<-timer.C
 			result, err := a.AutoSyncPairedDevices()
-			if a.ctx != nil && (err != nil || result.CheckedDevices > 0) {
-				wailsRuntime.EventsEmit(a.ctx, "ux-sync-auto-result", result)
+			// 新規データ・一時停止・失敗があったときだけ通知する。既存曲のスキップや
+			// 単なる接続確認では emit しない（毎分のトースト乱発を防ぐ）。
+			if a.ctx != nil && (err != nil || syncAutoResultIsNotable(result)) {
+				a.emit("ux-sync-auto-result", result)
 			}
 			timer.Reset(60 * time.Second)
 		}
 	}()
+}
+
+// syncAutoResultIsNotable reports whether an automatic sync cycle produced
+// something the user should be told about: new data moved, a pause, or a
+// failure. Routine cycles that only confirm connectivity or skip
+// already-present tracks return false so no toast is emitted.
+func syncAutoResultIsNotable(result SyncAutoResult) bool {
+	return result.Paused ||
+		result.FailedDevices > 0 ||
+		len(result.Errors) > 0 ||
+		result.PulledTracks > 0 ||
+		result.PushedPlayEvents > 0 ||
+		result.SyncedArtwork > 0
 }
 
 func syncFreeSpacePauseResult() (SyncAutoResult, bool, error) {
@@ -267,12 +391,12 @@ func pushSyncPlayEvents(ctx context.Context, baseURL, token, deviceID string, ev
 	if err != nil {
 		return 0, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/sync/library/events", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1/sync/library/events", bytes.NewReader(body))
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-UX-Music-Sync-Token", token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := syncHTTPClient().Do(req)
 	if err != nil {
 		return 0, err

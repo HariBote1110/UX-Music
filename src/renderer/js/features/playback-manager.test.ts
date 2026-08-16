@@ -1,25 +1,16 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildSkipEvent } from './playback-skip.js';
 import { resolveLocalPlaybackGain } from './playback-gain.js';
 
 beforeAll(() => {
-    globalThis.window = {
-        electronAPI: {
-            CHANNELS: { SEND: {}, ON: {} },
-            send: () => {},
-            invoke: () => Promise.resolve(null),
-            on: () => {},
-        },
-        addEventListener: () => {},
-        removeEventListener: () => {},
-    } as any;
-    globalThis.Audio = class {
-        pause() {}
-        play() { return Promise.resolve(); }
-    } as any;
-    globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => {
-        callback(0);
-        return 0;
+    // jsdom の本物の window を使い、Electron ブリッジだけを差し込む。
+    (window as unknown as { electronAPI: unknown }).electronAPI = {
+        CHANNELS: { SEND: {}, ON: {}, INVOKE: {} },
+        send: () => {},
+        invoke: () => Promise.resolve(null),
+        on: () => {},
+        removeListener: () => {},
+        removeAllListeners: () => {},
     };
 });
 
@@ -91,20 +82,240 @@ describe('resolveRemotePlaybackDownload', () => {
         expect(resolved).toEqual({ id: 'local-1', syncAvailability: 'local', path: '/Music/local.flac' });
     });
 
-    it('returns null when the remote download fails', async () => {
+    it('returns null and reports the failure reason when the remote download fails', async () => {
         const { resolveRemotePlaybackDownload } = await import('./playback-manager.js');
+        const notifyError = vi.fn();
+        const clearProgress = vi.fn();
+        const findLocalSong = vi.fn(() => ({ path: '/Music/local.flac' }));
+
         const resolved = await resolveRemotePlaybackDownload({ syncAvailability: 'remote', syncSourceDeviceId: 'dev_host', syncSourceTrackId: 'track-1' }, {
             downloadSyncTrack: async () => { throw new Error('peer offline'); },
             refreshLibrary: async () => {},
-            findLocalSong: () => ({ path: '/Music/local.flac' }),
+            findLocalSong,
             notifyProgress: () => {},
-            clearProgress: () => {},
-            notifyError: (message) => {
-                expect(message).toContain('peer offline');
-            },
+            clearProgress,
+            notifyError,
         });
 
         expect(resolved).toBeNull();
+        // 失敗を握り潰すと利用者に何も伝わらないため、通知が呼ばれたこと自体を検証する。
+        expect(notifyError).toHaveBeenCalledOnce();
+        expect(notifyError.mock.calls[0][0]).toContain('peer offline');
+        // 取得に失敗したので、ライブラリ解決も進捗クリアも到達してはいけない。
+        expect(findLocalSong).not.toHaveBeenCalled();
+        expect(clearProgress).not.toHaveBeenCalled();
+    });
+
+    it('reports an error and returns null when the remote song lacks source identifiers', async () => {
+        const { resolveRemotePlaybackDownload } = await import('./playback-manager.js');
+        const notifyError = vi.fn();
+        const downloadSyncTrack = vi.fn();
+
+        const resolved = await resolveRemotePlaybackDownload(
+            { syncAvailability: 'remote', syncSourceDeviceId: '  ', syncSourceTrackId: 'track-1' },
+            { downloadSyncTrack, notifyError },
+        );
+
+        expect(resolved).toBeNull();
+        expect(downloadSyncTrack).not.toHaveBeenCalled();
+        expect(notifyError).toHaveBeenCalledOnce();
+        expect(notifyError.mock.calls[0][0]).toContain('取得元の曲情報が不足しています');
+    });
+
+    it('reports an error when the downloaded track cannot be found in the library', async () => {
+        const { resolveRemotePlaybackDownload } = await import('./playback-manager.js');
+        const notifyError = vi.fn();
+        const clearProgress = vi.fn();
+
+        const resolved = await resolveRemotePlaybackDownload(
+            { syncAvailability: 'remote', syncSourceDeviceId: 'dev_host', syncSourceTrackId: 'track-1' },
+            {
+                downloadSyncTrack: async () => ({ importedPaths: [] }),
+                refreshLibrary: async () => {},
+                findLocalSong: () => null,
+                notifyProgress: () => {},
+                clearProgress,
+                notifyError,
+            },
+        );
+
+        expect(resolved).toBeNull();
+        expect(notifyError).toHaveBeenCalledOnce();
+        expect(notifyError.mock.calls[0][0]).toContain('ライブラリで見つけられませんでした');
+        expect(clearProgress).not.toHaveBeenCalled();
+    });
+});
+
+describe('handleRemotePlaySongEvent', () => {
+    it('resolves the song by id and plays it via the same path as a click', async () => {
+        const { handleRemotePlaySongEvent } = await import('./playback-manager.js');
+        const song = { id: 'trk-1', title: 'Remote Song' };
+        const findSong = vi.fn(() => song);
+        const playResolvedSong = vi.fn();
+        const notifyNotFound = vi.fn();
+        const markRemoteInitiated = vi.fn();
+
+        handleRemotePlaySongEvent('trk-1', { findSong, notifyNotFound, playResolvedSong, markRemoteInitiated });
+
+        expect(findSong).toHaveBeenCalledWith('trk-1');
+        expect(playResolvedSong).toHaveBeenCalledWith(song);
+        expect(notifyNotFound).not.toHaveBeenCalled();
+    });
+
+    it('marks the session remote-initiated before starting playback, so the desktop stays silent', async () => {
+        const { handleRemotePlaySongEvent } = await import('./playback-manager.js');
+        const song = { id: 'trk-1', title: 'Remote Song' };
+        const findSong = vi.fn(() => song);
+        const callOrder: string[] = [];
+        const playResolvedSong = vi.fn(() => { callOrder.push('play'); });
+        const notifyNotFound = vi.fn();
+        const markRemoteInitiated = vi.fn(() => { callOrder.push('mark'); });
+
+        handleRemotePlaySongEvent('trk-1', { findSong, notifyNotFound, playResolvedSong, markRemoteInitiated });
+
+        expect(markRemoteInitiated).toHaveBeenCalledOnce();
+        expect(callOrder).toEqual(['mark', 'play']);
+    });
+
+    it('shows the not-found notification when the song id is unknown', async () => {
+        const { handleRemotePlaySongEvent } = await import('./playback-manager.js');
+        const findSong = vi.fn(() => null);
+        const playResolvedSong = vi.fn();
+        const notifyNotFound = vi.fn();
+        const markRemoteInitiated = vi.fn();
+
+        handleRemotePlaySongEvent('missing-id', { findSong, notifyNotFound, playResolvedSong, markRemoteInitiated });
+
+        expect(notifyNotFound).toHaveBeenCalledOnce();
+        expect(playResolvedSong).not.toHaveBeenCalled();
+        expect(markRemoteInitiated).not.toHaveBeenCalled();
+    });
+
+    it('ignores non-string or empty payloads without touching the library', async () => {
+        const { handleRemotePlaySongEvent } = await import('./playback-manager.js');
+        const findSong = vi.fn();
+        const playResolvedSong = vi.fn();
+        const notifyNotFound = vi.fn();
+        const markRemoteInitiated = vi.fn();
+
+        handleRemotePlaySongEvent(undefined, { findSong, notifyNotFound, playResolvedSong, markRemoteInitiated });
+        handleRemotePlaySongEvent('   ', { findSong, notifyNotFound, playResolvedSong, markRemoteInitiated });
+
+        expect(findSong).not.toHaveBeenCalled();
+        expect(playResolvedSong).not.toHaveBeenCalled();
+        expect(notifyNotFound).not.toHaveBeenCalled();
+        expect(markRemoteInitiated).not.toHaveBeenCalled();
+    });
+});
+
+describe('handleRemoteCommandEvent', () => {
+    it('advances to the next song for action "next"', async () => {
+        const { handleRemoteCommandEvent } = await import('./playback-manager.js');
+        const playNext = vi.fn();
+        const playPrev = vi.fn();
+
+        handleRemoteCommandEvent('next', { playNext, playPrev });
+
+        expect(playNext).toHaveBeenCalledOnce();
+        expect(playPrev).not.toHaveBeenCalled();
+    });
+
+    it('goes back to the previous song for action "prev"', async () => {
+        const { handleRemoteCommandEvent } = await import('./playback-manager.js');
+        const playNext = vi.fn();
+        const playPrev = vi.fn();
+
+        handleRemoteCommandEvent('prev', { playNext, playPrev });
+
+        expect(playPrev).toHaveBeenCalledOnce();
+        expect(playNext).not.toHaveBeenCalled();
+    });
+
+    it('ignores unknown actions', async () => {
+        const { handleRemoteCommandEvent } = await import('./playback-manager.js');
+        const playNext = vi.fn();
+        const playPrev = vi.fn();
+
+        handleRemoteCommandEvent('unknown', { playNext, playPrev });
+
+        expect(playNext).not.toHaveBeenCalled();
+        expect(playPrev).not.toHaveBeenCalled();
+    });
+});
+
+describe('handleRemoteEmbedCommandEvent', () => {
+    it('plays when toggled while paused', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const playCurrent = vi.fn();
+        const pauseCurrent = vi.fn();
+        const isPlaying = vi.fn(() => false);
+
+        handleRemoteEmbedCommandEvent({ action: 'toggle' }, { playCurrent, pauseCurrent, isPlaying });
+
+        expect(playCurrent).toHaveBeenCalledOnce();
+        expect(pauseCurrent).not.toHaveBeenCalled();
+    });
+
+    it('pauses when toggled while playing', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const playCurrent = vi.fn();
+        const pauseCurrent = vi.fn();
+        const isPlaying = vi.fn(() => true);
+
+        handleRemoteEmbedCommandEvent({ action: 'toggle' }, { playCurrent, pauseCurrent, isPlaying });
+
+        expect(pauseCurrent).toHaveBeenCalledOnce();
+        expect(playCurrent).not.toHaveBeenCalled();
+    });
+
+    it('routes play/pause/stop to their respective embed-aware player functions', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const playCurrent = vi.fn();
+        const pauseCurrent = vi.fn();
+        const stop = vi.fn();
+
+        handleRemoteEmbedCommandEvent({ action: 'play' }, { playCurrent, pauseCurrent, stop });
+        handleRemoteEmbedCommandEvent({ action: 'pause' }, { playCurrent, pauseCurrent, stop });
+        handleRemoteEmbedCommandEvent({ action: 'stop' }, { playCurrent, pauseCurrent, stop });
+
+        expect(playCurrent).toHaveBeenCalledOnce();
+        expect(pauseCurrent).toHaveBeenCalledOnce();
+        expect(stop).toHaveBeenCalledOnce();
+    });
+
+    it('seeks to the numeric value carried by the payload', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const seek = vi.fn();
+
+        handleRemoteEmbedCommandEvent({ action: 'seek', value: 42.5 }, { seek });
+
+        expect(seek).toHaveBeenCalledWith(42.5);
+    });
+
+    it('ignores a seek payload with a non-numeric value', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const seek = vi.fn();
+
+        handleRemoteEmbedCommandEvent({ action: 'seek', value: 'nope' }, { seek });
+
+        expect(seek).not.toHaveBeenCalled();
+    });
+
+    it('ignores non-object or malformed payloads', async () => {
+        const { handleRemoteEmbedCommandEvent } = await import('./playback-manager.js');
+        const playCurrent = vi.fn();
+        const pauseCurrent = vi.fn();
+        const stop = vi.fn();
+        const seek = vi.fn();
+
+        handleRemoteEmbedCommandEvent(null, { playCurrent, pauseCurrent, stop, seek });
+        handleRemoteEmbedCommandEvent(undefined, { playCurrent, pauseCurrent, stop, seek });
+        handleRemoteEmbedCommandEvent('toggle', { playCurrent, pauseCurrent, stop, seek });
+
+        expect(playCurrent).not.toHaveBeenCalled();
+        expect(pauseCurrent).not.toHaveBeenCalled();
+        expect(stop).not.toHaveBeenCalled();
+        expect(seek).not.toHaveBeenCalled();
     });
 });
 

@@ -5,6 +5,18 @@ struct AlbumDetailView: View {
     let album: Album
 
     var body: some View {
+        LibraryBottomBleed { bottomInset in
+            scrollBody
+                .contentMargins(.bottom, bottomInset, for: .scrollContent)
+        }
+        .background(Color.black)
+        .navigationTitle(album.displayName)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+
+    private var scrollBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
@@ -13,7 +25,7 @@ struct AlbumDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(album.songs.count) songs")
+                    Text(String(format: String(localized: "%ld Songs"), album.songs.count))
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
                 }
@@ -26,24 +38,19 @@ struct AlbumDetailView: View {
                         artworkId: song.artworkId,
                         artworkURL: model.artworkURL(for: song.artworkId),
                         showTrackNumber: true,
-                        onTap: model.isSongDownloaded(songId: song.id)
-                            ? { play(song) }
-                            : nil,
+                        onTap: rowTap(for: song),
                         trailing: {
-                            trailing(for: song)
+                            SongRowDownloadTrailing(song: song)
                         }
                     )
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, SongRowMetrics.horizontalInset)
+                    .contextMenu {
+                        WatchTransferSongMenuItem(song: song)
+                    }
                 }
             }
             .padding(.bottom, 8)
         }
-        .background(Color.black)
-        .navigationTitle(album.displayName)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 
     private var header: some View {
@@ -71,29 +78,30 @@ struct AlbumDetailView: View {
                 Button {
                     Task { await model.downloadAlbum(album) }
                 } label: {
-                    Label("Download album", systemImage: "arrow.down.circle")
+                    Label("Download Album", systemImage: "arrow.down.circle")
                 }
             }
+            WatchTransferBulkMenuItem(
+                title: "Transfer Album to Apple Watch",
+                songs: album.songs
+            )
         }
     }
 
-    @ViewBuilder
-    private func trailing(for song: Song) -> some View {
-        if model.isSongDownloaded(songId: song.id) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .font(.system(size: 20))
-        } else if model.downloadProgress[song.id] != nil {
-            ProgressView()
-                .frame(width: 22, height: 22)
-        } else {
-            Button {
-                Task { await model.downloadSong(song) }
-            } label: {
-                Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 22))
-            }
-            .buttonStyle(.plain)
+    private func rowTap(for song: Song) -> (() -> Void)? {
+        switch song.rowTapAction(isDownloaded: model.isSongDownloaded(songId: song.id)) {
+        case .openYouTubePlayer: return { playYouTube(song) }
+        case .playDownloaded: return { play(song) }
+        case .none: return nil
+        }
+    }
+
+    /// Plays a YouTube song as a normal single-song queue, exactly like tapping any local
+    /// song — no dedicated YouTube player screen any more (see
+    /// `progress/mobile-youtube-embed.md`).
+    private func playYouTube(_ song: Song) {
+        Task {
+            await model.player.play(song, newQueue: [song])
         }
     }
 

@@ -1,0 +1,136 @@
+# 実機報告「アプリを閉じると転送が止まる」への対処
+
+## ユーザー報告
+
+「アプリ閉じちゃうと転送止まっちゃう。画面OFFになったあと勝手に文字盤に戻っちゃって転送が止まるのが複数回あった」
+
+2つの独立した問題が混ざっている:
+
+1. **Watch側**: 画面OFF後、watchOSが文字盤に自動的に戻ると、frontmost状態に依存する
+   `WCSession`のファイル配信が止まる。
+2. **iPhone側**: 転送キューがメモリ上のみ（`WatchTransferBridge.queue`/`transferWorkQueue`）に
+   存在していたため、iPhoneアプリを終了すると未転送の曲の情報自体が失われる。
+
+## watchOSの配信リアリティ（frontmost依存）
+
+`WCSession.transferFile`はキュー投入のみを保証する非同期APIで、実際のバイト転送は
+watchOSがWatchアプリをアクティブ（frontmost）とみなしている間しか進行しない。画面OFF後、
+「画面OFFで前回のアプリ表示を保持」設定の猶予時間（既定2分）を過ぎると文字盤に戻り、
+配信が事実上止まる。
+
+### 対処1（撤回済み）: `isFrontmostTimeoutExtended`（`UX-Music-Watch/UXMusicWatchApp.swift`）
+
+アプリ起動時に`WKExtension.shared().isFrontmostTimeoutExtended = true`を設定し、猶予を
+2分から8分に延長を試みる案だった。
+
+**実機クラッシュとして確定**: ユーザーの実機コンソールで、起動直後に
+`WKExtension.shared().isFrontmostTimeoutExtended = true`の行がクラッシュ地点として確認された。
+本アプリはSwiftUIライフサイクルのwatchOSアプリであり`WKExtension`のインスタンスが
+そもそも存在しないため、`WKExtension.shared()`の呼び出し自体が起動時に即abortする
+（"Thread 1: abort with payload or reason"）。つまりこの対処はベストエフォートですらなく、
+このコミット以降Watchアプリが起動のたびにクラッシュし続けていた。
+
+`WKApplication.shared().isFrontmostTimeoutExtended`（SwiftUIライフサイクル版の相当API）に
+置き換える案も検討したが、こちらも同じく`WK_DEPRECATED_WATCHOS(4.0, 7.0, "No longer
+supported")`が付与されており代替として不十分なため、frontmost延長の試み自体を完全に撤回し
+該当行を削除した。残る対処はキュー永続化（下記）とUIヒント、および将来の直接ダウンロードのみ。
+
+## iPhone側キューの永続化（`Services/WatchTransferBridge.swift`）
+
+`.sent`/`.failed`以外のキューアイテム（`.downloading`/`.waiting`/`.preparing`/`.sending`）を
+UserDefaults（`AppConstants.watchTransferPendingQueueKey`）にid+titleだけのスナップショットで
+保存し、次回`activate()`完了時に復元する。
+
+### 純粋関数（TDD）
+
+- `WatchTransferQueuePersistence.pendingSnapshot(from:)` — 永続化対象のサブセット抽出
+- `WatchTransferQueuePersistence.shouldPersist(current:lastPersisted:)` — 差分が無ければ
+  書き込みをスキップ（`.sending(fraction)`のKVO更新は高頻度なので、書き込み判定を分離）
+- `WatchTransferRestoreReconciliation.plan(persisted:outstanding:downloadedSongIds:)` —
+  永続化されたエントリを3種類に振り分け:
+  1. `WCSession.outstandingFileTransfers`に生存している → 進捗監視を再アタッチ
+     （outstanding優先。ダウンロード済みでも再送はしない）
+  2. ダウンロード済みだが送信中でない → FIFOワークキューに**永続化順**で再投入
+     （`watch-transfer-order.md`の曲順修正がリロード後も壊れないようにするため、順序保持は
+     この関数のテストで明示的にピンしている）
+  3. どちらでもない（アプリが閉じている間にローカルファイルが削除された等） → `.failed`
+
+薄い配線側（`WatchTransferBridge`本体）は、この`Plan`を`WCSession`/`DownloadManager`の実データで
+埋めるだけ。`sendFile`のトラッキング処理（`activeTransfers`/`transferObservations`登録）は
+`trackTransfer(_:songId:)`として切り出し、新規送信と復元後の再アタッチの両方から使う。
+
+### 「Watchに既に届いているか」を別途確認しない理由
+
+`WatchLibraryIndex.adding`は既存idの再送を「同じ位置のまま上書き」する仕様
+（`watch-transfer-order.md`参照）なので、復元後に念のため再送しても重複エントリにはならない。
+そのためこの実装ではWatch側の状態を別途クエリしていない。
+
+## UI: 転送中フッターヒント（`Views/WatchTransferQueueSection.swift`）
+
+`WatchTransferHintPolicy.shouldShowFrontmostHint(items:)`が`true`（`.preparing`/`.sending`が
+1件でもある）の間だけ、Settingsの転送キューセクションにフッターで案内を表示:
+Watchアプリを開いたままにする・長時間の一括転送では「設定 > 一般 > 時計に戻る」を
+カスタム(1時間)にする・充電とWi-Fiで速くなる、の2行。`.waiting`/`.downloading`のみの間は
+まだ何も送信されていないため表示しない。
+
+## 恒久対策ではない理由
+
+対処1は実機クラッシュにより撤回済み。残るキュー永続化とUIヒントの2つも
+「watchOSのfrontmost依存という制約の中で被害を減らす」対症療法にすぎない。
+frontmost状態に依存しない転送手段（Watch自身がバックグラウンド`URLSession`でLAN経由
+直接ダウンロードする方式）が本来の恒久対策であり、
+`watch_transfer_research/notes/watch-direct-download-plan.md`に計画がある（未着手）。
+
+## 実機クラッシュ報告への対処（クラッシュ監査）
+
+### 報告
+
+実機で"Thread 1: abort with payload or reason"により落ちる（ログなし）。監査で
+最有力候補1件とハードニング項目2件を洗い出した。
+
+### 最有力候補: `WatchTransferRestoreReconciliation.plan`の重複キーtrap
+
+`Dictionary(uniqueKeysWithValues:)`は同じキーが2回渡されるとtrapする。`plan`が
+受け取る`outstanding`（`WCSession.outstandingFileTransfers`由来）に同一曲idの
+エントリが複数含まれうる場合、これがそのままクラッシュの引き金になる。
+
+シミュレータでは`WCSession.outstandingFileTransfers`が実機のような複雑な状態
+（再起動をまたいだ再送と進行中転送の競合）を再現しないため、実機専用の再現条件だった
+（テストは`plan`に直接ダブりを渡すことで、実際の`WCSession`状態を再現せずに検証している）。
+
+**重複排除ルール**: 同一idが複数ある場合は「最後に見たエントリ（配列内で後ろにある方）」
+を採用する。これは`WatchTransferBridge`側の`outstandingTransfersById[songId] = transfer`
+という既存の代入（forループの後勝ち）と自然に一致するルールを選んだ。
+
+**対処箇所（2箇所）**:
+1. `WatchTransferBridge.restorePersistedQueueIfNeeded`（境界）:
+   `outstandingTransfersById`の構築完了後にそこから`outstanding`配列を導出するよう変更
+   （以前は同じforループ内で両方を別々に積んでおり、`outstandingTransfersById`はdedupされる
+   一方`outstanding`配列はされない、という不整合があった）。
+2. `WatchTransferRestoreReconciliation.plan`（純粋関数）:
+   `Dictionary(uniqueKeysWithValues:)`を`Dictionary(_:uniquingKeysWith:)`に変更し、
+   将来別の呼び出し元がdedupを怠ってもtrapしないようにした。
+
+ユーザーの実機コンソール出力での確認待ち。
+
+### ハードニング1: `WKExtension.shared()`起動時クラッシュ（撤回で解消・上記「対処1」参照）
+
+同じ監査の過程で、frontmost延長の試み自体が実機クラッシュの原因であることが
+コンソール出力から確定した。詳細は上の「対処1（撤回済み）」節を参照。
+
+### ハードニング2: 「No longer downloaded」の翻訳欠落
+
+`plan`の`.failed`分岐が`String(localized: "No longer downloaded")`を参照していたが、
+`Localizable.xcstrings`に対応する翻訳がなかった（実行時はキー文字列がそのまま
+UIに表示される、ローカライズとしての機能不全）。en/jaの翻訳を追加した。
+`LocalizationCatalogCompletenessTests`は`localizations`キー自体が存在しないエントリを
+`entry.localizations`が`nil`になる形で既に検出できる実装だったため、テスト自体の
+強化は不要と判断した。
+
+### ハードニング3: transcoderの`resumeOnce`ガード
+
+`WatchAudioTranscoder.pump`のコメントは「全resumeパスがpumpQueue上で直列実行される」
+としていたが、`writer.finishWriting`の完了ハンドラはAVFoundation内部キューで走るため
+誤り。現状`markAsFinished`後はpumpの以降のコールバックが呼ばれないため実際の二重resumeは
+発生しないが、`didResume`フラグを`OSAllocatedUnfairLock`で保護し、コメントも実態に
+合わせて修正した（挙動は変更なし）。

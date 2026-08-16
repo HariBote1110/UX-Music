@@ -1,7 +1,8 @@
 // src/renderer/js/ui/detail-renderer.js
 
-import { state, elements } from '../core/state.js';
+import { elements } from '../core/state.js';
 import { showAlbum } from '../core/navigation.js';
+import { prependDetailBackButton } from './detail-back-button.js';
 import { playSong } from '../features/playback-manager.js';
 import { createAlbumGridItem } from './element-factory.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
@@ -13,7 +14,7 @@ import {
 } from './list-renderer.js';
 import { clearMainContent } from './view-renderer.js';
 import { updateListSpacer } from './ui.js'; // 追加
-import { getAlbumSongs, getArtistSongs, setCurrentViewSongs } from '../core/library-model.js';
+import { getAlbumSongs, getArtistSongs, getArtistAlbums, setCurrentViewSongs } from '../core/library-model.js';
 const electronAPI = window.electronAPI;
 
 // モジュールスコープでスクロール位置を記憶
@@ -57,6 +58,8 @@ export function renderAlbumDetailView(album) {
 
     initListHeaderResizing(viewWrapper);
 
+    prependDetailBackButton(viewWrapper);
+
     const artImg = viewWrapper.querySelector('.detail-art-img') as HTMLImageElement | null;
 
     let artworkToUse = album.artwork;
@@ -83,7 +86,7 @@ export function renderArtistDetailView(artist) {
     setCurrentViewSongs(artistSongs);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
-    const artistAlbums = [...state.albums.entries()].filter(([, album]) => (album as Record<string, unknown>).artist === (artist as Record<string, unknown>).name);
+    const artistAlbums = getArtistAlbums(artist);
     viewWrapper.innerHTML = `
         <div class="detail-header">
             <img class="detail-art-img artist-detail-art-round lazy-load">
@@ -110,6 +113,8 @@ export function renderArtistDetailView(artist) {
 
     // スペーサーを更新
     updateListSpacer();
+
+    prependDetailBackButton(viewWrapper);
 
     const artImg = viewWrapper.querySelector('.detail-art-img') as HTMLImageElement | null;
     if (artImg) artImg.dataset.src = resolveArtworkPath((artist as Record<string, unknown>).artwork, false);
@@ -170,6 +175,8 @@ export function renderPlaylistDetailView(playlistDetails: Record<string, unknown
     updateListSpacer();
 
     initListHeaderResizing(viewWrapper);
+
+    prependDetailBackButton(viewWrapper);
 
     viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, songs));
 

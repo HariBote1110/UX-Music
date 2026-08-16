@@ -14,7 +14,6 @@ import {
 import { applyMasterVolume } from '../features/audio-graph.js';
 import { formatTime } from './utils.js';
 import { getWailsApp } from '../core/bridge.js';
-const electronAPI = window.electronAPI;
 
 let isSeeking = false;
 let wasPlayingBeforeSeek = false;
@@ -358,11 +357,7 @@ export function initPlayerControls(initialPlayer, _callbacks) {
         }
 
         volumeSaveTimer = setTimeout(() => {
-            if (getWailsApp()) {
-                getWailsApp()?.SaveSettings?.({ volume: volume })?.catch?.(() => { });
-            } else {
-                electronAPI.send('save-settings', { volume: volume });
-            }
+            getWailsApp()?.SaveSettings?.({ volume: volume })?.catch?.(() => { });
             volumeSaveTimer = null;
         }, 120);
     });
@@ -394,6 +389,10 @@ const POS_STANDARD = 100;
 const POS_EXIT     = 130;
 const POS_ENTER    = -30;
 const dashOf = (pos, len) => len - (pos / 100) * len;
+
+// 2本のストロークをずらして動かす際の遅延量（ms）。
+// 上の線を先行させ、下の線をこの分だけ遅らせる。
+const SHUFFLE_STAGGER = 120;
 
 // ─── シャッフルボタン アニメーション ──────────────────────────────────────
 
@@ -441,6 +440,9 @@ export async function runShuffleAnimation() {
 
     const timingExit  = { duration: 200, easing: 'ease-in',                       fill: 'forwards' };
     const timingEnter = { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' };
+    // 下の線は上の線より遅らせて動かす（ずらしアニメーション）。
+    const timingExitBottom  = { ...timingExit,  delay: SHUFFLE_STAGGER };
+    const timingEnterBottom = { ...timingEnter, delay: SHUFFLE_STAGGER };
 
     // 1. 右退出
     const exitAnims = [
@@ -450,14 +452,14 @@ export async function runShuffleAnimation() {
         ),
         pathBottom.animate(
             [{ strokeDashoffset: dashOf(POS_STANDARD, bottomLen) }, { strokeDashoffset: dashOf(POS_EXIT, bottomLen) }],
-            timingExit
+            timingExitBottom
         ),
     ];
     if (headTop)    exitAnims.push(headTop.animate(
         [{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExit
     ));
     if (headBottom) exitAnims.push(headBottom.animate(
-        [{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExit
+        [{ transform: 'translateX(0px)' }, { transform: `translateX(${headExitX}px)` }], timingExitBottom
     ));
     await Promise.all(exitAnims.map(a => a.finished));
 
@@ -469,14 +471,14 @@ export async function runShuffleAnimation() {
         ),
         pathBottom.animate(
             [{ strokeDashoffset: dashOf(POS_ENTER, bottomLen) }, { strokeDashoffset: dashOf(POS_STANDARD, bottomLen) }],
-            timingEnter
+            timingEnterBottom
         ),
     ];
     if (headTop)    enterAnims.push(headTop.animate(
         [{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter
     ));
     if (headBottom) enterAnims.push(headBottom.animate(
-        [{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnter
+        [{ transform: `translateX(${headEnterX}px)` }, { transform: 'translateX(0px)' }], timingEnterBottom
     ));
     await Promise.all(enterAnims.map(a => a.finished));
 

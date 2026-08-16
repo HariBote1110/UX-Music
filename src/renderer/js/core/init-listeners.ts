@@ -9,7 +9,7 @@ import { updateTextOverflowForSelector } from '../ui/utils.js';
 import { updateAudioDevices } from '../ui/ui-manager.js';
 import { updateSearchQuery } from '../ui/ui.js';
 import { musicApi, getWailsApp } from './bridge.js';
-import { enableYouTubeFeaturesWithConsent } from '../utils/debug-commands.js';
+import { enableYoutubeAdvancedModesWithConsent } from '../utils/debug-commands.js';
 import { buildYouTubeAddPayload } from './init-listeners-youtube.js';
 
 const electronAPI = window.electronAPI;
@@ -28,11 +28,11 @@ export function initEventListeners() {
 
     const libraryActionsBtn = document.getElementById('library-actions-btn');
     const libraryActionsPopup = document.getElementById('library-actions-popup');
-    const youtubeUnlockTapRequired = 7;
-    const youtubeUnlockWindowMs = 2500;
+    const youtubeAdvancedModesUnlockTapRequired = 7;
+    const youtubeAdvancedModesUnlockWindowMs = 2500;
     let libraryActionsTapCount = 0;
     let libraryActionsTapTimer = null;
-    let youtubeUnlockInProgress = false;
+    let youtubeAdvancedModesUnlockInProgress = false;
 
     if (libraryActionsBtn) {
         libraryActionsBtn.addEventListener('click', (e) => {
@@ -45,17 +45,17 @@ export function initEventListeners() {
             libraryActionsTapCount += 1;
             libraryActionsTapTimer = setTimeout(() => {
                 libraryActionsTapCount = 0;
-            }, youtubeUnlockWindowMs);
+            }, youtubeAdvancedModesUnlockWindowMs);
 
-            if (libraryActionsTapCount < youtubeUnlockTapRequired || youtubeUnlockInProgress) {
+            if (libraryActionsTapCount < youtubeAdvancedModesUnlockTapRequired || youtubeAdvancedModesUnlockInProgress) {
                 return;
             }
 
             libraryActionsTapCount = 0;
-            youtubeUnlockInProgress = true;
-            void enableYouTubeFeaturesWithConsent({ showAlert: true })
+            youtubeAdvancedModesUnlockInProgress = true;
+            void enableYoutubeAdvancedModesWithConsent({ showAlert: true })
                 .finally(() => {
-                    youtubeUnlockInProgress = false;
+                    youtubeAdvancedModesUnlockInProgress = false;
                 });
         });
     }
@@ -68,7 +68,6 @@ export function initEventListeners() {
                 title: 'ネットワークフォルダのパス',
                 placeholder: '\\\\ServerName\\ShareName',
                 onOk: (path) => {
-                    // electronAPI.send('start-scan-paths', [path]);
                     musicApi.startScanPaths([path]);
                 }
             });
@@ -350,12 +349,6 @@ export function initEventListeners() {
         } else if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedSongIds.size > 0) {
             e.preventDefault();
             deleteSelectedSongs();
-        }
-    });
-
-    electronAPI.on('navigate-back', () => {
-        if (state.currentDetailView.type) {
-            void showView(state.activeListView);
         }
     });
 

@@ -7,6 +7,9 @@ import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { openFullscreenView, notifyFullscreenSongChange } from '../features/fullscreen-view.js';
 import { showContextMenu } from './utils.js';
 import { buildSafeMediaPathURL } from './media-url.js';
+import { isEmbedPlayerActive, reattachEmbedPlayer } from '../features/youtube-embed-player.js';
+import { musicApi } from '../core/bridge.js';
+import { buildSidecarMenuItems } from '../features/sidecar.js';
 const electronAPI = window.electronAPI;
 
 const VIDEO_PREVIEW_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.ogv'];
@@ -120,13 +123,6 @@ function attachSidebarPreviewVideo(container, songPath, posterSrc) {
     return true;
 }
 
-function getYoutubeVideoId(url) {
-    if (typeof url !== 'string') return null;
-    const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/ ]{11})/;
-    const match = url.match(regExp);
-    return match ? match[1] : null;
-}
-
 function buildArtworkCandidates(artwork) {
     const candidates = [];
     const appendUnique = (value) => {
@@ -189,24 +185,28 @@ export function updateNowPlayingView(song) {
         setEqualizerColorFromArtwork(img);
         updateFooterArtwork(DEFAULT_ARTWORK_URL);
 
-    } else if (song.type === 'youtube') {
-        console.log('[Debug:NowPlaying] YouTube モードで描画します。');
-        if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.classList.add('video-mode');
-        const videoId = getYoutubeVideoId(song.sourceURL || song.path);
-        if (videoId) {
-            const iframe = document.createElement('iframe');
-            iframe.width = '100%';
-            iframe.height = '100%';
-            iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&fs=0&iv_load_policy=3&modestbranding=1&origin=${window.location.protocol}//${window.location.host}`;
-            iframe.setAttribute('frameborder', '0');
-            iframe.setAttribute('allow', 'autoplay; encrypted-media');
-            if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.appendChild(iframe);
-        }
+    } else if (song.type === 'youtube' && isEmbedPlayerActive() && nowPlayingArtworkContainer
+        && reattachEmbedPlayer(nowPlayingArtworkContainer)) {
+        // 公式再生（embed）中の再描画: 稼働中の公式プレイヤーを新しい
+        // コンテナへ付け直す（iframe を破棄すると音声タップも途切れるため）。
+        console.log('[Debug:NowPlaying] 稼働中の YouTube 公式プレイヤーを再アタッチしました。');
+        updateFooterArtwork(song.artwork || DEFAULT_ARTWORK_URL);
 
-        const artworkImage = new Image();
-        artworkImage.crossOrigin = "Anonymous";
-        artworkImage.onload = () => setEqualizerColorFromArtwork(artworkImage);
-        artworkImage.src = song.artwork;
+    } else if (song.type === 'youtube') {
+        console.log('[Debug:NowPlaying] YouTube ストリーミングモードで描画します。');
+        // ストリーミング経路では音声を Go 側のネイティブパイプラインで再生する
+        // ため、埋め込み iframe（autoplay 付き）は使わない。二重再生になるうえ
+        // 埋め込み規約的にも危うい。公式再生（embed）経路のプレイヤー生成は
+        // player.ts の playEmbed が行う（ここではサムネイルを仮表示する）。
+        const img = document.createElement('img');
+        img.crossOrigin = "Anonymous";
+        img.onload = () => setEqualizerColorFromArtwork(img);
+        img.onerror = () => {
+            img.onerror = null;
+            img.src = DEFAULT_ARTWORK_URL;
+        };
+        img.src = song.artwork || DEFAULT_ARTWORK_URL;
+        if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.appendChild(img);
         updateFooterArtwork(song.artwork || DEFAULT_ARTWORK_URL);
 
     } else {
@@ -322,18 +322,35 @@ export function updateNowPlayingView(song) {
 /**
  * 右クリックで右サイドバーのジャケットからフルスクリーンウィンドウを開くコンテキストメニューを設定する
  */
+const LONG_PRESS_DURATION_MS = 500;
+
+/** ペアリング済みデバイス一覧を取得し、サイドカーメニュー項目を組み立てて表示する。 */
+async function openSidecarMenu(x: number, y: number) {
+    const currentTarget = await musicApi.getSidecarTargetDevice?.().catch(() => '') ?? '';
+    const devices = await musicApi.listPairedRemoteDevices?.().catch(() => []) ?? [];
+
+    const items = buildSidecarMenuItems(devices, currentTarget, {
+        openFullscreenView: () => openFullscreenView(),
+        setSidecarTargetDevice: (deviceId: string) => {
+            musicApi.setSidecarTargetDevice?.(deviceId)?.catch((error: unknown) => {
+                console.warn('[NowPlaying] サイドカー先デバイスの設定に失敗しました:', error);
+            });
+        },
+    });
+
+    // サイドカーメニューは position: fixed で開くため、無関係な箇所（曲一覧や
+    // サイドバーなど）のスクロールでは閉じないようにする。デフォルト動作のまま
+    // だと「わけわからないところで表示が消える」原因になる。
+    showContextMenu(x, y, items, { closeOnScroll: false });
+}
+
 export function setupArtworkContextMenu() {
     const artworkContainer = document.getElementById('now-playing-artwork-container');
     const footerArtwork = document.getElementById('footer-artwork');
 
     const openMenu = (event: MouseEvent) => {
         event.preventDefault();
-        showContextMenu(event.pageX, event.pageY, [
-            {
-                label: 'フルスクリーンで表示',
-                action: () => openFullscreenView(),
-            },
-        ]);
+        void openSidecarMenu(event.pageX, event.pageY);
     };
 
     if (artworkContainer) {
@@ -341,5 +358,43 @@ export function setupArtworkContextMenu() {
     }
     if (footerArtwork) {
         footerArtwork.addEventListener('contextmenu', openMenu);
+    }
+
+    // 公式再生（embed）中はアートワーク領域が iframe に覆われ右クリックが
+    // 奪われるため、iframe より上に重ねた常設ボタンからフルスクリーンを開く。
+    const fullscreenBtn = document.getElementById('now-playing-fullscreen-btn');
+    if (fullscreenBtn) {
+        // 長押し（約500ms）でサイドカー用のデバイス選択メニューを開く。
+        // 長押しが発火した場合は、直後に発火する click（=通常フルスクリーン）を抑止する。
+        let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+        let longPressTriggered = false;
+
+        const clearLongPressTimer = () => {
+            if (longPressTimer !== null) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        };
+
+        fullscreenBtn.addEventListener('click', (event: MouseEvent) => {
+            if (longPressTriggered) {
+                longPressTriggered = false;
+                event.stopImmediatePropagation();
+                return;
+            }
+            openFullscreenView();
+        });
+
+        fullscreenBtn.addEventListener('pointerdown', (event: PointerEvent) => {
+            longPressTriggered = false;
+            const { clientX, clientY } = event;
+            longPressTimer = setTimeout(() => {
+                longPressTriggered = true;
+                void openSidecarMenu(clientX, clientY);
+            }, LONG_PRESS_DURATION_MS);
+        });
+        fullscreenBtn.addEventListener('pointerup', () => clearLongPressTimer());
+        fullscreenBtn.addEventListener('pointerleave', () => clearLongPressTimer());
+        fullscreenBtn.addEventListener('pointercancel', () => clearLongPressTimer());
     }
 }

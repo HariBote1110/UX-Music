@@ -31,7 +31,7 @@ export const musicApi = {
   // --- One-way (Send) ---
   requestAppInfo: () => {
     if (getWailsApp()) {
-      return Promise.resolve({ version: '0.1.9-Beta-32c', platform: 'darwin' });
+      return Promise.resolve({ version: '0.1.9-Beta-34a', platform: 'darwin' });
     }
     return api && api.send(CHANNELS.SEND.REQUEST_APP_INFO);
   },
@@ -193,6 +193,27 @@ export const musicApi = {
       return app.ListSyncDevices();
     }
     return Promise.resolve([]);
+  },
+  listPairedRemoteDevices: () => {
+    const app = getWailsApp();
+    if (app?.ListPairedRemoteDevices) {
+      return app.ListPairedRemoteDevices();
+    }
+    return Promise.resolve([]);
+  },
+  setSidecarTargetDevice: (deviceId: string) => {
+    const app = getWailsApp();
+    if (app?.SetSidecarTargetDevice) {
+      return app.SetSidecarTargetDevice(deviceId);
+    }
+    return Promise.resolve();
+  },
+  getSidecarTargetDevice: () => {
+    const app = getWailsApp();
+    if (app?.GetSidecarTargetDevice) {
+      return app.GetSidecarTargetDevice();
+    }
+    return Promise.resolve('');
   },
   startSyncPairing: (baseUrl: string) => {
     const app = getWailsApp();

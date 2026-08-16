@@ -380,8 +380,12 @@ export function stopQuiz() {
     }
     clearTimeout(quizState.snippetTimeout);
     clearInterval(quizState.timerInterval);
+    quizState.snippetTimeout = null;
+    quizState.timerInterval = null;
     quizState.isPlayingSnippet = false;
+    quizState.isResultShowing = false;
     quizState.isFinalScreenShowing = false;
+    quizState.startTime = 0;
 
     if (quizElements.startScreen) {
         quizElements.startScreen.classList.remove('hidden');

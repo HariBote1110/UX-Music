@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 	"ux-music-sidecar/internal/config"
-	"ux-music-sidecar/internal/store"
 )
 
 const (
@@ -15,6 +14,33 @@ const (
 	PlaylistOrderFileName = "playlist-order"
 	FavoritesPlaylistName = "お気に入り"
 )
+
+// SettingsProvider abstracts loading a persisted settings map, decoupling
+// this package from internal/store's concrete singleton implementation.
+type SettingsProvider interface {
+	LoadMap(name string) (map[string]interface{}, error)
+}
+
+var settingsProvider SettingsProvider
+
+// SetSettingsProvider injects the SettingsProvider implementation used to
+// read the persisted playlist order. Callers (e.g. server/) should call
+// this during initialisation, passing internal/store's Instance or an
+// equivalent implementation.
+func SetSettingsProvider(provider SettingsProvider) {
+	settingsProvider = provider
+}
+
+func loadSettingsMap(name string) map[string]interface{} {
+	if settingsProvider == nil {
+		return map[string]interface{}{}
+	}
+	m, err := settingsProvider.LoadMap(name)
+	if err != nil {
+		return map[string]interface{}{}
+	}
+	return m
+}
 
 func GetPlaylistsDir() string {
 	dir := filepath.Join(config.GetUserDataPath(), PlaylistsDirName)
@@ -101,7 +127,7 @@ func GetAllPlaylists() ([]string, error) {
 		}
 	}
 
-	orderData, _ := store.Instance.LoadMap(PlaylistOrderFileName)
+	orderData := loadSettingsMap(PlaylistOrderFileName)
 	var savedOrder []string
 	if orderList, ok := orderData["order"].([]interface{}); ok {
 		for _, item := range orderList {

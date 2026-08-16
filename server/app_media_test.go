@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"ux-music-sidecar/internal/config"
 )
 
 func TestNormalizeNowPlayingMetadata(t *testing.T) {
@@ -91,32 +90,25 @@ func TestNormalizeNowPlayingMetadata(t *testing.T) {
 }
 
 func TestResolveNowPlayingArtworkPath(t *testing.T) {
-	// Setup temporary directory for tests
-	tmpDir, err := os.MkdirTemp("", "ux-music-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	config.SetUserDataPath(tmpDir)
+	// テスト用の一時 userDataPath。以前は os.MkdirTemp + os.RemoveAll で
+	// ディレクトリだけ消し、プロセスグローバルの config は削除済みパスを
+	// 指したまま残していたため、後続テストが実行順によって壊れていた。
+	tmpDir := newTempUserDataStore(t)
 
 	artworksDir := filepath.Join(tmpDir, "Artworks")
-	err = os.Mkdir(artworksDir, 0755)
-	if err != nil {
+	if err := os.Mkdir(artworksDir, 0755); err != nil {
 		t.Fatalf("Failed to create Artworks dir: %v", err)
 	}
 
 	validRelativeImage := "test-image.jpg"
 	validRelativeImagePath := filepath.Join(artworksDir, validRelativeImage)
-	err = os.WriteFile(validRelativeImagePath, []byte("dummy data"), 0644)
-	if err != nil {
+	if err := os.WriteFile(validRelativeImagePath, []byte("dummy data"), 0644); err != nil {
 		t.Fatalf("Failed to create dummy image: %v", err)
 	}
 	cleanValidRelativeImagePath := filepath.Clean(validRelativeImagePath)
 
 	validAbsoluteImage := filepath.Join(tmpDir, "absolute-image.jpg")
-	err = os.WriteFile(validAbsoluteImage, []byte("dummy data"), 0644)
-	if err != nil {
+	if err := os.WriteFile(validAbsoluteImage, []byte("dummy data"), 0644); err != nil {
 		t.Fatalf("Failed to create dummy absolute image: %v", err)
 	}
 	cleanValidAbsoluteImage := filepath.Clean(validAbsoluteImage)
