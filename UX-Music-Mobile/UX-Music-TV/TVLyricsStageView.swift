@@ -87,6 +87,13 @@ struct TVLyricsStageView: View {
         }
         .mask(SidecarLyricsEdgeFade.gradient)
         .background(activeLineTicker)
+        // A song switch replaces `lines` wholesale (new indices, new heights). Without this reset,
+        // `lineHeights` kept the PREVIOUS song's measured heights keyed by index for one or more
+        // frames until the new lines re-measured themselves, feeding stale heights into
+        // `SidecarLyricsLayout.tops`'s cumulative sum and briefly misplacing every line.
+        .onChange(of: lines) { _, _ in
+            lineHeights = [:]
+        }
     }
 
     /// One lyric line and (when the desktop has a 和訳 saved) its translation, stacked inside a single

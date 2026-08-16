@@ -71,16 +71,10 @@ struct TVNowPlayingView: View {
             TVCinematicBackground(breathing: ambient)
             TVNowPlayingAmbientBackground(artworkId: player.currentSong?.artworkId ?? "", client: client, ambient: ambient)
 
-            Group {
-                if lyricsLines.isEmpty {
-                    TVNowPlayingArtworkLayout(player: player, client: client, ambient: ambient)
-                } else {
-                    TVNowPlayingLyricsLayout(player: player, client: client, lines: lyricsLines, ambient: ambient)
-                }
-            }
-            .opacity(TVAmbientPresentation.contentOpacity(ambient: ambient))
-            .offset(x: drift.width, y: drift.height)
-            .animation(.linear(duration: 1), value: drift)
+            TVNowPlayingStageLayout(player: player, client: client, lines: lyricsLines, ambient: ambient)
+                .opacity(TVAmbientPresentation.contentOpacity(ambient: ambient))
+                .offset(x: drift.width, y: drift.height)
+                .animation(.linear(duration: 1), value: drift)
         }
         .animation(.easeInOut(duration: TVAmbientPresentation.transitionDuration), value: ambient)
     }
@@ -116,7 +110,7 @@ struct TVNowPlayingView: View {
         // Clear synchronously BEFORE the fetch, not just on failure/not-found: without this, the
         // PREVIOUS song's lyric lines stayed visible (with the NEW song's already-reset
         // `positionSeconds`) for the whole in-flight window of this `await` — see
-        // `TVNowPlayingLyricsLayout`'s `.top`-alignment doc comment for the layout symptom this
+        // `TVNowPlayingStageLayout`'s `.top`-alignment doc comment for the layout symptom this
         // mismatch caused.
         lyricsLines = []
         guard let song = player.currentSong else { return }
@@ -179,45 +173,44 @@ private struct TVCinematicArtworkCard: View {
     }
 }
 
-private struct TVNowPlayingArtworkLayout: View {
-    let player: MusicPlayerService
-    let client: RemoteAPIClient
-    var ambient: Bool = false
-
-    var body: some View {
-        VStack(spacing: 40) {
-            TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: 560)
-            TVNowPlayingInfoBlock(player: player, ambient: ambient)
-            TVNowPlayingTransportBar(player: player)
-                .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
-                // `.disabled` also removes the buttons from the tvOS focus tree, so a Select press
-                // while the chrome is invisible can't blind-toggle playback.
-                .disabled(ambient)
-        }
-        .padding(80)
-    }
-}
-
-private struct TVNowPlayingLyricsLayout: View {
+/// Single stage layout for the Now Playing screen — one `HStack(alignment: .top)` container that
+/// stays mounted whether or not lyrics are loaded, so the artwork's identity never swaps trees
+/// mid-playback. Previously the screen picked between two structurally different view trees
+/// (a centred `VStack` for songs without lyrics vs. this `GeometryReader`/`HStack` for songs with
+/// them); because that swap happened async (lyrics load via `.task(id:)`) and carried no
+/// `.transition()`, the ZStack-level ambient `.animation(...)` in `TVNowPlayingView.content(_:_:)`
+/// could capture it and interpolate the artwork from centred-560 to top-leading-420 — the reported
+/// "ジャケットが画面に突き刺さる" defect (`progress/tvos-nowplaying-artwork-stab.md`). Lyrics
+/// presence now only (a) animates the artwork's `size` token via the `.animation(value: hasLyrics)`
+/// below, scoped to this view, and (b) swaps which child fills the text column's lower half — lyrics
+/// stage vs. transport bar — behind a `.transition(.opacity)`. No unanimated or ambient-captured
+/// identity change of the artwork's container can occur by construction.
+private struct TVNowPlayingStageLayout: View {
     let player: MusicPlayerService
     let client: RemoteAPIClient
     let lines: [TranslatedTimedLine]
     var ambient: Bool = false
 
-    /// Matches `TVCinematicArtworkCard`'s fixed `size` below — see the `.top`-alignment note.
-    private static let artworkSize: CGFloat = 420
+    private var hasLyrics: Bool { !lines.isEmpty }
+    /// 560pt with no lyrics (matches the previous centred layout), 420pt once a lyrics column needs
+    /// the room — animated, never a discrete tree swap.
+    private var artworkSize: CGFloat { hasLyrics ? 420 : 560 }
 
     /// Total top+bottom `padding(80)` stripped from the screen height below to get the finite
     /// height available to the row's content.
     private static let outerPadding: CGFloat = 160
+    /// Height reserved for the bottom progress-bar row regardless of its opacity. The row lives in a
+    /// `safeAreaInset`, which is applied *after* this `GeometryReader` measures the screen, so a
+    /// budget that only subtracted `outerPadding` under-counted the space actually available to the
+    /// text column and let overflowing lyric lines paint into (and past) the bar's area.
+    private static let progressBarReservedHeight: CGFloat = 72
 
     var body: some View {
         // Outermost `GeometryReader` exists solely to turn the screen size into a finite content
         // height *before* it reaches `TVLyricsStageView`'s own `GeometryReader` — see that view's
-        // comment for why an unbounded proposal there is unacceptable. Everything below is otherwise
-        // unchanged.
+        // comment for why an unbounded proposal there is unacceptable.
         GeometryReader { screenGeo in
-            let contentHeight = max(0, screenGeo.size.height - Self.outerPadding)
+            let contentHeight = max(0, screenGeo.size.height - Self.outerPadding - Self.progressBarReservedHeight)
 
             // `alignment: .top`, NOT `.center` (`progress/tvos-nowplaying-textcolumn.md`
             // "テキスト列の位置固定" 追記): with `.center`, the title/artist/lyrics column's vertical
@@ -233,7 +226,7 @@ private struct TVNowPlayingLyricsLayout: View {
             // makes the title/artist's vertical position depend ONLY on the fixed `padding(80)` origin,
             // never on lyrics content height.
             HStack(alignment: .top, spacing: 64) {
-                TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: Self.artworkSize)
+                TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: artworkSize)
 
                 VStack(alignment: .leading, spacing: 28) {
                     Text(player.currentSong?.title ?? "")
@@ -247,12 +240,28 @@ private struct TVNowPlayingLyricsLayout: View {
                     // Explicit `maxHeight: .infinity`, capped by the VStack's own `contentHeight`
                     // frame below, so `TVLyricsStageView`'s `GeometryReader` always receives a finite
                     // proposal instead of the unbounded one an unconstrained flexible child would get.
-                    TVLyricsStageView(player: player, lines: lines)
-                        .padding(.top, 12)
-                        .frame(maxHeight: .infinity)
+                    // `.clipped()` on top of the stage's own edge-fade mask is a hard backstop: no
+                    // overflowing lyric line can paint outside this column into the artwork's area.
+                    Group {
+                        if hasLyrics {
+                            TVLyricsStageView(player: player, lines: lines)
+                                .clipped()
+                                .transition(.opacity)
+                        } else {
+                            TVNowPlayingTransportBar(player: player)
+                                .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
+                                // `.disabled` also removes the buttons from the tvOS focus tree, so a
+                                // Select press while the chrome is invisible can't blind-toggle playback.
+                                .disabled(ambient)
+                                .transition(.opacity)
+                        }
+                    }
+                    .padding(.top, 12)
+                    .frame(maxHeight: .infinity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: contentHeight, alignment: .leading)
             }
+            .animation(.easeInOut(duration: TVAmbientPresentation.transitionDuration), value: hasLyrics)
             .padding(80)
             .safeAreaInset(edge: .bottom) {
                 HStack {
@@ -262,25 +271,6 @@ private struct TVNowPlayingLyricsLayout: View {
                 }
                 .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
             }
-        }
-    }
-}
-
-private struct TVNowPlayingInfoBlock: View {
-    let player: MusicPlayerService
-    var ambient: Bool = false
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Text(player.currentSong?.title ?? "")
-                .font(.system(size: 34, weight: .medium))
-                .lineLimit(1)
-            Text(player.currentSong?.artist ?? "")
-                .font(.system(size: 22))
-                .foregroundStyle(TVDesignTokens.textSecondary)
-                .lineLimit(1)
-            TVNowPlayingProgressBar(player: player)
-                .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
         }
     }
 }
@@ -399,7 +389,7 @@ struct TVNowPlayingPreviewHarness: View {
         ZStack {
             TVCinematicBackground()
             TVNowPlayingAmbientBackground(artworkId: "preview", client: client)
-            TVNowPlayingLyricsLayout(player: player, client: client, lines: Self.lines)
+            TVNowPlayingStageLayout(player: player, client: client, lines: Self.lines)
         }
         .background(TVDesignTokens.charcoalBase.ignoresSafeArea())
         .onAppear {
