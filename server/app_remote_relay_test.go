@@ -232,7 +232,14 @@ func TestRemoteRelayEngine_MultipleConcurrentClientsBothReceiveBytes(t *testing.
 		defer resp.Body.Close()
 		buf := make([]byte, 4096)
 		total := 0
-		deadline := time.Now().Add(5 * time.Second)
+		// CI の共有 Linux ランナー（go test -race で全パッケージを並行実行して
+		// おり、pkg/audio 側のデコード処理などと CPU を奪い合う）では、この
+		// ffmpeg エンコードパイプラインへの供給ゴルーチンがスケジューリング
+		// 遅延を受け、ローカル実行での数百ミリ秒よりずっと長くかかることが
+		// 実測で確認できた（5秒では両方 0 バイトのまま打ち切られていた）。
+		// アサーション自体（両クライアントとも受信できること）は変えず、
+		// 待てば届くはずの遅延に対して猶予を広げる。
+		deadline := time.Now().Add(20 * time.Second)
 		for total < 8 && time.Now().Before(deadline) {
 			n, err := resp.Body.Read(buf[total:])
 			total += n
