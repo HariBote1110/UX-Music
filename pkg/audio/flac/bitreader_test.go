@@ -372,3 +372,65 @@ func TestBitReader_BitsRead(t *testing.T) {
 		t.Fatalf("got %d, want 8", got)
 	}
 }
+
+func TestBitReader_Capture(t *testing.T) {
+	t.Run("captures bytes across mixed reads", func(t *testing.T) {
+		data := []byte{0xAB, 0xCD, 0xEF, 0x12}
+		br := NewBitReader(bytes.NewReader(data))
+		br.StartCapture()
+		if _, err := br.ReadBits(4); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, err := br.ReadBits(4); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, err := br.ReadRawBytes(1); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, err := br.ReadBits(3); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		br.Align()
+		got := br.StopCapture()
+		want := []byte{0xAB, 0xCD, 0xEF}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+
+		// Bytes read after StopCapture must not appear.
+		if _, err := br.ReadRawBytes(1); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("restarting capture discards previous bytes", func(t *testing.T) {
+		br := NewBitReader(bytes.NewReader([]byte{0x01, 0x02, 0x03}))
+		br.StartCapture()
+		if _, err := br.ReadRawBytes(1); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		br.StartCapture()
+		if _, err := br.ReadRawBytes(1); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := br.StopCapture()
+		want := []byte{0x02}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("capture spans an internal buffer refill", func(t *testing.T) {
+		data := bytes.Repeat([]byte{0x5A}, bitReaderBufSize+8)
+		br := NewBitReader(bytes.NewReader(data))
+		br.StartCapture()
+		if _, err := br.ReadRawBytes(bitReaderBufSize + 4); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got := br.StopCapture()
+		want := data[:bitReaderBufSize+4]
+		if !bytes.Equal(got, want) {
+			t.Fatalf("captured %d bytes, want %d matching bytes", len(got), len(want))
+		}
+	})
+}
