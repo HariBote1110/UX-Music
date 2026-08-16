@@ -28,6 +28,9 @@ type BitReader struct {
 	bitOff uint // 0..7: next bit to consume within buf[bufPos], MSB first
 
 	totalBits uint64 // total bits successfully consumed so far
+
+	capturing bool   // whether consumed bytes are being recorded, see StartCapture
+	capture   []byte // bytes consumed since the last StartCapture, in order
 }
 
 // NewBitReader creates a BitReader that reads from r.
@@ -68,6 +71,9 @@ func (b *BitReader) readBit() (uint64, error) {
 	b.bitOff++
 	b.totalBits++
 	if b.bitOff == 8 {
+		if b.capturing {
+			b.capture = append(b.capture, value)
+		}
 		b.bitOff = 0
 		b.bufPos++
 	}
@@ -141,6 +147,9 @@ func (b *BitReader) Align() {
 	if b.bitOff == 0 {
 		return
 	}
+	if b.capturing {
+		b.capture = append(b.capture, b.buf[b.bufPos])
+	}
 	b.totalBits += uint64(8 - b.bitOff)
 	b.bitOff = 0
 	b.bufPos++
@@ -163,10 +172,32 @@ func (b *BitReader) ReadRawBytes(n int) ([]byte, error) {
 			}
 		}
 		out[i] = b.buf[b.bufPos]
+		if b.capturing {
+			b.capture = append(b.capture, b.buf[b.bufPos])
+		}
 		b.bufPos++
 		b.totalBits += 8
 	}
 	return out, nil
+}
+
+// StartCapture begins recording every byte the reader fully consumes (via
+// ReadBits, ReadBitsSigned, ReadUnary, ReadRawBytes or Align) from this
+// point onward, discarding any bytes captured by a previous, unterminated
+// capture. It is used to reconstruct the exact raw bytes of a frame for
+// CRC-16 verification, since the reader's internal buffer may read ahead
+// past the logical end of the current frame.
+func (b *BitReader) StartCapture() {
+	b.capturing = true
+	b.capture = b.capture[:0]
+}
+
+// StopCapture ends recording and returns the bytes captured since the last
+// StartCapture. The returned slice is only valid until the next call to
+// StartCapture, which reuses its backing array.
+func (b *BitReader) StopCapture() []byte {
+	b.capturing = false
+	return b.capture
 }
 
 // ReadUTF8Uint64 reads a FLAC/UTF-8-style extended number: an encoding of up
