@@ -240,12 +240,14 @@ private struct TVNowPlayingStageLayout: View {
     /// leave the lyrics stage comfortable room, large enough not to look shrunken when lyrics are
     /// absent.
     private static let artworkSize: CGFloat = 480
-    /// Left column width — wider than `artworkSize` so the title/artist labels (and the transport
-    /// row/progress bar) have room without wrapping against the artwork's own edge, mirroring the
-    /// iOS Sidecar screen's `SidecarLayoutSpacing.artworkColumnWidthFraction` column being wider
-    /// than the artwork it centres (`SidecarScreen.swift`). Fixed for the same reason as
-    /// `artworkSize`.
-    fileprivate static let leftColumnWidth: CGFloat = 540
+    /// Left column width equals the artwork's own width — NOT wider, as an earlier revision had it
+    /// (`leftColumnWidth: 540` against a 480pt artwork). That gap left the title/artist, transport
+    /// row and progress bar all sitting flush against the column's LEADING edge while the artwork
+    /// itself sat 30pt further right, so nothing below the artwork shared its horizontal axis — the
+    /// reported「ジャケットを除くUI類が左寄せになってて酷い」defect. Equalising the two widths, plus
+    /// centring the transport row and letting the progress bar span the full width below, makes the
+    /// artwork's own edges the column's layout axis.
+    fileprivate static let leftColumnWidth: CGFloat = artworkSize
 
     /// Total top+bottom `padding(80)` stripped from the screen height below to get the finite
     /// height available to the row's content.
@@ -284,20 +286,30 @@ private struct TVNowPlayingStageLayout: View {
         // longer replaces it — both hasLyrics states expose the same previous/play-pause/next
         // controls and only the right-hand lyrics stage's presence differs.
         HStack(alignment: .top, spacing: 64) {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .center, spacing: 20) {
                 TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: Self.artworkSize)
 
-                VStack(alignment: .leading, spacing: 8) {
+                // Centre-aligned under the artwork, matching Apple's tvOS Now Playing style — now
+                // that the column's width equals the artwork's own width, `.center` here keeps
+                // title/artist on the same axis as the artwork rather than hugging its own leading
+                // edge with dead space to the right.
+                VStack(alignment: .center, spacing: 8) {
                     Text(player.currentSong?.title ?? "")
                         .font(.system(size: 40, weight: .medium))
                         .lineLimit(1)
+                        .multilineTextAlignment(.center)
                     Text(player.currentSong?.artist ?? "")
                         .font(.system(size: 24))
                         .foregroundStyle(TVDesignTokens.textSecondary)
                         .lineLimit(1)
+                        .multilineTextAlignment(.center)
                 }
+                .frame(width: Self.leftColumnWidth)
 
+                // Centred within the artwork-width column rather than leading-packed against its
+                // left edge, so the trio of buttons sits on the artwork's own horizontal centreline.
                 TVNowPlayingTransportBar(player: player)
+                    .frame(width: Self.leftColumnWidth)
                     .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
                     // `.disabled` also removes the buttons from the tvOS focus tree, so a Select
                     // press while the chrome is invisible can't blind-toggle playback.
@@ -315,7 +327,7 @@ private struct TVNowPlayingStageLayout: View {
                     .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
                     .padding(.top, 8)
             }
-            .frame(width: Self.leftColumnWidth, alignment: .leading)
+            .frame(width: Self.leftColumnWidth, alignment: .center)
 
             // Explicit `maxHeight: .infinity`, capped by `contentHeight` below, so
             // `TVLyricsStageView`'s `GeometryReader` always receives a finite proposal instead of
@@ -346,8 +358,9 @@ private struct TVNowPlayingStageLayout: View {
 private struct TVNowPlayingProgressBar: View {
     let player: MusicPlayerService
 
-    /// Matches `TVNowPlayingStageLayout.leftColumnWidth` — the bar now lives inside that column
-    /// (under the transport row) rather than centred across the full screen width.
+    /// Matches `TVNowPlayingStageLayout.leftColumnWidth`, which in turn now equals the artwork's own
+    /// width — so the bar spans exactly the artwork's width rather than the wider column that used
+    /// to leave it looking left-aligned under the artwork.
     private static let width: CGFloat = TVNowPlayingStageLayout.leftColumnWidth
 
     var body: some View {
