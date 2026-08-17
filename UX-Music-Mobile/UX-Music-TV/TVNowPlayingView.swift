@@ -212,11 +212,14 @@ private struct TVCinematicArtworkCard: View {
 /// them); because that swap happened async (lyrics load via `.task(id:)`) and carried no
 /// `.transition()`, the ZStack-level ambient `.animation(...)` in `TVNowPlayingView.content(_:_:)`
 /// could capture it and interpolate the artwork from centred-560 to top-leading-420 — the reported
-/// "ジャケットが画面に突き刺さる" defect (`progress/tvos-nowplaying-artwork-stab.md`). Lyrics
-/// presence now only (a) animates the artwork's `size` token via the `.animation(value: hasLyrics)`
-/// below, scoped to this view, and (b) swaps which child fills the text column's lower half — lyrics
-/// stage vs. transport bar — behind a `.transition(.opacity)`. No unanimated or ambient-captured
-/// identity change of the artwork's container can occur by construction.
+/// "ジャケットが画面に突き刺さる" defect (`progress/tvos-nowplaying-artwork-stab.md`). That fix still
+/// let the artwork/left-column geometry itself vary with `hasLyrics` (560→420, animated); a later
+/// pass found the animated resize just as jarring — the artwork visibly glides left the moment
+/// lyrics finish loading mid-playback (`progress/tvos-nowplaying-fixed-geometry.md`). The left
+/// column's width and the artwork's size are now CONSTANT — fixed the moment this view appears,
+/// independent of `hasLyrics` — so nothing in the artwork/title/artist/transport column can ever
+/// move once mounted. Lyrics presence only swaps in the right-hand lyrics stage behind a
+/// `.transition(.opacity)`; it never touches the left column's geometry.
 private struct TVNowPlayingStageLayout: View {
     let player: MusicPlayerService
     let client: RemoteAPIClient
@@ -231,22 +234,29 @@ private struct TVNowPlayingStageLayout: View {
     let screenSize: CGSize
 
     private var hasLyrics: Bool { !lines.isEmpty }
-    /// 560pt with no lyrics (matches the previous centred layout), 420pt once a lyrics column needs
-    /// the room — animated, never a discrete tree swap.
-    private var artworkSize: CGFloat { hasLyrics ? 420 : 560 }
+    /// Fixed regardless of `hasLyrics` — see this type's doc comment. 480pt was chosen by visual
+    /// judgement on the 1920×1080 harnesses as the size that reads well both in the artwork-only
+    /// layout (previously 560pt) and beside the lyrics pane (previously 420pt): small enough to
+    /// leave the lyrics stage comfortable room, large enough not to look shrunken when lyrics are
+    /// absent.
+    private static let artworkSize: CGFloat = 480
     /// Left column width — wider than `artworkSize` so the title/artist labels (and the transport
-    /// row) have room without wrapping against the artwork's own edge, mirroring the iOS Sidecar
-    /// screen's `SidecarLayoutSpacing.artworkColumnWidthFraction` column being wider than the
-    /// artwork it centres (`SidecarScreen.swift`).
-    private var leftColumnWidth: CGFloat { hasLyrics ? 460 : 620 }
+    /// row/progress bar) have room without wrapping against the artwork's own edge, mirroring the
+    /// iOS Sidecar screen's `SidecarLayoutSpacing.artworkColumnWidthFraction` column being wider
+    /// than the artwork it centres (`SidecarScreen.swift`). Fixed for the same reason as
+    /// `artworkSize`.
+    fileprivate static let leftColumnWidth: CGFloat = 540
 
     /// Total top+bottom `padding(80)` stripped from the screen height below to get the finite
     /// height available to the row's content.
     private static let outerPadding: CGFloat = 160
-    /// Height reserved for the bottom progress-bar row regardless of its opacity. The row lives in a
-    /// `safeAreaInset`, which is applied *after* `screenSize` is measured, so a budget that only
-    /// subtracted `outerPadding` under-counted the space actually available to the text column and
-    /// let overflowing lyric lines paint into (and past) the bar's area.
+    /// Height reserved so the lyrics stage's height budget still accounts for the progress bar's
+    /// footprint, now that the bar sits inside the left column instead of a bottom `safeAreaInset`.
+    /// The left column's own content (artwork, title/artist, transport, progress bar) is a `VStack`
+    /// and simply grows to whatever height it needs; the right-hand lyrics stage is the one
+    /// constrained to `contentHeight`, and reserving this budget keeps its height in the same
+    /// right-hand-column ballpark it occupied before the bar moved, rather than growing the lyrics
+    /// stage's proposal by the bar's now-freed height.
     private static let progressBarReservedHeight: CGFloat = 72
 
     private var contentHeight: CGFloat {
@@ -275,7 +285,7 @@ private struct TVNowPlayingStageLayout: View {
         // controls and only the right-hand lyrics stage's presence differs.
         HStack(alignment: .top, spacing: 64) {
             VStack(alignment: .leading, spacing: 20) {
-                TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: artworkSize)
+                TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: Self.artworkSize)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(player.currentSong?.title ?? "")
@@ -293,8 +303,19 @@ private struct TVNowPlayingStageLayout: View {
                     // press while the chrome is invisible can't blind-toggle playback.
                     .disabled(ambient)
                     .padding(.top, 8)
+
+                // Lives in the left column, under the transport row, rather than a bottom
+                // `safeAreaInset` — the previous placement centred the bar horizontally across the
+                // whole screen, which read as sitting under the (right-hand) lyrics pane while every
+                // other control stayed left-aligned. Width matches `leftColumnWidth` via
+                // `TVNowPlayingProgressBar`'s own frame below, not this VStack's `.leading` alignment
+                // alone, since the bar's internal `HStack` needs an explicit width to lay its time
+                // labels out against.
+                TVNowPlayingProgressBar(player: player)
+                    .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
+                    .padding(.top, 8)
             }
-            .frame(width: leftColumnWidth, alignment: .leading)
+            .frame(width: Self.leftColumnWidth, alignment: .leading)
 
             // Explicit `maxHeight: .infinity`, capped by `contentHeight` below, so
             // `TVLyricsStageView`'s `GeometryReader` always receives a finite proposal instead of
@@ -306,28 +327,33 @@ private struct TVNowPlayingStageLayout: View {
                     .frame(maxWidth: .infinity, maxHeight: contentHeight, alignment: .leading)
                     .clipped()
                     .transition(.opacity)
+                    .animation(.easeInOut(duration: TVAmbientPresentation.transitionDuration), value: hasLyrics)
             }
         }
-        .animation(.easeInOut(duration: TVAmbientPresentation.transitionDuration), value: hasLyrics)
+        // Explicit leading-aligned, full-width frame: without it, an `HStack` with only its first
+        // child present (no lyrics — the `if hasLyrics` branch contributes nothing) sizes itself to
+        // that child's intrinsic width and gets CENTRED by the enclosing `ZStack`, pulling the whole
+        // left column — artwork included — away from the fixed leading position it has when lyrics
+        // ARE present. That regressed the very "artwork never moves" guarantee this type exists to
+        // provide, just triggered by lyrics *absence* instead of the async load this type's doc
+        // comment already covers. Pinning the HStack itself to `.leading` makes the left column's
+        // horizontal position constant regardless of whether the lyrics stage is mounted.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(80)
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                TVNowPlayingProgressBar(player: player)
-                Spacer()
-            }
-            .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
-        }
     }
 }
 
 private struct TVNowPlayingProgressBar: View {
     let player: MusicPlayerService
 
+    /// Matches `TVNowPlayingStageLayout.leftColumnWidth` — the bar now lives inside that column
+    /// (under the transport row) rather than centred across the full screen width.
+    private static let width: CGFloat = TVNowPlayingStageLayout.leftColumnWidth
+
     var body: some View {
         VStack(spacing: 6) {
             TVGradientProgressBar(fraction: player.durationSeconds > 0 ? player.positionSeconds / player.durationSeconds : 0)
-                .frame(width: 480)
+                .frame(width: Self.width)
             HStack {
                 Text(Self.format(player.positionSeconds))
                 Spacer()
@@ -335,7 +361,7 @@ private struct TVNowPlayingProgressBar: View {
             }
             .font(.caption)
             .foregroundStyle(TVDesignTokens.textSecondary)
-            .frame(width: 480)
+            .frame(width: Self.width)
         }
     }
 
@@ -417,13 +443,19 @@ struct TVTransportButtonStyle: ButtonStyle {
 /// lyrics-focus layout with rich stub data — fake title/artist/artwork id, a 3-line lyrics window
 /// mid-song, and 38% progress — so the cinematic design can be screenshotted in the simulator
 /// without pairing to a host. See `progress/tvos-design.md`.
+///
+/// Also driven with `lines: []` for `UXTV_PREVIEW=nowplayingnolyrics`, which exercises the
+/// no-lyrics/artwork-only layout as a stable, non-async-dependent counterpart to `nowplaying` —
+/// needed to visually confirm the artwork/left-column geometry documented as fixed in
+/// `TVNowPlayingStageLayout` is IDENTICAL between the two states, not just non-animated.
 struct TVNowPlayingPreviewHarness: View {
     private let player = MusicPlayerService()
     private let client = RemoteAPIClient(baseURLString: "http://198.51.100.1:9999")
+    private let lines: [TranslatedTimedLine]
 
     /// Includes a 和訳 pairing and an `[間奏]` marker so the harness screenshots exercise both
     /// bilingual rendering and interlude blanking, not just the plain single-language case.
-    private static let lines: [TranslatedTimedLine] = [
+    private static let defaultLines: [TranslatedTimedLine] = [
         .init(id: 0, startTime: 0, text: "Before the night breaks", translation: "夜が明ける前に"),
         .init(id: 1, startTime: 10, text: "I want to send you this song", translation: "この歌を君に届けたい"),
         .init(id: 2, startTime: 20, text: "[間奏]", translation: nil),
@@ -431,12 +463,16 @@ struct TVNowPlayingPreviewHarness: View {
         .init(id: 4, startTime: 40, text: "However far apart we are", translation: "遠く離れていても"),
     ]
 
+    init(lines: [TranslatedTimedLine] = Self.defaultLines) {
+        self.lines = lines
+    }
+
     var body: some View {
         GeometryReader { screenGeo in
             ZStack {
                 TVCinematicBackground()
                 TVNowPlayingAmbientBackground(artworkId: "preview", client: client)
-                TVNowPlayingStageLayout(player: player, client: client, lines: Self.lines, screenSize: screenGeo.size)
+                TVNowPlayingStageLayout(player: player, client: client, lines: lines, screenSize: screenGeo.size)
             }
         }
         .background(TVDesignTokens.charcoalBase.ignoresSafeArea())
