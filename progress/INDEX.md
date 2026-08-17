@@ -1,5 +1,6 @@
 # Progress Index
 
+- [tv-cached-to-stream-switch-seekbar.md](tv-cached-to-stream-switch-seekbar.md) — キャッシュ済み曲→非キャッシュ曲へ切替時にシークバーが新旧位置を往復し再生も止められない実機不具合を修正。真因は`MusicPlayerService.beginExternalPlayback`がローカルエンジン停止も`playGeneration`バンプも行わない新エントリポイントだったこと（`positionTimer`とストリームの`progressMirrorTask`がpositionSecondsを二重に書き込み合っていた）。不変条件「外部駆動中はローカルエンジンが必ず沈黙」をエントリポイント自身で強制する形で解消
 - [remote-artwork-sync-import-404.md](remote-artwork-sync-import-404.md) — リモート閲覧でアルバムアートが全滅する問題（同期インポートの`dev_*.webp`を`hashStemFromArtworkFilename`の64hex制限が弾き、実在しない計算ハッシュで404）を`isServableArtworkStem`導入で修正。Apple TVシミュレータ検証の手順メモ付き
 
 - [tv-local-file-resolver.md](tv-local-file-resolver.md) — TVでスキップ・自動再生が無音のまま曲名だけ変わる問題（キュー内の曲がサーバ側パスのままでloadAndPlayのfileExistsガードが黙って離脱）を、`MusicPlayerService.localFileResolver` フック＋TV側ensureCached解決の単一フローで修正。Siri Remoteで再生再開できない問題（play/pauseCommand常時両有効）の`RemoteCommandEnablement`による相互排他化もこの回
