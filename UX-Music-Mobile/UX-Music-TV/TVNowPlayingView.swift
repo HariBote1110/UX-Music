@@ -84,20 +84,29 @@ struct TVNowPlayingView: View {
     private func content(ambient: Bool, drift: CGSize) -> some View {
         GeometryReader { screenGeo in
             ZStack(alignment: .top) {
+                // Backgrounds MUST NOT share the CONTENT stage's bounded frame/`.clipped()` below —
+                // `screenGeo.size` is the safe-area-*excluded* proposal (e.g. 1760×960 on a
+                // 1920×1080 canvas), so constraining the backgrounds to it left visible black bands
+                // on all four edges. `.ignoresSafeArea()` here lets each background paint edge to
+                // edge on the physical canvas while only the content stage below respects the safe
+                // area's bounded frame.
                 TVCinematicBackground(breathing: ambient)
+                    .ignoresSafeArea()
                 TVNowPlayingAmbientBackground(artworkId: player.currentSong?.artworkId ?? "", client: client, ambient: ambient)
+                    .ignoresSafeArea()
 
                 TVNowPlayingStageLayout(player: player, client: client, lines: lyricsLines, ambient: ambient, screenSize: screenGeo.size)
                     .opacity(TVAmbientPresentation.contentOpacity(ambient: ambient))
                     .offset(x: drift.width, y: drift.height)
                     .animation(.linear(duration: 1), value: drift)
+                    // Belt-and-braces backstop, not the primary fix: even a mis-measured/oversized
+                    // child can no longer drag the CONTENT off the top of the screen, because `.top`
+                    // alignment (not the ZStack default `.center`) pins its origin to y=0 and
+                    // `.clipped()` hard-stops anything that still overflows. Scoped to the stage only
+                    // — NOT the backgrounds above — so this can never reproduce the letterboxing bug.
+                    .frame(width: screenGeo.size.width, height: screenGeo.size.height, alignment: .top)
+                    .clipped()
             }
-            // Belt-and-braces backstop, not the primary fix: even a mis-measured/oversized child
-            // can no longer drag the whole stage off the top of the screen, because `.top` alignment
-            // (not the ZStack default `.center`) pins its origin to y=0 and `.clipped()` hard-stops
-            // anything that still overflows rather than letting it paint outside the canvas.
-            .frame(width: screenGeo.size.width, height: screenGeo.size.height, alignment: .top)
-            .clipped()
             .animation(.easeInOut(duration: TVAmbientPresentation.transitionDuration), value: ambient)
         }
     }
@@ -225,6 +234,11 @@ private struct TVNowPlayingStageLayout: View {
     /// 560pt with no lyrics (matches the previous centred layout), 420pt once a lyrics column needs
     /// the room — animated, never a discrete tree swap.
     private var artworkSize: CGFloat { hasLyrics ? 420 : 560 }
+    /// Left column width — wider than `artworkSize` so the title/artist labels (and the transport
+    /// row) have room without wrapping against the artwork's own edge, mirroring the iOS Sidecar
+    /// screen's `SidecarLayoutSpacing.artworkColumnWidthFraction` column being wider than the
+    /// artwork it centres (`SidecarScreen.swift`).
+    private var leftColumnWidth: CGFloat { hasLyrics ? 460 : 620 }
 
     /// Total top+bottom `padding(80)` stripped from the screen height below to get the finite
     /// height available to the row's content.
@@ -253,41 +267,46 @@ private struct TVNowPlayingStageLayout: View {
         // the reported "テキスト部分が全部上に消滅してる" defect. Pinning both children to `.top`
         // makes the title/artist's vertical position depend ONLY on the fixed `padding(80)` origin,
         // never on lyrics content height.
+        // Sidecar-style split: a fixed-width LEFT column (artwork, then title/artist BELOW it, then
+        // the transport row) and a full-height lyrics stage on the RIGHT when lyrics are present —
+        // mirroring `SidecarScreen.artworkAndInfo` + `SidecarScreen.lyricsPane`. Unlike the previous
+        // layout, the transport row lives in the left column unconditionally, so lyrics mode no
+        // longer replaces it — both hasLyrics states expose the same previous/play-pause/next
+        // controls and only the right-hand lyrics stage's presence differs.
         HStack(alignment: .top, spacing: 64) {
-            TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: artworkSize)
+            VStack(alignment: .leading, spacing: 20) {
+                TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: artworkSize)
 
-            VStack(alignment: .leading, spacing: 28) {
-                Text(player.currentSong?.title ?? "")
-                    .font(.system(size: 40, weight: .medium))
-                    .lineLimit(1)
-                Text(player.currentSong?.artist ?? "")
-                    .font(.system(size: 24))
-                    .foregroundStyle(TVDesignTokens.textSecondary)
-                    .lineLimit(1)
-
-                // Explicit `maxHeight: .infinity`, capped by the VStack's own `contentHeight`
-                // frame below, so `TVLyricsStageView`'s `GeometryReader` always receives a finite
-                // proposal instead of the unbounded one an unconstrained flexible child would get.
-                // `.clipped()` on top of the stage's own edge-fade mask is a hard backstop: no
-                // overflowing lyric line can paint outside this column into the artwork's area.
-                Group {
-                    if hasLyrics {
-                        TVLyricsStageView(player: player, lines: lines)
-                            .clipped()
-                            .transition(.opacity)
-                    } else {
-                        TVNowPlayingTransportBar(player: player)
-                            .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
-                            // `.disabled` also removes the buttons from the tvOS focus tree, so a
-                            // Select press while the chrome is invisible can't blind-toggle playback.
-                            .disabled(ambient)
-                            .transition(.opacity)
-                    }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(player.currentSong?.title ?? "")
+                        .font(.system(size: 40, weight: .medium))
+                        .lineLimit(1)
+                    Text(player.currentSong?.artist ?? "")
+                        .font(.system(size: 24))
+                        .foregroundStyle(TVDesignTokens.textSecondary)
+                        .lineLimit(1)
                 }
-                .padding(.top, 12)
-                .frame(maxHeight: .infinity)
+
+                TVNowPlayingTransportBar(player: player)
+                    .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
+                    // `.disabled` also removes the buttons from the tvOS focus tree, so a Select
+                    // press while the chrome is invisible can't blind-toggle playback.
+                    .disabled(ambient)
+                    .padding(.top, 8)
             }
-            .frame(maxWidth: .infinity, maxHeight: contentHeight, alignment: .leading)
+            .frame(width: leftColumnWidth, alignment: .leading)
+
+            // Explicit `maxHeight: .infinity`, capped by `contentHeight` below, so
+            // `TVLyricsStageView`'s `GeometryReader` always receives a finite proposal instead of
+            // the unbounded one an unconstrained flexible child would get. `.clipped()` on top of
+            // the stage's own edge-fade mask is a hard backstop: no overflowing lyric line can paint
+            // outside this column into the left column's area.
+            if hasLyrics {
+                TVLyricsStageView(player: player, lines: lines)
+                    .frame(maxWidth: .infinity, maxHeight: contentHeight, alignment: .leading)
+                    .clipped()
+                    .transition(.opacity)
+            }
         }
         .animation(.easeInOut(duration: TVAmbientPresentation.transitionDuration), value: hasLyrics)
         .padding(80)
