@@ -276,7 +276,24 @@ final class MusicPlayerService {
     /// `durationSeconds` for the shared Now Playing UI. Deliberately does NOT touch
     /// `queue`/`currentIndex` — the caller owns queue advancement for the streaming path (see
     /// `TVPlaybackController.advanceAfterStreamEnd`).
+    ///
+    /// Invariant enforced here: "externally driven ⟹ local engine silent"
+    /// (`progress/tv-cached-to-stream-switch-seekbar.md`). This is an entry point into external
+    /// mirroring exactly like `play(_:newQueue:)` is an entry point into local playback, so it
+    /// must bump `playGeneration` (kills any in-flight `loadAndPlay` per the generation-guard
+    /// discipline documented on `playGeneration`) AND stop the local `AVAudioEngine`/YouTube
+    /// backend BEFORE flipping `isExternallyDriven`. Without this, a switch from a cached
+    /// (locally-playing) song to a non-cached (streamed) song left the old song's engine running:
+    /// its audio kept rendering, and `tickPlaybackPosition()`'s 250ms timer kept overwriting
+    /// `positionSeconds` from the stale local timeline in a fight with the stream's own
+    /// `updateExternalPlaybackProgress` mirror — the reported "seek bar oscillates / can't stop
+    /// playback" bug.
     func beginExternalPlayback(song: Song, durationSeconds: Double) {
+        playGeneration.bump()
+        stopLocalPlaybackEngineOnly()
+        #if !os(tvOS)
+        stopYouTubeBackend()
+        #endif
         currentSong = song
         isPlaying = true
         positionSeconds = 0
@@ -318,6 +335,12 @@ final class MusicPlayerService {
     private var nowPlayingArtworkImage: UIImage?
 
     // MARK: - Engine graph / timeline
+
+    /// True while the local `AVAudioEngine` graph has a track loaded — i.e. before
+    /// `beginExternalPlayback`/`stopLocalPlaybackEngineOnly`/`stop()` clear it. Test seam only
+    /// (precedent: `TVRelayStreamPlayer.isRenderActiveForTesting`), used to assert the "externally
+    /// driven ⟹ local engine silent" invariant from outside the type.
+    var hasActiveLocalAudioFileForTesting: Bool { currentAudioFile != nil }
 
     private var currentAudioFile: AVAudioFile?
     private var scheduledSegmentStartFrame: AVAudioFramePosition = 0
@@ -601,6 +624,14 @@ final class MusicPlayerService {
 
     private func tickPlaybackPosition() {
         guard currentSong != nil else { return }
+        // While externally driven, `updateExternalPlaybackProgress(seconds:)` is the single writer
+        // of `positionSeconds` (see the invariant documented on `beginExternalPlayback`) — the
+        // local timeline is stale/irrelevant here, so this must not recompute/overwrite it. Still
+        // refresh Now Playing metadata (title/artwork) so the lock screen keeps updating.
+        guard !isExternallyDriven else {
+            updateNowPlayingCentre()
+            return
+        }
         if let file = currentAudioFile {
             let sr = file.processingFormat.sampleRate
             if sr > 0, durationSeconds <= 0 {

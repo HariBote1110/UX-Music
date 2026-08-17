@@ -73,9 +73,15 @@ final class TVPlaybackControllerCachedToStreamSwitchTests: XCTestCase {
             streamPlayerFactory: { TVRelayStreamPlayer(sessionConfiguration: UXTVStreamSwitchMockURLProtocol.sessionConfiguration(), muteOutput: true) }
         )
 
+        // `TVPlaybackController.play()` decides cache-hit-vs-stream purely from `cache.isCached`
+        // (a disk existence check) BEFORE it ever calls the downloader closure — so a "cache hit"
+        // must be pre-seeded on disk via `ensureCached` first, exactly like a previous play's
+        // background prefetch would have left it.
+        _ = try await cache.ensureCached(songId: songA.id, protectedSongIds: [])
+
         await controller.play(songA, queue: [songA, songB]) // cache hit → local engine plays
         try await Task.sleep(nanoseconds: 300_000_000)
-        XCTAssertTrue(player.hasActiveLocalAudioFileForTesting, "sanity check: song A must actually be playing locally before the switch")
+        XCTAssertTrue(player.hasActiveLocalAudioFileForTesting, "sanity check: song A must actually be playing locally before the switch (connectionState=\(controller.connectionState))")
 
         await controller.play(songB, queue: [songA, songB]) // cache miss → streams
 
