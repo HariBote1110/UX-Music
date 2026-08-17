@@ -65,18 +65,41 @@ struct TVNowPlayingView: View {
     /// Ambient does NOT swap the layout out any more — see `TVAmbientPresentation` for the defect
     /// that behaviour caused (30s idle left nothing but the background wash). The same artwork/
     /// lyrics layout stays mounted; it only dims, loses its chrome, and drifts slowly.
+    ///
+    /// The screen size is measured **once**, here, by a `GeometryReader` that is NOT itself a
+    /// descendant of the `.opacity`/`.offset`/`.animation` chain applied to the stage below (see
+    /// `progress/tvos-nowplaying-fullscreen-shift.md`). `TVNowPlayingStageLayout` used to own its
+    /// *own* `GeometryReader` nested inside that animated, drift-offset subtree; mid-transition
+    /// (confirmed by `NSLog`-instrumented reproduction: the moment lyrics finish loading and
+    /// `hasLyrics` flips, i.e. exactly the real-flow symptom, never the static DEBUG harness) that
+    /// inner reader intermittently self-reported a bogus **square** size (`1760×1760` against a
+    /// correct `1760×960` proposal from this very function, logged in the same frame) — SwiftUI
+    /// occasionally hands a `GeometryReader` a stale/ghost proposal when it sits inside a view that
+    /// an implicit `.animation()` is mid-interpolating. The stage's `ZStack` parent then centred
+    /// that oversized child, shoving its top ~300pt above y=0 — the reported "刺さる"/vanished-chrome
+    /// defect. Threading the one trustworthy measurement down as a plain value, instead of
+    /// re-measuring inside the animated subtree, removes the only place that ghost value could ever
+    /// originate.
     @ViewBuilder
     private func content(ambient: Bool, drift: CGSize) -> some View {
-        ZStack {
-            TVCinematicBackground(breathing: ambient)
-            TVNowPlayingAmbientBackground(artworkId: player.currentSong?.artworkId ?? "", client: client, ambient: ambient)
+        GeometryReader { screenGeo in
+            ZStack(alignment: .top) {
+                TVCinematicBackground(breathing: ambient)
+                TVNowPlayingAmbientBackground(artworkId: player.currentSong?.artworkId ?? "", client: client, ambient: ambient)
 
-            TVNowPlayingStageLayout(player: player, client: client, lines: lyricsLines, ambient: ambient)
-                .opacity(TVAmbientPresentation.contentOpacity(ambient: ambient))
-                .offset(x: drift.width, y: drift.height)
-                .animation(.linear(duration: 1), value: drift)
+                TVNowPlayingStageLayout(player: player, client: client, lines: lyricsLines, ambient: ambient, screenSize: screenGeo.size)
+                    .opacity(TVAmbientPresentation.contentOpacity(ambient: ambient))
+                    .offset(x: drift.width, y: drift.height)
+                    .animation(.linear(duration: 1), value: drift)
+            }
+            // Belt-and-braces backstop, not the primary fix: even a mis-measured/oversized child
+            // can no longer drag the whole stage off the top of the screen, because `.top` alignment
+            // (not the ZStack default `.center`) pins its origin to y=0 and `.clipped()` hard-stops
+            // anything that still overflows rather than letting it paint outside the canvas.
+            .frame(width: screenGeo.size.width, height: screenGeo.size.height, alignment: .top)
+            .clipped()
+            .animation(.easeInOut(duration: TVAmbientPresentation.transitionDuration), value: ambient)
         }
-        .animation(.easeInOut(duration: TVAmbientPresentation.transitionDuration), value: ambient)
     }
 
     private func registerInteraction() {
@@ -190,6 +213,13 @@ private struct TVNowPlayingStageLayout: View {
     let client: RemoteAPIClient
     let lines: [TranslatedTimedLine]
     var ambient: Bool = false
+    /// The screen size, measured exactly once by `TVNowPlayingView.content(ambient:drift:)`'s own
+    /// `GeometryReader` and threaded down as a plain value — see that function's doc comment for why
+    /// this view must NOT re-measure with a `GeometryReader` of its own: nested inside the
+    /// `.opacity`/`.offset`/`.animation` chain applied to this view at its call site, a self-owned
+    /// reader intermittently self-reported a bogus size during the lyrics-load transition, which is
+    /// exactly the "content shifted ~300pt up" defect reported from the real app.
+    let screenSize: CGSize
 
     private var hasLyrics: Bool { !lines.isEmpty }
     /// 560pt with no lyrics (matches the previous centred layout), 420pt once a lyrics column needs
@@ -200,77 +230,74 @@ private struct TVNowPlayingStageLayout: View {
     /// height available to the row's content.
     private static let outerPadding: CGFloat = 160
     /// Height reserved for the bottom progress-bar row regardless of its opacity. The row lives in a
-    /// `safeAreaInset`, which is applied *after* this `GeometryReader` measures the screen, so a
-    /// budget that only subtracted `outerPadding` under-counted the space actually available to the
-    /// text column and let overflowing lyric lines paint into (and past) the bar's area.
+    /// `safeAreaInset`, which is applied *after* `screenSize` is measured, so a budget that only
+    /// subtracted `outerPadding` under-counted the space actually available to the text column and
+    /// let overflowing lyric lines paint into (and past) the bar's area.
     private static let progressBarReservedHeight: CGFloat = 72
 
+    private var contentHeight: CGFloat {
+        max(0, screenSize.height - Self.outerPadding - Self.progressBarReservedHeight)
+    }
+
     var body: some View {
-        // Outermost `GeometryReader` exists solely to turn the screen size into a finite content
-        // height *before* it reaches `TVLyricsStageView`'s own `GeometryReader` — see that view's
-        // comment for why an unbounded proposal there is unacceptable.
-        GeometryReader { screenGeo in
-            let contentHeight = max(0, screenGeo.size.height - Self.outerPadding - Self.progressBarReservedHeight)
+        // `alignment: .top`, NOT `.center` (`progress/tvos-nowplaying-textcolumn.md`
+        // "テキスト列の位置固定" 追記): with `.center`, the title/artist/lyrics column's vertical
+        // position was derived from centring it against whichever sibling was taller — normally the
+        // fixed-height artwork card, so invisible in the harness's stable states. But the text
+        // column's OWN height is NOT fixed (it grows/shrinks with the synced-lyrics block, and
+        // during a song switch there is a real in-flight window — `TVNowPlayingView.loadLyrics()` —
+        // where `lyricsLines` still holds the PREVIOUS song's lines while `currentSong`/
+        // `positionSeconds` have already switched to the new one), so its measured height varies
+        // frame to frame. `.center` alignment then re-centres the column every time that height
+        // changes, which reads as the text visibly sliding up (or down) rather than staying put —
+        // the reported "テキスト部分が全部上に消滅してる" defect. Pinning both children to `.top`
+        // makes the title/artist's vertical position depend ONLY on the fixed `padding(80)` origin,
+        // never on lyrics content height.
+        HStack(alignment: .top, spacing: 64) {
+            TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: artworkSize)
 
-            // `alignment: .top`, NOT `.center` (`progress/tvos-nowplaying-textcolumn.md`
-            // "テキスト列の位置固定" 追記): with `.center`, the title/artist/lyrics column's vertical
-            // position was derived from centring it against whichever sibling was taller — normally the
-            // fixed-height artwork card, so invisible in the harness's stable states. But the text
-            // column's OWN height is NOT fixed (it grows/shrinks with the synced-lyrics block, and
-            // during a song switch there is a real in-flight window — `TVNowPlayingView.loadLyrics()` —
-            // where `lyricsLines` still holds the PREVIOUS song's lines while `currentSong`/
-            // `positionSeconds` have already switched to the new one), so its measured height varies
-            // frame to frame. `.center` alignment then re-centres the column every time that height
-            // changes, which reads as the text visibly sliding up (or down) rather than staying put —
-            // the reported "テキスト部分が全部上に消滅してる" defect. Pinning both children to `.top`
-            // makes the title/artist's vertical position depend ONLY on the fixed `padding(80)` origin,
-            // never on lyrics content height.
-            HStack(alignment: .top, spacing: 64) {
-                TVCinematicArtworkCard(artworkId: player.currentSong?.artworkId ?? "", client: client, size: artworkSize)
+            VStack(alignment: .leading, spacing: 28) {
+                Text(player.currentSong?.title ?? "")
+                    .font(.system(size: 40, weight: .medium))
+                    .lineLimit(1)
+                Text(player.currentSong?.artist ?? "")
+                    .font(.system(size: 24))
+                    .foregroundStyle(TVDesignTokens.textSecondary)
+                    .lineLimit(1)
 
-                VStack(alignment: .leading, spacing: 28) {
-                    Text(player.currentSong?.title ?? "")
-                        .font(.system(size: 40, weight: .medium))
-                        .lineLimit(1)
-                    Text(player.currentSong?.artist ?? "")
-                        .font(.system(size: 24))
-                        .foregroundStyle(TVDesignTokens.textSecondary)
-                        .lineLimit(1)
-
-                    // Explicit `maxHeight: .infinity`, capped by the VStack's own `contentHeight`
-                    // frame below, so `TVLyricsStageView`'s `GeometryReader` always receives a finite
-                    // proposal instead of the unbounded one an unconstrained flexible child would get.
-                    // `.clipped()` on top of the stage's own edge-fade mask is a hard backstop: no
-                    // overflowing lyric line can paint outside this column into the artwork's area.
-                    Group {
-                        if hasLyrics {
-                            TVLyricsStageView(player: player, lines: lines)
-                                .clipped()
-                                .transition(.opacity)
-                        } else {
-                            TVNowPlayingTransportBar(player: player)
-                                .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
-                                // `.disabled` also removes the buttons from the tvOS focus tree, so a
-                                // Select press while the chrome is invisible can't blind-toggle playback.
-                                .disabled(ambient)
-                                .transition(.opacity)
-                        }
+                // Explicit `maxHeight: .infinity`, capped by the VStack's own `contentHeight`
+                // frame below, so `TVLyricsStageView`'s `GeometryReader` always receives a finite
+                // proposal instead of the unbounded one an unconstrained flexible child would get.
+                // `.clipped()` on top of the stage's own edge-fade mask is a hard backstop: no
+                // overflowing lyric line can paint outside this column into the artwork's area.
+                Group {
+                    if hasLyrics {
+                        TVLyricsStageView(player: player, lines: lines)
+                            .clipped()
+                            .transition(.opacity)
+                    } else {
+                        TVNowPlayingTransportBar(player: player)
+                            .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
+                            // `.disabled` also removes the buttons from the tvOS focus tree, so a
+                            // Select press while the chrome is invisible can't blind-toggle playback.
+                            .disabled(ambient)
+                            .transition(.opacity)
                     }
-                    .padding(.top, 12)
-                    .frame(maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: contentHeight, alignment: .leading)
+                .padding(.top, 12)
+                .frame(maxHeight: .infinity)
             }
-            .animation(.easeInOut(duration: TVAmbientPresentation.transitionDuration), value: hasLyrics)
-            .padding(80)
-            .safeAreaInset(edge: .bottom) {
-                HStack {
-                    Spacer()
-                    TVNowPlayingProgressBar(player: player)
-                    Spacer()
-                }
-                .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
+            .frame(maxWidth: .infinity, maxHeight: contentHeight, alignment: .leading)
+        }
+        .animation(.easeInOut(duration: TVAmbientPresentation.transitionDuration), value: hasLyrics)
+        .padding(80)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Spacer()
+                TVNowPlayingProgressBar(player: player)
+                Spacer()
             }
+            .opacity(TVAmbientPresentation.chromeOpacity(ambient: ambient))
         }
     }
 }
@@ -386,10 +413,12 @@ struct TVNowPlayingPreviewHarness: View {
     ]
 
     var body: some View {
-        ZStack {
-            TVCinematicBackground()
-            TVNowPlayingAmbientBackground(artworkId: "preview", client: client)
-            TVNowPlayingStageLayout(player: player, client: client, lines: Self.lines)
+        GeometryReader { screenGeo in
+            ZStack {
+                TVCinematicBackground()
+                TVNowPlayingAmbientBackground(artworkId: "preview", client: client)
+                TVNowPlayingStageLayout(player: player, client: client, lines: Self.lines, screenSize: screenGeo.size)
+            }
         }
         .background(TVDesignTokens.charcoalBase.ignoresSafeArea())
         .onAppear {
