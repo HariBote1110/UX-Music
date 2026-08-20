@@ -78,6 +78,12 @@ type App struct {
 	// so struct-literal-constructed Apps (as many existing tests do) still
 	// work — every access goes through ensureQueue().
 	queue *playqueue.Queue
+	// queueItemStarter, when non-nil, replaces startQueueItem as the
+	// function used to start a queue item (see app_queue.go's
+	// playQueueItem). Test-only seam so auto-advance's skip-on-failure
+	// behaviour can be exercised deterministically without a real
+	// audioPlayer or network calls (see server/app_queue_test.go).
+	queueItemStarter func(playqueue.Item) error
 }
 
 // NewApp creates a new App struct

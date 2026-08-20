@@ -183,6 +183,15 @@ func TestHandlePlaybackFinishedAdvancesQueueWhenActive(t *testing.T) {
 	newTempUserDataStore(t)
 	app, emitted := newQueueTestApp(t)
 
+	// A successful starter: this test is about the advance-and-emit
+	// bookkeeping, not the skip-on-failure behaviour (see
+	// TestHandlePlaybackFinishedSkipsFailingItemsUntilOneSucceeds /
+	// TestHandlePlaybackFinishedGivesUpAfterFullPassAllFail for that).
+	// Without this, the real startQueueItem fails on the nil audioPlayer in
+	// this headless test and the auto-advance would keep skipping ahead.
+	starter, _ := failingStarter(nil)
+	app.queueItemStarter = starter
+
 	app.ensureQueue().SetQueue([]playqueue.Item{
 		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
 		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},

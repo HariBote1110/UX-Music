@@ -243,6 +243,17 @@ func (a *App) startQueueItem(item playqueue.Item) error {
 	return nil
 }
 
+// playQueueItem starts item via queueItemStarter if a test has injected one,
+// otherwise via the real startQueueItem. Every call site that starts a
+// specific queue item goes through this indirection so tests can observe
+// and fail individual starts deterministically.
+func (a *App) playQueueItem(item playqueue.Item) error {
+	if a.queueItemStarter != nil {
+		return a.queueItemStarter(item)
+	}
+	return a.startQueueItem(item)
+}
+
 // playCurrentQueueItem starts (or restarts) playback of whatever the queue
 // currently points at, stopping native playback if the queue has no current
 // item (e.g. it just ran off the end with loop off).
@@ -252,7 +263,7 @@ func (a *App) playCurrentQueueItem() error {
 		_ = a.AudioStop()
 		return nil
 	}
-	return a.startQueueItem(item)
+	return a.playQueueItem(item)
 }
 
 // QueueSet replaces the native playback queue with items (following
@@ -269,7 +280,10 @@ func (a *App) QueueSet(items []map[string]interface{}, startIndex int) error {
 }
 
 // QueueNext advances the queue (honouring loop mode) and plays the result,
-// or stops native playback if the queue ran off the end with loop off.
+// or stops native playback if the queue ran off the end with loop off. This
+// is the explicit, user/remote-triggered action: unlike the automatic
+// OnFinished path (see autoAdvanceQueue), a failed start is surfaced to the
+// caller as-is and the queue does NOT skip ahead to try another item.
 func (a *App) QueueNext() error {
 	item, ok := a.ensureQueue().Advance()
 	a.emitQueueState()
@@ -277,29 +291,31 @@ func (a *App) QueueNext() error {
 		_ = a.AudioStop()
 		return nil
 	}
-	return a.startQueueItem(item)
+	return a.playQueueItem(item)
 }
 
 // QueuePrev moves to the previous item (wrapping at the start, regardless
-// of loop mode — see pkg/playqueue.Queue.Previous) and plays it.
+// of loop mode — see pkg/playqueue.Queue.Previous) and plays it. Like
+// QueueNext, a failed start is surfaced to the caller without skipping.
 func (a *App) QueuePrev() error {
 	item, ok := a.ensureQueue().Previous()
 	a.emitQueueState()
 	if !ok {
 		return nil
 	}
-	return a.startQueueItem(item)
+	return a.playQueueItem(item)
 }
 
 // QueueJump moves directly to index in the current (possibly shuffled)
-// order and plays it. An out-of-range index leaves the queue unchanged.
+// order and plays it. An out-of-range index leaves the queue unchanged. A
+// failed start is surfaced to the caller without skipping.
 func (a *App) QueueJump(index int) error {
 	item, ok := a.ensureQueue().JumpTo(index)
 	a.emitQueueState()
 	if !ok {
 		return nil
 	}
-	return a.startQueueItem(item)
+	return a.playQueueItem(item)
 }
 
 // QueueSetShuffle enables or disables shuffle (see
@@ -351,13 +367,52 @@ func (a *App) handlePlaybackFinished() {
 		return
 	}
 
-	item, ok := q.Advance()
-	a.emitQueueState()
-	if !ok {
-		_ = a.AudioStop()
+	a.autoAdvanceQueue()
+}
+
+// autoAdvanceQueue advances the Go queue and starts the result, exactly
+// like QueueNext — except that when starting an item fails (e.g. its file
+// was deleted mid-queue), it does not stall playback: it skips to the next
+// item and tries again, instead of leaving the app silently stopped.
+//
+// This is bounded to at most one attempt per item currently in the queue
+// (a "full pass"): after that many failed starts in a row it gives up,
+// calls AudioStop and returns. The bound exists because Advance() alone
+// does not guarantee forward progress — LoopAll wraps back to index 0 and
+// LoopOne never leaves the current index — so without a cap a queue whose
+// every item fails to start (e.g. every underlying file was deleted) would
+// otherwise retry forever. Under LoopOne this means the same (failing) item
+// may be attempted more than once before giving up; that is an accepted
+// simplification (see progress/native-play-queue.md) rather than tracking
+// which distinct items have already been tried.
+//
+// This bounded skip-and-retry is deliberately NOT used by QueueNext/
+// QueuePrev/QueueJump/QueueSet: those are explicit, user/remote-triggered
+// actions, and surfacing the error for exactly the item requested (rather
+// than silently jumping to a different track) is the more correct
+// behaviour there.
+func (a *App) autoAdvanceQueue() {
+	q := a.ensureQueue()
+
+	attempts := len(q.Snapshot().Items)
+	if attempts < 1 {
+		attempts = 1
+	}
+
+	for i := 0; i < attempts; i++ {
+		item, ok := q.Advance()
+		a.emitQueueState()
+		if !ok {
+			_ = a.AudioStop()
+			return
+		}
+		if err := a.playQueueItem(item); err != nil {
+			fmt.Printf("[Queue] auto-advance play failed for %q, skipping: %v\n", item.Path, err)
+			continue
+		}
 		return
 	}
-	if err := a.startQueueItem(item); err != nil {
-		fmt.Printf("[Queue] auto-advance play failed for %q: %v\n", item.Path, err)
-	}
+
+	fmt.Printf("[Queue] auto-advance exhausted %d attempt(s) with no successful start; stopping\n", attempts)
+	_ = a.AudioStop()
 }
