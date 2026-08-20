@@ -13,6 +13,7 @@ import (
 	"ux-music-sidecar/pkg/cdrip"
 	"ux-music-sidecar/pkg/mtp"
 	"ux-music-sidecar/pkg/normalize"
+	"ux-music-sidecar/pkg/playqueue"
 )
 
 // eventsEmitFunc is the process-wide event emission hook shared by every App
@@ -70,6 +71,13 @@ type App struct {
 	// GET /v1/remote/state (see app_sidecar.go).
 	sidecarMu             sync.Mutex
 	sidecarTargetDeviceID string
+	// queue is the native (Go-owned) playback queue — see app_queue.go and
+	// pkg/playqueue. It is opt-in: nil/zero-value until something calls
+	// QueueSet, at which point ensureQueue() lazily creates it and it
+	// becomes Active(). Left nil here (rather than initialised in NewApp)
+	// so struct-literal-constructed Apps (as many existing tests do) still
+	// work — every access goes through ensureQueue().
+	queue *playqueue.Queue
 }
 
 // NewApp creates a new App struct
@@ -132,11 +140,12 @@ func (a *App) Startup(ctx context.Context) {
 	a.audioPlayer = player
 
 	if a.audioPlayer != nil {
-		a.audioPlayer.SetOnFinished(func() {
-			a.updateOSPlaybackState(false)
-			a.pushDiscordPresence(false)
-			a.emit("audio-playback-finished", nil)
-		})
+		// handlePlaybackFinished (app_queue.go) preserves the exact previous
+		// behaviour (update OS state, push Discord presence, emit
+		// "audio-playback-finished") while the Go queue is inactive, and
+		// takes over auto-advance entirely in Go once something has called
+		// QueueSet — see its doc comment for the double-count rationale.
+		a.audioPlayer.SetOnFinished(a.handlePlaybackFinished)
 	}
 
 	// Start MTP device monitor

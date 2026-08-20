@@ -9,15 +9,36 @@ import (
 )
 
 func (a *App) initOSMediaControls() {
-	err := registerOSMediaCommands(func(command string) {
-		if a.ctx == nil {
-			return
-		}
-		a.emit("os-media-command", command)
-	})
+	err := registerOSMediaCommands(a.dispatchOSMediaCommand)
 	if err != nil {
 		println("[OSMedia] initialization failed:", err.Error())
 	}
+}
+
+// dispatchOSMediaCommand handles one OS media-key command ("play", "pause",
+// "toggle", "next", "previous", "stop" — see renderer.ts's os-media-command
+// listener for the full set the renderer itself still handles). Factored
+// out of initOSMediaControls so it can be unit tested without the
+// platform-specific registerOSMediaCommands binding.
+func (a *App) dispatchOSMediaCommand(command string) {
+	if a.ctx == nil {
+		return
+	}
+	// While the Go queue is active (something has called QueueSet — see
+	// app_queue.go), next/previous are handled entirely in Go instead of
+	// being forwarded to the renderer's playNextSong/playPrevSong, which has
+	// no queue of its own to advance in that mode.
+	if a.ensureQueue().Active() {
+		switch command {
+		case "next":
+			_ = a.QueueNext()
+			return
+		case "previous":
+			_ = a.QueuePrev()
+			return
+		}
+	}
+	a.emit("os-media-command", command)
 }
 
 func normalizeNowPlayingMetadata(title, artist, album string) (string, string, string) {

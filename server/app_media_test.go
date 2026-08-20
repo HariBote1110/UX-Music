@@ -1,11 +1,64 @@
 package server
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"ux-music-sidecar/pkg/playqueue"
 )
+
+func TestDispatchOSMediaCommand_QueueInactive_EmitsLegacyEvent(t *testing.T) {
+	app, emitted := newRemoteCommandTestApp(t)
+	app.ctx = context.Background()
+
+	app.dispatchOSMediaCommand("next")
+
+	if len(*emitted) != 1 || (*emitted)[0].name != "os-media-command" || (*emitted)[0].data != "next" {
+		t.Fatalf("expected single os-media-command(next) emit, got %#v", *emitted)
+	}
+}
+
+func TestDispatchOSMediaCommand_QueueActive_NextPrevHandledInGo(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newRemoteCommandTestApp(t)
+	app.ctx = context.Background()
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
+	}, 0)
+	*emitted = nil
+
+	app.dispatchOSMediaCommand("next")
+
+	for _, e := range *emitted {
+		if e.name == "os-media-command" {
+			t.Fatalf("os-media-command must not be emitted for next/previous once the Go queue is active, got %#v", *emitted)
+		}
+	}
+	current, ok := app.ensureQueue().CurrentItem()
+	if !ok || current.ID != "b" {
+		t.Fatalf("CurrentItem() after dispatchOSMediaCommand(next) = %+v, %v; want b, true", current, ok)
+	}
+}
+
+func TestDispatchOSMediaCommand_QueueActive_OtherCommandsStillEmit(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newRemoteCommandTestApp(t)
+	app.ctx = context.Background()
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+	}, 0)
+	*emitted = nil
+
+	app.dispatchOSMediaCommand("toggle")
+
+	if len(*emitted) != 1 || (*emitted)[0].name != "os-media-command" || (*emitted)[0].data != "toggle" {
+		t.Fatalf("expected toggle to still be forwarded to the renderer even with an active queue, got %#v", *emitted)
+	}
+}
 
 func TestNormalizeNowPlayingMetadata(t *testing.T) {
 	tests := []struct {

@@ -452,8 +452,20 @@ func (ls *LANServer) remoteCommandHandler(w http.ResponseWriter, r *http.Request
 	case "seek":
 		cmdErr = ls.app.AudioSeek(cmd.Value)
 	case "next", "prev":
-		// Queue management lives in the Wails frontend; delegate via event
-		ls.app.emit("remote-command", cmd.Action)
+		// Queue management lives in the Wails frontend by default;
+		// delegate via event — UNLESS the Go queue has been activated
+		// (something called QueueSet; see app_queue.go), in which case Go
+		// owns next/prev entirely and there is no renderer queue to
+		// delegate to.
+		if ls.app.ensureQueue().Active() {
+			if cmd.Action == "next" {
+				cmdErr = ls.app.QueueNext()
+			} else {
+				cmdErr = ls.app.QueuePrev()
+			}
+		} else {
+			ls.app.emit("remote-command", cmd.Action)
+		}
 	case "play-song":
 		// Playback needs the renderer (local files play via <audio>, YouTube
 		// entries route through the official embed which then drives the LAN
