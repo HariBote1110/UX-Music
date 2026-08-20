@@ -9,7 +9,9 @@ import {
     playCurrent as playCurrentInPlayer,
     pauseCurrent as pauseCurrentInPlayer,
     seek as seekInPlayer,
-    isPlaying as isPlayingInPlayer
+    isPlaying as isPlayingInPlayer,
+    playQueueEmbedItem,
+    setGoQueueActive
 } from './player.js';
 import { updatePlayingIndicators, renderQueueView } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
@@ -19,6 +21,14 @@ import { resolveLocalPlaybackGain } from './playback-gain.js';
 import { buildSkipEvent } from './playback-skip.js';
 import { musicApi, isWailsMode, getWailsApp } from '../core/bridge.js';
 import { getSongById, getSongByPath } from '../core/library-model.js';
+import {
+    fromGoLoopMode,
+    mapQueueSnapshotToQueueState,
+    nextLoopMode,
+    shouldRecordQueueAdvancedSkip,
+    toGoLoopMode,
+    type QueueStatePayload,
+} from './queue-bridge.js';
 const electronAPI = window.electronAPI;
 const pendingLoudnessRequests = new Set();
 
@@ -67,6 +77,49 @@ export async function initPlaybackSettings() {
     initRemotePlaySongListener();
     initRemoteCommandListener();
     initRemoteEmbedCommandListener();
+
+    if (isWailsMode()) {
+        await initGoQueueBridge();
+    }
+}
+
+/**
+ * Go の再生キュー（server/app_queue.go）への配線。
+ * markdown/background-native-queue-plan.md Phase 1（フロントエンド
+ * カットオーバー）。isWailsMode() のときだけ呼ばれる — 非 Wails の
+ * ブラウザフォールバックは従来どおり JS 側キュー（本ファイルの
+ * playNextSong 等のレガシー分岐）で完結する。
+ */
+async function initGoQueueBridge() {
+    if (window.runtime && typeof window.runtime.EventsOn === 'function') {
+        window.runtime.EventsOn('queue-state-changed', (payload: unknown) => {
+            handleQueueStateChangedEvent(payload as QueueStatePayload);
+        });
+        window.runtime.EventsOn('queue-advanced', (payload: unknown) => {
+            handleQueueAdvancedEvent(payload);
+        });
+        window.runtime.EventsOn('queue-play-embed', (payload: unknown) => {
+            void handleQueuePlayEmbedEvent(payload);
+        });
+    }
+
+    // Go 側のキューは（アプリ起動のたびに）空のシャッフル/ループ設定で
+    // 生成される。永続化された設定（settings.isShuffled/playbackMode、
+    // 上でこの関数の呼び出し元がすでに state へ復元済み）を種付けしておく
+    // — Queue はアクティブ化前でもフラグだけは保持でき、後で最初の
+    // QueueSet() が呼ばれたときにそのまま効く
+    // （progress/native-play-queue.md のシャッフル/SetQueue 挙動を参照）。
+    void getWailsApp()?.QueueSetShuffle?.(state.isShuffled);
+    void getWailsApp()?.QueueSetLoopMode?.(toGoLoopMode(state.playbackMode));
+
+    // Phase 2（WebView 駐機/復帰）では、Go のキューがアクティブなまま
+    // SPA だけが再読み込みされる場面が出てくる。そのときにこの
+    // QueueGetState() 呼び出しが UI 復元のシームになる。Phase 1 の
+    // 通常起動では単に「まだ何も再生していない」状態が返るだけ。
+    const initialQueueState = await getWailsApp()?.QueueGetState?.();
+    if (initialQueueState) {
+        handleQueueStateChangedEvent(initialQueueState as QueueStatePayload);
+    }
 }
 
 /**
@@ -226,6 +279,17 @@ export function playSong(index, sourceList = null, forcePlay = false) {
 }
 
 async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
+    if (isWailsMode()) {
+        // Go の再生キューへ全面委任する（markdown/background-native-queue-plan.md
+        // Phase 1）。ローディング・シャッフル並び替え・再生開始・再生回数
+        // 計上はすべて server/app_queue.go 側で完結し、結果は
+        // "queue-state-changed"/"queue-advanced" イベント経由で戻ってくる
+        // （initGoQueueBridge が購読している handleQueueStateChangedEvent/
+        // handleQueueAdvancedEvent 参照）。forcePlay はラウドネス解析待ち
+        // 用のJSレガシー概念で、Go 側は待ち合わせをしないため使わない。
+        return runPlaySongWorkWails(index, sourceList);
+    }
+
     const targetQueue = sourceList || state.playbackQueue;
     const songToPlay = targetQueue[index];
 
@@ -344,6 +408,47 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
     prefetchUpcomingRemoteTracks(index);
 }
 
+/**
+ * playSong() の Wails 分岐の本体。sourceList が渡されたとき（曲一覧・
+ * アルバム全曲再生などの「新しいキューを始める」操作）は QueueSet で
+ * キューを丸ごと差し替え、渡されなかったとき（再生キューサイドバーの
+ * 項目クリックのような「既存キュー内の移動」操作）は QueueJump で
+ * その場ジャンプする。UX Sync のリモート曲だけは Go に判断させられない
+ * （ローカルへのダウンロードが要る）ため、従来どおりここで先に解決する。
+ */
+export async function runPlaySongWorkWails(index, sourceList = null, deps: any = {}) {
+    const getApp = deps.getApp ?? getWailsApp;
+    const canStart = deps.canStartPlayback ?? canStartPlayback;
+    const resolveDownload = deps.resolveRemotePlaybackDownload ?? resolveRemotePlaybackDownload;
+
+    const targetQueue = sourceList || state.playbackQueue;
+    const songToPlay = targetQueue[index];
+    if (!songToPlay) {
+        console.warn('[Debug:Playback][Wails] 再生対象が見つかりません。');
+        return;
+    }
+
+    if (!canStart(songToPlay)) {
+        const localSong = await resolveDownload(songToPlay);
+        if (!localSong) {
+            return;
+        }
+        targetQueue[index] = localSong;
+    }
+
+    const app = getApp();
+    if (!app) {
+        console.warn('[Debug:Playback][Wails] Wails app binding が見つかりません。');
+        return;
+    }
+
+    if (sourceList) {
+        await app.QueueSet(sourceList, index);
+    } else {
+        await app.QueueJump(index);
+    }
+}
+
 export function canStartPlayback(song) {
     return song?.syncAvailability !== 'remote';
 }
@@ -416,6 +521,14 @@ function prefetchUpcomingRemoteTracks(currentIndex) {
 }
 
 export function playNextSong() {
+    if (isWailsMode()) {
+        // Go がループモード判定・末尾処理・再生開始をすべて行う
+        // （pkg/playqueue.Queue.Advance）。結果は queue-state-changed/
+        // queue-advanced 経由で戻ってくる。
+        void getWailsApp()?.QueueNext?.();
+        return;
+    }
+
     handleSkip();
     if (state.playbackQueue.length === 0) return;
 
@@ -446,6 +559,11 @@ export function playNextSong() {
 }
 
 export function playPrevSong() {
+    if (isWailsMode()) {
+        void getWailsApp()?.QueuePrev?.();
+        return;
+    }
+
     handleSkip();
     if (state.playbackQueue.length === 0) return;
     let prevIndex = state.currentSongIndex - 1;
@@ -455,7 +573,24 @@ export function playPrevSong() {
     playSong(prevIndex);
 }
 
+/** state.isShuffled/state.playbackMode を shuffle/loop ボタンの見た目に反映する。 */
+function updateShuffleLoopButtonsUI(isShuffled: boolean, playbackMode: string) {
+    elements.shuffleBtn.classList.toggle('active', isShuffled);
+    elements.loopBtn.classList.toggle('active', playbackMode !== PLAYBACK_MODES.NORMAL);
+    elements.loopBtn.classList.toggle('loop-one', playbackMode === PLAYBACK_MODES.LOOP_ONE);
+}
+
 export function toggleShuffle() {
+    if (isWailsMode()) {
+        const next = !state.isShuffled;
+        // Goからの queue-state-changed で確定反映されるが、押した瞬間の
+        // 手応えのためにここでも即時にボタンを更新しておく。
+        updateShuffleLoopButtonsUI(next, state.playbackMode);
+        musicApi.saveSettings({ isShuffled: next });
+        void getWailsApp()?.QueueSetShuffle?.(next);
+        return;
+    }
+
     state.isShuffled = !state.isShuffled;
     elements.shuffleBtn.classList.toggle('active', state.isShuffled);
     musicApi.saveSettings({ isShuffled: state.isShuffled });
@@ -491,6 +626,14 @@ export function toggleShuffle() {
 }
 
 export function toggleLoopMode() {
+    if (isWailsMode()) {
+        const next = nextLoopMode(state.playbackMode);
+        updateShuffleLoopButtonsUI(state.isShuffled, next);
+        musicApi.saveSettings({ playbackMode: next });
+        void getWailsApp()?.QueueSetLoopMode?.(toGoLoopMode(next));
+        return;
+    }
+
     const modes = Object.values(PLAYBACK_MODES) as string[];
     const currentIndex = modes.indexOf(state.playbackMode);
     const nextIndex = (currentIndex + 1) % modes.length;
@@ -499,4 +642,107 @@ export function toggleLoopMode() {
     elements.loopBtn.classList.toggle('active', state.playbackMode !== PLAYBACK_MODES.NORMAL);
     elements.loopBtn.classList.toggle('loop-one', state.playbackMode === PLAYBACK_MODES.LOOP_ONE);
     musicApi.saveSettings({ playbackMode: state.playbackMode });
+}
+
+/**
+ * Go の "queue-state-changed" を state.playbackQueue/currentSongIndex/
+ * isShuffled/playbackMode へ写像し、既存の UI 描画関数（ui-manager.ts の
+ * updatePlayingIndicators/renderQueueView 等）をそのまま再利用して画面へ
+ * 反映する。Go が唯一の真実源になったので、ここでは「表示するだけ」。
+ */
+export function handleQueueStateChangedEvent(payload: QueueStatePayload | null | undefined, deps: any = {}) {
+    const findSong = deps.findSong ?? getSongById;
+    const doUpdatePlayingIndicators = deps.updatePlayingIndicators ?? updatePlayingIndicators;
+    const doRenderQueueView = deps.renderQueueView ?? renderQueueView;
+    const doUpdateNowPlayingView = deps.updateNowPlayingView ?? updateNowPlayingView;
+    const doLoadLyricsForSong = deps.loadLyricsForSong ?? loadLyricsForSong;
+    const doPrefetchUpcomingRemoteTracks = deps.prefetchUpcomingRemoteTracks ?? prefetchUpcomingRemoteTracks;
+    const doUpdateShuffleLoopButtons = deps.updateShuffleLoopButtons ?? updateShuffleLoopButtonsUI;
+
+    const mapped = mapQueueSnapshotToQueueState(payload, findSong);
+
+    state.playbackQueue = mapped.playbackQueue;
+    state.currentSongIndex = mapped.currentSongIndex;
+    state.isShuffled = mapped.isShuffled;
+    state.playbackMode = mapped.playbackMode;
+
+    setGoQueueActive(Boolean((payload as { active?: unknown } | null | undefined)?.active));
+
+    doUpdateShuffleLoopButtons(mapped.isShuffled, mapped.playbackMode);
+    doUpdatePlayingIndicators();
+    doRenderQueueView();
+
+    const currentSong = mapped.currentSongIndex >= 0 ? mapped.playbackQueue[mapped.currentSongIndex] : null;
+    doUpdateNowPlayingView(currentSong);
+    doLoadLyricsForSong(currentSong);
+    doPrefetchUpcomingRemoteTracks(mapped.currentSongIndex);
+}
+
+/**
+ * Go の "queue-advanced" ({previousId, reason}) を受けて analysed-queue の
+ * スコアリングを行う。Go がキューを丸ごと動かすようになったことで、
+ * レンダラーはもう「自然終了」と「ユーザースキップ」をplayer.tsの
+ * イベント発火元だけでは区別できない（server/app_queue.go 参照）ため、
+ * reason で明示的に振り分ける。
+ */
+export function handleQueueAdvancedEvent(payload: unknown, deps: any = {}) {
+    if (!payload || typeof payload !== 'object') return;
+    const { previousId, reason } = payload as { previousId?: unknown; reason?: unknown };
+    if (typeof previousId !== 'string' || previousId.trim() === '') return;
+
+    const analysedQueueEnabled = deps.analysedQueueEnabled ?? state.analysedQueue.enabled;
+    if (!analysedQueueEnabled) return;
+
+    const findSong = deps.findSong ?? getSongById;
+    const song = findSong(previousId);
+    if (!song) return;
+
+    const doSongFinished = deps.songFinished ?? musicApi.songFinished;
+    const doSongSkipped = deps.songSkipped ?? musicApi.songSkipped;
+    const doGetCurrentTime = deps.getCurrentTime ?? getCurrentTime;
+    const doGetDuration = deps.getDuration ?? getDuration;
+
+    if (reason === 'finished') {
+        doSongFinished(song);
+    } else if (reason === 'user') {
+        const currentTime = doGetCurrentTime();
+        const duration = doGetDuration();
+        if (shouldRecordQueueAdvancedSkip(currentTime, duration)) {
+            doSongSkipped({ song, currentTime });
+        }
+    }
+}
+
+/**
+ * Go の "queue-play-embed"（server/app_queue.go の startQueueItem embed
+ * 経路）を受けて、YouTube 公式再生をレンダラー側で開始する。経路判定
+ * （ローカル/ストリーム/embed）はすでに Go 側で完了しているので、ここでは
+ * 無条件に embed 再生へ入る。埋め込み経路の再生回数計上はここが唯一の
+ * 起点（Go の startQueueItem は embed のときだけ IncrementPlayCount を
+ * 呼ばない — 二重計上防止、progress/native-play-queue.md 参照）。
+ */
+export async function handleQueuePlayEmbedEvent(payload: unknown, deps: any = {}) {
+    if (!payload || typeof payload !== 'object') return;
+
+    const findSong = deps.findSong ?? getSongById;
+    const doPlayEmbedItem = deps.playEmbedItem ?? playQueueEmbedItem;
+    const doPlaybackStarted = deps.playbackStarted ?? musicApi.playbackStarted;
+    const doLoadLyricsForSong = deps.loadLyricsForSong ?? loadLyricsForSong;
+
+    const raw = payload as { id?: unknown; type?: unknown; path?: unknown; title?: unknown; artist?: unknown; album?: unknown };
+    const id = typeof raw.id === 'string' ? raw.id : '';
+    const song = (id ? findSong(id) : null) ?? {
+        id,
+        type: 'youtube',
+        path: typeof raw.path === 'string' ? raw.path : '',
+        title: typeof raw.title === 'string' ? raw.title : '',
+        artist: typeof raw.artist === 'string' ? raw.artist : '',
+        album: typeof raw.album === 'string' ? raw.album : '',
+    };
+
+    doLoadLyricsForSong(song);
+    const started = await doPlayEmbedItem(song);
+    if (started) {
+        doPlaybackStarted(song);
+    }
 }

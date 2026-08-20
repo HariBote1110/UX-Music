@@ -357,6 +357,7 @@ describe('runPlaySongWorkWails', () => {
     it('calls QueueJump when jumping within the existing queue (no source list)', async () => {
         const { runPlaySongWorkWails } = await import('./playback-manager.js');
         const app = { QueueSet: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
+        state.playbackQueue = [{ id: 's1' }, { id: 's2' }, { id: 's3' }];
 
         await runPlaySongWorkWails(2, null, { getApp: () => app });
 
