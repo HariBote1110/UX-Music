@@ -125,17 +125,131 @@ SetShuffle/SetLoopMode/GetState）、`audio.Player` の `OnFinished` コール�
   「途中失敗をスキップして次で成功」「全滅して上限で諦める」
   「明示操作はスキップしない」の3パターンを決定的に検証した。
 
-## 既知の制約・今回やらなかったこと（フロントエンド移管タスクへの申し送り）
+## カットオーバー（フロントエンド移管、増分3）
 
-- **`playback-manager.ts` は未変更**。`QueueSet` を呼ぶ経路が存在しないため、
-  今回追加した Go 側の配線は本番では未使用（次のフェーズで結線される）。
+`src/renderer/js/features/playback-manager.ts`（薄い UI/操作層に）と
+`player.ts` を、`isWailsMode()` のときだけ Go のネイティブキューへ全面委任
+するよう書き換えた。非 Wails のブラウザフォールバックは無改修。
+
+### queue-advanced イベントの新設（Go 側）
+
+移管前提として、`server/app_queue.go` に `queue-advanced`
+（`{previousId, reason: "finished"|"user"}`）を追加した。Go がキューを
+丸ごと動かすようになると、レンダラーは「自然終了」（player.ts の
+イベント発火元）と「ユーザースキップ」を自力では区別できなくなるため
+（従来は JS 側の `playNextSong()`/`handleSkip()` と
+`audio-playback-finished` ハンドラで呼び分けを実装していた）、Go 側で
+判定して明示的に伝える形にした。
+
+- `QueueNext`/`QueuePrev`/`QueueJump`/`QueueSet`（既にアクティブなキューを
+  置き換えたとき）は `reason: "user"` で emit する。
+  - `QueueJump` にも emit させたのは移管タスクのブリーフ（本コミット群の
+    元指示）の明示要求による。JS レガシー版の `playSong(idx)`（再生キュー
+    サイドバーのクリック、`sourceList` なし）は `handleSkip()` を呼んで
+    おらず、厳密移植ならここは emit しない方が JS 挙動に忠実だった —
+    **意図的な相違点**として記録する。実害は「キュー項目クリックでも
+    analysed-queue のスキップスコアが付くようになる」程度。
+  - `LoopOne` での `QueueNext`（同じ曲を先頭から再生し直す）でも emit する
+    （JS 版の `playNextSong()` が LOOP_ONE でも `handleSkip()` を無条件に
+    呼んでいたのに合わせた、これは厳密な JS 互換）。
+- 自動進行（`OnFinished` 経由の `autoAdvanceQueue`）は `reason: "finished"`
+  で、スキップ再試行が絡んでも「実際に鳴っていた曲」1件についてのみ
+  1回だけ emit する。
+- YouTube 公式 embed は Go 自身が再生を検知できない（`startQueueItem` の
+  embed 経路は `queue-play-embed` を emit して即 return するだけ）ため、
+  レンダラーが IFrame の自然終了を検知したときに呼ぶ
+  `QueueAdvanceFinished()` を新設した。内部は `autoAdvanceQueue` をそのまま
+  再利用し、embed 曲でも `reason: "finished"` を維持する
+  （`QueueNext()` を代用すると `reason: "user"` になってスコアリングが
+  誤ってスキップ扱いになるため、専用バインディングにした）。
+
+### フロントエンド側の配線
+
+- **`playSong(index, sourceList, forcePlay)`**: Wails 時は
+  `runPlaySongWorkWails` に分岐する。`sourceList` があれば
+  `QueueSet(sourceList, index)`（新しいキューを始める＝曲一覧・アルバム
+  全曲再生など）、なければ `QueueJump(index)`（既存キュー内のジャンプ＝
+  再生キューサイドバーのクリックなど）。UX Sync のリモート曲（ローカル
+  未取得）だけは Go に判断できないため、従来どおりここで先に
+  ダウンロード解決してから渡す。`forcePlay`（ラウドネス解析待ちの JS
+  概念）は Go 側に対応する待ち合わせが無いため使わない。
+- **`playNextSong`/`playPrevSong`**: Wails 時はそれぞれ `QueueNext()`/
+  `QueuePrev()` を呼ぶだけ。JS 側キューの直接操作（`handleSkip()` 含む）
+  は行わない — スキップのスコアリングは `queue-advanced` 経由に一本化。
+- **`toggleShuffle`/`toggleLoopMode`**: Wails 時は次の値を計算して
+  `QueueSetShuffle`/`QueueSetLoopMode` を呼ぶ（ループモードの JS⇔Go
+  表記変換は `queue-bridge.ts` の `toGoLoopMode`/`fromGoLoopMode`）。
+  押した瞬間の手応えのため、ボタンの見た目だけは即時にも更新する
+  （`queue-state-changed` で確定反映されるので二重更新だが冪等）。
+  シャッフル/ループの設定は引き続き `musicApi.saveSettings` で永続化し、
+  起動時（`initPlaybackSettings`）に Go の（プロセスごとに空の）キューへ
+  種付けし直す。
+- **`"queue-state-changed"` → `handleQueueStateChangedEvent`**: payload を
+  `queue-bridge.ts` の `mapQueueSnapshotToQueueState` で
+  `state.playbackQueue`/`currentSongIndex`/`isShuffled`/`playbackMode` へ
+  写像し、既存の UI 描画関数（`ui-manager.ts` の
+  `updatePlayingIndicators`/`renderQueueView`、`now-playing.ts` の
+  `updateNowPlayingView` 等）をそのまま再利用する。Go が唯一の真実源に
+  なったので、このファイルは「表示するだけ」。`payload.active` は
+  `player.ts` の `setGoQueueActive` に伝え、embed の自然終了ハンドラが
+  Go 主導かどうかを判別できるようにする。`prefetchUpcomingRemoteTracks`
+  もここから駆動する（従来は `playSong` 成功後に呼んでいた）。
+  キュー項目はライブラリ照合（`getSongById`）でフルの `Song` に復元する
+  （`hydrateQueueItem`）— Go の queue item は最小限のフィールドしか
+  持たないため。
+- **`"queue-advanced"` → `handleQueueAdvancedEvent`**: `reason` に応じて
+  `musicApi.songFinished`/`songSkipped` を呼び分ける。`"user"` は
+  `shouldRecordQueueAdvancedSkip`（`currentTime > 0 && duration > 0`、
+  `player.ts` がポーリングでキャッシュしている値を使う）でレガシー版の
+  `buildSkipEvent` と同等の「途中スキップだけ記録する」ヒューリスティックを
+  再現している。
+- **`"queue-play-embed"` → `handleQueuePlayEmbedEvent`**: `player.ts` に
+  追加した `playQueueEmbedItem`（`play()` の embed 分岐から
+  経路判定だけを外したもの）で再生を開始する。**再生回数計上は
+  ここが唯一の起点** — Go の `startQueueItem` は embed 経路のときだけ
+  `IncrementPlayCount` を呼ばない設計（既存仕様、上の「再生回数の計上と
+  二重計上回避」節を参照）なので、`playQueueEmbedItem` が成功したときだけ
+  `musicApi.playbackStarted` を呼ぶ。
+- **embed の自然終了**（`player.ts` の `playEmbed` の `onEnded`）: Go の
+  キューがアクティブ（`goQueueActive`）なら `QueueAdvanceFinished()` を
+  呼んで Go に進行を委ね、非アクティブ（レガシー、Go 移行前の単発 embed
+  再生）なら従来どおりレンダラー内で完結させる。
+- **起動時同期**: `initPlaybackSettings`（Wails 時のみ）が
+  `QueueGetState()` を呼んで初期状態を反映する。Phase 1 の通常起動では
+  「まだ何も再生していない」状態が返るだけだが、Phase 2（WebView
+  駐機/復帰）で Go のキューがアクティブなまま SPA だけが再読み込みされる
+  場面のための復元シームとして先に用意した。
+
+### 二重計上の監査結果
+
+`musicApi.playbackStarted` の呼び出し箇所は最終的に2箇所のみ：
+非 Wails レガシー経路（`runPlaySongWork` 内、従来どおり）と
+`handleQueuePlayEmbedEvent`（embed 経路、新設）。local/stream は Go の
+`incrementPlayCountForQueueItem` が唯一のカウント元で、JS からは一切
+呼ばれない。Wails かつ queue アクティブな状態で JS 側が
+`playbackStarted` を呼ぶ経路は存在しない。
+
+### wailsjs バインディングスタブ
+
+`wails build`/`wails generate` を実行できない開発環境のため、
+`src/renderer/wailsjs/go/server/App.{d.ts,js}` に `QueueSet`/`QueueNext`/
+`QueuePrev`/`QueueJump`/`QueueSetShuffle`/`QueueSetLoopMode`/
+`QueueGetState`/`QueueAdvanceFinished` のスタブを手動追記した（既存の
+自動生成ファイルの命名規則・アルファベット順に合わせた）。実際のアプリ
+実行時は `window.go.server.App` に実体が注入されるため動作に支障は
+無いが、次回 `wails generate` 実行時に差分が出ないか確認すること。
+
+## 既知の制約・今回やらなかったこと（フロントエンド移管タスクへの申し送り、Phase 2 向け）
+
+- **`playback-manager.ts` はカットオーバー済み**（上の「カットオーバー」節参照）。
+  以下はこのカットオーバー後もなお残っている制約。
 - **embed セッション中の Go 主導 next/prev**: リモートコマンド・OS メディアキーの
   next/prev はキューが Active なら常に Go 側 `QueueNext`/`QueuePrev` を呼ぶが、
   現在レンダラーの IFrame で embed 再生中であっても、その embed セッションを
   明示的に停止する処理はしていない（embed/relay パイプライン自体は今回のタスク範囲外）。
   次に進む項目が embed なら `queue-play-embed` を emit するだけなので実害は
-  レンダラー側の後始末次第。フロントエンド移管時に embed セッションのライフサイクルと
-  合わせて設計すること。
+  レンダラー側の後始末次第（`playQueueEmbedItem` は先頭で `stop()` を呼ぶため、
+  古い embed セッションの後始末自体は行われる）。
 - **`QueueGetState` は LAN API (`/v1/remote/state`) に未接続**。Wails バインディングと
   `queue-state-changed` イベントのみ。モバイル/Watch 側でキュー状態が要るようになったら
   別途 REST 経由での公開を検討する。
