@@ -140,6 +140,7 @@ func (a *App) Startup(ctx context.Context) {
 	fmt.Printf("[LAN] Server address: %s\n", GetLANServerAddress())
 
 	a.initOSMediaControls()
+	a.initAppVisibilityObserver()
 	a.initTray()
 
 	// Initialize Audio Player

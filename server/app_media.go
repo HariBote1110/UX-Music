@@ -15,6 +15,20 @@ func (a *App) initOSMediaControls() {
 	}
 }
 
+// initAppVisibilityObserver wires the NSApplicationDidHide/DidUnhide
+// observer (app_visibility_darwin.go/.m; a no-op on non-darwin, see
+// app_visibility_stub.go) to emit "app-visibility-changed" for the
+// renderer's park.ts (Phase 2 of
+// markdown/background-native-queue-plan.md). GUI-mode only — like
+// initOSMediaControls/initTray, this is only ever called from Startup,
+// which itself is only invoked via Wails' OnStartup (see main.go); headless
+// `--serve` never runs it.
+func (a *App) initAppVisibilityObserver() {
+	registerAppVisibilityObserver(func(hidden bool) {
+		a.emit("app-visibility-changed", map[string]interface{}{"hidden": hidden})
+	})
+}
+
 // dispatchOSMediaCommand handles one OS media-key command ("play", "pause",
 // "toggle", "next", "previous", "stop" — see renderer.ts's os-media-command
 // listener for the full set the renderer itself still handles). Factored
