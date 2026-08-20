@@ -1,5 +1,7 @@
 # Progress Index
 
+- [webview-parking.md](webview-parking.md) — バックグラウンド再生メモリ削減 Phase 2: 非表示15秒後にSPAを極小駐機ページ（`public/parked.html`、Wailsランタイムはページ単位でなくWebViewレベル注入のため明示スクリプト不要）へ退避しWebContentのJSヒープ/DOM/画像キャッシュを解放。Go側は`NSApplicationDidHide/Unhide`監視＋`WindowSetParked`/`ConsumePendingIntent`の単一スロット保留インテント機構（`emitOrQueueIntent`）でqueue-play-embed/remote-play-songを取りこぼさない。実機実測: 起動直後471.8MB→駐機後264.9MB（約207MB減、WebKit側が316.3MB→125.3MBで大半）→復元後516.3MB。駐機の実効果は15秒デバウンス発火後さらに数十秒遅れて出た（WebKitのメモリ返却ラグ）
+
 - [native-play-queue.md](native-play-queue.md) — バックグラウンド再生ネイティブ化 Phase 1: `pkg/playqueue`（純ロジック、JS版 playback-manager.ts のnext/prev/shuffle/loop挙動をTDDで移植）と `server/app_queue.go`（Wailsバインディング・OnFinished自動進行・remote/OSメディアキー横取り）を実装。opt-in設計でQueueSetが呼ばれるまで既存動作に影響なし。再生回数計上は「開始時に一度だけ」（計画書の想定と異なりSongFinishedは無関係と判明）で、キューActive時はaudio-playback-finishedのemitを抑止して二重計上を回避。フロントエンド（playback-manager.ts）は本タスクでは未改修
 
 - [mtp-ffi-removal.md](mtp-ffi-removal.md) — MTP を libkalam.dylib（purego FFI + JSON 境界）から go-mtpfs@v1.0.3 `mtp` パッケージ直接 import へ置換。高レベル層（パス解決 Walk・転送進捗・MakeDirectory）は pkg/mtp に自前実装。go-mtpx は LICENSE 不在（無ライセンス）のため採用もコード移植も不可と確定。hanwen/usb は cgo + pkg-config libusb-1.0 のため全 CI ジョブに libusb 開発パッケージが必要。旧配布ビルドは libkalam を同梱しておらず配布版 MTP は非動作だった可能性が高い
