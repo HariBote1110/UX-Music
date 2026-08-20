@@ -13,6 +13,7 @@ package playqueue
 
 import (
 	"math/rand"
+	"sync"
 )
 
 // ItemType distinguishes how a queue item is played.
@@ -62,8 +63,13 @@ type State struct {
 // (renderer-driven) behaviour untouched until something explicitly hands the
 // queue a track list.
 //
-// All exported methods are safe for concurrent use.
+// All exported methods are safe for concurrent use: real call sites span
+// multiple goroutines (Wails bindings, audio.Player's OnFinished callback
+// firing from the playback/decoder goroutine, the LAN remote command HTTP
+// handler, and the OS media-key callback), so every method locks mu.
 type Queue struct {
+	mu sync.Mutex
+
 	original []Item
 	items    []Item
 	index    int // -1 when nothing is current (empty queue, or ran off the end with loop off)
@@ -106,6 +112,9 @@ func fisherYatesShuffle(items []Item) {
 // while shuffled. Calling SetQueue activates the queue (Active() becomes
 // true) regardless of prior state.
 func (q *Queue) SetQueue(items []Item, startIndex int) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
 	q.original = cloneItems(items)
 	q.active = true
 
@@ -175,16 +184,22 @@ func cloneItems(items []Item) []Item {
 // SetQueue has been called at least once). Legacy renderer-driven behaviour
 // should remain untouched while this is false.
 func (q *Queue) Active() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	return q.active
 }
 
 // Shuffled reports whether shuffle is currently enabled.
 func (q *Queue) Shuffled() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	return q.shuffled
 }
 
 // LoopMode returns the current loop mode.
 func (q *Queue) LoopMode() LoopMode {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	return q.loopMode
 }
 
@@ -193,19 +208,30 @@ func (q *Queue) LoopMode() LoopMode {
 // setter — callers wanting a cycling toggle should read LoopMode() and pick
 // the next value themselves. Unrecognised values are ignored.
 func (q *Queue) SetLoopMode(mode LoopMode) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	switch mode {
 	case LoopOff, LoopAll, LoopOne:
 		q.loopMode = mode
 	}
 }
 
-// CurrentItem returns the item at the current position, or ok=false if the
-// queue is empty or the position has run off the end.
-func (q *Queue) CurrentItem() (Item, bool) {
+// currentItemLocked is CurrentItem's body, for callers that already hold
+// q.mu (sync.Mutex is not reentrant, so CurrentItem itself must not be
+// called from inside another locked method).
+func (q *Queue) currentItemLocked() (Item, bool) {
 	if q.index < 0 || q.index >= len(q.items) {
 		return Item{}, false
 	}
 	return q.items[q.index], true
+}
+
+// CurrentItem returns the item at the current position, or ok=false if the
+// queue is empty or the position has run off the end.
+func (q *Queue) CurrentItem() (Item, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.currentItemLocked()
 }
 
 // Advance moves to the next item, honouring loop mode:
@@ -214,12 +240,15 @@ func (q *Queue) CurrentItem() (Item, bool) {
 //     off stops (ok=false, current position cleared) — matching
 //     playNextSong()'s stop-at-end behaviour.
 func (q *Queue) Advance() (Item, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
 	if len(q.items) == 0 {
 		return Item{}, false
 	}
 
 	if q.loopMode == LoopOne {
-		return q.CurrentItem()
+		return q.currentItemLocked()
 	}
 
 	next := q.index + 1
@@ -232,7 +261,7 @@ func (q *Queue) Advance() (Item, bool) {
 		}
 	}
 	q.index = next
-	return q.CurrentItem()
+	return q.currentItemLocked()
 }
 
 // Previous moves to the previous item, wrapping to the last item when
@@ -240,6 +269,9 @@ func (q *Queue) Advance() (Item, bool) {
 // effect here — this matches playPrevSong(), which always steps back
 // regardless of the loop setting.
 func (q *Queue) Previous() (Item, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
 	if len(q.items) == 0 {
 		return Item{}, false
 	}
@@ -249,18 +281,21 @@ func (q *Queue) Previous() (Item, bool) {
 		prev = len(q.items) - 1
 	}
 	q.index = prev
-	return q.CurrentItem()
+	return q.currentItemLocked()
 }
 
 // JumpTo moves directly to the given index in the current (possibly
 // shuffled) order. An out-of-range index leaves the queue position
 // unchanged and returns ok=false.
 func (q *Queue) JumpTo(index int) (Item, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
 	if index < 0 || index >= len(q.items) {
 		return Item{}, false
 	}
 	q.index = index
-	return q.CurrentItem()
+	return q.currentItemLocked()
 }
 
 // SetShuffle enables or disables shuffle, matching toggleShuffle():
@@ -271,11 +306,14 @@ func (q *Queue) JumpTo(index int) (Item, bool) {
 //     within it by ID; if the current item is no longer present, the
 //     position becomes empty (-1).
 func (q *Queue) SetShuffle(shuffled bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
 	if shuffled == q.shuffled {
 		return
 	}
 
-	current, hasCurrent := q.CurrentItem()
+	current, hasCurrent := q.currentItemLocked()
 	q.shuffled = shuffled
 
 	if shuffled {
@@ -314,6 +352,8 @@ func (q *Queue) SetShuffle(shuffled bool) {
 // Snapshot returns a read-only copy of the current queue state, suitable
 // for emitting to the frontend or answering QueueGetState.
 func (q *Queue) Snapshot() State {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	return State{
 		Items:    cloneItems(q.items),
 		Index:    q.index,
