@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 )
 
 // newParkTestApp mirrors newQueueTestApp (app_queue_test.go): a headless App
@@ -69,6 +70,32 @@ func stubbedWebViewLifecycle(t *testing.T) (unloadCalls *int, reloadCalls *int) 
 	return unloadCalls, reloadCalls
 }
 
+// stubbedWebViewLifecycleAsync is stubbedWebViewLifecycle's counterpart for
+// tests that exercise the real time.AfterFunc-driven timer
+// (startParkTimer/attemptPark): it signals on a buffered channel per call
+// instead of only counting, so a test can block on "did the timer actually
+// fire" with select+timeout rather than a fixed sleep-then-check, which
+// would otherwise be racy against the goroutine time.AfterFunc runs its
+// callback on.
+func stubbedWebViewLifecycleAsync(t *testing.T) (unloadCh chan struct{}, reloadCh chan struct{}) {
+	t.Helper()
+	origUnload := windowUnloadWebViewFunc
+	origReload := windowReloadWebViewFunc
+	t.Cleanup(func() {
+		windowUnloadWebViewFunc = origUnload
+		windowReloadWebViewFunc = origReload
+	})
+	unloadCh = make(chan struct{}, 8)
+	reloadCh = make(chan struct{}, 8)
+	windowUnloadWebViewFunc = func(context.Context) {
+		unloadCh <- struct{}{}
+	}
+	windowReloadWebViewFunc = func(context.Context) {
+		reloadCh <- struct{}{}
+	}
+	return unloadCh, reloadCh
+}
+
 func TestConsumePendingIntent_EmptyByDefault(t *testing.T) {
 	app, _ := newParkTestApp(t)
 	if intent := app.ConsumePendingIntent(); intent != nil {
@@ -122,10 +149,10 @@ func TestWindowSetParked_TrueRoutesFutureIntentsToPendingSlotAndTriggersReload(t
 	if hasEmit(emitted, "queue-play-embed") {
 		t.Fatalf("expected queue-play-embed NOT to be emitted while parked")
 	}
-	// Phase 3: a queued intent while parked reloads the (destroyed) webview
-	// directly instead of emitting a "wake-request" event that nothing is
-	// alive to receive (see FORK_NOTES.md — events are safe no-ops while
-	// the webview is unloaded).
+	// A queued intent while parked reloads the (destroyed) webview directly
+	// instead of emitting a "wake-request" event that nothing is alive to
+	// receive (see FORK_NOTES.md — events are safe no-ops while the webview
+	// is unloaded).
 	if *reloadCalls != 1 {
 		t.Fatalf("expected exactly one WindowReloadWebView call, got %d", *reloadCalls)
 	}
@@ -154,46 +181,43 @@ func TestWindowSetParked_FalseRoutesIntentsToDirectEmitAndDoesNotReload(t *testi
 	}
 }
 
-func TestWindowParkWebView_SetsParkedStoresUIStateAndUnloadsWebView(t *testing.T) {
+func TestRecordParkUIState_StoresAndConsumeClears(t *testing.T) {
 	app, _ := newParkTestApp(t)
-	unloadCalls, _ := stubbedWebViewLifecycle(t)
 
-	app.WindowParkWebView(map[string]interface{}{"viewId": "album-view", "scrollTop": float64(240)})
+	app.RecordParkUIState("album-view", 240)
 
-	if !app.isParked() {
-		t.Fatalf("expected WindowParkWebView to mark the app parked")
-	}
-	if *unloadCalls != 1 {
-		t.Fatalf("expected exactly one WindowUnloadWebView call, got %d", *unloadCalls)
-	}
 	state := app.ConsumeParkedUIState()
 	if state == nil || state["viewId"] != "album-view" || state["scrollTop"] != float64(240) {
 		t.Fatalf("expected the UI state to round-trip via ConsumeParkedUIState, got %#v", state)
 	}
+	if again := app.ConsumeParkedUIState(); again != nil {
+		t.Fatalf("expected nil after consuming once, got %#v", again)
+	}
 }
 
-func TestConsumeParkedUIState_EmptyByDefaultAndTakeOnce(t *testing.T) {
+func TestRecordParkUIState_LaterCallOverwritesEarlierOne(t *testing.T) {
 	app, _ := newParkTestApp(t)
-	stubbedWebViewLifecycle(t)
 
+	app.RecordParkUIState("track-view", 0)
+	app.RecordParkUIState("album-view", 240)
+
+	state := app.ConsumeParkedUIState()
+	if state == nil || state["viewId"] != "album-view" || state["scrollTop"] != float64(240) {
+		t.Fatalf("expected the latest recorded state to win, got %#v", state)
+	}
+}
+
+func TestConsumeParkedUIState_EmptyByDefault(t *testing.T) {
+	app, _ := newParkTestApp(t)
 	if state := app.ConsumeParkedUIState(); state != nil {
 		t.Fatalf("expected nil UI state on a fresh App, got %#v", state)
-	}
-
-	app.WindowParkWebView(map[string]interface{}{"viewId": "track-view", "scrollTop": float64(0)})
-	if state := app.ConsumeParkedUIState(); state == nil {
-		t.Fatalf("expected a UI state after WindowParkWebView")
-	}
-	if state := app.ConsumeParkedUIState(); state != nil {
-		t.Fatalf("expected nil after consuming once, got %#v", state)
 	}
 }
 
 func TestWindowSetParked_FalseClearsStaleUIState(t *testing.T) {
 	app, _ := newParkTestApp(t)
-	stubbedWebViewLifecycle(t)
 
-	app.WindowParkWebView(map[string]interface{}{"viewId": "album-view", "scrollTop": float64(10)})
+	app.RecordParkUIState("album-view", 10)
 	// Unparking (as restoreFromPark does on every SPA boot) must discard any
 	// UI state a previous park cycle left behind, exactly like it already
 	// discards a stale pending intent — a leftover snapshot from an earlier
@@ -228,20 +252,188 @@ func TestReloadWebViewIfParked_ReloadsWhenParked(t *testing.T) {
 	}
 }
 
+// --- attemptPark: the Go-owned park decision (root-cause fix) ---
+//
+// Phase 3's first attempt kept the 15s debounce as a JS setTimeout inside
+// the (about to be hidden) WebView. Re-testing found the window sitting
+// hidden for 9.5 minutes with WebContent still alive and no park at all —
+// WebKit suspends/throttles JS timers in hidden/occluded pages, so the
+// timer could fire arbitrarily late or never. The fix moves both the
+// debounce and the park decision into Go (time.AfterFunc, driven by
+// NSApplicationDidHide/DidUnhide via handleAppVisibilityChanged), which is
+// never subject to WebView timer throttling. These tests exercise that
+// decision directly (attemptPark) and via the real timer
+// (startParkTimer/cancelParkTimer, see the *_RealTimer tests further down).
+
+func TestAttemptPark_ParksWhenHiddenAndNoEmbedActive(t *testing.T) {
+	app, _ := newParkTestApp(t)
+	unloadCalls, _ := stubbedWebViewLifecycle(t)
+	app.setHidden(true)
+
+	app.attemptPark()
+
+	if !app.isParked() {
+		t.Fatalf("expected attemptPark to mark the app parked")
+	}
+	if *unloadCalls != 1 {
+		t.Fatalf("expected exactly one WindowUnloadWebView call, got %d", *unloadCalls)
+	}
+}
+
+func TestAttemptPark_NoOpWhenNoLongerHidden(t *testing.T) {
+	app, _ := newParkTestApp(t)
+	unloadCalls, _ := stubbedWebViewLifecycle(t)
+	app.setHidden(false)
+
+	app.attemptPark()
+
+	if app.isParked() {
+		t.Fatalf("expected attemptPark not to park when no longer hidden")
+	}
+	if *unloadCalls != 0 {
+		t.Fatalf("expected no WindowUnloadWebView call, got %d", *unloadCalls)
+	}
+}
+
+func TestAttemptPark_NoOpWhenAlreadyParked(t *testing.T) {
+	app, _ := newParkTestApp(t)
+	unloadCalls, _ := stubbedWebViewLifecycle(t)
+	app.setHidden(true)
+	app.WindowSetParked(true)
+
+	app.attemptPark()
+
+	if *unloadCalls != 0 {
+		t.Fatalf("expected no additional WindowUnloadWebView call when already parked, got %d", *unloadCalls)
+	}
+}
+
+func TestAttemptPark_NoOpWhenEmbedSessionActive(t *testing.T) {
+	app, _ := newParkTestApp(t)
+	unloadCalls, _ := stubbedWebViewLifecycle(t)
+	// withEmbedSessionActive (app_remote_embed_command_test.go) marks
+	// remoteRelay active, mimicking NotifyYouTubePlaybackState(active=true)
+	// — the same Go-side signal embedSessionActive() (app_remote.go) reads,
+	// which is what attemptPark consults (see the doc comment above this
+	// block for why: a live JS call is not an option at park-decision time).
+	withEmbedSessionActive(t)
+	app.setHidden(true)
+
+	app.attemptPark()
+
+	if app.isParked() {
+		t.Fatalf("expected attemptPark not to park while an embed session is active")
+	}
+	if *unloadCalls != 0 {
+		t.Fatalf("expected no WindowUnloadWebView call, got %d", *unloadCalls)
+	}
+}
+
+// --- startParkTimer/cancelParkTimer: the real time.AfterFunc path ---
+
+func TestStartParkTimer_FiresAttemptParkAfterDelay(t *testing.T) {
+	app, _ := newParkTestApp(t)
+	unloadCh, _ := stubbedWebViewLifecycleAsync(t)
+	app.park.mu.Lock()
+	app.park.delayOverride = 10 * time.Millisecond
+	app.park.mu.Unlock()
+	app.setHidden(true)
+
+	app.startParkTimer()
+
+	select {
+	case <-unloadCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the park timer to fire WindowUnloadWebView")
+	}
+	if !app.isParked() {
+		t.Fatalf("expected the app to be parked once the timer fires")
+	}
+}
+
+func TestCancelParkTimer_PreventsAttemptParkFromFiring(t *testing.T) {
+	app, _ := newParkTestApp(t)
+	unloadCh, _ := stubbedWebViewLifecycleAsync(t)
+	app.park.mu.Lock()
+	app.park.delayOverride = 10 * time.Millisecond
+	app.park.mu.Unlock()
+	app.setHidden(true)
+
+	app.startParkTimer()
+	app.cancelParkTimer()
+
+	select {
+	case <-unloadCh:
+		t.Fatal("expected the cancelled timer not to fire WindowUnloadWebView")
+	case <-time.After(200 * time.Millisecond):
+		// No fire within well over the (10ms) delay: cancellation held.
+	}
+	if app.isParked() {
+		t.Fatalf("expected the app not to be parked after cancellation")
+	}
+}
+
+func TestHandleAppVisibilityChanged_HiddenTrue_StartsParkTimerThatFires(t *testing.T) {
+	app, emitted := newParkTestApp(t)
+	unloadCh, _ := stubbedWebViewLifecycleAsync(t)
+	app.park.mu.Lock()
+	app.park.delayOverride = 10 * time.Millisecond
+	app.park.mu.Unlock()
+
+	app.handleAppVisibilityChanged(true)
+
+	if !hasEmit(emitted, "app-visibility-changed") {
+		t.Fatalf("expected app-visibility-changed to be emitted, got %#v", *emitted)
+	}
+	select {
+	case <-unloadCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the park timer to fire WindowUnloadWebView")
+	}
+	if !app.isParked() {
+		t.Fatalf("expected the app to be parked once the timer fires")
+	}
+}
+
+func TestHandleAppVisibilityChanged_HiddenFalseBeforeDelay_CancelsTimer(t *testing.T) {
+	app, _ := newParkTestApp(t)
+	unloadCh, _ := stubbedWebViewLifecycleAsync(t)
+	app.park.mu.Lock()
+	app.park.delayOverride = 30 * time.Millisecond
+	app.park.mu.Unlock()
+
+	app.handleAppVisibilityChanged(true)
+	app.handleAppVisibilityChanged(false)
+
+	select {
+	case <-unloadCh:
+		t.Fatal("expected re-showing before the delay to cancel the park timer")
+	case <-time.After(200 * time.Millisecond):
+		// No fire well past the (30ms) delay: quick re-show cancelled it.
+	}
+	if app.isParked() {
+		t.Fatalf("expected the app not to be parked after a quick re-show")
+	}
+}
+
 // TestAppParkState_ConcurrentAccess exercises setPendingIntent/
-// ConsumePendingIntent/WindowSetParked/emitOrQueueIntent/WindowParkWebView/
-// ConsumeParkedUIState/reloadWebViewIfParked concurrently under -race,
-// matching pkg/playqueue's queue_race_test.go precedent (see
-// progress/native-play-queue.md's "並行安全性" section) — app_park.go's
-// state is reachable from the Wails binding goroutine (renderer calls),
-// the NSApplicationDid(Un)Hide observer callback, and startQueueItem/
-// app_remote.go's HTTP handler goroutines.
+// ConsumePendingIntent/WindowSetParked/emitOrQueueIntent/RecordParkUIState/
+// ConsumeParkedUIState/reloadWebViewIfParked/handleAppVisibilityChanged
+// concurrently under -race, matching pkg/playqueue's queue_race_test.go
+// precedent (see progress/native-play-queue.md's "並行安全性" section) —
+// app_park.go's state is reachable from the Wails binding goroutine
+// (renderer calls), the NSApplicationDid(Un)Hide observer callback (which
+// now also starts/cancels a real timer), and startQueueItem/app_remote.go's
+// HTTP handler goroutines.
 func TestAppParkState_ConcurrentAccess(t *testing.T) {
 	app, _ := newParkTestApp(t)
 	stubbedWebViewLifecycle(t)
+	app.park.mu.Lock()
+	app.park.delayOverride = time.Millisecond
+	app.park.mu.Unlock()
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
-		wg.Add(5)
+		wg.Add(6)
 		go func(i int) {
 			defer wg.Done()
 			app.WindowSetParked(i%2 == 0)
@@ -256,12 +448,20 @@ func TestAppParkState_ConcurrentAccess(t *testing.T) {
 		}()
 		go func(i int) {
 			defer wg.Done()
-			app.WindowParkWebView(map[string]interface{}{"i": i})
+			app.RecordParkUIState("view", float64(i))
 		}(i)
 		go func() {
 			defer wg.Done()
 			app.ConsumeParkedUIState()
 		}()
+		go func(i int) {
+			defer wg.Done()
+			app.handleAppVisibilityChanged(i%2 == 0)
+		}(i)
 	}
 	wg.Wait()
+	// Let any timers this loop started settle before the test (and its
+	// stubbedWebViewLifecycle cleanup) tears the spies down from under a
+	// still-pending time.AfterFunc callback.
+	app.cancelParkTimer()
 }

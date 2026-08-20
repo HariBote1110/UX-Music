@@ -10,12 +10,14 @@ import (
 	"ux-music-sidecar/pkg/playqueue"
 )
 
-// TestHandleAppVisibilityChanged_HiddenTrue_EmitsButDoesNotReload covers the
-// half of Phase 3 (markdown/background-native-queue-plan.md) wired into
+// TestHandleAppVisibilityChanged_HiddenTrue_EmitsButDoesNotReload covers
 // initAppVisibilityObserver's callback: going hidden must still emit
-// "app-visibility-changed" (park.ts's debounce timer needs it, whether or
-// not a park cycle is already in progress) but must never itself trigger a
-// webview reload.
+// "app-visibility-changed" (kept for any other listeners; park.ts itself no
+// longer times anything off it — the park debounce now lives in Go as a
+// time.AfterFunc, see app_park_test.go's root-cause-fix comment on why a JS
+// setTimeout could not be trusted here: WebKit suspends/throttles JS timers
+// in hidden/occluded pages) and must never itself trigger a webview reload —
+// reload only happens on hidden=false while parked.
 func TestHandleAppVisibilityChanged_HiddenTrue_EmitsButDoesNotReload(t *testing.T) {
 	app, emitted := newParkTestApp(t)
 	_, reloadCalls := stubbedWebViewLifecycle(t)
@@ -31,37 +33,12 @@ func TestHandleAppVisibilityChanged_HiddenTrue_EmitsButDoesNotReload(t *testing.
 	}
 }
 
-// TestHandleAppVisibilityChanged_HiddenFalseWhileParked_ReloadsWebView covers
-// the un-park trigger design point 3: because no JS is alive while parked,
-// Go itself must initiate the reload once the window is shown again.
-func TestHandleAppVisibilityChanged_HiddenFalseWhileParked_ReloadsWebView(t *testing.T) {
-	app, emitted := newParkTestApp(t)
-	_, reloadCalls := stubbedWebViewLifecycle(t)
-	app.WindowSetParked(true)
-
-	app.handleAppVisibilityChanged(false)
-
-	if !hasEmit(emitted, "app-visibility-changed") {
-		t.Fatalf("expected app-visibility-changed to still be emitted, got %#v", *emitted)
-	}
-	if *reloadCalls != 1 {
-		t.Fatalf("expected exactly one WindowReloadWebView call on hidden=false while parked, got %d", *reloadCalls)
-	}
-}
-
-// TestHandleAppVisibilityChanged_HiddenFalseWhileNotParked_DoesNotReload
-// covers the ordinary hide/show toggle that never reached a park cycle
-// (e.g. re-shown before the 15s debounce fired) — nothing to reload.
-func TestHandleAppVisibilityChanged_HiddenFalseWhileNotParked_DoesNotReload(t *testing.T) {
-	app, _ := newParkTestApp(t)
-	_, reloadCalls := stubbedWebViewLifecycle(t)
-
-	app.handleAppVisibilityChanged(false)
-
-	if *reloadCalls != 0 {
-		t.Fatalf("expected no WindowReloadWebView call when never parked, got %d", *reloadCalls)
-	}
-}
+// TestHandleAppVisibilityChanged_HiddenFalseWhileParked_ReloadsWebView,
+// TestHandleAppVisibilityChanged_HiddenFalseWhileNotParked_DoesNotReload, and
+// the park-timer-specific coverage (start/cancel/fire, embed-active gating)
+// live in app_park_test.go next to attemptPark/startParkTimer/
+// cancelParkTimer, which handleAppVisibilityChanged is now a thin wrapper
+// around.
 
 func TestDispatchOSMediaCommand_QueueInactive_EmitsLegacyEvent(t *testing.T) {
 	app, emitted := newRemoteCommandTestApp(t)
