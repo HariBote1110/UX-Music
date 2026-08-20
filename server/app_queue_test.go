@@ -336,3 +336,223 @@ func TestQueueNextSurfacesErrorWithoutSkippingToNextItem(t *testing.T) {
 		t.Fatalf("CurrentItem() = %+v, %v; want b (stays put on the failed item), true", current, ok)
 	}
 }
+
+// --- queue-advanced (Phase 1 frontend cutover seam) ---
+//
+// The renderer can no longer tell "natural finish" from "user skip" once Go
+// drives the queue (see progress/native-play-queue.md's cutover section), so
+// these methods must emit "queue-advanced" with {previousId, reason}
+// whenever the queue moves off an item it was actually sitting on.
+
+func TestQueueNextEmitsQueueAdvancedUserReason(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
+	}, 0)
+	*emitted = nil
+
+	_ = app.QueueNext()
+
+	data, ok := lastEmit(emitted, "queue-advanced")
+	if !ok {
+		t.Fatalf("expected queue-advanced to be emitted by QueueNext")
+	}
+	payload := data.(map[string]interface{})
+	if payload["previousId"] != "a" || payload["reason"] != "user" {
+		t.Fatalf("queue-advanced payload = %+v, want {previousId: a, reason: user}", payload)
+	}
+}
+
+func TestQueueNextEmitsQueueAdvancedEvenInLoopOne(t *testing.T) {
+	// JS parity: playNextSong() calls handleSkip() unconditionally even in
+	// LOOP_ONE, where the "next" item is the same song replayed from the
+	// start (see playback-manager.ts). Advance() returns the same item, but
+	// the explicit user action must still be reported.
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+	}, 0)
+	app.ensureQueue().SetLoopMode(playqueue.LoopOne)
+	*emitted = nil
+
+	_ = app.QueueNext()
+
+	data, ok := lastEmit(emitted, "queue-advanced")
+	if !ok {
+		t.Fatalf("expected queue-advanced to be emitted by QueueNext even under LoopOne")
+	}
+	payload := data.(map[string]interface{})
+	if payload["previousId"] != "a" || payload["reason"] != "user" {
+		t.Fatalf("queue-advanced payload = %+v, want {previousId: a, reason: user}", payload)
+	}
+}
+
+func TestQueueNextDoesNotEmitQueueAdvancedWhenQueueWasEmpty(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+
+	_ = app.QueueNext()
+
+	if hasEmit(emitted, "queue-advanced") {
+		t.Fatalf("queue-advanced must not be emitted when there was no previous current item")
+	}
+}
+
+func TestQueuePrevEmitsQueueAdvancedUserReason(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
+	}, 1)
+	*emitted = nil
+
+	_ = app.QueuePrev()
+
+	data, ok := lastEmit(emitted, "queue-advanced")
+	if !ok {
+		t.Fatalf("expected queue-advanced to be emitted by QueuePrev")
+	}
+	payload := data.(map[string]interface{})
+	if payload["previousId"] != "b" || payload["reason"] != "user" {
+		t.Fatalf("queue-advanced payload = %+v, want {previousId: b, reason: user}", payload)
+	}
+}
+
+func TestQueueJumpEmitsQueueAdvancedUserReason(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
+		{ID: "c", Type: playqueue.ItemTypeLocal, Path: "/music/c.mp3"},
+	}, 0)
+	*emitted = nil
+
+	_ = app.QueueJump(2)
+
+	data, ok := lastEmit(emitted, "queue-advanced")
+	if !ok {
+		t.Fatalf("expected queue-advanced to be emitted by QueueJump")
+	}
+	payload := data.(map[string]interface{})
+	if payload["previousId"] != "a" || payload["reason"] != "user" {
+		t.Fatalf("queue-advanced payload = %+v, want {previousId: a, reason: user}", payload)
+	}
+}
+
+func TestQueueSetEmitsQueueAdvancedWhenReplacingAnActiveQueue(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+	}, 0)
+	*emitted = nil
+
+	_ = app.QueueSet([]map[string]interface{}{
+		{"id": "x", "path": "/music/x.mp3", "type": "local", "title": "X"},
+	}, 0)
+
+	data, ok := lastEmit(emitted, "queue-advanced")
+	if !ok {
+		t.Fatalf("expected queue-advanced to be emitted by QueueSet when it replaces an already-active queue")
+	}
+	payload := data.(map[string]interface{})
+	if payload["previousId"] != "a" || payload["reason"] != "user" {
+		t.Fatalf("queue-advanced payload = %+v, want {previousId: a, reason: user}", payload)
+	}
+}
+
+func TestQueueSetDoesNotEmitQueueAdvancedOnFirstActivation(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+
+	_ = app.QueueSet([]map[string]interface{}{
+		{"id": "x", "path": "/music/x.mp3", "type": "local", "title": "X"},
+	}, 0)
+
+	if hasEmit(emitted, "queue-advanced") {
+		t.Fatalf("queue-advanced must not be emitted the first time QueueSet activates the queue (no previous item)")
+	}
+}
+
+func TestAutoAdvanceQueueEmitsQueueAdvancedFinishedReasonOnce(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+
+	// b and c fail to start; the auto-advance must skip past them to d, but
+	// queue-advanced must still be emitted exactly once, for the item that
+	// actually finished (a) — not for the failed skip attempts.
+	starter, _ := failingStarter(map[string]bool{"b": true, "c": true})
+	app.queueItemStarter = starter
+
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
+		{ID: "c", Type: playqueue.ItemTypeLocal, Path: "/music/c.mp3"},
+		{ID: "d", Type: playqueue.ItemTypeLocal, Path: "/music/d.mp3"},
+	}, 0)
+	*emitted = nil
+
+	app.handlePlaybackFinished()
+
+	var advancedCount int
+	var lastPayload map[string]interface{}
+	for _, e := range *emitted {
+		if e.name == "queue-advanced" {
+			advancedCount++
+			lastPayload = e.data.(map[string]interface{})
+		}
+	}
+	if advancedCount != 1 {
+		t.Fatalf("queue-advanced emitted %d times, want exactly 1", advancedCount)
+	}
+	if lastPayload["previousId"] != "a" || lastPayload["reason"] != "finished" {
+		t.Fatalf("queue-advanced payload = %+v, want {previousId: a, reason: finished}", lastPayload)
+	}
+}
+
+func TestAutoAdvanceQueueDoesNotEmitQueueAdvancedWhenQueueWasEmpty(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+
+	app.handlePlaybackFinished()
+
+	if hasEmit(emitted, "queue-advanced") {
+		t.Fatalf("queue-advanced must not be emitted when auto-advance runs on an empty/inactive queue")
+	}
+}
+
+func TestQueueAdvanceFinishedBindingAdvancesAndEmitsFinishedReason(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
+	}, 0)
+	*emitted = nil
+
+	app.QueueAdvanceFinished()
+
+	data, ok := lastEmit(emitted, "queue-advanced")
+	if !ok {
+		t.Fatalf("expected queue-advanced to be emitted by QueueAdvanceFinished")
+	}
+	payload := data.(map[string]interface{})
+	if payload["previousId"] != "a" || payload["reason"] != "finished" {
+		t.Fatalf("queue-advanced payload = %+v, want {previousId: a, reason: finished}", payload)
+	}
+	current, ok := app.ensureQueue().CurrentItem()
+	if !ok || current.ID != "b" {
+		t.Fatalf("CurrentItem() after QueueAdvanceFinished = %+v, %v; want b, true", current, ok)
+	}
+}
