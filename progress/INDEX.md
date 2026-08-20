@@ -1,6 +1,6 @@
 # Progress Index
 
-- [webview-parking.md](webview-parking.md) — バックグラウンド再生メモリ削減 Phase 2: 非表示15秒後にSPAを極小駐機ページ（`public/parked.html`、Wailsランタイムはページ単位でなくWebViewレベル注入のため明示スクリプト不要）へ退避しWebContentのJSヒープ/DOM/画像キャッシュを解放。Go側は`NSApplicationDidHide/Unhide`監視＋`WindowSetParked`/`ConsumePendingIntent`の単一スロット保留インテント機構（`emitOrQueueIntent`）でqueue-play-embed/remote-play-songを取りこぼさない。実機実測: 起動直後471.8MB→駐機後264.9MB（約207MB減、WebKit側が316.3MB→125.3MBで大半）→復元後516.3MB。駐機の実効果は15秒デバウンス発火後さらに数十秒遅れて出た（WebKitのメモリ返却ラグ）
+- [webview-parking.md](webview-parking.md) — バックグラウンド再生メモリ削減 Phase 2: 非表示15秒後にSPAを極小駐機ページ（`public/parked.html`、Wailsランタイムはページ単位でなくWebViewレベル注入のため明示スクリプト不要）へ退避しWebContentのJSヒープ/DOM/画像キャッシュを解放。Go側は`NSApplicationDidHide/Unhide`監視＋`WindowSetParked`/`ConsumePendingIntent`の単一スロット保留インテント機構（`emitOrQueueIntent`）でqueue-play-embed/remote-play-songを取りこぼさない。**初回実測（起動直後471.8MB→駐機後264.9MB→復元後516.3MB）はPhase 2未搭載バイナリを測定した無効な結果だったとレビューで判明し訂正**。`fmt.Printf`一時デバッグで追跡した結果、可視性検知→デバウンス→`location.replace`→AssetServer配信までの実行系は正常。真因はWebKitのメモリ遅延解放（ページ遷移後もOSへの返却に約3.5〜4分かかる）で、90秒程度の観測では「駐機していない」ように見えるだけだった。訂正後の実測: 起動直後468.2MB→駐機後(4分後)229.0MB（約239MB減、WebKit側315.3MB→101.7MB）→復元後518.8MB
 
 - [native-play-queue.md](native-play-queue.md) — バックグラウンド再生ネイティブ化 Phase 1: `pkg/playqueue`（純ロジック、JS版 playback-manager.ts のnext/prev/shuffle/loop挙動をTDDで移植）と `server/app_queue.go`（Wailsバインディング・OnFinished自動進行・remote/OSメディアキー横取り）を実装。opt-in設計でQueueSetが呼ばれるまで既存動作に影響なし。再生回数計上は「開始時に一度だけ」（計画書の想定と異なりSongFinishedは無関係と判明）で、キューActive時はaudio-playback-finishedのemitを抑止して二重計上を回避。フロントエンド（playback-manager.ts）は本タスクでは未改修
 
