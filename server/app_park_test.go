@@ -416,6 +416,32 @@ func TestHandleAppVisibilityChanged_HiddenFalseBeforeDelay_CancelsTimer(t *testi
 	}
 }
 
+func TestHandleAppVisibilityChanged_HiddenFalseWhileParked_ReloadsWebView(t *testing.T) {
+	app, emitted := newParkTestApp(t)
+	_, reloadCalls := stubbedWebViewLifecycle(t)
+	app.WindowSetParked(true)
+
+	app.handleAppVisibilityChanged(false)
+
+	if !hasEmit(emitted, "app-visibility-changed") {
+		t.Fatalf("expected app-visibility-changed to still be emitted, got %#v", *emitted)
+	}
+	if *reloadCalls != 1 {
+		t.Fatalf("expected exactly one WindowReloadWebView call on hidden=false while parked, got %d", *reloadCalls)
+	}
+}
+
+func TestHandleAppVisibilityChanged_HiddenFalseWhileNotParked_DoesNotReload(t *testing.T) {
+	app, _ := newParkTestApp(t)
+	_, reloadCalls := stubbedWebViewLifecycle(t)
+
+	app.handleAppVisibilityChanged(false)
+
+	if *reloadCalls != 0 {
+		t.Fatalf("expected no WindowReloadWebView call when never parked, got %d", *reloadCalls)
+	}
+}
+
 // TestAppParkState_ConcurrentAccess exercises setPendingIntent/
 // ConsumePendingIntent/WindowSetParked/emitOrQueueIntent/RecordParkUIState/
 // ConsumeParkedUIState/reloadWebViewIfParked/handleAppVisibilityChanged

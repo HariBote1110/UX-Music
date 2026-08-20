@@ -17,11 +17,15 @@ func (a *App) initOSMediaControls() {
 
 // initAppVisibilityObserver wires the NSApplicationDidHide/DidUnhide
 // observer (app_visibility_darwin.go/.m; a no-op on non-darwin, see
-// app_visibility_stub.go) to handleAppVisibilityChanged, for the renderer's
-// park.ts (Phase 2/3 of markdown/background-native-queue-plan.md). GUI-mode
-// only — like initOSMediaControls/initTray, this is only ever called from
-// Startup, which itself is only invoked via Wails' OnStartup (see main.go);
-// headless `--serve` never runs it.
+// app_visibility_stub.go) to handleAppVisibilityChanged, which now owns both
+// the debounce and the park decision (see app_park.go's file-level
+// root-cause-correction comment: this used to be a JS setTimeout in
+// park.ts, which WebKit could suspend/throttle indefinitely in a hidden
+// page — a native NSApplicationDidHide/DidUnhide notification driving a Go
+// time.AfterFunc has no such throttling). GUI-mode only — like
+// initOSMediaControls/initTray, this is only ever called from Startup,
+// which itself is only invoked via Wails' OnStartup (see main.go); headless
+// `--serve` never runs it.
 func (a *App) initAppVisibilityObserver() {
 	registerAppVisibilityObserver(a.handleAppVisibilityChanged)
 }
@@ -30,15 +34,24 @@ func (a *App) initAppVisibilityObserver() {
 // factored out so it is unit-testable without the platform-specific
 // registerAppVisibilityObserver binding (same pattern as
 // dispatchOSMediaCommand below). It always emits "app-visibility-changed"
-// for park.ts's debounce timer, and — Phase 3's un-park trigger — when the
-// window is shown again (hidden=false) while the SPA is parked, reloads the
-// (destroyed) webview directly: no JS is alive while parked to react to an
-// event on its own, so Go must initiate the reload itself.
+// (kept for any other listeners; park.ts no longer times anything off it),
+// records the app's hidden state (setHidden, consulted by attemptPark), and:
+//   - hidden=true: (re)starts the park timer (startParkTimer) — attemptPark
+//     runs after the delay only if the window is still hidden then.
+//   - hidden=false: cancels any pending park timer (cancelParkTimer — this
+//     is what makes a quick re-show never park) and, if the SPA is already
+//     parked, reloads the (destroyed) webview directly (reloadWebViewIfParked)
+//     — no JS is alive while parked to react to an event on its own, so Go
+//     must initiate the reload itself.
 func (a *App) handleAppVisibilityChanged(hidden bool) {
 	a.emit("app-visibility-changed", map[string]interface{}{"hidden": hidden})
-	if !hidden {
-		a.reloadWebViewIfParked()
+	a.setHidden(hidden)
+	if hidden {
+		a.startParkTimer()
+		return
 	}
+	a.cancelParkTimer()
+	a.reloadWebViewIfParked()
 }
 
 // dispatchOSMediaCommand handles one OS media-key command ("play", "pause",

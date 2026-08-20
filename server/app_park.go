@@ -3,44 +3,85 @@
 // WKWebView has actually been destroyed (via the Wails fork's
 // runtime.WindowUnloadWebView — see FORK_NOTES.md in
 // github.com/HariBote1110/wails, branch ux-music/webview-destroy) rather
-// than merely navigated to a placeholder page (Phase 2's now-removed
-// parked.html). No JS is alive while parked, so:
-//   - any Go event that only a live SPA can act on must not simply be
-//     emitted into the void — it is stashed in a single-slot "pending
-//     intent" that the SPA drains on its next startup (see
-//     ConsumePendingIntent, called by park.ts's restoreFromPark next to the
-//     existing QueueGetState() seam), and
-//   - the SPA's small "what was I looking at" UI snapshot, previously kept
-//     in sessionStorage (which died with page navigation but would now die
-//     with the WebContent process itself), is handed to Go instead and
-//     reclaimed via ConsumeParkedUIState.
-//   - because nothing JS-side survives to notice a wake-up request, Go
-//     itself must initiate the reload (reloadWebViewIfParked) instead of
-//     emitting a "wake-request" event for a parked page to react to.
+// than merely navigated to a placeholder page (an earlier, now-removed
+// parked.html).
 //
-// emitOrQueueIntent is the single choke point every renderer-directed,
-// SPA-only event goes through (see its call sites in app_queue.go's
-// startQueueItem and app_remote.go's play-song handler), same as in Phase 2.
+// ROOT-CAUSE CORRECTION (see progress/webview-parking.md's Phase 3 section):
+// the first cut of this design kept the 15s "has the window really stayed
+// hidden" debounce as a JS setTimeout inside park.ts, running in the very
+// WebView that was about to be hidden. Independent re-testing found the
+// window sitting hidden for 9.5 minutes with WebContent still fully alive
+// and no park at all — WebKit suspends/throttles JS timers in
+// hidden/occluded pages, so a setTimeout there can fire arbitrarily late, or
+// not at all, while the window stays hidden. (This also retroactively
+// explains the confusing "80-90s" and "3.5-4 minute" timings recorded
+// earlier: those were not WebKit's memory-release latency, they were this
+// same suspended-timer non-determinism.) The fix: the debounce and the park
+// decision now live entirely in Go — startParkTimer/attemptPark below, both
+// driven by handleAppVisibilityChanged (app_media.go), which itself runs off
+// NSApplicationDidHide/DidUnhide (app_visibility_darwin.go/.m), a native
+// notification with no WebView JS timer in its path at all.
+//
+// Because parking can now happen without any further round-trip to JS, two
+// other things that used to be JS-initiated at park time had to move too:
+//   - the SPA's small "what was I looking at" UI snapshot can no longer be
+//     requested from JS when the timer fires (JS may already be suspended).
+//     Instead, JS opportunistically pushes it to Go ahead of time
+//     (RecordParkUIState — see park.ts) on every view change and best-effort
+//     on the app-visibility-changed hidden=true event; Go just reads
+//     whatever was last recorded.
+//   - any Go event that only a live SPA can act on must not simply be
+//     emitted into the void while parked — it is stashed in a single-slot
+//     "pending intent" that the SPA drains on its next startup (see
+//     ConsumePendingIntent, called by park.ts's restoreFromPark next to the
+//     existing QueueGetState() seam). emitOrQueueIntent is the single choke
+//     point every renderer-directed, SPA-only event goes through (see its
+//     call sites in app_queue.go's startQueueItem and app_remote.go's
+//     play-song handler).
 package server
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
+
+// defaultParkDelay is how long the window must stay hidden, with no embed
+// session becoming active in the meantime, before attemptPark actually
+// parks — the Go-owned equivalent of Phase 2/the first Phase 3 attempt's
+// PARK_DELAY_MS, chosen for the same reason (give a quick re-show a window
+// to cancel without ever parking). See appParkState.delayOverride for how
+// tests shorten it.
+const defaultParkDelay = 15 * time.Second
 
 // appParkState is the mutex-guarded state backing WindowSetParked/
-// WindowParkWebView/ConsumePendingIntent/ConsumeParkedUIState. Held as a
-// value (not a pointer) on App, zero-value ready, so struct-literal-
-// constructed Apps (as most tests in this package use) work without extra
-// setup — mirrors how pkg/playqueue.Queue and its App-level ensureQueue()
-// lazily-initialise wrapper are set up.
+// RecordParkUIState/ConsumePendingIntent/ConsumeParkedUIState/
+// startParkTimer/attemptPark. Held as a value (not a pointer) on App,
+// zero-value ready, so struct-literal-constructed Apps (as most tests in
+// this package use) work without extra setup — mirrors how
+// pkg/playqueue.Queue and its App-level ensureQueue() lazily-initialise
+// wrapper are set up.
 type appParkState struct {
 	mu      sync.Mutex
 	parked  bool
 	pending *pendingIntent
 	// uiState is the renderer's best-effort "what was I looking at"
-	// snapshot (see park.ts's captureUIState), handed to Go by
-	// WindowParkWebView because the WebContent process — and therefore any
-	// sessionStorage the SPA might otherwise have used — is about to be
-	// torn down.
+	// snapshot (see park.ts), kept in Go — rather than sessionStorage,
+	// which dies with the WebContent process the same way the rest of the
+	// SPA's JS state does — and refreshed opportunistically via
+	// RecordParkUIState well before any park actually happens.
 	uiState map[string]interface{}
+	// hidden mirrors the app's current NSApplicationDidHide/DidUnhide state
+	// (see handleAppVisibilityChanged), read by attemptPark to confirm the
+	// window is still hidden when the timer fires.
+	hidden bool
+	// parkTimer is the in-flight time.AfterFunc scheduled by
+	// startParkTimer, or nil when none is pending. Stopped and replaced by
+	// every startParkTimer call, stopped and cleared by cancelParkTimer.
+	parkTimer *time.Timer
+	// delayOverride, when non-zero, replaces defaultParkDelay — tests set
+	// this directly (same package) to a few milliseconds so timer-driven
+	// tests don't have to wait out the real 15s.
+	delayOverride time.Duration
 }
 
 // pendingIntent is the single {event, payload} slot: a newer intent
@@ -52,32 +93,24 @@ type pendingIntent struct {
 	payload interface{}
 }
 
-// WindowParkWebView is the Wails binding the renderer calls to actually park
-// itself (see park.ts's parkNow): it stashes uiState for the SPA's next
-// startup to reclaim, marks the app parked (same flag WindowSetParked
-// flips, exactly as if WindowSetParked(true) had also been called — callers
-// do not need to call both), and — GUI mode only, nil-ctx-safe — destroys
-// the platform webview via windowUnloadWebViewFunc (wired to the Wails
-// fork's runtime.WindowUnloadWebView by wireWailsRuntime; a no-op in
-// headless/test builds). Nothing the renderer does after calling this may
-// ever run — the WebContent process backing it is going away — so this is
-// deliberately fire-and-forget from the SPA's point of view.
-func (a *App) WindowParkWebView(uiState map[string]interface{}) {
+// RecordParkUIState is the Wails binding the renderer calls opportunistically
+// (see park.ts) — on every view change, and again best-effort on the
+// app-visibility-changed hidden=true event — to keep Go's copy of "what was
+// the user looking at" reasonably fresh. This replaced asking JS for a
+// snapshot at the moment of parking: attemptPark may run at any time after
+// the window goes hidden, off a Go timer with no JS involvement, so there is
+// no reliable way to pull anything from JS right then. ConsumeParkedUIState
+// hands back whatever was recorded last.
+func (a *App) RecordParkUIState(viewID string, scrollTop float64) {
 	a.park.mu.Lock()
-	a.park.parked = true
-	a.park.uiState = uiState
-	a.park.mu.Unlock()
-
-	if a.ctx == nil {
-		return
-	}
-	windowUnloadWebViewFunc(a.ctx)
+	defer a.park.mu.Unlock()
+	a.park.uiState = map[string]interface{}{"viewId": viewID, "scrollTop": scrollTop}
 }
 
 // ConsumeParkedUIState is the Wails binding the renderer calls once on every
 // startup (see park.ts's restoreFromPark, next to ConsumePendingIntent) to
-// reclaim the snapshot WindowParkWebView stashed. Returns nil (which Wails
-// marshals to JS `null`) when nothing was saved — a fresh launch, or a
+// reclaim the snapshot RecordParkUIState last stashed. Returns nil (which
+// Wails marshals to JS `null`) when nothing was saved — a fresh launch, or a
 // startup that never followed a park cycle. Take-once: clears the slot.
 func (a *App) ConsumeParkedUIState() map[string]interface{} {
 	a.park.mu.Lock()
@@ -89,14 +122,14 @@ func (a *App) ConsumeParkedUIState() map[string]interface{} {
 
 // WindowSetParked is the Wails binding the renderer calls right after its
 // next startup following a park cycle (parked=false, see park.ts's
-// restoreFromPark) — and, for backward-compatible symmetry with
-// WindowParkWebView (which already sets parked=true itself), still accepts
-// parked=true too. It only flips the flag that emitOrQueueIntent/
-// reloadWebViewIfParked consult, and — when un-parking — clears out any
-// stale pending intent and UI-state snapshot (a fresh QueueGetState()/
-// ConsumePendingIntent()/ConsumeParkedUIState() trio on startup is the sole
-// source of truth for what to restore, so leftovers from a previous park
-// cycle would be a bug, not a feature).
+// restoreFromPark). It only flips the flag that emitOrQueueIntent/
+// reloadWebViewIfParked/attemptPark consult, and — when un-parking — clears
+// out any stale pending intent and UI-state snapshot (a fresh
+// QueueGetState()/ConsumePendingIntent()/ConsumeParkedUIState() trio on
+// startup is the sole source of truth for what to restore, so leftovers from
+// a previous park cycle would be a bug, not a feature). parked=true is kept
+// for test/binding symmetry (attemptPark itself sets the flag directly when
+// it actually parks, so production code never calls WindowSetParked(true)).
 func (a *App) WindowSetParked(parked bool) {
 	a.park.mu.Lock()
 	defer a.park.mu.Unlock()
@@ -108,12 +141,89 @@ func (a *App) WindowSetParked(parked bool) {
 }
 
 // isParked reports whether the SPA is currently parked, per the last
-// WindowSetParked/WindowParkWebView call. Defaults to false (never parked)
-// for an App that has never had either called on it, e.g. headless/tests.
+// WindowSetParked/attemptPark call. Defaults to false (never parked) for an
+// App that has never had either called on it, e.g. headless/tests.
 func (a *App) isParked() bool {
 	a.park.mu.Lock()
 	defer a.park.mu.Unlock()
 	return a.park.parked
+}
+
+// setHidden records the app's current NSApplicationDidHide/DidUnhide state
+// (see handleAppVisibilityChanged), consulted by attemptPark to confirm the
+// window is still hidden when its timer fires.
+func (a *App) setHidden(hidden bool) {
+	a.park.mu.Lock()
+	defer a.park.mu.Unlock()
+	a.park.hidden = hidden
+}
+
+// startParkTimer (re)schedules attemptPark to run after the park delay
+// (defaultParkDelay, or delayOverride in tests) — called by
+// handleAppVisibilityChanged on hidden=true. Any previously scheduled timer
+// is stopped first, so repeated hidden=true events (should they ever occur
+// without an intervening hidden=false) don't stack up multiple pending
+// attemptPark calls.
+func (a *App) startParkTimer() {
+	a.park.mu.Lock()
+	defer a.park.mu.Unlock()
+	if a.park.parkTimer != nil {
+		a.park.parkTimer.Stop()
+	}
+	delay := a.park.delayOverride
+	if delay <= 0 {
+		delay = defaultParkDelay
+	}
+	a.park.parkTimer = time.AfterFunc(delay, a.attemptPark)
+}
+
+// cancelParkTimer stops any in-flight startParkTimer timer — called by
+// handleAppVisibilityChanged on hidden=false, which is what makes a quick
+// re-show (before the delay elapses) never park: a real Go time.Timer.Stop()
+// reliably prevents the callback from running (unlike the JS setTimeout this
+// replaced, which WebKit could suspend and fire late instead of on the
+// re-show path ever getting a chance to cancel it in time). Safe to call
+// with no timer pending.
+func (a *App) cancelParkTimer() {
+	a.park.mu.Lock()
+	defer a.park.mu.Unlock()
+	if a.park.parkTimer != nil {
+		a.park.parkTimer.Stop()
+		a.park.parkTimer = nil
+	}
+}
+
+// attemptPark is startParkTimer's callback: the actual park decision and
+// action, run on its own goroutine by time.AfterFunc. It parks — sets
+// a.park.parked and destroys the webview via windowUnloadWebViewFunc — only
+// if, at the moment the timer fires, the window is still hidden, nothing has
+// already parked it, and no YouTube embed session is active. Embed activity
+// is read via embedSessionActive() (app_remote.go), which reflects
+// remoteRelay's state as set by NotifyYouTubePlaybackState — the Go-side
+// mirror of the renderer's isEmbedPlayerActive() (youtube-embed-player.ts's
+// currentSession !== null): both flip in lockstep with the same
+// play/stop-embed transitions, so this is the correct signal to consult from
+// Go without calling back into JS (which, per the root-cause fix above, is
+// exactly what attemptPark must not depend on being responsive).
+func (a *App) attemptPark() {
+	a.park.mu.Lock()
+	a.park.parkTimer = nil
+	stillHidden := a.park.hidden
+	alreadyParked := a.park.parked
+	a.park.mu.Unlock()
+
+	if !stillHidden || alreadyParked || embedSessionActive() {
+		return
+	}
+
+	a.park.mu.Lock()
+	a.park.parked = true
+	a.park.mu.Unlock()
+
+	if a.ctx == nil {
+		return
+	}
+	windowUnloadWebViewFunc(a.ctx)
 }
 
 // setPendingIntent stores {event, payload} as the sole pending intent,
@@ -172,10 +282,10 @@ func (a *App) reloadWebViewIfParked() {
 // like a.emit did before Phase 2/3 (byte-for-byte — same event name, same
 // payload). While parked it stashes the intent instead (see
 // setPendingIntent) and triggers reloadWebViewIfParked so the SPA comes back
-// and can drain it via ConsumePendingIntent() on its next startup — unlike
-// Phase 2, there is no "wake-request" event any more: the webview is
-// destroyed while parked, so nothing would be alive to receive it (events
-// are safe no-ops while the webview is unloaded, see FORK_NOTES.md).
+// and can drain it via ConsumePendingIntent() on its next startup — there is
+// no "wake-request" event: the webview is destroyed while parked, so nothing
+// would be alive to receive it (events are safe no-ops while the webview is
+// unloaded, see FORK_NOTES.md).
 func (a *App) emitOrQueueIntent(event string, payload interface{}) {
 	if !a.isParked() {
 		a.emit(event, payload)
