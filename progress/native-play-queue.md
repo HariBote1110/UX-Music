@@ -256,3 +256,48 @@ SetShuffle/SetLoopMode/GetState）、`audio.Player` の `OnFinished` コール�
 - **ヘッドレス安全性**: `audioPlayer == nil` でも `ensureQueue()`/`QueueSet` 等は
   パニックせずエラーを返すのみ（既存の `AudioPlay` 等と同じ流儀）。`--serve` の
   ヘッドレス起動フロー自体は変更していない。
+
+## 追記: 起動時音量の回帰と修正（v64c → v64d）
+
+### 症状
+build 1.0.0-Beta-64c で「起動時に限り、音量が壊れる。操作すれば治る」という報告。
+音量スライダーを一度でも操作すれば正常に戻る。
+
+### 原因
+`playback-manager.ts` の「カットオーバー」節（上記）のとおり、Wails モードの
+`playSong()` はネイティブキュー移管（commit `78001a5`）以降、
+`runPlaySongWorkWails()` → `app.QueueSet`/`app.QueueJump` のみを呼び、旧来の
+`playLocal()`（`player.ts`）を一切経由しなくなっていた。`playLocal()` は
+再生開始のたびに音量スライダーの値で `WailsApp.AudioSetVolume()` を呼んでいた
+唯一の箇所だったが、ネイティブキュー配下では `server/app_queue.go` の
+`startQueueItem` が `a.AudioPlay()` を直接呼んで再生を開始するため、この
+呼び出しが完全に迂回される。
+
+一方 `pkg/audio.Player` はプレイヤー生成時に `p.setVolume(1.0)` で音量を
+1.0 に初期化する（`pkg/audio/player.go:251`）。カットオーバー前は
+`playLocal()` が再生開始のたびに保存済み音量を再適用していたためこの
+デフォルト値が表に出ることはなかったが、カットオーバー後は「起動後、
+ユーザーがスライダーを一度も操作していない」状態でのみこのデフォルト値
+（1.0 = 最大音量、または前回セッションの値）がそのまま使われてしまう。
+これがちょうど「起動時に限り」「操作すれば治る」という症状と一致する。
+
+### 修正
+保存済みマスター音量を、JS UI と Go キューのどちらが先に再生を始めても
+確実に効くようにするため、`server/app.go` の `Startup()` で
+`audioPlayer` 生成直後に settings ストアから音量を読み、
+`server/app_audio.go` に新設した純関数 `resolveInitialVolume()`
+（0.0–1.0 にクランプ、未設定/非数値は `ok=false`）経由で
+`audioPlayer.SetVolume()` に適用するようにした。
+
+- レンダラー側（`renderer.ts` のスライダー初期化）は表示値の同期のみで
+  `AudioSetVolume` を呼ばないため、Go 側で先に適用しても二重適用にはならない。
+- `playLocal()`/`playSongInPlayer()` 経由の音量適用（非アクティブキュー時の
+  レガシー経路、および `player.ts` 内の一部呼び出し）はそのまま残しており、
+  挙動に変更はない。
+- 将来のヘッドレスモード（`--serve`）でも `Startup()` は共通で通るため、
+  同じ理屈でヘッドレス側の初期音量にも効く。
+
+対象コミット: `feature/native-queue-background` ブランチの
+`test: 起動時マスター音量の解決ロジックのテストを追加(Red)` /
+`feat: 起動時マスター音量の解決ロジック(resolveInitialVolume)を実装` /
+`fix: 起動時に保存済みマスター音量が適用されず音量が壊れる不具合を修正`。
