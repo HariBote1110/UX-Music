@@ -1,19 +1,38 @@
-// WebView park/restore (Phase 2 of markdown/background-native-queue-plan.md).
+// WebView park/restore (Phase 3 of markdown/background-native-queue-plan.md).
 //
 // While the app window is hidden (close button -> HideWindowOnClose, or
-// Cmd+H) and no YouTube embed session is active, the SPA parks itself into
-// a tiny static page (public/parked.html) so the WebContent process can
-// release the SPA's JS heap/DOM/image caches. Native (Go) playback keeps
-// running throughout — see server/app_park.go for the Go-side half
-// (WindowSetParked/ConsumePendingIntent) this module talks to.
+// Cmd+H) and no YouTube embed session is active, the SPA parks itself by
+// asking Go to actually DESTROY the WKWebView (via the Wails fork's
+// runtime.WindowUnloadWebView — see FORK_NOTES.md in
+// github.com/HariBote1110/wails, branch ux-music/webview-destroy) so the
+// WebContent process itself exits and its memory is returned to the OS
+// immediately. This replaced Phase 2's approach (navigating to a small
+// static /parked.html placeholder page, now removed): that approach worked,
+// but WebKit only released the freed pages back to the OS after roughly
+// 4.5 minutes — see progress/webview-parking.md's measurement-correction
+// section — while the WKWebView instance and its WebContent process stayed
+// alive the whole time. Destroying the webview outright is immediate.
+// Native (Go) playback keeps running throughout — see server/app_park.go
+// for the Go-side half (WindowParkWebView/WindowSetParked/
+// ConsumeParkedUIState/ConsumePendingIntent) this module talks to.
+//
+// Because destroying the webview also destroys every bit of JS state
+// (including sessionStorage — there is no longer a page to navigate away
+// from, the whole WebContent process exits), the small "what was I looking
+// at" UI snapshot that Phase 2 kept in sessionStorage now has to live in Go
+// instead (see captureUIState/WindowParkWebView/ConsumeParkedUIState). For
+// the same reason, un-parking can no longer be initiated by a listener
+// inside the parked page (there is no parked page, and no JS at all, while
+// parked) — Go itself calls runtime.WindowReloadWebView once the window is
+// shown again or a new intent arrives (see app_media.go's
+// handleAppVisibilityChanged and app_park.go's emitOrQueueIntent), which
+// recreates the webview and reloads the SPA from scratch, landing back here
+// via restoreFromPark on startup exactly like a fresh launch would.
 //
 // This file is deliberately the SINGLE seam for both directions:
-//   - parkNow() is the only place that navigates away to /parked.html.
+//   - parkNow() is the only place that asks Go to destroy the webview.
 //   - restoreFromPark() is the only place that restores UI state /
 //     replays a pending intent after the SPA reloads.
-// A future Wails-fork DestroyWebView/RecreateWebView (Phase 3, only if
-// Phase 2's measured saving is insufficient) only has to change what these
-// two functions do, not any of their call sites.
 
 import { getWailsApp, isWailsMode } from '../core/bridge.js';
 import { isEmbedPlayerActive } from './youtube-embed-player.js';
@@ -24,8 +43,6 @@ import { handleQueuePlayEmbedEvent, handleRemotePlaySongEvent } from './playback
 /** How long the window must stay hidden before the SPA parks itself. */
 export const PARK_DELAY_MS = 15000;
 
-const PARKED_UI_STATE_KEY = 'ux-music:parked-ui-state';
-
 export interface ParkedUIState {
     viewId: string;
     scrollTop: number;
@@ -34,38 +51,15 @@ export interface ParkedUIState {
 /**
  * Pure decision for whether the debounce timer firing should actually park
  * the SPA. All three conditions come from the design
- * (markdown/background-native-queue-plan.md Phase 2's §D): the window must
- * still be hidden when the timer fires (the user may have re-shown it in
- * the meantime), no YouTube embed session may be active (embed playback
- * needs the live SPA/IFrame), and this must be the Wails build (the
- * browser fallback has no parked page to go to).
+ * (markdown/background-native-queue-plan.md Phase 2's §D, unchanged by
+ * Phase 3): the window must still be hidden when the timer fires (the user
+ * may have re-shown it in the meantime), no YouTube embed session may be
+ * active (embed playback needs the live SPA/IFrame), and this must be the
+ * Wails build (the browser fallback has no Go side to hand the webview
+ * lifecycle to).
  */
 export function shouldPark(opts: { stillHidden: boolean; embedActive: boolean; isWails: boolean }): boolean {
     return opts.stillHidden && !opts.embedActive && opts.isWails;
-}
-
-/** JSON-encodes the (deliberately minimal) UI state saved before parking. */
-export function serializeParkedUIState(state: ParkedUIState): string {
-    return JSON.stringify(state);
-}
-
-/**
- * Decodes a previously-saved ParkedUIState, or null if there is nothing
- * to restore / the stored value is missing, malformed, or an unexpected
- * shape (defensive against a future format change reading an older
- * sessionStorage entry).
- */
-export function deserializeParkedUIState(raw: string | null | undefined): ParkedUIState | null {
-    if (!raw) return null;
-    try {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object' && typeof parsed.viewId === 'string' && typeof parsed.scrollTop === 'number') {
-            return parsed as ParkedUIState;
-        }
-    } catch {
-        // Malformed JSON — treat exactly like "nothing saved".
-    }
-    return null;
 }
 
 /** What ConsumePendingIntent() returned actually is, or null if there was nothing pending / it is unrecognised. */
@@ -83,6 +77,22 @@ export function classifyPendingIntent(intent: { event?: unknown; payload?: unkno
     return null;
 }
 
+/**
+ * Validates a raw ConsumeParkedUIState() result (a plain object handed back
+ * by Go, or null/undefined when nothing was saved) against the expected
+ * ParkedUIState shape, returning null for anything that does not match —
+ * defensive against a future format change, an App.d.ts drift, or simply
+ * nothing having been parked yet.
+ */
+export function parseParkedUIState(raw: unknown): ParkedUIState | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const obj = raw as Record<string, unknown>;
+    if (typeof obj.viewId === 'string' && typeof obj.scrollTop === 'number') {
+        return { viewId: obj.viewId, scrollTop: obj.scrollTop };
+    }
+    return null;
+}
+
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
 function cancelParkTimer() {
@@ -93,7 +103,7 @@ function cancelParkTimer() {
 }
 
 /**
- * Saves a best-effort snapshot of "what the user was looking at" —
+ * Captures a best-effort snapshot of "what the user was looking at" —
  * deliberately minimal per the design (queue/playback state is Go's, not
  * the SPA's, to restore). Best-effort: DOM state that is not trivially
  * available is simply omitted rather than chased down, since the SPA is
@@ -108,20 +118,15 @@ function captureUIState(): ParkedUIState {
 
 /**
  * The single park action: called once the PARK_DELAY_MS debounce timer
- * fires and shouldPark() says yes. Saves UI state, tells Go the SPA is
- * about to go away (WindowSetParked(true) — see app_park.go, this is what
- * makes startQueueItem/remote-play-song queue a pending intent instead of
- * emitting into the void), then navigates to the parked page.
+ * fires and shouldPark() says yes. Hands the UI snapshot to Go and asks it
+ * to destroy the webview (see server/app_park.go's WindowParkWebView,
+ * which itself marks the app parked — no separate WindowSetParked(true)
+ * call is needed here). Nothing after this call may ever run: the
+ * WebContent process backing this very script is being torn down, so this
+ * is deliberately fire-and-forget with no awaited continuation.
  */
 function parkNow() {
-    try {
-        sessionStorage.setItem(PARKED_UI_STATE_KEY, serializeParkedUIState(captureUIState()));
-    } catch {
-        // sessionStorage can throw (private mode, quota) — parking itself
-        // must not be blocked by a best-effort UI snapshot failing.
-    }
-    void getWailsApp()?.WindowSetParked?.(true);
-    location.replace('/parked.html');
+    void getWailsApp()?.WindowParkWebView?.(captureUIState() as unknown as Record<string, unknown>);
 }
 
 /**
@@ -148,16 +153,6 @@ export function initParkBridge() {
             cancelParkTimer();
         }
     });
-    // "wake-request" (app_park.go's emitOrQueueIntent) fires when a
-    // pending intent was just queued because the SPA was parked — since
-    // the parked page (not this one) is what's actually showing in that
-    // case, this listener is inert then. It only matters as a defence
-    // against the (currently believed impossible) case of the SPA still
-    // being live with the debounce timer running when a wake-request
-    // arrives: cancel the timer so a park doesn't race a wake.
-    window.runtime.EventsOn('wake-request', () => {
-        cancelParkTimer();
-    });
 }
 
 /**
@@ -165,21 +160,17 @@ export function initParkBridge() {
  * playback-manager.ts's initGoQueueBridge, right after QueueGetState()),
  * regardless of whether this startup followed a park cycle or is the
  * app's very first launch. Tells Go the SPA is live again
- * (WindowSetParked(false) — clears any stale pending-intent state on the
- * Go side too, see app_park.go), restores the best-effort UI snapshot if
- * one was saved, then drains and replays exactly one pending intent
- * (there is at most one — see app_park.go's single-slot design).
+ * (WindowSetParked(false) — clears any stale pending-intent/UI-state on
+ * the Go side too, see app_park.go), restores the best-effort UI snapshot
+ * Go handed back if one was saved, then drains and replays exactly one
+ * pending intent (there is at most one — see app_park.go's single-slot
+ * design).
  */
 export async function restoreFromPark() {
     void getWailsApp()?.WindowSetParked?.(false);
 
-    let saved: ParkedUIState | null = null;
-    try {
-        saved = deserializeParkedUIState(sessionStorage.getItem(PARKED_UI_STATE_KEY));
-        sessionStorage.removeItem(PARKED_UI_STATE_KEY);
-    } catch {
-        // Same best-effort contract as captureUIState.
-    }
+    const rawState = await getWailsApp()?.ConsumeParkedUIState?.();
+    const saved = parseParkedUIState(rawState);
     if (saved) {
         try {
             await showView(saved.viewId);

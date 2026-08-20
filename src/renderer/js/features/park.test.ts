@@ -17,8 +17,7 @@ import { describe, expect, it } from 'vitest';
 const {
     PARK_DELAY_MS,
     classifyPendingIntent,
-    deserializeParkedUIState,
-    serializeParkedUIState,
+    parseParkedUIState,
     shouldPark,
 } = await import('./park.js');
 
@@ -46,25 +45,21 @@ describe('shouldPark', () => {
     });
 });
 
-describe('serializeParkedUIState / deserializeParkedUIState', () => {
-    it('round-trips a valid state', () => {
-        const raw = serializeParkedUIState({ viewId: 'album-view', scrollTop: 240 });
-        expect(deserializeParkedUIState(raw)).toEqual({ viewId: 'album-view', scrollTop: 240 });
+describe('parseParkedUIState', () => {
+    it('accepts a valid object as returned by ConsumeParkedUIState (Go binding)', () => {
+        expect(parseParkedUIState({ viewId: 'album-view', scrollTop: 240 })).toEqual({ viewId: 'album-view', scrollTop: 240 });
     });
 
     it('returns null for missing/empty input', () => {
-        expect(deserializeParkedUIState(null)).toBeNull();
-        expect(deserializeParkedUIState(undefined)).toBeNull();
-        expect(deserializeParkedUIState('')).toBeNull();
-    });
-
-    it('returns null for malformed JSON instead of throwing', () => {
-        expect(deserializeParkedUIState('{not json')).toBeNull();
+        expect(parseParkedUIState(null)).toBeNull();
+        expect(parseParkedUIState(undefined)).toBeNull();
     });
 
     it('returns null when the shape does not match (defensive against a future format change)', () => {
-        expect(deserializeParkedUIState('{"viewId":123}')).toBeNull();
-        expect(deserializeParkedUIState('"just a string"')).toBeNull();
+        expect(parseParkedUIState({ viewId: 123, scrollTop: 0 })).toBeNull();
+        expect(parseParkedUIState('just a string')).toBeNull();
+        expect(parseParkedUIState(42)).toBeNull();
+        expect(parseParkedUIState({})).toBeNull();
     });
 });
 

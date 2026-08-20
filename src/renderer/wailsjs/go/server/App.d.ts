@@ -90,6 +90,8 @@ export function ClearLyricsSyncModelCache():Promise<void>;
 
 export function ConfirmSyncPairing(arg1:string,arg2:string,arg3:string,arg4:string):Promise<server.SyncPairingConfirmResult>;
 
+export function ConsumeParkedUIState():Promise<Record<string, any>>;
+
 export function ConsumePendingIntent():Promise<Record<string, any>>;
 
 export function CreatePlaylist(arg1:string):Promise<void>;
@@ -275,5 +277,7 @@ export function StopDeviceWatcher():Promise<void>;
 export function StopGemmaServer():Promise<void>;
 
 export function UpdatePlaylistSongOrder(arg1:Record<string, any>):Promise<void>;
+
+export function WindowParkWebView(arg1:Record<string, any>):Promise<void>;
 
 export function WindowSetParked(arg1:boolean):Promise<void>;
