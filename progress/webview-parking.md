@@ -535,3 +535,95 @@ WebContent プロセス PID を追跡したところ、以下が判明した:
   `ux-music/webview-destroy`、`FORK_NOTES.md`）。`go.mod` の `replace`
   で `v2.11.1-0.20260820133754-56974de52783` を適用。フォーク自体は
   未改変。
+
+## 駐機復帰後にジャケットが表示されないバグ（2026-08-21、修正）
+
+### 症状
+
+赤い閉じるボタンでウィンドウを隠す → 駐機（WKWebView 破棄）→ 再表示 →
+SPA 再起動、という通常サイクルの直後、再生中の曲情報（曲名/アーティスト
+等）は正しく復元されるのに、ジャケット画像だけデフォルト画像のまま
+表示されない。手動で `com.apple.WebKit.WebContent` を kill してから
+再表示した場合も同様。
+
+### 根本原因
+
+`URL.createObjectURL`（blob URL）はこのリポジトリのレンダラーでは
+一切使用していない（`grep -rn createObjectURL src/renderer` は 0 件）ため、
+「旧 WebContent プロセスと一緒に死ぬ blob URL」説は不成立。
+
+実際の原因は `initGoQueueBridge()`
+（`src/renderer/js/features/playback-manager.ts`）の起動順序にある:
+
+1. `renderer.ts` の `initApp()` は `safeInit(initSettings, ...)` を
+   `await` せずに呼ぶ。`initSettings()` → `initPlaybackSettings()` →
+   `initGoQueueBridge()` はその内部で非同期に進み、
+   `QueueGetState()` を呼んで `handleQueueStateChangedEvent()` を
+   即座に実行する。
+2. `handleQueueStateChangedEvent()` は Go のキュー項目
+   （`queue-bridge.ts` の `QueueItemPayload` — `artworkId` は持つが
+   `artwork.full`/`artwork.thumbnail` のようなオブジェクトは持たない）
+   を `hydrateQueueItem()` で `state.library` から `findSong(id)` して
+   完全な `Song` に解決する。**しかし `state.library` は
+   `renderer.ts` の `musicApi.loadLibrary()` 応答
+   （`musicApi.onLoadLibrary` ハンドラでの `addSongsToLibrary()`）が
+   完了するまで空**であり、これは `initSettings()` より後の別の非同期
+   フロー（`await musicApi.getSettings()` の後）で発火する。
+3. 通常の初回起動では Go のキューはまだ空（`items: []`）なので
+   このレースは無害。だが**駐機復帰では Go 側のキューが再生中のまま
+   残っている**ため、`QueueGetState()` は非空の `items` を返す。
+   ライブラリがまだ空の時点でこれを処理すると、`findSong()` が全項目で
+   失敗し、`hydrateQueueItem()` は `artwork` フィールドを持たない
+   フォールバック `Song`（`id`/`type`/`path`/`title`/`artist`/`album`
+   のみ）を作る。
+4. このフォールバック `Song` で `state.playbackQueue` が埋まり、
+   `updateNowPlayingView()`/`renderQueueView()` が即座に描画される
+   （`resolveArtworkPath(undefined)` → `DEFAULT_ARTWORK_URL`）。
+   後でライブラリが読み込まれても（`musicApi.onLoadLibrary` →
+   `addSongsToLibrary()` → `renderCurrentView()`）、再描画されるのは
+   ライブラリブラウズ用のビュー（曲一覧等）だけで、既に
+   `state.playbackQueue` に入ってしまったフォールバック `Song` を
+   差し替える経路が存在しなかった。now-playing フッターとキュー
+   ビューだけがジャケット欠落のまま固定される。
+
+### 修正
+
+`refreshQueueDisplayFromGoState()`（`playback-manager.ts`）を新設。
+Wails モードでのみ `QueueGetState()` を再取得し、
+`handleQueueStateChangedEvent()` に再適用する。`renderer.ts` の
+`musicApi.onLoadLibrary` ハンドラ（`addSongsToLibrary()` の直後、
+= `state.library` が確定した直後）から一度だけ呼ぶ。ライブラリが
+確定した後の再取得なので `hydrateQueueItem()` の `findSong()` は
+必ず成功し、フォールバック `Song` がライブラリ由来の本物の `Song`
+（`artwork` オブジェクト込み）に置き換わる。
+
+`src/renderer/js/features/playback-manager.test.ts` に
+`describe('refreshQueueDisplayFromGoState', ...)` を追加（TDD の
+Red→Green を経由）。通常起動（Go のキューが空）ではこの再取得は
+実質何もしない（`items: []` を再適用するだけ）ため、既存の起動シーケンス
+への副作用はない。
+
+### 検証について（制約の記録）
+
+このセッションでは実機での GUI 操作（曲クリック→駐機→再表示の
+スクリーンショット比較）による再現・修正確認を試みたが、以下の理由で
+実施できなかった:
+
+- `cliclick`/`osascript "System Events"` によるクリック/マウス移動が、
+  呼び出し元プロセス（Claude Code 本体）に `アクセシビリティ` 権限が
+  付与されていないため機能しなかった（`システム設定 > プライバシーと
+  セキュリティ > アクセシビリティ` の `claude` エントリが未許可）。
+  TCC 権限の付与は GUI でのユーザー操作が必須で、CLI からの自動付与は
+  意図的に不可能（かつ TCC.db への直接書き込みはシステムのセキュリティ
+  設定変更にあたるため実施しない）。
+- 同時に別セッション（同一マシン・同一リポジトリで並行作業中の
+  別エージェント、WKWebView フォーク側の作業）が computer-use の画面
+  制御を使用しており、本セッションからの `computer_batch` 呼び出しは
+  すべて `user interrupt` で中断された。
+
+そのため本修正は、コードトレースによる根本原因の特定と、
+`refreshQueueDisplayFromGoState()` の TDD（Red で欠落を再現・Green で
+解消を確認）、および `vitest run`（379件）/`tsc --noEmit`/
+`npm run build`/`go build ./...` の全緑で裏付けている。実機 GUI での
+最終確認は、アクセシビリティ権限を付与できるセッションで別途行うことを
+推奨する。
