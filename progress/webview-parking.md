@@ -290,104 +290,225 @@ SPA から見ると「フルリロード」と等価。詳細はフォークの 
   クリアするようにした — 前回サイクルの残骸を持ち越さないという
   Phase 2 からの契約を UI スナップショットにも適用した形。
 
-### SPA 側の変更（`src/renderer/js/features/park.ts`）
+### SPA 側の変更（`src/renderer/js/features/park.ts`、初回実装時点）
 
 - `parkNow()`: `sessionStorage.setItem` + `location.replace('/parked.html')`
   を `WindowParkWebView(captureUIState())` の一呼び出しに置き換えた。
-  この呼び出し以降のコードは実行される保証がない
-  （呼び出しを発行したこの WebContent プロセス自体が終了しうるため）
-  という前提でコメントを整理した。
 - `restoreFromPark()`: UI スナップショットの読み出し元を
-  `sessionStorage.getItem` から `ConsumeParkedUIState()`（Wails）に
-  変更。ブラウザフォールバック用の sessionStorage 経路は削除した —
-  `shouldPark` が `isWails` を必須条件にしているため、そもそも
-  非 Wails 環境で `parkNow` が呼ばれることはなく、フォールバックを
-  残す意味がなかった。
-- `deserializeParkedUIState`/`serializeParkedUIState`（JSON 文字列との
-  相互変換）は、`WindowParkWebView`/`ConsumeParkedUIState` が既にオブジェクト
-  のまま Go↔JS を往復させる（Wails のバインディングが JSON マーシャリングを
-  肩代わりする）ため不要になり、形状検証のみを行う `parseParkedUIState`
-  に統合した。
-- `initParkBridge()` から `wake-request` イベントの購読を削除した
-  （Go 側がもう emit しないため — 上記参照）。
+  `sessionStorage.getItem` から `ConsumeParkedUIState()`（Wails）に変更。
 - `public/parked.html` を削除した（Phase 2 の駐機ページ。もう到達
   経路が存在しない）。
 
-### 実測結果（`wails build` → `build/bin/UX-Music.app` 実機測定、2026-08-20）
+**この初回実装（`parkNow`/`shouldPark`/`PARK_DELAY_MS` という JS 側の
+15秒デバウンス）は、下記の根本原因の訂正により置き換えられた。** 詳細は
+次節。
+
+## 根本原因の訂正（同日、独立した再検証で発覚）
+
+初回実装完了直後の実測（後述する誤った数値）を記録した後、独立した
+再検証で **「Finder 経由で非表示化してから 9.5 分間放置しても
+WebContent プロセスが生きたまま駐機が一切起きない」** という事象が
+報告された。調査の結果、判明した根本原因は以下の通り。
+
+### 何が壊れていたか
+
+初回実装の 15 秒デバウンスタイマーは `park.ts`（駐機対象になる、まさに
+その WebView）の中で `setTimeout` として動いていた。**WebKit は
+隠れた/遮蔽された（occluded）ページの JS タイマーを suspend/throttle
+する** ため、この `setTimeout` はいつ発火するか（あるいは全く発火しない
+か）が不定だった。
+
+これは同時に、それまで記録していた 2 つの「実効化までの遅延」の説明を
+両方とも誤りだったと確定させた:
+
+- Phase 2 の「駐機の実効化に 3.5〜4 分かかる」説（WebKit のメモリ
+  アロケータが解放済みページを OS へ即座に返却しないため、という説明）
+- 直前の Phase 3 初回実装の「非表示化から 80〜90 秒で駐機が実効化する」
+  という記録（本節より前の版に残っている数値）
+
+**両方とも、実際には JS タイマーが suspend/throttle されていつ発火するか
+不定だったことの観測ノイズだった。** 特に Phase 3 初回の「80〜90秒」は、
+たまたま早めに発火した 1 回の実行を「動作している」と誤認したものだった
+（同じビルドで再実行すると 9.5 分待っても発火しないことがある、という
+のが今回の再検証で確認された実態）。
+
+### 修正: デバウンスと駐機可否判定を Go 側の `time.AfterFunc` へ全面移設
+
+`server/app_park.go`/`server/app_media.go` を以下のように変更した:
+
+- `handleAppVisibilityChanged`（`NSApplicationDidHide`/`DidUnhide` 由来、
+  JS タイマーが一切介在しないネイティブ通知）が `hidden=true` で
+  `startParkTimer()`（`time.AfterFunc(15秒, attemptPark)`、テストでは
+  `delayOverride` で短縮可能）を、`hidden=false` で `cancelParkTimer()`
+  （クイック再表示のキャンセル）を呼ぶ。
+- `attemptPark()`（タイマーのコールバック、`time.AfterFunc` 自身の
+  goroutine で実行）が発火時点で「まだ非表示か」「二重駐機でないか」
+  「YouTube embed セッションが非稼働か」を確認してから
+  `parked=true` にし `windowUnloadWebViewFunc(a.ctx)` を直接呼ぶ。
+  embed 稼働判定は `embedSessionActive()`（`app_remote.go`、
+  `NotifyYouTubePlaybackState` と連動する `remoteRelay` の状態）を使う
+  — これはフロントの `isEmbedPlayerActive()`
+  （`youtube-embed-player.ts` の `currentSession !== null`）と同じ
+  play/stop-embed 遷移で連動して切り替わる Go 側のミラーであり、
+  駐機判定の瞬間に JS を呼び出す必要がない（根本原因の教訓どおり、
+  駐機判定は JS の応答性に依存してはいけない）。
+- UI スナップショットも「駐機の瞬間に JS へ問い合わせる」方式が
+  そもそも成立しなくなった（Go のタイマーだけで駐機しうるため）。
+  代わりに JS が事前に push しておく方式に変更: `RecordParkUIState`
+  （`WindowParkWebView` を改名・再設計、シグネチャは
+  `(viewId string, scrollTop float64)`）を、
+  `core/navigation.ts` の `showView` 呼び出しのたびと、
+  `app-visibility-changed`（`hidden=true`）イベント時にベストエフォートで
+  呼ぶ。`recordParkUIState` は `core/bridge.ts` に置いた（`navigation.ts`
+  → `park.ts` → `navigation.ts` の循環 import を避けるため）。
+- `park.ts` から `shouldPark`/`PARK_DELAY_MS`/`parkNow`/JS 側
+  debounce タイマー/`wake-request` 購読を全て削除した。駐機の可否判定・
+  実行は完全に Go 側の責務になり、`park.ts` の残る責務は
+  「UI スナップショットの事前 push」と「`restoreFromPark`」のみになった。
+
+Go 側は `time.AfterFunc`/`Timer.Stop()` という「suspend されない」
+確実なプリミティブを使うため、この修正で発火の不定性そのものは解消
+された（デバッグ出力で `attemptPark` が非表示化から正確に 15 秒後に
+毎回発火することを確認済み — 下記実測セクション参照）。
+
+## 実測結果（訂正後、`wails build` → `build/bin/UX-Music.app` 実機測定）
 
 `pgrep -x UX-Music` で旧プロセスが無いことを確認 → `wails build` →
 `strings build/bin/UX-Music.app/Contents/MacOS/UX-Music` で
-`WindowParkWebView`/`ConsumeParkedUIState`/`WindowUnloadWebView`/
-`WindowReloadWebView`/`reloadWebViewIfParked`/`handleAppVisibilityChanged`
-の全シンボル存在を確認 → `open` で起動 → `scripts/measure-app-memory.sh`
-を 10 秒間隔でポーリング（Phase 2 の教訓を踏まえ、今回はビルド直後に
-即座に測定を開始し、バイナリの取り違えを避けた）。
+`RecordParkUIState`/`attemptPark`/`startParkTimer`/`cancelParkTimer`/
+`handleAppVisibilityChanged` の全シンボル存在を確認 → `open` で起動 →
+ベースライン安定を待ってから `Finder` 経由で非表示化 →
+`scripts/measure-app-memory.sh` を 10 秒間隔でポーリング。
 
-| 時刻 (非表示化からの経過) | app (本体) | webkit | 合計 |
+### デバッグトレースで確認した「トリガーは確実に発火する」こと
+
+一時的に `fmt.Printf` を `handleAppVisibilityChanged`/`startParkTimer`/
+`attemptPark` に仕込み、アプリをターミナルから直接起動して標準出力を
+確認した（Phase 2 の調査と同じ手法）。複数回の非表示化サイクルで、
+
+```
+[Park][DEBUG] handleAppVisibilityChanged: hidden = true
+[Park][DEBUG] startParkTimer: scheduling attemptPark after 15s
+[Park][DEBUG] attemptPark fired: stillHidden=true alreadyParked=false embedActive=false ctxNil=false
+[Park][DEBUG] attemptPark: calling windowUnloadWebViewFunc now
+[Park][DEBUG] attemptPark: windowUnloadWebViewFunc returned
+```
+
+という並びが **非表示化から毎回ほぼ正確に 15 秒後に**、例外なく発生する
+ことを確認した（デバッグ出力はテストの前に削除済み — 本番コードには
+含まれない）。旧 JS タイマーと違い、Go 側のトリガー自体はもはや不定では
+ない。
+
+### 新たに判明した事実: `WindowUnloadWebView` は WebContent プロセスを
+即座には終了させず、RSS への反映タイミングは非決定的
+
+デバッグトレース中に `windowUnloadWebViewFunc` 呼び出し前後の実際の
+WebContent プロセス PID を追跡したところ、以下が判明した:
+
+- `windowUnloadWebViewFunc`（フォークの `WindowUnloadWebView`）の呼び出し
+  自体はエラーなく完了する（`ctxNil=false` を確認済み）が、**その時点で
+  既存の WebContent プロセス（例: PID 24914）は終了しない**。しばらく
+  経ってから RSS が大きく縮小する（数十MB→1桁MB台）ものの、プロセス
+  自体は生き残り続けた。
+- 再表示（`ReloadWebView`）すると **新しい WebContent プロセスが
+  別 PID で生成される**（例: PID 25931）。古い PID（縮小済みの
+  24914）は残ったまま。
+- ただし複数サイクルを跨いで検証したところ、PID が無制限に増え続ける
+  「リーク」の様子は見られなかった（2 サイクル目終了時点で WebKit
+  プロセス数は 3 に戻っていた）。これは WebKit が最小 1 プロセスの
+  予備レンダラーをプールとして保持する既知の挙動
+  （Safari 等でも観測される、次回起動を速くするための "spare renderer"
+  的な挙動）である可能性が高いと考えられるが、今回はソースコードレベル
+  までは確認できていない。
+- **結論**: フォークの `FORK_NOTES.md` は「WebContent process exits」
+  「memory... returned to the OS immediately」と説明しているが、実機
+  観測では「プロセスは（多くの場合）生き残ったまま RSS だけが縮小する」
+  「縮小のタイミングは非決定的」というのが実態に近い。フォーク自体は
+  改変していない（見つかったのはドキュメントの説明と実機挙動の乖離で
+  あり、修正不能な致命的バグではないため、指示どおり「ブロック」として
+  報告するのではなく、この観測結果を正直に記録するに留める）。
+
+### 2 サイクルの実測タイムライン（同一起動セッション内、連続実施）
+
+| サイクル | ベースライン | 崩壊が始まった時刻（非表示化からの経過） | 安定後の値 |
 | --- | --- | --- | --- |
-| 起動直後（baseline） | 146.4MB | 314.4MB (3 procs) | 460.7MB |
-| 非表示化 (`Finder` 経由 hide) | — | — | — |
-| +70s（デバウンス発火直後、まだ崩れていない） | 146.5MB | 311.6MB (3 procs) | 458.1MB |
-| +80s | 136.9MB | 305.9MB (3 procs) | 442.7MB |
-| **+90s（実効化・急落）** | **122.3MB** | **110.5MB (3 procs)** | **232.8MB** |
-| +140〜240s（安定） | 124.6〜127.2MB | 111.2〜114.9MB (3 procs) | 235.5〜242.0MB |
+| 1 回目 | 462.9MB（app 148.1MB / webkit 314.8MB, 3 procs） | **約 280〜290 秒後** | 248.2〜249.1MB（app 128.0MB / webkit 120.2〜120.8MB, 3 procs） |
+| 2 回目 | 529.2MB（app 149.8MB / webkit 379.4MB, 4 procs） | **約 20〜30 秒後** | 272.9〜273.0MB（app 150.6MB / webkit 122.4MB, 3 procs） |
 
-- **駐機による削減**: 合計で約 **219〜225MB**（460.7MB → 235.5〜242.0MB、
-  約 48%減）。webkit 側だけで見ると 314.4MB → 111〜115MB、約 **200MB
-  （64%減）**。Phase 2（約 239MB 減、51%減）とほぼ同等の削減量。
-- **実効化タイミングが Phase 2 から劇的に改善**: Phase 2 は非表示化から
-  実際に `ps` RSS へ反映されるまで約 225〜240 秒（3.5〜4分）かかったが、
-  Phase 3 は **非表示化から約 80〜90 秒**（デバウンス 15 秒＋WebView
-  破棄・プロセス終了の実処理で 65〜75 秒程度）で崩れ始め、+90s 時点で
-  ほぼ完了していた。10 秒間隔の計測の粒度では「+80s→+90s の 1 回の
-  サンプリング間隔でほぼ一気に崩壊」という挙動で、Phase 2 のような
-  数分単位のじわじわとした遅延ではなく、`WindowUnloadWebView` 呼び出しに
-  伴う WebContent プロセスの実際の終了（デバウンス後、Go 側の処理
-  そのものに数十秒かかっている点は今回未計測 — メインスレッド
-  ディスパッチ・プロセス終了・OS のページ回収のいずれで時間を
-  食っているかまでは切り分けていない）に応じて RSS が反映されたと
-  考えられる。当初の設計意図（「15秒のデバウンス後、ほぼ即座に解放」）
-  ほど瞬時ではなかったが、Phase 2 比で見れば「数分」から「1〜1.5分」へ
-  大幅短縮しており、目的（実運用上意味のある速さでの解放）は達成した。
-- **再表示の確認**: `Finder` 経由で再表示すると、`handleAppVisibilityChanged`
-  が `reloadWebViewIfParked()` を呼び、ほぼ即座（測定した最短間隔である
-  再表示 5 秒後の時点で既に）WebView が再構築され SPA が完全に
-  再起動していることを確認した（合計 483.6MB、webkit 336.3MB
-  (4 procs) で安定）。スクリーンショットで曲一覧・アートワーク・
-  再生バーが正常に描画され操作可能な状態であることも目視確認した。
-  復元後がベースラインよりやや大きい（483.6MB vs 460.7MB）のは
-  Phase 2 と同じ理由（再パース・再レンダリングコスト）と考えられる。
+（ベースラインが 2 回目の方が高いのは 1 回目の再表示直後の一時的な
+再パース/再レンダリングコストが乗っているため — 数十秒後には落ち着く
+はずだが、2 回目の非表示化をその前に行ったため高いまま測定した。)
+
+- **崩壊タイミングは非決定的**: 1 回目は 280〜290 秒（4.5〜5 分弱）
+  かかったのに対し、2 回目は同一セッション内の直後の実行で 20〜30 秒
+  という全く異なるタイミングで崩壊した。デバッグトレースで
+  `attemptPark`/`windowUnloadWebViewFunc` 呼び出し自体は毎回 15 秒後に
+  確実に発火していることを確認済みなので、**この非決定性はトリガー側
+  ではなく、`WindowUnloadWebView` 呼び出し後の WebKit 内部の実際の
+  メモリ解放・RSS 反映タイミングに起因する**。これは Phase 2 で観測した
+  「WebKit のメモリ遅延解放」と同種の現象が、駐機ページへのナビゲーション
+  だけでなく `WindowUnloadWebView` 経路でも起きていることを示している。
+- **削減量そのものは 2 回とも同程度**: 1 回目は 462.9MB → 249MB 程度
+  （約 214MB 減、約 46%減）、2 回目は 529.2MB → 273MB 程度
+  （約 256MB 減、約 48%減）。安定後の絶対値（webkit 側 120〜122MB 前後、
+  3 procs）もほぼ一致しており、**最終的な削減量自体は再現性が高い**。
+  再現性がないのはあくまで「削減が反映されるまでの待ち時間」。
+- **再表示の確認（2 回とも実施）**: `Finder` 経由の再表示から数秒
+  （5〜18秒程度、いずれも測定間隔の粒度内）で `webkit` メモリが
+  ベースライン相当まで回復し、スクリーンショットで曲一覧・アートワーク・
+  再生バーが正常に描画され操作可能な状態であることを 2 回とも目視確認
+  した。
 - **クイック再表示（15秒未満）で駐機しないことの確認**: 非表示化後
-  8 秒で再表示したところ、webkit メモリは 186.0MB→187.8MB で安定した
-  ままで、駐機時に見られる急落（〜110MB 台）は一切発生しなかった —
-  デバウンスタイマーが `shouldPark`/`cancelParkTimer` の設計どおり
-  正しくキャンセルされていることを実測でも確認した。
+  8 秒で再表示したところ、webkit メモリは 375.1MB→375.6MB で安定した
+  ままで、駐機時に見られる急落は一切発生しなかった — Go 側の
+  `cancelParkTimer()` が設計どおり機能していることを実測でも確認した。
 - **保留インテント経路（駐機中にリモート/embed からの再生要求が来る
   シナリオ）は実機 E2E では未検証**。Go 側ユニットテスト
-  （`server/app_park_test.go` の
+  （`server/app_park_test.go` の `TestAttemptPark_*`/
   `TestWindowSetParked_TrueRoutesFutureIntentsToPendingSlotAndTriggersReload`
-  ほか）でロジック（駐機中は intent がスロットに積まれ、
-  `WindowReloadWebView` が呼ばれ、`wake-request` は emit されない）は
-  確認済みだが、実機で「駐機中に Apple TV からリモート再生要求 → 復帰
-  → 再生開始」までを通しては検証していない（ペア済みリモート
-  クライアントが今回の環境に無いため）。この制約は Phase 2 から
-  変わらず持ち越し。
+  ほか）でロジックは確認済みだが、実機で「駐機中に Apple TV から
+  リモート再生要求 → 復帰 → 再生開始」までを通しては検証していない
+  （ペア済みリモートクライアントが今回の環境に無いため）。この制約は
+  Phase 2 から変わらず持ち越し。
 
-### 既知の制約・今回やらなかったこと（Phase 3）
+### 実運用上の含意（訂正後）
 
-- 実効化タイミング（+80〜90秒）の内訳（デバウンス後の Go 処理・
-  `WindowUnloadWebView` のメインスレッドディスパッチ・WebContent
-  プロセスの実終了・OS のページ回収）は切り分けていない。実運用上は
-  「Phase 2 の数分待ちより十分速い」という結論で足りると判断した。
+- **駐機は「確実に起こる」ようになった**（根本原因の修正により、旧版の
+  「9.5 分放置しても駐機しない」という不具合は解消）。これが今回の
+  最大の成果であり、修正前後で最も重要な違いはここにある。
+  タイマーの発火自体はネイティブ Go の `time.AfterFunc` に一本化された
+  ため、WebKit の JS タイマー suspend の影響を一切受けない。
+- 一方で「駐機が RSS に反映されるまでの待ち時間」は Phase 2 から本質的に
+  改善していない可能性がある — 20〜30 秒で反映されることもあれば、
+  Phase 2 相当の数分かかることもある、という非決定的な挙動が
+  `WindowUnloadWebView` 経路でも observed された。バックグラウンド再生を
+  主目的に常駐させる設計（`HideWindowOnClose`）である以上、数分単位の
+  遅延は Phase 2 と同じく許容範囲だが、「Phase 3 なら速い」という
+  当初の期待は言い過ぎだったと訂正する。
+- WebContent プロセス自体が完全には終了しない点は、フォームの
+  ドキュメント記述との乖離ではあるものの、実測上は最終的な削減量
+  （webkit 側で約 200MB 減）が確保できているため、現時点で追加対応は
+  行わない。
+
+## 既知の制約・今回やらなかったこと（Phase 3、訂正後）
+
+- 崩壊タイミングの非決定性の内部要因（WebKit のどのサブシステムが
+  待たせているか）は特定していない。
+- WebContent プロセスが完全に終了しない件について、フォークのソース
+  コードレベルでの原因調査は行っていない（フォーク自体は変更せず、
+  観測結果の記録に留めた）。
 - Phase 2 と同様、ワークロード最小（曲を再生していない状態）での測定。
   ローカル/embed 再生中の駐機挙動は今回も未測定。
 - フォーク自体（`github.com/HariBote1110/wails`）には手を入れていない。
-  見つかったバグも無し。
+  ドキュメント（`FORK_NOTES.md`）の説明と実機挙動に乖離が見つかったが、
+  「対処不能な致命的バグ」ではなく実測結果の記録に留める判断とした。
 
 ## 関連ファイル
 
 - Go: `server/app_visibility_darwin.go`/`.m`、`server/app_visibility_stub.go`、
-  `server/app_park.go`、`server/app_park_test.go`、`server/app_media.go`
+  `server/app_park.go`（`RecordParkUIState`/`startParkTimer`/
+  `cancelParkTimer`/`attemptPark`/`reloadWebViewIfParked`/
+  `emitOrQueueIntent`）、`server/app_park_test.go`、`server/app_media.go`
   （`initAppVisibilityObserver`/`handleAppVisibilityChanged`）、
   `server/app_media_test.go`、`server/app.go`（`Startup` 配線・`park`
   フィールド）、`server/app_wails_adapter.go`
@@ -398,15 +519,19 @@ SPA から見ると「フルリロード」と等価。詳細はフォークの 
   （`WebKitHelperPIDsFor`）、`cmd/measure-app-memory/main.go`、
   `scripts/measure-app-memory.sh`。
 - SPA: `src/renderer/js/features/park.ts`、
-  `src/renderer/js/features/park.test.ts`、
+  `src/renderer/js/features/park.test.ts`、`src/renderer/js/core/bridge.ts`
+  （`recordParkUIState`）、`src/renderer/js/core/navigation.ts`
+  （`showView` からの `recordParkUIState` 呼び出し）、
+  `src/renderer/js/core/navigation.test.ts`、
   `src/renderer/js/features/playback-manager.ts`（`initGoQueueBridge` 配線、
   変更なし）。Phase 2 の `public/parked.html` は Phase 3 で削除した。
 - wailsjs スタブ（`wails generate` が実行できない開発環境向けの手動追記、
   `progress/native-play-queue.md` の前例に倣う）:
   `src/renderer/wailsjs/go/server/App.d.ts`/`.js`
-  （`WindowSetParked`/`ConsumePendingIntent`/`WindowParkWebView`/
+  （`WindowSetParked`/`ConsumePendingIntent`/`RecordParkUIState`/
   `ConsumeParkedUIState`）。
 - フォーク: `github.com/HariBote1110/wails/v2`
   （ローカルソース `/Users/yuki/GitHub/wails`、ブランチ
   `ux-music/webview-destroy`、`FORK_NOTES.md`）。`go.mod` の `replace`
-  で `v2.11.1-0.20260820133754-56974de52783` を適用。
+  で `v2.11.1-0.20260820133754-56974de52783` を適用。フォーク自体は
+  未改変。
