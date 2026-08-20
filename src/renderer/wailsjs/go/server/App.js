@@ -394,6 +394,38 @@ export function PushSyncLibraryAssetsWithOptions(arg1, arg2, arg3) {
   return window['go']['server']['App']['PushSyncLibraryAssetsWithOptions'](arg1, arg2, arg3);
 }
 
+export function QueueAdvanceFinished() {
+  return window['go']['server']['App']['QueueAdvanceFinished']();
+}
+
+export function QueueGetState() {
+  return window['go']['server']['App']['QueueGetState']();
+}
+
+export function QueueJump(arg1) {
+  return window['go']['server']['App']['QueueJump'](arg1);
+}
+
+export function QueueNext() {
+  return window['go']['server']['App']['QueueNext']();
+}
+
+export function QueuePrev() {
+  return window['go']['server']['App']['QueuePrev']();
+}
+
+export function QueueSet(arg1, arg2) {
+  return window['go']['server']['App']['QueueSet'](arg1, arg2);
+}
+
+export function QueueSetLoopMode(arg1) {
+  return window['go']['server']['App']['QueueSetLoopMode'](arg1);
+}
+
+export function QueueSetShuffle(arg1) {
+  return window['go']['server']['App']['QueueSetShuffle'](arg1);
+}
+
 export function RefreshSyncRemoteCatalog() {
   return window['go']['server']['App']['RefreshSyncRemoteCatalog']();
 }
