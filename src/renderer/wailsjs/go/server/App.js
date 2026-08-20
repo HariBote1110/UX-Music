@@ -434,6 +434,10 @@ export function QueueSetShuffle(arg1) {
   return window['go']['server']['App']['QueueSetShuffle'](arg1);
 }
 
+export function RecordParkUIState(arg1, arg2) {
+  return window['go']['server']['App']['RecordParkUIState'](arg1, arg2);
+}
+
 export function RefreshSyncRemoteCatalog() {
   return window['go']['server']['App']['RefreshSyncRemoteCatalog']();
 }
@@ -536,10 +540,6 @@ export function StopGemmaServer() {
 
 export function UpdatePlaylistSongOrder(arg1) {
   return window['go']['server']['App']['UpdatePlaylistSongOrder'](arg1);
-}
-
-export function WindowParkWebView(arg1) {
-  return window['go']['server']['App']['WindowParkWebView'](arg1);
 }
 
 export function WindowSetParked(arg1) {

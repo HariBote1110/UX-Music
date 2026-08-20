@@ -14,36 +14,16 @@ import { describe, expect, it } from 'vitest';
     removeAllListeners: () => {},
 };
 
+// PARK_DELAY_MS/shouldPark used to live here (the JS-owned debounce). Both
+// were removed once the debounce and the park decision moved to Go
+// (server/app_park.go's startParkTimer/attemptPark) — WebKit suspends JS
+// timers in hidden/occluded pages, so a JS setTimeout here could not be
+// trusted to fire on time, or at all. See park.ts's file header and
+// progress/webview-parking.md's Phase 3 root-cause-correction section.
 const {
-    PARK_DELAY_MS,
     classifyPendingIntent,
     parseParkedUIState,
-    shouldPark,
 } = await import('./park.js');
-
-describe('PARK_DELAY_MS', () => {
-    it('is 15 seconds, per markdown/background-native-queue-plan.md Phase 2', () => {
-        expect(PARK_DELAY_MS).toBe(15000);
-    });
-});
-
-describe('shouldPark', () => {
-    it('parks only when still hidden, no embed session, and running under Wails', () => {
-        expect(shouldPark({ stillHidden: true, embedActive: false, isWails: true })).toBe(true);
-    });
-
-    it('does not park if the window became visible again before the debounce fired', () => {
-        expect(shouldPark({ stillHidden: false, embedActive: false, isWails: true })).toBe(false);
-    });
-
-    it('does not park while a YouTube embed session is active', () => {
-        expect(shouldPark({ stillHidden: true, embedActive: true, isWails: true })).toBe(false);
-    });
-
-    it('does not park outside Wails (browser fallback)', () => {
-        expect(shouldPark({ stillHidden: true, embedActive: false, isWails: false })).toBe(false);
-    });
-});
 
 describe('parseParkedUIState', () => {
     it('accepts a valid object as returned by ConsumeParkedUIState (Go binding)', () => {

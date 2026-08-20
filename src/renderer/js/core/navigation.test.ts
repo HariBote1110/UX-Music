@@ -22,7 +22,7 @@ vi.mock('../features/quiz.js', () => ({ stopQuiz: vi.fn(), renderQuizView: vi.fn
 vi.mock('../features/lrc-editor.js', () => ({ stopLrcEditing: vi.fn(), renderLrcEditor: vi.fn() }));
 vi.mock('../features/cd-ripper.js', () => ({ renderCdRipView: vi.fn(), stopCDRipView: vi.fn() }));
 vi.mock('../features/mtp-browser.js', () => ({ stopMtpBrowser: vi.fn(), renderMtpBrowserView: vi.fn() }));
-vi.mock('./bridge.js', () => ({ musicApi: {} }));
+vi.mock('./bridge.js', () => ({ musicApi: {}, recordParkUIState: vi.fn() }));
 vi.mock('../features/normalize-view.js', () => ({ renderNormalizeView: vi.fn() }));
 vi.mock('../features/mtp-transfer-view.js', () => ({ renderMtpTransferView: vi.fn() }));
 

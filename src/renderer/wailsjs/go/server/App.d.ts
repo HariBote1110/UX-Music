@@ -226,6 +226,8 @@ export function QueueSetLoopMode(arg1:string):Promise<void>;
 
 export function QueueSetShuffle(arg1:boolean):Promise<void>;
 
+export function RecordParkUIState(arg1:string,arg2:number):Promise<void>;
+
 export function RefreshSyncRemoteCatalog():Promise<void>;
 
 export function RenamePlaylist(arg1:Record<string, any>):Promise<void>;
@@ -277,7 +279,5 @@ export function StopDeviceWatcher():Promise<void>;
 export function StopGemmaServer():Promise<void>;
 
 export function UpdatePlaylistSongOrder(arg1:Record<string, any>):Promise<void>;
-
-export function WindowParkWebView(arg1:Record<string, any>):Promise<void>;
 
 export function WindowSetParked(arg1:boolean):Promise<void>;
