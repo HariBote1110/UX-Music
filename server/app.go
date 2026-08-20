@@ -158,6 +158,21 @@ func (a *App) Startup(ctx context.Context) {
 		// takes over auto-advance entirely in Go once something has called
 		// QueueSet — see its doc comment for the double-count rationale.
 		a.audioPlayer.SetOnFinished(a.handlePlaybackFinished)
+
+		// Apply the saved master volume up front (see resolveInitialVolume's
+		// doc comment). The player otherwise boots at volume 1.0, and since
+		// the native queue cutover Go's startQueueItem can start playback
+		// directly without the renderer ever pushing its saved volume — this
+		// used to only be masked because the renderer's legacy playLocal()
+		// pushed AudioSetVolume on every playback start. Applying it here
+		// makes the saved volume take effect regardless of whether the
+		// renderer's UI (playLocal) or the Go queue (startQueueItem) starts
+		// playback first.
+		if settings, err := store.Instance.LoadMap("settings"); err == nil {
+			if volume, ok := resolveInitialVolume(settings); ok {
+				a.audioPlayer.SetVolume(volume)
+			}
+		}
 	}
 
 	// Start MTP device monitor
