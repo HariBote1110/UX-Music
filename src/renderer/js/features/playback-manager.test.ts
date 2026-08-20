@@ -498,6 +498,69 @@ describe('handleQueueStateChangedEvent', () => {
     });
 });
 
+// Park/restore artwork bug (progress/webview-parking.md): initGoQueueBridge()
+// calls QueueGetState() before renderer.ts's musicApi.loadLibrary() response
+// has populated state.library, so hydrateQueueItem()'s findSong(id) misses
+// and falls back to a minimal Song with no `artwork` field for every queue
+// item that was already active in Go's queue (the normal park-restore case,
+// where Go's queue survives the SPA reboot). refreshQueueDisplayFromGoState()
+// is called again once the library has actually loaded, to re-hydrate those
+// entries from the now-populated library.
+describe('refreshQueueDisplayFromGoState', () => {
+    it('does nothing outside Wails mode', async () => {
+        const { refreshQueueDisplayFromGoState } = await import('./playback-manager.js');
+        const apply = vi.fn();
+
+        await refreshQueueDisplayFromGoState({ isWails: () => false, apply });
+
+        expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when QueueGetState() yields no payload', async () => {
+        const { refreshQueueDisplayFromGoState } = await import('./playback-manager.js');
+        const app = { QueueGetState: vi.fn(async () => null) };
+        const apply = vi.fn();
+
+        await refreshQueueDisplayFromGoState({ isWails: () => true, getApp: () => app, apply });
+
+        expect(app.QueueGetState).toHaveBeenCalledOnce();
+        expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('re-fetches QueueGetState() and re-applies it', async () => {
+        const { refreshQueueDisplayFromGoState } = await import('./playback-manager.js');
+        const payload = { items: [], index: -1, shuffled: false, loopMode: 'off', active: false };
+        const app = { QueueGetState: vi.fn(async () => payload) };
+        const apply = vi.fn();
+
+        await refreshQueueDisplayFromGoState({ isWails: () => true, getApp: () => app, apply });
+
+        expect(apply).toHaveBeenCalledWith(payload);
+    });
+
+    it('re-hydrates state.playbackQueue with full library data (including artwork) once the library has finished loading', async () => {
+        const bridge = await import('../core/bridge.js');
+        const libraryModel = await import('../core/library-model.js');
+        const { refreshQueueDisplayFromGoState } = await import('./playback-manager.js');
+
+        const payload = {
+            items: [{ id: 'a', type: 'local', path: '/a.flac', title: 'A', artist: '', album: '', artworkId: 'hash1' }],
+            index: 0, shuffled: false, loopMode: 'off', active: true,
+        };
+        const app = { QueueGetState: vi.fn(async () => payload) };
+        const librarySong = { id: 'a', title: 'A', artwork: { full: 'a.webp', thumbnail: 'a_thumb.webp' } };
+        vi.spyOn(bridge, 'isWailsMode').mockReturnValue(true);
+        vi.spyOn(bridge, 'getWailsApp').mockReturnValue(app as any);
+        vi.spyOn(libraryModel, 'getSongById').mockReturnValue(librarySong as any);
+
+        await refreshQueueDisplayFromGoState();
+
+        expect(state.playbackQueue[0]).toBe(librarySong);
+
+        vi.restoreAllMocks();
+    });
+});
+
 describe('handleQueueAdvancedEvent', () => {
     it('calls songFinished for reason "finished" when analysed-queue scoring is enabled', async () => {
         const { handleQueueAdvancedEvent } = await import('./playback-manager.js');
