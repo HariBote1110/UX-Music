@@ -220,7 +220,7 @@ struct TVSongStreamPreviewHarness: View {
         // `UXTV_SONGSTREAM_LYRICS` (`none|empty|lrc`, default `none`) drives the mock's
         // `/v1/remote/lyrics` response so this harness can exercise `TVNowPlayingView`'s lyrics
         // states while running the REAL stream-first path end to end (`progress/tvos-nowplaying-textcolumn.md`)
-        // — unlike a bare `RemoteLyricsPayload` handed straight to `TVNowPlayingLyricsLayout`, this
+        // — unlike a bare `RemoteLyricsPayload` handed straight to `TVNowPlayingStageLayout`, this
         // goes through `MusicPlayerService.beginExternalPlayback` → `.task(id:)` → `loadLyrics()`
         // exactly like the real device does.
         UXTVSongStreamMockURLProtocol.lyricsVariant = ProcessInfo.processInfo.environment["UXTV_SONGSTREAM_LYRICS"] ?? "none"

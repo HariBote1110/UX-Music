@@ -30,6 +30,7 @@
 		EC2F7342E67E4A18A26E8F48 /* LyricsTranslationMergerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FCA8FC823B346CE96652D1B /* LyricsTranslationMergerTests.swift */; };
 		9EFCF4D0AB00484A8E3D6F45 /* AppModelLibraryFeaturesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6CD72516EEA418A92F213A9 /* AppModelLibraryFeaturesTests.swift */; };
 		90EE2C6FCF944F06AE14DE84 /* MusicPlayerServiceQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38349C37B905480B9FBF56E5 /* MusicPlayerServiceQueueTests.swift */; };
+		444F2452E757A78E47D80FF6 /* PlaybackGenerationGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6651F02C176C47B5147AC9F /* PlaybackGenerationGuardTests.swift */; };
 		01A1A1A10101A1A10101A1A1 /* AppConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A20101A1A10101A1A1 /* AppConstants.swift */; };
 		01A1A1A30101A1A10101A1A1 /* ServerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A40101A1A10101A1A1 /* ServerConfig.swift */; };
 		01A1A1A50101A1A10101A1A1 /* Song.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1A60101A1A10101A1A1 /* Song.swift */; };
@@ -63,6 +64,9 @@
 		01A1A1C70101A1A10101A1A1 /* UXMusicMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A1A1C80101A1A10101A1A1 /* UXMusicMobileApp.swift */; };
 		B2B2B2B20101B2B20101B2B2 /* PlaybackControlState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B2B2B30101B2B30101B2B3 /* PlaybackControlState.swift */; };
 		B2B2B2B40101B2B40101B2B4 /* PlaybackControlStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B2B2B50101B2B50101B2B5 /* PlaybackControlStateTests.swift */; };
+		AE1AE1AE0101AE1AE0101AE1 /* RemoteCommandEnablement.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1AE1AE0201AE1AE0201AE1 /* RemoteCommandEnablement.swift */; };
+		AE1AE1AE0301AE1AE0301AE1 /* RemoteCommandEnablementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1AE1AE0401AE1AE0401AE1 /* RemoteCommandEnablementTests.swift */; };
+		AE1AE1AE0501AE1AE0501AE1 /* RemoteCommandEnablement.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1AE1AE0201AE1AE0201AE1 /* RemoteCommandEnablement.swift */; };
 		C1C1C1C10101C1C10101C1C1 /* RemoteArtworkCaching.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1C1C1C20101C1C20101C1C2 /* RemoteArtworkCaching.swift */; };
 		C1C1C1C30101C1C30101C1C3 /* RemoteArtworkPreviewCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1C1C1C40101C1C40101C1C4 /* RemoteArtworkPreviewCacheTests.swift */; };
 		D0D0D0D10101D0D10101D0D1 /* DownloadedTrackFormatSniffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */; };
@@ -80,6 +84,7 @@
 		F3A3A3A70101F3A70101F3A7 /* AppModelPlaylistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A3A3AC0101F3AC0101F3AC /* AppModelPlaylistTests.swift */; };
 		F4B4B4B10101F4B10101F4B1 /* FavouriteSongStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B4B4B20101F4B20101F4B2 /* FavouriteSongStore.swift */; };
 		F5F5F5F50101F5F50101F5F5 /* GraphicEqualiserConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F5F5F40101F5F40101F5F4 /* GraphicEqualiserConfiguration.swift */; };
+		9A37B02A81077A162D4FB247 /* PlaybackGenerationGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3287449D9957DCFD1D17A32A /* PlaybackGenerationGuard.swift */; };
 		F5F5F5F70101F5F70101F5F7 /* GraphicEqualiserConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F5F5F60101F5F60101F5F6 /* GraphicEqualiserConfigurationTests.swift */; };
 		N1N1N1N10101N1N10101N1N1 /* NowPlayingArtworkImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */; };
 		P2P2P2P30101P2P30101P2P3 /* LRCParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = P2P2P2P20101P2P20101P2P2 /* LRCParser.swift */; };
@@ -222,6 +227,7 @@
 		3F98CC49EFAD43F98AA2A83C /* TVNowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AF3E42646B24882B3E784AA /* TVNowPlayingView.swift */; };
 		94DB3D1F88174415A2DDBF71 /* TVAmbientStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B1DF82EC02B47E3BB01405E /* TVAmbientStateMachineTests.swift */; };
 		FF9A9EA91DC4488489602B91 /* GraphicEqualiserConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F5F5F40101F5F40101F5F4 /* GraphicEqualiserConfiguration.swift */; };
+		ABB909D2527C12756B4E7C6A /* PlaybackGenerationGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3287449D9957DCFD1D17A32A /* PlaybackGenerationGuard.swift */; };
 		3A3A3A3A0303A3A30303A3A3 /* WatchPlaybackLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */; };
 		4B4B4B4B0404B4B40404B4B4 /* DownloadAudioQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE6CF287D813BDA7F36A151 /* DownloadAudioQuality.swift */; };
 		5C5C5C5C0505C5C50505C5C5 /* PlaybackQueueEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81C30A3149CE455A93E45602 /* PlaybackQueueEditing.swift */; };
@@ -297,6 +303,7 @@
 		4FCA8FC823B346CE96652D1B /* LyricsTranslationMergerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsTranslationMergerTests.swift; sourceTree = "<group>"; };
 		B6CD72516EEA418A92F213A9 /* AppModelLibraryFeaturesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelLibraryFeaturesTests.swift; sourceTree = "<group>"; };
 		38349C37B905480B9FBF56E5 /* MusicPlayerServiceQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerServiceQueueTests.swift; sourceTree = "<group>"; };
+		E6651F02C176C47B5147AC9F /* PlaybackGenerationGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackGenerationGuardTests.swift; sourceTree = "<group>"; };
 		01A1A1A20101A1A10101A1A1 /* AppConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConstants.swift; sourceTree = "<group>"; };
 		01A1A1A40101A1A10101A1A1 /* ServerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfig.swift; sourceTree = "<group>"; };
 		01A1A1A60101A1A10101A1A1 /* Song.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Song.swift; sourceTree = "<group>"; };
@@ -332,6 +339,8 @@
 		588F83FDDE734E7DA54AC513 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		B2B2B2B30101B2B30101B2B3 /* PlaybackControlState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackControlState.swift; sourceTree = "<group>"; };
 		B2B2B2B50101B2B50101B2B5 /* PlaybackControlStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackControlStateTests.swift; sourceTree = "<group>"; };
+		AE1AE1AE0201AE1AE0201AE1 /* RemoteCommandEnablement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommandEnablement.swift; sourceTree = "<group>"; };
+		AE1AE1AE0401AE1AE0401AE1 /* RemoteCommandEnablementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommandEnablementTests.swift; sourceTree = "<group>"; };
 		C1C1C1C20101C1C20101C1C2 /* RemoteArtworkCaching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteArtworkCaching.swift; sourceTree = "<group>"; };
 		C1C1C1C40101C1C40101C1C4 /* RemoteArtworkPreviewCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteArtworkPreviewCacheTests.swift; sourceTree = "<group>"; };
 		D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadedTrackFormatSniffer.swift; sourceTree = "<group>"; };
@@ -351,6 +360,7 @@
 		F3A3A3AC0101F3AC0101F3AC /* AppModelPlaylistTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelPlaylistTests.swift; sourceTree = "<group>"; };
 		F4B4B4B20101F4B20101F4B2 /* FavouriteSongStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavouriteSongStore.swift; sourceTree = "<group>"; };
 		F5F5F5F40101F5F40101F5F4 /* GraphicEqualiserConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphicEqualiserConfiguration.swift; sourceTree = "<group>"; };
+		3287449D9957DCFD1D17A32A /* PlaybackGenerationGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackGenerationGuard.swift; sourceTree = "<group>"; };
 		F5F5F5F60101F5F60101F5F6 /* GraphicEqualiserConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphicEqualiserConfigurationTests.swift; sourceTree = "<group>"; };
 		N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingArtworkImageLoader.swift; sourceTree = "<group>"; };
 		P2P2P2P20101P2P20101P2P2 /* LRCParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LRCParser.swift; sourceTree = "<group>"; };
@@ -559,6 +569,7 @@
 				F3A3A3AB0101F3AB0101F3AB /* PlaylistStoreTests.swift */,
 				F3A3A3AC0101F3AC0101F3AC /* AppModelPlaylistTests.swift */,
 				B2B2B2B50101B2B50101B2B5 /* PlaybackControlStateTests.swift */,
+				AE1AE1AE0401AE1AE0401AE1 /* RemoteCommandEnablementTests.swift */,
 				D7D7D7D50101D7D50101D7D5 /* LyricsFileStoreTests.swift */,
 				P4P4P4P40101P4P40101P4P4 /* LRCParserTests.swift */,
 				4D0293916FD996449C93813E /* NowPlayingCoverageTests.swift */,
@@ -584,6 +595,7 @@
 				4FCA8FC823B346CE96652D1B /* LyricsTranslationMergerTests.swift */,
 				B6CD72516EEA418A92F213A9 /* AppModelLibraryFeaturesTests.swift */,
 				38349C37B905480B9FBF56E5 /* MusicPlayerServiceQueueTests.swift */,
+				E6651F02C176C47B5147AC9F /* PlaybackGenerationGuardTests.swift */,
 				FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */,
 				0912543B047D9F34525C1AA2 /* DownloadAudioQualityTests.swift */,
 				DE0394F21811469395789027 /* LocalizationTestHelpers.swift */,
@@ -601,6 +613,7 @@
 				P2P2P2P20101P2P20101P2P2 /* LRCParser.swift */,
 				F1F1F1F10101F1F10101F1F1 /* ArtworkPaletteExtractor.swift */,
 				B2B2B2B30101B2B30101B2B3 /* PlaybackControlState.swift */,
+				AE1AE1AE0201AE1AE0201AE1 /* RemoteCommandEnablement.swift */,
 				N1N1N1N20101N1N20101N1N2 /* NowPlayingArtworkImageLoader.swift */,
 				E8E8E8E80101E8E80101E8E8 /* RemoteDefaultArtwork.swift */,
 				D1D1D1D20101D1D20101D1D2 /* DeviceIdentity.swift */,
@@ -648,6 +661,7 @@
 				D0D0D0D20101D0D20101D0D2 /* DownloadedTrackFormatSniffer.swift */,
 				01A1A1AE0101A1A10101A1A1 /* MusicPlayerService.swift */,
 				F5F5F5F40101F5F40101F5F4 /* GraphicEqualiserConfiguration.swift */,
+				3287449D9957DCFD1D17A32A /* PlaybackGenerationGuard.swift */,
 				F3A3A3A90101F3A90101F3A9 /* PlaylistStore.swift */,
 				F4B4B4B20101F4B20101F4B2 /* FavouriteSongStore.swift */,
 				W1D1D1C10101D1C10101D1C1 /* LANDiscoveryService.swift */,
@@ -1026,6 +1040,7 @@
 				F3A3A3A60101F3A60101F3A6 /* PlaylistStoreTests.swift in Sources */,
 				F3A3A3A70101F3A70101F3A7 /* AppModelPlaylistTests.swift in Sources */,
 				B2B2B2B40101B2B40101B2B4 /* PlaybackControlStateTests.swift in Sources */,
+				AE1AE1AE0301AE1AE0301AE1 /* RemoteCommandEnablementTests.swift in Sources */,
 				D7D7D7D70101D7D70101D7D7 /* LyricsFileStoreTests.swift in Sources */,
 				P4P4P4P50101P4P50101P4P5 /* LRCParserTests.swift in Sources */,
 				08BBB350C021CE6A26A343D3 /* NowPlayingCoverageTests.swift in Sources */,
@@ -1053,6 +1068,7 @@
 				EC2F7342E67E4A18A26E8F48 /* LyricsTranslationMergerTests.swift in Sources */,
 				9EFCF4D0AB00484A8E3D6F45 /* AppModelLibraryFeaturesTests.swift in Sources */,
 				90EE2C6FCF944F06AE14DE84 /* MusicPlayerServiceQueueTests.swift in Sources */,
+				444F2452E757A78E47D80FF6 /* PlaybackGenerationGuardTests.swift in Sources */,
 				FEED0030000000000000AA30 /* ModeIconAnimationMathsTests.swift in Sources */,
 				7F05430A7D2547A327AB5410 /* DownloadAudioQualityTests.swift in Sources */,
 				7576636BB2B148188B9AA8F2 /* LocalizationTestHelpers.swift in Sources */,
@@ -1070,6 +1086,7 @@
 				P2P2P2P30101P2P30101P2P3 /* LRCParser.swift in Sources */,
 				F1F1F1F00101F1F10101F1F1 /* ArtworkPaletteExtractor.swift in Sources */,
 				B2B2B2B20101B2B20101B2B2 /* PlaybackControlState.swift in Sources */,
+				AE1AE1AE0101AE1AE0101AE1 /* RemoteCommandEnablement.swift in Sources */,
 				N1N1N1N10101N1N10101N1N1 /* NowPlayingArtworkImageLoader.swift in Sources */,
 				E8E8E8E70101E8E70101E8E7 /* RemoteDefaultArtwork.swift in Sources */,
 				D1D1D1D10101D1D10101D1D1 /* DeviceIdentity.swift in Sources */,
@@ -1099,6 +1116,7 @@
 				D0D0D0D10101D0D10101D0D1 /* DownloadedTrackFormatSniffer.swift in Sources */,
 				01A1A1AD0101A1A10101A1A1 /* MusicPlayerService.swift in Sources */,
 				F5F5F5F50101F5F50101F5F5 /* GraphicEqualiserConfiguration.swift in Sources */,
+				9A37B02A81077A162D4FB247 /* PlaybackGenerationGuard.swift in Sources */,
 				F3A3A3A40101F3A40101F3A4 /* PlaylistStore.swift in Sources */,
 				F4B4B4B10101F4B10101F4B1 /* FavouriteSongStore.swift in Sources */,
 				W1D1D1C20101D1C20101D1C2 /* LANDiscoveryService.swift in Sources */,
@@ -1172,6 +1190,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CD881D2AF1DA4D118475294B /* UXMusicTVApp.swift in Sources */,
+				AE1AE1AE0501AE1AE0501AE1 /* RemoteCommandEnablement.swift in Sources */,
 				A3D2815F272C4FC7A6BEFB86 /* TVPlaceholderView.swift in Sources */,
 				EF78A39F347347A8A4CB3260 /* TVPairing.swift in Sources */,
 				42BCA33B6AFC49EAB67D6C89 /* URLSessionTVPairingClient.swift in Sources */,
@@ -1205,6 +1224,7 @@
 				F4886C72940D4DD78B8634E9 /* Artist.swift in Sources */,
 				AB2EB6E388074071BD763A15 /* MusicPlayerService.swift in Sources */,
 				FF9A9EA91DC4488489602B91 /* GraphicEqualiserConfiguration.swift in Sources */,
+				ABB909D2527C12756B4E7C6A /* PlaybackGenerationGuard.swift in Sources */,
 				3A3A3A3A0303A3A30303A3A3 /* WatchPlaybackLogic.swift in Sources */,
 				4B4B4B4B0404B4B40404B4B4 /* DownloadAudioQuality.swift in Sources */,
 				5C5C5C5C0505C5C50505C5C5 /* PlaybackQueueEditing.swift in Sources */,

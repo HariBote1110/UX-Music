@@ -87,6 +87,24 @@ final class TVPlaybackController: ObservableObject {
         // `player.isExternallyDriven` is true — see `MusicPlayerService`'s "External playback
         // bridging" section for why this exists (the streamed song has no local file for the
         // service's own engine to load).
+        // Every skip/auto-advance path inside `MusicPlayerService` (`next()`, `previous()`,
+        // `playQueueItem(at:)`, natural end-of-track `advanceAfterEnd()`) only ever carries the
+        // server-side `Song.path` handed in via `play(_:newQueue:)`'s `newQueue` — only the
+        // initially tapped song gets its `path` rewritten to a cache file above. This hook lets
+        // `loadAndPlay` resolve any other queue entry to a local file on demand, the same way
+        // `play(_:queue:)` does for the tapped song.
+        player.localFileResolver = { [weak self] song in
+            guard let self else { return nil }
+            do {
+                let downloaded = try await self.cache.ensureCached(songId: song.id, protectedSongIds: [])
+                await self.cache.pinCurrentlyPlaying(songId: song.id)
+                var resolved = song
+                resolved.path = downloaded.fileURL.path
+                return resolved
+            } catch {
+                return nil
+            }
+        }
         player.externalPlaybackCommandHandler = { [weak self] command in
             guard let self else { return }
             switch command {

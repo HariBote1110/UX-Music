@@ -102,9 +102,10 @@ final class MusicPlayerService {
         queue.remove(at: index)
         currentIndex = newCurrentIndex
         if wasCurrent, queue.indices.contains(currentIndex) {
+            let generation = playGeneration.bump()
             let s = queue[currentIndex]
             currentSong = s
-            await loadActive(s)
+            await loadActive(s, generation: generation)
         }
     }
 
@@ -143,6 +144,16 @@ final class MusicPlayerService {
     var targetLoudness: Double = AppConstants.defaultTargetLoudness
     var normaliseEnabled = true
     var masterVolume: Float = 1
+
+    /// Optional hook for platforms that keep audio files in a local cache rather than always
+    /// having `song.path` point at something readable (tvOS: only the initially tapped song's
+    /// `path` is rewritten to the cache file by `TVPlaybackController`; every other queue entry
+    /// still carries its server-side path). When `loadAndPlay` finds `song.path` missing, it
+    /// calls this closure and, if it returns a song, retries with that song's `path` instead —
+    /// so skip/auto-advance/remote-command paths all resolve through the same place `play(_:)`
+    /// already goes through on tvOS. `nil` on iOS/watchOS, where every queue entry's `path` is
+    /// already a real local file.
+    var localFileResolver: ((Song) async -> Song?)?
 
     /// Fired once per track that reaches its natural end (buffer completion / YouTube `.ended`),
     /// with the song that just finished — i.e. exactly the `advanceAfterEnd()` path, never the
@@ -317,6 +328,15 @@ final class MusicPlayerService {
     /// Bumped whenever we `stop()` the player node for a reason other than natural buffer completion.
     /// Completion handlers from superseded schedules must not call `advanceAfterEnd()` (avoids queue storms after route changes).
     private var playbackCompletionGeneration: UInt64 = 0
+
+    /// Bumped synchronously — before any `await` — at the top of every entry point that leads to
+    /// `loadAndPlay`/`loadActive` (`play(_:newQueue:)`, `next()`, `previous()`, `playQueueItem(at:)`,
+    /// `togglePlayPause()`'s resume-from-idle branch, `remoteResumeAfterPlayCommand()`) and by
+    /// `stop()`. `loadAndPlay` re-checks its captured token with `playGeneration.isCurrent(_:)` after
+    /// every suspension point before touching `currentAudioFile`, the player node, the engine graph,
+    /// or published position state — so a call overtaken by a later one (or by an explicit `stop()`)
+    /// bails out instead of clobbering the newer state. See `PlaybackGenerationGuard`.
+    private var playGeneration = PlaybackGenerationGuard()
 
     init() {
         configureEqualiserBandsStatically()
@@ -614,6 +634,7 @@ final class MusicPlayerService {
     }
 
     func play(_ song: Song, newQueue: [Song]?) async {
+        let generation = playGeneration.bump()
         // A previous stream-first session may still be marked external (e.g. the cache finished
         // downloading mid-stream and `TVPlaybackController` now hands off to the normal cached
         // path) — this service's own engine is about to take over, so external mirroring must end
@@ -640,7 +661,7 @@ final class MusicPlayerService {
         }
         let active = queue[currentIndex]
         currentSong = active
-        await loadActive(active)
+        await loadActive(active, generation: generation)
     }
 
     func togglePlayPause() {
@@ -648,6 +669,7 @@ final class MusicPlayerService {
             externalPlaybackCommandHandler?(.togglePlayPause)
             return
         }
+        let generation = playGeneration.bump()
         Task { @MainActor [weak self] in
             guard let self else { return }
             #if !os(tvOS)
@@ -666,7 +688,7 @@ final class MusicPlayerService {
             } else if self.currentAudioFile != nil {
                 self.resumeLocalPlaybackAfterPause()
             } else if let song = self.currentSong {
-                await self.loadAndPlay(song)
+                await self.loadAndPlay(song, generation: generation)
             }
             self.syncIsPlayingFromNode()
             self.updateNowPlayingCentre()
@@ -681,11 +703,12 @@ final class MusicPlayerService {
             externalPlaybackCommandHandler?(.next)
             return
         }
+        let generation = playGeneration.bump()
         guard !queue.isEmpty else { return }
         currentIndex = PlaybackQueueNavigation.nextIndex(current: currentIndex, count: queue.count)
         let s = queue[currentIndex]
         currentSong = s
-        await loadActive(s)
+        await loadActive(s, generation: generation)
     }
 
     /// Explicit "skip back" — restarts the current track if more than a few seconds in, otherwise
@@ -695,6 +718,7 @@ final class MusicPlayerService {
             externalPlaybackCommandHandler?(.previous)
             return
         }
+        let generation = playGeneration.bump()
         guard !queue.isEmpty else { return }
         if PlaybackQueueNavigation.shouldRestartOnPrevious(position: positionSeconds) {
             seek(to: 0)
@@ -702,34 +726,35 @@ final class MusicPlayerService {
             currentIndex = PlaybackQueueNavigation.previousIndex(current: currentIndex, count: queue.count)
             let s = queue[currentIndex]
             currentSong = s
-            await loadActive(s)
+            await loadActive(s, generation: generation)
         }
     }
 
     /// Jumps to a track already present in the queue and starts playback.
     func playQueueItem(at index: Int) async {
         guard index >= 0, index < queue.count else { return }
+        let generation = playGeneration.bump()
         currentIndex = index
         let s = queue[currentIndex]
         currentSong = s
-        await loadActive(s)
+        await loadActive(s, generation: generation)
     }
 
     /// Routes to the local `AVAudioEngine` path or the YouTube embed backend depending on `song.isYouTube`,
     /// stopping whichever backend is not needed so the two never play simultaneously.
-    private func loadActive(_ song: Song) async {
+    private func loadActive(_ song: Song, generation: UInt64) async {
         #if !os(tvOS)
         if song.isYouTube {
             stopLocalPlaybackEngineOnly()
             await loadAndPlayYouTube(song)
         } else {
             stopYouTubeBackend()
-            await loadAndPlay(song)
+            await loadAndPlay(song, generation: generation)
         }
         #else
         // TV is never handed a YouTube track in Phase 1 (see `markdown/appletv-servermode-plan.md`
         // — relay-only in Phase 3), so the local `AVAudioEngine` path is unconditional here.
-        await loadAndPlay(song)
+        await loadAndPlay(song, generation: generation)
         #endif
     }
 
@@ -774,6 +799,7 @@ final class MusicPlayerService {
     }
 
     func stop() {
+        playGeneration.bump()
         if isExternallyDriven {
             externalPlaybackCommandHandler?(.stop)
             isExternallyDriven = false
@@ -966,18 +992,44 @@ final class MusicPlayerService {
 
     #endif
 
-    private func loadAndPlay(_ song: Song) async {
-        await preparePlaybackSessionIfNeeded()
-        await Task.yield()
+    /// Writes a resolver-rewritten `path` back into `currentSong` and the matching `queue` entry,
+    /// so seek/route-change rescheduling (which re-reads `currentSong`/`queue`, not the local
+    /// `song` passed into `loadAndPlay`) keeps using the resolved local file.
+    private func updateQueueEntryPath(for song: Song) {
+        if currentSong?.id == song.id {
+            currentSong = song
+        }
+        if let idx = queue.firstIndex(where: { $0.id == song.id }) {
+            queue[idx] = song
+        }
+    }
 
-        let path = song.path
-        guard FileManager.default.fileExists(atPath: path) else {
-            #if DEBUG
-            NSLog("UXMusic: missing local file at %@", path)
-            #endif
-            return
+    private func loadAndPlay(_ song: Song, generation: UInt64) async {
+        await preparePlaybackSessionIfNeeded()
+        guard playGeneration.isCurrent(generation) else { return }
+        await Task.yield()
+        guard playGeneration.isCurrent(generation) else { return }
+
+        var song = song
+        if !FileManager.default.fileExists(atPath: song.path) {
+            guard let resolver = localFileResolver, let resolved = await resolver(song) else {
+                #if DEBUG
+                NSLog("UXMusic: missing local file at %@", song.path)
+                #endif
+                return
+            }
+            guard playGeneration.isCurrent(generation) else { return }
+            guard FileManager.default.fileExists(atPath: resolved.path) else {
+                #if DEBUG
+                NSLog("UXMusic: resolver returned unreadable path for %@: %@", song.id, resolved.path)
+                #endif
+                return
+            }
+            song = resolved
+            updateQueueEntryPath(for: song)
         }
 
+        let path = song.path
         let url = URL(fileURLWithPath: path)
 
         let file: AVAudioFile
@@ -1105,9 +1157,10 @@ final class MusicPlayerService {
     private func remoteResumeAfterPlayCommand() -> MPRemoteCommandHandlerStatus {
         guard let song = currentSong else { return .commandFailed }
         if currentAudioFile == nil {
+            let generation = playGeneration.bump()
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                await self.loadAndPlay(song)
+                await self.loadAndPlay(song, generation: generation)
             }
             // Playback will start asynchronously — tell the system the command was accepted.
             return .success
@@ -1291,9 +1344,10 @@ final class MusicPlayerService {
                     return self.remoteResumeAfterPlayCommand()
                 }
                 if let song = self.currentSong {
+                    let generation = self.playGeneration.bump()
                     Task { @MainActor [weak self] in
                         guard let self else { return }
-                        await self.loadAndPlay(song)
+                        await self.loadAndPlay(song, generation: generation)
                     }
                 }
                 return .commandFailed
@@ -1358,9 +1412,10 @@ final class MusicPlayerService {
 
         let c = MPRemoteCommandCenter.shared()
         let active = currentSong != nil
-        c.playCommand.isEnabled = active
-        c.pauseCommand.isEnabled = active
-        c.togglePlayPauseCommand.isEnabled = active
+        let commandState = RemoteCommandEnablement.state(hasSong: active, isPlaying: isPlaying)
+        c.playCommand.isEnabled = commandState.playEnabled
+        c.pauseCommand.isEnabled = commandState.pauseEnabled
+        c.togglePlayPauseCommand.isEnabled = commandState.toggleEnabled
         c.nextTrackCommand.isEnabled = active && queue.count > 1
         c.previousTrackCommand.isEnabled = active && queue.count > 1
         c.changePlaybackPositionCommand.isEnabled = active

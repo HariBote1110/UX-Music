@@ -28,3 +28,4 @@ python/.pytest_cache/
 
 # Mobile 検証用スクラッチ（スクリーンショット等）
 UX-Music-Mobile/.tmp/
+UX-Music-Mobile/build/
