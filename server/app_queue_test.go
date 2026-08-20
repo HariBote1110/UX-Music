@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/pkg/playqueue"
@@ -222,5 +224,106 @@ func TestStartQueueItemEmbedRouteDelegatesWithoutTouchingAudioPlayer(t *testing.
 	payload := data.(map[string]interface{})
 	if payload["id"] != "y1" {
 		t.Fatalf("queue-play-embed payload id = %v, want y1", payload["id"])
+	}
+}
+
+// failingStarter returns a queueItemStarter (see app_queue.go's test seam)
+// that fails for every item ID in failIDs and records every attempted item
+// ID in order, so tests can assert both which items were skipped and how
+// many attempts were made (bounding).
+func failingStarter(failIDs map[string]bool) (func(playqueue.Item) error, *[]string) {
+	var calls []string
+	starter := func(item playqueue.Item) error {
+		calls = append(calls, item.ID)
+		if failIDs[item.ID] {
+			return fmt.Errorf("fake start failure for %s", item.ID)
+		}
+		return nil
+	}
+	return starter, &calls
+}
+
+func TestHandlePlaybackFinishedSkipsFailingItemsUntilOneSucceeds(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+
+	starter, calls := failingStarter(map[string]bool{"b": true, "c": true})
+	app.queueItemStarter = starter
+
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
+		{ID: "c", Type: playqueue.ItemTypeLocal, Path: "/music/c.mp3"},
+		{ID: "d", Type: playqueue.ItemTypeLocal, Path: "/music/d.mp3"},
+	}, 0) // currently "playing" a
+	*emitted = nil
+
+	app.handlePlaybackFinished()
+
+	if got := []string(*calls); len(got) != 3 || got[0] != "b" || got[1] != "c" || got[2] != "d" {
+		t.Fatalf("start attempts = %v, want [b c d] (skip failing b and c, land on d)", got)
+	}
+	current, ok := app.ensureQueue().CurrentItem()
+	if !ok || current.ID != "d" {
+		t.Fatalf("CurrentItem() = %+v, %v; want d, true", current, ok)
+	}
+}
+
+func TestHandlePlaybackFinishedGivesUpAfterFullPassAllFail(t *testing.T) {
+	newTempUserDataStore(t)
+	app, _ := newQueueTestApp(t)
+
+	starter, calls := failingStarter(map[string]bool{"a": true, "b": true, "c": true})
+	app.queueItemStarter = starter
+
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
+		{ID: "c", Type: playqueue.ItemTypeLocal, Path: "/music/c.mp3"},
+	}, 0)
+	app.ensureQueue().SetLoopMode(playqueue.LoopAll)
+
+	done := make(chan struct{})
+	go func() {
+		app.handlePlaybackFinished()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("handlePlaybackFinished did not return — auto-advance skip must be bounded, not spin forever")
+	}
+
+	// Bounded by the queue length (3 items): must not retry beyond a single
+	// full pass even though LoopAll means Advance() never itself stops.
+	if got := len(*calls); got != 3 {
+		t.Fatalf("start attempts = %d, want 3 (one full pass, all failing)", got)
+	}
+}
+
+func TestQueueNextSurfacesErrorWithoutSkippingToNextItem(t *testing.T) {
+	newTempUserDataStore(t)
+	app, _ := newQueueTestApp(t)
+
+	starter, calls := failingStarter(map[string]bool{"b": true})
+	app.queueItemStarter = starter
+
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
+		{ID: "c", Type: playqueue.ItemTypeLocal, Path: "/music/c.mp3"},
+	}, 0)
+
+	err := app.QueueNext()
+
+	if err == nil {
+		t.Fatalf("QueueNext() should surface the error for the explicitly requested item, got nil")
+	}
+	if got := []string(*calls); len(got) != 1 || got[0] != "b" {
+		t.Fatalf("start attempts = %v, want [b] only — explicit QueueNext must not skip ahead", got)
+	}
+	current, ok := app.ensureQueue().CurrentItem()
+	if !ok || current.ID != "b" {
+		t.Fatalf("CurrentItem() = %+v, %v; want b (stays put on the failed item), true", current, ok)
 	}
 }
