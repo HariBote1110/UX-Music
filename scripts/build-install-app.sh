@@ -77,6 +77,22 @@ else
   printf '== build をスキップ ==\n'
 fi
 
+# pkg/mtp が直接 import する github.com/ganeshrvel/go-mtpfs/mtp
+# （内部で hanwen/usb を利用）は cgo 経由で Homebrew の libusb に動的リンクする。
+# wails build はこの外部 dylib を同梱しないため、cdparanoia/lyrics-sync-swift
+# 同様に Contents/Frameworks へコピーし、実行バイナリの参照を
+# @executable_path 相対へ付け替えて配布可能にする。署名（--deep）より前に
+# 行うことで dylib 自身も ad-hoc 署名の対象に含める。
+if [[ -d "${app_source}" || "${dry_run}" == 1 ]]; then
+  libusb_prefix="$(brew --prefix libusb 2>/dev/null || echo /opt/homebrew/opt/libusb)"
+  libusb_dylib="${libusb_prefix}/lib/libusb-1.0.0.dylib"
+  frameworks_dir="${app_source}/Contents/Frameworks"
+  main_binary="${app_source}/Contents/MacOS/UX-Music"
+  run mkdir -p "${frameworks_dir}"
+  run cp "${libusb_dylib}" "${frameworks_dir}/libusb-1.0.0.dylib"
+  run install_name_tool -change "${libusb_dylib}" "@executable_path/../Frameworks/libusb-1.0.0.dylib" "${main_binary}"
+fi
+
 # wails build は linker-signed の .app を出力する（Info.plist 非バインド・
 # Identifier=a.out）。この状態では TCC がコード識別子を安定に紐付けられず、
 # YouTube 公式再生の音声タップに必要なマイク/音声取り込み許可を付与できない。

@@ -1,5 +1,7 @@
 # Progress Index
 
+- [mtp-ffi-removal.md](mtp-ffi-removal.md) — MTP を libkalam.dylib（purego FFI + JSON 境界）から go-mtpfs@v1.0.3 `mtp` パッケージ直接 import へ置換。高レベル層（パス解決 Walk・転送進捗・MakeDirectory）は pkg/mtp に自前実装。go-mtpx は LICENSE 不在（無ライセンス）のため採用もコード移植も不可と確定。hanwen/usb は cgo + pkg-config libusb-1.0 のため全 CI ジョブに libusb 開発パッケージが必要。旧配布ビルドは libkalam を同梱しておらず配布版 MTP は非動作だった可能性が高い
+
 - [tv-local-file-resolver.md](tv-local-file-resolver.md) — TVでスキップ・自動再生が無音のまま曲名だけ変わる問題（キュー内の曲がサーバ側パスのままでloadAndPlayのfileExistsガードが黙って離脱）を、`MusicPlayerService.localFileResolver` フック＋TV側ensureCached解決の単一フローで修正。Siri Remoteで再生再開できない問題（play/pauseCommand常時両有効）の`RemoteCommandEnablement`による相互排他化もこの回
 
 - [tvos-nowplaying-artwork-stab.md](tvos-nowplaying-artwork-stab.md) — TV NowPlayingで歌詞ロード時にジャケットが突き刺さる崩壊の真因（2ビュー木の無遷移スワップをambientアニメーションが捕捉して位置・サイズを補間）と、単一`TVNowPlayingStageLayout`への構造統合による修正。高さ制約だけの初回修正(2f0a339)では直らなかった経緯も記録

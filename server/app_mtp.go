@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -154,7 +153,7 @@ func (a *App) MTPGetUntransferredSongs(librarySongs []interface{}) (map[string]i
 
 	var scanDir func(string)
 	scanDir = func(path string) {
-		res, err := a.mtpManager.Walk(mtp.WalkOptions{
+		items, err := a.mtpManager.Walk(mtp.WalkOptions{
 			StorageID:       storageID,
 			FullPath:        path,
 			SkipHiddenFiles: true,
@@ -164,39 +163,18 @@ func (a *App) MTPGetUntransferredSongs(librarySongs []interface{}) (map[string]i
 			return
 		}
 
-		items, ok := res.([]interface{})
-		if !ok {
-			return
-		}
-
 		for _, item := range items {
-			m, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			name, _ := m["name"].(string)
-			isFolder, _ := m["isFolder"].(bool)
-			path, _ := m["path"].(string)
-
-			var size int64
-			if s, ok := m["size"].(float64); ok {
-				size = int64(s)
-			} else if s, ok := m["size"].(json.Number); ok {
-				size, _ = s.Int64()
-			}
-
-			if isFolder {
-				if path != "" {
-					scanDir(path)
+			if item.IsFolder {
+				if item.Path != "" {
+					scanDir(item.Path)
 				}
 			} else {
-				normName := normalizeFileNameGo(name)
+				normName := normalizeFileNameGo(item.Name)
 				fileInfo := map[string]interface{}{
-					"name":           name,
+					"name":           item.Name,
 					"normalizedName": normName,
-					"size":           size,
-					"path":           path,
+					"size":           item.Size,
+					"path":           item.Path,
 				}
 				deviceFilesList = append(deviceFilesList, fileInfo)
 				deviceFilesMap[normName] = append(deviceFilesMap[normName], fileInfo)
