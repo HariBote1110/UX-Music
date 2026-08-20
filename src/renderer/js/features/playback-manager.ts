@@ -22,7 +22,6 @@ import { buildSkipEvent } from './playback-skip.js';
 import { musicApi, isWailsMode, getWailsApp } from '../core/bridge.js';
 import { getSongById, getSongByPath } from '../core/library-model.js';
 import {
-    fromGoLoopMode,
     mapQueueSnapshotToQueueState,
     nextLoopMode,
     shouldRecordQueueAdvancedSkip,
