@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
 	"ux-music-sidecar/internal/config"
+	"ux-music-sidecar/internal/diagnostics"
 	"ux-music-sidecar/server"
 )
 
@@ -19,6 +20,11 @@ import (
 var assets embed.FS
 
 func main() {
+	// Diagnostics-only pprof server, opt-in via UXMUSIC_PPROF (loopback-gated,
+	// see internal/diagnostics/pprof.go). Started here, before the GUI/
+	// `--serve` branch below, so both entry points are covered from one place.
+	diagnostics.StartPprofIfEnabled(os.Getenv("UXMUSIC_PPROF"))
+
 	// UserDataPath の初期化 (AssetHandler でも使用するため wails.Run の前に実行)
 	configDir, _ := os.UserConfigDir()
 	userDataPath := filepath.Join(configDir, "ux-music")

@@ -1,11 +1,94 @@
 package server
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"ux-music-sidecar/pkg/playqueue"
 )
+
+// TestHandleAppVisibilityChanged_HiddenTrue_EmitsButDoesNotReload covers
+// initAppVisibilityObserver's callback: going hidden must still emit
+// "app-visibility-changed" (kept for any other listeners; park.ts itself no
+// longer times anything off it — the park debounce now lives in Go as a
+// time.AfterFunc, see app_park_test.go's root-cause-fix comment on why a JS
+// setTimeout could not be trusted here: WebKit suspends/throttles JS timers
+// in hidden/occluded pages) and must never itself trigger a webview reload —
+// reload only happens on hidden=false while parked.
+func TestHandleAppVisibilityChanged_HiddenTrue_EmitsButDoesNotReload(t *testing.T) {
+	app, emitted := newParkTestApp(t)
+	_, reloadCalls := stubbedWebViewLifecycle(t)
+	app.WindowSetParked(true)
+
+	app.handleAppVisibilityChanged(true)
+
+	if !hasEmit(emitted, "app-visibility-changed") {
+		t.Fatalf("expected app-visibility-changed to be emitted, got %#v", *emitted)
+	}
+	if *reloadCalls != 0 {
+		t.Fatalf("expected no WindowReloadWebView call on hidden=true, got %d", *reloadCalls)
+	}
+}
+
+// TestHandleAppVisibilityChanged_HiddenFalseWhileParked_ReloadsWebView,
+// TestHandleAppVisibilityChanged_HiddenFalseWhileNotParked_DoesNotReload, and
+// the park-timer-specific coverage (start/cancel/fire, embed-active gating)
+// live in app_park_test.go next to attemptPark/startParkTimer/
+// cancelParkTimer, which handleAppVisibilityChanged is now a thin wrapper
+// around.
+
+func TestDispatchOSMediaCommand_QueueInactive_EmitsLegacyEvent(t *testing.T) {
+	app, emitted := newRemoteCommandTestApp(t)
+	app.ctx = context.Background()
+
+	app.dispatchOSMediaCommand("next")
+
+	if len(*emitted) != 1 || (*emitted)[0].name != "os-media-command" || (*emitted)[0].data != "next" {
+		t.Fatalf("expected single os-media-command(next) emit, got %#v", *emitted)
+	}
+}
+
+func TestDispatchOSMediaCommand_QueueActive_NextPrevHandledInGo(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newRemoteCommandTestApp(t)
+	app.ctx = context.Background()
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
+	}, 0)
+	*emitted = nil
+
+	app.dispatchOSMediaCommand("next")
+
+	for _, e := range *emitted {
+		if e.name == "os-media-command" {
+			t.Fatalf("os-media-command must not be emitted for next/previous once the Go queue is active, got %#v", *emitted)
+		}
+	}
+	current, ok := app.ensureQueue().CurrentItem()
+	if !ok || current.ID != "b" {
+		t.Fatalf("CurrentItem() after dispatchOSMediaCommand(next) = %+v, %v; want b, true", current, ok)
+	}
+}
+
+func TestDispatchOSMediaCommand_QueueActive_OtherCommandsStillEmit(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newRemoteCommandTestApp(t)
+	app.ctx = context.Background()
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+	}, 0)
+	*emitted = nil
+
+	app.dispatchOSMediaCommand("toggle")
+
+	if len(*emitted) != 1 || (*emitted)[0].name != "os-media-command" || (*emitted)[0].data != "toggle" {
+		t.Fatalf("expected toggle to still be forwarded to the renderer even with an active queue, got %#v", *emitted)
+	}
+}
 
 func TestNormalizeNowPlayingMetadata(t *testing.T) {
 	tests := []struct {

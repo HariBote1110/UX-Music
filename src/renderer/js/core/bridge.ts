@@ -27,6 +27,24 @@ export function isWailsMode() {
   return getWailsApp() != null;
 }
 
+/**
+ * Opportunistically pushes "what the user is looking at" to Go
+ * (server/app_park.go's RecordParkUIState) so it has a reasonably fresh
+ * snapshot to hand back via ConsumeParkedUIState whenever the SPA next
+ * reboots after a park cycle. Fire-and-forget, Wails-only (a no-op
+ * elsewhere): parking itself is entirely Go-timer-driven (see
+ * server/app_park.go's root-cause-correction comment), so nothing can be
+ * reliably requested from JS at the moment of parking — this is why the
+ * push happens ahead of time instead, from features/park.ts (on every view
+ * change and best-effort on hidden=true) and core/navigation.ts's showView.
+ * Lives here rather than in features/park.ts so core/navigation.ts (which
+ * park.ts itself imports for restoreFromPark) can call it without a
+ * circular import.
+ */
+export function recordParkUIState(viewId: string, scrollTop: number) {
+  void getWailsApp()?.RecordParkUIState?.(viewId, scrollTop);
+}
+
 export const musicApi = {
   // --- One-way (Send) ---
   requestAppInfo: () => {

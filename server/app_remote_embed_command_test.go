@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"ux-music-sidecar/pkg/playqueue"
 )
 
 // withEmbedSessionActive marks remoteRelay as active for the duration of the
@@ -126,10 +128,14 @@ func TestRemoteCommandHandler_EmbedInactive_UsesGoPlayerUnchanged(t *testing.T) 
 }
 
 // TestRemoteCommandHandler_NextPrev_AlwaysRouteToRendererQueueRegardlessOfEmbed
-// documents that next/prev keep going through the existing "remote-command"
-// plain-string event (renderer-side queue, see playback-manager.ts) whether
-// or not an embed session is active — the renderer's playNextSong/
-// playPrevSong already re-enter play()'s embed/local routing per song.
+// documents that, while the Go queue is inactive (the default — see
+// app_queue.go's QueueSet/Active()), next/prev keep going through the
+// existing "remote-command" plain-string event (renderer-side queue, see
+// playback-manager.ts) whether or not an embed session is active — the
+// renderer's playNextSong/playPrevSong already re-enter play()'s
+// embed/local routing per song. Once something has activated the Go queue,
+// next/prev are instead handled entirely in Go (QueueNext/QueuePrev) — see
+// TestRemoteCommandHandler_NextPrev_RouteToGoQueueWhenActive.
 func TestRemoteCommandHandler_NextPrev_AlwaysRouteToRendererQueueRegardlessOfEmbed(t *testing.T) {
 	for _, embedActive := range []bool{false, true} {
 		for _, action := range []string{"next", "prev"} {
@@ -168,5 +174,44 @@ func TestRemoteCommandHandler_NextPrev_AlwaysRouteToRendererQueueRegardlessOfEmb
 				}
 			})
 		}
+	}
+}
+
+// TestRemoteCommandHandler_NextPrev_RouteToGoQueueWhenActive verifies that,
+// once the Go queue has been activated (QueueSet called at least once),
+// remote next/prev drive QueueNext/QueuePrev directly instead of emitting
+// the legacy "remote-command" event — there is no renderer queue left to
+// delegate to for this session.
+func TestRemoteCommandHandler_NextPrev_RouteToGoQueueWhenActive(t *testing.T) {
+	newTempRemoteStore(t)
+	token := ensureDeviceAuthToken("dev_appletv")
+
+	app, emitted := newRemoteCommandTestApp(t)
+	app.ensureQueue().SetQueue([]playqueue.Item{
+		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
+		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
+	}, 0)
+	*emitted = nil // discard the queue-state-changed emitted by SetQueue above
+	handler := NewLANHTTPHandler(app)
+
+	body := []byte(`{"action":"next"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/remote/command", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	for _, e := range *emitted {
+		if e.name == "remote-command" {
+			t.Fatalf("legacy remote-command must not be emitted once the Go queue is active, got %#v", *emitted)
+		}
+	}
+	current, ok := app.ensureQueue().CurrentItem()
+	if !ok || current.ID != "b" {
+		t.Fatalf("CurrentItem() after remote next = %+v, %v; want b, true", current, ok)
 	}
 }

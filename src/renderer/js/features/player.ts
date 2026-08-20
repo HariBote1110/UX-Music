@@ -58,6 +58,21 @@ let localPlayer; // Web用（Go環境ではnullまたは未使用）
 let currentSongType = 'local';
 let isWails = false; // Wails環境フラグ
 
+// Go の再生キュー（server/app_queue.go）がアクティブかどうか。
+// playback-manager.ts の handleQueueStateChangedEvent が
+// "queue-state-changed" の payload.active を反映して更新する。
+// embed（YouTube公式埋め込み）の自然終了を Go は自分では観測できない
+// （startQueueItem の embed 経路参照）ため、キューがアクティブなときは
+// QueueAdvanceFinished() を呼んで Go 側に進行を委ね、非アクティブ
+// （レガシー、Go 移行前の単発 embed 再生）なら従来どおりレンダラー内で
+// 完結させる。
+let goQueueActive = false;
+
+/** playback-manager.ts の handleQueueStateChangedEvent から呼ばれる。 */
+export function setGoQueueActive(active: boolean): void {
+    goQueueActive = !!active;
+}
+
 // Goバックエンドの状態キャッシュ
 const goState = {
     currentTime: 0,
@@ -566,6 +581,31 @@ function notifyRelayPlaybackState(active: boolean, title: string, thumbnailURL: 
     }
 }
 
+/**
+ * Go の "queue-play-embed" イベント（server/app_queue.go の startQueueItem
+ * embed 経路）を受けてレンダラー側に委譲された YouTube 公式再生を開始する。
+ * play() の `song.type === 'youtube' && isWails` 分岐と同じ手順（stop →
+ * メディアセッション/Now Playing 更新 → playEmbed）を踏むが、経路判定
+ * （resolveYouTubePlaybackRoute）は既に Go 側で完了しているため、
+ * ここでは無条件に embed で再生する。
+ */
+export async function playQueueEmbedItem(song): Promise<boolean> {
+    await stop();
+    if (!song) return false;
+
+    const filePath = typeof song.path === 'string' ? song.path.trim() : '';
+
+    setMediaSessionMetadata(song).catch(() => { });
+    try {
+        await updateOSNowPlayingMetadata(song);
+    } catch (err) {
+        console.warn('[Player] updateOSNowPlayingMetadata failed:', err);
+    }
+
+    currentSongType = 'youtube';
+    return await playEmbed(song, filePath);
+}
+
 async function playEmbed(song, sourceCandidate) {
     const sourceUrl = typeof song.sourceURL === 'string' && song.sourceURL.trim() !== ''
         ? song.sourceURL.trim()
@@ -620,7 +660,15 @@ async function playEmbed(song, sourceCandidate) {
         },
         onEnded: () => {
             notifyRelayPlaybackState(false, '', '');
+            if (goQueueActive) {
+                // Go の queue-advanced に reason "finished" を出させる
+                // （QueueNext() 経由だと reason "user" になり、
+                // analysed-queue のスコアリングが誤ってスキップ扱いになる）。
+                void getWailsApp()?.QueueAdvanceFinished?.();
+                return;
+            }
             // 既存の曲終了導線（playback-manager の次曲遷移）に接続する
+            // （Go キュー未導入のレガシー経路。単体 embed 再生時のみ到達）
             const finishedSong = state.playbackQueue[state.currentSongIndex];
             if (state.analysedQueue.enabled && finishedSong) musicApi.songFinished(finishedSong);
             if (typeof savedCallbacks.onSongEnded === 'function') savedCallbacks.onSongEnded();

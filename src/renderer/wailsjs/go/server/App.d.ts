@@ -90,6 +90,10 @@ export function ClearLyricsSyncModelCache():Promise<void>;
 
 export function ConfirmSyncPairing(arg1:string,arg2:string,arg3:string,arg4:string):Promise<server.SyncPairingConfirmResult>;
 
+export function ConsumeParkedUIState():Promise<Record<string, any>>;
+
+export function ConsumePendingIntent():Promise<Record<string, any>>;
+
 export function CreatePlaylist(arg1:string):Promise<void>;
 
 export function DeletePlaylist(arg1:string):Promise<void>;
@@ -206,6 +210,24 @@ export function PushSyncLibraryAssets(arg1:string,arg2:number):Promise<server.Sy
 
 export function PushSyncLibraryAssetsWithOptions(arg1:string,arg2:number,arg3:server.SyncTransferOptions):Promise<server.SyncPushResult>;
 
+export function QueueAdvanceFinished():Promise<void>;
+
+export function QueueGetState():Promise<Record<string, any>>;
+
+export function QueueJump(arg1:number):Promise<void>;
+
+export function QueueNext():Promise<void>;
+
+export function QueuePrev():Promise<void>;
+
+export function QueueSet(arg1:Array<Record<string, any>>,arg2:number):Promise<void>;
+
+export function QueueSetLoopMode(arg1:string):Promise<void>;
+
+export function QueueSetShuffle(arg1:boolean):Promise<void>;
+
+export function RecordParkUIState(arg1:string,arg2:number):Promise<void>;
+
 export function RefreshSyncRemoteCatalog():Promise<void>;
 
 export function RenamePlaylist(arg1:Record<string, any>):Promise<void>;
@@ -257,3 +279,5 @@ export function StopDeviceWatcher():Promise<void>;
 export function StopGemmaServer():Promise<void>;
 
 export function UpdatePlaylistSongOrder(arg1:Record<string, any>):Promise<void>;
+
+export function WindowSetParked(arg1:boolean):Promise<void>;

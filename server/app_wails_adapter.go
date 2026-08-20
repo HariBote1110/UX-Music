@@ -38,11 +38,30 @@ func toWailsDialogOptions(opts DialogOptions) wailsRuntime.OpenDialogOptions {
 	}
 }
 
-// wireWailsRuntime switches the process-wide event emitter and this App's
-// dialog provider over to their Wails-backed implementations. It is called
-// once from Startup, which is only ever invoked in GUI mode; headless
-// (--serve) runs never call it, so eventsEmitFunc stays a no-op and dialogs
-// stay a headlessDialogProvider that returns ErrGUIRequired.
+// windowUnloadWebViewFunc/windowReloadWebViewFunc are the process-wide
+// indirection for the Wails fork's webview-destroy runtime calls (Phase 3 of
+// markdown/background-native-queue-plan.md — see FORK_NOTES.md in the
+// HariBote1110/wails fork this module's go.mod replace points at), mirroring
+// eventsEmitFunc above: default to no-ops so app_park.go stays headless-safe
+// and unit-testable, rewired to the real wailsRuntime functions by
+// wireWailsRuntime. This indirection also matters for a subtler reason than
+// headless-safety: calling wailsRuntime.WindowUnloadWebView/WindowReloadWebView
+// with a context.Context that was never registered with a real Wails
+// frontend (e.g. a bare context.Background() in a unit test) makes
+// getFrontend (v2/pkg/runtime/runtime.go) call log.Fatalf and kill the whole
+// test binary — routing app_park.go through these vars instead of importing
+// wailsRuntime directly (which this file alone is permitted to do, see the
+// file-level comment above) is what keeps server_test's `go test ./...`
+// safe.
+var windowUnloadWebViewFunc = func(context.Context) {}
+var windowReloadWebViewFunc = func(context.Context) {}
+
+// wireWailsRuntime switches the process-wide event emitter, webview-lifecycle
+// hooks, and this App's dialog provider over to their Wails-backed
+// implementations. It is called once from Startup, which is only ever
+// invoked in GUI mode; headless (--serve) runs never call it, so
+// eventsEmitFunc/windowUnloadWebViewFunc/windowReloadWebViewFunc stay no-ops
+// and dialogs stay a headlessDialogProvider that returns ErrGUIRequired.
 func (a *App) wireWailsRuntime() {
 	eventsEmitFunc = func(ctx context.Context, name string, data interface{}) {
 		if data == nil {
@@ -51,6 +70,8 @@ func (a *App) wireWailsRuntime() {
 		}
 		wailsRuntime.EventsEmit(ctx, name, data)
 	}
+	windowUnloadWebViewFunc = wailsRuntime.WindowUnloadWebView
+	windowReloadWebViewFunc = wailsRuntime.WindowReloadWebView
 	a.dialogs = wailsDialogProvider{}
 }
 
