@@ -14,6 +14,11 @@ func WebKitHelperPIDs() ([]int, error) {
 	return nil, errProcessTapUnsupported
 }
 
+// WebKitHelperPIDsFor is unsupported outside darwin.
+func WebKitHelperPIDsFor(targetPID int) ([]int, error) {
+	return nil, errProcessTapUnsupported
+}
+
 // PlayProcessTap is unsupported outside darwin; it always returns an error.
 func (p *Player) PlayProcessTap(targets ProcessTapTargets, gainLinear float64) error {
 	return errProcessTapUnsupported
