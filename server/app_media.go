@@ -17,16 +17,28 @@ func (a *App) initOSMediaControls() {
 
 // initAppVisibilityObserver wires the NSApplicationDidHide/DidUnhide
 // observer (app_visibility_darwin.go/.m; a no-op on non-darwin, see
-// app_visibility_stub.go) to emit "app-visibility-changed" for the
-// renderer's park.ts (Phase 2 of
-// markdown/background-native-queue-plan.md). GUI-mode only — like
-// initOSMediaControls/initTray, this is only ever called from Startup,
-// which itself is only invoked via Wails' OnStartup (see main.go); headless
-// `--serve` never runs it.
+// app_visibility_stub.go) to handleAppVisibilityChanged, for the renderer's
+// park.ts (Phase 2/3 of markdown/background-native-queue-plan.md). GUI-mode
+// only — like initOSMediaControls/initTray, this is only ever called from
+// Startup, which itself is only invoked via Wails' OnStartup (see main.go);
+// headless `--serve` never runs it.
 func (a *App) initAppVisibilityObserver() {
-	registerAppVisibilityObserver(func(hidden bool) {
-		a.emit("app-visibility-changed", map[string]interface{}{"hidden": hidden})
-	})
+	registerAppVisibilityObserver(a.handleAppVisibilityChanged)
+}
+
+// handleAppVisibilityChanged is initAppVisibilityObserver's callback body,
+// factored out so it is unit-testable without the platform-specific
+// registerAppVisibilityObserver binding (same pattern as
+// dispatchOSMediaCommand below). It always emits "app-visibility-changed"
+// for park.ts's debounce timer, and — Phase 3's un-park trigger — when the
+// window is shown again (hidden=false) while the SPA is parked, reloads the
+// (destroyed) webview directly: no JS is alive while parked to react to an
+// event on its own, so Go must initiate the reload itself.
+func (a *App) handleAppVisibilityChanged(hidden bool) {
+	a.emit("app-visibility-changed", map[string]interface{}{"hidden": hidden})
+	if !hidden {
+		a.reloadWebViewIfParked()
+	}
 }
 
 // dispatchOSMediaCommand handles one OS media-key command ("play", "pause",
