@@ -82,6 +82,10 @@ type appParkState struct {
 	// this directly (same package) to a few milliseconds so timer-driven
 	// tests don't have to wait out the real 15s.
 	delayOverride time.Duration
+	// memoryReleaseDelayOverride, when non-zero, replaces
+	// defaultMemoryReleaseDelay (app_memory_release.go) — same purpose as
+	// delayOverride, set directly by tests in app_memory_release_test.go.
+	memoryReleaseDelayOverride time.Duration
 }
 
 // pendingIntent is the single {event, payload} slot: a newer intent
@@ -224,6 +228,19 @@ func (a *App) attemptPark() {
 		return
 	}
 	windowUnloadWebViewFunc(a.ctx)
+
+	// L1 memory-return lever (see
+	// go_memory_research/notes/park-memory-release.md): schedule the
+	// GC-forcing + native-malloc-pressure-relief pass a short delay after
+	// the park itself, off this goroutine, so it never delays the
+	// WebView-destroy call above.
+	a.park.mu.Lock()
+	delay := a.park.memoryReleaseDelayOverride
+	a.park.mu.Unlock()
+	if delay <= 0 {
+		delay = defaultMemoryReleaseDelay
+	}
+	time.AfterFunc(delay, memoryReleaseFunc)
 }
 
 // setPendingIntent stores {event, payload} as the sole pending intent,
