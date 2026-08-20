@@ -81,6 +81,50 @@ Go 側のみ実装し、フロントエンド（`src/renderer/js/features/playba
   `queue-play-embed` イベントを emit してレンダラーに委譲するだけで
   `audioPlayer` には一切触れない。
 
+## 並行安全性（レビュー対応・増分2）
+
+`pkg/playqueue.Queue` は当初 `sync.Mutex` を持たずに実装したが、実際の呼び出し元は
+複数 goroutine にまたがる: Wails バインディング（QueueSet/Next/Prev/Jump/
+SetShuffle/SetLoopMode/GetState）、`audio.Player` の `OnFinished` コールバック
+（再生・デコーダ goroutine から発火）、LAN リモートコマンドの HTTP ハンドラー
+（リクエストごとに goroutine）、OS メディアキーのコールバック。レビューで
+指摘を受け、`go test -race` でデータレースを検出するテスト
+（`pkg/playqueue/queue_race_test.go`）を先に追加して再現を確認したうえで、
+`Queue` に `sync.Mutex` を追加し全メソッドをロックするようにした。
+
+- `sync.Mutex` は再入不可のため、`Advance`/`Previous`/`JumpTo`/`SetShuffle` の
+  内部から現在項目を読む箇所は、ロックを取らない `currentItemLocked`
+  （`CurrentItem` の実体）を呼ぶよう分離した。ロック済みメソッドから
+  `CurrentItem()`（ロックを取る方）を呼ぶとデッドロックするため注意。
+- `go test -race ./pkg/playqueue/... ./server/...` で確認済み（後者は
+  `server/app_queue.go` 経由の配線側にレースが無いことの確認）。
+
+## 自動進行の失敗時スキップ（レビュー対応・増分2）
+
+当初の `handlePlaybackFinished` は、自動進行で次の項目の再生開始
+（`startQueueItem`）が失敗すると、ログを出すだけで何もせず終わっていた
+（例: キュー内の曲のファイルが再生中に削除されていた場合、無音のまま
+停止する）。レビュー指摘を受け、失敗した項目をスキップして次を試すよう
+`autoAdvanceQueue`（`handlePlaybackFinished` から分離）に変更した。
+
+- **上限はキューの項目数（1周分）**。`Advance()` 単体は前進を保証しない
+  （`LoopAll` は末尾から index 0 へ戻るだけ、`LoopOne` は現在位置から
+  一切動かない）ため、上限が無いと全項目が再生失敗するケース
+  （例: 参照ファイルが軒並み削除された）で無限リトライしうる。上限に
+  達したら `AudioStop` して諦める。`LoopOne` の場合は同じ項目を上限回数
+  まで再試行する形になる（どの項目を既に試したかまでは追跡しない、
+  意図的な簡略化）。
+- **この挙動が適用されるのは自動進行（`OnFinished` 経由）のみ**。
+  `QueueNext`/`QueuePrev`/`QueueJump`/`QueueSet` のような明示操作
+  （ユーザー操作・リモートコマンド・OS メディアキー由来）は従来どおり、
+  要求された1項目の失敗だけをそのまま呼び出し元へ返し、キューは
+  その項目の位置に留まる（勝手に別の曲へは進まない）。
+- テスト用の差し替えシームとして `App.queueItemStarter`
+  （`func(playqueue.Item) error`、既定 nil）を追加し、実際の
+  `audioPlayer`/ネットワークに触れない fake starter で
+  「途中失敗をスキップして次で成功」「全滅して上限で諦める」
+  「明示操作はスキップしない」の3パターンを決定的に検証した。
+
 ## 既知の制約・今回やらなかったこと（フロントエンド移管タスクへの申し送り）
 
 - **`playback-manager.ts` は未変更**。`QueueSet` を呼ぶ経路が存在しないため、
