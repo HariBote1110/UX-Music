@@ -18,9 +18,16 @@ func newParkTestApp(t *testing.T) (*App, *[]struct {
 		name string
 		data interface{}
 	}{}
+	// Guards appends to *emitted: TestAppParkState_ConcurrentAccess calls
+	// emitOrQueueIntent (and therefore this emitter) from many goroutines
+	// at once under -race, and the slice append itself is not otherwise
+	// synchronised.
+	var emittedMu sync.Mutex
 	app := &App{
 		ctx: context.Background(),
 		playCountsEmitter: func(_ context.Context, name string, data interface{}) {
+			emittedMu.Lock()
+			defer emittedMu.Unlock()
 			*emitted = append(*emitted, struct {
 				name string
 				data interface{}

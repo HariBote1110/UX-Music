@@ -488,7 +488,12 @@ func (ls *LANServer) remoteCommandHandler(w http.ResponseWriter, r *http.Request
 		// unaffected: they still receive only a string, unchanged. Renderer
 		// resolves songID against the already-loaded library state and
 		// reuses the same play-entry path a user click would take.
-		ls.app.emit("remote-play-song", songID)
+		// Routed through emitOrQueueIntent (app_park.go), not a.emit
+		// directly, so a remote play request arriving while the SPA is
+		// parked (Phase 2 of markdown/background-native-queue-plan.md) is
+		// queued and replayed via ConsumePendingIntent() once the SPA wakes
+		// back up, instead of being silently dropped.
+		ls.app.emitOrQueueIntent("remote-play-song", songID)
 	default:
 		writeAPIError(w, "unknown action", http.StatusBadRequest)
 		return

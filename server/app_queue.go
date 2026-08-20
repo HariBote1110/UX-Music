@@ -241,7 +241,13 @@ func (a *App) startQueueItem(item playqueue.Item) error {
 
 	switch resolveQueueItemRoute(item, settings) {
 	case queueRouteEmbed:
-		a.emit("queue-play-embed", queueItemPayload(item))
+		// Routed through emitOrQueueIntent (app_park.go), not a.emit
+		// directly, so this survives the SPA being parked (Phase 2 of
+		// markdown/background-native-queue-plan.md): while parked there is
+		// no renderer listener to mount the embed, so the intent is
+		// stashed and replayed via ConsumePendingIntent() once the SPA
+		// wakes back up.
+		a.emitOrQueueIntent("queue-play-embed", queueItemPayload(item))
 		return nil
 
 	case queueRouteStream:
