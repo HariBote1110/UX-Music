@@ -121,6 +121,29 @@ func (a *App) emitQueueState() {
 	a.emit("queue-state-changed", queueStatePayload(a.ensureQueue().Snapshot()))
 }
 
+// emitQueueAdvanced broadcasts "queue-advanced" whenever the queue moves off
+// an item it was actually sitting on. previousID is the ID of that item;
+// reason is "finished" for the native OnFinished/QueueAdvanceFinished
+// auto-advance path and "user" for the explicit QueueNext/QueuePrev/
+// QueueJump/QueueSet actions.
+//
+// This exists because, once the frontend hands playback fully to the Go
+// queue, the renderer can no longer tell a natural finish from a user skip
+// by itself (both used to be distinguished by which JS code path called
+// playSong()/handleSkip()) — see progress/native-play-queue.md's cutover
+// section. The renderer uses previousId/reason to call
+// musicApi.songFinished/songSkipped for analysed-queue scoring, which stays
+// entirely a frontend concern; Go only reports what happened.
+func (a *App) emitQueueAdvanced(previousID string, reason string) {
+	if previousID == "" {
+		return
+	}
+	a.emit("queue-advanced", map[string]interface{}{
+		"previousId": previousID,
+		"reason":     reason,
+	})
+}
+
 // resolveQueueItemRoute decides how a queue item should actually be played,
 // matching resolveYouTubePlaybackRoute in youtube-embed-route.ts: non-
 // YouTube items always play locally; YouTube items play through the
@@ -274,8 +297,14 @@ func (a *App) playCurrentQueueItem() error {
 // server/app_remote.go's remoteCommandHandler and app_media.go's
 // initOSMediaControls).
 func (a *App) QueueSet(items []map[string]interface{}, startIndex int) error {
-	a.ensureQueue().SetQueue(songMapsToQueueItems(items), startIndex)
+	q := a.ensureQueue()
+	prevItem, hadPrev := q.CurrentItem()
+
+	q.SetQueue(songMapsToQueueItems(items), startIndex)
 	a.emitQueueState()
+	if hadPrev {
+		a.emitQueueAdvanced(prevItem.ID, "user")
+	}
 	return a.playCurrentQueueItem()
 }
 
@@ -285,8 +314,14 @@ func (a *App) QueueSet(items []map[string]interface{}, startIndex int) error {
 // OnFinished path (see autoAdvanceQueue), a failed start is surfaced to the
 // caller as-is and the queue does NOT skip ahead to try another item.
 func (a *App) QueueNext() error {
-	item, ok := a.ensureQueue().Advance()
+	q := a.ensureQueue()
+	prevItem, hadPrev := q.CurrentItem()
+
+	item, ok := q.Advance()
 	a.emitQueueState()
+	if hadPrev {
+		a.emitQueueAdvanced(prevItem.ID, "user")
+	}
 	if !ok {
 		_ = a.AudioStop()
 		return nil
@@ -298,8 +333,14 @@ func (a *App) QueueNext() error {
 // of loop mode — see pkg/playqueue.Queue.Previous) and plays it. Like
 // QueueNext, a failed start is surfaced to the caller without skipping.
 func (a *App) QueuePrev() error {
-	item, ok := a.ensureQueue().Previous()
+	q := a.ensureQueue()
+	prevItem, hadPrev := q.CurrentItem()
+
+	item, ok := q.Previous()
 	a.emitQueueState()
+	if hadPrev {
+		a.emitQueueAdvanced(prevItem.ID, "user")
+	}
 	if !ok {
 		return nil
 	}
@@ -310,8 +351,14 @@ func (a *App) QueuePrev() error {
 // order and plays it. An out-of-range index leaves the queue unchanged. A
 // failed start is surfaced to the caller without skipping.
 func (a *App) QueueJump(index int) error {
-	item, ok := a.ensureQueue().JumpTo(index)
+	q := a.ensureQueue()
+	prevItem, hadPrev := q.CurrentItem()
+
+	item, ok := q.JumpTo(index)
 	a.emitQueueState()
+	if hadPrev {
+		a.emitQueueAdvanced(prevItem.ID, "user")
+	}
 	if !ok {
 		return nil
 	}
@@ -335,6 +382,19 @@ func (a *App) QueueSetLoopMode(mode string) {
 // sync, mirroring what "queue-state-changed" carries.
 func (a *App) QueueGetState() map[string]interface{} {
 	return queueStatePayload(a.ensureQueue().Snapshot())
+}
+
+// QueueAdvanceFinished advances the queue exactly like the native
+// OnFinished auto-advance path (see autoAdvanceQueue, including its bounded
+// skip-and-retry on failed starts), but is called by the renderer instead
+// of happening automatically. This is needed for YouTube official-embed
+// items: Go never plays their audio itself (see startQueueItem's embed
+// route) so it has no way to observe the IFrame reporting the track ended.
+// The renderer calls this when that happens, so "queue-advanced" still
+// carries reason "finished" for embed tracks — using QueueNext() instead
+// would misreport it as reason "user" and skew analysed-queue scoring.
+func (a *App) QueueAdvanceFinished() {
+	a.autoAdvanceQueue()
 }
 
 // handlePlaybackFinished is the audio.Player.SetOnFinished callback wired in
@@ -393,6 +453,16 @@ func (a *App) handlePlaybackFinished() {
 // behaviour there.
 func (a *App) autoAdvanceQueue() {
 	q := a.ensureQueue()
+
+	// The finished item is whatever the queue was sitting on when this
+	// auto-advance started — not whichever item the skip-and-retry loop
+	// below eventually lands on. Emitted once, regardless of how many
+	// failed-start retries follow: those retries are about items that never
+	// actually played, not further finishes/skips.
+	prevItem, hadPrev := q.CurrentItem()
+	if hadPrev {
+		a.emitQueueAdvanced(prevItem.ID, "finished")
+	}
 
 	attempts := len(q.Snapshot().Items)
 	if attempts < 1 {

@@ -535,6 +535,9 @@ func TestQueueAdvanceFinishedBindingAdvancesAndEmitsFinishedReason(t *testing.T)
 	newTempUserDataStore(t)
 	app, emitted := newQueueTestApp(t)
 
+	starter, _ := failingStarter(nil)
+	app.queueItemStarter = starter
+
 	app.ensureQueue().SetQueue([]playqueue.Item{
 		{ID: "a", Type: playqueue.ItemTypeLocal, Path: "/music/a.mp3"},
 		{ID: "b", Type: playqueue.ItemTypeLocal, Path: "/music/b.mp3"},
