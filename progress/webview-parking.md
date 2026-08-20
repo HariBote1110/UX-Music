@@ -207,28 +207,206 @@ WebKit の `WebContent` プロセスは、ページ遷移でヒープ/DOM を解
   ローカル再生中の測定は今回のタスク範囲では行っていない。
 - **保留インテントの実機シナリオ（駐機中にリモートから play-song が来る/
   キューが embed 曲へ自動進行する）は Go 側ユニットテストでのみ検証**
-  （`server/app_park_test.go`）。実機での「駐機中に Apple TV からリモート
-  再生要求 → 復帰 → 再生開始」の E2E は今回は行っていない（テスト
-  環境にペア済みリモートクライアントが無いため）。
-- **Phase 3（Wails フォークによる `DestroyWebView`）は今回は実施しない**
-  — 計画書どおり、Phase 2 の実測（上表）で十分な削減（本体除いた合計の
-  約 6 割減）が確認できたため。`park.ts` の `parkNow`/`restoreFromPark`
-  という単一シームは残しているので、必要になれば差し替え可能。
+  （`server/app_park_test.go`、Phase 3 版も同様）。実機での「駐機中に
+  Apple TV からリモート再生要求 → 復帰 → 再生開始」の E2E は Phase 2/3
+  いずれも行っていない（テスト環境にペア済みリモートクライアントが
+  無いため）。Phase 3 でも状況は変わらず未検証。
+- Phase 2 時点では「Phase 3（Wails フォークによる DestroyWebView）は
+  実測十分のため実施しない」としていたが、実際には Phase 2 のメモリ
+  解放が非表示化から 3.5〜4 分後という遅延を伴っていたため、後日
+  Phase 3 を実施した（下記セクション参照）。
+
+## Phase 3（2026-08-20 実施）: WebView 破棄方式への切替
+
+Phase 2 の実測で判明した「駐機の実効化（`ps` RSS への反映）が非表示化から
+約 3.5〜4 分後」という遅延（WebKit がページ遷移後もヒープを OS へ即座に
+返却しないアロケータの保持挙動によるもの）を解消するため、駐機の実装を
+「`parked.html` へのナビゲーション」から「`WKWebView` 自体の破棄・再生成」
+へ切り替えた。`markdown/background-native-queue-plan.md` の Phase 3。
+
+### 前提: Wails v2 フォーク
+
+`github.com/HariBote1110/wails/v2`（ブランチ `ux-music/webview-destroy`、
+コミット `56974de52783...`、`go.mod` の `replace` で適用）に
+`runtime.WindowUnloadWebView(ctx)`/`runtime.WindowReloadWebView(ctx)` を
+追加してもらったものを利用。`UnloadWebView` は `WKWebView` インスタンスを
+最後の強参照ごと解放し（`self.webview = nil`）、WebContent プロセスを
+即座に終了させる。`ReloadWebView` は保持しておいた
+`WKWebViewConfiguration`（IPC ブリッジの `WKUserContentController` を含む）
+を再利用して `WKWebView` を再構築し、起動時と同じ URL を再ロードする —
+SPA から見ると「フルリロード」と等価。詳細はフォークの `FORK_NOTES.md`
+参照。フォーク自体への変更は行っていない（今回のタスクで見つかった
+フォーク側バグは無し）。
+
+### Go 側の変更（`server/app_park.go`、`server/app_wails_adapter.go`、`server/app_media.go`）
+
+- `WindowParkWebView(uiState map[string]interface{})`（新設バインディング）
+  が駐機の唯一の入口になった: UI スナップショットを保存し、駐機フラグを
+  立て、`windowUnloadWebViewFunc(a.ctx)` を呼ぶ。呼び出し側
+  （`park.ts` の `parkNow`）は以前のように別途 `WindowSetParked(true)` を
+  呼ぶ必要がない。
+- `ConsumeParkedUIState()`（新設バインディング）が UI スナップショットの
+  唯一の取り出し口。sessionStorage は WebContent プロセスごと消えるため
+  使えなくなり、保存先を Go 側の `appParkState.uiState` に移した。
+  take-once（取り出すとクリア）。
+- `windowUnloadWebViewFunc`/`windowReloadWebViewFunc`
+  （`app_wails_adapter.go`）: `eventsEmitFunc` と同じパッケージ変数
+  インダイレクションパターンで、既定は no-op、`wireWailsRuntime`
+  （GUI モードの `Startup` からのみ呼ばれる）が実体
+  （`wailsRuntime.WindowUnloadWebView`/`WindowReloadWebView`）へ差し替える。
+  `app_park.go` は Wails ランタイムを直接 import しない
+  （`app_wails_adapter.go` の file-level コメントで「server パッケージ内で
+  Wails ランタイムを import してよいのはこのファイルだけ」という既存の
+  取り決めを踏襲）。この間接化は headless テストの安全性だけでなく、
+  素の `context.Background()`（`frontend` 値を持たない）を
+  `wailsRuntime.WindowUnloadWebView` にそのまま渡すと `getFrontend`
+  （フォークの `v2/pkg/runtime/runtime.go`）が `log.Fatalf` でテスト
+  バイナリごと終了させてしまうという実害を防ぐためでもある
+  （最初の実装検討時に気づいた — テストは `windowUnloadWebViewFunc`/
+  `windowReloadWebViewFunc` をスパイに差し替えるだけで済む）。
+- `emitOrQueueIntent`: 駐機中の分岐は Phase 2 の「`wake-request` イベント
+  を emit」から「`reloadWebViewIfParked()` を直接呼ぶ」に変更した。
+  駐機中は WebView 自体が破棄されており、`wake-request` を受け取って
+  `location.replace` するはずの `parked.html` も存在しないため、
+  イベント経由で「起こす」という発想自体が Phase 3 では成立しない
+  （イベントは駐機中は安全な no-op になる、FORK_NOTES.md 参照）。
+  Go が直接 `WindowReloadWebView` を呼ぶことで WebView を再生成し、
+  SPA が起動して `ConsumePendingIntent()` で保留分を回収する、という
+  流れに変えた。
+- `handleAppVisibilityChanged`（`app_media.go`、`initAppVisibilityObserver`
+  のコールバック本体を切り出したもの — ユニットテスト可能にするための
+  リファクタ）: `hidden=false` かつ駐機中のとき、`reloadWebViewIfParked()`
+  を呼ぶ。これが「ウィンドウを再表示したときの復帰」の起点。ウィンドウを
+  隠したまま WebView だけ再生成しても表示状態には影響しない（`attachWebView`
+  はコンテンツビューへ追加するだけで `Show` は呼ばない）ため、
+  「ウィンドウは隠れたまま WebView を再ロード」という要件は満たしている。
+- 二重リロードのレース対策: `reloadWebViewIfParked` は `park.mu` の下で
+  `parked` フラグを読んでから呼ぶため、`handleAppVisibilityChanged` と
+  `emitOrQueueIntent` がほぼ同時に発火してもリロード要求は直列化される。
+  フォークの `ReloadWebView` 自体も「既に WebView があれば no-op」と
+  冪等なため、2 回目以降の呼び出しは安全に無視される。
+- `WindowSetParked(false)`（`restoreFromPark` が SPA 起動のたびに呼ぶ）は
+  引き続き駐機フラグ・保留インテントに加えて UI スナップショットも
+  クリアするようにした — 前回サイクルの残骸を持ち越さないという
+  Phase 2 からの契約を UI スナップショットにも適用した形。
+
+### SPA 側の変更（`src/renderer/js/features/park.ts`）
+
+- `parkNow()`: `sessionStorage.setItem` + `location.replace('/parked.html')`
+  を `WindowParkWebView(captureUIState())` の一呼び出しに置き換えた。
+  この呼び出し以降のコードは実行される保証がない
+  （呼び出しを発行したこの WebContent プロセス自体が終了しうるため）
+  という前提でコメントを整理した。
+- `restoreFromPark()`: UI スナップショットの読み出し元を
+  `sessionStorage.getItem` から `ConsumeParkedUIState()`（Wails）に
+  変更。ブラウザフォールバック用の sessionStorage 経路は削除した —
+  `shouldPark` が `isWails` を必須条件にしているため、そもそも
+  非 Wails 環境で `parkNow` が呼ばれることはなく、フォールバックを
+  残す意味がなかった。
+- `deserializeParkedUIState`/`serializeParkedUIState`（JSON 文字列との
+  相互変換）は、`WindowParkWebView`/`ConsumeParkedUIState` が既にオブジェクト
+  のまま Go↔JS を往復させる（Wails のバインディングが JSON マーシャリングを
+  肩代わりする）ため不要になり、形状検証のみを行う `parseParkedUIState`
+  に統合した。
+- `initParkBridge()` から `wake-request` イベントの購読を削除した
+  （Go 側がもう emit しないため — 上記参照）。
+- `public/parked.html` を削除した（Phase 2 の駐機ページ。もう到達
+  経路が存在しない）。
+
+### 実測結果（`wails build` → `build/bin/UX-Music.app` 実機測定、2026-08-20）
+
+`pgrep -x UX-Music` で旧プロセスが無いことを確認 → `wails build` →
+`strings build/bin/UX-Music.app/Contents/MacOS/UX-Music` で
+`WindowParkWebView`/`ConsumeParkedUIState`/`WindowUnloadWebView`/
+`WindowReloadWebView`/`reloadWebViewIfParked`/`handleAppVisibilityChanged`
+の全シンボル存在を確認 → `open` で起動 → `scripts/measure-app-memory.sh`
+を 10 秒間隔でポーリング（Phase 2 の教訓を踏まえ、今回はビルド直後に
+即座に測定を開始し、バイナリの取り違えを避けた）。
+
+| 時刻 (非表示化からの経過) | app (本体) | webkit | 合計 |
+| --- | --- | --- | --- |
+| 起動直後（baseline） | 146.4MB | 314.4MB (3 procs) | 460.7MB |
+| 非表示化 (`Finder` 経由 hide) | — | — | — |
+| +70s（デバウンス発火直後、まだ崩れていない） | 146.5MB | 311.6MB (3 procs) | 458.1MB |
+| +80s | 136.9MB | 305.9MB (3 procs) | 442.7MB |
+| **+90s（実効化・急落）** | **122.3MB** | **110.5MB (3 procs)** | **232.8MB** |
+| +140〜240s（安定） | 124.6〜127.2MB | 111.2〜114.9MB (3 procs) | 235.5〜242.0MB |
+
+- **駐機による削減**: 合計で約 **219〜225MB**（460.7MB → 235.5〜242.0MB、
+  約 48%減）。webkit 側だけで見ると 314.4MB → 111〜115MB、約 **200MB
+  （64%減）**。Phase 2（約 239MB 減、51%減）とほぼ同等の削減量。
+- **実効化タイミングが Phase 2 から劇的に改善**: Phase 2 は非表示化から
+  実際に `ps` RSS へ反映されるまで約 225〜240 秒（3.5〜4分）かかったが、
+  Phase 3 は **非表示化から約 80〜90 秒**（デバウンス 15 秒＋WebView
+  破棄・プロセス終了の実処理で 65〜75 秒程度）で崩れ始め、+90s 時点で
+  ほぼ完了していた。10 秒間隔の計測の粒度では「+80s→+90s の 1 回の
+  サンプリング間隔でほぼ一気に崩壊」という挙動で、Phase 2 のような
+  数分単位のじわじわとした遅延ではなく、`WindowUnloadWebView` 呼び出しに
+  伴う WebContent プロセスの実際の終了（デバウンス後、Go 側の処理
+  そのものに数十秒かかっている点は今回未計測 — メインスレッド
+  ディスパッチ・プロセス終了・OS のページ回収のいずれで時間を
+  食っているかまでは切り分けていない）に応じて RSS が反映されたと
+  考えられる。当初の設計意図（「15秒のデバウンス後、ほぼ即座に解放」）
+  ほど瞬時ではなかったが、Phase 2 比で見れば「数分」から「1〜1.5分」へ
+  大幅短縮しており、目的（実運用上意味のある速さでの解放）は達成した。
+- **再表示の確認**: `Finder` 経由で再表示すると、`handleAppVisibilityChanged`
+  が `reloadWebViewIfParked()` を呼び、ほぼ即座（測定した最短間隔である
+  再表示 5 秒後の時点で既に）WebView が再構築され SPA が完全に
+  再起動していることを確認した（合計 483.6MB、webkit 336.3MB
+  (4 procs) で安定）。スクリーンショットで曲一覧・アートワーク・
+  再生バーが正常に描画され操作可能な状態であることも目視確認した。
+  復元後がベースラインよりやや大きい（483.6MB vs 460.7MB）のは
+  Phase 2 と同じ理由（再パース・再レンダリングコスト）と考えられる。
+- **クイック再表示（15秒未満）で駐機しないことの確認**: 非表示化後
+  8 秒で再表示したところ、webkit メモリは 186.0MB→187.8MB で安定した
+  ままで、駐機時に見られる急落（〜110MB 台）は一切発生しなかった —
+  デバウンスタイマーが `shouldPark`/`cancelParkTimer` の設計どおり
+  正しくキャンセルされていることを実測でも確認した。
+- **保留インテント経路（駐機中にリモート/embed からの再生要求が来る
+  シナリオ）は実機 E2E では未検証**。Go 側ユニットテスト
+  （`server/app_park_test.go` の
+  `TestWindowSetParked_TrueRoutesFutureIntentsToPendingSlotAndTriggersReload`
+  ほか）でロジック（駐機中は intent がスロットに積まれ、
+  `WindowReloadWebView` が呼ばれ、`wake-request` は emit されない）は
+  確認済みだが、実機で「駐機中に Apple TV からリモート再生要求 → 復帰
+  → 再生開始」までを通しては検証していない（ペア済みリモート
+  クライアントが今回の環境に無いため）。この制約は Phase 2 から
+  変わらず持ち越し。
+
+### 既知の制約・今回やらなかったこと（Phase 3）
+
+- 実効化タイミング（+80〜90秒）の内訳（デバウンス後の Go 処理・
+  `WindowUnloadWebView` のメインスレッドディスパッチ・WebContent
+  プロセスの実終了・OS のページ回収）は切り分けていない。実運用上は
+  「Phase 2 の数分待ちより十分速い」という結論で足りると判断した。
+- Phase 2 と同様、ワークロード最小（曲を再生していない状態）での測定。
+  ローカル/embed 再生中の駐機挙動は今回も未測定。
+- フォーク自体（`github.com/HariBote1110/wails`）には手を入れていない。
+  見つかったバグも無し。
 
 ## 関連ファイル
 
 - Go: `server/app_visibility_darwin.go`/`.m`、`server/app_visibility_stub.go`、
   `server/app_park.go`、`server/app_park_test.go`、`server/app_media.go`
-  （`initAppVisibilityObserver`）、`server/app.go`（`Startup` 配線・`park`
-  フィールド）、`server/app_queue.go`/`app_remote.go`（`emitOrQueueIntent`
-  への置き換え）。
+  （`initAppVisibilityObserver`/`handleAppVisibilityChanged`）、
+  `server/app_media_test.go`、`server/app.go`（`Startup` 配線・`park`
+  フィールド）、`server/app_wails_adapter.go`
+  （`windowUnloadWebViewFunc`/`windowReloadWebViewFunc`）、
+  `server/app_queue.go`/`app_remote.go`（`emitOrQueueIntent` への置き換え、
+  Phase 2 のまま）。
 - 実測: `pkg/audio/processtap_darwin.go`/`processtap_other.go`
   （`WebKitHelperPIDsFor`）、`cmd/measure-app-memory/main.go`、
   `scripts/measure-app-memory.sh`。
-- SPA: `src/renderer/public/parked.html`、`src/renderer/js/features/park.ts`、
+- SPA: `src/renderer/js/features/park.ts`、
   `src/renderer/js/features/park.test.ts`、
-  `src/renderer/js/features/playback-manager.ts`（`initGoQueueBridge` 配線）。
+  `src/renderer/js/features/playback-manager.ts`（`initGoQueueBridge` 配線、
+  変更なし）。Phase 2 の `public/parked.html` は Phase 3 で削除した。
 - wailsjs スタブ（`wails generate` が実行できない開発環境向けの手動追記、
   `progress/native-play-queue.md` の前例に倣う）:
   `src/renderer/wailsjs/go/server/App.d.ts`/`.js`
-  （`WindowSetParked`/`ConsumePendingIntent`）。
+  （`WindowSetParked`/`ConsumePendingIntent`/`WindowParkWebView`/
+  `ConsumeParkedUIState`）。
+- フォーク: `github.com/HariBote1110/wails/v2`
+  （ローカルソース `/Users/yuki/GitHub/wails`、ブランチ
+  `ux-music/webview-destroy`、`FORK_NOTES.md`）。`go.mod` の `replace`
+  で `v2.11.1-0.20260820133754-56974de52783` を適用。
