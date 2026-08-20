@@ -691,6 +691,37 @@ export function handleQueueStateChangedEvent(payload: QueueStatePayload | null |
 }
 
 /**
+ * 駐機復帰時のジャケット欠落バグ（progress/webview-parking.md）対策。
+ *
+ * initGoQueueBridge() の QueueGetState() 呼び出しは、renderer.ts の
+ * musicApi.loadLibrary() 応答（state.library への曲データ投入）を待たない
+ * ため、通常の駐機復帰（Go 側のキューが再生中のまま SPA だけ再起動する
+ * ケース）では hydrateQueueItem() の findSong(id) が全滅し、
+ * artwork フィールドを持たないフォールバック Song で
+ * state.playbackQueue が埋まってしまう。ライブラリ読み込み完了後に
+ * 一度だけ QueueGetState() を再取得して handleQueueStateChangedEvent() を
+ * 再適用することで、フォールバック Song をライブラリ由来の
+ * （artwork を含む）本物の Song に置き換える。呼び出し元は
+ * renderer.ts の musicApi.onLoadLibrary ハンドラ。
+ */
+export async function refreshQueueDisplayFromGoState(deps: {
+    isWails?: () => boolean;
+    getApp?: () => { QueueGetState?: () => Promise<unknown> } | null | undefined;
+    apply?: (payload: QueueStatePayload | null | undefined) => void;
+} = {}) {
+    const wails = deps.isWails ?? isWailsMode;
+    if (!wails()) return;
+
+    const getApp = deps.getApp ?? getWailsApp;
+    const apply = deps.apply ?? handleQueueStateChangedEvent;
+
+    const payload = await getApp()?.QueueGetState?.();
+    if (payload) {
+        apply(payload as QueueStatePayload);
+    }
+}
+
+/**
  * Go の "queue-advanced" ({previousId, reason}) を受けて analysed-queue の
  * スコアリングを行う。Go がキューを丸ごと動かすようになったことで、
  * レンダラーはもう「自然終了」と「ユーザースキップ」をplayer.tsの

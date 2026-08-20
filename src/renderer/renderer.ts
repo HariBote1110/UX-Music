@@ -14,7 +14,7 @@ import { initModal } from './js/ui/modal.js';
 import { initDebugCommands } from './js/utils/debug-commands.js';
 import { initEqualizer } from './js/ui/equalizer.js';
 // ▼▼▼ 修正: playNextSong, playPrevSong を適切にインポート ▼▼▼
-import { playNextSong, playPrevSong } from './js/features/playback-manager.js';
+import { playNextSong, playPrevSong, refreshQueueDisplayFromGoState } from './js/features/playback-manager.js';
 import { initLazyLoader, observeNewImages } from './js/utils/lazy-loader.js';
 import { startPerformanceMonitor } from './js/utils/performance-monitor.js';
 import { musicApi } from './js/core/bridge.js';
@@ -142,6 +142,14 @@ async function initApp() {
 
         const initialView = state.activeViewId || 'track-view';
         void showView(initialView);
+
+        // 駐機復帰バグ対策 (progress/webview-parking.md): initGoQueueBridge() の
+        // QueueGetState() はこのライブラリ読み込みを待たずに走るため、駐機復帰直後
+        // （Go のキューが再生中のまま SPA だけ再起動したケース）は
+        // state.playbackQueue がジャケット欠落のフォールバック Song で埋まっている
+        // ことがある。ライブラリ確定後に一度だけ Go キュー状態を再取得・再適用し、
+        // ライブラリ由来の本物の Song（artwork 込み）に置き換える。
+        void refreshQueueDisplayFromGoState();
 
         musicApi.requestPlaylistsWithArtwork();
         const loadingOverlay = document.getElementById('loading-overlay');

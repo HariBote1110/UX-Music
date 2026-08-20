@@ -539,9 +539,7 @@ describe('refreshQueueDisplayFromGoState', () => {
     });
 
     it('re-hydrates state.playbackQueue with full library data (including artwork) once the library has finished loading', async () => {
-        const bridge = await import('../core/bridge.js');
-        const libraryModel = await import('../core/library-model.js');
-        const { refreshQueueDisplayFromGoState } = await import('./playback-manager.js');
+        const { refreshQueueDisplayFromGoState, handleQueueStateChangedEvent } = await import('./playback-manager.js');
 
         const payload = {
             items: [{ id: 'a', type: 'local', path: '/a.flac', title: 'A', artist: '', album: '', artworkId: 'hash1' }],
@@ -549,15 +547,22 @@ describe('refreshQueueDisplayFromGoState', () => {
         };
         const app = { QueueGetState: vi.fn(async () => payload) };
         const librarySong = { id: 'a', title: 'A', artwork: { full: 'a.webp', thumbnail: 'a_thumb.webp' } };
-        vi.spyOn(bridge, 'isWailsMode').mockReturnValue(true);
-        vi.spyOn(bridge, 'getWailsApp').mockReturnValue(app as any);
-        vi.spyOn(libraryModel, 'getSongById').mockReturnValue(librarySong as any);
 
-        await refreshQueueDisplayFromGoState();
+        await refreshQueueDisplayFromGoState({
+            isWails: () => true,
+            getApp: () => app,
+            apply: (p) => handleQueueStateChangedEvent(p, {
+                findSong: (id: string) => (id === 'a' ? librarySong : null),
+                updatePlayingIndicators: vi.fn(),
+                renderQueueView: vi.fn(),
+                updateNowPlayingView: vi.fn(),
+                loadLyricsForSong: vi.fn(),
+                prefetchUpcomingRemoteTracks: vi.fn(),
+                updateShuffleLoopButtons: vi.fn(),
+            }),
+        });
 
         expect(state.playbackQueue[0]).toBe(librarySong);
-
-        vi.restoreAllMocks();
     });
 });
 
