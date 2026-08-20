@@ -162,6 +162,10 @@ export function ConfirmSyncPairing(arg1, arg2, arg3, arg4) {
   return window['go']['server']['App']['ConfirmSyncPairing'](arg1, arg2, arg3, arg4);
 }
 
+export function ConsumePendingIntent() {
+  return window['go']['server']['App']['ConsumePendingIntent']();
+}
+
 export function CreatePlaylist(arg1) {
   return window['go']['server']['App']['CreatePlaylist'](arg1);
 }
@@ -528,4 +532,8 @@ export function StopGemmaServer() {
 
 export function UpdatePlaylistSongOrder(arg1) {
   return window['go']['server']['App']['UpdatePlaylistSongOrder'](arg1);
+}
+
+export function WindowSetParked(arg1) {
+  return window['go']['server']['App']['WindowSetParked'](arg1);
 }
