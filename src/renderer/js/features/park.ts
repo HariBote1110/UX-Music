@@ -76,7 +76,7 @@ export type PendingIntentKind = 'queue-play-embed' | 'remote-play-song' | null;
  * emitOrQueueIntent — only these two event names are ever queued) so the
  * caller knows which existing handler to replay it through.
  */
-export function classifyPendingIntent(intent: { event?: unknown } | null | undefined): PendingIntentKind {
+export function classifyPendingIntent(intent: { event?: unknown; payload?: unknown } | null | undefined): PendingIntentKind {
     if (!intent) return null;
     if (intent.event === 'queue-play-embed') return 'queue-play-embed';
     if (intent.event === 'remote-play-song') return 'remote-play-song';

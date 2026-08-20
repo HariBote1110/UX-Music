@@ -119,6 +119,19 @@ async function initGoQueueBridge() {
     if (initialQueueState) {
         handleQueueStateChangedEvent(initialQueueState as QueueStatePayload);
     }
+
+    // Phase 2（WebView 駐機/復帰）本体。QueueGetState() の直後という順序が
+    // 重要 — restoreFromPark() は保留インテント（queue-play-embed/
+    // remote-play-song）を再生前に、まずキュー状態が正しく復元済みである
+    // ことを前提にする（park.ts 参照）。initParkBridge() は次回の駐機に
+    // 備えた app-visibility-changed の購読で、この呼び出しの成否とは独立。
+    // park.ts からこのファイルの handleQueuePlayEmbedEvent/
+    // handleRemotePlaySongEvent への参照と合わせて循環 import になるため、
+    // トップレベルではなくここで動的 import する
+    // （両者とも関数呼び出し内でしか使わないので実害はない）。
+    const { initParkBridge, restoreFromPark } = await import('./park.js');
+    initParkBridge();
+    await restoreFromPark();
 }
 
 /**

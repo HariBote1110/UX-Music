@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <!--
+        This page carries no SPA bundles, no images, no external requests —
+        it exists purely so the WebContent process has (almost) nothing left
+        to hold JS heap/DOM/image caches for while UX-Music is hidden. See
+        markdown/background-native-queue-plan.md Phase 2 and
+        progress/webview-parking.md for the design and measured numbers.
+        Native (Go) playback is unaffected: it never depended on this page.
+
+        No explicit <script src="wails runtime"> tag is needed — Wails
+        injects window.runtime/window.go into every page loaded inside its
+        WebView (it hooks in at the native WKWebView/WKUserScript level, not
+        per-asset), so this plain HTML file gets the same bindings the SPA
+        does automatically.
+    -->
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'none'; connect-src http://127.0.0.1:* http://localhost:* http://wails.localhost:* ws://127.0.0.1:* ws://localhost:* ws://wails.localhost:* wss://127.0.0.1:* wss://localhost:* wss://wails.localhost:*;">
+    <title>UX Music</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            /* Matches main.go's options.RGBA{27, 38, 54, 1} BackgroundColour
+               so there is no visible flash while parked/restoring. */
+            background: #1b2636;
+        }
+    </style>
+</head>
+
+<body>
+    <script>
+        (function () {
+            // Wake conditions, per markdown/background-native-queue-plan.md
+            // Phase 2 §C: any of —
+            //   1. "app-visibility-changed" with hidden=false (the window
+            //      was re-shown — Dock click, etc.)
+            //   2. "wake-request" (server/app_park.go's emitOrQueueIntent —
+            //      a playback request arrived while parked and needs a live
+            //      SPA to act on it)
+            //   3. a safety-net poll of document.visibilityState, in case
+            //      the Wails event above is ever missed (e.g. a runtime
+            //      injection race on this fresh navigation).
+            // Whichever fires first wins; wake() is idempotent-guarded so a
+            // double-fire cannot double-navigate.
+            var awake = false;
+            function wake() {
+                if (awake) return;
+                awake = true;
+                location.replace('/');
+            }
+
+            function bindRuntimeEvents() {
+                if (!window.runtime || typeof window.runtime.EventsOn !== 'function') {
+                    return false;
+                }
+                window.runtime.EventsOn('app-visibility-changed', function (payload) {
+                    if (payload && payload.hidden === false) wake();
+                });
+                window.runtime.EventsOn('wake-request', function () {
+                    wake();
+                });
+                return true;
+            }
+
+            // window.runtime may not be injected on the very first tick of
+            // this fresh navigation yet — retry briefly rather than relying
+            // on a single synchronous check.
+            if (!bindRuntimeEvents()) {
+                var attempts = 0;
+                var retry = setInterval(function () {
+                    attempts += 1;
+                    if (bindRuntimeEvents() || attempts > 20) {
+                        clearInterval(retry);
+                    }
+                }, 250);
+            }
+
+            // Safety net: poll document.visibilityState every 2s. This page
+            // has no Go binding for "is the app hidden" beyond the event
+            // above, so document.visibilityState (true whenever this
+            // WebView/window is actually the foreground, on-screen view) is
+            // the simplest reliable fallback — it does not require a new
+            // Go binding, and false positives are harmless (waking early
+            // just reloads the SPA a little sooner than strictly needed).
+            setInterval(function () {
+                if (document.visibilityState === 'visible') wake();
+            }, 2000);
+        })();
+    </script>
+</body>
+
+</html>
