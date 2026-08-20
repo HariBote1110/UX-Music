@@ -1,5 +1,7 @@
 # Progress Index
 
+- [native-play-queue.md](native-play-queue.md) — バックグラウンド再生ネイティブ化 Phase 1: `pkg/playqueue`（純ロジック、JS版 playback-manager.ts のnext/prev/shuffle/loop挙動をTDDで移植）と `server/app_queue.go`（Wailsバインディング・OnFinished自動進行・remote/OSメディアキー横取り）を実装。opt-in設計でQueueSetが呼ばれるまで既存動作に影響なし。再生回数計上は「開始時に一度だけ」（計画書の想定と異なりSongFinishedは無関係と判明）で、キューActive時はaudio-playback-finishedのemitを抑止して二重計上を回避。フロントエンド（playback-manager.ts）は本タスクでは未改修
+
 - [mtp-ffi-removal.md](mtp-ffi-removal.md) — MTP を libkalam.dylib（purego FFI + JSON 境界）から go-mtpfs@v1.0.3 `mtp` パッケージ直接 import へ置換。高レベル層（パス解決 Walk・転送進捗・MakeDirectory）は pkg/mtp に自前実装。go-mtpx は LICENSE 不在（無ライセンス）のため採用もコード移植も不可と確定。hanwen/usb は cgo + pkg-config libusb-1.0 のため全 CI ジョブに libusb 開発パッケージが必要。旧配布ビルドは libkalam を同梱しておらず配布版 MTP は非動作だった可能性が高い
 
 - [tv-local-file-resolver.md](tv-local-file-resolver.md) — TVでスキップ・自動再生が無音のまま曲名だけ変わる問題（キュー内の曲がサーバ側パスのままでloadAndPlayのfileExistsガードが黙って離脱）を、`MusicPlayerService.localFileResolver` フック＋TV側ensureCached解決の単一フローで修正。Siri Remoteで再生再開できない問題（play/pauseCommand常時両有効）の`RemoteCommandEnablement`による相互排他化もこの回
