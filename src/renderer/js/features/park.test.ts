@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import {
+
+// jsdom の本物の window を使い、Electron ブリッジだけを差し込む
+// (playback-manager.test.ts と同じパターン)。park.ts はモジュール読み込み時に
+// core/bridge.js 経由で window.electronAPI を参照するため、import より前に
+// 同期的に用意しておく必要がある（beforeAll では遅すぎる — トップレベル
+// import はどの beforeAll フックよりも先に評価されるため）。
+(window as unknown as { electronAPI: unknown }).electronAPI = {
+    CHANNELS: { SEND: {}, ON: {}, INVOKE: {} },
+    send: () => {},
+    invoke: () => Promise.resolve(null),
+    on: () => {},
+    removeListener: () => {},
+    removeAllListeners: () => {},
+};
+
+const {
     PARK_DELAY_MS,
     classifyPendingIntent,
     deserializeParkedUIState,
     serializeParkedUIState,
     shouldPark,
-} from './park.js';
+} = await import('./park.js');
 
 describe('PARK_DELAY_MS', () => {
     it('is 15 seconds, per markdown/background-native-queue-plan.md Phase 2', () => {
