@@ -627,3 +627,15 @@ Red→Green を経由）。通常起動（Go のキューが空）ではこの�
 `npm run build`/`go build ./...` の全緑で裏付けている。実機 GUI での
 最終確認は、アクセシビリティ権限を付与できるセッションで別途行うことを
 推奨する。
+
+## Phase 3 最終E2E（フォーク cecf1be・WebContent確定終了版）
+
+2026-08-21、親セッションによる独立実測（`open`起動・Finder経由hide＝赤ボタンと同一の`[NSApp hide:]`経路）。フォークを「WKWebViewConfiguration非保持＋ガード付き`_close` SPI」版（cecf1be）へ更新後、**2サイクル連続で確定的**に以下を確認:
+
+| サイクル | 基準（表示中） | hide+20秒 | 備考 |
+|---|---|---|---|
+| 1 | 505.6MB（webkit 359.5MB・3proc） | **207.8MB（webkit 60.6MB・2proc）** | WebContentプロセス消滅を確認 |
+| 2 | 480.5MB（webkit 317.8MB・3proc、復帰後） | **223.8MB（webkit 61.2MB・2proc）** | 復帰→再駐機も同挙動 |
+
+- 駐機（Goの15秒デバウンス）＋WebContent終了までがhideから約20秒で毎回完結。残るwebkitはGPU/Networkingヘルパーの約60MB。
+- 復帰は数秒でSPA再起動（メモリも通常値へ復帰）。ジャケット再表示はBeta-64cの修正で対応済み（自動テストで検証、実機目視はユーザー確認待ち）。
