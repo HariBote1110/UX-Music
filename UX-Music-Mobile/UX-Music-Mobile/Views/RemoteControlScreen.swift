@@ -11,11 +11,53 @@ enum RemoteControlTarget: Hashable {
     case tv(TVRemoteTarget)
 }
 
+/// Everything `RemoteControlScreen` reads from `/v1/remote/state` other than playback position —
+/// the fields that realistically stay constant for dozens of consecutive 2s poll ticks while a
+/// track plays. `pollOnce()` compares snapshots and only writes the `@State` properties views
+/// actually observe when this changes, mirroring `SidecarMetadataSnapshot`'s guard in `AppModel`
+/// (see `mobile_remote_perf_research/notes/04-summary-and-recommendations.md`: this unconditional
+/// write measured a 3x idle-CPU-median / 4.5x p95 regression on the Control tab). `position` is
+/// deliberately excluded — it must be written every successful tick regardless of value so the
+/// seek slider stays live.
+struct RemoteControlStateSnapshot: Equatable {
+    var title: String
+    var artist: String
+    var album: String
+    var duration: Double
+    var playing: Bool
+
+    static let empty = RemoteControlStateSnapshot(title: "", artist: "", album: "", duration: 0, playing: false)
+
+    init(title: String, artist: String, album: String, duration: Double, playing: Bool) {
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.duration = duration
+        self.playing = playing
+    }
+
+    init(from state: [String: Any]) {
+        title = state["title"] as? String ?? ""
+        artist = state["artist"] as? String ?? ""
+        album = state["album"] as? String ?? ""
+        duration = Self.doubleValue(state["duration"])
+        playing = state["playing"] as? Bool ?? false
+    }
+
+    fileprivate static func doubleValue(_ any: Any?) -> Double {
+        if let d = any as? Double { return d }
+        if let i = any as? Int { return Double(i) }
+        if let n = any as? NSNumber { return n.doubleValue }
+        return 0
+    }
+}
+
 struct RemoteControlScreen: View {
     @Environment(AppModel.self) private var model
     @StateObject private var tvDiscovery = TVRemoteDiscoveryService()
     @State private var selectedTarget: RemoteControlTarget = .thisIPhone
-    @State private var desktopState: [String: Any] = [:]
+    @State private var stateSnapshot: RemoteControlStateSnapshot = .empty
+    @State private var position: Double = 0
     @State private var errorMessage: String?
     @State private var pollTask: Task<Void, Never>?
     /// True after at least one successful `/v1/remote/state` fetch (matches Flutter “stale state + error” UX).
@@ -92,11 +134,10 @@ struct RemoteControlScreen: View {
     }
 
     private var controlsView: some View {
-        let position = doubleValue(desktopState["position"])
-        let duration = doubleValue(desktopState["duration"])
-        let title = desktopState["title"] as? String ?? ""
-        let artist = desktopState["artist"] as? String ?? ""
-        let album = desktopState["album"] as? String ?? ""
+        let duration = stateSnapshot.duration
+        let title = stateSnapshot.title
+        let artist = stateSnapshot.artist
+        let album = stateSnapshot.album
 
         return VStack(spacing: 0) {
             HStack {
@@ -156,7 +197,7 @@ struct RemoteControlScreen: View {
             transportRow
                 .padding(.bottom, 8)
 
-            if let errorMessage, !desktopState.isEmpty {
+            if let errorMessage, hasReceivedState {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -184,7 +225,7 @@ struct RemoteControlScreen: View {
     }
 
     private var transportRow: some View {
-        let playing = desktopState["playing"] as? Bool ?? false
+        let playing = stateSnapshot.playing
         return HStack(spacing: 44) {
             transportIconButton(systemName: "backward.fill", size: 22) {
                 Task { await send("prev") }
@@ -225,13 +266,6 @@ struct RemoteControlScreen: View {
         .buttonStyle(.plain)
     }
 
-    private func doubleValue(_ any: Any?) -> Double {
-        if let d = any as? Double { return d }
-        if let i = any as? Int { return Double(i) }
-        if let n = any as? NSNumber { return n.doubleValue }
-        return 0
-    }
-
     private func formatTime(_ seconds: Double) -> String {
         let m = Int(seconds) / 60
         let s = Int(seconds) % 60
@@ -259,9 +293,14 @@ struct RemoteControlScreen: View {
             } else {
                 s = try await model.withFailover { try await $0.fetchState() }
             }
+            let newSnapshot = RemoteControlStateSnapshot(from: s)
+            let newPosition = RemoteControlStateSnapshot.doubleValue(s["position"])
             await MainActor.run {
                 hasReceivedState = true
-                desktopState = s
+                if newSnapshot != stateSnapshot {
+                    stateSnapshot = newSnapshot
+                }
+                position = newPosition
                 errorMessage = nil
             }
         } catch {
@@ -284,7 +323,8 @@ struct RemoteControlScreen: View {
     private func switchTarget(_ target: RemoteControlTarget) {
         selectedTarget = target
         hasReceivedState = false
-        desktopState = [:]
+        stateSnapshot = .empty
+        position = 0
         errorMessage = nil
         Task { await pollOnce() }
     }
