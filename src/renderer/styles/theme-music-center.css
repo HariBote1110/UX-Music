@@ -328,14 +328,17 @@ body.mc-theme .device-popup-item {
 
 body.mc-theme #modal,
 body.mc-theme #lyrics-translation-modal,
-body.mc-theme #settings-modal,
-body.mc-theme #devices-modal,
+body.mc-theme #settings-page,
 body.mc-theme .album-order-modal,
 body.mc-theme .caption-selection-dialog {
     border-radius: 0;
 }
 
-body.mc-theme #settings-modal .setting-group {
+body.mc-theme #settings-page .setting-group {
+    border-radius: 0;
+}
+
+body.mc-theme .settings-nav-item.active {
     border-radius: 0;
 }
 
