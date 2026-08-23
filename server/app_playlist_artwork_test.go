@@ -56,11 +56,16 @@ func TestRequestPlaylistsWithArtwork_MapShapedArtworkPopulatesCollage(t *testing
 	if !ok {
 		t.Fatalf("entry = %#v", playlists[0])
 	}
-	artworks, ok := entry["artworks"].([]string)
+	artworks, ok := entry["artworks"].([]interface{})
 	if !ok || len(artworks) != 2 {
-		t.Fatalf("artworks = %#v, want 2 thumbnails", entry["artworks"])
+		t.Fatalf("artworks = %#v, want 2 entries", entry["artworks"])
 	}
-	if artworks[0] != "a_thumb.webp" || artworks[1] != "b_thumb.webp" {
-		t.Fatalf("artworks = %v, want thumbnail paths", artworks)
+	first, ok := artworks[0].(map[string]interface{})
+	if !ok || first["thumbnail"] != "a_thumb.webp" || first["full"] != "a.webp" {
+		t.Fatalf("artworks[0] = %#v, want full/thumbnail object for a", artworks[0])
+	}
+	second, ok := artworks[1].(map[string]interface{})
+	if !ok || second["thumbnail"] != "b_thumb.webp" || second["full"] != "b.webp" {
+		t.Fatalf("artworks[1] = %#v, want full/thumbnail object for b", artworks[1])
 	}
 }
