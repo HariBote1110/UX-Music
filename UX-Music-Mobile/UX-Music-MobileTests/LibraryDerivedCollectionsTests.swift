@@ -74,4 +74,68 @@ final class LibraryDerivedCollectionsTests: XCTestCase {
 
         XCTAssertEqual(byTitle.sortedSongs.map(\.id), ["2", "1"])
     }
+
+    // MARK: - Remote (`RemoteLibraryScreen`)
+
+    private func remoteInputs(
+        revision: Int = 1,
+        library: LibrarySortOrder = .album,
+        query: String = ""
+    ) -> LibraryDerivedCollections.RemoteInputs {
+        LibraryDerivedCollections.RemoteInputs(
+            libraryRevision: revision,
+            librarySortOrder: library,
+            searchQuery: query
+        )
+    }
+
+    func testUpdatedForRemoteComputesAlbumsAndSongs() {
+        let songs = [song(id: "1"), song(id: "2", artist: "B", album: "Other")]
+        let cache = LibraryDerivedCollections().updatedForRemote(songs: songs, inputs: remoteInputs())
+
+        XCTAssertEqual(cache.remoteSearchedSongs.map(\.id), ["1", "2"])
+        XCTAssertEqual(cache.remoteSearchedAlbums.count, 2)
+    }
+
+    /// Mirrors `testSameInputsSkipsRecomputation` for the remote cache: unchanged `RemoteInputs`
+    /// must return the previously computed value even if a different `songs` array is supplied.
+    func testRemoteSameInputsSkipsRecomputation() {
+        let songsA = [song(id: "1"), song(id: "2")]
+        let cached = LibraryDerivedCollections().updatedForRemote(songs: songsA, inputs: remoteInputs())
+
+        let songsB = [song(id: "9")]
+        let stillCached = cached.updatedForRemote(songs: songsB, inputs: remoteInputs())
+
+        XCTAssertEqual(stillCached.remoteSearchedSongs.map(\.id), cached.remoteSearchedSongs.map(\.id))
+        XCTAssertEqual(stillCached.remoteSearchedSongs.map(\.id), ["1", "2"])
+    }
+
+    func testRemoteChangedRevisionTriggersRecomputation() {
+        let songsA = [song(id: "1")]
+        let cached = LibraryDerivedCollections().updatedForRemote(songs: songsA, inputs: remoteInputs(revision: 1))
+
+        let songsB = [song(id: "1"), song(id: "2")]
+        let updated = cached.updatedForRemote(songs: songsB, inputs: remoteInputs(revision: 2))
+
+        XCTAssertEqual(updated.remoteSearchedSongs.map(\.id).sorted(), ["1", "2"])
+    }
+
+    func testRemoteChangedSearchQueryFiltersAlbumsAndSongs() {
+        let songs = [song(id: "1", title: "Alpha", album: "AlphaAlb"), song(id: "2", title: "Beta", album: "BetaAlb")]
+        let cached = LibraryDerivedCollections().updatedForRemote(songs: songs, inputs: remoteInputs())
+        let filtered = cached.updatedForRemote(songs: songs, inputs: remoteInputs(query: "Alpha"))
+
+        XCTAssertEqual(filtered.remoteSearchedSongs.map(\.id), ["1"])
+        XCTAssertEqual(filtered.remoteSearchedAlbums.map(\.displayName), ["AlphaAlb"])
+        XCTAssertNotEqual(filtered.remoteInputs, cached.remoteInputs)
+    }
+
+    func testRemoteAlbumGroupOrderComputedOnlyForAlbumSort() {
+        let songs = [song(id: "1"), song(id: "2")]
+        let byAlbum = LibraryDerivedCollections().updatedForRemote(songs: songs, inputs: remoteInputs(library: .album))
+        XCTAssertNotNil(byAlbum.remoteSongGroupPositions)
+
+        let byTitle = byAlbum.updatedForRemote(songs: songs, inputs: remoteInputs(library: .title))
+        XCTAssertNil(byTitle.remoteSongGroupPositions)
+    }
 }
