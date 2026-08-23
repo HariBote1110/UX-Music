@@ -229,11 +229,8 @@ export function setupSongListScroller(listElement, songList, options: { contextV
             const menuItems = [
                 {
                     label: '再生',
+                    icon: 'play',
                     action: () => playSong(index, songList)
-                },
-                {
-                    label: songsForMenu.length > 1 ? `ライブラリから削除 (${songsForMenu.length}曲)` : 'ライブラリから削除',
-                    action: () => deleteSongsFromLibrary(songsForMenu)
                 }
             ];
 
@@ -245,9 +242,20 @@ export function setupSongListScroller(listElement, songList, options: { contextV
                 }));
                 (menuItems as unknown[]).push({
                     label: 'プレイリストに追加',
+                    icon: 'playlist-add',
                     submenu: playlistSubmenu
                 });
             }
+
+            (menuItems as unknown[]).push(
+                { separator: true },
+                {
+                    label: songsForMenu.length > 1 ? `ライブラリから削除 (${songsForMenu.length}曲)` : 'ライブラリから削除',
+                    icon: 'delete',
+                    danger: true,
+                    action: () => deleteSongsFromLibrary(songsForMenu)
+                },
+            );
 
             showContextMenu(e.pageX, e.pageY, menuItems);
         });

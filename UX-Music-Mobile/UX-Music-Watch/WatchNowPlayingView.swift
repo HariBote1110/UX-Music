@@ -114,7 +114,7 @@ struct WatchNowPlayingView: View {
     /// **`autoFocusesCrown` is tied to `isActive`, not hardcoded `true` — this is load-bearing, not
     /// cosmetic.** `WatchRootView`'s paged `TabView` keeps adjacent pages mounted (so paging back to
     /// them is instant), which means this view's `onAppear`/`body` keep re-running even while the
-    /// Queue & Volume page is the one actually on screen. Earlier versions called
+    /// Queue page is the one actually on screen. Earlier versions called
     /// `wkInterfaceObject.focus()` unconditionally whenever `onAppear` fired, on the assumption that
     /// "appeared" meant "became visible" — it does not, for a kept-alive adjacent page. Calling
     /// `focus()` on a `WKInterfaceVolumeControl` that is not part of the *currently front* interface

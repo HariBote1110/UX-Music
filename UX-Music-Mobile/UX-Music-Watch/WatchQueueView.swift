@@ -1,32 +1,26 @@
 import SwiftUI
 import WatchKit
 
-/// Third page of the Watch app (Library ⇄ Now Playing ⇄ Queue & Volume — see `WatchRootView`'s
-/// paged `TabView`): the system volume control at the top, and the currently playing queue below
-/// it, mirroring the layout of watchOS's own Music app's volume/queue page. Rows reuse
-/// `WatchSongRow` (shared with `WatchSongListView`) so the look matches the Library page exactly —
-/// artwork, title/artist, and a speaker glyph on whichever song is current; tapping a row re-plays
-/// `player.playbackQueue` starting at that song (the same queue, just repositioned) rather than
-/// switching pages or replacing the queue with something new.
-struct WatchQueueVolumeView: View {
+/// Third page of the Watch app (Library ⇄ Now Playing ⇄ Queue — see `WatchRootView`'s paged
+/// `TabView`): the currently playing queue. Volume is no longer shown here — the Digital Crown
+/// already drives volume from the Now Playing page (see `WatchNowPlayingView.hiddenCrownVolumeControl`),
+/// which made a second, always-visible volume slider on this page redundant with the rest of the
+/// app's controls. Rows reuse `WatchSongRow` (shared with `WatchSongListView`) so the look matches
+/// the Library page exactly — artwork, title/artist, and a speaker glyph on whichever song is
+/// current; tapping a row re-plays `player.playbackQueue` starting at that song (the same queue,
+/// just repositioned) rather than switching pages or replacing the queue with something new.
+struct WatchQueueView: View {
     @EnvironmentObject private var player: WatchAudioPlayerService
 
     var body: some View {
         List {
-            Section("Volume") {
-                SystemVolumeControl()
-                    .frame(height: 28)
-            }
-
-            Section {
-                if player.playbackQueue.isEmpty {
-                    Text("The queue is empty")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(player.playbackQueue) { meta in
-                        WatchSongRow(meta: meta, queue: player.playbackQueue)
-                    }
+            if player.playbackQueue.isEmpty {
+                Text("The queue is empty")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(player.playbackQueue) { meta in
+                    WatchSongRow(meta: meta, queue: player.playbackQueue)
                 }
             }
         }
@@ -41,14 +35,13 @@ struct WatchQueueVolumeView: View {
 /// always plays back through the Watch's own `AVAudioSession` (see `WatchAudioPlayerService`) rather
 /// than routing audio through the paired iPhone.
 ///
-/// Target-internal (not `private`) so `WatchNowPlayingView` can reuse the same control for its
-/// Digital Crown volume row — see that view's doc comment for why the Crown drives volume rather
-/// than seeking there.
+/// No longer used on this page (see the type-level doc comment) — kept here, target-internal (not
+/// `private`), purely because `WatchNowPlayingView` still reuses it, invisibly, for its Digital
+/// Crown volume row; see that view's doc comment for why the Crown drives volume rather than
+/// seeking there.
 struct SystemVolumeControl: WKInterfaceObjectRepresentable {
     /// When `true`, calls `WKInterfaceVolumeControl.focus()` so the Digital Crown drives it
-    /// immediately without requiring a tap first. Used by `WatchNowPlayingView`, where the Crown's
-    /// sole job is now volume; left `false` here on the Queue & Volume page, where the control sits
-    /// above a scrollable queue list the Crown should scroll by default.
+    /// immediately without requiring a tap first.
     ///
     /// **Must only be `true` while the control's own page is genuinely the one on screen** — see
     /// `WatchNowPlayingView.hiddenCrownVolumeControl`'s doc comment. `WatchRootView`'s paged
@@ -92,7 +85,7 @@ struct SystemVolumeControl: WKInterfaceObjectRepresentable {
 #Preview {
     let library = WatchLocalLibrary()
     let player = WatchAudioPlayerService(library: library)
-    WatchQueueVolumeView()
+    WatchQueueView()
         .environmentObject(library)
         .environmentObject(player)
 }

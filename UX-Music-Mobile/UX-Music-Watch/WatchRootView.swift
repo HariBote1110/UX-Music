@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The three pages of the Watch app, swiped between horizontally like watchOS's own Music app
-/// (Now Playing and Queue & Volume are always reachable, regardless of what is selected in the
+/// (Now Playing and Queue are always reachable, regardless of what is selected in the
 /// library).
 enum WatchPage: Hashable {
     case library
@@ -10,7 +10,7 @@ enum WatchPage: Hashable {
 }
 
 /// Root screen for the UX Music Watch app: a horizontally-paged `TabView` with the song library,
-/// Now Playing, and Queue & Volume as its three pages, so playback controls stay reachable at all
+/// Now Playing, and Queue as its three pages, so playback controls stay reachable at all
 /// times — tapping a song switches to Now Playing, but swiping back to Library never loses the
 /// ability to swipe forward again.
 struct WatchRootView: View {
@@ -31,7 +31,7 @@ struct WatchRootView: View {
                 // "became visible" apart from "still mounted while another page is shown".
                 WatchNowPlayingView(isActive: selectedPage == .nowPlaying)
                     .tag(WatchPage.nowPlaying)
-                WatchQueueVolumeView()
+                WatchQueueView()
                     .tag(WatchPage.queue)
             }
             .tabViewStyle(.page)

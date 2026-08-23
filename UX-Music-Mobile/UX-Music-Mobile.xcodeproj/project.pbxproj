@@ -150,7 +150,7 @@
 		FEED00140000000000000000 /* WatchAudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00150000000000000000 /* WatchAudioPlayerService.swift */; };
 		FEED00160000000000000000 /* WatchSongListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00170000000000000000 /* WatchSongListView.swift */; };
 		FEED00180000000000000000 /* WatchNowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00190000000000000000 /* WatchNowPlayingView.swift */; };
-		FEED00260000000000000000 /* WatchQueueVolumeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00250000000000000000 /* WatchQueueVolumeView.swift */; };
+		FEED00260000000000000000 /* WatchQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00250000000000000000 /* WatchQueueView.swift */; };
 		FEED0041000000000000AA41 /* WatchVolumeHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0040000000000000AA40 /* WatchVolumeHUD.swift */; };
 		FEED0051000000000000AA51 /* WatchModeIconViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0050000000000000AA50 /* WatchModeIconViews.swift */; };
 		FEED0030000000000000AA30 /* ModeIconAnimationMathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */; };
@@ -438,7 +438,7 @@
 		FEED00150000000000000000 /* WatchAudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioPlayerService.swift; sourceTree = "<group>"; };
 		FEED00170000000000000000 /* WatchSongListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSongListView.swift; sourceTree = "<group>"; };
 		FEED00190000000000000000 /* WatchNowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchNowPlayingView.swift; sourceTree = "<group>"; };
-		FEED00250000000000000000 /* WatchQueueVolumeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchQueueVolumeView.swift; sourceTree = "<group>"; };
+		FEED00250000000000000000 /* WatchQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchQueueView.swift; sourceTree = "<group>"; };
 		FEED0040000000000000AA40 /* WatchVolumeHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchVolumeHUD.swift; sourceTree = "<group>"; };
 		FEED0050000000000000AA50 /* WatchModeIconViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModeIconViews.swift; sourceTree = "<group>"; };
 		FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeIconAnimationMathsTests.swift; sourceTree = "<group>"; };
@@ -745,7 +745,7 @@
 				FEED00150000000000000000 /* WatchAudioPlayerService.swift */,
 				FEED00170000000000000000 /* WatchSongListView.swift */,
 				FEED00190000000000000000 /* WatchNowPlayingView.swift */,
-				FEED00250000000000000000 /* WatchQueueVolumeView.swift */,
+				FEED00250000000000000000 /* WatchQueueView.swift */,
 				FEED0040000000000000AA40 /* WatchVolumeHUD.swift */,
 				FEED0050000000000000AA50 /* WatchModeIconViews.swift */,
 				E52D7B85C5274B0EB16F7ADD /* WatchAudioRoutePolicy.swift */,
@@ -1199,7 +1199,7 @@
 				FEED00140000000000000000 /* WatchAudioPlayerService.swift in Sources */,
 				FEED00160000000000000000 /* WatchSongListView.swift in Sources */,
 				FEED00180000000000000000 /* WatchNowPlayingView.swift in Sources */,
-				FEED00260000000000000000 /* WatchQueueVolumeView.swift in Sources */,
+				FEED00260000000000000000 /* WatchQueueView.swift in Sources */,
 				FEED0034000000000000AA34 /* ModeIconAnimationMaths.swift in Sources */,
 				FEED0041000000000000AA41 /* WatchVolumeHUD.swift in Sources */,
 				FEED0051000000000000AA51 /* WatchModeIconViews.swift in Sources */,
