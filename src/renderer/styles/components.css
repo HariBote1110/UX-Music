@@ -1168,35 +1168,75 @@
 .context-menu--submenu {
     position: absolute;
     top: 0;
-    left: 100%;
+    /* 親項目とわずかに重ねて、隙間でポインタが外れて mouseleave が発火しないようにする */
+    left: calc(100% - 2px);
 }
 
 .context-menu-item {
+    /* サブメニューを絶対配置で正しく親項目基準にするためのアンカー。
+       これが無いと submenu は最も近い position 祖先（.context-menu 自身）基準になり、
+       項目の隣ではなく全く違う位置に出て隙間が生まれる原因になっていた。 */
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     padding: 6px 14px;
     color: var(--text-primary);
     cursor: default;
     font-size: 13px;
     border-radius: 4px;
     margin: 0 4px;
-    gap: 20px;
+    gap: 8px;
     transition: background-color 0.07s ease;
 }
 
-.context-menu-item:hover:not(.disabled) {
+.context-menu-item.has-submenu {
+    /* 親項目とサブメニューの間の見えない橋。ポインタがこの帯を横切っている間も
+       「項目の内側にいる」扱いになり、mouseleave が誤発火しない。 */
+    padding-right: calc(14px + 6px);
+    margin-right: -6px;
+}
+
+.context-menu-item:hover:not(.disabled),
+.context-menu-item.context-menu-item--focused:not(.disabled) {
     background-color: var(--accent, #007aff);
     color: #fff;
 }
 
-.context-menu-item:hover:not(.disabled) .context-menu-item__arrow {
+.context-menu-item:hover:not(.disabled) .context-menu-item__arrow,
+.context-menu-item:hover:not(.disabled) .context-menu-item__shortcut,
+.context-menu-item.context-menu-item--focused:not(.disabled) .context-menu-item__arrow,
+.context-menu-item.context-menu-item--focused:not(.disabled) .context-menu-item__shortcut {
     color: rgba(255, 255, 255, 0.7);
 }
 
 .context-menu-item.disabled {
     color: var(--text-muted);
     cursor: default;
+    opacity: 0.5;
+}
+
+.context-menu-item.danger {
+    color: var(--highlight-red, #ff453a);
+}
+
+.context-menu-item.danger:hover:not(.disabled) {
+    background-color: var(--highlight-red, #ff453a);
+    color: #fff;
+}
+
+.context-menu-item__leading {
+    /* チェック/アイコン用の固定幅スロット。中身の有無に関わらず常に描画することで、
+       項目間・状態間でラベルの開始位置が揃うようにする（テキストのチェック記号に頼らない）。 */
+    flex: 0 0 20px;
+    width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: currentColor;
+}
+
+.context-menu-item__leading svg {
+    display: block;
 }
 
 .context-menu-item__label {
@@ -1206,9 +1246,16 @@
     text-overflow: ellipsis;
 }
 
+.context-menu-item__shortcut {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+    letter-spacing: 0.02em;
+}
+
 .context-menu-item__arrow {
-    font-size: 16px;
-    line-height: 1;
+    display: flex;
+    align-items: center;
     color: var(--text-secondary);
     flex-shrink: 0;
 }
@@ -1216,7 +1263,7 @@
 .context-menu-separator {
     height: 1px;
     background-color: rgba(255, 255, 255, 0.1);
-    margin: 4px 0;
+    margin: 4px 8px;
 }
 
 #app-version {
