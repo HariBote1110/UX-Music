@@ -12,8 +12,8 @@ import Foundation
 ///
 /// **Transport**: see `WatchConnectivityReceiver`'s doc comment for exactly how this is received
 /// (a `transferFile` tagged `kind: "playlists"`, mirroring the existing artwork transfer's tagging
-/// pattern) and what the iOS sender must still be extended to do — the Watch side of this transfer
-/// is fully implemented, but nothing on the iPhone sends playlists yet.
+/// pattern). The iOS side sends it from `WatchTransferBridge.sendPlaylists(_:)` whenever the
+/// playlist store changes and on session activation.
 struct WatchPlaylistMeta: Codable, Equatable, Identifiable, Sendable {
     var id: String
     var name: String
