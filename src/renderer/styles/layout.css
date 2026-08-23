@@ -8,17 +8,18 @@
     overflow: hidden;
     position: relative;
 
-    /* 再生バー（フッター）の直上、--footer-height 分だけ確保された余白の
-       手前 --footer-fade-height ぶんだけをフェードアウトさせる、狭く一定の
-       マスク。以前は 85%/95% という画面高さ比の値がブラウザ間で食い違って
-       おり、サイドバーの #open-settings-btn まで暗くなっていた。 */
-    --footer-fade-height: 48px;
+    /* 画面最下部（ウィンドウ下端）に向けてコンテンツをフェードアウトさせる
+       マスク。半透明のフッター（.playback-bar）の背後にコンテンツが
+       透けて見える意匠のため、フェードは必ずウィンドウ下端で
+       transparent になる必要がある。フェード開始位置は --footer-height
+       の 0.6 倍とし、暗くなる帯がフッターの縦幅にほぼ収まるよう狭めて
+       いる（サイドバーの #open-settings-btn まで暗くしないため）。 */
     -webkit-mask-image: linear-gradient(to bottom,
-            black calc(100% - var(--footer-height, 0px) - var(--footer-fade-height)),
-            transparent calc(100% - var(--footer-height, 0px)));
+            black calc(100% - var(--footer-height, 0px) * 0.6),
+            transparent 100%);
     mask-image: linear-gradient(to bottom,
-            black calc(100% - var(--footer-height, 0px) - var(--footer-fade-height)),
-            transparent calc(100% - var(--footer-height, 0px)));
+            black calc(100% - var(--footer-height, 0px) * 0.6),
+            transparent 100%);
 }
 
 body.resizing {
