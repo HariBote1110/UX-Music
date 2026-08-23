@@ -19,7 +19,7 @@ type situationPlaylistBucket struct {
 	name        string
 	description string
 	songs       []interface{}
-	artworks    []string
+	artworks    []interface{}
 }
 
 // generateSituationPlaylists picks the "For You" buckets in a fixed display
