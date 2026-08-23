@@ -38,7 +38,7 @@ playlist→queue変換は `WatchPlaylistQueueBuilder`(純粋関数、
 `WatchSongRow` の `player.play(meta, queue:)` をそのまま使うだけで
 「タップした曲からプレイリストをキュー再生」を満たす。
 
-**受信経路(Watch側は実装済み・iPhone送信側は未実装)**:
+**受信経路(Watch側・iPhone送信側とも実装済み)**:
 アートワークの `transferFile`(`kind: "artwork"`)と同じパターンで、
 `kind: "playlists"` のタグを付けた `transferFile` を新設。ペイロードは
 `[WatchPlaylistMeta]` をJSONエンコードしたファイル1本。
@@ -46,19 +46,20 @@ playlist→queue変換は `WatchPlaylistQueueBuilder`(純粋関数、
 `WatchPlaylistLibrary.replaceAll(_:)`(`playlists.json` に永続化、
 `WatchLocalLibrary` の `library.json` と同じ形)へ渡す実装まで完了。
 
-**iOS側(`UX-Music-Mobile/UX-Music-Mobile/**` — Watch担当の所有範囲外につき未実装)
-に必要な追加実装**:
+**iOS側(`UX-Music-Mobile/UX-Music-Mobile/**`)実装済み**:
 `WatchTransferBridge`(`UX-Music-Mobile/Services/WatchTransferBridge.swift`)に
-新規メソッドを追加し、
-1. `PlaylistStore` から現在のプレイリスト一覧を取得
-2. 各 `Playlist` を `WatchPlaylistMeta(id: $0.id, name: $0.name, songIds: $0.songIds)`
-   にマップ
-3. `[WatchPlaylistMeta]` をJSON encode して一時ファイルに書き出す
-4. `WCSession.default.transferFile(tempURL, metadata: ["id": "playlists",
-   "kind": "playlists"])` を呼ぶ
-
-を実装する必要がある。呼び出しタイミングは既存の曲/アートワーク転送と同様、
-ペアリング後・プレイリスト変更時などが妥当。
+`WatchPlaylistTransferEncoding`(`Playlist` → `WatchPlaylistMeta` へのマップと
+JSONエンコードを担う純粋関数、`WatchPlaylistTransferEncodingTests` でWatch側
+デコーダとのラウンドトリップを検証)と `sendPlaylists(_:)` を追加した。
+`sendPlaylists` は最新のプレイリスト一覧を `latestPlaylists` に保持しつつ、
+`WCSession` がactivate済みならその場で
+`WCSession.default.transferFile(tempURL, metadata: ["id": "playlists",
+"kind": "playlists"])` を呼び、未activateなら `handleActivationCompletion` の
+`.activated` 分岐から再試行される。呼び出し元は
+`AppModel.refreshPlaylists()`(作成/改名/削除/並び替え/曲の追加削除など
+プレイリストの全変更経路がここに集約されている)で、初回は
+`AppModel.init` 内の最初の `refreshPlaylists()` 呼び出し(→
+`watchTransferBridge.activate()` 完了後に送信される)でカバーされる。
 
 ### 4. デスクトップ/iOS版とのアニメーション整合
 シャッフル/リピートアイコンのスライドアニメーション(`ModeIconAnimationMaths`
