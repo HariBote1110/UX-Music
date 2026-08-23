@@ -193,12 +193,13 @@ struct WatchSongRow: View {
                     Image(systemName: player.isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
                         .foregroundStyle(.blue)
                         .font(.caption)
+                        .contentTransition(.symbolEffect(.replace))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .modifier(GroupedRowHeight(isGrouped: albumGroupPosition != nil))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(WatchPressableRowStyle())
         .contextMenu {
             Button(role: .destructive) {
                 library.removeSong(id: meta.id)
@@ -226,6 +227,19 @@ struct WatchSongRow: View {
             WatchArtworkThumbnail(meta: meta)
                 .frame(width: WatchSongRowMetrics.artworkSize, height: WatchSongRowMetrics.artworkSize)
         }
+    }
+}
+
+/// Press feedback for `WatchSongRow` (a subtle scale-down while held) — the Watch equivalent of the
+/// motion language the desktop/iOS apps already have on their tappable rows/cards, which this Watch
+/// port previously lacked entirely (rows just went straight from unpressed to "navigated away", with
+/// no visible acknowledgement of the tap itself). `.buttonStyle(.plain)` on watchOS supplies no such
+/// feedback on its own, unlike iOS's default button styles.
+private struct WatchPressableRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
