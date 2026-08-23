@@ -100,3 +100,24 @@ export function legacyBandsFromSimpleControls(
     result[9] += treble;
     return result;
 }
+
+/**
+ * 旧・簡易 EQ（bass/mid/treble）だけが設定されていた保存データを、
+ * 10 バンド配列を唯一の情報源とする新しい形へ一回だけ移行する。
+ * bass/mid/treble がすべて 0 の場合（移行不要）は null を返す。
+ */
+export function migrateLegacySimpleSettings(settings: {
+    bands: number[];
+    bass: number;
+    mid: number;
+    treble: number;
+}): { bands: number[]; bass: number; mid: number; treble: number } | null {
+    const { bands, bass, mid, treble } = settings;
+    if (bass === 0 && mid === 0 && treble === 0) return null;
+    return {
+        bands: legacyBandsFromSimpleControls(bands, bass, mid, treble),
+        bass: 0,
+        mid: 0,
+        treble: 0,
+    };
+}
