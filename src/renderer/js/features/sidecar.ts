@@ -55,9 +55,10 @@ export function buildSidecarMenuItems(
     const deviceItems: ContextMenuItem[] = devices.map((device) => {
         const isCurrent = currentTarget !== '' && currentTarget === device.deviceId;
         const baseLabel = formatDeviceLabel(device);
-        const label = `${isCurrent ? '✓ ' : ''}${baseLabel}${device.online ? '' : ' (未接続)'}`;
+        const label = `${baseLabel}${device.online ? '' : ' (未接続)'}`;
         return {
             label,
+            checked: isCurrent,
             enabled: device.online,
             action: () => callbacks.setSidecarTargetDevice(isCurrent ? '' : device.deviceId),
         };
