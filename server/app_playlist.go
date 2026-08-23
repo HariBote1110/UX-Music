@@ -300,10 +300,12 @@ func (a *App) GetSituationPlaylists() (interface{}, error) {
 	}
 
 	counts, _ := store.Instance.LoadMap("playcounts")
-	for _, bucket := range generateSituationPlaylists(songs, counts) {
+	for _, bucket := range generateSituationPlaylists(songs, counts, time.Now()) {
 		result[bucket.key] = map[string]interface{}{
-			"name":  bucket.name,
-			"songs": bucket.songs,
+			"name":        bucket.name,
+			"description": bucket.description,
+			"songs":       bucket.songs,
+			"artworks":    bucket.artworks,
 		}
 	}
 

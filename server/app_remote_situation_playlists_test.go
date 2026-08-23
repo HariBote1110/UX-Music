@@ -11,7 +11,10 @@ import (
 
 // TestRemoteSituationPlaylistsHandler_ReturnsFixedOrderWithSongIDs は、
 // /v1/remote/situation-playlists がライブラリの id を songIds として、
-// 固定順序（最近追加した曲→よく聴く曲→ランダムピック）で返すことを検証する。
+// 固定順序（最近追加した曲→よく聴く曲→ランダムピック→…）で返すことを検証する。
+// ライブラリが3曲でも random_pick のゲートが2曲以上に緩和されたため含まれ、
+// count>0 かつ再生履歴が無い b は rediscover にも該当する
+// （pickRediscover は lastPlayed 不明を「古いかもしれない」として拾う設計）。
 func TestRemoteSituationPlaylistsHandler_ReturnsFixedOrderWithSongIDs(t *testing.T) {
 	newTempUserDataStore(t)
 
@@ -41,15 +44,14 @@ func TestRemoteSituationPlaylistsHandler_ReturnsFixedOrderWithSongIDs(t *testing
 		t.Fatalf("decode response: %v", err)
 	}
 
-	// Library has only 3 songs (< 5), so "ランダムピック" is empty and omitted.
-	if len(got) != 2 {
-		t.Fatalf("len = %d, want 2; body = %s", len(got), rec.Body.String())
+	wantNames := []string{"最近追加した曲", "よく聴く曲", "ランダムピック", "聴き返したい曲"}
+	if len(got) != len(wantNames) {
+		t.Fatalf("len = %d, want %d; body = %s", len(got), len(wantNames), rec.Body.String())
 	}
-	if got[0]["name"] != "最近追加した曲" {
-		t.Fatalf("entry[0].name = %v", got[0]["name"])
-	}
-	if got[1]["name"] != "よく聴く曲" {
-		t.Fatalf("entry[1].name = %v", got[1]["name"])
+	for i, name := range wantNames {
+		if got[i]["name"] != name {
+			t.Fatalf("entry[%d].name = %v, want %q", i, got[i]["name"], name)
+		}
 	}
 	mostPlayedIDs, ok := got[1]["songIds"].([]interface{})
 	if !ok || len(mostPlayedIDs) != 1 || mostPlayedIDs[0] != "song-b" {
