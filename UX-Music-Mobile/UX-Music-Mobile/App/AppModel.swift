@@ -255,6 +255,13 @@ final class AppModel {
     /// Bumped when local download metadata changes so `@Observable` invalidates library views that do not read `downloadProgress`.
     private(set) var downloadLibraryRevision: Int = 0
 
+    /// Bumped whenever `libraryState` transitions to a fresh `.loaded(songs)` (see `refreshLibrary`).
+    /// Stands in for the remote song list's *content* so `RemoteLibraryScreen` can key its
+    /// `LibraryDerivedCollections.RemoteInputs` cache on this instead of comparing the songs array
+    /// element-by-element on every body evaluation — mirrors `downloadLibraryRevision`'s role for
+    /// the local library cache.
+    private(set) var remoteLibraryRevision: Int = 0
+
     let downloadManager: DownloadManager
     /// Metadata-only membership for songs with no local file (YouTube songs added via "ライブラリに追加").
     let libraryMembershipStore: LibraryMembershipStore
@@ -548,6 +555,7 @@ final class AppModel {
         do {
             let songs = try await withFailover { try await $0.fetchSongs() }
             libraryState = .loaded(songs)
+            remoteLibraryRevision &+= 1
             if let map = try? await withFailover({ try await $0.fetchLoudness() }) {
                 loudness = map
                 player.loudnessMap = map
