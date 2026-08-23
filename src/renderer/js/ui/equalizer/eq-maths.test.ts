@@ -7,6 +7,7 @@ import {
     dbToY,
     freqToX,
     legacyBandsFromSimpleControls,
+    migrateLegacySimpleSettings,
     nearestBandIndex,
     presetBands,
     xToFreq,
@@ -97,5 +98,28 @@ describe('legacyBandsFromSimpleControls', () => {
     it('is a no-op when bass/mid/treble are all zero', () => {
         const bands = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         expect(legacyBandsFromSimpleControls(bands, 0, 0, 0)).toEqual(bands);
+    });
+});
+
+describe('migrateLegacySimpleSettings', () => {
+    it('folds a legacy bass/mid/treble-only setting into bands, once', () => {
+        const migrated = migrateLegacySimpleSettings({
+            bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            bass: 3,
+            mid: 0,
+            treble: -2,
+        });
+        expect(migrated).toEqual({
+            bands: legacyBandsFromSimpleControls([0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 3, 0, -2),
+            bass: 0,
+            mid: 0,
+            treble: 0,
+        });
+    });
+
+    it('returns null when bass/mid/treble are already zero (nothing to migrate)', () => {
+        expect(
+            migrateLegacySimpleSettings({ bands: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], bass: 0, mid: 0, treble: 0 }),
+        ).toBeNull();
     });
 });
