@@ -375,22 +375,6 @@
         }
       }
     },
-    "Added to Library" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Added to Library"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ライブラリに追加済み"
-          }
-        }
-      }
-    },
     "Aim at the QR code in UX Music → Settings on your desktop." : {
       "localizations" : {
         "en" : {
