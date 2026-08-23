@@ -254,6 +254,14 @@ struct WatchNowPlayingView: View {
                     .font(metrics.routeErrorFont)
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
+            } else if player.isSpeakerFallback {
+                // Non-blocking notice, not `routeError`: playback *is* proceeding, just over the
+                // built-in speaker rather than a Bluetooth output — see `WatchAudioRoutePolicy`.
+                Label("Playing on speaker", systemImage: "speaker.wave.2")
+                    .font(metrics.routeErrorFont)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .labelStyle(.titleAndIcon)
+                    .transition(.opacity)
             }
 
             if player.currentSong != nil {

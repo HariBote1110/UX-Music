@@ -39,31 +39,32 @@ struct LocalLibraryScreen: View {
     /// so carrying a song search across the page swipe would silently hide every playlist.
     @State private var playlistQuery = ""
 
-    private var downloaded: [Song] {
-        model.sortedDownloadedSongsForLibrary
+    /// Memoised Songs/Albums/Artists collections (see `LibraryDerivedCollections`). Refreshed only
+    /// via `.task(id: derivedInputs)` below — never recomputed inline from `body` — so flipping
+    /// between segments (which re-evaluates `body` many times over the paging animation) does not
+    /// repeatedly re-run `Album.fromSongs`/`Artist.fromSongs` and the sort/search passes on top.
+    @State private var derived = LibraryDerivedCollections()
+
+    private var derivedInputs: LibraryDerivedCollections.Inputs {
+        LibraryDerivedCollections.Inputs(
+            libraryRevision: model.downloadLibraryRevision,
+            librarySortOrder: model.librarySortOrder,
+            albumSortOrder: model.albumSortOrder,
+            artistSortOrder: model.artistSortOrder,
+            searchQuery: searchQuery
+        )
     }
 
-    /// `downloaded` sorted by the user's chosen `librarySortOrder`; album-run grouping (task 1) is
-    /// only meaningful when this equals `.album`, since any other order scatters an album's tracks.
-    private var sortedSongs: [Song] {
-        model.librarySortOrder.sorted(downloaded)
+    private func refreshDerivedIfNeeded() {
+        let inputs = derivedInputs
+        guard derived.inputs != inputs else { return }
+        derived = derived.updated(songs: model.sortedDownloadedSongsForLibrary, inputs: inputs)
     }
 
-    private var searchedSongs: [Song] {
-        SongSearchFilter.filter(sortedSongs, query: searchQuery)
-    }
-
-    private var searchedAlbums: [Album] {
-        let albums = model.albumSortOrder.sorted(Album.fromSongs(downloaded))
-        guard !searchQuery.isEmpty else { return albums }
-        return albums.filter { !SongSearchFilter.filter($0.songs, query: searchQuery).isEmpty }
-    }
-
-    private var searchedArtists: [Artist] {
-        let artists = model.artistSortOrder.sorted(Artist.fromSongs(downloaded))
-        guard !searchQuery.isEmpty else { return artists }
-        return artists.filter { !SongSearchFilter.filter($0.songs, query: searchQuery).isEmpty }
-    }
+    private var sortedSongs: [Song] { derived.sortedSongs }
+    private var searchedSongs: [Song] { derived.searchedSongs }
+    private var searchedAlbums: [Album] { derived.searchedAlbums }
+    private var searchedArtists: [Artist] { derived.searchedArtists }
 
     private var viewModeIndex: Binding<Int> {
         Binding(
@@ -145,6 +146,9 @@ struct LocalLibraryScreen: View {
             } message: {
                 Text("Enter a name for the new playlist.")
             }
+            .task(id: derivedInputs) {
+                refreshDerivedIfNeeded()
+            }
         }
     }
 
@@ -223,7 +227,7 @@ struct LocalLibraryScreen: View {
 
     @ViewBuilder
     private var songsPane: some View {
-        if downloaded.isEmpty {
+        if derived.sortedSongs.isEmpty {
             emptyState
         } else {
             songsContent(songs: searchedSongs)
@@ -232,7 +236,7 @@ struct LocalLibraryScreen: View {
 
     @ViewBuilder
     private var albumsPane: some View {
-        if downloaded.isEmpty {
+        if derived.sortedSongs.isEmpty {
             emptyState
         } else {
             albumContent(albums: searchedAlbums)
@@ -241,7 +245,7 @@ struct LocalLibraryScreen: View {
 
     @ViewBuilder
     private var artistsPane: some View {
-        if downloaded.isEmpty {
+        if derived.sortedSongs.isEmpty {
             emptyState
         } else {
             artistContent(artists: searchedArtists)
