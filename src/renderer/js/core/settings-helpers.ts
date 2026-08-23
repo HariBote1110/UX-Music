@@ -28,6 +28,7 @@ export interface RendererSettingsRead {
     /** ダウンロードモード・ストリーミングモード（非公式）の選択 UI を表示するかどうか。既定の公式再生（embed）は常に利用可能。 */
     enableYoutubeAdvancedModes?: boolean;
     uiTheme?: string;
+    gridDensity?: string;
     syncMinFreeSpaceGB?: number;
     syncCachePolicy?: string;
     syncPreferredFormat?: string;

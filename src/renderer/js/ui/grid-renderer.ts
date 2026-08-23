@@ -4,13 +4,14 @@ import { state } from '../core/state.js';
 import { showAlbum, showArtist, showPlaylist, showSituationPlaylistDetail } from '../core/navigation.js';
 import { createAlbumGridItem, createArtistGridItem, createPlaylistGridItem } from './element-factory.js';
 import { createPlaylistArtwork } from './playlist-artwork.js';
-import { showContextMenu, resolveArtworkPath } from './utils.js';
+import { showContextMenu, resolveArtworkPath, escapeHtml } from './utils.js';
 import { showModal } from './modal.js';
 import { showNotification, hideNotification } from './notification.js';
 import { clearMainContent } from './view-renderer.js'; // clearMainContent は view-renderer からインポート
 import { musicApi } from '../core/bridge.js';
 import { getAlbumSongs, setCurrentViewSongs } from '../core/library-model.js';
 import { openAlbumOrderEditor } from './album-order-editor.js';
+import { createGridDensityControl } from './grid-density.js';
 // ▲▲▲ 追加 ▲▲▲
 
 /**
@@ -21,7 +22,10 @@ export function renderAlbumView() {
     setCurrentViewSongs([]);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
-    viewWrapper.innerHTML = '<h1>アルバム</h1>';
+    viewWrapper.innerHTML = '<div class="view-header"><h1>アルバム</h1></div>';
+    viewWrapper.querySelector('.view-header').appendChild(createGridDensityControl());
+    const scrollWrapper = document.createElement('div');
+    scrollWrapper.className = 'view-scroll';
     const grid = document.createElement('div');
     grid.id = 'album-grid';
     if (state.albums.size === 0) {
@@ -89,7 +93,8 @@ export function renderAlbumView() {
             grid.appendChild(albumItem);
         }
     }
-    viewWrapper.appendChild(grid);
+    scrollWrapper.appendChild(grid);
+    viewWrapper.appendChild(scrollWrapper);
     document.getElementById('main-content').appendChild(viewWrapper); // elements.mainContent の代わり
     window.observeNewArtworks(grid);
 }
@@ -102,7 +107,10 @@ export function renderArtistView() {
     setCurrentViewSongs([]);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
-    viewWrapper.innerHTML = '<h1>アーティスト</h1>';
+    viewWrapper.innerHTML = '<div class="view-header"><h1>アーティスト</h1></div>';
+    viewWrapper.querySelector('.view-header').appendChild(createGridDensityControl());
+    const scrollWrapper = document.createElement('div');
+    scrollWrapper.className = 'view-scroll';
     const grid = document.createElement('div');
     grid.id = 'artist-grid';
     if (state.artists.size === 0) {
@@ -115,7 +123,8 @@ export function renderArtistView() {
             grid.appendChild(artistItem);
         });
     }
-    viewWrapper.appendChild(grid);
+    scrollWrapper.appendChild(grid);
+    viewWrapper.appendChild(scrollWrapper);
     document.getElementById('main-content').appendChild(viewWrapper);
     window.observeNewArtworks(grid);
 }
@@ -128,29 +137,52 @@ export async function renderSituationView() {
     setCurrentViewSongs([]);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
-    viewWrapper.innerHTML = '<h1>For You</h1>';
+    viewWrapper.innerHTML = '<div class="view-header"><h1>For You</h1></div>';
+    const scrollWrapper = document.createElement('div');
+    scrollWrapper.className = 'view-scroll';
     const grid = document.createElement('div');
     grid.id = 'playlist-grid'; // 'playlist-grid' を再利用
 
     const situationPlaylists = await musicApi.getSituationPlaylists();
-    const playlists = Object.values(situationPlaylists);
+    const playlists = Object.entries(situationPlaylists as Record<string, unknown>);
 
     if (playlists.length === 0) {
-        grid.innerHTML = '<div class="placeholder">あなたのためのプレイリストはまだありません。</div>';
+        const emptyCard = document.createElement('div');
+        emptyCard.className = 'situation-empty-card';
+        emptyCard.innerHTML = `
+            <h3>まだおすすめできる曲がありません</h3>
+            <p>ライブラリに曲が増えたり、実際に曲を再生していくと、
+            「最近追加した曲」や「よく聴く曲」などのおすすめプレイリストがここに表示されます。</p>
+        `;
+        grid.appendChild(emptyCard);
     } else {
-        playlists.forEach(rawPlaylist => {
+        playlists.forEach(([, rawPlaylist]) => {
             const playlist = rawPlaylist as Record<string, unknown>;
+            // サーバー側の JSON 形状は移行中: 旧 {name, songs} / 新
+            // {id, title, description?, songs, artworks?} のどちらでも動くようにする
+            const title = (playlist.title as string | undefined) ?? (playlist.name as string | undefined) ?? '';
+            const description = playlist.description as string | undefined;
             const songs = (playlist.songs as Record<string, unknown>[] | undefined) || [];
-            const artworks = songs
+            const artworks = (playlist.artworks as unknown[] | undefined) ?? songs
                 .map(song => (state.albums.get(song.albumKey as string) || song).artwork)
                 .filter(Boolean)
                 .slice(0, 4);
 
-            const playlistItem = createPlaylistGridItem({ name: playlist.name, artworks });
+            const playlistItem = document.createElement('div');
+            playlistItem.className = 'playlist-grid-item';
+            playlistItem.innerHTML = `
+                <div class="playlist-artwork-container"></div>
+                <div class="playlist-title marquee-wrapper">
+                    <div class="marquee-content"><span>${escapeHtml(title)}</span></div>
+                </div>
+                ${description ? `<div class="playlist-description">${escapeHtml(description)}</div>` : ''}
+            `;
+            const artworkContainer = playlistItem.querySelector('.playlist-artwork-container');
+            createPlaylistArtwork(artworkContainer, artworks, (artwork) => resolveArtworkPath(artwork, false));
 
             playlistItem.addEventListener('click', () => {
                 const playlistDetails = {
-                    name: playlist.name,
+                    name: title,
                     songs: songs,
                     artworks: artworks
                 };
@@ -161,7 +193,8 @@ export async function renderSituationView() {
         });
     }
 
-    viewWrapper.appendChild(grid);
+    scrollWrapper.appendChild(grid);
+    viewWrapper.appendChild(scrollWrapper);
     document.getElementById('main-content').appendChild(viewWrapper);
     window.observeNewArtworks(grid);
 }
@@ -174,7 +207,10 @@ export function renderPlaylistView() {
     setCurrentViewSongs([]);
     const viewWrapper = document.createElement('div');
     viewWrapper.className = 'view-container';
-    viewWrapper.innerHTML = `<div class="view-header"><h1>プレイリスト</h1><button id="create-playlist-btn-main" class="header-button">+ 新規作成</button></div>`;
+    viewWrapper.innerHTML = `<div class="view-header"><h1>プレイリスト</h1><div class="view-header-actions"><button id="create-playlist-btn-main" class="header-button">+ 新規作成</button></div></div>`;
+    viewWrapper.querySelector('.view-header-actions').appendChild(createGridDensityControl());
+    const scrollWrapper = document.createElement('div');
+    scrollWrapper.className = 'view-scroll';
     const grid = document.createElement('div');
     grid.id = 'playlist-grid';
     if (!state.playlists || state.playlists.length === 0) {
@@ -215,7 +251,8 @@ export function renderPlaylistView() {
             grid.appendChild(playlistItem);
         });
     }
-    viewWrapper.appendChild(grid);
+    scrollWrapper.appendChild(grid);
+    viewWrapper.appendChild(scrollWrapper);
     document.getElementById('main-content').appendChild(viewWrapper);
     viewWrapper.querySelector('#create-playlist-btn-main').addEventListener('click', () => {
         showModal({

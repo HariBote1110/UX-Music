@@ -8,6 +8,7 @@ import { initPlaybackSettings } from '../features/playback-manager.js';
 import { initAiEmbedSettings } from '../features/ai-embed-settings.js';
 import { musicApi, getWailsApp } from '../core/bridge.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
+import { applyGridDensity } from '../ui/grid-density.js';
 import { updateListSpacer } from '../ui/ui.js';
 import {
     formatSyncAutoResultNotification,
@@ -663,6 +664,7 @@ export function initSettings() {
     // 起動時にユーザーが選択したUIテーマを復元する
     void loadRendererSettings().then(settings => {
         applyUiTheme(settings.uiTheme || 'default');
+        applyGridDensity(settings.gridDensity);
     });
 
     let settingsClickCount = 0;
