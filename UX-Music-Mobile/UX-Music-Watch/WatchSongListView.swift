@@ -2,9 +2,10 @@ import ImageIO
 import SwiftUI
 import UIKit
 
-/// Library page: a plain native `List` with two `NavigationLink` rows ("Songs"/"Albums") pushing
-/// the flat song list and the album list respectively — the same drill-down pattern watchOS's own
-/// Music app uses for its library, rather than a custom segmented-style toggle. Tapping a song row
+/// Library page: a plain native `List` with three `NavigationLink` rows ("Songs"/"Albums"/
+/// "Playlists") pushing the flat song list, the album list, and `WatchPlaylistListView`
+/// respectively — the same drill-down pattern watchOS's own Music app uses for its library, rather
+/// than a custom segmented-style toggle. Tapping a song row
 /// starts playback and switches to the Now Playing page (see `WatchRootView`'s paged `TabView`).
 /// Deletion is a long-press context menu rather than a row swipe: on watchOS the Library and Now
 /// Playing/Queue pages are themselves swiped between horizontally (see `WatchRootView`), and a
@@ -36,6 +37,11 @@ struct WatchSongListView: View {
                             albumList
                         } label: {
                             Label("Albums", systemImage: "square.stack")
+                        }
+                        NavigationLink {
+                            WatchPlaylistListView(selectedPage: $selectedPage)
+                        } label: {
+                            Label("Playlists", systemImage: "music.note.list")
                         }
                     }
                 }
@@ -376,5 +382,6 @@ private struct WatchArtworkThumbnail: View {
 #Preview {
     WatchSongListView(selectedPage: .constant(.library))
         .environmentObject(WatchLocalLibrary())
+        .environmentObject(WatchPlaylistLibrary())
         .environmentObject(WatchAudioPlayerService(library: WatchLocalLibrary()))
 }

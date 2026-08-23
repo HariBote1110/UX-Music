@@ -61,10 +61,12 @@ struct WatchRootView: View {
 
 #Preview {
     let library = WatchLocalLibrary()
+    let playlistLibrary = WatchPlaylistLibrary()
     let player = WatchAudioPlayerService(library: library)
     WatchRootView()
         .environmentObject(library)
+        .environmentObject(playlistLibrary)
         .environmentObject(player)
         .environmentObject(player.progress)
-        .environmentObject(WatchConnectivityReceiver(library: library))
+        .environmentObject(WatchConnectivityReceiver(library: library, playlistLibrary: playlistLibrary))
 }
