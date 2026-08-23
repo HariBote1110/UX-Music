@@ -26,11 +26,27 @@ struct LibraryDerivedCollections: Equatable {
         var searchQuery: String
     }
 
+    /// Same idea as `Inputs`, scoped to what `RemoteLibraryScreen`'s Albums/Songs panes need.
+    /// There is no artist pane on Remote and album grouping order there is always the server's
+    /// native order (no `albumSortOrder` control), so this carries fewer fields than `Inputs`.
+    struct RemoteInputs: Equatable {
+        var libraryRevision: Int
+        var librarySortOrder: LibrarySortOrder
+        var searchQuery: String
+    }
+
     private(set) var inputs: Inputs?
     private(set) var sortedSongs: [Song] = []
     private(set) var searchedSongs: [Song] = []
     private(set) var searchedAlbums: [Album] = []
     private(set) var searchedArtists: [Artist] = []
+
+    private(set) var remoteInputs: RemoteInputs?
+    private(set) var remoteSearchedAlbums: [Album] = []
+    private(set) var remoteSearchedSongs: [Song] = []
+    /// Album-run connector positions for `remoteSearchedSongs`, only meaningful (non-`nil`) while
+    /// sorted by album — mirrors `RemoteLibraryScreen.remoteSongsList`'s prior inline logic.
+    private(set) var remoteSongGroupPositions: [AlbumGroupPosition]?
 
     /// Returns a `LibraryDerivedCollections` reflecting `songs`/`inputs`. If `inputs` matches the
     /// value this instance was last computed from, returns `self` unchanged; otherwise recomputes
@@ -61,6 +77,28 @@ struct LibraryDerivedCollections: Equatable {
         result.searchedArtists = newInputs.searchQuery.isEmpty
             ? sortedArtists
             : sortedArtists.filter { !SongSearchFilter.filter($0.songs, query: newInputs.searchQuery).isEmpty }
+
+        return result
+    }
+
+    /// `RemoteLibraryScreen` counterpart of `updated(songs:inputs:)` — same skip-if-unchanged
+    /// contract, scoped to `RemoteInputs`. `songs` must be the current `.loaded` library songs for
+    /// `inputs.libraryRevision`.
+    func updatedForRemote(songs: [Song], inputs newInputs: RemoteInputs) -> LibraryDerivedCollections {
+        guard remoteInputs != newInputs else { return self }
+
+        var result = self
+        result.remoteInputs = newInputs
+
+        let groupedAlbums = Album.fromSongs(songs)
+        result.remoteSearchedAlbums = newInputs.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? groupedAlbums
+            : groupedAlbums.filter { !SongSearchFilter.filter($0.songs, query: newInputs.searchQuery).isEmpty }
+
+        result.remoteSearchedSongs = SongSearchFilter.filter(songs, query: newInputs.searchQuery)
+        result.remoteSongGroupPositions = newInputs.librarySortOrder == .album
+            ? AlbumGrouping.positions(for: result.remoteSearchedSongs)
+            : nil
 
         return result
     }
