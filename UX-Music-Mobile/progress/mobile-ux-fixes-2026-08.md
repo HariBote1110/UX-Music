@@ -1,7 +1,8 @@
 # モバイルUX不具合修正 (2026-08)
 
 設定画面のキーボード/ライブラリタブ切替FPS/Remoteタブ初回遷移/iPadグリッド/
-シャッフル・リピート視認性/ダウンロード済みチェックマークの6件をまとめて対応。
+シャッフル・リピート視認性/ダウンロード済みチェックマーク/Remoteタブ切替時
+CPU急騰の7件をまとめて対応。
 
 ## Decision
 
@@ -85,6 +86,38 @@ Watch 版 (`WatchModeIconViews.swift`) の固定 `.blue` に倣った固定色
 YouTube曲の `checkmark.circle.fill`(緑) を削除し、`EmptyView()` にした。
 ダウンロード中/未ダウンロードのアフォーダンスは維持。参照していたテストは
 無かった。
+
+### 7. Remote タブ Songs/Albums/Playlists 切替時のCPU急騰(130%超)
+項目2で `LocalLibraryScreen` に導入した `LibraryDerivedCollections` メモ化を、
+`RemoteLibraryScreen` には移植していなかった。同スクリーンの `albumsPane`/
+`songsPane` は素の関数呼び出しで、呼ばれるたびに
+`Album.fromSongs(songs)`・`SongSearchFilter.filter(songs, query:)`・
+`AlbumGrouping.positions(for:)` を再計算していた。`libraryBody` の
+`TabView(selection:)` は `.page` スタイルでもタグ付き子ビュー(`albumsPane`/
+`playlistsPane`/`songsPane`)を毎 body 評価で全て呼び出すため、ページング
+アニメーション中の高頻度な再評価がそのまま再グルーピングに直結し、CPU
+使用率が跳ね上がっていた。項目2と同根の問題が Local 修正時に Remote 側へ
+横展開されていなかっただけ、というのが実態。
+
+`LibraryDerivedCollections` に `RemoteInputs`（`remoteLibraryRevision`・
+`librarySortOrder`・検索クエリ）と `updatedForRemote(songs:inputs:)` を追加
+（既存の `Inputs`/`updated` とは別のフィールド・別メソッドとして共存させ、
+ロジックの重複ではなくキャッシュ構造体の再利用とした）。`AppModel` には
+`remoteLibraryRevision` を新設し、`refreshLibrary()` が `.loaded(songs)` を
+確定させた箇所でインクリメント。`RemoteLibraryScreen` は `@State private var
+derived` を保持し、`.task(id: derivedInputs(searchQuery:))` でのみ更新、
+`albumsPane`/`songsPane`/`remoteSongsList` は全て `derived.remoteSearched*`
+を読むだけにした。
+
+**`LazyTabRoot` の保持方式（項目3）との関係**: `LazyTabRoot` は一度訪問した
+タブを非表示中も `opacity(0)` でマウントし続ける。そのため Remote タブを
+非表示にしていても `model` の変化を購読していれば body は再評価され得るが、
+キャッシュがヒットする限り実質コストはほぼゼロになるため、指示にあった
+「非アクティブ時は重い派生計算そのものを止める」までの追加ゲート
+（`isActive` を明示的に渡す等）は行わなかった。ヒット時のコストは
+`PerformanceBenchmarkTests.testRemoteDerivedCollectionsCacheHitVsRecompute`
+(`UXM_PERF=1` 限定) で計測しており、60回連続呼び出しでも実測 0.4秒程度
+（1回あたり数ミリ秒未満）で、体感上ネックにならない水準であることを確認した。
 
 ## Constraints / Gotchas
 
