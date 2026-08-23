@@ -878,6 +878,15 @@ export function initSettings() {
     void loadRendererSettings().then(settings => {
         applyUiTheme(settings.uiTheme || 'default');
         applyGridDensity(settings.gridDensity);
+        // 開発用クエリフラグ `?theme=mc`: 見た目確認用に MusicCenter テーマを強制する。
+        // 非同期のテーマ復元より後に適用しないと上書きされてしまうためここで処理する。
+        try {
+            if (new URLSearchParams(location.search).get('theme') === 'mc') {
+                document.body.classList.add('mc-theme');
+            }
+        } catch {
+            // location が使えない環境（テスト等）では何もしない
+        }
     });
 
     let settingsClickCount = 0;

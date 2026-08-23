@@ -117,6 +117,24 @@ export function createSettingsPage(sections: SectionDef[]): SettingsPage {
         overlay()?.classList.add('hidden');
     }
 
+    /**
+     * 開発用クエリフラグ: `?settings=<sectionId>` で指定セクションを開いた状態で起動する。
+     * ヘッドレスブラウザでの見た目確認専用で、本番動作には影響しない（パラメータが無ければ何もしない）。
+     * MusicCenter テーマ切り替え（`&theme=mc`）は起動時の非同期テーマ復元より後に
+     * 適用する必要があるため、init-settings.ts 側（loadRendererSettings の完了後）で処理する。
+     */
+    function applyDevQueryFlags(): void {
+        try {
+            const params = new URLSearchParams(location.search);
+            const section = params.get('settings');
+            if (section) {
+                open(section);
+            }
+        } catch {
+            // location が使えない環境（テスト等）では何もしない
+        }
+    }
+
     function mount(): void {
         if (mounted) return;
         mounted = true;
@@ -136,6 +154,8 @@ export function createSettingsPage(sections: SectionDef[]): SettingsPage {
         document.addEventListener('open-settings', ((e: CustomEvent<{ section?: string }>) => {
             open(e.detail?.section);
         }) as EventListener);
+
+        applyDevQueryFlags();
     }
 
     return { mount, showSection, open, close };

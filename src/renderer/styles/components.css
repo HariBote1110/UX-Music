@@ -887,13 +887,103 @@
     display: none;
 }
 
+/* --- 設定行の共通リズム: ラベル(タイトル+説明)を左、コントロールを右に揃える --- */
+#settings-page .checkbox-group {
+    display: flex;
+    flex-direction: column;
+}
+
+#settings-page .checkbox-group label {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    cursor: pointer;
+}
+
+#settings-page .checkbox-group label:first-child {
+    border-top: none;
+    padding-top: 0;
+}
+
+#settings-page .checkbox-group label > div {
+    order: 1;
+}
+
+#settings-page .checkbox-group label > input {
+    order: 2;
+}
+
+#settings-page .checkbox-group label strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+#settings-page .checkbox-group label small {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    line-height: 1.5;
+}
+
+/* checkbox をピル型トグルスイッチとして描画（input 要素自体は維持し既存 JS と互換） */
+#settings-page .checkbox-group input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    width: 38px;
+    height: 22px;
+    flex-shrink: 0;
+    margin: 0;
+    border-radius: 11px;
+    background-color: var(--bg-darkest);
+    border: 1px solid var(--bg-light);
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+#settings-page .checkbox-group input[type="checkbox"]::before {
+    content: "";
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: var(--text-secondary);
+    transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+#settings-page .checkbox-group input[type="checkbox"]:checked {
+    background: linear-gradient(45deg, var(--highlight-pink), var(--highlight-blue));
+    border-color: transparent;
+}
+
+#settings-page .checkbox-group input[type="checkbox"]:checked::before {
+    transform: translateX(16px);
+    background-color: #fff;
+}
+
+/* チェックボックスにぶら下がる子設定（スライダー等）: インデント+左境界で従属を示す */
+#settings-page .setting-child-item {
+    margin-top: 4px;
+    margin-bottom: 4px;
+    padding: 8px 0 8px 16px;
+    border-left: 2px solid var(--bg-light);
+}
+
 #settings-page .radio-group label {
     display: flex;
     align-items: center;
-    padding: 12px;
+    padding: 10px 4px;
     border-radius: 4px;
     cursor: pointer;
-    border-top: 1px solid var(--bg-light);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 #settings-page .setting-group .radio-group label:first-child {
@@ -1410,7 +1500,12 @@
     padding: 8px 16px;
     font-size: 14px;
     cursor: pointer;
-    width: 100%;
+    width: auto;
+}
+
+/* setting-item 直下に単独で置かれたボタン（説明文の下に続く操作ボタン等）だけ
+   上マージンを付ける。フレックス行の中の兄弟ボタン（例: ux-sync-transfer-actions）は対象外。 */
+#settings-page .setting-item > .settings-button {
     margin-top: 10px;
 }
 
@@ -1468,11 +1563,6 @@
     z-index: 1000;
 }
 
-#settings-page .setting-child-item {
-    margin-top: 10px;
-    padding-left: 20px;
-}
-
 #settings-page .setting-child-item label {
     font-size: 12px;
     color: var(--text-secondary);
@@ -1487,6 +1577,7 @@
 /* --- グラフィックEQのスタイル (設定モーダル内) --- */
 #graphic-eq-container {
     padding-top: 15px;
+    min-height: 320px;
 }
 
 .graphic-eq-header {
