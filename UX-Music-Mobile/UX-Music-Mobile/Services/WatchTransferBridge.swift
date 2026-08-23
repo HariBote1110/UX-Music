@@ -300,6 +300,23 @@ enum WatchTransferHintPolicy {
     }
 }
 
+/// Pure mapping/encoding for the playlists `transferFile` payload — turns the app's `Playlist`
+/// model (`Models/Playlist.swift`) into `WatchPlaylistMeta` (`WatchPlaylistModel.swift`, compiled
+/// into this target as well as the Watch target — see that file's doc comment) and JSON-encodes the
+/// array exactly as `WatchConnectivityReceiver.session(_:didReceive:)` decodes it
+/// (`JSONDecoder().decode([WatchPlaylistMeta].self, from:)`). Kept as a free function (no
+/// `WCSession` dependency) so the mapping/encoding is unit-testable against the Watch decoder's
+/// expectations without a real WatchConnectivity transfer — see `WatchPlaylistTransferEncodingTests`.
+enum WatchPlaylistTransferEncoding {
+    static func metas(for playlists: [Playlist]) -> [WatchPlaylistMeta] {
+        playlists.map { WatchPlaylistMeta(id: $0.id, name: $0.name, songIds: $0.songIds) }
+    }
+
+    static func jsonData(for playlists: [Playlist]) -> Data? {
+        try? JSONEncoder().encode(metas(for: playlists))
+    }
+}
+
 /// iOS-side WatchConnectivity bridge: sends already-downloaded audio files to the paired Apple
 /// Watch via `WCSession.transferFile`, alongside a `WatchTransferMeta` metadata dictionary the
 /// Watch uses to build its local library (see `WatchTransfer.swift`, shared with the Watch target).
@@ -358,6 +375,17 @@ final class WatchTransferBridge: NSObject, ObservableObject {
     /// needs `RemoteAPIClient`/`withFailover`, which this bridge deliberately has no dependency on.
     /// `send` fails a song immediately with a clear reason if this is never set.
     var downloadHandler: ((Song) async -> Bool)?
+
+    /// Metadata tag for the playlists `transferFile`, mirroring `WatchTransferMeta.kindArtwork`'s
+    /// pattern (a `kind`-tagged file transfer carrying a payload shape the per-song
+    /// `WatchTransferMeta` metadata dictionary was never meant for). Matches
+    /// `WatchConnectivityReceiver.kindPlaylists` on the Watch side.
+    private static let kindPlaylists = "playlists"
+
+    /// Most recently requested playlist set (`AppModel.refreshPlaylists()` calls `sendPlaylists`
+    /// on every local playlist mutation) — kept so a transfer requested before `WCSession` finishes
+    /// activating can be retried, unprompted, once `handleActivationCompletion` sees `.activated`.
+    private var latestPlaylists: [Playlist] = []
 
     init(downloadManager: DownloadManager, userDefaults: UserDefaults = .standard) {
         self.downloadManager = downloadManager
@@ -566,6 +594,37 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         }
     }
 
+    /// Sends the current playlist set to the paired Watch as a single `transferFile`, tagged
+    /// `kind: "playlists"` (mirroring the artwork `transferFile`'s tagging pattern — see `sendFile`'s
+    /// artwork branch), so `WatchPlaylistLibrary.replaceAll(_:)` on the Watch always ends up with the
+    /// full, current set rather than a per-playlist diff. Called from `AppModel.refreshPlaylists()`
+    /// on every local playlist mutation; if the session has not finished activating yet, the request
+    /// is remembered in `latestPlaylists` and retried once `handleActivationCompletion` sees
+    /// `.activated`, so pairing/launch-time activation also results in an up-to-date Watch copy.
+    func sendPlaylists(_ playlists: [Playlist]) {
+        latestPlaylists = playlists
+        performPlaylistsTransfer()
+    }
+
+    /// Actually calls `WCSession.transferFile` for `latestPlaylists`, if the session is activated —
+    /// a no-op otherwise (the next `sendPlaylists` call, or activation completing, will retry).
+    private func performPlaylistsTransfer() {
+        guard WatchTransferActivationGating.shouldSendImmediately(status: activationStatus) else { return }
+        guard WCSession.isSupported() else { return }
+        guard let data = WatchPlaylistTransferEncoding.jsonData(for: latestPlaylists) else { return }
+
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("watch-playlists.json")
+        try? FileManager.default.removeItem(at: tempURL)
+        guard (try? data.write(to: tempURL, options: .atomic)) != nil else { return }
+
+        let session = WCSession.default
+        guard session.activationState == .activated else { return }
+        session.transferFile(tempURL, metadata: [
+            WatchTransferMeta.metadataIDKey: Self.kindPlaylists,
+            WatchTransferMeta.metadataKindKey: Self.kindPlaylists
+        ])
+    }
+
     /// Registers `transfer` in `activeTransfers`/`transferObservations` and attaches the KVO
     /// progress callback — shared by `sendFile` (a freshly enqueued transfer) and
     /// `restorePersistedQueueIfNeeded` (an already-in-flight transfer discovered via
@@ -650,6 +709,7 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         case .activated:
             songs.forEach { performTransfer($0) }
             restorePersistedQueueIfNeeded()
+            performPlaylistsTransfer()
         case .failed(let reason):
             songs.forEach { upsert(WatchTransferQueueItem(id: $0.id, title: $0.displayTitle, phase: .failed(reason))) }
         case .notActivated, .activating:

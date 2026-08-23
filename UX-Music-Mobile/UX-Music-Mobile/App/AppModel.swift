@@ -854,6 +854,10 @@ final class AppModel {
 
     func refreshPlaylists() {
         playlists = playlistStore.orderedPlaylists()
+        // Resends the full playlist set to the paired Watch on every local mutation (create/
+        // rename/delete/reorder/song add-remove all funnel through `refreshPlaylists`) — see
+        // `WatchTransferBridge.sendPlaylists`.
+        watchTransferBridge.sendPlaylists(playlists)
     }
 
     func createPlaylist(name: String) throws {
