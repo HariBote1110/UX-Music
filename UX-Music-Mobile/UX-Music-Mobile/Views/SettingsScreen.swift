@@ -102,11 +102,15 @@ struct SettingsScreen: View {
                     TextField("8765", text: $portText)
                         .keyboardType(.numberPad)
                         .focused($focusedField, equals: .port)
+                        .submitLabel(.done)
+                        .onSubmit { focusedField = nil }
 
                     TextField("Pairing Code (secret)", text: $secretText)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .focused($focusedField, equals: .secret)
+                        .submitLabel(.done)
+                        .onSubmit { focusedField = nil }
                 } header: {
                     Text("SERVER")
                 } footer: {
@@ -236,6 +240,8 @@ struct SettingsScreen: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.black)
+            .scrollDismissesKeyboard(.interactively)
+            .simultaneousGesture(TapGesture().onEnded { focusedField = nil })
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
