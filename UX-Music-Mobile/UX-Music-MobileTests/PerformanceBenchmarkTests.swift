@@ -146,6 +146,36 @@ final class PerformanceBenchmarkTests: XCTestCase {
         }
     }
 
+    /// Mirrors `RemoteLibraryScreen`'s prior bug: `albumsPane`/`songsPane` called `Album.fromSongs`/
+    /// `SongSearchFilter.filter` inline in the view body, so paging the `TabView` between Albums/
+    /// Playlists/Songs re-ran the grouping on every body evaluation the animation triggered — not
+    /// just on the one page whose content actually changed. `LibraryDerivedCollections.updatedForRemote`
+    /// now guards this behind an `Inputs`-equality check, so repeated calls with unchanged inputs
+    /// should cost roughly nothing next to the first (cold) call. This benchmark documents that gap
+    /// rather than asserting a hard bound (`measure` block timing is host-dependent).
+    func testRemoteDerivedCollectionsCacheHitVsRecompute() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["UXM_PERF"] == "1", "Set UXM_PERF=1 to run performance benchmarks")
+
+        let songs = Self.makeSynthetic800SongLibrary()
+        let inputs = LibraryDerivedCollections.RemoteInputs(
+            libraryRevision: 1,
+            librarySortOrder: .album,
+            searchQuery: ""
+        )
+
+        // Warm the cache once, as `RemoteLibraryScreen`'s `.task(id:)` would on first load.
+        let warm = LibraryDerivedCollections().updatedForRemote(songs: songs, inputs: inputs)
+
+        measure {
+            // Simulates ~60 re-evaluations of `albumsPane`/`songsPane` during one page-swipe
+            // animation between Remote's Albums/Playlists/Songs segments, all with unchanged
+            // `RemoteInputs` — every call should be a cheap `Inputs` comparison, never a regroup.
+            for _ in 0 ..< 60 {
+                _ = warm.updatedForRemote(songs: songs, inputs: inputs)
+            }
+        }
+    }
+
     // MARK: - (c) DownloadManager init (loadMeta) startup cost
 
     /// With an n=800 fixture already on disk and its meta blob already in `UserDefaults` (same
