@@ -8,9 +8,17 @@
     overflow: hidden;
     position: relative;
 
-    /* 画面下部（85%〜100%の位置）にかけてフェードアウトさせるマスク */
-    -webkit-mask-image: linear-gradient(to bottom, black 95%, transparent 100%);
-    mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+    /* 再生バー（フッター）の直上、--footer-height 分だけ確保された余白の
+       手前 --footer-fade-height ぶんだけをフェードアウトさせる、狭く一定の
+       マスク。以前は 85%/95% という画面高さ比の値がブラウザ間で食い違って
+       おり、サイドバーの #open-settings-btn まで暗くなっていた。 */
+    --footer-fade-height: 48px;
+    -webkit-mask-image: linear-gradient(to bottom,
+            black calc(100% - var(--footer-height, 0px) - var(--footer-fade-height)),
+            transparent calc(100% - var(--footer-height, 0px)));
+    mask-image: linear-gradient(to bottom,
+            black calc(100% - var(--footer-height, 0px) - var(--footer-fade-height)),
+            transparent calc(100% - var(--footer-height, 0px)));
 }
 
 body.resizing {
