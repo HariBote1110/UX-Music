@@ -178,7 +178,9 @@ export async function renderSituationView() {
                 ${description ? `<div class="playlist-description">${escapeHtml(description)}</div>` : ''}
             `;
             const artworkContainer = playlistItem.querySelector('.playlist-artwork-container');
-            createPlaylistArtwork(artworkContainer, artworks, (artwork) => resolveArtworkPath(artwork, false));
+            // グリッドの小さなタイルなのでサムネイルを使う
+            // （フル画像を渡すと thumbnails/ ディレクトリを参照せず 404 になる）。
+            createPlaylistArtwork(artworkContainer, artworks, (artwork) => resolveArtworkPath(artwork, true));
 
             playlistItem.addEventListener('click', () => {
                 const playlistDetails = {

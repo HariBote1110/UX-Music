@@ -153,7 +153,8 @@ export function renderPlaylistDetailView(playlistDetails: Record<string, unknown
     listElement.className = 'music-list';
 
     const artworkContainer = viewWrapper.querySelector('.playlist-art-collage');
-    const resolver = (artwork) => resolveArtworkPath(artwork, true);
+    // 詳細ビューの大きなコラージュ画像なのでフル画像を使う。
+    const resolver = (artwork) => resolveArtworkPath(artwork, false);
     createPlaylistArtwork(artworkContainer, artworks, resolver);
 
     viewWrapper.appendChild(listElement);
