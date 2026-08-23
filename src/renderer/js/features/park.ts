@@ -40,7 +40,7 @@
 
 import { getWailsApp, recordParkUIState } from '../core/bridge.js';
 import { showView } from '../core/navigation.js';
-import { elements } from '../core/state.js';
+import { getActiveScrollElement } from '../ui/view-renderer.js';
 import { handleQueuePlayEmbedEvent, handleRemotePlaySongEvent } from './playback-manager.js';
 
 export interface ParkedUIState {
@@ -88,7 +88,9 @@ export function parseParkedUIState(raw: unknown): ParkedUIState | null {
 function captureUIState(): ParkedUIState {
     const activeNavLink = document.querySelector('.nav-link.active') as HTMLElement | null;
     const viewId = activeNavLink?.dataset?.view ?? 'track-view';
-    const scrollTop = elements?.mainContent?.scrollTop ?? 0;
+    // elements.mainContent itself never scrolls — see
+    // ui/view-renderer.js's getActiveScrollElement doc comment.
+    const scrollTop = getActiveScrollElement()?.scrollTop ?? 0;
     return { viewId, scrollTop };
 }
 
@@ -131,8 +133,9 @@ export async function restoreFromPark() {
     if (saved) {
         try {
             await showView(saved.viewId);
-            if (elements?.mainContent) {
-                elements.mainContent.scrollTop = saved.scrollTop;
+            const scrollTarget = getActiveScrollElement();
+            if (scrollTarget) {
+                scrollTarget.scrollTop = saved.scrollTop;
             }
         } catch (e) {
             console.error('[Park] Failed to restore UI state:', e);

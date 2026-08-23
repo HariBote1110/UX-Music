@@ -8,7 +8,8 @@ import {
     renderArtistDetailView,
     renderPlaylistDetailView,
     renderSituationView,
-    clearMainContent
+    clearMainContent,
+    getActiveScrollElement
 } from '../ui/view-renderer.js';
 import { stopQuiz } from '../features/quiz.js';
 import { stopLrcEditing, renderLrcEditor } from '../features/lrc-editor.js';
@@ -192,7 +193,11 @@ export async function showView(viewId, options: Record<string, unknown> = {}) {
     // recordParkUIState doc comment): parking is entirely Go-timer-driven
     // now, so nothing can be pulled from JS at the moment it happens —
     // every view change instead pushes a fresh snapshot ahead of time.
-    recordParkUIState(viewId, elements.mainContent?.scrollTop ?? 0);
+    // elements.mainContent itself never scrolls (each view's content fits it
+    // exactly; the actual scrolling element is a .view-scroll / #music-list /
+    // #a-detail-list / #p-detail-list child — see ui/view-renderer.js's
+    // getActiveScrollElement), so the scroll position must be read from there.
+    recordParkUIState(viewId, getActiveScrollElement()?.scrollTop ?? 0);
 }
 
 export function initNavigation() {

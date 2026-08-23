@@ -17,6 +17,7 @@ vi.mock('../ui/view-renderer.js', () => ({
     renderPlaylistDetailView: vi.fn(),
     renderSituationView: vi.fn(),
     clearMainContent: vi.fn(),
+    getActiveScrollElement: vi.fn(() => null),
 }));
 vi.mock('../features/quiz.js', () => ({ stopQuiz: vi.fn(), renderQuizView: vi.fn() }));
 vi.mock('../features/lrc-editor.js', () => ({ stopLrcEditing: vi.fn(), renderLrcEditor: vi.fn() }));
