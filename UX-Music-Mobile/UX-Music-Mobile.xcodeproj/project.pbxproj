@@ -108,6 +108,7 @@
 		7D755225E54248769CE3672D /* SidecarDirective.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE60406E6AD54DD79715CF05 /* SidecarDirective.swift */; };
 		55121DCC10264119BFCD8D4A /* SidecarScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60453866D17143B48F8B7AAD /* SidecarScreen.swift */; };
 		29B173DFA69B4D3C91FFEBBB /* SidecarDirectiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C84CA695586479AAFCF7831 /* SidecarDirectiveTests.swift */; };
+		981A75EE65914C718AA02A46 /* RemoteControlStateSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB31CAD8573A403194DDA1B8 /* RemoteControlStateSnapshotTests.swift */; };
 		C04E792BC6474C9E9BA3C3E3 /* SidecarLayoutMotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB095C2AB86142CCB85D867C /* SidecarLayoutMotionTests.swift */; };
 		b077f2c8570b4c62ad6c8c75 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7db2069e8eb64b7382361146 /* Assets.xcassets */; };
 		453C89C841B1456DBA8F697A /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 588F83FDDE734E7DA54AC513 /* Localizable.xcstrings */; };
@@ -410,6 +411,7 @@
 		AE60406E6AD54DD79715CF05 /* SidecarDirective.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidecarDirective.swift; sourceTree = "<group>"; };
 		60453866D17143B48F8B7AAD /* SidecarScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidecarScreen.swift; sourceTree = "<group>"; };
 		8C84CA695586479AAFCF7831 /* SidecarDirectiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidecarDirectiveTests.swift; sourceTree = "<group>"; };
+		BB31CAD8573A403194DDA1B8 /* RemoteControlStateSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteControlStateSnapshotTests.swift; sourceTree = "<group>"; };
 		AB095C2AB86142CCB85D867C /* SidecarLayoutMotionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidecarLayoutMotionTests.swift; sourceTree = "<group>"; };
 		a69b6b50c77c42d5883861b6 /* UX-Music-Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfigTests.swift; sourceTree = "<group>"; };
@@ -636,6 +638,7 @@
 				DE0394F21811469395789027 /* LocalizationTestHelpers.swift */,
 				D9641CC4E57D4B59BDB33477 /* LocalizationCatalogCompletenessTests.swift */,
 				8C84CA695586479AAFCF7831 /* SidecarDirectiveTests.swift */,
+				BB31CAD8573A403194DDA1B8 /* RemoteControlStateSnapshotTests.swift */,
 				AB095C2AB86142CCB85D867C /* SidecarLayoutMotionTests.swift */,
 				33383A1C4ECB4612A3DFBA1B /* WatchPlaylistQueueBuilderTests.swift */,
 				1D3100DC91EA37ED58CD1255 /* WatchPlaylistTransferEncodingTests.swift */,
@@ -1123,6 +1126,7 @@
 				7576636BB2B148188B9AA8F2 /* LocalizationTestHelpers.swift in Sources */,
 				2D6316B8C62C4865B9477053 /* LocalizationCatalogCompletenessTests.swift in Sources */,
 				29B173DFA69B4D3C91FFEBBB /* SidecarDirectiveTests.swift in Sources */,
+				981A75EE65914C718AA02A46 /* RemoteControlStateSnapshotTests.swift in Sources */,
 				C04E792BC6474C9E9BA3C3E3 /* SidecarLayoutMotionTests.swift in Sources */,
 				A86C02BD0F444626918BA444 /* WatchPlaylistQueueBuilderTests.swift in Sources */,
 				D96961CB80953129E4AA2200 /* WatchPlaylistTransferEncodingTests.swift in Sources */,
