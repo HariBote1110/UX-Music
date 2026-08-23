@@ -89,7 +89,7 @@ struct ArtistDetailView: View {
     }
 
     private var albumsGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+        LazyVGrid(columns: AdaptiveGridColumns.columns(), spacing: 16) {
             ForEach(artist.albums) { album in
                 NavigationLink(value: LibraryRoute.album(album)) {
                     VStack(alignment: .leading, spacing: 7) {

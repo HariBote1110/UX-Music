@@ -436,7 +436,7 @@ struct LocalLibraryScreen: View {
     @ViewBuilder
     private func albumContent(albums: [Album]) -> some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+            LazyVGrid(columns: AdaptiveGridColumns.columns(), spacing: 16) {
                 ForEach(albums) { album in
                     NavigationLink(value: LibraryRoute.album(album)) {
                         VStack(alignment: .leading, spacing: 7) {

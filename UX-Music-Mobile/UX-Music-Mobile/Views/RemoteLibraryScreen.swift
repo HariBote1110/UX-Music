@@ -344,7 +344,7 @@ struct RemoteLibraryScreen: View {
 
     private func remotePlaylistsGrid(rows: [RemoteDesktopPlaylist], librarySongs: [Song]) -> some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            LazyVGrid(columns: AdaptiveGridColumns.columns(), spacing: 12) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, pl in
                     let songsInPl = resolveSongs(for: pl, library: librarySongs)
                     let art = songsInPl.first { !$0.artworkId.isEmpty }?.artworkId ?? ""
@@ -408,7 +408,7 @@ struct RemoteLibraryScreen: View {
 
     private func remoteAlbumsGrid(albums: [Album]) -> some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            LazyVGrid(columns: AdaptiveGridColumns.columns(), spacing: 12) {
                 ForEach(albums) { album in
                     Button {
                         path.append(RemoteLibraryNav.album(album))
