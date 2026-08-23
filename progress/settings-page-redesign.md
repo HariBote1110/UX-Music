@@ -35,5 +35,33 @@
 - `make build` → `build/bin/UX-Music.app` 起動確認: 初期ウィンドウは正常表示（曲一覧・サイドバー・再生バー）。`cliclick`/`osascript` によるボタン合成クリックは Accessibility 権限がなく失敗したため、設定ページを開いた状態のスクリーンショットは取得できていない（正直に申告）。
 
 ## 残課題・今後の検討
-- 設定ページを開いた実機での見た目確認（Accessibility 権限を有効化した上での再検証）が未実施。
 - 「詳細」セクションの pprof 診断リンクは説明文のみで、実際のエンドポイント表示・トグルは未実装（既存の pprof 起動は Go 側の別経路）。
+
+## 追補（67b）: 見た目確認と行レイアウトの実装
+上記「残課題」にあった実機見た目確認をヘッドレス Chrome で実施した結果、CSS が当初から欠落しており致命的に崩れていたことが判明。
+
+### 根本原因
+1. `.settings-button { width: 100%; margin-top: 10px }`（旧・単一モーダル用のレガシールール）が `#settings-close-btn` にもそのまま適用され、ヘッダーが横幅いっぱいのボタンに占領されて `<h2>設定</h2>` が潰れていた。
+2. `.checkbox-group`（`label > input[checkbox] + div > strong + small` のマークアップ）に対応する CSS が一切存在せず、素の checkbox とインライン文章がそのまま流れて表示されていた。`.radio-group` 側は既にスタイルがあり無事だった。
+
+### 修正内容（`src/renderer/styles/components.css`）
+- `.settings-button` から `width: 100%; margin-top: 10px;` を削除し `width: auto` に変更。`#settings-page .setting-item > .settings-button` にのみ `margin-top: 10px` を限定付与（説明文の下に単独で置かれるボタン用。`.ux-sync-transfer-actions` 等のフレックス行内の兄弟ボタンは対象外にして横並びを維持）。
+- `#settings-page .checkbox-group label` / `.radio-group label` を `display: grid; grid-template-columns: 1fr auto` の行として新設。タイトル(`strong`)+説明(`small`)のブロックを `order: 1`、コントロールを `order: 2` にして常に右寄せ（マークアップの DOM 順は変更せず、CSS の `order` だけで並べ替え、既存 JS の `querySelector` 依存を壊さない）。
+- checkbox は `appearance: none` + `::before` で 38×22px のピル型トグルスイッチとして描画（`input` 要素自体は維持するため JS 側の `change` リスナーは無改修で動作）。
+- `.setting-child-item`（Analysed Queue のスコア有効期間スライダー等）は左ボーダー付きインデント行に変更。旧・重複定義（同名セレクタが離れた場所に2箇所存在し後勝ちで意図しない上書きが起きていた）を1箇所に統合。
+- `#graphic-eq-container` に `min-height: 320px` を追加。
+
+### 開発用クエリフラグ（見た目確認専用）
+- `?settings=<sectionId>` … `settings-page.ts` の `mount()` 末尾で `location.search` を読み、該当セクションを開いた状態で起動する（`open-settings` イベントを使わない静的アクセス）。
+- `&theme=mc` … MusicCenter テーマ (`body.mc-theme`) を強制する。**注意**: `init-settings.ts` の `initSettings()` は起動時のテーマ復元を `loadRendererSettings().then(...)` の非同期コールバック内で行うため、`theme=mc` の適用もこの `.then()` 内（`applyUiTheme` 呼び出しの直後）に置く必要がある。同期的な `settings-page.ts` 側で処理すると、後から解決する非同期のテーマ復元処理に上書きされて無効化される（実際にこの順序バグを一度踏んでスクリーンショットで確認済み）。
+- どちらも本番動作には影響しない（パラメータが無ければ何もしない、`try/catch` で `location` 不使用環境=テストも安全）。
+
+### 見た目検証
+Vite dev server (`localhost:5179`) + ヘッドレス Chrome (`--headless=new --screenshot`) で以下をスクリーンショット確認済み（`/private/tmp/.../scratchpad/settings-*.png`、セッション終了後は消滅するため再検証時は同じ手順で再取得）:
+- `?settings=general` `?settings=playback` `?settings=library` `?settings=appearance` `?settings=youtube` `?settings=integration` `?settings=ai` `?settings=advanced` … いずれもヘッダー・行の整列・トグルスイッチが正常。
+- `?settings=general&theme=mc` … MusicCenter テーマでも角丸が四角になるだけで崩れなし。
+
+### 検証結果（67b）
+- `npm test`: 43 ファイル / 430 テスト全通過
+- `npx tsc --noEmit`: エラーなし
+- `npm run build`: 成功（既存の dynamic-import chunk 警告のみ）
