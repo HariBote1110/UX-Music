@@ -142,7 +142,8 @@
 #queue-list::after,
 #lyrics-view::after,
 #a-detail-list::after,
-#p-detail-list::after {
+#p-detail-list::after,
+#equalizer-view::after {
     content: "";
     display: block;
     width: 100%;

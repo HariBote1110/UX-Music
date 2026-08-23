@@ -1,98 +1,15 @@
 /* uxmusic/src/renderer/styles/equalizer.css */
-/* イコライザー (サイドバー & グラフィックEQモーダル) のスタイル */
+/* イコライザー (サイドバー & 設定画面) のスタイル。
+   サイドバー版・設定画面版は js/ui/equalizer/graphic-equaliser.ts が生成する
+   同一の DOM 構造（.graphic-eq 系クラス）を共有する。レイアウト差分は
+   .graphic-eq--sidebar / .graphic-eq--settings で切り替える。 */
 
 #equalizer-view {
     display: flex;
     flex-direction: column;
-    padding: 15px 24px;
     box-sizing: border-box;
     width: 100%;
     height: 100%;
-    gap: 20px;
-}
-
-.equalizer-header {
-    display: flex;
-    justify-content: flex-start; /* 左寄せに変更 */
-    align-items: center;
-    flex-shrink: 0;
-}
-
-#eq-controls-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    flex-grow: 1;
-    transition: opacity 0.3s;
-}
-
-#eq-controls-wrapper.eq-inactive {
-    opacity: 0.4;
-    pointer-events: none;
-}
-
-#eq-preset-select {
-    background-color: var(--bg-light);
-    color: var(--text-primary);
-    border: 1px solid var(--bg-medium);
-    border-radius: 4px;
-    padding: 5px 8px;
-}
-
-.simple-eq-bands {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    flex-grow: 1;
-    justify-content: center;
-}
-
-.simple-eq-band {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.simple-eq-band label {
-    font-size: 14px;
-    color: var(--text-secondary);
-    width: 50px; /* ラベルの幅を固定 */
-}
-
-.simple-eq-band input[type="range"] {
-    -webkit-appearance: none;
-    appearance: none;
-    flex-grow: 1;
-    height: 4px;
-    background: var(--bg-light);
-    outline: none;
-    border-radius: 2px;
-}
-
-.simple-eq-band input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    background: #fff;
-    border-radius: 50%;
-    cursor: pointer;
-}
-
-.equalizer-footer {
-    text-align: right;
-    flex-shrink: 0;
-}
-#open-graphic-eq-btn {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    text-decoration: underline;
-    font-size: 12px;
-    cursor: pointer;
-}
-#open-graphic-eq-btn:hover {
-    color: var(--text-primary);
 }
 
 /* --- トグルスイッチのスタイル --- */
@@ -101,6 +18,7 @@
   display: inline-block;
   width: 34px;
   height: 20px;
+  flex-shrink: 0;
 }
 .switch input {
   opacity: 0;
@@ -140,24 +58,40 @@ input:checked + .slider:before {
   border-radius: 50%;
 }
 
-/* --- グラフィックEQのスタイル (設定モーダル内) --- */
-#graphic-eq-container {
-    padding-top: 15px;
+/* --- 共有グラフィックEQコンポーネント --- */
+.graphic-eq {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    transition: opacity 0.3s;
 }
+
+.graphic-eq--inactive .graphic-eq-canvas-wrap,
+.graphic-eq--inactive .graphic-eq-readout {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
 .graphic-eq-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    gap: 10px;
+    flex-shrink: 0;
 }
-#graphic-eq-preset-select {
+
+.graphic-eq-preset-select {
     background-color: var(--bg-light);
     color: var(--text-primary);
     border: 1px solid var(--bg-medium);
     border-radius: 4px;
     padding: 5px 8px;
+    flex: 1 1 auto;
+    min-width: 0;
 }
-#graphic-eq-reset-btn {
+
+.graphic-eq-reset-btn {
     background: none;
     border: 1px solid var(--bg-light);
     color: var(--text-secondary);
@@ -165,32 +99,59 @@ input:checked + .slider:before {
     padding: 4px 8px;
     font-size: 12px;
     cursor: pointer;
+    flex-shrink: 0;
 }
-#graphic-eq-reset-btn:hover {
+.graphic-eq-reset-btn:hover {
     background-color: var(--bg-light);
     color: var(--text-primary);
 }
-#graphic-eq-bands-container {
-    display: flex;
-    justify-content: space-around;
-    align-items: stretch;
-    gap: 15px;
-    height: 160px;
-}
-#graphic-eq-bands-container .eq-band {
-    display: flex;
-    flex-direction: column-reverse;
-    align-items: center;
-    flex-basis: 0;
-    flex-grow: 1;
-}
-#graphic-eq-bands-container .eq-band input[type="range"] {
-    -webkit-appearance: slider-vertical;
+
+.graphic-eq-canvas-wrap {
+    position: relative;
     width: 100%;
-    flex-grow: 1;
+    flex-shrink: 0;
 }
-#graphic-eq-bands-container .eq-band label {
+
+.graphic-eq-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+}
+
+.graphic-eq-readout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
     font-size: 11px;
     color: var(--text-muted);
-    margin-top: 10px;
+    flex-shrink: 0;
+}
+
+.graphic-eq-readout-band {
+    display: inline-flex;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.graphic-eq-readout-band b {
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+/* サイドバータブ内: カーブエディタを主役に、下に控えめな数値を並べる。
+   フッター（再生バー）との重なりは views.css の #equalizer-view スペーサーで防ぐ。 */
+.graphic-eq--sidebar .graphic-eq-canvas-wrap {
+    min-height: 180px;
+    height: clamp(180px, 32vh, 260px);
+}
+
+/* 設定画面内: より広く、じっくり編集できる高さを確保する。 */
+.graphic-eq--settings .graphic-eq-canvas-wrap {
+    min-height: 220px;
+    height: clamp(220px, 40vh, 320px);
+}
+
+.graphic-eq--settings .graphic-eq-readout {
+    font-size: 12px;
 }
