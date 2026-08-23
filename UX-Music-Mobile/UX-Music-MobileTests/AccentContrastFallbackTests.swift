@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import UX_Music_Mobile
 
 /// Covers `AccentContrastFallback.isTooLowContrast(saturation:brightness:)` — the pure predicate
