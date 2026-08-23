@@ -119,6 +119,40 @@ derived` を保持し、`.task(id: derivedInputs(searchQuery:))` でのみ更新
 (`UXM_PERF=1` 限定) で計測しており、60回連続呼び出しでも実測 0.4秒程度
 （1回あたり数ミリ秒未満）で、体感上ネックにならない水準であることを確認した。
 
+#### 7-1. 追補: Controlタブ自体のアイドルCPU（`mobile_remote_perf_research`）
+
+項目7は「Songs/Albums/Playlists切替時」のスパイクだったが、`Control`タブ
+（`RemoteControlScreen`）は切替とは無関係にアイドル表示中も2秒毎の
+`pollOnce()`でCPUスパイクを起こしていた。`mobile_remote_perf_research/`
+配下の研究（`notes/01`〜`04`）で実測: Controlタブをただ開いて置いておく
+だけでCPU中央値1.0%・p95 2.7%（Remoteライブラリタブは0.3%/0.6%）。原因は
+`pollOnce()`が`desktopState: [String: Any]`を毎tick無条件代入していたこと
+（`Equatable`に適合できない辞書のため、内容が同じでもSwiftUIは新規の状態
+変化として`controlsView`全体を再評価していた）。
+
+`AppModel.sidecarPollOnce()`が`SidecarMetadataSnapshot`で先に導入していた
+のと同じパターンで`RemoteControlStateSnapshot`（title/artist/album/
+duration/playing、`Equatable`）を追加し、変化した時だけ`@State`へ書き込む
+差分ガードを実装（`position`のみ従来通り毎tick更新）。ついでに研究ノートで
+指摘されていた低優先2件も対応: Remoteアートワークのグリッドタイル用に
+`UIImage.preparingThumbnail(of:)`によるダウンサンプリング付きデコードと
+サイズバケット別メモリキャッシュ（`RemoteArtworkDecodeTarget`/
+`RemoteArtworkDecoding`/`RemoteArtworkDecodedImageCache`）を追加、
+`RemoteLibraryScreen`のPlaylistsグリッドの`ForEach id: \.offset`を
+`id: \.name`に安定化。
+
+**対策後の実測**（同一環境・同一手順で再計測、詳細は
+`mobile_remote_perf_research/notes/04-summary-and-recommendations.md`の
+「対策後の実測」節）: CPU中央値は1.0%→0.6%に改善したが、p95は2.7%→3.3%で
+改善しなかった。`pollOnce()`のHTTP往復・JSONデコード・スナップショット
+構築自体は差分ガードの対象外で毎tick発生するため、そのtickのピーク
+コストは消えない。差分ガードが効くのは「変化なしtickでの無駄な全体
+再評価」というスパイク後の定常コストの方であり、「2秒毎のピークそのもの」
+という当初仮説の理解は不正確だった。p95をさらに下げるにはポーリング
+間隔の見直しやネットワーク/デコードコスト自体の削減が必要（未着手）。
+アートワークのダウンサンプリングとPlaylists ID安定化は実装のみ完了し、
+実行時計測（グリッド連続スクロールのA/B比較）は未実施。
+
 ## Constraints / Gotchas
 
 - **並行編集による共有ファイルの競合**: `UX-Music-Mobile.xcodeproj/project.pbxproj`
