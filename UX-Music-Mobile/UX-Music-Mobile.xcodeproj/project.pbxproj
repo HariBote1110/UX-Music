@@ -257,6 +257,7 @@
 		3816FCFB50A74E02BD216141 /* WatchPlaylistLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8CC224C16B6454FBB965A71 /* WatchPlaylistLibrary.swift */; };
 		9CFC36ED55844B3686A53DC0 /* WatchPlaylistListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB050A06169748EF8FA409BD /* WatchPlaylistListView.swift */; };
 		A86C02BD0F444626918BA444 /* WatchPlaylistQueueBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33383A1C4ECB4612A3DFBA1B /* WatchPlaylistQueueBuilderTests.swift */; };
+		D96961CB80953129E4AA2200 /* WatchPlaylistTransferEncodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D3100DC91EA37ED58CD1255 /* WatchPlaylistTransferEncodingTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -521,6 +522,7 @@
 		E8CC224C16B6454FBB965A71 /* WatchPlaylistLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlaylistLibrary.swift; sourceTree = "<group>"; };
 		EB050A06169748EF8FA409BD /* WatchPlaylistListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlaylistListView.swift; sourceTree = "<group>"; };
 		33383A1C4ECB4612A3DFBA1B /* WatchPlaylistQueueBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlaylistQueueBuilderTests.swift; sourceTree = "<group>"; };
+		1D3100DC91EA37ED58CD1255 /* WatchPlaylistTransferEncodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlaylistTransferEncodingTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -636,6 +638,7 @@
 				8C84CA695586479AAFCF7831 /* SidecarDirectiveTests.swift */,
 				AB095C2AB86142CCB85D867C /* SidecarLayoutMotionTests.swift */,
 				33383A1C4ECB4612A3DFBA1B /* WatchPlaylistQueueBuilderTests.swift */,
+				1D3100DC91EA37ED58CD1255 /* WatchPlaylistTransferEncodingTests.swift */,
 				9B0CEB7DCB884274AE538745 /* WatchAudioRoutePolicyTests.swift */,
 			);
 			path = "UX-Music-MobileTests";
@@ -1122,6 +1125,7 @@
 				29B173DFA69B4D3C91FFEBBB /* SidecarDirectiveTests.swift in Sources */,
 				C04E792BC6474C9E9BA3C3E3 /* SidecarLayoutMotionTests.swift in Sources */,
 				A86C02BD0F444626918BA444 /* WatchPlaylistQueueBuilderTests.swift in Sources */,
+				D96961CB80953129E4AA2200 /* WatchPlaylistTransferEncodingTests.swift in Sources */,
 				B3196B71F8904DE181BFD21E /* WatchAudioRoutePolicyTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
