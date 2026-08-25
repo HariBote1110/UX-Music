@@ -168,6 +168,19 @@ func WebKitHelperPIDs() ([]int, error) {
 	return webKitHelperPIDsForSelf(procs, self, selfResponsiblePID(self)), nil
 }
 
+// WebKitHelperPIDsFor is WebKitHelperPIDs generalised to an arbitrary target
+// PID instead of the calling process itself. It backs
+// scripts/measure-app-memory.sh (see cmd/measure-app-memory), which needs to
+// attribute WebKit helpers to a separately-running UX-Music.app process
+// rather than to the measurement tool's own PID.
+func WebKitHelperPIDsFor(targetPID int) ([]int, error) {
+	procs, err := gatherProcesses()
+	if err != nil {
+		return nil, err
+	}
+	return webKitHelperPIDsForSelf(procs, targetPID, selfResponsiblePID(targetPID)), nil
+}
+
 // selfResponsiblePID returns the responsible process macOS attributes to pid,
 // or 0 when it is unavailable or is pid itself (which the ownership filter
 // already covers). See webKitHelperPIDsForSelf for why this matters.

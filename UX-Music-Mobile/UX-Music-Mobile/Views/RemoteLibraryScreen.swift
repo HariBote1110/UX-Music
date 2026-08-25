@@ -30,6 +30,20 @@ struct RemoteLibraryScreen: View {
     @State private var didScheduleRemoteLoad = false
     @State private var showAddYouTubeLink = false
 
+    /// Memoised Albums/Songs collections (see `LibraryDerivedCollections`). Refreshed only via
+    /// `.task(id: derivedInputs)` below — never recomputed inline from `body` — so paging between
+    /// Albums/Playlists/Songs (and the `LazyTabRoot` retention that keeps this screen mounted while
+    /// hidden) does not re-run `Album.fromSongs`/`SongSearchFilter.filter` on every body evaluation.
+    @State private var derived = LibraryDerivedCollections()
+
+    private func derivedInputs(searchQuery: String) -> LibraryDerivedCollections.RemoteInputs {
+        LibraryDerivedCollections.RemoteInputs(
+            libraryRevision: model.remoteLibraryRevision,
+            librarySortOrder: model.librarySortOrder,
+            searchQuery: searchQuery
+        )
+    }
+
     private var viewModeIndex: Binding<Int> {
         Binding(
             get: { viewMode.rawValue },
@@ -202,24 +216,37 @@ struct RemoteLibraryScreen: View {
                     .background(Color.orange.opacity(0.15))
                 }
                 TabView(selection: $viewMode) {
-                    page(bottomInset: bottomInset) { albumsPane(songs: songs) }
+                    page(bottomInset: bottomInset) { albumsPane() }
                         .tag(RemoteViewMode.albums)
                     page(bottomInset: bottomInset) { playlistsPane(songs: songs) }
                         .tag(RemoteViewMode.playlists)
-                    page(bottomInset: bottomInset) { songsPane(songs: songs) }
+                    page(bottomInset: bottomInset) { songsPane() }
                         .tag(RemoteViewMode.songs)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .task(id: derivedInputs(searchQuery: query)) {
+                    let inputs = derivedInputs(searchQuery: query)
+                    guard derived.remoteInputs != inputs else { return }
+                    derived = derived.updatedForRemote(songs: songs, inputs: inputs)
+                }
             }
         }
     }
 
+    /// `true` once the server has reported at least one song for this session, independent of the
+    /// current search query — distinguishes an empty server library ("No Songs on Server") from a
+    /// query that matched nothing ("No Matching Songs").
+    private var hasAnyRemoteSongs: Bool {
+        if case .loaded(let songs) = model.libraryState { return !songs.isEmpty }
+        return false
+    }
+
     @ViewBuilder
-    private func albumsPane(songs: [Song]) -> some View {
-        let albums = filterAlbums(Album.fromSongs(songs))
+    private func albumsPane() -> some View {
+        let albums = derived.remoteSearchedAlbums
         if albums.isEmpty {
-            Text(songs.isEmpty ? "No Songs on Server" : "No Matching Songs")
+            Text(hasAnyRemoteSongs ? "No Matching Songs" : "No Songs on Server")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -232,10 +259,10 @@ struct RemoteLibraryScreen: View {
     }
 
     @ViewBuilder
-    private func songsPane(songs: [Song]) -> some View {
-        let filtered = SongSearchFilter.filter(songs, query: query)
+    private func songsPane() -> some View {
+        let filtered = derived.remoteSearchedSongs
         if filtered.isEmpty {
-            Text(songs.isEmpty ? "No Songs on Server" : "No Matching Songs")
+            Text(hasAnyRemoteSongs ? "No Matching Songs" : "No Songs on Server")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -255,14 +282,6 @@ struct RemoteLibraryScreen: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    /// Keeps an album entry (with all of its tracks, not just the matching ones) when any of its
-    /// songs match the current search query — album membership shouldn't fragment mid-scroll just
-    /// because one track's tag didn't match.
-    private func filterAlbums(_ albums: [Album]) -> [Album] {
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return albums }
-        return albums.filter { !SongSearchFilter.filter($0.songs, query: query).isEmpty }
     }
 
     private func loadRemotePlaylists() async {
@@ -344,8 +363,8 @@ struct RemoteLibraryScreen: View {
 
     private func remotePlaylistsGrid(rows: [RemoteDesktopPlaylist], librarySongs: [Song]) -> some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, pl in
+            LazyVGrid(columns: AdaptiveGridColumns.columns(), spacing: 12) {
+                ForEach(rows, id: \.name) { pl in
                     let songsInPl = resolveSongs(for: pl, library: librarySongs)
                     let art = songsInPl.first { !$0.artworkId.isEmpty }?.artworkId ?? ""
                     let count = songsInPl.count
@@ -408,7 +427,7 @@ struct RemoteLibraryScreen: View {
 
     private func remoteAlbumsGrid(albums: [Album]) -> some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            LazyVGrid(columns: AdaptiveGridColumns.columns(), spacing: 12) {
                 ForEach(albums) { album in
                     Button {
                         path.append(RemoteLibraryNav.album(album))
@@ -460,9 +479,10 @@ struct RemoteLibraryScreen: View {
         // Mirrors `LocalLibraryScreen`'s rule (task 1): only draw album-run connectors while the
         // shared `librarySortOrder` is `.album` — Remote has no sort control of its own, but its
         // song order comes straight from the server in album order, so this stays meaningful
-        // whenever Local hasn't been switched to title/artist/duration.
-        let groupPositions: [AlbumGroupPosition]? =
-            model.librarySortOrder == .album ? AlbumGrouping.positions(for: songs) : nil
+        // whenever Local hasn't been switched to title/artist/duration. Sourced from `derived`
+        // (memoised alongside `songs` itself, see `LibraryDerivedCollections`) rather than
+        // recomputed here, since `songs` is always `derived.remoteSearchedSongs` at the call site.
+        let groupPositions = derived.remoteSongGroupPositions
         return ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in

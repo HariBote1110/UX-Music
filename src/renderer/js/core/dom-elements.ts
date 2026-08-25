@@ -52,7 +52,6 @@ export function initElements() {
     // Settings
     elements.openSettingsBtn = document.getElementById('open-settings-btn');
     elements.settingsModalOverlay = document.getElementById('settings-modal-overlay');
-    elements.settingsOkBtn = document.getElementById('settings-ok-btn');
     elements.notificationToast = document.getElementById('notification-toast');
     elements.notificationText = document.getElementById('notification-text');
     // Sidebar

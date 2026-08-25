@@ -43,7 +43,7 @@ describe('buildSidecarMenuItems', () => {
         expect(sidecarItem?.submenu?.[0].enabled).toBe(false);
     });
 
-    it('現在ターゲットのデバイスにはチェック印が付き、クリックでクリアされる', () => {
+    it('現在ターゲットのデバイスには checked フィールドが付き、クリックでクリアされる', () => {
         const items = buildSidecarMenuItems(
             [{ deviceId: 'dev1', displayName: 'iPhone', lastSeenAt: '', online: true }],
             'dev1',
@@ -51,9 +51,20 @@ describe('buildSidecarMenuItems', () => {
         );
         const sidecarItem = items.find(i => i.submenu);
         const deviceItem = sidecarItem?.submenu?.[0];
-        expect(deviceItem?.label).toContain('✓');
+        expect(deviceItem?.checked).toBe(true);
+        expect(deviceItem?.label).not.toContain('✓');
         deviceItem?.action?.();
         expect(setSidecarTargetDevice).toHaveBeenCalledWith('');
+    });
+
+    it('未選択のデバイスは checked が false', () => {
+        const items = buildSidecarMenuItems(
+            [{ deviceId: 'dev1', displayName: 'iPhone', lastSeenAt: '', online: true }],
+            '',
+            { openFullscreenView, setSidecarTargetDevice },
+        );
+        const sidecarItem = items.find(i => i.submenu);
+        expect(sidecarItem?.submenu?.[0].checked).toBe(false);
     });
 
     it('未選択のオンラインデバイスをクリックするとそのデバイスIDが設定される', () => {

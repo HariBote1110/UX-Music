@@ -21,6 +21,12 @@
     /* 清潔感のあるブルー */
     --accent: #0a84ff;
     /* macOS システムブルー */
+
+    /* 各タブ共通のヘッダー〜コンテンツ間の余白トークン */
+    --view-header-gap: 20px;
+    /* グリッド表示（アルバム/アーティスト/プレイリスト等）のアイテム最小幅。
+       compact/standard/large の3段階で js/ui/grid-density.ts が上書きする */
+    --grid-item-min: 160px;
 }
 
 body,

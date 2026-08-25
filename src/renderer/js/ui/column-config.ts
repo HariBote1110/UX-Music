@@ -125,7 +125,8 @@ export function showColumnContextMenu(e, onUpdate) {
     const menuItems = config
         .filter(col => !col.locked)
         .map(col => ({
-            label: `${col.visible ? '✓ ' : '   '}${col.label}`,
+            label: col.label,
+            checked: col.visible,
             action: () => toggleColumnVisibility(col.key, onUpdate),
         }));
     showContextMenu(e.pageX, e.pageY, menuItems);

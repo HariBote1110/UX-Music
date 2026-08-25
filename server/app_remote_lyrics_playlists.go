@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"ux-music-sidecar/internal/lyrics"
 	"ux-music-sidecar/internal/pathutil"
@@ -132,7 +133,7 @@ func remoteSituationPlaylistsHandler(w http.ResponseWriter, r *http.Request) {
 	counts, _ := store.Instance.LoadMap("playcounts")
 
 	out := make([]map[string]interface{}, 0, 3)
-	for _, bucket := range generateSituationPlaylists(songs, counts) {
+	for _, bucket := range generateSituationPlaylists(songs, counts, time.Now()) {
 		ids := make([]string, 0, len(bucket.songs))
 		for _, s := range bucket.songs {
 			song, ok := s.(map[string]interface{})

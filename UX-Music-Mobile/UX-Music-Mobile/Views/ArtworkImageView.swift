@@ -7,9 +7,17 @@ struct ArtworkImageView: View {
     var cornerRadius: CGFloat = 6
     var size: CGFloat? = 48
 
+    @Environment(\.displayScale) private var displayScale
     @State private var loaded: UIImage?
 
     private var taskIdentity: String { "\(artworkId)\u{1E}\(urlString)" }
+
+    /// Grid tiles (`size` set) request a downsampled decode bucketed to their on-screen size;
+    /// full-bleed uses (e.g. `RemoteArtworkCard`, `size: nil`) keep source resolution.
+    private var decodeTarget: RemoteArtworkDecodeTarget {
+        guard let size else { return .full }
+        return .tile(points: size, scale: displayScale)
+    }
 
     var body: some View {
         Group {
@@ -28,7 +36,9 @@ struct ArtworkImageView: View {
         .task(id: taskIdentity) {
             loaded = nil
             guard !urlString.isEmpty else { return }
-            let img = await RemoteArtworkImageLoader.loadUIImage(artworkId: artworkId, urlString: urlString)
+            let img = await RemoteArtworkImageLoader.loadUIImage(
+                artworkId: artworkId, urlString: urlString, target: decodeTarget
+            )
             loaded = img
         }
     }

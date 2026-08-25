@@ -9,15 +9,75 @@ import (
 )
 
 func (a *App) initOSMediaControls() {
-	err := registerOSMediaCommands(func(command string) {
-		if a.ctx == nil {
-			return
-		}
-		a.emit("os-media-command", command)
-	})
+	err := registerOSMediaCommands(a.dispatchOSMediaCommand)
 	if err != nil {
 		println("[OSMedia] initialization failed:", err.Error())
 	}
+}
+
+// initAppVisibilityObserver wires the NSApplicationDidHide/DidUnhide
+// observer (app_visibility_darwin.go/.m; a no-op on non-darwin, see
+// app_visibility_stub.go) to handleAppVisibilityChanged, which now owns both
+// the debounce and the park decision (see app_park.go's file-level
+// root-cause-correction comment: this used to be a JS setTimeout in
+// park.ts, which WebKit could suspend/throttle indefinitely in a hidden
+// page — a native NSApplicationDidHide/DidUnhide notification driving a Go
+// time.AfterFunc has no such throttling). GUI-mode only — like
+// initOSMediaControls/initTray, this is only ever called from Startup,
+// which itself is only invoked via Wails' OnStartup (see main.go); headless
+// `--serve` never runs it.
+func (a *App) initAppVisibilityObserver() {
+	registerAppVisibilityObserver(a.handleAppVisibilityChanged)
+}
+
+// handleAppVisibilityChanged is initAppVisibilityObserver's callback body,
+// factored out so it is unit-testable without the platform-specific
+// registerAppVisibilityObserver binding (same pattern as
+// dispatchOSMediaCommand below). It always emits "app-visibility-changed"
+// (kept for any other listeners; park.ts no longer times anything off it),
+// records the app's hidden state (setHidden, consulted by attemptPark), and:
+//   - hidden=true: (re)starts the park timer (startParkTimer) — attemptPark
+//     runs after the delay only if the window is still hidden then.
+//   - hidden=false: cancels any pending park timer (cancelParkTimer — this
+//     is what makes a quick re-show never park) and, if the SPA is already
+//     parked, reloads the (destroyed) webview directly (reloadWebViewIfParked)
+//     — no JS is alive while parked to react to an event on its own, so Go
+//     must initiate the reload itself.
+func (a *App) handleAppVisibilityChanged(hidden bool) {
+	a.emit("app-visibility-changed", map[string]interface{}{"hidden": hidden})
+	a.setHidden(hidden)
+	if hidden {
+		a.startParkTimer()
+		return
+	}
+	a.cancelParkTimer()
+	a.reloadWebViewIfParked()
+}
+
+// dispatchOSMediaCommand handles one OS media-key command ("play", "pause",
+// "toggle", "next", "previous", "stop" — see renderer.ts's os-media-command
+// listener for the full set the renderer itself still handles). Factored
+// out of initOSMediaControls so it can be unit tested without the
+// platform-specific registerOSMediaCommands binding.
+func (a *App) dispatchOSMediaCommand(command string) {
+	if a.ctx == nil {
+		return
+	}
+	// While the Go queue is active (something has called QueueSet — see
+	// app_queue.go), next/previous are handled entirely in Go instead of
+	// being forwarded to the renderer's playNextSong/playPrevSong, which has
+	// no queue of its own to advance in that mode.
+	if a.ensureQueue().Active() {
+		switch command {
+		case "next":
+			_ = a.QueueNext()
+			return
+		case "previous":
+			_ = a.QueuePrev()
+			return
+		}
+	}
+	a.emit("os-media-command", command)
 }
 
 func normalizeNowPlayingMetadata(title, artist, album string) (string, string, string) {

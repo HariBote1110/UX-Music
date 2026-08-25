@@ -72,17 +72,38 @@ struct HomeRootView: View {
 
 // MARK: - Lazy tab roots
 
-/// Builds the tab’s root only while it is selected so other tabs do not run `.task`, `onAppear`, or networking at launch.
+/// Builds the tab's root only once it has been selected at least once, so other never-visited
+/// tabs still do not run `.task`, `onAppear`, or networking at launch (the original laziness).
+///
+/// Once built, the content is kept alive for the rest of the session rather than being torn down
+/// and rebuilt on every deselect/reselect — it is hidden via `.opacity(0)` instead of being
+/// replaced with `Color.clear`. Tearing it down was the root cause of a first-launch-only glitch
+/// on the Remote tab: replacing the tab's content view destroys its `NavigationStack`, so the
+/// *next* time the tab is selected the stack has to lay out from scratch, and if a push navigation
+/// (Album → Playlist) lands mid-layout the destination is still mid-transition — its final size
+/// isn't settled yet — so the push animation shows both the source and destination view for a
+/// frame with the pushed view's frame boundary sitting at screen centre. Keeping the `NavigationStack`
+/// alive (just invisible) means it has already completed layout before any push happens.
 private struct LazyTabRoot<Content: View>: View {
     let isSelected: Bool
     @ViewBuilder var content: () -> Content
 
+    @State private var hasAppeared = false
+
     var body: some View {
-        if isSelected {
-            content()
-        } else {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ZStack {
+            if hasAppeared {
+                content()
+                    .opacity(isSelected ? 1 : 0)
+                    .allowsHitTesting(isSelected)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            if isSelected { hasAppeared = true }
+        }
+        .onChange(of: isSelected) { _, newValue in
+            if newValue { hasAppeared = true }
         }
     }
 }

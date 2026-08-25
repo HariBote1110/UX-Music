@@ -16,7 +16,39 @@ struct RemotePlaylistDetailView: View {
         resolvedSongs.first { !$0.artworkId.isEmpty }?.artworkId ?? ""
     }
 
+    /// Whether `model.libraryState` has actually resolved (loaded, even to zero songs) — as
+    /// opposed to still being `.idle`/`.loading`/`.failed`, in which case `resolvedSongs` reads as
+    /// empty for a reason unrelated to the playlist genuinely having no matching songs.
+    private var isLibraryLoaded: Bool {
+        if case .loaded = model.libraryState { return true }
+        return false
+    }
+
     var body: some View {
+        LibraryBottomBleed { bottomInset in
+            scrollBody
+                .contentMargins(.bottom, bottomInset, for: .scrollContent)
+        }
+        .background(Color.black)
+        .navigationTitle(playlist.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            if model.playlistSongsContainUndownloaded(resolvedSongs) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await model.downloadPlaylistSongs(resolvedSongs) }
+                    } label: {
+                        Image(systemName: "arrow.down.circle")
+                    }
+                    .accessibilityLabel("Download Playlist")
+                }
+            }
+        }
+    }
+
+    private var scrollBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
@@ -42,7 +74,15 @@ struct RemotePlaylistDetailView: View {
                         .padding(.bottom, 8)
                 }
 
-                if resolvedSongs.isEmpty {
+                // Not-yet-resolved (library still loading) gets a fixed-size skeleton rather than
+                // the "no songs" empty state: the Album → Playlist push transition can land here
+                // before `libraryState` finishes loading, and if the pushed view's laid-out height
+                // is still the tiny empty-state message at that instant, the push animation shows
+                // the destination sized wrong for a frame (the glitch this screen used to produce
+                // on a first launch, before the Remote tab's library had ever loaded).
+                if !isLibraryLoaded {
+                    placeholderSongRows
+                } else if resolvedSongs.isEmpty {
                     Text("This playlist has no matching songs in the remote library. Refresh the library and try again.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -69,21 +109,20 @@ struct RemotePlaylistDetailView: View {
             }
             .padding(.bottom, 8)
         }
-        .background(Color.black)
-        .navigationTitle(playlist.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar {
-            if model.playlistSongsContainUndownloaded(resolvedSongs) {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task { await model.downloadPlaylistSongs(resolvedSongs) }
-                    } label: {
-                        Image(systemName: "arrow.down.circle")
-                    }
-                    .accessibilityLabel("Download Playlist")
-                }
+    }
+
+    /// One placeholder row per expected song (from `playlist.songIds`, capped so a huge playlist
+    /// doesn't render hundreds of skeleton rows) at the same row height `SongRowView` occupies, so
+    /// the screen's total laid-out height while the library is still loading closely matches its
+    /// eventual real height instead of collapsing to the one-line empty-state message.
+    private var placeholderSongRows: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<min(playlist.songIds.count, 8), id: \.self) { _ in
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 56)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
             }
         }
     }

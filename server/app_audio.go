@@ -200,6 +200,43 @@ func (a *App) AudioSetVolume(volume float64) {
 	a.audioPlayer.SetVolume(volume)
 }
 
+// resolveInitialVolume reads the saved master volume out of a loaded
+// "settings" map (as returned by store.Instance.LoadMap) and clamps it to
+// the valid 0.0-1.0 range. ok is false when the map is nil/empty or the
+// "volume" entry is missing or not a number, in which case the caller
+// should leave the audio player's default volume untouched.
+//
+// This exists so Startup can apply the saved master volume deterministically
+// when the audio player is created (see the call site in app.go), rather
+// than relying on the renderer to push it later. Before the native queue
+// cutover (progress/native-play-queue.md), every playSong() call went
+// through the renderer's playLocal(), which pushed the slider's volume via
+// AudioSetVolume on every playback start — incidentally masking the fact
+// that the Go player always boots at volume 1.0. Once Go's startQueueItem
+// began starting playback directly, that renderer-side push stopped
+// happening on the first play after launch, so playback started at the
+// player's default (1.0) until the user touched the volume slider.
+func resolveInitialVolume(settings map[string]interface{}) (float64, bool) {
+	if settings == nil {
+		return 0, false
+	}
+	raw, exists := settings["volume"]
+	if !exists {
+		return 0, false
+	}
+	volume, ok := raw.(float64)
+	if !ok {
+		return 0, false
+	}
+	if volume < 0 {
+		volume = 0
+	}
+	if volume > 1 {
+		volume = 1
+	}
+	return volume, true
+}
+
 // AudioDebugOutputRMS returns the RMS of the most recent output callback
 // buffer (post volume/gain/EQ). Diagnostic probe for E2E volume checks.
 func (a *App) AudioDebugOutputRMS() float64 {

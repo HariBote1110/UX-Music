@@ -284,7 +284,9 @@ export function createPlaylistGridItem(playlist) {
     `;
 
     const artworkContainer = playlistItem.querySelector('.playlist-artwork-container');
-    const resolver = (artwork) => resolveArtworkPath(artwork, false);
+    // グリッドの小さなタイルなのでサムネイルを使う
+    // （フル画像を渡すと thumbnails/ ディレクトリを参照せず 404 になる）。
+    const resolver = (artwork) => resolveArtworkPath(artwork, true);
     createPlaylistArtwork(artworkContainer, playlist.artworks, resolver);
 
     return playlistItem;

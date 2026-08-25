@@ -54,3 +54,5 @@ require (
 	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 )
+
+replace github.com/wailsapp/wails/v2 => github.com/HariBote1110/wails/v2 v2.11.1-0.20260820153222-cecf1be8bc9e

@@ -42,6 +42,24 @@ export function clearMainContent() {
 }
 
 /**
+ * 現在アクティブなビュー内で「実際にスクロールしている」要素を返す。
+ * Songs タブは #music-list、アルバム/アーティスト詳細は #a-detail-list /
+ * #p-detail-list、アルバム/アーティスト/For You/プレイリストの各グリッド
+ * ビューは共通の .view-scroll がそれぞれスクロール担当。
+ * elements.mainContent 自体はどのビューでもコンテンツがぴったり収まり
+ * スクロールしない（views.css の .view-scroll 等参照）ため、park/restore の
+ * スクロール位置保存はこの要素を対象にする必要がある。
+ */
+export function getActiveScrollElement(): HTMLElement | null {
+    const mainContent = elements.mainContent as HTMLElement | null | undefined;
+    if (!mainContent) return null;
+    const target = mainContent.querySelector(
+        '.view-scroll, #music-list, #a-detail-list, #p-detail-list'
+    ) as HTMLElement | null;
+    return target || mainContent;
+}
+
+/**
  * トラックビューのスクローラー（もしあれば）を破棄する
  */
 export function destroyTrackViewScroller() {
@@ -101,7 +119,7 @@ export function renderTrackView() {
     viewWrapper.className = 'view-container';
     viewWrapper.id = 'track-view';
     viewWrapper.innerHTML = `
-        <h1>曲</h1>
+        <div class="view-header"><h1>曲</h1></div>
         ${createListHeader()}
     `;
     const musicListContainer = document.createElement('div');

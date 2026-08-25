@@ -8,9 +8,18 @@
     overflow: hidden;
     position: relative;
 
-    /* 画面下部（85%〜100%の位置）にかけてフェードアウトさせるマスク */
-    -webkit-mask-image: linear-gradient(to bottom, black 95%, transparent 100%);
-    mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+    /* 画面最下部（ウィンドウ下端）に向けてコンテンツをフェードアウトさせる
+       マスク。半透明のフッター（.playback-bar）の背後にコンテンツが
+       透けて見える意匠のため、フェードは必ずウィンドウ下端で
+       transparent になる必要がある。フェード開始位置は --footer-height
+       の 0.6 倍とし、暗くなる帯がフッターの縦幅にほぼ収まるよう狭めて
+       いる（サイドバーの #open-settings-btn まで暗くしないため）。 */
+    -webkit-mask-image: linear-gradient(to bottom,
+            black calc(100% - var(--footer-height, 0px) * 0.6),
+            transparent 100%);
+    mask-image: linear-gradient(to bottom,
+            black calc(100% - var(--footer-height, 0px) * 0.6),
+            transparent 100%);
 }
 
 body.resizing {
