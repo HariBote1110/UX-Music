@@ -692,11 +692,17 @@ private struct NowPlayingTransportSection: View {
     var body: some View {
         HStack(spacing: 28) {
             transportToggleButton(
-                systemName: "shuffle",
                 isActive: model.player.isShuffleEnabled,
                 accessibilityLabel: "Shuffle",
                 accessibilityValue: model.player.isShuffleEnabled ? "On" : "Off"
-            ) {
+            ) { resolvedAccent in
+                ShuffleModeIcon(
+                    isActive: model.player.isShuffleEnabled,
+                    iconSize: 20,
+                    activeTint: resolvedAccent,
+                    inactiveTint: .white.opacity(0.55)
+                )
+            } action: {
                 model.player.toggleShuffle()
             }
 
@@ -727,11 +733,17 @@ private struct NowPlayingTransportSection: View {
             .accessibilityLabel("Next track")
 
             transportToggleButton(
-                systemName: model.player.repeatMode == .one ? "repeat.1" : "repeat",
                 isActive: model.player.repeatMode != .off,
                 accessibilityLabel: "Repeat",
                 accessibilityValue: repeatModeAccessibilityValue
-            ) {
+            ) { resolvedAccent in
+                RepeatModeIcon(
+                    repeatMode: model.player.repeatMode,
+                    iconSize: 20,
+                    activeTint: resolvedAccent,
+                    inactiveTint: .white.opacity(0.55)
+                )
+            } action: {
                 model.player.cycleRepeatMode()
             }
         }
@@ -755,18 +767,16 @@ private struct NowPlayingTransportSection: View {
     /// to read as selected at a glance. `AccentContrastFallback` guards against the artwork accent
     /// itself being too washed-out to carry that signal.
     private func transportToggleButton(
-        systemName: String,
         isActive: Bool,
         accessibilityLabel: String,
         accessibilityValue: String,
+        @ViewBuilder icon: (Color) -> some View,
         action: @escaping () -> Void
     ) -> some View {
         let resolvedAccent = AccentContrastFallback.resolvedAccent(for: accent)
         return Button(action: action) {
             VStack(spacing: 4) {
-                Image(systemName: systemName)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(isActive ? resolvedAccent : .white.opacity(0.55))
+                icon(resolvedAccent)
                     .frame(width: 44, height: 44)
                     .background(
                         Circle().fill(isActive ? resolvedAccent.opacity(0.25) : .clear)
