@@ -224,6 +224,44 @@ function attachPlayerListeners(player) {
     };
 }
 
+/**
+ * ポーリング結果の巻き戻り防止ガード（startGoStatePolling 用）。
+ * 非同期ポーリングの応答が入れ替わって position が一瞬だけ巻き戻る事象を
+ * 吸収する一方、曲送り（isPlaying が途切れず新曲の position が 0 付近に
+ * リセットされるケース）を巻き戻りと誤検知しないよう、pos が 0 付近まで
+ * 落ちている場合はガードを適用しない（progress/... のシークバー固着バグ）。
+ */
+export function shouldSuppressPollRewind(params: {
+    playing: boolean;
+    wasPlaying: boolean;
+    recentSeek: boolean;
+    prevPos: number;
+    pos: number;
+}): boolean {
+    const { playing, wasPlaying, recentSeek, prevPos, pos } = params;
+    if (!playing || !wasPlaying || recentSeek) return false;
+    if (!Number.isFinite(prevPos)) return false;
+    if (pos <= 1.0) return false; // 0付近への落下は曲送りとみなし、巻き戻りガードの対象外にする
+    return pos + 0.15 < prevPos;
+}
+
+/**
+ * Wails バインド呼び出しにタイムアウトを付与する（startGoStatePolling 用）。
+ * WebView 破棄中などでプロミスが確定しないと goPollInFlight が true のまま
+ * 固まりポーリングが停止するため、一定時間で強制的に reject させる。
+ */
+export function withPollTimeout<T>(promise: Promise<T>, timeoutMs = 3000): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error('goPollTimeout'));
+        }, timeoutMs);
+        promise.then(
+            (value) => { clearTimeout(timer); resolve(value); },
+            (err) => { clearTimeout(timer); reject(err); }
+        );
+    });
+}
+
 /** Lyrics panel open: tighter IPC so sync + seek UI stay responsive. */
 function goPollDelayMs() {
     try {
@@ -275,18 +313,18 @@ function startGoStatePolling() {
                 // 再生を反映できるようにする。
                 reportEmbedPlaybackState(pos, dur, playing);
             } else if (typeof app?.AudioGetStatus === 'function') {
-                const status = await app.AudioGetStatus();
+                const status = await withPollTimeout(app.AudioGetStatus());
                 pos = Number(status?.position);
                 dur = Number(status?.duration);
                 playing = Boolean(status?.playing);
                 paused = Boolean(status?.paused);
             } else {
-                [pos, dur, playing, paused] = await Promise.all([
+                [pos, dur, playing, paused] = await withPollTimeout(Promise.all([
                     app.AudioGetPosition(),
                     app.AudioGetDuration(),
                     app.AudioIsPlaying(),
                     app.AudioIsPaused()
-                ]);
+                ]));
             }
 
             if (!Number.isFinite(pos)) pos = 0;
@@ -300,7 +338,7 @@ function startGoStatePolling() {
             let nextPos = pos;
 
             // Guard against out-of-order async poll results that momentarily rewind time.
-            if (playing && wasPlaying && !recentSeek && Number.isFinite(prevPos) && pos+0.15 < prevPos) {
+            if (shouldSuppressPollRewind({ playing, wasPlaying, recentSeek, prevPos, pos })) {
                 nextPos = prevPos;
             }
 
@@ -765,6 +803,10 @@ async function playLocal(song, gainLinear = 1.0) {
         }
         const g = Number.isFinite(gainLinear) && gainLinear > 0 ? gainLinear : 1.0;
         console.log(`[Player] Playing with Go Backend: ${path}`);
+        // 新しい曲の再生開始前に前曲の位置情報を必ず落としておく。
+        // （ポーリング側のガードは曲送りを識別するが、念のため状態自体もリセットする）
+        goState.currentTime = 0;
+        goState.duration = 0;
         await WailsApp.AudioPlay(path, g);
         const slider = elements.volumeSlider;
         const rawVol = slider && typeof slider.value === 'string' ? parseFloat(slider.value) : 1;
