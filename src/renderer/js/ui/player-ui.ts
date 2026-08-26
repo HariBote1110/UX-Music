@@ -299,18 +299,24 @@ export function updateSeekUI(time) {
     updateLrcEditorControls(isPlaying(), time, duration);
 }
 
-export function initPlayerControls(initialPlayer, _callbacks) {
-    elements.playPauseBtn.addEventListener('click', togglePlayPause);
-
-    elements.progressBar.addEventListener('mousedown', () => {
+/**
+ * シークバーのドラッグ開始・終了ハンドラを結びつける。
+ *
+ * mouseup はバー要素単体ではなく document に束縛する。ポインタをバーの
+ * 外（あるいはウィンドウの外）でリリースするとバー単体の mouseup は
+ * 発火せず isSeeking が true のまま固まってしまう（シークバー・再生/一時停止
+ * ボタン双方がフリーズする回帰バグ）ため、リリースはドキュメント全体で捕捉する。
+ */
+export function bindSeekBarDragHandlers(bar) {
+    bar.addEventListener('mousedown', () => {
         isSeeking = true;
         wasPlayingBeforeSeek = isPlaying();
         if (wasPlayingBeforeSeek) pauseCurrent(); // 汎用関数を使用
     });
 
-    elements.progressBar.addEventListener('mouseup', () => {
+    const finishSeek = () => {
         if (isSeeking) {
-            const seekTime = parseFloat(elements.progressBar.value);
+            const seekTime = parseFloat(bar.value);
             seek(seekTime);
             isSeeking = false;
             if (wasPlayingBeforeSeek) {
@@ -319,7 +325,17 @@ export function initPlayerControls(initialPlayer, _callbacks) {
             }
             // ループは onplaying イベントから自動で再開されます
         }
-    });
+    };
+
+    document.addEventListener('mouseup', finishSeek);
+    document.addEventListener('pointerup', finishSeek);
+    document.addEventListener('pointercancel', finishSeek);
+}
+
+export function initPlayerControls(initialPlayer, _callbacks) {
+    elements.playPauseBtn.addEventListener('click', togglePlayPause);
+
+    bindSeekBarDragHandlers(elements.progressBar);
 
     elements.progressBar.addEventListener('input', () => {
         if (isSeeking) {
