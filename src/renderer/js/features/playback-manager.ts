@@ -771,6 +771,9 @@ export async function handleQueuePlayEmbedEvent(payload: unknown, deps: any = {}
     const doPlayEmbedItem = deps.playEmbedItem ?? playQueueEmbedItem;
     const doPlaybackStarted = deps.playbackStarted ?? musicApi.playbackStarted;
     const doLoadLyricsForSong = deps.loadLyricsForSong ?? loadLyricsForSong;
+    const doSleep = deps.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+    const doResetGoState = deps.resetGoState ?? stopSongInPlayer;
+    const retryDelayMs = typeof deps.retryDelayMs === 'number' ? deps.retryDelayMs : 300;
 
     const raw = payload as { id?: unknown; type?: unknown; path?: unknown; title?: unknown; artist?: unknown; album?: unknown };
     const id = typeof raw.id === 'string' ? raw.id : '';
@@ -784,8 +787,23 @@ export async function handleQueuePlayEmbedEvent(payload: unknown, deps: any = {}
     };
 
     doLoadLyricsForSong(song);
-    const started = await doPlayEmbedItem(song);
+    let started = await doPlayEmbedItem(song);
+    if (!started) {
+        // DOM未準備など一過性のマウント失敗を想定し、1回だけ短い遅延後にリトライする。
+        await doSleep(retryDelayMs);
+        started = await doPlayEmbedItem(song);
+    }
     if (started) {
         doPlaybackStarted(song);
+    } else {
+        // リトライしても失敗した場合、Go側は再生中のつもりのままレンダラーは
+        // 何も再生していない状態になる（UI固着・play/pauseが無反応になる）ため、
+        // 再生状態をリセットして復旧する。
+        console.error('[Playback] embed の再生開始に失敗しました（リトライ後も失敗）:', song.id || song.path);
+        try {
+            await doResetGoState();
+        } catch (err) {
+            console.warn('[Playback] embed 失敗後の状態リセットに失敗:', err);
+        }
     }
 }
