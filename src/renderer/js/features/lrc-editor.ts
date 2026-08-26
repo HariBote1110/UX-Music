@@ -796,6 +796,31 @@ function insertInterludeLine() {
     updateUndoRedoButtons();
 }
 
+/**
+ * 歌詞エディタのシークバーのドラッグ開始・終了ハンドラを結びつける。
+ *
+ * mouseup はバー要素単体ではなく document に束縛する。ポインタをバーの
+ * 外（あるいはウィンドウの外）でリリースするとバー単体の mouseup は
+ * 発火せず editorIsSeeking が true のまま固まってしまう（シークバーが
+ * フリーズする回帰バグ）ため、リリースはドキュメント全体で捕捉する。
+ */
+export function bindEditorSeekBarDragHandlers(bar, opts) {
+    bar.addEventListener('mousedown', () => {
+        editorIsSeeking = true;
+    }, opts);
+
+    const finishSeek = () => {
+        if (editorIsSeeking) {
+            seek(Number.parseFloat(bar.value));
+            editorIsSeeking = false;
+        }
+    };
+
+    document.addEventListener('mouseup', finishSeek, opts);
+    document.addEventListener('pointerup', finishSeek, opts);
+    document.addEventListener('pointercancel', finishSeek, opts);
+}
+
 function setupLrcEditorListeners(signal) {
     if (!ensureEditorElements()) return false;
 
@@ -821,16 +846,7 @@ function setupLrcEditorListeners(signal) {
     editorElements.loadTextBtn.addEventListener('click', loadTextFromTextarea, opts);
     editorElements.playPauseBtn.addEventListener('click', togglePlayPause, opts);
 
-    editorElements.progressBar.addEventListener('mousedown', () => {
-        editorIsSeeking = true;
-    }, opts);
-
-    editorElements.progressBar.addEventListener('mouseup', () => {
-        if (editorIsSeeking) {
-            seek(Number.parseFloat(editorElements.progressBar.value));
-            editorIsSeeking = false;
-        }
-    }, opts);
+    bindEditorSeekBarDragHandlers(editorElements.progressBar, opts);
 
     editorElements.progressBar.addEventListener('input', () => {
         if (editorIsSeeking) {
