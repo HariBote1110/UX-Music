@@ -150,9 +150,21 @@ export async function pauseCurrent() {
     }
 }
 
+/**
+ * シーク先の要求時刻を duration にクランプする（seek 用）。
+ * park からの復帰直後などで goState.duration がまだ 0（未取得）の間、
+ * 0 へクランプしてしまうと毎回位置 0 へシークし直されてしまうため、
+ * duration が未確定（0 以下・非有限）の間は要求時刻をそのまま通す
+ * （0 未満だけは引き続き 0 に floor する）。
+ */
+export function clampSeekTarget(time: number, duration: number): number {
+    if (!Number.isFinite(duration) || duration <= 0) return Math.max(0, time);
+    return Math.max(0, Math.min(time, duration));
+}
+
 export async function seek(time) {
     const duration = getDuration();
-    const seekTime = Math.max(0, Math.min(time, duration));
+    const seekTime = clampSeekTarget(time, duration);
 
     if (isEmbedPlayerActive()) {
         embedSeekTo(seekTime);
@@ -276,7 +288,7 @@ function goPollDelayMs() {
 }
 
 // Goバックエンドの状態をポーリングする関数（歌詞非表示時は間隔を延ばして IPC を削減）
-function startGoStatePolling() {
+export function startGoStatePolling() {
     if (goPollTimeoutId != null) {
         clearTimeout(goPollTimeoutId);
         goPollTimeoutId = null;
@@ -381,7 +393,12 @@ function startGoStatePolling() {
         goPollTimeoutId = setTimeout(tick, goPollDelayMs());
     };
 
-    goPollTimeoutId = setTimeout(tick, goPollDelayMs());
+    // park からの復帰などで WebView が再生成されると goState はゼロ初期化
+    // されるが、Go 側の再生は継続している。goPollDelayMs()（最大1000ms）待って
+    // から初回 tick を発火すると、その間 togglePlayPause/seek が stale な
+    // goState を読んでしまう（park-resume-cold-state.md）。初回のみ遅延なしで
+    // 即時実行し、以降の再スケジュールは従来どおり tick 内で行う。
+    void tick();
 }
 
 export async function initPlayer(playerElement, callbacks, sinkId = null) {
