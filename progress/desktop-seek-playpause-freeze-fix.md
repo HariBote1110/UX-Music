@@ -8,6 +8,11 @@
 - **C. embed mount サイレント失敗**: `handleQueuePlayEmbedEvent`（`playback-manager.ts`）が失敗時に300msで1回リトライし、なお失敗ならエラーログ＋再生状態リセットで固着を防ぐ。
 - **D. ポーリング無限ハング**: `withPollTimeout()`（3秒）で `AudioGetStatus` 系のWailsバインド呼び出しをラップし、WebView破棄中でも `goPollInFlight` が必ず解除されるようにした。
 
+### 追補（69a）: park復帰直後のコールドステート
+ユーザー報告「無操作→park→突如操作で壊れる」を調査し、主因を特定（`desktop_playback_research/notes/park-resume-cold-state.md`）。parkのWebView再生成で `goState` がゼロ初期化される一方Goネイティブ再生は継続しており、初回ポーリングまで最大1〜3秒のコールドウィンドウ中は再生ボタンがno-op・シークが0秒クランプになる。修正:
+- `startGoStatePolling()` の初回tickを遅延なしで即時実行し、復帰直後に実状態でシード。
+- `clampSeekTarget()` を抽出し、duration未確定（0以下・非有限）の間は要求時刻を0へクランプせず素通し。
+
 ## Alternatives considered
 - A はガード条件に「曲ID変化の検知」を組み込む案もあったが、ポーリング層は曲IDを持たず配線が増えるため、位置閾値（pos≤1.0）＋開始時リセットの二段構えを採用。
 - B は `setPointerCapture` 全面移行も検討したが、既存の mousedown ベース実装との差分を最小化する document バインド方式を採用。
