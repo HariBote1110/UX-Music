@@ -172,3 +172,27 @@ ON  y=378..419 (42px)   -- 3行目の "last" 線分
 - **実機での性能計測は今回のセッションでは実施できなかった**（実機への接続手段がない非対話セッションのため）。シミュレータでは「死ぬほど重い」を再現できなかったため、修正が実機での体感速度をどの程度改善するかは次回、実機での計測を推奨する。
 - 2種類の画面サイズ（Apple Watch Series 11 46mm・Apple Watch SE 3 40mm）でのシミュレータ検証は完了。それ以外のサイズ（Ultra 3 49mm・Series 11 42mm・SE 3 44mm）は未検証。
 - `WatchLibraryListRowStyle`（`List` 専用の行間隔調整用 `ViewModifier`）は `songList` が `List` を使わなくなったことで用途がなくなったため削除した。他の箇所（アルバム詳細・アルバム一覧・キュー&音量ページ）は元々これを使っておらず影響なし。
+
+## 追記: Now Playing の操作ボタン拡大・シークバー細幅化（2026-08-30）
+
+ユーザーからの指摘「操作ボタンがあまりにも小さい」「シークバーが余計にでかい」を受け、
+`WatchNowPlayingView.swift` の `NowPlayingMetrics`（roomy/compact/reduced）を調整。
+
+- **操作ボタン拡大**: 再生ボタンを roomy 40→48pt、compact 34→42pt、reduced 28→34pt に拡大。
+  prev/next のグリフフォントも roomy `.title2`→`.title`、compact `.title3`→`.title2`、
+  reduced `.system(size:16)`→`.title3` へ拡大。あわせて `transportTapFrameSize`（44pt以上）
+  を新設し、prev/next/play いずれのボタンも `.frame` + `.contentShape(Rectangle())` で
+  グリフの見た目サイズより広いタップ領域を明示的に確保した（以前はグリフの描画サイズ＝
+  タップ領域だった）。
+- **シークバー細幅化**: 標準の `ProgressView(...).progressViewStyle(.linear)` は高さの
+  制御余地がなく相対的に太かったため、`Capsule`（トラック: 白 25%不透明度）＋`Capsule`
+  （塗り: 青）を `GeometryReader` で幅いっぱいに重ねる自前実装に置き換え。高さは
+  `NowPlayingMetrics.progressBarHeight`（roomy 4pt / compact・reduced 3pt）として
+  はしごの各段で管理するようにした。`.animation(.linear(duration: 0.5), value:)` による
+  0.5秒ティック間の補間は変更前と同一。表示専用（ジェスチャーなし）の方針も維持。
+
+`ViewThatFits` のはしご構造（roomy→compact→reduced→ScrollView フォールバック）自体は
+無変更。watch スキームを `generic/platform=watchOS Simulator` でビルドし、
+コンパイルが通ることを確認済み（実機/シミュレータでの見た目検証は今回のセッションでは
+実施していない — 次回、実際のシミュレータ画面でボタンサイズとシークバー高さの見た目を
+確認することを推奨）。
