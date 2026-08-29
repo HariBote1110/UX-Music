@@ -6,7 +6,7 @@ import Foundation
 ///
 /// This type has iOS and watchOS target membership: it is the shared contract between
 /// `WatchTransferBridge` (iOS sender) and the watchOS receiver/library.
-struct WatchTransferMeta: Codable, Equatable, Identifiable, Sendable {
+struct WatchTransferMeta: Codable, Equatable, Hashable, Identifiable, Sendable {
     var id: String
     var title: String
     var artist: String

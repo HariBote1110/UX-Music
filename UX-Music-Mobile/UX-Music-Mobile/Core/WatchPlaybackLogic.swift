@@ -178,7 +178,7 @@ enum WatchSeekLogic {
 /// (disc, then track, then arrival order for songs with no number) — songs are *not* guaranteed to
 /// arrive from the iPhone in track order (on-device transcoding can finish, and therefore
 /// `transferFile`, out of enqueue order), so the sort is load-bearing, not cosmetic.
-struct WatchAlbumGroup: Identifiable, Equatable {
+struct WatchAlbumGroup: Identifiable, Equatable, Hashable {
     var id: String { album }
     var album: String
     var songs: [WatchTransferMeta]
