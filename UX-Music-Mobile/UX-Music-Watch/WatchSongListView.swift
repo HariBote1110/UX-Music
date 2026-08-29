@@ -349,33 +349,49 @@ private struct GroupedRowHeight: ViewModifier {
 /// Watch analogue of the iOS `AlbumGroupConnectorView` (`Views/SongRowView.swift`): draws the
 /// vertical line — and, on a run's last row, the `└` elbow — in place of/under a row's artwork for
 /// a run of consecutive same-album rows. See `AlbumGroupConnector` for the pure geometry this reads;
-/// this view only turns that geometry into a `Canvas` stroke.
+/// this view turns that geometry into a stroked `Shape`.
+///
+/// Deliberately NOT a SwiftUI `Canvas`, even though the geometry (`fromY`/`toY`/elbow) maps onto
+/// one naturally. An on-device LLDB backtrace of the multi-second freeze when opening "Songs" on
+/// a real Apple Watch showed `Canvas`'s first render synchronously creating a RenderBox drawing
+/// view, which calls `MTLCreateSystemDefaultDevice` and `dlopen`s the Metal plugin bundle — all on
+/// the main thread. That took several seconds on watch hardware (worse still under the Xcode
+/// debugger, which serialises it further via dyld's `notifyDebuggerLoad`). This was the only
+/// `Canvas` use in the watch target. A plain `Shape` needs none of that GPU-backed machinery, so do
+/// not "simplify" this back to `Canvas`.
 ///
 /// Takes the row's *whole* height (no fixed height of its own, so the enclosing `HStack`'s proposal
 /// fills it) rather than `WatchSongRowMetrics.artworkSize` — drawing at the artwork's height would
 /// leave a gap at each row boundary and make the line look chopped, the same pitfall iOS's version
 /// avoids.
+private struct WatchAlbumGroupConnectorShape: Shape {
+    let position: AlbumGroupPosition
+
+    func path(in rect: CGRect) -> Path {
+        guard let segment = AlbumGroupConnector.verticalSegment(
+            for: position,
+            rowHeight: rect.height,
+            artworkSize: WatchSongRowMetrics.artworkSize
+        ) else { return Path() }
+        let midX = rect.midX
+        var path = Path()
+        path.move(to: CGPoint(x: midX, y: segment.fromY))
+        path.addLine(to: CGPoint(x: midX, y: segment.toY))
+        if AlbumGroupConnector.hasElbow(for: position) {
+            path.addLine(to: CGPoint(x: rect.maxX, y: segment.toY))
+        }
+        return path
+    }
+}
+
 private struct WatchAlbumGroupConnectorView: View {
     let position: AlbumGroupPosition
     private let lineWidth: CGFloat = 1
 
     var body: some View {
-        Canvas { context, size in
-            guard let segment = AlbumGroupConnector.verticalSegment(
-                for: position,
-                rowHeight: size.height,
-                artworkSize: WatchSongRowMetrics.artworkSize
-            ) else { return }
-            let midX = size.width / 2
-            var path = Path()
-            path.move(to: CGPoint(x: midX, y: segment.fromY))
-            path.addLine(to: CGPoint(x: midX, y: segment.toY))
-            if AlbumGroupConnector.hasElbow(for: position) {
-                path.addLine(to: CGPoint(x: size.width, y: segment.toY))
-            }
-            context.stroke(path, with: .color(Color.secondary.opacity(0.35)), lineWidth: lineWidth)
-        }
-        .frame(width: WatchSongRowMetrics.artworkSize)
+        WatchAlbumGroupConnectorShape(position: position)
+            .stroke(Color.secondary.opacity(0.35), lineWidth: lineWidth)
+            .frame(width: WatchSongRowMetrics.artworkSize)
     }
 }
 
