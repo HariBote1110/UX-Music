@@ -1,0 +1,1 @@
+- [songlist-open-delay-prior-investigation.md](songlist-open-delay-prior-investigation.md) — Watch「曲」リストを開く際の遅延（仮説A〜D）は`progress/watch-ui-redesign.md`で既に調査済み・仮説A(NavigationLink eager構築+重複計算)は確定してmain(`eabe02e`)で修正済み、B(過剰実体化)は代理指標で棄却相当、C/D未分離検証、症状自体はシミュレータで再現不能で実機計測待ち
