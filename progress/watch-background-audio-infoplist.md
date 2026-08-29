@@ -88,3 +88,30 @@
   - まだ根本修正（フォールバック発生時にどう本来の longFormAudio を
     確実に成立させるか）には着手していない。今回はあくまで原因切り分け
     のための可観測性強化と、無駄な再アクティベートの解消に留まる。
+
+## 追補2: 真因は `UIBackgroundModes` 未宣言（Apple公式ドキュメントで裏付け）
+
+- 実機ログにより `.longFormAudio` でのセッションアクティベートは
+  成功していることを確認済み（`activated=true`、フォールバック経路は
+  通っていない）。にもかかわらずバックグラウンド遷移直後に再生が停止
+  していたため、上記「追補」の仮説（フォールバック経路）は棄却された。
+- 原因: Apple の watchOS Keys ドキュメント（Info.plist キー一覧の
+  アーカイブ）によれば、Watch アプリがユーザー操作終了後もオーディオ
+  再生のために動作し続けるには `UIBackgroundModes`（値 `audio`）が
+  必要であり、このキーが無いとユーザー操作が止まった時点で再生も止まる
+  と明記されている。一方 `WKBackgroundModes` はワークアウト処理系の
+  バックグラウンドセッション向けのキーであり、オーディオ継続用途とは
+  別物。本プロジェクトの `UX-Music-Watch/Info.plist` には
+  `WKBackgroundModes = [audio]` のみが存在し、`UIBackgroundModes` が
+  欠落していた。
+- 修正: `UX-Music-Watch/Info.plist` に `UIBackgroundModes = [audio]` を
+  追加。`WKBackgroundModes` は無害なため削除せず両方を宣言する
+  （watchOS のバージョンによる解釈差を吸収する狙い）。
+- 検証: `WatchBackgroundAudioInfoPlistTests.swift` に
+  `UIBackgroundModes` の存在とその内容を検証するアサーションを追加
+  （Red確認後、Info.plist修正でGreen）。さらに `UX-Music-Watch`
+  スキームを watchOS Simulator 向けにビルドし、`plutil -p` で
+  ビルド済み `Info.plist` に `UIBackgroundModes => ["audio"]` と
+  `WKBackgroundModes => ["audio"]` の両方が実際に含まれることを確認。
+- 未了: 本追補はビルド成果物レベルの検証のみ。実機での再生継続確認は
+  次回実機実行時に行うこと。
