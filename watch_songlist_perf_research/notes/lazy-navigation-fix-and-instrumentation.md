@@ -74,3 +74,44 @@ Xcodeを実機に接続してWatchアプリを実行し、Libraryの「Songs」�
 
 50曲・100曲・200曲規模のライブラリで、それぞれ複数回タップして`<B> - <A>`
 を記録し、既存の「数秒」という体感と比較するのが望ましい。
+
+## 追記: 遅延ナビゲーション仮説の棄却とLLDBによる真因特定
+
+上記の計測コードを実機に仕込んだ状態でユーザーに実行してもらったところ、
+`[WatchSongListPerf]`のログは次のように出た。
+
+- `Songs link tapped at t+0ms` → ほぼ同時刻に
+  `Song list first layout appeared at t+0ms`（タップから初回レイアウトまで
+  ほぼ0ms）。
+- `WatchSongRow.body`評価回数は初回レイアウト時点で6件（画面内表示行数相当）
+  で、1秒後も増えていない。
+
+つまり「`NavigationLink(destination:label:)`のeager構築で画面外の行まで
+一括生成されている」という遅延ナビゲーション仮説は**棄却**された。
+`.navigationDestination`によるlazy化後もSwiftUI側のレイアウト・行の実体化
+は一瞬で終わっており、それにもかかわらずユーザー体感のフリーズ（数秒間
+操作不能）は解消していなかった。
+
+そこでユーザーの実機にXcodeをアタッチしてLLDBでフリーズ中のバックトレース
+を採取したところ、真因は`WatchAlbumGroupConnectorView`（本ファイル内、
+アルバムのまとまりを示す縦線＋elbowを描く箇所）で使っていたSwiftUI
+`Canvas`だった。`Canvas`の初回描画がメインスレッド上で同期的に
+RenderBox描画用ビューを生成し、その過程で`MTLCreateSystemDefaultDevice`
+の呼び出しとMetalプラグインバンドルの`dlopen`が走る。watch実機ではこれが
+数秒かかり、さらにXcodeデバッガ接続下ではdyldの`notifyDebuggerLoad`通知
+がこれを輪をかけて遅くしていた。Watchターゲット内で`Canvas`を使っている
+箇所はここ1箇所のみ（grep確認済み）。
+
+対応として`WatchAlbumGroupConnectorView`の実装を`Canvas`から、
+`Shape`に適合する`WatchAlbumGroupConnectorShape`（`path(in:)`で
+`AlbumGroupConnector.verticalSegment(for:rowHeight:artworkSize:)`と
+`AlbumGroupConnector.hasElbow(for:)`という既存の純粋ジオメトリ関数を
+そのまま再利用）に置き換えた。ストロークのスタイル
+（`Color.secondary.opacity(0.35)`、lineWidth 1）と`.frame(width:
+WatchSongRowMetrics.artworkSize)`は変更していないため見た目は同一のはず。
+Metal/RenderBoxの初期化を経路上から完全に排除できる。
+
+この置き換えについての**実機での確認は未実施**（このセッションでは実機に
+接続する手段がない）。次回の実機実行では、`[WatchSongListPerf]`計測は
+そのまま残してあるので、`Songs`タップ直後の体感フリーズが解消しているか
+どうかを目視で確認しつつ、念のため上記3行のログも引き続き記録してほしい。
