@@ -32,3 +32,59 @@
   Xcode 側が未対応のキーは静かに無視される（ビルドエラーにもならない）。
   同様の背景モード系キーを追加する場合は、必ずビルド後の Info.plist を
   `plutil` 等で確認すること。
+
+## 追補: `WKBackgroundModes` 適用後も実機で再生が止まる（未解決）
+
+- 事象: 上記修正でビルド済み Info.plist に `WKBackgroundModes = [audio]`
+  が入っていることを確認済みにもかかわらず、実機（Apple Watch + AirPods
+  接続済み）でアプリをバックグラウンドに回した瞬間に再生が停止する。
+  シミュレータでは検証できない（Bluetooth ルートを再現できない）ため、
+  実機ログでの切り分けが必須。
+- 仮説: `WatchAudioPlayerService.activateAudioSession` が試みる
+  `.playback`/`.longFormAudio` の `AVAudioSession` アクティベートが実機上
+  で静かに失敗し、`.playback`/`.default`（route-sharing policy なし）の
+  フォールバックに落ちているのではないか、というもの。フォールバック経路
+  はフォアグラウンドでは Bluetooth 出力へも問題なくルーティングされるため
+  気づきにくいが、`.longFormAudio` でない素の `.playback` セッションは
+  バックグラウンドで watchOS にサスペンドされる可能性が高い。
+  従来のコードはこのフォールバック発生時、および `activated == false` かつ
+  `error == nil` のケースで一切ログを出しておらず、実機コンソールだけでは
+  どちらの経路を通ったか判別できなかった。
+- 追加した診断（本コミット、実装は未検証＝次回実機実行待ち）:
+  - `WatchAudioPlayerService.activate` / `activateAudioSession` /
+    `applyRouteOutcome` に `[WatchAudioPlayer]` プレフィックス付きログを
+    網羅的に追加。どちらのポリシーを試行したか、`activated`/`error`
+    （エラーなしの場合も明示）、適用後の実際の
+    `AVAudioSession.sharedInstance().currentRoute.outputs`（ポートタイプ・
+    ポート名）まで出力する。
+  - `WatchAudioPlayerService.sessionDiagnostic`（`@Published`, DEBUG限定）
+    を追加し、`applyRouteOutcome` の結果を "longForm / AirPods Pro" や
+    "fallback / Speaker" のような短い文字列として保持。
+    `WatchNowPlayingView` の操作ボタン群の下に `#if DEBUG` 限定・
+    9pt グレーの極小キャプションとして表示する（リリースビルドには一切
+    出力しない）。ケーブルを繋がずに手首から外れた実機の状態を確認する
+    手段がコンソールログだけでは不十分なための対策。
+  - 副次的な修正: `WatchAudioActivationPolicy`（純粋ロジック、
+    `UX-Music-MobileTests/WatchAudioActivationPolicyTests.swift` でテスト
+    済み）を新設し、前回 `.longFormAudio` が成功済みなら次回の
+    `activateAudioSession` で `setCategory`/`activate` を再実行せず
+    スキップするようにした。実機で観測された `SessionCore.mm:631`
+    （メインスレッドでアクティブなセッションに再度アクティブ化を試みた
+    際の警告）はこの再設定が原因と見て対処。既にフォールバック中だった
+    場合は、Bluetooth 機器が後から接続された可能性を考慮し、毎回
+    `.longFormAudio` を再試行する。
+- 次回実機実行で確認すべきこと:
+  - コンソールで `[WatchAudioPlayer] activateAudioSession: previouslyActivated=... plan=...`
+    → `[WatchAudioPlayer] activate: attempting category=... policy=...`
+    → `[WatchAudioPlayer] activate result: policy=... activated=... error=...`
+    → `[WatchAudioPlayer] applyRouteOutcome: outcome=... route=[...]`
+    の一連の流れを、バックグラウンド遷移の直前・直後それぞれで確認し、
+    `policy=longFormAudio` の `activated` が `true`/`false` のどちらか、
+    `false` の場合の `error` の内容を特定する。
+  - Now Playing 画面下部（DEBUGビルドのみ）に表示される極小キャプション
+    （"longForm / ..." か "fallback / ..." か）を、バックグラウンドに
+    回す直前に確認する。`fallback` のまま推移している場合は仮説が正しい
+    ことになる。
+  - まだ根本修正（フォールバック発生時にどう本来の longFormAudio を
+    確実に成立させるか）には着手していない。今回はあくまで原因切り分け
+    のための可観測性強化と、無駄な再アクティベートの解消に留まる。
