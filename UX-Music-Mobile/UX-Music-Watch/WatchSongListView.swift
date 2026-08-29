@@ -2,7 +2,63 @@ import ImageIO
 import SwiftUI
 import UIKit
 
-/// Library page: a plain native `List` with three `NavigationLink` rows ("Songs"/"Albums"/
+#if DEBUG
+/// Diagnostic-only (never compiled into a Release build) timing/counter log for the on-device
+/// "Songs" row open-latency investigation (see
+/// `watch_songlist_perf_research/notes/`) — quantifies the effect of the lazy-navigation change
+/// below on a real Apple Watch, where the delay was reported and never reproduced in the simulator.
+/// All output is `print`-based (read from the Xcode console during a device run) and prefixed
+/// `[WatchSongListPerf]` so it is easy to filter and to grep out again once the investigation closes.
+enum WatchSongListPerfLog {
+    private static let start = Date()
+
+    private static func elapsedMs() -> Int {
+        Int(Date().timeIntervalSince1970 * 1000 - start.timeIntervalSince1970 * 1000)
+    }
+
+    /// Logged the instant the "Songs" row is tapped, before `.navigationDestination(for:)` builds
+    /// `WatchSongListView.songList`.
+    static func songsLinkTapped() {
+        print("[WatchSongListPerf] Songs link tapped at t+\(elapsedMs())ms")
+    }
+
+    /// Logged when the song list's `ScrollView` content completes its first layout pass
+    /// (`onAppear`), plus the running `WatchSongRow` body-evaluation count at that instant and again
+    /// one second later, so the console shows how many rows were actually materialised eagerly by
+    /// the initial push versus lazily as the user scrolls.
+    static func songListFirstLayoutAppeared(songCount: Int) {
+        let countAtAppear = WatchSongRowPerfCounter.count
+        print("[WatchSongListPerf] Song list first layout appeared at t+\(elapsedMs())ms, "
+            + "songCount=\(songCount), WatchSongRow.body evaluations so far=\(countAtAppear)")
+        Task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            print("[WatchSongListPerf] +1s after first layout: WatchSongRow.body evaluations="
+                + "\(WatchSongRowPerfCounter.count)")
+        }
+    }
+}
+
+/// Process-wide counter of `WatchSongRow.body` evaluations, read by `WatchSongListPerfLog`. Kept
+/// separate from the log enum so `WatchSongRow.body` only needs a one-line increment.
+enum WatchSongRowPerfCounter {
+    private static var value = 0
+    static var count: Int { value }
+    static func increment() { value += 1 }
+}
+#endif
+
+/// The three destinations reachable from the Library page's row list. Used as the navigation
+/// `value` for `NavigationLink(value:)` so `WatchSongListView.body`'s `.navigationDestination(for:)`
+/// builds the destination view only when a row is actually tapped, instead of the eager
+/// `NavigationLink(destination:label:)` construction this replaced — see `WatchSongListView`'s
+/// doc comment for why that mattered.
+private enum WatchLibraryDestination: Hashable {
+    case songs
+    case albums
+    case playlists
+}
+
+/// Library page: a plain native `List` with three `NavigationLink(value:)` rows ("Songs"/"Albums"/
 /// "Playlists") pushing the flat song list, the album list, and `WatchPlaylistListView`
 /// respectively — the same drill-down pattern watchOS's own Music app uses for its library, rather
 /// than a custom segmented-style toggle. Tapping a song row
@@ -12,6 +68,12 @@ import UIKit
 /// right-swipe on a list row was being captured by the row's own `swipeActions` instead of the page
 /// `TabView`, making it impossible to swipe from Library to Now Playing while a finger started on a
 /// row. A long press has no such conflict.
+///
+/// Rows use `NavigationLink(value:)` + `.navigationDestination(for: WatchLibraryDestination.self)`
+/// rather than `NavigationLink(destination:label:)`: the latter builds its destination view eagerly
+/// as soon as the row appears on screen, not lazily on tap (see `songList`'s doc comment for the
+/// concrete cost this used to pay). The value-based form only evaluates the `switch` in
+/// `.navigationDestination` once a value is actually pushed.
 struct WatchSongListView: View {
     @EnvironmentObject private var library: WatchLocalLibrary
     @Binding var selectedPage: WatchPage
@@ -27,21 +89,30 @@ struct WatchSongListView: View {
                         .padding()
                 } else {
                     List {
-                        NavigationLink {
-                            songList
-                                .navigationTitle("Songs")
-                        } label: {
+                        NavigationLink(value: WatchLibraryDestination.songs) {
                             Label("Songs", systemImage: "music.note")
                         }
-                        NavigationLink {
-                            albumList
-                        } label: {
+                        #if DEBUG
+                        .simultaneousGesture(TapGesture().onEnded {
+                            WatchSongListPerfLog.songsLinkTapped()
+                        })
+                        #endif
+                        NavigationLink(value: WatchLibraryDestination.albums) {
                             Label("Albums", systemImage: "square.stack")
                         }
-                        NavigationLink {
-                            WatchPlaylistListView(selectedPage: $selectedPage)
-                        } label: {
+                        NavigationLink(value: WatchLibraryDestination.playlists) {
                             Label("Playlists", systemImage: "music.note.list")
+                        }
+                    }
+                    .navigationDestination(for: WatchLibraryDestination.self) { destination in
+                        switch destination {
+                        case .songs:
+                            songList
+                                .navigationTitle("Songs")
+                        case .albums:
+                            albumList
+                        case .playlists:
+                            WatchPlaylistListView(selectedPage: $selectedPage)
                         }
                     }
                 }
@@ -67,11 +138,13 @@ struct WatchSongListView: View {
     ///    screenshot's pixels showed a ~15pt dead band between each row's fixed-height content,
     ///    breaking the `AlbumGroupConnector` line's continuity. `LazyVStack(spacing: 0)` sets that
     ///    spacing directly rather than fighting an opaque `List` default.
-    /// 2. `library.flatOrder` (see below) removes the *duplicate* per-appearance sort/group, but the
-    ///    `LazyVStack`/`ScrollView` swap is what makes the destination itself genuinely cheap to
-    ///    build repeatedly: `NavigationLink(destination:label:)` builds its destination eagerly as
-    ///    soon as the Library page's row appears (not lazily on tap), so this view's construction
-    ///    cost is paid on every Library-page render regardless of navigation.
+    /// 2. `library.flatOrder` (see below) removes the *duplicate* per-appearance sort/group, but this
+    ///    view used to still be constructed eagerly regardless: `NavigationLink(destination:label:)`
+    ///    built its destination as soon as the Library page's row appeared (not lazily on tap), so
+    ///    this view's construction cost was paid on every Library-page render regardless of
+    ///    navigation. `WatchSongListView.body` now uses `NavigationLink(value:)` +
+    ///    `.navigationDestination(for: WatchLibraryDestination.self)` instead, so this view (and
+    ///    `albumList`/`WatchPlaylistListView`) is built only once a row is actually tapped.
     ///
     /// Decode concurrency was investigated and ruled out as a slowness cause: `sample`-profiling
     /// entering this screen showed only 1-2 concurrent `WatchArtworkThumbnail` decodes at a time
@@ -91,14 +164,22 @@ struct WatchSongListView: View {
                         .padding(.horizontal, WatchSongRowMetrics.horizontalInset)
                 }
             }
+            #if DEBUG
+            .onAppear {
+                WatchSongListPerfLog.songListFirstLayoutAppeared(songCount: order.songs.count)
+            }
+            #endif
         }
     }
 
+    /// `library.albums` values are used as the navigation `value` here (see `WatchAlbumGroup`'s
+    /// `Hashable` conformance, added for this) rather than the eager
+    /// `NavigationLink(destination:label:)` this used to build one `WatchAlbumDetailView` per row for
+    /// — see `WatchSongListView`'s doc comment and `songList`'s point 2 for why that eager
+    /// construction mattered.
     private var albumList: some View {
         List(library.albums) { album in
-            NavigationLink {
-                WatchAlbumDetailView(album: album, selectedPage: $selectedPage)
-            } label: {
+            NavigationLink(value: album) {
                 HStack {
                     WatchArtworkThumbnail(meta: album.artworkSong)
                         .frame(width: 28, height: 28)
@@ -112,6 +193,9 @@ struct WatchSongListView: View {
                     }
                 }
             }
+        }
+        .navigationDestination(for: WatchAlbumGroup.self) { album in
+            WatchAlbumDetailView(album: album, selectedPage: $selectedPage)
         }
         .navigationTitle("Albums")
     }
@@ -173,7 +257,10 @@ struct WatchSongRow: View {
     var onSelect: () -> Void = {}
 
     var body: some View {
-        Button {
+        #if DEBUG
+        WatchSongRowPerfCounter.increment()
+        #endif
+        return Button {
             player.play(meta, queue: queue)
             onSelect()
         } label: {
