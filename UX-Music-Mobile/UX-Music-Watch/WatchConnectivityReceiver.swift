@@ -3,6 +3,18 @@ import WatchConnectivity
 
 /// Receives audio files sent from the paired iPhone (`WatchTransferBridge.send`) and hands them off
 /// to `WatchLocalLibrary` once the file has been moved out of WatchConnectivity's transient inbox.
+///
+/// **Playlists**: also receives an optional `transferFile` tagged `metadata["kind"] == "playlists"`
+/// (mirroring how artwork is tagged `kind: "artwork"` — see the `isArtworkWcMetadata` check below),
+/// whose file contents are a JSON-encoded `[WatchPlaylistMeta]` array, handed to
+/// `WatchPlaylistLibrary.replaceAll(_:)`. **This half of the pipe is Watch-side only**: nothing on
+/// the iPhone sends such a transfer yet. `WatchTransferBridge` (`UX-Music-Mobile/Services/
+/// WatchTransferBridge.swift`, outside this target's ownership) would need a new method that reads
+/// `PlaylistStore`'s playlists, maps each to `WatchPlaylistMeta(id: playlist.id, name: playlist.name,
+/// songIds: playlist.songIds)`, JSON-encodes the array to a temp file, and calls
+/// `WCSession.default.transferFile(tempURL, metadata: ["id": "playlists", "kind": "playlists"])` —
+/// analogous to the existing artwork `transferFile` call, just with the whole array as one file
+/// instead of one file per song.
 @MainActor
 final class WatchConnectivityReceiver: NSObject, ObservableObject {
 
@@ -10,10 +22,18 @@ final class WatchConnectivityReceiver: NSObject, ObservableObject {
     @Published var receivingTitle = ""
 
     private let library: WatchLocalLibrary
+    private let playlistLibrary: WatchPlaylistLibrary
 
-    init(library: WatchLocalLibrary) {
+    init(library: WatchLocalLibrary, playlistLibrary: WatchPlaylistLibrary) {
         self.library = library
+        self.playlistLibrary = playlistLibrary
     }
+
+    /// Tag used on the playlists `transferFile`'s metadata dictionary, alongside
+    /// `WatchTransferMeta.metadataKindKey` — kept here (not on `WatchTransferMeta`, which this
+    /// target does not own) since the playlist transfer is Watch-side-only for now; see the
+    /// type-level doc comment for what the iOS sender still needs to send to make use of it.
+    static let kindPlaylists = "playlists"
 
     func activate() {
         guard WCSession.isSupported() else { return }
@@ -41,6 +61,20 @@ extension WatchConnectivityReceiver: WCSessionDelegate {
             let dest = WatchAudioStorage.artworkFileURL(forId: id)
             try? FileManager.default.removeItem(at: dest)
             try? FileManager.default.copyItem(at: file.fileURL, to: dest)
+            return
+        }
+
+        // Playlists likewise arrive as their own `transferFile` — see the type-level doc comment.
+        // `file.fileURL` must be read synchronously here (before returning to WatchConnectivity),
+        // same constraint as the audio-file copy below.
+        if file.metadata?[WatchTransferMeta.metadataKindKey] as? String == Self.kindPlaylists {
+            guard
+                let data = try? Data(contentsOf: file.fileURL),
+                let decoded = try? JSONDecoder().decode([WatchPlaylistMeta].self, from: data)
+            else { return }
+            Task { @MainActor in
+                playlistLibrary.replaceAll(decoded)
+            }
             return
         }
 

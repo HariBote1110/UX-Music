@@ -2,9 +2,10 @@ import ImageIO
 import SwiftUI
 import UIKit
 
-/// Library page: a plain native `List` with two `NavigationLink` rows ("Songs"/"Albums") pushing
-/// the flat song list and the album list respectively — the same drill-down pattern watchOS's own
-/// Music app uses for its library, rather than a custom segmented-style toggle. Tapping a song row
+/// Library page: a plain native `List` with three `NavigationLink` rows ("Songs"/"Albums"/
+/// "Playlists") pushing the flat song list, the album list, and `WatchPlaylistListView`
+/// respectively — the same drill-down pattern watchOS's own Music app uses for its library, rather
+/// than a custom segmented-style toggle. Tapping a song row
 /// starts playback and switches to the Now Playing page (see `WatchRootView`'s paged `TabView`).
 /// Deletion is a long-press context menu rather than a row swipe: on watchOS the Library and Now
 /// Playing/Queue pages are themselves swiped between horizontally (see `WatchRootView`), and a
@@ -37,6 +38,11 @@ struct WatchSongListView: View {
                         } label: {
                             Label("Albums", systemImage: "square.stack")
                         }
+                        NavigationLink {
+                            WatchPlaylistListView(selectedPage: $selectedPage)
+                        } label: {
+                            Label("Playlists", systemImage: "music.note.list")
+                        }
                     }
                 }
             }
@@ -47,7 +53,7 @@ struct WatchSongListView: View {
     /// The flat "Songs" list, sorted into album order so consecutive same-album rows actually form
     /// runs, rendered with the album-run connector (see `WatchSongRowMetrics`'s doc comment) — the
     /// app's signature list style, already on iOS/desktop, trialled here first per the album detail
-    /// list and the Queue & Volume page, which deliberately keep their previous look
+    /// list and the Queue page, which deliberately keep their previous look
     /// (`WatchSongRow.albumGroupPosition` stays at its `nil` default there).
     ///
     /// `ScrollView` + `LazyVStack(spacing: 0)`, not `List` — mirrors the established pattern for a
@@ -130,7 +136,7 @@ private struct WatchAlbumDetailView: View {
 /// Watch's much smaller screen (~150-176pt usable width, ~242pt height) rather than reusing the iOS
 /// numbers directly. `artworkSize` is unchanged from the row's original fixed 28pt thumbnail frame
 /// (already within the 28-32pt Watch range) so lists that opt out of the album-run connector
-/// (`WatchSongRow.albumGroupPosition == nil`: album detail, Queue & Volume) keep their exact prior
+/// (`WatchSongRow.albumGroupPosition == nil`: album detail, Queue) keep their exact prior
 /// look — only `rowHeight` is new, applied only where the connector is opted into (see
 /// `WatchSongRow.body`).
 ///
@@ -148,7 +154,7 @@ enum WatchSongRowMetrics {
 }
 
 /// A single tappable song row shared by the flat song list, the album detail list, and the
-/// Queue & Volume page's "up next" list (see `WatchQueueVolumeView`): starts playback of `queue`
+/// Queue page's "up next" list (see `WatchQueueView`): starts playback of `queue`
 /// from `meta` and invokes `onSelect` (e.g. switching to Now Playing on the Library pages; a no-op
 /// on the Queue page, which stays put). Offers "Delete" via a long-press context menu (see
 /// `WatchSongListView`'s doc comment for why this replaced row swipe actions).
@@ -161,7 +167,7 @@ struct WatchSongRow: View {
     /// — see `AlbumGroupPosition` and `WatchSongListView.songList`, the only caller that passes
     /// this today (from `WatchLocalLibrary.flatOrder`). `nil` (the default) keeps this row's
     /// original variable-height, system-default list styling and always-shown artwork: the album
-    /// detail list and the Queue & Volume page deliberately do not opt into the connector yet (see
+    /// detail list and the Queue page deliberately do not opt into the connector yet (see
     /// `progress/watch-ui-redesign.md`), matching how `SongRowView` opts in on iOS.
     var albumGroupPosition: AlbumGroupPosition? = nil
     var onSelect: () -> Void = {}
@@ -187,12 +193,13 @@ struct WatchSongRow: View {
                     Image(systemName: player.isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
                         .foregroundStyle(.blue)
                         .font(.caption)
+                        .contentTransition(.symbolEffect(.replace))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .modifier(GroupedRowHeight(isGrouped: albumGroupPosition != nil))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(WatchPressableRowStyle())
         .contextMenu {
             Button(role: .destructive) {
                 library.removeSong(id: meta.id)
@@ -223,8 +230,21 @@ struct WatchSongRow: View {
     }
 }
 
+/// Press feedback for `WatchSongRow` (a subtle scale-down while held) — the Watch equivalent of the
+/// motion language the desktop/iOS apps already have on their tappable rows/cards, which this Watch
+/// port previously lacked entirely (rows just went straight from unpressed to "navigated away", with
+/// no visible acknowledgement of the tap itself). `.buttonStyle(.plain)` on watchOS supplies no such
+/// feedback on its own, unlike iOS's default button styles.
+private struct WatchPressableRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
 /// Fixes the row's height to `WatchSongRowMetrics.rowHeight` only when the row has opted into the
-/// album-run connector — lists that have not (album detail, Queue & Volume) keep their original
+/// album-run connector — lists that have not (album detail, Queue) keep their original
 /// system-default row height, unchanged. See `WatchSongRowMetrics`'s doc comment for why the fixed
 /// height matters wherever the connector is actually drawn.
 private struct GroupedRowHeight: ViewModifier {
@@ -273,7 +293,7 @@ private struct WatchAlbumGroupConnectorView: View {
 }
 
 /// Shared decoded-artwork cache for every Watch song row (Library "Songs"/"Albums" lists, album
-/// detail, Queue & Volume — anywhere `WatchArtworkThumbnail` is used). See `ArtworkMemoryCache`'s
+/// detail, Queue — anywhere `WatchArtworkThumbnail` is used). See `ArtworkMemoryCache`'s
 /// doc comment for why this exists (and how its capacity/eviction policy is tested) and
 /// `WatchArtworkThumbnail`'s doc comment for the decode this caches.
 ///
@@ -376,5 +396,6 @@ private struct WatchArtworkThumbnail: View {
 #Preview {
     WatchSongListView(selectedPage: .constant(.library))
         .environmentObject(WatchLocalLibrary())
+        .environmentObject(WatchPlaylistLibrary())
         .environmentObject(WatchAudioPlayerService(library: WatchLocalLibrary()))
 }

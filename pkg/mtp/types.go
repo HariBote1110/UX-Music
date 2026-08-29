@@ -1,11 +1,5 @@
 package mtp
 
-// MTPResponse is the raw response structure from Kalam library
-type MTPResponse struct {
-	Error string      `json:"error"`
-	Data  interface{} `json:"data"`
-}
-
 // Storage represents an MTP storage device
 type Storage struct {
 	ID   uint32 `json:"Sid"`
@@ -16,10 +10,10 @@ type Storage struct {
 	} `json:"Info"`
 }
 
-// FileInfo represents a file on MTP device
+// FileInfo represents a file or folder on an MTP device.
 type FileInfo struct {
 	Name     string `json:"name"`
-	FullPath string `json:"fullPath"`
+	Path     string `json:"path"`
 	Size     int64  `json:"size"`
 	IsFolder bool   `json:"isFolder"`
 	Date     string `json:"date"`

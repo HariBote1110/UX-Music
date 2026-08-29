@@ -234,13 +234,14 @@ func (a *App) RequestPlaylistsWithArtwork() {
 
 	librarySongs, _ := store.Instance.LoadSlice("library")
 
-	pathToArtwork := make(map[string]string)
+	pathToSong := make(map[string]map[string]interface{})
 	for _, s := range librarySongs {
-		song := s.(map[string]interface{})
-		if path, ok := song["path"].(string); ok {
-			if artwork, ok := song["artwork"].(string); ok && artwork != "" {
-				pathToArtwork[path] = artwork
-			}
+		song, ok := s.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if path, ok := song["path"].(string); ok && path != "" {
+			pathToSong[path] = song
 		}
 	}
 
@@ -248,21 +249,16 @@ func (a *App) RequestPlaylistsWithArtwork() {
 	for _, name := range playlistNames {
 		songPaths, _ := playlist.GetPlaylistSongs(name)
 
-		var artworks []string
-		seenArtworks := make(map[string]bool)
+		songs := make([]interface{}, 0, len(songPaths))
 		for _, path := range songPaths {
-			if artwork, exists := pathToArtwork[path]; exists && !seenArtworks[artwork] {
-				artworks = append(artworks, artwork)
-				seenArtworks[artwork] = true
-				if len(artworks) >= 4 {
-					break
-				}
+			if song, exists := pathToSong[path]; exists {
+				songs = append(songs, song)
 			}
 		}
 
 		playlists = append(playlists, map[string]interface{}{
 			"name":     name,
-			"artworks": artworks,
+			"artworks": collageArtworks(songs),
 		})
 	}
 
@@ -304,10 +300,12 @@ func (a *App) GetSituationPlaylists() (interface{}, error) {
 	}
 
 	counts, _ := store.Instance.LoadMap("playcounts")
-	for _, bucket := range generateSituationPlaylists(songs, counts) {
+	for _, bucket := range generateSituationPlaylists(songs, counts, time.Now()) {
 		result[bucket.key] = map[string]interface{}{
-			"name":  bucket.name,
-			"songs": bucket.songs,
+			"name":        bucket.name,
+			"description": bucket.description,
+			"songs":       bucket.songs,
+			"artworks":    bucket.artworks,
 		}
 	}
 

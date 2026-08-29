@@ -172,8 +172,13 @@ struct AddSongToPlaylistMenuItem: View {
 
 /// Trailing indicator shared by every screen that lists songs via `SongRowView`. YouTube songs
 /// have no local file, so instead of the download controls they show a "ライブラリに追加" action
-/// (a checkmark once the song is already a Library member — see `AppModel.libraryMembershipStore`);
-/// ordinary songs keep the download/queued/downloaded states.
+/// until the song is already a Library member (see `AppModel.libraryMembershipStore`); ordinary
+/// songs keep the download/queued states.
+///
+/// Neither case shows a "done" checkmark any more — a song already in the Library/already
+/// downloaded renders no trailing affordance at all, since the checkmark added no information a
+/// user would act on (nothing to tap) and just added a permanent green dot to most rows in a
+/// well-stocked library.
 struct SongRowDownloadTrailing: View {
     @Environment(AppModel.self) private var model
     let song: Song
@@ -181,10 +186,7 @@ struct SongRowDownloadTrailing: View {
     var body: some View {
         if song.isYouTube {
             if model.isLibrarySongMember(songId: song.id) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.system(size: 20))
-                    .accessibilityLabel("Added to Library")
+                EmptyView()
             } else {
                 Button {
                     model.addYouTubeSongToLibrary(song)
@@ -196,9 +198,7 @@ struct SongRowDownloadTrailing: View {
                 .accessibilityLabel("Add to Library")
             }
         } else if model.isSongDownloaded(songId: song.id) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .font(.system(size: 20))
+            EmptyView()
         } else if let p = model.downloadProgress[song.id] {
             Group {
                 if p > 0 {

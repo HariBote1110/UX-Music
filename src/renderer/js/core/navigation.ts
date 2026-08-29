@@ -8,13 +8,14 @@ import {
     renderArtistDetailView,
     renderPlaylistDetailView,
     renderSituationView,
-    clearMainContent
+    clearMainContent,
+    getActiveScrollElement
 } from '../ui/view-renderer.js';
 import { stopQuiz } from '../features/quiz.js';
 import { stopLrcEditing, renderLrcEditor } from '../features/lrc-editor.js';
 import { renderCdRipView, stopCDRipView } from '../features/cd-ripper.js';
 import { stopMtpBrowser, renderMtpBrowserView } from '../features/mtp-browser.js';
-import { musicApi } from './bridge.js';
+import { musicApi, recordParkUIState } from './bridge.js';
 import { renderNormalizeView } from '../features/normalize-view.js';
 import { renderQuizView } from '../features/quiz.js';
 import { renderMtpTransferView } from '../features/mtp-transfer-view.js';
@@ -187,6 +188,16 @@ export async function showView(viewId, options: Record<string, unknown> = {}) {
     } else {
         console.warn(`[Navigation] No handler for view: ${viewId}`);
     }
+
+    // Opportunistic park-state bookkeeping (see core/bridge.js's
+    // recordParkUIState doc comment): parking is entirely Go-timer-driven
+    // now, so nothing can be pulled from JS at the moment it happens —
+    // every view change instead pushes a fresh snapshot ahead of time.
+    // elements.mainContent itself never scrolls (each view's content fits it
+    // exactly; the actual scrolling element is a .view-scroll / #music-list /
+    // #a-detail-list / #p-detail-list child — see ui/view-renderer.js's
+    // getActiveScrollElement), so the scroll position must be read from there.
+    recordParkUIState(viewId, getActiveScrollElement()?.scrollTop ?? 0);
 }
 
 export function initNavigation() {

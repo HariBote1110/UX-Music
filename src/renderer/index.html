@@ -253,468 +253,535 @@
         </div>
     </div>
     <div id="settings-modal-overlay" class="hidden">
-        <div id="settings-modal">
-            <h2 id="settings-title">設定</h2>
-            <div class="settings-content">
-                <div class="setting-group">
-                    <div class="setting-item">
-                        <h4>オーディオデバイス</h4>
-                        <p class="setting-description">再生に使用するオーディオデバイスの表示/非表示を管理します。</p>
-                        <button id="manage-devices-btn" class="settings-button">表示するデバイスを管理...</button>
-                    </div>
-                </div>
-                <div class="setting-group" id="ai-audio-embed-group">
-                    <div class="setting-item">
-                        <h4>AI 音声解析 (Beta)</h4>
-                        <p class="setting-description">
-                            ライブラリの曲を CLAP で解析して、テキストでムード検索できるようにします (例: 「夜ドライブ」「切ない」)。
-                            初回はモデルロード ~5秒、1曲あたり ~2秒。Mac のみ。
-                        </p>
-                        <p id="ai-audio-embed-status" class="setting-description" aria-live="polite">確認中…</p>
-                        <button id="ai-audio-embed-analyse-btn" type="button" class="settings-button">ライブラリを解析</button>
-                        <div id="ai-audio-embed-progress-wrap" class="hidden" style="margin-top: 8px;">
-                            <div id="ai-audio-embed-progress-bar"
-                                style="height: 8px; background: #2a2a2a; border-radius: 4px; overflow: hidden;">
-                                <div id="ai-audio-embed-progress-fill"
-                                    style="height: 100%; width: 0%; background: #4a9eff; transition: width 0.2s;">
-                                </div>
-                            </div>
-                            <p id="ai-audio-embed-progress-text" class="setting-description"
-                                style="margin-top: 4px;"></p>
-                        </div>
-
-                        <div style="margin-top: 16px;">
-                            <p class="setting-description">ムードで検索:</p>
-                            <div style="display: flex; gap: 8px; margin-top: 4px;">
-                                <input type="text" id="ai-audio-embed-search-input"
-                                    placeholder="例: 夜ドライブ / 切ない J-POP"
-                                    style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; outline: none;">
-                                <button id="ai-audio-embed-search-btn" type="button"
-                                    class="settings-button">検索</button>
-                            </div>
-                            <ul id="ai-audio-embed-search-results"
-                                style="list-style: none; padding: 0; margin-top: 8px; max-height: 280px; overflow-y: auto;">
-                            </ul>
-
-                            <div id="ai-special-actions" class="hidden" style="margin-top: 12px;">
-                                <button id="ai-special-generate-btn" type="button" class="settings-button">
-                                    Gemma 4 E2B で特集化
-                                </button>
-                                <p id="ai-special-status" class="setting-description" aria-live="polite"
-                                    style="margin-top: 4px;"></p>
-                            </div>
-
-                            <div id="ai-special-result" class="hidden"
-                                style="margin-top: 12px; padding: 12px; background: #1e1e1e; border-radius: 6px;">
-                                <h5 id="ai-special-title"
-                                    style="margin: 0 0 6px 0; color: #4a9eff; font-size: 14px;"></h5>
-                                <p id="ai-special-description"
-                                    style="margin: 0 0 10px 0; font-size: 12px; color: #ccc; line-height: 1.6;"></p>
-                                <ol id="ai-special-tracks" style="margin: 0; padding-left: 20px; font-size: 12px;">
-                                </ol>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="setting-group" id="remote-mobile-pairing-group">
-                    <div class="setting-item">
-                        <h4>モバイルアプリ連携（QR）</h4>
-                        <p class="setting-description">iPhone の UX Music アプリで Settings の「Pair with QR code」を選び、この QR
-                            を読み取ります。デスクトップと iPhone を同じ Wi‑Fi に接続してください。</p>
-                        <div id="remote-pairing-qr-wrap" class="remote-pairing-qr-wrap hidden">
-                            <img id="remote-pairing-qr" alt="モバイル連携用 QR コード" width="220" height="220">
-                        </div>
-                        <p id="remote-pairing-url" class="remote-pairing-url" aria-live="polite"></p>
-                        <p id="remote-pairing-qr-error" class="remote-pairing-error hidden" role="alert"></p>
-                    </div>
-                </div>
-                <div class="setting-group" id="ux-sync-settings-entry-group">
-                    <div class="setting-item">
-                        <h4>UX Sync</h4>
-                        <p class="setting-description">端末検出、ペアリング、同期状態を専用画面で管理します。</p>
-                        <button id="ux-sync-settings-open-btn" type="button" class="settings-button">UX Sync設定を開く</button>
-                        <p id="ux-sync-settings-entry-status" class="setting-description" aria-live="polite">確認中</p>
-                    </div>
-                </div>
-                <div class="setting-group">
-                    <div class="setting-item">
-                        <h4>グラフィックイコライザー</h4>
-                        <p class="setting-description">各周波数帯のゲインを細かく調整します。</p>
-                        <div id="graphic-eq-container"></div>
-                    </div>
-                </div>
-                <div class="setting-group">
-                    <div class="setting-item">
-                        <h4>インポートモード</h4>
-                        <p class="setting-description">楽曲のインポート時のCPU使用率を選択します。</p>
-                        <div class="radio-group">
-                            <label>
-                                <input type="radio" name="import-mode" value="balanced">
-                                <div>
-                                    <strong>バランスモード (推奨)</strong>
-                                    <small>他の作業への影響を抑えつつ、効率的にインポートします。</small>
-                                </div>
-                            </label>
-                            <label>
-                                <input type="radio" name="import-mode" value="performance">
-                                <div>
-                                    <strong>パフォーマンスモード</strong>
-                                    <small>CPUを最大限活用して最速でインポートします。PCが重くなる場合があります。</small>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                <div class="setting-group">
-                    <div class="setting-item">
-                        <h4>CDリッピングモード (Beta)</h4>
-                        <p class="setting-description">CD読み取りの精度と速度のバランスを設定します。</p>
-                        <div class="radio-group">
-                            <label>
-                                <input type="radio" name="cd-rip-mode" value="paranoia" checked>
-                                <div>
-                                    <strong>高品質 (推奨)</strong>
-                                    <small>読み取りエラーを徹底的に訂正します。時間はかかりますが最も正確です。</small>
-                                </div>
-                            </label>
-                            <label>
-                                <input type="radio" name="cd-rip-mode" value="burst">
-                                <div>
-                                    <strong>高速 (バースト)</strong>
-                                    <small>エラー訂正を省略して高速に読み取ります。傷の少ないディスクにおすすめです。</small>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                <div class="setting-group">
-                    <div class="setting-item">
-                        <h4>UIテーマ</h4>
-                        <p class="setting-description">アプリ全体の外観スタイルを選択します。変更は OK を押すと即座に反映されます。</p>
-                        <div class="radio-group">
-                            <label>
-                                <input type="radio" name="ui-theme" value="default" checked>
-                                <div>
-                                    <strong>デフォルト</strong>
-                                    <small>丸みのあるモダンなデザイン。再生バーは画面下部に浮遊表示されます。</small>
-                                </div>
-                            </label>
-                            <label>
-                                <input type="radio" name="ui-theme" value="music-center">
-                                <div>
-                                    <strong>MusicCenter</strong>
-                                    <small>Sony MusicCenter for PC 風のシャープなデザイン。再生バーが画面上部のツールバーに移動します。</small>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                <div class="setting-group">
-                    <div class="setting-item">
-                        <h4>ビジュアライザーモード</h4>
-                        <p class="setting-description">再生中の曲のインジケーターのアニメーションを選択します。</p>
-                        <div class="radio-group">
-                            <label>
-                                <input type="radio" name="visualizer-mode" value="active">
-                                <div>
-                                    <strong>アクティブ (推奨)</strong>
-                                    <small>音声をリアルタイムで解析して描画します。CPUを少し使用します。</small>
-                                </div>
-                            </label>
-                            <label>
-                                <input type="radio" name="visualizer-mode" value="static">
-                                <div>
-                                    <strong>スタティック (軽量)</strong>
-                                    <small>シンプルなアニメーションを繰り返します。CPU負荷を軽減します。</small>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                <div class="setting-group">
-                    <div class="setting-item">
-                        <h4>YouTube再生モード</h4>
-                        <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
-                        <div class="radio-group">
-                            <label class="hidden" data-feature="youtube-advanced">
-                                <input type="radio" name="youtube-mode" value="download">
-                                <div>
-                                    <strong>ダウンロードモード</strong>
-                                    <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
-                                </div>
-                            </label>
-                            <label>
-                                <input type="radio" name="youtube-mode" value="embed">
-                                <div>
-                                    <strong>公式再生（推奨）</strong>
-                                    <small>YouTube の公式プレイヤーで再生します。再生数がカウントされ広告収益がクリエイターに入ります。イコライザー等はそのまま使えます。</small>
-                                </div>
-                            </label>
-                            <label class="hidden" data-feature="youtube-advanced">
-                                <input type="radio" name="youtube-mode" value="stream">
-                                <div>
-                                    <strong>ストリーミングモード</strong>
-                                    <small>すぐに再生できますが、非公式な再生のため再生数は増えません。再生先の変更はできず、音と映像が同期されます。</small>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                <div class="setting-group hidden" data-feature="youtube-advanced" id="youtube-quality-group">
-                    <div class="setting-item">
-                        <h4>ダウンロード品質</h4>
-                        <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>
-                        <div class="radio-group">
-                            <label>
-                                <input type="radio" name="youtube-quality" value="full">
-                                <div>
-                                    <strong>最高品質</strong>
-                                    <small>映像と音声をダウンロードします。(MP4)</small>
-                                </div>
-                            </label>
-                            <label>
-                                <input type="radio" name="youtube-quality" value="audio_only">
-                                <div>
-                                    <strong>音声のみ (省データ)</strong>
-                                    <small>音声のみをダウンロードし、通信量と保存容量を節約します。(M4A)</small>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                <div class="setting-group">
-                    <div class="setting-item">
-                        <h4>その他</h4>
-                        <div class="checkbox-group">
-                            <!-- アルバムアートグループ化は常に有効のため設定項目を削除 -->
-                            <label>
-                                <input type="checkbox" name="enable-analysed-queue">
-                                <div>
-                                    <strong>Analysed Queueを有効にする</strong>
-                                    <small>再生傾向を分析し、スキップされがちな曲をキューに入りにくくします。</small>
-                                </div>
-                            </label>
-                            <div id="analysed-queue-options" class="setting-child-item hidden">
-                                <label for="analysed-queue-decay-slider">スコアの有効期間: <span
-                                        id="analysed-queue-decay-value">7日</span></label>
-                                <input type="range" id="analysed-queue-decay-slider" min="0" max="4" value="2" step="1">
-                            </div>
-                            <label>
-                                <input type="checkbox" name="enable-easter-eggs">
-                                <div>
-                                    <strong>イースターエッグを有効にする</strong>
-                                    <small>特別なプレイリストなど、隠し機能をお楽しみいただけます。</small>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-                <div class="setting-group">
-                    <div class="setting-item">
-                        <h4>歌詞自動同期モデル</h4>
-                        <p class="setting-description">Demucs・Whisper・埋め込みモデルを初回のみダウンロードしてキャッシュします（合計およそ2GB前後）。</p>
-                        <div class="checkbox-group" style="margin-bottom:10px;">
-                            <label>
-                                <input type="checkbox" id="lyrics-sync-model-consent" name="lyrics-sync-model-consent">
-                                <div>
-                                    <strong>モデルのネットワークからのダウンロードを許可する</strong>
-                                    <small>オンにしないと自動同期は音声モデルを取得できず、処理は失敗する場合があります。オフ時はモデルキャッシュのみ削除されます。</small>
-                                </div>
-                            </label>
-                        </div>
-                        <p id="lyrics-sync-cache-info" class="setting-description">—</p>
-                        <button type="button" id="lyrics-sync-cache-clear-btn" class="settings-button">同期モデルキャッシュを削除</button>
-                    </div>
-                </div>
-                <div class="setting-group">
-                    <div class="setting-item">
-                        <details class="licence-details">
-                            <summary>ライセンス情報</summary>
-                            <div class="licence-scroll">
-                                <section class="licence-section">
-                                    <h5>UX Music</h5>
-                                    <dl class="licence-list">
-                                        <div class="licence-entry">
-                                            <dt>UX Music</dt>
-                                            <dd><span class="licence-badge">GPL-3.0</span> UX Music Project</dd>
-                                        </div>
-                                    </dl>
-                                </section>
-                                <section class="licence-section">
-                                    <h5>バンドルバイナリ</h5>
-                                    <dl class="licence-list">
-                                        <div class="licence-entry">
-                                            <dt>cdparanoia</dt>
-                                            <dd><span class="licence-badge">GPL-2.0</span> Monty Montgomery &amp; the Xiph.Org Foundation</dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>libusb</dt>
-                                            <dd><span class="licence-badge">LGPL-2.1+</span> libusb contributors</dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>libkalam (MTP)</dt>
-                                            <dd><span class="licence-badge">BSD-3-Clause</span> Copyright (c) 2012 Google Inc.（github.com/ganeshrvel/go-mtpfs 由来）</dd>
-                                        </div>
-                                    </dl>
-                                </section>
-                                <section class="licence-section">
-                                    <h5>外部プログラム（同梱せず、実行時に利用）</h5>
-                                    <dl class="licence-list">
-                                        <div class="licence-entry">
-                                            <dt>FFmpeg / FFprobe</dt>
-                                            <dd><span class="licence-badge licence-badge--proprietary">ユーザー環境のインストール</span> PATH 上の実行ファイルを利用（同梱なし。ライセンスはユーザー自身のビルドに依存）</dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>XLD (X Lossless Decoder)</dt>
-                                            <dd><span class="licence-badge licence-badge--proprietary">ユーザー環境のインストール</span> tmkk（同梱なし。/Applications/XLD.app を呼び出すのみ）</dd>
-                                        </div>
-                                    </dl>
-                                </section>
-                                <section class="licence-section">
-                                    <h5>Goライブラリ</h5>
-                                    <dl class="licence-list">
-                                        <div class="licence-entry">
-                                            <dt>github.com/bitly/go-simplejson</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/cenkalti/backoff</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/dhowden/tag</dt>
-                                            <dd><span class="licence-badge">BSD-2-Clause</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/dlclark/regexp2</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/dop251/goja</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/ebitengine/purego</dt>
-                                            <dd><span class="licence-badge">Apache-2.0</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/go-audio/audio · github.com/go-audio/riff · github.com/go-audio/wav</dt>
-                                            <dd><span class="licence-badge">Apache-2.0</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/go-sourcemap/sourcemap</dt>
-                                            <dd><span class="licence-badge">BSD-2-Clause</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/google/pprof</dt>
-                                            <dd><span class="licence-badge">Apache-2.0</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/google/uuid</dt>
-                                            <dd><span class="licence-badge">BSD-3-Clause</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/gordonklaus/portaudio</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/grandcat/zeroconf</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/hajimehoshi/go-mp3</dt>
-                                            <dd><span class="licence-badge">Apache-2.0</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/icza/bitio</dt>
-                                            <dd><span class="licence-badge">Apache-2.0</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/kkdai/youtube/v2</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/leaanthony/go-ansi-parser</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/leaanthony/slicer</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/leaanthony/u</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/mewpkg/term</dt>
-                                            <dd><span class="licence-badge">Unlicense</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/miekg/dns</dt>
-                                            <dd><span class="licence-badge">BSD-3-Clause</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/mjibson/go-dsp</dt>
-                                            <dd><span class="licence-badge">ISC</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/pkg/errors</dt>
-                                            <dd><span class="licence-badge">BSD-2-Clause</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/rivo/uniseg</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/skip2/go-qrcode</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/wailsapp/go-webview2</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>github.com/wailsapp/wails/v2</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>golang.org/x/crypto</dt>
-                                            <dd><span class="licence-badge">BSD-3-Clause</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>golang.org/x/net</dt>
-                                            <dd><span class="licence-badge">BSD-3-Clause</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>golang.org/x/sys</dt>
-                                            <dd><span class="licence-badge">BSD-3-Clause</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>golang.org/x/text</dt>
-                                            <dd><span class="licence-badge">BSD-3-Clause</span></dd>
-                                        </div>
-                                    </dl>
-                                </section>
-                                <section class="licence-section">
-                                    <h5>フロントエンド</h5>
-                                    <dl class="licence-list">
-                                        <div class="licence-entry">
-                                            <dt>Vite</dt>
-                                            <dd><span class="licence-badge">MIT</span></dd>
-                                        </div>
-                                        <div class="licence-entry">
-                                            <dt>TypeScript</dt>
-                                            <dd><span class="licence-badge">Apache-2.0</span> Microsoft</dd>
-                                        </div>
-                                    </dl>
-                                </section>
-                            </div>
-                        </details>
-                    </div>
-                </div>
+        <div id="settings-page">
+            <div class="settings-header">
+                <h2 id="settings-title">設定</h2>
+                <button id="settings-close-btn" type="button" class="settings-button secondary">閉じる</button>
             </div>
-            <div class="modal-buttons">
-                <button id="settings-ok-btn">OK</button>
+            <div class="settings-body">
+                <nav class="settings-nav">
+                    <input type="search" id="settings-search-input" class="settings-search-input"
+                        placeholder="設定を検索...">
+                    <div class="settings-nav-list" id="settings-nav-list"></div>
+                </nav>
+                <div class="settings-content" id="settings-content">
+                    <!-- 一般 -->
+                    <div class="settings-section hidden" data-section="general" id="settings-section-general">
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <h4>その他</h4>
+                                <div class="checkbox-group">
+                                    <label>
+                                        <input type="checkbox" name="enable-analysed-queue">
+                                        <div>
+                                            <strong>Analysed Queueを有効にする</strong>
+                                            <small>再生傾向を分析し、スキップされがちな曲をキューに入りにくくします。</small>
+                                        </div>
+                                    </label>
+                                    <div id="analysed-queue-options" class="setting-child-item hidden">
+                                        <label for="analysed-queue-decay-slider">スコアの有効期間: <span
+                                                id="analysed-queue-decay-value">7日</span></label>
+                                        <input type="range" id="analysed-queue-decay-slider" min="0" max="4" value="2"
+                                            step="1">
+                                    </div>
+                                    <label>
+                                        <input type="checkbox" name="enable-easter-eggs">
+                                        <div>
+                                            <strong>イースターエッグを有効にする</strong>
+                                            <small>特別なプレイリストなど、隠し機能をお楽しみいただけます。</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <h4>グリッド表示密度</h4>
+                                <p class="setting-description">アルバム/アーティスト/プレイリストのグリッド表示のアイテムサイズを選択します。</p>
+                                <div id="settings-grid-density-mount"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 再生・オーディオ -->
+                    <div class="settings-section hidden" data-section="playback" id="settings-section-playback">
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <h4>オーディオデバイス</h4>
+                                <p class="setting-description">再生に使用するオーディオデバイスの表示/非表示を管理します。</p>
+                                <button id="manage-devices-btn" type="button" class="settings-button"
+                                    aria-expanded="false">表示するデバイスを管理...</button>
+                                <div id="settings-audio-devices-list" class="checkbox-group-vertical hidden"></div>
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <h4>グラフィックイコライザー</h4>
+                                <p class="setting-description">各周波数帯のゲインを細かく調整します。</p>
+                                <div id="graphic-eq-container"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ライブラリ -->
+                    <div class="settings-section hidden" data-section="library" id="settings-section-library">
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <h4>インポートモード</h4>
+                                <p class="setting-description">楽曲のインポート時のCPU使用率を選択します。</p>
+                                <div class="radio-group">
+                                    <label>
+                                        <input type="radio" name="import-mode" value="balanced">
+                                        <div>
+                                            <strong>バランスモード (推奨)</strong>
+                                            <small>他の作業への影響を抑えつつ、効率的にインポートします。</small>
+                                        </div>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="import-mode" value="performance">
+                                        <div>
+                                            <strong>パフォーマンスモード</strong>
+                                            <small>CPUを最大限活用して最速でインポートします。PCが重くなる場合があります。</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <h4>CDリッピングモード (Beta)</h4>
+                                <p class="setting-description">CD読み取りの精度と速度のバランスを設定します。</p>
+                                <div class="radio-group">
+                                    <label>
+                                        <input type="radio" name="cd-rip-mode" value="paranoia" checked>
+                                        <div>
+                                            <strong>高品質 (推奨)</strong>
+                                            <small>読み取りエラーを徹底的に訂正します。時間はかかりますが最も正確です。</small>
+                                        </div>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="cd-rip-mode" value="burst">
+                                        <div>
+                                            <strong>高速 (バースト)</strong>
+                                            <small>エラー訂正を省略して高速に読み取ります。傷の少ないディスクにおすすめです。</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 外観 -->
+                    <div class="settings-section hidden" data-section="appearance" id="settings-section-appearance">
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <h4>UIテーマ</h4>
+                                <p class="setting-description">アプリ全体の外観スタイルを選択します。変更は即座に反映されます。</p>
+                                <div class="radio-group">
+                                    <label>
+                                        <input type="radio" name="ui-theme" value="default" checked>
+                                        <div>
+                                            <strong>デフォルト</strong>
+                                            <small>丸みのあるモダンなデザイン。再生バーは画面下部に浮遊表示されます。</small>
+                                        </div>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="ui-theme" value="music-center">
+                                        <div>
+                                            <strong>MusicCenter</strong>
+                                            <small>Sony MusicCenter for PC 風のシャープなデザイン。再生バーが画面上部のツールバーに移動します。</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <h4>ビジュアライザーモード</h4>
+                                <p class="setting-description">再生中の曲のインジケーターのアニメーションを選択します。</p>
+                                <div class="radio-group">
+                                    <label>
+                                        <input type="radio" name="visualizer-mode" value="active">
+                                        <div>
+                                            <strong>アクティブ (推奨)</strong>
+                                            <small>音声をリアルタイムで解析して描画します。CPUを少し使用します。</small>
+                                        </div>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="visualizer-mode" value="static">
+                                        <div>
+                                            <strong>スタティック (軽量)</strong>
+                                            <small>シンプルなアニメーションを繰り返します。CPU負荷を軽減します。</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- YouTube -->
+                    <div class="settings-section hidden" data-section="youtube" id="settings-section-youtube">
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <h4>YouTube再生モード</h4>
+                                <p class="setting-description">YouTubeリンク追加時の動作を選択します。</p>
+                                <div class="radio-group">
+                                    <label class="hidden" data-feature="youtube-advanced">
+                                        <input type="radio" name="youtube-mode" value="download">
+                                        <div>
+                                            <strong>ダウンロードモード</strong>
+                                            <small>動画をPCに保存します。オフライン再生や再生先の変更が可能です。</small>
+                                        </div>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="youtube-mode" value="embed">
+                                        <div>
+                                            <strong>公式再生（推奨）</strong>
+                                            <small>YouTube の公式プレイヤーで再生します。再生数がカウントされ広告収益がクリエイターに入ります。イコライザー等はそのまま使えます。</small>
+                                        </div>
+                                    </label>
+                                    <label class="hidden" data-feature="youtube-advanced">
+                                        <input type="radio" name="youtube-mode" value="stream">
+                                        <div>
+                                            <strong>ストリーミングモード</strong>
+                                            <small>すぐに再生できますが、非公式な再生のため再生数は増えません。再生先の変更はできず、音と映像が同期されます。</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="setting-group hidden" data-feature="youtube-advanced" id="youtube-quality-group">
+                            <div class="setting-item">
+                                <h4>ダウンロード品質</h4>
+                                <p class="setting-description">ダウンロードモード選択時の品質を設定します。</p>
+                                <div class="radio-group">
+                                    <label>
+                                        <input type="radio" name="youtube-quality" value="full">
+                                        <div>
+                                            <strong>最高品質</strong>
+                                            <small>映像と音声をダウンロードします。(MP4)</small>
+                                        </div>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="youtube-quality" value="audio_only">
+                                        <div>
+                                            <strong>音声のみ (省データ)</strong>
+                                            <small>音声のみをダウンロードし、通信量と保存容量を節約します。(M4A)</small>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 連携 -->
+                    <div class="settings-section hidden" data-section="integration" id="settings-section-integration">
+                        <div class="setting-group" id="remote-mobile-pairing-group">
+                            <div class="setting-item">
+                                <h4>モバイルアプリ連携（QR）</h4>
+                                <p class="setting-description">iPhone の UX Music アプリで Settings の「Pair with QR code」を選び、この
+                                    QR を読み取ります。デスクトップと iPhone を同じ Wi‑Fi に接続してください。</p>
+                                <div id="remote-pairing-qr-wrap" class="remote-pairing-qr-wrap hidden">
+                                    <img id="remote-pairing-qr" alt="モバイル連携用 QR コード" width="220" height="220">
+                                </div>
+                                <p id="remote-pairing-url" class="remote-pairing-url" aria-live="polite"></p>
+                                <p id="remote-pairing-qr-error" class="remote-pairing-error hidden" role="alert"></p>
+                            </div>
+                        </div>
+                        <div class="setting-group" id="ux-sync-settings-entry-group">
+                            <div class="setting-item">
+                                <h4>UX Sync</h4>
+                                <p class="setting-description">端末検出、ペアリング、同期状態を専用画面で管理します。</p>
+                                <button id="ux-sync-settings-open-btn" type="button"
+                                    class="settings-button">UX Sync設定を開く</button>
+                                <p id="ux-sync-settings-entry-status" class="setting-description" aria-live="polite">
+                                    確認中</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI 機能 (Beta) -->
+                    <div class="settings-section hidden" data-section="ai" id="settings-section-ai">
+                        <div class="setting-group" id="ai-audio-embed-group">
+                            <div class="setting-item">
+                                <h4>AI 音声解析 (Beta)</h4>
+                                <p class="setting-description">
+                                    ライブラリの曲を CLAP で解析して、テキストでムード検索できるようにします (例: 「夜ドライブ」「切ない」)。
+                                    初回はモデルロード ~5秒、1曲あたり ~2秒。Mac のみ。
+                                </p>
+                                <p id="ai-audio-embed-status" class="setting-description" aria-live="polite">確認中…</p>
+                                <button id="ai-audio-embed-analyse-btn" type="button"
+                                    class="settings-button">ライブラリを解析</button>
+                                <div id="ai-audio-embed-progress-wrap" class="hidden" style="margin-top: 8px;">
+                                    <div id="ai-audio-embed-progress-bar"
+                                        style="height: 8px; background: #2a2a2a; border-radius: 4px; overflow: hidden;">
+                                        <div id="ai-audio-embed-progress-fill"
+                                            style="height: 100%; width: 0%; background: #4a9eff; transition: width 0.2s;">
+                                        </div>
+                                    </div>
+                                    <p id="ai-audio-embed-progress-text" class="setting-description"
+                                        style="margin-top: 4px;"></p>
+                                </div>
+
+                                <div style="margin-top: 16px;">
+                                    <p class="setting-description">ムードで検索:</p>
+                                    <div style="display: flex; gap: 8px; margin-top: 4px;">
+                                        <input type="text" id="ai-audio-embed-search-input"
+                                            placeholder="例: 夜ドライブ / 切ない J-POP"
+                                            style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; outline: none;">
+                                        <button id="ai-audio-embed-search-btn" type="button"
+                                            class="settings-button">検索</button>
+                                    </div>
+                                    <ul id="ai-audio-embed-search-results"
+                                        style="list-style: none; padding: 0; margin-top: 8px; max-height: 280px; overflow-y: auto;">
+                                    </ul>
+
+                                    <div id="ai-special-actions" class="hidden" style="margin-top: 12px;">
+                                        <button id="ai-special-generate-btn" type="button" class="settings-button">
+                                            Gemma 4 E2B で特集化
+                                        </button>
+                                        <p id="ai-special-status" class="setting-description" aria-live="polite"
+                                            style="margin-top: 4px;"></p>
+                                    </div>
+
+                                    <div id="ai-special-result" class="hidden"
+                                        style="margin-top: 12px; padding: 12px; background: #1e1e1e; border-radius: 6px;">
+                                        <h5 id="ai-special-title"
+                                            style="margin: 0 0 6px 0; color: #4a9eff; font-size: 14px;"></h5>
+                                        <p id="ai-special-description"
+                                            style="margin: 0 0 10px 0; font-size: 12px; color: #ccc; line-height: 1.6;">
+                                        </p>
+                                        <ol id="ai-special-tracks" style="margin: 0; padding-left: 20px; font-size: 12px;">
+                                        </ol>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <h4>歌詞自動同期モデル</h4>
+                                <p class="setting-description">
+                                    Demucs・Whisper・埋め込みモデルを初回のみダウンロードしてキャッシュします（合計およそ2GB前後）。</p>
+                                <div class="checkbox-group" style="margin-bottom:10px;">
+                                    <label>
+                                        <input type="checkbox" id="lyrics-sync-model-consent"
+                                            name="lyrics-sync-model-consent">
+                                        <div>
+                                            <strong>モデルのネットワークからのダウンロードを許可する</strong>
+                                            <small>オンにしないと自動同期は音声モデルを取得できず、処理は失敗する場合があります。オフ時はモデルキャッシュのみ削除されます。</small>
+                                        </div>
+                                    </label>
+                                </div>
+                                <p id="lyrics-sync-cache-info" class="setting-description">—</p>
+                                <button type="button" id="lyrics-sync-cache-clear-btn"
+                                    class="settings-button">同期モデルキャッシュを削除</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 詳細 -->
+                    <div class="settings-section hidden" data-section="advanced" id="settings-section-advanced">
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <details class="licence-details">
+                                    <summary>ライセンス情報</summary>
+                                    <div class="licence-scroll">
+                                        <section class="licence-section">
+                                            <h5>UX Music</h5>
+                                            <dl class="licence-list">
+                                                <div class="licence-entry">
+                                                    <dt>UX Music</dt>
+                                                    <dd><span class="licence-badge">GPL-3.0</span> UX Music Project</dd>
+                                                </div>
+                                            </dl>
+                                        </section>
+                                        <section class="licence-section">
+                                            <h5>バンドルバイナリ</h5>
+                                            <dl class="licence-list">
+                                                <div class="licence-entry">
+                                                    <dt>cdparanoia</dt>
+                                                    <dd><span class="licence-badge">GPL-2.0</span> Monty Montgomery &amp;
+                                                        the Xiph.Org Foundation</dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>libusb</dt>
+                                                    <dd><span class="licence-badge">LGPL-2.1+</span> libusb contributors
+                                                    </dd>
+                                                </div>
+                                            </dl>
+                                        </section>
+                                        <section class="licence-section">
+                                            <h5>外部プログラム（同梱せず、実行時に利用）</h5>
+                                            <dl class="licence-list">
+                                                <div class="licence-entry">
+                                                    <dt>FFmpeg / FFprobe</dt>
+                                                    <dd><span class="licence-badge licence-badge--proprietary">ユーザー環境のインストール</span>
+                                                        PATH 上の実行ファイルを利用（同梱なし。ライセンスはユーザー自身のビルドに依存）</dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>XLD (X Lossless Decoder)</dt>
+                                                    <dd><span class="licence-badge licence-badge--proprietary">ユーザー環境のインストール</span>
+                                                        tmkk（同梱なし。/Applications/XLD.app を呼び出すのみ）</dd>
+                                                </div>
+                                            </dl>
+                                        </section>
+                                        <section class="licence-section">
+                                            <h5>Goライブラリ</h5>
+                                            <dl class="licence-list">
+                                                <div class="licence-entry">
+                                                    <dt>github.com/bitly/go-simplejson</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/cenkalti/backoff</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/dhowden/tag</dt>
+                                                    <dd><span class="licence-badge">BSD-2-Clause</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/dlclark/regexp2</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/dop251/goja</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/ganeshrvel/go-mtpfs</dt>
+                                                    <dd><span class="licence-badge">BSD-3-Clause</span> Copyright (c)
+                                                        2012 Google Inc.</dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/go-audio/audio · github.com/go-audio/riff ·
+                                                        github.com/go-audio/wav</dt>
+                                                    <dd><span class="licence-badge">Apache-2.0</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/go-sourcemap/sourcemap</dt>
+                                                    <dd><span class="licence-badge">BSD-2-Clause</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/google/pprof</dt>
+                                                    <dd><span class="licence-badge">Apache-2.0</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/google/uuid</dt>
+                                                    <dd><span class="licence-badge">BSD-3-Clause</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/gordonklaus/portaudio</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/grandcat/zeroconf</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/hajimehoshi/go-mp3</dt>
+                                                    <dd><span class="licence-badge">Apache-2.0</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/hanwen/usb</dt>
+                                                    <dd><span class="licence-badge">BSD-3-Clause</span> Copyright (c)
+                                                        2012 Google Inc.</dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/icza/bitio</dt>
+                                                    <dd><span class="licence-badge">Apache-2.0</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/kkdai/youtube/v2</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/leaanthony/go-ansi-parser</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/leaanthony/slicer</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/leaanthony/u</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/mewpkg/term</dt>
+                                                    <dd><span class="licence-badge">Unlicense</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/miekg/dns</dt>
+                                                    <dd><span class="licence-badge">BSD-3-Clause</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/mjibson/go-dsp</dt>
+                                                    <dd><span class="licence-badge">ISC</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/pkg/errors</dt>
+                                                    <dd><span class="licence-badge">BSD-2-Clause</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/rivo/uniseg</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/skip2/go-qrcode</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/wailsapp/go-webview2</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>github.com/wailsapp/wails/v2</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>golang.org/x/crypto</dt>
+                                                    <dd><span class="licence-badge">BSD-3-Clause</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>golang.org/x/net</dt>
+                                                    <dd><span class="licence-badge">BSD-3-Clause</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>golang.org/x/sys</dt>
+                                                    <dd><span class="licence-badge">BSD-3-Clause</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>golang.org/x/text</dt>
+                                                    <dd><span class="licence-badge">BSD-3-Clause</span></dd>
+                                                </div>
+                                            </dl>
+                                        </section>
+                                        <section class="licence-section">
+                                            <h5>フロントエンド</h5>
+                                            <dl class="licence-list">
+                                                <div class="licence-entry">
+                                                    <dt>Vite</dt>
+                                                    <dd><span class="licence-badge">MIT</span></dd>
+                                                </div>
+                                                <div class="licence-entry">
+                                                    <dt>TypeScript</dt>
+                                                    <dd><span class="licence-badge">Apache-2.0</span> Microsoft</dd>
+                                                </div>
+                                            </dl>
+                                        </section>
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <div class="setting-item">
+                                <h4>診断</h4>
+                                <p class="setting-description">開発ビルドでは pprof 診断サーバーが有効な場合があります（詳細はログを参照）。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -799,17 +866,6 @@
                         </div>
                     </div>
                 </section>
-            </div>
-        </div>
-    </div>
-    <div id="devices-modal-overlay" class="hidden">
-        <div id="devices-modal">
-            <h2>表示するオーディオデバイス</h2>
-            <p>再生先デバイスの一覧に表示するものを選択してください。</p>
-            <div id="devices-list" class="checkbox-group-vertical">
-            </div>
-            <div class="modal-buttons">
-                <button id="devices-ok-btn">OK</button>
             </div>
         </div>
     </div>

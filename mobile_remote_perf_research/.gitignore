@@ -1,0 +1,4 @@
+external/
+DerivedData/
+tools/stub.log
+*.pid

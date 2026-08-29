@@ -502,6 +502,7 @@ function handleLyricsContextMenu(event) {
         });
         if ((currentContextMenuType === 'lrc' || currentContextMenuType === 'txt')
             && cachedTranslationPromptLines.length > 0) {
+            menuItems.push({ separator: true });
             menuItems.push({
                 label: '和訳用プロンプトをコピー',
                 action: () => {

@@ -534,11 +534,15 @@ function showMtpContextMenu(x, y) {
 
     const menuItems = [
         {
-            label: `⬇️ ダウンロード (${label})`,
+            label: `ダウンロード (${label})`,
+            icon: 'download',
             action: () => downloadSelected()
         },
+        { separator: true },
         {
-            label: `🗑️ 削除 (${label})`,
+            label: `削除 (${label})`,
+            icon: 'delete',
+            danger: true,
             action: () => deleteSelected()
         }
     ];

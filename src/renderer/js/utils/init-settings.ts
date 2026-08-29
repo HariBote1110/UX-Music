@@ -1,14 +1,15 @@
 import { state, elements } from '../core/state.js';
 import { renderGraphicEQ } from '../ui/equalizer.js';
 import { renderCurrentView, updateAudioDevices } from '../ui/ui-manager.js';
-import { setVisualizerFpsLimit } from '../features/player.js';
-import { updateNowPlayingView } from '../ui/now-playing.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { initPlaybackSettings } from '../features/playback-manager.js';
 import { initAiEmbedSettings } from '../features/ai-embed-settings.js';
 import { musicApi, getWailsApp } from '../core/bridge.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
+import { applyGridDensity, createGridDensityControl } from '../ui/grid-density.js';
 import { updateListSpacer } from '../ui/ui.js';
+import { createSettingsPage, type SectionDef } from '../ui/settings/settings-page.js';
+import { save as saveSetting } from '../ui/settings/settings-store.js';
 import {
     formatSyncAutoResultNotification,
     formatSyncPullResultSummary,
@@ -42,8 +43,6 @@ import {
     type SyncPairingStart,
     type SyncPeer,
 } from '../features/ux-sync-settings.js';
-const electronAPI = window.electronAPI;
-
 let uxSyncPeers: SyncPeer[] = [];
 let uxSyncDevices: SyncDevice[] = [];
 let uxSyncTransferProgressUnsubscribe: (() => void) | null = null;
@@ -655,6 +654,221 @@ function renderUxSyncPairingConfirm(actions: HTMLElement, peer: SyncPeer, starte
     actions.append(code, status, buttonRow);
 }
 
+/**
+ * 「表示するデバイスを管理...」トグルで開くインライン展開リスト（旧: 別モーダル）。
+ * チェックのオン/オフごとに即時 `hiddenDeviceIds` を保存する。
+ */
+async function toggleAudioDevicesList(): Promise<void> {
+    const btn = document.getElementById('manage-devices-btn') as HTMLButtonElement | null;
+    const listEl = document.getElementById('settings-audio-devices-list');
+    if (!btn || !listEl) return;
+
+    const willOpen = listEl.classList.contains('hidden');
+    if (!willOpen) {
+        listEl.classList.add('hidden');
+        btn.setAttribute('aria-expanded', 'false');
+        return;
+    }
+
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const audioDevices = devices.filter(d => d.kind === 'audiooutput');
+    const settings = await loadRendererSettings();
+    const hiddenDevices = (settings.hiddenDeviceIds as string[] | undefined) || [];
+
+    listEl.innerHTML = '';
+    audioDevices.forEach((device, index) => {
+        const isHidden = hiddenDevices.includes(device.deviceId);
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.deviceId = device.deviceId;
+        checkbox.checked = !isHidden;
+        const span = document.createElement('span');
+        span.textContent = device.label || `スピーカー ${index + 1}`;
+        label.append(checkbox, span);
+        listEl.appendChild(label);
+
+        checkbox.addEventListener('change', async () => {
+            const hiddenDeviceIds = Array.from(listEl.querySelectorAll('input:not(:checked)'))
+                .map(cb => (cb as HTMLInputElement).dataset.deviceId);
+            await saveSetting({ hiddenDeviceIds });
+            updateAudioDevices();
+        });
+    });
+
+    listEl.classList.remove('hidden');
+    btn.setAttribute('aria-expanded', 'true');
+}
+
+/** 各コントロールの現在値を、保存済み設定から復元する（ページ表示のたびに呼ぶ）。 */
+async function populateSettingsFields(): Promise<void> {
+    const settings = await loadRendererSettings();
+
+    const currentYoutubeMode = settings.youtubePlaybackMode || 'embed';
+    (document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`) as HTMLInputElement).checked = true;
+
+    const currentQuality = settings.youtubeDownloadQuality || 'full';
+    (document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`) as HTMLInputElement).checked = true;
+
+    updateQualityGroupState();
+
+    const currentImportMode = settings.importMode || 'balanced';
+    (document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`) as HTMLInputElement).checked = true;
+
+    const currentCdRipMode = settings.cdRipMode || 'paranoia';
+    (document.querySelector(`input[name="cd-rip-mode"][value="${currentCdRipMode}"]`) as HTMLInputElement).checked = true;
+
+    const currentVisualizerMode = settings.visualizerMode || 'active';
+    (document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`) as HTMLInputElement).checked = true;
+
+    // groupAlbumArt は常に有効のため設定項目から除外
+
+    const analysedQueueEnabled = settings.analysedQueue?.enabled === true;
+    const analysedQueueCheckbox = document.querySelector('input[name="enable-analysed-queue"]') as HTMLInputElement;
+    analysedQueueCheckbox.checked = analysedQueueEnabled;
+    document.getElementById('analysed-queue-options').classList.toggle('hidden', !analysedQueueEnabled);
+
+    const currentDecayDays = settings.analysedQueue?.decayDays || 7;
+    const decaySlider = document.getElementById('analysed-queue-decay-slider') as HTMLInputElement;
+    const decayValueLabel = document.getElementById('analysed-queue-decay-value');
+    const sliderIndex = decaySliderValues.indexOf(currentDecayDays);
+    decaySlider.value = String(sliderIndex > -1 ? sliderIndex : 2);
+    if (decayValueLabel) decayValueLabel.textContent = decaySliderLabels[parseInt(decaySlider.value)];
+
+    (document.querySelector('input[name="enable-easter-eggs"]') as HTMLInputElement).checked = settings.enableEasterEggs !== false;
+
+    const currentUiTheme = settings.uiTheme || 'default';
+    (document.querySelector(`input[name="ui-theme"][value="${currentUiTheme}"]`) as HTMLInputElement).checked = true;
+
+    const gridDensityMount = document.getElementById('settings-grid-density-mount');
+    if (gridDensityMount) {
+        gridDensityMount.innerHTML = '';
+        gridDensityMount.appendChild(createGridDensityControl());
+    }
+
+    const lyricsConsentCb = document.getElementById('lyrics-sync-model-consent') as HTMLInputElement | null;
+    if (lyricsConsentCb) {
+        let consentVal = Boolean((settings as { lyricsSyncModelConsent?: boolean }).lyricsSyncModelConsent);
+        const wailsApp = getWailsApp();
+        if (wailsApp?.GetLyricsSyncResourceStatus) {
+            try {
+                const st = await wailsApp.GetLyricsSyncResourceStatus();
+                const mc = (st as { modelConsent?: boolean }).modelConsent;
+                if (typeof mc === 'boolean') {
+                    consentVal = mc;
+                }
+            } catch {
+                /* leave consentVal from stored settings */
+            }
+        }
+        lyricsConsentCb.checked = consentVal;
+        lyricsConsentCb.disabled = !wailsApp?.GetLyricsSyncResourceStatus;
+    }
+
+    void refreshRemotePairingQR();
+    updateUxSyncSettingsEntry();
+    void refreshLyricsSyncCacheInfo();
+}
+
+/** ラジオ/チェックボックスの変更を即時保存するリスナーを一度だけ配線する。 */
+function wireImmediateSaveControls(): void {
+    document.querySelectorAll('input[name="youtube-mode"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            updateQualityGroupState();
+            void saveSetting({ youtubePlaybackMode: (radio as HTMLInputElement).value });
+        });
+    });
+
+    document.querySelectorAll('input[name="youtube-quality"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            void saveSetting({ youtubeDownloadQuality: (radio as HTMLInputElement).value });
+        });
+    });
+
+    document.querySelectorAll('input[name="import-mode"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            void saveSetting({ importMode: (radio as HTMLInputElement).value });
+        });
+    });
+
+    document.querySelectorAll('input[name="cd-rip-mode"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            void saveSetting({ cdRipMode: (radio as HTMLInputElement).value });
+        });
+    });
+
+    document.querySelectorAll('input[name="visualizer-mode"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            const value = (radio as HTMLInputElement).value;
+            state.visualizerMode = value;
+            void saveSetting({ visualizerMode: value });
+        });
+    });
+
+    document.querySelectorAll('input[name="ui-theme"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            const value = (radio as HTMLInputElement).value;
+            applyUiTheme(value);
+            void saveSetting({ uiTheme: value });
+        });
+    });
+
+    function currentAnalysedQueuePatch() {
+        const decaySliderValue = parseInt((document.getElementById('analysed-queue-decay-slider') as HTMLInputElement).value);
+        const analysedQueue = {
+            enabled: (document.querySelector('input[name="enable-analysed-queue"]') as HTMLInputElement).checked,
+            decayDays: decaySliderValues[decaySliderValue],
+        };
+        state.analysedQueue = analysedQueue;
+        return analysedQueue;
+    }
+
+    (document.querySelector('input[name="enable-analysed-queue"]') as HTMLInputElement).addEventListener('change', (e) => {
+        document.getElementById('analysed-queue-options')!.classList.toggle('hidden', !(e.target as HTMLInputElement).checked);
+        void saveSetting({ analysedQueue: currentAnalysedQueuePatch() });
+    });
+
+    document.getElementById('analysed-queue-decay-slider')!.addEventListener('input', (e) => {
+        const val = parseInt((e.target as HTMLInputElement).value);
+        document.getElementById('analysed-queue-decay-value')!.textContent = decaySliderLabels[val];
+    });
+    document.getElementById('analysed-queue-decay-slider')!.addEventListener('change', () => {
+        void saveSetting({ analysedQueue: currentAnalysedQueuePatch() });
+    });
+
+    (document.querySelector('input[name="enable-easter-eggs"]') as HTMLInputElement).addEventListener('change', (e) => {
+        void saveSetting({ enableEasterEggs: (e.target as HTMLInputElement).checked });
+    });
+
+    const lyricsConsentCb = document.getElementById('lyrics-sync-model-consent') as HTMLInputElement | null;
+    lyricsConsentCb?.addEventListener('change', () => {
+        const checked = lyricsConsentCb.checked;
+        void saveSetting({ lyricsSyncModelConsent: checked });
+        const wails = getWailsApp();
+        if (wails?.SetLyricsSyncModelConsent) {
+            void wails.SetLyricsSyncModelConsent(checked).catch(() => {});
+        }
+    });
+
+    document.getElementById('manage-devices-btn')?.addEventListener('click', () => {
+        void toggleAudioDevicesList();
+    });
+}
+
+/** 設定ページの各セクション定義。EQ はセクション表示のたびに再描画する（冪等）。 */
+function buildSettingsSections(): SectionDef[] {
+    return [
+        { id: 'general', title: '一般' },
+        { id: 'playback', title: '再生・オーディオ', onShow: () => renderGraphicEQ() },
+        { id: 'library', title: 'ライブラリ' },
+        { id: 'appearance', title: '外観' },
+        { id: 'youtube', title: 'YouTube' },
+        { id: 'integration', title: '連携' },
+        { id: 'ai', title: 'AI 機能 (Beta)' },
+        { id: 'advanced', title: '詳細' },
+    ];
+}
+
 export function initSettings() {
     // Initialise playback settings from storage
     initPlaybackSettings();
@@ -663,75 +877,28 @@ export function initSettings() {
     // 起動時にユーザーが選択したUIテーマを復元する
     void loadRendererSettings().then(settings => {
         applyUiTheme(settings.uiTheme || 'default');
+        applyGridDensity(settings.gridDensity);
+        // 開発用クエリフラグ `?theme=mc`: 見た目確認用に MusicCenter テーマを強制する。
+        // 非同期のテーマ復元より後に適用しないと上書きされてしまうためここで処理する。
+        try {
+            if (new URLSearchParams(location.search).get('theme') === 'mc') {
+                document.body.classList.add('mc-theme');
+            }
+        } catch {
+            // location が使えない環境（テスト等）では何もしない
+        }
     });
 
     let settingsClickCount = 0;
     let settingsClickTimer;
 
+    const settingsPage = createSettingsPage(buildSettingsSections());
+    settingsPage.mount();
+    wireImmediateSaveControls();
+
     elements.openSettingsBtn.addEventListener('click', async () => {
-        const settings = await loadRendererSettings();
-
-        renderGraphicEQ();
-
-        const currentYoutubeMode = settings.youtubePlaybackMode || 'embed';
-        (document.querySelector(`input[name="youtube-mode"][value="${currentYoutubeMode}"]`) as HTMLInputElement).checked = true;
-
-        const currentQuality = settings.youtubeDownloadQuality || 'full';
-        (document.querySelector(`input[name="youtube-quality"][value="${currentQuality}"]`) as HTMLInputElement).checked = true;
-
-        updateQualityGroupState();
-
-        const currentImportMode = settings.importMode || 'balanced';
-        (document.querySelector(`input[name="import-mode"][value="${currentImportMode}"]`) as HTMLInputElement).checked = true;
-
-        const currentCdRipMode = settings.cdRipMode || 'paranoia';
-        (document.querySelector(`input[name="cd-rip-mode"][value="${currentCdRipMode}"]`) as HTMLInputElement).checked = true;
-
-        const currentVisualizerMode = settings.visualizerMode || 'active';
-        (document.querySelector(`input[name="visualizer-mode"][value="${currentVisualizerMode}"]`) as HTMLInputElement).checked = true;
-
-        // groupAlbumArt は常に有効のため設定項目から除外
-
-        const analysedQueueEnabled = settings.analysedQueue?.enabled === true;
-        const analysedQueueCheckbox = document.querySelector('input[name="enable-analysed-queue"]') as HTMLInputElement;
-        analysedQueueCheckbox.checked = analysedQueueEnabled;
-        document.getElementById('analysed-queue-options').classList.toggle('hidden', !analysedQueueEnabled);
-
-        const currentDecayDays = settings.analysedQueue?.decayDays || 7;
-        const decaySlider = document.getElementById('analysed-queue-decay-slider') as HTMLInputElement;
-        const decayValueLabel = document.getElementById('analysed-queue-decay-value');
-        const sliderIndex = decaySliderValues.indexOf(currentDecayDays);
-        decaySlider.value = String(sliderIndex > -1 ? sliderIndex : 2);
-        if (decayValueLabel) decayValueLabel.textContent = decaySliderLabels[parseInt(decaySlider.value)];
-
-        (document.querySelector('input[name="enable-easter-eggs"]') as HTMLInputElement).checked = settings.enableEasterEggs !== false;
-
-        const currentUiTheme = settings.uiTheme || 'default';
-        (document.querySelector(`input[name="ui-theme"][value="${currentUiTheme}"]`) as HTMLInputElement).checked = true;
-
-        const lyricsConsentCb = document.getElementById('lyrics-sync-model-consent') as HTMLInputElement | null;
-        if (lyricsConsentCb) {
-            let consentVal = Boolean((settings as { lyricsSyncModelConsent?: boolean }).lyricsSyncModelConsent);
-            const wailsApp = getWailsApp();
-            if (wailsApp?.GetLyricsSyncResourceStatus) {
-                try {
-                    const st = await wailsApp.GetLyricsSyncResourceStatus();
-                    const mc = (st as { modelConsent?: boolean }).modelConsent;
-                    if (typeof mc === 'boolean') {
-                        consentVal = mc;
-                    }
-                } catch {
-                    /* leave consentVal from stored settings */
-                }
-            }
-            lyricsConsentCb.checked = consentVal;
-            lyricsConsentCb.disabled = !wailsApp?.GetLyricsSyncResourceStatus;
-        }
-
-        elements.settingsModalOverlay.classList.remove('hidden');
-        void refreshRemotePairingQR();
-        updateUxSyncSettingsEntry();
-        void refreshLyricsSyncCacheInfo();
+        await populateSettingsFields();
+        settingsPage.open();
 
         const settingsTitle = document.getElementById('settings-title');
         if (settingsTitle && !settingsTitle.dataset.listenerAttached) {
@@ -751,83 +918,6 @@ export function initSettings() {
             });
             settingsTitle.dataset.listenerAttached = 'true';
         }
-    });
-
-    document.querySelectorAll('input[name="youtube-mode"]').forEach(radio => {
-        radio.addEventListener('change', updateQualityGroupState);
-    });
-
-    (document.querySelector('input[name="enable-analysed-queue"]') as HTMLInputElement).addEventListener('change', (e) => {
-        document.getElementById('analysed-queue-options')!.classList.toggle('hidden', !(e.target as HTMLInputElement).checked);
-    });
-
-    document.getElementById('analysed-queue-decay-slider')!.addEventListener('input', (e) => {
-        const val = parseInt((e.target as HTMLInputElement).value);
-        document.getElementById('analysed-queue-decay-value')!.textContent = decaySliderLabels[val];
-    });
-
-    elements.settingsOkBtn.addEventListener('click', () => {
-        const decaySliderValue = parseInt((document.getElementById('analysed-queue-decay-slider') as HTMLInputElement).value);
-        const lyricsModelConsentCb = document.getElementById('lyrics-sync-model-consent') as HTMLInputElement | null;
-
-        const settingsToSave = {
-            youtubePlaybackMode: (document.querySelector('input[name="youtube-mode"]:checked') as HTMLInputElement).value,
-            youtubeDownloadQuality: (document.querySelector('input[name="youtube-quality"]:checked') as HTMLInputElement).value,
-            importMode: (document.querySelector('input[name="import-mode"]:checked') as HTMLInputElement).value,
-            cdRipMode: (document.querySelector('input[name="cd-rip-mode"]:checked') as HTMLInputElement).value,
-            visualizerMode: (document.querySelector('input[name="visualizer-mode"]:checked') as HTMLInputElement).value,
-
-            analysedQueue: {
-                enabled: (document.querySelector('input[name="enable-analysed-queue"]') as HTMLInputElement).checked,
-                decayDays: decaySliderValues[decaySliderValue]
-            },
-            enableEasterEggs: (document.querySelector('input[name="enable-easter-eggs"]') as HTMLInputElement).checked,
-            lyricsSyncModelConsent: lyricsModelConsentCb?.checked === true,
-            uiTheme: (document.querySelector('input[name="ui-theme"]:checked') as HTMLInputElement).value,
-            // Maintain current playback state during settings save
-            isShuffled: state.isShuffled,
-            playbackMode: state.playbackMode
-        };
-
-        electronAPI.send('save-settings', settingsToSave);
-
-        const wails = getWailsApp();
-        if (wails?.SetLyricsSyncModelConsent) {
-            void wails.SetLyricsSyncModelConsent(settingsToSave.lyricsSyncModelConsent).catch(() => {});
-        }
-
-        state.visualizerMode = settingsToSave.visualizerMode;
-        state.analysedQueue = settingsToSave.analysedQueue;
-
-        applyUiTheme(settingsToSave.uiTheme);
-
-        elements.settingsModalOverlay.classList.add('hidden');
-    });
-
-    document.getElementById('manage-devices-btn').addEventListener('click', async () => {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioDevices = devices.filter(d => d.kind === 'audiooutput');
-        const settings = await loadRendererSettings();
-        const hiddenDevices = (settings.hiddenDeviceIds as string[] | undefined) || [];
-
-        const listEl = document.getElementById('devices-list');
-        listEl.innerHTML = '';
-
-        audioDevices.forEach(device => {
-            const isHidden = hiddenDevices.includes(device.deviceId);
-            const label = document.createElement('label');
-            label.innerHTML = `<input type="checkbox" data-device-id="${device.deviceId}" ${!isHidden ? 'checked' : ''}><span>${device.label || `スピーカー ${audioDevices.indexOf(device) + 1}`}</span>`;
-            listEl.appendChild(label);
-        });
-
-        document.getElementById('devices-modal-overlay').classList.remove('hidden');
-    });
-
-    document.getElementById('devices-ok-btn').addEventListener('click', () => {
-        const hiddenDeviceIds = Array.from(document.querySelectorAll('#devices-list input:not(:checked)')).map(cb => (cb as HTMLInputElement).dataset.deviceId);
-        electronAPI.send('save-settings', { hiddenDeviceIds });
-        document.getElementById('devices-modal-overlay').classList.add('hidden');
-        updateAudioDevices();
     });
 
     bindUxSyncAutoResultToast();

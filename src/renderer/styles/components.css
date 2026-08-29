@@ -490,10 +490,8 @@
 
 #modal-overlay,
 #lyrics-translation-modal-overlay,
-#settings-modal-overlay,
 #loading-overlay,
-#ux-sync-settings-modal-overlay,
-#devices-modal-overlay {
+#ux-sync-settings-modal-overlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -508,10 +506,23 @@
 
 #modal-overlay.hidden,
 #lyrics-translation-modal-overlay.hidden,
-#settings-modal-overlay.hidden,
 #loading-overlay.hidden,
-#ux-sync-settings-modal-overlay.hidden,
-#devices-modal-overlay.hidden {
+#ux-sync-settings-modal-overlay.hidden {
+    display: none;
+}
+
+/* 設定ページ: フルウィンドウのオーバーレイパネル（旧: 中央配置の小さなモーダル） */
+#settings-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background-color: rgba(0, 0, 0, 0.55);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#settings-modal-overlay.hidden {
     display: none;
 }
 
@@ -622,8 +633,7 @@
 
 #modal,
 #lyrics-translation-modal,
-#ux-sync-settings-modal,
-#settings-modal {
+#ux-sync-settings-modal {
     background-color: var(--bg-light);
     padding: 25px;
     border-radius: 8px;
@@ -637,8 +647,7 @@
 
 #modal h3,
 #lyrics-translation-modal h3,
-#ux-sync-settings-modal h2,
-#settings-modal h2 {
+#ux-sync-settings-modal h2 {
     margin-top: 0;
 }
 
@@ -713,9 +722,7 @@
 }
 
 #modal-ok-btn,
-#lyrics-translation-save-btn,
-#settings-ok-btn,
-#devices-ok-btn {
+#lyrics-translation-save-btn {
     background: linear-gradient(90deg, var(--highlight-pink), var(--highlight-blue));
     color: var(--text-primary);
     margin-left: 10px;
@@ -723,37 +730,129 @@
 }
 
 #modal-ok-btn:hover,
-#lyrics-translation-save-btn:hover,
-#settings-ok-btn:hover,
-#devices-ok-btn:hover {
+#lyrics-translation-save-btn:hover {
     opacity: 0.9;
 }
 
-#settings-modal .settings-content {
-    overflow-y: auto;
-    flex-grow: 1;
-    padding-right: 10px;
-    margin-right: -10px;
+/* 設定ページ本体: 左ナビ(約220px) + 右コンテンツ(最大760px)の全画面パネル。 */
+#settings-page {
+    background-color: var(--bg-light);
+    border-radius: 8px;
+    width: 96vw;
+    height: 90vh;
+    max-width: 1200px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
-#settings-modal .settings-content::-webkit-scrollbar {
+.settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--bg-dark);
+    flex-shrink: 0;
+}
+
+.settings-header h2 {
+    margin: 0;
+}
+
+.settings-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.settings-nav {
+    flex: 0 0 220px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--bg-dark);
+    padding: 16px 12px;
+    overflow-y: auto;
+}
+
+.settings-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    border-radius: 6px;
+    border: 1px solid var(--bg-dark);
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+}
+
+.settings-nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.settings-nav-item {
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.settings-nav-item:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.settings-nav-item.active {
+    background: linear-gradient(90deg, rgba(236, 72, 153, 0.18), rgba(59, 130, 246, 0.18));
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.settings-nav-item--no-match {
+    opacity: 0.35;
+}
+
+.settings-content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 20px 24px 32px;
+}
+
+.settings-content::-webkit-scrollbar {
     width: 8px;
 }
 
-#settings-modal .settings-content::-webkit-scrollbar-track {
+.settings-content::-webkit-scrollbar-track {
     background: transparent;
 }
 
-#settings-modal .settings-content::-webkit-scrollbar-thumb {
+.settings-content::-webkit-scrollbar-thumb {
     background-color: var(--bg-dark);
     border-radius: 4px;
 }
 
-#settings-modal .settings-content::-webkit-scrollbar-thumb:hover {
+.settings-content::-webkit-scrollbar-thumb:hover {
     background-color: #555;
 }
 
-#settings-modal .setting-group {
+.settings-section {
+    max-width: 760px;
+}
+
+.settings-section.hidden {
+    display: none;
+}
+
+#settings-page .setting-group {
     background-color: var(--bg-dark);
     border-radius: 8px;
     margin-top: 20px;
@@ -761,43 +860,141 @@
     transition: opacity 0.3s;
 }
 
-#settings-modal .setting-group.disabled {
+#settings-page .settings-section > .setting-group:first-child {
+    margin-top: 0;
+}
+
+#settings-page .setting-group.disabled {
     opacity: 0.5;
     pointer-events: none;
 }
 
-#settings-modal .setting-item {
+#settings-page .setting-item {
     padding: 15px;
 }
 
-#settings-modal .setting-item h4 {
+#settings-page .setting-item h4 {
     margin: 0 0 4px 0;
 }
 
-#settings-modal .setting-item .setting-description {
+#settings-page .setting-item .setting-description {
     font-size: 12px;
     color: var(--text-secondary);
     margin: 0 0 15px 0;
 }
 
-#settings-modal .radio-group label {
-    display: flex;
-    align-items: center;
-    padding: 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    border-top: 1px solid var(--bg-light);
+#settings-page .setting-item--filtered-out {
+    display: none;
 }
 
-#settings-modal .setting-group .radio-group label:first-child {
+/* --- 設定行の共通リズム: ラベル(タイトル+説明)を左、コントロールを右に揃える --- */
+#settings-page .checkbox-group {
+    display: flex;
+    flex-direction: column;
+}
+
+#settings-page .checkbox-group label {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    cursor: pointer;
+}
+
+#settings-page .checkbox-group label:first-child {
+    border-top: none;
+    padding-top: 0;
+}
+
+#settings-page .checkbox-group label > div {
+    order: 1;
+}
+
+#settings-page .checkbox-group label > input {
+    order: 2;
+}
+
+#settings-page .checkbox-group label strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+#settings-page .checkbox-group label small {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    line-height: 1.5;
+}
+
+/* checkbox をピル型トグルスイッチとして描画（input 要素自体は維持し既存 JS と互換） */
+#settings-page .checkbox-group input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    width: 38px;
+    height: 22px;
+    flex-shrink: 0;
+    margin: 0;
+    border-radius: 11px;
+    background-color: var(--bg-darkest);
+    border: 1px solid var(--bg-light);
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+#settings-page .checkbox-group input[type="checkbox"]::before {
+    content: "";
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: var(--text-secondary);
+    transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+#settings-page .checkbox-group input[type="checkbox"]:checked {
+    background: linear-gradient(45deg, var(--highlight-pink), var(--highlight-blue));
+    border-color: transparent;
+}
+
+#settings-page .checkbox-group input[type="checkbox"]:checked::before {
+    transform: translateX(16px);
+    background-color: #fff;
+}
+
+/* チェックボックスにぶら下がる子設定（スライダー等）: インデント+左境界で従属を示す */
+#settings-page .setting-child-item {
+    margin-top: 4px;
+    margin-bottom: 4px;
+    padding: 8px 0 8px 16px;
+    border-left: 2px solid var(--bg-light);
+}
+
+#settings-page .radio-group label {
+    display: flex;
+    align-items: center;
+    padding: 10px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+#settings-page .setting-group .radio-group label:first-child {
     border-top: none;
 }
 
-#settings-modal .radio-group label:hover {
+#settings-page .radio-group label:hover {
     background-color: #3a3a3a;
 }
 
-#settings-modal .radio-group input {
+#settings-page .radio-group input {
     margin-right: 15px;
     -webkit-appearance: none;
     appearance: none;
@@ -811,7 +1008,7 @@
     place-content: center;
 }
 
-#settings-modal .radio-group input::before {
+#settings-page .radio-group input::before {
     content: "";
     width: 0.65em;
     height: 0.65em;
@@ -821,23 +1018,22 @@
     background: linear-gradient(45deg, var(--highlight-pink), var(--highlight-blue));
 }
 
-#settings-modal .radio-group input:checked::before {
+#settings-page .radio-group input:checked::before {
     transform: scale(1);
 }
 
-#settings-modal .radio-group input:checked {
+#settings-page .radio-group input:checked {
     border-color: var(--highlight-pink);
 }
 
-#settings-modal .radio-group small {
+#settings-page .radio-group small {
     color: #b3b3b3;
     display: block;
     font-size: 12px;
     margin-top: 4px;
 }
 
-#settings-modal .modal-buttons {
-    margin-top: 30px;
+#settings-close-btn {
     flex-shrink: 0;
 }
 
@@ -963,7 +1159,7 @@
     white-space: pre-wrap;
 }
 
-#settings-modal .licence-details > summary {
+#settings-page .licence-details > summary {
     cursor: pointer;
     font-size: 13px;
     font-weight: 600;
@@ -975,42 +1171,42 @@
     gap: 6px;
 }
 
-#settings-modal .licence-details > summary::before {
+#settings-page .licence-details > summary::before {
     content: '▶';
     font-size: 9px;
     transition: transform 0.2s;
     display: inline-block;
 }
 
-#settings-modal .licence-details[open] > summary::before {
+#settings-page .licence-details[open] > summary::before {
     transform: rotate(90deg);
 }
 
-#settings-modal .licence-scroll {
+#settings-page .licence-scroll {
     margin-top: 12px;
     max-height: 260px;
     overflow-y: auto;
     padding-right: 4px;
 }
 
-#settings-modal .licence-scroll::-webkit-scrollbar {
+#settings-page .licence-scroll::-webkit-scrollbar {
     width: 4px;
 }
 
-#settings-modal .licence-scroll::-webkit-scrollbar-track {
+#settings-page .licence-scroll::-webkit-scrollbar-track {
     background: transparent;
 }
 
-#settings-modal .licence-scroll::-webkit-scrollbar-thumb {
+#settings-page .licence-scroll::-webkit-scrollbar-thumb {
     background: var(--bg-light);
     border-radius: 2px;
 }
 
-#settings-modal .licence-section {
+#settings-page .licence-section {
     margin-bottom: 16px;
 }
 
-#settings-modal .licence-section h5 {
+#settings-page .licence-section h5 {
     margin: 0 0 8px 0;
     font-size: 11px;
     font-weight: 600;
@@ -1020,12 +1216,12 @@
     opacity: 0.7;
 }
 
-#settings-modal .licence-list {
+#settings-page .licence-list {
     margin: 0;
     padding: 0;
 }
 
-#settings-modal .licence-entry {
+#settings-page .licence-entry {
     display: flex;
     align-items: baseline;
     gap: 8px;
@@ -1034,11 +1230,11 @@
     font-size: 12px;
 }
 
-#settings-modal .licence-list .licence-entry:first-child {
+#settings-page .licence-list .licence-entry:first-child {
     border-top: none;
 }
 
-#settings-modal .licence-entry dt {
+#settings-page .licence-entry dt {
     flex: 1;
     font-family: monospace;
     font-size: 11px;
@@ -1046,7 +1242,7 @@
     word-break: break-all;
 }
 
-#settings-modal .licence-entry dd {
+#settings-page .licence-entry dd {
     margin: 0;
     display: flex;
     align-items: center;
@@ -1056,7 +1252,7 @@
     white-space: nowrap;
 }
 
-#settings-modal .licence-badge {
+#settings-page .licence-badge {
     display: inline-block;
     padding: 1px 6px;
     border-radius: 3px;
@@ -1068,7 +1264,7 @@
     white-space: nowrap;
 }
 
-#settings-modal .licence-badge--proprietary {
+#settings-page .licence-badge--proprietary {
     background-color: rgba(246, 173, 85, 0.15);
     color: #f6ad55;
     border-color: rgba(246, 173, 85, 0.3);
@@ -1168,35 +1364,75 @@
 .context-menu--submenu {
     position: absolute;
     top: 0;
-    left: 100%;
+    /* 親項目とわずかに重ねて、隙間でポインタが外れて mouseleave が発火しないようにする */
+    left: calc(100% - 2px);
 }
 
 .context-menu-item {
+    /* サブメニューを絶対配置で正しく親項目基準にするためのアンカー。
+       これが無いと submenu は最も近い position 祖先（.context-menu 自身）基準になり、
+       項目の隣ではなく全く違う位置に出て隙間が生まれる原因になっていた。 */
+    position: relative;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     padding: 6px 14px;
     color: var(--text-primary);
     cursor: default;
     font-size: 13px;
     border-radius: 4px;
     margin: 0 4px;
-    gap: 20px;
+    gap: 8px;
     transition: background-color 0.07s ease;
 }
 
-.context-menu-item:hover:not(.disabled) {
+.context-menu-item.has-submenu {
+    /* 親項目とサブメニューの間の見えない橋。ポインタがこの帯を横切っている間も
+       「項目の内側にいる」扱いになり、mouseleave が誤発火しない。 */
+    padding-right: calc(14px + 6px);
+    margin-right: -6px;
+}
+
+.context-menu-item:hover:not(.disabled),
+.context-menu-item.context-menu-item--focused:not(.disabled) {
     background-color: var(--accent, #007aff);
     color: #fff;
 }
 
-.context-menu-item:hover:not(.disabled) .context-menu-item__arrow {
+.context-menu-item:hover:not(.disabled) .context-menu-item__arrow,
+.context-menu-item:hover:not(.disabled) .context-menu-item__shortcut,
+.context-menu-item.context-menu-item--focused:not(.disabled) .context-menu-item__arrow,
+.context-menu-item.context-menu-item--focused:not(.disabled) .context-menu-item__shortcut {
     color: rgba(255, 255, 255, 0.7);
 }
 
 .context-menu-item.disabled {
     color: var(--text-muted);
     cursor: default;
+    opacity: 0.5;
+}
+
+.context-menu-item.danger {
+    color: var(--highlight-red, #ff453a);
+}
+
+.context-menu-item.danger:hover:not(.disabled) {
+    background-color: var(--highlight-red, #ff453a);
+    color: #fff;
+}
+
+.context-menu-item__leading {
+    /* チェック/アイコン用の固定幅スロット。中身の有無に関わらず常に描画することで、
+       項目間・状態間でラベルの開始位置が揃うようにする（テキストのチェック記号に頼らない）。 */
+    flex: 0 0 20px;
+    width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: currentColor;
+}
+
+.context-menu-item__leading svg {
+    display: block;
 }
 
 .context-menu-item__label {
@@ -1206,9 +1442,16 @@
     text-overflow: ellipsis;
 }
 
+.context-menu-item__shortcut {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+    letter-spacing: 0.02em;
+}
+
 .context-menu-item__arrow {
-    font-size: 16px;
-    line-height: 1;
+    display: flex;
+    align-items: center;
     color: var(--text-secondary);
     flex-shrink: 0;
 }
@@ -1216,7 +1459,7 @@
 .context-menu-separator {
     height: 1px;
     background-color: rgba(255, 255, 255, 0.1);
-    margin: 4px 0;
+    margin: 4px 8px;
 }
 
 #app-version {
@@ -1257,7 +1500,12 @@
     padding: 8px 16px;
     font-size: 14px;
     cursor: pointer;
-    width: 100%;
+    width: auto;
+}
+
+/* setting-item 直下に単独で置かれたボタン（説明文の下に続く操作ボタン等）だけ
+   上マージンを付ける。フレックス行の中の兄弟ボタン（例: ux-sync-transfer-actions）は対象外。 */
+#settings-page .setting-item > .settings-button {
     margin-top: 10px;
 }
 
@@ -1271,34 +1519,13 @@
     opacity: 0.65;
 }
 
-#devices-modal {
-    background-color: var(--bg-light);
-    padding: 25px;
-    border-radius: 8px;
-    width: 100%;
-    max-width: 500px;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
-    display: flex;
-    flex-direction: column;
-    max-height: 85vh;
-}
-
-#devices-modal h2,
-#devices-modal p {
-    flex-shrink: 0;
-}
-
-#devices-modal p {
-    color: var(--text-muted);
-    font-size: 14px;
-    margin-bottom: 20px;
-}
-
 .checkbox-group-vertical {
     overflow-y: auto;
+    max-height: 240px;
     border-top: 1px solid var(--bg-dark);
     border-bottom: 1px solid var(--bg-dark);
     padding: 10px 0;
+    margin-top: 10px;
 }
 
 .checkbox-group-vertical label {
@@ -1321,9 +1548,7 @@
 
 #modal-overlay,
 #lyrics-translation-modal-overlay,
-#settings-modal-overlay,
-#loading-overlay,
-#devices-modal-overlay {
+#loading-overlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -1338,25 +1563,21 @@
     z-index: 1000;
 }
 
-#settings-modal .setting-child-item {
-    margin-top: 10px;
-    padding-left: 20px;
-}
-
-#settings-modal .setting-child-item label {
+#settings-page .setting-child-item label {
     font-size: 12px;
     color: var(--text-secondary);
     display: block;
     margin-bottom: 5px;
 }
 
-#settings-modal .setting-child-item input[type="range"] {
+#settings-page .setting-child-item input[type="range"] {
     width: 100%;
 }
 
 /* --- グラフィックEQのスタイル (設定モーダル内) --- */
 #graphic-eq-container {
     padding-top: 15px;
+    min-height: 320px;
 }
 
 .graphic-eq-header {

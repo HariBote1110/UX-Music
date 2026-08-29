@@ -43,11 +43,83 @@ struct RemoteArtworkPreviewCache: Sendable {
     }
 }
 
+// MARK: - Downsampled decoding
+
+/// Target pixel dimensions to decode Remote artwork at — either a bounded thumbnail size (grid
+/// tiles, matched to the tile's on-screen size × display scale) or `.full` (Now Playing / hero
+/// views, which want source resolution). Threading this through the load path avoids
+/// `UIImage(data:)`/`UIImage(contentsOfFile:)` decoding a full-resolution bitmap for a tiny 48pt
+/// grid cell (see `mobile_remote_perf_research/notes/04-summary-and-recommendations.md` H2).
+enum RemoteArtworkDecodeTarget: Equatable {
+    case full
+    case thumbnail(pixelSize: CGSize)
+
+    /// Buckets `points × scale` up to the nearest `granularity` px per axis so visually-similar
+    /// tile sizes (e.g. a grid re-flowing by a few points on rotation) share one cache/decode
+    /// target instead of each fractional size minting its own.
+    static func tile(points: CGFloat, scale: CGFloat, granularity: CGFloat = 16) -> RemoteArtworkDecodeTarget {
+        let px = points * scale
+        let bucketed = (px / granularity).rounded(.up) * granularity
+        let side = max(bucketed, granularity)
+        return .thumbnail(pixelSize: CGSize(width: side, height: side))
+    }
+
+    /// Cache-key suffix distinguishing this decode target so a small tile and a full-resolution
+    /// decode of the same artwork never evict each other from `RemoteArtworkDecodedImageCache`.
+    var cacheKeySuffix: String {
+        switch self {
+        case .full: return "full"
+        case .thumbnail(let size): return "t\(Int(size.width))x\(Int(size.height))"
+        }
+    }
+}
+
+/// Pure decode step (no I/O, no caching) — kept separate so it is directly unit-testable with an
+/// in-memory fixture image rather than needing a real HTTP/disk round trip.
+enum RemoteArtworkDecoding {
+    static func decode(data: Data, target: RemoteArtworkDecodeTarget) -> UIImage? {
+        guard let source = UIImage(data: data) else { return nil }
+        switch target {
+        case .full:
+            return source
+        case .thumbnail(let pixelSize):
+            return source.preparingThumbnail(of: pixelSize) ?? source
+        }
+    }
+
+    static func decode(contentsOfFile path: String, target: RemoteArtworkDecodeTarget) -> UIImage? {
+        guard let source = UIImage(contentsOfFile: path) else { return nil }
+        switch target {
+        case .full:
+            return source
+        case .thumbnail(let pixelSize):
+            return source.preparingThumbnail(of: pixelSize) ?? source
+        }
+    }
+}
+
+/// In-memory LRU of already-decoded artwork, keyed by artwork identity **and** decode target so a
+/// grid-tile thumbnail and a full-resolution Now Playing decode of the same artwork coexist rather
+/// than evicting each other. Cell reuse while scrolling a grid re-runs `ArtworkImageView.task(id:)`
+/// (its `@State private var loaded` resets), so without this every scroll pass re-decoded from disk.
+enum RemoteArtworkDecodedImageCache {
+    static let shared = ArtworkMemoryCache<UIImage>(capacity: 300)
+
+    static func key(artworkId: String, urlString: String, target: RemoteArtworkDecodeTarget) -> String {
+        let idPart = artworkId.isEmpty ? "url:\(urlString)" : "id:\(artworkId)"
+        return "\(idPart)|\(target.cacheKeySuffix)"
+    }
+}
+
 // MARK: - Load + coalesce in-flight fetches
 
 enum RemoteArtworkImageLoader {
-    static func loadUIImage(artworkId: String, urlString: String) async -> UIImage? {
-        await RemoteArtworkFetchCoordinator.shared.image(artworkId: artworkId, urlString: urlString)
+    static func loadUIImage(
+        artworkId: String,
+        urlString: String,
+        target: RemoteArtworkDecodeTarget = .full
+    ) async -> UIImage? {
+        await RemoteArtworkFetchCoordinator.shared.image(artworkId: artworkId, urlString: urlString, target: target)
     }
 }
 
@@ -71,11 +143,12 @@ private actor RemoteArtworkMissCache {
 private func wearRemoteArtworkLoadDirect(
     artworkId: String,
     urlString: String,
+    target: RemoteArtworkDecodeTarget,
     cache: RemoteArtworkPreviewCache
 ) async -> UIImage? {
     if !artworkId.isEmpty, let cached = cache.fileURLIfPresent(artworkId: artworkId) {
         return await Task.detached(priority: .utility) {
-            UIImage(contentsOfFile: cached.path) ?? RemoteDefaultArtwork.uiImage()
+            RemoteArtworkDecoding.decode(contentsOfFile: cached.path, target: target) ?? RemoteDefaultArtwork.uiImage()
         }.value
     }
     if !artworkId.isEmpty, await RemoteArtworkMissCache.shared.contains(artworkId) {
@@ -84,7 +157,7 @@ private func wearRemoteArtworkLoadDirect(
     guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
     if url.isFileURL {
         return await Task.detached(priority: .utility) {
-            UIImage(contentsOfFile: url.path) ?? RemoteDefaultArtwork.uiImage()
+            RemoteArtworkDecoding.decode(contentsOfFile: url.path, target: target) ?? RemoteDefaultArtwork.uiImage()
         }.value
     }
     guard url.scheme == "http" || url.scheme == "https" else { return nil }
@@ -109,7 +182,7 @@ private func wearRemoteArtworkLoadDirect(
             try? cache.store(data: data, artworkId: resolvedId)
         }
         let decoded = await Task.detached(priority: .utility) {
-            UIImage(data: data)
+            RemoteArtworkDecoding.decode(data: data, target: target)
         }.value
         return decoded ?? RemoteDefaultArtwork.uiImage()
     } catch {
@@ -122,17 +195,29 @@ private actor RemoteArtworkFetchCoordinator {
 
     private var tasks: [String: Task<UIImage?, Never>] = [:]
 
-    func image(artworkId: String, urlString: String, cache: RemoteArtworkPreviewCache = .shared) async -> UIImage? {
-        let key = Self.cacheKey(artworkId: artworkId, urlString: urlString)
-        if let existing = tasks[key] {
+    func image(
+        artworkId: String,
+        urlString: String,
+        target: RemoteArtworkDecodeTarget = .full,
+        cache: RemoteArtworkPreviewCache = .shared
+    ) async -> UIImage? {
+        let memoryKey = RemoteArtworkDecodedImageCache.key(artworkId: artworkId, urlString: urlString, target: target)
+        if let cached = RemoteArtworkDecodedImageCache.shared.value(forKey: memoryKey) {
+            return cached
+        }
+        let taskKey = "\(Self.cacheKey(artworkId: artworkId, urlString: urlString))|\(target.cacheKeySuffix)"
+        if let existing = tasks[taskKey] {
             return await existing.value
         }
         let task = Task {
-            await wearRemoteArtworkLoadDirect(artworkId: artworkId, urlString: urlString, cache: cache)
+            await wearRemoteArtworkLoadDirect(artworkId: artworkId, urlString: urlString, target: target, cache: cache)
         }
-        tasks[key] = task
+        tasks[taskKey] = task
         let value = await task.value
-        tasks[key] = nil
+        tasks[taskKey] = nil
+        if let value {
+            RemoteArtworkDecodedImageCache.shared.setValue(value, forKey: memoryKey)
+        }
         return value
     }
 

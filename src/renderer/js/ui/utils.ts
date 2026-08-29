@@ -143,6 +143,37 @@ export type ContextMenuItem = {
     action?: () => void;
     enabled?: boolean;
     submenu?: ContextMenuItem[];
+    /** true の場合、先頭スロットにチェックアイコンを表示する。 */
+    checked?: boolean;
+    /** 先頭スロットに表示するアイコン。組み込みアイコン名、または生の inline SVG 文字列。 */
+    icon?: string;
+    /** true の場合、区切り線として描画する（`type: 'separator'` と同義）。 */
+    separator?: boolean;
+    /** true の場合、無効化して描画する（`enabled: false` と同義）。 */
+    disabled?: boolean;
+    /** 末尾スロットに表示するショートカットキーの表示文字列。 */
+    shortcut?: string;
+    /** true の場合、危険な操作として強調表示する（削除など）。 */
+    danger?: boolean;
+};
+
+/** サブメニューを閉じるまでの遅延時間 (ms)。親項目とサブメニューの間の隙間を
+ * ポインタが横切る間に mouseleave で即座に閉じてしまわないようにするための猶予。 */
+export const SUBMENU_CLOSE_DELAY_MS = 150;
+
+const CHECK_ICON_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 8.5 6.5 12 13 4"></polyline></svg>';
+
+const CHEVRON_ICON_SVG = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 3 11 8 6 13"></polyline></svg>';
+
+/** よく使う操作向けの組み込みアイコン。`icon` にキー名を指定すると使われる。
+ * キーに一致しない場合は、値をそのまま inline SVG 文字列として扱う。 */
+const BUILTIN_ICONS: Record<string, string> = {
+    play: '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5-9-5.5z"></path></svg>',
+    'queue-add': '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><line x1="1.5" y1="4" x2="10.5" y2="4"></line><line x1="1.5" y1="8" x2="10.5" y2="8"></line><line x1="1.5" y1="12" x2="7" y2="12"></line><line x1="12" y1="9" x2="12" y2="15"></line><line x1="9" y1="12" x2="15" y2="12"></line></svg>',
+    'playlist-add': '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><line x1="1.5" y1="3" x2="10.5" y2="3"></line><line x1="1.5" y1="7" x2="10.5" y2="7"></line><line x1="1.5" y1="11" x2="7" y2="11"></line><circle cx="12" cy="12" r="3.2"></circle><line x1="12" y1="10.6" x2="12" y2="13.4"></line><line x1="10.6" y1="12" x2="13.4" y2="12"></line></svg>',
+    delete: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="2.5 4 3.5 4 13.5 4"></polyline><path d="M5.5 4V2.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V4"></path><path d="M4.5 4l0.6 9a1 1 0 0 0 1 0.9h4a1 1 0 0 0 1-0.9l0.6-9"></path></svg>',
+    info: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><line x1="8" y1="7" x2="8" y2="11.5"></line><circle cx="8" cy="4.7" r="0.4" fill="currentColor" stroke="none"></circle></svg>',
+    download: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="1.5" x2="8" y2="10"></line><polyline points="4.5 7 8 10.5 11.5 7"></polyline><line x1="2" y1="13.5" x2="14" y2="13.5"></line></svg>',
 };
 
 let activeMenuCleanup: (() => void) | null = null;
@@ -158,23 +189,65 @@ export function removeContextMenu() {
     }
 }
 
-function buildMenuElement(items: ContextMenuItem[], isSubmenu = false): HTMLElement {
+/**
+ * サブメニューをビューポート内に収めるための配置を計算する（純粋関数、DOM に依存しない）。
+ * @param parentRect - 親項目（サブメニューの起点となる項目）の矩形。
+ * @param submenuSize - サブメニュー自体の幅・高さ。
+ * @param viewport - ビューポートの幅・高さ。
+ * @param margin - ビューポート端からの最小余白。
+ */
+export function computeSubmenuPlacement(
+    parentRect: { left: number; right: number; top: number },
+    submenuSize: { width: number; height: number },
+    viewport: { width: number; height: number },
+    margin = 8,
+): { side: 'right' | 'left'; topOffset: number } {
+    const overflowsRight = parentRect.right + submenuSize.width > viewport.width - margin;
+    const side: 'right' | 'left' = overflowsRight ? 'left' : 'right';
+
+    const overflowY = parentRect.top + submenuSize.height - viewport.height + margin;
+    const topOffset = overflowY > 0 ? -overflowY : 0;
+
+    return { side, topOffset };
+}
+
+function resolveIconMarkup(icon: string): string {
+    return BUILTIN_ICONS[icon] ?? icon;
+}
+
+export function buildMenuElement(items: ContextMenuItem[], isSubmenu = false): HTMLElement {
     const menu = document.createElement('div');
     menu.className = isSubmenu ? 'context-menu context-menu--submenu' : 'context-menu';
 
     items.forEach(item => {
-        if (item.type === 'separator') {
+        if (item.type === 'separator' || item.separator) {
             const sep = document.createElement('div');
             sep.className = 'context-menu-separator';
             menu.appendChild(sep);
             return;
         }
 
+        const isDisabled = item.enabled === false || item.disabled === true;
+
         const menuItem = document.createElement('div');
         menuItem.className = 'context-menu-item';
-        if (item.enabled === false) {
+        if (isDisabled) {
             menuItem.classList.add('disabled');
         }
+        if (item.danger) {
+            menuItem.classList.add('danger');
+        }
+
+        // 先頭スロット（チェック/アイコン用）。checked/icon の有無に関わらず常に描画し、
+        // ラベルの開始位置が項目間で揃うようにする。
+        const leading = document.createElement('span');
+        leading.className = 'context-menu-item__leading';
+        if (item.checked) {
+            leading.innerHTML = CHECK_ICON_SVG;
+        } else if (item.icon) {
+            leading.innerHTML = resolveIconMarkup(item.icon);
+        }
+        menuItem.appendChild(leading);
 
         const label = document.createElement('span');
         label.className = 'context-menu-item__label';
@@ -185,46 +258,74 @@ function buildMenuElement(items: ContextMenuItem[], isSubmenu = false): HTMLElem
             menuItem.classList.add('has-submenu');
             const arrow = document.createElement('span');
             arrow.className = 'context-menu-item__arrow';
-            arrow.textContent = '›';
+            arrow.innerHTML = CHEVRON_ICON_SVG;
             menuItem.appendChild(arrow);
 
             const submenu = buildMenuElement(item.submenu, true);
             submenu.style.display = 'none';
             menuItem.appendChild(submenu);
 
-            menuItem.addEventListener('mouseenter', () => {
+            let closeTimer: ReturnType<typeof setTimeout> | null = null;
+            const cancelClose = () => {
+                if (closeTimer !== null) {
+                    clearTimeout(closeTimer);
+                    closeTimer = null;
+                }
+            };
+            const scheduleClose = () => {
+                cancelClose();
+                closeTimer = setTimeout(() => {
+                    submenu.style.display = 'none';
+                    closeTimer = null;
+                }, SUBMENU_CLOSE_DELAY_MS);
+            };
+            const openSubmenu = () => {
+                if (isDisabled) return;
+                cancelClose();
                 // サブメニューを一時的に表示してサイズを測定
                 submenu.style.visibility = 'hidden';
                 submenu.style.display = 'block';
                 const parentRect = menuItem.getBoundingClientRect();
                 const submenuRect = submenu.getBoundingClientRect();
-                const vw = window.innerWidth;
-                const vh = window.innerHeight;
+                const placement = computeSubmenuPlacement(
+                    parentRect,
+                    { width: submenuRect.width, height: submenuRect.height },
+                    { width: window.innerWidth, height: window.innerHeight },
+                );
 
-                // 右端に収まらなければ左開き
-                if (parentRect.right + submenuRect.width > vw - 8) {
+                if (placement.side === 'left') {
                     submenu.style.left = 'auto';
                     submenu.style.right = '100%';
                 } else {
                     submenu.style.left = '100%';
                     submenu.style.right = 'auto';
                 }
-                // 下端に収まらなければ上方向にずらす
-                const overflowY = parentRect.top + submenuRect.height - vh + 8;
-                submenu.style.top = overflowY > 0 ? `-${overflowY}px` : '0';
+                submenu.style.top = placement.topOffset ? `${placement.topOffset}px` : '0';
 
                 submenu.style.visibility = '';
-            });
-            menuItem.addEventListener('mouseleave', () => {
-                submenu.style.display = 'none';
-            });
+            };
 
-        } else if (item.action && item.enabled !== false) {
-            menuItem.addEventListener('click', (e) => {
-                e.stopPropagation();
-                removeContextMenu();
-                item.action!();
-            });
+            menuItem.addEventListener('mouseenter', openSubmenu);
+            menuItem.addEventListener('mouseleave', scheduleClose);
+            // サブメニュー自体にポインタが入った場合はクローズをキャンセルし、
+            // 出た場合は改めてクローズを予約する（親項目との隙間をブリッジする）。
+            submenu.addEventListener('mouseenter', cancelClose);
+            submenu.addEventListener('mouseleave', scheduleClose);
+
+        } else {
+            if (item.shortcut) {
+                const shortcut = document.createElement('span');
+                shortcut.className = 'context-menu-item__shortcut';
+                shortcut.textContent = item.shortcut;
+                menuItem.appendChild(shortcut);
+            }
+            if (item.action && !isDisabled) {
+                menuItem.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removeContextMenu();
+                    item.action!();
+                });
+            }
         }
 
         menu.appendChild(menuItem);
@@ -270,8 +371,38 @@ export function showContextMenu(
     menu.style.top = `${Math.max(8, clampedY)}px`;
     menu.style.visibility = '';
 
+    // 矢印キーでの簡易ナビゲーション（トップレベル項目間の移動のみ、サブメニューへの
+    // キーボード侵入は対象外としてスコープを抑える）。
+    const focusableItems = Array.from(
+        menu.querySelectorAll(':scope > .context-menu-item:not(.disabled)'),
+    ) as HTMLElement[];
+    let focusedIndex = -1;
+    const setFocusedIndex = (index: number) => {
+        if (focusedIndex >= 0) {
+            focusableItems[focusedIndex]?.classList.remove('context-menu-item--focused');
+        }
+        focusedIndex = index;
+        if (focusedIndex >= 0) {
+            focusableItems[focusedIndex]?.classList.add('context-menu-item--focused');
+        }
+    };
+
     const onKeydown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') removeContextMenu();
+        if (e.key === 'Escape') {
+            removeContextMenu();
+            return;
+        }
+        if (focusableItems.length === 0) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setFocusedIndex((focusedIndex + 1) % focusableItems.length);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setFocusedIndex((focusedIndex - 1 + focusableItems.length) % focusableItems.length);
+        } else if (e.key === 'Enter' && focusedIndex >= 0) {
+            e.preventDefault();
+            focusableItems[focusedIndex].click();
+        }
     };
     const onScroll = () => removeContextMenu();
     const onPointerDown = (e: PointerEvent) => {

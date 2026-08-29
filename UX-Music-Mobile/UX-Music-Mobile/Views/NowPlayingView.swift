@@ -691,16 +691,14 @@ private struct NowPlayingTransportSection: View {
 
     var body: some View {
         HStack(spacing: 28) {
-            transportIconButton(
+            transportToggleButton(
                 systemName: "shuffle",
-                size: 18,
-                frame: 44,
-                tint: model.player.isShuffleEnabled ? accent : .white.opacity(0.55)
+                isActive: model.player.isShuffleEnabled,
+                accessibilityLabel: "Shuffle",
+                accessibilityValue: model.player.isShuffleEnabled ? "On" : "Off"
             ) {
                 model.player.toggleShuffle()
             }
-            .accessibilityLabel("Shuffle")
-            .accessibilityValue(model.player.isShuffleEnabled ? "On" : "Off")
 
             transportIconButton(systemName: "backward.fill", size: 22) {
                 Task { await model.player.previous() }
@@ -728,16 +726,14 @@ private struct NowPlayingTransportSection: View {
             }
             .accessibilityLabel("Next track")
 
-            transportIconButton(
+            transportToggleButton(
                 systemName: model.player.repeatMode == .one ? "repeat.1" : "repeat",
-                size: 18,
-                frame: 44,
-                tint: model.player.repeatMode == .off ? .white.opacity(0.55) : accent
+                isActive: model.player.repeatMode != .off,
+                accessibilityLabel: "Repeat",
+                accessibilityValue: repeatModeAccessibilityValue
             ) {
                 model.player.cycleRepeatMode()
             }
-            .accessibilityLabel("Repeat")
-            .accessibilityValue(repeatModeAccessibilityValue)
         }
     }
 
@@ -751,6 +747,38 @@ private struct NowPlayingTransportSection: View {
 
     private func transportIconButton(systemName: String, size: CGFloat, action: @escaping () -> Void) -> some View {
         transportIconButton(systemName: systemName, size: size, frame: 56, tint: .white, action: action)
+    }
+
+    /// Shuffle/repeat's on/off styling: unlike the always-tinted `transportIconButton`, "on" gets
+    /// a filled accent pill behind the icon plus a small dot underneath, and "off" gets no
+    /// background at all — a plain-tint colour change alone (the previous approach) was too subtle
+    /// to read as selected at a glance. `AccentContrastFallback` guards against the artwork accent
+    /// itself being too washed-out to carry that signal.
+    private func transportToggleButton(
+        systemName: String,
+        isActive: Bool,
+        accessibilityLabel: String,
+        accessibilityValue: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        let resolvedAccent = AccentContrastFallback.resolvedAccent(for: accent)
+        return Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: systemName)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(isActive ? resolvedAccent : .white.opacity(0.55))
+                    .frame(width: 44, height: 44)
+                    .background(
+                        Circle().fill(isActive ? resolvedAccent.opacity(0.25) : .clear)
+                    )
+                Circle()
+                    .fill(isActive ? resolvedAccent : .clear)
+                    .frame(width: 4, height: 4)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(accessibilityValue)
     }
 
     /// Shared pill styling for every transport control; `frame`/`tint` let the secondary
@@ -868,9 +896,21 @@ private struct NowPlayingArtworkBlock: View {
     let accent: Color
 
     @Environment(AppModel.self) private var model
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var loaded: UIImage?
 
     private var taskIdentity: String { "\(artworkId)\u{1E}\(urlString)\u{1E}np" }
+
+    /// iPhone keeps the original fixed 340pt cap. On iPad (`.regular` width) 340pt reads tiny
+    /// against the much larger screen, but letting it grow unbounded (`maxWidth: .infinity`) made
+    /// the jacket comically oversized in portrait — so instead it is capped relative to the
+    /// screen's shorter side, which stays sane across iPad portrait/landscape and Split View/Stage
+    /// Manager window sizes alike.
+    private var maxArtworkWidth: CGFloat {
+        guard horizontalSizeClass == .regular else { return 340 }
+        let shortestSide = min(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
+        return min(0.45 * shortestSide, 480)
+    }
 
     var body: some View {
         Color.clear
@@ -878,7 +918,7 @@ private struct NowPlayingArtworkBlock: View {
             // jacket. Both share the same width cap so the card only changes height when the
             // song source switches, and that height change is animated below.
             .aspectRatio(song.isYouTube ? 16.0 / 9.0 : 1, contentMode: .fit)
-            .frame(maxWidth: 340)
+            .frame(maxWidth: maxArtworkWidth)
             .overlay {
                 Group {
                     if song.isYouTube {

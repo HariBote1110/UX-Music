@@ -3,14 +3,17 @@ import SwiftUI
 @main
 struct UXMusicWatchApp: App {
     @StateObject private var library = WatchLocalLibrary()
+    @StateObject private var playlistLibrary = WatchPlaylistLibrary()
     @StateObject private var player: WatchAudioPlayerService
     @StateObject private var connectivity: WatchConnectivityReceiver
 
     init() {
         let library = WatchLocalLibrary()
         _library = StateObject(wrappedValue: library)
+        let playlistLibrary = WatchPlaylistLibrary()
+        _playlistLibrary = StateObject(wrappedValue: playlistLibrary)
         _player = StateObject(wrappedValue: WatchAudioPlayerService(library: library))
-        let connectivity = WatchConnectivityReceiver(library: library)
+        let connectivity = WatchConnectivityReceiver(library: library, playlistLibrary: playlistLibrary)
         _connectivity = StateObject(wrappedValue: connectivity)
         // Activated here (app init) rather than a view's onAppear: WatchConnectivity can invoke
         // `didReceive` in the background before any view ever appears (e.g. the Watch app was
@@ -41,6 +44,7 @@ struct UXMusicWatchApp: App {
         WindowGroup {
             WatchRootView()
                 .environmentObject(library)
+                .environmentObject(playlistLibrary)
                 .environmentObject(player)
                 .environmentObject(player.progress)
                 .environmentObject(connectivity)

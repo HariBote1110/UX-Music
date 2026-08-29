@@ -29,6 +29,13 @@ build:
 	cp $(SWIFT_SIDECAR_BIN) $(RESOURCES_BIN)/lyrics-sync-swift
 	chmod +x $(RESOURCES_BIN)/cdparanoia
 	chmod +x $(RESOURCES_BIN)/lyrics-sync-swift
+	# pkg/mtp が直接 import する github.com/ganeshrvel/go-mtpfs/mtp は
+	# cgo 経由で Homebrew の libusb に動的リンクするため、同梱して
+	# @executable_path 相対に付け替える（scripts/build-install-app.sh と同じ手順）。
+	mkdir -p $(APP_BUNDLE)/Contents/Frameworks
+	cp "$$(brew --prefix libusb)/lib/libusb-1.0.0.dylib" $(APP_BUNDLE)/Contents/Frameworks/libusb-1.0.0.dylib
+	install_name_tool -change "$$(brew --prefix libusb)/lib/libusb-1.0.0.dylib" \
+		"@executable_path/../Frameworks/libusb-1.0.0.dylib" $(APP_BUNDLE)/Contents/MacOS/UX-Music
 
 dev:
 	wails dev

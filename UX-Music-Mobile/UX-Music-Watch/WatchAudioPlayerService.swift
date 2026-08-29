@@ -22,11 +22,14 @@ final class WatchPlaybackProgress: ObservableObject {
 /// previously) is intended for workouts and similar long-running *foreground-eligible* tasks, not
 /// music playback, and does not reliably keep `AVPlayer` audio going once the screen locks.
 ///
-/// **Hardware constraint**: watchOS does not allow long-form audio playback over the built-in
+/// **Hardware constraint**: watchOS does not allow *long-form* audio playback over the built-in
 /// speaker — a Bluetooth output route (headphones, AirPods, or a paired output) must already be
-/// connected, or the system will surface its own "Select audio output" prompt the first time
-/// `activate` is called for a session. If no output is available, activation fails and playback
-/// does not start; see `routeError` below.
+/// connected for `.longFormAudio` to activate, or the system will surface its own "Select audio
+/// output" prompt the first time `activate` is called for a session. Plain `.playback`/`.default`
+/// *does* support the built-in speaker, though, so `activateAudioSession` tries `.longFormAudio`
+/// first and falls back to that plain session (see `WatchAudioRoutePolicy`) rather than treating a
+/// missing Bluetooth route as a hard failure. Only when both attempts fail does activation
+/// genuinely fail and playback not start; see `routeError` below.
 ///
 /// System integration: publishes state to `MPNowPlayingInfoCenter` and wires
 /// `MPRemoteCommandCenter` (play/pause/next/previous) so the standard watchOS "Now Playing" glance,
@@ -38,10 +41,14 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     @Published var isPlaying = false
     @Published var repeatMode: WatchRepeatMode = .off
     @Published var isShuffled = false
-    /// Set when `AVAudioSession` activation fails (most commonly: no Bluetooth audio output
-    /// connected — watchOS cannot play long-form audio over the speaker). `WatchNowPlayingView`
-    /// surfaces this as a message; cleared on the next successful activation.
+    /// Set only when *both* activation attempts fail (see `activateAudioSession`) — no audio output
+    /// is available at all. `WatchNowPlayingView` surfaces this as a blocking message; cleared on
+    /// the next successful activation.
     @Published var routeError: String?
+    /// `true` while the current session is playing over the built-in speaker because no Bluetooth
+    /// output was available for `.longFormAudio` (see `WatchAudioRoutePolicy.Outcome.speakerFallback`).
+    /// `WatchNowPlayingView` surfaces this as a small non-blocking caption rather than `routeError`.
+    @Published var isSpeakerFallback = false
 
     /// Playback position, split into `progress` (see above) to avoid the Library page re-rendering
     /// on every tick. Kept as a computed passthrough so the rest of this type (seek clamping,
@@ -53,7 +60,7 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     let progress = WatchPlaybackProgress()
 
     /// Read-only view of the queue as it is actually playing (post-shuffle, if shuffled), for
-    /// `WatchQueueVolumeView`'s "up next" list. A plain computed passthrough (rather than a second
+    /// `WatchQueueView`'s "up next" list. A plain computed passthrough (rather than a second
     /// `@Published` copy) — `queue` only ever changes together with `currentSong`/`isPlaying`, both
     /// of which already drive a re-render of any view observing this object, so there is nothing to
     /// duplicate or keep in sync.
@@ -234,37 +241,78 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         updateNowPlayingInfo()
     }
 
-    /// Configures `.playback`/`.longFormAudio` (the background-eligible route for music, as opposed
-    /// to short/foreground audio) and activates the session asynchronously, invoking `completion`
-    /// back on the main actor with whether activation succeeded. On the first activation for a
-    /// session, watchOS may present its own "Select audio output" UI if no Bluetooth output is
-    /// already connected; if the user has no output available, activation fails and `routeError`
-    /// is set so callers can surface it instead of silently doing nothing.
+    /// Two-stage activation: tries `.playback`/`.longFormAudio` first (the background-eligible
+    /// route for music — requires a Bluetooth output already connected), and only if that fails
+    /// falls back to a plain `.playback`/`.default` session, which watchOS *does* allow over the
+    /// built-in speaker. `WatchAudioRoutePolicy` turns the two attempts' results into an `Outcome`
+    /// this method applies to `routeError`/`isSpeakerFallback`; `completion` is invoked back on the
+    /// main actor with whether *either* attempt succeeded (i.e. playback may proceed).
     private func activateAudioSession(completion: @escaping (Bool) -> Void) {
+        activate(category: .playback, mode: .default, policy: .longFormAudio) { [weak self] longFormActivated in
+            guard let self else { return }
+            if longFormActivated {
+                self.applyRouteOutcome(.longForm)
+                completion(true)
+                return
+            }
+            self.activate(category: .playback, mode: .default, policy: nil) { [weak self] speakerActivated in
+                guard let self else { return }
+                let outcome = WatchAudioRoutePolicy.outcome(
+                    longFormActivated: false,
+                    speakerActivated: speakerActivated
+                )
+                self.applyRouteOutcome(outcome)
+                completion(outcome != .unavailable)
+            }
+        }
+    }
+
+    /// Sets category/mode/(optional) route-sharing policy and activates the session asynchronously,
+    /// invoking `completion` back on the main actor with whether activation succeeded. `policy: nil`
+    /// omits the route-sharing policy argument entirely (letting `AVAudioSession` use its own
+    /// `.default`), used for the speaker-fallback attempt in `activateAudioSession`.
+    private func activate(
+        category: AVAudioSession.Category,
+        mode: AVAudioSession.Mode,
+        policy: AVAudioSession.RouteSharingPolicy?,
+        completion: @escaping (Bool) -> Void
+    ) {
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
+            if let policy {
+                try session.setCategory(category, mode: mode, policy: policy)
+            } else {
+                try session.setCategory(category, mode: mode)
+            }
         } catch {
             print("[WatchAudioPlayer] AVAudioSession setCategory error: \(error)")
-            routeError = String(localized: "Could not start playback.")
             completion(false)
             return
         }
-        session.activate(options: []) { [weak self] activated, error in
+        session.activate(options: []) { activated, error in
             Task { @MainActor in
-                guard let self else { return }
                 if let error {
                     print("[WatchAudioPlayer] AVAudioSession activation error: \(error)")
                 }
-                if activated {
-                    self.routeError = nil
-                } else {
-                    // Most commonly: no Bluetooth audio output connected — watchOS cannot play
-                    // long-form audio over the built-in speaker.
-                    self.routeError = String(localized: "Connect Bluetooth headphones to play on Apple Watch.")
-                }
                 completion(activated)
             }
+        }
+    }
+
+    /// Applies a `WatchAudioRoutePolicy.Outcome` to `routeError`/`isSpeakerFallback` — the one place
+    /// both `@Published` properties are updated together, so they can never disagree (e.g.
+    /// `routeError` set while `isSpeakerFallback` is also `true`).
+    private func applyRouteOutcome(_ outcome: WatchAudioRoutePolicy.Outcome) {
+        switch outcome {
+        case .longForm:
+            routeError = nil
+            isSpeakerFallback = false
+        case .speakerFallback:
+            routeError = nil
+            isSpeakerFallback = true
+        case .unavailable:
+            routeError = String(localized: "Could not start playback on Apple Watch.")
+            isSpeakerFallback = false
         }
     }
 

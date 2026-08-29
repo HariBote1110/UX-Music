@@ -13,6 +13,7 @@ import (
 	"ux-music-sidecar/pkg/cdrip"
 	"ux-music-sidecar/pkg/mtp"
 	"ux-music-sidecar/pkg/normalize"
+	"ux-music-sidecar/pkg/playqueue"
 )
 
 // eventsEmitFunc is the process-wide event emission hook shared by every App
@@ -48,8 +49,8 @@ type App struct {
 	// AudioSetNowPlayingMetadata supplies them. Surfaced as top-level
 	// "songId"/"artworkId" in GET /v1/remote/state so mobile clients can
 	// resolve lyrics/artwork by ID instead of fuzzy title matching.
-	mediaSongID    string
-	mediaArtworkID string
+	mediaSongID       string
+	mediaArtworkID    string
 	deviceWatcherStop chan struct{}
 	// bootedOutResidentAgent records whether Startup booted out a resident
 	// `--serve` LaunchAgent to take over port 8765 (see performGUIHandoff in
@@ -70,6 +71,24 @@ type App struct {
 	// GET /v1/remote/state (see app_sidecar.go).
 	sidecarMu             sync.Mutex
 	sidecarTargetDeviceID string
+	// queue is the native (Go-owned) playback queue — see app_queue.go and
+	// pkg/playqueue. It is opt-in: nil/zero-value until something calls
+	// QueueSet, at which point ensureQueue() lazily creates it and it
+	// becomes Active(). Left nil here (rather than initialised in NewApp)
+	// so struct-literal-constructed Apps (as many existing tests do) still
+	// work — every access goes through ensureQueue().
+	queue *playqueue.Queue
+	// queueItemStarter, when non-nil, replaces startQueueItem as the
+	// function used to start a queue item (see app_queue.go's
+	// playQueueItem). Test-only seam so auto-advance's skip-on-failure
+	// behaviour can be exercised deterministically without a real
+	// audioPlayer or network calls (see server/app_queue_test.go).
+	queueItemStarter func(playqueue.Item) error
+	// park holds the WebView park/restore state (Phase 2 of
+	// markdown/background-native-queue-plan.md) — see app_park.go. Zero
+	// value is "not parked, no pending intent", so this needs no
+	// initialisation in NewApp.
+	park appParkState
 }
 
 // NewApp creates a new App struct
@@ -121,6 +140,7 @@ func (a *App) Startup(ctx context.Context) {
 	fmt.Printf("[LAN] Server address: %s\n", GetLANServerAddress())
 
 	a.initOSMediaControls()
+	a.initAppVisibilityObserver()
 	a.initTray()
 
 	// Initialize Audio Player
@@ -132,11 +152,27 @@ func (a *App) Startup(ctx context.Context) {
 	a.audioPlayer = player
 
 	if a.audioPlayer != nil {
-		a.audioPlayer.SetOnFinished(func() {
-			a.updateOSPlaybackState(false)
-			a.pushDiscordPresence(false)
-			a.emit("audio-playback-finished", nil)
-		})
+		// handlePlaybackFinished (app_queue.go) preserves the exact previous
+		// behaviour (update OS state, push Discord presence, emit
+		// "audio-playback-finished") while the Go queue is inactive, and
+		// takes over auto-advance entirely in Go once something has called
+		// QueueSet — see its doc comment for the double-count rationale.
+		a.audioPlayer.SetOnFinished(a.handlePlaybackFinished)
+
+		// Apply the saved master volume up front (see resolveInitialVolume's
+		// doc comment). The player otherwise boots at volume 1.0, and since
+		// the native queue cutover Go's startQueueItem can start playback
+		// directly without the renderer ever pushing its saved volume — this
+		// used to only be masked because the renderer's legacy playLocal()
+		// pushed AudioSetVolume on every playback start. Applying it here
+		// makes the saved volume take effect regardless of whether the
+		// renderer's UI (playLocal) or the Go queue (startQueueItem) starts
+		// playback first.
+		if settings, err := store.Instance.LoadMap("settings"); err == nil {
+			if volume, ok := resolveInitialVolume(settings); ok {
+				a.audioPlayer.SetVolume(volume)
+			}
+		}
 	}
 
 	// Start MTP device monitor

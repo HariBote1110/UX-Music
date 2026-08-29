@@ -114,7 +114,7 @@ struct WatchNowPlayingView: View {
     /// **`autoFocusesCrown` is tied to `isActive`, not hardcoded `true` — this is load-bearing, not
     /// cosmetic.** `WatchRootView`'s paged `TabView` keeps adjacent pages mounted (so paging back to
     /// them is instant), which means this view's `onAppear`/`body` keep re-running even while the
-    /// Queue & Volume page is the one actually on screen. Earlier versions called
+    /// Queue page is the one actually on screen. Earlier versions called
     /// `wkInterfaceObject.focus()` unconditionally whenever `onAppear` fired, on the assumption that
     /// "appeared" meant "became visible" — it does not, for a kept-alive adjacent page. Calling
     /// `focus()` on a `WKInterfaceVolumeControl` that is not part of the *currently front* interface
@@ -155,11 +155,20 @@ struct WatchNowPlayingView: View {
     /// a plain black page.
     @ViewBuilder
     private var backgroundArtwork: some View {
-        if let cachedArtworkImage {
-            fullBleedArtwork(Image(uiImage: cachedArtworkImage))
-        } else {
-            fullBleedArtwork(Image("RemoteDefaultArtwork"))
+        // `.id(cachedArtworkSongId)` gives each track's artwork its own view identity, so a track
+        // change is a genuine insert/remove SwiftUI can cross-fade via `.transition(.opacity)`
+        // (driven by the `.animation(value:)` below) rather than the previous instant swap —
+        // matching how the desktop/iOS Now Playing screens fade artwork changes.
+        Group {
+            if let cachedArtworkImage {
+                fullBleedArtwork(Image(uiImage: cachedArtworkImage))
+            } else {
+                fullBleedArtwork(Image("RemoteDefaultArtwork"))
+            }
         }
+        .id(cachedArtworkSongId)
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.35), value: cachedArtworkSongId)
     }
 
     /// Shared full-bleed treatment (scaled to fill, dark scrim overlay) applied to both the real
@@ -243,18 +252,38 @@ struct WatchNowPlayingView: View {
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                    .contentTransition(.opacity)
                 Text(player.currentSong?.displayArtist ?? "—")
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.7))
                     .lineLimit(1)
+                    .contentTransition(.opacity)
             }
+            // Cross-fades title/artist into their new values on a track change, rather than the
+            // instant swap the Watch port previously had — matching the desktop/iOS Now Playing
+            // screens, which animate every state change here (see `NowPlayingView`'s
+            // `nowPlayingPanelSpring`-driven transitions).
+            .animation(.easeInOut(duration: 0.25), value: player.currentSong?.id)
 
-            if let routeError = player.routeError {
-                Text(routeError)
-                    .font(metrics.routeErrorFont)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
+            Group {
+                if let routeError = player.routeError {
+                    Text(routeError)
+                        .font(metrics.routeErrorFont)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                } else if player.isSpeakerFallback {
+                    // Non-blocking notice, not `routeError`: playback *is* proceeding, just over
+                    // the built-in speaker rather than a Bluetooth output — see
+                    // `WatchAudioRoutePolicy`.
+                    Label("Playing on speaker", systemImage: "speaker.wave.2")
+                        .font(metrics.routeErrorFont)
+                        .foregroundStyle(.white.opacity(0.6))
+                        .labelStyle(.titleAndIcon)
+                        .transition(.opacity)
+                }
             }
+            .animation(.easeInOut(duration: 0.25), value: player.routeError)
+            .animation(.easeInOut(duration: 0.25), value: player.isSpeakerFallback)
 
             if player.currentSong != nil {
                 // Display-only: no Crown/tap seeking — see the type-level doc comment for why.
@@ -262,6 +291,10 @@ struct WatchNowPlayingView: View {
                     ProgressView(value: progress.position, total: duration)
                         .progressViewStyle(.linear)
                         .tint(.blue)
+                        // Smooths the fill between the 0.5s position ticks (see
+                        // `WatchPlaybackProgress`) into continuous motion instead of visibly
+                        // stepping, mirroring the desktop/iOS progress bar's motion.
+                        .animation(.linear(duration: 0.5), value: progress.position)
                     if metrics.showsTimeRow {
                         HStack {
                             Text(formatTime(progress.position))
@@ -280,21 +313,25 @@ struct WatchNowPlayingView: View {
                         .font(metrics.transportGlyphFont)
                         .foregroundStyle(.white)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(WatchTransportButtonStyle())
 
                 Button { player.togglePlayPause() } label: {
+                    // `.symbolEffect(.replace)` morphs play↔pause glyph-to-glyph instead of an
+                    // instant swap — the Watch analogue of the desktop/iOS transport button, which
+                    // (unlike this view before) never just snapped between the two icons.
                     Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: metrics.playButtonPointSize))
                         .foregroundStyle(.white)
+                        .contentTransition(.symbolEffect(.replace))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(WatchTransportButtonStyle())
 
                 Button { player.next() } label: {
                     Image(systemName: "forward.fill")
                         .font(metrics.transportGlyphFont)
                         .foregroundStyle(.white)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(WatchTransportButtonStyle())
             }
 
             HStack(spacing: metrics.modeRowSpacing) {
@@ -316,6 +353,19 @@ struct WatchNowPlayingView: View {
     private func formatTime(_ seconds: Double) -> String {
         let total = Int(seconds)
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// Press feedback for the transport row (previous/play-pause/next) — see `WatchPressableRowStyle`
+/// (`WatchSongListView.swift`) for the same idea applied to list rows; kept as a separate style here
+/// since these are icon-only circular targets rather than full-width rows, and the transport row
+/// deliberately keeps its own tuning parallel to (but distinct from) `WatchShuffleIcon`/
+/// `WatchRepeatIcon`'s own dedicated slide animation.
+private struct WatchTransportButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 

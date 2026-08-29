@@ -95,8 +95,10 @@ export function renderArtistDetailView(artist) {
                 <p>${artistAlbums.length}枚のアルバム, ${artistSongs.length}曲</p>
             </div>
         </div>
-        <h2>アルバム</h2>
     `;
+    const scrollWrapper = document.createElement('div');
+    scrollWrapper.className = 'view-scroll';
+    scrollWrapper.innerHTML = '<h2>アルバム</h2>';
     const grid = document.createElement('div');
     grid.className = 'album-grid';
     if (artistAlbums.length === 0) {
@@ -108,7 +110,8 @@ export function renderArtistDetailView(artist) {
             grid.appendChild(albumItem);
         });
     }
-    viewWrapper.appendChild(grid);
+    scrollWrapper.appendChild(grid);
+    viewWrapper.appendChild(scrollWrapper);
     elements.mainContent.appendChild(viewWrapper);
 
     // スペーサーを更新
@@ -150,7 +153,8 @@ export function renderPlaylistDetailView(playlistDetails: Record<string, unknown
     listElement.className = 'music-list';
 
     const artworkContainer = viewWrapper.querySelector('.playlist-art-collage');
-    const resolver = (artwork) => resolveArtworkPath(artwork, true);
+    // 詳細ビューの大きなコラージュ画像なのでフル画像を使う。
+    const resolver = (artwork) => resolveArtworkPath(artwork, false);
     createPlaylistArtwork(artworkContainer, artworks, resolver);
 
     viewWrapper.appendChild(listElement);
