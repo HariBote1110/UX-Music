@@ -49,6 +49,14 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     /// output was available for `.longFormAudio` (see `WatchAudioRoutePolicy.Outcome.speakerFallback`).
     /// `WatchNowPlayingView` surfaces this as a small non-blocking caption rather than `routeError`.
     @Published var isSpeakerFallback = false
+    /// DEBUG-only on-screen diagnostic surfaced by `WatchNowPlayingView` — a short human-readable
+    /// summary of the last `applyRouteOutcome` call (outcome + first output port name), e.g.
+    /// "longForm / AirPods Pro" or "fallback / Speaker". Added because real-device background
+    /// audio failures cannot be observed via the console (no cable while off the wrist), so the
+    /// last-known route needs to be visible on the watch face itself.
+    #if DEBUG
+    @Published var sessionDiagnostic: String?
+    #endif
 
     /// Playback position, split into `progress` (see above) to avoid the Library page re-rendering
     /// on every tick. Kept as a computed passthrough so the rest of this type (seek clamping,
@@ -74,6 +82,11 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     private var currentIndex = 0
     private var timeObserver: Any?
     private let library: WatchLocalLibrary
+    /// The policy last successfully activated, or `nil` if activation has never succeeded (or has
+    /// since failed). Feeds `WatchAudioActivationPolicy.plan` so `activateAudioSession` can skip
+    /// redundant `setCategory`/`activate` calls on an already-active `.longFormAudio` session —
+    /// see that type's doc comment for why (the `SessionCore.mm:631` main-thread warning).
+    private var activatedPolicy: WatchAudioActivationPolicy.ActivatedPolicy?
 
     init(library: WatchLocalLibrary) {
         self.library = library
@@ -248,9 +261,18 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     /// this method applies to `routeError`/`isSpeakerFallback`; `completion` is invoked back on the
     /// main actor with whether *either* attempt succeeded (i.e. playback may proceed).
     private func activateAudioSession(completion: @escaping (Bool) -> Void) {
+        let plan = WatchAudioActivationPolicy.plan(previouslyActivated: activatedPolicy)
+        print("[WatchAudioPlayer] activateAudioSession: previouslyActivated=\(String(describing: activatedPolicy)) plan=\(plan)")
+        guard plan == .attemptLongForm else {
+            // Already active under `.longFormAudio` — re-issuing setCategory/activate here is what
+            // produced the `SessionCore.mm:631` main-thread warning on-device.
+            completion(true)
+            return
+        }
         activate(category: .playback, mode: .default, policy: .longFormAudio) { [weak self] longFormActivated in
             guard let self else { return }
             if longFormActivated {
+                self.activatedPolicy = .longForm
                 self.applyRouteOutcome(.longForm)
                 completion(true)
                 return
@@ -261,6 +283,7 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
                     longFormActivated: false,
                     speakerActivated: speakerActivated
                 )
+                self.activatedPolicy = speakerActivated ? .fallback : nil
                 self.applyRouteOutcome(outcome)
                 completion(outcome != .unavailable)
             }
@@ -277,6 +300,8 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         policy: AVAudioSession.RouteSharingPolicy?,
         completion: @escaping (Bool) -> Void
     ) {
+        let policyDescription = policy.map(String.init(describing:)) ?? "default (no route-sharing policy)"
+        print("[WatchAudioPlayer] activate: attempting category=\(category.rawValue) mode=\(mode.rawValue) policy=\(policyDescription)")
         let session = AVAudioSession.sharedInstance()
         do {
             if let policy {
@@ -285,15 +310,13 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
                 try session.setCategory(category, mode: mode)
             }
         } catch {
-            print("[WatchAudioPlayer] AVAudioSession setCategory error: \(error)")
+            print("[WatchAudioPlayer] AVAudioSession setCategory error for policy=\(policyDescription): \(error)")
             completion(false)
             return
         }
         session.activate(options: []) { activated, error in
             Task { @MainActor in
-                if let error {
-                    print("[WatchAudioPlayer] AVAudioSession activation error: \(error)")
-                }
+                print("[WatchAudioPlayer] activate result: policy=\(policyDescription) activated=\(activated) error=\(error.map(String.init(describing:)) ?? "no error")")
                 completion(activated)
             }
         }
@@ -303,6 +326,12 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     /// both `@Published` properties are updated together, so they can never disagree (e.g.
     /// `routeError` set while `isSpeakerFallback` is also `true`).
     private func applyRouteOutcome(_ outcome: WatchAudioRoutePolicy.Outcome) {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        let routeDescription = outputs.isEmpty
+            ? "no outputs"
+            : outputs.map { "\($0.portType.rawValue)/\($0.portName)" }.joined(separator: ", ")
+        print("[WatchAudioPlayer] applyRouteOutcome: outcome=\(outcome) route=[\(routeDescription)]")
+
         switch outcome {
         case .longForm:
             routeError = nil
@@ -314,6 +343,11 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             routeError = String(localized: "Could not start playback on Apple Watch.")
             isSpeakerFallback = false
         }
+
+        #if DEBUG
+        let firstPortName = outputs.first?.portName ?? "no output"
+        sessionDiagnostic = "\(outcome) / \(firstPortName)"
+        #endif
     }
 
     private func clearPlayer() {

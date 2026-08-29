@@ -351,6 +351,17 @@ struct WatchNowPlayingView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            #if DEBUG
+            // Real-device background-audio failures cannot be observed via the console (no cable
+            // while off the wrist) — surface the last activation outcome directly on the watch
+            // face. DEBUG-only: never shown in release builds.
+            if let sessionDiagnostic = player.sessionDiagnostic {
+                Text(sessionDiagnostic)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.gray)
+            }
+            #endif
         }
         .padding(.horizontal, metrics.horizontalPadding)
         .padding(.vertical, metrics.verticalPadding)
