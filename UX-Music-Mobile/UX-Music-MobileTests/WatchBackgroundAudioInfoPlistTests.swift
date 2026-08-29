@@ -34,6 +34,13 @@ final class WatchBackgroundAudioInfoPlistTests: XCTestCase {
         )
         let modes = try XCTUnwrap(plist["WKBackgroundModes"] as? [String], "WKBackgroundModes key missing")
         XCTAssertTrue(modes.contains("audio"), "WKBackgroundModes must include \"audio\"")
+
+        // Per Apple's watchOS Keys documentation, `UIBackgroundModes` (not `WKBackgroundModes`) is
+        // what actually lets a watch app keep running to play audio after the user stops
+        // interacting with it. Without it, playback stops when the app leaves the foreground even
+        // though `WKBackgroundModes` and a `.longFormAudio` session activation both look fine.
+        let uiModes = try XCTUnwrap(plist["UIBackgroundModes"] as? [String], "UIBackgroundModes key missing")
+        XCTAssertTrue(uiModes.contains("audio"), "UIBackgroundModes must include \"audio\"")
     }
 
     func testWatchBuildConfigsReferenceInfoPlistFile() throws {
