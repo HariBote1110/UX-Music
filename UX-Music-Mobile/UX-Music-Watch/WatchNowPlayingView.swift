@@ -288,13 +288,7 @@ struct WatchNowPlayingView: View {
             if player.currentSong != nil {
                 // Display-only: no Crown/tap seeking — see the type-level doc comment for why.
                 VStack(spacing: metrics.progressBlockSpacing) {
-                    ProgressView(value: progress.position, total: duration)
-                        .progressViewStyle(.linear)
-                        .tint(.blue)
-                        // Smooths the fill between the 0.5s position ticks (see
-                        // `WatchPlaybackProgress`) into continuous motion instead of visibly
-                        // stepping, mirroring the desktop/iOS progress bar's motion.
-                        .animation(.linear(duration: 0.5), value: progress.position)
+                    slimProgressBar(height: metrics.progressBarHeight)
                     if metrics.showsTimeRow {
                         HStack {
                             Text(formatTime(progress.position))
@@ -312,6 +306,11 @@ struct WatchNowPlayingView: View {
                     Image(systemName: "backward.fill")
                         .font(metrics.transportGlyphFont)
                         .foregroundStyle(.white)
+                        // Explicit tap frame (≥44×44, watchOS's usual minimum tap-target size) so the
+                        // tappable area is not just the glyph's own bounding box — user complaint:
+                        // "操作ボタンがあまりにも小さい" / "the transport buttons are far too small".
+                        .frame(width: metrics.transportTapFrameSize, height: metrics.transportTapFrameSize)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(WatchTransportButtonStyle())
 
@@ -323,6 +322,11 @@ struct WatchNowPlayingView: View {
                         .font(.system(size: metrics.playButtonPointSize))
                         .foregroundStyle(.white)
                         .contentTransition(.symbolEffect(.replace))
+                        .frame(
+                            width: max(metrics.playButtonPointSize, metrics.transportTapFrameSize),
+                            height: max(metrics.playButtonPointSize, metrics.transportTapFrameSize)
+                        )
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(WatchTransportButtonStyle())
 
@@ -330,6 +334,8 @@ struct WatchNowPlayingView: View {
                     Image(systemName: "forward.fill")
                         .font(metrics.transportGlyphFont)
                         .foregroundStyle(.white)
+                        .frame(width: metrics.transportTapFrameSize, height: metrics.transportTapFrameSize)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(WatchTransportButtonStyle())
             }
@@ -348,6 +354,33 @@ struct WatchNowPlayingView: View {
         }
         .padding(.horizontal, metrics.horizontalPadding)
         .padding(.vertical, metrics.verticalPadding)
+    }
+
+    /// Slim, display-only replacement for `ProgressView(...).progressViewStyle(.linear)` — the stock
+    /// style renders far taller than this page needs (user complaint: "シークバーが余計にでかい" /
+    /// "the seek bar is unnecessarily huge"). A translucent `Capsule` track with a filled `Capsule`
+    /// overlay, sized via `GeometryReader` to the full available width, gives the same visual as
+    /// before at a fraction of the height — `height` comes from `NowPlayingMetrics.progressBarHeight`
+    /// so it stays part of the same roomy/compact/reduced ladder as everything else on this page.
+    /// Kept purely visual (no gestures) exactly like the `ProgressView` it replaces — see the
+    /// type-level doc comment for why seeking here was deliberately dropped.
+    @ViewBuilder
+    private func slimProgressBar(height: CGFloat) -> some View {
+        GeometryReader { proxy in
+            let fraction = duration > 0 ? min(max(progress.position / duration, 0), 1) : 0
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(0.25))
+                Capsule()
+                    .fill(Color.blue)
+                    .frame(width: proxy.size.width * fraction)
+            }
+            // Smooths the fill between the 0.5s position ticks (see `WatchPlaybackProgress`) into
+            // continuous motion instead of visibly stepping, mirroring the desktop/iOS progress bar's
+            // motion — kept identical to the `ProgressView` this replaced.
+            .animation(.linear(duration: 0.5), value: progress.position)
+        }
+        .frame(height: height)
     }
 
     private func formatTime(_ seconds: Double) -> String {
@@ -386,7 +419,12 @@ private struct NowPlayingMetrics {
     var routeErrorFont: Font
     var transportSpacing: CGFloat
     var transportGlyphFont: Font
+    /// Explicit tap frame for the prev/next buttons (see the transport `HStack` in
+    /// `nowPlayingStack(_:)`), kept at or above watchOS's usual 44pt minimum tap target so the
+    /// tappable area is never just the glyph's own (much smaller) bounding box.
+    var transportTapFrameSize: CGFloat
     var playButtonPointSize: CGFloat
+    var progressBarHeight: CGFloat
     var modeRowSpacing: CGFloat
     var modeIconSize: CGFloat
     var modeTapFrameSize: CGFloat
@@ -394,11 +432,15 @@ private struct NowPlayingMetrics {
     var verticalPadding: CGFloat
 
     /// Everything, comfortably spaced — the candidate `ViewThatFits` prefers whenever there is room
-    /// to spare (larger watches, default Dynamic Type).
+    /// to spare (larger watches, default Dynamic Type). Transport sizes enlarged from the original
+    /// 40pt play / `.title2` glyphs (user complaint: "操作ボタンがあまりにも小さい" / "the transport
+    /// buttons are far too small"); the seek bar's own height dropped independently (user complaint:
+    /// "シークバーが余計にでかい" / "the seek bar is unnecessarily huge").
     static let roomy = NowPlayingMetrics(
         stackSpacing: 10, titleArtistSpacing: 4, progressBlockSpacing: 4, showsTimeRow: true,
         timeFont: .system(size: 11), routeErrorFont: .caption2, transportSpacing: 22,
-        transportGlyphFont: .title2, playButtonPointSize: 40, modeRowSpacing: 26, modeIconSize: 22,
+        transportGlyphFont: .title, transportTapFrameSize: 48, playButtonPointSize: 48,
+        progressBarHeight: 4, modeRowSpacing: 26, modeIconSize: 22,
         modeTapFrameSize: 36, horizontalPadding: 16, verticalPadding: 8
     )
 
@@ -408,7 +450,8 @@ private struct NowPlayingMetrics {
     static let compact = NowPlayingMetrics(
         stackSpacing: 5, titleArtistSpacing: 2, progressBlockSpacing: 2, showsTimeRow: true,
         timeFont: .system(size: 9), routeErrorFont: .system(size: 10), transportSpacing: 16,
-        transportGlyphFont: .title3, playButtonPointSize: 34, modeRowSpacing: 20, modeIconSize: 20,
+        transportGlyphFont: .title2, transportTapFrameSize: 44, playButtonPointSize: 42,
+        progressBarHeight: 3, modeRowSpacing: 20, modeIconSize: 20,
         modeTapFrameSize: 36, horizontalPadding: 12, verticalPadding: 4
     )
 
@@ -417,7 +460,8 @@ private struct NowPlayingMetrics {
     static let reduced = NowPlayingMetrics(
         stackSpacing: 3, titleArtistSpacing: 1, progressBlockSpacing: 0, showsTimeRow: false,
         timeFont: .system(size: 9), routeErrorFont: .system(size: 9), transportSpacing: 10,
-        transportGlyphFont: .system(size: 16), playButtonPointSize: 28, modeRowSpacing: 12,
+        transportGlyphFont: .title3, transportTapFrameSize: 44, playButtonPointSize: 34,
+        progressBarHeight: 3, modeRowSpacing: 12,
         modeIconSize: 16, modeTapFrameSize: 28, horizontalPadding: 8, verticalPadding: 0
     )
 }
