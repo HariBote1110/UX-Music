@@ -1612,10 +1612,10 @@
 				DEVELOPMENT_TEAM = HMMQ7Z6976;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "UX-Music-Watch/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.uxlabs.uxMusicMobile";
-				INFOPLIST_KEY_WKBackgroundModes = audio;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1641,10 +1641,10 @@
 				DEVELOPMENT_TEAM = HMMQ7Z6976;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "UX-Music-Watch/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.uxlabs.uxMusicMobile";
-				INFOPLIST_KEY_WKBackgroundModes = audio;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
