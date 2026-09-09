@@ -27,6 +27,10 @@ export interface EmbedPlayerCallbacks {
 }
 
 const ARTWORK_CONTAINER_ID = 'now-playing-artwork-container';
+const SIDEBAR_WRAPPER_Z_INDEX = '1';
+const FULLSCREEN_WRAPPER_Z_INDEX = '9001';
+const FULLSCREEN_CLOSE_BUTTON_Z_INDEX = '9002';
+const POSITION_SETTLE_FRAME_COUNT = 24;
 
 interface EmbedSession {
     videoId: string;
@@ -43,14 +47,30 @@ interface EmbedSession {
 let currentSession: EmbedSession | null = null;
 let mountToken = 0;
 let messageListenerAttached = false;
+let positionObserver: ResizeObserver | null = null;
+let layoutObserver: MutationObserver | null = null;
+let settleFrameId: number | null = null;
+let settleFramesRemaining = 0;
+
+interface DetachedFullscreenCloseButton {
+    button: HTMLElement;
+    parent: Node;
+    nextSibling: ChildNode | null;
+    position: string;
+    zIndex: string;
+}
+
+let detachedFullscreenCloseButton: DetachedFullscreenCloseButton | null = null;
 
 function syncWrapperPosition(session: EmbedSession): void {
     const rect = session.container.getBoundingClientRect();
+    const isHidden = session.container.hidden
+        || getComputedStyle(session.container).display === 'none';
     session.wrapper.style.left = `${rect.left}px`;
     session.wrapper.style.top = `${rect.top}px`;
     session.wrapper.style.width = `${rect.width}px`;
     session.wrapper.style.height = `${rect.height}px`;
-    session.wrapper.style.display = rect.width > 0 && rect.height > 0 ? 'block' : 'none';
+    session.wrapper.style.display = !isHidden && rect.width > 0 && rect.height > 0 ? 'block' : 'none';
 }
 
 function handlePositionChange(): void {
@@ -65,6 +85,99 @@ function attachPositionListeners(): void {
 function detachPositionListeners(): void {
     window.removeEventListener('resize', handlePositionChange);
     window.removeEventListener('scroll', handlePositionChange, true);
+}
+
+function disconnectPositionObserver(): void {
+    positionObserver?.disconnect();
+    positionObserver = null;
+}
+
+function observeContainer(container: HTMLElement): void {
+    disconnectPositionObserver();
+    if (typeof ResizeObserver === 'undefined') return;
+    positionObserver = new ResizeObserver(handlePositionChange);
+    positionObserver.observe(container);
+}
+
+function observeLayoutChanges(): void {
+    layoutObserver?.disconnect();
+    if (typeof MutationObserver === 'undefined') return;
+
+    // class/hidden の切替や view の再描画は、対象のサイズが変わらなくても
+    // 位置を変え得る。wrapper の style 属性は監視せず、自己更新の連鎖を防ぐ。
+    layoutObserver = new MutationObserver(handlePositionChange);
+    layoutObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'hidden'],
+        childList: true,
+        subtree: true,
+    });
+}
+
+function disconnectLayoutObserver(): void {
+    layoutObserver?.disconnect();
+    layoutObserver = null;
+}
+
+function stopPositionSettle(): void {
+    if (settleFrameId !== null) {
+        window.cancelAnimationFrame(settleFrameId);
+        settleFrameId = null;
+    }
+    settleFramesRemaining = 0;
+}
+
+function runPositionSettle(): void {
+    settleFrameId = null;
+    if (!currentSession || settleFramesRemaining <= 0) return;
+
+    syncWrapperPosition(currentSession);
+    settleFramesRemaining -= 1;
+    if (settleFramesRemaining > 0) {
+        settleFrameId = window.requestAnimationFrame(runPositionSettle);
+    }
+}
+
+function startPositionSettle(): void {
+    settleFramesRemaining = POSITION_SETTLE_FRAME_COUNT;
+    if (settleFrameId === null && typeof window.requestAnimationFrame === 'function') {
+        settleFrameId = window.requestAnimationFrame(runPositionSettle);
+    }
+}
+
+function promoteFullscreenCloseButton(): void {
+    if (detachedFullscreenCloseButton) return;
+    const button = document.getElementById('fs-close-btn');
+    if (!button || button.parentElement === document.body) return;
+
+    detachedFullscreenCloseButton = {
+        button,
+        parent: button.parentNode,
+        nextSibling: button.nextSibling,
+        position: button.style.position,
+        zIndex: button.style.zIndex,
+    };
+    document.body.appendChild(button);
+    button.style.position = 'fixed';
+    button.style.zIndex = FULLSCREEN_CLOSE_BUTTON_Z_INDEX;
+}
+
+function isFullscreenContainer(container: HTMLElement): boolean {
+    return container.id === 'fs-video-slot';
+}
+
+function restoreFullscreenCloseButton(): void {
+    const detached = detachedFullscreenCloseButton;
+    if (!detached) return;
+
+    detached.button.style.position = detached.position;
+    detached.button.style.zIndex = detached.zIndex;
+    if (detached.nextSibling?.parentNode === detached.parent) {
+        detached.parent.insertBefore(detached.button, detached.nextSibling);
+    } else {
+        detached.parent.appendChild(detached.button);
+    }
+    detachedFullscreenCloseButton = null;
 }
 
 /**
@@ -168,7 +281,7 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
     // 別の親へ appendChild するとページを再読込するため、表示先の矩形だけ
     // を fixed 要素へ反映してフルスクリーンとの切替を行う。
     wrapper.style.position = 'fixed';
-    wrapper.style.zIndex = '8';
+    wrapper.style.zIndex = SIDEBAR_WRAPPER_Z_INDEX;
     wrapper.style.overflow = 'hidden';
     wrapper.style.pointerEvents = 'auto';
     const iframe = document.createElement('iframe');
@@ -193,6 +306,8 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
         state: -1,
     };
     attachPositionListeners();
+    observeContainer(host);
+    observeLayoutChanges();
     syncWrapperPosition(currentSession);
     return true;
 }
@@ -200,11 +315,15 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
 /** 埋め込みプレイヤーを破棄し、アートワーク領域を空に戻す。 */
 export function destroyEmbedPlayer(): void {
     mountToken += 1;
+    stopPositionSettle();
+    disconnectPositionObserver();
+    disconnectLayoutObserver();
+    detachPositionListeners();
+    restoreFullscreenCloseButton();
     if (currentSession) {
         currentSession.container.classList.remove('video-mode');
         currentSession.wrapper.remove();
         currentSession = null;
-        detachPositionListeners();
     }
     const host = document.getElementById(ARTWORK_CONTAINER_ID);
     host?.classList.remove('video-mode');
@@ -253,13 +372,26 @@ export function resetEmbedArtworkContainer(container: HTMLElement): void {
  */
 export function reattachEmbedPlayer(container: HTMLElement): boolean {
     if (!currentSession) return false;
-    if (currentSession.container !== container) {
+    const previousContainer = currentSession.container;
+    const containerChanged = previousContainer !== container;
+    const wasFullscreen = isFullscreenContainer(previousContainer);
+    const isFullscreen = isFullscreenContainer(container);
+    if (containerChanged) {
         currentSession.container.classList.remove('video-mode');
         currentSession.container = container;
+        observeContainer(container);
     }
     container.classList.add('video-mode');
-    currentSession.wrapper.style.zIndex = container.id === 'fs-video-slot' ? '9001' : '8';
+    currentSession.wrapper.style.zIndex = isFullscreen
+        ? FULLSCREEN_WRAPPER_Z_INDEX
+        : SIDEBAR_WRAPPER_Z_INDEX;
+    if (isFullscreen) {
+        promoteFullscreenCloseButton();
+    } else {
+        restoreFullscreenCloseButton();
+    }
     syncWrapperPosition(currentSession);
+    if (containerChanged || isFullscreen !== wasFullscreen) startPositionSettle();
     return true;
 }
 

@@ -690,6 +690,7 @@
    Now Playing / フルスクリーンの子要素セレクタに依存しない。 */
 #youtube-embed-wrapper {
     position: fixed;
+    z-index: 1;
     overflow: hidden;
 }
 

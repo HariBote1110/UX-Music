@@ -4,7 +4,50 @@ const app = {
     GetYouTubeEmbedURL: async () => 'http://127.0.0.1:1234/embed?v=dQw4w9WgXcQ',
 };
 
+const nativeResizeObserver = globalThis.ResizeObserver;
+const nativeMutationObserver = globalThis.MutationObserver;
+let resizeObservers: MockResizeObserver[] = [];
+let mutationObservers: MockMutationObserver[] = [];
+
+class MockResizeObserver {
+    readonly callback: ResizeObserverCallback;
+    readonly observe = vi.fn();
+    readonly disconnect = vi.fn();
+
+    constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+        resizeObservers.push(this);
+    }
+
+    trigger(): void {
+        this.callback([], this as unknown as ResizeObserver);
+    }
+}
+
+class MockMutationObserver {
+    readonly callback: MutationCallback;
+    readonly observe = vi.fn();
+    readonly disconnect = vi.fn();
+
+    constructor(callback: MutationCallback) {
+        this.callback = callback;
+        mutationObservers.push(this);
+    }
+}
+
 beforeEach(() => {
+    resizeObservers = [];
+    mutationObservers = [];
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+        configurable: true,
+        writable: true,
+        value: MockResizeObserver,
+    });
+    Object.defineProperty(globalThis, 'MutationObserver', {
+        configurable: true,
+        writable: true,
+        value: MockMutationObserver,
+    });
     (window as unknown as { electronAPI: unknown }).electronAPI = {
         CHANNELS: { SEND: {}, ON: {}, INVOKE: {} },
         send: () => {},
@@ -22,6 +65,16 @@ afterEach(async () => {
     player.destroyEmbedPlayer();
     document.body.innerHTML = '';
     delete (window as unknown as { go?: unknown }).go;
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+        configurable: true,
+        writable: true,
+        value: nativeResizeObserver,
+    });
+    Object.defineProperty(globalThis, 'MutationObserver', {
+        configurable: true,
+        writable: true,
+        value: nativeMutationObserver,
+    });
 });
 
 describe('YouTube embed player lifecycle', () => {
@@ -119,5 +172,53 @@ describe('YouTube embed player lifecycle', () => {
         expect(fullscreen.classList.contains('video-mode')).toBe(true);
         expect(sidebar.classList.contains('video-mode')).toBe(false);
         expect(document.querySelector('iframe')).toBe(iframe);
+    });
+
+    it('ResizeObserver が通知したコンテナの矩形変更に wrapper が追従する', async () => {
+        const player = await import('./youtube-embed-player.js');
+        const container = document.getElementById('now-playing-artwork-container')!;
+        let rect = { left: 10, top: 20, width: 300, height: 168 };
+        vi.spyOn(container, 'getBoundingClientRect').mockImplementation(() => rect as DOMRect);
+
+        await player.mountEmbedPlayer('dQw4w9WgXcQ', { onPlaying: () => {}, onEnded: () => {} });
+        const wrapper = document.getElementById('youtube-embed-wrapper')!;
+        expect(resizeObservers).toHaveLength(1);
+        expect(resizeObservers[0].observe).toHaveBeenCalledWith(container);
+        expect(wrapper.style.left).toBe('10px');
+        expect(wrapper.style.width).toBe('300px');
+
+        rect = { left: 42, top: 64, width: 512, height: 288 };
+        resizeObservers[0].trigger();
+
+        expect(wrapper.style.left).toBe('42px');
+        expect(wrapper.style.top).toBe('64px');
+        expect(wrapper.style.width).toBe('512px');
+        expect(wrapper.style.height).toBe('288px');
+    });
+
+    it('destroyEmbedPlayer で ResizeObserver が切断される', async () => {
+        const player = await import('./youtube-embed-player.js');
+        const container = document.getElementById('now-playing-artwork-container')!;
+        vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({
+            left: 0, top: 0, width: 300, height: 168,
+        } as DOMRect);
+
+        await player.mountEmbedPlayer('dQw4w9WgXcQ', { onPlaying: () => {}, onEnded: () => {} });
+        player.destroyEmbedPlayer();
+
+        expect(resizeObservers[0].disconnect).toHaveBeenCalledOnce();
+        expect(mutationObservers[0].disconnect).toHaveBeenCalledOnce();
+    });
+
+    it('コンテナがゼロサイズなら wrapper を非表示にする', async () => {
+        const player = await import('./youtube-embed-player.js');
+        const container = document.getElementById('now-playing-artwork-container')!;
+        vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({
+            left: 42, top: 64, width: 0, height: 0,
+        } as DOMRect);
+
+        await player.mountEmbedPlayer('dQw4w9WgXcQ', { onPlaying: () => {}, onEnded: () => {} });
+
+        expect(document.getElementById('youtube-embed-wrapper')?.style.display).toBe('none');
     });
 });
