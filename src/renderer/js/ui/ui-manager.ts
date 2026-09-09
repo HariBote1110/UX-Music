@@ -276,12 +276,36 @@ function updateMtpDeviceView(payload) {
     }
 }
 
-export function addSongsToLibrary({ songs, albums, skipRender = false }: { songs: Song[]; albums: Record<string, unknown>; skipRender?: boolean }) {
+interface AddSongsToLibraryOptions {
+    songs: Song[];
+    albums: Record<string, unknown>;
+    skipRender?: boolean;
+    isFullLibraryLoad?: boolean;
+}
+
+function isRemoteArtworkUrl(artwork: Song['artwork']) {
+    return typeof artwork === 'string' && /^(?:https?:\/\/|data:)/i.test(artwork);
+}
+
+function isLegacyArtwork(artwork: Song['artwork']) {
+    return typeof artwork === 'string' && !isRemoteArtworkUrl(artwork);
+}
+
+function hasLegacyArtwork(songs: Song[]) {
+    return songs.some(song => isLegacyArtwork(song.artwork));
+}
+
+export function addSongsToLibrary({
+    songs,
+    albums,
+    skipRender = false,
+    isFullLibraryLoad = false,
+}: AddSongsToLibraryOptions) {
     console.time('Renderer: Process Library Data');
     let migrationNeeded = false;
     let fullRegroupNeeded = false;
 
-    if (albums && Object.keys(albums).length === 0 && songs && songs.length > 0 && songs[0].artwork && typeof songs[0].artwork !== 'object') {
+    if (isFullLibraryLoad && albums && Object.keys(albums).length === 0 && hasLegacyArtwork(songs)) {
         migrationNeeded = true;
         state.albums.clear();
     }
@@ -293,10 +317,6 @@ export function addSongsToLibrary({ songs, albums, skipRender = false }: { songs
     if (migrationNeeded || fullRegroupNeeded) {
         groupLibraryByAlbum(migrationNeeded);
         groupLibraryByArtist();
-    }
-    if (migrationNeeded || (albums && Object.keys(albums).length > 0)) {
-        const albumsToSave = Object.fromEntries(state.albums.entries());
-        electronAPI.send('save-migrated-data', { songs: state.library, albums: albumsToSave });
     }
     if (!skipRender) renderCurrentView();
     console.timeEnd('Renderer: Process Library Data');

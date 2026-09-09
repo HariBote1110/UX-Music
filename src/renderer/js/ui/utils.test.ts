@@ -24,4 +24,10 @@ describe('resolveArtworkPath for playlist collage tiles', () => {
         const artwork = { full: 'a.webp', thumbnail: 'a_thumb.webp' };
         expect(resolveArtworkPath(artwork, false)).toBe('/safe-artwork/a.webp');
     });
+
+    it('keeps a remote artwork URL unchanged for both full and thumbnail requests', () => {
+        const artwork = 'https://i.ytimg.com/vi/example/hqdefault.jpg';
+        expect(resolveArtworkPath(artwork, false)).toBe(artwork);
+        expect(resolveArtworkPath(artwork, true)).toBe(artwork);
+    });
 });

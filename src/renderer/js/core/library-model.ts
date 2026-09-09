@@ -270,7 +270,9 @@ export function groupLibraryByAlbum(isMigration = false) {
 
     if (isMigration) {
         state.library.forEach(song => {
-            delete song.artwork;
+            if (!song.sourceURL) {
+                delete song.artwork;
+            }
         });
     }
 }
