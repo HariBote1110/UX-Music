@@ -17,6 +17,25 @@ export interface EmbedContainerContext {
     embedActive: boolean;
 }
 
+/** Now Playing の 1:1 / 16:9 を current track と embed 状態から決める。 */
+export function resolveArtworkAspectMode(
+    song: unknown,
+    embedActive: boolean,
+): boolean {
+    if (!song || typeof song !== 'object') return false;
+    const track = song as { type?: unknown; hasVideo?: unknown };
+    return Boolean((track.type === 'youtube' && embedActive) || track.hasVideo);
+}
+
+/** 実際の current track に基づいて Now Playing の aspect class を同期する。 */
+export function syncArtworkAspect(
+    container: HTMLElement,
+    song: unknown,
+    embedActive: boolean,
+): void {
+    container.classList.toggle('video-mode', resolveArtworkAspectMode(song, embedActive));
+}
+
 /**
  * 公式再生（embed）プレイヤー iframe を「どのコンテナへ置くべきか」を
  * 決める。embed が非稼働なら移動対象なし（null）。稼働中はフルスクリーンが

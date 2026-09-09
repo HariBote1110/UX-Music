@@ -13,6 +13,7 @@ import {
     playQueueEmbedItem,
     setGoQueueActive
 } from './player.js';
+import { syncEmbedPlayerForTrack } from './youtube-embed-player.js';
 import { updatePlayingIndicators, renderQueueView } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
@@ -670,6 +671,7 @@ export function handleQueueStateChangedEvent(payload: QueueStatePayload | null |
     const doLoadLyricsForSong = deps.loadLyricsForSong ?? loadLyricsForSong;
     const doPrefetchUpcomingRemoteTracks = deps.prefetchUpcomingRemoteTracks ?? prefetchUpcomingRemoteTracks;
     const doUpdateShuffleLoopButtons = deps.updateShuffleLoopButtons ?? updateShuffleLoopButtonsUI;
+    const doSyncEmbedPlayerForTrack = deps.syncEmbedPlayerForTrack ?? syncEmbedPlayerForTrack;
 
     const mapped = mapQueueSnapshotToQueueState(payload, findSong);
 
@@ -685,6 +687,7 @@ export function handleQueueStateChangedEvent(payload: QueueStatePayload | null |
     doRenderQueueView();
 
     const currentSong = mapped.currentSongIndex >= 0 ? mapped.playbackQueue[mapped.currentSongIndex] : null;
+    doSyncEmbedPlayerForTrack(currentSong);
     doUpdateNowPlayingView(currentSong);
     doLoadLyricsForSong(currentSong);
     doPrefetchUpcomingRemoteTracks(mapped.currentSongIndex);

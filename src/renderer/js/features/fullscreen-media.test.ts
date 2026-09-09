@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
-import { resolveEmbedContainerId, resolveFullscreenMediaMode } from './fullscreen-media.js';
+import {
+    resolveArtworkAspectMode,
+    resolveEmbedContainerId,
+    resolveFullscreenMediaMode,
+    syncArtworkAspect,
+} from './fullscreen-media.js';
 
 // このファイルの位置を起点に実マークアップを読む。
 // new URL('...', import.meta.url) をリテラルのまま書くと Vite が
@@ -39,6 +44,22 @@ describe('resolveFullscreenMediaMode', () => {
     });
     it('embed 非稼働時は静止画ジャケットモード', () => {
         expect(resolveFullscreenMediaMode(false)).toBe('artwork');
+    });
+});
+
+describe('resolveArtworkAspectMode', () => {
+    it('local audio-only track は video-mode を付けない', () => {
+        expect(resolveArtworkAspectMode({ type: 'local', hasVideo: false }, false)).toBe(false);
+
+        const container = document.createElement('div');
+        container.classList.add('video-mode');
+        syncArtworkAspect(container, { type: 'local', hasVideo: false }, false);
+        expect(container.classList.contains('video-mode')).toBe(false);
+    });
+
+    it('稼働中の YouTube embed だけは video-mode を付ける', () => {
+        expect(resolveArtworkAspectMode({ type: 'youtube', hasVideo: false }, true)).toBe(true);
+        expect(resolveArtworkAspectMode({ type: 'youtube', hasVideo: false }, false)).toBe(false);
     });
 });
 

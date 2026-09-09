@@ -19,6 +19,7 @@ import {
     EMBED_PLAYER_STATE,
     type EmbedCommand,
 } from './youtube-embed-bridge.js';
+import { extractYouTubeVideoId } from './youtube-embed-route.js';
 
 export interface EmbedPlayerCallbacks {
     onPlaying: () => void;
@@ -28,8 +29,10 @@ export interface EmbedPlayerCallbacks {
 const ARTWORK_CONTAINER_ID = 'now-playing-artwork-container';
 
 interface EmbedSession {
+    videoId: string;
     iframe: HTMLIFrameElement;
     wrapper: HTMLElement;
+    container: HTMLElement;
     callbacks: EmbedPlayerCallbacks;
     /** ホストページからの time メッセージで更新されるキャッシュ。 */
     currentTime: number;
@@ -40,6 +43,29 @@ interface EmbedSession {
 let currentSession: EmbedSession | null = null;
 let mountToken = 0;
 let messageListenerAttached = false;
+
+function syncWrapperPosition(session: EmbedSession): void {
+    const rect = session.container.getBoundingClientRect();
+    session.wrapper.style.left = `${rect.left}px`;
+    session.wrapper.style.top = `${rect.top}px`;
+    session.wrapper.style.width = `${rect.width}px`;
+    session.wrapper.style.height = `${rect.height}px`;
+    session.wrapper.style.display = rect.width > 0 && rect.height > 0 ? 'block' : 'none';
+}
+
+function handlePositionChange(): void {
+    if (currentSession) syncWrapperPosition(currentSession);
+}
+
+function attachPositionListeners(): void {
+    window.addEventListener('resize', handlePositionChange);
+    window.addEventListener('scroll', handlePositionChange, true);
+}
+
+function detachPositionListeners(): void {
+    window.removeEventListener('resize', handlePositionChange);
+    window.removeEventListener('scroll', handlePositionChange, true);
+}
 
 /**
  * 埋め込みプレイヤーのイベントを console と Go 側の構造化ログ
@@ -138,11 +164,13 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
     host.classList.add('video-mode');
     const wrapper = document.createElement('div');
     wrapper.id = 'youtube-embed-wrapper';
-    // コンテナ（aspect-ratio でサイズが決まる）に常に追従させる。
-    // wrapper の高さが auto のままだと、内側 iframe の height:100% が
-    // 解決できず、サイドバーのリサイズに高さが追従しない。
-    wrapper.style.width = '100%';
-    wrapper.style.height = '100%';
+    // iframe は DOM 上の親を一度だけ body に固定する。WebKit は iframe を
+    // 別の親へ appendChild するとページを再読込するため、表示先の矩形だけ
+    // を fixed 要素へ反映してフルスクリーンとの切替を行う。
+    wrapper.style.position = 'fixed';
+    wrapper.style.zIndex = '8';
+    wrapper.style.overflow = 'hidden';
+    wrapper.style.pointerEvents = 'auto';
     const iframe = document.createElement('iframe');
     iframe.src = embedUrl;
     iframe.allow = 'autoplay; encrypted-media; fullscreen';
@@ -151,17 +179,21 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
     iframe.style.border = '0';
     iframe.style.display = 'block'; // inline 既定だと baseline 分の隙間が出る
     wrapper.appendChild(iframe);
-    host.appendChild(wrapper);
+    document.body.appendChild(wrapper);
 
     ensureMessageListener();
     currentSession = {
+        videoId,
         iframe,
         wrapper,
+        container: host,
         callbacks,
         currentTime: 0,
         duration: 0,
         state: -1,
     };
+    attachPositionListeners();
+    syncWrapperPosition(currentSession);
     return true;
 }
 
@@ -169,8 +201,10 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
 export function destroyEmbedPlayer(): void {
     mountToken += 1;
     if (currentSession) {
+        currentSession.container.classList.remove('video-mode');
         currentSession.wrapper.remove();
         currentSession = null;
+        detachPositionListeners();
     }
     const host = document.getElementById(ARTWORK_CONTAINER_ID);
     host?.classList.remove('video-mode');
@@ -181,16 +215,51 @@ export function isEmbedPlayerActive(): boolean {
 }
 
 /**
+ * キューの current track と embed セッションを同期する。キュー経路では
+ * player.ts の stop() を通らず Go が直接ローカル曲を開始するため、ここを
+ * 実際の current track に基づく embed のライフサイクル境界にする。
+ */
+export function syncEmbedPlayerForTrack(song: {
+    type?: unknown;
+    sourceURL?: unknown;
+    path?: unknown;
+} | null | undefined): void {
+    if (!currentSession) return;
+    if (song?.type !== 'youtube') {
+        destroyEmbedPlayer();
+        return;
+    }
+
+    const source = typeof song.sourceURL === 'string' && song.sourceURL.trim() !== ''
+        ? song.sourceURL
+        : song.path;
+    const videoId = extractYouTubeVideoId(source);
+    if (videoId !== currentSession.videoId) destroyEmbedPlayer();
+}
+
+/** Now Playing の再描画前に、コンテナを embed 管理下で空に戻す。 */
+export function resetEmbedArtworkContainer(container: HTMLElement): void {
+    if (currentSession?.wrapper.parentElement === container) {
+        currentSession.wrapper.remove();
+    }
+    container.replaceChildren();
+    container.classList.remove('video-mode');
+}
+
+/**
  * updateNowPlayingView 等でコンテナが再描画されたとき、稼働中の
- * 埋め込みプレイヤーを新しいコンテナへ付け直す。付け直せたら true。
- *
- * 注意: iframe を DOM 上で移動すると WebKit はページを再読込するが、
- * ホストページは同じ URL のため自動再生から再開する。
+ * 埋め込みプレイヤーの表示先を更新する。iframe は body 配下の固定ホスト
+ * に残したまま、表示先の矩形と aspect class だけを同期する。
  */
 export function reattachEmbedPlayer(container: HTMLElement): boolean {
     if (!currentSession) return false;
+    if (currentSession.container !== container) {
+        currentSession.container.classList.remove('video-mode');
+        currentSession.container = container;
+    }
     container.classList.add('video-mode');
-    container.appendChild(currentSession.wrapper);
+    currentSession.wrapper.style.zIndex = container.id === 'fs-video-slot' ? '9001' : '8';
+    syncWrapperPosition(currentSession);
     return true;
 }
 
