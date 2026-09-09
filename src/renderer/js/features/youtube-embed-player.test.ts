@@ -5,9 +5,11 @@ const app = {
 };
 
 const nativeResizeObserver = globalThis.ResizeObserver;
-const nativeMutationObserver = globalThis.MutationObserver;
+const nativeRequestAnimationFrame = window.requestAnimationFrame;
+const nativeCancelAnimationFrame = window.cancelAnimationFrame;
 let resizeObservers: MockResizeObserver[] = [];
-let mutationObservers: MockMutationObserver[] = [];
+let animationFrames = new Map<number, FrameRequestCallback>();
+let nextAnimationFrameId = 0;
 
 class MockResizeObserver {
     readonly callback: ResizeObserverCallback;
@@ -24,29 +26,35 @@ class MockResizeObserver {
     }
 }
 
-class MockMutationObserver {
-    readonly callback: MutationCallback;
-    readonly observe = vi.fn();
-    readonly disconnect = vi.fn();
-
-    constructor(callback: MutationCallback) {
-        this.callback = callback;
-        mutationObservers.push(this);
-    }
+function runNextAnimationFrame(): void {
+    const next = animationFrames.entries().next().value as [number, FrameRequestCallback] | undefined;
+    if (!next) return;
+    animationFrames.delete(next[0]);
+    next[1](performance.now());
 }
 
 beforeEach(() => {
     resizeObservers = [];
-    mutationObservers = [];
+    animationFrames = new Map();
+    nextAnimationFrameId = 0;
     Object.defineProperty(globalThis, 'ResizeObserver', {
         configurable: true,
         writable: true,
         value: MockResizeObserver,
     });
-    Object.defineProperty(globalThis, 'MutationObserver', {
+    Object.defineProperty(window, 'requestAnimationFrame', {
         configurable: true,
         writable: true,
-        value: MockMutationObserver,
+        value: vi.fn((callback: FrameRequestCallback) => {
+            const id = ++nextAnimationFrameId;
+            animationFrames.set(id, callback);
+            return id;
+        }),
+    });
+    Object.defineProperty(window, 'cancelAnimationFrame', {
+        configurable: true,
+        writable: true,
+        value: vi.fn((id: number) => animationFrames.delete(id)),
     });
     (window as unknown as { electronAPI: unknown }).electronAPI = {
         CHANNELS: { SEND: {}, ON: {}, INVOKE: {} },
@@ -70,10 +78,15 @@ afterEach(async () => {
         writable: true,
         value: nativeResizeObserver,
     });
-    Object.defineProperty(globalThis, 'MutationObserver', {
+    Object.defineProperty(window, 'requestAnimationFrame', {
         configurable: true,
         writable: true,
-        value: nativeMutationObserver,
+        value: nativeRequestAnimationFrame,
+    });
+    Object.defineProperty(window, 'cancelAnimationFrame', {
+        configurable: true,
+        writable: true,
+        value: nativeCancelAnimationFrame,
     });
 });
 
@@ -155,11 +168,17 @@ describe('YouTube embed player lifecycle', () => {
         expect(audioSeek).toHaveBeenCalledWith(12);
     });
 
-    it('フルスクリーン切替では iframe を re-parent せず、表示矩形だけを更新する', async () => {
+    it('フルスクリーン切替では iframe と閉じるボタンを re-parent せず、表示矩形だけを更新する', async () => {
         const player = await import('./youtube-embed-player.js');
         const sidebar = document.getElementById('now-playing-artwork-container')!;
+        const overlay = document.createElement('div');
+        overlay.id = 'fs-overlay';
+        const closeButton = document.createElement('button');
+        closeButton.id = 'fs-close-btn';
         const fullscreen = document.createElement('div');
-        document.body.appendChild(fullscreen);
+        fullscreen.id = 'fs-video-slot';
+        overlay.append(closeButton, fullscreen);
+        document.body.appendChild(overlay);
 
         await player.mountEmbedPlayer('dQw4w9WgXcQ', { onPlaying: () => {}, onEnded: () => {} });
         const iframe = document.querySelector('iframe');
@@ -169,9 +188,13 @@ describe('YouTube embed player lifecycle', () => {
         expect(player.reattachEmbedPlayer(fullscreen)).toBe(true);
 
         expect(wrapper?.parentElement).toBe(document.body);
+        expect(closeButton.parentElement).toBe(overlay);
         expect(fullscreen.classList.contains('video-mode')).toBe(true);
         expect(sidebar.classList.contains('video-mode')).toBe(false);
         expect(document.querySelector('iframe')).toBe(iframe);
+
+        expect(player.reattachEmbedPlayer(sidebar)).toBe(true);
+        expect(closeButton.parentElement).toBe(overlay);
     });
 
     it('ResizeObserver が通知したコンテナの矩形変更に wrapper が追従する', async () => {
@@ -189,6 +212,7 @@ describe('YouTube embed player lifecycle', () => {
 
         rect = { left: 42, top: 64, width: 512, height: 288 };
         resizeObservers[0].trigger();
+        runNextAnimationFrame();
 
         expect(wrapper.style.left).toBe('42px');
         expect(wrapper.style.top).toBe('64px');
@@ -207,7 +231,25 @@ describe('YouTube embed player lifecycle', () => {
         player.destroyEmbedPlayer();
 
         expect(resizeObservers[0].disconnect).toHaveBeenCalledOnce();
-        expect(mutationObservers[0].disconnect).toHaveBeenCalledOnce();
+    });
+
+    it('同一フレーム内の複数トリガーでは矩形を一度だけ読む', async () => {
+        const player = await import('./youtube-embed-player.js');
+        const container = document.getElementById('now-playing-artwork-container')!;
+        const rect = { left: 10, top: 20, width: 300, height: 168 };
+        const rectSpy = vi.spyOn(container, 'getBoundingClientRect').mockReturnValue(rect as DOMRect);
+
+        await player.mountEmbedPlayer('dQw4w9WgXcQ', { onPlaying: () => {}, onEnded: () => {} });
+        const readsAfterMount = rectSpy.mock.calls.length;
+
+        resizeObservers[0].trigger();
+        resizeObservers[0].trigger();
+        window.dispatchEvent(new Event('resize'));
+        window.dispatchEvent(new Event('scroll'));
+
+        expect(rectSpy).toHaveBeenCalledTimes(readsAfterMount);
+        runNextAnimationFrame();
+        expect(rectSpy).toHaveBeenCalledTimes(readsAfterMount + 1);
     });
 
     it('コンテナがゼロサイズなら wrapper を非表示にする', async () => {

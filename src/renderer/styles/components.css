@@ -1985,6 +1985,10 @@
 .fs-overlay {
     position: fixed;
     inset: 0;
+    /* body 配下の embed wrapper (9001) より背面に置く。opacity で stacking
+       context を作るため、内側の子要素は 9001 を超えられない。閉じるボタンは
+       右上、embed wrapper は .fs-left 内の映像枠と、矩形が重ならないため
+       これで問題ない。 */
     z-index: 9000;
     background: linear-gradient(
         135deg,
@@ -2028,6 +2032,7 @@
     position: absolute;
     top: 18px;
     right: 22px;
+    /* .fs-overlay の stacking context 内で drag band (1) より前面に置く。 */
     z-index: 10;
     background: rgba(255, 255, 255, 0.1);
     border: none;
