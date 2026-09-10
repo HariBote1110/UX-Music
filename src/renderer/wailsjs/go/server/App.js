@@ -14,10 +14,6 @@ export function AddYouTubeLink(arg1) {
   return window['go']['server']['App']['AddYouTubeLink'](arg1);
 }
 
-export function AnalyseLibraryAudioEmbeddings() {
-  return window['go']['server']['App']['AnalyseLibraryAudioEmbeddings']();
-}
-
 export function AudioDebugOutputRMS() {
   return window['go']['server']['App']['AudioDebugOutputRMS']();
 }
@@ -118,10 +114,6 @@ export function AudioStopWebViewTap() {
   return window['go']['server']['App']['AudioStopWebViewTap']();
 }
 
-export function AutoSyncLyrics(arg1) {
-  return window['go']['server']['App']['AutoSyncLyrics'](arg1);
-}
-
 export function AutoSyncPairedDevices() {
   return window['go']['server']['App']['AutoSyncPairedDevices']();
 }
@@ -152,10 +144,6 @@ export function CDSearchVocaDB(arg1) {
 
 export function CDStartRip(arg1) {
   return window['go']['server']['App']['CDStartRip'](arg1);
-}
-
-export function ClearLyricsSyncModelCache() {
-  return window['go']['server']['App']['ClearLyricsSyncModelCache']();
 }
 
 export function ConfirmSyncPairing(arg1, arg2, arg3, arg4) {
@@ -194,10 +182,6 @@ export function EmbedDebugLog(arg1) {
   return window['go']['server']['App']['EmbedDebugLog'](arg1);
 }
 
-export function GenerateMoodSpecial(arg1, arg2) {
-  return window['go']['server']['App']['GenerateMoodSpecial'](arg1, arg2);
-}
-
 export function GetAllLoudnessData() {
   return window['go']['server']['App']['GetAllLoudnessData']();
 }
@@ -212,10 +196,6 @@ export function GetArtworkAsDataURL(arg1) {
 
 export function GetArtworksDir() {
   return window['go']['server']['App']['GetArtworksDir']();
-}
-
-export function GetAudioEmbedStatus() {
-  return window['go']['server']['App']['GetAudioEmbedStatus']();
 }
 
 export function GetE2EEmbedVideoID() {
@@ -236,10 +216,6 @@ export function GetLoudnessValue(arg1) {
 
 export function GetLyrics(arg1) {
   return window['go']['server']['App']['GetLyrics'](arg1);
-}
-
-export function GetLyricsSyncResourceStatus() {
-  return window['go']['server']['App']['GetLyricsSyncResourceStatus']();
 }
 
 export function GetMTPDevices() {
@@ -478,10 +454,6 @@ export function ScanLibrary(arg1) {
   return window['go']['server']['App']['ScanLibrary'](arg1);
 }
 
-export function SearchTracksByMood(arg1, arg2) {
-  return window['go']['server']['App']['SearchTracksByMood'](arg1, arg2);
-}
-
 export function SelectAndChangeAlbumArtwork(arg1) {
   return window['go']['server']['App']['SelectAndChangeAlbumArtwork'](arg1);
 }
@@ -506,10 +478,6 @@ export function SetLibraryPath() {
   return window['go']['server']['App']['SetLibraryPath']();
 }
 
-export function SetLyricsSyncModelConsent(arg1) {
-  return window['go']['server']['App']['SetLyricsSyncModelConsent'](arg1);
-}
-
 export function SetSidecarTargetDevice(arg1) {
   return window['go']['server']['App']['SetSidecarTargetDevice'](arg1);
 }
@@ -532,10 +500,6 @@ export function StartSyncPairing(arg1) {
 
 export function StopDeviceWatcher() {
   return window['go']['server']['App']['StopDeviceWatcher']();
-}
-
-export function StopGemmaServer() {
-  return window['go']['server']['App']['StopGemmaServer']();
 }
 
 export function UpdatePlaylistSongOrder(arg1) {
