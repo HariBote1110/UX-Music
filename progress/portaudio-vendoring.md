@@ -19,6 +19,18 @@ fresh clone は Go、Node、Xcode CLT（macOS）だけでビルドできる。
 
 PortAudio の版は、今回の Mac が従来 Homebrew で使用していたものと同じ 19.7.0 に固定する。upstream の `third_party/portaudio/portaudio/` は変更せず、OS 別 CFLAGS/defines と framework／system library の LDFLAGS は fork 側に置く。PortAudio の MIT-style ライセンスと copyright 表示を維持する。
 
+### Windows (mingw) ビルドの落とし穴
+
+- WASAPI（`pa_win_wasapi.c`）と WMME（`pa_win_wmme.c`）は `OpenStream`・`Terminate` など
+  同名の static 関数を持つため、1 つの unity-build ファイルにまとめると再定義エラーになる。
+  共通部と OS ユーティリティ（`portaudio_windows.c`）、`portaudio_wasapi_windows.c`、
+  `portaudio_wmme_windows.c` に翻訳単位を分ける。
+- upstream 同梱の `src/hostapi/wasapi/mingw-include` をインクルードパスに入れてはいけない。
+  古いヘッダが msys2 の新しい mingw-w64 ヘッダを覆い、`PROPVARIANT` が不完全型になり
+  `IPropertySetStorage` も未定義になる。現行 mingw-w64 には必要なヘッダが揃っている。
+- macOS/Linux は host API が 1 つなので unity-build 1 ファイルで問題ない。Windows の実
+  コンパイルは Mac ではできないため、CI の `go build (windows)` ジョブで確認する。
+
 ## 更新方法
 
 PortAudio を更新するときは、先に対象版の公式ソースを取得して SHA-256 を Homebrew formula と照合し、`third_party/portaudio/portaudio/` を upstream のまま置換する。その後、gordonklaus バインディングの API 差分を確認し、各 OS の glue/config、guard、smoke test、root build、`otool -L`、Linux/Windows CI を実行する。Go の `replace` とこの文書の固定版も同じ変更で更新する。

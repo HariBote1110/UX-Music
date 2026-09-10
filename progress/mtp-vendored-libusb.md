@@ -24,8 +24,27 @@ SHA-256 `fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf`
 
 macOS の `go build` と `wails dev` が Homebrew libusb なしでリンクできること、
 Windows CI の cgo ビルド構成を壊さないこと、`pkg/mtp` と `server/app_mtp.go` の
-公開 API を変更しないことを制約とする。native dylib vendoring は portaudio と
-libcdio* の汎用処理だけを残し、libusb dylib の同梱処理は削除する。
+公開 API を変更しないことを制約とする。libusb dylib の同梱処理は削除した
+（その後 PortAudio も静的リンク化したため、native dylib vendoring の対象は
+cdparanoia が使う libcdio* のみ）。
+
+### Windows (mingw) ビルドの落とし穴
+
+- upstream は同名の static 関数を複数ファイルで定義している（例: `windows_open` が
+  `windows_common.c` と `windows_winusb.c` の両方にあり型も異なる）。unity-build で
+  1 ファイルにまとめると再定義エラーになるため、`libusb_windows.c`（events/threads/
+  common）、`libusb_usbdk_windows.c`、`libusb_winusb_windows.c` と翻訳単位を分ける。
+- `libusb_core_unix.c` は darwin/linux 限定なので、Windows 用に
+  `libusb_core_windows.c` で core/descriptor/hotplug/io/strerror/sync を取り込む。
+- `os/windows_hotplug.c` は upstream の `--enable-windows-hotplug`（既定 no）の時だけ
+  ビルドされ、`LIBUSB_WINDOWS_HOTPLUG` 未定義では構造体メンバが存在せずコンパイル
+  できない。アプリは MTP をポーリング監視しており不要なので、既定どおり含めない。
+- Windows の実コンパイルは Mac ではできない。`GOOS=windows CGO_ENABLED=1 go list
+  -f '{{.CFiles}}' github.com/hanwen/usb` で選択ファイルを確認し、最終確認は CI の
+  `go build (windows)` ジョブで行う。
+- 空のデバイス一覧（USB 未接続の Mac）で upstream の `DeviceList.Done` が `&d[0]` を
+  取り panic していた。NULL 終端を含む容量でスライスを作り `unsafe.SliceData` から
+  解放する形に修正済み（回帰テストあり）。
 
 ## 実装記録
 
