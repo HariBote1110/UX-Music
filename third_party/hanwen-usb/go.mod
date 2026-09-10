@@ -1,3 +1,3 @@
 module github.com/hanwen/usb
 
-go 1.12
+go 1.20

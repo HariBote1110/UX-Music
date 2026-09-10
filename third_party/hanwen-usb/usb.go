@@ -7,6 +7,7 @@ package usb
 // #cgo CFLAGS: -I${SRCDIR}/libusb
 // #cgo darwin LDFLAGS: -framework IOKit -framework CoreFoundation -framework Security
 // #include "libusb.h"
+// #include <stdlib.h>
 import "C"
 import (
 	"fmt"
@@ -492,7 +493,10 @@ func (c *Context) Exit() {
 type DeviceList []*Device
 
 func (d DeviceList) Done() {
-	C.libusb_free_device_list((**C.libusb_device)(unsafe.Pointer((&d[0]))), 1)
+	if cap(d) == 0 {
+		return
+	}
+	C.libusb_free_device_list((**C.libusb_device)(unsafe.Pointer(unsafe.SliceData(d))), 1)
 }
 
 func (c *Context) GetDeviceList() (DeviceList, error) {
@@ -501,8 +505,19 @@ func (c *Context) GetDeviceList() (DeviceList, error) {
 	if count < 0 {
 		return nil, Error(count)
 	}
-	rdevs := (*[1 << 28]*Device)(unsafe.Pointer(devs))[:int(count):int(count)]
+	deviceCount := int(count)
+	rdevs := (*[1 << 28]*Device)(unsafe.Pointer(devs))[: deviceCount : deviceCount+1]
 	return DeviceList(rdevs), nil
+}
+
+// newDeviceListForTest allocates the same NULL-terminated layout returned by
+// libusb_get_device_list without requiring Cgo in a test file.
+func newDeviceListForTest(count int) DeviceList {
+	if count < 0 {
+		panic("negative device count")
+	}
+	p := C.calloc(C.size_t(count+1), C.size_t(unsafe.Sizeof(uintptr(0))))
+	return DeviceList((*[1 << 28]*Device)(p)[: count : count+1])
 }
 
 func (d *Device) me() *C.libusb_device {

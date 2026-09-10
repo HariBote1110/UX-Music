@@ -15,7 +15,21 @@ func TestLibUSBInitExitSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatalf("libusb_get_device_list failed: %v", err)
 	}
+	defer devices.Done()
 	t.Logf("libusb enumerated %d device(s)", len(devices))
+}
+
+func TestDeviceListDone(t *testing.T) {
+	var nilDevices DeviceList
+	nilDevices.Done()
+
+	for _, count := range []int{0, 1, 3} {
+		devices := newDeviceListForTest(count)
+		if len(devices) != count {
+			t.Fatalf("newDeviceListForTest(%d) returned %d devices", count, len(devices))
+		}
+		devices.Done()
+	}
 }
 
 func TestDevice(t *testing.T) {
