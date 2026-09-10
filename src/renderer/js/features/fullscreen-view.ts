@@ -8,7 +8,7 @@ import { animateIconPaths } from '../ui/player-ui.js';
 import { isInterludeText } from './lyrics-translation.js';
 import { EQUALIZER_COLOURS_CHANGE_EVENT } from '../ui/utils.js';
 import { isEmbedPlayerActive, reattachEmbedPlayer } from './youtube-embed-player.js';
-import { resolveFullscreenMediaMode } from './fullscreen-media.js';
+import { resolveFullscreenMediaMode, syncArtworkAspect } from './fullscreen-media.js';
 
 /** 間奏（[間奏] などのマーカーや空行）は文字を消し、行高だけ残す。 */
 function fsDisplayText(text: string | undefined): string {
@@ -64,8 +64,8 @@ export function openFullscreenView() {
         document.body.appendChild(overlayEl);
     }
     lastSyncedPlayState = null;
-    syncAll();
     overlayEl.classList.add('fs-open');
+    syncAll();
     startTicker();
     document.addEventListener('keydown', handleKeydown);
 
@@ -76,10 +76,13 @@ export function openFullscreenView() {
 }
 
 export function closeFullscreenView() {
+    const currentSong = state.playbackQueue?.[state.currentSongIndex] ?? null;
     // 公式再生（embed）中はプレイヤー iframe をサイドバーの Now Playing
     // コンテナへ戻す（破棄しないことで音声タップと再生を維持する）。
-    if (isEmbedPlayerActive() && elements.nowPlayingArtworkContainer) {
+    if (isEmbedPlayerActive() && currentSong?.type === 'youtube' && elements.nowPlayingArtworkContainer) {
         reattachEmbedPlayer(elements.nowPlayingArtworkContainer);
+    } else if (elements.nowPlayingArtworkContainer) {
+        syncArtworkAspect(elements.nowPlayingArtworkContainer, currentSong, false);
     }
     overlayEl?.classList.remove('fs-open');
     stopTicker();
@@ -150,8 +153,10 @@ function stopTicker() {
 function syncMedia() {
     const embedActive = isEmbedPlayerActive();
     const mode = resolveFullscreenMediaMode(embedActive);
-    if (mode === 'video' && videoSlotEl && reattachEmbedPlayer(videoSlotEl)) {
+    if (mode === 'video' && videoSlotEl) {
         videoSlotEl.classList.remove('hidden');
+    }
+    if (mode === 'video' && videoSlotEl && reattachEmbedPlayer(videoSlotEl)) {
         artworkWrapperEl?.classList.add('hidden');
     } else {
         videoSlotEl?.classList.add('hidden');
@@ -555,6 +560,7 @@ function buildOverlay(): HTMLElement {
     el.className = 'fs-overlay';
 
     el.innerHTML = `
+        <div class="fs-drag-region" id="fs-drag-region" aria-hidden="true"></div>
         <button class="fs-close-btn" id="fs-close-btn" aria-label="閉じる">
             <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>

@@ -325,7 +325,12 @@ export function startGoStatePolling() {
                 // 再生を反映できるようにする。
                 reportEmbedPlaybackState(pos, dur, playing);
             } else if (typeof app?.AudioGetStatus === 'function') {
-                const status = await withPollTimeout(app.AudioGetStatus());
+                const status = await withPollTimeout(app.AudioGetStatus()) as {
+                    position?: unknown;
+                    duration?: unknown;
+                    playing?: unknown;
+                    paused?: unknown;
+                } | null | undefined;
                 pos = Number(status?.position);
                 dur = Number(status?.duration);
                 playing = Boolean(status?.playing);

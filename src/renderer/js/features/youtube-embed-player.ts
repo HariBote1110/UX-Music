@@ -19,6 +19,7 @@ import {
     EMBED_PLAYER_STATE,
     type EmbedCommand,
 } from './youtube-embed-bridge.js';
+import { extractYouTubeVideoId } from './youtube-embed-route.js';
 
 export interface EmbedPlayerCallbacks {
     onPlaying: () => void;
@@ -26,10 +27,15 @@ export interface EmbedPlayerCallbacks {
 }
 
 const ARTWORK_CONTAINER_ID = 'now-playing-artwork-container';
+const SIDEBAR_WRAPPER_Z_INDEX = '1';
+const FULLSCREEN_WRAPPER_Z_INDEX = '9001';
+const POSITION_SETTLE_FRAME_COUNT = 24;
 
 interface EmbedSession {
+    videoId: string;
     iframe: HTMLIFrameElement;
     wrapper: HTMLElement;
+    container: HTMLElement;
     callbacks: EmbedPlayerCallbacks;
     /** ホストページからの time メッセージで更新されるキャッシュ。 */
     currentTime: number;
@@ -40,6 +46,101 @@ interface EmbedSession {
 let currentSession: EmbedSession | null = null;
 let mountToken = 0;
 let messageListenerAttached = false;
+let positionObserver: ResizeObserver | null = null;
+let positionSyncHandle: { type: 'animation-frame' | 'timeout'; id: number } | null = null;
+let settleFramesRemaining = 0;
+
+function syncWrapperPosition(session: EmbedSession): void {
+    const rect = session.container.getBoundingClientRect();
+    const isHidden = session.container.hidden
+        || getComputedStyle(session.container).display === 'none';
+    session.wrapper.style.left = `${rect.left}px`;
+    session.wrapper.style.top = `${rect.top}px`;
+    session.wrapper.style.width = `${rect.width}px`;
+    session.wrapper.style.height = `${rect.height}px`;
+    session.wrapper.style.display = !isHidden && rect.width > 0 && rect.height > 0 ? 'block' : 'none';
+}
+
+function runScheduledPositionSync(): void {
+    positionSyncHandle = null;
+    if (!currentSession) {
+        settleFramesRemaining = 0;
+        return;
+    }
+
+    syncWrapperPosition(currentSession);
+    if (settleFramesRemaining > 0) {
+        settleFramesRemaining -= 1;
+        if (settleFramesRemaining > 0) schedulePositionSync();
+    }
+}
+
+function schedulePositionSync(): void {
+    if (positionSyncHandle !== null) return;
+    if (typeof window.requestAnimationFrame === 'function') {
+        positionSyncHandle = {
+            type: 'animation-frame',
+            id: window.requestAnimationFrame(runScheduledPositionSync),
+        };
+    } else {
+        positionSyncHandle = {
+            type: 'timeout',
+            id: window.setTimeout(runScheduledPositionSync, 0),
+        };
+    }
+}
+
+function attachPositionListeners(): void {
+    window.addEventListener('resize', schedulePositionSync);
+    window.addEventListener('scroll', schedulePositionSync, true);
+}
+
+function detachPositionListeners(): void {
+    window.removeEventListener('resize', schedulePositionSync);
+    window.removeEventListener('scroll', schedulePositionSync, true);
+}
+
+function disconnectPositionObserver(): void {
+    positionObserver?.disconnect();
+    positionObserver = null;
+}
+
+function observeContainer(container: HTMLElement): void {
+    disconnectPositionObserver();
+    if (typeof ResizeObserver === 'undefined') return;
+    positionObserver = new ResizeObserver(() => schedulePositionSync());
+    positionObserver.observe(container);
+
+    // 位置に影響する offset ancestor だけを監視する。対象は通常数個で、
+    // ResizeObserver の通知では測定せず次の animation frame に一度だけ合流するため、
+    // document 全体の DOM mutation ごとに強制 reflow を起こさない。
+    let ancestor = container.offsetParent as HTMLElement | null;
+    while (ancestor) {
+        positionObserver.observe(ancestor);
+        ancestor = ancestor.offsetParent as HTMLElement | null;
+    }
+}
+
+function stopPositionSync(): void {
+    if (positionSyncHandle !== null) {
+        if (positionSyncHandle.type === 'animation-frame') {
+            window.cancelAnimationFrame(positionSyncHandle.id);
+        } else {
+            window.clearTimeout(positionSyncHandle.id);
+        }
+        positionSyncHandle = null;
+    }
+    settleFramesRemaining = 0;
+}
+
+function startPositionSettle(): void {
+    settleFramesRemaining = POSITION_SETTLE_FRAME_COUNT;
+    schedulePositionSync();
+}
+
+function isFullscreenContainer(container: HTMLElement): boolean {
+    return container.id === 'fs-video-slot';
+}
 
 /**
  * 埋め込みプレイヤーのイベントを console と Go 側の構造化ログ
@@ -138,11 +239,13 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
     host.classList.add('video-mode');
     const wrapper = document.createElement('div');
     wrapper.id = 'youtube-embed-wrapper';
-    // コンテナ（aspect-ratio でサイズが決まる）に常に追従させる。
-    // wrapper の高さが auto のままだと、内側 iframe の height:100% が
-    // 解決できず、サイドバーのリサイズに高さが追従しない。
-    wrapper.style.width = '100%';
-    wrapper.style.height = '100%';
+    // iframe は DOM 上の親を一度だけ body に固定する。WebKit は iframe を
+    // 別の親へ appendChild するとページを再読込するため、表示先の矩形だけ
+    // を fixed 要素へ反映してフルスクリーンとの切替を行う。
+    wrapper.style.position = 'fixed';
+    wrapper.style.zIndex = SIDEBAR_WRAPPER_Z_INDEX;
+    wrapper.style.overflow = 'hidden';
+    wrapper.style.pointerEvents = 'auto';
     const iframe = document.createElement('iframe');
     iframe.src = embedUrl;
     iframe.allow = 'autoplay; encrypted-media; fullscreen';
@@ -151,24 +254,33 @@ export async function mountEmbedPlayer(videoId: string, callbacks: EmbedPlayerCa
     iframe.style.border = '0';
     iframe.style.display = 'block'; // inline 既定だと baseline 分の隙間が出る
     wrapper.appendChild(iframe);
-    host.appendChild(wrapper);
+    document.body.appendChild(wrapper);
 
     ensureMessageListener();
     currentSession = {
+        videoId,
         iframe,
         wrapper,
+        container: host,
         callbacks,
         currentTime: 0,
         duration: 0,
         state: -1,
     };
+    attachPositionListeners();
+    observeContainer(host);
+    syncWrapperPosition(currentSession);
     return true;
 }
 
 /** 埋め込みプレイヤーを破棄し、アートワーク領域を空に戻す。 */
 export function destroyEmbedPlayer(): void {
     mountToken += 1;
+    stopPositionSync();
+    disconnectPositionObserver();
+    detachPositionListeners();
     if (currentSession) {
+        currentSession.container.classList.remove('video-mode');
         currentSession.wrapper.remove();
         currentSession = null;
     }
@@ -181,16 +293,62 @@ export function isEmbedPlayerActive(): boolean {
 }
 
 /**
+ * キューの current track と embed セッションを同期する。キュー経路では
+ * player.ts の stop() を通らず Go が直接ローカル曲を開始するため、ここを
+ * 実際の current track に基づく embed のライフサイクル境界にする。
+ */
+export function syncEmbedPlayerForTrack(song: {
+    type?: unknown;
+    sourceURL?: unknown;
+    path?: unknown;
+} | null | undefined): void {
+    if (!currentSession) return;
+    if (song?.type !== 'youtube') {
+        destroyEmbedPlayer();
+        return;
+    }
+
+    const source = typeof song.sourceURL === 'string' && song.sourceURL.trim() !== ''
+        ? song.sourceURL
+        : song.path;
+    const videoId = extractYouTubeVideoId(source);
+    if (videoId !== currentSession.videoId) destroyEmbedPlayer();
+}
+
+/** Now Playing の再描画前に、コンテナを embed 管理下で空に戻す。 */
+export function resetEmbedArtworkContainer(container: HTMLElement): void {
+    if (currentSession?.wrapper.parentElement === container) {
+        currentSession.wrapper.remove();
+    }
+    container.replaceChildren();
+    container.classList.remove('video-mode');
+}
+
+/**
  * updateNowPlayingView 等でコンテナが再描画されたとき、稼働中の
- * 埋め込みプレイヤーを新しいコンテナへ付け直す。付け直せたら true。
- *
- * 注意: iframe を DOM 上で移動すると WebKit はページを再読込するが、
- * ホストページは同じ URL のため自動再生から再開する。
+ * 埋め込みプレイヤーの表示先を更新する。iframe は body 配下の固定ホスト
+ * に残したまま、表示先の矩形と aspect class だけを同期する。
  */
 export function reattachEmbedPlayer(container: HTMLElement): boolean {
     if (!currentSession) return false;
+    const previousContainer = currentSession.container;
+    const containerChanged = previousContainer !== container;
+    const wasFullscreen = isFullscreenContainer(previousContainer);
+    const isFullscreen = isFullscreenContainer(container);
+    if (containerChanged) {
+        currentSession.container.classList.remove('video-mode');
+        currentSession.container = container;
+        observeContainer(container);
+    }
     container.classList.add('video-mode');
-    container.appendChild(currentSession.wrapper);
+    currentSession.wrapper.style.zIndex = isFullscreen
+        ? FULLSCREEN_WRAPPER_Z_INDEX
+        : SIDEBAR_WRAPPER_Z_INDEX;
+    if (containerChanged || isFullscreen !== wasFullscreen) {
+        startPositionSettle();
+    } else {
+        schedulePositionSync();
+    }
     return true;
 }
 

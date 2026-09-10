@@ -138,7 +138,7 @@ async function initApp() {
 
     musicApi.onLoadLibrary(async (data) => {
         if (!state.artworksDir) state.artworksDir = await musicApi.getArtworksDir();
-        addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {} });
+        addSongsToLibrary({ songs: data.songs || [], albums: data.albums || {}, isFullLibraryLoad: true });
 
         const initialView = state.activeViewId || 'track-view';
         void showView(initialView);

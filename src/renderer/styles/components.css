@@ -1985,6 +1985,10 @@
 .fs-overlay {
     position: fixed;
     inset: 0;
+    /* body 配下の embed wrapper (9001) より背面に置く。opacity で stacking
+       context を作るため、内側の子要素は 9001 を超えられない。閉じるボタンは
+       右上、embed wrapper は .fs-left 内の映像枠と、矩形が重ならないため
+       これで問題ない。 */
     z-index: 9000;
     background: linear-gradient(
         135deg,
@@ -2005,11 +2009,30 @@
     pointer-events: auto;
 }
 
+/* ウィンドウドラッグ帯
+   フルスクリーンオーバーレイは document.body 全体を覆う CSS オーバーレイで
+   あり、OS/Wails のネイティブ全画面化ではないため、.title-bar のドラッグ
+   領域が隠れてしまいウィンドウを移動できなくなる。オーバーレイ上端に
+   title-bar と同じ高さの細い帯を敷き、そこだけドラッグ可能にすることで
+   移動手段を再現する。歌詞・キュー・再生操作などの表示領域は上部に
+   余白（padding）を確保しているため、この帯と重なることはない。 */
+.fs-drag-region {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 32px;
+    z-index: 1;
+    -webkit-app-region: drag;
+    --wails-draggable: drag;
+}
+
 /* 閉じるボタン */
 .fs-close-btn {
     position: absolute;
     top: 18px;
     right: 22px;
+    /* .fs-overlay の stacking context 内で drag band (1) より前面に置く。 */
     z-index: 10;
     background: rgba(255, 255, 255, 0.1);
     border: none;
@@ -2022,6 +2045,10 @@
     align-items: center;
     justify-content: center;
     transition: background 0.2s, color 0.2s;
+    /* .fs-drag-region と縦方向に重なるため、確実にクリックできるよう
+       no-drag を明示する（z-index でも手前に来るが二重に保証する）。 */
+    -webkit-app-region: no-drag;
+    --wails-draggable: no-drag;
 }
 .fs-close-btn:hover {
     background: rgba(255, 255, 255, 0.2);

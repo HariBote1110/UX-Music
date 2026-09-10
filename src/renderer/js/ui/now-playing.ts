@@ -7,7 +7,13 @@ import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { openFullscreenView, notifyFullscreenSongChange } from '../features/fullscreen-view.js';
 import { showContextMenu } from './utils.js';
 import { buildSafeMediaPathURL } from './media-url.js';
-import { isEmbedPlayerActive, reattachEmbedPlayer } from '../features/youtube-embed-player.js';
+import {
+    isEmbedPlayerActive,
+    reattachEmbedPlayer,
+    resetEmbedArtworkContainer,
+    syncEmbedPlayerForTrack,
+} from '../features/youtube-embed-player.js';
+import { syncArtworkAspect } from '../features/fullscreen-media.js';
 import { musicApi } from '../core/bridge.js';
 import { buildSidecarMenuItems } from '../features/sidecar.js';
 const electronAPI = window.electronAPI;
@@ -166,6 +172,7 @@ export function updateNowPlayingView(song) {
 
     const localPlayer = document.getElementById('main-player');
 
+    syncEmbedPlayerForTrack(song);
     clearSidebarPreviewVideo();
 
     if (localPlayer) {
@@ -173,9 +180,8 @@ export function updateNowPlayingView(song) {
         localPlayer.style.display = 'none';
     }
 
-    if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.innerHTML = '';
+    if (nowPlayingArtworkContainer) resetEmbedArtworkContainer(nowPlayingArtworkContainer);
     if (hubLinkContainer) hubLinkContainer.innerHTML = '';
-    if (nowPlayingArtworkContainer) nowPlayingArtworkContainer.classList.remove('video-mode');
 
     if (!song) {
         console.log('[Debug:NowPlaying] 曲が指定されていないため、デフォルト画像を表示します。');
@@ -248,7 +254,6 @@ export function updateNowPlayingView(song) {
         img.src = resolvedArtworkSrc;
 
         if (masterSong.hasVideo && nowPlayingArtworkContainer) {
-            nowPlayingArtworkContainer.classList.add('video-mode');
             if (isWailsRuntime()) {
                 const previewAttached = attachSidebarPreviewVideo(nowPlayingArtworkContainer, masterSong.path, resolvedArtworkSrc);
                 if (!previewAttached) {
@@ -262,9 +267,12 @@ export function updateNowPlayingView(song) {
                 nowPlayingArtworkContainer.appendChild(img);
             }
         } else if (nowPlayingArtworkContainer) {
-            nowPlayingArtworkContainer.classList.remove('video-mode');
             nowPlayingArtworkContainer.appendChild(img);
         }
+    }
+
+    if (nowPlayingArtworkContainer) {
+        syncArtworkAspect(nowPlayingArtworkContainer, song, isEmbedPlayerActive());
     }
 
     if (song && song.hubUrl && hubLinkContainer) {
