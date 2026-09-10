@@ -161,6 +161,30 @@ func TestRipperFallsBackToCdparanoiaWithoutReaderFactory(t *testing.T) {
 	}
 }
 
+func TestRipperNativeFactoryIsGatedAndFallsBackOnOpenError(t *testing.T) {
+	t.Setenv("UX_MUSIC_CDRIP_NATIVE", "1")
+	previous := nativeDiscFactory
+	t.Cleanup(func() { nativeDiscFactory = previous })
+	nativeDiscFactory = func() (DiscReader, error) { return nil, errors.New("permission denied") }
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cdparanoia")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf '  1. 12\\n'\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRipper(path, "", dir)
+	tracks, err := r.GetTrackList()
+	if err != nil || len(tracks) != 1 || tracks[0].Sectors != 12 {
+		t.Fatalf("native open fallback tracks=%+v err=%v", tracks, err)
+	}
+}
+
+func TestRipperNativeFactoryIsDisabledByDefault(t *testing.T) {
+	t.Setenv("UX_MUSIC_CDRIP_NATIVE", "0")
+	if r := NewRipper("", "", ""); r.openDisc != nil {
+		t.Fatal("native reader factory should be disabled unless explicitly enabled")
+	}
+}
+
 type fakeDiscReader struct {
 	toc        TOC
 	sectors    map[int][]byte
