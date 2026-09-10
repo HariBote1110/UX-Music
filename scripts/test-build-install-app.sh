@@ -19,5 +19,7 @@ grep -Fq "cp -R" <<<"${output}"
 grep -Fq "Frameworks" <<<"${output}"
 grep -Fq "ネイティブ dylib を再帰的に同梱" <<<"${output}"
 grep -Fq "build をスキップ" <<<"${skip_build_output}"
+! grep -Fq "brew --prefix libusb" "${project_root}/Makefile"
+grep -Fq "vendor-native-dylibs.sh" "${project_root}/Makefile"
 
 echo "PASS: build-install-app.sh の dry-run を確認しました"
