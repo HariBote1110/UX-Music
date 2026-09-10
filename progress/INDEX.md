@@ -1,5 +1,7 @@
 # Progress Index
 
+- [native-dylib-vendoring.md](native-dylib-vendoring.md) — macOS の配布 `.app` に対する非システム dylib の一般的・再帰的な同梱方針。MacOS 配下の全 Mach-O を BFS で走査し、Homebrew 等の依存を `Contents/Frameworks` へ集約、実行ファイルは `@executable_path`、dylib 間は `@loader_path` へ書換え、dylib 自身の id も統一する。`libusb` 未導入環境でも解決不能な依存を黙って出荷しない設計
+
 - [iphone-lyrics-desktop-parity.md](iphone-lyrics-desktop-parity.md) — iPhone のシンク歌詞ビューを `Core/LyricsStageKit.swift` の Desktop parity 共有プリミティブへ収束（0.8s カスケード / CSS ease timing curve / `SidecarLyricsEdgeFade` のソフト溶解 / 近傍ブラー撤去 / 0.2s ゲート tick）。モバイル専用の手動ドラッグ・ピーク + 3秒 auto-resume は意図的な差分として維持。あわせて「次に再生」キュー／お気に入りサイドパネルを `SongRowView` / `SongRowMetrics` / `LibraryListRowStyle` へ再ベース化しライブラリ全曲リストと統一（キューは連番／waveform インジケータ維持・アートワーク非表示、ユーザー決定）。SSD 未マウントのためシム検証は不可、コンパイル検証のみ（BUILD SUCCEEDED）
 - [youtube-embed-lifecycle-and-fullscreen-fixes.md](youtube-embed-lifecycle-and-fullscreen-fixes.md) — YouTube追加直後のサムネ消失／フルスクリーンのウィンドウ移動不可・再生リセット／NowPlaying固着とコントロール無効／16:9固着の4件を修正。真因は「増分更新でのマイグレーション誤判定による全曲artwork削除」と「Goネイティブキュー経由のembed破棄漏れ」の2つ。iframeは再ペアレントせずbody直下の固定要素として矩形追従させる方式へ変更（実機検証は未了）
 - [tv-cached-to-stream-switch-seekbar.md](tv-cached-to-stream-switch-seekbar.md) — キャッシュ済み曲→非キャッシュ曲へ切替時にシークバーが新旧位置を往復し再生も止められない実機不具合を修正。真因は`MusicPlayerService.beginExternalPlayback`がローカルエンジン停止も`playGeneration`バンプも行わない新エントリポイントだったこと（`positionTimer`とストリームの`progressMirrorTask`がpositionSecondsを二重に書き込み合っていた）。不変条件「外部駆動中はローカルエンジンが必ず沈黙」をエントリポイント自身で強制する形で解消
