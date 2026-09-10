@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -18,6 +19,62 @@ func TestSecureReadAcceptsMatchingDoubleRead(t *testing.T) {
 	}
 	if fake.reads[0] != 2 || fake.reads[1] != 2 {
 		t.Fatalf("reads = %+v, want two reads per sector", fake.reads)
+	}
+	if len(fake.calls) != 2 || fake.calls[0] != (readCall{lba: 0, count: 2}) || fake.calls[1] != (readCall{lba: 0, count: 2}) {
+		t.Fatalf("calls = %+v, want two batched reads", fake.calls)
+	}
+}
+
+func TestSecureReadUsesConfiguredBatches(t *testing.T) {
+	toc := testTOC()
+	toc.Tracks[0].Length = 30
+	toc.LeadOutLBA = 30
+	sectors := make(map[int][]byte, 30)
+	for i := 0; i < 30; i++ {
+		sectors[i] = sector(byte(i))
+	}
+	fake := newFakeDiscReader(toc, sectors)
+	if _, _, err := SecureReadTrack(fake, 1, SecureReadOptions{BlockSize: 27}); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.calls) != 4 {
+		t.Fatalf("calls = %d, want two reads for each of two blocks: %+v", len(fake.calls), fake.calls)
+	}
+	for _, call := range fake.calls[:2] {
+		if call != (readCall{lba: 0, count: 27}) {
+			t.Fatalf("first block call = %+v", call)
+		}
+	}
+	for _, call := range fake.calls[2:] {
+		if call != (readCall{lba: 27, count: 3}) {
+			t.Fatalf("second block call = %+v", call)
+		}
+	}
+}
+
+func TestSecureReadRereadsOnlyJitterySector(t *testing.T) {
+	toc := testTOC()
+	toc.Tracks[0].Length = 3
+	toc.LeadOutLBA = 3
+	fake := newFakeDiscReader(toc, map[int][]byte{0: sector(1), 1: sector(2), 2: sector(3)})
+	fake.jitter[1] = 1
+	if _, _, err := SecureReadTrack(fake, 1, SecureReadOptions{BlockSize: 3}); err != nil {
+		t.Fatal(err)
+	}
+	want := []readCall{{lba: 0, count: 3}, {lba: 0, count: 3}, {lba: 1, count: 1}}
+	if !reflect.DeepEqual(fake.calls, want) {
+		t.Fatalf("calls = %+v, want %+v", fake.calls, want)
+	}
+}
+
+func TestSecureReadTrackToStreamsPCM(t *testing.T) {
+	fake := newFakeDiscReader(testTOC(), map[int][]byte{0: sector(1), 1: sector(2)})
+	var out bytes.Buffer
+	if _, err := SecureReadTrackTo(&out, fake, 1, SecureReadOptions{BlockSize: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(out.Bytes(), append(sector(1), sector(2)...)) {
+		t.Fatalf("streamed PCM differs")
 	}
 }
 
@@ -110,6 +167,12 @@ type fakeDiscReader struct {
 	reads      map[int]int
 	jitter     map[int]int
 	unreadable map[int]bool
+	calls      []readCall
+}
+
+type readCall struct {
+	lba   int
+	count int
 }
 
 func newFakeDiscReader(toc TOC, sectors map[int][]byte) *fakeDiscReader {
@@ -117,12 +180,15 @@ func newFakeDiscReader(toc TOC, sectors map[int][]byte) *fakeDiscReader {
 }
 func (f *fakeDiscReader) ReadTOC() (TOC, error) { return f.toc, nil }
 func (f *fakeDiscReader) ReadSectors(lba, count int) ([]byte, error) {
+	f.calls = append(f.calls, readCall{lba: lba, count: count})
 	result := make([]byte, 0, count*CDSectorBytes)
+	var readErr error
 	for i := 0; i < count; i++ {
 		sectorLBA := lba + i
 		f.reads[sectorLBA]++
 		if f.unreadable[sectorLBA] {
-			return nil, errors.New("unreadable")
+			readErr = errors.New("unreadable")
+			continue
 		}
 		data := append([]byte(nil), f.sectors[sectorLBA]...)
 		if f.reads[sectorLBA] <= f.jitter[sectorLBA] && len(data) > 0 {
@@ -130,7 +196,7 @@ func (f *fakeDiscReader) ReadSectors(lba, count int) ([]byte, error) {
 		}
 		result = append(result, data...)
 	}
-	return result, nil
+	return result, readErr
 }
 func (f *fakeDiscReader) Close() error { return nil }
 
