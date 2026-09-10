@@ -1,0 +1,5 @@
+#include "libusb/os/events_windows.c"
+#include "libusb/os/threads_windows.c"
+#include "libusb/os/windows_common.c"
+#include "libusb/os/windows_usbdk.c"
+#include "libusb/os/windows_winusb.c"
