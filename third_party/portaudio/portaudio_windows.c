@@ -1,6 +1,11 @@
 //go:build windows
 // +build windows
 
+// Common PortAudio sources and Windows OS utilities. The WASAPI and WMME host
+// APIs are compiled in separate translation units (portaudio_wasapi_windows.c,
+// portaudio_wmme_windows.c) because both define identically named static
+// functions such as OpenStream and Terminate.
+
 #include "portaudio/src/common/pa_allocation.c"
 #include "portaudio/src/common/pa_converters.c"
 #include "portaudio/src/common/pa_cpuload.c"
@@ -16,5 +21,3 @@
 #include "portaudio/src/os/win/pa_win_util.c"
 #include "portaudio/src/os/win/pa_win_waveformat.c"
 #include "portaudio/src/os/win/pa_x86_plain_converters.c"
-#include "portaudio/src/hostapi/wasapi/pa_win_wasapi.c"
-#include "portaudio/src/hostapi/wmme/pa_win_wmme.c"
