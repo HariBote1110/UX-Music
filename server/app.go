@@ -6,7 +6,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"ux-music-sidecar/internal/config"
-	"ux-music-sidecar/internal/lyricssync"
 	"ux-music-sidecar/internal/playlist"
 	"ux-music-sidecar/internal/store"
 	"ux-music-sidecar/pkg/audio"
@@ -36,7 +35,6 @@ type App struct {
 	normalizer        *normalize.Normalizer
 	loudnessMu        sync.Mutex
 	audioPlayer       *audio.Player
-	lyricsSyncer      *lyricssync.Syncer
 	mtpConnected      bool
 	mtpMu             sync.Mutex
 	mediaStateMu      sync.Mutex
@@ -94,14 +92,12 @@ type App struct {
 // NewApp creates a new App struct
 func NewApp() *App {
 	playlist.SetSettingsProvider(store.Instance)
-	lyricssync.SetSettingsProvider(store.Instance)
 
 	return &App{
-		dialogs:      headlessDialogProvider{},
-		ripper:       cdrip.NewRipper("", config.FFmpegPath, config.GetUserDataPath()),
-		mtpManager:   mtp.NewManager(),
-		normalizer:   normalize.NewNormalizer(config.FFmpegPath, config.FFprobePath),
-		lyricsSyncer: lyricssync.NewSyncer(),
+		dialogs:    headlessDialogProvider{},
+		ripper:     cdrip.NewRipper("", config.FFmpegPath, config.GetUserDataPath()),
+		mtpManager: mtp.NewManager(),
+		normalizer: normalize.NewNormalizer(config.FFmpegPath, config.FFprobePath),
 	}
 }
 
@@ -125,8 +121,6 @@ func (a *App) emit(name string, data interface{}) {
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	a.wireWailsRuntime()
-
-	a.bindLyricsSyncProgressEmitter()
 
 	// Before binding port 8765, check whether a resident `--serve` LaunchAgent
 	// is already holding it and hand off if so (Phase 0-3; see
@@ -187,19 +181,6 @@ func (a *App) Startup(ctx context.Context) {
 // Ping returns a pong message
 func (a *App) Ping() string {
 	return "pong"
-}
-
-// bindLyricsSyncProgressEmitter wires stderr-derived progress events to the frontend.
-func (a *App) bindLyricsSyncProgressEmitter() {
-	if a.lyricsSyncer == nil {
-		return
-	}
-	a.lyricsSyncer.SetProgressHandler(func(stage string, percent float64) {
-		a.emit("lyrics-sync-progress", map[string]interface{}{
-			"stage":   stage,
-			"percent": percent,
-		})
-	})
 }
 
 // pushDiscordPresence updates Discord Rich Presence state.

@@ -2,7 +2,6 @@ package server
 
 import (
 	"ux-music-sidecar/internal/lyrics"
-	"ux-music-sidecar/internal/lyricssync"
 )
 
 // GetLyrics finds lyrics for a song
@@ -22,13 +21,4 @@ func (a *App) HandleLyricsDrop(paths []string) error {
 		a.emit("lyrics-added-notification", count)
 	}
 	return err
-}
-
-// AutoSyncLyrics performs automatic lyric timestamp alignment
-func (a *App) AutoSyncLyrics(req lyricssync.Request) (lyricssync.Result, error) {
-	if a.lyricsSyncer == nil {
-		a.lyricsSyncer = lyricssync.NewSyncer()
-		a.bindLyricsSyncProgressEmitter()
-	}
-	return a.lyricsSyncer.Sync(req), nil
 }
