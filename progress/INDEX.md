@@ -1,5 +1,6 @@
 # Progress Index
 
+- [cdrip-native-reader.md](cdrip-native-reader.md) — cdparanoia 置換に向けた OS 非依存 CD-DA 純 Go コア、DiscReader seam、セキュアリード、オフセット補正、PCM WAV 出力を追加。OS ioctl reader・純 Go FLAC/ALAC・AccurateRip・ドライブオフセット DB は後続作業
 - [ml-python-removal.md](ml-python-removal.md) — デスクトップバックエンドからPython/SwiftのMLサイドカー、CLAP埋め込み、Gemma特集生成を廃止。手動歌詞・MTP・CDリッピング・終了時のトレイ破棄とLaunchAgent復元は維持
 - [native-dylib-vendoring.md](native-dylib-vendoring.md) — macOS の配布 `.app` に対する非システム dylib の一般的・再帰的な同梱方針。共有入口 `scripts/vendor-native-dylibs.sh`（`build-install-app.sh` と `Makefile` 双方から呼ぶ）が `Contents/MacOS` と `Contents/Resources/bin`（cdparanoia 等サイドカー）配下の全 Mach-O を BFS 走査し、Homebrew 等の依存を `Contents/Frameworks` へ集約。実行ファイルは `@executable_path`、サイドカーは `@loader_path/../../Frameworks`、dylib 間は `@loader_path` へ書換え、dylib 自身の id も統一する。解決不能な依存は黙って出荷せずエラー終了
 
