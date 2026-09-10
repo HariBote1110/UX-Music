@@ -22,7 +22,7 @@ build:
 	mkdir -p $(RESOURCES_BIN)
 	cp bin/macos/cdparanoia $(RESOURCES_BIN)/cdparanoia
 	chmod +x $(RESOURCES_BIN)/cdparanoia
-	# portaudio、libcdio* などの非システム dylib を一般的に同梱する。
+	# libcdio* など、残る非システム dylib を一般的に同梱する。
 	# sidecar を配置した後に実行し、Contents/Resources/bin も走査する。
 	bash scripts/vendor-native-dylibs.sh $(APP_BUNDLE)
 

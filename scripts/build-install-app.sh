@@ -77,8 +77,8 @@ else
   printf '== build をスキップ ==\n'
 fi
 
-# portaudio および将来追加される cgo の dylib を含む非システム dylib を
-# 再帰的に Contents/Frameworks へ同梱し、Homebrew のインストールを必要としない
+# 残る cgo の非システム dylib（libcdio* など）を再帰的に
+# Contents/Frameworks へ同梱し、Homebrew のインストールを必要としない
 # 配布 bundle にする。署名（--deep）より前に行うことで dylib 自身も ad-hoc 署名の
 # 対象に含める。
 if [[ -d "${app_source}" || "${dry_run}" == 1 ]]; then
