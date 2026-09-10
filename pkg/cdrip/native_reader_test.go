@@ -149,6 +149,7 @@ func TestTOCTracksExcludeData(t *testing.T) {
 }
 
 func TestRipperFallsBackToCdparanoiaWithoutReaderFactory(t *testing.T) {
+	requirePOSIXShellScripts(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cdparanoia")
 	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf '  1. 12\\n'\n"), 0755); err != nil {
@@ -162,6 +163,7 @@ func TestRipperFallsBackToCdparanoiaWithoutReaderFactory(t *testing.T) {
 }
 
 func TestRipperNativeFactoryIsGatedAndFallsBackOnOpenError(t *testing.T) {
+	requirePOSIXShellScripts(t)
 	t.Setenv("UX_MUSIC_CDRIP_NATIVE", "1")
 	previous := nativeDiscFactory
 	t.Cleanup(func() { nativeDiscFactory = previous })

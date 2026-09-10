@@ -3,8 +3,19 @@ package cdrip
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+// requirePOSIXShellScripts skips tests that stand in for cdparanoia/ffmpeg
+// with `#!/bin/sh` scripts, which Windows cannot execute directly. Windows
+// builds do not bundle cdparanoia, so the fallback path is not used there.
+func requirePOSIXShellScripts(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake cdparanoia/ffmpeg are POSIX shell scripts, which Windows cannot execute")
+	}
+}
 
 func TestSanitize(t *testing.T) {
 	tests := []struct {
@@ -50,6 +61,7 @@ outputting to rip_123_track1.wav
 }
 
 func TestRipperReportsProgressOnCdparanoiaFallback(t *testing.T) {
+	requirePOSIXShellScripts(t)
 	dir := t.TempDir()
 	cdparanoia := filepath.Join(dir, "cdparanoia")
 	script := "#!/bin/sh\n"
