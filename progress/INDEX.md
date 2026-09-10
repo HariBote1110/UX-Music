@@ -2,7 +2,7 @@
 
 - [portaudio-vendoring.md](portaudio-vendoring.md) — PortAudio 19.7.0 を repo 内へ静的 vendoring し、最後の Homebrew 依存を除去
 - [mtp-vendored-libusb.md](mtp-vendored-libusb.md) — MTP の libusb cgo 依存を repo 内で固定し、Homebrew/pkg-config なしのビルドへ移行。karalabe/usb は API 不適合のため不採用
-- [cdrip-native-reader.md](cdrip-native-reader.md) — cdparanoia 置換に向けた OS 非依存 CD-DA 純 Go コア、DiscReader seam、セキュアリード、オフセット補正、PCM WAV 出力を追加。OS ioctl reader・純 Go FLAC/ALAC・AccurateRip・ドライブオフセット DB は後続作業
+- [cdrip-native-reader.md](cdrip-native-reader.md) — macOS IOKit の CD-DA native reader（TOC/生 PCM ioctl、複数媒体列挙、Enhanced CD 補正）、環境変数 opt-in、open 失敗時の cdparanoia fallback、比較 CLI を追加。Windows reader・純 Go FLAC/ALAC・AccurateRip・ドライブオフセット DB は後続作業
 - [ml-python-removal.md](ml-python-removal.md) — デスクトップバックエンドからPython/SwiftのMLサイドカー、CLAP埋め込み、Gemma特集生成を廃止。手動歌詞・MTP・CDリッピング・終了時のトレイ破棄とLaunchAgent復元は維持
 - [native-dylib-vendoring.md](native-dylib-vendoring.md) — macOS の配布 `.app` に対する非システム dylib の一般的・再帰的な同梱方針。共有入口 `scripts/vendor-native-dylibs.sh`（`build-install-app.sh` と `Makefile` 双方から呼ぶ）が `Contents/MacOS` と `Contents/Resources/bin`（cdparanoia 等サイドカー）配下の全 Mach-O を BFS 走査し、Homebrew 等の依存を `Contents/Frameworks` へ集約。実行ファイルは `@executable_path`、サイドカーは `@loader_path/../../Frameworks`、dylib 間は `@loader_path` へ書換え、dylib 自身の id も統一する。解決不能な依存は黙って出荷せずエラー終了
 
