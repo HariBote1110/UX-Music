@@ -36,12 +36,10 @@ jobs:
       # (app_remote_relay_notify_test.go) が実プロセスとして起動するため必要。
       # これまで server パッケージ自体がコンパイルできていなかった（別件の
       # ビルド破壊）ため、この依存不足は気付かれていなかった。
-      # libusb-1.0-0-dev は pkg/mtp が直接 import する github.com/ganeshrvel/go-mtpfs/mtp
-      # （内部で hanwen/usb を利用）が pkg-config: libusb-1.0 で cgo リンクするために必要。
-      - name: Install portaudio, ffmpeg and libusb
+      - name: Install portaudio and ffmpeg
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends portaudio19-dev ffmpeg libusb-1.0-0-dev
+          sudo apt-get install -y --no-install-recommends portaudio19-dev ffmpeg
 
       - uses: actions/setup-go@v5
         with:
@@ -115,9 +113,6 @@ jobs:
       # path-type: inherit にしないと Windows 側 PATH（setup-go / setup-node が
       # 追加した go・npm）が msys2 シェル内から見えず、後続の npm ci や go build が
       # 「command not found」になる。
-      # mingw-w64-x86_64-libusb は pkg/mtp が直接 import する
-      # github.com/ganeshrvel/go-mtpfs/mtp（内部で hanwen/usb を利用）が
-      # pkg-config: libusb-1.0 で cgo リンクするために必要。
       - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -128,7 +123,6 @@ jobs:
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-portaudio
             mingw-w64-x86_64-ffmpeg
-            mingw-w64-x86_64-libusb
 
       # setup-go は通常の Windows shell 前提のため PATH 解決が MSYS2 と噛み合わないことがある。
       # msys2 の pacman で go 自体を入れず actions/setup-go を使うのは、

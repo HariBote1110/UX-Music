@@ -20,6 +20,7 @@ grep -Fq "Frameworks" <<<"${output}"
 grep -Fq "ネイティブ dylib を再帰的に同梱" <<<"${output}"
 grep -Fq "build をスキップ" <<<"${skip_build_output}"
 ! grep -Fq "brew --prefix libusb" "${project_root}/Makefile"
+! rg -n '#cgo[[:space:]]+pkg-config:[[:space:]]*libusb-1\.0|libusb-1\.0-0-dev|mingw-w64-x86_64-libusb' "${project_root}/third_party" "${project_root}/pkg/mtp" "${project_root}/.github" "${project_root}/Makefile"
 grep -Fq "vendor-native-dylibs.sh" "${project_root}/Makefile"
 
 echo "PASS: build-install-app.sh の dry-run を確認しました"
