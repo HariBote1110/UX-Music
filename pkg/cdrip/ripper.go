@@ -30,11 +30,15 @@ var resolvedBinaryPaths sync.Map
 
 // NewRipper creates a new Ripper instance
 func NewRipper(cdParanoiaPath, ffmpegPath, userDataPath string) *Ripper {
-	return &Ripper{
+	ripper := &Ripper{
 		CDParanoiaPath: cdParanoiaPath,
 		FFmpegPath:     ffmpegPath,
 		UserDataPath:   userDataPath,
 	}
+	if nativeReaderEnabled() {
+		ripper.openDisc = func() (DiscReader, error) { return nativeDiscFactory() }
+	}
+	return ripper
 }
 
 func isExecutable(path string) bool {
@@ -130,15 +134,15 @@ func (r *Ripper) OutputDir(libraryPath string) string {
 func (r *Ripper) GetTrackList() ([]Track, error) {
 	if r.openDisc != nil {
 		reader, err := r.openDisc()
-		if err != nil {
-			return nil, fmt.Errorf("failed to open disc: %w", err)
+		if err == nil {
+			defer reader.Close()
+			toc, err := reader.ReadTOC()
+			if err != nil {
+				return nil, fmt.Errorf("failed to read disc TOC: %w", err)
+			}
+			return tracksFromTOC(toc), nil
 		}
-		defer reader.Close()
-		toc, err := reader.ReadTOC()
-		if err != nil {
-			return nil, fmt.Errorf("failed to read disc TOC: %w", err)
-		}
-		return tracksFromTOC(toc), nil
+		fmt.Printf("[CDRip] native reader unavailable; falling back to cdparanoia: %v\n", err)
 	}
 	cdparanoiaPath, err := resolveCDParanoiaPath(r.CDParanoiaPath)
 	if err != nil {
@@ -215,9 +219,11 @@ func (r *Ripper) StartRip(tracks []Track, options RipOptions, libraryPath string
 		var err error
 		reader, err = r.openDisc()
 		if err != nil {
-			return nil, fmt.Errorf("failed to open disc: %w", err)
+			fmt.Printf("[CDRip] native reader unavailable; falling back to cdparanoia: %v\n", err)
+			reader = nil
+		} else {
+			defer reader.Close()
 		}
-		defer reader.Close()
 	}
 	for _, track := range tracks {
 		fmt.Printf("[Ripper] Starting track %d\n", track.Number)
