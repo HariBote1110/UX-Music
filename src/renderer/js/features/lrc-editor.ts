@@ -4,29 +4,10 @@ import { state } from '../core/state.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { resolveArtworkPath, formatSongTitle } from '../ui/utils.js';
 import { getLrcEditorHtml } from './lrc-editor-markup.js';
-import { applyAlignedTimestamps, validateAutoSyncPrereqs } from './lrc-auto-sync.js';
 import { togglePlayPause, seek, getCurrentTime, getDuration, isPlaying } from './player.js';
-import { getWailsApp, isWailsMode } from '../core/bridge.js';
 import { isInterludeText } from './lyrics-translation.js';
 
 const electronAPI = window.electronAPI;
-
-/** DevTools コンソール用（Toast より残る）。 */
-const LOG_LYRICS_AUTO_SYNC = '[LyricsAutoSync]';
-
-function summarisePayloadForConsole(payload: Record<string, unknown>): Record<string, unknown> {
-    const lines = payload.lines;
-    const linePreview = Array.isArray(lines)
-        ? { lineCount: lines.length, head: lines.slice(0, 3) }
-        : lines;
-    return {
-        songPath: payload.songPath,
-        language: payload.language,
-        profile: payload.profile,
-        allowModelDownload: payload.allowModelDownload,
-        lines: linePreview,
-    };
-}
 
 const INTERLUDE_LABEL = '[間奏]';
 const TIMELINE_MIN_DURATION_SEC = 30;
@@ -176,10 +157,6 @@ let activeLineIndex = -1;
 let editorIsSeeking = false;
 let lastTimestampedLineIndex = -1;
 let autoAdvanceArmed = false;
-let isAutoSyncRunning = false;
-let lyricsSyncProgressListenerAttached = false;
-let latestDetectedSegments = [];
-let latestDetectedBy = '';
 let historyStack = [];
 let redoStack = [];
 let timelineDragState = null;
@@ -201,9 +178,6 @@ function refreshEditorElements() {
         currentTime: document.getElementById('lrc-editor-current-time'),
         progressBar: document.getElementById('lrc-editor-progress-bar'),
         totalDuration: document.getElementById('lrc-editor-total-duration'),
-        languageSelect: document.getElementById('lrc-editor-language-select'),
-        autoSyncBtn: document.getElementById('lrc-editor-auto-sync-btn'),
-        showDetectedBtn: document.getElementById('lrc-editor-show-detected-btn'),
         timestampBtn: document.getElementById('lrc-editor-timestamp-btn'),
         timelineScroll: document.getElementById('lrc-editor-timeline-scroll'),
         timelineRuler: document.getElementById('lrc-editor-timeline-ruler'),
@@ -218,10 +192,6 @@ function refreshEditorElements() {
         loadTextBtn: document.getElementById('lrc-editor-load-text-btn'),
         helpPopup: document.getElementById('lrc-editor-help-popup'),
         helpCloseBtn: document.getElementById('lrc-editor-help-close-btn'),
-        detectedPopup: document.getElementById('lrc-editor-detected-popup'),
-        detectedMeta: document.getElementById('lrc-editor-detected-meta'),
-        detectedContent: document.getElementById('lrc-editor-detected-content'),
-        detectedCloseBtn: document.getElementById('lrc-editor-detected-close-btn'),
         undoBtn: document.getElementById('lrc-editor-undo-btn'),
         insertInterludeBtn: document.getElementById('lrc-editor-insert-interlude-btn'),
     };
@@ -840,9 +810,6 @@ function setupLrcEditorListeners(signal) {
         editorElements.helpPopup.classList.add('hidden');
     }, opts);
 
-    editorElements.showDetectedBtn.addEventListener('click', openDetectedPopup, opts);
-    editorElements.detectedCloseBtn.addEventListener('click', closeDetectedPopup, opts);
-
     editorElements.loadTextBtn.addEventListener('click', loadTextFromTextarea, opts);
     editorElements.playPauseBtn.addEventListener('click', togglePlayPause, opts);
 
@@ -860,14 +827,12 @@ function setupLrcEditorListeners(signal) {
     editorElements.timelineZoomRange.addEventListener('input', handleTimelineZoomInput, opts);
 
     editorElements.timestampBtn.addEventListener('click', addTimestamp, opts);
-    editorElements.autoSyncBtn.addEventListener('click', runAutoSync, opts);
     editorElements.saveBtn.addEventListener('click', handleSaveLrc, opts);
     editorElements.undoBtn.addEventListener('click', undo, opts);
     editorElements.insertInterludeBtn.addEventListener('click', insertInterludeLine, opts);
 
     editorElements.view.addEventListener('keydown', handleEditorKeyDown, opts);
 
-    setAutoSyncButtonState(false);
     updateTimelineZoomDisplay();
     updateUndoRedoButtons();
     return true;
@@ -890,9 +855,6 @@ export async function renderLrcEditor(container, song, options: { signal?: Abort
     editorIsSeeking = false;
     lastTimestampedLineIndex = -1;
     autoAdvanceArmed = false;
-    isAutoSyncRunning = false;
-    latestDetectedSegments = [];
-    latestDetectedBy = '';
     historyStack = [];
     redoStack = [];
     clearTimelineDragState();
@@ -941,9 +903,6 @@ export async function renderLrcEditor(container, song, options: { signal?: Abort
     editorElements.view.setAttribute('tabindex', '-1');
     editorElements.view.focus();
 
-    closeDetectedPopup();
-    updateDetectedPreviewUI();
-    setAutoSyncButtonState(false);
     updateUndoRedoButtons();
 }
 
@@ -1032,245 +991,6 @@ function loadTextFromTextarea() {
     editorElements.loadTextBtn.classList.add('hidden');
     editorElements.view.focus();
     updateUndoRedoButtons();
-}
-
-function attachLyricsSyncProgressListener() {
-    if (lyricsSyncProgressListenerAttached || typeof window.runtime?.EventsOn !== 'function') {
-        return;
-    }
-    lyricsSyncProgressListenerAttached = true;
-    window.runtime.EventsOn('lyrics-sync-progress', (payload: unknown) => {
-        if (!isAutoSyncRunning || !editorElements.autoSyncBtn) return;
-        const rec =
-            typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>) : {};
-        const stage = typeof rec.stage === 'string' ? rec.stage : '';
-        const pctRaw = rec.percent;
-        const pctNum = typeof pctRaw === 'number' ? Math.round(pctRaw) : '';
-        console.info(LOG_LYRICS_AUTO_SYNC, 'progress', { stage, percent: pctRaw });
-        editorElements.autoSyncBtn.textContent = stage
-            ? `解析中… ${stage} ${pctNum}%`
-            : `解析中… ${pctNum}%`;
-    });
-}
-
-/** Returns whether the user permits model downloads (dialogs + persisted settings via Wails). */
-async function ensureLyricsSyncModelConsentBeforeSync() {
-    if (!isWailsMode()) {
-        return true;
-    }
-
-    const app = getWailsApp() as
-        | {
-              GetLyricsSyncResourceStatus?: () => Promise<Record<string, unknown>>;
-              SetLyricsSyncModelConsent?: (approved: boolean) => Promise<void>;
-          }
-        | undefined;
-
-    if (!app?.GetLyricsSyncResourceStatus || !app.SetLyricsSyncModelConsent) {
-        showNotification('歌詞モデルの許可状態を確認できません。設定の「モデルのネットワークからのダウンロードを許可する」をオンにしてください。');
-        hideNotification(5000);
-        return false;
-    }
-
-    try {
-        const st = await app.GetLyricsSyncResourceStatus();
-        const hasConsent = st?.modelConsent === true;
-
-        if (hasConsent) {
-            return true;
-        }
-
-        const ok = window.confirm(
-            '歌詞の自動同期では初回に音声モデル（合計およそ2GB前後）がダウンロードされることがあります。続行するとダウンロードに同意したものとして保存されます。よろしいですか？'
-        );
-        if (ok) {
-            await app.SetLyricsSyncModelConsent(true);
-        }
-        return ok;
-    } catch (e) {
-        console.warn('[LRC Editor] Lyrics sync consent check failed:', e);
-        showNotification('モデル許可の確認に失敗しました。設定画面から許可してください。');
-        hideNotification(5000);
-        return false;
-    }
-}
-
-function setAutoSyncButtonState(running) {
-    if (!editorElements.autoSyncBtn) return;
-
-    editorElements.autoSyncBtn.disabled = running;
-    editorElements.autoSyncBtn.dataset.running = running ? 'true' : 'false';
-    editorElements.autoSyncBtn.textContent = running ? '解析中...' : '自動同期解析';
-
-    if (editorElements.languageSelect) {
-        editorElements.languageSelect.disabled = running;
-    }
-
-    if (editorElements.showDetectedBtn) {
-        editorElements.showDetectedBtn.disabled = running || latestDetectedSegments.length === 0;
-    }
-}
-
-function formatDetectedSegments(segments) {
-    if (!Array.isArray(segments) || segments.length === 0) {
-        return '(空)';
-    }
-
-    return segments.map((segment, index) => {
-        const start = Number.isFinite(segment?.start) ? segment.start : 0;
-        const end = Number.isFinite(segment?.end) ? segment.end : start;
-        const text = (segment?.text || '').trim();
-        const label = text === '' ? '(空白)' : text;
-        return `${String(index + 1).padStart(2, '0')}. [${formatLrcTime(start)} - ${formatLrcTime(end)}] ${label}`;
-    }).join('\n');
-}
-
-function updateDetectedPreviewUI() {
-    const hasSegments = latestDetectedSegments.length > 0;
-
-    if (editorElements.showDetectedBtn) {
-        editorElements.showDetectedBtn.disabled = isAutoSyncRunning || !hasSegments;
-    }
-
-    if (editorElements.detectedMeta) {
-        if (!hasSegments) {
-            editorElements.detectedMeta.textContent = 'まだ解析結果がありません。';
-        } else {
-            const source = latestDetectedBy ? latestDetectedBy : 'unknown';
-            editorElements.detectedMeta.textContent = `採用候補: ${source} / セグメント数: ${latestDetectedSegments.length}`;
-        }
-    }
-
-    if (editorElements.detectedContent) {
-        editorElements.detectedContent.textContent = formatDetectedSegments(latestDetectedSegments);
-    }
-}
-
-function openDetectedPopup() {
-    if (!editorElements.detectedPopup) return;
-    updateDetectedPreviewUI();
-    editorElements.detectedPopup.classList.remove('hidden');
-}
-
-function closeDetectedPopup() {
-    if (!editorElements.detectedPopup) return;
-    editorElements.detectedPopup.classList.add('hidden');
-}
-
-function applyDetectedPreview(result) {
-    latestDetectedBy = typeof result?.detectedBy === 'string' ? result.detectedBy : '';
-    latestDetectedSegments = Array.isArray(result?.detectedSegments)
-        ? result.detectedSegments.map(segment => ({
-            start: Number.isFinite(segment?.start) ? segment.start : 0,
-            end: Number.isFinite(segment?.end) ? segment.end : (Number.isFinite(segment?.start) ? segment.start : 0),
-            text: typeof segment?.text === 'string' ? segment.text : '',
-        }))
-        : [];
-    updateDetectedPreviewUI();
-}
-
-async function runAutoSync() {
-    if (isAutoSyncRunning) return;
-
-    const prereq = validateAutoSyncPrereqs({ currentEditorSong, lyricsLines });
-    if (!prereq.ok) {
-        showNotification(prereq.message!);
-        hideNotification(2500);
-        return;
-    }
-
-    attachLyricsSyncProgressListener();
-    const consentOk = await ensureLyricsSyncModelConsentBeforeSync();
-    if (!consentOk) {
-        showNotification('キャンセルしました。');
-        hideNotification(2500);
-        return;
-    }
-
-    isAutoSyncRunning = true;
-    latestDetectedSegments = [];
-    latestDetectedBy = '';
-    closeDetectedPopup();
-    updateDetectedPreviewUI();
-    setAutoSyncButtonState(true);
-
-    try {
-        const payload: Record<string, unknown> = {
-            songPath: currentEditorSong.path,
-            lines: lyricsLines.map(line => line.text || ''),
-            language: editorElements.languageSelect ? editorElements.languageSelect.value : 'auto',
-            profile: 'fast',
-            /** Backend also reads settings; this flags explicit user intent after consent. */
-            allowModelDownload: true,
-        };
-
-        console.info(LOG_LYRICS_AUTO_SYNC, 'invoke', summarisePayloadForConsole(payload));
-
-        const result = await electronAPI.invoke('lyrics-auto-sync', payload) as Record<string, unknown>;
-
-        if (!result || result.success !== true) {
-            const errRaw = result && typeof result === 'object' ? (result as Record<string, unknown>).error : undefined;
-            const errText = typeof errRaw === 'string' ? errRaw : '不明なエラー';
-            console.error(LOG_LYRICS_AUTO_SYNC, 'failed (backend Result)', JSON.stringify(result, null, 2));
-            console.error(LOG_LYRICS_AUTO_SYNC, 'error message:', errText);
-            applyDetectedPreview(result);
-            showNotification(`自動同期に失敗しました: ${errText}`);
-            hideNotification(5000);
-            return;
-        }
-
-        applyDetectedPreview(result);
-
-        const alignedLines = Array.isArray(result.lines) ? result.lines as Record<string, unknown>[] : [];
-        if (alignedLines.length === 0) {
-            console.warn(LOG_LYRICS_AUTO_SYNC, 'success=true but zero aligned lines — full Result:', JSON.stringify(result, null, 2));
-            showNotification('自動同期結果が空でした。');
-            hideNotification(3500);
-            return;
-        }
-
-        applyAlignedTimestamps(
-            lyricsLines,
-            alignedLines as unknown as { index: number; timestamp: number }[],
-        );
-
-        saveHistory();
-        redrawLyricsArea();
-
-        if (activeLineIndex >= 0 && activeLineIndex < lyricsLines.length) {
-            setActiveLine(activeLineIndex);
-        } else if (lyricsLines.length > 0) {
-            setActiveLine(0);
-        }
-
-        autoAdvanceArmed = false;
-        lastTimestampedLineIndex = -1;
-        updateUndoRedoButtons();
-
-        const matchedCount = typeof result.matchedCount === 'number' ? result.matchedCount as number : 0;
-        const detectedCount = latestDetectedSegments.length;
-        console.info(LOG_LYRICS_AUTO_SYNC, 'success', {
-            matchedCount,
-            detectedSegmentCount: detectedCount,
-            detectedBy: typeof result.detectedBy === 'string' ? result.detectedBy : undefined,
-            alignedLineCount: alignedLines.length,
-        });
-        showNotification(`自動同期が完了しました（一致: ${matchedCount}行 / 検知: ${detectedCount}件）`);
-        hideNotification(3500);
-    } catch (error) {
-        console.error(LOG_LYRICS_AUTO_SYNC, 'invoke threw:', error);
-        if (error instanceof Error && error.stack) {
-            console.error(LOG_LYRICS_AUTO_SYNC, 'stack:', error.stack);
-        }
-        latestDetectedSegments = [];
-        latestDetectedBy = '';
-        updateDetectedPreviewUI();
-        showNotification(`自動同期の実行中にエラーが発生しました: ${(error as Error)?.message || String(error)}`);
-        hideNotification(5000);
-    } finally {
-        isAutoSyncRunning = false;
-        setAutoSyncButtonState(false);
-    }
 }
 
 function setActiveLine(index, isManual = false, options: { scrollLyric?: boolean; scrollTimeline?: boolean } = {}) {

@@ -250,19 +250,6 @@ window.electronAPI = window.electronAPI || {
                         };
                     }
                 },
-                'lyrics-auto-sync': async (data) => {
-                    if (!app?.AutoSyncLyrics) {
-                        return { success: false, error: 'AutoSyncLyrics が利用できません' };
-                    }
-                    try {
-                        return await app.AutoSyncLyrics(data || {});
-                    } catch (error: unknown) {
-                        return {
-                            success: false,
-                            error: errorMessage(error),
-                        };
-                    }
-                },
                 'get-artwork-as-data-url': async (filename) => {
                     if (app?.GetArtworkAsDataURL) {
                         return await app.GetArtworkAsDataURL(filename);

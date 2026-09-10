@@ -15,7 +15,6 @@ export const LEGACY_SETTING_KEYS = [
     'visualizerMode',
     'analysedQueue',
     'enableEasterEggs',
-    'lyricsSyncModelConsent',
     'uiTheme',
     'hiddenDeviceIds',
 ] as const;
@@ -31,7 +30,6 @@ export const SETTING_KEY_SECTIONS: Record<LegacySettingKey, SectionId> = {
     visualizerMode: 'appearance',
     analysedQueue: 'general',
     enableEasterEggs: 'general',
-    lyricsSyncModelConsent: 'ai',
     uiTheme: 'appearance',
     hiddenDeviceIds: 'playback',
 };

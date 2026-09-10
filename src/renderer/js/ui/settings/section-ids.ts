@@ -10,7 +10,6 @@ export const SECTION_IDS = [
     'appearance',
     'youtube',
     'integration',
-    'ai',
     'advanced',
 ] as const;
 

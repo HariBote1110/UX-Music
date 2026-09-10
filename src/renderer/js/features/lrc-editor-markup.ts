@@ -28,13 +28,6 @@ export function getLrcEditorHtml() {
     <span id="lrc-editor-current-time">0:00</span>
     <input type="range" id="lrc-editor-progress-bar" value="0" step="any">
     <span id="lrc-editor-total-duration">0:00</span>
-    <select id="lrc-editor-language-select" class="auto-sync-language-select" title="自動同期の言語を選択">
-        <option value="auto-ja">日本語</option>
-        <option value="auto-en">English</option>
-        <option value="auto">自動検出</option>
-    </select>
-    <button id="lrc-editor-auto-sync-btn" class="header-button auto-sync-btn" type="button">自動同期解析</button>
-    <button id="lrc-editor-show-detected-btn" class="header-button detected-btn" type="button" disabled>検知テキスト表示</button>
     <button id="lrc-editor-timestamp-btn" class="header-button timestamp-btn" type="button">選択行を現在位置へ ( T )</button>
 </div>
 
@@ -82,13 +75,6 @@ export function getLrcEditorHtml() {
         <li>完了後に「LRCを保存」で書き出します。</li>
     </ol>
     <button id="lrc-editor-help-close-btn" type="button">閉じる</button>
-</div>
-
-<div id="lrc-editor-detected-popup" class="hidden detected-popup">
-    <h4>検知テキスト (whisper)</h4>
-    <p id="lrc-editor-detected-meta" class="detected-meta">まだ解析結果がありません。</p>
-    <pre id="lrc-editor-detected-content" class="detected-content">(空)</pre>
-    <button id="lrc-editor-detected-close-btn" type="button">閉じる</button>
 </div>
 </div>`;
 }
