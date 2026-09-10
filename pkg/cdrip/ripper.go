@@ -273,19 +273,18 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 	// 1. Rip to WAV
 	if reader != nil {
 		fmt.Printf("[Ripper] Running native Go reader for track %d (mode: %s)\n", track.Number, options.Mode)
-		pcm, _, err := SecureReadTrack(reader, track.Number, SecureReadOptions{
-			Mode: options.Mode,
-			Progress: func(sectorsRead int) {
-				if progressChan != nil && track.Sectors > 0 {
-					progressChan <- RipProgress{TrackNumber: track.Number, Status: "ripping", Percent: float64(sectorsRead) / float64(track.Sectors) * 95}
-				}
-			},
+		err := WritePCM16LEStream(tempWav, int64(track.Sectors*CDSectorBytes), func(writer io.Writer) error {
+			_, err := SecureReadTrackTo(writer, reader, track.Number, SecureReadOptions{
+				Mode: options.Mode,
+				Progress: func(sectorsRead int) {
+					if progressChan != nil && track.Sectors > 0 {
+						progressChan <- RipProgress{TrackNumber: track.Number, Status: "ripping", Percent: float64(sectorsRead) / float64(track.Sectors) * 95}
+					}
+				},
+			})
+			return err
 		})
 		if err != nil {
-			os.Remove(tempWav)
-			return "", err
-		}
-		if err := WritePCM16LE(tempWav, pcm); err != nil {
 			os.Remove(tempWav)
 			return "", err
 		}
@@ -300,7 +299,38 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 			cdArgs = append(cdArgs, "-Z")
 		}
 		cdArgs = append(cdArgs, strconv.Itoa(track.Number), tempWav)
+		// Monitor the growing WAV while cdparanoia is running so the UI retains
+		// the same ripping progress semantics as the native reader.
+		expectedBytes := int64(track.Sectors)*CDSectorBytes + 44
+		ripDone := make(chan struct{})
+		var progressWg sync.WaitGroup
+		if progressChan != nil && expectedBytes > 44 {
+			progressWg.Add(1)
+			go func() {
+				defer progressWg.Done()
+				ticker := time.NewTicker(400 * time.Millisecond)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ripDone:
+						return
+					case <-ticker.C:
+						info, err := os.Stat(tempWav)
+						if err != nil {
+							continue
+						}
+						pct := float64(info.Size()) / float64(expectedBytes) * 95
+						if pct > 95 {
+							pct = 95
+						}
+						progressChan <- RipProgress{TrackNumber: track.Number, Status: "ripping", Percent: pct}
+					}
+				}
+			}()
+		}
 		ripOutput, ripErr := exec.Command(cdparanoiaPath, cdArgs...).CombinedOutput()
+		close(ripDone)
+		progressWg.Wait()
 		if ripErr != nil {
 			os.Remove(tempWav)
 			return "", fmt.Errorf("cdparanoia failed: %w. Output: %s", ripErr, string(ripOutput))

@@ -14,4 +14,6 @@ cdparanoia の実行ファイルと libcdio dylib を同梱して呼び出す方
 
 このフェーズで残る作業は、macOS の `DKIOCCDREAD` / `DKIOCCDREADTOC` reader、Windows の `IOCTL_CDROM_RAW_READ` reader、FLAC/ALAC の純 Go エンコーディング、AccurateRip 対応、ドライブオフセット DB の導入である。現在の encode step は従来どおり ffmpeg を使い、純 Go コアは 2352 bytes/sector の 16-bit little-endian stereo PCM WAV を一時ファイルへ書き出す。
 
-セキュアモードは各セクタを二重以上に読み、同値なら受理する。不一致時は設定回数まで再読して多数結果を採用し、疑わしい範囲と復旧不能範囲を report する。burst モードは単一 read とし、オフセット補正でディスク境界外になったサンプルはゼロで埋める。
+セキュアモードは既定 27 セクタのブロック単位で読み取り、各ブロックを二重に比較する。一致するセクタはそのまま受理し、不一致のセクタだけを個別に設定回数まで再読して、従来どおり多数結果を採用する。ブロックサイズは `SecureReadOptions.BlockSize` で変更できる。burst モードはブロックごとに単一 read とし、オフセット補正でディスク境界外になったサンプルはゼロで埋める。
+
+PCM はトラック全体をメモリへ保持せず、`SecureReadTrackTo` がブロックごとに `io.Writer` へ出力する。ブロックの読み取りキャッシュは次の出力ブロックへ進むと破棄されるため、保持量はトラック長に比例しない。Ripper は既知の PCM サイズで WAV ヘッダを先に書き、ネイティブ reader の出力を一時 WAV へ直接ストリームする。テストや小さな呼び出し元向けには、同じ処理を `[]byte` として返す `SecureReadTrack` を残す。
