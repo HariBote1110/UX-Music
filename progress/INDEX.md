@@ -1,5 +1,6 @@
 # Progress Index
 
+- [ml-python-removal.md](ml-python-removal.md) — デスクトップバックエンドからPython/SwiftのMLサイドカー、CLAP埋め込み、Gemma特集生成を廃止。手動歌詞・MTP・CDリッピング・終了時のトレイ破棄とLaunchAgent復元は維持
 - [native-dylib-vendoring.md](native-dylib-vendoring.md) — macOS の配布 `.app` に対する非システム dylib の一般的・再帰的な同梱方針。共有入口 `scripts/vendor-native-dylibs.sh`（`build-install-app.sh` と `Makefile` 双方から呼ぶ）が `Contents/MacOS` と `Contents/Resources/bin`（cdparanoia 等サイドカー）配下の全 Mach-O を BFS 走査し、Homebrew 等の依存を `Contents/Frameworks` へ集約。実行ファイルは `@executable_path`、サイドカーは `@loader_path/../../Frameworks`、dylib 間は `@loader_path` へ書換え、dylib 自身の id も統一する。解決不能な依存は黙って出荷せずエラー終了
 
 - [iphone-lyrics-desktop-parity.md](iphone-lyrics-desktop-parity.md) — iPhone のシンク歌詞ビューを `Core/LyricsStageKit.swift` の Desktop parity 共有プリミティブへ収束（0.8s カスケード / CSS ease timing curve / `SidecarLyricsEdgeFade` のソフト溶解 / 近傍ブラー撤去 / 0.2s ゲート tick）。モバイル専用の手動ドラッグ・ピーク + 3秒 auto-resume は意図的な差分として維持。あわせて「次に再生」キュー／お気に入りサイドパネルを `SongRowView` / `SongRowMetrics` / `LibraryListRowStyle` へ再ベース化しライブラリ全曲リストと統一（キューは連番／waveform インジケータ維持・アートワーク非表示、ユーザー決定）。SSD 未マウントのためシム検証は不可、コンパイル検証のみ（BUILD SUCCEEDED）
@@ -28,7 +29,7 @@
 
 - [flac-native-decoder.md](flac-native-decoder.md) — mewkiz/flac をやめて `pkg/audio/flac` に FLAC デコーダを自作し、`pkg/audio` へ統合完了（増分4）。`Decoder.SeekSample` はSEEKTABLE高速経路（生バイトをこの時点で初めてパース、プレースホルダー点は無視）とバイナリサーチ経路（CRC-8検証付き同期スキャンでフレーム境界を絞り込み）の2系統を持ち、どちらも目的フレームまでフルデコードしてトリムするため線形デコード＋読み飛ばしと常にビット完全一致。統合で`player.go`から削除したのは、ID3v2付きFLACを2秒後にffmpegで書き換える破壊的remux、SeekTable不在時の全フレームスキャン索引＋ディスクキャッシュ、`reflect`+`unsafe`による非公開フィールド注入、ミッドストリームffmpegフォールバック（オープン時フォールバックのみ残置）。`server/app_scanner.go`の全曲事前索引ジョブ（`BuildFLACIndexes`）とWailsバインディング・フロントエンドUIも削除。`go mod tidy`で`mewkiz/flac`・`mewkiz/pkg`をgo.sumから完全除去し確認
 
-- [lyrics-sync-asr-hint-deferred.md](lyrics-sync-asr-hint-deferred.md) — 旧 lyrics-sync 系統（`origin/archive/lyrics-sync-old-main`）から拾うものの取捨。間奏付近の疎いASRセグメント抑制（`71c3e54`）は現行 `stage3_align`（202行→783行、`_repair_*` 5種＋`is_interlude`）が上位互換のため破棄、「Whisper に歌詞を `initial_prompt`/hotwords として渡す」（`ff33693`）は現行版に存在しない独自アイデアのため保留（cherry-pick 不可・現行実装への移植が必要）。IGNORE テスト一式とドキュメントのみ取り込み、`markdown/testing-lyrics-sync.md` の「機能が存在する前提」の記述を未実装と明記に修正
+- [lyrics-sync-asr-hint-deferred.md](lyrics-sync-asr-hint-deferred.md) — 廃止。旧 lyrics-sync 系統の検討記録（過去のアーカイブ）
 
 - [licence-audit.md](licence-audit.md) — LICENSE を GPL-2.0 から GPL-3.0 へ変更（`b664b6f`）して解決済み。問題は直接依存の Apache-2.0 4つ（go-mp3 / go-audio/wav / go-audio/audio / purego）が FSF の見解で GPLv2 と非互換だったこと（Go は静的リンクで回避不可）。誤解の訂正として ffmpeg は同梱しておらず実行時に PATH から解決するため GPL の義務は発生しない。同梱 copyleft は cdparanoia（GPL-2.0、exec 起動なので伝播しない）のみ。出所不明だった `libkalam.dylib` は埋め込みシンボルから `ganeshrvel/go-mtpfs` 由来と特定し New BSD（Copyright 2012 Google Inc.）＝GPLv3互換と確定。残る不備は第三者ライセンス表示ファイル（THIRD-PARTY-NOTICES）が存在しないこと
 
