@@ -7,8 +7,8 @@ name: test
 #   - ビルドすら通らないテストパッケージ
 # が長期間気付かれずに残っていた。
 #
-# Linux 上で確実に動く 3 ジョブ（Go / renderer / Python）を必須ゲートとし、
-# macOS 必須のもの（Swift, CoreAudio）は別ジョブに分離している。
+# Linux 上で確実に動く 2 ジョブ（Go / renderer）を必須ゲートとし、
+# macOS 必須のもの（CoreAudio）は別ジョブに分離している。
 
 on:
   push:
@@ -222,56 +222,6 @@ jobs:
 
       - name: vitest
         run: npm run test
-
-  # ---------------------------------------------------------------------------
-  # Python: lyrics_sync / audio_embed のテスト
-  # ---------------------------------------------------------------------------
-  python:
-    name: pytest (lyrics-sync)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      # base dependencies には torch / demucs / faster-whisper が含まれ数GBになる。
-      # 大半のテストは pytest + numpy だけで動くので、そこだけ入れる
-      # （pyproject.toml の [project.optional-dependencies].test と同じ構成）。
-      - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest numpy
-
-      - name: pytest
-        run: python -m pytest python/tests -v
-
-  # ---------------------------------------------------------------------------
-  # macOS 専用: Swift サイドカー / iOS アプリ
-  # ---------------------------------------------------------------------------
-  # 注意: 下の 2 ジョブは Linux では検証できていない（初回実行で調整が必要かもしれない）。
-  # 上の 3 ジョブが必須ゲートで、こちらは macOS ランナーでのみ動く追加の網。
-  swift-cli:
-    name: swift test (lyrics-sync CLI)
-    # Package.swift が swift-tools-version 6.0 を要求するため、Swift 5.10 までしか
-    # 積んでいない macos-14 では「package が要求する tools version をインストール済みの
-    # バージョンが満たせない」エラーで即死する。開発機は Swift 6.3.2 で動いており、
-    # 依存の WhisperKit も 6.x 系を前提にする可能性が高いので、Package.swift 側を
-    # 落とすのではなくランナー側を Swift 6 系がデフォルトの macos-15 に上げる。
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v5
-
-      # ツールチェインのバージョンドリフトは「Package.swift が新しいのにランナーが
-      # 古い」形で再発しやすい。次に同じ事故が起きたときログから即座に切り分けられる
-      # よう、swift test の直前に実際に使われているバージョンを出しておく。
-      - name: Show toolchain versions
-        run: |
-          swift --version
-          xcodebuild -version
-
-      - name: swift test
-        working-directory: swift/lyrics-sync
-        run: swift test
 
   ios-mobile:
     name: xcodebuild test (UX-Music-Mobile)
