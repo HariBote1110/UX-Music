@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mtp-vendored-libusb.md](mtp-vendored-libusb.md) — MTP の libusb cgo 依存を repo 内で固定し、Homebrew/pkg-config なしのビルドへ移行。karalabe/usb は API 不適合のため不採用
 - [cdrip-native-reader.md](cdrip-native-reader.md) — cdparanoia 置換に向けた OS 非依存 CD-DA 純 Go コア、DiscReader seam、セキュアリード、オフセット補正、PCM WAV 出力を追加。OS ioctl reader・純 Go FLAC/ALAC・AccurateRip・ドライブオフセット DB は後続作業
 - [ml-python-removal.md](ml-python-removal.md) — デスクトップバックエンドからPython/SwiftのMLサイドカー、CLAP埋め込み、Gemma特集生成を廃止。手動歌詞・MTP・CDリッピング・終了時のトレイ破棄とLaunchAgent復元は維持
 - [native-dylib-vendoring.md](native-dylib-vendoring.md) — macOS の配布 `.app` に対する非システム dylib の一般的・再帰的な同梱方針。共有入口 `scripts/vendor-native-dylibs.sh`（`build-install-app.sh` と `Makefile` 双方から呼ぶ）が `Contents/MacOS` と `Contents/Resources/bin`（cdparanoia 等サイドカー）配下の全 Mach-O を BFS 走査し、Homebrew 等の依存を `Contents/Frameworks` へ集約。実行ファイルは `@executable_path`、サイドカーは `@loader_path/../../Frameworks`、dylib 間は `@loader_path` へ書換え、dylib 自身の id も統一する。解決不能な依存は黙って出荷せずエラー終了
@@ -20,7 +21,7 @@
 
 - [native-play-queue.md](native-play-queue.md) — バックグラウンド再生ネイティブ化 Phase 1: `pkg/playqueue`（純ロジック、JS版 playback-manager.ts のnext/prev/shuffle/loop挙動をTDDで移植）と `server/app_queue.go`（Wailsバインディング・OnFinished自動進行・remote/OSメディアキー横取り）を実装。opt-in設計でQueueSetが呼ばれるまで既存動作に影響なし。再生回数計上は「開始時に一度だけ」（計画書の想定と異なりSongFinishedは無関係と判明）で、キューActive時はaudio-playback-finishedのemitを抑止して二重計上を回避。フロントエンド（playback-manager.ts）は本タスクでは未改修
 
-- [mtp-ffi-removal.md](mtp-ffi-removal.md) — MTP を libkalam.dylib（purego FFI + JSON 境界）から go-mtpfs@v1.0.3 `mtp` パッケージ直接 import へ置換。高レベル層（パス解決 Walk・転送進捗・MakeDirectory）は pkg/mtp に自前実装。go-mtpx は LICENSE 不在（無ライセンス）のため採用もコード移植も不可と確定。hanwen/usb は cgo + pkg-config libusb-1.0 のため全 CI ジョブに libusb 開発パッケージが必要。旧配布ビルドは libkalam を同梱しておらず配布版 MTP は非動作だった可能性が高い
+- [mtp-ffi-removal.md](mtp-ffi-removal.md) — MTP を libkalam.dylib（purego FFI + JSON 境界）から go-mtpfs@v1.0.3 `mtp` パッケージ直接 import へ置換。高レベル層（パス解決 Walk・転送進捗・MakeDirectory）は pkg/mtp に自前実装。go-mtpx は LICENSE 不在（無ライセンス）のため採用もコード移植も不可と確定。hanwen/usb は実 libusb 1.0.30 の cgo 静的リンクへ移行。旧配布ビルドは libkalam を同梱しておらず配布版 MTP は非動作だった可能性が高い
 
 - [tv-local-file-resolver.md](tv-local-file-resolver.md) — TVでスキップ・自動再生が無音のまま曲名だけ変わる問題（キュー内の曲がサーバ側パスのままでloadAndPlayのfileExistsガードが黙って離脱）を、`MusicPlayerService.localFileResolver` フック＋TV側ensureCached解決の単一フローで修正。Siri Remoteで再生再開できない問題（play/pauseCommand常時両有効）の`RemoteCommandEnablement`による相互排他化もこの回
 

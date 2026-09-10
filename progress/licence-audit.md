@@ -35,12 +35,21 @@ ffmpeg は**同梱していない**。`locateFfmpeg()` が実行時に PATH か�
 
 ## 同梱バイナリの状況
 
+### MTP の追加記録
+
+MTP の `go-mtpfs` と `hanwen/usb` は repo 内フォークとして保持し、libusb v1.0.30
+を cgo で静的リンクする。upstream ソースは SHA-256
+`fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf` で確認済み。
+libusb は LGPL-2.1 のため、プロジェクトの GPLv3 と
+両立する。`third_party/hanwen-usb/libusb/COPYING` と upstream の著作権表示を
+配布物へ含め、フォーク側の `LICENSE` と著作権ヘッダーも保持する。
+
 `bin/macos/` および `pkg/mtp/lib/` の中身。
 
 | ファイル | ライセンス | 備考 |
 |---|---|---|
 | `cdparanoia` | **GPL-2.0** | 唯一同梱している copyleft。Makefile が `.app/Contents/Resources/bin` へコピーする。`exec` で別プロセス起動のため FSF の解釈では独立したプログラム扱いで、Go コード本体へは伝播しない |
-| `libusb.dylib` | LGPL-2.1 | 動的リンクのため任意ライセンスで利用可（再リンク可能性の確保は必要） |
+| libusb（cgo 静的リンク） | LGPL-2.1 | `third_party/hanwen-usb/libusb/COPYING` を同梱。GPLv3 のアプリとの組み合わせは許容される |
 | `libkalam.dylib` | **New BSD（3条項）** | MTP 用。特定済み — 下記参照 |
 | `xld` | — | 204 バイトのシェルスクリプト。ユーザーが自分でインストールした `/Applications/XLD.app` を呼ぶだけで、XLD 自体は同梱していない |
 
