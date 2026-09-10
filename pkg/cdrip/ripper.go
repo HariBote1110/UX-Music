@@ -23,6 +23,7 @@ type Ripper struct {
 	CDParanoiaPath string
 	FFmpegPath     string
 	UserDataPath   string
+	openDisc       func() (DiscReader, error)
 }
 
 var resolvedBinaryPaths sync.Map
@@ -127,6 +128,18 @@ func (r *Ripper) OutputDir(libraryPath string) string {
 
 // GetTrackList scans the CD for tracks
 func (r *Ripper) GetTrackList() ([]Track, error) {
+	if r.openDisc != nil {
+		reader, err := r.openDisc()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open disc: %w", err)
+		}
+		defer reader.Close()
+		toc, err := reader.ReadTOC()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read disc TOC: %w", err)
+		}
+		return tracksFromTOC(toc), nil
+	}
 	cdparanoiaPath, err := resolveCDParanoiaPath(r.CDParanoiaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run cdparanoia: %w", err)
@@ -197,13 +210,22 @@ func (r *Ripper) StartRip(tracks []Track, options RipOptions, libraryPath string
 	}
 
 	var outputPaths []string
+	var reader DiscReader
+	if r.openDisc != nil {
+		var err error
+		reader, err = r.openDisc()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open disc: %w", err)
+		}
+		defer reader.Close()
+	}
 	for _, track := range tracks {
 		fmt.Printf("[Ripper] Starting track %d\n", track.Number)
 		if progressChan != nil {
 			progressChan <- RipProgress{TrackNumber: track.Number, Status: "ripping", Percent: 0}
 		}
 
-		outPath, err := r.ripAndConvert(track, outputDir, options, artworkPath, progressChan)
+		outPath, err := r.ripAndConvert(track, outputDir, options, artworkPath, progressChan, reader)
 
 		if err != nil {
 			fmt.Printf("[Ripper] Error processing track %d: %v\n", track.Number, err)
@@ -223,7 +245,7 @@ func (r *Ripper) StartRip(tracks []Track, options RipOptions, libraryPath string
 	return outputPaths, nil
 }
 
-func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions, artworkPath string, progressChan chan<- RipProgress) (string, error) {
+func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions, artworkPath string, progressChan chan<- RipProgress, reader DiscReader) (string, error) {
 	safeTitle := sanitize(track.Title)
 	safeArtist := sanitize(track.Artist)
 
@@ -249,55 +271,40 @@ func (r *Ripper) ripAndConvert(track Track, outputDir string, options RipOptions
 	finalPath := filepath.Join(artistDir, filename)
 
 	// 1. Rip to WAV
-	cdparanoiaPath, err := resolveCDParanoiaPath(r.CDParanoiaPath)
-	if err != nil {
-		return "", fmt.Errorf("cdparanoia not found: %w", err)
-	}
-	fmt.Printf("[Ripper] Running cdparanoia for track %d (mode: %s)\n", track.Number, options.Mode)
-	cdArgs := []string{"-w"}
-	if options.Mode == "burst" {
-		cdArgs = append(cdArgs, "-Z") // disable all error correction
-	}
-	cdArgs = append(cdArgs, strconv.Itoa(track.Number), tempWav)
-	ripCmd := exec.Command(cdparanoiaPath, cdArgs...)
-
-	// ファイルサイズを監視してリッピング進捗を推定する
-	// CD音声セクタ: 2352 bytes/sector、WAVヘッダ: 44 bytes
-	expectedBytes := int64(track.Sectors)*2352 + 44
-	ripDone := make(chan struct{})
-	var progressWg sync.WaitGroup
-	if progressChan != nil && expectedBytes > 44 {
-		progressWg.Add(1)
-		go func() {
-			defer progressWg.Done()
-			ticker := time.NewTicker(400 * time.Millisecond)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ripDone:
-					return
-				case <-ticker.C:
-					info, err := os.Stat(tempWav)
-					if err != nil {
-						continue
-					}
-					pct := float64(info.Size()) / float64(expectedBytes) * 95 // 95%上限（エンコード分を残す）
-					if pct > 95 {
-						pct = 95
-					}
-					progressChan <- RipProgress{TrackNumber: track.Number, Status: "ripping", Percent: pct}
+	if reader != nil {
+		fmt.Printf("[Ripper] Running native Go reader for track %d (mode: %s)\n", track.Number, options.Mode)
+		pcm, _, err := SecureReadTrack(reader, track.Number, SecureReadOptions{
+			Mode: options.Mode,
+			Progress: func(sectorsRead int) {
+				if progressChan != nil && track.Sectors > 0 {
+					progressChan <- RipProgress{TrackNumber: track.Number, Status: "ripping", Percent: float64(sectorsRead) / float64(track.Sectors) * 95}
 				}
-			}
-		}()
-	}
-
-	ripOutput, ripErr := ripCmd.CombinedOutput()
-	close(ripDone)
-	progressWg.Wait() // goroutine が完全に終了してから progressChan への送信を終える
-
-	if ripErr != nil {
-		os.Remove(tempWav)
-		return "", fmt.Errorf("cdparanoia failed: %w. Output: %s", ripErr, string(ripOutput))
+			},
+		})
+		if err != nil {
+			os.Remove(tempWav)
+			return "", err
+		}
+		if err := WritePCM16LE(tempWav, pcm); err != nil {
+			os.Remove(tempWav)
+			return "", err
+		}
+	} else {
+		cdparanoiaPath, err := resolveCDParanoiaPath(r.CDParanoiaPath)
+		if err != nil {
+			return "", fmt.Errorf("cdparanoia not found: %w", err)
+		}
+		fmt.Printf("[Ripper] Running cdparanoia for track %d (mode: %s)\n", track.Number, options.Mode)
+		cdArgs := []string{"-w"}
+		if options.Mode == "burst" {
+			cdArgs = append(cdArgs, "-Z")
+		}
+		cdArgs = append(cdArgs, strconv.Itoa(track.Number), tempWav)
+		ripOutput, ripErr := exec.Command(cdparanoiaPath, cdArgs...).CombinedOutput()
+		if ripErr != nil {
+			os.Remove(tempWav)
+			return "", fmt.Errorf("cdparanoia failed: %w. Output: %s", ripErr, string(ripOutput))
+		}
 	}
 	defer os.Remove(tempWav)
 
