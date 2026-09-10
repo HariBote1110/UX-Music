@@ -281,8 +281,11 @@ func remoteArtworkHandler(w http.ResponseWriter, r *http.Request) {
 
 	artworksDir := filepath.Join(config.GetUserDataPath(), "Artworks")
 
-	// Security: artworkID must be a plain hex string (no path separators).
-	if strings.ContainsAny(artworkID, "/\\") {
+	// Security: artworkID must match the same conservative charset accepted
+	// by isServableArtworkStem — this rejects path separators (traversal)
+	// and leading '.' (hidden-file probing) now that the ID space is wider
+	// than plain 64-hex hashes.
+	if !isServableArtworkStem(artworkID) {
 		writeAPIError(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -754,6 +757,13 @@ func artworkIDFromStoredArtwork(v interface{}) string {
 	return hashStemFromArtworkFilename(full)
 }
 
+// hashStemFromArtworkFilename returns the filename stem to expose as the
+// remote artwork ID for a stored artwork.full path, or "" if the filename
+// is not safe to serve. Scanner-named files (64 lowercase-hex chars) are
+// the common case, but sync-imported artworks are named "dev_<hash>-<uuid>"
+// or "custom_<...>" — any stem that is safe under isServableArtworkStem is
+// accepted as-is so findArtworkByID can locate the real on-disk file
+// instead of falling back to a recomputed album hash that names nothing.
 func hashStemFromArtworkFilename(full string) string {
 	full = strings.TrimSpace(full)
 	if full == "" {
@@ -768,17 +778,35 @@ func hashStemFromArtworkFilename(full string) string {
 		return ""
 	}
 	stem := strings.TrimSuffix(base, ext)
-	if len(stem) != 64 {
-		return ""
-	}
-	for i := 0; i < len(stem); i++ {
-		c := stem[i]
-		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') {
-			continue
-		}
+	if !isServableArtworkStem(stem) {
 		return ""
 	}
 	return stem
+}
+
+// isServableArtworkStem reports whether id is safe to use both as a
+// filename stem (findArtworkByID) and as a value embedded in URLs served
+// back to remote clients. It accepts a conservative charset — letters,
+// digits, '.', '_', '-' — which covers scanner-named 64-hex hashes as a
+// subset, plus sync-imported "dev_"/"custom_" stems. Leading '.' is
+// rejected to prevent hidden-file probing, and the charset itself excludes
+// '/' and '\\' so path traversal is impossible by construction.
+func isServableArtworkStem(id string) bool {
+	if id == "" || strings.HasPrefix(id, ".") {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9':
+		case c == '.' || c == '_' || c == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // computeArtworkIDForRemoteFallback mirrors internal/scanner/artwork.go tag fallbacks
