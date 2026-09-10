@@ -1114,7 +1114,7 @@ private struct NowPlayingQueuePanel: View {
                     .foregroundStyle(nowPlayingFallbackAccent)
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, SongRowMetrics.horizontalInset)
             .padding(.top, topInset + 4)
             .padding(.bottom, 8)
             List {
@@ -1123,43 +1123,46 @@ private struct NowPlayingQueuePanel: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(rows) { row in
-                        Button {
+                        // Rebuilt from `SongRowView`'s metrics/typography (not `SongRowView`
+                        // itself — the queue keeps its index-number / `waveform` indicator and
+                        // shows no artwork) so these rows line up with the Favourites list.
+                        HStack(spacing: 12) {
+                            ZStack {
+                                if row.index == model.player.currentQueueIndex {
+                                    Image(systemName: "waveform")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(nowPlayingFallbackAccent)
+                                } else {
+                                    Text("\(row.index + 1)")
+                                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(width: SongRowMetrics.artworkSize)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(row.song.displayTitle)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(row.song.displayArtist)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .frame(height: SongRowMetrics.rowHeight)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
                             Task {
                                 await model.player.playQueueItem(at: row.index)
                                 withAnimation(nowPlayingPanelSpring) {
                                     page = .main
                                 }
                             }
-                        } label: {
-                            HStack(spacing: 12) {
-                                if row.index == model.player.currentQueueIndex {
-                                    Image(systemName: "waveform")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(nowPlayingFallbackAccent)
-                                        .frame(width: 22)
-                                } else {
-                                    Text("\(row.index + 1)")
-                                        .font(.system(size: 13, weight: .medium, design: .monospaced))
-                                        .foregroundStyle(.tertiary)
-                                        .frame(width: 22)
-                                }
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(row.song.displayTitle)
-                                        .font(.body.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                    Text(row.song.displayArtist)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 0)
-                            }
                         }
-                        .listRowBackground(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
-                                .padding(.horizontal, 8)
-                        )
-                        .listRowSeparator(.hidden)
+                        .accessibilityAddTraits(.isButton)
+                        .modifier(LibraryListRowStyle())
                         .contextMenu {
                             WatchTransferSongMenuItem(song: row.song)
                             Button(role: .destructive) {
@@ -1206,7 +1209,7 @@ private struct NowPlayingFavouritesPanel: View {
             Text("Favourites")
                 .font(.title2.weight(.bold))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, SongRowMetrics.horizontalInset)
                 .padding(.top, topInset + 4)
                 .padding(.bottom, 8)
             List {
@@ -1215,39 +1218,21 @@ private struct NowPlayingFavouritesPanel: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(songs) { song in
-                        Button {
-                            let list = model.favouriteSongsForPlayback()
-                            Task {
-                                await model.player.play(song, newQueue: list)
-                                withAnimation(nowPlayingPanelSpring) {
-                                    page = .main
+                        SongRowView(
+                            song: song,
+                            artworkId: song.artworkId,
+                            artworkURL: model.artworkURL(for: song.artworkId),
+                            onTap: {
+                                let list = model.favouriteSongsForPlayback()
+                                Task {
+                                    await model.player.play(song, newQueue: list)
+                                    withAnimation(nowPlayingPanelSpring) {
+                                        page = .main
+                                    }
                                 }
                             }
-                        } label: {
-                            HStack(spacing: 12) {
-                                ArtworkImageView(
-                                    artworkId: song.artworkId,
-                                    urlString: model.artworkURL(for: song.artworkId),
-                                    cornerRadius: 6,
-                                    size: 44
-                                )
-                                .frame(width: 44, height: 44)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(song.displayTitle)
-                                        .font(.body.weight(.semibold))
-                                    Text(song.displayArtist)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 0)
-                            }
-                        }
-                        .listRowBackground(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color(red: 0.07, green: 0.07, blue: 0.08))
-                                .padding(.horizontal, 8)
                         )
-                        .listRowSeparator(.hidden)
+                        .modifier(LibraryListRowStyle())
                         .contextMenu {
                             WatchTransferSongMenuItem(song: song)
                         }
