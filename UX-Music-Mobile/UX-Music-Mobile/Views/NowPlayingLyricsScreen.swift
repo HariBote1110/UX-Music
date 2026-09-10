@@ -14,57 +14,6 @@ func nowPlayingLyricsSeekTime<Line: LyricsTimedLine>(for line: Line) -> Double {
     line.startTime
 }
 
-/// Edge-fade coefficient (0…1) for a given vertical fraction (0 = top, 1 = bottom) of the
-/// synced-lyrics container. Mirrors UX Music Desktop's `.fs-lyrics-container` mask-image
-/// (`linear-gradient(to bottom, transparent 0%, black 8%, black 70%, transparent 100%)`):
-/// fades in across the top 8% and out across the bottom 30%, full opacity in between.
-/// Out-of-range fractions clamp to 0 (fully faded).
-func nowPlayingLyricsFadeOpacity(fraction: CGFloat) -> CGFloat {
-    guard fraction >= 0, fraction <= 1 else { return 0 }
-    let topBand: CGFloat = 0.08
-    let bottomBandStart: CGFloat = 0.70
-    if fraction < topBand {
-        return fraction / topBand
-    }
-    if fraction > bottomBandStart {
-        return max(0, 1 - (fraction - bottomBandStart) / (1 - bottomBandStart))
-    }
-    return 1
-}
-
-/// Vertical offset (from the container's top edge) for every synced-lyrics line, given each
-/// line's measured height. Mirrors Desktop's `applyLyricsMotion` in
-/// `src/renderer/js/features/fullscreen-view.ts`: the active line (or index 0 if none is
-/// active yet) is pinned at `anchorY`, and every other line is stacked above/below it by
-/// cumulative height + a fixed inter-line `gap`.
-func nowPlayingLyricsLineOffsets(heights: [CGFloat], activeIndex: Int, anchorY: CGFloat, gap: CGFloat) -> [CGFloat] {
-    let n = heights.count
-    guard n > 0 else { return [] }
-
-    let base = min(max(0, activeIndex), n - 1)
-    var offsets = [CGFloat](repeating: 0, count: n)
-    offsets[base] = anchorY
-
-    if base + 1 < n {
-        for i in (base + 1)..<n {
-            offsets[i] = offsets[i - 1] + heights[i - 1] + gap
-        }
-    }
-    if base > 0 {
-        for i in stride(from: base - 1, through: 0, by: -1) {
-            offsets[i] = offsets[i + 1] - heights[i] - gap
-        }
-    }
-    return offsets
-}
-
-/// Stagger delay (seconds) for a line's transition, proportional to its distance from the
-/// active line — mirrors Desktop's `MOTION_DELAY_STEP_MS` cascade (`dist * 40ms`).
-func nowPlayingLyricsLineDelay(index: Int, activeIndex: Int, stepSeconds: Double) -> Double {
-    let effectiveActive = activeIndex >= 0 ? activeIndex : 0
-    return Double(abs(index - effectiveActive)) * stepSeconds
-}
-
 /// Full-screen lyrics viewer (plain `.txt` or synced `.lrc` using `MusicPlayerService.positionSeconds`).
 /// Shares the same ambient-glow background as `NowPlayingView` for a consistent Apple-Music-like feel.
 struct NowPlayingLyricsScreen: View {
@@ -156,7 +105,7 @@ private struct NowPlayingBilingualPlainLine: View {
 }
 
 /// Per-line measured height, keyed by line index, collected via a background `GeometryReader`
-/// so `nowPlayingLyricsLineOffsets` can lay every line out without SwiftUI's coarse
+/// so `SidecarLyricsLayout.tops` can lay every line out without SwiftUI's coarse
 /// `ScrollViewReader.scrollTo` interpolation getting in the way.
 private struct LyricsLineHeightKey: PreferenceKey {
     static var defaultValue: [Int: CGFloat] = [:]
@@ -167,23 +116,40 @@ private struct LyricsLineHeightKey: PreferenceKey {
 
 // MARK: - Synced (LRC) body
 
-/// Container-offset synced-lyrics view, ported from UX Music Desktop's
-/// `applyLyricsMotion`/`.fs-lyrics-inner.fs-lrc` (`src/renderer/js/features/fullscreen-view.ts`,
-/// `src/renderer/styles/components.css`): every line is absolutely positioned inside the
-/// container, the active line is pinned at a fixed fraction of the container's height, and
-/// every other line cascades into place with a per-distance stagger delay. This reproduces
-/// Desktop's motion far more faithfully than `ScrollViewReader.scrollTo`, whose interpolation
-/// cannot express the wave-like cascade or the fixed on-screen anchor position.
+/// Container-offset synced-lyrics view, converged onto the shared `Core/LyricsStageKit.swift`
+/// Desktop-parity primitives (`SidecarLyricsLayout.tops`, `SidecarLyricsMotionPolicy`,
+/// `SidecarLyricsEdgeFade`, `SidecarActiveLineUpdatePolicy`) so its motion matches UX Music
+/// Desktop's fullscreen synced-lyrics pane and the iPad Sidecar screen: every line is
+/// absolutely positioned inside the container, the active line is pinned at 35% of the
+/// container's height, and every other line cascades into place over 0.8s with a per-distance
+/// stagger delay on CSS's default `ease` timing curve. See
+/// `progress/iphone-lyrics-desktop-parity.md`.
+///
+/// The one intentional divergence from Desktop/Sidecar is mobile-only: a manual drag-to-peek
+/// gesture with a 3s auto-resume window (`manualDragOffset`/`liveDragTranslation`/
+/// `nowPlayingLyricsShouldAutoScroll`), layered additively on top of the shared layout's
+/// `y` offsets.
 private struct NowPlayingSyncedLyricsScroll: View {
     @Environment(AppModel.self) private var model
     let lines: [TranslatedTimedLine]
+
+    /// `-1` means "nothing active yet" (before the first line's timestamp — see
+    /// `SidecarLyricsMotionPolicy.activeIndex`), matching Desktop's initial state. Updated at
+    /// most once per genuine active-line change (`SidecarActiveLineUpdatePolicy`) rather than on
+    /// every tick, so the lyric `ForEach` only re-diffs when the highlighted line moves.
+    @State private var activeIndex = -1
+    /// Stable anchor for the periodic tick below — a `.now` re-evaluated on every body
+    /// reconstruction has no settled cadence when the tick writes `@State` this view reads
+    /// (`activeIndex`). See `SidecarScreen.progressScheduleAnchor`'s doc comment.
+    @State private var lyricsScheduleAnchor = Date()
 
     /// Measured height of each line, populated via `LyricsLineHeightKey`. Falls back to a
     /// plausible single-line height until the real measurement lands (first frame only).
     @State private var lineHeights: [Int: CGFloat] = [:]
 
     /// Accumulated offset (points) from a manual drag, layered on top of the auto-computed
-    /// layout. Springs back to zero once auto-scroll resumes.
+    /// layout. Springs back to zero once auto-scroll resumes. Mobile-only — Desktop/Sidecar
+    /// have no drag-to-peek.
     @State private var manualDragOffset: CGFloat = 0
     @GestureState private var liveDragTranslation: CGFloat = 0
     @State private var revertTask: Task<Void, Never>?
@@ -192,133 +158,109 @@ private struct NowPlayingSyncedLyricsScroll: View {
     /// auto-scroll-to-active-line so a manual scroll is not fought by the timeline updates.
     @State private var lastUserScrollAt: Date?
 
-    // Layout parameters ported from Desktop (see `src/renderer/js/features/fullscreen-view.ts`):
-    // ANCHOR_RATIO, INTER_BLOCK_GAP, and the active-line `scale(1.091)` from
-    // `.fs-lyrics-inner.fs-lrc p.active`.
-    private static let anchorRatio: CGFloat = 0.35
-    private static let interLineGap: CGFloat = 16
-    private static let activeScale: CGFloat = 1.091
+    /// Placeholder height for any line not yet measured, so far-off lines can still be slotted
+    /// into the cumulative layout before they have ever rendered.
     private static let fallbackLineHeight: CGFloat = 44
-
-    // Motion timing. Desktop uses 800ms/40ms-per-line, but that read as sluggish on iPhone's
-    // smaller, closer viewport — trimmed to keep the wave-cascade feel while snapping into
-    // place noticeably faster. easeOut so the line "arrives" quickly and settles, rather than
-    // easing symmetrically in and out.
-    private static let motionDuration: Double = 0.3
-    private static let delayStep: Double = 0.015
-    private static let motionCurve = Animation.easeOut(duration: motionDuration)
-
-    // Off-active-line blur, restored only while auto-scroll is actively tracking playback
-    // (i.e. not while the user is mid-drag or within the 3s manual-scroll grace window) —
-    // blurring text the user is actively trying to read by hand felt wrong, so it is
-    // suppressed for that window and fades back in once auto-scroll resumes.
-    private static let blurNeighbourRadius = 6
-    private static let blurBase: CGFloat = 0.8
-    private static let blurStep: CGFloat = 0.12
-    private static let blurMax: CGFloat = 1.5
-    private static let blurFade = Animation.easeInOut(duration: 0.25)
-
+    /// Horizontal inset for the lyrics column, matching the plain-text branch's `.padding(28)`.
+    private static let horizontalInset: CGFloat = 28
     private static let revertSpring = Animation.spring(response: 0.5, dampingFraction: 0.85)
 
-    /// Blur radius for a line at `distance` steps from the active line, capped at `blurMax` and
-    /// zero once outside `blurNeighbourRadius` (kept off-screen rows cheap to render).
-    private static func blurRadius(distance: Int) -> CGFloat {
-        guard distance > 0, distance <= blurNeighbourRadius else { return 0 }
-        return min(blurMax, blurBase + blurStep * CGFloat(distance - 1))
-    }
+    // Mirrors SidecarLyricsTranslationStyle (private to SidecarScreen.swift): the 和訳
+    // (translation) subline is `0.7em` of the 28pt primary, a flat `rgba(255,255,255,0.5)` that
+    // does not swap with active state, and a 4pt gap below the primary line.
+    private static let translationFontSize: CGFloat = 20
+    private static let translationOpacity: Double = 0.5
+    private static let translationBlockGap: CGFloat = 4
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.05)) { context in
-            let position = max(0, model.player.positionSeconds)
-            let active = LRCParser.activeLineIndex(in: lines, at: position)
-            let secondsSinceUserScroll = lastUserScrollAt.map { context.date.timeIntervalSince($0) }
-            let isDragging = liveDragTranslation != 0
-            let isAutoScrolling = !isDragging
-                && nowPlayingLyricsShouldAutoScroll(secondsSinceLastUserScroll: secondsSinceUserScroll)
+        GeometryReader { geo in
+            let paneHeight = geo.size.height
+            let paneWidth = geo.size.width
+            let heights = (0..<lines.count).map { lineHeights[$0] ?? Self.fallbackLineHeight }
+            let baseIndex = lines.isEmpty ? 0 : min(max(0, activeIndex), lines.count - 1)
+            let tops = SidecarLyricsLayout.tops(heights: heights, baseIndex: baseIndex, paneHeight: paneHeight)
+            let dragOffset = manualDragOffset + liveDragTranslation
 
-            GeometryReader { geo in
-                let anchorY = geo.size.height * Self.anchorRatio
-                let heights = (0..<lines.count).map { lineHeights[$0] ?? Self.fallbackLineHeight }
-                let offsets = nowPlayingLyricsLineOffsets(
-                    heights: heights, activeIndex: active, anchorY: anchorY, gap: Self.interLineGap
-                )
-                let dragOffset = manualDragOffset + liveDragTranslation
+            ZStack(alignment: .topLeading) {
+                ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                    let isActive = index == activeIndex
+                    let distance = abs(index - baseIndex)
+                    // `y` is the shared layout offset only; the mobile drag offset is added
+                    // *outside* the `value:` so a drag stays instant (no timing-curve lag)
+                    // while a genuine active-line change still animates the cascade.
+                    let y = index < tops.count ? tops[index] : 0
 
-                ZStack(alignment: .topLeading) {
-                    ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                        let isActive = index == active
-                        let distance = abs(index - max(0, active))
-                        let delay = nowPlayingLyricsLineDelay(index: index, activeIndex: active, stepSeconds: Self.delayStep)
-                        let y = (offsets.indices.contains(index) ? offsets[index] : anchorY) + dragOffset
-                        let blur = isAutoScrolling ? Self.blurRadius(distance: distance) : 0
-
-                        Button {
-                            model.player.seek(to: nowPlayingLyricsSeekTime(for: line))
-                        } label: {
-                            // The translation (和訳), when present, rides along inside the same
-                            // `Button` label as the primary line so the background `GeometryReader`
-                            // below (which drives `nowPlayingLyricsLineOffsets`'s cumulative-height
-                            // stacking) measures the *combined* row height automatically — no change
-                            // to the offset arithmetic itself was needed, only what it measures.
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(line.text.isEmpty ? " " : line.text)
-                                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                                    .lineSpacing(4)
-                                    .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.45))
-                                    .shadow(color: .white.opacity(isActive ? 0.15 : 0), radius: isActive ? 20 : 0)
-                                if let translation = line.translation {
-                                    Text(translation)
-                                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(isActive ? Color.white.opacity(0.6) : Color.white.opacity(0.28))
-                                }
+                    Button {
+                        model.player.seek(to: nowPlayingLyricsSeekTime(for: line))
+                    } label: {
+                        // The 和訳, when present, rides along inside the same block so the
+                        // background `GeometryReader` measures the combined row height and
+                        // `SidecarLyricsLayout.tops`'s cumulative stacking absorbs it.
+                        VStack(alignment: .leading, spacing: Self.translationBlockGap) {
+                            Text(line.text.isEmpty ? " " : line.text)
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white.opacity(isActive ? 1 : 0.45))
+                                .shadow(color: .white.opacity(isActive ? 0.15 : 0), radius: isActive ? 24 : 0)
+                            if let translation = line.translation {
+                                Text(translation)
+                                    .font(.system(size: Self.translationFontSize, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white.opacity(Self.translationOpacity))
                             }
-                            .blur(radius: blur)
-                            .frame(width: max(0, geo.size.width - 56), alignment: .leading)
                         }
-                        .buttonStyle(.plain)
-                        .scaleEffect(isActive ? Self.activeScale : 1, anchor: .leading)
-                        .background(
-                            GeometryReader { lineGeo in
-                                Color.clear.preference(key: LyricsLineHeightKey.self, value: [index: lineGeo.size.height])
-                            }
-                        )
-                        .offset(x: 28, y: y)
-                        .animation(Self.motionCurve.delay(delay), value: active)
-                        .animation(Self.blurFade, value: isAutoScrolling)
+                        .frame(width: paneWidth / SidecarLyricsMotionPolicy.activeLineScale, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
                     }
+                    .buttonStyle(.plain)
+                    .scaleEffect(isActive ? SidecarLyricsMotionPolicy.activeLineScale : 1, anchor: .leading)
+                    .background(
+                        GeometryReader { lineGeo in
+                            Color.clear.preference(key: LyricsLineHeightKey.self, value: [index: lineGeo.size.height])
+                        }
+                    )
+                    .offset(y: y + dragOffset)
+                    .animation(
+                        .timingCurve(0.25, 0.1, 0.25, 1.0, duration: SidecarLyricsMotionPolicy.duration)
+                            .delay(SidecarLyricsMotionPolicy.staggerDelay(forDistance: distance)),
+                        value: y
+                    )
                 }
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 4)
-                        .updating($liveDragTranslation) { value, state, _ in
-                            state = value.translation.height
-                        }
-                        .onChanged { _ in
-                            lastUserScrollAt = .now
-                            revertTask?.cancel()
-                        }
-                        .onEnded { value in
-                            manualDragOffset += value.translation.height
-                            lastUserScrollAt = .now
-                            scheduleAutoScrollResume()
-                        }
-                )
             }
-            .onPreferenceChange(LyricsLineHeightKey.self) { lineHeights = $0 }
-            .mask(
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0), location: 0.0),
-                        .init(color: .black, location: 0.08),
-                        .init(color: .black, location: 0.70),
-                        .init(color: .black.opacity(0), location: 1.0),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+            .frame(width: paneWidth, height: paneHeight, alignment: .topLeading)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 4)
+                    .updating($liveDragTranslation) { value, state, _ in
+                        state = value.translation.height
+                    }
+                    .onChanged { _ in
+                        lastUserScrollAt = .now
+                        revertTask?.cancel()
+                    }
+                    .onEnded { value in
+                        manualDragOffset += value.translation.height
+                        lastUserScrollAt = .now
+                        scheduleAutoScrollResume()
+                    }
             )
+            .onPreferenceChange(LyricsLineHeightKey.self) { lineHeights = $0 }
         }
+        .padding(.horizontal, Self.horizontalInset)
+        .mask(SidecarLyricsEdgeFade.gradient)
+        .background(
+            // Gated tick: recompute the active line a few times a second, but only write
+            // `@State` (forcing the `ForEach` to re-diff) on a genuine active-line change.
+            // Position source is the LOCAL player — not the sidecar remote fields.
+            TimelineView(.periodic(from: lyricsScheduleAnchor, by: 0.2)) { context in
+                Color.clear
+                    .task(id: context.date) {
+                        let position = max(0, model.player.positionSeconds)
+                        let newActive = SidecarLyricsMotionPolicy.activeIndex(in: lines, at: position)
+                        if SidecarActiveLineUpdatePolicy.shouldUpdate(currentIndex: activeIndex, newIndex: newActive) {
+                            activeIndex = newActive
+                        }
+                    }
+            }
+        )
     }
 
     /// Waits for `nowPlayingLyricsShouldAutoScroll`'s resume window (3 seconds of no manual
