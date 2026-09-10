@@ -60,3 +60,5 @@ replace github.com/wailsapp/wails/v2 => github.com/HariBote1110/wails/v2 v2.11.1
 replace github.com/ganeshrvel/go-mtpfs => ./third_party/go-mtpfs
 
 replace github.com/hanwen/usb => ./third_party/hanwen-usb
+
+replace github.com/gordonklaus/portaudio => ./third_party/portaudio

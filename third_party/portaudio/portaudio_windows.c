@@ -1,0 +1,20 @@
+//go:build windows
+// +build windows
+
+#include "portaudio/src/common/pa_allocation.c"
+#include "portaudio/src/common/pa_converters.c"
+#include "portaudio/src/common/pa_cpuload.c"
+#include "portaudio/src/common/pa_debugprint.c"
+#include "portaudio/src/common/pa_dither.c"
+#include "portaudio/src/common/pa_front.c"
+#include "portaudio/src/common/pa_process.c"
+#include "portaudio/src/common/pa_ringbuffer.c"
+#include "portaudio/src/common/pa_stream.c"
+#include "portaudio/src/common/pa_trace.c"
+#include "portaudio/src/os/win/pa_win_coinitialize.c"
+#include "portaudio/src/os/win/pa_win_hostapis.c"
+#include "portaudio/src/os/win/pa_win_util.c"
+#include "portaudio/src/os/win/pa_win_waveformat.c"
+#include "portaudio/src/os/win/pa_x86_plain_converters.c"
+#include "portaudio/src/hostapi/wasapi/pa_win_wasapi.c"
+#include "portaudio/src/hostapi/wmme/pa_win_wmme.c"
