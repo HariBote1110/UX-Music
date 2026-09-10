@@ -17,7 +17,7 @@
 | `go-audio/audio` | **Apache-2.0** | WAV デコードのバッファ型 |
 | `ebitengine/purego` | **Apache-2.0** | dylib ロード |
 | `mewkiz/flac` | Unlicense | FLAC（自作へ置き換え中） |
-| `gordonklaus/portaudio` / `wailsapp/wails` / `kkdai/youtube` / `grandcat/zeroconf` | MIT | — |
+| `gordonklaus/portaudio` / `wailsapp/wails` / `kkdai/youtube` / `grandcat/zeroconf` | MIT | PortAudio は `third_party/portaudio/LICENSE` を同梱し、19.7.0 のソースを静的リンク |
 | `dhowden/tag` / `mjibson/go-dsp` / `skip2/go-qrcode` | BSD | — |
 
 FSF の見解では **Apache-2.0 は GPLv2 と非互換**（特許終了・補償条項が GPLv2 にない制限を追加するため）で、GPLv3 とは互換。Go は静的リンクなので回避の余地がなかった。
@@ -50,6 +50,7 @@ libusb は LGPL-2.1 のため、プロジェクトの GPLv3 と
 |---|---|---|
 | `cdparanoia` | **GPL-2.0** | 唯一同梱している copyleft。Makefile が `.app/Contents/Resources/bin` へコピーする。`exec` で別プロセス起動のため FSF の解釈では独立したプログラム扱いで、Go コード本体へは伝播しない |
 | libusb（cgo 静的リンク） | LGPL-2.1 | `third_party/hanwen-usb/libusb/COPYING` を同梱。GPLv3 のアプリとの組み合わせは許容される |
+| PortAudio 19.7.0（cgo 静的リンク） | MIT-style | `third_party/portaudio/LICENSE` と upstream `third_party/portaudio/portaudio/LICENSE.txt` を同梱 |
 | `libkalam.dylib` | **New BSD（3条項）** | MTP 用。特定済み — 下記参照 |
 | `xld` | — | 204 バイトのシェルスクリプト。ユーザーが自分でインストールした `/Applications/XLD.app` を呼ぶだけで、XLD 自体は同梱していない |
 

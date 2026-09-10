@@ -1,5 +1,6 @@
 # Progress Index
 
+- [portaudio-vendoring.md](portaudio-vendoring.md) — PortAudio 19.7.0 を repo 内へ静的 vendoring し、最後の Homebrew 依存を除去
 - [mtp-vendored-libusb.md](mtp-vendored-libusb.md) — MTP の libusb cgo 依存を repo 内で固定し、Homebrew/pkg-config なしのビルドへ移行。karalabe/usb は API 不適合のため不採用
 - [cdrip-native-reader.md](cdrip-native-reader.md) — cdparanoia 置換に向けた OS 非依存 CD-DA 純 Go コア、DiscReader seam、セキュアリード、オフセット補正、PCM WAV 出力を追加。OS ioctl reader・純 Go FLAC/ALAC・AccurateRip・ドライブオフセット DB は後続作業
 - [ml-python-removal.md](ml-python-removal.md) — デスクトップバックエンドからPython/SwiftのMLサイドカー、CLAP埋め込み、Gemma特集生成を廃止。手動歌詞・MTP・CDリッピング・終了時のトレイ破棄とLaunchAgent復元は維持
