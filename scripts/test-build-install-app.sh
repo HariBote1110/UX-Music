@@ -16,6 +16,8 @@ grep -Fq "wails" <<<"${output}"
 grep -Fq "build" <<<"${output}"
 grep -Fq "/Applications/UX-Music.app" <<<"${output}"
 grep -Fq "cp -R" <<<"${output}"
+grep -Fq "Frameworks" <<<"${output}"
+grep -Fq "ネイティブ dylib を再帰的に同梱" <<<"${output}"
 grep -Fq "build をスキップ" <<<"${skip_build_output}"
 
 echo "PASS: build-install-app.sh の dry-run を確認しました"
