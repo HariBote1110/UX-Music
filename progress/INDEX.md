@@ -1,6 +1,6 @@
 # Progress Index
 
-- [native-dylib-vendoring.md](native-dylib-vendoring.md) — macOS の配布 `.app` に対する非システム dylib の一般的・再帰的な同梱方針。MacOS 配下の全 Mach-O を BFS で走査し、Homebrew 等の依存を `Contents/Frameworks` へ集約、実行ファイルは `@executable_path`、dylib 間は `@loader_path` へ書換え、dylib 自身の id も統一する。`libusb` 未導入環境でも解決不能な依存を黙って出荷しない設計
+- [native-dylib-vendoring.md](native-dylib-vendoring.md) — macOS の配布 `.app` に対する非システム dylib の一般的・再帰的な同梱方針。共有入口 `scripts/vendor-native-dylibs.sh`（`build-install-app.sh` と `Makefile` 双方から呼ぶ）が `Contents/MacOS` と `Contents/Resources/bin`（cdparanoia 等サイドカー）配下の全 Mach-O を BFS 走査し、Homebrew 等の依存を `Contents/Frameworks` へ集約。実行ファイルは `@executable_path`、サイドカーは `@loader_path/../../Frameworks`、dylib 間は `@loader_path` へ書換え、dylib 自身の id も統一する。解決不能な依存は黙って出荷せずエラー終了
 
 - [iphone-lyrics-desktop-parity.md](iphone-lyrics-desktop-parity.md) — iPhone のシンク歌詞ビューを `Core/LyricsStageKit.swift` の Desktop parity 共有プリミティブへ収束（0.8s カスケード / CSS ease timing curve / `SidecarLyricsEdgeFade` のソフト溶解 / 近傍ブラー撤去 / 0.2s ゲート tick）。モバイル専用の手動ドラッグ・ピーク + 3秒 auto-resume は意図的な差分として維持。あわせて「次に再生」キュー／お気に入りサイドパネルを `SongRowView` / `SongRowMetrics` / `LibraryListRowStyle` へ再ベース化しライブラリ全曲リストと統一（キューは連番／waveform インジケータ維持・アートワーク非表示、ユーザー決定）。SSD 未マウントのためシム検証は不可、コンパイル検証のみ（BUILD SUCCEEDED）
 - [youtube-embed-lifecycle-and-fullscreen-fixes.md](youtube-embed-lifecycle-and-fullscreen-fixes.md) — YouTube追加直後のサムネ消失／フルスクリーンのウィンドウ移動不可・再生リセット／NowPlaying固着とコントロール無効／16:9固着の4件を修正。真因は「増分更新でのマイグレーション誤判定による全曲artwork削除」と「Goネイティブキュー経由のembed破棄漏れ」の2つ。iframeは再ペアレントせずbody直下の固定要素として矩形追従させる方式へ変更（実機検証は未了）
