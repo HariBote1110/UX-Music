@@ -551,6 +551,35 @@
     margin-top: 8px;
 }
 
+.lan-server-status-info {
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+.lan-server-status-error {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border: 1px solid #f87171;
+    border-radius: 6px;
+    background: rgba(248, 113, 113, 0.1);
+}
+
+.lan-server-status-error p#lan-server-status-error-message {
+    margin: 0;
+    color: #f87171;
+    font-size: 12px;
+    word-break: break-word;
+}
+
+.lan-server-status-error-detail {
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: 11px;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 .ux-sync-peer-list {
     display: grid;
     gap: 8px;

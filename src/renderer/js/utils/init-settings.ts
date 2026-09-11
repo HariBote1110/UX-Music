@@ -13,6 +13,7 @@ import {
     formatSyncAutoResultNotification,
     formatSyncPullResultSummary,
     formatSyncPushResultSummary,
+    describeLANServerStatus,
     formatSyncPeerEndpoint,
     formatSyncFreeSpaceSafetyStatus,
     formatSyncPeerRoles,
@@ -38,6 +39,7 @@ import {
     syncPushActionState,
     syncSettingsEntryState,
     syncPeerPairingBaseUrl,
+    type LANServerStatus,
     type SyncDevice,
     type SyncPairingStart,
     type SyncPeer,
@@ -46,6 +48,7 @@ let uxSyncPeers: SyncPeer[] = [];
 let uxSyncDevices: SyncDevice[] = [];
 let uxSyncTransferProgressUnsubscribe: (() => void) | null = null;
 let uxSyncAutoResultUnsubscribe: (() => void) | null = null;
+let lanServerStatusUnsubscribe: (() => void) | null = null;
 
 /**
  * <select> に選択肢を流し込む。
@@ -107,6 +110,58 @@ async function refreshRemotePairingQR() {
         errEl.textContent = 'QR の生成に失敗しました: ' + msg;
         errEl.classList.remove('hidden');
     }
+    await refreshLANServerStatus();
+}
+
+function renderLANServerStatus(status: LANServerStatus | null | undefined): void {
+    const infoEl = document.getElementById('lan-server-status-info');
+    const errorEl = document.getElementById('lan-server-status-error');
+    const errorMessageEl = document.getElementById('lan-server-status-error-message');
+    const errorDetailEl = document.getElementById('lan-server-status-error-detail');
+    const urlEl = document.getElementById('remote-pairing-url');
+    if (!infoEl || !errorEl || !errorMessageEl || !errorDetailEl) {
+        return;
+    }
+    const view = describeLANServerStatus(status);
+    infoEl.classList.add('hidden');
+    infoEl.textContent = '';
+    errorEl.classList.add('hidden');
+    errorMessageEl.textContent = '';
+    errorDetailEl.textContent = '';
+    if (view.kind === 'info') {
+        infoEl.textContent = view.message;
+        infoEl.classList.remove('hidden');
+    } else if (view.kind === 'error') {
+        errorMessageEl.textContent = view.message;
+        errorDetailEl.textContent = view.detail;
+        errorEl.classList.remove('hidden');
+    }
+    if (urlEl && view.addressText && !urlEl.textContent) {
+        urlEl.textContent = view.addressText;
+    }
+}
+
+async function refreshLANServerStatus() {
+    const getStatus = getWailsApp()?.GetLANServerStatus;
+    if (typeof getStatus !== 'function') {
+        renderLANServerStatus(null);
+        return;
+    }
+    try {
+        const status = await getStatus();
+        renderLANServerStatus(status as LANServerStatus);
+    } catch {
+        renderLANServerStatus(null);
+    }
+}
+
+function bindLANServerStatus(): void {
+    if (lanServerStatusUnsubscribe || !window.runtime?.EventsOn) {
+        return;
+    }
+    lanServerStatusUnsubscribe = window.runtime.EventsOn('lan-server-status', (payload: unknown) => {
+        renderLANServerStatus(payload as LANServerStatus);
+    });
 }
 
 async function refreshUxSyncPeers() {
@@ -846,6 +901,7 @@ export function initSettings() {
     });
 
     bindUxSyncAutoResultToast();
+    bindLANServerStatus();
 
     const syncDiscoverBtn = document.getElementById('ux-sync-discover-btn');
     if (syncDiscoverBtn && !syncDiscoverBtn.dataset.listenerAttached) {
