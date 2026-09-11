@@ -7,7 +7,7 @@ struct TVRootView: View {
 
     var body: some View {
         Group {
-            if model.isPaired, case .idle = model.pairingState {
+            if model.isPaired, model.isStoredConnectionReady, case .idle = model.pairingState {
                 TVConnectedView(model: model)
             } else {
                 TVHostDiscoveryView(model: model)
@@ -15,6 +15,7 @@ struct TVRootView: View {
         }
         .onAppear { model.startDiscovery() }
         .onDisappear { model.stopDiscovery() }
+        .task { await model.prepareStoredConnection() }
         .background(TVCinematicBackground(intensity: 0.5))
     }
 }
@@ -33,15 +34,24 @@ struct TVHostDiscoveryView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch model.pairingState {
-        case .idle:
-            hostList
-        case .starting, .awaitingConfirmation, .confirming:
-            TVPairingCodeView(state: model.pairingState)
-        case .paired:
-            TVPairingResultView(state: model.pairingState) { model.resetPairingFlow() }
-        case .failed:
-            TVPairingResultView(state: model.pairingState) { model.resetPairingFlow() }
+        if model.isPaired && !model.isStoredConnectionReady {
+            VStack(spacing: 24) {
+                ProgressView()
+                Text("保存済みのデスクトップ接続を確認しています…")
+                    .foregroundStyle(TVDesignTokens.textSecondary)
+            }
+            .padding()
+        } else {
+            switch model.pairingState {
+            case .idle:
+                hostList
+            case .starting, .awaitingConfirmation, .confirming:
+                TVPairingCodeView(state: model.pairingState)
+            case .paired:
+                TVPairingResultView(state: model.pairingState) { model.resetPairingFlow() }
+            case .failed:
+                TVPairingResultView(state: model.pairingState) { model.resetPairingFlow() }
+            }
         }
     }
 

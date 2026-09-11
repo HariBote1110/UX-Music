@@ -328,7 +328,8 @@ struct SettingsScreen: View {
                 host: host,
                 port: port,
                 fallbackHosts: model.serverConfig.fallbackHosts,
-                token: model.serverConfig.token
+                token: model.serverConfig.token,
+                serverDeviceId: model.serverConfig.serverDeviceId
             )
             flashSaved()
             return
@@ -389,6 +390,7 @@ struct SettingsScreen: View {
                 portText = String(resolved.config.port)
                 var config = resolved.config
                 config.token = existingToken
+                config.serverDeviceId = peer.deviceId.isEmpty ? nil : peer.deviceId
                 config.fallbackHosts = candidates
                     .map(\.host)
                     .filter { $0 != resolved.config.host }

@@ -2,6 +2,11 @@ import XCTest
 @testable import UX_Music_Mobile
 
 final class ServerConfigTests: XCTestCase {
+    func testServerPortCandidatesPreferDefaultAndCoverHopRange() {
+        XCTAssertEqual(AppConstants.serverPortCandidates, Array(8765...8774))
+        XCTAssertEqual(AppConstants.serverPortCandidates.first, AppConstants.defaultServerPort)
+    }
+
     func testBaseURLStringUsesHostWhenSet() {
         let cfg = ServerConfig(host: "192.168.0.5", port: 8765)
         XCTAssertEqual(cfg.baseURLString, "http://192.168.0.5:8765")
@@ -53,11 +58,19 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertEqual(decoded.token, "secret-token")
     }
 
+    func testServerDeviceIdEncodeDecodeRoundTrip() throws {
+        let config = ServerConfig(host: "10.0.0.1", port: 8766, serverDeviceId: "desktop-1")
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(ServerConfig.self, from: data)
+        XCTAssertEqual(decoded.serverDeviceId, "desktop-1")
+    }
+
     /// Regression: older persisted JSON has no `token` key. Decoding must not fail and must default to "".
     func testDecodeLegacyJSONWithoutTokenSucceeds() throws {
         let json = Data(#"{"host":"10.0.0.1","port":8765}"#.utf8)
         let cfg = try JSONDecoder().decode(ServerConfig.self, from: json)
         XCTAssertEqual(cfg.token, "")
+        XCTAssertNil(cfg.serverDeviceId)
     }
 
     /// Equatable must ignore `token` too — a manually re-entered or re-paired token must not break

@@ -70,6 +70,44 @@ enum RemoteAPIError: LocalizedError {
     }
 }
 
+/// Identity returned by the public desktop endpoint. `role` is retained for older desktop builds
+/// that used a singular role field; current builds advertise `gui` or `headless` in `roles`.
+struct RemoteServerIdentity: Codable, Equatable, Sendable {
+    var deviceId: String
+    var hostname: String
+    var roles: [String]
+    var role: String?
+
+    var reportsDesktopRole: Bool {
+        let advertisedRoles = roles + [role ?? ""]
+        return advertisedRoles.contains {
+            switch $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "desktop", "gui", "headless": return true
+            default: return false
+            }
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case deviceId, hostname, roles, role
+    }
+
+    init(deviceId: String = "", hostname: String = "", roles: [String] = [], role: String? = nil) {
+        self.deviceId = deviceId
+        self.hostname = hostname
+        self.roles = roles
+        self.role = role
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        deviceId = try container.decodeIfPresent(String.self, forKey: .deviceId) ?? ""
+        hostname = try container.decodeIfPresent(String.self, forKey: .hostname) ?? ""
+        roles = try container.decodeIfPresent([String].self, forKey: .roles) ?? []
+        role = try container.decodeIfPresent(String.self, forKey: .role)
+    }
+}
+
 /// JSON from `GET /v1/remote/lyrics?id=…`. `translationContent`/`translationFormat` are optional so
 /// older desktops without the 和訳 (Japanese translation) extension keep decoding fine —
 /// `decodeIfPresent` (the compiler-synthesised behaviour for `Optional` properties) simply leaves
@@ -190,9 +228,20 @@ struct RemoteAPIClient: Sendable {
     /// `GET /v1/identity` is exempt from auth, but the token is still sent (harmless) so a stale/invalid
     /// token surfaces nowhere else.
     func ping() async throws -> String {
-        let (data, _) = try await session.data(for: authorizedRequest(path: "/v1/identity"))
-        let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        return obj?["hostname"] as? String ?? ""
+        let identity = try await fetchIdentity()
+        return identity.hostname
+    }
+
+    /// Fetches the desktop identity used to distinguish a paired server from another service on a
+    /// candidate port. The optional timeout is applied per request for port recovery probes.
+    func fetchIdentity(timeout: TimeInterval? = nil) async throws -> RemoteServerIdentity {
+        var request = try authorizedRequest(path: "/v1/identity")
+        if let timeout {
+            request.timeoutInterval = timeout
+        }
+        let (data, response) = try await session.data(for: request)
+        try Self.throwIfNotOK(response, data: data)
+        return try JSONDecoder().decode(RemoteServerIdentity.self, from: data)
     }
 
     /// `GET /v1/identity`'s `capabilities` array (e.g. `"remote.relay.v1"` for the Phase 3-3
@@ -319,8 +368,12 @@ struct RemoteAPIClient: Sendable {
         try Self.throwIfNotOK(response, data: data)
     }
 
-    func fetchState() async throws -> [String: Any] {
-        let (data, response) = try await session.data(for: authorizedRequest(path: "/v1/remote/state"))
+    func fetchState(timeout: TimeInterval? = nil) async throws -> [String: Any] {
+        var request = try authorizedRequest(path: "/v1/remote/state")
+        if let timeout {
+            request.timeoutInterval = timeout
+        }
+        let (data, response) = try await session.data(for: request)
         try Self.throwIfNotOK(response, data: data)
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }

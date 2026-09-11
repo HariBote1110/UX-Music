@@ -152,6 +152,19 @@ final class LANDiscoveryPeerTests: XCTestCase {
         XCTAssertEqual(peer.endpointDescription, "192.168.0.226:8765")
     }
 
+    func testServerConfigCarriesBonjourDeviceId() {
+        let peer = LANDiscoveryPeer(
+            name: "Mac mini",
+            endpointHost: "macmini.local",
+            addressHosts: ["192.168.0.226"],
+            port: 8766,
+            txt: ["deviceId": "desktop-1", "roles": "LibraryHost"]
+        )
+
+        XCTAssertEqual(peer.deviceId, "desktop-1")
+        XCTAssertEqual(peer.serverConfig.serverDeviceId, "desktop-1")
+    }
+
     func testFromTXTKeepsAllIPv4ConnectionCandidatesBeforeBonjourHostname() {
         let peer = LANDiscoveryPeer(
             name: "YukinoMac-mini",

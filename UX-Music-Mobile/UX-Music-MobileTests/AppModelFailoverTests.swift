@@ -109,6 +109,82 @@ final class AppModelFailoverTests: XCTestCase {
         XCTAssertEqual(model.serverConfig.host, "primary.invalid")
     }
 
+    func testWithFailover_recoversStalePortByMatchingServerIdentityAndPersistsPort() async throws {
+        let previousData = UserDefaults.standard.data(forKey: AppConstants.serverConfigKey)
+        defer {
+            if let previousData {
+                UserDefaults.standard.set(previousData, forKey: AppConstants.serverConfigKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: AppConstants.serverConfigKey)
+            }
+        }
+
+        let model = AppModel()
+        model.urlSession = sessionWithMock()
+        model.serverConfig = ServerConfig(
+            host: "desktop.invalid",
+            port: 8765,
+            token: "stored-token",
+            serverDeviceId: "desktop-1"
+        )
+
+        FailoverMockURLProtocol.handler = { req in
+            let port = req.url?.port
+            if req.url?.path == "/v1/remote/state", port == 8765 {
+                throw URLError(.cannotConnectToHost)
+            }
+            if req.url?.path == "/v1/identity", port == 8766 {
+                let data = #"{"deviceId":"desktop-1","hostname":"desk","roles":["gui"]}"#.data(using: .utf8)!
+                let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (data, res)
+            }
+            if req.url?.path == "/v1/remote/state", port == 8766 {
+                let persisted = UserDefaults.standard.data(forKey: AppConstants.serverConfigKey)
+                    .flatMap { try? JSONDecoder().decode(ServerConfig.self, from: $0) }
+                XCTAssertEqual(persisted?.port, 8766)
+                let data = Data("{}".utf8)
+                let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (data, res)
+            }
+            throw URLError(.cannotConnectToHost)
+        }
+
+        _ = try await model.withFailover { try await $0.fetchState() }
+
+        XCTAssertEqual(model.serverConfig.port, 8766)
+        let persisted = try XCTUnwrap(UserDefaults.standard.data(forKey: AppConstants.serverConfigKey))
+        let persistedConfig = try JSONDecoder().decode(ServerConfig.self, from: persisted)
+        XCTAssertEqual(persistedConfig.port, 8766)
+    }
+
+    func testWithFailover_doesNotHuntPortsAfterUnauthorized() async throws {
+        let model = AppModel()
+        model.urlSession = sessionWithMock()
+        model.serverConfig = ServerConfig(
+            host: "desktop.invalid",
+            port: 8765,
+            token: "stored-token",
+            serverDeviceId: "desktop-1"
+        )
+        var attemptedPorts: [Int] = []
+        FailoverMockURLProtocol.handler = { req in
+            attemptedPorts.append(req.url?.port ?? 0)
+            let data = #"{"error":{"code":"unauthorized","message":"Unauthorized"}}"#.data(using: .utf8)!
+            let res = HTTPURLResponse(url: req.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            return (data, res)
+        }
+
+        do {
+            _ = try await model.withFailover { try await $0.fetchState() }
+            XCTFail("Expected unauthorized error")
+        } catch RemoteAPIError.server(let code, _) {
+            XCTAssertEqual(code, "unauthorized")
+        }
+
+        XCTAssertEqual(attemptedPorts, [8765])
+        XCTAssertEqual(model.serverConfig.port, 8765)
+    }
+
     // MARK: - Fixed connection mode (preferredHost)
 
     /// Fixed mode (`preferredHost` set): a failure on that host must propagate as an error rather
@@ -133,8 +209,48 @@ final class AppModelFailoverTests: XCTestCase {
             XCTAssertEqual((error as? URLError)?.code, .cannotConnectToHost)
         }
 
-        XCTAssertEqual(attemptedHosts, ["100.116.252.72"])
+        XCTAssertEqual(Set(attemptedHosts), Set(["100.116.252.72"]))
         // Fixed mode must not rewrite `host`/`fallbackHosts` on failure.
+        XCTAssertEqual(model.serverConfig.host, "192.168.1.182")
+        XCTAssertEqual(model.serverConfig.fallbackHosts, ["192.168.0.140"])
+    }
+
+    /// Fixed mode may recover a changed port, but every initial and recovery request must stay on
+    /// the explicitly selected host.
+    func testWithFailover_fixedModePortRecoveryOnlyProbesPreferredHost() async throws {
+        let model = AppModel()
+        model.urlSession = sessionWithMock()
+        model.serverConfig = ServerConfig(
+            host: "192.168.1.182",
+            port: 8765,
+            token: "stored-token",
+            preferredHost: "100.116.252.72"
+        )
+        model.serverConfig.fallbackHosts = ["192.168.0.140"]
+
+        var attemptedHosts: [String] = []
+        FailoverMockURLProtocol.handler = { req in
+            attemptedHosts.append(req.url?.host ?? "")
+            let port = req.url?.port
+            if req.url?.path == "/v1/remote/state", port == 8765 {
+                throw URLError(.cannotConnectToHost)
+            }
+            if req.url?.path == "/v1/identity", port == 8766 {
+                let data = #"{"deviceId":"desktop-1","hostname":"desk","roles":["gui"]}"#.data(using: .utf8)!
+                let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (data, res)
+            }
+            if req.url?.path == "/v1/remote/state", port == 8766 {
+                let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (Data("{}".utf8), res)
+            }
+            throw URLError(.cannotConnectToHost)
+        }
+
+        _ = try await model.withFailover { try await $0.fetchState() }
+
+        XCTAssertEqual(Set(attemptedHosts), Set(["100.116.252.72"]))
+        XCTAssertEqual(model.serverConfig.port, 8766)
         XCTAssertEqual(model.serverConfig.host, "192.168.1.182")
         XCTAssertEqual(model.serverConfig.fallbackHosts, ["192.168.0.140"])
     }
@@ -181,7 +297,7 @@ final class AppModelFailoverTests: XCTestCase {
                 let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
                 return (data, res)
             }
-            let data = #"{"hostname":"desk"}"#.data(using: .utf8)!
+            let data = #"{"deviceId":"desktop-1","hostname":"desk","roles":["gui"]}"#.data(using: .utf8)!
             let res = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
             return (data, res)
         }
@@ -192,6 +308,7 @@ final class AppModelFailoverTests: XCTestCase {
         XCTAssertTrue(ok)
         XCTAssertEqual(model.serverConfig.host, "192.168.0.140")
         XCTAssertEqual(model.serverConfig.token, "tok-123")
+        XCTAssertEqual(model.serverConfig.serverDeviceId, "desktop-1")
         XCTAssertEqual(model.serverConfig.fallbackHosts, ["192.168.1.182"])
         XCTAssertNil(model.pairingError)
     }

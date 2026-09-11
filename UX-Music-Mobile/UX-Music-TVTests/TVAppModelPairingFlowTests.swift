@@ -27,7 +27,7 @@ final class TVAppModelPairingFlowTests: XCTestCase {
             endpointHost: "macmini.local",
             addressHosts: ["192.168.1.10"],
             port: 8765,
-            txt: ["displayName": "Mac mini"]
+            txt: ["displayName": "Mac mini", "deviceId": "desktop-1"]
         )
     }
 
@@ -46,6 +46,7 @@ final class TVAppModelPairingFlowTests: XCTestCase {
         XCTAssertEqual(model.pairingState, .paired(hostDisplayName: "Mac mini", deviceId: "device-1"))
         XCTAssertTrue(model.isPaired)
         XCTAssertEqual(model.serverConfig.token, "tv-token")
+        XCTAssertEqual(model.serverConfig.serverDeviceId, "desktop-1")
         XCTAssertEqual(TVServerConfigStore(defaults: defaults).load().token, "tv-token")
     }
 

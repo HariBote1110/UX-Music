@@ -270,14 +270,20 @@ final class AppModel {
     let playlistStore: PlaylistStore
     let favouriteSongStore: FavouriteSongStore
     let watchTransferBridge: WatchTransferBridge
+    let discovery: LANDiscoveryService
 
     /// Locally persisted playlists (order matches `playlistStore`).
     private(set) var playlists: [Playlist] = []
     /// Mirror of `favouriteSongStore.orderedIds` so `@Observable` invalidates views when favourites change.
     private(set) var favouriteSongIds: [String] = []
 
-    init(playlistStore: PlaylistStore? = nil, lyricsFileStore: LyricsFileStore? = nil) {
+    init(
+        playlistStore: PlaylistStore? = nil,
+        lyricsFileStore: LyricsFileStore? = nil,
+        discovery: LANDiscoveryService = LANDiscoveryService()
+    ) {
         serverConfig = Self.loadSettings()
+        self.discovery = discovery
         if let raw = UserDefaults.standard.string(forKey: AppConstants.librarySortOrderKey),
            let restored = LibrarySortOrder(rawValue: raw) {
             librarySortOrder = restored
@@ -434,40 +440,25 @@ final class AppModel {
     /// `serverConfig.host`. HTTP-status errors (`RemoteAPIError`) mean the server was reached, so
     /// they are not retried against fallback hosts.
     func withFailover<T>(_ operation: @Sendable (RemoteAPIClient) async throws -> T) async throws -> T {
-        let hostsToTry = ConnectionCandidatePolicy.hostsToTry(
-            primaryHost: serverConfig.host,
-            fallbackHosts: serverConfig.fallbackHosts,
-            preferredHost: serverConfig.preferredHost
+        let storedConfig = serverConfig
+        let outcome = try await RemoteConnectionResolver.withFailover(
+            config: storedConfig,
+            session: urlSession,
+            discover: { await self.storedDesktopEndpoint(for: storedConfig) },
+            persistRecoveredConfig: { self.serverConfig = $0 },
+            operation: operation
         )
-
-        var lastError: Error?
-        for (index, host) in hostsToTry.enumerated() {
-            let candidateConfig = ServerConfig(host: host, port: serverConfig.port, token: serverConfig.token)
-            let candidateClient = RemoteAPIClient(
-                baseURLString: candidateConfig.baseURLString,
-                token: candidateConfig.token,
-                session: urlSession
-            )
-            do {
-                let result = try await operation(candidateClient)
-                if index > 0 {
-                    // Promote the host that just succeeded to primary; demote the rest (in their
-                    // existing relative order) to fallbackHosts.
-                    var remaining = hostsToTry
-                    remaining.remove(at: index)
-                    serverConfig.host = host
-                    serverConfig.fallbackHosts = remaining
-                }
-                return result
-            } catch let error as URLError {
-                lastError = error
-                continue
-            } catch {
-                // Reached the server (e.g. an HTTP-status error) — do not fail over.
-                throw error
-            }
+        if let updatedConfig = outcome.updatedConfig {
+            serverConfig = updatedConfig
         }
-        throw lastError ?? URLError(.cannotConnectToHost)
+        return outcome.value
+    }
+
+    private func storedDesktopEndpoint(for config: ServerConfig) async -> RemoteConnectionEndpoint? {
+        guard let deviceId = config.serverDeviceId,
+              let peer = await discovery.resolvePairedPeer(deviceId: deviceId)
+        else { return nil }
+        return RemoteConnectionEndpoint(host: peer.host, port: peer.port)
     }
 
     /// Remote Wear URL, or `file://` when the jacket was cached under `DownloadedArtwork/` after a download.
@@ -510,7 +501,16 @@ final class AppModel {
                 displayName: DeviceIdentity.displayName,
                 session: urlSession
             )
-            serverConfig = ServerConfig(host: host, port: port, token: result.token)
+            let remoteDeviceId = try? await RemoteAPIClient(
+                baseURLString: baseURLString,
+                session: urlSession
+            ).fetchIdentity().deviceId
+            serverConfig = ServerConfig(
+                host: host,
+                port: port,
+                token: result.token,
+                serverDeviceId: remoteDeviceId?.isEmpty == false ? remoteDeviceId : nil
+            )
             pairingError = nil
             return true
         } catch {

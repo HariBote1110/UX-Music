@@ -10,6 +10,9 @@ struct ServerConfig: Codable, Sendable {
     /// `Authorization: Bearer <token>`) by every LAN API endpoint except `/v1/identity` and
     /// `/v1/pairing/*`. Not part of `Equatable` — see below.
     var token: String = ""
+    /// The paired desktop's stable identity from `GET /v1/identity`. The pairing redeem response's
+    /// `deviceId` identifies this client, so it is intentionally not used here.
+    var serverDeviceId: String?
     /// User's fixed-host choice from Settings: when set (non-blank), only this host is tried —
     /// `AppModel.withFailover` does not fail over to `fallbackHosts` — so a deliberately chosen
     /// address (e.g. a Tailscale IP while away from home) never gets silently swapped out. `nil`
@@ -22,13 +25,15 @@ struct ServerConfig: Codable, Sendable {
         port: Int = AppConstants.defaultServerPort,
         fallbackHosts: [String] = [],
         token: String = "",
-        preferredHost: String? = nil
+        preferredHost: String? = nil,
+        serverDeviceId: String? = nil
     ) {
         self.host = host
         self.port = port
         self.fallbackHosts = fallbackHosts
         self.token = token
         self.preferredHost = preferredHost
+        self.serverDeviceId = serverDeviceId
     }
 
     /// The host actually used for connections: `preferredHost` when fixed mode is on (non-blank),
@@ -47,7 +52,7 @@ struct ServerConfig: Codable, Sendable {
     var isConfigured: Bool { !host.isEmpty }
 
     private enum CodingKeys: String, CodingKey {
-        case host, port, fallbackHosts, token, preferredHost
+        case host, port, fallbackHosts, token, preferredHost, serverDeviceId
     }
 
     /// Custom decode so older persisted JSON (missing any of these keys) still decodes: the
@@ -60,6 +65,7 @@ struct ServerConfig: Codable, Sendable {
         fallbackHosts = try container.decodeIfPresent([String].self, forKey: .fallbackHosts) ?? []
         token = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
         preferredHost = try container.decodeIfPresent(String.self, forKey: .preferredHost)
+        serverDeviceId = try container.decodeIfPresent(String.self, forKey: .serverDeviceId)
     }
 
 }

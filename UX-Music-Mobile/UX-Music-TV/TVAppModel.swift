@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-/// Persists the paired `ServerConfig` (host/port/token) for the TV app. Reuses the same
+/// Persists the paired `ServerConfig` (host/port/token/serverDeviceId) for the TV app. Reuses the same
 /// `ServerConfig` model and `AppConstants.serverConfigKey` the iOS app uses — the mechanism
 /// (JSON-encoded `Codable` in `UserDefaults`) is identical; the TV app's `UserDefaults.standard`
 /// is already isolated from iOS by bundle id, so no key collision is possible on-device.
@@ -37,8 +37,10 @@ struct TVServerConfigStore {
 final class TVAppModel: ObservableObject {
     @Published private(set) var pairingState: TVPairingState = .idle
     @Published private(set) var serverConfig: ServerConfig
+    @Published private(set) var isStoredConnectionReady: Bool
 
     let discovery: LANDiscoveryService
+    var urlSession: URLSession
     private let pairingClient: TVPairingClient
     private let store: TVServerConfigStore
     private var discoveryForwarding: AnyCancellable?
@@ -50,13 +52,17 @@ final class TVAppModel: ObservableObject {
         discovery: LANDiscoveryService = LANDiscoveryService(),
         pairingClient: TVPairingClient = URLSessionTVPairingClient(),
         store: TVServerConfigStore = TVServerConfigStore(),
+        urlSession: URLSession = RemoteLANURLSession.shared,
         successAdvanceDelayNanoseconds: UInt64 = 1_500_000_000
     ) {
         self.discovery = discovery
         self.pairingClient = pairingClient
         self.store = store
+        self.urlSession = urlSession
         self.successAdvanceDelayNanoseconds = successAdvanceDelayNanoseconds
-        self.serverConfig = store.load()
+        let loadedConfig = store.load()
+        self.serverConfig = loadedConfig
+        self.isStoredConnectionReady = loadedConfig.token.isEmpty || !loadedConfig.isConfigured
         // `discovery` is its own `ObservableObject` — views that only hold `@ObservedObject var
         // model: TVAppModel` do not re-render on `discovery.peers` changes unless this forwards
         // them, since SwiftUI only tracks the object it directly wraps. Without this, discovered
@@ -75,6 +81,45 @@ final class TVAppModel: ObservableObject {
 
     func stopDiscovery() {
         discovery.stop()
+    }
+
+    /// Verifies the stored desktop connection before `TVConnectedView` constructs its long-lived
+    /// clients. This makes a recovered port available to every TV feature, including stream and
+    /// artwork clients that receive a value-type `RemoteAPIClient` at view construction time.
+    func prepareStoredConnection() async {
+        guard isPaired else {
+            isStoredConnectionReady = true
+            return
+        }
+        isStoredConnectionReady = false
+        do {
+            _ = try await withFailover { try await $0.fetchState() }
+        } catch {
+            // Keep the connected screen available so its existing error handling can surface
+            // endpoint failures. Authentication errors deliberately do not trigger port hunting.
+        }
+        isStoredConnectionReady = true
+    }
+
+    /// Executes one desktop request against the stored config. Port recovery is shared with the
+    /// iOS client through `RemoteConnectionResolver`.
+    func withFailover<T>(_ operation: @Sendable (RemoteAPIClient) async throws -> T) async throws -> T {
+        let storedConfig = serverConfig
+        let outcome = try await RemoteConnectionResolver.withFailover(
+            config: storedConfig,
+            session: urlSession,
+            discover: { await self.storedDesktopEndpoint(for: storedConfig) },
+            persistRecoveredConfig: {
+                self.serverConfig = $0
+                self.store.save($0)
+            },
+            operation: operation
+        )
+        if let updatedConfig = outcome.updatedConfig {
+            serverConfig = updatedConfig
+            store.save(updatedConfig)
+        }
+        return outcome.value
     }
 
     /// Drives the full start→(display code)→confirm flow for a selected host, matching the
@@ -98,6 +143,7 @@ final class TVAppModel: ObservableObject {
                 code: started.code
             )
             persistPairedConfig(peer: peer, token: confirmed.token)
+            isStoredConnectionReady = true
             pairingState = TVPairingReducer.reduce(pairingState, .confirmSucceeded(deviceId: confirmed.deviceId))
             scheduleAutoAdvanceFromPairedState()
         } catch {
@@ -132,14 +178,27 @@ final class TVAppModel: ObservableObject {
     func forgetPairing() {
         store.clear()
         serverConfig = ServerConfig()
+        isStoredConnectionReady = true
         pairingState = .idle
     }
 
     private func persistPairedConfig(peer: LANDiscoveryPeer, token: String) {
-        var config = ServerConfig(host: peer.host, port: peer.port, token: token)
+        var config = ServerConfig(
+            host: peer.host,
+            port: peer.port,
+            token: token,
+            serverDeviceId: peer.deviceId.isEmpty ? nil : peer.deviceId
+        )
         config.fallbackHosts = peer.connectionHosts.filter { $0 != peer.host }
         serverConfig = config
         store.save(config)
+    }
+
+    private func storedDesktopEndpoint(for config: ServerConfig) async -> RemoteConnectionEndpoint? {
+        guard let deviceId = config.serverDeviceId,
+              let peer = await discovery.resolvePairedPeer(deviceId: deviceId)
+        else { return nil }
+        return RemoteConnectionEndpoint(host: peer.host, port: peer.port)
     }
 
     private func errorMessage(_ error: Error) -> String {

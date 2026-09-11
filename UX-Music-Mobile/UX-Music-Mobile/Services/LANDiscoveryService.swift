@@ -19,9 +19,13 @@ struct LANDiscoveryPeer: Identifiable, Hashable, Sendable {
     }
 
     var id: String {
-        let deviceId = value(forTXTKey: "deviceId")
+        let deviceId = self.deviceId
         if !deviceId.isEmpty { return deviceId }
         return "\(host):\(port)"
+    }
+
+    var deviceId: String {
+        value(forTXTKey: "deviceId")
     }
 
     var displayName: String {
@@ -54,7 +58,7 @@ struct LANDiscoveryPeer: Identifiable, Hashable, Sendable {
     }
 
     var serverConfig: ServerConfig {
-        ServerConfig(host: host, port: port)
+        ServerConfig(host: host, port: port, serverDeviceId: deviceId.isEmpty ? nil : deviceId)
     }
 
     var endpointDescription: String {
@@ -118,6 +122,26 @@ final class LANDiscoveryService: NSObject, ObservableObject {
     private var browser: NWBrowser?
     private var resolvingConnections: [String: NWConnection] = [:]
     private var scanTimeoutWorkItem: DispatchWorkItem?
+
+    func peer(forDeviceId deviceId: String) -> LANDiscoveryPeer? {
+        let expected = deviceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expected.isEmpty else { return nil }
+        return peers.first { $0.deviceId == expected }
+    }
+
+    /// Returns a currently visible paired desktop, starting the existing Bonjour browser when it
+    /// is not already active and waiting briefly for its resolved host/port.
+    func resolvePairedPeer(deviceId: String, timeout: TimeInterval = 1) async -> LANDiscoveryPeer? {
+        if let peer = peer(forDeviceId: deviceId) { return peer }
+        guard timeout > 0 else { return nil }
+        start(scanTimeout: timeout)
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(timeout * 1_000_000_000)
+        while DispatchTime.now().uptimeNanoseconds < deadline, !Task.isCancelled {
+            if let peer = peer(forDeviceId: deviceId) { return peer }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        return peer(forDeviceId: deviceId)
+    }
 
     func start(scanTimeout: TimeInterval = 6) {
         cancelScanTimeout()

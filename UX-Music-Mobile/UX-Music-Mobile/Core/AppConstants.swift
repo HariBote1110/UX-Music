@@ -2,6 +2,7 @@ import Foundation
 
 enum AppConstants {
     static let defaultServerPort = 8765
+    static let serverPortCandidates = Array(8765...8774)
     static let defaultTargetLoudness: Double = -18
     static let wearPathPrefix = "/wear"
     static let syncMDNSServiceType = "_uxmusic-sync._tcp."
