@@ -1,5 +1,6 @@
 # Progress Index
 
+- [lan-port-hopping.md](lan-port-hopping.md) — LAN サーバーを 8765〜8774 でポートホッピングし、確保失敗時は mDNS を止めて UI に表示。保存済み接続は deviceId 照合付きで候補ポートを探索して復旧
 - [portaudio-vendoring.md](portaudio-vendoring.md) — PortAudio 19.7.0 を repo 内へ静的 vendoring し、最後の Homebrew 依存を除去
 - [mtp-vendored-libusb.md](mtp-vendored-libusb.md) — MTP の libusb cgo 依存を repo 内で固定し、Homebrew/pkg-config なしのビルドへ移行。karalabe/usb は API 不適合のため不採用
 - [cdrip-native-reader.md](cdrip-native-reader.md) — macOS IOKit の CD-DA native reader（TOC/生 PCM ioctl、複数媒体列挙、Enhanced CD 補正）、環境変数 opt-in、open 失敗時の cdparanoia fallback、比較 CLI を追加。Windows reader・純 Go FLAC/ALAC・AccurateRip・ドライブオフセット DB は後続作業
