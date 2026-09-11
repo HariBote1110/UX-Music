@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    describeLANServerStatus,
     formatSyncPeerEndpoint,
     formatSyncFreeSpaceSafetyStatus,
     formatSyncPullResultSummary,
@@ -1846,5 +1847,54 @@ describe('formatSyncPushResultSummary', () => {
             importedPaths: [],
             errors: [],
         })).toBe('mainPC: 転送 2曲 / 既存 1曲 / 失敗 0曲');
+    });
+});
+
+describe('describeLANServerStatus', () => {
+    it('returns nothing when the status could not be fetched', () => {
+        expect(describeLANServerStatus(null)).toEqual({ kind: 'none', addressText: '', message: '', detail: '' });
+        expect(describeLANServerStatus(undefined)).toEqual({ kind: 'none', addressText: '', message: '', detail: '' });
+    });
+
+    it('is quiet when listening on the preferred port without hopping', () => {
+        const result = describeLANServerStatus({
+            listening: true,
+            port: 8765,
+            preferredPort: 8765,
+            hopped: false,
+            error: '',
+            address: '192.168.1.182:8765',
+        });
+        expect(result.kind).toBe('quiet');
+        expect(result.addressText).toBe('192.168.1.182:8765');
+        expect(result.message).toBe('');
+    });
+
+    it('shows a subtle info note with the actual port when the server hopped', () => {
+        const result = describeLANServerStatus({
+            listening: true,
+            port: 8766,
+            preferredPort: 8765,
+            hopped: true,
+            error: '',
+            address: '192.168.1.182:8766',
+        });
+        expect(result.kind).toBe('info');
+        expect(result.addressText).toBe('192.168.1.182:8766');
+        expect(result.message).toBe('ポート 8765 は他のアプリが使用中のため、8766 で待ち受けています。ペア済みの端末は自動で再接続します。');
+    });
+
+    it('shows a clear warning with the raw error when the server could not bind any port', () => {
+        const result = describeLANServerStatus({
+            listening: false,
+            port: 0,
+            preferredPort: 8765,
+            hopped: false,
+            error: 'listen tcp :8765: bind: address already in use',
+            address: '',
+        });
+        expect(result.kind).toBe('error');
+        expect(result.message).toBe('LAN サーバーを起動できませんでした（ポート 8765〜8774 がすべて使用中）。iPhone・Apple Watch・TV から接続できません。ポートを使っている他のアプリを終了し、UX Music を再起動してください。');
+        expect(result.detail).toBe('listen tcp :8765: bind: address already in use');
     });
 });

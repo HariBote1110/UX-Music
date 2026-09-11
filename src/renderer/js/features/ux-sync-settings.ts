@@ -461,6 +461,51 @@ export function syncTransferEncodingOptions(): Array<{ value: string; label: str
     ];
 }
 
+export interface LANServerStatus {
+    listening: boolean;
+    port: number;
+    preferredPort: number;
+    hopped: boolean;
+    error: string;
+    address: string;
+}
+
+/**
+ * LAN サーバーの待ち受け状態を、設定画面に表示するためのビューモデルへ変換する。
+ * `kind` によって呼び出し側は表示すべき要素と ARIA ロールを切り替える:
+ *   - 'quiet': 通常どおり待ち受け中（ポートホップなし）。警告なしでアドレスのみ表示。
+ *   - 'info' : 待ち受け中だが既定ポートが使用中でホップした。role="status" の控えめな注記を添える。
+ *   - 'error': どのポートでも待ち受けできなかった。role="alert" の警告バナーを表示する。
+ *   - 'none' : 状態を取得できなかった（ブラウザ開発モードでバインド未注入など）。何も表示しない。
+ */
+export function describeLANServerStatus(status: LANServerStatus | null | undefined): {
+    kind: 'none' | 'quiet' | 'info' | 'error';
+    addressText: string;
+    message: string;
+    detail: string;
+} {
+    if (!status) {
+        return { kind: 'none', addressText: '', message: '', detail: '' };
+    }
+    if (!status.listening) {
+        return {
+            kind: 'error',
+            addressText: '',
+            message: `LAN サーバーを起動できませんでした（ポート ${status.preferredPort}〜${status.preferredPort + 9} がすべて使用中）。iPhone・Apple Watch・TV から接続できません。ポートを使っている他のアプリを終了し、UX Music を再起動してください。`,
+            detail: status.error ?? '',
+        };
+    }
+    if (status.hopped) {
+        return {
+            kind: 'info',
+            addressText: status.address ?? '',
+            message: `ポート ${status.preferredPort} は他のアプリが使用中のため、${status.port} で待ち受けています。ペア済みの端末は自動で再接続します。`,
+            detail: '',
+        };
+    }
+    return { kind: 'quiet', addressText: status.address ?? '', message: '', detail: '' };
+}
+
 function normaliseSyncPeer(raw: unknown): SyncPeer | null {
     if (!raw || typeof raw !== 'object') {
         return null;
