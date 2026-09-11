@@ -108,6 +108,9 @@ func noOpAdvertiseMDNS(uxsync.MDNSAdvertiseInfo, int) (*uxsync.MDNSAdvertisement
 
 func withLANServerTestSeams(t *testing.T, ports []int, listenFunc func(string, string) (net.Listener, error), advertiseFunc func(uxsync.MDNSAdvertiseInfo, int) (*uxsync.MDNSAdvertisement, error)) {
 	t.Helper()
+	// StartLANServer advertises mDNS via ensureSyncDeviceID, which persists
+	// settings; keep that write out of the package directory.
+	newTempSyncStore(t)
 	oldPorts := lanServerCandidatePortsFunc
 	oldListen := lanServerListenFunc
 	oldAdvertise := advertiseMDNSFunc
