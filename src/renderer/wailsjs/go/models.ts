@@ -382,6 +382,28 @@ export namespace server {
 	        this.bands = source["bands"];
 	    }
 	}
+	export class LANServerStatus {
+	    listening: boolean;
+	    port: number;
+	    preferredPort: number;
+	    hopped: boolean;
+	    error: string;
+	    address: string;
+
+	    static createFrom(source: any = {}) {
+	        return new LANServerStatus(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.listening = source["listening"];
+	        this.port = source["port"];
+	        this.preferredPort = source["preferredPort"];
+	        this.hopped = source["hopped"];
+	        this.error = source["error"];
+	        this.address = source["address"];
+	    }
+	}
 	export class PairedRemoteDevice {
 	    deviceId: string;
 	    displayName: string;
@@ -651,4 +673,3 @@ export namespace uxsync {
 	}
 
 }
-

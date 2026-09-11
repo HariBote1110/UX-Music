@@ -210,7 +210,8 @@ func (a *App) ListSyncDevices() ([]SyncDeviceRecord, error) {
 	}
 
 	recordsByID := map[string]SyncDeviceRecord{}
-	for _, known := range decodeSyncKnownPeerRecords(settings[syncKnownPeersSettingsKey]) {
+	knownRecords := resolveSyncKnownPeerRecords(decodeSyncKnownPeerRecords(settings[syncKnownPeersSettingsKey]))
+	for _, known := range knownRecords {
 		deviceID := strings.TrimSpace(known.DeviceID)
 		if deviceID == "" {
 			continue
@@ -439,6 +440,39 @@ func decodeSyncKnownPeerRecords(raw interface{}) []syncKnownPeerRecord {
 	return records
 }
 
+func resolveSyncKnownPeerRecords(records []syncKnownPeerRecord) []syncKnownPeerRecord {
+	if len(records) == 0 {
+		return records
+	}
+	peers := make([]uxsync.MDNSPeer, 0, len(records))
+	for _, record := range records {
+		if peer, ok := syncKnownPeerRecordToMDNSPeer(record); ok {
+			peers = append(peers, peer)
+		}
+	}
+	resolved := uxsync.ResolveReachablePeers(peers, nil)
+	resolvedByID := make(map[string]string, len(resolved))
+	for _, peer := range resolved {
+		baseURL := strings.TrimRight(strings.TrimSpace(peer.ReachableBaseURL), "/")
+		if baseURL != "" && strings.TrimSpace(peer.DeviceID) != "" {
+			resolvedByID[strings.TrimSpace(peer.DeviceID)] = baseURL
+		}
+	}
+	for i := range records {
+		deviceID := strings.TrimSpace(records[i].DeviceID)
+		baseURL, ok := resolvedByID[deviceID]
+		if !ok || baseURL == strings.TrimRight(strings.TrimSpace(records[i].BaseURL), "/") {
+			continue
+		}
+		records[i].BaseURL = baseURL
+		records[i].LastSeenAt = time.Now().UTC().Format(time.RFC3339)
+		if err := rememberSyncKnownPeer(records[i]); err != nil {
+			fmt.Printf("[Sync] Failed to persist reachable peer %s: %v\n", deviceID, err)
+		}
+	}
+	return records
+}
+
 func syncKnownPeerRecordToMDNSPeer(record syncKnownPeerRecord) (uxsync.MDNSPeer, bool) {
 	baseURL := strings.TrimRight(strings.TrimSpace(record.BaseURL), "/")
 	parsed, err := url.Parse(baseURL)
@@ -477,13 +511,13 @@ func syncRemoteBaseURL(r *http.Request) string {
 	if host == "" {
 		return ""
 	}
-	return "http://" + net.JoinHostPort(host, lanServerPort)
+	return "http://" + net.JoinHostPort(host, strconv.Itoa(parseLANServerPort()))
 }
 
 func syncLocalBaseURL() string {
 	address := strings.TrimSpace(GetLANServerAddress())
 	if address == "" {
-		address = "localhost:" + lanServerPort
+		address = net.JoinHostPort("localhost", strconv.Itoa(parseLANServerPort()))
 	}
 	return "http://" + address
 }
@@ -592,16 +626,22 @@ func eventIDs(events []uxsync.PlayEvent) []string {
 	return ids
 }
 
+var advertiseMDNSFunc = uxsync.AdvertiseMDNS
+
 func (ws *LANServer) startSyncMDNS() {
+	status := GetLANServerStatus()
+	if !status.Listening || status.Port <= 0 {
+		return
+	}
 	info := syncMDNSAdvertiseInfo(ensureSyncDeviceID(), syncDisplayName())
-	advertisement, err := uxsync.AdvertiseMDNS(info, parseLANServerPort())
+	advertisement, err := advertiseMDNSFunc(info, status.Port)
 	if err != nil {
 		fmt.Printf("[Sync] mDNS advertise failed: %v\n", err)
 		return
 	}
 	ws.syncInfo = info
 	ws.syncMDNS = advertisement
-	fmt.Printf("[Sync] mDNS advertising %s on %s.%s:%s\n", info.DisplayName, uxsync.MDNSServiceType, uxsync.MDNSDomain, lanServerPort)
+	fmt.Printf("[Sync] mDNS advertising %s on %s.%s:%d\n", info.DisplayName, uxsync.MDNSServiceType, uxsync.MDNSDomain, status.Port)
 }
 
 func syncMDNSAdvertiseInfo(deviceID, displayName string) uxsync.MDNSAdvertiseInfo {
@@ -654,11 +694,11 @@ func normaliseSyncDisplayName(raw string) string {
 }
 
 func parseLANServerPort() int {
-	port, err := strconv.Atoi(lanServerPort)
-	if err != nil {
-		return 8765
+	status := GetLANServerStatus()
+	if status.Listening && status.Port > 0 {
+		return status.Port
 	}
-	return port
+	return lanServerPreferredPort
 }
 
 func splitSyncMDNSText(item string) (string, string) {

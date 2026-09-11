@@ -122,15 +122,18 @@ func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	a.wireWailsRuntime()
 
-	// Before binding port 8765, check whether a resident `--serve` LaunchAgent
+	// Before binding the LAN server, check whether a resident `--serve` LaunchAgent
 	// is already holding it and hand off if so (Phase 0-3; see
 	// app_handoff.go). If another GUI instance holds it instead, this
 	// deliberately does not take over — StartLANServer's bind failure is
 	// logged but non-fatal.
-	a.bootedOutResidentAgent = performGUIHandoff(handoffProbeBaseURL)
+	a.bootedOutResidentAgent = performGUIHandoff()
 
-	// Start the LAN HTTP server for Apple Watch / iPhone / Mobile companion
+	// Start the LAN HTTP server for Apple Watch / iPhone / Mobile companion.
+	// Binding is synchronous, so the renderer receives the actual port (or a
+	// surfaced failure) in the first status event.
 	StartLANServer(ctx, a)
+	a.emit("lan-server-status", GetLANServerStatus())
 	fmt.Printf("[LAN] Server address: %s\n", GetLANServerAddress())
 
 	a.initOSMediaControls()

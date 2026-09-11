@@ -6,15 +6,14 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 )
 
-// handoffProbeBaseURL is the loopback base URL the GUI probes at startup to
-// detect a resident `--serve` instance already holding port 8765. It is a
-// package variable (rather than a literal baked into performGUIHandoff)
-// purely so production code can keep using the real port while every test
-// points it at an httptest server instead.
-var handoffProbeBaseURL = "http://127.0.0.1:" + lanServerPort
+// handoffProbeBaseURLsFunc returns every loopback candidate the GUI probes at
+// startup. It is a function seam so tests can provide httptest servers and
+// deliberately slow TCP listeners without changing production candidates.
+var handoffProbeBaseURLsFunc = defaultHandoffProbeBaseURLs
 
 const (
 	handoffHTTPTimeout      = 1500 * time.Millisecond
@@ -61,9 +60,38 @@ func rolesContain(roles []string, target string) bool {
 	return false
 }
 
-// performGUIHandoff is called from Startup, before StartLANServer binds
-// port 8765. It probes baseURL's /v1/identity to see who (if anyone) is
-// already holding the port:
+func defaultHandoffProbeBaseURLs() []string {
+	ports := lanServerCandidatePorts()
+	urls := make([]string, 0, len(ports))
+	for _, port := range ports {
+		urls = append(urls, fmt.Sprintf("http://127.0.0.1:%d", port))
+	}
+	return urls
+}
+
+type handoffProbeResult struct {
+	baseURL string
+	result  identityProbeResult
+}
+
+func probeHandoffTargets(baseURLs []string) []handoffProbeResult {
+	results := make([]handoffProbeResult, len(baseURLs))
+	var wg sync.WaitGroup
+	for i, baseURL := range baseURLs {
+		results[i].baseURL = baseURL
+		wg.Add(1)
+		go func(index int, target string) {
+			defer wg.Done()
+			results[index].result = probeIdentity(target)
+		}(i, baseURL)
+	}
+	wg.Wait()
+	return results
+}
+
+// performGUIHandoff is called from Startup, before StartLANServer binds. It
+// probes every candidate port's /v1/identity concurrently to see who (if
+// anyone) is already holding a candidate:
 //   - Nobody reachable: nothing to do, GUI proceeds to bind normally.
 //   - A resident headless (`--serve`) instance: take over — bootout via
 //     launchctl (through currentLaunchAgentRunner), falling back to
@@ -77,26 +105,32 @@ func rolesContain(roles []string, target string) bool {
 //     (ListenAndServe's error is logged, not fatal — see app_remote.go)
 //     means the caller ends up running without a LAN server, which is the
 //     intended degraded state.
-func performGUIHandoff(baseURL string) bool {
-	result := probeIdentity(baseURL)
-	if !result.reachable {
-		return false
+func performGUIHandoff() bool {
+	results := probeHandoffTargets(handoffProbeBaseURLsFunc())
+	var headlessBaseURL string
+	for _, candidate := range results {
+		if !candidate.result.reachable {
+			continue
+		}
+		if rolesContain(candidate.result.roles, ModeGUI) {
+			fmt.Println("[Handoff] another GUI instance already holds a LAN server port; not attempting takeover, starting without it")
+			return false
+		}
+		if headlessBaseURL == "" && rolesContain(candidate.result.roles, ModeHeadless) {
+			headlessBaseURL = candidate.baseURL
+		}
 	}
-	if rolesContain(result.roles, ModeGUI) {
-		fmt.Println("[Handoff] another GUI instance already holds the LAN server port; not attempting takeover, starting without it")
-		return false
-	}
-	if !rolesContain(result.roles, ModeHeadless) {
+	if headlessBaseURL == "" {
 		return false
 	}
 
-	fmt.Println("[Handoff] resident headless instance detected; taking over")
+	fmt.Printf("[Handoff] resident headless instance detected at %s; taking over\n", headlessBaseURL)
 	uid := strconv.Itoa(os.Getuid())
 	if err := currentLaunchAgentRunner.Bootout(uid, launchAgentLabel); err != nil {
 		fmt.Printf("[Handoff] launchctl bootout failed (%v); falling back to POST /v1/local/shutdown\n", err)
-		requestLocalShutdown(baseURL)
+		requestLocalShutdown(headlessBaseURL)
 	}
-	waitForPortFree(baseURL)
+	waitForPortFree(headlessBaseURL)
 	return true
 }
 

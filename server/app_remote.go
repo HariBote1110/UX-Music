@@ -25,7 +25,93 @@ import (
 	"github.com/skip2/go-qrcode"
 )
 
-const lanServerPort = "8765"
+const (
+	lanServerPreferredPort = 8765
+	lanServerPortRange     = 10
+)
+
+var lanServerCandidatePortsFunc = lanServerCandidatePorts
+var lanServerListenFunc = net.Listen
+
+type LANServerStatus struct {
+	Listening     bool   `json:"listening"`
+	Port          int    `json:"port"`
+	PreferredPort int    `json:"preferredPort"`
+	Hopped        bool   `json:"hopped"`
+	Error         string `json:"error"`
+	Address       string `json:"address"`
+}
+
+var lanServerStatusHolder = struct {
+	mu     sync.RWMutex
+	status LANServerStatus
+}{
+	status: LANServerStatus{PreferredPort: lanServerPreferredPort},
+}
+
+func lanServerCandidatePorts() []int {
+	ports := make([]int, lanServerPortRange)
+	for i := range ports {
+		ports[i] = lanServerPreferredPort + i
+	}
+	return ports
+}
+
+func GetLANServerStatus() LANServerStatus {
+	lanServerStatusHolder.mu.RLock()
+	defer lanServerStatusHolder.mu.RUnlock()
+	return lanServerStatusHolder.status
+}
+
+func setLANServerStatus(listening bool, port, preferredPort int, err error) {
+	status := LANServerStatus{
+		Listening:     listening,
+		Port:          port,
+		PreferredPort: preferredPort,
+		Hopped:        listening && port != preferredPort,
+	}
+	if err != nil {
+		status.Error = err.Error()
+	}
+	if listening {
+		status.Address = lanServerAddressForPort(port)
+	}
+	lanServerStatusHolder.mu.Lock()
+	lanServerStatusHolder.status = status
+	lanServerStatusHolder.mu.Unlock()
+}
+
+func markLANServerStopped(port int) {
+	lanServerStatusHolder.mu.Lock()
+	defer lanServerStatusHolder.mu.Unlock()
+	if lanServerStatusHolder.status.Port != port {
+		return
+	}
+	lanServerStatusHolder.status.Listening = false
+	lanServerStatusHolder.status.Port = 0
+	lanServerStatusHolder.status.Hopped = false
+	lanServerStatusHolder.status.Address = ""
+}
+
+func bindLANServer(candidatePorts []int) (net.Listener, int, error) {
+	tried := make([]string, 0, len(candidatePorts))
+	var lastErr error
+	for _, port := range candidatePorts {
+		if port <= 0 || port > 65535 {
+			continue
+		}
+		tried = append(tried, strconv.Itoa(port))
+		listener, err := lanServerListenFunc("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(port)))
+		if err == nil {
+			return listener, port, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no valid candidate ports")
+	}
+	return nil, 0, fmt.Errorf("failed to bind LAN server; tried ports [%s]; last error: %w", strings.Join(tried, ", "), lastErr)
+}
 
 const pairingURLScheme = "uxmusic"
 
@@ -33,6 +119,8 @@ const pairingURLScheme = "uxmusic"
 // /v1/sync/*, /v1/identity, /v1/pairing/*).
 type LANServer struct {
 	server   *http.Server
+	listener net.Listener
+	port     int
 	app      *App
 	syncMDNS *uxsync.MDNSAdvertisement
 	syncInfo uxsync.MDNSAdvertiseInfo
@@ -43,18 +131,27 @@ type LANServer struct {
 // on the same network can reach the UX Music library.
 func StartLANServer(ctx context.Context, app *App) *LANServer {
 	ls := &LANServer{app: app}
-
+	listener, port, bindErr := bindLANServer(lanServerCandidatePortsFunc())
 	srv := &http.Server{
-		Addr:    "0.0.0.0:" + lanServerPort,
+		Addr:    net.JoinHostPort("0.0.0.0", strconv.Itoa(port)),
 		Handler: NewLANHTTPHandler(app),
 	}
-
-	go func() {
-		fmt.Printf("[LAN] HTTP server listening on :%s\n", lanServerPort)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("[LAN] Server error: %v\n", err)
-		}
-	}()
+	ls.server = srv
+	ls.listener = listener
+	ls.port = port
+	if bindErr != nil {
+		setLANServerStatus(false, 0, lanServerPreferredPort, bindErr)
+		fmt.Printf("[LAN] HTTP server unavailable: %v\n", bindErr)
+	} else {
+		setLANServerStatus(true, port, lanServerPreferredPort, nil)
+		fmt.Printf("[LAN] HTTP server listening on :%d\n", port)
+		go func() {
+			if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
+				fmt.Printf("[LAN] Server error: %v\n", err)
+			}
+			markLANServerStopped(port)
+		}()
+	}
 
 	go func() {
 		<-ctx.Done()
@@ -62,10 +159,14 @@ func StartLANServer(ctx context.Context, app *App) *LANServer {
 			ls.syncMDNS.Shutdown()
 		}
 		_ = srv.Close()
+		if port != 0 {
+			markLANServerStopped(port)
+		}
 	}()
 
-	ls.server = srv
-	ls.startSyncMDNS()
+	if bindErr == nil {
+		ls.startSyncMDNS()
+	}
 	return ls
 }
 
@@ -98,11 +199,22 @@ func registerRemoteRoutes(mux *http.ServeMux, ls *LANServer) {
 
 // GetLANServerAddress returns the LAN address of this machine for display in the UI.
 func GetLANServerAddress() string {
+	status := GetLANServerStatus()
+	if !status.Listening {
+		return ""
+	}
+	return status.Address
+}
+
+func lanServerAddressForPort(port int) string {
+	if port <= 0 {
+		return ""
+	}
 	addrs := lanIPv4Addresses()
 	if len(addrs) == 0 {
-		return "localhost:" + lanServerPort
+		return net.JoinHostPort("localhost", strconv.Itoa(port))
 	}
-	return addrs[0] + ":" + lanServerPort
+	return net.JoinHostPort(addrs[0], strconv.Itoa(port))
 }
 
 // lanIPv4Addresses returns every non-loopback, non-link-local IPv4 address bound to this
@@ -883,7 +995,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 // kept for backwards compatibility with older QR readers.
 func BuildPairingURL() string {
 	addrs := lanIPv4Addresses()
-	host, port := "localhost", lanServerPort
+	host, port := "localhost", strconv.Itoa(parseLANServerPort())
 	if len(addrs) > 0 {
 		host = addrs[0]
 	}
@@ -902,6 +1014,11 @@ func BuildPairingURL() string {
 // GetLANAddress returns the LAN address shown to the user in Settings.
 func (a *App) GetLANAddress() string {
 	return GetLANServerAddress()
+}
+
+// GetLANServerStatus returns the current LAN HTTP server bind result.
+func (a *App) GetLANServerStatus() LANServerStatus {
+	return GetLANServerStatus()
 }
 
 // GetPairingURL returns the uxmusic:// URL encoded in the pairing QR code.

@@ -110,6 +110,8 @@ export function GetE2EEmbedVideoID():Promise<string>;
 
 export function GetLANAddress():Promise<string>;
 
+export function GetLANServerStatus():Promise<server.LANServerStatus>;
+
 export function GetLibraryForNormalize():Promise<Array<any>>;
 
 export function GetLoudnessValue(arg1:string):Promise<any>;

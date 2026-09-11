@@ -7,6 +7,21 @@ import (
 	"strings"
 )
 
+const (
+	syncPreferredPort = 8765
+	syncPortRange     = 10
+)
+
+var syncCandidatePortsFunc = syncCandidatePorts
+
+func syncCandidatePorts() []int {
+	ports := make([]int, syncPortRange)
+	for i := range ports {
+		ports[i] = syncPreferredPort + i
+	}
+	return ports
+}
+
 const MDNSServiceType = "_uxmusic-sync._tcp"
 const MDNSDomain = "local."
 
@@ -208,12 +223,39 @@ func (p MDNSPeer) BaseURL() string {
 func (p MDNSPeer) CandidateBaseURLs() []string {
 	hosts := appendUnique([]string{}, p.Host)
 	hosts = appendUnique(hosts, p.Hosts...)
-	urls := make([]string, 0, len(hosts))
-	for _, host := range hosts {
-		if host == "" || p.Port <= 0 {
+	ports := make([]int, 0, 1+syncPortRange)
+	if p.Port > 0 {
+		ports = append(ports, p.Port)
+	}
+	for _, port := range syncCandidatePortsFunc() {
+		if port <= 0 || port == p.Port {
 			continue
 		}
-		urls = appendUnique(urls, baseURLForHostPort(host, p.Port))
+		ports = append(ports, port)
+	}
+	urls := make([]string, 0, len(hosts)*len(ports))
+	for _, port := range ports {
+		for _, host := range hosts {
+			if host == "" {
+				continue
+			}
+			urls = appendUnique(urls, baseURLForHostPort(host, port))
+		}
+	}
+	return urls
+}
+
+func (p MDNSPeer) candidateBaseURLsForPort(port int) []string {
+	if port <= 0 {
+		return nil
+	}
+	hosts := appendUnique([]string{}, p.Host)
+	hosts = appendUnique(hosts, p.Hosts...)
+	urls := make([]string, 0, len(hosts))
+	for _, host := range hosts {
+		if host != "" {
+			urls = appendUnique(urls, baseURLForHostPort(host, port))
+		}
 	}
 	return urls
 }

@@ -206,6 +206,10 @@ export function GetLANAddress() {
   return window['go']['server']['App']['GetLANAddress']();
 }
 
+export function GetLANServerStatus() {
+  return window['go']['server']['App']['GetLANServerStatus']();
+}
+
 export function GetLibraryForNormalize() {
   return window['go']['server']['App']['GetLibraryForNormalize']();
 }
