@@ -65,6 +65,12 @@ func (a *App) AutoSyncPairedDevices() (SyncAutoResult, error) {
 			continue
 		}
 		result.CheckedDevices++
+		device, err = resolveSyncDeviceForContact(device)
+		if err != nil {
+			result.FailedDevices++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", device.DeviceID, err))
+			continue
+		}
 		identity, err := fetchSyncIdentity(ctx, device.BaseURL)
 		if err != nil {
 			result.FailedDevices++
@@ -219,6 +225,12 @@ func (a *App) flushSyncPlayEventsToReachablePeers() (SyncAutoResult, error) {
 			continue
 		}
 		result.CheckedDevices++
+		device, err = resolveSyncDeviceForContact(device)
+		if err != nil {
+			result.FailedDevices++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", device.DeviceID, err))
+			continue
+		}
 		identity, err := fetchSyncIdentity(ctx, device.BaseURL)
 		if err != nil {
 			result.FailedDevices++

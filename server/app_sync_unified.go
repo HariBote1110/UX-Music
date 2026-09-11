@@ -47,6 +47,10 @@ func (a *App) DownloadSyncTrack(sourceDeviceID, sourceTrackID string) (SyncPullR
 	if err != nil {
 		return SyncPullResult{}, err
 	}
+	device, err = resolveSyncDeviceForContact(device)
+	if err != nil {
+		return SyncPullResult{}, err
+	}
 	token, err := loadSyncAuthTokenForDevice(sourceDeviceID)
 	if err != nil {
 		return SyncPullResult{}, err
@@ -332,6 +336,10 @@ func syncCatalogString(entry map[string]interface{}, key string) string {
 func refreshSyncRemoteCatalog(ctx context.Context, devices []SyncDeviceRecord) error {
 	for _, device := range devices {
 		if !device.Paired || strings.TrimSpace(device.BaseURL) == "" || !syncDeviceRecordSupportsLibraryHost(device) {
+			continue
+		}
+		device, err := resolveSyncDeviceForContact(device)
+		if err != nil {
 			continue
 		}
 		token, err := loadSyncAuthTokenForDevice(device.DeviceID)

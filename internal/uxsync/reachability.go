@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -18,33 +19,57 @@ func ResolveReachablePeer(peer MDNSPeer, client *http.Client) (MDNSPeer, error) 
 	if storedCount > len(candidates) {
 		storedCount = len(candidates)
 	}
-	if baseURL, err := probeReachabilityCandidates(client, candidates[:storedCount], peer.DeviceID); err == nil {
-		peer.ReachableBaseURL = baseURL
-		return peer, nil
-	} else if storedCount == len(candidates) {
-		return peer, err
+	var lastErr error
+	if storedCount > 0 {
+		// The stored address keeps the pre-port-hopping acceptance rule: a
+		// successful identity endpoint is enough, regardless of its device ID.
+		if baseURL, err := probeReachabilityCandidates(client, candidates[:storedCount], "", false); err == nil {
+			peer.ReachableBaseURL = baseURL
+			return peer, nil
+		} else {
+			lastErr = err
+		}
 	}
-	baseURL, err := probeReachabilityCandidates(client, candidates[storedCount:], peer.DeviceID)
+	if strings.TrimSpace(peer.DeviceID) == "" {
+		if lastErr != nil {
+			return peer, lastErr
+		}
+		return peer, fmt.Errorf("sync peer has no stored candidate address")
+	}
+	if storedCount == len(candidates) {
+		if lastErr != nil {
+			return peer, lastErr
+		}
+		return peer, fmt.Errorf("sync peer has no candidate addresses")
+	}
+	baseURL, err := probeReachabilityCandidates(client, candidates[storedCount:], peer.DeviceID, true)
 	if err == nil {
 		peer.ReachableBaseURL = baseURL
 		return peer, nil
 	}
-	if len(candidates) > 0 {
+	if lastErr != nil {
+		return peer, fmt.Errorf("stored candidate failed: %v; fallback candidates failed: %w", lastErr, err)
+	}
+	if len(candidates) > storedCount {
 		return peer, err
 	}
 	return peer, fmt.Errorf("sync peer has no candidate addresses")
 }
 
 func ResolveReachablePeers(peers []MDNSPeer, client *http.Client) []MDNSPeer {
-	resolved := make([]MDNSPeer, 0, len(peers))
-	for _, peer := range peers {
-		next, err := ResolveReachablePeer(peer, client)
-		if err == nil {
-			resolved = append(resolved, next)
-			continue
-		}
-		resolved = append(resolved, peer)
+	resolved := make([]MDNSPeer, len(peers))
+	var wg sync.WaitGroup
+	for index, peer := range peers {
+		resolved[index] = peer
+		wg.Add(1)
+		go func(index int, peer MDNSPeer) {
+			defer wg.Done()
+			if next, err := ResolveReachablePeer(peer, client); err == nil {
+				resolved[index] = next
+			}
+		}(index, peer)
 	}
+	wg.Wait()
 	return resolved
 }
 
@@ -83,7 +108,7 @@ func probeSyncIdentityForPeer(client *http.Client, baseURL, expectedDeviceID str
 	return nil
 }
 
-func probeReachabilityCandidates(client *http.Client, candidates []string, expectedDeviceID string) (string, error) {
+func probeReachabilityCandidates(client *http.Client, candidates []string, expectedDeviceID string, requireDeviceID bool) (string, error) {
 	if len(candidates) == 0 {
 		return "", fmt.Errorf("sync peer has no candidate addresses")
 	}
@@ -97,7 +122,13 @@ func probeReachabilityCandidates(client *http.Client, candidates []string, expec
 		wg.Add(1)
 		go func(index int, baseURL string) {
 			defer wg.Done()
-			results <- result{index: index, err: probeSyncIdentityForPeer(client, baseURL, expectedDeviceID)}
+			probe := probeSyncIdentity
+			if requireDeviceID {
+				probe = func(client *http.Client, baseURL string) error {
+					return probeSyncIdentityForPeer(client, baseURL, expectedDeviceID)
+				}
+			}
+			results <- result{index: index, err: probe(client, baseURL)}
 		}(index, baseURL)
 	}
 	wg.Wait()

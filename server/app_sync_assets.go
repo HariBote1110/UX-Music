@@ -310,6 +310,10 @@ func (a *App) PullSyncLibraryAssets(baseURL string, limit int) (SyncPullResult, 
 	if err != nil {
 		return SyncPullResult{}, err
 	}
+	baseURL, err = resolveSyncBaseURLForContact(baseURL)
+	if err != nil {
+		return SyncPullResult{}, err
+	}
 	identity, err := fetchSyncIdentity(ctx, baseURL)
 	if err != nil {
 		return SyncPullResult{}, err
@@ -375,6 +379,10 @@ func (a *App) PushSyncLibraryAssetsWithOptions(baseURL string, limit int, option
 		ctx = a.ctx
 	}
 	baseURL, err := normaliseSyncBaseURL(baseURL)
+	if err != nil {
+		return SyncPushResult{}, err
+	}
+	baseURL, err = resolveSyncBaseURLForContact(baseURL)
 	if err != nil {
 		return SyncPushResult{}, err
 	}

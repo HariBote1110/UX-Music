@@ -125,23 +125,126 @@ func TestResolveReachablePeerRejectsFallbackWithDifferentDeviceID(t *testing.T) 
 	}
 }
 
+func TestResolveReachablePeerDoesNotProbeFallbackPortsWithoutDeviceID(t *testing.T) {
+	var probeCount int
+	var probeMu sync.Mutex
+	identityServer, port := identityServerOnLoopbackWithHandler(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		probeMu.Lock()
+		probeCount++
+		probeMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"deviceId":"unexpected"}`))
+	}))
+	defer identityServer.Close()
+	withCandidatePorts(t, []int{port})
+
+	peer := MDNSPeer{Host: "127.0.0.1", Hosts: []string{"127.0.0.1"}, Port: 1}
+	_, err := ResolveReachablePeer(peer, &http.Client{Timeout: 150 * time.Millisecond})
+	if err == nil {
+		t.Fatal("expected unresolved peer without an expected device ID")
+	}
+	probeMu.Lock()
+	got := probeCount
+	probeMu.Unlock()
+	if got != 0 {
+		t.Fatalf("fallback port was probed without an expected device ID: %d requests", got)
+	}
+}
+
+func TestResolveReachablePeerAcceptsStoredPortForAnySuccessfulIdentityResponse(t *testing.T) {
+	identityServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer identityServer.Close()
+	storedPort := mustPortFromURL(t, identityServer.URL)
+	withCandidatePorts(t, nil)
+
+	peer := MDNSPeer{
+		DeviceID: "dev_expected",
+		Host:     "127.0.0.1",
+		Hosts:    []string{"127.0.0.1"},
+		Port:     storedPort,
+	}
+	resolved, err := ResolveReachablePeer(peer, &http.Client{Timeout: 150 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("stored port should accept a successful identity response without a device ID: %v", err)
+	}
+	if resolved.ReachableBaseURL != identityServer.URL {
+		t.Fatalf("unexpected reachable URL: %q", resolved.ReachableBaseURL)
+	}
+}
+
+func TestResolveReachablePeersRunsConcurrentlyAndPreservesOrder(t *testing.T) {
+	const (
+		peerCount = 4
+		timeout   = 120 * time.Millisecond
+	)
+	withCandidatePorts(t, nil)
+	peers := make([]MDNSPeer, 0, peerCount)
+	servers := make([]*httptest.Server, 0, peerCount)
+	for index := 0; index < peerCount; index++ {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			<-r.Context().Done()
+		}))
+		servers = append(servers, server)
+		port := mustPortFromURL(t, server.URL)
+		peers = append(peers, MDNSPeer{
+			DeviceID: fmt.Sprintf("dev_%d", index),
+			Host:     "127.0.0.1",
+			Hosts:    []string{"127.0.0.1"},
+			Port:     port,
+		})
+	}
+	for _, server := range servers {
+		defer server.Close()
+	}
+
+	started := time.Now()
+	resolved := ResolveReachablePeers(peers, &http.Client{Timeout: timeout})
+	elapsed := time.Since(started)
+	if elapsed > 2*timeout {
+		t.Fatalf("peer probes were sequential: elapsed=%v timeout=%v", elapsed, timeout)
+	}
+	if len(resolved) != len(peers) {
+		t.Fatalf("resolved peer count=%d, want %d", len(resolved), len(peers))
+	}
+	for index := range peers {
+		if resolved[index].DeviceID != peers[index].DeviceID {
+			t.Fatalf("resolved peer order changed at index %d: got %q want %q", index, resolved[index].DeviceID, peers[index].DeviceID)
+		}
+	}
+}
+
 func identityServerOnLoopback(t *testing.T, deviceID string) (*httptest.Server, int) {
+	return identityServerOnLoopbackWithHandler(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"deviceId":"` + deviceID + `"}`))
+	}))
+}
+
+func identityServerOnLoopbackWithHandler(t *testing.T, handler http.Handler) (*httptest.Server, int) {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen identity server: %v", err)
 	}
-	identityServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/identity" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"deviceId":"` + deviceID + `"}`))
-	}))
+	identityServer := httptest.NewUnstartedServer(handler)
 	identityServer.Listener = listener
 	identityServer.Start()
 	return identityServer, listener.Addr().(*net.TCPAddr).Port
+}
+
+func mustPortFromURL(t *testing.T, raw string) int {
+	t.Helper()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse server URL: %v", err)
+	}
+	port, err := strconv.Atoi(parsed.Port())
+	if err != nil {
+		t.Fatalf("parse server port: %v", err)
+	}
+	return port
 }
 
 func withCandidatePorts(t *testing.T, ports []int) {
