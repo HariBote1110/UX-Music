@@ -17,8 +17,9 @@ final class WatchPlaybackProgress: ObservableObject {
 
 /// AVPlayer-backed playback service for the Watch app, using the platform's actual route for
 /// standalone background music playback: `AVAudioSession`'s `.playback` category with either the
-/// `.longFormAudio` route-sharing policy or the plain `.default` policy, activated via
-/// `AVAudioSession.activate(options:completionHandler:)`.
+/// `.longFormAudio` route-sharing policy activated via
+/// `AVAudioSession.activate(options:completionHandler:)`, or the plain `.default` policy
+/// activated synchronously via `AVAudioSession.setActive(_:)`.
 /// This is the correct mechanism for watchOS background audio — `WKExtendedRuntimeSession` (used
 /// previously) is intended for workouts and similar long-running *foreground-eligible* tasks, not
 /// music playback, and does not reliably keep `AVPlayer` audio going once the screen locks.
@@ -368,27 +369,32 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         return detected
     }
 
-    /// Sets category/mode/(optional) route-sharing policy and activates the session asynchronously,
-    /// invoking `completion` back on the main actor with whether activation succeeded. `policy: nil`
-    /// omits the route-sharing policy argument entirely (letting `AVAudioSession` use its own
-    /// `.default`), used for every plain speaker attempt in `activateAudioSession`.
+    /// Sets category/mode/policy and activates the session with the API appropriate to the attempt,
+    /// invoking `completion` back on the main actor with whether activation succeeded. Long-form
+    /// attempts use `activate(options:completionHandler:)`; speaker attempts explicitly set the
+    /// `.default` policy and use synchronous `setActive(true)` so watchOS does not show the route
+    /// picker.
     private func activate(
         category: AVAudioSession.Category,
         mode: AVAudioSession.Mode,
         policy: AVAudioSession.RouteSharingPolicy?,
         completion: @escaping (Bool) -> Void
     ) {
-        let policyDescription = policy.map(String.init(describing:)) ?? "default (no route-sharing policy)"
+        let policyDescription = policy.map(String.init(describing:)) ?? "default"
         print("[WatchAudioPlayer] activate: attempting category=\(category.rawValue) mode=\(mode.rawValue) policy=\(policyDescription)")
         let session = AVAudioSession.sharedInstance()
         do {
             if let policy {
                 try session.setCategory(category, mode: mode, policy: policy)
             } else {
-                try session.setCategory(category, mode: mode)
+                try session.setCategory(category, mode: mode, policy: .default)
+                try session.setActive(true)
+                print("[WatchAudioPlayer] activate result: policy=\(policyDescription) activated=true error=no error")
+                completion(true)
+                return
             }
         } catch {
-            print("[WatchAudioPlayer] AVAudioSession setCategory error for policy=\(policyDescription): \(error)")
+            print("[WatchAudioPlayer] AVAudioSession activation error for policy=\(policyDescription): \(error)")
             completion(false)
             return
         }
