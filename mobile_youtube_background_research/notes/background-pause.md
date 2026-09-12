@@ -362,8 +362,21 @@ YouTube API 規約（原文を WebFetch で確認）:
 → **操作なしで滑らかに続ける経路は WKWebView 内には無い。** 滑らかさを求めるなら、WKWebView の外で音を鳴らす
 候補D（LAN 中継）しか残らない。単体で動く経路は PiP 系（全画面経由の自動 PiP・手動 PiP ボタン）のみ。
 
+### ユーザー判断（2026-09-12）: iPhone 単体で完結させたい → まず非公開フラグを試す
+- PiP 系で作る前に、候補E（WebKit の非公開設定でバックグラウンド停止を外す）の実在を実機で確認する。
+- App Store 審査・OS 更新で壊れるリスクは承知の上（法律上の問題はない）。
+
+## 仮説E: WebKit の非公開フィーチャーフラグ／SPI にバックグラウンド停止を外すものがある
+- E-1（列挙のみ・挙動変更なし）: 実機で `WKPreferences._features`（`_WKFeature` の key / name / 既定値 / 現在値）と、
+  `WKPreferences` / `WKWebViewConfiguration` の非公開メソッド名を書き出し、
+  background / suspend / lock / visib / pip / picture / media / playback / audio / video / fullscreen / nowplaying / interrupt
+  を含むものに絞る。デバッグフック `UXM_DEBUG_WEBKIT_FEATURES=1`（検証後に撤去）。
+- 棄却条件: 該当しそうなキー・メソッドが一つも無い。
+- 候補が見つかれば E-2 以降で 1 フラグずつ切り替え、F-1 と同じ手順（ホスト直結・セッション有効・unmute）で
+  バックグラウンド移行後も `time` が進むかを見る。
+
 ## 次の一手 / 未検証事項
-- 方式の決定（ユーザー判断待ち）: 候補D（LAN 中継、PC 必須）/ PiP 系（単体・操作あり）/ 両方の組み合わせ。
+- E-1 を実機で実行。
 - 20:24:08 の一時停止の原因（ユーザーが PiP ウィンドウを操作したか）。
 - 20:17:24（G-2）のページ再読み込みの原因。
 - PiP 開始のトリガー時刻（フォアグラウンド中に要求したケースのみ確認済み。`didEnterBackground`
