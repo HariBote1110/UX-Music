@@ -87,6 +87,10 @@ struct WatchNowPlayingView: View {
     @State private var cachedArtworkImage: UIImage?
     @State private var cachedArtworkSongId: String?
 
+    /// Drives the output-preference sheet opened from the mode row's output button — see
+    /// `outputPreferenceButton` and `outputPreferenceSheet`.
+    @State private var showingOutputPicker = false
+
     var body: some View {
         ZStack {
             backgroundArtwork
@@ -102,6 +106,9 @@ struct WatchNowPlayingView: View {
             // Only the transition *to* active matters — see `hiddenCrownVolumeControl`'s doc
             // comment for why re-focusing must be gated on this rather than `onAppear`.
             if active { crownRefocusTrigger += 1 }
+        }
+        .sheet(isPresented: $showingOutputPicker) {
+            outputPreferenceSheet
         }
     }
 
@@ -271,10 +278,12 @@ struct WatchNowPlayingView: View {
                         .font(metrics.routeErrorFont)
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.center)
-                } else if player.isSpeakerFallback {
+                } else if player.isSpeakerFallback && player.outputPreference != .speaker {
                     // Non-blocking notice, not `routeError`: playback *is* proceeding, just over
                     // the built-in speaker rather than a Bluetooth output — see
-                    // `WatchAudioRoutePolicy`.
+                    // `WatchAudioRoutePolicy`. Only shown for an *automatic* fallback: when the
+                    // user has explicitly chosen the speaker (`outputPreference == .speaker`),
+                    // being on the speaker is exactly what they asked for, so no notice is needed.
                     Label("Playing on speaker", systemImage: "speaker.wave.2")
                         .font(metrics.routeErrorFont)
                         .foregroundStyle(.white.opacity(0.6))
@@ -284,6 +293,7 @@ struct WatchNowPlayingView: View {
             }
             .animation(.easeInOut(duration: 0.25), value: player.routeError)
             .animation(.easeInOut(duration: 0.25), value: player.isSpeakerFallback)
+            .animation(.easeInOut(duration: 0.25), value: player.outputPreference)
 
             if player.currentSong != nil {
                 // Display-only: no Crown/tap seeking — see the type-level doc comment for why.
@@ -350,6 +360,8 @@ struct WatchNowPlayingView: View {
                     WatchRepeatIcon(repeatMode: player.repeatMode, iconSize: metrics.modeIconSize, tapFrameSize: metrics.modeTapFrameSize)
                 }
                 .buttonStyle(.plain)
+
+                outputPreferenceButton(metrics: metrics)
             }
 
             #if DEBUG
@@ -365,6 +377,86 @@ struct WatchNowPlayingView: View {
         }
         .padding(.horizontal, metrics.horizontalPadding)
         .padding(.vertical, metrics.verticalPadding)
+    }
+
+    /// Compact output-preference button, placed alongside shuffle/repeat in the mode row so it
+    /// shares that row's existing sizing/spacing (`metrics.modeIconSize`/`modeTapFrameSize`) rather
+    /// than adding a whole new row — the type-level doc comment already notes that an earlier extra
+    /// row (volume) pushed the page past 45mm-screen height, so a fourth icon squeezed into an
+    /// existing row is preferred over a fifth UI element competing for vertical space.
+    ///
+    /// The glyph itself reflects the *current* `outputPreference` (not the actual route), matching
+    /// how the play/pause button reflects state rather than being a generic "more" affordance;
+    /// `.contentTransition(.symbolEffect(.replace))` morphs between the three glyphs the same way
+    /// the transport row's play/pause button does.
+    @ViewBuilder
+    private func outputPreferenceButton(metrics: NowPlayingMetrics) -> some View {
+        Button {
+            showingOutputPicker = true
+        } label: {
+            Image(systemName: outputPreferenceSymbolName(for: player.outputPreference))
+                .font(.system(size: metrics.modeIconSize))
+                .foregroundStyle(.white)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: metrics.modeTapFrameSize, height: metrics.modeTapFrameSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Output"))
+    }
+
+    /// SF Symbol for a given `WatchAudioOutputPreference`, shared between the mode-row button and
+    /// the picker sheet's rows.
+    private func outputPreferenceSymbolName(for preference: WatchAudioOutputPreference) -> String {
+        switch preference {
+        case .automatic:
+            return "wand.and.stars"
+        case .bluetooth:
+            return "headphones"
+        case .speaker:
+            return "speaker.wave.2"
+        }
+    }
+
+    /// Localised, user-facing label for a given `WatchAudioOutputPreference`, shared between the
+    /// picker sheet's rows and their accessibility labels.
+    private func outputPreferenceLabel(for preference: WatchAudioOutputPreference) -> LocalizedStringKey {
+        switch preference {
+        case .automatic:
+            return "Automatic"
+        case .bluetooth:
+            return "Bluetooth"
+        case .speaker:
+            return "Watch Speaker"
+        }
+    }
+
+    /// Sheet body for the output-preference picker opened from `outputPreferenceButton`. A plain
+    /// `List` of the three choices (rather than a `Picker`) so the current selection can show as a
+    /// leading checkmark alongside the glyph and label — mirrors how watchOS's own list-based
+    /// settings pickers look, and keeps every row's tap target the full row width rather than just
+    /// the glyph.
+    @ViewBuilder
+    private var outputPreferenceSheet: some View {
+        List(WatchAudioOutputPreference.allCases, id: \.self) { preference in
+            Button {
+                player.setOutputPreference(preference)
+                showingOutputPicker = false
+            } label: {
+                HStack {
+                    Image(systemName: outputPreferenceSymbolName(for: preference))
+                        .frame(width: 20)
+                    Text(outputPreferenceLabel(for: preference))
+                    Spacer()
+                    if player.outputPreference == preference {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(.blue)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .navigationTitle(Text("Output"))
     }
 
     /// Slim, display-only replacement for `ProgressView(...).progressViewStyle(.linear)` — the stock
