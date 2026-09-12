@@ -516,3 +516,11 @@ YouTube の自動画質はプレーヤーの描画サイズに応じて決まる
 - CSS transform での拡大は YouTube 側のサイズ判定に拡大後サイズとして効いてしまう。
 - サイズを極小にしても下限は 360p で、IFrame 埋め込みでは 144p まで下げられなかった
   （`setPlaybackQuality('tiny')` も効果なし）。
+
+### Decision（改訂）: ネイティブ縮小＋UIKit transform で約360pに抑える
+ユーザー判断で「144p は諦めて約360p に抑える」方針に決定。CSS による拡大を撤去し、
+`YouTubePlaybackHost.layoutWebView(in:)` で WKWebView 自体の bounds を 256x144 物理ピクセル
+相当（`/ screen.scale`）に縮小して `CGAffineTransform` で aspect-fill 拡大する。ページからは
+小さいビューポートにしか見えないため、表示中・パーキング中とも同じ判定になる。
+実測: 同条件（HD 動画・パーキング中・`UXM_DEBUG_YT_LQ=1`）で `medium`（360p）。
+設定の説明文も「360p 程度」に修正した。
