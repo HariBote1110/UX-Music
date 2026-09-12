@@ -238,6 +238,11 @@ final class MusicPlayerService {
     /// Set when a YouTube play request must wait for the app to return to the foreground.
     private var youtubeResumePendingAfterBackground = false
     private var youtubeResumeGeneration: UInt64?
+    /// Generation of a playing YouTube track that should resume after its foreground PiP exit.
+    private var youtubeResumeAfterPictureInPictureExitGeneration: UInt64?
+    private var youtubePictureInPictureExitModeObserved = false
+    private var youtubePictureInPictureExitCommandReturned = false
+    private var youtubePictureInPictureExitPauseObserved = false
     private var youtubePictureInPictureActive = false
     private var youtubePictureInPictureAvailable = false
     private var youtubeFullscreenActive = false
@@ -426,6 +431,10 @@ final class MusicPlayerService {
                 NSLog("[UXM_YT_PIP] PiP entered")
             } else if wasPictureInPictureActive && !self.youtubePictureInPictureActive {
                 NSLog("[UXM_YT_PIP] PiP exited")
+            }
+            if mode == .inline {
+                self.youtubePictureInPictureExitModeObserved = true
+                self.resumeYouTubeAfterPictureInPictureExitIfNeeded()
             }
             if self.youtubeFullscreenActive && !wasFullscreenActive {
                 NSLog("[UXM_YT_PIP] fullscreen entered")
@@ -991,8 +1000,14 @@ final class MusicPlayerService {
         let decision = YouTubeBackgroundResumePolicy.onEnterForeground(
             resumePending: youtubeResumePendingAfterBackground,
             isYouTubeSong: currentSong?.isYouTube == true,
+            isPlaying: isPlaying,
             presentationMode: youtubePlaybackHost.pictureInPictureMode
         )
+        if decision.resumeAfterPictureInPictureExit {
+            prepareYouTubeResumeAfterPictureInPictureExit()
+        } else {
+            clearYouTubeResumeAfterPictureInPictureExit()
+        }
         if decision.exitPictureInPicture {
             requestYouTubePictureInPictureExit(reason: "foreground")
         }
@@ -1015,8 +1030,13 @@ final class MusicPlayerService {
     private func requestYouTubePictureInPictureExit(reason: String) {
         guard youtubePlaybackHost.pictureInPictureMode == .pictureInPicture else { return }
         NSLog("[UXM_YT_PIP] exiting reason=%@", reason)
+        let generation = youtubePlaybackGeneration
         Task { @MainActor [weak self] in
-            await self?.youtubePlaybackHost.exitPictureInPicture()
+            guard let self else { return }
+            await self.youtubePlaybackHost.exitPictureInPicture()
+            guard generation == self.youtubePlaybackGeneration else { return }
+            self.youtubePictureInPictureExitCommandReturned = true
+            self.resumeYouTubeAfterPictureInPictureExitIfNeeded()
         }
     }
 
@@ -1031,6 +1051,33 @@ final class MusicPlayerService {
     private func clearYouTubeResumePending() {
         youtubeResumePendingAfterBackground = false
         youtubeResumeGeneration = nil
+    }
+
+    private func prepareYouTubeResumeAfterPictureInPictureExit() {
+        youtubeResumeAfterPictureInPictureExitGeneration = youtubePlaybackGeneration
+        youtubePictureInPictureExitModeObserved = false
+        youtubePictureInPictureExitCommandReturned = false
+        youtubePictureInPictureExitPauseObserved = false
+    }
+
+    private func clearYouTubeResumeAfterPictureInPictureExit() {
+        youtubeResumeAfterPictureInPictureExitGeneration = nil
+        youtubePictureInPictureExitModeObserved = false
+        youtubePictureInPictureExitCommandReturned = false
+        youtubePictureInPictureExitPauseObserved = false
+    }
+
+    private func resumeYouTubeAfterPictureInPictureExitIfNeeded() {
+        guard let generation = youtubeResumeAfterPictureInPictureExitGeneration,
+              generation == youtubePlaybackGeneration,
+              currentSong?.isYouTube == true,
+              youtubePictureInPictureExitPauseObserved,
+              youtubePictureInPictureExitModeObserved || youtubePictureInPictureExitCommandReturned
+        else { return }
+        clearYouTubeResumeAfterPictureInPictureExit()
+        youtubePlaybackHost.send(.play)
+        isPlaying = true
+        updateNowPlayingCentre()
     }
 
     /// Defers a YouTube play request until foreground because WebKit cannot resume this video in
@@ -1056,6 +1103,7 @@ final class MusicPlayerService {
             }
         }
         clearYouTubeResumePending()
+        clearYouTubeResumeAfterPictureInPictureExit()
         youtubePlaybackHost.send(.play)
         isPlaying = true
         updateNowPlayingCentre()
@@ -1064,6 +1112,7 @@ final class MusicPlayerService {
     private func pauseYouTubeAndClearResumePending() {
         youtubePlaybackHost.send(.pause)
         clearYouTubeResumePending()
+        clearYouTubeResumeAfterPictureInPictureExit()
         isPlaying = false
         updateNowPlayingCentre()
     }
@@ -1073,6 +1122,7 @@ final class MusicPlayerService {
     /// destroyed (see `YouTubePlaybackHost`) — only paused and returned inline.
     private func stopYouTubeBackend() {
         youtubePlaybackGeneration &+= 1
+        clearYouTubeResumeAfterPictureInPictureExit()
         requestYouTubePictureInPictureExit(reason: "backend stopped")
         requestYouTubeFullscreenExit(reason: "backend stopped")
         youtubePlaybackHost.send(.pause)
@@ -1097,6 +1147,7 @@ final class MusicPlayerService {
     private func loadAndPlayYouTube(_ song: Song) async {
         await preparePlaybackSessionIfNeeded()
         youtubePlaybackGeneration &+= 1
+        clearYouTubeResumeAfterPictureInPictureExit()
         let generation = youtubePlaybackGeneration
         currentYouTubeVideoID = nil
         youtubePlaybackErrorMessage = nil
@@ -1157,14 +1208,14 @@ final class MusicPlayerService {
             return
         }
         guard youtubePlaybackHost.isPictureInPictureAvailable else {
-            NSLog("[UXM_YT_PIP] failed reason=unavailable")
+            NSLog("[UXM_YT_PIP] unavailable reason=pictureInPicture")
             return
         }
         NSLog("[UXM_YT_PIP] entering trigger=user toggle")
         Task { @MainActor [weak self] in
             guard let self else { return }
             guard await self.youtubePlaybackHost.enterPictureInPicture() else {
-                NSLog("[UXM_YT_PIP] failed trigger=user toggle")
+                NSLog("[UXM_YT_PIP] PiP failed trigger=user toggle")
                 return
             }
         }
@@ -1175,7 +1226,7 @@ final class MusicPlayerService {
     func enterYouTubeFullscreen() {
         guard currentSong?.isYouTube == true else { return }
         guard youtubeFullscreenAvailable else {
-            NSLog("[UXM_YT_PIP] fullscreen failed reason=unavailable")
+            NSLog("[UXM_YT_PIP] fullscreen unavailable")
             return
         }
         NSLog("[UXM_YT_PIP] entering fullscreen")
@@ -1197,15 +1248,27 @@ final class MusicPlayerService {
             youtubePlaybackHost.setLowQuality(effectiveYouTubeLowQuality)
             youtubePlaybackHost.send(.unmute)
         case .state(.playing):
+            if youtubePictureInPictureExitModeObserved {
+                clearYouTubeResumeAfterPictureInPictureExit()
+            }
             isPlaying = true
             youtubePlaybackErrorMessage = nil
             updateNowPlayingCentre()
         case .state(.paused):
-            // Keep the fallback resume only when the policy explicitly requested it. A user closing
-            // the system PiP window also produces this event and must not auto-resume in background.
+            // A user closing the system PiP window also produces this event and must not auto-resume
+            // in the background. A foreground PiP exit may resume only after this pause is observed.
             isPlaying = false
+            if youtubeResumeAfterPictureInPictureExitGeneration != nil {
+                if youtubePictureInPictureExitModeObserved || youtubePictureInPictureExitCommandReturned {
+                    youtubePictureInPictureExitPauseObserved = true
+                    resumeYouTubeAfterPictureInPictureExitIfNeeded()
+                } else {
+                    clearYouTubeResumeAfterPictureInPictureExit()
+                }
+            }
             updateNowPlayingCentre()
         case .state(.ended):
+            clearYouTubeResumeAfterPictureInPictureExit()
             isPlaying = false
             updateNowPlayingCentre()
             Task { @MainActor [weak self] in

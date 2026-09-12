@@ -216,10 +216,9 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
                 in: frame,
                 contentWorld: Self.pictureInPictureContentWorld
             )
-            let accepted = (result as? Bool) ?? (result as? NSNumber)?.boolValue ?? false
-            guard accepted else { return false }
+            NSLog("[UXM_YT_PIP] PiP JS request result=%@", String(describing: result))
         } catch {
-            return false
+            NSLog("[UXM_YT_PIP] PiP JS request error=%@", String(describing: error))
         }
 
         if pictureInPictureMode == .pictureInPicture { return true }
@@ -252,10 +251,9 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
                 in: frame,
                 contentWorld: Self.pictureInPictureContentWorld
             )
-            let accepted = (result as? Bool) ?? (result as? NSNumber)?.boolValue ?? false
-            guard accepted else { return false }
+            NSLog("[UXM_YT_PIP] fullscreen JS request result=%@", String(describing: result))
         } catch {
-            return false
+            NSLog("[UXM_YT_PIP] fullscreen JS request error=%@", String(describing: error))
         }
 
         if pictureInPictureMode == .fullscreen { return true }

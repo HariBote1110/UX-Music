@@ -77,9 +77,16 @@ struct UXMusicMobileApp: App {
             // seconds into playback, so the automatic fullscreen-to-PiP hand-off on backgrounding can be
             // checked on a device without tapping the Now Playing button (progress/mobile-youtube-embed.md フェーズH).
             let enterFullscreen = ProcessInfo.processInfo.environment["UXM_DEBUG_YT_FULLSCREEN"] == "1"
+            // `UXM_DEBUG_YT_OPEN_NOW_PLAYING=1` opens Now Playing once playback has started, so the
+            // Now Playing PiP / fullscreen buttons can be tapped by hand on a device.
+            let openNowPlaying = ProcessInfo.processInfo.environment["UXM_DEBUG_YT_OPEN_NOW_PLAYING"] == "1"
             Task {
                 await player.play(song, newQueue: [song])
                 NSLog("[UXM_DEBUG_YT] service play(_:newQueue:) returned")
+                if openNowPlaying {
+                    model.isNowPlayingSheetPresented = true
+                    NSLog("[UXM_DEBUG_YT] opened Now Playing")
+                }
                 guard enterFullscreen else { return }
                 try? await Task.sleep(nanoseconds: 6_000_000_000)
                 NSLog("[UXM_DEBUG_YT] requesting fullscreen canUse=%d", player.canUseYouTubeFullscreen ? 1 : 0)

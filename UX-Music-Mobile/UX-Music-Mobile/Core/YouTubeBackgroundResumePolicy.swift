@@ -12,6 +12,7 @@ struct YouTubeBackgroundResumePolicy {
     struct ForegroundDecision: Equatable {
         let exitPictureInPicture: Bool
         let resumePlayback: Bool
+        let resumeAfterPictureInPictureExit: Bool
     }
 
     enum RemotePlayDecision: Equatable {
@@ -38,11 +39,15 @@ struct YouTubeBackgroundResumePolicy {
     static func onEnterForeground(
         resumePending: Bool,
         isYouTubeSong: Bool,
+        isPlaying: Bool,
         presentationMode: YouTubeEmbedPlayer.PresentationMode
     ) -> ForegroundDecision {
         ForegroundDecision(
             exitPictureInPicture: isYouTubeSong && presentationMode == .pictureInPicture,
-            resumePlayback: resumePending && isYouTubeSong
+            resumePlayback: resumePending && isYouTubeSong,
+            resumeAfterPictureInPictureExit: isYouTubeSong
+                && isPlaying
+                && presentationMode == .pictureInPicture
         )
     }
 
