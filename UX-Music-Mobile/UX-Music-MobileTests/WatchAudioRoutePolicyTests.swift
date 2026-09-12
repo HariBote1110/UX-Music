@@ -3,6 +3,34 @@ import XCTest
 
 final class WatchAudioRoutePolicyTests: XCTestCase {
 
+    func testSpeakerPreferenceAttemptsSpeakerOnly() {
+        XCTAssertEqual(
+            WatchAudioRoutePolicy.attempts(preference: .speaker, bluetoothDetected: true),
+            [.speaker]
+        )
+    }
+
+    func testBluetoothPreferenceAttemptsLongFormOnly() {
+        XCTAssertEqual(
+            WatchAudioRoutePolicy.attempts(preference: .bluetooth, bluetoothDetected: false),
+            [.longForm]
+        )
+    }
+
+    func testAutomaticPreferenceUsesSpeakerWhenBluetoothIsNotDetected() {
+        XCTAssertEqual(
+            WatchAudioRoutePolicy.attempts(preference: .automatic, bluetoothDetected: false),
+            [.speaker]
+        )
+    }
+
+    func testAutomaticPreferenceTriesLongFormThenSpeakerWhenBluetoothIsDetected() {
+        XCTAssertEqual(
+            WatchAudioRoutePolicy.attempts(preference: .automatic, bluetoothDetected: true),
+            [.longForm, .speaker]
+        )
+    }
+
     func testLongFormActivatedTakesPrecedence() {
         XCTAssertEqual(
             WatchAudioRoutePolicy.outcome(longFormActivated: true, speakerActivated: true),

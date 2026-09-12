@@ -16,20 +16,17 @@ final class WatchPlaybackProgress: ObservableObject {
 }
 
 /// AVPlayer-backed playback service for the Watch app, using the platform's actual route for
-/// standalone background music playback: `AVAudioSession`'s `.playback` category with the
-/// `.longFormAudio` route-sharing policy, activated via `AVAudioSession.activate(options:completionHandler:)`.
+/// standalone background music playback: `AVAudioSession`'s `.playback` category with either the
+/// `.longFormAudio` route-sharing policy or the plain `.default` policy, activated via
+/// `AVAudioSession.activate(options:completionHandler:)`.
 /// This is the correct mechanism for watchOS background audio — `WKExtendedRuntimeSession` (used
 /// previously) is intended for workouts and similar long-running *foreground-eligible* tasks, not
 /// music playback, and does not reliably keep `AVPlayer` audio going once the screen locks.
 ///
 /// **Hardware constraint**: watchOS does not allow *long-form* audio playback over the built-in
-/// speaker — a Bluetooth output route (headphones, AirPods, or a paired output) must already be
-/// connected for `.longFormAudio` to activate, or the system will surface its own "Select audio
-/// output" prompt the first time `activate` is called for a session. Plain `.playback`/`.default`
-/// *does* support the built-in speaker, though, so `activateAudioSession` tries `.longFormAudio`
-/// first and falls back to that plain session (see `WatchAudioRoutePolicy`) rather than treating a
-/// missing Bluetooth route as a hard failure. Only when both attempts fail does activation
-/// genuinely fail and playback not start; see `routeError` below.
+/// speaker. The output preference therefore controls whether `.longFormAudio` is attempted at
+/// all; plain `.playback`/`.default` is used for deliberate speaker playback and automatic mode
+/// when no Bluetooth route is detected.
 ///
 /// System integration: publishes state to `MPNowPlayingInfoCenter` and wires
 /// `MPRemoteCommandCenter` (play/pause/next/previous) so the standard watchOS "Now Playing" glance,
@@ -41,12 +38,14 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     @Published var isPlaying = false
     @Published var repeatMode: WatchRepeatMode = .off
     @Published var isShuffled = false
-    /// Set only when *both* activation attempts fail (see `activateAudioSession`) — no audio output
-    /// is available at all. `WatchNowPlayingView` surfaces this as a blocking message; cleared on
-    /// the next successful activation.
+    /// The persisted user preference for selecting the Watch speaker or a Bluetooth route.
+    @Published private(set) var outputPreference: WatchAudioOutputPreference
+    /// Set only when all selected activation attempts fail (see `activateAudioSession`) — no audio
+    /// output is available at all. `WatchNowPlayingView` surfaces this as a blocking message;
+    /// cleared on the next successful activation.
     @Published var routeError: String?
-    /// `true` while the current session is playing over the built-in speaker because no Bluetooth
-    /// output was available for `.longFormAudio` (see `WatchAudioRoutePolicy.Outcome.speakerFallback`).
+    /// `true` whenever the current session is the plain speaker session, whether the user selected
+    /// the speaker explicitly or it was reached as an automatic fallback.
     /// `WatchNowPlayingView` surfaces this as a small non-blocking caption rather than `routeError`.
     @Published var isSpeakerFallback = false
     /// DEBUG-only on-screen diagnostic surfaced by `WatchNowPlayingView` — a short human-readable
@@ -84,21 +83,57 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     private let library: WatchLocalLibrary
     /// The policy last successfully activated, or `nil` if activation has never succeeded (or has
     /// since failed). Feeds `WatchAudioActivationPolicy.plan` so `activateAudioSession` can skip
-    /// redundant `setCategory`/`activate` calls on an already-active `.longFormAudio` session —
-    /// see that type's doc comment for why (the `SessionCore.mm:631` main-thread warning).
+    /// redundant `setCategory`/`activate` calls only when the policy still matches the preference.
     private var activatedPolicy: WatchAudioActivationPolicy.ActivatedPolicy?
 
     init(library: WatchLocalLibrary) {
         self.library = library
+        outputPreference = UserDefaults.standard.string(
+            forKey: WatchAudioOutputPreference.userDefaultsKey
+        ).flatMap(WatchAudioOutputPreference.init(rawValue:)) ?? .automatic
         super.init()
         configureRemoteCommands()
+        configureAudioSessionNotifications()
     }
 
-    /// Starts playing `song` from `queue`. Activates the `AVAudioSession` (long-form-audio policy)
-    /// first — this is asynchronous and, on the first call for a session, may prompt the user to
-    /// choose an audio output — and only starts the `AVPlayer` once activation succeeds. If no
-    /// Bluetooth output is available, activation fails and `routeError` is set instead of silently
-    /// doing nothing.
+    /// Persists the requested output and, when an audio session is active, re-activates it under
+    /// the new plan without losing whether playback was running.
+    func setOutputPreference(_ preference: WatchAudioOutputPreference) {
+        guard preference != outputPreference else { return }
+        outputPreference = preference
+        UserDefaults.standard.set(preference.rawValue, forKey: WatchAudioOutputPreference.userDefaultsKey)
+
+        guard activatedPolicy != nil else { return }
+
+        let wasPlaying = isPlaying
+        if wasPlaying {
+            player?.pause()
+            isPlaying = false
+            updateNowPlayingInfo()
+            saveResumeState()
+        }
+
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setActive(false, options: [])
+        } catch {
+            print("[WatchAudioPlayer] setActive(false) error while changing output preference: \(error)")
+        }
+        activatedPolicy = nil
+        routeError = nil
+        isSpeakerFallback = false
+
+        activateAudioSession { [weak self] activated in
+            guard let self, wasPlaying, activated else { return }
+            self.player?.play()
+            self.isPlaying = true
+            self.updateNowPlayingInfo()
+            self.saveResumeState()
+        }
+    }
+
+    /// Starts playing `song` from `queue`. Activates the `AVAudioSession` according to the user's
+    /// output preference and only starts the `AVPlayer` once activation succeeds.
     func play(_ song: WatchTransferMeta, queue songs: [WatchTransferMeta]) {
         originalQueue = songs
         if isShuffled {
@@ -254,46 +289,89 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         updateNowPlayingInfo()
     }
 
-    /// Two-stage activation: tries `.playback`/`.longFormAudio` first (the background-eligible
-    /// route for music — requires a Bluetooth output already connected), and only if that fails
-    /// falls back to a plain `.playback`/`.default` session, which watchOS *does* allow over the
-    /// built-in speaker. `WatchAudioRoutePolicy` turns the two attempts' results into an `Outcome`
-    /// this method applies to `routeError`/`isSpeakerFallback`; `completion` is invoked back on the
-    /// main actor with whether *either* attempt succeeded (i.e. playback may proceed).
+    /// Activates the ordered attempts selected by the output preference. A speaker attempt never
+    /// supplies a route-sharing policy, so it cannot show the long-form route picker.
     private func activateAudioSession(completion: @escaping (Bool) -> Void) {
-        let plan = WatchAudioActivationPolicy.plan(previouslyActivated: activatedPolicy)
-        print("[WatchAudioPlayer] activateAudioSession: previouslyActivated=\(String(describing: activatedPolicy)) plan=\(plan)")
-        guard plan == .attemptLongForm else {
-            // Already active under `.longFormAudio` — re-issuing setCategory/activate here is what
-            // produced the `SessionCore.mm:631` main-thread warning on-device.
+        let bluetoothDetected = bluetoothOutputDetected()
+        let plan = WatchAudioActivationPolicy.plan(
+            previouslyActivated: activatedPolicy,
+            preference: outputPreference,
+            bluetoothDetected: bluetoothDetected
+        )
+        print("[WatchAudioPlayer] activateAudioSession: previouslyActivated=\(String(describing: activatedPolicy)) preference=\(outputPreference) plan=\(plan)")
+        guard plan != .skip else {
             completion(true)
             return
         }
-        activate(category: .playback, mode: .default, policy: .longFormAudio) { [weak self] longFormActivated in
-            guard let self else { return }
-            if longFormActivated {
-                self.activatedPolicy = .longForm
-                self.applyRouteOutcome(.longForm)
-                completion(true)
-                return
-            }
-            self.activate(category: .playback, mode: .default, policy: nil) { [weak self] speakerActivated in
+
+        activateNext(
+            attempts: WatchAudioRoutePolicy.attempts(
+                preference: outputPreference,
+                bluetoothDetected: bluetoothDetected
+            ),
+            index: 0,
+            completion: completion
+        )
+    }
+
+    private func activateNext(
+        attempts: [WatchAudioRoutePolicy.Attempt],
+        index: Int,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard index < attempts.count else {
+            activatedPolicy = nil
+            applyRouteOutcome(.unavailable)
+            completion(false)
+            return
+        }
+
+        let attempt = attempts[index]
+        switch attempt {
+        case .longForm:
+            activate(category: .playback, mode: .default, policy: .longFormAudio) { [weak self] activated in
                 guard let self else { return }
-                let outcome = WatchAudioRoutePolicy.outcome(
-                    longFormActivated: false,
-                    speakerActivated: speakerActivated
-                )
-                self.activatedPolicy = speakerActivated ? .fallback : nil
-                self.applyRouteOutcome(outcome)
-                completion(outcome != .unavailable)
+                if activated {
+                    self.activatedPolicy = .longForm
+                    self.applyRouteOutcome(.longForm)
+                    completion(true)
+                } else {
+                    self.activateNext(attempts: attempts, index: index + 1, completion: completion)
+                }
+            }
+        case .speaker:
+            activate(category: .playback, mode: .default, policy: nil) { [weak self] activated in
+                guard let self else { return }
+                if activated {
+                    self.activatedPolicy = .fallback
+                    self.applyRouteOutcome(.speakerFallback)
+                    completion(true)
+                } else {
+                    self.activateNext(attempts: attempts, index: index + 1, completion: completion)
+                }
             }
         }
+    }
+
+    /// Uses the current route and, when watchOS exposes it, available inputs as a small heuristic
+    /// for deciding whether automatic mode may try `.longFormAudio`. This heuristic is intentionally
+    /// isolated because its behaviour on real watchOS hardware is not yet verified.
+    private func bluetoothOutputDetected() -> Bool {
+        let session = AVAudioSession.sharedInstance()
+        let bluetoothPorts: [AVAudioSession.Port] = [.bluetoothA2DP, .bluetoothLE, .bluetoothHFP]
+        let outputs = session.currentRoute.outputs
+        let availableInputs = session.availableInputs ?? []
+        let detected = outputs.contains { bluetoothPorts.contains($0.portType) }
+            || availableInputs.contains { bluetoothPorts.contains($0.portType) }
+        let outputTypes = outputs.map(\.portType.rawValue)
+        print("[WatchAudioPlayer] bluetoothDetection: outputs=\(outputTypes) detected=\(detected)")
+        return detected
     }
 
     /// Sets category/mode/(optional) route-sharing policy and activates the session asynchronously,
     /// invoking `completion` back on the main actor with whether activation succeeded. `policy: nil`
     /// omits the route-sharing policy argument entirely (letting `AVAudioSession` use its own
-    /// `.default`), used for the speaker-fallback attempt in `activateAudioSession`.
+    /// `.default`), used for every plain speaker attempt in `activateAudioSession`.
     private func activate(
         category: AVAudioSession.Category,
         mode: AVAudioSession.Mode,
@@ -348,6 +426,46 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         let firstPortName = outputs.first?.portName ?? "no output"
         sessionDiagnostic = "\(outcome) / \(firstPortName)"
         #endif
+    }
+
+    private func configureAudioSessionNotifications() {
+        let center = NotificationCenter.default
+        let session = AVAudioSession.sharedInstance()
+        center.addObserver(
+            self,
+            selector: #selector(audioSessionInterruption(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: session
+        )
+        center.addObserver(
+            self,
+            selector: #selector(audioSessionRouteChange(_:)),
+            name: AVAudioSession.routeChangeNotification,
+            object: session
+        )
+    }
+
+    @objc private func audioSessionInterruption(_ notification: Notification) {
+        let userInfo = notification.userInfo
+        let type = (userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
+        let reason = (userInfo?[AVAudioSessionInterruptionReasonKey] as? NSNumber)?.uintValue
+        let options = (userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue)
+        print("[WatchAudioPlayer] interruptionNotification: type=\(String(describing: type)) reason=\(String(describing: reason)) options=\(String(describing: options)) outputs=\(outputs)")
+
+        guard type == AVAudioSession.InterruptionType.began.rawValue,
+              isPlaying,
+              let player,
+              player.rate == 0 else { return }
+        isPlaying = false
+        updateNowPlayingInfo()
+        saveResumeState()
+    }
+
+    @objc private func audioSessionRouteChange(_ notification: Notification) {
+        let reason = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue)
+        print("[WatchAudioPlayer] routeChangeNotification: reason=\(String(describing: reason)) outputs=\(outputs)")
     }
 
     private func clearPlayer() {
