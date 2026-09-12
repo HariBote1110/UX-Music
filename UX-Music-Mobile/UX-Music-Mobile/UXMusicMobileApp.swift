@@ -55,7 +55,10 @@ struct UXMusicMobileApp: App {
         }
         Task {
             do {
-                try await host.load(videoID: videoID)
+                // `UXM_DEBUG_YT_LQ=1` forces the cellular low-quality page so the reported
+                // `quality` bridge events can be checked without a real cellular connection.
+                let lowQuality = ProcessInfo.processInfo.environment["UXM_DEBUG_YT_LQ"] == "1"
+                try await host.load(videoID: videoID, lowQuality: lowQuality)
                 NSLog("[UXM_DEBUG_YT] load(videoID:) returned without throwing")
             } catch {
                 NSLog("[UXM_DEBUG_YT] load(videoID:) threw error=%@", String(describing: error))

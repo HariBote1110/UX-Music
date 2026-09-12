@@ -477,3 +477,30 @@ videoID 文字列のみを返す設計になっており、サムネイルURLま
 - `youtubeThumbnailURLString` は `NowPlayingView.swift` の file-scope 関数として
   `internal` 公開（`private` にしない）。`NowPlayingArtworkBlock`（同ファイル内の
   別 struct）と将来的にテストコードの両方から参照できるようにするため。
+
+## フェーズE: 再生画面を閉じると止まる問題 / モバイルデータ時の低画質再生
+
+### Decision: WKWebView をウィンドウ外に出さない（keyWindow 内パーキング）
+フェーズB追補の「`dismantleUIView` で `removeFromSuperview` するだけで再生は続く」という
+前提は誤りで、実機では Now Playing を閉じると再生が止まっていた。WKWebView が
+ウィンドウ階層から外れると WebKit はページを非表示扱いにしてメディアを停止する。
+`YouTubePlaybackHost.park()` を追加し、閉じる際は keyWindow の最背面（subview index 0）に
+置いた 256x144pt・`alpha = 0.01` の holder へ移す。`load(videoID:)` 時点で window が無い
+（Now Playing を開かずに再生開始した）場合もパークする。
+
+- 1x1 などの極小サイズにしない: IFrame Player API は小さすぎるプレーヤーでの再生を拒否する。
+- `isHidden` / `alpha = 0` にしない: 非表示扱いで同じ停止が起きる可能性があるため。
+
+### Decision: 低画質はプレーヤーの描画サイズで誘導する
+IFrame API の `setPlaybackQuality` は現行では実質 no-op で、公式に画質を固定する手段は無い。
+YouTube の自動画質はプレーヤーの描画サイズに応じて決まるため、低画質モードでは
+`#player` を 256x144 CSS px で描画し `transform: scale()` で拡大表示する
+（`setPlaybackQuality('tiny')` も念のため併用）。`NetworkCostMonitor`（`NWPathMonitor`）で
+セルラー/高コスト回線を判定し、設定「モバイルデータ通信時は低画質で再生」（既定オン、
+`uxmusic.youtube.lowQualityOnCellular`）と組み合わせて、新規ロードは `lq=1`、
+再生中の回線変化は `setLowQuality` コマンドで切り替える。
+
+### Constraints / Gotchas
+- 実際の画質は bridge の `quality` イベント（`getPlaybackQuality()`）で確認できる。
+  デバッグフックに `UXM_DEBUG_YT_LQ=1`（`SIMCTL_CHILD_` 付きで渡す）を追加した。
+- アプリのバックグラウンド移行・画面ロック時の継続再生は未対応（本フェーズの範囲外）。
