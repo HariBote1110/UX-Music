@@ -1663,6 +1663,22 @@
         }
       }
     },
+    "Full Screen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Full Screen"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全画面表示"
+          }
+        }
+      }
+    },
     "Full Quality" : {
       "localizations" : {
         "en" : {

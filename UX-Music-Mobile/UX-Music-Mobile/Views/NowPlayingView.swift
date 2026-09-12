@@ -945,12 +945,22 @@ private struct NowPlayingArtworkBlock: View {
                     .strokeBorder(.white.opacity(0.12), lineWidth: 1)
             }
             .overlay(alignment: .topTrailing) {
-                // Only ever appears for YouTube tracks on devices where PiP is actually
-                // supported (`canUseYouTubePictureInPicture` is false on the simulator), so
-                // local songs and unsupported devices see no layout change at all.
-                if song.isYouTube, model.player.canUseYouTubePictureInPicture {
-                    pictureInPictureButton
-                        .padding(10)
+                // Only ever appears for YouTube tracks on devices where PiP and/or fullscreen are
+                // actually supported (`canUseYouTubePictureInPicture` is false on the simulator),
+                // so local songs and unsupported devices see no layout change at all.
+                if song.isYouTube, model.player.canUseYouTubePictureInPicture || model.player.canUseYouTubeFullscreen {
+                    HStack(spacing: 8) {
+                        // Fullscreen has no "exit" affordance of its own here (the system
+                        // fullscreen UI owns exiting), so it only makes sense to offer while the
+                        // video is still inline — hide it once PiP has taken the video elsewhere.
+                        if model.player.canUseYouTubeFullscreen, !model.player.isYouTubePictureInPictureActive {
+                            fullScreenButton
+                        }
+                        if model.player.canUseYouTubePictureInPicture {
+                            pictureInPictureButton
+                        }
+                    }
+                    .padding(10)
                 }
             }
             .shadow(color: .black.opacity(0.55), radius: 32, y: 18)
@@ -1062,6 +1072,20 @@ private struct NowPlayingArtworkBlock: View {
                 : String(localized: "Picture in Picture")
         ) {
             Image(systemName: isActive ? "pip.exit" : "pip.enter")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+        }
+    }
+
+    /// Enters the system's native fullscreen YouTube player. There is no in-app "exit fullscreen"
+    /// control to match — the system fullscreen UI owns its own exit affordance — so unlike
+    /// `pictureInPictureButton` this is a one-way action button, not a toggle.
+    private var fullScreenButton: some View {
+        NowPlayingNavIconButton(
+            action: { model.player.enterYouTubeFullscreen() },
+            accessibilityLabel: String(localized: "Full Screen")
+        ) {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
         }
