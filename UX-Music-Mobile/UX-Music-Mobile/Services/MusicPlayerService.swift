@@ -205,6 +205,15 @@ final class MusicPlayerService {
     /// via `AVAudioEngine`. SwiftUI only ever borrows `youtubePlaybackHost.webView` for display
     /// (see `YouTubeEmbedHostContainerView`).
     let youtubePlaybackHost = YouTubePlaybackHost()
+    let networkCostMonitor = NetworkCostMonitor()
+    /// Whether the user has enabled low-quality YouTube playback on cellular data.
+    var youtubeLowQualityOnCellular = true {
+        didSet {
+            guard youtubeLowQualityOnCellular != oldValue else { return }
+            updateYouTubeLowQuality()
+        }
+    }
+    private var effectiveYouTubeLowQuality = false
     /// Video ID for the currently-loading/playing YouTube song, or `nil` when idle or resolution failed.
     private(set) var currentYouTubeVideoID: String?
     /// Set when `resolveYouTubeVideoID` fails or the embed player reports an error — surfaced by `NowPlayingView`.
@@ -374,6 +383,10 @@ final class MusicPlayerService {
         youtubePlaybackHost.onEvent = { [weak self] event in
             self?.handleYouTubeBridgeEvent(event)
         }
+        networkCostMonitor.onCellularStatusChange = { [weak self] _ in
+            self?.updateYouTubeLowQuality()
+        }
+        updateYouTubeLowQuality()
         #endif
     }
 
@@ -924,7 +937,7 @@ final class MusicPlayerService {
         guard generation == youtubePlaybackGeneration else { return }
 
         do {
-            try await youtubePlaybackHost.load(videoID: videoID)
+            try await youtubePlaybackHost.load(videoID: videoID, lowQuality: effectiveYouTubeLowQuality)
         } catch {
             guard generation == youtubePlaybackGeneration else { return }
             isPlaying = false
@@ -950,6 +963,7 @@ final class MusicPlayerService {
         guard let song = currentSong, song.isYouTube else { return }
         switch event {
         case .ready:
+            youtubePlaybackHost.send(.setLowQuality(effectiveYouTubeLowQuality))
             youtubePlaybackHost.send(.unmute)
         case .state(.playing):
             isPlaying = true
@@ -984,9 +998,22 @@ final class MusicPlayerService {
                 scheduleAutoSkipAfterEmbedRestriction(generation: youtubePlaybackGeneration)
             }
             updateNowPlayingCentre()
+        case .quality:
+            break
         default:
             break
         }
+    }
+
+    private func updateYouTubeLowQuality() {
+        let nextValue = YouTubeEmbedPlayer.shouldUseLowQuality(
+            isCellular: networkCostMonitor.isCellular,
+            lowQualityOnCellularEnabled: youtubeLowQualityOnCellular
+        )
+        guard nextValue != effectiveYouTubeLowQuality else { return }
+        effectiveYouTubeLowQuality = nextValue
+        guard currentYouTubeVideoID != nil else { return }
+        youtubePlaybackHost.send(.setLowQuality(nextValue))
     }
 
     /// After an embed-restricted error (101/150), gives the user a short window to notice the

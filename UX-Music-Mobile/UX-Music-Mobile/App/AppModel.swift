@@ -98,6 +98,16 @@ final class AppModel {
         }
     }
 
+    /// User preference for lowering YouTube playback quality on cellular data, persisted to
+    /// `UserDefaults` so it survives relaunch.
+    var youtubeLowQualityOnCellular: Bool {
+        didSet {
+            guard youtubeLowQualityOnCellular != oldValue else { return }
+            UserDefaults.standard.set(youtubeLowQualityOnCellular, forKey: AppConstants.youtubeLowQualityOnCellularKey)
+            player.youtubeLowQualityOnCellular = youtubeLowQualityOnCellular
+        }
+    }
+
     /// User-selected AAC bitrate for new AAC downloads (Settings → ダウンロード音質), persisted to
     /// `UserDefaults` so it survives relaunch. Only meaningful when `downloadAudioQuality` requests
     /// an AAC variant (`.aac`/`.both`); see `downloadSong` and `progress/download-audio-quality.md`.
@@ -305,6 +315,7 @@ final class AppModel {
         downloadAudioQuality = DownloadAudioQuality.restored(
             fromRawValue: UserDefaults.standard.string(forKey: AppConstants.downloadAudioQualityKey)
         )
+        youtubeLowQualityOnCellular = UserDefaults.standard.object(forKey: AppConstants.youtubeLowQualityOnCellularKey) as? Bool ?? true
         downloadAACBitrate = DownloadAACBitrate.restored(
             fromRawValue: UserDefaults.standard.integer(forKey: AppConstants.downloadAACBitrateKey)
         )
@@ -321,6 +332,7 @@ final class AppModel {
         favouriteSongStore = FavouriteSongStore()
         favouriteSongIds = favouriteSongStore.orderedIds
         player = MusicPlayerService()
+        player.youtubeLowQualityOnCellular = youtubeLowQualityOnCellular
         player.targetLoudness = AppConstants.defaultTargetLoudness
         player.loadArtworkImage = { [weak self] song in
             guard let self else { return nil }

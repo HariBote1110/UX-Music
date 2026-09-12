@@ -4,9 +4,10 @@ import WebKit
 /// Displays the single persistent `WKWebView` owned by `MusicPlayerService.youtubePlaybackHost`
 /// by reparenting it into this representable's container view — it never creates or destroys the
 /// web view itself. Showing/hiding `NowPlayingView` therefore only moves the web view between
-/// superviews (or detaches it entirely); the web view instance, its JS state, and playback are
-/// unaffected, so audio keeps playing while the sheet is closed (see `YouTubePlaybackHost`'s doc
-/// comment for why this replaced the old per-screen `YouTubeEmbedPlayerView` usage here).
+/// superviews (or parks it in the key window); the web view instance, its JS state, and playback
+/// are unaffected, so audio keeps playing while the sheet is closed (see `YouTubePlaybackHost`'s
+/// doc comment for why this replaced the old per-screen `YouTubeEmbedPlayerView` usage here).
+@MainActor
 struct YouTubeEmbedHostContainerView: UIViewRepresentable {
     let webView: WKWebView
 
@@ -26,7 +27,14 @@ struct YouTubeEmbedHostContainerView: UIViewRepresentable {
     /// `WKWebView` that stays alive and in-window the whole time does not interrupt its playback.
     private func attach(to container: UIView) {
         guard webView.superview !== container else { return }
-        webView.removeFromSuperview()
+        if let oldSuperview = webView.superview {
+            let constraints = oldSuperview.constraints.filter { constraint in
+                (constraint.firstItem as? UIView) === webView
+                    || (constraint.secondItem as? UIView) === webView
+            }
+            oldSuperview.removeConstraints(constraints)
+            webView.removeConstraints(webView.constraints)
+        }
         webView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(webView)
         NSLayoutConstraint.activate([
@@ -37,12 +45,16 @@ struct YouTubeEmbedHostContainerView: UIViewRepresentable {
         ])
     }
 
-    /// Detaches (does not destroy) the shared web view so a dismissed `NowPlayingView` does not
-    /// leave it parented under a view that is about to deallocate. The web view itself is owned by
-    /// `YouTubePlaybackHost` and keeps running/playing off-screen.
+    /// Parks the shared web view in the key window so a dismissed `NowPlayingView` does not leave
+    /// it outside a window hierarchy. The web view itself is owned by `YouTubePlaybackHost` and
+    /// keeps running/playing off-screen.
     static func dismantleUIView(_ uiView: UIView, coordinator: ()) {
-        for subview in uiView.subviews where subview is WKWebView {
-            subview.removeFromSuperview()
+        for subview in uiView.subviews {
+            guard let webView = subview as? WKWebView,
+                  let host = YouTubePlaybackHost.activeHost,
+                  host.webView === webView
+            else { continue }
+            host.park()
         }
     }
 }

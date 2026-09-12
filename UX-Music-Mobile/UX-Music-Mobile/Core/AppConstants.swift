@@ -26,6 +26,8 @@ enum AppConstants {
     static let artistSortOrderKey = "uxmusic.library.artistSortOrder"
     /// Persisted `DownloadAudioQuality.rawValue` for new downloads (Settings → ダウンロード音質).
     static let downloadAudioQualityKey = "uxmusic.download.audioQuality"
+    /// Persisted preference for using low-quality YouTube playback on cellular data.
+    static let youtubeLowQualityOnCellularKey = "uxmusic.youtube.lowQualityOnCellular"
     /// Persisted `DownloadAACBitrate.rawValue` for new AAC downloads (Settings → ダウンロード音質).
     static let downloadAACBitrateKey = "uxmusic.download.aacBitrate"
     /// Persisted snapshot (id + title) of `WatchTransferBridge.queue` entries not yet `.sent`/

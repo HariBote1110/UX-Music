@@ -50,6 +50,7 @@ enum YouTubeEmbedPlayer {
         case state(PlayerState)
         case time(current: Double, duration: Double)
         case error(code: Int)
+        case quality(String)
     }
 
     enum Command: Equatable {
@@ -57,6 +58,11 @@ enum YouTubeEmbedPlayer {
         case pause
         case seek(seconds: Double)
         case unmute
+        case setLowQuality(Bool)
+    }
+
+    static func shouldUseLowQuality(isCellular: Bool, lowQualityOnCellularEnabled: Bool) -> Bool {
+        isCellular && lowQualityOnCellularEnabled
     }
 
     /// Validates a YouTube video ID (always 11 characters of `[A-Za-z0-9_-]`, matching
@@ -72,14 +78,18 @@ enum YouTubeEmbedPlayer {
     /// page for `videoID` on `port`. Mirrors `embedHostPageURL` in `server/embed_host.go`. Returns
     /// `nil` for an invalid video ID instead of throwing, since callers building a URL to hand to
     /// `WKWebView.load(_:)` have no natural place to surface a thrown error.
-    static func loopbackPageURL(port: Int, videoID: String) -> URL? {
+    static func loopbackPageURL(port: Int, videoID: String, lowQuality: Bool = false) -> URL? {
         guard isValidVideoID(videoID) else { return nil }
         var components = URLComponents()
         components.scheme = "http"
         components.host = "127.0.0.1"
         components.port = port
         components.path = "/embed"
-        components.queryItems = [URLQueryItem(name: "v", value: videoID)]
+        var queryItems = [URLQueryItem(name: "v", value: videoID)]
+        if lowQuality {
+            queryItems.append(URLQueryItem(name: "lq", value: "1"))
+        }
+        components.queryItems = queryItems
         return components.url
     }
 
@@ -169,6 +179,9 @@ enum YouTubeEmbedPlayer {
         case "error":
             guard let code = (body["code"] as? Int) ?? (body["code"] as? NSNumber)?.intValue else { return nil }
             return .error(code: code)
+        case "quality":
+            guard let quality = body["quality"] as? String else { return nil }
+            return .quality(quality)
         default:
             return nil
         }
@@ -192,6 +205,8 @@ enum YouTubeEmbedPlayer {
             return "window.uxYouTubeCommand({cmd:'seek', seconds:\(seconds)});"
         case .unmute:
             return "window.uxYouTubeCommand({cmd:'unmute'});"
+        case .setLowQuality(let enabled):
+            return "window.uxYouTubeCommand({cmd:'lowQuality', enabled:\(enabled ? "true" : "false")});"
         }
     }
 
@@ -225,10 +240,61 @@ enum YouTubeEmbedPlayer {
         var VIDEO_ID = '__VIDEO_ID__';
         var player = null;
         var timer = null;
+        var lowQualityEnabled = new URLSearchParams(location.search).get('lq') === '1';
+        var lastPostedQuality = null;
+        var LOW_QUALITY_WIDTH = 256;
+        var LOW_QUALITY_HEIGHT = 144;
 
         function post(msg) {
             msg.source = 'ux-embed';
             try { window.postMessage(msg, '*'); } catch (e) { /* ignore */ }
+        }
+
+        function resizePlayer() {
+            var playerElement = document.getElementById('player');
+            if (!playerElement) return;
+            if (!lowQualityEnabled) {
+                playerElement.style.width = '100%';
+                playerElement.style.height = '100%';
+                playerElement.style.transform = 'none';
+                playerElement.style.transformOrigin = '0 0';
+                return;
+            }
+
+            playerElement.style.width = LOW_QUALITY_WIDTH + 'px';
+            playerElement.style.height = LOW_QUALITY_HEIGHT + 'px';
+            var viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+            var viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+            var scale = Math.max(
+                viewportWidth / LOW_QUALITY_WIDTH,
+                viewportHeight / LOW_QUALITY_HEIGHT
+            );
+            playerElement.style.transform = 'scale(' + scale + ')';
+            playerElement.style.transformOrigin = '0 0';
+        }
+
+        function applyLowQuality(enabled) {
+            lowQualityEnabled = !!enabled;
+            resizePlayer();
+            if (!player) return;
+            try {
+                if (lowQualityEnabled) {
+                    player.setPlaybackQuality('tiny');
+                    player.setPlaybackQualityRange && player.setPlaybackQualityRange('tiny', 'tiny');
+                } else {
+                    player.setPlaybackQuality('default');
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        function postQualityIfChanged() {
+            if (!player || typeof player.getPlaybackQuality !== 'function') return;
+            try {
+                var quality = player.getPlaybackQuality();
+                if (typeof quality !== 'string' || quality === lastPostedQuality) return;
+                lastPostedQuality = quality;
+                post({ type: 'quality', quality: quality });
+            } catch (e) { /* ignore */ }
         }
 
         function startTimer() {
@@ -241,6 +307,7 @@ enum YouTubeEmbedPlayer {
                         currentTime: player.getCurrentTime() || 0,
                         duration: player.getDuration() || 0
                     });
+                    postQualityIfChanged();
                 } catch (e) { /* ignore */ }
             }, 250);
         }
@@ -261,17 +328,27 @@ enum YouTubeEmbedPlayer {
                 },
                 events: {
                     onReady: function () {
+                        applyLowQuality(lowQualityEnabled);
                         try { player.mute(); } catch (e) { /* ignore */ }
                         post({ type: 'ready' });
+                        postQualityIfChanged();
                         startTimer();
                     },
                     onStateChange: function (e) { post({ type: 'state', state: e.data }); },
-                    onError: function (e) { post({ type: 'error', code: e.data }); }
+                    onError: function (e) { post({ type: 'error', code: e.data }); },
+                    onPlaybackQualityChange: function () { postQualityIfChanged(); }
                 }
             });
         };
 
+        window.addEventListener('resize', resizePlayer);
+        resizePlayer();
+
         window.uxYouTubeCommand = function (d) {
+            if (d.cmd === 'lowQuality') {
+                applyLowQuality(d.enabled);
+                return;
+            }
             if (!player) return;
             try {
                 if (d.cmd === 'play') player.playVideo();

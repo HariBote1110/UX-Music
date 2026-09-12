@@ -199,6 +199,16 @@ struct SettingsScreen: View {
                 }
 
                 Section {
+                    Toggle("Low video quality on mobile data", isOn: Bindable(model).youtubeLowQualityOnCellular)
+                } header: {
+                    Text(verbatim: "YouTube")
+                } footer: {
+                    Text("While on mobile data, YouTube songs play at the lowest quality (around 144p) to save data.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
                     Button("Import Desktop Playlists") {
                         showDesktopPlaylistImport = true
                     }
