@@ -97,7 +97,26 @@
 - 結論（暫定）: 棄却条件(1) は不成立（到達可能・無効化されていない）。(2) は数秒だけ成立して自動で戻る。
 - 次の変数候補: `.playback` の `AVAudioSession` 未有効化（システム PiP の前提条件）。これを B-2 で有効化する。
 
+### B-2: B-1 + PiP 要求前に `AVAudioSession(.playback, .moviePlayback)` を有効化（1変数）
+手順: B-1 に `SIMCTL_CHILD_UXM_DEBUG_YT_PIP_SESSION=1` を追加。
+
+| 時刻 | 観測 |
+| :--- | :--- |
+| 19:35:43.17 | セッション有効化成功 |
+| 19:35:53.95 | PiP 要求 |
+| 19:35:54.9〜19:36:00.9 | `webkitPresentationMode` = `picture-in-picture`（約 6 秒） |
+| 19:36:00.97 | `inline` に戻る |
+| 19:36:11.7 | バックグラウンド → 0.3 秒後 `paused` → 19:36:13.2 SIGKILL |
+
+- `webkitSupportsPresentationMode('picture-in-picture')` は B-1 同様 false のまま。
+- バックグラウンド中のスクリーンショットには Dynamic Island の再生インジケータのみで PiP ウィンドウなし。
+- `mode = picture-in-picture` の最中（19:35:57）のスクリーンショットにも PiP ウィンドウは写らない。
+  つまり WebKit 側のフラグが一時的に切り替わるだけで、システムの PiP ウィンドウは一度も出ていない。
+- 結論: **セッション未有効化は原因ではない（棄却済み）**。PiP 状態の持続時間がわずかに伸びただけで、自動で戻る点は同じ。
+
 ## 次の一手 / 未検証事項
-- 仮説B の検証（Picture in Picture）: B-2 = PiP 要求前に `.playback` セッションを有効化（バックグラウンド移行時に PiP へ遷移させれば WebKit の制約上は継続再生が許可される）。
+- B-3: パーキング先の WKWebView を画面外・alpha 0.01 → 画面内・alpha 1 にする（1変数）。
+  同時に `AVPictureInPictureController.isPictureInPictureSupported()` を記録（シミュレータで PiP 自体が
+  非対応なら、実機でしか検証できない）。（バックグラウンド移行時に PiP へ遷移させれば WebKit の制約上は継続再生が許可される）。
   YouTube iframe はクロスオリジンのため、ページ側から video 要素の PiP を操作できるかは未検証。
 - 画面ロック時（`isSuspendedUnderLock`）の挙動は未測定（同じ制約がかかる見込み）。
