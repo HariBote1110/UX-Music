@@ -23,6 +23,10 @@ final class WatchConnectivityReceiver: NSObject, ObservableObject {
 
     private let library: WatchLocalLibrary
     private let playlistLibrary: WatchPlaylistLibrary
+    private static let activationQueue = DispatchQueue(
+        label: "UXMusicWatch.connectivityActivation",
+        qos: .utility
+    )
 
     init(library: WatchLocalLibrary, playlistLibrary: WatchPlaylistLibrary) {
         self.library = library
@@ -33,12 +37,30 @@ final class WatchConnectivityReceiver: NSObject, ObservableObject {
     /// `WatchTransferMeta.metadataKindKey` — kept here (not on `WatchTransferMeta`, which this
     /// target does not own) since the playlist transfer is Watch-side-only for now; see the
     /// type-level doc comment for what the iOS sender still needs to send to make use of it.
-    static let kindPlaylists = "playlists"
+    nonisolated static let kindPlaylists = "playlists"
 
     func activate() {
-        guard WCSession.isSupported() else { return }
-        WCSession.default.delegate = self
-        WCSession.default.activate()
+        let box = WatchConnectivityActivationBox(receiver: self)
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("connectivity.activate.begin")
+        #endif
+        Self.activationQueue.async {
+            #if DEBUG
+            defer { WatchPerfBreadcrumb.mark("connectivity.activate.end") }
+            #endif
+            guard WCSession.isSupported(), let receiver = box.receiver else { return }
+            let session = WCSession.default
+            session.delegate = receiver
+            session.activate()
+        }
+    }
+}
+
+private final class WatchConnectivityActivationBox: @unchecked Sendable {
+    weak var receiver: WatchConnectivityReceiver?
+
+    init(receiver: WatchConnectivityReceiver) {
+        self.receiver = receiver
     }
 }
 
@@ -58,6 +80,7 @@ extension WatchConnectivityReceiver: WCSessionDelegate {
         // attempting (and failing) to parse it as a song.
         if WatchTransferMeta.isArtworkWcMetadata(file.metadata) {
             guard let id = file.metadata?[WatchTransferMeta.metadataIDKey] as? String else { return }
+            WatchAudioStorage.ensureDirectories()
             let dest = WatchAudioStorage.artworkFileURL(forId: id)
             try? FileManager.default.removeItem(at: dest)
             try? FileManager.default.copyItem(at: file.fileURL, to: dest)
@@ -91,6 +114,7 @@ extension WatchConnectivityReceiver: WCSessionDelegate {
         // which is why received songs never appeared on the Watch. `WatchAudioStorage` is a plain
         // (non-actor-isolated) enum precisely so this path can resolve the destination and copy
         // without waiting for the main actor.
+        WatchAudioStorage.ensureDirectories()
         let dest = WatchAudioStorage.audioFileURL(for: meta)
         try? FileManager.default.removeItem(at: dest)
         let result: WatchFileReceiveResult

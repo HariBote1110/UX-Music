@@ -15,6 +15,24 @@ final class WatchPlaybackProgress: ObservableObject {
     @Published var position: Double = 0
 }
 
+private struct WatchAudioRouteSnapshot: Sendable {
+    let descriptions: [String]
+    let firstPortName: String
+}
+
+/// AVFoundation objects are prepared off the main actor and installed on it only after the file
+/// check and asset/item/player construction finish. AVPlayer is used here as an immutable handoff
+/// value; all subsequent playback and observer registration remains main-actor confined.
+private final class PreparedWatchPlayer: @unchecked Sendable {
+    let player: AVPlayer
+    let item: AVPlayerItem
+
+    init(player: AVPlayer, item: AVPlayerItem) {
+        self.player = player
+        self.item = item
+    }
+}
+
 /// AVPlayer-backed playback service for the Watch app, using the platform's actual route for
 /// standalone background music playback: `AVAudioSession`'s `.playback` category with either the
 /// `.longFormAudio` route-sharing policy activated via
@@ -92,17 +110,44 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     private var activatedPolicy: WatchAudioActivationPolicy.ActivatedPolicy?
     private var activationInFlight = false
     private var pendingActivationCompletions: [ActivationCompletion] = []
+    private var outputPreferenceLoaded = false
+    private var loadGeneration = 0
 
     private typealias ActivationCompletion = @MainActor @Sendable (Bool) -> Void
 
     init(library: WatchLocalLibrary) {
         self.library = library
-        outputPreference = UserDefaults.standard.string(
-            forKey: WatchAudioOutputPreference.userDefaultsKey
-        ).flatMap(WatchAudioOutputPreference.init(rawValue:)) ?? .automatic
+        outputPreference = .automatic
         super.init()
-        configureRemoteCommands()
+        // MPRemoteCommandCenter's first touch is a system IPC boundary. Defer registration until
+        // the launch call stack has returned so it cannot delay the first SwiftUI frame.
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("remoteCommands.configure.begin")
+            #endif
+            self?.configureRemoteCommands()
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("remoteCommands.configure.end")
+            #endif
+        }
         configureAudioSessionNotifications()
+        audioSessionQueue.async { [weak self] in
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("audioOutputPreference.read.begin")
+            #endif
+            let preference = UserDefaults.standard.string(
+                forKey: WatchAudioOutputPreference.userDefaultsKey
+            ).flatMap(WatchAudioOutputPreference.init(rawValue:)) ?? .automatic
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("audioOutputPreference.read.end")
+            #endif
+            Task { @MainActor in
+                guard let self, !self.outputPreferenceLoaded else { return }
+                self.outputPreference = preference
+                self.outputPreferenceLoaded = true
+            }
+        }
     }
 
     /// Persists the requested output and, when an audio session is active, re-activates it under
@@ -110,7 +155,16 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     func setOutputPreference(_ preference: WatchAudioOutputPreference) {
         guard preference != outputPreference else { return }
         outputPreference = preference
-        UserDefaults.standard.set(preference.rawValue, forKey: WatchAudioOutputPreference.userDefaultsKey)
+        outputPreferenceLoaded = true
+        audioSessionQueue.async {
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("audioOutputPreference.write.begin")
+            #endif
+            UserDefaults.standard.set(preference.rawValue, forKey: WatchAudioOutputPreference.userDefaultsKey)
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("audioOutputPreference.write.end")
+            #endif
+        }
 
         guard activatedPolicy != nil else { return }
 
@@ -252,8 +306,15 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     /// Restores the last-played song, queue, position, and mode from disk (see
     /// `WatchPlaybackResumeState`). Loads the track and seeks to the saved position but does
     /// **not** start playback — a cold app launch should not surprise the user with audio.
-    func restoreResumeState() {
-        guard let state = WatchResumeStorage.load() else { return }
+    func restoreResumeState() async {
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("restoreResumeState.begin")
+        #endif
+        let state = await WatchResumeStorage.loadOffMain()
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("restoreResumeState.read.end")
+        #endif
+        guard let state else { return }
         repeatMode = state.repeatMode
         isShuffled = state.isShuffled
 
@@ -265,42 +326,64 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         originalQueue = resolvedOriginal.isEmpty ? resolvedQueue : resolvedOriginal
         currentIndex = index
 
-        loadWithoutAutoplay(queue[currentIndex])
+        await loadWithoutAutoplay(queue[currentIndex])
         seek(to: state.position)
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("restoreResumeState.end")
+        #endif
     }
 
     private func load(_ song: WatchTransferMeta) {
-        loadWithoutAutoplay(song)
-        player?.play()
-        isPlaying = true
-        updateNowPlayingInfo()
-        saveResumeState()
+        Task { @MainActor in
+            await loadWithoutAutoplay(song)
+            guard currentSong?.id == song.id, player != nil else { return }
+            player?.play()
+            isPlaying = true
+            updateNowPlayingInfo()
+            saveResumeState()
+        }
     }
 
     /// Loads `song` into a fresh `AVPlayer` without starting playback — shared by `load(_:)` (which
     /// plays immediately) and `restoreResumeState()` (which must not autoplay on launch).
-    private func loadWithoutAutoplay(_ song: WatchTransferMeta) {
+    private func loadWithoutAutoplay(_ song: WatchTransferMeta) async {
         clearPlayer()
         currentSong = song
+        loadGeneration += 1
+        let generation = loadGeneration
 
         let url = library.audioFileURL(for: song)
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("player.prepareAsset.begin")
+        #endif
+        let prepared = await Task.detached(priority: .userInitiated) { () -> PreparedWatchPlayer? in
+            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+            let asset = AVURLAsset(url: url)
+            let item = AVPlayerItem(asset: asset)
+            return PreparedWatchPlayer(player: AVPlayer(playerItem: item), item: item)
+        }.value
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("player.prepareAsset.end")
+        #endif
+        guard generation == loadGeneration, currentSong?.id == song.id else { return }
+        guard let prepared else {
             print("[WatchAudioPlayer] File not found: \(url.path)")
             return
         }
-
-        let item = AVPlayerItem(url: url)
-        let avPlayer = AVPlayer(playerItem: item)
+        let avPlayer = prepared.player
+        let item = prepared.item
         isPlaying = false
         player = avPlayer
 
         timeObserver = avPlayer.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
-            queue: .main
-        ) { [weak self] time in
+            queue: DispatchQueue.main
+        ) { [weak self] (time: CMTime) in
             // Only touches `progress.position`, not any `@Published` property on `self` — see the
             // doc comment on `WatchPlaybackProgress` for why that split matters.
-            self?.progress.position = time.seconds
+            MainActor.assumeIsolated {
+                self?.progress.position = time.seconds
+            }
         }
 
         NotificationCenter.default.addObserver(
@@ -316,6 +399,9 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     /// Activates the ordered attempts selected by the output preference. A speaker attempt never
     /// supplies a route-sharing policy, so it cannot show the long-form route picker.
     private func activateAudioSession(completion: @escaping ActivationCompletion) {
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("audio.activate.begin")
+        #endif
         if activationInFlight {
             pendingActivationCompletions.append(completion)
             return
@@ -323,28 +409,45 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
 
         activationInFlight = true
         pendingActivationCompletions = [completion]
-        let bluetoothDetected = bluetoothOutputDetected()
-        let plan = WatchAudioActivationPolicy.plan(
-            previouslyActivated: activatedPolicy,
-            preference: outputPreference,
-            bluetoothDetected: bluetoothDetected
-        )
-        print("[WatchAudioPlayer] activateAudioSession: previouslyActivated=\(String(describing: activatedPolicy)) preference=\(outputPreference) plan=\(plan)")
-        guard plan != .skip else {
-            finishActivation(true)
-            return
-        }
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("audio.activate.bluetoothRead.begin")
+        #endif
+        audioSessionQueue.async { [weak self] in
+            let bluetoothDetected = Self.bluetoothOutputDetectedOnQueue()
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("audio.activate.bluetoothRead.end")
+            #endif
+            Task { @MainActor in
+                guard let self else { return }
+                #if DEBUG
+                WatchPerfBreadcrumb.mark("audio.activate.plan.begin")
+                #endif
+                let plan = WatchAudioActivationPolicy.plan(
+                    previouslyActivated: self.activatedPolicy,
+                    preference: self.outputPreference,
+                    bluetoothDetected: bluetoothDetected
+                )
+                print("[WatchAudioPlayer] activateAudioSession: previouslyActivated=\(String(describing: self.activatedPolicy)) preference=\(self.outputPreference) plan=\(plan)")
+                #if DEBUG
+                WatchPerfBreadcrumb.mark("audio.activate.plan.end")
+                #endif
+                guard plan != .skip else {
+                    self.finishActivation(true)
+                    return
+                }
 
-        activateNext(
-            attempts: WatchAudioRoutePolicy.attempts(
-                preference: outputPreference,
-                bluetoothDetected: bluetoothDetected
-            ),
-            index: 0,
-            completion: { [weak self] activated in
-                self?.finishActivation(activated)
+                self.activateNext(
+                    attempts: WatchAudioRoutePolicy.attempts(
+                        preference: self.outputPreference,
+                        bluetoothDetected: bluetoothDetected
+                    ),
+                    index: 0,
+                    completion: { [weak self] activated in
+                        self?.finishActivation(activated)
+                    }
+                )
             }
-        )
+        }
     }
 
     private func finishActivation(_ activated: Bool) {
@@ -353,6 +456,9 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         let completions = pendingActivationCompletions
         pendingActivationCompletions.removeAll()
         completions.forEach { $0(activated) }
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("audio.activate.end")
+        #endif
     }
 
     private func activateNext(
@@ -362,8 +468,9 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     ) {
         guard index < attempts.count else {
             activatedPolicy = nil
-            applyRouteOutcome(.unavailable)
-            completion(false)
+            applyRouteOutcome(.unavailable) {
+                completion(false)
+            }
             return
         }
 
@@ -374,8 +481,9 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
                 guard let self else { return }
                 if activated {
                     self.activatedPolicy = .longForm
-                    self.applyRouteOutcome(.longForm)
-                    completion(true)
+                    self.applyRouteOutcome(.longForm) {
+                        completion(true)
+                    }
                 } else {
                     self.activateNext(attempts: attempts, index: index + 1, completion: completion)
                 }
@@ -385,8 +493,9 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
                 guard let self else { return }
                 if activated {
                     self.activatedPolicy = .fallback
-                    self.applyRouteOutcome(.speakerFallback)
-                    completion(true)
+                    self.applyRouteOutcome(.speakerFallback) {
+                        completion(true)
+                    }
                 } else {
                     self.activateNext(attempts: attempts, index: index + 1, completion: completion)
                 }
@@ -397,7 +506,7 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     /// Uses the current route and, when watchOS exposes it, available inputs as a small heuristic
     /// for deciding whether automatic mode may try `.longFormAudio`. This heuristic is intentionally
     /// isolated because its behaviour on real watchOS hardware is not yet verified.
-    private func bluetoothOutputDetected() -> Bool {
+    nonisolated private static func bluetoothOutputDetectedOnQueue() -> Bool {
         let session = AVAudioSession.sharedInstance()
         let bluetoothPorts: [AVAudioSession.Port] = [.bluetoothA2DP, .bluetoothLE, .bluetoothHFP]
         let outputs = session.currentRoute.outputs
@@ -460,45 +569,72 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     /// Applies a `WatchAudioRoutePolicy.Outcome` to `routeError`/`isSpeakerFallback` — the one place
     /// both `@Published` properties are updated together, so they can never disagree (e.g.
     /// `routeError` set while `isSpeakerFallback` is also `true`).
-    private func applyRouteOutcome(_ outcome: WatchAudioRoutePolicy.Outcome) {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        let routeDescription = outputs.isEmpty
-            ? "no outputs"
-            : outputs.map { "\($0.portType.rawValue)/\($0.portName)" }.joined(separator: ", ")
-        print("[WatchAudioPlayer] applyRouteOutcome: outcome=\(outcome) route=[\(routeDescription)]")
-
-        switch outcome {
-        case .longForm:
-            routeError = nil
-            isSpeakerFallback = false
-        case .speakerFallback:
-            routeError = nil
-            isSpeakerFallback = true
-        case .unavailable:
-            routeError = String(localized: "Could not start playback on Apple Watch.")
-            isSpeakerFallback = false
-        }
-
+    private func applyRouteOutcome(
+        _ outcome: WatchAudioRoutePolicy.Outcome,
+        completion: (() -> Void)? = nil
+    ) {
         #if DEBUG
-        let firstPortName = outputs.first?.portName ?? "no output"
-        sessionDiagnostic = "\(outcome) / \(firstPortName)"
+        WatchPerfBreadcrumb.mark("audio.routeSnapshot.begin")
         #endif
+        audioSessionQueue.async { [weak self] in
+            let snapshot = Self.currentRouteSnapshotOnQueue()
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("audio.routeSnapshot.end")
+            #endif
+            Task { @MainActor in
+                guard let self else { return }
+                #if DEBUG
+                WatchPerfBreadcrumb.mark("audio.applyRouteOutcome.begin")
+                #endif
+                let routeDescription = snapshot.descriptions.isEmpty
+                    ? "no outputs"
+                    : snapshot.descriptions.joined(separator: ", ")
+                print("[WatchAudioPlayer] applyRouteOutcome: outcome=\(outcome) route=[\(routeDescription)]")
+
+                switch outcome {
+                case .longForm:
+                    self.routeError = nil
+                    self.isSpeakerFallback = false
+                case .speakerFallback:
+                    self.routeError = nil
+                    self.isSpeakerFallback = true
+                case .unavailable:
+                    self.routeError = String(localized: "Could not start playback on Apple Watch.")
+                    self.isSpeakerFallback = false
+                }
+
+                #if DEBUG
+                self.sessionDiagnostic = "\(outcome) / \(snapshot.firstPortName)"
+                #endif
+                #if DEBUG
+                WatchPerfBreadcrumb.mark("audio.applyRouteOutcome.end")
+                #endif
+                completion?()
+            }
+        }
+    }
+
+    nonisolated private static func currentRouteSnapshotOnQueue() -> WatchAudioRouteSnapshot {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        return WatchAudioRouteSnapshot(
+            descriptions: outputs.map { "\($0.portType.rawValue)/\($0.portName)" },
+            firstPortName: outputs.first?.portName ?? "no output"
+        )
     }
 
     private func configureAudioSessionNotifications() {
         let center = NotificationCenter.default
-        let session = AVAudioSession.sharedInstance()
         center.addObserver(
             self,
             selector: #selector(audioSessionInterruption(_:)),
             name: AVAudioSession.interruptionNotification,
-            object: session
+            object: nil
         )
         center.addObserver(
             self,
             selector: #selector(audioSessionRouteChange(_:)),
             name: AVAudioSession.routeChangeNotification,
-            object: session
+            object: nil
         )
     }
 
@@ -507,22 +643,43 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         let type = (userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
         let reason = (userInfo?[AVAudioSessionInterruptionReasonKey] as? NSNumber)?.uintValue
         let options = (userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue)
-        print("[WatchAudioPlayer] interruptionNotification: type=\(String(describing: type)) reason=\(String(describing: reason)) options=\(String(describing: options)) outputs=\(outputs)")
-
-        guard type == AVAudioSession.InterruptionType.began.rawValue,
-              isPlaying,
-              let player,
-              player.rate == 0 else { return }
-        isPlaying = false
-        updateNowPlayingInfo()
-        saveResumeState()
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("audio.interruption.routeRead.begin")
+        #endif
+        audioSessionQueue.async { [weak self] in
+            let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue)
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("audio.interruption.routeRead.end")
+            #endif
+            Task { @MainActor in
+                guard let self else { return }
+                print("[WatchAudioPlayer] interruptionNotification: type=\(String(describing: type)) reason=\(String(describing: reason)) options=\(String(describing: options)) outputs=\(outputs)")
+                guard type == AVAudioSession.InterruptionType.began.rawValue,
+                      self.isPlaying,
+                      let player = self.player,
+                      player.rate == 0 else { return }
+                self.isPlaying = false
+                self.updateNowPlayingInfo()
+                self.saveResumeState()
+            }
+        }
     }
 
     @objc private func audioSessionRouteChange(_ notification: Notification) {
         let reason = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue)
-        print("[WatchAudioPlayer] routeChangeNotification: reason=\(String(describing: reason)) outputs=\(outputs)")
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("audio.routeChange.routeRead.begin")
+        #endif
+        audioSessionQueue.async { [weak self] in
+            let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue)
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("audio.routeChange.routeRead.end")
+            #endif
+            Task { @MainActor in
+                guard self != nil else { return }
+                print("[WatchAudioPlayer] routeChangeNotification: reason=\(String(describing: reason)) outputs=\(outputs)")
+            }
+        }
     }
 
     private func clearPlayer() {
@@ -633,13 +790,22 @@ enum WatchResumeStorage {
         return supportDir.appendingPathComponent("playback-resume.json")
     }
 
+    private static let writer = WatchCoalescingJSONWriter<WatchPlaybackResumeState>(
+        label: "UXMusicWatch.resumeStateWriter",
+        fileURL: { Self.fileURL }
+    )
+
     static func save(_ state: WatchPlaybackResumeState) {
-        guard let data = try? JSONEncoder().encode(state) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        writer.enqueue(state)
     }
 
-    static func load() -> WatchPlaybackResumeState? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return try? JSONDecoder().decode(WatchPlaybackResumeState.self, from: data)
+    static func loadOffMain() async -> WatchPlaybackResumeState? {
+        await Task.detached(priority: .utility) { () -> WatchPlaybackResumeState? in
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("restoreResumeState.read.begin")
+            #endif
+            guard let data = try? Data(contentsOf: fileURL) else { return nil }
+            return try? JSONDecoder().decode(WatchPlaybackResumeState.self, from: data)
+        }.value
     }
 }

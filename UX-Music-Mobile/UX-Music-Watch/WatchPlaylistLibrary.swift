@@ -11,34 +11,90 @@ import Foundation
 final class WatchPlaylistLibrary: ObservableObject {
 
     @Published private(set) var playlists: [WatchPlaylistMeta] = []
+    private var isLoading = false
+    private var mutationRevision = 0
 
-    private static var indexFileURL: URL {
+    nonisolated fileprivate static var indexFileURL: URL {
         let supportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return supportDir.appendingPathComponent("playlists.json")
     }
 
     init() {
-        loadFromDisk()
     }
 
     /// Replaces the whole playlist index — the iPhone always sends its complete playlist set (there
     /// is no per-playlist add/remove transfer), so "replace wholesale" is the correct merge
     /// semantics here, unlike `WatchLibraryIndex.adding` for individual songs.
     func replaceAll(_ newPlaylists: [WatchPlaylistMeta]) {
+        mutationRevision += 1
         playlists = newPlaylists
-        saveToDisk()
+        if !isLoading {
+            saveToDisk()
+        }
     }
 
-    private func loadFromDisk() {
+    func reload() {
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("playlistLibrary.reload.begin")
+        #endif
+        Task { @MainActor in
+            await reloadAndWait()
+        }
+    }
+
+    func reloadAndWait() async {
+        isLoading = true
+        let startingRevision = mutationRevision
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("playlistLibrary.reload.detached.begin")
+        #endif
+        let loaded = await Task.detached(priority: .utility) { () -> [WatchPlaylistMeta] in
+            Self.readFromDisk()
+        }.value
+        guard !Task.isCancelled else {
+            isLoading = false
+            return
+        }
+        let didMutateDuringLoad = mutationRevision != startingRevision
+        if !didMutateDuringLoad {
+            playlists = loaded
+        }
+        isLoading = false
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("playlistLibrary.reload.publish.end")
+        #endif
+        if didMutateDuringLoad {
+            saveToDisk()
+        }
+    }
+
+    nonisolated private static func readFromDisk() -> [WatchPlaylistMeta] {
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("playlistLibrary.readDisk.begin")
+        #endif
         guard
             let data = try? Data(contentsOf: Self.indexFileURL),
             let decoded = try? JSONDecoder().decode([WatchPlaylistMeta].self, from: data)
-        else { return }
-        playlists = decoded
+        else {
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("playlistLibrary.readDisk.end")
+            #endif
+            return []
+        }
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("playlistLibrary.readDisk.end")
+        #endif
+        return decoded
     }
 
     private func saveToDisk() {
-        guard let data = try? JSONEncoder().encode(playlists) else { return }
-        try? data.write(to: Self.indexFileURL, options: .atomic)
+        WatchPlaylistDiskWriter.shared.enqueue(playlists)
     }
+}
+
+private enum WatchPlaylistDiskWriter {
+    static let shared = WatchCoalescingJSONWriter<[WatchPlaylistMeta]>(
+        label: "UXMusicWatch.playlistDiskWriter",
+        fileURL: { WatchPlaylistLibrary.indexFileURL }
+    )
 }

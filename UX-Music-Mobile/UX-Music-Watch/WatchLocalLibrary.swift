@@ -10,22 +10,24 @@ enum WatchAudioStorage {
     static let audioDirectory: URL = {
         let fileManager = FileManager.default
         let supportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = supportDir.appendingPathComponent("Audio", isDirectory: true)
-        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+        return supportDir.appendingPathComponent("Audio", isDirectory: true)
     }()
 
     static let artworkDirectory: URL = {
         let fileManager = FileManager.default
         let supportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = supportDir.appendingPathComponent("Artwork", isDirectory: true)
-        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+        return supportDir.appendingPathComponent("Artwork", isDirectory: true)
     }()
 
     static var indexFileURL: URL {
         let supportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return supportDir.appendingPathComponent("library.json")
+    }
+
+    static func ensureDirectories() {
+        let fileManager = FileManager.default
+        try? fileManager.createDirectory(at: audioDirectory, withIntermediateDirectories: true)
+        try? fileManager.createDirectory(at: artworkDirectory, withIntermediateDirectories: true)
     }
 
     /// Destination URL for a song's audio asset (used by the receiver to move the transferred file
@@ -63,11 +65,15 @@ final class WatchLocalLibrary: ObservableObject {
     @Published private(set) var flatOrder: WatchFlatSongOrder = .empty
     @Published private(set) var albums: [WatchAlbumGroup] = []
 
+    private var isLoading = false
+    private var mutationRevision = 0
+    private var pendingSongChanges: [String: WatchTransferMeta] = [:]
+    private var pendingRemovedSongIDs: Set<String> = []
+
     static let shared = WatchLocalLibrary()
 
     init(fileManager: FileManager = .default) {
-        _ = WatchAudioStorage.audioDirectory // ensure the directory exists before first use
-        loadFromDisk()
+        _ = fileManager
     }
 
     /// Destination URL for a song's audio asset (used by the receiver to move the transferred file
@@ -87,32 +93,145 @@ final class WatchLocalLibrary: ObservableObject {
     /// Registers a newly received song whose audio file has already been moved to
     /// `audioFileURL(for:)`. No-op if the id is already present (see `WatchLibraryIndex.adding`).
     func addSong(_ meta: WatchTransferMeta) {
+        mutationRevision += 1
+        if isLoading {
+            pendingSongChanges[meta.id] = meta
+            pendingRemovedSongIDs.remove(meta.id)
+            return
+        }
         setSongs(WatchLibraryIndex.adding(meta, to: songs))
         saveToDisk()
     }
 
     /// Removes the song's index entry and deletes its audio file.
     func removeSong(id: String) {
-        guard let meta = songs.first(where: { $0.id == id }) else { return }
+        let meta = songs.first(where: { $0.id == id }) ?? pendingSongChanges[id]
+        if isLoading {
+            mutationRevision += 1
+            pendingSongChanges.removeValue(forKey: id)
+            pendingRemovedSongIDs.insert(id)
+            deleteAudioFile(for: id, meta: meta)
+            return
+        }
+        guard let meta else { return }
+        mutationRevision += 1
         setSongs(WatchLibraryIndex.removing(id: id, from: songs))
         saveToDisk()
-        try? FileManager.default.removeItem(at: audioFileURL(for: meta))
+        deleteAudioFile(for: id, meta: meta)
+    }
+
+    /// Deletes a received audio asset without making the main actor perform filesystem work. When
+    /// a removal arrives during the initial index load, the full metadata may not be in memory yet,
+    /// so fall back to the filesystem-safe id stem and remove any matching audio extension.
+    private func deleteAudioFile(for id: String, meta: WatchTransferMeta?) {
+        let knownURL = meta.map(audioFileURL(for:))
+        let storageStem = WatchTransferMeta.storageStem(for: id)
+        DispatchQueue(label: "UXMusicWatch.libraryAssetDeletion", qos: .utility).async {
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("library.removeAudioFile.begin")
+            #endif
+            if let knownURL {
+                try? FileManager.default.removeItem(at: knownURL)
+            } else if let urls = try? FileManager.default.contentsOfDirectory(
+                at: WatchAudioStorage.audioDirectory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) {
+                for url in urls where url.deletingPathExtension().lastPathComponent == storageStem {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("library.removeAudioFile.end")
+            #endif
+        }
     }
 
     /// Re-reads the on-disk index, e.g. when the app returns to the foreground. Cheap and
     /// idempotent — mirrors `loadFromDisk()` at init but is safe to call again at any time.
     func reload() {
-        loadFromDisk()
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("library.reload.begin")
+        #endif
+        Task { @MainActor in
+            await reloadAndWait()
+        }
     }
 
-    private func loadFromDisk() {
+    /// Loads the index and all derived collections off the main actor, then publishes one coherent
+    /// snapshot. Callers that need the songs (notably resume restoration) await this method.
+    func reloadAndWait() async {
+        isLoading = true
+        let startingRevision = mutationRevision
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("library.reload.detached.begin")
+        #endif
+        let snapshot = await Task.detached(priority: .utility) { () -> WatchLibraryDiskSnapshot in
+            Self.readFromDisk()
+        }.value
+        guard !Task.isCancelled else {
+            isLoading = false
+            pendingSongChanges.removeAll()
+            pendingRemovedSongIDs.removeAll()
+            return
+        }
+        let didMutateDuringLoad = mutationRevision != startingRevision
+        var finalSnapshot = snapshot
+        if didMutateDuringLoad {
+            var merged = snapshot.songs.filter { !pendingRemovedSongIDs.contains($0.id) }
+            for meta in pendingSongChanges.values {
+                if let index = merged.firstIndex(where: { $0.id == meta.id }) {
+                    merged[index] = meta
+                } else {
+                    merged.append(meta)
+                }
+            }
+            finalSnapshot = .computed(from: merged)
+        }
+        isLoading = false
+        pendingSongChanges.removeAll()
+        pendingRemovedSongIDs.removeAll()
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("library.reload.publish.begin")
+        #endif
+        songs = finalSnapshot.songs
+        flatOrder = finalSnapshot.flatOrder
+        albums = finalSnapshot.albums
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("library.reload.publish.end")
+        #endif
+        if didMutateDuringLoad {
+            saveToDisk()
+        }
+    }
+
+    nonisolated private static func readFromDisk() -> WatchLibraryDiskSnapshot {
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("library.readDisk.begin")
+        #endif
+        WatchAudioStorage.ensureDirectories()
         guard
             let data = try? Data(contentsOf: WatchAudioStorage.indexFileURL),
             let decoded = try? JSONDecoder().decode([WatchTransferMeta].self, from: data)
-        else { return }
-        setSongs(WatchLibraryIndex.retainingExistingFiles(decoded) { meta in
-            FileManager.default.fileExists(atPath: self.audioFileURL(for: meta).path)
-        })
+        else {
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("library.readDisk.end")
+            #endif
+            return .empty
+        }
+        let songs = WatchLibraryIndex.retainingExistingFiles(decoded) { meta in
+            let url = WatchAudioStorage.audioFileURL(for: meta)
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+        let snapshot = WatchLibraryDiskSnapshot(
+            songs: songs,
+            flatOrder: WatchFlatSongOrder.computed(from: songs),
+            albums: WatchAlbumGrouping.albums(from: songs)
+        )
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("library.readDisk.end")
+        #endif
+        return snapshot
     }
 
     /// Single choke point for updating `songs`: also refreshes the derived `flatOrder`/`albums`
@@ -125,7 +244,32 @@ final class WatchLocalLibrary: ObservableObject {
     }
 
     private func saveToDisk() {
-        guard let data = try? JSONEncoder().encode(songs) else { return }
-        try? data.write(to: WatchAudioStorage.indexFileURL, options: .atomic)
+        WatchLibraryDiskWriter.shared.enqueue(songs)
     }
+}
+
+private struct WatchLibraryDiskSnapshot: Sendable {
+    let songs: [WatchTransferMeta]
+    let flatOrder: WatchFlatSongOrder
+    let albums: [WatchAlbumGroup]
+
+    static let empty = WatchLibraryDiskSnapshot(
+        songs: [],
+        flatOrder: .empty,
+        albums: []
+    )
+
+    static func computed(from songs: [WatchTransferMeta]) -> WatchLibraryDiskSnapshot {
+        WatchLibraryDiskSnapshot(
+            songs: songs,
+            flatOrder: WatchFlatSongOrder.computed(from: songs),
+            albums: WatchAlbumGrouping.albums(from: songs)
+        )
+    }
+}
+private enum WatchLibraryDiskWriter {
+    static let shared = WatchCoalescingJSONWriter<[WatchTransferMeta]>(
+        label: "UXMusicWatch.libraryDiskWriter",
+        fileURL: { WatchAudioStorage.indexFileURL }
+    )
 }

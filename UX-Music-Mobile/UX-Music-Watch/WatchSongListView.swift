@@ -423,7 +423,6 @@ private enum WatchArtworkCache {
 /// main thread, and the result is kept in `WatchArtworkCache` so a song already seen this session is
 /// resolved from memory rather than decoded again.
 private struct WatchArtworkThumbnail: View {
-    @EnvironmentObject private var library: WatchLocalLibrary
     let meta: WatchTransferMeta?
     @State private var image: UIImage?
 
@@ -453,22 +452,36 @@ private struct WatchArtworkThumbnail: View {
         // attempt if it does) — unlike plain code in `body`, it does *not* re-fire on every redraw,
         // which is what let unrelated `@Published` churn re-trigger a decode before.
         .task(id: meta?.id) {
-            image = await Self.resolvedImage(for: meta, library: library)
+            image = await Self.resolvedImage(for: meta)
         }
     }
 
-    private static func resolvedImage(for meta: WatchTransferMeta?, library: WatchLocalLibrary) async -> UIImage? {
+    private static func resolvedImage(for meta: WatchTransferMeta?) async -> UIImage? {
         guard let meta else { return nil }
         if let cached = WatchArtworkCache.shared.value(forKey: meta.id) {
             return cached
         }
-        guard let url = library.artworkFileURLIfPresent(for: meta) else { return nil }
         // `.detached` so the decode genuinely runs off the main actor regardless of what actor
         // `.task` inherited from its caller — confirmed off-main by sampling the running app (see
         // `progress/watch-ui-redesign.md`).
-        let decoded = await Task.detached(priority: .utility) { () -> UIImage? in
-            decodeThumbnail(at: url, maxPixelSize: thumbnailMaxPixelSize)
+        let decodedImage = await Task.detached(priority: .utility) { () -> CGImage? in
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("songThumbnail.fileCheckDecode.begin")
+            #endif
+            let url = WatchAudioStorage.artworkFileURL(forId: meta.id)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                #if DEBUG
+                WatchPerfBreadcrumb.mark("songThumbnail.fileCheckDecode.end")
+                #endif
+                return nil
+            }
+            let image = decodeThumbnail(at: url, maxPixelSize: thumbnailMaxPixelSize)
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("songThumbnail.fileCheckDecode.end")
+            #endif
+            return image
         }.value
+        let decoded = decodedImage.map { UIImage(cgImage: $0) }
         if let decoded {
             WatchArtworkCache.shared.setValue(decoded, forKey: meta.id)
         }
@@ -484,7 +497,7 @@ private struct WatchArtworkThumbnail: View {
     /// like `body`) but this must run inside `Task.detached` genuinely off the main actor — without
     /// this, calling it from the detached closure is an implicit actor hop the compiler flags as a
     /// missing `await` (`-Xfrontend -strict-concurrency` warning, an error under Swift 6 mode).
-    nonisolated private static func decodeThumbnail(at url: URL, maxPixelSize: CGFloat) -> UIImage? {
+    nonisolated private static func decodeThumbnail(at url: URL, maxPixelSize: CGFloat) -> CGImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -492,7 +505,7 @@ private struct WatchArtworkThumbnail: View {
             kCGImageSourceCreateThumbnailWithTransform: true
         ]
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-        return UIImage(cgImage: cgImage)
+        return cgImage
     }
 }
 

@@ -163,6 +163,10 @@
 		FEED00180000000000000000 /* WatchNowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00190000000000000000 /* WatchNowPlayingView.swift */; };
 		FEED00260000000000000000 /* WatchQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED00250000000000000000 /* WatchQueueView.swift */; };
 		FEED0041000000000000AA41 /* WatchVolumeHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0040000000000000AA40 /* WatchVolumeHUD.swift */; };
+		FEED0062000000000000AA62 /* WatchMainThreadStallMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0060000000000000AA60 /* WatchMainThreadStallMonitor.swift */; };
+		FEED0061000000000000AA61 /* WatchMainThreadStallMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0060000000000000AA60 /* WatchMainThreadStallMonitor.swift */; };
+		FEED0071000000000000AA71 /* WatchCoalescingJSONWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0070000000000000AA70 /* WatchCoalescingJSONWriter.swift */; };
+		FEED0072000000000000AA72 /* WatchCoalescingJSONWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0070000000000000AA70 /* WatchCoalescingJSONWriter.swift */; };
 		FEED0051000000000000AA51 /* WatchModeIconViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0050000000000000AA50 /* WatchModeIconViews.swift */; };
 		FEED0030000000000000AA30 /* ModeIconAnimationMathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */; };
 		7F05430A7D2547A327AB5410 /* DownloadAudioQualityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0912543B047D9F34525C1AA2 /* DownloadAudioQualityTests.swift */; };
@@ -476,6 +480,8 @@
 		FEED00190000000000000000 /* WatchNowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchNowPlayingView.swift; sourceTree = "<group>"; };
 		FEED00250000000000000000 /* WatchQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchQueueView.swift; sourceTree = "<group>"; };
 		FEED0040000000000000AA40 /* WatchVolumeHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchVolumeHUD.swift; sourceTree = "<group>"; };
+		FEED0060000000000000AA60 /* WatchMainThreadStallMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchMainThreadStallMonitor.swift; sourceTree = "<group>"; };
+		FEED0070000000000000AA70 /* WatchCoalescingJSONWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCoalescingJSONWriter.swift; sourceTree = "<group>"; };
 		FEED0050000000000000AA50 /* WatchModeIconViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModeIconViews.swift; sourceTree = "<group>"; };
 		FEED0031000000000000AA31 /* ModeIconAnimationMathsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeIconAnimationMathsTests.swift; sourceTree = "<group>"; };
 		0912543B047D9F34525C1AA2 /* DownloadAudioQualityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadAudioQualityTests.swift; sourceTree = "<group>"; };
@@ -809,6 +815,8 @@
 				FEED00190000000000000000 /* WatchNowPlayingView.swift */,
 				FEED00250000000000000000 /* WatchQueueView.swift */,
 				FEED0040000000000000AA40 /* WatchVolumeHUD.swift */,
+				FEED0060000000000000AA60 /* WatchMainThreadStallMonitor.swift */,
+				FEED0070000000000000AA70 /* WatchCoalescingJSONWriter.swift */,
 				FEED0050000000000000AA50 /* WatchModeIconViews.swift */,
 				EB050A06169748EF8FA409BD /* WatchPlaylistListView.swift */,
 				E8CC224C16B6454FBB965A71 /* WatchPlaylistLibrary.swift */,
@@ -1268,6 +1276,8 @@
 				C8D1E2F3000000000000AA02 /* WatchAudioOutputPreference.swift in Sources */,
 				01A2D246A2C54F1C9FABB49F /* WatchPlaylistLibrary.swift in Sources */,
 				F4AA6C1B82264964A294A463 /* WatchPlaylistModel.swift in Sources */,
+				FEED0062000000000000AA62 /* WatchMainThreadStallMonitor.swift in Sources */,
+				FEED0071000000000000AA71 /* WatchCoalescingJSONWriter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1290,6 +1300,8 @@
 				FEED0034000000000000AA34 /* ModeIconAnimationMaths.swift in Sources */,
 				FEED0037000000000000AA37 /* ModeIconViews.swift in Sources */,
 				FEED0041000000000000AA41 /* WatchVolumeHUD.swift in Sources */,
+				FEED0061000000000000AA61 /* WatchMainThreadStallMonitor.swift in Sources */,
+				FEED0072000000000000AA72 /* WatchCoalescingJSONWriter.swift in Sources */,
 				FEED0051000000000000AA51 /* WatchModeIconViews.swift in Sources */,
 				D61C14C50B5D4AE0B8DC8C66 /* WatchAudioRoutePolicy.swift in Sources */,
 				6FE4CC630F4646CFB62EEFA9 /* WatchAudioActivationPolicy.swift in Sources */,

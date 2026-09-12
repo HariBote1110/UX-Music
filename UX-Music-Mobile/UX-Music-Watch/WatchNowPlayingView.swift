@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -58,7 +59,6 @@ import UIKit
 /// correct outcome anyway.
 struct WatchNowPlayingView: View {
     @EnvironmentObject private var player: WatchAudioPlayerService
-    @EnvironmentObject private var library: WatchLocalLibrary
     /// Injected separately from `player` so this page (and only this page) observes the 0.5s
     /// position tick — see `WatchPlaybackProgress`'s doc comment for why that split fixes the
     /// stutter that used to happen when swiping between Library and Now Playing.
@@ -219,14 +219,39 @@ struct WatchNowPlayingView: View {
         }
         guard cachedArtworkSongId != song.id else { return }
         cachedArtworkSongId = song.id
-        guard
-            let url = library.artworkFileURLIfPresent(for: song),
-            let data = try? Data(contentsOf: url)
-        else {
-            cachedArtworkImage = nil
-            return
+        cachedArtworkImage = nil
+        let songID = song.id
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("nowPlaying.artwork.begin")
+        #endif
+        Task { @MainActor in
+            let decodedImage = await Task.detached(priority: .utility) { () -> CGImage? in
+                #if DEBUG
+                WatchPerfBreadcrumb.mark("nowPlaying.artwork.detached.begin")
+                defer { WatchPerfBreadcrumb.mark("nowPlaying.artwork.detached.end") }
+                #endif
+                let url = WatchAudioStorage.artworkFileURL(forId: songID)
+                guard FileManager.default.fileExists(atPath: url.path),
+                      let source = CGImageSourceCreateWithURL(url as CFURL, nil)
+                else { return nil }
+                let options: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 400,
+                    kCGImageSourceCreateThumbnailWithTransform: true
+                ]
+                guard let cgImage = CGImageSourceCreateThumbnailAtIndex(
+                    source,
+                    0,
+                    options as CFDictionary
+                ) else { return nil }
+                return cgImage
+            }.value
+            guard !Task.isCancelled, player.currentSong?.id == songID else { return }
+            cachedArtworkImage = decodedImage.map { UIImage(cgImage: $0) }
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("nowPlaying.artwork.end")
+            #endif
         }
-        cachedArtworkImage = UIImage(data: data)
     }
 
     /// See the type-level doc comment for the `ViewThatFits` ladder this builds. Each candidate is

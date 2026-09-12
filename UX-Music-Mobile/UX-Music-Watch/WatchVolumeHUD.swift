@@ -8,24 +8,46 @@ import SwiftUI
 /// practical way to react to Crown-driven volume changes here.
 @MainActor
 final class WatchVolumeObserver: NSObject, ObservableObject {
-    @Published private(set) var level: Float
+    @Published private(set) var level: Float = 0
 
-    private var observation: NSKeyValueObservation?
+    private var observation: WatchVolumeObservationBox?
 
     override init() {
-        let session = AVAudioSession.sharedInstance()
-        level = session.outputVolume
         super.init()
-        observation = session.observe(\.outputVolume, options: [.new]) { [weak self] _, change in
-            guard let newValue = change.newValue else { return }
+        DispatchQueue(label: "UXMusicWatch.volumeObserver", qos: .utility).async { [weak self] in
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("volumeObserver.setup.begin")
+            #endif
+            let session = AVAudioSession.sharedInstance()
+            let initialLevel = session.outputVolume
+            let token = session.observe(\.outputVolume, options: [.new]) { [weak self] _, change in
+                guard let newValue = change.newValue else { return }
+                Task { @MainActor in
+                    self?.level = newValue
+                }
+            }
+            let box = WatchVolumeObservationBox(token)
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("volumeObserver.setup.end")
+            #endif
             Task { @MainActor in
-                self?.level = newValue
+                guard let self else { return }
+                self.level = initialLevel
+                self.observation = box
             }
         }
     }
 
     deinit {
-        observation?.invalidate()
+        observation?.token.invalidate()
+    }
+}
+
+private final class WatchVolumeObservationBox: @unchecked Sendable {
+    let token: NSKeyValueObservation
+
+    init(_ token: NSKeyValueObservation) {
+        self.token = token
     }
 }
 

@@ -8,18 +8,29 @@ struct UXMusicWatchApp: App {
     @StateObject private var connectivity: WatchConnectivityReceiver
 
     init() {
+        #if DEBUG
+        WatchMainThreadStallMonitor.start()
+        WatchPerfBreadcrumb.mark("app.init.begin")
+        #endif
         let library = WatchLocalLibrary()
         _library = StateObject(wrappedValue: library)
         let playlistLibrary = WatchPlaylistLibrary()
         _playlistLibrary = StateObject(wrappedValue: playlistLibrary)
-        _player = StateObject(wrappedValue: WatchAudioPlayerService(library: library))
+        let playerService = WatchAudioPlayerService(library: library)
+        _player = StateObject(wrappedValue: playerService)
         let connectivity = WatchConnectivityReceiver(library: library, playlistLibrary: playlistLibrary)
         _connectivity = StateObject(wrappedValue: connectivity)
         // Activated here (app init) rather than a view's onAppear: WatchConnectivity can invoke
         // `didReceive` in the background before any view ever appears (e.g. the Watch app was
         // launched by the system just to handle the incoming transfer), so the delegate must be
         // registered as early as possible in the process's lifetime.
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("app.init.connectivity.activate.begin")
+        #endif
         connectivity.activate()
+        #if DEBUG
+        WatchPerfBreadcrumb.mark("app.init.connectivity.activate.end")
+        #endif
         // User report: "画面OFFになったあと勝手に文字盤に戻っちゃって転送が止まる" — once the
         // screen turns off, watchOS returns to the clock face after its "on screen wake show last
         // app" grace period, and WCSession file delivery stalls until this app is frontmost again.
@@ -35,9 +46,19 @@ struct UXMusicWatchApp: App {
         // a direct background `URLSession` download on the Watch (see
         // `watch_transfer_research/notes/watch-direct-download-plan.md`), which survives app
         // suspension by design instead of depending on frontmost state at all.
-        // Restore the last song/position/queue/mode (without autoplaying) so the app reopens where
-        // the user left off, matching classic Walkman "resume" behaviour.
-        player.restoreResumeState()
+        // Restore only after both indexes have loaded, so an empty in-memory library cannot discard
+        // the saved queue during a cold launch.
+        Task { @MainActor in
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("restoreResumeState.waitForLibraries.begin")
+            #endif
+            await library.reloadAndWait()
+            await playlistLibrary.reloadAndWait()
+            #if DEBUG
+            WatchPerfBreadcrumb.mark("restoreResumeState.waitForLibraries.end")
+            #endif
+            await playerService.restoreResumeState()
+        }
     }
 
     var body: some Scene {
