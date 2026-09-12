@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mobile-youtube-embed.md](mobile-youtube-embed.md) — （フェーズH追記）iPhone YouTube: ライフサイクル起点の PiP 要求は実機で全て拒否 → 全画面経由の自動 PiP＋PiP ボタンに確定、単体での窓なし継続は非公開フラグ・Audio Session API でも不可
 - [mobile-youtube-embed.md](mobile-youtube-embed.md) — （フェーズG追記）iPhone YouTube: バックグラウンド再生は PiP を主経路に（実機で成立、シミュレータは PiP 非対応）、一時停止＋復帰はフォールバック
 - [mobile-youtube-embed.md](mobile-youtube-embed.md) — （フェーズF追記）iPhone YouTube: バックグラウンドでは WebKit が停止するため自前で一時停止し復帰時に再開
 - [mobile-youtube-embed.md](mobile-youtube-embed.md) — （フェーズE追記）iPhone YouTube: WKWebView を keyWindow 内にパークして閉じても再生継続、モバイルデータ時はネイティブ縮小で約360pに抑制
