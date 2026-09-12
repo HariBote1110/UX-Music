@@ -375,8 +375,30 @@ YouTube API 規約（原文を WebFetch で確認）:
 - 候補が見つかれば E-2 以降で 1 フラグずつ切り替え、F-1 と同じ手順（ホスト直結・セッション有効・unmute）で
   バックグラウンド移行後も `time` が進むかを見る。
 
+### E-1: 実機（YkiPhoneAir）で非公開フィーチャーフラグ・SPI を列挙
+手順: `dump_webkit_features_device.sh`（検証時は scratchpad）。`{"UXM_DEBUG_WEBKIT_FEATURES":"1"}` で起動し、
+`WKPreferences._features`（613 件）と `WKPreferences` / `WKWebViewConfiguration` の `_` 始まりセレクタをキーワードで絞り込み。
+
+バックグラウンド停止に関係しそうな候補（`default` = WebKit 既定値、`enabled` = このアプリの WKWebView での現在値）:
+| キー / セレクタ | default | enabled | 見立て |
+| :--- | :--- | :--- | :--- |
+| `InterruptVideoOnPageVisibilityChangeEnabled` | 1 | **1** | ページ非表示で動画を中断。**最有力** |
+| `InterruptAudioOnPageVisibilityChangeEnabled`（`_setInterruptAudioOnPageVisibilityChangeEnabled:`） | 1 | **0** | 音声版は WKWebView で既にオフ。動画版だけオンという差が実測（ミュート有無に関係なく動画は止まる）と合う |
+| `PageVisibilityBasedProcessSuppressionEnabled`（`_setPageVisibilityBasedProcessSuppressionEnabled:`） | 1 | 1 | ページ非表示で WebContent プロセスを抑制 |
+| `ShouldDropNearSuspendedAssertionAfterDelay` | 1 | 1 | 一定時間後にプロセスを完全サスペンド |
+| `ShouldTakeNearSuspendedAssertions` | 0 | 0 | バックグラウンドの WebContent に NearSuspended アサーション |
+| `RequiresPageVisibilityToPlayAudio`（`_setRequiresPageVisibilityToPlayAudio:`） | 0 | 0 | 既にオフ |
+| `_setCanShowWhileLocked:`（`WKWebViewConfiguration`） | - | - | ロック中表示。ロック時（`SuspendedUnderLock`）の検証候補 |
+
+- 結論: 棄却条件（候補ゼロ）は不成立。E-2 以降で 1 キーずつ実測する。
+
+### E-2（予定）: F-1 の条件＋`InterruptVideoOnPageVisibilityChangeEnabled` をオフ（1変数）
+- ホストの `webView.configuration.preferences` に `_setEnabled:NO forFeature:` を適用し、`_isEnabledForFeature:` で読み戻して確認。
+  WKWebView は起動時に作られているため、読み込み前に設定して反映されるかもログで確認する。
+- 棄却条件: バックグラウンド移行後に `paused` が来る、または `time` が進まない。
+
 ## 次の一手 / 未検証事項
-- E-1 を実機で実行。
+- E-2 を実機で実行。成立しなければ `PageVisibilityBasedProcessSuppressionEnabled` など次の候補へ。
 - 20:24:08 の一時停止の原因（ユーザーが PiP ウィンドウを操作したか）。
 - 20:17:24（G-2）のページ再読み込みの原因。
 - PiP 開始のトリガー時刻（フォアグラウンド中に要求したケースのみ確認済み。`didEnterBackground`
