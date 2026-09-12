@@ -56,6 +56,7 @@ enum YouTubeEmbedPlayer {
     enum PresentationMode: Equatable {
         case inline
         case pictureInPicture
+        case fullscreen
         case unknown
     }
 
@@ -63,6 +64,19 @@ enum YouTubeEmbedPlayer {
         let hasVideo: Bool
         let mode: PresentationMode
         let supportsPiP: Bool
+        let supportsFullscreen: Bool
+
+        init(
+            hasVideo: Bool,
+            mode: PresentationMode,
+            supportsPiP: Bool,
+            supportsFullscreen: Bool = false
+        ) {
+            self.hasVideo = hasVideo
+            self.mode = mode
+            self.supportsPiP = supportsPiP
+            self.supportsFullscreen = supportsFullscreen
+        }
     }
 
     enum Command: Equatable {
@@ -199,7 +213,7 @@ enum YouTubeEmbedPlayer {
         }
     }
 
-    /// Decodes the all-frames PiP capability/status payload from the isolated WebKit script.
+    /// Decodes the all-frames PiP/fullscreen capability/status payload from the isolated WebKit script.
     /// The cross-origin iframe is intentionally represented only by its frame metadata on the
     /// native side; see `mobile_youtube_background_research/notes/background-pause.md` §B-4.
     static func parsePictureInPictureMessage(_ body: [String: Any]) -> PictureInPictureMessage? {
@@ -211,9 +225,16 @@ enum YouTubeEmbedPlayer {
         switch body["mode"] as? String {
         case "inline": mode = .inline
         case "picture-in-picture": mode = .pictureInPicture
+        case "fullscreen": mode = .fullscreen
         default: mode = .unknown
         }
-        return PictureInPictureMessage(hasVideo: hasVideo, mode: mode, supportsPiP: supportsPiP)
+        let supportsFullscreen = boolValue(body["supportsFullscreen"]) ?? false
+        return PictureInPictureMessage(
+            hasVideo: hasVideo,
+            mode: mode,
+            supportsPiP: supportsPiP,
+            supportsFullscreen: supportsFullscreen
+        )
     }
 
     private static func numberValue(_ value: Any?) -> Double? {

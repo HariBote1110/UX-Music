@@ -73,9 +73,17 @@ struct UXMusicMobileApp: App {
             let watchURL = "https://www.youtube.com/watch?v=\(videoID)"
             let song = Song(id: "debug-yt-\(videoID)", path: watchURL, title: "Debug YouTube", sourceType: .youtube, sourceURL: watchURL)
             player.resolveYouTubeVideoID = { _ in videoID }
+            // `UXM_DEBUG_YT_FULLSCREEN=1` additionally puts the video into native fullscreen a few
+            // seconds into playback, so the automatic fullscreen-to-PiP hand-off on backgrounding can be
+            // checked on a device without tapping the Now Playing button (progress/mobile-youtube-embed.md フェーズH).
+            let enterFullscreen = ProcessInfo.processInfo.environment["UXM_DEBUG_YT_FULLSCREEN"] == "1"
             Task {
                 await player.play(song, newQueue: [song])
                 NSLog("[UXM_DEBUG_YT] service play(_:newQueue:) returned")
+                guard enterFullscreen else { return }
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                NSLog("[UXM_DEBUG_YT] requesting fullscreen canUse=%d", player.canUseYouTubeFullscreen ? 1 : 0)
+                player.enterYouTubeFullscreen()
             }
             return
         }

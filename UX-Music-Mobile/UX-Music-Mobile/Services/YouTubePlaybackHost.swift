@@ -23,9 +23,12 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
     private(set) var isLowQuality = false
     private var pictureInPictureFrame: WKFrameInfo?
     private var pictureInPictureSupports = false
+    private var fullscreenSupports = false
     private var pictureInPictureEnterContinuation: CheckedContinuation<Bool, Never>?
+    private var fullscreenEnterContinuation: CheckedContinuation<Bool, Never>?
     private(set) var pictureInPictureMode: YouTubeEmbedPlayer.PresentationMode = .unknown
     private(set) var isPictureInPictureAvailable = false
+    private(set) var isFullscreenAvailable = false
 
     /// Physical-pixel target used to let YouTube's native player-size quality selection settle
     /// at its approximately 360p floor on cellular data.
@@ -34,7 +37,7 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
     /// Called whenever the embedded player reports a bridge event (ready/state/time/error/quality).
     var onEvent: ((YouTubeEmbedPlayer.BridgeEvent) -> Void)?
 
-    /// Called when PiP mode or availability changes for the current embedded video.
+    /// Called when presentation mode or availability changes for the current embedded video.
     var onPictureInPictureModeChange: ((YouTubeEmbedPlayer.PresentationMode) -> Void)?
 
     /// Isolated `WKContentWorld` for the native bridge handler. See the long comment in `init()`
@@ -104,15 +107,20 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
                 if (nextVideo !== observedVideo) {
                     if (observedVideo) {
                         observedVideo.removeEventListener('webkitpresentationmodechanged', report);
+                        observedVideo.removeEventListener('webkitbeginfullscreen', report);
+                        observedVideo.removeEventListener('webkitendfullscreen', report);
                     }
                     observedVideo = nextVideo;
                     lastPayload = '';
                     if (observedVideo) {
                         observedVideo.addEventListener('webkitpresentationmodechanged', report);
+                        observedVideo.addEventListener('webkitbeginfullscreen', report);
+                        observedVideo.addEventListener('webkitendfullscreen', report);
                     }
                 }
 
                 var supportsPiP = false;
+                var supportsFullscreen = false;
                 var mode = 'unknown';
                 if (observedVideo) {
                     mode = observedVideo.webkitPresentationMode || 'inline';
@@ -122,11 +130,13 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
                     } catch (e) {
                         supportsPiP = false;
                     }
+                    supportsFullscreen = typeof observedVideo.webkitEnterFullscreen === 'function';
                 }
                 var payload = {
                     hasVideo: !!observedVideo,
                     mode: mode,
-                    supportsPiP: !!supportsPiP
+                    supportsPiP: !!supportsPiP,
+                    supportsFullscreen: !!supportsFullscreen
                 };
                 var serialised = JSON.stringify(payload);
                 if (serialised === lastPayload) return;
@@ -155,6 +165,9 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
     func load(videoID: String, lowQuality: Bool = false) async throws {
         if pictureInPictureMode == .pictureInPicture {
             await exitPictureInPicture()
+        }
+        if pictureInPictureMode == .fullscreen {
+            await exitFullscreen()
         }
         resetPictureInPictureState()
         if isLowQuality != lowQuality {
@@ -213,6 +226,42 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
         return await waitForPictureInPictureMode()
     }
 
+    /// Requests native fullscreen on the YouTube iframe's own frame. The mode-change event is the
+    /// success signal; see `mobile_youtube_background_research/notes/background-pause.md` §C-1.
+    func enterFullscreen() async -> Bool {
+        guard isFullscreenAvailable, let frame = pictureInPictureFrame else { return false }
+        if pictureInPictureMode == .fullscreen { return true }
+        guard fullscreenEnterContinuation == nil else { return false }
+
+        let script = """
+        (function () {
+            var v = document.querySelector('video');
+            if (!v || typeof v.webkitEnterFullscreen !== 'function') return false;
+            try {
+                v.webkitEnterFullscreen();
+                return true;
+            } catch (e) {
+                return false;
+            }
+        })()
+        """
+        do {
+            let result = try await webView.callAsyncJavaScript(
+                script,
+                arguments: [:],
+                in: frame,
+                contentWorld: Self.pictureInPictureContentWorld
+            )
+            let accepted = (result as? Bool) ?? (result as? NSNumber)?.boolValue ?? false
+            guard accepted else { return false }
+        } catch {
+            return false
+        }
+
+        if pictureInPictureMode == .fullscreen { return true }
+        return await waitForFullscreenMode()
+    }
+
     /// Requests the iframe video to return to inline presentation.
     func exitPictureInPicture() async {
         guard let frame = pictureInPictureFrame else { return }
@@ -226,6 +275,36 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
             } catch (e) {
                 return false;
             }
+        })()
+        """
+        _ = try? await webView.callAsyncJavaScript(
+            script,
+            arguments: [:],
+            in: frame,
+            contentWorld: Self.pictureInPictureContentWorld
+        )
+    }
+
+    /// Requests the iframe video to leave native fullscreen and return inline.
+    func exitFullscreen() async {
+        guard let frame = pictureInPictureFrame else { return }
+        let script = """
+        (function () {
+            var v = document.querySelector('video');
+            if (!v) return false;
+            try {
+                if (typeof v.webkitExitFullscreen === 'function') {
+                    v.webkitExitFullscreen();
+                    return true;
+                }
+            } catch (e) { /* Fall through to the presentation-mode API. */ }
+            try {
+                if (typeof v.webkitSetPresentationMode === 'function') {
+                    v.webkitSetPresentationMode('inline');
+                    return true;
+                }
+            } catch (e) { /* Ignore an already-ended fullscreen transition. */ }
+            return false;
         })()
         """
         _ = try? await webView.callAsyncJavaScript(
@@ -330,8 +409,10 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
     private func resetPictureInPictureState() {
         pictureInPictureFrame = nil
         pictureInPictureSupports = false
+        fullscreenSupports = false
         resolvePictureInPictureEnter(false)
-        publishPictureInPictureState(mode: .unknown, available: false)
+        resolveFullscreenEnter(false)
+        publishPictureInPictureState(mode: .unknown, available: false, fullscreenAvailable: false)
     }
 
     private func handlePictureInPictureMessage(
@@ -341,11 +422,13 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
         if payload.hasVideo {
             pictureInPictureFrame = frameInfo
             pictureInPictureSupports = payload.supportsPiP
+            fullscreenSupports = payload.supportsFullscreen
             publishPictureInPictureState(
                 mode: payload.mode,
                 available: pictureInPictureFrame != nil
                     && pictureInPictureSupports
-                    && AVPictureInPictureController.isPictureInPictureSupported()
+                    && AVPictureInPictureController.isPictureInPictureSupported(),
+                fullscreenAvailable: pictureInPictureFrame != nil && fullscreenSupports
             )
             return
         }
@@ -358,21 +441,28 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
             pictureInPictureFrame = nil
         }
         pictureInPictureSupports = false
-        publishPictureInPictureState(mode: .unknown, available: false)
+        fullscreenSupports = false
+        publishPictureInPictureState(mode: .unknown, available: false, fullscreenAvailable: false)
     }
 
     private func publishPictureInPictureState(
         mode: YouTubeEmbedPlayer.PresentationMode,
-        available: Bool
+        available: Bool,
+        fullscreenAvailable: Bool
     ) {
         let modeChanged = pictureInPictureMode != mode
         let availabilityChanged = isPictureInPictureAvailable != available
+        let fullscreenAvailabilityChanged = isFullscreenAvailable != fullscreenAvailable
         pictureInPictureMode = mode
         isPictureInPictureAvailable = available
+        isFullscreenAvailable = fullscreenAvailable
         if mode == .pictureInPicture {
             resolvePictureInPictureEnter(true)
         }
-        if modeChanged || availabilityChanged {
+        if mode == .fullscreen {
+            resolveFullscreenEnter(true)
+        }
+        if modeChanged || availabilityChanged || fullscreenAvailabilityChanged {
             onPictureInPictureModeChange?(mode)
         }
     }
@@ -388,9 +478,26 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
         }
     }
 
+    private func waitForFullscreenMode() async -> Bool {
+        if pictureInPictureMode == .fullscreen { return true }
+        return await withCheckedContinuation { continuation in
+            fullscreenEnterContinuation = continuation
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                self?.resolveFullscreenEnter(false)
+            }
+        }
+    }
+
     private func resolvePictureInPictureEnter(_ entered: Bool) {
         guard let continuation = pictureInPictureEnterContinuation else { return }
         pictureInPictureEnterContinuation = nil
+        continuation.resume(returning: entered)
+    }
+
+    private func resolveFullscreenEnter(_ entered: Bool) {
+        guard let continuation = fullscreenEnterContinuation else { return }
+        fullscreenEnterContinuation = nil
         continuation.resume(returning: entered)
     }
 }

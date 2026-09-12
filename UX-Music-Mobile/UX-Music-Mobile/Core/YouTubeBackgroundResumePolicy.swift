@@ -1,18 +1,11 @@
 /// Decides how YouTube playback should respond to background and foreground transitions.
 ///
-/// PiP is the primary background path because WebKit cannot resume this IFrame video inline while
-/// the app is backgrounded; see `mobile_youtube_background_research/notes/background-pause.md`.
+/// Fullscreen and PiP are the background paths because WebKit cannot resume this IFrame video
+/// inline while the app is backgrounded; see background-pause.md §B-4, §C-1 and §G-1〜G-3.
 struct YouTubeBackgroundResumePolicy {
-    enum PictureInPictureRequest: Equatable {
-        case notRequested
-        case entered
-        case failed
-    }
-
     enum BackgroundDecision: Equatable {
         case noAction
         case keepPlaying
-        case requestPictureInPicture
         case pauseAndResume
     }
 
@@ -29,39 +22,26 @@ struct YouTubeBackgroundResumePolicy {
     static func onEnterBackground(
         isYouTubeSong: Bool,
         isPlaying: Bool,
-        isPictureInPictureActive: Bool,
-        canUsePictureInPicture: Bool,
-        pictureInPictureRequest: PictureInPictureRequest = .notRequested
+        presentationMode: YouTubeEmbedPlayer.PresentationMode
     ) -> BackgroundDecision {
         guard isYouTubeSong, isPlaying else {
             return .noAction
         }
-        if isPictureInPictureActive {
+        switch presentationMode {
+        case .fullscreen, .pictureInPicture:
             return .keepPlaying
+        case .inline, .unknown:
+            return .pauseAndResume
         }
-        if pictureInPictureRequest == .entered {
-            return .keepPlaying
-        }
-        if canUsePictureInPicture {
-            switch pictureInPictureRequest {
-            case .notRequested:
-                return .requestPictureInPicture
-            case .entered:
-                return .keepPlaying
-            case .failed:
-                return .pauseAndResume
-            }
-        }
-        return .pauseAndResume
     }
 
     static func onEnterForeground(
         resumePending: Bool,
         isYouTubeSong: Bool,
-        isPictureInPictureActive: Bool
+        presentationMode: YouTubeEmbedPlayer.PresentationMode
     ) -> ForegroundDecision {
         ForegroundDecision(
-            exitPictureInPicture: isYouTubeSong && isPictureInPictureActive,
+            exitPictureInPicture: isYouTubeSong && presentationMode == .pictureInPicture,
             resumePlayback: resumePending && isYouTubeSong
         )
     }

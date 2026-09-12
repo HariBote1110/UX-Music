@@ -205,10 +205,8 @@ final class MusicPlayerService {
     /// via `AVAudioEngine`. SwiftUI only ever borrows `youtubePlaybackHost.webView` for display
     /// (see `YouTubeEmbedHostContainerView`).
     let youtubePlaybackHost = YouTubePlaybackHost()
-    private var applicationWillResignActiveObserver: NSObjectProtocol?
     private var applicationDidEnterBackgroundObserver: NSObjectProtocol?
     private var applicationWillEnterForegroundObserver: NSObjectProtocol?
-    private var applicationDidBecomeActiveObserver: NSObjectProtocol?
     let networkCostMonitor = NetworkCostMonitor()
     /// Whether the user has enabled low-quality YouTube playback on cellular data.
     var youtubeLowQualityOnCellular = true {
@@ -242,21 +240,8 @@ final class MusicPlayerService {
     private var youtubeResumeGeneration: UInt64?
     private var youtubePictureInPictureActive = false
     private var youtubePictureInPictureAvailable = false
-    private var youtubePictureInPictureRequestInFlight = false
-    private var youtubePictureInPictureRequestToken: UInt64 = 0
-    private var youtubePictureInPictureRequestFailedBeforeBackground = false
-    private var youtubePictureInPictureRequestedDuringWillResign = false
-    private var youtubePictureInPictureShouldExitWhenActive = false
-
-    /// PiP request timing is deliberately isolated here so device testing can switch between the
-    /// two lifecycle notifications. PiP keeps WebKit playback alive in the background; see
-    /// `mobile_youtube_background_research/notes/background-pause.md` §B-4.
-    private enum YouTubePictureInPictureTrigger: Equatable {
-        case willResignActive
-        case didEnterBackground
-    }
-
-    private let youtubePictureInPictureTrigger: YouTubePictureInPictureTrigger = .didEnterBackground
+    private var youtubeFullscreenActive = false
+    private var youtubeFullscreenAvailable = false
 
     var isYouTubePictureInPictureActive: Bool {
         youtubePictureInPictureActive
@@ -264,6 +249,14 @@ final class MusicPlayerService {
 
     var canUseYouTubePictureInPicture: Bool {
         youtubePictureInPictureAvailable
+    }
+
+    var isYouTubeFullscreenActive: Bool {
+        youtubeFullscreenActive
+    }
+
+    var canUseYouTubeFullscreen: Bool {
+        youtubeFullscreenAvailable
     }
     /// Caches `resolveYouTubeVideoID(song)` results by song id so replaying the same Library song
     /// does not re-hit the desktop's `resolveYouTubeVideo` LAN endpoint every time.
@@ -419,15 +412,25 @@ final class MusicPlayerService {
         }
         youtubePlaybackHost.onPictureInPictureModeChange = { [weak self] mode in
             guard let self else { return }
-            let wasActive = self.youtubePictureInPictureActive
+            let wasPictureInPictureActive = self.youtubePictureInPictureActive
+            let wasFullscreenActive = self.youtubeFullscreenActive
             self.youtubePictureInPictureAvailable = self.currentSong?.isYouTube == true
                 && self.youtubePlaybackHost.isPictureInPictureAvailable
+            self.youtubeFullscreenAvailable = self.currentSong?.isYouTube == true
+                && self.youtubePlaybackHost.isFullscreenAvailable
             self.youtubePictureInPictureActive = mode == .pictureInPicture
                 && self.youtubePictureInPictureAvailable
-            if self.youtubePictureInPictureActive && !wasActive {
-                NSLog("[UXM_YT_PIP] entered")
-            } else if wasActive && !self.youtubePictureInPictureActive {
-                NSLog("[UXM_YT_PIP] exited")
+            self.youtubeFullscreenActive = mode == .fullscreen
+                && self.youtubeFullscreenAvailable
+            if self.youtubePictureInPictureActive && !wasPictureInPictureActive {
+                NSLog("[UXM_YT_PIP] PiP entered")
+            } else if wasPictureInPictureActive && !self.youtubePictureInPictureActive {
+                NSLog("[UXM_YT_PIP] PiP exited")
+            }
+            if self.youtubeFullscreenActive && !wasFullscreenActive {
+                NSLog("[UXM_YT_PIP] fullscreen entered")
+            } else if wasFullscreenActive && !self.youtubeFullscreenActive {
+                NSLog("[UXM_YT_PIP] fullscreen exited")
             }
             self.updateNowPlayingCentre()
         }
@@ -936,16 +939,6 @@ final class MusicPlayerService {
     #if !os(tvOS)
 
     private func addYouTubeAppLifecycleObservers() {
-        applicationWillResignActiveObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.willResignActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            MainActor.assumeIsolated {
-                self.handleYouTubeWillResignActive()
-            }
-        }
         applicationDidEnterBackgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil,
@@ -966,63 +959,30 @@ final class MusicPlayerService {
                 self.handleYouTubeWillEnterForeground()
             }
         }
-        applicationDidBecomeActiveObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didBecomeActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            MainActor.assumeIsolated {
-                self.handleYouTubeDidBecomeActive()
-            }
-        }
-    }
-
-    private func handleYouTubeWillResignActive() {
-        guard youtubePictureInPictureTrigger == .willResignActive else { return }
-        guard currentSong?.isYouTube == true, isPlaying else { return }
-        youtubePictureInPictureRequestFailedBeforeBackground = false
-        youtubePictureInPictureRequestedDuringWillResign = true
-        youtubePictureInPictureShouldExitWhenActive = false
-        NSLog("[UXM_YT_PIP] trigger willResignActive")
-        handleYouTubeBackgroundEntry(trigger: .willResignActive)
     }
 
     private func handleYouTubeDidEnterBackground() {
         isAppInBackground = true
-        youtubePictureInPictureShouldExitWhenActive = false
-        NSLog("[UXM_YT_PIP] trigger didEnterBackground")
-        if youtubePictureInPictureTrigger == .didEnterBackground {
-            handleYouTubeBackgroundEntry(trigger: .didEnterBackground)
-        } else if youtubePictureInPictureRequestFailedBeforeBackground {
-            youtubePictureInPictureRequestFailedBeforeBackground = false
-            useYouTubeBackgroundFallback()
-        }
-    }
-
-    private func handleYouTubeBackgroundEntry(trigger: YouTubePictureInPictureTrigger) {
         let decision = YouTubeBackgroundResumePolicy.onEnterBackground(
             isYouTubeSong: currentSong?.isYouTube == true,
             isPlaying: isPlaying,
-            isPictureInPictureActive: youtubePictureInPictureActive,
-            canUsePictureInPicture: youtubePlaybackHost.isPictureInPictureAvailable
+            presentationMode: youtubePlaybackHost.pictureInPictureMode
         )
         switch decision {
         case .noAction:
             clearYouTubeResumePending()
         case .keepPlaying:
             clearYouTubeResumePending()
-        case .requestPictureInPicture:
-            clearYouTubeResumePending()
-            requestYouTubePictureInPicture(trigger: trigger)
+            NSLog(
+                "[UXM_YT_PIP] background decision=keepPlaying mode=%@",
+                String(describing: youtubePlaybackHost.pictureInPictureMode)
+            )
         case .pauseAndResume:
-            if trigger == .willResignActive && !isAppInBackground {
-                youtubePictureInPictureRequestFailedBeforeBackground = true
-                NSLog("[UXM_YT_PIP] failed trigger=%@ reason=unavailable; fallback deferred", String(describing: trigger))
-            } else {
-                NSLog("[UXM_YT_PIP] failed trigger=%@ reason=unavailable", String(describing: trigger))
-                useYouTubeBackgroundFallback()
-            }
+            NSLog(
+                "[UXM_YT_PIP] background decision=fallback mode=%@",
+                String(describing: youtubePlaybackHost.pictureInPictureMode)
+            )
+            useYouTubeBackgroundFallback()
         }
     }
 
@@ -1031,93 +991,15 @@ final class MusicPlayerService {
         let decision = YouTubeBackgroundResumePolicy.onEnterForeground(
             resumePending: youtubeResumePendingAfterBackground,
             isYouTubeSong: currentSong?.isYouTube == true,
-            isPictureInPictureActive: youtubePictureInPictureActive
+            presentationMode: youtubePlaybackHost.pictureInPictureMode
         )
         if decision.exitPictureInPicture {
             requestYouTubePictureInPictureExit(reason: "foreground")
         }
         let shouldResume = decision.resumePlayback && youtubeResumeGeneration == youtubePlaybackGeneration
         clearYouTubeResumePending()
-        youtubePictureInPictureRequestToken &+= 1
-        youtubePictureInPictureRequestInFlight = false
-        youtubePictureInPictureRequestFailedBeforeBackground = false
-        youtubePictureInPictureRequestedDuringWillResign = false
-        youtubePictureInPictureShouldExitWhenActive = false
         if shouldResume {
             youtubePlaybackHost.send(.play)
-        }
-    }
-
-    private func handleYouTubeDidBecomeActive() {
-        guard youtubePictureInPictureTrigger == .willResignActive,
-              youtubePictureInPictureRequestedDuringWillResign,
-              !isAppInBackground
-        else { return }
-        youtubePictureInPictureShouldExitWhenActive = true
-        guard !youtubePictureInPictureRequestFailedBeforeBackground else {
-            youtubePictureInPictureRequestFailedBeforeBackground = false
-            youtubePictureInPictureRequestedDuringWillResign = false
-            clearYouTubeResumePending()
-            return
-        }
-        if youtubePictureInPictureActive {
-            requestYouTubePictureInPictureExit(reason: "active without backgrounding")
-        }
-    }
-
-    private func requestYouTubePictureInPicture(trigger: YouTubePictureInPictureTrigger) {
-        guard !youtubePictureInPictureRequestInFlight else { return }
-        youtubePictureInPictureRequestToken &+= 1
-        let requestToken = youtubePictureInPictureRequestToken
-        let wasPlayingWhenRequested = isPlaying
-        youtubePictureInPictureRequestInFlight = true
-        NSLog("[UXM_YT_PIP] entering trigger=%@", String(describing: trigger))
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            let entered = await self.youtubePlaybackHost.enterPictureInPicture()
-            guard self.youtubePictureInPictureRequestToken == requestToken else { return }
-            self.youtubePictureInPictureRequestInFlight = false
-            guard self.currentSong?.isYouTube == true else { return }
-            if entered {
-                self.youtubePictureInPictureRequestFailedBeforeBackground = false
-                if self.isAppInBackground {
-                    self.applyYouTubePictureInPictureResult(.entered, wasPlaying: wasPlayingWhenRequested)
-                } else if self.youtubePictureInPictureShouldExitWhenActive {
-                    self.requestYouTubePictureInPictureExit(reason: "active without backgrounding")
-                }
-            } else if self.isAppInBackground {
-                NSLog("[UXM_YT_PIP] failed trigger=%@", String(describing: trigger))
-                self.applyYouTubePictureInPictureResult(.failed, wasPlaying: wasPlayingWhenRequested)
-            } else {
-                NSLog("[UXM_YT_PIP] failed trigger=%@; fallback deferred", String(describing: trigger))
-                self.youtubePictureInPictureRequestFailedBeforeBackground = true
-            }
-        }
-    }
-
-    private func applyYouTubePictureInPictureResult(
-        _ result: YouTubeBackgroundResumePolicy.PictureInPictureRequest,
-        wasPlaying: Bool
-    ) {
-        let decision = YouTubeBackgroundResumePolicy.onEnterBackground(
-            isYouTubeSong: currentSong?.isYouTube == true,
-            isPlaying: wasPlaying,
-            isPictureInPictureActive: youtubePictureInPictureActive,
-            canUsePictureInPicture: youtubePlaybackHost.isPictureInPictureAvailable,
-            pictureInPictureRequest: result
-        )
-        switch decision {
-        case .keepPlaying:
-            clearYouTubeResumePending()
-            if result == .entered, !isPlaying {
-                youtubePlaybackHost.send(.play)
-                isPlaying = true
-                updateNowPlayingCentre()
-            }
-        case .pauseAndResume:
-            useYouTubeBackgroundFallback()
-        case .noAction, .requestPictureInPicture:
-            break
         }
     }
 
@@ -1135,6 +1017,14 @@ final class MusicPlayerService {
         NSLog("[UXM_YT_PIP] exiting reason=%@", reason)
         Task { @MainActor [weak self] in
             await self?.youtubePlaybackHost.exitPictureInPicture()
+        }
+    }
+
+    private func requestYouTubeFullscreenExit(reason: String) {
+        guard youtubePlaybackHost.pictureInPictureMode == .fullscreen else { return }
+        NSLog("[UXM_YT_PIP] exiting fullscreen reason=%@", reason)
+        Task { @MainActor [weak self] in
+            await self?.youtubePlaybackHost.exitFullscreen()
         }
     }
 
@@ -1172,8 +1062,6 @@ final class MusicPlayerService {
     }
 
     private func pauseYouTubeAndClearResumePending() {
-        youtubePictureInPictureRequestToken &+= 1
-        youtubePictureInPictureRequestInFlight = false
         youtubePlaybackHost.send(.pause)
         clearYouTubeResumePending()
         isPlaying = false
@@ -1186,14 +1074,12 @@ final class MusicPlayerService {
     private func stopYouTubeBackend() {
         youtubePlaybackGeneration &+= 1
         requestYouTubePictureInPictureExit(reason: "backend stopped")
+        requestYouTubeFullscreenExit(reason: "backend stopped")
         youtubePlaybackHost.send(.pause)
         youtubePictureInPictureActive = false
         youtubePictureInPictureAvailable = false
-        youtubePictureInPictureRequestToken &+= 1
-        youtubePictureInPictureRequestInFlight = false
-        youtubePictureInPictureRequestFailedBeforeBackground = false
-        youtubePictureInPictureRequestedDuringWillResign = false
-        youtubePictureInPictureShouldExitWhenActive = false
+        youtubeFullscreenActive = false
+        youtubeFullscreenAvailable = false
         currentYouTubeVideoID = nil
         youtubePlaybackErrorMessage = nil
         youtubePlaybackErrorFallback = .none
@@ -1279,6 +1165,24 @@ final class MusicPlayerService {
             guard let self else { return }
             guard await self.youtubePlaybackHost.enterPictureInPicture() else {
                 NSLog("[UXM_YT_PIP] failed trigger=user toggle")
+                return
+            }
+        }
+    }
+
+    /// Enters native fullscreen so a home swipe can transition the WebKit video to system PiP;
+    /// see `mobile_youtube_background_research/notes/background-pause.md` §C-1 and §フェーズH.
+    func enterYouTubeFullscreen() {
+        guard currentSong?.isYouTube == true else { return }
+        guard youtubeFullscreenAvailable else {
+            NSLog("[UXM_YT_PIP] fullscreen failed reason=unavailable")
+            return
+        }
+        NSLog("[UXM_YT_PIP] entering fullscreen")
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard await self.youtubePlaybackHost.enterFullscreen() else {
+                NSLog("[UXM_YT_PIP] fullscreen failed")
                 return
             }
         }
