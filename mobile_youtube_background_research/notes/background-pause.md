@@ -392,13 +392,36 @@ YouTube API 規約（原文を WebFetch で確認）:
 
 - 結論: 棄却条件（候補ゼロ）は不成立。E-2 以降で 1 キーずつ実測する。
 
-### E-2（予定）: F-1 の条件＋`InterruptVideoOnPageVisibilityChangeEnabled` をオフ（1変数）
-- ホストの `webView.configuration.preferences` に `_setEnabled:NO forFeature:` を適用し、`_isEnabledForFeature:` で読み戻して確認。
-  WKWebView は起動時に作られているため、読み込み前に設定して反映されるかもログで確認する。
-- 棄却条件: バックグラウンド移行後に `paused` が来る、または `time` が進まない。
+### E-2: F-1 の条件＋`InterruptVideoOnPageVisibilityChangeEnabled` をオフ（1変数）
+手順: `verify_wk_feature_bg_device.sh e2 InterruptVideoOnPageVisibilityChangeEnabled`（検証時は scratchpad）。
+ホストの `webView.configuration.preferences` に `-[WKPreferences _setEnabled:NO forFeature:]` を読み込み前に適用。
+
+| 時刻 | 観測 |
+| :--- | :--- |
+| 20:53:43.22 | `set feature key=InterruptVideoOnPageVisibilityChangeEnabled enabled 1 -> 0`（読み戻しで反映確認） |
+| 20:53:43.90 | `ready` → unmute 送信 |
+| 20:53:44.14 | `playing` |
+| 20:54:03.97 | `didEnterBackground` |
+| 20:54:04.17 | **0.2 秒後に `paused`**、以後 `time` は 19.85 秒のまま |
+| 20:54:28.92〜 | フォアグラウンド復帰後も停止のまま |
+
+- ユーザーは離席中で耳での確認なし（ログのみで判定）。
+- 結論: **E-2 は棄却済み。** ページ可視性による動画中断をオフにしても停止は変わらない。
+  `paused` が移行直後（0.2 秒）に来ることから、プロセスの抑制・サスペンドではなく、メディアセッションの
+  バックグラウンド割り込み（`BackgroundProcessPlaybackRestricted` 系）が効いていると見られる。ソース調査上、
+  この制限を外す設定キーは無いため、`PageVisibilityBasedProcessSuppressionEnabled` などプロセス抑制系の候補は優先度を下げる。
+- 注意: 設定の読み戻しは WKPreferences 上の値であり、WebContent プロセスへの反映までは直接確認していない
+  （読み込み前に設定しているので反映されている見込み）。
+
+### E-3（予定）: F-1 の条件＋`navigator.audioSession.type = 'playback'`（公開 Web API、1変数）
+- E-1 のダンプで `DOMAudioSessionEnabled=1`（Audio Session API 有効）。ページ自身の音声セッション種別を
+  `playback` にすると、WebKit 側のメディアの扱いが変わる可能性がある。非公開 API ではないので審査・OS 更新リスクは無い。
+- 手段: 全フレームに文書開始時点で注入するスクリプトで `navigator.audioSession.type = 'playback'` を設定し、
+  フレームごとの読み戻し値と origin をネイティブへ報告。デバッグフック `UXM_DEBUG_WK_AUDIOSESSION_PLAYBACK=1`。
+- 棄却条件: YouTube フレームで `type` が `playback` にならない、またはバックグラウンド移行後に `paused` が来る。
 
 ## 次の一手 / 未検証事項
-- E-2 を実機で実行。成立しなければ `PageVisibilityBasedProcessSuppressionEnabled` など次の候補へ。
+- E-3 を実機で実行。
 - 20:24:08 の一時停止の原因（ユーザーが PiP ウィンドウを操作したか）。
 - 20:17:24（G-2）のページ再読み込みの原因。
 - PiP 開始のトリガー時刻（フォアグラウンド中に要求したケースのみ確認済み。`didEnterBackground`
