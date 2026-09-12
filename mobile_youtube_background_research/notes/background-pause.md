@@ -69,7 +69,35 @@
 - **C1: SIGKILL は YouTube 再生・フェーズF の変更と無関係の既存事象。** 再生していない通常起動でも発生する。
   シミュレータ固有か実機でも起きるかは未検証（別課題）。
 
+## 仮説B: PiP にすればバックグラウンドでも再生を継続できる（ユーザー判断で PiP 方式へ作り直し）
+- 前提: WebKit は PiP 中のメディアのバックグラウンド再生を許可する。
+- 手段: YouTube iframe はクロスオリジンだが、`WKUserScript(forMainFrameOnly: false)` は全フレームに
+  注入でき、そのフレームから届いたメッセージの `WKFrameInfo` を使えばネイティブから
+  `callAsyncJavaScript(_:arguments:in:in:)` でそのフレーム内の `video` を操作できるはず。
+  ネイティブからの JS 実行はユーザー操作扱いになり、`webkitSetPresentationMode('picture-in-picture')`
+  が許可される見込み。
+- 棄却条件: (1) YouTube フレームの `video` に到達できない / `disablePictureInPicture` で拒否される、
+  (2) PiP に入れない（`webkitPresentationMode` が `picture-in-picture` にならない）、
+  (3) PiP 中にバックグラウンドへ回しても `time` が進まない。
+
+### B-1: 全フレームプローブ＋ネイティブから PiP 要求（ホスト直結モード、セッション未有効化）
+手順: `SIMCTL_CHILD_UXM_DEBUG_YT_VIDEO=aqz-KE-bpKQ SIMCTL_CHILD_UXM_DEBUG_YT_PIP=1` で起動
+（`UXM_DEBUG_YT_SERVICE` なし＝フェーズF の一時停止ロジックは作動しない）→ 25 秒後にバックグラウンド。
+
+| 時刻 | 観測 |
+| :--- | :--- |
+| 常時 | `https://www.youtube.com` フレームの `video` に到達。`disablePictureInPicture=false`、`webkitSetPresentationMode` あり |
+| 常時 | `webkitSupportsPresentationMode('picture-in-picture')` = **false** |
+| 19:33:00.87 | `callAsyncJavaScript(in: frame)` で PiP 要求（例外なし、直後の mode は `inline`） |
+| 19:33:01.7 | `webkitPresentationMode` = **`picture-in-picture`** |
+| 19:33:04.8〜07.8 | `inline` に戻る（フォアグラウンドのまま） |
+| 19:33:21.6 | バックグラウンド移行 → 0.2 秒後 `paused` → 19:33:23.2 SIGKILL |
+
+- スクリーンショット（19:33:13 前面 / バックグラウンド中）に PiP ウィンドウは写らず。
+- 結論（暫定）: 棄却条件(1) は不成立（到達可能・無効化されていない）。(2) は数秒だけ成立して自動で戻る。
+- 次の変数候補: `.playback` の `AVAudioSession` 未有効化（システム PiP の前提条件）。これを B-2 で有効化する。
+
 ## 次の一手 / 未検証事項
-- Picture in Picture（バックグラウンド移行時に PiP へ遷移させれば WebKit の制約上は継続再生が許可される）。
+- 仮説B の検証（Picture in Picture）: B-2 = PiP 要求前に `.playback` セッションを有効化（バックグラウンド移行時に PiP へ遷移させれば WebKit の制約上は継続再生が許可される）。
   YouTube iframe はクロスオリジンのため、ページ側から video 要素の PiP を操作できるかは未検証。
 - 画面ロック時（`isSuspendedUnderLock`）の挙動は未測定（同じ制約がかかる見込み）。
