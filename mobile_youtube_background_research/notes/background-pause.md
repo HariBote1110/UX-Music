@@ -450,8 +450,29 @@ YouTube API 規約（原文を WebFetch で確認）:
 - ライフサイクル通知起点の PiP 要求（G-1〜G-3 で拒否された処理）は削除する。
 - 本実装の設計判断は `progress/mobile-youtube-embed.md` フェーズH に記録。
 
+### H-1: 本実装（フェーズH、コミット a455eb0c / 6e71b317）を実機で検証 — 全画面経由
+手順: `verify_phase_h_device.sh fullscreen`（検証時は scratchpad）。`UXM_DEBUG_YT_SERVICE=1`（unmute される本番経路）＋
+`UXM_DEBUG_YT_FULLSCREEN=1`（再生 6 秒後に `MusicPlayerService.enterYouTubeFullscreen()`）。20 秒後に設定アプリを前面へ、約 25 秒後に復帰。
+
+| 時刻 | 観測 |
+| :--- | :--- |
+| 21:14:05.60 | `playing` |
+| 21:14:10.81 | `entering fullscreen` → **1 ms 後に `fullscreen failed`** → 21:14:10.87 `fullscreen entered` |
+| 21:14:25.05 | バックグラウンド移行とともに**自動で `PiP entered`**（`fullscreen exited`）→ `background decision=keepPlaying mode=pictureInPicture` |
+| 21:14:25〜49 | バックグラウンドの PiP 中も `time` が 17.8 → 42.0 秒と進行（`isPlaying=1`） |
+| 21:14:49.91 | フォアグラウンド復帰 → `exiting reason=foreground` → `PiP exited` |
+| 21:14:49.96 | **PiP 終了直後に `paused`、以後 44.5 秒で停止したまま** |
+
+- ユーザー目視（耳）: 設定アプリの上に PiP ウィンドウが出て、音も続いた。
+- 結論: **全画面経由の自動 PiP によるバックグラウンド継続は本実装でも成立。**
+- 問題1: **アプリに戻ると再生が止まる。** PiP を終了してインラインへ戻すと WebKit が一時停止し、再開要求を送っていない。
+- 問題2: `enterFullscreen()` が JS の戻り値を先に受けて失敗扱い（`fullscreen failed`）にしてから、モード変更イベントで
+  成功が届く（G-3 の PiP と同じ順序の食い違い）。実害はないが戻り値・ログが誤る。
+
 ## 次の一手 / 未検証事項
-- 本実装後、実機で「全画面 → ホームスワイプ → 自動 PiP で継続」「PiP ボタン → ホームで継続」「何もせず離れる → 一時停止 → 復帰で再開」を確認。
+- H-2: フォールバック（全画面・PiP なし）で「一時停止 → 復帰で再開」を実機確認（実行中）。
+- H-1 の問題1・2 を H-2 の結果とまとめて修正。
+- 「PiP ボタン → ホームで継続」の実機確認。
 - 画面ロック中（PiP 継続中のロック）の挙動は未検証。
 - 20:24:08 の一時停止の原因（ユーザーが PiP ウィンドウを操作したか）。
 - 20:17:24（G-2）のページ再読み込みの原因。
