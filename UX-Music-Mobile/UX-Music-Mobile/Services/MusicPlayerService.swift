@@ -936,6 +936,7 @@ final class MusicPlayerService {
         }
         guard generation == youtubePlaybackGeneration else { return }
 
+        youtubePlaybackHost.setLowQuality(effectiveYouTubeLowQuality)
         do {
             try await youtubePlaybackHost.load(videoID: videoID, lowQuality: effectiveYouTubeLowQuality)
         } catch {
@@ -963,7 +964,7 @@ final class MusicPlayerService {
         guard let song = currentSong, song.isYouTube else { return }
         switch event {
         case .ready:
-            youtubePlaybackHost.send(.setLowQuality(effectiveYouTubeLowQuality))
+            youtubePlaybackHost.setLowQuality(effectiveYouTubeLowQuality)
             youtubePlaybackHost.send(.unmute)
         case .state(.playing):
             isPlaying = true
@@ -998,8 +999,6 @@ final class MusicPlayerService {
                 scheduleAutoSkipAfterEmbedRestriction(generation: youtubePlaybackGeneration)
             }
             updateNowPlayingCentre()
-        case .quality:
-            break
         default:
             break
         }
@@ -1013,7 +1012,7 @@ final class MusicPlayerService {
         guard nextValue != effectiveYouTubeLowQuality else { return }
         effectiveYouTubeLowQuality = nextValue
         guard currentYouTubeVideoID != nil else { return }
-        youtubePlaybackHost.send(.setLowQuality(nextValue))
+        youtubePlaybackHost.setLowQuality(nextValue)
     }
 
     /// After an embed-restricted error (101/150), gives the user a short window to notice the

@@ -17,12 +17,13 @@ import WebKit
 /// Playing is closed.
 @MainActor
 final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
-    /// `YouTubeEmbedHostContainerView.dismantleUIView` is static, so it uses this weak reference
-    /// to find the single persistent host without retaining it from the view layer.
-    static weak var activeHost: YouTubePlaybackHost?
-
     let webView: WKWebView
     private let parkingView: UIView
+    private(set) var isLowQuality = false
+
+    /// Physical-pixel target used to let YouTube's native player-size quality selection settle
+    /// at its approximately 360p floor on cellular data.
+    private static let lowQualityTargetPixelSize = CGSize(width: 256, height: 144)
 
     /// Called whenever the embedded player reports a bridge event (ready/state/time/error/quality).
     var onEvent: ((YouTubeEmbedPlayer.BridgeEvent) -> Void)?
@@ -43,7 +44,6 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
         self.webView = webView
         self.parkingView = parkingView
         super.init()
-        Self.activeHost = self
         // The native bridge handler is registered in an isolated content world instead of the
         // default `.page` world. `WKUserContentController.add(_:name:)` (the default-world
         // overload) injects `window.webkit.messageHandlers` into *every* frame's own `window`
@@ -82,6 +82,9 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
     /// this is the first video played this session. A web view without a window is parked before
     /// returning so playback can start from the Library or mini player without opening Now Playing.
     func load(videoID: String, lowQuality: Bool = false) async throws {
+        if isLowQuality != lowQuality {
+            setLowQuality(lowQuality)
+        }
         let port = try await YouTubeEmbedLoopbackServer.shared.ensureStarted()
         guard let url = YouTubeEmbedPlayer.loopbackPageURL(
             port: Int(port),
@@ -94,6 +97,42 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
         if webView.window == nil {
             park()
         }
+    }
+
+    /// Applies the low-quality player-size policy to the current web view location and the page.
+    func setLowQuality(_ enabled: Bool) {
+        isLowQuality = enabled
+        send(.setLowQuality(enabled))
+        if let superview = webView.superview {
+            layoutWebView(in: superview)
+        }
+    }
+
+    /// Lays out the web view with native sizing. The page must not see a CSS scale-up: simulator
+    /// measurements show YouTube includes CSS transforms in its quality measurement, while this
+    /// native 256x144-physical-pixel target reaches the approximately 360p floor.
+    func layoutWebView(in container: UIView) {
+        guard webView.superview === container else { return }
+
+        webView.translatesAutoresizingMaskIntoConstraints = true
+        webView.transform = .identity
+        guard isLowQuality else {
+            webView.frame = container.bounds
+            return
+        }
+
+        let screenScale = container.window?.screen.scale ?? UIScreen.main.scale
+        let targetSize = CGSize(
+            width: Self.lowQualityTargetPixelSize.width / screenScale,
+            height: Self.lowQualityTargetPixelSize.height / screenScale
+        )
+        let scale = max(
+            container.bounds.width / targetSize.width,
+            container.bounds.height / targetSize.height
+        )
+        webView.bounds = CGRect(origin: .zero, size: targetSize)
+        webView.center = CGPoint(x: container.bounds.midX, y: container.bounds.midY)
+        webView.transform = CGAffineTransform(scaleX: scale, y: scale)
     }
 
     /// Keeps the web view in a visible window hierarchy without displaying it on screen. The
@@ -112,14 +151,11 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
         }
 
         if webView.superview !== parkingView {
-            if let oldSuperview = webView.superview {
-                removeConstraintsReferencingWebView(from: oldSuperview)
-            }
             webView.translatesAutoresizingMaskIntoConstraints = true
             webView.autoresizingMask = []
             parkingView.addSubview(webView)
         }
-        webView.frame = parkingView.bounds
+        layoutWebView(in: parkingView)
     }
 
     private static func keyWindow() -> UIWindow? {
@@ -127,15 +163,6 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
             .first(where: \.isKeyWindow)
-    }
-
-    private func removeConstraintsReferencingWebView(from view: UIView) {
-        let constraints = view.constraints.filter { constraint in
-            (constraint.firstItem as? UIView) === webView
-                || (constraint.secondItem as? UIView) === webView
-        }
-        view.removeConstraints(constraints)
-        webView.removeConstraints(webView.constraints)
     }
 
     func send(_ command: YouTubeEmbedPlayer.Command) {

@@ -91,7 +91,8 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
     func testBuildEmbedHTMLContainsLowQualityCommandHandler() throws {
         let html = try YouTubeEmbedPlayer.buildEmbedHTML(videoID: "dQw4w9WgXcQ")
         XCTAssertTrue(html.contains("d.cmd === 'lowQuality'"))
-        XCTAssertTrue(html.contains("LOW_QUALITY_WIDTH"))
+        XCTAssertTrue(html.contains("player.setPlaybackQuality('small')"))
+        XCTAssertTrue(html.contains("player.setPlaybackQuality('default')"))
     }
 
     // MARK: - IFrame API error code -> localised user-facing message
@@ -165,7 +166,9 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
     // MARK: - Loopback host page URL (mirrors `embedHostPageURL` in server/embed_host.go)
 
     func testLoopbackPageURLBuildsCorrectPathAndQuery() throws {
-        let url = try XCTUnwrap(YouTubeEmbedPlayer.loopbackPageURL(port: 54321, videoID: "dQw4w9WgXcQ"))
+        let url = try XCTUnwrap(
+            YouTubeEmbedPlayer.loopbackPageURL(port: 54321, videoID: "dQw4w9WgXcQ", lowQuality: false)
+        )
         XCTAssertEqual(url.absoluteString, "http://127.0.0.1:54321/embed?v=dQw4w9WgXcQ")
     }
 

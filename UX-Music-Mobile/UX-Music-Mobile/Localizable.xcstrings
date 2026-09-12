@@ -1342,18 +1342,18 @@
         }
       }
     },
-    "While on mobile data, YouTube songs play at the lowest quality (around 144p) to save data." : {
+    "While on mobile data, YouTube songs play at the lowest quality (around 360p) to save data." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "While on mobile data, YouTube songs play at the lowest quality (around 144p) to save data."
+            "value" : "While on mobile data, YouTube songs play at the lowest quality (around 360p) to save data."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "モバイルデータ通信中は、YouTube の曲を最低画質（144p 程度）で再生して通信量を抑えます。"
+            "value" : "モバイルデータ通信中は、YouTube の曲を低画質（360p 程度）で再生して通信量を抑えます。"
           }
         }
       }

@@ -1,5 +1,5 @@
 import SwiftUI
-import WebKit
+import UIKit
 
 /// Displays the single persistent `WKWebView` owned by `MusicPlayerService.youtubePlaybackHost`
 /// by reparenting it into this representable's container view — it never creates or destroys the
@@ -9,10 +9,10 @@ import WebKit
 /// doc comment for why this replaced the old per-screen `YouTubeEmbedPlayerView` usage here).
 @MainActor
 struct YouTubeEmbedHostContainerView: UIViewRepresentable {
-    let webView: WKWebView
+    let host: YouTubePlaybackHost
 
     func makeUIView(context: Context) -> UIView {
-        let container = UIView()
+        let container = YouTubeEmbedContainerView(host: host)
         container.backgroundColor = .black
         container.clipsToBounds = true
         attach(to: container)
@@ -20,41 +20,63 @@ struct YouTubeEmbedHostContainerView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
-        attach(to: uiView)
+        guard let container = uiView as? YouTubeEmbedContainerView else { return }
+        container.host = host
+        attach(to: container)
     }
 
-    /// Moves the shared web view into `container` unless it is already there. Reparenting a
+    /// Moves the shared web view into `container` once the container is in a window. Reparenting a
     /// `WKWebView` that stays alive and in-window the whole time does not interrupt its playback.
-    private func attach(to container: UIView) {
-        guard webView.superview !== container else { return }
-        if let oldSuperview = webView.superview {
-            let constraints = oldSuperview.constraints.filter { constraint in
-                (constraint.firstItem as? UIView) === webView
-                    || (constraint.secondItem as? UIView) === webView
-            }
-            oldSuperview.removeConstraints(constraints)
-            webView.removeConstraints(webView.constraints)
-        }
-        webView.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(webView)
-        NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: container.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        ])
+    private func attach(to container: YouTubeEmbedContainerView) {
+        container.attachWebViewIfPossible()
     }
 
     /// Parks the shared web view in the key window so a dismissed `NowPlayingView` does not leave
     /// it outside a window hierarchy. The web view itself is owned by `YouTubePlaybackHost` and
     /// keeps running/playing off-screen.
     static func dismantleUIView(_ uiView: UIView, coordinator: ()) {
-        for subview in uiView.subviews {
-            guard let webView = subview as? WKWebView,
-                  let host = YouTubePlaybackHost.activeHost,
-                  host.webView === webView
-            else { continue }
+        // Only park if this container still owns the web view — a newer container may already
+        // have borrowed it, and parking would pull it off screen.
+        guard let host = (uiView as? YouTubeEmbedContainerView)?.host, host.webView.superview === uiView else { return }
+        host.park()
+    }
+}
+
+@MainActor
+private final class YouTubeEmbedContainerView: UIView {
+    weak var host: YouTubePlaybackHost?
+
+    init(host: YouTubePlaybackHost) {
+        self.host = host
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func attachWebViewIfPossible() {
+        guard window != nil, let host else { return }
+        if host.webView.superview !== self {
+            host.webView.translatesAutoresizingMaskIntoConstraints = true
+            host.webView.autoresizingMask = []
+            addSubview(host.webView)
+        }
+        host.layoutWebView(in: self)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil {
+            attachWebViewIfPossible()
+        } else if let host, host.webView.superview === self {
             host.park()
         }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let host, host.webView.superview === self else { return }
+        host.layoutWebView(in: self)
     }
 }

@@ -203,7 +203,7 @@ struct SettingsScreen: View {
                 } header: {
                     Text(verbatim: "YouTube")
                 } footer: {
-                    Text("While on mobile data, YouTube songs play at the lowest quality (around 144p) to save data.")
+                    Text("While on mobile data, YouTube songs play at the lowest quality (around 360p) to save data.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

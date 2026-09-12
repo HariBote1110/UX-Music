@@ -967,7 +967,7 @@ private struct NowPlayingArtworkBlock: View {
                 // Shown immediately (no network round-trip needed for the embed itself) and kept
                 // underneath the video so a slow embed handshake never shows a blank black square.
                 youtubeThumbnail(videoID: videoID)
-                YouTubeEmbedHostContainerView(webView: model.player.youtubePlaybackHost.webView)
+                YouTubeEmbedHostContainerView(host: model.player.youtubePlaybackHost)
                     .opacity(model.player.isPlaying ? 1 : 0)
                     .animation(.easeInOut(duration: 0.35), value: model.player.isPlaying)
             }

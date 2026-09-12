@@ -242,45 +242,18 @@ enum YouTubeEmbedPlayer {
         var timer = null;
         var lowQualityEnabled = new URLSearchParams(location.search).get('lq') === '1';
         var lastPostedQuality = null;
-        var LOW_QUALITY_WIDTH = 256;
-        var LOW_QUALITY_HEIGHT = 144;
 
         function post(msg) {
             msg.source = 'ux-embed';
             try { window.postMessage(msg, '*'); } catch (e) { /* ignore */ }
         }
 
-        function resizePlayer() {
-            var playerElement = document.getElementById('player');
-            if (!playerElement) return;
-            if (!lowQualityEnabled) {
-                playerElement.style.width = '100%';
-                playerElement.style.height = '100%';
-                playerElement.style.transform = 'none';
-                playerElement.style.transformOrigin = '0 0';
-                return;
-            }
-
-            playerElement.style.width = LOW_QUALITY_WIDTH + 'px';
-            playerElement.style.height = LOW_QUALITY_HEIGHT + 'px';
-            var viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-            var viewportHeight = document.documentElement.clientHeight || window.innerHeight;
-            var scale = Math.max(
-                viewportWidth / LOW_QUALITY_WIDTH,
-                viewportHeight / LOW_QUALITY_HEIGHT
-            );
-            playerElement.style.transform = 'scale(' + scale + ')';
-            playerElement.style.transformOrigin = '0 0';
-        }
-
         function applyLowQuality(enabled) {
             lowQualityEnabled = !!enabled;
-            resizePlayer();
             if (!player) return;
             try {
                 if (lowQualityEnabled) {
-                    player.setPlaybackQuality('tiny');
-                    player.setPlaybackQualityRange && player.setPlaybackQualityRange('tiny', 'tiny');
+                    player.setPlaybackQuality('small');
                 } else {
                     player.setPlaybackQuality('default');
                 }
@@ -340,9 +313,6 @@ enum YouTubeEmbedPlayer {
                 }
             });
         };
-
-        window.addEventListener('resize', resizePlayer);
-        resizePlayer();
 
         window.uxYouTubeCommand = function (d) {
             if (d.cmd === 'lowQuality') {
