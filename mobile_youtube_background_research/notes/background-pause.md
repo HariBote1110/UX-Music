@@ -250,8 +250,27 @@
   ホームスワイプで WebKit が自動的に PiP へ移し、バックグラウンドでも音声付きで再生が続く。
   コードからの PiP 要求（G-1〜G-3）と違い、システム自身の自動遷移なので拒否されない。
 
+## 方式の再考（ユーザー要望: 「滑らかにバックグラウンド再生に移行したい」）
+C-1 の結果（全画面を経由すれば自動 PiP になる）を受けて、ユーザーは全画面ボタン等の操作を挟む形を望まず、
+ホームスワイプ・画面ロックだけで途切れず音が続く形を求めた。WKWebView 内の経路（A〜C）に加え、
+リポジトリ既存の LAN 中継経路を候補 D として整理する（コード読解のみ、未実測）。
+
+### 候補D: PC の公式再生を LAN 中継して iPhone では音声ストリームとして鳴らす
+- デスクトップ側は本番配線済み: `server/app_remote_relay_notify.go` がプロセスタップ
+  （`pkg/audio.ProcessTapCapture`）の PCM を入力に `remoteRelay.Start` を呼び、
+  `GET /v1/remote/relay`（ADTS AAC-LC 256kbps、chunked、認証必須、GUI モード限定、非アクティブ時 409）で配信。
+- `POST /v1/remote/command`（`action: "play-song"`）で PC に特定曲を再生させられる（`progress/remote-play-song.md`）。
+- TV は `play-song` 送信 → `GET /v1/remote/state` の `relay.active` を 0.5 秒間隔・最大 10 秒待機 →
+  `TVRelayStreamPlayer`（専用 `AVAudioEngine`）で受信、というフローが完成済み（`progress/tvos-relay-reception.md` 2026-08-13 追記）。
+- iPhone 側: `TVRelayStreamPlayer` / `TVAACDecoder` / `ADTSFrameParser` は **iOS アプリのターゲットにもビルド済み**、
+  `RemoteAPIClient.sendPlaySongCommand(songId:)` と `relayRequest()` も存在。iPhone から使う画面・サービスが未配線なだけ。
+- 期待: iPhone では通常の音声ストリーム再生になるため、`UIBackgroundModes=audio` でホームスワイプ・画面ロックでも途切れない見込み（未実測）。
+- 制約: PC で GUI 版が起動していて LAN 上にいること（ヘッドレス `--serve` では 404）。映像は PC 側のみ。
+  放送型で PC の再生と連動し、クライアントごとに別曲は不可（`project_youtube` の既定方針どおり）。
+  PC 無し・外出先では使えないため、その場合は PiP / 一時停止＋復帰へのフォールバックが必要。
+
 ## 次の一手 / 未検証事項
-- 本実装の方針決定（全画面ボタンからの自動 PiP をどう組み込むか。ユーザー判断待ち）。
+- 方式の決定（ユーザー判断待ち）: WebKit 内の経路の調査結果（別途調査中）と候補D を並べて提示する。
 - 20:24:08 の一時停止の原因（ユーザーが PiP ウィンドウを操作したか）。
 - 20:17:24（G-2）のページ再読み込みの原因。
 - PiP 開始のトリガー時刻（フォアグラウンド中に要求したケースのみ確認済み。`didEnterBackground`
