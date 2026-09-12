@@ -438,25 +438,30 @@ struct WatchNowPlayingView: View {
     /// the glyph.
     @ViewBuilder
     private var outputPreferenceSheet: some View {
-        List(WatchAudioOutputPreference.allCases, id: \.self) { preference in
-            Button {
-                player.setOutputPreference(preference)
-                showingOutputPicker = false
-            } label: {
-                HStack {
-                    Image(systemName: outputPreferenceSymbolName(for: preference))
-                        .frame(width: 20)
-                    Text(outputPreferenceLabel(for: preference))
-                    Spacer()
-                    if player.outputPreference == preference {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.blue)
+        // `.navigationTitle` only has any effect inside a `NavigationStack` (there is no implicit
+        // one for a plain `.sheet` content view) — without this wrapper the title was silently
+        // dropped rather than shown.
+        NavigationStack {
+            List(WatchAudioOutputPreference.allCases, id: \.self) { preference in
+                Button {
+                    player.setOutputPreference(preference)
+                    showingOutputPicker = false
+                } label: {
+                    HStack {
+                        Image(systemName: outputPreferenceSymbolName(for: preference))
+                            .frame(width: 20)
+                        Text(outputPreferenceLabel(for: preference))
+                        Spacer()
+                        if player.outputPreference == preference {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.blue)
+                        }
                     }
                 }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .navigationTitle(Text("Output"))
         }
-        .navigationTitle(Text("Output"))
     }
 
     /// Slim, display-only replacement for `ProgressView(...).progressViewStyle(.linear)` — the stock
