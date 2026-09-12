@@ -504,3 +504,15 @@ YouTube の自動画質はプレーヤーの描画サイズに応じて決まる
 - 実際の画質は bridge の `quality` イベント（`getPlaybackQuality()`）で確認できる。
   デバッグフックに `UXM_DEBUG_YT_LQ=1`（`SIMCTL_CHILD_` 付きで渡す）を追加した。
 - アプリのバックグラウンド移行・画面ロック時の継続再生は未対応（本フェーズの範囲外）。
+
+### 実測（シミュレータ iPhone Air, DPR 3, HD 動画 `aqz-KE-bpKQ`, `UXM_DEBUG_YT_LQ=1`）
+| プレーヤー CSS サイズ | CSS transform で拡大 | `getPlaybackQuality()` |
+| :--- | :--- | :--- |
+| 256x144 | あり | `large`（480p） |
+| 256/DPR x 144/DPR（≈85x48） | あり | `large`（480p） |
+| ≈85x48 | なし | `medium`（360p） |
+
+- パーキング状態（256x144pt, alpha 0.01）でも `playing` まで到達しており、パークしたままの再生は可能。
+- CSS transform での拡大は YouTube 側のサイズ判定に拡大後サイズとして効いてしまう。
+- サイズを極小にしても下限は 360p で、IFrame 埋め込みでは 144p まで下げられなかった
+  （`setPlaybackQuality('tiny')` も効果なし）。
