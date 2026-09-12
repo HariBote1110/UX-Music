@@ -112,11 +112,30 @@
 - バックグラウンド中のスクリーンショットには Dynamic Island の再生インジケータのみで PiP ウィンドウなし。
 - `mode = picture-in-picture` の最中（19:35:57）のスクリーンショットにも PiP ウィンドウは写らない。
   つまり WebKit 側のフラグが一時的に切り替わるだけで、システムの PiP ウィンドウは一度も出ていない。
-- 結論: **セッション未有効化は原因ではない（棄却済み）**。PiP 状態の持続時間がわずかに伸びただけで、自動で戻る点は同じ。
+- 結論（B-3 で訂正）: シミュレータでは PiP 自体が非対応だったため、**判定不能**（棄却ではない）。
+
+### B-3: B-2 + パーキング先 WKWebView を画面内・alpha 1 に表示（1変数）
+手順: B-2 に `SIMCTL_CHILD_UXM_DEBUG_YT_PIP_VISIBLE=1` を追加（起動 3 秒後に 256x144pt で画面上に表示）。
+
+| 時刻 | 観測 |
+| :--- | :--- |
+| 19:38:22.98 | **`AVPictureInPictureController.isPictureInPictureSupported()` = false** |
+| 19:38:26.03 | WKWebView を画面内 (20,140,256,144) に表示 |
+| 19:38:34.74 | PiP 要求 |
+| 19:38:35.6〜19:38:39.6 | `webkitPresentationMode` = `picture-in-picture` |
+| 19:38:37 | スクリーンショット: 動画はインラインのまま画面内で再生、PiP ウィンドウなし |
+| 19:38:40.65 | `inline` に戻る |
+| 19:38:52.7 | バックグラウンド → 0.2 秒後 `paused` → 19:38:54.1 SIGKILL |
+
+- 結論: **このシミュレータはシステム PiP 非対応**（`isPictureInPictureSupported=false`、
+  `webkitSupportsPresentationMode('picture-in-picture')=false`）。WebKit のフラグは要求に応じて
+  一時的に切り替わるが実体の PiP は起動せず、数秒でタイムアウトして戻っている。
+- したがって B-1〜B-3 は**仮説B の反証にはならない（シミュレータでは検証不能）**。
+  到達性（YouTube フレームの `video` に触れる・`disablePictureInPicture` が false・ネイティブからの
+  要求が例外なく受理される）だけは確認済み。
 
 ## 次の一手 / 未検証事項
-- B-3: パーキング先の WKWebView を画面外・alpha 0.01 → 画面内・alpha 1 にする（1変数）。
-  同時に `AVPictureInPictureController.isPictureInPictureSupported()` を記録（シミュレータで PiP 自体が
-  非対応なら、実機でしか検証できない）。（バックグラウンド移行時に PiP へ遷移させれば WebKit の制約上は継続再生が許可される）。
+- 仮説B は**実機で**検証する（`isPictureInPictureSupported=true` の環境で B-2 相当: セッション有効化＋
+  ネイティブから PiP 要求 → 実際に PiP ウィンドウが出るか → バックグラウンドで `time` が進むか）。（バックグラウンド移行時に PiP へ遷移させれば WebKit の制約上は継続再生が許可される）。
   YouTube iframe はクロスオリジンのため、ページ側から video 要素の PiP を操作できるかは未検証。
 - 画面ロック時（`isSuspendedUnderLock`）の挙動は未測定（同じ制約がかかる見込み）。
