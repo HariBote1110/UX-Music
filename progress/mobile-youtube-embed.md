@@ -524,3 +524,40 @@ YouTube の自動画質はプレーヤーの描画サイズに応じて決まる
 小さいビューポートにしか見えないため、表示中・パーキング中とも同じ判定になる。
 実測: 同条件（HD 動画・パーキング中・`UXM_DEBUG_YT_LQ=1`）で `medium`（360p）。
 設定の説明文も「360p 程度」に修正した。
+
+## フェーズF: バックグラウンド移行時の一時停止とフォアグラウンド復帰
+
+### Decision: バックグラウンド継続再生はせず、きれいに一時停止して復帰時に再開する
+`mobile_youtube_background_research/notes/background-pause.md` の検証で、iOS WebKit は
+バックグラウンド移行 2〜5 秒後に IFrame の動画を止め、`.playback` セッション有効化でも
+バックグラウンド中の `play` 再送でも再開できない（`buffering` で固まる）ことを確認した。
+公開 API での回避手段は無く、非公開 WebKit 設定は審査・OS 更新リスクがあるため採らない
+（ユーザー判断: 「きれいに一時停止＋復帰」）。
+
+- 判定は純関数 `Core/YouTubeBackgroundResumePolicy.swift` に切り出して TDD。
+- `MusicPlayerService` が `didEnterBackground` / `willEnterForeground` を監視。
+  - 移行時に YouTube 曲が再生中なら自前で即 `pause`（WebKit による数秒後の停止を待たず、
+    停止位置と `isPlaying` / Now Playing センターを確定させる）し、再開待ちフラグと
+    その時点の `youtubePlaybackGeneration` を記録。
+  - 復帰時、フラグあり・世代一致・現在曲が YouTube なら `play`。フラグは常に消す。
+    曲送り・停止で世代が進めば再開は自然にキャンセルされる。
+- バックグラウンド中のロック画面/リモートの再生要求は `play` を送らず再開待ちフラグだけ立てる
+  （送ると `buffering` で固まるため）。一時停止要求はフラグを消す。
+- WebKit 起因の `.state(.paused)` はフラグを消さない（移行に伴う想定内の停止）。
+- 副次修正: リモートの再生コマンドで YouTube 曲がローカル再生経路（`currentAudioFile == nil`
+  → `loadAndPlay`）に落ちていたのを YouTube 経路へ分岐させた。
+
+### 検証（シミュレータ iPhone Air）
+- `YouTubeBackgroundResumePolicyTests` / `YouTubeEmbedPlayerTests`: 成功。
+- 実機相当の流れ（`UXM_DEBUG_YT_SERVICE=1` で再生 → 5 秒バックグラウンド → `simctl openurl` で復帰）:
+  `didEnterBackground` の 0.2 秒後に `paused`（`isPlaying=0`）、復帰後 `buffering` → `didBecomeActive` →
+  `playing`（`isPlaying=1`）で停止位置から再開。詳細は
+  `mobile_youtube_background_research/notes/background-pause.md`。
+
+### Constraints / Gotchas
+- シミュレータではアプリがバックグラウンド移行の数秒〜10 秒後に SIGKILL される（YouTube 無関係、
+  通常起動でも再現）。バックグラウンド滞在を長くした検証ではプロセスごと消えて再開を観測できないので、
+  滞在は短くすること。実機で起きるかは未検証（別課題）。
+- デバッグフックに `UXM_DEBUG_YT_SERVICE=1` を追加。デスクトップ未ペアリングでも resolver を
+  差し替えた合成 YouTube `Song` を `MusicPlayerService.play` 経由で再生でき、サービス層の
+  挙動（本フェーズの一時停止・復帰など）を観測できる。

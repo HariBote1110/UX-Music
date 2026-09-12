@@ -46,6 +46,29 @@
 - 公開 API での回避手段は見当たらない。WebKit のプライベート設定での回避は App Store 審査・OS 更新での
   破綻リスクがあるため採らない。
 
+## 追加観測: バックグラウンド滞在中のプロセス SIGKILL（フェーズF 実装の検証中に発見）
+環境は上と同じ（シミュレータ iPhone Air / iOS 26.5 系、デバッグフック `UXM_DEBUG_YT_SERVICE=1`）。
+
+| 時刻 | 事象 |
+| :--- | :--- |
+| 17:27:10 | バックグラウンドへ移行、自前で `pause`（`didEnterBackground` の 0.2 秒後に `paused`） |
+| 17:27:20 | 約 10 秒後にサスペンド（runningboard のアサーション解放、`WebProcess::updateFreezerStatus`） |
+| 17:27:21.52 | サスペンド中のアプリに WatchConnectivity（`WCSession`）の File Coordination claim が発生 |
+| 17:27:21.58 | `termination reported by launchd (2, 9, 9)` = SIGKILL。クラッシュレポートなし |
+
+- 以後の `simctl launch` が "No such process" になったのはこのため（launch の制約ではない）。
+- `simctl openurl uxmusic://…` で前面化すると新しいプロセスが起動する（pid が変わる）。
+### 対照実験（スクリプト: 検証時は scratchpad の `verify_bg_r1_c1.sh`、手順は下表の通り）
+| 実験 | 条件 | 結果 |
+| :--- | :--- | :--- |
+| R1 | `UXM_DEBUG_YT_SERVICE=1` で再生 → 5 秒だけバックグラウンド → `simctl openurl uxmusic://…` | `didEnterBackground` 17:30:23.68 → `paused` 23.88（位置 23.7 秒）→ `willEnterForeground` 26.65 → `buffering` 26.67 → `didBecomeActive` 27.06 → `playing` 27.43。pid 不変 |
+| C1 | デバッグ env なしで通常起動（YouTube 再生なし）→ バックグラウンド | 移行約 3 秒後に `termination reported by launchd (2, 9, 9)` |
+
+- **R1: フォアグラウンド復帰時の再開は機能する**（`willEnterForeground` で送った `play` は `buffering` を経て
+  `didBecomeActive` 後に `playing` になる。バックグラウンド中の再送と違い固まらない）。
+- **C1: SIGKILL は YouTube 再生・フェーズF の変更と無関係の既存事象。** 再生していない通常起動でも発生する。
+  シミュレータ固有か実機でも起きるかは未検証（別課題）。
+
 ## 次の一手 / 未検証事項
 - Picture in Picture（バックグラウンド移行時に PiP へ遷移させれば WebKit の制約上は継続再生が許可される）。
   YouTube iframe はクロスオリジンのため、ページ側から video 要素の PiP を操作できるかは未検証。
