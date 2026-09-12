@@ -558,6 +558,41 @@ YouTube の自動画質はプレーヤーの描画サイズに応じて決まる
 - シミュレータではアプリがバックグラウンド移行の数秒〜10 秒後に SIGKILL される（YouTube 無関係、
   通常起動でも再現）。バックグラウンド滞在を長くした検証ではプロセスごと消えて再開を観測できないので、
   滞在は短くすること。実機で起きるかは未検証（別課題）。
-- デバッグフックに `UXM_DEBUG_YT_SERVICE=1` を追加。デスクトップ未ペアリングでも resolver を
+- デバッグフックに `UXM_DEBUG_YT_SERVICE=1` を追加。
+
+## フェーズG: PiP 方式でのバックグラウンド再生（フェーズF を主経路から降格）
+
+### Decision: バックグラウンド再生は PiP を主経路にし、フェーズF の一時停止＋復帰はフォールバックに残す
+ユーザーが実機でフェーズF（バックグラウンドで一時停止・復帰で再開）を確認したが期待通りに動かず、
+PiP での作り直しを希望。`mobile_youtube_background_research/notes/background-pause.md` の B-1〜B-4 で:
+
+- YouTube の iframe はクロスオリジンだが、`WKUserScript(forMainFrameOnly: false)` を専用
+  `WKContentWorld` に注入すればその `<video>` に到達でき、`WKScriptMessage.frameInfo` を使った
+  `callAsyncJavaScript(in:contentWorld:)` で `webkitSetPresentationMode('picture-in-picture')` を呼べる。
+- **実機では PiP に入り、PiP 中はバックグラウンドでも再生が継続する**（B-4）。
+- **シミュレータはシステム PiP 非対応**（`AVPictureInPictureController.isPictureInPictureSupported()`
+  = false）で、B-1〜B-3 はすべて判定不能だった。PiP の検証は実機でしかできない。
+
+実装方針:
+- `YouTubePlaybackHost` が全フレーム注入スクリプトで `video` のフレームと `webkitPresentationMode` を追跡し、
+  PiP の開始・終了を担う。
+- YouTube 再生時も `.playback` の `AVAudioSession` を有効化する（従来はローカル曲の経路のみ）。
+- バックグラウンド移行時: PiP 中ならそのまま継続、PiP 可能なら PiP を要求して継続、不可・失敗なら
+  フェーズF の一時停止＋復帰時再開にフォールバック（シミュレータは常にこの経路）。
+- フォアグラウンド復帰時は PiP を終了してインライン表示に戻す。
+- PiP 中はバックグラウンドでもリモートコマンドを即時実行する（JS が生きているため）。
+- PiP 開始トリガー（`willResignActive` / `didEnterBackground`）は実機検証で決める。
+- Now Playing に手動の PiP ボタンを追加する（UI は Sonnet サブエージェント担当）。
+
+### Alternatives considered
+- 非公開 WebKit 設定でのバックグラウンド再生解禁: 審査・OS 更新リスクのため不採用（フェーズF と同じ判断）。
+- `AVPictureInPictureController` + サンプルバッファでの自前 PiP: YouTube の映像フレームを取り出す
+  正規手段がないため不可。
+
+### Constraints / Gotchas
+- 実機検証は `devicectl device process launch --console --environment-variables ...` で NSLog を取得し、
+  `devicectl device process launch com.apple.Preferences` でバックグラウンドへ回す。
+- ホスト直結のデバッグモード（`UXM_DEBUG_YT_SERVICE` なし）では `unmute` が送られず無音になる。
+  音声の確認は `UXM_DEBUG_YT_SERVICE=1` で行うこと。デスクトップ未ペアリングでも resolver を
   差し替えた合成 YouTube `Song` を `MusicPlayerService.play` 経由で再生でき、サービス層の
   挙動（本フェーズの一時停止・復帰など）を観測できる。
