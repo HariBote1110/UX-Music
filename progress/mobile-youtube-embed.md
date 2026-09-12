@@ -593,6 +593,37 @@ PiP での作り直しを希望。`mobile_youtube_background_research/notes/back
 - 実機検証は `devicectl device process launch --console --environment-variables ...` で NSLog を取得し、
   `devicectl device process launch com.apple.Preferences` でバックグラウンドへ回す。
 - ホスト直結のデバッグモード（`UXM_DEBUG_YT_SERVICE` なし）では `unmute` が送られず無音になる。
-  音声の確認は `UXM_DEBUG_YT_SERVICE=1` で行うこと。デスクトップ未ペアリングでも resolver を
+  音声の確認は `UXM_DEBUG_YT_SERVICE=1` で行うこと。
+
+## フェーズH: 全画面経由の自動 PiP ＋ PiP ボタン（ライフサイクル起点の PiP 要求を廃止）
+
+### Decision
+フェーズG で実装した「`willResignActive` / `didEnterBackground` を起点にコードから PiP を要求する」処理は、
+実機で全て拒否された（`mobile_youtube_background_research/notes/background-pause.md` G-1〜G-3。実際の
+ホームスワイプでも数十 ms で PiP が中断される）。一方で次の 2 経路は実機で成立した。
+
+- **全画面表示中のホームスワイプ → システムが自動で PiP へ移行し、音声付きで継続**（C-1）
+- **アクティブ中に PiP を開始 → そのままバックグラウンドでも継続**（B-4）
+
+また、iPhone 単体で「プレイヤーを見せず操作なしに音声だけ継続」する経路は、公開 API・非公開フィーチャーフラグ
+（`InterruptVideoOnPageVisibilityChangeEnabled` のオフ）・公開 Web API（`navigator.audioSession.type`）の
+いずれでも成立しなかった（E-1〜E-3、F-1）。ユーザー判断で PiP 方式に確定した。
+
+実装方針:
+- Now Playing に全画面ボタンを追加し、YouTube フレームの `video.webkitEnterFullscreen()` をネイティブから呼ぶ。
+- 既存の PiP ボタンはインライン表示中の手動開始として残す。
+- バックグラウンド移行時: 全画面中または PiP 中なら何もしない（システムの自動 PiP・既存 PiP に任せて継続）。
+  それ以外はフェーズF のフォールバック（一時停止＋復帰時再開）。
+- ライフサイクル通知起点の PiP 要求とトリガー切り替え用の列挙（`YouTubePictureInPictureTrigger`）は削除する。
+
+### Alternatives considered
+- LAN 中継（PC の公式再生を iPhone で音声ストリームとして再生）: 滑らかだが PC 必須のため、iPhone 単体完結を
+  求めるユーザー判断で今回は見送り（`mobile_youtube_background_research` 候補D）。
+- YouTube 再生開始時に常に全画面にする: 常に自動 PiP が効くが、曲を選ぶたびに全画面になるため不採用。
+
+### Constraints / Gotchas
+- 全画面から自動 PiP への移行は `inactive` になってから約 0.5 秒後で、`didEnterBackground` とほぼ同時に届く。
+  バックグラウンド移行時の判定では `fullscreen` と `picture-in-picture` の両方を「継続」として扱うこと。
+- シミュレータは PiP 非対応のため、この経路の確認は実機のみ。デスクトップ未ペアリングでも resolver を
   差し替えた合成 YouTube `Song` を `MusicPlayerService.play` 経由で再生でき、サービス層の
   挙動（本フェーズの一時停止・復帰など）を観測できる。

@@ -420,8 +420,39 @@ YouTube API 規約（原文を WebFetch で確認）:
   フレームごとの読み戻し値と origin をネイティブへ報告。デバッグフック `UXM_DEBUG_WK_AUDIOSESSION_PLAYBACK=1`。
 - 棄却条件: YouTube フレームで `type` が `playback` にならない、またはバックグラウンド移行後に `paused` が来る。
 
+### E-3: F-1 の条件＋全フレームで `navigator.audioSession.type = 'playback'`（1変数）
+手順: `verify_wk_feature_bg_device.sh e3 "" '"UXM_DEBUG_WK_AUDIOSESSION_PLAYBACK":"1"'`（検証時は scratchpad）。
+
+| 時刻 | 観測 |
+| :--- | :--- |
+| 20:57:08.57 | メインフレーム（`http://127.0.0.1:<port>`）: `supported=1`、代入後 `type=playback` |
+| 20:57:08.76 | **YouTube フレーム（`https://www.youtube.com`）: `supported=1` だが代入後も `type=auto`** |
+| 20:57:09.20 | `playing` |
+| 20:57:29.02 | `didEnterBackground` |
+| 20:57:29.26 | **0.24 秒後に `paused`**、以後 `time` は 19.86 秒のまま（復帰後も停止） |
+
+- 結論: **E-3 は棄却済み。** メインフレームを `playback` にしても停止は変わらない。
+  クロスオリジンの YouTube iframe では `navigator.audioSession.type` の代入が反映されない（`auto` のまま）ため、
+  動画を持つフレーム自体への適用はこの経路では不可能。
+
+## 総括（iPhone 単体）
+公開 API・非公開フィーチャーフラグ（E-2）・公開 Web API（E-3）のいずれでも、WKWebView 内の YouTube iframe の
+`video` はバックグラウンド移行の約 0.2 秒後に停止した。停止は移行直後に来るため、プロセス抑制ではなく
+メディアセッションのバックグラウンド割り込みによるもので、ソース上もこれを外す設定は見つかっていない。
+→ **iPhone 単体で、プレイヤーを表示せず操作なしに音声だけ継続させる経路は、今回調べた範囲では存在しない。**
+単体で継続できるのは PiP 系（B-4 のアクティブ中の PiP 開始、C-1 の全画面からの自動 PiP）のみ。
+残る候補の優先度が低いもの（未検証）: `PageVisibilityBasedProcessSuppressionEnabled` などプロセス抑制系、AirPlay 出力中の免除。
+
+### ユーザー最終判断（2026-09-12）: PiP で作る（iPhone 単体）
+- 全画面ボタンを追加し、全画面中のホームスワイプでシステムの自動 PiP（C-1）に乗せる。
+- インライン表示中は既存の PiP ボタンでアクティブ中に PiP を開始（B-4）。
+- どちらも使わずに離れた場合は一時停止＋フォアグラウンド復帰時に再開（フェーズF のフォールバック）。
+- ライフサイクル通知起点の PiP 要求（G-1〜G-3 で拒否された処理）は削除する。
+- 本実装の設計判断は `progress/mobile-youtube-embed.md` フェーズH に記録。
+
 ## 次の一手 / 未検証事項
-- E-3 を実機で実行。
+- 本実装後、実機で「全画面 → ホームスワイプ → 自動 PiP で継続」「PiP ボタン → ホームで継続」「何もせず離れる → 一時停止 → 復帰で再開」を確認。
+- 画面ロック中（PiP 継続中のロック）の挙動は未検証。
 - 20:24:08 の一時停止の原因（ユーザーが PiP ウィンドウを操作したか）。
 - 20:17:24（G-2）のページ再読み込みの原因。
 - PiP 開始のトリガー時刻（フォアグラウンド中に要求したケースのみ確認済み。`didEnterBackground`
