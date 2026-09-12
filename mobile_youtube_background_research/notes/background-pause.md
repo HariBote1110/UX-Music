@@ -227,8 +227,32 @@
 - 棄却条件: (1) 全画面にならない、(2) 全画面からホームスワイプしても `picture-in-picture` に移らない、
   (3) 移っても再生・音声が続かない。
 
+### C-1: 実機で全画面表示 → ユーザーが手動ホームスワイプ
+手順: `verify_fullscreen_device.sh`（検証時は scratchpad）。ホスト直結モードで
+`{"UXM_DEBUG_YT_VIDEO":"aqz-KE-bpKQ","UXM_DEBUG_YT_FULLSCREEN":"1"}` を渡して起動し、`--console` で 5 分記録。
+再生 5 秒後にネイティブから YouTube フレームの `video.webkitEnterFullscreen()` を呼び、全画面になったら
+ユーザーがホームスワイプ。
+
+| 時刻 | 観測 |
+| :--- | :--- |
+| 20:23:22.29 | `playing`（`muted=0`、音あり） |
+| 20:23:27.92 | `webkitEnterFullscreen()` 要求（戻り値時点では `displayingFullscreen=false`） |
+| 20:23:27.97 | `webkitpresentationmodechanged` / `webkitbeginfullscreen` → `mode=fullscreen` |
+| 20:23:59.05 | ホームスワイプでアプリが `inactive`（`mode=fullscreen`、再生中） |
+| 20:23:59.51 | **自動で `mode=picture-in-picture`**（`webkitendfullscreen` 同時発火） |
+| 20:23:59.57 | `didEnterBackground` |
+| 20:24:01〜08 | バックグラウンドの PiP 中も `t=38→45` と進行、`paused=0` |
+| 20:24:08.10 | `pause`（ユーザーが PiP ウィンドウを閉じた・止めたと確認済み）→ 20:24:08.93 `mode=inline` |
+| 20:24:14.03 | フォアグラウンド復帰 |
+
+- ユーザー目視: PiP ウィンドウが出て、音も続いた。
+- 結論: **仮説C は実機で成立。** YouTube フレームの `video` をネイティブから全画面にしておけば、
+  ホームスワイプで WebKit が自動的に PiP へ移し、バックグラウンドでも音声付きで再生が続く。
+  コードからの PiP 要求（G-1〜G-3）と違い、システム自身の自動遷移なので拒否されない。
+
 ## 次の一手 / 未検証事項
-- C-1: 実機で `UXM_DEBUG_YT_FULLSCREEN=1` → 全画面になったらユーザーがホームスワイプ。
+- 本実装の方針決定（全画面ボタンからの自動 PiP をどう組み込むか。ユーザー判断待ち）。
+- 20:24:08 の一時停止の原因（ユーザーが PiP ウィンドウを操作したか）。
 - 20:17:24（G-2）のページ再読み込みの原因。
 - PiP 開始のトリガー時刻（フォアグラウンド中に要求したケースのみ確認済み。`didEnterBackground`
   時点での要求が通るかは未検証）。（バックグラウンド移行時に PiP へ遷移させれば WebKit の制約上は継続再生が許可される）。
