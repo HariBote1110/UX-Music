@@ -134,8 +134,30 @@
   到達性（YouTube フレームの `video` に触れる・`disablePictureInPicture` が false・ネイティブからの
   要求が例外なく受理される）だけは確認済み。
 
+### B-4: 実機（YkiPhoneAir / iPhone Air 実機、開発ビルド）で B-2 相当
+手順: スクリプト `verify_pip_device.sh`（検証時は scratchpad）。`xcodebuild -destination id=<device>
+-allowProvisioningUpdates` → `devicectl device install app` → `devicectl device process launch --console
+--environment-variables '{"UXM_DEBUG_YT_VIDEO":"aqz-KE-bpKQ","UXM_DEBUG_YT_PIP":"1","UXM_DEBUG_YT_PIP_SESSION":"1"}'`
+→ 25 秒後に `devicectl device process launch com.apple.Preferences` でバックグラウンドへ → 20 秒観測。
+
+| 時刻 / 再生位置 | 観測 |
+| :--- | :--- |
+| 19:41:34.59 | `isPictureInPictureSupported` = **true**、セッション有効化成功 |
+| 起動直後〜 | `webkitSupportsPresentationMode('picture-in-picture')` = **true** |
+| 19:41:41.14 | PiP 要求 |
+| t=6 秒〜 | `webkitPresentationMode` = `picture-in-picture`（以後観測終了まで維持） |
+| 19:42:00.72（t≈24 秒） | バックグラウンド移行 |
+| t=24〜43.7 秒 | `time` イベントが 2 秒ごとに進み続け、`paused=0` のまま。`paused` 状態イベントなし |
+
+- ユーザー目視: 映像（PiP ウィンドウ）は出ていた。音は聞こえなかった気がする。
+  → ホスト直結モードでは `MusicPlayerService` が `.ready` を無視し `unmute` を送らないため、
+  埋め込みページの `mute:1` のまま（想定内。PiP の問題ではない）。
+- 結論: **仮説B は実機で成立。** ネイティブから YouTube iframe の `video` を PiP にでき、PiP 中は
+  バックグラウンドでも再生が継続する。SIGKILL も観測されなかった（再生中はサスペンドされない）。
+
 ## 次の一手 / 未検証事項
-- 仮説B は**実機で**検証する（`isPictureInPictureSupported=true` の環境で B-2 相当: セッション有効化＋
-  ネイティブから PiP 要求 → 実際に PiP ウィンドウが出るか → バックグラウンドで `time` が進むか）。（バックグラウンド移行時に PiP へ遷移させれば WebKit の制約上は継続再生が許可される）。
+- 本実装（PiP 方式）後、`UXM_DEBUG_YT_SERVICE=1`（unmute される経路）で実機再検証し音声も確認する。
+- PiP 開始のトリガー時刻（フォアグラウンド中に要求したケースのみ確認済み。`didEnterBackground`
+  時点での要求が通るかは未検証）。（バックグラウンド移行時に PiP へ遷移させれば WebKit の制約上は継続再生が許可される）。
   YouTube iframe はクロスオリジンのため、ページ側から video 要素の PiP を操作できるかは未検証。
 - 画面ロック時（`isSuspendedUnderLock`）の挙動は未測定（同じ制約がかかる見込み）。
