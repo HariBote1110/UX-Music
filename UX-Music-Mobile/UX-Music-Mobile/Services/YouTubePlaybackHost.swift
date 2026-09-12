@@ -1,3 +1,4 @@
+import AVKit
 import Foundation
 import UIKit
 import WebKit
@@ -20,6 +21,11 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
     let webView: WKWebView
     private let parkingView: UIView
     private(set) var isLowQuality = false
+    private var pictureInPictureFrame: WKFrameInfo?
+    private var pictureInPictureSupports = false
+    private var pictureInPictureEnterContinuation: CheckedContinuation<Bool, Never>?
+    private(set) var pictureInPictureMode: YouTubeEmbedPlayer.PresentationMode = .unknown
+    private(set) var isPictureInPictureAvailable = false
 
     /// Physical-pixel target used to let YouTube's native player-size quality selection settle
     /// at its approximately 360p floor on cellular data.
@@ -28,13 +34,18 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
     /// Called whenever the embedded player reports a bridge event (ready/state/time/error/quality).
     var onEvent: ((YouTubeEmbedPlayer.BridgeEvent) -> Void)?
 
+    /// Called when PiP mode or availability changes for the current embedded video.
+    var onPictureInPictureModeChange: ((YouTubeEmbedPlayer.PresentationMode) -> Void)?
+
     /// Isolated `WKContentWorld` for the native bridge handler. See the long comment in `init()`
     /// for why this cannot simply be the default `.page` world.
     private static let bridgeContentWorld = WKContentWorld.world(name: "uxYouTubeBridge")
+    private static let pictureInPictureContentWorld = WKContentWorld.world(name: "uxYouTubePiP")
 
     override init() {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
+        config.allowsPictureInPictureMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.scrollView.isScrollEnabled = false
@@ -76,12 +87,76 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
             in: Self.bridgeContentWorld
         )
         webView.configuration.userContentController.addUserScript(relayScript)
+
+        webView.configuration.userContentController.add(
+            self,
+            contentWorld: Self.pictureInPictureContentWorld,
+            name: "uxYouTubePiP"
+        )
+        let pictureInPictureSource = """
+        (function () {
+            'use strict';
+            var observedVideo = null;
+            var lastPayload = '';
+
+            function report() {
+                var nextVideo = document.querySelector('video');
+                if (nextVideo !== observedVideo) {
+                    if (observedVideo) {
+                        observedVideo.removeEventListener('webkitpresentationmodechanged', report);
+                    }
+                    observedVideo = nextVideo;
+                    lastPayload = '';
+                    if (observedVideo) {
+                        observedVideo.addEventListener('webkitpresentationmodechanged', report);
+                    }
+                }
+
+                var supportsPiP = false;
+                var mode = 'unknown';
+                if (observedVideo) {
+                    mode = observedVideo.webkitPresentationMode || 'inline';
+                    try {
+                        supportsPiP = typeof observedVideo.webkitSupportsPresentationMode === 'function'
+                            && observedVideo.webkitSupportsPresentationMode('picture-in-picture');
+                    } catch (e) {
+                        supportsPiP = false;
+                    }
+                }
+                var payload = {
+                    hasVideo: !!observedVideo,
+                    mode: mode,
+                    supportsPiP: !!supportsPiP
+                };
+                var serialised = JSON.stringify(payload);
+                if (serialised === lastPayload) return;
+                lastPayload = serialised;
+                try {
+                    window.webkit.messageHandlers.uxYouTubePiP.postMessage(payload);
+                } catch (e) { /* The native handler may be unavailable during teardown. */ }
+            }
+
+            report();
+            setInterval(report, 1000);
+        })();
+        """
+        let pictureInPictureScript = WKUserScript(
+            source: pictureInPictureSource,
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: false,
+            in: Self.pictureInPictureContentWorld
+        )
+        webView.configuration.userContentController.addUserScript(pictureInPictureScript)
     }
 
     /// Loads the loopback embed page for `videoID`, starting the shared loopback server first if
     /// this is the first video played this session. A web view without a window is parked before
     /// returning so playback can start from the Library or mini player without opening Now Playing.
     func load(videoID: String, lowQuality: Bool = false) async throws {
+        if pictureInPictureMode == .pictureInPicture {
+            await exitPictureInPicture()
+        }
+        resetPictureInPictureState()
         if isLowQuality != lowQuality {
             setLowQuality(lowQuality)
         }
@@ -97,6 +172,68 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
         if webView.window == nil {
             park()
         }
+    }
+
+    /// Requests PiP on the YouTube iframe's own frame. The mode-change event is the success
+    /// signal because WebKit may accept the JavaScript request before the system PiP window opens;
+    /// see `mobile_youtube_background_research/notes/background-pause.md` §B-4.
+    func enterPictureInPicture() async -> Bool {
+        guard isPictureInPictureAvailable, let frame = pictureInPictureFrame else { return false }
+        if pictureInPictureMode == .pictureInPicture { return true }
+        guard pictureInPictureEnterContinuation == nil else { return false }
+
+        let script = """
+        (function () {
+            var v = document.querySelector('video');
+            if (!v || v.disablePictureInPicture || typeof v.webkitSetPresentationMode !== 'function') {
+                return false;
+            }
+            try {
+                v.webkitSetPresentationMode('picture-in-picture');
+                return true;
+            } catch (e) {
+                return false;
+            }
+        })()
+        """
+        do {
+            let result = try await webView.callAsyncJavaScript(
+                script,
+                arguments: [:],
+                in: frame,
+                contentWorld: Self.pictureInPictureContentWorld
+            )
+            let accepted = (result as? Bool) ?? (result as? NSNumber)?.boolValue ?? false
+            guard accepted else { return false }
+        } catch {
+            return false
+        }
+
+        if pictureInPictureMode == .pictureInPicture { return true }
+        return await waitForPictureInPictureMode()
+    }
+
+    /// Requests the iframe video to return to inline presentation.
+    func exitPictureInPicture() async {
+        guard let frame = pictureInPictureFrame else { return }
+        let script = """
+        (function () {
+            var v = document.querySelector('video');
+            if (!v || typeof v.webkitSetPresentationMode !== 'function') return false;
+            try {
+                v.webkitSetPresentationMode('inline');
+                return true;
+            } catch (e) {
+                return false;
+            }
+        })()
+        """
+        _ = try? await webView.callAsyncJavaScript(
+            script,
+            arguments: [:],
+            in: frame,
+            contentWorld: Self.pictureInPictureContentWorld
+        )
     }
 
     /// Applies the low-quality player-size policy to the current web view location and the page.
@@ -170,11 +307,90 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
     }
 
     nonisolated func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any],
-              let event = YouTubeEmbedPlayer.parseBridgeMessage(body)
-        else { return }
-        MainActor.assumeIsolated {
-            onEvent?(event)
+        if message.name == "uxYouTube" {
+            guard let body = message.body as? [String: Any],
+                  let event = YouTubeEmbedPlayer.parseBridgeMessage(body)
+            else { return }
+            MainActor.assumeIsolated {
+                onEvent?(event)
+            }
+            return
         }
+
+        guard message.name == "uxYouTubePiP",
+              let body = message.body as? [String: Any],
+              let payload = YouTubeEmbedPlayer.parsePictureInPictureMessage(body)
+        else { return }
+        let frameInfo = message.frameInfo
+        MainActor.assumeIsolated {
+            handlePictureInPictureMessage(payload, frameInfo: frameInfo)
+        }
+    }
+
+    private func resetPictureInPictureState() {
+        pictureInPictureFrame = nil
+        pictureInPictureSupports = false
+        resolvePictureInPictureEnter(false)
+        publishPictureInPictureState(mode: .unknown, available: false)
+    }
+
+    private func handlePictureInPictureMessage(
+        _ payload: YouTubeEmbedPlayer.PictureInPictureMessage,
+        frameInfo: WKFrameInfo
+    ) {
+        if payload.hasVideo {
+            pictureInPictureFrame = frameInfo
+            pictureInPictureSupports = payload.supportsPiP
+            publishPictureInPictureState(
+                mode: payload.mode,
+                available: pictureInPictureFrame != nil
+                    && pictureInPictureSupports
+                    && AVPictureInPictureController.isPictureInPictureSupported()
+            )
+            return
+        }
+
+        // A top-level document can report no video before the late-created YouTube iframe does.
+        // Do not discard a known iframe frame because of that unrelated report. A no-video report
+        // from the known frame, however, invalidates that frame and its capabilities.
+        if let knownFrame = pictureInPictureFrame {
+            guard knownFrame.isEqual(frameInfo) else { return }
+            pictureInPictureFrame = nil
+        }
+        pictureInPictureSupports = false
+        publishPictureInPictureState(mode: .unknown, available: false)
+    }
+
+    private func publishPictureInPictureState(
+        mode: YouTubeEmbedPlayer.PresentationMode,
+        available: Bool
+    ) {
+        let modeChanged = pictureInPictureMode != mode
+        let availabilityChanged = isPictureInPictureAvailable != available
+        pictureInPictureMode = mode
+        isPictureInPictureAvailable = available
+        if mode == .pictureInPicture {
+            resolvePictureInPictureEnter(true)
+        }
+        if modeChanged || availabilityChanged {
+            onPictureInPictureModeChange?(mode)
+        }
+    }
+
+    private func waitForPictureInPictureMode() async -> Bool {
+        if pictureInPictureMode == .pictureInPicture { return true }
+        return await withCheckedContinuation { continuation in
+            pictureInPictureEnterContinuation = continuation
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                self?.resolvePictureInPictureEnter(false)
+            }
+        }
+    }
+
+    private func resolvePictureInPictureEnter(_ entered: Bool) {
+        guard let continuation = pictureInPictureEnterContinuation else { return }
+        pictureInPictureEnterContinuation = nil
+        continuation.resume(returning: entered)
     }
 }

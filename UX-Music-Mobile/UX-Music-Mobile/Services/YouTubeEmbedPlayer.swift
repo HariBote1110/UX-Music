@@ -53,6 +53,18 @@ enum YouTubeEmbedPlayer {
         case quality(String)
     }
 
+    enum PresentationMode: Equatable {
+        case inline
+        case pictureInPicture
+        case unknown
+    }
+
+    struct PictureInPictureMessage: Equatable {
+        let hasVideo: Bool
+        let mode: PresentationMode
+        let supportsPiP: Bool
+    }
+
     enum Command: Equatable {
         case play
         case pause
@@ -187,10 +199,33 @@ enum YouTubeEmbedPlayer {
         }
     }
 
+    /// Decodes the all-frames PiP capability/status payload from the isolated WebKit script.
+    /// The cross-origin iframe is intentionally represented only by its frame metadata on the
+    /// native side; see `mobile_youtube_background_research/notes/background-pause.md` §B-4.
+    static func parsePictureInPictureMessage(_ body: [String: Any]) -> PictureInPictureMessage? {
+        guard let hasVideo = boolValue(body["hasVideo"]),
+              let supportsPiP = boolValue(body["supportsPiP"])
+        else { return nil }
+
+        let mode: PresentationMode
+        switch body["mode"] as? String {
+        case "inline": mode = .inline
+        case "picture-in-picture": mode = .pictureInPicture
+        default: mode = .unknown
+        }
+        return PictureInPictureMessage(hasVideo: hasVideo, mode: mode, supportsPiP: supportsPiP)
+    }
+
     private static func numberValue(_ value: Any?) -> Double? {
         if let d = value as? Double { return d }
         if let i = value as? Int { return Double(i) }
         if let n = value as? NSNumber { return n.doubleValue }
+        return nil
+    }
+
+    private static func boolValue(_ value: Any?) -> Bool? {
+        if let b = value as? Bool { return b }
+        if let n = value as? NSNumber { return n.boolValue }
         return nil
     }
 

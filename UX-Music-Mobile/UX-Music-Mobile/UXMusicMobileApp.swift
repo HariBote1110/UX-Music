@@ -67,7 +67,7 @@ struct UXMusicMobileApp: App {
         }
         // `UXM_DEBUG_YT_SERVICE=1` plays a synthetic YouTube `Song` through `MusicPlayerService.play`
         // (with the desktop resolver stubbed out) instead of driving the host directly, so the
-        // service-level behaviour — e.g. pausing on background and resuming on foreground — can be
+        // service-level behaviour — e.g. PiP entry and the unavailable-device fallback — can be
         // observed without a paired desktop.
         if ProcessInfo.processInfo.environment["UXM_DEBUG_YT_SERVICE"] == "1" {
             let watchURL = "https://www.youtube.com/watch?v=\(videoID)"
