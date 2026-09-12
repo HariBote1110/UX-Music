@@ -269,8 +269,44 @@ C-1 の結果（全画面を経由すれば自動 PiP になる）を受けて�
   放送型で PC の再生と連動し、クライアントごとに別曲は不可（`project_youtube` の既定方針どおり）。
   PC 無し・外出先では使えないため、その場合は PiP / 一時停止＋復帰へのフォールバックが必要。
 
+### WebKit の公開仕様と YouTube 規約の調査（2026-09-12、Web 調査＋原文確認）
+WebKit / Apple 側（読み取り専用サブエージェントによる調査。WebKit ソースの該当行までは未特定）:
+- WKWebView のインライン `<video>` から、ユーザー操作なしで自動 PiP にする公開 API はない（Apple DTS のフォーラム回答）。
+  `AVPlayerViewController.canStartPictureInPictureAutomaticallyFromInline` は AVPlayerViewController ベースの再生専用で、
+  WebKit のインライン再生には効かない。自動 PiP は全画面からの遷移時のみ（C-1 の実測と一致）。
+- `UIBackgroundModes=audio`＋`.playback` でも WKWebView 内のメディアはバックグラウンドで止まる、という報告が
+  iOS 13 以降繰り返しある（WebKit Bugzilla #203293 など）。継続するのは PiP 中・AirPlay 中などの例外のみ。
+
+YouTube API 規約（原文を WebFetch で確認）:
+- Developer Policies III.I.9: 「create, include, or promote features that play content…from a background player」→ **禁止**。
+- Developer Policies III.I.7: 「separate, isolate, or modify the audio or video components」→ **禁止**。
+- Developer Policies III.I.6: プレイヤーの一部・機能の改変・ブロックを禁止。PiP 自体への明記はない。
+- Required Minimum Functionality: 「Embedded players must have a viewport that is at least 200px by 200px.」、
+  プレイヤー前面へのオーバーレイ禁止、自動再生はプレイヤーが表示され半分以上見えている場合のみ。
+
+規約から見た各方式の位置付け（解釈。法的判断ではない）:
+| 方式 | 規約上の懸念 |
+| :--- | :--- |
+| プレイヤーを見せずにバックグラウンドで音声継続（WebKit 延命・非公開設定） | III.I.9 に正面から該当 |
+| 候補D: PC の再生音をタップして iPhone へ音声のみ中継 | III.I.7（音声の分離・抽出）に該当する可能性が高い |
+| PiP（システムの PiP ウィンドウにプレイヤーが表示されたまま再生） | 明記なし。プレイヤーは可視だがグレー |
+| 既存の非表示パーキング（画面外・alpha 0.01・256x144pt） | RMF の最小 200x200・可視要件に反する可能性 |
+| 既存の低画質化（WebView を約 85x48pt に縮小して拡大表示） | RMF の最小 200x200 に反する可能性 |
+
+### ユーザー判断（2026-09-12）
+- **YouTube API 規約は考慮しない。法律上問題がなければ可。** 既存のパーキング・低画質化の規約懸念は「後で決める」。
+- プロジェクト原則（法律とクリエイター還元を守る）は維持するため、公式 embed を経由しない抽出再生（yt-dlp 等）は候補から外す。
+
+この基準で「滑らかなバックグラウンド再生」の候補を絞ると:
+| 候補 | 滑らかさ | 前提・リスク |
+| :--- | :--- | :--- |
+| D: LAN 中継（PC の公式再生音声を iPhone で音声ストリーム再生） | ホームスワイプ・ロックで途切れない見込み | PC の GUI 版起動が必須。配線はほぼ既存 |
+| E: WebKit の非公開設定でバックグラウンドの動画停止を外す | 単体で途切れない見込み | 設定の存在自体が未確認。App Store 審査・OS 更新で壊れるリスク |
+| PiP（全画面経由の自動 PiP / 手動 PiP ボタン） | 操作を挟むので滑らかではない | 実機で成立済み（B-4 / C-1） |
+
 ## 次の一手 / 未検証事項
-- 方式の決定（ユーザー判断待ち）: WebKit 内の経路の調査結果（別途調査中）と候補D を並べて提示する。
+- 候補E の実在確認: WebKit ソース上でバックグラウンド時に動画を止める判定箇所と、それを外す設定（公開・非公開）を特定する（調査中）。
+- その結果を踏まえ、D と E のどちらで作るかをユーザーに確認する。
 - 20:24:08 の一時停止の原因（ユーザーが PiP ウィンドウを操作したか）。
 - 20:17:24（G-2）のページ再読み込みの原因。
 - PiP 開始のトリガー時刻（フォアグラウンド中に要求したケースのみ確認済み。`didEnterBackground`
