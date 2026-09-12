@@ -155,8 +155,27 @@
 - 結論: **仮説B は実機で成立。** ネイティブから YouTube iframe の `video` を PiP にでき、PiP 中は
   バックグラウンドでも再生が継続する。SIGKILL も観測されなかった（再生中はサスペンドされない）。
 
+### G-1: 本実装（フェーズG）を実機で検証 — トリガー `.didEnterBackground`
+手順: `verify_pip_device_service.sh`（検証時は scratchpad）。`UXM_DEBUG_YT_SERVICE=1` で
+`MusicPlayerService` 経由（unmute される経路）で再生 → 20 秒後に設定アプリを前面へ → 20 秒後に UX Music へ戻す。
+ログは `devicectl device process launch --console` の出力。
+
+| 時刻 | 観測 |
+| :--- | :--- |
+| 20:15:26.48 | `didEnterBackground` → `[UXM_YT_PIP] entering trigger=didEnterBackground` |
+| 20:15:26.63 | WebKit から `paused` |
+| 20:15:26.76 | `[UXM_YT_PIP] failed trigger=didEnterBackground` → フォールバック（一時停止＋復帰時再開） |
+| 20:15:40.52 / 20:15:45.06 | 同じ流れ（`paused` 約 0.2 秒後 → `failed` → フォールバック） |
+| 20:16:05〜06 | フォアグラウンド復帰 → `buffering` → `playing`（フォールバックの再開は機能） |
+
+- `unavailable` は一度も出ておらず、フレーム検出・可用性判定は正常。
+- ユーザー目視: バックグラウンド中は PiP ウィンドウが出ず、音も止まった。
+- 20:15:26 / 20:15:40 の前後の往復はスクリプトの切り替え前に発生しており、`devicectl` のアタッチ由来とみられる。
+- 結論: **`didEnterBackground` 時点での PiP 要求は常に失敗する**（通知の約 0.2 秒後には WebKit が
+  インライン動画を止めており、その後の PiP 要求は通らない）。トリガーを `willResignActive` に変更して再検証する。
+
 ## 次の一手 / 未検証事項
-- 本実装（PiP 方式）後、`UXM_DEBUG_YT_SERVICE=1`（unmute される経路）で実機再検証し音声も確認する。
+- G-2: トリガー `.willResignActive` で実機再検証（PiP ウィンドウ・音声・復帰時の PiP 終了）。
 - PiP 開始のトリガー時刻（フォアグラウンド中に要求したケースのみ確認済み。`didEnterBackground`
   時点での要求が通るかは未検証）。（バックグラウンド移行時に PiP へ遷移させれば WebKit の制約上は継続再生が許可される）。
   YouTube iframe はクロスオリジンのため、ページ側から video 要素の PiP を操作できるかは未検証。
