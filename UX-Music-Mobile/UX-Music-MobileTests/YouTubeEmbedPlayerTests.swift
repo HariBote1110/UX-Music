@@ -51,6 +51,66 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
         XCTAssertNil(YouTubeEmbedPlayer.parseBridgeMessage([:]))
     }
 
+    func testParsePictureInPictureMessageForInlineVideo() {
+        let message = YouTubeEmbedPlayer.parsePictureInPictureMessage([
+            "hasVideo": true,
+            "mode": "inline",
+            "supportsPiP": true,
+        ])
+
+        XCTAssertEqual(
+            message,
+            YouTubeEmbedPlayer.PictureInPictureMessage(
+                hasVideo: true,
+                mode: .inline,
+                supportsPiP: true
+            )
+        )
+    }
+
+    func testParsePictureInPictureMessageForPictureInPictureVideo() {
+        let message = YouTubeEmbedPlayer.parsePictureInPictureMessage([
+            "hasVideo": true,
+            "mode": "picture-in-picture",
+            "supportsPiP": true,
+        ])
+
+        XCTAssertEqual(message?.mode, .pictureInPicture)
+    }
+
+    func testParsePictureInPictureMessageForMissingVideo() {
+        let message = YouTubeEmbedPlayer.parsePictureInPictureMessage([
+            "hasVideo": false,
+            "mode": "unknown",
+            "supportsPiP": false,
+        ])
+
+        XCTAssertEqual(
+            message,
+            YouTubeEmbedPlayer.PictureInPictureMessage(
+                hasVideo: false,
+                mode: .unknown,
+                supportsPiP: false
+            )
+        )
+    }
+
+    func testParsePictureInPictureMessageMapsUnknownModeToUnknown() {
+        let message = YouTubeEmbedPlayer.parsePictureInPictureMessage([
+            "hasVideo": true,
+            "mode": "future-mode",
+            "supportsPiP": false,
+        ])
+
+        XCTAssertEqual(message?.mode, .unknown)
+    }
+
+    func testParsePictureInPictureMessageRejectsMalformedPayload() {
+        XCTAssertNil(YouTubeEmbedPlayer.parsePictureInPictureMessage(["hasVideo": true]))
+        XCTAssertNil(YouTubeEmbedPlayer.parsePictureInPictureMessage(["mode": "inline", "supportsPiP": true]))
+        XCTAssertNil(YouTubeEmbedPlayer.parsePictureInPictureMessage(["hasVideo": "true", "mode": "inline", "supportsPiP": true]))
+    }
+
     func testCommandJSONPlayPauseSeek() {
         XCTAssertEqual(YouTubeEmbedPlayer.commandScript(.play), "window.uxYouTubeCommand({cmd:'play'});")
         XCTAssertEqual(YouTubeEmbedPlayer.commandScript(.pause), "window.uxYouTubeCommand({cmd:'pause'});")
