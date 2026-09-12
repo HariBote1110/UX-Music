@@ -499,8 +499,23 @@ YouTube API 規約（原文を WebFetch で確認）:
 - 結論: **問題1・2 とも解消。** PiP からインラインに戻る際の一瞬の停止（約 0.35 秒）は、WebKit が PiP 終了時に
   必ず一時停止するため残るが、自動で再開する。
 
+### H-4: 実機で Now Playing の PiP ボタン → ホームスワイプ（ユーザー手動操作）
+手順: `verify_manual_device.sh pipbutton 150 --no-build`（検証時は scratchpad）。`UXM_DEBUG_YT_SERVICE=1` ＋
+`UXM_DEBUG_YT_OPEN_NOW_PLAYING=1` で起動し、ユーザーが PiP ボタンを押してホームへスワイプ、10 秒後に復帰。
+
+| 時刻 | 観測 |
+| :--- | :--- |
+| 21:31:33.43 | `opened Now Playing` |
+| 21:31:34.52 | `playing` |
+| 21:32:22.81 | `background decision=fallback mode=inline` → 一時停止（1.5 秒後に復帰・再開） |
+| 21:32:27.39 | 同じく `fallback mode=inline` → 一時停止（1.2 秒後に復帰・再開） |
+
+- ユーザー目視: ホームに戻ったら止まった。
+- **PiP ボタンの処理が一度も呼ばれていない**（`entering` / `PiP JS request` / `unavailable` / `PiP entered` のいずれのログも無い）。
+  バックグラウンド移行時の mode は 2 回とも `inline`。ボタンの表示・タップの到達のどちらに問題があるか切り分け中。
+
 ## 次の一手 / 未検証事項
-- 「インライン表示中に PiP ボタン → ホームで継続」の実機確認（ユーザーのタップが必要）。
+- H-4 の原因特定（PiP ボタンが表示されていない／タップが届いていない／別の場所を押している）。
 - 画面ロック中（PiP 継続中のロック）の挙動。
 - 画面ロック中（PiP 継続中のロック）の挙動は未検証。
 - 20:24:08 の一時停止の原因（ユーザーが PiP ウィンドウを操作したか）。
