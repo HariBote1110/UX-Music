@@ -48,10 +48,36 @@ struct UXMusicMobileApp: App {
         }
         NSLog("[UXM_DEBUG_YT] starting debug autoplay for videoID=%@", videoID)
         let host = model.player.youtubePlaybackHost
+        let player = model.player
         let previousHandler = host.onEvent
         host.onEvent = { event in
-            NSLog("[UXM_DEBUG_YT] bridge event=%@", String(describing: event))
             previousHandler?(event)
+            NSLog("[UXM_DEBUG_YT] bridge event=%@ isPlaying=%d", String(describing: event), player.isPlaying ? 1 : 0)
+        }
+        for name in [
+            UIApplication.didEnterBackgroundNotification,
+            UIApplication.willEnterForegroundNotification,
+            UIApplication.didBecomeActiveNotification,
+        ] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated {
+                    NSLog("[UXM_DEBUG_YT] lifecycle %@ isPlaying=%d", name.rawValue, player.isPlaying ? 1 : 0)
+                }
+            }
+        }
+        // `UXM_DEBUG_YT_SERVICE=1` plays a synthetic YouTube `Song` through `MusicPlayerService.play`
+        // (with the desktop resolver stubbed out) instead of driving the host directly, so the
+        // service-level behaviour — e.g. pausing on background and resuming on foreground — can be
+        // observed without a paired desktop.
+        if ProcessInfo.processInfo.environment["UXM_DEBUG_YT_SERVICE"] == "1" {
+            let watchURL = "https://www.youtube.com/watch?v=\(videoID)"
+            let song = Song(id: "debug-yt-\(videoID)", path: watchURL, title: "Debug YouTube", sourceType: .youtube, sourceURL: watchURL)
+            player.resolveYouTubeVideoID = { _ in videoID }
+            Task {
+                await player.play(song, newQueue: [song])
+                NSLog("[UXM_DEBUG_YT] service play(_:newQueue:) returned")
+            }
+            return
         }
         Task {
             do {

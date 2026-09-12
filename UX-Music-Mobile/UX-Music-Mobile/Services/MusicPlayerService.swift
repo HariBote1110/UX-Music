@@ -205,6 +205,8 @@ final class MusicPlayerService {
     /// via `AVAudioEngine`. SwiftUI only ever borrows `youtubePlaybackHost.webView` for display
     /// (see `YouTubeEmbedHostContainerView`).
     let youtubePlaybackHost = YouTubePlaybackHost()
+    private var applicationDidEnterBackgroundObserver: NSObjectProtocol?
+    private var applicationWillEnterForegroundObserver: NSObjectProtocol?
     let networkCostMonitor = NetworkCostMonitor()
     /// Whether the user has enabled low-quality YouTube playback on cellular data.
     var youtubeLowQualityOnCellular = true {
@@ -231,6 +233,11 @@ final class MusicPlayerService {
     private(set) var youtubePlaybackJustSkippedMessage: String?
     /// Bumped on every `loadAndPlayYouTube`/backend switch so a bridge event from a superseded video is ignored.
     private var youtubePlaybackGeneration: UInt64 = 0
+    /// Tracks the app lifecycle for deterministic handling of remote commands delivered in the background.
+    private var isAppInBackground = false
+    /// Set when a YouTube play request must wait for the app to return to the foreground.
+    private var youtubeResumePendingAfterBackground = false
+    private var youtubeResumeGeneration: UInt64?
     /// Caches `resolveYouTubeVideoID(song)` results by song id so replaying the same Library song
     /// does not re-hit the desktop's `resolveYouTubeVideo` LAN endpoint every time.
     private var youtubeVideoIDCache: [String: String] = [:]
@@ -386,6 +393,7 @@ final class MusicPlayerService {
         networkCostMonitor.onCellularStatusChange = { [weak self] _ in
             self?.updateYouTubeLowQuality()
         }
+        addYouTubeAppLifecycleObservers()
         updateYouTubeLowQuality()
         #endif
     }
@@ -886,6 +894,97 @@ final class MusicPlayerService {
     // Phase 2 and will not call these.
     #if !os(tvOS)
 
+    private func addYouTubeAppLifecycleObservers() {
+        applicationDidEnterBackgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                self.handleYouTubeDidEnterBackground()
+            }
+        }
+        applicationWillEnterForegroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                self.handleYouTubeWillEnterForeground()
+            }
+        }
+    }
+
+    private func handleYouTubeDidEnterBackground() {
+        isAppInBackground = true
+        let decision = YouTubeBackgroundResumePolicy.onEnterBackground(
+            isYouTubeSong: currentSong?.isYouTube == true,
+            isPlaying: isPlaying
+        )
+        if decision.pauseNow {
+            youtubePlaybackHost.send(.pause)
+            isPlaying = false
+            updateNowPlayingCentre()
+        }
+        if decision.resumeOnForeground {
+            youtubeResumePendingAfterBackground = true
+            youtubeResumeGeneration = youtubePlaybackGeneration
+        } else {
+            clearYouTubeResumePending()
+        }
+    }
+
+    private func handleYouTubeWillEnterForeground() {
+        isAppInBackground = false
+        let shouldResume = YouTubeBackgroundResumePolicy.onEnterForeground(
+            resumePending: youtubeResumePendingAfterBackground,
+            isYouTubeSong: currentSong?.isYouTube == true
+        ) && youtubeResumeGeneration == youtubePlaybackGeneration
+        clearYouTubeResumePending()
+        if shouldResume {
+            youtubePlaybackHost.send(.play)
+        }
+    }
+
+    private func clearYouTubeResumePending() {
+        youtubeResumePendingAfterBackground = false
+        youtubeResumeGeneration = nil
+    }
+
+    /// Defers a YouTube play request until foreground because WebKit cannot resume this video in
+    /// the background; see `mobile_youtube_background_research/notes/background-pause.md`.
+    private func deferYouTubePlayUntilForeground() {
+        youtubeResumePendingAfterBackground = true
+        youtubeResumeGeneration = youtubePlaybackGeneration
+        isPlaying = false
+        updateNowPlayingCentre()
+    }
+
+    private func requestYouTubePlay() {
+        if isAppInBackground {
+            switch YouTubeBackgroundResumePolicy.onRemotePlayWhileBackgrounded(isYouTubeSong: true) {
+            case .deferUntilForeground:
+                deferYouTubePlayUntilForeground()
+                return
+            case .playNow:
+                break
+            }
+        }
+        clearYouTubeResumePending()
+        youtubePlaybackHost.send(.play)
+        isPlaying = true
+        updateNowPlayingCentre()
+    }
+
+    private func pauseYouTubeAndClearResumePending() {
+        youtubePlaybackHost.send(.pause)
+        clearYouTubeResumePending()
+        isPlaying = false
+        updateNowPlayingCentre()
+    }
+
     /// Stops the embed player without touching `queue`/`currentSong` — used when switching the
     /// active backend to local playback, and from `stop()`. The `WKWebView` itself is not
     /// destroyed (see `YouTubePlaybackHost`) — only paused.
@@ -953,9 +1052,11 @@ final class MusicPlayerService {
     }
 
     private func toggleYouTubePlayPause() {
-        youtubePlaybackHost.send(isPlaying ? .pause : .play)
-        isPlaying.toggle()
-        updateNowPlayingCentre()
+        if isPlaying {
+            pauseYouTubeAndClearResumePending()
+        } else {
+            requestYouTubePlay()
+        }
     }
 
     /// Routes IFrame Player API events (via `YouTubePlaybackHost.onEvent`) into the unified
@@ -971,6 +1072,8 @@ final class MusicPlayerService {
             youtubePlaybackErrorMessage = nil
             updateNowPlayingCentre()
         case .state(.paused):
+            // This is the expected WebKit pause during backgrounding; keep any pending foreground
+            // resume so the matching `.state(.playing)` can arrive after returning to the app.
             isPlaying = false
             updateNowPlayingCentre()
         case .state(.ended):
@@ -1213,6 +1316,12 @@ final class MusicPlayerService {
 
     private func remoteResumeAfterPlayCommand() -> MPRemoteCommandHandlerStatus {
         guard let song = currentSong else { return .commandFailed }
+        #if !os(tvOS)
+        if song.isYouTube {
+            requestYouTubePlay()
+            return .success
+        }
+        #endif
         if currentAudioFile == nil {
             let generation = playGeneration.bump()
             Task { @MainActor [weak self] in
@@ -1374,6 +1483,12 @@ final class MusicPlayerService {
                 guard let self else { return .commandFailed }
                 self.activateSessionIfNeededSync()
                 guard self.currentSong != nil else { return .commandFailed }
+                #if !os(tvOS)
+                if let song = self.currentSong, song.isYouTube {
+                    self.pauseYouTubeAndClearResumePending()
+                    return .success
+                }
+                #endif
                 self.frozenPositionWhilePaused = self.currentTimelineSeconds()
                 self.playerNode.pause()
                 self.engine.stop()
@@ -1389,6 +1504,12 @@ final class MusicPlayerService {
                 guard let self else { return .commandFailed }
                 self.activateSessionIfNeededSync()
                 guard self.currentSong != nil else { return .commandFailed }
+                #if !os(tvOS)
+                if let song = self.currentSong, song.isYouTube {
+                    self.toggleYouTubePlayPause()
+                    return .success
+                }
+                #endif
                 if self.playerNode.isPlaying {
                     self.frozenPositionWhilePaused = self.currentTimelineSeconds()
                     self.playerNode.pause()
