@@ -82,10 +82,18 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     private var currentIndex = 0
     private var timeObserver: Any?
     private let library: WatchLocalLibrary
+    private let audioSessionQueue = DispatchQueue(
+        label: "WatchAudioPlayer.audioSession",
+        qos: .userInitiated
+    )
     /// The policy last successfully activated, or `nil` if activation has never succeeded (or has
     /// since failed). Feeds `WatchAudioActivationPolicy.plan` so `activateAudioSession` can skip
     /// redundant `setCategory`/`activate` calls only when the policy still matches the preference.
     private var activatedPolicy: WatchAudioActivationPolicy.ActivatedPolicy?
+    private var activationInFlight = false
+    private var pendingActivationCompletions: [ActivationCompletion] = []
+
+    private typealias ActivationCompletion = @MainActor @Sendable (Bool) -> Void
 
     init(library: WatchLocalLibrary) {
         self.library = library
@@ -114,22 +122,37 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             saveResumeState()
         }
 
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setActive(false, options: [])
-        } catch {
-            print("[WatchAudioPlayer] setActive(false) error while changing output preference: \(error)")
-        }
-        activatedPolicy = nil
-        routeError = nil
-        isSpeakerFallback = false
+        let finishDeactivation: @MainActor @Sendable (String?) -> Void = { [weak self] errorDescription in
+            guard let self else { return }
+            if let errorDescription {
+                print("[WatchAudioPlayer] setActive(false) error while changing output preference: \(errorDescription)")
+            }
+            self.activatedPolicy = nil
+            self.routeError = nil
+            self.isSpeakerFallback = false
 
-        activateAudioSession { [weak self] activated in
-            guard let self, wasPlaying, activated else { return }
-            self.player?.play()
-            self.isPlaying = true
-            self.updateNowPlayingInfo()
-            self.saveResumeState()
+            self.activateAudioSession { [weak self] activated in
+                guard let self, wasPlaying, activated else { return }
+                self.player?.play()
+                self.isPlaying = true
+                self.updateNowPlayingInfo()
+                self.saveResumeState()
+            }
+        }
+
+        audioSessionQueue.async { [finishDeactivation] in
+            let errorDescription: String?
+            do {
+                let session = AVAudioSession.sharedInstance()
+                try session.setActive(false, options: [])
+                errorDescription = nil
+            } catch {
+                errorDescription = String(describing: error)
+            }
+
+            Task { @MainActor in
+                finishDeactivation(errorDescription)
+            }
         }
     }
 
@@ -292,7 +315,14 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
 
     /// Activates the ordered attempts selected by the output preference. A speaker attempt never
     /// supplies a route-sharing policy, so it cannot show the long-form route picker.
-    private func activateAudioSession(completion: @escaping (Bool) -> Void) {
+    private func activateAudioSession(completion: @escaping ActivationCompletion) {
+        if activationInFlight {
+            pendingActivationCompletions.append(completion)
+            return
+        }
+
+        activationInFlight = true
+        pendingActivationCompletions = [completion]
         let bluetoothDetected = bluetoothOutputDetected()
         let plan = WatchAudioActivationPolicy.plan(
             previouslyActivated: activatedPolicy,
@@ -301,7 +331,7 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         )
         print("[WatchAudioPlayer] activateAudioSession: previouslyActivated=\(String(describing: activatedPolicy)) preference=\(outputPreference) plan=\(plan)")
         guard plan != .skip else {
-            completion(true)
+            finishActivation(true)
             return
         }
 
@@ -311,14 +341,24 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
                 bluetoothDetected: bluetoothDetected
             ),
             index: 0,
-            completion: completion
+            completion: { [weak self] activated in
+                self?.finishActivation(activated)
+            }
         )
+    }
+
+    private func finishActivation(_ activated: Bool) {
+        guard activationInFlight else { return }
+        activationInFlight = false
+        let completions = pendingActivationCompletions
+        pendingActivationCompletions.removeAll()
+        completions.forEach { $0(activated) }
     }
 
     private func activateNext(
         attempts: [WatchAudioRoutePolicy.Attempt],
         index: Int,
-        completion: @escaping (Bool) -> Void
+        completion: @escaping ActivationCompletion
     ) {
         guard index < attempts.count else {
             activatedPolicy = nil
@@ -378,30 +418,41 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         category: AVAudioSession.Category,
         mode: AVAudioSession.Mode,
         policy: AVAudioSession.RouteSharingPolicy?,
-        completion: @escaping (Bool) -> Void
+        completion: @escaping ActivationCompletion
     ) {
         let policyDescription = policy.map(String.init(describing:)) ?? "default"
+        let categoryRawValue = category.rawValue
+        let modeRawValue = mode.rawValue
+        let usesLongFormPolicy = policy != nil
         print("[WatchAudioPlayer] activate: attempting category=\(category.rawValue) mode=\(mode.rawValue) policy=\(policyDescription)")
-        let session = AVAudioSession.sharedInstance()
-        do {
-            if let policy {
-                try session.setCategory(category, mode: mode, policy: policy)
-            } else {
-                try session.setCategory(category, mode: mode, policy: .default)
-                try session.setActive(true)
-                print("[WatchAudioPlayer] activate result: policy=\(policyDescription) activated=true error=no error")
-                completion(true)
-                return
-            }
-        } catch {
-            print("[WatchAudioPlayer] AVAudioSession activation error for policy=\(policyDescription): \(error)")
-            completion(false)
-            return
-        }
-        session.activate(options: []) { activated, error in
-            Task { @MainActor in
-                print("[WatchAudioPlayer] activate result: policy=\(policyDescription) activated=\(activated) error=\(error.map(String.init(describing:)) ?? "no error")")
-                completion(activated)
+        audioSessionQueue.async {
+            let session = AVAudioSession.sharedInstance()
+            let category = AVAudioSession.Category(rawValue: categoryRawValue)
+            let mode = AVAudioSession.Mode(rawValue: modeRawValue)
+            do {
+                if usesLongFormPolicy {
+                    try session.setCategory(category, mode: mode, policy: .longFormAudio)
+                    session.activate(options: []) { activated, error in
+                        let errorDescription = error.map(String.init(describing:)) ?? "no error"
+                        Task { @MainActor in
+                            print("[WatchAudioPlayer] activate result: policy=\(policyDescription) activated=\(activated) error=\(errorDescription)")
+                            completion(activated)
+                        }
+                    }
+                } else {
+                    try session.setCategory(category, mode: mode, policy: .default)
+                    try session.setActive(true)
+                    Task { @MainActor in
+                        print("[WatchAudioPlayer] activate result: policy=\(policyDescription) activated=true error=no error")
+                        completion(true)
+                    }
+                }
+            } catch {
+                let errorDescription = String(describing: error)
+                Task { @MainActor in
+                    print("[WatchAudioPlayer] AVAudioSession activation error for policy=\(policyDescription): \(errorDescription)")
+                    completion(false)
+                }
             }
         }
     }

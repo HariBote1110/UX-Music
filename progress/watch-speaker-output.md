@@ -17,3 +17,4 @@
 - `WatchAudioActivationPolicy` は、以前のアクティベーションポリシーが現在の設定・検出結果と一致する場合だけ再アクティベートを省略する。設定変更時は `activatedPolicy` を消去して必ず新しい計画を評価する。
 - watchOS 26.5 SDKヘッダー上、`availableInputs` / `currentRoute` / `setActive` は watchOS 2.0、long-form の非同期 `activate` は watchOS 5.0 から利用可能。実機でのスピーカー再生継続とBluetooth検出結果は親ブランチで確認する。
 - watchOSでは、route-sharing policyがなくても `activate(options:)` がシステムの「Bluetoothデバイスを選択」ルートピッカーを表示する。（2026-09-13 実機ログで確認: speaker 経路が `activated=false error=nil` を返しピッカー表示）。初期版 Watch（`1e4e6cb7^`）は `setCategory(.playback)` ＋同期 `setActive(true)` でスピーカー再生できていたため、スピーカー経路は同期 `setActive(true)` に戻した（修正後の実機確認は未了）。
+- 同期的な `AVAudioSession.setCategory` / `setActive` は main thread で UI を停止させ得るため、スピーカーの同期アクティベートを含め、専用の serial queue 上で実行する。`activate(options:)` の完了と出力切替後の再アクティベートは main actor に戻す。
