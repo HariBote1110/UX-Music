@@ -41,6 +41,11 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
         XCTAssertEqual(event, .error(code: 153))
     }
 
+    func testParseBridgeMessageQuality() {
+        let event = YouTubeEmbedPlayer.parseBridgeMessage(["type": "quality", "quality": "hd720"])
+        XCTAssertEqual(event, .quality("hd720"))
+    }
+
     func testParseBridgeMessageUnknownReturnsNil() {
         XCTAssertNil(YouTubeEmbedPlayer.parseBridgeMessage(["type": "mystery"]))
         XCTAssertNil(YouTubeEmbedPlayer.parseBridgeMessage([:]))
@@ -50,6 +55,43 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
         XCTAssertEqual(YouTubeEmbedPlayer.commandScript(.play), "window.uxYouTubeCommand({cmd:'play'});")
         XCTAssertEqual(YouTubeEmbedPlayer.commandScript(.pause), "window.uxYouTubeCommand({cmd:'pause'});")
         XCTAssertEqual(YouTubeEmbedPlayer.commandScript(.seek(seconds: 42.5)), "window.uxYouTubeCommand({cmd:'seek', seconds:42.5});")
+    }
+
+    func testCommandScriptSetLowQuality() {
+        XCTAssertEqual(
+            YouTubeEmbedPlayer.commandScript(.setLowQuality(true)),
+            "window.uxYouTubeCommand({cmd:'lowQuality', enabled:true});"
+        )
+        XCTAssertEqual(
+            YouTubeEmbedPlayer.commandScript(.setLowQuality(false)),
+            "window.uxYouTubeCommand({cmd:'lowQuality', enabled:false});"
+        )
+    }
+
+    func testShouldUseLowQualityTruthTable() {
+        let cases: [(isCellular: Bool, enabled: Bool, expected: Bool)] = [
+            (false, false, false),
+            (false, true, false),
+            (true, false, false),
+            (true, true, true),
+        ]
+
+        for testCase in cases {
+            XCTAssertEqual(
+                YouTubeEmbedPlayer.shouldUseLowQuality(
+                    isCellular: testCase.isCellular,
+                    lowQualityOnCellularEnabled: testCase.enabled
+                ),
+                testCase.expected,
+                "isCellular=\(testCase.isCellular), enabled=\(testCase.enabled)"
+            )
+        }
+    }
+
+    func testBuildEmbedHTMLContainsLowQualityCommandHandler() throws {
+        let html = try YouTubeEmbedPlayer.buildEmbedHTML(videoID: "dQw4w9WgXcQ")
+        XCTAssertTrue(html.contains("d.cmd === 'lowQuality'"))
+        XCTAssertTrue(html.contains("LOW_QUALITY_WIDTH"))
     }
 
     // MARK: - IFrame API error code -> localised user-facing message
@@ -125,6 +167,13 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
     func testLoopbackPageURLBuildsCorrectPathAndQuery() throws {
         let url = try XCTUnwrap(YouTubeEmbedPlayer.loopbackPageURL(port: 54321, videoID: "dQw4w9WgXcQ"))
         XCTAssertEqual(url.absoluteString, "http://127.0.0.1:54321/embed?v=dQw4w9WgXcQ")
+    }
+
+    func testLoopbackPageURLAddsLowQualityQueryWhenEnabled() throws {
+        let url = try XCTUnwrap(
+            YouTubeEmbedPlayer.loopbackPageURL(port: 54321, videoID: "dQw4w9WgXcQ", lowQuality: true)
+        )
+        XCTAssertEqual(url.absoluteString, "http://127.0.0.1:54321/embed?v=dQw4w9WgXcQ&lq=1")
     }
 
     func testLoopbackPageURLRejectsInvalidVideoID() {

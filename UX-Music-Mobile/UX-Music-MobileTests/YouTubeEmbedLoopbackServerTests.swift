@@ -22,6 +22,22 @@ final class YouTubeEmbedLoopbackServerTests: XCTestCase {
         XCTAssertTrue(body.contains("iframe_api"))
     }
 
+    func testServerAcceptsLowQualityQueryParameter() async throws {
+        let server = YouTubeEmbedLoopbackServer()
+        let port = try await server.ensureStarted()
+        defer { Task { await server.stop() } }
+
+        let url = try XCTUnwrap(
+            YouTubeEmbedPlayer.loopbackPageURL(port: Int(port), videoID: "dQw4w9WgXcQ", lowQuality: true)
+        )
+        let (data, response) = try await URLSession.shared.data(from: url)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 200)
+
+        let body = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(body.contains("new URLSearchParams(location.search).get('lq') === '1'"))
+    }
+
     func testServerRejectsInvalidVideoIDWithBadRequest() async throws {
         let server = YouTubeEmbedLoopbackServer()
         let port = try await server.ensureStarted()
