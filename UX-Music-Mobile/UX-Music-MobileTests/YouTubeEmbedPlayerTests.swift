@@ -63,7 +63,8 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
             YouTubeEmbedPlayer.PictureInPictureMessage(
                 hasVideo: true,
                 mode: .inline,
-                supportsPiP: true
+                supportsPiP: true,
+                supportsFullscreen: false
             )
         )
     }
@@ -73,9 +74,29 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
             "hasVideo": true,
             "mode": "picture-in-picture",
             "supportsPiP": true,
+            "supportsFullscreen": false,
         ])
 
         XCTAssertEqual(message?.mode, .pictureInPicture)
+    }
+
+    func testParsePictureInPictureMessageForFullscreenVideo() {
+        let message = YouTubeEmbedPlayer.parsePictureInPictureMessage([
+            "hasVideo": true,
+            "mode": "fullscreen",
+            "supportsPiP": false,
+            "supportsFullscreen": true,
+        ])
+
+        XCTAssertEqual(
+            message,
+            YouTubeEmbedPlayer.PictureInPictureMessage(
+                hasVideo: true,
+                mode: .fullscreen,
+                supportsPiP: false,
+                supportsFullscreen: true
+            )
+        )
     }
 
     func testParsePictureInPictureMessageForMissingVideo() {
@@ -90,9 +111,20 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
             YouTubeEmbedPlayer.PictureInPictureMessage(
                 hasVideo: false,
                 mode: .unknown,
-                supportsPiP: false
+                supportsPiP: false,
+                supportsFullscreen: false
             )
         )
+    }
+
+    func testParsePictureInPictureMessageDefaultsMissingFullscreenSupportToFalse() {
+        let message = YouTubeEmbedPlayer.parsePictureInPictureMessage([
+            "hasVideo": true,
+            "mode": "inline",
+            "supportsPiP": true,
+        ])
+
+        XCTAssertEqual(message?.supportsFullscreen, false)
     }
 
     func testParsePictureInPictureMessageMapsUnknownModeToUnknown() {
@@ -100,6 +132,7 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
             "hasVideo": true,
             "mode": "future-mode",
             "supportsPiP": false,
+            "supportsFullscreen": false,
         ])
 
         XCTAssertEqual(message?.mode, .unknown)

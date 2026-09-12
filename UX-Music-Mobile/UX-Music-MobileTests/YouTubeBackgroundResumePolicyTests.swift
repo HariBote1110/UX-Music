@@ -2,58 +2,41 @@ import XCTest
 @testable import UX_Music_Mobile
 
 final class YouTubeBackgroundResumePolicyTests: XCTestCase {
-    func testPlayingYouTubeSongRequestsPictureInPictureWhenAvailable() {
+    func testPlayingYouTubeSongKeepsPlayingInFullscreen() {
         let decision = YouTubeBackgroundResumePolicy.onEnterBackground(
             isYouTubeSong: true,
             isPlaying: true,
-            isPictureInPictureActive: false,
-            canUsePictureInPicture: true
+            presentationMode: .fullscreen
         )
 
-        XCTAssertEqual(decision, .requestPictureInPicture)
+        XCTAssertEqual(decision, .keepPlaying)
     }
 
     func testPlayingYouTubeSongKeepsPlayingWhenPictureInPictureIsAlreadyActive() {
         let decision = YouTubeBackgroundResumePolicy.onEnterBackground(
             isYouTubeSong: true,
             isPlaying: true,
-            isPictureInPictureActive: true,
-            canUsePictureInPicture: true
+            presentationMode: .pictureInPicture
         )
 
         XCTAssertEqual(decision, .keepPlaying)
     }
 
-    func testPictureInPictureFailureUsesThePauseAndResumeFallback() {
+    func testInlineYouTubePlaybackUsesThePauseAndResumeFallback() {
         let decision = YouTubeBackgroundResumePolicy.onEnterBackground(
             isYouTubeSong: true,
             isPlaying: true,
-            isPictureInPictureActive: false,
-            canUsePictureInPicture: true,
-            pictureInPictureRequest: .failed
+            presentationMode: .inline
         )
 
         XCTAssertEqual(decision, .pauseAndResume)
     }
 
-    func testSuccessfulPictureInPictureRequestKeepsPlaying() {
+    func testUnknownPresentationModeUsesThePauseAndResumeFallback() {
         let decision = YouTubeBackgroundResumePolicy.onEnterBackground(
             isYouTubeSong: true,
             isPlaying: true,
-            isPictureInPictureActive: false,
-            canUsePictureInPicture: true,
-            pictureInPictureRequest: .entered
-        )
-
-        XCTAssertEqual(decision, .keepPlaying)
-    }
-
-    func testUnavailablePictureInPictureUsesThePauseAndResumeFallback() {
-        let decision = YouTubeBackgroundResumePolicy.onEnterBackground(
-            isYouTubeSong: true,
-            isPlaying: true,
-            isPictureInPictureActive: false,
-            canUsePictureInPicture: false
+            presentationMode: .unknown
         )
 
         XCTAssertEqual(decision, .pauseAndResume)
@@ -70,8 +53,7 @@ final class YouTubeBackgroundResumePolicyTests: XCTestCase {
             let decision = YouTubeBackgroundResumePolicy.onEnterBackground(
                 isYouTubeSong: input.isYouTubeSong,
                 isPlaying: input.isPlaying,
-                isPictureInPictureActive: false,
-                canUsePictureInPicture: true
+                presentationMode: .inline
             )
 
             XCTAssertEqual(decision, .noAction)
@@ -83,7 +65,7 @@ final class YouTubeBackgroundResumePolicyTests: XCTestCase {
             YouTubeBackgroundResumePolicy.onEnterForeground(
                 resumePending: true,
                 isYouTubeSong: true,
-                isPictureInPictureActive: true
+                presentationMode: .pictureInPicture
             ),
             YouTubeBackgroundResumePolicy.ForegroundDecision(
                 exitPictureInPicture: true,
@@ -92,23 +74,26 @@ final class YouTubeBackgroundResumePolicyTests: XCTestCase {
         )
     }
 
-    func testForegroundOnlyResumesPendingFallbackPlayback() {
+    func testForegroundDoesNotForceExitFullscreen() {
         XCTAssertEqual(
             YouTubeBackgroundResumePolicy.onEnterForeground(
                 resumePending: false,
                 isYouTubeSong: true,
-                isPictureInPictureActive: false
+                presentationMode: .fullscreen
             ),
             YouTubeBackgroundResumePolicy.ForegroundDecision(
                 exitPictureInPicture: false,
                 resumePlayback: false
             )
         )
+    }
+
+    func testForegroundOnlyResumesPendingFallbackPlayback() {
         XCTAssertEqual(
             YouTubeBackgroundResumePolicy.onEnterForeground(
                 resumePending: true,
                 isYouTubeSong: true,
-                isPictureInPictureActive: false
+                presentationMode: .inline
             ),
             YouTubeBackgroundResumePolicy.ForegroundDecision(
                 exitPictureInPicture: false,
