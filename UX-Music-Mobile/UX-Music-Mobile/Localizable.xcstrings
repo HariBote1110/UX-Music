@@ -1518,6 +1518,22 @@
         }
       }
     },
+    "Exit Picture in Picture" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exit Picture in Picture"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ピクチャインピクチャを終了"
+          }
+        }
+      }
+    },
     "Failed downloads: %ld" : {
       "localizations" : {
         "en" : {
@@ -2647,6 +2663,22 @@
         }
       }
     },
+    "Picture in Picture" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Picture in Picture"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ピクチャインピクチャ"
+          }
+        }
+      }
+    },
     "Play" : {
       "localizations" : {
         "en" : {
@@ -2691,6 +2723,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "再生設定"
+          }
+        }
+      }
+    },
+    "Playing in Picture in Picture" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playing in Picture in Picture"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ピクチャインピクチャで再生中"
           }
         }
       }

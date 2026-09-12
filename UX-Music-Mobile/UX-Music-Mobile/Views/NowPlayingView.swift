@@ -944,6 +944,15 @@ private struct NowPlayingArtworkBlock: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .strokeBorder(.white.opacity(0.12), lineWidth: 1)
             }
+            .overlay(alignment: .topTrailing) {
+                // Only ever appears for YouTube tracks on devices where PiP is actually
+                // supported (`canUseYouTubePictureInPicture` is false on the simulator), so
+                // local songs and unsupported devices see no layout change at all.
+                if song.isYouTube, model.player.canUseYouTubePictureInPicture {
+                    pictureInPictureButton
+                        .padding(10)
+                }
+            }
             .shadow(color: .black.opacity(0.55), radius: 32, y: 18)
             .shadow(color: accent.opacity(0.15), radius: 40, y: 12)
             .animation(.spring(response: 0.45, dampingFraction: 0.85), value: song.isYouTube)
@@ -967,9 +976,15 @@ private struct NowPlayingArtworkBlock: View {
                 // Shown immediately (no network round-trip needed for the embed itself) and kept
                 // underneath the video so a slow embed handshake never shows a blank black square.
                 youtubeThumbnail(videoID: videoID)
-                YouTubeEmbedHostContainerView(host: model.player.youtubePlaybackHost)
-                    .opacity(model.player.isPlaying ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.35), value: model.player.isPlaying)
+                if model.player.isYouTubePictureInPictureActive {
+                    // The video has left this inline slot for the system PiP window, so show a
+                    // calm placeholder over the dimmed thumbnail instead of an empty black box.
+                    pictureInPicturePlaceholder
+                } else {
+                    YouTubeEmbedHostContainerView(host: model.player.youtubePlaybackHost)
+                        .opacity(model.player.isPlaying ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.35), value: model.player.isPlaying)
+                }
             }
         } else if let error = model.player.youtubePlaybackErrorMessage {
             ZStack {
@@ -1033,6 +1048,43 @@ private struct NowPlayingArtworkBlock: View {
         } else {
             placeholder
         }
+    }
+
+    /// Manual PiP toggle, styled to match `NowPlayingNavIconButton`'s floating-chrome circle
+    /// (ultra-thin material, same size) so it reads as part of the same button family even
+    /// though it floats over the video card rather than the top toolbar.
+    private var pictureInPictureButton: some View {
+        let isActive = model.player.isYouTubePictureInPictureActive
+        return NowPlayingNavIconButton(
+            action: { model.player.toggleYouTubePictureInPicture() },
+            accessibilityLabel: isActive
+                ? String(localized: "Exit Picture in Picture")
+                : String(localized: "Picture in Picture")
+        ) {
+            Image(systemName: isActive ? "pip.exit" : "pip.enter")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+        }
+    }
+
+    /// Shown over the dimmed YouTube thumbnail while PiP has taken the video out of this inline
+    /// slot, so the card reads as "still playing, just elsewhere" instead of an empty black box.
+    private var pictureInPicturePlaceholder: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+            VStack(spacing: 10) {
+                Image(systemName: "pip")
+                    .font(.system(size: 34, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                Text("Playing in Picture in Picture")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+        }
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.3), value: model.player.isYouTubePictureInPictureActive)
     }
 
     private var placeholder: some View {
