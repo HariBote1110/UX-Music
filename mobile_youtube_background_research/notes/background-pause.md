@@ -304,9 +304,36 @@ YouTube API 規約（原文を WebFetch で確認）:
 | E: WebKit の非公開設定でバックグラウンドの動画停止を外す | 単体で途切れない見込み | 設定の存在自体が未確認。App Store 審査・OS 更新で壊れるリスク |
 | PiP（全画面経由の自動 PiP / 手動 PiP ボタン） | 操作を挟むので滑らかではない | 実機で成立済み（B-4 / C-1） |
 
+### WebKit ソース調査（読み取り専用サブエージェント、GitHub WebKit main）
+- **ソース確認済み**: `Source/WebCore/platform/audio/ios/MediaSessionManagerIOS.mm` の `resetRestrictions()` が
+  iOS のメディア種別ごとに制限を付与する。
+  - `MediaType::Video` → `BackgroundProcessPlaybackRestricted`（バックグラウンドで停止）
+  - `MediaType::WebAudio` → `BackgroundProcessPlaybackRestricted`
+  - `MediaType::VideoAudio` → `SuspendedUnderLockPlaybackRestricted`（**画面ロック中のみ**停止）
+- **ソース確認済み**: バックグラウンド遷移時は `PlatformMediaSession::beginInterruption(EnteringBackground)` が発火し、
+  `client().shouldOverrideBackgroundPlaybackRestriction(type)` が true のセッションだけ停止を免れる。
+  `HTMLMediaElement` の実装は WebXR immersive・CarPlay・フルスクリーン中の PiP・音声 MediaStreamTrack などで true（要約経由、全文未確認）。
+- 停止条件を外す公開・非公開の設定キーは見つからなかった（`UnifiedWebPreferences.yaml` に該当なし。
+  ページ可視性系の制限は `MediaElementSession` 内のビットマスクとしてハードコード）→ **候補E は見込み薄**。
+- 推測: `HTMLMediaElement` のメディア種別は「映像あり＋音声あり＋ミュートでない」なら `VideoAudio`、
+  映像ありでミュートなら `Video`（要確認）。
+
+### これまでの測定の見直し（重要）
+- ベースライン・V1・V2（シミュレータ）、B-1〜B-4、C-1 のホスト直結モードは、`unmute` が送られず**ミュートのまま**だった
+  → `Video` 扱いでバックグラウンド停止の対象だった可能性がある。
+- G-1〜G-3・フェーズF のシミュレータ検証は unmute 済みだが、バックグラウンド移行直後に**自前のフォールバックで pause を送っていた**。
+- つまり「ミュートでない YouTube 動画を、何も介入せずにバックグラウンドへ回す」ケースは**一度も測定していない**。
+
+## 仮説F: ミュートを解除した動画は `VideoAudio` 扱いになり、バックグラウンドでも止まらない
+- 期待: PiP・全画面・非公開設定なしで、ホームスワイプだけで再生が続く（画面ロック時のみ停止）。
+- F-1（実機・1変数）: ホスト直結モード（フェーズG のライフサイクル処理が作動しない）で `.playback` セッションを有効化し、
+  `.ready` で `unmute` を送る。20 秒再生 → 設定アプリを前面へ → 25 秒観察 → 復帰。
+  基準は V1（セッション有効・ミュート → 停止）。違いは unmute のみ。
+- 棄却条件: バックグラウンド移行後に `time` イベントの再生位置が進まない、または `paused` が来る。
+
 ## 次の一手 / 未検証事項
-- 候補E の実在確認: WebKit ソース上でバックグラウンド時に動画を止める判定箇所と、それを外す設定（公開・非公開）を特定する（調査中）。
-- その結果を踏まえ、D と E のどちらで作るかをユーザーに確認する。
+- F-1 を実機で実行。成立すれば画面ロック時（`SuspendedUnderLock`）の挙動を F-2 で確認。
+- D（LAN 中継）と E（非公開設定）の選択は F-1 の結果まで保留。
 - 20:24:08 の一時停止の原因（ユーザーが PiP ウィンドウを操作したか）。
 - 20:17:24（G-2）のページ再読み込みの原因。
 - PiP 開始のトリガー時刻（フォアグラウンド中に要求したケースのみ確認済み。`didEnterBackground`
