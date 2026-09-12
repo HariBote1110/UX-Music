@@ -389,11 +389,11 @@ export namespace server {
 	    hopped: boolean;
 	    error: string;
 	    address: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new LANServerStatus(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.listening = source["listening"];
@@ -673,3 +673,4 @@ export namespace uxsync {
 	}
 
 }
+
