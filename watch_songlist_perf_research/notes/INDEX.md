@@ -1,2 +1,3 @@
+- [main-thread-blocking-audit.md](main-thread-blocking-audit.md) — Watch初回操作の静的監査に基づき、ライブラリ/再開/音声セッション/音量/artwork/永続化を非同期化し、DEBUGの`[MainThreadStall]`計測を追加（実機未検証）
 - [lazy-navigation-fix-and-instrumentation.md](lazy-navigation-fix-and-instrumentation.md) — 遅延ナビゲーション仮説はLLDB実機計測で棄却（t+0ms・行実体化6件）、真因は`WatchAlbumGroupConnectorView`の`Canvas`初回描画によるメインスレッド上のMetalデバイス初期化と特定・`Shape`ベース実装へ置き換え済み・実機での修正確認は次回ユーザー実行待ち
 - [songlist-open-delay-prior-investigation.md](songlist-open-delay-prior-investigation.md) — Watch「曲」リストを開く際の遅延（仮説A〜D）は`progress/watch-ui-redesign.md`で既に調査済み・仮説A(NavigationLink eager構築+重複計算)は確定してmain(`eabe02e`)で修正済み、B(過剰実体化)は代理指標で棄却相当、C/D未分離検証、症状自体はシミュレータで再現不能で実機計測待ち
