@@ -65,11 +65,45 @@ final class YouTubeBackgroundResumePolicyTests: XCTestCase {
             YouTubeBackgroundResumePolicy.onEnterForeground(
                 resumePending: true,
                 isYouTubeSong: true,
+                isPlaying: false,
                 presentationMode: .pictureInPicture
             ),
             YouTubeBackgroundResumePolicy.ForegroundDecision(
                 exitPictureInPicture: true,
-                resumePlayback: true
+                resumePlayback: true,
+                resumeAfterPictureInPictureExit: false
+            )
+        )
+    }
+
+    func testForegroundResumesPlayingPictureInPictureAfterItExits() {
+        XCTAssertEqual(
+            YouTubeBackgroundResumePolicy.onEnterForeground(
+                resumePending: false,
+                isYouTubeSong: true,
+                isPlaying: true,
+                presentationMode: .pictureInPicture
+            ),
+            YouTubeBackgroundResumePolicy.ForegroundDecision(
+                exitPictureInPicture: true,
+                resumePlayback: false,
+                resumeAfterPictureInPictureExit: true
+            )
+        )
+    }
+
+    func testForegroundDoesNotResumePausedPictureInPicture() {
+        XCTAssertEqual(
+            YouTubeBackgroundResumePolicy.onEnterForeground(
+                resumePending: false,
+                isYouTubeSong: true,
+                isPlaying: false,
+                presentationMode: .pictureInPicture
+            ),
+            YouTubeBackgroundResumePolicy.ForegroundDecision(
+                exitPictureInPicture: true,
+                resumePlayback: false,
+                resumeAfterPictureInPictureExit: false
             )
         )
     }
@@ -79,11 +113,13 @@ final class YouTubeBackgroundResumePolicyTests: XCTestCase {
             YouTubeBackgroundResumePolicy.onEnterForeground(
                 resumePending: false,
                 isYouTubeSong: true,
+                isPlaying: false,
                 presentationMode: .fullscreen
             ),
             YouTubeBackgroundResumePolicy.ForegroundDecision(
                 exitPictureInPicture: false,
-                resumePlayback: false
+                resumePlayback: false,
+                resumeAfterPictureInPictureExit: false
             )
         )
     }
@@ -93,11 +129,13 @@ final class YouTubeBackgroundResumePolicyTests: XCTestCase {
             YouTubeBackgroundResumePolicy.onEnterForeground(
                 resumePending: true,
                 isYouTubeSong: true,
+                isPlaying: false,
                 presentationMode: .inline
             ),
             YouTubeBackgroundResumePolicy.ForegroundDecision(
                 exitPictureInPicture: false,
-                resumePlayback: true
+                resumePlayback: true,
+                resumeAfterPictureInPictureExit: false
             )
         )
     }
