@@ -514,8 +514,31 @@ YouTube API 規約（原文を WebFetch で確認）:
 - **PiP ボタンの処理が一度も呼ばれていない**（`entering` / `PiP JS request` / `unavailable` / `PiP entered` のいずれのログも無い）。
   バックグラウンド移行時の mode は 2 回とも `inline`。ボタンの表示・タップの到達のどちらに問題があるか切り分け中。
 
+### H-5: 利用可否の診断ログ付きで Now Playing の PiP ボタンを再検証（ユーザー手動操作）
+手順: `verify_manual_device.sh pipbutton2 180`（検証時は scratchpad、診断ログ入りで再ビルド）。
+診断ログ: `[UXM_YT_PIP] report ...`（ホストが受け取った hasVideo / mode / supportsPiP / supportsFullscreen）と
+`[UXM_YT_PIP] availability ...`（サービス側の算出結果）。
+
+| 時刻 | 観測 |
+| :--- | :--- |
+| 21:37:07.38 | `opened Now Playing` |
+| 21:37:07.5〜07.97 | メインフレーム・中間フレームは `hasVideo=0` |
+| 21:37:08.83 | YouTube フレーム `hasVideo=1 mode=inline supportsPiP=1 supportsFullscreen=1` → `availability ... service(pip=1 fullscreen=1)` |
+| 21:37:32.07 | `entering trigger=user toggle`（**PiP ボタンのタップが届いた**）→ `PiP JS request result=nil` |
+| 21:37:32.14 | `PiP entered`（偽の失敗なし） |
+| 21:37:34.09 | `PiP exited`（こちらからの終了要求ログなし。ユーザー操作またはシステムによる復帰） |
+| 21:37:36.28〜38.77 | 全画面の開始・終了（ユーザー操作） |
+| 21:37:48〜21:40:05 | インラインで再生継続（`time` 26 → 162 秒） |
+
+- ユーザー回答: 「ボタン 2 つ、PiP で音が続いた」。
+- **ただし記録中に `didEnterBackground` は一度も無い**（アプリはバックグラウンドへ移っていない）。
+  「PiP ボタン → ホームで継続」はこの記録では確認できていない。ユーザーに確認したところ**ホームへは戻っていなかった**
+  （PiP・全画面を試しただけ）。「PiP で音が続いた」はアプリが前面のままの再生だった。
+- 結論: PiP ボタンの表示条件（利用可否の算出）とタップ → PiP 開始は正常。H-4 でボタンが見えなかった原因は再現せず不明。
+
 ## 次の一手 / 未検証事項
-- H-4 の原因特定（PiP ボタンが表示されていない／タップが届いていない／別の場所を押している）。
+- 「PiP ボタン → ホームで継続」の実機確認（H-5 ではバックグラウンド移行が記録されず未確認）。
+- H-4 でボタンが見えなかった原因（再現せず）。
 - 画面ロック中（PiP 継続中のロック）の挙動。
 - 画面ロック中（PiP 継続中のロック）の挙動は未検証。
 - 20:24:08 の一時停止の原因（ユーザーが PiP ウィンドウを操作したか）。
