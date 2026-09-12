@@ -427,6 +427,15 @@ final class MusicPlayerService {
                 && self.youtubePictureInPictureAvailable
             self.youtubeFullscreenActive = mode == .fullscreen
                 && self.youtubeFullscreenAvailable
+            NSLog(
+                "[UXM_YT_PIP] availability mode=%@ currentSongIsYouTube=%d host(pip=%d fullscreen=%d) service(pip=%d fullscreen=%d)",
+                String(describing: mode),
+                self.currentSong?.isYouTube == true ? 1 : 0,
+                self.youtubePlaybackHost.isPictureInPictureAvailable ? 1 : 0,
+                self.youtubePlaybackHost.isFullscreenAvailable ? 1 : 0,
+                self.youtubePictureInPictureAvailable ? 1 : 0,
+                self.youtubeFullscreenAvailable ? 1 : 0
+            )
             if self.youtubePictureInPictureActive && !wasPictureInPictureActive {
                 NSLog("[UXM_YT_PIP] PiP entered")
             } else if wasPictureInPictureActive && !self.youtubePictureInPictureActive {

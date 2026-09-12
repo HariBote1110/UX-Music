@@ -417,6 +417,14 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
         _ payload: YouTubeEmbedPlayer.PictureInPictureMessage,
         frameInfo: WKFrameInfo
     ) {
+        NSLog(
+            "[UXM_YT_PIP] report mainFrame=%d hasVideo=%d mode=%@ supportsPiP=%d supportsFullscreen=%d",
+            frameInfo.isMainFrame ? 1 : 0,
+            payload.hasVideo ? 1 : 0,
+            String(describing: payload.mode),
+            payload.supportsPiP ? 1 : 0,
+            payload.supportsFullscreen ? 1 : 0
+        )
         if payload.hasVideo {
             pictureInPictureFrame = frameInfo
             pictureInPictureSupports = payload.supportsPiP
