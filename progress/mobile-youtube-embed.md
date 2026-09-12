@@ -621,8 +621,19 @@ PiP での作り直しを希望。`mobile_youtube_background_research/notes/back
   求めるユーザー判断で今回は見送り（`mobile_youtube_background_research` 候補D）。
 - YouTube 再生開始時に常に全画面にする: 常に自動 PiP が効くが、曲を選ぶたびに全画面になるため不採用。
 
+### 実機検証（YkiPhoneAir、`mobile_youtube_background_research/notes/background-pause.md` H-1〜H-6）
+- 全画面 → バックグラウンド: システムの自動 PiP で再生継続（H-1, H-3）。
+- PiP ボタン → ホームへスワイプ: PiP で再生継続（H-6）。
+- 何もせず離れる: 一時停止し、フォアグラウンド復帰で続きから再開（H-2）。
+- PiP 中に戻る: PiP 終了時に WebKit が一瞬止めるが、約 0.3 秒で自動再開（H-3, H-6）。
+- 追加修正（コミット 14d34495）: PiP から戻ったときに一時停止したままになる不具合と、全画面・PiP 開始時の偽の失敗判定を解消。
+- 診断ログ（コミット 961cf179）: `[UXM_YT_PIP] report` / `availability` で PiP・全画面の利用可否を状態変化時に記録。
+
 ### Constraints / Gotchas
 - 全画面から自動 PiP への移行は `inactive` になってから約 0.5 秒後で、`didEnterBackground` とほぼ同時に届く。
+- PiP を閉じてインラインに戻すと WebKit は必ず一時停止する。PiP 中に再生していた場合は、PiP 終了と `paused` の両方を
+  確認してから `play` を一度だけ送る（`paused` が先に来た場合は再開しない）。
+- H-4 で一度だけ Now Playing に PiP ボタンが表示されなかったが、診断ログを入れた H-5・H-6 では再現せず原因不明。
   バックグラウンド移行時の判定では `fullscreen` と `picture-in-picture` の両方を「継続」として扱うこと。
 - シミュレータは PiP 非対応のため、この経路の確認は実機のみ。デスクトップ未ペアリングでも resolver を
   差し替えた合成 YouTube `Song` を `MusicPlayerService.play` 経由で再生でき、サービス層の
