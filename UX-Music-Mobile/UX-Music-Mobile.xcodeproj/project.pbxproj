@@ -7,6 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A11B22C33D44E55F66778811 /* PlaybackCollectionRef.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11B22C33D44E55F66778801 /* PlaybackCollectionRef.swift */; };
+		A11B22C33D44E55F66778812 /* PlaybackCollectionShuffleLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11B22C33D44E55F66778802 /* PlaybackCollectionShuffleLogic.swift */; };
+		A11B22C33D44E55F66778813 /* CollectionShufflePreferenceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11B22C33D44E55F66778803 /* CollectionShufflePreferenceStore.swift */; };
+		A11B22C33D44E55F66778821 /* PlaybackCollectionRef.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11B22C33D44E55F66778801 /* PlaybackCollectionRef.swift */; };
+		A11B22C33D44E55F66778822 /* PlaybackCollectionShuffleLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11B22C33D44E55F66778802 /* PlaybackCollectionShuffleLogic.swift */; };
+		A11B22C33D44E55F66778823 /* CollectionShufflePreferenceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11B22C33D44E55F66778803 /* CollectionShufflePreferenceStore.swift */; };
+		A11B22C33D44E55F66778831 /* CollectionShufflePreferenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11B22C33D44E55F66778804 /* CollectionShufflePreferenceTests.swift */; };
 		86EA61F1406144ED98299C46 /* PlaybackQueueEditing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81C30A3149CE455A93E45602 /* PlaybackQueueEditing.swift */; };
 		BF37595363694FEEBD163E54 /* SongSearchFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5858D1041FA34A4A9F859132 /* SongSearchFilter.swift */; };
 		5389213763E94726B2D40940 /* LibrarySortOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E89A57EC3FD426CBB078222 /* LibrarySortOrder.swift */; };
@@ -322,6 +329,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A11B22C33D44E55F66778801 /* PlaybackCollectionRef.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackCollectionRef.swift; sourceTree = "<group>"; };
+		A11B22C33D44E55F66778802 /* PlaybackCollectionShuffleLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackCollectionShuffleLogic.swift; sourceTree = "<group>"; };
+		A11B22C33D44E55F66778803 /* CollectionShufflePreferenceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionShufflePreferenceStore.swift; sourceTree = "<group>"; };
+		A11B22C33D44E55F66778804 /* CollectionShufflePreferenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionShufflePreferenceTests.swift; sourceTree = "<group>"; };
 		81C30A3149CE455A93E45602 /* PlaybackQueueEditing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackQueueEditing.swift; sourceTree = "<group>"; };
 		5858D1041FA34A4A9F859132 /* SongSearchFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongSearchFilter.swift; sourceTree = "<group>"; };
 		4E89A57EC3FD426CBB078222 /* LibrarySortOrder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySortOrder.swift; sourceTree = "<group>"; };
@@ -623,6 +634,7 @@
 		b1b1b1BC0101B1B10101B1B1 /* UX-Music-MobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				A11B22C33D44E55F66778804 /* CollectionShufflePreferenceTests.swift */,
 				b1b1b1B20101B1B10101B1B1 /* ServerConfigTests.swift */,
 				F7C4B8410CB24C429F22CED8 /* DeviceIdentityTests.swift */,
 				b1b1b1B40101B1B10101B1B1 /* SongDecodingTests.swift */,
@@ -694,6 +706,7 @@
 		c0dec0de0101ca0e0101c0d1 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				A11B22C33D44E55F66778802 /* PlaybackCollectionShuffleLogic.swift */,
 				01A1A1A20101A1A10101A1A1 /* AppConstants.swift */,
 				P2P2P2P20101P2P20101P2P2 /* LRCParser.swift */,
 				F1F1F1F10101F1F10101F1F1 /* ArtworkPaletteExtractor.swift */,
@@ -729,6 +742,7 @@
 		c0dec0de0101ca0e0101c0d2 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				A11B22C33D44E55F66778801 /* PlaybackCollectionRef.swift */,
 				01A1A1A40101A1A10101A1A1 /* ServerConfig.swift */,
 				01A1A1A60101A1A10101A1A1 /* Song.swift */,
 				01A1A1A80101A1A10101A1A1 /* Album.swift */,
@@ -741,6 +755,7 @@
 		c0dec0de0101ca0e0101c0d3 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A11B22C33D44E55F66778803 /* CollectionShufflePreferenceStore.swift */,
 				01A1A1AA0101A1A10101A1A1 /* RemoteAPIClient.swift */,
 				1EBCFE9FEEDD422EBDFEA1D5 /* YouTubeEmbedPlayer.swift */,
 				F16CBB54E1F54891921937FD /* YouTubeEmbedLoopbackServer.swift */,
@@ -1127,6 +1142,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A11B22C33D44E55F66778831 /* CollectionShufflePreferenceTests.swift in Sources */,
 				b1b1b1B10101B1B10101B1B1 /* ServerConfigTests.swift in Sources */,
 				3E3882F2C47847A79F534D2F /* DeviceIdentityTests.swift in Sources */,
 				b1b1b1B30101B1B10101B1B1 /* SongDecodingTests.swift in Sources */,
@@ -1198,6 +1214,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A11B22C33D44E55F66778812 /* PlaybackCollectionShuffleLogic.swift in Sources */,
+				A11B22C33D44E55F66778811 /* PlaybackCollectionRef.swift in Sources */,
+				A11B22C33D44E55F66778813 /* CollectionShufflePreferenceStore.swift in Sources */,
 				01A1A1A10101A1A10101A1A1 /* AppConstants.swift in Sources */,
 				C6A1D8F4E5B6478B9D0C2A12 /* YouTubeBackgroundResumePolicy.swift in Sources */,
 				P2P2P2P30101P2P30101P2P3 /* LRCParser.swift in Sources */,
@@ -1330,6 +1349,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A11B22C33D44E55F66778822 /* PlaybackCollectionShuffleLogic.swift in Sources */,
+				A11B22C33D44E55F66778821 /* PlaybackCollectionRef.swift in Sources */,
+				A11B22C33D44E55F66778823 /* CollectionShufflePreferenceStore.swift in Sources */,
 				CD881D2AF1DA4D118475294B /* UXMusicTVApp.swift in Sources */,
 				AE1AE1AE0501AE1AE0501AE1 /* RemoteCommandEnablement.swift in Sources */,
 				A3D2815F272C4FC7A6BEFB86 /* TVPlaceholderView.swift in Sources */,
