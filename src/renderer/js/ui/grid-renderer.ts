@@ -12,6 +12,7 @@ import { musicApi } from '../core/bridge.js';
 import { getAlbumSongs, setCurrentViewSongs } from '../core/library-model.js';
 import { openAlbumOrderEditor } from './album-order-editor.js';
 import { createGridDensityControl } from './grid-density.js';
+import { buildShufflePreferenceMenuItems } from './collection-shuffle-control.js';
 // ▲▲▲ 追加 ▲▲▲
 
 /**
@@ -71,6 +72,10 @@ export function renderAlbumView() {
                     {
                         label: '曲順を編集...',
                         action: () => openAlbumOrderEditor(key, album)
+                    },
+                    {
+                        label: '既定のシャッフル',
+                        submenu: buildShufflePreferenceMenuItems({ kind: 'album', key })
                     },
                     {
                         label: 'アートワークを変更...',
@@ -238,6 +243,10 @@ export function renderPlaylistView() {
                                 }
                             });
                         }
+                    },
+                    {
+                        label: '既定のシャッフル',
+                        submenu: buildShufflePreferenceMenuItems({ kind: 'playlist', key: playlist.name as string })
                     },
                     {
                         label: '削除',
