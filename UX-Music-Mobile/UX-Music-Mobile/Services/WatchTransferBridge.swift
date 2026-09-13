@@ -317,6 +317,106 @@ enum WatchPlaylistTransferEncoding {
     }
 }
 
+/// A stable, testable snapshot of Watch-library songs and the local source file currently available
+/// for each one. Missing URLs are retained so the bulk operation can report a skipped/failed item
+/// without downloading it.
+enum WatchHapticBulkPlanning {
+    struct Candidate: Equatable {
+        let songId: String
+        let sourceURL: URL?
+    }
+
+    static func songIDs(watchReportedSongIDs: [String]?, completedAudioSongIDs: [String]) -> [String] {
+        guard let watchReportedSongIDs else {
+            return stableUnique(completedAudioSongIDs.sorted())
+        }
+
+        // The Watch report is authoritative once present. Keeping only completed ids that are
+        // still in that report prevents deleted Watch songs from being resurrected by stale iPhone
+        // transfer history; concatenating them documents the union while preserving report order.
+        let reported = stableUnique(watchReportedSongIDs)
+        let reportedSet = Set(reported)
+        let completedStillOnWatch = completedAudioSongIDs.filter { reportedSet.contains($0) }
+        return stableUnique(reported + completedStillOnWatch)
+    }
+
+    static func candidates(
+        watchReportedSongIDs: [String]?,
+        completedAudioSongIDs: [String],
+        localSourceURLs: [String: URL]
+    ) -> [Candidate] {
+        songIDs(
+            watchReportedSongIDs: watchReportedSongIDs,
+            completedAudioSongIDs: completedAudioSongIDs
+        )
+            .map { Candidate(songId: $0, sourceURL: localSourceURLs[$0]) }
+    }
+
+    private static func stableUnique(_ songIDs: [String]) -> [String] {
+        var seen = Set<String>()
+        return songIDs.filter { seen.insert($0).inserted }
+    }
+
+    static func progress(after progress: WatchHapticBulkProgress, succeeded: Bool) -> WatchHapticBulkProgress {
+        WatchHapticBulkProgress(
+            total: progress.total,
+            completed: progress.completed + (succeeded ? 1 : 0),
+            failed: progress.failed + (succeeded ? 0 : 1),
+            isFinished: false
+        )
+    }
+}
+
+struct WatchHapticBulkProgress: Equatable {
+    var total: Int
+    var completed: Int
+    var failed: Int
+    var isFinished: Bool
+}
+
+/// Serial utility-priority worker shared by per-transfer and bulk haptic-map builds. Actor
+/// reentrancy is safe here because jobs are explicitly held in a FIFO queue and the next job is
+/// not started until the detached decode has completed. Duplicate song ids share the same result.
+private actor WatchHapticMapBuildWorker {
+    private struct Job: Sendable {
+        let songId: String
+        let sourceURL: URL
+    }
+
+    private var jobs: [Job] = []
+    private var queuedSongIDs = Set<String>()
+    private var waiters: [String: [CheckedContinuation<URL?, Never>]] = [:]
+    private var isProcessing = false
+
+    func build(songId: String, sourceURL: URL) async -> URL? {
+        await withCheckedContinuation { continuation in
+            waiters[songId, default: []].append(continuation)
+            guard queuedSongIDs.insert(songId).inserted else { return }
+            jobs.append(Job(songId: songId, sourceURL: sourceURL))
+            startProcessingIfNeeded()
+        }
+    }
+
+    private func startProcessingIfNeeded() {
+        guard !isProcessing else { return }
+        isProcessing = true
+        Task { await processQueue() }
+    }
+
+    private func processQueue() async {
+        while !jobs.isEmpty {
+            let job = jobs.removeFirst()
+            let result = await Task.detached(priority: .utility) {
+                await WatchHapticMapBuilder.buildFileURL(songId: job.songId, sourceURL: job.sourceURL)
+            }.value
+            queuedSongIDs.remove(job.songId)
+            let jobWaiters = waiters.removeValue(forKey: job.songId) ?? []
+            jobWaiters.forEach { $0.resume(returning: result) }
+        }
+        isProcessing = false
+    }
+}
+
 /// iOS-side WatchConnectivity bridge: sends already-downloaded audio files to the paired Apple
 /// Watch via `WCSession.transferFile`, alongside a `WatchTransferMeta` metadata dictionary the
 /// Watch uses to build its local library (see `WatchTransfer.swift`, shared with the Watch target).
@@ -334,9 +434,16 @@ final class WatchTransferBridge: NSObject, ObservableObject {
     /// Observable so Settings can show *why* a transfer is stuck (e.g. still activating on launch,
     /// or activation failed) instead of the item silently sitting in `.waiting`.
     @Published private(set) var activationStatus: WatchSessionActivationStatus = .notActivated
+    @Published private(set) var hapticBulkProgress: WatchHapticBulkProgress?
 
     private let downloadManager: DownloadManager
     private let userDefaults: UserDefaults
+    private static let completedAudioSongIDsKey = "watchTransfer.completedAudioSongIDs"
+    private static let watchLibrarySongIDsKey = "watchTransfer.watchLibrarySongIDs"
+    private var completedAudioSongIDs: Set<String>
+    private var watchReportedLibrarySongIDs: [String]?
+    private let hapticMapBuildWorker = WatchHapticMapBuildWorker()
+    private var hapticBulkTask: Task<Void, Never>?
     /// Songs requested via `send` before activation completed; flushed once `activationStatus`
     /// becomes `.activated`, or marked `.failed` if activation itself fails.
     private var pendingSongs: [Song] = []
@@ -390,6 +497,8 @@ final class WatchTransferBridge: NSObject, ObservableObject {
     init(downloadManager: DownloadManager, userDefaults: UserDefaults = .standard) {
         self.downloadManager = downloadManager
         self.userDefaults = userDefaults
+        self.completedAudioSongIDs = Self.loadCompletedAudioSongIDs(from: userDefaults)
+        self.watchReportedLibrarySongIDs = Self.loadWatchReportedLibrarySongIDs(from: userDefaults)
         // Seed `lastPersistedPendingSnapshot` from whatever was already on disk so the very first
         // `persistQueueIfNeeded` call after restore correctly diffs against it instead of treating
         // an unchanged snapshot as "new" and rewriting it immediately.
@@ -520,7 +629,7 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         )
 
         guard decision == .transcode else {
-            sendFile(localURL, fileType: originalFileType, song: song)
+            sendFile(localURL, fileType: originalFileType, song: song, analysisSourceURL: localURL)
             return
         }
 
@@ -540,13 +649,13 @@ final class WatchTransferBridge: NSObject, ObservableObject {
             originalFileType: originalFileType,
             transcodedURL: transcodedURL
         )
-        sendFile(fileToSend.url, fileType: fileToSend.fileType, song: song)
+        sendFile(fileToSend.url, fileType: fileToSend.fileType, song: song, analysisSourceURL: localURL)
     }
 
     /// Actually calls `WCSession.transferFile` for `fileURL` (either the original local file, or a
     /// transcoded AAC cache file — see `performTransfer`), alongside a `WatchTransferMeta` built
     /// with `fileType` (which must match the bytes at `fileURL`, not necessarily `song.fileType`).
-    private func sendFile(_ fileURL: URL, fileType: String, song: Song) {
+    private func sendFile(_ fileURL: URL, fileType: String, song: Song, analysisSourceURL: URL? = nil) {
         let hasArtwork = downloadManager.localArtworkFileURLIfPresent(artworkId: song.artworkId) != nil
         var meta = WatchTransferMeta(
             id: song.id,
@@ -584,6 +693,7 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         // forget.
         let audioTransfer = session.transferFile(fileURL, metadata: meta.wcMetadata)
         trackTransfer(audioTransfer, songId: song.id)
+        startHapticMapBuild(songId: song.id, sourceURL: analysisSourceURL ?? fileURL)
 
         // Artwork is sent as its own `transferFile` rather than embedded in `meta.wcMetadata`
         // (WatchConnectivity metadata dictionaries are meant for small key/value pairs, not image
@@ -591,6 +701,78 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         if let artworkURL = downloadManager.localArtworkFileURLIfPresent(artworkId: song.artworkId),
            let downscaledURL = Self.writeDownscaledArtwork(from: artworkURL, songId: song.id) {
             session.transferFile(downscaledURL, metadata: meta.artworkWcMetadata)
+        }
+    }
+
+    /// Builds haptics after the audio transfer has been enqueued. The shared worker owns all audio
+    /// decoding work; a detector/cache failure is intentionally invisible to the audio queue.
+    private func startHapticMapBuild(songId: String, sourceURL: URL) {
+        Task { [weak self] in
+            guard let self else { return }
+            let hapticURL = await self.hapticMapBuildWorker.build(songId: songId, sourceURL: sourceURL)
+            guard let hapticURL else {
+                return
+            }
+            self.sendHapticFile(hapticURL, songId: songId)
+        }
+    }
+
+    /// Queues a cached JSON map as a distinct WatchConnectivity file transfer. Returning `false`
+    /// lets the bulk worker count a lost activation/session as a failure without touching audio
+    /// queue state.
+    @discardableResult
+    private func sendHapticFile(_ fileURL: URL, songId: String) -> Bool {
+        guard WCSession.isSupported(), activationStatus == .activated else { return false }
+        let session = WCSession.default
+        guard session.activationState == .activated else { return false }
+        session.transferFile(fileURL, metadata: WatchTransferMeta.hapticsWcMetadata(songId: songId))
+        return true
+    }
+
+    /// Queues haptic maps for songs in the Watch report or the locally persisted completed-transfer
+    /// history.
+    /// The source snapshot is taken on the main actor, while decoding and transfer preparation run
+    /// sequentially in the shared utility worker. No missing local file is downloaded.
+    func sendHapticMapsForTransferredSongs() {
+        guard hapticBulkTask == nil,
+              WCSession.isSupported(),
+              activationStatus == .activated,
+              WCSession.default.activationState == .activated
+        else { return }
+
+        let songIDs = WatchHapticBulkPlanning.songIDs(
+            watchReportedSongIDs: watchReportedLibrarySongIDs,
+            completedAudioSongIDs: Array(completedAudioSongIDs)
+        )
+        let localSourceURLs: [String: URL] = Dictionary(
+            uniqueKeysWithValues: songIDs.compactMap { songId in
+                guard let sourceURL = downloadManager.watchTransferSourceURL(songId: songId) else { return nil }
+                return (songId, sourceURL)
+            }
+        )
+        let candidates = WatchHapticBulkPlanning.candidates(
+            watchReportedSongIDs: watchReportedLibrarySongIDs,
+            completedAudioSongIDs: Array(completedAudioSongIDs),
+            localSourceURLs: localSourceURLs
+        )
+        hapticBulkProgress = WatchHapticBulkProgress(total: candidates.count, completed: 0, failed: 0, isFinished: candidates.isEmpty)
+        guard !candidates.isEmpty else { return }
+
+        hapticBulkTask = Task { [weak self] in
+            guard let self else { return }
+            for candidate in candidates {
+                var succeeded = false
+                if let sourceURL = candidate.sourceURL,
+                   let hapticURL = await self.hapticMapBuildWorker.build(songId: candidate.songId, sourceURL: sourceURL) {
+                    succeeded = self.sendHapticFile(hapticURL, songId: candidate.songId)
+                }
+                guard let progress = self.hapticBulkProgress else { return }
+                self.hapticBulkProgress = WatchHapticBulkPlanning.progress(after: progress, succeeded: succeeded)
+            }
+            guard var progress = self.hapticBulkProgress else { return }
+            progress.isFinished = true
+            self.hapticBulkProgress = progress
+            self.hapticBulkTask = nil
         }
     }
 
@@ -662,6 +844,12 @@ final class WatchTransferBridge: NSObject, ObservableObject {
 
         let title = queue.first(where: { $0.id == songId })?.title ?? ""
         upsert(WatchTransferQueueItem(id: songId, title: title, phase: WatchTransferCompletionOutcome.phase(error: error)))
+        if error == nil {
+            completedAudioSongIDs.insert(songId)
+        } else {
+            completedAudioSongIDs.remove(songId)
+        }
+        persistCompletedAudioSongIDs()
     }
 
     private static func fileSize(at url: URL) -> Int64 {
@@ -707,6 +895,7 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         pendingSongs.removeAll()
         switch activationStatus {
         case .activated:
+            updateWatchReportedLibrarySongIDs(from: WCSession.default.receivedApplicationContext)
             songs.forEach { performTransfer($0) }
             restorePersistedQueueIfNeeded()
             performPlaylistsTransfer()
@@ -757,6 +946,35 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         return try? JSONDecoder().decode([WatchTransferPendingQueueEntry].self, from: data)
     }
 
+    private static func loadCompletedAudioSongIDs(from userDefaults: UserDefaults) -> Set<String> {
+        guard let data = userDefaults.data(forKey: completedAudioSongIDsKey),
+              let ids = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return Set(ids)
+    }
+
+    private static func loadWatchReportedLibrarySongIDs(from userDefaults: UserDefaults) -> [String]? {
+        guard let ids = userDefaults.array(forKey: watchLibrarySongIDsKey) as? [String] else { return nil }
+        return ids
+    }
+
+    private func persistCompletedAudioSongIDs() {
+        guard let data = try? JSONEncoder().encode(completedAudioSongIDs.sorted()) else { return }
+        userDefaults.set(data, forKey: Self.completedAudioSongIDsKey)
+    }
+
+    private func storeWatchReportedLibrarySongIDs(_ songIDs: [String]) {
+        watchReportedLibrarySongIDs = songIDs
+        userDefaults.set(songIDs, forKey: Self.watchLibrarySongIDsKey)
+    }
+
+    private func updateWatchReportedLibrarySongIDs(from applicationContext: [String: Any]) {
+        guard let songIDs = applicationContext[WatchTransferMeta.applicationContextLibrarySongIDsKey] as? [String] else {
+            return
+        }
+        storeWatchReportedLibrarySongIDs(songIDs)
+    }
+
     /// Resumes whatever was persisted from a previous launch, once (guarded by
     /// `hasRestoredPersistedQueue`) per process lifetime, right after activation succeeds. Reads
     /// `WCSession.outstandingFileTransfers` for the "still actually transferring" half of the
@@ -785,7 +1003,8 @@ final class WatchTransferBridge: NSObject, ObservableObject {
         var outstandingTransfersById: [String: WCSessionFileTransfer] = [:]
         for transfer in session.outstandingFileTransfers {
             let metadata = transfer.file.metadata
-            guard !WatchTransferMeta.isArtworkWcMetadata(metadata) else { continue }
+            guard !WatchTransferMeta.isArtworkWcMetadata(metadata),
+                  !WatchTransferMeta.isHapticsWcMetadata(metadata) else { continue }
             guard let songId = metadata?[WatchTransferMeta.metadataIDKey] as? String else { continue }
             outstandingTransfersById[songId] = transfer
         }
@@ -848,6 +1067,12 @@ extension WatchTransferBridge: WCSessionDelegate {
         Task { @MainActor in refreshPairingState() }
     }
 
+    nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        Task { @MainActor in
+            updateWatchReportedLibrarySongIDs(from: applicationContext)
+        }
+    }
+
     nonisolated func session(
         _ session: WCSession,
         didFinish fileTransfer: WCSessionFileTransfer,
@@ -856,7 +1081,8 @@ extension WatchTransferBridge: WCSessionDelegate {
         let metadata = fileTransfer.file.metadata
         // Artwork transfers are deliberately untracked (see `sendFile`/`activeTransfers`) — silently
         // ignore their completion rather than mutating the queue with an artwork-only "song".
-        guard !WatchTransferMeta.isArtworkWcMetadata(metadata) else { return }
+        guard !WatchTransferMeta.isArtworkWcMetadata(metadata),
+              !WatchTransferMeta.isHapticsWcMetadata(metadata) else { return }
         guard let songId = metadata?[WatchTransferMeta.metadataIDKey] as? String else { return }
         Task { @MainActor in
             self.handleTransferCompletion(songId: songId, error: error)

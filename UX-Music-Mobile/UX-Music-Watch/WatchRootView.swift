@@ -16,6 +16,7 @@ enum WatchPage: Hashable {
 struct WatchRootView: View {
     @EnvironmentObject private var connectivity: WatchConnectivityReceiver
     @EnvironmentObject private var library: WatchLocalLibrary
+    @EnvironmentObject private var hapticPlayback: WatchHapticPlayback
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedPage: WatchPage = .library
 
@@ -49,12 +50,16 @@ struct WatchRootView: View {
             }
         }
         .onChange(of: scenePhase) { _, newPhase in
+            hapticPlayback.setSceneActive(newPhase == .active)
             // Belt-and-braces: the library already updates live via `@Published songs` as files
             // arrive, but re-reading from disk on foreground guards against any transfer that
             // completed while the app was suspended and missed a `@Published` update.
             if newPhase == .active {
                 library.reload()
             }
+        }
+        .onAppear {
+            hapticPlayback.setSceneActive(scenePhase == .active)
         }
     }
 }
@@ -63,10 +68,16 @@ struct WatchRootView: View {
     let library = WatchLocalLibrary()
     let playlistLibrary = WatchPlaylistLibrary()
     let player = WatchAudioPlayerService(library: library)
+    let hapticPlayback = WatchHapticPlayback(player: player, library: library)
     WatchRootView()
         .environmentObject(library)
         .environmentObject(playlistLibrary)
         .environmentObject(player)
         .environmentObject(player.progress)
-        .environmentObject(WatchConnectivityReceiver(library: library, playlistLibrary: playlistLibrary))
+        .environmentObject(hapticPlayback)
+        .environmentObject(WatchConnectivityReceiver(
+            library: library,
+            playlistLibrary: playlistLibrary,
+            hapticPlayback: hapticPlayback
+        ))
 }

@@ -138,6 +138,17 @@
 		061A9DA419E44389B24D6A56 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 5E656DFF42014B53B033380B /* Localizable.xcstrings */; };
 		E44E6E4CD96B4110915888A8 /* UX-Music-Watch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FEED0002000000000000AAA2 /* WatchTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0001000000000000AAA1 /* WatchTransfer.swift */; };
+		A1B2C3D4E5F60718293A4C01 /* WatchHapticMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* WatchHapticMap.swift */; };
+		A1B2C3D4E5F60718293A4C02 /* WatchHapticMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* WatchHapticMap.swift */; };
+			A1B2C3D4E5F60718293A4C04 /* BassOnsetDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* BassOnsetDetector.swift */; };
+			A1B2C3D4E5F60718293A4C06 /* WatchHapticMapBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5E /* WatchHapticMapBuilder.swift */; };
+			A1B2C3D4E5F60718293A4B62 /* WatchHapticMapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5F /* WatchHapticMapTests.swift */; };
+			A1B2C3D4E5F60718293A4B63 /* BassOnsetDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B60 /* BassOnsetDetectorTests.swift */; };
+			A1B2C3D4E5F60718293A4B64 /* WatchHapticBulkPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B61 /* WatchHapticBulkPolicyTests.swift */; };
+			D7C4A1B2E3F40516273849A2 /* WatchHapticPlaybackPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C4A1B2E3F40516273849A1 /* WatchHapticPlaybackPlanner.swift */; };
+			D7C4A1B2E3F40516273849A3 /* WatchHapticPlaybackPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C4A1B2E3F40516273849A1 /* WatchHapticPlaybackPlanner.swift */; };
+			D7C4A1B2E3F40516273849A4 /* WatchHapticPlaybackPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C4A1B2E3F40516273849A5 /* WatchHapticPlaybackPlannerTests.swift */; };
+			D7C4A1B2E3F40516273849A6 /* WatchHapticPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C4A1B2E3F40516273849A7 /* WatchHapticPlayback.swift */; };
 		FEED0021000000000000AA21 /* WatchPlaybackLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */; };
 		FEED0022000000000000AA22 /* WatchPlaybackLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */; };
 		FEED0024000000000000AA24 /* WatchPlaybackLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEED0023000000000000AA23 /* WatchPlaybackLogicTests.swift */; };
@@ -463,6 +474,9 @@
 		5E656DFF42014B53B033380B /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		66F73F91AFA74B11B01B4455 /* UX-Music-Watch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UX-Music-Watch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FEED0001000000000000AAA1 /* WatchTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTransfer.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* WatchHapticMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHapticMap.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5D /* BassOnsetDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BassOnsetDetector.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5E /* WatchHapticMapBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHapticMapBuilder.swift; sourceTree = "<group>"; };
 		FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlaybackLogic.swift; sourceTree = "<group>"; };
 		FEED0023000000000000AA23 /* WatchPlaybackLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlaybackLogicTests.swift; sourceTree = "<group>"; };
 		FEED0032000000000000AA32 /* ModeIconAnimationMaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeIconAnimationMaths.swift; sourceTree = "<group>"; };
@@ -556,6 +570,12 @@
 		AD141E223AC3411DB53A28CB /* WatchAudioActivationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioActivationPolicyTests.swift; sourceTree = "<group>"; };
 		C8D1E2F3000000000000AA05 /* WatchAudioOutputPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioOutputPolicyTests.swift; sourceTree = "<group>"; };
 		D0F4AC1608EA3579BDF24690 /* WatchHapticBeatScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHapticBeatScheduleTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5F /* WatchHapticMapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHapticMapTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B60 /* BassOnsetDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BassOnsetDetectorTests.swift; sourceTree = "<group>"; };
+			A1B2C3D4E5F60718293A4B61 /* WatchHapticBulkPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHapticBulkPolicyTests.swift; sourceTree = "<group>"; };
+			D7C4A1B2E3F40516273849A1 /* WatchHapticPlaybackPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHapticPlaybackPlanner.swift; sourceTree = "<group>"; };
+			D7C4A1B2E3F40516273849A5 /* WatchHapticPlaybackPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHapticPlaybackPlannerTests.swift; sourceTree = "<group>"; };
+			D7C4A1B2E3F40516273849A7 /* WatchHapticPlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHapticPlayback.swift; sourceTree = "<group>"; };
 		A7C1D9E3F5B702468ACE1358 /* WatchHapticBeatSchedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHapticBeatSchedule.swift; sourceTree = "<group>"; };
 		C9E3FB0507D92468ACEF3580 /* WatchHapticLab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchHapticLab.swift; sourceTree = "<group>"; };
 		5697C076BBFA47F5BCB5A345 /* WatchPlaylistModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPlaylistModel.swift; sourceTree = "<group>"; };
@@ -652,6 +672,10 @@
 				F60101FB0101FB0101FB0101 /* AppModelFailoverTests.swift */,
 				CC1101FB0101FB0101FB0101 /* ConnectionCandidatePolicyTests.swift */,
 				FEED0004000000000000AAA4 /* WatchTransferTests.swift */,
+				A1B2C3D4E5F60718293A4B5F /* WatchHapticMapTests.swift */,
+				A1B2C3D4E5F60718293A4B60 /* BassOnsetDetectorTests.swift */,
+				A1B2C3D4E5F60718293A4B61 /* WatchHapticBulkPolicyTests.swift */,
+				D7C4A1B2E3F40516273849A5 /* WatchHapticPlaybackPlannerTests.swift */,
 				FEED000E000000000000AAAE /* WatchTransferMenuPolicyTests.swift */,
 				F09A97C7799B986A25ED96EC /* WatchTransferAudioPolicyTests.swift */,
 				21DF1B3934409963B3884102 /* WatchAudioTranscoderTests.swift */,
@@ -704,6 +728,8 @@
 				D1D1D1D20101D1D20101D1D2 /* DeviceIdentity.swift */,
 				C6A1D8F4E5B6478B9D0C2A11 /* YouTubeBackgroundResumePolicy.swift */,
 				FEED0001000000000000AAA1 /* WatchTransfer.swift */,
+				A1B2C3D4E5F60718293A4B5C /* WatchHapticMap.swift */,
+				A1B2C3D4E5F60718293A4B5D /* BassOnsetDetector.swift */,
 				FEED000A000000000000AAAA /* WatchTransferMenuPolicy.swift */,
 				37D69946D6A79F649BBDDDD1 /* WatchTransferAudioPolicy.swift */,
 				FEED0020000000000000AA20 /* WatchPlaybackLogic.swift */,
@@ -761,6 +787,7 @@
 				F60101F70101F70101F70101 /* RemoteConnectionResolver.swift */,
 				CC1101F70101F70101F70101 /* ConnectionCandidatePolicy.swift */,
 				FEED0007000000000000AAA7 /* WatchTransferBridge.swift */,
+				A1B2C3D4E5F60718293A4B5E /* WatchHapticMapBuilder.swift */,
 				B0FABE78DA5BB2075870BDC4 /* WatchAudioTranscoder.swift */,
 				E3652B5617724A72BD6261EA /* ADTSFrameParser.swift */,
 				BB4FC8BC86094504B9FACD0B /* TVAACDecoder.swift */,
@@ -830,6 +857,8 @@
 				E8CC224C16B6454FBB965A71 /* WatchPlaylistLibrary.swift */,
 				5697C076BBFA47F5BCB5A345 /* WatchPlaylistModel.swift */,
 				E52D7B85C5274B0EB16F7ADD /* WatchAudioRoutePolicy.swift */,
+				D7C4A1B2E3F40516273849A1 /* WatchHapticPlaybackPlanner.swift */,
+				D7C4A1B2E3F40516273849A7 /* WatchHapticPlayback.swift */,
 				A7C1D9E3F5B702468ACE1358 /* WatchHapticBeatSchedule.swift */,
 				C9E3FB0507D92468ACEF3580 /* WatchHapticLab.swift */,
 				84D8A5F928384903A5421D79 /* WatchAudioActivationPolicy.swift */,
@@ -1160,6 +1189,10 @@
 				F60101FA0101FA0101FA0101 /* AppModelFailoverTests.swift in Sources */,
 				CC1101FA0101FA0101FA0101 /* ConnectionCandidatePolicyTests.swift in Sources */,
 				FEED0005000000000000AAA5 /* WatchTransferTests.swift in Sources */,
+				A1B2C3D4E5F60718293A4B62 /* WatchHapticMapTests.swift in Sources */,
+				A1B2C3D4E5F60718293A4B63 /* BassOnsetDetectorTests.swift in Sources */,
+				A1B2C3D4E5F60718293A4B64 /* WatchHapticBulkPolicyTests.swift in Sources */,
+				D7C4A1B2E3F40516273849A4 /* WatchHapticPlaybackPlannerTests.swift in Sources */,
 				FEED000F000000000000AAAF /* WatchTransferMenuPolicyTests.swift in Sources */,
 				8D82DE0027610B16DC6411E6 /* WatchTransferAudioPolicyTests.swift in Sources */,
 				7160EAB48487F5BA2FA83F53 /* WatchAudioTranscoderTests.swift in Sources */,
@@ -1208,8 +1241,11 @@
 				E8E8E8E70101E8E70101E8E7 /* RemoteDefaultArtwork.swift in Sources */,
 				D1D1D1D10101D1D10101D1D1 /* DeviceIdentity.swift in Sources */,
 				FEED0002000000000000AAA2 /* WatchTransfer.swift in Sources */,
+				A1B2C3D4E5F60718293A4C01 /* WatchHapticMap.swift in Sources */,
+				A1B2C3D4E5F60718293A4C04 /* BassOnsetDetector.swift in Sources */,
 				FEED0021000000000000AA21 /* WatchPlaybackLogic.swift in Sources */,
 				FEED0006000000000000AAA6 /* WatchTransferBridge.swift in Sources */,
+				A1B2C3D4E5F60718293A4C06 /* WatchHapticMapBuilder.swift in Sources */,
 				FEED000B000000000000AAAB /* WatchTransferMenuPolicy.swift in Sources */,
 				2AA1296E3B9549BC03EF1137 /* WatchTransferAudioPolicy.swift in Sources */,
 				4E50B6A3E0BF4A6B3E22D651 /* WatchAudioTranscoder.swift in Sources */,
@@ -1283,6 +1319,7 @@
 				FEED0035000000000000AA35 /* ModeIconViews.swift in Sources */,
 				638E87451FD1BDEE7B6AB78A /* DownloadAudioQuality.swift in Sources */,
 				FD3B6946D77C4B388EC6DC95 /* WatchAudioRoutePolicy.swift in Sources */,
+				D7C4A1B2E3F40516273849A2 /* WatchHapticPlaybackPlanner.swift in Sources */,
 				A7C1D9E3F5B702468ACE1357 /* WatchHapticBeatSchedule.swift in Sources */,
 				AD59F55CC2664501BD1BE8CA /* WatchAudioActivationPolicy.swift in Sources */,
 				C8D1E2F3000000000000AA02 /* WatchAudioOutputPreference.swift in Sources */,
@@ -1300,6 +1337,7 @@
 				ED70471B3B4345BA8082875B /* UXMusicWatchApp.swift in Sources */,
 				8379E743BC3A42EA9A578132 /* WatchRootView.swift in Sources */,
 				FEED0003000000000000AAA3 /* WatchTransfer.swift in Sources */,
+				A1B2C3D4E5F60718293A4C02 /* WatchHapticMap.swift in Sources */,
 				FEED0022000000000000AA22 /* WatchPlaybackLogic.swift in Sources */,
 				934EAC9DD4EB677B2EBD5D5C /* AlbumGroupPosition.swift in Sources */,
 				6195166E717CD30E926D419D /* ArtworkMemoryCache.swift in Sources */,
@@ -1317,6 +1355,8 @@
 				FEED0072000000000000AA72 /* WatchCoalescingJSONWriter.swift in Sources */,
 				FEED0051000000000000AA51 /* WatchModeIconViews.swift in Sources */,
 				D61C14C50B5D4AE0B8DC8C66 /* WatchAudioRoutePolicy.swift in Sources */,
+				D7C4A1B2E3F40516273849A3 /* WatchHapticPlaybackPlanner.swift in Sources */,
+				D7C4A1B2E3F40516273849A6 /* WatchHapticPlayback.swift in Sources */,
 				B8D2EAF406C813579BDF2468 /* WatchHapticBeatSchedule.swift in Sources */,
 				6FE4CC630F4646CFB62EEFA9 /* WatchAudioActivationPolicy.swift in Sources */,
 				C8D1E2F3000000000000AA04 /* WatchAudioOutputPreference.swift in Sources */,
