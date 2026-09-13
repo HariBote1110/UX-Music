@@ -121,6 +121,22 @@
         }
       }
     },
+    "Haptics" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haptics"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "振動"
+          }
+        }
+      }
+    },
     "Library" : {
       "localizations" : {
         "en" : {
@@ -133,6 +149,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ライブラリ"
+          }
+        }
+      }
+    },
+    "No haptic data for this song" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No haptic data for this song"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この曲の振動データがありません"
           }
         }
       }
@@ -188,6 +220,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "再生中"
+          }
+        }
+      }
+    },
+    "Off" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフ"
+          }
+        }
+      }
+    },
+    "On" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オン"
           }
         }
       }
