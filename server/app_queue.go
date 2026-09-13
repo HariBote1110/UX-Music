@@ -314,6 +314,21 @@ func (a *App) QueueSet(items []map[string]interface{}, startIndex int) error {
 	return a.playCurrentQueueItem()
 }
 
+// QueueSetWithShuffle replaces the native queue and its shuffle state in one
+// visible state transition. It is used for a collection's non-persistent
+// default shuffle preference; callers' global settings remain unchanged.
+func (a *App) QueueSetWithShuffle(items []map[string]interface{}, startIndex int, shuffled bool) error {
+	q := a.ensureQueue()
+	prevItem, hadPrev := q.CurrentItem()
+
+	q.SetQueueWithShuffle(songMapsToQueueItems(items), startIndex, shuffled)
+	a.emitQueueState()
+	if hadPrev {
+		a.emitQueueAdvanced(prevItem.ID, "user")
+	}
+	return a.playCurrentQueueItem()
+}
+
 // QueueNext advances the queue (honouring loop mode) and plays the result,
 // or stops native playback if the queue ran off the end with loop off. This
 // is the explicit, user/remote-triggered action: unlike the automatic

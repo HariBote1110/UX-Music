@@ -2,8 +2,8 @@ package server
 
 import (
 	"fmt"
-	"sync"
 	"strings"
+	"sync"
 	"time"
 	"ux-music-sidecar/internal/playlist"
 	"ux-music-sidecar/internal/store"
@@ -330,6 +330,9 @@ func (a *App) GetAllPlaylists() ([]string, error) {
 func (a *App) DeletePlaylist(name string) error {
 	err := playlist.DeletePlaylist(name)
 	if err == nil {
+		if err := a.deletePlaylistShufflePreference(name); err != nil {
+			return err
+		}
 		a.RequestPlaylistsWithArtwork()
 	}
 	return err
@@ -341,6 +344,9 @@ func (a *App) RenamePlaylist(data map[string]interface{}) error {
 	newName := data["newName"].(string)
 	err := playlist.RenamePlaylist(oldName, newName)
 	if err == nil {
+		if err := a.renamePlaylistShufflePreference(oldName, newName); err != nil {
+			return err
+		}
 		a.RequestPlaylistsWithArtwork()
 	}
 	return err

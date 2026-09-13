@@ -127,6 +127,33 @@ func TestQueueSetActivatesQueueAndUpdatesState(t *testing.T) {
 	}
 }
 
+func TestQueueSetWithShuffleEmitsOnlyTheRequestedShuffleState(t *testing.T) {
+	newTempUserDataStore(t)
+	app, emitted := newQueueTestApp(t)
+	app.queue = playqueue.NewWithShuffler(func(items []playqueue.Item) {
+		for left, right := 0, len(items)-1; left < right; left, right = left+1, right-1 {
+			items[left], items[right] = items[right], items[left]
+		}
+	})
+	app.queueItemStarter = func(playqueue.Item) error { return nil }
+
+	if err := app.QueueSetWithShuffle([]map[string]interface{}{
+		{"id": "a", "path": "/music/a.mp3"},
+		{"id": "b", "path": "/music/b.mp3"},
+		{"id": "c", "path": "/music/c.mp3"},
+	}, 1, true); err != nil {
+		t.Fatalf("QueueSetWithShuffle: %v", err)
+	}
+
+	if len(*emitted) != 1 || (*emitted)[0].name != "queue-state-changed" {
+		t.Fatalf("emits = %#v; want one queue-state-changed event", *emitted)
+	}
+	payload := (*emitted)[0].data.(map[string]interface{})
+	if payload["shuffled"] != true || payload["index"] != 0 {
+		t.Fatalf("payload = %#v; want shuffled queue pinned at index 0", payload)
+	}
+}
+
 func TestQueueNextAdvancesAndEmitsState(t *testing.T) {
 	newTempUserDataStore(t)
 	app, emitted := newQueueTestApp(t)
