@@ -56,6 +56,9 @@ private enum WatchLibraryDestination: Hashable {
     case songs
     case albums
     case playlists
+    #if DEBUG
+    case haptics
+    #endif
 }
 
 /// Library page: a plain native `List` with three `NavigationLink(value:)` rows ("Songs"/"Albums"/
@@ -103,6 +106,11 @@ struct WatchSongListView: View {
                         NavigationLink(value: WatchLibraryDestination.playlists) {
                             Label("Playlists", systemImage: "music.note.list")
                         }
+                        #if DEBUG
+                        NavigationLink(value: WatchLibraryDestination.haptics) {
+                            Label("Haptics Lab", systemImage: "waveform.path")
+                        }
+                        #endif
                     }
                     .navigationDestination(for: WatchLibraryDestination.self) { destination in
                         switch destination {
@@ -113,6 +121,10 @@ struct WatchSongListView: View {
                             albumList
                         case .playlists:
                             WatchPlaylistListView(selectedPage: $selectedPage)
+                        #if DEBUG
+                        case .haptics:
+                            WatchHapticLabView()
+                        #endif
                         }
                     }
                 }
