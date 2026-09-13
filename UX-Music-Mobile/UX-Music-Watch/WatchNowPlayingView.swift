@@ -64,11 +64,6 @@ struct WatchNowPlayingView: View {
     /// stutter that used to happen when swiping between Library and Now Playing.
     @EnvironmentObject private var progress: WatchPlaybackProgress
 
-    /// Bass-hit haptic playback toggle, injected from `UXMusicWatchApp`. Owns its own persisted
-    /// on/off state and reports whether the current song has haptic map data — see the mode-row
-    /// button and the status caption below.
-    @EnvironmentObject private var hapticPlayback: WatchHapticPlayback
-
     /// Whether this page is the one currently selected in `WatchRootView`'s paged `TabView`, passed
     /// down from `selectedPage` there. **Required** for `hiddenCrownVolumeControl` — see its doc
     /// comment for why `onAppear` alone cannot be trusted to mean "became visible" on this page.
@@ -319,21 +314,11 @@ struct WatchNowPlayingView: View {
                         .foregroundStyle(.white.opacity(0.6))
                         .labelStyle(.titleAndIcon)
                         .transition(.opacity)
-                } else if hapticPlayback.isEnabled && !hapticPlayback.currentSongHasMap {
-                    // Non-blocking notice, same tier as the speaker-fallback caption above and
-                    // below `routeError` in priority: haptics being unavailable for this song
-                    // never overrides an actual playback route problem.
-                    Text("No haptic data for this song")
-                        .font(metrics.routeErrorFont)
-                        .foregroundStyle(.white.opacity(0.6))
-                        .transition(.opacity)
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: player.routeError)
             .animation(.easeInOut(duration: 0.25), value: player.isSpeakerFallback)
             .animation(.easeInOut(duration: 0.25), value: player.outputPreference)
-            .animation(.easeInOut(duration: 0.25), value: hapticPlayback.isEnabled)
-            .animation(.easeInOut(duration: 0.25), value: hapticPlayback.currentSongHasMap)
 
             if player.currentSong != nil {
                 // Display-only: no Crown/tap seeking — see the type-level doc comment for why.
@@ -402,8 +387,6 @@ struct WatchNowPlayingView: View {
                 .buttonStyle(.plain)
 
                 outputPreferenceButton(metrics: metrics)
-
-                hapticToggleButton(metrics: metrics)
             }
 
             #if DEBUG
@@ -445,29 +428,6 @@ struct WatchNowPlayingView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("Output"))
-    }
-
-    /// Compact bass-hit haptic toggle, placed alongside `outputPreferenceButton` in the mode row —
-    /// same sizing (`metrics.modeIconSize`/`modeTapFrameSize`), plain button style, and
-    /// `.contentTransition(.symbolEffect(.replace))` glyph morph, so it reads as one family of
-    /// mode-row buttons rather than a bolted-on extra control. Only works while the screen is on
-    /// (a Watch platform limit on haptics), so there is deliberately no background-capable framing
-    /// here or in its accessibility label.
-    @ViewBuilder
-    private func hapticToggleButton(metrics: NowPlayingMetrics) -> some View {
-        Button {
-            hapticPlayback.setEnabled(!hapticPlayback.isEnabled)
-        } label: {
-            Image(systemName: hapticPlayback.isEnabled ? "hand.tap.fill" : "hand.tap")
-                .font(.system(size: metrics.modeIconSize))
-                .foregroundStyle(.white)
-                .contentTransition(.symbolEffect(.replace))
-                .frame(width: metrics.modeTapFrameSize, height: metrics.modeTapFrameSize)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text("Haptics"))
-        .accessibilityValue(hapticPlayback.isEnabled ? Text("On") : Text("Off"))
     }
 
     /// SF Symbol for a given `WatchAudioOutputPreference`, shared between the mode-row button and
@@ -646,5 +606,4 @@ private struct NowPlayingMetrics {
         .environmentObject(player)
         .environmentObject(player.progress)
         .environmentObject(library)
-        .environmentObject(WatchHapticPlayback(player: player, library: library))
 }

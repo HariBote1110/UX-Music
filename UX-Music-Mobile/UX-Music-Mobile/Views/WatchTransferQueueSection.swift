@@ -60,7 +60,6 @@ struct WatchTransferQueueSection: View {
                     }
                 }
             }
-            hapticBulkSendRow
         } header: {
             Text("APPLE WATCH")
         } footer: {
@@ -76,55 +75,7 @@ struct WatchTransferQueueSection: View {
                 }
                 .font(.footnote)
             }
-            Text("Analyses the bass of songs already on your Apple Watch so it can vibrate along. Audio is not re-sent. Vibration works only while the Watch screen is on.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         }
-    }
-
-    @ViewBuilder
-    private var hapticBulkSendRow: some View {
-        Button {
-            bridge.sendHapticMapsForTransferredSongs()
-        } label: {
-            HStack {
-                Text("Send Haptic Data to Watch")
-                Spacer()
-                if let progress = bridge.hapticBulkProgress, !progress.isFinished {
-                    ProgressView()
-                }
-            }
-        }
-        .disabled(!Self.isActivated(bridge.activationStatus) || Self.isRunning(bridge.hapticBulkProgress))
-
-        if let progress = bridge.hapticBulkProgress {
-            if !progress.isFinished {
-                Text(String(format: String(localized: "Analysing %lld / %lld"), progress.completed + progress.failed, progress.total))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(format: String(localized: "Sent %lld, failed %lld"), progress.total - progress.failed, progress.failed))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if progress.failed > 0 {
-                        Text("Failed items are usually songs that are not downloaded on this iPhone.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-    }
-
-    private static func isActivated(_ status: WatchSessionActivationStatus) -> Bool {
-        if case .activated = status { return true }
-        return false
-    }
-
-    private static func isRunning(_ progress: WatchHapticBulkProgress?) -> Bool {
-        guard let progress else { return false }
-        return !progress.isFinished
     }
 
     static func activationStatusText(_ status: WatchSessionActivationStatus) -> String {

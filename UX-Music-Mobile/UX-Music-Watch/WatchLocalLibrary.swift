@@ -19,12 +19,6 @@ enum WatchAudioStorage {
         return supportDir.appendingPathComponent("Artwork", isDirectory: true)
     }()
 
-    static let hapticsDirectory: URL = {
-        let fileManager = FileManager.default
-        let supportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return supportDir.appendingPathComponent("Haptics", isDirectory: true)
-    }()
-
     static var indexFileURL: URL {
         let supportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return supportDir.appendingPathComponent("library.json")
@@ -34,7 +28,6 @@ enum WatchAudioStorage {
         let fileManager = FileManager.default
         try? fileManager.createDirectory(at: audioDirectory, withIntermediateDirectories: true)
         try? fileManager.createDirectory(at: artworkDirectory, withIntermediateDirectories: true)
-        try? fileManager.createDirectory(at: hapticsDirectory, withIntermediateDirectories: true)
     }
 
     /// Destination URL for a song's audio asset (used by the receiver to move the transferred file
@@ -48,10 +41,6 @@ enum WatchAudioStorage {
     /// song metadata — see `WatchTransferMeta.storedArtworkFileName(forId:)`.
     static func artworkFileURL(forId id: String) -> URL {
         artworkDirectory.appendingPathComponent(WatchTransferMeta.storedArtworkFileName(forId: id))
-    }
-
-    static func hapticsFileURL(forId id: String) -> URL {
-        hapticsDirectory.appendingPathComponent(WatchTransferMeta.storageStem(for: id) + ".json")
     }
 }
 
@@ -121,27 +110,23 @@ final class WatchLocalLibrary: ObservableObject {
             mutationRevision += 1
             pendingSongChanges.removeValue(forKey: id)
             pendingRemovedSongIDs.insert(id)
-            deleteSongFiles(for: id, meta: meta)
+            deleteAudioFile(for: id, meta: meta)
             return
         }
-        guard let meta else {
-            deleteSongFiles(for: id, meta: nil)
-            return
-        }
+        guard let meta else { return }
         mutationRevision += 1
         setSongs(WatchLibraryIndex.removing(id: id, from: songs))
         saveToDisk()
-        deleteSongFiles(for: id, meta: meta)
+        deleteAudioFile(for: id, meta: meta)
     }
 
     /// Deletes a received audio asset without making the main actor perform filesystem work. When
     /// a removal arrives during the initial index load, the full metadata may not be in memory yet,
     /// so fall back to the filesystem-safe id stem and remove any matching audio extension.
-    private func deleteSongFiles(for id: String, meta: WatchTransferMeta?) {
+    private func deleteAudioFile(for id: String, meta: WatchTransferMeta?) {
+        let knownURL = meta.map(audioFileURL(for:))
         let storageStem = WatchTransferMeta.storageStem(for: id)
         DispatchQueue(label: "UXMusicWatch.libraryAssetDeletion", qos: .utility).async {
-            let knownURL = meta.map { WatchAudioStorage.audioFileURL(for: $0) }
-            let hapticsURL = WatchAudioStorage.hapticsFileURL(forId: id)
             #if DEBUG
             WatchPerfBreadcrumb.mark("library.removeAudioFile.begin")
             #endif
@@ -156,7 +141,6 @@ final class WatchLocalLibrary: ObservableObject {
                     try? FileManager.default.removeItem(at: url)
                 }
             }
-            try? FileManager.default.removeItem(at: hapticsURL)
             #if DEBUG
             WatchPerfBreadcrumb.mark("library.removeAudioFile.end")
             #endif

@@ -5,7 +5,6 @@ struct UXMusicWatchApp: App {
     @StateObject private var library = WatchLocalLibrary()
     @StateObject private var playlistLibrary = WatchPlaylistLibrary()
     @StateObject private var player: WatchAudioPlayerService
-    @StateObject private var hapticPlayback: WatchHapticPlayback
     @StateObject private var connectivity: WatchConnectivityReceiver
 
     init() {
@@ -19,13 +18,7 @@ struct UXMusicWatchApp: App {
         _playlistLibrary = StateObject(wrappedValue: playlistLibrary)
         let playerService = WatchAudioPlayerService(library: library)
         _player = StateObject(wrappedValue: playerService)
-        let hapticService = WatchHapticPlayback(player: playerService, library: library)
-        _hapticPlayback = StateObject(wrappedValue: hapticService)
-        let connectivity = WatchConnectivityReceiver(
-            library: library,
-            playlistLibrary: playlistLibrary,
-            hapticPlayback: hapticService
-        )
+        let connectivity = WatchConnectivityReceiver(library: library, playlistLibrary: playlistLibrary)
         _connectivity = StateObject(wrappedValue: connectivity)
         // Activated here (app init) rather than a view's onAppear: WatchConnectivity can invoke
         // `didReceive` in the background before any view ever appears (e.g. the Watch app was
@@ -75,7 +68,6 @@ struct UXMusicWatchApp: App {
                 .environmentObject(playlistLibrary)
                 .environmentObject(player)
                 .environmentObject(player.progress)
-                .environmentObject(hapticPlayback)
                 .environmentObject(connectivity)
         }
     }

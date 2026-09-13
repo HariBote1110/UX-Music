@@ -15,17 +15,6 @@ final class WatchPlaybackProgress: ObservableObject {
     @Published var position: Double = 0
 }
 
-/// Narrow clock surface consumed by haptic playback. Keeping it separate from the player service's
-/// progress avoids making every Watch view observe the 0.5-second clock publication.
-@MainActor
-final class WatchPlaybackClock: ObservableObject {
-    @Published private(set) var snapshot: WatchHapticPlaybackClockSnapshot?
-
-    func publish(_ snapshot: WatchHapticPlaybackClockSnapshot) {
-        self.snapshot = snapshot
-    }
-}
-
 private struct WatchAudioRouteSnapshot: Sendable {
     let descriptions: [String]
     let firstPortName: String
@@ -95,7 +84,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         set { progress.position = newValue }
     }
     let progress = WatchPlaybackProgress()
-    let playbackClock = WatchPlaybackClock()
 
     /// Read-only view of the queue as it is actually playing (post-shuffle, if shuffled), for
     /// `WatchQueueView`'s "up next" list. A plain computed passthrough (rather than a second
@@ -184,7 +172,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         if wasPlaying {
             player?.pause()
             isPlaying = false
-            publishPlaybackClock()
             updateNowPlayingInfo()
             saveResumeState()
         }
@@ -202,7 +189,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
                 guard let self, wasPlaying, activated else { return }
                 self.player?.play()
                 self.isPlaying = true
-                self.publishPlaybackClock()
                 self.updateNowPlayingInfo()
                 self.saveResumeState()
             }
@@ -250,7 +236,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         if isPlaying {
             player.pause()
             isPlaying = false
-            publishPlaybackClock()
             updateNowPlayingInfo()
             saveResumeState()
         } else {
@@ -258,7 +243,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
                 guard let self, activated else { return }
                 player.play()
                 self.isPlaying = true
-                self.publishPlaybackClock()
                 self.updateNowPlayingInfo()
                 self.saveResumeState()
             }
@@ -315,7 +299,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         let clamped = WatchSeekLogic.clampedPosition(seconds, duration: duration)
         player?.seek(to: CMTime(seconds: clamped, preferredTimescale: 600))
         position = clamped
-        publishPlaybackClock()
         updateNowPlayingInfo()
         saveResumeState()
     }
@@ -366,7 +349,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     private func loadWithoutAutoplay(_ song: WatchTransferMeta) async {
         clearPlayer()
         currentSong = song
-        publishPlaybackClock()
         loadGeneration += 1
         let generation = loadGeneration
 
@@ -392,7 +374,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
         let item = prepared.item
         isPlaying = false
         player = avPlayer
-        publishPlaybackClock()
 
         timeObserver = avPlayer.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
@@ -402,7 +383,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             // doc comment on `WatchPlaybackProgress` for why that split matters.
             MainActor.assumeIsolated {
                 self?.progress.position = time.seconds
-                self?.publishPlaybackClock()
             }
         }
 
@@ -591,7 +571,7 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
     /// `routeError` set while `isSpeakerFallback` is also `true`).
     private func applyRouteOutcome(
         _ outcome: WatchAudioRoutePolicy.Outcome,
-        completion: (@MainActor @Sendable () -> Void)? = nil
+        completion: (() -> Void)? = nil
     ) {
         #if DEBUG
         WatchPerfBreadcrumb.mark("audio.routeSnapshot.begin")
@@ -679,7 +659,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
                       let player = self.player,
                       player.rate == 0 else { return }
                 self.isPlaying = false
-                self.publishPlaybackClock()
                 self.updateNowPlayingInfo()
                 self.saveResumeState()
             }
@@ -724,22 +703,9 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             isPlaying = false
             position = 0
             player?.seek(to: .zero)
-            publishPlaybackClock()
             updateNowPlayingInfo()
             saveResumeState()
         }
-    }
-
-    private func publishPlaybackClock() {
-        let mediaTime = player?.currentTime().seconds ?? position
-        playbackClock.publish(
-            WatchHapticPlaybackClockSnapshot(
-                mediaTime: mediaTime.isFinite ? mediaTime : position,
-                capturedUptime: TimeInterval(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000,
-                rate: player?.rate ?? 0,
-                songId: currentSong?.id
-            )
-        )
     }
 
     /// Publishes the current track/position/rate to `MPNowPlayingInfoCenter` so watchOS's system
@@ -788,7 +754,6 @@ final class WatchAudioPlayerService: NSObject, ObservableObject {
             guard let self, let player = self.player, self.isPlaying else { return .commandFailed }
             player.pause()
             self.isPlaying = false
-            self.publishPlaybackClock()
             self.updateNowPlayingInfo()
             return .success
         }

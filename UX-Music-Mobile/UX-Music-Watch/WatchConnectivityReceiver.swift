@@ -1,5 +1,4 @@
 import Foundation
-import Combine
 import WatchConnectivity
 
 /// Receives audio files sent from the paired iPhone (`WatchTransferBridge.send`) and hands them off
@@ -24,36 +23,14 @@ final class WatchConnectivityReceiver: NSObject, ObservableObject {
 
     private let library: WatchLocalLibrary
     private let playlistLibrary: WatchPlaylistLibrary
-    private let hapticPlayback: WatchHapticPlayback
     private static let activationQueue = DispatchQueue(
         label: "UXMusicWatch.connectivityActivation",
         qos: .utility
     )
-    private let applicationContextQueue = DispatchQueue(
-        label: "UXMusicWatch.connectivity.applicationContext",
-        qos: .utility
-    )
-    private var libraryObservation: AnyCancellable?
-    private var libraryContextTask: Task<Void, Never>?
-    private var pendingLibraryIDs: [String] = []
-    private var sessionActivated = false
 
-    init(
-        library: WatchLocalLibrary,
-        playlistLibrary: WatchPlaylistLibrary,
-        hapticPlayback: WatchHapticPlayback
-    ) {
+    init(library: WatchLocalLibrary, playlistLibrary: WatchPlaylistLibrary) {
         self.library = library
         self.playlistLibrary = playlistLibrary
-        self.hapticPlayback = hapticPlayback
-        super.init()
-
-        libraryObservation = library.$songs
-            .map { $0.map(\.id) }
-            .removeDuplicates()
-            .sink { [weak self] ids in
-                self?.libraryDidChange(ids)
-            }
     }
 
     /// Tag used on the playlists `transferFile`'s metadata dictionary, alongside
@@ -95,33 +72,9 @@ extension WatchConnectivityReceiver: WCSessionDelegate {
         _ session: WCSession,
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: Error?
-    ) {
-        let didActivate = activationState == .activated && error == nil
-        Task { @MainActor [weak self] in
-            guard let self, didActivate else { return }
-            self.sessionActivated = true
-            self.scheduleLibraryContextUpdate(ids: self.library.songs.map(\.id))
-        }
-    }
+    ) {}
 
     nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
-        if WatchTransferMeta.isHapticsWcMetadata(file.metadata) {
-            guard let id = file.metadata?[WatchTransferMeta.metadataIDKey] as? String else { return }
-            WatchAudioStorage.ensureDirectories()
-            let destination = WatchAudioStorage.hapticsFileURL(forId: id)
-            try? FileManager.default.removeItem(at: destination)
-            do {
-                try FileManager.default.copyItem(at: file.fileURL, to: destination)
-            } catch {
-                print("[WatchConnectivityReceiver] Failed to save haptic map: \(error)")
-                return
-            }
-            Task { @MainActor [weak self] in
-                self?.hapticPlayback.reloadMapIfCurrentSong(id: id)
-            }
-            return
-        }
-
         // Artwork arrives as its own `transferFile`, tagged with `kind: "artwork"` rather than the
         // full song metadata `fromWCMetadata` expects — handle it separately and return before
         // attempting (and failing) to parse it as a song.
@@ -183,29 +136,6 @@ extension WatchConnectivityReceiver: WCSessionDelegate {
 
             isReceiving = false
             receivingTitle = ""
-        }
-    }
-
-    private func libraryDidChange(_ ids: [String]) {
-        pendingLibraryIDs = ids
-        guard sessionActivated else { return }
-        scheduleLibraryContextUpdate(ids: ids)
-    }
-
-    private func scheduleLibraryContextUpdate(ids: [String]) {
-        pendingLibraryIDs = ids
-        guard sessionActivated else { return }
-        libraryContextTask?.cancel()
-        libraryContextTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            guard !Task.isCancelled, let self else { return }
-            let latestIDs = self.pendingLibraryIDs
-            self.libraryContextTask = nil
-            self.applicationContextQueue.async {
-                try? WCSession.default.updateApplicationContext([
-                    WatchTransferMeta.applicationContextLibrarySongIDsKey: latestIDs
-                ])
-            }
         }
     }
 }
