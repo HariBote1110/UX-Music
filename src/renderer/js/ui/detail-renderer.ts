@@ -1,6 +1,6 @@
 // src/renderer/js/ui/detail-renderer.js
 
-import { elements } from '../core/state.js';
+import { elements, state } from '../core/state.js';
 import { showAlbum } from '../core/navigation.js';
 import { prependDetailBackButton } from './detail-back-button.js';
 import { playSong } from '../features/playback-manager.js';
@@ -12,10 +12,23 @@ import {
     setupSongListScroller,
     initListHeaderResizing
 } from './list-renderer.js';
-import { clearMainContent } from './view-renderer.js';
+import { clearMainContent, registerViewCleanup } from './view-renderer.js';
 import { updateListSpacer } from './ui.js'; // 追加
 import { getAlbumSongs, getArtistSongs, getArtistAlbums, setCurrentViewSongs } from '../core/library-model.js';
+import { createCollectionShuffleControl } from './collection-shuffle-control.js';
 const electronAPI = window.electronAPI;
+
+/**
+ * state.albums から、参照が一致するアルバムオブジェクトのキーを探す。
+ * renderAlbumDetailView はアルバムオブジェクトのみを受け取るため、
+ * コレクション参照 (CollectionRef) 用のキーをここで逆引きする。
+ */
+function findAlbumKey(album): string | null {
+    for (const [key, value] of state.albums.entries()) {
+        if (value === album) return key;
+    }
+    return null;
+}
 
 // モジュールスコープでスクロール位置を記憶
 const lastScrollPositions = {};
@@ -49,8 +62,11 @@ export function renderAlbumDetailView(album) {
     viewWrapper.appendChild(listElement);
     elements.mainContent.appendChild(viewWrapper);
 
+    const albumKey = findAlbumKey(album);
+
     const scroller = setupSongListScroller(listElement, albumSongs, {
-        contextView: 'album'
+        contextView: 'album',
+        albumKey
     });
 
     // スペーサーを更新
@@ -71,7 +87,15 @@ export function renderAlbumDetailView(album) {
     }
     if (artImg) artImg.dataset.src = resolveArtworkPath(artworkToUse, false);
 
-    viewWrapper.querySelector('.play-all-btn')?.addEventListener('click', () => playSong(0, albumSongs));
+    viewWrapper.querySelector('.play-all-btn')?.addEventListener('click', () => {
+        playSong(0, albumSongs, false, albumKey ? { collection: { kind: 'album', key: albumKey } } : {});
+    });
+
+    if (albumKey) {
+        const shuffleControl = createCollectionShuffleControl({ kind: 'album', key: albumKey });
+        viewWrapper.querySelector('.detail-actions')?.appendChild(shuffleControl.element);
+        registerViewCleanup(shuffleControl.destroy);
+    }
 
     window.observeNewArtworks(viewWrapper);
     return scroller;
@@ -182,7 +206,13 @@ export function renderPlaylistDetailView(playlistDetails: Record<string, unknown
 
     prependDetailBackButton(viewWrapper);
 
-    viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => playSong(0, songs));
+    viewWrapper.querySelector('.play-all-btn').addEventListener('click', () => {
+        playSong(0, songs, false, { collection: { kind: 'playlist', key: playlistName } });
+    });
+
+    const shuffleControl = createCollectionShuffleControl({ kind: 'playlist', key: playlistName });
+    viewWrapper.querySelector('.detail-actions')?.appendChild(shuffleControl.element);
+    registerViewCleanup(shuffleControl.destroy);
 
     window.observeNewArtworks(viewWrapper);
     return scroller;
