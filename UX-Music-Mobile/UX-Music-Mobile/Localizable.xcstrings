@@ -443,6 +443,38 @@
         }
       }
     },
+    "Analyses the bass of songs already on your Apple Watch so it can vibrate along. Audio is not re-sent. Vibration works only while the Watch screen is on." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Analyses the bass of songs already on your Apple Watch so it can vibrate along. Audio is not re-sent. Vibration works only while the Watch screen is on."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Watch に転送済みの曲の低音を解析し、再生に合わせて振動できるようにします。音声は再送しません。振動は Watch の画面が点いている間だけ動作します。"
+          }
+        }
+      }
+    },
+    "Analysing %lld / %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Analysing %lld / %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解析中 %lld / %lld"
+          }
+        }
+      }
+    },
     "APPLE WATCH" : {
       "localizations" : {
         "en" : {
@@ -1546,6 +1578,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ダウンロード失敗: %ld 件"
+          }
+        }
+      }
+    },
+    "Failed items are usually songs that are not downloaded on this iPhone." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed items are usually songs that are not downloaded on this iPhone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失敗した項目は、通常この iPhone にダウンロードされていない曲です。"
           }
         }
       }
@@ -3290,6 +3338,22 @@
         }
       }
     },
+    "Send Haptic Data to Watch" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send Haptic Data to Watch"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watchの曲に振動データを送信"
+          }
+        }
+      }
+    },
     "Sending…" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3335,6 +3399,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "送信済み"
+          }
+        }
+      }
+    },
+    "Sent %lld, failed %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sent %lld, failed %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "送信済み %lld、失敗 %lld"
           }
         }
       }
