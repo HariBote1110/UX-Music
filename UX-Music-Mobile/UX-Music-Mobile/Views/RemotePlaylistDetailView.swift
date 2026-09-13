@@ -24,6 +24,10 @@ struct RemotePlaylistDetailView: View {
         return false
     }
 
+    private var shuffleReference: PlaybackCollectionRef {
+        PlaybackCollectionRef(kind: .desktopPlaylist, key: playlist.name)
+    }
+
     var body: some View {
         LibraryBottomBleed { bottomInset in
             scrollBody
@@ -35,6 +39,9 @@ struct RemotePlaylistDetailView: View {
         .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                CollectionShuffleMenuButton(reference: shuffleReference)
+            }
             if model.playlistSongsContainUndownloaded(resolvedSongs) {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -158,6 +165,11 @@ struct RemotePlaylistDetailView: View {
                 title: "Transfer Playlist to Apple Watch",
                 songs: resolvedSongs
             )
+            Menu {
+                CollectionShufflePreferencePicker(reference: shuffleReference)
+            } label: {
+                Label("Default Shuffle", systemImage: "shuffle")
+            }
         }
     }
 
@@ -184,7 +196,7 @@ struct RemotePlaylistDetailView: View {
     /// `progress/mobile-youtube-embed.md`).
     private func playYouTube(_ song: Song) {
         Task {
-            await model.player.play(song, newQueue: [song])
+            await model.player.play(song, newQueue: [song], collection: shuffleReference)
         }
     }
 
@@ -193,7 +205,7 @@ struct RemotePlaylistDetailView: View {
         let localSong = song.withPath(model.downloadManager.localPathString(songId: song.id))
         let queue = downloaded.map { $0.withPath(model.downloadManager.localPathString(songId: $0.id)) }
         Task {
-            await model.player.play(localSong, newQueue: queue)
+            await model.player.play(localSong, newQueue: queue, collection: shuffleReference)
         }
     }
 }

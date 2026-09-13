@@ -283,6 +283,22 @@
         }
       }
     },
+    "APPLE WATCH" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APPLE WATCH"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "APPLE WATCH"
+          }
+        }
+      }
+    },
     "Add" : {
       "localizations" : {
         "en" : {
@@ -311,6 +327,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "曲を追加"
+          }
+        }
+      }
+    },
+    "Add YouTube URL" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add YouTube URL"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YouTube の URL を追加"
           }
         }
       }
@@ -359,22 +391,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "プレイリストに追加"
-          }
-        }
-      }
-    },
-    "Add YouTube URL" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Add YouTube URL"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "YouTube の URL を追加"
           }
         }
       }
@@ -439,22 +455,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "動画の再生中にエラーが発生しました（コード: %d）。"
-          }
-        }
-      }
-    },
-    "APPLE WATCH" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "APPLE WATCH"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "APPLE WATCH"
           }
         }
       }
@@ -844,70 +844,6 @@
         }
       }
     },
-    "Connection failed: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connection failed: %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "接続失敗: %@"
-          }
-        }
-      }
-    },
-    "Connection failed: could not reach %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connection failed: could not reach %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "接続に失敗しました: %@ に到達できません"
-          }
-        }
-      }
-    },
-    "Connection failed: No endpoint available" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connection failed: No endpoint available"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "接続に失敗しました: 利用可能な接続先がありません"
-          }
-        }
-      }
-    },
-    "Connection mode" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connection mode"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "接続モード"
-          }
-        }
-      }
-    },
     "Connection Status" : {
       "localizations" : {
         "en" : {
@@ -936,6 +872,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "接続先の選択"
+          }
+        }
+      }
+    },
+    "Connection failed: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection failed: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続失敗: %@"
+          }
+        }
+      }
+    },
+    "Connection failed: No endpoint available" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection failed: No endpoint available"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続に失敗しました: 利用可能な接続先がありません"
+          }
+        }
+      }
+    },
+    "Connection failed: could not reach %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection failed: could not reach %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続に失敗しました: %@ に到達できません"
+          }
+        }
+      }
+    },
+    "Connection mode" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection mode"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続モード"
           }
         }
       }
@@ -1004,6 +1004,22 @@
         }
       }
     },
+    "Couldn't Load Playlists" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't Load Playlists"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレイリストを取得できませんでした"
+          }
+        }
+      }
+    },
     "Couldn't add it. Check the URL and pairing status." : {
       "localizations" : {
         "en" : {
@@ -1032,22 +1048,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "動画情報を取得できませんでした。デスクトップとのペアリング状態を確認してください。"
-          }
-        }
-      }
-    },
-    "Couldn't Load Playlists" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Couldn't Load Playlists"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "プレイリストを取得できませんでした"
           }
         }
       }
@@ -1148,6 +1148,86 @@
         }
       }
     },
+    "DISCOVERY" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DISCOVERY"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DISCOVERY"
+          }
+        }
+      }
+    },
+    "Default Shuffle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default Shuffle"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "既定のシャッフル"
+          }
+        }
+      }
+    },
+    "Default Shuffle: Follow Normal Setting" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default Shuffle: Follow Normal Setting"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "既定のシャッフル: 未設定（通常の設定に従う）"
+          }
+        }
+      }
+    },
+    "Default Shuffle: In Order" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default Shuffle: In Order"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "既定のシャッフル: 順番通り"
+          }
+        }
+      }
+    },
+    "Default Shuffle: Shuffle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default Shuffle: Shuffle"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "既定のシャッフル: シャッフル"
+          }
+        }
+      }
+    },
     "Delete" : {
       "localizations" : {
         "en" : {
@@ -1194,22 +1274,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "デスクトップに接続できません"
-          }
-        }
-      }
-    },
-    "DISCOVERY" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DISCOVERY"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DISCOVERY"
           }
         }
       }
@@ -1262,22 +1326,6 @@
         }
       }
     },
-    "Download failed. Check the connection to the desktop app." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Download failed. Check the connection to the desktop app."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ダウンロードに失敗しました。デスクトップとの接続を確認してください"
-          }
-        }
-      }
-    },
     "Download First" : {
       "localizations" : {
         "en" : {
@@ -1290,22 +1338,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "先にダウンロードしてから取り込む"
-          }
-        }
-      }
-    },
-    "Download is not available" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Download is not available"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ダウンロード機能が利用できません"
           }
         }
       }
@@ -1326,38 +1358,6 @@
         }
       }
     },
-    "Low video quality on mobile data" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Low video quality on mobile data"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "モバイルデータ通信時は低画質で再生"
-          }
-        }
-      }
-    },
-    "While on mobile data, YouTube songs play at the lowest quality (around 360p) to save data." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "While on mobile data, YouTube songs play at the lowest quality (around 360p) to save data."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "モバイルデータ通信中は、YouTube の曲を低画質（360p 程度）で再生して通信量を抑えます。"
-          }
-        }
-      }
-    },
     "Download Quality" : {
       "localizations" : {
         "en" : {
@@ -1370,6 +1370,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ダウンロード音質"
+          }
+        }
+      }
+    },
+    "Download failed. Check the connection to the desktop app." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download failed. Check the connection to the desktop app."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロードに失敗しました。デスクトップとの接続を確認してください"
+          }
+        }
+      }
+    },
+    "Download is not available" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download is not available"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード機能が利用できません"
           }
         }
       }
@@ -1647,6 +1679,22 @@
         }
       }
     },
+    "Follow Normal Setting" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Follow Normal Setting"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未設定（通常の設定に従う）"
+          }
+        }
+      }
+    },
     "Full + AAC" : {
       "localizations" : {
         "en" : {
@@ -1663,22 +1711,6 @@
         }
       }
     },
-    "Full Screen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Full Screen"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全画面表示"
-          }
-        }
-      }
-    },
     "Full Quality" : {
       "localizations" : {
         "en" : {
@@ -1691,6 +1723,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "フル音質"
+          }
+        }
+      }
+    },
+    "Full Screen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Full Screen"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全画面表示"
           }
         }
       }
@@ -1775,22 +1823,6 @@
         }
       }
     },
-    "Import from Desktop" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Import from Desktop"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "デスクトップから取り込む"
-          }
-        }
-      }
-    },
     "Import Method" : {
       "localizations" : {
         "en" : {
@@ -1823,6 +1855,22 @@
         }
       }
     },
+    "Import from Desktop" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import from Desktop"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デスクトップから取り込む"
+          }
+        }
+      }
+    },
     "Import with These Settings" : {
       "localizations" : {
         "en" : {
@@ -1851,6 +1899,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取り込み中…"
+          }
+        }
+      }
+    },
+    "In Order" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Order"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "順番通り"
           }
         }
       }
@@ -1951,6 +2015,22 @@
         }
       }
     },
+    "Loading Playlists…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading Playlists…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレイリストを読み込み中…"
+          }
+        }
+      }
+    },
     "Loading from Desktop…" : {
       "localizations" : {
         "en" : {
@@ -1967,18 +2047,18 @@
         }
       }
     },
-    "Loading Playlists…" : {
+    "Low video quality on mobile data" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Loading Playlists…"
+            "value" : "Low video quality on mobile data"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "プレイリストを読み込み中…"
+            "value" : "モバイルデータ通信時は低画質で再生"
           }
         }
       }
@@ -2063,38 +2143,6 @@
         }
       }
     },
-    "No audio track was found" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No audio track was found"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "音声トラックが見つかりません"
-          }
-        }
-      }
-    },
-    "No desktop found yet. Keep UX Music open on the same Wi-Fi network." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No desktop found yet. Keep UX Music open on the same Wi-Fi network."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "デスクトップが見つかりません。同じ Wi-Fi 上で UX Music を開いたままにしてください。"
-          }
-        }
-      }
-    },
     "No Downloaded Songs" : {
       "localizations" : {
         "en" : {
@@ -2107,55 +2155,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ダウンロード済みの曲がありません"
-          }
-        }
-      }
-    },
-    "No favourites yet. Tap the heart on the player while a track is playing." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No favourites yet. Tap the heart on the player while a track is playing."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "お気に入りはまだありません。再生中にプレイヤーのハートをタップしてください。"
-          }
-        }
-      }
-    },
-    "No known hosts yet. Candidates appear once you connect via pairing or Discovery." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No known hosts yet. Candidates appear once you connect via pairing or Discovery."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "既知のホストがありません。ペアリングまたは Discovery で接続すると候補が表示されます。"
-          }
-        }
-      }
-    },
-    "No longer downloaded" : {
-      "comment" : "Reason for a failed transfer when the song is no longer downloaded.",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No longer downloaded"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "端末からダウンロードが削除されています"
           }
         }
       }
@@ -2224,22 +2223,6 @@
         }
       }
     },
-    "No Playlists on Desktop" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Playlists on Desktop"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "デスクトップにプレイリストがありません"
-          }
-        }
-      }
-    },
     "No Playlists Yet" : {
       "localizations" : {
         "en" : {
@@ -2256,6 +2239,22 @@
         }
       }
     },
+    "No Playlists on Desktop" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Playlists on Desktop"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デスクトップにプレイリストがありません"
+          }
+        }
+      }
+    },
     "No Songs on Server" : {
       "localizations" : {
         "en" : {
@@ -2268,6 +2267,87 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "サーバーに曲がありません"
+          }
+        }
+      }
+    },
+    "No audio track was found" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No audio track was found"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声トラックが見つかりません"
+          }
+        }
+      }
+    },
+    "No desktop found yet. Keep UX Music open on the same Wi-Fi network." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No desktop found yet. Keep UX Music open on the same Wi-Fi network."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デスクトップが見つかりません。同じ Wi-Fi 上で UX Music を開いたままにしてください。"
+          }
+        }
+      }
+    },
+    "No favourites yet. Tap the heart on the player while a track is playing." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No favourites yet. Tap the heart on the player while a track is playing."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "お気に入りはまだありません。再生中にプレイヤーのハートをタップしてください。"
+          }
+        }
+      }
+    },
+    "No known hosts yet. Candidates appear once you connect via pairing or Discovery." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No known hosts yet. Candidates appear once you connect via pairing or Discovery."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "既知のホストがありません。ペアリングまたは Discovery で接続すると候補が表示されます。"
+          }
+        }
+      }
+    },
+    "No longer downloaded" : {
+      "comment" : "Reason for a failed transfer when the song is no longer downloaded.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No longer downloaded"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "端末からダウンロードが削除されています"
           }
         }
       }
@@ -2304,22 +2384,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "音量を正規化"
-          }
-        }
-      }
-    },
-    "Not applied to YouTube playback." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Not applied to YouTube playback."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "YouTube曲の再生には適用されません。"
           }
         }
       }
@@ -2372,6 +2436,22 @@
         }
       }
     },
+    "Not applied to YouTube playback." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not applied to YouTube playback."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YouTube曲の再生には適用されません。"
+          }
+        }
+      }
+    },
     "Nothing playing" : {
       "localizations" : {
         "en" : {
@@ -2384,22 +2464,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "再生中の曲はありません"
-          }
-        }
-      }
-    },
-    "Off" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Off"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "オフ"
           }
         }
       }
@@ -2418,6 +2482,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "OK"
+          }
+        }
+      }
+    },
+    "Off" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフ"
           }
         }
       }
@@ -2503,6 +2583,38 @@
         }
       }
     },
+    "PAIRING" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PAIRING"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PAIRING"
+          }
+        }
+      }
+    },
+    "PLAYLISTS" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PLAYLISTS"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PLAYLISTS"
+          }
+        }
+      }
+    },
     "Pair with QR code" : {
       "localizations" : {
         "en" : {
@@ -2551,22 +2663,6 @@
         }
       }
     },
-    "PAIRING" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "PAIRING"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "PAIRING"
-          }
-        }
-      }
-    },
     "Pairing Code (secret)" : {
       "localizations" : {
         "en" : {
@@ -2583,22 +2679,6 @@
         }
       }
     },
-    "Pairing failed" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pairing failed"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ペアリングに失敗しました"
-          }
-        }
-      }
-    },
     "Pairing Status" : {
       "localizations" : {
         "en" : {
@@ -2611,6 +2691,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ペアリング状態"
+          }
+        }
+      }
+    },
+    "Pairing failed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pairing failed"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ペアリングに失敗しました"
           }
         }
       }
@@ -2819,22 +2915,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "プレイリスト"
-          }
-        }
-      }
-    },
-    "PLAYLISTS" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "PLAYLISTS"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "PLAYLISTS"
           }
         }
       }
@@ -3178,6 +3258,22 @@
         }
       }
     },
+    "SERVER" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SERVER"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SERVER"
+          }
+        }
+      }
+    },
     "Save" : {
       "localizations" : {
         "en" : {
@@ -3226,22 +3322,6 @@
         }
       }
     },
-    "Search again" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Search again"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "再検索"
-          }
-        }
-      }
-    },
     "Search Playlists" : {
       "localizations" : {
         "en" : {
@@ -3270,6 +3350,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "曲・アーティスト・アルバムを検索"
+          }
+        }
+      }
+    },
+    "Search again" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再検索"
           }
         }
       }
@@ -3335,22 +3431,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "送信済み"
-          }
-        }
-      }
-    },
-    "SERVER" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SERVER"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SERVER"
           }
         }
       }
@@ -3453,6 +3533,22 @@
         }
       }
     },
+    "Songs Not Saved on Device" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Songs Not Saved on Device"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "端末に未保存の曲"
+          }
+        }
+      }
+    },
     "Songs are added to the library according to the desktop's playback mode setting." : {
       "localizations" : {
         "en" : {
@@ -3481,22 +3577,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "端末に含めなかった曲: %ld 件"
-          }
-        }
-      }
-    },
-    "Songs Not Saved on Device" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Songs Not Saved on Device"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "端末に未保存の曲"
           }
         }
       }
@@ -3824,10 +3904,6 @@
         }
       }
     },
-    "tv.relay.error.unknown" : {
-      "comment" : "Error message when the relay stream's first frame is invalid.",
-      "isCommentAutoGenerated" : true
-    },
     "Unknown Album" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3982,6 +4058,22 @@
         }
       }
     },
+    "While on mobile data, YouTube songs play at the lowest quality (around 360p) to save data." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "While on mobile data, YouTube songs play at the lowest quality (around 360p) to save data."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モバイルデータ通信中は、YouTube の曲を低画質（360p 程度）で再生して通信量を抑えます。"
+          }
+        }
+      }
+    },
     "Writing failed: %@" : {
       "localizations" : {
         "en" : {
@@ -3997,6 +4089,10 @@
           }
         }
       }
+    },
+    "tv.relay.error.unknown" : {
+      "comment" : "Error message when the relay stream's first frame is invalid.",
+      "isCommentAutoGenerated" : true
     }
   },
   "version" : "1.1"

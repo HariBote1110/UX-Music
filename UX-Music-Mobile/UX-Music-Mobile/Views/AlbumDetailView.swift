@@ -4,6 +4,10 @@ struct AlbumDetailView: View {
     @Environment(AppModel.self) private var model
     let album: Album
 
+    private var shuffleReference: PlaybackCollectionRef {
+        PlaybackCollectionRef(kind: .album, key: album.id)
+    }
+
     var body: some View {
         LibraryBottomBleed { bottomInset in
             scrollBody
@@ -14,6 +18,11 @@ struct AlbumDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                CollectionShuffleMenuButton(reference: shuffleReference)
+            }
+        }
     }
 
     private var scrollBody: some View {
@@ -85,6 +94,11 @@ struct AlbumDetailView: View {
                 title: "Transfer Album to Apple Watch",
                 songs: album.songs
             )
+            Menu {
+                CollectionShufflePreferencePicker(reference: shuffleReference)
+            } label: {
+                Label("Default Shuffle", systemImage: "shuffle")
+            }
         }
     }
 
@@ -101,7 +115,7 @@ struct AlbumDetailView: View {
     /// `progress/mobile-youtube-embed.md`).
     private func playYouTube(_ song: Song) {
         Task {
-            await model.player.play(song, newQueue: [song])
+            await model.player.play(song, newQueue: [song], collection: shuffleReference)
         }
     }
 
@@ -110,7 +124,76 @@ struct AlbumDetailView: View {
         let localSong = song.withPath(model.downloadManager.localPathString(songId: song.id))
         let queue = downloaded.map { $0.withPath(model.downloadManager.localPathString(songId: $0.id)) }
         Task {
-            await model.player.play(localSong, newQueue: queue)
+            await model.player.play(localSong, newQueue: queue, collection: shuffleReference)
+        }
+    }
+}
+
+// MARK: - Collection shuffle preference control
+
+/// Per-collection default shuffle control shared by `AlbumDetailView`, `PlaylistDetailView` and
+/// `RemotePlaylistDetailView` (toolbar button) plus their long-press context menus and the album
+/// grid / playlist list rows in `LocalLibraryScreen`. See `CollectionShufflePreferenceStore`.
+struct CollectionShuffleMenuButton: View {
+    @Environment(AppModel.self) private var model
+    let reference: PlaybackCollectionRef
+
+    private var current: CollectionShufflePreference? {
+        model.collectionShufflePreferenceStore.preference(for: reference)
+    }
+
+    private var iconName: String {
+        switch current {
+        case .on: return "shuffle"
+        case .off: return "list.number"
+        case nil: return "shuffle"
+        }
+    }
+
+    var body: some View {
+        Menu {
+            CollectionShufflePreferencePicker(reference: reference)
+        } label: {
+            Image(systemName: iconName)
+                .foregroundStyle(current == nil ? .secondary : .primary)
+        }
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        switch current {
+        case .on: return String(localized: "Default Shuffle: Shuffle")
+        case .off: return String(localized: "Default Shuffle: In Order")
+        case nil: return String(localized: "Default Shuffle: Follow Normal Setting")
+        }
+    }
+}
+
+/// The three-way picker content (unset / shuffle / in order) for a collection's default shuffle
+/// preference, meant to sit inside a `Menu`.
+struct CollectionShufflePreferencePicker: View {
+    @Environment(AppModel.self) private var model
+    let reference: PlaybackCollectionRef
+
+    private var current: CollectionShufflePreference? {
+        model.collectionShufflePreferenceStore.preference(for: reference)
+    }
+
+    var body: some View {
+        Picker(
+            selection: Binding(
+                get: { current },
+                set: { model.collectionShufflePreferenceStore.setPreference($0, for: reference) }
+            )
+        ) {
+            Label("Follow Normal Setting", systemImage: "circle.slash")
+                .tag(Optional<CollectionShufflePreference>.none)
+            Label("Shuffle", systemImage: "shuffle")
+                .tag(Optional(CollectionShufflePreference.on))
+            Label("In Order", systemImage: "list.number")
+                .tag(Optional(CollectionShufflePreference.off))
+        } label: {
+            Text("Default Shuffle")
         }
     }
 }

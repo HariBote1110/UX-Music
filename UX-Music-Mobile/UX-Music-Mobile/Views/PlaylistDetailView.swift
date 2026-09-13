@@ -18,6 +18,10 @@ struct PlaylistDetailView: View {
         return model.resolvedSongs(for: pl)
     }
 
+    private var shuffleReference: PlaybackCollectionRef {
+        PlaybackCollectionRef(kind: .playlist, key: playlistId)
+    }
+
     var body: some View {
         LibraryBottomBleed { bottomInset in
             listBody
@@ -91,6 +95,7 @@ struct PlaylistDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack {
                     EditButton()
+                    CollectionShuffleMenuButton(reference: shuffleReference)
                     WatchTransferPlaylistMenuButton(bridge: model.watchTransferBridge, songs: songs)
                     Button {
                         showAddSongs = true
@@ -114,7 +119,7 @@ struct PlaylistDetailView: View {
         let localSong = song.withPath(model.downloadManager.localPathString(songId: song.id))
         let queue = downloaded.map { $0.withPath(model.downloadManager.localPathString(songId: $0.id)) }
         Task {
-            await model.player.play(localSong, newQueue: queue)
+            await model.player.play(localSong, newQueue: queue, collection: shuffleReference)
         }
     }
 }

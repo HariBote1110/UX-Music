@@ -413,6 +413,13 @@ struct LocalLibraryScreen: View {
                                 title: "Transfer Playlist to Apple Watch",
                                 songs: model.resolvedSongs(for: pl)
                             )
+                            Menu {
+                                CollectionShufflePreferencePicker(
+                                    reference: PlaybackCollectionRef(kind: .playlist, key: pl.id)
+                                )
+                            } label: {
+                                Label("Default Shuffle", systemImage: "shuffle")
+                            }
                             Button(role: .destructive) {
                                 try? model.deletePlaylist(id: pl.id)
                             } label: {
@@ -468,6 +475,13 @@ struct LocalLibraryScreen: View {
                             title: "Transfer Album to Apple Watch",
                             songs: album.songs
                         )
+                        Menu {
+                            CollectionShufflePreferencePicker(
+                                reference: PlaybackCollectionRef(kind: .album, key: album.id)
+                            )
+                        } label: {
+                            Label("Default Shuffle", systemImage: "shuffle")
+                        }
                     }
                 }
             }
