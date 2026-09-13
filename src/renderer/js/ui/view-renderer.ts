@@ -23,6 +23,18 @@ let trackViewScroller = null;
 let detailViewScroller = null;
 // const lastScrollPositions = {}; // detail-renderer.js に移動
 
+// ビュー描画中に登録された購読解除などのクリーンアップ処理。
+// 次に clearMainContent が呼ばれる（＝ビューを離れる）タイミングでまとめて実行する。
+let pendingViewCleanups: Array<() => void> = [];
+
+/**
+ * ビューの再描画/離脱時に呼び出すべきクリーンアップ関数を登録する。
+ * 例: subscribeCollectionShufflePreferences の購読解除など。
+ */
+export function registerViewCleanup(cleanup: () => void): void {
+    pendingViewCleanups.push(cleanup);
+}
+
 /**
  * メインコンテンツをクリアし、スクローラーを破棄する
  */
@@ -34,6 +46,11 @@ export function clearMainContent() {
     if (detailViewScroller) {
         detailViewScroller.destroy();
         detailViewScroller = null;
+    }
+    const cleanups = pendingViewCleanups;
+    pendingViewCleanups = [];
+    for (const cleanup of cleanups) {
+        cleanup();
     }
     disconnectVisualizerObserver();
     elements.mainContent.innerHTML = '';
