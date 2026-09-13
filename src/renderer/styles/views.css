@@ -611,6 +611,36 @@
     cursor: pointer;
 }
 
+/* コレクション既定シャッフルの選択ボタン（アルバム/プレイリスト詳細ヘッダー） */
+.collection-shuffle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    margin-left: 8px;
+    border: none;
+    border-radius: 50%;
+    background: var(--bg-tertiary, rgba(255, 255, 255, 0.08));
+    color: var(--text-secondary);
+    cursor: pointer;
+    vertical-align: middle;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+.collection-shuffle-btn:hover {
+    color: var(--text-primary);
+}
+
+.collection-shuffle-btn.is-on {
+    color: var(--highlight-pink);
+}
+
+.collection-shuffle-btn.is-off {
+    color: var(--text-primary);
+}
+
 #artist-detail-view h2 {
     margin-top: 40px;
 }
