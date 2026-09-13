@@ -3,6 +3,7 @@ import { renderGraphicEQ } from '../ui/equalizer.js';
 import { renderCurrentView, updateAudioDevices } from '../ui/ui-manager.js';
 import { showNotification, hideNotification } from '../ui/notification.js';
 import { initPlaybackSettings } from '../features/playback-manager.js';
+import { loadCollectionShufflePreferences } from '../features/collection-shuffle.js';
 import { musicApi, getWailsApp } from '../core/bridge.js';
 import { loadRendererSettings } from '../core/settings-helpers.js';
 import { applyGridDensity, createGridDensityControl } from '../ui/grid-density.js';
@@ -853,6 +854,7 @@ function buildSettingsSections(): SectionDef[] {
 export function initSettings() {
     // Initialise playback settings from storage
     initPlaybackSettings();
+    void loadCollectionShufflePreferences();
 
     // 起動時にユーザーが選択したUIテーマを復元する
     void loadRendererSettings().then(settings => {

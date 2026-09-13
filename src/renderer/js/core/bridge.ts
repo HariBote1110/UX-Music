@@ -180,14 +180,22 @@ export const musicApi = {
   renamePlaylist: (data: RenamePlaylistPayload) => {
     const app = getWailsApp();
     if (app) {
-      return app.RenamePlaylist(data as Record<string, unknown>);
+      return Promise.resolve(app.RenamePlaylist(data as Record<string, unknown>)).then(async result => {
+        const { loadCollectionShufflePreferences } = await import('../features/collection-shuffle.js');
+        await loadCollectionShufflePreferences();
+        return result;
+      });
     }
     return api && api.invoke('rename-playlist', data);
   },
   deletePlaylist: (name: string) => {
     const app = getWailsApp();
     if (app) {
-      return app.DeletePlaylist(name);
+      return Promise.resolve(app.DeletePlaylist(name)).then(async result => {
+        const { loadCollectionShufflePreferences } = await import('../features/collection-shuffle.js');
+        await loadCollectionShufflePreferences();
+        return result;
+      });
     }
     return api && api.invoke('delete-playlist', name);
   },

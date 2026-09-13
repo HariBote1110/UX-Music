@@ -19,6 +19,11 @@ import { showNotification, hideNotification } from '../ui/notification.js';
 import { updateNowPlayingView } from '../ui/now-playing.js';
 import { loadLyricsForSong } from './lyrics-manager.js';
 import { resolveLocalPlaybackGain } from './playback-gain.js';
+import {
+    getCollectionShufflePreference,
+    resolveEffectiveShuffle,
+    type CollectionRef,
+} from './collection-shuffle.js';
 import { buildSkipEvent } from './playback-skip.js';
 import { musicApi, isWailsMode, getWailsApp } from '../core/bridge.js';
 import { getSongById, getSongByPath } from '../core/library-model.js';
@@ -34,6 +39,9 @@ const pendingLoudnessRequests = new Set();
 
 /** Overlapping playSong calls (queue clicks, skip spam) must not interleave awaits; last enqueued run still wins after prior runs finish. */
 let playSongChain = Promise.resolve();
+// state.isShuffled はライブキューの状態を反映する。コレクション既定値で
+// 一時的に上書きされても、ここに保存するユーザー自身の既定値は変えない。
+let baselineShuffle = state.isShuffled;
 
 export function markLoudnessAnalysisCompleted(path) {
     if (typeof path !== 'string' || path.trim() === '') return;
@@ -61,8 +69,9 @@ export async function initPlaybackSettings() {
     const raw = await musicApi.getSettings();
     const settings = raw != null && typeof raw === 'object' ? raw : {};
 
-    if (settings.isShuffled !== undefined) {
-        state.isShuffled = settings.isShuffled;
+    if (typeof settings.isShuffled === 'boolean') {
+        baselineShuffle = settings.isShuffled;
+        state.isShuffled = baselineShuffle;
         elements.shuffleBtn.classList.toggle('active', state.isShuffled);
         console.log(`[Debug:Playback] シャッフル設定を復元: ${state.isShuffled}`);
     }
@@ -283,15 +292,15 @@ export function handleRemoteEmbedCommandEvent(payload: unknown, deps: {
     }
 }
 
-export function playSong(index, sourceList = null, forcePlay = false) {
-    const run = playSongChain.then(() => runPlaySongWork(index, sourceList, forcePlay));
+export function playSong(index, sourceList = null, forcePlay = false, options: { collection?: CollectionRef } = {}) {
+    const run = playSongChain.then(() => runPlaySongWork(index, sourceList, forcePlay, options));
     playSongChain = run.catch((err) => {
         console.warn('[Playback] playSong failed:', err);
     });
     return run;
 }
 
-async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
+async function runPlaySongWork(index, sourceList = null, forcePlay = false, options: { collection?: CollectionRef } = {}) {
     if (isWailsMode()) {
         // Go の再生キューへ全面委任する（markdown/background-native-queue-plan.md
         // Phase 1）。ローディング・シャッフル並び替え・再生開始・再生回数
@@ -300,7 +309,7 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
         // （initGoQueueBridge が購読している handleQueueStateChangedEvent/
         // handleQueueAdvancedEvent 参照）。forcePlay はラウドネス解析待ち
         // 用のJSレガシー概念で、Go 側は待ち合わせをしないため使わない。
-        return runPlaySongWorkWails(index, sourceList);
+        return runPlaySongWorkWails(index, sourceList, {}, options);
     }
 
     const targetQueue = sourceList || state.playbackQueue;
@@ -323,6 +332,11 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
 
     if (sourceList) {
         state.originalQueueSource = sourceList;
+        state.isShuffled = resolveEffectiveShuffle(
+            baselineShuffle,
+            options.collection ? getCollectionShufflePreference(options.collection) : null,
+            true,
+        );
         if (state.isShuffled) {
             const songToStartWith = sourceList[index];
             const newShuffledQueue = sourceList.filter(s => s.id !== songToStartWith.id);
@@ -429,10 +443,12 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false) {
  * その場ジャンプする。UX Sync のリモート曲だけは Go に判断させられない
  * （ローカルへのダウンロードが要る）ため、従来どおりここで先に解決する。
  */
-export async function runPlaySongWorkWails(index, sourceList = null, deps: any = {}) {
+export async function runPlaySongWorkWails(index, sourceList = null, deps: any = {}, options: { collection?: CollectionRef } = {}) {
     const getApp = deps.getApp ?? getWailsApp;
     const canStart = deps.canStartPlayback ?? canStartPlayback;
     const resolveDownload = deps.resolveRemotePlaybackDownload ?? resolveRemotePlaybackDownload;
+    const getPreference = deps.getCollectionShufflePreference ?? getCollectionShufflePreference;
+    const baseline = deps.baselineShuffle ?? baselineShuffle;
 
     const targetQueue = sourceList || state.playbackQueue;
     const songToPlay = targetQueue[index];
@@ -456,7 +472,9 @@ export async function runPlaySongWorkWails(index, sourceList = null, deps: any =
     }
 
     if (sourceList) {
-        await app.QueueSet(sourceList, index);
+        const preference = options.collection ? getPreference(options.collection) : null;
+        const effectiveShuffle = resolveEffectiveShuffle(baseline, preference, true);
+        await app.QueueSetWithShuffle(sourceList, index, effectiveShuffle);
     } else {
         await app.QueueJump(index);
     }
@@ -596,6 +614,7 @@ function updateShuffleLoopButtonsUI(isShuffled: boolean, playbackMode: string) {
 export function toggleShuffle() {
     if (isWailsMode()) {
         const next = !state.isShuffled;
+        baselineShuffle = next;
         // Goからの queue-state-changed で確定反映されるが、押した瞬間の
         // 手応えのためにここでも即時にボタンを更新しておく。
         updateShuffleLoopButtonsUI(next, state.playbackMode);
@@ -605,6 +624,7 @@ export function toggleShuffle() {
     }
 
     state.isShuffled = !state.isShuffled;
+    baselineShuffle = state.isShuffled;
     elements.shuffleBtn.classList.toggle('active', state.isShuffled);
     musicApi.saveSettings({ isShuffled: state.isShuffled });
 
@@ -636,6 +656,11 @@ export function toggleShuffle() {
     }
     updatePlayingIndicators();
     renderQueueView();
+}
+
+/** テストと新規キュー判定で使う、永続化対象のユーザー既定値。 */
+export function getBaselineShuffle(): boolean {
+    return baselineShuffle;
 }
 
 export function toggleLoopMode() {

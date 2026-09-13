@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildSkipEvent } from './playback-skip.js';
 import { resolveLocalPlaybackGain } from './playback-gain.js';
-import { state, PLAYBACK_MODES } from '../core/state.js';
+import { elements, state, PLAYBACK_MODES } from '../core/state.js';
 
 beforeAll(() => {
     // jsdom の本物の window を使い、Electron ブリッジだけを差し込む。
@@ -343,31 +343,49 @@ describe('remoteQueuePrefetchRefs', () => {
 // fallback (isWails === false, exercised above) is untouched.
 
 describe('runPlaySongWorkWails', () => {
-    it('calls QueueSet with the whole source list when starting a new queue', async () => {
+    it('sets the whole source list and the baseline shuffle in one queue transition', async () => {
         const { runPlaySongWorkWails } = await import('./playback-manager.js');
-        const app = { QueueSet: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
+        const app = { QueueSetWithShuffle: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
         const sourceList = [{ id: 's1', path: '/a.flac' }, { id: 's2', path: '/b.flac' }];
 
-        await runPlaySongWorkWails(1, sourceList, { getApp: () => app });
+        await runPlaySongWorkWails(1, sourceList, { getApp: () => app, baselineShuffle: false });
 
-        expect(app.QueueSet).toHaveBeenCalledWith(sourceList, 1);
+        expect(app.QueueSetWithShuffle).toHaveBeenCalledWith(sourceList, 1, false);
         expect(app.QueueJump).not.toHaveBeenCalled();
+    });
+
+    it('passes the collection preference without persisting the baseline setting', async () => {
+        const bridge = await import('../core/bridge.js');
+        const { runPlaySongWorkWails } = await import('./playback-manager.js');
+        const app = { QueueSetWithShuffle: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
+        const sourceList = [{ id: 's1', path: '/a.flac' }];
+        const saveSettings = vi.spyOn(bridge.musicApi, 'saveSettings');
+
+        await runPlaySongWorkWails(0, sourceList, {
+            getApp: () => app,
+            baselineShuffle: false,
+            getCollectionShufflePreference: () => 'on',
+        }, { collection: { kind: 'album', key: 'album-key' } });
+
+        expect(app.QueueSetWithShuffle).toHaveBeenCalledWith(sourceList, 0, true);
+        expect(saveSettings).not.toHaveBeenCalled();
+        saveSettings.mockRestore();
     });
 
     it('calls QueueJump when jumping within the existing queue (no source list)', async () => {
         const { runPlaySongWorkWails } = await import('./playback-manager.js');
-        const app = { QueueSet: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
+        const app = { QueueSetWithShuffle: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
         state.playbackQueue = [{ id: 's1' }, { id: 's2' }, { id: 's3' }];
 
         await runPlaySongWorkWails(2, null, { getApp: () => app });
 
         expect(app.QueueJump).toHaveBeenCalledWith(2);
-        expect(app.QueueSet).not.toHaveBeenCalled();
+        expect(app.QueueSetWithShuffle).not.toHaveBeenCalled();
     });
 
     it('resolves a remote (UX Sync) song before handing it to QueueSet', async () => {
         const { runPlaySongWorkWails } = await import('./playback-manager.js');
-        const app = { QueueSet: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
+        const app = { QueueSetWithShuffle: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
         const remoteSong = { id: 'r1', syncAvailability: 'remote' };
         const localSong = { id: 'r1', syncAvailability: 'local', path: '/local.flac' };
         const sourceList = [remoteSong];
@@ -378,12 +396,12 @@ describe('runPlaySongWorkWails', () => {
             resolveRemotePlaybackDownload: async () => localSong,
         });
 
-        expect(app.QueueSet).toHaveBeenCalledWith([localSong], 0);
+        expect(app.QueueSetWithShuffle).toHaveBeenCalledWith([localSong], 0, false);
     });
 
     it('does nothing when the remote download fails to resolve', async () => {
         const { runPlaySongWorkWails } = await import('./playback-manager.js');
-        const app = { QueueSet: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
+        const app = { QueueSetWithShuffle: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
 
         await runPlaySongWorkWails(0, [{ id: 'r1', syncAvailability: 'remote' }], {
             getApp: () => app,
@@ -391,16 +409,38 @@ describe('runPlaySongWorkWails', () => {
             resolveRemotePlaybackDownload: async () => null,
         });
 
-        expect(app.QueueSet).not.toHaveBeenCalled();
+        expect(app.QueueSetWithShuffle).not.toHaveBeenCalled();
     });
 
     it('does nothing when there is no Wails app available', async () => {
         const { runPlaySongWorkWails } = await import('./playback-manager.js');
-        const app = { QueueSet: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
+        const app = { QueueSetWithShuffle: vi.fn(async () => {}), QueueJump: vi.fn(async () => {}) };
 
         await runPlaySongWorkWails(0, [{ id: 's1' }], { getApp: () => null });
 
-        expect(app.QueueSet).not.toHaveBeenCalled();
+        expect(app.QueueSetWithShuffle).not.toHaveBeenCalled();
+    });
+});
+
+describe('toggleShuffle のベースライン', () => {
+    it('ライブキューの一時設定中でも、明示的な切替を永続化対象のベースラインにする', async () => {
+        const bridge = await import('../core/bridge.js');
+        const { getBaselineShuffle, toggleShuffle } = await import('./playback-manager.js');
+        const app = { QueueSetShuffle: vi.fn(async () => {}) };
+        vi.spyOn(bridge, 'isWailsMode').mockReturnValue(true);
+        vi.spyOn(bridge, 'getWailsApp').mockReturnValue(app as any);
+        const saveSettings = vi.spyOn(bridge.musicApi, 'saveSettings').mockImplementation(() => undefined as any);
+        state.isShuffled = false;
+        elements.shuffleBtn = document.createElement('button');
+        elements.loopBtn = document.createElement('button');
+
+        toggleShuffle();
+
+        expect(getBaselineShuffle()).toBe(true);
+        expect(saveSettings).toHaveBeenCalledWith({ isShuffled: true });
+        expect(app.QueueSetShuffle).toHaveBeenCalledWith(true);
+        saveSettings.mockRestore();
+        vi.restoreAllMocks();
     });
 });
 
