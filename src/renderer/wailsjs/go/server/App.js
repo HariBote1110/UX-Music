@@ -166,6 +166,10 @@ export function DeletePlaylist(arg1) {
   return window['go']['server']['App']['DeletePlaylist'](arg1);
 }
 
+export function GetCollectionShufflePreferences() {
+  return window['go']['server']['App']['GetCollectionShufflePreferences']();
+}
+
 export function DeleteSongs(arg1, arg2) {
   return window['go']['server']['App']['DeleteSongs'](arg1, arg2);
 }
@@ -406,6 +410,10 @@ export function QueueSet(arg1, arg2) {
   return window['go']['server']['App']['QueueSet'](arg1, arg2);
 }
 
+export function QueueSetWithShuffle(arg1, arg2, arg3) {
+  return window['go']['server']['App']['QueueSetWithShuffle'](arg1, arg2, arg3);
+}
+
 export function QueueSetLoopMode(arg1) {
   return window['go']['server']['App']['QueueSetLoopMode'](arg1);
 }
@@ -444,6 +452,10 @@ export function ResolveYouTubeStreamURL(arg1) {
 
 export function SaveAlbumSongOrder(arg1, arg2) {
   return window['go']['server']['App']['SaveAlbumSongOrder'](arg1, arg2);
+}
+
+export function SetCollectionShufflePreference(arg1, arg2, arg3) {
+  return window['go']['server']['App']['SetCollectionShufflePreference'](arg1, arg2, arg3);
 }
 
 export function SaveLrcFile(arg1, arg2) {

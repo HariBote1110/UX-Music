@@ -90,6 +90,8 @@ export function CreatePlaylist(arg1:string):Promise<void>;
 
 export function DeletePlaylist(arg1:string):Promise<void>;
 
+export function GetCollectionShufflePreferences():Promise<Record<string, string>>;
+
 export function DeleteSongs(arg1:Array<string>,arg2:boolean):Promise<Array<string>>;
 
 export function DiscoverSyncDevices(arg1:number):Promise<Array<uxsync.MDNSPeer>>;
@@ -210,6 +212,8 @@ export function QueuePrev():Promise<void>;
 
 export function QueueSet(arg1:Array<Record<string, any>>,arg2:number):Promise<void>;
 
+export function QueueSetWithShuffle(arg1:Array<Record<string, any>>,arg2:number,arg3:boolean):Promise<void>;
+
 export function QueueSetLoopMode(arg1:string):Promise<void>;
 
 export function QueueSetShuffle(arg1:boolean):Promise<void>;
@@ -229,6 +233,8 @@ export function RequestPlaylistsWithArtwork():Promise<void>;
 export function ResolveYouTubeStreamURL(arg1:string):Promise<string>;
 
 export function SaveAlbumSongOrder(arg1:string,arg2:Array<string>):Promise<void>;
+
+export function SetCollectionShufflePreference(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function SaveLrcFile(arg1:string,arg2:string):Promise<void>;
 
