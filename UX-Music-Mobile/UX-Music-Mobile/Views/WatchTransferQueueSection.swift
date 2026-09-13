@@ -99,7 +99,7 @@ struct WatchTransferQueueSection: View {
 
         if let progress = bridge.hapticBulkProgress {
             if !progress.isFinished {
-                Text(String(format: String(localized: "Analysing %lld / %lld"), progress.completed, progress.total))
+                Text(String(format: String(localized: "Analysing %lld / %lld"), progress.completed + progress.failed, progress.total))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
