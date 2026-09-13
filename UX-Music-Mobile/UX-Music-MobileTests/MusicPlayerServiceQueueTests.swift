@@ -81,6 +81,64 @@ final class MusicPlayerServiceQueueTests: XCTestCase {
         player.setShuffleEnabled(false)
     }
 
+    func testCollectionOverrideChangesLiveShuffleWithoutPersistingBaseline() async {
+        UserDefaults.standard.set(false, forKey: "uxmusic.playback.shuffleEnabled")
+        let suiteName = "MusicPlayerServiceQueueTests.override.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = CollectionShufflePreferenceStore(defaults: defaults)
+        let reference = PlaybackCollectionRef(kind: .album, key: "album-id")
+        preferences.setPreference(.on, for: reference)
+        let player = MusicPlayerService(collectionShufflePreferenceStore: preferences)
+        let queue = songs(["A", "B", "C"])
+
+        await player.play(queue[0], newQueue: queue, collection: reference)
+
+        XCTAssertTrue(player.isShuffleEnabled)
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: "uxmusic.playback.shuffleEnabled"))
+    }
+
+    func testUnsetCollectionRevertsNewQueueToBaselineShuffle() async {
+        UserDefaults.standard.set(true, forKey: "uxmusic.playback.shuffleEnabled")
+        defer { UserDefaults.standard.set(false, forKey: "uxmusic.playback.shuffleEnabled") }
+        let suiteName = "MusicPlayerServiceQueueTests.revert.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = CollectionShufflePreferenceStore(defaults: defaults)
+        let overriddenReference = PlaybackCollectionRef(kind: .playlist, key: "playlist-id")
+        preferences.setPreference(.off, for: overriddenReference)
+        let player = MusicPlayerService(collectionShufflePreferenceStore: preferences)
+        let queue = songs(["A", "B", "C"])
+
+        await player.play(queue[0], newQueue: queue, collection: overriddenReference)
+        XCTAssertFalse(player.isShuffleEnabled)
+
+        await player.play(queue[0], newQueue: queue, collection: PlaybackCollectionRef(kind: .album, key: "unset"))
+        XCTAssertTrue(player.isShuffleEnabled)
+    }
+
+    func testToggleDuringCollectionOverrideUpdatesPersistedBaseline() async {
+        UserDefaults.standard.set(false, forKey: "uxmusic.playback.shuffleEnabled")
+        defer { UserDefaults.standard.set(false, forKey: "uxmusic.playback.shuffleEnabled") }
+        let suiteName = "MusicPlayerServiceQueueTests.toggle.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = CollectionShufflePreferenceStore(defaults: defaults)
+        let reference = PlaybackCollectionRef(kind: .desktopPlaylist, key: "Desktop mix")
+        preferences.setPreference(.off, for: reference)
+        let player = MusicPlayerService(collectionShufflePreferenceStore: preferences)
+        let queue = songs(["A", "B", "C"])
+
+        await player.play(queue[0], newQueue: queue, collection: reference)
+        XCTAssertFalse(player.isShuffleEnabled)
+
+        player.toggleShuffle()
+
+        XCTAssertTrue(player.isShuffleEnabled)
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: "uxmusic.playback.shuffleEnabled"))
+        XCTAssertTrue(MusicPlayerService().isShuffleEnabled)
+    }
+
     // MARK: - Queue editing: move
 
     func testMoveQueueItemKeepsCurrentSongWhenMovingAnotherItem() async {

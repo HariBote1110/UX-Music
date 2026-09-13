@@ -23,12 +23,16 @@ final class MusicPlayerService {
     /// Index of the current track in `playbackQueue`, or `-1` when idle.
     var currentQueueIndex: Int { currentIndex }
 
-    // MARK: - Repeat / shuffle (persisted)
+    // MARK: - Repeat / shuffle
 
     private(set) var repeatMode: PlaybackRepeatMode = .off
+    /// The queue's current shuffle state. This can temporarily differ from the persisted baseline
+    /// while a collection-specific preference is active.
     private(set) var isShuffleEnabled = false
+    private var baselineShuffleEnabled = false
     private let repeatModeDefaultsKey = "uxmusic.playback.repeatMode"
     private let shuffleEnabledDefaultsKey = "uxmusic.playback.shuffleEnabled"
+    private let collectionShufflePreferenceStore: CollectionShufflePreferenceStore
 
     /// Cycles repeat off → all → one → off, matching a physical Walkman's repeat button.
     func cycleRepeatMode() {
@@ -49,6 +53,8 @@ final class MusicPlayerService {
     /// position, not interrupting playback); turning it off restores `originalQueue` and recomputes
     /// `currentIndex` for the currently-playing song.
     func setShuffleEnabled(_ enabled: Bool) {
+        baselineShuffleEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: shuffleEnabledDefaultsKey)
         guard enabled != isShuffleEnabled else { return }
         let currentId = currentSong?.id
         if enabled {
@@ -63,7 +69,6 @@ final class MusicPlayerService {
             currentIndex = idx
         }
         isShuffleEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: shuffleEnabledDefaultsKey)
     }
 
     private func loadPlaybackModesFromUserDefaults() {
@@ -71,7 +76,8 @@ final class MusicPlayerService {
         if let raw = defaults.string(forKey: repeatModeDefaultsKey), let mode = PlaybackRepeatMode(rawValue: raw) {
             repeatMode = mode
         }
-        isShuffleEnabled = defaults.bool(forKey: shuffleEnabledDefaultsKey)
+        baselineShuffleEnabled = defaults.bool(forKey: shuffleEnabledDefaultsKey)
+        isShuffleEnabled = baselineShuffleEnabled
     }
 
     // MARK: - Queue editing
@@ -402,7 +408,8 @@ final class MusicPlayerService {
     /// bails out instead of clobbering the newer state. See `PlaybackGenerationGuard`.
     private var playGeneration = PlaybackGenerationGuard()
 
-    init() {
+    init(collectionShufflePreferenceStore: CollectionShufflePreferenceStore? = nil) {
+        self.collectionShufflePreferenceStore = collectionShufflePreferenceStore ?? CollectionShufflePreferenceStore()
         configureEqualiserBandsStatically()
         pushEqualiserToAudioUnit()
         loadEqualiserStateFromUserDefaults()
@@ -747,7 +754,11 @@ final class MusicPlayerService {
         return (Double(scheduledSegmentStartFrame) + Double(playerTime.sampleTime)) / sr
     }
 
-    func play(_ song: Song, newQueue: [Song]?) async {
+    func play(
+        _ song: Song,
+        newQueue: [Song],
+        collection: PlaybackCollectionRef? = nil
+    ) async {
         let generation = playGeneration.bump()
         // A previous stream-first session may still be marked external (e.g. the cache finished
         // downloading mid-stream and `TVPlaybackController` now hands off to the normal cached
@@ -758,15 +769,20 @@ final class MusicPlayerService {
             isExternallyDriven = false
             externalPlaybackCommandHandler = nil
         }
-        if let newQueue {
-            if isShuffleEnabled {
-                originalQueue = newQueue
-                let indices = Array(newQueue.indices).shuffled()
-                queue = PlaybackShuffleLogic.applyShuffle(queue: newQueue, shuffledIndices: indices, currentId: song.id)
-            } else {
-                queue = newQueue
-            }
+        let preference = collection.flatMap { collectionShufflePreferenceStore.preference(for: $0) }
+        let effectiveShuffleEnabled = PlaybackCollectionShuffleLogic.effectiveShuffleEnabled(
+            baselineShuffleEnabled: baselineShuffleEnabled,
+            preference: preference
+        )
+        if effectiveShuffleEnabled {
+            originalQueue = newQueue
+            let indices = Array(newQueue.indices).shuffled()
+            queue = PlaybackShuffleLogic.applyShuffle(queue: newQueue, shuffledIndices: indices, currentId: song.id)
+        } else {
+            originalQueue = []
+            queue = newQueue
         }
+        isShuffleEnabled = effectiveShuffleEnabled
         if let idx = queue.firstIndex(where: { $0.id == song.id }) {
             currentIndex = idx
         } else {

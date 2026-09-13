@@ -17,12 +17,18 @@ private struct PlaylistsEnvelope: Codable {
 final class PlaylistStore {
     private let defaults: UserDefaults
     private let persistenceKey: String
+    private let collectionShufflePreferenceStore: CollectionShufflePreferenceStore
     private var playlistsById: [String: Playlist] = [:]
     private var order: [String] = []
 
-    init(defaults: UserDefaults = .standard, persistenceKey: String = AppConstants.playlistsPersistenceKey) {
+    init(
+        defaults: UserDefaults = .standard,
+        persistenceKey: String = AppConstants.playlistsPersistenceKey,
+        collectionShufflePreferenceStore: CollectionShufflePreferenceStore? = nil
+    ) {
         self.defaults = defaults
         self.persistenceKey = persistenceKey
+        self.collectionShufflePreferenceStore = collectionShufflePreferenceStore ?? CollectionShufflePreferenceStore(defaults: defaults)
         load()
     }
 
@@ -70,6 +76,7 @@ final class PlaylistStore {
     func deletePlaylist(id: String) throws {
         guard playlistsById.removeValue(forKey: id) != nil else { throw PlaylistStoreError.notFound }
         order.removeAll { $0 == id }
+        collectionShufflePreferenceStore.setPreference(nil, for: PlaybackCollectionRef(kind: .playlist, key: id))
         persist()
     }
 

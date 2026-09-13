@@ -278,6 +278,7 @@ final class AppModel {
     let lyricsFileStore: LyricsFileStore
     let player: MusicPlayerService
     let playlistStore: PlaylistStore
+    let collectionShufflePreferenceStore: CollectionShufflePreferenceStore
     let favouriteSongStore: FavouriteSongStore
     let watchTransferBridge: WatchTransferBridge
     let discovery: LANDiscoveryService
@@ -328,10 +329,11 @@ final class AppModel {
         // (see WatchTransferBridge.send / handleActivationCompletion).
         watchTransferBridge.activate()
         self.lyricsFileStore = lyricsFileStore ?? LyricsFileStore()
-        self.playlistStore = playlistStore ?? PlaylistStore()
+        collectionShufflePreferenceStore = CollectionShufflePreferenceStore()
+        self.playlistStore = playlistStore ?? PlaylistStore(collectionShufflePreferenceStore: collectionShufflePreferenceStore)
         favouriteSongStore = FavouriteSongStore()
         favouriteSongIds = favouriteSongStore.orderedIds
-        player = MusicPlayerService()
+        player = MusicPlayerService(collectionShufflePreferenceStore: collectionShufflePreferenceStore)
         player.youtubeLowQualityOnCellular = youtubeLowQualityOnCellular
         player.targetLoudness = AppConstants.defaultTargetLoudness
         player.loadArtworkImage = { [weak self] song in
