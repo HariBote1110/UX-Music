@@ -102,6 +102,9 @@ private final class WatchHapticLabRuntime: @unchecked Sendable {
             }
             self.timer = timer
             self.schedule(timer, for: startUptime)
+            // A DispatchSource starts suspended: without `resume()` it never fires, and releasing a
+            // suspended source (e.g. `timer = nil` in `stop()`) crashes inside libdispatch.
+            timer.resume()
         }
     }
 
