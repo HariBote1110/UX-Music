@@ -114,6 +114,20 @@ func fisherYatesShuffle(items []Item) {
 func (q *Queue) SetQueue(items []Item, startIndex int) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	q.setQueueLocked(items, startIndex)
+}
+
+// SetQueueWithShuffle replaces the queue and selects its shuffle state under
+// one lock. This lets callers start a collection with an explicit shuffle
+// preference without first emitting an intermediate queue state.
+func (q *Queue) SetQueueWithShuffle(items []Item, startIndex int, shuffled bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.shuffled = shuffled
+	q.setQueueLocked(items, startIndex)
+}
+
+func (q *Queue) setQueueLocked(items []Item, startIndex int) {
 
 	q.original = cloneItems(items)
 	q.active = true

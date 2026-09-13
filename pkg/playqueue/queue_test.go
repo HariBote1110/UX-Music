@@ -23,6 +23,24 @@ func TestSetQueueNoShuffleSetsCurrentItem(t *testing.T) {
 	}
 }
 
+func TestSetQueueWithShuffleSetsOrderAndShuffleStateAtomically(t *testing.T) {
+	q := NewWithShuffler(func(items []Item) {
+		for left, right := 0, len(items)-1; left < right; left, right = left+1, right-1 {
+			items[left], items[right] = items[right], items[left]
+		}
+	})
+
+	q.SetQueueWithShuffle(items("a", "b", "c"), 1, true)
+
+	snapshot := q.Snapshot()
+	if !snapshot.Shuffled {
+		t.Fatal("SetQueueWithShuffle(..., true) did not enable shuffle")
+	}
+	if snapshot.Index != 0 || snapshot.Items[0].ID != "b" {
+		t.Fatalf("snapshot = %+v; want selected item b pinned at index 0", snapshot)
+	}
+}
+
 func TestAdvanceMovesToNextItem(t *testing.T) {
 	q := New()
 	q.SetQueue(items("a", "b", "c"), 0)
