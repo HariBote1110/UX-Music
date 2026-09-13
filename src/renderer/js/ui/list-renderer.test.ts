@@ -19,7 +19,7 @@ vi.mock('../core/state.js', () => ({
 vi.mock('../features/playback-manager.js', () => ({ playSong: vi.fn() }));
 vi.mock('../features/player.js', () => ({ setVisualizerTarget: vi.fn() }));
 vi.mock('./virtual-scroller.js', () => ({ VirtualScroller: vi.fn() }));
-vi.mock('./element-factory.js', () => ({ createSongItem: vi.fn() }));
+vi.mock('./element-factory.js', () => ({ createSongItem: vi.fn(() => document.createElement('div')) }));
 vi.mock('./column-resizer.js', () => ({ initColumnResizing: vi.fn(), updateGridStyle: vi.fn() }));
 vi.mock('./utils.js', () => ({ showContextMenu: vi.fn() }));
 vi.mock('./modal.js', () => ({ showModalAdvanced: vi.fn() }));
@@ -78,5 +78,83 @@ describe('list-renderer playlist context actions', () => {
             ],
         });
         expect(mocks.showNotification).toHaveBeenCalledWith('2曲をプレイリスト「朝の曲」に追加しました。', 3000);
+    });
+});
+
+describe('list-renderer のコレクション付き再生', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        globalThis.window = {
+            electronAPI: { send: vi.fn() },
+            observeNewArtworks: vi.fn(),
+        } as any;
+    });
+
+    it('アルバム詳細のリスト行クリックは album collection を伴って再生する', async () => {
+        const { createSongItem } = await import('./element-factory.js');
+        (createSongItem as any).mockImplementation(() => document.createElement('div'));
+        const { playSong } = await import('../features/playback-manager.js');
+        const { setupSongListScroller } = await import('./list-renderer.js');
+        const { VirtualScroller } = await import('./virtual-scroller.js');
+        const songList = [{ id: 's1', title: 'A' }];
+
+        setupSongListScroller(document.createElement('div'), songList, { contextView: 'album', albumKey: 'album-key-1' });
+        const renderItem = (VirtualScroller as any).mock.calls[0][0].renderItem;
+        const songItem = renderItem(songList[0], 0);
+        songItem.dispatchEvent(new MouseEvent('click'));
+
+        expect(playSong).toHaveBeenCalledWith(0, songList, false, { collection: { kind: 'album', key: 'album-key-1' } });
+    });
+
+    it('プレイリスト詳細のリスト行クリックは playlist collection を伴って再生する', async () => {
+        const { createSongItem } = await import('./element-factory.js');
+        (createSongItem as any).mockImplementation(() => document.createElement('div'));
+        const { playSong } = await import('../features/playback-manager.js');
+        const { setupSongListScroller } = await import('./list-renderer.js');
+        const { VirtualScroller } = await import('./virtual-scroller.js');
+        const songList = [{ id: 's1', title: 'A' }];
+
+        setupSongListScroller(document.createElement('div'), songList, { contextView: 'playlist', playlistName: '朝の曲' });
+        const renderItem = (VirtualScroller as any).mock.calls[0][0].renderItem;
+        const songItem = renderItem(songList[0], 0);
+        songItem.dispatchEvent(new MouseEvent('click'));
+
+        expect(playSong).toHaveBeenCalledWith(0, songList, false, { collection: { kind: 'playlist', key: '朝の曲' } });
+    });
+
+    it('右クリックメニューの「再生」も album collection を伴って再生する', async () => {
+        const { createSongItem } = await import('./element-factory.js');
+        (createSongItem as any).mockImplementation(() => document.createElement('div'));
+        const { playSong } = await import('../features/playback-manager.js');
+        const { showContextMenu } = await import('./utils.js');
+        const { setupSongListScroller } = await import('./list-renderer.js');
+        const { VirtualScroller } = await import('./virtual-scroller.js');
+        const songList = [{ id: 's1', title: 'A' }];
+
+        setupSongListScroller(document.createElement('div'), songList, { contextView: 'album', albumKey: 'album-key-1' });
+        const renderItem = (VirtualScroller as any).mock.calls[0][0].renderItem;
+        const songItem = renderItem(songList[0], 0);
+        songItem.dispatchEvent(new MouseEvent('contextmenu'));
+
+        const menuItems = (showContextMenu as any).mock.calls[0][2];
+        menuItems.find((i: any) => i.label === '再生').action();
+
+        expect(playSong).toHaveBeenCalledWith(0, songList, false, { collection: { kind: 'album', key: 'album-key-1' } });
+    });
+
+    it('queue-view 由来（contextView 未指定）では collection を付けずに再生する', async () => {
+        const { createSongItem } = await import('./element-factory.js');
+        (createSongItem as any).mockImplementation(() => document.createElement('div'));
+        const { playSong } = await import('../features/playback-manager.js');
+        const { setupSongListScroller } = await import('./list-renderer.js');
+        const { VirtualScroller } = await import('./virtual-scroller.js');
+        const songList = [{ id: 's1', title: 'A' }];
+
+        setupSongListScroller(document.createElement('div'), songList, {});
+        const renderItem = (VirtualScroller as any).mock.calls[0][0].renderItem;
+        const songItem = renderItem(songList[0], 0);
+        songItem.dispatchEvent(new MouseEvent('click'));
+
+        expect(playSong).toHaveBeenCalledWith(0, songList, false, {});
     });
 });

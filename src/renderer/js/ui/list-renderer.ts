@@ -12,6 +12,27 @@ import { getVisibleColumns, getGridTemplate, showColumnContextMenu } from './col
 import { updateGridStyle } from './column-resizer.js';
 import { getWailsApp, musicApi } from '../core/bridge.js';
 import { showNotification } from './notification.js';
+import type { CollectionRef } from '../features/collection-shuffle.js';
+
+/**
+ * リストの文脈 (contextView) とアルバムキー/プレイリスト名から、
+ * playSong に渡すべきコレクション参照を作る。
+ * アルバム/プレイリスト詳細ビュー由来の再生開始のときのみ返し、
+ * それ以外（曲一覧・キュー内移動など）では undefined を返す。
+ */
+function resolveCollectionRef(
+    contextView: string | undefined,
+    playlistName: string | null | undefined,
+    albumKey: string | null | undefined,
+): CollectionRef | undefined {
+    if (contextView === 'album' && albumKey) {
+        return { kind: 'album', key: albumKey };
+    }
+    if (contextView === 'playlist' && playlistName) {
+        return { kind: 'playlist', key: playlistName };
+    }
+    return undefined;
+}
 
 type PlaylistAddSourceSong = {
     path?: string;
@@ -93,7 +114,7 @@ export function createListHeader() {
 /**
  * 曲アイテムのクリックイベントを処理する (再生または複数選択)
  */
-function handleSongItemClick(e, song, index, songList, songItem) {
+function handleSongItemClick(e, song, index, songList, songItem, collection?: CollectionRef) {
     if (e.metaKey || e.ctrlKey) {
         if (state.selectedSongIds.has(song.id)) {
             state.selectedSongIds.delete(song.id);
@@ -103,7 +124,7 @@ function handleSongItemClick(e, song, index, songList, songItem) {
             songItem.classList.add('selected');
         }
     } else {
-        playSong(index, songList);
+        playSong(index, songList, false, collection ? { collection } : {});
     }
 }
 
@@ -178,12 +199,16 @@ function deleteSongsFromLibrary(songs) {
 /**
  * VirtualScroller をセットアップし、曲リストを描画する
  */
-export function setupSongListScroller(listElement, songList, options: { contextView?: string; playlistName?: string | null; initialScrollTop?: number; saveScrollPosition?: (top: number) => void } = {}) {
+export function setupSongListScroller(listElement, songList, options: { contextView?: string; playlistName?: string | null; albumKey?: string | null; initialScrollTop?: number; saveScrollPosition?: (top: number) => void } = {}) {
     const {
+        contextView,
         playlistName = null,
+        albumKey = null,
         initialScrollTop = 0,
         saveScrollPosition // detail-renderer から渡されるコールバック
     } = options;
+
+    const collectionRef = resolveCollectionRef(contextView, playlistName, albumKey);
 
     /**
      * VirtualScroller が各アイテムを描画するための関数
@@ -212,7 +237,7 @@ export function setupSongListScroller(listElement, songList, options: { contextV
         // ▲▲▲ 修正箇所 ▲▲▲
 
         // イベントリスナー
-        songItem.addEventListener('click', (e) => handleSongItemClick(e, song, index, songList, songItem));
+        songItem.addEventListener('click', (e) => handleSongItemClick(e, song, index, songList, songItem, collectionRef));
 
         songItem.addEventListener('contextmenu', (e) => {
             e.preventDefault();
@@ -230,7 +255,7 @@ export function setupSongListScroller(listElement, songList, options: { contextV
                 {
                     label: '再生',
                     icon: 'play',
-                    action: () => playSong(index, songList)
+                    action: () => playSong(index, songList, false, collectionRef ? { collection: collectionRef } : {})
                 }
             ];
 
