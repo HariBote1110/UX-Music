@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mtp-libusb-context-leak.md](mtp-libusb-context-leak.md) — Desktop が起動7h50m後に exit 2 で落ちる原因（MTP監視の libusb_init 漏れ→TLSキー枯渇）を修正。コンテキストは Device が所有、Go のクラッシュ出力を logs/crash.log に保存
 - [collection-default-shuffle.md](collection-default-shuffle.md) — アルバム/プレイリストごとの既定シャッフル（未設定/シャッフル/順番通り）。新規キュー開始時だけ一時適用し基準値は不変、Desktop・iOS で端末別に保持
 - [watch-speaker-output.md](watch-speaker-output.md) — Apple Watchの音声出力設定（自動/Bluetooth/スピーカー）、long-formの出力先ピッカー回避、設定変更時の再アクティベーション、Bluetooth検出ログを追加
 - [mobile-youtube-embed.md](mobile-youtube-embed.md) — （フェーズH追記）iPhone YouTube: ライフサイクル起点の PiP 要求は実機で全て拒否 → 全画面経由の自動 PiP＋PiP ボタンに確定、単体での窓なし継続は非公開フラグ・Audio Session API でも不可
