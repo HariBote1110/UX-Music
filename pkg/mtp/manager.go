@@ -45,6 +45,7 @@ func (m *Manager) Initialize() error {
 	}
 	if err := dev.Configure(); err != nil {
 		dev.Close()
+		dev.Done()
 		return err
 	}
 	m.dev = dev
