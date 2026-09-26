@@ -1,5 +1,6 @@
 # Progress Index
 
+- [desktop-lyrics-snap-and-tap-seek.md](desktop-lyrics-snap-and-tap-seek.md) — Desktop 同期歌詞: 途中で開く／大きくシークすると全行が一斉に流れる問題を修正（3行以上のジャンプと表示開始は遷移なしスナップ、判定は lyrics-motion.ts で共有）、LRC 行クリックでその時刻へシーク
 - [mtp-hotplug-monitor.md](mtp-hotplug-monitor.md) — MTP端末検知をlibusbホットプラグ通知に置換（macOS/Linux）。到着は500msで束ねて最大3回試行、抜去時は1回だけ確認、Windowsは従来ポーリングのまま保留
 - [mtp-libusb-context-leak.md](mtp-libusb-context-leak.md) — Desktop が起動7h50m後に exit 2 で落ちる原因（MTP監視の libusb_init 漏れ→TLSキー枯渇）を修正。コンテキストは Device が所有、Go のクラッシュ出力を logs/crash.log に保存
 - [collection-default-shuffle.md](collection-default-shuffle.md) — アルバム/プレイリストごとの既定シャッフル（未設定/シャッフル/順番通り）。新規キュー開始時だけ一時適用し基準値は不変、Desktop・iOS で端末別に保持
