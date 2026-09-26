@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mobile-lyrics-snap.md](mobile-lyrics-snap.md) — Mobile 同期歌詞（iPhone／iPad Sidecar）: 途中表示と3行以上のジャンプは遷移なしでスナップ、2行以内の行送りだけカスケード（LyricsStageKit の `SidecarLyricsActiveLineState`）、行高の測り直しもアニメーションしない
 - [desktop-lyrics-snap-and-tap-seek.md](desktop-lyrics-snap-and-tap-seek.md) — Desktop 同期歌詞: 途中で開く／大きくシークすると全行が一斉に流れる問題を修正（3行以上のジャンプと表示開始は遷移なしスナップ、判定は lyrics-motion.ts で共有）、LRC 行クリックでその時刻へシーク
 - [mtp-hotplug-monitor.md](mtp-hotplug-monitor.md) — MTP端末検知をlibusbホットプラグ通知に置換（macOS/Linux）。到着は500msで束ねて最大3回試行、抜去時は1回だけ確認、Windowsは従来ポーリングのまま保留
 - [mtp-libusb-context-leak.md](mtp-libusb-context-leak.md) — Desktop が起動7h50m後に exit 2 で落ちる原因（MTP監視の libusb_init 漏れ→TLSキー枯渇）を修正。コンテキストは Device が所有、Go のクラッシュ出力を logs/crash.log に保存
