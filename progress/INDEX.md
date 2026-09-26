@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mtp-hotplug-monitor.md](mtp-hotplug-monitor.md) — MTP端末検知をlibusbホットプラグ通知に置換（macOS/Linux）。到着は500msで束ねて最大3回試行、抜去時は1回だけ確認、Windowsは従来ポーリングのまま保留
 - [mtp-libusb-context-leak.md](mtp-libusb-context-leak.md) — Desktop が起動7h50m後に exit 2 で落ちる原因（MTP監視の libusb_init 漏れ→TLSキー枯渇）を修正。コンテキストは Device が所有、Go のクラッシュ出力を logs/crash.log に保存
 - [collection-default-shuffle.md](collection-default-shuffle.md) — アルバム/プレイリストごとの既定シャッフル（未設定/シャッフル/順番通り）。新規キュー開始時だけ一時適用し基準値は不変、Desktop・iOS で端末別に保持
 - [watch-speaker-output.md](watch-speaker-output.md) — Apple Watchの音声出力設定（自動/Bluetooth/スピーカー）、long-formの出力先ピッカー回避、設定変更時の再アクティベーション、Bluetooth検出ログを追加
