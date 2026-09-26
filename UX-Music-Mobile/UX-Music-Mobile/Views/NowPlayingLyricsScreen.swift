@@ -133,11 +133,12 @@ private struct NowPlayingSyncedLyricsScroll: View {
     @Environment(AppModel.self) private var model
     let lines: [TranslatedTimedLine]
 
-    /// `-1` means "nothing active yet" (before the first line's timestamp — see
-    /// `SidecarLyricsMotionPolicy.activeIndex`), matching Desktop's initial state. Updated at
-    /// most once per genuine active-line change (`SidecarActiveLineUpdatePolicy`) rather than on
-    /// every tick, so the lyric `ForEach` only re-diffs when the highlighted line moves.
-    @State private var activeIndex = -1
+    /// Active line (`-1` = nothing active yet — see `SidecarLyricsMotionPolicy.activeIndex`) plus
+    /// whether the move to it cascades or snaps. Updated at most once per genuine active-line
+    /// change (`SidecarActiveLineUpdatePolicy`) rather than on every tick, so the lyric `ForEach`
+    /// only re-diffs when the highlighted line moves. Opening mid-song, seeking far and tapping a
+    /// distant line snap (Desktop `lyrics-motion.ts` parity); only adjacent advances cascade.
+    @State private var lyricsMotion = SidecarLyricsActiveLineState()
     /// Stable anchor for the periodic tick below — a `.now` re-evaluated on every body
     /// reconstruction has no settled cadence when the tick writes `@State` this view reads
     /// (`activeIndex`). See `SidecarScreen.progressScheduleAnchor`'s doc comment.
@@ -172,6 +173,8 @@ private struct NowPlayingSyncedLyricsScroll: View {
     private static let translationOpacity: Double = 0.5
     private static let translationBlockGap: CGFloat = 4
 
+    private var activeIndex: Int { lyricsMotion.activeIndex }
+
     var body: some View {
         GeometryReader { geo in
             let paneHeight = geo.size.height
@@ -185,9 +188,10 @@ private struct NowPlayingSyncedLyricsScroll: View {
                 ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
                     let isActive = index == activeIndex
                     let distance = abs(index - baseIndex)
-                    // `y` is the shared layout offset only; the mobile drag offset is added
-                    // *outside* the `value:` so a drag stays instant (no timing-curve lag)
-                    // while a genuine active-line change still animates the cascade.
+                    // `y` is the shared layout offset only. The animation is keyed on the
+                    // active line (not `y`), so a drag, a line-height measurement landing or a
+                    // pane resize stays instant, and only an adjacent active-line advance
+                    // cascades — a jump sets `animatesMotion == false` and snaps.
                     let y = index < tops.count ? tops[index] : 0
 
                     Button {
@@ -219,9 +223,11 @@ private struct NowPlayingSyncedLyricsScroll: View {
                     )
                     .offset(y: y + dragOffset)
                     .animation(
-                        .timingCurve(0.25, 0.1, 0.25, 1.0, duration: SidecarLyricsMotionPolicy.duration)
-                            .delay(SidecarLyricsMotionPolicy.staggerDelay(forDistance: distance)),
-                        value: y
+                        lyricsMotion.animatesMotion
+                            ? .timingCurve(0.25, 0.1, 0.25, 1.0, duration: SidecarLyricsMotionPolicy.duration)
+                                .delay(SidecarLyricsMotionPolicy.staggerDelay(forDistance: distance))
+                            : nil,
+                        value: activeIndex
                     )
                 }
             }
@@ -253,14 +259,21 @@ private struct NowPlayingSyncedLyricsScroll: View {
             TimelineView(.periodic(from: lyricsScheduleAnchor, by: 0.2)) { context in
                 Color.clear
                     .task(id: context.date) {
-                        let position = max(0, model.player.positionSeconds)
-                        let newActive = SidecarLyricsMotionPolicy.activeIndex(in: lines, at: position)
-                        if SidecarActiveLineUpdatePolicy.shouldUpdate(currentIndex: activeIndex, newIndex: newActive) {
-                            activeIndex = newActive
-                        }
+                        syncActiveLine(immediate: false)
                     }
             }
         )
+        // Start on the current line instead of `-1`, so opening mid-song never cascades.
+        .onAppear { syncActiveLine(immediate: true) }
+    }
+
+    private func syncActiveLine(immediate: Bool) {
+        let position = max(0, model.player.positionSeconds)
+        let newActive = SidecarLyricsMotionPolicy.activeIndex(in: lines, at: position)
+        var next = lyricsMotion
+        if next.advance(to: newActive, immediate: immediate) {
+            lyricsMotion = next
+        }
     }
 
     /// Waits for `nowPlayingLyricsShouldAutoScroll`'s resume window (3 seconds of no manual

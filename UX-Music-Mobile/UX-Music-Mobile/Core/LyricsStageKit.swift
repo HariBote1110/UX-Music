@@ -81,6 +81,18 @@ enum SidecarLyricsMotionPolicy {
         TimeInterval(max(0, distance)) * staggerStep
     }
 
+    /// Desktop's `LYRICS_JUMP_THRESHOLD_LINES` (`lyrics-motion.ts`): a move of up to this many
+    /// lines is ordinary playback (a short line skipped within one tick) and keeps the cascade.
+    static let jumpThresholdLines = 2
+
+    /// Ports Desktop's `isLyricsIndexJump`: a move of more than `jumpThresholdLines` (a seek, a tap
+    /// on a distant line, or opening the pane mid-song from "nothing active" `-1`) is a jump and
+    /// must snap — cascading 0.8s plus a per-distance stagger across dozens of lines reads as the
+    /// whole list spinning into place.
+    static func isJump(from previousIndex: Int, to nextIndex: Int) -> Bool {
+        abs(nextIndex - previousIndex) > jumpThresholdLines
+    }
+
     /// Ported from Desktop's `findLyricsIndex` (`fullscreen-view.ts:366-390`): the last line whose
     /// `startTime` is `<= time`, or `-1` before the first line's timestamp (no line highlighted
     /// during an instrumental intro) and `lines.count - 1` at/after the last line's timestamp.
@@ -148,6 +160,31 @@ enum SidecarLyricsLayout {
 enum SidecarActiveLineUpdatePolicy {
     static func shouldUpdate(currentIndex: Int, newIndex: Int) -> Bool {
         currentIndex != newIndex
+    }
+}
+
+/// The active line plus whether moving to it should animate — Desktop's `resolveLyricsMotionTiming`
+/// folded into the state the lyrics panes hold. Both fields change in the same `@State` write, so
+/// the per-line `.animation(animatesMotion ? cascade : nil, value: activeIndex)` sees the decision
+/// for exactly the move that caused it. Keying the animation on `activeIndex` (not the line's `y`)
+/// also keeps height-measurement and pane-resize relayouts unanimated.
+struct SidecarLyricsActiveLineState: Equatable {
+    /// `-1` means "nothing active yet" (see `SidecarLyricsMotionPolicy.activeIndex`).
+    var activeIndex: Int = -1
+    /// `true` only after an adjacent advance (≤ `jumpThresholdLines`); jumps and `immediate`
+    /// (initial display) snap.
+    var animatesMotion: Bool = false
+
+    /// Moves to `newIndex`, gated by `SidecarActiveLineUpdatePolicy`. Returns whether anything
+    /// changed; an unchanged index leaves the state (including `animatesMotion`) untouched.
+    @discardableResult
+    mutating func advance(to newIndex: Int, immediate: Bool = false) -> Bool {
+        guard SidecarActiveLineUpdatePolicy.shouldUpdate(currentIndex: activeIndex, newIndex: newIndex) else {
+            return false
+        }
+        animatesMotion = !immediate && !SidecarLyricsMotionPolicy.isJump(from: activeIndex, to: newIndex)
+        activeIndex = newIndex
+        return true
     }
 }
 
