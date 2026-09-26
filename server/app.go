@@ -36,6 +36,7 @@ type App struct {
 	loudnessMu        sync.Mutex
 	audioPlayer       *audio.Player
 	mtpConnected      bool
+	mtpHotplugStop    func()
 	mtpMu             sync.Mutex
 	mediaStateMu      sync.Mutex
 	mediaTitle        string
