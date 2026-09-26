@@ -37,6 +37,73 @@ final class SidecarLayoutMotionTests: XCTestCase {
         XCTAssertEqual(side, 0)
     }
 
+    // MARK: - Jump / snap rule (Desktop `lyrics-motion.ts` parity)
+
+    /// Moves of up to 2 lines are ordinary playback (a short line skipped within one tick).
+    func testAdjacentAdvanceIsNotJump() {
+        XCTAssertFalse(SidecarLyricsMotionPolicy.isJump(from: 10, to: 11))
+        XCTAssertFalse(SidecarLyricsMotionPolicy.isJump(from: 10, to: 12))
+        XCTAssertFalse(SidecarLyricsMotionPolicy.isJump(from: 12, to: 10))
+    }
+
+    /// More than 2 lines (seek, tap on a distant line) is a jump, in either direction.
+    func testFarMoveIsJump() {
+        XCTAssertTrue(SidecarLyricsMotionPolicy.isJump(from: 10, to: 13))
+        XCTAssertTrue(SidecarLyricsMotionPolicy.isJump(from: 40, to: 3))
+    }
+
+    /// Opening mid-song: "nothing active" (-1) straight into line 40 must snap.
+    func testNothingActiveIntoMidSongIsJump() {
+        XCTAssertTrue(SidecarLyricsMotionPolicy.isJump(from: -1, to: 40))
+        XCTAssertFalse(SidecarLyricsMotionPolicy.isJump(from: -1, to: 0))
+    }
+
+    func testMotionStateStartsWithNothingActiveAndNoAnimation() {
+        let state = SidecarLyricsActiveLineState()
+        XCTAssertEqual(state.activeIndex, -1)
+        XCTAssertFalse(state.animatesMotion)
+    }
+
+    func testMotionStateSnapsOnJumpFromNothingActive() {
+        var state = SidecarLyricsActiveLineState()
+        XCTAssertTrue(state.advance(to: 40))
+        XCTAssertEqual(state.activeIndex, 40)
+        XCTAssertFalse(state.animatesMotion)
+    }
+
+    func testMotionStateCascadesOnAdjacentAdvance() {
+        var state = SidecarLyricsActiveLineState()
+        state.advance(to: 40)
+        XCTAssertTrue(state.advance(to: 41))
+        XCTAssertTrue(state.animatesMotion)
+    }
+
+    func testMotionStateSnapsOnSeekAfterCascade() {
+        var state = SidecarLyricsActiveLineState()
+        state.advance(to: 40)
+        state.advance(to: 41)
+        XCTAssertTrue(state.advance(to: 5))
+        XCTAssertEqual(state.activeIndex, 5)
+        XCTAssertFalse(state.animatesMotion)
+    }
+
+    /// Initial display always snaps, even when the new line is adjacent.
+    func testMotionStateImmediateAlwaysSnaps() {
+        var state = SidecarLyricsActiveLineState()
+        XCTAssertTrue(state.advance(to: 0, immediate: true))
+        XCTAssertFalse(state.animatesMotion)
+    }
+
+    /// The same line again is not a change: no state write, and the previous animation choice
+    /// is kept so the periodic tick never re-diffs the lyric list needlessly.
+    func testMotionStateSameIndexIsNoOp() {
+        var state = SidecarLyricsActiveLineState()
+        state.advance(to: 40)
+        state.advance(to: 41)
+        XCTAssertFalse(state.advance(to: 41))
+        XCTAssertEqual(state, SidecarLyricsActiveLineState(activeIndex: 41, animatesMotion: true))
+    }
+
     // MARK: - SidecarLyricsMotionPolicy
 
     /// Ported from Desktop's `applyLyricsMotion` (`src/renderer/js/features/fullscreen-view.ts`):
