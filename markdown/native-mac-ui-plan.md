@@ -1,7 +1,7 @@
 # 設計書: Mac 版 UI のネイティブ化（SwiftUI）と Wails 版の保守モード移行
 
 **作成日:** 2026-09-27
-**状態:** 提案（Phase 0 の検証スパイク前）
+**状態:** Phase 0 完了（2026-09-27、9 項目すべて合格・続行）。結果はブランチ `research/native-bridge-spike` の `native_bridge_research/notes/phase0-verdict.md`
 **関連:** `markdown/appletv-servermode-plan.md`（単一バイナリ・`--serve`）、`progress/lan-api-v1.md`（LAN API v1 SSoT）、`markdown/plan-wails-audio-path-refactor.md`、`markdown/issue-wails-playback-ui-desync-unresolved.md`
 **参考実装:** `~/GitHub/UX-Inkwell`（Rust コア＋SwiftUI/AppKit＋WinUI 3。知見は §11 にまとめた）
 
@@ -29,7 +29,7 @@
 | 表示と実際の音がずれる。JS と Go が再生状態を二重に持っている | `markdown/issue-wails-playback-ui-desync-unresolved.md` |
 | Electron 向けと Wails 向けで音声・設定の経路が分かれている | `markdown/plan-wails-audio-path-refactor.md` |
 | バックグラウンド時に WebView のメモリを解放するため、Wails をフォークしている | メモリ `project_wails_fork`、`server/app_park.go` |
-| 駐機（park）時のメモリ返却調査。Go 約 100MB＋WebKit | `go_memory_research/notes/` |
+| 常駐メモリは本体約 65MB＋WebKit 約 100MB＝約 165MB。駐機（park）時のメモリ返却を別途調査した | `go_memory_research/notes/`、`native_bridge_research/notes/memory-footprint-vs-wails.md` |
 | 同じ機能（歌詞スナップ）をデスクトップ（TS）とモバイル（Swift）で二重に実装・修正している | `d99d286d` / `45b767fa` |
 
 ### 1.3 Rust を採らない理由（判断記録）
