@@ -3,6 +3,13 @@ import { showContextMenu } from '../ui/utils.js';
 import { showNotification } from '../ui/notification.js';
 import { startLrcEditor } from './lrc-editor.js';
 import { ClipboardSetText } from '../../wailsjs/runtime/runtime.js';
+// player.ts もこのモジュールを import する循環だが、実行時（イベント処理中）にのみ参照するため安全
+import { getCurrentTime, seek } from './player.js';
+import {
+    resolveLyricsLineIndexFromTarget,
+    resolveLyricsLineSeekTime,
+    resolveLyricsMotionTiming,
+} from './lyrics-motion.js';
 import type { LrcLine } from './lyrics-translation.js';
 import {
     buildJaLrcFileContent,
@@ -28,8 +35,6 @@ let cachedLyricsFileBase = '';
 let translationPasteModalWired = false;
 
 const LYRICS_MOTION_ANCHOR_RATIO = 0.35;
-const LYRICS_MOTION_DELAY_STEP_MS = 40;
-const LYRICS_MOTION_DURATION_MS = 800;
 /** 同期歌詞ブロック間（次の p の手前）— 可変行高・折返し・和訳行で重なりを防ぐ */
 const LYRICS_LRC_INTER_BLOCK_GAP_PX = 16;
 /** LRC 時刻と再生クロックの浮動小数差を吸収し、境界で前行が残り続けるのを防ぐ（秒） */
@@ -159,6 +164,7 @@ function clearLyrics() {
     elements.lyricsView.scrollTop = 0;
     elements.lyricsView.classList.remove('lyrics-mode-lrc', 'lyrics-mode-txt', 'lyrics-mode-bilingual');
     elements.lyricsView.removeEventListener('contextmenu', handleLyricsContextMenu);
+    elements.lyricsView.removeEventListener('click', handleLyricsLineClick);
     cachedLyricsFileBase = '';
     cachedTranslationPromptLines = [];
 }
@@ -276,7 +282,32 @@ function renderLyrics(lyrics) {
     lastResolvedLyricsIndex = -1;
 
     ensureLyricsMotionListeners();
+    elements.lyricsView.removeEventListener('click', handleLyricsLineClick);
+    elements.lyricsView.addEventListener('click', handleLyricsLineClick);
     applyLyricsMotionByIndex(-1, true);
+}
+
+/** 同期歌詞の行クリック: その行の時刻へシークし、表示もその行へ移す */
+function handleLyricsLineClick(event: MouseEvent) {
+    if (state.currentLyricsType !== 'lrc') {
+        return;
+    }
+    // ドラッグでの文字列選択はシーク扱いしない
+    const selection = window.getSelection?.();
+    if (selection && !selection.isCollapsed) {
+        return;
+    }
+    const index = resolveLyricsLineIndexFromTarget(event.target, elements.lyricsView);
+    if (index === null) {
+        return;
+    }
+    const time = resolveLyricsLineSeekTime(state.currentLyrics, index);
+    if (time === null) {
+        return;
+    }
+    void seek(time);
+    lastResolvedLyricsIndex = index;
+    applyLyricsMotionByIndex(index, false);
 }
 
 /**
@@ -330,6 +361,19 @@ function scheduleLyricsRelayout(immediate = true) {
     });
 }
 
+/**
+ * 歌詞パネルが表示されたとき、非表示中に進んだ再生位置の行へ遷移なしで合わせる。
+ * 非表示中に測った行高（0 → 1px 扱い）は捨てて、表示後のレイアウトで測り直す。
+ */
+function scheduleLyricsSnapToPlayback() {
+    stopLyricsRelayout();
+    lyricsRelayoutFrame = requestAnimationFrame(() => {
+        lyricsRelayoutFrame = null;
+        cachedLrcHeights = null;
+        applyLyricsMotionByIndex(findLyricsIndexForTime(getCurrentTime()), true);
+    });
+}
+
 let lyricsResizeThrottleRaf = null;
 
 function ensureLyricsMotionListeners() {
@@ -363,7 +407,7 @@ function ensureLyricsMotionListeners() {
         if (!elements.lyricsView?.classList.contains('lyrics-mode-lrc')) {
             return;
         }
-        scheduleLyricsRelayout(true);
+        scheduleLyricsSnapToPlayback();
     });
 
     lyricsContainerObserver.observe(lyricsContainer, {
@@ -396,7 +440,7 @@ function applyLyricsMotionByIndex(activeIndex, immediate = false) {
     const container = elements.lyricsView;
     const baseIndex = activeIndex >= 0 ? activeIndex : 0;
     const anchorY = container.clientHeight * LYRICS_MOTION_ANCHOR_RATIO;
-    const motionDuration = immediate ? 0 : LYRICS_MOTION_DURATION_MS;
+    const timing = resolveLyricsMotionTiming(currentAnimatedLyricsIndex, activeIndex, immediate);
     const refForDelay = activeIndex >= 0 ? activeIndex : 0;
 
     lines.forEach((line, index) => {
@@ -409,10 +453,10 @@ function applyLyricsMotionByIndex(activeIndex, immediate = false) {
     lines.forEach((line, index) => {
         const distanceFromActive = Math.abs(index - refForDelay);
         const y = tops[index];
-        const motionDelay = immediate ? 0 : distanceFromActive * LYRICS_MOTION_DELAY_STEP_MS;
+        const motionDelay = distanceFromActive * timing.delayStepMs;
 
         line.style.setProperty('--line-motion-delay', `${motionDelay}ms`);
-        line.style.setProperty('--line-motion-duration', `${motionDuration}ms`);
+        line.style.setProperty('--line-motion-duration', `${timing.durationMs}ms`);
         line.style.setProperty('--lyrics-line-y', `${y.toFixed(3)}px`);
     });
 

@@ -2425,12 +2425,16 @@
     font-weight: 700;
     line-height: 1.45;
     color: rgba(255, 255, 255, 0.45);
-    cursor: default;
+    /* 行クリックでその行の時刻へシークする */
+    cursor: pointer;
     transform: translateY(var(--fs-line-y, 0px)) scale(1);
     transform-origin: left center;
     transition-property: transform, opacity, color;
     transition-duration: var(--fs-line-dur, 0ms);
     transition-delay: var(--fs-line-delay, 0ms);
+}
+.fs-lyrics-inner.fs-lrc p:not(.active):hover {
+    color: rgba(255, 255, 255, 0.72);
 }
 .fs-lyrics-inner.fs-lrc p.active {
     color: #fff;
