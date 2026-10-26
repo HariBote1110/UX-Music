@@ -395,6 +395,22 @@
         }
       }
     },
+    "Not paired with %@ yet — scan the QR code in its Settings, or enter its pairing code" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not paired with %@ yet — scan the QR code in its Settings, or enter its pairing code"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ とはまだペアリングされていません — 設定にある QR コードをスキャンするか、ペアリングコードを入力してください"
+          }
+        }
+      }
+    },
     "Aim at the QR code in UX Music → Settings on your desktop." : {
       "localizations" : {
         "en" : {
