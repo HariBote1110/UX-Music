@@ -181,6 +181,41 @@ final class YouTubeEmbedPlayerTests: XCTestCase {
         }
     }
 
+    func testEffectiveLowQualityTruthTable() {
+        XCTAssertFalse(YouTubeEmbedPlayer.effectiveLowQuality(preferred: false, isVideoVisible: true))
+        XCTAssertTrue(YouTubeEmbedPlayer.effectiveLowQuality(preferred: false, isVideoVisible: false))
+        XCTAssertTrue(YouTubeEmbedPlayer.effectiveLowQuality(preferred: true, isVideoVisible: true))
+        XCTAssertTrue(YouTubeEmbedPlayer.effectiveLowQuality(preferred: true, isVideoVisible: false))
+    }
+
+    @MainActor
+    func testHostWithoutVisibleContainerIsEffectivelyLowQuality() {
+        let host = YouTubePlaybackHost()
+        host.setLowQuality(false)
+        XCTAssertFalse(host.isVideoVisible)
+        XCTAssertTrue(host.isLowQuality)
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 300, height: 200))
+        container.addSubview(host.webView)
+        host.layoutWebView(in: container)
+        XCTAssertTrue(host.isVideoVisible)
+        XCTAssertFalse(host.isLowQuality)
+    }
+
+    func testEmbedTimerStartsOnPlayingStateOnly() throws {
+        let html = try YouTubeEmbedPlayer.buildEmbedHTML(videoID: "dQw4w9WgXcQ")
+        XCTAssertTrue(html.contains("function stopTimer"))
+        XCTAssertTrue(html.contains("clearInterval(timer)"))
+        let onReadyStart = try XCTUnwrap(html.range(of: "onReady: function"))
+        let onStateStart = try XCTUnwrap(html.range(of: "onStateChange: function"))
+        let onErrorStart = try XCTUnwrap(html.range(of: "onError: function"))
+        let onReadyBody = html[onReadyStart.lowerBound..<onStateStart.lowerBound]
+        XCTAssertFalse(onReadyBody.contains("startTimer()"))
+        XCTAssertTrue(onReadyBody.contains("post({ type: 'ready' })"))
+        let onStateBody = html[onStateStart.lowerBound..<onErrorStart.lowerBound]
+        XCTAssertTrue(onStateBody.contains("startTimer()"))
+        XCTAssertTrue(onStateBody.contains("stopTimer()"))
+    }
+
     func testBuildEmbedHTMLContainsLowQualityCommandHandler() throws {
         let html = try YouTubeEmbedPlayer.buildEmbedHTML(videoID: "dQw4w9WgXcQ")
         XCTAssertTrue(html.contains("d.cmd === 'lowQuality'"))
