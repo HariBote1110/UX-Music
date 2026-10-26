@@ -541,14 +541,15 @@ final class AppModel {
         }
     }
 
-    /// Probes `hosts` in order (like `withFailover`/Discovery) for the first one that answers
+    /// Probes all `hosts` concurrently for the first one that answers
     /// `GET /v1/identity`, then redeems the secret against that reachable host. On success, the
     /// remaining candidates are kept as `fallbackHosts` so later requests can fail over too.
     @discardableResult
     func redeemPairing(hosts: [String], port: Int, secret: String) async -> Bool {
         let candidates = hosts.map { ServerConfig(host: $0, port: port) }
+        let session = urlSession
         let resolved = await RemoteConnectionResolver.resolve(candidates: candidates) { candidate in
-            try await RemoteAPIClient(baseURLString: candidate.baseURLString, session: urlSession).ping()
+            try await RemoteAPIClient(baseURLString: candidate.baseURLString, session: session).ping()
         }
         guard let resolved else {
             pairingError = String(localized: "Could not reach the desktop app. Check that you are on the same Wi-Fi network.")

@@ -157,18 +157,29 @@ enum RemoteConnectionResolver {
         return RemoteConnectionFailoverResult(value: value, updatedConfig: nil)
     }
 
-    /// Pings each candidate in order and returns the first reachable config (with the server's
-    /// reported name), or `nil` if none respond. Stops pinging as soon as a candidate succeeds.
+    /// Pings every candidate concurrently and returns the first one to answer (with the server's
+    /// reported name), or `nil` once all of them have failed. The remaining probes are cancelled as
+    /// soon as one succeeds, so an unreachable address listed first no longer costs a full timeout.
+    /// If several candidates succeed, whichever answers first wins; list order is not preserved.
     static func resolve(
         candidates: [ServerConfig],
-        ping: @Sendable (ServerConfig) async throws -> String
+        ping: @escaping @Sendable (ServerConfig) async throws -> String
     ) async -> (config: ServerConfig, serverName: String)? {
-        for candidate in candidates {
-            if let name = try? await ping(candidate) {
-                return (candidate, name)
+        await withTaskGroup(of: (config: ServerConfig, serverName: String)?.self) { group in
+            for candidate in candidates {
+                group.addTask {
+                    guard let name = try? await ping(candidate) else { return nil }
+                    return (candidate, name)
+                }
             }
+            for await result in group {
+                if let result {
+                    group.cancelAll()
+                    return result
+                }
+            }
+            return nil
         }
-        return nil
     }
 
     /// `ping` succeeding only proves the desktop is reachable — `GET /v1/identity` is exempt from
@@ -283,5 +294,20 @@ enum RemoteConnectionResolver {
         } catch {
             return false
         }
+    }
+}
+
+/// What Settings should do once a discovered desktop has been probed.
+enum DiscoveredPeerAction: Equatable {
+    /// Already authorised: nothing more to do.
+    case connected
+    /// Reachable but not paired: open the QR scanner for that desktop.
+    case presentScanner
+    /// Reachable but not paired, and there is no camera: focus the pairing-code field.
+    case focusPairingCode
+
+    static func after(authorised: Bool, cameraAvailable: Bool) -> DiscoveredPeerAction {
+        if authorised { return .connected }
+        return cameraAvailable ? .presentScanner : .focusPairingCode
     }
 }
