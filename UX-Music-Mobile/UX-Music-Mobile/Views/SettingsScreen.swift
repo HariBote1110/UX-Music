@@ -253,7 +253,10 @@ struct SettingsScreen: View {
             .scrollContentBackground(.hidden)
             .background(Color.black)
             .scrollDismissesKeyboard(.interactively)
-            .simultaneousGesture(TapGesture().onEnded { focusedField = nil })
+            .simultaneousGesture(
+                TapGesture().onEnded { focusedField = nil },
+                including: SettingsKeyboardDismiss.tapMask(isEditing: focusedField != nil)
+            )
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
@@ -619,5 +622,13 @@ enum RemoteConnectionCandidates {
             out.append(host)
         }
         return out
+    }
+}
+
+/// Decides whether the form-wide "tap to dismiss keyboard" gesture takes part in hit testing.
+/// While nothing is focused it must be fully disabled so row buttons receive short taps.
+enum SettingsKeyboardDismiss {
+    static func tapMask(isEditing: Bool) -> GestureMask {
+        isEditing ? .all : .subviews
     }
 }
