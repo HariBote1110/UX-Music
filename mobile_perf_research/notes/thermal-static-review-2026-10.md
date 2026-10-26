@@ -91,7 +91,7 @@ YouTube 曲を連続再生している場面では C が支配的になると見
 
 ## 対策状況（2026-10-27 追記）
 
-- A・B は TDD で実装済み（45e54b7c〜c636260a、判断記録は `progress/mobile-thermal-polling-timer.md`）。実機での効果測定は未了。C も実装済み（17acc5e2〜78c57de7、PiP の 1000ms 監視は対象外）。D も実装済み（71992538〜27ed0393）。E・F は未着手。
+- A・B は TDD で実装済み（45e54b7c〜c636260a、判断記録は `progress/mobile-thermal-polling-timer.md`）。実機での効果測定は未了。C も実装済み（17acc5e2〜78c57de7、PiP の 1000ms 監視は対象外）。D も実装済み（71992538〜27ed0393）。E・F も実装済み（d2a7a6b0〜1b27a49a）。実機での前後比較は `device-energy-harness-2026-10.md` を参照（A・B は効果を確認。C は未確定）。
 
 ## 次の一手 / 未検証事項
 

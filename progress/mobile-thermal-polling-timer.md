@@ -59,3 +59,24 @@
 
 - GPU 負荷が実際に下がったかは、実機の Instruments でしか測れない。
 - 確認していない状態: ジャケット画像から色を取った背景、YouTube 曲の表示。
+
+## 追記: 歌詞タイマーと詳細画面の Lazy 化（2026-10-27）
+
+### 決定
+
+- 歌詞の行追従用 `TimelineView` は、再生中のときだけ置く（`LyricsActiveLineTickPolicy.shouldTick(isPlaying:)`）。対象は `NowPlayingLyricsScreen` と `SidecarScreen` の歌詞部分。
+  - 一時停止中は `LyricsPausedPositionWatcher` で位置の変化（シーク）だけを見て、行を合わせ直す。
+  - 再生と一時停止を切り替えたときは、1 回だけ同期し直す。
+- `SidecarScreen` の進捗バー用 `TimelineView` は対象外とし、触っていない。
+- アルバム・アーティスト・リモートプレイリストの詳細画面は、いちばん外側の `VStack` を `LazyVStack` に置き換えた。
+
+### 注意点
+
+- 一時停止中のシークで歌詞の行が追従するかは、UI ではまだ確かめていない（ロジックのテストのみ）。
+- 実機の計測場面には歌詞画面がない。E 単独の効果はまだ測っていない。
+
+## 追記: 実機での前後比較（2026-10-27）
+
+- 手順と数値は `mobile_perf_research/notes/device-energy-harness-2026-10.md` にある。
+- 計測用ビルドは `UXM_BUNDLE_ID_BASE=jp.ux-labs.UXMusicMobile.perf` で別アプリとして入れる。既定のバンドル ID は変えていない。
+- A について: 前面で Control からほかのタブへ移る場合は、修正前からポーリングが止まっていた（iOS 27 の TabView が `onDisappear` を出す）。A が効くのは、Control を選んだままバックグラウンドで再生する場面。修正前は 120 秒に 65 回の要求が出ていたが、修正後は 0 回になった。
