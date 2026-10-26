@@ -94,6 +94,7 @@ private struct LazyTabRoot<Content: View>: View {
         ZStack {
             if hasAppeared {
                 content()
+                    .environment(\.isTabSelected, isSelected)
                     .opacity(isSelected ? 1 : 0)
                     .allowsHitTesting(isSelected)
             }

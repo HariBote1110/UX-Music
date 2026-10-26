@@ -52,8 +52,35 @@ struct RemoteControlStateSnapshot: Equatable {
     }
 }
 
+/// Decides whether the 2s `/v1/remote/state` poll loop should be running.
+///
+/// `LazyTabRoot` keeps a visited tab alive with `.opacity(0)`, so `onDisappear` never fires on a
+/// tab switch, and iOS does not suspend the app while audio plays — without this gate the loop
+/// kept hitting the network (and waking the radio) forever once the Control tab had been visited.
+enum RemoteControlPollingPolicy {
+    static func shouldPoll(isOnScreen: Bool, isTabSelected: Bool, scenePhase: ScenePhase) -> Bool {
+        isOnScreen && isTabSelected && scenePhase == .active
+    }
+}
+
+private struct IsTabSelectedKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// Whether the enclosing tab is the selected one. Defaults to `true` so a screen hosted
+    /// outside `LazyTabRoot` behaves as before.
+    var isTabSelected: Bool {
+        get { self[IsTabSelectedKey.self] }
+        set { self[IsTabSelectedKey.self] = newValue }
+    }
+}
+
 struct RemoteControlScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isTabSelected) private var isTabSelected
+    @State private var isOnScreen = false
     @StateObject private var tvDiscovery = TVRemoteDiscoveryService()
     @State private var selectedTarget: RemoteControlTarget = .thisIPhone
     @State private var stateSnapshot: RemoteControlStateSnapshot = .empty
@@ -111,13 +138,20 @@ struct RemoteControlScreen: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
-                startPolling()
+                isOnScreen = true
                 tvDiscovery.start()
             }
             .onDisappear {
-                pollTask?.cancel()
-                pollTask = nil
+                isOnScreen = false
                 tvDiscovery.stop()
+            }
+            .onChange(of: shouldPoll, initial: true) { _, newValue in
+                if newValue {
+                    startPolling()
+                } else {
+                    pollTask?.cancel()
+                    pollTask = nil
+                }
             }
         }
     }
@@ -306,6 +340,10 @@ struct RemoteControlScreen: View {
         } catch {
             await MainActor.run { errorMessage = error.localizedDescription }
         }
+    }
+
+    private var shouldPoll: Bool {
+        RemoteControlPollingPolicy.shouldPoll(isOnScreen: isOnScreen, isTabSelected: isTabSelected, scenePhase: scenePhase)
     }
 
     private func startPolling() {
