@@ -5,7 +5,7 @@ import XCTest
 /// product's Info.plist — the key never made it in), so watchOS suspended audio as soon as the app
 /// backgrounded. The fix is a source `Info.plist` for the watch target (merged in via
 /// `INFOPLIST_FILE`, since `GENERATE_INFOPLIST_FILE = YES` merges generated keys with a source file)
-/// that declares `WKBackgroundModes` directly. This test parses the source files under `SRCROOT`
+/// that declares `UIBackgroundModes` = audio directly. This test parses the source files under `SRCROOT`
 /// rather than a built product, so it also runs from a plain `xcodebuild test` without first building
 /// the watch scheme.
 final class WatchBackgroundAudioInfoPlistTests: XCTestCase {
