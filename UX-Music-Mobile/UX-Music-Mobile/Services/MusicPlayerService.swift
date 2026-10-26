@@ -418,6 +418,7 @@ final class MusicPlayerService {
     /// driven ⟹ local engine silent" invariant from outside the type.
     var hasActiveLocalAudioFileForTesting: Bool { currentAudioFile != nil }
     var isPositionTimerRunningForTesting: Bool { positionTimer != nil }
+    var lastNowPlayingPublicationIsPlayingForTesting: Bool? { lastNowPlayingPublication?.isPlaying }
     var normalisationGainDecibelsForTesting: Float { normalisationUnit.globalGain }
     var masterOutputVolumeForTesting: Float { engine.mainMixerNode.outputVolume }
     var normalisationIsInSignalPathForTesting: Bool {

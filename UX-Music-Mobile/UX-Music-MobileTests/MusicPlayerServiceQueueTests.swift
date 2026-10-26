@@ -31,6 +31,15 @@ final class MusicPlayerServiceQueueTests: XCTestCase {
         XCTAssertTrue(player.isPositionTimerRunningForTesting)
     }
 
+    func testExternalPausePublishesNowPlayingAsPaused() async throws {
+        let player = MusicPlayerService()
+        player.beginExternalPlayback(song: song("a"), durationSeconds: 100)
+        player.setExternalPlaybackIsPlaying(false)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(player.isPositionTimerRunningForTesting)
+        XCTAssertEqual(player.lastNowPlayingPublicationIsPlayingForTesting, false)
+    }
+
     // MARK: - Repeat mode
 
     func testRepeatModeDefaultsToOff() {
