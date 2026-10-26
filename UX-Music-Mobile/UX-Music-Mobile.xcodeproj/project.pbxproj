@@ -1479,6 +1479,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "UX-Music-Mobile/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "UX Music Mobile uses the local network to connect to your desktop music library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -1490,7 +1491,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uxlabs.uxMusicMobile;
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -1564,7 +1565,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uxlabs.uxMusicMobileTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobileTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -1583,7 +1584,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uxlabs.uxMusicMobileTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobileTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -1668,6 +1669,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "UX-Music-Mobile/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "UX Music Mobile uses the local network to connect to your desktop music library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -1679,7 +1681,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uxlabs.uxMusicMobile;
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -1699,13 +1701,13 @@
 				INFOPLIST_FILE = "UX-Music-Watch/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.uxlabs.uxMusicMobile";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "jp.ux-labs.UXMusicMobile";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.watchkitapp";
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile.watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1728,13 +1730,13 @@
 				INFOPLIST_FILE = "UX-Music-Watch/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "com.uxlabs.uxMusicMobile";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "jp.ux-labs.UXMusicMobile";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.watchkitapp";
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile.watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1762,7 +1764,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.tv";
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile.tv";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = appletvos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1789,7 +1791,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.tv";
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile.tv";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = appletvos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1808,7 +1810,7 @@
 				DEVELOPMENT_TEAM = HMMQ7Z6976;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.tvTests";
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile.tvTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = appletvos;
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1828,7 +1830,7 @@
 				DEVELOPMENT_TEAM = HMMQ7Z6976;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.uxlabs.uxMusicMobile.tvTests";
+				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile.tvTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = appletvos;
 				SWIFT_EMIT_LOC_STRINGS = NO;
