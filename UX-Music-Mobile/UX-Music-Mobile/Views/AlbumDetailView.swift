@@ -27,7 +27,8 @@ struct AlbumDetailView: View {
 
     private var scrollBody: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            // Lazy: long song lists only build the rows that are on screen.
+            LazyVStack(alignment: .leading, spacing: 0) {
                 header
                 HStack {
                     Text(album.displayArtist)
