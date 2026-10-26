@@ -6,6 +6,9 @@ struct UXMusicMobileApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
+    #if DEBUG
+    @State private var debugShowAlbumDetail = ProcessInfo.processInfo.environment["UXM_DEBUG_ALBUM_DETAIL"] == "1"
+    #endif
 
     var body: some Scene {
         WindowGroup {
@@ -19,6 +22,19 @@ struct UXMusicMobileApp: App {
                     installDebugLyricsAutoOpenHookIfRequested()
                     installDebugSidecarHostHookIfRequested()
                 }
+                #if DEBUG
+                // DEBUG-only (`UXM_DEBUG_ALBUM_DETAIL=1`): shows `AlbumDetailView` with fake songs
+                // for before/after layout comparisons.
+                .fullScreenCover(isPresented: $debugShowAlbumDetail) {
+                    NavigationStack {
+                        AlbumDetailView(album: Album.fromSongs((1...40).map {
+                            Song(id: "dbg-\($0)", path: "/nonexistent/\($0).m4a", title: "Track \($0)", artist: "Debug Artist", album: "Debug Album", duration: 180, trackNumber: $0)
+                        })[0])
+                    }
+                    .environment(model)
+                    .preferredColorScheme(.dark)
+                }
+                #endif
                 .onOpenURL { url in
                     Task { _ = await model.applyPairingURL(url) }
                 }
