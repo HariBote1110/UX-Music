@@ -20,3 +20,25 @@
 
 - `setExternalPlaybackIsPlaying(false)` は自分では Now Playing を更新しない。以前は 4Hz ティックが代わりに再送していた。いまは `settlePositionAfterPause()` が担っているので、この経路を消すと tvOS の一時停止表示が「再生中」のまま残る（`testExternalPausePublishesNowPlayingAsPaused`）。
 - 効果は実機で未計測。シミュレータでは発熱や無線の消費を再現できない。
+
+## 追記: YouTube の非表示時の低画質化と JS 時刻報告（2026-10-27）
+
+### 決定
+
+- `YouTubeEmbedPlayer.effectiveLowQuality(preferred:isVideoVisible:)` は `preferred || !isVideoVisible` を返す。
+  - `preferred` には従来どおりモバイル回線のポリシーが入る。
+  - 「見えている」とは、WebView が退避用ビュー以外のコンテナに入っているか、PiP / 全画面で表示中の状態を指す。
+  - 見えていないときは Wi-Fi でも、256×144 物理 px で置く低画質用の配置にする。
+- JS へのコマンドは、実際に適用される画質（実効値）が変わったときだけ送る（`appliedLowQuality` と比較）。
+- 埋め込みページの 250ms 時刻報告は PLAYING(1) で開始し、BUFFERING(3) 以外の状態で停止する。停止時には最終位置を 1 回だけ送る。
+  - 周期を 250ms のままにしたのは、歌詞の同期がこの位置を読むため。
+
+### 却下・保留
+
+- PiP 状態を監視する 1000ms の `report` ポーリング → 効果が小さく、PiP 検出を壊す危険があるので触らない。
+- Now Playing を開いたまま画面をロックした場合も「見えている」扱いのまま。scenePhase との連動は未対応。
+
+### 注意点
+
+- 再生中に WebView のサイズを小さくしたとき、YouTube が実際に画質を下げるかは実機で未検証。
+- 見える状態に戻ると画質は上がるが、数秒は粗い映像になり得る。
