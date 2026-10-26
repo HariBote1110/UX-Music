@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import UX_Music_Mobile
 
@@ -61,3 +62,25 @@ final class RemoteControlStateSnapshotTests: XCTestCase {
         XCTAssertEqual(RemoteControlStateSnapshot.empty, RemoteControlStateSnapshot(from: [:]))
     }
 }
+
+/// Control タブのポーリング条件（画面表示中・タブ選択中・前面）の真理値表。
+final class RemoteControlPollingPolicyTests: XCTestCase {
+
+    func testPollsOnlyWhenOnScreenSelectedAndActive() {
+        XCTAssertTrue(RemoteControlPollingPolicy.shouldPoll(isOnScreen: true, isTabSelected: true, scenePhase: .active))
+    }
+
+    func testDoesNotPollWhenNotOnScreen() {
+        XCTAssertFalse(RemoteControlPollingPolicy.shouldPoll(isOnScreen: false, isTabSelected: true, scenePhase: .active))
+    }
+
+    func testDoesNotPollWhenTabNotSelected() {
+        XCTAssertFalse(RemoteControlPollingPolicy.shouldPoll(isOnScreen: true, isTabSelected: false, scenePhase: .active))
+    }
+
+    func testDoesNotPollWhenInactiveOrBackground() {
+        XCTAssertFalse(RemoteControlPollingPolicy.shouldPoll(isOnScreen: true, isTabSelected: true, scenePhase: .inactive))
+        XCTAssertFalse(RemoteControlPollingPolicy.shouldPoll(isOnScreen: true, isTabSelected: true, scenePhase: .background))
+    }
+}
+
