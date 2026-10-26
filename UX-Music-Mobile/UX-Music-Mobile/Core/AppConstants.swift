@@ -11,6 +11,7 @@ enum AppConstants {
     /// `progress/tvos-connect.md`).
     static let tvRemoteMDNSServiceType = "_uxmusic-remote._tcp."
     static let downloadedSongsMetaKey = "downloaded_songs_meta"
+    static let loudnessCacheKey = "uxmusic.loudness.songValues.v1"
     static let serverConfigKey = "server_config"
     /// JSON envelope for user-created playlists (local device).
     static let playlistsPersistenceKey = "local_playlists_v1"

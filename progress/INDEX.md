@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mobile-loudness-normalise-fix.md](mobile-loudness-normalise-fix.md) — iOS が現行 LUFS 応答を捨てる不具合を修正し、補正専用ゲイン段・オフライン復元・回帰テストを追加（YouTube 埋め込みの音量制約は残る）
 - [mobile-lyrics-snap.md](mobile-lyrics-snap.md) — Mobile 同期歌詞（iPhone／iPad Sidecar）: 途中表示と3行以上のジャンプは遷移なしでスナップ、2行以内の行送りだけカスケード（LyricsStageKit の `SidecarLyricsActiveLineState`）、行高の測り直しもアニメーションしない
 - [desktop-lyrics-snap-and-tap-seek.md](desktop-lyrics-snap-and-tap-seek.md) — Desktop 同期歌詞: 途中で開く／大きくシークすると全行が一斉に流れる問題を修正（3行以上のジャンプと表示開始は遷移なしスナップ、判定は lyrics-motion.ts で共有）、LRC 行クリックでその時刻へシーク
 - [mtp-hotplug-monitor.md](mtp-hotplug-monitor.md) — MTP端末検知をlibusbホットプラグ通知に置換（macOS/Linux）。到着は500msで束ねて最大3回試行、抜去時は1回だけ確認、Windowsは従来ポーリングのまま保留

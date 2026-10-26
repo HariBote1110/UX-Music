@@ -298,13 +298,17 @@ struct RemoteAPIClient: Sendable {
     }
 
     func fetchLoudness() async throws -> [String: Double] {
-        let (data, _) = try await session.data(for: authorizedRequest(path: "/v1/remote/loudness"))
+        let (data, response) = try await session.data(for: authorizedRequest(path: "/v1/remote/loudness"))
+        try Self.throwIfNotOK(response, data: data)
         let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
         var out: [String: Double] = [:]
         for (k, v) in raw {
-            if let n = v as? Double { out[k] = n }
-            else if let i = v as? Int { out[k] = Double(i) }
-            else if let num = v as? NSNumber { out[k] = num.doubleValue }
+            // The desktop preserves current {loudness, truePeak} entries and legacy numbers.
+            let value = (v as? [String: Any])?["loudness"] ?? v
+            if let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse,
+               number.doubleValue.isFinite {
+                out[k] = number.doubleValue
+            }
         }
         return out
     }

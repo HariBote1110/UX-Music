@@ -4,6 +4,13 @@ import MediaPlayer
 import Observation
 import UIKit
 
+enum LoudnessNormalisation {
+    static func linearGain(songID: String?, map: [String: Double], target: Double, enabled: Bool) -> Double {
+        guard enabled, let songID, let lufs = map[songID], lufs.isFinite, target.isFinite else { return 1 }
+        return min(max(pow(10, (target - lufs) / 20), 0), 4)
+    }
+}
+
 /// Local playback with optional loudness normalisation and a 10-band graphic equaliser (`AVAudioEngine` + `AVAudioUnitEQ`).
 @MainActor
 @Observable
@@ -11,6 +18,8 @@ final class MusicPlayerService {
     private let engine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
     private let equaliserUnit = AVAudioUnitEQ(numberOfBands: GraphicEqualiserConfiguration.bandCount)
+    /// A separate gain stage keeps normalisation active when the graphic equaliser is bypassed.
+    private let normalisationUnit = AVAudioUnitEQ(numberOfBands: 0)
 
     private var queue: [Song] = []
     private var currentIndex: Int = -1
@@ -141,15 +150,25 @@ final class MusicPlayerService {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
 
-    private(set) var currentSong: Song?
+    private(set) var currentSong: Song? {
+        didSet { applyLoudnessGain() }
+    }
     private(set) var isPlaying = false
     private(set) var positionSeconds: Double = 0
     private(set) var durationSeconds: Double = 0
 
-    var loudnessMap: [String: Double] = [:]
-    var targetLoudness: Double = AppConstants.defaultTargetLoudness
-    var normaliseEnabled = true
-    var masterVolume: Float = 1
+    var loudnessMap: [String: Double] = [:] {
+        didSet { applyLoudnessGain() }
+    }
+    var targetLoudness: Double = AppConstants.defaultTargetLoudness {
+        didSet { applyLoudnessGain() }
+    }
+    var normaliseEnabled = true {
+        didSet { applyLoudnessGain() }
+    }
+    var masterVolume: Float = 1 {
+        didSet { applyLoudnessGain() }
+    }
 
     /// Optional hook for platforms that keep audio files in a local cache rather than always
     /// having `song.path` point at something readable (tvOS: only the initially tapped song's
@@ -388,6 +407,13 @@ final class MusicPlayerService {
     /// (precedent: `TVRelayStreamPlayer.isRenderActiveForTesting`), used to assert the "externally
     /// driven ⟹ local engine silent" invariant from outside the type.
     var hasActiveLocalAudioFileForTesting: Bool { currentAudioFile != nil }
+    var normalisationGainDecibelsForTesting: Float { normalisationUnit.globalGain }
+    var masterOutputVolumeForTesting: Float { engine.mainMixerNode.outputVolume }
+    var normalisationIsInSignalPathForTesting: Bool {
+        engine.outputConnectionPoints(for: equaliserUnit, outputBus: 0).contains { $0.node === normalisationUnit }
+            && engine.outputConnectionPoints(for: normalisationUnit, outputBus: 0).contains { $0.node === engine.mainMixerNode }
+            && !normalisationUnit.bypass
+    }
 
     private var currentAudioFile: AVAudioFile?
     private var scheduledSegmentStartFrame: AVAudioFramePosition = 0
@@ -1463,6 +1489,7 @@ final class MusicPlayerService {
         if !nodesAttached {
             engine.attach(playerNode)
             engine.attach(equaliserUnit)
+            engine.attach(normalisationUnit)
             nodesAttached = true
         }
 
@@ -1477,12 +1504,15 @@ final class MusicPlayerService {
         if lastWireFormat != nil {
             engine.disconnectNodeOutput(playerNode)
             engine.disconnectNodeOutput(equaliserUnit)
+            engine.disconnectNodeOutput(normalisationUnit)
         }
 
         engine.connect(playerNode, to: equaliserUnit, format: fmt)
-        engine.connect(equaliserUnit, to: engine.mainMixerNode, format: fmt)
+        engine.connect(equaliserUnit, to: normalisationUnit, format: fmt)
+        engine.connect(normalisationUnit, to: engine.mainMixerNode, format: fmt)
         lastWireFormat = fmt
         engine.prepare()
+        applyLoudnessGain()
     }
 
     private func ensureEngineRunning() {
@@ -1497,6 +1527,7 @@ final class MusicPlayerService {
 
     private func ensureEngineRunningThrowing() throws {
         if !engine.isRunning {
+            applyLoudnessGain()
             try engine.start()
         }
     }
@@ -1663,17 +1694,13 @@ final class MusicPlayerService {
     }
 
     private func applyLoudnessGain() {
-        let linear: Float
-        if !normaliseEnabled || currentSong == nil {
-            linear = 1
-        } else if let id = currentSong?.id, let lufs = loudnessMap[id] {
-            let gainDb = targetLoudness - lufs
-            let lin = pow(10, gainDb / 20)
-            linear = min(max(Float(lin), 0), 4)
-        } else {
-            linear = 1
-        }
-        engine.mainMixerNode.outputVolume = masterVolume * linear
+        let linear = LoudnessNormalisation.linearGain(
+            songID: currentSong?.id, map: loudnessMap, target: targetLoudness, enabled: normaliseEnabled
+        )
+        // Mixer outputVolume only accepts 0...1; apply boosts in a dB-capable audio unit.
+        normalisationUnit.bypass = false
+        normalisationUnit.globalGain = max(-96, Float(20 * log10(linear)))
+        engine.mainMixerNode.outputVolume = min(max(masterVolume, 0), 1)
     }
 
     func refreshVolumeForCurrentSong() {
