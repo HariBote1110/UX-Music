@@ -616,11 +616,24 @@ private struct SidecarSyncedLyricsList: View {
             }
         }
         .background(
-            TimelineView(.periodic(from: lyricsScheduleAnchor, by: 0.2)) { context in
-                Color.clear
-                    .task(id: context.date) {
-                        syncActiveLine(now: context.date, immediate: false)
+            // Mounted only while playing (`LyricsActiveLineTickPolicy`); while paused a new
+            // position is caught by the watcher, and a play/pause flip resyncs once.
+            Group {
+                if LyricsActiveLineTickPolicy.shouldTick(isPlaying: model.sidecarPlaying) {
+                    TimelineView(.periodic(from: lyricsScheduleAnchor, by: 0.2)) { context in
+                        Color.clear
+                            .onChange(of: context.date) { _, newDate in
+                                syncActiveLine(now: newDate, immediate: false)
+                            }
                     }
+                } else {
+                    LyricsPausedPositionWatcher(position: { model.sidecarPosition }) {
+                        syncActiveLine(now: Date(), immediate: false)
+                    }
+                }
+            }
+            .onChange(of: model.sidecarPlaying) { _, _ in
+                syncActiveLine(now: Date(), immediate: false)
             }
         )
         // Start on the current line instead of `-1`, so opening mid-song never cascades.

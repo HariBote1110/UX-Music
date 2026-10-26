@@ -163,6 +163,24 @@ enum SidecarActiveLineUpdatePolicy {
     }
 }
 
+/// The lyrics panes' periodic active-line tick only has anything to do while playing; paused, the
+/// position is frozen (battery/heat: a 5 Hz timeline otherwise keeps the screen awake for nothing).
+/// A seek while paused is picked up by `LyricsPausedPositionWatcher` instead.
+enum LyricsActiveLineTickPolicy {
+    static func shouldTick(isPlaying: Bool) -> Bool { isPlaying }
+}
+
+/// Mounted only while paused: reports changes of the position (a seek) without the parent view
+/// having to read the position in its own `body` (which would re-run it at the position's rate).
+struct LyricsPausedPositionWatcher<Value: Equatable>: View {
+    let position: () -> Value
+    let onChange: () -> Void
+
+    var body: some View {
+        Color.clear.onChange(of: position()) { _, _ in onChange() }
+    }
+}
+
 /// The active line plus whether moving to it should animate — Desktop's `resolveLyricsMotionTiming`
 /// folded into the state the lyrics panes hold. Both fields change in the same `@State` write, so
 /// the per-line `.animation(animatesMotion ? cascade : nil, value: activeIndex)` sees the decision

@@ -256,11 +256,24 @@ private struct NowPlayingSyncedLyricsScroll: View {
             // Gated tick: recompute the active line a few times a second, but only write
             // `@State` (forcing the `ForEach` to re-diff) on a genuine active-line change.
             // Position source is the LOCAL player — not the sidecar remote fields.
-            TimelineView(.periodic(from: lyricsScheduleAnchor, by: 0.2)) { context in
-                Color.clear
-                    .task(id: context.date) {
+            // Mounted only while playing (`LyricsActiveLineTickPolicy`); while paused a seek is
+            // caught by the watcher instead, and a play/pause flip resyncs once.
+            Group {
+                if LyricsActiveLineTickPolicy.shouldTick(isPlaying: model.player.isPlaying) {
+                    TimelineView(.periodic(from: lyricsScheduleAnchor, by: 0.2)) { context in
+                        Color.clear
+                            .onChange(of: context.date) { _, _ in
+                                syncActiveLine(immediate: false)
+                            }
+                    }
+                } else {
+                    LyricsPausedPositionWatcher(position: { model.player.positionSeconds }) {
                         syncActiveLine(immediate: false)
                     }
+                }
+            }
+            .onChange(of: model.player.isPlaying) { _, _ in
+                syncActiveLine(immediate: false)
             }
         )
         // Start on the current line instead of `-1`, so opening mid-song never cascades.
