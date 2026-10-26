@@ -153,7 +153,17 @@ final class MusicPlayerService {
     private(set) var currentSong: Song? {
         didSet { applyLoudnessGain() }
     }
-    private(set) var isPlaying = false
+    private(set) var isPlaying = false {
+        didSet {
+            guard isPlaying != oldValue else { return }
+            if isPlaying {
+                startPositionTimer()
+            } else {
+                stopPositionTimer()
+                settlePositionAfterPause()
+            }
+        }
+    }
     private(set) var positionSeconds: Double = 0
     private(set) var durationSeconds: Double = 0
 
@@ -407,6 +417,7 @@ final class MusicPlayerService {
     /// (precedent: `TVRelayStreamPlayer.isRenderActiveForTesting`), used to assert the "externally
     /// driven ⟹ local engine silent" invariant from outside the type.
     var hasActiveLocalAudioFileForTesting: Bool { currentAudioFile != nil }
+    var isPositionTimerRunningForTesting: Bool { positionTimer != nil }
     var normalisationGainDecibelsForTesting: Float { normalisationUnit.globalGain }
     var masterOutputVolumeForTesting: Float { engine.mainMixerNode.outputVolume }
     var normalisationIsInSignalPathForTesting: Bool {
@@ -440,7 +451,6 @@ final class MusicPlayerService {
         pushEqualiserToAudioUnit()
         loadEqualiserStateFromUserDefaults()
         loadPlaybackModesFromUserDefaults()
-        startPositionTimer()
         addAudioInterruptionObserver()
         addAudioRouteChangeObserver()
         installRemoteCommandHandlers()
@@ -727,6 +737,10 @@ final class MusicPlayerService {
         return false
     }
 
+    /// The 4 Hz position timer exists only while `isPlaying` is true (driven by its `didSet`):
+    /// running it for the whole process lifetime kept the CPU and the media-server IPC busy while
+    /// paused, stopped or empty. External (tvOS stream) playback also sets `isPlaying`, so it
+    /// keeps ticking too.
     private func startPositionTimer() {
         positionTimer?.invalidate()
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -738,6 +752,25 @@ final class MusicPlayerService {
         positionTimer = timer
     }
 
+    private func stopPositionTimer() {
+        positionTimer?.invalidate()
+        positionTimer = nil
+    }
+
+    /// With the timer stopped on pause, `positionSeconds` could lag the real (frozen) position by up
+    /// to one tick. Refresh it once after the pause state has settled and republish.
+    private func settlePositionAfterPause() {
+        Task { @MainActor [weak self] in
+            guard let self, !self.isPlaying, self.currentSong != nil, !self.isExternallyDriven,
+                  self.currentAudioFile != nil
+            else { return }
+            let pos = self.currentTimelineSeconds()
+            self.positionSeconds = self.durationSeconds > 0
+                ? min(max(0, pos), self.durationSeconds) : max(0, pos)
+            self.updateNowPlayingCentre()
+        }
+    }
+
     private func tickPlaybackPosition() {
         guard currentSong != nil else { return }
         // While externally driven, `updateExternalPlaybackProgress(seconds:)` is the single writer
@@ -745,7 +778,7 @@ final class MusicPlayerService {
         // local timeline is stale/irrelevant here, so this must not recompute/overwrite it. Still
         // refresh Now Playing metadata (title/artwork) so the lock screen keeps updating.
         guard !isExternallyDriven else {
-            updateNowPlayingCentre()
+            updateNowPlayingCentre(force: false)
             return
         }
         if let file = currentAudioFile {
@@ -762,7 +795,7 @@ final class MusicPlayerService {
         }
         // Do NOT call syncIsPlayingFromNode() here: the timer must not override the
         // intentional isPlaying state set by explicit play/pause actions.
-        updateNowPlayingCentre()
+        updateNowPlayingCentre(force: false)
     }
 
     private func currentTimelineSeconds() -> Double {
@@ -1328,7 +1361,7 @@ final class MusicPlayerService {
         case .time(let current, let duration):
             positionSeconds = current
             if duration > 0 { durationSeconds = duration }
-            updateNowPlayingCentre()
+            updateNowPlayingCentre(force: false)
         case .error(let code):
             isPlaying = false
             youtubePlaybackErrorMessage = YouTubeEmbedPlayer.errorMessage(code: code)
@@ -1826,7 +1859,19 @@ final class MusicPlayerService {
         }
     }
 
-    private func updateNowPlayingCentre() {
+    /// The last payload pushed to the Now Playing centre (`nil` when nothing is published).
+    private var lastNowPlayingPublication: NowPlayingPublication?
+
+    /// - Parameter force: explicit state changes (play/pause/seek/song change/artwork) always
+    ///   publish. The periodic callers (position timer, YouTube `.time`) pass `false` and only
+    ///   publish when `NowPlayingPublication.shouldPublish` says something actually changed.
+    private func updateNowPlayingCentre(force: Bool = true) {
+        if !force, let song = currentSong {
+            let candidate = makeNowPlayingPublication(for: song)
+            guard NowPlayingPublication.shouldPublish(
+                previous: lastNowPlayingPublication, next: candidate, now: candidate.publishedAt
+            ) else { return }
+        }
         // Do NOT call syncIsPlayingFromNode() here: callers are responsible for setting
         // isPlaying correctly before invoking this function. Re-reading playerNode.isPlaying
         // at this point risks overwriting the intended state with a transiently stale value
@@ -1851,6 +1896,7 @@ final class MusicPlayerService {
             nowPlayingArtworkImage = nil
             nowPlaying.playbackState = .stopped
             nowPlaying.nowPlayingInfo = nil
+            lastNowPlayingPublication = nil
             return
         }
 
@@ -1888,12 +1934,29 @@ final class MusicPlayerService {
 
         nowPlaying.nowPlayingInfo = info
         nowPlaying.playbackState = isPlaying ? .playing : .paused
+        lastNowPlayingPublication = makeNowPlayingPublication(for: song)
 
         if loadArtworkImage != nil,
            artworkLoadedForSongId != song.id,
            artworkInFlightForSongId != song.id {
             ensureArtworkLoaded(for: song)
         }
+    }
+
+    private func makeNowPlayingPublication(for song: Song) -> NowPlayingPublication {
+        let fromMetadata = song.duration > 0 ? song.duration : 0
+        return NowPlayingPublication(
+            songId: song.id,
+            title: song.displayTitle,
+            artist: song.displayArtist,
+            album: song.displayAlbum,
+            duration: max(max(durationSeconds, fromMetadata), 0.001),
+            isPlaying: isPlaying,
+            hasArtwork: nowPlayingArtworkImage != nil && artworkLoadedForSongId == song.id,
+            skipEnabled: queue.count > 1,
+            elapsed: max(0, positionSeconds),
+            publishedAt: Date()
+        )
     }
 
     private func ensureArtworkLoaded(for song: Song) {
