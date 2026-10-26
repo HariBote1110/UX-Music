@@ -11,3 +11,5 @@
 - バンドル ID が変わったため、旧 ID で入れた開発版とは別アプリ扱い（設定・ダウンロード済み曲・Keychain は引き継がれない）。
 - TV ターゲットはこの Mac に tvOS プラットフォームが無くビルドできない。Archive は iOS（Watch 同梱）のみ。
 - `progress/` 内の過去メモにある `simctl launch com.uxlabs...` は旧 ID。
+- Watch の `WKBackgroundModes` に `audio` を入れるとアップロードが拒否される（エラー 90362: Invalid Info.plist value）。`audio` は `WKBackgroundModes` の有効値ではない。Watch の音声のバックグラウンド再生は `UIBackgroundModes = audio` だけで宣言する（2026-10-26 に削除）。削除後の実機での動作は未確認。
+- zsh では `AUTH="-a -b"` を `$AUTH` で展開しても語分割されない。xcodebuild の認証引数は配列 `AUTH=(...)` で `"${AUTH[@]}"` と渡す。
