@@ -20,7 +20,21 @@ import WebKit
 final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
     let webView: WKWebView
     private let parkingView: UIView
-    private(set) var isLowQuality = false
+    /// What the owner asked for (cellular policy); the effective value also depends on visibility.
+    private var preferredLowQuality = false
+    /// The effective value last pushed to the page, so the JS command is sent only on change.
+    private var appliedLowQuality = false
+    /// Whether the effective low-quality path is in force. A parked or otherwise unseen video is
+    /// always low quality (battery/heat); see `YouTubeEmbedPlayer.effectiveLowQuality`.
+    var isLowQuality: Bool {
+        YouTubeEmbedPlayer.effectiveLowQuality(preferred: preferredLowQuality, isVideoVisible: isVideoVisible)
+    }
+    /// Visible = reparented into a real container, or presenting in PiP / fullscreen.
+    var isVideoVisible: Bool {
+        if pictureInPictureMode == .pictureInPicture || pictureInPictureMode == .fullscreen { return true }
+        guard let superview = webView.superview else { return false }
+        return superview !== parkingView
+    }
     private var pictureInPictureFrame: WKFrameInfo?
     private var pictureInPictureSupports = false
     private var fullscreenSupports = false
@@ -170,14 +184,15 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
             await exitFullscreen()
         }
         resetPictureInPictureState()
-        if isLowQuality != lowQuality {
+        if preferredLowQuality != lowQuality {
             setLowQuality(lowQuality)
         }
+        appliedLowQuality = isLowQuality
         let port = try await YouTubeEmbedLoopbackServer.shared.ensureStarted()
         guard let url = YouTubeEmbedPlayer.loopbackPageURL(
             port: Int(port),
             videoID: videoID,
-            lowQuality: lowQuality
+            lowQuality: isLowQuality
         ) else {
             throw YouTubeEmbedPlayer.EmbedPlayerError.invalidVideoID
         }
@@ -315,11 +330,19 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
 
     /// Applies the low-quality player-size policy to the current web view location and the page.
     func setLowQuality(_ enabled: Bool) {
-        isLowQuality = enabled
-        send(.setLowQuality(enabled))
+        preferredLowQuality = enabled
+        refreshEffectiveQuality()
         if let superview = webView.superview {
             layoutWebView(in: superview)
         }
+    }
+
+    /// Re-evaluates the effective quality and tells the page only when it actually changed.
+    private func refreshEffectiveQuality() {
+        let effective = isLowQuality
+        guard effective != appliedLowQuality else { return }
+        appliedLowQuality = effective
+        send(.setLowQuality(effective))
     }
 
     /// Lays out the web view with native sizing. The page must not see a CSS scale-up: simulator
@@ -327,6 +350,7 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
     /// native 256x144-physical-pixel target reaches the approximately 360p floor.
     func layoutWebView(in container: UIView) {
         guard webView.superview === container else { return }
+        refreshEffectiveQuality()
 
         webView.translatesAutoresizingMaskIntoConstraints = true
         webView.transform = .identity
@@ -370,6 +394,7 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
             parkingView.addSubview(webView)
         }
         layoutWebView(in: parkingView)
+        refreshEffectiveQuality()
     }
 
     private static func keyWindow() -> UIWindow? {
@@ -467,6 +492,10 @@ final class YouTubePlaybackHost: NSObject, WKScriptMessageHandler {
         }
         if mode == .fullscreen {
             resolveFullscreenEnter(true)
+        }
+        if modeChanged {
+            refreshEffectiveQuality()
+            if let superview = webView.superview { layoutWebView(in: superview) }
         }
         if modeChanged || availabilityChanged || fullscreenAvailabilityChanged {
             onPictureInPictureModeChange?(mode)
