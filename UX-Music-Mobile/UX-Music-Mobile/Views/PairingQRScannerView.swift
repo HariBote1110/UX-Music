@@ -23,7 +23,7 @@ final class QRScannerUIViewController: UIViewController, AVCaptureMetadataOutput
     var onDecoded: ((String) -> Void)?
 
     private let session = AVCaptureSession()
-    private var previewLayer: AVCaptureVideoPreviewLayer?
+    private lazy var previewLayer = AVCaptureVideoPreviewLayer(session: session)
     private var hasEmitted = false
     /// Serial queue owning all session configuration and start/stop calls.
     private let sessionQueue = DispatchQueue(label: "jp.ux-labs.UXMusicMobile.qr-scanner-session")
@@ -33,12 +33,17 @@ final class QRScannerUIViewController: UIViewController, AVCaptureMetadataOutput
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        // Attach the preview layer synchronously so it is visible as soon as the session runs,
+        // without waiting behind the sheet-presentation main-thread stall.
+        previewLayer.videoGravity = .resizeAspectFill
+        previewLayer.frame = view.bounds
+        view.layer.insertSublayer(previewLayer, at: 0)
         configureSessionIfAllowed()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        previewLayer?.frame = view.bounds
+        previewLayer.frame = view.bounds
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -63,7 +68,7 @@ final class QRScannerUIViewController: UIViewController, AVCaptureMetadataOutput
     }
 
     /// Configures the session on `sessionQueue` (Apple's recommended pattern) so device lookup and
-    /// `commitConfiguration` never block the main thread; only the preview layer is built on main.
+    /// `commitConfiguration` never block the main thread.
     private func setUpCaptureSession() {
         sessionQueue.async { [weak self] in
             guard let self, !self.isConfigured else { return }
@@ -85,15 +90,6 @@ final class QRScannerUIViewController: UIViewController, AVCaptureMetadataOutput
             output.metadataObjectTypes = [.qr]
             self.session.commitConfiguration()
             self.isConfigured = true
-
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.previewLayer == nil else { return }
-                let layer = AVCaptureVideoPreviewLayer(session: self.session)
-                layer.videoGravity = .resizeAspectFill
-                layer.frame = self.view.bounds
-                self.view.layer.insertSublayer(layer, at: 0)
-                self.previewLayer = layer
-            }
 
             self.session.startRunning()
         }
