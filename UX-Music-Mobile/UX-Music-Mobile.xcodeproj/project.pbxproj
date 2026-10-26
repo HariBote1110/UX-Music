@@ -1491,7 +1491,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(UXM_BUNDLE_ID_BASE)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -1502,6 +1502,7 @@
 		5d14c5459f8c4f5ca25c3850 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				UXM_BUNDLE_ID_BASE = "jp.ux-labs.UXMusicMobile";
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1596,6 +1597,7 @@
 		b406908079da4757aae1b7cf /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				UXM_BUNDLE_ID_BASE = "jp.ux-labs.UXMusicMobile";
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1681,7 +1683,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(UXM_BUNDLE_ID_BASE)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -1701,13 +1703,13 @@
 				INFOPLIST_FILE = "UX-Music-Watch/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "jp.ux-labs.UXMusicMobile";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "$(UXM_BUNDLE_ID_BASE)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile.watchkitapp";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(UXM_BUNDLE_ID_BASE).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1730,13 +1732,13 @@
 				INFOPLIST_FILE = "UX-Music-Watch/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "UX Music";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait";
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "jp.ux-labs.UXMusicMobile";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "$(UXM_BUNDLE_ID_BASE)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "jp.ux-labs.UXMusicMobile.watchkitapp";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(UXM_BUNDLE_ID_BASE).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
