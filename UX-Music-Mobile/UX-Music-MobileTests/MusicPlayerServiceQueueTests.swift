@@ -15,6 +15,22 @@ final class MusicPlayerServiceQueueTests: XCTestCase {
         ids.map(song)
     }
 
+    // MARK: - Position timer
+
+    func testFreshServiceHasNoRunningPositionTimer() {
+        XCTAssertFalse(MusicPlayerService().isPositionTimerRunningForTesting)
+    }
+
+    func testPositionTimerRunsOnlyWhilePlaying() {
+        let player = MusicPlayerService()
+        player.beginExternalPlayback(song: song("a"), durationSeconds: 100)
+        XCTAssertTrue(player.isPositionTimerRunningForTesting)
+        player.setExternalPlaybackIsPlaying(false)
+        XCTAssertFalse(player.isPositionTimerRunningForTesting)
+        player.setExternalPlaybackIsPlaying(true)
+        XCTAssertTrue(player.isPositionTimerRunningForTesting)
+    }
+
     // MARK: - Repeat mode
 
     func testRepeatModeDefaultsToOff() {
