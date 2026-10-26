@@ -762,12 +762,13 @@ final class MusicPlayerService {
     /// to one tick. Refresh it once after the pause state has settled and republish.
     private func settlePositionAfterPause() {
         Task { @MainActor [weak self] in
-            guard let self, !self.isPlaying, self.currentSong != nil, !self.isExternallyDriven,
-                  self.currentAudioFile != nil
-            else { return }
-            let pos = self.currentTimelineSeconds()
-            self.positionSeconds = self.durationSeconds > 0
-                ? min(max(0, pos), self.durationSeconds) : max(0, pos)
+            guard let self, !self.isPlaying, self.currentSong != nil else { return }
+            // Externally driven playback owns `positionSeconds`; only local playback recomputes it.
+            if !self.isExternallyDriven, self.currentAudioFile != nil {
+                let pos = self.currentTimelineSeconds()
+                self.positionSeconds = self.durationSeconds > 0
+                    ? min(max(0, pos), self.durationSeconds) : max(0, pos)
+            }
             self.updateNowPlayingCentre()
         }
     }
