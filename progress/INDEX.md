@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mobile-testflight-distribution.md](mobile-testflight-distribution.md) — UX Music Mobile を TestFlight 内部テストへ: バンドル ID を jp.ux-labs.UXMusicMobile 系へ変更、輸出規制キー追加、API キーでアップロード
 - [mobile-loudness-normalise-fix.md](mobile-loudness-normalise-fix.md) — iOS が現行 LUFS 応答を捨てる不具合を修正し、補正専用ゲイン段・オフライン復元・回帰テストを追加（YouTube 埋め込みの音量制約は残る）
 - [mobile-lyrics-snap.md](mobile-lyrics-snap.md) — Mobile 同期歌詞（iPhone／iPad Sidecar）: 途中表示と3行以上のジャンプは遷移なしでスナップ、2行以内の行送りだけカスケード（LyricsStageKit の `SidecarLyricsActiveLineState`）、行高の測り直しもアニメーションしない
 - [desktop-lyrics-snap-and-tap-seek.md](desktop-lyrics-snap-and-tap-seek.md) — Desktop 同期歌詞: 途中で開く／大きくシークすると全行が一斉に流れる問題を修正（3行以上のジャンプと表示開始は遷移なしスナップ、判定は lyrics-motion.ts で共有）、LRC 行クリックでその時刻へシーク

@@ -1,0 +1,13 @@
+# UX Music Mobile の TestFlight 配布
+
+## Decision
+- バンドル ID を `com.uxlabs.uxMusicMobile` 系から `jp.ux-labs.UXMusicMobile` 系へ変更（2026-10-26、ユーザー判断）。チームの他アプリ（UX Inkwell・UX Circle Navigator）と命名を揃えるため。App Store Connect のアプリ記録を作ると変更不可なので、作成前に確定した。
+  - iOS: `jp.ux-labs.UXMusicMobile` / Watch: `.watchkitapp` / TV: `.tv`（TV は未配布）
+- `ITSAppUsesNonExemptEncryption = NO`（iOS アプリ）。暗号化は OS の HTTPS と CryptoKit の SHA-256 ハッシュのみで、輸出規制の免除対象。
+- まずは内部テスト（審査なし）で配布。外部テストは Beta App Review で YouTube 関連機能が問題視される恐れがあるため保留。
+- アップロードは `~/.blitz/asc-credentials.json` の App Store Connect API キーを使った `xcodebuild -exportArchive`（自動署名・`-allowProvisioningUpdates`）。
+
+## Constraints / Gotchas
+- バンドル ID が変わったため、旧 ID で入れた開発版とは別アプリ扱い（設定・ダウンロード済み曲・Keychain は引き継がれない）。
+- TV ターゲットはこの Mac に tvOS プラットフォームが無くビルドできない。Archive は iOS（Watch 同梱）のみ。
+- `progress/` 内の過去メモにある `simctl launch com.uxlabs...` は旧 ID。
