@@ -15,6 +15,7 @@ struct UXMusicMobileApp: App {
                 .onAppear {
                     UIApplication.shared.beginReceivingRemoteControlEvents()
                     installDebugYouTubeAutoplayHookIfRequested()
+                    installDebugNowPlayingStaticHookIfRequested()
                     installDebugLyricsAutoOpenHookIfRequested()
                     installDebugSidecarHostHookIfRequested()
                 }
@@ -105,6 +106,17 @@ struct UXMusicMobileApp: App {
                 NSLog("[UXM_DEBUG_YT] load(videoID:) threw error=%@", String(describing: error))
             }
         }
+    }
+
+    /// DEBUG-only: `UXM_DEBUG_NP_LOCAL=1` shows Now Playing with a fixed fake local song (no audio,
+    /// no network) so rendering changes can be compared pixel-wise before/after.
+    private func installDebugNowPlayingStaticHookIfRequested() {
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["UXM_DEBUG_NP_LOCAL"] == "1" else { return }
+        let song = Song(id: "debug-np-local", path: "/nonexistent/debug.m4a", title: "Debug Song", artist: "Debug Artist", album: "Debug Album", duration: 200)
+        model.player.configureForPreview(song: song, isPlaying: false, positionSeconds: 60, durationSeconds: 200)
+        model.isNowPlayingSheetPresented = true
+        #endif
     }
 
     /// Hidden debug hook for recording/inspecting the synced-lyrics screen motion without
