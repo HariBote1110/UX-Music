@@ -1,5 +1,6 @@
 # Progress Index
 
+- [mobile-thermal-polling-timer.md](mobile-thermal-polling-timer.md) — iOS 発熱対策: Control タブのポーリングをタブ選択中かつ前面時に限定、位置タイマーを再生中のみにし Now Playing 再送を変化時に限定（tvOS 外部再生の一時停止再送に注意）
 - [mobile-testflight-distribution.md](mobile-testflight-distribution.md) — UX Music Mobile を TestFlight 内部テストへ: バンドル ID を jp.ux-labs.UXMusicMobile 系へ変更、輸出規制キー追加、API キーでアップロード
 - [mobile-loudness-normalise-fix.md](mobile-loudness-normalise-fix.md) — iOS が現行 LUFS 応答を捨てる不具合を修正し、補正専用ゲイン段・オフライン復元・回帰テストを追加（YouTube 埋め込みの音量制約は残る）
 - [mobile-lyrics-snap.md](mobile-lyrics-snap.md) — Mobile 同期歌詞（iPhone／iPad Sidecar）: 途中表示と3行以上のジャンプは遷移なしでスナップ、2行以内の行送りだけカスケード（LyricsStageKit の `SidecarLyricsActiveLineState`）、行高の測り直しもアニメーションしない

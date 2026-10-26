@@ -89,6 +89,10 @@ EQ はフラット時 bypass（`:582-586`）、サイドカーポーリングは
 型で、長時間使用で効く。YouTube 再生時は **C** が加わり、動画デコードがそもそも最大の電力消費源なので
 YouTube 曲を連続再生している場面では C が支配的になると見立てる。
 
+## 対策状況（2026-10-27 追記）
+
+- A・B は TDD で実装済み（45e54b7c〜c636260a、判断記録は `progress/mobile-thermal-polling-timer.md`）。実機での効果測定は未了。C〜F は未着手。
+
 ## 次の一手 / 未検証事項
 
 - 実機（Xcode → Debug Navigator の Energy Impact、または Instruments の Energy Log / Time Profiler /
