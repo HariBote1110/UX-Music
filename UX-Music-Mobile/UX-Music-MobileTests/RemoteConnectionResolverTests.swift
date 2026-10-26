@@ -327,6 +327,19 @@ final class RemoteConnectionResolverTests: XCTestCase {
         }
         XCTAssertEqual(discoveryCount.value, 2)
     }
+
+    func testKeyboardDismissTapMask_isAllOnlyWhileEditing() {
+        XCTAssertEqual(SettingsKeyboardDismiss.tapMask(isEditing: true), .all)
+        XCTAssertEqual(SettingsKeyboardDismiss.tapMask(isEditing: false), .subviews)
+    }
+
+    @MainActor
+    func testQRScanner_attachesPreviewLayerSynchronouslyInViewDidLoad() {
+        let vc = QRScannerUIViewController()
+        vc.loadViewIfNeeded()
+        let layers = vc.view.layer.sublayers ?? []
+        XCTAssertTrue(layers.contains { $0 is AVCaptureVideoPreviewLayer })
+    }
 }
 
 private final class TestRecoveryClock: @unchecked Sendable {
@@ -438,17 +451,4 @@ private final class ResolverMockURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
-
-    func testKeyboardDismissTapMask_isAllOnlyWhileEditing() {
-        XCTAssertEqual(SettingsKeyboardDismiss.tapMask(isEditing: true), .all)
-        XCTAssertEqual(SettingsKeyboardDismiss.tapMask(isEditing: false), .subviews)
-    }
-
-    @MainActor
-    func testQRScanner_attachesPreviewLayerSynchronouslyInViewDidLoad() {
-        let vc = QRScannerUIViewController()
-        vc.loadViewIfNeeded()
-        let layers = vc.view.layer.sublayers ?? []
-        XCTAssertTrue(layers.contains { $0 is AVCaptureVideoPreviewLayer })
-    }
 }
