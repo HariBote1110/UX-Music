@@ -32,8 +32,10 @@ final class WatchBackgroundAudioInfoPlistTests: XCTestCase {
         let plist = try XCTUnwrap(
             try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
         )
-        let modes = try XCTUnwrap(plist["WKBackgroundModes"] as? [String], "WKBackgroundModes key missing")
-        XCTAssertTrue(modes.contains("audio"), "WKBackgroundModes must include \"audio\"")
+        // "audio" is not a valid `WKBackgroundModes` value: App Store Connect rejects the upload
+        // with error 90362 ("Invalid Info.plist value ... WKBackgroundModes").
+        let wkModes = plist["WKBackgroundModes"] as? [String] ?? []
+        XCTAssertFalse(wkModes.contains("audio"), "WKBackgroundModes must not include \"audio\" (upload error 90362)")
 
         // Per Apple's watchOS Keys documentation, `UIBackgroundModes` (not `WKBackgroundModes`) is
         // what actually lets a watch app keep running to play audio after the user stops
