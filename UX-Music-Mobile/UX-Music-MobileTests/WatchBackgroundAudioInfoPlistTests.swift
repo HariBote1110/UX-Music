@@ -51,7 +51,7 @@ final class WatchBackgroundAudioInfoPlistTests: XCTestCase {
         // Locate each XCBuildConfiguration block whose PRODUCT_BUNDLE_IDENTIFIER identifies the
         // watch app target, then assert it references the watch target's own Info.plist via
         // INFOPLIST_FILE (and no longer relies on the ineffective INFOPLIST_KEY_WKBackgroundModes).
-        let watchIdentifier = "com.uxlabs.uxMusicMobile.watchkitapp\""
+        let watchIdentifier = "jp.ux-labs.UXMusicMobile.watchkitapp\""
         var searchRange = contents.startIndex..<contents.endIndex
         var watchConfigBlocksFound = 0
 
@@ -78,5 +78,44 @@ final class WatchBackgroundAudioInfoPlistTests: XCTestCase {
         }
 
         XCTAssertEqual(watchConfigBlocksFound, 2, "Expected exactly 2 watch target build configurations (Debug, Release)")
+    }
+}
+
+/// Guards the App Store Connect identity: the bundle IDs are permanent once the app record exists,
+/// and they follow the `jp.ux-labs.*` convention shared with the team's other apps. Also checks the
+/// export-compliance key so every TestFlight upload skips the manual encryption question (the app
+/// only uses exempt encryption: HTTPS via the OS and SHA-256 hashing).
+final class ReleaseBundleIdentityTests: XCTestCase {
+    private func pbxprojContents() throws -> String {
+        var url = URL(fileURLWithPath: #filePath)
+        while url.pathComponents.count > 1 {
+            url.deleteLastPathComponent()
+            let pbxproj = url.appendingPathComponent("UX-Music-Mobile.xcodeproj/project.pbxproj")
+            if FileManager.default.fileExists(atPath: pbxproj.path) {
+                return try String(contentsOf: pbxproj, encoding: .utf8)
+            }
+        }
+        throw XCTSkip("Could not locate project.pbxproj from \(#filePath)")
+    }
+
+    func testBundleIdentifiersUseUXLabsPrefix() throws {
+        let contents = try pbxprojContents()
+        XCTAssertFalse(contents.contains("com.uxlabs."), "Legacy com.uxlabs.* bundle identifiers must be gone")
+        for identifier in [
+            "PRODUCT_BUNDLE_IDENTIFIER = \"jp.ux-labs.UXMusicMobile\";",
+            "PRODUCT_BUNDLE_IDENTIFIER = \"jp.ux-labs.UXMusicMobile.watchkitapp\";",
+            "INFOPLIST_KEY_WKCompanionAppBundleIdentifier = \"jp.ux-labs.UXMusicMobile\";",
+        ] {
+            XCTAssertEqual(contents.components(separatedBy: identifier).count - 1, 2, "\(identifier) expected in Debug and Release")
+        }
+    }
+
+    func testAppDeclaresExemptEncryptionOnly() throws {
+        let contents = try pbxprojContents()
+        XCTAssertEqual(
+            contents.components(separatedBy: "INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;").count - 1,
+            2,
+            "iOS app Debug and Release configs must declare ITSAppUsesNonExemptEncryption = NO"
+        )
     }
 }
