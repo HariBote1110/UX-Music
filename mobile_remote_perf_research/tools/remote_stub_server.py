@@ -66,8 +66,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
     playing = True
     song_id = "stub-song-1"
 
+    log_requests = False
+
     def log_message(self, fmt, *args):
-        pass
+        # Opt-in (`--log-requests`): one line per request with a wall-clock timestamp, so a
+        # harness can count how often the app polls.
+        if Handler.log_requests:
+            print(f"{time.time():.3f} {self.command} {self.path}", flush=True)
 
     def _send_json(self, obj, status=200):
         payload = json.dumps(obj).encode("utf-8")
@@ -147,11 +152,13 @@ def main():
     parser.add_argument("--songs", type=int, default=500)
     parser.add_argument("--song-id", type=str, default="stub-song-1")
     parser.add_argument("--no-playing", action="store_true")
+    parser.add_argument("--log-requests", action="store_true")
     args = parser.parse_args()
 
     Handler.songs_json = json.dumps(make_songs(args.songs)).encode("utf-8")
     Handler.song_id = args.song_id
     Handler.playing = not args.no_playing
+    Handler.log_requests = args.log_requests
 
     server = http.server.ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
     print(f"[remote_stub_server] listening on 0.0.0.0:{args.port} songs={args.songs}")
