@@ -66,4 +66,11 @@ final class NowPlayingLyricsLogicTests: XCTestCase {
     func testActiveTranslatedLineIndexIsZeroForEmptyLines() {
         XCTAssertEqual(LRCParser.activeLineIndex(in: [TranslatedTimedLine](), at: 5), 0)
     }
+
+    // MARK: - LyricsActiveLineTickPolicy
+
+    func testActiveLineTickRunsOnlyWhilePlaying() {
+        XCTAssertTrue(LyricsActiveLineTickPolicy.shouldTick(isPlaying: true))
+        XCTAssertFalse(LyricsActiveLineTickPolicy.shouldTick(isPlaying: false))
+    }
 }
