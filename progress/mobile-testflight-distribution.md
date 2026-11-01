@@ -13,6 +13,7 @@
 - `progress/` 内の過去メモにある `simctl launch com.uxlabs...` は旧 ID。
 - Watch の `WKBackgroundModes` に `audio` を入れるとアップロードが拒否される（エラー 90362: Invalid Info.plist value）。`audio` は `WKBackgroundModes` の有効値ではない。Watch の音声のバックグラウンド再生は `UIBackgroundModes = audio` だけで宣言する（2026-10-26 に削除）。削除後の実機での動作は未確認。
 - 内部テストグループ「Internal」は `hasAccessToAllBuilds = false`。アップロードしただけではテスターに届かない（`internalBuildState` が `READY_FOR_BETA_TESTING` のまま止まる）。処理が終わったら、App Store Connect API の `POST /v1/betaGroups/{id}/relationships/builds` でビルドをグループに追加する。追加すると `IN_BETA_TESTING` になる（ビルド 4 で発生、2026-10-27）。
+- Apple の規約（PLA）更新が未承諾だと、exportArchive が「PLA Update available」「No signing certificate "iOS Distribution" found」で失敗する（ビルド 5、2026-11-01）。developer.apple.com で承諾しただけでは通らず、App Store Connect の「ビジネス」（契約）でも承諾した後に通った。承諾はアカウント保有者本人の操作が必要。
 - zsh では `AUTH="-a -b"` を `$AUTH` で展開しても語分割されない。xcodebuild の認証引数は配列 `AUTH=(...)` で `"${AUTH[@]}"` と渡す。
 
 ## TestFlight 版で見つかったペアリング導線の問題（2026-10-27）
