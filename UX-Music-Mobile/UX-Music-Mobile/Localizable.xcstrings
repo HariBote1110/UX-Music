@@ -2615,6 +2615,22 @@
         }
       }
     },
+    "Play queue" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play queue"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再生キュー"
+          }
+        }
+      }
+    },
     "PLAYLISTS" : {
       "localizations" : {
         "en" : {
@@ -3027,6 +3043,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "QRペアリングにはカメラ付きの端末が必要です。"
+          }
+        }
+      }
+    },
+    "Queue control needs the native desktop app." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queue control needs the native desktop app."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キュー操作にはネイティブ版のデスクトップアプリが必要です。"
+          }
+        }
+      }
+    },
+    "Queue unavailable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queue unavailable"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キューを利用できません"
           }
         }
       }
@@ -3740,6 +3788,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ペアリングコードが無効か、期限切れです。"
+          }
+        }
+      }
+    },
+    "The queue changed. Showing the latest list." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The queue changed. Showing the latest list."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キューが変更されました。最新の一覧を表示しています。"
           }
         }
       }
