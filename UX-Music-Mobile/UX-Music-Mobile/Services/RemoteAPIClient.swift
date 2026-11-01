@@ -70,6 +70,24 @@ enum RemoteAPIError: LocalizedError {
     }
 }
 
+/// Typed failures of the queue endpoints (`409` + `queue_unavailable` / `queue_changed`).
+/// Any other failure keeps surfacing as `RemoteAPIError`.
+enum RemoteQueueError: Error, Equatable {
+    /// The desktop is not the native app (or the target has no queue).
+    case unavailable
+    /// The list the jump was issued from is stale; refetch the queue.
+    case changed
+
+    static func map(_ error: Error) -> Error {
+        guard case RemoteAPIError.server(let code, _) = error else { return error }
+        switch code {
+        case "queue_unavailable": return RemoteQueueError.unavailable
+        case "queue_changed": return RemoteQueueError.changed
+        default: return error
+        }
+    }
+}
+
 /// Identity returned by the public desktop endpoint. `role` is retained for older desktop builds
 /// that used a singular role field; current builds advertise `gui` or `headless` in `roles`.
 struct RemoteServerIdentity: Codable, Equatable, Sendable {
@@ -425,6 +443,39 @@ struct RemoteAPIClient: Sendable {
         let (data, _) = try await session.data(for: req)
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         return obj?["ok"] as? Bool ?? false
+    }
+
+    /// `GET /v1/remote/queue` — the desktop play queue in current play order.
+    func fetchQueue() async throws -> RemoteQueue {
+        let request = try authorizedRequest(path: "/v1/remote/queue")
+        let (data, response) = try await session.data(for: request)
+        do {
+            try Self.throwIfNotOK(response, data: data)
+        } catch {
+            throw RemoteQueueError.map(error)
+        }
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        return RemoteQueue(from: object)
+    }
+
+    /// `POST /v1/remote/command` for `set-shuffle` / `set-loop` / `queue-jump`. Unlike
+    /// `sendCommand`, failures throw: 409 `queue_unavailable` / `queue_changed` as `RemoteQueueError`,
+    /// everything else as `RemoteAPIError`.
+    func sendQueueCommand(action: String, intValue: Int? = nil, mode: String? = nil, songId: String? = nil) async throws {
+        var body: [String: Any] = ["action": action]
+        if let intValue { body["value"] = intValue }
+        if let mode { body["mode"] = mode }
+        if let songId { body["songId"] = songId }
+        var req = try authorizedRequest(path: "/v1/remote/command")
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: req)
+        do {
+            try Self.throwIfNotOK(response, data: data)
+        } catch {
+            throw RemoteQueueError.map(error)
+        }
     }
 
     /// Writes to `destinationURL` (file is replaced if it exists).

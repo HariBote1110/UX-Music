@@ -25,15 +25,30 @@ struct RemoteControlStateSnapshot: Equatable {
     var album: String
     var duration: Double
     var playing: Bool
+    /// From the optional `queue` block; absent (older desktop, Apple TV) means unavailable.
+    var queueAvailable: Bool
+    var shuffled: Bool
+    var loopMode: RemoteLoopMode
+    var queueIndex: Int
+    var queueCount: Int
 
     static let empty = RemoteControlStateSnapshot(title: "", artist: "", album: "", duration: 0, playing: false)
 
-    init(title: String, artist: String, album: String, duration: Double, playing: Bool) {
+    init(
+        title: String, artist: String, album: String, duration: Double, playing: Bool,
+        queueAvailable: Bool = false, shuffled: Bool = false, loopMode: RemoteLoopMode = .off,
+        queueIndex: Int = -1, queueCount: Int = 0
+    ) {
         self.title = title
         self.artist = artist
         self.album = album
         self.duration = duration
         self.playing = playing
+        self.queueAvailable = queueAvailable
+        self.shuffled = shuffled
+        self.loopMode = loopMode
+        self.queueIndex = queueIndex
+        self.queueCount = queueCount
     }
 
     init(from state: [String: Any]) {
@@ -42,6 +57,12 @@ struct RemoteControlStateSnapshot: Equatable {
         album = state["album"] as? String ?? ""
         duration = Self.doubleValue(state["duration"])
         playing = state["playing"] as? Bool ?? false
+        let queue = state["queue"] as? [String: Any]
+        queueAvailable = queue?["available"] as? Bool ?? false
+        shuffled = queue?["shuffled"] as? Bool ?? false
+        loopMode = RemoteLoopMode(rawValue: queue?["loopMode"] as? String ?? "") ?? .off
+        queueIndex = (queue?["index"] as? NSNumber)?.intValue ?? -1
+        queueCount = (queue?["count"] as? NSNumber)?.intValue ?? 0
     }
 
     fileprivate static func doubleValue(_ any: Any?) -> Double {
@@ -49,6 +70,55 @@ struct RemoteControlStateSnapshot: Equatable {
         if let i = any as? Int { return Double(i) }
         if let n = any as? NSNumber { return n.doubleValue }
         return 0
+    }
+}
+
+/// Desktop loop mode; the button cycles off → all → one → off.
+enum RemoteLoopMode: String, Equatable {
+    case off, all, one
+
+    var next: RemoteLoopMode {
+        switch self {
+        case .off: return .all
+        case .all: return .one
+        case .one: return .off
+        }
+    }
+}
+
+struct RemoteQueueItem: Equatable, Identifiable {
+    var id: String
+    var type: String
+    var title: String
+    var artist: String
+    var album: String
+    var artworkId: String
+}
+
+/// `GET /v1/remote/queue` — items are in current play order; `index` -1 means nothing current.
+struct RemoteQueue: Equatable {
+    var available: Bool
+    var shuffled: Bool
+    var loopMode: RemoteLoopMode
+    var index: Int
+    var items: [RemoteQueueItem]
+
+    init(from object: [String: Any]) {
+        available = object["available"] as? Bool ?? false
+        shuffled = object["shuffled"] as? Bool ?? false
+        loopMode = RemoteLoopMode(rawValue: object["loopMode"] as? String ?? "") ?? .off
+        index = (object["index"] as? NSNumber)?.intValue ?? -1
+        items = (object["items"] as? [[String: Any]] ?? []).compactMap { raw in
+            guard let id = raw["id"] as? String, !id.isEmpty else { return nil }
+            return RemoteQueueItem(
+                id: id,
+                type: raw["type"] as? String ?? "",
+                title: raw["title"] as? String ?? "",
+                artist: raw["artist"] as? String ?? "",
+                album: raw["album"] as? String ?? "",
+                artworkId: raw["artworkId"] as? String ?? ""
+            )
+        }
     }
 }
 
