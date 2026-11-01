@@ -539,3 +539,116 @@ private extension URLRequest {
         return data
     }
 }
+
+/// `set-shuffle` / `set-loop` / `queue-jump` と `/v1/remote/queue`（409 `queue_unavailable` / `queue_changed` を型付きで返す）。
+final class RemoteQueueAPIClientTests: XCTestCase {
+    override func tearDown() {
+        MockURLProtocol.handler = nil
+        super.tearDown()
+    }
+
+    private func client(status: Int = 200, body: String = #"{"ok":true}"#, capture: ((URLRequest, [String: Any]?) -> Void)? = nil) -> (RemoteAPIClient, URLSession) {
+        MockURLProtocol.handler = { request in
+            var json: [String: Any]?
+            if let data = request.httpBody ?? request.httpBodyStream.flatMap({ stream -> Data in
+                stream.open(); defer { stream.close() }
+                var data = Data(); var buf = [UInt8](repeating: 0, count: 1024)
+                while stream.hasBytesAvailable { let n = stream.read(&buf, maxLength: 1024); if n <= 0 { break }; data.append(buf, count: n) }
+                return data
+            }) {
+                json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            }
+            capture?(request, json)
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+            return (Data(body.utf8), response)
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        return (RemoteAPIClient(baseURLString: "http://desktop.invalid:8765", session: session), session)
+    }
+
+    func testSetShuffleBody() async throws {
+        var captured: [String: Any]?
+        let (c, s) = client { _, json in captured = json }
+        defer { s.invalidateAndCancel() }
+        try await c.sendQueueCommand(action: "set-shuffle", intValue: 1)
+        XCTAssertEqual(captured?["action"] as? String, "set-shuffle")
+        XCTAssertEqual(captured?["value"] as? Int, 1)
+    }
+
+    func testSetLoopBody() async throws {
+        var captured: [String: Any]?
+        let (c, s) = client { _, json in captured = json }
+        defer { s.invalidateAndCancel() }
+        try await c.sendQueueCommand(action: "set-loop", mode: "one")
+        XCTAssertEqual(captured?["action"] as? String, "set-loop")
+        XCTAssertEqual(captured?["mode"] as? String, "one")
+        XCTAssertNil(captured?["value"])
+    }
+
+    func testQueueJumpBody() async throws {
+        var captured: [String: Any]?
+        let (c, s) = client { _, json in captured = json }
+        defer { s.invalidateAndCancel() }
+        try await c.sendQueueCommand(action: "queue-jump", intValue: 4, songId: "song-4")
+        XCTAssertEqual(captured?["action"] as? String, "queue-jump")
+        XCTAssertEqual(captured?["value"] as? Int, 4)
+        XCTAssertEqual(captured?["songId"] as? String, "song-4")
+    }
+
+    func test409QueueUnavailableIsTyped() async {
+        let (c, s) = client(status: 409, body: #"{"error":{"code":"queue_unavailable","message":"x"}}"#)
+        defer { s.invalidateAndCancel() }
+        do {
+            try await c.sendQueueCommand(action: "set-shuffle", intValue: 1)
+            XCTFail("expected throw")
+        } catch {
+            XCTAssertEqual(error as? RemoteQueueError, .unavailable)
+        }
+    }
+
+    func test409QueueChangedIsTyped() async {
+        let (c, s) = client(status: 409, body: #"{"error":{"code":"queue_changed","message":"x"}}"#)
+        defer { s.invalidateAndCancel() }
+        do {
+            try await c.sendQueueCommand(action: "queue-jump", intValue: 1, songId: "a")
+            XCTFail("expected throw")
+        } catch {
+            XCTAssertEqual(error as? RemoteQueueError, .changed)
+        }
+    }
+
+    func testOtherErrorsStayRemoteAPIError() async {
+        let (c, s) = client(status: 400, body: #"{"error":{"code":"bad_request","message":"bad"}}"#)
+        defer { s.invalidateAndCancel() }
+        do {
+            try await c.sendQueueCommand(action: "set-loop", mode: "zzz")
+            XCTFail("expected throw")
+        } catch RemoteAPIError.server(let code, _) {
+            XCTAssertEqual(code, "bad_request")
+        } catch {
+            XCTFail("unexpected \(error)")
+        }
+    }
+
+    func testFetchQueueParsesAndHitsQueuePath() async throws {
+        var path: String?
+        let (c, s) = client(body: #"{"available":true,"shuffled":false,"loopMode":"off","index":0,"items":[{"id":"a","title":"A"}]}"#) { req, _ in path = req.url?.path }
+        defer { s.invalidateAndCancel() }
+        let queue = try await c.fetchQueue()
+        XCTAssertEqual(path, "/v1/remote/queue")
+        XCTAssertEqual(queue.items.map(\.id), ["a"])
+    }
+
+    func testFetchQueue409Unavailable() async {
+        let (c, s) = client(status: 409, body: #"{"error":{"code":"queue_unavailable","message":"x"}}"#)
+        defer { s.invalidateAndCancel() }
+        do {
+            _ = try await c.fetchQueue()
+            XCTFail("expected throw")
+        } catch {
+            XCTAssertEqual(error as? RemoteQueueError, .unavailable)
+        }
+    }
+}
