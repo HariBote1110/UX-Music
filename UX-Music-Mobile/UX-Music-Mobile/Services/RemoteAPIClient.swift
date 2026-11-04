@@ -1,6 +1,57 @@
 import CFNetwork
 import Foundation
 
+// MARK: - Remote queue models (shared with the TV target)
+
+/// Desktop loop mode; the button cycles off → all → one → off.
+enum RemoteLoopMode: String, Equatable {
+    case off, all, one
+
+    var next: RemoteLoopMode {
+        switch self {
+        case .off: return .all
+        case .all: return .one
+        case .one: return .off
+        }
+    }
+}
+
+struct RemoteQueueItem: Equatable, Identifiable {
+    var id: String
+    var type: String
+    var title: String
+    var artist: String
+    var album: String
+    var artworkId: String
+}
+
+/// `GET /v1/remote/queue` — items are in current play order; `index` -1 means nothing current.
+struct RemoteQueue: Equatable {
+    var available: Bool
+    var shuffled: Bool
+    var loopMode: RemoteLoopMode
+    var index: Int
+    var items: [RemoteQueueItem]
+
+    init(from object: [String: Any]) {
+        available = object["available"] as? Bool ?? false
+        shuffled = object["shuffled"] as? Bool ?? false
+        loopMode = RemoteLoopMode(rawValue: object["loopMode"] as? String ?? "") ?? .off
+        index = (object["index"] as? NSNumber)?.intValue ?? -1
+        items = (object["items"] as? [[String: Any]] ?? []).compactMap { raw in
+            guard let id = raw["id"] as? String, !id.isEmpty else { return nil }
+            return RemoteQueueItem(
+                id: id,
+                type: raw["type"] as? String ?? "",
+                title: raw["title"] as? String ?? "",
+                artist: raw["artist"] as? String ?? "",
+                album: raw["album"] as? String ?? "",
+                artworkId: raw["artworkId"] as? String ?? ""
+            )
+        }
+    }
+}
+
 // MARK: - LAN session (bypass system HTTP proxy / iCloud Private Relay for RFC1918)
 
 enum RemoteLANProxyKeys {
