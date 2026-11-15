@@ -1,5 +1,6 @@
 # Progress Index
 
+- [bug-list-2026-11-15-fixes.md](bug-list-2026-11-15-fixes.md) — バグ一覧（2026-11-15）の修正で決めた仕様: 重複 ID は元位置の対応表で追跡、シャッフル中の並び替えは解除で元順へ、既定シャッフルは Store.UpdateMap に集約、iOS の復号不能データ退避とアートワーク検証（重複行タップ再生・LRC の h:m:s 解釈差・TV/Watch の候補は未対応）
 - [mobile-thermal-polling-timer.md](mobile-thermal-polling-timer.md) — iOS 発熱対策: Control タブのポーリングをタブ選択中かつ前面時に限定、位置タイマーを再生中のみにし Now Playing 再送を変化時に限定、YouTube は非表示中に低画質化し JS 時刻報告を再生中のみに（tvOS 外部再生の一時停止再送に注意）
 - [mobile-testflight-distribution.md](mobile-testflight-distribution.md) — UX Music Mobile を TestFlight 内部テストへ: バンドル ID を jp.ux-labs.UXMusicMobile 系へ変更、輸出規制キー追加、API キーでアップロード
 - [mobile-loudness-normalise-fix.md](mobile-loudness-normalise-fix.md) — iOS が現行 LUFS 応答を捨てる不具合を修正し、補正専用ゲイン段・オフライン復元・回帰テストを追加（YouTube 埋め込みの音量制約は残る）
