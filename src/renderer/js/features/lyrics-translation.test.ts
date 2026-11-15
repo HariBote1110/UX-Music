@@ -14,6 +14,55 @@ import {
     parseNumberedLinesFromPastedText,
 } from './lyrics-translation.js';
 
+describe('parseLRC timestamp forms', () => {
+    it('accepts single-digit minutes', () => {
+        const r = parseLRC('[0:12.34]Hello');
+        expect(r).toHaveLength(1);
+        expect(r[0].time).toBeCloseTo(12 + 34 / 1000, 6);
+        expect(r[0].text).toBe('Hello');
+    });
+
+    it('accepts a timestamp without fraction', () => {
+        const r = parseLRC('[00:12]Hello');
+        expect(r).toHaveLength(1);
+        expect(r[0].time).toBeCloseTo(12, 6);
+        expect(r[0].text).toBe('Hello');
+    });
+
+    it('accepts a one-digit fraction as tenths', () => {
+        const r = parseLRC('[00:12.3]Hello');
+        expect(r).toHaveLength(1);
+        expect(r[0].time).toBeCloseTo(12 + 0.3, 6);
+    });
+
+    it('accepts a three-digit fraction as milliseconds', () => {
+        const r = parseLRC('[01:02.345]Hello');
+        expect(r[0].time).toBeCloseTo(60 + 2 + 0.345, 6);
+    });
+
+    it('keeps the legacy all-dots form working', () => {
+        const r = parseLRC('[00.12.34]Hello\n[00.13.345]World');
+        expect(r[0].time).toBeCloseTo(12 + 0.34, 6);
+        expect(r[1].time).toBeCloseTo(13 + 0.345, 6);
+    });
+
+    it('still accepts the colon-and-dot form with two-digit parts', () => {
+        const r = parseLRC('[00:12.34]Hello');
+        expect(r[0].time).toBeCloseTo(12 + 0.34, 6);
+    });
+
+    it('does not treat two dot-separated numbers as a timestamp', () => {
+        expect(parseLRC('[12.34]Hello')).toEqual([]);
+    });
+
+    it('ignores metadata tags', () => {
+        const r = parseLRC('[ar:Artist]\n[ti:Title]\n[offset:100]\n[length:03:20]\n[00:01.00]Line');
+        expect(r).toHaveLength(1);
+        expect(r[0].text).toBe('Line');
+        expect(r[0].time).toBeCloseTo(1, 6);
+    });
+});
+
 describe('parseLRC', () => {
     it('preserves time order', () => {
         const r = parseLRC('[00:02.00]Second\n[00:01.00]First\n');
