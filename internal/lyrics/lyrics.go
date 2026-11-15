@@ -29,6 +29,11 @@ func FindLyrics(targetName string) (map[string]string, error) {
 	lyricsDir := GetLyricsDir()
 	sanitizedBase := SanitizeFileName(strings.ReplaceAll(targetName, "_", " "))
 
+	// readErr remembers the first read failure on an existing file. A failed
+	// .lrc still falls through to .txt, but if nothing else is readable the
+	// failure is reported instead of being mistaken for "no lyrics".
+	var readErr error
+
 	// Check .lrc
 	lrcPath := filepath.Join(lyricsDir, sanitizedBase+".lrc")
 	if _, err := os.Stat(lrcPath); err == nil {
@@ -36,6 +41,7 @@ func FindLyrics(targetName string) (map[string]string, error) {
 		if err == nil {
 			return attachJaTranslation(lyricsDir, sanitizedBase, "lrc", string(content))
 		}
+		readErr = fmt.Errorf("failed to read lyrics file %q: %w", lrcPath, err)
 	}
 
 	// Check .txt
@@ -45,8 +51,14 @@ func FindLyrics(targetName string) (map[string]string, error) {
 		if err == nil {
 			return attachJaTranslation(lyricsDir, sanitizedBase, "txt", string(content))
 		}
+		if readErr == nil {
+			readErr = fmt.Errorf("failed to read lyrics file %q: %w", txtPath, err)
+		}
 	}
 
+	if readErr != nil {
+		return nil, readErr
+	}
 	return nil, nil // Not found
 }
 
@@ -57,6 +69,8 @@ func attachJaTranslation(lyricsDir, sanitizedBase, mainType, mainContent string)
 		"content":         mainContent,
 		"lyricsFileBase": sanitizedBase,
 	}
+	// A translation that cannot be read never fails the call: an unreadable
+	// .ja.lrc falls through to .ja.txt, and main lyrics are still returned.
 	jaLrc := filepath.Join(lyricsDir, sanitizedBase+".ja.lrc")
 	if st, err := os.Stat(jaLrc); err == nil && !st.IsDir() {
 		if b, err := os.ReadFile(jaLrc); err == nil {
