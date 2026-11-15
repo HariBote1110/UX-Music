@@ -135,7 +135,11 @@ func (q *Queue) setQueueLocked(items []Item, startIndex int) {
 
 	if q.shuffled {
 		q.items, q.origin = shuffledFrom(q.original, startIndex, q.shuffle)
-		q.index = boolToIndex(len(q.items) > 0)
+		if startIndex < 0 || startIndex >= len(q.items) {
+			q.index = -1
+			return
+		}
+		q.index = 0
 		return
 	}
 
@@ -146,14 +150,6 @@ func (q *Queue) setQueueLocked(items []Item, startIndex int) {
 		return
 	}
 	q.index = startIndex
-}
-
-// boolToIndex is a tiny helper: true -> 0, false -> -1.
-func boolToIndex(nonEmpty bool) int {
-	if nonEmpty {
-		return 0
-	}
-	return -1
 }
 
 // shuffledFrom builds a shuffled copy of source with source[pinIndex] moved
