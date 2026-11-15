@@ -285,3 +285,29 @@ func TestSetShuffleRoundTripKeepsDuplicateIDPosition(t *testing.T) {
 		t.Fatalf("CurrentItem() after round trip = %+v, %v; want a, true", current, ok)
 	}
 }
+
+func TestSetQueueWithShuffleOutOfRangeStartLeavesNoCurrent(t *testing.T) {
+	src := items("a", "b", "c")
+	for _, start := range []int{-1, len(src), len(src) + 5} {
+		q := NewWithShuffler(func(items []Item) {
+			for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+				items[i], items[j] = items[j], items[i]
+			}
+		})
+		q.SetQueueWithShuffle(src, start, true)
+
+		snap := q.Snapshot()
+		if !snap.Shuffled || !snap.Active {
+			t.Fatalf("start=%d: Shuffled=%v Active=%v; want true, true", start, snap.Shuffled, snap.Active)
+		}
+		if len(snap.Items) != len(src) {
+			t.Fatalf("start=%d: queue length = %d; want %d", start, len(snap.Items), len(src))
+		}
+		if snap.Index != -1 {
+			t.Fatalf("start=%d: Index = %d; want -1 (no current item)", start, snap.Index)
+		}
+		if _, ok := q.CurrentItem(); ok {
+			t.Fatalf("start=%d: CurrentItem() reported a current item", start)
+		}
+	}
+}
