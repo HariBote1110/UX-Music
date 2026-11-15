@@ -1,17 +1,18 @@
-//go:build !windows
-
-// The FD count is read from /dev/fd, which does not exist on Windows.
 package mtp
 
 import (
 	"errors"
 	"os"
+	"runtime"
 	"syscall"
 	"testing"
 )
 
 func openFDCount(t *testing.T) int {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the FD count is read from /dev/fd, which does not exist on Windows")
+	}
 	entries, err := os.ReadDir("/dev/fd")
 	if errors.Is(err, syscall.EBADF) {
 		// macOS may close a transient /dev/fd entry before ReadDir stats it.
