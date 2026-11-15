@@ -23,7 +23,11 @@ func (s *Store) GetPath(name string) string {
 func (s *Store) Load(name string) (interface{}, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.loadLocked(name)
+}
 
+// loadLocked is Load for callers that already hold s.mu.
+func (s *Store) loadLocked(name string) (interface{}, error) {
 	if s.mem != nil {
 		if data, ok := s.mem[name]; ok {
 			return data, nil
@@ -92,7 +96,11 @@ func (s *Store) LoadMap(name string) (map[string]interface{}, error) {
 func (s *Store) Save(name string, data interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.saveLocked(name, data)
+}
 
+// saveLocked is Save for callers that already hold s.mu.
+func (s *Store) saveLocked(name string, data interface{}) error {
 	path := s.GetPath(name)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("failed to create store directory: %w", err)
@@ -109,4 +117,40 @@ func (s *Store) Save(name string, data interface{}) error {
 		delete(s.mem, name)
 	}
 	return nil
+}
+
+// UpdateMap performs a read-modify-write on the map stored under `name` while
+// holding the store lock for the whole sequence, so concurrent updates cannot
+// lose each other's changes. mutate receives a shallow copy of the stored map
+// (an empty map when the store is missing or empty). The copy is saved only
+// when mutate returns changed == true and a nil error; otherwise nothing is
+// written. A failed save leaves the cached value and the file untouched.
+func (s *Store) UpdateMap(name string, mutate func(m map[string]interface{}) (changed bool, err error)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	raw, err := s.loadLocked(name)
+	if err != nil {
+		return err
+	}
+	current := map[string]interface{}{}
+	if raw != nil {
+		m, ok := raw.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("store %q: expected map[string]interface{}, got %T", name, raw)
+		}
+		current = m
+	}
+	working := make(map[string]interface{}, len(current))
+	for k, v := range current {
+		working[k] = v
+	}
+	changed, err := mutate(working)
+	if err != nil {
+		return err
+	}
+	if !changed {
+		return nil
+	}
+	return s.saveLocked(name, working)
 }
