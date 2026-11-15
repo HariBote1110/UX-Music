@@ -303,3 +303,55 @@ final class AppModelDownloadTests: XCTestCase {
         dm2.remove(songId: id)
     }
 }
+
+@MainActor
+final class DownloadFinaliseReplacementTests: XCTestCase {
+    private func makeRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("uxm-dl-finalise-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    private func makeSong(id: String) -> Song {
+        Song(id: id, path: "/p", title: "T", artist: "Ar", album: "Al", albumArtist: "AA", artworkId: "")
+    }
+
+    /// Minimal ISO-BMFF header so the sniffer reports `m4a`.
+    private func m4aBytes() -> Data {
+        Data([0x00, 0x00, 0x00, 0x20]) + Data("ftypM4A ".utf8) + Data(repeating: 0, count: 24)
+    }
+
+    func testFinaliseReplacesOlderFileWithSameStemAndDifferentExtension() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dm = DownloadManager(documentsDirectoryOverride: root)
+        let song = makeSong(id: "dl-finalise-\(UUID().uuidString)")
+        let stem = dm.localFileURL(songId: song.id).deletingPathExtension().lastPathComponent
+
+        let oldMp3 = root.appendingPathComponent("DownloadedTracks/\(stem).mp3")
+        try Data("ID3old".utf8).write(to: oldMp3)
+        let tempURL = dm.temporaryDownloadURL(songId: song.id)
+        try m4aBytes().write(to: tempURL)
+
+        try dm.finalizeDownloadedPart(at: tempURL, song: song)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldMp3.path))
+        let newM4a = root.appendingPathComponent("DownloadedTracks/\(stem).m4a")
+        XCTAssertEqual(try Data(contentsOf: newM4a), m4aBytes())
+    }
+
+    func testFailedFinaliseKeepsExistingFile() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dm = DownloadManager(documentsDirectoryOverride: root)
+        let song = makeSong(id: "dl-finalise-\(UUID().uuidString)")
+        let stem = dm.localFileURL(songId: song.id).deletingPathExtension().lastPathComponent
+
+        let oldMp3 = root.appendingPathComponent("DownloadedTracks/\(stem).mp3")
+        try Data("ID3old".utf8).write(to: oldMp3)
+        let missing = root.appendingPathComponent("DownloadedTracks/missing.tmp")
+
+        XCTAssertThrowsError(try dm.finalizeDownloadedPart(at: missing, song: song))
+        XCTAssertEqual(try Data(contentsOf: oldMp3), Data("ID3old".utf8))
+    }
+}
