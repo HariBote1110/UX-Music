@@ -8,7 +8,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>com.uxlabs.uxMusicMobile.pair</string>
+			<string>jp.ux-labs.UXMusicMobile.pair</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>uxmusic</string>

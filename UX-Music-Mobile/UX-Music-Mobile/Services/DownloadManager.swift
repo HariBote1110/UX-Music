@@ -27,8 +27,8 @@ final class DownloadManager {
     /// mutation flows through one of the methods above.
     private var resolvedFileURLByStem: [String: URL] = [:]
 
-    init(fileManager: FileManager = .default) {
-        documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    init(fileManager: FileManager = .default, documentsDirectoryOverride: URL? = nil) {
+        documentsDirectory = documentsDirectoryOverride ?? fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         tracksDirectory = documentsDirectory.appendingPathComponent("DownloadedTracks", isDirectory: true)
         artworkDirectory = documentsDirectory.appendingPathComponent("DownloadedArtwork", isDirectory: true)
         try? FileManager.default.createDirectory(at: tracksDirectory, withIntermediateDirectories: true)
@@ -54,12 +54,14 @@ final class DownloadManager {
             fileType: song.fileType
         )
         let stem = Self.storedStem(for: song.id)
-        removeFinalisedTrackFiles(forStem: stem)
         let dest = tracksDirectory.appendingPathComponent("\(stem).\(ext)")
+        // Put the new file in place first; only then drop other finalised files for this stem.
         if fm.fileExists(atPath: dest.path) {
-            try fm.removeItem(at: dest)
+            _ = try fm.replaceItemAt(dest, withItemAt: tempURL)
+        } else {
+            try fm.moveItem(at: tempURL, to: dest)
         }
-        try fm.moveItem(at: tempURL, to: dest)
+        removeFinalisedTrackFiles(forStem: stem, keeping: dest)
         resolvedFileURLByStem[stem] = dest
     }
 
@@ -259,12 +261,14 @@ final class DownloadManager {
         return (try h.read(upToCount: maxBytes)) ?? Data()
     }
 
-    private func removeFinalisedTrackFiles(forStem stem: String) {
+    /// `keeping` is the file just finalised; it is never deleted.
+    private func removeFinalisedTrackFiles(forStem stem: String, keeping: URL? = nil) {
         guard let files = try? FileManager.default.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil) else { return }
         var removedAny = false
         for f in files {
             let name = f.lastPathComponent
             if name.hasPrefix("incomplete_") { continue }
+            if let keeping, name == keeping.lastPathComponent { continue }
             let base = f.deletingPathExtension().lastPathComponent
             if base == stem {
                 try? FileManager.default.removeItem(at: f)

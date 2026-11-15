@@ -300,6 +300,20 @@ export function playSong(index, sourceList = null, forcePlay = false, options: {
     return run;
 }
 
+/**
+ * シャッフル開始時のキューを作る。開始曲（位置 index）を先頭に置き、残りを Fisher-Yates で並べ替える。
+ * 除外は位置で行うため、同じ ID の別出現や ID 未設定の曲は消えない。
+ */
+export function buildShuffledStartQueue<T>(sourceList: T[], index: number, random: () => number = Math.random): T[] {
+    const songToStartWith = sourceList[index];
+    const rest = sourceList.filter((_, i) => i !== index);
+    for (let i = rest.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        [rest[i], rest[j]] = [rest[j], rest[i]];
+    }
+    return [songToStartWith, ...rest];
+}
+
 async function runPlaySongWork(index, sourceList = null, forcePlay = false, options: { collection?: CollectionRef } = {}) {
     if (isWailsMode()) {
         // Go の再生キューへ全面委任する（markdown/background-native-queue-plan.md
@@ -338,14 +352,7 @@ async function runPlaySongWork(index, sourceList = null, forcePlay = false, opti
             true,
         );
         if (state.isShuffled) {
-            const songToStartWith = sourceList[index];
-            const newShuffledQueue = sourceList.filter(s => s.id !== songToStartWith.id);
-            for (let i = newShuffledQueue.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [newShuffledQueue[i], newShuffledQueue[j]] = [newShuffledQueue[j], newShuffledQueue[i]];
-            }
-            newShuffledQueue.unshift(songToStartWith);
-            state.playbackQueue = newShuffledQueue;
+            state.playbackQueue = buildShuffledStartQueue(sourceList, index);
             index = 0;
         } else {
             state.playbackQueue = sourceList;

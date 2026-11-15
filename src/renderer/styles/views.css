@@ -909,6 +909,15 @@
     will-change: transform, opacity;
 }
 
+/* 同期歌詞は行クリックでその行の時刻へシークする */
+#lyrics-view.lyrics-mode-lrc p[data-index] {
+    cursor: pointer;
+}
+
+#lyrics-view.lyrics-mode-lrc p[data-index]:not(.active):hover {
+    color: rgba(255, 255, 255, 0.9);
+}
+
 #lyrics-view.lyrics-mode-lrc p.line-continuation,
 #lyrics-view.lyrics-mode-lrc p.line-break {
     margin-top: 0;

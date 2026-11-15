@@ -33,9 +33,17 @@ final class PlaylistStore {
     }
 
     func load() {
-        guard let data = defaults.data(forKey: persistenceKey),
-              let env = try? JSONDecoder().decode(PlaylistsEnvelope.self, from: data)
-        else {
+        guard let data = defaults.data(forKey: persistenceKey) else {
+            playlistsById = [:]
+            order = []
+            return
+        }
+        guard let env = try? JSONDecoder().decode(PlaylistsEnvelope.self, from: data) else {
+            // Keep the undecodable bytes so the next save does not silently discard them; the oldest copy wins.
+            let backupKey = persistenceKey + ".undecodable-backup"
+            if defaults.data(forKey: backupKey) == nil {
+                defaults.set(data, forKey: backupKey)
+            }
             playlistsById = [:]
             order = []
             return

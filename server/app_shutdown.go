@@ -11,6 +11,9 @@ import (
 // tray and restores a resident LaunchAgent temporarily handed off to the GUI.
 func (a *App) Shutdown(ctx context.Context) {
 	_ = ctx
+	if a.mtpHotplugStop != nil {
+		a.mtpHotplugStop()
+	}
 	destroyTray()
 
 	// If Startup booted out a resident `--serve` LaunchAgent to take over

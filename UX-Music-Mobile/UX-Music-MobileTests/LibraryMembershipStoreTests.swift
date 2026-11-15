@@ -42,3 +42,48 @@ final class LibraryMembershipStoreTests: XCTestCase {
         // No crash, no error — nothing to assert beyond survival.
     }
 }
+
+@MainActor
+final class LibraryMembershipStoreUndecodableDataTests: XCTestCase {
+    private func makeDefaults() throws -> UserDefaults {
+        let suiteName = "test.library.membership.undecodable.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+
+    private func makeSong(id: String) -> Song {
+        Song(
+            id: id,
+            path: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            title: "T",
+            artist: "Ar",
+            album: "Al",
+            albumArtist: "AA",
+            artworkId: "",
+            sourceType: .youtube,
+            sourceURL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        )
+    }
+
+    func testUndecodablePersistedDataIsBackedUpBeforeNextSave() throws {
+        let defaults = try makeDefaults()
+        let key = AppConstants.youtubeLibrarySongsMetaKey
+        let corrupt = Data("not json".utf8)
+        defaults.set(corrupt, forKey: key)
+
+        let store = LibraryMembershipStore(defaults: defaults)
+        store.add(makeSong(id: "yt-1"))
+
+        XCTAssertEqual(defaults.data(forKey: key + ".undecodable-backup"), corrupt)
+        XCTAssertTrue(store.contains(songId: "yt-1"))
+    }
+
+    func testAbsentPersistedDataCreatesNoBackup() throws {
+        let defaults = try makeDefaults()
+        let key = AppConstants.youtubeLibrarySongsMetaKey
+        let store = LibraryMembershipStore(defaults: defaults)
+        store.add(makeSong(id: "yt-1"))
+        XCTAssertNil(defaults.data(forKey: key + ".undecodable-backup"))
+    }
+}

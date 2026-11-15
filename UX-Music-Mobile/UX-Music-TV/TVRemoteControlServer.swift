@@ -22,7 +22,7 @@ final class TVRemoteControlServer {
     private let player: MusicPlayerService
     private let token: String
     private let deviceName: String
-    private let logger = Logger(subsystem: "com.uxlabs.uxMusicMobile.tv", category: "remote-control-server")
+    private let logger = Logger(subsystem: "jp.ux-labs.UXMusicMobile.tv", category: "remote-control-server")
     private var listener: NWListener?
 
     init(player: MusicPlayerService, token: String, deviceName: String) {

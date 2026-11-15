@@ -4,6 +4,13 @@ import MediaPlayer
 import Observation
 import UIKit
 
+enum LoudnessNormalisation {
+    static func linearGain(songID: String?, map: [String: Double], target: Double, enabled: Bool) -> Double {
+        guard enabled, let songID, let lufs = map[songID], lufs.isFinite, target.isFinite else { return 1 }
+        return min(max(pow(10, (target - lufs) / 20), 0), 4)
+    }
+}
+
 /// Local playback with optional loudness normalisation and a 10-band graphic equaliser (`AVAudioEngine` + `AVAudioUnitEQ`).
 @MainActor
 @Observable
@@ -11,12 +18,24 @@ final class MusicPlayerService {
     private let engine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
     private let equaliserUnit = AVAudioUnitEQ(numberOfBands: GraphicEqualiserConfiguration.bandCount)
+    /// A separate gain stage keeps normalisation active when the graphic equaliser is bypassed.
+    private let normalisationUnit = AVAudioUnitEQ(numberOfBands: 0)
 
     private var queue: [Song] = []
     private var currentIndex: Int = -1
     /// The queue's order before shuffle was turned on, so turning it back off is lossless. Empty
     /// when shuffle is off.
     private var originalQueue: [Song] = []
+    /// While shuffled, `queueOrigins[i]` is the index in `originalQueue` of `queue[i]`, so edits and
+    /// the restore on shuffle-off stay exact when the same song appears more than once.
+    private var queueOrigins: [Int] = []
+    private var shuffleBookkeeping: PlaybackQueueEditing.ShuffleBookkeeping<Song> {
+        get { .init(originalQueue: originalQueue, origins: queueOrigins) }
+        set {
+            originalQueue = newValue.originalQueue
+            queueOrigins = newValue.origins
+        }
+    }
 
     /// Current playback queue (local files), in play order.
     var playbackQueue: [Song] { queue }
@@ -57,16 +76,32 @@ final class MusicPlayerService {
         UserDefaults.standard.set(enabled, forKey: shuffleEnabledDefaultsKey)
         guard enabled != isShuffleEnabled else { return }
         let currentId = currentSong?.id
+        let previousIndex = currentIndex
         if enabled {
-            originalQueue = queue
             let indices = Array(queue.indices).shuffled()
+            let order = PlaybackQueueEditing.pinnedShuffleOrder(
+                queue: queue, shuffledIndices: indices, currentId: currentId, id: { $0.id }
+            )
+            originalQueue = queue
             queue = PlaybackShuffleLogic.applyShuffle(queue: queue, shuffledIndices: indices, currentId: currentId)
+            queueOrigins = order
+            if let idx = PlaybackQueueEditing.shuffledIndex(ofOriginal: previousIndex, origins: order) {
+                currentIndex = idx
+            } else if let currentId, let idx = queue.firstIndex(where: { $0.id == currentId }) {
+                currentIndex = idx
+            }
         } else {
+            let restored = currentId.flatMap {
+                PlaybackQueueEditing.originalIndexOfCurrent(
+                    queue: queue, state: shuffleBookkeeping, currentIndex: previousIndex, currentId: $0, id: { $0.id }
+                )
+            }
             queue = originalQueue
             originalQueue = []
-        }
-        if let currentId, let idx = queue.firstIndex(where: { $0.id == currentId }) {
-            currentIndex = idx
+            queueOrigins = []
+            if let restored {
+                currentIndex = restored
+            }
         }
         isShuffleEnabled = enabled
     }
@@ -84,10 +119,16 @@ final class MusicPlayerService {
 
     /// Moves the item at `from` so it ends up at index `to` in the resulting queue, keeping
     /// `currentIndex` pointing at the same song (playback is not interrupted — this never loads a
-    /// different track).
+    /// different track). While shuffled this reorders only `queue`; `originalQueue` keeps its order,
+    /// so turning shuffle off restores the original order.
     func moveQueueItem(from: Int, to: Int) {
         guard queue.indices.contains(from) else { return }
         let newCurrentIndex = PlaybackQueueEditing.currentIndexAfterMoving(from: from, to: to, currentIndex: currentIndex)
+        if isShuffleEnabled {
+            shuffleBookkeeping = PlaybackQueueEditing.bookkeepingAfterMoving(
+                queue: queue, state: shuffleBookkeeping, from: from, to: to
+            )
+        }
         queue = PlaybackQueueEditing.moveElement(in: queue, from: from, to: to)
         currentIndex = newCurrentIndex
     }
@@ -96,6 +137,11 @@ final class MusicPlayerService {
     /// whatever takes its place; removing the last remaining item stops playback entirely.
     func removeQueueItem(at index: Int) async {
         guard queue.indices.contains(index) else { return }
+        if isShuffleEnabled {
+            shuffleBookkeeping = PlaybackQueueEditing.bookkeepingAfterRemoving(
+                queue: queue, state: shuffleBookkeeping, removedIndex: index, id: { $0.id }
+            )
+        }
         let wasCurrent = index == currentIndex
         guard let newCurrentIndex = PlaybackQueueEditing.currentIndexAfterRemoving(
             removedIndex: index,
@@ -119,9 +165,17 @@ final class MusicPlayerService {
     /// empty, becomes the new (unstarted) queue.
     func insertNext(_ song: Song) {
         guard currentIndex >= 0 else {
+            if isShuffleEnabled {
+                shuffleBookkeeping = .init(originalQueue: [song], origins: [0])
+            }
             queue = [song]
             currentIndex = 0
             return
+        }
+        if isShuffleEnabled {
+            shuffleBookkeeping = PlaybackQueueEditing.bookkeepingAfterInsertingNext(
+                queue: queue, state: shuffleBookkeeping, currentIndex: currentIndex, item: song, id: { $0.id }
+            )
         }
         queue.insert(song, at: min(currentIndex + 1, queue.count))
     }
@@ -130,9 +184,17 @@ final class MusicPlayerService {
     /// (unstarted) queue.
     func appendToQueue(_ song: Song) {
         guard currentIndex >= 0 else {
+            if isShuffleEnabled {
+                shuffleBookkeeping = .init(originalQueue: [song], origins: [0])
+            }
             queue = [song]
             currentIndex = 0
             return
+        }
+        if isShuffleEnabled {
+            shuffleBookkeeping = PlaybackQueueEditing.bookkeepingAfterAppending(
+                queue: queue, state: shuffleBookkeeping, item: song
+            )
         }
         queue.append(song)
     }
@@ -141,15 +203,35 @@ final class MusicPlayerService {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
 
-    private(set) var currentSong: Song?
-    private(set) var isPlaying = false
+    private(set) var currentSong: Song? {
+        didSet { applyLoudnessGain() }
+    }
+    private(set) var isPlaying = false {
+        didSet {
+            guard isPlaying != oldValue else { return }
+            if isPlaying {
+                startPositionTimer()
+            } else {
+                stopPositionTimer()
+                settlePositionAfterPause()
+            }
+        }
+    }
     private(set) var positionSeconds: Double = 0
     private(set) var durationSeconds: Double = 0
 
-    var loudnessMap: [String: Double] = [:]
-    var targetLoudness: Double = AppConstants.defaultTargetLoudness
-    var normaliseEnabled = true
-    var masterVolume: Float = 1
+    var loudnessMap: [String: Double] = [:] {
+        didSet { applyLoudnessGain() }
+    }
+    var targetLoudness: Double = AppConstants.defaultTargetLoudness {
+        didSet { applyLoudnessGain() }
+    }
+    var normaliseEnabled = true {
+        didSet { applyLoudnessGain() }
+    }
+    var masterVolume: Float = 1 {
+        didSet { applyLoudnessGain() }
+    }
 
     /// Optional hook for platforms that keep audio files in a local cache rather than always
     /// having `song.path` point at something readable (tvOS: only the initially tapped song's
@@ -388,6 +470,15 @@ final class MusicPlayerService {
     /// (precedent: `TVRelayStreamPlayer.isRenderActiveForTesting`), used to assert the "externally
     /// driven ⟹ local engine silent" invariant from outside the type.
     var hasActiveLocalAudioFileForTesting: Bool { currentAudioFile != nil }
+    var isPositionTimerRunningForTesting: Bool { positionTimer != nil }
+    var lastNowPlayingPublicationIsPlayingForTesting: Bool? { lastNowPlayingPublication?.isPlaying }
+    var normalisationGainDecibelsForTesting: Float { normalisationUnit.globalGain }
+    var masterOutputVolumeForTesting: Float { engine.mainMixerNode.outputVolume }
+    var normalisationIsInSignalPathForTesting: Bool {
+        engine.outputConnectionPoints(for: equaliserUnit, outputBus: 0).contains { $0.node === normalisationUnit }
+            && engine.outputConnectionPoints(for: normalisationUnit, outputBus: 0).contains { $0.node === engine.mainMixerNode }
+            && !normalisationUnit.bypass
+    }
 
     private var currentAudioFile: AVAudioFile?
     private var scheduledSegmentStartFrame: AVAudioFramePosition = 0
@@ -414,7 +505,6 @@ final class MusicPlayerService {
         pushEqualiserToAudioUnit()
         loadEqualiserStateFromUserDefaults()
         loadPlaybackModesFromUserDefaults()
-        startPositionTimer()
         addAudioInterruptionObserver()
         addAudioRouteChangeObserver()
         installRemoteCommandHandlers()
@@ -701,6 +791,10 @@ final class MusicPlayerService {
         return false
     }
 
+    /// The 4 Hz position timer exists only while `isPlaying` is true (driven by its `didSet`):
+    /// running it for the whole process lifetime kept the CPU and the media-server IPC busy while
+    /// paused, stopped or empty. External (tvOS stream) playback also sets `isPlaying`, so it
+    /// keeps ticking too.
     private func startPositionTimer() {
         positionTimer?.invalidate()
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -712,6 +806,26 @@ final class MusicPlayerService {
         positionTimer = timer
     }
 
+    private func stopPositionTimer() {
+        positionTimer?.invalidate()
+        positionTimer = nil
+    }
+
+    /// With the timer stopped on pause, `positionSeconds` could lag the real (frozen) position by up
+    /// to one tick. Refresh it once after the pause state has settled and republish.
+    private func settlePositionAfterPause() {
+        Task { @MainActor [weak self] in
+            guard let self, !self.isPlaying, self.currentSong != nil else { return }
+            // Externally driven playback owns `positionSeconds`; only local playback recomputes it.
+            if !self.isExternallyDriven, self.currentAudioFile != nil {
+                let pos = self.currentTimelineSeconds()
+                self.positionSeconds = self.durationSeconds > 0
+                    ? min(max(0, pos), self.durationSeconds) : max(0, pos)
+            }
+            self.updateNowPlayingCentre()
+        }
+    }
+
     private func tickPlaybackPosition() {
         guard currentSong != nil else { return }
         // While externally driven, `updateExternalPlaybackProgress(seconds:)` is the single writer
@@ -719,7 +833,7 @@ final class MusicPlayerService {
         // local timeline is stale/irrelevant here, so this must not recompute/overwrite it. Still
         // refresh Now Playing metadata (title/artwork) so the lock screen keeps updating.
         guard !isExternallyDriven else {
-            updateNowPlayingCentre()
+            updateNowPlayingCentre(force: false)
             return
         }
         if let file = currentAudioFile {
@@ -736,7 +850,7 @@ final class MusicPlayerService {
         }
         // Do NOT call syncIsPlayingFromNode() here: the timer must not override the
         // intentional isPlaying state set by explicit play/pause actions.
-        updateNowPlayingCentre()
+        updateNowPlayingCentre(force: false)
     }
 
     private func currentTimelineSeconds() -> Double {
@@ -754,10 +868,14 @@ final class MusicPlayerService {
         return (Double(scheduledSegmentStartFrame) + Double(playerTime.sampleTime)) / sr
     }
 
+    /// Starts playing `song` from `newQueue`. `startIndex` is the caller's row index for `song` in
+    /// `newQueue`; when it is in range and names `song`, that exact copy starts, so a song listed
+    /// more than once plays from the row that was tapped. Without it, the first copy is used.
     func play(
         _ song: Song,
         newQueue: [Song],
-        collection: PlaybackCollectionRef? = nil
+        collection: PlaybackCollectionRef? = nil,
+        startIndex: Int? = nil
     ) async {
         let generation = playGeneration.bump()
         // A previous stream-first session may still be marked external (e.g. the cache finished
@@ -774,16 +892,30 @@ final class MusicPlayerService {
             baselineShuffleEnabled: baselineShuffleEnabled,
             preference: preference
         )
+        let chosenStart: Int? = startIndex.flatMap { index in
+            newQueue.indices.contains(index) && newQueue[index].id == song.id ? index : nil
+        }
         if effectiveShuffleEnabled {
             originalQueue = newQueue
-            let indices = Array(newQueue.indices).shuffled()
+            var indices = Array(newQueue.indices).shuffled()
+            if let chosenStart {
+                // Moving the chosen copy to the front makes `applyShuffle` pin that exact copy as current.
+                indices.removeAll { $0 == chosenStart }
+                indices.insert(chosenStart, at: 0)
+            }
+            queueOrigins = PlaybackQueueEditing.pinnedShuffleOrder(
+                queue: newQueue, shuffledIndices: indices, currentId: song.id, id: { $0.id }
+            )
             queue = PlaybackShuffleLogic.applyShuffle(queue: newQueue, shuffledIndices: indices, currentId: song.id)
         } else {
             originalQueue = []
+            queueOrigins = []
             queue = newQueue
         }
         isShuffleEnabled = effectiveShuffleEnabled
-        if let idx = queue.firstIndex(where: { $0.id == song.id }) {
+        if let chosenStart, !effectiveShuffleEnabled {
+            currentIndex = chosenStart
+        } else if let idx = queue.firstIndex(where: { $0.id == song.id }) {
             currentIndex = idx
         } else {
             queue.append(song)
@@ -1302,7 +1434,7 @@ final class MusicPlayerService {
         case .time(let current, let duration):
             positionSeconds = current
             if duration > 0 { durationSeconds = duration }
-            updateNowPlayingCentre()
+            updateNowPlayingCentre(force: false)
         case .error(let code):
             isPlaying = false
             youtubePlaybackErrorMessage = YouTubeEmbedPlayer.errorMessage(code: code)
@@ -1463,6 +1595,7 @@ final class MusicPlayerService {
         if !nodesAttached {
             engine.attach(playerNode)
             engine.attach(equaliserUnit)
+            engine.attach(normalisationUnit)
             nodesAttached = true
         }
 
@@ -1477,12 +1610,15 @@ final class MusicPlayerService {
         if lastWireFormat != nil {
             engine.disconnectNodeOutput(playerNode)
             engine.disconnectNodeOutput(equaliserUnit)
+            engine.disconnectNodeOutput(normalisationUnit)
         }
 
         engine.connect(playerNode, to: equaliserUnit, format: fmt)
-        engine.connect(equaliserUnit, to: engine.mainMixerNode, format: fmt)
+        engine.connect(equaliserUnit, to: normalisationUnit, format: fmt)
+        engine.connect(normalisationUnit, to: engine.mainMixerNode, format: fmt)
         lastWireFormat = fmt
         engine.prepare()
+        applyLoudnessGain()
     }
 
     private func ensureEngineRunning() {
@@ -1497,6 +1633,7 @@ final class MusicPlayerService {
 
     private func ensureEngineRunningThrowing() throws {
         if !engine.isRunning {
+            applyLoudnessGain()
             try engine.start()
         }
     }
@@ -1663,17 +1800,13 @@ final class MusicPlayerService {
     }
 
     private func applyLoudnessGain() {
-        let linear: Float
-        if !normaliseEnabled || currentSong == nil {
-            linear = 1
-        } else if let id = currentSong?.id, let lufs = loudnessMap[id] {
-            let gainDb = targetLoudness - lufs
-            let lin = pow(10, gainDb / 20)
-            linear = min(max(Float(lin), 0), 4)
-        } else {
-            linear = 1
-        }
-        engine.mainMixerNode.outputVolume = masterVolume * linear
+        let linear = LoudnessNormalisation.linearGain(
+            songID: currentSong?.id, map: loudnessMap, target: targetLoudness, enabled: normaliseEnabled
+        )
+        // Mixer outputVolume only accepts 0...1; apply boosts in a dB-capable audio unit.
+        normalisationUnit.bypass = false
+        normalisationUnit.globalGain = max(-96, Float(20 * log10(linear)))
+        engine.mainMixerNode.outputVolume = min(max(masterVolume, 0), 1)
     }
 
     func refreshVolumeForCurrentSong() {
@@ -1799,7 +1932,19 @@ final class MusicPlayerService {
         }
     }
 
-    private func updateNowPlayingCentre() {
+    /// The last payload pushed to the Now Playing centre (`nil` when nothing is published).
+    private var lastNowPlayingPublication: NowPlayingPublication?
+
+    /// - Parameter force: explicit state changes (play/pause/seek/song change/artwork) always
+    ///   publish. The periodic callers (position timer, YouTube `.time`) pass `false` and only
+    ///   publish when `NowPlayingPublication.shouldPublish` says something actually changed.
+    private func updateNowPlayingCentre(force: Bool = true) {
+        if !force, let song = currentSong {
+            let candidate = makeNowPlayingPublication(for: song)
+            guard NowPlayingPublication.shouldPublish(
+                previous: lastNowPlayingPublication, next: candidate, now: candidate.publishedAt
+            ) else { return }
+        }
         // Do NOT call syncIsPlayingFromNode() here: callers are responsible for setting
         // isPlaying correctly before invoking this function. Re-reading playerNode.isPlaying
         // at this point risks overwriting the intended state with a transiently stale value
@@ -1824,6 +1969,7 @@ final class MusicPlayerService {
             nowPlayingArtworkImage = nil
             nowPlaying.playbackState = .stopped
             nowPlaying.nowPlayingInfo = nil
+            lastNowPlayingPublication = nil
             return
         }
 
@@ -1861,12 +2007,29 @@ final class MusicPlayerService {
 
         nowPlaying.nowPlayingInfo = info
         nowPlaying.playbackState = isPlaying ? .playing : .paused
+        lastNowPlayingPublication = makeNowPlayingPublication(for: song)
 
         if loadArtworkImage != nil,
            artworkLoadedForSongId != song.id,
            artworkInFlightForSongId != song.id {
             ensureArtworkLoaded(for: song)
         }
+    }
+
+    private func makeNowPlayingPublication(for song: Song) -> NowPlayingPublication {
+        let fromMetadata = song.duration > 0 ? song.duration : 0
+        return NowPlayingPublication(
+            songId: song.id,
+            title: song.displayTitle,
+            artist: song.displayArtist,
+            album: song.displayAlbum,
+            duration: max(max(durationSeconds, fromMetadata), 0.001),
+            isPlaying: isPlaying,
+            hasArtwork: nowPlayingArtworkImage != nil && artworkLoadedForSongId == song.id,
+            skipEnabled: queue.count > 1,
+            elapsed: max(0, positionSeconds),
+            publishedAt: Date()
+        )
     }
 
     private func ensureArtworkLoaded(for song: Song) {

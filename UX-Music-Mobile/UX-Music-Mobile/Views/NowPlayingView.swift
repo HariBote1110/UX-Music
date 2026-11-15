@@ -893,6 +893,9 @@ struct NowPlayingAmbientBackground: View {
                 .blendMode(.plusLighter)
             }
         }
+        // Flatten the two plusLighter layers into one rendered layer instead of a live blend in
+        // the Core Animation tree (GPU cost).
+        .drawingGroup()
         .ignoresSafeArea()
     }
 }
@@ -963,8 +966,16 @@ private struct NowPlayingArtworkBlock: View {
                     .padding(10)
                 }
             }
-            .shadow(color: .black.opacity(0.55), radius: 32, y: 18)
-            .shadow(color: accent.opacity(0.15), radius: 40, y: 12)
+            // The shadows live on a static opaque shape behind the card instead of on the card
+            // itself: a shadow derived from live content (the YouTube WKWebView) is re-rendered
+            // every video frame. The card is clipped to this same rounded rect, so the look is
+            // unchanged, and the backing shape follows the card's frame during the height animation.
+            .background {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.black)
+                    .shadow(color: .black.opacity(0.55), radius: 32, y: 18)
+                    .shadow(color: accent.opacity(0.15), radius: 40, y: 12)
+            }
             .animation(.spring(response: 0.45, dampingFraction: 0.85), value: song.isYouTube)
             .task(id: taskIdentity) {
                 guard !song.isYouTube else { return }

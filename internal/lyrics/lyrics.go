@@ -29,6 +29,11 @@ func FindLyrics(targetName string) (map[string]string, error) {
 	lyricsDir := GetLyricsDir()
 	sanitizedBase := SanitizeFileName(strings.ReplaceAll(targetName, "_", " "))
 
+	// readErr remembers the first read failure on an existing file. A failed
+	// .lrc still falls through to .txt, but if nothing else is readable the
+	// failure is reported instead of being mistaken for "no lyrics".
+	var readErr error
+
 	// Check .lrc
 	lrcPath := filepath.Join(lyricsDir, sanitizedBase+".lrc")
 	if _, err := os.Stat(lrcPath); err == nil {
@@ -36,6 +41,7 @@ func FindLyrics(targetName string) (map[string]string, error) {
 		if err == nil {
 			return attachJaTranslation(lyricsDir, sanitizedBase, "lrc", string(content))
 		}
+		readErr = fmt.Errorf("failed to read lyrics file %q: %w", lrcPath, err)
 	}
 
 	// Check .txt
@@ -45,8 +51,14 @@ func FindLyrics(targetName string) (map[string]string, error) {
 		if err == nil {
 			return attachJaTranslation(lyricsDir, sanitizedBase, "txt", string(content))
 		}
+		if readErr == nil {
+			readErr = fmt.Errorf("failed to read lyrics file %q: %w", txtPath, err)
+		}
 	}
 
+	if readErr != nil {
+		return nil, readErr
+	}
 	return nil, nil // Not found
 }
 
@@ -57,6 +69,8 @@ func attachJaTranslation(lyricsDir, sanitizedBase, mainType, mainContent string)
 		"content":         mainContent,
 		"lyricsFileBase": sanitizedBase,
 	}
+	// A translation that cannot be read never fails the call: an unreadable
+	// .ja.lrc falls through to .ja.txt, and main lyrics are still returned.
 	jaLrc := filepath.Join(lyricsDir, sanitizedBase+".ja.lrc")
 	if st, err := os.Stat(jaLrc); err == nil && !st.IsDir() {
 		if b, err := os.ReadFile(jaLrc); err == nil {
@@ -105,34 +119,63 @@ func SaveLrcFile(fileName string, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
+// CopyLyricsFiles imports lyrics files into the Lyrics directory. Only regular
+// files whose name ends in .lrc or .txt (case-insensitive, covering .ja.lrc and
+// .ja.txt) are copied; anything else is skipped and not counted. A file with the
+// same name is overwritten atomically: the content is written to a temp file in
+// the Lyrics directory and renamed over the destination, so a failed copy leaves
+// an existing file untouched.
 func CopyLyricsFiles(srcPaths []string) (int, error) {
 	lyricsDir := GetLyricsDir()
 	count := 0
 
 	for _, srcPath := range srcPaths {
 		fileName := filepath.Base(srcPath)
-		destPath := filepath.Join(lyricsDir, fileName)
-
-		srcFile, err := os.Open(srcPath)
-		if err != nil {
+		lower := strings.ToLower(fileName)
+		if !strings.HasSuffix(lower, ".lrc") && !strings.HasSuffix(lower, ".txt") {
 			continue
 		}
-
-		destFile, err := os.Create(destPath)
-		if err != nil {
-			srcFile.Close()
+		info, err := os.Stat(srcPath)
+		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-
-		_, err = io.Copy(destFile, srcFile)
-
-		srcFile.Close()
-		destFile.Close()
-
-		if err == nil {
+		if copyLyricsFileAtomic(srcPath, filepath.Join(lyricsDir, fileName)) == nil {
 			count++
 		}
 	}
 
 	return count, nil
+}
+
+func copyLyricsFileAtomic(srcPath, destPath string) error {
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(destPath), ".lyrics-copy-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	success := false
+	defer func() {
+		if !success {
+			_ = tmpFile.Close()
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := io.Copy(tmpFile, srcFile); err != nil {
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		return err
+	}
+	success = true
+	return nil
 }

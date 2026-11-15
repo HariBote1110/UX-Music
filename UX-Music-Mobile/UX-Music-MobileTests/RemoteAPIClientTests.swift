@@ -1,5 +1,172 @@
+import AVFoundation
 import XCTest
 @testable import UX_Music_Mobile
+
+@MainActor
+final class LoudnessNormalisationTests: XCTestCase {
+    override func tearDown() {
+        MockURLProtocol.handler = nil
+        super.tearDown()
+    }
+
+    private func session(payload: String, status: Int = 200) -> URLSession {
+        MockURLProtocol.handler = { request in
+            let body = request.url?.path == "/v1/remote/songs" ? "[]" : payload
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+            return (Data(body.utf8), response)
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    func testFetchLoudnessAcceptsCurrentAndLegacyEntriesWithOriginalSongIDs() async throws {
+        let session = session(payload: #"{"/Music/曲.flac":{"loudness":-24,"truePeak":-2.5},"uuid-track":-12.5,"pending":{},"invalid":{"loudness":"unknown"}}"#)
+        defer { session.invalidateAndCancel() }
+        let client = RemoteAPIClient(baseURLString: "http://desktop.invalid:8765", session: session)
+
+        let map = try await client.fetchLoudness()
+
+        XCTAssertEqual(map, ["/Music/曲.flac": -24, "uuid-track": -12.5])
+    }
+
+    func testFetchLoudnessRejectsHTTPFailureInsteadOfReturningAnEmptyMap() async {
+        let session = session(payload: "{}", status: 401)
+        defer { session.invalidateAndCancel() }
+        let client = RemoteAPIClient(baseURLString: "http://desktop.invalid:8765", session: session)
+        do {
+            _ = try await client.fetchLoudness()
+            XCTFail("Expected an HTTP error")
+        } catch {
+            guard case RemoteAPIError.httpStatus(401) = error else {
+                return XCTFail("Expected HTTP 401, received \(error)")
+            }
+        }
+    }
+
+    func testBothRefreshPathsRestoreLoudnessForOfflineDownloadedPlayback() async throws {
+        let suiteName = "LoudnessNormalisationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let originalConfig = UserDefaults.standard.data(forKey: AppConstants.serverConfigKey)
+        defer { UserDefaults.standard.set(originalConfig, forKey: AppConstants.serverConfigKey) }
+        let session = session(payload: #"{"/Music/曲.flac":{"loudness":-24,"truePeak":-2.5}}"#)
+        defer { session.invalidateAndCancel() }
+
+        for refreshLibrary in [true, false] {
+            defaults.removePersistentDomain(forName: suiteName)
+            let model = AppModel(loudnessDefaults: defaults)
+            model.urlSession = session
+            model.serverConfig = ServerConfig(host: "desktop.invalid", port: 8765)
+            if refreshLibrary {
+                await model.refreshLibrary()
+            } else {
+                await model.refreshLoudnessOnly()
+            }
+            XCTAssertEqual(model.player.loudnessMap["/Music/曲.flac"], -24)
+
+            // Relaunch without any network request; a downloaded file rewrites only the path.
+            let restored = AppModel(loudnessDefaults: defaults)
+            let song = Song(id: "/Music/曲.flac", path: "/Music/曲.flac")
+                .withPath("/DownloadedTracks/hashed-file.flac")
+            restored.player.configureForPreview(song: song, isPlaying: false, positionSeconds: 0, durationSeconds: 1)
+            restored.player.refreshVolumeForCurrentSong()
+
+            XCTAssertEqual(restored.loudness[song.id], -24)
+            XCTAssertEqual(restored.player.normalisationGainDecibelsForTesting, 6, accuracy: 0.001)
+        }
+    }
+
+    func testFailedRefreshRetainsPersistedLoudness() async throws {
+        let suiteName = "LoudnessNormalisationTests.failure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(try JSONEncoder().encode(["track": -12.0]), forKey: AppConstants.loudnessCacheKey)
+        let session = session(payload: "{}", status: 401)
+        defer { session.invalidateAndCancel() }
+        let model = AppModel(loudnessDefaults: defaults)
+        model.urlSession = session
+
+        await model.refreshLoudnessOnly()
+
+        XCTAssertEqual(model.player.loudnessMap["track"], -12)
+        XCTAssertEqual(AppModel(loudnessDefaults: defaults).player.loudnessMap["track"], -12)
+    }
+
+    func testNativeGainIsIndependentOfMasterVolumeAndEqualiser() {
+        let keys = ["uxmusic.equaliser.enabled", "uxmusic.equaliser.preamp", "uxmusic.equaliser.bands", "uxmusic.equaliser.presetName"]
+        let saved = keys.map { UserDefaults.standard.object(forKey: $0) }
+        defer {
+            for (key, value) in zip(keys, saved) { UserDefaults.standard.set(value, forKey: key) }
+        }
+        let player = MusicPlayerService()
+        player.setEqualiserEnabled(false)
+        player.targetLoudness = -18
+        player.loudnessMap = ["quiet": -24, "loud": -12]
+        player.configureForPreview(song: Song(id: "quiet", path: "/DownloadedTracks/hash.flac"), isPlaying: false, positionSeconds: 0, durationSeconds: 1)
+        player.refreshVolumeForCurrentSong()
+
+        XCTAssertEqual(player.normalisationGainDecibelsForTesting, 6, accuracy: 0.001)
+        player.masterVolume = 0.4
+        player.refreshVolumeForCurrentSong()
+        XCTAssertEqual(player.masterOutputVolumeForTesting, 0.4, accuracy: 0.001)
+        XCTAssertEqual(player.normalisationGainDecibelsForTesting, 6, accuracy: 0.001)
+        player.resetEqualiserToFlat()
+        XCTAssertEqual(player.normalisationGainDecibelsForTesting, 6, accuracy: 0.001)
+
+        player.configureForPreview(song: Song(id: "loud", path: "/DownloadedTracks/other.flac"), isPlaying: false, positionSeconds: 0, durationSeconds: 1)
+        player.refreshVolumeForCurrentSong()
+        XCTAssertEqual(player.normalisationGainDecibelsForTesting, -6, accuracy: 0.001)
+        player.loudnessMap["loud"] = -9
+        XCTAssertEqual(player.normalisationGainDecibelsForTesting, -9, accuracy: 0.001)
+        player.targetLoudness = -20
+        XCTAssertEqual(player.normalisationGainDecibelsForTesting, -11, accuracy: 0.001)
+        player.normaliseEnabled = false
+        XCTAssertEqual(player.normalisationGainDecibelsForTesting, 0, accuracy: 0.001)
+    }
+
+    func testNativeGainRemainsInSignalPathAfterGraphRebuild() async throws {
+        let player = MusicPlayerService()
+        defer { player.stop() }
+        player.targetLoudness = -18
+        player.loudnessMap = ["quiet": -24]
+        var files: [URL] = []
+        defer { for file in files { try? FileManager.default.removeItem(at: file) } }
+
+        for sampleRate in [44_100.0, 48_000.0] {
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).wav")
+            files.append(url)
+            let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2))
+            let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(sampleRate)))
+            buffer.frameLength = buffer.frameCapacity
+            let channels = try XCTUnwrap(buffer.floatChannelData)
+            for channel in 0..<Int(format.channelCount) {
+                for frame in 0..<Int(buffer.frameLength) { channels[channel][frame] = 0 }
+            }
+            do {
+                let file = try AVAudioFile(forWriting: url, settings: format.settings)
+                try file.write(from: buffer)
+            }
+            let song = Song(id: "quiet", path: url.path)
+
+            await player.play(song, newQueue: [song])
+
+            XCTAssertTrue(player.hasActiveLocalAudioFileForTesting)
+            XCTAssertTrue(player.normalisationIsInSignalPathForTesting)
+            XCTAssertEqual(player.normalisationGainDecibelsForTesting, 6, accuracy: 0.001)
+        }
+    }
+
+    func testGainFormulaMissingDataAndExistingBoostLimit() {
+        let map = ["quiet": -24.0, "loud": -12, "veryQuiet": -60]
+        XCTAssertEqual(LoudnessNormalisation.linearGain(songID: "quiet", map: map, target: -18, enabled: true), pow(10, 6.0 / 20), accuracy: 0.0001)
+        XCTAssertEqual(LoudnessNormalisation.linearGain(songID: "loud", map: map, target: -18, enabled: true), pow(10, -6.0 / 20), accuracy: 0.0001)
+        XCTAssertEqual(LoudnessNormalisation.linearGain(songID: "veryQuiet", map: map, target: -18, enabled: true), 4)
+        XCTAssertEqual(LoudnessNormalisation.linearGain(songID: "quiet", map: map, target: -18, enabled: false), 1)
+        XCTAssertEqual(LoudnessNormalisation.linearGain(songID: "missing", map: map, target: -18, enabled: true), 1)
+        XCTAssertEqual(LoudnessNormalisation.linearGain(songID: nil, map: map, target: -18, enabled: true), 1)
+    }
+}
 
 private final class MockURLProtocol: URLProtocol {
     static var handler: ((URLRequest) throws -> (Data, URLResponse))?
@@ -370,5 +537,118 @@ private extension URLRequest {
             data.append(buffer, count: read)
         }
         return data
+    }
+}
+
+/// `set-shuffle` / `set-loop` / `queue-jump` と `/v1/remote/queue`（409 `queue_unavailable` / `queue_changed` を型付きで返す）。
+final class RemoteQueueAPIClientTests: XCTestCase {
+    override func tearDown() {
+        MockURLProtocol.handler = nil
+        super.tearDown()
+    }
+
+    private func client(status: Int = 200, body: String = #"{"ok":true}"#, capture: ((URLRequest, [String: Any]?) -> Void)? = nil) -> (RemoteAPIClient, URLSession) {
+        MockURLProtocol.handler = { request in
+            var json: [String: Any]?
+            if let data = request.httpBody ?? request.httpBodyStream.flatMap({ stream -> Data in
+                stream.open(); defer { stream.close() }
+                var data = Data(); var buf = [UInt8](repeating: 0, count: 1024)
+                while stream.hasBytesAvailable { let n = stream.read(&buf, maxLength: 1024); if n <= 0 { break }; data.append(buf, count: n) }
+                return data
+            }) {
+                json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            }
+            capture?(request, json)
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+            return (Data(body.utf8), response)
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        return (RemoteAPIClient(baseURLString: "http://desktop.invalid:8765", session: session), session)
+    }
+
+    func testSetShuffleBody() async throws {
+        var captured: [String: Any]?
+        let (c, s) = client { _, json in captured = json }
+        defer { s.invalidateAndCancel() }
+        try await c.sendQueueCommand(action: "set-shuffle", intValue: 1)
+        XCTAssertEqual(captured?["action"] as? String, "set-shuffle")
+        XCTAssertEqual(captured?["value"] as? Int, 1)
+    }
+
+    func testSetLoopBody() async throws {
+        var captured: [String: Any]?
+        let (c, s) = client { _, json in captured = json }
+        defer { s.invalidateAndCancel() }
+        try await c.sendQueueCommand(action: "set-loop", mode: "one")
+        XCTAssertEqual(captured?["action"] as? String, "set-loop")
+        XCTAssertEqual(captured?["mode"] as? String, "one")
+        XCTAssertNil(captured?["value"])
+    }
+
+    func testQueueJumpBody() async throws {
+        var captured: [String: Any]?
+        let (c, s) = client { _, json in captured = json }
+        defer { s.invalidateAndCancel() }
+        try await c.sendQueueCommand(action: "queue-jump", intValue: 4, songId: "song-4")
+        XCTAssertEqual(captured?["action"] as? String, "queue-jump")
+        XCTAssertEqual(captured?["value"] as? Int, 4)
+        XCTAssertEqual(captured?["songId"] as? String, "song-4")
+    }
+
+    func test409QueueUnavailableIsTyped() async {
+        let (c, s) = client(status: 409, body: #"{"error":{"code":"queue_unavailable","message":"x"}}"#)
+        defer { s.invalidateAndCancel() }
+        do {
+            try await c.sendQueueCommand(action: "set-shuffle", intValue: 1)
+            XCTFail("expected throw")
+        } catch {
+            XCTAssertEqual(error as? RemoteQueueError, .unavailable)
+        }
+    }
+
+    func test409QueueChangedIsTyped() async {
+        let (c, s) = client(status: 409, body: #"{"error":{"code":"queue_changed","message":"x"}}"#)
+        defer { s.invalidateAndCancel() }
+        do {
+            try await c.sendQueueCommand(action: "queue-jump", intValue: 1, songId: "a")
+            XCTFail("expected throw")
+        } catch {
+            XCTAssertEqual(error as? RemoteQueueError, .changed)
+        }
+    }
+
+    func testOtherErrorsStayRemoteAPIError() async {
+        let (c, s) = client(status: 400, body: #"{"error":{"code":"bad_request","message":"bad"}}"#)
+        defer { s.invalidateAndCancel() }
+        do {
+            try await c.sendQueueCommand(action: "set-loop", mode: "zzz")
+            XCTFail("expected throw")
+        } catch RemoteAPIError.server(let code, _) {
+            XCTAssertEqual(code, "bad_request")
+        } catch {
+            XCTFail("unexpected \(error)")
+        }
+    }
+
+    func testFetchQueueParsesAndHitsQueuePath() async throws {
+        var path: String?
+        let (c, s) = client(body: #"{"available":true,"shuffled":false,"loopMode":"off","index":0,"items":[{"id":"a","title":"A"}]}"#) { req, _ in path = req.url?.path }
+        defer { s.invalidateAndCancel() }
+        let queue = try await c.fetchQueue()
+        XCTAssertEqual(path, "/v1/remote/queue")
+        XCTAssertEqual(queue.items.map(\.id), ["a"])
+    }
+
+    func testFetchQueue409Unavailable() async {
+        let (c, s) = client(status: 409, body: #"{"error":{"code":"queue_unavailable","message":"x"}}"#)
+        defer { s.invalidateAndCancel() }
+        do {
+            _ = try await c.fetchQueue()
+            XCTFail("expected throw")
+        } catch {
+            XCTAssertEqual(error as? RemoteQueueError, .unavailable)
+        }
     }
 }

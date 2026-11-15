@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -264,7 +265,128 @@ func (a *App) GetMTPDevices() (interface{}, error) {
 	}, nil
 }
 
+type mtpMonitorOps interface {
+	Initialize() error
+	FetchDeviceInfo() (map[string]interface{}, error)
+	FetchStorages() ([]mtp.Storage, error)
+	Dispose() error
+}
+
+func completeMTPConnection(ops mtpMonitorOps, onConnected func(interface{})) bool {
+	fmt.Println("[MTP Monitor] Device connected, fetching info...")
+
+	deviceInfo, err := ops.FetchDeviceInfo()
+	if err != nil {
+		fmt.Printf("[MTP Monitor] Failed to fetch device info: %v\n", err)
+		ops.Dispose()
+		return false
+	}
+
+	storages, err := ops.FetchStorages()
+	if err != nil {
+		fmt.Printf("[MTP Monitor] Failed to fetch storages: %v\n", err)
+		ops.Dispose()
+		return false
+	}
+	fmt.Printf("[MTP Monitor] Fetched %d storages: %+v\n", len(storages), storages)
+
+	storagesForUI := make([]map[string]interface{}, 0)
+	for _, storage := range storages {
+		storagesForUI = append(storagesForUI, map[string]interface{}{
+			"id":          storage.ID,
+			"free":        storage.Info.FreeSpaceInBytes,
+			"total":       storage.Info.MaxCapability,
+			"description": storage.Info.StorageDescription,
+		})
+	}
+
+	deviceName := "MTP Device"
+	if deviceInfo != nil {
+		if mtpInfo, ok := deviceInfo["mtpDeviceInfo"].(map[string]interface{}); ok {
+			if name, ok := mtpInfo["Model"].(string); ok && name != "" {
+				deviceName = name
+			}
+		}
+		if deviceName == "MTP Device" {
+			if usbInfo, ok := deviceInfo["usbDeviceInfo"].(map[string]interface{}); ok {
+				if name, ok := usbInfo["Product"].(string); ok && name != "" {
+					deviceName = name
+				}
+			}
+		}
+	}
+
+	payload := map[string]interface{}{
+		"device": map[string]interface{}{
+			"name":          deviceName,
+			"mtpDeviceInfo": deviceInfo,
+		},
+		"storages": storagesForUI,
+	}
+
+	fmt.Printf("[MTP Monitor] Device connected: %s\n", deviceName)
+	onConnected(payload)
+	return true
+}
+
+func disconnectMTP(ops mtpMonitorOps, onDisconnected func()) {
+	fmt.Println("[MTP Monitor] Device disconnected")
+	ops.Dispose()
+	onDisconnected()
+}
+
+func (a *App) mtpMonitorConnected() bool {
+	a.mtpMu.Lock()
+	defer a.mtpMu.Unlock()
+	return a.mtpConnected
+}
+func (a *App) mtpMonitorOnConnected(payload interface{}) {
+	a.mtpMu.Lock()
+	a.mtpConnected = true
+	a.mtpMu.Unlock()
+	a.emit("mtp-device-connected", payload)
+}
+func (a *App) mtpMonitorOnDisconnected() {
+	a.mtpMu.Lock()
+	a.mtpConnected = false
+	a.mtpMu.Unlock()
+	a.emit("mtp-device-disconnected", nil)
+}
+
 func (a *App) startMTPMonitor() {
+	events := make(chan bool, 16)
+	stopWatcher, err := mtp.WatchUSB(func(arrived bool) {
+		select {
+		case events <- arrived:
+		default:
+		}
+	})
+	if err == nil {
+		stopMonitor := make(chan struct{})
+		done := make(chan struct{})
+		monitor := mtpHotplugMonitor{
+			ops:            a.mtpManager,
+			events:         events,
+			settle:         500 * time.Millisecond,
+			retryDelays:    []time.Duration{time.Second, 2 * time.Second},
+			isConnected:    a.mtpMonitorConnected,
+			onConnected:    a.mtpMonitorOnConnected,
+			onDisconnected: a.mtpMonitorOnDisconnected,
+		}
+		go func() { defer close(done); monitor.run(stopMonitor) }()
+		a.mtpHotplugStop = func() { stopWatcher(); close(stopMonitor); <-done }
+		fmt.Println("[MTP Monitor] Started USB hotplug monitoring")
+		return
+	}
+	if errors.Is(err, mtp.ErrHotplugUnsupported) {
+		fmt.Printf("[MTP Monitor] USB hotplug unavailable: %v; using polling\n", err)
+	} else {
+		fmt.Printf("[MTP Monitor] USB hotplug failed: %v; using polling\n", err)
+	}
+	a.startMTPPolling()
+}
+
+func (a *App) startMTPPolling() {
 	go func() {
 		const (
 			minInterval       = 5 * time.Second
@@ -279,19 +401,9 @@ func (a *App) startMTPMonitor() {
 		fmt.Println("[MTP Monitor] Started polling for MTP devices")
 
 		for range ticker.C {
-			a.mtpMu.Lock()
-			wasConnected := a.mtpConnected
-			a.mtpMu.Unlock()
-
-			if wasConnected {
-				_, err := a.mtpManager.FetchStorages()
-				if err != nil {
-					fmt.Println("[MTP Monitor] Device disconnected")
-					a.mtpManager.Dispose()
-					a.mtpMu.Lock()
-					a.mtpConnected = false
-					a.mtpMu.Unlock()
-					a.emit("mtp-device-disconnected", nil)
+			if a.mtpMonitorConnected() {
+				if _, err := a.mtpManager.FetchStorages(); err != nil {
+					disconnectMTP(a.mtpManager, a.mtpMonitorOnDisconnected)
 					// Reset to fast polling after disconnect
 					currentInterval = minInterval
 					ticker.Reset(currentInterval)
@@ -299,8 +411,7 @@ func (a *App) startMTPMonitor() {
 				continue
 			}
 
-			err := a.mtpManager.Initialize()
-			if err != nil {
+			if err := a.mtpManager.Initialize(); err != nil {
 				// Exponential backoff: double the interval on each failure,
 				// up to the maximum, to reduce log noise from libusb.
 				currentInterval = currentInterval * 2
@@ -311,67 +422,98 @@ func (a *App) startMTPMonitor() {
 				continue
 			}
 
-			fmt.Println("[MTP Monitor] Device connected, fetching info...")
-
-			deviceInfo, err := a.mtpManager.FetchDeviceInfo()
-			if err != nil {
-				fmt.Printf("[MTP Monitor] Failed to fetch device info: %v\n", err)
-				a.mtpManager.Dispose()
-				continue
+			if completeMTPConnection(a.mtpManager, a.mtpMonitorOnConnected) {
+				// Reset to connected interval on success
+				currentInterval = connectedInterval
+				ticker.Reset(currentInterval)
 			}
-
-			storages, err := a.mtpManager.FetchStorages()
-			if err != nil {
-				fmt.Printf("[MTP Monitor] Failed to fetch storages: %v\n", err)
-				a.mtpManager.Dispose()
-				continue
-			}
-			fmt.Printf("[MTP Monitor] Fetched %d storages: %+v\n", len(storages), storages)
-
-			storagesForUI := make([]map[string]interface{}, 0)
-			for _, s := range storages {
-				storagesForUI = append(storagesForUI, map[string]interface{}{
-					"id":          s.ID,
-					"free":        s.Info.FreeSpaceInBytes,
-					"total":       s.Info.MaxCapability,
-					"description": s.Info.StorageDescription,
-				})
-			}
-
-			deviceName := "MTP Device"
-			if deviceInfo != nil {
-				if mtpInfo, ok := deviceInfo["mtpDeviceInfo"].(map[string]interface{}); ok {
-					if name, ok := mtpInfo["Model"].(string); ok && name != "" {
-						deviceName = name
-					}
-				}
-				if deviceName == "MTP Device" {
-					if usbInfo, ok := deviceInfo["usbDeviceInfo"].(map[string]interface{}); ok {
-						if name, ok := usbInfo["Product"].(string); ok && name != "" {
-							deviceName = name
-						}
-					}
-				}
-			}
-
-			payload := map[string]interface{}{
-				"device": map[string]interface{}{
-					"name":          deviceName,
-					"mtpDeviceInfo": deviceInfo,
-				},
-				"storages": storagesForUI,
-			}
-
-			a.mtpMu.Lock()
-			a.mtpConnected = true
-			a.mtpMu.Unlock()
-
-			// Reset to connected interval on success
-			currentInterval = connectedInterval
-			ticker.Reset(currentInterval)
-
-			fmt.Printf("[MTP Monitor] Device connected: %s\n", deviceName)
-			a.emit("mtp-device-connected", payload)
 		}
 	}()
+}
+
+type mtpHotplugMonitor struct {
+	ops            mtpMonitorOps
+	events         <-chan bool
+	settle         time.Duration
+	retryDelays    []time.Duration
+	isConnected    func() bool
+	onConnected    func(interface{})
+	onDisconnected func()
+}
+
+// run settles arrival bursts before connecting, retries failed arrivals twice,
+// and checks or cancels pending work when a device leaves.
+func (m mtpHotplugMonitor) run(stop <-chan struct{}) {
+	fmt.Println("[MTP Monitor] Hotplug initial connection attempt")
+	if err := m.ops.Initialize(); err == nil {
+		completeMTPConnection(m.ops, m.onConnected)
+	}
+	var timer *time.Timer
+	var timerC <-chan time.Time
+	attempts := 0
+	cancelTimer := func() {
+		if timer != nil {
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer = nil
+			timerC = nil
+		}
+	}
+	defer cancelTimer()
+	schedule := func(delay time.Duration) { cancelTimer(); timer = time.NewTimer(delay); timerC = timer.C }
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		select {
+		case <-stop:
+			return
+		case arrived := <-m.events:
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if arrived {
+				fmt.Println("[MTP Monitor] USB device arrived")
+				if !m.isConnected() {
+					attempts = 0
+					schedule(m.settle)
+				}
+			} else {
+				fmt.Println("[MTP Monitor] USB device left")
+				if m.isConnected() {
+					if _, err := m.ops.FetchStorages(); err != nil {
+						disconnectMTP(m.ops, m.onDisconnected)
+					}
+				} else {
+					cancelTimer()
+					attempts = 0
+				}
+			}
+		case <-timerC:
+			timer = nil
+			timerC = nil
+			if m.isConnected() {
+				continue
+			}
+			attempts++
+			fmt.Printf("[MTP Monitor] Hotplug connection attempt %d\n", attempts)
+			if err := m.ops.Initialize(); err == nil {
+				if completeMTPConnection(m.ops, m.onConnected) {
+					attempts = 0
+					continue
+				}
+			}
+			if attempts <= len(m.retryDelays) {
+				schedule(m.retryDelays[attempts-1])
+			}
+		}
+	}
 }

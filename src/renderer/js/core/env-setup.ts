@@ -1,6 +1,7 @@
 // src/renderer/js/env-setup.js
 // Wails 環境（および非 Wails のブラウザフォールバック）でも動作するように、window.electronAPI を安全化する
 import { errorMessage, readRecord, youtubeUrlFromPayload } from '../utils/type-guards.js';
+import { findLyricsWithCandidates } from './lyrics-lookup.js';
 
 const isWailsEnvironment = () => window.go !== undefined || window.runtime !== undefined;
 
@@ -205,32 +206,7 @@ window.electronAPI = window.electronAPI || {
                 },
                 'get-lyrics': async (song) => {
                     if (!app?.GetLyrics) return null;
-
-                    const candidates = [];
-                    const songPath = typeof song?.path === 'string' ? song.path.trim() : '';
-                    const songTitle = typeof song?.title === 'string' ? song.title.trim() : '';
-
-                    if (songPath) {
-                        const fileName = songPath.split(/[\\/]/).pop() || '';
-                        const dotIndex = fileName.lastIndexOf('.');
-                        const baseName = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
-                        if (baseName.trim()) {
-                            candidates.push(baseName.trim());
-                        }
-                    }
-                    if (songTitle) {
-                        candidates.push(songTitle);
-                    }
-
-                    const uniqueCandidates = [...new Set(candidates)];
-                    for (const candidate of uniqueCandidates) {
-                        const result = await app.GetLyrics(candidate);
-                        if (result && (result.type === 'lrc' || result.type === 'txt')) {
-                            return result;
-                        }
-                    }
-
-                    return null;
+                    return findLyricsWithCandidates((name) => app.GetLyrics(name), song);
                 },
                 'save-lrc-file': async (data) => {
                     if (!app?.SaveLrcFile) {

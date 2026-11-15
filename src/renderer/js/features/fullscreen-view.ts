@@ -6,6 +6,11 @@ import { playNextSong, playPrevSong, playSong } from './playback-manager.js';
 import { DEFAULT_ARTWORK_URL } from '../constants/default-artwork.js';
 import { animateIconPaths } from '../ui/player-ui.js';
 import { isInterludeText } from './lyrics-translation.js';
+import {
+    resolveLyricsLineIndexFromTarget,
+    resolveLyricsLineSeekTime,
+    resolveLyricsMotionTiming,
+} from './lyrics-motion.js';
 import { EQUALIZER_COLOURS_CHANGE_EVENT } from '../ui/utils.js';
 import { isEmbedPlayerActive, reattachEmbedPlayer } from './youtube-embed-player.js';
 import { resolveFullscreenMediaMode, syncArtworkAspect } from './fullscreen-media.js';
@@ -53,8 +58,6 @@ let lyricsResizeObserver: ResizeObserver | null = null;
 
 const ANCHOR_RATIO = 0.35;
 const INTER_BLOCK_GAP = 16;
-const MOTION_DURATION_MS = 800;
-const MOTION_DELAY_STEP_MS = 40;
 
 // ---- 公開 API ----
 
@@ -70,7 +73,11 @@ export function openFullscreenView() {
     document.addEventListener('keydown', handleKeydown);
 
     if (lyricsContainer && !lyricsResizeObserver) {
-        lyricsResizeObserver = new ResizeObserver(() => { cachedLrcHeights = null; });
+        lyricsResizeObserver = new ResizeObserver(() => {
+            cachedLrcHeights = null;
+            if (!isOpen() || currentLyricsType !== 'lrc') return;
+            requestAnimationFrame(() => applyLyricsMotion(currentAnimatedIndex, true));
+        });
         lyricsResizeObserver.observe(lyricsContainer);
     }
 }
@@ -327,7 +334,8 @@ function syncLyrics() {
             lyricsEl.appendChild(p);
         });
         lyricsLineElements = Array.from(lyricsEl.querySelectorAll('p[data-index]'));
-        applyLyricsMotion(-1, true);
+        // 曲の途中で開いた場合も、現在行へ遷移なしで合わせる
+        applyLyricsMotion(findLyricsIndex(lyrics, getCurrentTime()), true);
     } else {
         // TXT or plain array
         lyricsEl.classList.add('fs-txt');
@@ -401,7 +409,7 @@ function applyLyricsMotion(activeIndex: number, immediate = false) {
 
     const baseIndex = activeIndex >= 0 ? activeIndex : 0;
     const anchorY = lyricsEl.clientHeight * ANCHOR_RATIO;
-    const dur = immediate ? 0 : MOTION_DURATION_MS;
+    const timing = resolveLyricsMotionTiming(currentAnimatedIndex, activeIndex, immediate);
 
     lines.forEach((line, i) => line.classList.toggle('active', i === activeIndex));
 
@@ -422,12 +430,26 @@ function applyLyricsMotion(activeIndex: number, immediate = false) {
 
     lines.forEach((line, i) => {
         const dist = Math.abs(i - (activeIndex >= 0 ? activeIndex : 0));
-        line.style.setProperty('--fs-line-delay', immediate ? '0ms' : `${dist * MOTION_DELAY_STEP_MS}ms`);
-        line.style.setProperty('--fs-line-dur', `${dur}ms`);
+        line.style.setProperty('--fs-line-delay', `${dist * timing.delayStepMs}ms`);
+        line.style.setProperty('--fs-line-dur', `${timing.durationMs}ms`);
         line.style.setProperty('--fs-line-y', `${tops[i].toFixed(2)}px`);
     });
 
     currentAnimatedIndex = activeIndex;
+}
+
+function handleFsLyricsLineClick(event: MouseEvent) {
+    if (currentLyricsType !== 'lrc' || !lyricsEl) return;
+    // ドラッグでの文字列選択はシーク扱いしない
+    const selection = window.getSelection?.();
+    if (selection && !selection.isCollapsed) return;
+    const index = resolveLyricsLineIndexFromTarget(event.target, lyricsEl);
+    if (index === null) return;
+    const time = resolveLyricsLineSeekTime(state.currentLyrics, index);
+    if (time === null) return;
+    void seek(time);
+    lastResolvedIndex = index;
+    applyLyricsMotion(index, false);
 }
 
 // ---- シャッフル・ループ ボタン アニメーション ----
@@ -651,6 +673,9 @@ function buildOverlay(): HTMLElement {
     fsPlayPart2    = el.querySelector('#fs-play-btn .icon-part-2');
 
     initialiseFsShuffleLoop();
+
+    // 同期歌詞の行クリックでその行の時刻へシーク
+    lyricsEl?.addEventListener('click', handleFsLyricsLineClick);
 
     // タブ切り替え
     el.querySelectorAll('.fs-tab-label').forEach((tab) => {

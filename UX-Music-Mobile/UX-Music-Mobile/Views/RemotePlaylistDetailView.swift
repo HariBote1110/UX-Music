@@ -57,7 +57,8 @@ struct RemotePlaylistDetailView: View {
 
     private var scrollBody: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            // Lazy: long song lists only build the rows that are on screen.
+            LazyVStack(alignment: .leading, spacing: 0) {
                 header
                 HStack(alignment: .top, spacing: 8) {
                     VStack(alignment: .leading, spacing: 4) {

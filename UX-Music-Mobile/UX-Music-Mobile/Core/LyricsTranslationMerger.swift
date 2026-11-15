@@ -55,22 +55,42 @@ enum LyricsTranslationMerger {
         primary: [LRCParser.TimedLine],
         translation: [LRCParser.TimedLine]
     ) -> [TranslatedTimedLine] {
-        var byTime: [Double: String] = [:]
+        // Several lines may share one timestamp. Each time group pairs its translations with its
+        // primary lines in order: positionally when the counts match (blank primary lines consume
+        // their slot), otherwise non-blank translations with non-blank primary lines.
+        var translationsByTime: [Double: [String]] = [:]
         for line in translation {
-            let key = timeKey(line.startTime)
-            if byTime[key] == nil { byTime[key] = line.text }
+            translationsByTime[timeKey(line.startTime), default: []].append(line.text)
+        }
+        var primaryIndicesByTime: [Double: [Int]] = [:]
+        for (index, line) in primary.enumerated() {
+            primaryIndicesByTime[timeKey(line.startTime), default: []].append(index)
+        }
+        var picks: [Int: String] = [:]
+        for (key, indices) in primaryIndicesByTime {
+            guard let texts = translationsByTime[key] else { continue }
+            if texts.count == indices.count {
+                for (slot, index) in indices.enumerated() {
+                    picks[index] = texts[slot]
+                }
+            } else {
+                let nonBlankPrimary = indices.filter { !isInterludeText(primary[$0].text) }
+                let nonBlankTexts = texts.filter { nonBlankOrNil($0) != nil }
+                for (index, text) in zip(nonBlankPrimary, nonBlankTexts) {
+                    picks[index] = text
+                }
+            }
         }
         return primary.enumerated().map { index, line in
             guard !isInterludeText(line.text) else {
                 return TranslatedTimedLine(id: line.id, startTime: line.startTime, text: line.text, translation: nil)
             }
-            let fromTime = byTime[timeKey(line.startTime)]
             let fromIndex = index < translation.count ? translation[index].text : nil
             return TranslatedTimedLine(
                 id: line.id,
                 startTime: line.startTime,
                 text: line.text,
-                translation: nonBlankOrNil(fromTime ?? fromIndex)
+                translation: nonBlankOrNil(picks[index] ?? fromIndex)
             )
         }
     }

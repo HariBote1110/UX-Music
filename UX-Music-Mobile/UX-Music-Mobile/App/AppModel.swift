@@ -63,6 +63,7 @@ final class AppModel {
 
     var libraryState: LibraryLoadState = .idle
     var loudness: [String: Double] = [:]
+    private let loudnessDefaults: UserDefaults
 
     /// User-selected local Library sort order, persisted to `UserDefaults` so it survives relaunch.
     var librarySortOrder: LibrarySortOrder {
@@ -291,9 +292,11 @@ final class AppModel {
     init(
         playlistStore: PlaylistStore? = nil,
         lyricsFileStore: LyricsFileStore? = nil,
-        discovery: LANDiscoveryService = LANDiscoveryService()
+        discovery: LANDiscoveryService = LANDiscoveryService(),
+        loudnessDefaults: UserDefaults = .standard
     ) {
         serverConfig = Self.loadSettings()
+        self.loudnessDefaults = loudnessDefaults
         self.discovery = discovery
         if let raw = UserDefaults.standard.string(forKey: AppConstants.librarySortOrderKey),
            let restored = LibrarySortOrder(rawValue: raw) {
@@ -336,6 +339,11 @@ final class AppModel {
         player = MusicPlayerService(collectionShufflePreferenceStore: collectionShufflePreferenceStore)
         player.youtubeLowQualityOnCellular = youtubeLowQualityOnCellular
         player.targetLoudness = AppConstants.defaultTargetLoudness
+        if let data = loudnessDefaults.data(forKey: AppConstants.loudnessCacheKey),
+           let cached = try? JSONDecoder().decode([String: Double].self, from: data) {
+            loudness = cached
+            player.loudnessMap = cached
+        }
         player.loadArtworkImage = { [weak self] song in
             guard let self else { return nil }
             let s = self.artworkURL(for: song.artworkId)
@@ -533,14 +541,15 @@ final class AppModel {
         }
     }
 
-    /// Probes `hosts` in order (like `withFailover`/Discovery) for the first one that answers
+    /// Probes all `hosts` concurrently for the first one that answers
     /// `GET /v1/identity`, then redeems the secret against that reachable host. On success, the
     /// remaining candidates are kept as `fallbackHosts` so later requests can fail over too.
     @discardableResult
     func redeemPairing(hosts: [String], port: Int, secret: String) async -> Bool {
         let candidates = hosts.map { ServerConfig(host: $0, port: port) }
+        let session = urlSession
         let resolved = await RemoteConnectionResolver.resolve(candidates: candidates) { candidate in
-            try await RemoteAPIClient(baseURLString: candidate.baseURLString, session: urlSession).ping()
+            try await RemoteAPIClient(baseURLString: candidate.baseURLString, session: session).ping()
         }
         guard let resolved else {
             pairingError = String(localized: "Could not reach the desktop app. Check that you are on the same Wi-Fi network.")
@@ -571,9 +580,7 @@ final class AppModel {
             libraryState = .loaded(songs)
             remoteLibraryRevision &+= 1
             if let map = try? await withFailover({ try await $0.fetchLoudness() }) {
-                loudness = map
-                player.loudnessMap = map
-                player.refreshVolumeForCurrentSong()
+                updateLoudness(map)
             }
         } catch is CancellationError {
             // Tab switched away (LazyTabRoot) or view replaced; avoid stuck `.loading`.
@@ -588,11 +595,18 @@ final class AppModel {
     func refreshLoudnessOnly() async {
         do {
             let map = try await withFailover { try await $0.fetchLoudness() }
-            loudness = map
-            player.loudnessMap = map
-            player.refreshVolumeForCurrentSong()
+            updateLoudness(map)
         } catch {
             // Keep previous map (Flutter behaviour)
+        }
+    }
+
+    private func updateLoudness(_ map: [String: Double]) {
+        // Retain values for downloaded tracks even if the desktop no longer lists them.
+        loudness.merge(map) { _, latest in latest }
+        player.loudnessMap = loudness
+        if let data = try? JSONEncoder().encode(loudness) {
+            loudnessDefaults.set(data, forKey: AppConstants.loudnessCacheKey)
         }
     }
 

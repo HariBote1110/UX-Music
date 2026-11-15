@@ -93,16 +93,12 @@ func selectDevice(cands []*Device, pattern string) (*Device, error) {
 	for i, cand := range cands {
 		id, err := cand.ID()
 		if err != nil {
-			// TODO - close cands
 			return nil, fmt.Errorf("Id dev %d: %v", i, err)
 		}
 
 		if pattern == "" || re.FindString(id) != "" {
 			found = append(found, cand)
 			ids = append(ids, id)
-		} else {
-			cand.Close()
-			cand.Done()
 		}
 	}
 
@@ -135,12 +131,31 @@ func SelectDevice(pattern string) (*Device, error) {
 	c := usb.NewContext()
 
 	devs, err := FindDevices(c)
+	cleanup := func(selected *Device) {
+		for _, dev := range devs {
+			if dev != selected {
+				dev.Close()
+				dev.Done()
+			}
+		}
+	}
 	if err != nil {
+		cleanup(nil)
+		c.Exit()
 		return nil, err
 	}
 	if len(devs) == 0 {
+		c.Exit()
 		return nil, fmt.Errorf("no MTP devices found")
 	}
 
-	return selectDevice(devs, pattern)
+	selected, err := selectDevice(devs, pattern)
+	if err != nil {
+		cleanup(nil)
+		c.Exit()
+		return nil, err
+	}
+	cleanup(selected)
+	selected.ctx = c
+	return selected, nil
 }

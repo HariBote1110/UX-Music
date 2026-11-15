@@ -9,7 +9,7 @@ import os.log
 /// a retry after a transient failure cannot double-count a play.
 struct TVPlayEventReporter {
     private let client: RemoteAPIClient
-    private let logger = Logger(subsystem: "com.uxlabs.uxMusicMobile.tv", category: "play-event")
+    private let logger = Logger(subsystem: "jp.ux-labs.UXMusicMobile.tv", category: "play-event")
 
     init(client: RemoteAPIClient) {
         self.client = client

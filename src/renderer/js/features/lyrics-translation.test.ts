@@ -14,6 +14,55 @@ import {
     parseNumberedLinesFromPastedText,
 } from './lyrics-translation.js';
 
+describe('parseLRC timestamp forms', () => {
+    it('accepts single-digit minutes', () => {
+        const r = parseLRC('[0:12.34]Hello');
+        expect(r).toHaveLength(1);
+        expect(r[0].time).toBeCloseTo(0 * 60 + 12 + 34 / 100, 6);
+        expect(r[0].text).toBe('Hello');
+    });
+
+    it('accepts a timestamp without fraction', () => {
+        const r = parseLRC('[00:12]Hello');
+        expect(r).toHaveLength(1);
+        expect(r[0].time).toBeCloseTo(12, 6);
+        expect(r[0].text).toBe('Hello');
+    });
+
+    it('accepts a one-digit fraction as tenths', () => {
+        const r = parseLRC('[00:12.3]Hello');
+        expect(r).toHaveLength(1);
+        expect(r[0].time).toBeCloseTo(12 + 0.3, 6);
+    });
+
+    it('accepts a three-digit fraction as milliseconds', () => {
+        const r = parseLRC('[01:02.345]Hello');
+        expect(r[0].time).toBeCloseTo(60 + 2 + 0.345, 6);
+    });
+
+    it('keeps the legacy all-dots form working', () => {
+        const r = parseLRC('[00.12.34]Hello\n[00.13.345]World');
+        expect(r[0].time).toBeCloseTo(12 + 0.34, 6);
+        expect(r[1].time).toBeCloseTo(13 + 0.345, 6);
+    });
+
+    it('still accepts the colon-and-dot form with two-digit parts', () => {
+        const r = parseLRC('[00:12.34]Hello');
+        expect(r[0].time).toBeCloseTo(12 + 0.34, 6);
+    });
+
+    it('does not treat two dot-separated numbers as a timestamp', () => {
+        expect(parseLRC('[12.34]Hello')).toEqual([]);
+    });
+
+    it('ignores metadata tags', () => {
+        const r = parseLRC('[ar:Artist]\n[ti:Title]\n[offset:100]\n[length:03:20]\n[00:01.00]Line');
+        expect(r).toHaveLength(1);
+        expect(r[0].text).toBe('Line');
+        expect(r[0].time).toBeCloseTo(1, 6);
+    });
+});
+
 describe('parseLRC', () => {
     it('preserves time order', () => {
         const r = parseLRC('[00:02.00]Second\n[00:01.00]First\n');
@@ -64,6 +113,31 @@ describe('mergeLrcWithJaLrc', () => {
         expect(m[1].translation).toBeUndefined();
     });
 
+    it('keeps every Japanese line when several lines share one timestamp', () => {
+        const en = parseLRC('[00:10.00]Hello\n[00:10.00]World');
+        const ja = parseLRC('[00:10.00]こんにちは\n[00:10.00]世界');
+        const m = mergeLrcWithJaLrc(en, ja);
+        expect(m[0].translation).toBe('こんにちは');
+        expect(m[1].translation).toBe('世界');
+    });
+
+    it('pairs same-time lines by position even when the first primary line is blank', () => {
+        const en = parseLRC('[00:10.00]\n[00:10.00]Hello');
+        const ja = parseLRC('[00:10.00]あ\n[00:10.00]い');
+        const m = mergeLrcWithJaLrc(en, ja);
+        expect(m[0].translation).toBeUndefined();
+        expect(m[1].translation).toBe('い');
+    });
+
+    it('pairs non-blank same-time Japanese lines in order when counts differ', () => {
+        const en = parseLRC('[00:10.00]\n[00:10.00]B\n[00:10.00]C');
+        const ja = parseLRC('[00:10.00]あ\n[00:10.00]い');
+        const m = mergeLrcWithJaLrc(en, ja);
+        expect(m[0].translation).toBeUndefined();
+        expect(m[1].translation).toBe('あ');
+        expect(m[2].translation).toBe('い');
+    });
+
     it('attaches by timestamp', () => {
         const en = parseLRC('[00:10.00]Hello');
         const ja = parseLRC('[00:10.00]こんにちは');
@@ -102,6 +176,13 @@ describe('mergePlainTxtWithJa', () => {
         const m = mergePlainTxtWithJa('One\nTwo', 'いち\nに');
         expect(m[0].text).toBe('One');
         expect(m[0].translation).toBe('いち');
+        expect(m[1].translation).toBe('に');
+    });
+
+    it('drops extra Japanese lines beyond the main lyric line count', () => {
+        const m = mergePlainTxtWithJa('One\nTwo', 'いち\nに\nさん\n');
+        expect(m).toHaveLength(2);
+        expect(m.map(l => l.text)).toEqual(['One', 'Two']);
         expect(m[1].translation).toBe('に');
     });
 

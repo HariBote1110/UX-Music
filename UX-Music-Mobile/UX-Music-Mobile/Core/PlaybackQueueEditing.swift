@@ -95,4 +95,166 @@ enum PlaybackQueueEditing {
             return "\(id)#\(occurrence)"
         }
     }
+
+    // MARK: - Shuffle bookkeeping
+    //
+    // While shuffle is on, `queue` is the shuffled order, `originalQueue` is the order to restore
+    // when shuffle is turned off, and `origins[i]` is the index in `originalQueue` of `queue[i]`.
+    // Origins make every edit exact even when the same song appears more than once. If `origins`
+    // ever falls out of step with `queue` (count mismatch), the helpers fall back to id-based
+    // behaviour and clear `origins` rather than crashing.
+
+    /// The unshuffled order and the per-entry origins that shuffle-on edits must keep in step.
+    struct ShuffleBookkeeping<T> {
+        var originalQueue: [T]
+        var origins: [Int]
+    }
+
+    /// The shuffled order for `queue`, as indices into `queue`. Uses the same reordering as
+    /// `PlaybackShuffleLogic.applyShuffle`: the first entry with `currentId` is moved to the front.
+    /// `shuffledIndices` is returned unchanged when its count does not match `queue`.
+    static func pinnedShuffleOrder<T>(
+        queue: [T],
+        shuffledIndices: [Int],
+        currentId: String?,
+        id: (T) -> String
+    ) -> [Int] {
+        guard shuffledIndices.count == queue.count else { return Array(queue.indices) }
+        var order = shuffledIndices
+        guard let currentId, let position = order.firstIndex(where: { id(queue[$0]) == currentId }) else {
+            return order
+        }
+        let current = order.remove(at: position)
+        order.insert(current, at: 0)
+        return order
+    }
+
+    /// Bookkeeping after removing the entry at `removedIndex` of the pre-removal `queue`. The
+    /// original copy named by that entry's origin is removed, and origins above it shift down.
+    static func bookkeepingAfterRemoving<T>(
+        queue: [T],
+        state: ShuffleBookkeeping<T>,
+        removedIndex: Int,
+        id: (T) -> String
+    ) -> ShuffleBookkeeping<T> {
+        guard queue.indices.contains(removedIndex) else { return state }
+        let inStep = state.origins.count == queue.count
+        if inStep, state.origins.indices.contains(removedIndex) {
+            let origin = state.origins[removedIndex]
+            if state.originalQueue.indices.contains(origin) {
+                var originalQueue = state.originalQueue
+                originalQueue.remove(at: origin)
+                var origins = state.origins
+                origins.remove(at: removedIndex)
+                origins = origins.map { $0 > origin ? $0 - 1 : $0 }
+                return ShuffleBookkeeping(originalQueue: originalQueue, origins: origins)
+            }
+        }
+        return removeFirstById(id(queue[removedIndex]), from: state.originalQueue, id: id)
+    }
+
+    /// Bookkeeping after appending `item` to `queue`. The new entry's origin is the end of the
+    /// original order.
+    static func bookkeepingAfterAppending<T>(
+        queue: [T],
+        state: ShuffleBookkeeping<T>,
+        item: T
+    ) -> ShuffleBookkeeping<T> {
+        var originalQueue = state.originalQueue
+        originalQueue.append(item)
+        guard state.origins.count == queue.count else {
+            return ShuffleBookkeeping(originalQueue: originalQueue, origins: [])
+        }
+        return ShuffleBookkeeping(originalQueue: originalQueue, origins: state.origins + [originalQueue.count - 1])
+    }
+
+    /// Bookkeeping after inserting `item` immediately after the entry at `currentIndex` of the
+    /// pre-insert `queue`. The copy goes right after the current song's origin in the original
+    /// order. If the current song cannot be located, `item` is appended to the original order.
+    static func bookkeepingAfterInsertingNext<T>(
+        queue: [T],
+        state: ShuffleBookkeeping<T>,
+        currentIndex: Int,
+        item: T,
+        id: (T) -> String
+    ) -> ShuffleBookkeeping<T> {
+        guard queue.indices.contains(currentIndex) else {
+            return bookkeepingAfterAppending(queue: queue, state: state, item: item)
+        }
+        let inStep = state.origins.count == queue.count
+        if inStep, state.origins.indices.contains(currentIndex) {
+            let position = state.origins[currentIndex] + 1
+            if position <= state.originalQueue.count {
+                var originalQueue = state.originalQueue
+                originalQueue.insert(item, at: position)
+                var origins = state.origins.map { $0 >= position ? $0 + 1 : $0 }
+                origins.insert(position, at: currentIndex + 1)
+                return ShuffleBookkeeping(originalQueue: originalQueue, origins: origins)
+            }
+        }
+        return insertAfterFirstById(id(queue[currentIndex]), item: item, into: state.originalQueue, id: id)
+    }
+
+    /// Bookkeeping after moving the entry at `from` to `to` in `queue`. Only the shuffled order
+    /// changes; `originalQueue` is left alone, so turning shuffle off restores the original order.
+    static func bookkeepingAfterMoving<T>(
+        queue: [T],
+        state: ShuffleBookkeeping<T>,
+        from: Int,
+        to: Int
+    ) -> ShuffleBookkeeping<T> {
+        guard state.origins.count == queue.count else { return state }
+        return ShuffleBookkeeping(
+            originalQueue: state.originalQueue,
+            origins: moveElement(in: state.origins, from: from, to: to)
+        )
+    }
+
+    /// Index in `originalQueue` of the current song (`queue[currentIndex]`), used when shuffle is
+    /// turned off. Falls back to the first copy with `currentId` when origins are out of step.
+    static func originalIndexOfCurrent<T>(
+        queue: [T],
+        state: ShuffleBookkeeping<T>,
+        currentIndex: Int,
+        currentId: String,
+        id: (T) -> String
+    ) -> Int? {
+        if state.origins.count == queue.count, state.origins.indices.contains(currentIndex) {
+            let origin = state.origins[currentIndex]
+            if state.originalQueue.indices.contains(origin), id(state.originalQueue[origin]) == currentId {
+                return origin
+            }
+        }
+        return state.originalQueue.firstIndex(where: { id($0) == currentId })
+    }
+
+    /// Position in the shuffled queue of the entry whose origin is `originIndex`, or `nil`.
+    static func shuffledIndex(ofOriginal originIndex: Int, origins: [Int]) -> Int? {
+        origins.firstIndex(of: originIndex)
+    }
+
+    // MARK: - Id-based fallbacks
+
+    private static func removeFirstById<T>(_ target: String, from originalQueue: [T], id: (T) -> String) -> ShuffleBookkeeping<T> {
+        var copy = originalQueue
+        if let index = copy.firstIndex(where: { id($0) == target }) {
+            copy.remove(at: index)
+        }
+        return ShuffleBookkeeping(originalQueue: copy, origins: [])
+    }
+
+    private static func insertAfterFirstById<T>(
+        _ current: String,
+        item: T,
+        into originalQueue: [T],
+        id: (T) -> String
+    ) -> ShuffleBookkeeping<T> {
+        var copy = originalQueue
+        if let index = copy.firstIndex(where: { id($0) == current }) {
+            copy.insert(item, at: index + 1)
+        } else {
+            copy.append(item)
+        }
+        return ShuffleBookkeeping(originalQueue: copy, origins: [])
+    }
 }

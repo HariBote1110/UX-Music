@@ -29,16 +29,18 @@ func validateCollectionShufflePreference(kind string, key string, preference str
 // are "album:<albumKey>" or "playlist:<playlistName>" and values are "on"
 // or "off"; absent keys intentionally represent an unset preference.
 func (a *App) GetCollectionShufflePreferences() (map[string]string, error) {
-	raw, err := store.Instance.LoadMap(collectionShuffleStoreName)
+	preferences := map[string]string{}
+	err := store.Instance.UpdateMap(collectionShuffleStoreName, func(raw map[string]interface{}) (bool, error) {
+		for key, value := range raw {
+			preference, ok := value.(string)
+			if ok && (strings.HasPrefix(key, "album:") || strings.HasPrefix(key, "playlist:")) && (preference == "on" || preference == "off") {
+				preferences[key] = preference
+			}
+		}
+		return false, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	preferences := make(map[string]string, len(raw))
-	for key, value := range raw {
-		preference, ok := value.(string)
-		if ok && (strings.HasPrefix(key, "album:") || strings.HasPrefix(key, "playlist:")) && (preference == "on" || preference == "off") {
-			preferences[key] = preference
-		}
 	}
 	return preferences, nil
 }
@@ -49,45 +51,57 @@ func (a *App) SetCollectionShufflePreference(kind string, key string, preference
 	if err := validateCollectionShufflePreference(kind, key, preference); err != nil {
 		return err
 	}
-	raw, err := store.Instance.LoadMap(collectionShuffleStoreName)
-	if err != nil {
-		return err
-	}
 	preferenceKey := collectionShufflePreferenceKey(kind, key)
-	if preference == "" {
-		delete(raw, preferenceKey)
-	} else {
+	return store.Instance.UpdateMap(collectionShuffleStoreName, func(raw map[string]interface{}) (bool, error) {
+		if preference == "" {
+			if _, exists := raw[preferenceKey]; !exists {
+				return false, nil
+			}
+			delete(raw, preferenceKey)
+			return true, nil
+		}
 		raw[preferenceKey] = preference
-	}
-	return store.Instance.Save(collectionShuffleStoreName, raw)
+		return true, nil
+	})
 }
 
+// renamePlaylistShufflePreference moves a playlist's default to its new name.
+// Names are trimmed the same way internal/playlist does, so the keys match the
+// names the playlist actually ends up with. A pre-existing entry under the new
+// name is an orphan from an earlier playlist; the renamed playlist's own
+// setting wins, so it is overwritten or removed.
 func (a *App) renamePlaylistShufflePreference(oldName string, newName string) error {
-	raw, err := store.Instance.LoadMap(collectionShuffleStoreName)
-	if err != nil {
-		return err
-	}
-	oldKey := collectionShufflePreferenceKey("playlist", oldName)
-	preference, exists := raw[oldKey]
-	if !exists {
+	oldKey := collectionShufflePreferenceKey("playlist", strings.TrimSpace(oldName))
+	newKey := collectionShufflePreferenceKey("playlist", strings.TrimSpace(newName))
+	if oldKey == newKey {
 		return nil
 	}
-	delete(raw, oldKey)
-	if value, ok := preference.(string); ok && (value == "on" || value == "off") {
-		raw[collectionShufflePreferenceKey("playlist", newName)] = value
-	}
-	return store.Instance.Save(collectionShuffleStoreName, raw)
+	return store.Instance.UpdateMap(collectionShuffleStoreName, func(raw map[string]interface{}) (bool, error) {
+		changed := false
+		preference, exists := raw[oldKey]
+		if exists {
+			delete(raw, oldKey)
+			changed = true
+		}
+		if value, ok := preference.(string); ok && (value == "on" || value == "off") {
+			raw[newKey] = value
+			return true, nil
+		}
+		if _, stale := raw[newKey]; stale {
+			delete(raw, newKey)
+			changed = true
+		}
+		return changed, nil
+	})
 }
 
 func (a *App) deletePlaylistShufflePreference(name string) error {
-	raw, err := store.Instance.LoadMap(collectionShuffleStoreName)
-	if err != nil {
-		return err
-	}
 	key := collectionShufflePreferenceKey("playlist", name)
-	if _, exists := raw[key]; !exists {
-		return nil
-	}
-	delete(raw, key)
-	return store.Instance.Save(collectionShuffleStoreName, raw)
+	return store.Instance.UpdateMap(collectionShuffleStoreName, func(raw map[string]interface{}) (bool, error) {
+		if _, exists := raw[key]; !exists {
+			return false, nil
+		}
+		delete(raw, key)
+		return true, nil
+	})
 }

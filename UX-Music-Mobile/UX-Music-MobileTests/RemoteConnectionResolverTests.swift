@@ -1,41 +1,86 @@
+import AVFoundation
+import SwiftUI
 import XCTest
 @testable import UX_Music_Mobile
 
 final class RemoteConnectionResolverTests: XCTestCase {
-    func testResolve_returnsFirstReachableCandidate() async {
+    func testResolve_returnsFastSuccessWithoutWaitingForSlowFailureAhead() async {
         let candidates = [
             ServerConfig(host: "10.0.0.1", port: 8765),
             ServerConfig(host: "10.0.0.2", port: 8765),
         ]
-        var pinged: [String] = []
+        let start = Date()
         let result = await RemoteConnectionResolver.resolve(candidates: candidates) { config in
-            pinged.append(config.host)
             if config.host == "10.0.0.1" {
+                try await Task.sleep(nanoseconds: 2_000_000_000)
                 throw URLError(.cannotConnectToHost)
             }
             return "desk"
         }
         XCTAssertEqual(result?.config.host, "10.0.0.2")
         XCTAssertEqual(result?.serverName, "desk")
-        // Only the first two candidates should have been pinged (no third candidate exists here, but
-        // this also documents that resolution stops once a candidate succeeds).
-        XCTAssertEqual(pinged, ["10.0.0.1", "10.0.0.2"])
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0)
     }
 
-    func testResolve_stopsPingingAfterFirstSuccess() async {
+    func testResolve_returnsOnlySuccessThatAnswersLate() async {
         let candidates = [
             ServerConfig(host: "10.0.0.1", port: 8765),
             ServerConfig(host: "10.0.0.2", port: 8765),
             ServerConfig(host: "10.0.0.3", port: 8765),
         ]
-        var pinged: [String] = []
-        _ = await RemoteConnectionResolver.resolve(candidates: candidates) { config in
-            pinged.append(config.host)
-            if config.host == "10.0.0.1" { return "desk" }
-            XCTFail("Should not ping candidates after a success")
+        let result = await RemoteConnectionResolver.resolve(candidates: candidates) { config in
+            if config.host == "10.0.0.3" {
+                try await Task.sleep(nanoseconds: 300_000_000)
+                return "late"
+            }
             throw URLError(.cannotConnectToHost)
         }
-        XCTAssertEqual(pinged, ["10.0.0.1"])
+        XCTAssertEqual(result?.config.host, "10.0.0.3")
+        XCTAssertEqual(result?.serverName, "late")
+    }
+
+    func testResolve_returnsACandidateFromTheListWhenSeveralSucceed() async {
+        let candidates = [
+            ServerConfig(host: "10.0.0.1", port: 8765),
+            ServerConfig(host: "10.0.0.2", port: 8765),
+        ]
+        let result = await RemoteConnectionResolver.resolve(candidates: candidates) { _ in "desk" }
+        XCTAssertTrue(candidates.map(\.host).contains(result?.config.host ?? ""))
+    }
+
+    func testResolve_cancelsSlowProbesAfterFirstSuccess() async {
+        let candidates = [
+            ServerConfig(host: "10.0.0.1", port: 8765),
+            ServerConfig(host: "10.0.0.2", port: 8765),
+        ]
+        let cancelled = expectation(description: "slow probe cancelled")
+        let result = await RemoteConnectionResolver.resolve(candidates: candidates) { config in
+            if config.host == "10.0.0.1" {
+                do {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                } catch {
+                    cancelled.fulfill()
+                    throw error
+                }
+                return "slow"
+            }
+            return "fast"
+        }
+        XCTAssertEqual(result?.config.host, "10.0.0.2")
+        await fulfillment(of: [cancelled], timeout: 1.0)
+    }
+
+    func testPostSelectionAction_authorisedIsConnected() {
+        XCTAssertEqual(DiscoveredPeerAction.after(authorised: true, cameraAvailable: true), .connected)
+        XCTAssertEqual(DiscoveredPeerAction.after(authorised: true, cameraAvailable: false), .connected)
+    }
+
+    func testPostSelectionAction_unauthorisedWithCameraPresentsScanner() {
+        XCTAssertEqual(DiscoveredPeerAction.after(authorised: false, cameraAvailable: true), .presentScanner)
+    }
+
+    func testPostSelectionAction_unauthorisedWithoutCameraFocusesPairingCode() {
+        XCTAssertEqual(DiscoveredPeerAction.after(authorised: false, cameraAvailable: false), .focusPairingCode)
     }
 
     func testResolve_returnsNilWhenAllCandidatesFail() async {
@@ -281,6 +326,19 @@ final class RemoteConnectionResolverTests: XCTestCase {
             XCTAssertEqual((error as? URLError)?.code, .cannotConnectToHost)
         }
         XCTAssertEqual(discoveryCount.value, 2)
+    }
+
+    func testKeyboardDismissTapMask_isAllOnlyWhileEditing() {
+        XCTAssertEqual(SettingsKeyboardDismiss.tapMask(isEditing: true), .all)
+        XCTAssertEqual(SettingsKeyboardDismiss.tapMask(isEditing: false), .subviews)
+    }
+
+    @MainActor
+    func testQRScanner_attachesPreviewLayerSynchronouslyInViewDidLoad() {
+        let vc = QRScannerUIViewController()
+        vc.loadViewIfNeeded()
+        let layers = vc.view.layer.sublayers ?? []
+        XCTAssertTrue(layers.contains { $0 is AVCaptureVideoPreviewLayer })
     }
 }
 

@@ -1,6 +1,57 @@
 import CFNetwork
 import Foundation
 
+// MARK: - Remote queue models (shared with the TV target)
+
+/// Desktop loop mode; the button cycles off → all → one → off.
+enum RemoteLoopMode: String, Equatable {
+    case off, all, one
+
+    var next: RemoteLoopMode {
+        switch self {
+        case .off: return .all
+        case .all: return .one
+        case .one: return .off
+        }
+    }
+}
+
+struct RemoteQueueItem: Equatable, Identifiable {
+    var id: String
+    var type: String
+    var title: String
+    var artist: String
+    var album: String
+    var artworkId: String
+}
+
+/// `GET /v1/remote/queue` — items are in current play order; `index` -1 means nothing current.
+struct RemoteQueue: Equatable {
+    var available: Bool
+    var shuffled: Bool
+    var loopMode: RemoteLoopMode
+    var index: Int
+    var items: [RemoteQueueItem]
+
+    init(from object: [String: Any]) {
+        available = object["available"] as? Bool ?? false
+        shuffled = object["shuffled"] as? Bool ?? false
+        loopMode = RemoteLoopMode(rawValue: object["loopMode"] as? String ?? "") ?? .off
+        index = (object["index"] as? NSNumber)?.intValue ?? -1
+        items = (object["items"] as? [[String: Any]] ?? []).compactMap { raw in
+            guard let id = raw["id"] as? String, !id.isEmpty else { return nil }
+            return RemoteQueueItem(
+                id: id,
+                type: raw["type"] as? String ?? "",
+                title: raw["title"] as? String ?? "",
+                artist: raw["artist"] as? String ?? "",
+                album: raw["album"] as? String ?? "",
+                artworkId: raw["artworkId"] as? String ?? ""
+            )
+        }
+    }
+}
+
 // MARK: - LAN session (bypass system HTTP proxy / iCloud Private Relay for RFC1918)
 
 enum RemoteLANProxyKeys {
@@ -66,6 +117,24 @@ enum RemoteAPIError: LocalizedError {
             return "Download failed (HTTP \(code))."
         case .server(_, let message):
             return message
+        }
+    }
+}
+
+/// Typed failures of the queue endpoints (`409` + `queue_unavailable` / `queue_changed`).
+/// Any other failure keeps surfacing as `RemoteAPIError`.
+enum RemoteQueueError: Error, Equatable {
+    /// The desktop is not the native app (or the target has no queue).
+    case unavailable
+    /// The list the jump was issued from is stale; refetch the queue.
+    case changed
+
+    static func map(_ error: Error) -> Error {
+        guard case RemoteAPIError.server(let code, _) = error else { return error }
+        switch code {
+        case "queue_unavailable": return RemoteQueueError.unavailable
+        case "queue_changed": return RemoteQueueError.changed
+        default: return error
         }
     }
 }
@@ -298,13 +367,17 @@ struct RemoteAPIClient: Sendable {
     }
 
     func fetchLoudness() async throws -> [String: Double] {
-        let (data, _) = try await session.data(for: authorizedRequest(path: "/v1/remote/loudness"))
+        let (data, response) = try await session.data(for: authorizedRequest(path: "/v1/remote/loudness"))
+        try Self.throwIfNotOK(response, data: data)
         let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
         var out: [String: Double] = [:]
         for (k, v) in raw {
-            if let n = v as? Double { out[k] = n }
-            else if let i = v as? Int { out[k] = Double(i) }
-            else if let num = v as? NSNumber { out[k] = num.doubleValue }
+            // The desktop preserves current {loudness, truePeak} entries and legacy numbers.
+            let value = (v as? [String: Any])?["loudness"] ?? v
+            if let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse,
+               number.doubleValue.isFinite {
+                out[k] = number.doubleValue
+            }
         }
         return out
     }
@@ -421,6 +494,39 @@ struct RemoteAPIClient: Sendable {
         let (data, _) = try await session.data(for: req)
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         return obj?["ok"] as? Bool ?? false
+    }
+
+    /// `GET /v1/remote/queue` — the desktop play queue in current play order.
+    func fetchQueue() async throws -> RemoteQueue {
+        let request = try authorizedRequest(path: "/v1/remote/queue")
+        let (data, response) = try await session.data(for: request)
+        do {
+            try Self.throwIfNotOK(response, data: data)
+        } catch {
+            throw RemoteQueueError.map(error)
+        }
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        return RemoteQueue(from: object)
+    }
+
+    /// `POST /v1/remote/command` for `set-shuffle` / `set-loop` / `queue-jump`. Unlike
+    /// `sendCommand`, failures throw: 409 `queue_unavailable` / `queue_changed` as `RemoteQueueError`,
+    /// everything else as `RemoteAPIError`.
+    func sendQueueCommand(action: String, intValue: Int? = nil, mode: String? = nil, songId: String? = nil) async throws {
+        var body: [String: Any] = ["action": action]
+        if let intValue { body["value"] = intValue }
+        if let mode { body["mode"] = mode }
+        if let songId { body["songId"] = songId }
+        var req = try authorizedRequest(path: "/v1/remote/command")
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: req)
+        do {
+            try Self.throwIfNotOK(response, data: data)
+        } catch {
+            throw RemoteQueueError.map(error)
+        }
     }
 
     /// Writes to `destinationURL` (file is replaced if it exists).

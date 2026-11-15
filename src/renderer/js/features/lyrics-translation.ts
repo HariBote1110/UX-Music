@@ -14,7 +14,14 @@ export type PlainLyricLine = {
     translation?: string;
 };
 
-const timeRegex = /\[(\d{2})[:.](\d{2})[.](\d{2,3})\]/g;
+/**
+ * Accepted timestamp forms:
+ * - `[m:ss]`, `[m:ss.f]`, `[mm:ss.ff]`, `[mmm:ss.fff]` (1–3 minute digits, 1–2 second digits, optional
+ *   decimal fraction after `.` or `:`)
+ * - legacy `[mm.ss.xx]` / `[mm.ss.xxx]` (two-digit parts, dot separated)
+ * Plain `[12.34]` and metadata tags such as `[ar:Artist]` deliberately do not match.
+ */
+const timeRegex = /\[(?:(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?|(\d{2})\.(\d{2})\.(\d{2,3}))\]/g;
 
 export function parseLRC(lrcContent: string): LrcLine[] {
     const lines = lrcContent.split('\n');
@@ -26,9 +33,10 @@ export function parseLRC(lrcContent: string): LrcLine[] {
 
         if (matches.length > 0) {
             matches.forEach(match => {
-                const minutes = Number.parseInt(match[1], 10);
-                const seconds = Number.parseInt(match[2], 10);
-                const milliseconds = Number.parseInt(match[3].padEnd(3, '0'), 10);
+                const minutes = Number.parseInt(match[1] ?? match[4], 10);
+                const seconds = Number.parseInt(match[2] ?? match[5], 10);
+                const fraction = match[3] ?? match[6] ?? '0';
+                const milliseconds = Number.parseInt(fraction.padEnd(3, '0'), 10);
                 const time = minutes * 60 + seconds + milliseconds / 1000;
 
                 lyrics.push({ time, text: text || ' ', sourceLine });
@@ -82,19 +90,53 @@ export function isBlankPrimaryLine(text: string | undefined): boolean {
  * Interludes (blank English) never show Japanese, even if the sidecar has 間奏 etc.
  */
 export function mergeLrcWithJaLrc(primary: LrcLine[], jaLines: LrcLine[]): LrcLine[] {
-    const byTime = new Map<number, string>();
+    /** Ja texts and primary indices grouped by timeKey, both in file order. */
+    const jaByTime = new Map<number, string[]>();
     for (const j of jaLines) {
         const k = timeKey(j.time);
-        if (!byTime.has(k)) {
-            byTime.set(k, j.text);
+        const group = jaByTime.get(k);
+        if (group) {
+            group.push(j.text);
+        } else {
+            jaByTime.set(k, [j.text]);
         }
     }
+    const primaryByTime = new Map<number, number[]>();
+    primary.forEach((line, i) => {
+        const k = timeKey(line.time);
+        const group = primaryByTime.get(k);
+        if (group) {
+            group.push(i);
+        } else {
+            primaryByTime.set(k, [i]);
+        }
+    });
+
+    /** Translation assigned from the same-time group, keyed by primary index. */
+    const fromTimeGroup = new Map<number, string>();
+    for (const [k, indices] of primaryByTime) {
+        const jaTexts = jaByTime.get(k);
+        if (!jaTexts || jaTexts.length === 0) {
+            continue;
+        }
+        if (jaTexts.length === indices.length) {
+            indices.forEach((primaryIndex, n) => fromTimeGroup.set(primaryIndex, jaTexts[n]));
+            continue;
+        }
+        const nonBlankJa = jaTexts.filter(t => t.trim() !== '');
+        const nonBlankPrimary = indices.filter(i => !isBlankPrimaryLine(primary[i].text));
+        nonBlankPrimary.forEach((primaryIndex, n) => {
+            if (n < nonBlankJa.length) {
+                fromTimeGroup.set(primaryIndex, nonBlankJa[n]);
+            }
+        });
+    }
+
     return primary.map((line, i) => {
         if (isBlankPrimaryLine(line.text)) {
             return { ...line, translation: undefined };
         }
-        const k = timeKey(line.time);
-        const fromTime = byTime.get(k);
+        const fromTime = fromTimeGroup.get(i);
         const fromIndex = jaLines[i]?.text;
         const pick = fromTime !== undefined ? fromTime : fromIndex;
         const trimmed = pick !== undefined && pick.trim() !== '' ? pick : undefined;
@@ -130,7 +172,7 @@ function splitLyricsLines(text: string): string[] {
 export function mergePlainTxtWithJa(mainTxt: string, jaTxt: string): PlainLyricLine[] {
     const en = splitLyricsLines(mainTxt);
     const ja = splitLyricsLines(jaTxt);
-    const n = Math.max(en.length, ja.length);
+    const n = en.length;
     const out: PlainLyricLine[] = [];
     for (let i = 0; i < n; i += 1) {
         const text = en[i] !== undefined ? (en[i].trim() === '' ? ' ' : en[i]) : ' ';

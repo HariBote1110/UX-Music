@@ -31,6 +31,8 @@ struct SettingsScreen: View {
     @State private var testing = false
     @State private var savedFlash = false
     @State private var showQRScanner = false
+    /// Set by the scanner's Cancel button so the pairing-code field takes focus once the sheet is gone.
+    @State private var focusSecretAfterScanner = false
     @State private var showDesktopPlaylistImport = false
     @State private var selectedDiscoveryPeer: LANDiscoveryPeer?
     @StateObject private var discovery = LANDiscoveryService()
@@ -251,7 +253,10 @@ struct SettingsScreen: View {
             .scrollContentBackground(.hidden)
             .background(Color.black)
             .scrollDismissesKeyboard(.interactively)
-            .simultaneousGesture(TapGesture().onEnded { focusedField = nil })
+            .simultaneousGesture(
+                TapGesture().onEnded { focusedField = nil },
+                including: SettingsKeyboardDismiss.tapMask(isEditing: focusedField != nil)
+            )
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(red: 0.11, green: 0.11, blue: 0.12), for: .navigationBar)
@@ -271,7 +276,12 @@ struct SettingsScreen: View {
                     Button("Done") { focusedField = nil }
                 }
             }
-            .sheet(isPresented: $showQRScanner) {
+            .sheet(isPresented: $showQRScanner, onDismiss: {
+                if focusSecretAfterScanner {
+                    focusSecretAfterScanner = false
+                    focusedField = .secret
+                }
+            }) {
                 NavigationStack {
                     ZStack(alignment: .bottom) {
                         PairingQRScannerView { raw in
@@ -312,7 +322,10 @@ struct SettingsScreen: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { showQRScanner = false }
+                            Button("Cancel") {
+                                focusSecretAfterScanner = true
+                                showQRScanner = false
+                            }
                         }
                     }
                 }
@@ -408,6 +421,21 @@ struct SettingsScreen: View {
                 savedFlash = true
                 pingResult = Self.connectionResultMessage(config: resolved.config, serverName: resolved.serverName, authorised: authorised)
                 pingIsHealthy = authorised
+                let action = DiscoveredPeerAction.after(
+                    authorised: authorised,
+                    cameraAvailable: PairingQRScannerView.isCameraAvailable
+                )
+                if action != .connected {
+                    pingResult = String(format: String(localized: "Not paired with %@ yet — scan the QR code in its Settings, or enter its pairing code"), peer.displayName)
+                }
+                switch action {
+                case .connected:
+                    break
+                case .presentScanner:
+                    showQRScanner = true
+                case .focusPairingCode:
+                    focusedField = .secret
+                }
                 Task {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                     await MainActor.run { savedFlash = false }
@@ -594,5 +622,13 @@ enum RemoteConnectionCandidates {
             out.append(host)
         }
         return out
+    }
+}
+
+/// Decides whether the form-wide "tap to dismiss keyboard" gesture takes part in hit testing.
+/// While nothing is focused it must be fully disabled so row buttons receive short taps.
+enum SettingsKeyboardDismiss {
+    static func tapMask(isEditing: Bool) -> GestureMask {
+        isEditing ? .all : .subviews
     }
 }

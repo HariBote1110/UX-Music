@@ -524,12 +524,13 @@ private struct SidecarSyncedLyricsList: View {
     @Environment(AppModel.self) private var model
     let lines: [TranslatedTimedLine]
 
-    /// `-1` means "nothing active yet" (before the first line's timestamp — see
-    /// `SidecarLyricsMotionPolicy.activeIndex`), matching Desktop's `applyLyricsMotion(-1, true)`
-    /// initial state. Updated at most once per actual line change (`SidecarActiveLineUpdatePolicy`)
-    /// rather than on every 0.2s tick, so this view only re-diffs when the highlighted line
-    /// genuinely moves instead of 5x/sec for as long as the sidecar screen is on screen.
-    @State private var activeIndex = -1
+    /// Active line (`-1` = nothing active yet — see `SidecarLyricsMotionPolicy.activeIndex`) plus
+    /// whether the move to it cascades or snaps. Updated at most once per actual line change
+    /// (`SidecarActiveLineUpdatePolicy`) rather than on every 0.2s tick, so this view only re-diffs
+    /// when the highlighted line genuinely moves instead of 5x/sec for as long as the sidecar screen
+    /// is on screen. Opening mid-song and remote seeks snap (Desktop `lyrics-motion.ts` parity);
+    /// only adjacent advances cascade.
+    @State private var lyricsMotion = SidecarLyricsActiveLineState()
     /// Stable anchor for the `TimelineView` below — see `SidecarScreen.progressScheduleAnchor`'s
     /// doc comment for why `.now` (re-evaluated on every reconstruction) is unsafe whenever the
     /// tick can write `@State` that this view itself reads (here, `activeIndex` via
@@ -553,6 +554,8 @@ private struct SidecarSyncedLyricsList: View {
     /// CSS's default `transition-timing-function: ease` (Desktop sets no explicit timing function
     /// on `.fs-lyrics-inner.fs-lrc p`, so the UA default `ease` applies).
     private static let easing = (0.25, 0.1, 0.25, 1.0)
+
+    private var activeIndex: Int { lyricsMotion.activeIndex }
 
     var body: some View {
         GeometryReader { paneGeo in
@@ -591,10 +594,14 @@ private struct SidecarSyncedLyricsList: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .scaleEffect(isActive ? SidecarLyricsMotionPolicy.activeLineScale : 1, anchor: .leading)
                             .offset(y: y)
+                            // Keyed on the active line, not `y`: height measurements and resizes
+                            // relayout instantly, and a jump (`animatesMotion == false`) snaps.
                             .animation(
-                                .timingCurve(Self.easing.0, Self.easing.1, Self.easing.2, Self.easing.3, duration: SidecarLyricsMotionPolicy.duration)
-                                    .delay(SidecarLyricsMotionPolicy.staggerDelay(forDistance: distance)),
-                                value: y
+                                lyricsMotion.animatesMotion
+                                    ? .timingCurve(Self.easing.0, Self.easing.1, Self.easing.2, Self.easing.3, duration: SidecarLyricsMotionPolicy.duration)
+                                        .delay(SidecarLyricsMotionPolicy.staggerDelay(forDistance: distance))
+                                    : nil,
+                                value: activeIndex
                             )
                             .background(
                                 GeometryReader { lineGeo in
@@ -609,22 +616,42 @@ private struct SidecarSyncedLyricsList: View {
             }
         }
         .background(
-            TimelineView(.periodic(from: lyricsScheduleAnchor, by: 0.2)) { context in
-                Color.clear
-                    .task(id: context.date) {
-                        let interpolated = SidecarProgressInterpolation.interpolatedPosition(
-                            position: model.sidecarPosition,
-                            timestamp: model.sidecarPositionTimestamp,
-                            playing: model.sidecarPlaying,
-                            now: context.date,
-                            duration: model.sidecarDuration
-                        )
-                        let newActive = SidecarLyricsMotionPolicy.activeIndex(in: lines, at: interpolated)
-                        if SidecarActiveLineUpdatePolicy.shouldUpdate(currentIndex: activeIndex, newIndex: newActive) {
-                            activeIndex = newActive
-                        }
+            // Mounted only while playing (`LyricsActiveLineTickPolicy`); while paused a new
+            // position is caught by the watcher, and a play/pause flip resyncs once.
+            Group {
+                if LyricsActiveLineTickPolicy.shouldTick(isPlaying: model.sidecarPlaying) {
+                    TimelineView(.periodic(from: lyricsScheduleAnchor, by: 0.2)) { context in
+                        Color.clear
+                            .onChange(of: context.date) { _, newDate in
+                                syncActiveLine(now: newDate, immediate: false)
+                            }
                     }
+                } else {
+                    LyricsPausedPositionWatcher(position: { model.sidecarPosition }) {
+                        syncActiveLine(now: Date(), immediate: false)
+                    }
+                }
+            }
+            .onChange(of: model.sidecarPlaying) { _, _ in
+                syncActiveLine(now: Date(), immediate: false)
             }
         )
+        // Start on the current line instead of `-1`, so opening mid-song never cascades.
+        .onAppear { syncActiveLine(now: Date(), immediate: true) }
+    }
+
+    private func syncActiveLine(now: Date, immediate: Bool) {
+        let interpolated = SidecarProgressInterpolation.interpolatedPosition(
+            position: model.sidecarPosition,
+            timestamp: model.sidecarPositionTimestamp,
+            playing: model.sidecarPlaying,
+            now: now,
+            duration: model.sidecarDuration
+        )
+        let newActive = SidecarLyricsMotionPolicy.activeIndex(in: lines, at: interpolated)
+        var next = lyricsMotion
+        if next.advance(to: newActive, immediate: immediate) {
+            lyricsMotion = next
+        }
     }
 }

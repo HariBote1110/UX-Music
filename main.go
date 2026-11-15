@@ -18,6 +18,7 @@ import (
 
 //go:embed all:src/renderer/dist
 var assets embed.FS
+var crashLog *os.File
 
 func main() {
 	// Diagnostics-only pprof server, opt-in via UXMUSIC_PPROF (loopback-gated,
@@ -29,6 +30,11 @@ func main() {
 	configDir, _ := os.UserConfigDir()
 	userDataPath := filepath.Join(configDir, "ux-music")
 	config.SetUserDataPath(userDataPath)
+	var crashErr error
+	crashLog, crashErr = diagnostics.EnableCrashOutput(filepath.Join(userDataPath, "logs"))
+	if crashErr != nil {
+		println("Warning: could not enable crash output:", crashErr.Error())
+	}
 
 	if handled, err := server.RunSyncCLI(os.Args[1:]); handled {
 		if err != nil {

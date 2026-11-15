@@ -27,10 +27,11 @@ final class LyricsFileStore {
     func saveLyrics(_ content: String, wearType: String, songId: String) throws {
         let stem = Self.stem(for: songId)
         let ext = Self.normalisedExtension(wearType)
-        removeMainLyricsFiles(forStem: stem)
-        let dest = lyricsDirectory.appendingPathComponent("\(stem).\(ext)", isDirectory: false)
         guard let data = content.data(using: .utf8) else { return }
+        let dest = mainFileURL(stem: stem, ext: ext)
+        // Write first, so a failed write never leaves the song without lyrics; remove the other extension only afterwards.
         try data.write(to: dest, options: .atomic)
+        removeMainLyricsFiles(forStem: stem, keeping: dest)
     }
 
     /// Saves the Japanese translation sidecar; `translationFormat` should be `lrc` or `txt` (as
@@ -39,10 +40,11 @@ final class LyricsFileStore {
     func saveTranslation(_ content: String, translationFormat: String, songId: String) throws {
         let stem = Self.stem(for: songId)
         let ext = Self.normalisedExtension(translationFormat)
-        removeTranslationFiles(forStem: stem)
-        let dest = lyricsDirectory.appendingPathComponent("\(stem).ja.\(ext)", isDirectory: false)
         guard let data = content.data(using: .utf8) else { return }
+        let dest = translationFileURL(stem: stem, ext: ext)
+        // Write first, so a failed write never leaves the song without its translation; remove the other extension only afterwards.
         try data.write(to: dest, options: .atomic)
+        removeTranslationFiles(forStem: stem, keeping: dest)
     }
 
     /// Removes both the main lyrics file and the translation sidecar (if any) for `songId`.
@@ -106,18 +108,22 @@ final class LyricsFileStore {
     /// Removes exactly `<stem>.lrc` / `<stem>.txt` — deliberately not a directory scan keyed on
     /// `deletingPathExtension`, which would only strip the last extension and so could not tell
     /// `<stem>.ja.lrc` (a translation file) apart from `<stem>.lrc` (the main file) correctly.
-    private func removeMainLyricsFiles(forStem stem: String) {
+    /// `keeping` is the file just written; it is never deleted.
+    private func removeMainLyricsFiles(forStem stem: String, keeping: URL? = nil) {
         for ext in ["lrc", "txt"] {
             let u = mainFileURL(stem: stem, ext: ext)
+            if u == keeping { continue }
             if fileManager.fileExists(atPath: u.path) {
                 try? fileManager.removeItem(at: u)
             }
         }
     }
 
-    private func removeTranslationFiles(forStem stem: String) {
+    /// `keeping` is the file just written; it is never deleted.
+    private func removeTranslationFiles(forStem stem: String, keeping: URL? = nil) {
         for ext in ["lrc", "txt"] {
             let u = translationFileURL(stem: stem, ext: ext)
+            if u == keeping { continue }
             if fileManager.fileExists(atPath: u.path) {
                 try? fileManager.removeItem(at: u)
             }

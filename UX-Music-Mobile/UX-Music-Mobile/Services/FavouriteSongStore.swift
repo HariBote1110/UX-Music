@@ -14,9 +14,16 @@ final class FavouriteSongStore {
     }
 
     func load() {
-        guard let data = defaults.data(forKey: persistenceKey),
-              let ids = try? JSONDecoder().decode([String].self, from: data)
-        else {
+        guard let data = defaults.data(forKey: persistenceKey) else {
+            orderedIds = []
+            return
+        }
+        guard let ids = try? JSONDecoder().decode([String].self, from: data) else {
+            // Keep the undecodable bytes so the next save does not silently discard them; the oldest copy wins.
+            let backupKey = persistenceKey + ".undecodable-backup"
+            if defaults.data(forKey: backupKey) == nil {
+                defaults.set(data, forKey: backupKey)
+            }
             orderedIds = []
             return
         }

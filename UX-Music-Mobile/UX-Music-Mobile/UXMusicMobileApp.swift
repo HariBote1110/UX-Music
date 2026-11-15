@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import UIKit
 
@@ -6,6 +7,9 @@ struct UXMusicMobileApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
+    #if DEBUG
+    @State private var debugShowAlbumDetail = ProcessInfo.processInfo.environment["UXM_DEBUG_ALBUM_DETAIL"] == "1"
+    #endif
 
     var body: some Scene {
         WindowGroup {
@@ -15,9 +19,26 @@ struct UXMusicMobileApp: App {
                 .onAppear {
                     UIApplication.shared.beginReceivingRemoteControlEvents()
                     installDebugYouTubeAutoplayHookIfRequested()
+                    installDebugNowPlayingStaticHookIfRequested()
                     installDebugLyricsAutoOpenHookIfRequested()
                     installDebugSidecarHostHookIfRequested()
+                    #if DEBUG
+                    installDebugPerfScenarioHookIfRequested()
+                    #endif
                 }
+                #if DEBUG
+                // DEBUG-only (`UXM_DEBUG_ALBUM_DETAIL=1`): shows `AlbumDetailView` with fake songs
+                // for before/after layout comparisons.
+                .fullScreenCover(isPresented: $debugShowAlbumDetail) {
+                    NavigationStack {
+                        AlbumDetailView(album: Album.fromSongs((1...40).map {
+                            Song(id: "dbg-\($0)", path: "/nonexistent/\($0).m4a", title: "Track \($0)", artist: "Debug Artist", album: "Debug Album", duration: 180, trackNumber: $0)
+                        })[0])
+                    }
+                    .environment(model)
+                    .preferredColorScheme(.dark)
+                }
+                #endif
                 .onOpenURL { url in
                     Task { _ = await model.applyPairingURL(url) }
                 }
@@ -107,6 +128,125 @@ struct UXMusicMobileApp: App {
         }
     }
 
+    #if DEBUG
+    /// DEBUG-only: `UXM_DEBUG_PERF_SCENARIO` selects a scripted scene for on-device energy
+    /// measurement (`mobile_perf_research/tools/device_energy.sh`). Supported values:
+    /// `idle_control_visited` (needs the stub server via `UXM_DEBUG_SIDECAR_HOST`/`PORT`),
+    /// `playing_control_visited` (tone + Control tab visited), `playing_control_selected` (tone, stays on
+    /// the Control tab; for background playback), `local_playing`,
+    /// `local_paused`, `nowplaying_open`. `youtube_hidden` is handled by the
+    /// existing `UXM_DEBUG_YT_VIDEO` + `UXM_DEBUG_YT_SERVICE=1` hook, so nothing happens here for it.
+    private func installDebugPerfScenarioHookIfRequested() {
+        guard let scenario = ProcessInfo.processInfo.environment["UXM_DEBUG_PERF_SCENARIO"], !scenario.isEmpty else {
+            return
+        }
+        NSLog("[UXM_DEBUG_PERF] scenario=%@", scenario)
+        // Keep the display on while the app is in the foreground so a locked screen does not
+        // silently turn a foreground scenario into a background one mid-measurement.
+        UIApplication.shared.isIdleTimerDisabled = true
+        let model = model
+        // `playing_control_visited` = the background-playback case for the Control-tab poll: play the
+        // tone *and* visit the Control tab, so the app keeps running after it is backgrounded.
+        // `playing_control_selected` additionally stays on the Control tab (the baseline polls until the
+        // app is suspended, which never happens while audio plays in the background).
+        let staysOnControl = scenario == "playing_control_selected"
+        let visitsControl = ["idle_control_visited", "playing_control_visited"].contains(scenario) || staysOnControl
+        let playsTone = ["local_playing", "local_paused", "nowplaying_open", "playing_control_visited", "playing_control_selected"].contains(scenario)
+        guard visitsControl || playsTone else { return }
+        if visitsControl {
+            Task { @MainActor in
+                // Let the sidecar hook (registered just before this one) finish pointing serverConfig at the stub.
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                NotificationCenter.default.post(name: .uxmDebugSelectTab, object: "control")
+                NSLog("[UXM_DEBUG_PERF] selected Control tab")
+                if staysOnControl { return }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                NotificationCenter.default.post(name: .uxmDebugSelectTab, object: "library")
+                NSLog("[UXM_DEBUG_PERF] switched back to Library tab; idling")
+            }
+        }
+        if playsTone {
+            Task { @MainActor in
+                guard let url = await Self.debugToneFileURL() else {
+                    NSLog("[UXM_DEBUG_PERF] tone file generation failed")
+                    return
+                }
+                let song = Song(id: "debug-perf-tone", path: url.path, title: "Perf Tone", artist: "Debug Artist", album: "Debug Album", duration: 600)
+                await model.player.play(song, newQueue: [song])
+                NSLog("[UXM_DEBUG_PERF] play returned isPlaying=%d", model.player.isPlaying ? 1 : 0)
+                if scenario == "nowplaying_open" {
+                    model.isNowPlayingSheetPresented = true
+                }
+                if scenario == "local_paused" {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    if model.player.isPlaying { model.player.togglePlayPause() }
+                    NSLog("[UXM_DEBUG_PERF] paused isPlaying=%d", model.player.isPlaying ? 1 : 0)
+                }
+            }
+        }
+    }
+
+    /// Writes (once) a deterministic quiet 440 Hz stereo sine, 10 minutes at 44.1 kHz, 16-bit PCM,
+    /// into the caches directory and returns its URL.
+    private static func debugToneFileURL() async -> URL? {
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("uxm-perf-tone-600s.wav")
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        return await Task.detached(priority: .utility) { () -> URL? in
+            let sampleRate = 44_100.0
+            let seconds = 600
+            let partial = url.appendingPathExtension("part")
+            try? FileManager.default.removeItem(at: partial)
+            do {
+                let settings: [String: Any] = [
+                    AVFormatIDKey: kAudioFormatLinearPCM,
+                    AVSampleRateKey: sampleRate,
+                    AVNumberOfChannelsKey: 2,
+                    AVLinearPCMBitDepthKey: 16,
+                    AVLinearPCMIsFloatKey: false,
+                    AVLinearPCMIsBigEndianKey: false,
+                ]
+                let file = try AVAudioFile(forWriting: partial, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+                let frames = AVAudioFrameCount(sampleRate)
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames) else { return nil }
+                buffer.frameLength = frames
+                let amplitude: Float = 0.05
+                var phase = 0.0
+                let step = 2.0 * Double.pi * 440.0 / sampleRate
+                for _ in 0..<seconds {
+                    for channel in 0..<2 {
+                        guard let data = buffer.floatChannelData?[channel] else { return nil }
+                        var p = phase
+                        for i in 0..<Int(frames) {
+                            data[i] = amplitude * Float(sin(p))
+                            p += step
+                        }
+                    }
+                    phase += step * Double(frames)
+                    phase = phase.truncatingRemainder(dividingBy: 2.0 * Double.pi)
+                    try file.write(from: buffer)
+                }
+                try FileManager.default.moveItem(at: partial, to: url)
+                return url
+            } catch {
+                NSLog("[UXM_DEBUG_PERF] tone generation error=%@", String(describing: error))
+                return nil
+            }
+        }.value
+    }
+    #endif
+
+    /// DEBUG-only: `UXM_DEBUG_NP_LOCAL=1` shows Now Playing with a fixed fake local song (no audio,
+    /// no network) so rendering changes can be compared pixel-wise before/after.
+    private func installDebugNowPlayingStaticHookIfRequested() {
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["UXM_DEBUG_NP_LOCAL"] == "1" else { return }
+        let song = Song(id: "debug-np-local", path: "/nonexistent/debug.m4a", title: "Debug Song", artist: "Debug Artist", album: "Debug Album", duration: 200)
+        model.player.configureForPreview(song: song, isPlaying: false, positionSeconds: 60, durationSeconds: 200)
+        model.isNowPlayingSheetPresented = true
+        #endif
+    }
+
     /// Hidden debug hook for recording/inspecting the synced-lyrics screen motion without
     /// having to drive the tap-through library → play → Now Playing → lyrics UI by hand (tap
     /// injection is unreliable in this environment's simulator automation). When the
@@ -163,3 +303,10 @@ struct UXMusicMobileApp: App {
         model.serverConfig = ServerConfig(host: host, port: port, token: "debug-sidecar-token")
     }
 }
+
+#if DEBUG
+extension Notification.Name {
+    /// DEBUG-only: posted with `object` = "library" / "control" to drive `HomeRootView`'s tab selection.
+    static let uxmDebugSelectTab = Notification.Name("UXMDebugSelectTab")
+}
+#endif

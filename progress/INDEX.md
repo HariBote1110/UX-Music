@@ -1,5 +1,13 @@
 # Progress Index
 
+- [bug-list-2026-11-15-fixes.md](bug-list-2026-11-15-fixes.md) — バグ一覧（2026-11-15）の修正で決めた仕様: 重複 ID は元位置の対応表で追跡、シャッフル中の並び替えは解除で元順へ、既定シャッフルは Store.UpdateMap に集約、iOS の復号不能データ退避とアートワーク検証（重複行タップ再生・LRC の h:m:s 解釈差・TV/Watch の候補は未対応）
+- [mobile-thermal-polling-timer.md](mobile-thermal-polling-timer.md) — iOS 発熱対策: Control タブのポーリングをタブ選択中かつ前面時に限定、位置タイマーを再生中のみにし Now Playing 再送を変化時に限定、YouTube は非表示中に低画質化し JS 時刻報告を再生中のみに（tvOS 外部再生の一時停止再送に注意）
+- [mobile-testflight-distribution.md](mobile-testflight-distribution.md) — UX Music Mobile を TestFlight 内部テストへ: バンドル ID を jp.ux-labs.UXMusicMobile 系へ変更、輸出規制キー追加、API キーでアップロード
+- [mobile-loudness-normalise-fix.md](mobile-loudness-normalise-fix.md) — iOS が現行 LUFS 応答を捨てる不具合を修正し、補正専用ゲイン段・オフライン復元・回帰テストを追加（YouTube 埋め込みの音量制約は残る）
+- [mobile-lyrics-snap.md](mobile-lyrics-snap.md) — Mobile 同期歌詞（iPhone／iPad Sidecar）: 途中表示と3行以上のジャンプは遷移なしでスナップ、2行以内の行送りだけカスケード（LyricsStageKit の `SidecarLyricsActiveLineState`）、行高の測り直しもアニメーションしない
+- [desktop-lyrics-snap-and-tap-seek.md](desktop-lyrics-snap-and-tap-seek.md) — Desktop 同期歌詞: 途中で開く／大きくシークすると全行が一斉に流れる問題を修正（3行以上のジャンプと表示開始は遷移なしスナップ、判定は lyrics-motion.ts で共有）、LRC 行クリックでその時刻へシーク
+- [mtp-hotplug-monitor.md](mtp-hotplug-monitor.md) — MTP端末検知をlibusbホットプラグ通知に置換（macOS/Linux）。到着は500msで束ねて最大3回試行、抜去時は1回だけ確認、Windowsは従来ポーリングのまま保留
+- [mtp-libusb-context-leak.md](mtp-libusb-context-leak.md) — Desktop が起動7h50m後に exit 2 で落ちる原因（MTP監視の libusb_init 漏れ→TLSキー枯渇）を修正。コンテキストは Device が所有、Go のクラッシュ出力を logs/crash.log に保存
 - [collection-default-shuffle.md](collection-default-shuffle.md) — アルバム/プレイリストごとの既定シャッフル（未設定/シャッフル/順番通り）。新規キュー開始時だけ一時適用し基準値は不変、Desktop・iOS で端末別に保持
 - [watch-speaker-output.md](watch-speaker-output.md) — Apple Watchの音声出力設定（自動/Bluetooth/スピーカー）、long-formの出力先ピッカー回避、設定変更時の再アクティベーション、Bluetooth検出ログを追加
 - [mobile-youtube-embed.md](mobile-youtube-embed.md) — （フェーズH追記）iPhone YouTube: ライフサイクル起点の PiP 要求は実機で全て拒否 → 全画面経由の自動 PiP＋PiP ボタンに確定、単体での窓なし継続は非公開フラグ・Audio Session API でも不可

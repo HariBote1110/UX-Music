@@ -25,15 +25,30 @@ struct RemoteControlStateSnapshot: Equatable {
     var album: String
     var duration: Double
     var playing: Bool
+    /// From the optional `queue` block; absent (older desktop, Apple TV) means unavailable.
+    var queueAvailable: Bool
+    var shuffled: Bool
+    var loopMode: RemoteLoopMode
+    var queueIndex: Int
+    var queueCount: Int
 
     static let empty = RemoteControlStateSnapshot(title: "", artist: "", album: "", duration: 0, playing: false)
 
-    init(title: String, artist: String, album: String, duration: Double, playing: Bool) {
+    init(
+        title: String, artist: String, album: String, duration: Double, playing: Bool,
+        queueAvailable: Bool = false, shuffled: Bool = false, loopMode: RemoteLoopMode = .off,
+        queueIndex: Int = -1, queueCount: Int = 0
+    ) {
         self.title = title
         self.artist = artist
         self.album = album
         self.duration = duration
         self.playing = playing
+        self.queueAvailable = queueAvailable
+        self.shuffled = shuffled
+        self.loopMode = loopMode
+        self.queueIndex = queueIndex
+        self.queueCount = queueCount
     }
 
     init(from state: [String: Any]) {
@@ -42,6 +57,12 @@ struct RemoteControlStateSnapshot: Equatable {
         album = state["album"] as? String ?? ""
         duration = Self.doubleValue(state["duration"])
         playing = state["playing"] as? Bool ?? false
+        let queue = state["queue"] as? [String: Any]
+        queueAvailable = queue?["available"] as? Bool ?? false
+        shuffled = queue?["shuffled"] as? Bool ?? false
+        loopMode = RemoteLoopMode(rawValue: queue?["loopMode"] as? String ?? "") ?? .off
+        queueIndex = (queue?["index"] as? NSNumber)?.intValue ?? -1
+        queueCount = (queue?["count"] as? NSNumber)?.intValue ?? 0
     }
 
     fileprivate static func doubleValue(_ any: Any?) -> Double {
@@ -52,8 +73,35 @@ struct RemoteControlStateSnapshot: Equatable {
     }
 }
 
+/// Decides whether the 2s `/v1/remote/state` poll loop should be running.
+///
+/// `LazyTabRoot` keeps a visited tab alive with `.opacity(0)`, so `onDisappear` never fires on a
+/// tab switch, and iOS does not suspend the app while audio plays — without this gate the loop
+/// kept hitting the network (and waking the radio) forever once the Control tab had been visited.
+enum RemoteControlPollingPolicy {
+    static func shouldPoll(isOnScreen: Bool, isTabSelected: Bool, scenePhase: ScenePhase) -> Bool {
+        isOnScreen && isTabSelected && scenePhase == .active
+    }
+}
+
+private struct IsTabSelectedKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// Whether the enclosing tab is the selected one. Defaults to `true` so a screen hosted
+    /// outside `LazyTabRoot` behaves as before.
+    var isTabSelected: Bool {
+        get { self[IsTabSelectedKey.self] }
+        set { self[IsTabSelectedKey.self] = newValue }
+    }
+}
+
 struct RemoteControlScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isTabSelected) private var isTabSelected
+    @State private var isOnScreen = false
     @StateObject private var tvDiscovery = TVRemoteDiscoveryService()
     @State private var selectedTarget: RemoteControlTarget = .thisIPhone
     @State private var stateSnapshot: RemoteControlStateSnapshot = .empty
@@ -62,6 +110,7 @@ struct RemoteControlScreen: View {
     @State private var pollTask: Task<Void, Never>?
     /// True after at least one successful `/v1/remote/state` fetch (matches Flutter “stale state + error” UX).
     @State private var hasReceivedState = false
+    @State private var showQueue = false
 
     /// The client commands/state polling actually go through — the Host's failover-aware client
     /// when `selectedTarget == .thisIPhone`, or a direct client against the TV's own receiver
@@ -110,14 +159,33 @@ struct RemoteControlScreen: View {
                 Color.clear.frame(height: 44)
             }
             .toolbar(.hidden, for: .navigationBar)
+            .sheet(isPresented: $showQueue) {
+                RemoteQueueSheet(
+                    queueAvailable: stateSnapshot.queueAvailable && tvClient == nil,
+                    refreshKey: RemoteQueueRefreshKey(
+                        index: stateSnapshot.queueIndex,
+                        count: stateSnapshot.queueCount,
+                        shuffled: stateSnapshot.shuffled
+                    ),
+                    onJumped: { await pollOnce() }
+                )
+                .environment(model)
+            }
             .onAppear {
-                startPolling()
+                isOnScreen = true
                 tvDiscovery.start()
             }
             .onDisappear {
-                pollTask?.cancel()
-                pollTask = nil
+                isOnScreen = false
                 tvDiscovery.stop()
+            }
+            .onChange(of: shouldPoll, initial: true) { _, newValue in
+                if newValue {
+                    startPolling()
+                } else {
+                    pollTask?.cancel()
+                    pollTask = nil
+                }
             }
         }
     }
@@ -197,6 +265,9 @@ struct RemoteControlScreen: View {
             transportRow
                 .padding(.bottom, 8)
 
+            playbackModeRow
+                .padding(.top, 10)
+
             if let errorMessage, hasReceivedState {
                 Text(errorMessage)
                     .font(.caption)
@@ -255,6 +326,61 @@ struct RemoteControlScreen: View {
         }
     }
 
+    /// Shuffle / queue / loop. Disabled (dimmed) unless the desktop reported `queue.available`
+    /// and the target is the desktop itself (an Apple TV receiver has no queue control).
+    private var playbackModeRow: some View {
+        let enabled = stateSnapshot.queueAvailable && tvClient == nil
+        let shuffled = stateSnapshot.shuffled
+        let loop = stateSnapshot.loopMode
+        return HStack(spacing: 36) {
+            modeButton(
+                systemName: "shuffle", active: shuffled && enabled, enabled: enabled
+            ) {
+                let next = !shuffled
+                stateSnapshot.shuffled = next
+                Task { await sendQueueCommand { try await $0.sendQueueCommand(action: "set-shuffle", intValue: next ? 1 : 0) } }
+            }
+            .accessibilityLabel(String(localized: "Shuffle"))
+            .accessibilityValue(shuffled ? String(localized: "On") : String(localized: "Off"))
+
+            modeButton(systemName: "list.bullet", active: false, enabled: true) {
+                showQueue = true
+            }
+            .accessibilityLabel(String(localized: "Play queue"))
+
+            modeButton(
+                systemName: loop == .one ? "repeat.1" : "repeat", active: loop != .off && enabled, enabled: enabled
+            ) {
+                let next = loop.next
+                stateSnapshot.loopMode = next
+                Task { await sendQueueCommand { try await $0.sendQueueCommand(action: "set-loop", mode: next.rawValue) } }
+            }
+            .accessibilityLabel(String(localized: "Repeat"))
+            .accessibilityValue(loopAccessibilityValue(loop))
+        }
+    }
+
+    private func loopAccessibilityValue(_ mode: RemoteLoopMode) -> String {
+        switch mode {
+        case .off: return String(localized: "Off")
+        case .all: return String(localized: "Repeat all")
+        case .one: return String(localized: "Repeat one")
+        }
+    }
+
+    private func modeButton(systemName: String, active: Bool, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(active ? Color.black : Color.white)
+                .frame(width: 44, height: 44)
+                .background(active ? Color.white : Color.white.opacity(0.12), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? (active ? 1 : 0.75) : 0.3)
+    }
+
     private func transportIconButton(systemName: String, size: CGFloat, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
@@ -285,6 +411,23 @@ struct RemoteControlScreen: View {
         }
     }
 
+    /// Mode changes are applied optimistically by the caller; the following poll makes the
+    /// desktop's answer win (also restoring the previous value when the command failed).
+    private func sendQueueCommand(_ operation: @escaping @Sendable (RemoteAPIClient) async throws -> Void) async {
+        do {
+            try await model.withFailover(operation)
+        } catch {
+            let message: String
+            if let queueError = error as? RemoteQueueError, queueError == .unavailable {
+                message = String(localized: "Queue control needs the native desktop app.")
+            } else {
+                message = "Command failed: \(error.localizedDescription)"
+            }
+            await MainActor.run { errorMessage = message }
+        }
+        await pollOnce()
+    }
+
     private func pollOnce() async {
         do {
             let s: [String: Any]
@@ -308,6 +451,10 @@ struct RemoteControlScreen: View {
         }
     }
 
+    private var shouldPoll: Bool {
+        RemoteControlPollingPolicy.shouldPoll(isOnScreen: isOnScreen, isTabSelected: isTabSelected, scenePhase: scenePhase)
+    }
+
     private func startPolling() {
         pollTask?.cancel()
         pollTask = Task {
@@ -327,6 +474,139 @@ struct RemoteControlScreen: View {
         position = 0
         errorMessage = nil
         Task { await pollOnce() }
+    }
+}
+
+/// Changes of any of these while the sheet is open trigger a queue refetch.
+struct RemoteQueueRefreshKey: Equatable {
+    var index: Int
+    var count: Int
+    var shuffled: Bool
+}
+
+/// The desktop play queue as a list: current item highlighted and scrolled into view; tap jumps.
+/// `/v1/remote/queue` is only fetched while this sheet is open (open, after a jump, state change).
+private struct RemoteQueueSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let queueAvailable: Bool
+    let refreshKey: RemoteQueueRefreshKey
+    let onJumped: () async -> Void
+
+    @State private var queue: RemoteQueue?
+    @State private var message: String?
+    @State private var didScrollToCurrent = false
+
+    private var isAvailable: Bool {
+        queueAvailable && (queue?.available ?? true)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if !isAvailable {
+                    ContentUnavailableView {
+                        Label(String(localized: "Queue unavailable"), systemImage: "list.bullet")
+                    } description: {
+                        Text("Queue control needs the native desktop app.")
+                    }
+                } else if let queue {
+                    list(queue)
+                } else {
+                    ProgressView()
+                }
+            }
+            .navigationTitle(String(localized: "Play queue"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "Done")) { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .task(id: refreshKey) { await load() }
+    }
+
+    private func list(_ queue: RemoteQueue) -> some View {
+        ScrollViewReader { proxy in
+            List {
+                if let message {
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+                ForEach(Array(queue.items.enumerated()), id: \.offset) { offset, item in
+                    Button {
+                        Task { await jump(to: offset, item: item) }
+                    } label: {
+                        row(item, isCurrent: offset == queue.index)
+                    }
+                    .buttonStyle(.plain)
+                    .id(offset)
+                    .accessibilityAddTraits(offset == queue.index ? .isSelected : [])
+                }
+            }
+            .listStyle(.plain)
+            .onChange(of: queue.items.count, initial: true) { _, count in
+                guard !didScrollToCurrent, count > 0, queue.index >= 0 else { return }
+                didScrollToCurrent = true
+                proxy.scrollTo(queue.index, anchor: .center)
+            }
+        }
+    }
+
+    private func row(_ item: RemoteQueueItem, isCurrent: Bool) -> some View {
+        HStack(spacing: 12) {
+            if !item.artworkId.isEmpty {
+                ArtworkImageView(artworkId: item.artworkId, urlString: model.artworkURL(for: item.artworkId), cornerRadius: 6, size: 40)
+                    .frame(width: 40, height: 40)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(.body.weight(isCurrent ? .bold : .regular))
+                    .lineLimit(1)
+                Text(item.artist)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if isCurrent {
+                Image(systemName: "speaker.wave.2.fill")
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityHidden(true)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func load() async {
+        guard queueAvailable else { return }
+        do {
+            let fetched = try await model.withFailover { try await $0.fetchQueue() }
+            await MainActor.run { queue = fetched }
+        } catch RemoteQueueError.unavailable {
+            await MainActor.run { queue = RemoteQueue(from: ["available": false]) }
+        } catch {
+            await MainActor.run { message = error.localizedDescription }
+        }
+    }
+
+    private func jump(to index: Int, item: RemoteQueueItem) async {
+        do {
+            try await model.withFailover { try await $0.sendQueueCommand(action: "queue-jump", intValue: index, songId: item.id) }
+            await MainActor.run { message = nil }
+            await onJumped()
+            await load()
+        } catch RemoteQueueError.changed {
+            await MainActor.run { message = String(localized: "The queue changed. Showing the latest list.") }
+            await load()
+        } catch RemoteQueueError.unavailable {
+            await MainActor.run { queue = RemoteQueue(from: ["available": false]) }
+        } catch {
+            await MainActor.run { message = error.localizedDescription }
+        }
     }
 }
 

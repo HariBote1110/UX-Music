@@ -23,18 +23,27 @@ final class QRScannerUIViewController: UIViewController, AVCaptureMetadataOutput
     var onDecoded: ((String) -> Void)?
 
     private let session = AVCaptureSession()
-    private var previewLayer: AVCaptureVideoPreviewLayer?
+    private lazy var previewLayer = AVCaptureVideoPreviewLayer(session: session)
     private var hasEmitted = false
+    /// Serial queue owning all session configuration and start/stop calls.
+    private let sessionQueue = DispatchQueue(label: "jp.ux-labs.UXMusicMobile.qr-scanner-session")
+    /// Only touched on `sessionQueue`.
+    private var isConfigured = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        // Attach the preview layer synchronously so it is visible as soon as the session runs,
+        // without waiting behind the sheet-presentation main-thread stall.
+        previewLayer.videoGravity = .resizeAspectFill
+        previewLayer.frame = view.bounds
+        view.layer.insertSublayer(previewLayer, at: 0)
         configureSessionIfAllowed()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        previewLayer?.frame = view.bounds
+        previewLayer.frame = view.bounds
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -58,41 +67,38 @@ final class QRScannerUIViewController: UIViewController, AVCaptureMetadataOutput
         }
     }
 
+    /// Configures the session on `sessionQueue` (Apple's recommended pattern) so device lookup and
+    /// `commitConfiguration` never block the main thread.
     private func setUpCaptureSession() {
-        guard previewLayer == nil else { return }
-        guard let device = AVCaptureDevice.default(for: .video),
-              let input = try? AVCaptureDeviceInput(device: device)
-        else { return }
+        sessionQueue.async { [weak self] in
+            guard let self, !self.isConfigured else { return }
+            guard let device = AVCaptureDevice.default(for: .video),
+                  let input = try? AVCaptureDeviceInput(device: device)
+            else { return }
 
-        session.beginConfiguration()
-        session.sessionPreset = .high
-        if session.canAddInput(input) { session.addInput(input) }
+            self.session.beginConfiguration()
+            self.session.sessionPreset = .high
+            if self.session.canAddInput(input) { self.session.addInput(input) }
 
-        let output = AVCaptureMetadataOutput()
-        guard session.canAddOutput(output) else {
-            session.commitConfiguration()
-            return
-        }
-        session.addOutput(output)
-        output.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
-        output.metadataObjectTypes = [.qr]
-        session.commitConfiguration()
+            let output = AVCaptureMetadataOutput()
+            guard self.session.canAddOutput(output) else {
+                self.session.commitConfiguration()
+                return
+            }
+            self.session.addOutput(output)
+            output.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
+            output.metadataObjectTypes = [.qr]
+            self.session.commitConfiguration()
+            self.isConfigured = true
 
-        let layer = AVCaptureVideoPreviewLayer(session: session)
-        layer.videoGravity = .resizeAspectFill
-        layer.frame = view.bounds
-        view.layer.insertSublayer(layer, at: 0)
-        previewLayer = layer
-
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.session.startRunning()
+            self.session.startRunning()
         }
     }
 
     private func stopSession() {
-        guard session.isRunning else { return }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.session.stopRunning()
+        sessionQueue.async { [weak self] in
+            guard let self, self.session.isRunning else { return }
+            self.session.stopRunning()
         }
     }
 

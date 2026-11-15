@@ -91,6 +91,14 @@ enum YouTubeEmbedPlayer {
         isCellular && lowQualityOnCellularEnabled
     }
 
+    /// A parked (invisible) video gains nothing from high resolution, so battery/heat favours the
+    /// low-quality path whenever nobody can see it. YouTube picks quality from player size (see
+    /// `YouTubePlaybackHost.layoutWebView`). The mid-playback downgrade on resize is not yet
+    /// verified on a device.
+    static func effectiveLowQuality(preferred: Bool, isVideoVisible: Bool) -> Bool {
+        preferred || !isVideoVisible
+    }
+
     /// Validates a YouTube video ID (always 11 characters of `[A-Za-z0-9_-]`, matching
     /// `embedVideoIDPattern` in `server/embed_host.go`) and builds the host page HTML.
     static func buildEmbedHTML(videoID: String) throws -> String {
@@ -326,19 +334,30 @@ enum YouTubeEmbedPlayer {
             } catch (e) { /* ignore */ }
         }
 
+        function postTime() {
+            if (!player || typeof player.getCurrentTime !== 'function') return;
+            try {
+                post({
+                    type: 'time',
+                    currentTime: player.getCurrentTime() || 0,
+                    duration: player.getDuration() || 0
+                });
+                postQualityIfChanged();
+            } catch (e) { /* ignore */ }
+        }
+
+        // The time reporter only runs while playing: an always-on 250 ms interval kept crossing
+        // the JS->native bridge 4x/s even when paused (battery/heat).
         function startTimer() {
             if (timer) return;
-            timer = setInterval(function () {
-                if (!player || typeof player.getCurrentTime !== 'function') return;
-                try {
-                    post({
-                        type: 'time',
-                        currentTime: player.getCurrentTime() || 0,
-                        duration: player.getDuration() || 0
-                    });
-                    postQualityIfChanged();
-                } catch (e) { /* ignore */ }
-            }, 250);
+            timer = setInterval(postTime, 250);
+        }
+
+        function stopTimer() {
+            if (!timer) return;
+            clearInterval(timer);
+            timer = null;
+            postTime();
         }
 
         window.onYouTubeIframeAPIReady = function () {
@@ -361,9 +380,12 @@ enum YouTubeEmbedPlayer {
                         try { player.mute(); } catch (e) { /* ignore */ }
                         post({ type: 'ready' });
                         postQualityIfChanged();
-                        startTimer();
                     },
-                    onStateChange: function (e) { post({ type: 'state', state: e.data }); },
+                    onStateChange: function (e) {
+                        post({ type: 'state', state: e.data });
+                        if (e.data === 1) startTimer();
+                        else if (e.data !== 3) stopTimer();
+                    },
                     onError: function (e) { post({ type: 'error', code: e.data }); },
                     onPlaybackQualityChange: function () { postQualityIfChanged(); }
                 }
