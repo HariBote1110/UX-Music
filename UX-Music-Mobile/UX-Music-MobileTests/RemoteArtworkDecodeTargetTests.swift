@@ -107,3 +107,32 @@ final class RemoteArtworkDecodeTargetTests: XCTestCase {
         }
     }
 }
+
+@MainActor
+final class RemoteArtworkImageValidationTests: XCTestCase {
+    private func makePNG() throws -> Data {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2))
+        let image = renderer.image { ctx in
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 2, height: 2))
+        }
+        return try XCTUnwrap(image.pngData())
+    }
+
+    func testIsDecodableImageAcceptsEncodedPNG() throws {
+        XCTAssertTrue(RemoteArtworkDecoding.isDecodableImage(try makePNG()))
+    }
+
+    func testIsDecodableImageRejectsEmptyData() {
+        XCTAssertFalse(RemoteArtworkDecoding.isDecodableImage(Data()))
+    }
+
+    func testIsDecodableImageRejectsHTMLErrorBody() {
+        XCTAssertFalse(RemoteArtworkDecoding.isDecodableImage(Data("<html>error</html>".utf8)))
+    }
+
+    func testIsDecodableImageRejectsTruncatedPNG() throws {
+        let truncated = Data(try makePNG().prefix(20))
+        XCTAssertFalse(RemoteArtworkDecoding.isDecodableImage(truncated))
+    }
+}

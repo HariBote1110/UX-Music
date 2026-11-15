@@ -35,3 +35,27 @@ final class RemoteArtworkPreviewCacheTests: XCTestCase {
         XCTAssertNil(cache.fileURLIfPresent(artworkId: ""))
     }
 }
+
+final class RemoteArtworkPreviewCacheRemovalTests: XCTestCase {
+    func testRemoveDeletesStoredFileForArtworkId() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RemoteArtworkPreviewRemoval-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let cache = RemoteArtworkPreviewCache(rootURL: tmp)
+        let id = "artwork-removal-id"
+        try cache.store(data: Data("bytes".utf8), artworkId: id)
+        XCTAssertNotNil(cache.fileURLIfPresent(artworkId: id))
+
+        cache.remove(artworkId: id)
+        XCTAssertNil(cache.fileURLIfPresent(artworkId: id))
+    }
+
+    func testRemoveOfMissingIdIsNoOp() {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RemoteArtworkPreviewRemoval-\(UUID().uuidString)", isDirectory: true)
+        let cache = RemoteArtworkPreviewCache(rootURL: tmp)
+        cache.remove(artworkId: "never-stored")
+        XCTAssertNil(cache.fileURLIfPresent(artworkId: "never-stored"))
+    }
+}
