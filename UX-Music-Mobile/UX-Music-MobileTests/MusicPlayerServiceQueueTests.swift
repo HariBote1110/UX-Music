@@ -321,6 +321,11 @@ final class MusicPlayerServiceQueueTests: XCTestCase {
         for _ in 0 ..< 10 {
             await player.play(queue[2], newQueue: queue, startIndex: 2)
             player.setShuffleEnabled(true)
+
+            // While shuffled, the playing copy is still the second `A` and both copies are kept.
+            XCTAssertEqual(player.playbackQueue.filter { $0.id == "A" }.count, 2)
+            XCTAssertEqual(player.playbackQueue[player.currentQueueIndex].path, "/nonexistent/A-second.m4a")
+
             player.setShuffleEnabled(false)
 
             XCTAssertEqual(player.currentQueueIndex, 2)
