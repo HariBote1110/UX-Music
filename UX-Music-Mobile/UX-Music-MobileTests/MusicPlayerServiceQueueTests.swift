@@ -271,6 +271,63 @@ final class MusicPlayerServiceQueueTests: XCTestCase {
         XCTAssertEqual(player.currentQueueIndex, 0)
     }
 
+    // MARK: - Duplicate songs in one queue
+
+    /// Same song id, distinguishable by `path`, so the test can tell which copy is current.
+    private func copy(_ id: String, _ tag: String) -> Song {
+        Song(id: id, path: "/nonexistent/\(id)-\(tag).m4a", title: id)
+    }
+
+    func testPlayUsesProvidedStartIndexForDuplicateSong() async {
+        let player = MusicPlayerService()
+        player.setShuffleEnabled(false)
+        let queue = [copy("A", "first"), copy("B", "b"), copy("A", "second")]
+
+        await player.play(queue[2], newQueue: queue, startIndex: 2)
+
+        XCTAssertEqual(player.currentQueueIndex, 2)
+        XCTAssertEqual(player.currentSong?.path, "/nonexistent/A-second.m4a")
+    }
+
+    func testPlayWithoutStartIndexStillStartsAtFirstOccurrence() async {
+        let player = MusicPlayerService()
+        player.setShuffleEnabled(false)
+        let queue = [copy("A", "first"), copy("B", "b"), copy("A", "second")]
+
+        await player.play(queue[2], newQueue: queue)
+
+        XCTAssertEqual(player.currentQueueIndex, 0)
+    }
+
+    func testPlayWithShuffleOnKeepsProvidedDuplicateCurrent() async {
+        let player = MusicPlayerService()
+        player.setShuffleEnabled(true)
+        defer { player.setShuffleEnabled(false) }
+        let queue = [copy("A", "first"), copy("B", "b"), copy("A", "second"), copy("C", "c")]
+
+        for _ in 0 ..< 10 {
+            await player.play(queue[2], newQueue: queue, startIndex: 2)
+            XCTAssertEqual(player.currentSong?.path, "/nonexistent/A-second.m4a")
+            XCTAssertEqual(player.playbackQueue[player.currentQueueIndex].path, "/nonexistent/A-second.m4a")
+        }
+    }
+
+    func testShuffleRoundTripKeepsDuplicateOccurrence() async {
+        let player = MusicPlayerService()
+        player.setShuffleEnabled(false)
+        defer { player.setShuffleEnabled(false) }
+        let queue = [copy("A", "first"), copy("B", "b"), copy("A", "second"), copy("C", "c")]
+
+        for _ in 0 ..< 10 {
+            await player.play(queue[2], newQueue: queue, startIndex: 2)
+            player.setShuffleEnabled(true)
+            player.setShuffleEnabled(false)
+
+            XCTAssertEqual(player.currentQueueIndex, 2)
+            XCTAssertEqual(player.currentSong?.path, "/nonexistent/A-second.m4a")
+        }
+    }
+
     // MARK: - Queue edits made while shuffled survive shuffle-off
 
     func testRemoveWhileShuffledStaysRemovedAfterShuffleOff() async {
