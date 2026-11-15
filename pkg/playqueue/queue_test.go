@@ -247,3 +247,41 @@ func TestSnapshotReflectsState(t *testing.T) {
 		t.Fatalf("Snapshot().Items length = %d; want 2", len(snap.Items))
 	}
 }
+
+func TestSetShuffleRoundTripKeepsDuplicateIDPosition(t *testing.T) {
+	q := NewWithShuffler(func(items []Item) {
+		for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+			items[i], items[j] = items[j], items[i]
+		}
+	})
+	q.SetQueue(items("a", "b", "a", "c"), 2) // current = second "a"
+
+	q.SetShuffle(true)
+	current, ok := q.CurrentItem()
+	if !ok || current.ID != "a" {
+		t.Fatalf("CurrentItem() after shuffle = %+v, %v; want a, true", current, ok)
+	}
+	snap := q.Snapshot()
+	if snap.Index != 0 {
+		t.Fatalf("Snapshot().Index after shuffle = %d; want 0", snap.Index)
+	}
+	count := 0
+	for _, it := range snap.Items {
+		if it.ID == "a" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("shuffled list has %d copies of a; want 2 (items=%v)", count, snap.Items)
+	}
+
+	q.SetShuffle(false)
+	snap = q.Snapshot()
+	if snap.Index != 2 {
+		t.Fatalf("Snapshot().Index after round trip = %d; want 2", snap.Index)
+	}
+	current, ok = q.CurrentItem()
+	if !ok || current.ID != "a" {
+		t.Fatalf("CurrentItem() after round trip = %+v, %v; want a, true", current, ok)
+	}
+}
