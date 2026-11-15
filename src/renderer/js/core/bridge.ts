@@ -13,6 +13,7 @@ import type {
   Song,
   SongSkippedPayload,
 } from '../../types/domain.js';
+import { findLyricsWithCandidates } from './lyrics-lookup.js';
 
 const api = window.electronAPI;
 const { CHANNELS } = api;
@@ -152,7 +153,7 @@ export const musicApi = {
   getLyrics: (song: Song) => {
     const app = getWailsApp();
     if (app) {
-      return app.GetLyrics(song.title ?? '');
+      return findLyricsWithCandidates(name => app.GetLyrics(name), song);
     }
     return api && api.invoke('get-lyrics', song);
   },
