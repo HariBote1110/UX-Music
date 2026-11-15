@@ -154,6 +154,13 @@ describe('mergePlainTxtWithJa', () => {
         expect(m[1].translation).toBe('に');
     });
 
+    it('drops extra Japanese lines beyond the main lyric line count', () => {
+        const m = mergePlainTxtWithJa('One\nTwo', 'いち\nに\nさん\n');
+        expect(m).toHaveLength(2);
+        expect(m.map(l => l.text)).toEqual(['One', 'Two']);
+        expect(m[1].translation).toBe('に');
+    });
+
     it('omits translation on blank English lines', () => {
         const m = mergePlainTxtWithJa('One\n\nThree', 'いち\n間奏\nさん');
         expect(m[1].translation).toBeUndefined();
