@@ -64,6 +64,62 @@ final class LyricsTranslationMergerTests: XCTestCase {
         XCTAssertNil(merged.first?.translation)
     }
 
+    // MARK: - mergeTimedWithJaLRC: several lines sharing one timestamp
+
+    func testMergeTimedWithJaLRCPairsSharedTimestampLinesPositionally() {
+        let primary = [
+            LRCParser.TimedLine(id: 1, startTime: 1.0, text: "Hello"),
+            LRCParser.TimedLine(id: 2, startTime: 1.0, text: "World"),
+        ]
+        let translation = [
+            LRCParser.TimedLine(id: 1, startTime: 1.0, text: "こんにちは"),
+            LRCParser.TimedLine(id: 2, startTime: 1.0, text: "世界"),
+        ]
+        let merged = LyricsTranslationMerger.mergeTimedWithJaLRC(primary: primary, translation: translation)
+        XCTAssertEqual(merged.map(\.translation), ["こんにちは", "世界"])
+    }
+
+    func testMergeTimedWithJaLRCBlankPrimarySlotConsumesPositionInSharedGroup() {
+        let primary = [
+            LRCParser.TimedLine(id: 1, startTime: 1.0, text: ""),
+            LRCParser.TimedLine(id: 2, startTime: 1.0, text: "World"),
+        ]
+        let translation = [
+            LRCParser.TimedLine(id: 1, startTime: 1.0, text: "何か"),
+            LRCParser.TimedLine(id: 2, startTime: 1.0, text: "世界"),
+        ]
+        let merged = LyricsTranslationMerger.mergeTimedWithJaLRC(primary: primary, translation: translation)
+        XCTAssertEqual(merged.map(\.translation), [nil, "世界"])
+    }
+
+    func testMergeTimedWithJaLRCUnequalSharedGroupPairsNonBlankLinesInOrder() {
+        let primary = [
+            LRCParser.TimedLine(id: 1, startTime: 1.0, text: "Hello"),
+            LRCParser.TimedLine(id: 2, startTime: 1.0, text: ""),
+            LRCParser.TimedLine(id: 3, startTime: 1.0, text: "World"),
+        ]
+        let translation = [
+            LRCParser.TimedLine(id: 1, startTime: 1.0, text: "こんにちは"),
+            LRCParser.TimedLine(id: 2, startTime: 1.0, text: "世界"),
+        ]
+        let merged = LyricsTranslationMerger.mergeTimedWithJaLRC(primary: primary, translation: translation)
+        XCTAssertEqual(merged.map(\.translation), ["こんにちは", nil, "世界"])
+    }
+
+    func testMergeTimedWithJaLRCUnpairedNonBlankLineFallsBackToIndex() {
+        let primary = [
+            LRCParser.TimedLine(id: 1, startTime: 1.0, text: "A"),
+            LRCParser.TimedLine(id: 2, startTime: 1.0, text: "B"),
+            LRCParser.TimedLine(id: 3, startTime: 1.0, text: "C"),
+        ]
+        let translation = [
+            LRCParser.TimedLine(id: 1, startTime: 1.0, text: "a"),
+            LRCParser.TimedLine(id: 2, startTime: 1.0, text: "b"),
+        ]
+        let merged = LyricsTranslationMerger.mergeTimedWithJaLRC(primary: primary, translation: translation)
+        XCTAssertEqual(merged.map(\.translation), ["a", "b", nil])
+    }
+
     // MARK: - mergeTimedWithJaTxt
 
     func testMergeTimedWithJaTxtIsPositional() {
