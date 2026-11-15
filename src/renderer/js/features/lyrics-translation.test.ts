@@ -113,6 +113,31 @@ describe('mergeLrcWithJaLrc', () => {
         expect(m[1].translation).toBeUndefined();
     });
 
+    it('keeps every Japanese line when several lines share one timestamp', () => {
+        const en = parseLRC('[00:10.00]Hello\n[00:10.00]World');
+        const ja = parseLRC('[00:10.00]こんにちは\n[00:10.00]世界');
+        const m = mergeLrcWithJaLrc(en, ja);
+        expect(m[0].translation).toBe('こんにちは');
+        expect(m[1].translation).toBe('世界');
+    });
+
+    it('pairs same-time lines by position even when the first primary line is blank', () => {
+        const en = parseLRC('[00:10.00]\n[00:10.00]Hello');
+        const ja = parseLRC('[00:10.00]あ\n[00:10.00]い');
+        const m = mergeLrcWithJaLrc(en, ja);
+        expect(m[0].translation).toBeUndefined();
+        expect(m[1].translation).toBe('い');
+    });
+
+    it('pairs non-blank same-time Japanese lines in order when counts differ', () => {
+        const en = parseLRC('[00:10.00]\n[00:10.00]B\n[00:10.00]C');
+        const ja = parseLRC('[00:10.00]あ\n[00:10.00]い');
+        const m = mergeLrcWithJaLrc(en, ja);
+        expect(m[0].translation).toBeUndefined();
+        expect(m[1].translation).toBe('あ');
+        expect(m[2].translation).toBe('い');
+    });
+
     it('attaches by timestamp', () => {
         const en = parseLRC('[00:10.00]Hello');
         const ja = parseLRC('[00:10.00]こんにちは');
