@@ -9,7 +9,10 @@ import Foundation
 final class LibraryMembershipStore {
     private(set) var songs: [String: Song] = [:]
 
-    init() {
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         loadMeta()
     }
 
@@ -28,9 +31,16 @@ final class LibraryMembershipStore {
     }
 
     private func loadMeta() {
-        guard let data = UserDefaults.standard.data(forKey: AppConstants.youtubeLibrarySongsMetaKey),
-              let list = try? JSONDecoder().decode([Song].self, from: data)
-        else { return }
+        let key = AppConstants.youtubeLibrarySongsMetaKey
+        guard let data = defaults.data(forKey: key) else { return }
+        guard let list = try? JSONDecoder().decode([Song].self, from: data) else {
+            // Keep the undecodable bytes so the next save does not silently discard them; the oldest copy wins.
+            let backupKey = key + ".undecodable-backup"
+            if defaults.data(forKey: backupKey) == nil {
+                defaults.set(data, forKey: backupKey)
+            }
+            return
+        }
         for song in list {
             songs[song.id] = song
         }
@@ -39,7 +49,7 @@ final class LibraryMembershipStore {
     private func saveMeta() {
         let list = Array(songs.values)
         if let data = try? JSONEncoder().encode(list) {
-            UserDefaults.standard.set(data, forKey: AppConstants.youtubeLibrarySongsMetaKey)
+            defaults.set(data, forKey: AppConstants.youtubeLibrarySongsMetaKey)
         }
     }
 }
