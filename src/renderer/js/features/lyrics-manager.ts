@@ -34,6 +34,9 @@ let cachedLyricsFileBase = '';
 
 let translationPasteModalWired = false;
 
+/** loadLyricsForSong の世代番号。最新の呼び出し以外の非同期結果は捨てる。 */
+let lyricsLoadGeneration = 0;
+
 const LYRICS_MOTION_ANCHOR_RATIO = 0.35;
 /** 同期歌詞ブロック間（次の p の手前）— 可変行高・折返し・和訳行で重なりを防ぐ */
 const LYRICS_LRC_INTER_BLOCK_GAP_PX = 16;
@@ -57,12 +60,15 @@ let cachedLrcHeights: number[] | null = null;
  * @param {object} song - 再生中の曲オブジェクト
  */
 export async function loadLyricsForSong(song) {
+    const generation = ++lyricsLoadGeneration;
     clearLyrics();
     state.currentLyrics = null;
     state.currentLyricsType = null;
     if (!song) return;
 
     const result = await electronAPI.invoke('get-lyrics', song) as Record<string, unknown> | null;
+    // 取得中に別の曲の読み込みが始まっていれば、この結果は古いので反映しない
+    if (generation !== lyricsLoadGeneration) return;
     if (!result) {
         displayNoLyrics();
         setupLyricsContextMenu(song, null);
