@@ -271,6 +271,56 @@ final class MusicPlayerServiceQueueTests: XCTestCase {
         XCTAssertEqual(player.currentQueueIndex, 0)
     }
 
+    // MARK: - Queue edits made while shuffled survive shuffle-off
+
+    func testRemoveWhileShuffledStaysRemovedAfterShuffleOff() async {
+        let player = MusicPlayerService()
+        player.setShuffleEnabled(false)
+        defer { player.setShuffleEnabled(false) }
+        let queue = songs(["A", "B", "C", "D"])
+        await player.play(queue[0], newQueue: queue) // current = A
+        player.setShuffleEnabled(true)
+        let cIndex = player.playbackQueue.firstIndex { $0.id == "C" }!
+
+        await player.removeQueueItem(at: cIndex)
+        player.setShuffleEnabled(false)
+
+        XCTAssertEqual(player.playbackQueue.map(\.id).sorted(), ["A", "B", "D"])
+        XCTAssertEqual(player.currentSong?.id, "A")
+        XCTAssertEqual(player.playbackQueue[player.currentQueueIndex].id, "A")
+    }
+
+    func testAppendWhileShuffledIsKeptAfterShuffleOff() async {
+        let player = MusicPlayerService()
+        player.setShuffleEnabled(false)
+        defer { player.setShuffleEnabled(false) }
+        let queue = songs(["A", "B", "C", "D"])
+        await player.play(queue[0], newQueue: queue)
+        player.setShuffleEnabled(true)
+
+        player.appendToQueue(song("Z"))
+        player.setShuffleEnabled(false)
+
+        XCTAssertEqual(player.playbackQueue.map(\.id).sorted(), ["A", "B", "C", "D", "Z"])
+        XCTAssertEqual(player.currentSong?.id, "A")
+    }
+
+    func testInsertNextWhileShuffledIsKeptAfterShuffleOff() async {
+        let player = MusicPlayerService()
+        player.setShuffleEnabled(false)
+        defer { player.setShuffleEnabled(false) }
+        let queue = songs(["A", "B", "C", "D"])
+        await player.play(queue[0], newQueue: queue)
+        player.setShuffleEnabled(true)
+
+        player.insertNext(song("X"))
+        player.setShuffleEnabled(false)
+
+        XCTAssertEqual(player.playbackQueue.map(\.id).sorted(), ["A", "B", "C", "D", "X"])
+        XCTAssertEqual(player.playbackQueue.map(\.id), ["A", "X", "B", "C", "D"])
+        XCTAssertEqual(player.currentSong?.id, "A")
+    }
+
     // MARK: - localFileResolver
 
     /// Writes a trivial-but-real file so `AVAudioFile(forReading:)` inside `loadAndPlay` can at

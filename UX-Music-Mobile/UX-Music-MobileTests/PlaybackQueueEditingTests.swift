@@ -101,4 +101,85 @@ final class PlaybackQueueEditingTests: XCTestCase {
         XCTAssertEqual(before[1], "A#1")
         XCTAssertEqual(after[0], "A#0")
     }
+
+    // MARK: - occurrenceRank / occurrenceIndex
+
+    func testOccurrenceRankCountsEarlierItemsWithSameId() {
+        let array = ["A", "B", "A", "C", "A"]
+        XCTAssertEqual(PlaybackQueueEditing.occurrenceRank(ofIndex: 0, in: array, id: { $0 }), 0)
+        XCTAssertEqual(PlaybackQueueEditing.occurrenceRank(ofIndex: 2, in: array, id: { $0 }), 1)
+        XCTAssertEqual(PlaybackQueueEditing.occurrenceRank(ofIndex: 4, in: array, id: { $0 }), 2)
+    }
+
+    func testOccurrenceIndexPicksRankedOccurrenceAndFallsBackToFirst() {
+        let array = ["A", "B", "A"]
+        XCTAssertEqual(PlaybackQueueEditing.occurrenceIndex(rank: 1, ofId: "A", in: array, id: { $0 }), 2)
+        // Rank 3 does not exist: fall back to the first occurrence.
+        XCTAssertEqual(PlaybackQueueEditing.occurrenceIndex(rank: 3, ofId: "A", in: array, id: { $0 }), 0)
+        XCTAssertNil(PlaybackQueueEditing.occurrenceIndex(rank: 0, ofId: "Z", in: array, id: { $0 }))
+    }
+
+    // MARK: - originalQueueAfterRemoving (shuffle-on edits mirrored into the unshuffled order)
+
+    func testRemovingWhileShuffledRemovesSameSongFromOriginalOrder() {
+        // Shuffled [B,A,C,A] over original [A,B,A,C]: removing the second A (rank 1) in the shuffled
+        // queue removes the second A of the original order too.
+        let queue = ["B", "A", "C", "A"]
+        let original = ["A", "B", "A", "C"]
+        let result = PlaybackQueueEditing.originalQueueAfterRemoving(
+            queue: queue, originalQueue: original, removedIndex: 3, id: { $0 }
+        )
+        XCTAssertEqual(result, ["A", "B", "C"])
+    }
+
+    func testRemovingWhileShuffledFallsBackToFirstWhenRankMissingInOriginal() {
+        // Duplicate was added while shuffled and only one copy exists in the original order.
+        let queue = ["A", "B", "A"]
+        let original = ["A", "B"]
+        let result = PlaybackQueueEditing.originalQueueAfterRemoving(
+            queue: queue, originalQueue: original, removedIndex: 2, id: { $0 }
+        )
+        XCTAssertEqual(result, ["B"])
+    }
+
+    func testRemovingWhileShuffledLeavesOriginalUnchangedWhenSongAbsent() {
+        let result = PlaybackQueueEditing.originalQueueAfterRemoving(
+            queue: ["A", "X"], originalQueue: ["A"], removedIndex: 1, id: { $0 }
+        )
+        XCTAssertEqual(result, ["A"])
+    }
+
+    // MARK: - originalQueueAfterAppending
+
+    func testAppendingWhileShuffledAppendsToOriginalOrder() {
+        XCTAssertEqual(
+            PlaybackQueueEditing.originalQueueAfterAppending(originalQueue: ["A", "B"], appended: "Z"),
+            ["A", "B", "Z"]
+        )
+    }
+
+    // MARK: - originalQueueAfterInsertingNext
+
+    func testInsertingNextWhileShuffledInsertsAfterCurrentInOriginalOrder() {
+        // Shuffled [C,A,B] with current = A (index 1); original [A,B,C].
+        let result = PlaybackQueueEditing.originalQueueAfterInsertingNext(
+            queue: ["C", "A", "B"], originalQueue: ["A", "B", "C"], currentIndex: 1, inserted: "X", id: { $0 }
+        )
+        XCTAssertEqual(result, ["A", "X", "B", "C"])
+    }
+
+    func testInsertingNextWhileShuffledUsesRankOfCurrentDuplicate() {
+        // Current is the second A (index 2, rank 1) of [A,B,A]; original [A,A,B] has its second A at 1.
+        let result = PlaybackQueueEditing.originalQueueAfterInsertingNext(
+            queue: ["A", "B", "A"], originalQueue: ["A", "A", "B"], currentIndex: 2, inserted: "X", id: { $0 }
+        )
+        XCTAssertEqual(result, ["A", "A", "X", "B"])
+    }
+
+    func testInsertingNextAppendsWhenCurrentCannotBeLocated() {
+        let result = PlaybackQueueEditing.originalQueueAfterInsertingNext(
+            queue: ["A"], originalQueue: ["B"], currentIndex: 0, inserted: "X", id: { $0 }
+        )
+        XCTAssertEqual(result, ["B", "X"])
+    }
 }
