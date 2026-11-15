@@ -108,3 +108,65 @@ final class PlaylistStoreTests: XCTestCase {
         XCTAssertEqual(decoded, p)
     }
 }
+
+@MainActor
+final class PlaylistStoreUndecodableDataTests: XCTestCase {
+    private func makeDefaults() throws -> UserDefaults {
+        let suiteName = "test.playlist.undecodable.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+
+    func testUndecodablePersistedDataIsBackedUpBeforeNextSave() throws {
+        let defaults = try makeDefaults()
+        let key = AppConstants.playlistsPersistenceKey
+        let corrupt = Data("not json".utf8)
+        defaults.set(corrupt, forKey: key)
+
+        let store = PlaylistStore(defaults: defaults, persistenceKey: key)
+        _ = try store.createPlaylist(name: "Fresh")
+
+        XCTAssertEqual(defaults.data(forKey: key + ".undecodable-backup"), corrupt)
+        XCTAssertEqual(store.orderedPlaylists().map(\.name), ["Fresh"])
+    }
+
+    func testAbsentPersistedDataCreatesNoBackup() throws {
+        let defaults = try makeDefaults()
+        let key = AppConstants.playlistsPersistenceKey
+        let store = PlaylistStore(defaults: defaults, persistenceKey: key)
+        _ = try store.createPlaylist(name: "Fresh")
+        XCTAssertNil(defaults.data(forKey: key + ".undecodable-backup"))
+    }
+}
+
+@MainActor
+final class FavouriteSongStoreTests: XCTestCase {
+    private func makeDefaults() throws -> UserDefaults {
+        let suiteName = "test.favourite.undecodable.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+
+    func testUndecodablePersistedDataIsBackedUpBeforeNextSave() throws {
+        let defaults = try makeDefaults()
+        let key = AppConstants.favouriteSongIdsKey
+        let corrupt = Data("not json".utf8)
+        defaults.set(corrupt, forKey: key)
+
+        let store = FavouriteSongStore(defaults: defaults, persistenceKey: key)
+        store.toggle(songId: "song-1")
+
+        XCTAssertEqual(defaults.data(forKey: key + ".undecodable-backup"), corrupt)
+        XCTAssertEqual(store.orderedIds, ["song-1"])
+    }
+
+    func testAbsentPersistedDataCreatesNoBackup() throws {
+        let defaults = try makeDefaults()
+        let key = AppConstants.favouriteSongIdsKey
+        let store = FavouriteSongStore(defaults: defaults, persistenceKey: key)
+        store.toggle(songId: "song-1")
+        XCTAssertNil(defaults.data(forKey: key + ".undecodable-backup"))
+    }
+}
