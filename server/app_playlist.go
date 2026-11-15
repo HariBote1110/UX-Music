@@ -340,8 +340,14 @@ func (a *App) DeletePlaylist(name string) error {
 
 // RenamePlaylist renames a playlist
 func (a *App) RenamePlaylist(data map[string]interface{}) error {
-	oldName := data["oldName"].(string)
-	newName := data["newName"].(string)
+	oldName, ok := data["oldName"].(string)
+	if !ok {
+		return fmt.Errorf("RenamePlaylist: oldName must be a string")
+	}
+	newName, ok := data["newName"].(string)
+	if !ok {
+		return fmt.Errorf("RenamePlaylist: newName must be a string")
+	}
 	err := playlist.RenamePlaylist(oldName, newName)
 	if err == nil {
 		if err := a.renamePlaylistShufflePreference(oldName, newName); err != nil {
