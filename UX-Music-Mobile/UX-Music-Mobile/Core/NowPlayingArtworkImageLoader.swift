@@ -5,9 +5,15 @@ import UIKit
 enum NowPlayingArtworkImageLoader {
     static func uiImage(from url: URL) async -> UIImage? {
         if url.isFileURL {
-            return await Task.detached(priority: .utility) {
-                UIImage(contentsOfFile: url.path) ?? RemoteDefaultArtwork.uiImage()
+            let img = await Task.detached(priority: .utility) {
+                UIImage(contentsOfFile: url.path)
             }.value
+            if let img { return img }
+            // Only files inside the artwork cache are removed: this branch also serves local library artwork.
+            if isInsideArtworkCache(url) {
+                try? FileManager.default.removeItem(at: url)
+            }
+            return RemoteDefaultArtwork.uiImage()
         }
         do {
             var request = URLRequest(url: url)
@@ -22,15 +28,20 @@ enum NowPlayingArtworkImageLoader {
             guard (200 ... 299).contains(http.statusCode) else {
                 return RemoteDefaultArtwork.uiImage()
             }
-            if let remoteId = RemoteAPIClient.artworkId(fromArtworkEndpointURL: url) {
+            let (decodable, img) = await Task.detached(priority: .utility) { () -> (Bool, UIImage?) in
+                (RemoteArtworkDecoding.isDecodableImage(data), UIImage(data: data))
+            }.value
+            if decodable, let remoteId = RemoteAPIClient.artworkId(fromArtworkEndpointURL: url) {
                 try? RemoteArtworkPreviewCache.shared.store(data: data, artworkId: remoteId)
             }
-            let img = await Task.detached(priority: .utility) {
-                UIImage(data: data)
-            }.value
             return img ?? RemoteDefaultArtwork.uiImage()
         } catch {
             return RemoteDefaultArtwork.uiImage()
         }
+    }
+
+    private static func isInsideArtworkCache(_ url: URL) -> Bool {
+        let root = RemoteArtworkPreviewCache.shared.rootURL.standardizedFileURL.path + "/"
+        return url.standardizedFileURL.path.hasPrefix(root)
     }
 }

@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import ImageIO
 import UIKit
 
 /// On-disk JPEG/PNG/WebP bytes for `/v1/remote/artwork` previews (Remote Library grids and rows).
@@ -41,6 +42,13 @@ struct RemoteArtworkPreviewCache: Sendable {
         }
         try data.write(to: dest, options: .atomic)
     }
+
+    /// Deletes the cached bytes for `artworkId` so the next request fetches them again.
+    func remove(artworkId: String) {
+        guard !artworkId.isEmpty else { return }
+        let u = rootURL.appendingPathComponent(Self.storageFileName(for: artworkId))
+        try? FileManager.default.removeItem(at: u)
+    }
 }
 
 // MARK: - Downsampled decoding
@@ -77,6 +85,15 @@ enum RemoteArtworkDecodeTarget: Equatable {
 /// Pure decode step (no I/O, no caching) — kept separate so it is directly unit-testable with an
 /// in-memory fixture image rather than needing a real HTTP/disk round trip.
 enum RemoteArtworkDecoding {
+    /// `true` only when ImageIO can read a real image frame from `data`. Used before caching bytes, so a
+    /// truncated or non-image response (e.g. an HTML error page) is never stored.
+    static func isDecodableImage(_ data: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) > 0
+        else { return false }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil) != nil
+    }
+
     static func decode(data: Data, target: RemoteArtworkDecodeTarget) -> UIImage? {
         guard let source = UIImage(data: data) else { return nil }
         switch target {
@@ -147,9 +164,13 @@ private func wearRemoteArtworkLoadDirect(
     cache: RemoteArtworkPreviewCache
 ) async -> UIImage? {
     if !artworkId.isEmpty, let cached = cache.fileURLIfPresent(artworkId: artworkId) {
-        return await Task.detached(priority: .utility) {
-            RemoteArtworkDecoding.decode(contentsOfFile: cached.path, target: target) ?? RemoteDefaultArtwork.uiImage()
+        let decoded = await Task.detached(priority: .utility) {
+            RemoteArtworkDecoding.decode(contentsOfFile: cached.path, target: target)
         }.value
+        if let decoded { return decoded }
+        // Self-heal: drop the unreadable entry so the next request re-fetches instead of showing the default forever.
+        cache.remove(artworkId: artworkId)
+        return RemoteDefaultArtwork.uiImage()
     }
     if !artworkId.isEmpty, await RemoteArtworkMissCache.shared.contains(artworkId) {
         return RemoteDefaultArtwork.uiImage()
@@ -178,12 +199,12 @@ private func wearRemoteArtworkLoadDirect(
         guard (200 ... 299).contains(http.statusCode) else {
             return RemoteDefaultArtwork.uiImage()
         }
-        if let resolvedId {
+        let (decodable, decoded) = await Task.detached(priority: .utility) { () -> (Bool, UIImage?) in
+            (RemoteArtworkDecoding.isDecodableImage(data), RemoteArtworkDecoding.decode(data: data, target: target))
+        }.value
+        if decodable, let resolvedId {
             try? cache.store(data: data, artworkId: resolvedId)
         }
-        let decoded = await Task.detached(priority: .utility) {
-            RemoteArtworkDecoding.decode(data: data, target: target)
-        }.value
         return decoded ?? RemoteDefaultArtwork.uiImage()
     } catch {
         return RemoteDefaultArtwork.uiImage()
