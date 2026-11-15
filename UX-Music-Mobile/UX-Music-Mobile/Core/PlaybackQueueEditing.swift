@@ -95,4 +95,88 @@ enum PlaybackQueueEditing {
             return "\(id)#\(occurrence)"
         }
     }
+
+    // MARK: - Occurrence rank (duplicate-safe lookup)
+    //
+    // A playlist may contain the same song more than once, so `id` alone cannot say which copy is
+    // "the current one". The occurrence rank of an index is how many earlier entries share its id;
+    // the same rank in another array (e.g. the unshuffled original) names the matching copy.
+
+    /// Number of entries before `index` that share the id of `array[index]`. `0` when out of range.
+    static func occurrenceRank<T>(ofIndex index: Int, in array: [T], id: (T) -> String) -> Int {
+        guard array.indices.contains(index) else { return 0 }
+        let target = id(array[index])
+        var rank = 0
+        for position in 0 ..< index where id(array[position]) == target {
+            rank += 1
+        }
+        return rank
+    }
+
+    /// Index of the `rank`-th entry with id `target`. Falls back to the first such entry when the
+    /// rank does not exist, and returns `nil` when no entry has that id.
+    static func occurrenceIndex<T>(rank: Int, ofId target: String, in array: [T], id: (T) -> String) -> Int? {
+        var seen = 0
+        var first: Int?
+        for (position, element) in array.enumerated() where id(element) == target {
+            if first == nil { first = position }
+            if seen == rank { return position }
+            seen += 1
+        }
+        return first
+    }
+
+    // MARK: - Mirroring shuffle-on queue edits into the original (unshuffled) order
+    //
+    // While shuffle is on, `queue` is the shuffled order and `originalQueue` the order to restore
+    // when shuffle is turned off. Edits made to `queue` are mirrored into `originalQueue` so they
+    // survive that restore. Moves are deliberately NOT mirrored: they only reorder the shuffled
+    // queue, and turning shuffle off means "back to the original order".
+
+    /// `originalQueue` after removing the entry at `removedIndex` of the pre-removal `queue`. The
+    /// same-id copy with the same occurrence rank is removed; if that rank is missing, the first
+    /// copy is removed; if no copy exists, `originalQueue` is returned unchanged.
+    static func originalQueueAfterRemoving<T>(
+        queue: [T],
+        originalQueue: [T],
+        removedIndex: Int,
+        id: (T) -> String
+    ) -> [T] {
+        guard queue.indices.contains(removedIndex) else { return originalQueue }
+        let target = id(queue[removedIndex])
+        let rank = occurrenceRank(ofIndex: removedIndex, in: queue, id: id)
+        guard let index = occurrenceIndex(rank: rank, ofId: target, in: originalQueue, id: id) else {
+            return originalQueue
+        }
+        var copy = originalQueue
+        copy.remove(at: index)
+        return copy
+    }
+
+    /// `originalQueue` with `item` appended at the end.
+    static func originalQueueAfterAppending<T>(originalQueue: [T], appended item: T) -> [T] {
+        originalQueue + [item]
+    }
+
+    /// `originalQueue` with `inserted` placed immediately after the copy of the current song. The
+    /// current song is located in the pre-insert `queue` by `currentIndex` and its occurrence rank.
+    /// If it cannot be located (e.g. no `currentIndex`), `inserted` is appended instead.
+    static func originalQueueAfterInsertingNext<T>(
+        queue: [T],
+        originalQueue: [T],
+        currentIndex: Int,
+        inserted item: T,
+        id: (T) -> String
+    ) -> [T] {
+        guard queue.indices.contains(currentIndex) else {
+            return originalQueueAfterAppending(originalQueue: originalQueue, appended: item)
+        }
+        let rank = occurrenceRank(ofIndex: currentIndex, in: queue, id: id)
+        guard let index = occurrenceIndex(rank: rank, ofId: id(queue[currentIndex]), in: originalQueue, id: id) else {
+            return originalQueueAfterAppending(originalQueue: originalQueue, appended: item)
+        }
+        var copy = originalQueue
+        copy.insert(item, at: index + 1)
+        return copy
+    }
 }

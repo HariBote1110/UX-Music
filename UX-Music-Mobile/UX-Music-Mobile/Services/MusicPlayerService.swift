@@ -93,7 +93,8 @@ final class MusicPlayerService {
 
     /// Moves the item at `from` so it ends up at index `to` in the resulting queue, keeping
     /// `currentIndex` pointing at the same song (playback is not interrupted — this never loads a
-    /// different track).
+    /// different track). While shuffled this reorders only `queue`; `originalQueue` keeps its order,
+    /// so turning shuffle off restores the original order.
     func moveQueueItem(from: Int, to: Int) {
         guard queue.indices.contains(from) else { return }
         let newCurrentIndex = PlaybackQueueEditing.currentIndexAfterMoving(from: from, to: to, currentIndex: currentIndex)
@@ -105,6 +106,11 @@ final class MusicPlayerService {
     /// whatever takes its place; removing the last remaining item stops playback entirely.
     func removeQueueItem(at index: Int) async {
         guard queue.indices.contains(index) else { return }
+        if isShuffleEnabled {
+            originalQueue = PlaybackQueueEditing.originalQueueAfterRemoving(
+                queue: queue, originalQueue: originalQueue, removedIndex: index, id: { $0.id }
+            )
+        }
         let wasCurrent = index == currentIndex
         guard let newCurrentIndex = PlaybackQueueEditing.currentIndexAfterRemoving(
             removedIndex: index,
@@ -130,7 +136,15 @@ final class MusicPlayerService {
         guard currentIndex >= 0 else {
             queue = [song]
             currentIndex = 0
+            if isShuffleEnabled {
+                originalQueue = PlaybackQueueEditing.originalQueueAfterAppending(originalQueue: originalQueue, appended: song)
+            }
             return
+        }
+        if isShuffleEnabled {
+            originalQueue = PlaybackQueueEditing.originalQueueAfterInsertingNext(
+                queue: queue, originalQueue: originalQueue, currentIndex: currentIndex, inserted: song, id: { $0.id }
+            )
         }
         queue.insert(song, at: min(currentIndex + 1, queue.count))
     }
@@ -141,7 +155,13 @@ final class MusicPlayerService {
         guard currentIndex >= 0 else {
             queue = [song]
             currentIndex = 0
+            if isShuffleEnabled {
+                originalQueue = PlaybackQueueEditing.originalQueueAfterAppending(originalQueue: originalQueue, appended: song)
+            }
             return
+        }
+        if isShuffleEnabled {
+            originalQueue = PlaybackQueueEditing.originalQueueAfterAppending(originalQueue: originalQueue, appended: song)
         }
         queue.append(song)
     }
