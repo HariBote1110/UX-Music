@@ -66,6 +66,9 @@ final class MusicPlayerService {
         UserDefaults.standard.set(enabled, forKey: shuffleEnabledDefaultsKey)
         guard enabled != isShuffleEnabled else { return }
         let currentId = currentSong?.id
+        // With the same song in the queue more than once, the playing copy is identified by its
+        // occurrence rank in the queue being left, then re-found at the same rank in the new order.
+        let currentRank = PlaybackQueueEditing.occurrenceRank(ofIndex: currentIndex, in: queue, id: { $0.id })
         if enabled {
             originalQueue = queue
             let indices = Array(queue.indices).shuffled()
@@ -74,7 +77,7 @@ final class MusicPlayerService {
             queue = originalQueue
             originalQueue = []
         }
-        if let currentId, let idx = queue.firstIndex(where: { $0.id == currentId }) {
+        if let currentId, let idx = PlaybackQueueEditing.occurrenceIndex(rank: currentRank, ofId: currentId, in: queue, id: { $0.id }) {
             currentIndex = idx
         }
         isShuffleEnabled = enabled
@@ -835,10 +838,14 @@ final class MusicPlayerService {
         return (Double(scheduledSegmentStartFrame) + Double(playerTime.sampleTime)) / sr
     }
 
+    /// Starts playing `song` from `newQueue`. `startIndex` is the caller's row index for `song` in
+    /// `newQueue`; when it is in range and names `song`, that exact copy starts, so a song listed
+    /// more than once plays from the row that was tapped. Without it, the first copy is used.
     func play(
         _ song: Song,
         newQueue: [Song],
-        collection: PlaybackCollectionRef? = nil
+        collection: PlaybackCollectionRef? = nil,
+        startIndex: Int? = nil
     ) async {
         let generation = playGeneration.bump()
         // A previous stream-first session may still be marked external (e.g. the cache finished
@@ -855,16 +862,26 @@ final class MusicPlayerService {
             baselineShuffleEnabled: baselineShuffleEnabled,
             preference: preference
         )
+        let chosenStart: Int? = startIndex.flatMap { index in
+            newQueue.indices.contains(index) && newQueue[index].id == song.id ? index : nil
+        }
         if effectiveShuffleEnabled {
             originalQueue = newQueue
-            let indices = Array(newQueue.indices).shuffled()
+            var indices = Array(newQueue.indices).shuffled()
+            if let chosenStart {
+                // Moving the chosen copy to the front makes `applyShuffle` pin that exact copy as current.
+                indices.removeAll { $0 == chosenStart }
+                indices.insert(chosenStart, at: 0)
+            }
             queue = PlaybackShuffleLogic.applyShuffle(queue: newQueue, shuffledIndices: indices, currentId: song.id)
         } else {
             originalQueue = []
             queue = newQueue
         }
         isShuffleEnabled = effectiveShuffleEnabled
-        if let idx = queue.firstIndex(where: { $0.id == song.id }) {
+        if let chosenStart, !effectiveShuffleEnabled {
+            currentIndex = chosenStart
+        } else if let idx = queue.firstIndex(where: { $0.id == song.id }) {
             currentIndex = idx
         } else {
             queue.append(song)
