@@ -138,7 +138,7 @@ function splitLyricsLines(text: string): string[] {
 export function mergePlainTxtWithJa(mainTxt: string, jaTxt: string): PlainLyricLine[] {
     const en = splitLyricsLines(mainTxt);
     const ja = splitLyricsLines(jaTxt);
-    const n = Math.max(en.length, ja.length);
+    const n = en.length;
     const out: PlainLyricLine[] = [];
     for (let i = 0; i < n; i += 1) {
         const text = en[i] !== undefined ? (en[i].trim() === '' ? ' ' : en[i]) : ' ';
