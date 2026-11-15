@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Reproduces the libusb context leak in go-mtpfs SelectDevice by calling it
 // repeatedly with no MTP device attached, logging the open FD count.
 package main
