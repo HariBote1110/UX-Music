@@ -9,6 +9,10 @@ type CollectionShuffleApp = {
 
 let preferences = new Map<string, Exclude<ShufflePreference, null>>();
 const listeners = new Set<() => void>();
+/** 読み込み（GetCollectionShufflePreferences）の実行中数 */
+let loadsInFlight = 0;
+/** 読み込み中に完了した set の結果（null は削除）。読み込み結果の上に再適用する。 */
+const changedDuringLoad = new Map<string, Exclude<ShufflePreference, null> | null>();
 
 function preferenceKey(ref: CollectionRef): string {
     return `${ref.kind}:${ref.key}`;
@@ -20,7 +24,11 @@ function getApp(): CollectionShuffleApp | undefined {
 
 function notifyListeners(): void {
     for (const listener of listeners) {
-        listener();
+        try {
+            listener();
+        } catch (error) {
+            console.error('[CollectionShuffle] listener failed', error);
+        }
     }
 }
 
@@ -43,12 +51,32 @@ export function resolveEffectiveShuffle(
 
 export async function loadCollectionShufflePreferences(): Promise<void> {
     const app = getApp();
-    const raw = await app?.GetCollectionShufflePreferences?.() ?? {};
+    if (!app?.GetCollectionShufflePreferences) {
+        // バインディング未初期化時は既存のキャッシュを維持する（空に置き換えない）
+        return;
+    }
+    loadsInFlight += 1;
+    let raw: Record<string, unknown>;
+    try {
+        raw = await app.GetCollectionShufflePreferences();
+    } finally {
+        loadsInFlight -= 1;
+    }
     const next = new Map<string, Exclude<ShufflePreference, null>>();
-    for (const [key, value] of Object.entries(raw)) {
+    for (const [key, value] of Object.entries(raw ?? {})) {
         if ((key.startsWith('album:') || key.startsWith('playlist:')) && isPreference(value)) {
             next.set(key, value);
         }
+    }
+    for (const [key, value] of changedDuringLoad) {
+        if (value == null) {
+            next.delete(key);
+        } else {
+            next.set(key, value);
+        }
+    }
+    if (loadsInFlight === 0) {
+        changedDuringLoad.clear();
     }
     preferences = next;
     notifyListeners();
@@ -65,6 +93,9 @@ export async function setCollectionShufflePreference(ref: CollectionRef, pref: S
     }
     await app.SetCollectionShufflePreference(ref.kind, ref.key, pref ?? '');
     const key = preferenceKey(ref);
+    if (loadsInFlight > 0) {
+        changedDuringLoad.set(key, pref ?? null);
+    }
     if (pref == null) {
         preferences.delete(key);
     } else {
