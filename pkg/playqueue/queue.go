@@ -72,7 +72,8 @@ type Queue struct {
 
 	original []Item
 	items    []Item
-	index    int // -1 when nothing is current (empty queue, or ran off the end with loop off)
+	origin   []int // origin[i] is the index in original of items[i]; kept in step with items
+	index    int   // -1 when nothing is current (empty queue, or ran off the end with loop off)
 	shuffled bool
 	loopMode LoopMode
 	active   bool
@@ -133,12 +134,13 @@ func (q *Queue) setQueueLocked(items []Item, startIndex int) {
 	q.active = true
 
 	if q.shuffled {
-		q.items = shuffledFrom(q.original, startIndex, q.shuffle)
+		q.items, q.origin = shuffledFrom(q.original, startIndex, q.shuffle)
 		q.index = boolToIndex(len(q.items) > 0)
 		return
 	}
 
 	q.items = cloneItems(items)
+	q.origin = identityOrigins(len(q.items))
 	if startIndex < 0 || startIndex >= len(q.items) {
 		q.index = -1
 		return
@@ -158,34 +160,75 @@ func boolToIndex(nonEmpty bool) int {
 // to the front (unless pinIndex is out of range, in which case the whole
 // list is shuffled with no pinned item), matching playSong()'s shuffle
 // branch and toggleShuffle()'s "keep current song first" behaviour.
-func shuffledFrom(source []Item, pinIndex int, shuffle func([]Item)) []Item {
+//
+// It also returns origin, where origin[i] is the index in source of result[i].
+// Items sharing an ID are interchangeable, so the shuffled remainder is matched
+// back to source first-in-first-out by ID; the pinned item is exact.
+func shuffledFrom(source []Item, pinIndex int, shuffle func([]Item)) ([]Item, []int) {
 	if len(source) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	var pinned *Item
+	pinned := pinIndex >= 0 && pinIndex < len(source)
 	rest := make([]Item, 0, len(source))
-	if pinIndex >= 0 && pinIndex < len(source) {
-		p := source[pinIndex]
-		pinned = &p
-		for i, it := range source {
-			if i != pinIndex {
-				rest = append(rest, it)
-			}
+	restSource := make([]int, 0, len(source))
+	for i, it := range source {
+		if pinned && i == pinIndex {
+			continue
 		}
-	} else {
-		rest = append(rest, source...)
+		rest = append(rest, it)
+		restSource = append(restSource, i)
 	}
 
 	shuffle(rest)
 
-	if pinned == nil {
-		return rest
+	pending := make(map[string][]int, len(restSource))
+	for _, i := range restSource {
+		pending[source[i].ID] = append(pending[source[i].ID], i)
+	}
+	restOrigin := make([]int, len(rest))
+	for p, it := range rest {
+		candidates := pending[it.ID]
+		if len(candidates) == 0 {
+			restOrigin[p] = -1
+			continue
+		}
+		restOrigin[p] = candidates[0]
+		pending[it.ID] = candidates[1:]
+	}
+
+	if !pinned {
+		return rest, restOrigin
 	}
 	result := make([]Item, 0, len(source))
-	result = append(result, *pinned)
+	result = append(result, source[pinIndex])
 	result = append(result, rest...)
-	return result
+	origin := make([]int, 0, len(source))
+	origin = append(origin, pinIndex)
+	origin = append(origin, restOrigin...)
+	return result, origin
+}
+
+func identityOrigins(n int) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = i
+	}
+	return out
+}
+
+// findOriginalLocked returns the index in q.original of current. origin is the
+// hinted index; if it does not hold a matching ID, the first occurrence is used.
+func (q *Queue) findOriginalLocked(current Item, origin int) int {
+	if origin >= 0 && origin < len(q.original) && q.original[origin].ID == current.ID {
+		return origin
+	}
+	for i, it := range q.original {
+		if it.ID == current.ID {
+			return i
+		}
+	}
+	return -1
 }
 
 func cloneItems(items []Item) []Item {
@@ -328,19 +371,18 @@ func (q *Queue) SetShuffle(shuffled bool) {
 	}
 
 	current, hasCurrent := q.currentItemLocked()
+	currentOrigin := -1
+	if hasCurrent && q.index < len(q.origin) {
+		currentOrigin = q.origin[q.index]
+	}
 	q.shuffled = shuffled
 
 	if shuffled {
 		pinIndex := -1
 		if hasCurrent {
-			for i, it := range q.original {
-				if it.ID == current.ID {
-					pinIndex = i
-					break
-				}
-			}
+			pinIndex = q.findOriginalLocked(current, currentOrigin)
 		}
-		q.items = shuffledFrom(q.original, pinIndex, q.shuffle)
+		q.items, q.origin = shuffledFrom(q.original, pinIndex, q.shuffle)
 		if hasCurrent && len(q.items) > 0 {
 			q.index = 0
 		} else {
@@ -350,16 +392,12 @@ func (q *Queue) SetShuffle(shuffled bool) {
 	}
 
 	q.items = cloneItems(q.original)
+	q.origin = identityOrigins(len(q.items))
+	q.index = -1
 	if hasCurrent {
-		q.index = -1
-		for i, it := range q.items {
-			if it.ID == current.ID {
-				q.index = i
-				break
-			}
+		if idx := q.findOriginalLocked(current, currentOrigin); idx >= 0 {
+			q.index = idx
 		}
-	} else {
-		q.index = -1
 	}
 }
 
