@@ -90,19 +90,53 @@ export function isBlankPrimaryLine(text: string | undefined): boolean {
  * Interludes (blank English) never show Japanese, even if the sidecar has 間奏 etc.
  */
 export function mergeLrcWithJaLrc(primary: LrcLine[], jaLines: LrcLine[]): LrcLine[] {
-    const byTime = new Map<number, string>();
+    /** Ja texts and primary indices grouped by timeKey, both in file order. */
+    const jaByTime = new Map<number, string[]>();
     for (const j of jaLines) {
         const k = timeKey(j.time);
-        if (!byTime.has(k)) {
-            byTime.set(k, j.text);
+        const group = jaByTime.get(k);
+        if (group) {
+            group.push(j.text);
+        } else {
+            jaByTime.set(k, [j.text]);
         }
     }
+    const primaryByTime = new Map<number, number[]>();
+    primary.forEach((line, i) => {
+        const k = timeKey(line.time);
+        const group = primaryByTime.get(k);
+        if (group) {
+            group.push(i);
+        } else {
+            primaryByTime.set(k, [i]);
+        }
+    });
+
+    /** Translation assigned from the same-time group, keyed by primary index. */
+    const fromTimeGroup = new Map<number, string>();
+    for (const [k, indices] of primaryByTime) {
+        const jaTexts = jaByTime.get(k);
+        if (!jaTexts || jaTexts.length === 0) {
+            continue;
+        }
+        if (jaTexts.length === indices.length) {
+            indices.forEach((primaryIndex, n) => fromTimeGroup.set(primaryIndex, jaTexts[n]));
+            continue;
+        }
+        const nonBlankJa = jaTexts.filter(t => t.trim() !== '');
+        const nonBlankPrimary = indices.filter(i => !isBlankPrimaryLine(primary[i].text));
+        nonBlankPrimary.forEach((primaryIndex, n) => {
+            if (n < nonBlankJa.length) {
+                fromTimeGroup.set(primaryIndex, nonBlankJa[n]);
+            }
+        });
+    }
+
     return primary.map((line, i) => {
         if (isBlankPrimaryLine(line.text)) {
             return { ...line, translation: undefined };
         }
-        const k = timeKey(line.time);
-        const fromTime = byTime.get(k);
+        const fromTime = fromTimeGroup.get(i);
         const fromIndex = jaLines[i]?.text;
         const pick = fromTime !== undefined ? fromTime : fromIndex;
         const trimmed = pick !== undefined && pick.trim() !== '' ? pick : undefined;
