@@ -119,34 +119,63 @@ func SaveLrcFile(fileName string, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
+// CopyLyricsFiles imports lyrics files into the Lyrics directory. Only regular
+// files whose name ends in .lrc or .txt (case-insensitive, covering .ja.lrc and
+// .ja.txt) are copied; anything else is skipped and not counted. A file with the
+// same name is overwritten atomically: the content is written to a temp file in
+// the Lyrics directory and renamed over the destination, so a failed copy leaves
+// an existing file untouched.
 func CopyLyricsFiles(srcPaths []string) (int, error) {
 	lyricsDir := GetLyricsDir()
 	count := 0
 
 	for _, srcPath := range srcPaths {
 		fileName := filepath.Base(srcPath)
-		destPath := filepath.Join(lyricsDir, fileName)
-
-		srcFile, err := os.Open(srcPath)
-		if err != nil {
+		lower := strings.ToLower(fileName)
+		if !strings.HasSuffix(lower, ".lrc") && !strings.HasSuffix(lower, ".txt") {
 			continue
 		}
-
-		destFile, err := os.Create(destPath)
-		if err != nil {
-			srcFile.Close()
+		info, err := os.Stat(srcPath)
+		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-
-		_, err = io.Copy(destFile, srcFile)
-
-		srcFile.Close()
-		destFile.Close()
-
-		if err == nil {
+		if copyLyricsFileAtomic(srcPath, filepath.Join(lyricsDir, fileName)) == nil {
 			count++
 		}
 	}
 
 	return count, nil
+}
+
+func copyLyricsFileAtomic(srcPath, destPath string) error {
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(destPath), ".lyrics-copy-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	success := false
+	defer func() {
+		if !success {
+			_ = tmpFile.Close()
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := io.Copy(tmpFile, srcFile); err != nil {
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		return err
+	}
+	success = true
+	return nil
 }
