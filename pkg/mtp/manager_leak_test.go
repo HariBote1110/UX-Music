@@ -1,3 +1,6 @@
+//go:build !windows
+
+// The FD count is read from /dev/fd, which does not exist on Windows.
 package mtp
 
 import (
