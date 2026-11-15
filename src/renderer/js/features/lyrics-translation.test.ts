@@ -18,7 +18,7 @@ describe('parseLRC timestamp forms', () => {
     it('accepts single-digit minutes', () => {
         const r = parseLRC('[0:12.34]Hello');
         expect(r).toHaveLength(1);
-        expect(r[0].time).toBeCloseTo(12 + 34 / 1000, 6);
+        expect(r[0].time).toBeCloseTo(0 * 60 + 12 + 34 / 100, 6);
         expect(r[0].text).toBe('Hello');
     });
 

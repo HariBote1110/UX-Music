@@ -14,7 +14,14 @@ export type PlainLyricLine = {
     translation?: string;
 };
 
-const timeRegex = /\[(\d{2})[:.](\d{2})[.](\d{2,3})\]/g;
+/**
+ * Accepted timestamp forms:
+ * - `[m:ss]`, `[m:ss.f]`, `[mm:ss.ff]`, `[mmm:ss.fff]` (1–3 minute digits, 1–2 second digits, optional
+ *   decimal fraction after `.` or `:`)
+ * - legacy `[mm.ss.xx]` / `[mm.ss.xxx]` (two-digit parts, dot separated)
+ * Plain `[12.34]` and metadata tags such as `[ar:Artist]` deliberately do not match.
+ */
+const timeRegex = /\[(?:(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?|(\d{2})\.(\d{2})\.(\d{2,3}))\]/g;
 
 export function parseLRC(lrcContent: string): LrcLine[] {
     const lines = lrcContent.split('\n');
@@ -26,9 +33,10 @@ export function parseLRC(lrcContent: string): LrcLine[] {
 
         if (matches.length > 0) {
             matches.forEach(match => {
-                const minutes = Number.parseInt(match[1], 10);
-                const seconds = Number.parseInt(match[2], 10);
-                const milliseconds = Number.parseInt(match[3].padEnd(3, '0'), 10);
+                const minutes = Number.parseInt(match[1] ?? match[4], 10);
+                const seconds = Number.parseInt(match[2] ?? match[5], 10);
+                const fraction = match[3] ?? match[6] ?? '0';
+                const milliseconds = Number.parseInt(fraction.padEnd(3, '0'), 10);
                 const time = minutes * 60 + seconds + milliseconds / 1000;
 
                 lyrics.push({ time, text: text || ' ', sourceLine });
