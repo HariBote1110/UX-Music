@@ -301,3 +301,118 @@ func TestFindLyrics_blankReadableJaLrcSuppressesJaTxt(t *testing.T) {
 		t.Fatalf("blank ja.lrc must not fall through to ja.txt: %#v", got)
 	}
 }
+
+func TestCopyLyricsFiles_copiesOnlyLyricsFilesAndSkipsOthers(t *testing.T) {
+	dir := setupLyricsTestDir(t)
+	src := t.TempDir()
+	for name, body := range map[string]string{
+		"song.lrc":    "[00:01.00]a\n",
+		"song.ja.txt": "b\n",
+		"UPPER.LRC":   "[00:02.00]c\n",
+		"notes.pdf":   "pdf",
+		"run.sh":      "echo hi",
+	} {
+		if err := os.WriteFile(filepath.Join(src, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(src, "folder.lrc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	srcPaths := []string{
+		filepath.Join(src, "song.lrc"),
+		filepath.Join(src, "song.ja.txt"),
+		filepath.Join(src, "UPPER.LRC"),
+		filepath.Join(src, "notes.pdf"),
+		filepath.Join(src, "run.sh"),
+		filepath.Join(src, "folder.lrc"),
+	}
+	count, err := CopyLyricsFiles(srcPaths)
+	if err != nil {
+		t.Fatalf("CopyLyricsFiles: %v", err)
+	}
+	wantCount := 3
+	if count != wantCount {
+		t.Fatalf("count = %d; want %d", count, wantCount)
+	}
+	for _, name := range []string{"song.lrc", "song.ja.txt", "UPPER.LRC"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("expected %s copied: %v", name, err)
+		}
+	}
+	for _, name := range []string{"notes.pdf", "run.sh", "folder.lrc"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Fatalf("%s should not be copied (stat err=%v)", name, err)
+		}
+	}
+}
+
+func TestCopyLyricsFiles_sameNameOverwritesWithoutLeftoverTemp(t *testing.T) {
+	dir := setupLyricsTestDir(t)
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "song.lrc"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	newBody := "[00:03.00]new\n"
+	srcFile := filepath.Join(src, "song.lrc")
+	if err := os.WriteFile(srcFile, []byte(newBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	count, err := CopyLyricsFiles([]string{srcFile})
+	if err != nil || count != 1 {
+		t.Fatalf("CopyLyricsFiles = %d, %v; want 1, nil", count, err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "song.lrc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != newBody {
+		t.Fatalf("destination = %q; want %q", got, newBody)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("expected only song.lrc in Lyrics dir, got %v", names)
+	}
+}
+
+func TestCopyLyricsFiles_unreadableSourceKeepsExistingDestination(t *testing.T) {
+	dir := setupLyricsTestDir(t)
+	src := t.TempDir()
+	oldBody := "old lyrics"
+	if err := os.WriteFile(filepath.Join(dir, "keep.lrc"), []byte(oldBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srcFile := filepath.Join(src, "keep.lrc")
+	writeUnreadableFile(t, srcFile)
+
+	count, err := CopyLyricsFiles([]string{srcFile})
+	if err != nil {
+		t.Fatalf("CopyLyricsFiles: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("count = %d; want 0 for unreadable source", count)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "keep.lrc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != oldBody {
+		t.Fatalf("existing destination changed to %q", got)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("temp file left behind: %d entries", len(entries))
+	}
+}
