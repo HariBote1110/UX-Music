@@ -1,6 +1,8 @@
 package server
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"ux-music-sidecar/internal/playlist"
 )
@@ -74,5 +76,40 @@ func TestPlaylistShufflePreferenceMovesOnRenameAndIsRemovedOnDelete(t *testing.T
 	}
 	if _, ok := got["playlist:After"]; ok {
 		t.Fatalf("deleted preference remained: %#v", got)
+	}
+}
+
+func TestSetCollectionShufflePreferenceConcurrentUpdatesKeepAllEntries(t *testing.T) {
+	newTempUserDataStore(t)
+	app := &App{}
+	const workers = 40
+	var wg sync.WaitGroup
+	errs := make(chan error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs <- app.SetCollectionShufflePreference("album", fmt.Sprintf("Album %03d", i), "on")
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("set preference: %v", err)
+		}
+	}
+	got, err := app.GetCollectionShufflePreferences()
+	if err != nil {
+		t.Fatalf("get preferences: %v", err)
+	}
+	if len(got) != workers {
+		t.Fatalf("expected %d preferences after concurrent sets, got %d", workers, len(got))
+	}
+	for i := 0; i < workers; i++ {
+		key := collectionShufflePreferenceKey("album", fmt.Sprintf("Album %03d", i))
+		if got[key] != "on" {
+			t.Fatalf("lost preference %q: %#v", key, got)
+		}
 	}
 }

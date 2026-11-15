@@ -1,8 +1,10 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"ux-music-sidecar/internal/config"
@@ -114,4 +116,112 @@ func keys(m map[string]interface{}) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+func TestUpdateMap_ConcurrentUpdatesKeepAllKeys(t *testing.T) {
+	s := newTempStore(t)
+	const workers = 50
+	var wg sync.WaitGroup
+	errs := make(chan error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			key := fmt.Sprintf("key-%03d", i)
+			errs <- s.UpdateMap("prefs", func(m map[string]interface{}) (bool, error) {
+				m[key] = i
+				return true, nil
+			})
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("UpdateMap: %v", err)
+		}
+	}
+	got, err := s.LoadMap("prefs")
+	if err != nil {
+		t.Fatalf("LoadMap: %v", err)
+	}
+	if len(got) != workers {
+		t.Fatalf("expected %d keys after concurrent updates, got %d", workers, len(got))
+	}
+	for i := 0; i < workers; i++ {
+		if _, ok := got[fmt.Sprintf("key-%03d", i)]; !ok {
+			t.Fatalf("lost update for key-%03d", i)
+		}
+	}
+}
+
+func TestUpdateMap_UnchangedOrErroredMutationWritesNothing(t *testing.T) {
+	s := newTempStore(t)
+	if err := s.UpdateMap("prefs", func(m map[string]interface{}) (bool, error) {
+		m["base"] = "on"
+		return true, nil
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := s.UpdateMap("prefs", func(m map[string]interface{}) (bool, error) {
+		m["ignored"] = "x"
+		return false, nil
+	}); err != nil {
+		t.Fatalf("unchanged mutation: %v", err)
+	}
+	wantErr := fmt.Errorf("refused")
+	if err := s.UpdateMap("prefs", func(m map[string]interface{}) (bool, error) {
+		m["ignored"] = "y"
+		return true, wantErr
+	}); err != wantErr {
+		t.Fatalf("expected mutate error, got %v", err)
+	}
+	got, err := s.LoadMap("prefs")
+	if err != nil {
+		t.Fatalf("LoadMap: %v", err)
+	}
+	if len(got) != 1 || got["base"] != "on" {
+		t.Fatalf("expected only base key, got %#v", got)
+	}
+}
+
+func TestUpdateMap_FailedSaveLeavesCacheAndFileUnchanged(t *testing.T) {
+	s := newTempStore(t)
+	dir := config.Instance.GetUserDataPath()
+	if err := s.UpdateMap("prefs", func(m map[string]interface{}) (bool, error) {
+		m["keep"] = "yes"
+		return true, nil
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Warm the in-memory cache so the failing update would hit the cached value if it aliased it.
+	if _, err := s.LoadMap("prefs"); err != nil {
+		t.Fatalf("warm cache: %v", err)
+	}
+
+	// A regular file in place of a parent directory makes the save fail.
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write blocker: %v", err)
+	}
+	config.Instance.SetUserDataPath(filepath.Join(blocker, "data"))
+	err := s.UpdateMap("prefs", func(m map[string]interface{}) (bool, error) {
+		m["attempt"] = "no"
+		return true, nil
+	})
+	config.Instance.SetUserDataPath(dir)
+	if err == nil {
+		t.Fatal("expected save failure, got nil")
+	}
+
+	got, err := s.LoadMap("prefs")
+	if err != nil {
+		t.Fatalf("LoadMap after failed save: %v", err)
+	}
+	if _, ok := got["attempt"]; ok {
+		t.Fatalf("failed save leaked into cache: %#v", got)
+	}
+	if got["keep"] != "yes" || len(got) != 1 {
+		t.Fatalf("expected only seeded key, got %#v", got)
+	}
 }
