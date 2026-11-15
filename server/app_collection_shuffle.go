@@ -65,19 +65,33 @@ func (a *App) SetCollectionShufflePreference(kind string, key string, preference
 	})
 }
 
+// renamePlaylistShufflePreference moves a playlist's default to its new name.
+// Names are trimmed the same way internal/playlist does, so the keys match the
+// names the playlist actually ends up with. A pre-existing entry under the new
+// name is an orphan from an earlier playlist; the renamed playlist's own
+// setting wins, so it is overwritten or removed.
 func (a *App) renamePlaylistShufflePreference(oldName string, newName string) error {
-	oldKey := collectionShufflePreferenceKey("playlist", oldName)
-	newKey := collectionShufflePreferenceKey("playlist", newName)
+	oldKey := collectionShufflePreferenceKey("playlist", strings.TrimSpace(oldName))
+	newKey := collectionShufflePreferenceKey("playlist", strings.TrimSpace(newName))
+	if oldKey == newKey {
+		return nil
+	}
 	return store.Instance.UpdateMap(collectionShuffleStoreName, func(raw map[string]interface{}) (bool, error) {
+		changed := false
 		preference, exists := raw[oldKey]
-		if !exists {
-			return false, nil
+		if exists {
+			delete(raw, oldKey)
+			changed = true
 		}
-		delete(raw, oldKey)
 		if value, ok := preference.(string); ok && (value == "on" || value == "off") {
 			raw[newKey] = value
+			return true, nil
 		}
-		return true, nil
+		if _, stale := raw[newKey]; stale {
+			delete(raw, newKey)
+			changed = true
+		}
+		return changed, nil
 	})
 }
 

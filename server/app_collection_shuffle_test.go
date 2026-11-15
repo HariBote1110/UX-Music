@@ -182,7 +182,7 @@ func TestPlaylistShufflePreferenceRenameSemantics(t *testing.T) {
 		newTempUserDataStore(t)
 		app := &App{}
 		setPrefs(t, map[string]interface{}{
-			collectionShufflePreferenceKey("playlist", "Bad"):   "sometimes",
+			collectionShufflePreferenceKey("playlist", "Bad"):    "sometimes",
 			collectionShufflePreferenceKey("playlist", "Target"): "off",
 		})
 		rename(t, app, "Bad", "Target")
